@@ -1,0 +1,2080 @@
+/* Invincible - Sheet Plus: CHAT CARDS (li.chat-message.message in the sidebar chat, the popout chat and chat notifications).
+   Mode: Operate (a log you read while playing), so the card keeps its comic identity (blue-ish paper, white speech bubble
+   with the result, avatar on the right, italic flavor label, big yellow-outlined speaker word, yellow PUSH / ACCEPT) and the
+   work goes into hierarchy, the collapsed -> expanded roll, dice states and the info blocks. Visual language shared with
+   sheet-plus.css / items.css: hard offset shadows, corner tags instead of side stripes, skewed yellow banners,
+   halftone dots NOT used here (no empty areas in a card), no textures added, no gradient text, no glass.
+
+   SPECIFICITY (deliberate). The system's chat rules are 0,2,0 to 0,5,2 (e.g. '.chat-message.has-actor .message-header div.sender
+   h4.message-sender' = 0,5,2; '.chat-message div.dice-buttons button.dice-button:not([disabled]):hover' = 0,5,2; '.chat-message
+   .message-content *:not(a):not(.roll)' = 0,3,1; '.chat-popout .window-content li.chat-message' = 0,3,1). Every rule here is
+   nested under li.chat-message.message (0,2,1), then adds 2 to 6 further classes, so it wins whatever the load order.
+   Places that raise it on purpose:
+     - the shell border (:is(.chat-log, .chat-popout .window-content) li... = 0,4,1) beats the popout's 'border: none';
+     - '.message-content *:not(a, .roll, .ins-chat *)' (0,4,1) beats the system's blue text rule; it also excludes the Splash
+       badge (.ins-chat), which owns its own colours, and every .roll tile;
+     - header rules ('&.has-actor .message-header div.sender h4...' = 0,6,3) beat the absolute-position rules;
+     - button hover/active rules are written with :not([disabled]):hover (0,7,3) to beat the system hover (0,5,2).
+   Rule of thumb for edits: any colour set inside .message-content needs 4+ classes after the li, or it loses to the
+   inherit rule above.
+
+   CONTRAST (WCAG relative luminance; band = white 90% over the darkest plausible paper #b8c9e6 = #f8fafd):
+     ink #0c1a2e on white 17.5 | ink-2 #2b3a52 on white 11.5, on band 11.0, on paper #fff8c3 10.6
+     label #27508a on white 8.07, on band 7.7, on paper 7.5, on flavor plate 7.6
+     hint #4f6079 on white 6.4, on band 6.1
+     ok-ink #1a6a24 on white 6.71, on band 6.4 | red-ink #b3261e on white 6.54, on band 6.25
+     blue #3465a3 on white 5.94 (icons, rings) | white on blue 5.94 | white on red #d6342c 4.79 | white on ink 17.5
+     ink on yellow #ffe72a 13.9 | yellow on ink 13.9 (apply-damage button) | ink on hover #fff27a 15.2
+     Cyan #0096cb (3.37 on white) is decoration only (borders, shadows), never text.
+     The system's own 'red' (#f00, 4.0:1) and 'green' totals are replaced by red-ink and ok-ink.
+   Non-colour cues: result glyph (check / x) in the bubble, tile badges (check, x, star, rotate, lock), struck-out + dashed
+   discarded tiles, text chips for whisper / blind. */
+
+/* ---------- tokens (defined on the card itself; sheet-plus.css defines them only for actor sheets) ---------- */
+li.chat-message.message {
+  --isp-yellow: #ffe72a;
+  --isp-cyan: #0096cb;
+  --isp-blue: #3465a3;
+  --isp-ink: #0c1a2e;          /* tinted, not pure black */
+  --isp-ink-2: #2b3a52;        /* body text */
+  --isp-label: #27508a;        /* labels, small caps */
+  --isp-hint: #4f6079;         /* meta, dashed outlines */
+  --isp-paper: #fff8c3;        /* hover surface */
+  --isp-hover: #fff27a;
+  --isp-red: #d6342c;          /* fill (white on it 4.79) */
+  --isp-red-ink: #b3261e;      /* text on light surfaces */
+  --isp-ok-ink: #1a6a24;       /* success text on light surfaces */
+  --isp-line: rgba(12, 26, 46, .2);
+  --isp-band: rgba(255, 255, 255, .9);   /* flat caption band under the header: the paper shows through, text stays legible */
+  --isp-plate: rgba(255, 255, 255, .9);  /* small label plates that sit directly on the paper */
+  --isp-ease: cubic-bezier(.2, .7, .2, 1);
+  --isp-out: cubic-bezier(.16, 1, .3, 1);
+  --isp-block: 10px;           /* rhythm: gap between stacked blocks in the caption band (breakdown chips, buttons, stat grid). One value, was three copies of 10px. */
+  --isp-fa: var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free"; /* Foundry v14 ships FA 7 and exposes it as --font-awesome */
+  --isp-outline: -2px 0 0 var(--isp-ink), 2px 0 0 var(--isp-ink), 0 -2px 0 var(--isp-ink), 0 2px 0 var(--isp-ink),
+                 -1.5px -1.5px 0 var(--isp-ink), 1.5px -1.5px 0 var(--isp-ink), -1.5px 1.5px 0 var(--isp-ink), 1.5px 1.5px 0 var(--isp-ink),
+                 4px 4px 0 var(--isp-ink);   /* the yellow word's outline + hard drop; 9 hard shadows instead of the system's 40 blurred ones */
+  /* English copy lives in tokens (CSS cannot call game.i18n); scripts can override them on the card:
+     el.style.setProperty('--isp-t-whisper', JSON.stringify(game.i18n.localize(...))). */
+  --isp-t-show: "Dice";
+  --isp-t-hide: "Hide";
+  --isp-t-whisper: "Whisper";
+  --isp-t-blind: "Blind roll";
+  --isp-t-first: "First roll";
+  --isp-t-pushed: "Pushed";
+  /* shell border parts (see the :is() rule below) */
+  --isp-bw: 2px; --isp-bs: solid; --isp-bc: var(--isp-cyan);
+
+  container: isp-chat / inline-size;  /* lets avatar, name and tiles follow the real width: sidebar 312px, popout 300-600px */
+  color: var(--isp-ink);
+}
+
+/* ---------- shell: the system's blue-ish paper stays; border parts come from tokens so whisper / blind can change them ---------- */
+:is(.chat-log, .chat-popout .window-content) li.chat-message.message {
+  border: var(--isp-bw) var(--isp-bs) var(--isp-bc);
+}
+li.chat-message.message.whisper { --isp-bs: dashed; --isp-bc: var(--isp-ink-2); }
+li.chat-message.message.blind   { --isp-bw: 3px; --isp-bs: double; --isp-bc: var(--isp-ink); }
+/* popout: the system drops the border and the margin, which would also clip the hard shadow */
+.chat-popout .window-content li.chat-message.message { margin: 0 5px 8px 2px; }
+
+li.chat-message.message {
+  padding: 8px;
+
+  /* ======================================================================
+     Header: metadata row, flavor, speaker word, avatar
+     ====================================================================== */
+  & .message-header { gap: 4px; margin-bottom: 0; }
+  & .message-header > * { flex: 0 0 auto; }   /* system: flex 1 0 0 stretched every row */
+
+  & .message-header .message-metadata {
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    min-height: 26px;
+    font: 12px/1 Roboto, sans-serif;
+  }
+  /* timestamp on a small plate so it reads on any paper */
+  & .message-header .message-metadata time.message-timestamp {
+    padding: 3px 6px;
+    margin-right: 2px;
+    color: var(--isp-ink-2);
+    background: var(--isp-plate);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* whisper / blind glyphs: the system toggles their display, only size and colour here */
+  & .message-header .message-metadata .message-type {
+    margin: 0 2px;
+    font-size: 13px;
+    color: var(--isp-label);
+  }
+  /* delete / dismiss: 26px target, red on hover with a white glyph (4.79), pressed, keyboard ring */
+  & .message-header .message-metadata :is(a.message-delete, a.message-dismiss) {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    margin: 0;
+    font-size: 13px;
+    color: var(--isp-ink-2);
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
+  }
+  & .message-header .message-metadata a.message-dismiss:is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-yellow); border-color: var(--isp-ink); }
+  & .message-header .message-metadata a.message-delete:is(:hover, :focus-visible)  { color: #fff; background: var(--isp-red); border-color: var(--isp-ink); }
+  & .message-header .message-metadata :is(a.message-delete, a.message-dismiss):active { transform: translate(1px, 1px); }
+  & .message-header .message-metadata :is(a.message-delete, a.message-dismiss):focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 1px; }
+
+  & .message-header div.sender { border-bottom: 2px solid var(--isp-cyan); }
+
+  /* speaker + flavor + avatar as a grid: the name can wrap (long names, narrow popout) instead of colliding with the flavor */
+  &.has-actor .message-header div.sender {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 1fr auto auto;
+    align-items: end;
+    column-gap: 8px;
+    min-height: var(--isp-avatar, 104px);
+  }
+  /* Cards that carry a result bubble: the system pins the bubble to the top-left of the card (about 12px to 94px), while the flavor and
+     the speaker word grow upward from the bottom of the header. A long flavor ("Flying Punch - Slugfest") ran under the bubble, so the
+     first grid row reserves room below the bubble and the header grows instead. (Moved up here from the end of the file: it is a
+     modifier of the rule above, and :has() keeps it above that rule's specificity.) */
+  &.has-actor:has(.dice-roll .dice-total) .message-header div.sender { grid-template-rows: minmax(56px, 1fr) auto auto; }
+  &.has-actor .message-header div.sender img.avatar {
+    --avatar-size: var(--isp-avatar, 104px);
+    grid-column: 2;
+    grid-row: 1 / -1;
+    float: none;
+    border: 2px solid var(--isp-ink);
+    border-bottom: 0;
+    background: #fff;
+  }
+  &.has-actor .message-header div.sender h4.flavor-text {
+    grid-column: 1;
+    grid-row: 2;
+    position: static;
+    justify-self: start;
+    max-width: 100%;
+    margin: 0 0 4px;
+    padding: 1px 7px;
+    font: italic 13px/1.25 Comic, sans-serif;
+    letter-spacing: .02em;
+    color: var(--isp-label);
+    background: var(--isp-plate);
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+  &.no-actor .message-header div.sender h4.flavor-text {
+    width: fit-content;
+    max-width: 100%;
+    padding: 1px 7px;
+    font: italic 13px/1.25 Comic, sans-serif;
+    color: var(--isp-label);
+    background: var(--isp-plate);
+  }
+  & .message-header div.sender h4.flavor-text .padder { display: none; }
+  /* the yellow, outlined comic word: smaller than before (30px, was 36px) so a short card is not dominated by it */
+  &.has-actor .message-header div.sender h4.message-sender {
+    grid-column: 1;
+    grid-row: 3;
+    position: static;
+    max-width: 100%;
+    margin: 0 0 4px 3px;
+    font-size: var(--isp-name, 1.875rem);
+    line-height: .95;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+    text-shadow: var(--isp-outline);
+    transform-origin: left bottom;
+  }
+  &.no-actor .message-header div.sender h4.message-sender {
+    margin: 2px 0 6px 2px;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-shadow: var(--isp-outline);
+    text-align: left;
+  }
+  & .message-header .whisper-to {
+    flex: 0 0 auto;
+    padding: 0 2px;
+    text-align: left;
+    font: 600 12px/1.3 Comic, sans-serif;
+    letter-spacing: .04em;
+    color: var(--isp-label);
+  }
+
+  /* ======================================================================
+     Caption band: the content area. Flat, no border (the card is the card), so text sits on near-white.
+     ====================================================================== */
+  & .message-content {
+    margin-top: 8px;
+    padding: 8px 12px 10px 10px;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--isp-ink-2);
+    background: var(--isp-band);
+    /* shared by the pool list and the stat strip so they are one family: --sl-c1 = fixed width of the left (number) column, so the hero hugs its content, --sl-hero = size of
+       the big Damage number. Container queries below retune both. */
+    --sl-c1: 6rem;
+    --sl-hero: 2.5rem;
+    --isp-row: #eef3fa;     /* info row surface (label blue on it 7.0) */
+    --isp-tint: #fff4a6;    /* pale yellow number cell (ink on it 15+) */
+  }
+  /* beats the system's blue text rule; keeps the Splash badge (.ins-chat) and the dice tiles (.roll) on their own colours */
+  & .message-content *:not(a, .roll, .ins-chat *) { color: inherit; }
+  & .message-content :is(h1, h2, h3, h4, h5, h6, strong, b) { color: var(--isp-ink); }
+  & .message-content p { margin: 0 0 .5em; max-width: 68ch; text-wrap: pretty; }
+  & .message-content p:last-child { margin-bottom: 0; }
+  & .message-content img { max-width: 100%; height: auto; }
+  & .message-content ::selection { background: var(--isp-yellow); color: var(--isp-ink); }
+  & .message-content > .ins-chat { position: relative; z-index: 2; margin: -14px 0 8px; padding: 0 3px 3px 0; }   /* tucked up so it overlaps the portrait strip a little, like a sticker */   /* Splash badge: only breathing room, its look is its own */
+
+  /* links: content links, inline rolls, plain anchors */
+  & .message-content a { color: var(--isp-label); text-underline-offset: .18em; }
+  & .message-content a:is(:hover, :focus-visible) { color: var(--isp-ink); }
+  & .message-content :is(a.content-link, a.inline-roll) {
+    padding: 0 6px;
+    margin: 0;
+    color: var(--isp-ink);
+    background: var(--isp-paper);
+    border: 2px solid var(--isp-ink);
+    box-shadow: 1px 1px 0 var(--isp-ink);
+    text-decoration: none;
+    transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease);
+  }
+  & .message-content :is(a.content-link, a.inline-roll) > i { color: var(--isp-blue); }
+  & .message-content :is(a.content-link, a.inline-roll):is(:hover, :focus-visible) { background: var(--isp-hover); transform: translate(-1px, -1px); }
+  & .message-content :is(a.content-link, a.inline-roll):active { transform: translate(1px, 1px); }
+  & .message-content a:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+  & .message-content a.content-link.broken { border-style: dashed; color: var(--isp-red-ink); }
+
+  /* ======================================================================
+     Whisper / blind: not only a tint. Dashed (whisper) or double (blind) border, a text chip on top of the content,
+     and the 'To:' line styled as a label. Glyphs in the metadata row stay.
+     ====================================================================== */
+  &:is(.whisper, .blind) .message-content::before {
+    content: var(--isp-t-whisper);
+    display: block;
+    width: fit-content;
+    margin: 0 0 8px 4px;
+    padding: 2px 10px;
+    font: 700 .72rem/1.2 Comic, sans-serif;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #fff;
+    background: var(--isp-ink);
+    border: 2px solid var(--isp-ink);
+    transform: skew(-6deg);
+  }
+  &.blind .message-content::before {
+    content: var(--isp-t-blind);
+    color: var(--isp-ink);
+    background: var(--isp-yellow);
+    box-shadow: 2px 2px 0 var(--isp-ink);
+  }
+
+  /* ======================================================================
+     Roll: bubble with the result (position and bubble art stay the system's)
+     ====================================================================== */
+  &.has-actor .message-content .dice-roll .dice-total {
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--isp-ink);
+  }
+  &.has-actor .message-content .dice-roll .dice-total.success { color: var(--isp-ok-ink); }
+  &.has-actor .message-content .dice-roll .dice-total.failure { color: var(--isp-red-ink); }
+  /* outcome glyph, so success / failure never rests on green vs red alone */
+  & .message-content .dice-roll .dice-total:is(.success, .failure)::before {
+    margin-right: .45em;
+    font: 900 .85em/1 var(--isp-fa);
+  }
+  & .message-content .dice-roll .dice-total.success::before { content: "\f00c"; }
+  & .message-content .dice-roll .dice-total.failure::before { content: "\f00d"; }
+  /* no speaker: there is no bubble, so the total becomes a yellow-edged tag */
+  &.no-actor .message-content .dice-roll .dice-total {
+    width: fit-content;
+    margin: 8px 0 0 3px;
+    padding: 2px 12px;
+    font: 700 1rem/1.3 Comic, sans-serif;
+    color: var(--isp-ink);
+    background: #fff;
+    border: 2px solid var(--isp-ink);
+    box-shadow: 3px 3px 0 var(--isp-ink);
+  }
+  &.no-actor .message-content .dice-roll .dice-total.success { color: var(--isp-ok-ink); }
+  &.no-actor .message-content .dice-roll .dice-total.failure { color: var(--isp-red-ink); }
+
+  & .message-content .dice-roll .description { margin-bottom: 6px; }
+  & .message-content .dice-roll .dice-flavor { margin: 0 0 4px; font: italic 13px/1.3 Comic, sans-serif; color: var(--isp-label); }
+  & .message-content .dice-roll .dice-result { padding: 0 3px 3px 0; }
+
+  /* ======================================================================
+     COLLAPSED: the formula pill is a button-like row with a label and a chevron (the whole .dice-roll toggles .expanded)
+     ====================================================================== */
+  & .message-content .dice-roll .dice-formula {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    margin: 0;
+    padding: 3px 10px;
+    font: 700 .95rem/1.2 Comic, sans-serif;
+    font-variant-numeric: tabular-nums;
+    text-align: left;
+    color: var(--isp-ink);
+    background: #fff;
+    border: 2px solid var(--isp-ink);
+    box-shadow: 3px 3px 0 var(--isp-ink);
+    word-break: normal;
+    overflow-wrap: anywhere;
+    transition: transform .14s var(--isp-ease), background-color .14s var(--isp-ease);
+  }
+  & .message-content .dice-roll .dice-formula::before {
+    content: var(--isp-t-show);
+    order: 1;
+    margin-left: auto;
+    font: 700 .7rem/1 Comic, sans-serif;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--isp-label);
+  }
+  & .message-content .dice-roll .dice-formula::after {
+    content: "\f078";
+    order: 2;
+    font: 900 .75rem/1 var(--isp-fa);
+    color: var(--isp-blue);
+    transition: transform .22s var(--isp-out);
+  }
+  & .message-content .dice-roll.expanded .dice-formula::before { content: var(--isp-t-hide); }
+  & .message-content .dice-roll.expanded .dice-formula::after { transform: rotate(180deg); }
+  & .message-content .dice-roll:hover .dice-formula { background: var(--isp-paper); transform: translate(-1px, -1px); }
+  & .message-content .dice-roll:active .dice-formula { transform: translate(3px, 3px); }
+  & .message-content .dice-roll:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 3px; }   /* active as soon as the template gets tabindex */
+
+  /* ======================================================================
+     EXPANDED: core already animates grid-template-rows 0fr -> 1fr; this adds easing, a fade and a small slide of the wrapper
+     (opacity + transform), a visibility switch so the collapsed block is not readable / focusable, and staggered tiles.
+     Padding stays off the wrapper (it would keep 0fr from reaching 0px); children carry the spacing.
+     ====================================================================== */
+  & .message-content .dice-roll .dice-tooltip { transition: grid-template-rows .28s var(--isp-out); }
+  & .message-content .dice-roll .dice-tooltip > .wrapper {
+    min-height: 0;
+    padding-inline: 2px 6px;
+    opacity: 0;
+    transform: translateY(-6px);
+    visibility: hidden;
+    transition: opacity .18s ease-out, transform .28s var(--isp-out), visibility 0s linear .28s;
+  }
+  & .message-content .dice-roll.expanded .dice-tooltip > .wrapper {
+    opacity: 1;
+    transform: none;
+    visibility: visible;
+    transition-delay: 0s, 0s, 0s;
+  }
+  & .message-content .dice-tooltip section.tooltip-part { padding-top: 12px; }
+
+  /* parts header: label, formula and total as a compact row; the total is a small yellow number tile.
+     Hierarchy: the label ("Base success count") says what the row is and leads; the formula is only a quiet caption, because the
+     pill right above it already prints the same "4DB"; the yellow tile carries the result. */
+  & .message-content .dice-tooltip .part-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 4px;
+    padding: 0 0 6px;
+    line-height: 1.2;
+    border-bottom: 1px solid var(--isp-line);
+  }
+  & .message-content .dice-tooltip .part-header .part-formula { flex: 0 0 auto; font: 700 .8rem/1.2 Comic, sans-serif; color: var(--isp-hint); }   /* hint on band 6.1 */
+  /* sentence-case italic label, same voice as .dice-flavor and the header flavor; the all-caps small-print is kept for tags and chips */
+  & .message-content .dice-tooltip .part-header .part-flavor {
+    order: -1;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font: italic 13px/1.2 Comic, sans-serif;
+    letter-spacing: .02em;
+    text-transform: none;
+    text-align: left;
+    color: var(--isp-label);
+  }
+  & .message-content .dice-tooltip .part-header .part-total {
+    flex: none;
+    display: grid;
+    place-items: center;
+    min-width: 30px;
+    height: 30px;
+    margin: 0 2px 0 auto;   /* auto: still right-aligned when the roll has no flavor label to fill the row */
+    padding: 0 6px;
+    font: 400 1.35rem/1 Titles, Comic, sans-serif;
+    font-variant-numeric: tabular-nums;
+    color: var(--isp-ink);
+    background: var(--isp-yellow);
+    border: 2px solid var(--isp-ink);
+    box-shadow: 2px 2px 0 var(--isp-ink);
+  }
+
+  /* ---------- dice tiles ---------- */
+  & .message-content .dice-tooltip :is(ol, div).dice-rolls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px 9px;
+    margin: 6px 0 4px;
+    padding: 0;
+    list-style: none;
+    overflow: visible;
+  }
+  /* tiles hang from the same left edge as the header, the chips and the info grid (centred tiles were the only centred thing in a
+     left-aligned card); the pushed-row captions follow */
+  & .message-content .dice-tooltip :is(ol, div).dice-rolls { justify-content: flex-start; }
+  /* pushed rolls: one captioned row per roll; rows keep their columns so a re-rolled die sits under the one it replaced */
+  & .message-content .dice-tooltip ol.dice-rolls:has(div.dice-rolls) { flex-direction: column; align-items: stretch; gap: 12px; }
+  & .message-content .dice-tooltip div.dice-rolls::before {
+    content: var(--isp-t-pushed);
+    flex: 0 0 100%;
+    text-align: left;
+    font: 700 .7rem/1 Comic, sans-serif;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--isp-label);
+  }
+  & .message-content .dice-tooltip div.dice-rolls:first-child::before { content: var(--isp-t-first); }
+
+  & .message-content .dice-tooltip .dice-rolls .roll { position: relative; float: none; margin: 0; }
+  /* the pop-in is scoped to .dice-roll (chat rolls that can expand); inline-roll tooltips never get .expanded and must not stay offset */
+  & .message-content .dice-roll .dice-tooltip .dice-rolls .roll { transform: translateY(5px) scale(.92); transition: transform .26s var(--isp-out); }
+  & .message-content .dice-roll.expanded .dice-tooltip .dice-rolls .roll { transform: none; }
+  & .message-content .dice-roll.expanded .dice-tooltip .dice-rolls .roll:nth-child(2) { transition-delay: 30ms; }
+  & .message-content .dice-roll.expanded .dice-tooltip .dice-rolls .roll:nth-child(3) { transition-delay: 60ms; }
+  & .message-content .dice-roll.expanded .dice-tooltip .dice-rolls .roll:nth-child(4) { transition-delay: 90ms; }
+  & .message-content .dice-roll.expanded .dice-tooltip .dice-rolls .roll:nth-child(5) { transition-delay: 120ms; }
+  & .message-content .dice-roll.expanded .dice-tooltip .dice-rolls .roll:nth-child(n+6) { transition-delay: 150ms; }   /* total stagger capped at 150ms */
+
+  /* tiles with an image (Invincible dice): square, ink frame */
+  & .message-content .dice-tooltip .dice-rolls .roll:has(> img) { display: block; width: var(--isp-die, 40px); min-width: 0; background: none; }
+  & .message-content .dice-tooltip .dice-rolls .roll > img {
+    display: block;
+    width: var(--isp-die, 40px);
+    height: var(--isp-die, 40px);
+    object-fit: cover;
+    border: 2px solid var(--isp-ink);
+  }
+  /* plain Foundry dice (d20 and friends) keep their own face art, just larger and centred */
+  & .message-content .dice-tooltip .dice-rolls .roll:not(:has(> img)) {
+    display: grid;
+    place-items: center;
+    min-width: 32px;
+    height: 32px;
+    background-size: contain;
+    font: 700 .95rem/1 Roboto, sans-serif;
+  }
+
+  /* success: raised tile + yellow badge with a check. failure (bane): red offset + red badge with an x. */
+  & .message-content .dice-tooltip .dice-rolls .roll.success > img { box-shadow: 3px 3px 0 var(--isp-ink); }
+  & .message-content .dice-tooltip .dice-rolls .roll.failure > img { box-shadow: 3px 3px 0 var(--isp-red); }
+  & .message-content .dice-tooltip .dice-rolls .roll:is(.success, .failure, .max, .min)::after {
+    content: "\f00c";
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    font: 900 10px/1 var(--isp-fa);
+    color: var(--isp-ink);
+    background: var(--isp-yellow);
+    border: 2px solid var(--isp-ink);
+    pointer-events: none;
+  }
+  & .message-content .dice-tooltip .dice-rolls .roll.max:not(.success)::after { content: "\f005"; }
+  & .message-content .dice-tooltip .dice-rolls .roll:is(.failure, .min)::after {
+    content: "\f00d";
+    color: #fff;
+    background: var(--isp-red);
+  }
+
+  /* pushed (re-rolled) die: blue ring + rotate badge. locked die (kept success / bane in a pushed layout): lock badge. */
+  & .message-content .dice-tooltip .dice-rolls .roll.pushed > img { outline: 2px solid var(--isp-blue); outline-offset: 2px; }
+  & .message-content .dice-tooltip .dice-rolls .roll.pushed::before,
+  & .message-content .dice-tooltip ol.dice-rolls:has(div.dice-rolls) .roll:is(.success, .failure):not(.pushed)::before {
+    content: "\f021";
+    position: absolute;
+    left: -7px;
+    bottom: -7px;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    font: 900 9px/1 var(--isp-fa);
+    color: #fff;
+    background: var(--isp-blue);
+    border: 2px solid var(--isp-ink);
+    pointer-events: none;
+  }
+  & .message-content .dice-tooltip ol.dice-rolls:has(div.dice-rolls) .roll:is(.success, .failure):not(.pushed)::before {
+    content: "\f023";
+    background: var(--isp-ink);
+  }
+
+  /* discarded / re-rolled: desaturated, dashed frame and a diagonal strike, so it differs by shape and not by tone only */
+  & .message-content .dice-tooltip .dice-rolls .roll:is(.discarded, .rerolled):has(> img) > img {
+    filter: grayscale(1) opacity(.5);
+    border-style: dashed;
+    border-color: var(--isp-hint);
+    box-shadow: none;
+  }
+  & .message-content .dice-tooltip .dice-rolls .roll:is(.discarded, .rerolled):has(> img)::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top right, transparent calc(50% - 1.5px), var(--isp-ink-2) calc(50% - 1.5px), var(--isp-ink-2) calc(50% + 1.5px), transparent calc(50% + 1.5px));
+    pointer-events: none;
+  }
+  /* empty slot (the template prints a blank discarded span where a locked die stays): dashed outline only, no art */
+  & .message-content .dice-tooltip .dice-rolls span.roll.discarded:not(:has(img)) {
+    display: block;
+    width: var(--isp-die, 40px);
+    height: var(--isp-die, 40px);
+    border: 2px dashed var(--isp-hint);
+    opacity: .6;
+    background: none;
+  }
+  /* plain dice that were dropped */
+  & .message-content .dice-tooltip .dice-rolls li.roll:is(.discarded, .rerolled):not(:has(> img)) { opacity: .45; text-decoration: line-through; filter: none; }
+
+  /* breakdown = "where the dice pool came from". INFO (flat: 2px ink frame, no shadow, no hover): operators in their own gutter,
+     numerals right-aligned on one axis. No total row (the dice count above already says it); the last row closes on the frame's 2px border.
+     Same frame, edges and number column as the stat strip below it (2px ink frame, --sl-c1 number column, 2.3rem rows, Titles 1.7rem
+     numerals). The ingredients stay pale.
+     Row = [number cell: operator gutter | numeral, right-aligned] [source name, Comic bold caps, centred in the row].
+     Operator: none on the first row, "+" on the rest, a real minus where the value is negative (module.js sets li[data-op="-"] and
+     prints the absolute value). The list spans the full row (negative margins cancel the tooltip wrapper's inline
+     padding 2px / 6px; the 3px on the right is the .dice-result shadow room that the Dice toggle and the buttons also keep). */
+  & .message-content .dice-tooltip .wrapper > ul {
+    --pool-gut: 1.9rem;   /* operator gutter inside the number cell */
+    --pool-pad: 14px;     /* air right of the numeral */
+    display: block;
+    box-sizing: border-box;
+    margin: calc(var(--isp-block) + 6px) -6px 2px -2px;
+    padding: 0;
+    list-style: none;
+    background: var(--isp-row);
+    border: 2px solid var(--isp-ink);
+  }
+  & .message-content .dice-tooltip .wrapper > ul > li {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--sl-c1) 12px minmax(0, 1fr);   /* number cell | air | name (the strip's right-hand rows start 12px in as well) */
+    align-items: center;
+    min-height: 2.3rem;
+    margin: 0;
+    padding: 5px 10px 5px 0;
+    font: 700 .88rem/1.2 Comic, sans-serif;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--isp-ink);
+    background: none;
+    border: 0;
+    box-shadow: none;
+    cursor: default;
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+  }
+  & .message-content .dice-tooltip .wrapper > ul > li + li { border-top: 1px solid var(--isp-line); }
+  /* empty spacer so the name text (an anonymous grid item) lands in the third column */
+  & .message-content .dice-tooltip .wrapper > ul > li::before { content: ""; grid-column: 2; grid-row: 1; }
+  & .message-content .dice-tooltip strong.breakdown-value {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    align-self: stretch;
+    justify-self: stretch;
+    width: auto;
+    margin: -5px 0;   /* cancels the row's 5px padding, so the cell runs edge to edge */
+    padding: 0 var(--pool-pad) 0 var(--pool-gut);
+    font: 400 1.7rem/1 Titles, Comic, sans-serif;
+    letter-spacing: 0;
+    text-transform: none;
+    font-variant-numeric: tabular-nums;
+    color: var(--isp-ink);
+    background: var(--isp-tint);
+    border-right: 2px solid var(--isp-ink);
+  }
+  /* the operator: its own fixed gutter, ink, same face as the numerals, centred on the row (never glued to the digits) */
+  & .message-content .dice-tooltip .wrapper > ul > li strong.breakdown-value::before {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    place-items: center;
+    width: var(--pool-gut);
+    font: 400 1.35rem/1 Titles, Comic, sans-serif;
+    color: var(--isp-ink);
+  }
+  & .message-content .dice-tooltip .wrapper > ul > li + li strong.breakdown-value::before { content: "+"; }
+  & .message-content .dice-tooltip .wrapper > ul > li[data-op="-"] strong.breakdown-value::before { content: "\2212"; }
+
+  /* ======================================================================
+     Push / Accept / Apply damage: one primary, one secondary, smaller than before
+     ====================================================================== */
+  & .message-content div.dice-buttons {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);   /* default 312px sidebar; the wide container query below gives Push more room */
+    gap: 8px;
+    margin: var(--isp-block) 0 0;
+    padding: 0 3px 3px 0;
+  }
+  & .message-content div.dice-buttons:has(> :only-child) { grid-template-columns: minmax(0, 1fr); }
+  & .message-content div.dice-buttons button.dice-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 100%;
+    height: auto;
+    min-height: 36px;
+    padding: 4px 6px;
+    font: 700 .88rem/1 Comic, sans-serif;
+    letter-spacing: .03em;
+    white-space: nowrap;   /* Push / Accept side by side at 312px: a label may never break inside a word ("ACCEP / T") */
+    text-transform: uppercase;
+    color: var(--isp-ink);
+    background: var(--isp-yellow);
+    border: 2px solid var(--isp-ink);
+    box-shadow: 3px 3px 0 var(--isp-ink);
+    cursor: pointer;
+    transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
+  }
+  & .message-content div.dice-buttons button.dice-button::before { font: 900 .8em/1 var(--isp-fa); }
+  & .message-content div.dice-buttons button.dice-button[data-action="pushRoll"]::before,
+  & .message-content div.dice-buttons button.dice-button[data-action="push"]::before { content: "\f021"; }
+  & .message-content div.dice-buttons button.dice-button[data-action="acceptRoll"]::before { content: "\f00c"; }
+  & .message-content div.dice-buttons button.dice-button[data-action="applyTargetDamage"]::before { content: "\f0e7"; }
+  /* accept: the quiet one (white, ink frame) */
+  & .message-content div.dice-buttons button.dice-button[data-action="acceptRoll"] { background: #fff; }
+  /* hover keeps the system's blue flip (white on blue 5.94); accept goes paper (ink on paper 15.5) */
+  & .message-content div.dice-buttons button.dice-button:not([disabled]):is(:hover, :focus-visible) { color: #fff; background: var(--isp-blue); transform: translate(-1px, -1px); }
+  & .message-content div.dice-buttons button.dice-button[data-action="acceptRoll"]:not([disabled]):is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-paper); }
+  & .message-content div.dice-buttons button.dice-button:not([disabled]):active { transform: translate(3px, 3px); }
+  & .message-content div.dice-buttons button.dice-button:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+  & .message-content div.dice-buttons button.dice-button[disabled] { cursor: not-allowed; box-shadow: none; }
+  /* apply damage: consequential, so inverted (yellow on ink 13.9) with a cyan shadow */
+  & .message-content div.dice-buttons.apply-damage { margin-top: 8px; }
+  & .message-content div.dice-buttons.apply-damage button.dice-button { color: var(--isp-yellow); background: var(--isp-ink); box-shadow: 3px 3px 0 var(--isp-cyan); }
+  & .message-content div.dice-buttons.apply-damage button.dice-button:not([disabled]):is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-yellow); }
+
+  /* ======================================================================
+     Info block (attack / armor / trauma): the STAT LINE (layout lives in the "STAT LINE" block further down), then stunts, then effects.
+     Here: the base of every stat chip (flat INFO chip; also what a lone chip on a power card looks like), label and number type,
+     and the glyph of the semantic chips.
+     ====================================================================== */
+  & .message-content :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) {
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 6px;
+    min-height: 0;
+    margin: 0;
+    padding: 2px 9px 3px;
+    text-align: left;
+    background: var(--sl-bg, var(--isp-row));
+    border: 1px solid var(--isp-line);
+    box-shadow: none;
+    cursor: default;
+  }
+  /* outside a grid (power card) the chip hugs its content */
+  & :is(.message-content > div, .message-content) > :is(.roll-trauma, .roll-damage) { width: fit-content; margin: 6px 0; }
+
+  & .message-content :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) .label {
+    font: 700 .72rem/1.15 Comic, sans-serif;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--sl-ink, var(--isp-label));
+  }
+  & .message-content :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) .result {
+    font: 400 1.45rem/1 Titles, Comic, sans-serif;
+    font-variant-numeric: tabular-nums;
+    color: var(--sl-num, var(--isp-ink));
+  }
+  /* every stat gets a glyph (colour is never the only cue): --sl-glyph on the chip, drawn by .label::before; data-stat is set by module.js */
+  & .message-content :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) .label::before {
+    content: var(--sl-glyph);   /* unset = no pseudo-element */
+    margin-right: 6px;
+    font: 900 .85em/1 var(--isp-fa);
+  }
+  & .message-content [data-stat="damage"] { --sl-glyph: "\f6de"; }    /* fist */
+  & .message-content [data-stat="range"]  { --sl-glyph: "\f05b"; }    /* crosshairs */
+  & .message-content [data-stat="armor"]  { --sl-glyph: "\f132"; }    /* shield */
+  /* semantic chips are SOLID: --sl-bg field, --sl-ink label, --sl-num number, --sl-tile / --sl-tile-on the glyph tile (strip rows).
+     Crit = yellow field, ink 13.9 (star tile: yellow on ink 13.9). Stress / Despair / Blight / Trauma = red-ink field #b3261e, white on it
+     6.54 (label, number; glyph tile = red-ink glyph on white 6.54). */
+  & .message-content .roll-critical { --sl-bg: var(--isp-yellow); --sl-ink: var(--isp-ink); --sl-num: var(--isp-ink); --sl-tile: var(--isp-ink); --sl-tile-on: var(--isp-yellow); --sl-glyph: "\f005"; }
+  & .message-content :is(.roll-despair, .roll-blight, .roll-trauma) { --sl-bg: var(--isp-red-ink); --sl-ink: #fff; --sl-num: #fff; --sl-tile: #fff; --sl-tile-on: var(--isp-red-ink); }
+  & .message-content .roll-despair { --sl-glyph: "\f714"; }
+  & .message-content .roll-blight  { --sl-glyph: "\f780"; }
+  & .message-content .roll-trauma  { --sl-glyph: "\f071"; }
+  & .message-content .roll-gear-damage { --sl-glyph: "\f0ad"; }   /* wrench */
+  & .message-content .roll-energy  { --sl-glyph: "\f0e7"; }       /* bolt */
+
+  /* ======================================================================
+     Item / injury / power cards (plain prose in a div): the type word becomes a skewed yellow banner like the sheet titles.
+     The :has(+ p) guard keeps ordinary bold text (a name inside a sentence) out of it.
+     ====================================================================== */
+  & .message-content > div > strong:first-child:has(+ p) {
+    display: inline-block;
+    margin: 0 0 8px 2px;
+    padding: 0 10px 2px 12px;
+    font: 400 1.125rem/1.25 Titles, Comic, sans-serif;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--isp-ink);
+    background: var(--isp-yellow);
+    border: 2px solid var(--isp-ink);
+    box-shadow: 3px 3px 0 var(--isp-ink);
+    transform: rotate(-1.5deg) skew(-6deg);
+    transform-origin: left center;
+  }
+  & .message-content > div > p > strong:first-child { color: var(--isp-label); }   /* 'Healing Time:' style labels */
+
+  /* ======================================================================
+     Narrow card (popout 300px and below) and wide card (popout 420px and above). The card is the container.
+     ====================================================================== */
+  @container isp-chat (max-width: 250px) {
+    & .message-header { --isp-avatar: 84px; --isp-name: 1.5rem; }
+    & .message-content { --isp-die: 34px; --sl-hero: 2rem; --sl-c1: 5rem; padding-inline: 8px 10px; }
+    & .message-content div.dice-buttons { grid-template-columns: minmax(0, 1fr); }
+    & .message-content .dice-roll .dice-formula::before { display: none; }   /* the chevron alone is enough when space is tight */
+    & .message-content .dice-tooltip .wrapper > ul { --pool-gut: 1.5rem; --pool-pad: 10px; }   /* 5rem number column: gutter + numeral still fit two digits */
+  }
+  @container isp-chat (min-width: 420px) {
+    & .message-header { --isp-avatar: 128px; --isp-name: 2.25rem; }
+    & .message-content { --isp-die: 44px; --sl-hero: 2.9rem; --sl-c1: 7rem; }
+    & .message-content div.dice-buttons { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+  }
+}
+
+/* touch / stylus: bigger targets */
+@media (pointer: coarse) {
+  li.chat-message.message .message-header .message-metadata :is(a.message-delete, a.message-dismiss) { width: 44px; height: 44px; font-size: 16px; }
+  li.chat-message.message .message-content div.dice-buttons button.dice-button { min-height: 44px; }
+  li.chat-message.message .message-content .dice-roll .dice-formula { min-height: 44px; }
+}
+
+/* reduced motion: no transitions on the card or its pseudo-elements. Expanding still works (instantly), the chevron still flips,
+   and the visibility / opacity switch happens without delay. */
+@media (prefers-reduced-motion: reduce) {
+  li.chat-message.message,
+  li.chat-message.message *,
+  li.chat-message.message *::before,
+  li.chat-message.message *::after { animation: none !important; transition: none !important; }
+}
+
+/* "4db" is jargon (and the expanded row repeated it). On Year Zero rolls, which have a success / failure total, the pill becomes a compact
+   "Dice" toggle on the right and the raw formula is hidden; the dice themselves and the breakdown chips carry the information.
+   A plain roll (1d20 + 2) keeps its formula: there it is the information. */
+li.chat-message.message .message-content .dice-roll:has(.dice-total:is(.success, .failure)) .dice-formula {
+  width: fit-content;
+  min-height: 30px;
+  margin-left: auto;
+  padding: 2px 10px;
+  gap: 6px;
+  font-size: 0;               /* hides the formula text; the ::before label and ::after chevron set their own sizes */
+  color: transparent;
+  box-shadow: 2px 2px 0 var(--isp-ink);
+}
+li.chat-message.message .message-content .dice-roll:has(.dice-total:is(.success, .failure)) .dice-formula::before { margin-left: 0; font-size: .75rem; }
+li.chat-message.message .message-content .dice-roll:has(.dice-total:is(.success, .failure)) .dice-tooltip .part-header .part-formula { display: none; }
+
+/* =====================================================================================================================
+   BUTTON vs FRAME. One rule for the whole card, so it is obvious what can be clicked:
+     - BUTTON (clickable): solid fill, 2px ink border, 3px hard shadow, pointer cursor, lifts on hover, has an icon or chevron.
+       Push, Accept, Apply damage, the Dice toggle, the delete / dismiss icons.
+     - FRAME / INFO (not clickable): flat. No hard shadow, hairline border or none, pale fill, default cursor, no hover motion.
+       Stat chips, breakdown chips, dice tiles, effect tags, banners, the part total.
+   ===================================================================================================================== */
+
+/* ---- Dice toggle: left side shows a one-line summary of the dice, right side the label and chevron ---- */
+li.chat-message.message .message-content .dice-roll:has(.dice-total:is(.success, .failure)) .dice-formula {
+  width: auto;
+  margin-left: 0;
+  justify-content: space-between;
+  box-shadow: 3px 3px 0 var(--isp-ink);
+  cursor: pointer;
+}
+li.chat-message.message .message-content .dice-roll:has(.dice-total:is(.success, .failure)) .dice-formula::before { margin-left: auto; }
+li.chat-message.message .message-content .dice-formula .isp-mini { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; font-size: 12px; }
+li.chat-message.message .message-content .dice-formula .isp-die {
+  position: relative;
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  background: #bcd0ee;
+  border: 1.5px solid var(--isp-ink);
+}
+li.chat-message.message .message-content .dice-formula .isp-die.six { background: var(--isp-yellow); }
+li.chat-message.message .message-content .dice-formula .isp-die.one { background: var(--isp-red); }
+li.chat-message.message .message-content .dice-formula .isp-die.six::after,
+li.chat-message.message .message-content .dice-formula .isp-die.one::after {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 900 8px/1 var(--isp-fa);
+}
+li.chat-message.message .message-content .dice-formula .isp-die.six::after { content: "\f005"; color: var(--isp-ink); }
+li.chat-message.message .message-content .dice-formula .isp-die.one::after { content: "\f00d"; color: #fff; }
+
+/* =====================================================================================================================
+   STAT LINE (.dice-infos): Damage, Range, Crit, Stress as ONE comic-panel strip, INFO = flat (NO shadow, no hover, no lift, default / help cursor;
+   a button is solid + 2px ink + 3px hard shadow + pointer, the strip has the frame only).
+   Same column as the dice-pool list above it (--sl-c1, same left / right edges, 3px short of the card edge); the pool stays pale on
+   purpose (ingredients quiet, result loud). Every tile is a panel: 2px ink frame, panels share one 2px line (margin -2px).
+   Hierarchy: hero (solid field + ink caption band + Titles numeral, --sl-hero * --sl-k) > rows (Titles numeral 1.7rem, solid glyph tile
+   + word) > words (.75rem). Damage is the hero: solid yellow #ffe72a, ink band across its top with the word in yellow (13.9), the number
+   centred in the field, a faint halftone corner in the empty bottom-right (decoration, fades before the number's centre) and a one-time
+   transform pop of the number. Armor as hero = blue field (white 5.94); Stress / Despair / Blight / Trauma as hero = red-ink field (white 6.54).
+   Rows: Range / Armor = pale blue #eef3fa, blue tile (white glyph 5.94), label #27508a on it 7.0, number ink 15+. Crit = solid yellow,
+   ink star tile (yellow on ink 13.9). Stress / Despair / Blight = solid red-ink #b3261e, white tile with a red-ink glyph (6.54), white
+   label + number (6.54). Variants are carried by glyph + word, never colour alone. The hero spans as many rows as there are other stats
+   (1-5, counted with :has), so the strip is a clean rectangle at any card width. Only two tiles: the number steps down (--sl-k); a lone tile
+   is one row (band left, number right). Stunts frame (.isp-stunts) and the effect tags are full-width rows under the strip.
+   Tunables (set on .message-content): --sl-c1 (number column width), --sl-hero (Damage number size); container queries retune them.
+   ===================================================================================================================== */
+li.chat-message.message .message-content .dice-infos {
+  display: grid;
+  grid-template-columns: var(--sl-c1) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  margin: var(--isp-block) 3px 0 0;
+  padding: 0;
+}
+/* every stat tile after the hero: a row of the right column; [glyph tile + word] left, number right, the pair centred in the row; 2px ink panel */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  align-content: center;
+  column-gap: 8px;
+  box-sizing: border-box;
+  width: auto;
+  min-height: 2.3rem;
+  margin: 0;
+  padding: 3px 10px 3px 9px;
+  background: var(--sl-bg, var(--isp-row));
+  border: 2px solid var(--isp-ink);
+  border-left: 0;
+  box-shadow: none;
+}
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(n+3) { margin-top: -2px; }   /* panels share one 2px line */
+/* the hero: first tile (Damage; Armor on an armor card, Stress on a trauma card). Solid field; --sl-num is the number (and the halftone) colour. */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child {
+  grid-column: 1;
+  grid-row: span 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0 4px 3px;   /* the caption band bleeds through the 4px side padding; the number gets 4px of air each side */
+  color: var(--sl-num, var(--isp-ink));
+  background: var(--sl-bg, var(--isp-yellow));
+  border: 2px solid var(--isp-ink);
+}
+li.chat-message.message .message-content .dice-infos > [data-stat="armor"]:first-child { --sl-bg: var(--isp-blue); --sl-num: #fff; }   /* Armor hero: blue field, white 5.94 */
+/* faint halftone in the empty bottom-right corner: dots in the number colour, 18%, fading out before the number's centre */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(circle, currentColor 1.1px, transparent 1.6px) 0 0 / 6px 6px;
+  opacity: .18;
+  -webkit-mask-image: radial-gradient(circle 32px at 100% 100%, #000, transparent);
+  mask-image: radial-gradient(circle 32px at 100% 100%, #000, transparent);
+}
+/* only two tiles (hero + one row): the single shared row would otherwise be stretched tall by a big number, so the number steps down */
+li.chat-message.message .message-content .dice-infos:has(> :nth-child(2)):not(:has(> :nth-child(3))) { --sl-k: 1.05; }
+li.chat-message.message .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(3)) > :first-child { grid-row: span 2; }
+li.chat-message.message .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(4)) > :first-child { grid-row: span 3; }
+li.chat-message.message .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(5)) > :first-child { grid-row: span 4; }
+li.chat-message.message .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(6)) > :first-child { grid-row: span 5; }
+/* a lone tile: full width, one row: the caption band is its left cell, the number sits right */
+li.chat-message.message .message-content .dice-infos:not(:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2))) > :first-child {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 0 12px 0 0;
+}
+li.chat-message.message .message-content .dice-infos:not(:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2))) > :first-child::after { display: none; }
+/* stunts frame and effect tags: full-width rows under the strip */
+li.chat-message.message .message-content .dice-infos > :is(ul, .isp-stunts) { grid-column: 1 / -1; margin-top: 8px; }
+
+/* label: short word set by module.js (data-short); the stat glyph sits in front of it (--sl-glyph, see the chip rules above) */
+li.chat-message.message .message-content .dice-infos .label[data-short] { font-size: 0; letter-spacing: 0; }
+li.chat-message.message .message-content .dice-infos .label[data-short]::after {
+  content: attr(data-short);
+  font: 700 .75rem/1.1 Comic, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) .label {
+  color: var(--sl-ink, var(--isp-label));
+  white-space: nowrap;   /* a label is one short word: never stacked letter by letter; it gives way with an ellipsis, the result keeps its room */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  min-width: 0;
+}
+/* row glyph = a small SOLID tile (--sl-tile field, --sl-tile-on glyph); a stat without a glyph draws no tile (content unset) */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) .label[data-short]::before {
+  content: var(--sl-glyph);
+  display: inline-grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  margin-right: 8px;
+  vertical-align: middle;
+  color: var(--sl-tile-on, #fff);
+  background: var(--sl-tile, var(--isp-blue));
+  font: 900 11px/1 var(--isp-fa);
+}
+/* the hero's word is a CAPTION BAND: ink strip across the top of the solid field (bleeds through the hero's 4px padding), the word in yellow (13.9),
+   one line ("DAMAGE" / "OBRAŻENIA" never break mid-word; clipped, never spilling over the frame); the glyph just leads the word, no tile */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label {
+  position: relative;
+  z-index: 1;
+  margin: 0 -4px;
+  padding: 3px 2px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--isp-yellow);
+  background: var(--isp-ink);
+}
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::after {
+  font-size: .68rem;
+  letter-spacing: .05em;
+}
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::before {
+  display: inline-block;
+  width: auto;
+  height: auto;
+  margin-right: 4px;
+  vertical-align: baseline;
+  color: inherit;
+  background: none;
+  font-size: 11px;
+}
+/* a lone tile: the band is the row's left cell, full height */
+li.chat-message.message .message-content .dice-infos:not(:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2))) > :first-child .label {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin: 0;
+  padding: 3px 12px;
+}
+
+/* number: the thing you scan for. Rows: tabular, right-aligned in the row; hero: big and centred in what is left under the caption
+   (a lone hero tile is a row again: the number goes right, at row size) */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) .result {
+  font: 400 1.7rem/1 Titles, Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--sl-num, var(--isp-ink));
+}
+/* hero number: huge, centred in the field under the band; symmetric overflow (place-items centre) lets a 3-digit number use the 4px side air */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .result {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: .1em 0 .04em;   /* Titles digits sit a hair high in their line box */
+  font-size: calc(var(--sl-hero, 2.5rem) * var(--sl-k, 1.25));
+  line-height: .95;
+  text-align: center;
+  animation: isp-stat-pop .3s var(--isp-out) both;
+}
+li.chat-message.message .message-content .dice-infos:not(:has(> :nth-child(2))) > :first-child .result { flex: none; display: block; padding: 0; text-align: right; font-size: 1.9rem; align-self: center; }
+/* TEXT RESULTS (module.js sets data-long when the result has letters or is longer than 6 characters: Range "1 - Movement", "Self"): they are
+   words, not a numeral, and are NEVER cut off (no clamp, no ellipsis). A row stacks: label (tile + word) on the first line, the value on its own
+   full-width line below it, left-aligned, Comic bold, wrapping at word breaks onto as many lines as it needs; the row simply grows taller. */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long] { grid-template-columns: auto minmax(0, 1fr); }
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long] .result {
+  display: block;
+  min-width: 0;
+  font: 700 .9rem/1.2 Comic, sans-serif;
+  font-variant-numeric: normal;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+/* the stacked row (not the hero / lone tile): one full-width column, label above value */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long]:not(:first-child) {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 3px;
+  align-content: center;
+  padding-block: 5px;
+}
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long]:not(:first-child) .label { grid-column: 1; grid-row: 1; }
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long]:not(:first-child) .result { grid-column: 1; grid-row: 2; text-align: left; }
+/* a text result in the hero cell: row-sized words centred in the field (never the huge numeral), no pop */
+li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long]:first-child .result {
+  display: block;
+  flex: 0 1 auto;
+  margin: auto 0;
+  padding: 2px 0;
+  font-size: .95rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+  animation: none;
+}
+li.chat-message.message .message-content .dice-infos:not(:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2))) > [data-long]:first-child .result { flex: 1 1 0; min-width: 0; margin: 0; padding: 0; text-align: right; align-self: center; font-size: 1.05rem; }
+@container isp-chat (max-width: 250px) {
+  li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long] { column-gap: 6px; padding-inline: 8px 8px; }
+  li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long]:first-child .result { font-size: .82rem; }
+}
+
+/* the one authored moment: the hero number lands (transform only, once per render; the card-wide reduced-motion rule above kills it with !important) */
+@keyframes isp-stat-pop {
+  from { transform: scale(.84); }
+  to   { transform: none; }
+}
+/* 250px card: the 5rem column cannot hold glyph + "DAMAGE"; the word stays, the glyph steps aside (not a colour-only cue either way).
+   Other languages have longer words ("OBRAŻENIA"): the glyph also steps aside below 420px, where the column grows to 7rem. */
+@container isp-chat (max-width: 250px) {
+  li.chat-message.message .message-content .dice-infos:has(> :nth-child(2)) > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::before { display: none; }
+  li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::after { font-size: .62rem; letter-spacing: .03em; }
+  li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) .label[data-short]::before { width: 1.15rem; height: 1.15rem; margin-right: 6px; }
+}
+@container isp-chat (max-width: 419px) {
+  li.chat-message.message:not(:lang(en)) .message-content .dice-infos:has(> :nth-child(2)) > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::before { display: none; }
+}
+
+/* ---- other info frames: flat ---- */
+li.chat-message.message .message-content .dice-tooltip .part-header .part-total { box-shadow: none; border-width: 1px; }
+li.chat-message.message .message-content .dice-tooltip .dice-rolls .roll,
+li.chat-message.message .message-content .dice-tooltip .dice-rolls .roll > img { box-shadow: none; }
+li.chat-message.message .message-content > div > strong:first-child:has(+ p) { box-shadow: none; transform: none; }
+li.chat-message.message .ins-chat .w, li.chat-message.message .ins-chat .o { box-shadow: none; }
+
+/* =====================================================================================================================
+   Result bubble, drawn in CSS: a comic speech balloon. White fill, 3px ink outline, a true OVAL (border-radius 50%), ALWAYS one line
+   (nowrap), a curved tail on the lower right that points down-right into the portrait, the number big (Titles), the word small (Comic).
+   A frame, not a button: no hard shadow. The system pins it with position:absolute at top/left 10px of the card, which put its top
+   edge under the timestamp row; it now starts just below that row (8px card padding + 26px metadata row + 4px gap + 2px air) and is
+   anchored from the RIGHT (portrait width + overlap), so it overlaps the portrait's top-left corner like a sticker at any card width.
+   The header's first grid row reserves --isp-bub so the flavor and the speaker word never run under it.
+   ===================================================================================================================== */
+li.chat-message.message.has-actor .message-content .dice-roll .dice-total {
+  --isp-bav: 104px;                  /* portrait width, mirrors --isp-avatar (which lives on the header, out of this element's reach); retuned by the container queries below */
+  position: absolute;
+  top: 40px;
+  right: calc(var(--isp-bav) - 18px);   /* hugs the portrait: the oval's right end overlaps it by ~26px (card padding 8 + 3px border - 18 + ...), whatever the card width */
+  left: auto;
+  z-index: 2;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  column-gap: 6px;
+  row-gap: 1px;
+  width: max-content;
+  max-width: none;                   /* single line, always: never wraps, never clipped (it grows leftwards from the portrait) */
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  min-width: 0;
+  min-height: 0;
+  padding: 9px 22px 10px;            /* the ellipse cuts the corners of the text box, so the ends need air (text box corner at ~0.95 of the curve) */
+  font: 700 .85rem/1.1 Comic, sans-serif;
+  letter-spacing: .06em;
+  text-align: center;
+  text-transform: uppercase;
+  background: #fff;
+  background-image: none;
+  border: 3px solid var(--isp-ink);
+  border-radius: 50% / 50%;          /* a true oval, the classic balloon (about 3-4 : 1 for a single line) */
+  box-shadow: none;
+  transform-origin: 82% 100%;
+  animation: isp-bubble-pop .32s var(--isp-out) both;
+}
+/* the tail: two layers of one SVG, a white fill that also paints over the bubble's bottom border, and an open ink stroke along its
+   two outer edges, so the tail grows out of the outline instead of being stuck on it. Curves down and to the right. */
+li.chat-message.message.has-actor .message-content .dice-roll .dice-total::after {
+  content: "";
+  position: absolute;
+  right: 3px;                        /* base centred ~36px from the oval's right end, where the lower-right curve faces the portrait; the tip lands ~8px inside the end */
+  top: calc(100% - 8px);             /* svg y=4 sits on the inner edge of the border AT the base (the curve is ~4.5px higher there than at the bottom centre); y 4..7 is the border band */
+  width: 40px;
+  height: 24px;
+  /* white fill (also erases the border between the two base points) + ONE open ink path: lower edge base-left -> tip, upper edge tip -> base-right.
+     Its round caps start in the middle of the border band (y 5.5), so the outline of the oval flows into the tail walls. Points down and right, at the portrait. */
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 24'><path d='M2 0 L17 0 L17 5.5 C19 11 29 17 37 21 C18 20 4 14 2 5.5 Z' fill='%23fff'/><path d='M2 5.5 C4 14 18 20 37 21 C29 17 19 11 17 5.5' fill='none' stroke='%230c1a2e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat 0 0 / 100% 100%;
+  pointer-events: none;
+}
+li.chat-message.message .message-content .dice-total .isp-n {
+  font: 400 1.7rem/1 Titles, Comic, sans-serif;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+li.chat-message.message .message-content .dice-total .isp-w {
+  font: 700 .7rem/1.1 Comic, sans-serif;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* outcome glyph as a small ringed badge (not colour alone); the ring is currentColor, so it is the same AA green / red as the text */
+li.chat-message.message.has-actor .message-content .dice-roll .dice-total:is(.success, .failure)::before {
+  display: grid;
+  place-items: center;
+  flex: none;
+  box-sizing: border-box;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0;
+  font: 900 .72rem/1 var(--isp-fa);
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+/* portrait width follows the card (same values as --isp-avatar in the container queries above), so the oval always hugs the portrait.
+   Narrow card: slightly smaller type and end padding, still one line ("NO SUCCESSES" / "BRAK SUKCESOW" must clear the curve and the card edge). */
+@container isp-chat (max-width: 250px) {
+  li.chat-message.message.has-actor .message-content .dice-roll .dice-total { --isp-bav: 84px; padding: 8px 17px 9px; font-size: .78rem; column-gap: 5px; }
+  li.chat-message.message .message-content .dice-total .isp-n { font-size: 1.5rem; }
+  li.chat-message.message .message-content .dice-total .isp-w { font-size: .65rem; }
+}
+@container isp-chat (min-width: 420px) {
+  li.chat-message.message.has-actor .message-content .dice-roll .dice-total { --isp-bav: 128px; }
+}
+/* Header: first grid row = the oval (top 2px below the header, ~52px tall), so the header grows instead of the flavor running under it.
+   The tail hangs over the portrait, so only the body of the oval is reserved. */
+li.chat-message.message.has-actor:has(.dice-roll .dice-total) .message-header div.sender { --isp-bub: 58px; grid-template-rows: minmax(var(--isp-bub), 1fr) auto auto; }
+@keyframes isp-bubble-pop {
+  from { transform: scale(.82) rotate(2deg); }
+  to   { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  li.chat-message.message.has-actor .message-content .dice-roll .dice-total { animation: none; }
+}
+
+/* the "Dice" label never breaks ("DIC / E") when the strip needs two rows (14 dice); the strip gives way instead */
+li.chat-message.message .message-content .dice-roll .dice-formula { white-space: nowrap; }
+li.chat-message.message .message-content .dice-formula .isp-mini { flex: 1 1 0; min-width: 0; white-space: normal; }
+
+/* =====================================================================================================================
+   STUNTS + EFFECT TAGS. Info, not buttons: flat hairline frame, no hard shadow, no lift, cursor:help only where a tooltip exists.
+   Structure (module.js): div.isp-stunts > (chip "Stunts N" + ul.stunts > li), ul.effects > li > strong > (span.isp-etype + span.isp-ename).
+   A tag reads left to right: [TYPE label cell] name [i cell]. The "i" cell is the "hover for rules" hint (a glyph in its own
+   hairline-divided cell, no underline, no "?" dot); on hover / keyboard focus it fills with the type colour.
+   Type colours are custom properties (--t-fill solid label, --t-on text on it, --t-ink glyph / hover line, --t-tint tag surface):
+     stunt    fill yellow #ffe72a, ink text 13.9 | glyph ink on paper #fff8c3 15.5
+     boost    fill blue #3465a3, white 5.94      | glyph #27508a on #e8f3fa 7.2, cyan hairline (decoration only)
+     drawback fill red-ink #b3261e, white 6.54   | glyph #b3261e on #fcefed 5.8
+     other    fill ink-2 #2b3a52, white 11.5      | glyph ink-2 on #eef3fa 10.4
+   Name text is always ink on the tint (>= 15). Type is also carried by the label WORD, never by colour alone.
+   Specificity: everything here is li.chat-message.message .message-content + 3-5 more classes, so it beats the card's
+   '*:not(a, .roll, .ins-chat *) { color: inherit }' (0,4,1).
+   ===================================================================================================================== */
+
+/* ---- type palettes ---- */
+li.chat-message.message .message-content ul.stunts > li {
+  --t-fill: var(--isp-yellow); --t-on: var(--isp-ink); --t-ink: var(--isp-ink);
+  --t-tint: var(--isp-paper); --t-line: rgba(12, 26, 46, .28);
+}
+li.chat-message.message .message-content ul.effects > li {
+  --t-fill: var(--isp-ink-2); --t-on: #fff; --t-ink: var(--isp-ink-2);
+  --t-tint: #eef3fa; --t-line: var(--isp-line);
+}
+li.chat-message.message .message-content ul.effects > li[data-isp-type="boost"] {
+  --t-fill: var(--isp-blue); --t-on: #fff; --t-ink: var(--isp-label);
+  --t-tint: #e8f3fa; --t-line: rgba(0, 150, 203, .55);
+}
+li.chat-message.message .message-content ul.effects > li[data-isp-type="drawback"] {
+  --t-fill: var(--isp-red-ink); --t-on: #fff; --t-ink: var(--isp-red-ink);
+  --t-tint: #fcefed; --t-line: rgba(179, 38, 30, .4);
+}
+
+/* ---- the Stunts frame: flat, hairline; header = label left, count tile right; the tags sit under a hairline ---- */
+li.chat-message.message .message-content .isp-stunts {
+  flex: 1 0 100%;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 8px 9px;
+  background: var(--isp-row);
+  border: 1px solid var(--isp-line);
+}
+li.chat-message.message .message-content .isp-stunts > .roll-damage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 7px;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+li.chat-message.message .message-content .isp-stunts > .roll-damage .label[data-short] { font-size: 0; letter-spacing: 0; }
+li.chat-message.message .message-content .isp-stunts > .roll-damage .label[data-short]::after {
+  font: 700 .72rem/1 Comic, sans-serif;
+  letter-spacing: .1em;
+  color: var(--isp-label);   /* 7.0 on the frame */
+}
+li.chat-message.message .message-content .isp-stunts > .roll-damage .result {
+  order: 2;
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 24px;
+  margin: 0 0 0 auto;
+  padding: 0 6px;
+  font: 400 1.1rem/1 Titles, Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--isp-ink);
+  background: var(--isp-yellow);
+  border: 1px solid var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-stunts > ul.stunts { padding-top: 8px; border-top: 1px solid var(--isp-line); }
+
+/* ---- the lists: tags that wrap ---- */
+li.chat-message.message .message-content :is(ul.stunts, ul.effects:not(:has(> li > p))) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+li.chat-message.message .message-content .dice-infos > ul.effects { margin-top: 8px; }   /* the stat line is a grid with no gap now: 8px under the strip / the stunts frame */
+
+/* ---- one tag (stunt, or an effect that is only a name) ---- */
+li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li:not(:has(> p)) {
+  --t-pad: 5px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 30px;
+  margin: 0;
+  padding: var(--t-pad) 10px;
+  font: 700 .86rem/1.2 Comic, sans-serif;
+  color: var(--isp-ink);
+  background: var(--t-tint);
+  border: 1px solid var(--t-line);
+  border-radius: 0;
+  box-shadow: none;
+  cursor: default;
+  overflow-wrap: anywhere;
+  transition: border-color .12s var(--isp-ease);
+}
+/* with a tooltip: only the help cursor and a darker border on hover/focus say "there are rules here" (no icon, so the tags stay short) */
+li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li[data-tooltip-html]:not(:has(> p)) { cursor: help; }
+li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li[data-tooltip-html]:not(:has(> p)):is(:hover, :focus-visible) { border-color: var(--t-ink); }
+li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li:not(:has(> p)):focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+
+/* ---- effect label ("[Boost] Fists of Fury" is split by module.js into .isp-etype + .isp-ename) ---- */
+li.chat-message.message .message-content ul.effects > li .isp-etype {
+  display: inline-block;
+  flex: none;
+  margin-right: 8px;
+  padding: 2px 6px 1px;
+  font: 700 .68rem/1.3 Comic, sans-serif;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--t-on);
+  background: var(--t-fill);
+  vertical-align: .08em;
+}
+li.chat-message.message .message-content ul.effects > li .isp-ename { color: var(--isp-ink); }
+/* in a tag the label is a full-height cell flush with the left edge, then the name */
+li.chat-message.message .message-content ul.effects > li:not(:has(> p)):has(> strong > .isp-etype) { --t-pad: 0px; padding-left: 0; }
+li.chat-message.message .message-content ul.effects > li:not(:has(> p)) > strong {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font: inherit;
+}
+li.chat-message.message .message-content ul.effects > li:not(:has(> p)) .isp-etype {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0 8px;
+  vertical-align: baseline;
+}
+li.chat-message.message .message-content ul.effects > li:not(:has(> p)) .isp-ename { align-self: center; min-width: 0; padding: 5px 0; }
+
+/* ---- effects that carry their own text (power card): a hairline list, same label ---- */
+li.chat-message.message .message-content ul.effects:has(> li > p) { margin: 8px 0 0; padding: 0; list-style: none; }
+li.chat-message.message .message-content ul.effects > li:has(> p) { padding: 7px 0; border-top: 1px solid var(--isp-line); }
+li.chat-message.message .message-content ul.effects > li:has(> p):first-child { padding-top: 0; border-top: 0; }
+li.chat-message.message .message-content ul.effects > li > p:first-child { margin: 0 0 3px; }
+
+@media (pointer: coarse) {
+  li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li:not(:has(> p)) { min-height: 44px; }
+}
+
+/* ---- Foundry's tooltip for these tags: ink panel, yellow name, white rules text (module.js adds .isp-tip; the :has() fallback
+   catches the stunt tooltips' <strong>name</strong><p>rules</p> shape without it). Floating, so a soft shadow, not a hard one. ---- */
+#tooltip:is(.isp-tip, :has(> strong:first-child + p:last-child)) {
+  max-width: min(22rem, 90vw);
+  padding: 8px 12px 10px;
+  font: 500 .875rem/1.45 Comic, sans-serif;
+  text-align: left;
+  text-wrap: pretty;
+  color: #e9eff9;               /* 15.2 on ink */
+  background: #0c1a2e;
+  border: 1px solid #ffe72a;
+  border-radius: 0;
+  box-shadow: 0 6px 18px rgba(12, 26, 46, .38);
+}
+#tooltip:is(.isp-tip, :has(> strong:first-child + p:last-child)) > strong {
+  display: block;
+  margin: 0 0 4px;
+  font: 700 .95rem/1.2 Comic, sans-serif;
+  letter-spacing: .02em;
+  color: #ffe72a;               /* 13.9 on ink */
+}
+#tooltip:is(.isp-tip, :has(> strong:first-child + p:last-child)) p { margin: 0; color: inherit; }
+#tooltip:is(.isp-tip, :has(> strong:first-child + p:last-child)) p + p { margin-top: .45em; }
+
+/* the Splash badge tucks up over the portrait strip; the content box clips by default, so it must not clip here */
+li.chat-message.message .message-content:has(> .ins-chat) { overflow: visible; }
+
+/* stat tiles with a tooltip: the help cursor, nothing else (they are info, not buttons) */
+li.chat-message.message .message-content .dice-infos > [data-tooltip-html]:not(.isp-stunts > *) { cursor: help; }
+
+/* =====================================================================================================================
+   DAMAGE TAKEN card + the other message types that had no styling yet (roll-table draws, emotes).
+   Damage taken: a card with NO roll, so no result bubble and no tall header. The header is the TARGET (the system posts the card as the
+   target's speaker: small portrait + name), so the body tells the rest of the story and never prints the target's name again.
+   module.js (damageCard) tags the card (li.isp-dmgcard; + .isp-dmg-injury when an injury was drawn; + .isp-dmg-brk when Health hit 0)
+   and builds, from the data it captured into the message flags (attacker, Health before / after / max; every part is optional):
+     div.isp-dmg
+       div.isp-dmg-top   > div.isp-dmg-hit (caption band "Damage" + the "-N" numeral)  +  i.isp-dmg-seam (fist tile on the seam = the impact)
+                           +  div.isp-dmg-from (label "Attacker", portrait, name)
+       div.isp-dmg-hp    > div.isp-dmg-hh (Health label, BROKEN stamp, before -> after / max)  +  div.isp-dmg-bar (.isp-dmg-keep, .isp-dmg-lost)
+       div.isp-dmg-sr    the system's own sentence + one summary sentence: visually hidden, the only thing a screen reader reads
+     div.isp-dmg-ci      > span.isp-dmg-cit "Critical Injury" | span.isp-dmg-ciname > a.content-link (or plain b)
+   Same family as the stat strip: INFO = panels with a 2px ink frame sharing one 2px line (margin -2px), NO hard shadow, no hover; the
+   hero is the strip's recipe (ink caption band with the word in yellow, saturated field, Titles numeral, faint halftone in the empty
+   corner, one-time transform pop). Health bar = continuous (a segmented one would be noise at 20-30 points): kept part solid yellow, lost
+   part hatched red (shape, not only colour), hairline ticks every point up to 20, every 5 up to 40, every 10 up to 100, none above;
+   the numbers next to it carry the same information. Motion: numeral pop, fist stamp, the lost part drains in, BROKEN stamps in
+   (transform only, once; the card-wide reduced-motion rule above removes all of it).
+   Contrast: white on red-ink #b3261e 6.54 | yellow on ink 13.9 | ink on row #eef3fa 15+ | label #27508a on row 7.0 | hint #4f6079 on row 5.7
+             | red-ink on row 5.9 | ink on yellow 13.9 | white on blue 5.94 (heart tile). The bar is a non-text graphic: ink frame 3:1+.
+   ===================================================================================================================== */
+
+/* compact header: avatar 60px (was 104 / 128), name 1.4rem. Set on .message-header itself because the container-query
+   rules above set --isp-avatar there and a custom property set on the li would lose to them. */
+li.chat-message.message.isp-dmgcard .message-header { --isp-avatar: 60px; --isp-name: 1.4rem; }
+li.chat-message.message.isp-dmgcard .message-content { margin-top: 6px; padding: 8px 10px 10px 8px; }
+
+li.chat-message.message .message-content .isp-dmg { position: relative; margin: 0 3px 0 0; }
+
+/* ---- top row: [hit hero | attacker], the fist tile straddling the seam ---- */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-top {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--sl-c1) minmax(0, 1fr);
+  align-items: stretch;
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hit {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0 4px 3px;   /* the caption band bleeds through the 4px side padding; the number gets 4px of air each side */
+  color: #fff;
+  background: var(--isp-red-ink);
+  border: 2px solid var(--isp-ink);
+}
+/* faint halftone in the empty bottom-right corner (decoration, fades before the number's centre) */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hit::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(circle, currentColor 1.1px, transparent 1.6px) 0 0 / 6px 6px;
+  opacity: .18;
+  -webkit-mask-image: radial-gradient(circle 32px at 100% 100%, #000, transparent);
+  mask-image: radial-gradient(circle 32px at 100% 100%, #000, transparent);
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-cap {
+  position: relative;
+  z-index: 1;
+  margin: 0 -4px;
+  padding: 3px 2px;
+  font: 700 .68rem/1.1 Comic, sans-serif;
+  letter-spacing: .05em;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--isp-yellow);
+  background: var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-cap::before {
+  content: "\f6de";   /* fist, the same glyph as the Damage stat */
+  margin-right: 4px;
+  font: 900 11px/1 var(--isp-fa);
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-n {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: .1em 0 .04em;   /* Titles digits sit a hair high in their line box */
+  font: 400 calc(var(--sl-hero, 2.5rem) * 1.25 * var(--k, 1))/.95 Titles, Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  animation: isp-dmg-hit .3s var(--isp-out) both;
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hit[data-len="4"] { --k: .8; }    /* -100 */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hit:is([data-len="5"], [data-len="6"]) { --k: .62; }
+
+/* the impact: a yellow tile with the fist, tilted, stamped on the seam between the hit and who dealt it */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-seam {
+  position: absolute;
+  top: 50%;
+  left: var(--sl-c1);
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  color: var(--isp-ink);
+  background: var(--isp-yellow);
+  border: 2px solid var(--isp-ink);
+  transform: translate(-50%, -50%) rotate(-8deg);
+  animation: isp-dmg-seam .3s .1s var(--isp-out) both;
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-seam::before { content: "\f6de"; font: 900 .85rem/1 var(--isp-fa); }
+
+/* the attacker panel */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-from {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "fl fl" "av nm";
+  align-content: center;
+  align-items: center;
+  gap: 5px 8px;
+  min-width: 0;
+  padding: 6px 8px 6px 20px;   /* the left 20px clear the seam tile */
+  background: var(--isp-row);
+  border: 2px solid var(--isp-ink);
+  border-left: 0;
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-fl {
+  grid-area: fl;
+  font: 700 .68rem/1.1 Comic, sans-serif;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--isp-label);
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-av {
+  grid-area: av;
+  box-sizing: border-box;
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-ini {
+  display: grid;
+  place-items: center;
+  font: 400 1.15rem/1 Titles, Comic, sans-serif;
+  color: var(--isp-ink);
+  background: var(--isp-yellow);
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-fname {
+  grid-area: nm;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font: 700 .95rem/1.15 Comic, sans-serif;
+  color: var(--isp-ink);
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+/* no known attacker (old card, macro, another client): the hit is a single row, caption left, number right (the strip's lone-tile pattern) */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-top:not(:has(> .isp-dmg-from)) { grid-template-columns: minmax(0, 1fr); }
+li.chat-message.message .message-content .isp-dmg .isp-dmg-top:not(:has(> .isp-dmg-from)) .isp-dmg-hit {
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 0 12px 0 0;
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-top:not(:has(> .isp-dmg-from)) .isp-dmg-cap {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin: 0;
+  padding: 3px 12px;
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-top:not(:has(> .isp-dmg-from)) .isp-dmg-n { flex: none; display: block; padding: 0; align-self: center; font-size: 1.9rem; }
+
+/* ---- Health panel: label (+ BROKEN) left, before -> after / max right, the bar under it ---- */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hp {
+  margin-top: -2px;   /* panels share one 2px line */
+  padding: 8px 10px 10px;
+  background: var(--isp-row);
+  border: 2px solid var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hl {
+  display: inline-flex;
+  align-items: center;
+  font: 700 .72rem/1.1 Comic, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--isp-label);
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hl::before {
+  content: "\f004";   /* heart: the solid glyph tile of the strip rows */
+  display: inline-grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  margin-right: 8px;
+  color: #fff;
+  background: var(--isp-blue);
+  font: 900 11px/1 var(--isp-fa);
+}
+/* BROKEN: a skewed yellow banner like the sheet titles, stamped in once */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-broken {
+  padding: 0 9px 2px 8px;
+  font: 400 1rem/1.25 Titles, Comic, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--isp-ink);
+  background: var(--isp-yellow);
+  border: 2px solid var(--isp-ink);
+  transform: rotate(-2deg) skew(-6deg);
+  animation: isp-dmg-stamp .3s .35s var(--isp-out) both;
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-broken::before { content: "\f54c"; margin-right: 6px; font: 900 .8em/1 var(--isp-fa); }   /* skull */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-read { display: inline-flex; align-items: baseline; gap: 6px; margin-left: auto; white-space: nowrap; }
+li.chat-message.message .message-content .isp-dmg .isp-hp-from {
+  font: 400 1.15rem/1 Titles, Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--isp-hint);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+li.chat-message.message .message-content .isp-dmg .isp-hp-arrow { align-self: center; font: 900 .7rem/1 var(--isp-fa); color: var(--isp-hint); }
+li.chat-message.message .message-content .isp-dmg .isp-hp-arrow::before { content: "\f061"; }
+li.chat-message.message .message-content .isp-dmg .isp-hp-to { font: 400 1.7rem/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--isp-ink); }
+li.chat-message.message.isp-dmg-brk .message-content .isp-dmg .isp-hp-to { color: var(--isp-red-ink); }
+li.chat-message.message .message-content .isp-dmg .isp-hp-max { font: 700 .85rem/1 Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--isp-ink-2); }
+
+/* the bar: kept part solid yellow, lost part hatched red, white for the rest; percentages come from module.js (--to, --from, --tick) */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-bar {
+  position: relative;
+  height: 18px;
+  margin-top: 8px;
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  overflow: hidden;
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-keep {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--to) * 1%);
+  background: var(--isp-yellow);
+  border-right: 2px solid var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-lost {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--to) * 1%);
+  width: calc((var(--from) - var(--to)) * 1%);
+  background: repeating-linear-gradient(135deg, var(--isp-red) 0 4px, #fcefed 4px 8px);
+  transform-origin: right center;
+  animation: isp-dmg-drain .4s .15s var(--isp-out) both;
+}
+li.chat-message.message .message-content .isp-dmg .isp-dmg-bar[data-ticks]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--tick) - 1px), rgba(12, 26, 46, .38) calc(var(--tick) - 1px) var(--tick));
+}
+
+/* screen readers only */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@keyframes isp-dmg-hit   { from { transform: scale(1.18); } to { transform: none; } }
+@keyframes isp-dmg-seam  { from { transform: translate(-50%, -50%) rotate(-8deg) scale(1.7); } to { transform: translate(-50%, -50%) rotate(-8deg); } }
+@keyframes isp-dmg-drain { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes isp-dmg-stamp { from { transform: rotate(-2deg) skew(-6deg) scale(1.6); } to { transform: rotate(-2deg) skew(-6deg); } }
+
+/* injury tag: the effect-tag anatomy (label cell + name) in the drawback palette, the next panel on the shared line; only the name inside is a link */
+li.chat-message.message .message-content .isp-dmg-ci {
+  display: flex;
+  align-items: stretch;
+  min-height: 36px;
+  margin: -2px 3px 0 0;
+  background: #fcefed;
+  border: 2px solid var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-dmg-ci .isp-dmg-cit {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  padding: 0 10px;
+  font: 700 .68rem/1.2 Comic, sans-serif;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--isp-red-ink);
+}
+li.chat-message.message .message-content .isp-dmg-ci .isp-dmg-cit::before { content: "\f071"; font: 900 11px/1 var(--isp-fa); }   /* warning triangle, as on the Trauma chip */
+li.chat-message.message .message-content .isp-dmg-ci .isp-dmg-ciname {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 8px;
+}
+li.chat-message.message .message-content .isp-dmg-ci .isp-dmg-cin { font: 700 .95rem/1.2 Comic, sans-serif; color: var(--isp-ink); overflow-wrap: anywhere; }
+li.chat-message.message .message-content .isp-dmg-ci a.content-link { max-width: 100%; min-height: 26px; display: inline-flex; align-items: center; gap: 6px; font: 700 .9rem/1.2 Comic, sans-serif; cursor: pointer; overflow-wrap: anywhere; }
+
+@container isp-chat (max-width: 250px) {
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-n { font-size: calc(var(--sl-hero) * 1.15 * var(--k, 1)); }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-top:not(:has(> .isp-dmg-from)) .isp-dmg-n { font-size: 1.7rem; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-cap { font-size: .62rem; letter-spacing: .03em; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-cap::before { display: none; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-from { padding-left: 18px; column-gap: 6px; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-av { width: 28px; height: 28px; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-hp { padding-inline: 8px; }
+  li.chat-message.message .message-content .isp-dmg-ci { flex-wrap: wrap; }
+  li.chat-message.message .message-content .isp-dmg-ci .isp-dmg-cit { padding: 4px 10px; }
+}
+@container isp-chat (max-width: 419px) {
+  li.chat-message.message:not(:lang(en)) .message-content .isp-dmg .isp-dmg-cap::before { display: none; }   /* "OBRAŻENIA" is longer than "DAMAGE": the word stays, the glyph steps aside */
+}
+@container isp-chat (min-width: 420px) {
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-av { width: 40px; height: 40px; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-fname { font-size: 1.05rem; }
+}
+@media (pointer: coarse) {
+  li.chat-message.message .message-content .isp-dmg-ci a.content-link { min-height: 44px; }
+}
+
+/* ---- roll-table draws (e.g. the Roll Critical Injury table): the system hides the result image; here the result is a flat row ----
+   Selectors follow Foundry's table-draw template (ul.table-results > li.table-result > .result-text); untouched when a card has none. */
+li.chat-message.message .message-content ul.table-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+li.chat-message.message .message-content ul.table-results > li {
+  margin: 0;
+  padding: 7px 10px;
+  background: var(--isp-row);
+  border: 1px solid var(--isp-line);
+}
+li.chat-message.message .message-content ul.table-results > li + li { margin-top: -1px; }
+li.chat-message.message .message-content ul.table-results .result-text { font: 700 .95rem/1.3 Comic, sans-serif; color: var(--isp-ink); overflow-wrap: anywhere; }
+li.chat-message.message .message-content ul.table-results .result-text :is(p, div) { margin: 0; }
+li.chat-message.message .message-content .table-draw .dice-roll + ul.table-results,
+li.chat-message.message .message-content .table-draw .dice-roll + .table-results { margin-top: var(--isp-block); }
+
+/* ---- emotes (/em): the line is an action, so italic in the comic face; other typed chat keeps the plain band ---- */
+li.chat-message.message.emote .message-content p,
+li.chat-message.message.emote .message-content { font: italic 15px/1.4 Comic, sans-serif; }
+
+/* =====================================================================================================================
+   STUNTS: PICK ON THE CARD (module.js, "STUNTS ON THE CARD"). Lives inside the existing .isp-stunts frame.
+   Structure: .isp-stunts.isp-picking > (.roll-damage: label + yellow tile = stunts LEFT to spend, a check when 0) + p.isp-st-status
+   (aria-live: "2 of 3 chosen, 1 to go") + ul.isp-picks > li.isp-pk > (button.isp-pk-btn[aria-pressed] with a check box + name; and, for
+   stunts that can be taken several times, span.isp-step > button.isp-dec + output.isp-val + button.isp-inc) + div.isp-st-actions >
+   (button.isp-st-go Confirm, button.isp-st-clear). The system's empty ul.stunts is hidden while picking.
+   After Confirm the message is rewritten by the system's own code and the card re-renders as .isp-stunts.isp-done: the chosen stunts
+   (the system's ul.stunts) as solid yellow tags with a check, flat, no controls = locked.
+   States of a pick: off (white, 2px ink frame) / on (solid yellow, ticked box, flat) / unavailable (dashed hint frame, hint text; budget
+   spent or excluded by a chosen stunt; still focusable, says why). Hover lifts an available pick (-1px, 2px hard shadow).
+   Contrast: ink on white 17.5, ink on yellow 13.9, hint #4f6079 on white 6.4, status label #27508a on #eef3fa 7.0, Confirm = the card's
+   buttons (ink on yellow 13.9; hover white on blue 5.94). Unavailable controls are exempt from contrast but stay >= 4.5.
+   ===================================================================================================================== */
+li.chat-message.message .message-content .isp-stunts.isp-picking > ul.stunts { display: none; }
+li.chat-message.message .message-content .isp-stunts.isp-picking > .roll-damage { padding-bottom: 3px; }
+
+/* tile: how many stunts are left to spend; at 0 it becomes an ink tile with a check */
+li.chat-message.message .message-content .isp-stunts.isp-picking > .roll-damage .result.isp-spent {
+  color: var(--isp-yellow);
+  background: var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-stunts.isp-picking > .roll-damage .result.isp-spent::before {
+  content: "\f00c";
+  font: 900 .8rem/1 var(--isp-fa);
+}
+
+li.chat-message.message .message-content .isp-stunts .isp-st-status {
+  margin: 0 0 8px;
+  padding: 0;
+  font: 700 .8rem/1.3 Comic, sans-serif;
+  color: var(--isp-label);
+  text-wrap: pretty;
+}
+li.chat-message.message .message-content .isp-stunts .isp-st-status[role="alert"] { color: var(--isp-red-ink); }
+li.chat-message.message .message-content .isp-stunts.isp-ready .isp-st-status { color: var(--isp-ok-ink); }
+
+/* visually hidden text for screen readers (reason a stunt is unavailable + its rules) */
+li.chat-message.message .message-content .isp-stunts .isp-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- the picks ---- */
+li.chat-message.message .message-content .isp-stunts ul.isp-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 3px 3px 0;   /* room for the hover shadow so it never clips */
+  list-style: none;
+  border-top: 1px solid var(--isp-line);
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 32px;
+  margin: 0;
+  padding: 0;
+  color: var(--isp-ink);
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  border-radius: 0;
+  box-shadow: none;
+  transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease), box-shadow .12s var(--isp-ease);
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk[data-on="1"] { background: var(--isp-yellow); }
+li.chat-message.message .message-content .isp-stunts li.isp-pk[data-off="1"] {
+  color: var(--isp-hint);
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--isp-hint);
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk:not([data-off="1"]):hover {
+  background: var(--isp-paper);
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk[data-on="1"]:hover { background: var(--isp-hover); }
+li.chat-message.message .message-content .isp-stunts li.isp-pk:has(.isp-pk-btn:focus-visible) { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+li.chat-message.message .message-content .isp-stunts li.isp-pk:has(.isp-pk-btn:active):not([data-off="1"]) { transform: translate(1px, 1px); box-shadow: none; }
+
+/* the buttons inside a pick: reset Foundry's button chrome, the pick itself is the frame */
+li.chat-message.message .message-content .isp-stunts li.isp-pk :is(button.isp-pk-btn, button.isp-dec, button.isp-inc) {
+  appearance: none;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+  cursor: pointer;
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk button.isp-pk-btn {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 10px 4px 8px;
+  font: 700 .86rem/1.2 Comic, sans-serif;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk[data-off="1"] button.isp-pk-btn { cursor: not-allowed; }
+li.chat-message.message .message-content .isp-stunts li.isp-pk button.isp-pk-btn:focus-visible { outline: none; }
+
+/* the tick box: an empty square when off, ink with a yellow check when on (a cue besides colour) */
+li.chat-message.message .message-content .isp-stunts li.isp-pk .isp-ck {
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk .isp-ck::before {
+  content: "\f00c";
+  font: 900 .55rem/1 var(--isp-fa);
+  color: var(--isp-yellow);
+  opacity: 0;
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk[data-on="1"] .isp-ck { background: var(--isp-ink); }
+li.chat-message.message .message-content .isp-stunts li.isp-pk[data-on="1"] .isp-ck::before { opacity: 1; }
+li.chat-message.message .message-content .isp-stunts li.isp-pk[data-off="1"] .isp-ck { background: transparent; border-style: dashed; border-color: var(--isp-hint); }
+
+/* stepper for stunts that can be taken several times (Bang Heads, Special Stunt, ...): only while the stunt is on */
+li.chat-message.message .message-content .isp-stunts li.isp-pk .isp-step {
+  display: none;
+  align-items: stretch;
+  border-left: 2px solid var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk[data-on="1"] .isp-step { display: inline-flex; }
+li.chat-message.message .message-content .isp-stunts li.isp-pk .isp-val {
+  display: grid;
+  place-items: center;
+  min-width: 2.4ch;
+  padding: 0 2px;
+  font: 700 .86rem/1 Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk :is(button.isp-dec, button.isp-inc) {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  padding: 0;
+}
+li.chat-message.message .message-content .isp-stunts li.isp-pk :is(button.isp-dec, button.isp-inc)::before { font: 900 .7rem/1 var(--isp-fa); }
+li.chat-message.message .message-content .isp-stunts li.isp-pk button.isp-dec::before { content: "\f068"; }
+li.chat-message.message .message-content .isp-stunts li.isp-pk button.isp-inc::before { content: "\2b"; }
+li.chat-message.message .message-content .isp-stunts li.isp-pk :is(button.isp-dec, button.isp-inc):not([aria-disabled="true"]):hover { background: var(--isp-ink); color: var(--isp-yellow); }
+li.chat-message.message .message-content .isp-stunts li.isp-pk :is(button.isp-dec, button.isp-inc):focus-visible { outline: 3px solid var(--isp-ink); outline-offset: -5px; }
+li.chat-message.message .message-content .isp-stunts li.isp-pk :is(button.isp-dec, button.isp-inc)[aria-disabled="true"] { color: var(--isp-hint); cursor: not-allowed; }
+
+/* ---- actions: Confirm (the card's button recipe: solid fill, 2px ink border, 3px hard shadow, hover lift) + Clear (quiet, white) ---- */
+li.chat-message.message .message-content .isp-stunts .isp-st-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);   /* default (sidebar ~292px: the frame leaves ~230px): STACKED, Confirm full width, Clear under it. Side by side only in the wide container query below. */
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0 3px 3px 0;   /* room for the 3px hard shadow so the frame never clips it */
+}
+li.chat-message.message .message-content .isp-stunts .isp-st-actions:has(> button[hidden]) { grid-template-columns: minmax(0, 1fr); }
+li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go, button.isp-st-clear) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  min-height: 36px;
+  margin: 0;
+  padding: 4px 6px;
+  font: 700 .88rem/1 Comic, sans-serif;
+  letter-spacing: .03em;
+  white-space: normal;       /* the label may wrap to a second line between words, it is never clipped or pushed out of its cell */
+  overflow-wrap: normal;
+  text-wrap: balance;
+  text-align: center;
+  min-width: 0;
+  text-transform: uppercase;
+  color: var(--isp-ink);
+  background: var(--isp-yellow);
+  border: 2px solid var(--isp-ink);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--isp-ink);
+  text-shadow: none;
+  cursor: pointer;
+  transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
+}
+li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go, button.isp-st-clear)[hidden] { display: none; }
+li.chat-message.message .message-content .isp-stunts button.isp-st-go::before { content: "\e4e9"; font: 900 .8em/1 var(--isp-fa); }
+li.chat-message.message .message-content .isp-stunts button.isp-st-clear { background: #fff; }
+li.chat-message.message .message-content .isp-stunts button.isp-st-clear:not(.isp-st-dialog)::before { content: "\f0e2"; font: 900 .8em/1 var(--isp-fa); }
+li.chat-message.message .message-content .isp-stunts button.isp-st-dialog { margin-top: 8px; width: auto; }
+li.chat-message.message .message-content .isp-stunts button.isp-st-go:not([aria-disabled="true"]):is(:hover, :focus-visible) { color: #fff; background: var(--isp-blue); transform: translate(-1px, -1px); }
+li.chat-message.message .message-content .isp-stunts button.isp-st-clear:is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-paper); transform: translate(-1px, -1px); }
+li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go:not([aria-disabled="true"]), button.isp-st-clear):active { transform: translate(3px, 3px); }
+li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go, button.isp-st-clear):focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+/* not ready: dashed, no shadow, hint text (still focusable; pressing it says how many are missing) */
+li.chat-message.message .message-content .isp-stunts button.isp-st-go[aria-disabled="true"] {
+  color: var(--isp-hint);
+  background: #fff;
+  border-style: dashed;
+  border-color: var(--isp-hint);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+li.chat-message.message .message-content .isp-stunts button.isp-st-go[aria-busy="true"] { cursor: progress; }
+
+/* ---- locked: the stunts that were applied (the system's own list), solid yellow with a check, flat, no controls ---- */
+li.chat-message.message .message-content .isp-stunts.isp-done > ul.stunts > li:not(:has(> p)) {
+  background: var(--isp-yellow);
+  border-color: var(--isp-ink);
+}
+li.chat-message.message .message-content .isp-stunts.isp-done > ul.stunts > li:not(:has(> p))::before {
+  content: "\f00c";
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  font: 900 .55rem/1 var(--isp-fa);
+  color: var(--isp-yellow);
+  background: var(--isp-ink);
+}
+
+/* wide card (popout 380px+): the frame leaves enough for Confirm + Clear on one row; Clear keeps its own width, Confirm takes the rest */
+@container isp-chat (min-width: 380px) {
+  li.chat-message.message .message-content .isp-stunts .isp-st-actions:not(:has(> button[hidden])) { grid-template-columns: minmax(0, 1fr) auto; }
+  li.chat-message.message .message-content .isp-stunts .isp-st-actions > button.isp-st-clear { padding-inline: 12px; }
+}
+@media (pointer: coarse) {
+  li.chat-message.message .message-content .isp-stunts li.isp-pk { min-height: 44px; }
+  li.chat-message.message .message-content .isp-stunts li.isp-pk :is(button.isp-dec, button.isp-inc) { width: 44px; }
+  li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go, button.isp-st-clear) { min-height: 44px; }
+}
+@media (forced-colors: active) {
+  li.chat-message.message .message-content .isp-stunts li.isp-pk[data-on="1"] { outline: 3px solid Highlight; }
+  li.chat-message.message .message-content .isp-stunts li.isp-pk[data-off="1"] { border-color: GrayText; }
+}
+
+/* =====================================================================================================================
+   DOUBLE badge (module.js, doubleBadge): a sticker on the top-right corner of the Damage hero tile when the Double Damage stunt
+   was applied (roll.options.stuntsList). INFO: flat (no hard shadow, no hover, no lift), help cursor because it has a tooltip.
+   Structure: .dice-infos > [data-stat="damage"]:first-child > span.isp-x2[aria-hidden] (b.isp-x2-n "x2" + span.isp-x2-w word)
+   + span.isp-x2-sr (screen-reader sentence "Damage doubled."). Red-ink field, white text (6.54), 2px ink frame, tilted 3deg.
+   It straddles the tile's top edge (2px inside, so the caption band's word is never covered), overhangs 8px to the right (over the
+   gap above the Range row's corner, not its content) and the strip gets extra margin-top so it clears the dice toggle above.
+   Motion: one transform-only stamp-in (the card-wide reduced-motion rule and the block below remove it).
+   ===================================================================================================================== */
+li.chat-message.message .message-content .dice-infos > [data-stat="damage"]:first-child > .isp-x2 {
+  --x2-r: 3deg;
+  position: absolute;
+  z-index: 3;
+  right: -8px;
+  bottom: calc(100% - 2px);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  box-sizing: border-box;
+  max-width: calc(100% + 8px);
+  padding: 1px 6px 2px 5px;
+  overflow: hidden;
+  font: 700 .66rem/1.15 Comic, sans-serif;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #fff;                       /* white on red-ink #b3261e 6.54 */
+  background: var(--isp-red-ink);
+  border: 2px solid var(--isp-ink);
+  box-shadow: none;
+  cursor: help;
+  transform: rotate(var(--x2-r));
+  animation: isp-x2-stamp .3s .1s var(--isp-out) both;
+}
+li.chat-message.message .message-content .dice-infos > [data-stat="damage"]:first-child > .isp-x2::before {
+  content: "\f0e7";                  /* bolt */
+  flex: none;
+  font: 900 .6rem/1 var(--isp-fa);
+}
+li.chat-message.message .message-content .dice-infos > [data-stat="damage"]:first-child > .isp-x2 .isp-x2-n {
+  flex: none;
+  font: 400 1rem/1 Titles, Comic, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+/* a lone tile is one row (band left, number right): the sticker sits just above its edge so it never touches the number */
+li.chat-message.message .message-content .dice-infos:not(:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2))) > [data-stat="damage"]:first-child > .isp-x2 { bottom: calc(100% - 1px); }
+/* room above the strip for the 16px the sticker rises over its top edge (the dice toggle / pool list is above) */
+li.chat-message.message .message-content .dice-infos:has(> [data-stat="damage"]:first-child > .isp-x2) { margin-top: calc(var(--isp-block) + 12px); }
+li.chat-message.message .message-content .dice-infos > [data-stat="damage"]:first-child > .isp-x2-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@keyframes isp-x2-stamp {
+  from { transform: rotate(var(--x2-r)) scale(1.6); }
+  to   { transform: rotate(var(--x2-r)); }
+}
+/* 250px card (hero column 5rem): the bolt steps aside, the word and the x2 stay */
+@container isp-chat (max-width: 250px) {
+  li.chat-message.message .message-content .dice-infos > [data-stat="damage"]:first-child > .isp-x2 { gap: 2px; padding: 1px 5px 2px 4px; font-size: .6rem; }
+  li.chat-message.message .message-content .dice-infos > [data-stat="damage"]:first-child > .isp-x2::before { display: none; }
+}
+/* longer words in other languages ("PODWOJNE"): below 420px the bolt steps aside as well */
+@container isp-chat (max-width: 419px) {
+  li.chat-message.message:not(:lang(en)) .message-content .dice-infos > [data-stat="damage"]:first-child > .isp-x2::before { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  li.chat-message.message .message-content .dice-infos > [data-stat="damage"]:first-child > .isp-x2 { animation: none; }
+}
+
+
+/* STUNTS, nothing to pick yet (module.js stuntIdle: the roll is still pushable / someone else picks / no options): the budget tile and the empty
+   list step aside and the frame is ONE muted line, so it does not look like a menu. The system's chip and list stay in the DOM. */
+li.chat-message.message .message-content .isp-stunts.isp-idle {
+  padding: 2px 0 0;
+  background: none;
+  border: 0;
+}
+li.chat-message.message .message-content .isp-stunts.isp-idle > :is(.roll-damage, ul.stunts) { display: none; }
+li.chat-message.message .message-content .isp-stunts .isp-st-note {
+  margin: 0;
+  padding: 0;
+  font: italic 700 .8rem/1.3 Comic, sans-serif;
+  color: var(--isp-hint);   /* 6.4 on white */
+  text-wrap: pretty;
+}

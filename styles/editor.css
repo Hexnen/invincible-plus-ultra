@@ -1,0 +1,150 @@
+/* =====================================================================
+   Invincible - Sheet Plus: the rich-text editor (ProseMirror) used by item descriptions and actor biographies.
+
+   What was wrong before: an earlier rule forced `prose-mirror { display: block }`, which broke Foundry's flex layout.
+   The menu container collapsed to 0px (so the toolbar was a 16px sliver, and invisible in the source view) and the
+   editable area got height 0 (so the text could not be seen while editing).
+   Rules here never touch the layout model of the editor; they only theme it, and let the toolbar wrap instead of hiding
+   buttons that do not fit the 400px item window.
+
+   Contrast: ink #0c1a2e on paper #fff8c3 15.3, on white 17.5, on yellow #ffe72a 13.9, white on blue #3465a3 5.94.
+   ===================================================================== */
+
+/* ---------- tokens: Foundry reads these for the editor AND for its body-level dropdown and dialogs ---------- */
+.invincible.sheet.application prose-mirror,
+body:has(.invincible.sheet prose-mirror.active) :is(#prosemirror-dropdown, .prosemirror.menu-dialog) {
+  --menu-background: #fff8c3;
+  --dropdown-background: #fff;
+  --dropdown-border: #0c1a2e;
+  --dialog-background: #fff8c3;
+  --dialog-border: #0c1a2e;
+  --color-control-hover: #ffe72a;
+  --color-form-label-hover: #0c1a2e;
+  --button-text-color: #0c1a2e;
+}
+.invincible.sheet.application prose-mirror {
+  --menu-button-height: 30px;
+  --menu-padding: 5px;
+  --menu-height: 30px;      /* the "collaborating" avatars row reads this */
+  --min-height: 12rem;
+  gap: 8px 0;
+}
+.invincible.sheet.application section.tab prose-mirror { height: 100%; }
+
+/* ---------- toolbar: wraps, so every button stays reachable ---------- */
+.invincible.sheet.application prose-mirror .menu-container { flex: 0 0 auto; }
+.invincible.sheet.application prose-mirror menu {
+  position: static;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  padding: 5px;
+  background: var(--menu-background);
+  border: 2px solid #0c1a2e;
+  border-radius: 0;
+  box-shadow: 3px 3px 0 #0c1a2e;
+}
+.invincible.sheet.application prose-mirror menu > li { margin: 0; }
+/* Foundry hides low-priority buttons (colour, lists, rule, image, link) when it thinks the bar is too narrow;
+   with a wrapping bar there is room for all of them. Not in the source view, where Foundry hides them on purpose. */
+.invincible.sheet.application prose-mirror:not(.editing-source) menu li.text:has(> button[hidden]) { display: block !important; }
+.invincible.sheet.application prose-mirror:not(.editing-source) menu button[hidden] { display: inline-flex !important; }
+
+.invincible.sheet.application prose-mirror menu button {
+  --button-size: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 4px;
+  font: 700 13px/1 Roboto, sans-serif;
+  color: #0c1a2e;
+  background: #fff;
+  border: 2px solid #0c1a2e;
+  border-radius: 0;
+  box-shadow: 2px 2px 0 #0c1a2e;
+  cursor: pointer;
+  transition: transform .12s cubic-bezier(.2, .7, .2, 1), background-color .12s;
+}
+.invincible.sheet.application prose-mirror menu button:hover {
+  background: #ffe72a;
+  color: #0c1a2e;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #0c1a2e;
+}
+.invincible.sheet.application prose-mirror menu button:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 #0c1a2e; }
+.invincible.sheet.application prose-mirror menu button.active,
+.invincible.sheet.application prose-mirror menu button.source-code-action {
+  background: #3465a3;
+  color: #fff;
+}
+.invincible.sheet.application prose-mirror menu button:focus-visible { outline: 3px solid #0c1a2e; outline-offset: 2px; }
+.invincible.sheet.application prose-mirror menu .pm-dropdown { width: auto; min-width: 30px; }
+.invincible.sheet.application prose-mirror menu .pm-dropdown.format { min-width: 92px; justify-content: space-between; }
+.invincible.sheet.application prose-mirror menu .pm-dropdown > span { font-size: 13px; }
+.invincible.sheet.application prose-mirror menu .pm-dropdown i.fa-chevron-down { font-size: 10px; }
+/* the two buttons that finish the job sit on the right of the first row */
+.invincible.sheet.application prose-mirror menu li.right { margin-left: auto; }
+.invincible.sheet.application prose-mirror menu li.right ~ li.right { margin-left: 0; }
+.invincible.sheet.application prose-mirror menu li.right > button[data-action="save"] { background: #ffe72a; }
+.invincible.sheet.application prose-mirror menu li.right > button[data-action="save"]:hover { background: #fff27a; }
+.invincible.sheet.application prose-mirror menu .concurrent-users {
+  height: 30px;
+  padding: 0 6px;
+  color: #0c1a2e;
+  background: #fff;
+  border: 2px solid #0c1a2e;
+  border-radius: 0;
+  box-shadow: none;
+}
+.invincible.sheet.application prose-mirror.collaborating menu .concurrent-users { height: 30px; }
+
+/* ---------- the writing area ---------- */
+.invincible.sheet.application prose-mirror.active .editor-container {
+  min-height: 9rem;
+  background: #fff;
+  border: 2px solid #3465a3;
+}
+.invincible.sheet.application prose-mirror.active .editor-container:focus-within {
+  border-color: #0c1a2e;
+  box-shadow: inset 0 -3px 0 #ffe72a;
+}
+.invincible.sheet.application prose-mirror.active .editor-content {
+  padding: 8px 10px;
+  font: 15px/1.55 Roboto, sans-serif;
+  color: #1c2a40;
+}
+/* source view: keep Foundry's code editor, give it the same frame */
+.invincible.sheet.application prose-mirror.editing-source code-mirror.source-editor {
+  min-height: 12rem;
+  margin: 0;
+  border: 2px solid #0c1a2e;
+  border-radius: 0;
+}
+
+/* ---------- Foundry's body-level dropdown (Format, Table, Font, Size) and its insert dialogs ---------- */
+body:has(.invincible.sheet prose-mirror.active) #prosemirror-dropdown ul {
+  padding: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  background: #fff;
+  border: 2px solid #0c1a2e;
+  border-radius: 0;
+  box-shadow: 3px 3px 0 #0c1a2e;
+}
+body:has(.invincible.sheet prose-mirror.active) #prosemirror-dropdown li { padding: 4px 8px; color: #0c1a2e; border-radius: 0; }
+body:has(.invincible.sheet prose-mirror.active) #prosemirror-dropdown li:hover { background: #ffe72a; }
+body:has(.invincible.sheet prose-mirror.active) #prosemirror-dropdown li.divider { border-bottom: 1px solid #0c1a2e; }
+body:has(.invincible.sheet prose-mirror.active) .prosemirror.menu-dialog form {
+  color: #0c1a2e;
+  background: #fff8c3;
+  border: 2px solid #0c1a2e;
+  border-radius: 0;
+  box-shadow: 4px 4px 0 #0c1a2e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .invincible.sheet.application prose-mirror menu button { transition: none; }
+}

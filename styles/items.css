@@ -1,0 +1,786 @@
+/* Invincible - Sheet Plus: ITEM sheets (power, gear, talent, critical injury, vehicle weapon, ...).
+   Scope: .invincible.sheet.item only. Mode: Operate (small utility window, 400x600), so familiar controls
+   and scanability come first and the comic identity lives in palette, type, hard offset shadows and the
+   skewed yellow title banner. Visual language is shared with sheet-plus.css (actor sheets).
+
+   Selector convention: every rule starts with the shell class .invincible.sheet.item.application
+   (specificity 0,4,0) so it always beats the system's own '.invincible.sheet.item ...' rules (0,3,x),
+   whatever the stylesheet load order. Baseline control styling uses :where() so single-class overrides win.
+
+   Contrast pairs (computed, WCAG relative luminance):
+     ink #0c1a2e on white 17.5   | ink on yellow #ffe72a 13.9   | ink on paper #fff8c3 15.3
+     ink-2 #2b3a52 on white 11.5 | ink-2 on paper 10.1          | ink-2 on dotted empty-state 8.6
+     label #27508a on white 8.07 | label on paper 7.08
+     hint #4f6079 on white 6.4   | hint on paper 5.6             | placeholder = hint
+     white on blue #3465a3 5.94  | blue on white 5.94 (icons)    | white on red #d6342c 4.79
+     red-ink #b3261e on white 6.54 | red-ink on paper 5.73
+   Cyan #0096cb is only used for decoration (3.38 on white is not enough for text). */
+
+.invincible.sheet.item.application {
+  --isp-yellow: #ffe72a;
+  --isp-cyan: #0096cb;
+  --isp-blue: #3465a3;
+  --isp-ink: #0c1a2e;          /* tinted, not pure black */
+  --isp-ink-2: #2b3a52;        /* secondary text */
+  --isp-label: #27508a;        /* form labels */
+  --isp-hint: #4f6079;         /* hints, placeholders, meta */
+  --isp-paper: #fff8c3;        /* soft yellow surface: disabled fields, hover rows */
+  --isp-hover: #fff27a;        /* hovered yellow control */
+  --isp-red: #d6342c;          /* destructive fill (white text on it) */
+  --isp-red-ink: #b3261e;      /* destructive text on light surfaces */
+  --isp-line: rgba(12, 26, 46, .2);  /* hairlines between rows */
+  --isp-dots: radial-gradient(circle, rgba(12, 26, 46, .14) 1.2px, transparent 1.7px) 0 0 / 9px 9px; /* empty areas only, never on tiles */
+  --isp-ease: cubic-bezier(.2, .7, .2, 1);
+  --isp-fa: var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free"; /* Foundry v14 ships FA 7 */
+  --isp-fx-img: 28px;          /* effect icon size; the duration line indents by this + the 8px gap so it sits under the name */
+  /* Empty-state copy. CSS cannot call game.i18n, so each string is a token: scripts can override them on the
+     shell (style.setProperty('--isp-t-boosts', JSON.stringify(game.i18n.localize(...)))) without touching selectors. */
+  --isp-t-boosts: "No boosts on this power yet.";
+  --isp-t-limits: "No limits on this power yet.";
+  --isp-t-automations: "No automations yet. New Automation adds one.";
+  --isp-t-attributes: "Nothing to set for this item type.";
+  --isp-t-description: "No description yet. Use the edit button to write one.";
+  --isp-t-fx-temporary: "No timed effects. New Effect adds one that lasts 1 round.";
+  --isp-t-fx-passive: "No passive effects. These are always on.";
+  --isp-t-fx-inactive: "Nothing switched off.";
+  accent-color: var(--isp-blue);
+}
+
+/* ---------- shell: more working area, light native widgets ---------- */
+.invincible.sheet.item.application .window-content {
+  margin: 18px 20px 20px;
+  padding: 12px;
+  color-scheme: light;
+  color: var(--isp-ink);
+}
+
+/* =====================================================================
+   Header: portrait, type banner, name, level
+   ===================================================================== */
+.invincible.sheet.item.application header.sheet-header {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 10px 12px 10px 10px;
+  overflow: visible;
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+}
+.invincible.sheet.item.application header.sheet-header img.profile-img {
+  width: 92px;
+  height: 92px;
+  margin: 0;
+  object-fit: contain;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+  cursor: pointer; /* the image is click-to-edit; no background here, the icon art is white on the system's cyan */
+  transition: transform .16s var(--isp-ease), box-shadow .16s var(--isp-ease);
+}
+.invincible.sheet.item.application header.sheet-header img.profile-img:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 var(--isp-ink);
+}
+.invincible.sheet.item.application header.sheet-header img.profile-img:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--isp-ink);
+}
+.invincible.sheet.item.application header.sheet-header .header-fields {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* the type banner sits in the flow above the name (the system pinned it absolutely over the border) */
+.invincible.sheet.item.application header.sheet-header label.title {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 2px 4px;
+  padding: 0 10px 2px 12px;
+  font-family: Titles, Comic, sans-serif;
+  font-size: 1.2rem;
+  line-height: 1.15;
+  letter-spacing: 1.5px;
+  text-align: left;
+  text-wrap: balance;
+  color: var(--isp-ink);
+  background: var(--isp-yellow);
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+  text-shadow: none;
+  transform: rotate(-1.5deg) skew(-6deg);
+  transform-origin: left center;
+  pointer-events: none;
+}
+.invincible.sheet.item.application header.sheet-header .document-name { width: 100%; }
+.invincible.sheet.item.application header.sheet-header .document-name input {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 2px 0 3px;
+  font-family: Titles, Comic, sans-serif;
+  font-size: 1.6rem;
+  line-height: 1.1;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  color: var(--isp-ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid var(--isp-blue);
+  border-radius: 0;
+  box-shadow: none;
+}
+.invincible.sheet.item.application header.sheet-header .document-name input:hover { background: #fffdee; }
+.invincible.sheet.item.application header.sheet-header .document-name input:focus {
+  background: #fffbd0;
+  box-shadow: inset 0 -3px 0 var(--isp-yellow);
+}
+.invincible.sheet.item.application header.sheet-header .resource { width: 100%; }
+
+/* =====================================================================
+   Tab strip: yellow chips, the current one is blue, raised and white-on-blue
+   ===================================================================== */
+.invincible.sheet.item.application nav {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin: 14px 2px 0;
+  padding: 0;
+  border: 0;
+}
+.invincible.sheet.item.application nav a {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  margin: 0;
+  padding: 0 8px;
+  font: 700 13px/1 Roboto, sans-serif;
+  letter-spacing: .3px;
+  white-space: nowrap;
+  text-decoration: none;
+  user-select: none;
+  color: var(--isp-ink);
+  background: var(--isp-yellow);
+  border: 2px solid var(--isp-ink);
+  box-shadow: 2px 2px 0 var(--isp-ink);
+  transform: skewX(-6deg);
+  transition: transform .16s var(--isp-ease), box-shadow .16s var(--isp-ease), background-color .16s var(--isp-ease);
+}
+.invincible.sheet.item.application nav a:hover {
+  background: var(--isp-hover);
+  transform: skewX(-6deg) translateY(-2px);
+  box-shadow: 2px 4px 0 var(--isp-ink);
+}
+.invincible.sheet.item.application nav a:active {
+  transform: skewX(-6deg) translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--isp-ink);
+}
+.invincible.sheet.item.application nav a.active {
+  color: #fff;
+  background: var(--isp-blue);
+  border: 2px solid var(--isp-ink);
+  text-shadow: none;
+  transform: skewX(-6deg) translateY(-2px);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+}
+
+/* =====================================================================
+   Tab panel
+   ===================================================================== */
+.invincible.sheet.item.application section.tab {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 8px;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--isp-blue) rgba(12, 26, 46, .06);
+  font-family: Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--isp-ink);
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+}
+.invincible.sheet.item.application section.automations { padding: 8px 8px 12px 10px; }
+/* automation cards are the narrowest place in the window (tab + card gutter): give the fields back a little width */
+.invincible.sheet.item.application section.tab.automations details :where(div.form-group) > label { flex-basis: 6.5rem; } /* :where keeps the stacked / checkbox / uuid variants (later, equal weight) in charge of their own label width */
+
+/* =====================================================================
+   Controls: text fields, selects, textareas (baseline at low specificity), checkboxes
+   ===================================================================== */
+.invincible.sheet.item.application :where(section.tab, header.sheet-header .resource) :where(input:not([type="checkbox"]), select, textarea) {
+  min-height: 32px;
+  height: auto;
+  padding: 4px 8px;
+  font: 14px/1.3 Roboto, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--isp-ink);
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  border-radius: 0;
+  box-shadow: none;
+  transition: background-color .12s var(--isp-ease), box-shadow .12s var(--isp-ease);
+}
+.invincible.sheet.item.application :where(section.tab, header.sheet-header .resource) :where(input:not([type="checkbox"]), select, textarea):hover:not(:disabled) {
+  background: #fffdee;
+}
+.invincible.sheet.item.application :where(section.tab, header.sheet-header .resource) :where(input:not([type="checkbox"]), select, textarea):focus {
+  background: #fffbd0;
+  box-shadow: inset 0 -3px 0 var(--isp-yellow);
+}
+.invincible.sheet.item.application :where(section.tab, header.sheet-header .resource) :where(input:not([type="checkbox"]), select, textarea):disabled {
+  color: var(--isp-ink-2);
+  -webkit-text-fill-color: var(--isp-ink-2);
+  opacity: 1;
+  background: var(--isp-paper);
+  border-style: dashed;
+  border-color: rgba(12, 26, 46, .5);
+  cursor: not-allowed;
+}
+.invincible.sheet.item.application :is(input, textarea)::placeholder { color: var(--isp-hint); opacity: 1; }
+.invincible.sheet.item.application :is(input, textarea) { caret-color: var(--isp-blue); }
+.invincible.sheet.item.application header.sheet-header .resource select { font-weight: 600; box-shadow: 2px 2px 0 var(--isp-ink); }
+.invincible.sheet.item.application header.sheet-header .resource select:focus { box-shadow: 2px 2px 0 var(--isp-ink), inset 0 -3px 0 var(--isp-yellow); }
+.invincible.sheet.item.application :is(select, option) { text-transform: none; }
+
+/* numbers read as stats, like the attribute tiles on the actor sheet */
+.invincible.sheet.item.application section.tab input[type="number"] {
+  width: 5.5rem;
+  max-width: 100%;
+  font-family: Titles, Comic, sans-serif;
+  font-size: 1.35rem;
+  line-height: 1;
+  letter-spacing: .5px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* textareas grow with their text */
+.invincible.sheet.item.application section.tab textarea {
+  width: 100%;
+  min-height: 4.5em;
+  max-height: 10em;
+  field-sizing: content;
+  line-height: 1.4;
+  resize: none;
+}
+
+/* multi-select (attributes): readable rows, selected rows are yellow AND bold (not colour alone) */
+.invincible.sheet.item.application section.tab select[multiple] {
+  width: 100%;
+  height: 8.5rem;
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--isp-blue) rgba(12, 26, 46, .06);
+}
+.invincible.sheet.item.application section.tab select[multiple] option {
+  min-height: 24px;
+  padding: 3px 8px;
+  font: 14px/1.3 Roboto, sans-serif;
+  text-transform: none;
+  color: var(--isp-ink);
+}
+.invincible.sheet.item.application section.tab select[multiple] option:hover { background-color: var(--isp-paper); }
+.invincible.sheet.item.application section.tab select[multiple] option:checked {
+  --color-select-option-bg: var(--isp-yellow);
+  font-weight: 700;
+  color: var(--isp-ink);
+  background-color: var(--isp-yellow);
+  background-image: linear-gradient(var(--isp-yellow), var(--isp-yellow)); /* flat fill; beats the engine's grey selection paint */
+}
+
+/* checkboxes: white box, ink frame, blue when on */
+.invincible.sheet.item.application section.tab input[type="checkbox"] {
+  --checkbox-background-color: #fff;
+  --checkbox-checked-color: var(--isp-blue);
+  --checkbox-border-color: var(--isp-ink);
+  --checkbox-size: 22px;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  cursor: pointer;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 2px 2px 0 var(--isp-ink);
+  transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease);
+}
+.invincible.sheet.item.application section.tab input[type="checkbox"]:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+}
+.invincible.sheet.item.application section.tab input[type="checkbox"]:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--isp-ink);
+}
+.invincible.sheet.item.application section.tab input[type="checkbox"]:disabled { cursor: not-allowed; box-shadow: none; opacity: .6; }
+
+/* =====================================================================
+   Form groups: label + field, rows that wrap instead of squeezing
+   ===================================================================== */
+.invincible.sheet.item.application section.tab div.form-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0;
+  padding: 6px 0;
+  border: 0;
+}
+.invincible.sheet.item.application section.tab div.form-group > label {
+  flex: 0 0 7.25rem;
+  max-width: 100%;
+  font: 700 13px/1.25 Comic, sans-serif;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  text-wrap: balance;
+  white-space: normal;
+  color: var(--isp-label);
+}
+.invincible.sheet.item.application section.tab div.form-group > .form-fields { flex: 1 1 7rem; min-width: 0; }
+.invincible.sheet.item.application section.tab div.form-group > .form-fields > :where(input:not([type="checkbox"]):not([type="number"]), select, textarea) { width: 100%; }
+.invincible.sheet.item.application section.tab div.form-group > :where(input:not([type="checkbox"]), select) { flex: 1 1 4rem; min-width: 0; }
+
+/* label above the control for wide controls */
+.invincible.sheet.item.application section.tab div.form-group:is(.stacked, .uuid-field, :has(textarea, select[multiple], code-mirror, document-tags)) > label,
+.invincible.sheet.item.application section.tab div.form-group:is(.stacked, .uuid-field, :has(textarea, select[multiple], code-mirror, document-tags)) > .form-fields,
+.invincible.sheet.item.application section.tab div.form-group.stacked > :where(select, input:not([type="checkbox"]), textarea) {
+  flex: 1 1 100%;
+}
+.invincible.sheet.item.application section.tab div.form-group:has(code-mirror) .form-fields { width: 100%; text-transform: none; }
+
+/* checkbox rows: label left, box right */
+.invincible.sheet.item.application section.tab div.form-group:has(input[type="checkbox"]) {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  min-height: 40px;
+}
+.invincible.sheet.item.application section.tab div.form-group:has(input[type="checkbox"]) > label { flex: 1 1 auto; }
+.invincible.sheet.item.application section.tab div.form-group:has(input[type="checkbox"]) > .form-fields { flex: 0 0 auto; display: flex; align-items: center; }
+
+/* hints under a field: readable size, same hue family as the text */
+.invincible.sheet.item.application section.tab div.form-group:has(+ div.tip) { padding-bottom: 0; border: 0; }
+.invincible.sheet.item.application section.tab div.form-group + div.tip {
+  margin: 0 0 4px;
+  padding: 0 0 6px;
+  border: 0;
+  font: 12px/1.4 Roboto, sans-serif;
+  text-transform: none;
+  color: var(--isp-hint);
+}
+.invincible.sheet.item.application section.tab div.tip label.hint { font-weight: 400; text-transform: none; white-space: normal; color: inherit; }
+
+/* =====================================================================
+   Attributes tab (gear, critical injury, vehicle weapon)
+   ===================================================================== */
+.invincible.sheet.item.application section.tab.attributes div.form-group {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--isp-line);
+}
+.invincible.sheet.item.application section.tab.attributes div.form-group:last-child { border-bottom: 0; }
+.invincible.sheet.item.application section.tab.attributes div.form-group > label { flex-basis: 8.5rem; font-size: 14px; }
+
+/* =====================================================================
+   Description: rendered prose and the editor
+   ===================================================================== */
+.invincible.sheet.item.application section.tab[data-tab="description"] {
+  /* the editor's own flex layout must stay intact (see editor.css); an old display:block here hid the toolbar and the text while editing */
+  & :is(p, li, .editor-content) { font: 15px/1.55 Roboto, sans-serif; text-transform: none; letter-spacing: 0; color: #1c2a40; }
+  & :is(p, li) { max-width: 68ch; text-wrap: pretty; }
+  & p { margin: 0 0 .75em; }
+  & :is(ul, ol) { margin: 0 0 .9em; padding-left: 1.3em; }
+  & li::marker { color: var(--isp-cyan); }
+  & :is(h1, h2) { margin: 1.3em 0 .5em; padding-bottom: 2px; font: 1.6rem/1.1 Titles, sans-serif; letter-spacing: 1px; text-transform: uppercase; color: var(--isp-ink); text-shadow: none; border-bottom: 3px double var(--isp-cyan); }
+  & :is(h3, h4) { margin: 1.2em 0 .35em; font: 1.25rem/1.15 Titles, sans-serif; letter-spacing: .5px; color: var(--isp-label); text-shadow: none; }
+  & :is(h1, h2, h3, h4):first-child { margin-top: 0; }
+  & blockquote { margin: 1em 0; padding: 8px 14px; background: var(--isp-paper); border: 2px solid var(--isp-ink); box-shadow: 3px 3px 0 var(--isp-cyan); }
+  & hr { border: 0; border-top: 3px double var(--isp-cyan); margin: 1.2em 0; }
+  & a:not(.content-link, .inline-roll) { color: var(--isp-blue); text-decoration: underline; text-underline-offset: 2px; }
+  & a:not(.content-link, .inline-roll):hover { color: var(--isp-ink); background: var(--isp-paper); }
+  & :is(a.content-link, a.inline-roll) {
+    display: inline-block; padding: 0 5px; margin: 0 1px;
+    color: var(--isp-ink); text-decoration: none; background: var(--isp-paper);
+    border: 1px solid var(--isp-ink); border-radius: 0; box-shadow: 1px 1px 0 var(--isp-ink);
+    transition: background-color .12s var(--isp-ease);
+  }
+  & :is(a.content-link, a.inline-roll):hover { background: var(--isp-yellow); text-shadow: none; }
+  & :is(a.content-link, a.inline-roll):active { transform: translate(1px, 1px); box-shadow: none; }
+  /* edit toggle of the prose-mirror: font is left alone (the pencil is an icon font) */
+  & prose-mirror > button.toggle {
+    width: 30px; height: 30px; padding: 0;
+    color: var(--isp-ink); background: var(--isp-yellow);
+    border: 2px solid var(--isp-ink); border-radius: 0; box-shadow: 2px 2px 0 var(--isp-ink);
+    cursor: pointer; transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease);
+  }
+  & prose-mirror > button.toggle:hover { background: var(--isp-hover); }
+  & prose-mirror > button.toggle:active { transform: translate(1px, 1px); box-shadow: none; }
+}
+
+/* =====================================================================
+   Boosts, limits, automations: <details> cards with a corner tag instead of a side stripe
+   ===================================================================== */
+.invincible.sheet.item.application section.tab details {
+  position: relative;
+  margin: 0 0 12px;
+  padding: 10px 12px 12px 24px;
+  overflow: hidden;
+  font: 14px/1.45 Roboto, sans-serif;
+  text-transform: none;
+  color: var(--isp-ink-2);
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-card, var(--isp-cyan));
+  transition: box-shadow .16s var(--isp-ease);
+}
+.invincible.sheet.item.application section.tab details:hover { box-shadow: 5px 5px 0 var(--isp-card, var(--isp-cyan)); }
+.invincible.sheet.item.application section.tab.boosts details { --isp-card: var(--isp-cyan); }
+.invincible.sheet.item.application section.tab.limits details { --isp-card: var(--isp-ink); }
+.invincible.sheet.item.application section.tab.automations details { --isp-card: var(--isp-yellow); }
+.invincible.sheet.item.application section.tab details::before {
+  content: "";
+  position: absolute; top: -2px; left: -2px;
+  width: 16px; height: 16px;
+  background: var(--isp-card, var(--isp-cyan));
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  border-top: 2px solid var(--isp-ink);
+  pointer-events: none;
+}
+.invincible.sheet.item.application section.tab details::details-content {
+  transition: block-size .2s var(--isp-ease), content-visibility .2s;
+  transition-behavior: allow-discrete;
+}
+.invincible.sheet.item.application section.tab details > p { max-width: 68ch; margin: 0 0 .5em; text-wrap: pretty; }
+
+.invincible.sheet.item.application section.tab details > summary {
+  position: relative;
+  display: block;
+  margin: -2px -4px 0 0;
+  padding: 2px 4px 2px 0;
+  list-style: none;
+  cursor: pointer;
+  font: 700 16px/1.2 Comic, sans-serif;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--isp-ink);
+  overflow-wrap: anywhere;
+  transition: background-color .12s var(--isp-ease);
+}
+.invincible.sheet.item.application section.tab details > summary::-webkit-details-marker { display: none; }
+.invincible.sheet.item.application section.tab details > summary::marker { content: ""; }
+.invincible.sheet.item.application section.tab details > summary:hover { background: var(--isp-paper); }
+.invincible.sheet.item.application section.tab details > summary:active { transform: translateY(1px); }
+.invincible.sheet.item.application section.tab details > summary::before {
+  content: "";
+  position: absolute; left: -17px; top: .35em;
+  width: 10px; height: 10px;
+  background: var(--isp-ink);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transition: transform .15s var(--isp-ease);
+}
+.invincible.sheet.item.application section.tab details[open] > summary::before { transform: rotate(90deg); }
+.invincible.sheet.item.application section.tab details[open] > summary {
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--isp-line);
+}
+
+/* =====================================================================
+   Card actions (Update / Duplicate on the left, Delete on the right with a red cue)
+   ===================================================================== */
+.invincible.sheet.item.application section.tab details > a.delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin: 10px 8px 0 0;
+  padding: 0 10px;
+  font: 700 12px/1 Comic, sans-serif;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  color: var(--isp-ink);
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 2px 2px 0 var(--isp-ink);
+  transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
+}
+/* hover lifts like the create button and the tabs (same tactile vocabulary everywhere) */
+.invincible.sheet.item.application section.tab details > a.delete:hover { background: var(--isp-yellow); text-shadow: none; transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--isp-ink); }
+.invincible.sheet.item.application section.tab details > a.delete:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--isp-ink); }
+/* Update / Duplicate: a block-level row of their own. The system prints a boost's description as bare text,
+   so an inline button used to trail the last line of it. */
+.invincible.sheet.item.application section.tab details > a.delete:not([data-action^="delete"]) {
+  display: flex;
+  width: fit-content;
+  margin: 10px 0 0;
+}
+/* Delete: its own row, aligned right, so it can never overlap a long Update / Duplicate label at 400px
+   (an absolutely positioned version overlapped by 33px; the old float dropped to a second row anyway). */
+.invincible.sheet.item.application section.tab details > a.delete[data-action^="delete"] {
+  display: flex;
+  width: fit-content;
+  margin: 8px 0 0 auto;
+  color: var(--isp-red-ink);
+  border-color: var(--isp-red-ink);
+  box-shadow: 2px 2px 0 var(--isp-red-ink);
+}
+.invincible.sheet.item.application section.tab details > a.delete[data-action^="delete"]:is(:hover, :focus-visible) {
+  color: #fff;
+  background: var(--isp-red);
+  border-color: var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+}
+.invincible.sheet.item.application section.tab details > a.delete[data-action^="delete"]:active { box-shadow: 1px 1px 0 var(--isp-red-ink); }
+/* =====================================================================
+   Automations tab
+   ===================================================================== */
+/* the create bar stays reachable while a long list scrolls under it */
+.invincible.sheet.item.application section.tab.automations > div.form-group:has(> label > a.automation-create) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 2px 4px 12px 0;
+  background: #fff;
+}
+.invincible.sheet.item.application section.tab.automations > div.form-group:has(> label > a.automation-create) > label { flex: 1 1 100%; }
+.invincible.sheet.item.application a.automation-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 14px;
+  font: 700 13px/1 Comic, sans-serif;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  color: var(--isp-ink);
+  background: var(--isp-yellow);
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+  transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease);
+}
+.invincible.sheet.item.application a.automation-create:hover { background: var(--isp-hover); transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--isp-ink); text-shadow: none; }
+.invincible.sheet.item.application a.automation-create:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--isp-ink); }
+
+/* "open item / open macro" links inside a label: small, clearly clickable */
+.invincible.sheet.item.application section.tab div.form-group.uuid-field > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.invincible.sheet.item.application section.tab :is(a.automation-open-item, a.automation-open-macro) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  float: none;
+  min-height: 24px;
+  padding: 1px 8px;
+  font: 600 12px/1.2 Roboto, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--isp-ink);
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 2px 2px 0 var(--isp-ink);
+  transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease);
+}
+.invincible.sheet.item.application section.tab :is(a.automation-open-item, a.automation-open-macro):hover { background: var(--isp-yellow); text-shadow: none; transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--isp-ink); }
+.invincible.sheet.item.application section.tab :is(a.automation-open-item, a.automation-open-macro):active { transform: translate(1px, 1px); box-shadow: none; }
+
+/* UUID tag field and code editor: framed like the other fields */
+.invincible.sheet.item.application section.tab document-tags {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 3px 6px;
+  color: var(--isp-ink);
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+}
+.invincible.sheet.item.application section.tab document-tags:focus-within { background: #fffbd0; box-shadow: inset 0 -3px 0 var(--isp-yellow); }
+.invincible.sheet.item.application section.tab document-tags input { min-height: 24px; padding: 0; background: transparent; border: 0; box-shadow: none; }
+.invincible.sheet.item.application section.tab document-tags .tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin: 1px 4px 1px 0; padding: 0 6px;
+  font: 600 12px/1.6 Roboto, sans-serif; text-transform: none;
+  color: var(--isp-ink); background: var(--isp-yellow); border: 1px solid var(--isp-ink);
+}
+.invincible.sheet.item.application section.tab code-mirror {
+  display: block;
+  width: 100%;
+  min-height: 6rem;
+  border: 2px solid var(--isp-ink);
+  background: #fff;
+  font-size: 12px; /* the editor is real code, so it keeps the monospace face the widget brings */
+}
+.invincible.sheet.item.application section.tab code-mirror:focus-within { box-shadow: inset 0 -3px 0 var(--isp-yellow); }
+
+/* =====================================================================
+   Effects: comic table instead of the stock grey groove
+   ===================================================================== */
+.invincible.sheet.item.application section.tab.effects {
+  & ol.effects-list { margin: 0; padding: 0; overflow: visible; color: var(--isp-ink); }
+  & ol.effects-list > li.effects-header {
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 8px;
+    height: auto; min-height: 38px; margin: 0 0 6px; padding: 4px 6px 4px 10px;
+    font: 700 14px/1.2 Comic, sans-serif; letter-spacing: .5px;
+    color: #fff; background: var(--isp-blue);
+    border: 2px solid var(--isp-ink); box-shadow: 3px 3px 0 var(--isp-ink);
+  }
+  & ol.effects-list > li.effects-header:not(:first-child) { margin-top: 18px; }
+  & li.effects-header > .effect-name { flex: 1 1 auto; min-width: 0; padding: 0; font-size: 12.5px; letter-spacing: .1px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  & li.effects-header > .effect-source { display: none; } /* the column label; each row carries its own duration */
+  & li.effects-header > .effect-controls { flex: 0 0 auto; }
+  & li.effects-header a[data-action="createDoc"] {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 28px; margin: 0; padding: 2px 10px;
+    font: 700 12px/1 Comic, sans-serif; letter-spacing: .4px; text-transform: uppercase; white-space: nowrap; text-decoration: none; cursor: pointer;
+    color: var(--isp-ink); background: var(--isp-yellow);
+    border: 2px solid var(--isp-ink); box-shadow: 2px 2px 0 var(--isp-ink);
+    transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease);
+  }
+  & li.effects-header a[data-action="createDoc"]:hover { background: var(--isp-hover); text-shadow: none; transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--isp-ink); }
+  & li.effects-header a[data-action="createDoc"]:active { transform: translate(2px, 2px); box-shadow: none; }
+  & li.effects-header a[data-action="createDoc"]:focus-visible { outline-color: #fff; } /* ink would sit on blue at 2.9:1 */
+
+  & ol.effect-list { margin: 0; padding: 0; list-style: none; }
+  & ol.effect-list:has(> li) { border: 2px solid var(--isp-ink); }
+  & li.effect {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name controls" "dur controls";
+    column-gap: 8px; row-gap: 0; align-items: center;
+    min-height: 46px; padding: 6px 6px 6px 8px;
+    color: var(--isp-ink); background: #fff;
+    border-bottom: 1px solid var(--isp-line);
+    transition: background-color .12s var(--isp-ease);
+  }
+  & li.effect:last-child { border-bottom: 0; }
+  & li.effect:hover { background: var(--isp-paper); }
+  & li.effect > .effect-name {
+    grid-area: name; display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0;
+    font: 600 14px/1.2 Roboto, sans-serif; text-transform: none; color: var(--isp-ink);
+  }
+  & li.effect > .effect-name > div {
+    min-width: 0; overflow: hidden; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  }
+  & .effect-image {
+    flex: 0 0 var(--isp-fx-img); width: var(--isp-fx-img); height: var(--isp-fx-img); margin: 0; padding: 2px;
+    object-fit: contain; background: var(--isp-ink); /* core effect icons are white */
+    border: 2px solid var(--isp-ink);
+  }
+  & .effect-image:not([src]), & .effect-image[src=""] { display: none; }
+  & li.effect > .effect-duration {
+    grid-area: dur; display: flex; align-items: center; gap: 5px; min-width: 0;
+    padding: 0 0 0 calc(var(--isp-fx-img) + 8px); border: 0; text-align: left;
+    font: 12px/1.3 Roboto, sans-serif; font-variant-numeric: tabular-nums; color: var(--isp-hint);
+  }
+  & li.effect > .effect-duration:empty { display: none; }
+  & li.effect > .effect-duration::before { content: "\f017"; font: 900 11px/1 var(--isp-fa); } /* clock glyph from the icon font */
+  & li.effect > .effect-controls { grid-area: controls; display: flex; align-items: center; gap: 2px; flex: none; }
+  & li.effect > .effect-controls a.effect-control {
+    display: grid; place-items: center; width: 32px; height: 32px; min-width: 0; margin: 0;
+    font-size: 14px; cursor: pointer; color: var(--isp-blue);
+    border: 2px solid transparent;
+    transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
+  }
+  & li.effect > .effect-controls a.effect-control:hover { color: var(--isp-ink); background: var(--isp-yellow); border-color: var(--isp-ink); }
+  & li.effect > .effect-controls a.effect-control:active { transform: translate(1px, 1px); }
+  & li.effect > .effect-controls a[data-action="deleteDoc"] { margin-left: 6px; color: var(--isp-red-ink); }
+  & li.effect > .effect-controls a[data-action="deleteDoc"]:is(:hover, :focus-visible) { color: #fff; background: var(--isp-red); border-color: var(--isp-ink); }
+  /* switched-off effects read as inactive without losing contrast */
+  & [data-effect-type="inactive"] + ol.effect-list li.effect > .effect-name { color: var(--isp-hint); }
+  & [data-effect-type="inactive"] + ol.effect-list .effect-image { filter: grayscale(1); }
+}
+
+/* =====================================================================
+   Empty states (CSS only; halftone dots only here)
+   ===================================================================== */
+.invincible.sheet.item.application :is(
+  section.tab.boosts:not(:has(details)),
+  section.tab.limits:not(:has(details)),
+  section.tab.automations:not(:has(details)),
+  section.tab.attributes:not(:has(*)),
+  section.tab.effects ol.effect-list:not(:has(> li)),
+  section.tab[data-tab="description"] prose-mirror .editor-content:not(:has(*))
+)::after,
+.invincible.sheet.item.application section.tab[data-tab="description"] prose-mirror .editor-content:not(:has(*))::before {
+  display: block;
+  box-sizing: border-box;
+  margin: 6px 0 0;
+  padding: 18px 14px;
+  font: 14px/1.4 Comic, sans-serif;
+  text-align: center;
+  text-transform: none;
+  text-wrap: balance;
+  color: var(--isp-ink-2);
+  background: var(--isp-dots);
+  border: 2px dashed var(--isp-blue);
+}
+.invincible.sheet.item.application section.tab.effects ol.effect-list:not(:has(> li))::after { padding: 10px 12px; margin-top: 0; }
+.invincible.sheet.item.application section.tab[data-tab="description"] prose-mirror .editor-content:not(:has(*))::after { content: none; }
+.invincible.sheet.item.application section.tab.boosts:not(:has(details))::after { content: var(--isp-t-boosts); }
+.invincible.sheet.item.application section.tab.limits:not(:has(details))::after { content: var(--isp-t-limits); }
+.invincible.sheet.item.application section.tab.automations:not(:has(details))::after { content: var(--isp-t-automations); }
+.invincible.sheet.item.application section.tab.attributes:not(:has(*))::after { content: var(--isp-t-attributes); }
+.invincible.sheet.item.application section.tab[data-tab="description"] prose-mirror .editor-content:not(:has(*))::before { content: var(--isp-t-description); }
+.invincible.sheet.item.application section.tab.effects [data-effect-type="temporary"] + ol.effect-list:not(:has(> li))::after { content: var(--isp-t-fx-temporary); }
+.invincible.sheet.item.application section.tab.effects [data-effect-type="passive"] + ol.effect-list:not(:has(> li))::after { content: var(--isp-t-fx-passive); }
+.invincible.sheet.item.application section.tab.effects [data-effect-type="inactive"] + ol.effect-list:not(:has(> li))::after { content: var(--isp-t-fx-inactive); }
+
+/* =====================================================================
+   Browser surfaces, keyboard focus, touch, robustness
+   ===================================================================== */
+.invincible.sheet.item.application ::selection { background: var(--isp-yellow); color: var(--isp-ink); }
+.invincible.sheet.item.application :is(a, button, summary, input, select, textarea, [tabindex], .ProseMirror):focus-visible {
+  outline: 3px solid var(--isp-ink);
+  outline-offset: 2px;
+}
+.invincible.sheet.item.application section.tab :is(details, .effect, .form-group, section) { min-width: 0; }
+.invincible.sheet.item.application :is(nav a, section.tab a, summary, button) { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.invincible.sheet.item.application section.tab :is(label, summary, .effect-name, .tag) { overflow-wrap: anywhere; }
+
+/* coarse pointers: bigger hit areas */
+@media (pointer: coarse) {
+  .invincible.sheet.item.application nav a { min-height: 44px; }
+  .invincible.sheet.item.application section.tab details > a.delete { min-height: 44px; }
+  .invincible.sheet.item.application section.tab.effects li.effect > .effect-controls a.effect-control { width: 44px; height: 44px; }
+  .invincible.sheet.item.application section.tab.effects li.effects-header a[data-action="createDoc"],
+  .invincible.sheet.item.application a.automation-create { min-height: 44px; }
+  .invincible.sheet.item.application section.tab :where(input:not([type="checkbox"]), select, textarea) { min-height: 44px; }
+  .invincible.sheet.item.application section.tab input[type="checkbox"] { width: 28px; height: 28px; }
+}
+
+/* reduced motion: state stays legible through colour and shadow, nothing animates (pseudo-elements included) */
+@media (prefers-reduced-motion: reduce) {
+  .invincible.sheet.item.application,
+  .invincible.sheet.item.application *,
+  .invincible.sheet.item.application *::before,
+  .invincible.sheet.item.application *::after,
+  .invincible.sheet.item.application details::details-content { animation: none !important; transition: none !important; }
+}

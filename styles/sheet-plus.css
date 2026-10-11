@@ -1,0 +1,765 @@
+/* Chat cards live in chat.css. Foundry reads a module's style list once, when the server starts, so a file added to module.json
+   later is not loaded until a restart; an @import from an already registered sheet is picked up on the next page load. */
+@import url("chat.css");
+
+/* Invincible — Sheet Plus: actor sheets only. Palette: yellow #ffe72a, cyan #0096cb, blue #3465a3. */
+.invincible.sheet.actor {
+  --isp-yellow: #ffe72a;
+  --isp-cyan: #0096cb;
+  --isp-blue: #3465a3;
+  --isp-ink: #0c1a2e; /* tinted, not pure black */
+  --isp-dots: radial-gradient(circle, rgba(12, 26, 46, .2) 1.2px, transparent 1.7px) 0 0 / 9px 9px; /* only on empty tracks and empty states */
+}
+
+/* ---------- pop-in ---------- */
+@keyframes isp-pop {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+/* opening only: JS adds .isp-open on the first render. As a base rule it replayed (window fully transparent for a moment) whenever another animation class was removed, e.g. after a drop. */
+.invincible.sheet.actor.application.isp-open { animation: isp-pop .2s cubic-bezier(.2, .7, .2, 1); }
+@keyframes isp-tab-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+/* the fade belongs to opening the window and switching tabs: JS puts .isp-intro on the section for 300 ms. As a plain .active rule it replayed on every re-render and after every landing. */
+.invincible.sheet.actor section.tab.isp-intro > :not(label.title) { animation: isp-tab-in .18s ease-out; }
+
+/* ---------- section titles ("POWERS & BOOSTS") ---------- */
+.invincible.sheet.actor label.title {
+  background: var(--isp-yellow);
+  color: var(--isp-ink);
+  width: fit-content;
+  padding: 0 10px 2px 12px;
+  line-height: 1.15;
+  text-shadow: none;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 4px 4px 0 var(--isp-ink);
+  letter-spacing: 1.5px;
+  transform: rotate(-1.5deg) skew(-6deg);
+  transform-origin: right center;
+  pointer-events: none;
+}
+
+/* ---------- 'Attributes' banner must not cover the tile buttons ---------- */
+.invincible.sheet.actor label.title.attribute {
+  font-size: 1.5em;
+  line-height: 1;
+  margin-bottom: -2px;
+  top: -12px;
+  transform-origin: left center;
+}
+
+/* ---------- attributes: the big cards ---------- */
+.invincible.sheet.actor div.attribute {
+  transition: transform .16s cubic-bezier(.2, .7, .2, 1);
+  background: #fff;
+}
+.invincible.sheet.actor div.attribute:hover {
+  transform: skew(-5deg) rotate(-1deg) translate(-2px, -3px);
+}
+.invincible.sheet.actor div.attribute:has(input[disabled]) {
+  background: #fff8c3;
+}
+.invincible.sheet.actor div.attribute input {
+  font-family: Titles, Comic, sans-serif;
+  font-size: 2.2em;
+  line-height: 1;
+  color: var(--isp-ink);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.invincible.sheet.actor div.attribute label { letter-spacing: .5px; }
+.invincible.sheet.actor div.attribute .rollable:hover { text-shadow: 0 0 8px var(--isp-cyan); }
+
+/* ---------- health / resolve bars ---------- */
+.invincible.sheet.actor div.bar div.inner-bar {
+  position: relative;
+  height: 20px;
+  background: #fff var(--isp-dots) !important; /* the system paints the fill inline; ::before draws it so it can animate */
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+  transform: skew(-12deg);
+  overflow: hidden;
+  --isp-fill: var(--isp-yellow);
+}
+.invincible.sheet.actor div.bar div.inner-bar::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: var(--isp-fill);
+  border-right: 2px solid var(--isp-ink);
+  transform-origin: left center;
+  transform: scaleX(var(--isp-to, 1));
+  animation: isp-fill .7s cubic-bezier(.2, .7, .2, 1) both;
+}
+@keyframes isp-fill {
+  from { transform: scaleX(var(--isp-from, 0)); }
+  to   { transform: scaleX(var(--isp-to, 1)); }
+}
+/* gloss + travelling sheen */
+.invincible.sheet.actor div.bar div.inner-bar::after {
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(100deg, transparent 38%, rgba(255, 255, 255, .7) 50%, transparent 62%),
+    linear-gradient(to bottom, rgba(255, 255, 255, .5) 0 32%, transparent 32%);
+  background-repeat: no-repeat;
+  background-size: 60% 100%, 100% 100%;
+  background-position: -80% 0, 0 0;
+  pointer-events: none;
+  animation: isp-sheen 3.6s ease-in-out calc((var(--isp-t, 0) - 1) * -1s) infinite;
+}
+@keyframes isp-sheen {
+  0%, 62% { background-position: -80% 0, 0 0; }
+  100%    { background-position: 180% 0, 0 0; }
+}
+/* damage flashes red, healing flashes white, low value pulses */
+.invincible.sheet.actor div.bar div.inner-bar.isp-loss::before { animation-name: isp-fill, isp-hurt; animation-duration: .7s, .5s; }
+.invincible.sheet.actor div.bar div.inner-bar.isp-gain::before { animation-name: isp-fill, isp-heal; animation-duration: .7s, .5s; }
+@keyframes isp-hurt { 0% { background: #ff3b30; } 100% { background: var(--isp-fill); } }
+@keyframes isp-heal { 0% { background: #fff; }    100% { background: var(--isp-fill); } }
+.invincible.sheet.actor div.bar div.inner-bar.isp-low { --isp-fill: #ff7a45; }
+.invincible.sheet.actor div.bar div.inner-bar.isp-low:not(.isp-empty) {
+  animation: isp-pulse 1.4s ease-in-out calc(var(--isp-t, 0) * -1s) infinite;
+}
+@keyframes isp-pulse {
+  0%, 100% { transform: skew(-12deg) scale(1); }
+  50%      { transform: skew(-12deg) scale(1.025); }
+}
+.invincible.sheet.actor div.bar .form-fields input {
+  font-family: Titles, Comic, sans-serif;
+  font-size: 1.15em;
+  background: transparent;
+}
+.invincible.sheet.actor div.bar > label:first-child {
+  color: var(--isp-blue);
+  letter-spacing: 1px;
+}
+
+/* ---------- bar rows on a plate (they sit on the busy backdrop) ---------- */
+.invincible.sheet.actor:not(.challenge):not(.vehicle) div.bar {
+  background: rgba(255, 255, 255, .94);
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+  padding: 2px 10px 2px 8px;
+  margin: 6px 4px;
+  align-items: center;
+}
+
+/* ---------- attribute tile hierarchy: number, then small 'Typical', then bold name ---------- */
+.invincible.sheet.actor div.attribute label.graduation { font-size: .72em; letter-spacing: .8px; opacity: .8; line-height: 1.1; }
+.invincible.sheet.actor div.attribute label.attribute-label { font-size: 1em; font-weight: 700; line-height: 1.1; }
+.invincible.sheet.actor header.sheet-header div.form-group > label { color: #27508a; letter-spacing: .6px; }
+
+/* ---------- header fields: yellow focus ---------- */
+.invincible.sheet.actor header.sheet-header div.form-group {
+  border-bottom: 2px solid var(--isp-blue);
+}
+.invincible.sheet.actor input:focus,
+.invincible.sheet.actor textarea:focus {
+  background: #fffbd0;
+  box-shadow: inset 0 -3px 0 var(--isp-yellow);
+}
+.invincible.sheet.actor header.sheet-header,
+.invincible.sheet.actor section.tab {
+  box-shadow: 4px 4px 0 var(--isp-ink);
+}
+
+/* ---------- side tabs ---------- */
+.invincible.sheet.actor nav.sheet-tabs a {
+  box-shadow: 3px 3px 0 var(--isp-ink);
+  transition: transform .16s cubic-bezier(.2, .7, .2, 1);
+  transform: skewY(-4deg);
+}
+.invincible.sheet.actor nav.sheet-tabs a:hover {
+  transform: skewY(-4deg) translateX(4px);
+  background: #fff27a;
+  color: var(--isp-ink);
+}
+.invincible.sheet.actor nav.sheet-tabs a.active {
+  transform-origin: right center;
+  transform: skewY(-4deg) translateX(-6px) scale(1.12);
+  box-shadow: 4px 4px 0 var(--isp-ink);
+}
+
+/* ---------- powers / talents / gear: entries as cards ---------- */
+.invincible.sheet.actor div.powers-info > ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.invincible.sheet.actor div.powers-info > ul > li {
+  position: relative;
+  padding: 6px 10px 8px 24px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-cyan);
+  transition: transform .16s cubic-bezier(.2, .7, .2, 1);
+}
+.invincible.sheet.actor div.powers-info > ul > li:hover {
+  transform: translate(-2px, -2px);
+}
+.invincible.sheet.actor div.powers-info > ul > li > label.rollable {
+  display: inline-block;
+  font-size: 1.15em;
+  font-weight: bold;
+  color: var(--isp-ink);
+}
+.invincible.sheet.actor div.powers-info > label.rollable {
+  display: inline-block;
+  background: var(--isp-blue);
+  color: #fff;
+  padding: 2px 12px;
+  transform: skew(-8deg);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+}
+.invincible.sheet.actor div.powers-info > label.rollable:hover { background: var(--isp-cyan); text-shadow: none; color: #fff; }
+
+.invincible.sheet.actor div.talent-info,
+.invincible.sheet.actor div.gear-info,
+.invincible.sheet.actor div.injury-info {
+  padding: 6px 10px 8px 24px;
+  margin-bottom: 8px;
+  position: relative;
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--isp-yellow);
+  transition: transform .16s cubic-bezier(.2, .7, .2, 1);
+}
+.invincible.sheet.actor div.injury-info { box-shadow: 3px 3px 0 #d6342c; }
+
+/* corner tag replaces the side-stripe */
+.invincible.sheet.actor div.powers-info > ul > li::before,
+.invincible.sheet.actor div.talent-info::before,
+.invincible.sheet.actor div.gear-info::before,
+.invincible.sheet.actor div.injury-info::before {
+  content: "";
+  position: absolute; top: -2px; left: -2px;
+  width: 16px; height: 16px;
+  background: var(--isp-yellow);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  border-top: 2px solid var(--isp-ink);
+}
+.invincible.sheet.actor div.talent-info::before,
+.invincible.sheet.actor div.gear-info::before { background: var(--isp-cyan); }
+.invincible.sheet.actor div.injury-info::before { background: #d6342c; }
+.invincible.sheet.actor div.talent-info:hover,
+.invincible.sheet.actor div.gear-info:hover,
+.invincible.sheet.actor div.injury-info:hover {
+  transform: translate(-2px, -2px);
+}
+.invincible.sheet.actor div.powers-info:not(:last-child),
+.invincible.sheet.actor div.separator { border-bottom: 3px double var(--isp-cyan); }
+.invincible.sheet.actor div.boostLimit {
+  margin-top: 4px;
+  padding: 2px 6px;
+  background: rgba(255, 231, 42, .35);
+}
+
+/* ---------- pressed + keyboard focus ---------- */
+.invincible.sheet.actor div.attribute:active { transform: skew(-5deg) rotate(-1deg) translate(2px, 2px); }
+.invincible.sheet.actor nav.sheet-tabs a:active { transform: skewY(-4deg) translate(2px, 2px); }
+.invincible.sheet.actor .rollable:active { transform: translateY(1px); }
+.invincible.sheet.actor :is(a, button, .rollable, input, textarea, select):focus-visible {
+  outline: 3px solid var(--isp-ink);
+  outline-offset: 2px;
+}
+.invincible.sheet.actor nav.sheet-tabs a:focus-visible { outline-color: #fff; }
+.invincible.sheet.actor :is(.item-description, .powers-info, .talent-info, .gear-info) p { text-wrap: pretty; max-width: 68ch; }
+.invincible.sheet.actor label.title { text-wrap: balance; }
+.invincible.sheet.actor :is(input[data-dtype="Number"], .attribute input, .bar input, .form-fields label) { font-variant-numeric: tabular-nums; }
+
+/* ---------- readable descriptions: sentence case, real line-height ---------- */
+.invincible.sheet.actor :is(div.powers-info, div.talent-info, div.gear-info, div.injury-info) .item-description,
+.invincible.sheet.actor :is(div.powers-info, div.talent-info, div.gear-info, div.injury-info) .item-description * {
+  text-transform: none;
+  line-height: 1.45;
+  letter-spacing: .01em;
+}
+.invincible.sheet.actor :is(div.powers-info, div.talent-info, div.gear-info, div.injury-info) .item-description { color: #2b3a52; margin-top: 2px; }
+.invincible.sheet.actor :is(.talent-info, .gear-info, .injury-info) > :not(label) { text-transform: none; line-height: 1.45; }
+
+/* ---------- empty states (CSS only) ---------- */
+.invincible.sheet.actor section.tab:is(.powers, .talents, .gear, .injuries):not(:has(.powers-info, .talent-info, .gear-info, .injury-info))::after {
+  display: block;
+  margin-top: 18px;
+  padding: 22px 16px;
+  border: 2px dashed var(--isp-blue);
+  background: var(--isp-dots);
+  color: var(--isp-blue);
+  text-align: center;
+  font-family: Comic, sans-serif;
+  text-transform: none;
+  text-wrap: balance;
+}
+.invincible.sheet.actor section.tab.powers:not(:has(.powers-info))::after   { content: "No powers yet. Drag a power source here."; }
+.invincible.sheet.actor section.tab.talents:not(:has(.talent-info))::after  { content: "No talents or drawbacks yet. Drag one here."; }
+.invincible.sheet.actor section.tab.gear:not(:has(.gear-info))::after       { content: "No gear yet. Drag an item here."; }
+.invincible.sheet.actor section.tab.injuries:not(:has(.injury-info))::after { content: "No critical injuries. Lucky hero."; }
+
+/* ---------- browser surfaces from the palette ---------- */
+.invincible.sheet.actor ::selection { background: var(--isp-yellow); color: var(--isp-ink); }
+.invincible.sheet.actor :is(input, textarea) { caret-color: var(--isp-blue); }
+
+/* ---------- robustness (web-interface-guidelines) ---------- */
+.invincible.sheet.actor :is(div.powers-info > ul > li, div.talent-info, div.gear-info, div.injury-info) { min-width: 0; overflow-wrap: anywhere; }
+.invincible.sheet.actor :is(nav.sheet-tabs a, .rollable, div.attribute) { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.invincible.sheet.actor section.tab.scrollable { overscroll-behavior: contain; }
+
+/* ---------- stable tab geometry: the scrollbar gutter is always reserved, so titles never shift ---------- */
+.invincible.sheet.actor section.tab { overflow-y: auto; scrollbar-gutter: stable; }
+
+/* ---------- misc ---------- */
+.invincible.sheet.actor .scrollable { scrollbar-color: var(--isp-yellow) transparent; scrollbar-width: thin; }
+.invincible.sheet.actor section.portrait img.profile-img {
+  border: 3px solid var(--isp-ink);
+  box-shadow: 6px 6px 0 var(--isp-cyan);
+  background: #fff;
+}
+.invincible.sheet.actor .rollable:hover { text-shadow: 0 0 10px var(--isp-cyan); }
+@media (prefers-reduced-motion: reduce) {
+  .invincible.sheet.actor, .invincible.sheet.actor *, .invincible.sheet.actor *::before, .invincible.sheet.actor *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- portrait parallax (driven by scripts/module.js) ---------- */
+.invincible.sheet.actor .isp-px-frame {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+  border: 3px solid var(--isp-ink);
+  box-shadow: 6px 6px 0 var(--isp-cyan);
+}
+.invincible.sheet.actor .isp-px-frame > img.profile-img {
+  border: 0;
+  box-shadow: none;
+  transform: translate3d(var(--isp-px-x, 0px), var(--isp-px-y, 0px), 0) scale(1.07); /* margin hides the edges while shifted */
+  will-change: transform;
+}
+
+/* =====================================================================
+   Per-tab pass (Impeccable critique/polish + taste redesign audits)
+   ===================================================================== */
+
+/* ---------- cards: one shadow token per family, hover grows it ---------- */
+.invincible.sheet.actor div.powers-info > ul > li   { --isp-card: var(--isp-cyan); }
+.invincible.sheet.actor :is(div.talent-info, div.gear-info) { --isp-card: var(--isp-yellow); }
+.invincible.sheet.actor div.injury-info            { --isp-card: #d6342c; }
+.invincible.sheet.actor :is(div.powers-info > ul > li, div.talent-info, div.gear-info, div.injury-info) { box-shadow: 3px 3px 0 var(--isp-card); }
+.invincible.sheet.actor :is(div.powers-info > ul > li, div.talent-info, div.gear-info, div.injury-info):hover { box-shadow: 5px 5px 0 var(--isp-card); }
+.invincible.sheet.actor :is(div.powers-info > ul > li, div.talent-info, div.gear-info, div.injury-info):active { transform: translate(1px, 1px); box-shadow: 2px 2px 0 var(--isp-card); }
+.invincible.sheet.actor :is(div.powers-info > ul > li, div.talent-info, div.gear-info, div.injury-info):focus-within { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+
+/* ---------- name above description, readable sizes ---------- */
+.invincible.sheet.actor :is(div.powers-info > ul > li, div.talent-info, div.gear-info, div.injury-info) > label.rollable {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  font-size: var(--font-size-18);
+  line-height: 1.15;
+  margin-bottom: 2px;
+}
+.invincible.sheet.actor :is(div.powers-info, div.talent-info, div.gear-info, div.injury-info) { font-size: var(--font-size-14); }
+.invincible.sheet.actor :is(div.powers-info, div.talent-info, div.gear-info, div.injury-info) label.rollable:hover { text-shadow: none; }
+.invincible.sheet.actor :is(div.powers-info > ul > li, div.talent-info, div.gear-info, div.injury-info) > label.rollable:hover {
+  background: linear-gradient(transparent 58%, var(--isp-yellow) 0); /* marker highlight, not a glow */
+}
+.invincible.sheet.actor div.powers-info > label.rollable:hover { color: var(--isp-ink); }
+.invincible.sheet.actor label.rollable[data-item-id=""] { pointer-events: none; opacity: .85; }
+.invincible.sheet.actor div.injury-info > label.rollable { color: #b3261e; } /* second cue besides the red tag */
+.invincible.sheet.actor div.powers-info:not(:last-child) { padding-bottom: 8px; }
+
+/* ---------- talents: drawbacks get their own heading ---------- */
+.invincible.sheet.actor section.tab.talents div.separator {
+  border: 0;
+  display: flex; align-items: center; gap: 10px;
+  margin: 18px 0 10px;
+}
+.invincible.sheet.actor section.tab.talents div.separator::before {
+  content: "Drawbacks";
+  font-family: Titles, Comic, sans-serif;
+  font-size: 1.4em; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--isp-ink);
+}
+.invincible.sheet.actor section.tab.talents div.separator::after { content: ""; flex: 1; border-bottom: 3px double var(--isp-cyan); }
+.invincible.sheet.actor section.tab.talents div.separator ~ div.talent-info { --isp-card: var(--isp-ink); }
+.invincible.sheet.actor section.tab.talents div.separator ~ div.talent-info::before { background: var(--isp-ink); }
+
+/* ---------- gear: resources value ---------- */
+.invincible.sheet.actor section.tab.gear div.resources div.form-group { border-bottom: 0; }
+.invincible.sheet.actor section.tab.gear div.resources label:first-child { color: var(--isp-ink); }
+.invincible.sheet.actor section.tab.gear div.resources input { font-family: Titles, Comic, sans-serif; font-size: 1.3em; }
+
+/* ---------- scrollbar thumb that can actually be seen ---------- */
+.invincible.sheet.actor .scrollable, .invincible.sheet.actor section.tab { scrollbar-color: var(--isp-blue) rgba(12, 26, 46, .06); }
+.invincible.sheet.actor label.title { max-width: 20em; }
+
+/* ---------- effects: comic table instead of the stock grey groove ---------- */
+.invincible.sheet.actor section.tab.effects {
+  & .effects-list { color: var(--isp-ink); }
+  & .effects-list > .effects-header {
+    height: auto; min-height: 36px; margin: 2px 0; padding: 2px 8px;
+    background: var(--isp-blue); color: #fff; border: 2px solid var(--isp-ink);
+    box-shadow: 3px 3px 0 var(--isp-ink); font-family: Comic, sans-serif; letter-spacing: .6px;
+  }
+  & .effects-list > .effects-header:not(:first-child) { margin-top: 20px; }
+  & .effects-list > .effects-header:not(:first-child) .effect-source { visibility: hidden; } /* column labels once */
+  & .effects-header .effect-name { font-size: 15px; }
+  & .effect-source, & .effect-duration { flex: 0 0 5.5rem; border: 0; font-size: 13px; color: #2b3a52; min-width: 0; }
+  & .effects-header .effect-source { font-size: 12px; letter-spacing: .5px; color: #fff; }
+  & .effect-list > li.effect { min-height: 40px; padding: 4px 8px; background: #fff; border-bottom: 1px solid rgba(12, 26, 46, .18); }
+  & .effect-list > li.effect:hover { background: #fff8c3; }
+  & .effects-list .effect-name { min-width: 0; gap: 8px; font-size: 15px; font-family: Comic, sans-serif; align-items: center; }
+  & .effect-name label { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; line-height: 1.15; }
+  & .effect-image { flex: 0 0 28px; width: 28px; height: 28px; object-fit: contain; background: #fff8c3; border: 2px solid var(--isp-ink); padding: 2px; }
+  & .effect-image:not([src]), & .effect-image[src=""] { display: none; }
+  & .effects-list .effect-controls { flex: 0 0 112px; gap: 2px; }
+  & .effects-list .effect-controls a.effect-control { display: grid; place-items: center; min-width: 32px; min-height: 32px; margin: 0; font-size: 14px; color: var(--isp-blue); }
+  & .effect-controls a.effect-control:hover { background: var(--isp-yellow); color: var(--isp-ink); }
+  & .effect-controls a[data-action="deleteDoc"] { margin-left: 8px; }
+  & .effect-controls a[data-action="deleteDoc"]:is(:hover, :focus-visible) { background: #d6342c; color: #fff; }
+  & .effects-header a[data-action="createDoc"] {
+    padding: 2px 8px; min-height: 28px; display: inline-flex; gap: 6px; align-items: center;
+    background: var(--isp-yellow); color: var(--isp-ink); border: 2px solid var(--isp-ink);
+    box-shadow: 2px 2px 0 var(--isp-ink); white-space: nowrap; margin: 0;
+  }
+  & .effects-header a[data-action="createDoc"]:hover { background: #fff27a; text-shadow: none; }
+  & .effects-header a[data-action="createDoc"]:active { transform: translate(2px, 2px); box-shadow: none; }
+  & .effects-header + ol.effect-list:not(:has(> li))::after {
+    display: block; margin: 4px 0 0; padding: 10px 12px;
+    border: 2px dashed var(--isp-blue); background: var(--isp-dots); color: var(--isp-blue);
+    font-family: Comic, sans-serif; text-align: center;
+  }
+  & [data-effect-type="temporary"] + ol.effect-list:not(:has(> li))::after { content: "No timed effects. New Effect adds one that lasts 1 round."; }
+  & [data-effect-type="passive"] + ol.effect-list:not(:has(> li))::after { content: "No passive effects. These are always on."; }
+  & [data-effect-type="inactive"] + ol.effect-list:not(:has(> li))::after { content: "Nothing switched off."; }
+}
+
+/* ---------- portrait: it is click-to-edit ---------- */
+.invincible.sheet.actor .isp-px-frame { cursor: pointer; }
+.invincible.sheet.actor .isp-px-frame:hover { box-shadow: 8px 8px 0 var(--isp-cyan); }
+
+/* ---------- biography: headings that are visible, prose that is readable ---------- */
+.invincible.sheet.actor section.tab.biography {
+  & :is(h1, h2) { font: 1.7rem/1.1 Titles, sans-serif; color: var(--isp-ink); letter-spacing: 1px; text-transform: uppercase; margin: 1.4em 0 .5em; padding-bottom: 2px; border-bottom: 3px double var(--isp-cyan); text-shadow: none; }
+  & :is(h3, h4) { font: 1.3rem/1.15 Titles, sans-serif; color: #27508a; margin: 1.2em 0 .35em; text-shadow: none; }
+  & :is(h1, h2, h3, h4):first-child { margin-top: 0; }
+  & :is(p, li) { font-family: Roboto, sans-serif; font-size: 15px; line-height: 1.55; color: #1c2a40; max-width: 68ch; text-wrap: pretty; }
+  & p { margin: 0 0 .75em; }
+  & :is(ul, ol) { padding-left: 1.3em; margin: 0 0 .9em; }
+  & li::marker { color: var(--isp-cyan); }
+  & blockquote { margin: 1em 0; padding: 8px 14px; background: #fff8c3; border: 2px solid var(--isp-ink); box-shadow: 3px 3px 0 var(--isp-cyan); }
+}
+
+/* ---------- personal: label column, rows sized to their content ---------- */
+.invincible.sheet.actor section.tab.personal {
+  & div.form-group { display: grid; grid-template-columns: 8.5rem 1fr; gap: 10px; align-items: start; padding: 8px 0; margin: 0; }
+  & div.form-group > label { white-space: normal; font-size: 13px; letter-spacing: .4px; color: #27508a; padding-top: 5px; }
+  & div.form-group input { font-size: 15px; min-height: 30px; }
+  & div.form-group textarea { font-family: Roboto, sans-serif; text-transform: none; font-size: 14px; line-height: 1.4; color: var(--isp-ink); field-sizing: content; min-height: 2.8em; max-height: 9em; }
+}
+
+/* =====================================================================
+   Effects v2: two-line rows (name over meta) so nothing is squeezed; Personal consistency
+   ===================================================================== */
+.invincible.sheet.actor section.tab.effects {
+  /* section headers: title + button, no column labels (the meta is labelled inline) */
+  & .effects-list > .effects-header {
+    display: flex; align-items: center; gap: 8px;
+  }
+  & .effects-list > .effects-header .effect-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+  & .effects-list > .effects-header .effect-source { display: none; }
+  & .effects-list > .effects-header .effect-controls { flex: 0 0 auto; }
+  & .effects-header a[data-action="createDoc"] { flex-direction: row; flex-wrap: nowrap; white-space: nowrap; }
+  & .effects-header a[data-action="createDoc"] i { margin: 0; }
+
+  /* rows */
+  & .effect-list > li.effect {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-areas: "name name controls" "src dur controls";
+    column-gap: 10px; row-gap: 0; align-items: center;
+    padding: 6px 8px;
+  }
+  & .effect-list > li.effect > .effect-name { grid-area: name; }
+  & .effect-list > li.effect > .effect-source { grid-area: src; flex: none; }
+  & .effect-list > li.effect > .effect-duration { grid-area: dur; flex: none; }
+  & .effect-list > li.effect > .effect-controls { grid-area: controls; flex: none; }
+  & .effect-list > li.effect > .effect-source::before { content: "Source: "; opacity: .65; }
+  & .effect-list > li.effect > .effect-duration::before { content: "Duration: "; opacity: .65; }
+  & .effect-list > li.effect > :is(.effect-source, .effect-duration) { text-align: left; font-size: 12px; padding: 0 0 0 38px; }
+  & .effect-image { background: var(--isp-ink); } /* core effect icons are white */
+}
+
+/* Personal: one voice for every value */
+.invincible.sheet.actor section.tab.personal div.form-group :is(input, textarea) {
+  font-family: Roboto, sans-serif; text-transform: none; font-size: 15px; color: var(--isp-ink);
+}
+
+/* New Effect button: icon and label on one line (beats the 32px icon-grid rule above) */
+.invincible.sheet.actor section.tab.effects .effects-list > .effects-header .effect-controls a.effect-control[data-action="createDoc"] {
+  display: inline-flex; flex-direction: row; align-items: center; justify-content: center;
+  min-width: 0; padding: 2px 10px; gap: 6px; font-size: 13px; color: var(--isp-ink);
+}
+
+/* =====================================================================
+   Low health is red (one third or less), and cards that land on the sheet
+   ===================================================================== */
+.invincible.sheet.actor div.bar div.inner-bar.isp-low { --isp-fill: #e5322d; }
+
+
+/* ---------- landing: the card drops in, a ring flashes once ---------- */
+@keyframes isp-land {
+  0%   { opacity: 0; transform: translateY(-42px) rotate(-3deg) scale(1.08); }
+  55%  { opacity: 1; transform: translateY(0) rotate(.6deg) scale(.98); }
+  78%  { transform: scale(1.015); }
+  100% { transform: none; }
+}
+@keyframes isp-ring {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(1.07); }
+}
+@keyframes isp-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px) rotate(-.6deg); }
+  40% { transform: translateX(5px) rotate(.5deg); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+@keyframes isp-slide {
+  from { opacity: 0; transform: translateX(36px); }
+  to   { opacity: 1; transform: none; }
+}
+.invincible.sheet.actor section.tab .isp-landed.isp-landed.isp-landed.isp-landed {
+  position: relative;
+  z-index: 2;
+  animation: isp-land .55s cubic-bezier(.2, .8, .2, 1) both;
+}
+.invincible.sheet.actor .isp-landed::after {
+  content: "";
+  position: absolute; inset: -5px;
+  border: 3px solid var(--isp-cyan);
+  pointer-events: none;
+  animation: isp-ring .8s ease-out .35s both;
+}
+.invincible.sheet.actor section.tab .isp-landed-criticalInjury.isp-landed-criticalInjury.isp-landed-criticalInjury.isp-landed-criticalInjury {
+  animation: isp-land .45s cubic-bezier(.2, .8, .2, 1) both, isp-shake .4s ease-out .42s both; /* it hits, then shudders */
+}
+.invincible.sheet.actor .isp-landed-criticalInjury::after { border-color: #d6342c; }
+.invincible.sheet.actor section.tab .isp-landed-effect.isp-landed-effect.isp-landed-effect.isp-landed-effect { animation: isp-slide .4s cubic-bezier(.2, .8, .2, 1) both; }
+.invincible.sheet.actor .isp-landed-effect::after { inset: 0; border-width: 2px; }
+
+/* ---------- tab button: pings, and keeps a marker until you open it ---------- */
+@keyframes isp-ping {
+  0%, 100% { transform: skewY(-4deg) scale(1); }
+  35%      { transform: skewY(-4deg) translateX(-6px) scale(1.25); }
+  65%      { transform: skewY(-4deg) translateX(-2px) scale(1.08); }
+}
+.invincible.sheet.actor nav.sheet-tabs a { position: relative; }
+.invincible.sheet.actor nav.sheet-tabs a.isp-ping { animation: isp-ping .6s cubic-bezier(.2, .8, .2, 1); }
+.invincible.sheet.actor nav.sheet-tabs a.isp-new::after {
+  content: "";
+  position: absolute; top: -5px; left: -5px;
+  width: 10px; height: 10px;
+  background: #d6342c;
+  border: 2px solid var(--isp-ink);
+  transform: rotate(45deg);
+}
+
+/* ---------- drop zone while dragging something over the sheet ---------- */
+@keyframes isp-dz { from { opacity: .72; } to { opacity: 1; } }
+.invincible.sheet.actor.isp-dropping::after {
+  content: "+  Drop to add";
+  position: absolute; inset: 6px;
+  display: grid; place-items: center;
+  border: 4px dashed var(--isp-yellow);
+  background: rgba(255, 231, 42, .14);
+  color: var(--isp-ink);
+  font: 2.2rem/1 Titles, Comic, sans-serif;
+  letter-spacing: 2px; text-transform: uppercase;
+  text-shadow: 0 0 6px #fff, 0 0 6px #fff;
+  pointer-events: none;
+  z-index: 50;
+  animation: isp-dz .5s ease-in-out infinite alternate;
+}
+@keyframes isp-thump {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(.992); }
+  100% { transform: scale(1); }
+}
+.invincible.sheet.actor.isp-thump { animation: isp-thump .3s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .invincible.sheet.actor .isp-landed, .invincible.sheet.actor .isp-landed::after,
+  .invincible.sheet.actor nav.sheet-tabs a.isp-ping, .invincible.sheet.actor.isp-dropping::after { animation: none !important; }
+}
+
+/* =====================================================================
+   Logo shine (white sweep) and blood mode (red tint + slower, darker sweep)
+   ===================================================================== */
+.invincible.sheet.actor .isp-logo {
+  --width: 250px;
+  position: absolute;
+  top: 50px;
+  left: calc((100% - var(--width)) / 2);
+  width: var(--width);
+  z-index: 1;
+  display: block;
+  pointer-events: none;
+}
+.invincible.sheet.actor .isp-logo > img.sheet-logo { position: static; width: 100%; display: block; }
+
+/* the shine is clipped to the letters by masking with the logo's own alpha */
+.invincible.sheet.actor .isp-logo > .isp-shine {
+  position: absolute; inset: 0;
+  overflow: hidden;
+  -webkit-mask: var(--isp-logo) center / 100% 100% no-repeat;
+          mask: var(--isp-logo) center / 100% 100% no-repeat;
+}
+.invincible.sheet.actor .isp-logo > .isp-shine > i {
+  position: absolute; top: -10%; bottom: -10%; left: 0;
+  width: 38%;
+  background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, .55) 50%, transparent 100%);
+  transform: translateX(-130%) skewX(-18deg);
+  animation: isp-logo-sweep 7s cubic-bezier(.4, 0, .2, 1) calc((var(--isp-t, 0) - 1.5) * -1s) infinite;
+}
+@keyframes isp-logo-sweep {
+  0%       { transform: translateX(-130%) skewX(-18deg); }
+  16%, 100% { transform: translateX(300%) skewX(-18deg); } /* ~1.1s sweep, then a long rest */
+}
+
+/* blood mode: red wash that breathes, and a darker, slower sweep */
+.invincible.sheet.actor .isp-logo.isp-blood > .isp-shine::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 60%, rgba(214, 20, 12, .85), rgba(120, 0, 0, .55) 70%);
+  mix-blend-mode: multiply;
+  animation: isp-logo-pulse 1.5s ease-in-out calc(var(--isp-t, 0) * -1s) infinite;
+}
+.invincible.sheet.actor .isp-logo.isp-blood > .isp-shine > i {
+  background: linear-gradient(100deg, transparent 0%, rgba(255, 70, 50, .7) 50%, transparent 100%);
+  animation-duration: 4.5s;
+}
+@keyframes isp-logo-pulse {
+  0%, 100% { opacity: .15; }
+  45%      { opacity: .7; }
+  60%      { opacity: .45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .invincible.sheet.actor .isp-logo > .isp-shine > i,
+  .invincible.sheet.actor .isp-logo.isp-blood > .isp-shine::before { animation: none; }
+  .invincible.sheet.actor .isp-logo.isp-blood > .isp-shine::before { opacity: .4; }
+}
+
+/* =====================================================================
+   Blood on the white panels when Health is one third or less.
+   Stains are generated (assets/blood), cracks are drawn SVG (assets/cracks); nothing is derived from the system's art.
+   A white veil painted above the splats keeps text readable; the heavy state thins the veil.
+   ===================================================================== */
+.invincible.sheet.actor {
+  --isp-veil: rgba(255, 255, 255, .2);
+  /* generated splats (assets/blood) and crack drawings (assets/cracks); nothing here is derived from the system's art */
+  --isp-w1: url("../assets/blood/w1.webp"); --isp-w2: url("../assets/blood/w2.webp"); --isp-w3: url("../assets/blood/w3.webp");
+  --isp-m1: url("../assets/blood/m1.webp"); --isp-m2: url("../assets/blood/m2.webp"); --isp-m3: url("../assets/blood/m3.webp"); --isp-m4: url("../assets/blood/m4.webp");
+  --isp-h1: url("../assets/blood/h1.webp"); --isp-h2: url("../assets/blood/h2.webp"); --isp-h3: url("../assets/blood/h3.webp");
+  --isp-hit: url("../assets/blood/hit.webp");
+  --isp-c-tl: url("../assets/cracks/tl.svg"); --isp-c-tr: url("../assets/cracks/tr.svg");
+  --isp-c-bl: url("../assets/cracks/bl.svg"); --isp-c-br: url("../assets/cracks/br.svg");
+  --isp-c-mid: url("../assets/cracks/impact.svg"); --isp-c-bar: url("../assets/cracks/bar.svg");
+}
+
+/* Staged panels: cracks over blood over white. Each stage only sets the two layer lists per panel. */
+.invincible.sheet.actor.isp-staged header.sheet-header { background: var(--isp-crack-h, none), var(--isp-blood-h, none), #fff; }
+.invincible.sheet.actor.isp-staged section.tab        { background: var(--isp-crack-t, none), var(--isp-blood-t, none), #fff; }
+
+/* Tabs where text sits straight on the panel (no card behind it): a white veil over cracks and blood keeps it readable.
+   Measured on screenshots: without it, under a shattered Resolve 8 of 15 biography lines had 14-27% of their background below 4.5:1. */
+.invincible.sheet.actor.isp-staged section.tab:is(.biography, .personal, .effects, .gear) {
+  background:
+    linear-gradient(rgba(255, 255, 255, .8), rgba(255, 255, 255, .8)),
+    var(--isp-crack-t, none), var(--isp-blood-t, none), #fff;
+}
+
+/* ---------- Health: 50% wounded, 34% bloody, 0 heavy ---------- */
+.invincible.sheet.actor.isp-wounded {
+  --isp-blood-h:
+    linear-gradient(var(--isp-veil), var(--isp-veil)),
+    var(--isp-w1) no-repeat right 22px bottom 10px / 110px auto,
+    var(--isp-w3) no-repeat left 96px top 58px / 70px auto;
+  --isp-blood-t:
+    linear-gradient(var(--isp-veil), var(--isp-veil)),
+    var(--isp-w2) no-repeat right 26px top 130px / 80px auto,
+    var(--isp-w1) no-repeat left 24px bottom 36px / 100px auto;
+}
+.invincible.sheet.actor.isp-bloody {
+  --isp-blood-h:
+    linear-gradient(var(--isp-veil), var(--isp-veil)),
+    var(--isp-m3) no-repeat right -16px bottom -26px / 190px auto,
+    var(--isp-m4) no-repeat right 70px top 52px / 100px auto,
+    var(--isp-w3) no-repeat left 20px bottom 6px / 80px auto;
+  --isp-blood-t:
+    linear-gradient(var(--isp-veil), var(--isp-veil)),
+    var(--isp-m2) no-repeat right -30px top 130px / 230px auto,
+    var(--isp-m1) no-repeat left -40px bottom -34px / 200px auto,
+    var(--isp-w2) no-repeat right 120px bottom 24px / 70px auto;
+}
+.invincible.sheet.actor.isp-bloody-heavy {
+  --isp-veil: rgba(255, 255, 255, .08);
+  --isp-blood-h:
+    linear-gradient(var(--isp-veil), var(--isp-veil)),
+    var(--isp-h2) no-repeat right -50px top 30px / 250px auto,
+    var(--isp-m1) no-repeat left -80px bottom -70px / 200px auto,
+    var(--isp-m4) no-repeat right 4px bottom -14px / 100px auto,
+    var(--isp-w3) no-repeat left 30px top 60px / 70px auto;
+  --isp-blood-t:
+    linear-gradient(var(--isp-veil), var(--isp-veil)),
+    var(--isp-h1) no-repeat right -70px bottom -50px / 340px auto,
+    var(--isp-h2) no-repeat left -50px top 110px / 270px auto,
+    var(--isp-m4) no-repeat right 30px top 50px / 110px auto,
+    var(--isp-h3) no-repeat left 40px bottom 6px / 150px auto;
+}
+
+/* ---------- Resolve: 50% cracked, 34% badly cracked, 0 shattered ----------
+   The left panel is full of labels and fields, so its cracks stay in the empty strip on the right;
+   the big fractures live in the right panel, below the cards. */
+.invincible.sheet.actor.isp-cracked {
+  --isp-crack-h: var(--isp-c-tr) no-repeat right top / 130px auto;
+  --isp-crack-t: var(--isp-c-br) no-repeat right bottom / 220px auto;
+}
+.invincible.sheet.actor.isp-cracked-heavy {
+  --isp-crack-h: var(--isp-c-tr) no-repeat right top / 150px auto, var(--isp-c-br) no-repeat right bottom / 140px auto;
+  --isp-crack-t: var(--isp-c-br) no-repeat right bottom / 280px auto, var(--isp-c-bl) no-repeat left bottom / 250px auto;
+}
+.invincible.sheet.actor.isp-shattered {
+  --isp-crack-h: var(--isp-c-tr) no-repeat right top / 180px auto, var(--isp-c-br) no-repeat right bottom / 170px auto;
+  --isp-crack-t: var(--isp-c-mid) no-repeat center 78% / 380px auto, var(--isp-c-br) no-repeat right bottom / 300px auto, var(--isp-c-bl) no-repeat left bottom / 280px auto;
+}
+/* the Resolve bar itself */
+.invincible.sheet.actor div.bar.isp-cracked-bar { background: var(--isp-c-bar) center / 100% 100% no-repeat, rgba(255, 255, 255, .94); }
+
+/* ---------- taking damage: a fresh splat slaps onto the window, then fades; the window shudders once ---------- */
+@keyframes isp-wound {
+  0%   { opacity: 0; transform: scale(.5); }
+  10%  { opacity: 1; transform: scale(1.08); }
+  20%  { transform: scale(1); }
+  65%  { opacity: .95; }
+  100% { opacity: 0; transform: scale(1); }
+}
+.invincible.sheet.actor.isp-wound::before {
+  content: "";
+  position: absolute; inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  background: var(--isp-hit) no-repeat var(--isp-wound-pos, right 40px top 70px) / 260px auto;
+  transform-origin: var(--isp-wound-origin, 80% 22%);
+  animation: isp-wound 2.4s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+/* the hit: the window shudders once */
+.invincible.sheet.actor.isp-hit { animation: isp-shake .4s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .invincible.sheet.actor.isp-hit { animation: none; }
+}

@@ -1,0 +1,335 @@
+/* Invincible - Sheet Plus: Challenge and Vehicle actor sheets.
+   Reuses the character-sheet language from sheet-plus.css (tokens --isp-yellow / --isp-cyan / --isp-blue / --isp-ink / --isp-dots,
+   skewed stamps, hard offset shadows, halftone only on empty areas, corner-tag cards).
+   Scope: .invincible.sheet.actor.challenge and .invincible.sheet.actor.vehicle.
+   These sheets keep every control inside ONE white header card, so there is no second plate behind the bars:
+   the bar track is the plate (white, ink border, offset shadow) and a double cyan rule separates status from description.
+   No JS here. scripts/module.js already animates .inner-bar (.isp-low, .isp-gain, .isp-loss, --isp-from, --isp-to). */
+
+/* ---------- local tokens (everything else is inherited from sheet-plus.css) ---------- */
+.invincible.sheet.actor:is(.challenge, .vehicle) {
+  --isp-label: #27508a;   /* labels and hints: 8.1:1 on white, 5.3:1 even under a halftone dot */
+  --isp-note: #fff8c3;    /* the system's own "paper" tint; ink on it is 16:1 */
+  --isp-hint: #5a6a82;    /* placeholders: 5.5:1 on white, 5.1:1 on the note tint */
+  --isp-ease: cubic-bezier(.2, .7, .2, 1); /* same curve as items.css (sheet-plus.css hard-codes it) */
+  /* Visible copy as tokens (CSS cannot localize): scripts may override these on the shell without touching selectors. */
+  --isp-t-cr: "Challenge rating";
+  --isp-t-tl: "Time limit";
+  --isp-t-dur: "Durability";
+  --isp-t-bio-readonly: "Nothing written about this Challenge yet.";
+  --isp-t-bio-empty: "No description yet. Use the edit button to write how this Challenge works and how it is overcome.";
+  --isp-t-drop: "A Challenge takes no items";
+  --isp-t-weapons-empty: "No weapons mounted. Drag a Vehicle Weapon here.";
+  --isp-t-weapons-hint: "Click a weapon name to use it. Right-click a card to send it to chat, edit it or delete it.";
+}
+
+/* =====================================================================
+   Header fields: shared
+   ===================================================================== */
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header .header-fields > div.form-group > label {
+  font-size: 12px;
+  line-height: 1.1;
+  letter-spacing: .8px;
+  color: var(--isp-label);
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header .header-fields > div.form-group > label:empty { display: none; }
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header .header-fields > div.form-group > .form-fields { min-width: 0; }
+
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header :is(input, select, textarea) {
+  color: var(--isp-ink);
+  border-radius: 0;
+  font-variant-numeric: tabular-nums;
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header :is(input, select, textarea)::placeholder { color: var(--isp-hint); opacity: 1; }
+/* hover shows the field is editable; focus keeps the yellow marker from sheet-plus (restated because the rules below set a background) */
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header :is(input, select, textarea):not(:disabled):not(:focus):hover {
+  background-color: var(--isp-note);
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header :is(input, select, textarea):focus {
+  background-color: #fffbd0;
+  box-shadow: inset 0 -3px 0 var(--isp-yellow);
+}
+
+/* the name is the heading of the sheet */
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header .header-fields > div.form-group:first-child { align-items: baseline; }
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header input[name="name"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 2px 2px 0;
+  background: transparent;
+  border: 0;
+  font: 2rem/1.1 Titles, Comic, sans-serif;
+  letter-spacing: .5px;
+  text-overflow: ellipsis;
+}
+
+/* =====================================================================
+   Bar row (CR / TL / D): blue stamp, bar, big readout, one-line meaning underneath
+   ===================================================================== */
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header .header-fields > div.grid {
+  gap: 8px;
+  margin: 14px 0 4px;
+  padding-top: 12px;
+  border-top: 3px double var(--isp-cyan); /* same double rule the character sheet uses as a separator */
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 14px;
+  row-gap: 3px;
+  align-items: center;
+  margin: 0;
+  padding: 2px 4px 3px 2px; /* room for the 3px offset shadows */
+  border-bottom: 0;
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar > label:first-child {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 3.1em;
+  padding: 1px 10px 3px;
+  text-align: center;
+  background: var(--isp-blue);
+  color: #fff;               /* 5.9:1 on the blue stamp */
+  font-size: 1.05rem;
+  line-height: 1.15;
+  letter-spacing: 1px;
+  transform: skew(-8deg);
+  box-shadow: 3px 3px 0 var(--isp-ink);
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar div.inner-bar {
+  grid-column: 2;
+  grid-row: 1;
+  width: auto;
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar > .form-fields {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar > .form-fields input {
+  width: 44px;
+  padding: 0 2px;
+  border: 0;
+  font-family: Titles, Comic, sans-serif;
+  font-size: 1.5em;
+  line-height: 1.15;
+  text-align: right;
+  background: transparent;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar > .form-fields input::-webkit-inner-spin-button,
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar > .form-fields input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar > .form-fields input[name$=".max"] { color: var(--isp-label); }
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar > .form-fields label {
+  color: var(--isp-cyan);   /* the slash is decoration; the numbers carry the meaning */
+  font-family: Titles, Comic, sans-serif;
+  font-size: 1.3em;
+}
+/* the system abbreviates (CR, TL, D); the full word sits under the track. The tooltip on the row still has the system hint. */
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header div.bar::after {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  padding-left: 4px;
+  font: 12px/1.2 Comic, sans-serif;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--isp-label);
+}
+
+/* =====================================================================
+   Challenge
+   ===================================================================== */
+/* header column: the portrait takes whatever height the fields leave */
+.invincible.sheet.actor.challenge header.sheet-header .header-fields {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.invincible.sheet.actor.challenge header.sheet-header .header-fields > :not(img.profile-img) { flex: none; }
+
+/* subtitle: a comic caption box. Empty it shows halftone, like every other empty area. */
+.invincible.sheet.actor.challenge header.sheet-header .header-fields > div.form-group:nth-child(2) {
+  align-items: stretch;
+  margin-top: 12px;
+  border-bottom: 0;
+}
+.invincible.sheet.actor.challenge header.sheet-header .header-fields > div.form-group:nth-child(2) textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 3.2em;
+  max-height: 7.5em;
+  field-sizing: content;
+  padding: 6px 10px 7px;
+  background: var(--isp-note);
+  border: 2px solid var(--isp-ink);
+  font: 14px/1.4 Roboto, sans-serif;
+  text-transform: none;
+  text-wrap: pretty;
+}
+.invincible.sheet.actor.challenge header.sheet-header .header-fields > div.form-group:nth-child(2) textarea:empty:not(:focus):not(:hover) {
+  background: var(--isp-dots), var(--isp-note);
+}
+
+/* bar meanings */
+.invincible.sheet.actor.challenge header.sheet-header div.grid > div.bar:nth-child(1)::after { content: var(--isp-t-cr); }
+.invincible.sheet.actor.challenge header.sheet-header div.grid > div.bar:nth-child(2)::after { content: var(--isp-t-tl); }
+/* CR counts down toward "overcome", so a low CR is progress: cyan, no alarm pulse, and the flashes swap (a drop reads as a hit landed). TL stays red when low. */
+.invincible.sheet.actor.challenge header.sheet-header div.grid > div.bar:nth-child(1) div.inner-bar.isp-low:not(.isp-empty) { animation: none; }
+.invincible.sheet.actor.challenge header.sheet-header div.grid > div.bar:nth-child(1) div.inner-bar.isp-low { --isp-fill: var(--isp-cyan); }
+.invincible.sheet.actor.challenge header.sheet-header div.grid > div.bar:nth-child(1) div.inner-bar.isp-loss::before { animation-name: isp-fill, isp-heal; }
+.invincible.sheet.actor.challenge header.sheet-header div.grid > div.bar:nth-child(1) div.inner-bar.isp-gain::before { animation-name: isp-fill, isp-hurt; }
+
+/* right panel (Biography): empty states that say what the page is for.
+   Not editable and empty: the section holds only its title. Editable and empty: the toggled editor holds no block content. */
+.invincible.sheet.actor.challenge section.tab.biography:not(:has(> :not(label.title)))::after,
+.invincible.sheet.actor.challenge section.tab.biography prose-mirror:not(:has(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, table, img, pre, hr))::after {
+  display: block;
+  margin-top: 18px;
+  padding: 22px 16px;
+  border: 2px dashed var(--isp-blue);
+  background: var(--isp-dots);
+  color: var(--isp-label);
+  text-align: center;
+  font-family: Comic, sans-serif;
+  text-transform: none;
+  text-wrap: balance;
+}
+.invincible.sheet.actor.challenge section.tab.biography:not(:has(> :not(label.title)))::after { content: var(--isp-t-bio-readonly); }
+.invincible.sheet.actor.challenge section.tab.biography prose-mirror:not(:has(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, table, img, pre, hr))::after {
+  content: var(--isp-t-bio-empty);
+}
+.invincible.sheet.actor.challenge section.tab.biography prose-mirror:not(:has(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, table, img, pre, hr)) { display: block; }
+
+/* the sheet rejects every drop, so the drop overlay says so instead of "Drop to add" */
+.invincible.sheet.actor.challenge.isp-dropping::after {
+  content: var(--isp-t-drop);
+  border-color: var(--isp-ink);
+  background: rgba(12, 26, 46, .08);
+}
+
+/* =====================================================================
+   Vehicle
+   ===================================================================== */
+/* header grid: name and bar span the full width, the six specs sit in two columns, the portrait closes the card */
+.invincible.sheet.actor.vehicle header.sheet-header .header-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+  row-gap: 6px;
+  align-content: start;
+}
+.invincible.sheet.actor.vehicle header.sheet-header .header-fields > :is(div.form-group:first-child, div.grid, img.profile-img) { grid-column: 1 / -1; }
+
+/* spec cells: small label over a big value, closed by the blue rule the character header already uses */
+.invincible.sheet.actor.vehicle header.sheet-header .header-fields > div.form-group:not(:first-child) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  margin: 0;
+  padding-top: 4px;
+}
+.invincible.sheet.actor.vehicle header.sheet-header .header-fields > div.form-group:not(:first-child):hover { border-bottom-color: var(--isp-ink); }
+.invincible.sheet.actor.vehicle header.sheet-header .header-fields > div.form-group:not(:first-child) :is(input, select) {
+  width: 100%;
+  height: auto;
+  min-height: 34px;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  font: 1.55rem/1.15 Titles, Comic, sans-serif;
+  letter-spacing: .3px;
+  text-overflow: ellipsis;
+}
+.invincible.sheet.actor.vehicle header.sheet-header .header-fields > div.form-group:not(:first-child) select { padding-right: 18px; }
+/* the last row hands its rule over to the double rule above the bar */
+.invincible.sheet.actor.vehicle header.sheet-header .header-fields > div.form-group:is(:nth-last-child(3), :nth-last-child(4)) { border-bottom: 0; }
+
+.invincible.sheet.actor.vehicle header.sheet-header div.grid > div.bar::after { content: var(--isp-t-dur); }
+
+/* weapons: the same cards as Gear, with sentence-case descriptions */
+.invincible.sheet.actor.vehicle section.tab.weapons div.gear-info {
+  font-family: Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  text-transform: none;
+  color: #2b3a52;
+}
+.invincible.sheet.actor.vehicle section.tab.weapons div.gear-info > label.rollable {
+  font-family: Comic, sans-serif;
+  text-transform: uppercase;
+  color: var(--isp-ink);
+}
+.invincible.sheet.actor.vehicle section.tab.weapons div.gear-info p { margin: 2px 0 0; }
+
+/* empty state, same box as the character tabs; with weapons present the same slot teaches the two hidden controls */
+.invincible.sheet.actor.vehicle section.tab.weapons:not(:has(.gear-info))::after {
+  content: var(--isp-t-weapons-empty);
+  display: block;
+  margin-top: 18px;
+  padding: 22px 16px;
+  border: 2px dashed var(--isp-blue);
+  background: var(--isp-dots);
+  color: var(--isp-label);
+  text-align: center;
+  font-family: Comic, sans-serif;
+  text-transform: none;
+  text-wrap: balance;
+}
+.invincible.sheet.actor.vehicle section.tab.weapons:has(.gear-info)::after {
+  content: var(--isp-t-weapons-hint);
+  display: block;
+  margin-top: 14px;
+  font: 13px/1.4 Roboto, sans-serif;
+  color: var(--isp-label);
+  text-wrap: balance;
+}
+
+/* =====================================================================
+   Portrait: a comic panel with the cyan offset frame (click to change the image)
+   ===================================================================== */
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header img.profile-img {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 10px 0 0;
+  object-fit: contain;
+  background: var(--isp-dots), #fff; /* the transparent parts of a cut-out are an empty area, so they get the halftone */
+  border: 3px solid var(--isp-ink);
+  box-shadow: 6px 6px 0 var(--isp-cyan);
+  cursor: pointer;
+  transition: transform .16s var(--isp-ease);
+}
+.invincible.sheet.actor.challenge header.sheet-header img.profile-img { height: auto; flex: 1 1 220px; min-height: 150px; }
+.invincible.sheet.actor.vehicle header.sheet-header img.profile-img { height: 165px; } /* fits under the specs inside the fixed-height panel */
+.invincible.sheet.actor.vehicle header.sheet-header input[name="name"] { font-size: 1.55rem; }
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header img.profile-img:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 var(--isp-cyan);
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header img.profile-img:active {
+  transform: translate(2px, 2px);
+  box-shadow: 3px 3px 0 var(--isp-cyan);
+}
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header img.profile-img:focus-visible {
+  outline: 3px solid var(--isp-ink);
+  outline-offset: 3px;
+}
+
+/* =====================================================================
+   Motion: everything above is transform or colour only; reduced motion removes it, pseudo-elements included
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .invincible.sheet.actor:is(.challenge, .vehicle) *,
+  .invincible.sheet.actor:is(.challenge, .vehicle) *::before,
+  .invincible.sheet.actor:is(.challenge, .vehicle) *::after { animation: none !important; transition: none !important; }
+  .invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header img.profile-img:is(:hover, :active) { transform: none; }
+}

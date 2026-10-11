@@ -1,0 +1,35 @@
+{
+  "id": "invincible-sheet-plus",
+  "title": "Invincible - Sheet Plus",
+  "description": "Comic-book polish for the Invincible system: character, challenge and vehicle sheets, all item sheets, the rich-text editor and chat cards (rolls collapsed and expanded, item, injury and power cards). Landing animations, portrait parallax, logo shine, animated bars. Experimental (off by default): blood for low Health, cracks for low Resolve, wound flash. Needs the Invincible system DOM (2.1.x).",
+  "version": "0.10.1",
+  "authors": [
+    {
+      "name": "hexerpegi"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "14"
+  },
+  "styles": [
+    "styles/sheet-plus.css",
+    "styles/items.css",
+    "styles/actors-extra.css",
+    "styles/editor.css"
+  ],
+  "relationships": {
+    "systems": [
+      {
+        "id": "invincible",
+        "type": "system",
+        "compatibility": {
+          "minimum": "2.1.0"
+        }
+      }
+    ]
+  },
+  "esmodules": [
+    "scripts/module.js"
+  ]
+}
