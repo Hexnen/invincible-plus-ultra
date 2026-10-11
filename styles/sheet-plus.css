@@ -1,6 +1,8 @@
-/* Chat cards live in chat.css. Foundry reads a module's style list once, when the server starts, so a file added to module.json
-   later is not loaded until a restart; an @import from an already registered sheet is picked up on the next page load. */
+/* Chat cards live in chat.css, the splash layer in splash.css. Foundry reads a module's style list once, when the server starts, so a file added to module.json
+   later is not loaded until a restart; an @import from an already registered sheet is picked up on the next page load. splash.css is the
+   comic splash / chat badge of the built-in splash feature (scripts/splash/). */
 @import url("chat.css");
+@import url("splash.css");
 
 /* Invincible — Sheet Plus: actor sheets only. Palette: yellow #ffe72a, cyan #0096cb, blue #3465a3. */
 .invincible.sheet.actor {

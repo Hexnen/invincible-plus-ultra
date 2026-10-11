@@ -1,8 +1,8 @@
 {
   "id": "invincible-sheet-plus",
   "title": "Invincible - Sheet Plus",
-  "description": "Comic-book polish for the Invincible system: character, challenge and vehicle sheets, all item sheets, the rich-text editor and chat cards (rolls collapsed and expanded, item, injury and power cards). Landing animations, portrait parallax, logo shine, animated bars. Experimental (off by default): blood for low Health, cracks for low Resolve, wound flash. Needs the Invincible system DOM (2.1.x).",
-  "version": "0.11.3",
+  "description": "Comic-book polish for the Invincible system: character, challenge and vehicle sheets, all item sheets, the rich-text editor and chat cards (rolls collapsed and expanded, item, injury and power cards). Landing animations, portrait parallax, logo shine, animated bars. Includes the former Comic Splash module: comic splash words, rarity ribbon, sixes and stress badges after Year Zero rolls and a rarity badge on roll cards (settings prefixed \"Splash\"; it stays off if the standalone Invincible: Comic Splash module is still enabled). Experimental (off by default): blood for low Health, cracks for low Resolve, wound flash. Needs the Invincible system DOM (2.1.x).",
+  "version": "0.12.0",
   "authors": [
     {
       "name": "hexerpegi"

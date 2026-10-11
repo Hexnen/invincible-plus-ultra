@@ -1747,3 +1747,16 @@ function doubleBadge(message, html) {
 Hooks.on("renderChatMessageHTML", (message, html) => {
   try { doubleBadge(message, html); } catch (err) { console.warn(`${MODULE_ID} | double badge`, err); }
 });
+
+/* =====================================================================================================================
+   SPLASH (self-contained feature, code in scripts/splash/, CSS in styles/splash.css, strings in scripts/splash/lang.mjs)
+   The former standalone module "Invincible: Comic Splash": comic splash words, rarity ribbon, sixes / stress badges after every Year Zero
+   roll, and the rarity badge on roll cards. Loaded with a dynamic import from this already registered script (a file added to
+   module.json's esmodules would need a server restart), inside try / catch: if the splash fails to load, the sheets and chat cards above
+   are not affected. The phases that Foundry's start-up already passed are recorded from this line on, because the import may finish after
+   them; start() runs a passed phase at once and waits for the others. start() does nothing when the standalone module is active. */
+const SPLASH_PHASES = { init: false, setup: false, ready: false };
+for (const phase of Object.keys(SPLASH_PHASES)) Hooks.once(phase, () => { SPLASH_PHASES[phase] = true; });
+import("./splash/main.mjs")
+  .then((splash) => splash.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | splash feature not loaded (sheets and chat cards are unaffected)`, err));
