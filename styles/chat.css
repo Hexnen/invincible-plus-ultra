@@ -1556,10 +1556,15 @@ li.chat-message.message .message-content .isp-dmg .isp-dmg-hp {
   background: var(--isp-row);
   border: 2px solid var(--isp-ink);
 }
-li.chat-message.message .message-content .isp-dmg .isp-dmg-hh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+/* one row that never wraps: the label gives way (ellipsis) before the readout does; the BROKEN sticker is out of flow (see below) */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hh { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 10px; }
 li.chat-message.message .message-content .isp-dmg .isp-dmg-hl {
-  display: inline-flex;
-  align-items: center;
+  display: block;
+  flex: 0 1 auto;
+  min-width: calc(1.3rem + 8px);   /* at least the heart tile */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font: 700 .72rem/1.1 Comic, sans-serif;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -1572,24 +1577,47 @@ li.chat-message.message .message-content .isp-dmg .isp-dmg-hl::before {
   width: 1.3rem;
   height: 1.3rem;
   margin-right: 8px;
+  vertical-align: middle;
   color: #fff;
   background: var(--isp-blue);
   font: 900 11px/1 var(--isp-fa);
 }
-/* BROKEN: a skewed yellow banner like the sheet titles, stamped in once */
+/* BROKEN: a STICKER (same language as the DOUBLE sticker on the attack card: tilted, 2px ink frame, flat, info not a button). It never takes
+   room: .isp-dmg-bslot is a zero-size flex item in the gap of the label row (auto margins centre it between the label and the readout),
+   the stamp inside is absolute and sits on the panel's top edge (a little over the border, the rest in the extra top padding added below),
+   so a long label, a 3-digit readout or the long PL word can neither wrap nor push anything; the stamp only overlaps panel borders. */
+li.chat-message.message.isp-dmg-brk .message-content .isp-dmg .isp-dmg-hp { padding-top: 18px; }
+li.chat-message.message .message-content .isp-dmg .isp-dmg-bslot {
+  position: relative;
+  flex: 0 0 0;
+  align-self: flex-start;
+  width: 0;
+  height: 0;
+  margin-left: auto;
+  pointer-events: none;
+}
 li.chat-message.message .message-content .isp-dmg .isp-dmg-broken {
-  padding: 0 9px 2px 8px;
-  font: 400 1rem/1.25 Titles, Comic, sans-serif;
+  position: absolute;
+  top: -22px;
+  left: 0;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  padding: 0 8px 1px 7px;
+  font: 400 .8rem/1.2 Titles, Comic, sans-serif;
   letter-spacing: .08em;
   text-transform: uppercase;
-  color: var(--isp-ink);
+  white-space: nowrap;
+  color: var(--isp-ink);          /* ink on yellow 13.9 */
   background: var(--isp-yellow);
   border: 2px solid var(--isp-ink);
-  transform: rotate(-2deg) skew(-6deg);
-  animation: isp-dmg-stamp .3s .35s var(--isp-out) both;
+  box-shadow: none;
+  transform: translateX(-50%) rotate(-3.5deg) skew(-6deg);   /* static; it stamps in only on the card's first display (see the block after the keyframes) */
 }
-li.chat-message.message .message-content .isp-dmg .isp-dmg-broken::before { content: "\f54c"; margin-right: 6px; font: 900 .8em/1 var(--isp-fa); }   /* skull */
-li.chat-message.message .message-content .isp-dmg .isp-dmg-read { display: inline-flex; align-items: baseline; gap: 6px; margin-left: auto; white-space: nowrap; }
+li.chat-message.message .message-content .isp-dmg .isp-dmg-broken::before { content: "\f54c"; flex: none; font: 900 .8em/1 var(--isp-fa); }   /* skull */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-read { display: inline-flex; flex: none; align-items: baseline; gap: 6px; margin-left: auto; white-space: nowrap; }
 li.chat-message.message .message-content .isp-dmg .isp-hp-from {
   font: 400 1.15rem/1 Titles, Comic, sans-serif;
   font-variant-numeric: tabular-nums;
@@ -1603,20 +1631,38 @@ li.chat-message.message .message-content .isp-dmg .isp-hp-to { font: 400 1.7rem/
 li.chat-message.message.isp-dmg-brk .message-content .isp-dmg .isp-hp-to { color: var(--isp-red-ink); }
 li.chat-message.message .message-content .isp-dmg .isp-hp-max { font: 700 .85rem/1 Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--isp-ink-2); }
 
-/* the bar: kept part solid yellow, lost part hatched red, white for the rest; percentages come from module.js (--to, --from, --tick) */
+/* the bar: the sheet's Health bar family (20px, 2px ink frame, halftone-dot track, yellow fill with a gloss band) AND its lean: the whole bar
+   is skewed like the sheet's (skew(-12deg) there, --sk here), flat otherwise (info, no hard shadow). Skewing the bar, not just the dividers,
+   is what keeps the ends clean: the frame's two end edges, the kept / lost edges and the dividers are all parallel, so no divider is ever
+   cut in half by a square corner. The skew shifts the corners by +-2.7px, inside the panel's 8-10px side padding.
+   Three states, told apart by value, texture and an ink edge, not by hue alone:
+     REMAINING  solid yellow + static gloss, ink edge on its right      (the sheet's fill)
+     JUST LOST  solid red-ink #b3261e + a fine pale hatch that runs the OTHER way (\ against the dividers' /), so structure (the
+                dividers) and loss (the hatch) cross instead of competing; ink edge on its right = where Health was before the hit
+     EMPTY      the halftone-dot track (only exists when Health was below max / the stale data case)
+   Dividers: slanted ink (#0c1a2e) cuts between the segments, drawn above fill, hatch and the first-display cover, none at the ends (masked).
+   Ink on yellow 13.9 | on the white track 17.5 | on red-ink 2.6 (decorative: the segment count is also in the numbers; the hatch keeps
+   the lost part readable). When Health lands on a segment boundary the kept part's ink edge and a divider coincide and merge.
+   Width: 2px; 1.5px when the bar has more than 12 segments (max 13-20); one step thinner on a 250px card. Percentages and the segment
+   count class come from module.js (--to, --from, --tick, data-dense). */
 li.chat-message.message .message-content .isp-dmg .isp-dmg-bar {
+  --tw: 2px;   /* divider width */
+  --sk: 15deg; /* lean, same direction as the sheet's bars */
+  --gloss: linear-gradient(to bottom, rgba(255, 255, 255, .5) 0 32%, transparent 32%);
   position: relative;
-  height: 18px;
+  height: 20px;
   margin-top: 8px;
-  background: #fff;
+  background: #fff radial-gradient(circle, rgba(12, 26, 46, .2) 1.2px, transparent 1.7px) 0 0 / 9px 9px;
   border: 2px solid var(--isp-ink);
   overflow: hidden;
+  transform: skewX(calc(var(--sk) * -1));   /* shake / pulse animate translate / scale (individual properties), so they never replace this */
 }
+li.chat-message.message .message-content .isp-dmg .isp-dmg-bar[data-dense] { --tw: 1.5px; }
 li.chat-message.message .message-content .isp-dmg .isp-dmg-keep {
   position: absolute;
   inset: 0 auto 0 0;
   width: calc(var(--to) * 1%);
-  background: var(--isp-yellow);
+  background: var(--gloss), var(--isp-yellow);
   border-right: 2px solid var(--isp-ink);
 }
 li.chat-message.message .message-content .isp-dmg .isp-dmg-lost {
@@ -1625,17 +1671,23 @@ li.chat-message.message .message-content .isp-dmg .isp-dmg-lost {
   bottom: 0;
   left: calc(var(--to) * 1%);
   width: calc((var(--from) - var(--to)) * 1%);
-  background: repeating-linear-gradient(135deg, var(--isp-red) 0 4px, #fcefed 4px 8px);
-  transform-origin: right center;
-  animation: isp-dmg-drain .4s .15s var(--isp-out) both;
+  background: repeating-linear-gradient(45deg, transparent 0 5px, rgba(255, 255, 255, .22) 5px 7px), var(--isp-red-ink);   /* 45deg = lines run \ ; the dividers run / */
+  box-shadow: inset -2px 0 0 var(--isp-ink);   /* the "was full up to here" edge, the twin of the kept part's edge */
+  overflow: hidden;   /* the first-display cover (below) slides off inside this box */
 }
 li.chat-message.message .message-content .isp-dmg .isp-dmg-bar[data-ticks]::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--tick) - 1px), rgba(12, 26, 46, .38) calc(var(--tick) - 1px) var(--tick));
+  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--tick) - var(--tw)), var(--isp-ink) calc(var(--tick) - var(--tw)) var(--tick));   /* vertical in the bar's own (skewed) space = slanted on screen */
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--tw) - 1px), transparent 0);   /* no divider against the frame at the end */
+  mask-image: linear-gradient(90deg, #000 calc(100% - var(--tw) - 1px), transparent 0);
 }
+/* low Health (a third or less of max, same threshold as the sheet): the heart tile and, once the count-down has landed, the number turn red-ink.
+   The bar fill stays yellow on purpose: the lost part is red, and a red remainder would erase the boundary the bar exists to show. */
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hp.isp-dmg-low .isp-dmg-hl::before { background: var(--isp-red-ink); }
+li.chat-message.message .message-content .isp-dmg .isp-dmg-hp.isp-dmg-low:not(.isp-dmg-arm, .isp-dmg-play) .isp-hp-to { color: var(--isp-red-ink); }
 
 /* screen readers only */
 li.chat-message.message .message-content .isp-dmg .isp-dmg-sr {
@@ -1650,8 +1702,55 @@ li.chat-message.message .message-content .isp-dmg .isp-dmg-sr {
 
 @keyframes isp-dmg-hit   { from { transform: scale(1.18); } to { transform: none; } }
 @keyframes isp-dmg-seam  { from { transform: translate(-50%, -50%) rotate(-8deg) scale(1.7); } to { transform: translate(-50%, -50%) rotate(-8deg); } }
-@keyframes isp-dmg-drain { from { transform: scaleX(0); } to { transform: none; } }
-@keyframes isp-dmg-stamp { from { transform: rotate(-2deg) skew(-6deg) scale(1.6); } to { transform: rotate(-2deg) skew(-6deg); } }
+@keyframes isp-dmg-stamp-late {   /* the BROKEN sticker lands (transform + opacity only) */
+  from { opacity: 0; transform: translateX(-50%) rotate(-3.5deg) skew(-6deg) scale(1.6); }
+  30%  { opacity: 1; }
+  to   { opacity: 1; transform: translateX(-50%) rotate(-3.5deg) skew(-6deg); }
+}
+/* UNDO (module.js undoPlay): the reverse of the hit. The cover slides back over the hatched lost part (the fill edge travels from "after" to
+   "before"), the bar pulses once, the card leaves. Transform / opacity only. */
+@keyframes isp-dmg-heal  { from { transform: translateX(-101%); } to { transform: none; } }
+@keyframes isp-dmg-pulse { 0%, 100% { scale: none; } 50% { scale: 1 1.22; } }   /* individual property: composes with the bar's skew instead of replacing it */
+@keyframes isp-dmg-fade  { from { opacity: 1; } to { opacity: 0; } }
+@keyframes isp-dmg-out   { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.94); } }
+/* the bar's hit: a yellow cover over the lost part (the BEFORE fill) flashes red like the sheet's isp-hurt, then slides left off the
+   hatch, so the fill edge travels from "before" to "after" (translate = compositor only, no width animation, no layout shift) */
+@keyframes isp-dmg-bleed {
+  0%   { transform: none; background-color: var(--isp-yellow); }
+  20%  { transform: none; background-color: #ff3b30; }
+  100% { transform: translateX(-101%); background-color: #ff3b30; }
+}
+@keyframes isp-dmg-shake { 0%, 100% { translate: none; } 20% { translate: -3px 0; } 40% { translate: 3px 0; } 60% { translate: -2px 0; } 80% { translate: 1px 0; } }   /* individual property: composes with the bar's skew */
+
+/* FIRST DISPLAY ONLY. module.js (dmgPlay) adds .isp-dmg-arm to .isp-dmg-hp (BEFORE state, nothing moves) and, once the panel is on screen,
+   .isp-dmg-play (timeline: 0.2s bleed + count-down 0.75s, shake with the hit, BROKEN stamps at 1.05s); both classes are removed ~1.55s later
+   and the static final state remains. Never added under reduced motion; the media query repeats the guard in CSS. */
+@media (prefers-reduced-motion: no-preference) {
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-hp:is(.isp-dmg-arm, .isp-dmg-play) .isp-dmg-lost::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--gloss), var(--isp-yellow);   /* same gloss as the kept part, so the BEFORE state matches the bar's final look */
+    border-right: 2px solid var(--isp-ink);
+  }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-hp.isp-dmg-play .isp-dmg-lost::before { animation: isp-dmg-bleed .8s .2s cubic-bezier(.2, .7, .2, 1) both; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-hp.isp-dmg-play .isp-dmg-bar { animation: isp-dmg-shake .34s .2s linear both; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-hp.isp-dmg-arm .isp-dmg-broken { opacity: 0; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-hp.isp-dmg-play .isp-dmg-broken { animation: isp-dmg-stamp-late .3s 1.05s var(--isp-out) both; }
+
+  /* UNDO: cover over the lost part slides back in, the readout counts up (module.js), the bar pulses, BROKEN fades, then the whole card leaves */
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-hp.isp-dmg-undoing .isp-dmg-lost::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--gloss), var(--isp-yellow);
+    border-right: 2px solid var(--isp-ink);
+    animation: isp-dmg-heal .46s var(--isp-out) both;
+  }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-hp.isp-dmg-undoing .isp-dmg-bar { animation: isp-dmg-pulse .16s .46s ease-out both; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-hp.isp-dmg-undoing .isp-dmg-broken { animation: isp-dmg-fade .2s both; }
+  li.chat-message.message.isp-dmg-out { animation: isp-dmg-out .24s var(--isp-out) both; transform-origin: 50% 0; pointer-events: none; }
+}
 
 /* injury tag: the effect-tag anatomy (label cell + name) in the drawback palette, the next panel on the shared line; only the name inside is a link */
 li.chat-message.message .message-content .isp-dmg-ci {
@@ -1665,7 +1764,9 @@ li.chat-message.message .message-content .isp-dmg-ci {
 li.chat-message.message .message-content .isp-dmg-ci .isp-dmg-cit {
   display: flex;
   align-items: center;
-  flex: none;
+  flex: 0 1 auto;     /* may shrink and wrap a long type word instead of pushing the name out */
+  min-width: 0;
+  overflow-wrap: anywhere;
   gap: 6px;
   padding: 0 10px;
   font: 700 .68rem/1.2 Comic, sans-serif;
@@ -1685,7 +1786,64 @@ li.chat-message.message .message-content .isp-dmg-ci .isp-dmg-ciname {
 li.chat-message.message .message-content .isp-dmg-ci .isp-dmg-cin { font: 700 .95rem/1.2 Comic, sans-serif; color: var(--isp-ink); overflow-wrap: anywhere; }
 li.chat-message.message .message-content .isp-dmg-ci a.content-link { max-width: 100%; min-height: 26px; display: inline-flex; align-items: center; gap: 6px; font: 700 .9rem/1.2 Comic, sans-serif; cursor: pointer; overflow-wrap: anywhere; }
 
+/* ---- Undo (module.js undoOnCard): GM only, the secondary button of the card. Button recipe of the whole card: solid white, 2px ink frame, 3px
+   hard shadow, pointer, lifts on hover, rotate-left glyph. Compact and right-aligned under the panels so the hit stays the loudest thing;
+   full width on a 250px card. .isp-dmg-act keeps 3px (right) + 3px (bottom) of room for the shadow. Ink on white 17.5; busy = dashed, hint
+   on white 6.4. The panels end 3px short of the band's edge (.isp-dmg margin), the button ends 3px further in, so its shadow lines up. ---- */
+li.chat-message.message .message-content > .isp-dmg-act {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--isp-block) 3px 0 0;
+  padding: 0 3px 3px 0;
+}
+li.chat-message.message .message-content .isp-dmg-act button.isp-undo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  min-height: 32px;
+  margin: 0;
+  padding: 4px 12px;
+  font: 700 .84rem/1 Comic, sans-serif;
+  letter-spacing: .03em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  text-shadow: none;
+  color: var(--isp-ink);
+  background: #fff;
+  border: 2px solid var(--isp-ink);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--isp-ink);
+  cursor: pointer;
+  transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
+}
+li.chat-message.message .message-content .isp-dmg-act button.isp-undo::before { content: "\f2ea"; font: 900 .8em/1 var(--isp-fa); }   /* rotate-left */
+li.chat-message.message .message-content .isp-dmg-act button.isp-undo:not([disabled]):is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-paper); transform: translate(-1px, -1px); }
+li.chat-message.message .message-content .isp-dmg-act button.isp-undo:not([disabled]):active { transform: translate(3px, 3px); }
+li.chat-message.message .message-content .isp-dmg-act button.isp-undo:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+li.chat-message.message .message-content .isp-dmg-act button.isp-undo[disabled] { color: var(--isp-hint); background: #fff; border-style: dashed; border-color: var(--isp-hint); box-shadow: none; cursor: progress; }
+li.chat-message.message .message-content .isp-dmg-act .isp-undo-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 @container isp-chat (max-width: 250px) {
+  li.chat-message.message .message-content > .isp-dmg-act { justify-content: stretch; }
+  li.chat-message.message .message-content .isp-dmg-act button.isp-undo { width: 100%; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-bar { --tw: 1.5px; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-bar[data-dense] { --tw: 1px; }
+  li.chat-message.message .message-content .isp-dmg .isp-hp-from { font-size: 1rem; }
+  li.chat-message.message .message-content .isp-dmg .isp-hp-to { font-size: 1.4rem; }
+  li.chat-message.message .message-content .isp-dmg .isp-dmg-read { gap: 4px; }
   li.chat-message.message .message-content .isp-dmg .isp-dmg-n { font-size: calc(var(--sl-hero) * 1.15 * var(--k, 1)); }
   li.chat-message.message .message-content .isp-dmg .isp-dmg-top:not(:has(> .isp-dmg-from)) .isp-dmg-n { font-size: 1.7rem; }
   li.chat-message.message .message-content .isp-dmg .isp-dmg-cap { font-size: .62rem; letter-spacing: .03em; }
@@ -1705,7 +1863,11 @@ li.chat-message.message .message-content .isp-dmg-ci a.content-link { max-width:
 }
 @media (pointer: coarse) {
   li.chat-message.message .message-content .isp-dmg-ci a.content-link { min-height: 44px; }
+  li.chat-message.message .message-content .isp-dmg-act button.isp-undo { min-height: 44px; }
 }
+
+/* portraits that open the character sheet on a double-click (GM only, module.js portraitOpen): a double-click must not flash a text selection */
+li.chat-message.message [data-isp-open] { user-select: none; -webkit-user-select: none; }
 
 /* ---- roll-table draws (e.g. the Roll Critical Injury table): the system hides the result image; here the result is a flat row ----
    Selectors follow Foundry's table-draw template (ul.table-results > li.table-result > .result-text); untouched when a card has none. */

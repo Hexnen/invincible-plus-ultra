@@ -647,6 +647,56 @@ Hooks.on("preCreateChatMessage", (message) => {
   } catch (err) { console.warn(`${MODULE_ID} | damage capture (message)`, err); }
 });
 
+/* First display of a fresh card only (per client, keyed by message id): the Health panel is "armed" (bar shows the BEFORE state, readout shows
+   the BEFORE number), and when the panel is on screen it plays: the yellow cover slides off the lost part (CSS, transform only), the readout
+   counts down (rAF, tabular numerals), the BROKEN stamp lands last. Afterwards every class is removed: the final state is static markup.
+   Old messages, reduced motion, re-renders and scrolling never replay. The animated numbers are aria-hidden (the .isp-dmg-hp panel). */
+const DMG_SESSION = Date.now();
+const DMG_PLAYED = new Set();
+const DMG_STOP = new Map();   // message id -> finish() of a first-display animation that is running (Undo stops it before its own animation)
+function dmgPlay(message, hp, toEl, from, to) {
+  try {
+    const id = message?.id;
+    if (!id || DMG_PLAYED.has(id) || from === null || from <= to) return;
+    const ts = Number(message.timestamp) || 0;
+    if (!(Date.now() - ts < DMG_FRESH || ts >= DMG_SESSION)) return;
+    if (reduced(hp)) return;
+    const win = hp.ownerDocument.defaultView;
+    const DELAY = 200, DUR = 750, END = 1550;   // ms: matches isp-dmg-bleed (.8s after .2s) and the BROKEN stamp (1.05s + .3s) in chat.css
+    let started = false, raf = 0, timer = 0, obs = null;
+    toEl.textContent = String(from);
+    hp.classList.add("isp-dmg-arm");
+    const finish = () => {
+      cancelAnimationFrame(raf); clearTimeout(timer); obs?.disconnect();
+      DMG_STOP.delete(id);
+      toEl.textContent = String(to);
+      hp.classList.remove("isp-dmg-arm", "isp-dmg-play");
+    };
+    DMG_STOP.set(id, finish);
+    const start = () => {
+      if (started) return;
+      if (!hp.isConnected) return;
+      started = true;
+      obs?.disconnect();
+      DMG_PLAYED.add(id);
+      hp.classList.add("isp-dmg-play");
+      const t0 = performance.now() + DELAY;
+      const tick = (now) => {
+        if (!hp.isConnected) return finish();
+        const p = Math.min(1, Math.max(0, (now - t0) / DUR));
+        toEl.textContent = String(Math.round(from + (to - from) * (1 - Math.pow(1 - p, 3))));
+        if (p < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      timer = setTimeout(finish, END);
+    };
+    if (win?.IntersectionObserver) {
+      obs = new win.IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) start(); }, { threshold: 0.6 });
+      obs.observe(hp);
+    } else start();
+  } catch (err) { console.warn(`${MODULE_ID} | damage card animation`, err); }
+}
+
 function damageCard(message, html) {
   const flavor = game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken");
   if (!message?.flavor || message.flavor.trim() !== flavor) return;
@@ -691,13 +741,15 @@ function damageCard(message, html) {
   if (attName) {
     const seam = hide(make("i", "isp-dmg-seam"));
     const by = hide(make("div", "isp-dmg-from"));
-    const initial = () => make("span", "isp-dmg-av isp-dmg-ini", [...attName][0]?.toUpperCase() ?? "?");
+    const attId = typeof flag.attacker?.id === "string" ? flag.attacker.id : "";
+    const initial = () => openablePortrait(make("span", "isp-dmg-av isp-dmg-ini", [...attName][0]?.toUpperCase() ?? "?"), attId, attName);
     let av;
     if (typeof flag.attacker?.img === "string" && flag.attacker.img) {
       av = make("img", "isp-dmg-av");
       av.alt = "";
       av.loading = "lazy";
       av.src = flag.attacker.img;
+      openablePortrait(av, attId, attName);
       av.addEventListener("error", () => av.replaceWith(initial()), { once: true });
     } else av = initial();
     by.append(make("span", "isp-dmg-fl", t.attacker), av, make("span", "isp-dmg-fname", attName));
@@ -706,14 +758,22 @@ function damageCard(message, html) {
   root.append(top);
 
   // ---- Health: before -> after / max, and a continuous bar (kept part solid, lost part hatched red) ----
+  let hpAnim = null;
   if (to !== null) {
     const hp = hide(make("div", "isp-dmg-hp"));
     const head = make("div", "isp-dmg-hh");
     head.append(make("span", "isp-dmg-hl", healthWord));
-    if (broken) head.append(make("span", "isp-dmg-broken", t.broken));
+    if (broken) {   // a sticker: the zero-size slot sits in the gap of the row, the stamp inside it is absolutely positioned (never takes room)
+      const slot = make("span", "isp-dmg-bslot");
+      slot.append(make("span", "isp-dmg-broken", t.broken));
+      head.append(slot);
+    }
     const read = make("span", "isp-dmg-read");
     if (from !== null) read.append(make("span", "isp-hp-from", String(from)), make("i", "isp-hp-arrow"));
-    read.append(make("b", "isp-hp-to", String(to)));
+    const toEl = make("b", "isp-hp-to", String(to));
+    if (from !== null) { toEl.style.display = "inline-block"; toEl.style.textAlign = "right"; toEl.style.minWidth = `${Math.max(String(from).length, String(to).length)}ch`; }   // fixed width: the count-down never shifts its neighbours
+    read.append(toEl);
+    hpAnim = { hp, toEl };
     if (max) read.append(make("span", "isp-hp-max", `/ ${max}`));
     head.append(read);
     hp.append(head);
@@ -721,9 +781,14 @@ function damageCard(message, html) {
       const pct = (v) => Math.max(0, Math.min(100, (v / max) * 100));
       const bar = make("div", "isp-dmg-bar");
       bar.style.setProperty("--to", pct(to).toFixed(2));
+      if (pct(to) <= 34) hp.classList.add("isp-dmg-low");   // same threshold as the sheet's low Health: heart tile + number go red-ink (CSS)
       if (from !== null && from > to) bar.style.setProperty("--from", pct(from).toFixed(2));
       const step = max <= 20 ? 1 : max <= 40 ? 5 : max <= 100 ? 10 : 0;   // hairline ticks: every point on a small bar, fewer on a large one
-      if (step) { bar.dataset.ticks = "1"; bar.style.setProperty("--tick", `${((step / max) * 100).toFixed(3)}%`); }
+      if (step) {
+        bar.dataset.ticks = "1";
+        if (max / step > 12) bar.dataset.dense = "1";   // 13-20 segments: CSS draws the slanted dividers a little thinner
+        bar.style.setProperty("--tick", `${((step / max) * 100).toFixed(3)}%`);
+      }
       if (to > 0) bar.append(make("i", "isp-dmg-keep"));
       if (from !== null && from > to) bar.append(make("i", "isp-dmg-lost"));
       hp.append(bar);
@@ -740,6 +805,7 @@ function damageCard(message, html) {
   content.prepend(root);
   li.classList.add("isp-dmgcard");
   if (broken) li.classList.add("isp-dmg-brk");
+  if (hpAnim) dmgPlay(message, hpAnim.hp, hpAnim.toEl, from, to);
 
   const ciName = paras[1]?.querySelector("strong")?.textContent?.trim();
   if (!ciName) return;
@@ -774,6 +840,519 @@ function damageCard(message, html) {
 }
 Hooks.on("renderChatMessageHTML", (message, html) => {
   try { damageCard(message, html); } catch (err) { console.warn(`${MODULE_ID} | damage card`, err); }
+});
+
+/* ---------- GM: double-click a portrait on a chat card to open that character's sheet ----------
+   Targets: the speaker portrait in every card header (message.speakerActor: the token's actor for an unlinked token) and, on the Damage
+   taken card, the attacker's portrait (actor uuid / id kept in flags.dmg.attacker.id; no id = not openable, nothing is marked).
+   One delegated dblclick listener per document (the main one, plus a popout window's document as soon as it renders an application).
+   Marked elements carry data-isp-open (CSS: no text selection); the optional data-isp-actor holds the actor reference. */
+const PORTRAIT_TXT = { en: "Double-click to open the character sheet", pl: "Dwuklik otwiera kartę postaci" };
+const PORTRAIT_DOCS = new WeakSet();
+
+function openablePortrait(el, actorRef, name) {
+  if (!el || !game.user?.isGM) return el;
+  if (actorRef !== null && actorRef !== undefined && !actorRef) return el;   // an attacker without an id: nothing to open
+  const hint = PORTRAIT_TXT[game.i18n.lang === "pl" ? "pl" : "en"];
+  el.dataset.ispOpen = "1";
+  if (actorRef) el.dataset.ispActor = actorRef;
+  el.dataset.tooltip = hint;
+  el.dataset.tooltipDirection = "UP";
+  el.setAttribute("aria-label", name ? `${name}. ${hint}` : hint);
+  return el;
+}
+
+function portraitActor(el) {
+  const ref = el.closest("[data-isp-actor]")?.dataset.ispActor;
+  if (ref) {
+    try {
+      const doc = ref.includes(".") ? fromUuidSync(ref) : game.actors.get(ref);
+      const actor = doc?.documentName === "Token" ? doc.actor : doc;
+      return actor?.documentName === "Actor" ? actor : null;
+    } catch { return null; }
+  }
+  const id = el.closest("li.chat-message")?.dataset?.messageId;
+  return (id ? game.messages.get(id)?.speakerActor : null) ?? null;
+}
+
+function bindPortraits(doc) {
+  if (!doc || PORTRAIT_DOCS.has(doc)) return;
+  PORTRAIT_DOCS.add(doc);
+  doc.addEventListener("dblclick", (ev) => {
+    try {
+      if (!game.user.isGM) return;
+      const el = ev.target?.closest?.(".chat-message [data-isp-open]");
+      if (!el) return;
+      const sheet = portraitActor(el)?.sheet;
+      if (!sheet) return;
+      ev.preventDefault();
+      ev.stopPropagation();   // only our double-click: single clicks on the portrait keep Foundry's own behaviour
+      Promise.resolve(sheet.render({ force: true })).then(() => sheet.bringToFront?.()).catch((err) => console.warn(`${MODULE_ID} | open sheet`, err));
+    } catch (err) { console.warn(`${MODULE_ID} | portrait double-click`, err); }
+  });
+}
+bindPortraits(document);
+Hooks.on("renderApplicationV2", (_app, element) => { try { bindPortraits(element?.ownerDocument); } catch { /* a popout without a document */ } });
+Hooks.on("renderChatMessageHTML", (message, html) => {
+  try {
+    if (!game.user.isGM) return;
+    bindPortraits(html.ownerDocument);
+    const actor = message.speakerActor;
+    if (!actor) return;
+    for (const img of html.querySelectorAll(".message-header img.avatar")) openablePortrait(img, null, actor.name);
+  } catch (err) { console.warn(`${MODULE_ID} | portrait hint`, err); }
+});
+
+/* =====================================================================================================================
+   UNDO FOR "APPLY DAMAGE" (self-contained section)
+   The system's Apply damage records nothing about itself, so the GM client keeps a LEDGER on the attack card (the message whose button
+   was clicked): flags.invincible-sheet-plus.applied = [ { uid, actorUuid, tokenUuid, name, healthFrom, healthTo, conditionItemId,
+   injuryItemId, damageMsgId, t } ], one entry per target actor that was hit. Undo reads it; nothing here edits the system.
+   Capture WINDOW: opened by the capture-phase click on the card's Apply damage button, with the tokens selected at that moment as its
+   targets (the system uses the same selection). It lasts until every target has its "Damage Taken" message (+ a short grace for the
+   critical-injury item) or APPLY_WINDOW_MS, whichever comes first. Inside a window only these hooks write to it:
+     - preUpdateActor: a Health DROP on a target, and only when it equals what the system would compute (attack damage minus the
+       highest armor protection unless bypassed, floored at 0). Anything else is not attributed.
+     - createItem on a target: a criticalInjury (only for a slot whose Health went to 0) or the roll's condition item
+       (matched by compendium source or name).
+     - createChatMessage: the "Damage Taken" message created by this client for a target whose Health was captured.
+   Several windows (double click, two cards) are served first-in-first-out per target slot, so each Health change is claimed once.
+   Writes to one message are serialised, an entry is merged by uid (later flushes add the item / message ids) and an undone uid can
+   never come back. If something cannot be attributed with confidence it is simply not recorded: the entry only holds what is certain. */
+const APPLY_WINDOW_MS = 12000;   // a window closes after this long at the latest (compendium loads can be slow)
+const APPLY_GRACE_MS = 2500;     // after the last target's message: the injury item may still be on its way
+const APPLY_FLUSH_MS = 500;      // events are written to the card in one update after this quiet time
+const APPLY_OPEN = [];           // open windows, oldest first
+const APPLY_QUEUE = new Map();   // attack message id -> promise (serialised ledger writes)
+const UNDO_BUSY = new Set();     // ledger entry uids being undone
+const UNDONE = new Set();        // uids already undone in this session
+
+const ledgerOf = (message) => {
+  const list = message?.flags?.[MODULE_ID]?.applied;
+  return Array.isArray(list) ? list.filter((e) => e && typeof e === "object" && typeof e.uid === "string") : [];
+};
+
+function ledgerWrite(msgId, fn) {
+  const next = (APPLY_QUEUE.get(msgId) ?? Promise.resolve()).catch(() => {}).then(fn);
+  APPLY_QUEUE.set(msgId, next);
+  next.catch(() => {}).then(() => { if (APPLY_QUEUE.get(msgId) === next) APPLY_QUEUE.delete(msgId); });
+  return next;
+}
+
+/* what the system would do to this target: attack damage minus the best armor (unless bypassed), floored at 0, then Health - damage */
+function expectedHealth(snap, actor, from) {
+  if (!snap.actual || !Number.isFinite(snap.dmg)) return null;
+  let protection = 0;
+  const armor = actor?.system?.bonuses?.armorProtection;
+  if (armor && !snap.bypass) {
+    const values = Object.values(armor).map(Number).filter(Number.isFinite);
+    if (values.length) protection = Math.max(...values);
+  }
+  return Math.max(0, from - Math.max(0, snap.dmg - protection));
+}
+
+function openApplyWindow(msgId, synth = null) {
+  try {
+    if (!game.user.isGM) return null;
+    const message = game.messages.get(msgId);
+    const roll = message?.rolls?.[0];
+    if (!message || (!roll && !synth)) return null;
+    const snap = synth ?? { dmg: Number(roll.attackDamage), bypass: !!roll.options?.bypassArmor, actual: !!roll.options?.actualDamage, cond: roll.options?.conditionToApply ?? null };
+    const pairs = synth?.actors
+      ? synth.actors.map((actor) => ({ actor, token: actor.token ?? null }))
+      : (canvas?.tokens?.controlled ?? []).map((t) => ({ actor: t.actor, token: t.document }));
+    const slots = pairs.filter((p) => p.actor).map((p) => ({
+      uid: foundry.utils.randomID(), actorUuid: p.actor.uuid, tokenUuid: p.token?.uuid ?? null, name: String(p.actor.name ?? ""),
+      healthFrom: null, healthTo: null, conditionItemId: null, injuryItemId: null, damageMsgId: null, t: null
+    }));
+    if (!slots.length) return null;
+    const w = { msgId, t0: Date.now(), snap, slots, closed: false, timer: 0, flushT: 0, lastKey: "" };
+    w.timer = setTimeout(() => closeApplyWindow(w), APPLY_WINDOW_MS);
+    APPLY_OPEN.push(w);
+    return w;
+  } catch (err) { console.warn(`${MODULE_ID} | undo ledger (window)`, err); return null; }
+}
+
+function closeApplyWindow(w) {
+  if (w.closed) return;
+  w.closed = true;
+  clearTimeout(w.timer);
+  flushApplyWindow(w);
+  const i = APPLY_OPEN.indexOf(w);
+  if (i >= 0) APPLY_OPEN.splice(i, 1);
+}
+
+/* first open window (oldest first) with a target slot of this actor that satisfies the test */
+function applySlot(actorUuid, test) {
+  for (const w of APPLY_OPEN) {
+    if (w.closed) continue;
+    const s = w.slots.find((slot) => slot.actorUuid === actorUuid && test(w, slot));
+    if (s) return { w, s };
+  }
+  return null;
+}
+
+function flushApplyWindow(w) {
+  clearTimeout(w.flushT);
+  const entries = w.slots
+    .filter((s) => s.healthTo !== null || s.conditionItemId)
+    .map((s) => ({ uid: s.uid, actorUuid: s.actorUuid, tokenUuid: s.tokenUuid, name: s.name, healthFrom: s.healthFrom, healthTo: s.healthTo,
+      conditionItemId: s.conditionItemId, injuryItemId: s.injuryItemId, damageMsgId: s.damageMsgId, t: s.t ?? w.t0 }));
+  const key = JSON.stringify(entries);
+  if (!entries.length || key === w.lastKey) return Promise.resolve();
+  w.lastKey = key;
+  return ledgerWrite(w.msgId, async () => {
+    const message = game.messages.get(w.msgId);
+    if (!message) return;
+    const byUid = new Map(ledgerOf(message).map((e) => [e.uid, e]));
+    for (const e of entries) if (!UNDONE.has(e.uid)) byUid.set(e.uid, e);
+    if (!byUid.size) return;
+    await message.update({ flags: { [MODULE_ID]: { applied: [...byUid.values()] } } });
+  }).catch((err) => console.warn(`${MODULE_ID} | undo ledger (write)`, err));
+}
+
+function touchApply(w) {
+  clearTimeout(w.flushT);
+  w.flushT = setTimeout(() => flushApplyWindow(w), APPLY_FLUSH_MS);
+}
+
+document.addEventListener("click", (ev) => {
+  try {
+    const btn = ev.target?.closest?.('.chat-message .dice-buttons.apply-damage button[data-action="applyTargetDamage"]');
+    const id = btn?.closest("[data-message-id]")?.dataset?.messageId;
+    if (id) openApplyWindow(id);
+  } catch (err) { console.warn(`${MODULE_ID} | undo ledger (click)`, err); }
+}, true);   // capture phase: the selection is read before the system's handler runs
+
+Hooks.on("preUpdateActor", (actor, changes) => {
+  try {
+    if (!APPLY_OPEN.length) return;
+    const key = "system.derived.health.value";
+    const to = dmgNum(changes?.[key] ?? foundry.utils.getProperty(changes ?? {}, key));
+    const from = dmgNum(actor?.system?.derived?.health?.value);
+    if (to === null || from === null || to >= from) return;
+    const hit = applySlot(actor.uuid, (w, s) => {
+      if (s.healthTo !== null) return false;
+      const expected = expectedHealth(w.snap, actor, from);
+      return expected !== null && expected === to;
+    });
+    if (!hit) return;
+    Object.assign(hit.s, { healthFrom: from, healthTo: to, t: Date.now() });
+    touchApply(hit.w);
+  } catch (err) { console.warn(`${MODULE_ID} | undo ledger (health)`, err); }
+});
+
+const conditionMatches = (item, uuid) => {
+  if (!uuid) return false;
+  const src = item._stats?.compendiumSource ?? item.flags?.core?.sourceId ?? null;
+  if (src && src === uuid) return true;
+  let name = null;
+  try { name = fromUuidSync(uuid)?.name ?? null; } catch { name = null; }
+  return !!name && item.name === name;
+};
+
+Hooks.on("createItem", (item) => {
+  try {
+    if (!APPLY_OPEN.length) return;
+    const actor = item.parent;
+    if (!actor || actor.documentName !== "Actor") return;
+    const injury = item.type === "criticalInjury";
+    const hit = applySlot(actor.uuid, (w, s) => (injury ? s.healthTo === 0 && !s.injuryItemId : !s.conditionItemId && conditionMatches(item, w.snap.cond)));
+    if (!hit) return;
+    if (injury) hit.s.injuryItemId = item.id; else hit.s.conditionItemId = item.id;
+    touchApply(hit.w);
+  } catch (err) { console.warn(`${MODULE_ID} | undo ledger (item)`, err); }
+});
+
+Hooks.on("createChatMessage", (message) => {
+  try {
+    if (!APPLY_OPEN.length || message?.author?.id !== game.user.id) return;
+    if (!message.flavor || message.flavor.trim() !== game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken")) return;
+    const actor = message.speakerActor;
+    if (!actor) return;
+    const hit = applySlot(actor.uuid, (w, s) => s.healthTo !== null && !s.damageMsgId);
+    if (!hit) return;
+    hit.s.damageMsgId = message.id;
+    touchApply(hit.w);
+    // every target answered: close soon (a target with 0 damage never answers; then the time limit closes the window)
+    if (hit.w.slots.every((s) => s.damageMsgId)) { clearTimeout(hit.w.timer); hit.w.timer = setTimeout(() => closeApplyWindow(hit.w), APPLY_GRACE_MS); }
+  } catch (err) { console.warn(`${MODULE_ID} | undo ledger (message)`, err); }
+});
+
+/* ---------- Undo: a button on the "Damage taken" card ----------
+   The card finds its ledger entry by itself (ledgerFor: the attack message whose ledger names this card as damageMsgId), so nothing is
+   written to the Damage Taken message and it never re-renders because of the ledger (that would cut the first-display animation short).
+   The ledger write re-renders the ATTACK card; the updateChatMessage hook below then adds the button to cards that are already on screen.
+   Undo order: Health + items (the confirm dialog may stop everything here, then nothing plays), the short reverse animation of the Health
+   bar, the card leaves, the Damage Taken message is deleted, the ledger entry is removed. */
+const UNDO_TXT = {
+  en: {
+    label: "Undo", busy: "Undoing...",
+    aria: (name) => `Undo damage to ${name}`, tipTitle: (name) => `Undo damage to ${name}`,
+    tipHp: (a, b) => `Restores Health ${a} -> ${b}.`,
+    tipInjury: (n) => (n ? `Removes the critical injury ${n}.` : "Removes the critical injury."),
+    tipCond: (n) => (n ? `Removes the condition ${n}.` : "Removes the condition."),
+    tipPlain: "Removes this card.",
+    title: "Health changed", yes: "Restore", no: "Keep",
+    ask: (name, now, to) => `Health of ${name} changed since the damage was applied (now ${now}). Restore it to ${to} anyway?`,
+    kept: (name, now) => `Health of ${name} stays at ${now}.`,
+    done: (name) => `Damage undone: ${name}`, doneHp: (name, a, b) => `Damage undone: ${name} health ${a} -> ${b}`,
+    fail: "Could not undo the damage. Details are in the console."
+  },
+  pl: {
+    label: "Cofnij", busy: "Cofam...",
+    aria: (name) => `Cofnij obrażenia: ${name}`, tipTitle: (name) => `Cofnij obrażenia: ${name}`,
+    tipHp: (a, b) => `Przywraca Zdrowie ${a} -> ${b}.`,
+    tipInjury: (n) => (n ? `Usuwa ranę krytyczną ${n}.` : "Usuwa ranę krytyczną."),
+    tipCond: (n) => (n ? `Usuwa stan ${n}.` : "Usuwa stan."),
+    tipPlain: "Usuwa tę kartę.",
+    title: "Zdrowie się zmieniło", yes: "Przywróć", no: "Zostaw",
+    ask: (name, now, to) => `Zdrowie ${name} zmieniło się od zadania obrażeń (teraz ${now}). Przywrócić mimo to do ${to}?`,
+    kept: (name, now) => `Zdrowie ${name} zostaje na ${now}.`,
+    done: (name) => `Cofnięto obrażenia: ${name}`, doneHp: (name, a, b) => `Cofnięto obrażenia: ${name}, zdrowie ${a} -> ${b}`,
+    fail: "Nie udało się cofnąć obrażeń. Szczegóły w konsoli."
+  }
+};
+const undoText = () => UNDO_TXT[game.i18n.lang === "pl" ? "pl" : "en"];
+
+/* the attack message + ledger entry that produced this Damage Taken card (null for old cards, macros, another table) */
+function ledgerFor(damageMsgId) {
+  if (!damageMsgId) return null;
+  for (const m of game.messages) {
+    if (!Array.isArray(m.flags?.[MODULE_ID]?.applied)) continue;
+    const entry = ledgerOf(m).find((e) => e.damageMsgId === damageMsgId);
+    if (entry) return { attack: m, entry };
+  }
+  return null;
+}
+
+async function ledgerActor(entry) {
+  for (const uuid of [entry.actorUuid, entry.tokenUuid]) {
+    if (!uuid) continue;
+    try {
+      const doc = await fromUuid(uuid);
+      const actor = doc?.documentName === "Token" ? doc.actor : doc;
+      if (actor?.documentName === "Actor") return actor;
+    } catch { /* try the next one */ }
+  }
+  return null;
+}
+
+/* Reverts one entry's DATA in this order: Health (asks first when it changed since), items. Returns { name, restore, now } when it is
+   settled, or null when the GM chose to keep the current Health (nothing was touched). The card and the ledger are the caller's job. */
+async function undoEntry(entry, T) {
+  const actor = await ledgerActor(entry);
+  const name = actor?.name || entry.name || "?";
+  let restore = null;
+  let now = null;
+  if (actor && entry.healthFrom !== null && entry.healthFrom !== undefined && entry.healthTo !== null && entry.healthTo !== undefined) {
+    now = dmgNum(actor.system?.derived?.health?.value);
+    if (now === entry.healthTo) restore = entry.healthFrom;
+    else if (now !== null && now !== entry.healthFrom) {
+      const yes = await foundry.applications.api.DialogV2.confirm({
+        window: { title: T.title }, modal: true, rejectClose: false,
+        content: `<p>${stuntEsc(T.ask(name, now, entry.healthFrom))}</p>`,
+        yes: { label: T.yes }, no: { label: T.no }
+      });
+      if (!yes) { ui.notifications.info(T.kept(name, now)); return null; }
+      restore = entry.healthFrom;
+    }
+  }
+  if (actor && restore !== null) {
+    const max = dmgNum(actor.system?.derived?.health?.max);
+    await actor.update({ "system.derived.health.value": max && max > 0 ? Math.min(restore, max) : restore });
+    HEALTH_SEEN.delete(actor.uuid); HEALTH_SEEN.delete(`id:${actor.id}`);   // this rise is not a hit: it must never explain a later Damage Taken card
+  }
+  if (actor) {
+    const ids = [];
+    if (entry.conditionItemId && actor.items.has(entry.conditionItemId)) ids.push(entry.conditionItemId);
+    if (entry.injuryItemId && actor.items.get(entry.injuryItemId)?.type === "criticalInjury") ids.push(entry.injuryItemId);
+    if (ids.length) await actor.deleteEmbeddedDocuments("Item", ids);
+  }
+  return { name, restore, now };
+}
+
+/* The reverse of the card's first display (DOM only, transform / opacity only, ~0.7 s): the cover slides back over the hatched lost part
+   (the fill edge travels from "after" to "before"), the readout counts up, the bar pulses once, then the card leaves. Resolves when the
+   card is gone from view; resolves at once when there is no visible card (chat tab closed, other window) or under reduced motion. */
+const UNDO_FILL_MS = 460, UNDO_PULSE_MS = 160, UNDO_OUT_MS = 240;
+function undoCards(msgId) { return [...document.querySelectorAll(`li.chat-message[data-message-id="${msgId}"]`)]; }
+
+function undoPlay(msgId, back) {
+  try {
+    DMG_STOP.get(msgId)?.();   // a first-display animation still running must not fight this one
+    const cards = undoCards(msgId).filter((li) => li.isConnected && !reduced(li) && (typeof li.checkVisibility !== "function" || li.checkVisibility()));
+    if (!cards.length) return Promise.resolve();
+    return Promise.all(cards.map((li) => new Promise((resolve) => {
+      const win = li.ownerDocument.defaultView;
+      const hp = li.querySelector(".isp-dmg-hp");
+      const toEl = hp?.querySelector(".isp-hp-to");
+      const timers = [];
+      let raf = 0, over = false;
+      const end = () => { if (over) return; over = true; win.cancelAnimationFrame(raf); timers.forEach(clearTimeout); resolve(); };
+      const leave = () => {
+        if (!li.isConnected) return end();
+        if (toEl && back !== null) toEl.textContent = String(back);
+        li.classList.add("isp-dmg-out");
+        timers.push(setTimeout(end, UNDO_OUT_MS));
+      };
+      timers.push(setTimeout(end, 1800));   // never hold the delete hostage
+      const after = toEl ? dmgNum(toEl.textContent) : null;
+      if (!hp || !hp.isConnected) return leave();
+      toEl.dataset.ispWas = toEl.textContent;
+      li.classList.remove("isp-dmg-brk");
+      hp.classList.remove("isp-dmg-arm", "isp-dmg-play");
+      hp.classList.add("isp-dmg-undoing");
+      if (toEl && after !== null && back !== null && back > after) {
+        const t0 = performance.now();
+        const tick = (now) => {
+          const p = Math.min(1, (now - t0) / UNDO_FILL_MS);
+          toEl.textContent = String(Math.round(after + (back - after) * (1 - Math.pow(1 - p, 3))));
+          if (p < 1 && li.isConnected) raf = win.requestAnimationFrame(tick);
+        };
+        raf = win.requestAnimationFrame(tick);
+      }
+      timers.push(setTimeout(leave, UNDO_FILL_MS + UNDO_PULSE_MS + 40));
+    })));
+  } catch (err) { console.warn(`${MODULE_ID} | undo animation`, err); return Promise.resolve(); }
+}
+
+/* undo failed after the animation started (the message could not be deleted): put the card back as it was */
+function undoReset(msgId) {
+  for (const li of undoCards(msgId)) {
+    li.classList.remove("isp-dmg-out");
+    const hp = li.querySelector(".isp-dmg-hp");
+    hp?.classList.remove("isp-dmg-undoing");
+    const toEl = hp?.querySelector(".isp-hp-to");
+    if (toEl?.dataset.ispWas !== undefined) { toEl.textContent = toEl.dataset.ispWas; delete toEl.dataset.ispWas; }
+  }
+}
+
+/* Undoes ONE target: attackId = the attack message that holds the ledger, uid = the entry (one Damage Taken card). */
+async function runUndo(attackId, uid, btn) {
+  if (!game.user.isGM || !attackId || !uid || UNDO_BUSY.has(uid) || UNDONE.has(uid)) return;
+  const entry = ledgerOf(game.messages.get(attackId)).find((e) => e.uid === uid);
+  if (!entry) return;
+  UNDO_BUSY.add(uid);
+  const T = undoText();
+  const label = btn?.querySelector?.(".isp-undo-t");
+  const busy = (on) => {
+    if (!btn?.isConnected) return;
+    btn.disabled = on;
+    if (on) btn.setAttribute("aria-busy", "true"); else btn.removeAttribute("aria-busy");
+    if (label) label.textContent = on ? T.busy : T.label;
+  };
+  busy(true);
+  let done = false;
+  try {
+    const res = await undoEntry(entry, T);
+    if (res) {
+      const back = dmgNum(entry.healthFrom);
+      if (entry.damageMsgId) {
+        await undoPlay(entry.damageMsgId, back);
+        const taken = game.messages.get(entry.damageMsgId);
+        // the card is deleted, not greyed out: an undone hit leaves nothing in the log to misread
+        if (taken && taken.flavor?.trim() === game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken")) await taken.delete();
+      }
+      UNDONE.add(uid);   // from here the entry can never be re-added by a late flush
+      done = true;
+      await ledgerWrite(attackId, async () => {
+        const message = game.messages.get(attackId);
+        if (!message) return;
+        const left = ledgerOf(message).filter((e) => e.uid !== uid);
+        if (left.length) await message.update({ flags: { [MODULE_ID]: { applied: left } } });
+        else await message.unsetFlag(MODULE_ID, "applied");
+      });
+      ui.notifications.info(res.restore !== null && res.now !== null ? T.doneHp(res.name, res.now, res.restore) : T.done(res.name));
+    }
+  } catch (err) {
+    console.warn(`${MODULE_ID} | undo`, err);
+    ui.notifications.error(T.fail);
+    if (entry.damageMsgId) undoReset(entry.damageMsgId);
+  } finally {
+    UNDO_BUSY.delete(uid);
+    if (!done) busy(false);
+  }
+}
+
+/* the button, appended after the card's panels (GM only, only for a card that has a ledger entry) */
+function undoOnCard(message, li) {
+  if (!game.user.isGM || !message?.id || !li?.querySelector) return;
+  if (!message.flavor || message.flavor.trim() !== game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken")) return;
+  const content = li.querySelector(".message-content");
+  if (!content) return;
+  const old = content.querySelector(":scope > .isp-dmg-act");
+  if (old?.querySelector("[aria-busy]")) return;
+  const found = ledgerFor(message.id);
+  if (!found || UNDONE.has(found.entry.uid)) { old?.remove(); return; }
+  const { attack, entry } = found;
+  const sig = [entry.uid, entry.healthFrom, entry.healthTo, entry.injuryItemId, entry.conditionItemId].join("|");
+  if (old?.dataset.sig === sig) return;
+  old?.remove();
+
+  const T = undoText();
+  const actor = message.speakerActor;
+  const name = String(entry.name || actor?.name || message.alias || "?");
+  const itemName = (id) => (id ? String(actor?.items?.get(id)?.name ?? "") : "");
+  const a = dmgNum(entry.healthTo), b = dmgNum(entry.healthFrom);
+  const parts = [];
+  if (a !== null && b !== null) parts.push(T.tipHp(a, b));
+  if (entry.injuryItemId) parts.push(T.tipInjury(itemName(entry.injuryItemId)));
+  if (entry.conditionItemId) parts.push(T.tipCond(itemName(entry.conditionItemId)));
+  if (!parts.length) parts.push(T.tipPlain);
+
+  const box = document.createElement("div");
+  box.className = "isp-dmg-act";
+  box.dataset.sig = sig;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "isp-undo";
+  btn.setAttribute("aria-label", T.aria(name));
+  const sr = document.createElement("span");
+  sr.className = "isp-undo-sr";
+  sr.id = `isp-undo-${message.id}`;
+  sr.textContent = parts.join(" ");
+  btn.setAttribute("aria-describedby", sr.id);
+  const text = document.createElement("span");
+  text.className = "isp-undo-t";
+  text.textContent = T.label;
+  btn.append(text);
+  btn.dataset.tooltipHtml = `<strong>${stuntEsc(T.tipTitle(name))}</strong>${parts.map((p) => `<p>${stuntEsc(p)}</p>`).join("")}`;
+  btn.dataset.tooltipClass = "isp-tip";
+  btn.dataset.tooltipDirection = "UP";
+  btn.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); runUndo(attack.id, entry.uid, btn); });
+  box.append(btn, sr);
+  content.append(box);
+}
+
+Hooks.on("renderChatMessageHTML", (message, html) => {
+  try { undoOnCard(message, html.matches?.(".chat-message") ? html : html.querySelector?.(".chat-message")); } catch (err) { console.warn(`${MODULE_ID} | undo button`, err); }
+});
+/* the ledger is written ~0.5 s after the card appears: put the button on cards that are already on screen (every GM client) */
+Hooks.on("updateChatMessage", (message) => {
+  try {
+    if (!game.user.isGM || !Array.isArray(message.flags?.[MODULE_ID]?.applied)) return;
+    for (const e of ledgerOf(message)) {
+      if (!e.damageMsgId) continue;
+      const taken = game.messages.get(e.damageMsgId);
+      if (taken) for (const li of undoCards(e.damageMsgId)) undoOnCard(taken, li);
+    }
+  } catch (err) { console.warn(`${MODULE_ID} | undo button (refresh)`, err); }
+});
+
+/* the tooltip also on keyboard focus (Esc hides it) */
+const UNDO_TIP = ".chat-message .isp-undo[data-tooltip-html]";
+document.addEventListener("focusin", (ev) => {
+  const b = ev.target?.closest?.(UNDO_TIP);
+  if (b && game.tooltip?.activate) game.tooltip.activate(b, { html: b.dataset.tooltipHtml, direction: "UP", cssClass: "isp-tip" });
+});
+document.addEventListener("focusout", (ev) => { if (ev.target?.closest?.(UNDO_TIP)) game.tooltip?.deactivate?.(); });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && ev.target?.closest?.(UNDO_TIP)) game.tooltip?.deactivate?.(); });
+
+/* handle for tests from the console: game.modules.get("invincible-sheet-plus").api */
+Hooks.once("ready", () => {
+  const mod = game.modules.get(MODULE_ID);
+  if (mod) mod.api = { ...(mod.api ?? {}), openApplyWindow, closeApplyWindow, flushApplyWindow, runUndo, ledgerOf, ledgerFor, windows: APPLY_OPEN };
 });
 
 /* =====================================================================================================================
