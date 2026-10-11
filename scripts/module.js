@@ -507,6 +507,8 @@ function miniDice(dr) {
 }
 
 Hooks.on("renderChatMessageHTML", (message, html) => {
+  // Only a GM can apply damage (the system refuses anyone else with "You are not a GM!"), so players do not get the button at all
+  if (!game.user.isGM) html.querySelectorAll(".dice-buttons.apply-damage").forEach((el) => el.remove());
   const short = STAT_SHORT[game.i18n.lang] ?? STAT_SHORT.en;
   html.querySelectorAll(":is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma) > .label").forEach((label) => {
     const key = statKey(label);
