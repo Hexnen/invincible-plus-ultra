@@ -47,6 +47,8 @@ fam("IPC.Powers.Type.", ["Attack", "Control", "Defense", "Modification", "Moveme
 fam("IPC.Powers.Pays.", ["level", "boost"]);
 fam("IPC.Powers.PaysChip.", ["level", "boost", "none"]);
 fam("IPC.Talents.Fx.", ["health", "resolve", "slugfest", "reputation", "resources"]);
+fam("IPC.Grad.", Array.from({ length: 13 }, (_, i) => i));
+fam("IPC.Attrs.Group.", ["physical", "mental"], ["", ".Sub"]);
 fam("IPC.Stepper.State.",["current", "done", "issue", "todo"]);
 fam("IPC.Field.", ["name", "civilianName", "role", "appearance", "occupation", "personality", "drive", "flaw", "relationships", "team", "teamBase", "reputation", "resources", "rank"]);
 
