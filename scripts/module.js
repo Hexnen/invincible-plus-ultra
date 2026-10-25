@@ -1847,3 +1847,15 @@ import("./chargen/tables.mjs")
 import("./chargen/apply.mjs")
   .then((apply) => apply.start())
   .catch((err) => console.warn(`${MODULE_ID} | chargen data layer not loaded (everything else is unaffected)`, err));
+
+/* CHARACTER GENERATOR, WIZARD (scripts/chargen/main.mjs + wizard.mjs, styles/chargen.css): the header button of superhero sheets (+ a 3-dot menu entry), the
+   settings, and api.chargen.open(actor). The wizard window itself is imported on the first click. Same mechanism and recorded phases as the blocks above. */
+import("./chargen/main.mjs")
+  .then((chargen) => chargen.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | chargen wizard not loaded (everything else is unaffected)`, err));
+
+/* TEAM & BASE CARD, DATA LAYER (scripts/base/): world JournalEntry team cards (flags), runtime catalog of the book's base upgrades / Base Events /
+   City Locations, hero text sync, GM relay and the API exposed as api.base. No UI yet. Same mechanism and recorded phases as the blocks above. */
+import("./base/main.mjs")
+  .then((base) => base.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | team & base card not loaded (everything else is unaffected)`, err));
