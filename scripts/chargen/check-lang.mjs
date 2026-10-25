@@ -41,7 +41,8 @@ fam("IPC.Level.", ["basic", "major", "massive", "monstrous"]);
 fam("IPC.Attr.", ["fighting", "agility", "strength", "reason", "intuition", "presence"]);
 fam("IPC.Type.", ["powerSource", "power", "boost", "limit", "talent", "drawback"]);
 fam("IPC.Mode.", ["manual", "random"]);
-fam("IPC.Identity.", ["secret", "public"]);
+fam("IPC.Identity.", ["secret", "public", "none"]);
+fam("IPC.Role.", ["Blaster", "Brains", "Brawn", "Controller", "Defender", "Leader", "Striker", "Wildcard"]);
 fam("IPC.Stepper.State.", ["current", "done", "issue", "todo"]);
 fam("IPC.Field.", ["name", "civilianName", "role", "appearance", "occupation", "personality", "drive", "flaw", "relationships", "team", "teamBase", "reputation", "resources", "rank"]);
 
