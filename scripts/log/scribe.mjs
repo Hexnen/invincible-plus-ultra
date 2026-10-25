@@ -200,7 +200,7 @@ async function persistSnapshot(actor, scope) {
 }
 
 /* ------------------------------------------------------------------ catch-up / baseline */
-async function baselineActor(actor, scope) {
+async function baselineActor(actor, scope, startAt = null) {
   const st = buildState(actor, scope);
   S.states.set(actor.id, st);
   const had = Store.actorJournal(actor.id);
@@ -210,7 +210,7 @@ async function baselineActor(actor, scope) {
     const r = await Store.ensureJournal(actor, scope);
     if (r.created || !snap) {
       const e = [];
-      if (r.created) { S.counts.starts++; e.push(M.normalizeEntry({ t: actor._stats?.createdTime ?? Date.now(), u: actor._stats?.lastModifiedBy ?? "", k: "log.start", d: { baseline: true } }, { actorId: actor.id, path: "start" })); }
+      if (r.created) { S.counts.starts++; e.push(M.normalizeEntry({ t: startAt ?? actor._stats?.createdTime ?? Date.now(), u: startAt ? game.user.id : actor._stats?.lastModifiedBy ?? "", k: "log.start", d: { baseline: true } }, { actorId: actor.id, path: "start" })); }
       await Store.commit(actor, scope, { pub: e.filter(Boolean) });
     }
     await Store.writeSnapshot(actor.id, C.snapOps({}, cur));
@@ -253,6 +253,17 @@ export async function rescan() {
   for (const a of game.actors) { const scope = scopeOf(a); if (scope && !S.states.has(a.id)) { try { await baselineActor(a, scope); await Store.reconcile(a); } catch (e) { console.warn(`${LOG} baseline failed`, e); } } }
 }
 async function flushActor(id) { void id; tick(true); await S.chain; }
+/** After the log of a LIVE actor was deleted from the maintenance window: forget its snapshot and start a fresh log (journal, `log.start` stamped now, snapshot). */
+export async function rebaseline(actorId) {
+  if (!S.on) return false;
+  const a = game.actors.get(actorId);
+  S.snaps.delete(actorId); S.states.delete(actorId);
+  const scope = a ? scopeOf(a) : null;
+  if (!a || !scope) return false;
+  await baselineActor(a, scope, Date.now());
+  await Store.reconcile(a);
+  return true;
+}
 
 /* ------------------------------------------------------------------ hooks */
 const guard = (name, fn) => (...args) => { if (!S.on) return; S.counts.hooks++; try { return fn(...args); } catch (err) { console.warn(`${LOG} ${name} capture failed`, err); } };

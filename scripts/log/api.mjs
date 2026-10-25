@@ -10,10 +10,11 @@ import * as C from "./capture-pure.mjs";
 import * as Store from "./store.mjs";
 import * as Scribe from "./scribe.mjs";
 import * as Relay from "./relay.mjs";
+import * as Maint from "./maint.mjs";
 import { t as tr } from "./lang.mjs";
 
 const MOD = E.MOD_ID;
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 
 function resolve(target) {
   if (!target) return null;
@@ -84,6 +85,13 @@ export async function note(target, text, { gmOnly = false, on } = {}) {
     const a = resolve(target);
     if (!a || !canNote(a) || (gmOnly && !isStaff(game.user))) return null;
     const args = { actorId: a.id, text: String(text ?? ""), gmOnly: !!gmOnly && isStaff(game.user), rid: rid(), t: Date.now(), ...(on ? { on } : {}) };
+    if (!Scribe.isScribe() && !game.users.activeGM && !isStaff(game.user)) {
+      // offline queue (L6): no GM is connected, so the note waits in this browser (ring buffer of 40) and is recorded, flagged unverified, when a GM arrives
+      const clean = M.clampText(args.text.trim(), E.POLICY.noteMax ?? 1000);
+      if (!clean || args.gmOnly || args.on) return null;
+      const q = Relay.enqueue({ actorId: a.id, k: "note.add", d: { text: clean }, rid: args.rid, t: args.t, v: false });
+      return { id: M.makeId(args.t, a.id, "note.add", args.rid, game.user.id), queued: true, waiting: q.n };
+    }
     const r = await Relay.request("note", args);
     return { id: r.id };
   } catch (e) { if (!(e instanceof Relay.LogError)) console.warn(`${MOD} | log.note failed`, e); return null; }
@@ -133,13 +141,18 @@ export function status() {
   const s = Scribe.summary();
   return {
     version: VERSION, enabled: Store.enabled(), isScribe: s.on, scribe: game.users.activeGM?.name ?? null, user: game.user.name, readAccess: Store.readAccess(), scope: Store.scopeIds(),
-    transport: "channel", queued: Relay.queued(), ...s, folder: !!Store.logFolder(), journals: Store.allLogJournalIds().length
+    transport: "channel", queued: Relay.queued(), queue: Relay.queueInfo(), ...s, folder: !!Store.logFolder(), journals: Store.allLogJournalIds().length
   };
 }
 export async function flush() { if (Scribe.isScribe()) await Scribe.drain(); }
+/** import(target, jsonText, {fileName}) -> {written, logs:[...]}. STAFF ONLY: throws LogError("noPermission") for anybody else. Idempotent (merge by entry id). */
+async function importFile(target, text, opts = {}) { const a = target ? resolve(target) : null; return Maint.importLog(text, { ...opts, target: a ? a.id : (typeof target === "string" ? target : null) }); }
+/** Management calls of the Table log (staff only, they THROW LogError): logs, health, trimPreview, trim, remove, exportLog, exportBundle, previewImport, importLog, setRetention. */
+const maint = Object.freeze({ logs: Maint.logs, health: Maint.health, trimPreview: Maint.trimPreview, trim: Maint.trim, remove: Maint.remove, exportLog: Maint.exportLog, exportBundle: Maint.exportBundle, previewImport: Maint.previewImport, importLog: Maint.importLog, setRetention: Maint.setRetention });
 
 export const logApi = {
-  record, note, read, query, subscribe, canView, canNote, isScribe, scribe, export: exportLog, stats, annotate, redact, trim, scope, status, flush,
+  record, note, read, query, subscribe, canView, canNote, isScribe, scribe, export: exportLog, stats, annotate, redact, trim, scope, status, flush, import: importFile, maint,
+  queue: Relay.queueInfo, flushQueue: Relay.flushQueue,
   types: E.TYPES, categories: E.CATEGORIES, pure: { E, M, D, CO, F, X, P, C }, t: tr, version: VERSION, LogError: Relay.LogError,
   _internal: { Store, Scribe, Relay }
 };

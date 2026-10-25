@@ -26,7 +26,7 @@ const STATES = new Map();
 export function stateFor(key) {
   let s = STATES.get(key);
   if (!s) {
-    s = { cats: [], users: [], preset: "all", fromStr: "", toStr: "", roundFrom: null, roundTo: null, search: "", showMinor: clientSetting("logShowMinor", false) === true,
+    s = { cats: [], users: [], actors: [], actorsAll: false, preset: "all", fromStr: "", toStr: "", roundFrom: null, roundTo: null, search: "", showMinor: clientSetting("logShowMinor", false) === true,
       onlyMine: false, density: clientSetting("logDensity", "compact") === "detailed" ? "detailed" : "compact", filtersOpen: false, toggled: new Set(), scrollTop: 0, limit: PAGE };
     STATES.set(key, s);
   }
@@ -60,6 +60,7 @@ export function actorSource(actor) {
     redact: (id) => L().redact(actor, [id]),
     subscribe: (fn) => L().subscribe(actor, fn),
     hasScribe: () => !!game.users.activeGM,
+    queued: () => (game.user.isGM ? 0 : (L()?.queue?.().n ?? 0)),
     exportAll: (fmt, ctx) => L().export(actor, { format: fmt, all: true, ...exportCtx(ctx) }),
     exportEntries: (list, fmt, ctx) => L().pure.X.exportEntries(list, fmt, exportCtx(ctx))
   };
@@ -80,13 +81,15 @@ export class LogView {
     this.ctx = {
       scope: source.scope, isGM: source.canGm(),
       userName: (id) => (id ? (game.users.get(id)?.name ?? t("IPL.UI.UnknownUser")) : t("IPL.UI.System")),
-      actor: () => source.actor ?? null,
+      showActor: !!source.facets,                                       // merged Table log: every row names its actor
+      actorName: (id) => source.nameOf?.(id) ?? "",
+      actor: (e) => (e?.aid ? (game.actors.get(e.aid) ?? null) : (source.actor ?? null)),
       lookupMessage: (id) => !!game.messages?.get(id),
       notesOn: this.notesOn
     };
     this.#build();
     this.#unsub = source.subscribe((info) => this.#onChange(info));
-    for (const hk of ["userConnected", "updateUser"]) { const fn = () => this.#renderBanner(); Hooks.on(hk, fn); this.#hooks.push([hk, fn]); }
+    for (const hk of ["userConnected", "updateUser", `${MOD}.logQueue`]) { const fn = () => this.#renderBanner(); Hooks.on(hk, fn); this.#hooks.push([hk, fn]); }
     { const fn = (setting) => { if (String(setting?.key ?? "").startsWith(`${MOD}.log`)) setTimeout(() => this.#load(false), 400); }; Hooks.on("updateSetting", fn); this.#hooks.push(["updateSetting", fn]); }   // switched off / read access changed
     this.#renderAll();
     setTimeout(() => { if (!this.destroyed) this.#load(true); }, 30);   // not rAF: a hidden browser tab never fires it
@@ -125,7 +128,7 @@ export class LogView {
   }
   /** Apply filters from outside (api.log.open): {cats, users, search, showMinor, preset, onlyMine}. */
   applyFilters(f = {}) {
-    for (const k of ["cats", "users", "search", "showMinor", "preset", "onlyMine", "roundFrom", "roundTo", "fromStr", "toStr"]) if (k in f) this.s[k] = f[k];
+    for (const k of ["cats", "users", "actors", "search", "showMinor", "preset", "onlyMine", "roundFrom", "roundTo", "fromStr", "toStr"]) if (k in f) this.s[k] = f[k];
     this.s.limit = PAGE; this.#syncControls(); this.#renderAll();
   }
   refresh() { this.#load(false); }
@@ -185,24 +188,25 @@ export class LogView {
       const a = s.fromStr ? new Date(`${s.fromStr}T00:00:00`).getTime() : null, b = s.toStr ? new Date(`${s.toStr}T23:59:59.999`).getTime() : null;
       range = { from: Number.isFinite(a) ? a : null, to: Number.isFinite(b) ? b : null };
     }
-    return { cats: s.cats, users: s.users, from: range.from, to: range.to, roundFrom: s.roundFrom, roundTo: s.roundTo, search: s.search, showMinor: s.showMinor, onlyMine: s.onlyMine, includeHidden: false };
+    return { cats: s.cats, users: s.users, actors: s.actors, from: range.from, to: range.to, roundFrom: s.roundFrom, roundTo: s.roundTo, search: s.search, showMinor: s.showMinor, onlyMine: s.onlyMine, includeHidden: false };
   }
-  #filterCtx() { return { scope: this.src.scope, userId: game.user.id, users: Object.fromEntries(game.users.map((u) => [u.id, u.name])), textOf: (e) => R.sentenceText(e, this.ctx) }; }
+  #filterCtx() { return { scope: this.src.scope, userId: game.user.id, users: Object.fromEntries(game.users.map((u) => [u.id, u.name])), textOf: (e) => R.sentenceText(e, this.ctx) + (e.aid ? ` ${this.ctx.actorName(e.aid)}` : "") }; }
   #recompute() {
     const f = this.#filterObj(), fc = this.#filterCtx();
     const raw = this.data.entries;
     this.filtered = F.filterEntries(raw, f, fc);
     this.counts = F.countsByCategory(raw, f, fc);
+    this.actorCounts = this.src.facets ? F.countsByActor(raw, f, fc) : null;
     this.filterCount = this.#activeFilters();
   }
   #activeFilters() {
     const s = this.s;
-    return (s.cats.length ? 1 : 0) + (s.users.length ? 1 : 0) + (s.preset !== "all" ? 1 : 0) + (s.roundFrom != null || s.roundTo != null ? 1 : 0) + (s.search ? 1 : 0) + (s.showMinor ? 1 : 0) + (s.onlyMine ? 1 : 0);
+    return (s.cats.length ? 1 : 0) + (s.actors.length ? 1 : 0) + (s.users.length ? 1 : 0) + (s.preset !== "all" ? 1 : 0) + (s.roundFrom != null || s.roundTo != null ? 1 : 0) + (s.search ? 1 : 0) + (s.showMinor ? 1 : 0) + (s.onlyMine ? 1 : 0);
   }
   /** Filters that narrow the view (the minor toggle widens it, so it does not count as "narrowing"). */
-  #narrowing() { const s = this.s; return !!(s.cats.length || s.users.length || s.preset !== "all" || s.roundFrom != null || s.roundTo != null || s.search || s.onlyMine); }
+  #narrowing() { const s = this.s; return !!(s.cats.length || s.actors.length || s.users.length || s.preset !== "all" || s.roundFrom != null || s.roundTo != null || s.search || s.onlyMine); }
   #clearFilters() {
-    Object.assign(this.s, { cats: [], users: [], preset: "all", fromStr: "", toStr: "", roundFrom: null, roundTo: null, search: "", onlyMine: false, limit: PAGE });
+    Object.assign(this.s, { cats: [], actors: [], users: [], preset: "all", fromStr: "", toStr: "", roundFrom: null, roundTo: null, search: "", onlyMine: false, limit: PAGE });
     this.#syncControls(); this.#renderAll();
   }
 
@@ -231,7 +235,8 @@ export class LogView {
     this.$clear = h("button.ipl-linkbtn", { type: "button", "data-ipl-act": "clear", hidden: true }, t("IPL.UI.ClearFilters"));
     this.$live = h("p.ipl-sr", { role: "status", "aria-live": "polite", "aria-atomic": "true" });
     this.$panel.addEventListener("change", (ev) => this.#onFilterInput(ev));
-    this.$bar = h("div.ipl-bar", row1, this.$chips);
+    this.$actors = h("div.ipl-chips.ipl-actors", { role: "group", "aria-label": t("IPL.Table.Actors"), hidden: !this.src.facets });
+    this.$bar = h("div.ipl-bar", row1, this.$chips, this.$actors);
     this.$status = h("div.ipl-status", this.$count, this.$clear);
     this.$banner = h("div.ipl-banner", { hidden: true, role: "note" }, icon("fa-plug-circle-xmark"), h("p", t("IPL.UI.NoScribe")));
     this.$note = h("form.ipl-note", { id: `${id}-note`, hidden: true });
@@ -292,6 +297,7 @@ export class LogView {
   /* ---------------------------------------------------------------- render */
   #renderAll(opts = {}) {
     if (this.destroyed) return;
+    if (this.src.facets) this.ctx.showActor = this.s.actors.length !== 1;     // filtered to ONE actor: its name on every row is noise
     this.#recompute();
     this.#renderChrome(opts);
     this.#renderBody(opts);
@@ -317,6 +323,7 @@ export class LogView {
     const chip = (key, label, n, pressed) => h("button.ipl-chip.ipl-cat", { type: "button", "aria-pressed": String(pressed), "data-ipl-act": "cat", "data-ipl-id": key, "data-cat": key === "*" ? null : key, disabled: false },
       h("span.ipl-cat-l", label), h("span.ipl-cat-n", { "aria-hidden": "true" }, String(n)), sr(`, ${tn("IPL.Plural.Entries", n)}`));
     this.$chips.replaceChildren(chip("*", t("IPL.UI.All"), this.counts.all, sel.length === 0), ...cats.filter((c) => (this.counts.cats[c] ?? 0) > 0 || sel.includes(c)).map((c) => chip(c, R.catLabel(c), this.counts.cats[c] ?? 0, sel.includes(c))));
+    if (this.src.facets) this.#renderActorChips();
     // filter button label
     const nf = this.filterCount;
     this.$filterBtn.querySelector(".ipl-lbl").textContent = nf ? t("IPL.UI.FiltersOn", { n: nf }) : t("IPL.UI.Filters");
@@ -329,6 +336,19 @@ export class LogView {
     if (opts.announce) this.#announce(count);
     if (!opts.keepPanel) { this.#refreshUsers(); }
   }
+  /** Merged Table log: one chip per hero / base / deleted actor with entries under the current filters (selected ones always show). */
+  #renderActorChips() {
+    const sel = this.s.actors, counts = this.actorCounts ?? new Map();
+    const all = (this.src.facets() ?? []).map((f) => ({ ...f, n: counts.get(f.id) ?? 0 })).filter((f) => f.n > 0 || sel.includes(f.id)).sort((a, b) => (sel.includes(b.id) - sel.includes(a.id)) || b.n - a.n || a.label.localeCompare(b.label));
+    const LIMIT = 8;
+    const shown = this.s.actorsAll ? all : all.slice(0, LIMIT);
+    const chip = (f) => h("button.ipl-chip.ipl-cat.ipl-actorchip", { type: "button", "aria-pressed": String(sel.includes(f.id)), "data-ipl-act": "actor-f", "data-ipl-id": f.id, "data-scope": f.orphan ? "orphan" : f.scope },
+      icon(f.orphan ? "fa-ghost" : f.scope === "base" ? "fa-people-roof" : "fa-mask", "ipl-actorchip-ico"), h("span.ipl-cat-l", f.label + (f.orphan ? ` (${t("IPL.Table.Orphan")})` : "")), h("span.ipl-cat-n", { "aria-hidden": "true" }, String(f.n)), sr(`, ${tn("IPL.Plural.Entries", f.n)}`));
+    const nodes = shown.map(chip);
+    if (all.length > LIMIT) nodes.push(h("button.ipl-linkbtn", { type: "button", "data-ipl-act": "actors-more", "aria-expanded": String(!!this.s.actorsAll) }, this.s.actorsAll ? t("IPL.Table.FewerActors") : t("IPL.Table.MoreActors", { n: all.length })));
+    this.$actors.replaceChildren(...nodes);
+    this.$actors.hidden = all.length < 2 && !sel.length;
+  }
   #refreshUsers() {
     const want = F.usersOf(this.data.entries).map((u) => `${u.id}:${u.n}`).join("|") + `|${F.roundBounds(this.data.entries)?.max ?? ""}`;
     if (this.userSig === want) return;
@@ -338,7 +358,12 @@ export class LogView {
   #announce(text) { this.$live.textContent = ""; setTimeout(() => { this.$live.textContent = text; }, 30); }
   #renderBanner() {
     if (this.destroyed) return;
-    this.$banner.hidden = !(this.src.enabled() && this.data.canSee && !this.src.hasScribe());
+    const noScribe = this.src.enabled() && this.data.canSee && !this.src.hasScribe();
+    const waiting = this.src.queued?.() ?? 0;
+    this.$banner.hidden = !(noScribe || (waiting > 0 && this.data.canSee));
+    const p = this.$banner.querySelector("p");
+    p.replaceChildren(noScribe ? t("IPL.UI.NoScribe") : "", noScribe && waiting ? " " : "", waiting ? tn("IPL.Plural.Queued", waiting) : "");
+    this.$banner.querySelector("i").className = `fa-solid ${noScribe ? "fa-plug-circle-xmark" : "fa-hourglass-half"}`;
   }
   #renderPill() {
     const n = this.pending;
@@ -362,7 +387,7 @@ export class LogView {
     if (ph === "error") { this.$body.append(this.#state("ipl-err", "fa-triangle-exclamation", t("IPL.UI.Error"), null, h("button.ipl-btn", { type: "button", "data-ipl-act": "retry" }, icon("fa-rotate"), h("span", t("IPL.UI.Retry"))))); return; }
     if (ph === "off") { this.$body.append(this.#state("ipl-off", "fa-power-off", this.ctx.isGM ? t("IPL.UI.OffGm") : t("IPL.UI.Off"))); return; }
     if (ph === "private") { this.$body.append(this.#state("ipl-private", "fa-lock", t("IPL.UI.NoPermission"))); return; }
-    if (ph === "empty") { this.$body.append(this.#state("ipl-empty", "fa-clock-rotate-left", t("IPL.UI.Empty"), t(this.src.scope === "base" ? "IPL.UI.EmptyBase" : "IPL.UI.EmptyHint"))); return; }
+    if (ph === "empty") { this.$body.append(this.#state("ipl-empty", "fa-clock-rotate-left", t("IPL.UI.Empty"), t(this.src.facets ? "IPL.UI.TableEmpty" : this.src.scope === "base" ? "IPL.UI.EmptyBase" : "IPL.UI.EmptyHint"))); return; }
     if (ph === "nomatch") {
       const minorHidden = !this.s.showMinor && this.data.entries.some((e) => E.severityOf(e.k) === 0);
       this.$body.append(this.#state("ipl-nomatch", "fa-filter-circle-xmark", t("IPL.UI.EmptyFiltered"), minorHidden ? t("IPL.UI.EmptyFilteredMinor") : null,
@@ -427,7 +452,7 @@ export class LogView {
     const open = this.#open(e);
     const sentence = R.sentenceNodes(e, this.ctx);
     const btn = h("button.ipl-exp", { type: "button", "aria-expanded": String(open), "aria-controls": did, "aria-label": `${open ? t("IPL.UI.Collapse") : t("IPL.UI.Expand")}: ${R.sentenceText(e, this.ctx)}`, "data-ipl-act": "toggle", "data-ipl-id": e.id }, icon("fa-chevron-down"));
-    const li = h("li.ipl-row", { "data-id": e.id, "data-cat": cat, "data-sev": sev, class: this.fresh.has(e.id) ? "ipl-fresh" : "", "data-gm": E.visibilityOf(e) === "G" ? "1" : null },
+    const li = h("li.ipl-row", { "data-id": e.id, "data-aid": e.aid ?? null, "data-cat": cat, "data-sev": sev, class: this.fresh.has(e.id) ? "ipl-fresh" : "", "data-gm": E.visibilityOf(e) === "G" ? "1" : null },
       h("time.ipl-time", { datetime: new Date(e.t).toISOString(), title: R.fmtFull(e.t) }, R.fmtClock(e.t)),
       h("span.ipl-ico", { "data-cat": cat }, icon(R.iconClass(e))),
       h("div.ipl-main", h("p.ipl-sum", sr(`${R.catLabel(cat)}. `), h("span.ipl-sumt", sentence)), h("div.ipl-badges", R.badgesOf(e, this.ctx))),
@@ -474,6 +499,14 @@ export class LogView {
         this.$chips.querySelector(`[data-ipl-id="${CSS.escape(id)}"]`)?.focus();
         break;
       }
+      case "actor-f": {
+        const s = this.s;
+        s.actors = s.actors.includes(id) ? s.actors.filter((x) => x !== id) : [...s.actors, id];
+        s.limit = PAGE; this.#renderAll({ announce: true, keepPanel: true });
+        this.$actors.querySelector(`[data-ipl-id="${CSS.escape(id)}"]`)?.focus();
+        break;
+      }
+      case "actors-more": this.s.actorsAll = !this.s.actorsAll; this.#renderChrome({ keepPanel: true }); this.$actors.querySelector('[data-ipl-act="actors-more"]')?.focus(); break;
       case "filters": this.s.filtersOpen = !this.s.filtersOpen; this.$panel.hidden = !this.s.filtersOpen; b.setAttribute("aria-expanded", String(this.s.filtersOpen)); break;
       case "clear": this.#clearFilters(); break;
       case "density": {
@@ -488,7 +521,7 @@ export class LogView {
       case "pill": this.pending = 0; this.#renderPill(); this.fresh = new Set(); this.#renderAll({ keepScroll: false }); if (this.scroller) this.scroller.scrollTop = 0; break;
       case "retry": this.#load(false); break;
       case "note": this.#openNote(); break;
-      case "item": { const it = this.src.actor?.items?.get(id); it?.sheet?.render(true); break; }
+      case "item": { const aid = b.closest("li.ipl-row")?.dataset.aid; const act = aid ? game.actors.get(aid) : this.src.actor; act?.items?.get(id)?.sheet?.render(true); break; }
       case "actor": { game.actors?.get(id)?.sheet?.render(true); break; }
       case "chat": this.#showChat(id); break;
       case "allkids": { const li = b.closest("li.ipl-row"), e = this.#entry(id); if (li && e) this.#fillDetail(li, e, true); break; }
@@ -543,8 +576,9 @@ export class LogView {
     let r = null;
     try { r = await this.src.note(text, { gmOnly: !!this.$gmOnly?.checked }); } catch { r = null; }
     btn.disabled = false;
-    if (!r) { this.$noteErr.textContent = t(this.src.hasScribe() ? "IPL.UI.NoteFailed" : "IPL.UI.NoteFailed"); this.$noteErr.hidden = false; return; }
-    this.#closeNote(true); this.#announce(t("IPL.UI.NoteAdded"));
+    if (!r) { this.$noteErr.textContent = t("IPL.UI.NoteFailed"); this.$noteErr.hidden = false; return; }
+    this.#closeNote(true); this.#announce(r.queued ? t("IPL.UI.NoteQueued") : t("IPL.UI.NoteAdded"));
+    if (r.queued) { ui.notifications?.info(t("IPL.UI.NoteQueued"), { console: false }); this.#renderBanner(); return; }
     setTimeout(() => this.#sync(), 400);
   }
   #annotate(btn, id) {

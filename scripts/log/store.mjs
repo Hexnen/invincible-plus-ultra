@@ -22,7 +22,11 @@ export function policy() {
 }
 export const readAccess = () => setting("logReadAccess", policy().readAccess);
 export const enabled = () => setting("logEnabled", true) !== false;
-export const retention = (scope) => retentionFor(scope, { retainHero: Number(setting("logRetainEntries", POLICY.retainHero)) });
+/** Cap for a scope. Heroes: `logRetainEntries`. Bases: `logRetainBase` when it is >= 0 (an explicit override, 0 = unlimited), else 60 percent of the hero cap. */
+export function retention(scope) {
+  const base = Number(setting("logRetainBase", -1));
+  return retentionFor(scope, { retainHero: Number(setting("logRetainEntries", POLICY.retainHero)), ...(Number.isFinite(base) && base >= 0 ? { retainBase: base } : {}) });
+}
 export function scopeIds() { try { const raw = setting("logScope", ""); const a = raw ? JSON.parse(raw) : null; return Array.isArray(a) && a.length ? a : null; } catch { return null; } }
 
 /* ------------------------------------------------------------------ lookups */
@@ -258,6 +262,38 @@ export async function pruneIfNeeded(actor, scope, capOverride = null) {
   await commit(actor, scope, { pub: [marker] });
   stats.prunes++;
   return plan;
+}
+
+/* ------------------------------------------------------------------ maintenance (L6; the callers check the role) */
+/** Every per-actor log journal of the world (live actors AND orphans of deleted actors). */
+export function listLogJournals() {
+  return (game.journal?.contents ?? []).filter((j) => j.flags?.[MOD]?.log?.kind === "actor").map((j) => {
+    const m = j.flags[MOD].log, aid = m.actorId ?? j.id, actor = game.actors?.get(aid) ?? null;
+    return { id: j.id, actorId: aid, name: actor?.name ?? m.name ?? j.name, scope: m.type === "base" ? "base" : "hero", orphan: !actor, deletedAt: Number(m.deletedAt) || 0, actor, uuid: actor?.uuid ?? m.actorUuid ?? "" };
+  });
+}
+/** Delete the whole log of an actor: the public journal (with its pages), the actor's pages in the GM journal and its snapshot. Returns the counts that were removed. */
+export async function deleteLog(actorId) {
+  const j = actorJournal(actorId);
+  const gm = gmJournal();
+  const out = { entries: j ? M.totalCount(pagesOf(j)) : 0, secret: gm ? M.totalCount(pagesOf(gm, actorId)) : 0, chunks: j ? j.pages.size : 0 };
+  if (gm) {
+    const ids = Object.values(pageDocs(gm, actorId)).map((p) => p.id);
+    if (ids.length) { stats.journalUpdates++; await gm.deleteEmbeddedDocuments("JournalEntryPage", ids, O()); }
+    if (gm.flags?.[MOD]?.log?.snaps?.[actorId] !== undefined) { stats.journalUpdates++; await gm.update({ [`flags.${MOD}.log.snaps.-=${actorId}`]: null }, O()); }
+  }
+  if (j) await j.delete(O());
+  invalidate();
+  emitChange({ actorId, op: "deleteLog", ids: [] });
+  return out;
+}
+/** Write imported entries (already planned and validated by maint-pure.planImport) into an actor's log. Entries flagged `v` go to the GM journal. */
+export async function importInto(actor, scope, entries) {
+  const pub = entries.filter((e) => !e.v), sec = entries.filter((e) => e.v);
+  const BATCH = 200;
+  for (let i = 0; i < pub.length; i += BATCH) await commit(actor, scope, { pub: pub.slice(i, i + BATCH) });
+  for (let i = 0; i < sec.length; i += BATCH) await commit(actor, scope, { sec: sec.slice(i, i + BATCH) });
+  return { pub: pub.length, sec: sec.length };
 }
 
 /* ------------------------------------------------------------------ hiding (sidebar) */

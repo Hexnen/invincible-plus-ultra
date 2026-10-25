@@ -6,7 +6,7 @@ export const DAY_MS = 86400000;
 
 /** Default filter: nothing selected, minor hidden, explained (h:1) rows hidden. */
 export function defaultFilter() {
-  return { cats: [], users: [], from: null, to: null, roundFrom: null, roundTo: null, search: "", showMinor: false, onlyMine: false, includeHidden: false };
+  return { cats: [], users: [], actors: [], from: null, to: null, roundFrom: null, roundTo: null, search: "", showMinor: false, onlyMine: false, includeHidden: false };
 }
 
 /* ------------------------------------------------------------------ text */
@@ -74,7 +74,8 @@ export function datePreset(name, now, entries = [], offsetMin = 0) {
 export function matches(entry, f, ctx = {}) {
   if (entry.h && !f.includeHidden) return false;
   if (!f.showMinor && severityOf(entry.k) === 0) return false;
-  if (f.cats && f.cats.length && !f.cats.includes(categoryOf(entry.k, ctx.scope || "hero"))) return false;
+  if (f.cats && f.cats.length && !f.cats.includes(categoryOf(entry.k, entry.sc || ctx.scope || "hero"))) return false;
+  if (f.actors && f.actors.length && !f.actors.includes(entry.aid)) return false;     // merged Table log only: entries carry `aid` (actor / log id) and `sc` (hero | base)
   if (f.users && f.users.length && !f.users.includes(entry.u)) return false;
   if (f.from != null && (entry.t2 || entry.t) < f.from) return false;
   if (f.to != null && entry.t > f.to) return false;
@@ -100,15 +101,22 @@ export function countsByCategory(entries, f, ctx = {}) {
   const flt = { ...defaultFilter(), ...f, cats: [] };
   const scope = ctx.scope || "hero";
   const cats = {};
-  for (const c of CATEGORIES[scope]) cats[c] = 0;
+  for (const c of CATEGORIES[scope] || CATEGORIES.hero) cats[c] = 0;
   let all = 0;
   for (const e of entries) {
     if (!matches(e, flt, ctx)) continue;
     all++;
-    const c = categoryOf(e.k, scope);
+    const c = categoryOf(e.k, e.sc || scope);
     cats[c] = (cats[c] || 0) + 1;
   }
   return { all, cats };
+}
+/** Counts per actor under every filter EXCEPT the actor chips (merged Table log). Returns Map(aid -> n). */
+export function countsByActor(entries, f, ctx = {}) {
+  const flt = { ...defaultFilter(), ...f, actors: [] };
+  const out = new Map();
+  for (const e of entries) if (matches(e, flt, ctx)) out.set(e.aid, (out.get(e.aid) || 0) + 1);
+  return out;
 }
 export function usersOf(entries) {
   const m = new Map();

@@ -70,7 +70,7 @@ function linkNode(kind, id, label, ctx, dom, alive) {
 }
 function itemName(e, ctx, dom) {
   const d = e.d || {};
-  const live = e.k !== "item.remove" ? ctx.actor?.()?.items?.get?.(d.id) : null;
+  const live = e.k !== "item.remove" ? ctx.actor?.(e)?.items?.get?.(d.id) : null;
   const label = d.name || live?.name || "";   // history shows the name at that time; the link opens the item as it is now
   if (!dom) return label;
   if (e.k === "item.remove") return h("span.ipl-name", label);
@@ -173,7 +173,7 @@ export function iconClass(e) {
   const raw = E.iconOf(e.k);
   return `fa-solid ${raw}`;
 }
-export const catOf = (e, ctx) => E.categoryOf(e.k, ctx.scope);
+export const catOf = (e, ctx) => E.categoryOf(e.k, e.sc || ctx.scope);
 export const catLabel = (cat) => t(`IPL.Cat.${cat}`);
 
 /* ------------------------------------------------------------------ time */
@@ -208,7 +208,14 @@ export function badgesOf(e, ctx) {
   if (e.n > 1) out.push(h("span.ipl-chip.ipl-n", { title: t("IPL.UI.Merged", { n: e.n }) }, h("span", { "aria-hidden": "true" }, `×${e.n}`), sr(t("IPL.UI.Merged", { n: e.n }))));
   if (e.c && e.c.r != null) out.push(h("span.ipl-chip.ipl-round", { title: t("IPL.UI.RoundTip", { n: e.c.r }) }, h("span", { "aria-hidden": "true" }, t("IPL.UI.RoundBadge", { n: e.c.r })), sr(t("IPL.UI.RoundTip", { n: e.c.r }))));
   if (E.visibilityOf(e) === "G") out.push(h("span.ipl-chip.ipl-gm", { title: t("IPL.UI.GmOnlyTip") }, icon("fa-lock"), h("span", t("IPL.UI.GmOnly"))));
-  if (e.a) out.push(h("span.ipl-chip.ipl-approx", { title: t("IPL.UI.ApproxTip") }, icon("fa-triangle-exclamation"), h("span", t("IPL.UI.Approx"))));
+  if (e.a && e.rel) out.push(h("span.ipl-chip.ipl-approx.ipl-unv", { title: t("IPL.UI.UnverifiedTip") }, icon("fa-user-clock"), h("span", t("IPL.UI.Unverified"))));      // queued on a player's device while no GM was connected
+  else if (e.a) out.push(h("span.ipl-chip.ipl-approx", { title: t("IPL.UI.ApproxTip") }, icon("fa-triangle-exclamation"), h("span", t("IPL.UI.Approx"))));
+  if (e.imp) out.push(h("span.ipl-chip.ipl-imp", { title: t("IPL.UI.ImportedTip") }, icon("fa-file-import"), h("span", t("IPL.UI.Imported"))));
+  if (ctx.showActor && e.aid) {                                                         // merged Table log: whose log is this row from
+    const live = globalThis.game?.actors?.get?.(e.aid), name = live?.name || ctx.actorName?.(e.aid) || "";
+    out.unshift(live ? h("button.ipl-chip.ipl-actor", { type: "button", "data-ipl-act": "actor", "data-ipl-id": e.aid, title: t("IPL.Table.OpenActor", { name }), "aria-label": t("IPL.Table.OpenActor", { name }) }, h("span", name))
+      : h("span.ipl-chip.ipl-actor.ipl-gone", { title: t("IPL.Table.Orphan") }, h("span", name), h("span.ipl-sr", ` (${t("IPL.Table.Orphan")})`)));
+  }
   return out;
 }
 
@@ -325,7 +332,9 @@ export function detailOf(e, ctx, opts = {}) {
   if (d.cause && has(`IPL.Cause.${d.cause}`)) row(t("IPL.UI.Cause"), t(`IPL.Cause.${d.cause}`));
   if (d.src && has(`IPL.Src.${d.src}`)) row(t("IPL.UI.Source"), t(`IPL.Src.${d.src}`));
   if (e.k === "roll.made" && d.mode && has(`IPL.Mode.${d.mode}`)) row(t("IPL.Type.roll.made"), t(`IPL.Mode.${d.mode}`) + (d.str ? `, ${t("IPL.Out.Stress", { n: d.str })}` : "") + (d.st ? `, ${t("IPL.Out.Stunts", { n: d.st })}` : ""));
-  if (e.a) row(t("IPL.UI.Approx"), t("IPL.UI.ApproxTip"));
+  if (e.a && e.rel) row(t("IPL.UI.Unverified"), t("IPL.UI.UnverifiedTip"));
+  else if (e.a) row(t("IPL.UI.Approx"), t("IPL.UI.ApproxTip"));
+  if (e.imp) row(t("IPL.UI.Imported"), t("IPL.UI.ImportedTip"));
   if (e.k === "damage.taken" && d.injury && d.injury.name) row(t("IPL.Cat.damage"), d.injury.name);
   if (meta.childElementCount) panel.append(meta);
   if (e.k === "note.add" || e.k === "note.gm") panel.append(h("blockquote.ipl-quote", d.text || ""));
@@ -352,7 +361,7 @@ export function actionsOf(e, ctx) {
     out.push({ act: "chat", id: d.msgId, label: t(alive ? "IPL.UI.ShowChat" : "IPL.UI.ChatGone"), disabled: !alive, icon: "fa-comment-dots" });
   }
   if (isItemType(e.k) && e.k !== "item.remove" && d.id) {
-    const alive = !!ctx.actor?.()?.items?.get?.(d.id);
+    const alive = !!ctx.actor?.(e)?.items?.get?.(d.id);
     out.push({ act: "item", id: d.id, label: t(alive ? "IPL.UI.OpenItem" : "IPL.UI.ItemGone"), disabled: !alive, icon: "fa-up-right-from-square" });
   }
   const aid = d.baseId || (e.k === "member.add" || e.k === "member.remove" ? d.id : null);

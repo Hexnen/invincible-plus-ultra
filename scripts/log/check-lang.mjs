@@ -55,6 +55,9 @@ for (const ty of Object.keys(E.ITEM_ICONS)) ok(`IPL.ItemType.${ty}` in EN, `item
 for (const a of ["logEnabled", "logReadAccess", "logRetainEntries", "logPlayerNotes", "logCombat", "logRevealJournals"]) for (const p of ["Name", "Hint"]) fam("IPL.Settings." + a, [p]);
 fam("IPL.Settings.logReadAccess", ["gm", "owners", "observers"]);
 for (const c of ["noGM", "noPermission", "badInput", "disabled", "notFound"]) fam("IPL.UI.Err", [c]);
+fam("IPL.Settings.logTable", ["Name", "Label", "Hint"]); fam("IPL.Keybind.Table", ["Name", "Hint"]);
+fam("IPL.Maint.State", ["ok", "warn", "over", "unlimited"]);
+for (const T of [EN, PL]) { ok(/console|konsol/i.test(T["IPL.Settings.logTable.Hint"]), "privacy note missing in the Table log menu hint"); ok(/Table log|Dziennik stołu/.test(T["IPL.Table.Title"]), "table title"); }
 // the privacy note must be in the two settings that govern visibility, in both languages
 for (const T of [EN, PL]) { for (const a of ["logEnabled", "logReadAccess"]) ok(/console|konsol/i.test(T[`IPL.Settings.${a}.Hint`]), `privacy note missing in ${a} hint`); }
 

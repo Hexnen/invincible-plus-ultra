@@ -23,6 +23,16 @@ function registerSettings() {
   reg("logRetainEntries", { ...txt("logRetainEntries"), scope: "world", config: true, type: Number, default: E.POLICY.retainHero, range: { min: 0, max: 50000, step: 250 } });
   reg("logPlayerNotes", { ...txt("logPlayerNotes"), scope: "world", config: true, type: Boolean, default: true });
   reg("logCombat", { ...txt("logCombat"), scope: "world", config: true, type: Boolean, default: true });
+  reg("logRetainBase", { scope: "world", config: false, type: Number, default: -1 });   // -1 = automatic (60 percent of the hero cap); set from the Table log (Maintenance > Limits)
+  if (!game.settings.menus.has(`${MOD}.logTable`)) {
+    import("./ui/global.mjs").then(({ TableLogApp }) => {          // registerMenu needs the class now; the window itself stays unbuilt until opened
+      if (game.settings.menus.has(`${MOD}.logTable`)) return;
+      game.settings.registerMenu(MOD, "logTable", { name: S("logTable", "Name"), label: S("logTable", "Label"), hint: S("logTable", "Hint"), icon: "fa-solid fa-clock-rotate-left", type: TableLogApp, restricted: true });
+    }).catch((e) => console.warn(`${MOD} | log: Table log menu not registered`, e));
+  }
+  if (!game.keybindings.actions.has(`${MOD}.logTable`)) {
+    game.keybindings.register(MOD, "logTable", { name: L.t("IPL.Keybind.Table.Name"), hint: L.t("IPL.Keybind.Table.Hint"), editable: [], restricted: true, onDown: () => { logApi.open?.("all"); return true; } });
+  }
   reg("logActorTypes", { scope: "world", config: false, type: String, default: "superhero" });
   reg("logScope", { scope: "world", config: false, type: String, default: "", onChange: () => { Scribe.rescan().catch(() => {}); } });
   reg("logPolicy", { scope: "world", config: false, type: String, default: "" });
@@ -57,7 +67,7 @@ export function start(phases = {}) {
         Relay.start();
         import("./ui/hero-tab.mjs").then((m) => {                     // L4: the Log tab of the superhero sheet (adapters: parts, dom)
           logApi.ui = { setTabMode: m.setMode, status: m.status, viewOf: m.viewOf, refresh: m.refreshSheets };
-          logApi.open = (target, o) => (target === "all" ? null : m.open(target, o));
+          logApi.open = (target, o) => (target === "all" ? import("./ui/global.mjs").then((g) => g.openTable(o ? { filters: o.filters, tab: o.tab, actor: o.actor } : {})) : m.open(target, o));
           Object.defineProperty(logApi, "tabMode", { get: () => m.tab.mode, configurable: true });
           m.install();
         }).catch((e) => console.warn(`${MOD} | log tab not loaded (everything else is unaffected)`, e));
@@ -65,7 +75,14 @@ export function start(phases = {}) {
         const re = () => setTimeout(() => Scribe.evaluate().catch(() => {}), 600);
         Hooks.on("userConnected", re);
         Hooks.on("updateUser", (u, ch) => { if ("active" in ch) re(); });
-        if (game.user.isGM) ui.journal?.render();
+        if (game.user.isGM) {
+          ui.journal?.render();
+          import("./ui/global.mjs").then((g) => {                      // L6: Actors directory button with an unseen badge (GM only)
+            Hooks.on("renderActorDirectory", g.decorateDirectory);
+            let tm = 0; Store.subscribe(() => { clearTimeout(tm); tm = setTimeout(g.refreshDirectory, 1500); });
+            g.refreshDirectory();
+          }).catch((e) => console.warn(`${MOD} | log: directory button not installed`, e));
+        }
       });
     } catch (e) { console.warn(`${MOD} | activity log failed to start`, e); }
   });

@@ -35,6 +35,10 @@ const HANDLERS = {
     const k = String(a.k ?? "");
     if (!E.RELAY_WHITELIST.includes(k)) throw new LogError("badInput", { k });
     if (JSON.stringify(a).length > MAX_BYTES) throw new LogError("badInput", { why: "size" });
+    if (k === "note.add") {      // a queued player note takes the same road as a live one: same switch, same text rules
+      if (!isStaff(sender) && Store.setting("logPlayerNotes", true) === false) throw new LogError("noPermission");
+      if (!String(a.d?.text ?? "").trim()) throw new LogError("badInput", { why: "empty" });
+    }
     const now = Date.now();
     let t = Number(a.t);
     const maxAge = a.queued ? 7 * 86400000 : 600000;
@@ -96,20 +100,47 @@ export async function request(op, args = {}) {
 const qKey = () => `ipl-queue:${game.user.id}`;
 function qRead() { try { const a = JSON.parse(localStorage.getItem(qKey()) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
 function qWrite(a) { try { localStorage.setItem(qKey(), JSON.stringify(a.slice(-QUEUE_MAX))); } catch { /* storage blocked */ } }
-export function enqueue(args) { const q = qRead(); q.push({ ...args, queued: true, qt: Date.now() }); qWrite(q); return q.length; }
+/** Put an entry (a whitelisted record call or a note) into this device's ring buffer. Same rid = same entry id, so a re-send after a lost answer is idempotent.
+ *  Re-queueing the SAME rid replaces the earlier copy, so the 40-slot ring never fills with duplicates. */
+export function enqueue(args) {
+  const q = qRead().filter((x) => x.rid !== args.rid);
+  q.push({ ...args, queued: true, qt: Date.now() });
+  const dropped = Math.max(0, q.length - QUEUE_MAX);
+  qWrite(q);
+  announceQueue();
+  return { n: Math.min(q.length, QUEUE_MAX), dropped };
+}
 export const queued = () => qRead().length;
-let flushing = false;
+/** Plain info about the queue of this device: how many entries wait, how old the oldest is, whether a flush is running. */
+export function queueInfo() {
+  const q = qRead();
+  return { n: q.length, oldest: q.length ? Math.min(...q.map((x) => x.qt || Date.now())) : 0, flushing, max: QUEUE_MAX, kinds: q.reduce((m, x) => { m[x.k] = (m[x.k] || 0) + 1; return m; }, {}) };
+}
+function announceQueue() { try { Hooks.callAll(`${MOD}.logQueue`, queueInfo()); } catch { /* listener */ } }
+let flushing = false, flushTimer = 0;
+const RETRY_CODES = new Set(["noGM", "relay", "notFound"]);   // the scribe may still be starting (notFound = it has not baselined this actor yet): keep the item and try again
+const MAX_TRIES = 6;
+/** Send every queued entry to the scribe once. Returns how many were recorded. Items refused for good (permission, bad input) are dropped; transient failures stay (up to 6 tries). */
 export async function flushQueue() {
   if (flushing || game.user.isGM || !game.users.activeGM) return 0;
   flushing = true;
-  let n = 0;
+  let n = 0, left = [];
   try {
-    const q = qRead(); const left = [];
+    const q = qRead();
     for (const item of q) {
-      try { await request("record", item); n++; } catch (e) { if (e?.code === "noGM" || e?.code === "relay") left.push(item); /* refused: drop */ }
+      try { await request("record", item); n++; }
+      catch (e) {
+        const tries = (item.tries || 0) + 1;
+        if (RETRY_CODES.has(e?.code) && tries < MAX_TRIES) left.push({ ...item, tries });
+        else console.warn(`${MOD} | log queue: dropped a queued entry (${e?.code ?? "error"})`, item.k);
+      }
     }
-    qWrite(left);
-  } finally { flushing = false; }
+    // entries queued while the flush was running must survive: merge with whatever is stored now
+    const now = qRead().filter((x) => !q.some((o) => o.rid === x.rid));
+    qWrite([...left, ...now]);
+    left = [...left, ...now];
+  } finally { flushing = false; announceQueue(); }
+  if (left.length) { clearTimeout(flushTimer); flushTimer = setTimeout(() => { flushQueue().catch(() => {}); }, 6000); }
   return n;
 }
 
@@ -129,8 +160,10 @@ export function start() {
       pending.delete(msg.id);
     }
   });
-  Hooks.on("userConnected", () => { setTimeout(() => flushQueue().catch(() => {}), 1500); });
-  setTimeout(() => flushQueue().catch(() => {}), 3000);
+  const kick = (ms) => setTimeout(() => flushQueue().catch(() => {}), ms);
+  Hooks.on("userConnected", () => kick(2500));                 // the GM client needs a moment to elect itself scribe and baseline the actors
+  Hooks.on("updateUser", (u, ch) => { if ("active" in ch && u.isGM) kick(2500); });
+  kick(3000);
 }
 /** Test helper: run a handler as another user on this (scribe) client without any transport. */
 export const _runAs = (op, args, userId) => run(op, args, userId);

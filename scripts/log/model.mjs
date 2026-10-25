@@ -118,6 +118,7 @@ export function normalizeEntry(raw, opts = {}) {
   if (raw.a) e.a = 1;
   if (raw.h) e.h = 1;
   if (raw.rel) e.rel = 1;
+  if (raw.imp) e.imp = 1;       // L6: added from an imported file (author and time are as stated in the file, not attested by the server)
   if (raw.tr) e.tr = 1;
   if (!e.id && Number.isFinite(t) && e.k) e.id = makeId(t, opts.actorId || "", e.k, opts.path || "", e.u);
   fit(e);

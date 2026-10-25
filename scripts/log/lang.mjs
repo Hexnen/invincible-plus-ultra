@@ -341,7 +341,7 @@ const UI = [
   ["EmptyFiltered", "No entries match these filters.", "Żaden wpis nie pasuje do filtrów."],
   ["EmptyFilteredMinor", "Minor events are hidden. Turn them on in Filters to see turn starts and action marks.", "Drobne zdarzenia są ukryte. Włącz je w Filtrach, by zobaczyć początki tur i znaczniki akcji."],
   ["NoPermission", "The GM keeps this log private.", "MG utrzymuje ten dziennik jako prywatny."],
-  ["NoScribe", "No GM is connected. Changes made now are not recorded; they are added as one catch-up entry when the GM returns.", "Żaden MG nie jest połączony. Zmiany wykonane teraz nie są zapisywane; po powrocie MG zostaną dodane jako jeden wpis nadrabiający."],
+  ["NoScribe", "No GM is connected. Changes made now are not recorded as they happen; they are added as one catch-up entry when the GM returns.", "Żaden MG nie jest połączony. Zmiany wykonane teraz nie są zapisywane na bieżąco; po powrocie MG zostaną dodane jako jeden wpis nadrabiający."],
   ["Error", "The log could not be read.", "Nie udało się odczytać dziennika."],
   ["Retry", "Try again", "Spróbuj ponownie"],
   ["Showing", "Showing the newest {n}", "Wyświetlono najnowsze: {n}"],
@@ -376,13 +376,172 @@ T("IPL.Settings.logReadAccess.gm", "GM only", "Tylko MG");
 T("IPL.Settings.logReadAccess.owners", "GM and owners", "MG i właściciele");
 T("IPL.Settings.logReadAccess.observers", "GM, owners and observers", "MG, właściciele i obserwatorzy");
 T("IPL.Settings.logRetainEntries.Name", "Log entries kept per hero", "Wpisy dziennika na bohatera");
-T("IPL.Settings.logRetainEntries.Hint", "When a log grows beyond this, the oldest block is trimmed and a marker stays (team bases keep 60 percent). 0 keeps everything, which makes the world heavier.", "Gdy dziennik urośnie ponad tę liczbę, najstarszy blok jest przycinany i zostaje znacznik (bazy drużyn zachowują 60 procent). 0 zachowuje wszystko, co obciąża świat.");
+T("IPL.Settings.logRetainEntries.Hint", "When a log grows beyond this, the oldest block is trimmed and a marker stays (team bases keep 60 percent unless the Table log sets a limit for them). 0 keeps everything, which makes the world heavier. The Table log (button above) can trim, export and import logs.", "Gdy dziennik urośnie ponad tę liczbę, najstarszy blok jest przycinany i zostaje znacznik (bazy drużyn zachowują 60 procent, chyba że Dziennik stołu ustawi dla nich własny limit). 0 zachowuje wszystko, co obciąża świat. Dziennik stołu (przycisk wyżej) potrafi przycinać, eksportować i importować dzienniki.");
 T("IPL.Settings.logPlayerNotes.Name", "Players may add notes to their log", "Gracze mogą dodawać notatki do dziennika");
-T("IPL.Settings.logPlayerNotes.Hint", "Owners can write a note into the log of their own hero. They cannot edit or delete anything. Notes travel through a connected GM.", "Właściciele mogą dopisać notatkę do dziennika własnego bohatera. Nie mogą niczego edytować ani usuwać. Notatki przechodzą przez połączonego MG.");
+T("IPL.Settings.logPlayerNotes.Hint", "Owners can write a note into the log of their own hero. They cannot edit or delete anything. Notes travel through a connected GM; with no GM connected a note waits on the player's device and is added, marked unverified, when a GM returns.", "Właściciele mogą dopisać notatkę do dziennika własnego bohatera. Nie mogą niczego edytować ani usuwać. Notatki przechodzą przez połączonego MG; gdy nie ma MG, notatka czeka na urządzeniu gracza i po powrocie MG jest dodawana jako niezweryfikowana.");
+T("IPL.Settings.logTable.Name", "Table log", "Dziennik stołu");
+T("IPL.Settings.logTable.Label", "Open the Table log", "Otwórz Dziennik stołu");
+T("IPL.Settings.logTable.Hint", `GM only. Every hero and team base log in one timeline, plus the health of the logs, limits, trim, export and import, and logs of deleted actors. ${SECRECY_EN}`, `Tylko MG. Dzienniki wszystkich bohaterów i baz drużyn na jednej osi czasu, a do tego stan dzienników, limity, przycinanie, eksport i import oraz dzienniki usuniętych postaci. ${SECRECY_PL}`);
+T("IPL.Keybind.Table.Name", "Open the Table log", "Otwórz Dziennik stołu");
+T("IPL.Keybind.Table.Hint", "GM only. Not bound by default.", "Tylko MG. Domyślnie bez skrótu.");
 T("IPL.Settings.logCombat.Name", "Log combat events", "Zapisuj zdarzenia walki");
 T("IPL.Settings.logCombat.Hint", "Joining and leaving a combat, turn starts, action marks and initiative. Turn starts, action marks and initiative are minor events and stay hidden unless the Log tab asks for them.", "Dołączanie do walki i wychodzenie z niej, początki tur, znaczniki akcji i inicjatywa. Początki tur, znaczniki akcji i inicjatywa to drobne zdarzenia, ukryte, dopóki zakładka Dziennik o nie nie poprosi.");
 T("IPL.Settings.logRevealJournals.Name", "Show the log journals in the sidebar", "Pokaż dzienniki logu na pasku bocznym");
 T("IPL.Settings.logRevealJournals.Hint", "They are hidden by default; do not edit them by hand. This client only.", "Domyślnie ukryte; nie edytuj ich ręcznie. Tylko ten klient.");
+
+/* ------------------------------------------------------------------ L6: Table log, maintenance, import, offline queue */
+TP("IPL.Plural.Logs", "{n} log", "{n} logs", "{n} dziennik", "{n} dzienniki", "{n} dzienników");
+TP("IPL.Plural.Chunks", "{n} block", "{n} blocks", "{n} blok", "{n} bloki", "{n} bloków");
+TP("IPL.Plural.Queued", "{n} entry made while no GM was connected is waiting on this device and will be recorded when a GM returns.", "{n} entries made while no GM was connected are waiting on this device and will be recorded when a GM returns.", "{n} wpis wykonany bez połączonego MG czeka na tym urządzeniu i zostanie zapisany po powrocie MG.", "{n} wpisy wykonane bez połączonego MG czekają na tym urządzeniu i zostaną zapisane po powrocie MG.", "{n} wpisów wykonanych bez połączonego MG czeka na tym urządzeniu i zostanie zapisanych po powrocie MG.");
+for (const [k, en, pl] of [
+  ["Imported", "Imported", "Zaimportowany"],
+  ["ImportedTip", "Added from a file. The author and time are as stated in that file, not verified.", "Dodany z pliku. Autor i czas są takie, jak podano w pliku, bez weryfikacji."],
+  ["Unverified", "Unverified", "Niezweryfikowany"],
+  ["UnverifiedTip", "Sent from a player's device while no GM was connected and recorded later. The author and time are as that device claimed.", "Wysłany z urządzenia gracza, gdy nie było MG, i zapisany później. Autor i czas są takie, jak zadeklarowało to urządzenie."],
+  ["NoteQueued", "Saved on this device. It is added to the log when a GM connects.", "Zapisano na tym urządzeniu. Trafi do dziennika, gdy połączy się MG."],
+  ["NoteQueuedFull", "The waiting list on this device is full; the oldest waiting entry was dropped.", "Lista oczekujących na tym urządzeniu jest pełna; najstarszy oczekujący wpis został pominięty."],
+  ["TableEmpty", "Changes to heroes and team bases appear here once logging is on.", "Zmiany bohaterów i baz drużyn pojawią się tu, gdy zapis jest włączony."]
+]) T(`IPL.UI.${k}`, en, pl);
+for (const [k, en, pl] of [["tooBigFile", "The file is too large (limit 8 MB).", "Plik jest zbyt duży (limit 8 MB)."], ["tooMany", "The file holds too many entries or logs.", "Plik zawiera zbyt wiele wpisów lub dzienników."],
+  ["noLogs", "The file contains no logs.", "Plik nie zawiera dzienników."], ["scopeMismatch", "This log belongs to the other kind of actor (hero or team base).", "Ten dziennik należy do innego rodzaju postaci (bohater albo baza drużyny)."]]) T(`IPL.Val.${k}`, en, pl);
+
+for (const [k, en, pl] of [
+  ["Title", "Table log", "Dziennik stołu"],
+  ["OpenTip", "Open the log of the whole table (GM only)", "Otwórz dziennik całego stołu (tylko MG)"],
+  ["OpenBadge", "{n} new", "nowe: {n}"],
+  ["TabsAria", "Table log sections", "Sekcje dziennika stołu"],
+  ["TabTimeline", "Timeline", "Oś czasu"],
+  ["TabMaint", "Maintenance", "Konserwacja"],
+  ["Actors", "Heroes and bases", "Bohaterowie i bazy"],
+  ["AllActors", "Everyone", "Wszyscy"],
+  ["Orphan", "deleted", "usunięty"],
+  ["MoreActors", "Show all {n}", "Pokaż wszystkie ({n})"],
+  ["FewerActors", "Show fewer", "Pokaż mniej"],
+  ["OpenActor", "Open {name}", "Otwórz: {name}"],
+  ["ScopeHero", "Hero", "Bohater"],
+  ["ScopeBase", "Team base", "Baza drużyny"],
+  ["ScopeOrphan", "Deleted actor", "Usunięta postać"],
+  ["Back", "Back to the timeline", "Wróć do osi czasu"],
+  ["Closed", "The Table log is for the GM only.", "Dziennik stołu jest tylko dla MG."]
+]) T(`IPL.Table.${k}`, en, pl);
+
+for (const [k, en, pl] of [
+  ["Health", "Health", "Stan dziennika"],
+  ["Logs", "Logs", "Dzienniki"],
+  ["Limits", "Limits", "Limity"],
+  ["HLogging", "Logging", "Zapis"],
+  ["HOn", "On", "Włączony"],
+  ["HOff", "Off. Turn it on in the module settings.", "Wyłączony. Włącz go w ustawieniach modułu."],
+  ["HScribe", "Scribe", "Skryba"],
+  ["HScribeMe", "{name}, this browser", "{name}, ta przeglądarka"],
+  ["HScribeOther", "{name}, another browser", "{name}, inna przeglądarka"],
+  ["HScribeNone", "No GM is connected, so nothing is being recorded.", "Nie ma połączonego MG, więc nic nie jest zapisywane."],
+  ["HScribeHint", "The scribe is the connected GM's browser that writes the log.", "Skryba to przeglądarka połączonego MG, która zapisuje dziennik."],
+  ["HRead", "Who reads", "Kto czyta"],
+  ["HStored", "Stored", "Zapisane"],
+  ["HStoredV", "{logs}, {entries}, {size}", "{logs}, {entries}, {size}"],
+  ["HNear", "Near their limit", "Blisko limitu"],
+  ["HNone", "None", "Brak"],
+  ["HNearV", "{n} of {total}", "{n} z {total}"],
+  ["HGaps", "Catch-up gaps", "Luki do nadrobienia"],
+  ["HGapsHint", "Entries added after the GM had been away.", "Wpisy dodane po nieobecności MG."],
+  ["HThrottle", "Throttled bursts", "Ograniczone serie"],
+  ["HThrottleHint", "A macro or import changed so much so fast that the surplus was dropped.", "Makro lub import zmieniły tyle i tak szybko, że nadmiar odrzucono."],
+  ["HUnverified", "Late entries from players", "Spóźnione wpisy graczy"],
+  ["HUnverifiedHint", "Sent from a player's device while no GM was connected; their author and time are not verified.", "Wysłane z urządzenia gracza, gdy nie było MG; ich autor i czas nie są zweryfikowane."],
+  ["HImported", "Imported entries", "Zaimportowane wpisy"],
+  ["HPruned", "Trimmed away so far", "Dotąd przycięte"],
+  ["HSession", "This browser session", "Ta sesja przeglądarki"],
+  ["HSessionV", "{batches} writes, {failed} failed, {dropped} dropped by the throttle, {waiting} waiting", "zapisów: {batches}, nieudanych: {failed}, odrzuconych przez ogranicznik: {dropped}, oczekujących: {waiting}"],
+  ["HQueue", "Offline queue (this device)", "Kolejka offline (to urządzenie)"],
+  ["HQueueV", "{n} waiting", "oczekujących: {n}"],
+  ["HQueueEmpty", "Empty", "Pusta"],
+  ["HQueueHint", "A player's device keeps entries made while no GM is connected until a GM returns. A GM device never queues.", "Urządzenie gracza przechowuje wpisy wykonane bez połączonego MG, dopóki MG nie wróci. Urządzenie MG nic nie kolejkuje."],
+  ["HNotLogged", "Actors without a log", "Postacie bez dziennika"],
+  ["HNotLoggedHint", "Heroes and bases that have not changed since logging began.", "Bohaterowie i bazy, które nie zmieniły się od włączenia zapisu."],
+  ["HRefresh", "Refresh", "Odśwież"],
+  ["RHero", "Entries kept per hero", "Wpisy na bohatera"],
+  ["RBase", "Entries kept per team base", "Wpisy na bazę drużyny"],
+  ["RAuto", "Automatic: 60 percent of the hero limit ({n})", "Automatycznie: 60 procent limitu bohatera ({n})"],
+  ["RHint", "0 keeps everything. Once a log passes its limit, the oldest block is trimmed at the next write. Use Trim to do it now, with a preview.", "0 zachowuje wszystko. Gdy dziennik przekroczy limit, najstarszy blok jest przycinany przy następnym zapisie. Przycisk Przytnij robi to od razu, z podglądem."],
+  ["RSave", "Save limits", "Zapisz limity"],
+  ["RSaved", "Limits saved.", "Zapisano limity."],
+  ["RBad", "Enter a whole number from 0 to 50000.", "Wpisz liczbę całkowitą od 0 do 50000."],
+  ["TName", "Log", "Dziennik"],
+  ["TKind", "Kind", "Rodzaj"],
+  ["TEntries", "Entries", "Wpisy"],
+  ["TSize", "Size", "Rozmiar"],
+  ["TLast", "Last entry", "Ostatni wpis"],
+  ["TNotes", "Flags", "Znaczniki"],
+  ["TActions", "Actions", "Akcje"],
+  ["TAria", "Logs of this table", "Dzienniki tego stołu"],
+  ["TUsage", "{count} of {cap}", "{count} z {cap}"],
+  ["TNoCap", "{count}, no limit", "{count}, bez limitu"],
+  ["TSecret", "{n} private", "prywatnych: {n}"],
+  ["TNever", "never", "nigdy"],
+  ["Gaps", "Gaps {n}", "Luki {n}"],
+  ["Throttled", "Throttled {n}", "Ogran. {n}"],
+  ["Late", "Late {n}", "Spóźn. {n}"],
+  ["ImportedN", "Imported {n}", "Import {n}"],
+  ["Open", "Open", "Otwórz"],
+  ["OpenAria", "Open {name}", "Otwórz: {name}"],
+  ["Manage", "Manage", "Zarządzaj"],
+  ["ManageAria", "Manage the log of {name}", "Zarządzaj dziennikiem: {name}"],
+  ["ExportAs", "Export as {format}", "Eksportuj jako {format}"],
+  ["ImportInto", "Import into this log…", "Importuj do tego dziennika…"],
+  ["Trim", "Trim…", "Przytnij…"],
+  ["Delete", "Delete this log…", "Usuń ten dziennik…"],
+  ["ExportArchive", "Export everything", "Eksportuj wszystko"],
+  ["ExportArchiveTip", "One archive file with every log. Import reads it back log by log.", "Jeden plik archiwum ze wszystkimi dziennikami. Import wczytuje go dziennik po dzienniku."],
+  ["ImportFile", "Import a file…", "Importuj plik…"],
+  ["NoLogs", "No logs exist yet. Turn logging on, then change a hero or a team base.", "Nie ma jeszcze dzienników. Włącz zapis, a potem zmień bohatera lub bazę drużyny."],
+  ["NotAllowed", "Only the GM can manage the logs.", "Dziennikami może zarządzać tylko MG."],
+  ["Failed", "That did not work: {why}", "To się nie udało: {why}"]
+]) T(`IPL.Maint.${k}`, en, pl);
+for (const [k, en, pl] of [["ok", "within the limit", "w granicach limitu"], ["warn", "close to the limit", "blisko limitu"], ["over", "over the limit", "ponad limitem"], ["unlimited", "no limit", "bez limitu"]]) T(`IPL.Maint.State.${k}`, en, pl);
+
+for (const [k, en, pl] of [
+  ["Title", "Trim the log of {name}", "Przytnij dziennik: {name}"],
+  ["Lede", "Drop the oldest blocks and keep the newest entries. Blocks are removed whole, so a few more than the number below may stay.", "Usuń najstarsze bloki i zostaw najnowsze wpisy. Bloki znikają w całości, więc może zostać nieco więcej niż podana liczba."],
+  ["Keep", "Entries to keep", "Wpisy do zachowania"],
+  ["Holds", "Now: {entries} in {chunks}.", "Teraz: {entries} w {chunks}."],
+  ["Will", "This removes {entries} in {pages}, from {first} to {last}. {remain} stay. A marker in the log records the trim.", "To usunie {entries} w {pages}, od {first} do {last}. Zostanie {remain}. Znacznik w dzienniku zapisze przycięcie."],
+  ["Secret", "It also removes {entries} that only the GM sees.", "Usunie też {entries}, które widzi tylko MG."],
+  ["Nothing", "Nothing to trim: the log already holds no more than this, or it is one block.", "Nie ma co przycinać: dziennik ma nie więcej wpisów albo jest jednym blokiem."],
+  ["Export", "Download the log as JSON first", "Najpierw pobierz dziennik jako JSON"],
+  ["Go", "Remove {entries}", "Usuń: {entries}"],
+  ["Done", "Trimmed: {removed} removed, {remain} remain.", "Przycięto: usunięto {removed}, zostało {remain}."],
+  ["Bad", "Enter a number above 0.", "Wpisz liczbę większą od 0."]
+]) T(`IPL.Trim.${k}`, en, pl);
+for (const [k, en, pl] of [
+  ["Title", "Delete the log of {name}?", "Usunąć dziennik: {name}?"],
+  ["Lede", "This permanently deletes {entries}{secret} and the saved baseline the log compares against. It cannot be undone.", "To trwale usunie {entries}{secret} oraz zapisany stan wyjściowy, z którym dziennik porównuje zmiany. Nie można tego cofnąć."],
+  ["SecretPart", ", plus {entries} that only the GM sees", ", a także {entries}, które widzi tylko MG"],
+  ["Live", "{name} still exists. Its log starts again from now; everything before is gone.", "{name} nadal istnieje. Jego dziennik zacznie się od nowa od teraz; wszystko wcześniej przepadnie."],
+  ["Orphan", "{name} was deleted. Only this log remains.", "{name} został usunięty. Zostaje tylko ten dziennik."],
+  ["Backup", "Download the log as JSON first", "Najpierw pobierz dziennik jako JSON"],
+  ["Go", "Delete the log of {name}", "Usuń dziennik: {name}"],
+  ["Done", "Log deleted.", "Dziennik usunięty."]
+]) T(`IPL.Del.${k}`, en, pl);
+for (const [k, en, pl] of [
+  ["Title", "Import a log file", "Importuj plik dziennika"],
+  ["TitleInto", "Import into the log of {name}", "Importuj do dziennika: {name}"],
+  ["Lede", "Choose a file exported from the log (one log or the archive). Entries already present are skipped, so importing the same file again changes nothing.", "Wybierz plik wyeksportowany z dziennika (jeden dziennik albo archiwum). Wpisy, które już są, są pomijane, więc ponowny import tego samego pliku nic nie zmienia."],
+  ["File", "Log file (.json)", "Plik dziennika (.json)"],
+  ["Reading", "Reading the file…", "Wczytywanie pliku…"],
+  ["Line", "{name}: {fresh} new, {present} already there, {invalid} refused", "{name}: nowych {fresh}, już były {present}, odrzuconych {invalid}"],
+  ["Foreign", "This file was exported from {from}; its entries are merged into {name}.", "Ten plik pochodzi z: {from}; jego wpisy zostaną scalone z: {name}."],
+  ["SkipNoTarget", "{name}: no log or actor with that id exists in this world. Skipped.", "{name}: w tym świecie nie ma dziennika ani postaci o takim identyfikatorze. Pominięto."],
+  ["SkipScope", "{name}: a hero log cannot go into a team base, or the reverse. Skipped.", "{name}: dziennik bohatera nie może trafić do bazy drużyny ani odwrotnie. Pominięto."],
+  ["SkipNoMember", "This archive has no log for this actor.", "To archiwum nie zawiera dziennika tej postaci."],
+  ["Note", "Imported entries are marked as imported: their author and time are as the file states, not verified.", "Zaimportowane wpisy są oznaczone: ich autor i czas są takie, jak w pliku, bez weryfikacji."],
+  ["Go", "Import {entries}", "Importuj: {entries}"],
+  ["Nothing", "Nothing new to import.", "Nie ma nic nowego do zaimportowania."],
+  ["Done", "Imported {entries} into {logs}.", "Zaimportowano {entries} do: {logs}."],
+  ["Refused", "The file cannot be imported", "Nie można zaimportować pliku"],
+  ["Errors", "{n} entries in the file were refused because they are not valid.", "Odrzucono wpisy z pliku, bo są nieprawidłowe: {n}."]
+]) T(`IPL.Imp.${k}`, en, pl);
+T("IPL.Dlg.Cancel", "Cancel", "Anuluj");
 
 /* ------------------------------------------------------------------ lookup */
 const fill = (s, data) => String(s).replace(/\{(\w+)\}/g, (_m, k) => (data?.[k] ?? `{${k}}`));

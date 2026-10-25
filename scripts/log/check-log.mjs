@@ -813,5 +813,88 @@ const exCtx = { actor: { id: "A", name: "Zażółć Hero", uuid: "Actor.A", type
   eq(M.normalizeEntry({ t: T0, u: "u1", k: "roll.made", v: 1, d: { name: "r", mode: "gm", s: 1, b: 0 } }, { actorId: "A" }).v, 1, "a PG type keeps v:1");
 }
 
+/* ================================================================= L6: import planning, hostile files, bundle, trim preview, merged exports */
+{
+  const MP = await import("./maint-pure.mjs");
+  const mk = (i, over = {}) => M.normalizeEntry({ t: T0 + i * 1000, u: "u1", k: "stat.attr", d: { key: "fighting", from: i, to: i + 1 }, ...over }, { actorId: "A", path: `p${i}` });
+  const src = Array.from({ length: 12 }, (_, i) => mk(i));
+  const doc = (entries, actor = { id: "A", name: "Rex", uuid: "Actor.A", type: "hero" }) => X.toJSON(entries, { actor, exportedAt: T0, exportedBy: "GM", users: { u1: "Ann" } });
+  // round trip + idempotence
+  let parsed = MP.parseImportFile(doc(src));
+  ok(parsed.ok && parsed.kind === "single" && parsed.logs[0].entries.length === 12, "L6 parse single");
+  let plan = MP.planImport(parsed.logs[0], { scope: "hero", actorId: "A", existing: new Set(), now: T0 + 1e6, userId: "gm1" });
+  ok(plan.ok && plan.fresh === 12 && plan.entries.length === 13 && plan.entries.at(-1).k === "log.import" && plan.entries.at(-1).d.n === 12, "L6 plan: 12 new + marker");
+  ok(plan.entries.slice(0, 12).every((e) => e.imp === 1), "L6 imported entries flagged imp");
+  const have = new Set(src.map((e) => e.id));
+  const again = MP.planImport(parsed.logs[0], { scope: "hero", actorId: "A", existing: have, now: T0 + 1e6, userId: "gm1" });
+  ok(again.fresh === 0 && again.present === 12 && again.entries.length === 0, "L6 re-import adds nothing (no marker)");
+  const part = MP.planImport(parsed.logs[0], { scope: "hero", actorId: "A", existing: new Set(src.slice(0, 5).map((e) => e.id)), now: T0 + 1e6, userId: "gm1" });
+  ok(part.fresh === 7 && part.present === 5, "L6 partial overlap merges by id");
+  eq(M.normalizeEntry({ ...plan.entries[0] }, {}).imp, 1, "L6 imp survives normalize");
+  // scope mismatch, foreign actor
+  ok(!MP.planImport(parsed.logs[0], { scope: "base", actorId: "B", existing: new Set(), now: T0 + 1e6 }).ok, "L6 hero log refused by a base");
+  ok(MP.planImport(parsed.logs[0], { scope: "hero", actorId: "Z", existing: new Set(), now: T0 + 1e6 }).foreign === true, "L6 foreign actor reported");
+  const withMarkers = [...src, M.normalizeEntry({ t: T0 + 50, u: "u1", k: "log.import", d: { n: 3, from: "x" } }, { actorId: "A", path: "i" }), M.normalizeEntry({ t: T0 + 51, u: "", k: "log.start", d: {} }, { actorId: "A", path: "s" })];
+  const wm = MP.parseImportFile(doc(withMarkers)).logs[0];
+  ok(MP.planImport(wm, { scope: "hero", actorId: "Z", existing: new Set(), now: T0 + 1e6 }).fresh === 12, "L6 another log's bookkeeping markers are not imported");
+  ok(MP.planImport(wm, { scope: "hero", actorId: "A", existing: new Set(), now: T0 + 1e6 }).fresh === 14, "L6 restoring the same log keeps its markers");
+  // hostile input
+  const bads = ["", "not json", "[]", "null", "{\"format\":\"x\"}", JSON.stringify({ format: "ip-log", version: 2, entries: [] }), JSON.stringify({ format: "ip-log", version: 1, entries: "x" })];
+  for (const b of bads) ok(MP.parseImportFile(b).ok === false, `L6 refuses ${JSON.stringify(b).slice(0, 30)}`);
+  ok(MP.parseImportFile("x".repeat(MP.LIMITS.fileChars + 1)).errors[0].key === "IPL.Val.tooBigFile", "L6 size guard before parse");
+  ok(MP.parseImportFile(JSON.stringify({ format: "ip-log", version: 1, entries: new Array(MP.LIMITS.entries + 1).fill({}) })).errors[0].key === "IPL.Val.tooMany", "L6 entry count guard");
+  const evil = JSON.stringify({ format: "ip-log", version: 1, actor: { id: "A", name: "Rex", type: "hero" }, entries: [
+    { ...src[0], id: "../../etc/pass" }, { ...src[1], t: 5 }, { ...src[2], t: T0 + 10 * 86400000 * 365 * 50 }, { ...src[3], k: "nope" }, { ...src[4], u: 7 },
+    { ...src[5], d: JSON.parse('{"__proto__":{"polluted":1},"key":"fighting","from":1,"to":2,"constructor":{"x":1}}') }, { ...src[6], d: { key: "fighting", from: 1, to: 2, big: "y".repeat(100000) } },
+    src[7], src[7], "string", 42, null, [] ] });
+  const pe = MP.parseImportFile(evil), pl = MP.planImport(pe.logs[0], { scope: "hero", actorId: "A", existing: new Set(), now: T0 + 1e6, userId: "gm1" });
+  ok(pe.ok && pl.ok, "L6 hostile file parses");
+  ok(pl.invalid >= 8, `L6 refused entries are counted (${pl.invalid})`);
+  const accepted = pl.entries.filter((e) => e.k !== "log.import");
+  ok(accepted.every((e) => M.isValidId(e.id) && M.idTime(e.id) === e.t && e.t > MP.LIMITS.minT && e.t <= T0 + 1e6 + MP.LIMITS.futureMs), "L6 only plausible, id-consistent entries get through");
+  ok(({}).polluted === undefined && !accepted.some((e) => e.d && Object.prototype.hasOwnProperty.call(e.d, "__proto__")), "L6 no prototype pollution");
+  ok(accepted.every((e) => M.byteSize(e) <= M.ENTRY_MAX_BYTES), "L6 entries stay under the size cap");
+  ok(accepted.filter((e) => e.id === src[7].id).length === 1, "L6 duplicate id inside a file counted once");
+  ok(!accepted.some((e) => e.id === "../../etc/pass"), "L6 path-like id refused");
+  // GM-only entries stay GM-only through an import
+  const gmNote = M.normalizeEntry({ t: T0 + 5, u: "u1", k: "note.gm", d: { text: "secret" } }, { actorId: "A", path: "g" });
+  const gp = MP.planImport(MP.parseImportFile(doc([gmNote])).logs[0], { scope: "hero", actorId: "A", existing: new Set(), now: T0 + 1e6 });
+  ok(gp.entries[0].v === 1, "L6 note.gm keeps v:1");
+  // bundle
+  const bundle = X.toBundle([{ actor: { id: "A", name: "Rex", uuid: "", type: "hero" }, entries: src.map((e) => ({ ...e, aid: "A", sc: "hero" })) }, { actor: { id: "B", name: "Base", uuid: "", type: "base" }, entries: [M.normalizeEntry({ t: T0, u: "u1", k: "card.edit", d: { field: "motto", from: "a", to: "b" } }, { actorId: "B", path: "c" })] }], { exportedAt: T0, exportedBy: "GM", users: {} });
+  const pb = MP.parseImportFile(bundle);
+  ok(pb.ok && pb.kind === "bundle" && pb.logs.length === 2 && pb.logs[0].entries.length === 12, "L6 bundle parses log by log");
+  ok(!JSON.parse(bundle).logs[0].entries.some((e) => "aid" in e || "sc" in e), "L6 merged decorations never reach a file");
+  ok(MP.parseImportFile(JSON.stringify({ format: "ip-log-bundle", version: 1, logs: [] })).ok === false, "L6 empty bundle refused");
+  // round trip equality
+  const rt = MP.parseImportFile(doc(src)).logs[0].entries;
+  eq(rt, M.sortEntries(src), "L6 export -> parse is lossless");
+  // trim preview == real plan
+  const pages = {}; for (let p = 1; p <= 5; p++) { pages[p] = M.emptyPage(p); for (let i = 0; i < 10; i++) pages[p] = M.pageWith(pages[p], mk(p * 100 + i)); }
+  const tp = MP.trimPreview(pages, null, { keep: 25, head: 5, actorId: "A" }), real = P.planPrune(pages, { cap: 25, head: 5, actorId: "A" });
+  ok(!tp.noop && tp.entries === real.removed && tp.pages === real.dropPages.length && tp.remain === real.keep && tp.total === 50, "L6 trim preview equals the real plan");
+  ok(MP.trimPreview(pages, null, { keep: 100, head: 5 }).noop === true && MP.trimPreview(pages, null, { keep: 0 }).noop === true, "L6 nothing to trim above the count / keep 0");
+  // summaries, retention parsing, usage
+  const sm = MP.summarizeEntries([mk(1), M.normalizeEntry({ t: T0 + 9, u: "", k: "log.gap", a: 1, d: { from: 1, to: 2, changes: [] } }, { actorId: "A" }), M.normalizeEntry({ t: T0 + 10, u: "u1", k: "note.add", a: 1, rel: 1, d: { text: "x" } }, { actorId: "A", path: "n" }), M.normalizeEntry({ t: T0 + 11, u: "", k: "log.throttle", d: { n: 200 } }, { actorId: "A" })]);
+  ok(sm.total === 4 && sm.gaps === 1 && sm.throttles === 1 && sm.unverified === 1 && sm.approx === 2, "L6 health summary counts");
+  eq([MP.parseRetention("12"), MP.parseRetention(" "), MP.parseRetention("abc"), MP.parseRetention(-5), MP.parseRetention(1e9), MP.parseRetention(7.9)], [12, 0, null, 0, 50000, 7], "L6 retention input parsing");
+  eq(["", 0, 1].map((x) => MP.usageState(x ? 95 : 10, x === 0 ? 0 : 100).state), ["ok", "unlimited", "warn"], "L6 usage states");
+  eq(MP.usageState(120, 100).state, "over", "L6 usage over");
+  // merged filter + exports
+  const merged = [{ ...src[0], aid: "A", sc: "hero" }, { ...M.normalizeEntry({ t: T0 + 3, u: "u1", k: "card.edit", d: { field: "motto", from: "a", to: "b" } }, { actorId: "B", path: "c" }), aid: "B", sc: "base" }];
+  eq(F.filterEntries(merged, { actors: ["B"] }, { scope: "all" }).map((e) => e.aid), ["B"], "L6 actor filter");
+  eq(F.filterEntries(merged, { cats: ["card"] }, { scope: "all" }).map((e) => e.aid), ["B"], "L6 category of a merged entry uses its own scope");
+  const cnt = F.countsByActor(merged, {}, { scope: "all" }); ok(cnt.get("A") === 1 && cnt.get("B") === 1, "L6 counts by actor");
+  ok(Object.keys(F.countsByCategory(merged, {}, { scope: "all" }).cats).includes("card") && Object.keys(F.countsByCategory(merged, {}, { scope: "all" }).cats).includes("stats"), "L6 merged category chips are the union");
+  const csv = X.exportMerged(merged, "csv", { actors: { A: { name: "Rex" }, B: { name: "Base" } }, exportedAt: T0 }).text.split("\r\n");
+  ok(csv[0].endsWith(",actor") && csv[1].endsWith(",Rex") && csv[2].endsWith(",Base"), "L6 merged CSV has an actor column");
+  ok(X.exportMerged(merged, "md", { actors: { A: { name: "Rex" }, B: { name: "Base" } }, exportedAt: T0 }).text.includes("[Base]"), "L6 merged Markdown names the actor");
+  ok(JSON.parse(X.exportMerged(merged, "json", { actors: { A: { id: "A", name: "Rex", type: "hero" }, B: { id: "B", name: "Base", type: "base" } }, exportedAt: T0 }).text).logs.length === 2, "L6 merged JSON is a bundle");
+  // no Foundry globals in the new pure module
+  const srcTxt = fs.readFileSync(path.join(here, "maint-pure.mjs"), "utf8");
+  ok(!/\b(game|foundry|ui|Hooks|CONST|canvas|document|window|localStorage)\./.test(srcTxt.replace(/\/\*[\s\S]*?\*\//g, "")), "L6 maint-pure.mjs touches no Foundry or browser global");
+  ok([...srcTxt.matchAll(/from "(\.[^"]+)"/g)].every((m) => /^\.\/[\w-]+\.mjs$/.test(m[1])), "L6 maint-pure.mjs imports only siblings");
+}
+
 console.log(`${n} checks, ${bad} failed`);
 process.exit(bad ? 1 : 0);

@@ -6,7 +6,9 @@ export const MOD_ID = "invincible-plus-ultra";
 /** Hero categories (filter chips) and base categories. */
 export const HERO_CATEGORIES = Object.freeze(["stats", "items", "effects", "damage", "rolls", "combat", "creation", "team", "notes", "system"]);
 export const BASE_CATEGORIES = Object.freeze(["card", "members", "upgrades", "events", "gear", "sync", "access", "notes", "system"]);
-export const CATEGORIES = Object.freeze({ hero: HERO_CATEGORIES, base: BASE_CATEGORIES });
+/** The merged Table log shows heroes and bases together: the union of both chip sets (each entry is still categorised by its OWN scope, `entry.sc`). */
+export const ALL_CATEGORIES = Object.freeze([...new Set([...HERO_CATEGORIES, ...BASE_CATEGORIES])]);
+export const CATEGORIES = Object.freeze({ hero: HERO_CATEGORIES, base: BASE_CATEGORIES, all: ALL_CATEGORIES });
 
 /** Severity: 2 major, 1 normal, 0 minor (hidden unless "Show minor"). */
 export const SEV = Object.freeze({ MINOR: 0, NORMAL: 1, MAJOR: 2 });
