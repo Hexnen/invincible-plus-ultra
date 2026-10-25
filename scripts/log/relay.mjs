@@ -124,7 +124,7 @@ export async function request(op, args = {}) {
 
 /* ---- optional offline queue (player clients) */
 const qKey = () => `ipl-queue:${game.user.id}`;
-function qRead() { try { const a = JSON.parse(localStorage.getItem(qKey()) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
+function qRead() { try { const a = JSON.parse(localStorage.getItem(qKey()) || "[]"); return Array.isArray(a) ? a.filter((x) => x && typeof x === "object" && !Array.isArray(x) && typeof x.k === "string") : []; } catch { return []; } }   // L10: a null / junk item in a hand-edited ring made queueInfo and flushQueue throw forever
 function qWrite(a) { try { localStorage.setItem(qKey(), JSON.stringify(a.slice(-QUEUE_MAX))); } catch { /* storage blocked */ } }
 /** Put an entry (a whitelisted record call or a note) into this device's ring buffer. Same rid = same entry id, so a re-send after a lost answer is idempotent.
  *  Re-queueing the SAME rid replaces the earlier copy, so the 40-slot ring never fills with duplicates. */

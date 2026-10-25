@@ -78,6 +78,7 @@ const sample = (id) => {
   for (const r of def.req) d[r] = r in val ? val[r] : "x";
   if (id === "access.owner" || id === "access.default") { d.from = "NONE"; d.to = "OWNER"; }
   if (id === "upgrade.status") { d.from = "active"; d.to = "broken"; }
+  if (id === "session.answers") d.yes = [1, 2, 4];
   if (id === "crate.give") d.to = { id: "h", name: "Rex" };
   if (id === "sync.adopt") d.from = { id: "h", name: "Rex" };
   if (id === "chargen.apply") { d.add = [{ t: "power", n: "Flight" }]; d.del = []; d.more = { add: 0, del: 0 }; d.rank = "Rank 2"; }

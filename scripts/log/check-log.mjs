@@ -1007,6 +1007,25 @@ const exCtx = { actor: { id: "A", name: "Zażółć Hero", uuid: "Actor.A", type
     ok(thrown === null, "L7-11 rows.mjs sentenceText / diffRows do not throw on hostile d shapes " + (thrown || ""));
     ok(R.fmtVal({ a: 1 }) === '{"a":1}' && !R.fmtVal([1, 2]).includes("object"), "L7-11 object values are not printed as [object Object]");
   }
+  // L10: out-of-range time, missing id, lone surrogates
+  {
+    ok(!M.isEntryLike({ t: 9e15, k: "note.add" }) && !M.isEntryLike({ t: -5 }) && !M.isEntryLike({ t: T0, t2: 9e15 }) && M.isEntryLike({ t: T0, t2: T0 + 5 }) && M.isEntryLike({ t: 4102444800000 }), "L10 isEntryLike rejects times outside the Date range (dayKey threw and blanked the list)");
+    const rd = M.readAll({ 1: { e: { zz1: { t: T0, k: "note.add", u: "u" }, zz2: { t: 9e15, k: "note.add" }, zz3: null } } });
+    ok(rd.length === 1 && rd[0].id === "zz1", "L10 readAll fills the id from the page key and skips the out-of-range entry");
+    let thrown = null; try { F.groupByDay(rd, { now: T0 }); } catch (err) { thrown = err.message; }
+    ok(thrown === null, "L10 groupByDay does not throw on readAll output " + (thrown || ""));
+    const cut = M.clampText("a".repeat(999) + "\u{1F600}tail", 1000);
+    ok(cut.length === 999 && !/[\uD800-\uDFFF]/.test(cut), "L10 clampText never leaves half an emoji");
+    ok(M.clampText("x\uD800y") === "x�y" && M.clampText("\u{1F468}‍\u{1F469}") === "\u{1F468}‍\u{1F469}", "L10 lone surrogates replaced, ZWJ sequences kept");
+  }
+  // L10: session.* types (end-of-session project)
+  {
+    for (const id of ["session.start", "session.award", "session.answers", "session.undo"]) ok(EV.isKnownType(id) && EV.inScope(id, "hero") && !EV.inScope(id, "base"), `L10 ${id} registered for heroes`);
+    const e = M.normalizeEntry({ t: T0, u: "gm", k: "session.award", d: { sid: "s1", gain: 3, loss: 1, before: 4, after: 6 } }, { actorId: "A" });
+    ok(e && M.validateEntry(e, "hero").ok, "L10 session.award entry validates");
+    const sm = EV.summarize(M.normalizeEntry({ t: T0, u: "gm", k: "session.answers", d: { sid: "s1", yes: [1, 2, 4] } }, { actorId: "A" }));
+    eq(sm.params.yesCount, 3, "L10 session.answers summary count");
+  }
 }
 
 console.log(`${n} checks, ${bad} failed`);

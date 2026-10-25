@@ -30,7 +30,7 @@ export function isValidId(id) { return typeof id === "string" && /^[0-9a-z]{9}(?
 export function idTime(id) { return isValidId(id) ? parseInt(id.slice(0, 9), 36) : NaN; }
 
 /** An entry-shaped value: a plain object with a finite time (anything else in a page is skipped, never allowed to break a read). */
-export const isEntryLike = (e) => !!e && typeof e === "object" && !Array.isArray(e) && Number.isFinite(e.t);
+export const isEntryLike = (e) => !!e && typeof e === "object" && !Array.isArray(e) && Number.isFinite(e.t) && e.t >= 0 && e.t <= 8.6e15 && (e.t2 === undefined || e.t2 === null || (Number.isFinite(e.t2) && e.t2 >= 0 && e.t2 <= 8.6e15));   // L10: a finite but out-of-Date-range time (9e15) made dayKey throw and blanked the whole list
 /** The usable entries of a page object. */
 export const entriesOf = (page) => Object.values((page && page.e) || {}).filter(isEntryLike);
 export function compareEntries(a, b) {
@@ -44,10 +44,13 @@ const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 /** Bidirectional formatting controls (embeddings, overrides, isolates): they can reorder the text around them, so they never enter the log. */
 export const BIDI_RE = /[\u202A-\u202E\u2066-\u2069]/g;
 export const stripBidi = (s) => String(s).replace(BIDI_RE, "");
+const LONE_SURR = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const LONE_SURR_G = new RegExp(LONE_SURR.source, "g");
 export function clampText(s, n = TEXT_MAX) {
   let str = typeof s === "string" ? s : s == null ? "" : String(s);
   if (/[‪-‮⁦-⁩]/.test(str)) str = stripBidi(str);
-  return str.length > n ? str.slice(0, n) : str;
+  if (str.length > n) { str = str.slice(0, n); const last = str.charCodeAt(n - 1); if (last >= 0xD800 && last <= 0xDBFF) str = str.slice(0, -1); }   // L10: never cut an emoji in half
+  return LONE_SURR.test(str) ? str.replace(LONE_SURR_G, "�") : str;
 }
 /** Deep sanitise a data object: finite numbers, clamped strings, bounded depth / array / key counts, no prototype keys. */
 export function sanitize(v, depth = 0, opts = {}) {
@@ -290,7 +293,7 @@ export function readAll(pages, counter = null) {
   const map = {};
   for (const p of Object.values(pages)) for (const [id, e] of Object.entries((p && p.e) || {})) {
     if (!isEntryLike(e)) { if (counter) counter.skipped = (counter.skipped || 0) + 1; continue; }     // L8: one null / garbage entry must not make the whole log unreadable
-    map[id] = mergeEntry(map[id], e);
+    map[id] = mergeEntry(map[id], e.id === id ? e : { ...e, id });     // L10: the page key is the id (a hand-made entry without `id` broke toggles / data-id)
   }
   return sortEntries(Object.values(map));
 }

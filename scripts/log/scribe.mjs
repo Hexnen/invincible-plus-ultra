@@ -578,7 +578,7 @@ function registerHooks() {
 }
 
 /* tab lease (courtesy only: deterministic ids make a double write harmless) */
-let bc = null, beat = 0; const peers = new Map();
+let bc = null, beat = 0, retryTimer = 0; const peers = new Map();
 function lease() {
   try {
     if (!bc && typeof BroadcastChannel !== "undefined") {
@@ -601,6 +601,8 @@ export async function evaluate() {
     try { await Store.ensureFolder(); await catchUp(); } catch (err) { console.warn(`${LOG} catch-up failed`, err); }
     Hooks.callAll(`${MOD}.scribe`, { on: true });
   } else if (!should && S.on) { tick(true); S.on = false; Hooks.callAll(`${MOD}.scribe`, { on: false }); }
+  // L10: a second tab of the same GM defers to the lower tab id; when that tab closes nothing re-ran evaluate(), so NO tab wrote until some user event. Re-check while deferring.
+  if (eligible && !retryTimer) retryTimer = setTimeout(() => { retryTimer = 0; evaluate().catch(() => {}); }, 13000);
   if (!eligible && beat) { clearInterval(beat); beat = 0; peers.clear(); }       // L7-17: a tab that is not (or no longer) the scribe must stop announcing itself, else it blocks the others
   return S.on;
 }

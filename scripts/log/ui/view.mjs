@@ -493,6 +493,7 @@ export class LogView {
   /* ---------------------------------------------------------------- events */
   #entry(id, li = null) { const aid = li?.dataset?.aid; return this.data.entries.find((x) => x.id === id && (!aid || x.aid === aid)) ?? null; }     // merged Table log: ids are only unique per log, the row knows its log
   #onKey(ev) {
+    if (ev.isComposing || ev.keyCode === 229) return;                 // L10: Escape / Enter inside an IME composition belongs to the IME (it closed the note composer and lost the draft)
     if (ev.key === "/" && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.target.closest?.("input, textarea, select, [contenteditable]")) { ev.preventDefault(); this.$search.focus(); return; }
     if (ev.key === "Escape") {
       if (!this.$note.hidden && this.$note.contains(ev.target)) { this.#closeNote(true); ev.stopPropagation(); }
