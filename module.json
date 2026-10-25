@@ -19,6 +19,19 @@
     "styles/actors-extra.css",
     "styles/editor.css"
   ],
+  "packs": [
+    {
+      "name": "chargen-tables",
+      "label": "Plus Ultra: Character creation",
+      "path": "packs/chargen-tables",
+      "type": "RollTable",
+      "system": "invincible",
+      "ownership": {
+        "PLAYER": "OBSERVER",
+        "ASSISTANT": "OWNER"
+      }
+    }
+  ],
   "relationships": {
     "systems": [
       {

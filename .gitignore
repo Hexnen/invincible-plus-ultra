@@ -4,3 +4,6 @@ dev/
 fonts/user/*
 !fonts/user/README.txt
 fonts/KOMIKAH_*.ttf
+
+# character-creation tables are generated at runtime from the installed core book (no book text in git)
+packs/chargen-tables/

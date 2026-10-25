@@ -16,6 +16,6 @@ for (const m of src.matchAll(/\bt\(\s*"(IPS\.[\w.]+)"/g)) used.add(m[1]);
 for (const k of used) if (!(k in EN) || !(k in PL)) fail(`used but not defined in both languages: ${k}`);
 // keys built by hand: t(`IPS.Settings.Default.${v}`), t(`IPS.Type.${V}`)
 for (const k of ["off", "top", "bottom", "right", "random"]) if (!(`IPS.Settings.Default.${k}` in EN) || !(`IPS.Settings.Default.${k}` in PL)) fail(`IPS.Settings.Default.${k}`);
-for (const k of ["Top", "Bottom", "Right", "Random"]) if (!(`IPS.Type.${k}` in EN) || !(`IPS.Type.${k}` in PL)) fail(`IPS.Type.${k}`);
+for (const st of ["", "Zip.", "Triple."]) for (const k of ["Top", "Bottom", "Right", "Random"]) if (!(`IPS.Type.${st}${k}` in EN) || !(`IPS.Type.${st}${k}` in PL)) fail(`IPS.Type.${st}${k}`);
 console.log(bad ? `${bad} problem(s)` : `OK: ${Object.keys(EN).length} keys, ${used.size} used directly, EN = PL`);
 process.exit(bad ? 1 : 0);

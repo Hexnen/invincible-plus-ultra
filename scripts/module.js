@@ -1834,3 +1834,9 @@ import("./diceeffects/main.mjs")
 import("./slash/main.mjs")
   .then((slash) => slash.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | comic slash transition not loaded (everything else is unaffected)`, err));
+
+/* CHARACTER GENERATOR, TABLES BUILDER (scripts/chargen/tables.mjs): builds the book's creation lists (archetypes, occupations, ...) into the module
+   compendium "chargen-tables" at runtime from the installed core book; exposed as api.chargen.tables. Does nothing until called. */
+import("./chargen/tables.mjs")
+  .then((tables) => tables.start())
+  .catch((err) => console.warn(`${MODULE_ID} | chargen tables builder not loaded (everything else is unaffected)`, err));
