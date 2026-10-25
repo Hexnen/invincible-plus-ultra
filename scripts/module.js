@@ -1840,3 +1840,10 @@ import("./slash/main.mjs")
 import("./chargen/tables.mjs")
   .then((tables) => tables.start())
   .catch((err) => console.warn(`${MODULE_ID} | chargen tables builder not loaded (everything else is unaffected)`, err));
+
+/* CHARACTER GENERATOR, DATA LAYER (scripts/chargen/catalog.mjs + apply.mjs): runtime catalogue of the core book content, the combined provider for the
+   random generator and the plan / apply / undo functions that write a finished hero to a sheet; exposed as api.chargen.{catalog, provider, apply}.
+   Does nothing until called. */
+import("./chargen/apply.mjs")
+  .then((apply) => apply.start())
+  .catch((err) => console.warn(`${MODULE_ID} | chargen data layer not loaded (everything else is unaffected)`, err));
