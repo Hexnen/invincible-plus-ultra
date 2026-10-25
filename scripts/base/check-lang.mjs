@@ -53,6 +53,11 @@ for (const m of ["week", "any"]) need.push(`IPB.Ev.Mode.${m}`, `IPB.Ev.ModeHint.
 for (const k of ["disable", "break", "lost", "lostNone", "occupy", "already", "nothing", "skip.gone", "skip.notActive", "skip.alreadyBroken"]) need.push(`IPB.Ev.Diff.${k}`);
 need.push("IPB.Ev.Prop.text", "IPB.Ev.Hint.46");
 if (!fEN.has("IPB.Ev.More") || !fPL.has("IPB.Ev.More")) fail("B7 plural family missing: IPB.Ev.More");
+// phase B8 (Gear & vehicles tab): dynamic keys IPB.Gr.Type.<all|crate type>, IPB.Gr.VType.<ground|water|aerial|space>, IPB.Gr.Stat.<stat|cost>, IPB.Gr.Eff.<kind>
+for (const k of ["all", ...P.CRATE_TYPES]) need.push(`IPB.Gr.Type.${k}`);
+for (const k of ["ground", "water", "aerial", "space"]) need.push(`IPB.Gr.VType.${k}`);
+for (const k of ["passengers", "maneuverability", "speed", "durability", "armor", "cost"]) need.push(`IPB.Gr.Stat.${k}`);
+for (const k of ["defense", "mobility", "room", "targeting", "weaponry", "none"]) need.push(`IPB.Gr.Eff.${k}`);
 for (const k of need) if (!(k in EN) || !(k in PL)) fail(`required key missing: ${k}`);
 // every validation message key pure.mjs can emit
 const probes = [null, { v: 99, rank: "x", policy: { edit: "x" }, upgrades: { a: 5, b: { status: "x", count: 0, source: "x" } }, events: { e: { roll: 12, band: "99-99" } }, vehicles: { a: { primary: true }, b: { primary: true } }, trackers: { t: { value: 5, max: 1 } } }];

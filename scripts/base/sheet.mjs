@@ -86,10 +86,23 @@ export class BaseSheet extends ActorSheetV2 {
   }
   _onClose(options) { clearTimeout(this.#timer); this.#painted = false; this.#dragOff?.(); this.#dragOff = null; super._onClose(options); }
 
-  // ---------- drops: the Gear tab (B8) takes items and vehicles; until then nothing may land on the actor itself ----------
-  async _onDropItem() { return null; }
+  // ---------- drops: Items and non-hero Actors go to the active tab's onDrop(event, {type, document}, ctx) (B8: Gear & vehicles); nothing may land on the actor itself ----------
+  async _onDropItem(event, item) { return this.#tabDrop(event, { type: "Item", document: item }); }
+  async _onDropActor(event, actor) { return this.#tabDrop(event, { type: "Actor", document: actor }); }
   async _onDropActiveEffect() { return null; }
   async _onDropFolder() { return null; }
+  /** the tab that is showing must offer onDrop; on any other tab the user is told where to drop (nothing is guessed) */
+  async #tabDrop(event, data) {
+    const team = this.#team();
+    if (!team) return null;
+    const tab = tabById(this.#tab);
+    if (typeof tab.onDrop !== "function") {
+      const other = TABS.find((x) => typeof x.onDrop === "function");
+      if (other) { const msg = t("IPB.Gr.DropWrongTab", { tab: t(`IPB.Tab.${other.id}`) }); ui.notifications?.warn(msg, { console: false }); this.#announce(msg); }
+      return null;
+    }
+    try { return (await tab.onDrop(event, data, this.#ctx(team))) ?? null; } catch (err) { reportError(err); return null; }
+  }
 
   // ---------- data ----------
   #team() { return S.get(this.teamId); }
@@ -406,6 +419,7 @@ export class BaseSheet extends ActorSheetV2 {
       try {
         const data = JSON.parse(raw);
         this.#dragKind = Drop.isDropData(data) ? Drop.previewKind(data) : "";
+        if (this.#dragKind === "unknown" && String(data.uuid).startsWith("Compendium.")) this.#dragKind = "foreign";      // a compendium actor is never a hero here (B8: a GM may import a compendium vehicle on the Gear tab)
         if (this.#dragKind === "hero" || this.#dragKind === "unknown") this.#setDrag("on");
       } catch { this.#dragKind = ""; }
     };
@@ -445,7 +459,9 @@ export class BaseSheet extends ActorSheetV2 {
     root.addEventListener("drop", (ev) => {
       const data = Drop.readDragData(ev);
       if (!Drop.isDropData(data)) return;                                                       // items, folders, files ...: not ours
-      if (this.#dragKind === "foreign" && !inHead(ev)) { end(); return; }                       // a vehicle / npc over the tab panel: the Gear tab's business
+      let kind = this.#dragKind;                                                                // no dragstart seen (e.g. a drag from another window): classify the payload now
+      if (!kind) { kind = Drop.previewKind(data); if (kind === "unknown" && String(data.uuid).startsWith("Compendium.")) kind = "foreign"; }
+      if (kind === "foreign" && !inHead(ev)) { end(); return; }                                 // a vehicle / npc / compendium actor over the tab panel: the Gear tab's business
       ev.preventDefault(); ev.stopPropagation();
       const head = inHead(ev);
       end();

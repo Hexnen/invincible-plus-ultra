@@ -11,6 +11,9 @@
                                                                // that are not delegated, init widgets. data-ipb-* attributes are free for the tab to use;
                                                                // the window only handles data-ipb="..." values it owns (tab, art, member*, create*, join, ...).
        badge?(ctx) -> string | number | ""                     // small count / fraction shown on the tab button ("2/2", 3); "" = none
+       onDrop?(event, data, ctx) -> Promise<any|null>          // B8: an Item or a non-hero Actor dropped on the sheet while THIS tab is showing (sheet.mjs
+                                                               // _onDropItem / _onDropActor); data = { type: "Item" | "Actor", document }. Heroes never arrive here
+                                                               // (they join the team, drop.mjs). A tab without onDrop makes the sheet say which tab takes drops.
      }
    ctx (rebuilt on every paint, never cached by a tab):
      team      the normalized view { id, uuid, ...B } (read only: change it through ctx.update)
@@ -35,7 +38,7 @@
 import { base } from "./base.mjs";                                  // B5 (done)
 import { upgrades } from "./upgrades.mjs";                          // B6 (done)
 import { events } from "./events.mjs";                              // B7 (done)
-import { gear } from "./placeholder.mjs";                           // B8: replace by its own module (gear.mjs)
+import { gear } from "./gear.mjs";                                  // B8 (done)
 
 export const TABS = [base, upgrades, events, gear];
 export const tabById = (id) => TABS.find((x) => x.id === id) ?? TABS[0];
