@@ -1,5 +1,5 @@
 /* STEP MODULES of the character-generator wizard (scripts/chargen/wizard.mjs). One file per step, one default export per file:
-     steps/<id>.mjs   id in start | rank | concept | powers | talents | attributes | life | persona | team | review
+     steps/<id>.mjs   id in start | board (phase 6: the roll board, only in the stepper while the wizard is in random mode) | rank | concept | powers | talents | attributes | life | persona | team | review
    Phases 5a-5f (and 6/7) implement ONE step each by replacing that file; the shell (stepper, live preview, footer, history, draft, close
    confirm) is not touched. The window plate (title) and the one-line hint above the body come from lang keys IPC.Step.<id>.Title / .Hint
    (add/adjust them in lang.mjs, EN + PL, and run `node scripts/chargen/check-lang.mjs`).
@@ -51,5 +51,6 @@ import life from "./life.mjs";
 import persona from "./persona.mjs";
 import team from "./team.mjs";
 import review from "./review.mjs";
+import board from "./board.mjs";
 
-export const STEPS = { start, rank, concept, powers, talents, attributes, life, persona, team, review };
+export const STEPS = { start, board, rank, concept, powers, talents, attributes, life, persona, team, review };

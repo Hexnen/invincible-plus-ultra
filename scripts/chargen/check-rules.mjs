@@ -4,6 +4,7 @@ import { createRng, substream } from "./rng.mjs";
 import * as R from "./rules.mjs";
 import * as S from "./state.mjs";
 import { rollHero, rollAll, rollStep } from "./random.mjs";
+import * as RR from "./reroll.mjs";
 
 let fails = 0, checks = 0;
 const ok = (cond, msg) => { checks++; if (!cond) { fails++; console.error("FAIL:", msg); } };
@@ -39,7 +40,7 @@ const ARCHS = Object.keys(ORACLE);
 const archIndex = (id) => ARCHS.indexOf(id);
 const slice = (arr, id, n) => { const o = archIndex(id) * 3; return Array.from({ length: n }, (_, i) => arr[(o + i) % arr.length]); };
 
-function fixtureProvider({ withRoll = false } = {}) {
+function fixtureProvider({ withRoll = false, bases = false } = {}) {
   const arch = (id) => ({
     id, role: R.ROLES[archIndex(id) % 8], attrs: archAttrs(id),
     powers: ORACLE[id][1].map(([level, nb], i) => ({ name: `Apw${archIndex(id)}_${i}`, level, boosts: Array.from({ length: nb }, (_, j) => ({ name: `Abst${j}` })) }))
@@ -72,6 +73,8 @@ function fixtureProvider({ withRoll = false } = {}) {
         case "teamBases": return E(N("Base", 5));
         case "baseUpgrades": return E(N("Upg", 6));
         case "heroRelations": return [];
+        case "cityLocations": return E(N("City", 12));
+        case "existingBases": return bases ? N("Bse", 3).map((name) => ({ name, data: { baseId: `id.${name}` } })) : [];
         default: return [];
       }
     }
@@ -316,7 +319,267 @@ ok(lockBad === 0, `locks respected, locked rolls stay valid (${lockBad} problems
   ok(codes(S.patch(base, { team: { ...base.team, mode: "create", name: "Crew", upgrades: ["a", "b", "c"] } })).includes("upgrades.over"), "create with too many starting upgrades warns");
   // random keeps how the hero is tied to a base
   const r = await rollStep(S.patch(base, { team: { ...base.team, mode: "create", baseId: null } }), "team", P, { withinArchetype: false });
-  eq([r.team.mode, r.team.where], ["create", ""], "rolling the team step keeps the mode and clears the location");
+  ok(r.team.mode === "create" && /^City/.test(r.team.where), "rolling the team step keeps the mode and (phase 6) rolls the location");
+}
+
+// =====================================================================================================================
+// PHASE 6: random mode end to end. A REAL-SHAPED provider (names are synthetic, shapes copy what catalog.mjs / tables.mjs return:
+// typed powers with maxLevel, a D66 power-source table with UNEVEN ranges rolled by a seeded roll(), bare "Knowledgeable" in the hero /
+// occupation / general talent lists + the six subject variants, occupations with data.resources, drive / flaw sentences, a City
+// Locations D66 table, existing base cards) and the board logic of reroll.mjs.
+// =====================================================================================================================
+const KNOW = ["Knowledgeable (Natural Sciences)", "Knowledgeable (Social Sciences)", "Knowledgeable (Humanities)", "Knowledgeable (Technology)", "Knowledgeable (Current Events)", "Knowledgeable (Esoteric Lore)"];
+const TYPES6 = ["Attack", "Control", "Defense", "Modification", "Movement", "Sensory"];
+const RPOWERS = Array.from({ length: 69 }, (_, i) => ({ name: `RPow${i + 1}`, packUuid: `Compendium.invincible-core.powers.Item.p${i}`, type: TYPES6[i % 6], maxLevel: 3 }));
+// 36 rows over the numbers 11..66 (D66 shape): 20 rows two wide, 16 rows one wide -> uneven odds, some numbers (17-20, 27-30 ...) cannot be rolled
+const d66Rows = (names) => { let lo = 11; return names.map((name, i) => { const w = i < 20 ? 2 : 1; const r = { name, lo, hi: lo + w - 1 }; lo += w; return r; }); };
+const RSOURCES = d66Rows(Array.from({ length: 36 }, (_, i) => `RSrc${i + 1}`));
+const RCITY = d66Rows(Array.from({ length: 36 }, (_, i) => `RCity${i + 1}`));
+const d66Roll = (rows, rng) => { const v = rng.d66(); return rows.find((r) => v >= r.lo && v <= r.hi) ?? null; };
+const ROCCS = Array.from({ length: 22 }, (_, i) => ({ name: `ROcc${i + 1}`, data: { resources: 2 + (i % 5) } }));
+function realProvider({ bases = false, heroes = 2 } = {}) {
+  const base = fixtureProvider({ bases });
+  const withUuid = (names) => names.map((name) => ({ name, packUuid: `Compendium.invincible-core.talents.Item.${name.replace(/\W+/g, "")}` }));
+  const P = {
+    ...base,
+    list: async (key, ctx = {}) => {
+      const a = ctx.archetype;
+      switch (key) {
+        case "powers": return RPOWERS;
+        case "powerSources": return a ? base.list(key, ctx) : RSOURCES.map((r) => ({ name: r.name, packUuid: `Compendium.invincible-core.power-sources.Item.${r.name}` }));
+        case "heroTalents": { const l = await base.list(key, ctx); return a && archIndex(a) % 2 === 0 ? [{ name: "Knowledgeable", packUuid: "u.Know" }, ...l.slice(1)] : l; }
+        case "talents": return withUuid([...TALENTS, "Knowledgeable", ...KNOW]);
+        case "knowledgeableSubjects": return withUuid(KNOW);
+        case "occupations": return ROCCS;
+        case "occupationTalents": {
+          const i = ROCCS.findIndex((o) => o.name === ctx.occupation), l = await base.list(key, { ...ctx, occupation: `Occ${String((i % 10) + 1).padStart(2, "0")}` });
+          return i % 2 === 0 ? [{ name: "Knowledgeable" }, ...l.slice(1)] : l;
+        }
+        case "drives": case "flaws": return (await base.list(key, ctx)).map((e) => ({ ...e, text: `${e.name} sentence.` }));
+        case "cityLocations": return RCITY.map((r) => ({ name: r.name, data: { range: [r.lo, r.hi] } }));
+        case "heroRelations": return Array.from({ length: heroes }, (_, i) => ({ name: `Ally${i}`, packUuid: `Actor.ally${i}`, data: { actorUuid: `Actor.ally${i}` } }));
+        default: return base.list(key, ctx);
+      }
+    },
+    roll: async (key, rng, ctx = {}) => {
+      if (key === "powerSources" && !ctx.archetype) { const r = d66Roll(RSOURCES, rng); return r ? { name: r.name, packUuid: `Compendium.invincible-core.power-sources.Item.${r.name}` } : null; }
+      if (key === "cityLocations") { const r = d66Roll(RCITY, rng); return r ? { name: r.name } : null; }
+      if (["knowledgeableSubjects", "teamNames", "teamBases", "baseUpgrades", "archetypes"].includes(key)) return rng.pick(await P.list(key, ctx));
+      return null;
+    }
+  };
+  return P;
+}
+const RP = realProvider({ bases: true });
+const RP0 = realProvider({ heroes: 0 });
+const nrm = R.normName;
+{
+  // distribution: the seeded D66 roll follows the table's own (uneven) rows
+  const counts = Object.fromEntries(RSOURCES.map((r) => [r.name, 0]));
+  let total = 0;
+  const rng = createRng("dist");
+  for (let i = 0; i < 40000; i++) { const r = d66Roll(RSOURCES, rng); if (r) { counts[r.name]++; total++; } }
+  let worst = 0;
+  for (const r of RSOURCES) {
+    let valid = 0; for (let v = r.lo; v <= r.hi; v++) if (v % 10 >= 1 && v % 10 <= 6 && v >= 11 && v <= 66) valid++;
+    if (!valid) { ok(counts[r.name] === 0, `an unrollable row ${r.name} is never rolled`); continue; }
+    worst = Math.max(worst, Math.abs(counts[r.name] / total - valid / 36 / (RSOURCES.reduce((a, x) => a + (() => { let n = 0; for (let v = x.lo; v <= x.hi; v++) if (v % 10 >= 1 && v % 10 <= 6) n++; return n; })(), 0) / 36)) / (valid / 36));
+  }
+  ok(worst < 0.2, `the seeded D66 roll matches the uneven row odds (worst relative error ${worst.toFixed(3)})`);
+}
+{
+  // hero validity with the real-shaped provider: every rank, many seeds and option mixes
+  const N6 = Number(process.env.FUZZ6 ?? 600);
+  for (const rank of R.RANK_ORDER) {
+    let bad = 0, joins = 0, wheres = 0, know = 0, rels = 0;
+    for (let i = 0; i < N6; i++) {
+      const seed = `r6-${rank}-${i}`;
+      const ro = { within: i % 3 === 0, joinBase: i % 5 === 0, spice: ["simple", "standard", "wild"][i % 3] };
+      const base = RR.withToggle(RR.withSpice(S.createState({ seed, rank, mode: "random" }), ro.spice), "joinBase", ro.joinBase);
+      const base2 = RR.withToggle(base, "within", ro.within);
+      const res = await RR.rollNewHero(i % 7 === 0 ? RP0 : RP, { rank, seed, rollOpts: base2.rollOpts });
+      const s = res.state, cfg = R.RANKS[rank];
+      const fail = (why) => { bad++; if (bad <= 3) console.error("real-shaped", seed, why, JSON.stringify(res.errors?.map((e) => e.code))); };
+      if (!res.ok) { fail("invalid"); continue; }
+      if (R.attrSum(s.attrs) !== R.budget(s) || !R.ATTRS.every((k) => s.attrs[k] >= 1 && s.attrs[k] <= cfg.cap)) { fail("points"); continue; }
+      const tal = [s.heroTalent?.name, s.occTalent?.name, ...s.extraTalents.map((t) => t.name)];
+      if (tal.some((n) => !n || nrm(n) === "knowledgeable")) { fail("talent missing or bare Knowledgeable"); continue; }
+      if (new Set(tal.map(nrm)).size !== tal.length && !tal.every((n) => /windfall/i.test(n))) { fail("duplicate talent"); continue; }
+      if (s.personality.length !== 2 || nrm(s.personality[0]) === nrm(s.personality[1])) { fail("personality"); continue; }
+      if (!s.drive?.name || !s.drive.text || !s.flaw?.name || !s.flaw.text || !s.heroName || !s.civilianName || !s.npcRel.name || !s.npcRel.type) { fail("persona/life text"); continue; }
+      const occ = ROCCS.find((o) => o.name === s.occupation);
+      if (!occ || s.resources !== occ.data.resources) { fail("occupation / resources"); continue; }
+      if (!s.sources.length || s.powers.some((p) => !s.sources.some((x) => x.key === p.sourceKey))) { fail("sources"); continue; }
+      if (s.powers.some((p) => p.level > R.levelCap(rank))) { fail("level cap"); continue; }
+      const T = s.team;
+      if (T.mode === "join") { joins++; if (!T.baseId || T.name || T.upgrades.length) { fail("join shape"); continue; } if (!ro.joinBase) { fail("join without option"); continue; } }
+      else { if (!T.name || !T.base || !/^RCity/.test(T.where) || T.upgrades.length !== cfg.upgrades) { fail("team text"); continue; } wheres++; if (ro.joinBase && i % 7 !== 0) { fail("join expected"); continue; } }
+      const opts = RR.randomOpts(RR.rollOptsOf(base2));
+      if (!opts.heroRel === !!s.heroRel.name && opts.heroRel && i % 7 !== 0) { fail("hero relation flag"); continue; }
+      if (s.heroRel.name) rels++;
+      if (/^Knowledgeable \(/.test(s.heroTalent.name) || /^Knowledgeable \(/.test(s.occTalent.name)) know++;
+      if (ro.spice === "simple" && (s.drawbacks.length || s.extraTalents.length || s.sources.length > 1 || s.heroRel.name || s.powers.some((p) => p.limits.length))) { fail("simple spice added extras"); continue; }
+      if (i < 80) { const again = await RR.rollNewHero(i % 7 === 0 ? RP0 : RP, { rank, seed, rollOpts: base2.rollOpts }); if (JSON.stringify(again.state) !== JSON.stringify(s)) fail("not deterministic"); }
+    }
+    ok(bad === 0, `phase 6 real-shaped ${rank}: ${N6} heroes valid (all points spent, caps, talents, text, team) (${bad} bad; joins ${joins}, locations ${wheres}, subjects ${know}, hero relations ${rels})`);
+    ok(wheres > 0 && joins > 0 && know > 0 && rels > 0, `phase 6 ${rank}: where, join, Knowledgeable subjects and hero relations all occur`);
+  }
+}
+{
+  // spice presets + hero code
+  let s = S.createState({ seed: "sp", rank: "global" });
+  eq(RR.rollOptsOf(s).spice, "standard", "default spice is standard");
+  for (const k of RR.SPICES) eq(RR.rollOptsOf(RR.withSpice(s, k)).spice, k, `preset ${k} is detected`);
+  eq(RR.rollOptsOf(RR.withToggle(RR.withSpice(s, "simple"), "drawbacks", true)).spice, "custom", "a changed toggle is custom");
+  eq(RR.rollOptsOf(RR.withToggle(RR.withToggle(RR.withSpice(s, "simple"), "drawbacks", true), "drawbacks", false)).spice, "simple", "back to the preset");
+  const o = RR.randomOpts(RR.rollOptsOf(RR.withSpice(s, "simple")));
+  ok(!o.drawbacks && !o.extraTalents && !o.extraSource && o.limitChance === 0 && !o.slotVariance && !o.heroRel && !o.joinBase && !o.withinArchetype, "simple = nothing optional");
+  ok(RR.randomOpts(RR.rollOptsOf(RR.withSpice(s, "wild"))).slotVariance, "wild varies the power count");
+  const code = RR.heroCode(RR.withToggle(RR.withSpice(S.patch(s, { seed: "k3f9a2", rank: "street" }), "wild"), "within", true));
+  eq(code, "k3f9a2:street:wild:arch:solo", "hero code format");
+  eq(RR.parseHeroCode(code), { seed: "k3f9a2", rank: "street", spice: "wild", within: true, joinBase: false }, "hero code parses");
+  eq(RR.parseHeroCode("abc123"), { seed: "abc123" }, "a bare seed is a code");
+  ok(RR.parseHeroCode("bad seed!") === null && RR.parseHeroCode("") === null && RR.parseHeroCode(":x") === null, "invalid seeds are refused");
+  eq(RR.parseHeroCode("a:nope:huge:x:y"), { seed: "a" }, "unknown parts are ignored");
+  const back = RR.withCode(s, RR.parseHeroCode(code));
+  eq([back.rank, RR.rollOptsOf(back).spice, RR.rollOptsOf(back).within], ["street", "wild", true], "a code applies its settings");
+  // old states without rollOpts load
+  ok(S.deserialize(JSON.stringify({ ...S.createState({ seed: "z" }), rollOpts: undefined })).rollOpts == null, "a state without rollOpts loads (defaults)");
+  const rt = S.deserialize(S.serialize(RR.withSpice(s, "wild")));
+  eq(RR.rollOptsOf(rt).spice, "wild", "rollOpts survive serialisation");
+}
+{
+  // rows, locks, per-row reroll, reroll all, reseed, rank change
+  const fields = (st, step) => JSON.stringify(S.STEP_FIELDS[step].map((f) => st[f]));
+  const rows = ["concept", "powers", "talents", "attributes", "life", "persona", "team"];
+  let bad = 0;
+  for (const rank of R.RANK_ORDER) for (let i = 0; i < 60; i++) {
+    const ro = RR.withSpice(S.createState({ seed: `b-${rank}-${i}`, rank, mode: "random" }), ["simple", "standard", "wild"][i % 3]);
+    const base = (await RR.rollNewHero(RP, { rank, seed: `b-${rank}-${i}`, rollOpts: ro.rollOpts })).state;
+    for (const step of rows) {
+      const next = await RR.rerollRow(base, step, RP);
+      for (const other of rows) {
+        if (other === step) continue;
+        if (other === "attributes" && (step === "powers" || step === "talents")) continue;
+        if (fields(next, other) !== fields(base, other)) { bad++; if (bad < 4) console.error("board isolation", rank, i, step, other); }
+      }
+      const v = R.validate(next);
+      if (!v.ok || R.attrSum(next.attrs) !== R.budget(next)) { bad++; if (bad < 4) console.error("board reroll invalid", rank, i, step, v.errors.map((e) => e.code)); }
+      if (step === "powers" && R.attrSum(next.attrs) !== R.budget(next)) bad++;   // rerolling powers re-balances the attributes: 0 points left
+      if (next.rank !== base.rank || next.seed !== base.seed || JSON.stringify(next.rollOpts) !== JSON.stringify(base.rollOpts)) bad++;
+    }
+  }
+  ok(bad === 0, `board: rerolling one row leaves the others (attributes only re-balanced by powers / talents), hero stays valid, 0 points left (${bad} bad)`);
+
+  // locks / kept rows / edited rows
+  bad = 0;
+  for (const rank of R.RANK_ORDER) for (let i = 0; i < 80; i++) {
+    const base = (await RR.rollNewHero(RP, { rank, seed: `lk6-${rank}-${i}` })).state;
+    const pickRows = rows.filter((_, j) => ((i + 1) >> (j % 3)) % 2 === 1 || j === i % 7).slice(0, 3 + (i % 2));
+    let s = base;
+    for (const step of pickRows) s = RR.toggleRowLock(s, step);
+    for (const step of pickRows) if (RR.lockMode(s, step) !== "locked" || !RR.isKept(s, step)) bad++;
+    const res = await RR.rerollUnlocked(s, RP);
+    for (const step of pickRows) if (fields(res.state, step) !== fields(base, step)) { bad++; if (bad < 4) console.error("kept row changed", rank, i, step); }
+    if (!res.ok) { bad++; if (bad < 4) console.error("locked reroll invalid", rank, i, pickRows.join(), res.errors.map((e) => e.code)); }
+    // an explicit row reroll of a locked row is refused; unlocking makes it rollable
+    const l0 = await RR.rerollRow(s, pickRows[0], RP); if (l0 !== s) bad++;
+    const u = RR.toggleRowLock(s, pickRows[0]); if (RR.isKept(u, pickRows[0])) bad++;
+    // edited by hand = kept for "reroll all", refused for a plain row reroll, allowed with force, which clears the flag
+    const ed = S.markTouched(base, "persona");
+    eq(RR.lockMode(ed, "persona"), "edited", "touched row is 'edited'");
+    const all = await RR.rerollUnlocked({ ...ed, seed: `ed-${i}`, rerolls: {} }, RP);
+    if (fields(all.state, "persona") !== fields(base, "persona")) bad++;
+    if ((await RR.rerollRow(ed, "persona", RP)) !== ed) bad++;
+    const forced = await RR.rerollRow(ed, "persona", RP, { force: true });
+    if (forced.touched.persona || fields(forced, "persona") === fields(base, "persona")) bad++;
+    if (RR.unlockedRows(ed).includes("persona") || !RR.unlockedRows(base).includes("persona")) bad++;
+  }
+  ok(bad === 0, `board: kept (locked / edited) rows survive 'Reroll all unlocked' and stay valid (${bad} bad)`);
+
+  // same seed -> same hero; copy / paste of the seed on the board
+  bad = 0;
+  for (const rank of R.RANK_ORDER) for (let i = 0; i < 40; i++) {
+    const fresh = await RR.rollNewHero(RP, { rank, seed: `sd-${i}`, rollOpts: RR.withSpice(S.createState({ seed: "x" }), ["simple", "standard", "wild"][i % 3]).rollOpts });
+    const other = (await RR.rollNewHero(RP, { rank, seed: "other" })).state;
+    const moved = await RR.reseed(S.patch(other, { rollOpts: fresh.state.rollOpts }), `sd-${i}`, RP);
+    if (JSON.stringify(moved.state) !== JSON.stringify(fresh.state)) { bad++; if (bad < 3) console.error("reseed differs from a fresh roll", rank, i); }
+    const pasted = RR.withCode(other, RR.parseHeroCode(RR.heroCode(fresh.state)));
+    const via = await RR.reseed(pasted, RR.parseHeroCode(RR.heroCode(fresh.state)).seed, RP);
+    if (JSON.stringify(via.state) !== JSON.stringify(fresh.state)) { bad++; if (bad < 3) console.error("pasted hero code differs", rank, i); }
+  }
+  ok(bad === 0, `seeds: a fresh roll, a reseed and a pasted hero code give the identical hero (${bad} bad)`);
+
+  // rank change on the board
+  bad = 0;
+  for (const from of R.RANK_ORDER) for (const to of R.RANK_ORDER) for (let i = 0; i < 10; i++) {
+    const base = (await RR.rollNewHero(RP, { rank: from, seed: `rk-${i}` })).state;
+    const res = await RR.changeRank(base, to, RP);
+    if (from === to) { if (res.state !== base && res.state.rank !== to) bad++; continue; }
+    if (!res.ok || res.state.rank !== to || R.attrSum(res.state.attrs) !== R.budget(res.state)) { bad++; if (bad < 3) console.error("rank change", from, to, res.errors?.map((e) => e.code)); }
+    const kept = RR.toggleRowLock(base, "persona");
+    const r2 = await RR.changeRank(kept, to, RP);
+    if (fields(r2.state, "persona") !== fields(base, "persona")) bad++;
+  }
+  ok(bad === 0, `board: changing the rank re-rolls the unlocked rows into a valid hero of that rank, kept rows stay (${bad} bad)`);
+
+  // concept within an archetype cascades to the dependent rows, never to rank or team
+  bad = 0; let changedArch = 0;
+  for (const rank of R.RANK_ORDER) for (let i = 0; i < 40; i++) {
+    const ro = RR.withToggle(S.createState({ seed: "c" }), "within", true).rollOpts;
+    const base = (await RR.rollNewHero(RP, { rank, seed: `cc-${rank}-${i}`, rollOpts: ro })).state;
+    if (!base.archetype) { bad++; continue; }
+    const next = await RR.rerollRow(base, "concept", RP);
+    if (next.archetype !== base.archetype) changedArch++;
+    if (fields(next, "team") !== fields(base, "team") || next.rank !== base.rank) bad++;
+    if (!R.validate(next).ok || R.attrSum(next.attrs) !== R.budget(next)) { bad++; if (bad < 3) console.error("cascade invalid", rank, i, R.validate(next).errors.map((e) => e.code)); }
+    if (JSON.stringify(next.locks) !== JSON.stringify(base.locks)) bad++;
+  }
+  ok(bad === 0 && changedArch > 100, `board: rerolling the concept within an archetype re-rolls the dependent rows and keeps rank / team (${bad} bad, ${changedArch} changed)`);
+
+  // team: join option, member hero, join -> text fallback
+  const T0 = (await RR.rollNewHero(RP, { rank: "global", seed: "tm1" })).state;
+  ok(T0.team.mode === "text" && /^RCity/.test(T0.team.where) && T0.team.upgrades.length === 2, "team step rolls name, kind, location and the starting upgrades");
+  const joined = await rollStep(T0, "team", RP, { joinBase: true });
+  ok(joined.team.mode === "join" && /^id\.Bse/.test(joined.team.baseId) && joined.team.name === "" && joined.team.upgrades.length === 0, "joinBase picks an existing base (mode join, card owns the texts)");
+  const text = await rollStep(joined, "team", RP, { joinBase: false });
+  ok(text.team.mode === "text" && text.team.baseId === null && text.team.name && text.team.where, "a joined state rerolled without the option falls back to text");
+  const none = await rollStep(T0, "team", realProvider({ bases: false }), { joinBase: true });
+  ok(none.team.mode === "text", "joinBase without a visible base stays text");
+  const member = S.patch(T0, { team: { ...T0.team, mode: "member", name: "Card", base: "", where: "", upgrades: [] } });
+  const mr = await rollStep(member, "team", RP, { joinBase: true });
+  eq(mr.team, member.team, "a member hero's team part is never rolled");
+  ok((await rollStep(T0, "team", RP, { heroRel: false })).heroRel.name === "", "heroRel off rolls no second relationship");
+  ok((await rollStep(T0, "team", RP, {})).heroRel.name !== "", "heroRel on rolls one when heroes exist");
+}
+{
+  // random operation sequences (board fuzz): rolls, locks, reroll all, reseed, rank change, in any order; no throw, locked fields never change
+  const N = Number(process.env.FUZZ_OPS ?? 150);
+  const rows = ["concept", "powers", "talents", "attributes", "life", "persona", "team"];
+  const fields = (st, step) => JSON.stringify(S.STEP_FIELDS[step].map((f) => st[f]));
+  let bad = 0, ops = 0;
+  for (let n = 0; n < N; n++) {
+    const rng = createRng(`ops-${n}`);
+    const rank = rng.pick(R.RANK_ORDER);
+    let s = (await RR.rollNewHero(RP, { rank, seed: `o-${n}`, rollOpts: RR.withToggle(RR.withSpice(S.createState({ seed: "x" }), rng.pick(RR.SPICES)), "within", rng.chance(0.3)).rollOpts })).state;
+    for (let k = 0; k < 14; k++) {
+      ops++;
+      const op = rng.pick(["row", "row", "row", "lock", "all", "seed", "rank", "unlock", "edit"]);
+      const kept0 = rows.filter((r) => RR.isKept(s, r)), snap = Object.fromEntries(kept0.map((r) => [r, fields(s, r)]));
+      let next = s, mayInvalid = kept0.length > 0;
+      if (op === "row") next = await RR.rerollRow(s, rng.pick(rows), RP);
+      else if (op === "lock") next = RR.toggleRowLock(s, rng.pick(rows));
+      else if (op === "all") next = (await RR.rerollUnlocked(s, RP)).state;
+      else if (op === "seed") next = (await RR.reseed(s, `n${n}-${k}`, RP)).state;
+      else if (op === "rank") { const r2 = rng.pick(R.RANK_ORDER); next = (await RR.changeRank(s, r2, RP)).state; mayInvalid = true; }
+      else if (op === "unlock") next = rows.reduce((a, r) => (RR.isKept(a, r) ? RR.toggleRowLock(a, r) : a), s);
+      else if (op === "edit") next = S.markTouched(s, rng.pick(rows));
+      if (op !== "lock" && op !== "unlock" && op !== "edit") for (const r of kept0) if (RR.isKept(next, r) && fields(next, r) !== snap[r] && !(op === "rank" && r === "attributes")) { bad++; if (bad < 4) console.error("kept row changed in", op, r); }
+      if (!mayInvalid && ((op === "row" && R.validate(s).ok) || op === "all" || op === "seed") && (!R.validate(next).ok || R.attrSum(next.attrs) !== R.budget(next))) { bad++; if (bad < 4) console.error("board op left an invalid hero", op, R.validate(next).errors.map((e) => e.code)); }
+      s = next;
+    }
+  }
+  ok(bad === 0, `board fuzz: ${ops} random operations (${N} sequences): no throw, kept rows unchanged, heroes without locks always valid (${bad} bad)`);
 }
 
 console.log(`${checks} checks, ${fails} failed, ${((Date.now() - t0) / 1000).toFixed(1)}s`);

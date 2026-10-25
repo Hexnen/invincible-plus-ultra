@@ -15,6 +15,7 @@
  *   extraSource      true   may take a 2nd power source    slotVariance true   +-1 power slot vs the rank
  *   limitChance      0.3    chance of one limit that pays for a level step / boost
  *   honorTouched     true   (rollAll) steps the user edited by hand count as locked
+ *   heroRel          true   roll the second key relationship (another hero of the table)   joinBase false  may JOIN an existing base card (team step)
  *
  * Locks (state.locks[field] = true) are constraints: locked values never change, the rest is drawn around them.
  * If the attributes are locked, powers/talents/drawbacks are planned so the locked sum is exactly the budget.
@@ -35,6 +36,11 @@
  *   occupations {archetype?}            data: { resources }     occupationTalents {occupation}   npcRelations {occupation}
  *   personality {archetype?} drives {archetype?} flaws {archetype?} heroNames {archetype?}   (drive/flaw: text optional)
  *   civilianNames {purpose: "hero"|"npc"}   teamNames {}   teamBases {rank}   baseUpgrades {}   heroRelations {}
+ *   cityLocations {}   (phase 6) the City Locations table; roll() = a seeded D66 on its rows
+ *   existingBases {}   (phase 6) base cards the user may join: [{name, data:{baseId}}]
+ * DISTRIBUTIONS (phase 6): the real provider's roll(key, rng) is a SEEDED equivalent of RollTable.roll() (same formula, same uneven rows: the D66
+ * power-source and City Locations tables use tens + units dice); keys without a table (powers, civilian names ...) are uniform seeded picks.
+ * draw() tries roll() up to 3 times when the roll lands on an excluded entry, then falls back to a uniform pick of what is left.
  */
 import { substream } from "./rng.mjs";
 import {
@@ -45,7 +51,7 @@ import { createState, STEP_FIELDS, FIELD_STEP } from "./state.mjs";
 
 export { newSeed } from "./rng.mjs";
 export const RANDOM_STEPS = ["concept", "powers", "talents", "attributes", "life", "persona", "team"];
-const DEFAULTS = { withinArchetype: false, archetype: null, drawbacks: true, extraTalents: true, extraSource: true, slotVariance: true, limitChance: 0.3, honorTouched: true };
+const DEFAULTS = { withinArchetype: false, archetype: null, drawbacks: true, extraTalents: true, extraSource: true, slotVariance: true, limitChance: 0.3, honorTouched: true, heroRel: true, joinBase: false };
 
 // ---------- provider helpers ----------
 const listOf = async (P, key, ctx = {}) => { const r = await P.list(key, ctx); return Array.isArray(r) ? r : []; };
@@ -63,9 +69,10 @@ const activeArchetype = (state, opts) => ((opts.withinArchetype || state.locks.a
 const ctxOf = (state, opts, extra = {}) => ({ rank: state.rank, ...(activeArchetype(state, opts) ? { archetype: activeArchetype(state, opts) } : {}), ...extra });
 const usedTalents = (s) => new Set([s.heroTalent?.name, s.occTalent?.name, ...s.extraTalents.map((t) => t.name)].filter(Boolean).map(normName));
 
-async function expandTalent(P, e, rng) {
+/** a bare "Knowledgeable" becomes one of the book's six subjects (D6 table), never one that is already taken; null when the subject cannot be placed */
+async function expandTalent(P, e, rng, used = new Set()) {
   if (normName(e.name) !== "knowledgeable") return e;
-  return (await draw(P, "knowledgeableSubjects", rng, {})) ?? e;
+  return (await draw(P, "knowledgeableSubjects", rng, {}, (z) => used.has(normName(z.name)))) ?? null;
 }
 
 // ---------- budget plan: how many slots / sources / extra talents / drawbacks ----------
@@ -257,16 +264,21 @@ async function stepTalents({ state, P, opts, rng, frozen, plan }) {
   if (unlockedExtra) for (const t of state.extraTalents) used.delete(normName(t.name));
   const ex = (e) => used.has(normName(e.name));
   if (unlockedHero) {
-    let e = await draw(P, "heroTalents", rng, ctx, ex);
-    if (e) e = await expandTalent(P, e, rng);
-    if (e && !ex(e)) { mine.heroTalent = ref(e); used.add(normName(e.name)); }
+    let e = null;
+    for (let i = 0; i < 4 && !e; i++) {                    // a bare Knowledgeable that cannot take a free subject is drawn past
+      const c = await draw(P, "heroTalents", rng, ctx, ex);
+      if (!c) break;
+      e = await expandTalent(P, c, rng, used);
+      if (e && ex(e)) e = null;
+    }
+    if (e) { mine.heroTalent = ref(e); used.add(normName(e.name)); }
     out.heroTalent = mine.heroTalent;
   }
   if (unlockedExtra) {
     const list = [];
     for (let i = 0; i < plan.e; i++) {
       let e = await draw(P, "talents", rng, {}, ex);
-      if (e) e = await expandTalent(P, e, rng);
+      if (e) e = await expandTalent(P, e, rng, used);
       if (!e || ex(e)) break;
       list.push(ref(e)); used.add(normName(e.name));
     }
@@ -338,7 +350,10 @@ async function stepLife({ state, P, opts, rng, frozen }) {
       const free = (await listOf(P, "occupationTalents", { occupation: o.name })).filter((t) => !used.has(normName(t.name)));
       if (!free.length) continue;
       occupation = o.name; resources = o.data?.resources ?? 1;
-      occTalent = ref((await draw(P, "occupationTalents", rng, { occupation: o.name }, (t) => used.has(normName(t.name)))) ?? free[0]);
+      let pick = (await draw(P, "occupationTalents", rng, { occupation: o.name }, (t) => used.has(normName(t.name)))) ?? free[0];
+      pick = (await expandTalent(P, pick, rng, used)) ?? free.find((t) => normName(t.name) !== "knowledgeable") ?? null;   // bare Knowledgeable -> a subject (book rule)
+      if (!pick) continue;
+      occTalent = ref(pick);
       break;
     }
     if (!frozen("occupation") || occs.length) { out.occupation = occupation; out.resources = resources; }
@@ -370,20 +385,32 @@ async function stepPersona({ state, P, opts, rng, frozen }) {
   return out;
 }
 
-async function stepTeam({ state, P, rng, frozen }) {
+/* Team (phase 6): name, kind of base (team-base.<rank>), LOCATION (City Locations, a D66 on the book table when the provider rolls it), starting upgrades,
+   optionally JOIN an existing base card (opts.joinBase, default off) and the second key relationship (opts.heroRel).
+   Draw order is fixed (upgrades, name, kind, location, join pick) so adding a draw never moves the earlier ones.
+   Tie to a base: a MEMBER hero keeps the card's texts (nothing is rolled for the team part); "join" is only produced when opts.joinBase is on and a base
+   is visible, otherwise a previous "join" falls back to "text" (the rolled texts need a text / create frame); "create" is kept as chosen. */
+async function stepTeam({ state, P, opts, rng, frozen }) {
   const out = {};
-  if (!frozen("team")) {
+  const prev = state.team ?? {};
+  if (!frozen("team") && prev.mode !== "member") {
     const n = RANKS[state.rank].upgrades;
     const ups = rng.sample((await listOf(P, "baseUpgrades", {})).map((e) => e.name), n);
-    out.team = {
-      ...(state.team ?? {}), where: "",                                   // phase 5f: keep mode / baseId (how the hero is tied to a base card)
-      name: (await draw(P, "teamNames", rng, {}))?.name ?? "",
-      base: (await draw(P, "teamBases", rng, { rank: state.rank }))?.name ?? "",
-      upgrades: ups
-    };
+    const name = (await draw(P, "teamNames", rng, {}))?.name ?? "";
+    const base = (await draw(P, "teamBases", rng, { rank: state.rank }))?.name ?? "";
+    const where = (await draw(P, "cityLocations", rng, {}))?.name ?? "";
+    let join = null;
+    if (opts.joinBase) {
+      const bases = await listOf(P, "existingBases", {});
+      if (bases.length) join = rng.pick(bases);
+    }
+    const mode = join ? "join" : prev.mode === "join" ? "text" : (prev.mode ?? "text");
+    out.team = join
+      ? { ...prev, mode: "join", baseId: join.data?.baseId ?? join.packUuid ?? null, name: "", base: "", where: "", upgrades: [] }
+      : { ...prev, mode, baseId: mode === "join" ? prev.baseId ?? null : null, name, base, where, upgrades: ups };
   }
   if (!frozen("heroRel")) {
-    const e = await draw(P, "heroRelations", rng, {});
+    const e = opts.heroRel === false ? null : await draw(P, "heroRelations", rng, {});
     out.heroRel = e ? { name: e.name, actorUuid: e.packUuid ?? e.data?.actorUuid ?? null } : { name: "", actorUuid: null };
   }
   return out;

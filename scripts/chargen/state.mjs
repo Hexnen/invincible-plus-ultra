@@ -24,7 +24,8 @@
  *   heroRel: { name, actorUuid|null },
  *   locks:   { <fieldName>: true },    // random mode: field excluded from re-rolls
  *   touched: { <stepId>: true },       // user edited the step by hand (global re-roll keeps it)
- *   rerolls: { <stepId|"plan">: n }    // substream counter: seed + counter => reproducible
+ *   rerolls: { <stepId|"plan">: n },   // substream counter: seed + counter => reproducible
+ *   rollOpts: null|{ spice, drawbacks, extraTalents, extraSource, limits, variance, heroRel, within, joinBase }   // phase 6 (reroll.mjs): options of the roll board
  * }
  * Lock / reroll granularity = the field names in STEP_FIELDS.
  */
@@ -57,7 +58,7 @@ export function createState({ seed = "000000", rank = DEFAULT_RANK, mode = "manu
     personality: [], drive: null, flaw: null,
     heroName: "", civilianName: "", appearance: "",
     team: { name: "", base: "", where: "", upgrades: [], mode: "text", baseId: null }, heroRel: { name: "", actorUuid: null },
-    locks: {}, touched: {}, rerolls: {}
+    locks: {}, touched: {}, rerolls: {}, rollOpts: null
   };
 }
 

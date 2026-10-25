@@ -787,3 +787,93 @@
 .ipc-pw-badge.ipc-tm-met { background: #e4f5ea; border-color: var(--ipc-green); color: var(--ipc-green); }
 .ipc-app button.ipc-btn[aria-disabled="true"][data-act="add-up"] { border-style: dashed; cursor: not-allowed; }
 @media (max-width: 560px) { .ipc-tm-modes { grid-template-columns: minmax(0, 1fr); } }
+
+
+/* ===================================================================================================================================
+   PHASE 6: ROLL BOARD (steps/board.mjs), Start step roll options, footer "Roll this step" / "Roll board".
+   Operate mode, same vocabulary as the other steps (plates, hard-shadow rows like the rank cards, native controls, dice buttons).
+   MOTION: a rerolled row lands (value drops in 10 px with a 1 deg tilt, a yellow multiply flash fades, the die icon tumbles): transform + opacity
+   only, one row at a time (a 45 ms stagger up to 8 rows for "Reroll all"). prefers-reduced-motion = a short opacity fade and the flash, no travel.
+   CONTRAST: ink on white 17, blue #3465a3 on white 6.0, green / red / amber as in the file header; the kept tag is ink on yellow (13.9).
+   =================================================================================================================================== */
+.ipc-board { display: grid; gap: 14px; max-width: 78ch; }
+.ipc-bd-h { display: flex; align-items: center; gap: .5em; margin: 0; font: 400 1rem/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ipc-blue); }
+.ipc-bd-hint { margin: 0; font-size: .86rem; }
+.ipc-bd-seed { display: grid; gap: 6px; padding: 10px 12px 8px; background: var(--ipc-paper-2); border: 2px solid var(--ipc-blue); }
+.ipc-bd-seedrow { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.ipc-bd-code { flex: 1 1 100%; }
+.ipc-app .ipc-bd-codein { font-variant-numeric: tabular-nums; letter-spacing: .03em; }
+.ipc-bd-msg { margin: 0; min-height: 1.3em; }
+.ipc-bd-msg:empty { display: block; min-height: 0; }
+.ipc-bd-opts { display: block; padding: 0 12px; background: #fff; border: 2px solid var(--ipc-line); }
+.ipc-bd-opts > summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: 44px; cursor: pointer; list-style: none; }
+.ipc-bd-opts > summary::-webkit-details-marker { display: none; }
+.ipc-bd-opts > summary::marker { content: ""; }
+.ipc-bd-opts[open] { display: grid; gap: 10px; padding-bottom: 12px; border-color: var(--ipc-blue); }
+.ipc-bd-opts[open] > summary { min-height: 40px; }
+.ipc-bd-chip { padding: 1px .6em; font-size: .85rem; color: var(--ipc-ink); background: var(--ipc-yellow); border: 2px solid var(--ipc-ink); }
+.ipc-bd-spice { grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); }
+.ipc-bd-toggles { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0 14px; }
+.ipc-bd-scope > .ipc-bd-hint { grid-column: 1 / -1; }
+
+.ipc-bd-rows { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.ipc-bd-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-areas: "lock main" "lock actions";
+  align-items: start;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  color: var(--ipc-ink);
+  background: #fff;
+  border: 2px solid var(--ipc-ink);
+  box-shadow: 3px 3px 0 var(--ipc-blue);
+}
+.ipc-bd-row.is-kept { background: var(--ipc-paper-2); }
+.ipc-bd-row-fixed { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "actions"; }
+.ipc-bd-row-fixed > .ipc-bd-lock-gap { display: none; }
+.ipc-bd-row > .ipc-bd-lock, .ipc-bd-row > .ipc-bd-lock-gap { grid-area: lock; }
+.ipc-bd-main { grid-area: main; min-width: 0; }
+.ipc-bd-actions { grid-area: actions; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ipc-app button.ipc-btn.ipc-bd-lock { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: 1.05rem; }
+.ipc-app button.ipc-btn.ipc-bd-lock.is-on { background: var(--ipc-yellow); box-shadow: 3px 3px 0 var(--ipc-blue); }
+.ipc-bd-name { display: flex; flex-wrap: wrap; align-items: center; gap: .15em .6em; margin: 0 0 4px; font: 400 1.05rem/1.2 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ipc-blue); }
+.ipc-bd-name > i { color: var(--ipc-text-2); }
+.ipc-bd-tag { padding: 0 .5em; font: 700 .75rem/1.7 Roboto, sans-serif; letter-spacing: 0; text-transform: none; color: var(--ipc-ink); background: var(--ipc-yellow); border: 1px solid var(--ipc-ink); }
+.ipc-bd-issue { font: 700 .8rem/1.5 Roboto, sans-serif; letter-spacing: 0; text-transform: none; color: var(--ipc-red); }
+.ipc-bd-val { min-width: 0; }
+.ipc-bd-dl .ipc-dl-row { grid-template-columns: minmax(5rem, 7.5rem) minmax(0, 1fr); padding: .12em .4em; }
+.ipc-bd-dl .ipc-dl-row:nth-child(odd) { background: transparent; }
+.ipc-bd-row:not(.is-kept) .ipc-bd-dl .ipc-dl-row:nth-child(even) { background: var(--ipc-paper); }
+.ipc-bd-row.is-kept .ipc-bd-dl .ipc-dl-row:nth-child(even) { background: var(--ipc-paper); }
+.ipc-bd-sub { margin: 6px 0 0; font-size: .88rem; }
+.ipc-bd-attrs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ipc-bd-attrs li { display: grid; justify-items: center; min-width: 3.3rem; padding: 2px 8px 1px; background: var(--ipc-paper); border: 2px solid var(--ipc-ink); }
+.ipc-bd-attrs li span { font: 400 .75rem/1.3 Titles, Comic, sans-serif; letter-spacing: .05em; color: var(--ipc-text-2); }
+.ipc-bd-attrs li b { font: 400 1.3rem/1.1 Titles, Comic, sans-serif; }
+.ipc-bd-pts { font-weight: 700; }
+.ipc-bd-pts.is-ok { color: var(--ipc-green); }
+.ipc-bd-pts.is-bad { color: var(--ipc-red); }
+.ipc-bd-rank { max-width: 18rem; }
+.ipc-bd-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding-top: 2px; }
+.ipc-app button.ipc-btn.ipc-bd-go { margin-left: auto; min-height: 44px; }
+
+/* the landing of a rerolled row */
+.ipc-bd-landed::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: var(--ipc-yellow); mix-blend-mode: multiply; opacity: 0; animation: ipc-bd-flash .7s ease-out both; animation-delay: calc(var(--ipc-bd-i, 0) * 45ms); }
+.ipc-bd-landed .ipc-bd-val { animation: ipc-bd-drop .44s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--ipc-bd-i, 0) * 45ms); }
+.ipc-bd-spin { display: inline-block; animation: ipc-bd-spin .55s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--ipc-bd-i, 0) * 45ms); }
+@keyframes ipc-bd-drop { from { opacity: 0; transform: translateY(-10px) rotate(-1deg); } 55% { opacity: 1; } to { opacity: 1; transform: none; } }
+@keyframes ipc-bd-flash { from { opacity: .7; } to { opacity: 0; } }
+@keyframes ipc-bd-spin { from { transform: rotate(-320deg) scale(1.3); } to { transform: none; } }
+
+/* Start step: spice hint and the two roll buttons */
+.ipc-start-spice { margin: 0; font-size: .88rem; }
+.ipc-start-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (pointer: coarse) { .ipc-app button.ipc-btn.ipc-bd-lock { width: 48px; height: 48px; } }
+@media (prefers-reduced-motion: reduce) {
+  .ipc-bd-landed .ipc-bd-val { animation: ipc-fade .16s linear both; }
+  .ipc-bd-landed::after { animation: ipc-bd-flash .5s linear both; }
+  .ipc-bd-spin { animation: none; }
+}

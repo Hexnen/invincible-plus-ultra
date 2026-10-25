@@ -57,5 +57,10 @@ fam("IPC.Persona.", ["Drive", "Flaw"], [".Title", ".Sub", ".Roll", ".RollTipArch
 fam("IPC.Team.Mode.Set.", ["text", "join", "create"]);                  // phase 5f: built with a template string in steps/team.mjs
 fam("IPC.Summary.Mode.", ["text", "join", "create", "member"]);          // phase 5f: built with a template string in steps/summary.mjs
 
+fam("IPC.Step.", ["board"], [".Label", ".Title", ".Hint"]);                                 // phase 6: the roll board is a step module that is not in rules.STEP_IDS
+fam("IPC.Board.Spice.", ["simple", "standard", "wild", "custom"], ["", ".Desc"]);            // built with a template string in steps/board.mjs and start.mjs
+fam("IPC.Board.Toggle.", ["drawbacks", "extraTalents", "extraSource", "limits", "heroRel", "joinBase"]);
+fam("IPC.Board.Scope.", ["free", "arch", "within"]);
+
 console.log(bad ? `${bad} problem(s)` : `OK: ${Object.keys(EN).length} keys, ${used.size} used directly, ${codes.size} rule codes, EN = PL`);
 process.exit(bad ? 1 : 0);

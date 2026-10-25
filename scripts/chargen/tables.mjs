@@ -444,8 +444,8 @@ export async function preview() {
    baseUpgrades, heroTalents/drawbacks/powerSources WITH an archetype ctx, plus the two core-book tables (powerSources without archetype =
    D66 table, knowledgeableSubjects). NOT covered (other providers): powers, boosts, limits, talents (all), drawbacks/heroTalents without
    archetype, civilianNames, heroRelations, getArchetype (attributes/powers: data/archetypes). list() returns Entry[] =
-   { name, packUuid?, text?, data? }. roll() is only provided with { useTableRoll: true } (real table.roll(), not seedable); without it
-   random.mjs makes a uniform seeded pick from list(), which is the same distribution. */
+   { name, packUuid?, text?, data? }. roll(key, rng, ctx) (phase 6) is always provided: by default a SEEDED equivalent of RollTable.roll() (same formula - a D66 table
+   rolls a tens and a units die - looked up in the table own ranges; see seededResult), with { useTableRoll: true } the real table.roll() (not seedable). */
 const CORE_TABLES = { powerSources: "Compendium.invincible-core.rollable-tables.RollTable.RCD7S3JJk9Ycgt4M", knowledgeableSubjects: "Compendium.invincible-core.rollable-tables.RollTable.3RqhnebM9w12oRmf" };
 const plain = (html) => clean(String(html ?? "").replace(/<[^>]*>/g, " ").replace(/@UUID\[[^\]]*\]\{([^}]+)\}/g, "$1"));
 function entryOf(r) {
@@ -490,18 +490,27 @@ async function tableForProvider(key, ctx) {
   if (k.startsWith("core:")) return fromUuid(CORE_TABLES[k.slice(5)]);
   return getTable(k);
 }
+/** SEEDED equivalent of RollTable.roll() (phase 6): the same dice as the table's formula (a "...*10+..." D66 rolls a tens and a units die), looked up in the
+    table's own (uneven) ranges, drawn from the wizard's rng so the same seed gives the same result. null when the roll lands in no row. */
+export function seededResult(tb, rng) {
+  const rs = sortedResults(tb);
+  if (!rs.length) return null;
+  const lo = rs[0].range[0], hi = rs[rs.length - 1].range[1];
+  const total = /\*\s*10/.test(String(tb.formula ?? "")) ? rng.d66() : rng.range(lo, hi);
+  return rs.find((r) => total >= r.range[0] && total <= r.range[1]) ?? null;
+}
 export function provider({ useTableRoll = false } = {}) {
   const P = {
-    async list(key, ctx = {}) { const tb = await tableForProvider(key, ctx); return tb ? sortedResults(tb).map(entryOf) : []; }
-  };
-  if (useTableRoll) {
-    P.roll = async (key, rng, ctx = {}) => {
+    async list(key, ctx = {}) { const tb = await tableForProvider(key, ctx); return tb ? sortedResults(tb).map(entryOf) : []; },
+    /** useTableRoll: the real table.roll() (never draw(), nothing in chat; not seedable). Default: the seeded equivalent above. */
+    async roll(key, rng, ctx = {}) {
       const tb = await tableForProvider(key, ctx);
       if (!tb) return null;
-      const { results } = await tb.roll(); // never draw()
-      return results[0] ? entryOf(results[0]) : null;
-    };
-  }
+      if (useTableRoll) { const { results } = await tb.roll(); return results[0] ? entryOf(results[0]) : null; }
+      const r = seededResult(tb, rng);
+      return r ? entryOf(r) : null;
+    }
+  };
   return P;
 }
 

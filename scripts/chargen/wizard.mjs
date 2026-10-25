@@ -15,6 +15,7 @@ import { STEPS } from "./steps/index.mjs";
 import { esc, icon, attrShort, rankName, msgText } from "./steps/util.mjs";
 import { describeActor } from "./import.mjs";
 import { bonusSum, warmBonuses } from "./bonuses.mjs";
+import { ROLLABLE, rerollRow, optsFor } from "./reroll.mjs";
 
 const MOD = "invincible-plus-ultra";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
@@ -36,15 +37,17 @@ export class ChargenApp extends ApplicationV2 {
   };
 
   /** open (or focus) the wizard of an actor */
-  static async open(actor) {
+  static async open(actor, { surprise = false } = {}) {
     const existing = foundry.applications.instances.get(idFor(actor));
     if (existing) {
       if (existing.minimized) await existing.maximize?.();
       await existing.render({ force: true });
       existing.bringToFront?.();
+      if (surprise) await existing.surprise();
       return existing;
     }
     const app = new ChargenApp({ actor });
+    app.#surprise = !!surprise;
     await app.render({ force: true });
     return app;
   }
@@ -71,6 +74,7 @@ export class ChargenApp extends ApplicationV2 {
   #lastPoints = null; #liveAt = 0;
   #busy = 0;
   #bound = false;
+  #surprise = false;                   // phase 6: "Surprise me" - roll a hero as soon as the wizard is ready and land on the roll board
   #narrow = false;                     // single-column layout: the stepper shows icons, names go to tooltips
 
   constructor({ actor, ...options } = {}) {
@@ -81,7 +85,9 @@ export class ChargenApp extends ApplicationV2 {
     super(options);
     this.actor = actor;
     const rank = RANKS[setting("chargenRank", "global")] ? setting("chargenRank", "global") : "global";
-    this.#hist = S.createHistory(S.createState({ seed: newSeed(), rank, mode: "manual" }));
+    let rollOpts = null;                  // phase 6: the roll settings (spice, toggles) are remembered per client
+    try { const o = JSON.parse(setting("chargenRoll", "") || "null"); if (o && typeof o === "object") rollOpts = o; } catch { /* ignore */ }
+    this.#hist = S.createHistory(S.patch(S.createState({ seed: newSeed(), rank, mode: "manual" }), { rollOpts }));
     this.#info = describeActor(actor);
     this.#draft = this.#readDraft();
   }
@@ -147,6 +153,8 @@ export class ChargenApp extends ApplicationV2 {
       else if (a === "next") this.go(this.#neighbour(1));
       else if (a === "undo") this.#history(-1);
       else if (a === "redo") this.#history(1);
+      else if (a === "roll-step") this.#rollThisStep();
+      else if (a === "to-board") this.go("board");
       else if (a === "build-tables") this.#buildTables(el);
       else if (a === "retry") this.#boot();
       else if (a === "close") this.close({ force: true });
@@ -186,6 +194,13 @@ export class ChargenApp extends ApplicationV2 {
     this.#revalidate();
     this.#paintAll();
     await this.#enter(this.#stepId, { focus: false });
+    if (this.#surprise) { this.#surprise = false; await this.surprise(); }
+  }
+
+  /** phase 6 "Surprise me": no questions, roll a hero with the remembered rank / settings and land on the roll board */
+  async surprise() {
+    if (this.#phase !== "ready") { this.#surprise = true; return; }
+    await STEPS.start.rollFor(this.#ctx("start"), { surprise: true });
   }
 
   #setPhase(phase) {
@@ -291,10 +306,12 @@ export class ChargenApp extends ApplicationV2 {
   }
 
   // ---------- navigation ----------
-  #neighbour(d) { const i = STEP_IDS.indexOf(this.#stepId) + d; return STEP_IDS[Math.min(STEP_IDS.length - 1, Math.max(0, i))]; }
+  /** the steps in the stepper: the roll board sits right after Start while the wizard is in random mode (phase 6) */
+  #ids() { return this.state.mode === "random" || this.#stepId === "board" ? [STEP_IDS[0], "board", ...STEP_IDS.slice(1)] : STEP_IDS; }
+  #neighbour(d) { const ids = this.#ids(), i = ids.indexOf(this.#stepId) + d; return ids[Math.min(ids.length - 1, Math.max(0, i))]; }
 
   async go(id, { focus = true } = {}) {
-    if (!STEPS[id] || this.#phase !== "ready") return;
+    if (!STEPS[id] || this.#phase !== "ready" || (id === "board" && this.state.mode !== "random")) return;
     if (id === this.#stepId && this.#q(".ipc-step")) { if (focus) this.focusBody(".ipc-plate"); return; }
     await this.#enter(id, { focus, animate: true });
   }
@@ -319,7 +336,7 @@ export class ChargenApp extends ApplicationV2 {
     if (token !== this.#navToken) return;
     this.#paintBody({ animate });
     if (focus) this.focusBody(".ipc-plate");
-    this.announce(t("IPC.Stepper.Entered", { step: t(`IPC.Step.${id}.Title`), n: STEP_IDS.indexOf(id) + 1, total: STEP_IDS.length }));
+    this.announce(t("IPC.Stepper.Entered", { step: t(`IPC.Step.${id}.Title`), n: this.#ids().indexOf(id) + 1, total: this.#ids().length }));
   }
 
   /** focus an element in the body (the step heading by default) */
@@ -343,11 +360,12 @@ export class ChargenApp extends ApplicationV2 {
     if (!next || next === this.state) return;
     let n = next;
     if (o.step && !n.touched?.[o.step] && STEP_IDS.includes(o.step) && o.step !== "start" && o.step !== "review") n = S.markTouched(n, o.step);
-    const rankBefore = this.state.rank;
+    const rankBefore = this.state.rank, optsBefore = JSON.stringify(this.state.rollOpts ?? null);
     if (o.coalesce && o.coalesce === this.#lastCoalesce && Date.now() - this.#lastCoalesceAt < 1500) this.#hist = { ...this.#hist, present: n };
     else this.#hist = S.pushHistory(this.#hist, n);
     this.#lastCoalesce = o.coalesce ?? null; this.#lastCoalesceAt = Date.now();
     if (n.rank !== rankBefore) { try { game.settings.set(MOD, "chargenRank", n.rank); } catch { /* setting missing */ } }
+    if (JSON.stringify(n.rollOpts ?? null) !== optsBefore) { try { game.settings.set(MOD, "chargenRoll", JSON.stringify(n.rollOpts ?? null)); } catch { /* setting missing */ } }
     this.#afterChange({ body: !!o.body });
   }
 
@@ -356,6 +374,7 @@ export class ChargenApp extends ApplicationV2 {
     this.#hist = S.pushHistory(this.#hist, next);
     this.#lastCoalesce = null;
     if (visitAll) for (const id of STEP_IDS) this.#visited.add(id);
+    if (visitAll && next.mode === "random") this.#visited.delete("board");     // the board is visited by landing on it
     this.#revalidate();
     this.#afterChange({ external: true });
     if (go) this.go(go);
@@ -374,9 +393,22 @@ export class ChargenApp extends ApplicationV2 {
     const h = this.#hist, next = dir < 0 ? S.undo(h) : S.redo(h);
     if (next === h) return;
     this.#hist = next; this.#lastCoalesce = null;
+    if (this.#stepId === "board" && this.state.mode !== "random") { this.#afterChange({ external: true }); this.go("start"); this.announce(t(dir < 0 ? "IPC.Footer.Undone" : "IPC.Footer.Redone")); return; }
     this.#afterChange({ external: true });
     this.#paintBody({ restoreFocus: false });
     this.announce(t(dir < 0 ? "IPC.Footer.Undone" : "IPC.Footer.Redone"));
+  }
+
+  /** phase 6 hybrid: "Roll this step" re-rolls the whole current step with the same code as a roll-board row (locks and hand edits of OTHER steps are respected,
+      a hand-edited attribute sum is kept by planning powers / talents around it); undo brings the old values back */
+  async #rollThisStep() {
+    const id = this.#stepId;
+    if (!ROLLABLE.includes(id) || this.#phase !== "ready" || this.#busy) return;
+    const s = this.state, o = optsFor(s);
+    const next = await this.#busyWrap(rerollRow(s, id, this.#getProvider(), { force: true, cascade: false, opts: { ...o, withinArchetype: o.withinArchetype || !!s.archetype } }));
+    if (next === s) { this.announce(t("IPC.Board.NoChange", { row: t(`IPC.Step.${id}.Label`) })); return; }
+    this.replaceState(next);
+    this.announce(t("IPC.Footer.RollStepDone", { step: t(`IPC.Step.${id}.Label`) }));
   }
 
   // ---------- draft + dirty ----------
@@ -422,14 +454,15 @@ export class ChargenApp extends ApplicationV2 {
     if (this.#phase !== "ready") return;
     const ol = this.#q(".ipc-steps");
     const total = this.#valid.all.errors.length;
-    const html = STEP_IDS.map((id, i) => {
+    const ids = this.#ids();
+    const html = ids.map((id, i) => {
       const iss = id === "review" ? { errors: this.#valid.all.errors } : this.#issuesOf(id);
       const errs = iss.errors.length;
       const cur = id === this.#stepId, seen = this.#visited.has(id);
       const state = cur ? "current" : !seen ? "todo" : errs ? "issue" : "done";
       const label = t(`IPC.Step.${id}.Label`);
       const showBadge = errs > 0 && (seen || cur) && id !== "start";
-      const sr = [t("IPC.Stepper.Of", { n: i + 1, total: STEP_IDS.length }), t(`IPC.Stepper.State.${state}`), showBadge ? t("IPC.Stepper.Problems", { n: errs }) : ""].filter(Boolean).join(", ");
+      const sr = [t("IPC.Stepper.Of", { n: i + 1, total: ids.length }), t(`IPC.Stepper.State.${state}`), showBadge ? t("IPC.Stepper.Problems", { n: errs }) : ""].filter(Boolean).join(", ");
       return `<li class="ipc-st" data-state="${state}"><button type="button" class="ipc-st-btn" data-ipc="step" data-step="${id}"${this.#narrow ? ` data-tooltip="${esc(label)}" data-tooltip-direction="DOWN"` : ""}${cur ? ' aria-current="step"' : ""}>
         <span class="ipc-st-mark">${icon(MARK[state])}</span><span class="ipc-st-name">${esc(label)}</span>${showBadge ? `<span class="ipc-st-badge" aria-hidden="true">${errs}</span>` : ""}<span class="ipc-sr">${esc(sr)}</span></button></li>`;
     }).join("");
@@ -469,9 +502,9 @@ export class ChargenApp extends ApplicationV2 {
 
   #paintFooter() {
     if (this.#phase !== "ready") return;
-    const foot = this.#q(".ipc-foot"), id = this.#stepId, i = STEP_IDS.indexOf(id);
+    const foot = this.#q(".ipc-foot"), id = this.#stepId, ids = this.#ids(), i = ids.indexOf(id);
     const iss = id === "review" ? this.#valid.all : this.#issuesOf(id);
-    const prev = STEP_IDS[i - 1], next = STEP_IDS[i + 1];
+    const prev = ids[i - 1], next = ids[i + 1];
     let note = "";
     if (iss.errors.length && id !== "review" && id !== "start") note = `<span class="ipc-note ipc-note-err" role="status">${icon("fa-solid fa-circle-exclamation")} ${esc(msgText(iss.errors[0]))}${iss.errors.length > 1 ? ` <span class="ipc-muted">${esc(t("IPC.Preview.More", { n: iss.errors.length - 1 }))}</span>` : ""}</span>`;
     const hist = this.#hist;
@@ -481,6 +514,8 @@ export class ChargenApp extends ApplicationV2 {
         <button type="button" class="ipc-btn ipc-btn-icon" data-ipc="undo" aria-label="${esc(t("IPC.Footer.Undo"))}" data-tooltip="${esc(t("IPC.Footer.Undo"))}"${hist.past.length ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-rotate-left")}</button>
         <button type="button" class="ipc-btn ipc-btn-icon" data-ipc="redo" aria-label="${esc(t("IPC.Footer.Redo"))}" data-tooltip="${esc(t("IPC.Footer.Redo"))}"${hist.future.length ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-rotate-right")}</button>
         <span class="ipc-seed">${esc(t("IPC.Footer.Seed"))} <code>${esc(this.state.seed)}</code></span>
+        ${ROLLABLE.includes(id) ? `<button type="button" class="ipc-btn ipc-btn-small" data-ipc="roll-step" data-tooltip="${esc(t("IPC.Footer.RollStepTip"))}">${icon("fa-solid fa-dice")} ${esc(t("IPC.Footer.RollStep"))}</button>` : ""}
+        ${this.state.mode === "random" && id !== "board" && id !== "start" ? `<button type="button" class="ipc-btn ipc-btn-small" data-ipc="to-board" data-tooltip="${esc(t("IPC.Footer.ToBoardTip"))}">${icon("fa-solid fa-table-list")} ${esc(t("IPC.Footer.ToBoard"))}</button>` : ""}
       </div>
       <div class="ipc-foot-r">${note}
         <button type="button" class="ipc-btn" data-ipc="back"${prev ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-arrow-left")} ${esc(t("IPC.Footer.Back"))}</button>

@@ -1,17 +1,39 @@
-/* Step "start": manual / roll a hero / start from this hero. Functional in phase 4 (the rest of the wizard is placeholders).
-   Roll a hero = random.rollAll with the REAL provider (api.chargen.provider), then the wizard jumps to Review. Nothing is written to the actor here. */
+/* Step "start": manual / roll a hero / start from this hero.
+   Roll a hero = reroll.rollNewHero (random.rollAll with the REAL provider, api.chargen.provider) with the chosen rank / spice level / scope, then the wizard
+   lands on the ROLL BOARD (phase 6; steps/board.mjs). "Surprise me" does the same with the remembered settings and no questions (also reachable from the
+   sheet's 3-dot menu). Nothing is written to the actor here. */
 import { t } from "../lang.mjs";
 import { RANK_ORDER, RANKS } from "../rules.mjs";
 import { setRank } from "../state.mjs";
-import { createState } from "../state.mjs";
-import { rollAll, newSeed } from "../random.mjs";
+import { rollNewHero, rollOptsOf, withSpice, withToggle, SPICES } from "../reroll.mjs";
 import { stateFromActor } from "../import.mjs";
 import { esc, delegate, icon, rankName } from "./util.mjs";
 
 const when = (ms) => { try { return new Date(ms).toLocaleString(globalThis.game?.i18n?.lang ?? undefined, { dateStyle: "medium", timeStyle: "short" }); } catch { return String(ms); } };
 
+/** roll a whole hero with the state's rank and roll settings and land on the roll board. Used by the buttons here and by the wizard's "Surprise me". */
+export async function rollFor(ctx, { surprise = false } = {}) {
+  const d = ctx.data, s = ctx.state;
+  d.rolling = true; d.error = "";
+  ctx.rerender();
+  try {
+    let member = null;
+    try { member = ctx.api?.base?.find?.(ctx.actor)?.id ?? null; } catch { member = null; }   // a hero already in a team base keeps the card's texts
+    const res = await ctx.busy(rollNewHero(ctx.provider(), { rank: s.rank, rollOpts: s.rollOpts, member }));
+    d.rolling = false;
+    ctx.replace(res.state, { visitAll: true, go: "board" });
+    ctx.announce(t(surprise ? "IPC.Start.Surprise.Done" : "IPC.Start.Roll.Done", { name: res.state.heroName || ctx.actor.name }));
+  } catch (err) {
+    console.error("invincible-plus-ultra | chargen roll failed", err);
+    d.rolling = false;
+    d.error = t("IPC.Start.Roll.Failed", { error: err?.message ?? String(err) });
+    ctx.rerender();
+  }
+}
+
 export default {
   id: "start",
+  rollFor,
   icon: "fa-solid fa-play",
 
   render(ctx) {
@@ -25,6 +47,8 @@ export default {
           <span class="ipc-banner-actions"><button type="button" class="ipc-btn ipc-btn-small" data-act="draft-continue">${esc(t("IPC.Start.DraftContinue"))}</button>
           <button type="button" class="ipc-btn ipc-btn-small ipc-btn-quiet" data-act="draft-discard">${esc(t("IPC.Start.DraftDiscard"))}</button></span></div>`
       : "";
+    const ro = rollOptsOf(s);
+    const spices = [...SPICES, ...(ro.spice === "custom" ? ["custom"] : [])].map((k) => `<option value="${k}"${k === ro.spice ? " selected" : ""}>${esc(t(`IPC.Board.Spice.${k}`))}</option>`).join("");
     const ranks = RANK_ORDER.map((k) => `<option value="${k}"${k === s.rank ? " selected" : ""}>${esc(rankName(k))} (${RANKS[k].points} ${esc(t("IPC.Rank.PointsShort"))})</option>`).join("");
     return `<div class="ipc-start">
       ${banner}${draft}
@@ -37,9 +61,14 @@ export default {
           <div><h3 id="ipc-c-roll">${icon("fa-solid fa-dice")} ${esc(t("IPC.Start.Roll.Title"))}</h3><p>${esc(t("IPC.Start.Roll.Text"))}</p></div>
           <div class="ipc-roll-opts">
             <label class="ipc-field"><span>${esc(t("IPC.Start.Roll.Rank"))}</span><select class="ipc-input" name="rollRank" data-fk="rollRank">${ranks}</select></label>
-            <label class="ipc-check"><input type="checkbox" name="within" data-fk="within"${d.within ? " checked" : ""}><span>${esc(t("IPC.Start.Roll.Within"))}</span></label>
+            <label class="ipc-field"><span>${esc(t("IPC.Start.Roll.Spice"))}</span><select class="ipc-input" name="rollSpice" data-fk="rollSpice" aria-describedby="ipc-spice-hint">${spices}</select></label>
+            <label class="ipc-check"><input type="checkbox" name="within" data-fk="within"${ro.within ? " checked" : ""}><span>${esc(t("IPC.Start.Roll.Within"))}</span></label>
           </div>
-          <button type="button" class="ipc-btn ipc-btn-primary" data-act="roll" data-fk="roll"${d.rolling ? ' aria-disabled="true"' : ""}>${icon(d.rolling ? "fa-solid fa-spinner fa-spin-pulse" : "fa-solid fa-dice")} ${esc(t(d.rolling ? "IPC.Start.Roll.Busy" : "IPC.Start.Roll.Button"))}</button>
+          <p class="ipc-muted ipc-start-spice" id="ipc-spice-hint">${esc(ro.spice === "custom" ? t("IPC.Board.Spice.custom.Desc") : t(`IPC.Board.Spice.${ro.spice}.Desc`))}</p>
+          <div class="ipc-start-btns">
+            <button type="button" class="ipc-btn ipc-btn-primary" data-act="roll" data-fk="roll"${d.rolling ? ' aria-disabled="true"' : ""}>${icon(d.rolling ? "fa-solid fa-spinner fa-spin-pulse" : "fa-solid fa-dice")} ${esc(t(d.rolling ? "IPC.Start.Roll.Busy" : "IPC.Start.Roll.Button"))}</button>
+            <button type="button" class="ipc-btn" data-act="surprise" data-fk="surprise"${d.rolling ? ' aria-disabled="true"' : ""} data-tooltip="${esc(t("IPC.Start.Surprise.Tip"))}">${icon("fa-solid fa-wand-sparkles")} ${esc(t("IPC.Start.Surprise.Button"))}</button>
+          </div>
           ${d.error ? `<p class="ipc-error" role="alert">${icon("fa-solid fa-triangle-exclamation")} ${esc(d.error)}</p>` : ""}
         </section>
         ${hasData ? `<section class="ipc-choice ipc-choice-hero" aria-labelledby="ipc-c-hero">
@@ -58,21 +87,8 @@ export default {
       if (act === "manual") {
         if (ctx.state.mode !== "manual") ctx.update((s) => ({ ...s, mode: "manual" }), { touch: false });
         ctx.go("rank");
-      } else if (act === "roll") {
-        d.rolling = true; d.error = "";
-        ctx.rerender();
-        try {
-          const base = createState({ seed: newSeed(), rank: ctx.state.rank, mode: "random" });
-          const res = await ctx.busy(rollAll(base, ctx.provider(), { withinArchetype: !!d.within }));
-          d.rolling = false;
-          ctx.replace(res.state, { visitAll: true, go: "review" });
-          ctx.announce(t("IPC.Start.Roll.Done", { name: res.state.heroName || ctx.actor.name }));
-        } catch (err) {
-          console.error("invincible-plus-ultra | chargen roll failed", err);
-          d.rolling = false;
-          d.error = t("IPC.Start.Roll.Failed", { error: err?.message ?? String(err) });
-          ctx.rerender();
-        }
+      } else if (act === "roll" || act === "surprise") {
+        await rollFor(ctx, { surprise: act === "surprise" });
       } else if (act === "hero") {
         ctx.replace(stateFromActor(ctx.actor, { seed: ctx.state.seed, rank: ctx.state.rank }), { visitAll: true, go: "rank" });
       } else if (act === "draft-continue") {
@@ -85,7 +101,8 @@ export default {
     root.addEventListener("change", (ev) => {
       const el = ev.target;
       if (el.name === "rollRank") ctx.update((s) => setRank(s, el.value), { touch: false });
-      else if (el.name === "within") d.within = !!el.checked;
+      else if (el.name === "rollSpice") ctx.update((s) => withSpice(s, el.value), { touch: false, body: true });
+      else if (el.name === "within") ctx.update((s) => withToggle(s, "within", el.checked), { touch: false });
     });
   }
 };

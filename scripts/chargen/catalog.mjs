@@ -270,23 +270,57 @@ export function provider(opts = {}) {
       }
       case "civilianNames": return FIRST.flatMap((f) => LAST.map((l) => ({ name: `${f} ${l}` })));
       case "heroRelations": return heroRelations(opts.excludeActorId);
+      case "cityLocations": return (await cityRows()).map(({ name, lo, hi }) => ({ name, data: { range: [lo, hi] } }));
+      case "existingBases": return existingBases();
       default: return T.list(key, ctx);
     }
   }
   const P = {
     list,
     getArchetype,
+    /** Phase 6: roll() is a SEEDED equivalent of RollTable.roll() for every table-backed key (same dice formula, same uneven rows: the D66 power sources and
+        City Locations); with useTableRoll the real table.roll() is used instead (not seedable). Keys without a table (powers, talents ...) return null and
+        random.mjs makes a uniform seeded pick. */
     async roll(key, rng, ctx = {}) {
       if (key === "civilianNames") return { name: `${rng.pick(FIRST)} ${rng.pick(LAST)}` };
-      // table-backed keys: delegate only when useTableRoll is on AND the key's list is exactly the table (no catalog fallback / union)
+      if (key === "cityLocations") {
+        const rows = await cityRows();
+        if (!rows.length) return null;
+        const total = rng.d66(), r = rows.find((x) => total >= x.lo && total <= x.hi);
+        return r ? { name: r.name, data: { range: [r.lo, r.hi], roll: total } } : null;
+      }
+      // table-backed keys: only where the key's list is exactly the table (no catalog fallback / union)
       const tableOnly = ["archetypes", "occupationTalents", "npcRelations", "teamNames", "teamBases", "baseUpgrades", "knowledgeableSubjects"].includes(key)
         || (ctx.archetype && ["personality", "drives", "flaws", "heroNames", "heroTalents", "drawbacks", "powerSources", "occupations"].includes(key))
         || (key === "powerSources" && !ctx.archetype);
-      if (opts.useTableRoll && tableOnly && typeof T.roll === "function") return T.roll(key, rng, ctx);
-      return null; // random.mjs falls back to a seeded pick from list()
+      if (!tableOnly || typeof T.roll !== "function") return null; // random.mjs falls back to a seeded pick from list()
+      const e = await T.roll(key, rng, ctx);
+      if (!e || e.packUuid) return e;
+      const type = { heroTalents: "talent", knowledgeableSubjects: "talent", drawbacks: "drawback", powerSources: "powerSource" }[key];
+      return type ? ((await withUuid(type, [e]))[0] ?? e) : e;     // table rows without a link get the pack document found by name
     }
   };
   return P;
+}
+
+const bapi = () => globalThis.game?.modules?.get(MODULE_ID)?.api?.base ?? null;
+const plainText = (html) => String(html ?? "").replace(/<[^>]*>/g, " ").replace(/@UUID\[[^\]]*\]\{([^}]+)\}/g, "$1").replace(/\s+/g, " ").trim();
+/** City Locations (core book table, read at runtime through the base feature): [{name, lo, hi}] sorted by range; [] without the book */
+async function cityRows() {
+  try {
+    const tb = await bapi()?.catalog?.cityTable?.();
+    if (!tb) return [];
+    return [...tb.results].map((r) => ({ name: plainText(r.description || r.name) || String(r.name ?? ""), lo: r.range?.[0] ?? 0, hi: r.range?.[1] ?? 0 })).filter((r) => r.name).sort((a, b) => a.lo - b.lo);
+  } catch { return []; }
+}
+/** team base cards the user may see (the ones the Team step lists as "join") */
+function existingBases() {
+  const b = bapi();
+  if (!b) return [];
+  try {
+    return b.list().filter((v) => game.actors.get(v.id)?.testUserPermission(game.user, "LIMITED"))
+      .sort((x, y) => x.name.localeCompare(y.name)).map((v) => ({ name: v.name, data: { baseId: v.id } }));
+  } catch { return []; }
 }
 
 function heroRelations(excludeId) {

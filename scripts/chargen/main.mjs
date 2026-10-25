@@ -7,13 +7,14 @@
         generation" while an undo backup exists;
      3. api.chargen.open(actor)  (game.modules.get("invincible-plus-ultra").api.chargen).
    Who: the GM always; a player only for an actor they OWN, and only while the world setting "Character generator: players" is on.
-   Settings: chargenButton (client, default on), chargenPlayers (world, default on), chargenRank (client, hidden: last used rank). */
+   Settings: chargenButton (client, default on), chargenPlayers (world, default on), chargenRank (client, hidden: last used rank),
+   chargenRoll (client, hidden: the roll settings of the roll board, JSON). Phase 6: a third 3-dot entry "Surprise me" opens the wizard and rolls a hero at once. */
 import { t } from "./lang.mjs";
 
 const MOD = "invincible-plus-ultra";
 const SYSTEM = "invincible";
 const LOG = `${MOD} (chargen) |`;
-export const KEY = { button: "chargenButton", players: "chargenPlayers", rank: "chargenRank" };
+export const KEY = { button: "chargenButton", players: "chargenPlayers", rank: "chargenRank", roll: "chargenRoll" };
 const ICON = "fa-solid fa-wand-magic-sparkles";
 
 let started = false;
@@ -35,13 +36,13 @@ async function resolveActor(ref) {
   return ref.actor ?? ref.document ?? ref;
 }
 
-/** api.chargen.open(actor | uuid | actorId) -> the wizard application (or null when not allowed) */
-export async function open(ref) {
+/** api.chargen.open(actor | uuid | actorId, { surprise }) -> the wizard application (or null when not allowed). surprise = roll a hero at once and land on the roll board */
+export async function open(ref, { surprise = false } = {}) {
   const actor = await resolveActor(ref);
   if (!actor || actor.type !== "superhero") { ui.notifications.warn(t("IPC.Header.NotHero")); return null; }
   if (!canUse(actor)) { ui.notifications.warn(t("IPC.Header.Denied")); return null; }
   const { ChargenApp } = await import("./wizard.mjs");
-  return ChargenApp.open(actor);
+  return ChargenApp.open(actor, { surprise });
 }
 
 async function undoLast(actor) {
@@ -91,6 +92,7 @@ function registerSettings() {
     name: t("IPC.Settings.Players.Name"), hint: t("IPC.Settings.Players.Hint"), scope: "world", config: true, type: Boolean, default: true, onChange: () => syncAll()
   });
   if (!has(KEY.rank)) game.settings.register(MOD, KEY.rank, { scope: "client", config: false, type: String, default: "global" });
+  if (!has(KEY.roll)) game.settings.register(MOD, KEY.roll, { scope: "client", config: false, type: String, default: "" });   // phase 6: remembered roll settings (JSON)
 }
 
 function registerHooks() {
@@ -99,6 +101,7 @@ function registerHooks() {
     const actor = app.document;
     if (!actor || actor.type !== "superhero") return;
     controls.push({ action: "ipcChargen", icon: ICON, label: t("IPC.Header.Button"), visible: () => canUse(actor), onClick: () => open(actor) });
+    controls.push({ action: "ipcChargenSurprise", icon: "fa-solid fa-wand-sparkles", label: t("IPC.Header.Surprise"), visible: () => canUse(actor), onClick: () => open(actor, { surprise: true }) });
     controls.push({ action: "ipcChargenUndo", icon: "fa-solid fa-rotate-left", label: t("IPC.Header.Undo"), visible: () => canUse(actor) && !!chargenApi()?.apply?.hasUndo(actor), onClick: () => undoLast(actor) });
   });
 }
