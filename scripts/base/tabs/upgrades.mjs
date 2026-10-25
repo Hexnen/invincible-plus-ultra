@@ -193,20 +193,21 @@ function stateWord(ctx, s) {
 function actionsHtml(ctx, key, s, left) {
   const { esc, icon, t } = ctx;
   const custom = key === "custom";
+  // B12: a catalog row never carries the yellow primary (17 rows = 17 competing primaries); the view's primaries are the owned-row repairs above
   const btn = (act, label, ok, primary, extra = "") => `<button type="button" class="ipb-btn ipb-btn-small${primary ? " ipb-btn-primary" : ""}" data-up-act="${act}" data-key="${esc(key)}" data-fk="up-${act}-${esc(key)}"${ok ? "" : ' aria-disabled="true"'}${extra}>${label}</button>`;
   const out = [];
   const whys = [];
   const cost = s.cost.cost;
-  if (ctx.canEdit && left > 0) { out.push(btn("pick", `${icon("fa-solid fa-flag")}${esc(t("IPB.Up.Pick"))}`, s.start.ok, true)); if (!s.start.ok) whys.push(s.start.why); }
+  if (ctx.canEdit && left > 0) { out.push(btn("pick", `${icon("fa-solid fa-flag")}${esc(t("IPB.Up.Pick"))}`, s.start.ok, false)); if (!s.start.ok) whys.push(s.start.why); }
   if (ctx.isStaff) {
     const label = cost == null ? t("IPB.Up.Buy") : custom ? t("IPB.Up.Buy") : t("IPB.Up.BuyCost", { cost });
-    out.push(btn("buy", `${icon("fa-solid fa-coins")}${esc(label)}`, s.buy.ok, !(ctx.canEdit && left > 0)));
+    out.push(btn("buy", `${icon("fa-solid fa-coins")}${esc(label)}`, s.buy.ok, false));
     if (!s.buy.ok) whys.push(s.buy.why);
     out.push(btn("grant", `${icon("fa-solid fa-gift")}${esc(t("IPB.Up.Grant"))}`, s.grant.ok, false));
     if (!s.grant.ok && s.grant.why?.key !== "IPB.Up.staffOnly") whys.push(s.grant.why);
   } else if (ctx.canEdit) {
     const label = cost == null ? t("IPB.Up.Ask") : t("IPB.Up.AskCost", { cost });
-    out.push(btn("ask", `${icon("fa-solid fa-hand")}${esc(label)}`, s.buy.ok, !(left > 0)));
+    out.push(btn("ask", `${icon("fa-solid fa-hand")}${esc(label)}`, s.buy.ok, false));
     if (!s.buy.ok) whys.push(s.buy.why);
   }
   const seen = new Set();

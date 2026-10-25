@@ -210,7 +210,7 @@ function crateRow(ctx, r) {
     const aria = t(isW ? "IPB.Gr.GiveVehAria" : "IPB.Gr.GiveHeroAria", { name: nm });
     const rid = `${ctx.app.id}-gr-gw-${r.id}`;
     acts.push(g.list.length
-      ? `<button type="button" class="ipb-btn ipb-btn-small ipb-btn-primary" data-gr-act="${act}" data-cid="${esc(r.id)}" data-fk="gr-g-${esc(r.id)}" aria-label="${esc(aria)}">${icon("fa-solid fa-hand-holding-hand")}${esc(label)}</button>`
+      ? `<button type="button" class="ipb-btn ipb-btn-small" data-gr-act="${act}" data-cid="${esc(r.id)}" data-fk="gr-g-${esc(r.id)}" aria-label="${esc(aria)}">${icon("fa-solid fa-hand-holding-hand")}${esc(label)}</button>`
       : `<button type="button" class="ipb-btn ipb-btn-small" aria-disabled="true" data-gr-act="none" data-fk="gr-g-${esc(r.id)}" aria-describedby="${esc(rid)}" aria-label="${esc(aria)}">${icon("fa-solid fa-hand-holding-hand")}${esc(label)}</button><span class="ipb-gr-why" id="${esc(rid)}">${esc(t(g.why))}</span>`);
     acts.push(`<button type="button" class="ipb-btn ipb-btn-small" data-gr-act="crate-remove" data-cid="${esc(r.id)}" data-fk="gr-cx-${esc(r.id)}" aria-label="${esc(t("IPB.Gr.RemoveAria", { name: nm }))}">${icon("fa-solid fa-trash-can")}${esc(t("IPB.Gr.Remove"))}</button>`);
   }
@@ -505,7 +505,7 @@ async function giveDialog(ctx, row, targets) {
   const opts = targets.map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
   const out = await DialogV2.wait({
     window: { title: t("IPB.Gr.GiveTitle", { name: row.name }), icon: "fa-solid fa-hand-holding-hand" },
-    classes: ["ipb-dialog"], position: { width: 440 },
+    classes: ["ipb-dialog", "ipb-dialog-safe"], position: { width: 440 },
     content: `<p class="ipb-gr-dlg-lede">${esc(t("IPB.Gr.GiveLede", { name: row.name }))}</p><label class="ipb-dlg-field"><span>${esc(t("IPB.Gr.GiveWho"))}</span><select name="target">${opts}</select></label>`,
     render: (_ev, dialog) => {
       const el = dialog.element ?? dialog;
@@ -516,8 +516,9 @@ async function giveDialog(ctx, row, targets) {
       upd();
     },
     buttons: [
-      { action: "give", label: t("IPB.Gr.GiveYesBare"), default: true, callback: (_ev, button) => button.form.elements.target.value },
-      { action: "cancel", label: t("IPB.Gr.GiveCancel"), callback: () => null }
+      // B12: the SAFE button is the default (Enter / initial focus = Cancel, like the delete dialog's Keep); Give keeps the yellow look through .ipb-primary
+      { action: "give", label: t("IPB.Gr.GiveYesBare"), class: "ipb-primary", callback: (_ev, button) => button.form.elements.target.value },
+      { action: "cancel", label: t("IPB.Gr.GiveCancel"), default: true, callback: () => null }
     ],
     rejectClose: false, modal: false
   });

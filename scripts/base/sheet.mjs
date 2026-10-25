@@ -295,7 +295,7 @@ export class BaseSheet extends ActorSheetV2 {
   /** B4c: the rank is DERIVED (highest member rank, store.rankOf), shown read-only; a note when the members disagree */
   #rankHtml(team) {
     const ri = team.rankInfo;
-    const src = ri.source === "members" ? t("IPB.Rank.FromMembers") : t("IPB.Rank.NoMembers");
+    const src = ri.source === "members" ? t("IPB.Rank.FromMembers") : t(ri.unknown > 0 ? "IPB.Rank.NoneKnown" : "IPB.Rank.NoMembers");   // B12: "no members yet" was shown for a team whose heroes simply have no readable rank
     const tip = [t("IPB.Rank.TipTitle"), ...ri.members.map((m) => `${m.name}: ${m.rank ? rankName(m.rank) : t("IPB.Rank.Unknown")}${m.source === "inferred" ? ` (${t("IPB.Rank.Estimated")})` : ""}`)].join("; ");
     const mix = ri.mixed ? `<span class="ipb-rank-mix" role="note">${icon("fa-solid fa-triangle-exclamation")}<span>${esc(t("IPB.Rank.Mixed", { ranks: ri.ranks.map(rankName).join(", ") }))}</span></span>` : "";
     return `<span class="ipb-rank-box"><span class="ipb-rank-ro" data-tooltip="${esc(tip)}">${icon("fa-solid fa-shield-halved")}<span>${esc(t("IPB.Rank.Label", { rank: rankName(ri.rank) }))}</span><small class="ipb-rank-src">${esc(src)}</small></span>${mix}</span>`;

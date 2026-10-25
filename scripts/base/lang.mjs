@@ -466,6 +466,7 @@ Object.assign(EN, {
   "IPB.Rank.Mixed": "Members differ in rank ({ranks}). The highest counts.",
   "IPB.Rank.TipTitle": "The team rank is its highest member rank",
   "IPB.Rank.Unknown": "unknown",
+  "IPB.Rank.NoneKnown": "default, ranks unknown",
   "IPB.Rank.Estimated": "estimated from attributes and powers",
   "IPB.Head.RemoveMember": "Remove {name} from the team",
   "IPB.Head.Removed": "{name} left {team}.",
@@ -491,6 +492,7 @@ Object.assign(PL, {
   "IPB.Rank.Mixed": "Członkowie mają różne rangi ({ranks}). Liczy się najwyższa.",
   "IPB.Rank.TipTitle": "Rangą drużyny jest najwyższa ranga jej członków",
   "IPB.Rank.Unknown": "nieznana",
+  "IPB.Rank.NoneKnown": "domyślnie, rangi nieznane",
   "IPB.Rank.Estimated": "oszacowana z atrybutów i mocy",
   "IPB.Head.RemoveMember": "Usuń {name} z drużyny",
   "IPB.Head.Removed": "{name} opuszcza drużynę {team}.",
@@ -761,11 +763,11 @@ Object.assign(PL, {
 });
 
 Object.assign(EN, {
-  "IPB.Lock.Note": "Team and Team base follow the team card “{team}” and cannot be edited here. Change them on the card.",
+  "IPB.Lock.Note": "Team and Team base follow the team card and cannot be edited here. Change them on the card.",
   "IPB.Lock.Refused": "Team and Team base are managed by the team card “{team}”. Edit them on the card, or remove the hero from the team first."
 });
 Object.assign(PL, {
-  "IPB.Lock.Note": "Drużyna i baza drużyny pochodzą z karty drużyny „{team}” i nie da się ich tu edytować. Zmień je na karcie.",
+  "IPB.Lock.Note": "Drużyna i baza drużyny pochodzą z karty drużyny i nie da się ich tu edytować. Zmień je na karcie.",
   "IPB.Lock.Refused": "Drużynę i bazę drużyny ustawia karta drużyny „{team}”. Edytuj je na karcie albo najpierw usuń bohatera z drużyny."
 });
 /* phase B7: the Events tab (IPB.Ev.*) */
