@@ -836,3 +836,17 @@ li.ipb-dir-base .ipb-dir-mark { margin-inline-start: 6px; color: #0096cb; font-s
 .ipb-chat-sum ul { margin: 2px 0 6px; padding-left: 1.2em; }
 .ipb-chat-sum .ipb-chat-h { margin: 8px 0 0; }
 textarea.ipb-gr-vnote { width: 100%; min-height: 4.5em; resize: vertical; line-height: 1.4; }
+
+/* ===== B11: long unbroken names (A16) and the join-request chat card ===== */
+.ipb-id { grid-template-columns: minmax(0, 1fr); }
+.ipb-plate { box-sizing: border-box; min-width: 0; }
+.ipb-join .ipb-chat-h { margin: 0 0 4px; }
+.ipb-join p { margin: 4px 0; overflow-wrap: anywhere; }
+.ipb-join-acts { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 8px; }
+.ipb-join .ipb-join-btn { flex: 0 1 auto; width: auto; min-height: 32px; padding: 4px 12px; font: 700 14px/1.2 Roboto, sans-serif; color: #0c1a2e; background: #fff; border: 2px solid #0c1a2e; border-radius: 0; cursor: pointer; }
+.ipb-join .ipb-join-yes { background: #ffe72a; box-shadow: 3px 3px 0 #0c1a2e; }
+.ipb-join .ipb-join-btn:hover:not(:disabled) { translate: -1px -1px; }
+.ipb-join .ipb-join-btn:focus-visible { outline: 3px solid #0096cb; outline-offset: 2px; }
+.ipb-join .ipb-join-btn:disabled { opacity: .55; cursor: default; }
+.ipb-join-state { font-weight: 700; }
+@media (pointer: coarse) { .ipb-join .ipb-join-btn { min-height: 44px; } }

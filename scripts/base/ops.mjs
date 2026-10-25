@@ -12,6 +12,19 @@ const MOD = S.MODULE_ID;
 const esc = (s) => foundry.utils.escapeHTML?.(String(s ?? "")) ?? String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const newId = () => foundry.utils.randomID(16);
 
+/* B11 (A6, A7): one operation at a time per card on this client. Read-modify-write ops (karma.buy, crate.give, upgrades.add) queue here and re-read the card
+   once they run, so two clicks / two parallel calls can neither spend the same karma nor hand out the same crate row twice. A queue cannot span two
+   browsers: between two clients Foundry has no transaction, so the check-after-queue keeps the window to a network round trip. */
+const queues = new Map();
+export function withLock(key, fn) {
+  const prev = queues.get(key) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  const tail = run.then(() => {}, () => {});
+  queues.set(key, tail);
+  tail.then(() => { if (queues.get(key) === tail) queues.delete(key); });
+  return run;
+}
+
 /* ================================================================== upgrades */
 export const upgrades = {
   list(team) { return P.sortedList(S.data(team).upgrades); },
@@ -33,14 +46,52 @@ export const upgrades = {
   },
   async cost(team, key, opts = {}) { return (await upgrades.check(team, key, opts)).cost; },
 
-  /** Add an upgrade. source "start" = a starting upgrade (editors; prerequisites and stack limit enforced for non-staff),
+  /** Add an upgrade. source "start" = a starting upgrade (editors; the stack limit and the starting allowance are enforced for non-staff, prerequisites are not: B11),
       "gm" = free grant (staff only, bypasses limits). Karma purchases go through karma.buy(). */
-  async add(team, key, { source = "start", power = "", note = "", status, name = "", user = game.user, paid = 0, buy = null } = {}) {
+  add(team, key, opts = {}) {
+    const e = S.resolve(team);
+    return withLock(e.id, () => addUpgrade(e, key, opts));
+  },
+  async remove(team, uid, { user = game.user } = {}) {
+    S.assertCanEdit(team, user);
+    if (!S.data(team).upgrades[uid]) throw new BaseError("notFound", { id: uid });
+    await S.update(team, { upgrades: { [`-=${uid}`]: null } }, { user });
+    return true;
+  },
+  async setStatus(team, uid, status, { user = game.user } = {}) {
+    S.assertStaff(user);                                                // B11 (A5): the install day and every status change are the GM's call (the tab already hides it)
+    if (!P.STATUSES.includes(status)) throw new BaseError("badInput", { status });
+    if (!S.data(team).upgrades[uid]) throw new BaseError("notFound", { id: uid });
+    await S.update(team, { upgrades: { [uid]: { status } } }, { user });
+    return status;
+  },
+  async setCount(team, uid, count, { user = game.user } = {}) {
+    const u = S.data(team).upgrades[uid];
+    if (!u) throw new BaseError("notFound", { id: uid });
+    if (!Number.isInteger(count) || count < 1) throw new BaseError("badInput", { count });
+    if (!S.isStaff(user)) {
+      const def = await Cat.upgrade(u.key);
+      if (def && def.max !== null && count > def.max) throw new BaseError("stackMax", { name: u.name, count, max: def.max });
+    }
+    await S.update(team, { upgrades: { [uid]: { count } } }, { user });
+    return count;
+  },
+  async setNote(team, uid, note, { user = game.user } = {}) {
+    await S.update(team, { upgrades: { [uid]: { note: String(note ?? "") } } }, { user });
+    return true;
+  }
+};
+
+/** The body of upgrades.add (no queue of its own: karma.buy already holds the card's lock when it calls this). */
+async function addUpgrade(team, key, { source = "start", power = "", note = "", status, name = "", user = game.user, paid = 0, buy = null } = {}) {
+  {
     const e = S.resolve(team);
     S.assertCanEdit(e, user);
     if (!P.SOURCES.includes(source)) throw new BaseError("badInput", { source });
     if (source === "gm" || source === "karma") S.assertStaff(user);
     const B = S.data(e);
+    // B11 (A5): the starting allowance is a rule, not just a meter: a non-staff editor cannot go past it (staff may, the table can agree otherwise)
+    if (source === "start" && !S.isStaff(user) && !(P.allowance(B.rank, B.upgrades).left > 0)) throw new BaseError("noAllowance", { total: P.allowance(B.rank, B.upgrades).total });
     const guard = P.canAdd(B, "upgrades");
     if (!guard.ok) throw new BaseError("full", { collection: "upgrades", cap: guard.cap });
     const k = P.slug(key) || "custom";
@@ -52,7 +103,7 @@ export const upgrades = {
     if (entry) {
       const stack = P.checkStack(entry, P.sortedList(B.upgrades).filter((u) => u.key === entry.key), { power, grant });
       if (!stack.ok) throw new BaseError("stackMax", { name: entry.name, count: stack.count, max: stack.max });
-      if (!S.isStaff(user) && source === "start") {
+      if (!S.isStaff(user) && source === "start" && !P.START_IGNORES_PREREQ) {          // B11 (A15a): any starting upgrade is allowed; the switch lives in pure.mjs
         const ev = P.evalPrerequisite(entry.prereq, { members: S.memberFacts(e, user), owned: P.sortedList(B.upgrades) });
         if (ev.ok === false) throw new BaseError("prerequisite", { name: entry.name });
       }
@@ -76,35 +127,8 @@ export const upgrades = {
       }
     }, { user });
     return id;
-  },
-  async remove(team, uid, { user = game.user } = {}) {
-    S.assertCanEdit(team, user);
-    if (!S.data(team).upgrades[uid]) throw new BaseError("notFound", { id: uid });
-    await S.update(team, { upgrades: { [`-=${uid}`]: null } }, { user });
-    return true;
-  },
-  async setStatus(team, uid, status, { user = game.user } = {}) {
-    if (!P.STATUSES.includes(status)) throw new BaseError("badInput", { status });
-    if (!S.data(team).upgrades[uid]) throw new BaseError("notFound", { id: uid });
-    await S.update(team, { upgrades: { [uid]: { status } } }, { user });
-    return status;
-  },
-  async setCount(team, uid, count, { user = game.user } = {}) {
-    const u = S.data(team).upgrades[uid];
-    if (!u) throw new BaseError("notFound", { id: uid });
-    if (!Number.isInteger(count) || count < 1) throw new BaseError("badInput", { count });
-    if (!S.isStaff(user)) {
-      const def = await Cat.upgrade(u.key);
-      if (def && def.max !== null && count > def.max) throw new BaseError("stackMax", { name: u.name, count, max: def.max });
-    }
-    await S.update(team, { upgrades: { [uid]: { count } } }, { user });
-    return count;
-  },
-  async setNote(team, uid, note, { user = game.user } = {}) {
-    await S.update(team, { upgrades: { [uid]: { note: String(note ?? "") } } }, { user });
-    return true;
   }
-};
+}
 
 /* ================================================================== karma */
 export const karma = {
@@ -118,9 +142,15 @@ export const karma = {
       opts.cost overrides. Karma is deducted from the heroes, then the upgrade is added (status "installing", paid = cost); if ANY step fails
       every hero is restored to the karma recorded before. `_failAt` ("afterKarma" | "card") forces a failure for tests only.
       Returns { id, cost, kind, split }. */
-  async buy(team, key, split, { power = "", cost: override = null, note = "", name = "", _failAt = null, user = game.user } = {}) {
-    S.assertStaff(user);
+  async buy(team, key, split, opts = {}) {
+    S.assertStaff(opts.user ?? game.user);
     const e = S.resolve(team);
+    return withLock(e.id, () => buyKarma(e, key, split, opts));                   // B11 (A7): one purchase at a time per card; planning and reading the karma happen INSIDE the queue
+  }
+};
+
+async function buyKarma(e, key, split, { power = "", cost: override = null, note = "", name = "", _failAt = null, user = game.user } = {}) {
+  {
     const chk = await upgrades.check(e, key, { power, user });
     const c = P.upgradeCost(chk.ok === null ? { ok: null } : chk, Number.isInteger(override) ? override : null);
     if (c.blocked) throw new BaseError("blocked", { name: chk.entry?.name ?? key });
@@ -132,7 +162,7 @@ export const karma = {
     if (!v.ok) throw new BaseError("karma", { cost: c.cost, errors: v.errors, missing: v.missing });
 
     const done = [];                                                    // [{actor, before}]
-    const restore = async () => { for (const d of done.reverse()) { try { await d.actor.update({ "system.karma": d.before }); } catch (er) { console.error(`${MOD} | base: karma rollback failed for ${d.actor.name}`, er); } } };
+    const restore = async () => { for (const d of done.reverse()) { try { await d.actor.update({ "system.karma": (Number(d.actor._source.system.karma) || 0) + d.amount }); } /* relative: puts back what WE took */ catch (er) { console.error(`${MOD} | base: karma rollback failed for ${d.actor.name}`, er); } } };
     try {
       for (const s of plan.filter((x) => x.amount > 0)) {
         const actor = game.actors.get(s.actorId);
@@ -140,19 +170,19 @@ export const karma = {
         const before = Number(actor._source.system.karma) || 0;       // _source: effect-modified numbers are never written back
         if (before < s.amount) throw new BaseError("karma", { cost: c.cost, missing: s.amount - before });
         await actor.update({ "system.karma": before - s.amount });
-        done.push({ actor, before });
+        done.push({ actor, before, amount: s.amount });
       }
       if (_failAt === "afterKarma") throw new Error("forced failure after karma");
       if (_failAt === "card") { await S.update(e, { upgrades: { zzfail: "bad" } }, { user }); }
       const buy = { at: Date.now(), paid: c.cost, kind: c.kind, split: plan.filter((x) => x.amount > 0).map((x) => ({ id: x.actorId, name: game.actors.get(x.actorId)?.name ?? "", amount: x.amount })) };
-      const id = await upgrades.add(e, key, { source: "karma", power, note, name, paid: c.cost, buy, user });
+      const id = await addUpgrade(e, key, { source: "karma", power, note, name, paid: c.cost, buy, user });
       return { id, cost: c.cost, kind: c.kind, split: plan.filter((x) => x.amount > 0) };
     } catch (err) {
       await restore();
       throw err;
     }
   }
-};
+}
 
 /* ================================================================== events */
 const clampNote = (s) => P.clampText(s, 300);
@@ -167,6 +197,11 @@ export const events = {
     S.assertCanEdit(e, user);
     if (total !== undefined) S.assertStaff(user);
     const B = S.data(e);
+    if (!S.isStaff(user)) {                                              // B11 (A5): the tab hides these from editors; the op refuses them as well
+      if (rerollOf) throw new BaseError("noPermission");
+      if (EV.pendingList(P.sortedList(B.events)).length) throw new BaseError("pending");
+      chat = false;
+    }
     const r = await Cat.rollEvent({ total });
     const proposal = P.proposeEffect(r.band, P.sortedList(B.upgrades).map((u) => ({ id: u.id, status: u.status })), { bandsOk: r.bandsOk });
     const id = newId();
@@ -184,6 +219,7 @@ export const events = {
   },
   /** Re-roll an event that does not fit the campaign: marks the old one rerolled and adds a new one. */
   async reroll(team, eid, opts = {}) {
+    S.assertStaff(opts.user ?? game.user);
     if (!S.data(team).events[eid]) throw new BaseError("notFound", { id: eid });
     return events.roll(team, { label: S.data(team).events[eid].label, mode: S.data(team).events[eid].mode, week: S.data(team).events[eid].week, ...opts, rerollOf: eid });
   },
@@ -273,6 +309,33 @@ async function itemFrom(src) {
   }
   throw new BaseError("badInput", { what: "item" });
 }
+/** Hand one piece of a crate row to a hero / vehicle. B11 (A6): runs inside the card's queue and TAKES the piece from the crate FIRST (fresh read, then the
+    write), then creates the item; if the item cannot be created the piece is put back. A second give of the same row can therefore never see the old quantity. */
+async function giveRow(e, cid, target, user) {
+  const B = S.data(e);
+  const row = B.crate[cid];
+  if (!row) throw new BaseError("notFound", { id: cid });
+  const actor = typeof target === "string" ? game.actors.get(target) : target;
+  if (!actor) throw new BaseError("notFound", { id: String(target) });
+  if (!S.isStaff(user) && !actor.testUserPermission(user, "OWNER")) throw new BaseError("noPermission");
+  if (!P.snapMatches(row)) throw new BaseError("badType", { type: row.type, target: actor.type });               // A13: the snapshot must be what the row says it is
+  const isHero = actor.type === "superhero" && S.linkOf(actor) === e.id && row.type === "gear";
+  const isVeh = actor.type === "vehicle" && row.type === "vehicleWeapon" && P.sortedList(B.vehicles).some((v) => v.uuid === actor.uuid);
+  if (!isHero && !isVeh) throw new BaseError("badType", { type: row.type, target: actor.type });
+  const doc = await Item.implementation.fromDropData({ type: "Item", data: foundry.utils.deepClone(row.snap) });
+  const itemData = doc.toObject();
+  if (row.qty > 1) await S.update(e, { crate: { [cid]: { qty: row.qty - 1 } } }, { user });
+  else await S.update(e, { crate: { [`-=${cid}`]: null } }, { user });
+  try {
+    const [created] = await actor.createEmbeddedDocuments("Item", [itemData]);
+    return created;
+  } catch (err) {
+    const { id: _id, ...plain } = row;                                  // put the piece back (the row may have been removed meanwhile)
+    const cur = S.data(e).crate[cid];
+    try { await S.update(e, { crate: { [cid]: cur ? { qty: cur.qty + 1 } : { ...plain, qty: 1 } } }, { user }); } catch (er) { console.error(`${MOD} | base: crate.give could not put the piece back`, er); }
+    throw err;
+  }
+}
 export const crate = {
   list(team) { return P.sortedList(S.data(team).crate); },
   /** Add a gear / vehicleWeapon item (Item document, uuid, or a drop payload {type:"Item", uuid|data}) as a stripped snapshot. */
@@ -309,25 +372,7 @@ export const crate = {
   async give(team, cid, target, { user = game.user } = {}) {
     const e = S.resolve(team);
     S.assertCanEdit(e, user);
-    const B = S.data(e);
-    const row = B.crate[cid];
-    if (!row) throw new BaseError("notFound", { id: cid });
-    const actor = typeof target === "string" ? game.actors.get(target) : target;
-    if (!actor) throw new BaseError("notFound", { id: String(target) });
-    if (!S.isStaff(user) && !actor.testUserPermission(user, "OWNER")) throw new BaseError("noPermission");
-    const isHero = actor.type === "superhero" && S.linkOf(actor) === e.id && row.type === "gear";
-    const isVeh = actor.type === "vehicle" && row.type === "vehicleWeapon" && P.sortedList(B.vehicles).some((v) => v.uuid === actor.uuid);
-    if (!isHero && !isVeh) throw new BaseError("badType", { type: row.type, target: actor.type });
-    const doc = await Item.implementation.fromDropData({ type: "Item", data: foundry.utils.deepClone(row.snap) });
-    const [created] = await actor.createEmbeddedDocuments("Item", [doc.toObject()]);
-    try {
-      if (row.qty > 1) await S.update(e, { crate: { [cid]: { qty: row.qty - 1 } } }, { user });
-      else await S.update(e, { crate: { [`-=${cid}`]: null } }, { user });
-    } catch (err) {
-      await created.delete();                                          // roll the item back
-      throw err;
-    }
-    return created;
+    return withLock(e.id, () => giveRow(e, cid, target, user));                  // B11 (A6): serialised per card
   },
   async setQty(team, cid, qty, { user = game.user } = {}) {
     if (!S.data(team).crate[cid]) throw new BaseError("notFound", { id: cid });

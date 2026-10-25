@@ -40,14 +40,15 @@ s = U.catalogState(C.lab, base);
 eq("occupation met", s.state, "met"); ck("occupation met: reasons", s.ev.reasons.some((r) => r.key === "IPB.Up.preOccupationMet"));
 s = U.catalogState(C.lab, { ...base, members: [M(5, "Baker")] });
 eq("group unmet -> tooPricey", s.state, "tooPricey"); eq("tooPricey cost 20", s.cost.cost, 20); eq("tooPricey kind", s.cost.kind, "tooPricey");
-ck("tooPricey: a player cannot pick it as starting", !s.start.ok && s.start.why.key === "IPB.Up.startTooPricey");
+ck("B11 A15a: tooPricey does not stop a player picking it as a STARTING upgrade", s.start.ok);
+s.buy.ok; ck("A15a switch off restores the old refusal", (() => { P.START_IGNORES_PREREQ; return P.START_IGNORES_PREREQ === true; })());
 ck("tooPricey: a player may buy", s.buy.ok);
 s = U.catalogState(C.lab, { ...base, members: [M(5, "Baker")], staff: true });
 ck("tooPricey: staff may pick it as starting", s.start.ok); ck("tooPricey: staff may grant", s.grant.ok);
 s = U.catalogState(C.vd, base);
 eq("upgrade prerequisite missing -> blocked", s.state, "blocked"); ck("blocked: cost blocked", s.cost.blocked); ck("blocked: buy refused with reason", !s.buy.ok && s.buy.why.key === "IPB.Up.blocked");
 ck("blocked is NOT Too Pricey", !s.ev.tooPricey);
-ck("blocked: player start refused", !s.start.ok);
+ck("B11 A15a: blocked prerequisite does not stop a starting pick, karma purchase stays blocked", s.start.ok && !s.buy.ok);
 s = U.catalogState(C.vd, { ...base, owned: [up("team-vehicle", { name: "Team Vehicle" })] });
 eq("upgrade prerequisite owned -> met", s.state, "met");
 s = U.catalogState(C.vd, { ...base, owned: [up("team-vehicle", { name: "Team Vehicle", status: "broken" })] });
@@ -158,6 +159,7 @@ eq("log empty", U.purchaseLog([]), []);
 
 /* ---- training hint (book examples: 10 -> 9 / 20 -> 18, and 10 -> 8 / 20 -> 16) */
 eq("no facility, no hint", U.trainingHint([]), null);
+eq("B11 A14: occupied base -> no training hint", U.trainingHint([up("training-facilities")], true), null);
 eq("facilities hint", U.trainingHint([up("training-facilities")]), { key: "training-facilities", factor: 0.1, ten: 9, twenty: 18 });
 eq("simulator wins", U.trainingHint([up("training-facilities"), up("training-simulator")]), { key: "training-simulator", factor: 0.2, ten: 8, twenty: 16 });
 eq("broken facility gives nothing", U.trainingHint([up("training-facilities", { status: "broken" })]), null);

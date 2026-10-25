@@ -36,12 +36,13 @@ export function catalogState(entry, ctx) {
   const why = (key, params = {}) => ({ key, params });
   const none = { ok: true, why: null };
   const gate = needPower ? why("IPB.Up.needPower") : !stack.ok ? stack.reason : null;
-  // starting upgrade: free while the allowance lasts; a player (not staff) must meet the prerequisite (ops.upgrades.add enforces the same), staff decide
+  // starting upgrade: free while the allowance lasts. B11 (A15a, user decision): the book allows ANY starting upgrades, so an unmet prerequisite does not block a
+  // starting pick for anyone (P.START_IGNORES_PREREQ switches the old "players must meet it" rule back on; ops.upgrades.add reads the same constant)
   let start = none;
   if (!ctx.canEdit) start = { ok: false, why: why("IPB.Up.readOnly") };
   else if (gate) start = { ok: false, why: gate };
   else if (!(num(ctx.left) > 0)) start = { ok: false, why: why("IPB.Up.noAllowance") };
-  else if (!ctx.staff && ev.ok === false) start = { ok: false, why: why(state === "tooPricey" ? "IPB.Up.startTooPricey" : "IPB.Up.startNeedsPre") };
+  else if (!ctx.staff && ev.ok === false && !P.START_IGNORES_PREREQ) start = { ok: false, why: why(state === "tooPricey" ? "IPB.Up.startTooPricey" : "IPB.Up.startNeedsPre") };
   // buy with karma: blocked when an upgrade prerequisite is missing; Too Pricey doubles the price
   let buy = none;
   if (!ctx.canEdit) buy = { ok: false, why: why("IPB.Up.readOnly") };
@@ -110,7 +111,8 @@ export function purchaseLog(upgrades) {
 }
 
 /** Training hint (advisory): the winning facility and what a 10 / 20 karma improvement would cost. null when none works. */
-export function trainingHint(owned) {
+export function trainingHint(owned, occupied = false) {
+  if (occupied) return null;                       // B11 (A14): while adversaries hold the base every upgrade counts as lost, so no training discount applies
   owned = Array.isArray(owned) ? owned : [];
   const f = P.trainingFactor(owned);
   if (!f) return null;

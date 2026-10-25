@@ -14,6 +14,7 @@ import * as S from "./store.mjs";
 import { t, tn } from "./lang.mjs";
 import { esc, icon } from "./util.mjs";
 import * as Lock from "./lock.mjs";
+import * as Join from "./join.mjs";
 
 const MOD = S.MODULE_ID;
 const ICON = "fa-solid fa-people-roof";
@@ -135,9 +136,10 @@ function lockNote(actor, app) {
   const card = Lock.cardOf(actor);
   if (!card) return "";
   const id = `ipb-lock-note-${app?.id ?? actor.id}`;
+  const stuck = !S.isStaff() && !S.canEdit(card.id);          // B11 (A17): an owner who may not edit the card (policy gm, or no rights on it) is told who can
   const open = actor.isOwner || S.isStaff()
     ? ` <button type="button" class="ipb-pr-btn ipb-lock-open" data-ipb-open aria-label="${esc(t("IPB.Entry.RowOpenAria", { team: card.name }))}">${icon(ICON)} ${esc(t("IPB.Entry.RowOpen"))}</button>` : "";
-  return `<p class="ipb-lock-note" id="${id}">${icon("fa-solid fa-lock")} <span>${esc(t("IPB.Lock.Note", { team: card.name }))}</span>${open}</p>`;
+  return `<p class="ipb-lock-note" id="${id}">${icon("fa-solid fa-lock")} <span>${esc(t("IPB.Lock.Note", { team: card.name }))}${stuck ? ` ${esc(t("IPB.Lock.AskGm"))}` : ""}</span>${open}</p>`;
 }
 function syncPersonal(app, root) {
   const actor = sheetHero(app);
@@ -213,8 +215,9 @@ function watchParty() {
 }
 
 /* ------------------------------------------------------------------ 5. chat button */
-function chatButtons(_message, html) {
+function chatButtons(message, html) {
   const root = html instanceof HTMLElement ? html : html?.[0];
+  Join.bind(message, root, (err) => { console.warn(`${MOD} | base: join request`, err); ui.notifications?.error(err?.message ?? String(err), { console: false }); });   // B11: Approve / Decline (GM)
   for (const b of root?.querySelectorAll?.('[data-action="ipb-open-team"]') ?? []) {
     if (b._ipbBound) continue;
     b._ipbBound = true;

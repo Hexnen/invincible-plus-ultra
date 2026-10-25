@@ -531,6 +531,78 @@ ck("clampText", P.clampText("abcdef", 3) === "abc" && P.clampText(null) === "");
   for (const g of ["game.", "foundry.", "ui.", "canvas.", "Hooks.", "CONFIG.", "document.", "window.", "fromUuid", "Actor"]) ck(`xfer-pure.mjs must not reference ${g}`, !new RegExp(`(^|[^\\w.])${g.replace(".", "\\.")}`, "m").test(xsrc));
 }
 
+/* ---- B11: ownership plan (A3, A4), merge-patch / collection hardening (A18), rate limit (A9), snapshot type (A13) */
+{
+  const O = P.OWN;
+  const users = [{ id: "gm", staff: true }, { id: "p1", staff: false }, { id: "p2", staff: false }, { id: "p3", staff: false }];
+  const plan = (o) => P.planOwnership({ users, ...o });
+  let r = plan({ policy: "members", have: { default: 2 }, gen: [], want: ["p1"] });
+  eq("members: owner of a linked hero gets OWNER", [r.ownership, r.gen], [{ default: 2, p1: 3 }, ["p1"]]);
+  r = plan({ policy: "members", have: { default: 2, p1: 3 }, gen: ["p1"], want: [] });
+  eq("A3: generated OWNER removed when the hero is gone", [r.ownership, r.gen], [{ default: 2 }, []]);
+  r = plan({ policy: "members", have: { default: 2, p2: 3 }, gen: ["p1"], want: [] });
+  eq("A4a: a MANUAL OWNER grant survives", [r.ownership, r.gen], [{ default: 2, p2: 3 }, []]);
+  r = plan({ policy: "members", have: { default: 0 }, gen: [], want: ["p1"] });
+  eq("A4b: a hidden base (default NONE) stays hidden, members still get OWNER", r.ownership, { default: 0, p1: 3 });
+  r = plan({ policy: "members", have: { default: 1, p3: 0 }, gen: [], want: [] });
+  eq("A4b: LIMITED default and a per-user NONE are kept", r.ownership, { default: 1, p3: 0 });
+  r = plan({ policy: "gm", have: { default: 2, p1: 3, p2: 3 }, gen: ["p1"], want: ["p1", "p2"] });
+  eq("policy gm: generated grants go, manual stays", [r.ownership, r.gen], [{ default: 2, p2: 3 }, []]);
+  r = plan({ policy: "everyone", have: { default: 2 }, gen: [], want: ["p1"] });
+  eq("policy everyone: default OWNER, no per-user grants needed", r.ownership, { default: 3 });
+  r = plan({ policy: "members", have: { default: 3 }, gen: [], want: [] });
+  eq("leaving everyone: default drops to OBSERVER", r.ownership.default, 2);
+  r = plan({ policy: "members", have: { default: 2, p1: 3, p2: 3 } , want: ["p1"] });                      // legacy: gen never recorded
+  eq("legacy (no record): every non-staff OWNER counts as generated", [r.ownership, r.gen], [{ default: 2, p1: 3 }, ["p1"]]);
+  r = plan({ policy: "members", have: { default: 2, ghost: 3, gm: 3 }, gen: ["ghost"], want: [] });
+  eq("deleted user dropped, staff key kept", r.ownership, { default: 2, gm: 3 });
+  r = plan({ policy: "members", have: { default: 2 }, gen: [], want: ["gm", "nobody", "p2"] });
+  eq("staff and unknown users are never granted", r.ownership, { default: 2, p2: 3 });
+  for (const pol of ["gm", "members", "everyone"]) for (const want of [[], ["p1"], ["p1", "p2"]]) {
+    const a = plan({ policy: pol, have: { default: 2, p1: 3, p3: 1 }, gen: ["p1"], want }), b = plan({ policy: pol, have: a.ownership, gen: a.gen, want });
+    ck(`ownership plan idempotent (${pol}, ${want.length} wanted)`, P.sameOwnership(a.ownership, b.ownership) && canon(a.gen) === canon(b.gen));
+  }
+  ck("sameOwnership ignores key order", P.sameOwnership({ default: 2, a: 3, b: 1 }, { b: 1, a: 3, default: 2 }) && !P.sameOwnership({ default: 2 }, { default: 2, a: 3 }));
+
+  const t0 = { a: { b: 1 } };
+  P.mergePatch(t0, JSON.parse('{"__proto__":{"polluted":1},"a":{"constructor":{"prototype":{"x":1}},"c":2},"-=__proto__":null}'));
+  ck("A18: mergePatch does not pollute Object.prototype", ({}).polluted === undefined && ({}).x === undefined && t0.a.c === 2 && t0.a.b === 1);
+  eq("mergePatch still deletes with -=", P.mergePatch({ a: 1, b: 2 }, { "-=a": null }), { b: 2 });
+  const hostile = JSON.parse('{"upgrades":{"__proto__":{"key":"x","name":"evil"},"ok":{"key":"concealment","name":"C"}}}');
+  const nm = P.normalize(hostile);
+  ck("A18: a __proto__ collection id is dropped, siblings kept", Object.keys(nm.upgrades).join() === "ok" && Object.getPrototypeOf(nm.upgrades) === Object.prototype);
+  eq("A18: event effect.upgrades de-duplicated", P.normalize({ events: { e: { effect: { kind: "disable", upgrades: ["a", "a", "b"] } } } }).events.e.effect.upgrades, ["a", "b"]);
+
+  const hits = new Map();
+  const seq = [0, 1000, 2000, 3000].map((t) => P.rateHit(hits, "p1|ask", t, 3, 60000).ok);
+  eq("A9: 4th call inside the window is refused", seq, [true, true, true, false]);
+  ck("A9: other key unaffected", P.rateHit(hits, "p2|ask", 3000, 3, 60000).ok);
+  ck("A9: window slides", P.rateHit(hits, "p1|ask", 60001, 3, 60000).ok);
+  ck("A9: retryMs positive when refused", (() => { const m = new Map(); for (let i = 0; i < 3; i++) P.rateHit(m, "k", 0, 3, 1000); const q = P.rateHit(m, "k", 400, 3, 1000); return !q.ok && q.retryMs === 600; })());
+
+  ck("A13: snapshot of the declared type matches", P.snapMatches({ type: "gear", snap: { type: "gear" } }));
+  ck("A13: power snapshot in a gear row is refused", !P.snapMatches({ type: "gear", snap: { type: "power" } }) && !P.snapMatches({ type: "gear" }) && !P.snapMatches(null));
+  ck("A15a: starting picks ignore prerequisites by default (one switch)", P.START_IGNORES_PREREQ === true);
+
+  // A13: a hostile file
+  const evil = { format: "invincible-plus-ultra.team-base", formatVersion: 1, schema: 1, name: "E", data: {
+    crate: {
+      good: { name: "G", type: "gear", qty: 1, img: "icons/x.webp", snap: { type: "gear", name: "G", img: "icons/x.webp", effects: [{ name: "karma" }], flags: { a: 1 } } },
+      swap: { name: "S", type: "gear", qty: 1, snap: { type: "power", name: "S", effects: [{ name: "karma" }] } },
+      js: { name: "J", type: "gear", qty: 1, img: "javascript:alert(1)", snap: { type: "gear", img: "https://evil.example/t.png" } }
+    },
+    events: { e1: { roll: 11, band: "11-36", mode: "IPB.Whatever", effect: { kind: "disable", upgrades: ["u", "u"], prev: "bad" } } }
+  } };
+  const pr = X.parseImport(JSON.stringify(evil));
+  ck("A13: hostile file still parses", pr.ok);
+  eq("A13: the mismatched snapshot row is dropped, the others stay", Object.keys(pr.doc.data.crate).sort(), ["good", "js"]);
+  ck("A13: effects and flags of imported snapshots are dropped", !("effects" in pr.doc.data.crate.good.snap) && !("flags" in pr.doc.data.crate.good.snap));
+  eq("A13: unsafe pictures are emptied (javascript:, external https)", [pr.doc.data.crate.good.img, pr.doc.data.crate.js.img, pr.doc.data.crate.js.snap.img], ["icons/x.webp", "", ""]);
+  ck("A13: a warning says how many rows were left out", pr.problems.some((p) => p.key === "IPB.Xfer.Warn.crateDropped" && p.params.n === 1));
+  const ev1 = P.normalize(pr.doc.data).events.e1;
+  ck("A13: event mode normalised, bad undo record removed, duplicate upgrade ids collapsed", ev1.mode === "" && !("prev" in ev1.effect) && ev1.effect.upgrades.length === 1);
+}
+
 if (fails.length) { console.error(`FAILED ${fails.length}/${n}:\n - ${fails.join("\n - ")}`); process.exit(1); }
 if (n < 120) { console.error(`only ${n} checks (<120)`); process.exit(1); }
 console.log(`OK ${n} checks`);

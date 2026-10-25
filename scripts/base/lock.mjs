@@ -25,18 +25,28 @@ export function guard(actor, changes, options, userId) {
   const card = cardOf(actor);
   if (!card) return true;
   let stripped = false;
+  // B11 (A10): where the update REPLACES an object ({recursive:false}, or the "==system" key) deleting the key would wipe the stored text; put the current value back instead.
+  // v14 passes "==system" as a ForcedReplacement INSTANCE in changes.system (the fields sit directly on it; its toJSON adds the operator marker).
+  const replacing = options?.recursive === false || changes.system?.constructor?.name === "ForcedReplacement" || changes.system?.toJSON?.()?.__$OPERATOR$__ === "ForcedReplacement";
+  const cur = (f) => actor._source.system[f] ?? "";
   for (const f of FIELDS) {
     const flat = `system.${f}`;
-    let next, present = false;
-    if (hasFlat(changes, flat)) { next = changes[flat]; present = true; if (String(next ?? "") !== String(actor._source.system[f] ?? "")) stripped = true; delete changes[flat]; }
-    if (changes.system && typeof changes.system === "object" && hasFlat(changes.system, f)) {
-      next = changes.system[f]; present = true;
-      if (String(next ?? "") !== String(actor._source.system[f] ?? "")) stripped = true;
-      delete changes.system[f];
+    if (hasFlat(changes, flat)) {
+      if (String(changes[flat] ?? "") !== String(actor._source.system[f] ?? "")) stripped = true;
+      if (replacing) changes[flat] = cur(f); else delete changes[flat];
     }
-    void present;
+    if (changes.system && typeof changes.system === "object" && hasFlat(changes.system, f)) {
+      if (String(changes.system[f] ?? "") !== String(actor._source.system[f] ?? "")) stripped = true;
+      if (replacing) changes.system[f] = cur(f); else delete changes.system[f];
+    }
+    const forced = changes["==system"];                                          // the literal key shape, should a client ever hand it over unexpanded
+    if (forced && typeof forced === "object") {
+      if (String(forced[f] ?? "") !== String(actor._source.system[f] ?? "")) stripped = true;
+      forced[f] = cur(f);
+    }
   }
-  if (changes.system && typeof changes.system === "object" && !Object.keys(changes.system).length) delete changes.system;
+  if (!replacing && changes.system && typeof changes.system === "object" && !Object.keys(changes.system).length) delete changes.system;
+  if (stripped && (replacing || changes["==system"])) { if (ui.notifications) ui.notifications.warn(t("IPB.Lock.Refused", { team: card.name })); return true; }   // the rest of such an update still goes through
   if (stripped) ui.notifications?.warn(t("IPB.Lock.Refused", { team: card.name }));
   if (!stripped) return true;
   return Object.keys(changes).some((k) => k !== "_id" && k !== "_stats");

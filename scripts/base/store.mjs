@@ -132,36 +132,54 @@ export function memberFacts(ref, user = game.user) {
 }
 
 /* ------------------------------------------------------------------ ownership (policy) */
-export function computeOwnership(ref) {
+/** B11 (A1): the heroes a card VOUCHES for = flags[MOD].vouched { _: true, <heroId>: true }, written only by link() (an editor of the card) or the GM
+    (join approval, create, import). Only vouched heroes earn their owners a grant on the card, so a hero flagged by hand (raw flag write) joins nothing.
+    `undefined` = a card from before B11: its linked heroes are adopted on the first vouch / reconcile. */
+export const vouchedOf = (e) => e?.flags?.[MODULE_ID]?.vouched;
+export const isVouched = (e, a) => { const v = vouchedOf(e); return v === undefined ? true : !!v?.[a?.id]; };
+const linkedHeroes = (e) => game.actors.filter((a) => a.type === "superhero" && linkOf(a) === e.id);
+async function vouch(e, ids) {
+  const patch = { _: true };
+  if (vouchedOf(e) === undefined) for (const a of linkedHeroes(e)) patch[a.id] = true;          // adopt the links that existed before B11
+  for (const id of ids) patch[id] = true;
+  await e.update({ [`flags.${MODULE_ID}.vouched`]: patch });
+}
+async function unvouch(e, ids) {
+  if (vouchedOf(e) === undefined) return;
+  const patch = Object.fromEntries(ids.filter((id) => vouchedOf(e)?.[id]).map((id) => [`-=${id}`, null]));
+  if (Object.keys(patch).length) await e.update({ [`flags.${MODULE_ID}.vouched`]: patch });
+}
+
+/** The ownership this card should have now (B11: policy-aware, keeps the GM's manual choices, see pure.planOwnership) -> { ownership, gen }. */
+export function ownershipPlan(ref) {
   const e = resolve(ref);
   const B = data(e);
-  const L = CONST.DOCUMENT_OWNERSHIP_LEVELS;
-  const own = { default: B.policy.edit === "everyone" ? L.OWNER : L.OBSERVER };
-  if (B.policy.edit === "members") {
-    const m = members(e, { all: true });
-    for (const u of game.users) {
-      if (isStaff(u)) continue;
-      if (m.some((a) => a.testUserPermission(u, "OWNER"))) own[u.id] = L.OWNER;
-    }
-  }
-  for (const [uid, lvl] of Object.entries(e.ownership ?? {})) {            // keep manual non-owner overrides (LIMITED / NONE ...)
-    if (uid === "default" || uid in own) continue;
-    if (lvl !== L.OWNER && game.users.get(uid) && !isStaff(game.users.get(uid))) own[uid] = lvl;
-  }
-  return own;
+  const m = members(e, { all: true }).filter((a) => isVouched(e, a));
+  const gen = e.flags?.[MODULE_ID]?.ownGen;
+  return P.planOwnership({
+    policy: B.policy.edit, have: e.ownership ?? {}, gen: Array.isArray(gen) ? gen : undefined,
+    want: game.users.filter((u) => !isStaff(u) && m.some((a) => a.testUserPermission(u, "OWNER"))).map((u) => u.id),
+    users: game.users.map((u) => ({ id: u.id, staff: isStaff(u) }))
+  });
 }
+export function computeOwnership(ref) { return ownershipPlan(ref).ownership; }
 /** GM only, idempotent. Returns { changed, ownership }. */
 export async function reconcileOwnership(ref) {
   assertStaff();
   const e = resolve(ref);
-  const want = computeOwnership(e);
-  const have = e.ownership ?? {};
-  const keys = new Set([...Object.keys(want), ...Object.keys(have).filter((k) => !isStaff(game.users.get(k)))]);
-  const same = [...keys].every((k) => (want[k] ?? null) === (have[k] ?? null));
-  if (same) return { changed: false, ownership: want };
-  const staffKeep = Object.fromEntries(Object.entries(have).filter(([k]) => k !== "default" && isStaff(game.users.get(k))));
-  await e.update({ ownership: { ...want, ...staffKeep } }, { diff: false, recursive: false });
-  return { changed: true, ownership: want };
+  const linked = linkedHeroes(e);
+  const v = vouchedOf(e);
+  if (v === undefined) await vouch(e, []);                                                       // legacy card: adopt its current links once
+  else {
+    const stale = Object.keys(v).filter((id) => id !== "_" && !linked.some((a) => a.id === id));
+    if (stale.length) await unvouch(e, stale);                                                   // heroes that left / were deleted
+  }
+  const plan = ownershipPlan(e);
+  const changed = !P.sameOwnership(plan.ownership, e.ownership);
+  if (changed) await e.update({ ownership: plan.ownership }, { diff: false, recursive: false });
+  const had = e.flags?.[MODULE_ID]?.ownGen;
+  if (JSON.stringify(Array.isArray(had) ? had : null) !== JSON.stringify(plan.gen)) await e.update({ [`flags.${MODULE_ID}.ownGen`]: plan.gen });
+  return { changed, ownership: plan.ownership };
 }
 export async function reconcileAll() {
   const out = [];
@@ -170,10 +188,14 @@ export async function reconcileAll() {
 }
 
 /* ------------------------------------------------------------------ create / update / remove */
+let folderMaking = null;                                                  // B11 (A18): two creations at once on this client share one Folder.create
 async function ensureFolder() {
   let f = game.folders.find((x) => x.type === "Actor" && x.flags?.[MODULE_ID]?.baseFolder);
   if (!f) f = game.folders.find((x) => x.type === "Actor" && !x.folder && x.name === FOLDER_NAME);
-  if (!f) f = await Folder.create({ name: FOLDER_NAME, type: "Actor", flags: { [MODULE_ID]: { baseFolder: true } } });
+  if (!f) {
+    folderMaking ??= Folder.create({ name: FOLDER_NAME, type: "Actor", flags: { [MODULE_ID]: { baseFolder: true } } }).finally(() => { folderMaking = null; });
+    f = await folderMaking;
+  }
   return f;
 }
 const actorOf = (a) => (typeof a === "string" ? game.actors.get(a) : a);
@@ -206,24 +228,17 @@ export async function createLocal(opts = {}, by = game.user) {
   B.meta.created = { by: by.id, at: now };
   B.meta.updated = { by: by.id, at: now };
   const folder = await ensureFolder();
-  const entry = await Actor.create(P.cardActorData({ name: B.name, ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER }, flags: { [MODULE_ID]: { [P.FLAG_KEY]: B } } },
-    { type: HOST_TYPE, folder: folder.id, defaultImg: DEFAULT_IMG, sheetClass: SHEET_ID, rid: opts.rid }));
+  const data0 = P.cardActorData({ name: B.name, ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER }, flags: { [MODULE_ID]: { [P.FLAG_KEY]: B } } },
+    { type: HOST_TYPE, folder: folder.id, defaultImg: DEFAULT_IMG, sheetClass: SHEET_ID, rid: opts.rid });
+  data0.flags[MODULE_ID].vouched = { _: true };                           // B11: a card made now has no pre-B11 links to adopt
+  const entry = await Actor.create(data0);
   for (const a of [from, ...(opts.actors ?? []).map(actorOf)].filter(Boolean)) await link(a, entry);
   await reconcileOwnership(entry);
   return view(entry);
 }
 
-/** Plain recursive merge with the Foundry convention "-=key": null deleting a key (mergeObject{performDeletions} did not delete in v14.363). */
-export function mergePatch(target, patch) {
-  for (const [k, v] of Object.entries(patch)) {
-    if (k.startsWith("-=")) { delete target[k.slice(2)]; continue; }
-    if (v && typeof v === "object" && !Array.isArray(v)) {
-      if (!target[k] || typeof target[k] !== "object" || Array.isArray(target[k])) target[k] = {};
-      mergePatch(target[k], v);
-    } else target[k] = v;
-  }
-  return target;
-}
+/** Plain recursive merge with the Foundry convention "-=key" (pure.mjs; skips __proto__ / constructor / prototype). */
+export const mergePatch = P.mergePatch;
 
 function newErrors(before, after) {
   const key = (x) => `${x.key}|${x.path}`;
@@ -239,6 +254,8 @@ export async function update(ref, patch, { user = game.user } = {}) {
   for (const k of Object.keys(patch)) if (!PATCHABLE.has(k)) throw new BaseError("badInput", { key: k });
   if ("policy" in patch) assertStaff(user);
   const cur = data(e);
+  // B11 (A5): taking the base back (or losing it) is a GM decision; an editor cannot flip it through the Base tab or the API either
+  if (!isStaff(user) && patch.base && typeof patch.base === "object" && "occupied" in patch.base && !!patch.base.occupied !== !!cur.base.occupied) throw new BaseError("noPermission");
   const next = mergePatch(clone(cur), clone(patch));
   const issues = newErrors(P.validate(cur), P.validate(next));
   if (issues.length) {
@@ -277,8 +294,17 @@ export async function link(actorRef, ref, { user = game.user } = {}) {
   const a = actorOf(actorRef);
   const e = resolve(ref);
   if (!a || a.type !== "superhero") throw new BaseError("badInput", { what: "actor" });
-  if (!isStaff(user) && !a.testUserPermission(user, "OWNER")) throw new BaseError("noPermission");
+  const staff = isStaff(user);
+  if (!staff && !a.testUserPermission(user, "OWNER")) throw new BaseError("noPermission");
+  // B11 (A1, user decision): joining a base the user cannot edit needs the GM's approval: the call sends a "request to join" and returns the card view with
+  // `requested: true` (nothing is linked yet). Editors of the card (policy + ownership) and staff link at once.
+  if (!staff && !canEdit(e, user)) {
+    if (!bridge.request) throw new BaseError("relay");
+    const res = await bridge.request("requestJoin", { actorId: a.id, teamId: e.id });
+    return { ...view(e), requested: !res?.linked && !res?.already, already: !!res?.already };
+  }
   const old = linkOf(a);
+  await vouch(e, [a.id]);                                                                          // vouch first, then flag: the GM's reconcile never sees an unvouched link of an editor
   await a.update({ [`flags.${MODULE_ID}.${P.FLAG_KEY}.team`]: e.id });
   await afterLinkChange(old, e.id);
   return view(e);
@@ -290,8 +316,20 @@ export async function unlink(actorRef, { user = game.user } = {}) {
   const old = linkOf(a);
   if (!old) return false;
   await a.update({ [`flags.${MODULE_ID}.-=${P.FLAG_KEY}`]: null });
+  const card = cardById(old);
+  if (card) { try { await unvouch(card, [a.id]); } catch (_) { /* not an editor of the card: the GM's reconcile prunes it */ } }
   await afterLinkChange(old, "");
   return true;
+}
+/** B11 (A1): the GM approves a join request. Re-checks everything against real documents: the hero, the card, and that the REQUESTER still owns the hero. */
+export async function approveJoin({ actorId, teamId, userId }, { by = game.user } = {}) {
+  assertStaff(by);
+  const a = game.actors.get(String(actorId ?? ""));
+  const e = cardById(String(teamId ?? ""));
+  const u = game.users.get(String(userId ?? ""));
+  if (!a || a.type !== "superhero" || !e || !u) throw new BaseError("notFound", { id: String(actorId ?? "") });
+  if (!a.testUserPermission(u, "OWNER")) throw new BaseError("noPermission");
+  return link(a, e, { user: by });
 }
 async function afterLinkChange(...ids) {
   for (const id of ids.filter((x) => x && cardById(x))) {
@@ -305,6 +343,14 @@ async function afterLinkChange(...ids) {
 export function forceSheetOnCreate(actor) {
   if (actor.flags?.[MODULE_ID]?.[P.FLAG_KEY]?.kind !== KIND) return;
   if (actor.flags?.core?.sheetClass !== SHEET_ID) actor.updateSource({ "flags.core.sheetClass": SHEET_ID });
+}
+/** preCreateActor (B11, A2): a NEW superhero never starts as a team member. Duplicating a hero (sidebar Duplicate, export / import, Actor.create(hero.toObject()))
+    copies the link flags; the copy would double the karma pool and share the card. The link flags are removed from the new document before it is created
+    (options.ipbKeepLink = true is the explicit opt-out for our own code). */
+export function stripCopiedLink(actor, _data, options) {
+  if (actor.type !== "superhero" || options?.ipbKeepLink) return;
+  if (actor.flags?.[MODULE_ID]?.[P.FLAG_KEY] === undefined) return;
+  actor.updateSource({ [`flags.${MODULE_ID}.-=${P.FLAG_KEY}`]: null });
 }
 /** preDeleteActor: only staff delete a base (owners can edit it, not remove it). Client-side courtesy: Foundry itself only needs OWNER. */
 export function guardDelete(actor, _options, userId) {

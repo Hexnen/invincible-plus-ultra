@@ -411,7 +411,9 @@ export class BaseSheet extends ActorSheetV2 {
     const hero = await chooseHero(team, free);
     if (!hero) return;
     const res = await this.#run(S.link(hero, team.id));
-    if (res) this.#announce(t("IPB.Empty.Joined", { actor: hero.name, team: team.name }));
+    if (!res) return;
+    if (res.requested) { const msg = t("IPB.Join.Sent", { name: hero.name, team: team.name }); ui.notifications?.info(msg, { console: false }); this.#announce(msg); }
+    else this.#announce(t("IPB.Empty.Joined", { actor: hero.name, team: team.name }));
   }
   async #removeMember(actorId) {
     const team = this.#team();
@@ -498,6 +500,9 @@ export class BaseSheet extends ActorSheetV2 {
       this.refresh();
     } else if (res.status === "already") {
       const msg = t("IPB.Drop.Already", { name });
+      ui.notifications?.info(msg, { console: false }); this.#announce(msg);
+    } else if (res.status === "requested") {
+      const msg = t("IPB.Join.Sent", { name, team: team.name });
       ui.notifications?.info(msg, { console: false }); this.#announce(msg);
     } else if (res.status === "refused") {
       if ((res.key === "IPB.Drop.Vehicle" || res.key === "IPB.Drop.NotHero") && !inHead) return;

@@ -161,7 +161,8 @@ export class NewTeamApp extends ApplicationV2 {
     this.#working = true;
     try {
       const team = await this.#run(S.link(this.actor, id));
-      if (team) await this.#afterTeam(team, t("IPB.Empty.Joined", { actor: this.actor.name, team: team.name }));
+      if (team?.requested) { const msg = t("IPB.Join.Sent", { name: this.actor.name, team: team.name }); ui.notifications?.info(msg, { console: false }); this.#announce(msg); }       // B11: waits for the GM
+      else if (team) await this.#afterTeam(team, t("IPB.Empty.Joined", { actor: this.actor.name, team: team.name }));
     } finally { this.#working = false; }
   }
   async #ask() {

@@ -120,7 +120,7 @@ function ownedRow(ctx, u, own, hint) {
 
 function ownedBlock(ctx, own) {
   const { esc, icon, t } = ctx;
-  const hint = U.trainingHint(own);
+  const hint = U.trainingHint(own, ctx.B.base.occupied);
   const rec = undoRec.get(ctx.team.id);
   const undo = rec ? `<p class="ipb-up-undo" role="status">${icon("fa-solid fa-trash-can")}<span>${esc(rec.text)}</span><button type="button" class="ipb-bt-link" data-up-act="undo" data-fk="up-undo">${icon("fa-solid fa-rotate-left")}${esc(t("IPB.Up.Undo"))}</button></p>` : "";
   const empty = `<p class="ipb-muted ipb-up-empty">${esc(t(ctx.canEdit ? "IPB.Up.EmptyEdit" : "IPB.Up.EmptyRo"))}</p>`;

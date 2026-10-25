@@ -26,7 +26,8 @@ export function portable(raw) {
 }
 
 const cleanMember = (m) => ({ id: str(m?.id).slice(0, 40), uuid: str(m?.uuid).slice(0, 120), name: str(m?.name).slice(0, 80) });
-const safeImg = (s) => { const v = str(s).trim(); return v && !/^(data|blob|javascript):/i.test(v) && v.length <= 400 ? v : ""; };
+/* B11 (A13): a picture is a path inside this Foundry (no scheme at all, so no javascript:, data:, blob: and no external https:// tracking pixel; no protocol-relative //host) */
+const safeImg = (s) => { const v = str(s).trim(); return v && !/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(v) && v.length <= 400 ? v : ""; };
 
 /** { B (stored or view shape), name, img, members:[{id,uuid,name}], moduleVersion, now } -> the document written to the file. */
 export function buildExport({ B, name, img = "", members = [], moduleVersion = "", now = 0 } = {}) {
@@ -64,6 +65,16 @@ export function parseImport(input) {
   if (!isObj(raw.data)) return bad("IPB.Xfer.Err.noData");
   if (Number(raw.schema) > P.SCHEMA_VERSION) problems.push({ level: "warn", key: "IPB.Xfer.Warn.newerSchema", params: { v: raw.schema } });
   const data = portable(raw.data);
+  // B11 (A13) a file is hostile until proven otherwise: a crate row keeps only a picture path that is safe, and its snapshot must really be the item type the row
+  // declares (a "power" with effects inside a gear row would ride along into a hero). Effects and flags of imported snapshots are dropped.
+  let dropped = 0;
+  for (const [id, r] of Object.entries(data.crate ?? {})) {
+    if (!isObj(r) || !isObj(r.snap) || r.snap.type !== r.type) { delete data.crate[id]; dropped++; continue; }
+    r.img = safeImg(r.img);
+    if (typeof r.snap.img === "string") r.snap.img = safeImg(r.snap.img);
+    delete r.snap.effects; delete r.snap.flags;
+  }
+  if (dropped) problems.push({ level: "warn", key: "IPB.Xfer.Warn.crateDropped", params: { n: dropped } });
   for (const i of P.validate({ ...data, name: str(raw.name) || "x" })) if (i.level === "error") problems.push({ level: "error", key: i.key, params: i.params ?? {} });
   const members = (Array.isArray(raw.members) ? raw.members : []).filter(isObj).slice(0, MAX_MEMBERS).map(cleanMember);
   const doc = { format: FORMAT, formatVersion: FORMAT_VERSION, name: P.clampText(str(raw.name).trim(), 80), img: safeImg(raw.img), data, members };

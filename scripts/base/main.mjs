@@ -75,23 +75,33 @@ export function start(phases = {}) {
       registerSheet().catch((e) => console.warn(`${MOD} | base sheet registration failed`, e));
       Hooks.on("renderActorDirectory", Dir.decorate);
       Hooks.on("preCreateActor", S.forceSheetOnCreate);
+      Hooks.on("preCreateActor", S.stripCopiedLink);                                    // B11 (A2): a duplicated / imported hero does not stay in the team
       Hooks.on("preDeleteActor", S.guardDelete);
       Hooks.on("preUpdateActor", Lock.guard);
-      // a hero joined / left a team (its link flag changed), or a base changed its policy: the active GM re-grants the base's ownership
+      // a hero joined / left a team (its link flag changed), its OWNERSHIP changed (B11, A3), or a base changed its policy: the active GM re-grants the base's ownership
       Hooks.on("updateActor", (actor, change) => {
         const f = change?.flags?.[MOD];
         if (S.isCard(actor)) { if (f?.base?.policy) scheduleReconcile(); }
         else if (f?.base !== undefined || f?.["-=base"] !== undefined) scheduleReconcile();
+        else if (change?.ownership !== undefined && actor.type === "superhero" && S.linkOf(actor)) scheduleReconcile();
       });
+      // a card appeared by any path (import, duplicate, migration): make its ownership match its policy (B11, A12)
+      Hooks.on("createActor", (actor) => { if (S.isCard(actor)) scheduleReconcile(); });
+      // users came, went or changed role: heroes' owners and the staff set decide who is on a card (B11, A3)
+      Hooks.on("deleteUser", () => scheduleReconcile());
+      Hooks.on("updateUser", (_u, change) => { if (change?.role !== undefined) scheduleReconcile(); });
       // a base was deleted by any path (directory, API, delete flow): the active GM clears the dangling link flags of its heroes (their Team text stays)
       Hooks.on("deleteActor", (actor) => {
-        if (!iAmActiveGM() || !S.isCard(actor)) return;
+        if (!iAmActiveGM()) return;
+        if (!S.isCard(actor)) { if (actor.type === "superhero" && S.linkOf(actor)) scheduleReconcile(); return; }          // a linked hero was deleted: its owners lose the card (B11, A3)
         for (const h of game.actors.filter((a) => a.type === "superhero" && S.linkOf(a) === actor.id)) S.unlink(h).catch((e) => console.warn(`${MOD} | base: cannot clear the link of ${h.name}`, e));
       });
-      // a JOURNAL card appearing at run time can only come from a GM tab running pre-actor module code: the active GM folds it into the actor card (or drops its twin)
+      // a JOURNAL card appearing at run time can only come from a GM tab running pre-actor module code: the active GM folds it into the actor card (or drops its twin).
+      // B11 (A11): only when a GM / assistant created it (a player with journal rights must not be able to mint cards through this path)
       let legacyTimer = 0;
-      Hooks.on("createJournalEntry", (j) => {
+      Hooks.on("createJournalEntry", (j, _opts, userId) => {
         if (!iAmActiveGM() || !Number.isInteger(j.flags?.[MOD]?.base?.v)) return;
+        if (!S.isStaff(game.users.get(userId))) return;
         clearTimeout(legacyTimer);
         legacyTimer = setTimeout(() => { S.migrate().then((r) => { if (r.migrated.length) { console.info(`${MOD} | base: a stale GM tab made ${r.migrated.length} journal card(s); folded into actors`, r); scheduleReconcile(); } }).catch((e) => console.warn(`${MOD} | base: legacy card cleanup failed`, e)); }, 1500);
       });

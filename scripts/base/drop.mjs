@@ -78,12 +78,16 @@ export async function dropHero(team, data, { user = game.user, ask = true } = {}
   const actor = res.actor;
   const bad = whyNotMember(actor);
   if (bad) return { status: "refused", actor, ...bad };
-  if (!S.canEdit(e, user)) return { status: "refused", actor, key: "IPB.Drop.NoEdit" };
+  // B11 (A1, lead TODO of B4c): the owner of a hero may DROP it on a base they cannot edit exactly like the Add-hero picker: it becomes a "request to join"
+  // that the GM approves (store.link decides). Only a user who owns neither the hero nor the card's edit rights is refused.
   if (!S.isStaff(user) && !actor.testUserPermission(user, "OWNER")) return { status: "refused", actor, key: "IPB.Drop.NotOwner", params: { name: actor.name } };
   const cur = S.linkOf(actor);
   if (cur === e.id) return { status: "already", actor, params: { name: actor.name } };
   const from = cur ? S.cardById(cur) : null;                                    // a dangling link (deleted base) counts as none
   if (from && ask && !(await confirmMove(actor, from, e))) return { status: "cancelled", actor };
-  try { await S.link(actor, e, { user }); } catch (err) { return { status: "refused", actor, key: null, message: err?.message ?? String(err) }; }
+  let lk;
+  try { lk = await S.link(actor, e, { user }); } catch (err) { return { status: "refused", actor, key: null, message: err?.message ?? String(err) }; }
+  if (lk?.requested) return { status: "requested", actor, params: { name: actor.name, team: e.name } };
+  if (lk?.already) return { status: "already", actor, params: { name: actor.name } };
   return { status: from ? "moved" : "added", actor, params: { name: actor.name, team: e.name } };
 }

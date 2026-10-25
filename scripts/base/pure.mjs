@@ -58,7 +58,8 @@ const ENTRY = {
   events: (e) => ({
     at: num(e.at), label: str(e.label), roll: int(e.roll, 0), band: str(e.band), resultId: str(e.resultId),
     text: clampText(e.text), effect: normEffect(e.effect), resolved: bool(e.resolved), rerolled: bool(e.rerolled),
-    note: str(e.note), by: str(e.by), sort: num(e.sort)
+    note: str(e.note), by: str(e.by), sort: num(e.sort),
+    ...(e.mode !== undefined ? { mode: oneOf(e.mode, ["week", "any"], "") } : {})          // B11 (A13): a hostile file cannot show a raw key as the mode
   }),
   crate: (e) => ({
     name: str(e.name), img: str(e.img), type: oneOf(e.type, CRATE_TYPES, "gear"), qty: int(e.qty, 1, 1, 9999),
@@ -75,19 +76,22 @@ const ENTRY = {
 
 function normEffect(e) {
   if (!isObj(e)) return null;
-  return {
+  const out = {
     ...e, kind: str(e.kind, "none") || "none",
-    upgrades: Array.isArray(e.upgrades) ? e.upgrades.filter((x) => typeof x === "string") : [],
+    upgrades: Array.isArray(e.upgrades) ? [...new Set(e.upgrades.filter((x) => typeof x === "string"))] : [],
     raid: int(e.raid, 0, 0), applied: bool(e.applied)
   };
+  if (out.prev !== undefined && !isObj(out.prev)) delete out.prev;                         // B11 (A13): the undo record is an object or nothing
+  return out;
 }
 const normRoll = (r) => (isObj(r) ? { ...r, table: str(r.table), resultName: str(r.resultName), at: num(r.at) } : null);
 
+export const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);   // B11 (A18): never a collection id / patch key
 function normCollection(name, map) {
   const out = {};
   if (!isObj(map)) return out;
   for (const [id, e] of Object.entries(map)) {
-    if (id.startsWith("-=") || !isObj(e)) continue;
+    if (id.startsWith("-=") || UNSAFE_KEYS.has(id) || !isObj(e)) continue;
     out[id] = { ...e, ...ENTRY[name](e) };
   }
   return out;
@@ -656,3 +660,68 @@ export function deriveRank(members = [], { stored } = {}) {
   if (RANKS.includes(stored)) return { ...base, rank: stored, source: "stored" };
   return { ...base, rank: "global", source: "default" };
 }
+
+/* ------------------------------------------------------------------ B11: hardening, ownership plan, rate limit */
+/** B11 (A15a, user decision): the book lets a team choose ANY starting upgrades, so a starting pick is never blocked by an unmet prerequisite for anyone
+    (the starting allowance still applies). Karma purchases keep prerequisites / Too Pricey. Set to false to restore the old rule (players must meet it). */
+export const START_IGNORES_PREREQ = true;
+
+/** Plain recursive merge with the Foundry convention "-=key": null deleting a key. Skips __proto__ / constructor / prototype (A18). Mutates and returns target. */
+export function mergePatch(target, patch) {
+  for (const [k, v] of Object.entries(patch)) {
+    const bare = k.startsWith("-=") ? k.slice(2) : k;
+    if (UNSAFE_KEYS.has(bare)) continue;
+    if (k.startsWith("-=")) { delete target[bare]; continue; }
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      if (!target[k] || typeof target[k] !== "object" || Array.isArray(target[k])) target[k] = {};
+      mergePatch(target[k], v);
+    } else target[k] = v;
+  }
+  return target;
+}
+
+export const OWN = Object.freeze({ NONE: 0, LIMITED: 1, OBSERVER: 2, OWNER: 3 });
+/** B11 (A3, A4): the ownership a base card should have, keeping what the GM chose by hand.
+    in:  { policy: "gm"|"members"|"everyone", have: current ownership object, gen: the user ids this module granted OWNER to last time (undefined = never
+           recorded: every non-staff OWNER is then taken to be a generated grant, the old behaviour), want: user ids that own a VOUCHED linked hero,
+           users: [{ id, staff }] the users that exist now }
+    out: { ownership, gen }
+    Rules: staff keys stay as they are; a generated OWNER the user no longer deserves is removed (falls back to default); every other per-user level
+    (LIMITED / NONE / a manual OWNER) is kept; `default` is OWNER for policy everyone, otherwise the current default capped at OBSERVER (a manual NONE or
+    LIMITED hides the base from non-members); deleted users are dropped. Pure and idempotent: plan(plan(x)) == plan(x). */
+export function planOwnership({ policy, have, gen, want = [], users = [] } = {}) {
+  const cur = isObj(have) ? have : {};
+  const staff = new Set(users.filter((u) => u.staff).map((u) => u.id));
+  const exists = new Set(users.map((u) => u.id));
+  const prevGen = new Set(Array.isArray(gen) ? gen : Object.entries(cur).filter(([k, v]) => k !== "default" && v === OWN.OWNER && !staff.has(k)).map(([k]) => k));
+  const wantSet = new Set(policy === "members" ? (Array.isArray(want) ? want : []).filter((id) => exists.has(id) && !staff.has(id)) : []);
+  let def = Number.isInteger(cur.default) ? cur.default : OWN.OBSERVER;
+  def = policy === "everyone" ? OWN.OWNER : Math.min(def, OWN.OBSERVER);
+  const ownership = { default: def };
+  const nextGen = new Set();
+  for (const [k, v] of Object.entries(cur)) {
+    if (k === "default" || !exists.has(k) || UNSAFE_KEYS.has(k)) continue;
+    if (staff.has(k)) { ownership[k] = v; continue; }
+    if (v === OWN.OWNER && prevGen.has(k)) { if (!wantSet.has(k)) continue; nextGen.add(k); }
+    ownership[k] = v;
+  }
+  for (const k of wantSet) { if (ownership[k] !== OWN.OWNER) { ownership[k] = OWN.OWNER; nextGen.add(k); } }
+  return { ownership, gen: [...nextGen].sort() };
+}
+/** Do two ownership objects say the same thing? (key order ignored) */
+export function sameOwnership(a, b) {
+  const x = isObj(a) ? a : {}, y = isObj(b) ? b : {};
+  const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
+  return [...keys].every((k) => (x[k] ?? null) === (y[k] ?? null));
+}
+
+/** B11 (A9): sliding-window rate limit. `hits` is a Map key -> [timestamps]; returns { ok, retryMs } and records the hit when allowed. */
+export function rateHit(hits, key, now, limit, windowMs) {
+  const arr = (hits.get(key) ?? []).filter((x) => now - x < windowMs);
+  if (arr.length >= limit) { hits.set(key, arr); return { ok: false, retryMs: windowMs - (now - arr[0]) }; }
+  arr.push(now);
+  hits.set(key, arr);
+  return { ok: true, retryMs: 0 };
+}
+/** B11 (A13): a crate row may only be given when its snapshot really is the declared type. */
+export function snapMatches(row) { return !!row && isObj(row.snap) && row.snap.type === row.type; }

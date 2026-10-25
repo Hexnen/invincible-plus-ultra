@@ -1373,6 +1373,41 @@ Object.assign(PL, {
   "IPB.Gr.TrackReset": "Zeruj",
   "IPB.Gr.TrackResetAria": "Wyzeruj licznik {name}"
 });
+/* ---- phase B11: join requests (GM approval), server-side rules, relay trust and quotas */
+Object.assign(EN, {
+  "IPB.Err.noAllowance": "This team has no starting upgrades left for its rank ({total}). Ask the GM to add more.",
+  "IPB.Err.pending": "Settle the open base event first: apply it, dismiss it or mark it as handled.",
+  "IPB.Err.rate": "Too many requests in a short time, or too many are waiting for the GM. Wait a little, then try again.",
+  "IPB.Err.untrusted": "The GM cannot verify who sent this request (the socketlib module is not active), so it was not carried out.",
+  "IPB.Xfer.Warn.crateDropped": "{n} crate row(s) in the file were left out: the item inside is not what the row says it is.",
+  "IPB.Join.Title": "Request to join a team",
+  "IPB.Join.Text": "{user} asks to add the hero {hero} to the team {team}.",
+  "IPB.Join.Approve": "Approve and add {hero}",
+  "IPB.Join.Decline": "Decline",
+  "IPB.Join.State.approved": "{gm} approved the request.",
+  "IPB.Join.State.declined": "{gm} declined the request.",
+  "IPB.Join.State.invalid": "Not carried out: the hero, the team or its owner has changed.",
+  "IPB.Join.Alias": "Team card",
+  "IPB.Join.Sent": "{name} wants to join {team}. The request was sent to the GM.",
+  "IPB.Lock.AskGm": "You cannot edit the card, so ask the GM to change it."
+});
+Object.assign(PL, {
+  "IPB.Err.noAllowance": "Ta drużyna nie ma już ulepszeń startowych dla swojej rangi ({total}). Poproś MG o dodanie kolejnych.",
+  "IPB.Err.pending": "Najpierw rozstrzygnij otwarte zdarzenie bazy: zastosuj je, odrzuć albo oznacz jako załatwione.",
+  "IPB.Err.rate": "Zbyt wiele próśb w krótkim czasie albo zbyt wiele czeka na MG. Poczekaj chwilę i spróbuj ponownie.",
+  "IPB.Err.untrusted": "MG nie może sprawdzić, kto wysłał tę prośbę (moduł socketlib nie jest aktywny), więc jej nie wykonano.",
+  "IPB.Xfer.Warn.crateDropped": "Pominięto wierszy skrzyni z pliku: {n}. Przedmiot w środku nie jest tym, za co podaje go wiersz.",
+  "IPB.Join.Title": "Prośba o dołączenie do drużyny",
+  "IPB.Join.Text": "{user} prosi o dodanie bohatera {hero} do drużyny {team}.",
+  "IPB.Join.Approve": "Zatwierdź i dodaj: {hero}",
+  "IPB.Join.Decline": "Odrzuć",
+  "IPB.Join.State.approved": "{gm} zatwierdził(a) prośbę.",
+  "IPB.Join.State.declined": "{gm} odrzucił(a) prośbę.",
+  "IPB.Join.State.invalid": "Nie wykonano: bohater, drużyna lub jej właściciel się zmienił.",
+  "IPB.Join.Alias": "Karta drużyny",
+  "IPB.Join.Sent": "{name} chce dołączyć do drużyny {team}. Prośbę wysłano do MG.",
+  "IPB.Lock.AskGm": "Nie możesz edytować karty, więc poproś MG o zmianę."
+});
 const fill = (s, data) => String(s).replace(/\{(\w+)\}/g, (_m, k) => (data?.[k] ?? `{${k}}`));
 const lang = () => { try { return globalThis.game?.i18n?.lang ?? "en"; } catch { return "en"; } };
 
