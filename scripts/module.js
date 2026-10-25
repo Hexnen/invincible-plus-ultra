@@ -1859,3 +1859,9 @@ import("./chargen/main.mjs")
 import("./base/main.mjs")
   .then((base) => base.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | team & base card not loaded (everything else is unaffected)`, err));
+
+/* ACTIVITY LOG (scripts/log/): capture (the active GM client = the scribe), storage in hidden world journals, relay for player notes, api.log. No UI yet (L4).
+   Same mechanism and recorded phases as the blocks above. */
+import("./log/main.mjs")
+  .then((log) => log.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | activity log not loaded (everything else is unaffected)`, err));

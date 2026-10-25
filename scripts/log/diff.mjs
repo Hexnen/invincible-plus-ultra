@@ -210,19 +210,20 @@ function familyDrafts(f, before, after) {
   const removedAll = f.list.length > 0 && f.list.every((x) => x.c.kind === "remove") && !Object.keys(after).some((k) => k.startsWith(base + "."));
   const addedAll = f.list.length > 0 && f.list.every((x) => x.c.kind === "add") && !Object.keys(before).some((k) => k.startsWith(base + "."));
   const idKey = fam.idKey;
+  const withKey = (d) => { if (f.family === "upgrades") { const k = after[`${base}.key`] ?? before[`${base}.key`]; if (k) { d.uid = f.id; d.key = k; } } return d; };   // L3: the card key (catalog slug) for upgrades, the row id kept as uid
   if ((addedAll || (f.whole && f.whole.kind === "add")) && fam.add) {
     const d = { [idKey]: f.id, name: clampStr(nameOf(after), TEXT_CLAMP) };
     if (f.family === "upgrades") { d.count = countOf(after) ?? 1; const pw = after[`${base}.power`]; if (pw) d.power = clampStr(pw, TEXT_CLAMP); }
     else if (f.family === "events") { d.roll = after[`${base}.roll`] ?? null; d.band = after[`${base}.band`] ?? ""; d.label = clampStr(after[`${base}.label`] ?? "", TEXT_CLAMP); d.text = clampStr(after[`${base}.text`] ?? "", 120); }
     else if (f.family === "crate") { d.qty = countOf(after) ?? 1; d.type = after[`${base}.type`] ?? ""; }
-    out.push({ k: fam.add, path: base, d });
+    out.push({ k: fam.add, path: base, d: withKey(d) });
     return out;
   }
   if ((removedAll || (f.whole && f.whole.kind === "remove")) && fam.remove) {
     const d = { [idKey]: f.id, name: clampStr(nameOf(before), TEXT_CLAMP) };
     if (f.family === "upgrades") d.count = countOf(before) ?? 1;
     else if (f.family === "crate") d.qty = countOf(before) ?? 1;
-    out.push({ k: fam.remove, path: base, d });
+    out.push({ k: fam.remove, path: base, d: withKey(d) });
     return out;
   }
   for (const { rest, c } of f.list) {
@@ -236,7 +237,7 @@ function familyDrafts(f, before, after) {
     else if (k === "vehicle.primary") { if (!c.to) continue; }
     else if (k === "event.applied") { if (!c.to) continue; d.effect = { kind: after[`${base}.effect.kind`] ?? "" }; }
     else if ((k === "event.reroll" || k === "event.resolved") && !c.to) continue;
-    out.push({ k, path: `${base}.${rest}`, d });
+    out.push({ k, path: `${base}.${rest}`, d: withKey(d) });
   }
   return out;
 }

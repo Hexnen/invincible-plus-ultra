@@ -10,6 +10,7 @@ import * as C from "./coalesce.mjs";
 import * as F from "./filter.mjs";
 import * as P from "./prune.mjs";
 import * as X from "./export.mjs";
+import * as CP from "./capture-pure.mjs";
 
 let n = 0, bad = 0;
 const ok = (c, m) => { n++; if (!c) { bad++; console.log("FAIL", m); } };
@@ -730,9 +731,45 @@ const exCtx = { actor: { id: "A", name: "Zażółć Hero", uuid: "Actor.A", type
   ok(tWrite < 5000, "write 5000 under 5s"); ok(tRead < 500, "read under 0.5s"); ok(tFilter < 300, "filter 5000 under 0.3s"); ok(tGroup < 500, "group under 0.5s"); ok(tCount < 300, "counts under 0.3s"); ok(tExport < 3000, "export under 3s"); ok(tPrune < 500, "prune plan under 0.5s");
 }
 
+/* ================================================================= 8b. capture helpers (L3) */
+{
+  eq(CP.levelName(3), "OWNER", "level 3"); eq(CP.levelName(-1), "INHERIT", "level -1"); eq(CP.levelName("OBSERVER"), "OBSERVER", "level string");
+  const src = { name: "H", img: "i.webp", ownership: { default: 0, u1: 3 }, system: { karma: 2, attributes: { fighting: { value: 3 } }, derived: { health: { value: 2, max: 5 } } }, flags: { "invincible-plus-ultra": { chargen: { runId: "R1" }, chargenBackup: { x: 1 }, base: { team: "B1" } } } };
+  const m = CP.actorMirror(src, "hero");
+  eq(m["ownership.u1"], "OWNER", "mirror ownership name"); eq(m["ownership.default"], "NONE", "mirror default"); eq(m["system.attributes.fighting.value"], 3, "mirror attr");
+  eq(m["__chargen.runId"], "R1", "mirror run id"); eq(m["__chargen.backup"], true, "mirror backup");
+  const d = D.diffFlat(m, CP.actorMirror({ ...src, system: { ...src.system, derived: { health: { value: 1, max: 9 } } } }, "hero"));
+  eq(d.map((x) => x.p), ["system.derived.health.value"], "mirror diff ignores max");
+  const bm = CP.actorMirror({ name: "B", flags: { "invincible-plus-ultra": { base: { kind: "teamBase", motto: "m", base: { kind: "Tower" } } } } }, "base");
+  eq(bm["flags.invincible-plus-ultra.base.base.kind"], "Tower", "base mirror");
+  const im = CP.itemMirror({ name: "P", system: { level: "Basic", powerSource: "S1", boosts: [{}, {}], description: "abc", automations: { a: 1 }, cost: 2 } }, (id) => (id === "S1" ? "Source" : id));
+  eq(im["system.powerSource"], "Source", "item powerSource resolved"); eq(im["system.boosts#len"], 2, "item array len"); eq(im["description#len"], 3, "desc len");
+  const ch = CP.diffItemMirror(im, CP.itemMirror({ name: "P2", system: { level: "Basic", powerSource: "S1", boosts: [{}], description: "abcd", automations: { a: 1 }, cost: 2 } }, (id) => (id === "S1" ? "Source" : id)));
+  eq(ch.map((c) => c.p).sort(), ["description", "name", "system.boosts"], "item diff paths"); ok(ch.find((c) => c.p === "system.boosts").len[1] === 1, "len pair");
+  const eb = new CP.EditBuffer();
+  eb.add("k", { name: "a" }, [{ p: "name", from: "a", to: "ab" }], 1000); eb.add("k", { name: "a" }, [{ p: "name", from: "ab", to: "abc" }], 1500);
+  eq(eb.drain(2000).length, 0, "edit buffer open"); const out = eb.drain(4000); eq(out.length, 1, "edit buffer emits one"); eq(out[0].changes[0], { p: "name", from: "a", to: "abc" }, "edit buffer merged");
+  eb.add("k", {}, [{ p: "name", from: "a", to: "b" }], 1000); eb.add("k", {}, [{ p: "name", from: "b", to: "a" }], 1100); eq(eb.drain(9000).length, 0, "edit buffer cancels a net no-op");
+  eq(CP.rollModeOf({ whisper: [], blind: false, author: "a" }), "public", "mode public"); eq(CP.rollModeOf({ whisper: ["g"], blind: false, author: "a" }), "gm", "mode gm");
+  eq(CP.rollModeOf({ whisper: ["g"], blind: true, author: "a" }), "blind", "mode blind"); eq(CP.rollModeOf({ whisper: ["a"], blind: false, author: "a" }), "self", "mode self");
+  const ri = CP.rollInfo({ successCount: 2, baneCount: 1, pushCount: 1, dice: [{ results: [{ result: 6 }, { result: 1 }] }], options: { stressCost: 2 }, attackDamage: 3 });
+  eq([ri.s, ri.b, ri.p, ri.dice, ri.str, ri.dmg], [2, 1, 1, [6, 1], 2, 3], "roll info");
+  eq(CP.damageFacts("<p><strong>Rex</strong> took <strong>3</strong> damage.</p>"), { name: "Rex", amount: 3, injury: "" }, "damage facts");
+  eq(CP.damageFacts("<strong>Rex</strong> <strong>3</strong> <strong>Broken Arm</strong>").injury, "Broken Arm", "damage injury");
+  eq(CP.decodeSnap(CP.encodeSnap({ "a.fighting": 2, "i.x": "p|n" })), { "a.fighting": 2, "i.x": "p|n" }, "snap key round trip"); ok(!Object.keys(CP.encodeSnap({ "a.b.c": 1 }))[0].includes("."), "encoded keys have no dots");
+  const ops = CP.snapOps({ "a.x": 1, "a.y": 2, at: 1 }, { "a.x": 1, "a.z": 3, at: 5 }); eq(ops.set, { "a~z": 3, at: 5 }, "snap ops set"); eq(ops.del, ["a~y"], "snap ops del");
+  const users = [{ id: "g", isGM: true }, { id: "p1" }, { id: "p2" }, { id: "p3" }];
+  eq(CP.readersOf({ default: "NONE", p1: "OWNER", p2: "OBSERVER" }, users, "owners"), ["p1"], "readers owners"); eq(CP.readersOf({ default: 0, p1: 3, p2: 2 }, users, "observers"), ["p1", "p2"], "readers observers");
+  eq(CP.readersOf({ default: 2, p1: 3 }, users, "observers"), ["p1", "p2", "p3"], "readers default observer"); eq(CP.readersOf({ p1: 3 }, users, "gm"), [], "readers gm only");
+  eq(CP.journalOwnership(["p1"]), { default: 0, p1: 2 }, "journal ownership");
+  ok(/^[A-Za-z0-9]{16}$/.test(CP.pageDocId("abcdefghijklmnop", 3)) && /^[A-Za-z0-9]{16}$/.test(CP.pageDocId("abc", 12, true)), "page doc id is a valid 16 char id"); ok(CP.pageDocId("abcdefghijklmnop", 1) !== CP.pageDocId("abcdefghijklmnop", 1, true), "secret page id differs");
+  ok(/^[A-Za-z0-9]{16}$/.test(CP.GM_JOURNAL_ID) && /^[A-Za-z0-9]{16}$/.test(CP.LOG_FOLDER_ID), "fixed ids are valid");
+  const snap = D.makeSnapshot(CP.snapshotSource(src, "hero", { i1: "power|P||0|" }), 7); eq(snap["a.fighting"], 3, "snapshot source attr"); eq(snap["o.u1"], "OWNER", "snapshot source ownership"); eq(snap["i.i1"], "power|P||0|", "snapshot items");
+}
+
 /* ================================================================= 9. no Foundry globals */
 {
-  const files = ["events", "model", "diff", "coalesce", "filter", "prune", "export"].map((f) => `${f}.mjs`);
+  const files = ["events", "model", "diff", "coalesce", "filter", "prune", "export", "capture-pure"].map((f) => `${f}.mjs`);
   const FORBIDDEN = ["game", "foundry", "Hooks", "ui", "CONFIG", "canvas", "window", "document", "localStorage", "sessionStorage", "navigator", "ChatMessage", "Actor", "Item", "fromUuid", "Handlebars", "ChatMessage", "Journal", "socket", "$", "jQuery", "saveDataToFile", "BroadcastChannel", "setTimeout", "setInterval"];
   for (const f of files) {
     const src = fs.readFileSync(path.join(here, f), "utf8");
