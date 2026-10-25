@@ -10,6 +10,7 @@ import * as C from "./capture-pure.mjs";
 import * as Store from "./store.mjs";
 import * as Scribe from "./scribe.mjs";
 import * as Relay from "./relay.mjs";
+import { t as tr } from "./lang.mjs";
 
 const MOD = E.MOD_ID;
 export const VERSION = "0.3.0";
@@ -67,8 +68,8 @@ export async function record(target, spec = {}) {
     if (!E.isKnownType(spec.k) || !E.inScope(spec.k, scopeOfActor(a))) return null;
     const t = Number.isFinite(spec.t) ? spec.t : Date.now();
     const id = rid();
-    const args = { actorId: a.id, k: spec.k, d: spec.d ?? {}, absorb: spec.absorb, rid: id, t, v: !!spec.v };
-    if (Scribe.isScribe()) { const r = Scribe.recordLocal(a, { ...args, v: spec.v }, game.user.id); return r && !r.error ? { id: r.id } : null; }
+    const args = { actorId: a.id, k: spec.k, d: spec.d ?? {}, absorb: spec.absorb, rid: id, t, v: !!spec.v || E.visibilityOf({ k: spec.k }) === "G" };
+    if (Scribe.isScribe()) { const r = Scribe.recordLocal(a, { ...args }, game.user.id); return r && !r.error ? { id: r.id } : null; }
     if (!game.users.activeGM) {
       if (!game.user.isGM && E.RELAY_WHITELIST.includes(spec.k) && a.testUserPermission(game.user, "OWNER")) { Relay.enqueue(args); return { id: M.makeId(t, a.id, spec.k, id, game.user.id), queued: true }; }
       return null;
@@ -139,6 +140,6 @@ export async function flush() { if (Scribe.isScribe()) await Scribe.drain(); }
 
 export const logApi = {
   record, note, read, query, subscribe, canView, canNote, isScribe, scribe, export: exportLog, stats, annotate, redact, trim, scope, status, flush,
-  types: E.TYPES, categories: E.CATEGORIES, pure: { E, M, D, CO, F, X, P, C }, version: VERSION, LogError: Relay.LogError,
+  types: E.TYPES, categories: E.CATEGORIES, pure: { E, M, D, CO, F, X, P, C }, t: tr, version: VERSION, LogError: Relay.LogError,
   _internal: { Store, Scribe, Relay }
 };

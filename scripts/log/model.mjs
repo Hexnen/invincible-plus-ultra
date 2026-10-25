@@ -113,7 +113,7 @@ export function normalizeEntry(raw, opts = {}) {
     const tn = intOrUndef(raw.c.tn); if (tn !== undefined) c.tn = tn;
     if (Object.keys(c).length) e.c = c;
   }
-  if (raw.v) e.v = 1;
+  { const def = typeof raw.k === "string" ? typeDef(raw.k) : null; if (raw.v || (def && def.vis === "G")) e.v = 1; }   // GM-only types (registry vis "G") are secret whatever the caller passed
   if (typeof raw.g === "string" && raw.g) e.g = clampText(raw.g, 16);
   if (raw.a) e.a = 1;
   if (raw.h) e.h = 1;

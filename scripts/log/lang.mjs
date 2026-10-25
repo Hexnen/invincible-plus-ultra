@@ -14,7 +14,7 @@ const TP = (key, enOne, enOther, plOne, plFew, plMany) => {
 /** Sentence variants chosen by the row renderer (entry data -> suffix). Listed here so check-lang can prove every variant string exists. */
 export const VARIANTS = Object.freeze({
   "stat.vital": ["up", "down"], "stat.text": ["bio"], "actor.img": ["portrait", "token"], "item.toggle": ["on", "off"], "damage.taken": ["att"],
-  "combat.action": ["on", "off"], "actor.created": ["dup"], "card.occupied": ["on", "off"], "team.join": [], "roll.made": []
+  "combat.action": ["on", "off"], "actor.created": ["dup"], "card.occupied": ["on", "off"], "event.reroll": ["named"], "event.resolved": ["named"], "event.applied": ["named"], "event.note": ["named"], "team.join": [], "roll.made": []
 });
 /** Dynamic key families, checked against the registries by check-lang.mjs. */
 export const ATTRS = ["fighting", "agility", "strength", "reason", "intuition", "presence"];
@@ -35,6 +35,8 @@ export const ACTIONS = ["fastAction", "slowAction"];
 T("IPL.Tab", "Log", "Dziennik");
 T("IPL.TabAria", "Activity log", "Dziennik aktywności");
 T("IPL.TabAriaNew", "Activity log, {n} new", "Dziennik aktywności, nowych: {n}");
+T("IPL.Host.Wait", "Loading the log...", "Wczytywanie dziennika...");
+T("IPL.Host.Missing", "The activity log is not available.", "Dziennik aktywności jest niedostępny.");
 for (const [c, en, pl] of [
   ["stats", "Stats", "Statystyki"], ["items", "Items", "Przedmioty"], ["effects", "Effects", "Efekty"], ["damage", "Damage", "Obrażenia"], ["rolls", "Rolls", "Rzuty"],
   ["combat", "Combat", "Walka"], ["creation", "Creation", "Tworzenie"], ["team", "Team", "Drużyna"], ["notes", "Notes", "Notatki"], ["system", "System", "System"],
@@ -170,6 +172,10 @@ const SUM = [
   ["event.resolved", "{who} handled the event", "{who}: zdarzenie załatwione"],
   ["event.applied", "{who} applied the event to the card", "{who}: zdarzenie zastosowano na karcie"],
   ["event.note", "{who} edited the note of an event", "{who}: edycja notatki zdarzenia"],
+  ["event.reroll.named", "{who} rolled the event {name} again", "{who}: ponowny rzut zdarzenia {name}"],
+  ["event.resolved.named", "{who} handled the event {name}", "{who}: zdarzenie {name} załatwione"],
+  ["event.applied.named", "{who} applied the event {name} to the card", "{who}: zdarzenie {name} zastosowano na karcie"],
+  ["event.note.named", "{who} edited the note of the event {name}", "{who}: edycja notatki zdarzenia {name}"],
   ["crate.add", "{who} put {name} in the crate", "{who}: dodano do skrzyni {name}"],
   ["crate.remove", "{who} took {name} out of the crate", "{who}: usunięto ze skrzyni {name}"],
   ["crate.qty", "{who} set the quantity of {name} to {qty}", "{who}: ilość {name} = {qty}"],

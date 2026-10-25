@@ -783,5 +783,20 @@ const exCtx = { actor: { id: "A", name: "Zażółć Hero", uuid: "Actor.A", type
   }
 }
 
+/* ================================================================= L5: GM-only types are stored secret whatever the caller passed */
+{
+  for (const [id, def] of Object.entries(EV.TYPES)) {
+    if (def.vis !== "G") continue;
+    const sc = def.scope === "base" ? "base" : "hero";
+    const e = M.normalizeEntry({ t: T0, u: "u1", k: id, d: { text: "x" } }, { actorId: "A", path: "p" });
+    eq(e.v, 1, `${id} without v is forced to v:1`);
+    eq(M.buildEntry({ t: T0, u: "u1", k: id, v: 0, d: { text: "x" } }, { actorId: "A", scope: sc }).entry.v, 1, `${id} with v:0 is forced to v:1`);
+    eq(EV.visibilityOf(e), "G", `${id} stays G`);
+  }
+  eq(M.normalizeEntry({ t: T0, u: "u1", k: "note.add", d: { text: "x" } }, { actorId: "A" }).v, undefined, "note.add stays public");
+  eq(M.normalizeEntry({ t: T0, u: "u1", k: "roll.made", d: { name: "r", mode: "public", s: 1, b: 0 } }, { actorId: "A" }).v, undefined, "a PG type stays public without v");
+  eq(M.normalizeEntry({ t: T0, u: "u1", k: "roll.made", v: 1, d: { name: "r", mode: "gm", s: 1, b: 0 } }, { actorId: "A" }).v, 1, "a PG type keeps v:1");
+}
+
 console.log(`${n} checks, ${bad} failed`);
 process.exit(bad ? 1 : 0);

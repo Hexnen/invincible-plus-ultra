@@ -45,6 +45,7 @@ export function variantOf(e) {
     case "combat.action": return d.on ? "on" : "off";
     case "actor.created": return d.dupOf ? "dup" : "";
     case "card.occupied": return d.on ? "on" : "off";
+    case "event.reroll": case "event.resolved": case "event.applied": case "event.note": return d.name ? "named" : "";
     default: return "";
   }
 }

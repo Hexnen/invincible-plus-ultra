@@ -39,6 +39,7 @@ import { base } from "./base.mjs";                                  // B5 (done)
 import { upgrades } from "./upgrades.mjs";                          // B6 (done)
 import { events } from "./events.mjs";                              // B7 (done)
 import { gear } from "./gear.mjs";                                  // B8 (done)
+import { log } from "./log.mjs";                                    // L5 (activity log project): the Log tab, last
 
-export const TABS = [base, upgrades, events, gear];
+export const TABS = [base, upgrades, events, gear, log];
 export const tabById = (id) => TABS.find((x) => x.id === id) ?? TABS[0];

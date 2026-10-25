@@ -248,6 +248,13 @@
 /* ---------- the tab link badge (unseen entries) ---------- */
 .invincible.sheet.actor nav.sheet-tabs a .ipl-tabbadge { position: absolute; top: -7px; right: -7px; min-width: 20px; height: 20px; padding: 0 4px; display: grid; place-items: center; font: 700 11px/1 Roboto, sans-serif; color: #0c1a2e; background: #ffe72a; border: 2px solid #0c1a2e; pointer-events: none; font-variant-numeric: tabular-nums; }
 
+/* ---------- the team base sheet's Log tab (scripts/base/tabs/log.mjs): the host is the scroller, the panel around it gives up its padding ---------- */
+.ipb-app .ipb-panel:has(> .ipl-host), .ipb-shell[data-compact="1"] .ipb-panel:has(> .ipl-host) { padding: 0; overflow: hidden; }
+.ipb-app .ipl-host { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; background: #fff; }
+.ipb-app .ipl-host[data-short="1"] .ipl { --ipl-bar-h: 0px !important; }
+.ipb-app .ipl-host[data-short="1"] .ipl-bar { position: static; }
+.ipb-app .ipl-host > .ipl-host-wait { margin: 0; padding: 18px; font: 400 14px/1.4 Roboto, "Segoe UI", sans-serif; color: #44597a; }
+
 /* ---------- narrow: the container is under 760 / 560px ---------- */
 @container ipl (min-width: 760px) {
   .ipl-search { flex: 1 1 18rem; }

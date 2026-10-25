@@ -93,6 +93,7 @@ for (const lang of ["en", "pl"]) {
       if (variant === "on") e.d.on = true; if (variant === "off") e.d.on = false;
       if (variant === "att") e.d.attacker = { name: "Brute" };
       if (variant === "dup") e.d.dupOf = { id: "z", name: "Orig" };
+      if (variant === "named") e.d.name = e.d.name || "Raid on the docks";
       const text = sentenceText(e, ctx);
       ok(!/\{\w+\}/.test(text), `[${lang}] leftover token in ${id}${variant ? "." + variant : ""}: ${text}`);
       ok(text.length > 3, `[${lang}] empty sentence for ${id}`);
