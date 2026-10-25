@@ -25,8 +25,16 @@ const HANDLERS = {
     const from = args.fromActorId ? game.actors.get(String(args.fromActorId)) : null;
     if (args.fromActorId && !from) throw new S.BaseError("notFound", { id: String(args.fromActorId) });
     if (from && !staff && (from.type !== "superhero" || !from.testUserPermission(sender, "OWNER"))) throw new S.BaseError("noPermission");
+    // Several clients of the same GM user (two browser tabs) all receive the request: a random delay and a lookup by the request id make exactly one of them
+    // create the card; the others return the card that already exists.
+    const rid = String(args.rid ?? "").slice(0, 32);
+    if (rid) {
+      await new Promise((res) => setTimeout(res, Math.random() * 350));
+      const dup = game.journal.find((e) => e.flags?.[MOD]?.rid === rid);
+      if (dup) return { id: dup.id };
+    }
     const team = await S.createLocal({
-      name: P.clampText(String(args.name ?? ""), 80), rank: P.RANKS.includes(args.rank) ? args.rank : undefined, fromActor: from
+      name: P.clampText(String(args.name ?? ""), 80), rank: P.RANKS.includes(args.rank) ? args.rank : undefined, fromActor: from, rid
     }, sender);
     return { id: team.id };
   },
@@ -35,6 +43,15 @@ const HANDLERS = {
     const e = game.journal.get(String(args.teamId ?? ""));
     if (!S.isCard(e)) throw new S.BaseError("notFound", { id: String(args.teamId ?? "") });
     return { changed: (await S.reconcileOwnership(e)).changed };
+  },
+  /** args { actorId }. A player without the right to create cards asks the GM to make one for a hero they own; the GM gets a notification + the hook. */
+  async askCreate(sender, args) {
+    const a = game.actors.get(String(args.actorId ?? ""));
+    if (!a || a.type !== "superhero") throw new S.BaseError("notFound", { id: String(args.actorId ?? "") });
+    if (!S.isStaff(sender) && !a.testUserPermission(sender, "OWNER")) throw new S.BaseError("noPermission");
+    Hooks.callAll(`${MOD}.baseRequest`, { team: "", actor: a.id, from: sender.id, what: "create" });
+    ui.notifications?.info(`${sender.name}: team card for ${a.name}`);
+    return { delivered: true };
   },
   /** args { teamId, what }. The player asks the GM for something (e.g. buying an upgrade); the GM client gets a notification + a hook. */
   async ask(sender, args) {

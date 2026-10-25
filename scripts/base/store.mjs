@@ -144,9 +144,12 @@ export async function create(opts = {}) {
   const from = actorOf(opts.fromActor);
   if (!isStaff()) {
     if (!bridge.request) throw new BaseError("relay");
-    const res = await bridge.request("createTeam", { name: opts.name ?? "", rank: opts.rank ?? "", fromActorId: from?.id ?? "" });
+    const res = await bridge.request("createTeam", { name: opts.name ?? "", rank: opts.rank ?? "", fromActorId: from?.id ?? "", rid: foundry.utils.randomID(16) });
     const id = res?.id;
-    for (let i = 0; i < 40 && !game.journal.get(id); i++) await new Promise((r) => setTimeout(r, 100));
+    // The entry and then the ownership grant the GM client makes right after creating it arrive as SEPARATE updates: a player must not write to
+    // the card (fromHero, rename ...) before both are here or the write is refused. Wait up to 6 s for the entry and for edit rights.
+    const ready = () => { const e = game.journal.get(id); return !!e && isCard(e) && canEdit(e); };
+    for (let i = 0; i < 60 && !ready(); i++) await new Promise((r) => setTimeout(r, 100));
     return view(id);
   }
   return createLocal(opts, game.user);
@@ -165,7 +168,7 @@ export async function createLocal(opts = {}, by = game.user) {
   const folder = await ensureFolder();
   const entry = await JournalEntry.create({
     name: B.name, folder: folder.id, ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER },
-    flags: { [MODULE_ID]: { [P.FLAG_KEY]: B } }
+    flags: { [MODULE_ID]: { [P.FLAG_KEY]: B, ...(opts.rid ? { rid: String(opts.rid) } : {}) } }
   });
   for (const a of [from, ...(opts.actors ?? []).map(actorOf)].filter(Boolean)) await link(a, entry);
   await reconcileOwnership(entry);

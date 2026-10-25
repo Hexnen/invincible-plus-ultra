@@ -1,10 +1,11 @@
-/* Team & Base card, phase B3: entry point (no UI yet). start() is called from a guarded dynamic import at the tail of scripts/module.js:
+/* Team & Base card: entry point (B3 data layer, B4 windows + entry points in entry.mjs). start() is called from a guarded dynamic import at the tail of scripts/module.js:
    registers the settings (init), hides the cards from the Journal sidebar, keeps card ownership in line with the heroes (active GM only),
    registers the GM relay and attaches api.base. Does nothing heavy until the API is used. */
 import * as S from "./store.mjs";
 import * as Cat from "./catalog.mjs";
 import * as Relay from "./relay.mjs";
 import { attach } from "./api.mjs";
+import * as Entry from "./entry.mjs";
 import { t } from "./lang.mjs";
 
 const MOD = S.MODULE_ID;
@@ -20,7 +21,7 @@ function registerSettings() {
   }
   if (!has("baseHeaderButton")) {
     game.settings.register(MOD, "baseHeaderButton", {
-      name: t("IPB.Settings.HeaderButton.Name"), hint: t("IPB.Settings.HeaderButton.Hint"), scope: "client", config: true, type: Boolean, default: true
+      name: t("IPB.Settings.HeaderButton.Name"), hint: t("IPB.Settings.HeaderButton.Hint"), scope: "client", config: true, type: Boolean, default: true, onChange: () => Entry.syncAll()
     });
   }
   if (!has(S.SETTING_PLAYERS_CREATE)) {
@@ -51,7 +52,7 @@ export function start(phases = {}) {
       // a hero joined / left a team, or the card policy changed: the active GM re-grants card ownership
       Hooks.on("updateActor", (_actor, change) => { if (change?.flags?.[MOD]?.base !== undefined || change?.flags?.[MOD]?.["-=base"] !== undefined) scheduleReconcile(); });
       Hooks.on("updateJournalEntry", (entry, change) => { if (S.isCard(entry) && change?.flags?.[MOD]?.base?.policy) scheduleReconcile(); });
-      run("ready", () => { attach(); Relay.start(); Cat.start(); scheduleReconcile(); });
+      run("ready", () => { attach(); Relay.start(); Cat.start(); scheduleReconcile(); Entry.start(); });
     } catch (e) { console.warn(`${MOD} | base card failed to start`, e); }
   });
 }

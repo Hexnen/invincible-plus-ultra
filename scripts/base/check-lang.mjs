@@ -4,22 +4,35 @@
    can return has a string. */
 import { EN, PL } from "./lang.mjs";
 import * as P from "./pure.mjs";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 const dir = dirname(fileURLToPath(import.meta.url));
 let bad = 0;
 const fail = (m) => { bad++; console.log("FAIL", m); };
-for (const k of Object.keys(EN)) if (!(k in PL)) fail(`in EN, missing in PL: ${k}`);
-for (const k of Object.keys(PL)) if (!(k in EN)) fail(`in PL, missing in EN: ${k}`);
+// plural families: EN needs .one + .other, PL needs .one + .few + .many (tn() in lang.mjs picks the form); every other key must exist in both
+const PLURAL = /\.(one|few|many|other)$/;
+const base = (k) => k.replace(PLURAL, "");
+const forms = (T) => { const m = new Map(); for (const k of Object.keys(T)) if (PLURAL.test(k)) { if (!m.has(base(k))) m.set(base(k), new Set()); m.get(base(k)).add(k.match(PLURAL)[1]); } return m; };
+const fEN = forms(EN), fPL = forms(PL);
+for (const [b, s] of fEN) if (!(s.has("one") && s.has("other"))) fail(`EN plural ${b} needs .one and .other`);
+for (const [b, s] of fPL) if (!(s.has("one") && s.has("few") && s.has("many"))) fail(`PL plural ${b} needs .one, .few and .many`);
+for (const b of fEN.keys()) if (!fPL.has(b)) fail(`plural ${b} missing in PL`);
+for (const b of fPL.keys()) if (!fEN.has(b)) fail(`plural ${b} missing in EN`);
+const plain = (T) => Object.keys(T).filter((k) => !PLURAL.test(k));
+for (const k of plain(EN)) if (!(k in PL)) fail(`in EN, missing in PL: ${k}`);
+for (const k of plain(PL)) if (!(k in EN)) fail(`in PL, missing in EN: ${k}`);
 const ph = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
-for (const k of Object.keys(EN)) if (k in PL && ph(EN[k]) !== ph(PL[k])) fail(`placeholders differ: ${k} (${ph(EN[k])} vs ${ph(PL[k])})`);
+for (const k of plain(EN)) if (k in PL && ph(EN[k]) !== ph(PL[k])) fail(`placeholders differ: ${k} (${ph(EN[k])} vs ${ph(PL[k])})`);
+for (const b of fEN.keys()) { const a = ph(EN[`${b}.one`]); for (const T of [EN, PL]) for (const k of Object.keys(T)) if (base(k) === b && PLURAL.test(k) && ph(T[k]) !== a) fail(`plural placeholders differ: ${k}`); }
 const used = new Set();
-for (const f of readdirSync(dir).filter((x) => x.endsWith(".mjs") && !["lang.mjs", "check-lang.mjs", "check-base.mjs"].includes(x))) {
+const files = [...readdirSync(dir).filter((x) => x.endsWith(".mjs") && !["lang.mjs", "check-lang.mjs", "check-base.mjs"].includes(x)),
+  ...(existsSync(join(dir, "tabs")) ? readdirSync(join(dir, "tabs")).filter((x) => x.endsWith(".mjs")).map((x) => `tabs/${x}`) : [])];
+for (const f of files) {
   const src = readFileSync(join(dir, f), "utf8");
   for (const m of src.matchAll(/["'`](IPB\.[A-Za-z][\w.]*)["'`]/g)) used.add(m[1]);
 }
-for (const k of used) if (!(k in EN) || !(k in PL)) fail(`used but not defined in both languages: ${k}`);
+for (const k of used) if (!((k in EN && k in PL) || (fEN.has(k) && fPL.has(k)))) fail(`used but not defined in both languages: ${k}`);
 const need = [];
 for (const c of ["noBook", "noPermission", "tooBig", "noGM", "notFound", "invalid", "prerequisite", "stackMax", "full", "badInput", "blocked", "karma", "badType", "relay"]) need.push(`IPB.Err.${c}`);
 for (const c of P.COLLECTIONS) need.push(`IPB.Err.${c}Full`);

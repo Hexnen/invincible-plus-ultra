@@ -1,0 +1,361 @@
+/* Invincible - Plus Ultra: TEAM & BASE CARD (scripts/base/, root class .ipb-app, window id ipb-base-<entry id>).
+   Mode: Operate (a table-side working surface opened mid-session) inside the module's established comic world, the same family as the character
+   generator (styles/chargen.css): the world lends type (Titles / Comic), palette, the hard offset shadow on yellow plates and primary buttons and
+   ONE signature move, the skewed yellow title plate that carries the editable team name. Layout and controls stay standard: header band,
+   a real tablist, a scrolling panel, a facts footer, native inputs / selects / buttons. Light page (like the hero sheet), ink slabs for the tab
+   bar and the footer. Red is for danger only; cyan for focus; halftone dots only on an empty picture slot.
+   LAYOUT is container-driven (.ipb-content is the container): the header band is art | identity | members from 820px, members wrap under
+   from 560px, art shrinks and tabs show icons only below 560px.
+   CONTRAST (ink #0c1a2e on paper #f7fafd 16.2 | secondary text #44597a on paper 6.9 | blue #3465a3 on paper 5.7 | yellow plate / ink 13.9 |
+   #d5dff0 and #a9bcdc on ink 14.6 / 9.1 | yellow on ink 13.9 | amber #8a5a00 on paper 5.6 | red #b3261e on paper 6.2).
+   MOTION: transform + opacity only (tab change); prefers-reduced-motion keeps a short fade and drops the travel. */
+
+.ipb-app {
+  --ipb-ink: #0c1a2e;
+  --ipb-yellow: #ffe72a;
+  --ipb-blue: #3465a3;
+  --ipb-cyan: #0096cb;
+  --ipb-cyan-lt: #3bb8e8;
+  --ipb-red: #b3261e;
+  --ipb-amber: #8a5a00;
+  --ipb-paper: #f7fafd;
+  --ipb-paper-2: #e4edf8;
+  --ipb-text-2: #44597a;
+  --ipb-on-ink: #d5dff0;
+  --ipb-label: #a9bcdc;
+  --ipb-line: #6b82a6;
+  --ipb-fa: var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free";
+  min-width: 640px;
+  min-height: 480px;
+  font-family: Roboto, "Segoe UI", sans-serif;
+  background: #123150 url("../../../systems/invincible/assets/bg-actor.webp") center / cover no-repeat;
+}
+.ipb-app.ipb-picker { min-width: 380px; min-height: 0; }
+.ipb-app .window-content.ipb-content { padding: 0; overflow: hidden; background: transparent; container: ipb / inline-size; }
+.ipb-app :is(h1, h2, h3, h4, p, dd, dt, li, label, summary) { color: inherit; }
+.ipb-app *, .ipb-app *::before, .ipb-app *::after { box-sizing: border-box; }
+.ipb-app :focus-visible { outline: 3px solid var(--ipb-cyan); outline-offset: 2px; }
+.ipb-tabs :focus-visible, .ipb-foot :focus-visible { outline-color: #fff; }
+.ipb-app ::selection { background: var(--ipb-yellow); color: var(--ipb-ink); }
+.ipb-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.ipb-muted { color: var(--ipb-text-2); }
+.ipb-busy, .ipb-busy * { cursor: progress; }
+
+/* ---------- the shell ---------- */
+.ipb-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "head" "tabs" "panel" "foot";
+  color: var(--ipb-ink);
+  font-size: 15px;
+  line-height: 1.35;
+}
+.ipb-shell[data-phase="empty"] { grid-template-rows: minmax(0, 1fr); grid-template-areas: "panel"; }
+.ipb-shell[data-phase="empty"] :is(.ipb-head, .ipb-tabs, .ipb-foot) { display: none; }
+.ipb-head { grid-area: head; min-width: 0; display: grid; grid-template-columns: 8.75rem minmax(0, 1fr) minmax(11rem, 17rem); gap: 10px 16px; align-items: start; padding: 12px 14px; background: var(--ipb-paper); border: 3px solid var(--ipb-blue); }
+.ipb-tabs { grid-area: tabs; min-width: 0; margin-bottom: -10px; padding: 6px 8px; background: var(--ipb-ink); border: 2px solid var(--ipb-ink); }
+.ipb-panel { grid-area: panel; min-width: 0; min-height: 0; overflow: auto; padding: 14px 18px 20px; background: var(--ipb-paper); border: 3px solid var(--ipb-blue); overscroll-behavior: contain; }
+.ipb-foot { grid-area: foot; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 18px; padding: 8px 12px; color: var(--ipb-on-ink); background: var(--ipb-ink); border: 2px solid var(--ipb-ink); }
+
+/* ---------- header band ---------- */
+.ipb-art { width: 8.75rem; }
+.ipb-app .ipb-art-btn {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 6.5rem;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--ipb-on-ink);
+  background: var(--ipb-ink);
+  border: 3px solid var(--ipb-ink);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--ipb-blue);
+  cursor: pointer;
+}
+.ipb-app .ipb-art-static { cursor: default; }
+.ipb-art-btn img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ipb-art-empty { display: grid; place-content: center; justify-items: center; gap: 4px; width: 100%; height: 100%; padding: 6px; text-align: center; font: 400 .8rem/1.15 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; overflow-wrap: anywhere; background-image: radial-gradient(circle, rgba(255, 231, 42, .35) 1.2px, transparent 1.6px); background-size: 9px 9px; }
+.ipb-art-empty i { font-size: 1.6rem; color: var(--ipb-yellow); }
+.ipb-app button.ipb-art-btn::after { content: "\f03e"; position: absolute; right: 0; bottom: 0; display: grid; place-items: center; width: 24px; height: 24px; font: 900 .7rem/1 var(--ipb-fa); color: var(--ipb-ink); background: var(--ipb-yellow); }
+.ipb-app button.ipb-art-btn:hover { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ipb-blue); }
+
+.ipb-id { min-width: 0; display: grid; gap: 8px; align-content: start; }
+.ipb-plate {
+  display: inline-block;
+  justify-self: start;
+  max-width: 100%;
+  margin: 2px 0 0;
+  padding: .08em .6em .16em .5em;
+  font: 400 1.9rem/1.1 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--ipb-ink);
+  background: var(--ipb-yellow);
+  border: 2px solid var(--ipb-ink);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--ipb-ink);
+  transform: rotate(-1deg) skewX(-6deg);
+  text-wrap: balance;
+}
+.ipb-plate:focus-within { outline: 3px solid var(--ipb-cyan); outline-offset: 4px; }
+.ipb-name-ro { display: inline-block; transform: skewX(6deg); overflow-wrap: anywhere; }
+.ipb-app input.ipb-name {
+  display: block;
+  field-sizing: content;
+  min-width: 8ch;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--ipb-ink);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  transform: skewX(6deg);
+}
+.ipb-app input.ipb-name::selection { background: var(--ipb-ink); color: var(--ipb-yellow); }
+.ipb-id-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 4px; }
+.ipb-rank { flex: 0 1 12rem; }
+.ipb-motto { flex: 1 1 14rem; min-width: 0; }
+.ipb-rank-ro { display: inline-flex; gap: .5em; align-items: center; font: 400 1rem/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ipb-blue); }
+.ipb-motto-ro { margin: 0; font-style: italic; }
+.ipb-viewonly { display: flex; gap: .5em; align-items: baseline; margin: 0; font-size: .88rem; color: var(--ipb-text-2); }
+.ipb-viewonly > i { color: var(--ipb-blue); }
+
+.ipb-members { min-width: 0; display: grid; gap: 6px; align-content: start; }
+.ipb-app h2.ipb-mem-h { margin: 0; padding: 0; border: 0; font: 400 .9rem/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ipb-blue); }
+.ipb-mems { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ipb-app button.ipb-mem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  max-width: 100%;
+  margin: 0;
+  padding: 2px 10px 2px 2px;
+  font: 400 .88rem/1.1 Roboto, sans-serif;
+  color: var(--ipb-ink);
+  background: #fff;
+  border: 2px solid var(--ipb-ink);
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  transition: translate .12s ease-out;
+}
+.ipb-app button.ipb-mem:hover { translate: -1px -1px; background: var(--ipb-yellow); }
+.ipb-mem img { flex: none; width: 34px; height: 34px; object-fit: cover; border: 0; background: var(--ipb-ink); }
+.ipb-mem-name { min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.ipb-app button.ipb-btn-icon.ipb-add { justify-self: start; width: 36px; }
+.ipb-mem-hidden { display: flex; gap: .5em; margin: 0; font-size: .85rem; color: var(--ipb-text-2); }
+
+/* ---------- tab bar ---------- */
+.ipb-tablist { display: flex; flex-wrap: wrap; gap: 4px; }
+.ipb-app button.ipb-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: .55em;
+  min-height: 38px;
+  margin: 0;
+  padding: 4px 14px 4px 10px;
+  font: 400 .95rem/1.15 Titles, Comic, sans-serif;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ipb-on-ink);
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background-color .12s ease-out;
+}
+.ipb-app button.ipb-tab:hover { background: rgba(255, 255, 255, .12); }
+.ipb-app button.ipb-tab[aria-selected="true"] { color: var(--ipb-ink); background: var(--ipb-yellow); border-color: var(--ipb-yellow); box-shadow: 3px 3px 0 var(--ipb-blue); }
+.ipb-tab-name { min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.ipb-tab-badge { min-width: 1.6em; padding: 0 .4em; text-align: center; font: 400 .8rem/1.55 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; color: var(--ipb-yellow); background: var(--ipb-ink); border: 2px solid var(--ipb-ink); }
+
+/* ---------- panel + placeholders ---------- */
+.ipb-panel.ipb-enter { animation: ipb-enter .18s cubic-bezier(.16, 1, .3, 1); }
+@keyframes ipb-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.ipb-panel:focus-visible { outline-offset: -6px; }
+.ipb-note-box { display: flex; gap: .65em; align-items: baseline; max-width: 64ch; margin: 0 0 14px; padding: .5em .8em; font-size: .92rem; background: var(--ipb-paper-2); border: 2px solid var(--ipb-blue); }
+.ipb-note-box > i { color: var(--ipb-blue); }
+.ipb-error { color: var(--ipb-red); font-weight: 700; }
+.ipb-dl { display: grid; margin: 0; max-width: 78ch; }
+.ipb-dl-row { display: grid; grid-template-columns: minmax(7rem, 13rem) minmax(0, 1fr); gap: 2px 14px; padding: .35em .6em; }
+.ipb-dl-row:nth-child(odd) { background: var(--ipb-paper-2); }
+.ipb-dl dt { color: var(--ipb-text-2); font-size: .88rem; }
+.ipb-dl dd { margin: 0; overflow-wrap: anywhere; }
+.ipb-plist { margin: 0; padding: 0 0 0 1.1em; }
+
+/* ---------- footer facts ---------- */
+.ipb-facts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 22px; margin: 0; }
+.ipb-fact { display: flex; align-items: baseline; gap: .55em; }
+.ipb-fact dt { font-size: .85rem; color: var(--ipb-label); }
+.ipb-fact dd { margin: 0; font: 400 1.4rem/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--ipb-yellow); }
+.ipb-fact-who { font: 400 .85rem/1.1 Roboto, sans-serif; color: var(--ipb-on-ink); }
+.ipb-foot-note { flex: 1 1 100%; order: 3; margin: 0; font-size: .82rem; color: var(--ipb-label); }
+.ipb-chip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-left: auto; padding: 3px 8px; color: var(--ipb-ink); background: var(--ipb-paper); border: 2px solid var(--ipb-ink); font-size: .9rem; }
+.ipb-chip > i { color: var(--ipb-amber); }
+
+/* ---------- empty state ---------- */
+.ipb-empty { max-width: 70ch; }
+.ipb-empty .ipb-plate { font-size: 1.5rem; }
+.ipb-lede { max-width: 62ch; margin: 14px 0; font-size: 1rem; }
+.ipb-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 12px; }
+.ipb-opt { display: grid; gap: 10px; align-content: start; padding: 14px 16px; background: var(--ipb-paper-2); }
+.ipb-opt h3 { margin: 0; font: 400 1.1rem/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ipb-blue); }
+.ipb-opt p { margin: 0; }
+.ipb-opt .ipb-btn { justify-self: start; }
+
+/* ---------- buttons, inputs ---------- */
+.ipb-app button.ipb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45em;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 .9em;
+  font: 400 .95rem/1.1 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--ipb-ink);
+  background: #fff;
+  border: 2px solid var(--ipb-ink);
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  transition: translate .12s ease-out, box-shadow .12s ease-out;
+}
+.ipb-app button.ipb-btn:hover { translate: -1px -1px; }
+.ipb-app button.ipb-btn:active { translate: 2px 2px; }
+.ipb-app button.ipb-btn-primary { background: var(--ipb-yellow); box-shadow: 3px 3px 0 var(--ipb-blue); }
+.ipb-app button.ipb-btn-primary:hover { box-shadow: 4px 4px 0 var(--ipb-blue); }
+.ipb-app button.ipb-btn-primary:active { box-shadow: 1px 1px 0 var(--ipb-blue); }
+.ipb-app button.ipb-btn-small { min-height: 32px; padding: 0 .7em; font-size: .85rem; }
+.ipb-app button.ipb-btn-icon { min-width: 36px; padding: 0; }
+.ipb-app button.ipb-btn-danger { color: var(--ipb-red); border-color: var(--ipb-red); }
+.ipb-app button.ipb-btn[aria-disabled="true"], .ipb-app button.ipb-btn:disabled { color: #56688a; background: transparent; border-style: dashed; box-shadow: none; cursor: not-allowed; translate: none; }
+.ipb-app .ipb-input, .ipb-app select.ipb-input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 .6em;
+  font: 400 .95rem/1.2 Roboto, sans-serif;
+  color: var(--ipb-ink);
+  background: #fff;
+  border: 2px solid var(--ipb-ink);
+  border-radius: 0;
+  box-shadow: none;
+}
+.ipb-field { display: grid; gap: 4px; min-width: 0; font-size: .9rem; }
+.ipb-field > span { color: var(--ipb-text-2); }
+
+/* ---------- picker ---------- */
+.ipb-pick { padding: 10px; color: var(--ipb-ink); font-size: 15px; background: var(--ipb-paper); border: 3px solid var(--ipb-blue); margin: 10px; }
+.ipb-pk-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ipb-pk-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--ipb-paper-2); }
+.ipb-pk-main { display: grid; flex: 1; min-width: 0; }
+.ipb-pk-main strong { font: 400 1.05rem/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; overflow-wrap: anywhere; }
+.ipb-pk-empty { padding: 8px; color: var(--ipb-text-2); }
+.ipb-pk-foot { margin-top: 10px; }
+
+/* ---------- dialogs (DialogV2 class ipb-dialog) ---------- */
+.ipb-dialog { font-family: Roboto, sans-serif; }
+.ipb-dialog .window-header .window-title { font: 400 1em/1.1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.ipb-dialog .form-footer button { min-height: 36px; font: 400 .95rem/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; border: 2px solid #0c1a2e; border-radius: 0; cursor: pointer; }
+.ipb-dialog .form-footer button:is([autofocus], .default, [data-default]) { color: #0c1a2e; background: #ffe72a; box-shadow: 3px 3px 0 #3465a3; }
+.ipb-dialog .form-footer button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.ipb-dialog .ipb-muted { color: #a9bcdc; }
+.ipb-conf { margin: 0 0 10px; padding: 6px 10px 8px; border: 2px solid #6b82a6; }
+.ipb-conf legend { padding: 0 6px; font-weight: 700; }
+.ipb-conf p { margin: 2px 0; overflow-wrap: anywhere; }
+.ipb-radio { display: flex; align-items: center; gap: .5em; min-height: 30px; cursor: pointer; }
+.ipb-conf-lede { margin-top: 0; }
+.ipb-dlg-field { display: grid; gap: 4px; }
+
+/* ---------- entry points: header button, personal row, party button ---------- */
+.application .window-header .header-control.ipb-header-btn { color: var(--ipb-cyan-lt, #3bb8e8); }
+.application .window-header .header-control.ipb-header-btn:hover, .application .window-header .header-control.ipb-header-btn:focus-visible { color: #fff; text-shadow: 0 0 0 transparent; }
+.invincible.sheet.actor section.tab.personal .form-group.ipb-personal { align-items: center; }
+.invincible.sheet.actor section.tab.personal .form-group.ipb-personal > label { padding-top: 0; }
+.ipb-pr-body { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.ipb-pr-text { min-width: 0; font: 400 15px/1.3 Roboto, sans-serif; color: #0c1a2e; overflow-wrap: anywhere; }
+.ipb-pr-meta { font-weight: 400; color: #44597a; }
+.invincible.sheet.actor button.ipb-pr-btn {
+  display: inline-flex; align-items: center; gap: .45em; width: auto; min-height: 30px; margin: 0; padding: 0 .8em;
+  font: 400 .8rem/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase;
+  color: #0c1a2e; background: #fff; border: 2px solid #0c1a2e; border-radius: 0; box-shadow: none; cursor: pointer;
+  transition: translate .12s ease-out;
+}
+.invincible.sheet.actor button.ipb-pr-btn:hover { translate: -1px -1px; background: #ffe72a; }
+.invincible.sheet.actor button.ipb-pr-btn:focus-visible { outline: 3px solid #0096cb; outline-offset: 2px; }
+#invincible-party .ipb-party-btn {
+  position: absolute; top: 0; left: calc(var(--ipb-hw, 90px) + 10px);
+  pointer-events: auto; display: grid; place-items: center; width: 28px; height: 28px; margin: 0; padding: 0;
+  font: 900 .72rem/1 var(--ipb-fa, "Font Awesome 6 Free");
+  color: #0c1a2e; background: #ffe72a; border: 2px solid #0c1a2e; border-radius: 0; box-shadow: 3px 3px 0 #0096cb;
+  cursor: var(--cursor-pointer, pointer); transform: skewX(-6deg);
+  transition: transform .12s cubic-bezier(.16, 1, .3, 1), background-color .12s linear;
+}
+#invincible-party .ipb-party-btn > i { transform: skewX(6deg); }
+#invincible-party .ipb-party-btn:is(:hover, :focus-visible) { background: #fff27a; transform: skewX(-6deg) translate(1px, -1px); }
+#invincible-party .ipb-party-btn:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-party[data-display="hidden"] .ipb-party-btn { display: none; }
+
+/* ---------- responsive: structural, container-driven ---------- */
+@container ipb (max-width: 819px) {
+  .ipb-head { grid-template-columns: 7.5rem minmax(0, 1fr); }
+  .ipb-art { width: 7.5rem; }
+  .ipb-app .ipb-art-btn { height: 5.5rem; }
+  .ipb-members { grid-column: 1 / -1; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .ipb-members .ipb-mem-hidden { grid-column: 2; }
+  .ipb-plate { font-size: 1.6rem; }
+}
+@container ipb (max-width: 559px) {
+  .ipb-head { grid-template-columns: 5rem minmax(0, 1fr); padding: 8px 10px; }
+  .ipb-art { width: 5rem; }
+  .ipb-app .ipb-art-btn { height: 4rem; }
+  .ipb-members { grid-template-columns: minmax(0, 1fr); }
+  .ipb-app button.ipb-tab { min-width: 44px; min-height: 44px; justify-content: center; padding: 4px 10px; }
+  .ipb-tab-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .ipb-panel { padding: 12px 12px 16px; }
+  .ipb-dl-row { grid-template-columns: minmax(0, 1fr); }
+}
+/* short windows: the picture goes, the header tightens (set by window.mjs on the shell) */
+.ipb-shell[data-compact="1"] { gap: 6px; padding: 8px; }
+.ipb-shell[data-compact="1"] .ipb-tabs { margin-bottom: -6px; padding: 4px 6px; }
+.ipb-shell[data-compact="1"] .ipb-head { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px 12px; }
+.ipb-shell[data-compact="1"] .ipb-art { display: none; }
+.ipb-shell[data-compact="1"] .ipb-plate { margin: 0; font-size: 1.4rem; }
+.ipb-shell[data-compact="1"] .ipb-id { gap: 4px; }
+.ipb-shell[data-compact="1"] .ipb-id-row { margin-top: 0; }
+.ipb-shell[data-compact="1"] .ipb-members { grid-template-columns: minmax(0, 1fr); }
+.ipb-shell[data-compact="1"] .ipb-mem-h { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ipb-shell[data-compact="1"] .ipb-app button.ipb-mem, .ipb-shell[data-compact="1"] button.ipb-mem { min-height: 32px; }
+.ipb-shell[data-compact="1"] .ipb-mem img { width: 26px; height: 26px; }
+.ipb-shell[data-compact="1"] .ipb-foot { padding: 5px 10px; }
+.ipb-shell[data-compact="1"] .ipb-panel { padding: 10px 14px 14px; }
+@media (pointer: coarse) {
+  .ipb-app button.ipb-btn, .ipb-app .ipb-input, .ipb-app button.ipb-mem { min-height: 44px; }
+  .ipb-app button.ipb-tab { min-height: 44px; }
+  .invincible.sheet.actor button.ipb-pr-btn { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ipb-panel.ipb-enter { animation: ipb-fade .12s linear; }
+  .ipb-app button.ipb-btn, .ipb-app button.ipb-tab, .ipb-app button.ipb-mem, .ipb-app button.ipb-art-btn, .invincible.sheet.actor button.ipb-pr-btn, #invincible-party .ipb-party-btn { transition: none; }
+  .ipb-app button.ipb-btn:hover, .ipb-app button.ipb-btn:active, .ipb-app button.ipb-mem:hover, .ipb-app button.ipb-art-btn:hover, .invincible.sheet.actor button.ipb-pr-btn:hover { translate: none; }
+}
+@keyframes ipb-fade { from { opacity: 0; } to { opacity: 1; } }
