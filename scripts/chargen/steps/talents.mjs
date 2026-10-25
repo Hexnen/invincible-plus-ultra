@@ -12,7 +12,7 @@
    DICE: hero talent (D6 on the archetype list, else uniform over the catalogue), random extra talent, random drawback and the subject roll use
    seeded substreams (seed + state.rerolls counters heroTalent / talentAdd / drawbackAdd / knowSubject): undo + roll again = the same result. */
 import { t } from "../lang.mjs";
-import { ATTRS, ATTR_MIN, MAX_DRAWBACKS, REPEATABLE_TALENTS, REPEATABLE_DRAWBACKS, budget, slots, validateStep, normName } from "../rules.mjs";
+import { ATTRS, ATTR_MIN, MAX_DRAWBACKS, REPEATABLE_TALENTS, REPEATABLE_DRAWBACKS, talentKey, talentLimit, drawbackLimit, budget, slots, validateStep, normName } from "../rules.mjs";
 import { setHeroTalent, addExtraTalent, removeExtraTalent, addDrawback, removeDrawback } from "../state.mjs";
 import { substream } from "../rng.mjs";
 import { FX_FIELDS, fxOf, itemRefs, bonusSum, warmBonuses } from "../bonuses.mjs";
@@ -31,14 +31,18 @@ const said = (ctx, text) => { ctx.data.msg = text; };
 const signed = (v) => (v > 0 ? `+${v}` : String(v));
 
 /* ---------------------------------------------------------------- what is taken */
-const talentNames = (s, { exceptHero = false } = {}) => [exceptHero ? null : s.heroTalent?.name, s.occTalent?.name, ...s.extraTalents.map((x) => x.name)].filter(Boolean).map(nm);
+const talentNames = (s, { exceptHero = false } = {}) => [exceptHero ? null : s.heroTalent?.name, s.occTalent?.name, ...s.extraTalents.map((x) => x.name)].filter(Boolean).map(talentKey);
 const drawbackNames = (s) => s.drawbacks.map((x) => nm(x.name));
 /** may this talent (name) be taken once more? */
 function canTakeTalent(s, name, { exceptHero = false } = {}) {
-  const k = nm(name);
-  return REPEATABLE_TALENTS.includes(k) || !talentNames(s, { exceptHero }).includes(k);
+  const k = talentKey(name);
+  return talentNames(s, { exceptHero }).filter((x) => x === k).length < talentLimit(name);   // B3 / C4: Durable / Determined up to 5, Windfall no cap, one Knowledgeable subject
 }
-const canTakeDrawback = (s, name) => REPEATABLE_DRAWBACKS.includes(nm(name)) || !drawbackNames(s).includes(nm(name));
+const canTakeDrawback = (s, name) => drawbackNames(s).filter((x) => x === nm(name)).length < drawbackLimit(name);
+/** what the drawback asks you to choose ("source" | "defined" | null): its own flag, else the catalogue's */
+const needsOf = (d, x) => x?.needs || d.dneeds?.get(nm(x?.name)) || null;
+/** the limit line of a talent row: "up to 5 times" / "several times" */
+const limitNote = (name) => { const n = talentLimit(name); return n === Infinity ? t("IPC.Talents.LimitMany") : n > 1 ? t("IPC.Talents.Limit", { n }) : talentKey(name) === KNOW ? t("IPC.Talents.KnowOnce") : ""; };
 
 /* ---------------------------------------------------------------- effect tags (numbers come from the pack effects) */
 function fxTags(fx) {
@@ -131,19 +135,19 @@ function talentRows(ctx) {
   const all = talentList(ctx).filter((e) => !q || nm(e.name).includes(q));
   const shown = all.slice(0, d.tlimit);
   const rows = shown.map((e) => {
-    const k = nm(e.name), rep = REPEATABLE_TALENTS.includes(k);
-    const isHero = s.heroTalent && nm(s.heroTalent.name) === k, isOcc = s.occTalent && nm(s.occTalent.name) === k, isExtra = s.extraTalents.some((x) => nm(x.name) === k);
+    const k = talentKey(e.name);
+    const isHero = s.heroTalent && talentKey(s.heroTalent.name) === k, isOcc = s.occTalent && talentKey(s.occTalent.name) === k, isExtra = s.extraTalents.some((x) => talentKey(x.name) === k);
     const hero = d.target === "hero";
-    const blocked = hero ? (isHero || (!rep && (isOcc || isExtra))) : (!rep && (isHero || isOcc || isExtra));
+    const blocked = hero ? (isHero || !canTakeTalent(s, e.name, { exceptHero: true })) : !canTakeTalent(s, e.name);
     const where = isHero ? t("IPC.Talents.Row.IsHero") : isOcc ? t("IPC.Talents.Row.IsOcc") : isExtra ? t("IPC.Talents.Row.IsExtra") : "";
-    const bare = k === KNOW;
+    const bare = nm(e.name) === KNOW;
     const verb = bare ? t("IPC.Talents.Row.RollSubject") : hero ? t("IPC.Talents.Row.Hero") : t("IPC.Talents.Row.Extra");
     const aria = bare ? t("IPC.Talents.Row.RollSubjectAria", { name: e.name }) : t(hero ? "IPC.Talents.Row.HeroAria" : "IPC.Talents.Row.ExtraAria", { name: e.name });
     const btn = blocked
       ? `<button type="button" class="ipc-btn ipc-btn-small" data-act="pick-talent" data-name="${esc(e.name)}" data-uuid="${esc(e.packUuid ?? "")}" data-fk="tl-${esc(slug(e.name))}" aria-disabled="true" aria-label="${esc(t("IPC.Talents.Row.TakenAria", { name: e.name }))}">${icon("fa-solid fa-check")} ${esc(t("IPC.Talents.Row.Taken"))}</button>`
       : `<button type="button" class="ipc-btn ipc-btn-small ipc-btn-primary" data-act="pick-talent" data-name="${esc(e.name)}" data-uuid="${esc(e.packUuid ?? "")}" data-fk="tl-${esc(slug(e.name))}" aria-label="${esc(aria)}">${icon(bare ? "fa-solid fa-dice" : "fa-solid fa-plus")} ${esc(verb)}</button>`;
     return `<li class="ipc-pw-row${where ? " is-added" : ""}">
-      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(e.name)}</span>${where ? `<span class="ipc-pw-badge">${esc(where)}</span>` : ""}${fxSlot(d, e.packUuid, e, "talent")}</div>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
+      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(e.name)}</span>${where ? `<span class="ipc-pw-badge">${esc(where)}</span>` : ""}${limitNote(e.name) ? `<span class="ipc-pw-type">${esc(limitNote(e.name))}</span>` : ""}${fxSlot(d, e.packUuid, e, "talent")}</div>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
       ${btn}
     </li>`;
   }).join("");
@@ -178,7 +182,15 @@ function drawbackCards(ctx) {
         <button type="button" class="ipc-btn ipc-btn-small ipc-btn-danger" data-act="rm-drawback" data-i="${i}" data-fk="rmd-${i}" aria-label="${esc(t("IPC.Talents.Dr.RemoveAria", { name: x.name }))}">${icon("fa-solid fa-trash")} ${esc(t("IPC.Talents.Dr.Remove"))}</button>
       </div>
       ${descBlock(d, uu(d, "drawback", x))}${rowLinks(d, uu(d, "drawback", x), x.name)}
-      <label class="ipc-field ipc-tl-note"><span>${esc(t("IPC.Talents.Dr.Note"))}</span><input type="text" class="ipc-input" name="dbnote-${i}" data-fk="dbnote-${i}" maxlength="60" value="${esc(x.note ?? "")}" placeholder="${esc(t("IPC.Talents.Dr.NotePh"))}" autocomplete="off"></label>
+      ${(() => {
+        const need = needsOf(d, x), missing = !!need && !String(x.note ?? "").trim();
+        if (!need) return `<label class="ipc-field ipc-tl-note"><span>${esc(t("IPC.Talents.Dr.Note"))}</span><input type="text" class="ipc-input" name="dbnote-${i}" data-fk="dbnote-${i}" maxlength="60" value="${esc(x.note ?? "")}" placeholder="${esc(t("IPC.Talents.Dr.NotePh"))}" autocomplete="off"></label>`;
+        // B4: the book asks you to choose when you take this drawback: a visible prompt, a suggestion list of the hero's power sources, a warning (not a block) until it is filled
+        const opts = need === "source" ? s.sources.map((z) => `<option value="${esc(z.name)}"></option>`).join("") : "";
+        return `<label class="ipc-field ipc-tl-note ipc-tl-choose${missing ? " is-missing" : ""}"><span>${esc(t(`IPC.Talents.Dr.Choose.${need}`))}${missing ? ` <b class="ipc-need">${esc(t("IPC.Talents.Dr.ChooseMissing"))}</b>` : ""}</span>
+          <input type="text" class="ipc-input" name="dbnote-${i}" data-fk="dbnote-${i}" maxlength="60" value="${esc(x.note ?? "")}" placeholder="${esc(t("IPC.Talents.Dr.ChoosePh"))}" autocomplete="off"${opts ? ` list="ipc-dl-src-${i}"` : ""} aria-describedby="ipc-ch-${i}"${missing ? ' aria-invalid="true"' : ""}>
+          ${opts ? `<datalist id="ipc-dl-src-${i}">${opts}</datalist>` : ""}<small class="ipc-muted" id="ipc-ch-${i}">${esc(t(`IPC.Talents.Dr.ChooseHint.${need}`))}</small></label>`;
+      })()}
     </li>`).join("")}</ul>`;
 }
 function drawbackList(ctx) {
@@ -322,7 +334,7 @@ function rollDrawback(ctx) {
   if (!e) return;
   d.msg = die ? t("IPC.Talents.Hero.Rolled", { die, name: e.name }) : "";
   d.landed = `d${s.drawbacks.length}`;
-  ctx.update((st) => ({ ...addDrawback(st, { name: e.name, packUuid: e.packUuid ?? null, note: "" }), rerolls: { ...st.rerolls, drawbackAdd: n + 1 } }), { body: true });
+  ctx.update((st) => ({ ...addDrawback(st, { name: e.name, packUuid: e.packUuid ?? null, note: "", needs: needsOf(d, e) }), rerolls: { ...st.rerolls, drawbackAdd: n + 1 } }), { body: true });
   ctx.announce(t("IPC.Talents.Dr.Added", { name: e.name, budget: budget(ctx.state) }));
 }
 
@@ -331,7 +343,7 @@ function takeDrawback(ctx, name, uuid) {
   if (s.drawbacks.length >= MAX_DRAWBACKS) { said(ctx, t("IPC.Talents.Dr.Max", { max: MAX_DRAWBACKS })); return ctx.rerender(); }
   if (!canTakeDrawback(s, name)) { said(ctx, t("IPC.Talents.Dr.Dup", { name })); return ctx.rerender(); }
   d.msg = ""; d.landed = `d${s.drawbacks.length}`;
-  ctx.update((st) => addDrawback(st, { name, packUuid: uuid || null, note: "" }), { body: true });
+  ctx.update((st) => addDrawback(st, { name, packUuid: uuid || null, note: "", needs: needsOf(d, { name }) }), { body: true });
   ctx.announce(t("IPC.Talents.Dr.Added", { name, budget: budget(ctx.state) }));
 }
 
@@ -374,6 +386,7 @@ export default {
     d.drawbacks = await ctx.catalog.drawbacks();
     d.tmap = new Map(d.talents.map((e) => [nm(e.name), e.packUuid]));
     d.dmap = new Map(d.drawbacks.map((e) => [nm(e.name), e.packUuid]));
+    d.dneeds = new Map(d.drawbacks.filter((e) => e.needs).map((e) => [nm(e.name), e.needs]));
     d.archFor = undefined;
     await syncArchetype(ctx);
   },
@@ -421,6 +434,7 @@ export default {
     });
     root.addEventListener("change", (ev) => {
       const el = ev.target;
+      if (el instanceof HTMLInputElement && el.name?.startsWith("dbnote-")) { ctx.rerender(); return; }   // the "still to choose" marker follows the field once it is left
       if (!(el instanceof HTMLInputElement) || el.type !== "radio") return;
       if (el.name === "tl-target") { d.target = el.value; ctx.rerender(); }
       else if (el.name === "tl-src") { d.tsrc = el.value; d.tlimit = PAGE; ctx.rerender(); }

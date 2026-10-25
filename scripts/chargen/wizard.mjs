@@ -10,7 +10,7 @@
 import { t } from "./lang.mjs";
 import * as S from "./state.mjs";
 import { newSeed } from "./rng.mjs";
-import { STEP_IDS, RANKS, validate, derive, attributeBudget, slots, ATTRS } from "./rules.mjs";
+import { STEP_IDS, RANKS, isRank, validate, derive, attributeBudget, slots, ATTRS } from "./rules.mjs";
 import { STEPS } from "./steps/index.mjs";
 import { esc, icon, attrShort, rankName, msgText } from "./steps/util.mjs";
 import { describeActor } from "./import.mjs";
@@ -87,7 +87,7 @@ export class ChargenApp extends ApplicationV2 {
     options.position.width ??= w; options.position.height ??= h;
     super(options);
     this.actor = actor;
-    const rank = RANKS[setting("chargenRank", "global")] ? setting("chargenRank", "global") : "global";
+    const rank = isRank(setting("chargenRank", "global")) ? setting("chargenRank", "global") : "global";   // C1: own keys only
     let rollOpts = null;                  // phase 6: the roll settings (spice, toggles) are remembered per client
     try { const o = JSON.parse(setting("chargenRoll", "") || "null"); if (o && typeof o === "object") rollOpts = o; } catch { /* ignore */ }
     this.#hist = S.createHistory(S.patch(S.createState({ seed: newSeed(), rank, mode: "manual" }), { rollOpts }));
@@ -117,7 +117,9 @@ export class ChargenApp extends ApplicationV2 {
       if (options.closeKey) this.#dismissMenuSoon();
       return this;
     }
-    if (!options.force && this.#isDirty() && !this.#closing) {
+    // C3 (phase 9): a second close() (Escape again, the header X) while the question is open must not fall through and close the window under the dialog
+    if (this.#closing && !options.force) return this;
+    if (!options.force && this.#isDirty()) {
       this.#closing = true;
       let ok = false;
       try {
@@ -135,10 +137,17 @@ export class ChargenApp extends ApplicationV2 {
   /** Foundry's Escape handler closes EVERY framed window and opens the main menu when none of them actually closed. A window that keeps itself open
       (the "close with a draft?" question answered "keep working") would therefore pop the menu up: close it again as soon as it appears. */
   #dismissMenuSoon() {
+    // C6 (phase 9): this leans on Foundry internals (the main menu is a <dialog id="menu"> and ui.menu.toggle() closes it). Feature-detect and fail SAFE: when either is
+    // missing the menu is simply left alone, and a menu the user had open BEFORE the refused close is never closed by us.
+    let wasOpen = false, ok = false;
+    try { const el = document.querySelector("dialog#menu"); ok = !!el && typeof ui.menu?.toggle === "function"; wasOpen = !!el?.open; } catch { ok = false; }
+    if (!ok || wasOpen) return;
     let n = 0;
     const timer = setInterval(() => {
-      if (document.querySelector("dialog#menu")?.open) { clearInterval(timer); ui.menu?.toggle?.(); }   // only when the menu really is open now
-      else if (++n > 60) clearInterval(timer);                                                               // ~3 s: it was not opened after all
+      try {
+        if (document.querySelector("dialog#menu")?.open) { clearInterval(timer); ui.menu.toggle(); }   // only when the menu really is open now
+        else if (++n > 60) clearInterval(timer);                                                         // ~3 s: it was not opened after all
+      } catch { clearInterval(timer); }
     }, 50);
   }
 
@@ -456,7 +465,7 @@ export class ChargenApp extends ApplicationV2 {
     const s = this.state, o = optsFor(s);
     const next = await this.#busyWrap(rerollRow(s, id, this.#getProvider(), { force: true, cascade: false, opts: { ...o, withinArchetype: o.withinArchetype || !!s.archetype } }));
     if (next === s) { this.announce(t("IPC.Board.NoChange", { row: t(`IPC.Step.${id}.Label`) })); return; }
-    this.replaceState(next);
+    this.replaceState(S.rebase(this.state, s, next));   // C5: the user may have edited while the roll ran; only what the roll changed is applied on top of the CURRENT state
     this.announce(t("IPC.Footer.RollStepDone", { step: t(`IPC.Step.${id}.Label`) }));
   }
 
@@ -474,8 +483,13 @@ export class ChargenApp extends ApplicationV2 {
       if (!raw) return null;
       const d = JSON.parse(raw);
       if (!d?.at || Date.now() - d.at > DRAFT_TTL) { localStorage.removeItem(draftKey(this.actor)); return null; }
-      return { at: d.at, state: S.deserialize(d.state) };
-    } catch { return null; }
+      const state = S.deserialize(d.state);
+      validate(state);                       // C2 (phase 9): a draft that cannot even be validated is unusable, whatever it looked like when it parsed
+      return { at: d.at, state };
+    } catch (err) {
+      console.warn(`${MOD} | chargen: the saved draft is unusable`, err);
+      return { bad: true, at: Date.now() };  // the Start step offers to discard it; nothing is thrown, the wizard keeps working
+    }
   }
   #scheduleDraft() {
     clearTimeout(this.#draftTimer);
@@ -490,7 +504,7 @@ export class ChargenApp extends ApplicationV2 {
   #clearDraft() { try { localStorage.removeItem(draftKey(this.actor)); } catch { /* ignore */ } }
   #restoreDraft() {
     const d = this.#draft;
-    if (!d) return;
+    if (!d || d.bad) return;
     this.#draft = null;
     this.replaceState(d.state, { visitAll: true, go: "rank" });
     this.announce(t("IPC.Start.DraftRestored"));

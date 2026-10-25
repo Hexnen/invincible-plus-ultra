@@ -8,7 +8,7 @@
    - drawback names written by apply carry their note: "Phobic (spiders)" is split back into name + note;
    - values come from actor._source (no effect bonuses: Renowned, Windfall ... are transfer effects and stay out). */
 import { createState } from "./state.mjs";
-import { ATTRS, RANKS, DEFAULT_RANK } from "./rules.mjs";
+import { ATTRS, isRank, DEFAULT_RANK } from "./rules.mjs";
 
 const MODULE_ID = "invincible-plus-ultra";
 const LEVELS = ["basic", "major", "massive", "monstrous"];
@@ -31,7 +31,7 @@ export function describeActor(actor) {
 export function stateFromActor(actor, { seed = "000000", rank } = {}) {
   const src = actor._source, sys = src.system ?? {};
   const flagRank = get(src, `flags.${MODULE_ID}.chargen.rank`);
-  const useRank = RANKS[flagRank] ? flagRank : (RANKS[rank] ? rank : DEFAULT_RANK);
+  const useRank = isRank(flagRank) ? flagRank : (isRank(rank) ? rank : DEFAULT_RANK);
   const s = createState({ seed, rank: useRank, mode: "manual" });
   for (const k of ATTRS) { const v = Number(get(sys, `attributes.${k}.value`)); if (Number.isFinite(v)) s.attrs[k] = v; }
   const txt = (k) => String(sys[k] ?? "").trim();

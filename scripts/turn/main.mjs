@@ -216,8 +216,8 @@ async function confirmEnd(m) {
   const res = await openDialog({
     title: t("ITN.Confirm.Title"), content, cls: "itn-confirm",
     buttons: [
-      { action: "end", label: t("ITN.Confirm.Yes"), icon: "fa-solid fa-forward-step", default: true, callback: () => ({ action: "end" }) },
-      { action: "cancel", label: t("ITN.Confirm.No"), callback: () => ({ action: "cancel" }) }
+      { action: "end", label: t("ITN.Confirm.Yes"), icon: "fa-solid fa-forward-step", callback: () => ({ action: "end" }) },
+      { action: "cancel", label: t("ITN.Confirm.No"), default: true, callback: () => ({ action: "cancel" }) }   /* phase 9 (C7): the safe answer is the default, like every other confirm */
     ]
   });
   return res?.action === "end";

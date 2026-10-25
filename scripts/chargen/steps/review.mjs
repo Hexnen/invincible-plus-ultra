@@ -11,6 +11,7 @@ import { t } from "../lang.mjs";
 import { summaryRows } from "./summary.mjs";
 import { esc, dl, delegate, icon, msgText, attrLabel, rankName, levelName } from "./util.mjs";
 import { heroCode, rollNewHero } from "../reroll.mjs";
+import { confirmUndo } from "../dialogs.mjs";
 
 const TYPES = ["powerSource", "power", "boost", "limit", "talent", "drawback"];
 const TYPE_ICON = { powerSource: "fa-solid fa-atom", power: "fa-solid fa-bolt", boost: "fa-solid fa-arrow-up-right-dots", limit: "fa-solid fa-lock", talent: "fa-solid fa-star", drawback: "fa-solid fa-skull" };
@@ -24,7 +25,7 @@ const confirmWord = () => t("IPC.Confirm.Word");
     (the barrier is a deliberate act of typing a word, not a case-exact password), nothing unlocks while an IME composition is still open */
 const fold = (s) => String(s ?? "").normalize("NFKC").replace(/[​-‍⁠﻿]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
 export const typedOk = (d) => !d.composing && fold(d.confirm) === fold(confirmWord());
-const planSig = (p) => JSON.stringify([p?.ok, p?.counts, (p?.deletes ?? []).map((x) => x.id), (p?.creates ?? []).map((x) => [x.kind, x.name, x.level]), (p?.errors ?? []).map((e) => e.code)]);
+const planSig = (p) => JSON.stringify([p?.ok, p?.counts, (p?.deletes ?? []).map((x) => x.id), (p?.overwrites ?? []).map((f) => [f.path, f.from, f.to]), (p?.creates ?? []).map((x) => [x.kind, x.name, x.level]), (p?.errors ?? []).map((e) => e.code)]);
 
 /* ---------- plan loading ---------- */
 async function refreshPlan(ctx) {
@@ -95,7 +96,7 @@ function planBlock(ctx) {
     ? `<details class="ipc-det" data-grp="fields"${isOpen(d, "fields", false) ? " open" : ""}><summary>${esc(t("IPC.Review.FieldsList", { n: p.fields.length }))}</summary><table class="ipc-table ipc-table-fields"><thead><tr><th scope="col">${esc(t("IPC.Review.Field"))}</th><th scope="col">${esc(t("IPC.Review.Now"))}</th><th scope="col">${esc(t("IPC.Review.New"))}</th></tr></thead><tbody>${p.fields.map((f) => `<tr><th scope="row">${esc(fieldLabel(f.path))}</th><td class="ipc-from">${esc(fieldValue(f.from))}</td><td class="ipc-to">${esc(fieldValue(f.to))}</td></tr>`).join("")}</tbody></table></details>` : "";
   const warns = p.warnings.filter((w) => !String(w.key).startsWith("IPC.Rule."));
   const warnList = warns.length ? `<ul class="ipc-issues">${warns.map((w) => `<li class="ipc-iss-warn">${icon("fa-solid fa-triangle-exclamation")}<span class="ipc-iss-text">${esc(msgText(w))}</span></li>`).join("")}</ul>` : "";
-  const changed = d.changed ? `<p class="ipc-banner ipc-banner-warn" role="status">${icon("fa-solid fa-rotate")} ${esc(t("IPC.Review.PlanChanged"))}</p>` : "";
+  const changed = d.changed ? `<p class="ipc-banner ipc-banner-warn" role="status">${icon("fa-solid fa-rotate")} ${esc(t("IPC.Review.PlanChanged2"))}</p>` : "";
   return `${changed}${table}${addedGroups(d, p)}${fields}${warnList}`;
 }
 
@@ -103,11 +104,17 @@ function dangerBlock(ctx) {
   const d = ctx.data, p = d.plan;
   if (!p?.destructive) return "";
   const groups = TYPES.map((k) => ({ k, items: p.deletes.filter((x) => x.type === k) })).filter((g) => g.items.length);
+  const ov = p.overwrites ?? [];
+  const title = p.deletes.length && ov.length ? t("IPC.Danger.TitleBoth", { n: p.deletes.length, f: ov.length, actor: ctx.actor.name }) : p.deletes.length ? t("IPC.Danger.Title", { n: p.deletes.length, actor: ctx.actor.name }) : t("IPC.Danger.TitleFields", { n: ov.length, actor: ctx.actor.name });
+  // B5 (phase 9): the panel names EVERYTHING that is replaced: the items AND every filled-in field with its old and new value
+  const fieldsList = ov.length ? `<div class="ipc-danger-fields"><p class="ipc-danger-sub">${esc(t("IPC.Danger.Fields"))}</p>
+      <ul class="ipc-danger-list" tabindex="0" aria-label="${esc(t("IPC.Danger.FieldsList"))}">${ov.map((f) => `<li><b>${esc(fieldLabel(f.path))}</b>: <span class="ipc-from">${esc(fieldValue(f.from))}</span> &rarr; <span class="ipc-to">${esc(fieldValue(f.to))}</span></li>`).join("")}</ul></div>` : "";
   return `<section class="ipc-danger" aria-labelledby="ipc-danger-h">
-    <h3 id="ipc-danger-h">${icon("fa-solid fa-triangle-exclamation")} ${esc(t("IPC.Danger.Title", { n: p.deletes.length, actor: ctx.actor.name }))}</h3>
-    <p>${esc(t("IPC.Danger.Text"))}</p>
-    <div class="ipc-danger-list" tabindex="0" role="group" aria-label="${esc(t("IPC.Danger.ListLabel"))}">${groups.map((g) => `<p><b>${esc(t(`IPC.Type.${g.k}`))} (${g.items.length})</b>: ${esc(g.items.map((x) => x.name).join(", "))}</p>`).join("")}</div>
-    <p class="ipc-danger-keep">${esc(p.counts.keeps ? t("IPC.Danger.Keeps", { n: p.counts.keeps }) : t("IPC.Danger.KeepsNone"))} ${esc(t("IPC.Danger.Undo"))}</p>
+    <h3 id="ipc-danger-h">${icon("fa-solid fa-triangle-exclamation")} ${esc(title)}</h3>
+    ${p.deletes.length ? `<p>${esc(t("IPC.Danger.Text"))}</p>
+    <div class="ipc-danger-list" tabindex="0" role="group" aria-label="${esc(t("IPC.Danger.ListLabel"))}">${groups.map((g) => `<p><b>${esc(t(`IPC.Type.${g.k}`))} (${g.items.length})</b>: ${esc(g.items.map((x) => x.name).join(", "))}</p>`).join("")}</div>` : `<p>${esc(t("IPC.Danger.TextFields"))}</p>`}
+    ${fieldsList}
+    <p class="ipc-danger-keep">${esc(t("IPC.Danger.Untouched", { n: p.counts.keeps }))} ${esc(t("IPC.Danger.Undo"))}</p>
     <label class="ipc-field ipc-confirm"><span>${esc(t("IPC.Danger.Label", { word: confirmWord() }))}</span>
       <input class="ipc-input" type="text" name="confirm" data-fk="confirm" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" value="${esc(d.confirm ?? "")}" aria-describedby="ipc-confirm-note ipc-apply-why"></label>
     <p class="ipc-muted ipc-confirm-note" id="ipc-confirm-note">${esc(t("IPC.Danger.CaseNote"))}</p>
@@ -238,7 +245,20 @@ async function doApply(ctx) {
       ctx.announce(t("IPC.Review.PlanChanged"));
       return;
     }
-    const res = await ctx.busy(ctx.apply.apply(ctx.actor, ctx.state, { confirmed: !d.plan.destructive || typedOk(d), onStage: (st) => setStage(ctx, st) }));
+    // B6 (phase 9): the word only counts for the plan the user was SHOWN; apply() re-plans and refuses (planChanged) when it would delete / overwrite more than that
+    const shown = d.plan;
+    const res = await ctx.busy(ctx.apply.apply(ctx.actor, ctx.state, {
+      confirmed: !!shown.destructive && typedOk(d),
+      expect: { deletes: (shown.deletes ?? []).map((x) => x.id), overwrites: (shown.overwrites ?? []).map((f) => f.path) },
+      onStage: (st) => setStage(ctx, st)
+    }));
+    if (res.planChanged) {
+      d.plan = res.plan; d.changed = true; d.busy = false; d.confirm = "";
+      ctx.app.setApplying(false);
+      ctx.rerender();
+      ctx.announce(t("IPC.Review.PlanChanged2"));
+      return;
+    }
     d.result = res; d.undone = null; d.undoError = ""; d.shared = false; d.shareError = ""; d.rollError = ""; d.codeMsg = "";
     if (res.ok) { ctx.app.markApplied(); d.share = shareData(ctx.state, ctx.actor); }
   } catch (err) {
@@ -255,9 +275,10 @@ async function doApply(ctx) {
 async function doUndo(ctx) {
   const d = ctx.data;
   if (d.busy) return;
-  d.busy = true; ctx.app.setApplying(true); ctx.rerender();
   let res;
-  try { res = await ctx.busy(ctx.apply.undo(ctx.actor)); } catch (err) { res = { ok: false, message: err?.message ?? String(err) }; }
+  try { res = await confirmUndo(ctx.actor); } catch (err) { res = { ok: false, message: err?.message ?? String(err) }; }   // phase 9: age + drift list, explicit confirm
+  if (res.declined) return;
+  d.busy = true; ctx.app.setApplying(true); ctx.rerender();
   d.busy = false; ctx.app.setApplying(false);
   if (res.ok) { d.undone = res; ctx.app.markApplied(false); } else d.undoError = res.message ?? "";
   d.plan = null; d.confirm = "";

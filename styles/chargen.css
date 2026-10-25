@@ -939,3 +939,23 @@
   .ipc-progress progress::-moz-progress-bar { background: Highlight; }
   .ipc-dialog .form-footer button:is([autofocus], .default, [data-default]) { border: 3px solid Highlight; }
 }
+
+/* PHASE 9 (bughunt). Operate mode, existing tokens only, no new decoration. Every state carries a word or icon as well as a colour:
+   the drawback "Choose..." prompt (amber, a word "Still to choose" while empty), the overwritten-fields list of the red panel (old value muted, new value bold),
+   the undo dialog's drift list. Contrast: amber #8a5a00 on paper 5.6, red #8c1b15 on #fff4f3 > 7. */
+.ipc-tl-choose { max-width: 32rem; }
+.ipc-tl-choose small { display: block; margin-top: 2px; font-size: .84rem; }
+.ipc-tl-choose.is-missing > span { color: var(--ipc-amber); font-weight: 700; }
+.ipc-tl-choose.is-missing .ipc-input { border-color: var(--ipc-amber); border-style: dashed; }
+.ipc-need { margin-left: .4em; padding: 0 .4em; border: 2px solid var(--ipc-amber); font-size: .78rem; font-weight: 700; }
+.ipc-danger-fields { margin-top: 8px; }
+.ipc-danger-sub { margin: 6px 0 2px; font-weight: 700; }
+ul.ipc-danger-list { margin: 0; padding: 6px 10px 6px 26px; font-size: .92rem; }
+ul.ipc-danger-list li { margin: 2px 0; overflow-wrap: anywhere; }
+.ipc-danger .ipc-from { color: var(--ipc-text-2); text-decoration: line-through; text-decoration-thickness: 1px; }
+.ipc-danger .ipc-to { font-weight: 700; }
+.ipc-undo p { margin: 6px 0; }
+.ipc-undo .ipc-undo-warn { color: #8c1b15; }
+.ipc-undo .ipc-undo-h { margin-bottom: 2px; font-weight: 700; }
+.ipc-undo-list { margin: 0 0 6px; padding-left: 1.3em; max-height: 9rem; overflow: auto; }
+.ipc-undo-list li { overflow-wrap: anywhere; }

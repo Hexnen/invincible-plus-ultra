@@ -29,7 +29,7 @@
  * }
  * Lock / reroll granularity = the field names in STEP_FIELDS.
  */
-import { DEFAULT_RANK, ATTRS } from "./rules.mjs";
+import { DEFAULT_RANK, ATTRS, RANKS } from "./rules.mjs";
 
 export const STATE_VERSION = 1;
 
@@ -116,7 +116,7 @@ export const removeLimit = (s, key, i) => mapPower(s, key, (p) => ({ ...p, limit
 export const setHeroTalent = (s, t) => patch(s, { heroTalent: t ? { name: t.name, packUuid: t.packUuid ?? null } : null });
 export const addExtraTalent = (s, t) => patch(s, { extraTalents: [...s.extraTalents, { name: t.name, packUuid: t.packUuid ?? null }] });
 export const removeExtraTalent = (s, i) => patch(s, { extraTalents: s.extraTalents.filter((_, j) => j !== i) });
-export const addDrawback = (s, d) => patch(s, { drawbacks: [...s.drawbacks, { name: d.name, packUuid: d.packUuid ?? null, note: d.note ?? "" }] });
+export const addDrawback = (s, d) => patch(s, { drawbacks: [...s.drawbacks, { name: d.name, packUuid: d.packUuid ?? null, note: d.note ?? "", ...(d.needs ? { needs: d.needs } : {}) }] });
 export const removeDrawback = (s, i) => patch(s, { drawbacks: s.drawbacks.filter((_, j) => j !== i) });
 
 export const toggleLock = (s, field) => {
@@ -139,10 +139,72 @@ export function redo(h) { return h.future.length ? { ...h, past: [...h.past, h.p
 
 // ---------- serialisation ----------
 export function serialize(state) { return JSON.stringify(state); }
-/** Parse + normalise (fills missing fields from createState). Throws on invalid JSON / wrong version. */
+
+/* phase 9 (C1 / C2): a draft or an imported object is UNTRUSTED. deserialize builds the state from a whitelist of keys with checked shapes and throws on anything
+   it cannot make sense of (the caller shows "draft unusable, discard?"). No prototype key can become a rank, a lock or a counter. */
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const isObj = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+const str = (x, d = "") => (typeof x === "string" ? x : d);
+const list = (x, fn) => { if (x == null) return []; if (!Array.isArray(x)) throw new Error("chargen: bad list"); return x.map(fn); };
+const ref = (x) => { if (x == null) return null; if (!isObj(x) || typeof x.name !== "string") throw new Error("chargen: bad reference"); return { name: x.name, packUuid: typeof x.packUuid === "string" ? x.packUuid : null }; };
+const refReq = (x) => { const r = ref(x); if (!r) throw new Error("chargen: bad reference"); return r; };
+const flagMap = (x, valid) => { const out = {}; if (x == null) return out; if (!isObj(x)) throw new Error("chargen: bad map"); for (const k of Object.keys(x)) if (valid(k, x[k])) out[k] = x[k]; return out; };
+const textPair = (x) => { if (x == null) return null; if (!isObj(x)) throw new Error("chargen: bad text"); return { name: str(x.name), text: str(x.text) }; };
+
 export function deserialize(text) {
   const raw = typeof text === "string" ? JSON.parse(text) : text;
-  if (!raw || typeof raw !== "object" || raw.v !== STATE_VERSION) throw new Error("chargen: unsupported state version");
-  const base = createState({ seed: raw.seed, rank: raw.rank, mode: raw.mode });
-  return { ...base, ...raw, team: { ...base.team, ...(raw.team ?? {}) }, attrs: { ...base.attrs, ...(raw.attrs ?? {}) }, locks: { ...(raw.locks ?? {}) }, touched: { ...(raw.touched ?? {}) }, rerolls: { ...(raw.rerolls ?? {}) } };
+  if (!isObj(raw) || raw.v !== STATE_VERSION) throw new Error("chargen: unsupported state version");
+  if (!own(RANKS, raw.rank)) throw new Error("chargen: unknown rank");
+  const base = createState({ seed: typeof raw.seed === "string" || typeof raw.seed === "number" ? raw.seed : "000000", rank: raw.rank, mode: raw.mode === "random" ? "random" : "manual" });
+  const stepOk = (k) => own(STEP_FIELDS, k) || k === "board" || k === "plan" || /^[A-Za-z:]{1,24}$/.test(k);
+  const attrs = { ...base.attrs };
+  if (raw.attrs != null) { if (!isObj(raw.attrs)) throw new Error("chargen: bad attrs"); for (const k of ATTRS) if (own(raw.attrs, k) && Number.isFinite(Number(raw.attrs[k]))) attrs[k] = Number(raw.attrs[k]); }
+  let team = base.team;
+  if (raw.team != null) {
+    if (!isObj(raw.team)) throw new Error("chargen: bad team");
+    const tm = raw.team;
+    team = { ...base.team, name: str(tm.name), base: str(tm.base), where: str(tm.where), upgrades: list(tm.upgrades, (u) => String(u ?? "")), mode: ["text", "join", "create", "member"].includes(tm.mode) ? tm.mode : "text", baseId: typeof tm.baseId === "string" ? tm.baseId : null };
+  }
+  const note = (n) => (typeof n === "string" ? n : "");
+  return {
+    ...base,
+    archetype: typeof raw.archetype === "string" ? raw.archetype : null,
+    role: typeof raw.role === "string" ? raw.role : null,
+    identity: raw.identity === "secret" || raw.identity === "public" ? raw.identity : null,
+    sources: list(raw.sources, (x) => ({ key: str(refReq(x) && x.key, "s"), ...refReq(x) })),
+    powers: list(raw.powers, (x) => {
+      const r = refReq(x);
+      return { key: str(x.key, "p"), ...r, level: Number.isInteger(x.level) ? x.level : 0, sourceKey: typeof x.sourceKey === "string" ? x.sourceKey : null,
+        boosts: list(x.boosts, refReq), limits: list(x.limits, (l) => ({ ...refReq(l), grants: l.grants === "level" || l.grants === "boost" ? l.grants : null })), ...(note(x.note) ? { note: x.note } : {}) };
+    }),
+    heroTalent: ref(raw.heroTalent), extraTalents: list(raw.extraTalents, refReq),
+    occupation: typeof raw.occupation === "string" ? raw.occupation : null, occTalent: ref(raw.occTalent), resources: Number.isFinite(Number(raw.resources)) ? Number(raw.resources) : 0,
+    npcRel: isObj(raw.npcRel) ? { type: str(raw.npcRel.type), name: str(raw.npcRel.name) } : base.npcRel,
+    drawbacks: list(raw.drawbacks, (x) => ({ ...refReq(x), note: note(x.note), ...(x.needs === "source" || x.needs === "defined" ? { needs: x.needs } : {}) })),
+    attrs,
+    personality: list(raw.personality, (w) => String(w ?? "")), drive: textPair(raw.drive), flaw: textPair(raw.flaw),
+    heroName: str(raw.heroName), civilianName: str(raw.civilianName), appearance: str(raw.appearance),
+    team, heroRel: isObj(raw.heroRel) ? { name: str(raw.heroRel.name), actorUuid: typeof raw.heroRel.actorUuid === "string" ? raw.heroRel.actorUuid : null } : base.heroRel,
+    locks: flagMap(raw.locks, (k, v) => v === true && own(FIELD_STEP, k)),
+    touched: flagMap(raw.touched, (k, v) => v === true && own(STEP_FIELDS, k)),
+    rerolls: flagMap(raw.rerolls, (k, v) => Number.isInteger(v) && v >= 0 && stepOk(k)),
+    rollOpts: isObj(raw.rollOpts) ? JSON.parse(JSON.stringify(raw.rollOpts)) : null
+  };
+}
+
+/** phase 9 (C5): an async roll computed `next` from `base`; the user may have changed the state meanwhile (`current`). Apply only what the roll changed on top of the
+    CURRENT state: keys whose value differs between base and next are taken from next, the counters / maps (rerolls, locks, touched) merge per key. */
+export function rebase(current, base, next) {
+  if (current === base) return next;
+  const out = { ...current };
+  for (const k of Object.keys(next)) {
+    if (next[k] === base[k]) continue;
+    if ((k === "rerolls" || k === "touched" || k === "locks") && isObj(next[k]) && isObj(base[k])) {
+      const m = { ...(current[k] ?? {}) };
+      for (const kk of Object.keys(next[k])) if (next[k][kk] !== base[k][kk]) m[kk] = next[k][kk];
+      for (const kk of Object.keys(base[k])) if (!(kk in next[k])) delete m[kk];
+      out[k] = m;
+    } else out[k] = next[k];
+  }
+  return out;
 }

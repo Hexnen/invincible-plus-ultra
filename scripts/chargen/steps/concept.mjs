@@ -13,6 +13,7 @@ import { confirmDialog } from "../dialogs.mjs";
 import { ATTRS, ROLES, validateStep } from "../rules.mjs";
 import { rollStep } from "../random.mjs";
 import { substream } from "../rng.mjs";
+import { rebase } from "../state.mjs";
 import { esc, icon, msgText, delegate, attrShort, levelName } from "./util.mjs";
 
 const OPTS = { withinArchetype: true, slotVariance: false, extraSource: false, extraTalents: false, drawbacks: false, limitChance: 0, honorTouched: false };
@@ -91,10 +92,11 @@ async function applyDefaults(ctx) {
   try {
     const P = ctx.provider();
     let s = { ...ctx.state, role: a.role || ctx.state.role };
-    const pwr = await rollStep(s, "powers", P, OPTS, { frozen: (f) => !["powers", "sources", "attrs"].includes(f) });
+    const pwr = await ctx.busy(rollStep(s, "powers", P, OPTS, { frozen: (f) => !["powers", "sources", "attrs"].includes(f) }));
     if (pwr === s || !pwr.powers.length) throw new Error(t("IPC.Concept.NoFit"));
     s = pwr;
-    s = await rollStep(s, "attributes", P, OPTS, { frozen: (f) => f !== "attrs" });
+    s = await ctx.busy(rollStep(s, "attributes", P, OPTS, { frozen: (f) => f !== "attrs" }));
+    s = rebase(ctx.state, s0, s);
     d.applied = s.archetype; d.last = { powers: s.powers, attrs: s.attrs };
     d.applying = false;
     const sum = ATTRS.reduce((x, k) => x + s.attrs[k], 0);
@@ -115,15 +117,17 @@ async function rollArchetype(ctx) {
   ctx.rerender();
   try {
     const before = ctx.state.archetype;
-    let s = ctx.state;
+    const s0 = ctx.state;
+    let s = s0;
     for (let i = 0; i < 6; i++) {          // a reroll should land somewhere new; each attempt is the next seeded draw
-      const next = await rollStep(s, "concept", ctx.provider(), OPTS);
+      const next = await ctx.busy(rollStep(s, "concept", ctx.provider(), OPTS));
       if (next === s) break;               // locked: nothing to roll
       s = next;
       if (s.archetype !== before) break;
     }
     d.rolling = null;
-    if (s === ctx.state) { ctx.rerender(); return; }
+    if (s === s0) { ctx.rerender(); return; }
+    s = rebase(ctx.state, s0, s);          // C5: edits made while the dice rolled are kept
     d.landed = `a:${s.archetype}`;
     ctx.commit(s, { body: true });
     ctx.announce(t("IPC.Concept.Rolled", { name: s.archetype, role: roleName(s.role) }));

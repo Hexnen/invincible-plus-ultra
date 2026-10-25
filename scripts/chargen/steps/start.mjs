@@ -42,7 +42,10 @@ export default {
     const banner = hasData
       ? `<div class="ipc-banner" role="note">${icon("fa-solid fa-circle-info")}<p>${esc(t("IPC.Start.HasData", { name: ctx.actor.name, items: info.items, powers: info.counts.power, talents: info.counts.talent }))}</p></div>`
       : `<p class="ipc-lede">${esc(t("IPC.Start.Blank"))}</p>`;
-    const draft = ctx.draft
+    const draft = ctx.draft?.bad
+      ? `<div class="ipc-banner ipc-banner-draft" role="alert">${icon("fa-solid fa-triangle-exclamation")}<p>${esc(t("IPC.Start.DraftBad"))}</p>
+          <span class="ipc-banner-actions"><button type="button" class="ipc-btn ipc-btn-small" data-act="draft-discard" data-fk="draft-bad">${esc(t("IPC.Start.DraftBadDiscard"))}</button></span></div>`
+      : ctx.draft
       ? `<div class="ipc-banner ipc-banner-draft" role="note">${icon("fa-solid fa-floppy-disk")}<p>${esc(t("IPC.Start.Draft", { when: when(ctx.draft.at) }))}</p>
           <span class="ipc-banner-actions"><button type="button" class="ipc-btn ipc-btn-small" data-act="draft-continue">${esc(t("IPC.Start.DraftContinue"))}</button>
           <button type="button" class="ipc-btn ipc-btn-small ipc-btn-quiet" data-act="draft-discard">${esc(t("IPC.Start.DraftDiscard"))}</button></span></div>`
@@ -90,12 +93,19 @@ export default {
       } else if (act === "roll" || act === "surprise") {
         await rollFor(ctx, { surprise: act === "surprise" });
       } else if (act === "hero") {
-        ctx.replace(stateFromActor(ctx.actor, { seed: ctx.state.seed, rank: ctx.state.rank }), { visitAll: true, go: "rank" });
+        const imported = stateFromActor(ctx.actor, { seed: ctx.state.seed, rank: ctx.state.rank });
+        try {   // B4: drawbacks that ask for a choice are recognised from the catalogue (the sheet does not say)
+          const known = new Map((await ctx.catalog.drawbacks()).map((e) => [e.name.toLowerCase(), e.needs]));
+          imported.drawbacks = imported.drawbacks.map((x) => (known.get(x.name.toLowerCase()) ? { ...x, needs: known.get(x.name.toLowerCase()) } : x));
+        } catch { /* no catalogue: no prompt */ }
+        ctx.replace(imported, { visitAll: true, go: "rank" });
       } else if (act === "draft-continue") {
         ctx.restoreDraft();
       } else if (act === "draft-discard") {
+        const bad = !!ctx.draft?.bad;
         ctx.discardDraft();
         ctx.rerender();
+        if (bad) ctx.announce(t("IPC.Start.DraftBadNote"));
       }
     });
     root.addEventListener("change", (ev) => {

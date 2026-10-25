@@ -582,6 +582,96 @@ const nrm = R.normName;
   ok(bad === 0, `board fuzz: ${ops} random operations (${N} sequences): no throw, kept rows unchanged, heroes without locks always valid (${bad} bad)`);
 }
 
+// ---------- phase 9 regression checks (bughunt #1): B2, B3, B4, C1, C2, C4, C5 (rebase), hero-code fuzz ----------
+{
+  const base = (over = {}) => S.patch(S.createState({ seed: "p9", rank: "global" }), over);
+  const hero = (over = {}) => {
+    let s = base({ heroTalent: { name: "Tough", packUuid: null }, occupation: "Cook", occTalent: { name: "Lucky", packUuid: null }, resources: 2, heroName: "H", civilianName: "C", drive: { name: "d", text: "" }, flaw: { name: "f", text: "" }, personality: ["a", "b"], npcRel: { type: "x", name: "y" }, team: { ...S.createState().team, name: "T" } });
+    s = S.addSource(s, { name: "Src" }); s = S.addPower(s, { name: "Swimming" });
+    s = S.patch(s, { attrs: { fighting: 5, agility: 5, strength: 5, reason: 5, intuition: 5, presence: 5 }, ...over });
+    return s;
+  };
+  const codes = (s) => R.validate(s).issues.map((i) => i.code);
+  // B2: levels only where the book defines them (the table is filled from the installed book at runtime; here by hand)
+  R.setPowerMaxLevels([["Swimming", 0], ["Flight", 3]]);
+  let s = hero();
+  ok(!codes(s).includes("power.level.none"), "B2: a basic-only power at basic is fine");
+  s = S.setPowerLevel(s, "p1", 1);
+  ok(codes(s).includes("power.level.none"), "B2: Major on a basic-only power is an error");
+  ok(R.powerMaxLevel({ name: "Flight" }) === 3 && R.powerMaxLevel({ name: "Unknown" }) === null, "B2: unknown powers are unrestricted, known ones carry their max");
+  ok(R.powerMaxLevel({ name: "Swimming", maxLevel: 2 }) === 2, "B2: a per-power maxLevel field wins");
+  R.setPowerMaxLevels([]);
+  {   // random never rolls a level above maxLevel (fixture powers with maxLevel 0 exist: i % 5 === 4)
+    let bad = 0;
+    const list = (key) => (key === "powers" ? POWERS : key === "talents" || key === "heroTalents" || key === "occupationTalents" ? E(TALENTS) : key === "powerSources" ? E(N("Src", 6)) : key === "drawbacks" ? E(N("Dr", 8)) : key === "occupations" ? OCCS : key === "personality" ? E(N("Pers", 12)) : key === "drives" || key === "flaws" ? E(N("Txt", 8), { text: "t" }) : key === "heroNames" || key === "civilianNames" || key === "teamNames" ? E(N("Nm", 9)) : key === "npcRelations" ? E(N("Rel", 5)) : []);
+    const P = { list: async (key) => list(key) };
+    for (let i = 0; i < 400; i++) {
+      const r = await rollHero(`p9-${i}`, R.RANK_ORDER[i % 4], P, { slotVariance: true, drawbacks: true, extraTalents: true, extraSource: true });
+      for (const p of r.state.powers) { const e = POWERS.find((x) => x.name === p.name); if (e && p.level > e.maxLevel) bad++; }
+    }
+    ok(bad === 0, `B2: 400 random heroes never exceed a power's maxLevel (${bad} bad)`);
+  }
+  // B3: repeatable talents modelled on the book (Durable / Determined up to 5, Windfall without a cap)
+  ok(R.talentLimit("Durable") === 5 && R.talentLimit("determined") === 5 && R.talentLimit("Windfall") === Infinity && R.talentLimit("Tough") === 1 && R.talentLimit("constructor") === 1, "B3: talent limits");
+  let t = hero({ heroTalent: { name: "Durable", packUuid: null }, extraTalents: [{ name: "Durable" }, { name: "Durable" }, { name: "Durable" }, { name: "Durable" }] });
+  ok(!codes(t).includes("talent.duplicate"), "B3: Durable taken 5 times is legal");
+  t = S.patch(t, { extraTalents: [...t.extraTalents, { name: "Durable" }] });
+  ok(codes(t).includes("talent.duplicate"), "B3: Durable a 6th time is refused");
+  ok(!codes(hero({ extraTalents: [{ name: "Windfall" }, { name: "Windfall" }, { name: "Windfall" }] })).includes("talent.duplicate"), "B3: Windfall has no cap");
+  ok(codes(hero({ extraTalents: [{ name: "Tough" }] })).includes("talent.duplicate"), "B3: an ordinary talent twice is refused");
+  // C4: one Knowledgeable subject per hero
+  ok(R.talentKey("Knowledgeable (Technology)") === "knowledgeable", "C4: the subject is not part of the talent identity");
+  ok(codes(hero({ extraTalents: [{ name: "Knowledgeable (Technology)" }, { name: "Knowledgeable (History)" }] })).includes("talent.duplicate"), "C4: two Knowledgeable subjects are refused");
+  ok(!codes(hero({ extraTalents: [{ name: "Knowledgeable (Technology)" }] })).includes("talent.duplicate"), "C4: one Knowledgeable subject is fine");
+  // B4: a drawback that needs a choice -> a WARNING (not an error) until the note is filled
+  let d = hero({ drawbacks: [{ name: "Phobic", packUuid: null, note: "", needs: "defined" }] });
+  const v = R.validate(d);
+  ok(v.warnings.some((i) => i.code === "drawback.note.missing") && !v.errors.some((i) => i.code === "drawback.note.missing"), "B4: a missing choice is a warning, never an error");
+  d = S.patch(d, { drawbacks: [{ name: "Phobic", packUuid: null, note: "spiders", needs: "defined" }] });
+  ok(!codes(d).includes("drawback.note.missing"), "B4: a filled note clears the warning");
+  ok(!codes(hero({ drawbacks: [{ name: "Frightful", packUuid: null, note: "" }] })).includes("drawback.note.missing"), "B4: drawbacks without a choice never warn");
+  // C1: prototype keys are not ranks anywhere
+  for (const k of ["__proto__", "constructor", "toString", "hasOwnProperty", "valueOf"]) {
+    ok(R.validate({ ...base(), rank: k }).errors.some((e) => e.code === "rank.unknown"), `C1: rank "${k}" is unknown`);
+    ok(R.RANKS[k] === undefined && !R.isRank(k), `C1: RANKS["${k}"] is undefined`);
+    ok(R.budget({ ...base(), rank: k }) === 0 && R.budgetFor(k, { S: 1 }) === 0, `C1: budget of rank "${k}" is 0, not NaN`);
+    let threw = false; try { S.deserialize({ ...base(), rank: k }); } catch { threw = true; }
+    ok(threw, `C1: deserialize refuses rank "${k}"`);
+  }
+  // C2: validate never throws on garbage shapes; deserialize refuses or normalises them
+  for (const bad of [{ powers: "x" }, { sources: 5 }, { drawbacks: {} }, { extraTalents: "a" }, { personality: 7 }, { powers: [null] }, { drawbacks: [null, 3] }, { extraTalents: [null] }, { sources: [null] }]) {
+    let threw = false; try { R.validate({ ...hero(), ...bad }); R.budget({ ...hero(), ...bad }); } catch { threw = true; }
+    ok(!threw, `C2: validate survives ${JSON.stringify(bad)}`);
+    let ds = null; try { ds = S.deserialize({ ...hero(), ...bad }); } catch { ds = null; }
+    ok(ds === null || (Array.isArray(ds.powers) && Array.isArray(ds.drawbacks) && Array.isArray(ds.extraTalents) && Array.isArray(ds.sources) && Array.isArray(ds.personality)), `C2: deserialize returns clean collections or refuses ${JSON.stringify(bad)}`);
+    if (ds) { let thr = false; try { R.validate(ds); } catch { thr = true; } ok(!thr, "C2: a deserialized state validates"); }
+  }
+  ok(!R.validate({ ...hero(), powers: "x" }).ok, "C2: a wrong-shape state is invalid, not ok");
+  const roundTrip = S.deserialize(S.serialize(hero({ drawbacks: [{ name: "Phobic", packUuid: null, note: "a", needs: "source" }] })));
+  eq(roundTrip.drawbacks[0], { name: "Phobic", packUuid: null, note: "a", needs: "source" }, "C2: a valid state survives serialize / deserialize (needs kept)");
+  eq(Object.keys(S.deserialize({ ...base(), locks: { constructor: true, powers: true, nonsense: true }, touched: { x: true, powers: true } }).locks), ["powers"], "C2: unknown lock keys are dropped");
+  {   // C5: rebase = apply what an async roll changed on top of the CURRENT state
+    const a = hero(), edited = S.patch(a, { heroName: "Edited", rerolls: { x: 1 } });
+    const rolled = S.patch(a, { powers: [], attrs: { ...a.attrs, fighting: 6 }, rerolls: { y: 2 } });
+    const m = S.rebase(edited, a, rolled);
+    ok(m.heroName === "Edited" && m.powers.length === 0 && m.attrs.fighting === 6, "C5: the roll's fields are applied, the user's edit survives");
+    eq(m.rerolls, { x: 1, y: 2 }, "C5: reroll counters merge per key");
+    ok(S.rebase(a, a, rolled) === rolled, "C5: unchanged state -> the rolled state as it is");
+  }
+  {   // hero-code fuzz: parseHeroCode on garbage never throws and never yields unexpected keys
+    const rng = createRng("hc9");
+    const alpha = "abcXYZ019:_-!? \n_proto_constructor";
+    let bad = 0;
+    for (let i = 0; i < 3000; i++) {
+      const len = rng.int(24);
+      let str = ""; for (let j = 0; j < len; j++) str += alpha[rng.int(alpha.length)];
+      let r; try { r = RR.parseHeroCode(str); } catch { bad++; continue; }
+      if (r !== null && (typeof r.seed !== "string" || !/^[A-Za-z0-9_-]{1,32}$/.test(r.seed) || (r.rank !== undefined && !R.isRank(r.rank)) || Object.keys(r).some((k) => !["seed", "rank", "spice", "within", "joinBase"].includes(k)))) bad++;
+    }
+    ok(bad === 0, `hero-code fuzz: 3000 garbage codes never throw or leak keys (${bad} bad)`);
+  }
+}
+
 console.log(`${checks} checks, ${fails} failed, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 console.log(fails ? "FAILED" : "OK");
 process.exit(fails ? 1 : 0);

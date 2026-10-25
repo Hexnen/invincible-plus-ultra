@@ -30,6 +30,12 @@ const LEVEL_WORDS = ["basic", "major", "massive", "monstrous"];
 const BACKUP_LIMIT = 150_000;
 const SOURCE_IMG = "systems/invincible/assets/icons/powersource.svg";
 const memory = new Map(); // actor.uuid -> snapshot (for undo in this session)
+/* phase 9 (A1 / A2). UNDO_TTL: an undo offer expires after 24 hours (memory snapshot and flag backup alike); before that, undo refuses to run over later changes of the hero
+   unless the caller confirms the listed drift. LOCK_TTL: the per-hero write lock (flag chargenLock {runId, userId, at}) of a running apply is ignored after 90 s (crashed client). */
+export const UNDO_TTL = 24 * 3600 * 1000;
+export const LOCK_TTL = 90 * 1000;
+const inflight = new Set();   // actor.uuid of applies / undos running in THIS client
+const lockPath = `flags.${MODULE_ID}.chargenLock`;
 
 const msg = (kind, code, params = {}, extra = {}) => ({ code, key: `IPCA.${kind}.${code}`, params, message: t(`IPCA.${kind}.${code}`, params), ...extra });
 const getp = (obj, path) => foundry.utils.getProperty(obj, path);
@@ -102,7 +108,12 @@ async function applyBase(actor, state, ti, warnings) {
     } else {
       base = B.cardById(tm.baseId);
       if (!base) throw new Error(t("IPCA.Err.BaseGone"));
-      await B.link(actor, base);
+      const lk = await B.link(actor, base);
+      if (lk?.requested) {          // B11: a player who cannot edit that base only sends a join REQUEST; the GM must approve. The hero is not a member (yet).
+        run.baseId = base.id; run.name = base.name; run.requested = true;
+        warnings.push(msg("Warn", "BaseRequested", { team: base.name }));
+        return run;
+      }
       run.linked = true;
     }
     if (!base) throw new Error(t("IPCA.Err.BaseGone"));
@@ -190,7 +201,7 @@ function applyLevelToAutomations(data, level) {
 /* ------------------------------------------------------------------ plan */
 export async function plan(actor, state) {
   const errors = [], warnings = [];
-  const out = { ok: false, actor: { id: actor?.id, name: actor?.name }, runId: foundry.utils.randomID(), errors, warnings, fields: [], creates: [], deletes: [], keeps: [], counts: { create: emptyCounts(), delete: emptyCounts(), fields: 0, keeps: 0 }, destructive: false, _ops: null };
+  const out = { ok: false, actor: { id: actor?.id, name: actor?.name }, runId: foundry.utils.randomID(), errors, warnings, fields: [], overwrites: [], creates: [], deletes: [], keeps: [], counts: { create: emptyCounts(), delete: emptyCounts(), fields: 0, keeps: 0 }, destructive: false, _ops: null };
   if (!actor || actor.type !== "superhero") { errors.push(msg("Err", "WrongType", { actor: actor?.name ?? "?" })); return out; }
   if (!actor.isOwner) errors.push(msg("Err", "NotOwner", { actor: actor.name }));
   if (!mayUse()) errors.push(msg("Err", "NotAllowed"));
@@ -199,7 +210,9 @@ export async function plan(actor, state) {
   if (v.errors.length) errors.unshift(msg("Err", "Invalid", { count: v.errors.length }));
   for (const i of v.warnings ?? []) warnings.push({ code: i.code, key: i.key, params: i.params, path: i.path, step: i.step, message: i.key });
   const ti = teamIntent(actor, state);                                  // phase 5f: team base integration
-  if (ti.action === "member") warnings.push(msg("Warn", "BaseMember", { team: ti.card.name }));
+  const relayOk = !!game.user.isGM || (!!game.modules.get("socketlib")?.active && !!game.modules.get(MODULE_ID)?.socket);   // B11: players reach the GM only through socketlib
+  if ((ti.action === "create" || ti.action === "join") && !relayOk) errors.push(msg("Err", "NoRelay", {}, { step: "team" }));
+  else if (ti.action === "member") warnings.push(msg("Warn", "BaseMember", { team: ti.card.name }));
   else if (ti.action === "create") {
     if (!ti.B) errors.push(msg("Err", "NoBase", {}, { step: "team" }));
     else if (!canCreateBase(ti.B)) errors.push(msg("Err", "BaseNoCreate", {}, { step: "team" }));
@@ -228,7 +241,10 @@ export async function plan(actor, state) {
   }
   for (const p of state.powers ?? []) {
     const doc = await need("power", p, "Power", { level: p.level });
-    const split = !!doc && (await Catalog.findPower(p))?.split;
+    const ent = doc ? await Catalog.findPower(p) : null;
+    const split = !!ent?.split;
+    // B2: the book defines no such level for this power (the rules check uses the same table once the catalogue was read; this is the authoritative re-check)
+    if (ent && Number.isInteger(ent.maxLevel) && p.level > ent.maxLevel) errors.push({ code: "power.level.none", key: "IPC.Rule.power.level.none", params: { name: p.name, max: ent.maxLevel }, path: "powers", step: "powers", message: "IPC.Rule.power.level.none" });
     ops.powers.push({ key: p.key, state: p, doc, split });
     for (const b of p.boosts ?? []) ops.links.push({ type: "boost", powerKey: p.key, powerName: p.name, doc: await need("boost", b, "Boost", { power: p.name }) });
     for (const l of p.limits ?? []) ops.links.push({ type: "limit", powerKey: p.key, powerName: p.name, doc: await need("limit", l, "Limit", { power: p.name }) });
@@ -247,7 +263,7 @@ export async function plan(actor, state) {
   for (const s of ops.sources) out.creates.push({ kind: "powerSource", type: "powerSource", name: s.name, custom: !s.doc });
   for (const p of ops.powers) {
     const src = ops.sources.find((s) => s.key === p.state.sourceKey);
-    out.creates.push({ kind: "power", type: "power", name: p.doc.name, level: lvl(p.state.level), source: src?.name });
+    out.creates.push({ kind: "power", type: "power", name: p.doc.name, level: lvl(p.state.level), source: src?.name, ...(String(p.state.note ?? "").trim() ? { note: String(p.state.note).trim() } : {}) });
   }
   for (const l of ops.links) out.creates.push({ kind: l.type, type: l.type, name: l.doc.name, power: l.powerName });
   for (const x of ops.talents) out.creates.push({ kind: x.type, type: x.type, name: x.doc.name, ...(x.note ? { note: x.note } : {}) });
@@ -267,6 +283,16 @@ export async function plan(actor, state) {
     if (from !== to) out.fields.push({ path, from, to });
   }
   out.fields.push({ path: flagPath, from: getp(actor._source, flagPath)?.rank ?? null, to: state.rank });
+  // B5 (phase 9): fields that REPLACE data the hero already has (not blanks / the sheet defaults). Together with the wiped items they make the apply destructive.
+  const meaningful = (f) => {
+    if (f.path === "name" || f.path.startsWith("flags.") || f.from === "" || f.from == null) return false;
+    if (/^system\.attributes\.\w+\.value$/.test(f.path)) return Number(f.from) !== 2;
+    if (f.path === "system.reputation") return Number(f.from) > 0;
+    if (f.path === "system.resources") return Number(f.from) > 1;
+    return String(f.from).trim() !== "";
+  };
+  out.overwrites = out.fields.filter(meaningful);
+  if (out.overwrites.length || out.deletes.length) { const nm = out.fields.find((f) => f.path === "name" && String(f.from ?? "").trim()); if (nm) out.overwrites.unshift(nm); }
   out._ops = ops;
   out._vals = vals;
   out._team = ti;
@@ -278,7 +304,7 @@ function finishCounts(out) {
   for (const d of out.deletes) { out.counts.delete[d.type]++; out.counts.delete.total++; }
   out.counts.fields = out.fields.length;
   out.counts.keeps = out.keeps.length;
-  out.destructive = out.deletes.length > 0;
+  out.destructive = out.deletes.length > 0 || (out.overwrites?.length ?? 0) > 0;
   out.ok = out.ok && !out.errors.length;
   return out;
 }
@@ -287,13 +313,58 @@ const publicPlan = (p) => { const { _ops, _vals, _team, ...rest } = p; return re
 export async function planPublic(actor, state) { return publicPlan(await plan(actor, state)); }
 
 /* ------------------------------------------------------------------ apply */
-export async function apply(actor, state, { confirmed = false, onStage: onStageRaw = null } = {}) {
+const userName = (id) => game.users?.get(id)?.name ?? "?";
+/** A1 (phase 9): one write at a time per hero, across clients. In-memory set for this client + a flag {runId, userId, at} (TTL) for the others. Best effort in the
+    absence of a server-side transaction: after writing the flag we wait one round trip and check that OUR run id is the one that stuck; the loser backs off. */
+async function acquireLock(actor, lockId) {
+  if (inflight.has(actor.uuid)) return { ok: false, by: game.user.name };
+  const cur = getp(actor._source, lockPath);
+  if (cur?.runId && Date.now() - (cur.at ?? 0) < LOCK_TTL) return { ok: false, by: userName(cur.userId) };
+  inflight.add(actor.uuid);
+  try {
+    await actor.update({ [lockPath]: { runId: lockId, userId: game.user.id, at: Date.now() } });
+    await sleep(300);
+    const now = getp(actor._source, lockPath);
+    if (now?.runId !== lockId) { inflight.delete(actor.uuid); return { ok: false, by: userName(now?.userId) }; }
+  } catch (err) { inflight.delete(actor.uuid); throw err; }
+  return { ok: true };
+}
+async function releaseLock(actor, lockId) {
+  inflight.delete(actor.uuid);
+  try { if (getp(actor._source, lockPath)?.runId === lockId) await actor.update({ [`flags.${MODULE_ID}.-=chargenLock`]: null }); } catch (err) { console.warn(`${MODULE_ID} | chargen: could not release the lock`, err); }
+}
+/** run fn() holding the hero's write lock; the loser gets a Busy error and nothing is written */
+async function withLock(actor, fn, busyResult) {
+  if (!actor || actor.type !== "superhero" || !actor.isOwner || !mayUse()) return fn();   // the refusals below report these themselves
+  const lockId = foundry.utils.randomID();
+  let lock;
+  try { lock = await acquireLock(actor, lockId); } catch (err) { console.warn(`${MODULE_ID} | chargen: lock failed`, err); return fn(); }
+  if (!lock.ok) return busyResult(lock.by);
+  try { return await fn(); } finally { await releaseLock(actor, lockId); }
+}
+
+export function apply(actor, state, opts = {}) {
+  return withLock(actor, () => applyLocked(actor, state, opts), (by) => {
+    const e = msg("Err", "Busy", { actor: actor.name, user: by });
+    return { ok: false, busy: true, plan: null, runId: null, errors: [e], warnings: [], created: [], deleted: [], message: e.message };
+  });
+}
+
+/** expect (B6) = { deletes:[item ids], overwrites:[paths] } what the user was shown; the fresh plan may not delete / overwrite anything more than that */
+async function applyLocked(actor, state, { confirmed = false, onStage: onStageRaw = null, expect = null } = {}) {
   const onStage = (st) => { try { onStageRaw?.(st); } catch { /* a progress callback must never break a write */ } };   // phase 7: Review shows real progress
   const p = await plan(actor, state);
   const base = { ok: false, plan: publicPlan(p), runId: p.runId, errors: p.errors, warnings: p.warnings, created: [], deleted: [] };
   if (!p.ok) return { ...base, message: p.errors[0]?.message ?? "" };
+  if (expect) {
+    const seenDel = new Set(expect.deletes ?? []), seenOv = new Set(expect.overwrites ?? []);
+    if (p.deletes.some((d) => !seenDel.has(d.id)) || (p.overwrites ?? []).some((f) => !seenOv.has(f.path))) {
+      const e = msg("Err", "PlanChanged", { actor: actor.name });
+      return { ...base, planChanged: true, errors: [e], message: e.message };
+    }
+  }
   if (p.destructive && confirmed !== true) {
-    const e = msg("Err", "NeedConfirm", { count: p.deletes.length, actor: actor.name });
+    const e = msg("Err", "NeedConfirm", { count: p.deletes.length, fields: p.overwrites.length, actor: actor.name });
     return { ...base, errors: [e, ...p.errors], message: e.message };
   }
   const ops = p._ops, vals = p._vals;
@@ -315,7 +386,13 @@ export async function apply(actor, state, { confirmed = false, onStage: onStageR
   try {
     // 1. wipe
     stage = "wipe"; onStage?.(stage);
-    if (snap.items.length) await actor.deleteEmbeddedDocuments("Item", snap.items.map((i) => i._id));
+    // A1: re-read which of the snapshotted items still exist right now (a GM may have deleted one on the sheet meanwhile); only ids THIS run deletes are ever restored
+    snap.wiped = [];
+    const present = snap.items.map((i) => i._id).filter((id) => actor.items.has(id));
+    if (present.length) {
+      try { await actor.deleteEmbeddedDocuments("Item", present); snap.wiped = present; }
+      catch (err) { snap.wiped = present.filter((id) => !actor.items.has(id)); throw err; }   // whatever really went away before the failure is restored by the rollback
+    }
     // 2. power sources
     stage = "powerSource"; onStage?.(stage);
     const sourceId = {};
@@ -331,6 +408,7 @@ export async function apply(actor, state, { confirmed = false, onStage: onStageR
       const data = ops.powers.map((o) => {
         const d = baseItemData(o.doc, runId);
         d.system.powerSource = sourceId[o.state.sourceKey] ?? "";
+        if (String(o.state.note ?? "").trim()) d.name = `${d.name} (${String(o.state.note).trim()})`;
         if (!o.split && o.state.level > 0) { d.system.level = LEVEL_WORDS[o.state.level]; applyLevelToAutomations(d, o.state.level); }
         return d;
       });
@@ -355,7 +433,7 @@ export async function apply(actor, state, { confirmed = false, onStage: onStageR
     stage = "actor"; onStage?.(stage);
     const update = { ...vals };
     update[flagPath] = { v: 1, runId, rank: state.rank, archetype: state.archetype ?? null, identity: state.identity ?? null, mode: state.mode ?? "manual", seed: state.seed ?? null, createdAt: Date.now(), appliedBy: game.user.id };
-    const backup = { runId, at: snap.at, fields: snap.fields, unset: snap.unset, items: snap.items, prevChargen: snap.prevChargen ?? null };
+    const backup = { runId, at: snap.at, fields: snap.fields, unset: snap.unset, items: snap.items, wiped: snap.wiped, prevChargen: snap.prevChargen ?? null };
     if (JSON.stringify(backup).length < BACKUP_LIMIT) update[backupPath] = backup;
     else warnings.push(msg("Warn", "NoBackupFlag"));
     await actor.update(update);
@@ -384,9 +462,22 @@ export async function apply(actor, state, { confirmed = false, onStage: onStageR
       return { ...base, errors: [e], warnings, rolledBack: false, message: e.message };
     }
   }
+  // A2: remember what the hero looked like right after this run, so undo can tell later changes from this run's own writes
+  try {
+    snap.after = fingerprint(actor, [...Object.keys(vals), ...mirroredPaths(p), "system.derived.health.value", "system.derived.resolve.value"], created);
+    if (getp(actor._source, backupPath)) await actor.update({ [`${backupPath}.after`]: snap.after }, { ipbSync: true });
+  } catch (err) { console.warn(`${MODULE_ID} | chargen: could not store the undo fingerprint`, err); }
   memory.set(actor.uuid, snap);
-  const message = t("IPCA.Done.Apply", { actor: actor.name, created: created.length, deleted: snap.items.length, fields: p.fields.length });
-  return { ...base, ok: true, errors: [], warnings, created, deleted: snap.items.map((i) => i._id), message };
+  const message = t("IPCA.Done.Apply", { actor: actor.name, created: created.length, deleted: snap.wiped.length, fields: p.fields.length });
+  return { ...base, ok: true, errors: [], warnings, created, deleted: [...snap.wiped], message };
+}
+const mirroredPaths = (p) => (p._team && (p._team.action === "join" || p._team.action === "create") ? ["system.team", "system.teamBase"] : []);
+function fingerprint(actor, paths, createdIds) {
+  const fields = {};
+  for (const path of new Set(paths)) fields[path] = clone(getp(actor._source, path)) ?? null;
+  const items = {};
+  for (const id of createdIds) { const it = actor.items.get(id); if (it) items[id] = { name: it.name, mt: it._stats?.modifiedTime ?? 0 }; }
+  return { fields, items, known: actor.items.filter((i) => WIPE_TYPES.includes(i.type)).map((i) => i.id) };
 }
 
 /** put the actor back: delete what this run created, re-create the wiped items with their old ids, restore field values */
@@ -394,7 +485,9 @@ async function restore(actor, snap, createdIds = null) {
   const mine = actor.items.filter((i) => (createdIds ? createdIds.includes(i.id) : getp(i, `flags.${MODULE_ID}.chargenRun`) === snap.runId)).map((i) => i.id);
   if (mine.length) await actor.deleteEmbeddedDocuments("Item", mine);
   const clash = new Set(actor.items.map((i) => i.id));
-  const back = snap.items.filter((i) => !clash.has(i._id));
+  // A1: only items THIS run deleted come back (snap.wiped; older backups without the list restore everything), never one somebody else removed, never over an id that exists now
+  const wiped = Array.isArray(snap.wiped) ? new Set(snap.wiped) : null;
+  const back = snap.items.filter((i) => !clash.has(i._id) && (!wiped || wiped.has(i._id)));
   if (back.length) await actor.createEmbeddedDocuments("Item", back, { keepId: true });
   const upd = { ...snap.fields };
   for (const path of snap.unset ?? []) if (typeof getp(actor._source, path) === "string") upd[path] = "";   // a text field that did not exist before the run goes back to empty (found in 5f: undo left the texts behind)
@@ -402,18 +495,63 @@ async function restore(actor, snap, createdIds = null) {
   if (snap.prevChargen) upd[`${flagPath}.chargen`] = snap.prevChargen; else upd[`${flagPath}.-=chargen`] = null;
   if (createdIds && snap.prevBackup) upd[`${flagPath}.chargenBackup`] = snap.prevBackup; // failed run: the older undo backup stays
   else upd[`${flagPath}.-=chargenBackup`] = null;
-  await actor.update(upd, { ipbSync: true });   // our own legitimate writer for the team texts the base lock guard protects (a no-op option otherwise)
+  // B11 patch (phase 9): a hero that is (still) a team MEMBER does not get the old team texts back behind the card's back; the lock guard then also protects this update
+  let member = false;
+  try { member = !!baseApi()?.find?.(actor); } catch { member = false; }
+  if (member) for (const k of ["system.team", "system.teamBase"]) delete upd[k];
+  await actor.update(upd, member ? {} : { ipbSync: true });   // not a member: our own legitimate writer for the team texts (a no-op option otherwise)
 }
 
-export function hasUndo(actor) {
-  return !!actor && (memory.has(actor.uuid) || !!getp(actor._source, `flags.${MODULE_ID}.chargenBackup`));
+const snapOf = (actor) => (actor ? memory.get(actor.uuid) ?? getp(actor._source, `flags.${MODULE_ID}.chargenBackup`) ?? null : null);
+
+/** A2 (phase 9): is there something to undo, how old is it, and what changed on the hero since the run? Sync, reads only the actor. The offer expires after UNDO_TTL.
+    drift = { fields:[{path, expected, now}], itemsEdited:[names], itemsMissing:[names], itemsAdded:[names] }; clean = nothing drifted; unknown = a backup from before this check existed. */
+export function undoStatus(actor) {
+  const snap = snapOf(actor);
+  if (!snap) return { available: false };
+  const age = Date.now() - (Number(snap.at) || 0);
+  if (!Number.isFinite(age) || age > UNDO_TTL) return { available: false, expired: true, age };
+  const drift = { fields: [], itemsEdited: [], itemsMissing: [], itemsAdded: [] };
+  const aft = snap.after;
+  if (aft && typeof aft === "object") {
+    for (const [path, v] of Object.entries(aft.fields ?? {})) {
+      const now = clone(getp(actor._source, path)) ?? null;
+      if (JSON.stringify(now) !== JSON.stringify(v)) drift.fields.push({ path, expected: v, now });
+    }
+    for (const [id, info] of Object.entries(aft.items ?? {})) {
+      const it = actor.items.get(id);
+      if (!it) drift.itemsMissing.push(info.name);
+      else if ((it._stats?.modifiedTime ?? 0) !== info.mt) drift.itemsEdited.push(it.name);
+    }
+    const known = new Set(aft.known ?? []);
+    for (const it of actor.items) if (WIPE_TYPES.includes(it.type) && !known.has(it.id)) drift.itemsAdded.push(it.name);
+  }
+  const n = drift.fields.length + drift.itemsEdited.length + drift.itemsMissing.length + drift.itemsAdded.length;
+  return { available: true, at: snap.at, age, drift, clean: !!aft && n === 0, unknown: !aft, changes: n };
 }
 
-export async function undo(actor) {
-  const snap = memory.get(actor?.uuid) ?? getp(actor?._source, `flags.${MODULE_ID}.chargenBackup`);
-  if (!snap) { const e = msg("Err", "NoUndo", { actor: actor?.name ?? "?" }); return { ok: false, errors: [e], message: e.message }; }
+export function hasUndo(actor) { return undoStatus(actor).available === true; }
+
+export function undo(actor, opts = {}) {
+  return withLock(actor, () => undoLocked(actor, opts), (by) => {
+    const e = msg("Err", "Busy", { actor: actor.name, user: by });
+    return { ok: false, busy: true, errors: [e], message: e.message };
+  });
+}
+async function undoLocked(actor, { confirmDrift = false } = {}) {
+  const st = undoStatus(actor);
+  const snap = st.available ? snapOf(actor) : null;
+  if (!snap) {
+    const e = st.expired ? msg("Err", "UndoExpired", { actor: actor?.name ?? "?" }) : msg("Err", "NoUndo", { actor: actor?.name ?? "?" });
+    if (st.expired) { memory.delete(actor.uuid); }
+    return { ok: false, errors: [e], message: e.message };
+  }
   if (!actor.isOwner) { const e = msg("Err", "NotOwner", { actor: actor.name }); return { ok: false, errors: [e], message: e.message }; }
   if (!mayUse()) { const e = msg("Err", "NotAllowed"); return { ok: false, errors: [e], message: e.message }; }
+  if (!st.clean && confirmDrift !== true) {   // the hero changed after the run (or the backup predates this check): never overwrite that silently
+    const e = msg("Err", "UndoStale", { actor: actor.name, count: st.changes });
+    return { ok: false, needsConfirm: true, status: st, errors: [e], message: e.message };
+  }
   try {
     const warnings = await undoBase(actor, snap.base);   // phase 5f: unlink the hero / remove what the run added to the base BEFORE the texts are restored
     await restore(actor, snap);
@@ -426,7 +564,7 @@ export async function undo(actor) {
   }
 }
 
-export const applyApi = { plan: planPublic, apply, undo, hasUndo };
+export const applyApi = { plan: planPublic, apply, undo, hasUndo, undoStatus };
 
 /** attaches api.chargen.{catalog, provider, apply} (the wizard UI of later phases uses these) */
 export function start() {

@@ -36,6 +36,8 @@ function canCreate() {
   const b = bapi();
   try { return !!b && (b.isStaff() || game.settings.get(MOD, "basePlayersCreate") === true); } catch { return false; }
 }
+/** B11: create-team / request-join / ask are carried to the GM by socketlib's SERVER sender only; without it a player cannot create or join a base (a GM always can, the request stays local) */
+function relayOk() { try { return !!game.user.isGM || (!!game.modules.get("socketlib")?.active && !!game.modules.get(MOD)?.socket); } catch { return false; } }
 const effMode = (T, card) => (card ? "member" : T.mode === "join" || T.mode === "create" ? T.mode : "text");
 const maxRank = (a, b) => (RANK_ORDER.indexOf(a) >= RANK_ORDER.indexOf(b) ? a : b);
 const countOf = (map) => Object.keys(map ?? {}).length;
@@ -95,8 +97,8 @@ function modeSection(ctx, T, mode, bases) {
   const b = bapi();
   const opts = [
     { v: "text", name: t("IPC.Team.Mode.Text"), desc: t("IPC.Team.Mode.TextDesc"), why: "" },
-    { v: "join", name: t("IPC.Team.Mode.Join"), desc: t("IPC.Team.Mode.JoinDesc"), why: !b ? t("IPC.Team.Mode.NoApi") : !bases.length ? t("IPC.Team.Mode.NoJoin") : "" },
-    { v: "create", name: t("IPC.Team.Mode.Create"), desc: t("IPC.Team.Mode.CreateDesc"), why: !b ? t("IPC.Team.Mode.NoApi") : !canCreate() ? t("IPC.Team.Mode.NoCreate") : "" }
+    { v: "join", name: t("IPC.Team.Mode.Join"), desc: t("IPC.Team.Mode.JoinDesc"), why: !b ? t("IPC.Team.Mode.NoApi") : !relayOk() ? t("IPC.Team.Mode.NoRelay") : !bases.length ? t("IPC.Team.Mode.NoJoin") : "" },
+    { v: "create", name: t("IPC.Team.Mode.Create"), desc: t("IPC.Team.Mode.CreateDesc"), why: !b ? t("IPC.Team.Mode.NoApi") : !canCreate() ? t("IPC.Team.Mode.NoCreate") : !relayOk() ? t("IPC.Team.Mode.NoRelay") : "" }
   ];
   const html = opts.map((o) => {
     const on = mode === o.v, off = !!o.why && !on;

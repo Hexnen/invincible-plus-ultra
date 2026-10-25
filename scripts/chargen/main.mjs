@@ -48,10 +48,9 @@ export async function open(ref, { surprise = false } = {}) {
 async function undoLast(actor) {
   const api = chargenApi();
   if (!api?.apply?.hasUndo(actor)) { ui.notifications.info(t("IPC.Header.NoUndo")); return; }
-  const { confirmDialog } = await import("./dialogs.mjs");
-  const ok = await confirmDialog({ title: t("IPC.Header.UndoTitle"), icon: "fa-solid fa-rotate-left", body: t("IPC.Header.UndoBody", { actor: actor.name }), yes: t("IPC.Header.UndoYes"), no: t("IPC.Header.UndoNo"), danger: true });
-  if (!ok) return;
-  const res = await api.apply.undo(actor);
+  const { confirmUndo } = await import("./dialogs.mjs");
+  const res = await confirmUndo(actor);       // phase 9: shows the age and exactly what changed since the generation; undo refuses stale writes without that confirmation
+  if (res.declined) return;
   (res.ok ? ui.notifications.info : ui.notifications.error).call(ui.notifications, res.message ?? "", { console: false });
 }
 

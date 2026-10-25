@@ -45,7 +45,7 @@
 import { substream } from "./rng.mjs";
 import {
   RANKS, ATTRS, ROLES, levelCap, slots, powerSlots, budget, budgetFor, attrSum,
-  reconcileAttributes, extraSources, validate, normName
+  reconcileAttributes, extraSources, validate, normName, talentKey
 } from "./rules.mjs";
 import { createState, STEP_FIELDS, FIELD_STEP } from "./state.mjs";
 
@@ -67,12 +67,13 @@ const getArchetype = async (P, id) => (id && typeof P.getArchetype === "function
 const ref = (e) => ({ name: e.name, packUuid: e.packUuid ?? null });
 const activeArchetype = (state, opts) => ((opts.withinArchetype || state.locks.archetype) && state.archetype ? state.archetype : null);
 const ctxOf = (state, opts, extra = {}) => ({ rank: state.rank, ...(activeArchetype(state, opts) ? { archetype: activeArchetype(state, opts) } : {}), ...extra });
-const usedTalents = (s) => new Set([s.heroTalent?.name, s.occTalent?.name, ...s.extraTalents.map((t) => t.name)].filter(Boolean).map(normName));
+const usedTalents = (s) => new Set([s.heroTalent?.name, s.occTalent?.name, ...s.extraTalents.map((t) => t.name)].filter(Boolean).map(talentKey));
 
-/** a bare "Knowledgeable" becomes one of the book's six subjects (D6 table), never one that is already taken; null when the subject cannot be placed */
+/** a bare "Knowledgeable" becomes one of the book's six subjects (D6 table); only ONE Knowledgeable variant per hero (C4), so none when one is already taken; null when the subject cannot be placed */
 async function expandTalent(P, e, rng, used = new Set()) {
   if (normName(e.name) !== "knowledgeable") return e;
-  return (await draw(P, "knowledgeableSubjects", rng, {}, (z) => used.has(normName(z.name)))) ?? null;
+  if (used.has("knowledgeable")) return null;
+  return (await draw(P, "knowledgeableSubjects", rng, {}, (z) => used.has(talentKey(z.name)))) ?? null;
 }
 
 // ---------- budget plan: how many slots / sources / extra talents / drawbacks ----------
@@ -176,8 +177,9 @@ async function addOneLimit(P, powers, rng, cache) {
 
 async function adaptArchetypePowers(P, arch, target, rank, minPowers, rng, ctx) {
   const cap = levelCap(rank);
-  const powers = arch.powers.map((p, i) => ({ key: `p${i + 1}`, name: p.name, packUuid: p.packUuid ?? null, level: Math.min(p.level ?? 0, cap), sourceKey: null, boosts: (p.boosts ?? []).map(ref), limits: [] }));
   const pool = await listOf(P, "powers", ctx);
+  const maxOf = (name) => { const e = pool.find((x) => normName(x.name) === normName(name)); return Math.min(cap, e?.maxLevel ?? 9); };   // B2: only the levels the book defines for that power
+  const powers = arch.powers.map((p, i) => ({ key: `p${i + 1}`, name: p.name, packUuid: p.packUuid ?? null, level: Math.min(p.level ?? 0, maxOf(p.name)), sourceKey: null, boosts: (p.boosts ?? []).map(ref), limits: [], ...(p.note ? { note: p.note } : {}) }));
   const total = () => powers.reduce((a, p) => a + powerSlots(p), 0);
   const addNew = () => {
     const names = new Set(powers.map((p) => normName(p.name)));
@@ -198,7 +200,7 @@ async function adaptArchetypePowers(P, arch, target, rank, minPowers, rng, ctx) 
   }
   for (let guard = 0; guard < 100 && total() < target; guard++) {
     if (addNew()) continue;
-    const up = powers.find((p) => p.level < cap);
+    const up = powers.find((p) => p.level < maxOf(p.name));
     if (!up) break;
     up.level++;
   }
@@ -260,9 +262,9 @@ async function stepTalents({ state, P, opts, rng, frozen, plan }) {
   // locked pieces stay; rolled pieces avoid everything already present
   const unlockedHero = !frozen("heroTalent");
   const unlockedExtra = !frozen("extraTalents");
-  if (unlockedHero) { used.delete(normName(state.heroTalent?.name)); mine.heroTalent = null; }
-  if (unlockedExtra) for (const t of state.extraTalents) used.delete(normName(t.name));
-  const ex = (e) => used.has(normName(e.name));
+  if (unlockedHero) { used.delete(talentKey(state.heroTalent?.name)); mine.heroTalent = null; }
+  if (unlockedExtra) for (const t of state.extraTalents) used.delete(talentKey(t.name));
+  const ex = (e) => used.has(talentKey(e.name));
   if (unlockedHero) {
     let e = null;
     for (let i = 0; i < 4 && !e; i++) {                    // a bare Knowledgeable that cannot take a free subject is drawn past
@@ -271,7 +273,7 @@ async function stepTalents({ state, P, opts, rng, frozen, plan }) {
       e = await expandTalent(P, c, rng, used);
       if (e && ex(e)) e = null;
     }
-    if (e) { mine.heroTalent = ref(e); used.add(normName(e.name)); }
+    if (e) { mine.heroTalent = ref(e); used.add(talentKey(e.name)); }
     out.heroTalent = mine.heroTalent;
   }
   if (unlockedExtra) {
@@ -280,7 +282,7 @@ async function stepTalents({ state, P, opts, rng, frozen, plan }) {
       let e = await draw(P, "talents", rng, {}, ex);
       if (e) e = await expandTalent(P, e, rng, used);
       if (!e || ex(e)) break;
-      list.push(ref(e)); used.add(normName(e.name));
+      list.push(ref(e)); used.add(talentKey(e.name));
     }
     out.extraTalents = list;
   }
@@ -290,7 +292,12 @@ async function stepTalents({ state, P, opts, rng, frozen, plan }) {
     for (let i = 0; i < plan.d; i++) {
       const e = await draw(P, "drawbacks", rng, ctx, (z) => names.has(normName(z.name)));
       if (!e) break;
-      names.add(normName(e.name)); list.push({ ...ref(e), note: "" });
+      names.add(normName(e.name));
+      // B4: a drawback that asks for a choice. "source" -> one of the hero's own power sources (random can fill that from the hero), "defined" -> left for the player (a warning asks)
+      const needs = e.needs === "source" || e.needs === "defined" ? e.needs : null;
+      const srcNames = (state.sources ?? []).map((s) => s.name).filter(Boolean);
+      const note = needs === "source" && srcNames.length ? srcNames[rng.int(srcNames.length)] : "";
+      list.push({ ...ref(e), note, ...(needs ? { needs } : {}) });
     }
     out.drawbacks = list;
   }
@@ -340,17 +347,17 @@ async function stepLife({ state, P, opts, rng, frozen }) {
   const ctx = ctxOf(state, opts);
   const out = {};
   const used = usedTalents(state);
-  if (!frozen("occTalent")) used.delete(normName(state.occTalent?.name));
+  if (!frozen("occTalent")) used.delete(talentKey(state.occTalent?.name));
   let occupation = state.occupation, occTalent = state.occTalent, resources = state.resources;
   if (!frozen("occupation") || !frozen("occTalent")) {
     const occs = frozen("occupation") ? (await listOf(P, "occupations", ctx)).filter((o) => o.name === state.occupation) : rng.shuffle(await listOf(P, "occupations", ctx));
     // first occupation whose talent shortlist has a talent not yet owned (cyclic "take the next one")
     for (const o of occs) {
       if (frozen("occTalent")) { occupation = o.name; resources = o.data?.resources ?? 1; break; }
-      const free = (await listOf(P, "occupationTalents", { occupation: o.name })).filter((t) => !used.has(normName(t.name)));
+      const free = (await listOf(P, "occupationTalents", { occupation: o.name })).filter((t) => !used.has(talentKey(t.name)));
       if (!free.length) continue;
       occupation = o.name; resources = o.data?.resources ?? 1;
-      let pick = (await draw(P, "occupationTalents", rng, { occupation: o.name }, (t) => used.has(normName(t.name)))) ?? free[0];
+      let pick = (await draw(P, "occupationTalents", rng, { occupation: o.name }, (t) => used.has(talentKey(t.name)))) ?? free[0];
       pick = (await expandTalent(P, pick, rng, used)) ?? free.find((t) => normName(t.name) !== "knowledgeable") ?? null;   // bare Knowledgeable -> a subject (book rule)
       if (!pick) continue;
       occTalent = ref(pick);

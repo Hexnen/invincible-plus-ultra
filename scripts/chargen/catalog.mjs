@@ -28,6 +28,7 @@
      book page: getArchetype(id)
    Works for non-GM users (index + fromUuid only; compendia are OBSERVER for players). */
 import * as Tables from "./tables.mjs";
+import { setPowerMaxLevels } from "./rules.mjs";
 
 const MODULE_ID = "invincible-plus-ultra";
 const CORE = "invincible-core";
@@ -71,8 +72,11 @@ const entryBase = (i, type) => ({ id: i._id, uuid: i.uuid, packUuid: i.uuid, nam
 /* ------------------------------------------------------------------ powers */
 export function powers() {
   return memo("powers", async () => {
-    const { pack, index } = await indexOf("powers", ["system.level", "folder"]);
+    const { pack, index } = await indexOf("powers", ["system.level", "folder", "system.description"]);
     if (!pack) return [];
+    // B2 (phase 9): the book labels every level it defines as a paragraph "Major:" / "Massive:" / "Monstrous:" in the power text; "Many powers only have a basic power level"
+    const hasLabel = (html, word) => new RegExp(`(?:^|[>\\s.])${word}\\s*:`).test(String(html ?? "").replace(/<[^>]*>/g, " "));
+    const bookMax = (html) => (hasLabel(html, "Monstrous") ? 3 : hasLabel(html, "Massive") ? 2 : hasLabel(html, "Major") ? 1 : 0);
     const typeOf = (folderId) => {
       let f = pack.folders.get(folderId);
       while (f?.folder && f.folder.id !== f.id) f = f.folder; // climb to the root: "Attack Powers"
@@ -83,17 +87,20 @@ export function powers() {
       const lv = i.system?.level ?? "";
       let e = byName.get(i.name);
       if (!e) {
-        e = { ...entryBase(i, "Other"), type: typeOf(i.folder), folder: folderName(pack, i.folder), maxLevel: 3, split: false, levels: {} };
+        e = { ...entryBase(i, "Other"), type: typeOf(i.folder), folder: folderName(pack, i.folder), maxLevel: 0, split: false, levels: {} };
         byName.set(i.name, e);
       }
       if (LEVEL_WORDS.includes(lv)) e.levels[lv] = i.uuid;
+      e.maxLevel = Math.max(e.maxLevel, bookMax(i.system?.description));
     }
     for (const e of byName.values()) {
       const have = Object.keys(e.levels);
       e.split = have.length > 1;
-      if (e.split) { const base = e.levels.basic ?? Object.values(e.levels)[0]; e.uuid = e.packUuid = base; e.id = base.split(".").pop(); } else e.levels = {};
+      if (e.split) { const base = e.levels.basic ?? Object.values(e.levels)[0]; e.uuid = e.packUuid = base; e.id = base.split(".").pop(); e.maxLevel = Math.max(...have.map((w) => LEVEL_WORDS.indexOf(w))); } else e.levels = {};
     }
-    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const out = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+    setPowerMaxLevels(out.map((e) => [e.name, e.maxLevel]));
+    return out;
   });
 }
 export async function findPower(ref) {
@@ -105,13 +112,21 @@ export async function findPower(ref) {
 }
 
 /* ------------------------------------------------------------------ simple item packs */
-const simple = (name, type, extra = () => ({})) => () => memo(name, async () => {
-  const { pack, index } = await indexOf(name, ["folder"]);
+/** B4 (phase 9): what a drawback asks you to choose when you take it, read from its own text: "source" = one of your power sources, "defined" = something defined when you
+    select it (a phobia, an obsession ...); false = nothing to choose */
+export function needsChoice(html) {
+  const text = String(html ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+  if (/power sources?\s*\(choose one/i.test(text) || /choose one of your power/i.test(text)) return "source";
+  if (/defined (?:with the help of the GM )?when you select/i.test(text)) return "defined";
+  return false;
+}
+const simple = (name, type, extra = () => ({}), fields = []) => () => memo(name, async () => {
+  const { pack, index } = await indexOf(name, ["folder", ...fields]);
   return index.map((i) => ({ ...entryBase(i, type), ...extra(pack, i) })).sort((a, b) => a.name.localeCompare(b.name));
 });
 export const powerSources = simple("power-sources", "powerSource");
 export const talents = simple("talents", "talent");
-export const drawbacks = simple("drawbacks", "drawback");
+export const drawbacks = simple("drawbacks", "drawback", (pack, i) => ({ needs: needsChoice(i.system?.description) }), ["system.description"]);
 const allBoosts = simple("boosts", "boost", (pack, i) => ({ power: folderName(pack, i.folder) }));
 const allLimits = simple("limits", "limit", (pack, i) => ({ power: folderName(pack, i.folder) }));
 export async function boostsFor(power) { const n = norm(power); return (await allBoosts()).filter((b) => norm(b.power) === n); }
@@ -182,21 +197,28 @@ async function parseArchetypes() {
     const text = (find("Suggested Powers")?.textContent ?? "").replace(/^\s*Suggested Powers:\s*/, "");
     const powersOut = [];
     for (const tok of splitTop(text)) {
-      const link = /@UUID\[(Compendium\.invincible-core\.powers\.Item\.[^\]]+)\]\{([^}]+)\}/.exec(tok);
+      // B1 (phase 9): the book links some powers as Compendium.invincible-core.powers.<id> WITHOUT ".Item." (Vigilante, Warrior, Wisecracker): accept both forms
+      const link = /@UUID\[(Compendium\.invincible-core\.powers\.(?:Item\.)?[^\]]+)\]\{([^}]+)\}/.exec(tok);
       if (!link) continue;
-      const hit = pw.find((p) => p.packUuid === link[1] || Object.values(p.levels).includes(link[1])) ?? pw.find((p) => norm(p.name) === norm(clean(link[2]).replace(/^(major|massive)\s+/i, "")));
+      const canon = (u) => String(u).replace(/\.Item\./, ".");
+      const hit = pw.find((p) => canon(p.packUuid) === canon(link[1]) || Object.values(p.levels).some((l) => canon(l) === canon(link[1]))) ?? pw.find((p) => norm(p.name) === norm(clean(link[2]).replace(/^(major|massive)\s+/i, "")));
       if (!hit) continue;
       const level = /\bmassive\b/i.test(link[2] + " " + tok.slice(0, link.index)) ? 2 : /\bmajor\b/i.test(link[2] + " " + tok.slice(0, link.index)) ? 1 : 0;
       const boosts = [];
-      for (const b of tok.matchAll(/@UUID\[(Compendium\.invincible-core\.boosts\.Item\.[^\]]+)\]\{([^}]+)\}/g)) {
-        const be = bAll.find((x) => x.packUuid === b[1]);
+      for (const b of tok.matchAll(/@UUID\[(Compendium\.invincible-core\.boosts\.(?:Item\.)?[^\]]+)\]\{([^}]+)\}/g)) {
+        const be = bAll.find((x) => canon(x.packUuid) === canon(b[1]));
         boosts.push({ name: be?.name ?? clean(b[2]), packUuid: be?.packUuid ?? b[1] });
       }
       const note = /\}\s*\(([^)]*)\)/.exec(tok)?.[1];
       powersOut.push({ name: hit.name, packUuid: hit.packUuid, level, boosts, ...(note && !/boost/i.test(note) ? { note: clean(note) } : {}) });
     }
     const name = clean(h2.textContent).replace(/^The\s+/i, "");
-    if (name) out.set(norm(name), { id: name, name, role, attrs, powers: powersOut });
+    if (name) {
+      // parse oracle (phase 9): attribute sum must equal 32 + 2 * (4 - power slots) for Global Champion; a mismatch means the parser dropped something
+      const sum = Object.values(attrs).reduce((a, b) => a + b, 0), slotsUsed = powersOut.reduce((a, p) => a + p.level + 1 + p.boosts.length, 0);
+      if (sum && sum !== 32 + 2 * (4 - slotsUsed)) console.warn(`${MODULE_ID} | chargen: archetype "${name}" parse check failed (attribute sum ${sum}, slots ${slotsUsed})`);
+      out.set(norm(name), { id: name, name, role, attrs, powers: powersOut });
+    }
   }
   return out;
 }
@@ -217,9 +239,11 @@ export const NAME_LISTS = { first: FIRST, last: LAST };
 const dedupe = (entries) => { const seen = new Set(); return entries.filter((e) => { const k = norm(e.name); if (!k || seen.has(k)) return false; seen.add(k); return true; }); };
 const withUuid = async (type, entries) => {
   const list = await LISTERS[type]();
-  return entries.map((e) => (e.packUuid ? e : { ...e, packUuid: list.find((x) => norm(x.name) === norm(e.name))?.packUuid ?? undefined })).map((e) => (e.packUuid ? e : (({ packUuid, ...r }) => r)(e)));
+  const need = (e) => (type === "drawback" && !e.needs ? (list.find((x) => norm(x.name) === norm(e.name))?.needs || undefined) : e.needs);
+  return entries.map((e) => (e.packUuid ? e : { ...e, packUuid: list.find((x) => norm(x.name) === norm(e.name))?.packUuid ?? undefined })).map((e) => (e.packUuid ? e : (({ packUuid, ...r }) => r)(e)))
+    .map((e) => { const n = need(e); return n ? { ...e, needs: n } : e; });
 };
-const asEntry = (e) => ({ name: e.name, packUuid: e.packUuid, ...(e.type ? { type: e.type } : {}), ...(e.maxLevel != null ? { maxLevel: e.maxLevel } : {}) });
+const asEntry = (e) => ({ name: e.name, packUuid: e.packUuid, ...(e.type ? { type: e.type } : {}), ...(e.maxLevel != null ? { maxLevel: e.maxLevel } : {}), ...(e.needs ? { needs: e.needs } : {}) });
 
 /**
  * @param {object} [opts]

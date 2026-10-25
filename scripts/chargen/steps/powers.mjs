@@ -10,7 +10,7 @@
    DICE: random power / random source / random boost draw from seeded substreams (seed + state.rerolls counter), so undo + re-roll gives the same
    result. "From archetype" badges: a power / source whose name matches the applied archetype's book suggestion. */
 import { t } from "../lang.mjs";
-import { ATTRS, ATTR_MIN, SLOT_VALUE, levelCap, slots, budget, powerSlots, validateStep, normName } from "../rules.mjs";
+import { ATTRS, ATTR_MIN, SLOT_VALUE, levelCap, powerMaxLevel, slots, budget, powerSlots, validateStep, normName } from "../rules.mjs";
 import { addPower, removePower, setPowerLevel, setPowerSource, addBoost, removeBoost, addLimit, removeLimit, addSource, removeSource } from "../state.mjs";
 import { substream } from "../rng.mjs";
 import { esc, icon, msgText, delegate, levelName } from "./util.mjs";
@@ -93,6 +93,7 @@ function levelGroup(ctx, p) {
     let why = "";
     if (i === 3) why = t("IPC.Powers.Lv.NoMonstrous");
     else if (i > cap) why = t("IPC.Powers.Lv.NoCosmic");
+    else if (Number.isInteger(ent?.maxLevel ?? powerMaxLevel(p)) && i > (ent?.maxLevel ?? powerMaxLevel(p))) why = (ent?.maxLevel ?? powerMaxLevel(p)) === 0 ? t("IPC.Powers.Lv.BasicOnly") : t("IPC.Powers.Lv.NoLevel");   // B2: only the levels the book defines
     else if (ent?.split && !ent.levels[w]) why = t("IPC.Powers.Lv.NoDoc");
     else if (i > p.level && !guardOk(s, i - p.level)) why = t("IPC.Powers.NoBudget");
     const on = p.level === i;
