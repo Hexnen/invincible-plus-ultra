@@ -11,6 +11,7 @@
 @import url("diceeffects.css");   /* the effects under Dice So Nice dice (scripts/diceeffects/) */
 @import url("chargen.css");   /* the character generator wizard and its header button (scripts/chargen/) */
 @import url("base.css");   /* the team & base card window and its entry points (scripts/base/) */
+@import url("log.css");   /* the activity log view and the hero sheet's Log tab (scripts/log/ui/) */
 
 /* Invincible — Sheet Plus: actor sheets only. Palette: yellow #ffe72a, cyan #0096cb, blue #3465a3. */
 .invincible.sheet.actor {

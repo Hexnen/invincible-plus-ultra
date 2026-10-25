@@ -90,12 +90,12 @@ export async function note(target, text, { gmOnly = false, on } = {}) {
 
 export function stats(target) { const a = resolve(target); return a ? Store.counts(a.id) : null; }
 /** export(target, {format, filter, all}) -> {filename, mime, text} (data only; saving is the UI's job) */
-export function exportLog(target, { format = "json", filter, all = true } = {}) {
+export function exportLog(target, { format = "json", filter, all = true, text, labels, offsetMin } = {}) {
   const a = resolve(target); if (!a) return null;
   const r = read(a); if (!r.canSee) return null;
   const users = Object.fromEntries(game.users.map((u) => [u.id, u.name]));
   const list = all || !filter ? r.entries : query(r.entries, filter, { scope: scopeOfActor(a) });
-  return X.exportEntries(list, format, { actor: { id: a.id, name: a.name, uuid: a.uuid, type: scopeOfActor(a) }, exportedAt: Date.now(), exportedBy: game.user.name, users, scope: scopeOfActor(a) });
+  return X.exportEntries(list, format, { actor: { id: a.id, name: a.name, uuid: a.uuid, type: scopeOfActor(a) }, exportedAt: Date.now(), exportedBy: game.user.name, users, scope: scopeOfActor(a), ...(typeof text === "function" ? { text } : {}), ...(labels ? { labels } : {}), ...(Number.isFinite(offsetMin) ? { offsetMin } : {}) });
 }
 
 /** GM only: annotate / redact / trim. */
