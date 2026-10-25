@@ -4,22 +4,7 @@ import * as P from "../pure.mjs";
 
 const dl = (rows) => `<dl class="ipb-dl">${rows.map(([k, v]) => `<div class="ipb-dl-row"><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>`;
 const note = (ctx) => `<p class="ipb-note-box">${ctx.icon("fa-solid fa-hammer")} <span>${ctx.esc(ctx.t("IPB.Ph.Note"))}</span></p>`;
-const val = (ctx, v) => (v ? ctx.esc(v) : `<span class="ipb-muted">${ctx.esc(ctx.t("IPB.Ph.NotSet"))}</span>`);
 const list = (items) => `<ul class="ipb-plist">${items.map((x) => `<li>${x}</li>`).join("")}</ul>`;
-
-export const base = {
-  id: "base",
-  icon: "fa-solid fa-warehouse",
-  badge: () => "",
-  render(ctx) {
-    const { B } = ctx;
-    return note(ctx) + dl([
-      [ctx.esc(ctx.t("IPB.Ph.Kind")), val(ctx, B.base.kind)],
-      [ctx.esc(ctx.t("IPB.Ph.Where")), val(ctx, B.base.where)],
-      [ctx.esc(ctx.t("IPB.Ph.Rank")), ctx.esc(ctx.t(`IPB.Rank.${B.rank}`))]
-    ]);
-  }
-};
 
 export const upgrades = {
   id: "upgrades",

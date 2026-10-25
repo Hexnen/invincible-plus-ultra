@@ -17,7 +17,7 @@ const LOG = `${MOD} (base) |`;
 export const catalog = {
   upgrades: Cat.upgrades, upgrade: Cat.upgrade, audit: Cat.audit, available: Cat.available, invalidate: Cat.invalidate,
   eventsTable: Cat.eventsTable, cityTable: Cat.cityTable, bands: Cat.bands, rollEvent: Cat.rollEvent, rollCity: Cat.rollCity,
-  teamBaseExamples: Cat.teamBaseExamples, rollTeamBase: Cat.rollTeamBase, teamNames: Cat.teamNames
+  describingPrompts: Cat.describingPrompts, teamBaseExamples: Cat.teamBaseExamples, rollTeamBase: Cat.rollTeamBase, teamNames: Cat.teamNames
 };
 
 export const baseApi = {

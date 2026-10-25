@@ -18,7 +18,7 @@ const TABLES = {
 let upgradesCache = null;          // Promise<Entry[]>
 const tableCache = new Map();      // key -> Promise<RollTable|null>
 
-export function invalidate() { upgradesCache = null; tableCache.clear(); }
+export function invalidate() { upgradesCache = null; promptsCache = null; tableCache.clear(); }
 
 /* ------------------------------------------------------------------ text helpers */
 export function plain(html) {
@@ -93,6 +93,25 @@ export async function audit() {
   }));
 }
 export async function available() { return !!game.packs.get(BOOK_PACK) && (await upgrades()).length > 0; }
+
+/* ------------------------------------------------------------------ describing prompts (Base tab "Need ideas?") */
+const PROMPTS_PAGE = { id: "4XsHaJDaJPBLSqIe", name: "The Team Base" };
+let promptsCache = null;          // Promise<string[]>
+/** The questions of the "Describing the Base" box on the book's Team Base page, read at runtime (never stored); [] without the book. */
+export function describingPrompts() {
+  promptsCache ??= (async () => {
+    try {
+      const pack = game.packs.get(BOOK_PACK);
+      const journal = pack ? await pack.getDocument(BOOK_JOURNAL) : null;
+      const page = journal?.pages.get(PROMPTS_PAGE.id) ?? journal?.pages.find((p) => p.name === PROMPTS_PAGE.name);
+      if (!page) return [];
+      const doc = new DOMParser().parseFromString(`<div id="root">${page.text?.content ?? ""}</div>`, "text/html");
+      const box = [...doc.querySelectorAll(".box")].find((b) => b.querySelector("h3") && b.querySelector("li"));
+      return [...(box?.querySelectorAll("li") ?? [])].map((li) => li.textContent.replace(/\s+/g, " ").trim()).filter(Boolean);
+    } catch (e) { console.warn(`${MODULE_ID} | base: could not read the describing prompts`, e); return []; }
+  })();
+  return promptsCache;
+}
 
 /* ------------------------------------------------------------------ book tables */
 function table(key) {
