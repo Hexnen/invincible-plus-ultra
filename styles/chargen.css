@@ -759,3 +759,31 @@
 .ipc-ps-all > summary:focus-visible { outline: 3px solid var(--ipc-cyan); outline-offset: 3px; }
 .ipc-ps-all[open] > summary { margin-bottom: 4px; }
 .ipc-error[hidden] { display: none; }
+
+/* ==========================================================================================================================================
+   PHASE 5f: TEAM step (steps/team.mjs). Reuses the powers / persona vocabulary (.ipc-powers, .ipc-pw-sec, .ipc-pw-row, .ipc-pw-meter, .ipc-chip,
+   .ipc-tog, .ipc-ps-name, .ipc-ps-chips, .ipc-opt). New: the three-way mode radios (a disabled option prints its reason inside the label),
+   the read-only lock note + fields of a hero that already belongs to a base, the recommended-upgrade strip, per-row prerequisite badges.
+   No colour-only signals: icons + words everywhere. Motion: none added (the existing .ipc-landed pop on a picked base / hero).
+   ========================================================================================================================================== */
+.ipc-tm-modes { grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); }
+.ipc-tm-modes .ipc-opt { align-items: flex-start; }
+.ipc-tm-modes .ipc-opt-text small { margin-top: 2px; }
+.ipc-tm-modes .ipc-opt.is-off:not(.is-on) { background: transparent; border-style: dashed; border-color: var(--ipc-line); color: #56688a; cursor: not-allowed; }
+.ipc-tm-modes .ipc-opt.is-off:not(.is-on):hover { translate: none; }
+.ipc-tm-modes .ipc-opt.is-off:not(.is-on) small { color: var(--ipc-amber); }
+.ipc-tm-lock { display: flex; gap: .55em; align-items: flex-start; max-width: 62ch; margin: 4px 0 10px; padding: .5em .8em; font-size: .92rem; background: var(--ipc-paper-2); border: 2px dashed var(--ipc-blue); }
+.ipc-tm-lock > i { margin-top: .2em; color: var(--ipc-blue); }
+.ipc-tm-ro-grid { display: grid; gap: 8px 12px; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); max-width: 52rem; }
+.ipc-app .ipc-input.ipc-tm-ro { color: var(--ipc-text-2); background: var(--ipc-paper-2); border-style: dashed; cursor: default; }
+.ipc-tm-sel { margin: 0 0 8px; }
+.ipc-tm-meter { margin-bottom: 8px; }
+.ipc-tm-h4 { margin: 10px 0 4px; font: 400 .95rem/1.2 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ipc-text-2); }
+.ipc-tm-rec { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0; font-size: .9rem; }
+.ipc-tm-power { max-width: 16rem; margin-top: 4px; }
+.ipc-tm-why { display: flex; gap: .4em; align-items: flex-start; color: var(--ipc-amber); }
+.ipc-tm-why > i { margin-top: .15em; }
+.ipc-pw-badge.ipc-tm-warn { background: #fff4d6; border-color: var(--ipc-amber); color: var(--ipc-amber); }
+.ipc-pw-badge.ipc-tm-met { background: #e4f5ea; border-color: var(--ipc-green); color: var(--ipc-green); }
+.ipc-app button.ipc-btn[aria-disabled="true"][data-act="add-up"] { border-style: dashed; cursor: not-allowed; }
+@media (max-width: 560px) { .ipc-tm-modes { grid-template-columns: minmax(0, 1fr); } }

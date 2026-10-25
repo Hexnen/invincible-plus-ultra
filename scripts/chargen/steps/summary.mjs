@@ -48,8 +48,13 @@ export function summaryRows(step, s) {
         row(t("IPC.Summary.Personality"), s.personality ?? []), row(t("IPC.Summary.Drive"), textOf(s.drive)),
         row(t("IPC.Summary.Flaw"), textOf(s.flaw)), row(t("IPC.Summary.Appearance"), s.appearance)];
     case "team":
-      return [row(t("IPC.Summary.TeamName"), s.team?.name), row(t("IPC.Summary.TeamBase"), s.team?.base),
-        row(t("IPC.Summary.Upgrades"), s.team?.upgrades ?? []), row(t("IPC.Summary.HeroRel"), s.heroRel?.name)];
+    {
+      const tm = s.team ?? {}, mode = tm.mode ?? "text";
+      const card = mode === "join" || mode === "member" ? globalThis.game?.actors?.get?.(tm.baseId) : null;   // phase 5f: the card's own name stands in for the typed one
+      return [row(t("IPC.Summary.TeamMode"), t(`IPC.Summary.Mode.${mode}`)),
+        row(t("IPC.Summary.TeamName"), card?.name ?? tm.name), row(t("IPC.Summary.TeamBase"), mode === "join" || mode === "member" ? "" : [tm.base, tm.where]),
+        row(t("IPC.Summary.Upgrades"), tm.upgrades ?? []), row(t("IPC.Summary.HeroRel"), s.heroRel?.name)];
+    }
     default:
       return [];
   }

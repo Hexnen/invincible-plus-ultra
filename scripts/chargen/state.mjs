@@ -19,7 +19,9 @@
  *   attrs: { fighting, agility, strength, reason, intuition, presence },   // sum must equal rules.budget(state)
  *   personality: [w1,w2], drive: {name,text}|null, flaw: {name,text}|null,
  *   heroName, civilianName, appearance: string,
- *   team: { name, base, upgrades:[string] }, heroRel: { name, actorUuid|null },
+ *   team: { name, base (kind of base), where (location), upgrades:[string "Name" | "Power Effect (Flight)"],
+ *           mode: "text"|"join"|"create"|"member" (phase 5f: how the hero is tied to a team base actor), baseId: base actor id|null (join) },
+ *   heroRel: { name, actorUuid|null },
  *   locks:   { <fieldName>: true },    // random mode: field excluded from re-rolls
  *   touched: { <stepId>: true },       // user edited the step by hand (global re-roll keeps it)
  *   rerolls: { <stepId|"plan">: n }    // substream counter: seed + counter => reproducible
@@ -54,7 +56,7 @@ export function createState({ seed = "000000", rank = DEFAULT_RANK, mode = "manu
     attrs: Object.fromEntries(ATTRS.map((k) => [k, 2])),
     personality: [], drive: null, flaw: null,
     heroName: "", civilianName: "", appearance: "",
-    team: { name: "", base: "", upgrades: [] }, heroRel: { name: "", actorUuid: null },
+    team: { name: "", base: "", where: "", upgrades: [], mode: "text", baseId: null }, heroRel: { name: "", actorUuid: null },
     locks: {}, touched: {}, rerolls: {}
   };
 }
@@ -141,5 +143,5 @@ export function deserialize(text) {
   const raw = typeof text === "string" ? JSON.parse(text) : text;
   if (!raw || typeof raw !== "object" || raw.v !== STATE_VERSION) throw new Error("chargen: unsupported state version");
   const base = createState({ seed: raw.seed, rank: raw.rank, mode: raw.mode });
-  return { ...base, ...raw, attrs: { ...base.attrs, ...(raw.attrs ?? {}) }, locks: { ...(raw.locks ?? {}) }, touched: { ...(raw.touched ?? {}) }, rerolls: { ...(raw.rerolls ?? {}) } };
+  return { ...base, ...raw, team: { ...base.team, ...(raw.team ?? {}) }, attrs: { ...base.attrs, ...(raw.attrs ?? {}) }, locks: { ...(raw.locks ?? {}) }, touched: { ...(raw.touched ?? {}) }, rerolls: { ...(raw.rerolls ?? {}) } };
 }

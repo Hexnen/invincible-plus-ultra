@@ -54,5 +54,8 @@ fam("IPC.Field.", ["name", "civilianName", "role", "appearance", "occupation", "
 
 fam("IPC.Persona.", ["Drive", "Flaw"], [".Title", ".Sub", ".Roll", ".RollTipArch", ".RollTipAll", ".Field", ".Ph", ".UseAria"]);   // phase 5e: built with a template string in steps/persona.mjs
 
+fam("IPC.Team.Mode.Set.", ["text", "join", "create"]);                  // phase 5f: built with a template string in steps/team.mjs
+fam("IPC.Summary.Mode.", ["text", "join", "create", "member"]);          // phase 5f: built with a template string in steps/summary.mjs
+
 console.log(bad ? `${bad} problem(s)` : `OK: ${Object.keys(EN).length} keys, ${used.size} used directly, ${codes.size} rule codes, EN = PL`);
 process.exit(bad ? 1 : 0);

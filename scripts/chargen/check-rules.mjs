@@ -298,6 +298,27 @@ ok(lockBad === 0, `locks respected, locked rolls stay valid (${lockBad} problems
   ok(!r.ok && r.errors.some((e) => e.step === "attributes"), "impossible locked sum is reported as an attribute error");
 }
 
+{
+  // phase 5f: team.mode (text | join | create | member), baseId, where; old drafts without them
+  const base = S.createState({ seed: "t5f", rank: "global" });
+  eq(base.team, { name: "", base: "", where: "", upgrades: [], mode: "text", baseId: null }, "new state team shape (5f)");
+  const old = S.deserialize(JSON.stringify({ ...base, team: { name: "Old", base: "Roof", upgrades: ["a"] } }));
+  eq([old.team.mode, old.team.baseId, old.team.where, old.team.name], ["text", null, "", "Old"], "an older draft without the 5f team keys is filled with defaults");
+  const codes = (st) => R.validateStep(st, "team").issues.map((i) => i.code);
+  ok(codes(base).includes("team.empty"), "text mode, nothing written: team.empty (warn)");
+  ok(codes(S.patch(base, { team: { ...base.team, mode: "join" } })).includes("team.join.missing"), "join without a base: error team.join.missing");
+  const j = R.validateStep(S.patch(base, { team: { ...base.team, mode: "join" } }), "team");
+  ok(j.issues.find((i) => i.code === "team.join.missing")?.severity === "error", "team.join.missing is an error");
+  ok(!codes(S.patch(base, { team: { ...base.team, mode: "join", baseId: "abc" } })).length, "join with a base: no team issue");
+  ok(codes(S.patch(base, { team: { ...base.team, mode: "create", base: "Roof" } })).includes("team.empty"), "create needs a team name");
+  ok(!codes(S.patch(base, { team: { ...base.team, mode: "create", name: "Crew" } })).includes("team.empty"), "create with a name is fine");
+  ok(!codes(S.patch(base, { team: { ...base.team, mode: "member", upgrades: ["a", "b", "c", "d"] } })).length, "a member hero: the card owns the texts and the upgrades (no empty / over warnings)");
+  ok(codes(S.patch(base, { team: { ...base.team, mode: "create", name: "Crew", upgrades: ["a", "b", "c"] } })).includes("upgrades.over"), "create with too many starting upgrades warns");
+  // random keeps how the hero is tied to a base
+  const r = await rollStep(S.patch(base, { team: { ...base.team, mode: "create", baseId: null } }), "team", P, { withinArchetype: false });
+  eq([r.team.mode, r.team.where], ["create", ""], "rolling the team step keeps the mode and clears the location");
+}
+
 console.log(`${checks} checks, ${fails} failed, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 console.log(fails ? "FAILED" : "OK");
 process.exit(fails ? 1 : 0);

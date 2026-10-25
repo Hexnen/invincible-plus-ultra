@@ -216,8 +216,12 @@ export function validate(state) {
   if (!String(state.civilianName ?? "").trim()) out.push(issue("civilianName.empty", "warn", "persona", "civilianName"));
 
   // team
-  if (!String(state.team?.name ?? "").trim() && !String(state.team?.base ?? "").trim()) out.push(issue("team.empty", "warn", "team", "team"));
-  if ((state.team?.upgrades ?? []).length > r.upgrades) out.push(issue("upgrades.over", "warn", "team", "team.upgrades", { count: state.team.upgrades.length, max: r.upgrades }));
+  // phase 5f: team.mode = "text" (default) | "join" (a chosen base card) | "create" (a new base card) | "member" (the hero already belongs to a base; the card owns the team texts)
+  const tmode = state.team?.mode ?? "text";
+  const tName = String(state.team?.name ?? "").trim(), tBase = String(state.team?.base ?? "").trim();
+  if (tmode === "join" && !state.team?.baseId) out.push(issue("team.join.missing", "error", "team", "team.baseId"));
+  else if (tmode === "create" ? !tName : tmode !== "join" && tmode !== "member" && !tName && !tBase) out.push(issue("team.empty", "warn", "team", "team"));
+  if (tmode !== "member" && (state.team?.upgrades ?? []).length > r.upgrades) out.push(issue("upgrades.over", "warn", "team", "team.upgrades", { count: state.team.upgrades.length, max: r.upgrades }));
 
   return summarize(out);
 }

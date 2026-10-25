@@ -36,8 +36,106 @@ const getp = (obj, path) => foundry.utils.getProperty(obj, path);
 const clone = (x) => (x === undefined ? undefined : foundry.utils.deepClone(x));
 const emptyCounts = () => Object.fromEntries([...WIPE_TYPES, "total"].map((k) => [k, 0]));
 
+/* ------------------------------------------------------------------ team base integration (phase 5f)
+   The team / base live in a REAL ACTOR (scripts/base). What the Team step chose (state.team.mode) is carried out AFTER the hero's items and fields are
+   written: "create" makes a base actor with this hero as the first member (kind, location, starting upgrades), "join" links the hero to an existing one
+   (+ extra starting upgrades), then the card's two texts are mirrored onto the hero with the sync option ipbSync (base/lock.mjs refuses every other writer).
+   A hero that is ALREADY a member keeps its fields untouched (the card owns system.team / system.teamBase; nothing to do). Any failure of this stage rolls
+   the hero back too (the base side is compensated first: upgrades removed, hero unlinked, a base created by this run deleted when the user may). */
+const baseApi = () => globalThis.game?.modules?.get(MODULE_ID)?.api?.base ?? null;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function teamIntent(actor, state) {
+  const B = baseApi();
+  const mode = state.team?.mode ?? "text";
+  let card = null;
+  try { card = B?.find?.(actor) ?? null; } catch { card = null; }
+  if (card) return { action: "member", B, card };
+  if (mode === "join" || mode === "create") return { action: mode, B };
+  return { action: "text", B };
+}
+function canCreateBase(B) {
+  try { return !!B && (B.isStaff() || game.settings.get(MODULE_ID, "basePlayersCreate") === true); } catch { return false; }
+}
+/** "Power Effect (Flight)" -> { name, power } */
+function splitUpgrade(s) {
+  const m = /^(.*?)\s*\(([^)]*)\)\s*$/.exec(String(s ?? "").trim());
+  return m ? { name: m[1].trim(), power: m[2].trim() } : { name: String(s ?? "").trim(), power: "" };
+}
+/** Reverse what a run did on the base side. Returns [Msg] (notes for the user); never throws. */
+async function undoBase(actor, run) {
+  const notes = [];
+  const B = baseApi();
+  if (!B || !run?.baseId) return notes;
+  try {
+    const base = B.cardById(run.baseId);
+    if (base && run.added?.length && B.canEdit(base)) for (const id of run.added) { try { await B.upgrades.remove(base, id); } catch (err) { console.warn(`${MODULE_ID} | chargen: could not remove upgrade ${id}`, err); } }
+    if (run.linked && B.find(actor)?.id === run.baseId) await B.unlink(actor);
+    if (run.created && base) {
+      if (B.isStaff() && B.members(base, { all: true }).length === 0) await B.remove(base);
+      else notes.push(msg("Warn", "BaseKept", { team: base.name }));
+    }
+  } catch (err) {
+    console.warn(`${MODULE_ID} | chargen: undoing the base step failed`, err);
+    notes.push(msg("Warn", "BaseKept", { team: run.name ?? "" }));
+  }
+  return notes;
+}
+/** Create / join the base, add the starting upgrades, mirror the texts. Returns the run record (kept for undo). Throws after compensating. */
+async function applyBase(actor, state, ti, warnings) {
+  const B = ti.B, tm = state.team ?? {};
+  const run = { action: ti.action, baseId: null, name: "", created: false, linked: false, added: [] };
+  try {
+    let base;
+    if (ti.action === "create") {
+      const v = await B.create({ name: String(tm.name ?? "").trim(), rank: state.rank, fromActor: actor });
+      base = B.cardById(v.id);
+      run.created = true; run.linked = true;
+      // the hero's own link is the truth: if two GM clients both answered a relayed request (one of them running older module code) the hero is linked to
+      // the card the LAST answer made; write to that one so the hero and its card agree
+      for (let i = 0; i < 20 && !B.find(actor); i++) await sleep(100);
+      const lk = B.find(actor);
+      if (lk && lk.id !== v.id) base = B.cardById(lk.id);
+    } else {
+      base = B.cardById(tm.baseId);
+      if (!base) throw new Error(t("IPCA.Err.BaseGone"));
+      await B.link(actor, base);
+      run.linked = true;
+    }
+    if (!base) throw new Error(t("IPCA.Err.BaseGone"));
+    run.baseId = base.id; run.name = base.name;
+    if (!B.isStaff()) for (let i = 0; i < 60 && !B.canEdit(base); i++) await sleep(100);   // the GM's ownership grant arrives as a separate update
+    const canEdit = B.canEdit(base);
+    const wants = (ti.action === "create" && (String(tm.base ?? "").trim() || String(tm.where ?? "").trim())) || (tm.upgrades ?? []).length;
+    if (wants && !canEdit) warnings.push(msg("Warn", "BaseNoEdit", { team: base.name }));
+    else {
+      if (ti.action === "create" && (String(tm.base ?? "").trim() || String(tm.where ?? "").trim())) {
+        try { await B.update(base.id, { base: { kind: String(tm.base ?? "").trim(), where: String(tm.where ?? "").trim() } }); }
+        catch (err) { warnings.push(msg("Warn", "BaseField", { team: base.name, error: err?.message ?? String(err) })); }
+      }
+      for (const raw of tm.upgrades ?? []) {
+        const { name, power } = splitUpgrade(raw);
+        if (!name) continue;
+        try {
+          const before = Object.keys(B.get(base.id)?.upgrades ?? {});
+          const entry = await B.catalog.upgrade(name);
+          const id = await B.upgrades.add(base.id, entry ? entry.key : "custom", { source: "start", power: entry?.perPower ? power : "", name: entry ? "" : name });
+          if (!before.includes(id)) run.added.push(id);
+        } catch (err) { warnings.push(msg("Warn", "BaseUpgrade", { name: raw, error: err?.message ?? String(err) })); }
+      }
+    }
+    // the hero sheet mirrors the card (one-way, the card is the source of truth); written with the sync option the lock guard allows
+    const f = B.sync.format(base.id);
+    await actor.update({ "system.team": f.team, "system.teamBase": f.teamBase, [`flags.${MODULE_ID}.${B.pure.FLAG_KEY}.pushed`]: { team: f.team, teamBase: f.teamBase } }, { ipbSync: true });
+    warnings.push(ti.action === "create" ? msg("Warn", "BaseCreated", { team: base.name }) : msg("Warn", "BaseJoined", { team: base.name }));
+    return run;
+  } catch (err) {
+    await undoBase(actor, run);
+    throw err;
+  }
+}
+
 /* ------------------------------------------------------------------ state -> actor field values */
-function fieldValues(state) {
+function fieldValues(state, skipTeam = false) {
   const f = {};
   const text = (path, v) => { const s = String(v ?? "").trim(); if (s) f[path] = s; };
   text("name", state.heroName);
@@ -54,9 +152,12 @@ function fieldValues(state) {
   if (state.npcRel?.type || state.npcRel?.name) rel.push(`NPC: ${[state.npcRel.name, state.npcRel.type ? `(${state.npcRel.type})` : ""].filter(Boolean).join(" ")}`);
   if (state.heroRel?.name) rel.push(`Hero: ${state.heroRel.name}`);
   text("system.relationships", rel.join("\n"));
-  text("system.team", state.team?.name);
-  const ups = (state.team?.upgrades ?? []).filter(Boolean);
-  text("system.teamBase", [state.team?.base, ups.length ? `upgrades: ${ups.join(", ")}` : ""].filter(Boolean).join("; "));
+  if (!skipTeam) {   // phase 5f: a hero that belongs to (or is about to join) a team base card does NOT get these two texts from the wizard: the card owns them (base/lock.mjs)
+    text("system.team", state.team?.name);
+    const ups = (state.team?.upgrades ?? []).filter(Boolean);
+    const head = [state.team?.base, state.team?.where].map((x) => String(x ?? "").trim()).filter(Boolean).join(", ");
+    text("system.teamBase", [head, ups.length ? `upgrades: ${ups.join(", ")}` : ""].filter(Boolean).join("; "));
+  }
   f["system.reputation"] = RANKS[state.rank]?.reputation ?? 0;
   f["system.resources"] = Number(state.resources) || 0;
   return f;
@@ -92,6 +193,18 @@ export async function plan(actor, state) {
   for (const i of v.errors) errors.push({ code: i.code, key: i.key, params: i.params, path: i.path, step: i.step, message: i.key });
   if (v.errors.length) errors.unshift(msg("Err", "Invalid", { count: v.errors.length }));
   for (const i of v.warnings ?? []) warnings.push({ code: i.code, key: i.key, params: i.params, path: i.path, step: i.step, message: i.key });
+  const ti = teamIntent(actor, state);                                  // phase 5f: team base integration
+  if (ti.action === "member") warnings.push(msg("Warn", "BaseMember", { team: ti.card.name }));
+  else if (ti.action === "create") {
+    if (!ti.B) errors.push(msg("Err", "NoBase"));
+    else if (!canCreateBase(ti.B)) errors.push(msg("Err", "BaseNoCreate"));
+    else warnings.push(msg("Warn", "BaseWillCreate", { team: String(state.team?.name ?? "").trim() || "?" }));
+  } else if (ti.action === "join") {
+    const target = ti.B?.cardById?.(state.team?.baseId);
+    if (!ti.B) errors.push(msg("Err", "NoBase"));
+    else if (!target || !target.testUserPermission(game.user, "LIMITED")) errors.push(msg("Err", "BaseGone"));
+    else warnings.push(msg("Warn", "BaseWillJoin", { team: target.name }));
+  }
   const av = Catalog.available();
   if (!av.ok) { errors.push(msg("Err", "NoPacks", { missing: av.missing.join(", ") })); return out; }
   if (errors.length) return finishCounts(out, actor, state);
@@ -142,7 +255,7 @@ export async function plan(actor, state) {
   if (out.keeps.length) warnings.push(msg("Warn", "KeepsItems", { count: out.keeps.length }));
 
   // field diff
-  const vals = fieldValues(state);
+  const vals = fieldValues(state, ti.action !== "text");
   const flagPath = `flags.${MODULE_ID}.chargen`;
   for (const [path, to] of Object.entries(vals)) {
     const from = getp(actor._source, path) ?? ""; // SOURCE value: actor.system holds effect-modified numbers (Renowned +3 ...)
@@ -151,6 +264,7 @@ export async function plan(actor, state) {
   out.fields.push({ path: flagPath, from: getp(actor._source, flagPath)?.rank ?? null, to: state.rank });
   out._ops = ops;
   out._vals = vals;
+  out._team = ti;
   out.ok = true;
   return finishCounts(out, actor, state);
 }
@@ -163,7 +277,7 @@ function finishCounts(out) {
   out.ok = out.ok && !out.errors.length;
   return out;
 }
-const publicPlan = (p) => { const { _ops, _vals, ...rest } = p; return rest; };
+const publicPlan = (p) => { const { _ops, _vals, _team, ...rest } = p; return rest; };
 /** the plan without internals (safe to hand to a UI / JSON) */
 export async function planPublic(actor, state) { return publicPlan(await plan(actor, state)); }
 
@@ -183,7 +297,9 @@ export async function apply(actor, state, { confirmed = false } = {}) {
 
   // snapshot (everything we are about to overwrite)
   const snap = { runId, at: Date.now(), fields: {}, unset: [], items: actor.items.filter((i) => WIPE_TYPES.includes(i.type)).map((i) => i.toObject()), prevChargen: clone(getp(actor._source, flagPath)), prevBackup: clone(getp(actor._source, backupPath)) };
-  for (const path of [...Object.keys(vals), "system.derived.health.value", "system.derived.resolve.value"]) {
+  const ti = p._team ?? { action: "text" };
+  const mirrored = ti.action === "join" || ti.action === "create" ? ["system.team", "system.teamBase"] : [];   // the base step overwrites these through the card mirror: undo must restore them
+  for (const path of [...Object.keys(vals), ...mirrored, "system.derived.health.value", "system.derived.resolve.value"]) {
     const cur = getp(actor._source, path); // source data, NOT the effect-modified actor.system value
     if (cur === undefined) snap.unset.push(path); else snap.fields[path] = clone(cur);
   }
@@ -241,6 +357,13 @@ export async function apply(actor, state, { confirmed = false } = {}) {
     stage = "health";
     const hp = actor.system.derived.health.max, rp = actor.system.derived.resolve.max;
     await actor.update({ "system.derived.health.value": hp, "system.derived.resolve.value": rp });
+    // 8. team base (phase 5f): AFTER the hero is complete; its own failure compensates the base side, then the catch below rolls the hero back
+    if (ti.action === "join" || ti.action === "create") {
+      stage = "base";
+      snap.base = await applyBase(actor, state, ti, warnings);
+      try { if (update[backupPath]) await actor.update({ [`${backupPath}.base`]: snap.base }); }
+      catch (err) { console.warn(`${MODULE_ID} | chargen: could not store the base record in the backup`, err); }
+    }
   } catch (err) {
     console.error(`${MODULE_ID} | chargen apply failed at ${stage}`, err);
     const reason = err?.message ?? String(err);
@@ -268,11 +391,12 @@ async function restore(actor, snap, createdIds = null) {
   const back = snap.items.filter((i) => !clash.has(i._id));
   if (back.length) await actor.createEmbeddedDocuments("Item", back, { keepId: true });
   const upd = { ...snap.fields };
+  for (const path of snap.unset ?? []) if (typeof getp(actor._source, path) === "string") upd[path] = "";   // a text field that did not exist before the run goes back to empty (found in 5f: undo left the texts behind)
   const flagPath = `flags.${MODULE_ID}`;
   if (snap.prevChargen) upd[`${flagPath}.chargen`] = snap.prevChargen; else upd[`${flagPath}.-=chargen`] = null;
   if (createdIds && snap.prevBackup) upd[`${flagPath}.chargenBackup`] = snap.prevBackup; // failed run: the older undo backup stays
   else upd[`${flagPath}.-=chargenBackup`] = null;
-  await actor.update(upd);
+  await actor.update(upd, { ipbSync: true });   // our own legitimate writer for the team texts the base lock guard protects (a no-op option otherwise)
 }
 
 export function hasUndo(actor) {
@@ -284,9 +408,10 @@ export async function undo(actor) {
   if (!snap) { const e = msg("Err", "NoUndo", { actor: actor?.name ?? "?" }); return { ok: false, errors: [e], message: e.message }; }
   if (!actor.isOwner) { const e = msg("Err", "NotOwner", { actor: actor.name }); return { ok: false, errors: [e], message: e.message }; }
   try {
+    const warnings = await undoBase(actor, snap.base);   // phase 5f: unlink the hero / remove what the run added to the base BEFORE the texts are restored
     await restore(actor, snap);
     memory.delete(actor.uuid);
-    return { ok: true, errors: [], message: t("IPCA.Done.Undo", { actor: actor.name }) };
+    return { ok: true, errors: [], warnings, message: t("IPCA.Done.Undo", { actor: actor.name }) };
   } catch (err) {
     console.error(`${MODULE_ID} | chargen undo failed`, err);
     const e = msg("Err", "UndoFailed", { error: err?.message ?? String(err) });

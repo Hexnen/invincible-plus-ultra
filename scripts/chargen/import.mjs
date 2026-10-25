@@ -50,10 +50,16 @@ export function stateFromActor(actor, { seed = "000000", rank } = {}) {
     if (m[1].toLowerCase() === "hero") s.heroRel = { name: m[2].trim(), actorUuid: null };
     else { const n = m[2].match(/^(.*?)\s*(?:\(([^)]*)\))?$/); s.npcRel = { name: (n?.[1] ?? m[2]).trim(), type: (n?.[2] ?? "").trim() }; }
   }
-  s.team = { name: txt("team"), base: "", upgrades: [] };
+  s.team = { name: txt("team"), base: "", where: "", upgrades: [], mode: "text", baseId: null };
   const [base, ups] = txt("teamBase").split(/;\s*upgrades:\s*/i);
-  s.team.base = (base ?? "").trim();
+  const head = (base ?? "").trim(), comma = head.indexOf(",");              // "kind, where" (the base card's own mirror format)
+  s.team.base = (comma < 0 ? head : head.slice(0, comma)).trim();
+  s.team.where = comma < 0 ? "" : head.slice(comma + 1).trim();
   s.team.upgrades = (ups ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  try {                                                                     // phase 5f: a hero that already belongs to a team base: the card owns the two texts
+    const card = globalThis.game?.modules?.get(MODULE_ID)?.api?.base?.find?.(actor);
+    if (card) { s.team.mode = "member"; s.team.baseId = card.id; }
+  } catch { /* the base feature is optional */ }
 
   const items = [...actor.items];
   const ofType = (type) => items.filter((i) => i.type === type);

@@ -376,6 +376,7 @@ async function stepTeam({ state, P, rng, frozen }) {
     const n = RANKS[state.rank].upgrades;
     const ups = rng.sample((await listOf(P, "baseUpgrades", {})).map((e) => e.name), n);
     out.team = {
+      ...(state.team ?? {}), where: "",                                   // phase 5f: keep mode / baseId (how the hero is tied to a base card)
       name: (await draw(P, "teamNames", rng, {}))?.name ?? "",
       base: (await draw(P, "teamBases", rng, { rank: state.rank }))?.name ?? "",
       upgrades: ups
