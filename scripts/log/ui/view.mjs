@@ -446,7 +446,18 @@ export class LogView {
 
   /* ---------------------------------------------------------------- one row */
   #open(e) { return this.s.density === "detailed" ? !this.s.toggled.has(e.id) : this.s.toggled.has(e.id); }
+  /** One row; a damaged entry (hostile data from a file or another module) becomes a plain "damaged entry" row instead of breaking the list (L8). */
   #row(e) {
+    try { return this.#rowBuild(e); }
+    catch (err) {
+      console.warn(`${MOD} | log view: a row could not be built`, e?.id, err);
+      return h("li.ipl-row", { "data-id": String(e?.id ?? ""), "data-cat": "system", "data-sev": 1 },
+        h("time.ipl-time", Number.isFinite(e?.t) ? { datetime: new Date(e.t).toISOString() } : {}, Number.isFinite(e?.t) ? R.fmtClock(e.t) : "—"),
+        h("span.ipl-ico", { "data-cat": "system" }, icon("fa-triangle-exclamation")),
+        h("div.ipl-main", h("p.ipl-sum", h("span.ipl-sumt", t("IPL.UI.Damaged", { type: String(e?.k ?? "") })))));
+    }
+  }
+  #rowBuild(e) {
     const n = ++this.#seq, did = `${this.id}-d${n}`;
     const cat = R.catOf(e, this.ctx), sev = E.severityOf(e.k);
     const open = this.#open(e);
@@ -464,7 +475,8 @@ export class LogView {
   }
   #fillDetail(li, e, full = false) {
     const box = li.querySelector(".ipl-detail");
-    box.replaceChildren(R.detailOf(e, this.ctx, { fullKids: full }), this.#actionsRow(e));
+    try { box.replaceChildren(R.detailOf(e, this.ctx, { fullKids: full }), this.#actionsRow(e)); }
+    catch (err) { console.warn(`${MOD} | log view: a detail panel could not be built`, e?.id, err); box.replaceChildren(h("p.ipl-muted", t("IPL.UI.Damaged", { type: String(e?.k ?? "") }))); }
     box.dataset.filled = "1";
   }
   #actionsRow(e) {
@@ -478,7 +490,7 @@ export class LogView {
   }
 
   /* ---------------------------------------------------------------- events */
-  #entry(id) { return this.data.entries.find((x) => x.id === id) ?? null; }
+  #entry(id, li = null) { const aid = li?.dataset?.aid; return this.data.entries.find((x) => x.id === id && (!aid || x.aid === aid)) ?? null; }     // merged Table log: ids are only unique per log, the row knows its log
   #onKey(ev) {
     if (ev.key === "/" && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.target.closest?.("input, textarea, select, [contenteditable]")) { ev.preventDefault(); this.$search.focus(); return; }
     if (ev.key === "Escape") {
@@ -524,7 +536,7 @@ export class LogView {
       case "item": { const aid = b.closest("li.ipl-row")?.dataset.aid; const act = aid ? game.actors.get(aid) : this.src.actor; act?.items?.get(id)?.sheet?.render(true); break; }
       case "actor": { game.actors?.get(id)?.sheet?.render(true); break; }
       case "chat": this.#showChat(id); break;
-      case "allkids": { const li = b.closest("li.ipl-row"), e = this.#entry(id); if (li && e) this.#fillDetail(li, e, true); break; }
+      case "allkids": { const li = b.closest("li.ipl-row"), e = this.#entry(id, li); if (li && e) this.#fillDetail(li, e, true); break; }
       case "annotate": this.#annotate(b, id); break;
       case "redact": this.#redact(b, id); break;
       case "export": this.#export(b.dataset.iplFmt, b.dataset.iplId === "view"); break;
@@ -532,7 +544,7 @@ export class LogView {
     }
   }
   #toggleRow(btn, id) {
-    const li = btn.closest("li.ipl-row"), e = this.#entry(id); if (!li || !e) return;
+    const li = btn.closest("li.ipl-row"), e = this.#entry(id, li); if (!li || !e) return;
     const box = li.querySelector(".ipl-detail");
     const open = btn.getAttribute("aria-expanded") !== "true";
     if (open && !box.dataset.filled) this.#fillDetail(li, e);
@@ -593,7 +605,7 @@ export class LogView {
       ev.preventDefault();
       const ta = form.querySelector("textarea"), err = form.querySelector(".ipl-err-t");
       if (!ta.value.trim()) { err.textContent = t("IPL.UI.NoteEmpty"); err.hidden = false; return; }
-      const r = await this.src.annotate(id, ta.value.trim()).catch(() => null);
+      const r = await this.src.annotate(id, ta.value.trim(), li.dataset.aid || undefined).catch(() => null);
       if (!r) { err.textContent = t("IPL.UI.NoteFailed"); err.hidden = false; return; }
       form.remove(); btn.setAttribute("aria-expanded", "false"); setTimeout(() => this.#sync(), 400);
     });
@@ -604,7 +616,7 @@ export class LogView {
     const bar = btn.parentElement;
     const ask = h("span.ipl-ask", { role: "group" }, h("span", t("IPL.UI.RedactAsk")),
       h("button.ipl-btn.ipl-sm.ipl-danger", { type: "button", onclick: async () => {
-        const r = await this.src.redact(id).catch(() => null);
+        const r = await this.src.redact(id, btn.closest("li.ipl-row")?.dataset.aid || undefined).catch(() => null);
         if (!r) { ask.replaceChildren(h("span.ipl-err-t", { role: "alert" }, t("IPL.UI.RedactFailed"))); return; }
         setTimeout(() => this.#sync(), 400);
       } }, t("IPL.UI.RedactYes")),

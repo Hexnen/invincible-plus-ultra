@@ -1,6 +1,6 @@
 /* Activity log - export serialisers (phase L2). PURE: no Foundry globals. Spec 3.5. JSON is lossless; CSV / Markdown are for reading. */
 import { categoryOf, plainText, typeDef } from "./events.mjs";
-import { normalizeEntry, validateEntry, sortEntries, clone } from "./model.mjs";
+import { normalizeEntry, validateEntry, sortEntries, clone, stripBidi } from "./model.mjs";
 import { dayKey } from "./filter.mjs";
 
 export const FORMAT = "ip-log";
@@ -64,7 +64,9 @@ export function stripMerged(e) { const { aid, sc, ...rest } = e; void aid; void 
 export function csvCell(v) {
   if (v === null || v === undefined) return "";
   let s = typeof v === "string" ? v : typeof v === "object" ? JSON.stringify(v) : String(v);
-  if (typeof v === "string" && /^[=+@\t\r]|^-(?!\d)/.test(s) && s.length) s = "'" + s;
+  if (typeof v === "string") s = stripBidi(s);
+  // L8: every string that starts with a formula character gets the apostrophe, also "-1+cmd|..." (only a plain number such as "-5" or "+3.5" is left alone)
+  if (typeof v === "string" && s.length && /^[=+\-@\t\r]/.test(s) && !/^[+-]?\d+(\.\d+)?$/.test(s)) s = "'" + s;
   if (/[",\r\n]/.test(s) || /^\s|\s$/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
   return s;
 }
@@ -107,7 +109,7 @@ export function toCSV(entries, ctx = {}) {
 
 /* ------------------------------------------------------------------ Markdown */
 export function mdEscape(s) {
-  return String(s ?? "").replace(/[\r\n]+/g, " ").replace(/([\\`*_{}\[\]<>#|~])/g, "\\$1");
+  return stripBidi(String(s ?? "")).replace(/[\r\n]+/g, " ").replace(/([\\`*_{}\[\]<>#|~])/g, "\\$1");
 }
 const hhmm = (t, off) => new Date(t + off * 60000).toISOString().slice(11, 16);
 /** ctx: {actor, users, text(entry), offsetMin (default 0 = UTC), order "asc"|"desc", labels:{gmOnly, redacted}} */

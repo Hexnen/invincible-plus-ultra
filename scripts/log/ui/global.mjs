@@ -49,8 +49,9 @@ export function tableSource() {
     enabled: () => Store.enabled(),
     canNote: () => false, canGm: () => isStaff(),
     note: async () => null,
-    annotate: (id, text) => (aidOf.get(id) ? L().annotate(aidOf.get(id), id, text) : null),
-    redact: (id) => (aidOf.get(id) ? L().redact(aidOf.get(id), [id]) : null),
+    // L7-15: the row knows which log it belongs to (ids are only unique per log), so the actor id comes from the clicked row, not from a global id map
+    annotate: (id, text, aid) => { const a = aid || aidOf.get(id); return a ? L().annotate(a, id, text) : null; },
+    redact: (id, aid) => { const a = aid || aidOf.get(id); return a ? L().redact(a, [id]) : null; },
     subscribe: (fn) => Store.subscribe((info) => { merged = null; fn(info); }),
     hasScribe: () => !!game.users.activeGM,
     queued: () => 0,

@@ -352,6 +352,7 @@ for (const [k, en, pl] of UI) T(`IPL.UI.${k}`, en, pl);
 T("IPL.UI.Err.noGM", "No GM is connected.", "Żaden MG nie jest połączony.");
 T("IPL.UI.Err.noPermission", "You may not do that.", "Nie masz do tego uprawnień.");
 T("IPL.UI.Err.badInput", "That input is not valid.", "Nieprawidłowe dane.");
+T("IPL.UI.Err.rate", "Too many log entries in a short time. Wait a moment and try again.", "Za dużo wpisów w krótkim czasie. Odczekaj chwilę i spróbuj ponownie.");
 T("IPL.UI.Err.disabled", "The activity log is off.", "Dziennik aktywności jest wyłączony.");
 T("IPL.UI.Err.notFound", "That entry no longer exists.", "Tego wpisu już nie ma.");
 
@@ -394,6 +395,9 @@ TP("IPL.Plural.Logs", "{n} log", "{n} logs", "{n} dziennik", "{n} dzienniki", "{
 TP("IPL.Plural.Chunks", "{n} block", "{n} blocks", "{n} blok", "{n} bloki", "{n} bloków");
 TP("IPL.Plural.Queued", "{n} entry made while no GM was connected is waiting on this device and will be recorded when a GM returns.", "{n} entries made while no GM was connected are waiting on this device and will be recorded when a GM returns.", "{n} wpis wykonany bez połączonego MG czeka na tym urządzeniu i zostanie zapisany po powrocie MG.", "{n} wpisy wykonane bez połączonego MG czekają na tym urządzeniu i zostaną zapisane po powrocie MG.", "{n} wpisów wykonanych bez połączonego MG czeka na tym urządzeniu i zostanie zapisanych po powrocie MG.");
 for (const [k, en, pl] of [
+  ["ChatDerived", "From chat", "Z czatu"],
+  ["ChatDerivedTip", "Built from a chat message. The author, time and content come from the browser of whoever sent it and are not verified by the server.", "Zbudowany z wiadomości na czacie. Autor, czas i treść pochodzą z przeglądarki nadawcy i nie są weryfikowane przez serwer."],
+  ["Damaged", "This entry is damaged and cannot be shown ({type}).", "Ten wpis jest uszkodzony i nie można go wyświetlić ({type})."],
   ["Imported", "Imported", "Zaimportowany"],
   ["ImportedTip", "Added from a file. The author and time are as stated in that file, not verified.", "Dodany z pliku. Autor i czas są takie, jak podano w pliku, bez weryfikacji."],
   ["Unverified", "Unverified", "Niezweryfikowany"],

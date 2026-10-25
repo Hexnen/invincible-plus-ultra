@@ -15,17 +15,24 @@ export function fnv32(str) {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return h >>> 0;
 }
-/** 3 base-36 chars of the hash. */
+/** 3 base-36 chars of the hash (the LEGACY id suffix: ids written before L8 are 12 chars long and stay valid). */
 export function hash3(str) { return (fnv32(str) % 46656).toString(36).padStart(3, "0"); }
+/** 6 base-36 chars of the hash (L8: 36^6 values; the old 3 chars let same-millisecond entries collide). */
+export function hash6(str) { return (fnv32(str) % 2176782336).toString(36).padStart(6, "0"); }
 
-/** Deterministic entry id: time (sortable) + 3 hash chars. Same inputs always give the same id (idempotent double write). */
+/** Deterministic entry id: time (sortable, 9 chars) + 6 hash chars. Same inputs always give the same id (idempotent double write). */
 export function makeId(t, actorId, k, path, u) {
   const tt = Math.max(0, Math.floor(Number(t) || 0));
-  return tt.toString(36).padStart(9, "0") + hash3(`${actorId}|${k}|${path || ""}|${u || ""}`);
+  return tt.toString(36).padStart(9, "0") + hash6(`${actorId}|${k}|${path || ""}|${u || ""}`);
 }
-export function isValidId(id) { return typeof id === "string" && /^[0-9a-z]{9}[0-9a-z]{3}$/.test(id); }
+/** 15 chars (L8) or the legacy 12 chars. */
+export function isValidId(id) { return typeof id === "string" && /^[0-9a-z]{9}(?:[0-9a-z]{3}|[0-9a-z]{6})$/.test(id); }
 export function idTime(id) { return isValidId(id) ? parseInt(id.slice(0, 9), 36) : NaN; }
 
+/** An entry-shaped value: a plain object with a finite time (anything else in a page is skipped, never allowed to break a read). */
+export const isEntryLike = (e) => !!e && typeof e === "object" && !Array.isArray(e) && Number.isFinite(e.t);
+/** The usable entries of a page object. */
+export const entriesOf = (page) => Object.values((page && page.e) || {}).filter(isEntryLike);
 export function compareEntries(a, b) {
   if (a.t !== b.t) return a.t < b.t ? -1 : 1;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
@@ -34,8 +41,12 @@ export function sortEntries(list) { return list.slice().sort(compareEntries); }
 
 /* ------------------------------------------------------------------ sanitising */
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+/** Bidirectional formatting controls (embeddings, overrides, isolates): they can reorder the text around them, so they never enter the log. */
+export const BIDI_RE = /[\u202A-\u202E\u2066-\u2069]/g;
+export const stripBidi = (s) => String(s).replace(BIDI_RE, "");
 export function clampText(s, n = TEXT_MAX) {
-  const str = typeof s === "string" ? s : s == null ? "" : String(s);
+  let str = typeof s === "string" ? s : s == null ? "" : String(s);
+  if (/[‪-‮⁦-⁩]/.test(str)) str = stripBidi(str);
   return str.length > n ? str.slice(0, n) : str;
 }
 /** Deep sanitise a data object: finite numbers, clamped strings, bounded depth / array / key counts, no prototype keys. */
@@ -118,6 +129,7 @@ export function normalizeEntry(raw, opts = {}) {
   if (raw.a) e.a = 1;
   if (raw.h) e.h = 1;
   if (raw.rel) e.rel = 1;
+  if (raw.ua) e.ua = 1;         // L8: derived from a chat message (author, time and content are written by a player's browser, not attested by the server)
   if (raw.imp) e.imp = 1;       // L6: added from an imported file (author and time are as stated in the file, not attested by the server)
   if (raw.tr) e.tr = 1;
   if (!e.id && Number.isFinite(t) && e.k) e.id = makeId(t, opts.actorId || "", e.k, opts.path || "", e.u);
@@ -188,6 +200,10 @@ export function patchEntry(entry, patch) {
   }
   return out;
 }
+/** Two versions of one id are "the same entry" only when type, user and provenance flags agree; otherwise the id is a collision (a hash clash, or a forged record
+ *  that hunts for the id of another entry) and the newcomer must get a different id instead of overwriting. Returns the id to store the newcomer under. */
+export function sameEntry(a, b) { return !!a && !!b && a.k === b.k && (a.u || "") === (b.u || "") && !a.rel === !b.rel && !a.imp === !b.imp; }
+export function collisionId(entry) { return entry.id.slice(0, 9) + hash6(`collision|${JSON.stringify(entry)}`); }
 /** Deterministic, commutative pick between two versions of the same entry id (more coalesced edits win, then the later one, then lexicographic). */
 export function mergeEntry(a, b) {
   if (!a) return b; if (!b) return a;
@@ -215,7 +231,7 @@ export function parseChunkName(name) {
 }
 /** Update path for one entry inside a page (partial diff write). */
 export function entryPath(id) { return `${ENTRY_FLAG_BASE}.${id}`; }
-export function emptyPage(no) { return { v: 1, no, n: 0, first: 0, last: 0, bytes: 0, e: {} }; }
+export function emptyPage(no, imp = false) { return { v: 1, no, n: 0, first: 0, last: 0, bytes: 0, e: {}, ...(imp ? { imp: 1 } : {}) }; }
 
 /** Add (or overwrite, idempotent) an entry in a page object; returns a new page. Byte count is kept incrementally (an overwrite recomputes). */
 export function pageWith(page, entry) {
@@ -225,8 +241,8 @@ export function pageWith(page, entry) {
   const tl = entry.t2 || entry.t;
   let first, last, bytes;
   if (existed) {
-    const vals = Object.values(e);
-    first = Math.min(...vals.map((x) => x.t)); last = Math.max(...vals.map((x) => x.t2 || x.t)); bytes = byteSize(e);
+    const vals = Object.values(e).filter(isEntryLike);
+    first = vals.length ? Math.min(...vals.map((x) => x.t)) : entry.t; last = vals.length ? Math.max(...vals.map((x) => x.t2 || x.t)) : tl; bytes = byteSize(e);
   } else {
     const empty = Object.keys(old).length === 0;
     first = empty ? entry.t : Math.min(page.first || entry.t, entry.t);
@@ -262,7 +278,7 @@ export function planWrite(state, entries, limits = {}) {
     let p = pages[head];
     const sz = byteSize(entry);
     if (Object.keys(p.e).length >= maxN || (Object.keys(p.e).length > 0 && (p.bytes || byteSize(p.e)) + sz > maxB)) {
-      head += 1; pages[head] = emptyPage(head); created.add(head); p = pages[head];
+      head = Math.max(head, ...Object.keys(pages).map(Number)) + 1; pages[head] = emptyPage(head); created.add(head); p = pages[head];
     }
     pages[head] = pageWith(p, entry); idx.set(entry.id, head); touched.add(head); added++;
   }
@@ -270,9 +286,12 @@ export function planWrite(state, entries, limits = {}) {
 }
 
 /** Merge several page objects into one array sorted by (t,id); duplicates by id are merged with mergeEntry. */
-export function readAll(pages) {
+export function readAll(pages, counter = null) {
   const map = {};
-  for (const p of Object.values(pages)) for (const [id, e] of Object.entries(p.e || {})) map[id] = mergeEntry(map[id], e);
+  for (const p of Object.values(pages)) for (const [id, e] of Object.entries((p && p.e) || {})) {
+    if (!isEntryLike(e)) { if (counter) counter.skipped = (counter.skipped || 0) + 1; continue; }     // L8: one null / garbage entry must not make the whole log unreadable
+    map[id] = mergeEntry(map[id], e);
+  }
   return sortEntries(Object.values(map));
 }
 export function totalCount(pages) { let n = 0; for (const p of Object.values(pages)) n += Object.keys(p.e || {}).length; return n; }

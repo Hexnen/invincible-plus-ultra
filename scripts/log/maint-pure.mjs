@@ -80,7 +80,7 @@ export function trimPreview(pages, secret, opts = {}) {
   const keep = Math.max(0, Math.floor(Number(opts.keep) || 0));
   const total = M.totalCount(pages);
   const nos = Object.keys(pages).map(Number).sort((a, b) => a - b);
-  const plan = keep > 0 ? P.planPrune(pages, { cap: keep, head: opts.head ?? nos[nos.length - 1], actorId: opts.actorId || "", secret }) : null;
+  const plan = keep > 0 ? P.planPrune(pages, { cap: keep, head: opts.head ?? nos[nos.length - 1], actorId: opts.actorId || "", secret, now: opts.now }) : null;
   if (!plan) return { noop: true, pages: 0, entries: 0, secretEntries: 0, remain: total, first: 0, last: 0, total, chunks: nos.length };
   return { noop: false, pages: plan.dropPages.length, secretPages: plan.dropSecret.length, entries: plan.removed, secretEntries: plan.secretRemoved, remain: plan.keep, first: plan.first, last: plan.last, total, chunks: nos.length };
 }

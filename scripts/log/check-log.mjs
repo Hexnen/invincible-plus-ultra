@@ -74,7 +74,7 @@ const id1 = M.makeId(T0, "A1", "stat.attr", "system.attributes.fighting.value", 
 eq(id1, M.makeId(T0, "A1", "stat.attr", "system.attributes.fighting.value", "u1"), "id deterministic");
 ok(id1 !== M.makeId(T0, "A1", "stat.attr", "system.attributes.fighting.value", "u2"), "id differs by user");
 ok(id1 !== M.makeId(T0, "A2", "stat.attr", "system.attributes.fighting.value", "u1"), "id differs by actor");
-ok(M.isValidId(id1) && id1.length === 12, "id valid"); eq(M.idTime(id1), T0, "id time round trip"); ok(Number.isNaN(M.idTime("nope")), "idTime invalid");
+ok(M.isValidId(id1) && id1.length === 15, "id valid (L8: 9 time + 6 hash chars)"); ok(M.isValidId(id1.slice(0, 12)) && M.idTime(id1.slice(0, 12)) === T0, "L8 legacy 12-char ids stay valid"); eq(M.idTime(id1), T0, "id time round trip"); ok(Number.isNaN(M.idTime("nope")), "idTime invalid");
 eq(M.hash3("abc").length, 3, "hash3 length");
 {
   const r = rng(1); let lexOk = true, detOk = true;
@@ -894,6 +894,119 @@ const exCtx = { actor: { id: "A", name: "Zażółć Hero", uuid: "Actor.A", type
   const srcTxt = fs.readFileSync(path.join(here, "maint-pure.mjs"), "utf8");
   ok(!/\b(game|foundry|ui|Hooks|CONST|canvas|document|window|localStorage)\./.test(srcTxt.replace(/\/\*[\s\S]*?\*\//g, "")), "L6 maint-pure.mjs touches no Foundry or browser global");
   ok([...srcTxt.matchAll(/from "(\.[^"]+)"/g)].every((m) => /^\.\/[\w-]+\.mjs$/.test(m[1])), "L6 maint-pure.mjs imports only siblings");
+}
+
+
+/* ================================================================= L8 regression checks (adversary findings L7-xx) */
+{
+  const page = (no, list, extra = {}) => { let p = M.emptyPage(no, !!extra.imp); for (const e of list) p = M.pageWith(p, e); return p; };
+  const pub = (i, over = {}) => M.normalizeEntry({ t: T0 + i * 1000, u: "u1", k: "stat.attr", d: { key: "fighting", from: i, to: i + 1 }, ...over }, { actorId: "A", path: "p" + i });
+  // L7-03: one far-future entry in a dropped chunk must not make the prune delete GM-only pages written after it
+  {
+    const p1 = page(1, [...Array.from({ length: 9 }, (_, i) => pub(i)), pub(9, { t: 4102444800000 })]);
+    const p2 = page(2, Array.from({ length: 10 }, (_, i) => pub(100 + i)));
+    const p3 = page(3, Array.from({ length: 10 }, (_, i) => pub(200 + i)));
+    const sec = { 1: page(1, Array.from({ length: 5 }, (_, i) => pub(150 + i, { v: 1 }))) };
+    const plan = P.planPrune({ 1: p1, 2: p2, 3: p3 }, { cap: 20, head: 3, actorId: "A", secret: sec });
+    ok(plan && plan.dropPages.includes(1), "L7-03 the chunk with the forged entry is dropped");
+    eq(plan.dropSecret, [], "L7-03 a forged future time does not drop the GM-only pages");
+    const sec2 = { 1: page(1, Array.from({ length: 3 }, (_, i) => pub(1 + i, { v: 1 }))) };
+    const plan2 = P.planPrune({ 1: page(1, Array.from({ length: 10 }, (_, i) => pub(i))), 2: p2, 3: p3 }, { cap: 20, head: 3, actorId: "A", secret: sec2 });
+    eq(plan2.dropSecret, [1], "L7-03 secret entries older than everything kept are still dropped (normal case unchanged)");
+  }
+  // L7-09: imported side pages never count as newest and are dropped by time, not by number
+  {
+    const live1 = page(1, Array.from({ length: 10 }, (_, i) => pub(5000 + i))), live2 = page(2, Array.from({ length: 10 }, (_, i) => pub(6000 + i)));
+    const imp = page(3, Array.from({ length: 10 }, (_, i) => pub(10 + i, { imp: 1 })), { imp: true });
+    const plan = P.planPrune({ 1: live1, 2: live2, 3: imp }, { cap: 20, head: 2, actorId: "A", now: T0 + 1e8 });
+    eq(plan.dropPages, [3], "L7-09 the old imported side page goes first (real history in the low pages is kept)");
+    const fut = page(3, Array.from({ length: 10 }, (_, i) => pub(9000000 + i, { imp: 1 })), { imp: true });
+    const plan3 = P.planPrune({ 1: live1, 2: live2, 3: fut }, { cap: 20, head: 2, actorId: "A", now: T0 + 1e8 });
+    ok(plan3.dropPages.length === 1, "L7-09 one page dropped with a future-dated import");
+    const st = M.planWrite({ head: 2, pages: { 1: live1, 2: M.pageWith(live2, pub(7000)), 3: imp } }, [pub(7001)], { maxEntries: 11 });
+    ok(!st.pages[3].e[pub(7001).id] && st.head === 4, "L7-09 live rotation skips the page number of an imported side page");
+  }
+  // L7-02: relay entries (rel) have a budget of their own, the oldest of them go first
+  {
+    const notes = Array.from({ length: 300 }, (_, i) => pub(i, { k: "note.add", rel: 1, d: { text: "n" + i } }));
+    const real = Array.from({ length: 100 }, (_, i) => pub(1000 + i));
+    const pages = { 1: page(1, notes.slice(0, 150)), 2: page(2, [...notes.slice(150), ...real]) };
+    const np = P.planNoteTrim(pages, { noteCap: 100, actorId: "A" });
+    ok(np && np.removed === 220, "L7-02 notes are trimmed to 80 percent of their budget");
+    const gone = new Set(Object.values(np.byPage).flat());
+    ok([...gone].every((id) => id in { ...pages[1].e, ...pages[2].e } && (pages[1].e[id] || pages[2].e[id]).rel), "L7-02 only relay entries are removed, never attested ones");
+    ok(np.last < T0 + 300 * 1000 && np.marker.d.removed === 220 && np.marker.d.notes === 1, "L7-02 the marker records what was dropped");
+    eq(P.planNoteTrim(pages, { noteCap: 400, actorId: "A" }), null, "L7-02 under the budget nothing happens");
+  }
+  // L7-10: a null / garbage entry does not break reading, writing or pruning
+  {
+    const good = pub(1);
+    const pages = { 1: { v: 1, no: 1, e: { x1: null, x2: "str", x3: { t: "no" }, [good.id]: good } } };
+    const cnt = { skipped: 0 };
+    let r; try { r = M.readAll(pages, cnt); } catch { r = null; }
+    ok(r && r.length === 1 && cnt.skipped === 3, "L7-10 readAll skips non-entries and counts them");
+    let ok2 = true; try { M.pageWith(pages[1], good); M.pageWith(pages[1], pub(2)); P.summarizePages(pages); P.planPrune({ 1: pages[1], 2: page(2, [pub(50)]) }, { cap: 1, head: 2, actorId: "A" }); } catch { ok2 = false; }
+    ok(ok2, "L7-10 pageWith / summarize / planPrune tolerate garbage entries");
+  }
+  // L7-04: an explicit record swallows only the drafts of its own user
+  {
+    const ab = new C.AbsorbBuffer();
+    const ch = (u) => ({ actorId: "A", k: "stat.attr", path: "x", u, t: T0, d: { key: "k", from: 1, to: 2 } });
+    ab.parent({ actorId: "A", k: "chargen.undo", u: "p1", t: T0, d: {}, absorb: { actors: ["A"], types: ["stat."], ms: 6000, u: "p1" } }, 1000);
+    eq([ab.push(ch("p2"), 1100), ab.push(ch("p1"), 1100)], ["held", "absorbed"], "L7-04 another user's edit is not absorbed");
+    const ab2 = new C.AbsorbBuffer(); ab2.push(ch("p2"), 900); ab2.push(ch("p1"), 900);
+    ab2.parent({ actorId: "A", k: "chargen.apply", u: "p1", t: T0, d: {}, absorb: { actors: ["A"], types: ["stat."], ms: 6000, u: "p1" } }, 1000);
+    eq(ab2.held.map((h) => h.draft.u), ["p2"], "L7-04 held drafts of another user survive a parent (including the ones BEFORE it)");
+  }
+  // L7-05: throttle buckets are independent; the rate limiter counts per key
+  {
+    const th = new C.Throttle(3, 60000);
+    for (let i = 0; i < 3; i++) th.admit("A|r|p1", 1000 + i);
+    eq([th.admit("A|r|p1", 1100), th.admit("A|a|gm", 1100)], ["trip", "ok"], "L7-05 a relay flood does not throttle the attested bucket");
+    const rl = new C.RateLimiter();
+    eq([1, 2, 3, 4].map((i) => rl.hit("u", 1000 + i, 3, 1000)), [true, true, true, false], "L7-02/19 rate limiter over the limit");
+    ok(rl.hit("u", 2500, 3, 1000) && rl.hit("other", 1000, 3, 1000), "L7-02/19 rate limiter window slides and keys are separate");
+  }
+  // L7-18: a GM-only damage card does not hide (or link into) a public Health change
+  {
+    const dmg = pub(1, { k: "damage.taken", v: 1, d: { amount: 3, from: 10, to: 7 } }), vit = pub(2, { k: "stat.vital", d: { key: "health", from: 10, to: 7 } });
+    const ps = C.explainPatches([dmg, vit]);
+    ok(ps.length === 1 && !("h" in ps[0].patch) && !("g" in ps[0].patch) && ps[0].patch.d.cause === "damage", "L7-18 secret card: generic cause, no hide, no link");
+    const pubDmg = { ...dmg }; delete pubDmg.v; const ps2 = C.explainPatches([pubDmg, vit]);
+    ok(ps2.length === 1 && ps2[0].patch.h === 1 && ps2[0].patch.g === pubDmg.id, "L7-18 public card still hides the explained change");
+  }
+  // L7-12 / L7-13: CSV formula guard, bidi controls
+  {
+    const cases = ["=1+1", "+cmd", "@SUM(1)", "-1+cmd|' /C calc'!A0", "\tx", "-cmd", "- 5"];
+    ok(cases.every((c) => X.csvCell(c).replace(/^"/, "").startsWith("'")), "L7-12 every formula-looking string is neutralised (also -<digit>)");
+    eq([X.csvCell("-5"), X.csvCell("+3.5"), X.csvCell(-3), X.csvCell("plain")], ["-5", "+3.5", "-3", "plain"], "L7-12 plain numbers and text are untouched");
+    const bidi = "a‮b⁦c⁩d";
+    eq(M.clampText(bidi), "abcd", "L7-13 bidi controls are stripped from stored text"); eq(M.sanitize({ text: bidi }).text, "abcd", "L7-13 sanitize strips them in nested data");
+    eq(X.csvCell(bidi), "abcd", "L7-13 CSV strips them"); ok(!X.mdEscape(bidi).includes("‮"), "L7-13 Markdown strips them");
+  }
+  // L7-16: longer ids, legacy ids stay valid, a collision never overwrites another author's entry
+  {
+    const id = M.makeId(T0, "A", "note.add", "r1", "u1");
+    ok(id.length === 15 && M.isValidId(id) && M.isValidId(id.slice(0, 12)) && !M.isValidId(id.slice(0, 13)), "L7-16 15-char ids, 12-char legacy ids valid");
+    const a = pub(1, { k: "note.add", d: { text: "mine" }, u: "gm" }), b = { ...a, u: "p1", rel: 1, d: { text: "forged" } };
+    ok(!M.sameEntry(a, b) && M.sameEntry(a, { ...a, d: { text: "edit" } }), "L7-16 sameEntry compares type, author and provenance");
+    const c = M.collisionId(b);
+    ok(c !== a.id && M.isValidId(c) && M.idTime(c) === a.t && c === M.collisionId(b), "L7-16 collision id keeps the time and is deterministic");
+    const same = new Set(Array.from({ length: 5000 }, (_, i) => M.makeId(T0, "A", "item.add", "item:" + i, "u1"))).size;
+    eq(same, 5000, "L7-16 5000 same-millisecond ids do not collide");
+  }
+  // L7-11: hostile data shapes never reach a throw in the pure helpers the rows use
+  {
+    const hostile = [{ k: "item.edit", d: { changes: [null, 5, "x", { p: "a" }] } }, { k: "bulk.change", d: { kids: [null, 1, { k: 5 }] } }, { k: "log.gap", d: { changes: [null, []] } }, { k: "chargen.apply", d: { add: [null], del: "x", more: 5 } }, { k: "roll.made", d: { dice: [null, {}], hist: [null], mode: "zzz" } }];
+    let okAll = true; for (const h of hostile) { const e = M.normalizeEntry({ t: T0, u: "u", ...h }, { actorId: "A" }); if (!e || !M.isEntryLike(e)) okAll = false; }
+    ok(okAll, "L7-11 hostile entries still normalise to entry-like objects");
+    const R = await import("./ui/rows.mjs");
+    const rctx = { scope: "hero", userName: (x) => x, actor: () => null };
+    let thrown = null;
+    for (const h of hostile) { try { const e = M.normalizeEntry({ t: T0, u: "u", ...h }, { actorId: "A" }); R.sentenceText(e, rctx); R.diffRows(e); } catch (err) { thrown = `${h.k}: ${err.message}`; } }
+    ok(thrown === null, "L7-11 rows.mjs sentenceText / diffRows do not throw on hostile d shapes " + (thrown || ""));
+    ok(R.fmtVal({ a: 1 }) === '{"a":1}' && !R.fmtVal([1, 2]).includes("object"), "L7-11 object values are not printed as [object Object]");
+  }
 }
 
 console.log(`${n} checks, ${bad} failed`);

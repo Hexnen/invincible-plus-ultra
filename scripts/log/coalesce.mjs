@@ -176,6 +176,7 @@ function matchesAbsorb(parent, draft) {
   if (!a) return false;
   if (a.actors && a.actors.length && !a.actors.includes(draft.actorId)) return false;
   if (a.types && a.types.length && !a.types.some((p) => draft.k.startsWith(p))) return false;
+  if (a.u && draft.u !== a.u) return false;          // L8: a record swallows only the drafts of its OWN user (the server-attested id), never another user's edits
   return draft !== parent;
 }
 /** Holds hook-derived drafts for the absorb window so an explicit parent record (arriving before or after) can swallow them.
@@ -232,7 +233,8 @@ export function explainPatches(entries, T = TIMING) {
         const dt = Math.abs(v.t - (x.t2 || x.t));
         if (dt <= T.explainDamageMs && (!best || dt < best.dt)) best = { x, dt };
       }
-      if (best) { usedDmg.add(best.x.id); out.push({ id: v.id, patch: { h: 1, g: best.x.id, d: { cause: "damage" } } }); }
+      if (best && best.x.v && !v.v) { if (!(v.d && v.d.cause === "damage")) out.push({ id: v.id, patch: { d: { cause: "damage" } } }); }     // L8: a GM-only card must not hide a public change (no hide, no link to a secret id)
+      else if (best) { usedDmg.add(best.x.id); out.push({ id: v.id, patch: { h: 1, g: best.x.id, d: { cause: "damage" } } }); }
     } else if (v.d.key === "resolve" && delta < 0) {
       let best = null;
       for (const r of rolls) {
@@ -280,6 +282,22 @@ export class Throttle {
   }
   dropped(actorId) { const s = this.state.get(actorId); return s ? s.dropped : 0; }
   reset(actorId) { this.state.delete(actorId); }
+}
+
+/** Fixed-window counter per key (relay senders, L8): hit() is true while the key stays within `max` hits per `windowMs`, false when the call is over the limit. */
+export class RateLimiter {
+  constructor() { this.state = new Map(); }
+  hit(key, now, max, windowMs) {
+    let s = this.state.get(key);
+    if (!s) { s = { times: [] }; this.state.set(key, s); if (this.state.size > 500) this.state.delete(this.state.keys().next().value); }
+    while (s.times.length && now - s.times[0] >= windowMs) s.times.shift();
+    if (s.times.length >= max) return false;
+    s.times.push(now);
+    return true;
+  }
+  /** Peek without counting. */
+  left(key, now, max, windowMs) { const s = this.state.get(key); if (!s) return max; return Math.max(0, max - s.times.filter((t) => now - t < windowMs).length); }
+  reset() { this.state.clear(); }
 }
 
 /* ------------------------------------------------------------------ finalise */

@@ -1,10 +1,13 @@
-/* Activity log - RELAY (phase L3). A player (or a second GM tab) asks the scribe to record a module-originated entry or a note. Same trust rules as scripts/base/relay.mjs:
-   module sockets carry no authenticated sender, so the sender id is a CLAIM; the scribe re-validates it against the real actor ownership / role, whitelists the types,
-   clamps the payload, flags the entry `rel` (relayed claim) and dedupes by request id (several GM tabs all receive the request; entry ids are deterministic anyway).
+/* Activity log - RELAY (phase L3, trust rebuilt in L8). A player (or a second GM tab) asks the scribe to record a module-originated entry or a note.
+   TRUST (L7-01): the server hands every socket listener the REAL sender id as the second argument (socketlib relies on it too); that id is the only identity the
+   scribe believes. A payload `userId` is used ONLY when the server id is missing, and then the request is "untrusted": no staff rights, no GM-only notes, no absorb,
+   ownership from the explicit actor ownership table only (a GM role does not count). Every entry that arrives through the relay is flagged `rel` (never the scribe's own
+   plain entry); the payload time is clamped; senders have rate limits (notes: per user, per minute and day, and per actor per day).
    Own message kinds ("ilreq" / "ilres") on the module channel: the base relay ignores them. OPTIONAL layer: while no GM is connected a player's own record calls are queued in
    localStorage (ring buffer of 40, entries flagged approximate + relayed = unverified) and flushed when a GM is present. */
 import * as E from "./events.mjs";
 import * as M from "./model.mjs";
+import * as CO from "./coalesce.mjs";
 import * as Scribe from "./scribe.mjs";
 import * as Store from "./store.mjs";
 
@@ -21,54 +24,77 @@ export class LogError extends Error {
 }
 const isStaff = (u) => !!u && (u.isGM === true || u.hasRole?.(CONST.USER_ROLES.ASSISTANT) === true);
 const ABSORB_TYPES = ["item.", "stat.", "team.", "upgrade.", "crate.", "member.", "card."];
+const ABSORB_MAX_MS = 6000;
+/** [allowed calls, window ms]. Staff are exempt. Change here only. */
+export const LIMITS = Object.freeze({ req: [90, 60000], note: [12, 60000], noteDay: [150, 86400000], actorNoteDay: [300, 86400000], rec: [40, 60000] });
+export const rates = new CO.RateLimiter();
+const over = (key, [max, win]) => !rates.hit(key, Date.now(), max, win);
+/** Ownership from the explicit table only: the GM role of a CLAIMED id must not make anybody the owner of everything. */
+function owns(actor, user) {
+  const o = actor.ownership ?? {};
+  return (o[user.id] ?? o.default ?? 0) >= (CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
+}
 
 /* ------------------------------------------------------------------ scribe side */
-function actorFor(sender, id) {
+/** ctx = { staff (trusted staff sender), via ("local" | "relay"), trusted } */
+function actorFor(sender, id, ctx) {
   const actor = game.actors.get(String(id ?? ""));
   if (!actor || !Scribe.state.states.has(actor.id)) throw new LogError("notFound");
-  if (!isStaff(sender) && !actor.testUserPermission(sender, "OWNER")) throw new LogError("noPermission");
+  if (!ctx.staff && !owns(actor, sender)) throw new LogError("noPermission");
   return actor;
 }
 const HANDLERS = {
-  record(sender, a) {
-    const actor = actorFor(sender, a.actorId);
+  record(sender, a, ctx) {
+    const actor = actorFor(sender, a.actorId, ctx);
     const k = String(a.k ?? "");
     if (!E.RELAY_WHITELIST.includes(k)) throw new LogError("badInput", { k });
     if (JSON.stringify(a).length > MAX_BYTES) throw new LogError("badInput", { why: "size" });
+    if (!ctx.staff) {
+      if (over(`${sender.id}|rec`, LIMITS.rec)) throw new LogError("rate");
+      if (k === "note.add" && (over(`${sender.id}|note`, LIMITS.note) || over(`${sender.id}|noteDay`, LIMITS.noteDay) || over(`${actor.id}|actorNoteDay`, LIMITS.actorNoteDay))) throw new LogError("rate");
+    }
     if (k === "note.add") {      // a queued player note takes the same road as a live one: same switch, same text rules
-      if (!isStaff(sender) && Store.setting("logPlayerNotes", true) === false) throw new LogError("noPermission");
+      if (!ctx.staff && Store.setting("logPlayerNotes", true) === false) throw new LogError("noPermission");
       if (!String(a.d?.text ?? "").trim()) throw new LogError("badInput", { why: "empty" });
     }
     const now = Date.now();
     let t = Number(a.t);
-    const maxAge = a.queued ? 7 * 86400000 : 600000;
-    if (!Number.isFinite(t) || t > now + 60000 || now - t > maxAge) t = now;
+    const maxAge = a.queued ? 7 * 86400000 : 120000;                    // live requests: the clock of the sender may be at most 2 minutes off; queued ones keep their (unverified) age
+    if (!Number.isFinite(t) || t > now + 10000 || now - t > maxAge) t = now;
     const spec = { k, d: M.sanitize(a.d && typeof a.d === "object" ? a.d : {}), rid: String(a.rid ?? "").slice(0, 40), t, a: a.queued ? 1 : 0 };
-    if (a.absorb && typeof a.absorb === "object") spec.absorb = { actors: [...new Set([actor.id, ...(Array.isArray(a.absorb.actors) ? a.absorb.actors : []).map(String).filter((id) => { const x = game.actors.get(id); return !!x && Scribe.state.states.has(id) && (isStaff(sender) || x.testUserPermission(sender, "OWNER")); })])], types: (Array.isArray(a.absorb.types) ? a.absorb.types : []).filter((x) => ABSORB_TYPES.includes(x)), ms: Math.min(10000, Number(a.absorb.ms) || 3000) };
-    const r = Scribe.recordLocal(actor, spec, sender.id, { rel: sender.id !== game.user.id || !!a.queued });
+    // absorb: only for a verified sender, only the sender's OWN drafts (Scribe.recordLocal binds it to the sender id), a short window, whitelisted types
+    if (a.absorb && typeof a.absorb === "object" && ctx.trusted) spec.absorb = { actors: [...new Set([actor.id, ...(Array.isArray(a.absorb.actors) ? a.absorb.actors : []).map(String).filter((id) => { const x = game.actors.get(id); return !!x && Scribe.state.states.has(id) && (ctx.staff || owns(x, sender)); })])], types: (Array.isArray(a.absorb.types) ? a.absorb.types : []).filter((x) => ABSORB_TYPES.includes(x)), ms: Math.min(ABSORB_MAX_MS, Number(a.absorb.ms) || 3000) };
+    const r = Scribe.recordLocal(actor, spec, sender.id, { rel: ctx.via === "relay" || !!a.queued });
     if (!r || r.error) throw new LogError("badInput", { errors: r?.error });
     return { id: r.id };
   },
-  note(sender, a) {
-    const actor = actorFor(sender, a.actorId);
+  note(sender, a, ctx) {
+    const actor = actorFor(sender, a.actorId, ctx);
     const gmOnly = a.gmOnly === true;
-    if (gmOnly && !isStaff(sender)) throw new LogError("noPermission");
-    if (!isStaff(sender) && Store.setting("logPlayerNotes", true) === false) throw new LogError("noPermission");
+    if (gmOnly && !ctx.staff) throw new LogError("noPermission");
+    if (!ctx.staff && Store.setting("logPlayerNotes", true) === false) throw new LogError("noPermission");
+    if (!ctx.staff && (over(`${sender.id}|note`, LIMITS.note) || over(`${sender.id}|noteDay`, LIMITS.noteDay) || over(`${actor.id}|actorNoteDay`, LIMITS.actorNoteDay))) throw new LogError("rate");
     const text = M.clampText(String(a.text ?? "").trim(), E.POLICY.noteMax ?? 1000);
     if (!text) throw new LogError("badInput", { why: "empty" });
     const d = { text }; if (typeof a.on === "string" && M.isValidId(a.on)) d.on = a.on;
-    const r = Scribe.recordLocal(actor, { k: gmOnly ? "note.gm" : "note.add", d, rid: String(a.rid ?? "").slice(0, 40), t: Number.isFinite(Number(a.t)) && Math.abs(Date.now() - Number(a.t)) < 600000 ? Number(a.t) : Date.now(), v: gmOnly }, sender.id, { rel: sender.id !== game.user.id });
+    const now = Date.now(), ct = Number(a.t);
+    const t = Number.isFinite(ct) && ct <= now + 10000 && now - ct < 120000 ? ct : now;
+    const r = Scribe.recordLocal(actor, { k: gmOnly ? "note.gm" : "note.add", d, rid: String(a.rid ?? "").slice(0, 40), t, v: gmOnly }, sender.id, { rel: ctx.via === "relay" });
     if (!r || r.error) throw new LogError("badInput", { errors: r?.error });
     return { id: r.id };
   }
 };
-async function run(op, args, claimed) {
+/** claimed = the user id the request speaks for; meta = { trusted (id came from the server, or is this client), via } */
+async function run(op, args, claimed, meta = {}) {
   try {
     const sender = game.users.get(String(claimed ?? ""));
     if (!sender) throw new LogError("noPermission");
     const h = HANDLERS[op];
     if (!h) throw new LogError("badInput", { op: String(op) });
-    return { ok: true, result: await h(sender, args && typeof args === "object" ? args : {}) };
+    const trusted = meta.trusted === true, via = meta.via === "local" ? "local" : "relay";
+    const ctx = { trusted, via, staff: trusted && isStaff(sender) };
+    if (via === "relay" && !ctx.staff && over(`${sender.id}|req`, LIMITS.req)) throw new LogError("rate");
+    return { ok: true, result: await h(sender, args && typeof args === "object" ? args : {}, ctx) };
   } catch (e) {
     if (!(e instanceof LogError)) console.warn(`${MOD} | log relay: ${op} failed`, e);
     return { ok: false, code: e?.code ?? "relay", params: e?.params ?? {} };
@@ -87,7 +113,7 @@ function send(op, args) {
 /** Perform op: locally when this client is the scribe, otherwise through the relay. Resolves to the result or rejects with LogError. */
 export async function request(op, args = {}) {
   let env;
-  if (Scribe.isScribe()) env = await run(op, args, game.user.id);
+  if (Scribe.isScribe()) env = await run(op, args, game.user.id, { trusted: true, via: "local" });
   else {
     if (!game.users.activeGM) throw new LogError("noGM");
     env = await send(op, args);
@@ -147,14 +173,17 @@ export async function flushQueue() {
 export function start() {
   if (started) return;
   started = true;
-  game.socket.on(CHANNEL, async (msg) => {
+  game.socket.on(CHANNEL, async (msg, senderId) => {
     if (!msg || typeof msg !== "object") return;
     if (msg.k === "ilreq") {
       if (!Scribe.isScribe()) return;
-      if (seen.has(msg.id)) return;
-      seen.set(msg.id, Date.now()); if (seen.size > 300) seen.delete(seen.keys().next().value);
-      const env = await run(msg.op, msg.args, msg.userId);
-      game.socket.emit(CHANNEL, { k: "ilres", id: msg.id, to: msg.userId, env });
+      const real = typeof senderId === "string" && game.users.has(senderId) ? senderId : null;       // the server's word (second listener argument)
+      const who = real ?? String(msg.userId ?? "");
+      const sk = `${who}|${msg.id}`;
+      if (seen.has(sk)) return;
+      seen.set(sk, Date.now()); if (seen.size > 300) seen.delete(seen.keys().next().value);
+      const env = await run(msg.op, msg.args, who, { trusted: !!real, via: "relay" });
+      try { game.socket.emit(CHANNEL, { k: "ilres", id: msg.id, to: who, env }, { recipients: [who] }); } catch { game.socket.emit(CHANNEL, { k: "ilres", id: msg.id, to: who, env }); }
     } else if (msg.k === "ilres" && msg.to === game.user.id) {
       pending.get(msg.id)?.(msg.env);
       pending.delete(msg.id);
@@ -166,4 +195,4 @@ export function start() {
   kick(3000);
 }
 /** Test helper: run a handler as another user on this (scribe) client without any transport. */
-export const _runAs = (op, args, userId) => run(op, args, userId);
+export const _runAs = (op, args, userId, meta = { trusted: true, via: "relay" }) => run(op, args, userId, meta);

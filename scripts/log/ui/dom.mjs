@@ -38,6 +38,11 @@ export const sr = (text) => h("span.ipl-sr", text);
 let uidN = 0;
 export const uid = (p = "ipl") => `${p}-${++uidN}`;
 
+/** User text inside a sentence is isolated for bidirectional text (a name or note with RTL characters cannot reorder the words around it). Plain numbers stay bare. */
+function isolated(str) {
+  if (!str || /^[\d\s.,:+\-−→/×%]*$/.test(str)) return document.createTextNode(str);
+  const b = document.createElement("bdi"); b.textContent = str; return b;
+}
 /** Replace {name} tokens: Node values are inserted as nodes, everything else as text. opts.kid drops {who} and the punctuation after it. */
 export function buildNodes(tpl, params, opts = {}) {
   const frag = document.createDocumentFragment();
@@ -51,7 +56,7 @@ export function buildNodes(tpl, params, opts = {}) {
     const v = params[m[1]];
     if (v == null) frag.append(document.createTextNode(`{${m[1]}}`));
     else if (isNode(v)) frag.append(v);
-    else frag.append(document.createTextNode(String(v)));
+    else frag.append(isolated(String(v)));
   }
   return frag;
 }

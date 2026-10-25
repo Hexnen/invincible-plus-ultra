@@ -69,12 +69,14 @@ export function readEntries(actorId, { secret = game.user?.isGM } = {}) {
   const hit = cache.get(key);
   if (hit && hit.v === version) return hit.entries;
   const pub = pagesOf(actorJournal(actorId));
-  let entries = M.readAll(pub);
+  const skip = { skipped: 0 };
+  let entries = M.readAll(pub, skip);
   if (secret) {
     const sec = pagesOf(gmJournal(), actorId);
-    const sx = M.readAll(sec);
+    const sx = M.readAll(sec, skip);
     if (sx.length) entries = M.sortEntries([...entries, ...sx]);
   }
+  if (skip.skipped) stats.unreadable = Math.max(stats.unreadable || 0, skip.skipped);
   cache.set(key, { v: version, entries });
   return entries;
 }
@@ -178,13 +180,19 @@ async function writeSet(journal, secretFor, entries, forced) {
     if (known === undefined) { todo.push(e); continue; }
     const old = pages[known].e[e.id];
     if (M.deepEqual(old, e)) { stats.skipped++; continue; }
-    const pick = forced ? e : M.mergeEntry(old, e);
+    if (!forced && M.isEntryLike(old) && !M.sameEntry(old, e)) {          // L8: same id, different author / provenance = a collision (or a hunt for another entry's id): never overwrite, store under another id
+      const e2 = { ...e, id: M.collisionId(e) };
+      if (idx.get(e2.id) === undefined) { todo.push(e2); idx.set(e2.id, -1); } else stats.skipped++;
+      continue;
+    }
+    const pick = forced || !M.isEntryLike(old) ? e : M.mergeEntry(old, e);
     if (pick === old) { stats.skipped++; continue; }
     todo.push(pick);
   }
   if (!todo.length) return { written: 0, pages };
   const nos = Object.keys(pages).map(Number);
-  const head = nos.length ? Math.max(...nos) : 1;
+  const live = nos.filter((n) => !pages[n].imp);                          // imported side pages are never the head
+  const head = live.length ? Math.max(...live) : nos.length ? Math.max(...nos) + 1 : 1;
   const plan = M.planWrite({ head, pages }, todo);
   const planIdx = M.buildIndex(plan.pages);
   const updates = [], creates = [];
@@ -239,17 +247,47 @@ export async function commit(actor, scope, { pub = [], sec = [], patches = [] })
 }
 
 /* ------------------------------------------------------------------ retention */
+/** Remove single entries from pages (L8: the protected note budget). byPage = {no: [ids]}; `pages` = {no: page object} as read. */
+async function removeEntries(journal, secretFor, byPage, pages) {
+  const docs = pageDocs(journal, secretFor), updates = [];
+  for (const [no, ids] of Object.entries(byPage)) {
+    const doc = docs[no], pg = pages[no];
+    if (!doc || !pg) continue;
+    const keep = { ...(pg.e || {}) };
+    for (const id of ids) delete keep[id];
+    const es = Object.values(keep).filter(M.isEntryLike);
+    const u = { _id: doc.id, [`flags.${MOD}.log.n`]: Object.keys(keep).length, [`flags.${MOD}.log.first`]: es.length ? Math.min(...es.map((x) => x.t)) : 0, [`flags.${MOD}.log.last`]: es.length ? Math.max(...es.map((x) => x.t2 || x.t)) : 0, [`flags.${MOD}.log.bytes`]: M.byteSize(keep) };
+    for (const id of ids) u[`flags.${MOD}.log.e.-=${id}`] = null;
+    updates.push(u);
+  }
+  if (updates.length) { stats.pageUpdates += updates.length; await journal.updateEmbeddedDocuments("JournalEntryPage", updates, O()); }
+}
+/** Share of the cap that entries which arrived through the relay (notes, queued records: flag `rel`) may use. Beyond it the OLDEST of them are dropped first. */
+export const noteBudget = (cap) => Math.max(60, Math.floor(cap * 0.2));
+const notesOnly = (np, pages) => ({ dropPages: [], dropSecret: [], removed: np.removed, secretRemoved: 0, first: np.first, last: np.last, marker: np.marker, keep: M.totalCount(pages), notes: true });
 export async function pruneIfNeeded(actor, scope, capOverride = null) {
   const cap = capOverride ?? retention(scope);
   const j = actorJournal(actor.id);
   if (!j || !cap) return null;
-  const pages = pagesOf(j);
+  let pages = pagesOf(j);
   if (M.totalCount(pages) <= cap) return null;
+  let notePlan = null;
+  if (capOverride === null) {                                              // L8: a note / relay flood is trimmed on its own budget before any attested history is touched
+    notePlan = P.planNoteTrim(pages, { noteCap: noteBudget(cap), actorId: actor.id });
+    if (notePlan) {
+      await removeEntries(j, null, notePlan.byPage, pages);
+      await commit(actor, scope, { pub: [M.normalizeEntry({ ...notePlan.marker, id: notePlan.marker.id }, { actorId: actor.id })] });
+      stats.prunes++;
+      pages = pagesOf(j);
+      if (M.totalCount(pages) <= cap) return notesOnly(notePlan, pages);
+    }
+  }
   const gm = gmJournal();
   const secret = gm ? pagesOf(gm, actor.id) : null;
-  const head = Math.max(...Object.keys(pages).map(Number));
-  const plan = P.planPrune(pages, { cap, head, actorId: actor.id, secret });
-  if (!plan) return null;
+  const live = Object.keys(pages).map(Number).filter((n) => !pages[n].imp);
+  const head = live.length ? Math.max(...live) : Math.max(...Object.keys(pages).map(Number));
+  const plan = P.planPrune(pages, { cap, head, actorId: actor.id, secret, now: Date.now() });
+  if (!plan) return notePlan ? notesOnly(notePlan, pages) : null;
   const docs = pageDocs(j);
   const ids = plan.dropPages.map((no) => docs[no]?.id).filter(Boolean);
   if (ids.length) await j.deleteEmbeddedDocuments("JournalEntryPage", ids, O());
@@ -287,12 +325,34 @@ export async function deleteLog(actorId) {
   emitChange({ actorId, op: "deleteLog", ids: [] });
   return out;
 }
+/** Imported entries go to SIDE pages (flag `imp`, numbered after the existing ones, time-sorted): they are never the head, never count as the newest history and the
+ *  retention prune orders pages by time, so restoring an old export cannot make the next prune delete the real recent history (L8). */
+async function writeSide(journal, secretFor, entries) {
+  if (!entries.length) return 0;
+  const docs = pageDocs(journal, secretFor);
+  let no = Math.max(0, ...Object.keys(docs).map(Number));
+  const pgs = []; let page = null;
+  for (const e of M.sortEntries(entries)) {
+    if (!page || page.n >= M.CHUNK_ENTRIES || (page.n > 0 && page.bytes + M.byteSize(e) > M.CHUNK_BYTES)) { if (page) pgs.push(page); no += 1; page = M.emptyPage(no, true); }
+    page = M.pageWith(page, e);
+  }
+  pgs.push(page);
+  const creates = pgs.map((pg) => ({ _id: C.pageDocId(secretFor || journal.id, pg.no, !!secretFor), name: M.chunkName(pg.no, secretFor), type: "text", text: { content: "" }, sort: pg.no * 10, flags: { [MOD]: { log: pg } } }));
+  stats.pageCreates += creates.length;
+  await journal.createEmbeddedDocuments("JournalEntryPage", creates, { ...O(), keepId: true });
+  stats.entriesWritten += entries.length;
+  return entries.length;
+}
 /** Write imported entries (already planned and validated by maint-pure.planImport) into an actor's log. Entries flagged `v` go to the GM journal. */
 export async function importInto(actor, scope, entries) {
-  const pub = entries.filter((e) => !e.v), sec = entries.filter((e) => e.v);
-  const BATCH = 200;
-  for (let i = 0; i < pub.length; i += BATCH) await commit(actor, scope, { pub: pub.slice(i, i + BATCH) });
-  for (let i = 0; i < sec.length; i += BATCH) await commit(actor, scope, { sec: sec.slice(i, i + BATCH) });
+  const imp = entries.filter((e) => e.imp), rest = entries.filter((e) => !e.imp);      // rest = the log.import marker: an ordinary live entry
+  const pub = imp.filter((e) => !e.v), sec = imp.filter((e) => e.v);
+  const j = (await ensureJournal(actor, scope)).journal;
+  const BATCH = 250;
+  for (let i = 0; i < pub.length; i += BATCH) await writeSide(j, null, pub.slice(i, i + BATCH));
+  if (sec.length) { const gm = await ensureGmJournal(); for (let i = 0; i < sec.length; i += BATCH) await writeSide(gm, actor.id, sec.slice(i, i + BATCH)); }
+  if (rest.length) await commit(actor, scope, { pub: rest.filter((e) => !e.v), sec: rest.filter((e) => e.v) });
+  invalidate(actor.id);
   return { pub: pub.length, sec: sec.length };
 }
 

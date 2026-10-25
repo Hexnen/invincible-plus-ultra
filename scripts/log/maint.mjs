@@ -75,14 +75,14 @@ export async function setRetention({ hero, base } = {}) {
 function pagesFor(l) {
   const j = Store.actorJournal(l.actorId), gm = Store.gmJournal();
   const pages = j ? Store.pagesOf(j) : {};
-  const nos = Object.keys(pages).map(Number);
-  return { pages, secret: gm ? Store.pagesOf(gm, l.actorId) : null, head: nos.length ? Math.max(...nos) : 1 };
+  const nos = Object.keys(pages).map(Number), live = nos.filter((n) => !pages[n].imp);        // imported side pages are never the head
+  return { pages, secret: gm ? Store.pagesOf(gm, l.actorId) : null, head: live.length ? Math.max(...live) : nos.length ? Math.max(...nos) : 1 };
 }
 /** What `trim(id, {keep})` would remove, without removing anything. Whole oldest chunks only, so the log can keep somewhat MORE than `keep`. */
 export function trimPreview(id, { keep } = {}) {
   assertStaff();
   const l = find(id), p = pagesFor(l);
-  return { ...MP.trimPreview(p.pages, p.secret, { keep: keep ?? Store.retention(l.scope), head: p.head, actorId: l.actorId }), keep: keep ?? Store.retention(l.scope), name: l.name, scope: l.scope };
+  return { ...MP.trimPreview(p.pages, p.secret, { keep: keep ?? Store.retention(l.scope), head: p.head, actorId: l.actorId, now: Date.now() }), keep: keep ?? Store.retention(l.scope), name: l.name, scope: l.scope };
 }
 export async function trim(id, { keep } = {}) {
   assertStaff();
@@ -99,7 +99,7 @@ export async function trim(id, { keep } = {}) {
 export async function remove(id) {
   assertStaff();
   const l = find(id);
-  if (Scribe.isScribe()) await Scribe.drain();
+  if (Scribe.isScribe()) { await Scribe.drain(); Scribe.forget(l.actorId); }       // L7-20: from here no in-flight flush may re-create the journal
   const gone = await Store.deleteLog(l.actorId);
   let fresh = false;
   if (l.actor && Scribe.isScribe()) fresh = await Scribe.rebaseline(l.actorId).catch(() => false);

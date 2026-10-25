@@ -8,14 +8,18 @@ import { h, icon, sr, uid, buildNodes, buildText } from "./dom.mjs";
 
 /* ------------------------------------------------------------------ values */
 export const clip = (s, n = 60) => { const x = String(s); return x.length > n ? x.slice(0, n - 1) + "…" : x; };
+const fmtText = (v) => (typeof v === "string" ? v : v == null ? "" : typeof v === "object" ? fmtVal(v, 1000) : String(v));
 /** A value as shown in a sentence or table cell. */
 export function fmtVal(v, lim = 80) {
   if (v === null || v === undefined || v === "") return t("IPL.Sum.Empty");
   if (typeof v === "boolean") return v ? "✓" : "—";
-  if (typeof v === "number") return String(v);
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "—";
+  if (typeof v === "object") { try { return clip(JSON.stringify(v), lim); } catch { return "—"; } }     // L8: a hostile object value must not print "[object Object]"
   return clip(String(v), lim);
 }
 const lastSeg = (p) => String(p).split(".").pop();
+/** L8: entries come from files and other modules; only plain objects are used where the renderers read fields. */
+const objs = (list) => (Array.isArray(list) ? list.filter((x) => x && typeof x === "object" && !Array.isArray(x)) : []);
 export function keyLabel(key) {
   if (key == null) return "";
   const k = `IPL.Key.${key}`;
@@ -61,7 +65,7 @@ export function sumKey(e) {
 function whoNode(e, ctx, dom, opts) {
   const name = e.u ? ctx.userName(e.u) : t("IPL.UI.System");
   if (!dom) return name;
-  return h("b.ipl-who", name);
+  return h("b.ipl-who", h("bdi", name));
 }
 function linkNode(kind, id, label, ctx, dom, alive) {
   if (!dom) return label;
@@ -99,7 +103,7 @@ export function paramsOf(e, ctx, dom = false, opts = {}) {
     case "item.add": case "item.remove": case "item.edit": case "item.toggle":
       p.name = itemName(e, ctx, dom);
       p.lvl = d.level != null && d.level !== "" ? ` (${t("IPL.Sum.Level", { n: d.level })})` : "";
-      if (e.k === "item.edit") p.what = (Array.isArray(d.changes) ? d.changes : []).map((c) => pathLabel(c.p)).join(", ") || "—";
+      if (e.k === "item.edit") p.what = objs(d.changes).map((c) => pathLabel(c.p)).join(", ") || "—";
       break;
     case "effect.add": case "effect.remove": case "effect.edit": p.name = d.name ? String(d.name) : ""; break;
     case "stat.text":
@@ -204,12 +208,13 @@ export function badgesOf(e, ctx) {
   }
   if (d.cause && has(`IPL.Cause.${d.cause}`) && d.cause !== "manual") out.push(h("span.ipl-chip.ipl-cause", t(`IPL.Cause.${d.cause}`)));
   if (e.k === "item.add" && d.src && has(`IPL.Src.${d.src}`)) out.push(h("span.ipl-chip.ipl-cause", t(`IPL.Src.${d.src}`)));
-  if (e.k === "roll.made" && d.mode && d.mode !== "public") out.push(h("span.ipl-chip.ipl-cause", t(`IPL.Mode.${d.mode}`)));
+  if (e.k === "roll.made" && d.mode && d.mode !== "public" && has(`IPL.Mode.${d.mode}`)) out.push(h("span.ipl-chip.ipl-cause", t(`IPL.Mode.${d.mode}`)));
   if (e.n > 1) out.push(h("span.ipl-chip.ipl-n", { title: t("IPL.UI.Merged", { n: e.n }) }, h("span", { "aria-hidden": "true" }, `×${e.n}`), sr(t("IPL.UI.Merged", { n: e.n }))));
   if (e.c && e.c.r != null) out.push(h("span.ipl-chip.ipl-round", { title: t("IPL.UI.RoundTip", { n: e.c.r }) }, h("span", { "aria-hidden": "true" }, t("IPL.UI.RoundBadge", { n: e.c.r })), sr(t("IPL.UI.RoundTip", { n: e.c.r }))));
   if (E.visibilityOf(e) === "G") out.push(h("span.ipl-chip.ipl-gm", { title: t("IPL.UI.GmOnlyTip") }, icon("fa-lock"), h("span", t("IPL.UI.GmOnly"))));
   if (e.a && e.rel) out.push(h("span.ipl-chip.ipl-approx.ipl-unv", { title: t("IPL.UI.UnverifiedTip") }, icon("fa-user-clock"), h("span", t("IPL.UI.Unverified"))));      // queued on a player's device while no GM was connected
   else if (e.a) out.push(h("span.ipl-chip.ipl-approx", { title: t("IPL.UI.ApproxTip") }, icon("fa-triangle-exclamation"), h("span", t("IPL.UI.Approx"))));
+  if (e.ua) out.push(h("span.ipl-chip.ipl-approx.ipl-ua", { title: t("IPL.UI.ChatDerivedTip") }, icon("fa-comment-dots"), h("span", t("IPL.UI.ChatDerived"))));
   if (e.imp) out.push(h("span.ipl-chip.ipl-imp", { title: t("IPL.UI.ImportedTip") }, icon("fa-file-import"), h("span", t("IPL.UI.Imported"))));
   if (ctx.showActor && e.aid) {                                                         // merged Table log: whose log is this row from
     const live = globalThis.game?.actors?.get?.(e.aid), name = live?.name || ctx.actorName?.(e.aid) || "";
@@ -247,7 +252,7 @@ export function diffRows(e) {
     case "access.owner": pair(d.name || String(d.user ?? ""), levelLabel(d.from), levelLabel(d.to)); break;
     case "access.default": pair(t("IPL.Type.access.default"), levelLabel(d.from), levelLabel(d.to)); break;
     case "item.edit": case "effect.edit":
-      for (const c of Array.isArray(d.changes) ? d.changes : []) {
+      for (const c of objs(d.changes)) {
         if (Array.isArray(c.len)) pair(pathLabel(c.p), t("IPL.Sum.Characters", { n: c.len[0] }), t("IPL.Sum.Characters", { n: c.len[1] }));
         else pair(pathLabel(c.p), c.from, c.to);
       }
@@ -278,17 +283,17 @@ function diceChips(d) {
   const dice = Array.isArray(d.dice) ? d.dice : [];
   if (!dice.length) return null;
   const ul = h("ul.ipl-dice", { "aria-label": t("IPL.UI.Dice") });
-  for (const n of dice) {
+  for (const n of dice.filter((x) => typeof x === "number" || typeof x === "string")) {
     const kind = n === 6 ? "success" : n === 1 ? "bane" : "plain";
     ul.append(h("li.ipl-die", { class: `ipl-die-${kind}` }, h("span", { "aria-hidden": "true" }, String(n)), sr(t(kind === "success" ? "IPL.UI.DieSuccess" : kind === "bane" ? "IPL.UI.DieBane" : "IPL.UI.DieNeutral", { n }))));
   }
   const wrap = h("div.ipl-dice-wrap", ul);
-  if (Array.isArray(d.hist) && d.hist.length) wrap.append(h("p.ipl-hist", `${t("IPL.UI.PushHistory")}: `, d.hist.map((x) => `${tn("IPL.Plural.Success", x.s ?? 0)}${x.b ? `, ${tn("IPL.Plural.Bane", x.b)}` : ""}`).join(" → ")));
+  if (Array.isArray(d.hist) && d.hist.length) wrap.append(h("p.ipl-hist", `${t("IPL.UI.PushHistory")}: `, objs(d.hist).map((x) => `${tn("IPL.Plural.Success", Number(x.s) || 0)}${x.b ? `, ${tn("IPL.Plural.Bane", Number(x.b) || 0)}` : ""}`).join(" → ")));
   return wrap;
 }
 function groupedNames(list, more) {
   const by = new Map();
-  for (const x of list) { const k = x.t || ""; if (!by.has(k)) by.set(k, []); by.get(k).push(x); }
+  for (const x of objs(list)) { const k = x.t || ""; if (!by.has(k)) by.set(k, []); by.get(k).push(x); }
   const ul = h("ul.ipl-groups");
   for (const [type, arr] of by) ul.append(h("li", h("span.ipl-gtype", itemTypeLabel(type) || "—"), ": ", arr.map((x) => x.n + (x.l ? ` (${t("IPL.Sum.Level", { n: x.l })})` : "")).join(", ")));
   if (more) ul.append(h("li.ipl-muted", t("IPL.UI.MoreItems", { n: more })));
@@ -297,12 +302,12 @@ function groupedNames(list, more) {
 /** Children (bulk.change, log.gap, chargen.apply): returns a node or null. `fullKids` shows every child instead of the first 12. */
 function childrenOf(e, ctx, fullKids) {
   const d = e.d || {};
-  const kids = e.k === "bulk.change" ? d.kids : e.k === "log.gap" ? d.changes : null;
+  const kids = e.k === "bulk.change" ? objs(d.kids) : e.k === "log.gap" ? objs(d.changes) : null;
   if (Array.isArray(kids) && kids.length) {
     const cap = fullKids ? kids.length : 12;
     const ul = h("ul.ipl-kids");
     for (const k of kids.slice(0, cap)) {
-      const ke = { id: `${e.id}~k`, t: e.t, u: e.u, k: k.k, d: k.d || {}, n: k.n };
+      const ke = { id: `${e.id}~k`, t: e.t, u: e.u, k: typeof k.k === "string" ? k.k : "", d: k.d && typeof k.d === "object" && !Array.isArray(k.d) ? k.d : {}, n: k.n };
       ul.append(h("li", icon(iconClass(ke), "ipl-kid-ico"), h("span", sentenceNodes(ke, ctx, { kid: true }))));
     }
     const rest = kids.length - cap + (d.more || 0);
@@ -328,16 +333,17 @@ export function detailOf(e, ctx, opts = {}) {
   const meta = h("dl.ipl-meta");
   const row = (k, v) => { if (v != null && v !== "") meta.append(h("dt", k), h("dd", v)); };
   const who = (e.u ? ctx.userName(e.u) : t("IPL.UI.System")) + (e.rel ? ` (${t("IPL.UI.Relayed").toLowerCase()})` : "");
-  panel.append(h("p.ipl-whenline", h("time", { datetime: new Date(e.t).toISOString() }, fmtFull(e.t) + (e.t2 && e.t2 - e.t > 2000 ? ` – ${fmtClock(e.t2)}` : "")), " · ", who));
+  panel.append(h("p.ipl-whenline", h("time", { datetime: new Date(e.t).toISOString() }, fmtFull(e.t) + (e.t2 && e.t2 - e.t > 2000 ? ` – ${fmtClock(e.t2)}` : "")), " · ", h("bdi", who)));
   if (d.cause && has(`IPL.Cause.${d.cause}`)) row(t("IPL.UI.Cause"), t(`IPL.Cause.${d.cause}`));
   if (d.src && has(`IPL.Src.${d.src}`)) row(t("IPL.UI.Source"), t(`IPL.Src.${d.src}`));
   if (e.k === "roll.made" && d.mode && has(`IPL.Mode.${d.mode}`)) row(t("IPL.Type.roll.made"), t(`IPL.Mode.${d.mode}`) + (d.str ? `, ${t("IPL.Out.Stress", { n: d.str })}` : "") + (d.st ? `, ${t("IPL.Out.Stunts", { n: d.st })}` : ""));
   if (e.a && e.rel) row(t("IPL.UI.Unverified"), t("IPL.UI.UnverifiedTip"));
   else if (e.a) row(t("IPL.UI.Approx"), t("IPL.UI.ApproxTip"));
+  if (e.ua) row(t("IPL.UI.ChatDerived"), t("IPL.UI.ChatDerivedTip"));
   if (e.imp) row(t("IPL.UI.Imported"), t("IPL.UI.ImportedTip"));
   if (e.k === "damage.taken" && d.injury && d.injury.name) row(t("IPL.Cat.damage"), d.injury.name);
   if (meta.childElementCount) panel.append(meta);
-  if (e.k === "note.add" || e.k === "note.gm") panel.append(h("blockquote.ipl-quote", d.text || ""));
+  if (e.k === "note.add" || e.k === "note.gm") panel.append(h("blockquote.ipl-quote", h("bdi", fmtText(d.text))));
   const rows = diffRows(e);
   if (rows.length) panel.append(diffTable(rows));
   const dice = e.k === "roll.made" ? diceChips(d) : null;
@@ -347,7 +353,7 @@ export function detailOf(e, ctx, opts = {}) {
   const notes = ctx.notesOn?.get?.(e.id);
   if (notes && notes.length) {
     const ul = h("ul.ipl-annots");
-    for (const n of notes) ul.append(h("li", h("b.ipl-who", ctx.userName(n.u)), ": ", n.d?.text ?? ""));
+    for (const n of notes) ul.append(h("li", h("b.ipl-who", h("bdi", ctx.userName(n.u))), ": ", h("bdi", fmtText(n.d?.text))));
     panel.append(h("div.ipl-children", h("h4", t("IPL.UI.Notes")), ul));
   }
   return panel;
