@@ -45,7 +45,8 @@ export function variantOf(e) {
     case "combat.action": return d.on ? "on" : "off";
     case "actor.created": return d.dupOf ? "dup" : "";
     case "card.occupied": return d.on ? "on" : "off";
-    case "event.reroll": case "event.resolved": case "event.applied": case "event.note": return d.name ? "named" : "";
+    case "event.reroll": case "event.resolved": case "event.applied": case "event.note": case "event.dismissed": case "event.undone": return d.name ? "named" : "";
+    case "upgrade.add": return d.source === "starting" || d.source === "granted" || d.source === "bought" ? d.source : "";
     default: return "";
   }
 }
@@ -138,6 +139,7 @@ export function paramsOf(e, ctx, dom = false, opts = {}) {
     case "card.roll": p.key = keyLabel(d.table); p.result = d.result != null ? `${fmtVal(d.result)}${d.roll != null ? ` (${d.roll})` : ""}` : fmtVal(d.roll); break;
     case "upgrade.status": p.from = statusLabel(d.from); p.to = statusLabel(d.to); break;
     case "upgrade.buy": p.cost = d.cost ?? 0; break;
+    case "upgrade.add": p.paid = d.paid ?? 0; break;
     case "event.rolled": p.label = d.label ? String(d.label) : d.roll != null ? `D66 ${d.roll}` : ""; break;
     case "crate.qty": p.qty = d.qty ?? ""; break;
     case "crate.give": p.to = d.to && d.to.name ? d.to.name : ""; break;

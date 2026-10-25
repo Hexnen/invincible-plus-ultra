@@ -5,6 +5,7 @@
 import * as P from "./pure.mjs";
 import * as S from "./store.mjs";
 import * as Cat from "./catalog.mjs";
+import { logRecord } from "./logrec.mjs";
 
 const MOD = S.MODULE_ID;
 const FIELDS = ["team", "teamBase"];
@@ -75,6 +76,8 @@ export async function push(team, { force = false, resolve = null, user = game.us
     if (fields.length) out.pushed.push({ id: r.id, fields });
     else out.unchanged.push(r.id);
   }
+  // L3b: ONE summary row on the base log (each hero's own passive team.sync row stays in the hero log)
+  if (out.pushed.length) logRecord(S.resolve(team), { k: "sync.push", d: { members: out.pushed.map((p) => game.actors.get(p.id)?.name ?? p.id), fields: out.pushed.reduce((n, p) => n + p.fields.length, 0), conflicts: out.conflicts.length, kept: out.skipped.length } });
   return out;
 }
 
@@ -111,5 +114,7 @@ export async function fromHero(actorRef, opts = {}) {
   // the hero's current text came from the player: remember it as the last pushed value so it is never reported as a conflict
   // (a later push just normalizes the wording)
   await actor.update({ [`flags.${MOD}.${P.FLAG_KEY}.pushed`]: { team: String(actor._source.system.team ?? ""), teamBase: String(actor._source.system.teamBase ?? "") } });
+  // L3b: ONE row "took the card texts from Rex" (absorbs the passive upgrade.add / card.edit rows of the adoption; member.add and the hero's team.join stay)
+  logRecord(team.id, { k: "sync.adopt", d: { from: { id: actor.id, name: actor.name }, kind: parsed.kind ?? "", where: parsed.where ?? "" }, absorb: { actors: [team.id], types: ["upgrade.", "card."], ms: 4000 } });
   return S.view(view.id);
 }

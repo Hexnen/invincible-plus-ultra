@@ -14,7 +14,7 @@ const TP = (key, enOne, enOther, plOne, plFew, plMany) => {
 /** Sentence variants chosen by the row renderer (entry data -> suffix). Listed here so check-lang can prove every variant string exists. */
 export const VARIANTS = Object.freeze({
   "stat.vital": ["up", "down"], "stat.text": ["bio"], "actor.img": ["portrait", "token"], "item.toggle": ["on", "off"], "damage.taken": ["att"],
-  "combat.action": ["on", "off"], "actor.created": ["dup"], "card.occupied": ["on", "off"], "event.reroll": ["named"], "event.resolved": ["named"], "event.applied": ["named"], "event.note": ["named"], "team.join": [], "roll.made": []
+  "combat.action": ["on", "off"], "actor.created": ["dup"], "card.occupied": ["on", "off"], "event.reroll": ["named"], "event.resolved": ["named"], "event.applied": ["named"], "event.note": ["named"], "event.dismissed": ["named"], "event.undone": ["named"], "upgrade.add": ["starting", "granted", "bought"], "team.join": [], "roll.made": []
 });
 /** Dynamic key families, checked against the registries by check-lang.mjs. */
 export const ATTRS = ["fighting", "agility", "strength", "reason", "intuition", "presence"];
@@ -92,9 +92,10 @@ const TYPE_NAMES = [
   ["upgrade.count", "Upgrade count", "Liczba ulepszeń"], ["upgrade.remove", "Upgrade removed", "Usunięto ulepszenie"], ["upgrade.note", "Upgrade note", "Notatka ulepszenia"],
   ["event.rolled", "Base event", "Zdarzenie bazy"], ["event.reroll", "Event rolled again", "Ponowny rzut zdarzenia"], ["event.resolved", "Event handled", "Zdarzenie załatwione"],
   ["event.applied", "Event applied", "Zdarzenie zastosowane"], ["event.note", "Event note", "Notatka zdarzenia"],
+  ["event.dismissed", "Event dismissed", "Zdarzenie odrzucone"], ["event.undone", "Event undone", "Zdarzenie cofnięte"],
   ["crate.add", "Crate item added", "Dodano do skrzyni"], ["crate.remove", "Crate item removed", "Usunięto ze skrzyni"], ["crate.qty", "Crate quantity", "Ilość w skrzyni"], ["crate.give", "Crate item given", "Wydano ze skrzyni"],
   ["vehicle.add", "Vehicle added", "Dodano pojazd"], ["vehicle.remove", "Vehicle removed", "Usunięto pojazd"], ["vehicle.primary", "Team vehicle set", "Ustawiono pojazd drużyny"],
-  ["tracker.edit", "Counter edit", "Zmiana licznika"], ["sync.push", "Texts pushed to heroes", "Wysłano teksty do bohaterów"], ["sync.adopt", "Card taken from a hero", "Karta wzięta od bohatera"],
+  ["tracker.edit", "Counter edit", "Zmiana licznika"], ["tracker.remove", "Counter removed", "Usunięto licznik"], ["sync.push", "Texts pushed to heroes", "Wysłano teksty do bohaterów"], ["sync.adopt", "Card taken from a hero", "Karta wzięta od bohatera"],
   ["policy.change", "Policy changed", "Zmiana zasad"], ["base.created", "Base created", "Utworzenie bazy"], ["base.deleted", "Base deleted", "Usunięcie bazy"], ["base.migrated", "Base migrated", "Migracja bazy"]
 ];
 for (const [id, en, pl] of TYPE_NAMES) T(`IPL.Type.${id}`, en, pl);
@@ -162,6 +163,9 @@ const SUM = [
   ["member.add", "{who} added {name} to the team", "{who}: {name} dołącza do drużyny"],
   ["member.remove", "{who} removed {name} from the team", "{who}: {name} opuszcza drużynę"],
   ["upgrade.add", "{who} added the upgrade {name}", "{who}: dodano ulepszenie {name}"],
+  ["upgrade.add.starting", "{who} chose the starting upgrade {name}", "{who}: wybrano ulepszenie startowe {name}"],
+  ["upgrade.add.granted", "{who} granted the upgrade {name}", "{who}: przyznano ulepszenie {name}"],
+  ["upgrade.add.bought", "{who} added the upgrade {name} (bought for {paid} karma)", "{who}: dodano ulepszenie {name} (kupione za {paid} karmy)"],
   ["upgrade.buy", "{who} bought the upgrade {name} for {cost} karma", "{who}: kupiono ulepszenie {name} za {cost} karmy"],
   ["upgrade.status", "{who} changed {name} from {from} to {to}", "{who}: {name} z „{from}” na „{to}”"],
   ["upgrade.count", "{who} changed the count of {name} from {from} to {to}", "{who}: liczba {name} z {from} na {to}"],
@@ -172,6 +176,10 @@ const SUM = [
   ["event.resolved", "{who} handled the event", "{who}: zdarzenie załatwione"],
   ["event.applied", "{who} applied the event to the card", "{who}: zdarzenie zastosowano na karcie"],
   ["event.note", "{who} edited the note of an event", "{who}: edycja notatki zdarzenia"],
+  ["event.dismissed", "{who} dismissed the proposed effect of an event", "{who}: odrzucono proponowany skutek zdarzenia"],
+  ["event.undone", "{who} undid the effect of an event", "{who}: cofnięto skutek zdarzenia"],
+  ["event.dismissed.named", "{who} dismissed the proposed effect of the event {name}", "{who}: odrzucono proponowany skutek zdarzenia {name}"],
+  ["event.undone.named", "{who} undid the effect of the event {name}", "{who}: cofnięto skutek zdarzenia {name}"],
   ["event.reroll.named", "{who} rolled the event {name} again", "{who}: ponowny rzut zdarzenia {name}"],
   ["event.resolved.named", "{who} handled the event {name}", "{who}: zdarzenie {name} załatwione"],
   ["event.applied.named", "{who} applied the event {name} to the card", "{who}: zdarzenie {name} zastosowano na karcie"],
@@ -183,6 +191,7 @@ const SUM = [
   ["vehicle.add", "{who} added the vehicle {name}", "{who}: dodano pojazd {name}"],
   ["vehicle.remove", "{who} removed the vehicle {name}", "{who}: usunięto pojazd {name}"],
   ["vehicle.primary", "{who} made {name} the team vehicle", "{who}: pojazd drużyny: {name}"],
+  ["tracker.remove", "{who} removed the counter {name}", "{who}: usunięto licznik {name}"],
   ["tracker.edit", "{who} changed the counter {name} from {from} to {to}", "{who}: licznik {name} z {from} na {to}"],
   ["sync.push", "{who} pushed the card texts to {members}", "{who}: wysłano teksty karty do: {members}"],
   ["sync.adopt", "{who} took the card texts from {from}", "{who}: karta wzięta od {from}"],

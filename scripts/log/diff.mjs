@@ -112,10 +112,10 @@ export function classify(path, scope = "hero") {
 }
 const ID_FAMILIES = Object.freeze({
   upgrades: { add: "upgrade.add", remove: "upgrade.remove", fields: { status: "upgrade.status", count: "upgrade.count", note: "upgrade.note" }, idKey: "key" },
-  events: { add: "event.rolled", fields: { rerolled: "event.reroll", resolved: "event.resolved", "effect.applied": "event.applied", note: "event.note" }, idKey: "eid" },
+  events: { add: "event.rolled", fields: { rerolled: "event.reroll", resolved: "event.resolved", "effect.applied": "event.applied", "effect.dismissed": "event.dismissed", note: "event.note" }, idKey: "eid" },
   crate: { add: "crate.add", remove: "crate.remove", fields: { qty: "crate.qty" }, idKey: "cid" },
   vehicles: { add: "vehicle.add", remove: "vehicle.remove", fields: { primary: "vehicle.primary" }, idKey: "vid" },
-  trackers: { add: null, remove: null, fields: { value: "tracker.edit" }, idKey: "id" }
+  trackers: { add: null, remove: "tracker.remove", fields: { value: "tracker.edit" }, idKey: "id" }
 });
 export { ID_FAMILIES };
 function classifyBase(path) {
@@ -201,6 +201,7 @@ export function draftsFromDiff(changes, opts = {}) {
 }
 const c0 = (p) => p;
 
+const UPGRADE_SOURCE = Object.freeze({ start: "starting", karma: "bought", gm: "granted" });
 function familyDrafts(f, before, after) {
   const fam = ID_FAMILIES[f.family];
   const base = `${FLAG}.${f.family}.${f.id}`;
@@ -213,7 +214,11 @@ function familyDrafts(f, before, after) {
   const withKey = (d) => { if (f.family === "upgrades") { const k = after[`${base}.key`] ?? before[`${base}.key`]; if (k) { d.uid = f.id; d.key = k; } } return d; };   // L3: the card key (catalog slug) for upgrades, the row id kept as uid
   if ((addedAll || (f.whole && f.whole.kind === "add")) && fam.add) {
     const d = { [idKey]: f.id, name: clampStr(nameOf(after), TEXT_CLAMP) };
-    if (f.family === "upgrades") { d.count = countOf(after) ?? 1; const pw = after[`${base}.power`]; if (pw) d.power = clampStr(pw, TEXT_CLAMP); }
+    if (f.family === "upgrades") {
+      d.count = countOf(after) ?? 1; const pw = after[`${base}.power`]; if (pw) d.power = clampStr(pw, TEXT_CLAMP);
+      const src = UPGRADE_SOURCE[after[`${base}.source`]]; if (src) d.source = src;          // L3b: how it came to the card (starting pick / karma purchase / GM grant)
+      const paid = Number(after[`${base}.paid`]); if (paid > 0) d.paid = paid;
+    }
     else if (f.family === "events") { d.roll = after[`${base}.roll`] ?? null; d.band = after[`${base}.band`] ?? ""; d.label = clampStr(after[`${base}.label`] ?? "", TEXT_CLAMP); d.text = clampStr(after[`${base}.text`] ?? "", 120); }
     else if (f.family === "crate") { d.qty = countOf(after) ?? 1; d.type = after[`${base}.type`] ?? ""; }
     out.push({ k: fam.add, path: base, d: withKey(d) });
@@ -226,8 +231,9 @@ function familyDrafts(f, before, after) {
     out.push({ k: fam.remove, path: base, d: withKey(d) });
     return out;
   }
+  const dismissed = f.family === "events" && f.list.some((x) => x.rest === "effect.dismissed" && x.c.to);        // a dismissal also flips `resolved`: one row (event.dismissed), not two
   for (const { rest, c } of f.list) {
-    const k = fam.fields[rest];
+    let k = fam.fields[rest];
     if (!k) continue;
     const nm = clampStr(nameOf(after) || nameOf(before), TEXT_CLAMP);
     const d = { [idKey]: f.id, name: nm };
@@ -235,7 +241,12 @@ function familyDrafts(f, before, after) {
     else if (k === "crate.qty") { d.qty = c.to; d.from = c.from; d.type = after[`${base}.type`] ?? ""; }
     else if (k === "tracker.edit") { d.from = c.from; d.to = c.to; }
     else if (k === "vehicle.primary") { if (!c.to) continue; }
-    else if (k === "event.applied") { if (!c.to) continue; d.effect = { kind: after[`${base}.effect.kind`] ?? "" }; }
+    else if (k === "event.applied") {
+      if (!c.to) { if (!c.from) continue; k = "event.undone"; }                                  // L3b: applied true -> false = an undo
+      d.effect = { kind: after[`${base}.effect.kind`] ?? before[`${base}.effect.kind`] ?? "" };
+    }
+    else if (k === "event.dismissed") { if (!c.to) continue; }
+    else if (k === "event.resolved" && dismissed) continue;
     else if ((k === "event.reroll" || k === "event.resolved") && !c.to) continue;
     out.push({ k, path: `${base}.${rest}`, d: withKey(d) });
   }

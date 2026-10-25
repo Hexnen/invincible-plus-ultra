@@ -29,7 +29,7 @@ const SPEC_IDS = [
   "team.join", "team.leave", "team.sync", "access.owner", "access.default", "note.add", "note.gm", "actor.created", "actor.deleted", "bulk.change", "log.start", "log.gap", "log.prune", "log.redact", "log.import",
   "card.edit", "card.roll", "card.rename", "card.img", "card.occupied", "member.add", "member.remove", "upgrade.add", "upgrade.buy", "upgrade.status", "upgrade.count", "upgrade.remove", "upgrade.note",
   "event.rolled", "event.reroll", "event.resolved", "event.applied", "event.note", "crate.add", "crate.remove", "crate.qty", "crate.give", "vehicle.add", "vehicle.remove", "vehicle.primary",
-  "tracker.edit", "sync.push", "sync.adopt", "policy.change", "base.created", "base.deleted", "base.migrated"
+  "tracker.edit", "tracker.remove", "event.dismissed", "event.undone", "sync.push", "sync.adopt", "policy.change", "base.created", "base.deleted", "base.migrated"
 ];
 for (const id of SPEC_IDS) ok(EV.isKnownType(id), `spec type present ${id}`);
 ok(EV.TYPE_IDS.length >= SPEC_IDS.length, "registry size");
@@ -271,7 +271,22 @@ eq(cls("flags.invincible-plus-ultra.base.upgrades.u1.status", "base").rest, "sta
   // resolved event, applied
   const e1 = mk(), e2 = mk(); e1.flags["invincible-plus-ultra"].base.events.e9 = { roll: 11, band: "none", effect: { kind: "break", applied: false } }; e2.flags["invincible-plus-ultra"].base.events.e9 = { roll: 11, band: "none", effect: { kind: "break", applied: true }, resolved: true };
   eq(D.draftsFromDiff(D.diffObjects(e1, e2), { scope: "base", before: D.flatten(e1), after: D.flatten(e2) }).map((x) => x.k).sort(), ["event.applied", "event.resolved"], "event applied+resolved");
-  eq(D.draftsFromDiff(D.diffObjects(e2, e1), { scope: "base", before: D.flatten(e2), after: D.flatten(e1) }).length, 0, "un-applying produces no entry");
+  eq(D.draftsFromDiff(D.diffObjects(e2, e1), { scope: "base", before: D.flatten(e2), after: D.flatten(e1) }).filter((x) => x.k === "event.applied").length, 0, "un-applying is not an apply");
+  // L3b catalogue: undo, dismiss (ONE row, not resolved too), tracker removal, upgrade source / paid
+  const fl = (x) => x.flags["invincible-plus-ultra"].base;
+  const dd = (x, y) => D.draftsFromDiff(D.diffObjects(x, y), { scope: "base", before: D.flatten(x), after: D.flatten(y) });
+  const un = dd(e2, e1);
+  eq(un.map((x) => x.k), ["event.undone"], "event undone row"); eq(un[0].d.eid, "e9", "undone eid"); eq(un[0].d.effect, { kind: "break" }, "undone effect kind");
+  const g1 = mk(), g2 = mk(); fl(g1).events.e8 = { roll: 12, band: "none", label: "Fire", effect: { kind: "disable", applied: false } };
+  fl(g2).events.e8 = { roll: 12, band: "none", label: "Fire", effect: { kind: "disable", applied: false, dismissed: true, dismissedAt: 5, dismissedBy: "u" }, resolved: true };
+  const ds = dd(g1, g2); eq(ds.map((x) => x.k), ["event.dismissed"], "dismiss = ONE distinct row (no event.resolved)"); eq(ds[0].d.name, "Fire", "dismissed names the event");
+  const r1 = mk(), r2 = mk(); fl(r1).events.e8 = { roll: 12, band: "none", effect: { kind: "none" }, resolved: false }; fl(r2).events.e8 = { roll: 12, band: "none", effect: { kind: "none" }, resolved: true };
+  eq(dd(r1, r2).map((x) => x.k), ["event.resolved"], "a plain resolve stays event.resolved");
+  const t1 = mk(), t2 = mk(); fl(t1).trackers = { t1: { name: "Heat", value: 2, max: 5, sort: 1 } }; fl(t2).trackers = {};
+  const tr = dd(t1, t2); eq(tr.map((x) => x.k), ["tracker.remove"], "tracker removal row"); eq(tr[0].d, { id: "t1", name: "Heat" }, "tracker.remove data");
+  const u1 = mk(), u2 = mk(); fl(u2).upgrades.u5 = { name: "Gym", count: 1, status: "installing", source: "karma", paid: 10 }; fl(u2).upgrades.u6 = { name: "Lab2", count: 1, status: "active", source: "start", paid: 0 }; fl(u2).upgrades.u7 = { name: "Vault", count: 1, status: "active", source: "gm", paid: 0 };
+  const ua = dd(u1, u2).filter((x) => x.k === "upgrade.add"); const by = Object.fromEntries(ua.map((x) => [x.d.key, x.d]));
+  eq(by.u5.source, "bought", "upgrade.add source bought"); eq(by.u5.paid, 10, "upgrade.add paid"); eq(by.u6.source, "starting", "source starting"); eq(by.u6.paid, undefined, "no paid when 0"); eq(by.u7.source, "granted", "source granted");
   for (const x of dr) { const v = M.buildEntry({ t: T0, u: "u", k: x.k, d: x.d }, { scope: "base", actorId: "B" }); ok(v.errors.length === 0, `base draft validates ${x.k} ${JSON.stringify(v.errors)}`); }
 }
 // item snapshots

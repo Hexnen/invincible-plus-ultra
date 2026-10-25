@@ -271,7 +271,7 @@ const onUpdateActor = guard("updateActor", (actor, changes, options, userId) => 
   const t = timeOf(options, actor), u = userId ?? "";
   if (diffs.some((c) => c.p.startsWith("ownership"))) scheduleReconcile(actor);
   const bk = diffs.find((c) => c.p === "__chargen.backup");
-  const drafts = D.draftsFromDiff(diffs.filter((c) => !c.p.startsWith("__chargen")), { scope, before, after, ipbSync: !!options?.ipbSync, nameOf: (id) => game.actors.get(id)?.name ?? "" });
+  const drafts = D.draftsFromDiff(diffs.filter((c) => !c.p.startsWith("__chargen")), { scope, before, after, ipbSync: !!options?.ipbSync, trackCause: typeof options?.ipLogCause === "string" ? options.ipLogCause : undefined, nameOf: (id) => game.actors.get(id)?.name ?? "" });
   for (const dr of drafts) if (dr.k === "access.owner") dr.d.name = userName(dr.d.user);
   const cgFlag = actor.flags?.[MOD]?.chargen;
   const runBefore = before["__chargen.runId"];
@@ -313,7 +313,7 @@ const onCreateItem = guard("createItem", (item, options, userId) => {
   const d = { id: item.id, name: M.clampText(item.name, 120), type: item.type };
   const lvl = item._source.system?.level; if (lvl) d.level = String(lvl);
   const run = item.flags?.[MOD]?.chargenRun;
-  if (run) d.src = "chargen"; else if (item._stats?.compendiumSource) d.src = "compendium";
+  if (run) d.src = "chargen"; else if (options?.ipLogSrc === "transfer") d.src = "transfer"; else if (item._stats?.compendiumSource) d.src = "compendium";
   const draft = { k: "item.add", path: `item:${item.id}`, u: userId ?? "", t, d };
   if (run) { let h = S.runHold.get(actor.id); if (!h) { h = { runId: run, adds: [], since: Date.now() }; S.runHold.set(actor.id, h); } draft.actorId = actor.id; h.adds.push({ draft }); arm(1000); return; }
   emit(actor, draft);

@@ -20,7 +20,7 @@ let sock = null, started = false, seq = 0;
 const pending = new Map();
 
 /** Per sender and op: [allowed calls, window in ms]. Change here only. Staff are exempt. */
-export const QUOTA = Object.freeze({ createTeam: [3, 60000], requestJoin: [6, 60000], ask: [6, 60000], askCreate: [4, 60000], reconcile: [30, 60000] });
+export const QUOTA = Object.freeze({ createTeam: [3, 60000], requestJoin: [6, 60000], ask: [6, 60000], askCreate: [4, 60000], reconcile: [30, 60000], ensureFolder: [6, 60000] });
 const TRUSTED_ONLY = new Set(["createTeam", "requestJoin", "ask", "askCreate"]);
 const hits = new Map();
 const recentNotices = new Map();         // coalescing: the same notice (sender|team|text) within NOTICE_MS shows once
@@ -64,6 +64,11 @@ const HANDLERS = {
       }
     }
     return { id: team.id };
+  },
+  /** L3b/B11 follow-up: the "Team bases" folder for a player's client (players cannot create folders). Idempotent, harmless for any known user. */
+  async ensureFolder() {
+    const f = await S.ensureFolder();
+    return { id: f.id };
   },
   /** args { teamId }. Idempotent and harmless (computes ownership from real actor ownership), so any known user may ask. */
   async reconcile(_sender, args) {
@@ -156,7 +161,7 @@ export async function request(op, args = {}) {
   if (!env?.ok) throw new S.BaseError(env?.code ?? "relay", env?.params ?? {});
   return env.result;
 }
-const RETRY = new Set(["createTeam", "reconcile"]);
+const RETRY = new Set(["createTeam", "reconcile", "ensureFolder"]);
 
 const modVersion = () => String(game.modules.get(MOD)?.version ?? "");
 function send(op, args) {

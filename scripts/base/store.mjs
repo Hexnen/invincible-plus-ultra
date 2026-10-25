@@ -188,14 +188,35 @@ export async function reconcileAll() {
 }
 
 /* ------------------------------------------------------------------ create / update / remove */
-let folderMaking = null;                                                  // B11 (A18): two creations at once on this client share one Folder.create
-async function ensureFolder() {
-  let f = game.folders.find((x) => x.type === "Actor" && x.flags?.[MODULE_ID]?.baseFolder);
-  if (!f) f = game.folders.find((x) => x.type === "Actor" && !x.folder && x.name === FOLDER_NAME);
-  if (!f) {
-    folderMaking ??= Folder.create({ name: FOLDER_NAME, type: "Actor", flags: { [MODULE_ID]: { baseFolder: true } } }).finally(() => { folderMaking = null; });
-    f = await folderMaking;
+/* The "Team bases" folder: SINGLE-FLIGHT (one pending creation per client), IDEMPOTENT (looks up by id, flag and name before and after the jitter) and
+   created only by staff (a player is relayed to the active GM: relay op ensureFolder). The folder gets a FIXED id, so even two clients creating in the same
+   network round trip collide on the id (the loser's create is refused and it takes the winner's folder) instead of leaving a duplicate behind. */
+export const FOLDER_ID = "IPBTeamBases0001";
+let folderMaking = null;
+const folderNow = () => game.folders.get(FOLDER_ID)
+  ?? game.folders.find((x) => x.type === "Actor" && x.flags?.[MODULE_ID]?.baseFolder)
+  ?? game.folders.find((x) => x.type === "Actor" && !x.folder && x.name === FOLDER_NAME) ?? null;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export function ensureFolder() {
+  const f = folderNow();
+  if (f) return Promise.resolve(f);
+  folderMaking ??= makeFolder().finally(() => { folderMaking = null; });
+  return folderMaking;
+}
+async function makeFolder() {
+  if (!isStaff()) {                                                       // a player cannot create folders: ask the active GM, then wait for the document to arrive
+    if (!bridge.request) throw new BaseError("relay");
+    const res = await bridge.request("ensureFolder", {});
+    for (let i = 0; i < 40 && !game.folders.get(res?.id); i++) await sleep(100);
+    const f = game.folders.get(res?.id) ?? folderNow();
+    if (!f) throw new BaseError("relay");
+    return f;
   }
+  await sleep(Math.random() * 250);                                       // another GM tab may be creating right now: look again after a jitter
+  let f = folderNow();
+  if (f) return f;
+  try { f = await Folder.create({ _id: FOLDER_ID, name: FOLDER_NAME, type: "Actor", flags: { [MODULE_ID]: { baseFolder: true } } }, { keepId: true }); }
+  catch (err) { await sleep(400); f = folderNow(); if (!f) throw err; }  // lost the race on the fixed id: take the winner's folder
   return f;
 }
 const actorOf = (a) => (typeof a === "string" ? game.actors.get(a) : a);
@@ -391,8 +412,10 @@ export async function migrate() {
     out.migrated.push({ from: j.id, to: actor.id });
   }
   if (out.migrated.length) {
-    const jf = game.folders.find((f) => f.type === "JournalEntry" && f.flags?.[MODULE_ID]?.baseFolder);
-    if (jf && !game.journal.some((j) => j.folder?.id === jf.id)) await jf.delete();
+    // every EMPTY legacy journal folder of ours (older versions raced and left a pile of duplicates); a folder holding anything is left alone
+    for (const jf of game.folders.filter((f) => f.type === "JournalEntry" && f.flags?.[MODULE_ID]?.baseFolder)) {
+      if (!jf.children?.length && !game.journal.some((j) => j.folder?.id === jf.id)) await jf.delete();
+    }
   }
   return out;
 }

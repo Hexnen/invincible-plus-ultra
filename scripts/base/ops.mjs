@@ -6,6 +6,7 @@ import * as S from "./store.mjs";
 import * as Cat from "./catalog.mjs";
 import * as EV from "./ev-pure.mjs";
 import { t } from "./lang.mjs";
+import { logRecord } from "./logrec.mjs";
 
 const { BaseError } = S;
 const MOD = S.MODULE_ID;
@@ -162,20 +163,22 @@ async function buyKarma(e, key, split, { power = "", cost: override = null, note
     if (!v.ok) throw new BaseError("karma", { cost: c.cost, errors: v.errors, missing: v.missing });
 
     const done = [];                                                    // [{actor, before}]
-    const restore = async () => { for (const d of done.reverse()) { try { await d.actor.update({ "system.karma": (Number(d.actor._source.system.karma) || 0) + d.amount }); } /* relative: puts back what WE took */ catch (er) { console.error(`${MOD} | base: karma rollback failed for ${d.actor.name}`, er); } } };
+    const restore = async () => { for (const d of done.reverse()) { try { await d.actor.update({ "system.karma": (Number(d.actor._source.system.karma) || 0) + d.amount }, { ipLogCause: "base-buy" }); } /* relative: puts back what WE took */ catch (er) { console.error(`${MOD} | base: karma rollback failed for ${d.actor.name}`, er); } } };
     try {
       for (const s of plan.filter((x) => x.amount > 0)) {
         const actor = game.actors.get(s.actorId);
         if (!actor) throw new BaseError("notFound", { id: s.actorId });
         const before = Number(actor._source.system.karma) || 0;       // _source: effect-modified numbers are never written back
         if (before < s.amount) throw new BaseError("karma", { cost: c.cost, missing: s.amount - before });
-        await actor.update({ "system.karma": before - s.amount });
+        await actor.update({ "system.karma": before - s.amount }, { ipLogCause: "base-buy" });      // L3b: the hero's karma row says WHY it dropped
         done.push({ actor, before, amount: s.amount });
       }
       if (_failAt === "afterKarma") throw new Error("forced failure after karma");
       if (_failAt === "card") { await S.update(e, { upgrades: { zzfail: "bad" } }, { user }); }
       const buy = { at: Date.now(), paid: c.cost, kind: c.kind, split: plan.filter((x) => x.amount > 0).map((x) => ({ id: x.actorId, name: game.actors.get(x.actorId)?.name ?? "", amount: x.amount })) };
       const id = await addUpgrade(e, key, { source: "karma", power, note, name, paid: c.cost, buy, user });
+      // L3b: ONE composite row on the base log (the passive upgrade.add / upgrade.count of this purchase are absorbed; each paying hero keeps its own karma row with cause "base-buy")
+      logRecord(e, { k: "upgrade.buy", d: { key: P.slug(key) || "custom", name: chk.entry?.name ?? (name || String(key)), cost: c.cost, kind: c.kind, split: buy.split }, absorb: { actors: [e.id], types: ["upgrade."], ms: 5000 } });
       return { id, cost: c.cost, kind: c.kind, split: plan.filter((x) => x.amount > 0) };
     } catch (err) {
       await restore();
@@ -327,7 +330,9 @@ async function giveRow(e, cid, target, user) {
   if (row.qty > 1) await S.update(e, { crate: { [cid]: { qty: row.qty - 1 } } }, { user });
   else await S.update(e, { crate: { [`-=${cid}`]: null } }, { user });
   try {
-    const [created] = await actor.createEmbeddedDocuments("Item", [itemData]);
+    const [created] = await actor.createEmbeddedDocuments("Item", [itemData], { ipLogSrc: "transfer" });
+    // L3b: "gave X to Rex" on the base log (absorbs the passive crate.qty / crate.remove of the same hand-over); the hero's own item.add stays, tagged "given from the base"
+    logRecord(e, { k: "crate.give", d: { name: row.name, qty: 1, to: { id: actor.id, name: actor.name } }, absorb: { actors: [e.id], types: ["crate."], ms: 4000 } });
     return created;
   } catch (err) {
     const { id: _id, ...plain } = row;                                  // put the piece back (the row may have been removed meanwhile)

@@ -8,15 +8,9 @@
    - Unseen badge on the tab button: entries by OTHER users newer than the last visit of this tab (localStorage "ipl-seen:<user>:<uuid>", the same marker as the
      hero tab), patched into the open sheets' tab button when the log changes (no repaint of the sheet).
    - The log module is loaded on demand (dynamic import of ../../log/ui/view.mjs, the SAME module instance as the log feature's own); when it is missing the tab says so.
-   - The label string for this tab is registered at load into the base string tables (the tab list reads the key made of the tab id); the key is built, not written as a literal, so
-     check-lang does not demand a second definition once the line is moved into lang.mjs. */
-import { EN, PL } from "../lang.mjs";
-
+   - The tab label is the literal string IPB.Tab.log in base/lang.mjs (EN "Log", PL "Dziennik"). */
 const MOD = "invincible-plus-ultra";
 const ID = "log";
-const KEY = ["IPB", "Tab", ID].join(".");
-EN[KEY] ??= "Log";
-PL[KEY] ??= "Dziennik";
 
 const VIEWS = new Map();                   // team id -> { view, uuid }
 let LIB = null;                            // { LogView, actorSource, stateFor } once loaded
