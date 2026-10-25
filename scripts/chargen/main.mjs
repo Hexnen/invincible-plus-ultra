@@ -48,11 +48,8 @@ export async function open(ref, { surprise = false } = {}) {
 async function undoLast(actor) {
   const api = chargenApi();
   if (!api?.apply?.hasUndo(actor)) { ui.notifications.info(t("IPC.Header.NoUndo")); return; }
-  const ok = await foundry.applications.api.DialogV2.confirm({
-    window: { title: t("IPC.Header.UndoTitle"), icon: "fa-solid fa-rotate-left" }, classes: ["ipc-dialog"],
-    content: `<p>${foundry.utils.escapeHTML(t("IPC.Header.UndoBody", { actor: actor.name }))}</p>`,
-    yes: { label: t("IPC.Header.UndoYes") }, no: { label: t("IPC.Header.UndoNo"), default: true }, rejectClose: false, modal: false
-  });
+  const { confirmDialog } = await import("./dialogs.mjs");
+  const ok = await confirmDialog({ title: t("IPC.Header.UndoTitle"), icon: "fa-solid fa-rotate-left", body: t("IPC.Header.UndoBody", { actor: actor.name }), yes: t("IPC.Header.UndoYes"), no: t("IPC.Header.UndoNo"), danger: true });
   if (!ok) return;
   const res = await api.apply.undo(actor);
   (res.ok ? ui.notifications.info : ui.notifications.error).call(ui.notifications, res.message ?? "", { console: false });
@@ -81,6 +78,17 @@ function syncButton(app, element) {
 function syncAll() {
   try { for (const app of foundry.applications.instances.values()) syncButton(app, app.element); } catch (err) { console.warn(LOG, "header sync failed", err); }
 }
+/** phase 7: when the GM turns "players may use the generator" off (or ownership is taken away), a window that is already open on this client closes
+    (the draft stays in localStorage); a write in flight is never interrupted, apply() refuses on its own as well */
+function closeDisallowed() {
+  try {
+    for (const app of [...foundry.applications.instances.values()]) {
+      if (!String(app.id ?? "").startsWith("ipc-chargen-") || !app.actor || canUse(app.actor) || app.applying) continue;
+      ui.notifications.warn(t("IPC.Header.Denied"));
+      app.close({ force: true });
+    }
+  } catch (err) { console.warn(LOG, "closing disallowed windows failed", err); }
+}
 
 /* ---------- settings (registered in init) ---------- */
 function registerSettings() {
@@ -89,7 +97,7 @@ function registerSettings() {
     name: t("IPC.Settings.Button.Name"), hint: t("IPC.Settings.Button.Hint"), scope: "client", config: true, type: Boolean, default: true, onChange: () => syncAll()
   });
   if (!has(KEY.players)) game.settings.register(MOD, KEY.players, {
-    name: t("IPC.Settings.Players.Name"), hint: t("IPC.Settings.Players.Hint"), scope: "world", config: true, type: Boolean, default: true, onChange: () => syncAll()
+    name: t("IPC.Settings.Players.Name"), hint: t("IPC.Settings.Players.Hint"), scope: "world", config: true, type: Boolean, default: true, onChange: () => { syncAll(); closeDisallowed(); }
   });
   if (!has(KEY.rank)) game.settings.register(MOD, KEY.rank, { scope: "client", config: false, type: String, default: "global" });
   if (!has(KEY.roll)) game.settings.register(MOD, KEY.roll, { scope: "client", config: false, type: String, default: "" });   // phase 6: remembered roll settings (JSON)

@@ -16,7 +16,7 @@ for (const k of miss(PL, EN)) fail(`in PL, missing in EN: ${k}`);
 const ph = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
 for (const k of Object.keys(EN)) if (k in PL && ph(EN[k]) !== ph(PL[k])) fail(`placeholders differ for ${k}: EN {${ph(EN[k])}} PL {${ph(PL[k])}}`);
 
-const files = ["main.mjs", "wizard.mjs", "import.mjs", ...readdirSync(join(dir, "steps")).filter((f) => f.endsWith(".mjs")).map((f) => `steps/${f}`)];
+const files = ["main.mjs", "wizard.mjs", "import.mjs", "dialogs.mjs", ...readdirSync(join(dir, "steps")).filter((f) => f.endsWith(".mjs")).map((f) => `steps/${f}`)];
 const used = new Set();
 for (const f of files) {
   const src = readFileSync(join(dir, f), "utf8");
@@ -61,6 +61,8 @@ fam("IPC.Step.", ["board"], [".Label", ".Title", ".Hint"]);                     
 fam("IPC.Board.Spice.", ["simple", "standard", "wild", "custom"], ["", ".Desc"]);            // built with a template string in steps/board.mjs and start.mjs
 fam("IPC.Board.Toggle.", ["drawbacks", "extraTalents", "extraSource", "limits", "heroRel", "joinBase"]);
 fam("IPC.Board.Scope.", ["free", "arch", "within"]);
+
+fam("IPC.Stage.", ["snapshot", "wipe", "powerSource", "power", "links", "talents", "actor", "health", "base"]);   // phase 7: apply() stages, built with a template string in steps/review.mjs
 
 console.log(bad ? `${bad} problem(s)` : `OK: ${Object.keys(EN).length} keys, ${used.size} used directly, ${codes.size} rule codes, EN = PL`);
 process.exit(bad ? 1 : 0);

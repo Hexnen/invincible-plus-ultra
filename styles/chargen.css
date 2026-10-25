@@ -295,9 +295,12 @@
 /* ---------- dialogs (DialogV2 classes ipc-dialog) ---------- */
 .ipc-dialog { font-family: Comic, sans-serif; max-width: 380px; }
 .ipc-dialog .window-header .window-title { font: 400 1em/1.1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
-.ipc-dialog .form-footer button { min-height: 36px; font: 400 .95rem/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; border: 2px solid #0c1a2e; border-radius: 0; cursor: pointer; }
-.ipc-dialog .form-footer button[data-default] { color: #0c1a2e; background: #ffe72a; box-shadow: 3px 3px 0 #3465a3; }
-.ipc-dialog .form-footer button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.ipc-dialog .form-footer { flex-wrap: wrap; gap: 8px; }
+.ipc-dialog .form-footer button { flex: 1 1 auto; min-height: 36px; padding: .35em .9em; white-space: normal; font: 400 .95rem/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; border: 2px solid #0c1a2e; border-radius: 0; cursor: pointer; }
+/* DialogV2 marks its default button with the autofocus ATTRIBUTE (no class, no data-default); .default / [data-default] stay for other callers.
+   The default is always the SAFE answer (keep working / keep the hero), so the yellow button is the one Enter presses. */
+.ipc-dialog .form-footer button:is([autofocus], .default, [data-default]) { color: #0c1a2e; background: #ffe72a; box-shadow: 3px 3px 0 #3465a3; }
+.ipc-dialog .form-footer button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; box-shadow: 0 0 0 5px #0096cb; }
 
 /* ---------- header button on the sheet ---------- */
 .application .window-header .header-control.ipc-header-btn { color: #ffe72a; }
@@ -876,4 +879,63 @@
   .ipc-bd-landed .ipc-bd-val { animation: ipc-fade .16s linear both; }
   .ipc-bd-landed::after { animation: ipc-bd-flash .5s linear both; }
   .ipc-bd-spin { animation: none; }
+}
+
+/* ===================================================================================================================================
+   PHASE 7: Review / result polish, wizard-wide finishing (dialog default button above in the dialogs block).
+   Motion audit (every animation / transition of this file and its reduced-motion path): ipc-enter (step enter) -> 120 ms fade; ipc-pop (points
+   number) -> none; ipc-land / .ipc-landed -> fade; ipc-bd-drop / flash / spin (roll board) -> fade + flash, no travel; transitions on buttons, stepper,
+   rank / option cards, level cards, attribute track + steps -> none. This phase adds NO animation: the progress bar changes value only.
+   =================================================================================================================================== */
+.ipc-rv-counts { margin: 0 0 6px; font-size: .92rem; color: var(--ipc-text-2); }
+.ipc-groups { margin: 10px 0 0; }
+.ipc-groups-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.ipc-groups-title { margin: 0; font-weight: 700; color: var(--ipc-blue); }
+.ipc-grp { margin: 6px 0 0; padding: 0 .6em .4em; background: var(--ipc-paper-2); }
+.ipc-grp > summary { display: flex; align-items: center; gap: .5em; min-height: 36px; padding: .15em 0; }
+.ipc-grp > summary > i { color: var(--ipc-blue); }
+.ipc-count { min-width: 1.6em; padding: 0 .4em; text-align: center; font: 400 .85rem/1.5 Titles, Comic, sans-serif; color: #fff; background: var(--ipc-blue); border: 2px solid var(--ipc-ink); }
+.ipc-confirm-note { margin: 4px 0 0; font-size: .88rem; }
+.ipc-progress { margin: 6px 0 12px; max-width: 34rem; }
+.ipc-progress progress { display: block; width: 100%; height: 14px; appearance: none; border: 2px solid var(--ipc-ink); border-radius: 0; background: #fff; }
+.ipc-progress progress::-webkit-progress-bar { background: #fff; }
+.ipc-progress progress::-webkit-progress-value { background: var(--ipc-yellow); }
+.ipc-progress progress::-moz-progress-bar { background: var(--ipc-yellow); }
+.ipc-progress p { margin: 6px 0 0; font-size: .9rem; }
+.ipc-res-line { margin: 0 0 8px; }
+.ipc-res-note { margin: 6px 0 0; max-width: 62ch; font-size: .88rem; }
+.ipc-code-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0 0; }
+.ipc-code-label { font: 400 .9rem/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ipc-blue); }
+.ipc-app code.ipc-code { padding: .2em .6em; font: 400 1rem/1.3 Titles, Comic, sans-serif; letter-spacing: .06em; color: var(--ipc-ink); background: #fff; border: 2px solid var(--ipc-ink); user-select: all; overflow-wrap: anywhere; }
+.ipc-code-msg { margin: 4px 0 0; font-size: .88rem; max-width: 62ch; }
+.ipc-app button.ipc-link { min-height: 24px; }
+.ipc-shell[data-applying="true"] .ipc-stepper, .ipc-shell[data-applying="true"] .ipc-foot { opacity: .6; }
+@media (pointer: coarse) {
+  .ipc-app button.ipc-link { min-height: 44px; padding: 0 .4em; }
+  .ipc-grp > summary, .ipc-det > summary, .ipc-app details > summary { min-height: 44px; }
+  .ipc-app button.ipc-btn-small { min-height: 44px; }
+  /* touch audit (phase 7): the few controls the step blocks left at 32-38 px under a coarse pointer */
+  .ipc-app .ipc-check, .ipc-app .ipc-opt-chip, .ipc-app .ipc-opt { min-height: 44px; }
+  .ipc-app button.ipc-chip-x { min-width: 44px; min-height: 44px; }
+  .ipc-app button.ipc-at-lock { min-height: 44px; }
+}
+
+/* the public chat card of "Share in chat" (chat messages live outside .ipc-app, so these rules are global) */
+.ipc-chat-card { padding: 0 0 8px; background: #f7fafd; color: #0c1a2e; border: 2px solid #0c1a2e; }
+.ipc-chat-card > p { padding: 0 10px; }
+.ipc-chat-card h3.ipc-cc-name { margin: 0; padding: 4px 10px 5px; background: #ffe72a; border: 0; border-bottom: 2px solid #0c1a2e; font: 400 1.15rem/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #0c1a2e; }
+.ipc-chat-card p { margin: 3px 0 0; font-family: Roboto, "Segoe UI", sans-serif; font-size: .92rem; color: #0c1a2e; }
+.ipc-chat-card p.ipc-cc-rank { color: #3465a3; font-weight: 700; }
+
+/* Windows high-contrast / forced-colors: system colours for borders, focus and state; every state also carries an icon or a word (never colour alone) */
+@media (forced-colors: active) {
+  .ipc-app :focus-visible { outline: 3px solid Highlight; }
+  .ipc-app button.ipc-btn, .ipc-app .ipc-input, .ipc-app select.ipc-input, .ipc-app .ipc-st-btn, .ipc-main, .ipc-preview, .ipc-danger, .ipc-banner, .ipc-grp, .ipc-pv-points { border-color: ButtonText; }
+  .ipc-app button.ipc-btn[aria-disabled="true"], .ipc-app button.ipc-btn[aria-disabled="true"] * { color: GrayText; border-color: GrayText; }
+  .ipc-app button.ipc-btn-primary, .ipc-plate, .ipc-pv-points { background: Canvas; color: CanvasText; forced-color-adjust: none; border: 3px solid Highlight; }
+  .ipc-app .ipc-st[data-state="current"] .ipc-st-btn { border-color: Highlight; background: Highlight; color: HighlightText; }
+  .ipc-st-badge, .ipc-count { color: ButtonText; background: ButtonFace; border: 2px solid ButtonText; }
+  .ipc-progress progress::-webkit-progress-value { background: Highlight; }
+  .ipc-progress progress::-moz-progress-bar { background: Highlight; }
+  .ipc-dialog .form-footer button:is([autofocus], .default, [data-default]) { border: 3px solid Highlight; }
 }

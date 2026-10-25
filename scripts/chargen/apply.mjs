@@ -44,6 +44,10 @@ const emptyCounts = () => Object.fromEntries([...WIPE_TYPES, "total"].map((k) =>
    the hero back too (the base side is compensated first: upgrades removed, hero unlinked, a base created by this run deleted when the user may). */
 const baseApi = () => globalThis.game?.modules?.get(MODULE_ID)?.api?.base ?? null;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** phase 7: the GM may always use the generator; a player only while the world setting chargenPlayers is on (checked again at write time, the window may have been open for a while) */
+function mayUse() {
+  try { return !!game.user.isGM || game.settings.get(MODULE_ID, "chargenPlayers") !== false; } catch { return true; }
+}
 function teamIntent(actor, state) {
   const B = baseApi();
   const mode = state.team?.mode ?? "text";
@@ -189,6 +193,7 @@ export async function plan(actor, state) {
   const out = { ok: false, actor: { id: actor?.id, name: actor?.name }, runId: foundry.utils.randomID(), errors, warnings, fields: [], creates: [], deletes: [], keeps: [], counts: { create: emptyCounts(), delete: emptyCounts(), fields: 0, keeps: 0 }, destructive: false, _ops: null };
   if (!actor || actor.type !== "superhero") { errors.push(msg("Err", "WrongType", { actor: actor?.name ?? "?" })); return out; }
   if (!actor.isOwner) errors.push(msg("Err", "NotOwner", { actor: actor.name }));
+  if (!mayUse()) errors.push(msg("Err", "NotAllowed"));
   const v = validate(state);
   for (const i of v.errors) errors.push({ code: i.code, key: i.key, params: i.params, path: i.path, step: i.step, message: i.key });
   if (v.errors.length) errors.unshift(msg("Err", "Invalid", { count: v.errors.length }));
@@ -196,13 +201,13 @@ export async function plan(actor, state) {
   const ti = teamIntent(actor, state);                                  // phase 5f: team base integration
   if (ti.action === "member") warnings.push(msg("Warn", "BaseMember", { team: ti.card.name }));
   else if (ti.action === "create") {
-    if (!ti.B) errors.push(msg("Err", "NoBase"));
-    else if (!canCreateBase(ti.B)) errors.push(msg("Err", "BaseNoCreate"));
+    if (!ti.B) errors.push(msg("Err", "NoBase", {}, { step: "team" }));
+    else if (!canCreateBase(ti.B)) errors.push(msg("Err", "BaseNoCreate", {}, { step: "team" }));
     else warnings.push(msg("Warn", "BaseWillCreate", { team: String(state.team?.name ?? "").trim() || "?" }));
   } else if (ti.action === "join") {
     const target = ti.B?.cardById?.(state.team?.baseId);
-    if (!ti.B) errors.push(msg("Err", "NoBase"));
-    else if (!target || !target.testUserPermission(game.user, "LIMITED")) errors.push(msg("Err", "BaseGone"));
+    if (!ti.B) errors.push(msg("Err", "NoBase", {}, { step: "team" }));
+    else if (!target || !target.testUserPermission(game.user, "LIMITED")) errors.push(msg("Err", "BaseGone", {}, { step: "team" }));
     else warnings.push(msg("Warn", "BaseWillJoin", { team: target.name }));
   }
   const av = Catalog.available();
@@ -213,7 +218,7 @@ export async function plan(actor, state) {
   const ops = { sources: [], powers: [], links: [], talents: [] };
   const need = async (type, ref, kind, opts) => {
     const doc = await Catalog.resolveDoc(type, ref, opts);
-    if (!doc) errors.push(msg("Err", "Unresolved", { kind, name: ref?.name ?? "?" }));
+    if (!doc) errors.push(msg("Err", "Unresolved", { kind, name: ref?.name ?? "?" }, { step: kind === "Talent" || kind === "Drawback" ? "talents" : "powers" }));
     return doc;
   };
   for (const s of state.sources ?? []) {
@@ -282,7 +287,8 @@ const publicPlan = (p) => { const { _ops, _vals, _team, ...rest } = p; return re
 export async function planPublic(actor, state) { return publicPlan(await plan(actor, state)); }
 
 /* ------------------------------------------------------------------ apply */
-export async function apply(actor, state, { confirmed = false } = {}) {
+export async function apply(actor, state, { confirmed = false, onStage: onStageRaw = null } = {}) {
+  const onStage = (st) => { try { onStageRaw?.(st); } catch { /* a progress callback must never break a write */ } };   // phase 7: Review shows real progress
   const p = await plan(actor, state);
   const base = { ok: false, plan: publicPlan(p), runId: p.runId, errors: p.errors, warnings: p.warnings, created: [], deleted: [] };
   if (!p.ok) return { ...base, message: p.errors[0]?.message ?? "" };
@@ -308,10 +314,10 @@ export async function apply(actor, state, { confirmed = false } = {}) {
   const created = [];
   try {
     // 1. wipe
-    stage = "wipe";
+    stage = "wipe"; onStage?.(stage);
     if (snap.items.length) await actor.deleteEmbeddedDocuments("Item", snap.items.map((i) => i._id));
     // 2. power sources
-    stage = "powerSource";
+    stage = "powerSource"; onStage?.(stage);
     const sourceId = {};
     if (ops.sources.length) {
       const data = ops.sources.map((s) => (s.doc ? baseItemData(s.doc, runId) : { name: s.name, type: "powerSource", img: SOURCE_IMG, system: { description: "" }, flags: { [MODULE_ID]: { chargenRun: runId } } }));
@@ -319,7 +325,7 @@ export async function apply(actor, state, { confirmed = false } = {}) {
       docs.forEach((d, i) => { sourceId[ops.sources[i].key] = d.id; created.push(d.id); });
     }
     // 3. powers
-    stage = "power";
+    stage = "power"; onStage?.(stage);
     const powerId = {};
     if (ops.powers.length) {
       const data = ops.powers.map((o) => {
@@ -332,21 +338,21 @@ export async function apply(actor, state, { confirmed = false } = {}) {
       docs.forEach((d, i) => { powerId[ops.powers[i].key] = d.id; created.push(d.id); });
     }
     // 4. boosts / limits
-    stage = "boost/limit";
+    stage = "boost/limit"; onStage?.(stage);
     if (ops.links.length) {
       const data = ops.links.map((l) => { const d = baseItemData(l.doc, runId); d.system.power = powerId[l.powerKey]; return d; });
       const docs = await actor.createEmbeddedDocuments("Item", data);
       docs.forEach((d) => created.push(d.id));
     }
     // 5. talents / drawbacks
-    stage = "talent/drawback";
+    stage = "talent/drawback"; onStage?.(stage);
     if (ops.talents.length) {
       const data = ops.talents.map((x) => { const d = baseItemData(x.doc, runId); if (x.note) d.name = `${d.name} (${x.note})`; return d; });
       const docs = await actor.createEmbeddedDocuments("Item", data);
       docs.forEach((d) => created.push(d.id));
     }
     // 6. actor fields + marker flag + backup
-    stage = "actor";
+    stage = "actor"; onStage?.(stage);
     const update = { ...vals };
     update[flagPath] = { v: 1, runId, rank: state.rank, archetype: state.archetype ?? null, identity: state.identity ?? null, mode: state.mode ?? "manual", seed: state.seed ?? null, createdAt: Date.now(), appliedBy: game.user.id };
     const backup = { runId, at: snap.at, fields: snap.fields, unset: snap.unset, items: snap.items, prevChargen: snap.prevChargen ?? null };
@@ -354,12 +360,12 @@ export async function apply(actor, state, { confirmed = false } = {}) {
     else warnings.push(msg("Warn", "NoBackupFlag"));
     await actor.update(update);
     // 7. current Health / Resolve = derived max (after the items' effects exist)
-    stage = "health";
+    stage = "health"; onStage?.(stage);
     const hp = actor.system.derived.health.max, rp = actor.system.derived.resolve.max;
     await actor.update({ "system.derived.health.value": hp, "system.derived.resolve.value": rp });
     // 8. team base (phase 5f): AFTER the hero is complete; its own failure compensates the base side, then the catch below rolls the hero back
     if (ti.action === "join" || ti.action === "create") {
-      stage = "base";
+      stage = "base"; onStage?.(stage);
       snap.base = await applyBase(actor, state, ti, warnings);
       try { if (update[backupPath]) await actor.update({ [`${backupPath}.base`]: snap.base }); }
       catch (err) { console.warn(`${MODULE_ID} | chargen: could not store the base record in the backup`, err); }
@@ -407,6 +413,7 @@ export async function undo(actor) {
   const snap = memory.get(actor?.uuid) ?? getp(actor?._source, `flags.${MODULE_ID}.chargenBackup`);
   if (!snap) { const e = msg("Err", "NoUndo", { actor: actor?.name ?? "?" }); return { ok: false, errors: [e], message: e.message }; }
   if (!actor.isOwner) { const e = msg("Err", "NotOwner", { actor: actor.name }); return { ok: false, errors: [e], message: e.message }; }
+  if (!mayUse()) { const e = msg("Err", "NotAllowed"); return { ok: false, errors: [e], message: e.message }; }
   try {
     const warnings = await undoBase(actor, snap.base);   // phase 5f: unlink the hero / remove what the run added to the base BEFORE the texts are restored
     await restore(actor, snap);

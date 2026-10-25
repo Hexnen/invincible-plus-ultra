@@ -16,9 +16,10 @@ import { esc, icon, attrShort, rankName, msgText } from "./steps/util.mjs";
 import { describeActor } from "./import.mjs";
 import { bonusSum, warmBonuses } from "./bonuses.mjs";
 import { ROLLABLE, rerollRow, optsFor } from "./reroll.mjs";
+import { confirmDialog } from "./dialogs.mjs";
 
 const MOD = "invincible-plus-ultra";
-const { ApplicationV2, DialogV2 } = foundry.applications.api;
+const { ApplicationV2 } = foundry.applications.api;
 const DRAFT_TTL = 7 * 864e5;
 const LIVE_THROTTLE = 700;
 const MARK = { current: "fa-solid fa-caret-right", done: "fa-solid fa-circle-check", issue: "fa-solid fa-triangle-exclamation", todo: "fa-regular fa-circle" };
@@ -73,6 +74,8 @@ export class ChargenApp extends ApplicationV2 {
   #draftTimer = 0;
   #lastPoints = null; #liveAt = 0;
   #busy = 0;
+  #applying = false;                   // phase 7: apply() is writing; navigation, history and closing are refused
+  #lastErrCount = null; #validTimer = 0;
   #bound = false;
   #surprise = false;                   // phase 6: "Surprise me" - roll a hero as soon as the wizard is ready and land on the roll board
   #narrow = false;                     // single-column layout: the stepper shows icons, names go to tooltips
@@ -106,26 +109,46 @@ export class ChargenApp extends ApplicationV2 {
     if (!this.#bound) { this.#bound = true; this.#bind(); this.#boot(); }
     else if (this.#phase === "ready") this.#paintAll();
   }
-  _onClose() { clearTimeout(this.#draftTimer); this.#flushDraft(); }
+  _onClose() { clearTimeout(this.#draftTimer); clearTimeout(this.#validTimer); this.#flushDraft(); }
 
   async close(options = {}) {
+    if (this.#applying) {     // phase 7: never close in the middle of a write; apply() finishes (or rolls back) first
+      ui.notifications.warn(t("IPC.Close.Applying"));
+      if (options.closeKey) this.#dismissMenuSoon();
+      return this;
+    }
     if (!options.force && this.#isDirty() && !this.#closing) {
       this.#closing = true;
       let ok = false;
       try {
-        ok = await DialogV2.confirm({
-          window: { title: t("IPC.Close.Title"), icon: "fa-solid fa-triangle-exclamation" },
-          classes: ["ipc-dialog"],
-          content: `<p>${esc(t("IPC.Close.Body"))}</p>`,
-          yes: { label: t("IPC.Close.Yes") },
-          no: { label: t("IPC.Close.No"), default: true },
-          rejectClose: false, modal: false
-        });
+        ok = await confirmDialog({ title: t("IPC.Close.Title"), body: t("IPC.Close.Body"), yes: t("IPC.Close.Yes"), no: t("IPC.Close.No") });
       } finally { this.#closing = false; }
-      if (!ok) return this;
+      if (!ok) {     // "Keep working": focus must not be lost to the page behind (the opener may have been the body after Escape)
+        setTimeout(() => { if (this.rendered && !this.element?.contains(document.activeElement)) this.focusBody(this.#q(".ipc-step") ? ".ipc-plate" : "button"); }, 120);
+        if (options.closeKey) this.#dismissMenuSoon();
+        return this;
+      }
     }
     return super.close(options);
   }
+
+  /** Foundry's Escape handler closes EVERY framed window and opens the main menu when none of them actually closed. A window that keeps itself open
+      (the "close with a draft?" question answered "keep working") would therefore pop the menu up: close it again as soon as it appears. */
+  #dismissMenuSoon() {
+    let n = 0;
+    const timer = setInterval(() => {
+      if (document.querySelector("dialog#menu")?.open) { clearInterval(timer); ui.menu?.toggle?.(); }   // only when the menu really is open now
+      else if (++n > 60) clearInterval(timer);                                                               // ~3 s: it was not opened after all
+    }, 50);
+  }
+
+  /** phase 7: Review marks the window as "applying" while apply() writes: stepper, Back / Next, undo / redo and closing are refused until it settles */
+  setApplying(flag) {
+    this.#applying = !!flag;
+    if (this.#root) this.#root.dataset.applying = flag ? "true" : "false";
+    this.#paintStepper(true); this.#paintFooter();
+  }
+  get applying() { return this.#applying; }
 
   // ---------- frame ----------
   #buildFrame() {
@@ -136,8 +159,9 @@ export class ChargenApp extends ApplicationV2 {
       <nav class="ipc-stepper" aria-label="${esc(t("IPC.Stepper.Label"))}"><ol class="ipc-steps"></ol></nav>
       <div class="ipc-main"><div class="ipc-body" tabindex="-1"></div></div>
       <aside class="ipc-preview" aria-label="${esc(t("IPC.Preview.Label"))}"></aside>
-      <footer class="ipc-foot"></footer>
-      <p class="ipc-sr" aria-live="polite" data-live></p>`;
+      <footer class="ipc-foot" role="group" aria-label="${esc(t("IPC.Footer.Label"))}"></footer>
+      <p class="ipc-sr" aria-live="polite" data-live></p>
+      <p class="ipc-sr" role="status" aria-live="polite" data-live-valid></p>`;
     return root;
   }
   #q(sel) { return this.#root?.querySelector(sel) ?? null; }
@@ -148,6 +172,7 @@ export class ChargenApp extends ApplicationV2 {
       const el = ev.target instanceof Element ? ev.target.closest("[data-ipc]") : null;
       if (!el || !root.contains(el) || el.getAttribute("aria-disabled") === "true") return;
       const a = el.dataset.ipc;
+      if (this.#applying && a !== "noop") return;     // phase 7: everything in the shell waits while apply() writes
       if (a === "step") this.go(el.dataset.step);
       else if (a === "back") this.go(this.#neighbour(-1));
       else if (a === "next") this.go(this.#neighbour(1));
@@ -158,6 +183,15 @@ export class ChargenApp extends ApplicationV2 {
       else if (a === "build-tables") this.#buildTables(el);
       else if (a === "retry") this.#boot();
       else if (a === "close") this.close({ force: true });
+    });
+    // Escape inside the wizard is handled HERE and never reaches Foundry's global handler (which would close every window, then open the main menu):
+    // it asks to close this window (confirm when there is unapplied work). A native <select> keeps its own Escape (closes its list).
+    this.element.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape" || ev.isComposing || ev.defaultPrevented) return;
+      ev.stopPropagation();
+      if (ev.target?.tagName === "SELECT") return;
+      ev.preventDefault();
+      this.close();
     });
     new ResizeObserver(() => {
       const narrow = (root.parentElement?.clientWidth ?? 999) < 560;
@@ -255,6 +289,20 @@ export class ChargenApp extends ApplicationV2 {
     const by = {};
     for (const i of v.issues) (by[i.step] ??= { errors: [], warnings: [], infos: [] })[i.severity === "error" ? "errors" : i.severity === "warn" ? "warnings" : "infos"].push(i);
     this.#valid = { all: { errors: v.errors, warnings: v.warnings, infos: v.issues.filter((i) => i.severity === "info") }, by };
+    this.#announceValidity(v.errors.length);
+  }
+  /** phase 7: a polite live region says how many problems are left whenever that number CHANGES (debounced, so typing or a roll says it once) */
+  #announceValidity(n) {
+    const before = this.#lastErrCount;
+    this.#lastErrCount = n;
+    if (before === null || before === n || this.#phase !== "ready") return;
+    clearTimeout(this.#validTimer);
+    this.#validTimer = setTimeout(() => {
+      const live = this.#q("[data-live-valid]");
+      if (!live) return;
+      live.textContent = "";
+      requestAnimationFrame(() => { live.textContent = n ? t("IPC.Live.Problems", { n }) : t("IPC.Live.NoProblems"); });
+    }, 900);
   }
   #issuesOf(id) { return this.#valid?.by[id] ?? { errors: [], warnings: [], infos: [] }; }
 
@@ -311,7 +359,7 @@ export class ChargenApp extends ApplicationV2 {
   #neighbour(d) { const ids = this.#ids(), i = ids.indexOf(this.#stepId) + d; return ids[Math.min(ids.length - 1, Math.max(0, i))]; }
 
   async go(id, { focus = true } = {}) {
-    if (!STEPS[id] || this.#phase !== "ready" || (id === "board" && this.state.mode !== "random")) return;
+    if (!STEPS[id] || this.#phase !== "ready" || this.#applying || (id === "board" && this.state.mode !== "random")) return;
     if (id === this.#stepId && this.#q(".ipc-step")) { if (focus) this.focusBody(".ipc-plate"); return; }
     await this.#enter(id, { focus, animate: true });
   }
@@ -390,6 +438,7 @@ export class ChargenApp extends ApplicationV2 {
   }
 
   #history(dir) {
+    if (this.#applying) return;
     const h = this.#hist, next = dir < 0 ? S.undo(h) : S.redo(h);
     if (next === h) return;
     this.#hist = next; this.#lastCoalesce = null;
@@ -403,7 +452,7 @@ export class ChargenApp extends ApplicationV2 {
       a hand-edited attribute sum is kept by planning powers / talents around it); undo brings the old values back */
   async #rollThisStep() {
     const id = this.#stepId;
-    if (!ROLLABLE.includes(id) || this.#phase !== "ready" || this.#busy) return;
+    if (!ROLLABLE.includes(id) || this.#phase !== "ready" || this.#busy || this.#applying) return;
     const s = this.state, o = optsFor(s);
     const next = await this.#busyWrap(rerollRow(s, id, this.#getProvider(), { force: true, cascade: false, opts: { ...o, withinArchetype: o.withinArchetype || !!s.archetype } }));
     if (next === s) { this.announce(t("IPC.Board.NoChange", { row: t(`IPC.Step.${id}.Label`) })); return; }
@@ -463,7 +512,7 @@ export class ChargenApp extends ApplicationV2 {
       const label = t(`IPC.Step.${id}.Label`);
       const showBadge = errs > 0 && (seen || cur) && id !== "start";
       const sr = [t("IPC.Stepper.Of", { n: i + 1, total: ids.length }), t(`IPC.Stepper.State.${state}`), showBadge ? t("IPC.Stepper.Problems", { n: errs }) : ""].filter(Boolean).join(", ");
-      return `<li class="ipc-st" data-state="${state}"><button type="button" class="ipc-st-btn" data-ipc="step" data-step="${id}"${this.#narrow ? ` data-tooltip="${esc(label)}" data-tooltip-direction="DOWN"` : ""}${cur ? ' aria-current="step"' : ""}>
+      return `<li class="ipc-st" data-state="${state}"><button type="button" class="ipc-st-btn" data-ipc="step" data-step="${id}"${this.#applying ? ' aria-disabled="true"' : ""}${this.#narrow ? ` data-tooltip="${esc(label)}" data-tooltip-direction="DOWN"` : ""}${cur ? ' aria-current="step"' : ""}>
         <span class="ipc-st-mark">${icon(MARK[state])}</span><span class="ipc-st-name">${esc(label)}</span>${showBadge ? `<span class="ipc-st-badge" aria-hidden="true">${errs}</span>` : ""}<span class="ipc-sr">${esc(sr)}</span></button></li>`;
     }).join("");
     if (ol.dataset.html !== html) { ol.innerHTML = html; ol.dataset.html = html; }
@@ -507,19 +556,19 @@ export class ChargenApp extends ApplicationV2 {
     const prev = ids[i - 1], next = ids[i + 1];
     let note = "";
     if (iss.errors.length && id !== "review" && id !== "start") note = `<span class="ipc-note ipc-note-err" role="status">${icon("fa-solid fa-circle-exclamation")} ${esc(msgText(iss.errors[0]))}${iss.errors.length > 1 ? ` <span class="ipc-muted">${esc(t("IPC.Preview.More", { n: iss.errors.length - 1 }))}</span>` : ""}</span>`;
-    const hist = this.#hist;
+    const hist = this.#hist, ap = this.#applying;
     const focusKey = foot.contains(document.activeElement) ? document.activeElement.dataset?.ipc : null;   // keep focus on undo / redo after the repaint
     foot.innerHTML = `
       <div class="ipc-foot-l">
-        <button type="button" class="ipc-btn ipc-btn-icon" data-ipc="undo" aria-label="${esc(t("IPC.Footer.Undo"))}" data-tooltip="${esc(t("IPC.Footer.Undo"))}"${hist.past.length ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-rotate-left")}</button>
-        <button type="button" class="ipc-btn ipc-btn-icon" data-ipc="redo" aria-label="${esc(t("IPC.Footer.Redo"))}" data-tooltip="${esc(t("IPC.Footer.Redo"))}"${hist.future.length ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-rotate-right")}</button>
+        <button type="button" class="ipc-btn ipc-btn-icon" data-ipc="undo" aria-label="${esc(t("IPC.Footer.Undo"))}" data-tooltip="${esc(t("IPC.Footer.Undo"))}"${hist.past.length && !ap ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-rotate-left")}</button>
+        <button type="button" class="ipc-btn ipc-btn-icon" data-ipc="redo" aria-label="${esc(t("IPC.Footer.Redo"))}" data-tooltip="${esc(t("IPC.Footer.Redo"))}"${hist.future.length && !ap ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-rotate-right")}</button>
         <span class="ipc-seed">${esc(t("IPC.Footer.Seed"))} <code>${esc(this.state.seed)}</code></span>
         ${ROLLABLE.includes(id) ? `<button type="button" class="ipc-btn ipc-btn-small" data-ipc="roll-step" data-tooltip="${esc(t("IPC.Footer.RollStepTip"))}">${icon("fa-solid fa-dice")} ${esc(t("IPC.Footer.RollStep"))}</button>` : ""}
         ${this.state.mode === "random" && id !== "board" && id !== "start" ? `<button type="button" class="ipc-btn ipc-btn-small" data-ipc="to-board" data-tooltip="${esc(t("IPC.Footer.ToBoardTip"))}">${icon("fa-solid fa-table-list")} ${esc(t("IPC.Footer.ToBoard"))}</button>` : ""}
       </div>
       <div class="ipc-foot-r">${note}
-        <button type="button" class="ipc-btn" data-ipc="back"${prev ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-arrow-left")} ${esc(t("IPC.Footer.Back"))}</button>
-        ${next ? `<button type="button" class="ipc-btn ipc-btn-primary" data-ipc="next">${esc(t("IPC.Footer.Next", { step: t(`IPC.Step.${next}.Label`) }))} ${icon("fa-solid fa-arrow-right")}</button>` : ""}
+        <button type="button" class="ipc-btn" data-ipc="back"${prev && !ap ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-arrow-left")} ${esc(t("IPC.Footer.Back"))}</button>
+        ${next ? `<button type="button" class="ipc-btn ipc-btn-primary" data-ipc="next"${ap ? ' aria-disabled="true"' : ""}>${esc(t("IPC.Footer.Next", { step: t(`IPC.Step.${next}.Label`) }))} ${icon("fa-solid fa-arrow-right")}</button>` : ""}
       </div>`;
     if (focusKey) foot.querySelector(`[data-ipc="${focusKey}"]`)?.focus({ preventScroll: true });
   }

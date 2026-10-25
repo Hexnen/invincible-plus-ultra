@@ -9,6 +9,7 @@
      substream "conceptRole:<n>" (rerolls.conceptRole). Same seed + same counters = same rolls; undo restores the counters.
    - Radio groups are native radios (arrow keys move + select). Everything is one undo step per action. */
 import { t } from "../lang.mjs";
+import { confirmDialog } from "../dialogs.mjs";
 import { ATTRS, ROLES, validateStep } from "../rules.mjs";
 import { rollStep } from "../random.mjs";
 import { substream } from "../rng.mjs";
@@ -69,15 +70,11 @@ function diceButton(act, label, tip, busy) {
   return `<button type="button" class="ipc-btn ipc-btn-small" data-act="${act}" data-fk="${act}" data-tooltip="${esc(tip)}"${busy ? ' aria-disabled="true"' : ""}>${icon(busy ? "fa-solid fa-spinner fa-spin-pulse" : "fa-solid fa-dice")} ${esc(busy ? t("IPC.Concept.Rolling") : label)}</button>`;
 }
 
-async function confirmReplace(name, what) {
-  const { DialogV2 } = foundry.applications.api;
-  return DialogV2.confirm({
-    window: { title: t("IPC.Concept.ConfirmTitle"), icon: "fa-solid fa-triangle-exclamation" },
-    classes: ["ipc-dialog"],
-    content: `<p>${esc(t("IPC.Concept.ConfirmBody", { name, what: what.map((w) => t(`IPC.Concept.What.${w}`)).join(", ") }))}</p>`,
-    yes: { label: t("IPC.Concept.ConfirmYes", { name }) },
-    no: { label: t("IPC.Concept.ConfirmNo"), default: true },
-    rejectClose: false, modal: false
+function confirmReplace(name, what) {
+  return confirmDialog({
+    title: t("IPC.Concept.ConfirmTitle"),
+    body: t("IPC.Concept.ConfirmBody", { name, what: what.map((w) => t(`IPC.Concept.What.${w}`)).join(", ") }),
+    yes: t("IPC.Concept.ConfirmYes", { name }), no: t("IPC.Concept.ConfirmNo")
   });
 }
 

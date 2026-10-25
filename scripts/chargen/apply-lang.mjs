@@ -1,5 +1,6 @@
 /* Strings of the chargen apply layer (IPCA.*), embedded EN + PL. Parity check: node scripts/chargen/apply-check-lang.mjs */
 export const EN = {
+  "IPCA.Err.NotAllowed": "The GM has turned the character generator off for players. Nothing was changed.",
   "IPCA.Err.Invalid": "The hero is not valid yet ({count} problem(s) to fix first). Nothing was changed.",
   "IPCA.Err.NotOwner": "You do not have permission to change {actor}. Nothing was changed.",
   "IPCA.Err.WrongType": "{actor} is not a superhero. Nothing was changed.",
@@ -32,6 +33,7 @@ export const EN = {
 };
 
 export const PL = {
+  "IPCA.Err.NotAllowed": "MG wyłączył kreator postaci dla graczy. Nic nie zostało zmienione.",
   "IPCA.Err.Invalid": "Bohater nie jest jeszcze poprawny (najpierw do poprawienia: {count}). Nic nie zostało zmienione.",
   "IPCA.Err.NotOwner": "Nie masz uprawnień do zmiany postaci {actor}. Nic nie zostało zmienione.",
   "IPCA.Err.WrongType": "{actor} nie jest superbohaterem. Nic nie zostało zmienione.",
