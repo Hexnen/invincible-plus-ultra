@@ -438,7 +438,74 @@ export async function preview() {
   return { warnings, tables: specs.map((s) => ({ key: s.key, name: s.name, formula: s.formula, count: s.results.length, results: s.results.map((r) => r.name) })) };
 }
 
-export const tables = { build, status, remove, getTable, roll, keys, preview, importToWorld, PACK: TABLE_PACK };
+
+/* ------------------------------------------------------------------ provider for random.mjs (phase 3a interface)
+   Covers: archetypes, occupations, occupationTalents, npcRelations, personality, drives, flaws, heroNames, teamNames, teamBases,
+   baseUpgrades, heroTalents/drawbacks/powerSources WITH an archetype ctx, plus the two core-book tables (powerSources without archetype =
+   D66 table, knowledgeableSubjects). NOT covered (other providers): powers, boosts, limits, talents (all), drawbacks/heroTalents without
+   archetype, civilianNames, heroRelations, getArchetype (attributes/powers: data/archetypes). list() returns Entry[] =
+   { name, packUuid?, text?, data? }. roll() is only provided with { useTableRoll: true } (real table.roll(), not seedable); without it
+   random.mjs makes a uniform seeded pick from list(), which is the same distribution. */
+const CORE_TABLES = { powerSources: "Compendium.invincible-core.rollable-tables.RollTable.RCD7S3JJk9Ycgt4M", knowledgeableSubjects: "Compendium.invincible-core.rollable-tables.RollTable.3RqhnebM9w12oRmf" };
+const plain = (html) => clean(String(html ?? "").replace(/<[^>]*>/g, " ").replace(/@UUID\[[^\]]*\]\{([^}]+)\}/g, "$1"));
+function entryOf(r) {
+  const link = UUID_RE.exec(r.description ?? "") ?? /data-uuid="([^"]+)"[^>]*>(?:<i[^>]*><\/i>)?([^<]+)</.exec(r.description ?? "");
+  const f = r.flags?.[MODULE_ID] ?? {};
+  const uuid = f.uuid ?? (link ? normUuid(link[1]) : undefined);
+  const name = r.name || (link ? clean(link[2]) : plain(r.description));
+  const text = r.name ? plain(r.description) : "";
+  const e = { name };
+  if (uuid) e.packUuid = uuid;
+  if (text && !uuid) e.text = text;
+  const data = { ...f }; delete data.uuid;
+  if (Object.keys(data).length) e.data = data;
+  return e;
+}
+const sortedResults = (table) => table.results.contents.slice().sort((a, b) => a.range[0] - b.range[0]);
+export function tableKeyFor(key, ctx = {}) {
+  const a = ctx.archetype ? slug(ctx.archetype) : null;
+  const o = ctx.occupation ? slug(ctx.occupation) : null;
+  switch (key) {
+    case "archetypes": return "archetypes";
+    case "occupations": return a ? `archetype.${a}.occupation` : "occupations";
+    case "occupationTalents": return o ? `occupation.${o}.talent` : null;
+    case "npcRelations": return o ? `occupation.${o}.relationship` : null;
+    case "personality": return a ? `archetype.${a}.personality` : null;
+    case "drives": return a ? `archetype.${a}.drive` : null;
+    case "flaws": return a ? `archetype.${a}.flaw` : null;
+    case "heroNames": return a ? `archetype.${a}.heroname` : null;
+    case "heroTalents": return a ? `archetype.${a}.talent` : null;
+    case "drawbacks": return a ? `archetype.${a}.drawback` : null;
+    case "powerSources": return a ? `archetype.${a}.source` : "core:powerSources";
+    case "knowledgeableSubjects": return "core:knowledgeableSubjects";
+    case "teamNames": return "team-names";
+    case "baseUpgrades": return "base-upgrades";
+    case "teamBases": return ctx.rank ? `team-base.${ctx.rank}` : null;
+    default: return null;
+  }
+}
+async function tableForProvider(key, ctx) {
+  const k = tableKeyFor(key, ctx);
+  if (!k) return null;
+  if (k.startsWith("core:")) return fromUuid(CORE_TABLES[k.slice(5)]);
+  return getTable(k);
+}
+export function provider({ useTableRoll = false } = {}) {
+  const P = {
+    async list(key, ctx = {}) { const tb = await tableForProvider(key, ctx); return tb ? sortedResults(tb).map(entryOf) : []; }
+  };
+  if (useTableRoll) {
+    P.roll = async (key, rng, ctx = {}) => {
+      const tb = await tableForProvider(key, ctx);
+      if (!tb) return null;
+      const { results } = await tb.roll(); // never draw()
+      return results[0] ? entryOf(results[0]) : null;
+    };
+  }
+  return P;
+}
+
+export const tables = { build, status, remove, getTable, roll, keys, preview, importToWorld, provider, tableKeyFor, PACK: TABLE_PACK };
 
 /* attach to the module api (module.js replaces api at "ready" while keeping unknown keys, see its api handle) */
 export function start() {
