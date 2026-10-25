@@ -34,7 +34,7 @@ for (const f of files) {
 }
 for (const k of used) if (!((k in EN && k in PL) || (fEN.has(k) && fPL.has(k)))) fail(`used but not defined in both languages: ${k}`);
 const need = [];
-for (const c of ["noBook", "noPermission", "tooBig", "noGM", "notFound", "invalid", "prerequisite", "stackMax", "full", "badInput", "blocked", "karma", "badType", "relay"]) need.push(`IPB.Err.${c}`);
+for (const c of ["noBook", "noPermission", "tooBig", "noGM", "notFound", "invalid", "prerequisite", "stackMax", "full", "badInput", "blocked", "karma", "badType", "relay", "importFailed", "stale"]) need.push(`IPB.Err.${c}`);
 for (const c of P.COLLECTIONS) need.push(`IPB.Err.${c}Full`);
 for (const n of ["HeaderButton", "PlayersCreate"]) for (const p of ["Name", "Hint"]) need.push(`IPB.Settings.${n}.${p}`);
 for (const s of ["same", "push", "conflict", "kept"]) need.push(`IPB.Bt.State.${s}`);                  // Base tab: dynamic key IPB.Bt.State.<state>

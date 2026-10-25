@@ -107,7 +107,7 @@ function vehRow(ctx, v, list) {
   }
   const note = ctx.canEdit
     ? `<details class="ipb-up-notebox" data-gr-box="${esc(pk(ctx, `vn-${v.id}`))}"${v.note || openBoxes.has(pk(ctx, `vn-${v.id}`)) ? " open" : ""}><summary>${icon("fa-solid fa-pen")}<span>${esc(t("IPB.Gr.NoteSummary"))}</span></summary>`
-      + `<input class="ipb-input" type="text" name="ipb-gr-vnote-${esc(v.id)}" data-gr-note="veh" data-id="${esc(v.id)}" maxlength="300" value="${esc(v.note)}" aria-label="${esc(t("IPB.Gr.NoteLabel", { name: nm }))}" placeholder="${esc(t("IPB.Gr.NotePh"))}" autocomplete="off"></details>`
+      + `<textarea class="ipb-input ipb-gr-vnote" rows="3" name="ipb-gr-vnote-${esc(v.id)}" data-gr-note="veh" data-id="${esc(v.id)}" maxlength="1000" aria-label="${esc(t("IPB.Gr.NoteLabel", { name: nm }))}" placeholder="${esc(t("IPB.Gr.NotePh"))}">${esc(v.note)}</textarea></details>`
     : (v.note ? `<p class="ipb-up-note-ro">${icon("fa-solid fa-pen")} ${esc(v.note)}</p>` : "");
   const img = m.img ? `<img class="ipb-gr-vimg" src="${esc(m.img)}" alt="" loading="lazy">` : `<span class="ipb-gr-vimg ipb-gr-vimg-none">${icon("fa-solid fa-van-shuttle")}</span>`;
   const cost = m.visible
@@ -308,6 +308,7 @@ function trackerRow(ctx, r) {
         <button type="button" class="ipb-btn ipb-btn-small ipb-btn-icon" data-gr-act="trk-up" data-id="${esc(r.id)}" data-fk="gr-tu-${esc(r.id)}" aria-label="${esc(t("IPB.Gr.TrackUp", { name: nm }))}"${dis(atMax)}>${icon("fa-solid fa-plus")}</button>
       </div>
       <label class="ipb-gr-tmax"><span class="ipb-sr">${esc(t("IPB.Gr.TrackMaxOf", { name: nm }))}</span><span class="ipb-gr-tof" aria-hidden="true">${esc(t("IPB.Gr.TrackOf", { max: "" }).trim())}</span><input class="ipb-input" type="number" inputmode="numeric" min="0" step="1" name="ipb-gr-tm-${esc(r.id)}" data-gr-trk="max" data-id="${esc(r.id)}" value="${r.max ?? ""}" placeholder="-"></label>
+      <button type="button" class="ipb-btn ipb-btn-small" data-gr-act="trk-reset" data-id="${esc(r.id)}" data-fk="gr-tr-${esc(r.id)}" aria-label="${esc(t("IPB.Gr.TrackResetAria", { name: nm }))}"${dis(atZero)}>${icon("fa-solid fa-rotate-left")}${esc(t("IPB.Gr.TrackReset"))}</button>
       <button type="button" class="ipb-btn ipb-btn-small" data-gr-act="trk-remove" data-id="${esc(r.id)}" data-fk="gr-tx-${esc(r.id)}" aria-label="${esc(t("IPB.Gr.TrackRemoveAria", { name: nm }))}">${icon("fa-solid fa-trash-can")}${esc(t("IPB.Gr.TrackRemove"))}</button>
     </div>
     ${bar}
@@ -520,7 +521,7 @@ async function giveDialog(ctx, row, targets) {
     ],
     rejectClose: false, modal: false
   });
-  return typeof out === "string" && out ? out : null;
+  return typeof out === "string" && out && out !== "cancel" ? out : null;          // DialogV2 answers the action NAME when a callback returns null
 }
 async function doGive(root, cid) {
   const ctx = CTX.get(root);
@@ -651,23 +652,7 @@ async function dropItem(ctx, item) {
   return res ? item : null;
 }
 
-/* ------------------------------------------------------------------ live vehicle data: the stats are read from the vehicle actors, so repaint when one changes */
-let hooked = false;
-function liveHooks() {
-  if (hooked) return;
-  hooked = true;
-  const refreshFor = (actor) => {
-    if (!actor || actor.type !== "vehicle") return;
-    for (const app of foundry.applications.instances.values()) {
-      if (app.constructor?.name !== "BaseSheet" || typeof app.refresh !== "function") continue;
-      const team = game.modules.get(MOD)?.api?.base?.get(app.teamId);
-      if (team && Object.values(team.vehicles).some((v) => v.uuid === actor.uuid)) app.refresh();
-    }
-  };
-  Hooks.on("updateActor", refreshFor);
-  Hooks.on("deleteActor", refreshFor);
-  for (const h of ["createItem", "updateItem", "deleteItem"]) Hooks.on(h, (item) => refreshFor(item?.parent));
-}
+/* (B9: the live repaint when a team vehicle changes moved to entry.mjs, which already watches the bases and the heroes) */
 
 /* ------------------------------------------------------------------ delegated events */
 function clearZones(root) { for (const z of root.querySelectorAll("[data-gr-zone][data-over]")) delete z.dataset.over; }
@@ -701,6 +686,7 @@ function bind(root) {
     else if (act === "undo") doUndo(root);
     else if (act === "trk-up") trkStep(root, id, 1);
     else if (act === "trk-down") trkStep(root, id, -1);
+    else if (act === "trk-reset") { const c = CTX.get(root), r = c?.B.trackers[id]; if (r && r.value > 0) trkSet(root, id, { value: 0 }, "IPB.Gr.TrackSet"); }
     else if (act === "trk-add") trkAdd(root);
     else if (act === "trk-remove") trkRemove(root, id);
   });
@@ -760,8 +746,8 @@ function bind(root) {
   root.addEventListener("keydown", (ev) => {
     const el = ev.target instanceof Element ? ev.target : null;
     if (!el) return;
-    if (el.matches("input.ipb-input")) {
-      if (ev.key === "Enter") {
+    if (el.matches("input.ipb-input, textarea.ipb-input")) {
+      if (ev.key === "Enter" && el.tagName !== "TEXTAREA") {
         ev.preventDefault();
         if (el.matches("[data-gr-draft]")) { if (el.dataset.grDraft === "name" || el.dataset.grDraft === "max") trkAdd(root); }
         else if (!el.matches("[data-gr-filter]")) el.blur();
@@ -826,7 +812,6 @@ export const gear = {
     CTX.set(root, ctx);
     ROOTS.set(ctx.team.id, root);
     if (!BOUND.has(root)) { BOUND.add(root); bind(root); }
-    liveHooks();
   },
   /** Called by the sheet for an Item or a vehicle Actor dropped on it while this tab is active. data = { type: "Item" | "Actor", document }. */
   async onDrop(_event, data, ctx) {

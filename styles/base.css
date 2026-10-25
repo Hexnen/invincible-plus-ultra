@@ -824,3 +824,15 @@ li.ipb-dir-base .ipb-dir-mark { margin-inline-start: 6px; color: #0096cb; font-s
   .ipb-gr-zone[data-over="true"] { translate: none; }
   .ipb-gr-undo { animation: ipb-fade .12s linear; }
 }
+
+/* ===== B9: manager window tools, import report / delete dialogs, summary chat card, vehicle note ===== */
+.ipb-pk-row { flex-wrap: wrap; }
+.ipb-pk-tools { display: inline-flex; gap: 4px; }
+.ipb-pk-foot { display: flex; flex-wrap: wrap; gap: 8px; }
+.ipb-dialog .ipb-xf-list { margin: 4px 0 10px; padding-left: 1.2em; }
+.ipb-dialog .ipb-xf-list li { margin: 2px 0; overflow-wrap: anywhere; }
+.ipb-dialog .ipb-xf-h { margin: 10px 0 0; font-weight: 700; }
+.ipb-dialog .ipb-radio { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.ipb-chat-sum ul { margin: 2px 0 6px; padding-left: 1.2em; }
+.ipb-chat-sum .ipb-chat-h { margin: 8px 0 0; }
+textarea.ipb-gr-vnote { width: 100%; min-height: 4.5em; resize: vertical; line-height: 1.4; }

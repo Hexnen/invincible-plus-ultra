@@ -325,6 +325,17 @@ export async function migrate() {
   }
   const old = game.journal.filter((e) => e.flags?.[MODULE_ID]?.[P.FLAG_KEY]?.kind !== KIND && Number.isInteger(e.flags?.[MODULE_ID]?.[P.FLAG_KEY]?.v) && isObjectLike(e.flags[MODULE_ID][P.FLAG_KEY]));
   for (const j of old) {
+    // B9: a GM tab still running pre-actor code answered the same relay request (same rid) with a JOURNAL card: the actor card wins, the journal twin is
+    // dropped (its heroes are re-pointed first), so a stale tab cannot leave a second base behind.
+    const rid = j.flags?.[MODULE_ID]?.rid;
+    const twin = rid ? game.actors.find((x) => isCard(x) && x.flags?.[MODULE_ID]?.rid === rid) : null;
+    if (twin) {
+      for (const h of game.actors.filter((x) => x.type === "superhero" && linkOf(x) === j.id)) await h.update({ [`flags.${MODULE_ID}.${P.FLAG_KEY}.team`]: twin.id });
+      await reconcileOwnership(twin);
+      await j.delete();
+      out.migrated.push({ from: j.id, to: twin.id, twin: true });
+      continue;
+    }
     const folder = await ensureFolder();
     const body = P.cardActorData({ id: j.id, name: j.name, ownership: j.ownership, flags: foundry.utils.deepClone(j.flags) }, { type: HOST_TYPE, folder: folder.id, defaultImg: DEFAULT_IMG, sheetClass: SHEET_ID });
     const actor = await Actor.create(body);

@@ -84,6 +84,21 @@ export class BaseSheet extends ActorSheetV2 {
     this.#watchDrags();
     if (!this.#painted) { this.#painted = true; this.#paintAll(); } else this.refresh();       // later renders (a document update) go through the careful, focus-safe repaint
   }
+  /** B9: the GM's management entries in the 3-dot menu (also the keyboard path): export, duplicate, post a summary to chat, delete. Staff only. */
+  _getHeaderControls() {
+    const controls = super._getHeaderControls();
+    const id = this.document.id;
+    const staff = () => S.isStaff();
+    const run = async (fn) => { try { await fn(await import("./transfer.mjs")); } catch (err) { reportError(err); } };
+    controls.push(
+      { action: "ipbExport", icon: "fa-solid fa-file-export", label: t("IPB.Xfer.MenuExport"), visible: staff, onClick: () => run((T) => T.exportToFile(id)) },
+      { action: "ipbDuplicate", icon: "fa-solid fa-clone", label: t("IPB.Xfer.MenuDuplicate"), visible: staff,
+        onClick: () => run(async (T) => { const res = await T.duplicate(id); if (res) (await import("./entry.mjs")).open(res.team.id); }) },
+      { action: "ipbSummary", icon: "fa-solid fa-comment", label: t("IPB.Xfer.MenuSummary"), visible: staff, onClick: () => run((T) => T.postSummary(id)) },
+      { action: "ipbDelete", icon: "fa-solid fa-trash", label: t("IPB.Xfer.MenuDelete"), visible: staff, onClick: () => run((T) => T.confirmDelete(id)) }
+    );
+    return controls;
+  }
   _onClose(options) { clearTimeout(this.#timer); this.#painted = false; this.#dragOff?.(); this.#dragOff = null; super._onClose(options); }
 
   // ---------- drops: Items and non-hero Actors go to the active tab's onDrop(event, {type, document}, ctx) (B8: Gear & vehicles); nothing may land on the actor itself ----------

@@ -26,6 +26,24 @@ function registerSettings() {
       name: t("IPB.Settings.PlayersCreate.Name"), hint: t("IPB.Settings.PlayersCreate.Hint"), scope: "world", config: true, type: Boolean, default: false
     });
   }
+  // B9: GM settings-menu button "Team cards" (the manager window: open / duplicate / export / delete, import, new). The class is imported on the spot
+  // (registerMenu needs it now); the window code itself stays light until opened.
+  if (!game.settings.menus.has(`${MOD}.teamCards`)) {
+    import("./picker.mjs").then(({ PickerApp }) => {
+      if (game.settings.menus.has(`${MOD}.teamCards`)) return;
+      game.settings.registerMenu(MOD, "teamCards", {
+        name: t("IPB.Settings.Cards.Name"), label: t("IPB.Settings.Cards.Label"), hint: t("IPB.Settings.Cards.Hint"),
+        icon: "fa-solid fa-people-roof", type: PickerApp, restricted: true
+      });
+    }).catch((e) => console.warn(`${MOD} | base: settings menu not registered`, e));
+  }
+  // B9: keybinding "Open my team card" (unbound by default so it cannot collide with another module; the user binds it in Configure Controls)
+  if (!game.keybindings.actions.has(`${MOD}.openTeamCard`)) {
+    game.keybindings.register(MOD, "openTeamCard", {
+      name: t("IPB.Key.Open.Name"), hint: t("IPB.Key.Open.Hint"), editable: [], restricted: false,
+      onDown: () => { Entry.openMine(); return true; }
+    });
+  }
 }
 
 const iAmActiveGM = () => game.user?.isGM && game.users.activeGM?.id === game.user.id;
@@ -64,6 +82,18 @@ export function start(phases = {}) {
         const f = change?.flags?.[MOD];
         if (S.isCard(actor)) { if (f?.base?.policy) scheduleReconcile(); }
         else if (f?.base !== undefined || f?.["-=base"] !== undefined) scheduleReconcile();
+      });
+      // a base was deleted by any path (directory, API, delete flow): the active GM clears the dangling link flags of its heroes (their Team text stays)
+      Hooks.on("deleteActor", (actor) => {
+        if (!iAmActiveGM() || !S.isCard(actor)) return;
+        for (const h of game.actors.filter((a) => a.type === "superhero" && S.linkOf(a) === actor.id)) S.unlink(h).catch((e) => console.warn(`${MOD} | base: cannot clear the link of ${h.name}`, e));
+      });
+      // a JOURNAL card appearing at run time can only come from a GM tab running pre-actor module code: the active GM folds it into the actor card (or drops its twin)
+      let legacyTimer = 0;
+      Hooks.on("createJournalEntry", (j) => {
+        if (!iAmActiveGM() || !Number.isInteger(j.flags?.[MOD]?.base?.v)) return;
+        clearTimeout(legacyTimer);
+        legacyTimer = setTimeout(() => { S.migrate().then((r) => { if (r.migrated.length) { console.info(`${MOD} | base: a stale GM tab made ${r.migrated.length} journal card(s); folded into actors`, r); scheduleReconcile(); } }).catch((e) => console.warn(`${MOD} | base: legacy card cleanup failed`, e)); }, 1500);
       });
       run("ready", () => {
         attach(); Relay.start(); Cat.start(); Entry.start(); ui.actors?.render();

@@ -177,6 +177,8 @@ async function partyClick() {
   if (hero) return openFor(hero);
   return null;
 }
+/** The keybinding "Open my team card" and the party button share this: the card of the user's hero, else the list (GM) / the only card / the hero's create window. */
+export function openMine() { return partyClick(); }
 function partyWanted() {
   return S.isStaff() || S.list().length > 0 || game.actors.some((a) => a.type === "superhero" && a.isOwner);
 }
@@ -232,6 +234,11 @@ function refreshAll(teamId, actorId) {
   }, 60);
 }
 const isCard = (doc) => S.isCard(doc);
+/** B9 (was in tabs/gear.mjs): a vehicle listed on some card changed (stats, weapons, deleted): repaint the open sheets (Gear & vehicles reads it live). */
+function watchVehicle(actor) {
+  if (actor?.documentName !== "Actor" || actor.type !== "vehicle" || isCard(actor)) return;
+  if (game.actors.some((c) => isCard(c) && Object.values(S.rawData(c).vehicles ?? {}).some((v) => v.uuid === actor.uuid))) refreshAll(null, null);
+}
 
 /** called when the client setting baseHeaderButton changes */
 export function syncAll() { syncSheets(); }
@@ -246,9 +253,10 @@ export function start() {
     controls.push({ action: "ipbTeam", icon: ICON, label: t("IPB.Entry.Button"), visible: () => actor.isOwner || !!S.find(actor), onClick: () => openFor(actor) });
   });
   // the base itself (an Actor) or a hero changed / appeared / went away: repaint what shows them
-  on("updateActor", (actor) => { if (isCard(actor)) refreshAll(actor.id, null); else if (actor.type === "superhero") refreshAll(S.linkOf(actor) || null, actor.id); });
+  on("updateActor", (actor) => { if (isCard(actor)) refreshAll(actor.id, null); else if (actor.type === "superhero") refreshAll(S.linkOf(actor) || null, actor.id); else watchVehicle(actor); });
   on("createActor", (actor) => { if (isCard(actor) || actor.type === "superhero") refreshAll(null, null); });
-  on("deleteActor", (actor) => { if (isCard(actor) || actor.type === "superhero") refreshAll(null, null); });
+  on("deleteActor", (actor) => { if (isCard(actor) || actor.type === "superhero") refreshAll(null, null); else watchVehicle(actor); });
+  for (const h of ["createItem", "updateItem", "deleteItem"]) on(h, (item) => watchVehicle(item?.parent));          // weapons on a team vehicle count in its stats
   on("renderChatMessageHTML", chatButtons);
   watchParty();
   syncSheets();

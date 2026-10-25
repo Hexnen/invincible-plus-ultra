@@ -1,6 +1,7 @@
 // node scripts/base/check-base.mjs  -> prints "OK <n> checks" or exits 1.
 // Fixtures are SHAPE-only (short identifiers, no book prose).
 import * as P from "./pure.mjs";
+import * as X from "./xfer-pure.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -449,6 +450,85 @@ ck("clampText", P.clampText("abcdef", 3) === "abc" && P.clampText(null) === "");
   // allowance follows the DERIVED rank (ops.allowance uses data().rank): teen team 0, cosmic team 3
   eq("allowance by derived rank", [P.allowance(P.deriveRank([m("teen")]).rank, []).total, P.allowance(P.deriveRank([m("teen"), m("cosmic")]).rank, []).total], [0, 3]);
   eq("rank ids and order", P.RANKS, ["teen", "street", "global", "cosmic"]);
+}
+
+/* ---- B9: export / import round trip (xfer-pure.mjs) */
+{
+  const rnd = seeded(9);
+  const mk = () => {
+    const B = P.defaultBase();
+    B.rank = "street"; B.motto = "Hold the line"; B.purpose = "p"; B.background = "b";
+    B.base = { kind: "a rooftop", where: "Downtown", description: "d", occupied: true, rolls: { kind: { table: "T", resultName: "R", at: 5 }, where: null } };
+    B.policy = { edit: "gm", syncHeroes: false, chat: "off" };
+    B.upgrades = { u1: { key: "laboratory", name: "Laboratory", count: 1, status: "installing", source: "karma", paid: 10, note: "n", sort: 1, at: 3, buys: [{ at: 3, paid: 10, kind: "normal", split: [{ id: "h1", name: "Rex", amount: 6 }, { id: "h2", name: "Tess", amount: 4 }] }] },
+      u2: { key: "concealment", name: "Concealment", count: 2, status: "active", source: "start", sort: 2 } };
+    B.events = { e1: { at: 1, label: "Week 1", roll: 53, band: "53-56", resultId: "r", text: "BOOK TEXT", effect: { kind: "break", upgrades: ["u1"], applied: true, prev: { u1: "installing" } }, resolved: true, note: "x", by: "U", sort: 1, week: 1, mode: "week" } };
+    B.crate = { c1: { name: "Rope", img: "i.webp", type: "gear", qty: 3, cost: 1, restricted: false, note: "", snap: { name: "Rope", type: "gear", system: { a: 1 } }, src: "Item.x", sort: 1 } };
+    B.vehicles = { v1: { uuid: "Actor.van", name: "Van", img: "v.webp", primary: true, note: "n", sort: 1 }, v2: { uuid: "Actor.bike", name: "Bike", img: "", primary: false, note: "", sort: 2 } };
+    B.trackers = { t1: { name: "Cash", value: 4, max: 9, note: "", sort: 1 } };
+    return B;
+  };
+  const B = mk();
+  const members = [{ id: "h1", uuid: "Actor.h1", name: "Rex" }, { id: "h2", uuid: "Actor.h2", name: "Tess" }];
+  const doc = X.buildExport({ B, name: "Rebels", img: "art/r.webp", members, moduleVersion: "0.17.0", now: 99 });
+  eq("export header", [doc.format, doc.formatVersion, doc.name, doc.img, doc.members.length], [X.FORMAT, 1, "Rebels", "art/r.webp", 2]);
+  eq("export drops the book text", Object.values(doc.data.events).map((e) => e.text), [""]);
+  ck("export has no marker, meta, name or derived rank info", !("kind" in doc.data) && !("meta" in doc.data) && !("name" in doc.data) && !("rankInfo" in doc.data));
+  const parsed = X.parseImport(JSON.stringify(doc));
+  ck("parse ok", parsed.ok && parsed.problems.length === 0);
+  const same = (h) => ({ id: h.id, name: h.name });
+  const plan = X.planImport(parsed.doc, { hero: same, vehicle: (v) => v, userId: "GM", now: 123 });
+  ck("round trip equal normalized data", X.samePortable(plan.B, B));
+  eq("round trip portable deep equal", X.portable(plan.B), X.portable(B));
+  eq("import links both heroes", [plan.link, plan.report.linked], [["h1", "h2"], ["Rex", "Tess"]]);
+  eq("import meta stamped by the importer", [plan.B.meta.created, plan.B.meta.updated], [{ by: "GM", at: 123 }, { by: "GM", at: 123 }]);
+  eq("import name and picture", [plan.name, plan.img, plan.B.kind], ["Rebels", "art/r.webp", undefined]);
+  eq("import keeps the stored rank / policy / occupied", [plan.B.rank, plan.B.policy, plan.B.base.occupied], ["street", B.policy, true]);
+  ck("import is idempotent through export", X.samePortable(X.planImport(X.parseImport(JSON.stringify(X.buildExport({ B: plan.B, name: plan.name, img: plan.img, members, now: 1 }))).doc, { hero: same, vehicle: (v) => v }).B, B));
+  // remapping: heroes found by another id, a vehicle replaced, a vehicle lost (the star moves), a hero elsewhere / missing
+  const p2 = X.planImport(parsed.doc, {
+    hero: (m) => (m.name === "Rex" ? { id: "n1", name: "Rex" } : "other"),
+    vehicle: (v) => (v.uuid === "Actor.van" ? null : { uuid: "Actor.bike2", name: "Bike", img: "" })
+  });
+  eq("remap: link only the found hero", [p2.link, p2.report.linked, p2.report.other], [["n1"], ["Rex"], ["Tess"]]);
+  eq("remap: karma log follows the remapped hero only", p2.B.upgrades.u1.buys[0].split.map((s) => s.id), ["n1", "h2"]);
+  eq("remap: vehicle dropped + replaced", [Object.keys(p2.B.vehicles), p2.B.vehicles.v2.uuid, p2.report.vehiclesDropped, p2.report.vehiclesRemapped], [["v2"], "Actor.bike2", ["Van"], 1]);
+  eq("remap: the star moves to the surviving vehicle", p2.B.vehicles.v2.primary, true);
+  const p3 = X.planImport(parsed.doc, { hero: () => null, vehicle: (v) => v });
+  eq("missing heroes are reported", [p3.link, p3.report.missing], [[], ["Rex", "Tess"]]);
+  const p4 = X.planImport(parsed.doc, { hero: () => "skip", vehicle: (v) => ({ ...v, uuid: "Actor.same" }), name: "Copy of Rebels" });
+  eq("duplicate mode: no members, name override, one row per actor", [p4.link, p4.report.missing, p4.name, Object.keys(p4.B.vehicles), p4.report.vehiclesDuplicate], [[], [], "Copy of Rebels", ["v1"], ["Bike"]]);
+  // the file is never trusted
+  const bad = (x) => X.parseImport(x);
+  eq("not json", [bad("{nope").ok, bad("{nope").problems[0].key], [false, "IPB.Xfer.Err.notJson"]);
+  eq("wrong format", [bad("{}").ok, bad({ format: "x" }).problems[0].key, bad(null).ok, bad(5).ok], [false, "IPB.Xfer.Err.notFormat", false, false]);
+  eq("newer format refused", bad({ format: X.FORMAT, formatVersion: 9, data: {} }).problems[0].key, "IPB.Xfer.Err.newer");
+  eq("no data", bad({ format: X.FORMAT, formatVersion: 1 }).problems[0].key, "IPB.Xfer.Err.noData");
+  eq("too big text", bad(" ".repeat(X.MAX_FILE_BYTES + 1)).problems[0].key, "IPB.Xfer.Err.tooBig");
+  const hostile = X.parseImport({ format: X.FORMAT, formatVersion: 1, name: "<img>".repeat(100), img: "data:image/png;base64,AAAA", data: { rank: "evil", policy: { edit: "x" }, upgrades: { a: { count: 999, status: "zz", source: "zz" } }, events: { e: { roll: 1234 } }, crate: "no" }, members: [5, null, { id: 3, name: { x: 1 } }] });
+  ck("hostile file is normalized", hostile.doc.img === "" && hostile.doc.name.length <= 80 && hostile.doc.data.rank === "global" && hostile.doc.data.policy.edit === "members" && hostile.doc.data.upgrades.a.count === 99 && hostile.doc.data.upgrades.a.status === "active" && Object.keys(hostile.doc.data.crate).length === 0);
+  eq("hostile members cleaned", hostile.doc.members.length, 1);
+  const tooMany = X.parseImport({ format: X.FORMAT, formatVersion: 1, data: { upgrades: Object.fromEntries(Array.from({ length: P.LIMITS.upgrades + 1 }, (_x, i) => [`u${i}`, { key: "x" }])) } });
+  ck("too many rows is an error", !tooMany.ok && tooMany.problems.some((p) => p.key === "IPB.Err.upgradesFull"));
+  // property: random cards survive a round trip
+  let allEq = true;
+  for (let i = 0; i < 200; i++) {
+    const R = mk();
+    for (const k of Object.keys(R.upgrades)) R.upgrades[k].count = 1 + Math.floor(rnd() * 3);
+    R.rank = P.RANKS[Math.floor(rnd() * 4)];
+    R.base.occupied = rnd() > 0.5;
+    if (rnd() > 0.5) delete R.vehicles.v2;
+    if (rnd() > 0.5) R.trackers.t2 = { name: "T" + i, value: Math.floor(rnd() * 5), max: null, note: "", sort: 2 };
+    const out = X.planImport(X.parseImport(JSON.stringify(X.buildExport({ B: R, name: "n" + i, members, now: i }))).doc, { hero: same, vehicle: (v) => v });
+    if (!X.samePortable(out.B, R)) allEq = false;
+  }
+  ck("200 random cards round trip", allEq);
+  ck("portable never throws on junk", (() => { try { for (const j of [null, undefined, 5, "x", [], { v: "q" }]) X.portable(j); return true; } catch { return false; } })());
+  eq("describe counts", X.describe(doc), { upgrades: 3, events: 1, crate: 1, vehicles: 2, trackers: 1, members: 2 });
+  eq("delete impact", X.deleteImpact(X.portable(B), ["Rex", "Tess"]), { heroes: 2, upgrades: 3, events: 1, crate: 1, vehicles: 2, trackers: 1 });
+  eq("file name", [X.fileName("Dziwna Baza!"), X.fileName("")], ["dziwna-baza.ipb-team.json", "team-base.ipb-team.json"]);
+  const xsrc = readFileSync(fileURLToPath(new URL("./xfer-pure.mjs", import.meta.url)), "utf8").replace(/\/\/.*$/gm, "").replace(/"[^"\n]*"/g, '""').replace(/`[^`]*`/g, "``");
+  for (const g of ["game.", "foundry.", "ui.", "canvas.", "Hooks.", "CONFIG.", "document.", "window.", "fromUuid", "Actor"]) ck(`xfer-pure.mjs must not reference ${g}`, !new RegExp(`(^|[^\\w.])${g.replace(".", "\\.")}`, "m").test(xsrc));
 }
 
 if (fails.length) { console.error(`FAILED ${fails.length}/${n}:\n - ${fails.join("\n - ")}`); process.exit(1); }

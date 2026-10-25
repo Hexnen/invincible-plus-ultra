@@ -6,6 +6,7 @@ import * as Cat from "./catalog.mjs";
 import * as Sync from "./sync.mjs";
 import * as Relay from "./relay.mjs";
 import * as P from "./pure.mjs";
+import * as X from "./xfer-pure.mjs";
 import { upgrades, karma, events, crate, vehicles } from "./ops.mjs";
 import { t, tn } from "./lang.mjs";
 import * as Entry from "./entry.mjs";
@@ -31,7 +32,11 @@ export const baseApi = {
   rankOf: S.rankOf, heroRank: S.heroRank, dropHero: Drop.dropHero,                         // B4c: the team rank is derived from its members; dropHero(team, {type:"Actor"|"Token", uuid}) = add a hero
   catalog, upgrades, karma, events, crate, vehicles,
   sync: { format: Sync.format, status: Sync.status, outOfDate: Sync.outOfDate, push: Sync.push, fromHero: Sync.fromHero, suggestLinks: Sync.suggestLinks },
-  relay: { request: Relay.request, transport: Relay.transport, _runAs: Relay._runAs },
+  relay: { request: Relay.request, transport: Relay.transport, _runAs: Relay._runAs, PROTO: Relay.PROTO },
+  /* B9 (staff only; transfer.mjs is loaded on first use, so every call is async): exportDoc(team) -> document, exportToFile(team), importDoc(text|object, {members:false, keepVehicles, name})
+     -> { team, name, report }, importFromFile() (needs a click), duplicate(team), confirmDelete(team), postSummary(team); pure = xfer-pure.mjs (parse / plan / portable) */
+  transfer: Object.fromEntries(["exportDoc", "exportToFile", "importDoc", "importFromFile", "duplicate", "confirmDelete", "postSummary"].map((n) => [n, async (...a) => (await import("./transfer.mjs"))[n](...a)])),
+  xfer: X,
   BaseError: S.BaseError, pure: P, t, tn
 };
 
