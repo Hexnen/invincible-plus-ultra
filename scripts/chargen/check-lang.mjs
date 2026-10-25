@@ -46,6 +46,7 @@ fam("IPC.Role.", ["Blaster", "Brains", "Brawn", "Controller", "Defender", "Leade
 fam("IPC.Powers.Type.", ["Attack", "Control", "Defense", "Modification", "Movement", "Sensory"]);
 fam("IPC.Powers.Pays.", ["level", "boost"]);
 fam("IPC.Powers.PaysChip.", ["level", "boost", "none"]);
+fam("IPC.Talents.Fx.", ["health", "resolve", "slugfest", "reputation", "resources"]);
 fam("IPC.Stepper.State.",["current", "done", "issue", "todo"]);
 fam("IPC.Field.", ["name", "civilianName", "role", "appearance", "occupation", "personality", "drive", "flaw", "relationships", "team", "teamBase", "reputation", "resources", "rank"]);
 

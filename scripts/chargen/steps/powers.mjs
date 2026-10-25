@@ -14,63 +14,13 @@ import { ATTRS, ATTR_MIN, SLOT_VALUE, levelCap, slots, budget, powerSlots, valid
 import { addPower, removePower, setPowerLevel, setPowerSource, addBoost, removeBoost, addLimit, removeLimit, addSource, removeSource } from "../state.mjs";
 import { substream } from "../rng.mjs";
 import { esc, icon, msgText, delegate, levelName } from "./util.mjs";
+import { slug, enrich, descBlock, rowLinks, chip, openBook } from "./shared.mjs";   // shared with the talents step (5c)
 
 const PAGE = 12;
 const TYPES = ["Attack", "Control", "Defense", "Modification", "Movement", "Sensory"];
 const LV_WORDS = ["basic", "major", "massive", "monstrous"];
 const nm = normName;
-const slug = (s) => nm(s).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const MIN_BUDGET = ATTRS.length * ATTR_MIN;
-
-/* ---------------------------------------------------------------- descriptions (runtime, lazy, cached) */
-function plain(html) {
-  const src = String(html ?? "").replace(/@UUID\[[^\]]*\]\{([^}]*)\}/g, "$1").replace(/@\w+\[[^\]]*\](\{[^}]*\})?/g, "");
-  const doc = new DOMParser().parseFromString(src, "text/html");
-  const paras = [...doc.body.querySelectorAll("p, li")].filter((e) => !(e.tagName === "LI" && e.querySelector("p"))).map((e) => e.textContent.replace(/\s+/g, " ").trim()).filter(Boolean);
-  if (!paras.length) { const x = doc.body.textContent.replace(/\s+/g, " ").trim(); if (x) paras.push(x); }
-  const first = paras[0] ?? "";
-  const m = /^.{30,}?[.!?](\s|$)/.exec(first);
-  let short = (m ? m[0] : first).trim();
-  if (short.length > 190) short = `${short.slice(0, 187).trim()}...`;
-  return { short, full: paras.join("\n").slice(0, 1500) };
-}
-const paras = (full) => String(full || "").split("\n").map((p) => `<p>${esc(p)}</p>`).join("");
-
-function need(d, uuid) {
-  if (d.desc.has(uuid)) return Promise.resolve();
-  if (d.inflight.has(uuid)) return d.inflight.get(uuid);
-  const p = (async () => {
-    try { const doc = await fromUuid(uuid); d.desc.set(uuid, plain(doc?.system?.description)); } catch { d.desc.set(uuid, { short: "", full: "" }); } finally { d.inflight.delete(uuid); }
-  })();
-  d.inflight.set(uuid, p);
-  return p;
-}
-function paintDesc(root, d, uuid) {
-  const v = d.desc.get(uuid) ?? { short: "", full: "" };
-  const q = CSS.escape(uuid);
-  root.querySelectorAll(`[data-desc="${q}"]`).forEach((n) => { n.textContent = v.short || t("IPC.Powers.NoText"); n.classList.remove("is-loading"); });
-  root.querySelectorAll(`[data-full="${q}"]`).forEach((n) => { n.innerHTML = paras(v.full || v.short) || esc(t("IPC.Powers.NoText")); n.classList.remove("is-loading"); });
-}
-/** read the descriptions of the rows currently in the DOM, four at a time */
-async function enrich(root, d) {
-  const uuids = [...new Set([...root.querySelectorAll("[data-desc], [data-full]")].map((n) => n.dataset.desc || n.dataset.full))].filter((u) => u && !d.desc.has(u));
-  let i = 0;
-  const worker = async () => { while (i < uuids.length) { const u = uuids[i++]; await need(d, u); if (!root.isConnected) return; paintDesc(root, d, u); } };
-  await Promise.all([worker(), worker(), worker(), worker()]);
-}
-
-/** shared markup of a description block: short text, or the full text when the row is open */
-function descBlock(d, uuid) {
-  if (!uuid) return "";
-  const v = d.desc.get(uuid), open = d.open.has(uuid);
-  if (open) return `<div class="ipc-pw-full${v ? "" : " is-loading"}" data-full="${esc(uuid)}">${v ? paras(v.full || v.short) || esc(t("IPC.Powers.NoText")) : esc(t("IPC.Powers.Loading"))}</div>`;
-  return `<p class="ipc-pw-desc${v ? "" : " is-loading"}" data-desc="${esc(uuid)}">${v ? esc(v.short || t("IPC.Powers.NoText")) : esc(t("IPC.Powers.Loading"))}</p>`;
-}
-function rowLinks(d, uuid, name) {
-  if (!uuid) return "";
-  const open = d.open.has(uuid);
-  return `<span class="ipc-pw-links"><button type="button" class="ipc-link" data-act="more" data-uuid="${esc(uuid)}" data-fk="more-${esc(slug(name))}-${esc(uuid.slice(-6))}" aria-expanded="${open}">${esc(t(open ? "IPC.Powers.Less" : "IPC.Powers.More"))}</button><button type="button" class="ipc-link" data-act="book" data-uuid="${esc(uuid)}">${icon("fa-solid fa-book-open")} ${esc(t("IPC.Powers.Book"))}</button></span>`;
-}
 
 /* ---------------------------------------------------------------- helpers on the state */
 const norm = nm;
@@ -161,10 +111,6 @@ function sourceCell(ctx, p) {
   }
   const only = s.sources[0];
   return `<div class="ipc-pw-src"><span class="ipc-pw-src-l">${esc(t("IPC.Powers.Source"))}</span><span class="${only ? "" : "ipc-muted"}">${esc(only ? only.name : t("IPC.Powers.SourceNone"))}</span></div>`;
-}
-
-function chip(label, aria, act, attrs, extraCls = "") {
-  return `<li class="ipc-chip${extraCls}"><span>${label}</span><button type="button" class="ipc-chip-x" data-act="${act}" ${attrs} aria-label="${esc(aria)}" data-tooltip="${esc(aria)}">${icon("fa-solid fa-xmark")}</button></li>`;
 }
 
 function pickerRows(ctx, p, kind) {
@@ -410,10 +356,6 @@ function useSource(ctx, name, uuid) {
   const entry = { name, packUuid: uuid || null };
   ctx.update((st) => putSource(st, entry, target), { body: true });
   ctx.announce(t("IPC.Powers.Src.Chosen", { name }));
-}
-
-async function openBook(uuid) {
-  try { const doc = await fromUuid(uuid); doc?.sheet?.render({ force: true }); } catch (err) { console.warn("invincible-plus-ultra | chargen: cannot open", uuid, err); }
 }
 
 /* ---------------------------------------------------------------- the step */

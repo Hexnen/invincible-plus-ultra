@@ -558,3 +558,32 @@
   .ipc-lvl { transition: none; }
   .ipc-lvl:hover:not(.is-off) { translate: none; }
 }
+
+/* ===================================================================================================================================
+   PHASE 5c: TALENTS + DRAWBACKS step (steps/talents.mjs). Reuses the powers vocabulary (.ipc-pw-meter / -card / -row / -badge, .ipc-chip, .ipc-opt-chip,
+   .ipc-link); only what is new lives here: the effect tags (numbers read from the pack effects), the hero card, the note field, the two list switches.
+   Same rules as before: selection = yellow + hard blue shadow + a word / glyph, red only for errors / over, no motion beyond the existing landing pop.
+   =================================================================================================================================== */
+.ipc-talents .ipc-pw-sec { display: grid; gap: 8px; align-content: start; }
+.ipc-talents .ipc-pw-sec > .ipc-cn-sub { margin: 0; }
+.ipc-talents .ipc-cn-head h3 { overflow-wrap: anywhere; }
+.ipc-status-list .ipc-iss-info > i { margin-top: .2em; color: var(--ipc-blue); }
+.ipc-tl-meter .ipc-pw-m-slots b { min-width: 2ch; }
+.ipc-tl-dice { display: flex; flex-wrap: wrap; gap: 6px; }
+.ipc-talents .ipc-pw-blk-head { margin-top: 4px; }
+.ipc-tl-fxs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.ipc-tl-fxs:empty { display: none; }
+.ipc-tl-fx { padding: 0 .5em; font-size: .8rem; font-weight: 700; color: var(--ipc-ink); background: #fff; border: 2px solid var(--ipc-blue); white-space: nowrap; }
+.ipc-pw-row.is-added .ipc-tl-fx, .ipc-pw-card .ipc-tl-fx { background: var(--ipc-paper-2); }
+.ipc-tl-occ { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4em .6em; margin: 0; padding: .45em .8em; font-size: .92rem; background: var(--ipc-paper-2); border: 2px dashed var(--ipc-line); }
+.ipc-tl-occ > i { color: var(--ipc-blue); }
+.ipc-tl-occ > span { flex: 1 1 16rem; min-width: 0; }
+.ipc-tl-occ button.ipc-link { margin-left: 0; }
+.ipc-tl-note { max-width: 26rem; }
+.ipc-tl-switch { min-width: 0; margin: 0; }
+.ipc-tl-switch legend { padding: 0; margin-bottom: 4px; font-size: .85rem; font-weight: 700; color: var(--ipc-text-2); }
+.ipc-talents .ipc-tl-switch.ipc-opts-types { grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); margin-top: 0; }
+.ipc-tl-fxsec p { margin: 0; display: flex; gap: .5em; align-items: baseline; }
+.ipc-tl-fxsec p > i { color: var(--ipc-blue); }
+.ipc-tl-fxlist { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; font-size: .95rem; }
+.ipc-tl-fxlist b { font-weight: 700; }

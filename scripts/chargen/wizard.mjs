@@ -14,6 +14,7 @@ import { STEP_IDS, RANKS, validate, derive, attributeBudget, slots, ATTRS } from
 import { STEPS } from "./steps/index.mjs";
 import { esc, icon, attrShort, rankName, msgText } from "./steps/util.mjs";
 import { describeActor } from "./import.mjs";
+import { bonusSum, warmBonuses } from "./bonuses.mjs";
 
 const MOD = "invincible-plus-ultra";
 const { ApplicationV2, DialogV2 } = foundry.applications.api;
@@ -234,6 +235,7 @@ export class ChargenApp extends ApplicationV2 {
 
   // ---------- validation ----------
   #revalidate() {
+    this.#warm();
     const v = validate(this.state);
     const by = {};
     for (const i of v.issues) (by[i.step] ??= { errors: [], warnings: [], infos: [] })[i.severity === "error" ? "errors" : i.severity === "warn" ? "warnings" : "infos"].push(i);
@@ -274,8 +276,13 @@ export class ChargenApp extends ApplicationV2 {
     this.#ctxs.set(id, ctx);
     return ctx;
   }
-  /** item-effect bonuses for the live preview (health, resolve, slugfest, resources, reputation): filled by phases 5c/5d */
-  bonuses = {};
+  /** item-effect bonuses for the live preview ({health, resolve, slugfest, resources, reputation}): summed from the chosen talents / drawbacks
+      (bonuses.mjs reads the pack effects at runtime; phase 5c). A getter, so every step and the preview always see the current state. */
+  get bonuses() { return bonusSum(this.state); }
+  /** learn the effects of items the cache does not know yet (a rolled / imported / restored hero), then repaint the preview */
+  #warm() {
+    warmBonuses(this.state, chargenApi()?.catalog).then((grew) => { if (grew && this.#phase === "ready") this.#paintPreview(); }).catch(() => {});
+  }
 
   #getProvider() { return (this.#provider ??= chargenApi().provider({ excludeActorId: this.actor.id })); }
   #busyWrap(p) {
@@ -447,7 +454,7 @@ export class ChargenApp extends ApplicationV2 {
       <div class="ipc-pv-points${over ? " ipc-over" : ""}" role="group" aria-label="${esc(t("IPC.Preview.Points"))}"><span class="ipc-pv-num" data-pop>${b.left}</span><span class="ipc-pv-cap">${esc(pointsText)}</span></div>
       <p class="ipc-pv-budget">${esc(t("IPC.Preview.Budget", { spent: b.spent, budget: b.budget }))}</p>
       <ul class="ipc-pv-attrs" aria-label="${esc(t("IPC.Preview.Attrs"))}">${ATTRS.map((k) => `<li><span>${esc(attrShort(k))}</span><b>${s.attrs?.[k] ?? 0}</b></li>`).join("")}</ul>
-      <dl class="ipc-pv-vitals"><div><dt>${esc(t("IPC.Preview.Health"))}</dt><dd>${d.health}</dd></div><div><dt>${esc(t("IPC.Preview.Resolve"))}</dt><dd>${d.resolve}</dd></div><div><dt>${esc(t("IPC.Preview.Slugfest"))}</dt><dd>${d.slugfest}</dd></div></dl>
+      <dl class="ipc-pv-vitals"><div><dt>${esc(t("IPC.Preview.Health"))}</dt><dd>${d.health}</dd></div><div><dt>${esc(t("IPC.Preview.Resolve"))}</dt><dd>${d.resolve}</dd></div><div><dt>${esc(t("IPC.Preview.Slugfest"))}</dt><dd>${d.slugfest}</dd></div><div><dt>${esc(t("IPC.Preview.Reputation"))}</dt><dd>${d.reputation}</dd></div>${s.resources > 0 ? `<div><dt>${esc(t("IPC.Preview.Resources"))}</dt><dd>${d.resources}</dd></div>` : ""}</dl>
       <p class="ipc-pv-slots${r && S_ > r.powers ? " ipc-over" : ""}">${esc(t("IPC.Preview.Slots", { used: S_, max: r?.powers ?? 0 }))}</p>
       <div class="ipc-pv-sec"><h4>${esc(t("IPC.Preview.Problems", { n: errs.length }))}</h4>${issues}</div>`;
     if (el.dataset.html === html) return;
