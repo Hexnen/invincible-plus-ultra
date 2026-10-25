@@ -13,6 +13,7 @@
 import * as Halo from "./halo.mjs";
 import { PALETTE } from "./dots.mjs";
 import { t } from "./lang.mjs";
+import { yzeOn, yzeWaiting } from "../yze.mjs";
 
 const MOD = "invincible-plus-ultra";
 const SYSTEM = "invincible";
@@ -63,11 +64,30 @@ function colorOf(doc) {
   }
 }
 
+/* the token that has the turn. Year Zero Engine: Combat: while the round's draw is pending (every initiative null, yzeWaiting) nobody has the turn;
+   resetEachRound nulls then redraws within a few ms, so a waiting state younger than WAIT_MS keeps the last turn token (no ring flicker) and a
+   re-sync follows once it has proved to be real. */
+const WAIT_MS = 350;
+let lastTurn = { id: null, at: 0 }, waitTimer = 0;
+function turnTokenId() {
+  const combat = game.combat;
+  const id = combat?.combatant?.tokenId ?? null;
+  let waiting = false;
+  try { waiting = yzeOn() && yzeWaiting(combat); } catch { waiting = false; }
+  if (!waiting) { lastTurn = { id, at: performance.now() }; return id; }
+  if (performance.now() - lastTurn.at < WAIT_MS) {
+    clearTimeout(waitTimer);
+    waitTimer = setTimeout(() => { waitTimer = 0; syncAll(); }, WAIT_MS + 30);
+    return lastTurn.id;
+  }
+  return null;
+}
+
 function wantFor(token) {
   if (!ready || get(KEY.enabled) === false || !canvas?.ready) return null;
   if (!token || token.destroyed || token.isPreview || !token.document || !token.mesh) return null;
   if (!token.visible || token.document.isSecret) return null;
-  const isTurn = game.combat?.combatant?.tokenId === token.id;
+  const isTurn = turnTokenId() === token.id;   // duplicates of one token share the tokenId: one ring
   let variant = null;
   if (isTurn && get(KEY.turn) !== false) variant = "turn";
   else if (token.controlled && get(KEY.selected) !== false) variant = "select";
@@ -142,6 +162,7 @@ export function start(phases = {}) {
 export function stop() {
   for (const [name, id] of hookIds.splice(0)) { try { Hooks.off(name, id); } catch { /* gone */ } }
   try { Halo.destroyAll(true); } catch { /* canvas gone */ }
+  clearTimeout(waitTimer); waitTimer = 0;
   for (const id of outTimers.values()) clearTimeout(id);
   outTimers.clear();
   ready = false; started = false;

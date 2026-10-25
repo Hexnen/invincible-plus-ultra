@@ -1810,3 +1810,15 @@ import("./fontoption.mjs")
 import("./tokenhalo/main.mjs")
   .then((halo) => halo.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | token halo not loaded (everything else is unaffected)`, err));
+
+/* PARTY CARDS (scripts/party/, styles/party.css): slide-out cards of the player characters on the viewed scene at the bottom left (client
+   setting "Party: display" Hidden / Peek / Full). Same mechanism and recorded phases as the blocks above. */
+import("./party/main.mjs")
+  .then((party) => party.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | party cards not loaded (everything else is unaffected)`, err));
+
+/* PLAYER TURN UX (scripts/turn/, styles/turn.css): a "your turn" message in the middle of the screen, an action tray above the macro bar
+   (mark actions used, End turn) and the end-turn confirmation dialogs. Same mechanism and recorded phases as the blocks above. */
+import("./turn/main.mjs")
+  .then((turn) => turn.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | player turn UX not loaded (everything else is unaffected)`, err));

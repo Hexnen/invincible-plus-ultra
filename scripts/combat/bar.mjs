@@ -19,10 +19,14 @@
    emerges from), one ABOVE the banners (banner z is two below). Horizontally centred over the free map area (sidebar and scene controls excluded,
    and the open Challenges dock: banner.mjs freeArea() / hudLimit()), top = scene-navigation bottom + 6. The bar's bottom edge is published as
    --icbar-bottom on :root (px; 0 when hidden) and banner.mjs puts its banner under it.
-   MOTION: transform / opacity only (Web Animations on the individual translate / scale properties), FLIP for tile reorder, nothing per frame. */
+   MOTION: transform / opacity / clip-path only (Web Animations on the individual translate / scale properties), nothing per frame. One
+   choreography, morph() below, serves every change: FLIP for the tiles, the chrome and the ring, the camera (auto-centring) folded into the
+   same FLIP, expand / collapse of the active tile, rapid-click hold, round-chip digit slide. */
 import { t } from "./lang.mjs";
 import { freeArea, hudLimit, relayout as relayoutBanner } from "./banner.mjs";
 import { unitOf, unitName } from "../challenges/lang.mjs";
+import { yzeOn, yzeWaiting } from "../yze.mjs";
+import { groupsFor } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
 
 const MOD = "invincible-plus-ultra";
 const ID = "invincible-combat-bar";
@@ -36,6 +40,15 @@ let root = null, shell = null, scroller = null, list = null, roundEl = null, rou
 let ready = false, down = false, timer = 0, again = false, goneId = null, size = "normal", wheelOn = false;
 let curCombat = null, curCombatId = null, lastKey = "", lastDensity = -1, fitKey = "", activeId = null, byeTimer = 0, liveTimer = 0, hovered = null;
 let ro = null, raf = 0, publishedBottom = -1, mounted = false;
+let hideTimer = 0, missTimer = 0, enteredFor = null, lowRow = false, mode = -1, backSince = 0, backTimer = 0;
+let waitSince = 0, waitTimer = 0, waitEl = null, wasWaiting = false;
+let layer = null, ring = null, ringOn = false, ringKey = "", holdOn = false, holdTimer = 0, lastTurnAt = 0, lastRound = null;   // motion: ring + ghosts layer, rapid-click hold, last round seen
+let rnPre = null, rnWin = null, rnPost = null, rnCur = null;                                                                     // the round chip's pieces: "R", the sliding number, the rest
+let hudEl = null, hudRo = null, hudMo = null, bodyMo = null, hudTimer = 0;
+const GRACE_MS = 600;     // "no combat" must persist this long before the bar leaves
+const WAIT_MS = 350;      // Year Zero: "every initiative null" younger than this is the reset-then-redraw of a round: the last good render stays
+const MISS_MS = 350;      // a tile missing from the model for less than this stays (a transient / rebuilt Combat#turns must not blink the strip)
+const BACK_AT = 0.85;     // compact -> full tiles only below this share of the room, and only after BACK_MS of it
 const tiles = new Map();   // combatant id -> { li, tile, refs, prev, item, leaving }
 
 const get = (key) => { try { return game.settings.get(MOD, key); } catch { return undefined; } };
@@ -126,7 +139,15 @@ function read(c, isActive, ctx) {
   const onScene = !!td && td.parent === canvas?.scene;
   let sheet = false;
   if (actor) { sheet = gm || owner || observer; }
+  /* ACTION PIPS (YZE only): [{ k: "fast"|"slow"|"one", used }] for the entry that owns the actor's action statuses; null = draw nothing (no YZE,
+     no actions mode, defeated, an earlier duplicate of the token whose marks were already cleared). Same visibility as the tile itself. */
+  let acts = null;
+  try {
+    const g = td?.id && !c.isDefeated && !challenge ? groupsFor([td.id], td.actor ?? actor, ctx.combat)?.find((x) => x.id === c.id) : null;
+    if (g?.pips?.length && g.pips.every((p) => p.state !== "past")) acts = g.pips.map((p) => ({ k: p.k, used: p.state === "used" }));
+  } catch { acts = null; }
   return {
+    acts,
     id: c.id, tokenId: td?.id ?? "", actorId: actor?.id ?? "",
     name: nameOf(c, actor), img: pictureOf(c, td, actor),
     init, initText: init === null ? "–" : fmtInit(init),
@@ -138,11 +159,27 @@ function read(c, isActive, ctx) {
 }
 
 function build(combat) {
-  const ctx = { mode: get(KEY.players) ?? "friendly", res: get(KEY.res) ?? "both", sel: controlledIds() };
+  const ctx = { mode: get(KEY.players) ?? "friendly", res: get(KEY.res) ?? "both", sel: controlledIds(), combat };
   const items = [];
   const turns = combat.turns ?? [];
-  turns.forEach((c, i) => { const it = read(c, i === combat.turn, ctx); if (it) items.push(it); });
-  return { round: Number(combat.round) || 0, turn: combat.turn ?? null, items };
+  /* Year Zero Engine: Combat, waiting for the draw: every living initiative is null, so the order means nothing and nobody has the turn */
+  let waiting = false;
+  try { waiting = yzeOn() && yzeWaiting(combat); } catch { waiting = false; }
+  turns.forEach((c, i) => { const it = read(c, !waiting && i === combat.turn, ctx); if (it) items.push(it); });
+  /* DUPLICATES (several combatants of one token, Year Zero speed): `dup` = { k: its place among the token's entries in turn order, n, first }.
+     Only the FIRST shown entry carries Health / Resolve (the numbers are the same for all); a later one is the compact variant, unless it is the
+     active tile, which always stays the full one. */
+  const entries = new Map(), seen = new Set();
+  for (const c of turns) if (c.tokenId) { const a = entries.get(c.tokenId); if (a) a.push(c.id); else entries.set(c.tokenId, [c.id]); }
+  for (const it of items) {
+    const ids = it.tokenId ? entries.get(it.tokenId) : null;
+    if (!ids || ids.length < 2) continue;
+    const first = !seen.has(it.tokenId);
+    seen.add(it.tokenId);
+    it.dup = { k: ids.indexOf(it.id) + 1, n: ids.length, first };
+    if (!first && !it.active) { it.showHp = false; it.showRs = false; }
+  }
+  return { round: Number(combat.round) || 0, turn: combat.turn ?? null, items, waiting };
 }
 
 /* ---------- what a viewer's bars say (numbers only when `nums`) ---------- */
@@ -181,22 +218,28 @@ function publishBottom(px) {
    left of the Challenges dock / sidebar (freeArea() and hudLimit() from banner.mjs, the navigation's measured right edge + 14). When that gap
    is narrower than MIN_GAP the bar drops to a lower row under the navigation (top = navigation bottom + 6) and uses the whole free area. The
    strip always ends left of the dock (it shrinks, then scrolls), never under it. */
-const MIN_GAP = 300;
+/* MIN_GAP: the island needs room for the chrome (round chip, two buttons, paddings: ~155 px) plus the ACTIVE tile in full with its fade margins
+   (~260 px), so below ~430 px a lower row (the whole free width) serves better. The decision reads only things the bar does not move (the
+   navigation's right edge, the sidebar, the dock's resting edge) and a FIXED band height, never the bar's own height; BACK_GAP adds hysteresis
+   (an island that has dropped returns only with 50 px to spare), so a pure turn change can never flip the row. */
+const MIN_GAP = 430, BACK_GAP = 480;
 function place() {
   if (!root || !shell) return;
   const h = shell.offsetHeight;
+  const band = Math.round(96 * (SIZES[size] ?? 1));
   const { left, right } = freeArea();
   let navR = 0;
   try {
     const r = (document.querySelector("#scene-navigation .scene-navigation-menu") ?? document.getElementById("scene-navigation"))?.getBoundingClientRect();
     if (r && r.width > 0 && r.height > 0 && r.top < 150) navR = r.right;
   } catch { navR = 0; }
-  let top = 0, lo = Math.max(left, navR ? navR + 14 : left), hi = Math.min(right, hudLimit(0, h));
-  const low = hi - lo < MIN_GAP;
+  let top = 0, lo = Math.max(left, navR ? navR + 14 : left), hi = Math.min(right, hudLimit(0, band));
+  const low = lowRow ? hi - lo < BACK_GAP : hi - lo < MIN_GAP;
+  lowRow = low;
   if (low) {
     top = Math.round(Math.min(150, Math.max(navBottom(), 36)) + 6);
     lo = left;
-    hi = Math.min(right, hudLimit(top, h));
+    hi = Math.min(right, hudLimit(top, band));
   }
   const avail = Math.max(160, hi - lo);
   root.classList.toggle("icbar-low", low);
@@ -206,24 +249,65 @@ function place() {
   if (!root.classList.contains("icbar-bye")) publishBottom(top + h);
   return top;
 }
-export function relayout(force = true) { if (root) { place(); fit(force); place(); } }
+export function relayout(force = true) { if (root) { place(); fit(force); place(); syncRing(); } }
 
-function setDensity(d) {
-  if (d === lastDensity) return;
-  lastDensity = d;
-  root?.classList.toggle("icbar-d1", d === 1);
-}
 /* density: full tiles when they fit, compact ones when they do not, and a scrolling strip when even those do not. N comes from the measured
    widths (a synchronous class swap that is never painted), never from a fixed count. */
+/* The decision reads INTRINSIC widths (the list is width:max-content, the chrome is the shell minus the scroller), measured with the active
+   tile's name set to its widest, so it depends on neither the bar's current width / density nor on which tile is active: a pure turn change
+   gives the same two numbers. Full -> compact the moment the full width exceeds the room; compact -> full only below BACK_AT of the room
+   and only after it has held for 300 ms (hysteresis), so a borderline strip cannot blink between the two. */
+/* the strip's content width from LAYOUT numbers (scrollWidth also counts transforms: a tile mid-FLIP or a ghost would read as overflow) */
+function contentW() {
+  const cs = getComputedStyle(scroller);
+  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + list.offsetWidth;
+}
+const overflowing = () => !!scroller && !!list && contentW() > scroller.clientWidth + 1;
+function needAt(d) {
+  root.classList.toggle("icbar-d1", d === 1);
+  const cs = getComputedStyle(scroller);
+  const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  return shell.offsetWidth - scroller.offsetWidth + pad + list.offsetWidth;
+}
 function fit(force) {
   if (!root || !scroller) return;
-  const key = `${tiles.size}|${activeId}|${Math.round(scroller.clientWidth)}|${size}|${root.style.getPropertyValue("--icbar-maxw")}|${root.classList.contains("icbar-nobars")}`;
+  const maxw = parseFloat(root.style.getPropertyValue("--icbar-maxw")) || root.clientWidth;
+  const key = `${tiles.size}|${activeId}|${Math.round(maxw)}|${size}|${root.classList.contains("icbar-nobars")}|${root.classList.contains("icbar-wait")}`;
   if (!force && key === fitKey) { syncScroll(); return; }
-  setDensity(0);
-  let over = scroller.scrollWidth > scroller.clientWidth + 1;
-  if (over) { setDensity(1); over = scroller.scrollWidth > scroller.clientWidth + 1; }
-  fitKey = `${tiles.size}|${activeId}|${Math.round(scroller.clientWidth)}|${size}|${root.style.getPropertyValue("--icbar-maxw")}|${root.classList.contains("icbar-nobars")}`;
-  syncScroll(over);
+  const a = activeId ? tiles.get(activeId) : null, saved = a?.refs.nameT.textContent;
+  const forced = !!a && !a.tile.hasAttribute("data-active");   // rapid-click hold: measure as if it were open, so the density cannot flip during the hop
+  if (forced) a.tile.setAttribute("data-active", "");
+  if (a) a.refs.nameT.textContent = "W".repeat(60);
+  const n0 = needAt(0);
+  if (a) a.refs.nameT.textContent = saved;
+  if (forced) a.tile.removeAttribute("data-active");
+  let want = mode;
+  if (mode !== 1) want = n0 > maxw ? 1 : 0;   // first pass or full tiles: compact the moment they overflow
+  else if (n0 <= maxw * BACK_AT) {
+    if (!backSince) backSince = performance.now();
+    if (performance.now() - backSince >= 300) want = 0;
+    else { clearTimeout(backTimer); backTimer = setTimeout(() => { backTimer = 0; fit(true); place(); }, 320); }
+  } else backSince = 0;
+  if (want !== mode) { mode = want; backSince = 0; }
+  lastDensity = mode;
+  root.classList.toggle("icbar-d1", mode === 1);
+  fitKey = key;
+  syncScroll(overflowing());
+  keepActiveInView();
+}
+/* the active tile fully inside the strip (clear of the edge fades) whenever the strip scrolls: after a resize, a dock change or a density change */
+function keepActiveInView() {
+  const c = activeId ? tiles.get(activeId) : null;
+  if (!c || !scroller || !overflowing()) return;
+  const em = parseFloat(getComputedStyle(root).fontSize) || 16;
+  const padL = parseFloat(getComputedStyle(scroller).paddingLeft) || 0;
+  const m = em * 1.4 + 6;
+  const l = padL + c.li.offsetLeft - m, r = padL + c.li.offsetLeft + c.li.offsetWidth + m;
+  const max = contentW() - scroller.clientWidth;
+  let to = scroller.scrollLeft;
+  if (l < to) to = l; else if (r > to + scroller.clientWidth) to = r - scroller.clientWidth;
+  to = Math.max(0, Math.min(max, to));
+  if (Math.abs(to - scroller.scrollLeft) > 1) scroller.scrollTo({ left: to, behavior: "auto" });
 }
 const stopWheel = (ev) => {
   if (!scroller || scroller.scrollWidth <= scroller.clientWidth + 1) return;
@@ -234,7 +318,7 @@ const stopWheel = (ev) => {
 };
 function syncScroll(over) {
   if (!scroller) return;
-  const can = over ?? scroller.scrollWidth > scroller.clientWidth + 1;
+  const can = over ?? overflowing();
   scroller.classList.toggle("icbar-scrolls", can);
   if (can !== wheelOn) {
     wheelOn = can;
@@ -245,16 +329,16 @@ function syncScroll(over) {
 }
 function fades() {
   if (!scroller) return;
-  const l = scroller.scrollLeft > 2, r = scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 2;
+  const l = scroller.scrollLeft > 2, r = scroller.scrollLeft + scroller.clientWidth < contentW() - 2;
   scroller.classList.toggle("icbar-fl", l);
   scroller.classList.toggle("icbar-fr", r);
 }
-function centerOn(id, smooth) {
+function centerOn(id) {
   const c = tiles.get(id);
-  if (!c || !scroller || scroller.scrollWidth <= scroller.clientWidth + 1) return;
-  const left = c.li.offsetLeft + c.li.offsetWidth / 2 - scroller.clientWidth / 2;
-  const max = scroller.scrollWidth - scroller.clientWidth;
-  scroller.scrollTo({ left: Math.max(0, Math.min(max, left)), behavior: smooth && !reduced() ? "smooth" : "auto" });
+  if (!c || !scroller || !overflowing()) return;
+  const left = (parseFloat(getComputedStyle(scroller).paddingLeft) || 0) + c.li.offsetLeft + c.li.offsetWidth / 2 - scroller.clientWidth / 2;
+  const max = contentW() - scroller.clientWidth;
+  scroller.scrollTo({ left: Math.max(0, Math.min(max, left)), behavior: "auto" });   // instant: the strip glide (morph) animates the jump
 }
 
 /* ---------- live region ---------- */
@@ -293,14 +377,28 @@ function ensureRoot() {
   roundEl = mk("div", "icbar-round");
   roundNum = mk("b", "icbar-rn");
   roundNum.setAttribute("aria-hidden", "true");
+  rnPre = mk("span", "icbar-rp");
+  rnWin = mk("span", "icbar-rw");   // the digit window: the number slides inside it
+  rnPost = mk("span", "icbar-rp");
+  rnCur = null;
+  roundNum.append(rnPre, rnWin, rnPost);
   const roundSr = mk("span", "icbar-sr");   // the words for screen readers; the chip itself is a plain, non-interactive plate
   roundSr.dataset.role = "round";
   roundEl.append(roundNum, roundSr);
+  waitEl = mk("div", "icbar-waiting", t("ICB.Bar.WaitingShort"));   // Year Zero: shown while the round's initiative is being drawn (a plain plate, like the round chip)
+  waitEl.hidden = true;
   scroller = mk("div", "icbar-scroller");
   list = mk("ul", "icbar-list");
   list.setAttribute("role", "list");
-  scroller.append(list);
-  shell.append(prevB, roundEl, scroller, nextB);
+  const track = mk("div", "icbar-track");   // list (the tiles) + layer (the ring and the ghosts of tiles changing shape: absolute, in the list's own coordinates)
+  layer = mk("div", "icbar-layer");
+  layer.setAttribute("aria-hidden", "true");
+  ring = mkRing();
+  ringOn = false; ringKey = "";
+  layer.append(ring.root);
+  track.append(list, layer);
+  scroller.append(track);
+  shell.append(prevB, roundEl, waitEl, scroller, nextB);
   root.append(live, shell);
   wire();
   document.body.appendChild(root);
@@ -308,8 +406,30 @@ function ensureRoot() {
     ro ??= new ResizeObserver(() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; relayout(false); }); });
     for (const el of [shell, document.getElementById("sidebar"), document.getElementById("scene-navigation")]) if (el) ro.observe(el);
   }
-  lastDensity = -1; fitKey = ""; wheelOn = false; mounted = true;
+  lastDensity = -1; fitKey = ""; wheelOn = false; mounted = true; mode = -1; backSince = 0; lowRow = false;
+  watchHud();
+  if (window.MutationObserver) {   // the Challenges HUD is created / removed by another script: look at the body's children (not its subtree)
+    bodyMo ??= new MutationObserver(() => { if (document.getElementById("invincible-challenges") !== hudEl) { watchHud(); hudChanged(); } });
+    bodyMo.observe(document.body, { childList: true });
+  }
   return true;
+}
+/* THE DOCK. The bar's right limit is the Challenges dock's left edge (banner.mjs hudLimit), so everything that moves that edge must re-run the
+   placement: the HUD appearing / leaving, collapsing / opening (class on its root), cards joining or leaving (its size), and the sidebar
+   (already observed). A follow-up pass after the HUD's own animations settle. */
+function hudChanged() {
+  if (!raf) raf = requestAnimationFrame(() => { raf = 0; relayout(false); try { relayoutBanner(); } catch { /* no banner */ } });
+  clearTimeout(hudTimer);
+  hudTimer = setTimeout(() => { hudTimer = 0; relayout(false); }, 520);
+}
+function watchHud() {
+  const el = document.getElementById("invincible-challenges");
+  if (el === hudEl) return;
+  hudRo?.disconnect(); hudMo?.disconnect();
+  hudEl = el;
+  if (!el) return;
+  if (window.ResizeObserver) { hudRo ??= new ResizeObserver(hudChanged); hudRo.observe(el); }
+  if (window.MutationObserver) { hudMo ??= new MutationObserver(hudChanged); hudMo.observe(el, { attributes: true, attributeFilter: ["class"] }); }
 }
 
 /* ---------- interactions ---------- */
@@ -439,9 +559,36 @@ function makeTile(it) {
   bars.setAttribute("aria-hidden", "true");
   const hp = makeRow("hp"), rs = makeRow("rs");
   bars.append(hp.el, rs.el);
-  tile.append(art, init, disp, hid, name, bars);
+  const acts = mk("div", "icbar-acts");   // action pips (YZE); empty and hidden when there is nothing to say
+  acts.setAttribute("aria-hidden", "true");
+  acts.hidden = true;
+  const dup = mk("b", "icbar-dup");   // "2/3": this tile is one of several entries of the same token (Year Zero speed); hidden when there is one
+  dup.setAttribute("aria-hidden", "true");
+  dup.hidden = true;
+  tile.append(art, init, dup, disp, hid, name, bars, acts);
   li.append(tile);
-  return { li, tile, refs: { art, ph, img, init, nameT, bars, hp, rs }, prev: null, item: null, leaving: false, shake: 0 };
+  return { li, tile, refs: { art, ph, img, init, dup, name, nameT, bars, hp, rs, acts }, prev: null, item: null, leaving: false, shake: 0, actsKey: "", openedAt: 0 };
+}
+
+/* the pips are rebuilt only when their kinds change; a status change flips data-st in place (CSS morphs it, nothing is re-created) */
+function paintActs(card, it) {
+  const box = card.refs.acts, a = it.acts;
+  if (!a) {
+    if (!box.hidden || card.actsKey) { box.hidden = true; box.replaceChildren(); card.actsKey = ""; }
+    return;
+  }
+  const key = a.map((p) => p.k).join("|");
+  if (key !== card.actsKey) {
+    box.replaceChildren(...a.map((p) => {
+      const el = mk("span", "icbar-act");
+      el.dataset.k = p.k;
+      el.append(mk("i", "icbar-pip"), mk("b", "icbar-pl", t(`ICB.Bar.ActL.${p.k}`)));
+      return el;
+    }));
+    card.actsKey = key;
+  }
+  box.hidden = false;
+  a.forEach((p, i) => { const el = box.children[i]; if (el) el.dataset.st = p.used ? "used" : "open"; });
 }
 
 function paintRow(card, key, spec, first) {
@@ -496,13 +643,15 @@ function paintTile(card, it, first) {
   tile.toggleAttribute("data-own", own);
   tile.toggleAttribute("data-hidden", hid);
   tile.toggleAttribute("data-defeated", dead);
-  tile.toggleAttribute("data-active", it.active);
+  tile.toggleAttribute("data-active", it.active && !holdOn);   // during a rapid-click hold every tile stays compact (the ring still marks the turn)
   tile.toggleAttribute("data-sel", it.selected);
   tile.toggleAttribute("data-bars", it.showHp || it.showRs);
   tile.toggleAttribute("data-nums", it.nums && (it.showHp || it.showRs));
   tile.dataset.kind = it.kind;
   if (it.active) tile.setAttribute("aria-current", "true"); else tile.removeAttribute("aria-current");
   setText(refs.init, it.initText);
+  refs.dup.hidden = !it.dup;
+  if (it.dup) { setText(refs.dup, `${it.dup.k}/${it.dup.n}`); tile.dataset.dup = it.dup.first ? "first" : "later"; } else delete tile.dataset.dup;
   setText(refs.nameT, it.name);
   // portrait: a failing image is removed (glyph behind it); a changed source is swapped in place
   if (it.img && refs.img.dataset.bad !== it.img) {
@@ -518,9 +667,12 @@ function paintTile(card, it, first) {
   const disp = t(`ICB.Bar.Disp.${dispKey(it.disp)}`);
   const initSay = it.init === null ? t("ICB.Bar.NoInit") : t("ICB.Bar.Init", { n: it.initText });
   const flags = [it.active ? t("ICB.Bar.Active") : "", dead ? t("ICB.Bar.Defeated") : "", hid ? t("ICB.Bar.Hidden") : "", own ? t("ICB.Bar.Yours") : ""].filter(Boolean);
+  const dupSay = it.dup ? [t("ICB.Bar.Dup", { k: it.dup.k, n: it.dup.n }), !it.dup.first && !it.active ? t("ICB.Bar.DupBars") : ""].filter(Boolean) : [];
   const numbers = it.nums ? [specHp.show ? specHp.say : "", specRs.show ? specRs.say : ""].filter(Boolean) : [];
+  paintActs(card, it);
+  const actsSay = (it.acts ?? []).map((p) => t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.k}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") }));
   const hint = it.canSelect ? t(it.canSheet ? "ICB.Bar.Hint.Select" : "ICB.Bar.Hint.Pan") : it.canSheet ? t("ICB.Bar.Hint.Sheet") : it.canPan ? t("ICB.Bar.Hint.Pan") : "";
-  tile.setAttribute("aria-label", [it.name, initSay, disp, ...flags, ...numbers, hint].filter(Boolean).join(". ") + ".");
+  tile.setAttribute("aria-label", [it.name, initSay, disp, ...flags, ...dupSay, ...numbers, ...actsSay, hint].filter(Boolean).join(". ") + ".");
   tile.dataset.tooltip = it.name;   // hover: the name only (escaped by Foundry as plain text); everything else is in the aria-label
   tile.removeAttribute("data-tooltip-html");
   tile.dataset.tooltipDirection = "DOWN";
@@ -538,106 +690,357 @@ function shakeTile(card) {
   ], { duration: 420, easing: "ease-out" });
 }
 
-/* ---------- FLIP ---------- */
-function flipRects() {
-  const m = new Map();
-  for (const c of tiles.values()) if (c.li.isConnected && !c.leaving) m.set(c.li, c.li.getBoundingClientRect().left);
-  for (const el of m.keys()) for (const a of el.getAnimations?.() ?? []) if (a.id === "icbar-flip") a.cancel();
-  return m;
+/* ---------- MOTION: one choreography (morph) for every change of the strip ----------
+   FIRST: read where everything is on screen right now (viewport rects, so a running animation, the camera and the layout are all part of
+   the number) and picture the tiles whose expanded state is about to flip; cancel our running motion; MUTATE (DOM, placement, density, the
+   camera = scrollLeft set to the FINAL layout position, the ring's geometry); LAST: read again and play every element from where it was to
+   where it is, with ONE duration and ONE easing: tiles, round chip / buttons, ring. The camera needs no loop of its own: its scroll jump is part
+   of every tile's FLIP, so camera and highlight can never fight, and an interruption just starts from wherever things are on screen now.
+   Reads, then writes, then reads, then animations: nothing is measured between two writes. */
+const FLIP_EASE = "cubic-bezier(.33, 1, .68, 1)";
+const FLIP_MS = 320, WRAP_MS = 520;
+const BURST_MS = 150;   // turn changes closer together than this are a burst (rapid clicking): ...
+const HOLD_MS = 170;    // ... the tiles stay compact, the ring hops along, and the last target unfolds this long after the last change
+
+/* a motion of the morph: one easing, tagged so cancelMotion() finds it, will-change only while something runs on the element */
+function mv(el, frames, opts) {
+  if (!el) return null;
+  const a = anim(el, frames, { easing: FLIP_EASE, ...opts });
+  if (!a) return null;
+  a.id = "icbar-m";
+  el.style.willChange = "translate, scale, opacity, clip-path";
+  const done = () => { if (!el.getAnimations?.().some((x) => x.playState === "running")) el.style.removeProperty("will-change"); };
+  a.addEventListener("finish", done);
+  a.addEventListener("cancel", done);
+  return a;
 }
-function flipPlay(first) {
-  if (reduced() || !first.size) return;
-  for (const [el, x0] of first) {
-    if (!el.isConnected) continue;
-    const dx = x0 - el.getBoundingClientRect().left;
-    if (Math.abs(dx) > 1) { const a = anim(el, [{ translate: `${dx}px 0` }, { translate: "0 0" }], { duration: 340 }); if (a) a.id = "icbar-flip"; }
+function cancelMotion() {
+  if (!root) return;
+  for (const a of root.getAnimations?.({ subtree: true }) ?? []) if (a.id === "icbar-m") a.cancel();
+  for (const g of layer?.querySelectorAll(".icbar-ghost") ?? []) g.remove();
+}
+
+/* ---------- the ring: four thin bars and a notch in the layer over the list (the yellow outline of the active tile, as one glide) ---------- */
+const RP = 5, RT = 3;   // the ring sits 5 px outside the tile (2 px offset + 3 px line), like the outline it replaces
+function mkRing() {
+  const root2 = mk("div", "icbar-ring");
+  root2.setAttribute("aria-hidden", "true");
+  root2.dataset.on = "0";
+  const e = { root: root2 };
+  for (const k of ["t", "b", "l", "r", "n"]) { e[k] = mk("i", `icbar-rg icbar-rg-${k}`); root2.append(e[k]); }
+  return e;
+}
+function ringGeom() {
+  const c = activeId ? tiles.get(activeId) : null;
+  if (!c || !c.li.isConnected || c.leaving) return null;
+  return { x: c.li.offsetLeft - RP, y: c.li.offsetTop - RP, w: c.li.offsetWidth + 2 * RP, h: c.li.offsetHeight + 2 * RP };
+}
+function paintRing(g) {
+  if (!ring) return;
+  ringOn = !!g;
+  ring.root.dataset.on = g ? "1" : "0";
+  if (!g) return;
+  const k = `${g.x}|${g.y}|${g.w}|${g.h}`;
+  if (k === ringKey) return;
+  ringKey = k;
+  const set = (el, x, y, w, h) => { el.style.left = `${x}px`; el.style.top = `${y}px`; if (w !== null) el.style.width = `${w}px`; if (h !== null) el.style.height = `${h}px`; };
+  set(ring.t, g.x, g.y, g.w, RT);
+  set(ring.b, g.x, g.y + g.h - RT, g.w, RT);
+  set(ring.l, g.x, g.y, RT, g.h);
+  set(ring.r, g.x + g.w - RT, g.y, RT, g.h);
+  set(ring.n, g.x + g.w / 2, g.y + g.h, null, null);
+}
+function syncRing() { paintRing(ringGeom()); }
+function ringRect() {
+  if (!ringOn || !ring) return null;
+  const a = ring.t.getBoundingClientRect(), l = ring.l.getBoundingClientRect();
+  return { x: a.left, y: a.top, w: a.width, h: l.height };
+}
+
+/* ---------- FIRST ---------- */
+function ghostOf(c) {   // a picture of the tile as it looks right now, to fade out while the real one changes shape
+  const g = c.tile.cloneNode(true);
+  g.classList.add("icbar-ghost");
+  for (const a of ["role", "tabindex", "aria-label", "aria-current", "data-tooltip", "data-tooltip-direction", "data-echo"]) g.removeAttribute(a);
+  g.setAttribute("aria-hidden", "true");
+  g.inert = true;
+  g.style.removeProperty("will-change");
+  return g;
+}
+function snap(o) {
+  const s = { lis: new Map(), chrome: new Map(), ring: ringRect(), ghosts: new Map() };
+  for (const c of tiles.values()) {
+    if (!c.li.isConnected) continue;
+    const r = c.li.getBoundingClientRect();
+    s.lis.set(c, { x: r.left, y: r.top, w: r.width, h: r.height, aw: c.refs.art.offsetWidth, open: c.tile.hasAttribute("data-active") });
   }
+  for (const el of [prevB, roundEl, waitEl, nextB]) if (el && !el.hidden) s.chrome.set(el, el.getBoundingClientRect().left);
+  const t1 = performance.now();
+  for (const id of o.ghostIds ?? []) {
+    const c = tiles.get(id);
+    if (!c?.li.isConnected) continue;
+    if (c.tile.hasAttribute("data-active") && t1 - c.openedAt < 0.6 * FLIP_MS) continue;   // still unfolding: its plate has not shown yet, nothing to fade out
+    s.ghosts.set(c, ghostOf(c));
+  }
+  return s;
+}
+
+/* ---------- LAST + play ---------- */
+function addGhost(g, c, frames, dur) {
+  g.style.left = `${c.li.offsetLeft}px`;
+  g.style.top = `${c.li.offsetTop}px`;
+  layer.append(g);
+  const a = mv(g, frames, { duration: dur, fill: "forwards" });
+  if (!a) { g.remove(); return; }
+  a.addEventListener("finish", () => g.remove());
+  a.addEventListener("cancel", () => g.remove());
+}
+function play(s, o) {
+  const rm = reduced();
+  const moves = [];
+  let maxd = 0;
+  for (const [c, f] of s.lis) {
+    if (!c.li.isConnected) continue;
+    const r = c.li.getBoundingClientRect();
+    const dx = f.x - r.left, dy = f.y - r.top;
+    moves.push({ c, f, dx, dy });
+    maxd = Math.max(maxd, Math.abs(dx));
+  }
+  const dur = rm ? 160 : o.wrap ? WRAP_MS : Math.round(Math.min(440, Math.max(FLIP_MS, 260 + maxd * 0.16)));
+  if (!rm) {
+    for (const { c, dx, dy } of moves) if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) mv(c.li, [{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }], { duration: dur });
+    for (const [el, x0] of s.chrome) {
+      if (!el.isConnected || el.hidden) continue;
+      const dx = x0 - el.getBoundingClientRect().left;
+      if (Math.abs(dx) > 0.5) mv(el, [{ translate: `${dx}px 0` }, { translate: "0 0" }], { duration: dur });
+    }
+  }
+  /* a tile that opened or closed: the real one unfolds / folds, its picture (ghost) fades the other way, portrait kept in place by scaling about its corner */
+  for (const { c, f, dx, dy } of moves) {
+    const open = c.tile.hasAttribute("data-active");
+    if (open === f.open || c.leaving) continue;
+    c.openedAt = open ? performance.now() : 0;
+    if (rm) { anim(c.tile, [{ opacity: 0 }, { opacity: 1 }], { duration: 160 }); continue; }
+    const art = c.refs.art, ox = art.offsetLeft, oy = art.offsetTop, origin = `${ox}px ${oy}px`;
+    const g = s.ghosts.get(c) ?? null, from = `${dx}px ${dy}px`;
+    if (open) {
+      const s0 = Math.min(1, f.aw / Math.max(1, art.offsetWidth));
+      const edge = ox + (f.w - ox) / s0;
+      const inR = Math.max(-40, c.tile.offsetWidth - edge);
+      mv(c.tile, [{ opacity: 0, scale: String(s0), transformOrigin: origin }, { opacity: 1, offset: 0.3 }, { opacity: 1, scale: "1", transformOrigin: origin }], { duration: dur });
+      /* the plate area opens on its own, slower curve: the extra width must not show as an empty box before the name and bars arrive */
+      mv(c.tile, [{ clipPath: `inset(-2em ${inR}px -2em -2em)` }, { clipPath: "inset(-2em -2em -2em -2em)" }], { duration: Math.round(dur * 1.1), easing: "cubic-bezier(.5, 0, .15, 1)" });
+      for (const el of [c.refs.name, c.refs.bars, c.refs.acts]) {
+        if (!el || el.hidden) continue;
+        mv(el, [{ opacity: 0, translate: el === c.refs.name ? "-8px 0" : "0 0" }, { opacity: 1, translate: "0 0" }], { duration: Math.round(dur * 0.55), delay: Math.round(dur * 0.22), fill: "backwards" });
+      }
+      if (g) addGhost(g, c, [{ translate: from, opacity: 1 }, { opacity: 1, offset: 0.12 }, { opacity: 0, offset: 0.5 }, { translate: "0 0", opacity: 0 }], dur);
+    } else {
+      mv(c.tile, [{ opacity: 0 }, { opacity: 0, offset: 0.28 }, { opacity: 1, offset: 0.75 }, { opacity: 1 }], { duration: dur });
+      if (g) {
+        const sc = Math.min(1, Math.max(0.2, art.offsetWidth / Math.max(1, f.aw)));
+        const edge = ox + (c.li.offsetWidth - ox) / sc;
+        const inR = Math.max(-40, f.w - edge);
+        addGhost(g, c, [
+          { translate: from, scale: "1", clipPath: "inset(-2em -2em -2em -2em)", opacity: 1, transformOrigin: origin },
+          { opacity: 1, offset: 0.2 },
+          { opacity: 0, offset: 0.7 },
+          { translate: "0 0", scale: String(sc), clipPath: `inset(-2em ${inR}px -2em -2em)`, opacity: 0, transformOrigin: origin }
+        ], dur);
+      }
+    }
+  }
+  /* the ring: its four bars and the notch each go from the old rectangle to the new one (lines are moved and stretched along their length only,
+     so they never get thicker); a round wrap leaves toward the end and comes back in from the other side */
+  const l = ringRect(), f = s.ring;
+  if (l && f && !rm) {
+    const sx = f.w / l.w, sy = f.h / l.h;
+    const parts = [
+      [ring.t, f.x - l.x, f.y - l.y, sx, 1],
+      [ring.b, f.x - l.x, f.y + f.h - (l.y + l.h), sx, 1],
+      [ring.l, f.x - l.x, f.y - l.y, 1, sy],
+      [ring.r, f.x + f.w - (l.x + l.w), f.y - l.y, 1, sy],
+      [ring.n, f.x + f.w / 2 - (l.x + l.w / 2), f.y + f.h - (l.y + l.h), 1, 1]
+    ];
+    for (const [el, tx, ty, kx, ky] of parts) {
+      if (Math.abs(tx) < 0.5 && Math.abs(ty) < 0.5 && Math.abs(kx - 1) < 0.005 && Math.abs(ky - 1) < 0.005) continue;
+      const sc = `${kx} ${ky}`;
+      if (o.wrap) {
+        const d = o.wrap * 48;
+        mv(el, [
+          { translate: `${tx}px ${ty}px`, scale: sc, opacity: 1 },
+          { translate: `${tx + d}px ${ty}px`, scale: sc, opacity: 0, offset: 0.3, easing: "ease-in" },
+          { translate: `${-d}px 0px`, scale: "1 1", opacity: 0, offset: 0.36 },
+          { translate: "0 0", scale: "1 1", opacity: 1 }
+        ], { duration: dur });
+      } else mv(el, [{ translate: `${tx}px ${ty}px`, scale: sc }, { translate: "0 0", scale: "1 1" }], { duration: dur });
+    }
+  }
+}
+function morph(mutate, o = {}) {
+  if (!root || !list) return;
+  const s = snap(o);
+  cancelMotion();
+  mutate();
+  play(s, o);
+}
+
+/* the round chip: a new number slides in vertically (up for a new round, down when going back), a new round also pulses once */
+function paintRound(n) {
+  const [pre, post = ""] = t("ICB.Bar.RoundShort", { n: "\u0001" }).split("\u0001");
+  setText(rnPre, pre);
+  setText(rnPost, post);
+  if (rnCur === n) return;
+  const first = rnCur === null, up = rnCur === null || n > rnCur;
+  rnCur = n;
+  const old = [...rnWin.children];
+  const nw = mk("span", "icbar-rd", String(n));
+  rnWin.append(nw);
+  if (first) { for (const o2 of old) o2.remove(); return; }
+  if (reduced()) { for (const o2 of old) o2.remove(); anim(nw, [{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: "linear" }); return; }
+  const k = up ? 1 : -1;
+  for (const o2 of old) {
+    if (o2.dataset.gone) { o2.remove(); continue; }
+    o2.dataset.gone = "1";
+    const a = anim(o2, [{ translate: "0 0", opacity: 1 }, { translate: `0 ${-k * 110}%`, opacity: 0 }], { duration: 170, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
+    if (a) a.addEventListener("finish", () => o2.remove()); else o2.remove();
+  }
+  anim(nw, [{ translate: `0 ${k * 110}%`, opacity: 0 }, { translate: "0 0", opacity: 1 }], { duration: 230, delay: 40, easing: FLIP_EASE, fill: "backwards" });
+  if (up) anim(roundEl, [{ scale: "1" }, { scale: "1.1", offset: 0.4 }, { scale: "1" }], { duration: 320, delay: 40, easing: "ease-out" });
 }
 
 /* ---------- the pass ---------- */
+/* a removed tile is taken out of the flow at once (it fades and shrinks where it stands) so the gap closes in the same glide as everything else */
 function leave(id, card) {
   tiles.delete(id);
   card.leaving = true;
-  card.li.classList.add("icbar-leaving");
+  const li = card.li;
+  li.classList.add("icbar-leaving");
+  li.style.cssText += `;position:absolute;left:${li.offsetLeft}px;top:${li.offsetTop}px;width:${li.offsetWidth}px;pointer-events:none`;
   card.tile.inert = true;
-  const ms = reduced() ? 120 : 220;
-  anim(card.tile, reduced() ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, scale: "1" }, { opacity: 0, scale: ".6" }], { duration: ms, fill: "forwards" });
-  setTimeout(() => {
-    const before = flipRects();
-    card.li.remove();
-    if (root?.isConnected) { flipPlay(before); fit(true); place(); }
-  }, ms + 20);
+  const ms = reduced() ? 120 : 200;
+  const a = anim(card.tile, reduced() ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, scale: "1" }, { opacity: 0, scale: ".6" }], { duration: ms, fill: "forwards" });
+  if (a) a.addEventListener("finish", () => li.remove()); else li.remove();
+  setTimeout(() => li.remove(), ms + 120);
 }
 
-function paint(model, loud) {
-  const fresh = !tiles.size;
-  const first = flipRects();
-  const want = new Set(model.items.map((i) => i.id));
-  for (const [id, card] of [...tiles]) if (!want.has(id)) leave(id, card);
-  let added = 0;
-  model.items.forEach((it, idx) => {
-    let card = tiles.get(it.id);
-    const isNew = !card;
-    if (isNew) {
-      card = makeTile(it);
-      tiles.set(it.id, card);
-      list.append(card.li);
-      added++;
-    }
-    paintTile(card, it, isNew);
-    if (isNew) {
-      if (fresh) anim(card.tile, reduced() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, translate: "0 -12px" }, { opacity: 1, translate: "0 0" }], { duration: reduced() ? 160 : 380, delay: reduced() ? 0 : 160 + Math.min(idx, 10) * 45, fill: "backwards" });
-      else anim(card.tile, reduced() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, scale: ".6" }, { opacity: 1, scale: "1" }], { duration: reduced() ? 160 : 320, fill: "backwards" });
-    }
-  });
-  // order: move only the nodes that are out of place, walking from the end
-  const live2 = model.items.map((i) => tiles.get(i.id).li);
-  let next = null;
-  for (let i = live2.length - 1; i >= 0; i--) {
-    const n = live2[i];
-    let sib = n.nextElementSibling;
-    while (sib && sib.classList.contains("icbar-leaving")) sib = sib.nextElementSibling;
-    if (sib !== next) list.insertBefore(n, next);
-    next = n;
-  }
-  // header: round chip, buttons
-  const rl = t("ICB.Bar.RoundShort", { n: model.round });
-  if (roundNum.textContent !== rl) {
-    const bump = roundNum.textContent !== "";
-    roundNum.textContent = rl;
-    if (bump && !reduced()) anim(roundNum, [{ scale: ".7", opacity: ".3" }, { scale: "1.25", opacity: "1", offset: .5 }, { scale: "1" }], { duration: 420 });
-  }
-  setText(roundEl.querySelector(".icbar-sr"), t("ICB.Bar.RoundLong", { n: model.round }));
-  const gm = !!game.user.isGM;
-  let canUpdate = false;
-  try { canUpdate = gm && curCombat.canUserModify(game.user, "update"); } catch { canUpdate = gm; }
-  for (const b of [prevB, nextB]) b.hidden = !gm;
-  prevB.disabled = !canUpdate || (model.round <= 1 && !(model.turn > 0));   // stepping back from the very first turn would un-start the combat
-  nextB.disabled = !canUpdate;
-  for (const [b, k] of [[prevB, "ICB.Bar.Prev"], [nextB, "ICB.Bar.Next"]]) { b.setAttribute("aria-label", t(k)); b.dataset.tooltip = t(k); }
-  root.classList.toggle("icbar-nobars", !model.items.some((i) => i.showHp || i.showRs));
-  root.classList.toggle("icbar-empty", !model.items.length);
+/* RAPID CLICKING: after a burst the compact tiles stood still and only the ring hopped; now the last target unfolds */
+function release() {
+  holdTimer = 0;
+  if (!holdOn) return;
+  if (!root?.isConnected || !list) { holdOn = false; return; }
+  const was = openId();
+  morph(() => {
+    holdOn = false;
+    for (const c of tiles.values()) c.tile.toggleAttribute("data-active", !!c.item?.active);
+    keepHeight();
+    place(); fit(true); place();
+    if (activeId) centerOn(activeId);
+    syncRing();
+  }, { camera: true, ghostIds: ghostIdsFor(was, activeId) });
+}
+/* the strip is as tall as its tallest state (a tile open: portrait + name plate + bars) even while nobody is open (rapid-click hold, the draw
+   pending): the shell and --icbar-bottom must never change while the bar moves. Measured, not guessed: it depends on size, density, numbers. */
+let openH = { key: "", h: 0 };
+function keepHeight() {
+  if (!list) return;
+  const key = `${mode}|${size}|${root.classList.contains("icbar-nobars")}`;
+  list.style.minHeight = "";
+  if (openId()) openH = { key, h: list.offsetHeight };
+  else if (openH.key === key && openH.h) list.style.minHeight = `${openH.h}px`;
+}
+const openId = () => { for (const [id, c] of tiles) if (c.tile.hasAttribute("data-active")) return id; return null; };
+const ghostIdsFor = (a, b) => (a === b ? [] : [a, b].filter(Boolean));
 
-  // active turn: announce, glide
+function paint(model, loud, keep) {
+  const fresh = !tiles.size;
+  const t0 = performance.now();
   const act = model.items.find((i) => i.active) ?? null;
-  const prevActive = activeId;
-  activeId = act?.id ?? null;
-  const key = `${curCombatId}:${model.round}:${model.turn}:${activeId}`;
-  if (key !== lastKey) {
-    const sameCombat = lastKey.startsWith(`${curCombatId}:`);
-    lastKey = key;
-    if (act && (loud || sameCombat)) say(t("ICB.Bar.Turn", { name: act.name }));
+  const nextActive = act?.id ?? null;
+  const changed = nextActive !== activeId;
+  if (fresh || !nextActive) { holdOn = false; clearTimeout(holdTimer); holdTimer = 0; }
+  else if (changed) {
+    holdOn = holdOn || t0 - lastTurnAt < BURST_MS;
+    lastTurnAt = t0;
+    clearTimeout(holdTimer);
+    holdTimer = holdOn ? setTimeout(release, HOLD_MS) : 0;
   }
-  place();
-  fit(true);
-  place();
-  flipPlay(first);
-  if (activeId && (activeId !== prevActive || fresh)) requestAnimationFrame(() => centerOn(activeId, !fresh));
+  const wrap = !fresh && lastRound !== null && model.round !== lastRound ? (model.round > lastRound ? 1 : -1) : 0;
+  lastRound = model.round;
+  const o = { fresh, wrap, camera: fresh || changed, ghostIds: ghostIdsFor(openId(), holdOn ? null : nextActive) };
+  morph(() => {
+    const want = new Set(model.items.map((i) => i.id));
+    for (const [id, card] of [...tiles]) if (!want.has(id) && !keep?.has(id)) leave(id, card);
+    let added = 0;
+    model.items.forEach((it, idx) => {
+      let card = tiles.get(it.id);
+      const isNew = !card;
+      if (isNew) {
+        card = makeTile(it);
+        tiles.set(it.id, card);
+        list.append(card.li);
+      }
+      paintTile(card, it, isNew);
+      if (isNew) {
+        if (fresh) anim(card.tile, reduced() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, translate: "0 -12px" }, { opacity: 1, translate: "0 0" }], { duration: reduced() ? 160 : 380, delay: reduced() ? 0 : 160 + Math.min(idx, 10) * 45, fill: "backwards" });
+        else anim(card.tile, reduced() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, translate: "0 -14px" }, { opacity: 1, translate: "0 0" }], { duration: reduced() ? 160 : 340, delay: reduced() ? 0 : Math.min(added, 5) * 45, fill: "backwards" });
+        added++;
+      }
+    });
+    // order: move only the nodes that are out of place, walking from the end
+    const live2 = model.items.map((i) => tiles.get(i.id).li);
+    let next = null;
+    for (let i = live2.length - 1; i >= 0; i--) {
+      const n = live2[i];
+      let sib = n.nextElementSibling;
+      while (sib && sib.classList.contains("icbar-leaving")) sib = sib.nextElementSibling;
+      if (sib !== next) list.insertBefore(n, next);
+      next = n;
+    }
+    // header: round chip, buttons
+    paintRound(model.round);
+    setText(roundEl.querySelector(".icbar-sr"), t("ICB.Bar.RoundLong", { n: model.round }));
+    const gm = !!game.user.isGM;
+    let canUpdate = false;
+    try { canUpdate = gm && curCombat.canUserModify(game.user, "update"); } catch { canUpdate = gm; }
+    for (const b of [prevB, nextB]) b.hidden = !gm;
+    prevB.disabled = !canUpdate || (model.round <= 1 && !(model.turn > 0));   // stepping back from the very first turn would un-start the combat
+    nextB.disabled = !canUpdate;
+    for (const [b, k] of [[prevB, "ICB.Bar.Prev"], [nextB, "ICB.Bar.Next"]]) { b.setAttribute("aria-label", t(k)); b.dataset.tooltip = t(k); }
+    root.classList.toggle("icbar-nobars", !model.items.some((i) => i.showHp || i.showRs));
+    root.classList.toggle("icbar-empty", !model.items.length);
+    root.classList.toggle("icbar-wait", !!model.waiting);   // the draw has not landed: dimmed tiles (a cross-fade), no initiative tags, nobody active
+    if (waitEl) {
+      const showing = !waitEl.hidden;
+      waitEl.hidden = !model.waiting;
+      setText(waitEl, t("ICB.Bar.WaitingShort"));
+      if (model.waiting && !showing && !reduced()) anim(waitEl, [{ opacity: 0, scale: ".9" }, { opacity: 1, scale: "1" }], { duration: 220, fill: "backwards" });
+    }
+    if (model.waiting && !wasWaiting) say(t("ICB.Bar.Waiting"));
+    wasWaiting = !!model.waiting;
+    keepHeight();
+
+    // active turn: announce, glide (the glide itself is morph's: tiles, ring and the camera set below share one FLIP)
+    const prevActive = activeId;
+    activeId = nextActive;
+    const key = `${curCombatId}:${model.round}:${model.turn}:${activeId}`;
+    if (key !== lastKey) {
+      const sameCombat = lastKey.startsWith(`${curCombatId}:`);
+      lastKey = key;
+      if (act && (loud || sameCombat)) say(t("ICB.Bar.Turn", { name: act.name }));
+    }
+    place();
+    fit(true);
+    place();
+    if (activeId && (activeId !== prevActive || fresh)) centerOn(activeId);
+    syncRing();
+  }, o);
 }
 
 /* ---------- show / hide the whole bar ---------- */
 function enter() {
   if (!shell) return;
+  enteredFor = curCombatId;   // the slide-in belongs to a combat: it is never replayed for the one already on show
   for (const a of shell.getAnimations?.() ?? []) a.cancel();   // a leftover fill:forwards exit
   const top = parseFloat(root.style.getPropertyValue("--icbar-top")) || 0;
   if (reduced()) { anim(shell, [{ opacity: 0 }, { opacity: 1 }], { duration: 160 }); return; }
@@ -661,29 +1064,63 @@ function unmount(quick) {
 function cleanup() {
   clearTimeout(byeTimer);
   clearTimeout(liveTimer);
+  clearTimeout(hideTimer); clearTimeout(missTimer); clearTimeout(backTimer); clearTimeout(hudTimer); clearTimeout(waitTimer); clearTimeout(holdTimer); holdTimer = 0;
+  hideTimer = missTimer = backTimer = hudTimer = waitTimer = waitSince = 0;
   ro?.disconnect();
   ro = null;
+  hudRo?.disconnect(); hudMo?.disconnect(); bodyMo?.disconnect();
+  hudRo = hudMo = bodyMo = hudEl = null;
   root?.remove();
-  root = shell = scroller = list = roundEl = roundNum = prevB = nextB = live = null;
+  root = shell = scroller = list = roundEl = roundNum = prevB = nextB = live = waitEl = null; wasWaiting = false;
+  layer = ring = rnPre = rnWin = rnPost = null; rnCur = null; ringOn = false; ringKey = ""; holdOn = false; lastRound = null; lastTurnAt = 0;
   tiles.clear();
   curCombat = null; curCombatId = null; lastKey = ""; activeId = null; lastDensity = -1; fitKey = ""; wheelOn = false; mounted = false;
+  enteredFor = null; mode = -1; backSince = 0; lowRow = false;
   publishBottom(0);
 }
 
+/* WHEN THE BAR SHOWS: at once when a combat is there; it leaves only after "no combat" has held for GRACE_MS (Combat collections, `started`
+   and the viewed scene all blink while a turn is being applied), unless the reason is final (setting off, scene torn down, the combat deleted).
+   While it waits, the last good render stays untouched. */
 function sync(opts = {}) {
   timer = 0;
   const loud = !!opts.loud;
   try {
+    const hard = !ready || down || !enabled() || !!opts.hard;
     const combat = ready && !down && enabled() && canvas?.scene ? pick(opts.prefer) : null;
-    if (!combat) { if (root) unmount(); return; }
-    if (curCombatId && curCombatId !== combat.id) { for (const [id, card] of [...tiles]) { card.li.remove(); tiles.delete(id); } lastKey = ""; }
-    curCombat = combat;
-    curCombatId = combat.id;
-    const wasMounted = !!root?.isConnected && !root.classList.contains("icbar-bye");
-    const created = ensureRoot();
-    const model = build(combat);
-    paint(model, loud);
-    if (created || !wasMounted) { place(); enter(); }
+    if (!combat) {
+      if (root && (hard || opts.settled)) { clearTimeout(hideTimer); hideTimer = 0; unmount(); }
+      else if (root && !hideTimer) hideTimer = setTimeout(() => { hideTimer = 0; sync({ settled: true }); }, GRACE_MS);
+    } else {
+      clearTimeout(hideTimer); hideTimer = 0;
+      if (curCombatId && curCombatId !== combat.id) { for (const [id, card] of [...tiles]) { card.li.remove(); tiles.delete(id); } lastKey = ""; enteredFor = null; lastRound = null; holdOn = false; clearTimeout(holdTimer); holdTimer = 0; }
+      curCombat = combat;
+      curCombatId = combat.id;
+      const wasMounted = !!root?.isConnected && !root.classList.contains("icbar-bye");
+      const created = ensureRoot();
+      const model = build(combat);
+      // a tile missing from the model for a moment (Combat#turns is rebuilt 50 ms after combatant changes) stays until it has been gone for MISS_MS
+      const have = new Set(model.items.map((i) => i.id)), keep = new Set(), now = performance.now();
+      for (const [id, card] of tiles) {
+        if (have.has(id)) { card.missingAt = 0; continue; }
+        card.missingAt ||= now;
+        if (now - card.missingAt < MISS_MS) keep.add(id);
+      }
+      clearTimeout(missTimer); missTimer = 0;
+      /* Year Zero resetEachRound nulls every initiative and redraws a few ms later: a waiting state shorter than WAIT_MS keeps the last good render */
+      let hold = false;
+      if (!model.waiting) { waitSince = 0; clearTimeout(waitTimer); waitTimer = 0; }
+      else if (tiles.size && !root.classList.contains("icbar-wait")) {
+        waitSince ||= now;
+        if (now - waitSince < WAIT_MS) { hold = true; clearTimeout(waitTimer); waitTimer = setTimeout(() => { waitTimer = 0; sync(); }, WAIT_MS - (now - waitSince) + 40); }
+      }
+      if (keep.size) missTimer = setTimeout(() => { missTimer = 0; sync(); }, MISS_MS + 40);
+      if (!hold && !(keep.size && !model.items.length)) paint(model, loud, keep);   // every tile gone at once = a transient: the last good render stays
+      if (created) { place(); enter(); }
+      else if (!wasMounted) {   // the exit was under way: come back without replaying the slide for a combat already on show
+        if (enteredFor === combat.id) { for (const a of shell.getAnimations?.() ?? []) a.cancel(); place(); } else { place(); enter(); }
+      }
+    }
   } catch (e) { console.warn(LOG, "update failed", e); }
   if (again) { again = false; timer = setTimeout(() => sync(), 90); }
 }
@@ -706,12 +1143,12 @@ export function setDown(v) { down = !!v; if (down) { clearTimeout(timer); timer 
 export function removed(combatId) {   // deleteCombat: the collection may still hand it out for a moment
   goneId = combatId;
   setTimeout(() => { if (goneId === combatId) goneId = null; }, 1500);
-  syncNow();
+  syncNow({ hard: true });   // a deleted combat does not come back: no grace period
 }
 export function setSize(s) {
   size = SIZES[s] ? s : "normal";
   root?.style.setProperty("--icbar-scale", String(SIZES[size]));
-  if (root) { place(); fit(true); }
+  if (root) { place(); fit(true); syncRing(); }
 }
 export function refresh() { syncNow(); }
 export function isShowing() { return !!root?.isConnected && !root.classList.contains("icbar-bye"); }

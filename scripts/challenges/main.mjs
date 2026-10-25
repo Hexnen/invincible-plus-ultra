@@ -39,7 +39,7 @@ function registerSettings() {
   });
   if (!has(KEY.scale)) game.settings.register(MOD, KEY.scale, {
     name: t("INCH.Settings.Scale.Name"), hint: t("INCH.Settings.Scale.Hint"), scope: "client", config: true, type: Number, default: 1,
-    range: { min: 0.7, max: 1.4, step: 0.1 }, onChange: (v) => HUD.setScale(v)
+    range: { min: 0.8, max: 1.4, step: 0.1 }, onChange: (v) => HUD.setScale(v)
   });
   // visible cards: "auto" (fit the screen height) or 1..12. The numeric keys are zero-padded on purpose: integer-like keys would be listed before "auto".
   if (!has(KEY.visible)) game.settings.register(MOD, KEY.visible, {
@@ -261,7 +261,7 @@ function lowerLimit(right) {
   let y = window.innerHeight - 14;
   try {
     const hb = HUD.box?.();
-    const x1 = window.innerWidth - right, x0 = hb && hb.width > 40 ? Math.min(hb.left, x1 - 40) : x1 - 300;
+    const x1 = window.innerWidth - right, x0 = hb && hb.width > 40 ? Math.min(hb.left, x1 - 40) : x1 - 240;
     const hud = document.getElementById("invincible-challenges");
     for (const el of document.querySelectorAll(LOW_SEL)) {
       if (el === hud || el.contains(hud) || hud?.contains(el)) continue;

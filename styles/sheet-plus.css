@@ -6,6 +6,8 @@
 @import url("splash.css");
 @import url("challenges.css");   /* the challenges HUD (scripts/challenges/) */
 @import url("combat.css");   /* the combat banners (scripts/combat/) */
+@import url("party.css");   /* the party cards (scripts/party/) */
+@import url("turn.css");   /* the player turn message, action tray and end-turn dialogs (scripts/turn/) */
 
 /* Invincible — Sheet Plus: actor sheets only. Palette: yellow #ffe72a, cyan #0096cb, blue #3465a3. */
 .invincible.sheet.actor {

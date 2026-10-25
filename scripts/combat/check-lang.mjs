@@ -20,6 +20,8 @@ for (const k of used) if (!(k in EN) || !(k in PL)) fail(`used but not defined i
 for (const b of bases) for (const c of ["one", "few", "many", "other"]) if (!(`${b}.${c}` in EN) || !(`${b}.${c}` in PL)) fail(`plural ${b}.${c} missing`);
 // every settings key the code derives by hand
 for (const k of ["Size.small", "Size.normal", "Size.large", "Rounds.all", "Rounds.edges", "BarRes.both", "BarRes.health", "BarRes.none", "BarPlayers.friendly", "BarPlayers.all", "BarPlayers.none"]) if (!(`ICB.Settings.${k}` in EN) || !(`ICB.Settings.${k}` in PL)) fail(`settings ${k}`);
+for (const k of ["fast", "slow", "one"]) for (const p of ["Act", "ActL"]) if (!(`ICB.Bar.${p}.${k}` in EN) || !(`ICB.Bar.${p}.${k}` in PL)) fail(`action label ${p}.${k}`);   // t(`ICB.Bar.Act.${kind}`)
+for (const k of ["used", "open", "Line"]) if (!(`ICB.Bar.Act.${k}` in EN) || !(`ICB.Bar.Act.${k}` in PL)) fail(`action state ${k}`);
 for (const k of ["friendly", "neutral", "hostile", "secret"]) if (!(`ICB.Bar.Disp.${k}` in EN) || !(`ICB.Bar.Disp.${k}` in PL)) fail(`disposition ${k}`);   // t(`ICB.Bar.Disp.${key}`)
 console.log(bad ? `${bad} problem(s)` : `OK: ${Object.keys(EN).length} keys, ${used.size} direct + ${bases.size} plural bases used, EN = PL`);
 process.exit(bad ? 1 : 0);

@@ -24,7 +24,9 @@ let collapsed = false, right = 0, scale = 1;
 let view = { visible: "auto", compact: "auto" };
 let expanded = false, curCompact = false, curPlan = { limit: 4, base: 4, compact: false, hidden: 0 };
 let lastItems = [], bottomY = 0, hDirty = true, layoutKey = "", wheelOn = false, scrollTimer = 0, sbw = null;
-const M = { full: { h: 140, g: 8 }, compact: { h: 44, g: 5 }, chip: 32, pad: 20, availL: 600, seen: false };
+/* Start values only (the real card heights are measured on the first render, measureHeights): a full card is 108 (one-line name, no subtitle) to
+   124 (with a subtitle) and 138 with a two-line name; the planner keeps the running maximum. A compact card measures 38; the "+N more" chip 24. */
+const M = { full: { h: 124, g: 6 }, compact: { h: 38, g: 4 }, chip: 24, pad: 16, availL: 600, seen: false };
 const EASE = "cubic-bezier(.16, 1, .3, 1)";
 let cb = { open: () => {}, pan: () => {}, toggle: () => {}, known: () => false, dragStart: () => false, dragEnd: () => {} };
 
@@ -46,7 +48,7 @@ export function setRight(px) {
   root?.style.setProperty("--ich-right", `${right}px`);
 }
 export function setScale(s) {
-  scale = Math.max(0.6, Math.min(1.6, Number(s) || 1));
+  scale = Math.max(0.8, Math.min(1.6, Number(s) || 1));   // below 0.8 the 12px labels fall under 10px: the setting's slider starts there too
   root?.style.setProperty("--ich-scale", String(scale));
   layoutKey = "";
   relayout();
@@ -120,7 +122,7 @@ function choose(items) {
 /* the room: list top to the lowest allowed y (main.mjs measured what sits under the dock). Cheap; called on resize and each render. */
 function relayout(replan = true) {
   if (!root?.isConnected || !list || root.classList.contains("ich-bye")) return;
-  const dw = dock.offsetWidth, key = `${scale}|${innerWidth < 1100}|${innerHeight <= 740}|${dw <= 290 ? 2 : dw <= 330 ? 1 : 0}`;
+  const dw = dock.offsetWidth, key = `${scale}|${innerWidth < 1100}|${innerHeight <= 740}|${dw <= 232 ? 2 : dw <= 264 ? 1 : 0}`;
   if (key !== layoutKey) { layoutKey = key; hDirty = true; M.seen = false; }
   const top = list.getBoundingClientRect().top;
   const limitY = bottomY > top + 80 ? bottomY : innerHeight - 14;
@@ -191,7 +193,7 @@ function swapFx() {
   const calm = reduced();
   for (const c of cards.values()) {
     if (c.el.classList.contains("ich-new")) continue;
-    anim(c.el, calm ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, translate: "14px 0" }, { opacity: 1, translate: "0 0" }], { duration: calm ? 140 : 280, delay: calm ? 0 : Math.min(k++, 6) * 24, fill: "backwards" });
+    anim(c.el, calm ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, translate: "11px 0" }, { opacity: 1, translate: "0 0" }], { duration: calm ? 140 : 280, delay: calm ? 0 : Math.min(k++, 6) * 24, fill: "backwards" });
   }
 }
 
@@ -202,17 +204,17 @@ function shakeFx(card) {
   card.hot = setTimeout(() => card.el.classList.remove("ich-hot-fail", "ich-hot-win"), 2600);
   if (reduced()) return;
   anim(card.el, [
-    { translate: "0 0", rotate: "0deg" }, { translate: "-9px 0", rotate: "-1.4deg" }, { translate: "8px 0", rotate: "1.2deg" },
-    { translate: "-6px 0", rotate: "-.9deg" }, { translate: "4px 0", rotate: ".5deg" }, { translate: "-2px 0", rotate: "-.2deg" }, { translate: "0 0", rotate: "0deg" }
+    { translate: "0 0", rotate: "0deg" }, { translate: "-7px 0", rotate: "-1.4deg" }, { translate: "6px 0", rotate: "1.2deg" },
+    { translate: "-5px 0", rotate: "-.9deg" }, { translate: "3px 0", rotate: ".5deg" }, { translate: "-2px 0", rotate: "-.2deg" }, { translate: "0 0", rotate: "0deg" }
   ], { duration: 520, easing: "ease-out" });
-  for (const r of [card.refs.tl, card.refs.cr]) anim(r.bar, [{ translate: "0 0" }, { translate: "-4px 0" }, { translate: "4px 0" }, { translate: "-2px 0" }, { translate: "0 0" }], { duration: 420, delay: 90, easing: "ease-out" });
+  for (const r of [card.refs.tl, card.refs.cr]) anim(r.bar, [{ translate: "0 0" }, { translate: "-3px 0" }, { translate: "3px 0" }, { translate: "-2px 0" }, { translate: "0 0" }], { duration: 420, delay: 90, easing: "ease-out" });
 }
 function winFx(card) {
   card.el.classList.add("ich-hot-win");
   clearTimeout(card.hot);
   card.hot = setTimeout(() => card.el.classList.remove("ich-hot-fail", "ich-hot-win"), 3200);
   if (reduced()) return;
-  anim(card.el, [{ scale: "1", translate: "0 0" }, { scale: "1.06", translate: "0 -6px" }, { scale: ".99", translate: "0 1px" }, { scale: "1", translate: "0 0" }], { duration: 720, easing: "cubic-bezier(.34, 1.56, .64, 1)" });
+  anim(card.el, [{ scale: "1", translate: "0 0" }, { scale: "1.06", translate: "0 -5px" }, { scale: ".99", translate: "0 1px" }, { scale: "1", translate: "0 0" }], { duration: 720, easing: "cubic-bezier(.34, 1.56, .64, 1)" });
   const sweep = card.refs.shine.firstChild;
   anim(sweep, [{ translate: "-140% 0", opacity: 0 }, { opacity: 1, offset: .25 }, { translate: "420% 0", opacity: 0 }], { duration: 760, delay: 80, easing: "ease-in-out" });
   anim(card.refs.cr.bar, [{ scale: "1 1", filter: "brightness(1)" }, { scale: "1 1.5", filter: "brightness(1.7)" }, { scale: "1 1", filter: "brightness(1)" }], { duration: 560 });
@@ -504,7 +506,7 @@ function makeCard(item) {
     const minus = sb(-1, "−"), plus = sb(1, "+");
     step.append(minus, plus);
     r.append(lab, bar, n, step);
-    return { r, small, unit, unitB, bar, fill, glint, n, step, minus, plus };
+    return { r, lab: t, rl: lab, sg: grp, small, unit, unitB, bar, fill, glint, n, step, minus, plus };
   };
   const cr = row("cr", L("INCH.Progress"));
   const tl = row("tl", L("INCH.TimeLeft"));
@@ -762,6 +764,17 @@ export function render(items, { quiet = false } = {}) {
   if (added && collapsed && !quiet) pingHandle();
 }
 
+/* A row's label word ("Time left" / "Pozostały czas") and its value ("TL 6 / 6 rounds") share one line. When they do not fit (a narrow card, a long
+   translation, a three-digit value) the label would be cut to "TIM…": the row drops the label instead (CSS .ich-nolab) and the value stays as the
+   bar's caption. Writes first, then reads, so the whole list costs one layout. Compact cards hide the label line altogether (width 0: never flagged). */
+function fitLabels() {
+  const list = [...cards.values()];
+  for (const c of list) { c.refs.cr.r.classList.remove("ich-nolab"); c.refs.tl.r.classList.remove("ich-nolab"); }
+  const tight = (r) => r.rl.clientWidth > 0 && r.lab.scrollWidth + 6 + r.sg.offsetWidth + 3 > r.rl.clientWidth;   // 6 = the flex gap, 3 = spare so a sub-pixel font difference never ellipsizes
+  const flag = list.filter((c) => tight(c.refs.cr) || tight(c.refs.tl));   // read everything first, then write
+  for (const c of flag) { c.refs.cr.r.classList.add("ich-nolab"); c.refs.tl.r.classList.add("ich-nolab"); }   // both rows of a card together, so a card never has one captioned bar and one bare
+}
+
 /* one pass: set the mode, leave / create / paint the cards of the plan, order them, paint the chip. Returns the number of created cards. */
 function applyPlan(items, plan, fresh) {
   // the cap: selected challenges are promoted into the visible set, the remaining places go to the others in document order; the order stays the document's
@@ -810,6 +823,7 @@ function applyPlan(items, plan, fresh) {
     if (sib !== next) list.insertBefore(n, next);
     next = n;
   }
+  fitLabels();
 
   // "+N more" / "Show fewer": one real button
   if (plan.hidden > 0) {

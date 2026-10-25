@@ -22,6 +22,7 @@
 import * as Banner from "./banner.mjs";
 import * as Bar from "./bar.mjs";   // the initiative bar (bar.mjs): hooks and settings are registered below, next to the banners'
 import { t } from "./lang.mjs";
+import { KEY as YZE_KEY } from "../yze.mjs";
 
 const MOD = "invincible-plus-ultra";
 const SYSTEM = "invincible";
@@ -75,6 +76,11 @@ function registerSettings() {
     choices: { friendly: t("ICB.Settings.BarPlayers.friendly"), all: t("ICB.Settings.BarPlayers.all"), none: t("ICB.Settings.BarPlayers.none") },
     onChange: () => Bar.schedule()
   });
+  // Year Zero Engine Combat adaptations (scripts/yze.mjs yzeOn()): action pips on the bar, the Challenges and the party cards
+  if (!has(YZE_KEY)) game.settings.register(MOD, YZE_KEY, {
+    name: t("ICB.Settings.Yze.Name"), hint: t("ICB.Settings.Yze.Hint"), scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => Bar.schedule()
+  });
 }
 
 /* ---------- which combat is mine ---------- */
@@ -101,6 +107,9 @@ function emit(combat, ev) {
   } catch (e) { console.warn(LOG, "emit failed", e); }
 }
 
+/* Year Zero Engine: Combat (resetEachRound) updates the combat several times per round: setHistory (flags), the initiative reset, the redraw
+   (turn: 0, diff: false) and only then core's {round, turn}. None of the first ones carries `round`, so the guard below already makes the round
+   banner fire exactly once, on the final update; the start banner comes after the duplicates and the first draw (startCombat() awaits them). */
 function onUpdateCombat(combat, changes) {
   try {
     if (!combat || changes?.round === undefined) return;

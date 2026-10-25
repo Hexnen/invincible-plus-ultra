@@ -1,0 +1,551 @@
+/* Invincible - Plus Ultra: PARTY CARDS (scripts/party/). Slide-out cards at the bottom left of the screen, one per player character that has a token
+   on the viewed scene. Mode: Operate (a status display read at a glance); motion is state: the cards slide, nothing decorates.
+
+   Language: the Challenges HUD family, MIRRORED. INK slabs (the map behind is busy) leaning -15deg like the sheet's bars, the PORTRAIT on the
+   right end (the end that stays visible), the name on a skewed yellow plate, Health (yellow) and Resolve (cyan) as slim segmented bars with
+   slanted ink dividers, Titles numerals, one yellow handle button with the module's hard offset shadow (the only hard shadow; the cards float
+   with a soft one). The player's colour is the accent of each card (portrait frame, top tab, the player's name): it is checked in script
+   (panel.mjs accentTokens): the frame is lifted toward white until it has >= 3.2:1 on the ink, the small text until >= 6:1. No side stripes,
+   no gradient text, no glass.
+
+   THREE STATES (#invincible-party[data-display]). Every card is one li with ONE individual `translate`: full = 0; peek = left so that only the
+   portrait (+ a sliver of slab) sticks out; hidden = fully off screen. A card pulled out of the peek (hover / focus / pinned: .ipt-open) moves
+   RIGHT, under the pointer. State changes stagger by --i; hover slides do not. Transform and opacity only.
+
+   STACKING. Core: #ui-* are z-index var(--z-index-app) = 30, windows 100, canvas 0: one below the interface layer = above the canvas, under the
+   menus, under windows. The container never takes the pointer; only the handle and the cards do. Placement (main.mjs measure) sets --ipt-bottom.
+
+   CONTRAST (WCAG, on the ink #0c1a2e): ink on yellow 13.9 | yellow numerals 13.9 | cyan #3bb8e8 7.7 | red #ff8178 7.2 | label #a9bcdc 9.1 |
+   text #d5dff0 13.0 | white 17.5 | frame #7d93b9 5.6 | white on red-ink #b3261e 6.5 | player colour: frame >= 3.2, name text >= 6.1
+   (examples: red #ff0000 -> text #ff6666 6.1; blue #0000ff -> frame #5959ff 3.6, text #8c8cff 6.1; green #00ff00 unchanged 12.7).
+   Non-colour cues: numbers in text, skull on a defeated portrait, ring + bolt chip on the active turn, glyph + shape on the action pips
+   (filled = available, dashed = used), the handle's segment meter and aria-label say the state. */
+
+#invincible-party {
+  --ipt-ink: #0c1a2e;
+  --ipt-yellow: #ffe72a;
+  --ipt-cyan: #0096cb;
+  --ipt-cyan-lt: #3bb8e8;
+  --ipt-red: #e5483f;
+  --ipt-red-lt: #ff8178;
+  --ipt-red-ink: #b3261e;
+  --ipt-label: #a9bcdc;
+  --ipt-text: #d5dff0;
+  --ipt-frame: #7d93b9;
+  --ipt-track: #1b2d4a;
+  --ipt-out: cubic-bezier(.16, 1, .3, 1);
+  --ipt-fa: var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free";
+  --ipt-w: 240px;      /* the full card */
+  --ipt-art: 61px;     /* portrait width */
+  --ipt-vis: calc(var(--ipt-art) + 18px);   /* how much of a peeking card sticks out: the portrait, its margin and a sliver of slab */
+  --ipt-out-x: calc(var(--ipt-w) + 35px);   /* fully off screen (the lean included) */
+  --ipt-h: 78px;
+  --ipt-g: 6px;
+
+  position: fixed;
+  left: 0;
+  bottom: var(--ipt-bottom, 11px);
+  z-index: calc(var(--z-index-app, 30) - 1);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  pointer-events: none;
+  transform: scale(var(--ipt-scale, 1));
+  transform-origin: left bottom;
+  font-family: Comic, sans-serif;
+  color: var(--ipt-text);
+}
+#invincible-party *, #invincible-party *::before, #invincible-party *::after { box-sizing: border-box; }
+#invincible-party.ipt-compact { --ipt-art: 42px; --ipt-w: 214px; }
+
+/* ---------- the handle ---------- */
+#invincible-party .ipt-handle {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  min-height: 0;
+  margin: 0 3px 6px 0;
+  padding: 2.5px 8px 2.5px 10px;
+  font: 400 .75rem/1.15 Titles, Comic, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-shadow: none;
+  color: var(--ipt-ink);
+  background: var(--ipt-yellow);
+  border: 2px solid var(--ipt-ink);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--ipt-cyan);
+  cursor: var(--cursor-pointer, pointer);
+  transform: skewX(-6deg);
+  transition: translate .42s var(--ipt-out), transform .12s var(--ipt-out), background-color .12s var(--ipt-out), box-shadow .12s var(--ipt-out);
+}
+#invincible-party .ipt-handle > * { display: inline-block; transform: skewX(6deg); }
+#invincible-party .ipt-handle:is(:hover, :focus-visible) { background: #fff27a; transform: skewX(-6deg) translate(1px, -1px); }
+#invincible-party .ipt-handle:active { transform: skewX(-6deg) translate(2px, 2px); box-shadow: 1px 1px 0 var(--ipt-cyan); }
+#invincible-party .ipt-handle:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-party .ipt-hi::before { content: "\f0c0"; font: 900 .68rem/1 var(--ipt-fa); display: block; }   /* users */
+#invincible-party .ipt-lvl { display: inline-flex; gap: 2.5px; }
+#invincible-party .ipt-lvl > i { width: 5px; height: 11px; border: 2px solid var(--ipt-ink); transform: skewX(-15deg); }
+#invincible-party[data-display="peek"] .ipt-lvl > i:first-child,
+#invincible-party[data-display="full"] .ipt-lvl > i { background: var(--ipt-ink); }
+#invincible-party .ipt-count {
+  display: grid;
+  place-items: center;
+  min-width: 1.16rem;
+  height: 1.16rem;
+  padding: 0 3px;
+  font: 400 .75rem/1 Titles, Comic, sans-serif;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--ipt-yellow);   /* 13.9 */
+  background: var(--ipt-ink);
+}
+/* hidden: only a tab sticks out of the left edge (the icon) */
+#invincible-party[data-display="hidden"] .ipt-handle { translate: calc(-100% + 27px) 0; }
+#invincible-party[data-display="hidden"] .ipt-handle:is(:hover, :focus-visible) { translate: calc(-100% + 34px) 0; }
+
+/* ---------- the column ---------- */
+#invincible-party .ipt-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ipt-g);
+  width: calc(var(--ipt-w) + 19px);
+  margin: -8px -19px -8px 0;   /* net zero: room for the rings and the shadow, and for the lean */
+  padding: 8px 19px 8px 0;
+  max-height: calc(var(--ipt-maxh, 9999px) + 16px);
+  list-style: none;
+  pointer-events: none;
+  visibility: visible;
+  transition: visibility 0s 0s;
+}
+#invincible-party[data-display="hidden"] .ipt-list { visibility: hidden; transition: visibility 0s .55s; }
+#invincible-party .ipt-list.ipt-scrolls {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  --fu: 0px;
+  --fd: 0px;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 var(--fu), #000 calc(100% - var(--fd)), transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 var(--fu), #000 calc(100% - var(--fd)), transparent 100%);
+}
+#invincible-party .ipt-list.ipt-scrolls::-webkit-scrollbar { display: none; width: 0; height: 0; }
+#invincible-party .ipt-list.ipt-fu { --fu: 24px; }
+#invincible-party .ipt-list.ipt-fd { --fd: 24px; }
+
+/* ---------- the slide ---------- */
+#invincible-party .ipt-item {
+  position: relative;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  width: var(--ipt-w);
+  translate: calc(var(--ipt-vis) - var(--ipt-w)) 0;
+  transition: translate .28s var(--ipt-out), opacity .2s linear;
+}
+#invincible-party[data-display="full"] .ipt-item,
+#invincible-party .ipt-item.ipt-open { translate: 0 0; }
+#invincible-party[data-display="hidden"] .ipt-item { translate: calc(var(--ipt-out-x) * -1) 0; }
+#invincible-party .ipt-item.ipt-open { z-index: 2; }
+#invincible-party.ipt-stagger .ipt-item { transition-delay: calc(var(--i, 0) * 45ms); }
+#invincible-party .ipt-item.ipt-enter { translate: calc(var(--ipt-out-x) * -1) 0; transition: none; }
+#invincible-party .ipt-item.ipt-leaving { translate: calc(var(--ipt-out-x) * -1) 0; opacity: 0; pointer-events: none; transition: translate .3s cubic-bezier(.5, 0, .9, .4), opacity .3s linear; }
+
+/* ---------- a card ---------- */
+#invincible-party .ipt-card {
+  --acc: var(--ipt-yellow);
+  --acc-tx: var(--ipt-yellow);
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--ipt-art);
+  align-items: stretch;
+  gap: 8px;
+  width: var(--ipt-w);
+  height: var(--ipt-h);
+  padding: 4px 6px 4px 18px;
+  color: var(--ipt-text);
+  background: var(--ipt-ink);
+  box-shadow: inset 0 0 0 1px rgba(255, 231, 42, .38), 0 5px 13px rgba(0, 0, 0, .45);   /* floats over the map: soft shadow; the hairline separates it from dark scenery */
+  transform: skewX(-15deg);
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: var(--cursor-pointer, pointer);
+  transition: background-color .15s linear, box-shadow .2s linear, outline-color .15s linear;
+}
+#invincible-party .ipt-card:is(:hover, :focus-visible) { background: #112540; }
+#invincible-party .ipt-card:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+#invincible-party .ipt-tab { position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--acc); transition: background-color .35s linear; }
+#invincible-party .ipt-card[data-active] { box-shadow: 0 0 0 3px var(--ipt-yellow), 0 6px 16px rgba(0, 0, 0, .45); }
+#invincible-party .ipt-card[data-sel] { outline: 2px solid #fff; outline-offset: 5px; }
+#invincible-party .ipt-card[data-echo]:not([data-sel]) { outline: 2px solid rgba(255, 255, 255, .55); outline-offset: 5px; }
+#invincible-party .ipt-card[data-sel]:focus-visible { outline-color: #fff; outline-width: 3px; }
+
+/* ---------- portrait: the card's own lean makes the parallelogram; the image is counter-skewed ---------- */
+#invincible-party .ipt-art {
+  position: relative;
+  grid-column: 2;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ipt-track);
+  border: 3px solid var(--acc);
+  transition: border-color .35s linear, filter .25s linear;
+}
+#invincible-party .ipt-ph { position: absolute; inset: 0; display: grid; place-items: center; transform: skewX(15deg); color: var(--ipt-frame); }
+#invincible-party .ipt-ph::before { content: "\f007"; font: 900 1.12rem/1 var(--ipt-fa); }
+#invincible-party .ipt-img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; transform: skewX(15deg) scale(1.35); }
+#invincible-party .ipt-skull { position: absolute; inset: 0; display: none; place-items: center; transform: skewX(15deg); }
+#invincible-party .ipt-card[data-defeated] .ipt-img { filter: grayscale(1) brightness(.7); }
+#invincible-party .ipt-card[data-defeated] .ipt-skull { display: grid; }
+#invincible-party .ipt-card[data-defeated] .ipt-skull::before { content: "\f54c"; font: 900 1.28rem/1 var(--ipt-fa); color: #fff; text-shadow: 1px 1px 0 var(--ipt-ink), -1px -1px 0 var(--ipt-ink), 1px -1px 0 var(--ipt-ink), -1px 1px 0 var(--ipt-ink); }
+#invincible-party .ipt-turn {   /* the active turn: a yellow bolt chip on the portrait, visible in the peek too */
+  position: absolute;
+  top: 2.5px;
+  left: 11px;
+  display: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--ipt-ink);
+  background: var(--ipt-yellow);
+  border: 2px solid var(--ipt-ink);
+  transform: skewX(15deg);
+}
+#invincible-party .ipt-turn::before { content: "\f0e7"; font: 900 .6rem/1 var(--ipt-fa); }
+#invincible-party .ipt-card[data-active] .ipt-turn { display: grid; }
+#invincible-party .ipt-multi {   /* several tokens of the same character on the scene */
+  position: absolute;
+  right: 10px;
+  bottom: 2px;
+  display: none;
+  padding: 0 3px 1px;
+  font: 400 .75rem/1.2 Titles, Comic, sans-serif;
+  color: #fff;
+  background: var(--ipt-ink);
+  border: 1px solid var(--ipt-frame);
+  transform: skewX(15deg);
+}
+#invincible-party .ipt-card[data-multi] .ipt-multi { display: block; }
+
+/* ---------- body (stands upright inside the lean) ---------- */
+#invincible-party .ipt-body {
+  grid-column: 1;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 13px;
+  transform: skewX(15deg);
+}
+#invincible-party .ipt-name {
+  justify-self: start;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 8px 2px 9px;
+  overflow: hidden;
+  font: 400 .8rem/1.15 Titles, Comic, sans-serif;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-shadow: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ipt-ink);   /* ink on yellow 13.9 */
+  background: var(--ipt-yellow);
+  border: 0;
+  transform: rotate(-1deg) skewX(-6deg);
+  transform-origin: left center;
+}
+#invincible-party .ipt-name > span { display: block; overflow: hidden; text-overflow: ellipsis; }
+#invincible-party .ipt-card[data-defeated] .ipt-name > span { text-decoration: line-through; text-decoration-thickness: .1em; }
+#invincible-party .ipt-sub { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 13px; }
+#invincible-party .ipt-player {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font: italic 400 .75rem/1.15 Comic, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--acc-tx);   /* the player's colour lifted to >= 6:1 on the ink */
+}
+#invincible-party .ipt-fx {
+  flex: none;
+  padding: 0 4px;
+  font: 700 .75rem/1.3 Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--ipt-text);
+  background: var(--ipt-track);
+  border: 1px solid var(--ipt-frame);
+}
+#invincible-party .ipt-fx[hidden], #invincible-party .ipt-pips[hidden] { display: none; }
+#invincible-party .ipt-fx::before { content: "\f0d0"; margin-right: 3px; font: 900 .6rem/1 var(--ipt-fa); }   /* wand */
+
+/* ---------- action pips: one group per combat entry; filled = available, dashed = used, empty = not tracked ---------- */
+#invincible-party .ipt-pips { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+#invincible-party .ipt-pg { display: inline-flex; align-items: center; gap: 3px; }
+#invincible-party .ipt-pn { margin-right: 1px; font: 700 .75rem/1 Comic, sans-serif; font-style: normal; font-variant-numeric: tabular-nums; color: var(--ipt-label); }
+#invincible-party .ipt-pip {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 12px;
+  border: 2px solid var(--ipt-yellow);
+  background: var(--ipt-yellow);
+  color: var(--ipt-ink);
+  transform: skewX(-15deg);
+  transition: background-color .2s linear, border-color .2s linear, color .2s linear;
+}
+#invincible-party .ipt-pip::before { display: block; transform: skewX(15deg); font: 900 .58rem/1 var(--ipt-fa); }
+#invincible-party .ipt-pip-fast::before { content: "\f0e7"; }    /* bolt */
+#invincible-party .ipt-pip-slow::before { content: "\f252"; }    /* hourglass-half */
+#invincible-party .ipt-pip-one::before { content: "\f111"; }     /* circle */
+#invincible-party .ipt-pip[data-state="used"] { background: transparent; border: 2px dashed var(--ipt-frame); color: var(--ipt-label); }
+#invincible-party .ipt-pip[data-state="past"] { background: var(--ipt-track); border: 1px solid var(--ipt-frame); }
+#invincible-party .ipt-pip[data-state="past"]::before { content: ""; }
+
+/* ---------- Health / Resolve: slim segmented bars with slanted ink dividers (the combat bar's look) ---------- */
+#invincible-party .ipt-bars { display: grid; gap: 3px; }
+#invincible-party .ipt-row { --fillc: var(--ipt-yellow); display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: center; column-gap: 6px; min-width: 0; }
+#invincible-party .ipt-row[hidden] { display: none; }
+#invincible-party .ipt-rs { --fillc: var(--ipt-cyan); }
+#invincible-party .ipt-row.ipt-low { --fillc: var(--ipt-red); }
+#invincible-party .ipt-ico { font-size: .62rem; line-height: 1; text-align: center; color: var(--ipt-label); }
+#invincible-party .ipt-ico::before { font: 900 .62rem/1 var(--ipt-fa); }
+#invincible-party .ipt-hp .ipt-ico::before { content: "\f004"; }    /* heart */
+#invincible-party .ipt-rs .ipt-ico::before { content: "\f0e7"; }    /* bolt */
+#invincible-party .ipt-bar {
+  --tw: 2px;
+  position: relative;
+  height: 10px;
+  min-width: 0;
+  background: var(--ipt-track) radial-gradient(circle, rgba(169, 188, 220, .22) 1px, transparent 1.5px) 0 0 / 5px 5px;
+  border: 2px solid var(--ipt-frame);
+  overflow: hidden;
+  transform: skewX(-15deg);
+}
+#invincible-party .ipt-bar[data-dense="1"] { --tw: 1.5px; }
+#invincible-party .ipt-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, .42) 0 32%, transparent 32%), var(--fillc);
+  box-shadow: inset -2px 0 0 var(--ipt-ink);
+  transform: translateX(calc((var(--v, 0) - 1) * 100%));   /* full width, slid left by what is missing: transform only */
+  transition: transform .6s var(--ipt-out);
+}
+#invincible-party .ipt-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--tick, 10%) - var(--tw)), var(--ipt-ink) calc(var(--tick, 10%) - var(--tw)) var(--tick, 10%));
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--tw) - 1px), transparent 0);
+  mask-image: linear-gradient(90deg, #000 calc(100% - var(--tw) - 1px), transparent 0);
+}
+#invincible-party .ipt-glint { position: absolute; inset: 0; z-index: 1; opacity: 0; pointer-events: none; }
+#invincible-party .ipt-glint.ipt-good { background: #fff; animation: ipt-flash .6s ease-out; }
+#invincible-party .ipt-glint.ipt-bad { background: #ff3b30; animation: ipt-flash .6s ease-out; }
+@keyframes ipt-flash { 0% { opacity: .85; } 100% { opacity: 0; } }
+#invincible-party .ipt-val { min-width: 2.48rem; font-size: .8rem; line-height: 1; text-align: right; white-space: nowrap; }
+#invincible-party .ipt-n { font: 400 .8rem/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+#invincible-party .ipt-max { font: 700 .75rem/1 Comic, sans-serif; font-style: normal; font-variant-numeric: tabular-nums; color: var(--ipt-label); }
+#invincible-party .ipt-hp .ipt-n { color: var(--ipt-yellow); }       /* 13.9 */
+#invincible-party .ipt-rs .ipt-n { color: var(--ipt-cyan-lt); }      /* 7.7 */
+#invincible-party .ipt-hp.ipt-low .ipt-n { color: var(--ipt-red-lt); }   /* 7.2 */
+#invincible-party .ipt-card[data-defeated] .ipt-bars { opacity: .55; }
+
+/* ---------- compact cards (the column would not fit): portrait + name + two thin bars; the player's name and the conditions go ---------- */
+#invincible-party.ipt-compact .ipt-card { padding: 2px 5px 2px 14px; gap: 6px; }
+#invincible-party.ipt-compact .ipt-body { grid-template-columns: minmax(0, 1fr) auto; gap: 3px 5px; padding-right: 10px; }
+#invincible-party.ipt-compact .ipt-name { grid-column: 1; grid-row: 1; font-size: .75rem; line-height: 1.1; padding-bottom: 1px; }
+#invincible-party.ipt-compact .ipt-sub { display: contents; }
+#invincible-party.ipt-compact .ipt-player, #invincible-party.ipt-compact .ipt-fx { display: none; }
+#invincible-party.ipt-compact .ipt-pips { grid-column: 2; grid-row: 1; }
+#invincible-party.ipt-compact .ipt-bars { grid-column: 1 / -1; grid-row: 2; gap: 3px; }
+#invincible-party.ipt-compact .ipt-bar { height: 8px; border-width: 1.5px; }
+#invincible-party.ipt-compact .ipt-n { font-size: .75rem; }
+#invincible-party.ipt-compact .ipt-max { display: none; }
+#invincible-party.ipt-compact .ipt-val { min-width: 1.4rem; font-size: .75rem; }
+#invincible-party.ipt-compact .ipt-turn { left: 6px; width: 15px; height: 15px; }
+#invincible-party.ipt-compact .ipt-turn::before { font-size: .55rem; }
+
+/* ---------- smaller windows / touch ---------- */
+@media (max-width: 1099px) {
+  #invincible-party { --ipt-w: 211px; --ipt-art: 51px; }
+  #invincible-party.ipt-compact { --ipt-art: 38px; --ipt-w: 192px; }
+}
+@media (pointer: coarse) {
+  #invincible-party .ipt-handle { height: 44px; min-height: 44px; }
+}
+
+.ipt-sr { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- reduced motion: nothing travels; the cards fade, bars and numbers land at once, colour feedback stays ---------- */
+@media (prefers-reduced-motion: reduce) {
+  #invincible-party .ipt-item, #invincible-party .ipt-item.ipt-leaving { transition: opacity .15s linear; transition-delay: 0s; }
+  #invincible-party[data-display="hidden"] .ipt-item, #invincible-party .ipt-item.ipt-leaving { opacity: 0; }
+  #invincible-party .ipt-handle { transition: background-color .1s linear; }
+  #invincible-party .ipt-fill { transition: none; }
+  #invincible-party .ipt-pip, #invincible-party .ipt-art, #invincible-party .ipt-tab { transition: none; }
+}
+@media (forced-colors: active) {
+  #invincible-party .ipt-card { border: 2px solid CanvasText; }
+  #invincible-party .ipt-art, #invincible-party .ipt-bar, #invincible-party .ipt-handle { border-color: CanvasText; }
+  #invincible-party .ipt-fill { background: Highlight; }
+  #invincible-party .ipt-card[data-active] { outline: 3px solid Highlight; }
+}
+
+/* =====================================================================================================================================
+   THE 'NEW' CARD STYLE (setting "Party: card style" = New; root class .ipt-v2, scripts/party/panel.mjs). Everything below is scoped to
+   #invincible-party.ipt-v2, so Classic above is untouched. Same family, same states and gestures; what changes is hierarchy:
+   - Health first: a taller bar with a big Titles numeral; Resolve is the thin second bar with a smaller numeral.
+   - Footer line: condition icons (max 4, "+n"; 2 while pips share the line; only a count when a token has several combat entries) |
+     the player's name (the first to give way) | action pips.
+   - The portrait edge carries two vertical meters (Health yellow / red, Resolve cyan) and a condition-count badge: in the portraits-only
+     (peek) state, where only the portrait and a sliver show, they say who is hurt, drained or under effects without a hover. They fade out
+     once the card is pulled out (the bars say it there). Low Health (<= 1/3): red foot on the portrait + red meter. Defeated: grey frame, skull.
+   - Halftone dots only on the empty strip at the card's left end. Transform and opacity only (meters scale like the bars).
+   CONTRAST (on the ink #0c1a2e): Health numeral yellow 13.9, low #ff8178 7.2, Resolve numeral #3bb8e8 7.7, "+n" white 17.5, player's name
+   >= 6:1 (script), condition chip: white icon on the track 10.5, frame 5.6 (the chip, not the icon, carries the 3:1); meter fills vs the track #1b2d4a: yellow 11.0, cyan 4.1, red 3.5 (non-text >= 3),
+   meter frame #7d93b9 5.6. Non-colour cues: the meter's height, the numerals in the full card, skull, bolt chip, count badge.
+   ===================================================================================================================================== */
+#invincible-party.ipt-v2 { --ipt-art: 58px; --ipt-vis: calc(var(--ipt-art) + 32px); }
+#invincible-party.ipt-v2.ipt-compact { --ipt-art: 40px; }
+#invincible-party.ipt-v2 .ipt-card { padding: 4px 20px 4px 14px; gap: 6px; }
+#invincible-party.ipt-v2 .ipt-card::after {   /* the empty left end: halftone dots fading in toward the edge */
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 15px;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(169, 188, 220, .32) 1px, transparent 1.5px) 0 0 / 5px 5px;
+  -webkit-mask-image: linear-gradient(90deg, #000, transparent);
+  mask-image: linear-gradient(90deg, #000, transparent);
+}
+#invincible-party.ipt-v2 .ipt-body { padding-right: 8px; gap: 3px; }
+#invincible-party.ipt-v2 .ipt-name { font-size: .85rem; }
+#invincible-party.ipt-v2 .ipt-art { border-width: 3px; }
+#invincible-party.ipt-v2 .ipt-card[data-defeated] .ipt-art { border-color: var(--ipt-frame); }
+
+/* footer: conditions | player | pips */
+#invincible-party.ipt-v2 .ipt-foot { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 16px; }
+#invincible-party.ipt-v2 .ipt-fxrow { flex: none; display: inline-flex; align-items: center; gap: 3px; }
+#invincible-party.ipt-v2 .ipt-fxrow[hidden] { display: none; }
+#invincible-party.ipt-v2 .ipt-fc {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 16px;
+  background: var(--ipt-track);   /* core's status icons are white glyphs: white on the track 13.8 */
+  border: 1px solid var(--ipt-frame);
+  transform: skewX(-15deg);
+}
+#invincible-party.ipt-v2 .ipt-fc img { display: block; width: 13px; height: 13px; object-fit: contain; transform: skewX(15deg); }
+#invincible-party.ipt-v2 .ipt-pn { display: none; }   /* "1/2" slot labels would not fit next to the icons; the order is the position, the full text is in the accessible name */
+#invincible-party.ipt-v2 .ipt-fr {
+  font: 400 .75rem/1 Titles, Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #fff;   /* 17.5 */
+}
+#invincible-party.ipt-v2 .ipt-fcn { padding: 1px 4px 2px; background: var(--ipt-track); border: 1px solid var(--ipt-frame); }
+#invincible-party.ipt-v2 .ipt-fcn::before { content: "\f0d0"; margin-right: 3px; font: 900 .6rem/1 var(--ipt-fa); }
+#invincible-party.ipt-v2 .ipt-player { flex: 1 1 0; }
+#invincible-party.ipt-v2 .ipt-foot[data-tight] .ipt-player { display: none; }
+#invincible-party.ipt-v2 .ipt-pips { margin-left: auto; }
+
+/* Health first */
+#invincible-party.ipt-v2 .ipt-bars { gap: 2px; }
+#invincible-party.ipt-v2 .ipt-hp .ipt-bar { height: 13px; }
+#invincible-party.ipt-v2 .ipt-hp .ipt-n { font-size: 1.08rem; }
+#invincible-party.ipt-v2 .ipt-hp .ipt-val { min-width: 3rem; }
+#invincible-party.ipt-v2 .ipt-hp .ipt-ico::before { font-size: .72rem; }
+#invincible-party.ipt-v2 .ipt-rs .ipt-bar { height: 8px; border-width: 1.5px; }
+#invincible-party.ipt-v2 .ipt-rs .ipt-n { font-size: .78rem; }
+#invincible-party.ipt-v2 .ipt-hp.ipt-low .ipt-ico { color: var(--ipt-red-lt); }
+
+/* the portrait edge: vertical meters, count badge, low-Health foot, bigger turn chip and skull */
+#invincible-party.ipt-v2 .ipt-vm {
+  position: absolute;
+  top: 7px;
+  bottom: 6px;
+  overflow: hidden;
+  background: var(--ipt-track);
+  border: 1.5px solid var(--ipt-frame);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s linear;
+}
+#invincible-party.ipt-v2 .ipt-vm[hidden] { display: none; }
+#invincible-party.ipt-v2 .ipt-vm-hp { right: 3px; width: 7px; }
+#invincible-party.ipt-v2 .ipt-vm-rs { right: 12px; width: 5px; }
+#invincible-party.ipt-v2 .ipt-vf {
+  position: absolute;
+  inset: 0;
+  background: var(--ipt-yellow);
+  transform: translateY(calc((1 - var(--v, 0)) * 100%));   /* full height, slid down by what is missing: transform only */
+  transition: transform .6s var(--ipt-out);
+}
+#invincible-party.ipt-v2 .ipt-vm-rs .ipt-vf { background: var(--ipt-cyan); }
+#invincible-party.ipt-v2 .ipt-vm.ipt-low .ipt-vf { background: var(--ipt-red); }
+#invincible-party.ipt-v2 .ipt-vm::after {   /* quarter ticks, like the bars' dividers */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: repeating-linear-gradient(0deg, transparent 0 calc(25% - 1px), var(--ipt-ink) calc(25% - 1px) 25%);
+}
+#invincible-party.ipt-v2[data-display="peek"] .ipt-item:not(.ipt-open) .ipt-vm,
+#invincible-party.ipt-v2[data-display="peek"] .ipt-item:not(.ipt-open) .ipt-fxn { opacity: 1; }
+#invincible-party.ipt-v2 .ipt-fxn {
+  position: absolute;
+  left: 9px;
+  bottom: 2px;
+  display: none;
+  align-items: center;
+  padding: 0 3px 1px;
+  font: 400 .75rem/1.2 Titles, Comic, sans-serif;
+  color: #fff;
+  background: var(--ipt-ink);
+  border: 1px solid var(--ipt-frame);
+  transform: skewX(15deg);
+  opacity: 0;
+  transition: opacity .2s linear;
+}
+#invincible-party.ipt-v2 .ipt-fxn:not([hidden]) { display: inline-flex; }
+#invincible-party.ipt-v2 .ipt-fxn::before { content: "\f0d0"; margin-right: 3px; font: 900 .55rem/1 var(--ipt-fa); }
+#invincible-party.ipt-v2 .ipt-card[data-low] .ipt-art::after { content: ""; position: absolute; inset: auto 0 0 0; height: 6px; background: var(--ipt-red); }
+#invincible-party.ipt-v2 .ipt-multi { top: 2px; right: 8px; bottom: auto; }
+#invincible-party.ipt-v2 .ipt-turn { width: 20px; height: 20px; left: 12px; }
+#invincible-party.ipt-v2 .ipt-turn::before { font-size: .68rem; }
+#invincible-party.ipt-v2 .ipt-card[data-defeated] .ipt-skull::before { font-size: 1.5rem; }
+
+/* compact: portrait + name (+ pips) + two thin bars */
+#invincible-party.ipt-v2.ipt-compact .ipt-card { padding: 2px 20px 2px 10px; gap: 6px; }
+#invincible-party.ipt-v2.ipt-compact .ipt-body { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 5px; padding-right: 6px; }
+#invincible-party.ipt-v2.ipt-compact .ipt-name { grid-column: 1; grid-row: 1; font-size: .75rem; line-height: 1.05; padding-bottom: 1px; }
+#invincible-party.ipt-v2.ipt-compact .ipt-rs .ipt-n { font-size: .7rem; }
+#invincible-party.ipt-v2.ipt-compact .ipt-rs .ipt-val { font-size: .7rem; }
+#invincible-party.ipt-v2.ipt-compact .ipt-foot { display: contents; }
+#invincible-party.ipt-v2.ipt-compact .ipt-fxrow, #invincible-party.ipt-v2.ipt-compact .ipt-player { display: none; }
+#invincible-party.ipt-v2.ipt-compact .ipt-pips { grid-column: 2; grid-row: 1; margin-left: 0; }
+#invincible-party.ipt-v2.ipt-compact .ipt-bars { grid-column: 1 / -1; grid-row: 2; gap: 2px; }
+#invincible-party.ipt-v2.ipt-compact .ipt-hp .ipt-bar { height: 10px; }
+#invincible-party.ipt-v2.ipt-compact .ipt-rs .ipt-bar { height: 6px; }
+#invincible-party.ipt-v2.ipt-compact .ipt-hp .ipt-n { font-size: .9rem; }
+#invincible-party.ipt-v2.ipt-compact .ipt-hp .ipt-val { min-width: 1.8rem; }
+#invincible-party.ipt-v2.ipt-compact .ipt-turn { left: 6px; width: 16px; height: 16px; }
+#invincible-party.ipt-v2.ipt-compact .ipt-turn::before { font-size: .58rem; }
+@media (max-width: 1099px) {
+  #invincible-party.ipt-v2 { --ipt-art: 50px; }
+  #invincible-party.ipt-v2.ipt-compact { --ipt-art: 37px; }
+  #invincible-party.ipt-v2 .ipt-body { padding-right: 3px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #invincible-party.ipt-v2 .ipt-vf { transition: none; }
+  #invincible-party.ipt-v2 .ipt-vm, #invincible-party.ipt-v2 .ipt-fxn { transition: none; }
+}
+@media (forced-colors: active) {
+  #invincible-party.ipt-v2 .ipt-vm { border-color: CanvasText; }
+  #invincible-party.ipt-v2 .ipt-vf { background: Highlight; }
+}

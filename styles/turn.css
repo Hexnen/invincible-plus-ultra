@@ -1,0 +1,255 @@
+/* Invincible - Plus Ultra: PLAYER TURN UX (scripts/turn/). Three pieces: a short YOUR TURN message in the middle of the screen, a SLIM action tray
+   just above the macro bar, and two small end-turn dialogs. Mode: Operate, and the user asked for LOW VISUAL WEIGHT: the tray is a tiny resting pill
+   (two pips + an end glyph) while it is not your turn, and expands to a 38px strip of real buttons on your turn (hover / focus / tap on the pill
+   peeks it open at any time). Comic family look kept small: ink backing, yellow, hard 3px shadow on the buttons only, Titles for the few labels.
+
+   BUTTON CONTRACT: ARMED (your turn, free) = solid yellow + 2px ink border + 3px hard blue shadow; USED = dim hollow with a check; End turn = red-ink
+   fill; unavailable = hollow dashed (aria-disabled, still focusable so the tooltip says why). Hover lifts 1px, press sinks 2px, white 3px focus ring.
+   STACKING: z-index calc(var(--z-index-app,30) - 1) like the party cards and the banners; roots pointer-events none, only the controls take the pointer.
+   CONTRAST (panel ink #0c1a2e): yellow #ffe72a 13.9 | ink on yellow 13.9 | white 17.5 | white on red-ink #b3261e 6.5 | label #a9bcdc 9.1 |
+   used / dashed border #6b82a6 4.2 (non-text needs 3). Non-colour cues: square / check glyph, aria-label "Fast: free|used", dashed End when unavailable. */
+
+/* ================= the YOUR TURN message (small and brief) ================= */
+#invincible-turn-message {
+  --itm-ink: #0c1a2e;
+  --itm-yellow: #ffe72a;
+  --itm-label: #a9bcdc;
+  position: fixed;
+  left: var(--itm-cx, 50%);
+  top: var(--itm-cy, 36%);
+  z-index: calc(var(--z-index-app, 30) - 1);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-family: Comic, sans-serif;
+}
+#invincible-turn-message *, #invincible-turn-message *::before, #invincible-turn-message *::after { box-sizing: border-box; pointer-events: none; }
+#invincible-turn-message .itm {
+  display: flex;
+  align-items: center;
+  gap: .6em;
+  width: max-content;
+  max-width: var(--itm-maxw, 92vw);
+  padding: .35em 1.1em .35em .35em;
+  font-size: calc(var(--itm-fit, 1) * .85rem);
+  line-height: 1.1;
+  color: #fff;
+  background: var(--itm-ink);
+  border: .12em solid var(--itm-ink);
+  box-shadow: inset 0 0 0 1px rgba(255, 231, 42, .38), 0 .3em .9em rgba(0, 0, 0, .45);
+  transform: skewX(-4deg);
+  will-change: scale, translate;
+}
+#invincible-turn-message .itm > * { transform: skewX(4deg); }
+#invincible-turn-message .itm-face {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.9em;
+  height: 2.9em;
+  overflow: hidden;
+  background: #1b2d4a;
+  border: .12em solid var(--itm-yellow);
+}
+#invincible-turn-message .itm-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#invincible-turn-message .itm-ph { font: 400 1.8em/1 Titles, Comic, sans-serif; color: var(--itm-yellow); }
+#invincible-turn-message .itm-body { display: flex; flex-direction: row; align-items: center; gap: .6em; min-width: 0; }
+#invincible-turn-message .itm-plate {
+  padding: .05em .55em .12em .45em;
+  font: 400 1.75em/1.05 Titles, Comic, sans-serif;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--itm-ink);
+  background: var(--itm-yellow);
+  border: .07em solid var(--itm-ink);
+  transform: rotate(-1deg);
+  transform-origin: left center;
+}
+#invincible-turn-message .itm-name {
+  max-width: 16em;
+  font: 700 1.1em/1.1 Comic, sans-serif;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#invincible-turn-message .itm-entry { font: italic 400 .85em/1.1 Comic, sans-serif; color: var(--itm-label); }
+.itm-sr { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* ================= the action tray (slim) ================= */
+#invincible-turn-tray {
+  --itt-ink: #0c1a2e;
+  --itt-yellow: #ffe72a;
+  --itt-blue: #3465a3;
+  --itt-red: #b3261e;
+  --itt-label: #a9bcdc;
+  --itt-line: #6b82a6;
+  position: fixed;
+  left: var(--itt-cx, 50%);
+  bottom: var(--itt-bottom, 100px);
+  z-index: calc(var(--z-index-app, 30) - 1);
+  transform: translateX(-50%);
+  pointer-events: none;
+  font-family: Comic, sans-serif;
+  font-size: calc(var(--itt-fit, 1) * 12.5px);
+  line-height: 1.1;
+  transition: translate .26s cubic-bezier(.16, 1, .3, 1), opacity .2s ease-out;
+}
+#invincible-turn-tray *, #invincible-turn-tray *::before, #invincible-turn-tray *::after { box-sizing: border-box; }
+#invincible-turn-tray.itt-hidden { translate: 0 calc(100% + 16px); opacity: 0; }
+#invincible-turn-tray [hidden] { display: none !important; }
+
+/* the strip: a minimal ink backing behind the buttons */
+#invincible-turn-tray .itt {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  padding: 3px 6px 3px 4px;
+  color: #d5dff0;
+  background: var(--itt-ink);
+  border: 2px solid var(--itt-ink);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
+  transform: skewX(-4deg);
+  transform-origin: center bottom;
+  transition: opacity .18s ease-out, scale .22s cubic-bezier(.16, 1, .3, 1);
+}
+#invincible-turn-tray .itt > * { transform: skewX(4deg); }
+#invincible-turn-tray.itt-turn .itt { box-shadow: inset 0 0 0 1px var(--itt-yellow), 0 2px 6px rgba(0, 0, 0, .4); }
+
+/* resting: only the pill shows; the strip waits behind it (hover, focus or a tap on the pill peeks it open) */
+#invincible-turn-tray.itt-rest .itt { opacity: 0; scale: .9; pointer-events: none; position: absolute; left: 50%; bottom: 0; translate: -50% 0; }
+#invincible-turn-tray.itt-rest:hover .itt, #invincible-turn-tray.itt-rest:focus-within .itt, #invincible-turn-tray.itt-rest.itt-peek .itt { opacity: 1; scale: 1; pointer-events: auto; }
+#invincible-turn-tray .itt-pill {
+  display: none;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  min-width: 44px;
+  margin: 0 auto;
+  padding: 0 9px;
+  color: var(--itt-label);
+  background: var(--itt-ink);
+  border: 2px solid var(--itt-ink);
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px rgba(107, 130, 166, .6);
+  cursor: pointer;
+  pointer-events: auto;
+  transform: skewX(-4deg);
+  transition: opacity .18s ease-out;
+}
+#invincible-turn-tray.itt-rest .itt-pill { display: inline-flex; }
+#invincible-turn-tray.itt-rest:hover .itt-pill, #invincible-turn-tray.itt-rest:focus-within .itt-pill, #invincible-turn-tray.itt-rest.itt-peek .itt-pill { opacity: 0; }
+#invincible-turn-tray .itt-pip { font-size: 9px; color: var(--itt-label); }
+#invincible-turn-tray .itt-pip-used { color: #7f93b3; }
+#invincible-turn-tray .itt-pill-end { font-size: 9px; color: var(--itt-label); }
+
+/* who: only when several characters share the tray */
+#invincible-turn-tray .itt-who { display: flex; align-items: center; }
+#invincible-turn-tray .itt-name { max-width: 8em; font: 700 11px/1.1 Comic, sans-serif; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#invincible-turn-tray .itt-chars { display: flex; gap: 3px; }
+#invincible-turn-tray .itt-char {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 2px solid var(--itt-line);
+  border-radius: 0;
+  cursor: pointer;
+  line-height: 1;
+}
+#invincible-turn-tray .itt-char .itt-face { display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; background: #1b2d4a; color: var(--itt-yellow); font: 400 12px/1 Titles, Comic, sans-serif; }
+#invincible-turn-tray .itt-char .itt-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#invincible-turn-tray .itt-char[aria-pressed="true"] { border-color: var(--itt-yellow); }
+#invincible-turn-tray .itt-char.itt-turn::after { content: ""; position: absolute; top: -4px; right: -4px; width: 8px; height: 8px; background: var(--itt-yellow); border: 2px solid var(--itt-ink); border-radius: 50%; }
+
+/* the buttons */
+#invincible-turn-tray .itt-acts { display: flex; gap: 5px; }
+#invincible-turn-tray .itt-act, #invincible-turn-tray .itt-end {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 64px;
+  height: 32px;
+  margin: 0;
+  padding: 0 9px;
+  font: 400 12.5px/1 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 2px solid var(--itt-ink);
+  border-radius: 0;
+  cursor: pointer;
+  transition: translate .12s ease-out, box-shadow .12s ease-out;
+}
+#invincible-turn-tray .itt-act i, #invincible-turn-tray .itt-end i { font-size: 11px; }
+#invincible-turn-tray .itt-act-s { font-size: 10px; }
+#invincible-turn-tray .itt-act { color: var(--itt-yellow); background: transparent; border-color: var(--itt-yellow); box-shadow: none; }
+#invincible-turn-tray .itt-act.itt-armed { color: var(--itt-ink); background: var(--itt-yellow); border-color: var(--itt-ink); box-shadow: 3px 3px 0 var(--itt-blue); }
+#invincible-turn-tray .itt-act[aria-pressed="true"] { color: var(--itt-label); background: transparent; border-color: var(--itt-line); box-shadow: none; }
+#invincible-turn-tray .itt-act[aria-pressed="true"] .itt-act-t { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+#invincible-turn-tray .itt-act[aria-disabled="true"] { cursor: not-allowed; }
+#invincible-turn-tray .itt-act:hover:not([aria-disabled="true"]) { translate: -1px -1px; }
+#invincible-turn-tray .itt-act.itt-armed:hover { box-shadow: 4px 4px 0 var(--itt-blue); }
+#invincible-turn-tray .itt-act:active:not([aria-disabled="true"]) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--itt-blue); }
+#invincible-turn-tray .itt-end { color: #fff; background: var(--itt-red); box-shadow: 3px 3px 0 var(--itt-blue); }
+#invincible-turn-tray .itt-end:hover:not(.itt-off) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--itt-blue); }
+#invincible-turn-tray .itt-end:active:not(.itt-off) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--itt-blue); }
+#invincible-turn-tray .itt-end.itt-off { color: var(--itt-label); background: transparent; border: 2px dashed var(--itt-line); box-shadow: none; cursor: not-allowed; }
+#invincible-turn-tray button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+
+@media (pointer: coarse) {
+  #invincible-turn-tray .itt-act, #invincible-turn-tray .itt-end { height: 40px; min-width: 72px; }
+  #invincible-turn-tray .itt-char { width: 40px; height: 40px; }
+  #invincible-turn-tray .itt-pill { height: 34px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #invincible-turn-tray, #invincible-turn-tray .itt { transition: opacity .2s linear; }
+  #invincible-turn-tray.itt-hidden { translate: none; }
+  #invincible-turn-tray .itt-act, #invincible-turn-tray .itt-end { transition: none; }
+  #invincible-turn-tray .itt-act:hover, #invincible-turn-tray .itt-end:hover { translate: none; }
+  #invincible-turn-tray.itt-rest .itt { scale: 1; }
+}
+
+/* ================= the dialogs (DialogV2, classes itn-dialog itn-confirm / itn-all): compact ================= */
+.itn-dialog { --itn-ink: #0c1a2e; --itn-yellow: #ffe72a; --itn-blue: #3465a3; --itn-red: #b3261e; font-family: Comic, sans-serif; max-width: 360px; }
+.itn-dialog .window-header .window-title { font: 400 1em/1.1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.itn-dialog .window-content { padding: .6rem .75rem .75rem; gap: .55rem; }
+.itn-dialog .itn-body { margin: 0; font: 400 1rem/1.3 Comic, sans-serif; }
+.itn-dialog .itn-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: .5em;
+  margin: 0;
+  padding: .4em .6em;
+  font: 400 .9rem/1.25 Comic, sans-serif;
+  color: var(--itn-ink);
+  background: var(--itn-yellow);
+  border: 2px solid var(--itn-ink);
+  box-shadow: 3px 3px 0 var(--itn-blue);
+}
+.itn-dialog .itn-warn i { margin-top: .15em; }
+.itn-dialog .itn-never { display: flex; align-items: center; gap: .5em; margin: 0; font-size: .85rem; cursor: pointer; }
+.itn-dialog .itn-never input { width: 1.1em; height: 1.1em; margin: 0; cursor: pointer; }
+.itn-dialog .form-footer { gap: .5rem; }
+.itn-dialog .form-footer button {
+  min-height: 36px;
+  font: 400 .95rem/1 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  border: 2px solid var(--itn-ink);
+  border-radius: 0;
+  cursor: pointer;
+}
+.itn-dialog .form-footer button[data-action="end"] { color: #fff; background: var(--itn-red); box-shadow: 3px 3px 0 var(--itn-blue); }
+.itn-dialog .form-footer button[data-action="end"]:hover { translate: -1px -1px; box-shadow: 4px 4px 0 var(--itn-blue); }
+.itn-dialog .form-footer button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+@media (pointer: coarse) { .itn-dialog .form-footer button { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .itn-dialog .form-footer button:hover { translate: none; } }

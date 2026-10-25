@@ -67,7 +67,22 @@ export const EN = {
   "ICB.Bar.Pct": "{label} {pct} percent",
   "ICB.Bar.Hint.Select": "Enter selects the token. Shift+Enter opens the sheet.",
   "ICB.Bar.Hint.Sheet": "Shift+Enter opens the sheet. Enter shows the token on the map.",
-  "ICB.Bar.Hint.Pan": "Enter shows the token on the map."
+  "ICB.Bar.Hint.Pan": "Enter shows the token on the map.",
+  "ICB.Settings.Yze.Name": "Combat: adapt to Year Zero Engine Combat",
+  "ICB.Settings.Yze.Hint": "When the Year Zero Engine Combat module is active, the initiative bar (and the Challenges and party cards) also show which actions are used this round. Turn off to ignore that module.",
+  "ICB.Bar.Act.fast": "Fast action",
+  "ICB.Bar.Act.slow": "Slow action",
+  "ICB.Bar.Act.one": "Action",
+  "ICB.Bar.ActL.fast": "Fast",
+  "ICB.Bar.ActL.slow": "Slow",
+  "ICB.Bar.ActL.one": "Action",
+  "ICB.Bar.Act.used": "used",
+  "ICB.Bar.Act.open": "available",
+  "ICB.Bar.Act.Line": "{name}: {state}",
+  "ICB.Bar.Dup": "Entry {k} of {n}: the same character",
+  "ICB.Bar.DupBars": "Health and Resolve are shown on its first entry",
+  "ICB.Bar.Waiting": "Initiative is being drawn",
+  "ICB.Bar.WaitingShort": "Drawing…"
 };
 
 export const PL = {
@@ -133,7 +148,22 @@ export const PL = {
   "ICB.Bar.Pct": "{label} {pct} procent",
   "ICB.Bar.Hint.Select": "Enter zaznacza token. Shift+Enter otwiera kartę.",
   "ICB.Bar.Hint.Sheet": "Shift+Enter otwiera kartę. Enter pokazuje token na mapie.",
-  "ICB.Bar.Hint.Pan": "Enter pokazuje token na mapie."
+  "ICB.Bar.Hint.Pan": "Enter pokazuje token na mapie.",
+  "ICB.Settings.Yze.Name": "Walka: dopasuj do Year Zero Engine Combat",
+  "ICB.Settings.Yze.Hint": "Gdy moduł Year Zero Engine Combat jest aktywny, pasek inicjatywy (oraz karty Wyzwań i drużyny) pokazuje też, które akcje zostały zużyte w tej rundzie. Wyłącz, by zignorować ten moduł.",
+  "ICB.Bar.Act.fast": "Szybka akcja",
+  "ICB.Bar.Act.slow": "Wolna akcja",
+  "ICB.Bar.Act.one": "Akcja",
+  "ICB.Bar.ActL.fast": "Szybka",
+  "ICB.Bar.ActL.slow": "Wolna",
+  "ICB.Bar.ActL.one": "Akcja",
+  "ICB.Bar.Act.used": "zużyta",
+  "ICB.Bar.Act.open": "dostępna",
+  "ICB.Bar.Act.Line": "{name}: {state}",
+  "ICB.Bar.Dup": "Wpis {k} z {n}: ta sama postać",
+  "ICB.Bar.DupBars": "Health i Resolve są przy jej pierwszym wpisie",
+  "ICB.Bar.Waiting": "Trwa losowanie inicjatywy",
+  "ICB.Bar.WaitingShort": "Losowanie…"
 };
 
 /* Local resolver. Language: game.i18n.lang, PL on top of EN. A missing key shows the key (never throws). */

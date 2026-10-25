@@ -70,7 +70,9 @@ export function hudLimit(top, height) {
   try {
     const hud = document.getElementById("invincible-challenges");
     if (!hud || hud.classList.contains("ich-bye")) return Infinity;
-    const part = hud.classList.contains("ich-collapsed") ? hud.querySelector(".ich-handle") : hud.querySelector(".ich-dock");
+    /* open: the HUD root's own box (its left edge IS the dock's resting edge; the dock itself is translated while it slides in / out, so its rect lies);
+       collapsed: the handle */
+    const part = hud.classList.contains("ich-collapsed") ? hud.querySelector(".ich-handle") : hud;
     const r = part?.getBoundingClientRect();
     if (!r || r.width <= 0 || r.top > top + height + 4 || r.bottom < top) return Infinity;
     return r.left - 14;

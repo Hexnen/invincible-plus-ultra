@@ -7,7 +7,7 @@
    the hook combat.previous.{round,turn} is the old position and combat.round / combat.turn the new one (turn is an index into combat.turns, or null).
    (combatTurnChange is not used: the active GM receives it only after awaiting the turn events, by which time previous may already be overwritten.)
    Forward move: every (round, turn) in (previous, current] is "passed through", also the ones a multi-turn / multi-round jump skips over, and the
-   combatant standing there is charged once. Key `combatId:round:combatantId` is kept in memory (this client) so duplicate hook calls never charge twice;
+   combatant standing there is charged once. Key `combatId:round:tokenId` (a Year Zero duplicate of a token charges once per round, on its first arrival; the redraw update and a waiting draw are ignored) is kept in memory (this client) so duplicate hook calls never charge twice;
    when the position later lies BEFORE a counted key (previousTurn / previousRound / round reset) the key is cleared and the point given back (clamped to
    max). Not charged: defeated combatants, combatants without a numeric initiative (core sorts them last, they take no real turn), TL max 0 / missing,
    TL already 0. Several combatants of one linked actor are separate initiatives and each charge on their own turn.
@@ -18,6 +18,7 @@
    Nothing here may break combat: all entry points are try / catch, updates go through one sequential queue. */
 import * as Camera from "./camera.mjs";
 import { t, unitOf, DEFAULT_UNIT } from "./lang.mjs";
+import { yzeWaiting } from "../yze.mjs";
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (challenges combat) |`;
@@ -25,7 +26,8 @@ export const COMBAT_KEY = "challengesCombatTime";
 const HUSH_MS = 2500;
 const MAX_ROUNDS_JUMP = 100;
 
-const counted = new Map();   // `${combatId}:${round}:${combatantId}` -> { combatId, round, cid, applied: null | true | false }
+const counted = new Map();   // `${combatId}:${round}:${tokenId}` -> { combatId, round, tid, applied: null | true | false } (one per TOKEN: Year Zero duplicates of one token charge once)
+const tokenOf = (c) => c?.tokenId ?? c?.token?.id ?? c?.id;
 let started = false, chain = Promise.resolve();
 
 const enabled = () => { try { return game.settings.get(MOD, COMBAT_KEY) !== false; } catch { return true; } };
@@ -69,18 +71,21 @@ const posCmp = (r1, t1, r2, t2) => (r1 - r2) || (t1 - t2);
 function onUpdateCombat(combat, changes, options) {
   if (!combat || !game.user.isActiveGM || !enabled()) return;
   if (changes?.round === undefined && changes?.turn === undefined) return;
+  // Year Zero Engine: Combat redraw of the round (update({turn: 0}, {diff: false}) after the initiative reset) is a rebuild of the order, not a move
+  if (changes?.round === undefined && options?.diff === false) return;
   const R = Number(combat.round) || 0;
   const T = combat.turn ?? -1;
   const turns = combat.turns ?? [];
+  if (yzeWaiting(combat)) return;                                                    // the draw has not landed: no order, no turn, nothing to charge or refund
 
   // 1. back: every counted key that now lies after the current position is undone (a round reset to 0 undoes all of them)
   for (const [key, rec] of counted) {
     if (rec.combatId !== combat.id) continue;
-    const idx = turns.findIndex((c) => c.id === rec.cid);
+    const idx = turns.findIndex((c) => tokenOf(c) === rec.tid);                       // first entry of the token (its first arrival)
     if (R > 0 && idx === -1) { counted.delete(key); continue; }                     // the combatant left the combat: no refund
     if (R > 0 && posCmp(rec.round, idx, R, T) <= 0) continue;
     counted.delete(key);
-    const actor = combat.combatants.get(rec.cid)?.token?.actor;
+    const actor = (turns[idx] ?? combat.combatants.find((c) => tokenOf(c) === rec.tid))?.token?.actor;
     if (actor?.type === "challenge" && unitOf(actor) === DEFAULT_UNIT) tick(actor, +1, rec);
   }
 
@@ -93,9 +98,9 @@ function onUpdateCombat(combat, changes, options) {
     for (let tn = lo; tn <= hi; tn++) {
       const c = turns[tn], actor = chargeable(c);
       if (!actor) continue;
-      const key = `${combat.id}:${r}:${c.id}`;
+      const key = `${combat.id}:${r}:${tokenOf(c)}`;      // later duplicates of the same token in this round find the key and do nothing
       if (counted.has(key)) continue;
-      const rec = { combatId: combat.id, round: r, cid: c.id, applied: null };
+      const rec = { combatId: combat.id, round: r, tid: tokenOf(c), applied: null };
       counted.set(key, rec);
       tick(actor, -1, rec);
     }
