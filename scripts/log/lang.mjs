@@ -330,7 +330,7 @@ const UI = [
   ["ShowOlder", "Show older entries", "Pokaż starsze wpisy"],
   ["ShowOlderN", "Show older entries ({n} more)", "Pokaż starsze wpisy (jeszcze {n})"],
   ["EndOfLog", "That is the start of the log.", "To początek dziennika."],
-  ["NewPill", "Show {n}", "Pokaż: {n}"],
+  ["NewPill", "Show {n} new", "Pokaż nowe: {n}"],
   ["Unseen", "{n} new", "nowe: {n}"],
   ["Loading", "Loading the log", "Wczytywanie dziennika"],
   ["Off", "The activity log is off.", "Dziennik aktywności jest wyłączony."],
@@ -341,7 +341,7 @@ const UI = [
   ["EmptyFiltered", "No entries match these filters.", "Żaden wpis nie pasuje do filtrów."],
   ["EmptyFilteredMinor", "Minor events are hidden. Turn them on in Filters to see turn starts and action marks.", "Drobne zdarzenia są ukryte. Włącz je w Filtrach, by zobaczyć początki tur i znaczniki akcji."],
   ["NoPermission", "The GM keeps this log private.", "MG utrzymuje ten dziennik jako prywatny."],
-  ["NoScribe", "No GM is connected. Changes made now are not recorded as they happen; they are added as one catch-up entry when the GM returns.", "Żaden MG nie jest połączony. Zmiany wykonane teraz nie są zapisywane na bieżąco; po powrocie MG zostaną dodane jako jeden wpis nadrabiający."],
+  ["NoScribe", "No GM is connected, so changes are not recorded live. They are added as one catch-up entry when the GM returns.", "Brak połączonego MG, więc zmiany nie są zapisywane na bieżąco. Po powrocie MG trafią do dziennika jako jeden wpis nadrabiający."],
   ["Error", "The log could not be read.", "Nie udało się odczytać dziennika."],
   ["Retry", "Try again", "Spróbuj ponownie"],
   ["Showing", "Showing the newest {n}", "Wyświetlono najnowsze: {n}"],
@@ -430,7 +430,7 @@ for (const [k, en, pl] of [
 ]) T(`IPL.Table.${k}`, en, pl);
 
 for (const [k, en, pl] of [
-  ["Health", "Health", "Stan dziennika"],
+  ["Health", "Status", "Stan dzienników"],
   ["Logs", "Logs", "Dzienniki"],
   ["Limits", "Limits", "Limity"],
   ["HLogging", "Logging", "Zapis"],

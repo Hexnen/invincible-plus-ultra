@@ -224,8 +224,8 @@ export class LogView {
     // controls
     this.$filterBtn = h("button.ipl-btn", { type: "button", "aria-expanded": String(!!this.s.filtersOpen), "aria-controls": `${id}-fp`, "data-ipl-act": "filters" }, icon("fa-sliders"), h("span.ipl-lbl"), h("span.ipl-fcount", { "aria-hidden": "true" }));
     this.$dens = h("div.ipl-seg", { role: "group", "aria-label": t("IPL.UI.Density") },
-      ["compact", "detailed"].map((m) => h("button.ipl-btn.ipl-seg-b", { type: "button", "data-ipl-act": "density", "data-ipl-id": m, "aria-pressed": String(this.s.density === m) }, icon(m === "compact" ? "fa-bars" : "fa-list-ul"), h("span", t(m === "compact" ? "IPL.UI.Compact" : "IPL.UI.Detailed")))));
-    this.$exportMenu = h("details.ipl-menu", h("summary.ipl-btn", icon("fa-file-arrow-down"), h("span", t("IPL.UI.Export"))), h("div.ipl-menu-panel", { role: "group", "aria-label": t("IPL.UI.Export") }));
+      ["compact", "detailed"].map((m) => h("button.ipl-btn.ipl-seg-b", { type: "button", "data-ipl-act": "density", "data-ipl-id": m, title: t(m === "compact" ? "IPL.UI.Compact" : "IPL.UI.Detailed"), "aria-pressed": String(this.s.density === m) }, icon(m === "compact" ? "fa-bars" : "fa-list-ul"), h("span", t(m === "compact" ? "IPL.UI.Compact" : "IPL.UI.Detailed")))));
+    this.$exportMenu = h("details.ipl-menu", h("summary.ipl-btn", { title: t("IPL.UI.Export") }, icon("fa-file-arrow-down"), h("span", t("IPL.UI.Export"))), h("div.ipl-menu-panel", { role: "group", "aria-label": t("IPL.UI.Export") }));
     this.$exportMenu.addEventListener("toggle", () => { if (this.$exportMenu.open) this.#fillExportMenu(); });
     this.$noteBtn = h("button.ipl-btn.ipl-primary", { type: "button", "data-ipl-act": "note", "aria-expanded": "false", "aria-controls": `${id}-note` }, icon("fa-pen-to-square"), h("span", t("IPL.UI.AddNote")));
     const row1 = h("div.ipl-row1", searchBox, h("div.ipl-ctl", this.$filterBtn, this.$dens, this.$exportMenu, this.$noteBtn));
@@ -236,6 +236,7 @@ export class LogView {
     this.$live = h("p.ipl-sr", { role: "status", "aria-live": "polite", "aria-atomic": "true" });
     this.$panel.addEventListener("change", (ev) => this.#onFilterInput(ev));
     this.$actors = h("div.ipl-chips.ipl-actors", { role: "group", "aria-label": t("IPL.Table.Actors"), hidden: !this.src.facets });
+    this.$row1 = row1;
     this.$bar = h("div.ipl-bar", row1, this.$chips, this.$actors);
     this.$status = h("div.ipl-status", this.$count, this.$clear);
     this.$banner = h("div.ipl-banner", { hidden: true, role: "note" }, icon("fa-plug-circle-xmark"), h("p", t("IPL.UI.NoScribe")));
@@ -245,7 +246,7 @@ export class LogView {
     this.$body = h("div.ipl-body", { id: `${id}-list` });
     this.el.append(this.$bar, this.$panel, this.$status, this.$banner, this.$note, h("div.ipl-pillwrap", this.$pill), this.$body, this.$live);
     this.#renderFilterPanel();
-    if (typeof ResizeObserver !== "undefined") { this.#ro = new ResizeObserver(() => this.el.style.setProperty("--ipl-bar-h", `${this.$bar.offsetHeight}px`)); this.#ro.observe(this.$bar); }
+    if (typeof ResizeObserver !== "undefined") { this.#ro = new ResizeObserver(() => this.el.style.setProperty("--ipl-bar-h", `${this.$row1.offsetHeight}px`)); this.#ro.observe(this.$row1); }
   }
 
   #renderFilterPanel() {
@@ -326,7 +327,7 @@ export class LogView {
     if (this.src.facets) this.#renderActorChips();
     // filter button label
     const nf = this.filterCount;
-    this.$filterBtn.querySelector(".ipl-lbl").textContent = nf ? t("IPL.UI.FiltersOn", { n: nf }) : t("IPL.UI.Filters");
+    this.$filterBtn.querySelector(".ipl-lbl").textContent = this.$filterBtn.title = nf ? t("IPL.UI.FiltersOn", { n: nf }) : t("IPL.UI.Filters");
     this.$filterBtn.querySelector(".ipl-fcount").textContent = nf ? String(nf) : "";
     // status
     const total = this.data.entries.filter((e) => !e.h).length;

@@ -45,7 +45,7 @@ export class MaintView {
   /* ---------------------------------------------------------------- health */
   #health(hl) {
     const T = hl.totals, S = hl.scribe, sess = hl.session;
-    const fact = (label, value, hint, show) => h("div.ipl-fact", { title: hint ?? null }, h("dt", label), h("dd", value, hint && (show ? h("small", hint) : h("small.ipl-sr", hint))));   // hints of the quiet facts: tooltip + screen reader text
+    const fact = (label, value, hint, show, cls) => h("div.ipl-fact", { title: hint ?? null, class: cls ?? null }, h("dt", label), h("dd", { class: value === "0" ? "ipl-zero" : null }, value, hint && (show ? h("small", hint) : h("small.ipl-sr", hint))));   // hints of the quiet facts: tooltip + screen reader text
     const scribe = !S.activeGm ? t("IPL.Maint.HScribeNone") : S.thisClient ? t("IPL.Maint.HScribeMe", { name: S.activeGm }) : t("IPL.Maint.HScribeOther", { name: S.activeGm });
     const q = hl.queue;
     const state = (txt, bad) => h("span.ipl-hs", { class: bad ? "ipl-bad" : "ipl-good" }, icon(bad ? "fa-triangle-exclamation" : "fa-circle-check"), h("span", txt));
@@ -56,15 +56,17 @@ export class MaintView {
         fact(t("IPL.Maint.HScribe"), state(scribe, !S.activeGm), t("IPL.Maint.HScribeHint"), true),
         fact(t("IPL.Maint.HRead"), t(`IPL.Settings.logReadAccess.${hl.readAccess}`)),
         fact(t("IPL.Maint.HStored"), t("IPL.Maint.HStoredV", { logs: tn("IPL.Plural.Logs", T.logs), entries: tn("IPL.Plural.Entries", T.entries + T.secret), size: sizeLabel(T.bytes) })),
-        fact(t("IPL.Maint.HNear"), T.near ? state(t("IPL.Maint.HNearV", { n: T.near, total: T.logs }), true) : t("IPL.Maint.HNone")),
+        fact(t("IPL.Maint.HNear"), T.near ? state(t("IPL.Maint.HNearV", { n: T.near, total: T.logs }), true) : t("IPL.Maint.HNone"))),
+      // L9: the counters are a quiet second list (label left, number right, zeros muted); only status and problems are big
+      h("dl.ipl-health.ipl-health-q",
         fact(t("IPL.Maint.HGaps"), String(T.gaps), t("IPL.Maint.HGapsHint")),
         fact(t("IPL.Maint.HThrottle"), String(T.throttles), t("IPL.Maint.HThrottleHint")),
         fact(t("IPL.Maint.HUnverified"), String(T.unverified), t("IPL.Maint.HUnverifiedHint")),
         fact(t("IPL.Maint.HImported"), String(T.imported)),
         fact(t("IPL.Maint.HPruned"), String(T.pruned)),
         fact(t("IPL.Maint.HNotLogged"), String(hl.notLogged), t("IPL.Maint.HNotLoggedHint")),
-        fact(t("IPL.Maint.HSession"), t("IPL.Maint.HSessionV", { batches: sess.batches, failed: sess.failures + sess.writeFailures, dropped: sess.dropped, waiting: sess.pending })),
-        fact(t("IPL.Maint.HQueue"), q.n ? t("IPL.Maint.HQueueV", { n: q.n }) : t("IPL.Maint.HQueueEmpty"), t("IPL.Maint.HQueueHint"), true)
+        fact(t("IPL.Maint.HSession"), t("IPL.Maint.HSessionV", { batches: sess.batches, failed: sess.failures + sess.writeFailures, dropped: sess.dropped, waiting: sess.pending }), null, false, "ipl-fact-wide"),
+        fact(t("IPL.Maint.HQueue"), q.n ? t("IPL.Maint.HQueueV", { n: q.n }) : t("IPL.Maint.HQueueEmpty"), t("IPL.Maint.HQueueHint"), true, "ipl-fact-wide")
       ));
   }
 
