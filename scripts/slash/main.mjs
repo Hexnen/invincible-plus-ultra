@@ -14,7 +14,9 @@
      0.40-0.50  hold on the impact (small camera shake, a white flash)
      0.50-0.84  panel B, the other piece of the NEW scene, slams in from the opposite side along the parallel slant; the old scene is squeezed
                 into a diagonal sliver between two white gutters and black ink borders, until the two edges meet
-     0.84-1.00  the seam flashes, shakes, then the ink and gutter fade; at 1.0 the pixels are exactly the new scene.
+     0.84-0.95  the seam flashes, shakes, then the ink and gutter fade (all effects are exactly 0 by 0.945);
+     0.95-1.00  PURE new frame (PURE in the shader; zip is pure from 0.78, triple from 0.94). The new frame is re-rendered LIVE every frame
+                (see #refresh), so the hand-over to the real canvas is invisible. Invariant asserted by dev/slash-measure.js assertPureTail.
    Reduced motion (OS setting) or the client setting "plain fade only": a quick plain fade, no travel, no shake.
 
    SAFETY. Core wraps a failing transition and continues without it. On top of that the filter has a watchdog: it never keeps the overlay for
@@ -44,7 +46,7 @@ PICK.zip = "zipRandom"; PICK.triple = "tripleRandom";
 const styleOf = (id) => (id.startsWith("zip") ? 1 : id.startsWith("triple") ? 2 : 0);
 const msOf = (id) => STYLES[id.replace(/(Top|Bottom|Right|Random)$/, "")] ?? DURATION;
 
-let started = false, previewMode = false, frozenTimer = 0, restoreScene = null;
+let started = false, previewMode = false, frozenTimer = 0, restoreScene = null, lastRun = -1e9;
 const hookIds = [];
 const get = (key) => { try { return game.settings.get(MOD, key); } catch { return undefined; } };
 const on = (name, fn) => hookIds.push([name, Hooks.on(name, fn)]);
@@ -62,6 +64,8 @@ function fragment(filters) {
     uniform vec4 sceneRect;  /* the NEW scene's rectangle in screen uv (x0, y0, x1, y1) */
     uniform vec3 bgColor;    /* what the live canvas shows outside the scene */
     uniform float preview;   /* 1: tint the old frame so the effect shows over the same scene */
+    uniform float speed;     /* >1 when the scene asks for more than WATCHDOG_MS: the whole effect is played faster instead of being cut */
+    uniform float flash;     /* 1 normal, less when comic transitions come close together (flash safety) */
     uniform sampler2D uSampler;
     uniform sampler2D targetTexture;
     uniform vec4 tintAlpha;
@@ -93,21 +97,24 @@ function fragment(filters) {
     }
     float hash(in float n) { return fract(sin(n * 127.1 + 311.7) * 43758.5453); }
     float easeOut(in float x) { x = clamp(x, 0.0, 1.0); return (1.0 - pow(2.0, -10.0 * x)) / (1.0 - pow(2.0, -10.0)); }
-    float edge(in float d, in float w) { return smoothstep(-AA, AA, d) * (1.0 - smoothstep(w - AA, w + AA, d)); }   /* band 0..w */
+    float edge(in float d, in float w) { return smoothstep(-AA, AA, d) * (1.0 - smoothstep(w - AA, w + AA, d)); }   /* band 0..w (NB: peaks at 0.25 even for w = 0, always multiply by the ink fade) */
+    float prog() { return clamp(progress * speed, 0.0, 1.0); }
+    /* Every effect is exactly 0 from PURE on (asserted by dev/slash-measure.js): the last stretch is a pure new frame. */
+    const float PURE = 0.95;
 
     vec4 slash() {
-      float P = progress;
+      float P = prog();
       vec2 uv0 = vFilterCoord;
 
-      /* camera shake after each impact */
+      /* camera shake after each impact; the decay is multiplied by a window that reaches exactly 0 at 0.93 */
       float hitA = step(0.40, P) * exp(-(P - 0.40) * 38.0);
-      float hitB = step(0.84, P) * exp(-(P - 0.84) * 30.0);
+      float hitB = step(0.84, P) * exp(-(P - 0.84) * 30.0) * (1.0 - smoothstep(0.86, 0.93, P));
       float shake = (hitA * 0.7 + hitB) * 0.0075;
       vec2 uv = uv0 + vec2(sin(P * 210.0), cos(P * 260.0)) * shake;
 
       float eA = easeOut((P - 0.04) / 0.36);
       float eB = easeOut((P - 0.50) / 0.34);
-      float ink = 1.0 - smoothstep(0.90, 1.0, P);
+      float ink = 1.0 - smoothstep(0.87, 0.945, P);
 
       /* frame of the slash: s runs from the first side to the opposite side, c across */
       vec2 q = vec2((uv.x - 0.5) * aspect, uv.y - 0.5);
@@ -119,7 +126,7 @@ function fragment(filters) {
 
       float rough = (hash(floor(c * 90.0) + variant * 13.0) - 0.5) * 0.0045;
       float start = -(SLANT * W * 0.5 + PAD);
-      float e1 = mix(start, L * 0.46, eA);
+      float e1 = mix(start, L * 0.47, eA);   /* ends 1% past panel B's edge: no sliver of the old scene can show through the final seam */
       float e2 = mix(start, L * 0.54, eB);
       float d1 = (e1 + SLANT * c + rough) - s;           /* > 0 inside panel A */
       float d2 = s - (L - e2 + SLANT * c + rough);       /* > 0 inside panel B */
@@ -170,7 +177,7 @@ function fragment(filters) {
       col = mix(col, pb, smoothstep(-AA, AA, d2));
 
       /* impact flashes */
-      col += (hitA * 0.10 + hitB * 0.34) * (1.0 - col);
+      col += (hitA * 0.10 + hitB * 0.30) * flash * (1.0 - col);
       return vec4(col, 1.0);
     }
 
@@ -195,14 +202,14 @@ function fragment(filters) {
 
     /* ZIP: both panels slam in together, one ink-splat star at the seam */
     vec4 zip() {
-      float P = progress;
-      float hit = step(0.30, P) * exp(-(P - 0.30) * 26.0);
+      float P = prog();
+      float hit = step(0.30, P) * exp(-(P - 0.30) * 26.0) * (1.0 - smoothstep(0.50, 0.60, P));
       vec2 uv = vFilterCoord + vec2(sin(P * 240.0), cos(P * 310.0)) * hit * 0.012;
       float ink = 1.0 - smoothstep(0.55, 0.78, P);
       vec2 q; float s, c, L, W; vec2 sdir;
       frame(uv, q, s, c, L, W, sdir);
       float ez = easeOut((P - 0.03) / 0.27);
-      float e = mix(-(SLANT * W * 0.5 + PAD), L * 0.5, ez);
+      float e = mix(-(SLANT * W * 0.5 + PAD), L * 0.5 + 0.012, ez);   /* the two panels end overlapping: no old-scene hairline at the seam */
       float rough = (hash(floor(c * 90.0) + variant * 13.0) - 0.5) * 0.0045;
       float d1 = (e + SLANT * c + rough) - s;
       float d2 = s - (L - e + SLANT * c + rough);
@@ -217,8 +224,8 @@ function fragment(filters) {
       float amp = smoothstep(0.03, 0.07, P) * (1.0 - smoothstep(0.12, 0.30, P));
       pa = mix(pa, INK, lm * (1.0 - smoothstep(0.0, 0.5, d1)) * amp * 0.9);
       pb = mix(pb, INK, lm * (1.0 - smoothstep(0.0, 0.5, d2)) * amp * 0.9);
-      pa = mix(pa, INK, edge(d1, bw));
-      pb = mix(pb, INK, edge(d2, bw));
+      pa = mix(pa, INK, edge(d1, bw) * ink);
+      pb = mix(pb, INK, edge(d2, bw) * ink);
       col = mix(col, pa, smoothstep(-AA, AA, d1));
       col = mix(col, pb, smoothstep(-AA, AA, d2));
       float tt = clamp((P - 0.30) / 0.30, 0.0, 1.0);
@@ -229,16 +236,16 @@ function fragment(filters) {
       float starA = step(0.30, P) * (1.0 - smoothstep(0.50, 0.74, P));
       col = mix(col, INK, (1.0 - smoothstep(R - AA, R + AA, rr)) * starA);
       col = mix(col, PAPER, (1.0 - smoothstep(R - 0.018 - AA, R - 0.018 + AA, rr)) * starA);
-      col += hit * 0.45 * (1.0 - col);
+      col += hit * 0.32 * flash * (1.0 - col);
       return vec4(col, 1.0);
     }
 
     /* TRIPLE CUT: four slanted strips of the new scene, alternating sides, one after another */
     vec4 triple() {
-      float P = progress;
-      float hit = step(0.52, P) * exp(-(P - 0.52) * 30.0);
+      float P = prog();
+      float hit = step(0.52, P) * exp(-(P - 0.52) * 30.0) * (1.0 - smoothstep(0.70, 0.80, P));
       vec2 uv = vFilterCoord + vec2(sin(P * 220.0), cos(P * 280.0)) * hit * 0.008;
-      float ink = 1.0 - smoothstep(0.84, 0.98, P);
+      float ink = 1.0 - smoothstep(0.80, 0.94, P);
       vec2 q; float s, c, L, W; vec2 sdir;
       frame(uv, q, s, c, L, W, sdir);
       float span = W + 0.2 * L;
@@ -267,15 +274,16 @@ function fragment(filters) {
       pn = mix(pn, INK, (1.0 - smoothstep(hf + bw - AA, hf + bw + AA, bd)) * ink);
       pn = mix(pn, PAPER, (1.0 - smoothstep(hf - AA, hf + AA, bd)) * ink);
       col = mix(col, pn, smoothstep(-AA, AA, d));
-      col += hit * 0.38 * (1.0 - col);
+      col += hit * 0.30 * flash * (1.0 - col);
       return vec4(col, 1.0);
     }
 
     void main() {
       vec4 result;
-      if (progress >= 0.999) result = newFrame(vFilterCoord);
-      else if (progress <= 0.0005) result = oldFrame(vFilterCoord);
-      else if (calm > 0.5) result = mix(oldFrame(vFilterCoord), newFrame(vFilterCoord), smoothstep(0.0, 0.4, progress));
+      float P = prog();
+      if (P >= PURE) result = newFrame(vFilterCoord);   /* the pure new-frame stretch: one texture read, nothing else */
+      else if (P <= 0.0005) result = oldFrame(vFilterCoord);
+      else if (calm > 0.5) result = mix(oldFrame(vFilterCoord), newFrame(vFilterCoord), smoothstep(0.0, 0.4, P));
       else if (style > 1.5) result = triple();
       else if (style > 0.5) result = zip();
       else result = slash();
@@ -308,6 +316,9 @@ function makeFilterClass() {
     #t0 = 0;
     #dog = 0;
     #name = "slashRight";
+    #ticking = false;
+    #ended = false;
+    #cc = [0, 0, 0, 1];
 
     get type() { return this.#name; }
     set type(name) {   // core assigns the registry's filterType here: the id of the variant
@@ -317,15 +328,57 @@ function makeFilterClass() {
       this.uniforms.calm = reduced() || get(KEY.calm) === true ? 1 : 0;
       this.uniforms.preview = previewMode ? 1 : 0;
       Object.assign(this.uniforms, liveFrame());
-      this.#t0 = 0;
+      // a scene asking for more than WATCHDOG_MS gets the same effect played faster (no hard cut at the cap)
+      let d = Number(canvas?.scene?.transition?.duration);
+      if (previewMode || !(d > 0)) d = 0;
+      this.uniforms.speed = d > WATCHDOG_MS ? d / WATCHDOG_MS : 1;
+      // flash safety: comic flashes closer together than 1 s (a GM flipping scenes) play without the white flash
+      const now = performance.now();
+      this.uniforms.flash = !previewMode && now - lastRun < 1000 ? 0 : 1;
+      if (!previewMode) lastRun = now;
+      this.#t0 = 0; this.#ended = false;
       clearTimeout(this.#dog); this.#dog = 0;
+      this.#stopRefresh();
     }
 
     static get defaultUniforms() {
-      return { ...super.defaultUniforms, style: 0, sceneRect: [0, 0, 1, 1], bgColor: [0, 0, 0], variant: 2, aspect: 1.78, calm: 0, preview: 0 };
+      return { ...super.defaultUniforms, style: 0, sceneRect: [0, 0, 1, 1], bgColor: [0, 0, 0], variant: 2, aspect: 1.78, calm: 0, preview: 0, speed: 1, flash: 1 };
     }
 
     static _createFragmentShader() { return fragment(Base); }
+
+    /* Is this filter still the one on the overlay? (a stale filter or timer must never touch a later transition) */
+    #isCurrent() { try { return canvas?.transition?.children?.[0]?.filters?.[0] === this; } catch { return false; } }
+
+    /* LIVE NEW FRAME. Core captures the new scene once, on the first render after the draw, and the overlay then shows that frozen picture while
+       the real scene underneath keeps changing (lights fading in and animating, tokens and tiles finishing their fade, the camera settling): the
+       swap at the end was a visible pop (measured: mean 4.8 / max 222, a 20 % of the screen, on the Foundry logo scene). So the captured texture is
+       re-rendered from the live stage every frame, just before the app renders, over the real canvas background colour: the last filtered frame IS the
+       live frame. Cost: one scene render per frame, the same as playing normally. */
+    #refresh = () => {
+      try {
+        if (!this.#isCurrent() || !canvas.transition.visible) return this.#stopRefresh();
+        const rt = this.uniforms.targetTexture;
+        if (!rt?.baseTexture || !canvas.ready) return;
+        const r = canvas.app.renderer, tr = canvas.transition, bg = this.uniforms.bgColor, cc = this.#cc;
+        cc[0] = bg[0]; cc[1] = bg[1]; cc[2] = bg[2];
+        rt.baseTexture.clearColor = cc;
+        /* The stage carries a post-process filter (SMAA anti-aliasing): the overlay sprite is drawn INSIDE the stage, so it goes through that filter
+           once more. A capture that already contains it is filtered twice (softer: measured mean 1.2 / max 88 against the live canvas, even at
+           progress 1 and for every core transition). So the refresh renders the stage WITHOUT its filters: the overlay, filtered once on screen,
+           then equals the live frame pixel for pixel. */
+        const stage = canvas.stage, stageFilters = stage.filters, rootVisible = canvas.root.visible;
+        tr.visible = false; canvas.root.visible = true; stage.filters = null;
+        try { r.render(stage, { renderTexture: rt, clear: true }); }
+        finally { stage.filters = stageFilters; tr.visible = true; canvas.root.visible = rootVisible; }
+      } catch (e) { console.warn(LOG, "refresh", e); this.#stopRefresh(); }
+    };
+    #stopRefresh() {
+      if (!this.#ticking) return;
+      this.#ticking = false;
+      try { canvas.app.ticker.remove(this.#refresh); } catch { /* ignore */ }
+      clearTimeout(this.#dog); this.#dog = 0;
+    }
 
     /** @inheritDoc */
     apply(filterManager, input, output, clear) {
@@ -333,15 +386,20 @@ function makeFilterClass() {
         const target = filterManager.activeState?.target;
         if (target?.width && target?.height) this.uniforms.aspect = Math.max(0.5, Math.min(4, target.width / target.height));
         const now = performance.now();
-        if (!this.#t0) {   // first frame of this run: arm the watchdog
+        if (!this.#t0) {   // first frame of this run: arm the watchdog and the live refresh
           this.#t0 = now;
           clearTimeout(this.#dog);
-          this.#dog = setTimeout(() => {
+          this.#dog = setTimeout(() => {   // last resort (a stalled filter): by now the effect is long past, the frame is the pure new one
             this.#dog = 0;
-            try { if (canvas?.transition?.isRunning && !previewFrozen()) canvas.transition._reset(); } catch { /* ignore */ }
+            try { if (this.#isCurrent() && !previewFrozen()) canvas.transition._reset(); } catch { /* ignore */ }
           }, WATCHDOG_MS + 150);
+          if (!this.#ticking) { this.#ticking = true; canvas.app.ticker.add(this.#refresh, null, -20); }   // just before the app render (LOW, -25)
         }
-        if (now - this.#t0 > WATCHDOG_MS && !previewFrozen()) this.uniforms.progress = 1;
+        // a sped-up transition (long scene duration) is over at speed*progress = 1: end it there instead of holding the overlay
+        if (!this.#ended && this.uniforms.speed > 1 && this.uniforms.progress * this.uniforms.speed >= 1 && !previewFrozen()) {
+          this.#ended = true;
+          setTimeout(() => { try { if (this.#isCurrent()) canvas.transition._reset(); } catch { /* ignore */ } }, 0);
+        }
       } catch (e) { console.warn(LOG, "apply", e); }
       return super.apply(filterManager, input, output, clear);
     }
