@@ -23,7 +23,9 @@ export const COST = Object.freeze({ upgrade: 10, tooPricey: 20 });
 
 /* ------------------------------------------------------------------ coercion */
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-const str = (v, d = "") => (typeof v === "string" ? v : (v == null ? d : String(v)));
+// B13: bidi OVERRIDE / EMBEDDING / ISOLATE controls (U+202A-202E, U+2066-2069) never survive normalisation: an unclosed RLO in a name reverses every string printed after it (chat cards, notifications, lock note). Marks (LRM / RLM) and real RTL letters stay.
+const BIDI = new RegExp("[\u202A-\u202E\u2066-\u2069]", "g");
+const str = (v, d = "") => (typeof v === "string" ? v : (v == null ? d : String(v))).replace(BIDI, "");
 const bool = (v, d = false) => (typeof v === "boolean" ? v : d);
 const num = (v, d = 0) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 const int = (v, d = 0, min = -Infinity, max = Infinity) => {

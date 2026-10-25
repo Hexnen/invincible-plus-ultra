@@ -395,6 +395,7 @@ function bind(root) {
   root.addEventListener("keydown", (ev) => {
     const el = ev.target instanceof Element ? ev.target : null;
     if (!el || !el.matches("input.ipb-input")) return;
+    if (ev.isComposing || ev.keyCode === 229) return;                 // B13 (IME): Enter / Escape belong to the composition
     const ctx = CTX.get(root);
     if (ev.key === "Enter") { ev.preventDefault(); if (el.matches("[data-ev-test]")) doTest(root); else el.blur(); }
     else if (ev.key === "Escape") {

@@ -747,6 +747,7 @@ function bind(root) {
   root.addEventListener("keydown", (ev) => {
     const el = ev.target instanceof Element ? ev.target : null;
     if (!el) return;
+    if (ev.isComposing || ev.keyCode === 229) return;                 // B13 (IME): Enter / Escape belong to the composition
     if (el.matches("input.ipb-input, textarea.ipb-input")) {
       if (ev.key === "Enter" && el.tagName !== "TEXTAREA") {
         ev.preventDefault();

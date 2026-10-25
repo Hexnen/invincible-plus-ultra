@@ -386,8 +386,7 @@ async function doAdopt(root) {
 
 /* ------------------------------------------------------------------ delegated events */
 function bind(root) {
-  root.addEventListener("input", (ev) => {
-    const el = ev.target instanceof Element ? ev.target.closest("textarea[data-bt-field]") : null;
+  const schedule = (el) => {
     const ctx = CTX.get(root);
     if (!el || !ctx) return;
     const f = el.dataset.btField;
@@ -395,7 +394,10 @@ function bind(root) {
     if (held.get(key)?.type === "conflict") return;
     clearTimeout(timers.get(key));
     timers.set(key, setTimeout(() => { commitValue(root, f, el.value); }, SAVE_DELAY));
-  });
+  };
+  // B13 (IME): nothing is saved, blurred or reverted while a composition is open; the autosave starts when it ends
+  root.addEventListener("input", (ev) => { if (!ev.isComposing) schedule(ev.target instanceof Element ? ev.target.closest("textarea[data-bt-field]") : null); });
+  root.addEventListener("compositionend", (ev) => schedule(ev.target instanceof Element ? ev.target.closest("textarea[data-bt-field]") : null));
   root.addEventListener("change", (ev) => {
     const el = ev.target instanceof Element ? ev.target.closest("[data-bt-field]") : null;
     if (el && el.matches("input, textarea")) commitValue(root, el.dataset.btField, el.value);
@@ -403,6 +405,7 @@ function bind(root) {
   root.addEventListener("keydown", (ev) => {
     const el = ev.target instanceof Element ? ev.target.closest("[data-bt-field]") : null;
     if (!el || !el.matches("input, textarea")) return;
+    if (ev.isComposing || ev.keyCode === 229) return;             // B13: Enter / Escape belong to the IME while it composes
     const ctx = CTX.get(root);
     if (ev.key === "Enter" && el.tagName === "INPUT") { ev.preventDefault(); el.blur(); }
     else if (ev.key === "Escape" && ctx) {

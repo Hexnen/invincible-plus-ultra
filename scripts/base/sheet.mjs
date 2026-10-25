@@ -177,6 +177,7 @@ export class BaseSheet extends ActorSheetV2 {
     root.addEventListener("keydown", (ev) => {
       const el = ev.target instanceof Element ? ev.target : null;
       if (!el) return;
+      if (ev.isComposing || ev.keyCode === 229) return;                 // B13 (IME): Enter / Escape belong to the composition
       if (el.matches("[data-ipb-field]") && el.tagName === "INPUT") {
         if (ev.key === "Enter") { ev.preventDefault(); el.blur(); }
         else if (ev.key === "Escape") { ev.stopPropagation(); el.value = el.dataset.orig ?? el.value; el._ipbEsc = true; }   // revert here, blur on keyup (core closes the window on the Escape key-up otherwise)

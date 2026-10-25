@@ -105,6 +105,13 @@ export function start(phases = {}) {
         clearTimeout(legacyTimer);
         legacyTimer = setTimeout(() => { S.migrate().then((r) => { if (r.migrated.length) { console.info(`${MOD} | base: a stale GM tab made ${r.migrated.length} journal card(s); folded into actors`, r); scheduleReconcile(); } }).catch((e) => console.warn(`${MOD} | base: legacy card cleanup failed`, e)); }, 1500);
       });
+      // B13: a closed ipb-dialog (Escape, Cancel, X) leaves keyboard focus on <body>; give it back to the control that opened it (a re-render restores its own focus through data-fk)
+      let lastFocus = null;
+      document.addEventListener("focusin", (ev) => { const el = ev.target; if (el instanceof HTMLElement && el.closest(".ipb-app") && !el.closest(".ipb-dialog")) lastFocus = el; }, true);
+      Hooks.on("closeDialogV2", (app) => {
+        if (!app?.options?.classes?.includes("ipb-dialog")) return;
+        setTimeout(() => { const a = document.activeElement; if ((!a || a === document.body) && lastFocus?.isConnected) lastFocus.focus({ preventScroll: true }); }, 80);
+      });
       run("ready", () => {
         attach(); Relay.start(); Cat.start(); Entry.start(); ui.actors?.render();
         registerSheet().catch((e) => console.warn(`${MOD} | base sheet registration failed`, e));        // late import: register now (game.ready, so it applies at once)

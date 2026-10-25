@@ -142,12 +142,12 @@ async function vouch(e, ids) {
   const patch = { _: true };
   if (vouchedOf(e) === undefined) for (const a of linkedHeroes(e)) patch[a.id] = true;          // adopt the links that existed before B11
   for (const id of ids) patch[id] = true;
-  await e.update({ [`flags.${MODULE_ID}.vouched`]: patch });
+  await e.update(modernDeletes({ [`flags.${MODULE_ID}.vouched`]: patch }));
 }
 async function unvouch(e, ids) {
   if (vouchedOf(e) === undefined) return;
   const patch = Object.fromEntries(ids.filter((id) => vouchedOf(e)?.[id]).map((id) => [`-=${id}`, null]));
-  if (Object.keys(patch).length) await e.update({ [`flags.${MODULE_ID}.vouched`]: patch });
+  if (Object.keys(patch).length) await e.update(modernDeletes({ [`flags.${MODULE_ID}.vouched`]: patch }));
 }
 
 /** The ownership this card should have now (B11: policy-aware, keeps the GM's manual choices, see pure.planOwnership) -> { ownership, gen }. */
@@ -258,6 +258,18 @@ export async function createLocal(opts = {}, by = game.user) {
   return view(entry);
 }
 
+/** B13: Foundry v14 deprecates the legacy "-=key": null deletion syntax (removed in v16). Converts every such key of a document update (nested or dotted) to the ForcedDeletion operator. */
+export function modernDeletes(obj) {
+  const FD = globalThis.foundry?.data?.operators?.ForcedDeletion;
+  if (!FD || !obj || typeof obj !== "object" || Array.isArray(obj)) return obj;
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (/(^|\.)-=[^.]+$/.test(k) && v === null) out[k.replace(/-=([^.]+)$/, "$1")] = new FD();
+    else out[k] = (v && typeof v === "object" && v.constructor === Object) ? modernDeletes(v) : v;
+  }
+  return out;
+}
+
 /** Plain recursive merge with the Foundry convention "-=key" (pure.mjs; skips __proto__ / constructor / prototype). */
 export const mergePatch = P.mergePatch;
 
@@ -289,7 +301,7 @@ export async function update(ref, patch, { user = game.user } = {}) {
   // the actor's own name and img ARE the team name and the base picture (B.name / B.img are mirrors, never stored)
   if (typeof name === "string" && name.trim()) { upd.name = P.clampText(name.trim(), 80); upd["prototypeToken.name"] = upd.name; }
   if (typeof img === "string") { upd.img = img.trim() || DEFAULT_IMG; if (isCurrentTokenArt(e)) upd["prototypeToken.texture.src"] = upd.img; }
-  await e.update(upd);
+  await e.update(modernDeletes(upd));
   if ("policy" in patch && isStaff()) await reconcileOwnership(e);
   return view(e);
 }
@@ -336,7 +348,7 @@ export async function unlink(actorRef, { user = game.user } = {}) {
   if (!isStaff(user) && !a.testUserPermission(user, "OWNER")) throw new BaseError("noPermission");
   const old = linkOf(a);
   if (!old) return false;
-  await a.update({ [`flags.${MODULE_ID}.-=${P.FLAG_KEY}`]: null });
+  await a.update(modernDeletes({ [`flags.${MODULE_ID}.-=${P.FLAG_KEY}`]: null }));
   const card = cardById(old);
   if (card) { try { await unvouch(card, [a.id]); } catch (_) { /* not an editor of the card: the GM's reconcile prunes it */ } }
   await afterLinkChange(old, "");
@@ -371,7 +383,7 @@ export function forceSheetOnCreate(actor) {
 export function stripCopiedLink(actor, _data, options) {
   if (actor.type !== "superhero" || options?.ipbKeepLink) return;
   if (actor.flags?.[MODULE_ID]?.[P.FLAG_KEY] === undefined) return;
-  actor.updateSource({ [`flags.${MODULE_ID}.-=${P.FLAG_KEY}`]: null });
+  actor.updateSource(modernDeletes({ [`flags.${MODULE_ID}.-=${P.FLAG_KEY}`]: null }));
 }
 /** preDeleteActor: only staff delete a base (owners can edit it, not remove it). Client-side courtesy: Foundry itself only needs OWNER. */
 export function guardDelete(actor, _options, userId) {

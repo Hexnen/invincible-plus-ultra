@@ -390,6 +390,12 @@ ck("validate two primary vehicles warns", P.validate({ name: "T", vehicles: { a:
 ck("validate tracker over max warns", P.validate({ name: "T", trackers: { a: { value: 5, max: 3 } } }).some((m) => m.key === "IPB.Val.trackerOverMax"));
 ck("validate never throws on junk", (() => { try { for (const j of [null, undefined, [], "s", { upgrades: null, events: 5, vehicles: [], crate: "x" }]) P.validate(j); return true; } catch { return false; } })());
 ck("clampText", P.clampText("abcdef", 3) === "abc" && P.clampText(null) === "");
+for (const f of ["sheet.mjs", "tabs/base.mjs", "tabs/events.mjs", "tabs/gear.mjs", "tabs/upgrades.mjs"]) {     // B13 (IME): every keydown handler that turns Enter / Escape into blur / revert must step aside while composing
+  const code = readFileSync(fileURLToPath(new URL(`./${f}`, import.meta.url)), "utf8");
+  ck(`B13 ${f}: keydown Enter/Escape handler guards isComposing`, !/ev\.key === "Enter"/.test(code) || /ev\.isComposing/.test(code));
+}
+ck("B13 clampText drops bidi override / isolate controls", P.clampText("a‮b‬c⁦d⁩e") === "abcde" && P.clampText("‏مرحبا‎") === "‏مرحبا‎");
+ck("B13 normalize keeps no bidi override in the motto", !/[‪-‮⁦-⁩]/.test(P.normalize({ motto: "x‮y" }).motto));
 
 /* ---- B4b: card -> host actor data */
 {
