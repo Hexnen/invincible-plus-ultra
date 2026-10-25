@@ -74,6 +74,29 @@ export function chip(label, aria, act, attrs, extraCls = "") {
   return `<li class="ipc-chip${extraCls}"><span>${label}</span><button type="button" class="ipc-chip-x" data-act="${act}" ${attrs} aria-label="${esc(aria)}" data-tooltip="${esc(aria)}">${icon("fa-solid fa-xmark")}</button></li>`;
 }
 
+/** Debounced text autosave (phase 5e, Life + Persona). Every field carrying data-save="<key>" is saved ~220 ms after the last keystroke, at once on blur,
+    and `flush()` saves everything pending (call it before any button action so a repaint never loses typing).
+    `apply(key, value, el)` must commit into the wizard state (ctx.update with a coalesce key); `after()` runs after each save (status line refresh). */
+export function bindAutosave(root, ctx, { apply, after, delay = 220 }) {
+  const pending = new Map();
+  const run = (key) => {
+    const p = pending.get(key);
+    if (!p) return;
+    clearTimeout(p.timer); pending.delete(key);
+    try { apply(key, p.value, p.el); after?.(); } catch (err) { console.warn("invincible-plus-ultra | chargen: autosave failed", key, err); }
+  };
+  root.addEventListener("input", (ev) => {
+    const el = ev.target;
+    const key = el instanceof HTMLElement ? el.dataset.save : null;
+    if (!key) return;
+    const old = pending.get(key);
+    if (old) clearTimeout(old.timer);
+    pending.set(key, { value: el.value, el, timer: setTimeout(() => run(key), delay) });
+  });
+  root.addEventListener("focusout", (ev) => { const key = ev.target instanceof HTMLElement ? ev.target.dataset.save : null; if (key) run(key); });
+  return { flush() { for (const k of [...pending.keys()]) run(k); } };
+}
+
 /** open the pack item's own sheet (read-only reading of the book entry) */
 export async function openBook(uuid) {
   try { const doc = await fromUuid(uuid); doc?.sheet?.render({ force: true }); } catch (err) { console.warn("invincible-plus-ultra | chargen: cannot open", uuid, err); }

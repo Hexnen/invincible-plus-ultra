@@ -693,3 +693,69 @@
   .ipc-app button.ipc-at-step { transition: none; }
   .ipc-app button.ipc-at-step:hover, .ipc-app button.ipc-at-step:active { translate: none; }
 }
+
+/* ===================================================================================================================================
+   PHASE 5e: LIFE + PERSONA steps (steps/life.mjs, steps/persona.mjs). Reuse the powers vocabulary (.ipc-powers, .ipc-pw-sec, .ipc-pw-row, .ipc-pw-badge,
+   .ipc-pw-custom, .ipc-opt-chip, .ipc-tl-fx). New here: the Resources panel, the D3 / D6 die marks in front of list rows, the occupation / relationship
+   free-text blocks, the toggle chips for personality words and hero-name suggestions, textareas. Selected = yellow + hard blue shadow + a word / glyph
+   (never colour alone); motion = the existing landing pop only (off under prefers-reduced-motion).
+   =================================================================================================================================== */
+.ipc-life, .ipc-persona { gap: 22px; }
+.ipc-life .ipc-pw-sec, .ipc-persona .ipc-pw-sec { display: grid; gap: 8px; align-content: start; }
+.ipc-life .ipc-pw-sec > .ipc-cn-sub, .ipc-persona .ipc-pw-sec > .ipc-cn-sub { margin: 0; }
+.ipc-life .ipc-cn-head h3, .ipc-persona .ipc-cn-head h3 { overflow-wrap: anywhere; }
+.ipc-life .ipc-tl-switch.ipc-opts-types, .ipc-persona .ipc-tl-switch.ipc-opts-types { grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); margin-top: 0; }
+.ipc-life .ipc-pw-msg, .ipc-persona .ipc-pw-msg { margin: 0; font-size: .9rem; }
+
+/* resources panel */
+.ipc-lf-res { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 16px; align-items: center; padding: 6px 12px 8px; background: var(--ipc-paper-2); border: 2px solid var(--ipc-blue); }
+.ipc-lf-res.is-empty { display: flex; gap: .6em; align-items: center; border-style: dashed; border-color: var(--ipc-line); color: var(--ipc-text-2); }
+.ipc-lf-res.is-empty > i { color: var(--ipc-blue); }
+.ipc-lf-res.is-empty p { margin: 0; font-size: .92rem; }
+.ipc-lf-res-n { display: grid; grid-template-columns: auto auto; align-items: baseline; justify-content: start; gap: 0 8px; }
+.ipc-lf-res-n b { min-width: 1.4ch; font: 400 2.5rem/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; }
+.ipc-lf-res-n span { font-size: .85rem; color: var(--ipc-text-2); }
+.ipc-lf-res-t p { margin: 0; font-size: .92rem; }
+.ipc-lf-res-t .ipc-muted { font-size: .85rem; }
+
+/* die marks in front of list rows (the number the book's die shows for that row) */
+.ipc-lf-die { display: inline-grid; place-items: center; flex: none; width: 1.5rem; height: 1.5rem; font: 400 .9rem/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--ipc-ink); background: #fff; border: 2px solid var(--ipc-ink); align-self: center; }
+.ipc-pw-row.is-added .ipc-lf-die { background: var(--ipc-paper); }
+.ipc-pw-row-head .ipc-lf-die { margin-right: -2px; }
+.ipc-lf-arch { background: var(--ipc-paper-2); }
+
+/* own occupation + relationship free text */
+.ipc-lf-own { display: grid; gap: 4px; margin-top: 6px; padding: 8px 12px 10px; background: var(--ipc-paper-2); border: 2px dashed var(--ipc-line); }
+.ipc-lf-own.is-on { border-style: solid; border-color: var(--ipc-blue); }
+.ipc-lf-own h4 { margin: 0; font: 400 .95rem/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ipc-blue); }
+.ipc-lf-own .ipc-pw-custom { margin: 2px 0 0; max-width: 36rem; }
+.ipc-lf-own .ipc-lf-resin { flex: 0 1 11rem; }
+.ipc-lf-sel { max-width: 26rem; }
+.ipc-lf-npc { display: grid; gap: 8px; max-width: 36rem; margin-top: 4px; }
+.ipc-lf-npc-name, .ipc-ps-name { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.ipc-lf-npc-name .ipc-field, .ipc-ps-name .ipc-field { flex: 1 1 14rem; }
+.ipc-lf-line { padding: 0 .4em; font: 400 .92rem/1.4 Roboto, sans-serif; color: var(--ipc-ink); background: #fff; border: 1px solid var(--ipc-line); overflow-wrap: anywhere; }
+.ipc-persona .ipc-pw-hintline { margin: -2px 0 0; }
+
+/* persona: textareas, toggle chips, the two word inputs */
+.ipc-app textarea.ipc-input { min-height: 4.6em; padding: .45em .6em; resize: vertical; line-height: 1.4; font-family: Roboto, "Segoe UI", sans-serif; }
+.ipc-app .ipc-input[aria-invalid="true"] { border-color: var(--ipc-red); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ipc-red); }
+.ipc-ps-words { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; max-width: 36rem; }
+.ipc-ps-word { display: flex; align-items: end; gap: 6px; min-width: 0; }
+.ipc-ps-word .ipc-field { flex: 1 1 auto; }
+.ipc-ps-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ipc-app button.ipc-tog { text-transform: none; letter-spacing: .02em; font-size: .88rem; }
+.ipc-app button.ipc-tog.is-on { background: var(--ipc-yellow); box-shadow: 2px 2px 0 var(--ipc-blue); }
+.ipc-ps-id { max-width: 34rem; }
+.ipc-ps-id legend { padding: 0; margin-bottom: 4px; font-size: .85rem; font-weight: 700; color: var(--ipc-text-2); }
+.ipc-ps-area { width: 100%; }
+
+@container ipc (max-width: 719px) {
+  .ipc-lf-res { grid-template-columns: minmax(0, 1fr); }
+  .ipc-ps-words { grid-template-columns: minmax(0, 1fr); }
+}
+.ipc-ps-all { display: grid; gap: 8px; }
+.ipc-ps-all > summary { width: fit-content; padding: 4px 0; color: var(--ipc-blue); font-size: .9rem; text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
+.ipc-ps-all > summary:focus-visible { outline: 3px solid var(--ipc-cyan); outline-offset: 3px; }
+.ipc-ps-all[open] > summary { margin-bottom: 4px; }
+.ipc-error[hidden] { display: none; }

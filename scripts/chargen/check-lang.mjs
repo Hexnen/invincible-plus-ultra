@@ -52,5 +52,7 @@ fam("IPC.Attrs.Group.", ["physical", "mental"], ["", ".Sub"]);
 fam("IPC.Stepper.State.",["current", "done", "issue", "todo"]);
 fam("IPC.Field.", ["name", "civilianName", "role", "appearance", "occupation", "personality", "drive", "flaw", "relationships", "team", "teamBase", "reputation", "resources", "rank"]);
 
+fam("IPC.Persona.", ["Drive", "Flaw"], [".Title", ".Sub", ".Roll", ".RollTipArch", ".RollTipAll", ".Field", ".Ph", ".UseAria"]);   // phase 5e: built with a template string in steps/persona.mjs
+
 console.log(bad ? `${bad} problem(s)` : `OK: ${Object.keys(EN).length} keys, ${used.size} used directly, ${codes.size} rule codes, EN = PL`);
 process.exit(bad ? 1 : 0);
