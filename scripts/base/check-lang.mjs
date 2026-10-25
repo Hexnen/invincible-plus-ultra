@@ -36,7 +36,7 @@ for (const k of used) if (!((k in EN && k in PL) || (fEN.has(k) && fPL.has(k))))
 const need = [];
 for (const c of ["noBook", "noPermission", "tooBig", "noGM", "notFound", "invalid", "prerequisite", "stackMax", "full", "badInput", "blocked", "karma", "badType", "relay"]) need.push(`IPB.Err.${c}`);
 for (const c of P.COLLECTIONS) need.push(`IPB.Err.${c}Full`);
-for (const n of ["ShowInJournal", "HeaderButton", "PlayersCreate"]) for (const p of ["Name", "Hint"]) need.push(`IPB.Settings.${n}.${p}`);
+for (const n of ["HeaderButton", "PlayersCreate"]) for (const p of ["Name", "Hint"]) need.push(`IPB.Settings.${n}.${p}`);
 for (const k of need) if (!(k in EN) || !(k in PL)) fail(`required key missing: ${k}`);
 // every validation message key pure.mjs can emit
 const probes = [null, { v: 99, rank: "x", policy: { edit: "x" }, upgrades: { a: 5, b: { status: "x", count: 0, source: "x" } }, events: { e: { roll: 12, band: "99-99" } }, vehicles: { a: { primary: true }, b: { primary: true } }, trackers: { t: { value: 5, max: 1 } } }];

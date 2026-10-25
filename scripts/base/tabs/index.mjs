@@ -1,4 +1,4 @@
-/* Team & Base card: the TAB-MODULE INTERFACE (phase B4). The window (../window.mjs) knows nothing about what is inside a tab; it asks the
+/* Team & Base card: the TAB-MODULE INTERFACE (phase B4). The base sheet (../sheet.mjs, an ActorSheetV2) knows nothing about what is inside a tab; it asks the
    modules listed in TABS, in order. Phases B5 (base), B6 (upgrades), B7 (events) and B8 (gear) each REPLACE one placeholder by a real module:
    change the import below, keep the default export shape, add the strings to ../lang.mjs (EN + PL, run ../check-lang.mjs).
 
@@ -15,7 +15,7 @@
    ctx (rebuilt on every paint, never cached by a tab):
      team      the normalized view { id, uuid, ...B } (read only: change it through ctx.update)
      B         same object as team (alias)
-     actor     the hero the window was opened from, or null
+     actor     always null since B4b (the card is itself the sheet's actor; use ctx.members for heroes)
      members   Actor[] heroes linked to the team that this user may see; members.hidden = how many cannot be seen
      facts     member facts [{ id, name, resources, occupation, karma, reputation }] (only visible heroes)
      stats     pure.teamStats(facts) = { maxReputation:{value,who}, maxResources:{value,who}, karmaPool, occupations[] }
@@ -30,7 +30,7 @@
      announce(text)                                polite live-region message for screen readers (roll results, applied effects)
      go(tabId)                                     switch tab
      t(key, data), tn(key, n, data), esc(str), icon(classes)   strings, plural strings, HTML escape, <i aria-hidden> helper
-   The window repaints the body when the card document changes, EXCEPT while a text field inside the body has focus (it repaints on blur), so
+   The sheet repaints the body when the card actor changes, EXCEPT while a text field inside the body has focus (it repaints on blur), so
    a tab can use "commit on change/blur" inputs without losing the cursor. Fields inside a tab should commit on change (blur/Enter), Escape reverts. */
 import { base, upgrades, events, gear } from "./placeholder.mjs";   // B5-B8: replace each by its own module (base.mjs ...)
 

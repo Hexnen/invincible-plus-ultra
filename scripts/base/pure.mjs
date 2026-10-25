@@ -585,3 +585,32 @@ export function validate(raw) {
   if (!sz.ok) add("error", "IPB.Err.tooBig", "", { bytes: sz.bytes, limit: sz.limit });
   return out;
 }
+
+// ------------------------------------------------------------------ B4b: the card lives in a real Actor
+export const TEAM_BASE_KIND = "teamBase";          // marker: flags[FLAG_SCOPE][FLAG_KEY].kind (heroes carry flags.base.team only, so the marker tells a card from a hero link)
+// true when the picture is "no picture": empty, or one of the module / system default artworks (`defaults` = exact paths or file names).
+export function isDefaultArt(img, defaults = []) {
+  const s = str(img).trim();
+  if (!s) return true;
+  return defaults.some((d) => s === d || s.endsWith(`/${d}`));
+}
+// Create data of the host record for a card that used to be a journal-shaped record { name, img?, ownership?, flags }.
+// cfg: { type (host type), folder, defaultImg, sheetClass, rid? }. The schema is untouched (normalize), only the home changes: the host's
+// name and img carry the team name and the base picture, so B.img is emptied; the old id is remembered (flags.migratedFrom).
+export function cardActorData(entry, cfg) {
+  const raw = isObj(entry?.flags?.[FLAG_SCOPE]?.[FLAG_KEY]) ? entry.flags[FLAG_SCOPE][FLAG_KEY] : {};
+  const B = normalize(raw);
+  const name = clampText(str(entry?.name).trim() || str(B.name).trim(), 80) || "Team";
+  const img = str(B.img).trim() || cfg.defaultImg;
+  B.name = name;
+  B.img = "";
+  B.kind = TEAM_BASE_KIND;
+  const own = Number.isInteger(entry?.ownership?.default) ? entry.ownership.default : 2;
+  const flags = { core: { sheetClass: cfg.sheetClass }, [FLAG_SCOPE]: { [FLAG_KEY]: B } };
+  if (entry?.id) flags[FLAG_SCOPE].migratedFrom = String(entry.id);
+  if (cfg.rid) flags[FLAG_SCOPE].rid = String(cfg.rid);
+  return {
+    name, type: cfg.type, img, folder: cfg.folder ?? null, ownership: { default: own },
+    prototypeToken: { name, actorLink: true, texture: { src: img } }, flags
+  };
+}

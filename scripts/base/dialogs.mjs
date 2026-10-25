@@ -52,3 +52,33 @@ export async function chooseHero(team, actors) {
   });
   return id ? actors.find((a) => a.id === id) ?? null : null;
 }
+
+/** "Create team base" prompt (Actors directory). Staff may leave the hero out; a player must pick a hero he owns (the base is edited through its heroes' ownership).
+    Resolves { name, rank, actor|null } or null. */
+export async function promptNewBase(S, P, rankName) {
+  const staff = S.isStaff();
+  const heroes = game.actors.filter((a) => a.type === "superhero" && !S.linkOf(a) && (staff || a.testUserPermission(game.user, "OWNER")));
+  if (!staff && !heroes.length) {
+    await DialogV2.prompt({
+      window: { title: t("IPB.New.Title"), icon: "fa-solid fa-people-roof" }, classes: ["ipb-dialog"],
+      content: `<p>${esc(t("IPB.New.NeedHero"))}</p>`, ok: { label: t("IPB.Add.No") }, rejectClose: false, modal: false
+    });
+    return null;
+  }
+  const ranks = P.RANKS.map((r) => `<option value="${r}"${r === "global" ? " selected" : ""}>${esc(rankName(r))}</option>`).join("");
+  const opts = (staff ? [`<option value="">${esc(t("IPB.New.NoHero"))}</option>`] : []).concat(heroes.map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`)).join("");
+  return DialogV2.prompt({
+    window: { title: t("IPB.New.Title"), icon: "fa-solid fa-people-roof" }, classes: ["ipb-dialog"], position: { width: 420 },
+    content: `<label class="ipb-dlg-field"><span>${esc(t("IPB.New.Name"))}</span><input type="text" name="name" maxlength="80" placeholder="${esc(t("IPB.Default.Name"))}" autocomplete="off" autofocus></label>`
+      + `<label class="ipb-dlg-field"><span>${esc(t("IPB.New.Rank"))}</span><select name="rank">${ranks}</select></label>`
+      + `<label class="ipb-dlg-field"><span>${esc(t("IPB.New.Hero"))}</span><select name="hero">${opts}</select></label>`,
+    ok: {
+      label: t("IPB.New.Yes"), icon: "fa-solid fa-plus",
+      callback: (_ev, button) => {
+        const f = button.form.elements;
+        return { name: String(f.name.value || "").trim(), rank: f.rank.value, actor: f.hero.value ? game.actors.get(f.hero.value) : null };
+      }
+    },
+    rejectClose: false, modal: false
+  });
+}

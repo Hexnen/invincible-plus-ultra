@@ -359,3 +359,14 @@
   .ipb-app button.ipb-btn:hover, .ipb-app button.ipb-btn:active, .ipb-app button.ipb-mem:hover, .ipb-app button.ipb-art-btn:hover, .invincible.sheet.actor button.ipb-pr-btn:hover { translate: none; }
 }
 @keyframes ipb-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- B4b: the Actors directory side (directory.mjs): the "Create team base" button and the marker on base entries ---------- */
+.directory-header .header-actions button.ipb-dir-create {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px;
+  color: #0c1a2e; background: #ffe72a; border: 2px solid #0c1a2e; border-radius: 3px; box-shadow: 2px 2px 0 #3465a3; font-weight: 700; cursor: pointer;
+}
+.directory-header .header-actions button.ipb-dir-create:hover { box-shadow: 3px 3px 0 #3465a3; }
+.directory-header .header-actions button.ipb-dir-create:active { box-shadow: 1px 1px 0 #3465a3; }
+.directory-header .header-actions button.ipb-dir-create:focus-visible { outline: 3px solid #0096cb; outline-offset: 2px; }
+li.ipb-dir-base .ipb-dir-mark { margin-inline-start: 6px; color: #0096cb; font-size: 0.85em; }
+@media (prefers-reduced-motion: reduce) { .directory-header .header-actions button.ipb-dir-create { transition: none; } }

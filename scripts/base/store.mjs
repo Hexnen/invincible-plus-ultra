@@ -1,12 +1,19 @@
-/* Team & Base card, phase B3: STORE. A team card is a world JournalEntry with its data in flags["invincible-plus-ultra"].base (schema: pure.mjs).
-   A "team" argument anywhere in the base API may be a JournalEntry, its id, its uuid or a view returned by this file. Views are
-   { id, uuid, ...normalized B }. Membership lives on the heroes (flags[...].base.team), members are derived. No UI here. */
+/* Team & Base card: STORE. Since B4b a team card is a real world ACTOR (host type "vehicle", see HOST_TYPE) flagged flags["invincible-plus-ultra"].base.kind === "teamBase";
+   its data lives in flags["invincible-plus-ultra"].base (schema: pure.mjs), its own name / img are the team name / base picture. A "team" argument anywhere in
+   the base API may be that Actor, its id, its uuid or a view returned by this file. Views are { id, uuid, ...normalized B }. Membership lives on the heroes
+   (flags[...].base.team = the base actor id), members are derived. Ownership of the actor = who may edit (policy). No UI here.
+   Why "vehicle": smallest data model of the system (health, type, a few numbers, no attributes / resolve / items logic), its own sheet class (so ours replaces it
+   only for flagged actors through the native per-document sheet override flags.core.sheetClass), not touched by the party panel (superhero) or the challenges HUD (challenge). */
 import * as P from "./pure.mjs";
 import { t } from "./lang.mjs";
 
 export const MODULE_ID = "invincible-plus-ultra";
-export const FOLDER_NAME = "Plus Ultra - Team cards";
-export const SETTING_SHOW = "baseShowInJournal";
+export const HOST_TYPE = "vehicle";
+export const KIND = P.TEAM_BASE_KIND;
+export const FOLDER_NAME = "Team bases";
+export const SHEET_ID = `${MODULE_ID}.BaseSheet`;                       // DocumentSheetConfig id: `${scope}.${class name}` (sheet.mjs registers the class BaseSheet)
+export const DEFAULT_IMG = "icons/environment/settlement/city-night-spire.webp";    // a core Foundry icon: always there
+const DEFAULT_ARTS = [DEFAULT_IMG, "vehicle.svg"];
 export const SETTING_PLAYERS_CREATE = "basePlayersCreate";
 const PATCHABLE = new Set(["name", "rank", "motto", "img", "purpose", "background", "base", "policy", ...P.COLLECTIONS]);
 
@@ -27,28 +34,38 @@ const clone = (o) => foundry.utils.deepClone(o);
 export const isStaff = (user = game.user) => !!user && (user.isGM === true || user.hasRole?.(CONST.USER_ROLES.ASSISTANT) === true);
 
 /* ------------------------------------------------------------------ resolve / read */
-export const isCard = (entry) => !!entry && entry.documentName === "JournalEntry" && !!entry.flags?.[MODULE_ID]?.[P.FLAG_KEY];
+/** A team base actor: world actor of the host type carrying the marker. */
+export const isCard = (a) => !!a && a.documentName === "Actor" && a.flags?.[MODULE_ID]?.[P.FLAG_KEY]?.kind === KIND;
+/** The base actor with this id (or the one a migrated journal card used to have), else null. */
+export function cardById(id) {
+  if (!id) return null;
+  const a = game.actors.get(id) ?? game.actors.find((x) => x.flags?.[MODULE_ID]?.migratedFrom === id);
+  return isCard(a) ? a : null;
+}
 
 export function resolve(ref) {
   let e = ref;
-  if (ref && typeof ref === "object" && !(ref instanceof foundry.abstract.Document)) e = ref.id ? game.journal.get(ref.id) : null;
-  else if (typeof ref === "string") e = game.journal.get(ref) ?? (ref.startsWith("JournalEntry.") ? fromUuidSync(ref) : null);
+  if (ref && typeof ref === "object" && !(ref instanceof foundry.abstract.Document)) e = ref.id ? game.actors.get(ref.id) : null;
+  else if (ref instanceof foundry.abstract.Document && ref.isToken) e = ref.baseActor;        // a token's synthetic actor: the world actor is the card
+  else if (typeof ref === "string") e = game.actors.get(ref) ?? (ref.startsWith("Actor.") ? fromUuidSync(ref) : null) ?? cardById(ref);
   if (!isCard(e)) throw new BaseError("notFound", { id: typeof ref === "string" ? ref : ref?.id ?? "" });
   return e;
 }
 export const rawData = (entry) => entry.flags?.[MODULE_ID]?.[P.FLAG_KEY] ?? {};
-/** Normalized B, name mirrored from the entry. */
+const artOf = (e) => (P.isDefaultArt(e.img, DEFAULT_ARTS) ? "" : e.img);
+/** Normalized B, name and picture mirrored from the actor (the actor's own name / img are the source). */
 export function data(ref) {
   const e = resolve(ref);
   const B = P.normalize(clone(rawData(e)));
   B.name = e.name;
+  B.img = artOf(e);
   return B;
 }
 export function view(ref) {
   const e = resolve(ref);
   return { id: e.id, uuid: e.uuid, ...data(e) };
 }
-export function list() { return game.journal.filter(isCard).map((e) => view(e)); }
+export function list() { return game.actors.filter(isCard).map((e) => view(e)); }
 export function get(id) { try { return view(id); } catch { return null; } }
 
 /* ------------------------------------------------------------------ permissions */
@@ -126,14 +143,15 @@ export async function reconcileOwnership(ref) {
 }
 export async function reconcileAll() {
   const out = [];
-  for (const e of game.journal.filter(isCard)) out.push([e.id, (await reconcileOwnership(e)).changed]);
+  for (const e of game.actors.filter(isCard)) out.push([e.id, (await reconcileOwnership(e)).changed]);
   return out;
 }
 
 /* ------------------------------------------------------------------ create / update / remove */
 async function ensureFolder() {
-  let f = game.folders.find((x) => x.type === "JournalEntry" && x.flags?.[MODULE_ID]?.baseFolder);
-  if (!f) f = await Folder.create({ name: FOLDER_NAME, type: "JournalEntry", flags: { [MODULE_ID]: { baseFolder: true } } });
+  let f = game.folders.find((x) => x.type === "Actor" && x.flags?.[MODULE_ID]?.baseFolder);
+  if (!f) f = game.folders.find((x) => x.type === "Actor" && !x.folder && x.name === FOLDER_NAME);
+  if (!f) f = await Folder.create({ name: FOLDER_NAME, type: "Actor", flags: { [MODULE_ID]: { baseFolder: true } } });
   return f;
 }
 const actorOf = (a) => (typeof a === "string" ? game.actors.get(a) : a);
@@ -146,9 +164,9 @@ export async function create(opts = {}) {
     if (!bridge.request) throw new BaseError("relay");
     const res = await bridge.request("createTeam", { name: opts.name ?? "", rank: opts.rank ?? "", fromActorId: from?.id ?? "", rid: foundry.utils.randomID(16) });
     const id = res?.id;
-    // The entry and then the ownership grant the GM client makes right after creating it arrive as SEPARATE updates: a player must not write to
-    // the card (fromHero, rename ...) before both are here or the write is refused. Wait up to 6 s for the entry and for edit rights.
-    const ready = () => { const e = game.journal.get(id); return !!e && isCard(e) && canEdit(e); };
+    // The actor and then the ownership grant the GM client makes right after creating it arrive as SEPARATE updates: a player must not write to
+    // the card (fromHero, rename ...) before both are here or the write is refused. Wait up to 6 s for the actor and for edit rights.
+    const ready = () => { const e = game.actors.get(id); return !!e && isCard(e) && canEdit(e); };
     for (let i = 0; i < 60 && !ready(); i++) await new Promise((r) => setTimeout(r, 100));
     return view(id);
   }
@@ -166,10 +184,8 @@ export async function createLocal(opts = {}, by = game.user) {
   B.meta.created = { by: by.id, at: now };
   B.meta.updated = { by: by.id, at: now };
   const folder = await ensureFolder();
-  const entry = await JournalEntry.create({
-    name: B.name, folder: folder.id, ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER },
-    flags: { [MODULE_ID]: { [P.FLAG_KEY]: B, ...(opts.rid ? { rid: String(opts.rid) } : {}) } }
-  });
+  const entry = await Actor.create(P.cardActorData({ name: B.name, ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER }, flags: { [MODULE_ID]: { [P.FLAG_KEY]: B } } },
+    { type: HOST_TYPE, folder: folder.id, defaultImg: DEFAULT_IMG, sheetClass: SHEET_ID, rid: opts.rid }));
   for (const a of [from, ...(opts.actors ?? []).map(actorOf)].filter(Boolean)) await link(a, entry);
   await reconcileOwnership(entry);
   return view(entry);
@@ -207,11 +223,12 @@ export async function update(ref, patch, { user = game.user } = {}) {
     const big = issues.find((x) => x.key === "IPB.Err.tooBig");
     throw new BaseError(big ? "tooBig" : "invalid", { issues, ...(big?.params ?? {}) });
   }
-  const { name, ...rest } = patch;
+  const { name, img, ...rest } = patch;
   const flagPatch = { ...rest, meta: { updated: { by: user.id, at: Date.now() } } };
-  if (typeof name === "string") flagPatch.name = P.clampText(name.trim(), 80);
   const upd = { flags: { [MODULE_ID]: { [P.FLAG_KEY]: flagPatch } } };
-  if (typeof name === "string" && name.trim()) upd.name = P.clampText(name.trim(), 80);
+  // the actor's own name and img ARE the team name and the base picture (B.name / B.img are mirrors, never stored)
+  if (typeof name === "string" && name.trim()) { upd.name = P.clampText(name.trim(), 80); upd["prototypeToken.name"] = upd.name; }
+  if (typeof img === "string") { upd.img = img.trim() || DEFAULT_IMG; if (isCurrentTokenArt(e)) upd["prototypeToken.texture.src"] = upd.img; }
   await e.update(upd);
   if ("policy" in patch && isStaff()) await reconcileOwnership(e);
   return view(e);
@@ -219,6 +236,9 @@ export async function update(ref, patch, { user = game.user } = {}) {
 export function setPolicy(ref, patch, opts) {
   return update(ref, { policy: patch }, opts);
 }
+
+/** the prototype token still shows the base picture (or a default): then it follows the picture */
+const isCurrentTokenArt = (e) => { const src = e.prototypeToken?.texture?.src; return !src || src === e.img || P.isDefaultArt(src, DEFAULT_ARTS); };
 
 /** GM only. Deletes the card and unlinks its heroes (their team / teamBase text is kept). */
 export async function remove(ref) {
@@ -252,25 +272,49 @@ export async function unlink(actorRef, { user = game.user } = {}) {
   return true;
 }
 async function afterLinkChange(...ids) {
-  for (const id of ids.filter((x) => x && game.journal.get(x))) {
+  for (const id of ids.filter((x) => x && cardById(x))) {
     if (isStaff()) await reconcileOwnership(id);
     else if (bridge.request) { try { await bridge.request("reconcile", { teamId: id }); } catch (_) { /* no GM online: reconciled at the next GM login */ } }
   }
 }
 
-/* ------------------------------------------------------------------ directory hook */
-const showInJournal = () => { try { return game.settings.get(MODULE_ID, SETTING_SHOW) === true; } catch { return false; } };
-
-/** renderJournalDirectory: hides team cards (and their folder) from the sidebar unless the client setting reveals them. */
-export function hideInDirectory(app, html) {
-  try {
-    if (showInJournal()) return;
-    const root = html instanceof HTMLElement ? html : html?.[0] ?? app?.element;
-    if (!root?.querySelectorAll) return;
-    for (const li of root.querySelectorAll("li[data-entry-id]")) if (isCard(game.journal.get(li.dataset.entryId))) li.remove();
-    for (const li of root.querySelectorAll("li[data-folder-id]")) {
-      const f = game.folders.get(li.dataset.folderId);
-      if (f?.flags?.[MODULE_ID]?.baseFolder) li.remove();
-    }
-  } catch (e) { console.warn(`${MODULE_ID} | base: directory hook failed`, e); }
+/* ------------------------------------------------------------------ guards + migration */
+/** preCreateActor: a base actor created by any path (duplicate, import, API) gets the sheet override so it opens OUR sheet. */
+export function forceSheetOnCreate(actor) {
+  if (actor.flags?.[MODULE_ID]?.[P.FLAG_KEY]?.kind !== KIND) return;
+  if (actor.flags?.core?.sheetClass !== SHEET_ID) actor.updateSource({ "flags.core.sheetClass": SHEET_ID });
 }
+/** preDeleteActor: only staff delete a base (owners can edit it, not remove it). Client-side courtesy: Foundry itself only needs OWNER. */
+export function guardDelete(actor, _options, userId) {
+  if (!isCard(actor)) return true;
+  if (userId && userId !== game.user.id) return true;
+  if (isStaff()) return true;
+  ui.notifications?.warn(t("IPB.Err.noPermission"));
+  return false;
+}
+
+/** GM only, idempotent. (1) base actors without the sheet override get it; (2) any JournalEntry that used to be a card (B3 / B4 storage) becomes a
+    base actor, the heroes' links are re-pointed, the journal and the old folder are deleted. Returns { sheets, migrated:[{from,to}] }. */
+export async function migrate() {
+  assertStaff();
+  const out = { sheets: 0, migrated: [] };
+  for (const a of game.actors.filter(isCard)) {
+    if (a.flags?.core?.sheetClass !== SHEET_ID) { await a.update({ "flags.core.sheetClass": SHEET_ID }); out.sheets++; }
+  }
+  const old = game.journal.filter((e) => e.flags?.[MODULE_ID]?.[P.FLAG_KEY]?.kind !== KIND && Number.isInteger(e.flags?.[MODULE_ID]?.[P.FLAG_KEY]?.v) && isObjectLike(e.flags[MODULE_ID][P.FLAG_KEY]));
+  for (const j of old) {
+    const folder = await ensureFolder();
+    const body = P.cardActorData({ id: j.id, name: j.name, ownership: j.ownership, flags: foundry.utils.deepClone(j.flags) }, { type: HOST_TYPE, folder: folder.id, defaultImg: DEFAULT_IMG, sheetClass: SHEET_ID });
+    const actor = await Actor.create(body);
+    for (const h of game.actors.filter((x) => x.type === "superhero" && linkOf(x) === j.id)) await h.update({ [`flags.${MODULE_ID}.${P.FLAG_KEY}.team`]: actor.id });
+    await reconcileOwnership(actor);
+    await j.delete();
+    out.migrated.push({ from: j.id, to: actor.id });
+  }
+  if (out.migrated.length) {
+    const jf = game.folders.find((f) => f.type === "JournalEntry" && f.flags?.[MODULE_ID]?.baseFolder);
+    if (jf && !game.journal.some((j) => j.folder?.id === jf.id)) await jf.delete();
+  }
+  return out;
+}
+const isObjectLike = (o) => !!o && typeof o === "object" && !Array.isArray(o);

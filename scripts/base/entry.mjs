@@ -1,5 +1,7 @@
-/* Team & Base card ENTRY POINTS (phase B4). Does nothing heavy until a click: the window (window.mjs) and the picker are imported on first use.
-   Entry points (all open the same window; one window per team, a second click focuses it):
+/* Team & Base card ENTRY POINTS (phase B4, B4b: the card is an Actor, its window is the actor's sheet sheet.mjs). Does nothing heavy until a click: the
+   "no team yet" window (window.mjs) and the picker are imported on first use.
+   Entry points (all open the same sheet; one sheet per base actor, a second click focuses it; the Actors directory lists the bases and has its own
+   "Create team base" button, directory.mjs):
      1. a visible icon button in the header of every superhero sheet (fa-people-roof, cyan; the chargen wand is yellow and always stays first),
         DOM-injected by a renderApplicationV2 hook, idempotent, hidden live by the client setting baseHeaderButton;
      2. an entry in the sheet's 3-dot menu (getHeaderControlsInvincibleActorSheet), the keyboard / discoverability path;
@@ -14,37 +16,39 @@ import { esc, icon } from "./util.mjs";
 
 const MOD = S.MODULE_ID;
 const ICON = "fa-solid fa-people-roof";
-let BaseApp = null, PickerApp = null;
+let BaseSheet = null, NewTeamApp = null, PickerApp = null;
 let started = false;
 const hooks = [];
 const on = (name, fn) => hooks.push([name, Hooks.on(name, fn)]);
 const setting = (key, fallback) => { try { return game.settings.get(MOD, key); } catch { return fallback; } };
 
-async function loadWindow() { return (BaseApp ??= (await import("./window.mjs")).BaseApp); }
+async function loadSheet() { return (BaseSheet ??= (await import("./sheet.mjs")).BaseSheet); }
+async function loadWindow() { return (NewTeamApp ??= (await import("./window.mjs")).NewTeamApp); }
 async function loadPicker() { return (PickerApp ??= (await import("./picker.mjs")).PickerApp); }
 
 /* ------------------------------------------------------------------ api: open / openFor / pick */
 const asActor = (ref) => (typeof ref === "string" ? (game.actors.get(ref) ?? (ref.includes(".") ? fromUuidSync(ref) : null)) : ref);
-const isActor = (ref) => ref?.documentName === "Actor" || (typeof ref === "string" && !!game.actors.get(ref));
+const isHero = (ref) => ref?.documentName === "Actor" && ref.type === "superhero";
 
-/** open(team | actor | nothing, {tab}) -> the window (or the picker without an argument, or null when nothing could be opened) */
+/** open(team | base actor | hero | nothing, {tab}) -> the sheet (or the picker without an argument, or null when nothing could be opened) */
 export async function open(ref, opts = {}) {
   if (!ref) return pick();
-  if (isActor(ref)) return openFor(asActor(ref), opts);
+  const actor = typeof ref === "string" ? asActor(ref) : ref?.documentName === "Actor" ? ref : null;
+  if (isHero(actor)) return openFor(actor, opts);
   let team;
   try { team = S.view(ref); } catch { ui.notifications?.warn(t("IPB.Entry.Deleted")); return null; }
-  const Win = await loadWindow();
-  return Win.open({ team: team.id, tab: opts.tab ?? null });
+  const Sheet = await loadSheet();
+  return Sheet.open({ team: team.id, tab: opts.tab ?? null });
 }
-/** openFor(actor, {tab}) -> the window of the hero's team, or the create / join / ask window when it has none */
+/** openFor(actor, {tab}) -> the base sheet of the hero's team, or the create / join / ask window when it has none (a base actor opens itself) */
 export async function openFor(actorRef, opts = {}) {
   const actor = asActor(actorRef);
+  if (S.isCard(actor)) return open(actor, opts);
   if (!actor || actor.type !== "superhero") { ui.notifications?.warn(t("IPB.Entry.NotHero")); return null; }
   const team = S.find(actor);
-  const Win = await loadWindow();
-  if (team) return Win.open({ team: team.id, tab: opts.tab ?? null });
+  if (team) return (await loadSheet()).open({ team: team.id, tab: opts.tab ?? null });
   if (!actor.isOwner && !S.isStaff()) { ui.notifications?.info(t("IPB.Entry.RowNone")); return null; }
-  return Win.open({ actor });
+  return (await loadWindow()).open({ actor });
 }
 /** pick(): the list of cards (a single card is opened directly for players) */
 export async function pick() {
@@ -190,7 +194,8 @@ let refreshTimer = 0;
 function refreshAll(teamId, actorId) {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
-    BaseApp?.refresh({ teamId, actorId });
+    BaseSheet?.refresh({ teamId });
+    NewTeamApp?.refresh({ actorId });
     PickerApp?.refresh();
     syncSheets();
   }, 60);
@@ -209,12 +214,10 @@ export function start() {
     if (!actor) return;
     controls.push({ action: "ipbTeam", icon: ICON, label: t("IPB.Entry.Button"), visible: () => actor.isOwner || !!S.find(actor), onClick: () => openFor(actor) });
   });
-  on("updateJournalEntry", (entry) => { if (isCard(entry)) refreshAll(entry.id, null); });
-  on("createJournalEntry", (entry) => { if (isCard(entry)) refreshAll(null, null); });
-  on("deleteJournalEntry", (entry) => { if (entry.flags?.[MOD]?.base) refreshAll(null, null); });
-  on("updateActor", (actor) => { if (actor.type === "superhero") refreshAll(S.linkOf(actor) || null, actor.id); });
-  on("createActor", (actor) => { if (actor.type === "superhero") refreshAll(null, null); });
-  on("deleteActor", (actor) => { if (actor.type === "superhero") refreshAll(null, null); });
+  // the base itself (an Actor) or a hero changed / appeared / went away: repaint what shows them
+  on("updateActor", (actor) => { if (isCard(actor)) refreshAll(actor.id, null); else if (actor.type === "superhero") refreshAll(S.linkOf(actor) || null, actor.id); });
+  on("createActor", (actor) => { if (isCard(actor) || actor.type === "superhero") refreshAll(null, null); });
+  on("deleteActor", (actor) => { if (isCard(actor) || actor.type === "superhero") refreshAll(null, null); });
   on("renderChatMessageHTML", chatButtons);
   watchParty();
   syncSheets();

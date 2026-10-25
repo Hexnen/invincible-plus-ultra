@@ -1,5 +1,5 @@
-/* Team & Base card, phase B3: RELAY. Lets a non-GM ask the active GM client to do what only a GM may: create a team card (a player has no
-   JOURNAL_CREATE), re-grant card ownership after linking a hero (reconcile), or "ask the GM" for a purchase. The GM side re-validates
+/* Team & Base card, phase B3: RELAY. Lets a non-GM ask the active GM client to do what only a GM may: create a team base (a player has no
+   ACTOR_CREATE), re-grant card ownership after linking a hero (reconcile), or "ask the GM" for a purchase. The GM side re-validates
    EVERYTHING against real documents (the sender's actual ownership / role, input clamped); nothing in the payload is trusted.
    Transport follows scripts/turn: socketlib when it is active (module.json has "socket": true), otherwise the module's own channel
    "module.invincible-plus-ultra". LIMIT (Foundry): module sockets carry no authenticated sender, so the sender id inside the payload is
@@ -30,7 +30,7 @@ const HANDLERS = {
     const rid = String(args.rid ?? "").slice(0, 32);
     if (rid) {
       await new Promise((res) => setTimeout(res, Math.random() * 350));
-      const dup = game.journal.find((e) => e.flags?.[MOD]?.rid === rid);
+      const dup = game.actors.find((e) => e.flags?.[MOD]?.rid === rid);
       if (dup) return { id: dup.id };
     }
     const team = await S.createLocal({
@@ -40,8 +40,8 @@ const HANDLERS = {
   },
   /** args { teamId }. Idempotent and harmless (computes ownership from real actor ownership), so any known user may ask. */
   async reconcile(_sender, args) {
-    const e = game.journal.get(String(args.teamId ?? ""));
-    if (!S.isCard(e)) throw new S.BaseError("notFound", { id: String(args.teamId ?? "") });
+    const e = S.cardById(String(args.teamId ?? ""));
+    if (!e) throw new S.BaseError("notFound", { id: String(args.teamId ?? "") });
     return { changed: (await S.reconcileOwnership(e)).changed };
   },
   /** args { actorId }. A player without the right to create cards asks the GM to make one for a hero they own; the GM gets a notification + the hook. */
@@ -55,8 +55,8 @@ const HANDLERS = {
   },
   /** args { teamId, what }. The player asks the GM for something (e.g. buying an upgrade); the GM client gets a notification + a hook. */
   async ask(sender, args) {
-    const e = game.journal.get(String(args.teamId ?? ""));
-    if (!S.isCard(e)) throw new S.BaseError("notFound", { id: String(args.teamId ?? "") });
+    const e = S.cardById(String(args.teamId ?? ""));
+    if (!e) throw new S.BaseError("notFound", { id: String(args.teamId ?? "") });
     const what = P.clampText(String(args.what ?? ""), 200);
     Hooks.callAll(`${MOD}.baseRequest`, { team: e.id, from: sender.id, what });
     ui.notifications?.info(`${sender.name}: ${what} (${e.name})`);

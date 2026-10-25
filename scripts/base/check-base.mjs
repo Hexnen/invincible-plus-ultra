@@ -390,6 +390,29 @@ ck("validate tracker over max warns", P.validate({ name: "T", trackers: { a: { v
 ck("validate never throws on junk", (() => { try { for (const j of [null, undefined, [], "s", { upgrades: null, events: 5, vehicles: [], crate: "x" }]) P.validate(j); return true; } catch { return false; } })());
 ck("clampText", P.clampText("abcdef", 3) === "abc" && P.clampText(null) === "");
 
+/* ---- B4b: card -> host actor data */
+{
+  const cfg = { type: "vehicle", folder: "F1", defaultImg: "icons/x.webp", sheetClass: "invincible-plus-ultra.BaseSheet" };
+  const j = { id: "J1", name: " Alpha ", ownership: { default: 2 }, flags: { "invincible-plus-ultra": { base: { v: 1, rank: "street", img: "art/a.webp", upgrades: { u1: { key: "concealment", name: "Concealment", count: 1, status: "active", source: "start" } }, mystery: 7 } } } };
+  const a = P.cardActorData(j, cfg);
+  eq("cardActorData name trimmed", a.name, "Alpha");
+  eq("cardActorData type / folder", [a.type, a.folder], ["vehicle", "F1"]);
+  eq("cardActorData img from B.img", a.img, "art/a.webp");
+  eq("cardActorData marker", a.flags["invincible-plus-ultra"].base.kind, "teamBase");
+  eq("cardActorData B.img emptied", a.flags["invincible-plus-ultra"].base.img, "");
+  eq("cardActorData keeps data", [a.flags["invincible-plus-ultra"].base.rank, Object.keys(a.flags["invincible-plus-ultra"].base.upgrades), a.flags["invincible-plus-ultra"].base.mystery], ["street", ["u1"], 7]);
+  eq("cardActorData sheet override", a.flags.core.sheetClass, cfg.sheetClass);
+  eq("cardActorData remembers old id", a.flags["invincible-plus-ultra"].migratedFrom, "J1");
+  eq("cardActorData token", [a.prototypeToken.actorLink, a.prototypeToken.name, a.prototypeToken.texture.src], [true, "Alpha", "art/a.webp"]);
+  eq("cardActorData ownership default", a.ownership.default, 2);
+  const e = P.cardActorData({ name: "", flags: {} }, cfg);
+  eq("cardActorData empty entry", [e.name, e.img, e.flags["invincible-plus-ultra"].base.rank, e.flags["invincible-plus-ultra"].base.kind], ["Team", "icons/x.webp", "global", "teamBase"]);
+  eq("cardActorData idempotent normalize", P.normalize(a.flags["invincible-plus-ultra"].base).kind, "teamBase");
+  ck("cardActorData never throws on junk", (() => { try { for (const q of [null, undefined, 5, { flags: 7 }]) P.cardActorData(q, cfg); return true; } catch { return false; } })());
+  ck("isDefaultArt", P.isDefaultArt("", []) && P.isDefaultArt("systems/invincible/assets/icons/vehicle.svg", ["vehicle.svg"]) && P.isDefaultArt("icons/x.webp", ["icons/x.webp"]) && !P.isDefaultArt("art/a.webp", ["vehicle.svg"]) && !P.isDefaultArt("art/not-vehicle.svgx", ["vehicle.svg"]));
+  ck("TEAM_BASE_KIND", P.TEAM_BASE_KIND === "teamBase");
+}
+
 if (fails.length) { console.error(`FAILED ${fails.length}/${n}:\n - ${fails.join("\n - ")}`); process.exit(1); }
 if (n < 120) { console.error(`only ${n} checks (<120)`); process.exit(1); }
 console.log(`OK ${n} checks`);

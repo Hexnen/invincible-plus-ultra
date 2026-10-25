@@ -313,7 +313,7 @@ export const vehicles = {
     const e = S.resolve(team);
     S.assertCanEdit(e, user);
     const a = typeof src === "string" ? (game.actors.get(src) ?? await fromUuid(src)) : src;
-    if (!a || a.documentName !== "Actor" || a.type !== "vehicle") throw new BaseError("badType", { type: a?.type ?? "?" });
+    if (!a || a.documentName !== "Actor" || a.type !== "vehicle" || S.isCard(a)) throw new BaseError("badType", { type: a?.type ?? "?" });   // a team base is itself a vehicle-typed actor: never a team vehicle
     if (!S.isStaff(user) && !a.testUserPermission(user, "LIMITED")) throw new BaseError("noPermission");
     const B = S.data(e);
     if (P.sortedList(B.vehicles).some((v) => v.uuid === a.uuid)) throw new BaseError("badInput", { what: "duplicate" });
