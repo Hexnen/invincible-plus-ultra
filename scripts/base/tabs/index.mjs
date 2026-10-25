@@ -33,7 +33,8 @@
    The sheet repaints the body when the card actor changes, EXCEPT while a text field inside the body has focus (it repaints on blur), so
    a tab can use "commit on change/blur" inputs without losing the cursor. Fields inside a tab should commit on change (blur/Enter), Escape reverts. */
 import { base } from "./base.mjs";                                  // B5 (done)
-import { upgrades, events, gear } from "./placeholder.mjs";            // B6-B8: replace each by its own module (upgrades.mjs ...)
+import { upgrades } from "./upgrades.mjs";                          // B6 (done)
+import { events, gear } from "./placeholder.mjs";                    // B7-B8: replace each by its own module (events.mjs ...)
 
 export const TABS = [base, upgrades, events, gear];
 export const tabById = (id) => TABS.find((x) => x.id === id) ?? TABS[0];
