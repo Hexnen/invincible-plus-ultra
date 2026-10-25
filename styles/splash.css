@@ -1,4 +1,4 @@
-/* Invincible Splash (now part of Invincible - Sheet Plus): splash layer. Font: the "Comic" family (KOMIKAH) declared by the invincible system. */
+/* Invincible Splash (now part of Invincible - Plus Ultra): splash layer. Font: the "Comic" family (KOMIKAH) declared by the invincible system. */
 /* Żetony palety (były 29 powtórzeń literałów). Definiowane też na .ins-chat, bo znacznik na karcie czatu leży poza warstwą splasha.
    Atrybuty SVG w splash.mjs nie przyjmują var(), więc tam te same trzy wartości zostają literałami. */
 #invincible-splash-layer, .ins-chat {

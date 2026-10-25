@@ -1,0 +1,7 @@
+/* Polish-glyph patched copies of the system's Komika Hand fonts (the originals lack A-ogonek, C-acute, ... ). Same families/descriptors as
+   systems/invincible/css/invincible.css; this file is @imported from sheet-plus.css, i.e. loaded after the system's, and for identical
+   @font-face descriptors the last declared rule wins (CSS Fonts 4, font matching: later rules override earlier ones). Relative URLs. */
+@font-face{font-family:Comic;src:url("../fonts/KOMIKAH_Regular-pl.ttf");font-display:swap}
+@font-face{font-family:Comic;src:url("../fonts/KOMIKAH_Bold-pl.ttf");font-weight:bold;font-display:swap}
+@font-face{font-family:Comic;src:url("../fonts/KOMIKAH_RegularItalic-pl.ttf");font-style:italic;font-display:swap}
+@font-face{font-family:Comic;src:url("../fonts/KOMIKAH_BoldItalic-pl.ttf");font-weight:bold;font-style:italic;font-display:swap}

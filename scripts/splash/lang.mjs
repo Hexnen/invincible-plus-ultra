@@ -1,6 +1,6 @@
 /* Splash strings (INSPLASH.*), embedded because Foundry reads a module's language list only when the server starts.
    main.mjs merges them into game.i18n.translations at runtime, so game.i18n.localize("INSPLASH....") works as before.
-   Setting names carry a "Splash: " prefix because they now share the Sheet Plus settings list. */
+   Setting names carry a "Splash: " prefix because they now share the Plus Ultra settings list. */
 export const EN = {
   "INSPLASH.Settings.Enabled.Name": "Splash: Show splashes",
   "INSPLASH.Settings.Enabled.Hint": "Comic splash words after Invincible rolls (this client only).",

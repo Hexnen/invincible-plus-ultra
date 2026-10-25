@@ -1,0 +1,665 @@
+/* Invincible - Plus Ultra: COMBAT BANNERS (scripts/combat/). A short announcement that slides down from the top of the screen when a combat
+   starts, when the round changes and when the combat ends. Mode: Operate (a status you glance at while playing), so it is brief and calm;
+   the one authored moment is the slide with its settle and the pulse on the numeral. It is NOT the comic splash: no burst shapes, no rays.
+
+   Language: the module's own. An INK panel (the map behind it is busy, like the Challenges cards), leaning -6deg like the handle and the
+   section titles, with the title on a tilted YELLOW plate that breaks out of the panel's edge (the same plate as the card names and the
+   sheet's section titles; the END plate is red-ink, like the TIME UP sticker), the numeral in Titles, tabular, with the unit label beside
+   it (a unit, not an eyebrow). Hard edges, no side stripes, no gradient text, no glass. Halftone dots only on the empty tail at the right
+   end of the panel (an empty area by construction: the content never reaches it).
+
+   STACKING. Core: #ui-left / #ui-middle / #ui-right are z-index var(--z-index-app) = 30 in body.game, windows are 100, canvas#board 0. One
+   below the interface layer = above the canvas, UNDER the menus and the scene navigation (so it emerges from behind the navigation bar),
+   under windows and dialogs. Same value as the Challenges HUD. pointer-events: none everywhere: the banner never blocks the map.
+   POSITION. combat/banner.mjs measures: --icb-top (just below the scene navigation's bottom edge), --icb-cx (centre of the free map area:
+   window minus sidebar minus scene controls, and clear of the Challenges HUD when that would touch it), --icb-maxw.
+
+   CONTRAST (WCAG relative luminance, on the panel ink #0c1a2e unless noted):
+     white 17.5 (labels, END title is on red) | numeral yellow #ffe72a 13.9 | caption #d5dff0 13.0 | unit label #a9bcdc 9.1
+     back numeral cyan #3bb8e8 7.7 | ink on yellow plate 13.9 | white on red-ink #b3261e 6.5 | ink on the BACK sticker (#3bb8e8) 7.7
+   Non-colour cues: the unit word beside every numeral, the BACK sticker has a glyph and a word, the END plate says it in words. */
+
+#invincible-combat-banner {
+  --icb-ink: #0c1a2e;
+  --icb-yellow: #ffe72a;
+  --icb-cyan-lt: #3bb8e8;
+  --icb-red-ink: #b3261e;
+  --icb-text: #d5dff0;
+  --icb-label: #a9bcdc;
+  --icb-fa: var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free";
+
+  position: fixed;
+  top: var(--icb-top, 58px);
+  left: var(--icb-cx, 50%);
+  z-index: calc(var(--z-index-app, 30) - 2);   /* one below the initiative bar (-1): a banner slides out from behind the bar as well as behind the navigation */
+  width: max-content;
+  max-width: var(--icb-maxw, 92vw);
+  transform: translateX(-50%);
+  pointer-events: none;
+  font-family: Comic, sans-serif;
+}
+#invincible-combat-banner *, #invincible-combat-banner *::before, #invincible-combat-banner *::after { box-sizing: border-box; pointer-events: none; }
+
+/* ---------- the panel ---------- */
+#invincible-combat-banner .icb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .2em;
+  width: max-content;
+  max-width: 100%;
+  min-height: 3.1em;
+  padding: .25em 2.4em .25em 0;     /* the right padding is the empty tail (halftone) */
+  font-size: calc(var(--icb-scale, 1) * var(--icb-fit, 1) * 1rem);   /* --icb-fit < 1 only in a window too narrow for the banner */
+  line-height: 1.15;
+  color: var(--icb-text);
+  background: var(--icb-ink);
+  border: .125em solid var(--icb-ink);
+  box-shadow: inset 0 0 0 1px rgba(255, 231, 42, .38), 0 .4em 1em rgba(0, 0, 0, .45);   /* floats over the map: soft shadow; the hairline separates it from dark scenery */
+  transform: skewX(-6deg);
+  will-change: translate;
+}
+#invincible-combat-banner .icb > * { transform: skewX(6deg); }   /* the content stands upright inside the lean */
+#invincible-combat-banner .icb::after {   /* the empty tail: halftone dots fading in toward the edge */
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2.2em;
+  background: radial-gradient(circle, rgba(169, 188, 220, .3) 1.1px, transparent 1.6px) 0 0 / 8px 8px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000);
+  mask-image: linear-gradient(90deg, transparent, #000);
+}
+
+/* ---------- the title plate (start / end) ---------- */
+#invincible-combat-banner .icb-plate {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  margin: -.45em 0 -.45em -.55em;   /* breaks out of the panel's top, bottom and left edges */
+  padding: .1em .85em .2em 1em;
+  font: 400 1.75em/1.1 Titles, Comic, sans-serif;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-shadow: none;
+  white-space: nowrap;
+  color: var(--icb-ink);            /* ink on yellow 13.9 */
+  background: var(--icb-yellow);
+  border: .09em solid var(--icb-ink);
+  transform: skewX(6deg) rotate(-1.4deg);
+  transform-origin: left center;
+}
+#invincible-combat-banner .icb[data-kind="end"] .icb-plate { color: #fff; background: var(--icb-red-ink); }   /* white on red-ink 6.5 */
+
+/* ---------- the figure: unit label + numeral ---------- */
+#invincible-combat-banner .icb-fig {
+  display: flex;
+  align-items: baseline;
+  gap: .4em;
+  padding: 0 .6em 0 .9em;
+  white-space: nowrap;
+}
+#invincible-combat-banner .icb-lab {
+  font: 400 1.2em/1 Titles, Comic, sans-serif;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--icb-label);          /* 9.1 */
+}
+#invincible-combat-banner .icb-num {
+  display: inline-block;
+  min-width: .7em;
+  text-align: center;
+  font: 400 3.1em/1 Titles, Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  color: var(--icb-yellow);         /* yellow on ink 13.9 */
+  text-shadow: none;
+}
+/* the round-only banner is the quiet one, but the numeral is its whole point: a little bigger, the label white */
+#invincible-combat-banner .icb[data-kind="round"] { padding-left: .9em; }
+#invincible-combat-banner .icb[data-kind="round"] .icb-fig { padding-left: 0; }
+#invincible-combat-banner .icb[data-kind="round"] .icb-lab { font-size: 1.45em; color: #fff; }   /* white on ink 17.5 */
+#invincible-combat-banner .icb[data-kind="round"] .icb-num { font-size: 3.5em; }
+#invincible-combat-banner .icb.icb-is-back .icb-num { color: var(--icb-cyan-lt); }   /* cyan on ink 7.7: going back is quieter, and says BACK */
+
+/* ---------- caption ---------- */
+#invincible-combat-banner .icb-cap {
+  margin: 0;
+  padding: 0 .2em 0 .3em;
+  font: italic 400 1em/1.25 Comic, sans-serif;
+  color: var(--icb-text);           /* 13.0 */
+  white-space: nowrap;
+}
+#invincible-combat-banner .icb-cap[hidden] { display: none; }
+#invincible-combat-banner .icb[data-kind="end"] .icb-cap { padding-left: .9em; font-size: 1.2em; }
+#invincible-combat-banner .icb-n {
+  font: 400 1.5em/1 Titles, Comic, sans-serif;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: var(--icb-yellow);
+  margin: 0 .05em;
+}
+
+/* ---------- the BACK sticker (round went down) ---------- */
+#invincible-combat-banner .icb-back {
+  position: absolute;
+  top: -.7em;
+  right: 1.4em;
+  display: inline-flex;
+  align-items: center;
+  gap: .35em;
+  padding: 0 .6em .05em .5em;
+  font: 400 .8em/1.3 Titles, Comic, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--icb-ink);            /* ink on cyan 7.7 */
+  background: var(--icb-cyan-lt);
+  border: .12em solid var(--icb-ink);
+  transform: skewX(6deg) rotate(-3.5deg);
+  animation: icb-stamp .3s .38s var(--icb-ease, cubic-bezier(.16, 1, .3, 1)) backwards;
+}
+#invincible-combat-banner .icb-back[hidden] { display: none; }
+#invincible-combat-banner .icb-back-i::before { content: "\f0e2"; font: 900 .85em/1 var(--icb-fa); }
+@keyframes icb-stamp { from { opacity: 0; scale: 1.6; } to { opacity: 1; scale: 1; } }
+
+/* ---------- screen reader only (the words; the picture is aria-hidden) ---------- */
+#invincible-combat-banner .icb-sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- narrow windows: the plate and the label give way, never the numeral ---------- */
+@media (max-width: 1099px) {
+  #invincible-combat-banner .icb-plate { font-size: 1.45em; }
+  #invincible-combat-banner .icb-num { font-size: 2.7em; }
+  #invincible-combat-banner .icb[data-kind="round"] .icb-num { font-size: 3em; }
+}
+
+/* ---------- reduced motion: the slide is replaced by a fade in script; the sticker lands without scaling ---------- */
+@media (prefers-reduced-motion: reduce) {
+  #invincible-combat-banner .icb-back { animation: none; }
+  #invincible-combat-banner .icb { will-change: auto; }
+}
+@media (forced-colors: active) {
+  #invincible-combat-banner .icb { border-color: CanvasText; }
+  #invincible-combat-banner .icb-plate { border-color: CanvasText; }
+}
+
+
+/* =====================================================================================================================================
+   COMBAT INITIATIVE BAR (scripts/combat/bar.mjs). A strip of tiles in turn order at the top of the screen while a combat is running on the
+   viewed scene: portrait, initiative, Health and Resolve, the name on hover (tooltip) and, for the active turn, in the tile itself.
+   Mode: Operate (read at a glance, clicked now and then); the one authored moment is the slide out from under the scene navigation and the
+   glide of the turn; everything else is state feedback. Same family as the Challenges HUD and the banners above: an INK band leaning -6deg
+   (children stand upright, like .icb), portraits as -15deg parallelograms with the image counter-skewed, slim SEGMENTED bars with slanted ink
+   dividers (the sheet's / Damage taken lean), yellow name plates, Titles numerals, one yellow button style (hard offset shadow) for the GM's
+   previous / next turn. No side stripes, no gradient text, no glass, no glow.
+
+   DISPOSITION = the accent of the tile (portrait frame, top tab, corner chip), the same four states as the token borders on the map:
+     friendly #3bb8e8 (shield) | neutral #ffe72a (handshake) | hostile #e5483f, chip red-ink #b3261e + white glyph (crosshairs) | secret #a79bd8 (user-secret)
+   It changes live: a colour transition on the frame, the tab and the chip when the token's disposition is edited. The glyph and the word
+   (tooltip / accessible name) carry it without colour.
+   ACTIVE TURN: the tile gets the name plate and the value column, a larger portrait, a yellow ring (outline) and a yellow notch under it.
+   SELECTED token (controlled on the map): white ring. HOVER echo: translucent white ring. DEFEATED: grey portrait + skull + struck-out name.
+   HIDDEN (GM only sees these): dashed frame, dimmed portrait and bars + eye-slash chip.
+
+   CONTRAST (WCAG relative luminance; band ink #0c1a2e, tile #112540):
+     ink on yellow 13.9 (name plate, initiative, round chip, buttons) | ink on friendly cyan 7.7 | ink on secret violet 6.9 | white on red-ink 6.5
+     yellow numerals on tile 12.5 | cyan #3bb8e8 numerals 6.8 | red-lt #ff8178 numerals (low Health) 6.4 | label #a9bcdc 8.0 | white 16
+     frames on tile: yellow 12.5, cyan 6.8, violet 6.1, red #e5483f 3.9 (non-text needs 3) | fills on the track #1b2d4a: yellow 11.0, cyan #0096cb 4.1, red 3.5.
+   Non-colour cues: disposition glyph + word, skull, eye-slash, dashed frame, aria-current + the yellow notch, text numbers in the active tile. */
+
+@property --icbar-n { syntax: "<integer>"; inherits: false; initial-value: 0; }
+
+#invincible-combat-bar {
+  --icbar-ink: #0c1a2e;
+  --icbar-tile: #112540;
+  --icbar-tile-hi: #16304f;
+  --icbar-yellow: #ffe72a;
+  --icbar-cyan: #0096cb;
+  --icbar-cyan-lt: #3bb8e8;
+  --icbar-red: #e5483f;
+  --icbar-red-lt: #ff8178;
+  --icbar-red-ink: #b3261e;
+  --icbar-violet: #a79bd8;
+  --icbar-label: #a9bcdc;
+  --icbar-text: #d5dff0;
+  --icbar-frame: #7d93b9;
+  --icbar-track: #1b2d4a;
+  --icbar-out: cubic-bezier(.16, 1, .3, 1);
+  --icbar-fa: var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free";
+
+  position: fixed;
+  top: var(--icbar-top, 58px);
+  left: var(--icbar-cx, 50%);
+  /* One below the interface layer (core: #ui-* are z-index var(--z-index-app) = 30, windows 100, the canvas 0): above the map, UNDER the
+     menus and the scene navigation it emerges from; one above the banners (-2), which slide out from behind it. */
+  z-index: calc(var(--z-index-app, 30) - 1);
+  width: max-content;
+  max-width: var(--icbar-maxw, 92vw);
+  transform: translateX(-50%);
+  pointer-events: none;
+  font-family: Comic, sans-serif;
+  font-size: calc(var(--icbar-scale, 1) * 1rem);
+  line-height: 1.15;
+  color: var(--icbar-text);
+}
+#invincible-combat-bar *, #invincible-combat-bar *::before, #invincible-combat-bar *::after { box-sizing: border-box; }
+#invincible-combat-bar.icbar-bye, #invincible-combat-bar.icbar-bye * { pointer-events: none !important; }
+
+/* ---------- the band ---------- */
+#invincible-combat-bar .icbar-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  width: max-content;
+  max-width: 100%;
+  padding: 0 .6em 0 .6em;
+  color: var(--icbar-text);
+  background: none;   /* an island of tiles: no panel behind the strip; every tile, the round chip and the buttons carry their own ink */
+  transform: skewX(-6deg);
+}
+#invincible-combat-bar .icbar-shell > * { transform: skewX(6deg); }   /* the content stands upright inside the lean */
+
+/* ---------- round chip + GM turn buttons ---------- */
+#invincible-combat-bar .icbar-round {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 2.3em;
+  padding: .12em .55em .24em;
+  font: 400 1.35em/1 Titles, Comic, sans-serif;
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+  color: var(--icbar-ink);          /* ink on yellow 13.9 */
+  background: var(--icbar-yellow);
+  border: .09em solid var(--icbar-ink);
+  pointer-events: none;             /* informational only: no hover, no cursor, not focusable */
+  box-shadow: 0 .3em .7em rgba(0, 0, 0, .5);
+  transform: skewX(6deg) rotate(-1.5deg);
+}
+#invincible-combat-bar .icbar-rn { display: block; }
+#invincible-combat-bar .icbar-shell > .icbar-nav {
+  flex: none;
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 2.1em;
+  height: 2.1em;
+  min-height: 0;
+  margin: 0 3px 3px 0;
+  padding: 0;
+  color: var(--icbar-ink);
+  background: var(--icbar-yellow);
+  border: 2px solid var(--icbar-ink);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--icbar-cyan);
+  cursor: var(--cursor-pointer, pointer);
+  transform: none;                  /* leans -6deg with the band, like the Challenges handle */
+  transition: transform .12s var(--icbar-out), background-color .12s var(--icbar-out), box-shadow .12s var(--icbar-out);
+}
+#invincible-combat-bar .icbar-nav[hidden] { display: none; }
+#invincible-combat-bar .icbar-nav > i { display: block; transform: skewX(6deg); font: 900 .8em/1 var(--icbar-fa); }
+#invincible-combat-bar .icbar-g-prev::before { content: "\f048"; }
+#invincible-combat-bar .icbar-g-next::before { content: "\f051"; }
+#invincible-combat-bar .icbar-nav:not(:disabled):is(:hover, :focus-visible) { background: #fff27a; transform: translate(-1px, -1px); }
+#invincible-combat-bar .icbar-nav:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--icbar-cyan); }
+#invincible-combat-bar .icbar-nav:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-combat-bar .icbar-nav:disabled { opacity: .4; cursor: default; box-shadow: 1px 1px 0 var(--icbar-cyan); }
+
+/* ---------- the strip: scrolls sideways when the tiles do not fit; thin bar, fades at the edges that have more ---------- */
+#invincible-combat-bar .icbar-scroller {
+  --fl: 0em;
+  --fr: 0em;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: .3em .7em .9em;   /* room for the active ring and the notch: nothing clipped, nothing overflowing */
+  overflow: hidden;                 /* never a native scrollbar (it grew the bar and shifted --icbar-bottom): scrolling is by wheel, focus and scrollTo(), the fades say there is more */
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--fl), #000 calc(100% - var(--fr)), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 var(--fl), #000 calc(100% - var(--fr)), transparent 100%);
+}
+#invincible-combat-bar .icbar-scroller::-webkit-scrollbar { display: none; width: 0; height: 0; }
+#invincible-combat-bar .icbar-scroller.icbar-fl { --fl: 1.4em; }
+#invincible-combat-bar .icbar-scroller.icbar-fr { --fr: 1.4em; }
+#invincible-combat-bar .icbar-scroller.icbar-scrolls { pointer-events: auto; }
+#invincible-combat-bar .icbar-list {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .45em;
+  width: max-content;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#invincible-combat-bar .icbar-item { flex: none; margin: 0; padding: 0; }
+
+/* ---------- a tile ---------- */
+#invincible-combat-bar .icbar-tile {
+  --acc: var(--icbar-yellow);
+  --chip-bg: var(--acc);
+  --chip-fg: var(--icbar-ink);
+  --art: 2.5em;
+  --padt: .26em;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto;
+  grid-template-areas: "art" "bars";
+  align-items: start;
+  row-gap: .2em;
+  padding: var(--padt) .7em .3em;
+  color: var(--icbar-text);
+  background: var(--icbar-tile);
+  box-shadow: inset 0 0 0 1px rgba(125, 147, 185, .28), 0 .3em .7em rgba(0, 0, 0, .5);   /* floats over the map: soft shadow */
+  cursor: var(--cursor-pointer, pointer);
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background-color .2s linear, outline-color .2s linear;
+}
+#invincible-combat-bar .icbar-tile:is(:hover, :focus-visible) { background: var(--icbar-tile-hi); }
+#invincible-combat-bar .icbar-tile:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-combat-bar .icbar-tile::before {   /* the top tab: the disposition colour */
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: .2em;
+  background: var(--acc);
+  transition: background-color .35s linear;
+}
+#invincible-combat-bar .icbar-tile[data-disp="1"] { --acc: var(--icbar-cyan-lt); }
+#invincible-combat-bar .icbar-tile[data-disp="0"] { --acc: var(--icbar-yellow); }
+#invincible-combat-bar .icbar-tile[data-disp="-1"] { --acc: var(--icbar-red); --chip-bg: var(--icbar-red-ink); --chip-fg: #fff; }   /* white on red-ink 6.5 */
+#invincible-combat-bar .icbar-tile[data-disp="-2"] { --acc: var(--icbar-violet); }
+
+/* selected / echo / active: rings drawn with outline (no layout shift) */
+#invincible-combat-bar .icbar-tile[data-sel] { outline: 2px solid #fff; outline-offset: 1px; }
+#invincible-combat-bar .icbar-tile[data-echo]:not([data-sel]) { outline: 2px solid rgba(255, 255, 255, .55); outline-offset: 1px; }
+#invincible-combat-bar .icbar-tile[data-active] {
+  --art: 3.5em;
+  grid-template-columns: auto minmax(9em, 12em);
+  grid-template-areas: "art name" "art bars";
+  align-items: center;
+  column-gap: .65em;
+  row-gap: .22em;
+  padding-right: .9em;
+  background: var(--icbar-tile-hi);
+  outline: 3px solid var(--icbar-yellow);   /* yellow on the band 13.9 */
+  outline-offset: 2px;
+}
+#invincible-combat-bar .icbar-tile[data-active][data-sel] { box-shadow: inset 0 0 0 2px #fff; }
+#invincible-combat-bar .icbar-tile[data-active]:focus-visible { outline-color: #fff; }
+#invincible-combat-bar .icbar-tile[data-active]::after {   /* the notch under the active tile */
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 5px);
+  width: .95em;
+  height: .5em;
+  translate: -50% 0;
+  background: var(--icbar-yellow);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* portrait: a parallelogram, the image counter-skewed and scaled so it fills the leaning frame */
+#invincible-combat-bar .icbar-art {
+  grid-area: art;
+  position: relative;
+  justify-self: center;
+  align-self: start;
+  width: var(--art);
+  height: var(--art);
+  overflow: hidden;
+  background: var(--icbar-track);
+  border: .14em solid var(--acc);
+  transform: skewX(-15deg);
+  transition: border-color .35s linear, filter .25s linear;
+}
+#invincible-combat-bar .icbar-tile[data-own] .icbar-art { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .85); }
+#invincible-combat-bar .icbar-ph { position: absolute; inset: 0; display: grid; place-items: center; transform: skewX(15deg); color: var(--icbar-frame); }
+#invincible-combat-bar .icbar-ph::before { content: "\f007"; font: 900 1em/1 var(--icbar-fa); }
+#invincible-combat-bar .icbar-img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; transform: skewX(15deg) scale(1.3); }
+#invincible-combat-bar .icbar-state { position: absolute; inset: 0; display: none; place-items: center; transform: skewX(15deg); }
+
+/* corner tags: initiative (top left), disposition chip (bottom right of the portrait), hidden chip (top right) */
+#invincible-combat-bar .icbar-init {
+  position: absolute;
+  z-index: 3;
+  top: .2em;
+  left: .1em;
+  min-width: 1.35em;
+  padding: 0 .3em .06em;
+  font: 400 .75em/1.25 Titles, Comic, sans-serif;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--icbar-ink);          /* ink on yellow 13.9 */
+  background: var(--icbar-yellow);
+  border: .1em solid var(--icbar-ink);
+  transform: skewX(-6deg);
+  pointer-events: none;
+}
+#invincible-combat-bar .icbar-disp {
+  position: absolute;
+  z-index: 3;
+  left: calc(.7em + var(--art) - .55em);
+  top: calc(var(--padt) + var(--art) - 1.05em);
+  display: grid;
+  place-items: center;
+  width: 1.25em;
+  height: 1.25em;
+  color: var(--chip-fg);
+  background: var(--chip-bg);
+  border: .09em solid var(--icbar-ink);
+  transform: skewX(-6deg);
+  transition: background-color .35s linear, color .35s linear;
+  pointer-events: none;
+}
+#invincible-combat-bar .icbar-disp::before { font: 900 .62em/1 var(--icbar-fa); }
+#invincible-combat-bar .icbar-tile[data-disp="1"] .icbar-disp::before { content: "\f3ed"; }    /* shield-halved */
+#invincible-combat-bar .icbar-tile[data-disp="0"] .icbar-disp::before { content: "\f2b5"; }    /* handshake */
+#invincible-combat-bar .icbar-tile[data-disp="-1"] .icbar-disp::before { content: "\f05b"; }   /* crosshairs */
+#invincible-combat-bar .icbar-tile[data-disp="-2"] .icbar-disp::before { content: "\f21b"; }   /* user-secret */
+#invincible-combat-bar .icbar-hid {
+  position: absolute;
+  z-index: 3;
+  display: none;
+  left: calc(.7em + var(--art) - .75em);
+  top: calc(var(--padt) - .05em);
+  place-items: center;
+  width: 1.1em;
+  height: 1.1em;
+  color: #fff;
+  background: var(--icbar-ink);
+  border: .09em solid var(--icbar-frame);
+  pointer-events: none;
+}
+#invincible-combat-bar .icbar-hid::before { content: "\f070"; font: 900 .6em/1 var(--icbar-fa); }   /* eye-slash */
+#invincible-combat-bar .icbar-tile[data-hidden] .icbar-hid { display: grid; }
+#invincible-combat-bar .icbar-tile[data-hidden] .icbar-art { border-style: dashed; filter: saturate(.4) brightness(.85); }
+#invincible-combat-bar .icbar-tile[data-hidden] .icbar-bars { filter: saturate(.4) brightness(.9); }
+#invincible-combat-bar .icbar-tile[data-defeated] .icbar-art { filter: grayscale(1) brightness(.7); }
+#invincible-combat-bar .icbar-tile[data-defeated] .icbar-bars { opacity: .55; }
+#invincible-combat-bar .icbar-tile[data-defeated] .icbar-state { display: grid; }
+#invincible-combat-bar .icbar-tile[data-defeated] .icbar-state::before { content: "\f54c"; font: 900 1.3em/1 var(--icbar-fa); color: #fff; text-shadow: 1px 1px 0 var(--icbar-ink), -1px -1px 0 var(--icbar-ink), 1px -1px 0 var(--icbar-ink), -1px 1px 0 var(--icbar-ink); }
+
+/* the name (active tile only; everyone else has it in the tooltip and the accessible name) */
+#invincible-combat-bar .icbar-name { grid-area: name; display: none; align-self: center; min-width: 0; }
+#invincible-combat-bar .icbar-tile[data-active] .icbar-name { display: block; }
+#invincible-combat-bar .icbar-name > span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 .6em .12em .65em;
+  font: 400 1em/1.25 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  text-shadow: none;
+  white-space: nowrap;
+  color: var(--icbar-ink);          /* ink on yellow 13.9 */
+  background: var(--icbar-yellow);
+  transform: rotate(-1deg) skewX(-6deg);
+  transform-origin: left center;
+}
+#invincible-combat-bar .icbar-tile[data-defeated] .icbar-name > span { text-decoration: line-through; text-decoration-thickness: .1em; }
+
+/* ---------- Health / Resolve: two slim segmented bars ---------- */
+#invincible-combat-bar .icbar-bars {
+  grid-area: bars;
+  justify-self: center;
+  display: grid;
+  align-content: start;
+  row-gap: .16em;
+  width: var(--art);
+  min-height: calc(.42em * 2 + .16em);   /* the room stays reserved when this tile shows no bars, so the strip keeps one height */
+}
+#invincible-combat-bar.icbar-nobars .icbar-bars { display: none; }
+#invincible-combat-bar .icbar-tile[data-active] .icbar-bars { justify-self: stretch; align-self: start; width: auto; min-height: 0; }
+#invincible-combat-bar .icbar-row {
+  --fillc: var(--icbar-yellow);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  column-gap: .4em;
+  min-width: 0;
+}
+#invincible-combat-bar .icbar-row[hidden] { display: none; }
+#invincible-combat-bar .icbar-rs { --fillc: var(--icbar-cyan); }
+#invincible-combat-bar .icbar-row.icbar-low { --fillc: var(--icbar-red); }
+#invincible-combat-bar .icbar-bar {
+  --tw: 1.5px;
+  position: relative;
+  height: .42em;
+  min-width: 0;
+  background: var(--icbar-track) radial-gradient(circle, rgba(169, 188, 220, .22) .8px, transparent 1.2px) 0 0 / 5px 5px;
+  border: .09em solid var(--icbar-frame);
+  overflow: hidden;
+  transform: skewX(-15deg);
+}
+#invincible-combat-bar .icbar-bar[data-dense="1"] { --tw: 1px; }
+#invincible-combat-bar .icbar-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, .42) 0 32%, transparent 32%), var(--fillc);
+  box-shadow: inset -1.5px 0 0 var(--icbar-ink);   /* the fill's edge */
+  transform: translateX(calc((var(--v, 0) - 1) * 100%));   /* full width, slid left by what is missing: transform only */
+  transition: transform .6s var(--icbar-out);
+}
+#invincible-combat-bar .icbar-bar::after {   /* slanted ink dividers between the segments (none against the frame at the end) */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--tick, 10%) - var(--tw)), var(--icbar-ink) calc(var(--tick, 10%) - var(--tw)) var(--tick, 10%));
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--tw) - 1px), transparent 0);
+  mask-image: linear-gradient(90deg, #000 calc(100% - var(--tw) - 1px), transparent 0);
+}
+#invincible-combat-bar .icbar-glint { position: absolute; inset: 0; z-index: 1; opacity: 0; pointer-events: none; }
+#invincible-combat-bar .icbar-glint.icbar-good { background: #fff; animation: icbar-flash .6s ease-out; }
+#invincible-combat-bar .icbar-glint.icbar-bad { background: #ff3b30; animation: icbar-flash .6s ease-out; }
+@keyframes icbar-flash { 0% { opacity: .85; } 100% { opacity: 0; } }
+
+/* the value column and the icon: the active tile only, and only for a viewer who may see numbers (data-nums) */
+#invincible-combat-bar .icbar-ico, #invincible-combat-bar .icbar-val { display: none; }
+#invincible-combat-bar .icbar-tile[data-active] .icbar-row { grid-template-columns: 1.1em minmax(0, 1fr); }
+#invincible-combat-bar .icbar-tile[data-active][data-nums] .icbar-row { grid-template-columns: 1.1em minmax(0, 1fr) auto; }
+#invincible-combat-bar .icbar-tile[data-active] .icbar-ico {
+  display: block;
+  text-align: center;
+  font: 900 .62em/1 var(--icbar-fa);
+  color: var(--icbar-label);        /* 8.0 */
+}
+#invincible-combat-bar .icbar-hp .icbar-ico::before { content: "\f004"; }                                      /* heart */
+#invincible-combat-bar .icbar-rs .icbar-ico::before { content: "\f0e7"; }                                      /* bolt */
+#invincible-combat-bar .icbar-tile[data-kind="challenge"] .icbar-hp .icbar-ico::before { content: "\f140"; }   /* bullseye: progress */
+#invincible-combat-bar .icbar-tile[data-kind="challenge"] .icbar-rs .icbar-ico::before { content: "\f017"; }   /* clock: time left */
+#invincible-combat-bar .icbar-tile[data-active][data-nums] .icbar-val {
+  display: inline-flex;
+  align-items: baseline;
+  gap: .1em;
+  min-width: 3.3em;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+#invincible-combat-bar .icbar-num {
+  font: 400 .95em/1 Titles, Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  counter-reset: icbar-n var(--icbar-n, 0);
+  transition: --icbar-n .6s var(--icbar-out);
+}
+#invincible-combat-bar .icbar-num::after { content: counter(icbar-n); }
+#invincible-combat-bar .icbar-num.icbar-pct::after { content: counter(icbar-n) "%"; }
+#invincible-combat-bar .icbar-hp .icbar-num { color: var(--icbar-yellow); }             /* 12.5 */
+#invincible-combat-bar .icbar-rs .icbar-num { color: var(--icbar-cyan-lt); }            /* 6.8 */
+#invincible-combat-bar .icbar-hp.icbar-low .icbar-num { color: var(--icbar-red-lt); }   /* 6.4 */
+#invincible-combat-bar .icbar-max, #invincible-combat-bar .icbar-unit {
+  font: 700 .7em/1 Comic, sans-serif;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: var(--icbar-label);
+}
+#invincible-combat-bar .icbar-unit:not(:empty) { margin-left: .3em; }
+
+/* ---------- compact density (the strip would not fit): smaller portraits, thinner bars ---------- */
+#invincible-combat-bar.icbar-d1 .icbar-list { gap: .3em; }
+#invincible-combat-bar.icbar-d1 .icbar-tile { --art: 1.9em; --padt: .22em; row-gap: .14em; padding-inline: .55em; }
+#invincible-combat-bar.icbar-d1 .icbar-tile[data-active] { --art: 2.6em; padding-right: .75em; grid-template-columns: auto minmax(8em, 10.5em); }
+#invincible-combat-bar.icbar-d1 .icbar-bars { row-gap: .12em; min-height: calc(.3em * 2 + .12em); }
+#invincible-combat-bar.icbar-d1 .icbar-bar { height: .3em; border-width: 1px; }
+#invincible-combat-bar.icbar-d1 .icbar-init { top: .12em; left: .02em; font-size: .62em; min-width: 1.2em; }
+#invincible-combat-bar.icbar-d1 .icbar-disp { left: calc(.55em + var(--art) - .45em); width: 1.05em; height: 1.05em; top: calc(var(--padt) + var(--art) - .8em); }
+#invincible-combat-bar.icbar-d1 .icbar-hid { left: calc(.55em + var(--art) - .6em); width: .95em; height: .95em; }
+#invincible-combat-bar.icbar-d1 .icbar-shell > .icbar-nav { width: 1.8em; height: 1.8em; }
+#invincible-combat-bar.icbar-d1 .icbar-round { font-size: 1.1em; }
+
+/* ---------- narrow windows / touch ---------- */
+@media (max-width: 1099px) {
+  #invincible-combat-bar .icbar-tile[data-active] { grid-template-columns: auto minmax(7.5em, 9em); }
+}
+@media (pointer: coarse) {
+  #invincible-combat-bar .icbar-shell > .icbar-nav { width: 44px; height: 44px; font-size: 1rem; }
+  #invincible-combat-bar .icbar-tile { min-height: 44px; }
+}
+
+/* screen readers only */
+#invincible-combat-bar .icbar-sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- reduced motion: no travel (script fades instead); fills / numbers land at once; colour changes (state feedback) stay ---------- */
+@media (prefers-reduced-motion: reduce) {
+  #invincible-combat-bar .icbar-fill, #invincible-combat-bar .icbar-num { transition: none; }
+  #invincible-combat-bar .icbar-nav { transition: background-color .1s linear; }
+  #invincible-combat-bar .icbar-nav:not(:disabled):is(:hover, :focus-visible, :active) { transform: none; }
+}
+@media (forced-colors: active) {
+  #invincible-combat-bar .icbar-bar, #invincible-combat-bar .icbar-nav { border-color: CanvasText; }
+  #invincible-combat-bar .icbar-art { border-color: CanvasText; }
+  #invincible-combat-bar .icbar-fill { background: Highlight; }
+  #invincible-combat-bar .icbar-tile[data-active] { outline-color: Highlight; }
+}

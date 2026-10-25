@@ -1,8 +1,8 @@
 {
-  "id": "invincible-sheet-plus",
-  "title": "Invincible - Sheet Plus",
-  "description": "Comic-book polish for the Invincible system: character, challenge and vehicle sheets, all item sheets, the rich-text editor and chat cards (rolls collapsed and expanded, item, injury and power cards). Landing animations, portrait parallax, logo shine, animated bars. Includes the former Comic Splash module: comic splash words, rarity ribbon, sixes and stress badges after Year Zero rolls and a rarity badge on roll cards (settings prefixed \"Splash\"; it stays off if the standalone Invincible: Comic Splash module is still enabled). Experimental (off by default): blood for low Health, cracks for low Resolve, wound flash. Needs the Invincible system DOM (2.1.x).",
-  "version": "0.12.0",
+  "id": "invincible-plus-ultra",
+  "title": "Invincible - Plus Ultra",
+  "description": "The umbrella module for the Invincible system: comic-book polish for the character, challenge and vehicle sheets, all item sheets, the rich-text editor and chat cards (rolls collapsed and expanded, item, injury and power cards, damage taken with undo), the comic splash and the Challenges HUD. Landing animations, portrait parallax, logo shine, animated bars. Includes the former Comic Splash module: comic splash words, rarity ribbon, sixes and stress badges after Year Zero rolls and a rarity badge on roll cards (settings prefixed \"Splash\"; it stays off if the standalone Invincible: Comic Splash module is still enabled). Replaces the standalone \"Invincible: Comic Splash\" module: disable that one once this runs, and your Splash settings are copied over once. Replaces \"Invincible - Sheet Plus\" (this module under its old id): after the first run its settings are copied over once and old chat cards keep working. Challenges HUD: a panel in the top-right corner (beside the sidebar, with a slide-in animation and a collapse handle) listing the challenge tokens on the viewed scene with their Challenge Rating progress and Time Limit bars (settings prefixed \"Challenges\"). Experimental (off by default): blood for low Health, cracks for low Resolve, wound flash. Needs the Invincible system DOM (2.1.x).",
+  "version": "0.16.0",
   "authors": [
     {
       "name": "hexerpegi"

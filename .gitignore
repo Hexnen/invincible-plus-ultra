@@ -1,3 +1,6 @@
 .DS_Store
 Thumbs.db
 dev/
+fonts/user/*
+!fonts/user/README.txt
+fonts/KOMIKAH_*.ttf

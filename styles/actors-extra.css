@@ -1,4 +1,4 @@
-/* Invincible - Sheet Plus: Challenge and Vehicle actor sheets.
+/* Invincible - Plus Ultra: Challenge and Vehicle actor sheets.
    Reuses the character-sheet language from sheet-plus.css (tokens --isp-yellow / --isp-cyan / --isp-blue / --isp-ink / --isp-dots,
    skewed stamps, hard offset shadows, halftone only on empty areas, corner-tag cards).
    Scope: .invincible.sheet.actor.challenge and .invincible.sheet.actor.vehicle.
@@ -177,6 +177,46 @@
 .invincible.sheet.actor.challenge header.sheet-header .header-fields > div.form-group:nth-child(2) textarea:empty:not(:focus):not(:hover) {
   background: var(--isp-dots), var(--isp-note);
 }
+
+/* time unit: the empty third cell of the bar grid (injected by scripts/challenges/main.mjs): a small label over a select that follows the bar plates.
+   When the unit is not rounds, a one-line note says combat leaves this challenge's time alone. */
+.invincible.sheet.actor.challenge header.sheet-header div.grid > .isp-timeunit {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 4px 3px 2px;
+  border: 0;
+}
+.invincible.sheet.actor.challenge header.sheet-header div.grid > .isp-timeunit > label {
+  font-size: 12px;
+  line-height: 1.1;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--isp-label);
+}
+.invincible.sheet.actor.challenge header.sheet-header div.grid > .isp-timeunit > select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 32px;
+  padding: 0 4px;
+  background-color: #fff;
+  border: 2px solid var(--isp-ink);
+  font: 1.15rem/1.15 Titles, Comic, sans-serif;
+  letter-spacing: .3px;
+  box-shadow: 3px 3px 0 var(--isp-ink);
+}
+.invincible.sheet.actor.challenge header.sheet-header div.grid > .isp-timeunit > select:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+.invincible.sheet.actor.challenge header.sheet-header div.grid > .isp-timeunit > .isp-tu-note {
+  font: 12px/1.25 Comic, sans-serif;
+  color: var(--isp-label);
+  text-wrap: balance;
+}
+.invincible.sheet.actor.challenge header.sheet-header div.grid > .isp-timeunit > .isp-tu-note[hidden] { display: none; }
 
 /* bar meanings */
 .invincible.sheet.actor.challenge header.sheet-header div.grid > div.bar:nth-child(1)::after { content: var(--isp-t-cr); }

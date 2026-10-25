@@ -1,0 +1,155 @@
+/* Combat banner strings (ICB.*), embedded because Foundry reads a module's language list only when the server starts.
+   t() reads these tables directly (no game.i18n merge): the Challenges lang once had a key that was both a value and a parent, which broke
+   expandObject, and a missing merge once showed raw keys. Flat keys, English underneath, Polish on top. Settings names carry a "Combat: "
+   prefix because they share the Plus Ultra settings list (as "Splash: " and "Challenges: " do).
+   Plural forms: ICB.Ctx.Combatants.* and ICB.End.After.* exist in all four CLDR categories used by Polish (one / few / many / other) in BOTH
+   languages, so the parity check (tools: scripts/combat/check-lang.mjs) can demand identical key sets. */
+export const EN = {
+  "ICB.Settings.Enabled.Name": "Combat: show banners",
+  "ICB.Settings.Enabled.Hint": "A banner slides in from the top of the screen when a combat starts, when a new round begins and when the combat ends (only for the combat on the scene you are viewing; this client only).",
+  "ICB.Settings.Size.Name": "Combat: banner size",
+  "ICB.Settings.Size.Hint": "How big the combat banner is. This client only.",
+  "ICB.Settings.Size.small": "Small",
+  "ICB.Settings.Size.normal": "Normal",
+  "ICB.Settings.Size.large": "Large",
+  "ICB.Settings.Rounds.Name": "Combat: banners for rounds",
+  "ICB.Settings.Rounds.Hint": "All rounds shows a banner every time the round changes. Only start and end keeps the banners for the beginning and the end of the combat.",
+  "ICB.Settings.Rounds.all": "All rounds",
+  "ICB.Settings.Rounds.edges": "Only start and end",
+  "ICB.Start.Title": "Combat begins",
+  "ICB.End.Title": "Combat over",
+  "ICB.Round": "Round",
+  "ICB.Back": "Back",
+  "ICB.Ctx.Combatants.one": "{n} combatant",
+  "ICB.Ctx.Combatants.few": "{n} combatants",
+  "ICB.Ctx.Combatants.many": "{n} combatants",
+  "ICB.Ctx.Combatants.other": "{n} combatants",
+  "ICB.End.After.one": "after {n} round",
+  "ICB.End.After.few": "after {n} rounds",
+  "ICB.End.After.many": "after {n} rounds",
+  "ICB.End.After.other": "after {n} rounds",
+  "ICB.Settings.BarEnabled.Name": "Combat: show initiative bar",
+  "ICB.Settings.BarEnabled.Hint": "A strip at the top of the screen with the turn order of the combat on the scene you are viewing: portraits, initiative, Health and Resolve (this client only).",
+  "ICB.Settings.BarSize.Name": "Combat: bar size",
+  "ICB.Settings.BarSize.Hint": "How big the initiative bar is. This client only.",
+  "ICB.Settings.BarRes.Name": "Combat: bar shows resources",
+  "ICB.Settings.BarRes.Hint": "Which bars the tiles show. This only hides things on this client; what players may see at all is set by the GM's world setting.",
+  "ICB.Settings.BarRes.both": "Health and Resolve",
+  "ICB.Settings.BarRes.health": "Health only",
+  "ICB.Settings.BarRes.none": "None",
+  "ICB.Settings.BarPlayers.Name": "Combat bar: what players see",
+  "ICB.Settings.BarPlayers.Hint": "GM only. Whose Health and Resolve bars players see on the initiative bar. Players always see the portrait, name and initiative of every combatant they may see; numbers only for characters they own or observe. Hidden combatants and secret tokens are never shown to players.",
+  "ICB.Settings.BarPlayers.friendly": "Own and friendly only",
+  "ICB.Settings.BarPlayers.all": "Everyone's bars",
+  "ICB.Settings.BarPlayers.none": "No bars",
+  "ICB.Bar.Region": "Initiative order",
+  "ICB.Bar.RoundShort": "R{n}",
+  "ICB.Bar.RoundLong": "Round {n}",
+  "ICB.Bar.Prev": "Previous turn",
+  "ICB.Bar.Next": "Next turn",
+  "ICB.Bar.Turn": "Turn: {name}",
+  "ICB.Bar.Init": "Initiative {n}",
+  "ICB.Bar.NoInit": "No initiative",
+  "ICB.Bar.Disp.friendly": "Friendly",
+  "ICB.Bar.Disp.neutral": "Neutral",
+  "ICB.Bar.Disp.hostile": "Hostile",
+  "ICB.Bar.Disp.secret": "Secret",
+  "ICB.Bar.Hidden": "Hidden from players",
+  "ICB.Bar.Defeated": "Defeated",
+  "ICB.Bar.Active": "Active turn",
+  "ICB.Bar.Yours": "Yours",
+  "ICB.Bar.Health": "Health",
+  "ICB.Bar.Resolve": "Resolve",
+  "ICB.Bar.Progress": "Progress",
+  "ICB.Bar.TimeLeft": "Time left",
+  "ICB.Bar.Of": "{label} {value} of {max}",
+  "ICB.Bar.OfUnit": "{label} {value} of {max} {unit}",
+  "ICB.Bar.Pct": "{label} {pct} percent",
+  "ICB.Bar.Hint.Select": "Enter selects the token. Shift+Enter opens the sheet.",
+  "ICB.Bar.Hint.Sheet": "Shift+Enter opens the sheet. Enter shows the token on the map.",
+  "ICB.Bar.Hint.Pan": "Enter shows the token on the map."
+};
+
+export const PL = {
+  "ICB.Settings.Enabled.Name": "Walka: pokaż banery",
+  "ICB.Settings.Enabled.Hint": "Baner wsuwa się z góry ekranu, gdy walka się zaczyna, gdy zaczyna się nowa runda i gdy walka się kończy (tylko dla walki na oglądanej scenie; tylko ten klient).",
+  "ICB.Settings.Size.Name": "Walka: rozmiar banera",
+  "ICB.Settings.Size.Hint": "Jak duży jest baner walki. Tylko ten klient.",
+  "ICB.Settings.Size.small": "Mały",
+  "ICB.Settings.Size.normal": "Normalny",
+  "ICB.Settings.Size.large": "Duży",
+  "ICB.Settings.Rounds.Name": "Walka: banery rund",
+  "ICB.Settings.Rounds.Hint": "Wszystkie rundy pokazuje baner przy każdej zmianie rundy. Tylko początek i koniec zostawia banery na rozpoczęcie i zakończenie walki.",
+  "ICB.Settings.Rounds.all": "Wszystkie rundy",
+  "ICB.Settings.Rounds.edges": "Tylko początek i koniec",
+  "ICB.Start.Title": "Walka się zaczyna",
+  "ICB.End.Title": "Koniec walki",
+  "ICB.Round": "Runda",
+  "ICB.Back": "Wstecz",
+  "ICB.Ctx.Combatants.one": "{n} uczestnik",
+  "ICB.Ctx.Combatants.few": "{n} uczestników",
+  "ICB.Ctx.Combatants.many": "{n} uczestników",
+  "ICB.Ctx.Combatants.other": "{n} uczestników",
+  "ICB.End.After.one": "po {n} rundzie",
+  "ICB.End.After.few": "po {n} rundach",
+  "ICB.End.After.many": "po {n} rundach",
+  "ICB.End.After.other": "po {n} rundach",
+  "ICB.Settings.BarEnabled.Name": "Walka: pokaż pasek inicjatywy",
+  "ICB.Settings.BarEnabled.Hint": "Pasek u góry ekranu z kolejnością tur walki na oglądanej scenie: portrety, inicjatywa, Health i Resolve (tylko ten klient).",
+  "ICB.Settings.BarSize.Name": "Walka: rozmiar paska",
+  "ICB.Settings.BarSize.Hint": "Jak duży jest pasek inicjatywy. Tylko ten klient.",
+  "ICB.Settings.BarRes.Name": "Walka: zasoby na pasku",
+  "ICB.Settings.BarRes.Hint": "Które paski pokazują kafelki. To tylko ukrywa elementy na tym kliencie; to, co gracze w ogóle mogą zobaczyć, ustawia MG w ustawieniu świata.",
+  "ICB.Settings.BarRes.both": "Health i Resolve",
+  "ICB.Settings.BarRes.health": "Tylko Health",
+  "ICB.Settings.BarRes.none": "Brak",
+  "ICB.Settings.BarPlayers.Name": "Pasek walki: co widzą gracze",
+  "ICB.Settings.BarPlayers.Hint": "Tylko MG. Czyje paski Health i Resolve gracze widzą na pasku inicjatywy. Gracze zawsze widzą portret, nazwę i inicjatywę każdego uczestnika, którego mogą zobaczyć; liczby tylko dla postaci, które posiadają lub obserwują. Ukrytych uczestników i tajnych tokenów gracze nigdy nie widzą.",
+  "ICB.Settings.BarPlayers.friendly": "Tylko własne i przyjazne",
+  "ICB.Settings.BarPlayers.all": "Paski wszystkich",
+  "ICB.Settings.BarPlayers.none": "Bez pasków",
+  "ICB.Bar.Region": "Kolejność inicjatywy",
+  "ICB.Bar.RoundShort": "R{n}",
+  "ICB.Bar.RoundLong": "Runda {n}",
+  "ICB.Bar.Prev": "Poprzednia tura",
+  "ICB.Bar.Next": "Następna tura",
+  "ICB.Bar.Turn": "Tura: {name}",
+  "ICB.Bar.Init": "Inicjatywa {n}",
+  "ICB.Bar.NoInit": "Brak inicjatywy",
+  "ICB.Bar.Disp.friendly": "Przyjazny",
+  "ICB.Bar.Disp.neutral": "Neutralny",
+  "ICB.Bar.Disp.hostile": "Wrogi",
+  "ICB.Bar.Disp.secret": "Tajny",
+  "ICB.Bar.Hidden": "Ukryty przed graczami",
+  "ICB.Bar.Defeated": "Pokonany",
+  "ICB.Bar.Active": "Aktywna tura",
+  "ICB.Bar.Yours": "Twój",
+  "ICB.Bar.Health": "Health",
+  "ICB.Bar.Resolve": "Resolve",
+  "ICB.Bar.Progress": "Postęp",
+  "ICB.Bar.TimeLeft": "Pozostały czas",
+  "ICB.Bar.Of": "{label} {value} z {max}",
+  "ICB.Bar.OfUnit": "{label} {value} z {max} {unit}",
+  "ICB.Bar.Pct": "{label} {pct} procent",
+  "ICB.Bar.Hint.Select": "Enter zaznacza token. Shift+Enter otwiera kartę.",
+  "ICB.Bar.Hint.Sheet": "Shift+Enter otwiera kartę. Enter pokazuje token na mapie.",
+  "ICB.Bar.Hint.Pan": "Enter pokazuje token na mapie."
+};
+
+/* Local resolver. Language: game.i18n.lang, PL on top of EN. A missing key shows the key (never throws). */
+let cacheLang = null, cache = EN;
+export function t(key, data) {
+  const lang = globalThis.game?.i18n?.lang ?? "en";
+  if (lang !== cacheLang) { cacheLang = lang; cache = lang === "pl" ? { ...EN, ...PL } : EN; }
+  const s = cache[key] ?? key;
+  return data ? s.replace(/\{(\w+)\}/g, (m, k) => (data[k] === undefined ? m : String(data[k]))) : s;
+}
+
+/* The plural form for a count: base + "." + CLDR category of the current language, falling back to "other". */
+export function tn(base, n, data) {
+  const lang = globalThis.game?.i18n?.lang ?? "en";
+  let cat = "other";
+  try { cat = new Intl.PluralRules(lang).select(n); } catch { /* other */ }
+  const key = `${base}.${cat}`;
+  return t(EN[key] === undefined && PL[key] === undefined ? `${base}.other` : key, { n, ...data });
+}

@@ -1,5 +1,5 @@
 /* =====================================================================
-   Invincible - Sheet Plus: the rich-text editor (ProseMirror) used by item descriptions and actor biographies.
+   Invincible - Plus Ultra: the rich-text editor (ProseMirror) used by item descriptions and actor biographies.
 
    What was wrong before: an earlier rule forced `prose-mirror { display: block }`, which broke Foundry's flex layout.
    The menu container collapsed to 0px (so the toolbar was a 16px sliver, and invisible in the source view) and the

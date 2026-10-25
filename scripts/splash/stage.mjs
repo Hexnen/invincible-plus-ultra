@@ -190,7 +190,7 @@ function openStage(opts) {
   ctl.later = (fn, ms) => {
     ctl.timers.push(setTimeout(() => {
       if (ctl.dead) return;
-      try { fn(); } catch (e) { console.warn('invincible-sheet-plus (splash) | stage step failed', e); endCtl(ctl, false); }   // wyjątek nie zostawia sceny w DOM
+      try { fn(); } catch (e) { console.warn('invincible-plus-ultra (splash) | stage step failed', e); endCtl(ctl, false); }   // wyjątek nie zostawia sceny w DOM
     }, ms));
   };
   if (token) placeTokenStage(ctl);

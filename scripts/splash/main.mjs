@@ -1,4 +1,4 @@
-/* Invincible Splash, merged into Invincible - Sheet Plus. Started from scripts/module.js by a guarded dynamic import (start() below).
+/* Invincible Splash, merged into Invincible - Plus Ultra. Started from scripts/module.js by a guarded dynamic import (start() below).
    Two identifiers on purpose:
    - MOD  = this module's id: settings live here (keys prefixed "splash", e.g. splashEnabled) and so does the module api.
    - FLAG = the OLD standalone module's id, kept ONLY as the flag namespace of message flags (flags['invincible-splash'].ev) and actor flags
@@ -8,8 +8,9 @@ import { readRoll, classify } from './reader.mjs';
 import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
 import { EN, PL } from './lang.mjs';
+import { registerMigrationSettings, migrateSettings } from './migrate.mjs';
 
-const MOD = 'invincible-sheet-plus';
+const MOD = 'invincible-plus-ultra';
 const FLAG = 'invincible-splash';
 const STANDALONE = 'invincible-splash';
 const SYSTEM = 'invincible';
@@ -72,6 +73,7 @@ function registerSettings() {
   world('dry', { name: L('Dry.Name'), hint: L('Dry.Hint'), type: Number, default: 8, range: { min: 0, max: 30, step: 1 } });
   world('k0', { name: L('K0.Name'), hint: L('K0.Hint'), type: Number, default: 0, range: { min: -2, max: 2, step: 1 } });
   world('state', { name: L('State.Name'), hint: L('State.Hint'), type: Boolean, default: true });
+  registerMigrationSettings(MOD);
 }
 
 /* Etykiety informacyjne plakietek (szansa, stres, Resolve) z INSPLASH.Badge.*; brak klucza = angielski domyślnik z logic.mjs.
@@ -118,7 +120,7 @@ export function start(phases = {}) {
   run('init', () => {
     if (game.system.id !== SYSTEM) return;
     if (game.modules.get(STANDALONE)?.active) {
-      console.info(`${LOG} the standalone "${STANDALONE}" module is active, so the splash built into Sheet Plus stays disabled to avoid duplicate splashes. Disable the standalone module to use this one.`);
+      console.info(`${LOG} the standalone "${STANDALONE}" module is active, so the splash built into Plus Ultra stays disabled to avoid duplicate splashes. Disable the standalone module to use this one.`);
       return;
     }
     Hooks.on('i18nInit', mergeLang);   // tłumaczenia budowane od nowa: scal ponownie
@@ -126,7 +128,12 @@ export function start(phases = {}) {
     registerSettings();
     registerHooks();
     run('setup', wrapRollDialog);
-    run('ready', onReady);
+    /* one-time copy of the standalone module's settings; client values land synchronously, before onReady reads them */
+    run('ready', () => {
+      /* old Sheet Plus values first (they win), then the standalone module's; onReady does not wait for either */
+      import('../migrate-id.mjs').then(m => m.migrateFromSheetPlus()).catch(() => {}).then(() => migrateSettings(MOD, sk, LOG)).catch(() => {});
+      onReady();
+    });
   });
 }
 
@@ -364,7 +371,7 @@ hook('renderChatMessageHTML', (message, html) => {
 });
 
 /* ------------------------------------------------------------------ API: podgląd bez rzutu */
-/* game.modules.get('invincible-sheet-plus').api.splash.preview({ n:4, sixes:3, action:'slugfest', pushed:false, stress:0 }) */
+/* game.modules.get('invincible-plus-ultra').api.splash.preview({ n:4, sixes:3, action:'slugfest', pushed:false, stress:0 }) */
 function preview(opts = {}) {
   const rd = {
     n: opts.n ?? 4, sixes: opts.sixes ?? 2, newSixes: opts.pushed ? (opts.newSixes ?? opts.sixes ?? 1) : 0,

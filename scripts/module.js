@@ -1,4 +1,4 @@
-/* Invincible - Sheet Plus
+/* Invincible - Plus Ultra
  * Visual layer for the Invincible actor sheet. It depends on the system's DOM (system 2.1.x): selectors below
  * are deliberately narrow and every lookup is guarded, so a changed system degrades to "no effect", not to errors.
  */
@@ -9,8 +9,13 @@ const LAST = new Map();       // `${uuid}:${kind}` -> last fill (0-100), so bars
 const isSheet = (el) => !!el?.classList?.contains("invincible") && el.classList.contains("actor");
 const isCharacter = (el) => !el.classList.contains("challenge") && !el.classList.contains("vehicle");
 /* ---------- settings: blood, cracks, the wound flash and the bloody logo are experimental and off by default ---------- */
-const MODULE_ID = "invincible-sheet-plus";
+const MODULE_ID = "invincible-plus-ultra";
+const LEGACY_ID = "invincible-sheet-plus";   // the id this module had before it became Plus Ultra: only read from (chat message flags), never written
 const EXPERIMENTAL = "experimental";
+
+/* Message flags: reads check this module's own namespace first, then the legacy one (messages saved while the module was called
+   Invincible - Sheet Plus are never rewritten). Writes always go to the new namespace (see ledger writes below). */
+const msgFlag = (message, key) => message?.flags?.[MODULE_ID]?.[key] ?? message?.flags?.[LEGACY_ID]?.[key];
 
 function registerSettings() {
   if (game.settings.settings.has(`${MODULE_ID}.${EXPERIMENTAL}`)) return;
@@ -26,6 +31,15 @@ function registerSettings() {
 }
 try { if (game?.settings) registerSettings(); else Hooks.once("init", registerSettings); } catch { Hooks.once("init", registerSettings); }
 Hooks.once("init", registerSettings);
+
+/* hidden bookkeeping for the one-time copy of the settings from the old id (see scripts/migrate-id.mjs) */
+function registerLegacyFlags() {
+  for (const [key, scope] of [["migratedFromSheetPlus", "client"], ["migratedFromSheetPlusWorld", "world"]]) {
+    if (game.settings.settings.has(`${MODULE_ID}.${key}`)) continue;
+    game.settings.register(MODULE_ID, key, { scope, config: false, type: Boolean, default: false });
+  }
+}
+Hooks.once("init", registerLegacyFlags);
 
 const experimental = () => {
   try { return !!game.settings.get(MODULE_ID, EXPERIMENTAL); } catch { return false; }
@@ -370,7 +384,7 @@ function stuntDocs() {
           if (m && !map.has(stuntNorm(m[1]))) map.set(stuntNorm(m[1]), { name: m[1].trim(), text: m[2] });
         }
       }
-    } catch (e) { console.warn("invincible-sheet-plus | stunt descriptions unavailable", e); }
+    } catch (e) { console.warn("invincible-plus-ultra | stunt descriptions unavailable", e); }
     return map;
   })();
   return STUNT_DOCS;
@@ -577,7 +591,7 @@ document.addEventListener("click", (ev) => {
      1. preUpdateActor: when system.derived.health.value changes, remember { from, to, max, t } per actor,
      2. a capture-phase click on the attacker's "Apply damage" button: remember who rolled (the roll card's speaker),
      3. preCreateChatMessage: for the "Damage Taken" flavor, match both (recent enough) and store them in the message's own flags
-        (flags.invincible-sheet-plus.dmg = { from, to, max, attacker: { name, img, id } }), so every client and every reload shows
+        (flags.invincible-plus-ultra.dmg = { from, to, max, attacker: { name, img, id } }), so every client and every reload shows
         the same card.
    Rendering (renderChatMessageHTML -> damageCard) builds the card from the flags. Missing pieces (old messages, macros, another
    client) simply leave their part out; nothing here may throw. The system's own sentence stays in the DOM, visually hidden, with a
@@ -718,7 +732,7 @@ function damageCard(message, html) {
   const t = DMG_TXT[game.i18n.lang === "pl" ? "pl" : "en"];
 
   // ---- the data: captured flags first; a young card without them may show the actor's Health right now as its "after" ----
-  const flag = message.flags?.[MODULE_ID]?.dmg ?? {};
+  const flag = msgFlag(message, "dmg") ?? {};
   const actor = message.speakerActor;
   let from = dmgNum(flag.from), to = dmgNum(flag.to), max = dmgNum(flag.max);
   if (to === null && Date.now() - (message.timestamp ?? 0) < DMG_FRESH) { from = null; to = dmgNum(actor?.system?.derived?.health?.value); }
@@ -906,7 +920,7 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
 /* =====================================================================================================================
    UNDO FOR "APPLY DAMAGE" (self-contained section)
    The system's Apply damage records nothing about itself, so the GM client keeps a LEDGER on the attack card (the message whose button
-   was clicked): flags.invincible-sheet-plus.applied = [ { uid, actorUuid, tokenUuid, name, healthFrom, healthTo, conditionItemId,
+   was clicked): flags.invincible-plus-ultra.applied = [ { uid, actorUuid, tokenUuid, name, healthFrom, healthTo, conditionItemId,
    injuryItemId, damageMsgId, t } ], one entry per target actor that was hit. Undo reads it; nothing here edits the system.
    Capture WINDOW: opened by the capture-phase click on the card's Apply damage button, with the tokens selected at that moment as its
    targets (the system uses the same selection). It lasts until every target has its "Damage Taken" message (+ a short grace for the
@@ -928,7 +942,7 @@ const UNDO_BUSY = new Set();     // ledger entry uids being undone
 const UNDONE = new Set();        // uids already undone in this session
 
 const ledgerOf = (message) => {
-  const list = message?.flags?.[MODULE_ID]?.applied;
+  const list = msgFlag(message, "applied");
   return Array.isArray(list) ? list.filter((e) => e && typeof e === "object" && typeof e.uid === "string") : [];
 };
 
@@ -1119,7 +1133,7 @@ const undoText = () => UNDO_TXT[game.i18n.lang === "pl" ? "pl" : "en"];
 function ledgerFor(damageMsgId) {
   if (!damageMsgId) return null;
   for (const m of game.messages) {
-    if (!Array.isArray(m.flags?.[MODULE_ID]?.applied)) continue;
+    if (!Array.isArray(msgFlag(m, "applied"))) continue;
     const entry = ledgerOf(m).find((e) => e.damageMsgId === damageMsgId);
     if (entry) return { attack: m, entry };
   }
@@ -1261,7 +1275,12 @@ async function runUndo(attackId, uid, btn) {
         if (!message) return;
         const left = ledgerOf(message).filter((e) => e.uid !== uid);
         if (left.length) await message.update({ flags: { [MODULE_ID]: { applied: left } } });
-        else await message.unsetFlag(MODULE_ID, "applied");
+        else {
+          /* nothing left: clear the ledger, also a legacy one (otherwise the fallback would bring the old entries back) */
+          const clear = { [`flags.${MODULE_ID}.-=applied`]: null };
+          if (message.flags?.[LEGACY_ID]?.applied !== undefined) clear[`flags.${LEGACY_ID}.-=applied`] = null;
+          await message.update(clear);
+        }
       });
       ui.notifications.info(res.restore !== null && res.now !== null ? T.doneHp(res.name, res.now, res.restore) : T.done(res.name));
     }
@@ -1331,7 +1350,7 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
 /* the ledger is written ~0.5 s after the card appears: put the button on cards that are already on screen (every GM client) */
 Hooks.on("updateChatMessage", (message) => {
   try {
-    if (!game.user.isGM || !Array.isArray(message.flags?.[MODULE_ID]?.applied)) return;
+    if (!game.user.isGM || !Array.isArray(msgFlag(message, "applied"))) return;
     for (const e of ledgerOf(message)) {
       if (!e.damageMsgId) continue;
       const taken = game.messages.get(e.damageMsgId);
@@ -1349,7 +1368,7 @@ document.addEventListener("focusin", (ev) => {
 document.addEventListener("focusout", (ev) => { if (ev.target?.closest?.(UNDO_TIP)) game.tooltip?.deactivate?.(); });
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && ev.target?.closest?.(UNDO_TIP)) game.tooltip?.deactivate?.(); });
 
-/* handle for tests from the console: game.modules.get("invincible-sheet-plus").api */
+/* handle for tests from the console: game.modules.get("invincible-plus-ultra").api */
 Hooks.once("ready", () => {
   const mod = game.modules.get(MODULE_ID);
   if (mod) mod.api = { ...(mod.api ?? {}), openApplyWindow, closeApplyWindow, flushApplyWindow, runUndo, ledgerOf, ledgerFor, windows: APPLY_OPEN };
@@ -1760,3 +1779,34 @@ for (const phase of Object.keys(SPLASH_PHASES)) Hooks.once(phase, () => { SPLASH
 import("./splash/main.mjs")
   .then((splash) => splash.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | splash feature not loaded (sheets and chat cards are unaffected)`, err));
+
+/* CHALLENGES HUD (scripts/challenges/, styles/challenges.css): the same mechanism and the same recorded phases as the splash above. */
+/* One-time copy of the settings stored under the old module id (scripts/migrate-id.mjs); the splash awaits the same promise before its own copy. */
+Hooks.once("ready", () => { import("./migrate-id.mjs").then((m) => m.migrateFromSheetPlus()).catch((err) => console.warn(`${MODULE_ID} | settings migration`, err)); });
+
+import("./challenges/main.mjs")
+  .then((challenges) => challenges.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | challenges HUD not loaded (sheets, chat cards and the splash are unaffected)`, err));
+
+/* HOT PAN QUIET NOTICES (scripts/hotpan-quiet.mjs): hides Hot Pan & Zoom!'s "control taken / released" toasts; same mechanism and phases. */
+import("./hotpan-quiet.mjs")
+  .then((quiet) => quiet.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | hot-pan quiet notices not loaded (everything else is unaffected)`, err));
+
+/* COMBAT BANNERS (scripts/combat/, styles/combat.css): banners that slide in from the top when a combat starts, a round begins and a combat ends;
+   same mechanism and the same recorded phases as the blocks above. */
+import("./combat/main.mjs")
+  .then((combat) => combat.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | combat banners not loaded (everything else is unaffected)`, err));
+
+/* COMIC FONT OPTION (scripts/fontoption.mjs, fonts/user/): client setting "Font: comic lettering" (Komikah / ActionFigure BB from the user's own
+   file / condensed sans); injects a <style id="isp-font-style"> redefining the family Comic. Same mechanism and recorded phases as above. */
+import("./fontoption.mjs")
+  .then((fontoption) => fontoption.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | comic font option not loaded (everything else is unaffected)`, err));
+
+/* TOKEN HALO (scripts/tokenhalo/): an irregular ring of comic halftone dots under a token on hover, selection and the active combat turn
+   (client settings "Token halo: ..."). Same mechanism and recorded phases as above; it draws in canvas.primary, no stylesheet needed. */
+import("./tokenhalo/main.mjs")
+  .then((halo) => halo.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | token halo not loaded (everything else is unaffected)`, err));

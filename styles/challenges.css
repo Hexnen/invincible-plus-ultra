@@ -1,0 +1,700 @@
+/* Invincible - Plus Ultra: CHALLENGES HUD (scripts/challenges/). A panel in the top-right corner of the screen, one card per challenge token on
+   the viewed scene. Mode: Operate (a status display read at a glance while playing); motion is the one authored moment (the cards slide in
+   from the right, staggered), everything else is state feedback.
+
+   Language: the module's own. The cards are INK panels (the map behind them is busy, the chat tooltips are ink too), the name sits on a
+   skewed yellow banner like the sheet's section titles, the portrait is a parallelogram that leans like the sheet's skewed (-15deg)
+   bars, the bars are segmented with slanted ink dividers like the "Damage taken" Health bar, the outcome is a tilted sticker like BROKEN.
+   Hard offset shadows only on the one button (the handle), as everywhere else; the cards are flat info panels with a soft shadow because they
+   float over the map. No side stripes, no gradient text, no glass. The reference's dry-brush edge is a texture asset: not imitated.
+
+   BARS. Challenge Rating (CR) counts DOWN, so the first bar is PROGRESS = 1 - CR / max (yellow, the sheet's fill colour), the percentage on the
+   right. Time Limit (TL) counts down to 0 (time is up): the second bar is TL / max (cyan; red and a short beat when a third or less is left,
+   the same threshold as the sheet's low Health). The fill is a full-width element moved with translateX (transform only); the numbers count
+   with a registered custom property (--ich-n), so nothing runs per frame in JS.
+
+   CONTRAST (WCAG relative luminance, on the card ink #0c1a2e unless noted):
+     white 17.5 | text #d5dff0 13.0 | label #a9bcdc 9.1 | yellow 13.9 | cyan text #3bb8e8 7.7 | red text #ff8178 7.2
+     ink on yellow 13.9 (banner, handle, overcome sticker) | white on red-ink #b3261e 6.5 (time-up sticker)
+     bar frame #7d93b9 5.6 on ink | fills against the track #1b2d4a: yellow 11.0, cyan #0096cb 4.1, red #e5483f 3.5 (non-text, needs 3).
+   Non-colour cues: percentage and "CR 4 / 10" in text, check / x on the stickers, segment count, "Hidden" tag with a glyph. */
+
+@property --ich-n { syntax: "<integer>"; inherits: false; initial-value: 0; }
+
+#invincible-challenges {
+  --ich-ink: #0c1a2e;
+  --ich-yellow: #ffe72a;
+  --ich-cyan: #0096cb;
+  --ich-cyan-lt: #3bb8e8;
+  --ich-red: #e5483f;
+  --ich-red-lt: #ff8178;
+  --ich-red-ink: #b3261e;
+  --ich-label: #a9bcdc;
+  --ich-text: #d5dff0;
+  --ich-frame: #7d93b9;
+  --ich-track: #1b2d4a;
+  --ich-out: cubic-bezier(.16, 1, .3, 1);
+  --ich-fa: var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free";
+  --ich-w: 372px;       /* card width */
+  --ich-art: 112px;     /* portrait width */
+  --ich-lean: 22px;     /* how far the portrait's edges lean (about -15deg at the card's height) */
+  --ich-gap: 8px;
+  --ich-sh: 3px;        /* hard shadow of the handle */
+  --ich-lgap: var(--ich-gap);   /* gap between the cards (compact cards use a tighter one) */
+  --ich-sbw: 8px;       /* the list's thin scrollbar, measured by hud.mjs */
+  --ich-pr: 4px;        /* right padding of the list (room for outlines), measured with it */
+
+  position: fixed;
+  top: 14px;
+  right: var(--ich-right, 0px);   /* main.mjs: the sidebar's width (tab strip, or strip + panel): this box ENDS at the menu's left edge */
+  padding-right: 12px;            /* the visible gap to the menu; it is inside the clip, so cards still emerge from the menu edge */
+  /* STACKING. Core: #ui-left / #ui-middle / #ui-right (which holds #sidebar and its tab strip) are z-index var(--z-index-app) = 30 in body.game,
+     windows are 100, canvas#board 0. One below the interface layer = above the canvas, UNDER the menu, under windows. */
+  z-index: calc(var(--z-index-app, 30) - 1);
+  /* CLIP. Nothing may paint to the right of the menu's left edge: cards slide in from, and collapse into, that edge (as if from under the menu),
+     never over it and never outside the viewport. The other three sides stay open (shadows, focus rings). */
+  clip-path: inset(-40px 0 -40px -40px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ich-gap);
+  max-width: calc(100vw - var(--ich-right, 0px) - 12px);
+  pointer-events: none;
+  transform: scale(var(--ich-scale, 1));
+  transform-origin: top right;
+  font-family: Comic, sans-serif;
+  color: var(--ich-text);
+}
+#invincible-challenges *, #invincible-challenges *::before, #invincible-challenges *::after { box-sizing: border-box; }
+
+/* ---------- the handle ---------- */
+#invincible-challenges .ich-handle {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: auto;
+  min-height: 30px;
+  margin: 0 var(--ich-sh) var(--ich-sh) 0;
+  padding: 3px 6px 3px 10px;
+  font: 400 .9rem/1.15 Titles, Comic, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-shadow: none;
+  color: var(--ich-ink);
+  background: var(--ich-yellow);
+  border: 2px solid var(--ich-ink);
+  border-radius: 0;
+  box-shadow: var(--ich-sh) var(--ich-sh) 0 var(--ich-cyan);
+  cursor: var(--cursor-pointer, pointer);
+  transform: skewX(-6deg);
+  transition: transform .12s var(--ich-out), background-color .12s var(--ich-out);
+  animation: ich-in .46s var(--ich-out) backwards;
+}
+#invincible-challenges .ich-handle > * { display: inline-block; transform: skewX(6deg); }   /* the label stays upright inside the lean (a transform needs a non-inline box) */
+#invincible-challenges .ich-handle:is(:hover, :focus-visible) { background: #fff27a; transform: skewX(-6deg) translate(-1px, -1px); }
+#invincible-challenges .ich-handle:active { transform: skewX(-6deg) translate(2px, 2px); box-shadow: 1px 1px 0 var(--ich-cyan); }
+#invincible-challenges .ich-handle:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-challenges .ich-chev::before { content: "\f054"; font: 900 .7rem/1 var(--ich-fa); display: block; transition: transform .3s var(--ich-out); }
+#invincible-challenges.ich-collapsed .ich-chev::before { transform: rotate(180deg); }
+#invincible-challenges .ich-count {
+  display: grid;
+  place-items: center;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  padding: 0 4px;
+  font: 400 .85rem/1 Titles, Comic, sans-serif;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--ich-yellow);   /* yellow on ink 13.9 */
+  background: var(--ich-ink);
+}
+#invincible-challenges .ich-handle.ich-ping { animation: ich-ping .5s var(--ich-out); }
+@keyframes ich-ping { 0% { translate: 0 0; } 30% { translate: -7px 0; } 60% { translate: 2px 0; } 100% { translate: 0 0; } }
+
+/* ---------- the dock: slides out to the right when collapsed (transform only), hidden and inert once it is away ---------- */
+#invincible-challenges .ich-dock {
+  width: var(--ich-w);
+  max-width: 100%;
+  container: ich-dock / inline-size;
+  pointer-events: none;
+  transition: transform .42s var(--ich-out), visibility 0s 0s;
+}
+#invincible-challenges.ich-collapsed .ich-dock {
+  transform: translateX(calc(100% + 40px));
+  visibility: hidden;
+  transition: transform .42s var(--ich-out), visibility 0s .42s;
+}
+/* The list is the scroller, but only when it has to be (.ich-scrolls, set by hud.mjs): otherwise it is a plain visible-overflow box and nothing is clipped.
+   Its padding / negative margins are net zero (room for the selection slide, outlines and shadows); when the bar appears the margin grows by the
+   bar's width and the gutter is reserved, so the cards keep their exact width and nothing jumps. */
+#invincible-challenges .ich-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ich-lgap);
+  margin: -8px calc(var(--ich-pr) * -1) -6px -20px;
+  padding: 8px var(--ich-pr) 12px 20px;
+  max-height: var(--ich-maxh, none);
+  list-style: none;
+}
+#invincible-challenges .ich-list.ich-scrolls {
+  margin-right: calc((var(--ich-pr) + var(--ich-sbw)) * -1);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ich-frame) transparent;
+  scrollbar-gutter: stable;
+  scroll-padding-block: 8px 44px;
+  pointer-events: auto;   /* the wheel works over the gaps too, and does not reach the map */
+}
+#invincible-challenges .ich-item { display: grid; grid-template-rows: 1fr; margin: 0; padding: 0; }
+#invincible-challenges .ich-item > .ich-card { min-height: 0; }
+/* a card joining a list that is already showing: its row unfolds (grid 0fr -> 1fr), so the cards below glide down instead of jumping */
+#invincible-challenges .ich-item.ich-enter { animation: ich-unfold .34s var(--ich-out) backwards; }
+#invincible-challenges .ich-item.ich-enter > .ich-card { overflow: hidden; }
+/* once its entrance is over a card never replays it (moving a node in the list restarts CSS animations) */
+#invincible-challenges .ich-card.ich-settled { animation: none; }
+
+/* ---------- a card ---------- */
+#invincible-challenges .ich-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--ich-art) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 6px 12px 8px 6px;
+  color: var(--ich-text);
+  background: var(--ich-ink);
+  border: 2px solid var(--ich-ink);
+  box-shadow: inset 0 0 0 1px rgba(255, 231, 42, .38), 0 6px 16px rgba(0, 0, 0, .45);   /* floating over the map: soft shadow; the hairline separates it from dark scenery */
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  animation: ich-in .56s var(--ich-out) backwards;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+#invincible-challenges .ich-card[data-open] { cursor: var(--cursor-pointer, pointer); }
+#invincible-challenges .ich-card[data-open]:is(:hover, :focus-visible) { background: #112540; }
+#invincible-challenges .ich-card:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-challenges .ich-card.ich-hidden { border-style: dashed; border-color: var(--ich-frame); }
+#invincible-challenges .ich-card.ich-hidden :is(.ich-art, .ich-bar) { filter: saturate(.35) brightness(.85); }   /* hidden from players: dimmed, text stays at full contrast */
+
+@keyframes ich-in { from { transform: translateX(calc(100% + 36px)); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ich-out { from { transform: none; opacity: 1; } to { transform: translateX(calc(100% + 36px)); opacity: 0; } }
+@keyframes ich-gap { 0%, 55% { grid-template-rows: 1fr; margin-bottom: 0; } 100% { grid-template-rows: 0fr; margin-bottom: calc(var(--ich-lgap) * -1); } }
+@keyframes ich-unfold { from { grid-template-rows: 0fr; margin-bottom: calc(var(--ich-lgap) * -1); } to { grid-template-rows: 1fr; margin-bottom: 0; } }
+@keyframes ich-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ich-fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+/* a removed card slides out first, then the gap closes (grid rows 1fr -> 0fr), so the others do not jump */
+#invincible-challenges .ich-item.ich-leaving { pointer-events: none; animation: ich-gap .34s linear forwards; }
+#invincible-challenges .ich-item.ich-leaving > .ich-card { overflow: hidden; animation: ich-out .2s ease-in forwards; animation-delay: 0s; }
+#invincible-challenges.ich-bye .ich-handle { pointer-events: none; animation: ich-out .26s ease-in forwards; }
+
+/* ---------- portrait: a parallelogram leaning like the sheet's bars ---------- */
+#invincible-challenges .ich-art {
+  position: relative;
+  min-height: 96px;
+  background: var(--ich-track);
+  clip-path: polygon(var(--ich-lean) 0, 100% 0, calc(100% - var(--ich-lean)) 100%, 0 100%);
+  overflow: hidden;
+}
+#invincible-challenges .ich-ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ich-frame); }
+#invincible-challenges .ich-ph::before { content: "\f140"; font: 900 1.9rem/1 var(--ich-fa); }   /* bullseye: a challenge without a picture */
+#invincible-challenges .ich-img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+#invincible-challenges .ich-card[data-pan] .ich-art { cursor: var(--cursor-pointer, pointer); }
+/* GM: the portrait is a drag handle (drag.mjs): grab cursor; the card dims while it is carried to the map */
+#invincible-challenges .ich-card[data-drag] .ich-art { cursor: var(--cursor-grab, grab); }
+#invincible-challenges .ich-card[data-drag] .ich-art:active { cursor: var(--cursor-grabbing, grabbing); }
+#invincible-challenges .ich-card.ich-dragging { opacity: .6; }
+
+/* ---------- body ---------- */
+#invincible-challenges .ich-body { display: grid; align-content: center; gap: 5px; min-width: 0; padding: 2px 0; }
+#invincible-challenges .ich-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#invincible-challenges .ich-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0 10px 2px 11px;
+  font: 400 1.05rem/1.2 Titles, Comic, sans-serif;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-shadow: none;
+  color: var(--ich-ink);   /* ink on yellow 13.9 */
+  background: var(--ich-yellow);
+  border: 0;
+  transform: rotate(-1deg) skewX(-6deg);
+  transform-origin: left center;
+}
+/* the title: up to two lines (Polish names and long ones wrap, an over-long word breaks), then an ellipsis */
+#invincible-challenges .ich-name > span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+#invincible-challenges .ich-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  font: 700 .68rem/1.3 Comic, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ich-text);
+  background: var(--ich-track);
+  border: 1px solid var(--ich-frame);
+  cursor: help;
+}
+#invincible-challenges .ich-tag[hidden] { display: none; }
+#invincible-challenges .ich-tag-i::before { content: "\f070"; font: 900 .75rem/1 var(--ich-fa); }
+#invincible-challenges .ich-sub {
+  margin: 0;
+  overflow: hidden;
+  font: italic 400 .84rem/1.25 Comic, sans-serif;
+  color: var(--ich-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#invincible-challenges .ich-sub[hidden] { display: none; }
+
+/* ---------- a row: a label line across the full width, then the bar and its value on one line.
+   Both rows share the same grid: bar column = the rest, value column = one fixed width (--ich-numw), so the two bars end at the same x, the
+   two values share one right edge (which is also the right edge of the "CR 2 / 2" text above) and one font size; each value is centred
+   on its bar. ---------- */
+#invincible-challenges .ich-body { --ich-numw: 3.8rem; --ich-numsz: 1.4rem; }
+#invincible-challenges .ich-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--ich-numw);
+  grid-template-areas: "lab lab" "bar num";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 3px;
+}
+#invincible-challenges .ich-rl { grid-area: lab; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+#invincible-challenges .ich-lab {
+  min-width: 0;
+  overflow: hidden;
+  font: 700 .72rem/1.2 Comic, sans-serif;
+  letter-spacing: .1em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ich-label);
+}
+#invincible-challenges .ich-small {
+  flex: none;
+  font: 700 .72rem/1.2 Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  color: var(--ich-label);
+}
+
+/* the time unit sits right after "TL 3 / 6": plain text for players, a small menu button for the GM (dotted underline = it can be changed) */
+#invincible-challenges .ich-sg { flex: none; display: inline-flex; align-items: baseline; gap: 4px; }
+#invincible-challenges .ich-unit {
+  font: 700 .72rem/1.2 Comic, sans-serif;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  color: var(--ich-label);
+}
+#invincible-challenges .ich-unit[hidden] { display: none; }
+#invincible-challenges .ich-unit-b {
+  pointer-events: auto;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 2px;
+  text-shadow: none;
+  background: none;
+  border: 0;
+  border-bottom: 1px dotted var(--ich-frame);
+  border-radius: 0;
+  box-shadow: none;
+  cursor: var(--cursor-pointer, pointer);
+}
+#invincible-challenges .ich-unit-b:is(:hover, :focus-visible, [aria-expanded="true"]) { color: var(--ich-yellow); border-bottom-color: var(--ich-yellow); }   /* yellow on ink 13.9 */
+#invincible-challenges .ich-unit-b:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+/* the segmented bar: the sheet's lean (skew -15deg), a 2px frame, a halftone-dot track, slanted ink dividers between the segments */
+#invincible-challenges .ich-bar {
+  --tw: 2px;   /* divider width */
+  grid-area: bar;
+  position: relative;
+  height: 15px;
+  background: var(--ich-track) radial-gradient(circle, rgba(169, 188, 220, .22) 1.1px, transparent 1.6px) 0 0 / 8px 8px;
+  border: 2px solid var(--ich-frame);
+  overflow: hidden;
+  transform: skewX(-15deg);
+}
+#invincible-challenges .ich-bar[data-dense="1"] { --tw: 1.5px; }
+#invincible-challenges .ich-bar.ich-unknown { border-style: dashed; }
+#invincible-challenges .ich-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, .42) 0 32%, transparent 32%), var(--ich-fill, var(--ich-yellow));
+  box-shadow: inset -2px 0 0 var(--ich-ink);   /* the fill's edge */
+  transform: translateX(calc((var(--ich-v, 0) - 1) * 100%));   /* full width, slid left by what is missing: transform only, the edge keeps its width */
+  transition: transform .7s var(--ich-out);
+}
+#invincible-challenges .ich-bar.ich-unknown .ich-fill { opacity: 0; }
+#invincible-challenges .ich-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--ich-tick, 10%) - var(--tw)), var(--ich-ink) calc(var(--ich-tick, 10%) - var(--tw)) var(--ich-tick, 10%));
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--tw) - 1px), transparent 0);   /* no divider against the frame at the end */
+  mask-image: linear-gradient(90deg, #000 calc(100% - var(--tw) - 1px), transparent 0);
+}
+/* the glint: a one-shot flash when the value changes (white = good, red = bad); colour and opacity only */
+#invincible-challenges .ich-glint { position: absolute; inset: 0; z-index: 1; opacity: 0; pointer-events: none; }
+#invincible-challenges .ich-glint.ich-good { background: #fff; animation: ich-flash .6s ease-out; }
+#invincible-challenges .ich-glint.ich-bad { background: #ff3b30; animation: ich-flash .6s ease-out; }
+@keyframes ich-flash { 0% { opacity: .85; } 100% { opacity: 0; } }
+
+#invincible-challenges .ich-cr .ich-fill { --ich-fill: var(--ich-yellow); }
+#invincible-challenges .ich-tl .ich-fill { --ich-fill: var(--ich-cyan); }
+#invincible-challenges .ich-card.ich-low .ich-tl .ich-fill { --ich-fill: var(--ich-red); }
+#invincible-challenges .ich-card.ich-low .ich-tl .ich-bar { animation: ich-beat .9s ease-in-out 3; }
+@keyframes ich-beat { 0%, 100% { scale: 1 1; } 50% { scale: 1 1.35; } }   /* individual property: composes with the bar's skew */
+
+/* numbers: Titles, counted by a registered custom property */
+#invincible-challenges .ich-num {
+  grid-area: num;
+  align-self: center;
+  display: flex;
+  justify-content: flex-end;   /* right-aligned in a fixed column; an over-wide value grows to the left, never into the card edge */
+  min-width: 0;
+  font: 400 var(--ich-numsz)/1 Titles, Comic, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  white-space: nowrap;
+  counter-reset: ich-n var(--ich-n, 0);
+  transition: --ich-n .7s var(--ich-out);
+}
+#invincible-challenges .ich-num::after { content: counter(ich-n); }
+#invincible-challenges .ich-num.ich-pct::after { content: counter(ich-n) "%"; }
+#invincible-challenges .ich-num.ich-null::after { content: "\2013"; }
+#invincible-challenges .ich-cr .ich-num { color: var(--ich-yellow); }
+#invincible-challenges .ich-tl .ich-num { color: var(--ich-cyan-lt); }
+#invincible-challenges .ich-card.ich-low .ich-tl .ich-num { color: var(--ich-red-lt); }
+
+/* outcome: the other bar steps back, a tilted sticker lands (same family as the BROKEN / DOUBLE stickers on the chat cards) */
+#invincible-challenges .ich-card[data-state="overcome"] .ich-tl,
+#invincible-challenges .ich-card[data-state="failed"] .ich-cr { opacity: .72; }
+#invincible-challenges .ich-card[data-state="failed"] .ich-tl .ich-num { color: var(--ich-red-lt); }
+#invincible-challenges .ich-stamp {
+  position: absolute;
+  top: -9px;
+  right: 14px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px 1px 8px;
+  font: 400 .85rem/1.25 Titles, Comic, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ich-ink);
+  background: var(--ich-yellow);
+  border: 2px solid var(--ich-ink);
+  transform: rotate(-3.5deg) skewX(-6deg);
+  pointer-events: none;
+  animation: ich-stamp .32s calc(var(--i, 0) * 70ms + 650ms) var(--ich-out) backwards;
+}
+#invincible-challenges .ich-card:not(.ich-new) .ich-stamp { animation-delay: .1s; }
+#invincible-challenges .ich-stamp[hidden] { display: none; }
+#invincible-challenges .ich-stamp-i::before { content: "\f00c"; font: 900 .75rem/1 var(--ich-fa); }
+#invincible-challenges .ich-card[data-state="failed"] .ich-stamp { color: #fff; background: var(--ich-red-ink); }   /* white on red-ink 6.5 */
+#invincible-challenges .ich-card[data-state="failed"] .ich-stamp-i::before { content: "\f00d"; }
+@keyframes ich-stamp { from { opacity: 0; transform: rotate(-3.5deg) skewX(-6deg) scale(1.7); } to { opacity: 1; transform: rotate(-3.5deg) skewX(-6deg); } }
+
+/* ---------- selection: the token is controlled on the map ----------
+   A solid yellow frame (outline: no layout shift) plus a slide of 8px toward the map, and a lighter ink. Yellow on ink 13.9. A GM-hidden card keeps
+   its dashed grey border and dimmed portrait, so "selected" (yellow frame) and "hidden" (dashed, desaturated) read together. aria-current is
+   set by hud.mjs. The hover echo is a thinner, translucent frame and never overrides the selected one. */
+#invincible-challenges .ich-card { transition: transform .24s var(--ich-out), background-color .15s linear, outline-color .15s linear, box-shadow .6s ease-out; }
+#invincible-challenges .ich-card.ich-sel { outline: 3px solid var(--ich-yellow); outline-offset: 1px; background: #112540; transform: translateX(-8px); }
+#invincible-challenges .ich-card.ich-echo:not(.ich-sel) { outline: 2px solid rgba(255, 231, 42, .55); outline-offset: 1px; }
+#invincible-challenges .ich-card.ich-sel:focus-visible { outline-color: #fff; }
+/* collapsed dock: a cyan dot on the handle's counter says a challenge token is selected */
+#invincible-challenges .ich-count { position: relative; }
+#invincible-challenges.ich-collapsed.ich-has-sel .ich-count::after {
+  content: "";
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 10px;
+  height: 10px;
+  background: var(--ich-cyan-lt);
+  border: 2px solid var(--ich-ink);
+  border-radius: 50%;
+}
+
+/* ---------- "+N more" / "Show fewer": a real button; sticks to the bottom of a scrolling list so it is always reachable ---------- */
+#invincible-challenges .ich-more {
+  align-self: flex-end;
+  position: sticky;
+  bottom: 4px;
+  z-index: 4;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+  animation: ich-fade .3s ease-out backwards;
+}
+#invincible-challenges .ich-more.ich-leaving { animation: ich-fade-out .2s ease-in forwards; }
+#invincible-challenges .ich-more-b {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: auto;
+  min-height: 30px;
+  margin: 0;
+  padding: 3px 12px 4px;
+  font: 400 .9rem/1.2 Titles, Comic, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-shadow: none;
+  color: var(--ich-text);
+  background: var(--ich-ink);
+  border: 1px solid var(--ich-frame);
+  border-radius: 0;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .45);
+  cursor: var(--cursor-pointer, pointer);
+  transition: background-color .12s linear, border-color .12s linear;
+}
+#invincible-challenges .ich-more-b:is(:hover, :focus-visible) { background: #112540; border-color: var(--ich-yellow); }
+#invincible-challenges .ich-more-b:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-challenges .ich-more-i::before { content: "\f107"; display: block; font: 900 .75rem/1 var(--ich-fa); transition: transform .3s var(--ich-out); }
+#invincible-challenges .ich-more-b[aria-expanded="true"] .ich-more-i::before { transform: rotate(180deg); }
+
+/* ---------- GM steppers: an overlay on the bar's right end (no space reserved), shown on hover / focus-within ---------- */
+#invincible-challenges .ich-row { position: relative; }
+#invincible-challenges .ich-step {
+  position: absolute;
+  right: calc(var(--ich-numw, 3.8rem) + 13px);
+  bottom: 0;
+  height: 15px;
+  z-index: 4;
+  display: inline-flex;
+  gap: 2px;
+  padding: 1px;
+  background: rgba(12, 26, 46, .9);
+  opacity: 0;
+  transform: scale(.9);
+  transform-origin: right center;
+  pointer-events: none;
+  transition: opacity .14s linear, transform .18s var(--ich-out);
+}
+#invincible-challenges .ich-step[hidden] { display: none; }
+#invincible-challenges .ich-card[data-adjust]:is(:hover, :focus-within) .ich-step { opacity: 1; transform: none; pointer-events: auto; }
+#invincible-challenges .ich-sb {
+  width: 22px;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  font: 700 .85rem/1 Comic, sans-serif;
+  text-shadow: none;
+  color: var(--ich-yellow);
+  background: var(--ich-ink);
+  border: 1px solid var(--ich-frame);
+  border-radius: 0;
+  box-shadow: none;
+  cursor: var(--cursor-pointer, pointer);
+}
+#invincible-challenges .ich-sb:not(:disabled):is(:hover, :focus-visible) { color: var(--ich-ink); background: var(--ich-yellow); }
+#invincible-challenges .ich-sb:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+#invincible-challenges .ich-sb:disabled { opacity: .35; cursor: default; }
+
+/* ---------- live outcomes: a state change seen on a showing card (hud.mjs plays the motion, these are the settling colours) ---------- */
+#invincible-challenges .ich-card.ich-hot-fail { background-color: #2a1822; box-shadow: inset 0 0 0 2px var(--ich-red), 0 6px 16px rgba(0, 0, 0, .45); }
+#invincible-challenges .ich-card.ich-hot-win { background-color: #1d3150; box-shadow: inset 0 0 0 2px var(--ich-yellow), 0 6px 16px rgba(0, 0, 0, .45); }
+#invincible-challenges .ich-shine { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
+#invincible-challenges .ich-shine > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 34%;
+  opacity: 0;
+  transform: skewX(-20deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 231, 42, .55), transparent);
+}
+
+/* ---------- compact cards: ONE short row, the same elements restyled (no rebuild). Tab (state colour) | thumbnail (drag / pan handle) | name | two slim
+   bars with their values. The subtitle, the labels and the CR / TL numbers move to the card's tooltip; the outcome sticker shrinks to an icon. ---------- */
+#invincible-challenges.ich-compact { --ich-lgap: 5px; --ich-lean: 7px; }
+#invincible-challenges.ich-compact .ich-card {
+  grid-template-columns: 5px 28px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 3px 8px;
+  padding: 5px 10px 5px 8px;
+}
+#invincible-challenges.ich-compact .ich-card::before {   /* the mini status tab: yellow = going, red = time is low / up, pale = overcome */
+  content: "";
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: stretch;
+  margin: 1px 0;
+  background: var(--ich-yellow);
+  transform: skewX(-14deg);
+}
+#invincible-challenges.ich-compact .ich-card.ich-low::before,
+#invincible-challenges.ich-compact .ich-card[data-state="failed"]::before { background: var(--ich-red); }
+#invincible-challenges.ich-compact .ich-card[data-state="overcome"]::before { background: var(--ich-text); }
+#invincible-challenges.ich-compact .ich-art { grid-column: 2; grid-row: 1 / span 2; width: 28px; height: 28px; min-height: 0; }
+#invincible-challenges.ich-compact .ich-ph::before { font-size: .8rem; }
+#invincible-challenges.ich-compact .ich-body { display: contents; --ich-numsz: .9rem; }
+#invincible-challenges.ich-compact .ich-head { grid-column: 3; grid-row: 1 / span 2; gap: 6px; min-width: 0; }
+#invincible-challenges.ich-compact .ich-sub { display: none; }
+#invincible-challenges.ich-compact .ich-name {
+  padding: 0;
+  font-size: .95rem;
+  line-height: 1.15;
+  color: var(--ich-text);
+  background: none;
+  transform: none;
+}
+#invincible-challenges.ich-compact .ich-name > span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-wrap: nowrap; }
+#invincible-challenges.ich-compact .ich-tag { padding: 1px 4px; }
+#invincible-challenges.ich-compact :is(.ich-tag-t, .ich-stamp-t) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#invincible-challenges.ich-compact .ich-cr { grid-column: 4; grid-row: 1; }
+#invincible-challenges.ich-compact .ich-tl { grid-column: 4; grid-row: 2; }
+#invincible-challenges.ich-compact .ich-row {
+  grid-template-columns: .8rem var(--ich-cbar, 76px) 2.6rem;
+  grid-template-areas: "ico bar num";
+  column-gap: 6px;
+  row-gap: 0;
+}
+#invincible-challenges.ich-compact .ich-rl { display: none; }
+#invincible-challenges.ich-compact .ich-row::before { grid-area: ico; text-align: center; font: 900 .6rem/1 var(--ich-fa); color: var(--ich-label); }
+#invincible-challenges.ich-compact .ich-cr::before { content: "\f140"; }
+#invincible-challenges.ich-compact .ich-tl::before { content: "\f017"; }
+#invincible-challenges.ich-compact .ich-bar { height: 9px; border-width: 1.5px; }
+#invincible-challenges.ich-compact .ich-stamp { top: -7px; right: 8px; gap: 0; padding: 0 4px 1px; pointer-events: auto; }
+#invincible-challenges.ich-compact .ich-stamp-i::before { font-size: .62rem; }
+#invincible-challenges.ich-compact .ich-step { right: calc(2.6rem + 8px); top: calc(50% - 8px); bottom: auto; height: 16px; }
+#invincible-challenges.ich-compact .ich-sb { width: 16px; font-size: .75rem; }
+
+/* ---------- time unit menu: a popover on the body (top layer), so it carries its own tokens; the same ink panel as the cards ---------- */
+.ich-umenu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 9.5rem;
+  padding: 4px;
+  overflow: visible;
+  font-family: Comic, sans-serif;
+  color: #d5dff0;
+  background: #0c1a2e;
+  border: 1px solid #7d93b9;
+  border-radius: 0;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .45);
+  animation: ich-fade .14s ease-out;
+}
+.ich-umenu:not(:popover-open) { display: none; }
+.ich-umenu .ich-um-t { margin: 0; padding: 3px 8px 5px; font: 700 .68rem/1.2 Comic, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #a9bcdc; }
+.ich-umenu .ich-um-i {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: auto;
+  min-height: 30px;
+  margin: 0;
+  padding: 3px 12px 3px 6px;
+  font: 400 .9rem/1.2 Comic, sans-serif;
+  text-align: left;
+  text-shadow: none;
+  color: #d5dff0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: var(--cursor-pointer, pointer);
+}
+.ich-umenu .ich-um-i:is(:hover, :focus-visible) { color: #fff; background: #112540; }
+.ich-umenu .ich-um-i:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.ich-umenu .ich-um-i[aria-checked="true"] { color: #ffe72a; }   /* yellow on ink 13.9; the check mark says it too */
+.ich-umenu .ich-um-c { flex: none; width: .9rem; text-align: center; }
+.ich-umenu .ich-um-i[aria-checked="true"] .ich-um-c::before { content: "\f00c"; font: 900 .7rem/1 var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free"; }
+
+/* screen-reader-only live region (appended to the body) */
+.ich-sr { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- smaller screens ---------- */
+@media (max-width: 1099px) {
+  #invincible-challenges { --ich-w: 304px; --ich-art: 84px; --ich-lean: 18px; }
+  #invincible-challenges .ich-card { gap: 10px; }
+  #invincible-challenges .ich-body { --ich-numw: 3.2rem; --ich-numsz: 1.2rem; }
+  #invincible-challenges .ich-name { font-size: .95rem; }
+}
+@media (max-height: 740px) {   /* a short window: four cards must still fit */
+  #invincible-challenges .ich-body { --ich-numsz: 1.2rem; }
+  #invincible-challenges .ich-sub { display: none; }
+  #invincible-challenges .ich-art { min-height: 84px; }
+  #invincible-challenges .ich-body { gap: 3px; }
+}
+/* a very narrow dock (250 px and below): no portrait, the body takes the card */
+@container ich-dock (max-width: 330px) {
+  #invincible-challenges.ich-compact .ich-row { grid-template-columns: .8rem 54px 2.6rem; }
+}
+@container ich-dock (max-width: 290px) {
+  #invincible-challenges.ich-compact .ich-card { grid-template-columns: 5px minmax(0, 1fr) auto; }
+  #invincible-challenges.ich-compact .ich-head { grid-column: 2; }
+  #invincible-challenges.ich-compact :is(.ich-cr, .ich-tl) { grid-column: 3; }
+  #invincible-challenges.ich-compact .ich-row { grid-template-columns: 54px 2.6rem; grid-template-areas: "bar num"; }
+  #invincible-challenges.ich-compact .ich-row::before { display: none; }
+  #invincible-challenges .ich-card { grid-template-columns: minmax(0, 1fr); }
+  #invincible-challenges .ich-art { display: none; }
+  #invincible-challenges .ich-small, #invincible-challenges .ich-unit { display: none; }
+}
+@media (pointer: coarse) {
+  #invincible-challenges .ich-handle, #invincible-challenges .ich-more-b { min-height: 44px; }
+  #invincible-challenges .ich-unit-b { min-height: 28px; padding: 0 6px; }
+  .ich-umenu .ich-um-i { min-height: 44px; }
+}
+
+/* ---------- reduced motion: nothing slides; things fade, the bars and numbers land at once, the colour flash (state feedback) stays ---------- */
+@media (prefers-reduced-motion: reduce) {
+  #invincible-challenges .ich-card, #invincible-challenges .ich-handle { animation: ich-fade .18s ease-out backwards; animation-delay: 0s; }
+  #invincible-challenges .ich-item.ich-leaving { animation: none; opacity: 0; transition: opacity .15s linear; }
+  #invincible-challenges .ich-item.ich-leaving > .ich-card { animation: none; }
+  #invincible-challenges.ich-bye .ich-handle { animation: ich-fade-out .15s linear forwards; }
+  #invincible-challenges .ich-dock, #invincible-challenges.ich-collapsed .ich-dock { transition: opacity .15s linear, visibility 0s .15s; }
+  #invincible-challenges.ich-collapsed .ich-dock { transform: none; opacity: 0; }
+  #invincible-challenges .ich-fill, #invincible-challenges .ich-num { transition: none; }
+  #invincible-challenges .ich-chev::before, #invincible-challenges .ich-more-i::before { transition: none; }
+  #invincible-challenges .ich-item.ich-enter { animation: none; }
+  #invincible-challenges .ich-step { transform: none; transition: opacity .1s linear; }
+  #invincible-challenges .ich-card.ich-hot-win, #invincible-challenges .ich-card.ich-hot-fail { transition: background-color .1s linear, box-shadow .1s linear; }
+  #invincible-challenges .ich-card { transition: background-color .15s linear, outline-color .15s linear; }
+  #invincible-challenges .ich-card.ich-sel { transform: none; }
+  #invincible-challenges .ich-stamp { animation: ich-fade .15s ease-out backwards; animation-delay: 0s; }
+  #invincible-challenges .ich-handle.ich-ping, #invincible-challenges .ich-card.ich-low .ich-tl .ich-bar { animation: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ich-umenu { animation: none; }
+}
+@media (forced-colors: active) {
+  .ich-umenu, .ich-umenu .ich-um-i[aria-checked="true"] { border-color: CanvasText; }
+  .ich-umenu .ich-um-i[aria-checked="true"] { color: Highlight; }
+  #invincible-challenges.ich-compact .ich-card::before { background: Highlight; }
+  #invincible-challenges .ich-more-b, #invincible-challenges .ich-sb { border-color: CanvasText; }
+  #invincible-challenges .ich-card { border-color: CanvasText; }
+  #invincible-challenges .ich-bar { border-color: CanvasText; }
+  #invincible-challenges .ich-fill { background: Highlight; }
+}
