@@ -1822,3 +1822,15 @@ import("./party/main.mjs")
 import("./turn/main.mjs")
   .then((turn) => turn.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | player turn UX not loaded (everything else is unaffected)`, err));
+
+/* DICE EFFECTS (scripts/diceeffects/, styles/diceeffects.css): a golden halftone burst under a rolled 6 and a cracked scorch under a rolled 1 on the
+   Dice So Nice dice, drawn on a layer just under the dice canvas. Same mechanism and recorded phases as the blocks above; does nothing without Dice So Nice. */
+import("./diceeffects/main.mjs")
+  .then((diceeffects) => diceeffects.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | dice effects not loaded (everything else is unaffected)`, err));
+
+/* COMIC SLASH TRANSITION (scripts/slash/): registers "Comic slash" scene transitions (from the top / bottom / right / random) in
+   CONFIG.Canvas.sceneTransitions, so they show up in Scene configuration > Transition. Same mechanism and recorded phases as the blocks above. */
+import("./slash/main.mjs")
+  .then((slash) => slash.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | comic slash transition not loaded (everything else is unaffected)`, err));

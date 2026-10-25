@@ -1,0 +1,71 @@
+/* Invincible - Plus Ultra: DICE EFFECTS (scripts/diceeffects/). Comic marks drawn UNDER the Dice So Nice dice once each die has stopped:
+   a golden halftone burst under a 6, a magenta X in a halftone ring under a 1. Mode: Operate (feedback on a roll), so one authored moment per die and nothing
+   idle: every animation runs once, transform + opacity only, and the layer is empty (and not even painted) between rolls.
+
+   STACKING: #isp-dice-fx is inserted by the script as the previous sibling of #dice-box-canvas and copies its z-index (equal z, earlier in the DOM = just under
+   the dice, above the game board and the interface that sits below them). It is fixed to the dice canvas rectangle, pointer-events none.
+   MOTION: SIX  = a stamp: scales 0.5 -> 1.07 -> 1 with a quarter-turn settle (360 ms, exponential ease-out); bold also flicks the rays outward.
+           ONE  = an impact: lands 1.3x big and snaps to 1 (170 ms) with a 2-step shake, the mark then holds still.
+           OUT  = 450 ms fade (150 ms when a new throw starts). REDUCED MOTION: no scale, no shake, no drift, only a 160 ms opacity fade in and out. */
+
+#isp-dice-fx {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+  contain: layout style;
+}
+
+.isp-dfx {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  animation-duration: 420ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: forwards;
+}
+.isp-dfx svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.isp-dfx svg g { transform-box: fill-box; transform-origin: center; }
+
+/* ---- six: stamp in ---- */
+.isp-dfx-six { animation-name: ispdfx-stamp; animation-duration: 380ms; }
+@keyframes ispdfx-stamp {
+  0%   { opacity: 0; transform: scale(0.5) rotate(-14deg); }
+  45%  { opacity: 1; transform: scale(1.07) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+.isp-dfx-six.is-bold .rays { animation: ispdfx-rays 420ms 80ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes ispdfx-rays {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ---- one: impact ---- */
+.isp-dfx-one { animation-name: ispdfx-hit; animation-duration: 190ms; animation-timing-function: cubic-bezier(0.2, 0.9, 0.2, 1); }
+@keyframes ispdfx-hit {
+  0%   { opacity: 0; transform: scale(1.32); }
+  60%  { opacity: 1; transform: scale(0.97); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.isp-dfx-one svg { animation: ispdfx-shake 240ms steps(2, end) both; }
+@keyframes ispdfx-shake {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(-3px, 2px); }
+  50%  { transform: translate(3px, -2px); }
+  75%  { transform: translate(-1px, 1px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ---- out ---- */
+.isp-dfx.is-out { animation: ispdfx-out 450ms ease-in forwards; }
+.isp-dfx.is-out-fast { animation: ispdfx-out 150ms ease-in forwards; }
+.isp-dfx.is-out svg, .isp-dfx.is-out-fast svg { animation: none; }
+@keyframes ispdfx-out { from { opacity: 1; } to { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .isp-dfx-six, .isp-dfx-one { animation: ispdfx-fade 160ms linear forwards; }
+  .isp-dfx-one svg, .isp-dfx-six .rays { animation: none; }
+  .isp-dfx.is-out, .isp-dfx.is-out-fast { animation: ispdfx-out 160ms linear forwards; }
+}
+@keyframes ispdfx-fade { from { opacity: 0; } to { opacity: 1; } }

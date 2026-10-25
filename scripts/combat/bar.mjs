@@ -25,7 +25,7 @@
 import { t } from "./lang.mjs";
 import { freeArea, hudLimit, relayout as relayoutBanner } from "./banner.mjs";
 import { unitOf, unitName } from "../challenges/lang.mjs";
-import { yzeOn, yzeWaiting } from "../yze.mjs";
+import { yzeOn, yzeWaiting, yzeMode, actorOf, toggleActionMark } from "../yze.mjs";
 import { groupsFor } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
 
 const MOD = "invincible-plus-ultra";
@@ -144,7 +144,7 @@ function read(c, isActive, ctx) {
   let acts = null;
   try {
     const g = td?.id && !c.isDefeated && !challenge ? groupsFor([td.id], td.actor ?? actor, ctx.combat)?.find((x) => x.id === c.id) : null;
-    if (g?.pips?.length && g.pips.every((p) => p.state !== "past")) acts = g.pips.map((p) => ({ k: p.k, used: p.state === "used" }));
+    if (g?.pips?.length && g.pips.every((p) => p.state !== "past")) acts = g.pips.map((p) => ({ k: p.k, used: p.state === "used", id: p.k === "fast" ? "fastAction" : p.k === "slow" ? "slowAction" : `action${g.slot}` }));   // id = the status the GM buttons toggle (same ids as turn/main.mjs)
   } catch { acts = null; }
   return {
     acts,
@@ -469,8 +469,21 @@ function turnStep(dir) {
   const p = dir < 0 ? c.previousTurn() : c.nextTurn();
   Promise.resolve(p).catch((e) => console.warn(LOG, "turn", e));
 }
+/* GM: mark / unmark one action of the ACTIVE tile (the same call the player tray makes: yze.mjs toggleActionMark). The bar repaints from the
+   ActiveEffect hooks (main.mjs), nothing is painted here. */
+let gmBusy = false;
+async function toggleAct(btn) {
+  if (!game.user.isGM || gmBusy) return;
+  const id = btn.closest(".icbar-item")?.dataset.id;
+  const c = id ? combatantOf(id) : null, actor = actorOf(c);
+  if (!c || !actor || !tiles.get(id)?.item?.active || !btn.dataset.id) return;
+  gmBusy = true;
+  try { await toggleActionMark(actor, c, btn.dataset.id); } catch (e) { console.warn(LOG, "action toggle", e); } finally { gmBusy = false; }
+}
 function wire() {
   root.addEventListener("click", (ev) => {
+    const gb = ev.target.closest?.(".icbar-gb");
+    if (gb) { toggleAct(gb); return; }
     const nav = ev.target.closest?.(".icbar-nav");
     if (nav) { if (!nav.disabled) turnStep(nav.classList.contains("icbar-prev") ? -1 : 1); return; }
     const tile = ev.target.closest?.(".icbar-tile");
@@ -482,7 +495,7 @@ function wire() {
     const id = ev.target.closest?.(".icbar-tile")?.parentElement?.dataset.id;
     if (id) { ev.preventDefault(); doPan(id); }
   });
-  root.addEventListener("mousedown", (ev) => { if (ev.target.closest?.(".icbar-nav")) ev.preventDefault(); });   // keep the canvas selection as it is
+  root.addEventListener("mousedown", (ev) => { if (ev.target.closest?.(".icbar-nav, .icbar-gb")) ev.preventDefault(); });   // keep the canvas selection as it is
   root.addEventListener("keydown", (ev) => {
     const tile = ev.target.closest?.(".icbar-tile");
     if (!tile || ev.target !== tile) return;
@@ -567,7 +580,17 @@ function makeTile(it) {
   dup.hidden = true;
   tile.append(art, init, dup, disp, hid, name, bars, acts);
   li.append(tile);
-  return { li, tile, refs: { art, ph, img, init, dup, name, nameT, bars, hp, rs, acts }, prev: null, item: null, leaving: false, shake: 0, actsKey: "", openedAt: 0 };
+  /* GM only: the buttons that mark / unmark this tile's actions, hanging under the tile (a SIBLING of it, so the tile's name tooltip, its click and its
+     clip-path animation do not reach them). Shown by CSS for the active tile only. */
+  let gm = null;
+  if (game.user.isGM) {
+    gm = mk("div", "icbar-gma");
+    gm.setAttribute("role", "group");
+    gm.setAttribute("aria-label", t("ICB.Bar.Gm.Group"));
+    gm.hidden = true;
+    li.append(gm);
+  }
+  return { li, tile, refs: { art, ph, img, init, dup, name, nameT, bars, hp, rs, acts, gm }, prev: null, item: null, leaving: false, shake: 0, actsKey: "", gmKey: "", openedAt: 0 };
 }
 
 /* the pips are rebuilt only when their kinds change; a status change flips data-st in place (CSS morphs it, nothing is re-created) */
@@ -589,6 +612,39 @@ function paintActs(card, it) {
   }
   box.hidden = false;
   a.forEach((p, i) => { const el = box.children[i]; if (el) el.dataset.st = p.used ? "used" : "open"; });
+}
+
+/* GM buttons: rebuilt only when the kinds / ids change, otherwise patched in place (hover and focus survive a status change) */
+function paintGm(card, it) {
+  const box = card.refs.gm;
+  if (!box) return;
+  const a = game.user.isGM ? it.acts : null;
+  if (!a) {
+    if (!box.hidden || card.gmKey) { box.hidden = true; box.replaceChildren(); card.gmKey = ""; }
+    return;
+  }
+  const key = a.map((p) => p.id).join("|");
+  if (key !== card.gmKey) {
+    box.replaceChildren(...a.map((p) => {
+      const b = mk("button", "icbar-gb");
+      b.type = "button";
+      b.dataset.id = p.id;
+      b.dataset.k = p.k;
+      const ico = mk("i", "icbar-gb-i");
+      ico.setAttribute("aria-hidden", "true");
+      b.append(ico, mk("span", "icbar-gb-t", t(`ICB.Bar.ActL.${p.k}`)));
+      return b;
+    }));
+    card.gmKey = key;
+  }
+  box.hidden = false;
+  a.forEach((p, i) => {
+    const b = box.children[i];
+    if (!b) return;
+    b.dataset.st = p.used ? "used" : "open";
+    b.setAttribute("aria-pressed", p.used ? "true" : "false");
+    b.setAttribute("aria-label", t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.k}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") }));
+  });
 }
 
 function paintRow(card, key, spec, first) {
@@ -670,6 +726,7 @@ function paintTile(card, it, first) {
   const dupSay = it.dup ? [t("ICB.Bar.Dup", { k: it.dup.k, n: it.dup.n }), !it.dup.first && !it.active ? t("ICB.Bar.DupBars") : ""].filter(Boolean) : [];
   const numbers = it.nums ? [specHp.show ? specHp.say : "", specRs.show ? specRs.say : ""].filter(Boolean) : [];
   paintActs(card, it);
+  paintGm(card, it);
   const actsSay = (it.acts ?? []).map((p) => t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.k}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") }));
   const hint = it.canSelect ? t(it.canSheet ? "ICB.Bar.Hint.Select" : "ICB.Bar.Hint.Pan") : it.canSheet ? t("ICB.Bar.Hint.Sheet") : it.canPan ? t("ICB.Bar.Hint.Pan") : "";
   tile.setAttribute("aria-label", [it.name, initSay, disp, ...flags, ...dupSay, ...numbers, ...actsSay, hint].filter(Boolean).join(". ") + ".");
@@ -1007,6 +1064,9 @@ function paint(model, loud, keep) {
     prevB.disabled = !canUpdate || (model.round <= 1 && !(model.turn > 0));   // stepping back from the very first turn would un-start the combat
     nextB.disabled = !canUpdate;
     for (const [b, k] of [[prevB, "ICB.Bar.Prev"], [nextB, "ICB.Bar.Next"]]) { b.setAttribute("aria-label", t(k)); b.dataset.tooltip = t(k); }
+    let gmActs = false;   // the GM's action buttons need room under the strip (a fixed reservation, so the bar's height never changes with the turn)
+    try { gmActs = gm && yzeOn() && yzeMode() !== "none"; } catch { gmActs = false; }
+    root.classList.toggle("icbar-gm", gmActs);
     root.classList.toggle("icbar-nobars", !model.items.some((i) => i.showHp || i.showRs));
     root.classList.toggle("icbar-empty", !model.items.length);
     root.classList.toggle("icbar-wait", !!model.waiting);   // the draw has not landed: dimmed tiles (a cross-fade), no initiative tags, nobody active

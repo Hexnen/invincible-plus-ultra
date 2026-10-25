@@ -133,7 +133,7 @@ function makeAct(it) {
   const b = mk("button", "itt-act");
   b.type = "button";
   b.dataset.key = it.key;
-  b.append(mk("i", `fa-solid ${ICON[it.k] ?? "fa-play"} itt-act-i`), mk("span", "itt-act-t"), mk("i", "fa-solid itt-act-s"));
+  b.append(mk("i", `fa-solid ${ICON[it.k] ?? "fa-play"} itt-act-i`), mk("span", "itt-act-t"));
   b.addEventListener("click", (ev) => { ev.preventDefault(); if (b.getAttribute("aria-disabled") === "true") return; handlers.onPip?.(b.dataset.key); });
   return b;
 }
@@ -146,7 +146,6 @@ function updateAct(b, it) {
   b.setAttribute("aria-label", t("ITN.Act.Line", { name: it.label, state }));
   b.dataset.tooltip = it.tip;
   b.querySelector(".itt-act-t").textContent = it.label;
-  b.querySelector(".itt-act-s").className = `fa-solid itt-act-s ${it.state === "used" ? "fa-check" : "fa-square"}`;
 }
 
 function makeChar(it) {
@@ -198,7 +197,7 @@ function renderPill(model) {
   if (pill.dataset.k === key) return;
   pill.dataset.k = key;
   pill.replaceChildren();
-  for (const p of model.pips ?? []) pill.append(mk("i", `fa-solid itt-pip ${p.state === "used" ? "fa-check itt-pip-used" : "fa-square"}`));
+  for (const p of model.pips ?? []) pill.append(mk("i", `fa-solid itt-pip ${ICON[p.k] ?? "fa-play"}${p.state === "used" ? " itt-pip-used" : ""}`));
   pill.append(mk("i", "fa-solid fa-forward-step itt-pill-end"));
   pill.setAttribute("aria-label", `${t("ITN.Tray.Label")}: ${model.who?.name ?? ""}`);
   pill.dataset.tooltip = t("ITN.Tray.Label");

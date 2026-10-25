@@ -26,7 +26,7 @@
 import * as Msg from "./message.mjs";
 import * as Tray from "./tray.mjs";
 import { t } from "./lang.mjs";
-import { yzeOn, yzeWaiting, yzeMode, actorOf, hasStatus, MODULE as YZE } from "../yze.mjs";
+import { yzeOn, yzeWaiting, yzeMode, actorOf, toggleActionMark } from "../yze.mjs";
 import { pickCombat, groupsFor } from "../party/actions.mjs";
 
 const MOD = "invincible-plus-ultra";
@@ -185,10 +185,9 @@ async function togglePip(id) {
   const pip = m.pips.find((p) => p.id === id);
   if (!pip || pip.disabled || !m.actor) return;
   busy = true;
-  const active = !hasStatus(m.actor, id);
+  let active = false;
   try {
-    await m.actor.toggleStatusEffect(id, { active });
-    if (!active && m.c?.getFlag?.(YZE, id)) { try { await m.c.unsetFlag(YZE, id); } catch { /* flag not ours to unset */ } }
+    active = await toggleActionMark(m.actor, m.c, id);
   } catch (e) {
     console.warn(LOG, "toggle failed", e);
     notify("warn", t("ITN.Note.Failed", { why: e?.message ?? String(e) }));

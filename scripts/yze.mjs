@@ -44,3 +44,12 @@ export function yzeMode() {
 /* the actor whose statuses carry the action marks of this combatant */
 export const actorOf = (c) => c?.token?.actor ?? c?.actor ?? null;
 export const hasStatus = (actor, id) => { try { return !!actor?.statuses?.has?.(id); } catch { return false; } };
+/* Mark / unmark one action of an actor (id: "fastAction" | "slowAction" | "action1".."action9"). The one place that does what yze-combat's tracker
+   button does: Actor#toggleStatusEffect, active computed from the REAL status (so a second click un-marks), and the combatant's own flag unset only
+   when it is present. Shared by the player tray (turn/main.mjs) and the GM buttons in the initiative bar (combat/bar.mjs). Returns the new state. */
+export async function toggleActionMark(actor, combatant, id) {
+  const active = !hasStatus(actor, id);
+  await actor.toggleStatusEffect(id, { active });
+  if (!active && combatant?.getFlag?.(MODULE, id)) { try { await combatant.unsetFlag(MODULE, id); } catch { /* flag not ours to unset */ } }
+  return active;
+}

@@ -413,7 +413,7 @@
 /* THE RING: the yellow outline and the notch of the active turn as one object in the layer over the list. bar.mjs lays four thin bars and the
    notch over the active tile's box (5 px outside it, like the outline it replaces) and glides them to the next tile in one FLIP (the bars are
    moved and stretched along their length only, so the line never gets thicker). Off while nobody has the turn (the draw is pending). */
-#invincible-combat-bar .icbar-ring { opacity: 0; transition: opacity .22s linear; pointer-events: none; }
+#invincible-combat-bar .icbar-ring { position: absolute; z-index: -1; opacity: 0; transition: opacity .22s linear; pointer-events: none; }   /* z -1: the line paints UNDER the tiles' action pips (they sit in each tile's own stacking context while it is animated, so a z-index on them cannot beat the layer) */
 #invincible-combat-bar .icbar-ring[data-on="1"] { opacity: 1; }
 #invincible-combat-bar .icbar-rg { position: absolute; display: block; background: var(--icbar-yellow); transform-origin: 0 0; pointer-events: none; }
 #invincible-combat-bar .icbar-rg-n { width: .95em; height: .5em; margin-left: -.475em; clip-path: polygon(0 0, 100% 0, 50% 100%); }
@@ -688,6 +688,77 @@
 #invincible-combat-bar.icbar-d1 .icbar-pip { width: .44em; height: .66em; }
 #invincible-combat-bar.icbar-d1 .icbar-tile[data-active] .icbar-pip { width: .5em; height: .78em; }
 
+/* ---------- GM action buttons (bar.mjs paintGm / toggleAct): under the ACTIVE tile, GM only; players keep the passive pips above ----------
+   The same family as the player tray's FAST / SLOW buttons (turn.css): open = solid yellow, 2px ink border, hard 3px shadow (cyan, the bar's own
+   button shadow); used = ink plate, dim frame and a struck label (no checkbox, no tick). They hang under the ring's notch (which points at them), as a SIBLING of the
+   tile inside its <li> (no name tooltip, no clip-path, no tile click), and fade in after the tile has unfolded. The strip reserves their room
+   (root class icbar-gm: a fixed reservation, so the bar never changes height with the turn); while they are shown the tile's passive pip tab is
+   redundant and rests. Label ink on yellow 13.9, label #a9bcdc on ink 8.0, frame #7d93b9 on ink 5.4 (non-text needs 3). ---------- */
+#invincible-combat-bar .icbar-item { position: relative; }
+#invincible-combat-bar.icbar-gm .icbar-scroller { padding-bottom: 3.3em; }
+#invincible-combat-bar .icbar-gma {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: calc(100% + 5px + .62em);   /* under the ring (5 px outside the tile) and its notch (.5em tall) */
+  display: flex;
+  gap: .5em;
+  font-size: .8em;
+  translate: -50% -.4em;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .12s linear, translate .12s linear, visibility 0s linear .12s;
+}
+#invincible-combat-bar .icbar-gma[hidden] { display: none; }
+#invincible-combat-bar .icbar-tile[data-active] ~ .icbar-gma:not([hidden]) {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  translate: -50% 0;
+  transition: opacity .2s linear .16s, translate .28s var(--icbar-out) .16s, visibility 0s;
+}
+#invincible-combat-bar .icbar-gb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45em;
+  min-width: 5.6em;
+  height: 2.4em;
+  margin: 0;
+  padding: 0 .85em;
+  font: 400 1em/1 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--icbar-ink);
+  background: var(--icbar-yellow);
+  border: 2px solid var(--icbar-ink);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--icbar-cyan);
+  cursor: var(--cursor-pointer, pointer);
+  transition: translate .12s var(--icbar-out), box-shadow .12s var(--icbar-out), background-color .16s linear, color .16s linear, border-color .16s linear;
+}
+#invincible-combat-bar .icbar-gb-i::before { display: block; font: 900 .85em/1 var(--icbar-fa); }
+#invincible-combat-bar .icbar-gb-i::before { content: "\f04b"; }                      /* play */
+#invincible-combat-bar .icbar-gb[data-k="fast"] .icbar-gb-i::before { content: "\f04e"; }   /* forward */
+#invincible-combat-bar .icbar-gb[data-st="used"] {
+  color: var(--icbar-label);
+  background: var(--icbar-ink);
+  border-color: var(--icbar-frame);
+  box-shadow: none;
+}
+#invincible-combat-bar .icbar-gb[data-st="used"] .icbar-gb-t { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+#invincible-combat-bar .icbar-gb:hover { translate: -1px -1px; box-shadow: 4px 4px 0 var(--icbar-cyan); }
+#invincible-combat-bar .icbar-gb[data-st="used"]:hover { box-shadow: 1px 1px 0 var(--icbar-frame); color: #fff; }
+#invincible-combat-bar .icbar-gb:active { translate: 2px 2px; box-shadow: 1px 1px 0 var(--icbar-cyan); }
+#invincible-combat-bar .icbar-gb:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-combat-bar.icbar-gm .icbar-tile[data-active] .icbar-acts { display: none; }
+@media (pointer: coarse) {
+  #invincible-combat-bar .icbar-gb { min-height: 44px; }
+  #invincible-combat-bar.icbar-gm .icbar-scroller { padding-bottom: 4.6em; }
+}
+
 /* ---------- Year Zero Engine Combat: duplicated entries of one token and the wait for the draw ----------
    DUPLICATES: every entry keeps its own tile in turn order. A small ink tag at the portrait's lower left says "place/total" among the token's
    entries (init is top left, the disposition chip lower right). Health / Resolve are drawn on the FIRST entry only (bar.mjs build()); a later
@@ -787,11 +858,15 @@
   #invincible-combat-bar .icbar-ring { transition: opacity .12s linear; }
   #invincible-combat-bar .icbar-pip, #invincible-combat-bar .icbar-pip::before, #invincible-combat-bar .icbar-pip::after, #invincible-combat-bar .icbar-pl { transition: none; }
   #invincible-combat-bar .icbar-nav { transition: background-color .1s linear; }
+  #invincible-combat-bar .icbar-gma, #invincible-combat-bar .icbar-tile[data-active] ~ .icbar-gma:not([hidden]) { translate: -50% 0; transition: opacity .12s linear, visibility 0s; }
+  #invincible-combat-bar .icbar-gb { transition: background-color .1s linear, color .1s linear; }
+  #invincible-combat-bar .icbar-gb:hover, #invincible-combat-bar .icbar-gb:active { translate: none; }
   #invincible-combat-bar .icbar-nav:not(:disabled):is(:hover, :focus-visible, :active) { transform: none; }
 }
 @media (forced-colors: active) {
   #invincible-combat-bar .icbar-bar, #invincible-combat-bar .icbar-nav { border-color: CanvasText; }
   #invincible-combat-bar .icbar-art { border-color: CanvasText; }
+  #invincible-combat-bar .icbar-gb { border-color: CanvasText; }
   #invincible-combat-bar .icbar-fill { background: Highlight; }
   #invincible-combat-bar .icbar-tile[data-active] { outline-color: Highlight; }
 }
