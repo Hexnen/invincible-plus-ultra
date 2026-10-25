@@ -11,7 +11,7 @@
    result. "From archetype" badges: a power / source whose name matches the applied archetype's book suggestion. */
 import { t } from "../lang.mjs";
 import { ATTRS, ATTR_MIN, SLOT_VALUE, levelCap, powerMaxLevel, slots, budget, powerSlots, validateStep, normName } from "../rules.mjs";
-import { addPower, removePower, setPowerLevel, setPowerSource, addBoost, removeBoost, addLimit, removeLimit, addSource, removeSource } from "../state.mjs";
+import { addPower, removePower, setPowerLevel, setPowerSource, setPowerNote, addBoost, removeBoost, addLimit, removeLimit, addSource, removeSource } from "../state.mjs";
 import { substream } from "../rng.mjs";
 import { esc, icon, msgText, delegate, levelName } from "./util.mjs";
 import { slug, enrich, descBlock, rowLinks, chip, openBook } from "./shared.mjs";   // shared with the talents step (5c)
@@ -162,6 +162,14 @@ function limitBlock(ctx, p) {
   </div>`;
 }
 
+/** phase 10: the choice some powers ask for ("Immunity (fire)"): optional text, saved as you type, written after the power name on the sheet */
+function noteField(p) {
+  const k = esc(p.key);
+  return `<label class="ipc-field ipc-pw-note"><span>${esc(t("IPC.Powers.Note"))}</span>
+    <input type="text" class="ipc-input" name="pwnote-${k}" data-fk="pwnote-${k}" maxlength="60" value="${esc(p.note ?? "")}" placeholder="${esc(t("IPC.Powers.NotePh"))}" autocomplete="off" aria-describedby="ipc-pwn-${k}">
+    <small class="ipc-muted" id="ipc-pwn-${k}">${esc(t("IPC.Powers.NoteHint", { name: p.name }))}</small></label>`;
+}
+
 function powerCard(ctx, p) {
   const d = ctx.data, ent = catOf(d, p.name);
   const fromArch = d.archNames?.has(norm(p.name));
@@ -175,6 +183,7 @@ function powerCard(ctx, p) {
       <button type="button" class="ipc-btn ipc-btn-small ipc-btn-danger" data-act="remove-power" data-key="${esc(p.key)}" data-fk="rm-${esc(p.key)}" aria-label="${esc(t("IPC.Powers.RemoveAria", { name: p.name }))}">${icon("fa-solid fa-trash")} ${esc(t("IPC.Powers.Remove"))}</button>
     </div>
     <div class="ipc-pw-card-grid">${levelGroup(ctx, p)}${sourceCell(ctx, p)}</div>
+    ${noteField(p)}
     ${boostBlock(ctx, p)}
     ${limitBlock(ctx, p)}
   </li>`;
@@ -418,6 +427,11 @@ export default {
     root.addEventListener("input", (ev) => {
       const el = ev.target;
       if (!(el instanceof HTMLInputElement)) return;
+      if (el.name.startsWith("pwnote-")) {   // phase 10: autosave, one undo step per burst of typing; no repaint (the field keeps focus and caret)
+        const key = el.name.slice(7), val = el.value.replace(/\s+/g, " ").slice(0, 60);
+        ctx.update((st) => setPowerNote(st, key, val), { coalesce: `pwnote-${key}` });
+        return;
+      }
       if (el.name === "pw-q") { d.q = el.value; d.limit = PAGE; }
       else if (el.name === "src-q") { d.sq = el.value; d.slimit = PAGE; }
       else if (el.name === "src-custom") { d.custom = el.value; return; }

@@ -571,6 +571,7 @@ export class ChargenApp extends ApplicationV2 {
     let note = "";
     if (iss.errors.length && id !== "review" && id !== "start") note = `<span class="ipc-note ipc-note-err" role="status">${icon("fa-solid fa-circle-exclamation")} ${esc(msgText(iss.errors[0]))}${iss.errors.length > 1 ? ` <span class="ipc-muted">${esc(t("IPC.Preview.More", { n: iss.errors.length - 1 }))}</span>` : ""}</span>`;
     const hist = this.#hist, ap = this.#applying;
+    if (this.#root) this.#root.dataset.step = id;   // phase 10: styling hook only (the Start step demotes the footer's Next button: its two choice cards are the primary actions)
     const focusKey = foot.contains(document.activeElement) ? document.activeElement.dataset?.ipc : null;   // keep focus on undo / redo after the repaint
     foot.innerHTML = `
       <div class="ipc-foot-l">

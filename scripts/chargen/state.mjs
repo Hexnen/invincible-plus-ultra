@@ -108,6 +108,8 @@ export const removePower = (s, key) => patch(s, { powers: s.powers.filter((p) =>
 const mapPower = (s, key, fn) => patch(s, { powers: s.powers.map((p) => (p.key === key ? fn(p) : p)) });
 export const setPowerLevel = (s, key, level) => mapPower(s, key, (p) => ({ ...p, level }));
 export const setPowerSource = (s, key, sourceKey) => mapPower(s, key, (p) => ({ ...p, sourceKey }));
+/** phase 10: the choice a power asks for ("Immunity (fire)"): a blank note removes the field; apply writes it into the item name */
+export const setPowerNote = (s, key, note) => mapPower(s, key, ({ note: _old, ...p }) => (String(note ?? "").trim() ? { ...p, note: String(note).replace(/\s+/g, " ").slice(0, 60) } : p));
 export const addBoost = (s, key, boost) => mapPower(s, key, (p) => ({ ...p, boosts: [...p.boosts, { name: boost.name, packUuid: boost.packUuid ?? null }] }));
 export const removeBoost = (s, key, i) => mapPower(s, key, (p) => ({ ...p, boosts: p.boosts.filter((_, j) => j !== i) }));
 export const addLimit = (s, key, limit) => mapPower(s, key, (p) => ({ ...p, limits: [...p.limits, { name: limit.name, packUuid: limit.packUuid ?? null, grants: limit.grants ?? null }] }));
@@ -175,7 +177,7 @@ export function deserialize(text) {
     powers: list(raw.powers, (x) => {
       const r = refReq(x);
       return { key: str(x.key, "p"), ...r, level: Number.isInteger(x.level) ? x.level : 0, sourceKey: typeof x.sourceKey === "string" ? x.sourceKey : null,
-        boosts: list(x.boosts, refReq), limits: list(x.limits, (l) => ({ ...refReq(l), grants: l.grants === "level" || l.grants === "boost" ? l.grants : null })), ...(note(x.note) ? { note: x.note } : {}) };
+        boosts: list(x.boosts, refReq), limits: list(x.limits, (l) => ({ ...refReq(l), grants: l.grants === "level" || l.grants === "boost" ? l.grants : null })), ...(note(x.note).trim() ? { note: x.note.slice(0, 60) } : {}) };
     }),
     heroTalent: ref(raw.heroTalent), extraTalents: list(raw.extraTalents, refReq),
     occupation: typeof raw.occupation === "string" ? raw.occupation : null, occTalent: ref(raw.occTalent), resources: Number.isFinite(Number(raw.resources)) ? Number(raw.resources) : 0,

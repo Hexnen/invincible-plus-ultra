@@ -658,6 +658,20 @@ const nrm = R.normName;
     eq(m.rerolls, { x: 1, y: 2 }, "C5: reroll counters merge per key");
     ok(S.rebase(a, a, rolled) === rolled, "C5: unchanged state -> the rolled state as it is");
   }
+  {   // phase 10: the power note (Immunity (fire)): set, collapse spaces, cap at 60, blank removes the field, survives serialize / deserialize
+    let a = S.addPower(hero(), { name: "Immunity" });
+    const key = a.powers[a.powers.length - 1].key;
+    const note = (s) => s.powers.find((p) => p.key === key).note;
+    a = S.setPowerNote(a, key, "fire   and  ice");
+    eq(note(a), "fire and ice", "P10: note whitespace is collapsed");
+    a = S.setPowerNote(a, key, "x".repeat(200));
+    eq(note(a).length, 60, "P10: note is capped at 60");
+    eq(note(S.deserialize(S.serialize(S.setPowerNote(a, key, "fire")))), "fire", "P10: note survives serialize / deserialize");
+    const tampered = JSON.parse(S.serialize(a)); tampered.powers.find((p) => p.key === key).note = "y".repeat(500);
+    eq(note(S.deserialize(JSON.stringify(tampered))).length, 60, "P10: a tampered draft note is capped at 60");
+    ok(!("note" in S.setPowerNote(a, key, "   ").powers.find((p) => p.key === key)), "P10: a blank note removes the field");
+    ok(S.setPowerNote(a, "nope", "x").powers.every((p) => p.key !== "nope"), "P10: an unknown key changes nothing");
+  }
   {   // hero-code fuzz: parseHeroCode on garbage never throws and never yields unexpected keys
     const rng = createRng("hc9");
     const alpha = "abcXYZ019:_-!? \n_proto_constructor";

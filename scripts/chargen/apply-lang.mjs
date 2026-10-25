@@ -1,11 +1,11 @@
 /* Strings of the chargen apply layer (IPCA.*), embedded EN + PL. Parity check: node scripts/chargen/apply-check-lang.mjs */
 export const EN = {
   "IPCA.Err.NotAllowed": "The GM has turned the character generator off for players. Nothing was changed.",
-  "IPCA.Err.Invalid": "The hero is not valid yet ({count} problem(s) to fix first). Nothing was changed.",
+  "IPCA.Err.Invalid": "The hero is not valid yet. Problems to fix first: {count}. Nothing was changed.",
   "IPCA.Err.NotOwner": "You do not have permission to change {actor}. Nothing was changed.",
   "IPCA.Err.WrongType": "{actor} is not a superhero. Nothing was changed.",
   "IPCA.Err.NoPacks": "The core book content (module invincible-core) is missing or unreadable: {missing}. Nothing was changed.",
-  "IPCA.Err.NeedConfirm": "This replaces {count} existing item(s) and {fields} filled-in field(s) of {actor}. Confirm the replacement explicitly. Nothing was changed.",
+  "IPCA.Err.NeedConfirm": "This replaces existing items ({count}) and filled-in fields ({fields}) of {actor}. Confirm the replacement explicitly. Nothing was changed.",
   "IPCA.Err.Unresolved": "{kind} \"{name}\" was not found in the core book content. Nothing was changed.",
   "IPCA.Err.Failed": "Applying the hero failed at \"{stage}\": {error}. Everything written in this run was rolled back.",
   "IPCA.Err.RollbackFailed": "Applying the hero failed at \"{stage}\": {error}. Rolling back ALSO failed ({rollback}). Check {actor} manually; the previous data is kept in the undo backup.",
@@ -13,9 +13,9 @@ export const EN = {
   "IPCA.Err.UndoFailed": "Undo failed: {error}.",
   "IPCA.Warn.CustomSource": "Power source \"{name}\" is not in the core book content; a custom power source is created.",
   "IPCA.Warn.NoBackupFlag": "The previous data is too large to store on the hero; undo works only until this window or session is closed.",
-  "IPCA.Warn.KeepsItems": "{count} other item(s) (gear, injuries and so on) stay untouched.",
+  "IPCA.Warn.KeepsItems": "Other items stay untouched (gear, injuries and so on): {count}.",
   "IPCA.Warn.HardTimes": "Hard Times: the book text says -2 Resources, the pack effect applies -1; the effect decides what the sheet shows.",
-  "IPCA.Done.Apply": "{actor}: {created} item(s) created, {deleted} removed, {fields} field(s) changed.",
+  "IPCA.Done.Apply": "{actor}: items created: {created}, removed: {deleted}, fields changed: {fields}.",
   "IPCA.Done.Undo": "{actor}: the previous version was restored.",
   /* phase 5f: team base integration */
   "IPCA.Err.NoBase": "The team base feature is not available, so the hero cannot be tied to a base. Choose \"Text only\" in the Team step. Nothing was changed.",
@@ -34,7 +34,7 @@ export const EN = {
   "IPCA.Err.NoRelay": "Creating or joining a team base needs the socketlib module (it carries your request to the GM) and it is not active. Choose \"Text only\" in the Team step or ask the GM. Nothing was changed.",
   "IPCA.Err.Busy": "Another generation or undo is writing to {actor} right now ({user}). Wait for it to finish and try again. Nothing was changed.",
   "IPCA.Err.PlanChanged": "{actor} changed since you looked at the review (items or fields that would be replaced are not the ones you were shown). Nothing was written; check the review again.",
-  "IPCA.Err.UndoStale": "{actor} has changed since the generation ({count} change(s)). Undo would overwrite those changes. Confirm explicitly after reading the list. Nothing was changed.",
+  "IPCA.Err.UndoStale": "{actor} has changed since the generation (changes: {count}). Undo would overwrite those changes. Confirm explicitly after reading the list. Nothing was changed.",
   "IPCA.Err.UndoExpired": "The undo offer for {actor} has expired (it lasts 24 hours). Nothing was changed.",
   "IPCA.Warn.BaseRequested": "Joining the team base \"{team}\" needs the GM's approval: a join request was sent. The hero is not a member until the GM approves it."
 };
