@@ -27,6 +27,8 @@ export const EN = {
   "IPC.Window.Title": "Character generator: {actor}",
   "IPC.Close.Title": "Close the character generator?",
   "IPC.Close.Body": "You have changes that are not applied to the hero. Your draft is kept for 7 days, so you can continue it later.",
+  "IPC.Close.BodyNoDraft": "You have changes that are not applied to the hero, and this browser cannot store a draft (storage is blocked or full). If you close now, they are lost.",
+  "IPC.Close.YesNoDraft": "Close and lose the changes",
   "IPC.Close.Yes": "Close and keep the draft",
   "IPC.Close.No": "Keep working",
 
@@ -1033,6 +1035,8 @@ export const PL = {
   "IPC.Window.Title": "Kreator postaci: {actor}",
   "IPC.Close.Title": "Zamknąć kreator postaci?",
   "IPC.Close.Body": "Masz zmiany, które nie zostały zastosowane do bohatera. Szkic zostaje na 7 dni, więc możesz wrócić do niego później.",
+  "IPC.Close.BodyNoDraft": "Masz zmiany, które nie zostały zastosowane do bohatera, a ta przeglądarka nie może zapisać szkicu (pamięć jest zablokowana lub pełna). Jeśli zamkniesz teraz, zmiany przepadną.",
+  "IPC.Close.YesNoDraft": "Zamknij i utrać zmiany",
   "IPC.Close.Yes": "Zamknij i zachowaj szkic",
   "IPC.Close.No": "Pracuj dalej",
 

@@ -36,6 +36,8 @@ export const UNDO_TTL = 24 * 3600 * 1000;
 export const LOCK_TTL = 90 * 1000;
 const inflight = new Set();   // actor.uuid of applies / undos running in THIS client
 const lockPath = `flags.${MODULE_ID}.chargenLock`;
+/** P11-6: Foundry 14 deprecates the "-=key" deletion syntax; ForcedDeletion where it exists (14), the legacy key on 13 */
+const dropKey = (parent, key) => { const FD = globalThis.foundry?.data?.operators?.ForcedDeletion; return FD?.create ? [`${parent}.${key}`, FD.create()] : [`${parent}.-=${key}`, null]; };
 
 const msg = (kind, code, params = {}, extra = {}) => ({ code, key: `IPCA.${kind}.${code}`, params, message: t(`IPCA.${kind}.${code}`, params), ...extra });
 const getp = (obj, path) => foundry.utils.getProperty(obj, path);
@@ -152,7 +154,8 @@ async function applyBase(actor, state, ti, warnings) {
 /* ------------------------------------------------------------------ state -> actor field values */
 function fieldValues(state, skipTeam = false) {
   const f = {};
-  const text = (path, v) => { const s = String(v ?? "").trim(); if (s) f[path] = s; };
+  // phase 11 (P11-1): a tampered draft / import could carry control characters, bidi overrides (spoofing) or megabytes of text: strip and cap what is written
+  const text = (path, v) => { const s = String(v ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F‪-‮⁦-⁩]/g, "").trim().slice(0, path === "name" || path === "system.civilianName" ? 60 : 1200); if (s) f[path] = s; };
   text("name", state.heroName);
   text("system.civilianName", state.civilianName);
   text("system.role", state.role);
@@ -182,6 +185,7 @@ function fieldValues(state, skipTeam = false) {
 function baseItemData(doc, runId) {
   const d = doc.toObject();
   delete d._id; delete d.folder; delete d.ownership; delete d._stats;
+  if (d.flags && "exportSource" in d.flags) delete d.flags.exportSource;   // P11-7: pack items still carry the pre-v13 flag; creating them triggered a "failed data migration" warning per item
   d.flags = foundry.utils.mergeObject(d.flags ?? {}, { [MODULE_ID]: { chargenRun: runId } });
   return d;
 }
@@ -331,7 +335,7 @@ async function acquireLock(actor, lockId) {
 }
 async function releaseLock(actor, lockId) {
   inflight.delete(actor.uuid);
-  try { if (getp(actor._source, lockPath)?.runId === lockId) await actor.update({ [`flags.${MODULE_ID}.-=chargenLock`]: null }); } catch (err) { console.warn(`${MODULE_ID} | chargen: could not release the lock`, err); }
+  try { if (getp(actor._source, lockPath)?.runId === lockId) await actor.update(Object.fromEntries([dropKey(`flags.${MODULE_ID}`, "chargenLock")])); } catch (err) { console.warn(`${MODULE_ID} | chargen: could not release the lock`, err); }
 }
 /** run fn() holding the hero's write lock; the loser gets a Busy error and nothing is written */
 async function withLock(actor, fn, busyResult) {
@@ -450,7 +454,7 @@ async function applyLocked(actor, state, { confirmed = false, onStage: onStageRa
     }
   } catch (err) {
     console.error(`${MODULE_ID} | chargen apply failed at ${stage}`, err);
-    const reason = err?.message ?? String(err);
+    const reason = String(err?.message ?? err).replace(/[\s.]+$/, "");   // P11-5: the message templates add their own full stop
     try {
       await restore(actor, snap, created);
       const e = msg("Err", "Failed", { stage, error: reason });
@@ -458,7 +462,7 @@ async function applyLocked(actor, state, { confirmed = false, onStage: onStageRa
     } catch (rb) {
       console.error(`${MODULE_ID} | chargen rollback failed`, rb);
       memory.set(actor.uuid, snap);
-      const e = msg("Err", "RollbackFailed", { stage, error: reason, rollback: rb?.message ?? String(rb), actor: actor.name });
+      const e = msg("Err", "RollbackFailed", { stage, error: reason, rollback: String(rb?.message ?? rb).replace(/[\s.]+$/, ""), actor: actor.name });
       return { ...base, errors: [e], warnings, rolledBack: false, message: e.message };
     }
   }
@@ -469,7 +473,9 @@ async function applyLocked(actor, state, { confirmed = false, onStage: onStageRa
   } catch (err) { console.warn(`${MODULE_ID} | chargen: could not store the undo fingerprint`, err); }
   memory.set(actor.uuid, snap);
   const message = t("IPCA.Done.Apply", { actor: actor.name, created: created.length, deleted: snap.wiped.length, fields: p.fields.length });
-  return { ...base, ok: true, errors: [], warnings, created, deleted: [...snap.wiped], message };
+  // P11-4: the plan's future-tense notes ("will be created / joined") must not stay next to the past-tense line of what the run just did
+  const done = snap.base ? warnings.filter((w) => w.code !== "BaseWillCreate" && w.code !== "BaseWillJoin") : warnings;
+  return { ...base, ok: true, errors: [], warnings: done, created, deleted: [...snap.wiped], message };
 }
 const mirroredPaths = (p) => (p._team && (p._team.action === "join" || p._team.action === "create") ? ["system.team", "system.teamBase"] : []);
 function fingerprint(actor, paths, createdIds) {
@@ -492,9 +498,9 @@ async function restore(actor, snap, createdIds = null) {
   const upd = { ...snap.fields };
   for (const path of snap.unset ?? []) if (typeof getp(actor._source, path) === "string") upd[path] = "";   // a text field that did not exist before the run goes back to empty (found in 5f: undo left the texts behind)
   const flagPath = `flags.${MODULE_ID}`;
-  if (snap.prevChargen) upd[`${flagPath}.chargen`] = snap.prevChargen; else upd[`${flagPath}.-=chargen`] = null;
+  if (snap.prevChargen) upd[`${flagPath}.chargen`] = snap.prevChargen; else { const [k, v] = dropKey(flagPath, "chargen"); upd[k] = v; }
   if (createdIds && snap.prevBackup) upd[`${flagPath}.chargenBackup`] = snap.prevBackup; // failed run: the older undo backup stays
-  else upd[`${flagPath}.-=chargenBackup`] = null;
+  else { const [k, v] = dropKey(flagPath, "chargenBackup"); upd[k] = v; }
   // B11 patch (phase 9): a hero that is (still) a team MEMBER does not get the old team texts back behind the card's back; the lock guard then also protects this update
   let member = false;
   try { member = !!baseApi()?.find?.(actor); } catch { member = false; }
@@ -559,7 +565,7 @@ async function undoLocked(actor, { confirmDrift = false } = {}) {
     return { ok: true, errors: [], warnings, message: t("IPCA.Done.Undo", { actor: actor.name }) };
   } catch (err) {
     console.error(`${MODULE_ID} | chargen undo failed`, err);
-    const e = msg("Err", "UndoFailed", { error: err?.message ?? String(err) });
+    const e = msg("Err", "UndoFailed", { error: String(err?.message ?? err).replace(/[\s.]+$/, "") });
     return { ok: false, errors: [e], message: e.message };
   }
 }

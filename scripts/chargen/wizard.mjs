@@ -71,7 +71,7 @@ export class ChargenApp extends ApplicationV2 {
   #closing = false;
   #navToken = 0;
   #lastCoalesce = null; #lastCoalesceAt = 0;
-  #draftTimer = 0;
+  #draftTimer = 0; #draftFailed = false;
   #lastPoints = null; #liveAt = 0;
   #busy = 0;
   #applying = false;                   // phase 7: apply() is writing; navigation, history and closing are refused
@@ -122,8 +122,10 @@ export class ChargenApp extends ApplicationV2 {
     if (!options.force && this.#isDirty()) {
       this.#closing = true;
       let ok = false;
+      this.#flushDraft();   // P11-3: know now whether the draft really can be kept (blocked / full storage): the question must not promise it then
+      const kept = !this.#draftFailed;
       try {
-        ok = await confirmDialog({ title: t("IPC.Close.Title"), body: t("IPC.Close.Body"), yes: t("IPC.Close.Yes"), no: t("IPC.Close.No") });
+        ok = await confirmDialog({ title: t("IPC.Close.Title"), body: t(kept ? "IPC.Close.Body" : "IPC.Close.BodyNoDraft"), yes: t(kept ? "IPC.Close.Yes" : "IPC.Close.YesNoDraft"), no: t("IPC.Close.No") });
       } finally { this.#closing = false; }
       if (!ok) {     // "Keep working": focus must not be lost to the page behind (the opener may have been the body after Escape)
         setTimeout(() => { if (this.rendered && !this.element?.contains(document.activeElement)) this.focusBody(this.#q(".ipc-step") ? ".ipc-plate" : "button"); }, 120);
@@ -478,11 +480,12 @@ export class ChargenApp extends ApplicationV2 {
     if (title) title.textContent = this.title;
   }
   #readDraft() {
+    let raw = null;
+    try { raw = localStorage.getItem(draftKey(this.actor)); } catch { return null; }   // P11-2: blocked storage (private window, site data blocked) is "no draft", not "a damaged draft"
+    if (!raw) return null;
     try {
-      const raw = localStorage.getItem(draftKey(this.actor));
-      if (!raw) return null;
       const d = JSON.parse(raw);
-      if (!d?.at || Date.now() - d.at > DRAFT_TTL) { localStorage.removeItem(draftKey(this.actor)); return null; }
+      if (!d?.at || Date.now() - d.at > DRAFT_TTL) { this.#clearDraft(); return null; }
       const state = S.deserialize(d.state);
       validate(state);                       // C2 (phase 9): a draft that cannot even be validated is unusable, whatever it looked like when it parsed
       return { at: d.at, state };
@@ -497,9 +500,9 @@ export class ChargenApp extends ApplicationV2 {
   }
   #flushDraft() {
     try {
-      if (this.#isDirty()) localStorage.setItem(draftKey(this.actor), JSON.stringify({ at: Date.now(), state: S.serialize(this.state) }));
+      if (this.#isDirty()) { localStorage.setItem(draftKey(this.actor), JSON.stringify({ at: Date.now(), state: S.serialize(this.state) })); this.#draftFailed = false; }
       else if (this.#applied) localStorage.removeItem(draftKey(this.actor));
-    } catch { /* storage unavailable: the wizard works without it */ }
+    } catch { this.#draftFailed = true; /* storage unavailable: the wizard works without it */ }
   }
   #clearDraft() { try { localStorage.removeItem(draftKey(this.actor)); } catch { /* ignore */ } }
   #restoreDraft() {
