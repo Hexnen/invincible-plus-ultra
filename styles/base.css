@@ -609,3 +609,11 @@ li.ipb-dir-base .ipb-dir-mark { margin-inline-start: 6px; color: #0096cb; font-s
 @media (prefers-reduced-motion: reduce) {
   .ipb-up-undo { animation: ipb-fade .12s linear; }
 }
+
+/* B4d: hero fields owned by the team card */
+.invincible.sheet.actor section.tab.personal .ipb-locked { background: #e9eef5; color: #26385a; cursor: default; border-style: dashed; }
+.invincible.sheet.actor section.tab.personal .ipb-locked:focus-visible { outline: 3px solid #0096cb; outline-offset: 2px; }
+.ipb-lock-note { flex: 1 1 100%; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font: 400 14px/1.35 Roboto, sans-serif; color: #26385a; }
+.ipb-lock-note > i { color: #0096cb; }
+.ipb-lock-note > span { min-width: 0; flex: 1 1 8rem; overflow-wrap: anywhere; }
+@media (pointer: coarse) { .invincible.sheet.actor button.ipb-lock-open { min-height: 44px; } }

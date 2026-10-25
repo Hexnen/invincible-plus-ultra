@@ -13,6 +13,7 @@
 import * as S from "./store.mjs";
 import { t, tn } from "./lang.mjs";
 import { esc, icon } from "./util.mjs";
+import * as Lock from "./lock.mjs";
 
 const MOD = S.MODULE_ID;
 const ICON = "fa-solid fa-people-roof";
@@ -102,12 +103,41 @@ function personalRow(actor) {
   if (team) {
     const n = Object.keys(team.upgrades).length;
     body = `<span class="ipb-pr-text"><strong>${esc(team.name)}</strong> <span class="ipb-pr-meta">${esc(tn("IPB.Entry.Upgrades", n))}</span></span>`
-      + `<button type="button" class="ipb-pr-btn" data-ipb-open aria-label="${esc(t("IPB.Entry.RowOpenAria", { team: team.name }))}">${icon(ICON)} ${esc(t("IPB.Entry.RowOpen"))}</button>`;
+      + (Lock.isMember(actor) && (actor.isOwner || staff) ? "" : `<button type="button" class="ipb-pr-btn" data-ipb-open aria-label="${esc(t("IPB.Entry.RowOpenAria", { team: team.name }))}">${icon(ICON)} ${esc(t("IPB.Entry.RowOpen"))}</button>`);   // B4d: the lock note carries the Open button instead
   } else {
     const label = canMake || S.list().length ? t("IPB.Entry.RowCreate") : t("IPB.Entry.RowAsk");
     body = `<span class="ipb-pr-text ipb-pr-meta">${esc(t("IPB.Entry.RowNone"))}</span><button type="button" class="ipb-pr-btn" data-ipb-open>${icon(ICON)} ${esc(label)}</button>`;
   }
   return body;
+}
+/* B4d: while the hero is a member, system.team / system.teamBase are read-only here (the card owns them); the note under them says why. Idempotent,
+   runs on every render and repaint, so it also unlocks again when the hero leaves the base. readonly (not disabled): still focusable and selectable. */
+function applyLock(el, actor, app) {
+  const card = Lock.cardOf(actor);
+  const noteId = `ipb-lock-note-${app?.id ?? actor.id}`;
+  for (const f of Lock.FIELDS) {
+    const input = el.querySelector(`section.tab.personal [name="system.${f}"]`);
+    if (!input) continue;
+    if (card) {
+      input.readOnly = true;
+      input.setAttribute("aria-readonly", "true");
+      input.setAttribute("aria-describedby", noteId);
+      input.classList.add("ipb-locked");
+    } else if (input.classList.contains("ipb-locked")) {
+      input.readOnly = false;
+      input.removeAttribute("aria-readonly");
+      input.removeAttribute("aria-describedby");
+      input.classList.remove("ipb-locked");
+    }
+  }
+}
+function lockNote(actor, app) {
+  const card = Lock.cardOf(actor);
+  if (!card) return "";
+  const id = `ipb-lock-note-${app?.id ?? actor.id}`;
+  const open = actor.isOwner || S.isStaff()
+    ? ` <button type="button" class="ipb-pr-btn ipb-lock-open" data-ipb-open aria-label="${esc(t("IPB.Entry.RowOpenAria", { team: card.name }))}">${icon(ICON)} ${esc(t("IPB.Entry.RowOpen"))}</button>` : "";
+  return `<p class="ipb-lock-note" id="${id}">${icon("fa-solid fa-lock")} <span>${esc(t("IPB.Lock.Note", { team: card.name }))}</span>${open}</p>`;
 }
 function syncPersonal(app, root) {
   const actor = sheetHero(app);
@@ -115,6 +145,7 @@ function syncPersonal(app, root) {
   if (!actor || !el?.querySelector) return;
   const field = el.querySelector('section.tab.personal [name="system.teamBase"]');
   const group = field?.closest(".form-group");
+  applyLock(el, actor, app);
   const existing = el.querySelector(".ipb-personal");
   if (!group || !(actor.isOwner || S.find(actor))) { existing?.remove(); return; }
   const row = existing ?? Object.assign(document.createElement("div"), { className: "form-group ipb-personal" });
@@ -122,7 +153,7 @@ function syncPersonal(app, root) {
     row.addEventListener("click", (ev) => { if (ev.target.closest("[data-ipb-open]")) openFor(actor); });
     group.after(row);
   }
-  const html = `<label>${esc(t("IPB.Entry.RowLabel"))}</label><div class="form-fields ipb-pr-body">${personalRow(actor)}</div>`;
+  const html = `<label>${esc(t("IPB.Entry.RowLabel"))}</label><div class="form-fields ipb-pr-body">${personalRow(actor)}${lockNote(actor, app)}</div>`;
   if (row.dataset.sig !== html) { row.innerHTML = html; row.dataset.sig = html; }
 }
 function syncSheets() {

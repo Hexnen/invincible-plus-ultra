@@ -71,7 +71,7 @@ export async function push(team, { force = false, resolve = null, user = game.us
     if (!fields.length && same) { out.unchanged.push(r.id); continue; }
     upd[`flags.${MOD}.${P.FLAG_KEY}.pushed`] = pushed;
     upd[`flags.${MOD}.${P.FLAG_KEY}.kept`] = kept;
-    await r.actor.update(upd);
+    await r.actor.update(upd, { ipbSync: true });                      // B4d: the lock guard (lock.mjs) lets only the sync write the mirrored fields
     if (fields.length) out.pushed.push({ id: r.id, fields });
     else out.unchanged.push(r.id);
   }

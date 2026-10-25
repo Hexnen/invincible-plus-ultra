@@ -8,6 +8,7 @@ import * as Relay from "./relay.mjs";
 import { attach } from "./api.mjs";
 import * as Entry from "./entry.mjs";
 import * as Dir from "./directory.mjs";
+import * as Lock from "./lock.mjs";
 import { t } from "./lang.mjs";
 
 const MOD = S.MODULE_ID;
@@ -57,6 +58,7 @@ export function start(phases = {}) {
       Hooks.on("renderActorDirectory", Dir.decorate);
       Hooks.on("preCreateActor", S.forceSheetOnCreate);
       Hooks.on("preDeleteActor", S.guardDelete);
+      Hooks.on("preUpdateActor", Lock.guard);
       // a hero joined / left a team (its link flag changed), or a base changed its policy: the active GM re-grants the base's ownership
       Hooks.on("updateActor", (actor, change) => {
         const f = change?.flags?.[MOD];
