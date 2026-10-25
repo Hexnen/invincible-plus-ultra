@@ -9,6 +9,7 @@
 @import url("party.css");   /* the party cards (scripts/party/) */
 @import url("turn.css");   /* the player turn message, action tray and end-turn dialogs (scripts/turn/) */
 @import url("diceeffects.css");   /* the effects under Dice So Nice dice (scripts/diceeffects/) */
+@import url("chargen.css");   /* the character generator wizard and its header button (scripts/chargen/) */
 
 /* Invincible — Sheet Plus: actor sheets only. Palette: yellow #ffe72a, cyan #0096cb, blue #3465a3. */
 .invincible.sheet.actor {
