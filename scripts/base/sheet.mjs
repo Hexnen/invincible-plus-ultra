@@ -13,6 +13,7 @@ import { TABS, tabById } from "./tabs/index.mjs";
 import { t, tn } from "./lang.mjs";
 import { esc, icon, rankName, reportError, guard } from "./util.mjs";
 import { resolveConflicts, chooseHero } from "./dialogs.mjs";
+import * as Drop from "./drop.mjs";
 
 const MOD = S.MODULE_ID;
 const { ActorSheetV2 } = foundry.applications.sheets;
@@ -54,6 +55,9 @@ export class BaseSheet extends ActorSheetV2 {
   #timer = 0;
   #pending = new Set();
   #busy = 0;
+  #justAdded = "";
+  #dragKind = "";                 // "" | "hero" | "foreign" | "unknown": what the drag in progress carries (read once at dragstart, dragover cannot read the data)
+  #dragOff = null;
 
   constructor(options = {}) {
     options.position = { ...(options.position ?? {}) };
@@ -77,9 +81,10 @@ export class BaseSheet extends ActorSheetV2 {
   async _onRender(context, options) {
     await super._onRender(context, options);
     if (!this.#bound) { this.#bound = true; this.#bind(); }
+    this.#watchDrags();
     if (!this.#painted) { this.#painted = true; this.#paintAll(); } else this.refresh();       // later renders (a document update) go through the careful, focus-safe repaint
   }
-  _onClose(options) { clearTimeout(this.#timer); this.#painted = false; super._onClose(options); }
+  _onClose(options) { clearTimeout(this.#timer); this.#painted = false; this.#dragOff?.(); this.#dragOff = null; super._onClose(options); }
 
   // ---------- drops: the Gear tab (B8) takes items and vehicles; until then nothing may land on the actor itself ----------
   async _onDropItem() { return null; }
@@ -134,6 +139,7 @@ export class BaseSheet extends ActorSheetV2 {
       else if (a === "art") this.#chooseArt();
       else if (a === "member") this.#openSheet(el.dataset.actor);
       else if (a === "member-add") this.#addMember();
+      else if (a === "member-remove") this.#removeMember(el.dataset.actor);
       else if (a === "update-sheets") this.#updateSheets();
     });
     root.addEventListener("change", (ev) => {
@@ -154,6 +160,7 @@ export class BaseSheet extends ActorSheetV2 {
     });
     // short windows (min size 640x480): hide the picture and tighten the header so the tab panel keeps room (data-compact, styles/base.css)
     new ResizeObserver(() => { const h = root.parentElement?.clientHeight ?? 999; root.dataset.compact = h < 580 ? "1" : "0"; }).observe(root.parentElement ?? root);
+    this.#bindDrop(root);
     root.addEventListener("focusin", (ev) => { const el = ev.target; if (el?.matches?.("[data-ipb-field]")) el.dataset.orig = el.value; });
     root.addEventListener("focusout", () => { setTimeout(() => this.#flushPending(), 0); });
   }
@@ -230,15 +237,17 @@ export class BaseSheet extends ActorSheetV2 {
     const name = canEdit
       ? `<span class="ipb-plate"><input class="ipb-name" type="text" name="ipb-name" data-ipb-field="name" data-fk="name" maxlength="80" value="${esc(team.name)}" aria-label="${esc(t("IPB.Head.Name"))}" autocomplete="off" spellcheck="false"></span>`
       : `<h1 class="ipb-plate"><span class="ipb-name-ro">${esc(team.name)}</span></h1>`;
-    const ranks = P.RANKS.map((r) => `<option value="${r}"${r === team.rank ? " selected" : ""}>${esc(rankName(r))}</option>`).join("");
-    const rank = canEdit
-      ? `<label class="ipb-rank"><span class="ipb-sr">${esc(t("IPB.Head.Rank"))}</span><select class="ipb-input" name="ipb-rank" data-ipb-field="rank" data-fk="rank">${ranks}</select></label>`
-      : `<span class="ipb-rank-ro">${icon("fa-solid fa-shield-halved")} ${esc(rankName(team.rank))}</span>`;
+    const rank = this.#rankHtml(team);
     const motto = canEdit
       ? `<label class="ipb-motto"><span class="ipb-sr">${esc(t("IPB.Head.Motto"))}</span><input class="ipb-input" type="text" name="ipb-motto" data-ipb-field="motto" data-fk="motto" maxlength="160" value="${esc(team.motto)}" placeholder="${esc(t("IPB.Head.MottoHint"))}" autocomplete="off"></label>`
       : (team.motto ? `<p class="ipb-motto-ro">${esc(team.motto)}</p>` : "");
     const members = ctx.members;
-    const mems = members.map((a) => `<li><button type="button" class="ipb-mem" data-ipb="member" data-actor="${esc(a.id)}" aria-label="${esc(t("IPB.Head.OpenSheet", { name: a.name }))}" data-tooltip="${esc(a.name)}"><img src="${esc(a.img)}" alt=""><span class="ipb-mem-name">${esc(a.name)}</span></button></li>`).join("");
+    const mems = members.map((a) => {
+      const fresh = a.id === this.#justAdded ? " ipb-mem-new" : "";
+      const out = this.#canUnlink(a)
+        ? `<button type="button" class="ipb-mem-x" data-ipb="member-remove" data-actor="${esc(a.id)}" data-fk="mx-${esc(a.id)}" aria-label="${esc(t("IPB.Head.RemoveMember", { name: a.name }))}" data-tooltip="${esc(t("IPB.Head.RemoveMember", { name: a.name }))}">${icon("fa-solid fa-xmark")}</button>` : "";
+      return `<li class="ipb-mem-li${fresh}"><button type="button" class="ipb-mem" data-ipb="member" data-actor="${esc(a.id)}" aria-label="${esc(t("IPB.Head.OpenSheet", { name: a.name }))}" data-tooltip="${esc(a.name)}"><img src="${esc(a.img)}" alt=""><span class="ipb-mem-name">${esc(a.name)}</span></button>${out}</li>`;
+    }).join("");
     const hidden = members.hidden ? `<p class="ipb-mem-hidden">${icon("fa-solid fa-eye-slash")} ${esc(tn("IPB.Head.Hidden", members.hidden))}</p>` : "";
     const add = this.#canLinkSomething()
       ? `<button type="button" class="ipb-btn ipb-btn-icon ipb-btn-small ipb-add" data-ipb="member-add" data-fk="member-add" aria-label="${esc(t("IPB.Head.AddMember"))}" data-tooltip="${esc(t("IPB.Head.AddMember"))}">${icon("fa-solid fa-user-plus")}</button>` : "";
@@ -251,9 +260,20 @@ export class BaseSheet extends ActorSheetV2 {
           <h2 id="${esc(this.id)}-mh" class="ipb-mem-h">${esc(t("IPB.Head.Members"))}</h2>
           <ul class="ipb-mems">${mems || `<li class="ipb-muted ipb-mem-none">${esc(t("IPB.Head.NoMembers"))}</li>`}${add ? `<li>${add}</li>` : ""}</ul>
           ${hidden}
-        </section>`;
+        </section>
+        <div class="ipb-drop" aria-hidden="true">${icon("fa-solid fa-user-plus")}<span class="ipb-drop-ok">${esc(t("IPB.Drop.Hint"))}</span><span class="ipb-drop-no">${esc(t("IPB.Drop.Only"))}</span></div>`;
     });
   }
+  /** B4c: the rank is DERIVED (highest member rank, store.rankOf), shown read-only; a note when the members disagree */
+  #rankHtml(team) {
+    const ri = team.rankInfo;
+    const src = ri.source === "members" ? t("IPB.Rank.FromMembers") : t("IPB.Rank.NoMembers");
+    const tip = [t("IPB.Rank.TipTitle"), ...ri.members.map((m) => `${m.name}: ${m.rank ? rankName(m.rank) : t("IPB.Rank.Unknown")}${m.source === "inferred" ? ` (${t("IPB.Rank.Estimated")})` : ""}`)].join("; ");
+    const mix = ri.mixed ? `<span class="ipb-rank-mix" role="note">${icon("fa-solid fa-triangle-exclamation")}<span>${esc(t("IPB.Rank.Mixed", { ranks: ri.ranks.map(rankName).join(", ") }))}</span></span>` : "";
+    return `<span class="ipb-rank-box"><span class="ipb-rank-ro" data-tooltip="${esc(tip)}">${icon("fa-solid fa-shield-halved")}<span>${esc(t("IPB.Rank.Label", { rank: rankName(ri.rank) }))}</span><small class="ipb-rank-src">${esc(src)}</small></span>${mix}</span>`;
+  }
+  /** staff, or an owner of the hero (store.unlink repeats this check) - and the viewer must be able to edit the base */
+  #canUnlink(actor) { return S.canEdit(this.teamId) && (S.isStaff() || actor.testUserPermission(game.user, "OWNER")); }
   #canLinkSomething() {
     return game.actors.some((a) => a.type === "superhero" && !S.linkOf(a) && (S.isStaff() || a.testUserPermission(game.user, "OWNER")));
   }
@@ -345,7 +365,6 @@ export class BaseSheet extends ActorSheetV2 {
     if (value === team[field]) return;
     const res = await guard(S.update(team.id, { [field]: value }));
     if (!res) { el.value = team[field]; return; }
-    if (field === "rank") this.#announce(rankName(value));
   }
   async #chooseArt() {
     const team = this.#team();
@@ -365,6 +384,95 @@ export class BaseSheet extends ActorSheetV2 {
     if (!hero) return;
     const res = await this.#run(S.link(hero, team.id));
     if (res) this.#announce(t("IPB.Empty.Joined", { actor: hero.name, team: team.name }));
+  }
+  async #removeMember(actorId) {
+    const team = this.#team();
+    const hero = game.actors.get(actorId);
+    if (!team || !hero) return;
+    const res = await this.#run(guard(S.unlink(hero)));
+    if (res) { const msg = t("IPB.Head.Removed", { name: hero.name, team: team.name }); ui.notifications?.info(msg, { console: false }); this.#announce(msg); }
+  }
+
+  // ---------- drops (B4c): a hero dragged from the Actors directory or a token joins the team ----------
+  /** The layer works on the whole sheet but stays out of the way: only Actor / Token payloads are taken (an Item drop is left to the core handler and the
+      Gear tab, B8), and a non-hero actor dropped on the tab panel is ignored silently so the Gear tab can accept vehicles there; over the header it says why. */
+  #setDrag(v) { const r = this.#root; if (!r) return; if (v) r.dataset.drag = v; else delete r.dataset.drag; }
+  /** window-level watchers (added on every render, removed on close): what does the drag in progress carry? dragover cannot read the payload, and core stops
+      dragstart from bubbling past the directory, so at dragstart (capture phase, before the source writes anything) the setData of THIS drag's own
+      DataTransfer is wrapped to learn the payload the source writes. Only that one object is touched, nothing global. */
+  #watchDrags() {
+    if (this.#dragOff) return;
+    const learn = (raw) => {
+      try {
+        const data = JSON.parse(raw);
+        this.#dragKind = Drop.isDropData(data) ? Drop.previewKind(data) : "";
+        if (this.#dragKind === "hero" || this.#dragKind === "unknown") this.#setDrag("on");
+      } catch { this.#dragKind = ""; }
+    };
+    const onStart = (ev) => {
+      const dt = ev.dataTransfer;
+      if (!dt) return;
+      this.#dragKind = ""; this.#setDrag("");
+      try {
+        const orig = dt.setData;
+        dt.setData = function (type, value) { const r = orig.apply(this, arguments); if (type === "text/plain") learn(value); return r; };
+      } catch { /* a locked DataTransfer: the sheet then reacts at dragenter only */ }
+    };
+    const end = () => { this.#dragKind = ""; this.#setDrag(""); };
+    window.addEventListener("dragstart", onStart, true);
+    window.addEventListener("dragend", end, true);
+    this.#dragOff = () => { window.removeEventListener("dragstart", onStart, true); window.removeEventListener("dragend", end, true); };
+  }
+  #bindDrop(root) {
+    const set = (v) => this.#setDrag(v);
+    const end = () => { this.#dragKind = ""; set(""); };
+    const inHead = (ev) => !!(ev.target instanceof Element && ev.target.closest(".ipb-head"));
+    const takes = (ev) => [...(ev.dataTransfer?.types ?? [])].includes("text/plain") && (!!this.#dragKind || inHead(ev));      // an unlabelled drag (no dragstart seen) is only taken over the header
+    const rest = () => (this.#dragKind === "hero" || this.#dragKind === "unknown" ? "on" : "");
+    const hover = (ev) => {                                                                     // "over" = a hero is above the sheet, "no" = a non-hero is above the header
+      if (!takes(ev)) return false;
+      const foreign = this.#dragKind === "foreign";
+      if (foreign && !inHead(ev)) { set(""); return false; }                                    // a vehicle / npc over the tab panel: left to the Gear tab (B8)
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = "link";                                                      // "none" would cancel the drop event, and a refusal needs the event to say why
+      const want = foreign ? "no" : "over";
+      if (root.dataset.drag !== want) set(want);
+      return true;
+    };
+    root.addEventListener("dragenter", hover);
+    root.addEventListener("dragover", hover);
+    root.addEventListener("dragleave", (ev) => { if (!ev.relatedTarget || !root.contains(ev.relatedTarget)) set(rest()); });
+    root.addEventListener("drop", (ev) => {
+      const data = Drop.readDragData(ev);
+      if (!Drop.isDropData(data)) return;                                                       // items, folders, files ...: not ours
+      if (this.#dragKind === "foreign" && !inHead(ev)) { end(); return; }                       // a vehicle / npc over the tab panel: the Gear tab's business
+      ev.preventDefault(); ev.stopPropagation();
+      const head = inHead(ev);
+      end();
+      this.#dropHero(data, head);
+    });
+  }
+  async #dropHero(data, inHead) {
+    const team = this.#team();
+    if (!team) return;
+    const res = await this.#run(Drop.dropHero(team.id, data));
+    if (!res) return;
+    const name = res.actor?.name ?? "";
+    if (res.status === "added" || res.status === "moved") {
+      this.#justAdded = res.actor.id;
+      const msg = t("IPB.Drop.Added", { name, team: team.name });
+      ui.notifications?.info(msg, { console: false });
+      this.#announce(msg);
+      setTimeout(() => { if (this.#justAdded === res.actor.id) this.#justAdded = ""; }, 1500);
+      this.refresh();
+    } else if (res.status === "already") {
+      const msg = t("IPB.Drop.Already", { name });
+      ui.notifications?.info(msg, { console: false }); this.#announce(msg);
+    } else if (res.status === "refused") {
+      if ((res.key === "IPB.Drop.Vehicle" || res.key === "IPB.Drop.NotHero") && !inHead) return;
+      const msg = res.message ?? t(res.key, res.params);
+      ui.notifications?.warn(msg, { console: false }); this.#announce(msg);
+    }
   }
   async #updateSheets() {
     const team = this.#team();

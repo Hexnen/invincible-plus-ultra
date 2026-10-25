@@ -413,6 +413,44 @@ ck("clampText", P.clampText("abcdef", 3) === "abc" && P.clampText(null) === "");
   ck("TEAM_BASE_KIND", P.TEAM_BASE_KIND === "teamBase");
 }
 
+/* ---- B4c: the team rank is derived from its members */
+{
+  // inferRank: the chargen budgets (points + 2 * slots) fall on 24 / 32 / 40 / 48 whatever the build
+  eq("inferRank teen", P.inferRank({ attrSum: 20, maxAttr: 5, powers: 2 }), "teen");
+  eq("inferRank street", P.inferRank({ attrSum: 26, maxAttr: 7, powers: 3 }), "street");
+  eq("inferRank global", P.inferRank({ attrSum: 32, maxAttr: 9, powers: 4 }), "global");
+  eq("inferRank cosmic", P.inferRank({ attrSum: 38, maxAttr: 11, powers: 5 }), "cosmic");
+  eq("inferRank slot-heavy global (fewer points, more powers)", P.inferRank({ attrSum: 28, maxAttr: 8, powers: 6 }), "global");
+  eq("inferRank power-light global (more points, no powers)", P.inferRank({ attrSum: 38, maxAttr: 9, powers: 1 }), "global");
+  eq("inferRank cap witness lifts a low score", P.inferRank({ attrSum: 20, maxAttr: 9, powers: 0 }), "global");
+  eq("inferRank cap above 12 -> cosmic", P.inferRank({ attrSum: 30, maxAttr: 14, powers: 4 }), "cosmic");
+  eq("inferRank blank sheet unknown", P.inferRank({ attrSum: 0, maxAttr: 0, powers: 0 }), null);
+  eq("inferRank blank sheet (2 x 6 = 12) unknown", P.inferRank({ attrSum: 12, maxAttr: 2, powers: 0 }), null);
+  eq("inferRank 11 points unknown", P.inferRank({ attrSum: 11, maxAttr: 3, powers: 9 }), null);
+  eq("inferRank junk", [P.inferRank(), P.inferRank({ attrSum: "x" }), P.inferRank(null)], [null, null, null]);
+  // heroRank: the chargen record beats the estimate
+  eq("heroRank flag wins", P.heroRank({ flagRank: "teen", attrSum: 50, maxAttr: 12, powers: 9 }), { rank: "teen", source: "flag" });
+  eq("heroRank bad flag -> inferred", P.heroRank({ flagRank: "mythic", attrSum: 32, maxAttr: 9, powers: 4 }), { rank: "global", source: "inferred" });
+  eq("heroRank nothing -> unknown", P.heroRank({}), { rank: null, source: "unknown" });
+  // deriveRank: highest member wins
+  const m = (rank, source = "flag") => ({ id: rank + Math.random(), name: rank, rank, source });
+  eq("derive single", P.deriveRank([m("street")]).rank, "street");
+  eq("derive single not mixed", P.deriveRank([m("street")]).mixed, false);
+  const mixed = P.deriveRank([m("teen"), m("cosmic"), m("street"), m("cosmic")], { stored: "teen" });
+  eq("derive mixed -> highest", [mixed.rank, mixed.mixed, mixed.ranks, mixed.source, mixed.counts], ["cosmic", true, ["teen", "street", "cosmic"], "members", { teen: 1, street: 1, cosmic: 2 }]);
+  eq("derive same rank not mixed", P.deriveRank([m("global"), m("global")]).mixed, false);
+  eq("derive no members -> stored", [P.deriveRank([], { stored: "street" }).rank, P.deriveRank([], { stored: "street" }).source], ["street", "stored"]);
+  eq("derive no members, bad stored -> global default", [P.deriveRank([]).rank, P.deriveRank([], { stored: "zz" }).source], ["global", "default"]);
+  eq("derive stored never overrides members", P.deriveRank([m("teen")], { stored: "cosmic" }).rank, "teen");
+  eq("derive unknown members ignored but counted", [P.deriveRank([m("street"), { rank: null, source: "unknown" }]).rank, P.deriveRank([m("street"), { rank: null }]).unknown], ["street", 1]);
+  eq("derive only unknown members -> stored", P.deriveRank([{ rank: null }], { stored: "cosmic" }).rank, "cosmic");
+  eq("derive counts estimates", P.deriveRank([m("global", "inferred"), m("global")]).inferred, 1);
+  ck("derive never throws on junk", (() => { try { for (const j of [null, undefined, 5, [null, 3, "x", []], { a: 1 }]) P.deriveRank(j, null ?? undefined); return true; } catch { return false; } })());
+  // allowance follows the DERIVED rank (ops.allowance uses data().rank): teen team 0, cosmic team 3
+  eq("allowance by derived rank", [P.allowance(P.deriveRank([m("teen")]).rank, []).total, P.allowance(P.deriveRank([m("teen"), m("cosmic")]).rank, []).total], [0, 3]);
+  eq("rank ids and order", P.RANKS, ["teen", "street", "global", "cosmic"]);
+}
+
 if (fails.length) { console.error(`FAILED ${fails.length}/${n}:\n - ${fails.join("\n - ")}`); process.exit(1); }
 if (n < 120) { console.error(`only ${n} checks (<120)`); process.exit(1); }
 console.log(`OK ${n} checks`);

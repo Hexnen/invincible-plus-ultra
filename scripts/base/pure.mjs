@@ -614,3 +614,45 @@ export function cardActorData(entry, cfg) {
     prototypeToken: { name, actorLink: true, texture: { src: img } }, flags
   };
 }
+
+// ------------------------------------------------------------------ B4c: the team's rank is DERIVED from its members (no rank select any more)
+// A hero's rank: the rank its chargen run recorded (flags.invincible-plus-ultra.chargen.rank) = source "flag"; a hand-made hero has none, so it is ESTIMATED from
+// what the chargen rules would have given it = source "inferred". Estimate: every power slot costs 2 attribute points (rules.mjs SLOT_VALUE), so
+// attrSum + 2 * powers is nearly independent of the build and sits at 24 / 32 / 40 / 48 for Teen / Street / Global / Cosmic (points + 2 * starting slots);
+// the midpoints 28 / 36 / 44 split the ranks. The largest attribute is a second witness (caps 6 / 8 / 10 / 12): a hero with a 9 is at least Global.
+// The higher of the two readings wins; a hero with fewer than 16 attribute points in total (a blank sheet has 12) is "unknown" and is ignored.
+export const RANK_SCORE_CUTS = Object.freeze([28, 36, 44]);          // < 28 teen, < 36 street, < 44 global, else cosmic
+export const RANK_CAPS = Object.freeze([6, 8, 10, 12]);               // per-attribute cap by rank index
+export const RANK_MIN_ATTR_SUM = 16;               // a new sheet starts at 2 x 6 = 12: nothing to read yet; the lowest chargen rank (Teen) has 20
+const rankIdx = (r) => RANKS.indexOf(r);
+/** { attrSum, maxAttr, powers } -> rank id or null (unknown). */
+export function inferRank(info) {
+  const { attrSum = 0, maxAttr = 0, powers = 0 } = isObj(info) ? info : {};
+  const sum = num(attrSum), max = num(maxAttr), pw = Math.max(0, num(powers));
+  if (sum < RANK_MIN_ATTR_SUM) return null;
+  const score = sum + 2 * pw;
+  const byScore = RANK_SCORE_CUTS.filter((c) => score >= c).length;
+  const capIdx = RANK_CAPS.findIndex((c) => max <= c);
+  const byCap = capIdx < 0 ? RANKS.length - 1 : capIdx;
+  return RANKS[Math.max(byScore, byCap)];
+}
+/** One hero: { flagRank, attrSum, maxAttr, powers } -> { rank: id|null, source: "flag"|"inferred"|"unknown" }. */
+export function heroRank(info) {
+  info = isObj(info) ? info : {};
+  if (RANKS.includes(info.flagRank)) return { rank: info.flagRank, source: "flag" };
+  const r = inferRank(info);
+  return r ? { rank: r, source: "inferred" } : { rank: null, source: "unknown" };
+}
+/** The rank of a team. members = [{ id, name, rank|null, source }]; stored = the card's own B.rank (legacy / creation default, never shown):
+    used only when no member has a known rank. Highest known member rank wins (mixed ranks resolve upwards). Never throws.
+    -> { rank, source: "members"|"stored"|"default", mixed, ranks: [distinct, low -> high], counts: {id: n}, unknown, inferred } */
+export function deriveRank(members = [], { stored } = {}) {
+  const list = (Array.isArray(members) ? members : []).filter(isObj);
+  const known = list.filter((m) => RANKS.includes(m.rank));
+  const ranks = RANKS.filter((r) => known.some((m) => m.rank === r));
+  const counts = Object.fromEntries(ranks.map((r) => [r, known.filter((m) => m.rank === r).length]));
+  const base = { mixed: ranks.length > 1, ranks, counts, unknown: list.length - known.length, inferred: known.filter((m) => m.source === "inferred").length };
+  if (ranks.length) return { ...base, rank: ranks[ranks.length - 1], source: "members" };
+  if (RANKS.includes(stored)) return { ...base, rank: stored, source: "stored" };
+  return { ...base, rank: "global", source: "default" };
+}

@@ -10,6 +10,7 @@ import { upgrades, karma, events, crate, vehicles } from "./ops.mjs";
 import { t, tn } from "./lang.mjs";
 import * as Entry from "./entry.mjs";
 import * as Dir from "./directory.mjs";
+import * as Drop from "./drop.mjs";
 
 const MOD = S.MODULE_ID;
 const LOG = `${MOD} (base) |`;
@@ -17,7 +18,7 @@ const LOG = `${MOD} (base) |`;
 export const catalog = {
   upgrades: Cat.upgrades, upgrade: Cat.upgrade, audit: Cat.audit, available: Cat.available, invalidate: Cat.invalidate,
   eventsTable: Cat.eventsTable, cityTable: Cat.cityTable, bands: Cat.bands, rollEvent: Cat.rollEvent, rollCity: Cat.rollCity,
-  describingPrompts: Cat.describingPrompts, teamBaseExamples: Cat.teamBaseExamples, rollTeamBase: Cat.rollTeamBase, teamNames: Cat.teamNames
+  describingPrompts: Cat.describingPrompts, teamBaseExamples: Cat.teamBaseExamples, recommendedUpgrades: Cat.recommendedUpgrades, rollTeamBase: Cat.rollTeamBase, teamNames: Cat.teamNames
 };
 
 export const baseApi = {
@@ -27,6 +28,7 @@ export const baseApi = {
   find: S.find, list: S.list, get: S.get, members: S.members, memberFacts: S.memberFacts,
   create: S.create, remove: S.remove, link: S.link, unlink: S.unlink, update: S.update, setPolicy: S.setPolicy,
   canEdit: S.canEdit, isCard: S.isCard, cardById: S.cardById, migrate: S.migrate, createBase: Dir.createBase, isStaff: S.isStaff, computeOwnership: S.computeOwnership, reconcileOwnership: S.reconcileOwnership,
+  rankOf: S.rankOf, heroRank: S.heroRank, dropHero: Drop.dropHero,                         // B4c: the team rank is derived from its members; dropHero(team, {type:"Actor"|"Token", uuid}) = add a hero
   catalog, upgrades, karma, events, crate, vehicles,
   sync: { format: Sync.format, status: Sync.status, outOfDate: Sync.outOfDate, push: Sync.push, fromHero: Sync.fromHero, suggestLinks: Sync.suggestLinks },
   relay: { request: Relay.request, transport: Relay.transport, _runAs: Relay._runAs },

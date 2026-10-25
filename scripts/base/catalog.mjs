@@ -183,6 +183,13 @@ export async function rollTeamBase(rank) {
     return r ? { name: String(r.name || plain(r.description)) } : null;
   } catch { return null; }
 }
+/** Names of the upgrades the book recommends for a starting base (our pack table base-upgrades), read at runtime; [] when the pack is not built. */
+export async function recommendedUpgrades() {
+  try {
+    const list = await tablesApi()?.provider?.().list("baseUpgrades", {});
+    return (list ?? []).map((e) => e.name);
+  } catch { return []; }
+}
 export async function teamNames() {
   try {
     const list = await tablesApi()?.provider?.().list("teamNames", {});

@@ -34,7 +34,7 @@ export const upgrades = {
 
   /** Add an upgrade. source "start" = a starting upgrade (editors; prerequisites and stack limit enforced for non-staff),
       "gm" = free grant (staff only, bypasses limits). Karma purchases go through karma.buy(). */
-  async add(team, key, { source = "start", power = "", note = "", status, name = "", user = game.user, paid = 0 } = {}) {
+  async add(team, key, { source = "start", power = "", note = "", status, name = "", user = game.user, paid = 0, buy = null } = {}) {
     const e = S.resolve(team);
     S.assertCanEdit(e, user);
     if (!P.SOURCES.includes(source)) throw new BaseError("badInput", { source });
@@ -59,7 +59,9 @@ export const upgrades = {
     // an identical stackable entry (same key and power) just counts up instead of adding a row
     const same = entry && P.sortedList(B.upgrades).find((u) => u.key === entry.key && (u.power || "") === (power || "") && u.source === source && (entry.max === null || entry.max > 1));
     if (same) {
-      await S.update(e, { upgrades: { [same.id]: { count: same.count + 1, paid: same.paid + paid } } }, { user });
+      const patch = { count: same.count + 1, paid: same.paid + paid };
+      if (buy) patch.buys = [...(Array.isArray(same.buys) ? same.buys : []), buy];      // B6: purchase log (when, price, who paid)
+      await S.update(e, { upgrades: { [same.id]: patch } }, { user });
       return same.id;
     }
     const id = newId();
@@ -67,7 +69,8 @@ export const upgrades = {
       upgrades: {
         [id]: {
           key: k, name: display, count: 1, power: String(power ?? ""), status: status ?? (source === "karma" ? "installing" : "active"),
-          source, paid: Math.max(0, paid | 0), note: String(note ?? ""), sort: P.nextSort(B.upgrades), at: Date.now()
+          source, paid: Math.max(0, paid | 0), note: String(note ?? ""), sort: P.nextSort(B.upgrades), at: Date.now(),
+          ...(buy ? { buys: [buy] } : {})
         }
       }
     }, { user });
@@ -139,8 +142,9 @@ export const karma = {
         done.push({ actor, before });
       }
       if (_failAt === "afterKarma") throw new Error("forced failure after karma");
-      if (_failAt === "card") { await S.update(e, { rank: "nonsense" }, { user }); }
-      const id = await upgrades.add(e, key, { source: "karma", power, note, name, paid: c.cost, user });
+      if (_failAt === "card") { await S.update(e, { upgrades: { zzfail: "bad" } }, { user }); }
+      const buy = { at: Date.now(), paid: c.cost, kind: c.kind, split: plan.filter((x) => x.amount > 0).map((x) => ({ id: x.actorId, name: game.actors.get(x.actorId)?.name ?? "", amount: x.amount })) };
+      const id = await upgrades.add(e, key, { source: "karma", power, note, name, paid: c.cost, buy, user });
       return { id, cost: c.cost, kind: c.kind, split: plan.filter((x) => x.amount > 0) };
     } catch (err) {
       await restore();

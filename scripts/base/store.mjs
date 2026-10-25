@@ -15,7 +15,7 @@ export const SHEET_ID = `${MODULE_ID}.BaseSheet`;                       // Docum
 export const DEFAULT_IMG = "icons/environment/settlement/city-night-spire.webp";    // a core Foundry icon: always there
 const DEFAULT_ARTS = [DEFAULT_IMG, "vehicle.svg"];
 export const SETTING_PLAYERS_CREATE = "basePlayersCreate";
-const PATCHABLE = new Set(["name", "rank", "motto", "img", "purpose", "background", "base", "policy", ...P.COLLECTIONS]);
+const PATCHABLE = new Set(["name", "motto", "img", "purpose", "background", "base", "policy", ...P.COLLECTIONS]);
 
 /** Typed error. codes: noBook noPermission tooBig noGM notFound invalid prerequisite stackMax full badInput blocked karma badType relay */
 export class BaseError extends Error {
@@ -53,12 +53,34 @@ export function resolve(ref) {
 }
 export const rawData = (entry) => entry.flags?.[MODULE_ID]?.[P.FLAG_KEY] ?? {};
 const artOf = (e) => (P.isDefaultArt(e.img, DEFAULT_ARTS) ? "" : e.img);
-/** Normalized B, name and picture mirrored from the actor (the actor's own name / img are the source). */
+
+/** Rank of ONE hero (B4c): the chargen record when the hero has one, else an estimate from its attributes and power items (pure.heroRank).
+    -> { id, name, rank: id|null, source: "flag"|"inferred"|"unknown" }. Reads _source (effect-modified numbers would inflate the estimate). */
+export function heroRank(actor) {
+  const a = actorOf(actor);
+  if (!a) return { id: "", name: "", rank: null, source: "unknown" };
+  const attrs = Object.values(a._source?.system?.attributes ?? {}).map((x) => Number(x?.value) || 0);
+  const powers = (a.items?.contents ?? []).filter((i) => i.type === "power" || i.type === "boost").length;
+  const r = P.heroRank({ flagRank: a.flags?.[MODULE_ID]?.chargen?.rank, attrSum: attrs.reduce((n, v) => n + v, 0), maxAttr: Math.max(0, ...attrs), powers });
+  return { id: a.id, name: a.name, ...r };
+}
+/** The team's rank = the HIGHEST rank among ALL its member heroes the client holds (also the ones the user may not see: a rank is not a secret and the
+    allowance must not differ between clients). Falls back to the card's stored rank (creation default) only while no member has a known rank. */
+export function rankOf(ref) {
+  const e = resolve(ref);
+  const list = members(e, { all: true }).map(heroRank);
+  return { ...P.deriveRank(list, { stored: rawData(e).rank }), members: list };
+}
+/** Normalized B, name and picture mirrored from the actor (the actor's own name / img are the source). B.rank is the DERIVED rank (B4c; never written
+    back: `rank` is not patchable), B.rankInfo says where it came from. */
 export function data(ref) {
   const e = resolve(ref);
   const B = P.normalize(clone(rawData(e)));
   B.name = e.name;
   B.img = artOf(e);
+  const info = rankOf(e);
+  B.rank = info.rank;
+  B.rankInfo = info;
   return B;
 }
 export function view(ref) {
@@ -177,7 +199,7 @@ export async function createLocal(opts = {}, by = game.user) {
   assertStaff();
   const from = actorOf(opts.fromActor);
   const B = P.defaultBase();
-  const fromRank = from?.flags?.[MODULE_ID]?.chargen?.rank;
+  const fromRank = from ? heroRank(from).rank : null;                    // B4c: only the creation default of the stored (legacy) rank; the shown rank is derived from the members
   B.rank = P.RANKS.includes(opts.rank) ? opts.rank : P.RANKS.includes(fromRank) ? fromRank : "global";
   B.name = P.clampText(String(opts.name ?? "").trim() || from?.system?.team?.trim?.() || t("IPB.Default.Name"), 80);
   const now = Date.now();

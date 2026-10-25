@@ -40,6 +40,12 @@ for (const n of ["HeaderButton", "PlayersCreate"]) for (const p of ["Name", "Hin
 for (const s of ["same", "push", "conflict", "kept"]) need.push(`IPB.Bt.State.${s}`);                  // Base tab: dynamic key IPB.Bt.State.<state>
 for (const f of ["Description", "Purpose", "Background"]) for (const s of ["", "Hint", "Ph"]) need.push(`IPB.Bt.${f}${s}`);   // Base tab: IPB.Bt.<Field>[Hint|Ph]
 for (const r of P.RANKS) need.push(`IPB.Rank.${r}`);
+// phase B6 (Upgrades tab): dynamic keys IPB.Status.<status|lost>, IPB.Up.Src.<source>, IPB.Up.State.<state>, IPB.Karma.Kind.<kind>, plurals
+for (const s of [...P.STATUSES, "lost"]) need.push(`IPB.Status.${s}`);
+for (const s of P.SOURCES) need.push(`IPB.Up.Src.${s}`);
+for (const s of ["met", "tooPricey", "blocked", "unknown", "maxed"]) need.push(`IPB.Up.State.${s}`);
+for (const s of ["normal", "tooPricey", "unknown"]) need.push(`IPB.Karma.Kind.${s}`);
+for (const b of ["IPB.Up.AllowLead", "IPB.Up.AdoptLead", "IPB.Up.AdoptYes", "IPB.Up.AdoptDone"]) if (!fEN.has(b) || !fPL.has(b)) fail(`B6 plural family missing: ${b}`);
 for (const k of need) if (!(k in EN) || !(k in PL)) fail(`required key missing: ${k}`);
 // every validation message key pure.mjs can emit
 const probes = [null, { v: 99, rank: "x", policy: { edit: "x" }, upgrades: { a: 5, b: { status: "x", count: 0, source: "x" } }, events: { e: { roll: 12, band: "99-99" } }, vehicles: { a: { primary: true }, b: { primary: true } }, trackers: { t: { value: 5, max: 1 } } }];

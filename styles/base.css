@@ -460,3 +460,152 @@ li.ipb-dir-base .ipb-dir-mark { margin-inline-start: 6px; color: #0096cb; font-s
   .ipb-app button.ipb-bt-chip, .ipb-bt-status { transition: none; }
   .ipb-app button.ipb-bt-chip:hover { translate: none; }
 }
+
+/* ---------- B4c: derived rank label, member remove, drop a hero onto the sheet ---------- */
+.ipb-head { position: relative; }
+.ipb-rank-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0; }
+.ipb-app small.ipb-rank-src { font: 400 .8rem/1.2 Roboto, sans-serif; letter-spacing: 0; text-transform: none; color: var(--ipb-text-2); }
+.ipb-rank-mix { display: inline-flex; gap: .45em; align-items: baseline; max-width: 34ch; font-size: .82rem; line-height: 1.25; color: var(--ipb-amber); }
+.ipb-rank-mix > i { flex: none; }
+.ipb-mem-li { display: flex; align-items: stretch; max-width: 100%; }
+.ipb-mem-li > button.ipb-mem { min-width: 0; }
+.ipb-app button.ipb-mem-x {
+  display: grid; place-items: center; flex: none; width: 28px; min-height: 40px; margin: 0 0 0 -2px; padding: 0;
+  font-size: .8rem; color: var(--ipb-text-2); background: var(--ipb-paper-2); border: 2px solid var(--ipb-ink); border-radius: 0; box-shadow: none; cursor: pointer;
+}
+.ipb-app button.ipb-mem-x:hover, .ipb-app button.ipb-mem-x:focus-visible { color: #fff; background: var(--ipb-red); }
+.ipb-mem-new .ipb-mem { animation: ipb-join .45s cubic-bezier(.16, 1, .3, 1); }
+@keyframes ipb-join { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: none; } }
+
+/* the drop layer sits over the whole header while a hero is being dragged (data-drag on the shell: on = a hero is being dragged, over = it is above the
+   sheet, no = a non-hero is above the header); it never takes pointer events, so the real drop targets keep working. transform + opacity only. */
+.ipb-drop {
+  position: absolute; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center; gap: .6em; padding: 8px 14px; text-align: center;
+  font: 400 1.35rem/1.15 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ipb-ink);
+  background: color-mix(in srgb, var(--ipb-yellow) 78%, transparent); outline: 3px dashed var(--ipb-ink); outline-offset: -8px;
+  opacity: 0; transform: scale(.985); pointer-events: none; transition: opacity .14s ease-out, transform .14s ease-out;
+}
+.ipb-drop > i { font-size: 1.5rem; }
+.ipb-drop .ipb-drop-no { display: none; }
+.ipb-shell[data-drag] .ipb-drop { opacity: 1; transform: none; }
+.ipb-shell[data-drag="over"] .ipb-drop { background: var(--ipb-yellow); box-shadow: 4px 4px 0 var(--ipb-blue); }
+.ipb-shell[data-drag="no"] .ipb-drop { color: #fff; background: var(--ipb-red); }
+.ipb-shell[data-drag="no"] .ipb-drop .ipb-drop-ok { display: none; }
+.ipb-shell[data-drag="no"] .ipb-drop .ipb-drop-no { display: inline; }
+.ipb-shell[data-drag="no"] .ipb-drop > i { display: none; }
+@media (pointer: coarse) { .ipb-app button.ipb-mem-x { width: 40px; } }
+@media (prefers-reduced-motion: reduce) {
+  .ipb-drop { transform: none; transition: opacity .08s linear; }
+  .ipb-mem-new .ipb-mem { animation: ipb-fade .12s linear; }
+}
+
+/* ---------- B6: the Upgrades tab (scripts/base/tabs/upgrades.mjs) ----------
+   Structure: left = starting allowance meter, the upgrades the team owns (rows on a tone step, no cards), adopt prompt, purchase history; right = the catalog
+   (filter, one row per sample upgrade with its LIVE prerequisite state, the allowed buttons and the printed reason when one is refused, custom upgrade for the GM).
+   One column; from 880px of window width two columns. Colour jobs: yellow/blue = the primary pick/repair, blue = ok, cyan-dark = installing, amber = disabled / Too Pricey,
+   red = broken / lost / blocked. State is ALWAYS icon + word. Motion: the undo bar lands (opacity + 6px); reduced motion keeps a short fade. */
+.ipb-up { display: grid; gap: 22px 32px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.ipb-up-readonly { grid-template-columns: minmax(0, 48rem); }
+.ipb-up > .ipb-bt-occupied { grid-column: 1 / -1; }
+.ipb-up-left, .ipb-up-right { display: grid; gap: 22px; align-content: start; min-width: 0; }
+.ipb-up-allow, .ipb-up-owned, .ipb-up-cat { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.ipb-up-warn { max-width: 62ch; }
+.ipb-up-ro { margin: 0; }
+
+.ipb-up-meter { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; }
+.ipb-up-notches { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ipb-up-notches li { width: 28px; height: 18px; background: #fff; border: 2px solid var(--ipb-ink); transform: skewX(-12deg); }
+.ipb-up-notches li[data-on="true"] { background: var(--ipb-yellow); }
+.ipb-up-notches li[data-over="true"] { background: var(--ipb-red); border-color: var(--ipb-red); }
+.ipb-up-meter-text { margin: 0; font: 400 1.3rem/1.1 Titles, Comic, sans-serif; letter-spacing: .03em; font-variant-numeric: tabular-nums; }
+.ipb-up-recname { display: inline-flex; align-items: center; gap: .45em; min-height: 32px; padding: 2px 10px; font-size: .9rem; color: var(--ipb-text-2); }
+.ipb-up-have > i { color: var(--ipb-blue); }
+
+.ipb-up-list, .ipb-up-clist { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ipb-up-row, .ipb-up-crow { display: grid; gap: 6px; padding: 10px 12px; background: var(--ipb-paper-2); min-width: 0; }
+.ipb-up-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; min-width: 0; }
+.ipb-up-name { flex: 1 1 10rem; margin: 0; min-width: 0; font: 400 1.1rem/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; overflow-wrap: anywhere; }
+.ipb-up-name strong { font-weight: 400; }
+.ipb-up-power { font: 400 .9rem/1.2 Roboto, sans-serif; letter-spacing: 0; text-transform: none; color: var(--ipb-text-2); }
+.ipb-up-x { display: inline-block; margin-left: .55em; padding: 0 .45em; font: 400 .8rem/1.5 Titles, Comic, sans-serif; letter-spacing: .02em; font-variant-numeric: tabular-nums; color: var(--ipb-yellow); background: var(--ipb-ink); vertical-align: .1em; }
+.ipb-up-src, .ipb-up-own, .ipb-up-limit { font-size: .86rem; color: var(--ipb-text-2); }
+.ipb-up-effect { margin: 0; max-width: 64ch; font-size: .93rem; line-height: 1.4; overflow-wrap: anywhere; }
+.ipb-up-chip { display: inline-flex; align-items: baseline; gap: .4em; padding: 0 8px; font-size: .85rem; font-weight: 700; line-height: 1.6; color: var(--ipb-blue); background: #fff; border: 2px solid currentColor; }
+.ipb-up-chip[data-status="installing"] { color: #0a6a92; }
+.ipb-up-chip[data-status="disabled"] { color: var(--ipb-amber); }
+.ipb-up-chip[data-status="broken"] { color: var(--ipb-red); }
+.ipb-up-chip[data-status="lost"] { color: #fff; background: var(--ipb-red); border-color: var(--ipb-red); }
+.ipb-up-row[data-status="broken"] .ipb-up-name strong, .ipb-up-row[data-status="lost"] .ipb-up-name strong { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--ipb-red); }
+.ipb-up-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.ipb-up-sel select.ipb-input { width: auto; min-width: 7.5rem; min-height: 32px; padding: 0 .4em; font-size: .88rem; }
+.ipb-up-notebox > summary, .ipb-up-hist > summary { display: inline-flex; align-items: center; gap: .5em; min-height: 32px; padding: 0 4px; font-size: .9rem; color: var(--ipb-blue); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.ipb-up-notebox > summary > i, .ipb-up-hist > summary > i { color: var(--ipb-amber); }
+.ipb-up-notebox .ipb-input { margin-top: 4px; }
+.ipb-up-note-ro { margin: 0; font-size: .9rem; color: var(--ipb-text-2); overflow-wrap: anywhere; }
+.ipb-up-undo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; padding: 6px 10px; font-size: .92rem; background: #fff; border: 2px solid var(--ipb-ink); animation: ipb-bt-land .22s cubic-bezier(.16, 1, .3, 1); }
+.ipb-up-undo > i { color: var(--ipb-blue); }
+.ipb-up-empty { margin: 0; max-width: 56ch; }
+.ipb-up-adopt { display: grid; gap: 8px; padding: 8px 10px; background: #fff; border: 2px solid var(--ipb-amber); }
+.ipb-up-hist-list { display: grid; gap: 3px; margin: 6px 0 0; padding: 0; list-style: none; font-size: .9rem; }
+.ipb-up-hist-list li { display: flex; flex-wrap: wrap; gap: 0 10px; }
+.ipb-up-hist-date { color: var(--ipb-text-2); font-variant-numeric: tabular-nums; }
+.ipb-up-hist-name { font-weight: 700; }
+
+.ipb-up-filter { display: grid; gap: 4px; max-width: 24rem; font-size: .9rem; }
+.ipb-up-filter > span { color: var(--ipb-text-2); }
+.ipb-up-clist-custom { margin-top: 6px; }
+.ipb-up-nocat { display: flex; gap: .6em; align-items: baseline; margin: 0; max-width: 60ch; color: var(--ipb-text-2); }
+.ipb-up-pre { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin: 0; font-size: .9rem; }
+.ipb-up-ps { display: inline-flex; align-items: baseline; gap: .4em; font-weight: 700; color: var(--ipb-blue); }
+.ipb-up-ps[data-state="tooPricey"] { color: var(--ipb-amber); }
+.ipb-up-ps[data-state="blocked"] { color: var(--ipb-red); }
+.ipb-up-ps[data-state="unknown"], .ipb-up-ps[data-state="maxed"] { color: var(--ipb-text-2); }
+.ipb-up-pretext { overflow-wrap: anywhere; }
+.ipb-up-reasons { margin: 0; }
+.ipb-up-power-in { display: grid; gap: 3px; max-width: 24rem; font-size: .9rem; }
+.ipb-up-power-in > span { color: var(--ipb-text-2); }
+.ipb-up-custom-in { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 8px 12px; }
+.ipb-up-why { display: flex; align-items: baseline; gap: .5em; flex: 1 1 100%; margin: 0; font-size: .86rem; color: var(--ipb-text-2); }
+.ipb-up-why > i { color: var(--ipb-blue); }
+.ipb-app button.ipb-btn[aria-disabled="true"][data-up-act] { color: #56688a; }
+
+/* the pooled-karma and adopt dialogs live outside .ipb-app (DialogV2), so they carry their own literal colours: a light panel inside the dark dialog */
+.ipb-kp { display: grid; gap: 10px; padding: 12px; color: #0c1a2e; background: #f7fafd; border: 3px solid #3465a3; font: 400 15px/1.35 Roboto, "Segoe UI", sans-serif; }
+.ipb-kp p { margin: 0; color: inherit; }
+.ipb-kp input[type="number"] { width: 5rem; min-height: 34px; padding: 0 .5em; font: 400 .95rem/1.2 Roboto, sans-serif; text-align: right; color: #0c1a2e; background: #fff; border: 2px solid #0c1a2e; border-radius: 0; box-shadow: none; }
+.ipb-kp input[type="number"]:disabled { color: #56688a; background: transparent; border-style: dashed; }
+.ipb-kp input:focus-visible, .ipb-kp button:focus-visible { outline: 3px solid #0096cb; outline-offset: 2px; }
+.ipb-kp-cost { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.ipb-kp-hint { font-size: .9rem; color: #44597a; }
+.ipb-kp-list, .ipb-kp-adopt-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ipb-kp-adopt-list { padding-left: 1.1em; list-style: disc; gap: 2px; }
+.ipb-kp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 5rem minmax(5.5rem, auto); gap: 2px 12px; align-items: center; padding: 6px 8px; background: #e4edf8; }
+.ipb-kp-name { font-weight: 700; overflow-wrap: anywhere; }
+.ipb-kp-has, .ipb-kp-after { font-size: .9rem; color: #44597a; font-variant-numeric: tabular-nums; }
+.ipb-kp-sum { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.ipb-kp-pool { font: 400 1.3rem/1.1 Titles, Comic, sans-serif; letter-spacing: .03em; font-variant-numeric: tabular-nums; }
+.ipb-kp-pool[data-ok="false"] { color: #8a5a00; }
+.ipb-kp button.ipb-kp-even { min-height: 32px; margin: 0; padding: 0 10px; font: 400 .9rem/1.1 Roboto, sans-serif; color: #0c1a2e; background: #fff; border: 2px solid #0c1a2e; border-radius: 0; box-shadow: none; cursor: pointer; }
+.ipb-kp button.ipb-kp-even:hover { background: #ffe72a; }
+.ipb-kp-warn { min-height: 1.3em; font-weight: 700; color: #8a5a00; }
+.ipb-kp-warn:empty { display: none; }
+.ipb-kp-as { display: grid; gap: 4px; margin: 0; padding: 6px 10px 8px; border: 2px solid #6b82a6; }
+.ipb-kp-as legend { padding: 0 6px; font-weight: 700; }
+.ipb-kp-dialog .form-footer button { height: auto; min-height: 36px; padding-block: 4px; white-space: normal; line-height: 1.15; }
+.ipb-kp-dialog .form-footer button:disabled { color: #a9bcdc; background: transparent; border-style: dashed; box-shadow: none; cursor: not-allowed; }
+
+@container ipb (min-width: 880px) {
+  .ipb-up:not(.ipb-up-readonly) { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); }
+}
+@media (max-width: 560px) {
+  .ipb-kp-row { grid-template-columns: minmax(0, 1fr) 5rem; }
+  .ipb-kp-has { grid-column: 1; }
+  .ipb-kp-after { grid-column: 1 / -1; }
+}
+@media (pointer: coarse) {
+  .ipb-up-sel select.ipb-input, .ipb-up-notebox > summary, .ipb-up-hist > summary, .ipb-up-recname { min-height: 44px; }
+  .ipb-kp input[type="number"], .ipb-kp button.ipb-kp-even { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ipb-up-undo { animation: ipb-fade .12s linear; }
+}
