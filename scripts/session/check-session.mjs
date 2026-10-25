@@ -378,5 +378,91 @@ eq("summary yes ids", P.summary(w).rows[0].yes.length, 10 + 1); eq("cellValue un
 eq("isId", [P.isId("abc"), P.isId("__proto__"), P.isId(""), P.isId("a".repeat(41)), P.isId(5), P.isId("a b")], [true, false, false, false, false, false]);
 eq("clampText", P.clampText("  a\u0000\n<b>  c ", 10), "a b c");
 
+
+/* ================================================================== S2: ops-pure.mjs (data layer helpers) */
+import * as OP from "./ops-pure.mjs";
+const opsSrc = readFileSync(fileURLToPath(new URL("./ops-pure.mjs", import.meta.url)), "utf8");
+for (const g of ["game.", "foundry.", "ui.", "Hooks.", "CONFIG.", "document.", "window.", "localStorage", "DOMParser"])
+  ck(`ops-pure.mjs must not reference ${g}`, !new RegExp(`(^|[^\\w.])${g.replace(".", "\\.")}`, "m").test(opsSrc.replace(/\/\/.*$/gm, "").replace(/"[^"\n]*"/g, '""').replace(/`[^`]*`/g, "``")));
+// ownership from the table
+eq("ownsFrom explicit", OP.ownsFrom({ default: 0, u1: 3 }, "u1"), true); eq("ownsFrom observer", OP.ownsFrom({ default: 0, u1: 2 }, "u1"), false);
+eq("ownsFrom default", OP.ownsFrom({ default: 3 }, "u9"), true); eq("ownsFrom none", OP.ownsFrom(undefined, "u9"), false); eq("ownsFrom proto", OP.ownsFrom({}, "__proto__"), false);
+eq("ownsFrom explicit 0 beats default 3", OP.ownsFrom({ default: 3, u1: 0 }, "u1"), false);
+// rate limiter
+{ const m = new Map(); let ok = 0; for (let i = 0; i < 100; i++) if (OP.rateHit(m, "u1", 1000 + i)) ok++; eq("rate 60 admitted", ok, 60); eq("rate other user", OP.rateHit(m, "u2", 1200), true); eq("rate window reopens", OP.rateHit(m, "u1", 1000 + 60001), true); }
+// request normalisation: players
+const NR = (req, staff = false) => OP.normalizeRequest(req, { staff });
+eq("player answer ok", NR({ act: { type: "setAnswer", hero: "A", q: "q01", value: 1, rid: "evil", user: "gm", g: 1 } }).act, { type: "setAnswer", hero: "A", q: "q01", value: 1 });
+for (const t of ["next", "prev", "setQuestion", "unlock", "removeHero", "setAskBad", "close", "reopen", "awardBegin", "awardRow", "start", "discard", "addHero", "undoRow"]) eq(`player ${t} refused`, NR({ act: { type: t } }).error?.code, "noPermission");
+eq("player cmd refused", NR({ cmd: "award" }).error?.code, "noPermission"); eq("player junk act", NR({ act: { type: "zzz" } }).error?.code, "badInput"); eq("player act proto", NR({ act: { type: "__proto__" } }).error?.code, "badInput");
+eq("player null", NR(null).error?.code, "badInput"); eq("player array", NR([]).error?.code, "badInput"); eq("player empty", NR({}).error?.code, "badInput"); eq("player act+cmd", NR({ act: { type: "setAnswer" }, cmd: "award" }, true).error?.code, "badInput");
+eq("player too big", NR({ act: { type: "setAnswer", hero: "A", q: "q01", value: 1, pad: "x".repeat(2100) } }).error?.code, "tooBig");
+eq("player 1KB ok", NR({ act: { type: "setAnswer", hero: "A".repeat(500), q: "q".repeat(500), value: 1 } }).ok, true);
+{ const o = { act: { type: "setAnswer" } }; o.act.self = o; eq("circular refused", NR(o).error?.code, "badInput"); }
+eq("player hero clamp", NR({ act: { type: "setAnswer", hero: "A".repeat(300), q: "q01", value: 1 } }).act.hero.length, 40); eq("player non-string hero", NR({ act: { type: "setAnswer", hero: { a: 1 }, q: 5, value: 1 } }).act, { type: "setAnswer", hero: "", q: "", value: 1 });
+// staff
+eq("staff next", NR({ act: { type: "next", rid: "x" } }, true).act, { type: "next" }); eq("staff setQuestion", NR({ act: { type: "setQuestion", index: 3 } }, true).act, { type: "setQuestion", index: 3 });
+eq("staff setAskBad strict", NR({ act: { type: "setAskBad", value: "yes" } }, true).act.value, false); eq("staff unlock", NR({ act: { type: "unlock", hero: "A", q: "q01" } }, true).act, { type: "unlock", hero: "A", q: "q01" });
+for (const t of ["awardBegin", "awardRow", "awardEnd", "undoRow", "undoEnd", "start", "addHero", "discard"]) eq(`staff raw ${t} act refused`, NR({ act: { type: t } }, true).error?.code, "noPermission");
+eq("staff start cmd", NR({ cmd: "start", args: { heroes: ["A", "b b", "__proto__", 5, "C"], askBad: true, evil: 1 } }, true).args, { heroes: ["A", "C"], askBad: true, includeGm: false });
+eq("staff start default", NR({ cmd: "start" }, true).args, { askBad: false, includeGm: false }); eq("staff start heroes capped", NR({ cmd: "start", args: { heroes: Array.from({ length: 60 }, (_, i) => "h" + i) } }, true).args.heroes.length, 24);
+eq("staff undo mode", [NR({ cmd: "undo", args: { mode: "relative" } }, true).args.mode, NR({ cmd: "undo", args: { mode: "zzz" } }, true).args.mode, NR({ cmd: "undo" }, true).args.mode], ["relative", "strict", "strict"]);
+eq("staff award args", NR({ cmd: "award", args: { chat: true, _failAt: { row: 0 } } }, true).args._failAt, undefined);
+eq("staff unknown cmd", NR({ cmd: "format" }, true).error?.code, "badInput"); eq("staff cmd proto", NR({ cmd: "__proto__" }, true).error?.code, "badInput"); eq("staff big ok", NR({ cmd: "start", args: { pad: "x".repeat(5000) } }, true).ok, true); eq("staff huge", NR({ cmd: "start", args: { pad: "x".repeat(20000) } }, true).error?.code, "tooBig");
+// request id: namespaced with the verified sender
+eq("rid shape", OP.makeRid("XJbraxXKRMSwbvG5", "12ab"), "XJbraxXKRMSwbvG5:12ab"); ck("rid max 40", OP.makeRid("x".repeat(99), "y".repeat(99)).length <= 40); eq("rid junk stripped", OP.makeRid("u1", "a b<>c"), "u1:abc");
+ck("rid differs per sender", OP.makeRid("u1", "5") !== OP.makeRid("u2", "5"));
+// roster
+{ const users = [{ id: "g", isGM: true }, { id: "p1", isGM: false }];
+  const mk = (id, extra = {}) => ({ id, name: id, img: "i", type: "superhero", card: false, playerOwned: OP.playerOwned(extra.own, users), ...extra });
+  const list = [mk("a", { own: { default: 0, p1: 3 } }), mk("b", { own: { default: 0, g: 3 } }), mk("c", { own: { default: 3 } }), mk("d", { own: { default: 0, p1: 2 } }), mk("e", { own: { p1: 3 }, type: "vehicle" }), mk("f", { own: { p1: 3 }, card: true }), null];
+  eq("roster default", OP.defaultRoster(list).map((h) => h.id), ["a", "c"]); eq("roster includeGm", OP.defaultRoster(list, { includeGm: true }).map((h) => h.id), ["a", "b", "c", "d"]);
+  eq("roster null", OP.defaultRoster(null), []); eq("roster caps", OP.defaultRoster(Array.from({ length: 40 }, (_, i) => mk("x" + i, { own: { p1: 3 } }))).length, 24); }
+// flag pruning and patches
+{ const fl = {}; for (let i = 1; i <= 7; i++) fl["s" + i] = { before: 0, after: i, at: i * 10 };
+  eq("prune keeps 5 incl new key", OP.pruneAwardFlags(fl, "s8").sort(), ["s1", "s2", "s3"]); eq("prune never deletes keepKey", OP.pruneAwardFlags(fl, "s1").includes("s1"), false);
+  eq("prune small", OP.pruneAwardFlags({ a: { at: 1 } }, "b"), []); eq("prune junk", OP.pruneAwardFlags(null, "b"), []); eq("prune junk values", OP.pruneAwardFlags({ a: 5, b: null }, "c"), []);
+  const pat = OP.awardUpdate("m", "s9_1", 4, 7, 99, ["s1", "s2"]);
+  eq("awardUpdate", pat, { "system.karma": 7, "flags.m.sessionAwards.s9_1": { before: 4, after: 7, at: 99 }, "flags.m.sessionAwards.-=s1": null, "flags.m.sessionAwards.-=s2": null });
+  eq("awardUpdate v14 deletion operator", OP.awardUpdate("m", "s9_1", 4, 7, 99, ["s1"], () => "DEL")["flags.m.sessionAwards.s1"], "DEL"); eq("undoUpdate v14", OP.undoUpdate("m", "k", 3, () => "DEL"), { "system.karma": 3, "flags.m.sessionAwards.k": "DEL" });
+  eq("undoUpdate", OP.undoUpdate("m", "s9_1", 4), { "system.karma": 4, "flags.m.sessionAwards.-=s9_1": null }); }
+// archive rotation
+{ let list = []; for (let i = 1; i <= 25; i++) { const sess = P.newSession({ id: "s" + i, heroes: [{ id: "A", name: "A" }], now: i }); list = OP.pushArchive(list, { ...sess, log: [{ t: 1, u: "u", a: "x" }], seen: ["r"] }, i % 2 ? "awarded" : "discarded", i); }
+  eq("archive capped 20", list.length, 20); eq("archive oldest is s6", list[0].session.id, "s6"); eq("archive keeps newest", list[19].session.id, "s25"); eq("archive no log", list[3].session.log, []);
+  eq("archive same id replaces", OP.pushArchive(list, { ...P.newSession({ id: "s25", heroes: [{ id: "A", name: "A" }] }) }, "awarded", 99).filter((e) => e.session.id === "s25").length, 1);
+  eq("archive parse roundtrip", OP.parseArchive(JSON.stringify(list)).map((e) => e.session.id), list.map((e) => e.session.id)); eq("archive parse junk", [OP.parseArchive("{"), OP.parseArchive("5"), OP.parseArchive(null), OP.parseArchive("[1,null,{}]")], [[], [], [], []]);
+  eq("archive push junk session", OP.pushArchive(list, { v: 99 }, "awarded", 1).length, 20); eq("archive parse drops hostile", OP.parseArchive([{ at: 1, reason: "awarded", session: { v: 1, id: "__proto__", state: "open", heroes: [{ id: "A" }] } }]), []); }
+// the book parser (synthetic page in our own words: the real text is never in the repo)
+{ const li = (n, p) => Array.from({ length: n }, (_, i) => `<li><p>${p} ${i + 1} &amp; <em>more</em> @UUID[.#x]{link ${i}}</p></li>`).join("");
+  const page = (g, b) => `<div><p>intro</p><h2>Karma</h2><ul>${li(g, "good")}</ul><h2>Bad Karma</h2><ul>${li(b, "bad")}</ul><h2>Using Karma</h2><ul><li>x</li></ul></div>`;
+  const ok = OP.parseBook(page(10, 6));
+  eq("book good count", ok.good.length, 10); eq("book bad count", ok.bad.length, 6); eq("book text cleaned", ok.good[0], "good 1 & more link 0"); ck("book no tags", ![...ok.good, ...ok.bad].some((x) => /[<>@]/.test(x)));
+  eq("book wrong good count", OP.parseBook(page(9, 6)).good, null); eq("book wrong bad count", OP.parseBook(page(10, 5)).bad, null); eq("book wrong still gives the other", OP.parseBook(page(9, 6)).bad.length, 6);
+  eq("book empty", OP.parseBook(""), { good: null, bad: null }); eq("book null", OP.parseBook(null), { good: null, bad: null }); eq("book garbage", OP.parseBook("<h2>Karma<ul><li>"), { good: null, bad: null }); eq("book huge", OP.parseBook("x".repeat(500000)), { good: null, bad: null });
+  eq("book entities", OP.parseBook(`<h2>Karma</h2><ul>${Array.from({ length: 10 }, () => "<li>a&#39;b&lt;script&gt;&nbsp;c</li>").join("")}</ul>`).good[0], "a'b script c");
+  eq("book heading variants", OP.parseBook(`<h2 class="x"> Bad  Karma </h2><ul>${li(6, "z")}</ul>`).bad.length, 6);
+  ck("book item clamp", OP.parseBook(`<h2>Karma</h2><ul>${Array.from({ length: 10 }, () => `<li>${"w".repeat(900)}</li>`).join("")}</ul>`).good.every((x) => x.length <= 300)); }
+// state machine end to end through the reducer with the SAME rids the award code uses (idempotence of the replay)
+{ let q = must("s2 start", R(null, { type: "start", id: "sx", heroes })); q = must("s2 close", R(q, { type: "close" }));
+  const begin = must("s2 begin", R(q, { type: "awardBegin", rid: "awb1" })); eq("replayed begin is a dup", R(begin, { type: "awardBegin", rid: "awb1" }).dup, true);
+  let w2 = must("s2 row", R(begin, { type: "awardRow", hero: A, before: 5, rid: `aw1r:${A}` })); eq("row applied", w2.award.rows[0].after, 5); eq("replayed row dup", R(w2, { type: "awardRow", hero: A, before: 99, rid: `aw1r:${A}` }).dup, true);
+  eq("row without rid is still idempotent", R(w2, { type: "awardRow", hero: A, before: 99 }).changed, false);
+  for (const h of [B, C]) w2 = must("s2 row2", R(w2, { type: "awardRow", hero: h, before: 0, rid: `aw1r:${h}` }));
+  const end = must("s2 end", R(w2, { type: "awardEnd", rid: "aw1e" })); eq("awarded", end.state, "awarded");
+  eq("award key", P.awardKey(end), "sx_1");
+  let u = end; for (const h of [A, B, C]) u = must("s2 undo row", R(u, { type: "undoRow", hero: h, rid: `un1r:${h}` })); u = must("s2 undoEnd", R(u, { type: "undoEnd", rid: "un1e" })); eq("closed again", u.state, "closed");
+  const again = must("s2 begin 2", R(u, { type: "awardBegin", rid: "awb2" })); eq("award n=2 after undo", again.award.n, 2); eq("rid of award 1 does not leak into award 2", R(again, { type: "awardRow", hero: A, before: 3, rid: `aw2r:${A}` }).ok, true); }
+// crash-resume model: a resumed row whose marker says before=7 records exactly that
+{ let q = must("cr start", R(null, { type: "start", id: "cr", heroes: [{ id: A, name: "A" }] })); q = must("cr a", R(q, { type: "setAnswer", hero: A, q: "q01", value: 1 }, GM)); q = must("cr b", R(q, { type: "setAnswer", hero: A, q: "q05", value: 2 }, GM)); q = must("cr close", R(q, { type: "close" })); q = must("cr begin", R(q, { type: "awardBegin" }));
+  const r = must("cr row", R(q, { type: "awardRow", hero: A, before: 7 })); eq("resume row after", r.award.rows[0].after, 7 + 3); eq("resume row gain", r.award.rows[0].gain, 3);
+  eq("end refuses an unfinished award", R(q, { type: "awardEnd" }).error?.code, "incomplete"); eq("partial end allowed", R(q, { type: "awardEnd", partial: true }).ok, true); }
+
+/* ================================================================== S2: lang parity (see check-lang.mjs for the full check) */
+import { EN as LEN, PL as LPL, t as lt } from "./lang.mjs";
+eq("lang same keys", Object.keys(LEN).sort(), Object.keys(LPL).sort());
+for (const q of [...P.GOOD, ...P.BAD]) { ck(`lang label ${q.key}`, !!LEN[`IPL.Session.q.${q.key}`] && !!LPL[`IPL.Session.q.${q.key}`]); eq(`lang EN label equals pure LABELS_EN ${q.key}`, LEN[`IPL.Session.q.${q.key}`], P.LABELS_EN[q.key]); }
+eq("t falls back to key", lt("IPL.Session.nope"), "IPL.Session.nope"); eq("t fills", lt("IPL.Session.Toast.Started", { gm: "X" }), "X started the end-of-session review.");
+
+
 if (fails.length) { console.error(`FAIL ${fails.length}/${n}:\n` + fails.slice(0, 40).join("\n")); process.exit(1); }
 console.log(`OK ${n} checks`);

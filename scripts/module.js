@@ -1865,3 +1865,9 @@ import("./base/main.mjs")
 import("./log/main.mjs")
   .then((log) => log.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | activity log not loaded (everything else is unaffected)`, err));
+
+/* END-OF-SESSION PANEL, DATA LAYER (scripts/session/): shared session state in a world setting (GM client = sole writer), relay for the players' own checks,
+   karma award / undo, api.session. No window yet (S3). Same mechanism and recorded phases as the blocks above. */
+import("./session/main.mjs")
+  .then((session) => session.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | end-of-session panel not loaded (everything else is unaffected)`, err));
