@@ -46,6 +46,13 @@ for (const s of P.SOURCES) need.push(`IPB.Up.Src.${s}`);
 for (const s of ["met", "tooPricey", "blocked", "unknown", "maxed"]) need.push(`IPB.Up.State.${s}`);
 for (const s of ["normal", "tooPricey", "unknown"]) need.push(`IPB.Karma.Kind.${s}`);
 for (const b of ["IPB.Up.AllowLead", "IPB.Up.AdoptLead", "IPB.Up.AdoptYes", "IPB.Up.AdoptDone"]) if (!fEN.has(b) || !fPL.has(b)) fail(`B6 plural family missing: ${b}`);
+// phase B7 (Events tab): dynamic keys IPB.Ev.Band.<low>, IPB.Ev.State.<state>, IPB.Ev.Mode*.<mode>, IPB.Ev.LabelPh.<mode>, IPB.Ev.Prop.<low|text>, IPB.Ev.Diff.<...>
+for (const b of Object.keys(P.BAND_CONFIG.bands)) { need.push(`IPB.Ev.Band.${parseInt(b, 10)}`); if (["note", "disable", "break", "raid", "aiControl", "occupy"].includes(P.BAND_CONFIG.bands[b].effect)) need.push(`IPB.Ev.Prop.${parseInt(b, 10)}`); }
+for (const s of ["none", "pending", "applied", "dismissed", "rerolled"]) need.push(`IPB.Ev.State.${s}`);
+for (const m of ["week", "any"]) need.push(`IPB.Ev.Mode.${m}`, `IPB.Ev.ModeHint.${m}`, `IPB.Ev.LabelPh.${m}`);
+for (const k of ["disable", "break", "lost", "lostNone", "occupy", "already", "nothing", "skip.gone", "skip.notActive", "skip.alreadyBroken"]) need.push(`IPB.Ev.Diff.${k}`);
+need.push("IPB.Ev.Prop.text", "IPB.Ev.Hint.46");
+if (!fEN.has("IPB.Ev.More") || !fPL.has("IPB.Ev.More")) fail("B7 plural family missing: IPB.Ev.More");
 for (const k of need) if (!(k in EN) || !(k in PL)) fail(`required key missing: ${k}`);
 // every validation message key pure.mjs can emit
 const probes = [null, { v: 99, rank: "x", policy: { edit: "x" }, upgrades: { a: 5, b: { status: "x", count: 0, source: "x" } }, events: { e: { roll: 12, band: "99-99" } }, vehicles: { a: { primary: true }, b: { primary: true } }, trackers: { t: { value: 5, max: 1 } } }];

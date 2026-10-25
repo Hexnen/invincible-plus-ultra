@@ -158,6 +158,14 @@ export async function rollEvent({ total } = {}) {
   const band = b.ok ? P.bandForRoll(r.total, b.bands) : (r.range ? P.bandId(r.range[0], r.range[1]) : null);
   return { roll: r.total, band: band ?? "", bandsOk: b.ok, resultId: r.resultId, text: r.text, range: r.range, tableId: tb.id, tableName: tb.name };
 }
+/** The CURRENT text of a Base Events result (read from the book at runtime; null without the book or when the result id is unknown). Nothing is stored. */
+export async function eventText(resultId) {
+  try {
+    const tb = await eventsTable();
+    const r = tb?.results.get(resultId);
+    return r ? plain(r.description || r.name) : null;
+  } catch { return null; }
+}
 /** Roll the City Locations table. Returns { roll, name, resultId, range, tableId }. */
 export async function rollCity({ total } = {}) {
   const tb = await cityTable();

@@ -4,6 +4,7 @@
 import * as P from "./pure.mjs";
 import * as S from "./store.mjs";
 import * as Cat from "./catalog.mjs";
+import * as EV from "./ev-pure.mjs";
 import { t } from "./lang.mjs";
 
 const { BaseError } = S;
@@ -161,7 +162,7 @@ export const events = {
   /** Roll the Base Events table (roll(), never draw()) and add a history entry with an effect PROPOSAL (applied:false).
       Posts to chat only when opts.chat === true and the card policy allows it. opts.total forces the D66 value (staff only, tests).
       Returns the new entry { id, ...entry }. */
-  async roll(team, { label = "", chat = false, total, user = game.user, rerollOf = null } = {}) {
+  async roll(team, { label = "", mode = "", week = 0, chat = false, total, user = game.user, rerollOf = null } = {}) {
     const e = S.resolve(team);
     S.assertCanEdit(e, user);
     if (total !== undefined) S.assertStaff(user);
@@ -170,7 +171,7 @@ export const events = {
     const proposal = P.proposeEffect(r.band, P.sortedList(B.upgrades).map((u) => ({ id: u.id, status: u.status })), { bandsOk: r.bandsOk });
     const id = newId();
     const entry = {
-      at: Date.now(), label: String(label ?? ""), roll: r.roll, band: r.band, resultId: r.resultId, text: clampNote(r.text),
+      at: Date.now(), label: String(label ?? "").slice(0, 60), mode: mode === "week" || mode === "any" ? mode : "", week: mode === "week" ? Math.max(0, Math.min(9999, Number(week) | 0)) : 0, roll: r.roll, band: r.band, resultId: r.resultId, text: clampNote(r.text),
       effect: proposal, resolved: false, rerolled: false, note: "", by: user.id, sort: P.nextSort(B.events)
     };
     const patch = { events: { [id]: entry } };
@@ -184,20 +185,56 @@ export const events = {
   /** Re-roll an event that does not fit the campaign: marks the old one rerolled and adds a new one. */
   async reroll(team, eid, opts = {}) {
     if (!S.data(team).events[eid]) throw new BaseError("notFound", { id: eid });
-    return events.roll(team, { label: S.data(team).events[eid].label, ...opts, rerollOf: eid });
+    return events.roll(team, { label: S.data(team).events[eid].label, mode: S.data(team).events[eid].mode, week: S.data(team).events[eid].week, ...opts, rerollOf: eid });
   },
-  /** Apply the proposed effect. STAFF ONLY, once. Returns { applied, patch }. */
+  /** Apply the proposed effect. STAFF ONLY, once, ONE document update (atomic). The change is exactly EV.plan(): a disabled upgrade must still be active,
+      a broken one stays broken. Records effect.prev / appliedAt so the newest applied event can be undone with events.undo(). Returns { applied, patch, plan }. */
   async apply(team, eid, { user = game.user } = {}) {
     S.assertStaff(user);
     const B = S.data(team);
     const ev = B.events[eid];
     if (!ev) throw new BaseError("notFound", { id: eid });
-    if (!ev.effect || ev.effect.applied) throw new BaseError("badInput", { what: "effect" });
-    const rel = P.effectPatch(ev.effect, B);                           // relative to B: "upgrades.<id>.status" | "base.occupied"
-    const patch = { events: { [eid]: { effect: { applied: true } } } };
+    if (!ev.effect || ev.effect.applied || ev.effect.dismissed || ev.rerolled) throw new BaseError("badInput", { what: "effect" });
+    const pl = EV.plan(ev.effect, B);
+    const { rel, prev } = EV.patchOf(pl);
+    const patch = { events: { [eid]: { effect: { applied: true, appliedAt: Date.now(), appliedBy: user.id, prev } } } };
     for (const [path, val] of Object.entries(rel)) foundry.utils.setProperty(patch, path, val);
     await S.update(team, patch, { user });
-    return { applied: true, patch: rel };
+    return { applied: true, patch: rel, plan: pl };
+  },
+  /** Dismiss a pending proposal: the GM decided not to use it. STAFF ONLY. Nothing on the card changes. */
+  async dismiss(team, eid, { user = game.user } = {}) {
+    S.assertStaff(user);
+    const ev = S.data(team).events[eid];
+    if (!ev) throw new BaseError("notFound", { id: eid });
+    if (!EV.isPending(ev)) throw new BaseError("badInput", { what: "effect" });
+    await S.update(team, { events: { [eid]: { effect: { dismissed: true, dismissedAt: Date.now(), dismissedBy: user.id }, resolved: true } } }, { user });
+    return true;
+  },
+  /** Pick other random upgrades for a pending disable / break proposal (same count). STAFF ONLY. */
+  async repick(team, eid, { user = game.user, rng = Math.random } = {}) {
+    S.assertStaff(user);
+    const B = S.data(team);
+    const ev = B.events[eid];
+    if (!ev) throw new BaseError("notFound", { id: eid });
+    if (!EV.isPending(ev) || !["disable", "break"].includes(ev.effect.kind)) throw new BaseError("badInput", { what: "effect" });
+    const list = P.sortedList(B.upgrades);
+    const pool = list.filter((u) => (ev.effect.kind === "disable" ? u.status === "active" : u.status === "active" || u.status === "installing")).map((u) => u.id);
+    const n = ev.effect.kind === "disable" ? Math.max(1, ev.effect.rolled || ev.effect.upgrades.length || 1) : 1;
+    await S.update(team, { events: { [eid]: { effect: { upgrades: P.pickDistinct(pool, n, rng) } } } }, { user });
+    return true;
+  },
+  /** Undo the NEWEST applied effect while nothing it touched changed since (one step). STAFF ONLY. */
+  async undo(team, eid, { user = game.user } = {}) {
+    S.assertStaff(user);
+    const B = S.data(team);
+    if (!B.events[eid]) throw new BaseError("notFound", { id: eid });
+    const ev = { id: eid, ...B.events[eid] };
+    if (!EV.undoable(ev, P.sortedList(B.events), B)) throw new BaseError("badInput", { what: "undo" });
+    const patch = { events: { [eid]: { effect: { applied: false, "-=prev": null, "-=appliedAt": null, "-=appliedBy": null } } } };
+    for (const [path, val] of Object.entries(EV.undoPatch(ev, B))) foundry.utils.setProperty(patch, path, val);
+    await S.update(team, patch, { user });
+    return true;
   },
   async resolve(team, eid, resolved = true, { user = game.user } = {}) {
     if (!S.data(team).events[eid]) throw new BaseError("notFound", { id: eid });
@@ -216,7 +253,7 @@ export const events = {
     if (B.policy.chat === "off") return null;
     const e = S.resolve(team);
     const content = `<div class="ipb-chat" data-team="${esc(e.id)}"><h3>${esc(t("IPB.Chat.Title", { team: B.name }))}</h3>`
-      + `<p><strong>${esc(t("IPB.Chat.Roll", { roll: ev.roll }))}</strong></p><p>${esc(ev.text)}</p>`
+      + `<p><strong>${esc(t("IPB.Chat.Roll", { roll: ev.roll }))}</strong>${EV.bandLow(ev.band) !== null && t(`IPB.Ev.Band.${EV.bandLow(ev.band)}`) !== `IPB.Ev.Band.${EV.bandLow(ev.band)}` ? ` - ${esc(t(`IPB.Ev.Band.${EV.bandLow(ev.band)}`))}` : ""}</p><p>${esc(ev.text)}</p>`
       + `<button type="button" data-action="ipb-open-team" data-team="${esc(e.id)}">${esc(t("IPB.Chat.Open"))}</button></div>`;
     const data = { content, speaker: ChatMessage.getSpeaker({ user }), author: user.id, flags: { [MOD]: { baseEvent: { team: e.id, event: eid } } } };
     if (B.policy.chat === "gm") data.whisper = ChatMessage.getWhisperRecipients("GM").map((u) => u.id);
