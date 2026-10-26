@@ -15,7 +15,9 @@ for (const k of Object.keys(PL)) if (!(k in EN)) fail(`in PL, missing in EN: ${k
 for (const T of [EN, PL]) for (const [k, v] of Object.entries(T)) { n++; if (typeof v !== "string" || !v.trim()) fail(`empty string: ${k}`); if (!k.startsWith("IPL.Session.")) fail(`wrong namespace: ${k}`); }
 for (const k of Object.keys(EN)) if (/^IPL\.Session\.(Chat|Toast|Open|Status)\./.test(k) && EN[k].length > 40 && EN[k] === PL[k]) fail(`PL identical to EN (untranslated?): ${k}`);
 const used = new Set();
-for (const f of readdirSync(dir).filter((x) => x.endsWith(".mjs") && !["lang.mjs", "check-lang.mjs", "check-session.mjs"].includes(x))) {
+const files = [...readdirSync(dir).filter((x) => x.endsWith(".mjs") && !["lang.mjs", "check-lang.mjs", "check-session.mjs"].includes(x)).map((x) => x),
+  ...readdirSync(join(dir, "ui")).filter((x) => x.endsWith(".mjs") && !["lang-ui.mjs", "check-ui.mjs"].includes(x)).map((x) => `ui/${x}`)];
+for (const f of files) {
   const src = readFileSync(join(dir, f), "utf8");
   for (const m of src.matchAll(/["'`](IPL\.Session\.[A-Za-z][\w.]*)["'`]/g)) used.add(m[1]);
   for (const m of src.matchAll(/bad\("([A-Za-z]+)"/g)) used.add(`IPL.Session.err.${m[1]}`);
@@ -30,6 +32,8 @@ for (const q of [...P.GOOD, ...P.BAD]) need.push(`IPL.Session.q.${q.key}`);
 for (const s of P.STATES) need.push(`IPL.Session.State.${s}`);
 for (const g of ["good", "bad"]) need.push(`IPL.Session.Group.${g}`);
 for (const k of ["allowPlayers", "autoOpen", "chatSummary"]) for (const p of ["Name", "Hint"]) need.push(`IPL.Session.Settings.${k}.${p}`);
+for (const c of ["closed", "notMine", "noGM", "playersOff", "locked", "summary"]) need.push(`IPL.Session.UI.Reason.${c}`);   // built as a template string by ui/model.mjs
+for (const c of ["Yes", "No", "None"]) need.push(`IPL.Session.UI.${c}`);
 for (const k of need) { n++; if (!(k in EN && k in PL)) fail(`derived key missing: ${k}`); }
 // every error code the reducer can answer is covered (grep pure.mjs for err("code"))
 const pure = readFileSync(join(dir, "pure.mjs"), "utf8");

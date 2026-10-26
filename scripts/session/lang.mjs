@@ -134,6 +134,8 @@ export const PL = {
   "IPL.Session.err.busy": "Inne przyznawanie lub cofanie karmy jeszcze trwa.",
   "IPL.Session.err.notAwarded": "Nie ma przyznanej karmy do cofnięcia."
 };
+import { UI_EN, UI_PL } from "./ui/lang-ui.mjs";            // S3: the window's strings live in their own file and join the same tables
+Object.assign(EN, UI_EN); Object.assign(PL, UI_PL);
 const fill = (s, data) => String(s).replace(/\{(\w+)\}/g, (_m, k) => (data?.[k] ?? `{${k}}`));
 const lang = () => { try { return globalThis.game?.i18n?.lang ?? "en"; } catch { return "en"; } };
 /** t("IPL.Session.err.locked") or t("IPL.Session.Toast.Started", {gm}). Falls back to English, then to the key. */

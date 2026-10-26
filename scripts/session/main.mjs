@@ -5,6 +5,7 @@ import * as Store from "./store.mjs";
 import * as Relay from "./relay.mjs";
 import { attach, sessionApi } from "./api.mjs";
 import { t } from "./lang.mjs";
+import * as Entry from "./ui/entry.mjs";                  // S3: opener registration, Actors directory button, settings menu (the window itself loads on first open)
 
 const MOD = Store.MOD;
 let started = false, lastId = undefined;
@@ -47,8 +48,12 @@ export function start(phases = {}) {
       if (!game.keybindings.actions.has(`${MOD}.sessionPanel`)) {
         game.keybindings.register(MOD, "sessionPanel", { name: t("IPL.Session.Key.Open.Name"), hint: t("IPL.Session.Key.Open.Hint"), editable: [], restricted: false, onDown: () => { sessionApi.open(); return true; } });
       }
+      Entry.registerMenu();
       run("ready", () => {
         attach(); Relay.start();
+        Entry.register();
+        Hooks.on("renderActorDirectory", Entry.decorateDirectory);
+        try { ui.actors?.render?.(); } catch { /* sidebar not ready */ }
         lastId = Store.current()?.id ?? undefined;
         if (lastId === undefined) lastId = null;
         Store.subscribe(announce);
