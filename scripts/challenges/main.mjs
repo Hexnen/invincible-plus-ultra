@@ -277,6 +277,16 @@ function lowerLimit(right) {
   return y;
 }
 const scheduleMeasure = () => { if (!raf) raf = requestAnimationFrame(measure); };
+/* PERF: the observed subtrees also hold things that change all the time without moving a box: core's FPS counter (class + text, ~4 per second) and the chat
+   timestamps (text nodes, every few seconds). Only a class / hidden change outside the FPS counter, or an ELEMENT added / removed, can move a measured box. */
+const layoutRelevant = (recs) => recs.some((r) => {
+  const host = r.target?.nodeType === 1 ? r.target : r.target?.parentElement;
+  if (host?.closest?.("#performance-stats")) return false;
+  if (r.type === "attributes") return true;
+  for (const n of r.addedNodes) if (n.nodeType === 1) return true;
+  for (const n of r.removedNodes) if (n.nodeType === 1) return true;
+  return false;
+});
 function watchSidebar() {
   const el = document.getElementById("sidebar"), low = document.getElementById("ui-bottom");
   if (el === observed && low === observedLow) return;
@@ -288,7 +298,7 @@ function watchSidebar() {
   mo?.disconnect();
   const ui = document.getElementById("ui-right");
   if (ui && window.MutationObserver) {   // the chat input appears / disappears, a sidebar tab changes (class / hidden only: cheap, and rAF-throttled)
-    mo ??= new MutationObserver(scheduleMeasure);
+    mo ??= new MutationObserver((recs) => { if (layoutRelevant(recs)) scheduleMeasure(); });
     mo.observe(ui, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "hidden"] });
   }
   scheduleMeasure();

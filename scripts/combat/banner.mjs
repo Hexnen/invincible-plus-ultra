@@ -46,9 +46,9 @@ function measureTop() {
     if (r && r.height > 0 && r.bottom < 220) bottom = r.bottom;
   } catch { bottom = 0; }
   const own = Math.round(Math.min(150, Math.max(bottom, 40)) + 10);
-  /* the initiative bar (bar.mjs) publishes its bottom edge as --icbar-bottom on :root (0 / unset when it is not showing): the banner sits below it */
+  /* the initiative bar (bar.mjs) publishes its bottom edge as data-icbar-bottom on :root (0 / unset when it is not showing): the banner sits below it */
   let bar = 0;
-  try { bar = parseFloat(document.documentElement.style.getPropertyValue("--icbar-bottom")) || 0; } catch { bar = 0; }
+  try { bar = parseFloat(document.documentElement.dataset.icbarBottom) || 0; } catch { bar = 0; }
   return bar > 0 ? Math.max(own, Math.round(bar + 10)) : own;
 }
 export function freeArea() {

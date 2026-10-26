@@ -227,12 +227,22 @@ function measure() {
   } catch (e) { console.warn(LOG, "measure", e); }
 }
 function scheduleMeasure() { if (!raf) raf = requestAnimationFrame(measure); }
+/* PERF: the observed subtrees also hold things that change all the time without moving a box: core's FPS counter (class + text, ~4 per second) and the chat
+   timestamps (text nodes, every few seconds). Only a class / hidden change outside the FPS counter, or an ELEMENT added / removed, can move a measured box. */
+const layoutRelevant = (recs) => recs.some((r) => {
+  const host = r.target?.nodeType === 1 ? r.target : r.target?.parentElement;
+  if (host?.closest?.("#performance-stats")) return false;
+  if (r.type === "attributes") return true;
+  for (const n of r.addedNodes) if (n.nodeType === 1) return true;
+  for (const n of r.removedNodes) if (n.nodeType === 1) return true;
+  return false;
+});
 function watch() {
   if (!window.ResizeObserver) return;
   ro ??= new ResizeObserver(scheduleMeasure);
   const ui = document.getElementById("ui-left") ?? document.getElementById("interface");
   if (ui && window.MutationObserver && !mo) {
-    mo = new MutationObserver(scheduleMeasure);   // the hotbar / players list change class or hidden; rAF-throttled
+    mo = new MutationObserver((recs) => { if (layoutRelevant(recs)) scheduleMeasure(); });   // the hotbar / players list change class or hidden; rAF-throttled
     mo.observe(ui, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "hidden"] });
   }
   const bottom = document.getElementById("ui-bottom");

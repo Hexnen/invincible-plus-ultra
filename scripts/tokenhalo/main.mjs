@@ -139,7 +139,7 @@ function onReady() {
   ready = true;
   const mod = game.modules.get(MOD);
   if (mod) mod.api = { ...(mod.api ?? {}), tokenHalo: { refresh: syncAll, info: Halo.info, stop } };
-  syncAll();
+  setTimeout(syncAll, 0);   // PERF: the first bake (generateTexture + shader set-up) costs ~75 ms once: off the ready path, like canvasReady above
   console.log(`${LOG} ready`);
 }
 

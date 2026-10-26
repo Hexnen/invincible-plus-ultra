@@ -18,7 +18,7 @@
    STACKING / PLACEMENT: fixed, z-index one BELOW the interface layer (above the canvas, under the menus and the scene navigation, which it
    emerges from), one ABOVE the banners (banner z is two below). Horizontally centred over the free map area (sidebar and scene controls excluded,
    and the open Challenges dock: banner.mjs freeArea() / hudLimit()), top = scene-navigation bottom + 6. The bar's bottom edge is published as
-   --icbar-bottom on :root (px; 0 when hidden) and banner.mjs puts its banner under it.
+   data-icbar-bottom on :root (px; 0 when hidden; was a CSS variable until the perf pass) and banner.mjs puts its banner under it.
    MOTION: transform / opacity / clip-path only (Web Animations on the individual translate / scale properties), nothing per frame. One
    choreography, morph() below, serves every change: FLIP for the tiles, the chrome and the ring, the camera (auto-centring) folded into the
    same FLIP, expand / collapse of the active tile, rapid-click hold, round-chip digit slide. */
@@ -211,7 +211,9 @@ function publishBottom(px) {
   const v = Math.max(0, Math.round(px));
   if (v === publishedBottom) return;
   publishedBottom = v;
-  try { document.documentElement.style.setProperty("--icbar-bottom", `${v}px`); } catch { /* no root */ }
+  /* PERF: a data attribute, NOT a custom property on :root (an inherited custom property change restyles the whole document: measured 20 ms per
+     change with 4400 nodes, 62 ms -> 22 ms for the bar mount); nothing in CSS reads it, banner.mjs reads it back from the attribute */
+  try { document.documentElement.dataset.icbarBottom = String(v); } catch { /* no root */ }
   try { relayoutBanner(); } catch { /* no banner */ }
 }
 /* PLACEMENT. Preferred: an "island" hanging from the very top edge (top 0), centred in the free gap to the right of the scene navigation and
