@@ -12,12 +12,14 @@ export function createStart() {
   const legend = el("legend", "ips-rlegend", t("IPL.Session.UI.Start.pick"));
   const list = el("ul", "ips-picklist");
   const empty = el("p", "ips-note", t("IPL.Session.UI.Start.empty"));
-  const count = el("p", "ips-count");
-  const bad = el("label", "ips-check", { title: t("IPL.Session.UI.BadTip") }, el("input", "", { type: "checkbox", name: "askBad", "data-fk": "askBad" }), el("span", "", t("IPL.Session.UI.Bad")));
+  const bad = el("label", "ips-check", {}, el("input", "", { type: "checkbox", name: "askBad", "data-fk": "askBad", "aria-describedby": "ips-start-bad-h" }), el("span", "", t("IPL.Session.UI.Bad")));
+  const badHint = el("p", "ips-start-hint", { id: "ips-start-bad-h" }, t("IPL.Session.UI.BadTip"));
+  const opts = el("div", "ips-start-opts", bad, badHint);
+  const count = el("p", "ips-count", { "aria-live": "polite" });
   const go = el("button", "ips-btn ips-btn-primary", { type: "button", "data-ips": "start", "data-fk": "start" }, icon("fa-solid fa-flag-checkered"), el("span", "", t("IPL.Session.UI.Start.go")));
-  const pick = el("fieldset", "ips-roster ips-pick", {}, legend, list, empty, count);
-  const actions = el("div", "ips-start-actions", bad, go);
-  root.append(head, player, lede, pick, actions);
+  const pick = el("fieldset", "ips-roster ips-pick", {}, legend, list, empty);
+  const actions = el("div", "ips-start-actions", count, go);
+  root.append(head, player, lede, opts, pick, actions);
   const checked = new Map();          // hero id -> boolean, kept across repaints
   let sig = "";
 
@@ -35,16 +37,16 @@ export function createStart() {
     /** vm + candidates = [{ id, name, img, def }] */
     patch(vm, candidates = []) {
       const gm = vm.staff;
-      setHidden(player, gm); setHidden(lede, !gm); setHidden(pick, !gm); setHidden(actions, !gm);
+      setHidden(player, gm); setHidden(lede, !gm); setHidden(pick, !gm); setHidden(opts, !gm); setHidden(actions, !gm);
       if (!gm) return;
-      const s = JSON.stringify(candidates.map((c) => [c.id, c.name, c.img, c.def]));
+      const s = JSON.stringify(candidates.map((c) => [c.id, c.name, c.img, c.def, c.owners]));
       if (s !== sig) {
         sig = s;
         for (const c of candidates) if (!checked.has(c.id)) checked.set(c.id, !!c.def);
         list.replaceChildren(...candidates.map((c) => {
           const input = el("input", "", { type: "checkbox", value: c.id, name: `h-${c.id}`, "data-fk": `h-${c.id}` });
           input.checked = checked.get(c.id) === true;
-          const lab = el("label", "ips-pick-row", {}, input, portrait(c.img), el("span", "ips-pick-name", c.name), el("span", "ips-chip", { "data-group": c.def ? "good" : "other" }, t(c.def ? "IPL.Session.UI.Start.default" : "IPL.Session.UI.Start.other")));
+          const lab = el("label", "ips-pick-row", {}, input, portrait(c.img), el("span", "ips-pick-name", c.name), el("span", "ips-chip ips-pick-who", { "data-group": c.def ? "good" : "other" }, c.owners?.length ? t("IPL.Session.UI.PlayedBy", { names: c.owners.join(", ") }) : t(c.def ? "IPL.Session.UI.Start.default" : "IPL.Session.UI.Start.other")));
           return el("li", "", {}, lab);
         }));
       }

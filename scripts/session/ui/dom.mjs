@@ -1,6 +1,8 @@
 /* End-of-session panel, phase S3: tiny DOM helpers. The window is plain DOM (like the chargen and base shells): nodes are created once and PATCHED afterwards, so a
    repaint caused by someone else's click never replaces the element you are focused on. The setters write only when the value really changed. */
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
+/** Bidi isolate for a name placed inside a sentence (an RTL hero name must not reorder the numbers around it). */
+export const iso = (s) => "\u2068" + String(s ?? "") + "\u2069";
 export function el(tag, cls = "", attrs = null, ...kids) {
   const n = document.createElement(tag);
   if (attrs instanceof Node || typeof attrs === "string" || Array.isArray(attrs)) { kids.unshift(attrs); attrs = null; }   // el(tag, cls, child, ...): attributes are optional

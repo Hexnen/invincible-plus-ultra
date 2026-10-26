@@ -3,7 +3,7 @@
    truthy string, because DialogV2.wait() resolves the action NAME when a callback returns nothing (handoff lead TODO: the "Keep" == truthy bug). Only
    `res.go === true` counts as yes; a closed window, Escape and every other value are a no. */
 import { t } from "../lang.mjs";
-import { esc } from "./dom.mjs";
+import { esc, iso } from "./dom.mjs";
 
 const D = () => foundry.applications.api.DialogV2;
 const CLASSES = ["ips-dialog", "ips-dialog-safe"];
@@ -28,8 +28,8 @@ export async function confirm({ title, body, html = null, go, keep, icon, danger
 
 /** Award confirm: lists the LIVE before -> after of every hero. Resolves { go, chat } (go false on anything but the confirm button). */
 export async function confirmAward({ rows, skipped = [], chat = false }) {
-  const list = rows.map((r) => `<li>${esc(t("IPL.Session.UI.Award.row", { name: r.name, before: r.before, after: r.after }))}</li>`).join("");
-  const skip = skipped.length ? `<p class="ips-dlg-warn">${esc(t("IPL.Session.UI.Award.skipped", { names: skipped.join(", ") }))}</p>` : "";
+  const list = rows.map((r) => `<li>${esc(t("IPL.Session.UI.Award.row", { name: iso(r.name), before: r.before, after: r.after }))}</li>`).join("");
+  const skip = skipped.length ? `<p class="ips-dlg-warn">${esc(t("IPL.Session.UI.Award.skipped", { names: skipped.map(iso).join(", ") }))}</p>` : "";
   const res = await ask({
     title: t("IPL.Session.UI.Award.title"), icon: "fa-solid fa-trophy",
     content: `<p class="ips-dlg-lede">${esc(t("IPL.Session.UI.Award.body", { n: rows.length }))}</p><ul class="ips-dlg-list">${list}</ul>${skip}`
@@ -44,12 +44,12 @@ export async function confirmAward({ rows, skipped = [], chat = false }) {
 
 export const confirmUndo = (rows) => confirm({
   title: t("IPL.Session.UI.Undo.title"), icon: "fa-solid fa-rotate-left", go: t("IPL.Session.UI.Undo.go"), keep: t("IPL.Session.UI.Undo.keep"), danger: true,
-  html: `<p class="ips-dlg-lede">${esc(t("IPL.Session.UI.Undo.body"))}</p><ul class="ips-dlg-list">${rows.map((r) => `<li>${esc(t("IPL.Session.UI.Award.row", { name: r.name, before: r.after, after: r.before }))}</li>`).join("")}</ul>`
+  html: `<p class="ips-dlg-lede">${esc(t("IPL.Session.UI.Undo.body"))}</p><ul class="ips-dlg-list">${rows.map((r) => `<li>${esc(t("IPL.Session.UI.Award.row", { name: iso(r.name), before: r.after, after: r.before }))}</li>`).join("")}</ul>`
 });
 
 /** Drifted heroes after a strict undo. Resolves "relative" or "leave". */
 export async function confirmDrift(rows) {
-  const list = rows.map((r) => `<li>${esc(t("IPL.Session.UI.Undo.drift.row", { name: r.name, current: r.current ?? "?", expected: r.expected }))}</li>`).join("");
+  const list = rows.map((r) => `<li>${esc(t("IPL.Session.UI.Undo.drift.row", { name: iso(r.name), current: r.current ?? "?", expected: r.expected }))}</li>`).join("");
   const res = await ask({
     title: t("IPL.Session.UI.Undo.drift.title"), icon: "fa-solid fa-triangle-exclamation",
     content: `<p class="ips-dlg-lede">${esc(t("IPL.Session.UI.Undo.drift.body"))}</p><ul class="ips-dlg-list">${list}</ul>`,

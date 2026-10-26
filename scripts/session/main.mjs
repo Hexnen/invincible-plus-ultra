@@ -5,32 +5,18 @@ import * as Store from "./store.mjs";
 import * as Relay from "./relay.mjs";
 import { attach, sessionApi } from "./api.mjs";
 import { t } from "./lang.mjs";
+import { showNotice, removeNotice } from "./ui/toast.mjs";   // S6: the restyled player notice
 import * as Entry from "./ui/entry.mjs";                  // S3: opener registration, Actors directory button, settings menu (the window itself loads on first open)
 
 const MOD = Store.MOD;
 let started = false, lastId = undefined;
 
-/** A small self-contained notice with an Open button (S3 may restyle it); removes itself after 25 s. */
-function toast(text, onOpen, ms = 25000) {
-  try {
-    document.getElementById("ipl-session-toast")?.remove();
-    const el = document.createElement("div");
-    el.id = "ipl-session-toast"; el.setAttribute("role", "status");
-    el.style.cssText = "position:fixed;right:16px;bottom:72px;z-index:99999;max-width:340px;display:flex;gap:10px;align-items:center;padding:10px 12px;background:#14161c;color:#f2efe6;border:2px solid #f4c20d;border-radius:4px;font:14px/1.3 system-ui,sans-serif;box-shadow:0 4px 16px #000a";
-    const span = document.createElement("span"); span.textContent = text;
-    const b = document.createElement("button"); b.type = "button"; b.textContent = t("IPL.Session.Toast.Open"); b.style.cssText = "cursor:pointer;padding:4px 10px;font:inherit;font-weight:700;background:#f4c20d;color:#111;border:0;border-radius:3px";
-    const gone = () => { el.remove(); document.removeEventListener("keydown", onKey, true); };
-    const onKey = (ev) => { if (ev.key === "Escape" && !ev.defaultPrevented && document.getElementById("ipl-session-toast") === el) gone(); };       // S4-22: Escape dismisses it
-    b.addEventListener("click", () => { gone(); onOpen(); });
-    el.append(span, b); document.body.append(el);
-    document.addEventListener("keydown", onKey, true);
-    setTimeout(gone, ms);
-  } catch { /* no DOM */ }
-}
+/** The player notice (Open + close button) lives in ui/toast.mjs since S6; same call shape as before. */
+const toast = showNotice;
 
 function announce(info) {
   const s = info.session;
-  if (!s || s.state !== "open") { if (!s) lastId = null; try { document.getElementById("ipl-session-toast")?.remove(); } catch { /* no DOM */ } return; }
+  if (!s || s.state !== "open") { if (!s) lastId = null; removeNotice(); return; }
   if (lastId === s.id) return;
   const first = lastId === undefined;                  // the value loaded with the world: not an announcement
   lastId = s.id;

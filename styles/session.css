@@ -103,9 +103,9 @@
 .ips-banner { display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px 12px; color: var(--ips-ink); background: var(--ips-paper); border: 2px solid var(--ips-amber); font-size: .95rem; }
 .ips-banner > i { flex: none; color: var(--ips-amber); font-size: 1.1rem; }
 .ips-banner > span { flex: 1; min-width: 0; }
-.ips-toast { position: absolute; z-index: 6; left: 14px; right: 14px; bottom: 12px; margin: 0; padding: 10px 14px; color: #fff; background: var(--ips-ink); border: 2px solid var(--ips-yellow); box-shadow: 3px 3px 0 var(--ips-blue); font-size: .95rem; pointer-events: none; }
-.ips-toast[data-kind="warn"] { border-color: #ffb4ae; }
-.ips-toast[data-kind="ok"] { border-color: #7fe0a4; }
+.ips-app p.ips-toast { position: absolute; z-index: 6; left: 14px; right: 14px; bottom: 12px; margin: 0; padding: 10px 14px; color: #fff; background: var(--ips-ink); border: 2px solid var(--ips-yellow); box-shadow: 3px 3px 0 var(--ips-blue); font-size: .95rem; line-height: 1.35; pointer-events: none; }   /* p.: ".ips-app :is(p)" would otherwise turn the text ink on ink */
+.ips-app p.ips-toast[data-kind="warn"] { border-color: #ffb4ae; }
+.ips-app p.ips-toast[data-kind="ok"] { border-color: #7fe0a4; }
 
 /* ---------- the question card ---------- */
 .ips-view-q { display: grid; gap: 12px; }
@@ -130,7 +130,6 @@
 .ips-count { font: 400 1rem/1.2 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ips-blue); font-variant-numeric: tabular-nums; }
 .ips-wait { min-width: 0; overflow-wrap: anywhere; }
 .ips-wait[data-done="1"] { color: var(--ips-green); font-weight: 700; }
-.ips-pick .ips-count { display: block; margin-top: 8px; }
 .ips-note { margin: 8px 0 0; padding: 6px 10px; font-size: .9rem; color: var(--ips-ink); background: var(--ips-paper-2); }
 .ips-heroes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
 @container ips (min-width: 880px) { .ips-heroes:not([data-count="1"]) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -152,6 +151,7 @@
 .ips-portrait img, .ips-portrait video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ips-portrait.is-empty { color: var(--ips-yellow); font-size: 1.3rem; background: var(--ips-ink) radial-gradient(circle, #3465a3 1.2px, transparent 1.6px) 0 0 / 7px 7px; }
 .ips-who { display: grid; gap: 2px; min-width: 0; }
+.ips-name, .ips-s-name, .ips-pick-name { unicode-bidi: isolate; }
 .ips-name { font: 400 1.1rem/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ips-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: .85rem; color: var(--ips-text-2); min-width: 0; }
 .ips-owners { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -182,10 +182,10 @@
 }
 .ips-sw-box { display: grid; place-items: center; flex: none; width: 36px; height: 36px; font-size: 1.15rem; color: var(--ips-text-2); background: #fff; border: 2px dashed var(--ips-line); }
 .ips-hero[data-v="no"] .ips-sw { background: var(--ips-paper-2); border: 2px solid var(--ips-ink); }
-.ips-hero[data-v="no"] .ips-sw-box { color: var(--ips-ink); border: 2px solid var(--ips-ink); }
+.ips-hero[data-v="no"] .ips-sw > .ips-sw-box { color: var(--ips-ink); border: 2px solid var(--ips-ink); }
 .ips-hero[data-v="yes"] .ips-sw { background: var(--ips-yellow); border: 2px solid var(--ips-ink); box-shadow: 3px 3px 0 var(--ips-blue); }
-.ips-hero[data-v="yes"] .ips-sw-box { color: var(--ips-yellow); background: var(--ips-ink); border: 2px solid var(--ips-ink); }
-.ips-hero[data-v="yes"] .ips-sw-box i { animation: ips-stamp-in .16s var(--ips-ease); }
+.ips-hero[data-v="yes"] .ips-sw > .ips-sw-box { color: var(--ips-yellow); background: var(--ips-ink); border: 2px solid var(--ips-ink); }   /* > : the flaw toggle's own box must not look ticked because the main answer is yes */
+.ips-hero[data-v="yes"] .ips-sw > .ips-sw-box i { animation: ips-stamp-in .16s var(--ips-ease); }
 .ips-app button.ips-sw:hover:not([aria-disabled="true"]) { translate: -1px -1px; }
 .ips-app button.ips-sw:active:not([aria-disabled="true"]) { translate: 1px 1px; }
 .ips-hero[data-off="1"] .ips-sw, .ips-app button.ips-sw[aria-disabled="true"] { cursor: not-allowed; border-style: dashed; }
@@ -204,7 +204,7 @@
 .ips-app button.ips-over[aria-disabled="true"] { cursor: not-allowed; border-style: dashed; box-shadow: none; }
 .ips-heroes[data-dense="1"] .ips-hero { grid-template-columns: 40px minmax(0, 1fr) auto auto; padding-block: 4px; }
 .ips-heroes[data-dense="1"] .ips-portrait { width: 40px; height: 40px; }
-.ips-heroes[data-dense="1"] .ips-yours span { display: none; }
+.ips-heroes[data-dense="1"] .ips-yours span { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }   /* icon-only chip stays named for screen readers (was display: none) */
 
 /* ---------- summary ---------- */
 .ips-view-s { display: grid; gap: 12px; }
@@ -227,6 +227,8 @@
 .ips-s-who { min-width: 9rem; }
 .ips-s-whoin { display: flex; align-items: center; gap: 10px; }
 .ips-s-whoin .ips-portrait { width: 40px; height: 40px; flex: none; }
+.ips-s-id { display: grid; gap: 3px; justify-items: start; min-width: 0; }
+.ips-s-id .ips-yours { padding: 0 6px; }
 .ips-s-name { min-width: 0; font: 400 1.05rem/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; overflow-wrap: anywhere; }
 .ips-s-missing { display: block; font: 400 .85rem/1.3 Roboto, sans-serif; text-transform: none; letter-spacing: 0; color: var(--ips-red); }
 .ips-yc { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
@@ -277,9 +279,13 @@
 .ips-app input[type="checkbox"]:checked, .ips-dialog .ips-dlg-check input:checked { background: var(--ips-yellow, #ffe72a); box-shadow: 2px 2px 0 var(--ips-blue, #3465a3); }
 .ips-app input[type="checkbox"]:checked::after, .ips-dialog .ips-dlg-check input:checked::after { transform: scale(1); }
 .ips-dialog .ips-dlg-check input { border-color: #fff; }
+.ips-pick-who { display: block; flex: 0 1 auto; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ips-pick-name { flex: 1; min-width: 0; font: 400 1.05rem/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; overflow-wrap: anywhere; }
 .ips-start-actions { position: sticky; bottom: -22px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; margin: 0 -16px -22px; padding: 10px 16px 14px; background: var(--ips-paper); border-top: 2px solid var(--ips-paper-2); }
 .ips-check { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; margin: 0; cursor: pointer; }
+.ips-start-opts { display: grid; gap: 0; padding: 6px 10px 10px; background: var(--ips-paper-2); }
+.ips-start-hint { max-width: 62ch; margin: 0 0 0 32px; font-size: .9rem; color: var(--ips-text-2); text-wrap: pretty; }
+.ips-start-actions .ips-count { margin: 0; }
 
 /* ---------- buttons ---------- */
 .ips-app button.ips-btn {
@@ -321,19 +327,40 @@
 .ips-bad[aria-checked="true"] .ips-bad-box { color: var(--ips-ink); background: var(--ips-yellow); box-shadow: 2px 2px 0 var(--ips-blue); }
 .ips-app .ips-menu-i.ips-bad[aria-disabled="true"] { color: var(--ips-disabled); cursor: not-allowed; }
 .ips-more { position: relative; }
-.ips-menu { position: absolute; z-index: 8; bottom: calc(100% + 8px); left: 0; display: grid; min-width: 14.5rem; max-width: calc(100cqw - 20px); background: #fff; border: 2px solid var(--ips-ink); box-shadow: 3px 3px 0 var(--ips-blue); }
+.ips-menu { position: absolute; z-index: 8; bottom: calc(100% + 8px); left: 0; display: grid; width: max-content; min-width: 14.5rem; max-width: min(19rem, calc(100cqw - 20px)); background: #fff; border: 2px solid var(--ips-ink); box-shadow: 3px 3px 0 var(--ips-blue); }
 .ips-app .ips-menu-i { display: flex; align-items: center; justify-content: flex-start; gap: 10px; min-height: 42px; margin: 0; padding: 0 12px; font: 700 .95rem/1.2 Roboto, sans-serif; text-align: left; color: var(--ips-ink); background: #fff; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; }
 .ips-app .ips-menu-i + .ips-menu-i { border-top: 2px solid var(--ips-paper-2); }
 .ips-app .ips-menu-i:hover, .ips-app .ips-menu-i:focus-visible { background: var(--ips-yellow); }
 .ips-app .ips-menu-i.is-danger { color: var(--ips-red); }
 .ips-menu-i i { flex: none; width: 1.2em; text-align: center; }
+.ips-app .ips-menu-i.ips-bad { align-items: flex-start; height: auto; padding-block: 9px; }   /* core gives every button a fixed height: it would clip the help line */
+.ips-app .ips-menu-i.ips-bad .ips-bad-box { margin-top: 0; }
+.ips-menu-t { display: grid; gap: 2px; min-width: 0; }
+.ips-app .ips-menu-h { font: 400 .85rem/1.3 Roboto, sans-serif; color: var(--ips-text-2); text-wrap: pretty; }
 
 /* ---------- Actors directory button ---------- */
 .directory-header .header-actions button.ips-dir-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px; color: #0c1a2e; background: #fff; border: 2px solid #0c1a2e; border-radius: 3px; box-shadow: 2px 2px 0 #3465a3; font-weight: 700; cursor: pointer; }
-.directory-header .header-actions button.ips-dir-btn[data-running="1"] { background: #ffe72a; }
+.directory-header .header-actions button.ips-dir-btn[data-running="1"] { color: #ffe72a; background: #0c1a2e; }   /* inked, not yellow: "Create team base" beside it is the header's one yellow plate */
 .directory-header .header-actions button.ips-dir-btn:hover { box-shadow: 3px 3px 0 #3465a3; }
 .directory-header .header-actions button.ips-dir-btn:active { box-shadow: 1px 1px 0 #3465a3; }
 .directory-header .header-actions button.ips-dir-btn:focus-visible { outline: 3px solid #0096cb; outline-offset: 2px; }
+
+/* ---------- the player notice (ui/toast.mjs; on document.body, outside .ips-app, so literal token values) ---------- */
+.ips-notice { position: fixed; z-index: 99999; left: 50%; bottom: 124px; translate: -50% 0; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: max-content; max-width: min(460px, calc(100vw - 24px)); padding: 8px 8px 8px 12px; color: #fff; background: #0c1a2e; border: 2px solid #ffe72a; box-shadow: 3px 3px 0 #3465a3; font: 400 .95rem/1.35 Roboto, "Segoe UI", sans-serif; }
+.ips-notice * { box-sizing: border-box; }
+.ips-notice .ips-notice-ic { flex: none; color: #ffe72a; font-size: 1.1rem; }
+.ips-notice .ips-notice-t { flex: 1; min-width: 0; overflow-wrap: anywhere; text-wrap: pretty; }
+.ips-notice button { display: inline-flex; align-items: center; justify-content: center; gap: .45em; flex: none; min-height: 34px; margin: 0; padding: 0 .9em; font: 400 .95rem/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; border-radius: 0; cursor: pointer; transition: translate .12s cubic-bezier(.16, 1, .3, 1), box-shadow .12s cubic-bezier(.16, 1, .3, 1); }
+.ips-notice .ips-notice-open { color: #0c1a2e; background: #ffe72a; border: 2px solid #0c1a2e; box-shadow: 3px 3px 0 #3465a3; }
+.ips-notice .ips-notice-open:hover { translate: -1px -1px; box-shadow: 4px 4px 0 #3465a3; }
+.ips-notice .ips-notice-open:active { translate: 2px 2px; box-shadow: 1px 1px 0 #3465a3; }
+.ips-notice .ips-notice-x { width: 34px; padding: 0; color: #d5dff0; background: transparent; border: 2px solid #6b82a6; box-shadow: none; font-size: 1rem; }
+.ips-notice .ips-notice-x:hover { color: #0c1a2e; background: #fff; border-color: #fff; }
+.ips-notice button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+@media (pointer: coarse) { .ips-notice button { min-height: 44px; } .ips-notice .ips-notice-x { width: 44px; } }
+@media (max-width: 480px) { .ips-notice { flex-wrap: wrap; width: calc(100vw - 24px); } .ips-notice .ips-notice-t { flex-basis: calc(100% - 40px); } }
+@media (prefers-reduced-motion: reduce) { .ips-notice button { transition: none; } .ips-notice .ips-notice-open:hover, .ips-notice .ips-notice-open:active { translate: none; } }
+@media (forced-colors: active) { .ips-notice { border-color: CanvasText; color: CanvasText; background: Canvas; } .ips-notice .ips-notice-open { color: ButtonText; background: ButtonFace; border: 3px solid ButtonText; } .ips-notice .ips-notice-x { color: ButtonText; border-color: ButtonText; } .ips-notice button:focus-visible { outline-color: Highlight; } }
 
 /* ---------- dialogs (DialogV2 classes ips-dialog ips-dialog-safe; they live outside .ips-app, so literal values) ---------- */
 .ips-dialog { font-family: Roboto, sans-serif; }
@@ -363,8 +390,9 @@
   .ips-shell { gap: 8px; padding: 8px; }
   .ips-main { padding: 12px 10px 18px; }
   .ips-head { padding: 6px 8px; }
-  .ips-app .ips-dot { width: 28px; height: 28px; font-size: .8rem; }
-  .ips-dots { gap: 4px; }
+  .ips-dots, .ips-dots[data-n="many"] { display: grid; flex: 1 1 100%; width: 100%; grid-template-columns: repeat(auto-fill, minmax(24px, 1fr)); gap: 2px; }   /* one even grid: eleven dots fit one row at 340, more wrap into full rows (no orphan pair) */
+  .ips-dot-li, .ips-dot-li[data-gap="1"] { display: block; margin: 0; }
+  .ips-app .ips-dot, .ips-dots[data-n="many"] .ips-dot { width: 100%; height: 28px; font-size: .8rem; }
   .ips-hero { grid-template-columns: 48px minmax(0, 1fr) auto; }
   .ips-hero .ips-lock { grid-column: 3; grid-row: 1; }
   .ips-hero .ips-sw { grid-column: 1 / -1; }
@@ -382,7 +410,8 @@
 }
 @media (pointer: coarse) {
   .ips-app button.ips-btn, .ips-app .ips-menu-i, .ips-app button.ips-over, .ips-check { min-height: 44px; }
-  .ips-app button.ips-dot, .ips-app .ips-dot { width: 44px; height: 44px; }
+  .ips-dots, .ips-dots[data-n="many"] { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
+  .ips-app button.ips-dot, .ips-app .ips-dot, .ips-dots[data-n="many"] .ips-dot { width: 44px; height: 44px; }
   .ips-app button.ips-sw { min-height: 52px; }
   .ips-lock { width: 44px; height: 44px; }
   .ips-pick-row { min-height: 56px; }
@@ -392,14 +421,14 @@
   .ips-app input[type="checkbox"]::after { transition: none; }
   .ips-app button.ips-btn, .ips-app button.ips-dot, .ips-app button.ips-sw { transition: none; }
   .ips-app button.ips-btn:hover, .ips-app button.ips-btn:active, .ips-app button.ips-sw:hover, .ips-app button.ips-sw:active, .ips-app button.ips-dot:hover, .ips-dot[data-state="current"] { translate: none; }
-  .ips-hero[data-v="yes"] .ips-sw-box i { animation: none; }
+  .ips-hero[data-v="yes"] .ips-sw > .ips-sw-box i { animation: none; }
   .ips-shell.ips-stamping .ips-stamp { animation: ips-fade .2s linear both; }
 }
 
 /* ---------- forced colours: state that lives in a fill must live in system colours ---------- */
 @media (forced-colors: active) {
   .ips-dot { border-color: CanvasText; }
-  .ips-dot[data-state="current"], .ips-dot[data-state="all"], .ips-hero[data-v="yes"] .ips-sw, .ips-hero[data-over="1"] .ips-over, .ips-bad[aria-checked="true"] .ips-bad-box, .ips-hero[data-v="yes"] .ips-sw-box { forced-color-adjust: none; color: HighlightText; background: Highlight; border-color: HighlightText; }
+  .ips-dot[data-state="current"], .ips-dot[data-state="all"], .ips-hero[data-v="yes"] .ips-sw, .ips-hero[data-over="1"] .ips-over, .ips-bad[aria-checked="true"] .ips-bad-box, .ips-hero[data-v="yes"] .ips-sw > .ips-sw-box, .ips-hero[data-over="1"] .ips-over-box { forced-color-adjust: none; color: HighlightText; background: Highlight; border-color: HighlightText; }
   .ips-hero[data-v="no"] .ips-sw { border-color: CanvasText; }
   .ips-hero[data-off="1"] .ips-sw, .ips-app button.ips-btn[aria-disabled="true"], .ips-app button.ips-over[aria-disabled="true"] { color: GrayText; border-color: GrayText; }
   .ips-hero[data-mine="1"] { border-color: Highlight; }
@@ -408,5 +437,5 @@
   .ips-pres[data-on="1"] { forced-color-adjust: none; background: Highlight; border-color: Highlight; }
   .ips-app :focus-visible { outline-color: Highlight; }
   .ips-bar { border: 2px solid CanvasText; }
-  .ips-toast { border: 2px solid CanvasText; }
+  .ips-app p.ips-toast, .ips-app p.ips-toast[data-kind] { border: 2px solid CanvasText; color: CanvasText; background: Canvas; }
 }

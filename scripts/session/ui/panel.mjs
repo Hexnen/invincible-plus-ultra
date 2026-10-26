@@ -115,7 +115,7 @@ export class SessionPanel extends ApplicationV2 {
   }
   #candidates() {
     const def = new Set(api.defaultHeroes().map((h) => h.id));
-    return game.actors.filter((a) => a.type === "superhero" && !isCard(a)).map((a) => ({ id: a.id, name: a.name, img: a.img || "", def: def.has(a.id) }))
+    return game.actors.filter((a) => a.type === "superhero" && !isCard(a)).map((a) => ({ id: a.id, name: a.name, img: a.img || "", def: def.has(a.id), owners: game.users.filter((u) => !u.isGM && a.testUserPermission(u, "OWNER")).map((u) => u.name) }))
       .sort((a, b) => (b.def - a.def) || a.name.localeCompare(b.name));
   }
 

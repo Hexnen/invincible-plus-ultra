@@ -26,8 +26,8 @@ export function createBar() {
     const menu = el("div", "ips-menu", { id: "ips-menu", hidden: true });
     if (place === "q" || place === "q-last") {
       menu.append(item("toSummary", t("IPL.Session.UI.ToSummary"), "fa-solid fa-list-check"));
-      const bad = el("button", "ips-menu-i ips-bad", { type: "button", role: "switch", "data-ips": "bad", "data-fk": "bad", "aria-checked": "false", title: t("IPL.Session.UI.BadTip") },
-        el("span", "ips-sw-box ips-bad-box", icon("fa-solid fa-check")), el("span", "", t("IPL.Session.UI.Bad")));
+      const bad = el("button", "ips-menu-i ips-bad", { type: "button", role: "switch", "data-ips": "bad", "data-fk": "bad", "aria-checked": "false", "aria-describedby": "ips-bad-h" },
+        el("span", "ips-sw-box ips-bad-box", icon("fa-solid fa-check")), el("span", "ips-menu-t", el("span", "", t("IPL.Session.UI.Bad")), el("small", "ips-menu-h", { id: "ips-bad-h" }, t("IPL.Session.UI.BadTip"))));   // S6: the help is visible text (a tooltip never reached touch or keyboard users)
       menu.append(bad);
     }
     if (place !== "awarded") menu.append(item("addHero", t("IPL.Session.UI.Add"), "fa-solid fa-user-plus"), item("removeHero", t("IPL.Session.UI.Remove"), "fa-solid fa-user-minus"), item("discard", t("IPL.Session.UI.Discard"), "fa-solid fa-trash", true));

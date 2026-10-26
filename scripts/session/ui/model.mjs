@@ -81,7 +81,7 @@ export function build(env) {
       const plan = planBy.get(r.hero);
       const qn = r.yes.map((id) => ({ id, n: qs.findIndex((q) => q.id === id) + 1, label: qs.find((q) => q.id === id)?.label ?? id, bad: id.startsWith("b") }));
       return {
-        id: r.hero, name: info.name ?? r.name, img: info.img ?? "", missing: !!info.missing, yes: qn, gain: r.gain, loss: r.loss, net: r.net, overcame: r.overcame,
+        id: r.hero, name: info.name ?? r.name, img: info.img ?? "", mine: !env.me.staff && !!info.mine, missing: !!info.missing, yes: qn, gain: r.gain, loss: r.loss, net: r.net, overcame: r.overcame,
         before: awarded && ar && ar.st !== 0 ? ar.before : plan ? plan.before : info.karma ?? null,
         after: awarded && ar && ar.st !== 0 ? ar.after : plan ? plan.after : null,
         applied: ar ? ar.st : null

@@ -7,8 +7,10 @@ import { el, icon, setText, setAttr, setHidden, portrait } from "./dom.mjs";
 const signed = (n, sign) => (n ? `${sign}${n}` : "0");
 
 function row(r, sum) {
-  const tr = el("tr", "ips-srow", { "data-id": r.id, "data-missing": r.missing ? "1" : null, "data-applied": r.applied === null ? null : String(r.applied) });
-  const inner = el("div", "ips-s-whoin", portrait(r.img), el("span", "ips-s-name", r.name));
+  const tr = el("tr", "ips-srow", { "data-id": r.id, "data-missing": r.missing ? "1" : null, "data-mine": r.mine ? "1" : null, "data-applied": r.applied === null ? null : String(r.applied) });
+  const idBox = el("div", "ips-s-id", el("span", "ips-s-name", r.name));
+  const inner = el("div", "ips-s-whoin", portrait(r.img), idBox);
+  if (r.mine) idBox.append(el("span", "ips-yours", icon("fa-solid fa-star"), el("span", "", t("IPL.Session.UI.Yours"))));
   if (r.missing) inner.querySelector(".ips-s-name").append(el("span", "ips-s-missing", t("IPL.Session.UI.Sum.missing")));
   const who = el("th", "ips-s-who", { scope: "row" }, inner);
   const chips = el("ul", "ips-yc");

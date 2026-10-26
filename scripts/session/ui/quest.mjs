@@ -1,7 +1,7 @@
 /* End-of-session panel, phase S3: the QUESTION view. One big question card and the roster of heroes with one large switch each. Built once, then patched from the
    view model: a hero's node keeps its identity (and focus) while the answers change, the question card slides in only when the question itself changes. */
 import { t } from "../lang.mjs";
-import { el, icon, setText, setAttr, setHidden, portrait, updatePortrait, reconcile, reducedMotion } from "./dom.mjs";
+import { el, icon, setText, setAttr, setHidden, portrait, updatePortrait, reconcile, reducedMotion, iso } from "./dom.mjs";
 
 const STATE_ICON = { yes: "fa-solid fa-check", no: "fa-solid fa-xmark", none: "fa-solid fa-minus" };
 const STATE_KEY = { yes: "IPL.Session.UI.Yes", no: "IPL.Session.UI.No", none: "IPL.Session.UI.None" };
@@ -33,6 +33,7 @@ function patchHero(li, h, ctx) {
   setAttr(li, "data-missing", h.missing ? "1" : null);
   updatePortrait(li.querySelector(".ips-portrait"), h.img);
   setText(li.querySelector(".ips-name"), h.name);
+  setAttr(li.querySelector(".ips-name"), "title", h.name);                       // long names are clamped to two lines: the full one is one hover away
   const owners = h.owners.length ? t("IPL.Session.UI.PlayedBy", { names: h.owners.map((o) => o.name).join(", ") }) : t("IPL.Session.UI.GmHero");
   setText(li.querySelector(".ips-owners"), owners);
   const dot = li.querySelector(".ips-pres");
@@ -114,7 +115,7 @@ export function createQuestion() {
       setHidden(flawNote, !q.flaw);
       setText(count, t("IPL.Session.UI.Answered", { n: vm.counts.answered, total: vm.counts.total }));
       const all = vm.counts.total > 0 && vm.counts.answered >= vm.counts.total;
-      const short = vm.counts.waiting.map((n) => { const c = [...n]; return c.length > 22 ? `${c.slice(0, 21).join("")}…` : n; });
+      const short = vm.counts.waiting.map((n) => { const c = [...n]; return iso(c.length > 22 ? `${c.slice(0, 21).join("")}…` : n); });
       setText(wait, all ? t("IPL.Session.UI.AllAnswered") : short.length > 3 ? t("IPL.Session.UI.WaitingMore", { names: short.slice(0, 3).join(", "), n: short.length - 3 }) : t("IPL.Session.UI.Waiting", { names: short.join(", ") }));
       setAttr(wait, "data-done", all ? "1" : null);
       // a short line for players: what they can do here (never for the GM)
