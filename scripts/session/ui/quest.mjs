@@ -48,7 +48,7 @@ function patchHero(li, h, ctx) {
   const reasonText = h.reason ? t(`IPL.Session.UI.Reason.${h.reason}`) : "";
   const sw = li.querySelector(".ips-sw");
   setAttr(sw, "aria-checked", h.v !== null && h.v >= 1 ? "true" : "false");
-  setAttr(sw, "aria-label", t("IPL.Session.UI.Cell", { hero: h.name, question: q.label }));
+  setAttr(sw, "aria-label", `${t("IPL.Session.UI.Cell", { hero: h.name, question: q.label })} - ${t(STATE_KEY[h.state])}`);         // S4-17: "No" and "Not answered" are both unchecked, so the word is in the name
   setAttr(sw, "aria-disabled", h.canToggle ? null : "true");
   setAttr(sw, "aria-describedby", reasonText ? `ips-r-${h.id}` : null);
   setAttr(sw, "title", reasonText || null);

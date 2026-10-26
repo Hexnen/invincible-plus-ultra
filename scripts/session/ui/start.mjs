@@ -1,6 +1,7 @@
 /* End-of-session panel, phase S3: the view when NO review is running. A player sees one calm sentence; the GM sees the roster picker (heroes owned by a player are
    ticked, any other hero can be ticked too) and the Start button. The ticks live in this view (a Map) so a repaint caused by a world update never loses them. */
 import { t } from "../lang.mjs";
+import { LIMITS } from "../pure.mjs";
 import { el, icon, setText, setAttr, setHidden, portrait, updatePortrait } from "./dom.mjs";
 
 export function createStart() {
@@ -21,7 +22,7 @@ export function createStart() {
   let sig = "";
 
   const selected = () => [...list.querySelectorAll('input[type="checkbox"]:checked')].map((i) => i.value);
-  const refreshCount = () => { const n = selected().length; setText(count, t("IPL.Session.UI.Start.count", { n })); setAttr(go, "aria-disabled", n ? null : "true"); };
+  const refreshCount = () => { const n = selected().length; setText(count, t("IPL.Session.UI.Start.count", { n, max: LIMITS.heroes })); setAttr(go, "aria-disabled", n ? null : "true"); };
   list.addEventListener("change", (ev) => {
     const i = ev.target;
     if (i instanceof HTMLInputElement) { checked.set(i.value, i.checked); refreshCount(); }

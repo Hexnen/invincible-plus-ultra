@@ -11,7 +11,7 @@ const MOD = Store.MOD;
 let started = false, lastId = undefined;
 
 /** A small self-contained notice with an Open button (S3 may restyle it); removes itself after 25 s. */
-function toast(text, onOpen) {
+function toast(text, onOpen, ms = 25000) {
   try {
     document.getElementById("ipl-session-toast")?.remove();
     const el = document.createElement("div");
@@ -19,21 +19,32 @@ function toast(text, onOpen) {
     el.style.cssText = "position:fixed;right:16px;bottom:72px;z-index:99999;max-width:340px;display:flex;gap:10px;align-items:center;padding:10px 12px;background:#14161c;color:#f2efe6;border:2px solid #f4c20d;border-radius:4px;font:14px/1.3 system-ui,sans-serif;box-shadow:0 4px 16px #000a";
     const span = document.createElement("span"); span.textContent = text;
     const b = document.createElement("button"); b.type = "button"; b.textContent = t("IPL.Session.Toast.Open"); b.style.cssText = "cursor:pointer;padding:4px 10px;font:inherit;font-weight:700;background:#f4c20d;color:#111;border:0;border-radius:3px";
-    b.addEventListener("click", () => { el.remove(); onOpen(); });
+    const gone = () => { el.remove(); document.removeEventListener("keydown", onKey, true); };
+    const onKey = (ev) => { if (ev.key === "Escape" && !ev.defaultPrevented && document.getElementById("ipl-session-toast") === el) gone(); };       // S4-22: Escape dismisses it
+    b.addEventListener("click", () => { gone(); onOpen(); });
     el.append(span, b); document.body.append(el);
-    setTimeout(() => el.remove(), 25000);
+    document.addEventListener("keydown", onKey, true);
+    setTimeout(gone, ms);
   } catch { /* no DOM */ }
 }
 
 function announce(info) {
   const s = info.session;
-  if (!s || s.state !== "open") { if (!s) lastId = null; return; }
+  if (!s || s.state !== "open") { if (!s) lastId = null; try { document.getElementById("ipl-session-toast")?.remove(); } catch { /* no DOM */ } return; }
   if (lastId === s.id) return;
   const first = lastId === undefined;                  // the value loaded with the world: not an announcement
   lastId = s.id;
   if (first || game.user.isGM || s.gm === game.user.id) return;
   if (Store.setting(Store.SETTING_AUTO, true) === false || Store.setting(Store.SETTING_ALLOW, true) === false) return;
   toast(t("IPL.Session.Toast.Started", { gm: game.users.get(s.gm)?.name ?? "GM" }), () => sessionApi.open());
+}
+
+/** S4-15: a player who reloads (or joins) while a review is open never saw the "started" toast: show a longer one once, on load. */
+function cueOnLoad() {
+  const s = Store.current();
+  if (!s || s.state !== "open" || game.user.isGM || Store.isStaff(game.user)) return;
+  if (Store.setting(Store.SETTING_AUTO, true) === false || Store.setting(Store.SETTING_ALLOW, true) === false) return;
+  toast(t("IPL.Session.Toast.Running"), () => sessionApi.open(), 90000);
 }
 
 export function start(phases = {}) {
@@ -57,6 +68,7 @@ export function start(phases = {}) {
         lastId = Store.current()?.id ?? undefined;
         if (lastId === undefined) lastId = null;
         Store.subscribe(announce);
+        cueOnLoad();
         const status = (extra = {}) => Store.notify("status", extra);
         // GM connects / disconnects: the banner state (api.session.status().gmOnline) changes
         Hooks.on("userConnected", () => status());

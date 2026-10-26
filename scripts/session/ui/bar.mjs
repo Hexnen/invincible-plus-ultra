@@ -9,7 +9,9 @@ const btn = (act, label, ic, extra = {}) => el("button", `ips-btn${extra.primary
 
 export function placeOf(vm) {
   if (vm.view === "question") return vm.index >= vm.total - 1 ? "q-last" : "q";
-  return vm.state === "awarded" ? "awarded" : vm.state === "closed" ? "closed" : "summary";
+  if (vm.state === "awarded") return "awarded";
+  if (vm.state === "closed") return vm.resumable ? "applying" : "closed";      // S4-01: an interrupted award can only be resumed (banner) or taken back (Undo), not reopened / discarded
+  return "summary";
 }
 
 export function createBar() {
@@ -46,6 +48,8 @@ export function createBar() {
     } else if (place === "closed") {
       left.append(btn("reopen", t("IPL.Session.UI.Reopen"), "fa-solid fa-lock-open"), more());
       right.append(btn("award", t("IPL.Session.UI.Award"), "fa-solid fa-trophy", { primary: true }));
+    } else if (place === "applying") {
+      left.append(btn("undo", t("IPL.Session.UI.Undo"), "fa-solid fa-rotate-left", { danger: true }));
     } else if (place === "awarded") {
       left.append(btn("undo", t("IPL.Session.UI.Undo"), "fa-solid fa-rotate-left", { danger: true }), btn("postChat", t("IPL.Session.UI.PostChat"), "fa-solid fa-comment"));
       right.append(btn("dismiss", t("IPL.Session.UI.Dismiss"), "fa-solid fa-box-archive", { primary: true }));

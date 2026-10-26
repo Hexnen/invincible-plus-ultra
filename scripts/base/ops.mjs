@@ -168,10 +168,14 @@ async function buyKarma(e, key, split, { power = "", cost: override = null, note
       for (const s of plan.filter((x) => x.amount > 0)) {
         const actor = game.actors.get(s.actorId);
         if (!actor) throw new BaseError("notFound", { id: s.actorId });
-        const before = Number(actor._source.system.karma) || 0;       // _source: effect-modified numbers are never written back
-        if (before < s.amount) throw new BaseError("karma", { cost: c.cost, missing: s.amount - before });
-        await actor.update({ "system.karma": before - s.amount }, { ipLogCause: "base-buy" });      // L3b: the hero's karma row says WHY it dropped
-        done.push({ actor, before, amount: s.amount });
+        const take = async () => {                                      // S5 (S4-13): read, check and write the hero's karma as ONE step under the session award's per-actor lock (when present), so an award cannot interleave
+          const before = Number(actor._source.system.karma) || 0;     // _source: effect-modified numbers are never written back
+          if (before < s.amount) throw new BaseError("karma", { cost: c.cost, missing: s.amount - before });
+          await actor.update({ "system.karma": before - s.amount }, { ipLogCause: "base-buy" });    // L3b: the hero's karma row says WHY it dropped
+          done.push({ actor, before, amount: s.amount });
+        };
+        const withLock = game.modules.get(MOD)?.api?.session?._internal?.Award?.withActorLock;
+        if (typeof withLock === "function") await withLock(actor.id, take); else await take();
       }
       if (_failAt === "afterKarma") throw new Error("forced failure after karma");
       if (_failAt === "card") { await S.update(e, { upgrades: { zzfail: "bad" } }, { user }); }

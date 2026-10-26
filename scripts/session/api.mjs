@@ -80,7 +80,7 @@ export const sessionApi = {
   removeHero: (hero) => act("removeHero", { hero }),
   unlock: (hero, q) => act("unlock", { hero, q }),
   toggleBad: (value) => act("setAskBad", { value: value === undefined ? !Store.current()?.askBad : value === true }),
-  award: (opts = {}) => Relay.request({ cmd: "award", args: { chat: opts.chat === true, _failAt: opts._failAt } }),
+  award: (opts = {}) => Relay.request({ cmd: "award", args: { chat: typeof opts.chat === "boolean" ? opts.chat : undefined, _failAt: opts._failAt } }),
   undo: (opts = {}) => cmd("undo", { mode: opts.mode === "relative" ? "relative" : "strict" }),
   discard: () => cmd("discard"),
   dismiss: () => cmd("dismiss"),

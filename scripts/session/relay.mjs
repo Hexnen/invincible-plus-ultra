@@ -25,12 +25,18 @@ export async function request(req) {
 function send(req) {
   return new Promise((resolve) => {
     const id = `${++seq}${Math.random().toString(36).slice(2, 6)}`;
+    const nonce = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8);        // S4-08: a reply must carry the nonce only the GM and this client saw
+    const gmId = game.users.activeGM?.id;
     let staleTimer = 0;
     const done = (env) => { clearTimeout(timer); clearTimeout(staleTimer); pending.delete(id); resolve(env); };
     const timer = setTimeout(() => done(bad("relay")), TIMEOUT);
     // a "stale" answer (older GM tab) is only final when no better one arrives within a moment: a newer GM tab may answer as well
-    pending.set(id, (env) => { if (env?.error?.code === "stale") staleTimer ||= setTimeout(() => done(env), 900); else done(env); });
-    try { game.socket.emit(CHANNEL, { k: "ssreq", id, req: { ...req, id }, userId: game.user.id, proto: OP.PROTO, mod: modVersion() }); } catch { done(bad("relay")); }
+    pending.set(id, { nonce, fn: (env) => { if (env?.error?.code === "stale") staleTimer ||= setTimeout(() => done(env), 900); else done(env); } });
+    const msg = { k: "ssreq", id, n: nonce, req: { ...req, id }, userId: game.user.id, proto: OP.PROTO, mod: modVersion() };
+    try {
+      // S4-08: the request goes to the GM user only (not to every player); the reply is bound to the id + nonce and accepted from a GM sender only
+      if (gmId) game.socket.emit(CHANNEL, msg, { recipients: [gmId] }); else game.socket.emit(CHANNEL, msg);
+    } catch { done(bad("relay")); }
   });
 }
 
@@ -50,9 +56,11 @@ export function start() {
       const env = await GM.exec(sender, msg.req && typeof msg.req === "object" ? { ...msg.req, id: String(msg.id ?? "").slice(0, 24) } : msg.req, { trusted: !!real, via: "relay", proto: msg.proto, mod: msg.mod });
       if (!to || !game.users.has(to)) return;
       if (env?.session) env.session = undefined;                                                          // the requester renders from the world setting; do not ship the whole session back
-      try { game.socket.emit(CHANNEL, { k: "ssres", id: msg.id, to, env }, { recipients: [to] }); } catch { game.socket.emit(CHANNEL, { k: "ssres", id: msg.id, to, env }); }
+      try { game.socket.emit(CHANNEL, { k: "ssres", id: msg.id, n: msg.n, to, env }, { recipients: [to] }); } catch { game.socket.emit(CHANNEL, { k: "ssres", id: msg.id, n: msg.n, to, env }); }
     } else if (msg.k === "ssres" && msg.to === game.user.id) {
-      pending.get(msg.id)?.(msg.env);
+      if (game.users.get(senderId)?.isGM !== true) return;                                                // S4-08: only a GM user can answer (a player's forged reply is dropped)
+      const p = pending.get(msg.id);
+      if (p && typeof msg.n === "string" && msg.n === p.nonce) p.fn(msg.env);
     }
   });
 }

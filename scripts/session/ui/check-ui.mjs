@@ -1,6 +1,7 @@
 /* Node check of the view model (ui/model.mjs): node scripts/session/ui/check-ui.mjs -> OK. The DOM code is verified live (dev/session-live-tests.js + screenshots). */
 import * as P from "../pure.mjs";
 import * as M from "./model.mjs";
+import { placeOf } from "./bar.mjs";
 
 let n = 0, bad = 0;
 const eq = (a, b, m) => { n++; if (JSON.stringify(a) !== JSON.stringify(b)) { bad++; console.log("FAIL", m, JSON.stringify(a), "!=", JSON.stringify(b)); } };
@@ -47,5 +48,22 @@ eq(vm.view, "summary", "summary view"); eq(vm.sum.rows.length, 3, "three rows");
 eq(M.reasonOf({ s, staff: true, mine: true, cell: null, gmOnline: true, allowPlayers: true, atQuestion: false }), "closed", "closed review reason");
 eq(M.build(env(null, p1)).view, "none", "no session");
 eq(M.stateOf(null), "none", "stateOf none"); eq(M.stateOf(0), "no", "stateOf no"); eq(M.stateOf(2), "yes", "stateOf 2");
+// S5 (S4-16): a deleted hero gets its own reason and never counts as waiting; S4-01: an interrupted award has its own bar place
+{
+  let q = mk(); const ghost = (id) => ({ ...info(id), missing: id === "h3", mine: false, name: id === "h3" ? "(deleted hero)" : info(id).name });
+  const st = { gmOnline: true, allowPlayers: true };
+  const v = M.build({ s: q, me: p1, status: st, info: ghost, questions: [] });
+  eq(v.heroes[2].reason, "missing", "deleted hero reason is missing, not notMine"); eq(v.heroes[2].canToggle, false, "deleted hero cannot be toggled");
+  eq(v.counts.total, 2, "deleted hero not counted in the total"); eq(v.counts.waiting, ["Alpha", "Beta"], "deleted hero not waiting");
+  const g = M.build({ s: q, me: gm, status: st, info: ghost, questions: [] });
+  eq(g.heroes[2].reason, "missing", "GM also gets the missing reason"); eq(g.undecided, ["h1", "h2"], "lean to yes skips the deleted hero");
+  q = act(q, { type: "setAnswer", hero: "h1", q: "q01", value: 1 }); q = act(q, { type: "setAnswer", hero: "h2", q: "q01", value: 1 });
+  const all = M.build({ s: q, me: gm, status: st, info: ghost, questions: [] });
+  eq(all.counts.answered >= all.counts.total, true, "all answered once the live heroes answered");
+  q = act(q, { type: "setQuestion", index: 1 });
+  eq(M.build({ s: q, me: gm, status: st, info: ghost, questions: [] }).dots[0].state, "all", "dot is complete without the deleted hero");
+}
+eq(placeOf({ view: "summary", state: "closed", resumable: true }), "applying", "interrupted award: only resume / undo"); eq(placeOf({ view: "summary", state: "closed", resumable: false }), "closed", "closed place unchanged");
+eq(placeOf({ view: "summary", state: "awarded", resumable: true }), "awarded", "awarded place unchanged");
 if (bad) { console.log(`FAIL ${bad} of ${n}`); process.exit(1); }
 console.log(`OK ${n} checks`);

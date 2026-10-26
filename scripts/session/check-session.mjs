@@ -43,7 +43,8 @@ eq("start rev", s.rev, 1); eq("start gm", s.gm, "gm1"); eq("start log", s.log.le
 fail("start twice", R(s, { type: "start", id: "s2", heroes }), "exists");
 eq("start with discarded ok", R({ ...s, state: "discarded" }, { type: "start", id: "s2", heroes }).ok, true);
 eq("start askBad", must("sb", R(null, { type: "start", id: "s3", heroes, askBad: true })).askBad, true);
-eq("start 30 heroes capped", must("s30", R(null, { type: "start", id: "s4", heroes: Array.from({ length: 30 }, (_, i) => ({ id: "h" + i, name: "H" })) })).heroes.length, P.LIMITS.heroes);
+fail("start 30 heroes refused (S4-10, no silent truncation)", R(null, { type: "start", id: "s4", heroes: Array.from({ length: 30 }, (_, i) => ({ id: "h" + i, name: "H" })) }), "tooMany");
+eq("start 24 heroes ok", must("s24", R(null, { type: "start", id: "s4", heroes: Array.from({ length: 24 }, (_, i) => ({ id: "h" + i, name: "H" })) })).heroes.length, 24);
 fail("action null", P.reduce(s, null, ctxFor(GM)), "badInput");
 fail("action unknown type", R(s, { type: "explode" }), "badInput");
 fail("ctx missing", P.reduce(s, { type: "next" }, {}), "noPermission");
@@ -141,7 +142,7 @@ say(B, "b05", 1); say(B, "b06", 1); say(B, "b04", 1); say(A, "b01", 1);
 eq("worked A gain 11", P.gainOf(w, A), 11); eq("worked A loss 1", P.lossOf(w, A), 1); eq("worked B gain 2", P.gainOf(w, B), 2); eq("worked B loss 3", P.lossOf(w, B), 3);
 eq("worked totals", [P.summary(w).gain, P.summary(w).loss, P.summary(w).net], [13, 4, 9]);
 eq("applyKarma floor 0", P.applyKarma(0, 2, 3), 0); eq("applyKarma normal", P.applyKarma(5, 11, 1), 15); eq("applyKarma partial floor", P.applyKarma(1, 0, 3), 0);
-eq("applyKarma garbage", P.applyKarma("x", NaN, -4), 0); eq("applyKarma huge", P.applyKarma(1e12, 1, 0), P.LIMITS.karmaMax); eq("applyKarma neg before", P.applyKarma(-5, 2, 0), 2);
+eq("applyKarma garbage", P.applyKarma("x", NaN, -4), 0); eq("applyKarma huge (bounded input)", P.applyKarma(1e12, 1, 0), P.KARMA_HARD + 1); eq("applyKarma never lowers a big sheet (S4-12)", P.applyKarma(150000, 2, 0), 150002); eq("applyKarma neg before", P.applyKarma(-5, 2, 0), 2);
 eq("loss off when askBad false", P.lossOf({ ...w, askBad: false }, B), 0);
 eq("setAskBad off", must("ab-off", R(w, { type: "setAskBad", value: false })).askBad, false);
 ck("bad answers kept but ignored when askBad off", P.lossOf(must("ab-off2", R(w, { type: "setAskBad", value: false })), B) === 0);
@@ -355,7 +356,7 @@ eq("hostile v clamp", P.cellOf(hs, "q01", "AAAA"), { v: 1 }); eq("hostile v2 off
 eq("hostile answers keys", Object.keys(hs.answers).sort(), ["q01", "q02", "q05"]); eq("hostile unknown cell dropped", Object.keys(hs.answers.q01), ["AAAA"]);
 eq("hostile askBad strict boolean", hs.askBad, false); eq("hostile index clamp", hs.index, 10); eq("hostile rev", hs.rev, 1);
 eq("hostile log", hs.log.length, 1); eq("hostile log q dropped", hs.log[0].q, undefined); eq("hostile log u dropped", hs.log[0].u, "");
-eq("hostile seen", hs.seen, ["ok"]); eq("hostile award n", hs.award.n, 1); eq("hostile award rows", hs.award.rows.length, 1); eq("hostile award values", [hs.award.rows[0].before, hs.award.rows[0].after], [0, P.LIMITS.karmaMax]);
+eq("hostile seen", hs.seen, ["ok"]); eq("hostile award n", hs.award.n, 1); eq("hostile award rows", hs.award.rows.length, 1); eq("hostile award values", [hs.award.rows[0].before, hs.award.rows[0].after], [0, P.KARMA_HARD]);
 ck("hostile extra keys dropped", !("polluted" in hs) && !Object.keys(hs).includes("toString"));
 ck("no pollution of Object.prototype", ({}).polluted === undefined && ({}).v === undefined && ({}).AAAA === undefined);
 ck("hostile answers has no own __proto__ key", !Object.prototype.hasOwnProperty.call(hs.answers, "__proto__"));
@@ -405,7 +406,7 @@ eq("staff next", NR({ act: { type: "next", rid: "x" } }, true).act, { type: "nex
 eq("staff setAskBad strict", NR({ act: { type: "setAskBad", value: "yes" } }, true).act.value, false); eq("staff unlock", NR({ act: { type: "unlock", hero: "A", q: "q01" } }, true).act, { type: "unlock", hero: "A", q: "q01" });
 for (const t of ["awardBegin", "awardRow", "awardEnd", "undoRow", "undoEnd", "start", "addHero", "discard"]) eq(`staff raw ${t} act refused`, NR({ act: { type: t } }, true).error?.code, "noPermission");
 eq("staff start cmd", NR({ cmd: "start", args: { heroes: ["A", "b b", "__proto__", 5, "C"], askBad: true, evil: 1 } }, true).args, { heroes: ["A", "C"], askBad: true, includeGm: false });
-eq("staff start default", NR({ cmd: "start" }, true).args, { askBad: false, includeGm: false }); eq("staff start heroes capped", NR({ cmd: "start", args: { heroes: Array.from({ length: 60 }, (_, i) => "h" + i) } }, true).args.heroes.length, 24);
+eq("staff start default", NR({ cmd: "start" }, true).args, { askBad: false, includeGm: false }); eq("staff start with 60 heroes is refused, not capped (S4-10)", NR({ cmd: "start", args: { heroes: Array.from({ length: 60 }, (_, i) => "h" + i) } }, true).error?.code, "tooMany");
 eq("staff undo mode", [NR({ cmd: "undo", args: { mode: "relative" } }, true).args.mode, NR({ cmd: "undo", args: { mode: "zzz" } }, true).args.mode, NR({ cmd: "undo" }, true).args.mode], ["relative", "strict", "strict"]);
 eq("staff award args", NR({ cmd: "award", args: { chat: true, _failAt: { row: 0 } } }, true).args._failAt, undefined);
 eq("staff unknown cmd", NR({ cmd: "format" }, true).error?.code, "badInput"); eq("staff cmd proto", NR({ cmd: "__proto__" }, true).error?.code, "badInput"); eq("staff big ok", NR({ cmd: "start", args: { pad: "x".repeat(5000) } }, true).ok, true); eq("staff huge", NR({ cmd: "start", args: { pad: "x".repeat(20000) } }, true).error?.code, "tooBig");
@@ -417,7 +418,7 @@ ck("rid differs per sender", OP.makeRid("u1", "5") !== OP.makeRid("u2", "5"));
   const mk = (id, extra = {}) => ({ id, name: id, img: "i", type: "superhero", card: false, playerOwned: OP.playerOwned(extra.own, users), ...extra });
   const list = [mk("a", { own: { default: 0, p1: 3 } }), mk("b", { own: { default: 0, g: 3 } }), mk("c", { own: { default: 3 } }), mk("d", { own: { default: 0, p1: 2 } }), mk("e", { own: { p1: 3 }, type: "vehicle" }), mk("f", { own: { p1: 3 }, card: true }), null];
   eq("roster default", OP.defaultRoster(list).map((h) => h.id), ["a", "c"]); eq("roster includeGm", OP.defaultRoster(list, { includeGm: true }).map((h) => h.id), ["a", "b", "c", "d"]);
-  eq("roster null", OP.defaultRoster(null), []); eq("roster caps", OP.defaultRoster(Array.from({ length: 40 }, (_, i) => mk("x" + i, { own: { p1: 3 } }))).length, 24); }
+  eq("roster null", OP.defaultRoster(null), []); eq("roster is not truncated (start refuses instead, S4-10)", OP.defaultRoster(Array.from({ length: 40 }, (_, i) => mk("x" + i, { own: { p1: 3 } }))).length, 40); }
 // flag pruning and patches
 { const fl = {}; for (let i = 1; i <= 7; i++) fl["s" + i] = { before: 0, after: i, at: i * 10 };
   eq("prune keeps 5 incl new key", OP.pruneAwardFlags(fl, "s8").sort(), ["s1", "s2", "s3"]); eq("prune never deletes keepKey", OP.pruneAwardFlags(fl, "s1").includes("s1"), false);
@@ -456,6 +457,62 @@ ck("rid differs per sender", OP.makeRid("u1", "5") !== OP.makeRid("u2", "5"));
 { let q = must("cr start", R(null, { type: "start", id: "cr", heroes: [{ id: A, name: "A" }] })); q = must("cr a", R(q, { type: "setAnswer", hero: A, q: "q01", value: 1 }, GM)); q = must("cr b", R(q, { type: "setAnswer", hero: A, q: "q05", value: 2 }, GM)); q = must("cr close", R(q, { type: "close" })); q = must("cr begin", R(q, { type: "awardBegin" }));
   const r = must("cr row", R(q, { type: "awardRow", hero: A, before: 7 })); eq("resume row after", r.award.rows[0].after, 7 + 3); eq("resume row gain", r.award.rows[0].gain, 3);
   eq("end refuses an unfinished award", R(q, { type: "awardEnd" }).error?.code, "incomplete"); eq("partial end allowed", R(q, { type: "awardEnd", partial: true }).ok, true); }
+
+/* ================================================================== S5: regression tests for the S4 findings */
+{
+  const mkClosed = (hs = heroes) => { let q = must("s5 start", R(null, { type: "start", id: "s5", heroes: hs })); q = must("s5 a", R(q, { type: "setAnswer", hero: A, q: "q01", value: 1 })); return must("s5 close", R(q, { type: "close" })); };
+  const closed = mkClosed(), begun = must("s5 begin", R(closed, { type: "awardBegin", rid: "awb1", chat: false }));
+  // S4-01: discard / reopen are refused while an award exists (applying, done, undoing)
+  fail("S4-01 discard while applying", R(begun, { type: "discard" }), "badState");
+  fail("S4-06 reopen while applying", R(begun, { type: "reopen" }), "badState");
+  eq("S4-01 discard of a closed session without an award still works", R(closed, { type: "discard" }).session.state, "discarded");
+  eq("S4-06 reopen of a closed session without an award still works", R(closed, { type: "reopen" }).session.state, "open");
+  let w = must("s5 row", R(begun, { type: "awardRow", hero: A, before: 3, rid: "aw1r:A" }));
+  fail("S4-01 discard with a recorded row", R(w, { type: "discard" }), "badState");
+  for (const h of [B, C]) w = must("s5 rows", R(w, { type: "awardRow", hero: h, before: 0, rid: `aw1r:${h}` }));
+  const awarded = must("s5 end", R(w, { type: "awardEnd", rid: "aw1e" }));
+  fail("S4-01 discard of an awarded session", R(awarded, { type: "discard" }), "badState");
+  fail("S4-06 reopen of an awarded session", R(awarded, { type: "reopen" }), "badState");
+  for (const t of ["setAnswer", "unlock", "setAskBad", "close", "addHero", "removeHero"]) fail(`S4-06 ${t} refused while applying`, R(begun, { type: t, hero: B, q: "q01", value: 1, value2: 0 }), "badState");
+  eq("S4-06 the frozen rows keep the gains of award begin", begun.award.rows.map((r) => r.gain).join(), "1,0,0");
+  // abort an interrupted award through undo (S4-01 / S4-20)
+  { const q2 = R(begun, { type: "undoEnd", rid: "un1e0" });
+    eq("abort with nothing applied closes the review", [q2.ok, q2.session.state, q2.session.award], [true, "closed", null]);
+    eq("abort leaves the session discardable", R(q2.session, { type: "discard" }).session.state, "discarded");
+    let ab = must("s5 abort undoRow", R(w, { type: "undoRow", hero: A, rid: "un1r:A" })); eq("abort of a finished award: state undoing", ab.award.state, "undoing");
+    const half = must("s5 half", R(begun, { type: "awardRow", hero: A, before: 3 })); const ab2 = must("s5 abort row", R(half, { type: "undoRow", hero: A, rid: "un2r:A" })); const ab3 = R(ab2, { type: "undoEnd", rid: "un2e1" });
+    eq("abort of an applying award with one applied row", [ab3.ok, ab3.session.state, ab3.session.award, ab3.session.awards.length], [true, "closed", null, 1]); }
+  // S4-04: only the first awardFx claim counts
+  const fx1 = must("s5 fx", R(awarded, { type: "awardFx", tab: "tabA", rid: "aw1fx:tabA" })); eq("fx claim recorded", fx1.award.fx, "tabA");
+  eq("second tab claim is a no-op", R(fx1, { type: "awardFx", tab: "tabB", rid: "aw1fx:tabB" }).changed, false); eq("claim needs a done award", R(begun, { type: "awardFx", tab: "tabA" }).ok, false); eq("claim needs a valid tab id", R(awarded, { type: "awardFx", tab: "../x" }).ok, false);
+  fail("player cannot claim fx", R(awarded, { type: "awardFx", tab: "tabA" }, P1), "noPermission");
+  eq("fx + chat choice survive a sanitize round trip", [P.sanitize(P.serialize(fx1)).award.fx, P.sanitize(P.serialize(begun)).award.chat], ["tabA", false]);
+  eq("chat unset stays unset", P.sanitize(P.serialize(must("s5 b2", R(closed, { type: "awardBegin" })))).award.chat, undefined);
+  // S4-12 / S4-02 limits
+  fail("awardRow above the karma limit is refused", R(begun, { type: "awardRow", hero: B, before: P.LIMITS.karmaMax + 1 }), "badInput");
+  eq("karma 150000 + 2 is never lowered", P.applyKarma(150000, 2, 0), 150002);
+  // S4-09: a player cannot evict staff rows from the audit log / dedupe list
+  { let q = must("s5 flood start", R(null, { type: "start", id: "fl", heroes })); q = must("s5 gm ans", R(q, { type: "setAnswer", hero: B, q: "q01", value: 1, rid: "gm:keep" }));
+    for (let i = 0; i < 300; i++) { const r = R(q, { type: "setAnswer", hero: A, q: "q01", value: i % 2, rid: `p${i}` }, P1); if (r.ok && r.changed) q = r.session; }
+    ck("S4-09 seen list stays capped", q.seen.length <= P.LIMITS.seen); ck("S4-09 the GM request id survives a player flood", q.seen.includes("gm:keep"));
+    ck("S4-09 log stays capped and keeps the staff rows", q.log.length <= P.LIMITS.log && q.log.some((e) => e.a === "start") && q.log.some((e) => e.a === "ans" && e.u === "gm1"));
+    ck("S4-09 player rows are flagged and bounded", q.log.filter((e) => e.p === 1).length > 0 && q.log.filter((e) => e.p === 1).length <= P.LIMITS.log / 2 + 1);
+    ck("S4-09 sanitize keeps the player flag", P.sanitize(P.serialize(q)).log.some((e) => e.p === 1));
+    eq("a replayed player id is still a dup", R(q, { type: "setAnswer", hero: A, q: "q01", value: 1, rid: "p299" }, P1).dup, true); }
+  // S4-11: a marker must be bound to the award record
+  const row = { gain: 1, loss: 0 };
+  eq("marker consistent", OP.markerConsistent({ before: 4, after: 5 }, row), true); eq("forged marker (after != before + gain)", OP.markerConsistent({ before: 0, after: 0 }, row), false);
+  eq("marker with floor", OP.markerConsistent({ before: 1, after: 0 }, { gain: 0, loss: 3 }), true); eq("no marker", OP.markerConsistent(null, row), false); eq("junk marker", OP.markerConsistent({ before: "x", after: 1 }, row), false);
+  // S4-10: roster cap is an error, not a silent cut; S4-05 chat tri-state; S4-09 helpers
+  eq("start request with 25 ids is refused", OP.normalizeRequest({ cmd: "start", args: { heroes: Array.from({ length: 25 }, (_, i) => "h" + i) } }, { staff: true }).error?.code, "tooMany");
+  eq("start request with 24 ids passes", OP.normalizeRequest({ cmd: "start", args: { heroes: Array.from({ length: 24 }, (_, i) => "h" + i) } }, { staff: true }).args.heroes.length, 24);
+  eq("duplicate ids in a start request do not count twice", OP.normalizeRequest({ cmd: "start", args: { heroes: Array.from({ length: 40 }, () => "same") } }, { staff: true }).args.heroes.length, 1);
+  eq("award chat true", OP.normalizeRequest({ cmd: "award", args: { chat: true } }, { staff: true }).args.chat, true); eq("award chat false stays false (S4-05)", OP.normalizeRequest({ cmd: "award", args: { chat: false } }, { staff: true }).args.chat, false);
+  eq("award chat missing is undefined", OP.normalizeRequest({ cmd: "award", args: {} }, { staff: true }).args.chat, undefined); eq("award chat junk is undefined", OP.normalizeRequest({ cmd: "award", args: { chat: "yes" } }, { staff: true }).args.chat, undefined);
+  { const m = new Map(); const now = 1000; OP.rateHit(m, "u", now, 99); OP.rateHit(m, "u", now + 10, 99); eq("rateCount counts without adding", [OP.rateCount(m, "u", now + 20), OP.rateCount(m, "u", now + 20), OP.rateCount(m, "u", now + 61000)], [2, 2, 0]); }
+  eq("undoUpdate without a marker only restores karma", Object.keys(OP.undoUpdate("m", "k", 3, null, false)), ["system.karma"]);
+  eq("undoUpdate with a marker also drops it", Object.keys(OP.undoUpdate("m", "k", 3, null, true)).length, 2);
+}
 
 /* ================================================================== S2: lang parity (see check-lang.mjs for the full check) */
 import { EN as LEN, PL as LPL, t as lt } from "./lang.mjs";

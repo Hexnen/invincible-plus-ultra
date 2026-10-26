@@ -20,6 +20,7 @@ export const EN = {
   "IPL.Session.Status.noGM": "Waiting for the GM to connect",
   "IPL.Session.Toast.Started": "{gm} started the end-of-session review.",
   "IPL.Session.Toast.Open": "Open",
+  "IPL.Session.Toast.Running": "An end-of-session review is in progress.",
   "IPL.Session.Open.Stub": "The end-of-session panel window is not installed yet (data layer only).",
   "IPL.Session.Hero.deleted": "(deleted hero)",
   "IPL.Session.Chat.Title": "End of session: karma",
@@ -54,7 +55,7 @@ export const EN = {
   "IPL.Session.err.unknownQuestion": "That question does not exist.",
   "IPL.Session.err.locked": "The GM decided this one; only the GM can change it.",
   "IPL.Session.err.notCurrent": "Only the question on screen can be changed.",
-  "IPL.Session.err.tooMany": "Too many heroes in the review.",
+  "IPL.Session.err.tooMany": "Too many heroes in the review (at most {max}).",
   "IPL.Session.err.incomplete": "Some heroes have not been awarded yet.",
   "IPL.Session.err.internal": "Something went wrong inside the review.",
   "IPL.Session.err.noGM": "No GM is connected, so the review cannot be changed right now.",
@@ -66,7 +67,9 @@ export const EN = {
   "IPL.Session.err.playersOff": "The GM turned off player check-ins for this table.",
   "IPL.Session.err.noActor": "That hero no longer exists.",
   "IPL.Session.err.busy": "Another award or undo is still running.",
-  "IPL.Session.err.notAwarded": "There is no karma award to undo."
+  "IPL.Session.err.notAwarded": "There is no karma award to undo.",
+  "IPL.Session.err.applyFailed": "Karma could not be written for: {names}. Another module may have blocked it. Use Resume to try again, or Undo to take the award back.",
+  "IPL.Session.err.undoFailed": "Karma could not be restored for: {names}. Run Undo again."
 };
 export const PL = {
   "IPL.Session.Settings.allowPlayers.Name": "Przegląd końca sesji: gracze zaznaczają swoich bohaterów",
@@ -86,6 +89,7 @@ export const PL = {
   "IPL.Session.Status.noGM": "Czekamy na połączenie MG",
   "IPL.Session.Toast.Started": "{gm} rozpoczął(-ęła) przegląd końca sesji.",
   "IPL.Session.Toast.Open": "Otwórz",
+  "IPL.Session.Toast.Running": "Trwa przegląd końca sesji.",
   "IPL.Session.Open.Stub": "Okno panelu końca sesji nie jest jeszcze zainstalowane (tylko warstwa danych).",
   "IPL.Session.Hero.deleted": "(usunięty bohater)",
   "IPL.Session.Chat.Title": "Koniec sesji: karma",
@@ -120,7 +124,7 @@ export const PL = {
   "IPL.Session.err.unknownQuestion": "Takie pytanie nie istnieje.",
   "IPL.Session.err.locked": "Zdecydował MG; tylko MG może to zmienić.",
   "IPL.Session.err.notCurrent": "Można zmienić tylko pytanie widoczne na ekranie.",
-  "IPL.Session.err.tooMany": "Za dużo bohaterów w przeglądzie.",
+  "IPL.Session.err.tooMany": "Za dużo bohaterów w przeglądzie (najwyżej {max}).",
   "IPL.Session.err.incomplete": "Nie wszyscy bohaterowie dostali już karmę.",
   "IPL.Session.err.internal": "Coś poszło nie tak w przeglądzie.",
   "IPL.Session.err.noGM": "Nie ma połączonego MG, więc przeglądu nie można teraz zmieniać.",
@@ -132,7 +136,9 @@ export const PL = {
   "IPL.Session.err.playersOff": "MG wyłączył zaznaczanie przez graczy przy tym stole.",
   "IPL.Session.err.noActor": "Ten bohater już nie istnieje.",
   "IPL.Session.err.busy": "Inne przyznawanie lub cofanie karmy jeszcze trwa.",
-  "IPL.Session.err.notAwarded": "Nie ma przyznanej karmy do cofnięcia."
+  "IPL.Session.err.notAwarded": "Nie ma przyznanej karmy do cofnięcia.",
+  "IPL.Session.err.applyFailed": "Nie udało się zapisać karmy dla: {names}. Mógł to zablokować inny moduł. Użyj Wznów, aby spróbować ponownie, albo Cofnij, aby wycofać przyznanie.",
+  "IPL.Session.err.undoFailed": "Nie udało się przywrócić karmy dla: {names}. Uruchom Cofnij ponownie."
 };
 import { UI_EN, UI_PL } from "./ui/lang-ui.mjs";            // S3: the window's strings live in their own file and join the same tables
 Object.assign(EN, UI_EN); Object.assign(PL, UI_PL);

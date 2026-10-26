@@ -9,7 +9,7 @@ import * as Store from "./store.mjs";
 import * as Award from "./award.mjs";
 
 const MOD = Store.MOD;
-const hits = new Map();
+const hits = new Map(), changes = new Map(), inflight = new Map();
 const bad = (code, params = {}) => ({ ok: false, changed: false, error: { key: `IPL.Session.err.${code}`, code, params } });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let ctr = 0;
@@ -48,6 +48,8 @@ export async function exec(sender, req, meta = {}) {
       if (meta.via !== "relay" && meta.via !== "local") return bad("untrusted");
       if (!OP.rateHit(hits, sender.id, Date.now())) return bad("rate");
       if (Store.setting(Store.SETTING_ALLOW, true) === false) return bad("playersOff");
+      // S4-09: a player can neither queue a pile of work for the GM client nor change more than a few answers per minute (excess is dropped before it costs anything)
+      if ((inflight.get(sender.id) ?? 0) >= OP.MAX_INFLIGHT || OP.rateCount(changes, sender.id, Date.now(), OP.CHANGE_RATE[1]) >= OP.CHANGE_RATE[0]) return bad("rate");
     }
     const n = OP.normalizeRequest(req, { staff });
     if (!n.ok) return n;
@@ -56,7 +58,13 @@ export async function exec(sender, req, meta = {}) {
     const ctx = { user: { id: sender.id, staff }, owns: (heroId) => Store.owns(game.actors.get(heroId), sender) };
     if (n.kind === "act") {
       const act = { ...n.act, rid };
-      return await Store.commit(act, ctx);
+      if (staff) return await Store.commit(act, ctx);
+      inflight.set(sender.id, (inflight.get(sender.id) ?? 0) + 1);
+      try {
+        const r = await Store.commit(act, ctx);
+        if (r.ok && r.changed) OP.rateHit(changes, sender.id, Date.now(), OP.CHANGE_RATE[0] + 1, OP.CHANGE_RATE[1]);
+        return r;
+      } finally { inflight.set(sender.id, Math.max(0, (inflight.get(sender.id) ?? 1) - 1)); }
     }
     switch (n.cmd) {
       case "start": return await cmdStart(sender, n.args, ctx, rid);
@@ -74,4 +82,4 @@ export async function exec(sender, req, meta = {}) {
   }
 }
 /** Test helper: forget the rate counters. */
-export const _resetLimits = () => hits.clear();
+export const _resetLimits = () => { hits.clear(); changes.clear(); inflight.clear(); };

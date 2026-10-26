@@ -66,9 +66,23 @@ export function notify(kind = "state", extra = {}) {
 }
 
 /* ------------------------------------------------------------------ writes (GM clients only) */
-let chain = Promise.resolve();
-/** Run fn after everything queued before it on THIS client (errors never break the chain). */
-export const queue = (fn) => { const run = chain.then(fn, fn); chain = run.catch(() => {}); return run; };
+/** One job at a time on THIS client, in two lanes: staff work (default) always goes before queued player work (S4-09: a flooding player cannot delay the GM).
+    Errors never break the chain. */
+const lanes = { hi: [], lo: [] };
+let pumping = false;
+async function pump() {
+  if (pumping) return;
+  pumping = true;
+  try {
+    for (;;) {
+      const job = lanes.hi.shift() ?? lanes.lo.shift();
+      if (!job) break;
+      try { job.res(await job.fn()); } catch (e) { job.rej(e); }
+    }
+  } finally { pumping = false; }
+}
+export const queue = (fn, { low = false } = {}) => new Promise((res, rej) => { (low ? lanes.lo : lanes.hi).push({ fn, res, rej }); pump(); });
+export const queueDepth = () => lanes.hi.length + lanes.lo.length;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Raw write of the live slot (null clears it). Only GM clients may call this (the server refuses others). */
@@ -92,6 +106,7 @@ export async function archiveSession(session, reason) {
 export function commit(action, ctx) {
   return queue(async () => {
     let r = null;
+    const sk = action.rid ? P.seenKey(action.rid, ctx?.user?.staff === true) : "";
     try {
       for (let attempt = 1; attempt <= CAS_TRIES; attempt++) {
         const cur = current();
@@ -103,7 +118,7 @@ export function commit(action, ctx) {
         await writeState(next);
         await wait(SETTLE_MS);
         const now = current();
-        const applied = action.type === "start" ? now?.id === next.id : (action.rid ? now?.seen?.includes(action.rid) : now?.rev >= next.rev);
+        const applied = action.type === "start" ? now?.id === next.id : (sk ? now?.seen?.includes(sk) : now?.rev >= next.rev);
         if (applied) return r;                                // nobody overwrote us: done
         await wait(Math.random() * SETTLE_MS * attempt);       // lost a race with another GM tab: random, growing back-off so the two do not retry in lockstep
       }
@@ -112,7 +127,7 @@ export function commit(action, ctx) {
       console.warn(`${MOD} | session commit failed`, e);
       return { ok: false, changed: false, error: { key: "IPL.Session.err.internal", code: "internal", params: { msg: String(e?.message ?? e).slice(0, 80) } } };
     }
-  });
+  }, { low: ctx?.user?.staff !== true });
 }
 /** Test helper: forget the parse cache. */
 export const _resetCache = () => { cache = { raw: undefined, value: null }; };

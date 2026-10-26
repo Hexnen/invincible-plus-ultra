@@ -25,10 +25,10 @@ export const LABELS_EN = Object.freeze({
   failAid: "Failed to help a teammate or key relationship", failBystanders: "Failed to help bystanders", failOccupation: "Neglected your occupation's duties",
   wreckZone: "Wrecked a zone", kill: "Killed someone", immoral: "Committed another immoral deed"
 });
-export const LIMITS = Object.freeze({ heroes: 24, name: 80, img: 300, log: 120, seen: 40, awardHistory: 5, karmaMax: 99999, bytes: 200000, logNote: 40 });
+export const LIMITS = Object.freeze({ heroes: 24, name: 80, img: 300, log: 120, seen: 40, awardHistory: 5, karmaMax: 1000000000, bytes: 200000, logNote: 40 });
 export const STATES = Object.freeze(["open", "closed", "awarded", "discarded"]);
-export const ACTIONS = Object.freeze(["start", "setQuestion", "next", "prev", "setAnswer", "unlock", "addHero", "removeHero", "setAskBad", "close", "reopen", "awardBegin", "awardRow", "awardEnd", "undoRow", "undoEnd", "discard"]);
-export const STAFF_ONLY = Object.freeze(new Set(["start", "setQuestion", "next", "prev", "unlock", "addHero", "removeHero", "setAskBad", "close", "reopen", "awardBegin", "awardRow", "awardEnd", "undoRow", "undoEnd", "discard"]));
+export const ACTIONS = Object.freeze(["start", "setQuestion", "next", "prev", "setAnswer", "unlock", "addHero", "removeHero", "setAskBad", "close", "reopen", "awardBegin", "awardRow", "awardEnd", "awardFx", "undoRow", "undoEnd", "discard"]);
+export const STAFF_ONLY = Object.freeze(new Set(["start", "setQuestion", "next", "prev", "unlock", "addHero", "removeHero", "setAskBad", "close", "reopen", "awardBegin", "awardRow", "awardEnd", "awardFx", "undoRow", "undoEnd", "discard"]));
 
 const BAD_KEYS = new Set(["__proto__", "constructor", "prototype", "toString", "valueOf", "hasOwnProperty"]);
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
@@ -61,13 +61,17 @@ export function lossOf(s, heroId) {
   for (const q of BAD) if (cellValue(s, q.id, heroId) >= 1) l++;
   return l;
 }
-/** The book: karma cannot go below zero. (No upper cap in the book; we only clamp to a sane integer.) */
-export const applyKarma = (before, gain, loss) => Math.min(LIMITS.karmaMax, Math.max(0, int(before, 0, LIMITS.karmaMax, 0) + int(gain, 0, 999, 0) - int(loss, 0, 999, 0)));
+/** Highest karma value a stored row may hold (S4-12: karma is never lowered by a clamp; a sheet above karmaMax is refused by the award instead). */
+export const KARMA_HARD = LIMITS.karmaMax + 1000;
+/** The book: karma cannot go below zero. (No upper cap in the book; the value is never clamped DOWN, the award refuses a sheet above LIMITS.karmaMax.) */
+export const applyKarma = (before, gain, loss) => Math.max(0, int(before, 0, KARMA_HARD, 0) + int(gain, 0, 999, 0) - int(loss, 0, 999, 0));
 export const cellValue = (s, qid, heroId) => { const c = s?.answers && has(s.answers, qid) && has(s.answers[qid], heroId) ? s.answers[qid][heroId] : null; return c ? c.v : 0; };
 export const cellOf = (s, qid, heroId) => (s?.answers && has(s.answers, qid) && has(s.answers[qid], heroId) ? s.answers[qid][heroId] : null);
 
 /* ------------------------------------------------------------------ construction */
 const cleanHero = (h) => (h && typeof h === "object" && isId(h.id) ? { id: h.id, name: clampText(h.name, LIMITS.name) || h.id, img: safeImg(h.img) } : null);
+/** How many distinct valid heroes a list holds (before the roster cap). */
+export function countValid(heroes) { const ids = new Set(); for (const h of Array.isArray(heroes) ? heroes : []) { const c = cleanHero(h); if (c) ids.add(c.id); } return ids.size; }
 export function newSession({ id, heroes = [], now = 0, by = "", askBad = false } = {}) {
   const seenIds = new Set(), hs = [];
   for (const h of Array.isArray(heroes) ? heroes : []) { const c = cleanHero(h); if (c && !seenIds.has(c.id) && hs.length < LIMITS.heroes) { seenIds.add(c.id); hs.push(c); } }
@@ -140,7 +144,16 @@ export const awardKey = (s) => (s?.award ? `${s.id}_${s.award.n}` : null);
 /* ------------------------------------------------------------------ reducer */
 const err = (code, params = {}) => ({ ok: false, changed: false, error: { key: `IPL.Session.err.${code}`, code, params } });
 const done = (session, extra = {}) => ({ ok: true, changed: true, session, ...extra });
-const pushLog = (log, e) => [...log, e].slice(-LIMITS.log);
+/** S4-09: a player's rows may fill at most half of the audit log / dedupe list; beyond that they evict their own oldest row, never a staff row. */
+const capPlayers = (arr, cap, isP) => {
+  const out = [...arr], half = Math.floor(cap / 2);
+  while (out.filter(isP).length > half) out.splice(out.findIndex(isP), 1);
+  while (out.length > cap) out.splice(0, 1);
+  return out;
+};
+const pushLog = (log, e) => capPlayers([...log, e], LIMITS.log, (x) => x.p === 1);
+/** Key under which a request id is remembered: a player's ids carry "~" so they can be capped separately. */
+export const seenKey = (rid, staff) => (staff ? rid : `~${rid}`.slice(0, 40));
 const setCell = (answers, qid, heroId, cell) => ({ ...answers, [qid]: { ...(has(answers, qid) ? answers[qid] : {}), [heroId]: cell } });
 const dropHero = (answers, heroId) => { const out = {}; for (const q of Object.keys(answers)) { const o = {}; for (const h of Object.keys(answers[q])) if (h !== heroId) o[h] = answers[q][h]; if (Object.keys(o).length) out[q] = o; } return out; };
 
@@ -156,13 +169,15 @@ function reduceInner(s, a, ctx) {
     if (s && (s.state === "open" || s.state === "closed" || s.state === "awarded")) return err("exists");
     const n = newSession({ id: a.id, heroes: a.heroes, now, by: ctx.user.id, askBad: a.askBad === true });
     if (!n.heroes.length) return err("noHeroes");
+    if (countValid(a.heroes) > LIMITS.heroes) return err("tooMany", { max: LIMITS.heroes });   // S4-10: never truncate silently
     return done({ ...n, log: [{ t: now, u: ctx.user.id, a: "start", n: n.heroes.length }] });
   }
   if (!s || typeof s !== "object" || s.v !== SCHEMA) return err("noSession");
-  if (rid && s.seen.includes(rid)) return { ok: true, changed: false, dup: true, session: s };
+  const skey = rid ? seenKey(rid, staff) : "";
+  if (skey && s.seen.includes(skey)) return { ok: true, changed: false, dup: true, session: s };
   if (s.state === "discarded") return err("badState");
   const N = total(s);
-  const fin = (next, entry) => done({ ...next, rev: s.rev + 1, updatedAt: now, log: pushLog(s.log, { t: now, u: ctx.user.id, ...entry }), seen: rid ? [...s.seen, rid].slice(-LIMITS.seen) : s.seen }, { event: entry.a });
+  const fin = (next, entry) => done({ ...next, rev: s.rev + 1, updatedAt: now, log: pushLog(s.log, { t: now, u: ctx.user.id, ...(staff ? {} : { p: 1 }), ...entry }), seen: skey ? capPlayers([...s.seen, skey], LIMITS.seen, (x) => x[0] === "~") : s.seen }, { event: entry.a });
   const needOpen = () => (s.state === "open" ? null : err("badState", { state: s.state }));
   switch (a.type) {
     case "setQuestion": case "next": case "prev": {
@@ -222,11 +237,11 @@ function reduceInner(s, a, ctx) {
       return fin({ ...s, state: "closed", index: N }, { a: "close" });
     }
     case "reopen": {
-      if (s.state !== "closed") return err("badState", { state: s.state });
+      if (s.state !== "closed" || s.award) return err("badState", { state: s.state });         // S4-06: an applying award keeps its frozen rows; undo it first
       return fin({ ...s, state: "open" }, { a: "reopen" });
     }
     case "discard": {
-      if (s.state === "awarded") return err("badState", { state: s.state });
+      if (s.state === "awarded" || s.award) return err("badState", { state: s.state, why: "award" });   // S4-01: finish or undo the award first
       return fin({ ...s, state: "discarded" }, { a: "discard" });
     }
     case "awardBegin": {
@@ -235,14 +250,14 @@ function reduceInner(s, a, ctx) {
       const sm = summary(s);
       const n = (s.awards.length ? Math.max(...s.awards.map((x) => x.n)) : 0) + 1;
       const rows = sm.rows.map((r) => ({ h: r.hero, gain: r.gain, loss: r.loss, before: null, after: null, st: 0 }));
-      return fin({ ...s, award: { n, state: "applying", at: now, by: ctx.user.id, rows } }, { a: "award.begin", n });
+      return fin({ ...s, award: { n, state: "applying", at: now, by: ctx.user.id, ...(a.chat === true || a.chat === false ? { chat: a.chat } : {}), rows } }, { a: "award.begin", n });
     }
     case "awardRow": {
       if (!s.award || s.award.state !== "applying") return err("badState");
       const row = s.award.rows.find((r) => r.h === a.hero); if (!row) return err("unknownHero");
       if (row.st === 1) return { ok: true, changed: false, session: s };
       const before = Number(a.before);
-      if (!Number.isFinite(before) || before < 0) return err("badInput");
+      if (!Number.isFinite(before) || before < 0 || before > LIMITS.karmaMax) return err("badInput", { why: "karma" });
       const b = int(before, 0, LIMITS.karmaMax, 0), after = applyKarma(b, row.gain, row.loss);
       return fin({ ...s, award: { ...s.award, rows: s.award.rows.map((r) => (r === row ? { ...r, before: b, after, st: 1 } : r)) } }, { a: "award.row", h: row.h, d: after - b });
     }
@@ -251,15 +266,20 @@ function reduceInner(s, a, ctx) {
       if (s.award.rows.some((r) => r.st === 0) && a.partial !== true) return err("incomplete");
       return fin({ ...s, state: "awarded", award: { ...s.award, state: "done", doneAt: now } }, { a: "award.end" });
     }
+    case "awardFx": {                       // S4-04: the ONE tab that claims the side effects (chat card, log rows) of this award
+      if (!s.award || s.award.state !== "done" || !isId(a.tab)) return err("badState");
+      if (s.award.fx) return { ok: true, changed: false, session: s };
+      return fin({ ...s, award: { ...s.award, fx: a.tab } }, { a: "award.fx" });
+    }
     case "undoRow": {
-      if (!s.award || (s.award.state !== "done" && s.award.state !== "undoing")) return err("badState");
+      if (!s.award || !["applying", "done", "undoing"].includes(s.award.state)) return err("badState");      // an applying (interrupted) award is aborted through undo
       const row = s.award.rows.find((r) => r.h === a.hero); if (!row) return err("unknownHero");
       if (row.st === 2) return { ok: true, changed: false, session: s };
       if (row.st !== 1) return err("badState");
       return fin({ ...s, award: { ...s.award, state: "undoing", rows: s.award.rows.map((r) => (r === row ? { ...r, st: 2 } : r)) } }, { a: "undo.row", h: row.h });
     }
     case "undoEnd": {
-      if (!s.award || (s.award.state !== "done" && s.award.state !== "undoing")) return err("badState");
+      if (!s.award || !["applying", "done", "undoing"].includes(s.award.state)) return err("badState");
       if (s.award.rows.some((r) => r.st === 1)) return { ...fin({ ...s, award: { ...s.award, state: "done" } }, { a: "undo.partial" }), partial: true };
       const rec = { n: s.award.n, at: s.award.at, undoneAt: now, rows: s.award.rows };
       return fin({ ...s, state: "closed", award: null, awards: [...s.awards, rec].slice(-LIMITS.awardHistory) }, { a: "undo.end" });
@@ -275,10 +295,10 @@ const cleanAward = (aw, ids) => {
   for (const r of Array.isArray(aw.rows) ? aw.rows : []) {
     if (!r || !isId(r.h) || !ids.has(r.h) || rows.some((x) => x.h === r.h) || rows.length >= LIMITS.heroes) continue;
     const st = int(r.st, 0, 2, 0);
-    rows.push({ h: r.h, gain: int(r.gain, 0, 999, 0), loss: int(r.loss, 0, 999, 0), before: st ? int(r.before, 0, LIMITS.karmaMax, 0) : null, after: st ? int(r.after, 0, LIMITS.karmaMax, 0) : null, st });
+    rows.push({ h: r.h, gain: int(r.gain, 0, 999, 0), loss: int(r.loss, 0, 999, 0), before: st ? int(r.before, 0, KARMA_HARD, 0) : null, after: st ? int(r.after, 0, KARMA_HARD, 0) : null, st });
   }
   const state = ["applying", "done", "undoing"].includes(aw.state) ? aw.state : "done";
-  return { n: int(aw.n, 1, 9999, 1), state, at: int(aw.at, 0, 9e15, 0), by: isId(aw.by) ? aw.by : "", ...(aw.doneAt ? { doneAt: int(aw.doneAt, 0, 9e15, 0) } : {}), rows };
+  return { n: int(aw.n, 1, 9999, 1), state, at: int(aw.at, 0, 9e15, 0), by: isId(aw.by) ? aw.by : "", ...(aw.doneAt ? { doneAt: int(aw.doneAt, 0, 9e15, 0) } : {}), ...(aw.chat === true || aw.chat === false ? { chat: aw.chat } : {}), ...(isId(aw.fx) ? { fx: aw.fx } : {}), rows };
 };
 /** Any value (object or JSON string) -> a valid session or null. Never throws; unknown keys are dropped; ids/keys are validated (no prototype keys). */
 export function sanitize(raw) {
@@ -306,8 +326,8 @@ export function sanitize(raw) {
       }
     }
     const N = askBad ? 16 : 10;
-    const log = (Array.isArray(o.log) ? o.log : []).filter((e) => e && typeof e === "object").slice(-LIMITS.log).map((e) => ({ t: int(e.t, 0, 9e15, 0), u: isId(e.u) ? e.u : "", a: clampText(e.a, LIMITS.logNote), ...(isId(e.h) ? { h: e.h } : {}), ...(typeof e.q === "string" && (ALL_IDS.includes(e.q) || /^\d{1,2}$/.test(e.q)) ? { q: e.q } : Number.isInteger(e.q) ? { q: int(e.q, 0, 16, 0) } : {}), ...(Number.isFinite(e.v) ? { v: int(e.v, -999, 999, 0) } : {}), ...(Number.isFinite(e.d) ? { d: int(e.d, -99999, 99999, 0) } : {}), ...(Number.isFinite(e.n) ? { n: int(e.n, 0, 9999, 0) } : {}) }));
-    const awards = (Array.isArray(o.awards) ? o.awards : []).slice(-LIMITS.awardHistory).map((x) => x && typeof x === "object" ? { n: int(x.n, 1, 9999, 1), at: int(x.at, 0, 9e15, 0), undoneAt: int(x.undoneAt, 0, 9e15, 0), rows: (Array.isArray(x.rows) ? x.rows : []).slice(0, LIMITS.heroes).filter((r) => r && isId(r.h)).map((r) => ({ h: r.h, gain: int(r.gain, 0, 999, 0), loss: int(r.loss, 0, 999, 0), before: r.before == null ? null : int(r.before, 0, LIMITS.karmaMax, 0), after: r.after == null ? null : int(r.after, 0, LIMITS.karmaMax, 0), st: int(r.st, 0, 2, 0) })) } : null).filter(Boolean);
+    const log = (Array.isArray(o.log) ? o.log : []).filter((e) => e && typeof e === "object").slice(-LIMITS.log).map((e) => ({ t: int(e.t, 0, 9e15, 0), u: isId(e.u) ? e.u : "", a: clampText(e.a, LIMITS.logNote), ...(isId(e.h) ? { h: e.h } : {}), ...(typeof e.q === "string" && (ALL_IDS.includes(e.q) || /^\d{1,2}$/.test(e.q)) ? { q: e.q } : Number.isInteger(e.q) ? { q: int(e.q, 0, 16, 0) } : {}), ...(Number.isFinite(e.v) ? { v: int(e.v, -999, 999, 0) } : {}), ...(Number.isFinite(e.d) ? { d: int(e.d, -99999, 99999, 0) } : {}), ...(Number.isFinite(e.n) ? { n: int(e.n, 0, 9999, 0) } : {}), ...(e.p === 1 ? { p: 1 } : {}) }));
+    const awards = (Array.isArray(o.awards) ? o.awards : []).slice(-LIMITS.awardHistory).map((x) => x && typeof x === "object" ? { n: int(x.n, 1, 9999, 1), at: int(x.at, 0, 9e15, 0), undoneAt: int(x.undoneAt, 0, 9e15, 0), rows: (Array.isArray(x.rows) ? x.rows : []).slice(0, LIMITS.heroes).filter((r) => r && isId(r.h)).map((r) => ({ h: r.h, gain: int(r.gain, 0, 999, 0), loss: int(r.loss, 0, 999, 0), before: r.before == null ? null : int(r.before, 0, KARMA_HARD, 0), after: r.after == null ? null : int(r.after, 0, KARMA_HARD, 0), st: int(r.st, 0, 2, 0) })) } : null).filter(Boolean);
     const out = { v: SCHEMA, id: o.id, state: o.state, startedAt: int(o.startedAt, 0, 9e15, 0), updatedAt: int(o.updatedAt, 0, 9e15, 0), rev: int(o.rev, 1, 9e15, 1), gm: isId(o.gm) ? o.gm : "", askBad, index: int(o.index, 0, N, 0), heroes: hs, answers, award: cleanAward(o.award, seen), awards, log, seen: (Array.isArray(o.seen) ? o.seen : []).filter((x) => typeof x === "string").map((x) => x.slice(0, 40)).slice(-LIMITS.seen) };
     if (out.award && out.state !== "awarded" && out.award.state !== "applying" && out.state !== "discarded") out.state = "awarded";
     if (out.state === "awarded" && !out.award) out.state = "closed";

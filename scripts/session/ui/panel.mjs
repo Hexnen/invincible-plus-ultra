@@ -89,7 +89,7 @@ export class SessionPanel extends ApplicationV2 {
       el("button", "ips-btn ips-btn-small", { type: "button", "data-ips": "resume", "data-fk": "resume" }, icon("fa-solid fa-play"), el("span", "ips-btn-t", t("IPL.Session.UI.Resume"))));
     const banners = el("div", "ips-banners", bNoGm, bResume);
     const main = el("main", "ips-main", { tabindex: "-1" });
-    const toast = el("p", "ips-toast", { role: "status", hidden: true });
+    const toast = el("p", "ips-toast", { "aria-hidden": "true", hidden: true });          // visual copy only: the live region announces once (S4-17)
     this.#bar = createBar();
     this.#dots = dots;
     root.append(head, banners, el("div", "ips-mainwrap", main, toast), this.#bar.el, el("p", "ips-sr", { "aria-live": "polite", "data-live": "1" }));
@@ -245,17 +245,17 @@ export class SessionPanel extends ApplicationV2 {
       this.#announceT = setTimeout(() => this.#announce(parts.join(". ")), 120);
     }
   }
-  #flash(text, kind = "warn") {
+  #flash(text, kind = "warn", say = true) {
     const n = this.#q(".ips-toast");
     if (!n) return;
     n.textContent = text; n.hidden = false; n.dataset.kind = kind;
     n.getAnimations?.().forEach((a) => a.cancel());
     n.animate?.([{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: 160, easing: "cubic-bezier(.16, 1, .3, 1)" });
-    this.#announce(text);
+    if (say) this.#announce(text);                                                  // S4-17: announced once (callers with their own spoken text pass say = false)
     clearTimeout(this.#flashT);
     this.#flashT = setTimeout(() => { n.hidden = true; }, 6500);
   }
-  #fail(r) { this.#flash(errText(r?.error) || t("IPL.Session.err.internal")); }
+  #fail(r, say = true) { this.#flash(errText(r?.error) || t("IPL.Session.err.internal"), "warn", say); }
 
   /* ---------------------------------------------------------------- events */
   #bind() {
@@ -308,10 +308,10 @@ export class SessionPanel extends ApplicationV2 {
         case "cell": return await this.#cell(btn, false);
         case "over": return await this.#cell(btn, true);
         case "unlock": { const h = btn.closest(".ips-hero")?.dataset.id; const r = await api.unlock(h, vm.q?.id); if (!r.ok) this.#fail(r); return; }
-        case "prev": return this.#nav(await api.navigate("prev"));
-        case "next": return this.#nav(await api.navigate("next"));
-        case "dot": { const i = Number(btn.dataset.i); if (Number.isInteger(i) && i !== vm.index) this.#nav(await api.jump(i)); return; }
-        case "toSummary": return this.#nav(await api.jump(vm.total));
+        case "prev": return await this.#go(vm.index - 1);
+        case "next": return await this.#go(vm.index + 1);
+        case "dot": { const i = Number(btn.dataset.i); if (Number.isInteger(i) && i !== vm.index) await this.#go(i); return; }
+        case "toSummary": return await this.#go(vm.total);
         case "lean": return await this.#lean();
         case "bad": { const r = await api.toggleBad(); if (!r.ok) this.#fail(r); return; }
         case "more": this.#bar.toggleMenu(); return;
@@ -330,6 +330,13 @@ export class SessionPanel extends ApplicationV2 {
     } catch (e) { console.warn(`${MOD} | session panel action failed`, act, e); this.#flash(t("IPL.Session.err.internal")); }
   }
   #nav(r) { if (!r?.ok) this.#fail(r); }
+  /** Navigation is ABSOLUTE (the index the GM saw, plus or minus one) and one request at a time: a double click, a held key or a second GM tab cannot skip a question (S4-07). */
+  async #go(index) {
+    if (this.#navBusy) return;
+    this.#navBusy = true;
+    try { this.#nav(await api.jump(index)); } finally { this.#navBusy = false; }
+  }
+  #navBusy = false;
 
   /* ---------------------------------------------------------------- the cell (optimistic, one request at a time per cell) */
   async #cell(btn, over) {
@@ -359,7 +366,7 @@ export class SessionPanel extends ApplicationV2 {
           const r = await api.answer(hero, q, sent);
           if (!r?.ok) {
             this.#pending.delete(key);
-            this.#fail(r);
+            this.#fail(r, false);
             this.#announce(t("IPL.Session.UI.Live.refused", { reason: errText(r?.error) }));
             this.#paint();
             return r;
@@ -444,6 +451,7 @@ export class SessionPanel extends ApplicationV2 {
     try {
       const r = await api.undo({ mode: "strict" });
       if (!r.ok) { this.#fail(r); return; }
+      if (r.failed?.length) this.#flash(t("IPL.Session.err.undoFailed", { names: r.failed.join(", ") }));
       const drift = (r.results ?? []).filter((x) => x.status === "drift");
       if (drift.length) {
         const choice = await D.confirmDrift(drift.map((x) => ({ name: name(x.h), current: x.current, expected: x.expected })));

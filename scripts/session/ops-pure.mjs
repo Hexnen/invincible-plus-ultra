@@ -6,6 +6,8 @@ export const PROTO = 1;                       // relay protocol number: bump whe
 export const REQ_MAX_BYTES = 2048;            // non-staff request size cap (spec 3)
 export const STAFF_MAX_BYTES = 16384;
 export const RATE = Object.freeze([60, 60000]);          // non-staff: 60 requests per minute and user
+export const CHANGE_RATE = Object.freeze([24, 60000]);   // non-staff: at most 24 CHANGING answers per minute and user (each one costs the GM a write and a settle delay)
+export const MAX_INFLIGHT = 3;                           // non-staff: requests of one user that may wait in the GM queue at once; the rest is dropped early
 export const PLAYER_ACTS = Object.freeze(["setAnswer"]);
 export const STAFF_ACTS = Object.freeze(["setQuestion", "next", "prev", "setAnswer", "unlock", "removeHero", "setAskBad", "close", "reopen"]);
 export const STAFF_CMDS = Object.freeze(["start", "addHero", "award", "undo", "discard", "dismiss", "postSummary"]);
@@ -32,7 +34,10 @@ export function rateHit(map, key, now, max = RATE[0], win = RATE[1]) {
   return true;
 }
 
-const idList = (v, max = P.LIMITS.heroes) => (Array.isArray(v) ? v : []).filter(P.isId).slice(0, max);
+/** Number of timestamps still inside the window (does not add one). */
+export function rateCount(map, key, now, win = RATE[1]) { return (map.get(key) ?? []).filter((t) => now - t < win).length; }
+/** Valid ids of a list, or null when there are more than `max` (S4-10: the caller refuses instead of truncating). */
+const idList = (v, max = P.LIMITS.heroes) => { const ids = [...new Set((Array.isArray(v) ? v : []).filter(P.isId))]; return ids.length > max ? null : ids; };
 const str = (v, n = 40) => (typeof v === "string" ? v.slice(0, n) : "");
 const opt = (o) => { const r = {}; for (const k of Object.keys(o)) if (o[k] !== undefined) r[k] = o[k]; return r; };
 
@@ -61,9 +66,9 @@ export function normalizeRequest(req, { staff = false } = {}) {
     const c = req.cmd, g = req.args && typeof req.args === "object" ? req.args : {};
     if (typeof c !== "string" || !STAFF_CMDS.includes(c)) return bad("badInput");
     switch (c) {
-      case "start": return { ok: true, kind: "cmd", cmd: c, args: opt({ heroes: g.heroes === undefined ? undefined : idList(g.heroes), askBad: g.askBad === true, includeGm: g.includeGm === true }) };
+      case "start": { const ids = g.heroes === undefined ? undefined : idList(g.heroes); if (ids === null) return bad("tooMany", { max: P.LIMITS.heroes }); return { ok: true, kind: "cmd", cmd: c, args: opt({ heroes: ids, askBad: g.askBad === true, includeGm: g.includeGm === true }) }; }
       case "addHero": return { ok: true, kind: "cmd", cmd: c, args: { hero: str(g.hero) } };
-      case "award": return { ok: true, kind: "cmd", cmd: c, args: { chat: g.chat === true, _failAt: undefined } };
+      case "award": return { ok: true, kind: "cmd", cmd: c, args: { chat: typeof g.chat === "boolean" ? g.chat : undefined, _failAt: undefined } };
       case "undo": return { ok: true, kind: "cmd", cmd: c, args: { mode: g.mode === "relative" ? "relative" : "strict" } };
       default: return { ok: true, kind: "cmd", cmd: c, args: {} };
     }
@@ -76,7 +81,7 @@ export const makeRid = (senderId, reqId) => `${String(senderId).slice(0, 18)}:${
 
 /** Default roster: superhero actors that are not team cards and (unless includeGm) have a player owner. actors = [{id,name,img,type,card,playerOwned}]. */
 export function defaultRoster(actors, { includeGm = false } = {}) {
-  return (actors ?? []).filter((a) => a && a.type === "superhero" && !a.card && (includeGm || a.playerOwned)).slice(0, P.LIMITS.heroes).map((a) => ({ id: a.id, name: a.name, img: a.img }));
+  return (actors ?? []).filter((a) => a && a.type === "superhero" && !a.card && (includeGm || a.playerOwned)).map((a) => ({ id: a.id, name: a.name, img: a.img }));
 }
 /** Does anybody who is not a GM own this actor (explicit OWNER entry or default OWNER)? users = [{id, isGM}]. */
 export function playerOwned(ownership, users, ownerLevel = 3) {
@@ -97,7 +102,14 @@ export function awardUpdate(mod, key, before, after, at, prune = [], del = null)
   return d;
 }
 /** The ONE actor update that takes a row back: karma restored + marker removed. */
-export const undoUpdate = (mod, key, restoreTo, del = null) => (del ? { "system.karma": restoreTo, [`flags.${mod}.sessionAwards.${key}`]: del() } : { "system.karma": restoreTo, [`flags.${mod}.sessionAwards.-=${key}`]: null });
+export const undoUpdate = (mod, key, restoreTo, del = null, withMarker = true) => {
+  const d = { "system.karma": restoreTo };
+  if (withMarker) { if (del) d[`flags.${mod}.sessionAwards.${key}`] = del(); else d[`flags.${mod}.sessionAwards.-=${key}`] = null; }
+  return d;
+};
+/** Is a pre-existing applied marker believable for this row (S4-11)? It must be bound to the award record: after == applyKarma(before, gain, loss). */
+export const markerConsistent = (flag, row) => !!flag && typeof flag === "object" && Number.isFinite(Number(flag.before)) && Number.isFinite(Number(flag.after))
+  && Math.trunc(Number(flag.after)) === P.applyKarma(Math.max(0, Math.trunc(Number(flag.before))), row?.gain, row?.loss);
 
 /** Archive entry list normaliser: accepts the stored JSON string, returns [{ at, reason, session }] (max 20, sessions re-sanitised, no log/seen). */
 export function parseArchive(raw) {

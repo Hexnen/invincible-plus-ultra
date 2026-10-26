@@ -4,9 +4,10 @@
 import * as P from "../pure.mjs";
 
 /** Why a cell cannot be changed by this user ("" = it can). Order matters: the most useful reason first. */
-export function reasonOf({ s, staff, mine, cell, gmOnline, allowPlayers, atQuestion }) {
+export function reasonOf({ s, staff, mine, cell, gmOnline, allowPlayers, atQuestion, missing = false }) {
   if (!s || s.state !== "open") return "closed";
   if (!atQuestion) return "summary";
+  if (missing) return "missing";                                // S4-16: a deleted hero is not "somebody else's"; the GM removes it
   if (staff) return "";
   if (!allowPlayers) return "playersOff";
   if (!mine) return "notMine";
@@ -34,11 +35,13 @@ export function build(env) {
   const atQuestion = view === "question";
   const cur = atQuestion ? qs[s.index] : null;
   const pending = env.pending ?? new Map();
-  const heroCount = s.heroes.length;
+  const missingIds = new Set(s.heroes.filter((h) => env.info(h.id)?.missing).map((h) => h.id));          // S4-16: deleted heroes never count as waiting
+  const heroCount = s.heroes.length - missingIds.size;
 
   const goodN = P.GOOD.length;
   const dots = qs.map((q, i) => {
-    const per = prog.per[q.id] ?? { answered: 0, yes: 0 };
+    const per0 = prog.per[q.id] ?? { answered: 0, yes: 0, pending: [] };
+    const per = { ...per0, answered: per0.answered - s.heroes.filter((h) => missingIds.has(h.id) && !(per0.pending ?? []).includes(h.id)).length };
     const grp = q.group === "bad" ? "bad" : "good";
     const n = grp === "bad" ? i - goodN + 1 : i + 1;
     const state = atQuestion && i === s.index ? "current" : per.answered >= heroCount && heroCount ? "all" : per.answered > 0 ? "some" : "none";
@@ -52,7 +55,7 @@ export function build(env) {
       const cell = P.cellOf(s, cur.id, h.id);
       const pend = pending.get(`${h.id}|${cur.id}`) ?? null;
       const v = pend ? pend.v : cell ? cell.v : null;
-      const reason = reasonOf({ s, staff, mine: !!info.mine, cell, gmOnline: base.gmOnline, allowPlayers: base.allowPlayers, atQuestion });
+      const reason = reasonOf({ s, staff, mine: !!info.mine, cell, gmOnline: base.gmOnline, allowPlayers: base.allowPlayers, atQuestion, missing: !!info.missing });
       return {
         id: h.id, name: info.name ?? h.name, img: info.img ?? h.img ?? "", missing: !!info.missing,
         owners: info.owners ?? [], mine: !staff && !!info.mine, flaw: String(info.flaw ?? ""), karma: info.karma ?? null,
@@ -62,8 +65,8 @@ export function build(env) {
     });
   }
 
-  const answeredNow = atQuestion && cur ? heroes.filter((h) => h.v !== null).length : 0;
-  const counts = { answered: answeredNow, total: heroCount, waiting: atQuestion ? heroes.filter((h) => h.v === null).map((h) => h.name) : [] };
+  const answeredNow = atQuestion && cur ? heroes.filter((h) => !h.missing && h.v !== null).length : 0;
+  const counts = { answered: answeredNow, total: heroCount, waiting: atQuestion ? heroes.filter((h) => !h.missing && h.v === null).map((h) => h.name) : [] };
 
   // the summary rows: P.summary rows + the plan (before -> after from LIVE karma) or, once awarded, the award's own rows
   let sum = null;
@@ -95,6 +98,6 @@ export function build(env) {
     canNav: staff && s.state === "open", dots, q: cur ? { id: cur.id, key: cur.key, label: cur.label, text: cur.text && cur.text !== cur.label ? cur.text : null, group: cur.group, flaw: !!cur.flaw, n: dots[s.index].n, of: cur.group === "bad" ? P.BAD.length : goodN } : null,
     heroes, counts, sum, heroN: heroCount,
     mineAny: s.heroes.some((h) => env.info(h.id)?.mine),
-    undecided: heroes.filter((h) => h.v === null).map((h) => h.id)
+    undecided: heroes.filter((h) => !h.missing && h.v === null).map((h) => h.id)
   };
 }
