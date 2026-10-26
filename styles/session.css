@@ -389,6 +389,7 @@
 @container ips (max-width: 419px) {
   .ips-shell { gap: 8px; padding: 8px; }
   .ips-main { padding: 12px 10px 18px; }
+  .ips-start-actions { bottom: -18px; margin: 0 -10px -18px; padding-inline: 10px; }   /* S7 (S7-01): bleed matches the narrower main padding (was -16px: 6 px sideways scroll in the Start view at 340) */
   .ips-head { padding: 6px 8px; }
   .ips-dots, .ips-dots[data-n="many"] { display: grid; flex: 1 1 100%; width: 100%; grid-template-columns: repeat(auto-fill, minmax(24px, 1fr)); gap: 2px; }   /* one even grid: eleven dots fit one row at 340, more wrap into full rows (no orphan pair) */
   .ips-dot-li, .ips-dot-li[data-gap="1"] { display: block; margin: 0; }

@@ -230,7 +230,7 @@ let refreshTimer = 0;
 function refreshAll(teamId, actorId) {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
-    BaseSheet?.refresh({ teamId });
+    import("./sheet.mjs").then((m) => m.BaseSheet?.refresh({ teamId })).catch(() => {});   // S7-02: the module-level BaseSheet stays null until entry.open() ran, so an already-open sheet missed live karma updates
     NewTeamApp?.refresh({ actorId });
     PickerApp?.refresh();
     syncSheets();

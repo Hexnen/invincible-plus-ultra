@@ -65,5 +65,12 @@ eq(M.stateOf(null), "none", "stateOf none"); eq(M.stateOf(0), "no", "stateOf no"
 }
 eq(placeOf({ view: "summary", state: "closed", resumable: true }), "applying", "interrupted award: only resume / undo"); eq(placeOf({ view: "summary", state: "closed", resumable: false }), "closed", "closed place unchanged");
 eq(placeOf({ view: "summary", state: "awarded", resumable: true }), "awarded", "awarded place unchanged");
+// S7-01: below 420 px the main padding is 10 px, so the sticky Start bar must bleed by 10 px (-16 gave a 6 px sideways scroll)
+{
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../../../styles/session.css", import.meta.url), "utf8");
+  const narrow = css.slice(css.indexOf("@container ips (max-width: 419px)"));
+  eq(/\.ips-start-actions\s*\{[^}]*margin:\s*0 -10px/.test(narrow), true, "S7-01 narrow Start bar bleed matches the 10 px padding");
+}
 if (bad) { console.log(`FAIL ${bad} of ${n}`); process.exit(1); }
 console.log(`OK ${n} checks`);
