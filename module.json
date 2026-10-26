@@ -45,5 +45,9 @@
   },
   "esmodules": [
     "scripts/module.js"
-  ]
+  ],
+  "url": "https://github.com/Hexnen/invincible-plus-ultra",
+  "manifest": "https://github.com/Hexnen/invincible-plus-ultra/releases/latest/download/module.json",
+  "download": "https://github.com/Hexnen/invincible-plus-ultra/releases/download/v0.18.0/module.zip",
+  "bugs": "https://github.com/Hexnen/invincible-plus-ultra/issues"
 }
