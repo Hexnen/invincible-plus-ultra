@@ -5,8 +5,10 @@
        InterfaceCanvasGroup, ABOVE the primary group, the lighting and the visibility mask. A child of the Token can therefore never be
        behind the token art: the art is `token.mesh`, a PrimarySpriteMesh inside canvas.primary (token.mjs `_draw`: canvas.primary.addToken).
      - groups/primary.mjs `_compareObjects`: children are ordered by elevation, then sortLayer, then sort, then zIndex; SORT_LAYERS are
-       SCENE 0, TILES 500, DRAWINGS 600, TOKENS 700. A plain container with sortLayer 650 and the token's elevation sits above the map, tiles
-       and drawings and below EVERY token at that elevation (so a halo never paints over a neighbour's art).
+       SCENE 0, TILES 500, DRAWINGS 600, TOKENS 700. A plain container with sortLayer 255.5 and the token's elevation sits below EVERY token
+       at that elevation (so a halo never paints over a neighbour's art) and below every effect: moinen-maps fire AND smoke (256),
+       Sequencer .belowTokens() (600), moinen-pixel-vfx's "below" layer (650); but ABOVE the moinen-maps destruction layer (damage 247,
+       shards 248, dust 249), districts (250), their lights (251) and cars (255). Cost: tiles (500) now paint over the dots.
      - The halo follows the token through the `refreshToken` hook (placeable-object.mjs applyRenderFlags calls it after every incremental
        refresh; token.mjs `_onAnimationUpdate` sets refreshPosition / refreshVisibility / refreshSize on every movement-animation frame),
        so it glides with the token. It ignores token rotation on purpose (it is never rotated).
@@ -17,7 +19,7 @@
 import { dotsFor, extentOf, inkOffset, PALETTE } from "./dots.mjs";
 
 const MAX_KEYS = 40;
-const SORT_LAYER = 650;                                   // between DRAWINGS (600) and TOKENS (700)
+const SORT_LAYER = 255.5;                                 // above moinen-maps destruction (247-249) and cars (255), below its fire+smoke (256) and all VFX
 const ALPHA = { hover: 0.82, select: 0.92, turn: 0.94 };  // the dots' alpha per variant (the spec says about 0.9)
 /* Motion modes (client setting): off = static, calm (default) = a soft pop-in / fade-out, and ONLY the active-turn ring breathes slowly,
    lively = the first version (every ring breathes, 1.8 s cycle, and a group of dots flickers 2.5 times a second). Nothing else ever repeats. */
