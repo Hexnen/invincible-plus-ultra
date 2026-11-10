@@ -1871,3 +1871,9 @@ import("./log/main.mjs")
 import("./session/main.mjs")
   .then((session) => session.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | end-of-session panel not loaded (everything else is unaffected)`, err));
+
+/* TACTICAL COMBAT, ACTION ENGINE (scripts/tactics/, package P2): action stack, prompts, reaction windows, relay for player requests, GM overrides, journal with
+   undo, per-observer view, system adapter, api.tactics. Idle unless the world setting tacticsEnabled is on. Same mechanism and recorded phases as the blocks above. */
+import("./tactics/main.mjs")
+  .then((tactics) => tactics.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | tactical combat not loaded (everything else is unaffected)`, err));
