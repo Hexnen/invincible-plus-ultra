@@ -32,18 +32,26 @@ export function zoneFacts(tok, byToken = () => null) {
     range: (a, b) => (tok(a) && tok(b) ? Zones.range(tok(a), tok(b)) : null),
   };
 }
+/* A tab that draws no frames (minimised, in the background) never finishes an animated token movement, and the map's move would wait
+   for it: there the executor moves the tokens without animation. -> the `options` for the map's token updates */
+export async function drawOptions() {
+  if (typeof requestAnimationFrame !== "function") return undefined;
+  const alive = await Promise.race([new Promise((r) => requestAnimationFrame(() => r(true))), new Promise((r) => setTimeout(() => r(false), 250))]);
+  return alive ? undefined : { animate: false };
+}
 /** Carry out `zmove` / `zput` (engine-pure.mjs effects). -> { op, result } | { ok:false, reason } */
 export async function performMove(e, tok) {
   try {
     const token = tok(e.who), group = (e.group ?? []).map(tok).filter(Boolean);
     if (!token) return { ok: false, reason: "noToken" };
+    const options = await drawOptions();
     if (e.t === "zput") {
-      const r = await Zones.moveToZone(token, e.to, { group });
+      const r = await Zones.moveToZone(token, e.to, { group, ...(options ? { options } : {}) });
       return r.ok ? { op: r.journal, result: { ok: true, spot: r.place?.spot ?? null } } : { ok: false, reason: r.reason };
     }
     const plan = Zones.planAlong(token, e.zones ?? [], { ...(e.profile ? { profile: e.profile } : {}), ...(e.end ? { end: e.end } : {}), forced: !!e.forced });
     if (!plan) return { ok: false, reason: "noRoute" };
-    const r = await Zones.move(token, null, { plan, ...(e.profile ? { profile: e.profile } : {}), group, forced: !!e.forced, data: { ipu: e.data ?? {} }, wait: true });
+    const r = await Zones.move(token, null, { plan, ...(e.profile ? { profile: e.profile } : {}), group, forced: !!e.forced, data: { ipu: e.data ?? {} }, wait: true, ...(options ? { options } : {}) });
     if (!r.ok) return { ok: false, reason: r.reason };
     const at = (e.zones ?? []).lastIndexOf(r.place?.zone);
     return { op: r.journal, result: { ok: true, done: r.done ?? 0, total: r.total ?? 0, spot: r.place?.spot ?? null, left: at >= 0 ? e.zones.slice(at) : [],

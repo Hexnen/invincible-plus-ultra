@@ -143,7 +143,11 @@ const injuryNumber = (item) => { const f = item.flags?.[MOD]?.tactics?.crit; if 
 const MOVE_POWERS = { "8wJ7WiatmSsAJYsJ": "burrowing", E6B4T5jbhoxFOqRC: "flight", XH6BNrsuvt6H7BvT: "leaping", QeM9FgUR0U3iCd5m: "superSpeed", "6IWySeMnq5uwhZ3u": "swimming", "60xT0tfR9306RCtA": "swinging", JeaiOHbh5MSrPakm: "teleportation",
   muyhi7UPoPdDlrpI: "earthDrift", AQramXS4Ilmqe01y: "elongatedStride", jyqBPo53xFKMdXnT: "iceSlide" };
 const MOVE_EXTRAS = { nG8DLZMigiBg256a: "tunneling", iLlwnWwRa82gbpT3: "untouchableSpeed", dntiWPrtTegqNRAi: "teleportAllies", sPl5SC16bIT3AFxB: "quickTeleport", ZIKmnZgnR7qz4eSw: "portal", qXCQsdc6tlqalEcX: "gliding", g1FnuD4L5jDMvqC7: "brachiation" };
-const srcId = (it) => String(it?._stats?.compendiumSource ?? "").split(".").pop();
+/* an item made by hand or by a pregenerated actor carries no compendium id: then its English name decides (as for the talents) */
+const MOVE_NAMES = { burrowing: "burrowing", flight: "flight", leaping: "leaping", superspeed: "superSpeed", swimming: "swimming", swinging: "swinging", teleportation: "teleportation", earthdrift: "earthDrift", elongatedstride: "elongatedStride", iceslide: "iceSlide",
+  tunneling: "tunneling", untouchablespeed: "untouchableSpeed", teleportallies: "teleportAllies", quickteleport: "quickTeleport", portal: "portal", gliding: "gliding", brachiation: "brachiation" };
+const NAME_TYPES = ["power", "boost", "limit"];
+const srcId = (it) => { const id = String(it?._stats?.compendiumSource ?? "").split(".").pop(); if (MOVE_POWERS[id] || MOVE_EXTRAS[id] || !it || !NAME_TYPES.includes(it.type)) return id; const n = MOVE_NAMES[String(it.name ?? "").toLowerCase().replace(/[^a-z]/g, "")]; return n ? Object.keys({ ...MOVE_POWERS, ...MOVE_EXTRAS }).find((k) => MOVE_POWERS[k] === n || MOVE_EXTRAS[k] === n) ?? id : id; };
 export function movementOf(actor) {
   const out = [], extras = new Set();
   try {
