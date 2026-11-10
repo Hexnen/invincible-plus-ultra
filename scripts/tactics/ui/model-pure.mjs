@@ -79,13 +79,13 @@ function titleOf(p, t, facts, round) {
   const k = p.kind === "proxy" && p.of ? p.of : p.kind;
   return t(`ITAC.${p.to === "desk" ? "card" : "prompt"}.${k}`, {}, null) ?? t(`ITAC.card.${k}`, {}, null) ?? t(`ITAC.Prompt.${k}.Title`, {}, cap(k));
 }
-function optLabel(p, o, t, facts, desk = false) {
+function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
   const kind = p.of ?? p.kind;
   if (desk && kind === "reaction" && o.id === "pass") return t("ITAC.ui.noReaction");
   if (o.name) return String(o.name);
   if (isKey(o.label)) {
     const base = labelOf(t, o.label);
-    return o.data?.stunt && o.data?.target ? `${base}: ${nameOf(facts, o.data.target, t)}` : base;
+    return o.data?.stunt && o.data?.target && !oneTarget ? `${base}: ${nameOf(facts, o.data.target, t)}` : base;
   }
   if (kind === "reflexes") return t("ITAC.Prompt.reflexes.card", { card: o.id });
   const own = t(`ITAC.Prompt.${kind}.${o.id}`, { card: p.data?.card ?? o.data?.card ?? "" }, null) ?? t(`ITAC.ui.opt.${o.id}`, {}, null);
@@ -138,15 +138,18 @@ export function askData(p, o) {
     if (dAttr && Number.isFinite(dPool)) return t("ITAC.ui.odds.defended", { dice: dPool, p: pct(dice.pHit(attPool, Math.max(1, dPool))) });
     return optId === "pass" ? t("ITAC.ui.odds.open", { p: pct(dice.pSuccess(attPool)) }) : null;
   };
+  /* stunts against one target only: the name goes into the sentence once instead of onto every button */
+  const stuntTargets = [...new Set((p.options ?? []).map((x) => x.data?.stunt && x.data?.target).filter(Boolean))], oneTarget = stuntTargets.length === 1;
   const options = (p.options ?? []).map((x) => {
     const value = text && p.free ? { id: x.id, text } : always ? { id: x.id, always: true } : null;
     const zones = Array.isArray(x.data?.zones) ? x.data.zones : null;
-    return { id: x.id, label: optLabel(p, x, t, facts, desk), cost: [costText(t, x.cost), x.stress ? t("ITAC.ui.stress", { n: x.stress }) : null].filter(Boolean).join(", ") || null,
+    return { id: x.id, label: optLabel(p, x, t, facts, desk, oneTarget), cost: [costText(t, x.cost), x.stress ? t("ITAC.ui.stress", { n: x.stress }) : null].filter(Boolean).join(", ") || null,
       note: odds(x.id), disabled: x.disabled ? reasonText(t, x.disabled) : null, picked: picks.includes(x.id), pass: x.id === "pass", zones,
       req: x.disabled || p.multi ? null : value && x.req ? p.answerReq(value) : x.req,
       zoneReq: zones && !x.disabled ? (zone) => p.answerReq({ id: x.id, zone: String(zone) }) : null };      // an option that carries zones: the place picked on the map rides along [D]
   });
   const lines = linesOf(p, t, facts, { inst });
+  if (oneTarget) lines.push(t("ITAC.ui.line.against", { name: nameOf(facts, stuntTargets[0], t) }));
   if (attPool != null) lines.push(t("ITAC.ui.line.attPool", { dice: attPool, attr: attrText(t, inst.attr) }));
   const max = p.max ?? options.length, min = p.min ?? 0;
   const multi = p.multi ? { min, max, n: picks.length } : null;
@@ -255,7 +258,7 @@ export function dockData(model, own, facts, t) {
     submit: { label: t("ITAC.ui.other.send"), disabled: (own.text ?? "").trim() ? null : t("ITAC.ui.need.text"), req: (own.text ?? "").trim() ? bar.other.req(own.text.trim()) : null } };
   else if (own.mode === "holdOff") panel = { kind: "holdOff", title: t("ITAC.ui.holdOff"), hint: t("ITAC.ui.holdOff.hint"), targets: (bar.holdOff?.targets ?? []).map((x) => ({ slot: x.slot, card: x.card, names: x.names.join(", "), req: bar.holdOff.req(x.slot) })) };
   else if (armed) panel = declarePanel(bar, armed, own, facts, t);
-  else if (mine.length && !own.quiet) panel = minePanel(mine[mine.length - 1], facts, t);
+  else if (mine.length && !facts.staff) panel = minePanel(mine[mine.length - 1], facts, t);
   const unused = pipsOf(bar, t).filter((p) => p.state === "open").map((p) => p.label);
   const end = bar.endTurn ? { label: own.endArmed ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), tip: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : unused.length ? t("ITAC.ui.end.unused", { list: unused.join(", ") }) : t("ITAC.ui.end.tip"),
     disabled: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm: unused.length > 0, armed: !!own.endArmed }

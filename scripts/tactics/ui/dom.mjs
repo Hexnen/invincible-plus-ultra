@@ -63,7 +63,7 @@ export function askCard(a, handlers = {}) {
     }, h("span.ita-opt-l", { text: o.label }), o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null, o.disabled ? h("span.ita-opt-why", { text: o.disabled }) : null);
     return b;
   };
-  return h(`article.ita-ask${fresh ? ".ita-new" : ""}`, { data: { kind: a.kind, proxy: a.proxy ? "1" : null } },
+  return h(`article.ita-ask${fresh ? ".ita-new" : ""}`, { data: { kind: a.kind, proxy: a.proxy ? "1" : null, wide: a.options.length > 4 ? "1" : null } },
     h("header.ita-head", {}, h("h3.ita-plate", { text: a.title }), a.about ? h("span.ita-about", { text: a.about }) : null),
     a.lines.map((l) => (typeof l === "string" ? h("p.ita-line", { text: l }) : h("blockquote.ita-quote", {}, h("span", { text: l.quote }), l.by ? h("cite", { text: l.by }) : null))),
     h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(opt)),

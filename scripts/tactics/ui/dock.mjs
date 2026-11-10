@@ -54,7 +54,9 @@ export function place() {
   const avail = Math.max(280, hi - lo);
   root.style.setProperty("--itd-bottom", `${Math.round(bottom)}px`);
   root.style.setProperty("--itd-maxw", `${Math.round(avail)}px`);
-  root.style.setProperty("--itd-maxh", `${Math.max(200, Math.round(H - bottom - 120))}px`);
+  /* the questions scroll inside what is left above the bar and the panel, below the initiative bar */
+  const asks = stack.querySelector(".itd-asks"), below = asks ? stack.offsetHeight - asks.offsetHeight : 0;
+  root.style.setProperty("--itd-maxh", `${Math.max(160, Math.round(H - bottom - below - 96))}px`);
   const w = Math.min(stack.offsetWidth, avail);
   let cx = cx0;
   if (cx + w / 2 > hi) cx = hi - w / 2;

@@ -82,6 +82,7 @@ lang("en");
   await T.roll("def:N1", 0);
   d = dock(T, "p1", ["H1"]);
   eq(d.prompts.map((p) => [p.kind, !!p.multi, p.submit.req != null]), [["stunts", true, true]], "dock: the stunt question, several may be picked, none is allowed");
+  eq([d.prompts[0].options.some((x) => /Mauler/.test(x.label)), d.prompts[0].lines.some((l) => /Mauler/.test(String(l)))], [false, true], "stunts against one target: the name is said once, not on every button");
   const sid = d.prompts[0].options.find((x) => !x.disabled).id, off = d.prompts[0].options.find((x) => x.disabled);
   eq([typeof off.disabled, off.req], ["string", null], "a greyed option has words for the reason and no request");
   d = dock(T, "p1", ["H1"], { picks: { [d.prompts[0].id]: [sid] } });
@@ -155,6 +156,10 @@ lang("en");
   noKeys(desk(T, { override: T.top()?.id }), "desk");
   eq(M.dockData(D.playerModel(viewOf(T, "px", []), { id: "px", owns: [] }, ctx(T)), {}, facts(T, viewOf(T, "px", []), "px"), t).show, false, "a user without a character has no bar");
   eq(M.deskData(null, {}, {}, t).show, false, "no model, no desk");
+  if (T.top()) await T.gm({ op: "abort", inst: T.top().id });
+  T.turn("N2");
+  const hid = dock(T, "p1", ["H1"]);
+  eq([hid.show, /Zzyxq|"N2"/.test(noKeys(hid, "player dock, hidden turn")), hid.turn.includes("Zzyxq")], [true, false, false], "hidden: the turn of a concealed combatant names nobody on a player's dock");
 }
 { // both languages render every state; no key asked without a fallback is missing
   for (const l of ["en", "pl"]) {

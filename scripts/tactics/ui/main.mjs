@@ -26,7 +26,7 @@ const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, overrid
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
 let st = { dock: blankDock(), desk: blankDesk() };
 
-const combatNow = () => { try { const c = Store.currentCombat(); return c && Api.active(c) && Api.mode(c) !== "off" && (!c.scene || c.scene.id === canvas?.scene?.id) ? c : null; } catch { return null; } };
+const combatNow = () => { try { const c = Store.currentCombat(); return c && Api.active(c) && Api.mode(c) !== "off" && (!c.scene || c.scene.id === globalThis.canvas?.scene?.id) ? c : null; } catch { return null; } };
 const isVideo = (s) => /\.(webm|mp4|m4v|ogv)(\?|$)/i.test(String(s ?? ""));
 const portrait = (cb) => [cb?.img, cb?.token?.texture?.src, Sys.actorOf(cb)?.img].filter(Boolean).find((s) => !isVideo(s)) ?? null;
 const notify = (kind, text) => { try { ui.notifications[kind](text, { console: false }); } catch { /* no ui */ } };
@@ -144,10 +144,10 @@ export const active = () => { try { return started && !!combatNow(); } catch { r
 /** -> true when the surfaces run on this client */
 export function start() {
   if (started) return true;
-  if (typeof document === "undefined" || typeof canvas === "undefined") return false;      // no page (the node checks load main.mjs): no surfaces
+  if (typeof document === "undefined") return false;      // no page (the node checks load main.mjs): no surfaces
   try {
     started = true;
-    down = !canvas?.scene;
+    down = !globalThis.canvas?.scene;        // this can run before Foundry made the canvas: canvasReady lifts it
     configure();
     Store.subscribe(schedule);
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);

@@ -78,6 +78,7 @@
 
 /* ---------- shared: one question (a caption card) ---------- */
 .ita-ask { display: flex; flex-direction: column; gap: 6px; width: 340px; max-width: 100%; padding: 8px 10px 10px; background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: inset 0 0 0 1px rgba(255, 231, 42, .5), 0 5px 14px rgba(0, 0, 0, .5); }
+#invincible-tactics-dock .ita-ask[data-wide] { width: 620px; }
 .ita-ask.ita-new { animation: ita-pop .28s var(--ita-out); }
 @keyframes ita-pop { from { opacity: 0; translate: 0 12px; rotate: -1.5deg; } to { opacity: 1; translate: 0 0; rotate: 0deg; } }
 .ita-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: -4px; }
