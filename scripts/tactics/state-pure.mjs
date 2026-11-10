@@ -222,6 +222,7 @@ export function sanitize(raw) {
     s.summons = plainList(raw.summons); s.karma = plainList(raw.karma);
     s.statuses = plainMap(raw.statuses); s.counters = plainMap(raw.counters); s.knowledge = plainMap(raw.knowledge); s.revealed = plainMap(raw.revealed); s.npc = plainMap(raw.npc);
     if (isObj(raw.chase)) s.chase = plain(raw.chase);
+    if (isObj(raw.txOpen)) s.txOpen = plain(raw.txOpen);          // the action engine keeps its open transactions here (P2 [D]); passed through untouched
     return s;
   } catch { return null; }
 }

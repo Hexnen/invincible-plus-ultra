@@ -345,10 +345,12 @@ const OPS = {
       const r = Lg.pay(L, { cost: a.unit, onTurn, interrupt: !onTurn, turnOf: s.init.curMember ?? undefined, force, resolve: partOf(W, a.actor)?.resolve }, { action: "manual", tags: ["manual"], slot: s.init.cur ?? undefined });
       if (!r.ok) return err(reasonCode(r.reason), { reason: r.reason });
       s.ledger[a.actor] = r.ledger;
+      ev(W, "ledger", { combatant: a.actor, unit: a.unit, on: true, entry: r.entry.id });
     } else {
       const e = [...L.entries].reverse().find((x) => !x.void && x.cost === a.unit && (x.action === "manual" || W.ctx.staff));
       if (!e) return err("noAction", { reason: "nothingToUnmark" });
       s.ledger[a.actor] = Lg.voidEntry(L, e.id).ledger;
+      ev(W, "ledger", { combatant: a.actor, unit: a.unit, on: false, entry: e.id });
     }
   },
 
