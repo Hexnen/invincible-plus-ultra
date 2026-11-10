@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const dir = dirname(fileURLToPath(import.meta.url));
-const SUITES = ["pure", "state", "ledger", "initiative", "scheduler", "ops", "source", "journal", "engine", "view", "relay", "desk", "ui", "zones", "move", "fight", "lang", "facing", "executor"];
+const SUITES = ["pure", "state", "ledger", "initiative", "scheduler", "ops", "source", "journal", "engine", "view", "relay", "desk", "ui", "zones", "move", "fight", "acts", "hazards", "lang", "facing", "executor"];
 let checks = 0, failed = 0, broken = 0;
 for (const s of SUITES) {
   const r = spawnSync(process.execPath, [join(dir, `check-${s}.mjs`)], { encoding: "utf8" });

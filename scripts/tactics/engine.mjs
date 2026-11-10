@@ -89,7 +89,7 @@ async function perform(combat, e) {
     }
     case "critAdd": { const actor = await fromUuid(e.uuid); const op = actor ? await Sys.addInjury(actor, e.n, e.tx) : null; if (!op) ui.notifications?.warn(t("ITAC.warn.noInjury", { n: e.n })); return op ? { op } : {}; }
     case "dice": {
-      const roll = await new Roll(`${Math.max(1, Math.trunc(e.n))}d6`).evaluate();
+      const roll = await new Roll(`${Math.max(1, Math.trunc(e.n))}d${e.sides > 0 ? Math.trunc(e.sides) : 6}`).evaluate();        // P5: `sides` for a random pick among N (where a fire spreads)
       const faces = roll.dice[0]?.results?.map((r) => r.result) ?? [];
       let op = null;
       try { const m = await roll.toMessage({ flavor: t(`ITAC.dice.${String(e.why ?? "").split(":")[0]}`, {}, t("ITAC.dice.engine")), flags: { [MOD]: { tactics: { dice: e.why ?? "" } } } }, { ipuTactics: true }); if (m?.id) op = { t: "message", id: m.id }; } catch { /* the faces count; the card is a courtesy */ }

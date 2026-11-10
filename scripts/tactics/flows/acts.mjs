@@ -1,0 +1,183 @@
+/* Tactical combat, package P5: flow "act": every row of the book's action tables that is neither an attack nor a move, and the escapes
+   (spec 8.1, 9.7). NO Foundry globals. The rows are data (actions-pure.mjs); the numbers come from the rules library.
+   Steps: check -> roll (the actor's roll, then the other side's in an opposed roll: only the active party pushes [B2241]; a tie fails
+   for the active party [B2243]) -> effect -> outcome (the GM's word on a narrative action, spec 9.7) -> close.
+   A row without a roll (pick up an item [B2316], an item or a power used without one) goes straight to its effect. */
+import { maneuvers, hazards, crits, damage, dice } from "../../rules/index.mjs";
+import * as M from "../mods-pure.mjs";
+import { ATTRS, attrChoices } from "../actions-pure.mjs";
+import * as K from "./kit.mjs";
+
+const bad = (reason, params = {}) => ({ ok: false, reason, params });
+const fine = { ok: true, reason: null, params: {}, gates: [], notes: [] };
+const GM = { gmMayAllow: 1 };
+const RESTRAINTS = ["grappled", "snared", "immobilised"];                      // no action that needs body movement [B2496], [B1606], [B1645]
+const statusOf = (v, cid, id) => M.statusesOf(v.state, cid).find((s) => s.id === id) ?? null;
+const kindOf = (v, inst) => v.entry(inst)?.effect?.kind ?? "narrative";
+/** whom the action is about: the named character, else the actor (rally, recover Resolve, extinguish) */
+export const subjectOf = (inst) => inst.decl?.targets?.[0] ?? inst.actor;
+/** the attribute rolled: fixed by the row, else the one declared out of the row's choices; null = no roll */
+export function attrOf(v, inst) {
+  const e = v.entry(inst), r = e?.roll;
+  if (!r) return null;
+  if (r.attr) return r.attr;
+  const list = attrChoices(e), a = inst.decl?.attr;
+  if (list.includes(a)) return a;
+  if (r.optional) return null;
+  if (r.attrs === "any") return null;
+  const c = v.facts.c(inst.actor);                                               // a short list and nothing declared: the better of them (Trap [B2438])
+  return list.slice().sort((x, y) => (Number(c?.attrs?.[y]) || 0) - (Number(c?.attrs?.[x]) || 0))[0] ?? null;
+}
+/** who rolls against the actor, and with what: { who, attr } | null */
+export function opponentOf(v, inst) {
+  const o = v.entry(inst)?.oppose;
+  if (!o) return null;
+  if (o.who === "holder") { const by = statusOf(v, inst.actor, "grappled")?.data?.by; return by && v.facts.c(by) && v.facts.c(by).present !== false ? { who: by, attr: o.attr } : null; }
+  const t = inst.decl?.targets?.[0];
+  return t && t !== inst.actor ? { who: t, attr: o.attr } : null;
+}
+/** dice penalty of breaking out of a Snare: what the status carries, else the basic level [B1606-1609] */
+export function snarePenalty(st) {
+  if (Number.isFinite(st?.data?.dice)) return Math.min(0, Math.trunc(st.data.dice));
+  return maneuvers.SNARE_ESCAPE_DICE[st?.data?.level] ?? maneuvers.SNARE_ESCAPE_DICE.basic;
+}
+const sameZone = (v, a, b) => { const r = v.facts.range?.(a, b); return r === undefined ? undefined : !!r && r.total === 0; };   // undefined: no map, the GM judges
+
+function legality(v, inst) {
+  const a = v.facts.c(inst.actor), e = v.entry(inst), kind = kindOf(v, inst), d = inst.decl ?? {};
+  if (!a || a.present === false) return bad("gone");
+  const subject = subjectOf(inst), sf = v.facts.c(subject), other = subject !== inst.actor;
+  if (other && (!sf || sf.present === false)) return bad("noTarget");
+  if ((e?.target?.n?.[0] ?? 0) > 0 && !other) return bad("noTarget");
+  if (a.health <= 0 && !(kind === "rally" && !other)) return bad("broken");                                  // [B2707]: a broken character may only try to rally [B2773]
+  if (M.hasStatus(v.state, inst.actor, "grappling")) return bad("holding", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else
+  if (e?.tags?.includes("physical")) { const r = RESTRAINTS.find((s) => M.hasStatus(v.state, inst.actor, s)); if (r) return bad("restrained", { ...GM, status: r }); }
+  if (e?.roll && !e.roll.optional && !attrOf(v, inst)) return bad("noAttribute");
+  if (d.attr && e?.roll && !e.roll.attr && !attrChoices(e).includes(d.attr)) return bad("noAttribute");
+  switch (kind) {
+    case "banter": {                                                                                         // [B2785], [R17]
+      const r = maneuvers.banterCheck({ sameZone: sameZone(v, inst.actor, subject) !== false, target: K.immunityFlags(sf), targetBanteredThisRound: M.counterGet(v.state, M.counterKey.round(subject, "bantered")) > 0 });
+      return r.ok ? fine : bad(r.reason === "zone" ? "notSameZone" : r.reason === "oncePerRound" ? "banteredAlready" : r.reason === "huge" ? "hugeTarget" : "immune", r.gmMayAllow ? GM : {});
+    }
+    case "rally": {                                                                                          // [B2773-2775]
+      const r = crits.canRally({ broken: sf.health <= 0, crits: sf.crits ?? [] });
+      if (!r.ok) return bad(r.reason === "crit" ? "rallyCrit" : "notBroken");
+      return other && v.facts.canTalk?.(inst.actor, subject) === false ? bad("cannotHear", GM) : fine;       // [Z11]; undefined = the map cannot tell, the GM judges
+    }
+    case "resolve":                                                                                          // [B2818]
+      if (!(sf.resolve < sf.maxResolve)) return bad("resolveFull");
+      return other && v.facts.canTalk?.(inst.actor, subject) === false ? bad("cannotHear", GM) : fine;
+    case "stabilize": {                                                                                      // [B2777]: advanced medical gear (the GM's word), one attempt
+      const r = crits.canStabilize({ crits: sf.crits ?? [], attempted: M.counterGet(v.state, M.counterKey.scene(subject, "stabilize")) > 0, hasGear: (d.confirmed ?? []).includes("medicalGear") });
+      return r.ok ? fine : bad(r.reason === "gear" ? "needsGear" : r.reason === "alreadyTried" ? "stabilizeTried" : "notDying", r.reason === "notDying" ? {} : GM);
+    }
+    case "extinguish":                                                                                       // [B2926]: the burning character, or an ally in the same zone
+      if (!M.hasStatus(v.state, subject, "burning")) return bad("notBurning");
+      return other && sameZone(v, inst.actor, subject) === false ? bad("notSameZone") : fine;
+    case "escape": return M.hasStatus(v.state, inst.actor, e.effect.from) ? fine : bad("notHeld");
+    case "pickUp": { const it = d.item ? (v.state.items ?? []).find((x) => x.id === d.item) : null; return d.item && (!it || it.state !== "ground") ? bad("noItem") : fine; }
+    default: return fine;
+  }
+}
+
+export const act = {
+  STEPS: Object.freeze(["check", "roll", "effect", "outcome", "close"]),
+  legality,
+  revalidate(v, inst) { const a = v.facts.c(inst.actor); const b = !a || a.present === false ? "gone" : null; return { ok: !b, reasons: b ? [b] : [] }; },
+  steps: {
+    check(v, inst) { const I = K.draft(inst), R = K.result(I); I.data.attr = attrOf(v, I); R.goto = I.data.attr ? "roll" : "effect"; return R; },
+    roll(v, inst) {
+      const I = K.draft(inst), R = K.result(I), d = I.decl, e = v.entry(I), attr = I.data.attr, opp = opponentOf(v, I);
+      const order = dice.OPPOSED_PUSH_ORDERS.includes(v.state.opts?.pushOrder) ? v.state.opts.pushOrder : "afterDefence";      // [R3]
+      if (!K.rollOf(I, "roll")) {
+        const tg = K.tokenGate(v, I, R, I.actor, { kind: "other", attr }, d.tokens ?? [], "roll");
+        if (tg.wait) { R.wait = true; return R; }
+        I.locked = true; R.events.push({ type: "actionLocked" });                               // spec 5.5: locks at the first die
+        if ((d.stressTotal ?? 0) > 0) R.effects.push({ t: "stress", who: I.actor, n: d.stressTotal, cost: 1 });
+        const mods = [];
+        if (e?.effect?.escape === "snare" && e.effect.from === "snared") mods.push({ source: "snare", dice: snarePenalty(statusOf(v, I.actor, "snared")) });      // [B1606-1609]
+        const hd = (d.helpers ?? []).filter((h) => h.consent === "yes").length;
+        if (hd) mods.push({ source: "help", dice: dice.helpDice(hd) });                         // [B2238]
+        const bp = K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens: tg.tokens });
+        for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
+        R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { passive: d.noPush === true, label: e?.label }));
+        R.wait = true; return R;
+      }
+      if (!K.rollRolled(I, "roll")) { R.wait = true; return R; }
+      if (opp) {
+        if (order === "beforeDefence" && !K.rollFinal(I, "roll")) { R.wait = true; return R; }
+        const key = `def:${opp.who}`;
+        if (!K.rollOf(I, key)) {
+          const bp = K.buildPool(v, I, key, opp.who, opp.attr, [], { rollKind: "other" });
+          R.effects.push(K.rollEffect(key, opp.who, opp.attr, bp.pool, { defender: true, label: e?.label }));      // [B2241]: the passive party never pushes
+          R.wait = true; return R;
+        }
+        if (!K.rollFinal(I, key)) { R.wait = true; return R; }
+      }
+      if (!K.rollFinal(I, "roll")) { R.wait = true; return R; }
+      const r = K.rollOf(I, "roll");
+      R.events.push({ type: "roll", key: "roll", who: I.actor, attr, dice: r.pool?.total, sixes: K.sixesOf(I, "roll"), ones: r.ones ?? 0, pushed: r.pushed ?? 0, messageId: r.messageId });
+      R.goto = "effect"; return R;
+    },
+    effect(v, inst) {
+      const I = K.draft(inst), R = K.result(I), e = v.entry(I), kind = kindOf(v, I), subject = subjectOf(I), sf = v.facts.c(subject);
+      const rolled = !!I.data.attr, sixes = rolled ? K.sixesOf(I, "roll") : 0, opp = opponentOf(v, I), against = opp ? K.sixesOf(I, `def:${opp.who}`) : 0;
+      const net = opp ? dice.opposed(sixes, against) : { win: sixes > 0, net: sixes };          // [B2243]: a tie fails for the active party
+      const success = rolled ? net.win : true;
+      I.data.result = success ? "success" : "fail"; I.data.net = rolled ? (opp ? net.net : sixes) : null;
+      const status = (who, id, on) => R.events.push({ type: "status", target: who, status: { id, on } });
+      switch (kind) {
+        case "banter": {                                                                         // [B2785]: 1 stress per six more than the target rolled; once per round per target
+          R.effects.push({ t: "state", ...M.counterBump(v.state, M.counterKey.round(subject, "bantered")) });
+          const n = maneuvers.banterStress(sixes, against);
+          if (n > 0) { R.effects.push({ t: "stress", who: subject, n }); R.events.push({ type: "stress", target: subject, n, source: "banter" }); }
+          I.data.stress = n; break;
+        }
+        case "rally": if (success && sf) {                                                       // [B2775]: 1 Health per six, the injury stays
+          const ro = crits.rallyOutcome({ sixes, maxHealth: sf.maxHealth });
+          if (ro.rallied) { R.effects.push({ t: "actor", who: subject, path: "health", to: ro.health }); if (M.hasStatus(v.state, subject, "broken")) { R.effects.push({ t: "status-", who: subject, id: "broken" }); status(subject, "broken", false); } I.data.gain = ro.health; }
+        } break;
+        case "resolve": if (success && sf) {                                                     // [B2818]
+          const rr = damage.recoverResolve({ resolve: sf.resolve, max: sf.maxResolve, sixes });
+          if (rr.gain > 0) R.effects.push({ t: "actor", who: subject, path: "resolve", to: rr.resolve });
+          I.data.gain = rr.gain;
+        } break;
+        case "stabilize":                                                                        // [B2777]: one attempt, whatever it gives
+          R.effects.push({ t: "state", ...M.counterBump(v.state, M.counterKey.scene(subject, "stabilize")) });
+          if (crits.stabilizeOutcome(sixes).stabilized && M.hasStatus(v.state, subject, "dying")) { R.effects.push({ t: "status-", who: subject, id: "dying" }); status(subject, "dying", false); }
+          break;
+        case "extinguish": if (!hazards.extinguishOutcome(sixes).burning) { R.effects.push({ t: "status-", who: subject, id: "burning" }); status(subject, "burning", false); } break;   // [B2926]
+        case "escape": if (maneuvers.escapeOutcome({ kind: e.effect.escape, sixes, holderSixes: against }).free) {       // [B2496], [B2438], [B1606]
+          const by = statusOf(v, I.actor, e.effect.from)?.data?.by;
+          R.effects.push({ t: "status-", who: I.actor, id: e.effect.from }); status(I.actor, e.effect.from, false);
+          if (e.effect.from === "grappled" && by && statusOf(v, by, "grappling") && (statusOf(v, by, "grappling").data?.held ?? I.actor) === I.actor) { R.effects.push({ t: "status-", who: by, id: "grappling" }); status(by, "grappling", false); }
+          I.data.result = "success";
+        } else I.data.result = "fail"; break;
+        case "pickUp": { const it = I.decl.item ? (v.state.items ?? []).find((x) => x.id === I.decl.item) : null;        // [B2316]
+          if (it) R.effects.push({ t: "state", path: ["items", `#${it.id}`], to: { ...it, state: "held", holder: I.actor } }); break; }
+        default: break;
+      }
+      R.goto = "outcome"; return R;
+    },
+    /* spec 9.7: a narrative action ends with the GM's word on a desk card (what was found, what gave way, who listens); saving bystanders
+       also leaves a karma note [B2374], spec 9.11. Surplus sixes are shown: stunts of such rolls are the GM's last word [B2210-2218]. */
+    outcome(v, inst) {
+      const I = K.draft(inst), R = K.result(I), kind = kindOf(v, I);
+      if (!["narrative", "bystanders"].includes(kind)) { R.goto = "close"; return R; }
+      if (!I.data.pk?.outcome) {
+        R.prompts.push({ key: "outcome", kind: "outcome", to: "gm", about: I.actor, free: 1, options: [{ id: "success", label: "ITAC.opt.success" }, { id: "fail", label: "ITAC.opt.fail" }],
+          data: { action: I.action, rolled: I.data.attr ? 1 : 0, sixes: I.data.attr ? K.sixesOf(I, "roll") : null, net: I.data.net, suggests: I.data.result, text: I.decl.text ?? "", attr: I.data.attr ?? null } });
+        R.wait = true; return R;
+      }
+      if (!K.isAnswered(v, I, "outcome")) { R.wait = true; return R; }
+      const a = K.answerOf(v, I, "outcome"), id = K.answerId(v, I, "outcome") ?? I.data.result;
+      I.data.result = id === "fail" ? "fail" : "success";
+      if (a && typeof a === "object" && a.text) I.data.said = String(a.text).slice(0, 300);
+      if (kind === "bystanders" && !K.flag(I, "karma")) { K.setFlag(I, "karma"); R.effects.push({ t: "karma", note: { who: I.actor, kind: I.data.result === "success" ? "savedBystanders" : "failedBystanders", zone: v.facts.zone?.(I.actor)?.spot ?? undefined, note: I.data.said } }); }
+      R.events.push({ type: "outcome", result: I.data.result, text: I.data.said ?? "" });
+      R.goto = "close"; return R;
+    },
+    close(v, inst) { const I = K.draft(inst), R = K.result(I); R.effects.push({ t: "fact", who: I.actor, facts: { acted: 1, tags: v.entry(I)?.tags ?? [] } }); R.done = true; return R; },
+  },
+};
+export { ATTRS };

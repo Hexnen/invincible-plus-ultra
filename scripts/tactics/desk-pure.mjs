@@ -7,6 +7,7 @@
 import * as C from "./catalog-pure.mjs";
 import { REVALIDATE_OPTIONS, FLOWS } from "./engine-pure.mjs";
 import * as Init from "./initiative-pure.mjs";
+import { applies, attrChoices } from "./actions-pure.mjs";
 /* ADDED FOR THE SURFACES (scripts/tactics/ui/; all additive, checked in check-ui.mjs):
      instance lines carry `steps` (the flow's step ids, for "back to step"), `attr` / `defense` of the catalog entry and `outcomes`;
      deskModel: `npcs` (standing reactions + what is revealed, with ready requests), `mode` + `modeReq`, `turn`;
@@ -21,7 +22,8 @@ const optReq = (p, o, op) => ({ op, prompt: p.id, value: o.data && isObj(o.data)
 
 /** GM desk card kinds this engine raises (spec 13.1 + the ones the spec has no row for; reported as holes): */
 export const CARD_KINDS = Object.freeze(["reaction", "exception", "other", "direction", "stunt", "helpOverride", "revalidate", "npcBroken", "proxy",
-  "gate", "tokenConfirm", "counter", "dodgeMove", "stunts", "moveStop", "moveApprove"]);
+  "gate", "tokenConfirm", "counter", "dodgeMove", "stunts", "moveStop", "moveApprove",
+  "outcome", "hazardDodge", "hazardStunts", "fireSpread", "vacuumDeath"]);                    // P5: the GM's word on a narrative action, a dodge against a blast, the hazards' cards
 
 function card(p, ctx, proxy = false) {
   return {
@@ -40,7 +42,7 @@ const instLine = (i, ctx, state = null) => ({ steps: (FLOWS[i.flow]?.STEPS ?? []
 
 /** Everything the GM desk shows. `log` is the journal flag. */
 export function deskModel(state, log, ctx = {}) {
-  if (!state) return { cards: [], info: [], manual: [], journal: [], waiting: [], npcs: [], mode: null, turn: null };
+  if (!state) return { cards: [], info: [], manual: [], journal: [], waiting: [], npcs: [], mode: null, turn: null, karma: [], statuses: {} };
   const open = Object.values(state.prompts ?? {}).filter((p) => !p.answered);
   const cards = [];
   for (const p of open) {
@@ -65,7 +67,11 @@ export function deskModel(state, log, ctx = {}) {
     policy: { block: "ask", dodge: "ask", onBroken: "ask", ...(state.npc?.[cid] ?? {}) }, revealed: { stats: !!state.revealed?.[cid]?.stats, powers: !!state.revealed?.[cid]?.powers, health: !!state.revealed?.[cid]?.health },
     policyReq: (patch) => ({ op: "npcPolicy", combatant: cid, policy: { ...(state.npc?.[cid] ?? {}), ...patch } }),
     revealReq: (patch) => ({ op: "reveal", combatant: cid, ...Object.fromEntries(Object.entries({ ...(state.revealed?.[cid] ?? {}), ...patch }).filter(([, v]) => v).map(([k]) => [k, true])) }) }));
-  return { cards, info, manual, journal, waiting: waitingOn(state, ctx), npcs, mode: state.mode ?? null, modeReq: (mode) => ({ op: "setMode", mode }), turn: turnOf(state, ctx) };
+  /* P5: the karma notes of the fight (spec 9.11) and the two requests of the hazard tool */
+  const karma = (state.karma ?? []).map((k) => ({ id: k.id, who: k.who, whoName: nameOf(ctx, k.who), kind: k.kind, round: k.round ?? null, zone: k.zone ?? null, note: k.note ?? "", target: k.target ? nameOf(ctx, k.target) : null }));
+  return { cards, info, manual, journal, waiting: waitingOn(state, ctx), npcs, mode: state.mode ?? null, modeReq: (mode) => ({ op: "setMode", mode }), turn: turnOf(state, ctx), karma,
+    karmaReq: (note) => ({ op: "karmaNote", note }), hazardReq: (run, subject) => ({ op: "hazardRun", run, subject }), fireReq: (intensity, targets, inZone = true) => ({ op: "hazard", hazard: { kind: "fire", intensity, inZone }, targets }),
+    statuses: state.statuses ?? {} };
 }
 
 /** Who the table is waiting for right now (both surfaces show it). */
@@ -86,11 +92,13 @@ function promptModel(p, ctx) {
 export function barModel(view, cid, ctx = {}) {
   const P1 = ctx.P1;
   const onTurn = P1 ? P1.isOnTurn(view, cid) : false, busy = (view.stack ?? []).length > 0;
-  const actions = C.entriesFor(view, cid).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll").map((e) => {
+  const broken = Object.keys(view.statuses ?? {}).filter((id) => (view.statuses[id] ?? []).some((s) => s.id === "broken"));
+  const actions = C.entriesFor(view, cid).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && applies(e, cid, view.statuses ?? {}, broken)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
     const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", {}) : { ok: false, reason: "noLedger" };
     const reason = busy ? "busy" : !onTurn && e.cost !== "free" ? "notYourTurn" : pay.ok ? null : pay.reason ?? "noAction";
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
       attr: e.roll?.attr ?? null, defense: e.defense ?? null, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders", disabled: reason,
+      attrs: attrChoices(e), attrOptional: e.roll?.optional === true, optTarget: (e.target?.n?.[0] ?? 0) === 0 && (e.target?.n?.[1] ?? 0) > 0, wantsText: e.text === 1, opposeAttr: e.oppose?.who === "target" ? e.oppose.attr : null, about: e.when?.anyone ?? null, situational: !!e.when,   // P5 (flow "act")
       req: (decl = {}) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id } }), exceptionReq: (decl, text) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id, exception: { text } } }) };
   });
   return { combatant: cid, name: nameOf(ctx, cid), onTurn, free: !!view.free?.[cid], budget: P1 ? P1.budget(view, cid) : null, statuses: (view.statuses?.[cid] ?? []).map((s) => s.id),

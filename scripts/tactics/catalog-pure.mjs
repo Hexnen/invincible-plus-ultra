@@ -9,9 +9,10 @@
                attack miss that target; "note" only records the reaction for the GM. Which powers and talents give which of these is P6 data. */
 import * as M from "./mods-pure.mjs";
 import { conditions } from "../rules/index.mjs";
+import { ACTIONS } from "./actions-pure.mjs";
 
 export const WINDOWS = Object.freeze(["beforeRoll", "afterRoll", "afterDamage"]);
-export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other", "barrier", "fastball"]);
+export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other", "barrier", "fastball", "act"]);
 export const REACTION_EFFECTS = Object.freeze(["defence", "action", "swapTarget", "autoMiss", "note"]);
 
 export const BUILTIN = Object.freeze({
@@ -31,6 +32,7 @@ export const BUILTIN = Object.freeze({
   unseal: { id: "unseal", label: "ITAC.action.unseal", src: [2418], kind: "builtin", cost: "full", flow: "barrier", door: "unseal", roll: { attr: "reason" }, tags: [] },
   fastball: { id: "fastball", label: "ITAC.action.fastball", src: [2389, 2390], kind: "builtin", cost: "full", flow: "fastball", target: { who: "ally", n: [1, 1] }, tags: ["move"] },
   gmRoll: { id: "gmRoll", label: "ITAC.action.gmRoll", src: [2208], kind: "builtin", cost: "none", flow: "roll", roll: { attr: null }, tags: [] },
+  ...ACTIONS,                       // P5: the other rows of the two action tables and the escapes (actions-pure.mjs, flow "act")
 });
 
 const str = (v, n = 40) => (typeof v === "string" ? v.slice(0, n) : "");

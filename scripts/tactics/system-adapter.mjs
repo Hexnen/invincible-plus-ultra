@@ -178,6 +178,7 @@ export function actorFacts(actor) {
     huge: flags.huge === true, grown: flags.grown === true, impervious: flags.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
     regeneration: flags.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
     movement: movementOf(actor),
+    vacuumSafe: flags.vacuumSafe === true || actor.items.some((i) => NAME_TYPES.includes(i.type) && /^(adaptation|lifesupport)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
     major: flags.major === true, immunities: Array.isArray(flags.immunities) ? flags.immunities : [], vulnerabilities: Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : [],
   };
 }
