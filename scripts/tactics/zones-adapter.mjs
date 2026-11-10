@@ -87,5 +87,9 @@ export async function moveToZone(token, where, opts) { const r = await callAsync
 /** fn(ctx) is asked before every step of every move made through `move` on this client. -> off() */
 export function beforeStep(fn) { const off = call("beforeStep", fn); return typeof off === "function" ? off : () => {}; }
 /** Cost confirmation on a dragged token, per client: tactical({ profile, confirm, when, gm }) turns it on, tactical(false) off. */
+/* the map's own interface part (zones-api.md 17, 18), for the surfaces: picking a zone by click and showing zones to this user */
+export const pick = (spec) => callAsync("pick", spec);
+export const highlight = (spec) => call("highlight", spec) ?? null;
+export const clearHighlights = (which) => call("clearHighlights", which) ?? 0;
 export const tactical = (cfg) => call("tactical", cfg) === true;
 export const tacticalOn = () => call("tacticalOn") === true;
