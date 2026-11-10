@@ -140,7 +140,7 @@ function makeAct(it) {
 function updateAct(b, it) {
   b.dataset.state = it.state;
   b.classList.toggle("itt-armed", !!it.armed);
-  b.setAttribute("aria-pressed", it.state === "used" ? "true" : "false");
+  b.setAttribute("aria-pressed", it.state !== "open" ? "true" : "false");   // "used", or "lost" (tactical combat: spent by the other kind of action)
   b.setAttribute("aria-disabled", it.disabled ? "true" : "false");
   const state = t(`ITN.Act.${it.state}`);
   b.setAttribute("aria-label", t("ITN.Act.Line", { name: it.label, state }));
@@ -197,7 +197,7 @@ function renderPill(model) {
   if (pill.dataset.k === key) return;
   pill.dataset.k = key;
   pill.replaceChildren();
-  for (const p of model.pips ?? []) pill.append(mk("i", `fa-solid itt-pip ${ICON[p.k] ?? "fa-play"}${p.state === "used" ? " itt-pip-used" : ""}`));
+  for (const p of model.pips ?? []) pill.append(mk("i", `fa-solid itt-pip ${ICON[p.k] ?? "fa-play"}${p.state !== "open" ? " itt-pip-used" : ""}`));
   pill.append(mk("i", "fa-solid fa-forward-step itt-pill-end"));
   pill.setAttribute("aria-label", `${t("ITN.Tray.Label")}: ${model.who?.name ?? ""}`);
   pill.dataset.tooltip = t("ITN.Tray.Label");

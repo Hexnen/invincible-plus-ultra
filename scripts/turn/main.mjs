@@ -27,7 +27,8 @@ import * as Msg from "./message.mjs";
 import * as Tray from "./tray.mjs";
 import { t } from "./lang.mjs";
 import { yzeOn, yzeWaiting, yzeMode, actorOf, toggleActionMark } from "../yze.mjs";
-import { pickCombat, groupsFor } from "../party/actions.mjs";
+import { pickCombat, groupsFor, waitingOf, actionsOn } from "../party/actions.mjs";
+import { tacticsState } from "../tactics/source.mjs";   // tactical combat: the module's own initiative and action ledger (scripts/tactics/)
 
 const MOD = "invincible-plus-ultra";
 const SYSTEM = "invincible";
@@ -79,7 +80,8 @@ function portraitOf(c) {
   const cand = [c?.img, c?.token?.texture?.src, a?.img].filter(Boolean);
   return cand.find((s) => !isVideo(s)) ?? null;
 }
-function waitingNow(combat) { return yzeOn() && yzeWaiting(combat); }
+function waitingNow(combat) { return waitingOf(combat); }
+const tacticsApi = () => game.modules.get(MOD)?.api?.tactics ?? null;
 function turnSig(combat) {
   const c = combat?.combatant;
   return c && !waitingNow(combat) ? `${combat.round}:${c.id}` : null;
@@ -129,13 +131,19 @@ function buildModel() {
   const isTurn = selKey === turnKey;
   const shown = isTurn ? turnC : c0;
   const actor = actorOf(c0);
-  let pips = [], lone = true, slot = 1;
-  if (yzeOn() && yzeMode() !== "none" && c0.tokenId && actor) {
+  let pips = [], lone = true, slot = 1, tac = null;
+  if (actionsOn(combat) && c0.tokenId && actor) {
     const groups = groupsFor([c0.tokenId], actor, combat);
     if (groups?.length) {
       const g = groups.find((x) => x.active) ?? groups.find((x) => x.pips.some((p) => p.state !== "past")) ?? groups.at(-1);
       slot = g.slot;
-      pips = g.pips.map((p) => {
+      if (g.tactics) tac = g.id;
+      /* tactical combat: full / quick / quick from the ledger; a click asks the executor to mark or free the action (api.tactics.mark) */
+      pips = g.tactics ? g.pips.map((p) => {
+        const disabled = waiting || p.state === "lost";
+        return { id: p.id, k: p.k, unit: p.unit, label: t(`ITN.Act.${p.lk}`), state: p.state, disabled, armed: isTurn && p.state === "open" && !disabled,
+          tip: waiting ? t("ITN.Act.Tip.Wait") : p.state === "lost" ? t("ITN.Act.Tip.Lost") : p.state === "used" ? t("ITN.Act.Tip.Unmark") : t("ITN.Act.Tip.Mark") };
+      }) : g.pips.map((p) => {
         const id = p.k === "fast" ? "fastAction" : p.k === "slow" ? "slowAction" : `action${g.slot}`;
         const state = p.state === "used" ? "used" : "open";
         const disabled = waiting || p.state === "past";
@@ -150,7 +158,7 @@ function buildModel() {
   const tip = enabled ? t("ITN.End.Tip") : waiting ? t("ITN.End.Off.Wait") : !isTurn ? t("ITN.End.Off.NotTurn") : t("ITN.End.Off.GM");
   return {
     show: true, combat, round: combat.round, rows: keys.map((k) => ({ key: k, name: rows.get(k).name, img: portraitOf(rows.get(k)), isTurn: k === turnKey })),
-    sel: selKey, selKey, isTurn, c: shown, actor, slot, pips, lone, who: { name: shown.name, img: portraitOf(shown) },
+    sel: selKey, selKey, isTurn, c: shown, actor, slot, pips, lone, tac, who: { name: shown.name, img: portraitOf(shown) },
     end: { enabled, tip }
   };
 }
@@ -187,7 +195,12 @@ async function togglePip(id) {
   busy = true;
   let active = false;
   try {
-    active = await toggleActionMark(m.actor, m.c, id);
+    if (m.tac) {
+      const on = pip.state === "open";
+      const env = await tacticsApi()?.mark(m.tac, pip.unit, on, m.combat);
+      if (env && env.ok === false) notify("warn", tacticsApi().errText(env.error));
+      active = on && env?.ok === true;
+    } else active = await toggleActionMark(m.actor, m.c, id);
   } catch (e) {
     console.warn(LOG, "toggle failed", e);
     notify("warn", t("ITN.Note.Failed", { why: e?.message ?? String(e) }));
@@ -226,7 +239,7 @@ async function confirmEnd(m) {
 /* the last free action was just marked: offer to end the turn */
 async function maybeAskAll() {
   const m = model;
-  if (!m?.show || !m.isTurn || !m.pips.length || !m.pips.every((p) => p.state === "used")) return;
+  if (!m?.show || !m.isTurn || !m.pips.length || !m.pips.every((p) => p.state !== "open")) return;
   if (get(KEY.askAll) === false || quiet.has(m.combat.id) || askCtx || ending || !m.end.enabled) return;
   const sig = turnSig(m.combat);
   const ctx = { sig, key: m.selKey, dlg: null };
@@ -251,7 +264,7 @@ async function maybeAskAll() {
 function checkAsk() {
   if (!askCtx) return;
   const m = model, c = askCtx;
-  const still = m?.show && m.isTurn && m.selKey === c.key && turnSig(m.combat) === c.sig && m.pips.length && m.pips.every((p) => p.state === "used");
+  const still = m?.show && m.isTurn && m.selKey === c.key && turnSig(m.combat) === c.sig && m.pips.length && m.pips.every((p) => p.state !== "open");
   if (still) return;
   askCtx = null;
   try { c.dlg?.close(); } catch { /* already closed */ }
@@ -276,6 +289,12 @@ async function endTurn({ confirmed = false } = {}) {
     if (!confirmed && get(KEY.confirm) !== false && !(await confirmEnd(m))) return;
     const fresh = pickCombat();
     if (!fresh || fresh.id !== combat.id || turnSig(fresh) !== sig) { notify("info", t("ITN.Note.NotYours")); return; }
+    if (tacticsState(fresh)) {   // tactical combat: the executor ends the turn (re-checked there: owner, turn, round, the table's setting)
+      const api = tacticsApi();
+      const env = game.user.isGM ? await api?.gm.nextTurn(fresh) : await api?.endTurn(fresh.combatant?.id, fresh);
+      if (env && env.ok === false) notify("warn", api.errText(env.error));
+      return;
+    }
     if (game.user.isGM) { await fresh.nextTurn(); return; }
     if (!wraps(fresh)) {
       try { await fresh.nextTurn(); return; } catch (e) { console.warn(LOG, "direct nextTurn refused, relaying", e); }

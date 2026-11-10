@@ -1871,3 +1871,10 @@ import("./log/main.mjs")
 import("./session/main.mjs")
   .then((session) => session.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | end-of-session panel not loaded (everything else is unaffected)`, err));
+
+/* TACTICAL COMBAT, PACKAGE P1 (scripts/tactics/): the module's own card initiative (replaces Year Zero Engine: Combat), the action ledger, the trigger
+   scheduler with the end-of-scene procedure, the GM executor + relay, api.tactics. Off unless a fight is started; with the setting tacticsInitiative off
+   (or yze-combat still enabled) the tracker is not touched. Same mechanism and recorded phases as the blocks above. */
+import("./tactics/main.mjs")
+  .then((tactics) => tactics.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | tactical combat not loaded (everything else is unaffected)`, err));

@@ -26,7 +26,7 @@ import { t } from "./lang.mjs";
 import { freeArea, hudLimit, relayout as relayoutBanner } from "./banner.mjs";
 import { unitOf, unitName } from "../challenges/lang.mjs";
 import { yzeOn, yzeWaiting, yzeMode, actorOf, toggleActionMark } from "../yze.mjs";
-import { groupsFor } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
+import { groupsFor, waitingOf, actionsOn } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
 
 const MOD = "invincible-plus-ultra";
 const ID = "invincible-combat-bar";
@@ -144,7 +144,7 @@ function read(c, isActive, ctx) {
   let acts = null;
   try {
     const g = td?.id && !c.isDefeated && !challenge ? groupsFor([td.id], td.actor ?? actor, ctx.combat)?.find((x) => x.id === c.id) : null;
-    if (g?.pips?.length && g.pips.every((p) => p.state !== "past")) acts = g.pips.map((p) => ({ k: p.k, used: p.state === "used", id: p.k === "fast" ? "fastAction" : p.k === "slow" ? "slowAction" : `action${g.slot}` }));   // id = the status the GM buttons toggle (same ids as turn/main.mjs)
+    if (g?.pips?.length && g.pips.every((p) => p.state !== "past")) acts = g.pips.map((p) => ({ k: p.k, lk: p.lk ?? p.k, used: p.state !== "open", id: g.tactics ? p.id : p.k === "fast" ? "fastAction" : p.k === "slow" ? "slowAction" : `action${g.slot}` }));   /* tactical combat (scripts/tactics/): three pips full / quick / quick with ids "tac:*"; "lost" shows as used */   // id = the status the GM buttons toggle (same ids as turn/main.mjs)
   } catch { acts = null; }
   return {
     acts,
@@ -164,7 +164,7 @@ function build(combat) {
   const turns = combat.turns ?? [];
   /* Year Zero Engine: Combat, waiting for the draw: every living initiative is null, so the order means nothing and nobody has the turn */
   let waiting = false;
-  try { waiting = yzeOn() && yzeWaiting(combat); } catch { waiting = false; }
+  try { waiting = waitingOf(combat); } catch { waiting = false; }
   turns.forEach((c, i) => { const it = read(c, !waiting && i === combat.turn, ctx); if (it) items.push(it); });
   /* DUPLICATES (several combatants of one token, Year Zero speed): `dup` = { k: its place among the token's entries in turn order, n, first }.
      Only the FIRST shown entry carries Health / Resolve (the numbers are the same for all); a later one is the compact variant, unless it is the
@@ -480,7 +480,13 @@ async function toggleAct(btn) {
   const c = id ? combatantOf(id) : null, actor = actorOf(c);
   if (!c || !actor || !tiles.get(id)?.item?.active || !btn.dataset.id) return;
   gmBusy = true;
-  try { await toggleActionMark(actor, c, btn.dataset.id); } catch (e) { console.warn(LOG, "action toggle", e); } finally { gmBusy = false; }
+  try {
+    if (btn.dataset.id.startsWith("tac:")) {   // tactical combat: ask the executor (api.tactics.mark); the bar repaints from the combat update
+      const api = game.modules.get("invincible-plus-ultra")?.api?.tactics;
+      const env = await api?.mark(c.id, btn.dataset.id === "tac:full" ? "full" : "quick", btn.dataset.st === "open", c.parent);
+      if (env && env.ok === false) ui.notifications.warn(api.errText(env.error), { console: false });
+    } else await toggleActionMark(actor, c, btn.dataset.id);
+  } catch (e) { console.warn(LOG, "action toggle", e); } finally { gmBusy = false; }
 }
 function wire() {
   root.addEventListener("click", (ev) => {
@@ -602,12 +608,12 @@ function paintActs(card, it) {
     if (!box.hidden || card.actsKey) { box.hidden = true; box.replaceChildren(); card.actsKey = ""; }
     return;
   }
-  const key = a.map((p) => p.k).join("|");
+  const key = a.map((p) => p.lk).join("|");
   if (key !== card.actsKey) {
     box.replaceChildren(...a.map((p) => {
       const el = mk("span", "icbar-act");
       el.dataset.k = p.k;
-      el.append(mk("i", "icbar-pip"), mk("b", "icbar-pl", t(`ICB.Bar.ActL.${p.k}`)));
+      el.append(mk("i", "icbar-pip"), mk("b", "icbar-pl", t(`ICB.Bar.ActL.${p.lk}`)));
       return el;
     }));
     card.actsKey = key;
@@ -634,7 +640,7 @@ function paintGm(card, it) {
       b.dataset.k = p.k;
       const ico = mk("i", "icbar-gb-i");
       ico.setAttribute("aria-hidden", "true");
-      b.append(ico, mk("span", "icbar-gb-t", t(`ICB.Bar.ActL.${p.k}`)));
+      b.append(ico, mk("span", "icbar-gb-t", t(`ICB.Bar.ActL.${p.lk}`)));
       return b;
     }));
     card.gmKey = key;
@@ -645,7 +651,7 @@ function paintGm(card, it) {
     if (!b) return;
     b.dataset.st = p.used ? "used" : "open";
     b.setAttribute("aria-pressed", p.used ? "true" : "false");
-    b.setAttribute("aria-label", t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.k}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") }));
+    b.setAttribute("aria-label", t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.lk}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") }));
   });
 }
 
@@ -729,7 +735,7 @@ function paintTile(card, it, first) {
   const numbers = it.nums ? [specHp.show ? specHp.say : "", specRs.show ? specRs.say : ""].filter(Boolean) : [];
   paintActs(card, it);
   paintGm(card, it);
-  const actsSay = (it.acts ?? []).map((p) => t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.k}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") }));
+  const actsSay = (it.acts ?? []).map((p) => t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.lk}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") }));
   const hint = it.canSelect ? t(it.canSheet ? "ICB.Bar.Hint.Select" : "ICB.Bar.Hint.Pan") : it.canSheet ? t("ICB.Bar.Hint.Sheet") : it.canPan ? t("ICB.Bar.Hint.Pan") : "";
   tile.setAttribute("aria-label", [it.name, initSay, disp, ...flags, ...dupSay, ...numbers, ...actsSay, hint].filter(Boolean).join(". ") + ".");
   tile.dataset.tooltip = it.name;   // hover: the name only (escaped by Foundry as plain text); everything else is in the aria-label
@@ -1067,7 +1073,7 @@ function paint(model, loud, keep) {
     nextB.disabled = !canUpdate;
     for (const [b, k] of [[prevB, "ICB.Bar.Prev"], [nextB, "ICB.Bar.Next"]]) { b.setAttribute("aria-label", t(k)); b.dataset.tooltip = t(k); }
     let gmActs = false;   // the GM's action buttons need room under the strip (a fixed reservation, so the bar's height never changes with the turn)
-    try { gmActs = gm && yzeOn() && yzeMode() !== "none"; } catch { gmActs = false; }
+    try { gmActs = gm && actionsOn(curCombat); } catch { gmActs = false; }
     root.classList.toggle("icbar-gm", gmActs);
     root.classList.toggle("icbar-nobars", !model.items.some((i) => i.showHp || i.showRs));
     root.classList.toggle("icbar-empty", !model.items.length);

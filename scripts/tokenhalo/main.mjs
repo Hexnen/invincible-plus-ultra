@@ -14,6 +14,7 @@ import * as Halo from "./halo.mjs";
 import { PALETTE } from "./dots.mjs";
 import { t } from "./lang.mjs";
 import { yzeOn, yzeWaiting } from "../yze.mjs";
+import { tacticsState, waiting as tacticsWaiting } from "../tactics/source.mjs";   // tactical combat: the module's own card initiative
 
 const MOD = "invincible-plus-ultra";
 const SYSTEM = "invincible";
@@ -73,7 +74,7 @@ function turnTokenId() {
   const combat = game.combat;
   const id = combat?.combatant?.tokenId ?? null;
   let waiting = false;
-  try { waiting = yzeOn() && yzeWaiting(combat); } catch { waiting = false; }
+  try { waiting = tacticsState(combat) ? tacticsWaiting(combat) : (yzeOn() && yzeWaiting(combat)); } catch { waiting = false; }
   if (!waiting) { lastTurn = { id, at: performance.now() }; return id; }
   if (performance.now() - lastTurn.at < WAIT_MS) {
     clearTimeout(waitTimer);
