@@ -38,6 +38,9 @@ eq(C.critForHit({ taken: 9, healthBefore: 2, target: { kind: "npc" } }), { broke
 eq(C.critForHit({ taken: 9, healthBefore: 2, target: { kind: "majorNpc" } }).crit, { bonus: 7, cause: "broken" }, "major NPC rolls like a hero");
 eq(C.critForHit({ taken: 9, healthBefore: 2, target: { kind: "minions" } }).crit, null, "minions never crit (book 2828)");
 eq(C.critForHit({ taken: 9, healthBefore: 2, target: { kind: "vehicle" } }).crit, null, "vehicles never crit (book 3222)");
+eq(C.critForHit({ taken: 3, healthBefore: 9, deadlyHit: true, target: { impervious: true } }).crit, null, "Impervious: no Deadly Hit crit (book 1888)");
+eq(C.critForHit({ taken: 3, healthBefore: 9, deadlyHit: true, target: { grown: true } }).crit, { bonus: 3, cause: "deadlyHit" }, "a grown hero is not immune to Deadly Hit (book 1975)");
+eq(C.critForHit({ taken: 3, healthBefore: 9, deadlyHit: true, target: { immune: ["deadlyHit"] } }).crit, null, "Deadly Hit immunity by flag");
 
 // penalties and states
 eq(C.critPenalty([2, 4, 6], "strength"), 2, "same attribute: worst only, not cumulative");

@@ -43,6 +43,11 @@ eq(D.stuntCount(0), 0, "no stunts without sixes");
 
 // help (book 2238, 2827)
 eq([D.helpDice(2), D.helpDice(5), D.helpDice(12, { minions: true }), D.helpDice(-1)], [2, 3, 9, 0], "help dice caps");
+eq([D.helpDice([{}, {}]), D.helpDice([{ supportive: true }]), D.helpDice([{ supportive: true }, { supportive: true }, { supportive: true }])], [2, 2, 6], "help dice per helper: Supportive gives +2 (book 2167)");
+eq(D.helpDice([{}, { supportive: true }, {}, { supportive: true }]), 5, "three helpers at most, the largest contributions count");
+eq(D.helpDice([{ dice: 3 }, { dice: 0 }, { dice: -2 }]), 3, "explicit dice per helper, never negative");
+eq(D.helpDice(Array.from({ length: 12 }, () => ({})), { minions: true }), 9, "minions: nine helpers");
+eq([D.helperDice({}), D.helperDice({ supportive: true }), D.helperDice(null)], [1, 2, 1], "helperDice");
 
 // exact odds
 near(D.pSuccess(1), 1 / 6, 1e-12, "1 die");

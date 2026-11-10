@@ -2,6 +2,8 @@
    the D6 is an input. Only numbers and ids are stored (the injury texts live in the game system's table).
    "book N" = line N of dev/book-dump.txt; "ruling N" = row N of section 4 of dev/combat-plan.md. */
 
+import { isImmune } from "./stunts.mjs";
+
 const FAS = ["fighting", "agility", "strength"];
 const RIP = ["reason", "intuition", "presence"];
 const pen = (list, n) => Object.fromEntries(list.map((a) => [a, n]));
@@ -48,7 +50,8 @@ export function resolveCrit({ d6, bonus = 0, prior = [], cap = MAX_CRIT }) {
 }
 
 /* Which crit roll, if any, a hit causes. input: { taken (damage after Armor), healthBefore, deadlyHit, target }.
-   target: { kind: "hero" | "majorNpc" | "npc" | "minions" | "vehicle", huge?: boolean }.
+   target: { kind: "hero" | "majorNpc" | "npc" | "minions" | "vehicle", huge?, impervious?, immune?: [...] } (immunity flags of stunts.mjs:
+   a huge creature, book 2501, and a character with Impervious, book 1888, take no Deadly Hit).
    book 2707 dropping to 0 Health = broken: roll with the damage in excess of what was needed (example 2792: 7 damage at Health 3 = +4);
    book 2708 damage while already broken, even 1 point: another crit with the whole damage added;
    book 2440/2520 Deadly Hit: a crit when the attack causes damage, bonus = damage up to +6, never against huge creatures;
@@ -65,7 +68,7 @@ export function critForHit({ taken, healthBefore, deadlyHit = false, target = {}
   const out = { broken: wasBroken || newlyBroken, newlyBroken, crit: null, gmChoice: false };
   if (taken <= 0 || kind === "minions" || kind === "vehicle") return out;
   const rollsCrits = kind === "hero" || kind === "majorNpc";
-  const deadly = deadlyHit && !target.huge ? deadlyHitBonus(taken) : null;
+  const deadly = deadlyHit && !isImmune(target, "deadlyHit") ? deadlyHitBonus(taken) : null;
   if (!rollsCrits) {
     out.gmChoice = newlyBroken || wasBroken;
     if (deadly != null && !out.gmChoice) out.crit = { bonus: deadly, cause: "deadlyHit" };

@@ -159,4 +159,54 @@ eq([M.splitMinions(8), M.splitMinions(10), M.splitMinions(11), M.splitMinions(25
 eq(M.minionDamage({ members: 5, taken: 2 }), { members: 3, removed: 2, wiped: false }, "one minion per point of damage");
 eq(M.minionDamage({ members: 2, taken: 6 }).wiped, true, "group wiped out");
 
+// immunity flags instead of one "huge" boolean (book 2499-2503 huge creature, 1975 grown hero, 1888 Impervious)
+{
+  eq(S.immunitiesOf({ huge: true }).sort(), ["banter", "deadlyHit", "grapple", "knockback", "slam", "stun", "suppressed"], "huge creature: five stunts, grappling, banter");
+  eq(S.immunitiesOf({ grown: true }).sort(), ["grapple", "knockback", "slam"], "grown hero: only what Size Alteration lists (book 1975)");
+  eq(S.immunitiesOf({ impervious: true }), ["deadlyHit"], "Impervious: Deadly Hit (book 1888)");
+  eq(S.immunitiesOf({ immune: ["trap"], grown: true }).sort(), ["grapple", "knockback", "slam", "trap"], "single ids add to a set");
+  eq(S.immunitiesOf({}), [], "an ordinary target has none");
+  eq([S.isImmune({ grown: true }, "slam"), S.isImmune({ grown: true }, "stun"), S.isImmune(undefined, "stun")], [true, false, false], "isImmune");
+  const grown = opts({ ...base, attack: "slugfest", target: { grown: true } });
+  eq([grown.knockback, grown.stun, grown.deadlyHit, grown.doubleDamage], ["immune", true, true, true], "a grown hero can still be stunned and take a Deadly Hit");
+  eq(opts({ ...base, attack: "charge", target: { grown: true } }).slam, "immune", "no Slam on a grown hero");
+  eq(opts({ ...base, attack: "shooting", target: { grown: true } }).suppressed, true, "Suppressed works on a grown hero");
+  eq(opts({ ...base, attack: "shooting", target: { impervious: true } }).deadlyHit, "immune", "Impervious blocks Deadly Hit");
+  eq(opts({ ...base, attack: "slugfest", target: { huge: true } }).knockback, "huge", "a huge creature keeps the reason huge");
+  eq([S.reachesElevated({ huge: true }), S.reachesElevated({ grown: true }), S.reachesElevated({ reachesElevated: true }), S.reachesElevated({})], [true, true, true, false], "who reaches elevated targets (book 2500, 1975, 2429)");
+  eq(A.grappleCheck({ target: { grown: true } }), { ok: false, reason: "immune" }, "a grown hero cannot be grappled (book 1975)");
+  eq(A.grappleCheck({ target: { huge: true } }).reason, "huge", "target.huge = targetHuge");
+  eq(A.grappleCheck({ target: { impervious: true } }).ok, true, "Impervious does not stop a grapple");
+  eq(M.banterCheck({ sameZone: true, target: { grown: true } }).ok, true, "a grown hero is not immune to banter");
+  eq(M.banterCheck({ sameZone: true, target: { huge: true } }), { ok: false, reason: "huge", gmMayAllow: true }, "target.huge = targetHuge for banter");
+  eq(M.banterCheck({ sameZone: true, target: { immune: ["banter"] } }), { ok: false, reason: "immune", gmMayAllow: true }, "banter immunity by flag");
+}
+
+// per-target stunt cap of area and full-auto attacks inside validateStunts (ruling 14, reading 10)
+{
+  const ctxFor = () => ({ ...base, attack: "shooting" });
+  // 4 sixes: budget 3. a did not dodge (net 4, cap 3), b cancelled two (net 2, cap 1), c cancelled three (net 1, cap 0), d dodged all
+  const area = A.resolveAreaAttack({ attackSixes: 4, targets: [{ id: "a" }, { id: "b", dodgeSixes: 2 }, { id: "c", dodgeSixes: 3 }, { id: "d", dodgeSixes: 4 }] });
+  eq(area.targets.map((t) => t.stuntsMax), [3, 1, 0, 0], "caps from the dodges");
+  const v = (picks) => S.validateStunts({ picks, sixes: 4, ctxFor, targets: area.targets });
+  eq(v([{ stunt: "doubleDamage", target: "a" }, { stunt: "suppressed", target: "a" }, { stunt: "doubleDamage", target: "b" }]).ok, true, "three stunts spread within the caps");
+  eq(v([{ stunt: "doubleDamage", target: "b" }, { stunt: "suppressed", target: "b" }]).errors, [{ index: 1, reason: "targetBudget" }], "b has one six left for stunts");
+  eq(v([{ stunt: "doubleDamage", target: "c" }]).errors, [{ index: 0, reason: "targetBudget" }], "c was hit by the last six: no stunt");
+  eq(v([{ stunt: "doubleDamage", target: "d" }]).errors, [{ index: 0, reason: "notHit" }], "d dodged everything");
+  eq(v([{ stunt: "doubleDamage", target: "zz" }]).errors, [{ index: 0, reason: "notHit" }], "a target that is not on the list");
+  eq(v([{ stunt: "doubleDamage", target: "a" }, { stunt: "suppressed", target: "a" }, { stunt: "disarm", target: "a" }, { stunt: "doubleDamage", target: "b" }]).errors, [{ index: 3, reason: "budget" }], "the shared pool still limits the total");
+  eq(v([{ stunt: "doubleDamage", target: "a" }, { stunt: "doubleDamage", target: "b" }]).perTarget, { a: { used: 1, max: 3 }, b: { used: 1, max: 1 } }, "per-target usage is reported");
+  eq(S.validateStunts({ picks: [{ stunt: "doubleDamage", target: "b" }, { stunt: "suppressed", target: "b" }], sixes: 4, ctxFor }).ok, true, "without the list only the total is checked (as before)");
+  eq(S.validateStunts({ picks: [{ stunt: "doubleDamage", target: "t" }], sixes: 2, ctxFor }).perTarget, { t: { used: 1, max: null } }, "no cap without the list");
+}
+
+// help dice per helper (book 2238, 2167 Supportive)
+{
+  const h = M.helpCheck({ helpers: [{ id: "a", supportive: true }, { id: "b" }, { id: "c", supportive: true }, { id: "d", supportive: true }] });
+  eq([h.dice, h.accepted], [5, ["a", "b", "c"]], "two Supportive helpers and a plain one: +5; the fourth is refused");
+  eq(h.perHelper, [{ id: "a", dice: 2 }, { id: "b", dice: 1 }, { id: "c", dice: 2 }], "dice per helper");
+  eq(M.helpCheck({ helpers: [{ id: "a" }, { id: "b" }] }).perHelper, [{ id: "a", dice: 1 }, { id: "b", dice: 1 }], "plain helpers give one die each");
+  eq(M.helpCheck({ helpers: [{ id: "a", supportive: true, hasFull: false }] }).dice, 0, "a refused Supportive helper gives nothing");
+}
+
 done("check-attack");

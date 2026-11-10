@@ -90,11 +90,20 @@ export function opposed(activeSixes, passiveSixes) {
 /* book 2210: every 6 beyond the first buys one stunt. */
 export const stuntCount = (sixes) => Math.max(0, sixes - 1);
 
-/* book 2238: up to three allies help, +1 die each. book 2827: minions helping minions go up to +9 (ten attack together). */
+/* book 2238: up to three allies help, +1 die each. book 2827: minions helping minions go up to +9 (ten attack together).
+   book 2167 (Supportive): a helper with that talent gives +2 dice instead of +1.
+   helpers: a number of plain helpers (+1 each), or a list [{ id?, supportive?, dice? }] with one entry per helper (`dice` states the
+   helper's dice outright and wins over `supportive`). The cap of the book is on the number of ALLIES who help (three; nine for minions),
+   so three Supportive helpers give +6. With more entries than the cap the largest contributions count.
+   Returns the number of bonus dice. */
 export const HELP_MAX = 3;
 export const HELP_MAX_MINIONS = 9;
+export const HELP_DICE = 1;
+export const HELP_DICE_SUPPORTIVE = 2;
+export const helperDice = (h) => (h && Number.isFinite(h.dice) ? Math.max(0, Math.floor(h.dice)) : h?.supportive ? HELP_DICE_SUPPORTIVE : HELP_DICE);
 export function helpDice(helpers, opts = {}) {
   const cap = opts.minions ? HELP_MAX_MINIONS : HELP_MAX;
+  if (Array.isArray(helpers)) return helpers.map(helperDice).sort((a, b) => b - a).slice(0, cap).reduce((s, d) => s + d, 0);
   return Math.max(0, Math.min(cap, Math.floor(helpers) || 0));
 }
 

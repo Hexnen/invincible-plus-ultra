@@ -2,7 +2,7 @@
    Pure ES module, no Foundry globals. "book N" = line N of dev/book-dump.txt; "ruling N" = row N of section 4 of dev/combat-plan.md. */
 
 import { opposed, stuntCount } from "./dice.mjs";
-import { fullAutoDice } from "./stunts.mjs";
+import { fullAutoDice, isImmune } from "./stunts.mjs";
 import { MIN_RANGE_PENALTY } from "./zones.mjs";
 
 /* attack kinds. attr = attribute rolled, defence = the interrupt that may answer it, cost = actions consumed, family = which stunt and
@@ -128,9 +128,12 @@ export function chargeCheck({ sameZone, hasFull, hasQuick, moveDistance, moveAll
    target stood. */
 export const chargeEndZone = (targetZoneAtDeclaration) => targetZoneAtDeclaration;
 
-/* Grapple (book 2496-2497, 2502). legality of the attempt. */
-export function grappleCheck({ targetHuge = false, usesWeapon = false }) {
-  if (targetHuge) return { ok: false, reason: "huge" };
+/* Grapple (book 2496-2497, 2502). legality of the attempt. `target` carries the immunity flags of stunts.mjs (immunitiesOf): a huge
+   creature gives reason "huge" (book 2502), a target otherwise immune to grappling gives "immune" (a hero grown by Size Alteration,
+   book 1975). `targetHuge` is the older form of target.huge. */
+export function grappleCheck({ targetHuge = false, usesWeapon = false, target = null }) {
+  if (targetHuge || target?.huge) return { ok: false, reason: "huge" };
+  if (target && isImmune(target, "grapple")) return { ok: false, reason: "immune" };
   if (usesWeapon) return { ok: false, reason: "weapon" };
   return { ok: true, reason: null };
 }

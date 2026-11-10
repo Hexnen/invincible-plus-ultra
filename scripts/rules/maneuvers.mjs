@@ -1,7 +1,8 @@
 /* Rules library: escapes, action banter, orders, helping, throwing and carrying allies, minions.
    Pure ES module, no Foundry globals. "book N" = line N of dev/book-dump.txt; "ruling N" = row N of section 4 of dev/combat-plan.md. */
 
-import { opposed, helpDice, HELP_MAX, HELP_MAX_MINIONS } from "./dice.mjs";
+import { opposed, helpDice, helperDice, HELP_MAX, HELP_MAX_MINIONS } from "./dice.mjs";
+import { isImmune } from "./stunts.mjs";
 
 /* ------------------------------------------------------------------ escapes ------------------------------------------------------------------ */
 
@@ -28,13 +29,16 @@ export function escapeOutcome({ kind, sixes, holderSixes = 0 }) {
 
 /* book 2784-2785, 2503 + ruling 17: a quick action; opposed PRESENCE against PRESENCE at an opponent in the same zone; a character can
    be the target of banter only once per round; it typically does not work against huge creatures (the GM may allow it).
-   input: { sameZone, targetHuge, targetBanteredThisRound, hasQuick }. Returns { ok, reason, gmMayAllow }. */
+   input: { sameZone, targetHuge, target, targetBanteredThisRound, hasQuick }. `target` carries the immunity flags of stunts.mjs
+   (immunitiesOf): a huge creature gives reason "huge", any other target flagged immune to "banter" gives "immune"; a hero grown by
+   Size Alteration is not immune (book 1975 does not list banter). Returns { ok, reason, gmMayAllow }. */
 export const BANTER = { attr: "presence", defenceAttr: "presence", action: "quick" };
-export function banterCheck({ sameZone, targetHuge = false, targetBanteredThisRound = false, hasQuick = true }) {
+export function banterCheck({ sameZone, targetHuge = false, target = null, targetBanteredThisRound = false, hasQuick = true }) {
   if (!hasQuick) return { ok: false, reason: "noQuickAction", gmMayAllow: false };
   if (!sameZone) return { ok: false, reason: "zone", gmMayAllow: false };
   if (targetBanteredThisRound) return { ok: false, reason: "oncePerRound", gmMayAllow: false };
-  if (targetHuge) return { ok: false, reason: "huge", gmMayAllow: true };
+  if (targetHuge || target?.huge) return { ok: false, reason: "huge", gmMayAllow: true };
+  if (target && isImmune(target, "banter")) return { ok: false, reason: "immune", gmMayAllow: true };
   return { ok: true, reason: null, gmMayAllow: false };
 }
 /* book 2785: 1 stress for each 6 more than the target rolled */
@@ -50,16 +54,18 @@ export const ordersBonus = (sixes) => Math.max(0, sixes);
 /* book 2238, 2273 + ruling 11: at most three helpers (+1 die each) who can support the action concretely; in an action scene a helper
    pays with their full action of the round, spent on the helped character's turn whatever their own initiative. Without a free full
    action the interface refuses and the GM may accept anyway.
-   input: { helpers: [{ id, hasFull }], minions }. Returns { dice, accepted: [id], refused: [{ id, reason, gmMayAllow }] }. */
+   book 2167 (Supportive): a helper with that talent gives +2 dice instead of +1; the limit stays three helpers.
+   input: { helpers: [{ id, hasFull, supportive?, dice? }], minions }. Helpers are accepted in the order given.
+   Returns { dice, accepted: [id], refused: [{ id, reason, gmMayAllow }], perHelper: [{ id, dice }] }. */
 export function helpCheck({ helpers, minions = false }) {
   const cap = minions ? HELP_MAX_MINIONS : HELP_MAX;
-  const accepted = [], refused = [];
+  const accepted = [], refused = [], perHelper = [];
   for (const h of helpers) {
     if (h.hasFull === false) refused.push({ id: h.id, reason: "noFullAction", gmMayAllow: true });
     else if (accepted.length >= cap) refused.push({ id: h.id, reason: "tooMany", gmMayAllow: false });
-    else accepted.push(h.id);
+    else { accepted.push(h.id); perHelper.push({ id: h.id, dice: helperDice(h) }); }
   }
-  return { dice: helpDice(accepted.length, { minions }), accepted, refused };
+  return { dice: helpDice(perHelper, { minions }), accepted, refused, perHelper };
 }
 
 /* ------------------------------------------------------------------ throwing and carrying allies ------------------------------------------------------------------ */
