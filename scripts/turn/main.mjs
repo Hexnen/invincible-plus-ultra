@@ -118,6 +118,7 @@ function scheduleTurn() {
 function buildModel() {
   const combat = pickCombat();
   if (!trayOn() || !combat || down) return { show: false };
+  try { if (tacticsApi()?.ui?.active?.()) return { show: false }; } catch { /* no surfaces */ }   // tactical combat: the action dock carries the budget and End turn (scripts/tactics/ui/)
   const waiting = waitingNow(combat);
   const turnC = waiting ? null : combat.combatant;
   const rows = new Map();

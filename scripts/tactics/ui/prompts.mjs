@@ -8,6 +8,10 @@ import { tacticsApi as Api } from "../api.mjs";
 import { t, errText } from "../lang.mjs";
 
 const open = new Map();          // prompt id -> dialog
+let surfaces = false;
+/** ui/main.mjs runs: the questions are drawn by the action dock and the GM desk, so no dialog is opened for them (the end-of-scene
+    confirmation below stays a dialog) */
+export function setSurfaces(on) { surfaces = !!on; if (surfaces) { for (const [id, dlg] of open) { open.delete(id); try { dlg.close(); } catch { /* already closed */ } } } }
 const esc = (s) => { try { return foundry.utils.escapeHTML(String(s)); } catch { return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch])); } };
 const nameOf = (combat, id) => combat?.combatants?.get(id)?.name ?? t("ITAC.Someone");
 const warn = (env) => { if (env && env.ok === false && env.error?.code !== "gone") { try { ui.notifications.warn(errText(env.error), { console: false }); } catch { /* no ui */ } } };
@@ -55,6 +59,7 @@ function build(combat, p) {
 /** Show a dialog for every open prompt this user is asked to answer, close the ones whose prompt is gone. */
 export function sync() {
   try {
+    if (surfaces) return;
     const combat = Store.currentCombat();
     const list = combat ? Api.prompts(combat) : [];
     const live = new Set(list.map((p) => p.id));
