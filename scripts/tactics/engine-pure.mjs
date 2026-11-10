@@ -1,0 +1,781 @@
+/* Tactical combat, package P2: the ACTION ENGINE (spec sections 5, 12.2, 14, 15). NO Foundry globals: everything that touches the world goes
+   through `host`, so the whole engine runs in node with a scripted host (check-engine.mjs) and in Foundry with the executor's host (engine.mjs).
+
+   handle({ state, log }, input, host) -> { state, log, env, events, changed }
+     input  { t:"req", user:{ id, staff }, rid, req:{ op, ... } }     a request (already normalised by relay-pure.mjs); players and the GM use the same door
+            { t:"roll", inst, key, rid, author, sixes, ones, pushed, pushable, messageId?, secret? }   a verified dice result read from chat (spec 11)
+            { t:"tick" }                                             drive the stack again (reconnect, a document changed)
+     host   { facts() -> Facts, perform(effect) -> Promise<{ op?, result? }>, now() -> ms, setting(key) }
+     Facts  { c(cid) -> combatant facts|null, weapon(cid, ref), range(a, b) -> { total }|null|undefined, zone(cid), inZone(cid) -> [cid], user(uid) -> { id, staff, active },
+              canTalk?(a, b), actorValue?(uuid, path) }    (built by engine.mjs from the system adapter and the zones adapter; scripted in the checks)
+   The executor re-validates every request from scratch against `facts` (spec 1.1.1). Errors are returned as { key, code, params }, never thrown.
+
+   EFFECTS a flow may return (performed in order; each one that changes something is journaled with its inverse in the instance's transaction):
+     { t:"state", path, to }            reversible state write          { t:"pay", who, cost, action, key, interrupt?, defense?, target? }  ledger entry (P1)
+     { t:"stress", who, n }             Resolve loss [B2816]            { t:"actor", who, path:"health"|"resolve", to }
+     { t:"status+", who, status } / { t:"status-", who, id }            { t:"crit", who, n, id }      embeds the injury item (system adapter)
+     { t:"dice", key, n }               dice rolled by the executor (hazards, injury D6); the faces come back in inst.data.res[key]
+     { t:"roll", key, who, attr, pool, dice, maxPush, secret, label }   asks the owning user to roll; the result arrives later as input "roll"
+     { t:"fact", who, facts }           history facts (spec 4.2)        { t:"karma", note }           { t:"zones", call, ... }   { t:"message", ... } */
+import { damage } from "../rules/index.mjs";
+import * as J from "./journal-pure.mjs";
+import * as P1 from "./p1-standin.mjs";
+import * as M from "./mods-pure.mjs";
+import * as C from "./catalog-pure.mjs";
+import * as Attack from "./flows/attack.mjs";
+import { roll as Roll, other as Other, hazard as Hazard, composite as Composite } from "./flows/simple.mjs";
+
+export const FLOWS = Object.freeze({ attack: Attack, roll: Roll, other: Other, plain: Other, hazard: Hazard, composite: Composite });
+export const ERROR_CODES = Object.freeze(["noGM", "untrusted", "stale", "rate", "badInput", "off", "notOwner", "notYourTurn", "noAction", "locked", "illegal", "unknown", "gone", "busy", "playersOff", "internal", "relay", "tooBig", "noPermission", "drift"]);
+export const REVALIDATE_OPTIONS = Object.freeze(["continue", "amend", "forfeit", "cancel"]);      // [OQ-3]: the GM decides, no default
+const bad = (code, params = {}) => ({ ok: false, changed: false, error: { key: `ITAC.err.${code}`, code, params } });
+const ok = (extra = {}) => ({ ok: true, changed: true, ...extra });
+const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
+
+/* ------------------------------------------------------------------ context */
+function makeX(state, log, host, user) {
+  return { state, log: log ?? J.emptyLog(), host, user: user ?? { id: "engine", staff: true }, facts: host.facts(), events: [], changed: false };
+}
+const nextId = (X, p) => { X.state = { ...X.state, seq: (X.state.seq ?? 0) + 1 }; return `${p}${X.state.seq}`; };
+const view = (X) => ({ state: X.state, facts: X.facts, entry: (inst) => C.entryFor(X.state, inst.actor, inst.action) });
+const top = (X) => X.state.stack[X.state.stack.length - 1] ?? null;
+const instOf = (X, id) => X.state.stack.find((i) => i.id === id) ?? null;
+const setInst = (X, inst) => { X.state = { ...X.state, stack: X.state.stack.map((i) => (i.id === inst.id ? inst : i)) }; X.changed = true; };
+const owns = (X, cid) => X.user.staff === true || !!X.facts.c(cid)?.owners?.includes(X.user.id);
+function emit(X, inst, ev) {
+  X.state = { ...X.state, evSeq: (X.state.evSeq ?? 0) + 1 };
+  X.events.push({ ...ev, seq: X.state.evSeq, round: X.state.round, inst: inst?.id, action: inst?.action, actor: inst?.actor ?? undefined, by: X.user.id, at: X.host.now() });
+}
+
+/* ------------------------------------------------------------------ journal plumbing */
+function record(X, txId, op, inst, step, tag) {
+  const tx = X.state.txOpen[txId];
+  if (!tx || !op) return;
+  const o = { ...op };
+  if (inst) o.i = inst.id;
+  if (step) o.step = step;
+  if (tag) o[tag] = 1;
+  X.state = { ...X.state, txOpen: { ...X.state.txOpen, [txId]: { ...tx, ops: [...tx.ops, o] } } };
+}
+function write(X, txId, path, to, inst = null, step = null, tag = null) {
+  const r = J.fineStateOp(X.state, path, to);
+  if (!r.op) return false;
+  X.state = r.state; X.changed = true;
+  record(X, txId, r.op, inst, step, tag);
+  return true;
+}
+async function perform(X, txId, effect, inst = null, step = null, tag = null) {
+  const r = (await X.host.perform(effect)) ?? {};
+  if (r.op) { record(X, txId, r.op, inst, step, tag); X.changed = true; }
+  X.facts = X.host.facts();
+  return r.result;
+}
+function openTx(X, { inst = null, label = null }) {
+  const id = nextId(X, "x");
+  X.state = { ...X.state, txOpen: { ...X.state.txOpen, [id]: J.newTx({ id, inst, label, by: X.user.id, at: X.host.now(), round: X.state.round }) } };
+  return id;
+}
+function closeTx(X, txId, label) {
+  const tx = X.state.txOpen[txId];
+  if (!tx) return;
+  const { [txId]: _gone, ...rest } = X.state.txOpen;
+  X.state = { ...X.state, txOpen: rest };
+  if (tx.ops.length || label?.keep) X.log = J.pushLog(X.log, J.closeTx(tx, label ? { pub: label.pub ?? "", gm: label.gm ?? "" } : tx.label));
+  X.changed = true;
+}
+/** Undo a list of ops (newest first). State ops are applied here, document ops go to the host as their inverse request. */
+async function undoOps(X, ops) {
+  for (const op of [...ops].reverse()) {
+    if (op.t === "state") X.state = J.applyStateOp(X.state, op, true);
+    else { const eff = J.inverseEffect(op); if (eff) await X.host.perform({ ...eff, undo: 1 }); }
+  }
+  X.facts = X.host.facts(); X.changed = true;
+}
+
+/* ------------------------------------------------------------------ effects of a flow step */
+async function applyEffect(X, I, e, step) {
+  const tx = I.tx, c = e.who ? X.facts.c(e.who) : null;
+  switch (e.t) {
+    case "state": write(X, tx, e.path, e.to, I, step); return false;
+    case "pay": {
+      const cp = P1.canPay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense });
+      if (!cp.ok) { (I.data.unpaid ??= {})[e.key] = cp.reason; return false; }           // was legal when offered; shown to the GM instead of guessing
+      const id = nextId(X, "e");
+      const { ledger } = P1.pay(X.state, e.who, { id, action: e.action, inst: I.id, cost: e.cost, pay: cp.pay, interrupt: e.interrupt, tags: e.tags, target: e.target });
+      write(X, tx, ["ledger", e.who], ledger, I, step, e.own ? "cost" : null);
+      (I.data.paid ??= {})[e.key] = id;
+      return false;
+    }
+    case "stress": {
+      if (!c) return false;
+      const s = damage.applyStress({ resolve: c.resolve, stress: e.n });                 // [B2816]: never below 0, further stress has no effect
+      if (s.lost) await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: s.resolve, tx }, I, step, e.cost ? "cost" : null);
+      return false;
+    }
+    case "actor": if (c) await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: e.path, to: e.to, tx }, I, step); return false;
+    case "status+": { const w = M.statusAdd(X.state, e.who, e.status); write(X, tx, w.path, w.to, I, step); return false; }
+    case "status-": { const w = M.statusRemove(X.state, e.who, e.id); write(X, tx, w.path, w.to, I, step); return false; }
+    case "crit": if (c) await perform(X, tx, { t: "critAdd", uuid: c.actorUuid, n: e.n, id: e.id, tx }, I, step); return false;
+    case "dice": { const faces = await perform(X, tx, { t: "dice", n: e.n, why: e.key }, I, step); (I.data.res ??= {})[e.key] = Array.isArray(faces) ? faces : []; return true; }
+    case "roll": {
+      const rid = nextId(X, "r");
+      const who = e.who === "hazard" ? null : X.facts.c(e.who);
+      const players = (who?.owners ?? []).filter((u) => !X.facts.user(u)?.staff && X.facts.user(u)?.active !== false);
+      const users = who && !who.npc && players.length ? players : ["gm"];              // NPC rolls and rolls of absent players are made at the GM desk
+      I.rolls[e.key] = { key: e.key, who: e.who, attr: e.attr, pool: e.pool, pushed: 0, pushable: false, ...(e.secret ? { secret: 1 } : {}), req: { rid, users, at: X.host.now(), dice: e.dice, maxPush: e.maxPush, label: e.label ?? null } };
+      const res = await perform(X, tx, { t: "rollRequest", inst: I.id, key: e.key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: e.who, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, secret: e.secret, label: e.label }, I, step);
+      if (isObj(res) && Number.isFinite(res.sixes)) { Object.assign(I.rolls[e.key], { sixes: res.sixes, ones: res.ones ?? 0, pushed: res.pushed ?? 0, pushable: !!res.pushable, messageId: res.messageId }); return true; }
+      return false;
+    }
+    case "fact": write(X, tx, ["ledger", e.who], P1.noteFact(P1.ledgerOf(X.state, e.who), e.facts), I, step); return false;
+    case "karma": write(X, tx, ["karma"], [...X.state.karma, { id: nextId(X, "k"), round: X.state.round, ...e.note }], I, step); return false;
+    case "zones": await perform(X, tx, { ...e, tx }, I, step); return false;
+    case "message": await perform(X, tx, { ...e, tx }, I, step); return false;
+    default: return false;
+  }
+}
+function openPrompt(X, I, spec, step) {
+  const id = nextId(X, "p");
+  const p = { id, inst: I?.id ?? null, step, kind: spec.kind, to: spec.to, options: spec.options ?? [] };
+  for (const k of ["about", "multi", "min", "max", "free", "gmOnlyData", "data"]) if (spec[k] !== undefined) p[k] = spec[k];
+  if (spec.auto) { p.auto = spec.auto; p.answered = { by: "auto", at: X.host.now(), value: spec.auto.option }; }     // plan 5.2 step 4: never shown
+  X.state = { ...X.state, prompts: { ...X.state.prompts, [id]: p } }; X.changed = true;
+  if (I) (I.data.pk ??= {})[spec.key] = id;
+  return !!p.answered;
+}
+function dropPrompts(X, pred) {
+  const keep = {};
+  for (const [id, p] of Object.entries(X.state.prompts)) if (!pred(p)) keep[id] = p;
+  X.state = { ...X.state, prompts: keep };
+}
+const waitsOf = (X, I) => Object.values(X.state.prompts).filter((p) => p.inst === I.id && !p.answered).map((p) => p.id);
+
+/* ------------------------------------------------------------------ instances */
+function makeInst(X, { action, actor, decl, cause = "turn", parent = null, data = {}, part = false, initiator = null, flow = null }) {
+  const entry = C.entryFor(X.state, actor, action);
+  const f = flow ?? entry?.flow ?? "other";
+  const inst = { id: nextId(X, "a"), action, flow: FLOWS[f] ? f : "other", actor: actor ?? null, initiator: initiator ?? (actor ? { type: "combatant", id: actor } : { type: "gm", id: X.user.id }),
+    by: X.user.id, parent, cause, step: FLOWS[FLOWS[f] ? f : "other"].STEPS[0], status: "open", decl, locked: false, waits: [], rolls: {}, data: { ...data }, overrides: [], tx: null };
+  if (entry?.flow === "attack" && !inst.data.kind) inst.data.kind = entry.attack ?? "slugfest";
+  if (part) inst.part = 1;
+  return inst;
+}
+function pushInst(X, inst) { X.state = { ...X.state, stack: [...X.state.stack, inst] }; X.changed = true; }
+function label(X, inst, what) {
+  const a = inst.actor ? X.facts.c(inst.actor) : null;
+  const pub = a?.hidden ? "" : `${a?.name ?? inst.initiator?.type ?? ""}: ${inst.action}${what ? ` (${what})` : ""}`;       // spec 10: two texts; a hidden actor has no public line
+  return { pub, gm: `${a?.name ?? inst.initiator?.id ?? ""}: ${inst.action} -> ${(inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name ?? t).join(", ")}${what ? ` (${what})` : ""}` };
+}
+/** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
+function pushChild(X, parent, spec) {
+  const inst = makeInst(X, { action: spec.action, actor: spec.actor, decl: spec.decl, cause: spec.cause ?? "interrupt", parent: parent.id, data: spec.data ?? {}, part: !!spec.part });
+  const flow = FLOWS[inst.flow], l = flow.legality(view(X), inst);
+  if (!l.ok) return { ok: false, reason: l.reason };
+  inst.tx = spec.part ? parent.tx : openTx(X, { inst: inst.id });
+  pushInst(X, inst);
+  emit(X, inst, { type: "actionDeclared", decl: publicDecl(inst.decl), cost: "none", stress: 0, targets: inst.decl.targets ?? [], cause: inst.cause });
+  return { ok: true, inst };
+}
+const publicDecl = (d) => ({ action: d.action, weapon: d.weapon, targets: d.targets ?? [], zone: d.zone, special: d.special, wreck: d.wreck, area: d.area });
+
+async function closeInst(X, I, result = null) {
+  I.status = I.status === "aborted" ? "aborted" : "done";
+  if (result) I.data.result = result;
+  dropPrompts(X, (p) => p.inst === I.id);
+  X.state = { ...X.state, stack: X.state.stack.filter((i) => i.id !== I.id) };
+  if (!I.part) closeTx(X, I.tx, label(X, I, I.data.result));
+  emit(X, I, { type: "actionClosed", summary: { result: I.data.result ?? null, status: I.status }, tx: I.part ? null : I.tx });
+  const parent = I.parent ? instOf(X, I.parent) : null;
+  if (!parent) return;
+  const P = J.clone(parent);
+  (P.data.children ??= {})[I.id] = { action: I.action, status: I.status, result: I.data.result ?? null };
+  if (I.part) (P.data.results ??= []).push({ action: I.action, status: I.status, result: I.data.result ?? null });
+  else {                                                                                    // spec 5.1: the instance beneath is revalidated before it continues
+    const rv = FLOWS[P.flow].revalidate(view(X), P);
+    if (!rv.ok) {
+      P.data.hold = "revalidate"; P.data.holdReasons = rv.reasons;
+      openPrompt(X, P, { key: `reval:${I.id}`, kind: "revalidate", to: "gm", about: P.actor, options: REVALIDATE_OPTIONS.map((id) => ({ id, label: `ITAC.opt.${id}` })), data: { reasons: rv.reasons, after: I.id } }, P.step);   // [OQ-3]
+      P.data.holdKey = `reval:${I.id}`;
+    }
+  }
+  P.status = "open";
+  setInst(X, P);
+}
+/** End an instance and undo what it did (spec 14.1 abort). refund=false keeps the ops tagged as the action's own cost ("action spent"). */
+async function abortInst(X, id, refund) {
+  const at = X.state.stack.findIndex((i) => i.id === id);
+  if (at < 0) return false;
+  for (const inst of [...X.state.stack.slice(at)].reverse()) {                              // everything pushed above it goes first
+    const own = inst.id === id, tx = X.state.txOpen[inst.tx];
+    const ids = new Set([inst.id, ...Object.keys(inst.data.children ?? {})]);
+    if (tx) {
+      const mine = tx.ops.filter((o) => ids.has(o.i)), undo = mine.filter((o) => !(own && !refund && o.cost));
+      await undoOps(X, undo);
+      const left = tx.ops.filter((o) => !undo.includes(o));
+      X.state = { ...X.state, txOpen: { ...X.state.txOpen, [inst.tx]: { ...tx, ops: left } } };
+    }
+    const I = J.clone(instOf(X, inst.id) ?? inst);
+    I.status = "aborted"; I.data.result = "aborted";
+    await closeInst(X, I);
+  }
+  return true;
+}
+
+/* ------------------------------------------------------------------ the stack driver */
+async function drive(X) {
+  for (let guard = 0; guard < 500; guard++) {
+    const inst = top(X);
+    if (!inst || inst.status === "manual" || inst.status === "aborted") return;
+    if (inst.data.hold) { if (!(await resolveHold(X, inst))) return; continue; }
+    const flow = FLOWS[inst.flow], fn = flow.steps[inst.step];
+    if (!fn) { const I = J.clone(inst); I.status = "manual"; setInst(X, I); return; }      // unknown step: never guess, hand it to the GM
+    const R = fn(view(X), inst), I = R.inst;
+    if (!I.hist?.[I.step]) (I.hist ??= {})[I.step] = JSON.stringify({ data: inst.data, rolls: inst.rolls, locked: inst.locked, decl: inst.decl });   // for goToStep / amend
+    let progress = false;
+    for (const e of R.effects) progress = (await applyEffect(X, I, e, inst.step)) || progress;
+    for (const p of R.prompts) progress = openPrompt(X, I, p, inst.step) || progress;
+    for (const ev of R.events) emit(X, I, ev);
+    if (R.done) { setInst(X, I); await closeInst(X, I); continue; }
+    if (R.push) {
+      I.status = "waiting"; I.waits = waitsOf(X, I); setInst(X, I);
+      const r = pushChild(X, I, R.push);
+      if (!r.ok) { const P = J.clone(instOf(X, I.id)); (P.data.notes ??= []).push({ note: "pushRefused", action: R.push.action, reason: r.reason }); if (R.push.part) (P.data.results ??= []).push({ action: R.push.action, status: "aborted", result: "illegal" }); P.status = "open"; setInst(X, P); }
+      continue;
+    }
+    if (R.goto) { I.step = R.goto; I.status = "open"; I.waits = waitsOf(X, I); setInst(X, I); continue; }
+    I.status = I.status === "manual" ? "manual" : "waiting"; I.waits = waitsOf(X, I);
+    setInst(X, I);
+    if (!progress) return;
+  }
+}
+/** An instance held after a failed revalidation: the GM's answer decides (spec 5.1, [OQ-3]). Returns true when the driver may continue. */
+async function resolveHold(X, inst) {
+  if (inst.data.hold === "amend") return false;                                             // waits for the owner's `amend` (or a GM override)
+  const p = X.state.prompts[inst.data.pk?.[inst.data.holdKey]];
+  if (!p?.answered) return false;
+  const id = typeof p.answered.value === "string" ? p.answered.value : p.answered.value?.id;
+  const I = J.clone(inst);
+  delete I.data.holdKey; delete I.data.holdReasons;
+  if (id === "forfeit") { delete I.data.hold; setInst(X, I); await abortInst(X, I.id, false); return true; }
+  if (id === "cancel") { delete I.data.hold; setInst(X, I); await abortInst(X, I.id, true); return true; }
+  if (id === "amend") { I.data.hold = "amend"; I.locked = false; setInst(X, I); return false; }
+  delete I.data.hold; setInst(X, I);                                                        // "continue as declared"
+  return true;
+}
+/** Re-open an earlier step: later results are undone through the transaction (spec 14.1 goToStep; also used by `amend`). */
+async function rewind(X, id, step) {
+  const inst = instOf(X, id), flow = inst && FLOWS[inst.flow];
+  const idx = flow ? flow.STEPS.indexOf(step) : -1;
+  if (idx < 0 || idx > flow.STEPS.indexOf(inst.step)) return false;
+  if (top(X).id !== id) for (const above of X.state.stack.slice(X.state.stack.findIndex((i) => i.id === id) + 1).reverse()) await abortInst(X, above.id, true);
+  const later = new Set(flow.STEPS.slice(idx)), tx = X.state.txOpen[inst.tx];
+  if (tx) {
+    const undo = tx.ops.filter((o) => o.i === id && later.has(o.step));
+    await undoOps(X, undo);
+    X.state = { ...X.state, txOpen: { ...X.state.txOpen, [inst.tx]: { ...X.state.txOpen[inst.tx], ops: X.state.txOpen[inst.tx].ops.filter((o) => !undo.includes(o)) } } };
+  }
+  dropPrompts(X, (p) => p.inst === id && later.has(p.step));
+  const I = J.clone(instOf(X, id));
+  const snap = I.hist?.[step] ? JSON.parse(I.hist[step]) : null;
+  if (snap) { I.data = snap.data; I.rolls = snap.rolls; I.locked = snap.locked; I.decl = snap.decl; }
+  for (const s of flow.STEPS.slice(idx)) delete I.hist?.[s];
+  I.step = step; I.status = "open"; I.waits = waitsOf(X, I);
+  setInst(X, I);
+  return true;
+}
+
+/* ------------------------------------------------------------------ requests: players (spec 12.2) */
+function sanitizeDecl(d, action) {
+  const ids = (v, n = 12) => (Array.isArray(v) ? v.filter(P1.isId).slice(0, n) : []);
+  const out = { action, targets: ids(d?.targets), helpers: [], exploits: [], stressTotal: 0 };
+  if (typeof d?.weapon === "string") out.weapon = d.weapon.slice(0, 120);
+  if (typeof d?.power === "string") out.power = d.power.slice(0, 120);
+  if (typeof d?.zone === "string") out.zone = d.zone.slice(0, 40);
+  if (Array.isArray(d?.path)) out.path = d.path.filter((z) => typeof z === "string").map((z) => z.slice(0, 40)).slice(0, 24);
+  if (["charge", "grapple", "grappleAttack"].includes(d?.special)) out.special = d.special;
+  for (const k of ["wreck", "area", "blind", "noPush", "secret"]) if (d?.[k] === true || d?.[k] === 1) out[k] = 1;
+  if (Array.isArray(d?.fullAuto)) out.fullAuto = ids(d.fullAuto);
+  if (Array.isArray(d?.tokens)) out.tokens = ids(d.tokens);
+  if (Array.isArray(d?.exploits)) out.exploits = d.exploits.filter((e) => e && P1.isId(e.id)).slice(0, 8).map((e) => ({ id: e.id, stress: Math.max(0, Math.min(20, Math.trunc(Number(e.stress) || 0))) }));
+  out.stressTotal = out.exploits.reduce((s, e) => s + e.stress, 0);
+  if (Number.isFinite(d?.pulled)) out.pulled = Math.max(0, Math.trunc(d.pulled));
+  if (typeof d?.attr === "string") out.attr = d.attr.slice(0, 12);
+  if (Number.isFinite(d?.mod)) out.mod = Math.max(-12, Math.min(12, Math.trunc(d.mod)));
+  if (typeof d?.text === "string") out.text = d.text.slice(0, 300);
+  if (Array.isArray(d?.parts)) out.parts = d.parts.filter(isObj).slice(0, 6).map((p) => ({ action: String(p.action ?? "").slice(0, 32), decl: p.decl ? { targets: ids(p.decl.targets), weapon: typeof p.decl.weapon === "string" ? p.decl.weapon.slice(0, 120) : undefined } : undefined }));
+  if (isObj(d?.exception) && typeof d.exception.text === "string") out.exception = { text: d.exception.text.slice(0, 300), state: "asked" };
+  return out;
+}
+/** Where may a new action go? Empty stack: the actor's own turn (or a grant). Otherwise only as a legal interrupt of the top instance, declared before
+    its dice ([B2292], spec 5.5). Returns { ok, cause, parent } or an error code. */
+function placement(X, actor, entry) {
+  const t = top(X);
+  if (!t) return { ok: true, cause: "turn", parent: null };
+  if (t.locked || !t.data.window || !entry.interrupt?.on?.includes(t.data.window)) return { ok: false, code: "busy" };
+  if (t.actor === actor) return { ok: false, code: "busy" };
+  return { ok: true, cause: "interrupt", parent: t.id };
+}
+async function opDeclare(X, a) {
+  const actor = a.actor;
+  if (X.state.mode === "off") return bad("off");
+  if (!P1.isId(actor) || !X.facts.c(actor) || (X.facts.c(actor).hidden && !X.user.staff)) return bad("unknown");
+  if (!owns(X, actor)) return bad("notOwner");
+  const entry = C.entryFor(X.state, actor, a.decl?.action);
+  if (!entry || entry.reaction?.effect === "defence") return bad("unknown", { action: String(a.decl?.action ?? "").slice(0, 32) });
+  const decl = sanitizeDecl(a.decl, entry.id);
+  if (X.state.mode === "free" || X.state.free?.[actor]) {                                  // spec 14.5: nothing is validated, nobody is prompted; logged as declared
+    const inst = makeInst(X, { action: entry.id, actor, decl, flow: "other", data: { free: 1 } });
+    inst.tx = openTx(X, { inst: inst.id }); inst.status = "manual"; pushInst(X, inst);
+    emit(X, inst, { type: "actionDeclared", decl: publicDecl(decl), cost: "none", stress: 0, targets: decl.targets });
+    return ok({ inst: inst.id });
+  }
+  if (entry.id === "gmRoll" && !X.user.staff) return bad("noPermission");
+  const pl = placement(X, actor, entry);
+  if (!pl.ok) return bad(pl.code);
+  const gm = X.user.staff && a.gm === true;                                                // the GM acting through an override: costs waived
+  const cp = P1.canPay(X.state, actor, entry.cost, { interrupt: pl.cause === "interrupt", gm });
+  if (!cp.ok) return bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason });       // [L1]-[L4], [L7], [L8]
+  const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
+  const l = FLOWS[inst.flow].legality(view(X), inst);
+  if (!l.ok && !decl.exception) return bad("illegal", { reason: l.reason, ...l.params });
+  inst.tx = openTx(X, { inst: inst.id });
+  if (pl.parent) { const P = J.clone(instOf(X, pl.parent)); P.status = "waiting"; setInst(X, P); }
+  pushInst(X, inst);
+  const I = J.clone(inst);
+  if (entry.cost === "full" || entry.cost === "quick") {
+    await applyEffect(X, I, { t: "pay", who: actor, cost: entry.cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", tags: entry.tags, target: decl.targets }, "declare");
+    I.entry = I.data.paid?.own ?? null;
+  }
+  if (!l.ok) {                                                                              // an illegal option with a request for an exception (spec 9.12): a desk card
+    I.data.exception = { reason: l.reason, params: l.params }; I.data.hold = "exception"; I.status = "waiting";
+    openPrompt(X, I, { key: "exception", kind: "exception", to: "gm", about: actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { reason: l.reason, text: decl.exception.text } }, "declare");
+    I.data.holdKey = "exception";
+  }
+  setInst(X, I);
+  emit(X, I, { type: "actionDeclared", decl: publicDecl(decl), cost: entry.cost, stress: decl.stressTotal, targets: decl.targets, zone: decl.zone, path: decl.path });
+  return ok({ inst: inst.id });
+}
+async function opAmend(X, a) {
+  const inst = instOf(X, a.inst);
+  if (!inst) return bad("gone");
+  if (!inst.actor || !owns(X, inst.actor)) return bad("notOwner");
+  if (inst.locked && !X.user.staff) return bad("locked");                                  // spec 5.5: after the lock only the GM changes it
+  const decl = sanitizeDecl({ ...a.decl, action: inst.action }, inst.action);
+  const probe = { ...inst, decl };
+  const l = FLOWS[inst.flow].legality(view(X), probe);
+  if (!l.ok && !X.user.staff) return bad("illegal", { reason: l.reason, ...l.params });
+  await rewind(X, inst.id, FLOWS[inst.flow].STEPS[0]);
+  const I = J.clone(instOf(X, inst.id));
+  I.decl = decl; delete I.data.hold; delete I.data.holdKey; I.locked = false; I.hist = {};
+  if (!l.ok) I.data.exception = { reason: l.reason, params: l.params, by: "gm" };          // spec 14.1: the GM may amend into what the rules refuse; it runs as a granted exception
+  setInst(X, I);
+  emit(X, I, { type: "actionDeclared", decl: publicDecl(decl), amended: true, targets: decl.targets });
+  return ok({ inst: I.id });
+}
+async function opCancel(X, a) {
+  const inst = instOf(X, a.inst);
+  if (!inst) return bad("gone");
+  if (!inst.actor || !owns(X, inst.actor)) return bad("notOwner");
+  if (!inst.locked || X.user.staff) { await abortInst(X, inst.id, true); return ok(); }     // not locked: removed and refunded
+  if (inst.data.pk?.cancelAsk) return ok({ changed: false });
+  const I = J.clone(inst);                                                                  // locked: a desk card for the GM (spec 12.2)
+  openPrompt(X, I, { key: "cancelAsk", kind: "exception", to: "gm", about: inst.actor, options: [{ id: "cancel", label: "ITAC.opt.cancel" }, { id: "forfeit", label: "ITAC.opt.forfeit" }, { id: "deny", label: "ITAC.opt.deny" }], data: { reason: "cancelLocked" } }, inst.step);
+  setInst(X, I);
+  return ok({ prompt: I.data.pk.cancelAsk });
+}
+function checkValue(X, p, value) {
+  const optOk = (id) => { const o = p.options.find((x) => x.id === id); return !!o && (!o.disabled || X.user.staff); };       // the GM may pick a greyed option [U]
+  if (p.multi) {
+    if (!Array.isArray(value) || value.length > 24 || value.length < (p.min ?? 0) || value.length > (p.max ?? 24)) return null;
+    return value.every((id) => typeof id === "string" && optOk(id)) ? value.slice() : null;
+  }
+  if (typeof value === "string") return optOk(value) ? value : (p.free && value.length <= 300 ? { id: null, text: value } : null);
+  if (!isObj(value)) return null;
+  if (value.id != null && !optOk(value.id)) return null;
+  const out = { id: value.id ?? null };
+  if (Array.isArray(value.tokens)) out.tokens = value.tokens.filter(P1.isId).slice(0, 12);
+  if (Number.isFinite(value.dice)) out.dice = Math.max(-12, Math.min(12, Math.trunc(value.dice)));
+  if (Number.isFinite(value.n)) out.n = Math.max(0, Math.min(99, Math.trunc(value.n)));
+  if (P1.isId(value.for)) out.for = value.for;
+  if (typeof value.text === "string" && p.free) out.text = value.text.slice(0, 300);
+  if (value.always === true && X.user.staff) out.always = true;
+  return out.id == null && out.text == null ? null : out;
+}
+async function opAnswer(X, a, forAnyone = false) {
+  const p = X.state.prompts[a.prompt];
+  if (!p) return bad("gone");
+  if (p.answered && !(X.user.staff && p.auto && p.kind === "reaction")) return bad("locked");   // an automatic NPC answer may be changed until the engine acted on it [U]
+  const mine = X.user.staff || (p.to !== "gm" && p.to?.users?.includes(X.user.id)) || (p.about && p.to !== "gm" && owns(X, p.about));
+  if (!mine || (forAnyone && !X.user.staff)) return bad("notOwner");
+  const value = checkValue(X, p, a.value);
+  if (value == null) return bad("badInput");
+  const inst = p.inst ? instOf(X, p.inst) : null;
+  if (inst) {
+    const vr = FLOWS[inst.flow].validate?.(view(X), inst, p, value);
+    if (vr && !vr.ok) return bad("illegal", { reason: vr.reason });
+    if (p.answered && inst.data.done?.[Object.keys(inst.data.pk ?? {}).find((k) => inst.data.pk[k] === p.id)]) return bad("locked");   // already acted upon
+  }
+  X.state = { ...X.state, prompts: { ...X.state.prompts, [p.id]: { ...p, answered: { by: X.user.id, at: X.host.now(), value } } } }; X.changed = true;
+  if (value?.always && p.kind === "reaction" && p.about) {                                  // spec 13.1 "always do this for this NPC"
+    const pol = { ...(X.state.npc[p.about] ?? {}) };
+    if (value.id === "block" || value.id === "dodge") pol[value.id] = "always"; else if (value.id === "pass") { pol.block = "never"; pol.dodge = "never"; }
+    X.state = { ...X.state, npc: { ...X.state.npc, [p.about]: pol } };
+  }
+  if (!inst) await standalone(X, X.state.prompts[p.id]);
+  else if (inst.data.hold === "exception" && inst.data.pk?.exception === p.id) {
+    const I = J.clone(inst), id = typeof value === "string" ? value : value.id;
+    delete I.data.hold; delete I.data.holdKey; I.decl.exception = { ...I.decl.exception, state: id === "grant" ? "granted" : "denied" };
+    setInst(X, I);
+    if (id !== "grant") await abortInst(X, I.id, true);
+  } else if (inst.data.pk?.cancelAsk === p.id) { const id = typeof value === "string" ? value : value.id; if (id === "cancel") await abortInst(X, inst.id, true); else if (id === "forfeit") await abortInst(X, inst.id, false); }
+  return ok({ prompt: p.id });
+}
+/** Prompts that belong to no instance (exception request without an action, token confirmation ...): answering closes them. */
+async function standalone(X, p) { dropPrompts(X, (q) => q.id === p.id); emit(X, null, { type: "override", op: "card", kind: p.kind, value: p.answered.value }); }
+
+async function opHelp(X, a) {
+  const inst = instOf(X, a.inst);
+  if (!inst || !inst.actor) return bad("gone");
+  if (!P1.isId(a.helper) || !owns(X, a.helper)) return bad("notOwner");
+  if (inst.locked) return bad("locked");
+  if (a.helper === inst.actor || (inst.decl.helpers ?? []).some((h) => h.id === a.helper)) return bad("badInput");
+  const has = P1.canPay(X.state, a.helper, "full", { gm: false });
+  const hasFull = has.ok || has.reason === "notYourTurn";                                  // [L2], [B2273]: the helper's full action is spent on the helped character's turn
+  const free = P1.budget(X.state, a.helper).full === "open";
+  const I = J.clone(inst);
+  if ((I.decl.helpers ?? []).filter((h) => h.consent === "yes").length >= 3) return bad("illegal", { reason: "tooMany" });       // [B2238]
+  if (hasFull && free) {
+    const id = nextId(X, "e");
+    const l = P1.ledgerOf(X.state, a.helper), unit = l.grants.find((g) => g.id === "A");
+    const { ledger } = P1.pay(X.state, a.helper, { id, action: "help", inst: I.id, cost: "full", pay: unit && !unit.usedBy ? "A" : null, onTurnOf: I.actor, target: [I.actor] });
+    write(X, I.tx, ["ledger", a.helper], ledger, I, "declare");
+    I.decl.helpers = [...(I.decl.helpers ?? []), { id: a.helper, consent: "yes" }];
+  } else {                                                                                  // [R11]: refused by the interface, the GM may accept anyway
+    I.decl.helpers = [...(I.decl.helpers ?? []), { id: a.helper, consent: "pending" }];
+    openPrompt(X, I, { key: `help:${a.helper}`, kind: "helpOverride", to: "gm", about: a.helper, options: [{ id: "accept", label: "ITAC.opt.accept" }, { id: "refuse", label: "ITAC.opt.refuse" }], data: { reason: "noFullAction", for: I.actor } }, "declare");
+  }
+  setInst(X, I);
+  return ok({ inst: I.id });
+}
+function applyHelpAnswers(X) {
+  for (const inst of X.state.stack) for (const h of inst.decl?.helpers ?? []) {
+    if (h.consent !== "pending") continue;
+    const p = X.state.prompts[inst.data.pk?.[`help:${h.id}`]];
+    if (!p?.answered) continue;
+    const I = J.clone(inst), yes = (typeof p.answered.value === "string" ? p.answered.value : p.answered.value?.id) === "accept";
+    I.decl.helpers = yes ? I.decl.helpers.map((x) => (x.id === h.id ? { ...x, consent: "yes" } : x)) : I.decl.helpers.filter((x) => x.id !== h.id);
+    setInst(X, I);
+  }
+}
+async function opEndTurn(X, a) {
+  if (!P1.isId(a.actor) || !X.facts.c(a.actor)) return bad("unknown");
+  if (!owns(X, a.actor)) return bad("notOwner");
+  if (!X.user.staff && X.host.setting?.("turnPlayersEnd") === false) return bad("playersOff");
+  const ti = P1.turnInfo(X.state);
+  if (a.round !== ti.round || a.slot !== ti.slot) return bad("stale");                      // spec 12.2: stale requests are refused
+  if (!P1.isOnTurn(X.state, a.actor)) return bad("notYourTurn");
+  if (X.state.stack.length || Object.values(X.state.prompts).some((p) => !p.answered && p.about === a.actor)) return bad("busy");      // spec 4.4
+  const r = P1.endTurn(X.state, a.actor);
+  if (!r.ok) return bad(r.reason ?? "illegal");
+  emit(X, null, { type: "turnEnd", slot: ti.slot, combatant: a.actor });
+  X.state = r.state; X.changed = true;
+  return ok();
+}
+async function opAsk(X, a, kind) {
+  if (!P1.isId(a.actor) || !X.facts.c(a.actor)) return bad("unknown");
+  if (!owns(X, a.actor)) return bad("notOwner");
+  const text = String(a.text ?? "").slice(0, 300);
+  if (!text) return bad("badInput");
+  if (kind === "other") {                                                                   // "something else" (spec 9.12): a GM-driven instance
+    if (X.state.stack.length) return bad("busy");
+    const inst = makeInst(X, { action: "other", actor: a.actor, decl: { action: "other", targets: [], helpers: [], exploits: [], stressTotal: 0, text }, flow: "other" });
+    inst.tx = openTx(X, { inst: inst.id }); inst.status = "manual"; pushInst(X, inst);
+    emit(X, inst, { type: "actionDeclared", decl: { action: "other" }, cost: "none", stress: 0, targets: [] });
+    return ok({ inst: inst.id });
+  }
+  if (Object.values(X.state.prompts).filter((p) => p.kind === "exception" && !p.inst && p.about === a.actor).length >= 3) return bad("rate");
+  openPrompt(X, null, { key: "x", kind: "exception", to: "gm", about: a.actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { text, inst: P1.isId(a.inst) ? a.inst : undefined } }, null);
+  return ok();
+}
+
+/* ------------------------------------------------------------------ requests: GM overrides (spec 14) */
+function noteOverride(X, I, op, before, after) {
+  I.overrides = [...(I.overrides ?? []), { step: I.step, op, by: X.user.id, at: X.host.now(), before, after }].slice(-40);
+  emit(X, I, { type: "override", op, gmOnly: 1 });
+}
+async function gmInstOp(X, op, a) {
+  const inst = instOf(X, a.inst);
+  if (!inst) return bad("gone");
+  const flow = FLOWS[inst.flow], idx = (s) => flow.STEPS.indexOf(s);
+  let I = J.clone(inst);
+  const forced = (k) => ((I.data.forced ??= {})[k] ??= {});
+  switch (op) {
+    case "setPool": {
+      const key = String(a.roll ?? "").slice(0, 40);
+      if (K_rolled(I, key)) return bad("locked");
+      const v = Number.isFinite(a.total) ? { total: Math.max(1, Math.min(40, Math.trunc(a.total))) } : Array.isArray(a.mods) ? { mods: a.mods.slice(0, 8).map((m) => ({ label: String(m?.label ?? "").slice(0, 24), dice: Math.max(-20, Math.min(20, Math.trunc(Number(m?.dice) || 0))) })) } : null;
+      if (!v) return bad("badInput");
+      noteOverride(X, I, op, I.data.forced?.pool?.[key] ?? null, v); forced("pool")[key] = v;
+      if (I.rolls[key]) delete I.rolls[key];                                               // asked but not rolled yet: asked again with the new pool
+      break;
+    }
+    case "setSixes": {
+      const key = String(a.roll ?? "").slice(0, 40), sixes = Math.max(0, Math.min(40, Math.trunc(Number(a.sixes))));
+      if (!Number.isFinite(sixes)) return bad("badInput");
+      noteOverride(X, I, op, I.rolls[key]?.forced ?? I.rolls[key]?.sixes ?? null, sixes);
+      setInst(X, I);
+      const rs = rollStepOf(I, key), keep = I.rolls;
+      if (rs && idx(rs) >= 0 && idx(rs) < idx(I.step)) {                                    // a replaced result re-runs what followed it; the other dice of that step stay
+        await rewind(X, I.id, rs); I = J.clone(instOf(X, I.id));
+        for (const [k, r] of Object.entries(keep)) if (rollStepOf(I, k) === rs && !I.rolls[k]) I.rolls[k] = r;
+      }
+      I.rolls[key] = { ...(I.rolls[key] ?? { key, who: I.actor, attr: null, pool: { base: 0, mods: [], total: 0 }, pushed: 0 }), pushable: false, forced: { sixes } };
+      break;
+    }
+    case "setOutcome": {
+      if (!P1.isId(a.target) || typeof a.hit !== "boolean" || idx("outcome") < 0) return bad("badInput");
+      noteOverride(X, I, op, I.data.out?.[a.target]?.hit ?? null, a.hit); setInst(X, I);
+      if (idx(I.step) > idx("outcome")) { await rewind(X, I.id, "outcome"); I = J.clone(instOf(X, I.id)); }
+      ((I.data.forced ??= {}).outcome ??= {})[a.target] = a.hit;
+      break;
+    }
+    case "setDamage": {
+      if (!P1.isId(a.target) || !Number.isFinite(a.amount) || idx("damage") < 0) return bad("badInput");
+      const v = { amount: Math.max(0, Math.min(999, Math.trunc(a.amount))) };
+      if (Number.isFinite(a.armor)) v.armor = Math.max(0, Math.min(99, Math.trunc(a.armor)));
+      noteOverride(X, I, op, I.data.dmg?.[a.target]?.taken ?? null, v); setInst(X, I);
+      if (idx(I.step) > idx("damage")) { await rewind(X, I.id, "damage"); I = J.clone(instOf(X, I.id)); }
+      ((I.data.forced ??= {}).damage ??= {})[a.target] = v;
+      break;
+    }
+    case "skipStep": {
+      const next = flow.STEPS[idx(I.step) + 1];
+      if (!next) return bad("badInput");
+      noteOverride(X, I, op, I.step, next);
+      dropPrompts(X, (p) => p.inst === I.id && p.step === I.step);
+      delete I.data.hold; I.data.window = null; I.step = next; I.status = "open";
+      break;
+    }
+    case "goToStep": {
+      if (idx(a.step) < 0 || idx(a.step) > idx(I.step)) return bad("badInput");
+      noteOverride(X, I, op, I.step, a.step); setInst(X, I);
+      await rewind(X, I.id, a.step);
+      return ok({ inst: I.id });
+    }
+    case "abort": noteOverride(X, I, op, null, { refund: a.refund !== false }); setInst(X, I); await abortInst(X, I.id, a.refund !== false); return ok();
+    case "retarget": {                                                                      // GM retargeting (spec 9.1 step 4 as an override)
+      if (!P1.isId(a.from) || !P1.isId(a.to) || !I.decl.targets.includes(a.from) || !X.facts.c(a.to)) return bad("badInput");
+      noteOverride(X, I, op, a.from, a.to); setInst(X, I);
+      const back = flow.STEPS.includes("reactBefore") && idx(I.step) >= idx("reactBefore") ? "reactBefore" : flow.STEPS[0];
+      await rewind(X, I.id, back); I = J.clone(instOf(X, I.id));
+      I.decl.targets = I.decl.targets.map((t) => (t === a.from ? a.to : t));
+      (I.data.retargets ??= []).push({ from: a.from, to: a.to, by: "gm" });
+      dropPrompts(X, (p) => p.inst === I.id && p.about === a.from);
+      break;
+    }
+    case "manual": return manual(X, I, isObj(a.result) ? a.result : {});
+    default: return bad("badInput");
+  }
+  setInst(X, I);
+  return ok({ inst: I.id });
+}
+const K_rolled = (I, key) => { const r = I.rolls?.[key]; return !!r && (r.forced != null || r.sixes != null); };
+const rollStepOf = (I, key) => (key === "attack" || key.startsWith("def:") ? "roll" : key.startsWith("gate:") ? "gate" : key.startsWith("stun:") ? "effects" : key === "roll" ? "roll" : null);
+/** "Resolve manually" (spec 5.3): the engine stops driving; what the GM entered is applied and journaled, and the transaction closes. */
+async function manual(X, I, res) {
+  for (const above of X.state.stack.slice(X.state.stack.findIndex((i) => i.id === I.id) + 1).reverse()) await abortInst(X, above.id, true);
+  noteOverride(X, I, "manual", null, null);
+  I.status = "manual"; I.data.manual = { note: String(res.note ?? "").slice(0, 300) };
+  if (["full", "quick"].includes(res.cost) && I.actor && !I.entry) {
+    const cp = P1.canPay(X.state, I.actor, res.cost, {});
+    const id = nextId(X, "e"), { ledger } = P1.pay(X.state, I.actor, { id, action: I.action, inst: I.id, cost: res.cost, pay: cp.ok ? cp.pay : null });
+    write(X, I.tx, ["ledger", I.actor], ledger, I, "manual"); I.entry = id;
+  }
+  for (const d of (Array.isArray(res.damage) ? res.damage : []).slice(0, 24)) {
+    const c = X.facts.c(d?.target), amount = Math.max(0, Math.trunc(Number(d?.amount) || 0));
+    if (c && amount) await perform(X, I.tx, { t: "actor", uuid: c.actorUuid, path: "health", to: damage.applyDamage({ health: c.health, taken: amount }).health, tx: I.tx }, I, "manual");   // [B2708]: never below 0
+  }
+  for (const d of (Array.isArray(res.stress) ? res.stress : []).slice(0, 24)) {
+    const c = X.facts.c(d?.target), n = Math.max(0, Math.trunc(Number(d?.amount) || 0));
+    if (c && n) await perform(X, I.tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: damage.applyStress({ resolve: c.resolve, stress: n }).resolve, tx: I.tx }, I, "manual");
+  }
+  for (const s of (Array.isArray(res.statuses) ? res.statuses : []).slice(0, 24)) {
+    if (!P1.isId(s?.who) || typeof s.id !== "string") continue;
+    const w = s.on === false ? M.statusRemove(X.state, s.who, s.id) : M.statusAdd(X.state, s.who, { id: s.id, source: { kind: "gm", name: "manual" } });
+    write(X, I.tx, w.path, w.to, I, "manual");
+  }
+  setInst(X, I);
+  await closeInst(X, I, typeof res.result === "string" ? res.result.slice(0, 24) : "manual");
+  return ok();
+}
+/** One GM edit of the state = one transaction of its own (spec 14.2), so every edit is undoable from the journal. */
+async function gmEdit(X, op, a) {
+  const tx = openTx(X, { label: { pub: "", gm: `GM: ${op}` } });
+  const w = (path, to) => write(X, tx, path, to);
+  const c = (id) => (P1.isId(id) ? X.facts.c(id) : null);
+  let err = null;
+  switch (op) {
+    case "statusAdd": if (c(a.combatant) && typeof a.status?.id === "string") { const x = M.statusAdd(X.state, a.combatant, { ...a.status, source: a.status.source ?? { kind: "gm", name: "gm" } }); w(x.path, x.to); } else err = "badInput"; break;
+    case "statusRemove": if (P1.isId(a.combatant)) { const x = M.statusRemove(X.state, a.combatant, String(a.id)); w(x.path, x.to); } else err = "badInput"; break;
+    case "setHealth": case "setResolve": {
+      const cc = c(a.combatant), v = Math.trunc(Number(a.value));
+      if (!cc || !Number.isFinite(v) || v < 0) { err = "badInput"; break; }
+      await perform(X, tx, { t: "actor", uuid: cc.actorUuid, path: op === "setHealth" ? "health" : "resolve", to: v, tx });
+      break;
+    }
+    case "tokenAdd": { const t = M.makeToken({ ...a.token, id: a.token?.id ?? nextId(X, "t") }); if (t && c(t.holder)) w(["tokens", `#${t.id}`], t); else err = "badInput"; break; }
+    case "tokenRemove": if (P1.isId(a.id)) w(["tokens", `#${a.id}`], null); else err = "badInput"; break;
+    case "triggerAdd": if (isObj(a.trigger) && typeof a.trigger.at === "string") { const id = P1.isId(a.trigger.id) ? a.trigger.id : nextId(X, "g"); w(["triggers", `#${id}`], { ...J.clone(a.trigger), id, source: M.source(a.trigger.source) }); } else err = "badInput"; break;
+    case "triggerRemove": if (P1.isId(a.id)) w(["triggers", `#${a.id}`], null); else err = "badInput"; break;
+    case "counterSet": if (typeof a.key === "string" && /^(round|scene|zone|session):[\w.:@-]{1,56}$/.test(a.key) && Number.isFinite(a.value)) w(["counters", a.key], a.value > 0 ? Math.trunc(a.value) : null); else err = "badInput"; break;
+    case "effectAdd": { const e = M.makeEffect({ ...a.effect, id: a.effect?.id ?? nextId(X, "f") }); if (e) w(["effects", `#${e.id}`], e); else err = "badInput"; break; }
+    case "effectEnd": { const ws = P1.isId(a.id) ? M.effectEndWrites(X.state, a.id) : []; if (ws.length) { for (const x of ws) w(x.path, x.to); emit(X, null, { type: "effectEnd", effect: { id: a.id } }); } else err = "gone"; break; }
+    case "powerGrant": {
+      const e = C.sanitizeEntry(a.entry);
+      if (!e || !c(a.combatant)) { err = "badInput"; break; }
+      const id = nextId(X, "f");
+      w(["effects", `#${id}`], M.makeEffect({ id, kind: "borrowedPower", holder: a.combatant, source: a.source ?? { kind: "gm", name: e.id }, data: { entry: e }, ends: a.ends ?? { at: "sceneEnd" } }));
+      break;
+    }
+    case "powerRevoke": { const ids = (X.state.effects ?? []).filter((e) => e.kind === "borrowedPower" && e.holder === a.combatant && e.data?.entry?.id === a.id).map((e) => e.id); if (ids.length) for (const id of ids) w(["effects", `#${id}`], null); else err = "gone"; break; }
+    case "itemState": { const it = M.makeGroundItem({ ...a.item, id: a.item?.id ?? nextId(X, "i") }); if (it) w(["items", `#${it.id}`], a.remove ? null : it); else err = "badInput"; break; }
+    case "reveal": if (c(a.combatant)) { const r = {}; for (const k of ["stats", "powers", "health"]) if (a[k]) r[k] = 1; w(["revealed", a.combatant], Object.keys(r).length ? r : null); } else err = "badInput"; break;
+    case "knowledgeSet": if (P1.isId(a.observer) && P1.isId(a.subject) && ["seen", "unseen", null].includes(a.value ?? null)) w(["knowledge", a.observer, a.subject], a.value ?? null); else err = "badInput"; break;
+    case "karmaNote": if (isObj(a.note) && ["wreckedZone", "savedBystanders", "failedBystanders", "killed"].includes(a.note.kind)) w(["karma"], [...X.state.karma, { id: nextId(X, "k"), who: String(a.note.who ?? "").slice(0, 40), kind: a.note.kind, round: X.state.round, zone: typeof a.note.zone === "string" ? a.note.zone.slice(0, 40) : undefined, note: typeof a.note.note === "string" ? a.note.note.slice(0, 300) : undefined }]); else err = "badInput"; break;
+    case "npcPolicy": if (P1.isId(a.combatant) && isObj(a.policy)) { const pol = {}; for (const k of ["block", "dodge"]) if (["ask", "always", "never"].includes(a.policy[k])) pol[k] = a.policy[k]; if (["ask", "never"].includes(a.policy.push)) pol.push = a.policy.push; if (["ask", "ko", "kill", "crit"].includes(a.policy.onBroken)) pol.onBroken = a.policy.onBroken; if (typeof a.policy.major === "boolean") pol.major = a.policy.major; if (["defence", "turn"].includes(a.policy.keepQuickFor)) pol.keepQuickFor = a.policy.keepQuickFor; w(["npc", a.combatant], pol); } else err = "badInput"; break;
+    case "ledgerEdit": {
+      if (!P1.isId(a.combatant)) { err = "badInput"; break; }
+      let l = P1.ledgerOf(X.state, a.combatant);
+      if (P1.isId(a.voidEntry)) l = P1.voidEntry(l, a.voidEntry);
+      if (isObj(a.grant)) l = { ...l, grants: [...l.grants, { id: nextId(X, "n"), kind: "gm", unit: ["full", "quick", "any", "defense"].includes(a.grant.unit) ? a.grant.unit : "any", window: ["ownTurn", "anytime", "interrupt"].includes(a.grant.window) ? a.grant.window : "anytime", expires: "roundEnd" }] };
+      w(["ledger", a.combatant], l);
+      break;
+    }
+    case "setFree": if (a.combatant == null) w(["free"], a.on ? Object.fromEntries(Object.keys(X.state.ledger).map((k) => [k, 1])) : {}); else if (P1.isId(a.combatant)) w(["free", a.combatant], a.on ? 1 : null); else err = "badInput"; break;
+    case "setMode": {
+      if (!["tactical", "free", "off"].includes(a.mode)) { err = "badInput"; break; }
+      w(["mode"], a.mode);
+      if (a.mode !== "tactical") X.state = { ...X.state, stack: X.state.stack.map((i) => ({ ...i, status: "manual" })) };       // spec 14.5: nothing is discarded, open instances are parked as manual
+      break;
+    }
+    case "zoneSet": case "levelSet": case "borderSet": await perform(X, tx, { t: "zones", call: { zoneSet: "setZone", levelSet: "setLevel", borderSet: "setBorder" }[op], ...J.clone(a), tx }); emit(X, null, { type: "zoneChange", zone: a.zone, border: a.border, change: a.patch ?? a.to ?? a.kind, cause: "gm" }); break;
+    default: err = "unknown";                                                               // setCard, swapCards, reorderGroup, addCombatant, removeCombatant, insertTurn: package P1
+  }
+  if (err) { const t = X.state.txOpen[tx]; await undoOps(X, t.ops); const { [tx]: _g, ...rest } = X.state.txOpen; X.state = { ...X.state, txOpen: rest }; return bad(err); }
+  closeTx(X, tx, { pub: "", gm: `GM: ${op}` });
+  emit(X, null, { type: "override", op, gmOnly: 1 });
+  return ok();
+}
+async function opUndo(X, a) {
+  const order = J.undoOrder(X.log, a.tx);
+  if (!order) return bad("gone");
+  if (X.state.stack.length) return bad("busy");                                             // undo re-opens nothing and never runs under a live action
+  const list = a.force === true ? [a.tx] : order;                                           // spec 15: LIFO by default; a forced single undo behind a drift check
+  const mode = ["restore", "difference", "leave"].includes(a.drift) ? a.drift : null;
+  if (a.force === true) {
+    const tx = X.log.list.find((t) => t.id === a.tx), drifts = [];
+    for (const op of tx.ops) {
+      const cur = op.t === "state" ? X.state : op.t === "actor" ? X.facts.actorValue?.(op.uuid, op.path) : undefined;
+      const d = cur === undefined ? null : J.driftOf(op, cur);
+      if (d) drifts.push({ t: op.t, path: op.t === "state" ? d.path : op.path, uuid: op.uuid, expected: d.expected, current: d.current });
+    }
+    if (drifts.length && !mode) return bad("drift", { list: drifts.slice(0, 20) });
+  }
+  for (const id of list) {
+    const tx = X.log.list.find((t) => t.id === id);
+    for (const op of [...tx.ops].reverse()) {
+      if (op.t === "state") {
+        if (a.force && mode === "leave" && J.driftOf(op, X.state)) continue;
+        X.state = J.applyStateOp(X.state, op, true);
+      } else if (op.t === "actor" && a.force) {
+        const cur = X.facts.actorValue?.(op.uuid, op.path), to = cur !== undefined && J.driftOf(op, cur) ? J.resolveDrift(op, cur, mode ?? "restore") : op.from;
+        if (to !== undefined) await X.host.perform({ t: "actor", uuid: op.uuid, path: op.path, to, undo: 1 });
+      } else { const eff = J.inverseEffect(op); if (eff) await X.host.perform({ ...eff, undo: 1 }); }
+    }
+    X.log = J.markUndone(X.log, id, X.host.now());
+    emit(X, null, { type: "undo", tx: id });
+  }
+  X.facts = X.host.facts(); X.changed = true;
+  return ok({ undone: list });
+}
+async function opHazard(X, a) {
+  const h = isObj(a.hazard) ? { kind: String(a.hazard.kind), intensity: Math.max(1, Math.min(12, Math.trunc(Number(a.hazard.intensity) || 1))), inZone: a.hazard.inZone !== false, amount: Math.max(0, Math.trunc(Number(a.hazard.amount) || 0)), armor: a.hazard.armor === true, source: typeof a.hazard.source === "string" ? a.hazard.source.slice(0, 24) : undefined, cause: a.hazard.cause, id: String(a.hazard.id ?? a.hazard.kind).slice(0, 40), zone: typeof a.hazard.zone === "string" ? a.hazard.zone.slice(0, 40) : undefined } : null;
+  const inst = makeInst(X, { action: "hazard", actor: null, decl: { action: "hazard", targets: (Array.isArray(a.targets) ? a.targets : []).filter(P1.isId).slice(0, 40), helpers: [], exploits: [], stressTotal: 0 }, cause: a.cause === "trigger" ? "trigger" : "gm", flow: "hazard", data: { hazard: h }, initiator: { type: "hazard", id: h?.id ?? "hazard" }, parent: top(X)?.id ?? null });
+  const l = Hazard.legality(view(X), inst);
+  if (!l.ok) return bad("illegal", { reason: l.reason });
+  inst.tx = openTx(X, { inst: inst.id });
+  if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); inst.cause = "trigger"; }
+  pushInst(X, inst);
+  emit(X, inst, { type: "trigger", at: a.at ?? "gm", subject: { zone: h.zone }, run: { type: h.kind } });
+  return ok({ inst: inst.id });
+}
+
+export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer", "help", "move", "endTurn", "holdOff", "exception", "other"]);
+export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget"]);
+export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
+  "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet"]);
+export const GM_P1_OPS = Object.freeze(["setCard", "swapCards", "reorderGroup", "addCombatant", "removeCombatant", "insertTurn"]);       // spec 14.2 rows owned by P1
+export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, ...GM_P1_OPS, "answerFor", "undo", "hazard"]);
+
+async function request(X, req) {
+  const op = req?.op;
+  if (GM_OPS.includes(op) && !X.user.staff) return bad("noPermission");
+  switch (op) {
+    case "declare": return opDeclare(X, req);
+    case "amend": return opAmend(X, req);
+    case "cancel": return opCancel(X, req);
+    case "answer": return opAnswer(X, req);
+    case "answerFor": return opAnswer(X, req, true);
+    case "help": return opHelp(X, req);
+    case "endTurn": return opEndTurn(X, req);
+    case "exception": return opAsk(X, req, "exception");
+    case "other": return opAsk(X, req, "other");
+    case "move": case "holdOff": return bad("unknown", { op });                             // P3 (move flow) and P1 (initiative) plug in here
+    case "undo": return opUndo(X, req);
+    case "hazard": return opHazard(X, req);
+    default:
+      if (GM_INST_OPS.includes(op)) return gmInstOp(X, op, req);
+      if (GM_EDIT_OPS.includes(op)) return gmEdit(X, op, req);
+      return bad(GM_P1_OPS.includes(op) ? "unknown" : "badInput", { op: String(op ?? "").slice(0, 24) });
+  }
+}
+function takeRoll(X, r) {
+  const inst = instOf(X, r.inst), rec = inst?.rolls?.[r.key];
+  if (!rec?.req || rec.req.rid !== r.rid || rec.forced != null) return false;
+  const author = X.facts.user(r.author);
+  if (!author || !(author.staff || rec.req.users.includes(r.author))) return false;         // spec 11: identity = the message author, checked against the user the roll was asked from
+  if (!Number.isFinite(r.sixes) || r.sixes < 0) return false;
+  const I = J.clone(inst);
+  I.rolls[r.key] = { ...rec, sixes: Math.trunc(r.sixes), ones: Math.max(0, Math.trunc(Number(r.ones) || 0)), pushed: Math.max(0, Math.trunc(Number(r.pushed) || 0)), pushable: r.pushable === true && rec.req.maxPush !== 0, messageId: typeof r.messageId === "string" ? r.messageId : rec.messageId };
+  setInst(X, I);
+  return true;
+}
+
+/* ------------------------------------------------------------------ entry point */
+export async function handle({ state, log }, input, host) {
+  const user = input?.t === "req" ? input.user : null;
+  const X = makeX(state, log, host, user);
+  let env;
+  try {
+    if (!state) return { state, log, env: bad("off"), events: [], changed: false };
+    if (input?.t === "req") {
+      if (!user || !P1.isId(user.id)) return { state, log, env: bad("untrusted"), events: [], changed: false };
+      if (input.rid && state.seen.includes(input.rid)) return { state, log, env: { ok: true, changed: false, dup: true }, events: [], changed: false };     // spec 1.3: two tabs of one GM are harmless
+      if (state.mode === "off" && !user.staff) return { state, log, env: bad("off"), events: [], changed: false };
+      env = await request(X, input.req);
+      if (env.ok) { applyHelpAnswers(X); await drive(X); }
+    } else if (input?.t === "roll") {
+      env = takeRoll(X, input) ? ok() : bad("badInput");
+      if (env.ok) await drive(X);
+    } else { env = ok({ changed: false }); await drive(X); }
+  } catch (e) {
+    env = bad("internal", { msg: String(e?.message ?? e).slice(0, 120) });                  // what was already performed stays journaled in the open transaction
+    if (X.changed) env.partial = true;
+  }
+  if (!X.changed) return { state, log, env: { ...env, changed: false }, events: X.events, changed: false };
+  const seen = input?.rid ? [...X.state.seen, input.rid].slice(-P1.SEEN_MAX) : X.state.seen;
+  return { state: { ...X.state, rev: (state.rev ?? 0) + 1, seen }, log: X.log, env: env.ok ? { ...env, changed: true } : env, events: X.events, changed: true };
+}
+/** Read helpers for the API and the checks. */
+export const topInstance = (state) => state?.stack?.[state.stack.length - 1] ?? null;
+export const openPrompts = (state) => Object.values(state?.prompts ?? {}).filter((p) => !p.answered);
