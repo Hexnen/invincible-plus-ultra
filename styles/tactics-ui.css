@@ -1,0 +1,358 @@
+/* Invincible - Plus Ultra: TACTICAL COMBAT SURFACES (scripts/tactics/ui/). Two pieces, both built only while tactical combat runs:
+     #invincible-tactics-dock   the ACTION DOCK: bottom centre, just above the macro bar, in the place of the turn tray (which stands down
+                                while the dock shows). The player's surface, and the GM's when driving an NPC.
+     #invincible-tactics-desk   the GM DESK: a column at the right edge of the map, ending at the sidebar, below the challenges HUD.
+   Mode: Operate. The family look, kept working-size: INK panels (the map behind is busy), names of things on skewed YELLOW plates like the
+   sheet's section titles, Titles caps for every label and button, Komika for sentences. The hard offset shadow stays what it is everywhere
+   in this module: the mark of a button you can press now (available action, Declare, End turn, the desk handle); panels float with a soft
+   one. Halftone dots only on empty states and on the unlit part of the chance meter. No side stripes, no gradient text, no glass.
+
+   BUTTON CONTRACT (same as the turn tray): AVAILABLE = solid yellow, ink text, 3px hard blue shadow | CHOSEN = white, sunk 2px |
+   UNAVAILABLE = hollow, dashed, still focusable (the tooltip and a click say why; a click opens "ask the GM") | END TURN = red-ink |
+   secondary = hollow with a frame line. Hover lifts 1px, press sinks 2px, focus = 3px white ring.
+   STACKING: calc(var(--z-index-app, 30) - 1) like the tray, the party cards and the banners; roots never take the pointer.
+   CONTRAST (on ink #0c1a2e): white 17.5 | text #d5dff0 13.0 | label #a9bcdc 9.1 | yellow 13.9 | ink on yellow 13.9 | ink on white 17.5 |
+   cyan #3bb8e8 7.7 | red text #ff8178 7.2 | white on red-ink #b3261e 6.5 | on the tile #112540: text 11.4, label 8.0 | frame #7d93b9 5.6.
+   Non-colour cues: glyph + word on every cost, strike-through on a used action, dashes on an unavailable one, the band is a word. */
+
+#invincible-tactics-dock, #invincible-tactics-desk {
+  --ita-ink: #0c1a2e;
+  --ita-tile: #112540;
+  --ita-tile-hi: #16304f;
+  --ita-track: #1b2d4a;
+  --ita-yellow: #ffe72a;
+  --ita-cyan: #3bb8e8;
+  --ita-blue: #3465a3;
+  --ita-red: #b3261e;
+  --ita-red-lt: #ff8178;
+  --ita-label: #a9bcdc;
+  --ita-text: #d5dff0;
+  --ita-frame: #7d93b9;
+  --ita-line: #6b82a6;
+  --ita-out: cubic-bezier(.16, 1, .3, 1);
+  --ita-dots: radial-gradient(circle, rgba(169, 188, 220, .22) 1.1px, transparent 1.6px) 0 0 / 7px 7px;
+  position: fixed;
+  z-index: calc(var(--z-index-app, 30) - 1);
+  pointer-events: none;
+  font: 400 12.5px/1.3 Comic, sans-serif;
+  color: var(--ita-text);
+  text-shadow: none;
+}
+#invincible-tactics-dock *, #invincible-tactics-dock *::before, #invincible-tactics-dock *::after,
+#invincible-tactics-desk *, #invincible-tactics-desk *::before, #invincible-tactics-desk *::after { box-sizing: border-box; }
+#invincible-tactics-dock ::selection, #invincible-tactics-desk ::selection { color: var(--ita-ink); background: var(--ita-yellow); }
+
+/* Foundry styles every button, input and heading of the page: start from nothing inside the two roots */
+#invincible-tactics-dock button, #invincible-tactics-desk button { all: unset; box-sizing: border-box; cursor: pointer; user-select: none; font-family: Titles, Comic, sans-serif; }
+#invincible-tactics-dock button:focus-visible, #invincible-tactics-desk button:focus-visible,
+#invincible-tactics-dock :is(input, textarea, select):focus-visible, #invincible-tactics-desk :is(input, textarea, select):focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-tactics-dock button[aria-disabled="true"], #invincible-tactics-desk button[aria-disabled="true"] { cursor: not-allowed; }
+#invincible-tactics-dock :is(h2, h3, h4, p, blockquote, ol, ul, fieldset, legend), #invincible-tactics-desk :is(h2, h3, h4, p, blockquote, ol, ul, fieldset, legend) { margin: 0; padding: 0; border: 0; font: inherit; color: inherit; text-shadow: none; list-style: none; min-width: 0; }
+#invincible-tactics-dock :is(input[type="text"], input[type="number"], textarea, select), #invincible-tactics-desk :is(input[type="text"], input[type="number"], textarea, select) {
+  all: unset; box-sizing: border-box; display: block; width: 100%; min-height: 28px; padding: 4px 7px;
+  font: 400 12.5px/1.3 Comic, sans-serif; color: #fff; caret-color: var(--ita-yellow);
+  background: var(--ita-track); border: 1px solid var(--ita-line);
+}
+#invincible-tactics-dock ::placeholder, #invincible-tactics-desk ::placeholder { color: #8fa3c4; opacity: 1; }
+#invincible-tactics-dock textarea { resize: none; white-space: pre-wrap; overflow-wrap: anywhere; }
+#invincible-tactics-desk select { cursor: pointer; }
+#invincible-tactics-desk select option { color: #fff; background: var(--ita-track); }
+#invincible-tactics-dock i[class*="fa-"], #invincible-tactics-desk i[class*="fa-"] { flex: none; font-size: .85em; }
+
+/* ---------- shared: the yellow plate, faces, quotes, the "waiting for" chips ---------- */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-plate {
+  flex: none; width: fit-content; max-width: 100%; padding: 1px 9px 2px 8px;
+  font: 400 14px/1.15 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink);
+  transform: rotate(-1deg) skewX(-6deg); transform-origin: left center;
+}
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-face { flex: none; display: grid; place-items: center; width: 22px; height: 22px; overflow: hidden; color: var(--ita-yellow); background: var(--ita-track); font: 400 12px/1 Titles, Comic, sans-serif; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-face img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; border: 0; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-quote { padding: 4px 8px; font-style: italic; color: #fff; background: var(--ita-track); overflow-wrap: anywhere; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-quote cite { display: block; font: 400 11px/1.2 Titles, Comic, sans-serif; font-style: normal; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-label); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait { display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; padding: 1px 7px 2px; color: var(--ita-text); border: 1px solid var(--ita-line); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait b { flex: none; font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #fff; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait-me { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait-me b { color: var(--ita-ink); }
+
+/* ---------- shared: one question (a caption card) ---------- */
+.ita-ask { display: flex; flex-direction: column; gap: 6px; width: 340px; max-width: 100%; padding: 8px 10px 10px; background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: inset 0 0 0 1px rgba(255, 231, 42, .5), 0 5px 14px rgba(0, 0, 0, .5); }
+#invincible-tactics-dock .ita-ask[data-wide] { width: 620px; }
+.ita-ask.ita-new { animation: ita-pop .28s var(--ita-out); }
+@keyframes ita-pop { from { opacity: 0; translate: 0 12px; rotate: -1.5deg; } to { opacity: 1; translate: 0 0; rotate: 0deg; } }
+.ita-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: -4px; }
+.ita-about { min-width: 0; font: 700 13px/1.15 Comic, sans-serif; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ita-line { color: var(--ita-text); overflow-wrap: anywhere; }
+.ita-opts { display: flex; flex-wrap: wrap; gap: 7px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt {
+  display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; min-height: 32px; max-width: 100%; padding: 3px 10px 4px;
+  color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink); box-shadow: 3px 3px 0 var(--ita-blue);
+  transition: translate .12s ease-out, box-shadow .12s ease-out;
+}
+.ita-opt-l { font: 400 13px/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
+.ita-opt-c, .ita-opt-n, .ita-opt-why { font: 400 10.5px/1.15 Comic, sans-serif; letter-spacing: 0; text-transform: none; }
+.ita-opt-n { font-variant-numeric: tabular-nums; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt:hover:not([aria-disabled="true"]) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt:active:not([aria-disabled="true"]) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-pass] { color: var(--ita-text); background: transparent; border-color: var(--ita-frame); box-shadow: none; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[aria-pressed="false"] { color: var(--ita-yellow); background: transparent; border-color: var(--ita-yellow); box-shadow: none; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[aria-pressed="true"] { color: var(--ita-ink); background: #fff; box-shadow: 1px 1px 0 var(--ita-blue); translate: 2px 2px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; }
+.ita-check { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--ita-label); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check input { all: unset; box-sizing: border-box; flex: none; display: grid; place-items: center; width: 16px; height: 16px; background: var(--ita-track); border: 2px solid var(--ita-frame); cursor: pointer; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check input:checked { background: var(--ita-yellow); border-color: var(--ita-yellow); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check input:checked::after { content: ""; width: 8px; height: 4px; margin-top: -2px; border: solid var(--ita-ink); border-width: 0 0 2px 2px; rotate: -45deg; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check:hover { color: #fff; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-submit, .itd-go) {
+  display: inline-flex; align-items: center; justify-content: center; align-self: flex-start; min-height: 34px; padding: 0 14px;
+  font: 400 14px/1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+  color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink); box-shadow: 3px 3px 0 var(--ita-blue);
+  transition: translate .12s ease-out, box-shadow .12s ease-out;
+}
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-submit, .itd-go):hover:not([aria-disabled="true"]) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-submit, .itd-go):active:not([aria-disabled="true"]) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-submit, .itd-go)[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; }
+
+/* ============================ THE ACTION DOCK ============================ */
+#invincible-tactics-dock {
+  left: var(--itd-cx, 50%);
+  bottom: var(--itd-bottom, 100px);
+  width: max-content;
+  max-width: var(--itd-maxw, 92vw);
+  transform: translateX(-50%);
+  transition: translate .26s var(--ita-out), opacity .2s ease-out;
+}
+#invincible-tactics-dock.itd-hidden { translate: 0 calc(100% + 16px); opacity: 0; }
+.itd-stack { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; }
+.itd-stack > * { pointer-events: auto; max-width: 100%; }
+
+/* the questions asked of this user sit on top, whoever's turn it is */
+.itd-asks { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 8px; max-height: var(--itd-maxh, 60vh); overflow-y: auto; padding: 4px 6px 2px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
+
+/* the bar */
+.itd-bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px; padding: 5px 10px 6px 6px;
+  background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
+  transform: skewX(-4deg); transform-origin: center bottom;
+}
+.itd-bar > * { transform: skewX(4deg); }
+#invincible-tactics-dock.itd-turn .itd-bar { box-shadow: inset 0 0 0 1px var(--ita-yellow), 0 2px 8px rgba(0, 0, 0, .45); }
+.itd-who { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.itd-face { width: 38px; height: 38px; border: 2px solid var(--ita-line); font-size: 18px; }
+#invincible-tactics-dock.itd-turn .itd-face { border-color: var(--ita-yellow); }
+.itd-chars { display: flex; gap: 3px; }
+#invincible-tactics-dock .itd-char { position: relative; width: 30px; height: 30px; border: 2px solid var(--ita-line); }
+#invincible-tactics-dock .itd-char .ita-face { width: 100%; height: 100%; }
+#invincible-tactics-dock .itd-char[aria-pressed="true"] { border-color: var(--ita-yellow); }
+#invincible-tactics-dock .itd-char-turn::after, #invincible-tactics-dock .itd-char-asked::after { content: ""; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; background: var(--ita-yellow); border: 2px solid var(--ita-ink); border-radius: 50%; }
+#invincible-tactics-dock .itd-char-asked::after { background: var(--ita-red-lt); }
+.itd-id { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.itd-name { max-width: 15em; font: 700 12.5px/1.1 Comic, sans-serif; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.itd-pips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+#invincible-tactics-dock .itd-pip {
+  display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 6px;
+  font: 400 11px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ita-ink); background: var(--ita-yellow); border: 1px solid var(--ita-ink);
+}
+#invincible-tactics-dock .itd-pip[data-kind="full"] { padding: 0 9px; }
+#invincible-tactics-dock .itd-pip[data-state="used"] { color: var(--ita-label); background: transparent; border-color: var(--ita-line); }
+#invincible-tactics-dock .itd-pip[data-state="used"] span { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+#invincible-tactics-dock .itd-pip[data-state="lost"] { color: #8fa3c4; background: transparent; border: 1px dashed var(--ita-line); }
+.itd-extra { display: inline-flex; align-items: center; height: 19px; padding: 0 6px; font: 400 11px/1 Comic, sans-serif; color: var(--ita-text); border: 1px solid var(--ita-line); white-space: nowrap; }
+.itd-extra[data-kind="token"], .itd-extra[data-kind="grant"] { color: var(--ita-cyan); border-color: var(--ita-cyan); }
+.itd-extra[data-kind="free"] { color: var(--ita-ink); background: var(--ita-cyan); border-color: var(--ita-ink); }
+
+.itd-groups { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 6px 12px; }
+.itd-group { display: flex; flex-direction: column; gap: 2px; }
+.itd-glabel { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label); }
+.itd-gacts, .itd-tail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.itd-tail { align-self: flex-end; }
+#invincible-tactics-dock :is(.itd-act, .itd-ghost, .itd-end) {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; min-width: 56px; padding: 0 10px;
+  font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+  border: 2px solid var(--ita-ink);
+  transition: translate .12s ease-out, box-shadow .12s ease-out;
+}
+#invincible-tactics-dock .itd-act { color: var(--ita-ink); background: var(--ita-yellow); box-shadow: 3px 3px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-act:hover:not([aria-disabled="true"], .itd-armed) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-act:active:not([aria-disabled="true"]), #invincible-tactics-dock .itd-act.itd-armed { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-act.itd-armed { background: #fff; }
+#invincible-tactics-dock .itd-act[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; cursor: help; }
+#invincible-tactics-dock .itd-act[aria-disabled="true"].itd-armed { color: #fff; border-style: solid; border-color: #fff; translate: none; }
+#invincible-tactics-dock .itd-ghost { color: var(--ita-text); background: transparent; border-color: var(--ita-frame); }
+#invincible-tactics-dock .itd-ghost:hover:not([aria-disabled="true"]) { color: #fff; border-color: #fff; }
+#invincible-tactics-dock .itd-ghost.itd-armed { color: var(--ita-ink); background: #fff; border-color: var(--ita-ink); }
+#invincible-tactics-dock .itd-ghost[aria-disabled="true"] { color: #8fa3c4; border: 2px dashed var(--ita-line); }
+#invincible-tactics-dock .itd-end { color: #fff; background: var(--ita-red); box-shadow: 3px 3px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-end:hover:not([aria-disabled="true"]) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-end:active:not([aria-disabled="true"]) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-end.itd-end-sure { color: var(--ita-ink); background: #fff; }
+#invincible-tactics-dock .itd-end[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; }
+#invincible-tactics-dock :is(.itd-peek, .itd-x) { display: inline-grid; place-items: center; width: 26px; height: 26px; color: var(--ita-label); border: 1px solid var(--ita-line); }
+#invincible-tactics-dock :is(.itd-peek, .itd-x):hover { color: #fff; border-color: #fff; }
+
+/* the panel of the armed action */
+.itd-panel { align-self: stretch; display: flex; flex-direction: column; gap: 7px; min-width: min(440px, 100%); padding: 8px 12px 10px; background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: inset 0 0 0 1px rgba(125, 147, 185, .55), 0 5px 14px rgba(0, 0, 0, .5); animation: itd-rise .2s var(--ita-out); }
+@keyframes itd-rise { from { opacity: 0; clip-path: inset(40% 0 0 0); translate: 0 8px; } to { opacity: 1; clip-path: inset(0 0 0 0); translate: 0 0; } }
+.itd-phead { display: flex; align-items: center; gap: 9px; min-width: 0; margin-left: -5px; }
+.itd-phead .itd-x { margin-left: auto; }
+.itd-cost { font: 400 11.5px/1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); white-space: nowrap; }
+.itd-arrow { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ita-label); }
+.itd-arrow b { font: 700 13px/1.1 Comic, sans-serif; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itd-pbody { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 18px; }
+.itd-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.itd-grow { flex: 1 1 240px; }
+.itd-targets { flex: 1 1 200px; max-width: 420px; }
+.itd-submit { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; align-self: flex-end; }
+.itd-k { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label); }
+.itd-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+#invincible-tactics-dock .itd-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 100%; padding: 0 9px 0 2px; font: 700 12px/1 Comic, sans-serif; color: #fff; background: var(--ita-tile-hi); border: 2px solid var(--ita-frame); }
+#invincible-tactics-dock .itd-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#invincible-tactics-dock .itd-chip:hover { border-color: #fff; }
+#invincible-tactics-dock .itd-chip-dim { color: var(--ita-label); background: transparent; border-color: var(--ita-line); }
+#invincible-tactics-dock .itd-chip[aria-pressed="true"] { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); box-shadow: 2px 2px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-chip-token { padding-left: 8px; color: var(--ita-cyan); background: transparent; border-color: var(--ita-cyan); }
+#invincible-tactics-dock .itd-chip-card { padding-left: 4px; }
+#invincible-tactics-dock .itd-chip-card b { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 3px; font: 400 13px/1 Titles, Comic, sans-serif; color: var(--ita-ink); background: var(--ita-yellow); }
+.itd-hint, .itd-why { display: flex; align-items: center; gap: 6px; color: var(--ita-label); }
+.itd-hint i { color: var(--ita-cyan); }
+.itd-reason, .itd-status { flex: 1 1 100%; display: flex; align-items: center; gap: 7px; color: #fff; }
+.itd-reason i { color: var(--ita-red-lt); }
+.itd-status i { color: var(--ita-yellow); }
+.itd-refused { align-items: center; padding-top: 7px; border-top: 1px dashed var(--ita-line); }
+.itd-refused .itd-reason { flex: 1 1 220px; }
+.itd-panel[data-rolling] { box-shadow: inset 0 0 0 1px var(--ita-yellow), 0 5px 14px rgba(0, 0, 0, .5); }
+.itd-pool { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; }
+.itd-pool .itd-k { grid-column: 1 / -1; }
+.itd-dice { display: grid; place-items: center; min-width: 34px; height: 34px; padding: 0 4px; font: 400 24px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--ita-ink); background: #fff; border: 2px solid var(--ita-ink); border-radius: 5px; box-shadow: 2px 2px 0 var(--ita-blue); }
+.itd-parts { color: var(--ita-text); }
+.itd-chance { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.itd-chance .itd-k { flex: 1 1 100%; }
+.itd-meter { display: inline-flex; gap: 2px; transform: skewX(-15deg); }
+.itd-meter i { display: block; width: 18px; height: 11px; background: var(--ita-dots), var(--ita-track); border: 1px solid var(--ita-line); }
+.itd-meter i.on { background: var(--ita-yellow); border-color: var(--ita-ink); }
+.itd-meter[data-level="0"] i.on { background: var(--ita-red-lt); }
+.itd-band { font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #fff; }
+.itd-def { flex: 1 1 100%; color: var(--ita-label); }
+.itd-def b { color: #fff; font-weight: 700; }
+.itd-text { min-height: 44px; }
+#invincible-tactics-dock .itd-go-ask { color: var(--ita-ink); background: var(--ita-cyan); }
+
+/* waiting line */
+.itd-wait { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 7px; padding: 2px 9px 3px; background: rgba(12, 26, 46, .92); }
+.itd-turnline { font: 400 11.5px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); }
+#invincible-tactics-dock.itd-turn .itd-turnline { color: var(--ita-yellow); }
+body.itd-picking #board { cursor: crosshair; }
+
+/* ============================ THE GM DESK ============================ */
+#invincible-tactics-desk {
+  top: var(--igd-top, 11px);
+  right: var(--igd-right, 0px);
+  display: flex; align-items: flex-start; gap: 0;
+  max-height: var(--igd-maxh, 80vh);
+  padding-right: 10px;
+}
+#invincible-tactics-desk .igd-handle {
+  pointer-events: auto; position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 30px; height: 30px; margin: 6px 6px 0 0; padding: 0 8px;
+  font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+  color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink); box-shadow: 3px 3px 0 var(--ita-blue);
+  transition: translate .12s ease-out, box-shadow .12s ease-out;
+}
+#invincible-tactics-desk .igd-handle:hover { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
+#invincible-tactics-desk .igd-handle:active { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
+#invincible-tactics-desk.igd-collapsed .igd-handle { margin-right: 0; height: 34px; padding: 0 11px; }
+.igd-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; font: 400 12px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; background: var(--ita-red); border-radius: 9px; }
+.igd-handle .igd-badge { border: 1px solid var(--ita-ink); }
+#invincible-tactics-desk.igd-collapsed.igd-busy .igd-handle { animation: igd-nudge 2.4s ease-in-out infinite; }
+@keyframes igd-nudge { 0%, 86%, 100% { rotate: 0deg; } 90% { rotate: -3deg; } 95% { rotate: 2deg; } }
+#invincible-tactics-desk .igd {
+  pointer-events: auto; display: flex; flex-direction: column; width: 348px; max-width: calc(100vw - var(--igd-right, 0px) - 60px); max-height: calc(var(--igd-maxh, 80vh) - 4px);
+  background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: inset 0 0 0 1px rgba(125, 147, 185, .55), 0 5px 16px rgba(0, 0, 0, .5);
+}
+#invincible-tactics-desk.igd-collapsed .igd { display: none; }
+.igd-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px 4px 6px; }
+.igd-title { font-size: 16px !important; }
+.igd-turn { min-width: 0; margin-left: auto; font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.igd-tabs { display: flex; padding: 0 10px; border-bottom: 1px solid #2a4064; }
+#invincible-tactics-desk .igd-tabs button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .07em; text-transform: uppercase; color: var(--ita-label); border-bottom: 3px solid transparent; }
+#invincible-tactics-desk .igd-tabs button:hover { color: #fff; }
+#invincible-tactics-desk .igd-tabs button[aria-selected="true"] { color: var(--ita-yellow); border-bottom-color: var(--ita-yellow); }
+.igd-wait { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 7px 10px; background: var(--ita-track); }
+.igd-k { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label); }
+.igd-nobody { color: var(--ita-text); }
+.igd-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 10px 12px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
+.igd-sec { display: flex; flex-direction: column; gap: 7px; }
+.igd-h { display: flex; align-items: center; gap: 6px; margin-top: 12px !important; font: 400 11.5px/1 Titles, Comic, sans-serif !important; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label) !important; }
+.igd-n { font: inherit; color: var(--ita-yellow); }
+.igd-empty { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px !important; padding: 22px 10px !important; color: var(--ita-label); background: var(--ita-dots); border: 1px dashed var(--ita-line) !important; }
+#invincible-tactics-desk .ita-ask { width: auto; background: var(--ita-tile); border: 0; box-shadow: none; }
+#invincible-tactics-desk .ita-ask[data-proxy] { box-shadow: inset 0 0 0 1px var(--ita-cyan); }
+.igd-inst, .igd-npc { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 9px; background: var(--ita-tile); }
+.igd-inst.igd-child { margin-left: 14px; }
+.igd-ihead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; font: 400 15px/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.igd-ihead i { color: var(--ita-line); }
+.igd-actor, .igd-target { color: #fff; font-weight: 400; }
+.igd-npc > .igd-actor { font: 400 14px/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.igd-action { color: var(--ita-yellow); }
+.igd-meta { display: flex; flex-wrap: wrap; gap: 4px; }
+.igd-stepchip, .igd-tag { padding: 1px 6px 2px; font-size: 11.5px; color: var(--ita-text); background: var(--ita-track); }
+.igd-stepchip b { color: #fff; font-weight: 700; }
+.igd-ihead .igd-tag { font: 400 11.5px/1.3 Comic, sans-serif; letter-spacing: 0; text-transform: none; }
+.igd-hit { color: var(--ita-ink); background: var(--ita-yellow); }
+.igd-miss { color: var(--ita-label); }
+.igd-rolls { display: flex; flex-direction: column; gap: 2px; }
+.igd-rolls li { display: flex; align-items: baseline; gap: 6px; }
+.igd-rolls li i { color: var(--ita-label); }
+.igd-rolls li b { flex: none; color: #fff; font-weight: 700; }
+.igd-rolls li.igd-waiting i { color: var(--ita-yellow); }
+.igd-pct { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ita-cyan); }
+.igd-cmds { display: flex; flex-wrap: wrap; gap: 6px; }
+#invincible-tactics-desk :is(.igd-btn, .igd-set) { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 26px; padding: 0 9px; font: 400 12px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: var(--ita-text); border: 1px solid var(--ita-frame); }
+#invincible-tactics-desk :is(.igd-btn, .igd-set):hover { color: #fff; border-color: #fff; }
+#invincible-tactics-desk .igd-danger { color: var(--ita-red-lt); border-color: var(--ita-red-lt); }
+#invincible-tactics-desk .igd-danger:hover { color: #fff; background: var(--ita-red); border-color: var(--ita-red); }
+#invincible-tactics-desk .igd-primary { color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink); box-shadow: 2px 2px 0 var(--ita-blue); }
+#invincible-tactics-desk .igd-primary:hover { color: var(--ita-ink); border-color: var(--ita-ink); }
+#invincible-tactics-desk .igd-toggle[aria-expanded="true"] { color: var(--ita-ink); background: var(--ita-cyan); border-color: var(--ita-cyan); }
+#invincible-tactics-desk .igd-link { font: 400 11.5px/1.2 Comic, sans-serif; letter-spacing: 0; text-transform: none; color: var(--ita-cyan); text-decoration: underline; text-underline-offset: 2px; }
+.igd-ovr { display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--ita-ink); animation: itd-rise .2s var(--ita-out); }
+.igd-og { display: flex; flex-direction: column; gap: 5px; }
+.igd-og legend { margin-bottom: 4px !important; font: 400 10.5px/1 Titles, Comic, sans-serif !important; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label) !important; }
+.igd-og[data-g="step"], .igd-og[data-g="end"] { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.igd-og[data-g="step"] legend, .igd-og[data-g="end"] legend { flex: 1 1 100%; }
+.igd-ctl { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
+.igd-cl { flex: 1 1 96px; min-width: 0; color: var(--ita-text); }
+.igd-step { flex: none; display: inline-flex; align-items: center; }
+#invincible-tactics-desk .igd-step button { display: inline-grid; place-items: center; width: 24px; height: 26px; color: var(--ita-text); background: var(--ita-track); border: 1px solid var(--ita-line); }
+#invincible-tactics-desk .igd-step button:hover { color: #fff; border-color: #fff; }
+#invincible-tactics-desk .igd-step input { width: 42px; min-height: 26px; height: 26px; padding: 0 2px; text-align: center; font: 400 15px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; border-left: 0; border-right: 0; appearance: textfield; -moz-appearance: textfield; }
+#invincible-tactics-desk .igd-step input::-webkit-inner-spin-button { appearance: none; }
+#invincible-tactics-desk .igd-ctl select { width: auto; min-width: 120px; max-width: 170px; min-height: 26px; padding: 2px 6px; }
+.igd-seg { flex: none; display: inline-flex; flex-wrap: wrap; }
+#invincible-tactics-desk .igd-seg button { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 8px; font: 400 12px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-text); border: 1px solid var(--ita-line); margin-left: -1px; }
+#invincible-tactics-desk .igd-seg button:first-child { margin-left: 0; }
+#invincible-tactics-desk .igd-seg button:hover { color: #fff; }
+#invincible-tactics-desk .igd-seg button[aria-pressed="true"] { position: relative; color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
+.igd-log { display: flex; flex-direction: column; }
+.igd-log li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 0; border-bottom: 1px solid #22375a; }
+.igd-jt { flex: 1 1 170px; min-width: 0; overflow-wrap: anywhere; }
+.igd-jc { flex: none; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.igd-also { color: var(--ita-red-lt); font-size: 11.5px; }
+.igd-log li[data-state="undone"] .igd-jt { color: #8fa3c4; text-decoration: line-through; }
+.igd-log li[data-state="open"] .igd-jt { color: var(--ita-label); font-style: italic; }
+#invincible-tactics-desk .igd-body > .igd-ctl { margin-top: 10px; }
+
+@media (pointer: coarse) {
+  #invincible-tactics-dock :is(.itd-act, .itd-ghost, .itd-end) { height: 40px; }
+  #invincible-tactics-dock .itd-chip { height: 36px; }
+  :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt { min-height: 40px; }
+  #invincible-tactics-desk :is(.igd-btn, .igd-set, .igd-seg button) { min-height: 34px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #invincible-tactics-dock { transition: opacity .2s linear; }
+  #invincible-tactics-dock.itd-hidden { translate: none; }
+  .ita-ask.ita-new, .itd-panel, .igd-ovr, #invincible-tactics-desk.igd-collapsed.igd-busy .igd-handle { animation: none; }
+  #invincible-tactics-dock button, #invincible-tactics-desk button { transition: none !important; }
+  #invincible-tactics-dock button:hover, #invincible-tactics-desk button:hover { translate: none !important; }
+}

@@ -19,13 +19,16 @@ const sub = (d) => fs.readdirSync(path.join(here, d)).filter((f) => f.endsWith("
 const all = [...fs.readdirSync(here).filter((f) => f.endsWith(".mjs")), ...sub("flows"), ...sub("ui")];
 const code = all.filter((f) => !f.startsWith("check-"));
 const PURE = code.filter((f) => /-pure\.mjs$/.test(f) || f.startsWith("flows/") || f === "source.mjs");
-const FACING = code.filter((f) => !PURE.includes(f) && !["testkit.mjs", "lang.mjs"].includes(f));
+/* the designed surfaces (the action dock and the GM desk): DOM builders and their wiring. Not thin by nature, so they are not under the
+   cap of the Foundry-facing files; they hold no rule (checked below) and their logic is ui/model-pure.mjs, which is under the pure rules. */
+const SURFACE = ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs", "ui/pick.mjs", "ui/main.mjs"];
+const FACING = code.filter((f) => !PURE.includes(f) && !SURFACE.includes(f) && !["testkit.mjs", "lang.mjs"].includes(f));
 const FORBIDDEN = /(?<![.\w])(game|ui|canvas|foundry|Hooks|CONFIG|CONST|ChatMessage|Roll|fromUuid|fromUuidSync|window|document|globalThis|setTimeout|socketlib)\s*[.(\[]/;
 const GLOBALS = /(^|[^.\w"'`])(game|Hooks|foundry|ui|canvas|CONFIG|ChatMessage|fromUuid|fromUuidSync|document|window|globalThis|setTimeout|Math\.random|Date\.now)\s*[.(\[]|\bnew Roll\b/;
 const pureImport = (i) => /-pure\.mjs$|\/flows\/|^\.\/(kit|attack|simple)\.mjs$|\/rules\/index\.mjs$|^node:/.test(i);
 
 eq(PURE.slice().sort(), ["catalog-pure.mjs", "desk-pure.mjs", "director-pure.mjs", "economy-pure.mjs", "engine-pure.mjs", "flows/attack.mjs", "flows/kit.mjs", "flows/simple.mjs", "initiative-pure.mjs", "journal-pure.mjs",
-  "ledger-pure.mjs", "mods-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");
+  "ledger-pure.mjs", "mods-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "ui/model-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");
 for (const f of PURE) {
   const c = strip(read(f));
   ok(!FORBIDDEN.test(c), `${f}: no Foundry or browser globals`);
@@ -75,6 +78,15 @@ for (const f of FACING) {
   ok(!/canPay|turnStart\(|newLedger\(|startDraw\(|continueDraw\(/.test(c), `${f}: no ledger or draw logic outside the pure files`);
   if (f !== "ui/prompts.mjs" && f !== "api.mjs") ok(/try\s*\{/.test(c), `${f}: guarded with try / catch`);
 }
+for (const f of SURFACE) {
+  const c = strip(read(f));
+  ok(code.includes(f), `${f}: the surface file exists`);
+  ok(!/canPay|turnStart\(|newLedger\(|startDraw\(|continueDraw\(|\bD\.handle\(|\bO\.reduce\(/.test(c), `${f}: no rule and no reducer in a surface file`);
+  ok(!/Store\.write\(|setFlag\(|\.update\(|\.create\(|\.delete\(/.test(c), `${f}: a surface writes nothing itself (requests only)`);
+  ok(/try\s*\{/.test(c), `${f}: guarded with try / catch`);
+}
+for (const f of ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs"]) ok(!/(^|[^.\w"'`])(game|Hooks|foundry|canvas|CONFIG|ChatMessage|fromUuid)\s*[.(\[]/.test(strip(read(f))), `${f}: plain DOM only, no Foundry global`);
+ok(/Api\.request\(/.test(read("ui/main.mjs")) && !/Relay\./.test(strip(read("ui/main.mjs"))), "the surfaces send through api.tactics.request alone");
 ok(/NO_RNG/.test(read("ops-pure.mjs")) && !/Math\.random/.test(strip(read("ops-pure.mjs"))), "the reducer has no default randomness");
 ok(/CONFIG\.Dice\.randomUniform/.test(read("engine.mjs")), "the executor shuffles with Foundry's random source");
 ok(!/this\b/.test(strip(read("combat-class.mjs")).match(/export function compareCombatants[\s\S]*?\n}\n/)?.[0] ?? "this"), "the sort does not use `this` (core calls it unbound)");
