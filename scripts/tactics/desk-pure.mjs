@@ -14,7 +14,7 @@ const optReq = (p, o, op) => ({ op, prompt: p.id, value: o.data && isObj(o.data)
 
 /** GM desk card kinds this engine raises (spec 13.1 + the ones the spec has no row for; reported as holes): */
 export const CARD_KINDS = Object.freeze(["reaction", "exception", "other", "direction", "stunt", "helpOverride", "revalidate", "npcBroken", "proxy",
-  "gate", "tokenConfirm", "counter", "dodgeMove", "stunts"]);
+  "gate", "tokenConfirm", "counter", "dodgeMove", "stunts", "moveStop", "moveApprove"]);
 
 function card(p, ctx, proxy = false) {
   return {
@@ -79,6 +79,7 @@ export function barModel(view, cid, ctx = {}) {
   });
   return { combatant: cid, name: nameOf(ctx, cid), onTurn, free: !!view.free?.[cid], budget: P1 ? P1.budget(view, cid) : null, statuses: (view.statuses?.[cid] ?? []).map((s) => s.id),
     tokens: (view.tokens ?? []).filter((t) => t.holder === cid).map((t) => ({ id: t.id, dice: t.dice, source: t.source, needsGm: !!t.needsGm })), actions,
+    move: typeof ctx.move === "function" ? ctx.move(cid) : undefined,                             // P3: the reachable zones with their cost (movement-pure.moveOptions), each with a ready request
     endTurn: onTurn ? { disabled: busy ? "busy" : null, req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,
     other: { req: (text) => ({ op: "other", actor: cid, text }) }, exception: { req: (text, inst) => ({ op: "exception", actor: cid, text, ...(inst ? { inst } : {}) }) } };
 }

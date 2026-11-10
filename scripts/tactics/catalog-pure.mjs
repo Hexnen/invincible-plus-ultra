@@ -11,7 +11,7 @@ import * as M from "./mods-pure.mjs";
 import { conditions } from "../rules/index.mjs";
 
 export const WINDOWS = Object.freeze(["beforeRoll", "afterRoll", "afterDamage"]);
-export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other"]);
+export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other", "barrier", "fastball"]);
 export const REACTION_EFFECTS = Object.freeze(["defence", "action", "swapTarget", "autoMiss", "note"]);
 
 export const BUILTIN = Object.freeze({
@@ -22,6 +22,14 @@ export const BUILTIN = Object.freeze({
   dodge: { id: "dodge", label: "ITAC.action.dodge", src: [2313, 2524, 2525], kind: "builtin", cost: "quick", flow: "plain", interrupt: { on: ["beforeRoll"] }, roll: { attr: "agility", passive: false }, reaction: { when: ["beforeRoll"], who: "target", effect: "defence" }, tags: ["defence"] },
   orders: { id: "orders", label: "ITAC.action.orders", src: [2362, 2297], kind: "builtin", cost: "full", flow: "roll", roll: { attr: "presence" }, target: { who: "ally", n: [1, 1] }, effect: { token: "orders" }, tags: [] },
   other: { id: "other", label: "ITAC.action.other", src: [2208], kind: "builtin", cost: "none", flow: "other", tags: [] },
+  /* P3 movement (flows/move.mjs). `cost` of a move is nominal: the flow prices the declared route (quick or full by the way of moving and the
+     conditions, free inside the zone on the own turn [L6]); the ways of moving come from the mover's powers (movement-pure.modesOf), not from entries.
+     An entry may fix a way with `move: { mode }` (the interrupt moves of P6: Untouchable Speed [B2018], Quick Teleport [B2039]). */
+  move: { id: "move", label: "ITAC.action.move", src: [2383, 2385, 2386, 2387, 2388, 2394, 2417, 2419], kind: "builtin", cost: "quick", flow: "move", tags: ["move"] },
+  openDoor: { id: "openDoor", label: "ITAC.action.openDoor", src: [2418], kind: "builtin", cost: "none", flow: "barrier", door: "openDoor", tags: [] },
+  breachDoor: { id: "breachDoor", label: "ITAC.action.breachDoor", src: [2418], kind: "builtin", cost: "quick", flow: "barrier", door: "breachDoor", roll: { attr: "strength" }, tags: [] },
+  unseal: { id: "unseal", label: "ITAC.action.unseal", src: [2418], kind: "builtin", cost: "full", flow: "barrier", door: "unseal", roll: { attr: "reason" }, tags: [] },
+  fastball: { id: "fastball", label: "ITAC.action.fastball", src: [2389, 2390], kind: "builtin", cost: "full", flow: "fastball", target: { who: "ally", n: [1, 1] }, tags: ["move"] },
   gmRoll: { id: "gmRoll", label: "ITAC.action.gmRoll", src: [2208], kind: "builtin", cost: "none", flow: "roll", roll: { attr: null }, tags: [] },
 });
 
@@ -65,6 +73,7 @@ export function sanitizeEntry(e) {
     out.reaction = { when: (Array.isArray(e.reaction.when) ? e.reaction.when : []).filter((w) => WINDOWS.includes(w)), who: e.reaction.who === "target" ? "target" : "any", effect: e.reaction.effect };
     out.interrupt = { on: out.reaction.when };
   }
+  if (e.flow === "move" && e.move && typeof e.move === "object" && /^[A-Za-z]{1,24}$/.test(e.move.mode ?? "")) out.move = { mode: e.move.mode };     // a way of moving fixed by the entry
   if (Array.isArray(e.parts)) out.parts = e.parts.map((p) => ({ action: str(p?.action, 32) })).filter((p) => p.action).slice(0, 6);     // composite flow
   return out;
 }

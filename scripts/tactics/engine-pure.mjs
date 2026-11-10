@@ -32,8 +32,10 @@ import * as ZP from "./zones-pure.mjs";
 import * as K from "./flows/kit.mjs";
 import * as Attack from "./flows/attack.mjs";
 import { roll as Roll, other as Other, hazard as Hazard, composite as Composite } from "./flows/simple.mjs";
+import * as Move from "./flows/move.mjs";
 
-export const FLOWS = Object.freeze({ attack: Attack, roll: Roll, other: Other, plain: Other, hazard: Hazard, composite: Composite });
+export const FLOWS = Object.freeze({ attack: Attack, roll: Roll, other: Other, plain: Other, hazard: Hazard, composite: Composite,
+  move: Move.move, fastball: Move.fastball, barrier: Move.barrier, forced: Move.forced, fall: Move.fall });       // P3: movement (flows/move.mjs)
 export const ERROR_CODES = Object.freeze(["noGM", "untrusted", "stale", "rate", "badInput", "off", "notOwner", "notYourTurn", "noAction", "locked", "illegal", "unknown", "gone", "busy", "playersOff", "internal", "relay", "tooBig", "noPermission", "drift"]);
 export const REVALIDATE_OPTIONS = Object.freeze(["continue", "amend", "forfeit", "cancel"]);      // [OQ-3]: the GM decides, no default
 const bad = (code, params = {}) => ({ ok: false, changed: false, error: { key: `ITAC.err.${code}`, code, params } });
@@ -111,7 +113,8 @@ async function applyEffect(X, I, e, step) {
   switch (e.t) {
     case "state": write(X, tx, e.path, e.to, I, step); return false;
     case "pay": {
-      const r = P1.pay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense, cause: e.cause, force: !!e.force }, { action: e.action, inst: I.id, tags: e.tags ?? (e.defense ? ["defence"] : []), target: e.target, onTurnOf: e.onTurnOf });
+      const r = P1.pay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense, cause: e.cause, force: !!e.force }, { action: e.action, inst: I.id, tags: e.tags ?? (e.defense ? ["defence"] : []), target: e.target, onTurnOf: e.onTurnOf,
+        ...(e.zoneFrom ? { zoneFrom: e.zoneFrom } : {}), ...(e.zoneTo ? { zoneTo: e.zoneTo } : {}), ...(Number.isFinite(e.borders) ? { borders: e.borders } : {}) });
       if (!r.ok) { (I.data.unpaid ??= {})[e.key] = r.reason; return false; }             // was legal when offered; shown to the GM instead of guessing
       write(X, tx, ["ledger", e.who], r.ledger, I, step, e.own ? "cost" : null);
       (I.data.paid ??= {})[e.key] = r.entryId;
@@ -143,6 +146,9 @@ async function applyEffect(X, I, e, step) {
     case "fact": return false;                                                             // spec 4.2: the facts of a turn are derived from the ledger entries (their tags), nothing is written twice
     case "karma": write(X, tx, ["karma"], [...X.state.karma, { id: nextId(X, "k"), round: X.state.round, ...e.note }], I, step); return false;
     case "zones": await perform(X, tx, { ...e, tx }, I, step); return false;
+    /* P3: one stretch of a move (`zmove`: the map's move along the named zones, its step listener asked) or an arrival nobody is asked
+       about (`zput`). The host answers { ok, done, total, stop: { reason, data } | null, spot, left } and the journal keeps the map's inverse. */
+    case "zmove": case "zput": { const res = await perform(X, tx, { ...e, tx }, I, step); (I.data.res ??= {})[e.key] = isObj(res) ? res : { ok: false, reason: "noZones" }; return true; }
     case "message": await perform(X, tx, { ...e, tx }, I, step); return false;
     default: return false;
   }
@@ -183,7 +189,7 @@ function label(X, inst, what) {
 }
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {
-  const inst = makeInst(X, { action: spec.action, actor: spec.actor, decl: spec.decl, cause: spec.cause ?? "interrupt", parent: parent.id, data: spec.data ?? {}, part: !!spec.part });
+  const inst = makeInst(X, { action: spec.action, actor: spec.actor, decl: spec.decl, cause: spec.cause ?? "interrupt", parent: parent.id, data: spec.data ?? {}, part: !!spec.part, flow: spec.flow ?? null, initiator: spec.initiator ?? null });
   const l = K.legality(view(X), inst, FLOWS[inst.flow]);
   if (!l.ok) return { ok: false, reason: l.reason };
   inst.tx = spec.part ? parent.tx : openTx(X, { inst: inst.id });
@@ -191,7 +197,7 @@ function pushChild(X, parent, spec) {
   emit(X, inst, { type: "actionDeclared", decl: publicDecl(inst.decl), cost: "none", stress: 0, targets: inst.decl.targets ?? [], cause: inst.cause });
   return { ok: true, inst };
 }
-const publicDecl = (d) => ({ action: d.action, weapon: d.weapon, targets: d.targets ?? [], zone: d.zone, special: d.special, wreck: d.wreck, area: d.area });
+const publicDecl = (d) => ({ action: d.action, weapon: d.weapon, targets: d.targets ?? [], zone: d.zone, special: d.special, wreck: d.wreck, area: d.area, to: d.to, mode: d.mode });
 
 async function closeInst(X, I, result = null) {
   I.status = I.status === "aborted" ? "aborted" : "done";
@@ -306,6 +312,13 @@ function sanitizeDecl(d, action, staff = false) {
   if (typeof d?.weapon === "string") out.weapon = d.weapon.slice(0, 120);
   if (typeof d?.power === "string") out.power = d.power.slice(0, 120);
   if (typeof d?.zone === "string") out.zone = d.zone.slice(0, 40);
+  if (typeof d?.to === "string") out.to = d.to.slice(0, 60);                                // P3: where a move goes (a spot) or the border a door action works on
+  if (typeof d?.mode === "string" && P1.isId(d.mode)) out.mode = d.mode.slice(0, 24);
+  if (d?.pay === "quick" || d?.pay === "full") out.pay = d.pay;
+  if (d?.stress === true || d?.stress === 1) out.stress = 1;
+  if (typeof d?.airborne === "boolean") out.airborne = d.airborne;
+  if (d?.force === true || d?.force === 1) out.force = true; else if (isObj(d?.force)) out.force = Object.fromEntries(Object.entries(d.force).filter(([k, x]) => ZP.isBorderKey(k) && (x === "door" || x === "wall")).slice(0, 12));
+  if (Array.isArray(d?.carry)) out.carry = ids(d.carry, 4);
   if (Array.isArray(d?.path)) out.path = d.path.filter((z) => typeof z === "string").map((z) => z.slice(0, 40)).slice(0, 24);
   if (["charge", "grapple", "grappleAttack"].includes(d?.special)) out.special = d.special;
   for (const k of ["wreck", "area", "blind", "noPush", "secret"]) if (d?.[k] === true || d?.[k] === 1) out[k] = 1;
@@ -349,17 +362,20 @@ async function opDeclare(X, a) {
   const pl = placement(X, actor, entry);
   if (!pl.ok) return bad(pl.code);
   const gm = X.user.staff && a.gm === true;                                                // the GM acting through an override: costs waived
-  const cp = P1.canPay(X.state, actor, entry.cost, { interrupt: pl.cause === "interrupt", gm });
-  if (!cp.ok) return bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason });       // [L1]-[L4], [L7], [L8]
+  const priced = typeof FLOWS[entry.flow]?.price === "function";                           // P3: a flow that names its own cost (a move: quick or full, free inside the zone)
+  const payable = (cost) => { const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm }); return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
+  if (!priced) { const no = payable(entry.cost); if (no) return no; }
   const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
   const l = K.legality(view(X), inst, FLOWS[inst.flow]);
   if (!l.ok && !decl.exception) return bad("illegal", { reason: l.reason, ...l.params });
+  const price = priced ? FLOWS[inst.flow].price(view(X), inst) : null, cost = priced ? price?.cost ?? "none" : entry.cost;
+  if (priced) { const no = payable(cost); if (no) return no; }
   inst.tx = openTx(X, { inst: inst.id });
   if (pl.parent) { const P = J.clone(instOf(X, pl.parent)); P.status = "waiting"; setInst(X, P); }
   pushInst(X, inst);
   const I = J.clone(inst);
-  if (entry.cost === "full" || entry.cost === "quick") {
-    await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : entry.cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", tags: entry.tags, target: decl.targets }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
+  if (cost === "full" || cost === "quick" || (cost === "free" && price?.tags)) {
+    await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", tags: price?.tags ?? entry.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
     I.entry = I.data.paid?.own ?? null;
   }
   if (!l.ok) {                                                                              // an illegal option with a request for an exception (spec 9.12): a desk card
@@ -368,7 +384,7 @@ async function opDeclare(X, a) {
     I.data.holdKey = "exception";
   }
   setInst(X, I);
-  emit(X, I, { type: "actionDeclared", decl: publicDecl(decl), cost: entry.cost, stress: decl.stressTotal, targets: decl.targets, zone: decl.zone, path: decl.path });
+  emit(X, I, { type: "actionDeclared", decl: publicDecl(decl), cost, stress: decl.stressTotal, targets: decl.targets, zone: decl.zone, path: decl.path });
   return ok({ inst: inst.id });
 }
 async function opAmend(X, a) {
@@ -719,6 +735,24 @@ async function opHazard(X, a) {
   return ok({ inst: inst.id });
 }
 
+/** P3, GM ops: a forced move (Knockback, Slam, anything that throws a character [B2435], [B2494]) or a fall [B2391] of one combatant, as
+    an instance of its own (or on top of the open action). { op:"forcedMove", combatant, awayFrom | toward: combatant id or spot, direction?: { angle } | { dx, dy },
+    distance, damage?, kind? } / { op:"fall", combatant, canGrab?, immune? } */
+async function opForced(X, op, a) {
+  if (!P1.isId(a.combatant) || !X.facts.c(a.combatant)) return bad("badInput");
+  const ref = (x) => (typeof x === "string" && x.length <= 60 ? x : undefined), n = (x, hi) => Math.max(0, Math.min(hi, Math.trunc(Number(x) || 0)));
+  const dir = isObj(a.direction) ? (Number.isFinite(a.direction.angle) ? { angle: a.direction.angle } : Number.isFinite(a.direction.dx) && Number.isFinite(a.direction.dy) ? { dx: a.direction.dx, dy: a.direction.dy } : undefined) : undefined;
+  const spec = op === "fall" ? Move.fallChild(a.combatant, { canGrab: a.canGrab === true, immune: a.immune === true })
+    : Move.forcedChild(a.combatant, { awayFrom: ref(a.awayFrom), toward: ref(a.toward), direction: dir, distance: Math.max(1, n(a.distance, 12)), damage: n(a.damage, 99), by: P1.isId(a.by) ? a.by : undefined, kind: ["knockback", "slam"].includes(a.kind) ? a.kind : "forced" });
+  const inst = makeInst(X, { action: spec.action, actor: null, decl: spec.decl, cause: "gm", flow: spec.flow, data: spec.data, initiator: spec.initiator, parent: top(X)?.id ?? null });
+  const l = FLOWS[inst.flow].legality(view(X), inst);
+  if (!l.ok) return bad("illegal", { reason: l.reason });
+  inst.tx = openTx(X, { inst: inst.id });
+  if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); inst.cause = "trigger"; }
+  pushInst(X, inst);
+  return ok({ inst: inst.id });
+}
+
 /* ------------------------------------------------------------------ what the round driver hands over (ops-pure.mjs effects; director-pure.mjs)
    { type:"stress", combatant, n, source }   voluntary stress of a round decision (Combat Veteran [I7] [B2100]): one transaction, undoable
    { type:"recover", lines }                 the end-of-scene recovery (spec 6.8): one transaction; a value that changed meanwhile is left alone
@@ -775,7 +809,7 @@ export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer",
 export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget"]);
 export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
   "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp"]);
-export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
+export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard", "forcedMove", "fall"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
 
 async function request(X, req) {
   const op = req?.op;
@@ -789,7 +823,8 @@ async function request(X, req) {
     case "help": return opHelp(X, req);
     case "exception": return opAsk(X, req, "exception");
     case "other": return opAsk(X, req, "other");
-    case "move": return bad("unknown", { op });                                             // P3 (move flow) plugs in here; the turn and round operations are the director's (director-pure.mjs)
+    case "move": return opDeclare(X, { actor: req.actor, gm: req.gm, decl: { ...(isObj(req.decl) ? req.decl : {}), action: typeof req.action === "string" ? req.action : "move", to: req.to, mode: req.mode, stress: req.stress, pay: req.pay, force: req.force, carry: req.carry, airborne: req.airborne } });   // P3: a move is a declaration like any other
+    case "forcedMove": case "fall": return opForced(X, op, req);
     case "undo": return opUndo(X, req);
     case "hazard": return opHazard(X, req);
     default:
