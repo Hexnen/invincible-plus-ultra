@@ -161,11 +161,12 @@ Barriers and terrain: `canBreach(strength, armor)`, `breachOptions(border)`, `br
 
 ### `movement.mjs`
 `TRAVEL_TIERS`, `MOVE_MODES`, `moveProfile(mode, { tier, speed, aerial })`, `moveConditions(profile, conditions)`,
-`moveCost(distance, profile, { conditions, resolve, quickOnly })`, `movesNeeded(distance, profile)`, `moveReach(profile, { conditions, resolve })`.
+`moveCost(distance, profile, { conditions, resolve, quickOnly })`, `movesNeeded(distance, profile)`, `moveReach(profile, { conditions, resolve })`,
+`altitudeAccess(profile, to)`, `glidingCheck(fromHeight, toHeight)`, `ALTITUDE_HEIGHT`, `teleportAllies(others)` (added by P3, movement).
 
 Prices a move whose length is a route's `total` (the zones API's `routeLength`, or `zones.routeBetween`).
 
-- Modes: `walk`, `grown`, `earthDrift`, `elongatedStride`, `burrowing`, `flight`, `leaping`, `superSpeed`, `teleportation`, `swimming`,
+- Modes: `walk`, `grown`, `earthDrift`, `iceSlide` (book 1651), `wings` (book 1956), `elongatedStride`, `burrowing`, `flight`, `leaping`, `superSpeed`, `teleportation`, `swimming`,
   `swinging`, and `"vehicle"` (needs `speed`). Tiers: `basic | major | massive | monstrous` for flight, leaping, super-speed and
   teleportation; `basic | fast` for swimming and swinging.
 - `MoveProfile = { mode, way, zones, stressZones | null, stress: 1, actions: ["quick"] | ["quick", "full"], medium, assumed, ends?, vertical? }`;
@@ -393,3 +394,4 @@ All of them stay open.
 26. `damage.resilienceConvert`: the damage turned into stress is capped at the current Resolve (`uncapped` is the other reading).
 27. `damage.resolveHit`: an attack that ignores Armor ignores armor against stress too (`ignoreArmor: "exceptStress"` is the other reading).
 28. `stunts.IMMUNITY_SETS.huge`: a huge creature's immunity list is extended with grapple and banter from their own rules; whether a character who is only sometimes or partly huge carries the flag is the GM's word.
+29. `movement.altitudeAccess`: sky high and orbit are open only to ways of moving that may end in the air (flight, wings, an aerial vehicle); the book names no list, so every other way is refused with `gmMayAllow`.
