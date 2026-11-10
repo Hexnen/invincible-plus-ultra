@@ -1,70 +1,91 @@
-/* Tactical combat (package P1): the RELAY (spec 12.1). A client that is not the executor (a player, an assistant, a second GM user) asks
-   the active GM's client to run a request. Own message kinds "tcreq" / "tcres" on the module channel (the base, log and session relays
-   ignore them; this one ignores theirs). Protocol number ops-pure.PROTO: an older GM tab answers "stale".
-   TRUST: the server hands every socket listener the REAL sender id as the second argument; that id is the only identity the executor
-   believes. A request whose server id is missing is "untrusted" and refused. The reply is bound to the request id plus a nonce only the
-   executor and the asking client saw, and is accepted from a GM sender only.
-   No GM connected: the call fails at once with noGM (no queue). The public event broadcast "tcev" of the spec belongs to the journal (P2);
-   in P1 every client learns of a change from the Combat document itself. */
-import * as S from "./state-pure.mjs";
-import * as O from "./ops-pure.mjs";
+/* Tactical combat: RELAY, the Foundry half (spec section 12.1). Decisions live in relay-pure.mjs; this file moves messages.
+   A client that is not the executor (a player, an assistant, a second GM user) asks the active GM's client to run a request.
+   Kinds on the module channel (the base, log and session relays ignore them; this one ignores theirs):
+     tcreq   to the active GM          a request for one combat
+     tcres   to the requester          its envelope (never the state: clients render from the Combat flag)
+     tcev    to everyone               one public event of a fight (spec 16), re-told on the hook "invincible-plus-ultra.tactics"
+     tcroll  to a roller's client      the executor asks it to open the roll dialog for an engine roll
+   TRUST: the socket listener's second argument (the server-supplied sender id) is the only identity. A request whose server id is
+   missing is dropped. The reply is bound to the request id plus a nonce only the executor and the asking client saw, and counts only
+   from a GM sender. No GM connected: the call fails at once with noGM (nothing is queued). */
+import * as R from "./relay-pure.mjs";
 import * as Store from "./store.mjs";
-import * as GM from "./gm.mjs";
+import * as Engine from "./engine.mjs";
+import * as Sys from "./system-adapter.mjs";
+import { t } from "./lang.mjs";
 
-const CHANNEL = `module.${Store.MOD}`;
-export const TIMEOUT = 8000, STALE_WAIT = 900;
+const MOD = Store.MOD;
+const CHANNEL = `module.${MOD}`;
 let started = false, seq = 0;
-const pending = new Map(), seen = new Map();
+const pending = new Map(), seen = new Map(), gate = new R.Gate(), opened = new Set();
+const modVersion = () => String(game.modules.get(MOD)?.version ?? "");
 
 /** Run `req` ({ op, ... }) for a combat: here when this client is the executor, otherwise through the socket. Resolves to an envelope, never rejects. */
 export async function request(combatId, req) {
   try {
-    if (Store.iAmExecutor()) return await GM.exec(game.user, combatId, req, { trusted: true, via: "local", noJitter: true });
-    if (!game.users.activeGM) return S.err("noGM");
-    return await send(combatId, req);
-  } catch (e) { return S.err("internal", { msg: String(e?.message ?? e).slice(0, 80) }); }
+    if (Store.iAmExecutor()) return R.wireEnv(await Engine.exec(game.user, combatId, req, { via: "local" }));
+    if (!game.users.activeGM) return R.bad("noGM");                                        // nothing is queued (spec 12.1)
+    const combat = Store.combatOf(combatId);
+    if (!combat) return R.bad("gone");
+    return await send(req, combat);
+  } catch (err) { console.warn(`${MOD} | tactics relay`, err); return R.bad("internal"); }
 }
-function send(combatId, req) {
+function send(req, combat) {
   return new Promise((resolve) => {
     const id = `${++seq}${Math.random().toString(36).slice(2, 6)}`;
     const nonce = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8);
-    const gmId = game.users.activeGM?.id;
     let staleTimer = 0;
     const done = (env) => { clearTimeout(timer); clearTimeout(staleTimer); pending.delete(id); resolve(env); };
-    const timer = setTimeout(() => done(S.err("noGM", { reason: "timeout" })), TIMEOUT);
+    const timer = setTimeout(() => done(R.bad("noGM", { reason: "timeout" })), R.LIMITS.timeout);
     // a "stale" answer (an older GM tab) is final only when no better one arrives within a moment
-    pending.set(id, { nonce, fn: (env) => { if (env?.error?.code === "stale") staleTimer ||= setTimeout(() => done(env), STALE_WAIT); else done(env); } });
-    const msg = { k: "tcreq", id, n: nonce, combat: String(combatId ?? ""), req: { ...req, id }, proto: O.PROTO };
-    try { if (gmId) game.socket.emit(CHANNEL, msg, { recipients: [gmId] }); else game.socket.emit(CHANNEL, msg); } catch { done(S.err("noGM", { reason: "socket" })); }
+    pending.set(id, { nonce, fn: (env, stale) => { if (stale) staleTimer ||= setTimeout(() => done(env), R.LIMITS.staleWait); else done(env); } });
+    const msg = R.makeRequest({ id, nonce, mod: modVersion(), combat: combat.id, rev: Store.stateOf(combat)?.rev, req });
+    try { game.socket.emit(CHANNEL, msg, { recipients: [game.users.activeGM.id] }); } catch { done(R.bad("relay")); }
   });
+}
+const userOf = (id) => { const u = game.users.get(id); return u ? { id: u.id, staff: Store.isStaff(u) } : null; };
+/* One incoming tcreq on the executor: admitted by relay-pure (trust, protocol, whitelist, limits), run, answered. -> the envelope (tests) */
+async function onRequest(msg, senderId) {
+  if (!Store.iAmExecutor()) return null;
+  const a = R.admit(msg, { senderId: typeof senderId === "string" && game.users.has(senderId) ? senderId : null, user: userOf, hasCombat: (id) => id.length <= 64 && !!Store.combatOf(id), gate, now: Date.now(), seen });
+  let env = a.env;
+  if (a.ok) {
+    try { env = await Engine.exec(game.users.get(a.user.id), msg.combat, a.req, { rid: a.rid, via: "relay" }); } catch { env = R.bad("internal"); } finally { gate.release(a.user.id, a.user.staff); }
+  }
+  if (!a.to || !env) return env ?? null;
+  const res = { k: R.KIND.res, id: msg.id, n: msg.n, to: a.to, env: R.wireEnv(env) };
+  try { game.socket.emit(CHANNEL, res, { recipients: [a.to] }); } catch { /* the requester times out */ }
+  return res.env;
+}
+function onRoll(msg, senderId) {
+  if (!game.users.get(senderId)?.isGM || !Array.isArray(msg.to) || !msg.to.includes(game.user.id) || !msg.req || typeof msg.req.rid !== "string") return;
+  if (opened.has(msg.req.rid)) return;                                                     // one dialog per request, even if it is sent twice
+  opened.add(msg.req.rid); if (opened.size > 200) opened.delete(opened.values().next().value);
+  // the engine's breakdown is only a display: the executor reads the dice from the chat message and checks its author against the request
+  Sys.openRoll(msg.req, (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s))).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
+}
+function onMessage(msg, senderId) {
+  try {
+    if (!msg || typeof msg !== "object") return;
+    if (msg.k === R.KIND.req) onRequest(msg, senderId).catch((err) => console.warn(`${MOD} | tactics relay`, err));
+    else if (msg.k === R.KIND.res) { const r = R.acceptReply(msg, { me: game.user.id, pending, senderIsGM: game.users.get(senderId)?.isGM === true }); if (r) pending.get(r.id)?.fn(r.env, r.stale); }
+    else if (msg.k === R.KIND.ev) { if (game.users.get(senderId)?.isGM === true && msg.ev && typeof msg.ev === "object") Hooks.callAll(Store.HOOK, msg.ev); }
+    else if (msg.k === R.KIND.roll) onRoll(msg, senderId);
+  } catch (err) { console.warn(`${MOD} | tactics relay listener`, err); }
 }
 
 export function start() {
   if (started) return;
   started = true;
-  game.socket.on(CHANNEL, async (msg, senderId) => {
-    try {
-      if (!msg || typeof msg !== "object") return;
-      if (msg.k === "tcreq") {
-        if (!Store.iAmExecutor()) return;
-        const real = typeof senderId === "string" && game.users.has(senderId) ? senderId : null;            // the server's word
-        if (!real) return;                                                                                   // nobody to answer; an unsigned request is dropped
-        const sk = `${real}|${msg.id}`;
-        if (seen.has(sk)) return;                                                                            // the same envelope twice
-        seen.set(sk, Date.now()); if (seen.size > 300) seen.delete(seen.keys().next().value);
-        let bytes = Infinity;
-        try { bytes = JSON.stringify(msg.req ?? null).length; } catch { /* not serialisable: refused by the size check */ }
-        const req = msg.req && typeof msg.req === "object" ? { ...msg.req, id: String(msg.id ?? "").slice(0, 24) } : msg.req;
-        const env = await GM.exec(game.users.get(real), typeof msg.combat === "string" ? msg.combat.slice(0, 64) : "", req, { trusted: true, via: "relay", proto: msg.proto, bytes });
-        const out = { k: "tcres", id: msg.id, n: msg.n, to: real, env };
-        try { game.socket.emit(CHANNEL, out, { recipients: [real] }); } catch { game.socket.emit(CHANNEL, out); }
-      } else if (msg.k === "tcres" && msg.to === game.user.id) {
-        if (game.users.get(senderId)?.isGM !== true) return;                                                // only a GM can answer
-        const p = pending.get(msg.id);
-        if (p && typeof msg.n === "string" && msg.n === p.nonce) p.fn(msg.env);
-      }
-    } catch (e) { console.warn(`${Store.MOD} | tactics relay`, e); }
-  });
+  game.socket.on(CHANNEL, onMessage);
 }
-/** Test helper: run a request as another user on this (executor) client without any transport. */
-export const _runAs = (userId, combatId, req, meta = {}) => GM.exec(game.users.get(userId), combatId, req, { trusted: true, via: "relay", noJitter: true, ...meta });
+export const isStarted = () => started;
+/** Test helper (executor only, as in the session relay): run a request exactly as if `userId` had sent it through the relay: the same
+    admission (trust, whitelist, limits), no transport. meta = { id?, proto?, senderId? (null: no server id) } */
+export async function _runAs(userId, combatId, req, meta = {}) {
+  if (!Store.iAmExecutor()) return R.bad("noGM");
+  const env = await onRequest({ k: R.KIND.req, id: meta.id ?? req?.id ?? `as${++seq}`, n: "local", proto: meta.proto ?? R.PROTO, mod: modVersion(), combat: combatId, req }, "senderId" in meta ? meta.senderId : userId);
+  return env ?? R.bad("untrusted");
+}
+/** Test helper: forget the rate counters. */
+export const _resetLimits = () => { gate.times.clear(); gate.flying.clear(); seen.clear(); };

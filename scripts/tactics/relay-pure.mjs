@@ -93,7 +93,9 @@ export class Gate {
 }
 
 /* ------------------------------------------------------------------ the executor's admission of one incoming tcreq
-   ctx = { senderId (the socket listener's 2nd argument, or null), user: (id) -> { id, staff } | null, combatId, gate, now, seen: Map }
+   ctx = { senderId (the socket listener's 2nd argument, or null), user: (id) -> { id, staff } | null, gate, now, seen: Map,
+           hasCombat: (id) -> bool      the executor serves every combat of the world: an unknown one is `gone`
+           | combatId                   or exactly one combat: no combat is `off`, another one is `stale` }
    Returns { ok:true, rid, req, user } or { ok:false, env, to } (to = whom to answer, null = nobody). */
 export function admit(msg, ctx) {
   if (!isObj(msg) || msg.k !== KIND.req) return { ok: false, env: null, to: null };
@@ -104,8 +106,11 @@ export function admit(msg, ctx) {
   const sk = `${user.id}|${msg.id}`;
   if (ctx.seen) { if (ctx.seen.has(sk)) return { ok: false, env: null, to: null }; ctx.seen.set(sk, ctx.now); if (ctx.seen.size > 300) ctx.seen.delete(ctx.seen.keys().next().value); }
   if (msg.proto !== PROTO) return { ok: false, env: bad("stale", { proto: PROTO }), to };
-  if (ctx.combatId == null) return { ok: false, env: bad("off"), to };
-  if (msg.combat !== ctx.combatId) return { ok: false, env: bad("stale", { combat: 1 }), to };
+  if (typeof ctx.hasCombat === "function") { if (typeof msg.combat !== "string" || !ctx.hasCombat(msg.combat)) return { ok: false, env: bad("gone"), to }; }
+  else {
+    if (ctx.combatId == null) return { ok: false, env: bad("off"), to };
+    if (msg.combat !== ctx.combatId) return { ok: false, env: bad("stale", { combat: 1 }), to };
+  }
   const n = normalize(msg.req, { staff: !!user.staff });
   if (!n.ok) return { ok: false, env: bad(n.code), to };
   const lim = ctx.gate ? ctx.gate.admit(user.id, ctx.now, !!user.staff) : null;

@@ -1,4 +1,4 @@
-/* Tactical combat (package P1): the module's own Combat class (spec 3.3, 17). It wraps whatever class is configured when it is installed
+/* Tactical combat: the module's own Combat class (spec 3.3, 17). It wraps whatever class is configured when it is installed
    (the system sets none, so normally the core Combat) and replaces what Year Zero Engine: Combat used to do for the turn order.
    A combat WITHOUT the module's state behaves exactly like the wrapped class, with one exception: starting it deals cards instead of
    leaving the order to rolled initiative.

@@ -1,4 +1,4 @@
-/* Tactical combat (package P1): the READ SIDE for the parts of the module that used to read Year Zero Engine: Combat markers (turn tray,
+/* Tactical combat: the READ SIDE for the parts of the module that used to read Year Zero Engine: Combat markers (turn tray,
    initiative bar, party cards, token halo, Challenges time). It only reads plain properties of the Combat document it is given
    (flags, combatants), so it runs in node as well (check-source.mjs) and can be imported statically by those parts.
    When a combat carries the module's own state, that state is the truth; otherwise the callers fall back to scripts/yze.mjs (so a table
@@ -10,11 +10,15 @@ import * as O from "./ops-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
 
 const cache = new WeakMap();
+let live = true;
+/** main.mjs: with tactical combat not running on this world (the setting off, or yze-combat in charge) no combat is read as ours, even
+    one that still carries a state from an earlier session: every caller falls back to what it did before this feature. */
+export const setLive = (on) => { live = on !== false; };
 const rawOf = (combat) => { try { const r = combat?.flags?.[S.MOD_ID]?.tactics?.state; return typeof r === "string" ? r : ""; } catch { return ""; } };
 
 /** The module's own state of this combat (sanitised, cached by the raw flag string; never mutate it), or null: not ours. */
 export function tacticsState(combat) {
-  if (!combat || typeof combat !== "object") return null;
+  if (!live || !combat || typeof combat !== "object") return null;
   const raw = rawOf(combat);
   if (!raw) return null;
   const hit = cache.get(combat);

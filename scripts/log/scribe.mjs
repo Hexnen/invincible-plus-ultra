@@ -502,14 +502,13 @@ const onUpdateCombat = guard("updateCombat", (combat, changes, options, userId) 
   emit(a, { k: "combat.turn", path: `turn:${combat.round}:${combat.turn}`, u: userId ?? "", t: timeOf(options, combat), d: { round: combat.round, turn: combat.turn } });
 });
 /* Tactical combat (scripts/tactics/): action marks are entries of the module's own ledger, not status effects. The executor (the same client as
-   the scribe) announces them on its hook; the entry keeps the existing type "combat.action" with status "fullAction" / "quickAction". */
-const onTactics = guard("tactics", (info) => {
-  for (const e of info?.events ?? []) {
-    if (e?.type !== "ledger" || (e.unit !== "full" && e.unit !== "quick")) continue;
-    const a = combatActor(info.combat?.combatants?.get(e.combatant)); const st = elig(a);
-    if (!st || st.scope !== "hero") continue;
-    emit(a, { k: "combat.action", path: `act:${e.unit}Action`, u: String(info.rid ?? "").split(":")[0], t: timeOf(null, null), d: { status: `${e.unit}Action`, on: !!e.on } });
-  }
+   the scribe) announces every event of a fight on its hook, one event per call: { type, combat: combatId, by: userId, ... } (combat spec 16).
+   A paid or marked action is the event "ledger"; the entry keeps the existing type "combat.action" with status "fullAction" / "quickAction". */
+const onTactics = guard("tactics", (e) => {
+  if (e?.type !== "ledger" || (e.unit !== "full" && e.unit !== "quick")) return;
+  const a = combatActor(game.combats?.get(e.combat)?.combatants?.get(e.combatant)); const st = elig(a);
+  if (!st || st.scope !== "hero") return;
+  emit(a, { k: "combat.action", path: `act:${e.unit}Action`, u: String(e.by ?? ""), t: timeOf(null, null), d: { status: `${e.unit}Action`, on: !!e.on } });
 });
 const onUpdateCombatant = guard("updateCombatant", (cm, changes, options, userId) => {
   if (!("initiative" in changes)) return;

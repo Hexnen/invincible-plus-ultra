@@ -1,4 +1,4 @@
-/* Tactical combat (package P1): the MINIMAL prompt dialogs of P1 (Combat Veteran, Fast Reflexes, the GM's trigger queue, consent to a
+/* Tactical combat: the MINIMAL prompt dialogs of the round driver (Combat Veteran, Fast Reflexes, the GM's trigger queue, consent to a
    granted action, a challenge whose time is up) and the end-of-scene confirmation. Plain DialogV2 windows that reuse the look of the
    turn dialogs (classes itn-dialog, itn-body, itn-never from styles/turn.css); the designed prompt bar and GM desk come with package P4
    and replace this file. Nothing here decides anything: a click is a request to the executor (api.tactics.answer / endScene).
