@@ -1,89 +1,91 @@
-/* Tactical combat, package P2: ZONES ADAPTER (spec section 7.3). The only file of the tactics folder that calls the zones API of moinen-maps.
-   P2 needs little of it: the facts the attack flow reads (place, range, who shares a zone, states of a zone) and the three COMMANDS the GM's state
-   editing uses, each with the INVERSE the journal stores. No zones command returns an inverse (spec 7.3), so this file builds it: the `...Inverse`
-   builders below are pure (no globals) and node-tested in check-zones.mjs. Movement, paths and forced moves are P3 and are added here by P3.
-   ASSUMPTION (not verifiable before the zones contract ships): the API object is `game.modules.get("moinen-maps").api.zones`, falling back to `.api`.
-   Every call is guarded: a missing API or function gives "noScene"-style nulls / { ok:false, reason:"noZonesApi" }, never a throw. */
+/* Tactical combat: ZONES ADAPTER (spec section 7.3). The only file of the tactics folder that calls the zones API of moinen-maps
+   (`game.modules.get("moinen-maps").api.zones`; the contract: moinen-maps dev/zones-api.md).
+   It holds no rule and builds no inverse: the map's write path `apply(op)` returns the op that undoes each write, and that is what the
+   journal stores (journal-pure.mjs, op `zones`; the ops themselves are built in zones-pure.mjs). Three groups:
+     queries    place / spot of a token, range, who shares a zone, a zone's data and states, borders, routes, the graph for the rules library
+     writes     perform({ t:"zones", op, isInverse? })  ->  apply(op)        only the active GM's client (api.canWrite())
+     movement   profile, cost, reach, plan, forced chains, free spots, move / moveToZone (each returns a `tokens` inverse), the listener
+                asked before every step, cost confirmation on a dragged token. The movement FLOW is a later package; these are its calls.
+   Every call is guarded: a missing module or function gives null / [] / undefined / { ok:false, reason:"noZonesApi" }, never a throw. */
+import * as ZP from "./zones-pure.mjs";
 
 const ZONES_MODULE = "moinen-maps";
-export const ZONE_STATE_KEYS = Object.freeze(["wrecked", "fire", "dark", "ice", "flooded", "lowgrav"]);       // spec 7.1 `states`
-const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
+export const EVENT_HOOK = "moinenMapsZoneEvent";
+const warn = (what, err) => console.warn(`invincible-plus-ultra | tactics: zones.${what} failed`, err);
 
-/* ------------------------------------------------------------------ pure: inverses (spec 7.3 "Inverse operations") */
-/** Inverse of setZone(key, patch): the patch that restores the previous OWN marks of exactly the keys the patch touches.
-    `own` = the GM's own marks of the zone before the call (not the painted layers: setZone writes own marks only). Missing = null (clears the mark). */
-export function zoneInverse(key, patch, own) {
-  if (typeof key !== "string" || !isObj(patch)) return null;
-  const back = {};
-  for (const k of Object.keys(patch)) back[k] = own && own[k] !== undefined ? own[k] : null;
-  return { call: "setZone", zone: key, patch: back };
-}
-/** The same from a `zoneChanged` event payload (the contract's recipe), for changes the engine did not initiate itself. */
-export function zoneInverseFromEvent(ev) {
-  if (!isObj(ev) || typeof ev.zone !== "string" || !Array.isArray(ev.changed)) return null;
-  return { call: "setZone", zone: ev.zone, patch: Object.fromEntries(ev.changed.map((k) => [k, ev.before?.[k] ?? null])) };
-}
-/** Inverse of setLevel(token, to): the previous level / floor / airborne (or off-map area) of the place read BEFORE the call. */
-export function levelInverse(tokenUuid, place) {
-  if (typeof tokenUuid !== "string" || !isObj(place)) return null;
-  const to = place.area ? { area: place.area } : { level: place.level ?? "ground", floor: place.floor ?? 0, airborne: !!place.airborne };
-  return { call: "setLevel", token: tokenUuid, to };
-}
-/** Inverse of a border change: swap the kind back [G-Z1: the contract has no breached / removed state yet]. */
-export function borderInverse(borderKey, before) {
-  if (typeof borderKey !== "string" || typeof before?.kind !== "string") return null;
-  return { call: "setBorder", border: borderKey, kind: before.kind, x: before.x, y: before.y };
-}
-/** Is the patch one the engine may send (known state keys, plain values)? Unknown keys are refused: the engine never invents zone state. */
-export function validZonePatch(patch) {
-  if (!isObj(patch) || !Object.keys(patch).length) return false;
-  return Object.entries(patch).every(([k, v]) => ZONE_STATE_KEYS.includes(k) && (v === null || typeof v === "boolean" || (k === "fire" && Number.isFinite(v) && v >= 0 && v <= 12)));
-}
-
-/* ------------------------------------------------------------------ live */
 export function api() {
-  try { const m = game.modules.get(ZONES_MODULE); if (!m?.active) return null; return m.api?.zones ?? m.api ?? null; } catch { return null; }
+  try { const m = game.modules.get(ZONES_MODULE); if (!m?.active) return null; return m.api?.zones ?? null; } catch { return null; }
 }
-const call = (name, ...args) => { const a = api(); if (typeof a?.[name] !== "function") return undefined; try { return a[name](...args); } catch (err) { console.warn(`invincible-plus-ultra | tactics: zones.${name} failed`, err); return undefined; } };
+const call = (name, ...args) => { const a = api(); if (typeof a?.[name] !== "function") return undefined; try { return a[name](...args); } catch (err) { warn(name, err); return undefined; } };
+const callAsync = async (name, ...args) => {
+  const a = api();
+  if (typeof a?.[name] !== "function") return { ok: false, reason: "noZonesApi" };
+  try { return (await a[name](...args)) ?? { ok: false, reason: "error" }; } catch (err) { warn(name, err); return { ok: false, reason: "error" }; }
+};
 export const available = () => typeof api()?.zoneOfToken === "function" && typeof api()?.range === "function";
+/** May this client write (the active GM)? Without the map's own answer nobody may. */
+export const canWrite = () => call("canWrite") === true;
+export const version = () => call("version") ?? null;
 
-/* queries the attack flow needs (engine-pure facts) */
+/* ------------------------------------------------------------------ queries */
+/** place | null (zones-api.md section 2: { zone, id, spot, area, level, floor, airborne, roof, below }) */
 export const placeOf = (token) => call("zoneOfToken", token) ?? null;
+export const place = (where) => call("place", where) ?? null;
+/** the 3-D zone of a token as one string ("z3", "z3:f2", "@sky") | null. Two combatants share a zone exactly when their spots are equal. */
+export const spotOf = (token) => placeOf(token)?.spot ?? null;
 /** { total, borders, levels } | null (no attack possible) | undefined (no zones on this scene: the engine then asks nothing of range). */
 export const range = (a, b) => (available() ? call("range", a, b) ?? null : undefined);
+export const route = (a, b, way = "walk") => call("route", a, b, way) ?? null;
+export const path = (a, b, opts) => call("path", a, b, opts) ?? null;
+export const zonesWithin = (where, n, opts) => call("zonesWithin", where, n, opts) ?? [];
 export const zoneOf = (where) => call("zone", where) ?? null;
-export const tokensInZone = (where, opts) => call("tokensInZone", where, opts) ?? [];
+export const zoneStates = (where) => call("zoneStates", where) ?? [];
+export const borderBetween = (a, b) => call("borderBetween", a, b) ?? null;
+/** the graph in the shape the rules library's zones.makeGraph takes (zones-api.md section 13) | null */
+export const graph = () => call("graph") ?? null;
+/** TokenDocuments in a zone. A token, a spot or a place: that level only (the book's "same zone"); a bare key: every level. */
+export const tokensInZone = (where, opts) => (call("tokensInZone", where, opts) ?? []).map((r) => r?.token ?? null).filter(Boolean);
+/** the same with each token's place: [{ token, place }] */
+export const rowsInZone = (where, opts) => (call("tokensInZone", where, opts) ?? []).filter((r) => r?.token);
+/** Hooks.on for the map's events (tokenLeft, tokenEntered, zoneChanged, borderChanged, edgeChanged, move*). -> off() */
+export function onEvent(fn) {
+  const id = Hooks.on(EVENT_HOOK, fn);
+  return () => Hooks.off(EVENT_HOOK, id);
+}
 
-/* commands (executor only). Each returns { ok, op? } where op is the journal op `zones` with its inverse. */
+/* ------------------------------------------------------------------ writes (executor only)
+   e = { t:"zones", op, isInverse? }   ->   { ok:true, changed, result, op: { t:"zones", op, inverse } | null }  |  { ok:false, reason }
+   `op` (the journal op) is null for an inverse: an undo records nothing new. */
 export async function perform(e) {
   const a = api();
-  if (!a) return { ok: false, reason: "noZonesApi" };
+  if (typeof a?.apply !== "function") return { ok: false, reason: "noZonesApi" };
+  const op = e?.op;
+  if (e?.isInverse ? !op || typeof op !== "object" : !ZP.validOp(op)) return { ok: false, reason: "badOp" };      // an inverse goes back as the map gave it
+  if (!canWrite()) return { ok: false, reason: "notActiveGM" };
   try {
-    if (e.call === "setZone") {
-      if (!e.isInverse && !validZonePatch(e.patch)) return { ok: false, reason: "badPatch" };
-      const id = typeof a.idOf === "function" ? a.idOf(e.zone) : e.zone;
-      if (id == null || typeof a.setZone !== "function") return { ok: false, reason: "zoneGone" };
-      const own = (typeof a.ownMarksOf === "function" ? a.ownMarksOf(e.zone) : null) ?? a.zone?.(e.zone)?.states ?? {};       // own marks when the API tells them apart, else the visible states
-      const inverse = zoneInverse(e.zone, e.patch, own);
-      const done = a.setZone(id, e.patch);                                       // boolean, not a promise; the scene write is debounced (spec 7.3)
-      return done === false ? { ok: false, reason: "refused" } : { ok: true, op: e.isInverse ? null : { t: "zones", call: "setZone", zone: e.zone, patch: e.patch, inverse } };
-    }
-    if (e.call === "setLevel") {
-      const token = typeof e.token === "string" ? await fromUuid(e.token) : e.token;
-      if (!token || typeof a.setLevel !== "function") return { ok: false, reason: "tokenGone" };
-      const inverse = levelInverse(token.uuid, a.zoneOfToken?.(token));
-      await a.setLevel(token, e.to);
-      return { ok: true, op: e.isInverse ? null : { t: "zones", call: "setLevel", token: token.uuid, to: e.to, inverse } };
-    }
-    if (e.call === "setBorder") {
-      if (typeof a.setBorder !== "function" || typeof a.borderBetween !== "function") return { ok: false, reason: "noBorderApi" };       // [G-Z1]
-      const [za, zb] = String(e.border ?? "").split("|");
-      const before = a.borderBetween(za, zb);
-      if (!before) return { ok: false, reason: "borderGone" };
-      const inverse = borderInverse(e.border, before);
-      a.setBorder(e.x ?? before.x, e.y ?? before.y, e.kind);
-      return { ok: true, op: e.isInverse ? null : { t: "zones", call: "setBorder", border: e.border, kind: e.kind, inverse } };
-    }
-  } catch (err) { console.warn("invincible-plus-ultra | tactics: zones command failed", err); return { ok: false, reason: "error" }; }
-  return { ok: false, reason: "unknownCall" };
+    const r = await a.apply(op);
+    if (!r?.ok) return { ok: false, reason: String(r?.reason ?? "error").slice(0, 40) };
+    return { ok: true, changed: r.changed !== false, result: r.result ?? null, op: e.isInverse ? null : { t: "zones", op, inverse: r.inverse ?? null } };
+  } catch (err) { warn("apply", err); return { ok: false, reason: "error" }; }
 }
+
+/* ------------------------------------------------------------------ movement (zones-api.md section 14) */
+export const profile = (p) => call("profile", p) ?? null;
+/** { reachable, plan, cost: { total, speed, actions, stressSpeed, stressActions, within } } | null */
+export const moveCost = (a, b, p) => call("moveCost", a, b, p) ?? null;
+export const reach = (where, p, opts) => call("reach", where, p, opts) ?? [];
+export const plan = (a, b, p) => call("plan", a, b, p) ?? null;
+export const forcedChain = (who, opts) => call("forcedChain", who, opts) ?? null;
+export const planAlong = (from, keys, opts) => call("planAlong", from, keys, opts) ?? null;
+export const freeSpot = (where, opts) => call("freeSpot", where, opts) ?? null;
+/** The journal op of a finished move: the `tokens` inverse the map returned puts every mover back. null when nothing moved. */
+export const moveRecord = (res) => (res?.ok !== false && res?.inverse ? { t: "zones", op: { op: "move", id: res.op ?? null, done: res.done ?? null }, inverse: res.inverse } : null);
+/** Along a route or a plan, the step listeners asked before every step. -> the map's result plus `journal` (moveRecord) */
+export async function move(token, to, opts) { const r = await callAsync("move", token, to, opts); return { ...r, ok: r.ok !== false, journal: moveRecord(r) }; }
+/** Into a free spot of a zone, nobody asked (an arrival, a GM's placement). -> the map's result plus `journal` */
+export async function moveToZone(token, where, opts) { const r = await callAsync("moveToZone", token, where, opts); return { ...r, ok: r.ok !== false, journal: moveRecord(r) }; }
+/** fn(ctx) is asked before every step of every move made through `move` on this client. -> off() */
+export function beforeStep(fn) { const off = call("beforeStep", fn); return typeof off === "function" ? off : () => {}; }
+/** Cost confirmation on a dragged token, per client: tactical({ profile, confirm, when, gm }) turns it on, tactical(false) off. */
+export const tactical = (cfg) => call("tactical", cfg) === true;
+export const tacticalOn = () => call("tacticalOn") === true;
