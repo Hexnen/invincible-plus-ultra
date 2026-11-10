@@ -33,9 +33,13 @@ import * as K from "./flows/kit.mjs";
 import * as Attack from "./flows/attack.mjs";
 import { roll as Roll, other as Other, hazard as Hazard, composite as Composite } from "./flows/simple.mjs";
 import * as Move from "./flows/move.mjs";
+import * as Challenge from "./flows/challenge.mjs";
+import * as Vehicle from "./flows/vehicle.mjs";
+import * as Chase from "./flows/chase.mjs";
 
 export const FLOWS = Object.freeze({ attack: Attack, roll: Roll, other: Other, plain: Other, hazard: Hazard, composite: Composite,
-  move: Move.move, fastball: Move.fastball, barrier: Move.barrier, forced: Move.forced, fall: Move.fall });       // P3: movement (flows/move.mjs)
+  move: Move.move, fastball: Move.fastball, barrier: Move.barrier, forced: Move.forced, fall: Move.fall,          // P3: movement (flows/move.mjs)
+  challenge: Challenge.objective, challengeEffect: Challenge.effect, seat: Vehicle.seat, drive: Vehicle.drive, chase: Chase.round });   // P7: challenges, vehicles, chases
 export const ERROR_CODES = Object.freeze(["noGM", "untrusted", "stale", "rate", "badInput", "off", "notOwner", "notYourTurn", "noAction", "locked", "illegal", "unknown", "gone", "busy", "playersOff", "internal", "relay", "tooBig", "noPermission", "drift"]);
 export const REVALIDATE_OPTIONS = Object.freeze(["continue", "amend", "forfeit", "cancel"]);      // [OQ-3]: the GM decides, no default
 const bad = (code, params = {}) => ({ ok: false, changed: false, error: { key: `ITAC.err.${code}`, code, params } });
@@ -44,8 +48,12 @@ const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 
 /* ------------------------------------------------------------------ context */
 function makeX(state, log, host, user) {
-  return { state, log: log ?? J.emptyLog(), host, user: user ?? { id: "engine", staff: true }, facts: host.facts(), events: [], changed: false };
+  const X = { state, log: log ?? J.emptyLog(), host, user: user ?? { id: "engine", staff: true }, facts: null, events: [], changed: false };
+  X.facts = liveFacts(X);
+  return X;
 }
+/* P7 [B3412]: in a chase there is no map, the range between the sides is the chase distance (flows/chase.mjs reads the state of now) */
+const liveFacts = (X) => Chase.facts(X.host.facts(), () => X.state);
 const nextId = (X, p) => { X.state = { ...X.state, seq: (X.state.seq ?? 0) + 1 }; return `${p}${X.state.seq}`; };
 const view = (X) => ({ state: X.state, facts: X.facts, entry: (inst) => C.entryFor(X.state, inst.actor, inst.action) });
 const top = (X) => X.state.stack[X.state.stack.length - 1] ?? null;
@@ -77,7 +85,7 @@ function write(X, txId, path, to, inst = null, step = null, tag = null) {
 async function perform(X, txId, effect, inst = null, step = null, tag = null) {
   const r = (await X.host.perform(effect)) ?? {};
   if (r.op) { record(X, txId, r.op, inst, step, tag); X.changed = true; }
-  X.facts = X.host.facts();
+  X.facts = liveFacts(X);
   return r.ok === false ? { ok: false, reason: r.reason } : r.result;                    // a refused command (the map said no) is the caller's to answer
 }
 function openTx(X, { inst = null, label = null }) {
@@ -104,7 +112,7 @@ async function undoOps(X, ops, round = null) {
     if (op.t === "state") X.state = J.applyStateOp(X.state, op, true);
     else { const eff = J.inverseEffect(op); if (eff) await X.host.perform({ ...eff, undo: 1 }); }
   }
-  X.facts = X.host.facts(); X.changed = true;
+  X.facts = liveFacts(X); X.changed = true;
 }
 
 /* ------------------------------------------------------------------ effects of a flow step */
@@ -197,7 +205,7 @@ function pushChild(X, parent, spec) {
   emit(X, inst, { type: "actionDeclared", decl: publicDecl(inst.decl), cost: "none", stress: 0, targets: inst.decl.targets ?? [], cause: inst.cause });
   return { ok: true, inst };
 }
-const publicDecl = (d) => ({ action: d.action, weapon: d.weapon, targets: d.targets ?? [], zone: d.zone, special: d.special, wreck: d.wreck, area: d.area, to: d.to, mode: d.mode });
+const publicDecl = (d) => ({ action: d.action, weapon: d.weapon, targets: d.targets ?? [], zone: d.zone, special: d.special, wreck: d.wreck, area: d.area, to: d.to, mode: d.mode, attr: d.attr });
 
 async function closeInst(X, I, result = null) {
   I.status = I.status === "aborted" ? "aborted" : "done";
@@ -313,7 +321,7 @@ function sanitizeDecl(d, action, staff = false) {
   if (typeof d?.power === "string") out.power = d.power.slice(0, 120);
   if (typeof d?.zone === "string") out.zone = d.zone.slice(0, 40);
   if (typeof d?.to === "string") out.to = d.to.slice(0, 60);                                // P3: where a move goes (a spot) or the border a door action works on
-  if (typeof d?.mode === "string" && P1.isId(d.mode)) out.mode = d.mode.slice(0, 24);
+  if (typeof d?.mode === "string" && P1.isId(d.mode)) out.mode = d.mode.slice(0, 40);
   if (d?.pay === "quick" || d?.pay === "full") out.pay = d.pay;
   if (d?.stress === true || d?.stress === 1) out.stress = 1;
   if (typeof d?.airborne === "boolean") out.airborne = d.airborne;
@@ -682,6 +690,57 @@ async function gmEdit(X, op, a) {
       emit(X, null, { type: "zoneChange", ...ZP.changeOf(zop), cause: "gm" });
       break;
     }
+    /* ---- P7: challenges, vehicles, chases. Each is one undoable transaction like every other GM edit. */
+    case "challengeSetup": {                                                                // a book preset (or none) for a challenge in the fight: its options, its side effects as waiting triggers [R22]
+      const cc = c(a.challenge), preset = Challenge.PRESETS.includes(a.preset) ? a.preset : null;
+      if (!cc || cc.kind !== "challenge") { err = "badInput"; break; }
+      const heroes = (X.host.parts?.() ?? []).filter((p) => p.hero && !p.defeated && !p.summonOf).map((p) => p.id);
+      const plan = Challenge.setup(preset, { challenge: a.challenge, name: cc.name, zone: X.facts.zone?.(a.challenge)?.key ?? null, heroes });
+      for (const g of (X.state.triggers ?? []).filter((t) => t.run?.challenge === a.challenge)) w(["triggers", `#${g.id}`], null);
+      w(["challenges", a.challenge], a.clear === true ? null : { ...plan.config, name: String(cc.name ?? "").slice(0, 80), manual: plan.manual });
+      if (a.clear !== true) for (const t of plan.triggers) { const g = S.sanitizeTrigger({ ...t, id: nextId(X, "g"), source: M.source(t.source), runs: 0 }); if (g) w(["triggers", `#${g.id}`], g); }
+      const zop = a.clear !== true && plan.zone ? ZP.zoneOp(plan.zone.key, plan.zone.patch) : null;
+      if (zop) { const res = await perform(X, tx, { t: "zones", op: zop, tx }); if (!(res && res.ok === false)) emit(X, null, { type: "zoneChange", ...ZP.changeOf(zop), cause: "gm" }); }
+      emit(X, null, { type: "challenge", challenge: a.challenge, rating: cc.health, timeLeft: cc.resolve, state: "setup", preset });
+      break;
+    }
+    case "vehicleSet": {                                                                    // who sits where, and the state of the machine [B2936]
+      const vf = c(a.vehicle);
+      if (!vf || vf.kind !== "vehicle") { err = "badInput"; break; }
+      const fx = (list) => { for (const e of list) { if (e.t === "state") w(e.path, e.to); else { const x = e.t === "status+" ? M.statusAdd(X.state, e.who, e.status) : M.statusRemove(X.state, e.who, e.id); w(x.path, x.to); } } };
+      if (isObj(a.seat)) {
+        const who = a.seat.who, role = ["driver", "passenger"].includes(a.seat.role) ? a.seat.role : null, ride = P1.isId(who) ? Vehicle.rideOf(X.state, who) : null;
+        if (!c(who) || ["vehicle", "challenge"].includes(c(who).kind)) { err = "badInput"; break; }
+        if (ride && ride.vehicle !== a.vehicle) fx(Vehicle.seatEffects(X.state, who, ride.vehicle, null));
+        if (role || ride?.vehicle === a.vehicle) fx(Vehicle.seatEffects(X.state, who, a.vehicle, role));
+        emit(X, null, { type: "vehicle", vehicle: a.vehicle, who, state: role ? "entered" : "left", role: role ?? undefined });
+      }
+      const flag = (path, v) => { if (typeof v === "boolean") w(["vehicles", a.vehicle, ...path], v ? 1 : null); };
+      flag(["started"], a.started); flag(["wrecked"], a.wrecked); flag(["destroyed"], a.wrecked === false ? false : undefined); flag(["off", "engine"], a.engineOff); flag(["off", "weapon"], a.weaponOff);
+      if (a.wrecked === true || a.engineOff === true) w(["vehicles", a.vehicle, "started"], null);
+      if (Number.isFinite(a.hits)) w(["vehicles", a.vehicle, "hits"], Math.max(0, Math.min(99, Math.trunc(a.hits))) || null);
+      break;
+    }
+    case "chaseStart": {                                                                    // fight -> chase [B3412]: the cards go, the tokens stand in the off-map place of the map
+      if (X.state.stack.length || X.state.phase !== "turns") { err = "busy"; break; }
+      const plan = Chase.startPlan(X.state, X.facts, a, Number(X.host.setting?.("tacticsChaseLostAt")) || undefined);
+      if (!plan.ok) { err = "illegal"; errParams = { reason: plan.reason }; break; }
+      w(["chase"], plan.chase); w(["kind"], "chase"); w(["init"], { ...S.newInit(), deck: X.state.init?.deck ?? 10 });
+      X.state = { ...X.state, init: { ...X.state.init, cur: X.state.init.cur ?? null, curMember: X.state.init.curMember ?? null } };       // the journal writes "nobody" by removing the key; the state keeps it as null
+      for (const p of plan.puts) await perform(X, tx, { t: "zput", who: p.who, to: "@chase", group: p.group, tx });
+      emit(X, null, { type: "chase", state: "start", distance: plan.chase.distance, sides: plan.chase.sides });
+      break;
+    }
+    case "chaseSet": { const next = Chase.setPatch(X.state, a); if (next) { w(["chase"], next); emit(X, null, { type: "chase", state: "set", distance: next.distance }); } else err = "gone"; break; }
+    case "chaseEnd": {                                                                      // chase -> fight (or its end) [B3436]: everyone back where the chase began; the round driver deals the cards
+      const ch = Chase.chaseOf(X.state);
+      if (!ch) { err = "gone"; break; }
+      if (X.state.stack.length) { err = "busy"; break; }
+      for (const p of Chase.endPlan(X.state).puts) await perform(X, tx, { t: "zput", who: p.who, to: p.to, group: p.group, tx });
+      w(["kind"], "combat"); w(["chase"], null);
+      emit(X, null, { type: "chase", state: "end", outcome: Chase.OUTCOMES.includes(a.outcome) ? a.outcome : "combat", distance: ch.distance });
+      break;
+    }
     default: err = "unknown";
   }
   if (err) { const t = X.state.txOpen[tx]; await undoOps(X, t.ops); const { [tx]: _g, ...rest } = X.state.txOpen; X.state = { ...X.state, txOpen: rest }; return bad(err, errParams); }
@@ -720,7 +779,7 @@ async function opUndo(X, a) {
     X.log = J.markUndone(X.log, id, X.host.now());
     emit(X, null, { type: "undo", tx: id });
   }
-  X.facts = X.host.facts(); X.changed = true;
+  X.facts = liveFacts(X); X.changed = true;
   return ok({ undone: list });
 }
 async function opHazard(X, a) {
@@ -733,6 +792,63 @@ async function opHazard(X, a) {
   pushInst(X, inst);
   if (!a.quiet) emit(X, inst, { type: "trigger", at: a.at ?? "gm", subject: { zone: h.zone }, run: { type: h.kind } });
   return ok({ inst: inst.id });
+}
+
+/** P7, GM op: one round of the chase [B3432] as an instance (flows/chase.mjs). */
+async function opChaseRound(X) {
+  if (X.state.stack.length) return bad("busy");
+  const spec = Chase.roundSpec();
+  const inst = makeInst(X, { action: spec.action, actor: null, decl: spec.decl, cause: "gm", flow: spec.flow });
+  const l = FLOWS[inst.flow].legality(view(X), inst);
+  if (!l.ok) return bad("illegal", { reason: l.reason, ...l.params });
+  inst.tx = openTx(X, { inst: inst.id });
+  pushInst(X, inst);
+  emit(X, inst, { type: "actionDeclared", decl: { action: spec.action }, cost: "none", stress: 0, targets: [] });
+  return ok({ inst: inst.id });
+}
+/* P7 [R22] [I12] [B2841]: the end of a round runs the clock of every challenge down by one. One transaction per challenge, so the GM can
+   take a tick back; at 0 the "time is up" card of the round driver opens (its answer `run` comes back as the effect `challengeFail`).
+   The end-of-round side effects that are due are GM-run instances. Off with the world setting `challengesCombatTime`. */
+async function challengeClock(X) {
+  if (X.host.setting?.("challengesCombatTime") === false) return;
+  for (const p of (X.host.parts?.() ?? []).filter((x) => x.challenge && !x.defeated)) {
+    const c = X.facts.c(p.id), r = Challenge.clock(c, Challenge.cfgOf(X.state, p.id));
+    if (!r) continue;
+    if (r.to != null && r.to !== c.resolve) {
+      const tx = openTx(X, {});
+      await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: r.to, tx });
+      closeTx(X, tx, { pub: `${c.name ?? p.id}: ${r.to}`, gm: `${c.name ?? p.id}: clock ${c.resolve} -> ${r.to}` });
+      emit(X, null, { type: "challenge", challenge: p.id, rating: c.health, timeLeft: r.to, state: r.failed ? "failed" : "active", clock: 1 });
+    }
+    if (r.failed && !Object.values(X.state.prompts).some((q) => q.kind === "challengeFail" && q.about === p.id && !q.answered))
+      openPrompt(X, null, { key: "cf", kind: "challengeFail", to: "gm", about: p.id, options: [{ id: "run", label: "run" }, { id: "other", label: "other" }], data: { effects: Challenge.failKinds(Challenge.cfgOf(X.state, p.id)) } }, "roundEnd");
+    for (const kind of r.effects) pushManual(X, p.id, kind, { at: "roundEnd" });
+  }
+}
+/* "Run the consequence" of a challenge whose time ran out [B2841]: the ward resets by itself [B2876]; what the engine has no flow for
+   becomes a GM-run instance that names it. */
+async function challengeFailRun(X, cid) {
+  const c = P1.isId(cid) ? X.facts.c(cid) : null, cfg = Challenge.cfgOf(X.state, cid);
+  if (!c || c.kind !== "challenge") return;
+  const r = Challenge.failRun(c, cfg);
+  if (r.ward) {
+    const tx = openTx(X, {});
+    await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "health", to: r.ward.rating, tx });
+    await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: r.ward.time, tx });
+    write(X, tx, ["challenges", cid, "dice"], r.ward.dice); write(X, tx, ["challenges", cid, "resets"], r.ward.resets); write(X, tx, ["challenges", cid, "started"], {});
+    closeTx(X, tx, { pub: `${c.name ?? cid}: reset`, gm: `${c.name ?? cid}: ward reset (${r.ward.dice})` });
+    emit(X, null, { type: "challenge", challenge: cid, rating: r.ward.rating, timeLeft: r.ward.time, state: "reset", dice: r.ward.dice });
+  }
+  for (const kind of r.manual) pushManual(X, cid, kind, { at: "onFail" });
+}
+/** A side effect the GM runs by hand (spec 5.3): an instance that names it, with the challenge as its source. */
+function pushManual(X, cid, kind, o = {}) {
+  const name = X.facts.c(cid)?.name ?? cid;
+  const inst = makeInst(X, { action: "other", actor: null, decl: { action: "other", targets: [], helpers: [], exploits: [], stressTotal: 0, text: `${name}: ${kind}`.slice(0, 300) }, cause: "trigger", flow: "other",
+    data: { trigger: { at: o.at ?? null, run: { type: "challenge", kind, challenge: cid }, source: { kind: "challenge", owner: cid, name } } }, initiator: { type: "trigger", id: String(kind).slice(0, 40) }, parent: top(X)?.id ?? null });
+  inst.tx = openTx(X, { inst: inst.id }); inst.status = "manual";
+  if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); }
+  pushInst(X, inst);
 }
 
 /** P3, GM ops: a forced move (Knockback, Slam, anything that throws a character [B2435], [B2494]) or a fall [B2391] of one combatant, as
@@ -785,7 +901,9 @@ async function system(X, effects) {
     } else if (fx?.type === "abortInstances") {
       for (const inst of [...X.state.stack].reverse()) if (inst.actor === fx.actor && instOf(X, inst.id)) await abortInst(X, inst.id, true);
       dropPrompts(X, (p) => p.about === fx.actor);
-    } else if (fx?.type === "trigger" && isObj(fx.trigger)) triggers.push(fx.trigger);
+    } else if (fx?.type === "roundEnd") await challengeClock(X);                          // P7
+    else if (fx?.type === "challengeFail") await challengeFailRun(X, fx.challenge);
+    else if (fx?.type === "trigger" && isObj(fx.trigger)) triggers.push(fx.trigger);
   }
   for (const t of triggers.reverse()) await pushTrigger(X, t);
 }
@@ -796,6 +914,15 @@ async function pushTrigger(X, t) {
     const targets = Array.isArray(run.targets) ? run.targets : P1.isId(sub.combatant) ? [sub.combatant] : X.facts.inZoneKey?.(sub.zone) ?? [];
     const r = await opHazard(X, { hazard: { ...hz, id: t.id, zone: sub.zone, cause: "trigger" }, targets, cause: "trigger", at: t.at, quiet: true });
     if (r.ok) { const I = J.clone(instOf(X, r.inst)); I.data.trigger = { id: t.id, at: t.at }; I.cause = "trigger"; setInst(X, I); return; }
+  }
+  if (run.type === "challengeRoll" && P1.isId(sub.combatant)) {                           // P7: a side effect that asks a roll of the character (the toxin [B2889])
+    const spec = Challenge.effectChild(sub.combatant, run, { id: t.id, at: t.at });
+    const inst = makeInst(X, { action: spec.action, actor: null, decl: spec.decl, cause: "trigger", flow: spec.flow, data: spec.data, initiator: spec.initiator, parent: top(X)?.id ?? null });
+    if (FLOWS[inst.flow].legality(view(X), inst).ok) {
+      inst.tx = openTx(X, { inst: inst.id });
+      if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); }
+      pushInst(X, inst); return;
+    }
   }
   const actor = P1.isId(sub.combatant) && X.facts.c(sub.combatant) ? sub.combatant : null;
   const inst = makeInst(X, { action: "other", actor, decl: { action: "other", targets: [], helpers: [], exploits: [], stressTotal: 0, text: String(t.source?.name || run.type || "").slice(0, 300) }, cause: "trigger", flow: "other",
@@ -808,8 +935,9 @@ async function pushTrigger(X, t) {
 export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer", "help", "move", "exception", "other"]);       // endTurn, holdOff, mark: director-pure.mjs
 export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget"]);
 export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
-  "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp"]);
-export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard", "forcedMove", "fall"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
+  "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp",
+  "challengeSetup", "vehicleSet", "chaseStart", "chaseSet", "chaseEnd"]);                                                                    // P7
+export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard", "forcedMove", "fall", "chaseRound"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
 
 async function request(X, req) {
   const op = req?.op;
@@ -827,6 +955,7 @@ async function request(X, req) {
     case "forcedMove": case "fall": return opForced(X, op, req);
     case "undo": return opUndo(X, req);
     case "hazard": return opHazard(X, req);
+    case "chaseRound": return opChaseRound(X);
     default:
       if (GM_INST_OPS.includes(op)) return gmInstOp(X, op, req);
       if (GM_EDIT_OPS.includes(op)) return gmEdit(X, op, req);

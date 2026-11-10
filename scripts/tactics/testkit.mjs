@@ -54,7 +54,7 @@ export class Table {
     this.c[id] = { id, name: o.name ?? id, actorUuid: `Actor.${id}`, tokenUuid: `Scene.s.Token.${id}`, owners: o.owners ?? [], npc: !!o.npc, kind: o.kind ?? (o.npc ? "npc" : "hero"), hidden: !!o.hidden, present: true,
       attrs: { ...ATTRS, ...(o.attrs ?? {}) }, health: o.health ?? 6, maxHealth: o.maxHealth ?? o.health ?? 6, resolve: o.resolve ?? 5, maxResolve: o.maxResolve ?? o.resolve ?? 5, crits: o.crits ?? [],
       armor: o.armor ?? [], slugfest: { damage: o.damage ?? 2 }, huge: !!o.huge, grown: !!o.grown, impervious: !!o.impervious, immune: o.immune ?? [], immunities: o.immunities ?? [], vulnerabilities: o.vulnerabilities ?? [], members: o.members, zone: o.zone ?? "z1", items: [],
-      veteran: !!o.veteran, reflexes: !!o.reflexes, defeated: false, summonOf: o.summonOf ?? null, regeneration: !!o.regeneration };
+      powers: o.powers ?? [], movement: o.movement, timeUnit: o.timeUnit, vehicle: o.vehicle, veteran: !!o.veteran, reflexes: !!o.reflexes, defeated: false, summonOf: o.summonOf ?? null, regeneration: !!o.regeneration };
     for (const u of this.c[id].owners) if (!this.users[u]) this.user(u);
     return this;
   }
@@ -104,7 +104,7 @@ export class Table {
       actorValue: (uuid, path) => Object.values(T.c).find((x) => x.actorUuid === uuid)?.[path],
     };
   }
-  parts() { return Object.values(this.c).map((x) => ({ id: x.id, hero: !x.npc, owners: x.owners.slice(), defeated: !!x.defeated, challenge: x.kind === "challenge", summonOf: x.summonOf, veteran: x.veteran, reflexes: x.reflexes, resolve: x.resolve })); }
+  parts() { return Object.values(this.c).map((x) => ({ id: x.id, hero: !x.npc, owners: x.owners.slice(), defeated: !!x.defeated, challenge: x.kind === "challenge", vehicle: x.kind === "vehicle", summonOf: x.summonOf, veteran: x.veteran, reflexes: x.reflexes, resolve: x.resolve })); }
   sceneFacts() { return Object.values(this.c).map((x) => ({ id: x.id, name: x.name, type: x.kind === "hero" ? "superhero" : x.kind, health: x.health, maxHealth: x.maxHealth, resolve: x.resolve, maxResolve: x.maxResolve, strength: x.attrs.strength, regeneration: x.regeneration })); }
   now() { return ++this.clock; }
   setting(key) { return this.settings[key]; }

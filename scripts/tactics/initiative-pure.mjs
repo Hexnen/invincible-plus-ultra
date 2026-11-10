@@ -33,7 +33,7 @@ export const slotOf = (init, memberId) => init.slots.find((s) => !s.extra && s.m
 export const slotById = (init, id) => init.slots.find((s) => s.id === id) ?? null;
 /* who gets a card: a challenge has none [I12] [R22]; summoned allies and controlled animals act on their owner's turn [I14] [B1808], [B1637];
    a combatant marked defeated in Foundry is out of the fight (the tracker's own notion [D]) */
-export const eligible = (p) => !!p && !p.defeated && !p.challenge && !p.summonOf;
+export const eligible = (p) => !!p && !p.defeated && !p.challenge && !p.summonOf && !p.vehicle && !p.noCard;      // P7: a vehicle has no card (its driver acts); nobody has one in a chase [B3432]
 const usedCards = (init) => init.slots.map((s) => s.card).filter((c) => c !== null && c !== undefined);
 /* [A-1] [R12]: the next card after every card in use; the deck grows when it has to */
 function nextFreeCard(init) { const u = usedCards(init); return u.length ? Math.max(...u) + 1 : 1; }

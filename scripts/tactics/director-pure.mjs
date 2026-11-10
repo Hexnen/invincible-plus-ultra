@@ -36,9 +36,10 @@ const out = (state, log, env, events = []) => ({ state, log, env, events, change
 const isRound = (state, req) => ROUND_OPS.includes(req?.op)
   || ((req?.op === "answer" || req?.op === "answerFor") && O.P1_PROMPTS.has(state?.prompts?.[req.prompt]?.kind));
 
-function ctxFor(host, user) {
-  const facts = host.facts();
-  return { user: user.id, staff: !!user.staff, owns: (cid) => !!facts.c(cid)?.owners?.includes(user.id), parts: host.parts?.() ?? [], rng: host.rng,
+function ctxFor(host, user, state = null) {
+  const facts = host.facts(), all = host.parts?.() ?? [];
+  const parts = state?.kind === "chase" ? all.map((p) => ({ ...p, noCard: 1 })) : all;      // P7 [B3412]: nobody holds a card while a chase runs; the round still turns
+  return { user: user.id, staff: !!user.staff, owns: (cid) => !!facts.c(cid)?.owners?.includes(user.id), parts, rng: host.rng,
     playersEnd: host.setting?.("turnPlayersEnd") !== false, sceneFacts: host.sceneFacts?.() ?? [], hold: true };
 }
 /* one sequence, the acting user and the time on the round driver's events (the engine stamps its own the same way) */
@@ -49,14 +50,14 @@ function stamp(state, events, user, host) {
 }
 /** One reducer action, then what it asks of the executor through the engine. -> { ok, env, state, log, events } */
 async function round(state, log, action, user, host) {
-  const r = O.reduce(state, action, ctxFor(host, user));
+  const r = O.reduce(state, action, ctxFor(host, user, state));
   if (!r.ok) return { ok: false, env: r };
   if (!r.changed) return { ok: true, same: true, env: { ok: true, changed: false, ...(r.dup ? { dup: true } : {}) } };
   if (r.state === null) return { ok: true, env: { ok: true, changed: true, rev: null }, state: null, log: J.emptyLog(), events: (r.events ?? []).map((e, i) => ({ ...e, seq: (state?.evSeq ?? 0) + i + 1, by: user.id, at: host.now() })) };
   const st = stamp(r.state, r.events, user, host);
   let s = st.state, l = action.type === "start" ? J.emptyLog() : log;
   const events = st.events, env = { ok: true, changed: true, rev: s.rev };
-  const fx = (r.effects ?? []).filter((e) => e?.type !== "roundEnd");                   // roundEnd is told by the event of the same name (the challenge clock listens to the document)
+  const fx = r.effects ?? [];                                                           // P7: roundEnd runs the challenge clocks in the engine, journaled [R22]
   if (fx.length) {
     const e = await E.handle({ state: s, log: l }, { t: "sys", effects: fx }, host);
     s = e.state; l = e.log; events.push(...e.events);
@@ -64,9 +65,21 @@ async function round(state, log, action, user, host) {
   }
   return { ok: true, env, state: s, log: l, events };
 }
+/* P7: the cards follow the kind of the scene. A chase holds no cards (also after an undo that brought a chase back); a fight that
+   has none while people stand in it (a chase just ended, or its start was undone) gets them dealt by the round driver [A-1]. */
+async function cards(state, log, events, host) {
+  if (!state || state.stack.length || state.phase !== "turns") return { state, log };
+  if (state.kind === "chase") return state.init.slots.length ? { state: { ...state, init: { ...S.newInit(), deck: state.init.deck } }, log } : { state, log };
+  if (state.init.slots.length || !(state.round >= 1)) return { state, log };
+  const r = await round(state, log, { type: "roster" }, { id: "engine", staff: true }, host);
+  if (!r.ok || r.same) return { state, log };
+  events.push(...r.events);
+  return { state: r.state, log: r.log };
+}
 /* the round waits for the trigger instances of a blocking queue: when the stack is empty again it goes on */
 async function settle(state, log, events, host) {
-  let s = state, l = log;
+  const c = await cards(state, log, events, host);
+  let s = c.state, l = c.log;
   for (let guard = 0; guard < 6 && s?.sched?.hold && !s.stack.length; guard++) {
     const r = await round(s, l, { type: "resume" }, { id: "engine", staff: true }, host);
     if (!r.ok || r.same) break;
@@ -80,7 +93,14 @@ export async function handle({ state, log }, input, host) {
   try {
     if (input?.t !== "req" || !isRound(state, input.req)) {
       if (!state) return out(state, lg, bad("off"));
-      const e = await E.handle({ state, log: lg }, input, host);
+      let st0 = state, lg0 = lg;
+      const pre = [];
+      if (input?.t === "req" && input.req?.op === "chaseRound" && input.user?.staff && state.kind === "chase" && state.chase?.rolled === state.round && !state.stack.length && state.phase === "turns") {
+        const nr = await round(state, lg, { type: "nextRound", force: true }, input.user, host);     // P7 [B3432]: one chase roll a round; the next one opens the next round
+        if (nr.ok && !nr.same && nr.state) { st0 = nr.state; lg0 = nr.log; pre.push(...nr.events); }
+      }
+      const e0 = await E.handle({ state: st0, log: lg0 }, input, host);
+      const e = pre.length ? { ...e0, events: [...pre, ...e0.events], changed: true, state: e0.changed ? e0.state : st0, log: e0.changed ? e0.log : lg0 } : e0;
       if (!e.changed) return e;
       const done = await settle(e.state, e.log, e.events, host);
       return { ...e, state: done.state, log: done.log };
@@ -93,7 +113,7 @@ export async function handle({ state, log }, input, host) {
     const action = { ...n.action, rid: input.rid };
     if (state && state.stack.length && state.mode === "tactical" && !(user.staff && action.force === true)) {       // spec 4.4
       const refused = (op === "endTurn" && !state.free?.[action.actor]) || BLOCKED_BY_ACTION.includes(op);
-      if (refused) { const probe = O.reduce(state, { ...action, rid: undefined }, ctxFor(host, user)); return out(state, lg, probe.ok ? bad("busy", { reason: "openAction" }) : probe); }
+      if (refused) { const probe = O.reduce(state, { ...action, rid: undefined }, ctxFor(host, user, state)); return out(state, lg, probe.ok ? bad("busy", { reason: "openAction" }) : probe); }
     }
     const r = await round(state, lg, action, user, host);
     if (!r.ok || r.same) return out(state, lg, r.env);

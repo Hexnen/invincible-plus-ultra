@@ -12,6 +12,7 @@ import * as C from "../catalog-pure.mjs";
 import * as K from "./kit.mjs";
 import * as MP from "../movement-pure.mjs";
 import { freeMoveChild, forcedChild } from "./move.mjs";
+import * as Veh from "./vehicle.mjs";                                                          // P7: the ram, hits on vehicles, the attack that ends a chase
 
 export const STEPS = Object.freeze(["check", "gate", "reactBefore", "roll", "outcome", "stunts", "damage", "reactAfterDamage", "effects", "close"]);
 const SLUG = ["slugfest", "grapple", "grappleAttack", "counterattack", "ram"];
@@ -28,6 +29,8 @@ export function legality(v, inst) {
   const a = facts.c(inst.actor);
   if (!a || a.present === false) return bad("gone");
   const counter = kind === "counterattack";
+  const vx = Veh.attackLegality(v, inst);                                                                    // P7 [B3148], [B3223]
+  if (vx) return vx;
   if (!counter) {
     if (a.health <= 0) return bad("broken");                                                                 // [B2707]
     const ac = M.conditions(state, inst.actor);
@@ -81,8 +84,9 @@ export function revalidate(v, inst) {
 /* ------------------------------------------------------------------ helpers */
 function defencePrompt(v, I, t) {
   const kind = kindOf(I), tf = v.facts.c(t), conds = M.conditions(v.state, t);
-  const hasQuick = P1.canPay(v.state, t, "quick", { interrupt: true, defense: true }).ok;      // a grant may pay the defence (spec 4.2)
-  const opts = attack.defenceOptions({ attack: kind, defender: { ...conds, hasQuick } });        // [B2446], [B2524], [R6], [R20], [R21], [R10]
+  const hasQuick = !Veh.isMachine(v, t) && P1.canPay(v.state, t, "quick", { interrupt: true, defense: true }).ok;      // a grant may pay the defence (spec 4.2)
+  const dq = Veh.defenceOf(v, I, kind);                                                          // P7 [B3434]: the charge or ram that ends a chase
+  const opts = attack.defenceOptions({ attack: dq.attack, defender: { ...conds, hasQuick }, inChase: dq.inChase });        // [B2446], [B2524], [R6], [R20], [R21], [R10]
   const options = [];
   for (const id of ["block", "dodge"]) {
     if (opts[id].reason === "notAllowed") continue;                                              // this attack cannot be answered that way at all
@@ -227,6 +231,7 @@ export const steps = {
       const t0 = d.targets[0], a = v.facts.c(I.actor), w = weaponOf(v, I), r = v.facts.range(I.actor, t0);
       const mods = attack.attackModifiers({ attack: kind, target: M.conditions(v.state, t0), weaponBonus: w?.bonus ?? 0, distance: r?.total ?? null, range: w?.range ?? null,
         helpers: dice.helpDice((d.helpers ?? []).filter((h) => h.consent === "yes").length) });        // [B2536], [B2430], [R6], [B2511], [B2238]
+      mods.push(...Veh.attackMods(v, I));                                                          // P7 [B3148]: Maneuverability on a ram
       if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });    // [B2827], [R24]
       const bp = K.buildPool(v, I, "attack", I.actor, A.attr, mods, { rollKind: "attack", tokens: tg.tokens });
       for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
@@ -315,7 +320,7 @@ export const steps = {
       const tf = v.facts.c(t);
       if (!tf) continue;
       const tags = M.damageTags({ source: entry?.damage?.source ?? w?.source, sharp: entry?.damage?.sharp ?? w?.sharp, toStress: entry?.damage?.toStress, ignoreArmor: entry?.damage?.ignoreArmor, cause: kind === "counterattack" ? "counter" : "attack" });
-      const base = entry?.damage?.base ?? (w && w.damage != null ? w.damage : a?.slugfest?.damage ?? 0);         // [B2426], [B2428], [B2512]
+      const base = Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : a?.slugfest?.damage ?? 0);         // [B2426], [B2428], [B2512]
       const doubled = (I.data.stunts ?? []).some((p) => p.stunt === "doubleDamage" && p.target === t);          // [B2434]
       const forced = I.data.forced?.damage?.[t];
       const ar = damage.selectArmor(tags.toStress ? [] : tf.armor ?? []);                                      // [B2682], [R13]; stress armor is [G-L4]
@@ -382,7 +387,8 @@ export const steps = {
             R.events.push({ type: "status", target: t, status: { id: "stunned", on: true } });
           }
         }
-        if (dm && K.brokenAndCrit(v, I, R, t, dm, { deadlyHit: picked(t, "deadlyHit"), by: I.actor })) return R;       // spec 9.5 steps 7-9
+        if (dm && Veh.afterHit(v, I, R, t, dm)) return R;                                                  // P7 [B3221-3248]: component damage, the wreck, the people aboard
+        if (dm && !Veh.isMachine(v, t) && K.brokenAndCrit(v, I, R, t, dm, { deadlyHit: picked(t, "deadlyHit"), by: I.actor })) return R;       // spec 9.5 steps 7-9
       } else if (o.counterattack && I.data.def?.[t]?.defence === "block") {                    // [B2448], [R4]
         const key = `counter:${t}`;
         if (!I.data.pk?.[key]) {

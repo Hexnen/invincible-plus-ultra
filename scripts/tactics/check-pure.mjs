@@ -25,9 +25,9 @@ const SURFACE = ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs", "ui/pick.mjs", "ui/
 const FACING = code.filter((f) => !PURE.includes(f) && !SURFACE.includes(f) && !["testkit.mjs", "lang.mjs"].includes(f));
 const FORBIDDEN = /(?<![.\w])(game|ui|canvas|foundry|Hooks|CONFIG|CONST|ChatMessage|Roll|fromUuid|fromUuidSync|window|document|globalThis|setTimeout|socketlib)\s*[.(\[]/;
 const GLOBALS = /(^|[^.\w"'`])(game|Hooks|foundry|ui|canvas|CONFIG|ChatMessage|fromUuid|fromUuidSync|document|window|globalThis|setTimeout|Math\.random|Date\.now)\s*[.(\[]|\bnew Roll\b/;
-const pureImport = (i) => /-pure\.mjs$|\/flows\/|^\.\/(kit|attack|simple|move)\.mjs$|\/rules\/index\.mjs$|^node:/.test(i);
+const pureImport = (i) => /-pure\.mjs$|\/flows\/|^\.\/(kit|attack|simple|move|vehicle|challenge|chase)\.mjs$|\/rules\/index\.mjs$|^node:/.test(i);
 
-eq(PURE.slice().sort(), ["catalog-pure.mjs", "desk-pure.mjs", "director-pure.mjs", "economy-pure.mjs", "engine-pure.mjs", "flows/attack.mjs", "flows/kit.mjs", "flows/move.mjs", "flows/simple.mjs", "initiative-pure.mjs", "journal-pure.mjs",
+eq(PURE.slice().sort(), ["catalog-pure.mjs", "desk-pure.mjs", "director-pure.mjs", "economy-pure.mjs", "engine-pure.mjs", "flows/attack.mjs", "flows/challenge.mjs", "flows/chase.mjs", "flows/kit.mjs", "flows/move.mjs", "flows/simple.mjs", "flows/vehicle.mjs", "initiative-pure.mjs", "journal-pure.mjs",
   "ledger-pure.mjs", "mods-pure.mjs", "movement-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "ui/model-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");
 for (const f of PURE) {
   const c = strip(read(f));

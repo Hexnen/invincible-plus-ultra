@@ -102,6 +102,11 @@ export function viewFor(state, viewer, meta = {}) {
     knowledge: Object.fromEntries(V.owns.map((o) => [o, clone(state.knowledge?.[o] ?? {})])),
     revealed: clone(keepKey(state.revealed)), opts: clone(state.opts ?? {}),
   };
+  /* P7: who sits in which vehicle, the chase and its distance, and the approaches of a challenge are table knowledge [B2839]; the side
+     effects of a challenge and the numbers of its ward are the GM's until they happen */
+  if (isObj(state.vehicles)) out.vehicles = clone(keepKey(state.vehicles));
+  if (isObj(state.chase)) { const { back, ...pub } = state.chase; out.chase = clone(pub); }
+  if (isObj(state.challenges)) out.challenges = Object.fromEntries(Object.entries(keepKey(state.challenges)).map(([cid, c]) => [cid, clone({ preset: c.preset ?? null, name: c.name, objectives: c.objectives ?? [], dice: c.dice ?? 0, started: c.started ?? {}, done: c.done })]));
   // statuses carry GM-only notes on NPCs that are not revealed
   for (const [cid, list] of Object.entries(out.statuses)) if (Array.isArray(list)) out.statuses[cid] = list.map((s) => { const { gmNote, ...rest } = s; return rest; });
   return scrub(out, concealed);

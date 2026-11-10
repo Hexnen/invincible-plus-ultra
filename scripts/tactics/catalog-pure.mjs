@@ -30,6 +30,14 @@ export const BUILTIN = Object.freeze({
   breachDoor: { id: "breachDoor", label: "ITAC.action.breachDoor", src: [2418], kind: "builtin", cost: "quick", flow: "barrier", door: "breachDoor", roll: { attr: "strength" }, tags: [] },
   unseal: { id: "unseal", label: "ITAC.action.unseal", src: [2418], kind: "builtin", cost: "full", flow: "barrier", door: "unseal", roll: { attr: "reason" }, tags: [] },
   fastball: { id: "fastball", label: "ITAC.action.fastball", src: [2389, 2390], kind: "builtin", cost: "full", flow: "fastball", target: { who: "ally", n: [1, 1] }, tags: ["move"] },
+  /* P7 (flows/challenge.mjs, flows/vehicle.mjs). `when` names the situation in which the bar offers the entry (desk-pure.mjs); the flow
+     checks the rule. The ram is the attack flow with the attack `ram`; its base damage comes from the vehicle. */
+  objective: { id: "objective", label: "ITAC.action.objective", src: [2837, 2841], kind: "builtin", cost: "full", flow: "challenge", target: { who: "challenge", n: [1, 1] }, when: "challenge", tags: [] },
+  vehicleEnter: { id: "vehicleEnter", label: "ITAC.action.vehicleEnter", src: [2325, 2332], kind: "builtin", cost: "quick", flow: "seat", target: { who: "vehicle", n: [1, 1] }, when: "onFoot", tags: [] },
+  vehicleExit: { id: "vehicleExit", label: "ITAC.action.vehicleExit", src: [2325, 2332], kind: "builtin", cost: "quick", flow: "seat", when: "aboard", tags: [] },
+  vehicleStart: { id: "vehicleStart", label: "ITAC.action.vehicleStart", src: [2325, 2332], kind: "builtin", cost: "quick", flow: "seat", when: "driver", tags: [] },
+  vehicleHandle: { id: "vehicleHandle", label: "ITAC.action.vehicleHandle", src: [2941, 3146], kind: "builtin", cost: "quick", flow: "drive", when: "driver", tags: ["vehicleHandle", "move"] },
+  ram: { id: "ram", label: "ITAC.action.ram", src: [3148, 3223], kind: "builtin", cost: "full", flow: "attack", attack: "ram", roll: { attr: "agility" }, target: { who: "enemy", n: [1, 1] }, defense: "block", stunts: "slugfest", when: "driver", tags: ["attack"] },
   gmRoll: { id: "gmRoll", label: "ITAC.action.gmRoll", src: [2208], kind: "builtin", cost: "none", flow: "roll", roll: { attr: null }, tags: [] },
 });
 

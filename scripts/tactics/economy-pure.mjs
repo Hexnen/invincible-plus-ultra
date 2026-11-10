@@ -65,6 +65,7 @@ export function budget(state, cid) {
 }
 export const history = (state, cid, scope, tag) => { const v = Lg.history(ledgerOf(state, cid), scope, tag); return typeof v === "number" ? v > 0 : Array.isArray(v) ? v.length > 0 : !!v; };
 export const loseNextTurn = (ledger, source) => Lg.loseNextTurn(ledger, source ?? null);
+export const loseFull = (ledger, source) => Lg.loseFull(ledger, source ?? null);          // [L8]: the full action of this round is gone (the toxin [B2889])
 export function canInterrupt(state, cid) {
   const L = ledgerOf(state, cid);
   return L.noInterrupts || L.lostTurn ? { ok: false, reason: "noInterrupts" } : { ok: true, reason: null };      // [L7]
