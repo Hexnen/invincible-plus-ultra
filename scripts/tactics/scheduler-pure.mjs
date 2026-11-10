@@ -23,9 +23,12 @@ function concerns(t, point) {
   if (t.at !== point.at) return false;
   const s = t.subject ?? {};
   if (s.any) return true;
+  /* a point of the whole fight (round start, round end, scene end) names no combatant and no zone: there the subject says whom the
+     trigger is ABOUT (a fire attack on one combatant at the end of the round), not which point it waits for */
+  if (point.at === "roundStart" || point.at === "roundEnd" || point.at === "sceneEnd") return (!point.combatant || !s.combatant || s.combatant === point.combatant) && (!point.zone || !s.zone || s.zone === point.zone);
   if (s.combatant) return s.combatant === point.combatant;
   if (s.zone) return s.zone === point.zone;
-  return point.at === "roundStart" || point.at === "roundEnd" || point.at === "sceneEnd";       // no subject: a point of the whole fight
+  return false;
 }
 /* the triggers due at a point, in the order they are proposed to the GM: explicit `order`, then the provisional kind order at round start, then age */
 export function due(triggers, point) {

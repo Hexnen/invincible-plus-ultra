@@ -18,6 +18,8 @@ eq(Sch.due(list, { at: "turnStart", combatant: "a" }).map((t) => t.id), ["t5", "
 eq(Sch.due(list, { at: "turnStart", combatant: "zz" }).map((t) => t.id), ["t7"], "a trigger without a subject is not a turn trigger");
 eq(Sch.due(list, { at: "zoneEnter", zone: "z1", combatant: "a" }).map((t) => t.id), ["t8"], "zone triggers");
 eq(Sch.due(list, { at: "zoneEnter", zone: "z2" }).length, 0, "another zone");
+eq(Sch.due([T("r1", "roundEnd", "fireAttack", { subject: { combatant: "a" } }), T("r2", "roundEnd", "other", { subject: { zone: "z1" } }), T("r3", "turnEnd", "other", { subject: { combatant: "a" } })], { at: "roundEnd" }).map((t) => t.id), ["r1", "r2"],
+  "at a point of the whole fight the subject says whom a trigger is about: a round-end trigger on one combatant or zone is due at the round's end");
 eq(Sch.due(list, { at: "roundEnd" }).map((t) => t.id), ["t9"], "round end");
 eq(Sch.due(list, { at: "sceneEnd" }).map((t) => t.id), ["t10"], "scene end");
 ok(Sch.POINTS.includes("turnStart") && Sch.CHALLENGE_TIMES.heroTurnStart === "turnStart" && Sch.CHALLENGE_TIMES.endOfRound === "roundEnd", "challenge effect times map onto scheduler points");

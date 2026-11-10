@@ -53,7 +53,7 @@ export class Table {
   add(id, o) {
     this.c[id] = { id, name: o.name ?? id, actorUuid: `Actor.${id}`, tokenUuid: `Scene.s.Token.${id}`, owners: o.owners ?? [], npc: !!o.npc, kind: o.kind ?? (o.npc ? "npc" : "hero"), hidden: !!o.hidden, present: true,
       attrs: { ...ATTRS, ...(o.attrs ?? {}) }, health: o.health ?? 6, maxHealth: o.maxHealth ?? o.health ?? 6, resolve: o.resolve ?? 5, maxResolve: o.maxResolve ?? o.resolve ?? 5, crits: o.crits ?? [],
-      armor: o.armor ?? [], slugfest: { damage: o.damage ?? 2 }, huge: !!o.huge, immunities: o.immunities ?? [], vulnerabilities: o.vulnerabilities ?? [], members: o.members, zone: o.zone ?? "z1", items: [],
+      armor: o.armor ?? [], slugfest: { damage: o.damage ?? 2 }, huge: !!o.huge, grown: !!o.grown, impervious: !!o.impervious, immune: o.immune ?? [], immunities: o.immunities ?? [], vulnerabilities: o.vulnerabilities ?? [], members: o.members, zone: o.zone ?? "z1", items: [],
       veteran: !!o.veteran, reflexes: !!o.reflexes, defeated: false, summonOf: o.summonOf ?? null, regeneration: !!o.regeneration };
     for (const u of this.c[id].owners) if (!this.users[u]) this.user(u);
     return this;

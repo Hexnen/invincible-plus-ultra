@@ -1,11 +1,14 @@
-/* Tactical combat, package P2: the SMALLEST action catalog the engine skeleton needs (spec section 8). NO Foundry globals.
+/* Tactical combat: the SMALLEST action catalog the engine skeleton needs (spec section 8). NO Foundry globals.
    The full catalog (every row of 8.1, every power, talent and weapon) is P5 / P6 and replaces BUILTIN; the shape is the spec's `CatalogEntry`.
    `src` holds book-dump line numbers only (the text is private). Extra fields used by the engine:
+     requires  Cond | [Cond...] of rules/conditions.mjs: what must hold to declare the action (evaluated in flows/kit.mjs `requirements`)
+     roll.mods [ModRule...] of rules/conditions.mjs: conditional dice modifiers of the actor's roll (flows/kit.mjs `entryMods`)
      attack    id of rules/attack.mjs ATTACKS for flow "attack"
      reaction  for entries usable in a reaction window: { when: [window...], who: "target"|"any", effect: "defence"|"action"|"swapTarget"|"autoMiss"|"note" }
                "action" pushes the entry as an interrupting action on the stack; "swapTarget" makes the reactor the target instead; "autoMiss" makes the
                attack miss that target; "note" only records the reaction for the GM. Which powers and talents give which of these is P6 data. */
 import * as M from "./mods-pure.mjs";
+import { conditions } from "../rules/index.mjs";
 
 export const WINDOWS = Object.freeze(["beforeRoll", "afterRoll", "afterDamage"]);
 export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other"]);
@@ -23,6 +26,29 @@ export const BUILTIN = Object.freeze({
 });
 
 const str = (v, n = 40) => (typeof v === "string" ? v.slice(0, n) : "");
+const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
+const data = (v) => { try { const s = JSON.stringify(v); return s && s.length <= 4000 ? JSON.parse(s) : undefined; } catch { return undefined; } };
+/** A predicate given as data: kept only when rules/conditions.mjs finds no fault in it. -> Cond | undefined */
+export function sanitizeCond(c) {
+  const v = data(c);
+  if (v === undefined || v === null) return undefined;
+  try { return conditions.validateCond(v).length ? undefined : v; } catch { return undefined; }
+}
+/** -> [ModRule...] | undefined (one bad rule spoils the list: a modifier is never half applied) */
+export function sanitizeModRules(list) {
+  if (!Array.isArray(list) || list.length > 24) return undefined;
+  const out = [];
+  for (const r of list) {
+    if (!isObj(r) || typeof r.source !== "string" || !r.source) return undefined;
+    const dice = Number.isFinite(r.dice) ? Math.trunc(r.dice) : isObj(r.dice) && typeof r.dice.ref === "string" ? data(r.dice) : undefined;
+    if (dice === undefined) return undefined;
+    const m = { source: r.source.slice(0, 40), dice };
+    if (r.when !== undefined) { const w = sanitizeCond(r.when); if (w === undefined) return undefined; m.when = w; }
+    for (const k of ["attrs", "rolls"]) if (Array.isArray(r[k])) m[k] = r[k].map((x) => str(x, 24)).filter(Boolean).slice(0, 12);
+    out.push(m);
+  }
+  return out;
+}
 /** Normalise a catalog entry given as data (GM op `powerGrant`, later P6). Unknown fields are dropped; returns null when unusable. */
 export function sanitizeEntry(e) {
   if (!e || typeof e !== "object" || !/^[A-Za-z0-9_-]{1,32}$/.test(e.id ?? "") || !FLOWS.includes(e.flow)) return null;
@@ -30,6 +56,8 @@ export function sanitizeEntry(e) {
   const out = { id: e.id, label: str(e.label, 80) || e.id, name: str(e.name, 80), src: Array.isArray(e.src) ? e.src.filter(Number.isInteger).slice(0, 12) : [], kind: "custom", cost, flow: e.flow, tags: Array.isArray(e.tags) ? e.tags.map((x) => str(x, 24)).filter(Boolean).slice(0, 12) : [] };
   if (e.flow === "attack") out.attack = ["slugfest", "shooting", "grapple", "grappleAttack", "charge", "ram"].includes(e.attack) ? e.attack : "slugfest";
   if (e.roll && typeof e.roll === "object") out.roll = { attr: str(e.roll.attr, 12) || null, passive: e.roll.passive === true };
+  if (e.roll?.mods !== undefined) { const m = sanitizeModRules(e.roll.mods); if (!m || !out.roll) return null; if (m.length) out.roll.mods = m; }
+  if (e.requires !== undefined) { const r = sanitizeCond(e.requires); if (r === undefined) return null; out.requires = r; }       // a requirement that cannot be read makes the entry unusable, it is never dropped silently
   if (Number.isInteger(e.stress?.fixed) && e.stress.fixed > 0) out.stress = { fixed: Math.min(20, e.stress.fixed) };
   if (e.damage && typeof e.damage === "object") out.damage = { base: Number.isFinite(e.damage.base) ? Math.max(0, Math.trunc(e.damage.base)) : undefined, ...M.damageTags(e.damage), none: e.damage.none === true };
   if (Array.isArray(e.range) && e.range.length === 2) out.range = [Math.max(0, Math.trunc(e.range[0]) || 0), Math.max(0, Math.trunc(e.range[1]) || 0)];

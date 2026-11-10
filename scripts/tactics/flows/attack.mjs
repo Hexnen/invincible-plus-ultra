@@ -55,7 +55,7 @@ export function legality(v, inst) {
       const sr = zones.shootingRange(r.total, w.range);                                                      // [B2511]
       if (!sr.ok) return bad(sr.reason, { distance: r.total });
     }
-    if (kind === "grapple") { const g = attack.grappleCheck({ targetHuge: !!tf.huge, usesWeapon: !!d.weapon && d.weapon !== "unarmed" }); if (!g.ok) return bad(g.reason); }   // [B2496], [B2502]
+    if (kind === "grapple") { const g = attack.grappleCheck({ target: K.immunityFlags(tf), usesWeapon: !!d.weapon && d.weapon !== "unarmed" }); if (!g.ok) return bad(g.reason); }   // [B2496], [B2502]
     if (!counter) {
       if (M.hasStatus(state, t, "invisible")) gates.push({ kind: "invisible", target: t, attr: "intuition", dice: INVISIBLE_GATE_DICE, src: 2075 });   // [B2075]
       else if (unseen) gates.push({ kind: "unseen", target: t, gm: 1 });                                     // concealed by the GM: no cited number, so the GM sets the gate
@@ -421,7 +421,7 @@ export const steps = {
 function ctxFor(v, I, t) {
   const tf = v.facts.c(t), w = weaponOf(v, I), kind = kindOf(I);
   const others = (v.facts.inZone(t) ?? []).filter((c) => c !== I.actor && c !== t).length;
-  return { attack: kind === "ram" ? "slugfest" : kind, target: { huge: !!tf?.huge }, sharp: !!(v.entry(I)?.damage?.sharp ?? w?.sharp), zoneEmpty: !!v.facts.zone(t)?.empty, movementLeft: 0, otherOpponents: others };   // [G-L7]: `huge` only for real huge creatures
+  return { attack: kind === "ram" ? "slugfest" : kind, target: K.immunityFlags(tf), sharp: !!(v.entry(I)?.damage?.sharp ?? w?.sharp), zoneEmpty: !!v.facts.zone(t)?.empty, movementLeft: 0, otherOpponents: others };   // [G-L7]: `huge` only for real huge creatures
 }
 function options(v, I, hit) {
   const out = [];

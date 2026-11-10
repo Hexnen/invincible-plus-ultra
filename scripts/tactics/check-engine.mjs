@@ -522,4 +522,58 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   eq(code(await U.gm({ op: "explode" })), "badInput", "O: unknown operation");
 }
 
+/* ---- P. catalog predicates through rules/conditions.mjs: `requires` at declaration, `roll.mods` in the pool */
+{
+  const FIN = { id: "finisher", flow: "attack", attack: "slugfest", cost: "full", roll: { attr: "fighting", mods: [
+      { source: "wounded", dice: 2, when: { fact: "target.health", op: "lte", value: 2 } },
+      { source: "oath", dice: 1, when: { gm: "oath" } },
+      { source: "shotOnly", dice: 3, rolls: ["shot"] }] },
+    requires: [{ check: "hasStatus", args: { id: "grappled", who: { ref: "target.id" } }, reason: "targetNotHeld" }, { fact: "sameZone", reason: "notSameZone" }] };
+  const T = base();
+  eq(code(await T.gm({ op: "powerGrant", combatant: "H1", entry: { ...FIN, id: "broken1", requires: { fact: 7 } } })), "badInput", "P: an entry whose requirement cannot be read is refused whole");
+  eq(code(await T.gm({ op: "powerGrant", combatant: "H1", entry: { ...FIN, id: "broken2", roll: { attr: "fighting", mods: [{ source: "x", dice: "many" }] } } })), "badInput", "P: so is one with an unreadable modifier rule");
+  eq(code(await T.gm({ op: "powerGrant", combatant: "H1", entry: FIN })), "ok", "P: an entry with requirements and conditional modifiers is granted");
+  const passN1 = async () => { const p = T.prompt("reaction", "N1"); if (p) await T.req("gm", { op: "answerFor", prompt: p.id, value: "pass" }); };
+  const fin = (extra = {}) => ({ op: "declare", actor: "H1", decl: { action: "finisher", targets: ["N1"], ...extra } });
+  const r0 = await T.req("p1", fin());
+  eq([code(r0), r0.error.params.reason, r0.error.params.why, r0.error.params.target, T.state.stack.length], ["illegal", "requirement", "targetNotHeld", "N1", 0], "P: the requirement fails with its own reason: nothing is declared, nothing is paid");
+  await T.gm({ op: "statusAdd", combatant: "N1", status: { id: "grappled" } });
+  T.setRange("H1", "N1", 1);
+  eq((await T.req("p1", fin())).error.params.why, "notSameZone", "P: every condition of the list must hold; facts come from the snapshot (range)");
+  T.setRange("H1", "N1", 0);
+  eq(code(await T.req("p1", fin())), "ok", "P: with the requirements met the action is declared");
+  await passN1();
+  eq([T.lastRequest().pool.mods.map((m) => m.source), T.top().data.notes?.filter((n) => n.note === "modNeedsGm").map((n) => n.source)], [["restrained"], ["oath"]], "P: none of the entry's modifiers applies at Health 5 (the held target gives its own); the one only the GM can vouch for is noted for the desk, not guessed");
+  await T.gm({ op: "abort", inst: T.top().id });
+  T.c.N1.health = 2;
+  eq(code(await T.gm({ ...fin({ confirmed: ["oath"] }), gm: true })), "ok", "P: declared by the GM, who vouches for the condition");
+  await passN1();
+  eq(T.lastRequest().pool.mods, [{ source: "restrained", dice: 2 }, { source: "wounded", dice: 2 }, { source: "oath", dice: 1 }], "P: conditional modifiers enter the pool when their condition holds; a rule for another kind of roll does not");
+  await T.gm({ op: "abort", inst: T.top().id });
+  eq((await T.req("p1", fin({ confirmed: ["oath"] }))).ok && !T.top().decl.confirmed, true, "P: a player cannot vouch for a GM condition");
+  await T.gm({ op: "abort", inst: T.top().id });
+  // a check nobody supplies needs the GM's word: the exception path of spec 9.12
+  await T.gm({ op: "powerGrant", combatant: "H1", entry: { id: "ritual", flow: "roll", cost: "full", roll: { attr: "presence" }, requires: { check: "moonIsFull" } } });
+  const r1 = await T.req("p1", { op: "declare", actor: "H1", decl: { action: "ritual" } });
+  eq([code(r1), r1.error.params.why, r1.error.params.gmMayAllow], ["illegal", "unknownCheck", 1], "P: a check the engine does not know fails and says the GM may allow it");
+  eq(code(await T.req("p1", { op: "declare", actor: "H1", decl: { action: "ritual", exception: { text: "the moon is full tonight" } } })), "ok", "P: asked as an exception it becomes the GM's card");
+  eq(T.prompt("exception")?.data.reason, "requirement", "P: the exception card names the requirement");
+  // history check: a question to the real ledger
+  const H = base();
+  await H.gm({ op: "powerGrant", combatant: "H1", entry: { id: "second", flow: "roll", cost: "quick", roll: { attr: "agility" }, requires: { not: { check: "history", args: { scope: "round", tag: "attack" } }, reason: "alreadyAttacked" } } });
+  eq(code(await H.req("p1", { op: "declare", actor: "H1", decl: { action: "second" } })), "ok", "P: history check before any attack");
+  await H.gm({ op: "abort", inst: H.top().id });
+  await H.req("p1", slug("H1", "N1")); await H.gm({ op: "abort", inst: H.top().id });
+  eq(code(await H.req("p1", { op: "declare", actor: "H1", decl: { action: "second" } })), "ok", "P: an aborted attack left no history (its entry was taken back)");
+  await H.gm({ op: "abort", inst: H.top().id });
+  await H.req("p1", slug("H1", "N1"));
+  await H.req("gm", { op: "answerFor", prompt: H.prompt("reaction", "N1").id, value: "pass" });
+  await H.roll("attack", 0);
+  eq([H.state.stack.length, (await H.req("p1", { op: "declare", actor: "H1", decl: { action: "second" } })).error?.params?.why ?? null], [0, "alreadyAttacked"], "P: after a finished attack the real ledger's history answers the check");
+  // immunity flags of the rules library (huge, grown, impervious, a free list): the engine passes them, the library decides
+  const G = new Table(); G.hero("H1", "p1").npc("N1", { grown: true }).npc("N2", { huge: true }).npc("N3", { immune: ["grapple"] }).npc("N4"); G.order(["H1", "N1", "N2", "N3", "N4"]).turn("H1");
+  const grab = async (t) => { const r = await G.req("p1", { op: "declare", actor: "H1", decl: { action: "grapple", targets: [t] } }); if (r.ok) await G.gm({ op: "abort", inst: G.top().id }); return r.ok ? "ok" : r.error.params.reason; };
+  eq([await grab("N1"), await grab("N2"), await grab("N3"), await grab("N4")], ["immune", "huge", "immune", "ok"], "P: a grown target, a huge one and one on the free list cannot be grappled; an ordinary one can");
+}
+
 done("check-engine");

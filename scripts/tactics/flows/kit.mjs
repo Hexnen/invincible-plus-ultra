@@ -8,7 +8,7 @@
        events:  [...],  section 16 events
        push:    spec of an action instance to put on top of the stack (interrupt, counterattack, part of a composite)
        goto:    next step id | wait: true | done: true } */
-import { dice, crits } from "../../rules/index.mjs";
+import { dice, crits, conditions } from "../../rules/index.mjs";
 import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 
@@ -36,11 +36,63 @@ export const rollRolled = (inst, key) => { const r = rollOf(inst, key); return !
 export const rollFinal = (inst, key) => { const r = rollOf(inst, key); return !!r && (r.forced != null || (r.sixes != null && !r.pushable)); };
 export const sixesOf = (inst, key) => { const r = rollOf(inst, key); return r ? (r.forced?.sixes ?? r.sixes ?? 0) : 0; };
 
+/** The immunity flags of a target as the rules library reads them (stunts.immunitiesOf): `huge`, `grown`, `impervious` and a free
+    list `immune`. Which character carries which flag is the GM's word (actor flags, system-adapter.mjs); nothing is decided here. */
+export const immunityFlags = (tf) => ({ kind: tf?.kind, huge: !!tf?.huge, grown: !!tf?.grown, impervious: !!tf?.impervious, immune: Array.isArray(tf?.immune) ? tf.immune.slice() : [] });
+
+/* ------------------------------------------------------------------ catalog predicates (spec 8: `requires`, `roll.mods`)
+   The catalog writes a predicate as data; rules/conditions.mjs answers it against a read-only snapshot. This file only makes the snapshot
+   and supplies the checks that are plain questions to the state. A check nobody supplies, and a `{ gm: id }` condition, need the GM's
+   word: `gmMayAllow` (the player may ask for an exception, spec 9.12; the GM confirms an id with `decl.confirmed`).
+     snapshot = { actor, target, decl, round, mode, onTurn, range: { total, borders, levels } | null, sameZone, zone, targetZone,
+                  statuses: [id], targetStatuses: [id], budget } */
+const plainC = (c) => (c ? JSON.parse(JSON.stringify(c)) : null);
+export function snapshot(v, inst, target = null) {
+  const f = v.facts, a = inst.actor, t = target ?? inst.decl?.targets?.[0] ?? null;
+  const rg = a && t ? f.range?.(a, t) : undefined;
+  return {
+    actor: plainC(a ? f.c(a) : null), target: plainC(t ? f.c(t) : null), decl: inst.decl ?? {}, round: v.state.round, mode: v.state.mode,
+    onTurn: a ? P1.isOnTurn(v.state, a) : false, range: rg ?? null, sameZone: rg ? rg.total === 0 : false,
+    zone: a ? f.zone?.(a) ?? null : null, targetZone: t ? f.zone?.(t) ?? null : null,
+    statuses: a ? M.statusesOf(v.state, a).map((s) => s.id) : [], targetStatuses: t ? M.statusesOf(v.state, t).map((s) => s.id) : [],
+    budget: a ? P1.budget(v.state, a) : null,
+  };
+}
+/** the checks a predicate may name: questions to the state, no rule of their own */
+export const checksFor = (v, inst) => ({
+  history: ({ scope = "thisTurn", tag, who } = {}) => P1.history(v.state, who ?? inst.actor, scope, tag),             // "did X already ... this turn / round"
+  hasStatus: ({ id, who } = {}) => M.statusesOf(v.state, who ?? inst.actor).some((s) => s.id === id),
+  inRange: ({ min = 0, max = 0 } = {}, snap) => (snap.range ? snap.range.total >= min && snap.range.total <= max : { ok: false, reason: "noRange", gmMayAllow: true }),
+});
+const confirmedOf = (inst) => (Array.isArray(inst.decl?.confirmed) ? inst.decl.confirmed : []);
+/** `requires` of the entry, for every target (once when there is none). -> { ok } | { ok:false, reason:"requirement", params:{ why, target?, gmMayAllow } } */
+export function requirements(v, inst) {
+  const entry = v.entry(inst);
+  if (!entry?.requires) return { ok: true };
+  const targets = inst.decl?.targets?.length ? inst.decl.targets : [null];
+  for (const t of targets) {
+    const r = conditions.evalConds(Array.isArray(entry.requires) ? entry.requires : [entry.requires], snapshot(v, inst, t), { checks: checksFor(v, inst), confirmed: confirmedOf(inst) });
+    if (!r.ok) return { ok: false, reason: "requirement", params: { why: String(r.reason ?? "").slice(0, 60), ...(t ? { target: t } : {}), ...(r.gmMayAllow ? { gmMayAllow: 1 } : {}) } };
+  }
+  return { ok: true };
+}
+/** Legality of an instance: the entry's requirements, then the flow's own rules. */
+export const legality = (v, inst, flow) => { const r = requirements(v, inst); return r.ok ? flow.legality(v, inst) : r; };
+/** Conditional modifiers of the entry's roll (`roll.mods`) for the actor's own roll. -> { mods: [{ source, dice }], pending: [...] } */
+export function entryMods(v, inst, cid, attr, rollKind) {
+  const rules = cid === inst.actor ? v.entry(inst)?.roll?.mods : null;
+  if (!Array.isArray(rules) || !rules.length) return { mods: [], pending: [] };
+  return conditions.evalModRules(rules, snapshot(v, inst), { attr, roll: rollKind, checks: checksFor(v, inst), confirmed: confirmedOf(inst) });
+}
+
 /** Dice pool of a combatant's roll: attribute + modifiers, the worst critical-injury penalty for that attribute [B2709], chosen modifier tokens (spec 6.2),
     a GM override (spec 14.1 setPool), never below one die [B2235] (dice.buildPool). Returns { pool, writes (token spending), needGm }. */
 export function buildPool(v, inst, key, cid, attr, mods = [], { rollKind = "other", tokens = [], base = null } = {}) {
   const c = v.facts.c(cid);
   const list = mods.map((m) => ({ ...m }));
+  const em = entryMods(v, inst, cid, attr, rollKind);                                // the entry's conditional modifiers (rules/conditions.mjs)
+  list.push(...em.mods.map((m) => ({ source: m.source, dice: m.dice })));
+  for (const p of em.pending) if (!(inst.data.notes ??= []).some((n) => n.note === "modNeedsGm" && n.source === p.source)) inst.data.notes.push({ note: "modNeedsGm", source: p.source, dice: p.dice, key });   // only the GM's word decides it: shown on the desk, not guessed
   const pen = attr ? crits.critPenalty(c?.crits ?? [], attr) : 0;
   if (pen && !list.some((m) => m.source === "crit")) list.push({ source: "crit", dice: -pen });
   const tk = M.spendTokens(v.state, cid, { kind: rollKind, attr }, tokens);
@@ -95,7 +147,7 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
   const tf = v.facts.c(t);
   if (!tf) return false;
   const once = (k) => { if (flag(I, k)) return false; setFlag(I, k); return true; };
-  const cf = crits.critForHit({ taken: dm.taken, healthBefore: dm.healthBefore, deadlyHit, target: { kind: tf.kind, huge: !!tf.huge } });   // [B2707], [B2708], [R9], [B2771], [B2828]
+  const cf = crits.critForHit({ taken: dm.taken, healthBefore: dm.healthBefore, deadlyHit, target: immunityFlags(tf) });   // [B2707], [B2708], [R9], [B2771], [B2828]
   if (cf.newlyBroken && once(`broken:${t}`)) {
     R.effects.push({ t: "status+", who: t, status: { id: "broken", source: { kind: "crit", owner: by ?? undefined, name: "broken" } } });
     R.events.push({ type: "broken", target: t });

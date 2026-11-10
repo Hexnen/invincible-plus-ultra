@@ -29,6 +29,7 @@ import { ledgerEditOf } from "./ops-pure.mjs";
 import * as M from "./mods-pure.mjs";
 import * as C from "./catalog-pure.mjs";
 import * as ZP from "./zones-pure.mjs";
+import * as K from "./flows/kit.mjs";
 import * as Attack from "./flows/attack.mjs";
 import { roll as Roll, other as Other, hazard as Hazard, composite as Composite } from "./flows/simple.mjs";
 
@@ -114,6 +115,7 @@ async function applyEffect(X, I, e, step) {
       if (!r.ok) { (I.data.unpaid ??= {})[e.key] = r.reason; return false; }             // was legal when offered; shown to the GM instead of guessing
       write(X, tx, ["ledger", e.who], r.ledger, I, step, e.own ? "cost" : null);
       (I.data.paid ??= {})[e.key] = r.entryId;
+      if (e.cost === "full" || e.cost === "quick") emit(X, I, { type: "ledger", combatant: e.who, unit: e.cost, on: true, entry: r.entryId });      // as the manual mark of the round driver: the action log listens
       if (r.stress > 0) await applyEffect(X, I, { t: "stress", who: e.who, n: r.stress, cost: e.own ? 1 : 0 }, step);     // the price of the unit that paid (spec 4.3; Quickness [R1], a defence grant [B2105])
       return false;
     }
@@ -182,7 +184,7 @@ function label(X, inst, what) {
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {
   const inst = makeInst(X, { action: spec.action, actor: spec.actor, decl: spec.decl, cause: spec.cause ?? "interrupt", parent: parent.id, data: spec.data ?? {}, part: !!spec.part });
-  const flow = FLOWS[inst.flow], l = flow.legality(view(X), inst);
+  const l = K.legality(view(X), inst, FLOWS[inst.flow]);
   if (!l.ok) return { ok: false, reason: l.reason };
   inst.tx = spec.part ? parent.tx : openTx(X, { inst: inst.id });
   pushInst(X, inst);
@@ -298,7 +300,7 @@ async function rewind(X, id, step) {
 }
 
 /* ------------------------------------------------------------------ requests: players (spec 12.2) */
-function sanitizeDecl(d, action) {
+function sanitizeDecl(d, action, staff = false) {
   const ids = (v, n = 12) => (Array.isArray(v) ? v.filter(P1.isId).slice(0, n) : []);
   const out = { action, targets: ids(d?.targets), helpers: [], exploits: [], stressTotal: 0 };
   if (typeof d?.weapon === "string") out.weapon = d.weapon.slice(0, 120);
@@ -317,6 +319,7 @@ function sanitizeDecl(d, action) {
   if (typeof d?.text === "string") out.text = d.text.slice(0, 300);
   if (Array.isArray(d?.parts)) out.parts = d.parts.filter(isObj).slice(0, 6).map((p) => ({ action: String(p.action ?? "").slice(0, 32), decl: p.decl ? { targets: ids(p.decl.targets), weapon: typeof p.decl.weapon === "string" ? p.decl.weapon.slice(0, 120) : undefined } : undefined }));
   if (isObj(d?.exception) && typeof d.exception.text === "string") out.exception = { text: d.exception.text.slice(0, 300), state: "asked" };
+  if (staff && Array.isArray(d?.confirmed)) out.confirmed = d.confirmed.filter((x) => typeof x === "string").map((x) => x.slice(0, 40)).slice(0, 12);      // `{ gm: id }` conditions the GM vouches for (rules/conditions.mjs)
   return out;
 }
 /** Where may a new action go? Empty stack: the actor's own turn (or a grant). Otherwise only as a legal interrupt of the top instance, declared before
@@ -335,7 +338,7 @@ async function opDeclare(X, a) {
   if (!owns(X, actor)) return bad("notOwner");
   const entry = C.entryFor(X.state, actor, a.decl?.action);
   if (!entry || entry.reaction?.effect === "defence") return bad("unknown", { action: String(a.decl?.action ?? "").slice(0, 32) });
-  const decl = sanitizeDecl(a.decl, entry.id);
+  const decl = sanitizeDecl(a.decl, entry.id, X.user.staff === true);
   if (X.state.mode === "free" || X.state.free?.[actor]) {                                  // spec 14.5: nothing is validated, nobody is prompted; logged as declared
     const inst = makeInst(X, { action: entry.id, actor, decl, flow: "other", data: { free: 1 } });
     inst.tx = openTx(X, { inst: inst.id }); inst.status = "manual"; pushInst(X, inst);
@@ -349,7 +352,7 @@ async function opDeclare(X, a) {
   const cp = P1.canPay(X.state, actor, entry.cost, { interrupt: pl.cause === "interrupt", gm });
   if (!cp.ok) return bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason });       // [L1]-[L4], [L7], [L8]
   const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
-  const l = FLOWS[inst.flow].legality(view(X), inst);
+  const l = K.legality(view(X), inst, FLOWS[inst.flow]);
   if (!l.ok && !decl.exception) return bad("illegal", { reason: l.reason, ...l.params });
   inst.tx = openTx(X, { inst: inst.id });
   if (pl.parent) { const P = J.clone(instOf(X, pl.parent)); P.status = "waiting"; setInst(X, P); }
@@ -373,9 +376,9 @@ async function opAmend(X, a) {
   if (!inst) return bad("gone");
   if (!inst.actor || !owns(X, inst.actor)) return bad("notOwner");
   if (inst.locked && !X.user.staff) return bad("locked");                                  // spec 5.5: after the lock only the GM changes it
-  const decl = sanitizeDecl({ ...a.decl, action: inst.action }, inst.action);
+  const decl = sanitizeDecl({ ...a.decl, action: inst.action }, inst.action, X.user.staff === true);
   const probe = { ...inst, decl };
-  const l = FLOWS[inst.flow].legality(view(X), probe);
+  const l = K.legality(view(X), probe, FLOWS[probe.flow]);
   if (!l.ok && !X.user.staff) return bad("illegal", { reason: l.reason, ...l.params });
   await rewind(X, inst.id, FLOWS[inst.flow].STEPS[0]);
   const I = J.clone(instOf(X, inst.id));
