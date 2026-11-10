@@ -486,7 +486,9 @@ export function deskData(model, own, facts, t) {
         drift: own.drift === j.id ? j.undo.force.modes.map((m) => ({ id: m, label: t(`ITAC.ui.drift.${m}`), req: j.undo.force.req(m) })) : null } : null });
   }
   const POL = { block: ["ask", "always", "never"], dodge: ["ask", "always", "never"], onBroken: ["ask", "ko", "kill", "crit"], push: ["rules", "ask", "never"], major: ["no", "yes"] };      // push "rules": major NPCs and minion groups push, others do not; major: injuries rolled like a hero's
-  const npcs = (model.npcs ?? []).map((n) => ({ id: n.id, name: n.name,
+  /* an NPC out of Resolve often gives up or runs: a hint for the GM, nothing happens by itself */
+  const spent = (id) => (facts.staff && facts.resolve?.(id) === 0 ? t("ITAC.ui.npc.spent") : null);
+  const npcs = (model.npcs ?? []).map((n) => ({ id: n.id, name: n.name, note: spent(n.id),
     policy: Object.entries(POL).map(([k, vals]) => ({ id: k, label: t(`ITAC.ui.policy.${k}`), choices: vals.map((v) => ({ id: v, label: t(`ITAC.ui.policy.${v}`), on: n.policy[k] === v, req: n.policyReq({ [k]: v }) })) })),
     reveal: ["stats", "powers", "health"].map((k) => ({ id: k, label: t(`ITAC.ui.reveal.${k}`), on: !!n.revealed[k], req: n.revealReq({ [k]: !n.revealed[k] }) })) }));
   const waiting = waitingData(model.waiting, facts, t);
@@ -504,6 +506,7 @@ export function deskData(model, own, facts, t) {
     tabs: [{ id: "now", label: t("ITAC.ui.tab.now"), n: count }, { id: "journal", label: t("ITAC.ui.tab.journal"), n: 0 }, { id: "table", label: t("ITAC.ui.tab.table"), n: 0 }],
     title: t("ITAC.ui.desk"), waiting, waitingLabel: t("ITAC.ui.waitingFor"), nobody: model.turn?.combatant ? t("ITAC.ui.wait.nobody", { name: model.turn.name ?? "" }) : t("ITAC.ui.wait.idle"),
     turn: model.turn?.combatant ? t("ITAC.ui.turn.round", { n: model.turn.round ?? "?", name: model.turn.name ?? "" }) : "",
+    turnNote: model.turn?.combatant && facts.c?.(model.turn.combatant)?.npc ? spent(model.turn.combatant) : null,
     stack: model.info.map((i) => instData(i, model, own, facts, t)).reverse(), manual: model.manual.map((m) => manualData(m, own, facts, t)),
     cards, force, empty: t("ITAC.ui.desk.empty"), journal: rounds, journalEmpty: t("ITAC.ui.journal.empty"), npcs, npcsEmpty: t("ITAC.ui.table.empty"), npcsTitle: t("ITAC.ui.table.npcs"),
     mode: { label: t("ITAC.ui.mode"), choices: ["tactical", "free"].map((m) => ({ id: m, label: t(`ITAC.ui.mode.${m}`), on: model.mode === m, req: model.modeReq(m) })) },

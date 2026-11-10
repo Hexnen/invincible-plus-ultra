@@ -309,4 +309,33 @@ const city = () => { const T = new MTable(); T.hero("H1", "p1", { attrs: { stren
   eq(Attack.STEPS.includes("approach"), true, "M: the attack flow has the approach of a charge");
   eq(C.sanitizeEntry({ id: "blast", flow: "attack", attack: "shooting", area: true, fullAuto: true, range: [0, 3] })?.area, true, "M: a granted entry may carry an area");
 }
+/* ---- N. the dock: what an attack is made with, and its options (ui/model-pure armsOf); the journal reads in words */
+{
+  const D = await import("./desk-pure.mjs"), V = await import("./view-pure.mjs"), UI = await import("./ui/model-pure.mjs"), { t } = await import("./lang.mjs");
+  const T = base((x) => { x.terrain = { z1: "office" }; });
+  const W = [{ id: "smg", name: "SMG", bonus: 1, damage: 2, range: [0, 2], sharp: true, fullAuto: true, area: false }, { id: "nade", name: "Grenade", bonus: 0, damage: 3, range: [0, 1], area: true }, { id: "bat", name: "Bat", bonus: 1, damage: 2, range: null }];
+  T.weapons = Object.fromEntries(W.map((w) => [w.id, w]));
+  const meta = { hidden: [], npc: ["N1", "N2"] }, view = V.viewFor(T.state, { id: "p1", staff: false, owns: ["H1"] }, meta);
+  const facts = { view, me: "p1", staff: false, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => (id === "H1" ? T.c.H1.attrs : null), userName: (u) => u, weapons: (id) => (id === "H1" ? W : []) };
+  const dock = (own) => UI.dockData(D.playerModel(view, { id: "p1", owns: ["H1"] }, { c: (id) => T.c[id] ?? null, online: () => true, P1 }), own, facts, t);
+  const acts = dock({}).groups.flatMap((g) => g.items).map((a) => a.id);
+  ok(["slugfest", "shoot", "grapple", "charge"].every((id) => acts.includes(id)), "N: the dock offers slugfest, shoot, grapple and charge");
+  let p = dock({ armed: "shoot", targets: ["N1"] }).panel;
+  eq([p.weapons.items.map((x) => [x.id, x.picked]), p.opts.map((o) => [o.id, o.on]), p.maxTargets, p.submit.req.decl.weapon, p.pool.total], [[["smg", true], ["nade", false]], [["fullAuto", false]], 1, "smg", T.c.H1.attrs.agility + 1], "N: shooting: the ranged weapons, the first is taken, its bonus is in the dice");
+  p = dock({ armed: "shoot", targets: ["N1", "N2"], opts: { fullAuto: true } }).panel;
+  eq([p.maxTargets > 1, p.submit.req.decl.targets, p.submit.req.decl.fullAuto, p.notes.length], [true, ["N1", "N2"], true, 1], "N: full auto: several targets ride in the declaration");
+  eq(code(await T.req("p1", p.submit.req)), "ok", "N: the executor takes the dock's full auto declaration as it is");
+  await T.gm({ op: "cancel", inst: T.top().id, force: true });
+  p = dock({ armed: "shoot", targets: ["N1", "N2"], weapon: "nade", opts: { area: true, fullAuto: true } }).panel;
+  eq([p.opts.map((o) => [o.id, o.on]), p.submit.req.decl.targets, p.submit.req.decl.area, p.submit.req.decl.fullAuto ?? null], [[["area", true]], ["N2"], true, null], "N: an area weapon: one target names the zone; no full auto on a weapon without it");
+  p = dock({ armed: "slugfest", targets: ["N1"], opts: { wreck: true } }).panel;
+  eq([p.weapons.items.map((x) => x.id), p.opts.map((o) => o.id), p.submit.req.decl.wreck, p.submit.req.decl.weapon ?? null], [["unarmed", "bat"], ["wreck"], true, null], "N: slugfest: bare hands or a melee weapon, and the option to wreck the zone");
+  p = dock({ armed: "grapple", targets: ["N1"] }).panel;
+  eq([p.weapons, p.opts], [null, []], "N: a grapple has neither a weapon nor options");
+  facts.weapons = () => [];
+  p = dock({ armed: "shoot", targets: ["N1"] }).panel;
+  eq([p.submit.req, typeof p.submit.disabled, !!p.weapons.empty], [null, "string", true], "N: shooting without a ranged weapon cannot be declared, and the panel says why");
+  eq(UI.marks(t, "Eve: {ITAC.action.slugfest} -> Mauler ({ITAC.result.hit})"), "Eve: Slugfest -> Mauler (hit)", "N: the journal's marks are put into words");
+  eq(UI.marks(t, "x: {ITAC.action.zzz} ({ITAC.result.qq})"), "x: zzz (qq)", "N: an unknown mark reads as its id");
+}
 done("check-attacks");

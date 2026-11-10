@@ -120,7 +120,7 @@ function table(d) {
   return [
     h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: d.mode.label }), seg(d.mode, "mode")),
     section(f.title, 0, h("article.igd-npc", {}, pickOf(f.who, "who"), pickOf(f.from, "from"), numOf(f.distance, "distance"), numOf(f.damage, "damage"), h("div.igd-cmds", {}, go(f.push, "push"), go(f.fall, "fall")))),
-    section(d.npcsTitle, 0, d.npcs.length ? d.npcs.map((n) => h("article.igd-npc", {}, h("b.igd-actor", { text: n.name }),
+    section(d.npcsTitle, 0, d.npcs.length ? d.npcs.map((n) => h("article.igd-npc", {}, h("b.igd-actor", { text: n.name }), n.note ? h("p.igd-note", {}, icon("fa-person-running"), h("span", { text: n.note })) : null,
       n.policy.map((p) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: p.label }), seg(p, `pol:${n.id}:${p.id}`))),
       h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: d.labels.reveal }), h("span.igd-seg.igd-multi", {}, n.reveal.map((r) => h("button", { fk: `rv:${n.id}:${r.id}`, attrs: { "aria-pressed": String(r.on) }, on: { click: () => send(r.req) } }, icon(r.on ? "fa-eye" : "fa-eye-slash"), h("span", { text: r.label }))))))) : h("p.igd-empty", {}, h("span", { text: d.npcsEmpty }))),
   ];
@@ -142,6 +142,7 @@ function draw(d, ui) {
   handleBtn.setAttribute("aria-expanded", String(!d.collapsed));
   swap(box, d.collapsed ? [] : [
     h("header.igd-head", {}, h("h2.ita-plate.igd-title", { text: d.title }), h("span.igd-turn", { text: d.turn })),
+    d.turnNote ? h("p.igd-note", { attrs: { role: "note" } }, icon("fa-person-running"), h("span", { text: d.turnNote })) : null,
     h("nav.igd-tabs", { attrs: { role: "tablist" } }, d.tabs.map((t) => h("button", { fk: `tab:${t.id}`, attrs: { role: "tab", "aria-selected": String(d.tab === t.id) }, on: { click: () => set({ tab: t.id }) } }, h("span", { text: t.label }), t.n ? h("b.igd-badge", { text: String(t.n) }) : null))),
     h("div.igd-wait", { attrs: { role: "status" } }, h("span.igd-k", { text: d.waitingLabel }), d.waiting.length ? waitChips(d.waiting) : h("span.igd-nobody", { text: d.nobody })),
     h("div.igd-body", { data: { keepScroll: d.tab }, attrs: { role: "tabpanel" } }, d.tab === "journal" ? journal(d) : d.tab === "table" ? table(d) : now(d)),

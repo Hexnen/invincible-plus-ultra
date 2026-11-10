@@ -54,6 +54,7 @@ function factsOf(combat) {
         return moveMemo.value;
       } catch { return null; }
     },
+    resolve: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && staff ? Sys.actorFacts(a)?.resolve ?? null : null; } catch { return null; } },      // the desk's hint for an NPC out of Resolve
     weapons: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Sys.weaponList(a) : []; } catch { return []; } },      // [P4] what this user's own character can attack with
     doors: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Mv.api.doors(id) : []; } catch { return []; } },
     zone: (spot) => { try { const p = Zones.place(spot); return p ? { id: p.id, level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } catch { return null; } },
