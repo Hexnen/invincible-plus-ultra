@@ -1,7 +1,7 @@
-/* node scripts/tactics/check-facing.mjs -- the Foundry-facing files (store, executor, combat class, API) against a SMALL FAKE of the
+/* node scripts/tactics/check-facing.mjs -- the Foundry-facing files (store, executor, relay, combat class, API) against a SMALL FAKE of the
    Foundry objects they touch. This proves the wiring between those files and the pure core (names, shapes, order of writes); it does NOT
    prove anything about real Foundry behaviour (document classes, sockets, hooks timing), which stays unverified until a live session. */
-import { ok, eq, done } from "./testkit.mjs";
+import { ok, eq, done, seeded } from "./testkit.mjs";
 
 /* ---------------------------------------------------------------- the fake */
 const MOD = "invincible-plus-ultra";
@@ -20,7 +20,10 @@ const mkUser = (id, isGM) => { const u = { id, isGM, active: true, hasRole: () =
 const gmUser = mkUser("gm1", true), p1 = mkUser("u1", false), p2 = mkUser("u2", false);
 users.activeGM = gmUser;
 const setPath = (obj, path, v) => { const ks = path.split("."); let o = obj; for (const k of ks.slice(0, -1)) o = (o[k] ??= {}); o[ks.at(-1)] = v; };
-const mkActor = (type, owner, extra = {}) => ({ type, ownership: { default: 0, ...(owner ? { [owner]: 3 } : {}) }, flags: {}, items: [], updates: [],
+let actorNo = 0;
+const actors = new Map();
+const mkActor = (type, owner, extra = {}) => { const a = mkActor0(type, owner, extra); a.uuid = `Actor.a${++actorNo}`; a.name = a.uuid; actors.set(a.uuid, a); return a; };
+const mkActor0 = (type, owner, extra = {}) => ({ type, ownership: { default: 0, ...(owner ? { [owner]: 3 } : {}) }, flags: {}, items: [], updates: [],
   system: { derived: { health: { value: 2, max: 8 }, resolve: { value: 3, max: 6 } }, attributes: { strength: { value: 3 } } },
   async update(data) { this.updates.push(data); for (const [k, v] of Object.entries(data)) setPath(this, k, v); }, ...extra });
 let sorter = null;
@@ -44,18 +47,25 @@ class FakeCombat {
 const combats = new Coll();
 const notes = [];
 globalThis.CONST = { USER_ROLES: { ASSISTANT: 3 }, DOCUMENT_OWNERSHIP_LEVELS: { OWNER: 3 } };
-globalThis.CONFIG = { Dice: { randomUniform: () => Math.random() }, Combat: { documentClass: FakeCombat }, ActiveEffect: {} };
+const SEED = Number(process.env.FACING_SEED) || 2;             // a fixed shuffle: with Math.random the hero was sometimes dealt the last card and its end of turn ended the round (the old check failed about one run in six)
+globalThis.CONFIG = { Dice: { randomUniform: seeded(SEED) }, Combat: { documentClass: FakeCombat }, ActiveEffect: {} };
 globalThis.Hooks = { callAll: (name, info) => { hookLog.push({ name, info }); return true; }, on() {}, once() {} };
+globalThis.fromUuid = async (u) => actors.get(u) ?? null;
+globalThis.fromUuidSync = (u) => actors.get(u) ?? null;
+globalThis.foundry = { utils: { getProperty: (o, path) => path.split(".").reduce((c, k) => (c == null ? undefined : c[k]), o) } };
 globalThis.ui = { notifications: { warn: (m) => notes.push(["warn", m]), info: (m) => notes.push(["info", m]) } };
 globalThis.game = { user: gmUser, users, combats, combat: null, i18n: { lang: "en" },
   settings: { get: (m, k) => { if (m !== MOD || !(k in settings)) throw new Error("no setting"); return settings[k]; } },
   modules: new Map([[MOD, { active: true }]]), socket: { on() {}, emit() {} } };
 
 const Store = await import("./store.mjs");
-const GM = await import("./gm.mjs");
+const Engine = await import("./engine.mjs");
 const Relay = await import("./relay.mjs");
+Store._setSettle(0);                                           // the claim of a relayed request does not wait in this check
 const Klass = await import("./combat-class.mjs");
-const { tacticsApi: Api, attach } = await import("./api.mjs");
+const { tacticsApi: Api, attach, setRunning } = await import("./api.mjs");
+eq([Api.running(), Api.active(), (await Api.start(null)).error?.code], [false, false, "off"], "before main.mjs says tactical combat runs on this world the API is idle");
+setRunning(true);                                              // what main.mjs does when the setting is on and the own initiative is in charge
 const Src = await import("./source.mjs");
 
 /* ---------------------------------------------------------------- the class */
@@ -82,7 +92,8 @@ ok(combat.combatants.get("ch").initiative === null && combat.turns.slice(0, 3).e
 eq(combat.combatant?.id, st.init.curMember, "Combat.turn points at the member whose turn it is");
 ok(combat.writes.every((w) => w.opts?.ipuTactics === true), "every document update carries ipuTactics");
 ok(combat.writes.some((w) => w.embedded && w.opts.diff === false && w.opts.turnEvents === false), "the first write re-sorts every client (no diff, no turn events)");
-ok(hookLog.some((h) => h.name === Store.HOOK_GM && h.info.events.some((e) => e.type === "combatStart")), "the executor announces events on tacticsGm");
+ok(hookLog.some((h) => h.name === Store.HOOK_GM && h.info.type === "combatStart" && h.info.combat === "c1"), "the executor announces events on tacticsGm, one event per call");
+ok(hookLog.some((h) => h.name === Store.HOOK && h.info.type === "combatStart") && typeof combat.flags[MOD].tactics.log === "string", "and the public ones on the public hook; the journal is a second string next to the state");
 eq(Api.state().seen, st.seen, "the GM's view is the whole state");
 
 /* ---------------------------------------------------------------- a player's requests, as the executor sees them */
@@ -90,10 +101,10 @@ const cur = () => Store.stateOf(combat).init.curMember;
 while (cur() !== "h1") await combat.nextTurn();
 ok(!combat.baseCalls.includes("nextTurn"), "nextTurn goes to the executor");
 eq((await Relay._runAs("u2", "c1", { op: "endTurn", actor: "h1" })).error.code, "notOwner", "forged: another player's hero (ownership is read from the actor)");
-eq((await Relay._runAs("u1", "c1", { op: "nextRound" })).error.code, "notOwner", "a GM operation from a player");
-eq((await Relay._runAs("u1", "c1", { op: "endTurn", actor: "h1", junk: "x".repeat(5000) })).error.code, "badInput", "a request over 4 KB");
-eq((await GM.exec(p1, "c1", { op: "endTurn", actor: "h1" }, { trusted: false, via: "relay" })).error.code, "untrusted", "a request without the server's sender id");
-eq((await GM.exec(p1, "c1", { op: "endTurn", actor: "h1" }, { trusted: true, via: "relay", proto: 99, noJitter: true })).error.code, "stale", "a newer protocol");
+eq((await Relay._runAs("u1", "c1", { op: "nextRound" })).error.code, "noPermission", "a GM operation from a player (the relay's whitelist answers before the round driver's notOwner)");
+eq((await Relay._runAs("u1", "c1", { op: "endTurn", actor: "h1", junk: "x".repeat(5000) })).error.code, "tooBig", "a request over 4 KB");
+eq((await Relay._runAs("u1", "c1", { op: "endTurn", actor: "h1" }, { senderId: null })).error.code, "untrusted", "a request without the server's sender id");
+eq((await Relay._runAs("u1", "c1", { op: "endTurn", actor: "h1" }, { proto: 99 })).error.code, "stale", "another protocol");
 eq((await Relay._runAs("u1", "zz", { op: "endTurn", actor: "h1" })).error.code, "gone", "an unknown combat");
 eq((await Relay._runAs("zz", "c1", { op: "endTurn", actor: "h1" })).error.code, "untrusted", "an unknown user");
 settings.turnPlayersEnd = false;
@@ -105,21 +116,22 @@ eq((await Relay._runAs("u2", "c1", { op: "mark", actor: "h2", unit: "full" })).e
 const before = Store.stateOf(combat).rev;
 const e = await Relay._runAs("u1", "c1", { op: "endTurn", actor: "h1", id: "r1" });
 ok(e.ok && e.changed && cur() !== "h1" && combat.combatant?.id === cur(), "the owner ends the turn; the core pointer follows");
+Relay._resetLimits();                                          // as a second tab of the GM that got the same request
 const dup = await Relay._runAs("u1", "c1", { op: "endTurn", actor: cur(), id: "r1" });
 ok(dup.ok && dup.changed === false && Store.stateOf(combat).rev === before + 1, "the same request id twice changes nothing");
-GM._resetLimits();
+Relay._resetLimits();
 let refused = 0;
-for (let i = 0; i < 95; i++) { const r = await GM.exec(p2, "c1", { op: "holdOff", actor: "zz", with: "zz" }, { trusted: true, via: "relay", noJitter: true }); if (r.error?.code === "rate") refused++; }
+for (let i = 0; i < 95; i++) { const r = await Relay._runAs("u2", "c1", { op: "holdOff", actor: "zz", with: "zz" }); if (r.error?.code === "rate") refused++; }
 eq(refused, 5, "the 91st request of a player within a minute is refused");
-GM._resetLimits();
+Relay._resetLimits();
 
 /* ---------------------------------------------------------------- the view of a player, joining, the round, stopping */
 game.user = p1;
-ok(Api.state().seen.length === 0 && !("draw" in Api.state().init), "a player's view holds back request ids and the deck");
+ok(!Api.state().seen?.length && !("draw" in Api.state().init), "a player's view holds back request ids and the deck");
 eq((await Api.gm.nextRound()).error.code, "noGM", "a player's client does not execute (and the fake has no socket answer)") ;
 game.user = gmUser;
 combat.add("late", mkActor("npc"));
-GM.scheduleRoster(combat);
+Engine.scheduleRoster(combat);
 await new Promise((r) => setTimeout(r, 400));
 ok(Store.stateOf(combat).ledger.late && combat.combatants.get("late").initiative === Math.max(...combat.turns.map((c) => c.initiative ?? 0)), "[A-1] a late joiner gets the next free card through the roster hook path");
 await combat.nextRound();

@@ -1,49 +1,78 @@
-/* Key parity check for tactical combat: node scripts/tactics/check-lang.mjs
-   1) EN and PL define exactly the same keys with the same {placeholders}; no empty strings; namespace ITAC.
-   2) Every ITAC.* key written as a literal in scripts/tactics is defined in both.
-   3) Derived keys exist: every error code the pure code or the transport can answer, the settings, the prompt kinds of P1.
+/* node scripts/tactics/check-lang.mjs -- the ONE string table of tactical combat (the checks of both packages it was merged from):
+   1) EN and PL define exactly the same keys with the same {placeholders}; no empty strings; namespace ITAC; no long dashes.
+   2) Every ITAC.* key written as a literal in scripts/tactics (root, flows, ui) is defined in both.
+   3) Derived keys exist: every error code either machine or the transport can answer, every reason a flow, the engine or an adapter
+      can give, the settings, the prompt kinds of the round driver and the card kinds of the desk, actions, stunts, statuses, roll and
+      modifier labels.
    4) No rule text: no string is long enough to be a quoted rule, and none carries a book reference. */
-import { EN, PL, t, errText } from "./lang.mjs";
+import { EN, PL, t, errText, errorText } from "./lang.mjs";
+import { ok, eq, done } from "./testkit.mjs";
 import * as O from "./ops-pure.mjs";
+import * as E from "./engine-pure.mjs";
+import * as R from "./relay-pure.mjs";
+import * as M from "./mods-pure.mjs";
+import * as C from "./catalog-pure.mjs";
+import * as D from "./desk-pure.mjs";
+import { stunts } from "../rules/index.mjs";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+
 const dir = dirname(fileURLToPath(import.meta.url));
-let bad = 0, n = 0;
-const fail = (m) => { bad++; console.log("FAIL", m); };
 const ph = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
-for (const k of Object.keys(EN)) { n++; if (!(k in PL)) fail(`in EN, missing in PL: ${k}`); else if (ph(EN[k]) !== ph(PL[k])) fail(`placeholders differ: ${k} (${ph(EN[k])} vs ${ph(PL[k])})`); }
-for (const k of Object.keys(PL)) if (!(k in EN)) fail(`in PL, missing in EN: ${k}`);
+for (const k of Object.keys(EN)) { ok(k in PL, `in EN, missing in PL: ${k}`); if (k in PL) eq(ph(PL[k]), ph(EN[k]), `placeholders of ${k}`); }
+for (const k of Object.keys(PL)) ok(k in EN, `in PL, missing in EN: ${k}`);
 for (const T of [EN, PL]) for (const [k, v] of Object.entries(T)) {
-  n++;
-  if (typeof v !== "string" || !v.trim()) fail(`empty string: ${k}`);
-  if (!k.startsWith("ITAC.")) fail(`wrong namespace: ${k}`);
-  if (v.length > 420) fail(`too long for our own wording: ${k}`);
-  if (/\[B\d+\]|\bp\.\s?\d+/.test(v)) fail(`book reference in a string: ${k}`);
+  ok(typeof v === "string" && v.trim().length > 0, `non-empty: ${k}`);
+  ok(k.startsWith("ITAC."), `namespace: ${k}`);
+  ok(!/[—–]/.test(v), `no long dashes: ${k}`);
+  ok(v.length <= 420, `not too long for our own wording: ${k}`);
+  ok(!/\[B\d+\]|\bp\.\s?\d+/.test(v), `no book reference in a string: ${k}`);
 }
-for (const k of Object.keys(EN)) if (EN[k].length > 40 && EN[k] === PL[k]) fail(`PL identical to EN (untranslated?): ${k}`);
-const used = new Set(), codes = new Set();
-const files = [...readdirSync(dir).filter((x) => x.endsWith(".mjs") && !x.startsWith("check-") && !["lang.mjs", "testkit.mjs"].includes(x)), ...readdirSync(join(dir, "ui")).filter((x) => x.endsWith(".mjs")).map((x) => `ui/${x}`)];
+for (const k of Object.keys(EN)) if (EN[k].length > 40) ok(EN[k] !== PL[k], `PL differs from EN (translated): ${k}`);
+for (const k of Object.keys(EN)) if (/^ITAC\.(err|warn|Settings)\./.test(k) && EN[k].length > 30) ok(EN[k] !== PL[k], `PL differs from EN (translated): ${k}`);
+
+const need = new Set(), codes = new Set();
+const sub = (d) => readdirSync(join(dir, d)).filter((f) => f.endsWith(".mjs")).map((f) => `${d}/${f}`);
+const files = [...readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.startsWith("check-") && f !== "lang.mjs" && f !== "testkit.mjs"), ...sub("flows"), ...sub("ui")];
 for (const f of files) {
   const src = readFileSync(join(dir, f), "utf8");
-  for (const m of src.matchAll(/["'`](ITAC\.[A-Za-z][\w.]*)["'`]/g)) used.add(m[1]);
+  for (const m of src.matchAll(/["'`](ITAC\.[A-Za-z][\w.]*[A-Za-z0-9])["'`]/g)) need.add(m[1]);
+  for (const m of src.matchAll(/\bbad\("([A-Za-z]+)"/g)) need.add(f.startsWith("flows/") ? `ITAC.reason.${m[1]}` : `ITAC.err.${m[1]}`);
+  for (const m of src.matchAll(/\breason: "([A-Za-z]+)"/g)) need.add(`ITAC.reason.${m[1]}`);
+  for (const m of src.matchAll(/\bdisabled: "([A-Za-z]+)"/g)) need.add(`ITAC.reason.${m[1]}`);
   for (const m of src.matchAll(/\berr\("([A-Za-z]+)"/g)) codes.add(m[1]);
   for (const m of src.matchAll(/\? "([A-Za-z]+)" : "([A-Za-z]+)"\)/g)) if (/err\(/.test(src.slice(Math.max(0, m.index - 80), m.index))) { codes.add(m[1]); codes.add(m[2]); }
 }
-for (const k of used) { n++; if (!(k in EN && k in PL)) fail(`used but not defined in both languages: ${k}`); }
 for (const c of ["noGM", "untrusted", "stale", "rate", "badInput", "off", "notOwner", "notYourTurn", "noAction", "locked", "illegal", "unknown", "gone", "busy", "playersOff", "internal"]) codes.add(c);   // spec 12.1
-for (const c of codes) { n++; if (!(`ITAC.err.${c}` in EN)) fail(`error code without text: ${c}`); }
-const need = [];
-for (const k of ["tacticsEnabled", "tacticsInitiative", "tacticsRedraw"]) for (const p of ["Name", "Hint"]) need.push(`ITAC.Settings.${k}.${p}`);
-for (const k of ["everyRound", "firstRoundOnly"]) need.push(`ITAC.Redraw.${k}`);
-for (const k of O.P1_PROMPTS) if (k !== "triggerQueue") need.push(`ITAC.Prompt.${k}.Title`, `ITAC.Prompt.${k}.Body`);
-for (const k of ["roundStart", "roundEnd", "turnStart", "turnEnd"]) need.push(`ITAC.Prompt.triggerQueue.Title.${k}`);
-for (const k of need) { n++; if (!(k in EN && k in PL)) fail(`derived key missing: ${k}`); }
+for (const c of [...E.ERROR_CODES, ...R.RELAY_CODES]) codes.add(c);
+for (const c of codes) need.add(`ITAC.err.${c}`);
+for (const o of E.REVALIDATE_OPTIONS) need.add(`ITAC.opt.${o}`);
+for (const id of Object.keys(C.BUILTIN)) need.add(`ITAC.action.${id}`);
+for (const id of Object.keys(stunts.STUNTS)) need.add(`ITAC.stunt.${id}`);
+for (const k of D.CARD_KINDS) { need.add(`ITAC.card.${k}`); need.add(`ITAC.prompt.${k}`); }
+for (const s of M.STATUS_IDS) need.add(`ITAC.status.${s}`);
+for (const g of ["invisible", "lowGravity", "unseen"]) need.add(`ITAC.gate.${g}`);
+for (const k of ["attack", "def", "gate", "stun", "roll"]) need.add(`ITAC.roll.${k}`);
+for (const k of ["base", "floor", "crit", "help", "minions", "restrained", "unaware", "cantSee", "gm", "gate"]) need.add(`ITAC.mod.${k}`);
+for (const k of ["tacticsEnabled", "tacticsInitiative", "tacticsRedraw"]) for (const p of ["Name", "Hint"]) need.add(`ITAC.Settings.${k}.${p}`);
+for (const k of ["everyRound", "firstRoundOnly"]) need.add(`ITAC.Redraw.${k}`);
+for (const k of O.P1_PROMPTS) if (k !== "triggerQueue") need.add(`ITAC.Prompt.${k}.Title`).add(`ITAC.Prompt.${k}.Body`);
+for (const k of ["roundStart", "roundEnd", "turnStart", "turnEnd"]) need.add(`ITAC.Prompt.triggerQueue.Title.${k}`);
+for (const r of ["noZonesApi", "badOp", "notGM", "notActiveGM", "noZones", "error", "requirement", "immune", "openAction", "rules"]) need.add(`ITAC.reason.${r}`);      // the zones API's refusals, the director's, the predicates'
+for (const k of need) ok(k in EN && k in PL, `used by the code but not defined in both languages: ${k}`);
+ok(need.size > 200, `keys collected from the code (${need.size})`);
+
 /* t() and errText() */
-n += 4;
-if (t("ITAC.err.stale") !== EN["ITAC.err.stale"]) fail("t() falls back to English outside Foundry");
-if (t("ITAC.nope") !== "ITAC.nope") fail("t() returns the key when it is unknown");
-if (errText({ key: "ITAC.err.zzz", code: "zzz", params: {} }) !== t("ITAC.err.internal", { msg: "zzz" })) fail("errText of an unknown code is the internal error");
-if (!errText({ key: "ITAC.err.internal", code: "internal", params: { msg: "boom" } }).includes("boom")) fail("errText fills parameters");
-if (bad) { console.log(`FAIL ${bad}`); process.exit(1); }
-console.log(`OK ${n} checks (${Object.keys(EN).length} keys, EN = PL)`);
+eq(t("ITAC.err.stale"), EN["ITAC.err.stale"], "t() falls back to English outside Foundry");
+eq(t("ITAC.err.illegal", { reason: "x" }), "Not possible: x.", "placeholders are filled");
+eq(t("ITAC.nope"), "ITAC.nope", "an unknown key falls back to the key");
+eq(t("ITAC.mod.someToken", {}, "Lucky charm"), "Lucky charm", "or to the given fallback");
+eq(errText({ key: "ITAC.err.zzz", code: "zzz", params: {} }), t("ITAC.err.internal", { msg: "zzz" }), "errText of an unknown code is the internal error");
+ok(errText({ key: "ITAC.err.internal", code: "internal", params: { msg: "boom" } }).includes("boom"), "errText fills parameters");
+eq(errorText({ key: "ITAC.err.illegal", code: "illegal", params: { reason: "outOfReach" } }), "Not possible: out of reach.", "an illegal reason is itself translated");
+eq(errText({ key: "ITAC.err.illegal", code: "illegal", params: { reason: "requirement", why: "targetNotHeld" } }), "Not possible: a requirement of this action is not met (targetNotHeld).", "a reason takes the error's own parameters");
+eq(errText({ key: "ITAC.err.illegal", code: "illegal", params: {} }), "Not possible: the rules do not allow it.", "an illegal answer without a reason still reads as a sentence");
+eq(errorText(R.bad("noGM").error), EN["ITAC.err.noGM"], "error envelope to text");
+ok(errorText === errText, "one function under both names (the widgets call errText, the desk models errorText)");
+done("check-lang");

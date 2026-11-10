@@ -1,7 +1,7 @@
-// node scripts/tactics/check-executor.mjs -- the Foundry half (engine.mjs, relay.mjs, store stand-in, adapters) against a FAKE Foundry: wiring only.
+// node scripts/tactics/check-executor.mjs -- the Foundry half (main.mjs, engine.mjs, relay.mjs, store.mjs, the adapters) against a FAKE Foundry: wiring only.
 // It proves that the pieces fit (requests over the socket, state in the Combat flag, rolls read from chat messages, document updates, events, undo).
 // It proves nothing about the real Foundry or the real system: that list is in the handoff.
-import { ok, eq, done } from "./testkit.mjs";
+import { ok, eqc as eq, done } from "./testkit.mjs";
 
 const MOD = "invincible-plus-ultra";
 const setPath = (o, path, v) => { const ks = path.split("."); let cur = o; for (const k of ks.slice(0, -1)) cur = cur[k] ??= {}; const last = ks.at(-1); if (last.startsWith("-=")) delete cur[last.slice(2)]; else cur[last] = v; };
@@ -25,11 +25,16 @@ const mkActor = (id, type, owner, health) => {
   return a;
 };
 const actors = coll([mkActor("hero1", "superhero", "p1", 6), mkActor("hero2", "superhero", "p2", 6), mkActor("thug", "npc", null, 5)]);
-const mkCb = (id, actor) => ({ id, name: actor.name, actor, tokenId: `tk${id}`, token: { id: `tk${id}`, uuid: `Scene.s.Token.tk${id}`, hidden: false }, hidden: false, defeated: false });
+const mkCb = (id, actor) => ({ id, name: actor.name, actor, tokenId: `tk${id}`, token: { id: `tk${id}`, uuid: `Scene.s.Token.tk${id}`, hidden: false }, hidden: false, defeated: false, initiative: null, flags: {} });
 const combatants = coll([mkCb("cbH1", actors[0]), mkCb("cbN1", actors[2]), mkCb("cbH2", actors[1])]);
-const combat = { id: "combat1", combatants, turns: combatants, flags: {}, update: async (data, opts) => { const change = {}; for (const [k, v] of Object.entries(data)) { setPath(combat, k, v); setPath(change, k, v); } Hooks.callAll("updateCombat", combat, change, opts); } };
+const combat = { id: "combat1", documentName: "Combat", combatants, turns: combatants.slice(), flags: {}, round: 0, turn: null, embedded: [],
+  update: async (data, opts) => { const change = {}; for (const [k, v] of Object.entries(data)) { setPath(combat, k, v); setPath(change, k, v); } Hooks.callAll("updateCombat", combat, change, opts); },
+  updateEmbeddedDocuments: async (kind, ups, opts) => { combat.embedded.push({ ups, opts }); for (const u of ups) { const c = combatants.get(u._id); for (const [k, v] of Object.entries(u)) if (k !== "_id") setPath(c, k, v); } combat.turns = combatants.slice().sort((a, b) => (a.initiative ?? 99) - (b.initiative ?? 99)); } };
+combatants.map = (fn) => Array.prototype.map.call(combatants, fn);
+const combats = coll([combat]); combats.active = combat;
+globalThis.CONFIG = { Dice: { randomUniform: () => Math.random() }, Combat: { documentClass: class BaseCombat {} }, ActiveEffect: {} };
 const settings = new Map(), registered = new Map();
-globalThis.game = { user: users[0], users, actors, combat, messages: coll([]), i18n: { lang: "en", localize: (k) => k }, system: { id: "invincible", version: "2.1.8" }, packs: { get: () => null },
+globalThis.game = { user: users[0], users, actors, combat, combats, messages: coll([]), i18n: { lang: "en", localize: (k) => k }, system: { id: "invincible", version: "2.1.8" }, packs: { get: () => null },
   modules: { get: (id) => (id === MOD ? (game._mod ??= { version: "0.0.0-test", active: true }) : null) },
   settings: { settings: registered, register: (m, k, d) => { registered.set(`${m}.${k}`, d); settings.set(`${m}.${k}`, d.default); }, get: (m, k) => settings.get(`${m}.${k}`), set: (m, k, v) => settings.set(`${m}.${k}`, v) },
   socket: { on: (ch, fn) => { socketListener = fn; }, emit: (ch, msg, opts) => { outbox.push({ msg, to: opts?.recipients ?? null }); } } };
@@ -39,26 +44,42 @@ globalThis.Roll = class { constructor(f) { this.n = parseInt(f, 10); } async eva
 globalThis.ChatMessage = { create: async () => ({ id: `cm${++nid}` }), getWhisperRecipients: () => [] };
 
 const Main = await import("./main.mjs");
-const Store = await import("./p1-standin-store.mjs");
+const Store = await import("./store.mjs");
+const Klass = await import("./combat-class.mjs");
+Store._setSettle(0);                                            // the claim of a relayed request does not wait in this check
 const origWarn = console.warn; const warns = []; console.warn = (...a) => warns.push(a.map(String).join(" "));
+const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((r) => setTimeout(r, 15)); };
 
-Main.start({ init: true, ready: true });
+/* ---- the world setting off (the default): nothing but the settings and an idle API */
+const BaseClass = CONFIG.Combat.documentClass;
+Main.start({ init: true, ready: true }); await settle();
 const api = game._mod.api.tactics;
 ok(registered.has(`${MOD}.tacticsEnabled`) && registered.get(`${MOD}.tacticsEnabled`).default === false, "the setting exists and is off by default");
-eq([api.running(), socketListener], [false, null], "setting off: no socket listener, engine idle");
-eq(await api.start(combat), false, "setting off: no tactical combat can be started");
+eq([api.running(), socketListener, Object.keys(hooks).length, CONFIG.Combat.documentClass === BaseClass, Main.blocker()], [false, null, 0, true, "off"], "setting off: no socket listener, no hook, the Combat class untouched, the API idle");
+eq([(await api.start(combat)).error?.code, combat.flags[MOD] ?? null, api.state(), api.prompts(), api.journal()], ["off", null, null, [], []], "setting off: no tactical combat can be started, reads are empty");
+combat.flags[MOD] = { tactics: { state: JSON.stringify({ v: 1, rev: 3, mode: "tactical", round: 2 }) } };
+eq([(await import("./source.mjs")).tacticsState(combat), (await import("./source.mjs")).sourceOf(combat)], [null, null], "setting off: even a combat that still carries a state from an earlier session is not read as ours (the widgets fall back)");
+combat.flags = {};
+/* ---- yze-combat still enabled: the same, with one note for the GM */
 settings.set(`${MOD}.tacticsEnabled`, true);
-Main.startEngine();
-eq([api.running(), typeof socketListener], [true, "function"], "engine started");
-eq(await api.start(combat), true, "tactical combat started on the Combat document");
+const modules = game.modules.get; game.modules.get = (id) => (id === "yze-combat" ? { active: true } : modules(id));
+Main._reset(); Main.start({ init: true, ready: true }); await settle();
+eq([api.running(), socketListener, Object.keys(hooks).length, CONFIG.Combat.documentClass === BaseClass, Main.blocker(), notes.length, (await api.start(combat)).error?.code], [false, null, 0, true, "yze", 1, "off"], "yze-combat active: nothing runs, nothing is replaced; the GM is told once");
+game.modules.get = modules; notes.length = 0;
+/* ---- on: the class, the relay, the executor */
+Main._reset(); Main.start({ init: true, ready: true }); await settle();
+eq([api.running(), typeof socketListener, Klass.installed(), Main.blocker()], [true, "function", true, null], "setting on: engine started, relay listening, the module's Combat class installed");
+eq((await api.start(combat)).ok, true, "tactical combat started on the Combat document");
 eq([typeof combat.flags[MOD].tactics.state, typeof combat.flags[MOD].tactics.log], ["string", "string"], "state and log are JSON strings in the Combat flags (spec 1.3)");
+const st = () => Store.read(combat).state;
+eq([st().mode, st().round, st().phase, combat.round, combat.turns.map((c) => c.id), combat.combatants.get(st().init.curMember)?.id === combat.turns[combat.turn]?.id], ["tactical", 1, "turns", 1, st().init.slots.flatMap((x) => x.members), true], "the real start: cards dealt, the core documents follow the card order");
+for (let i = 0; i < 4 && st().init.curMember !== "cbH1"; i++) await api.gm.nextTurn();
+eq(st().init.curMember, "cbH1", "the hero has the turn");
 
 const gmEvents = [], pubEvents = [];
 Hooks.on(`${MOD}.tacticsGm`, (e) => gmEvents.push(e)); Hooks.on(`${MOD}.tactics`, (e) => pubEvents.push(e));
 const fromPlayer = async (uid, req, id) => { const before = outbox.length; socketListener({ k: "tcreq", id, n: "nonce1", proto: 1, mod: "x", combat: "combat1", req }, uid); for (let i = 0; i < 100 && !outbox.slice(before).some((o) => o.msg.k === "tcres" && o.msg.id === id); i++) await new Promise((r) => setTimeout(r, 20)); return outbox.slice(before).find((o) => o.msg.k === "tcres" && o.msg.id === id) ?? null; };
 const rollMsg = (uid, tag, sixes, pushable = false) => ({ id: `m${++nid}`, author: { id: uid }, rolls: [{ options: { tactics: tag }, successCount: sixes, baneCount: 0, pushCount: 0, pushable }] });
-const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((r) => setTimeout(r, 15)); };
-const st = () => Store.read(combat).state;
 
 /* a player's declaration arrives over the socket */
 eq(await fromPlayer(null, { op: "declare", actor: "cbH1", decl: { action: "slugfest", targets: ["cbN1"] } }, "u0"), null, "a request without a server-supplied sender gets no answer and does nothing");
@@ -99,8 +120,8 @@ eq((await fromPlayer("p1", { op: "undo", tx: api.desk().journal[0].id }, "u4")).
 eq([(await api.gm.undo({ tx: api.desk().journal[0].id })).ok, actors[2].system.derived.health.value, Store.read(combat).log.list[0].state], [true, 5, "undone"], "GM undo restores the actor");
 eq((await api._runAs("p2", { op: "declare", actor: "cbH1", decl: { action: "slugfest", targets: ["cbN1"] } })).error.code, "notOwner", "_runAs runs a request exactly as that user");
 eq((await api.other("cbH1", "x")).ok, true, "api.other as the GM (owner of everything)");
-eq(await api.stop(combat), undefined, "stop removes the state");
-eq([combat.flags[MOD].tactics ?? null, api.state()], [null, null], "no tactical state left");
+eq((await api.stop(combat)).ok, true, "stop removes the state");
+eq([combat.flags[MOD].tactics.state, combat.flags[MOD].tactics.log, api.state()], ["", "", null], "no tactical state left");
 eq((await fromPlayer("p1", { op: "endTurn", actor: "cbH1", round: 1, slot: 0 }, "u5")).msg.env.error.code, "off", "requests after the stop: off");
 console.warn = origWarn;
 eq(warns.filter((w) => !/roll dialog|stunts dialog|injuries table|system compatibility/.test(w)).length, 0, "no unexpected warnings");

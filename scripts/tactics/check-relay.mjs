@@ -20,6 +20,7 @@ eq(R.makeRid("p1", "gm:../x y"), "p1:gmxy", "the id part cannot smuggle another 
 eq(code(R.admit(msg(decl, { proto: 0 }), ctx("p1"))), "stale", "older protocol: stale");
 eq(code(R.admit(msg(decl, { combat: "other" }), ctx("p1"))), "stale", "another combat: stale");
 eq(code(R.admit(msg(decl), { ...ctx("p1"), combatId: null })), "off", "no tactical combat: off");
+eq([code(R.admit(msg(decl, { combat: "C9" }), { ...ctx("p1"), hasCombat: (id) => id === "C1" })), code(R.admit(msg(decl), { ...ctx("p1"), hasCombat: (id) => id === "C1" }))], ["gone", "ok"], "an executor that serves every combat of the world: an unknown one is gone");
 { const seen = new Map(); R.admit(msg(decl), ctx("p1", { seen })); const again = R.admit(msg(decl), ctx("p1", { seen })); eq([again.ok, again.env, again.to], [false, null, null], "the same envelope twice is ignored silently"); eq(code(R.admit(msg(decl), ctx("p2", { seen }))), "ok", "the same id from another sender is a different request"); }
 eq(R.admit({ k: "ssreq" }, ctx("p1")).env, null, "other relays' kinds are not ours");
 
