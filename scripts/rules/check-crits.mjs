@@ -100,8 +100,71 @@ eq(D.applyStress({ resolve: 6, stress: 5 }).stressedOut, false, "still has Resol
 eq([D.canTakeVoluntaryStress(0), D.canTakeVoluntaryStress(1)], [false, true], "no voluntary stress when stressed out");
 eq(D.recoverResolve({ resolve: 1, max: 6, sixes: 2 }), { resolve: 3, gain: 2 }, "book example 2821");
 eq(D.recoverResolve({ resolve: 5, max: 6, sixes: 4 }).resolve, 6, "not above the maximum");
-eq(D.recoverAfterScene({ health: 1, maxHealth: 10, resolve: 0, maxResolve: 6, strength: 4, presence: 3 }), { health: 5, resolve: 3 }, "a few minutes");
-eq(D.recoverAfterScene({ health: 1, maxHealth: 10, resolve: 0, maxResolve: 6, strength: 4, presence: 3, span: "hours" }), { health: 10, resolve: 6 }, "a few hours");
+eq(D.recoverAfterScene({ health: 1, maxHealth: 10, resolve: 0, maxResolve: 6, strength: 4, presence: 3 }), { health: 5, resolve: 0 }, "a few minutes: Health +STRENGTH, Resolve untouched by default (book 2802-2804, 2819)");
+eq(D.recoverAfterScene({ health: 1, maxHealth: 10, resolve: 0, maxResolve: 6, strength: 4, presence: 3, socialScene: true }), { health: 5, resolve: 3 }, "a few minutes with a social scene: Resolve +PRESENCE");
+eq(D.recoverAfterScene({ health: 1, maxHealth: 10, resolve: 0, maxResolve: 6, strength: 4, presence: 3, span: "hours" }), { health: 10, resolve: 0 }, "a few hours of rest without a social scene: Health only");
+eq(D.recoverAfterScene({ health: 1, maxHealth: 10, resolve: 0, maxResolve: 6, strength: 4, presence: 3, span: "hours", socialScene: true }), { health: 10, resolve: 6 }, "a few hours with a social scene");
 eq(D.recoverAfterScene({ health: 1, maxHealth: 10, resolve: 2, maxResolve: 6, strength: 14, presence: 3, socialScene: false }), { health: 10, resolve: 2 }, "no social scene, Health capped");
+eq(D.recoverAfterScene({ health: 1, maxHealth: 10, resolve: 1, maxResolve: 6, strength: 4, presence: 3, loner: true }), { health: 5, resolve: 4 }, "Loner recovers Resolve without a social scene (book 2148)");
+eq(D.recoverAfterScene({ health: 1, maxHealth: 10, resolve: 1, maxResolve: 6, strength: 2, presence: 3, regeneration: true }), { health: 10, resolve: 1 }, "Regeneration heals everything in a few minutes (book 1893)");
+eq(D.recoverAfterScene({ health: 9, maxHealth: 10, resolve: 9, maxResolve: 6, strength: 1, presence: 3 }), { health: 10, resolve: 6 }, "Resolve above the maximum dissipates (book 1686)");
+
+// armor by damage type and stress armor (book 1920, 1865)
+{
+  const plast = { id: "plasticity", armor: 3, only: ["kinetic"] }, vest = { id: "vest", armor: 1 }, defiance = { id: "defiance", armor: 3, stress: true };
+  eq(D.selectArmor([plast, vest]).armor, 3, "Plasticity against fists and bullets");
+  eq(D.selectArmor([plast, vest], { source: "fire" }).source.id, "vest", "Plasticity does not count against fire: the vest does");
+  eq(D.selectArmor([plast], { source: "electricity" }), { armor: 0, source: null }, "no armor left");
+  eq(D.selectArmor([defiance, vest]).source.id, "vest", "stress armor does not count against ordinary damage");
+  eq(D.selectArmor([defiance, vest], { toStress: true }).source.id, "defiance", "against a stress attack the better of the two counts");
+  eq(D.selectArmor([{ id: "prot", armor: 4 }, defiance], { toStress: true }).source.id, "prot", "ordinary armor also stops a stress attack (book 1591)");
+}
+eq([D.halvedArmor(3), D.halvedArmor(4), D.halvedArmor(1), D.halvedArmor(0)], [2, 2, 1, 0], "halved Armor rounds up (book 2113, 1680)");
+eq(D.absorbByCopies({ taken: 2, copies: 3 }), { copies: 1, absorbed: 2, taken: 0, gone: false }, "copies absorb damage first (book 1910)");
+eq(D.absorbByCopies({ taken: 5, copies: 3 }), { copies: 0, absorbed: 3, taken: 2, gone: true }, "the rest goes on to Health and the copies are gone");
+eq(D.absorbByCopies({ taken: 4, copies: 0 }), { copies: 0, absorbed: 0, taken: 4, gone: false }, "no copies");
+eq(D.resilienceConvert({ taken: 5, resolve: 4, convert: 3 }), { taken: 2, stress: 3, converted: 3 }, "Resilience: point for point (book 2160)");
+eq(D.resilienceConvert({ taken: 5, resolve: 2, convert: 5 }), { taken: 3, stress: 2, converted: 2 }, "not more than the Resolve left");
+eq(D.resilienceConvert({ taken: 5, resolve: 2, convert: 5 }, { uncapped: true }).converted, 5, "the other reading as an option");
+eq(D.resilienceConvert({ taken: 5, resolve: 0, convert: 5 }), { taken: 5, stress: 0, converted: 0 }, "not at Resolve 0");
+eq(D.resilienceConvert({ taken: 2, resolve: 6, convert: 9 }).converted, 2, "not more than the damage");
+eq(D.resilienceConvert({ taken: 4, resolve: 6 }).converted, 0, "a choice: nothing by default");
+
+// the whole hit (spec 9.5 steps 1-6)
+{
+  const plain = { base: 4, doubled: true, armor: 2 };
+  const h = D.hitDamage(plain), r = D.resolveHit(plain);
+  eq([r.raw, r.armor, r.taken, r.immune, r.vulnerable], [h.raw, h.armor, h.taken, h.immune, h.vulnerable], "the plain case equals hitDamage (book example 2504: 8, reduced to 6)");
+  for (const c of [{ base: 5 }, { base: 5, pulled: 2 }, { base: 3, armor: 7 }, { base: 3, source: "fire", immunities: ["fire"] }, { base: 3, source: "fire", vulnerabilities: ["fire"], armor: 2 },
+    { base: 3, source: "fire", immunities: ["nonKinetic"] }, { base: 3, doubled: true, ignoreArmor: true, armor: 5 }, { base: 2, source: "fire", immunities: ["fire"], vulnerabilities: ["fire"] }]) {
+    const a = D.hitDamage(c), b = D.resolveHit(c);
+    eq([b.raw, b.armor, b.taken, b.immune, b.vulnerable], [a.raw, a.armor, a.taken, a.immune, a.vulnerable], `resolveHit agrees with hitDamage for ${JSON.stringify(c)}`);
+  }
+  eq(D.resolveHit({ base: 3, doubled: true, addAfterDouble: 4, armor: 1 }).taken, 9, "Discharge is added after Double Damage (book 1685): 3 x 2 + 4 - 1");
+  eq(D.resolveHit({ base: 3, addAfterDouble: -2 }).raw, 3, "an add-on never lowers the damage");
+  eq(D.resolveHit({ base: 4, armor: 3, halveArmor: true }).taken, 2, "Find Weakness: Armor 3 counts as 2 (book 2113)");
+  eq(D.resolveHit({ base: 3, source: "electricity", armorSources: [{ id: "prot", armor: 5 }], halveArmor: true }).armor, 3, "Electricity Control: Armor 5 counts as 3 (book 1680)");
+  eq(D.resolveHit({ base: 4, source: "fire", armorSources: [{ id: "plasticity", armor: 3, only: ["kinetic"] }] }).taken, 4, "type-limited armor does not count against fire (book 1920)");
+  eq(D.resolveHit({ base: 4, armorSources: [{ id: "plasticity", armor: 3, only: ["kinetic"] }] }).taken, 1, "and counts against a punch");
+  const barrier = { id: "barrier", armor: 3, barrier: true };
+  eq(D.resolveHit({ base: 10, armorSources: [barrier] }), { raw: 10, armor: 3, armorSource: barrier, through: 7, barrierBreached: true, immune: false, vulnerable: false,
+    copies: { before: 0, absorbed: 0, left: 0, gone: false }, converted: 0, taken: 7, stress: 0 }, "book example 2792: 10 damage against a Barrier, 7 get through and the Barrier is gone");
+  eq(D.resolveHit({ base: 2, armorSources: [barrier] }).barrierBreached, false, "a Barrier that holds stays");
+  eq(D.resolveHit({ base: 6, armorSources: [barrier, { id: "own", armor: 3 }] }).barrierBreached, false, "on a tie the own armor counts and the Barrier is not spent");
+  eq(D.resolveHit({ base: 6, armorSources: [barrier], ignoreArmor: true }).barrierBreached, false, "armor that is ignored is not breached");
+  // Distress (book 1591): damage through the armor becomes stress; Defiance is armor against it (book 1865)
+  eq(D.resolveHit({ base: 3, doubled: true, toStress: true, armorSources: [{ id: "defiance", armor: 3, stress: true }] }), { raw: 6, armor: 3, armorSource: { id: "defiance", armor: 3, stress: true }, through: 3,
+    barrierBreached: false, immune: false, vulnerable: false, copies: { before: 0, absorbed: 0, left: 0, gone: false }, converted: 0, taken: 0, stress: 3 }, "Distress with Double Damage against Defiance: 3 stress, no damage");
+  eq(D.resolveHit({ base: 3, toStress: true, copies: 3 }).copies.left, 3, "damage turned into stress does not reach the copies");
+  eq(D.resolveHit({ base: 3, toStress: true, ignoreArmor: true, armorSources: [{ id: "defiance", armor: 3, stress: true }, { id: "prot", armor: 2 }] }).stress, 3, "Mental Distress, literal reading: no armor at all");
+  eq(D.resolveHit({ base: 4, toStress: true, ignoreArmor: "exceptStress", armorSources: [{ id: "defiance", armor: 3, stress: true }, { id: "prot", armor: 5 }] }).stress, 1, "the other reading: only the stress armor counts");
+  eq(D.resolveHit({ base: 4, ignoreArmor: "exceptStress", armor: 3 }).taken, 4, "exceptStress with a plain armor number: ignored");
+  // Duplication and Resilience (book 1910, 2160)
+  const d = D.resolveHit({ base: 6, armor: 1, copies: 3, resilience: 1, resolve: 4 });
+  eq([d.through, d.copies, d.converted, d.taken, d.stress], [5, { before: 3, absorbed: 3, left: 0, gone: true }, 1, 1, 1], "Armor once, then the copies, then Resilience, the rest to Health");
+  eq(D.resolveHit({ base: 2, armor: 1, copies: 3 }).copies, { before: 3, absorbed: 1, left: 2, gone: false }, "a small hit only costs copies");
+  eq(D.resolveHit({ base: 3, source: "fire", immunities: ["fire"], copies: 2 }).copies.left, 2, "an immune target loses no copies");
+  eq(D.resolveHit({ base: 3, source: "fire", vulnerabilities: ["fire"], addAfterDouble: 1, doubled: true, armor: 4 }).taken, 14, "Vulnerable doubles everything and ignores Armor (book 2193; reading 8): (3 x 2 + 1) x 2");
+}
 
 done("check-crits");
