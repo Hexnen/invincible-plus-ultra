@@ -32,7 +32,10 @@ export function place() {
   if (!root) return;
   const W = window.innerWidth, H = window.innerHeight;
   const hot = visibleRect(document.getElementById("hotbar"));
-  const bottom = hot && hot.top > H * 0.4 ? H - hot.top + GAP : 14 + GAP;
+  /* other modules park their own strips right above the macro bar (the map director's bar): the dock stands above the highest of them */
+  let floor = hot && hot.top > H * 0.4 ? hot.top : H - 14;
+  for (const id of ["mm-dir-bar"]) { const r = visibleRect(document.getElementById(id)); if (r && r.top > H * 0.5 && r.top < floor && r.left < W * 0.6 && r.right > W * 0.4) floor = r.top; }
+  const bottom = H - floor + GAP;
   const cx0 = hot ? (hot.left + hot.right) / 2 : W / 2;
   let lo = 12, hi = W - 12;
   const yBot = H - bottom, yTop = yBot - (stack.offsetHeight || 60) - 4;
@@ -40,9 +43,7 @@ export function place() {
   const sb = visibleRect(document.getElementById("sidebar"));
   if (sb && sb.left > W * 0.5) hi = Math.min(hi, sb.left - 12);
   for (const m of document.querySelectorAll("#chat-notifications .chat-message")) { const r = visibleRect(m); if (inBand(r) && r.left > W * 0.3) hi = Math.min(hi, r.left - 10); }
-  const desk = visibleRect(document.querySelector("#invincible-tactics-desk .igd, #invincible-tactics-desk .igd-handle"));
   for (const el of document.querySelectorAll("#invincible-tactics-desk .igd, #invincible-tactics-desk .igd-handle")) { const r = visibleRect(el); if (inBand(r) && r.left > W * 0.4) hi = Math.min(hi, r.left - 10); }
-  void desk;
   const partyEl = document.getElementById("invincible-party"), party = visibleRect(partyEl);
   if (party && party.right < W * 0.5) {
     const kids = [...partyEl.querySelectorAll(".ipt-item")].map(visibleRect).filter(inBand);
@@ -92,8 +93,8 @@ function bar(d) {
 }
 
 const close = () => set({ armed: null, mode: null, targets: [], tokens: [], text: "", amend: null });
-const textBox = (value, placeholder, key = "text") => h("textarea.itd-text", { fk: `draft:${key}`, text: value, attrs: { rows: 2, maxlength: 300, placeholder, "aria-label": placeholder }, on: { input: (e, el) => set({ text: el.value }) } });
-const submit = (s, cls = "") => h(`button.itd-go${cls}`, { fk: "go", text: s.label, disabled: !!s.disabled, tip: s.disabled, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null }) } });
+const textBox = (value, placeholder, key = "text") => h("textarea.itd-text", { fk: `draft:${key}`, text: value, attrs: { rows: 2, maxlength: 300, placeholder, "aria-label": placeholder }, on: { input: (e, el) => set({ [key]: el.value }) } });
+const submit = (s, cls = "") => h(`button.itd-go${cls}`, { fk: `go${cls}`, text: s.label, disabled: !!s.disabled, tip: s.disabled, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null }) } });
 const cancelBtn = () => h("button.itd-x", { fk: "x", tip: handlers.label?.("cancel"), on: { click: close } }, icon("fa-xmark"));
 const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.cost ? h("span.itd-cost", { text: p.cost }) : null, cancelBtn());
 
@@ -116,7 +117,10 @@ function panel(p) {
           p.pool ? h("div.itd-pool", {}, h("span.itd-k", { text: handlers.label?.("pool") }), h("b.itd-dice", { text: String(p.pool.total) }), h("span.itd-parts", { text: p.pool.parts.map((x) => `${x.label} ${x.dice > 0 && x !== p.pool.parts[0] ? "+" : ""}${x.dice}`).join(" · ") })) : null,
           p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null,
           p.chance ? meter(p.chance) : null) : null,
-        h("div.itd-col.itd-submit", {}, submit(p.submit), p.submit.disabled ? h("span.itd-why", { text: p.submit.disabled }) : null)));
+        h("div.itd-col.itd-submit", {}, submit(p.submit), p.submit.disabled ? h("span.itd-why", { text: p.submit.disabled }) : null)),
+      p.refused ? h("div.itd-pbody.itd-refused", {}, h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: p.refused.reason })),
+        p.refused.text !== null ? h("div.itd-col.itd-grow", {}, textBox(p.refused.text, p.refused.placeholder, "why")) : null,
+        h("div.itd-col.itd-submit", {}, submit(p.refused.submit, ".itd-go-ask"))) : null);
   }
   if (p.kind === "blocked") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: p.reason })), h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder)), h("div.itd-col.itd-submit", {}, submit(p.submit, ".itd-go-ask"))));
   if (p.kind === "other") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder), h("p.itd-hint", { text: p.hint })), h("div.itd-col.itd-submit", {}, submit(p.submit, ".itd-go-ask"))));

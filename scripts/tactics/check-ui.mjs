@@ -42,6 +42,23 @@ lang("en");
   d = dock(T, "p1", ["H1"], { armed: "slugfest" });
   eq([d.panel.kind, d.panel.picking, d.panel.submit.req, d.panel.submit.disabled != null, d.panel.targets.map((x) => [x.id, x.likely])], ["declare", true, null, true, [["N1", true], ["H2", false]]], "declare panel: needs a target first; the other side leads the list");
   eq([d.panel.pool.total, d.panel.pool.parts.map((p) => [p.label, p.dice]), d.panel.chance.text, d.panel.chance.defended], [4, [["Fighting", 4]], "Even odds", null], "declare panel: own pool and a band; nothing about the defender");
+  { // a declaration the executor refused as against the rules: the reason stays, with the request for an exception
+    const R = { action: "slugfest", key: "N1", reason: "outOfReach", params: { distance: 1 } };
+    let r = dock(T, "p1", ["H1"], { armed: "slugfest", targets: ["N1"], refused: R }).panel.refused;
+    eq([/reach/i.test(r.reason), r.submit.req, typeof r.submit.disabled, r.text], [true, null, "string", ""], "refused declaration: the reason in words; asking needs words");
+    r = dock(T, "p1", ["H1"], { armed: "slugfest", targets: ["N1"], refused: R, why: " I throw a car " }).panel.refused;
+    eq(r.submit.req, { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"], exception: { text: "I throw a car" } } }, "refused declaration: the same declaration with the exception request");
+    eq([dock(T, "p1", ["H1"], { armed: "slugfest", targets: ["H2"], refused: R }).panel.refused, dock(T, "p1", ["H1"], { armed: "slugfest", targets: ["N1"] }).panel.refused], [null, null], "the reason belongs to that declaration only");
+    T.setRange("H1", "N1", 3);
+    eq(((await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })).error ?? {}).code, "illegal", "the engine refuses the out-of-reach attack");
+    eq((await T.req("p1", r.submit.req)).ok, true, "and takes it with the exception request");
+    const g = desk(T);
+    eq([g.cards[0].kind, g.cards[0].lines.some((l) => l.quote === "I throw a car"), g.cards[0].options.map((o) => o.id)], ["exception", true, ["grant", "deny"]], "desk: the exception card of that declaration");
+    eq((await T.gm(g.cards[0].options[1].req)).ok, true, "denied through the card");
+    T.setRange("H1", "N1", 0);
+    const s = staffDock(T, "H1", { armed: "slugfest", targets: ["N1"], refused: R }).panel.refused;
+    eq([s.text, s.submit.disabled, s.submit.req.decl.exception != null], [null, null, true], "staff: 'declare anyway' needs no words");
+  }
   d = dock(T, "p1", ["H1"], { armed: "slugfest", targets: ["N1", "ghost"] });
   eq([d.panel.picking, d.panel.submit.disabled, d.panel.submit.req], [false, null, { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } }], "declare panel: the request carries only targets of the list");
   eq((await T.req("p1", d.panel.submit.req)).ok, true, "declared through the panel's request");

@@ -1,5 +1,4 @@
-/* Tactical combat, the surfaces: the small DOM kit both surfaces share. No Foundry globals: plain DOM only, so the standalone preview
-   (dev/tactics-ui-preview) runs this very code.
+/* Tactical combat, the surfaces: the small DOM kit both surfaces share. No Foundry globals: plain DOM only.
      h("button.ita-opt", { text, tip, fk, disabled, on: { click }, attrs, data }, ...children)   one element
      swap(host, nodes)        replace a host's children and keep the keyboard focus / caret on the element with the same `fk`
      askCard(a, handlers)     one question (model-pure.askData) as a caption card: the player's prompts and the desk's cards are the same thing

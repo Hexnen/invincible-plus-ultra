@@ -99,7 +99,10 @@
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[aria-pressed="true"] { color: var(--ita-ink); background: #fff; box-shadow: 1px 1px 0 var(--ita-blue); translate: 2px 2px; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; }
 .ita-check { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--ita-label); }
-.ita-check input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: var(--ita-yellow); cursor: pointer; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check input { all: unset; box-sizing: border-box; flex: none; display: grid; place-items: center; width: 16px; height: 16px; background: var(--ita-track); border: 2px solid var(--ita-frame); cursor: pointer; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check input:checked { background: var(--ita-yellow); border-color: var(--ita-yellow); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check input:checked::after { content: ""; width: 8px; height: 4px; margin-top: -2px; border: solid var(--ita-ink); border-width: 0 0 2px 2px; rotate: -45deg; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check:hover { color: #fff; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-submit, .itd-go) {
   display: inline-flex; align-items: center; justify-content: center; align-self: flex-start; min-height: 34px; padding: 0 14px;
   font: 400 14px/1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
@@ -216,6 +219,8 @@
 .itd-reason, .itd-status { flex: 1 1 100%; display: flex; align-items: center; gap: 7px; color: #fff; }
 .itd-reason i { color: var(--ita-red-lt); }
 .itd-status i { color: var(--ita-yellow); }
+.itd-refused { align-items: center; padding-top: 7px; border-top: 1px dashed var(--ita-line); }
+.itd-refused .itd-reason { flex: 1 1 220px; }
 .itd-panel[data-rolling] { box-shadow: inset 0 0 0 1px var(--ita-yellow), 0 5px 14px rgba(0, 0, 0, .5); }
 .itd-pool { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; }
 .itd-pool .itd-k { grid-column: 1 / -1; }

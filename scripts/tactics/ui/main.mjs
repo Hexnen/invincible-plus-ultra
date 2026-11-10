@@ -47,8 +47,9 @@ function staffModel(combat, desk) {
   if (!state || !cid) return { bars: [], prompts: [], mine: [], stack: desk?.info ?? [], waiting: desk?.waiting ?? [], turn: desk?.turn ?? null };
   const bar = Api.pure.desk.barModel(state, cid, { ...Engine.context(combat), P1: Api.pure.economy });
   if (bar.endTurn) bar.endTurn = { ...bar.endTurn, req: { ...bar.endTurn.req, force: true } };
-  const owners = Engine.context(combat).c(cid)?.owners ?? [];
-  st.dock.quiet = !Engine.context(combat).c(cid)?.npc && owners.some((u) => game.users.get(u)?.active && !Store.isStaff(game.users.get(u)));
+  /* a hero whose player is at the table: the GM's dock rests (the chevron opens it to act for them) */
+  const actor = combat.combatants.get(cid)?.actor ?? null;
+  st.dock.quiet = !!actor && game.users.some((u) => u.active && !Store.isStaff(u) && actor.testUserPermission(u, "OWNER"));
   const mine = (desk?.info ?? []).filter((i) => i.actor === cid).map((i) => ({ ...i, rolls: [], commands: [] }));
   return { bars: [bar], prompts: [], mine, stack: desk?.info ?? [], waiting: desk?.waiting ?? [], turn: desk?.turn ?? null };
 }
@@ -85,7 +86,13 @@ async function send(which, req, after) {
     if (!req) return null;
     const combat = combatNow();
     const env = await Api.request(req, combat ?? undefined);
-    if (env?.ok === false) { if (env.error?.code !== "gone") notify("warn", errText(env.error)); refresh(); return env; }
+    if (env?.ok === false) {
+      /* a declaration against the rules: the dock keeps the panel and shows the reason with the way to ask for an exception */
+      if (which === "dock" && req.op === "declare" && env.error?.code === "illegal" && !req.decl?.exception) st.dock.refused = { action: req.decl.action, key: (req.decl.targets ?? []).join(","), reason: env.error.params?.reason ?? "rules", params: env.error.params ?? {} };
+      else if (env.error?.code !== "gone") notify("warn", errText(env.error));
+      refresh(); return env;
+    }
+    if (which === "dock") { st.dock.refused = null; st.dock.why = ""; }
     if (after) Object.assign(st[which], after);
     refresh();
     return env;
@@ -126,7 +133,7 @@ function relayout() { try { Desk.relayout(); Dock.relayout(); } catch { /* not b
 function watch() {
   if (!window.ResizeObserver) return;
   ro ??= new ResizeObserver(() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; relayout(); }); });
-  for (const id of ["hotbar", "sidebar", "invincible-party", "invincible-challenges", "invincible-tactics-desk", "chat-notifications", "players"]) {
+  for (const id of ["hotbar", "sidebar", "invincible-party", "invincible-challenges", "invincible-tactics-desk", "chat-notifications", "players", "mm-dir-bar"]) {
     const el = document.getElementById(id);
     if (el && el.dataset.itdWatched !== "1") { el.dataset.itdWatched = "1"; ro.observe(el); }
   }

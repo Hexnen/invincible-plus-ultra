@@ -165,9 +165,9 @@ export function askData(p, o) {
 export function waitingData(waiting, facts, t) {
   const rows = new Map();
   for (const w of waiting ?? []) {
-    const gm = w.to === "gm", users = gm ? [] : w.to ?? [];
+    const list = Array.isArray(w.to) ? w.to : [], gm = w.to === "gm" || (list.length > 0 && list.every((u) => u === "gm")), users = gm ? [] : list;      // a roll of an NPC waits for "gm" as a user
     const mine = gm ? !!facts.staff : users.includes(facts.me);
-    const who = gm ? t("ITAC.ui.who.gm") : mine ? t("ITAC.ui.who.you") : users.map((u) => facts.userName?.(u) ?? t("ITAC.Someone")).join(", ") || t("ITAC.Someone");
+    const who = mine ? t("ITAC.ui.who.you") : gm ? t("ITAC.ui.who.gm") : users.map((u) => facts.userName?.(u) ?? t("ITAC.Someone")).join(", ") || t("ITAC.Someone");
     const what = w.what === "roll" ? t("ITAC.ui.wait.roll", { roll: rollLabel(t, w.key, { c: () => null }) }) : titleOf({ ...w, to: "player", aboutName: w.aboutName }, t, facts);
     const text = w.aboutName ? t("ITAC.ui.wait.about", { what, name: w.aboutName }) : what;
     const key = gm ? "gm" : users.join(",");
@@ -219,7 +219,13 @@ function declarePanel(bar, a, own, facts, t) {
   const text = (own.text ?? "").trim();
   const why = a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : a.needsText && !text ? t("ITAC.ui.need.text") : null;
   const decl = { ...(a.needsTarget ? { targets: picked.slice() } : {}), ...((own.tokens ?? []).length ? { tokens: own.tokens.slice() } : {}), ...(a.needsText ? { text } : {}) };
-  return { kind: "declare", action: a.id, title, cost, targets, picking: !!a.needsTarget && !picked.length, tokens,
+  /* the executor refused this very declaration as against the rules (out of reach, no line of sight...): the reason stays in the panel
+     with the way round it, a declaration that carries a request for an exception (a card on the GM desk; the GM's own goes there too) */
+  const ref = own.refused && own.refused.action === a.id && own.refused.key === picked.join(",") ? own.refused : null;
+  const refused = ref ? { reason: t("ITAC.ui.blocked", { reason: reasonText(t, ref.reason, ref.params) }), text: facts.staff ? null : own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
+    submit: { label: facts.staff ? t("ITAC.ui.exception.anyway") : t("ITAC.ui.exception.ask"), disabled: why ?? (facts.staff || (own.why ?? "").trim() ? null : t("ITAC.ui.exception.needText")),
+      req: !why && (facts.staff || (own.why ?? "").trim()) ? a.exceptionReq(decl, facts.staff ? t("ITAC.ui.who.gm") : own.why.trim()) : null } } : null;
+  return { kind: "declare", action: a.id, title, cost, targets, picking: !!a.needsTarget && !picked.length, tokens, refused,
     pool: pool ? { total: pool.total, parts: pool.parts.map((x) => (x.id === "token" ? { label: t(`ITAC.mod.${x.source}`, {}, String(x.source || t("ITAC.ui.bonus"))), dice: x.dice } : { label: attrText(t, x.id), dice: x.dice })) } : null, chance,
     text: a.needsText ? { value: own.text ?? "", placeholder: t("ITAC.ui.text.placeholder") } : null,
     submit: { label: own.amend ? t("ITAC.ui.amend") : t("ITAC.ui.declare"), disabled: why, req: why ? null : own.amend ? { op: "amend", inst: own.amend, decl: { ...decl, action: a.id } } : a.req(decl) } };
@@ -249,13 +255,13 @@ export function dockData(model, own, facts, t) {
     submit: { label: t("ITAC.ui.other.send"), disabled: (own.text ?? "").trim() ? null : t("ITAC.ui.need.text"), req: (own.text ?? "").trim() ? bar.other.req(own.text.trim()) : null } };
   else if (own.mode === "holdOff") panel = { kind: "holdOff", title: t("ITAC.ui.holdOff"), hint: t("ITAC.ui.holdOff.hint"), targets: (bar.holdOff?.targets ?? []).map((x) => ({ slot: x.slot, card: x.card, names: x.names.join(", "), req: bar.holdOff.req(x.slot) })) };
   else if (armed) panel = declarePanel(bar, armed, own, facts, t);
-  else if (mine.length) panel = minePanel(mine[mine.length - 1], facts, t);
+  else if (mine.length && !own.quiet) panel = minePanel(mine[mine.length - 1], facts, t);
   const unused = pipsOf(bar, t).filter((p) => p.state === "open").map((p) => p.label);
   const end = bar.endTurn ? { label: own.endArmed ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), tip: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : unused.length ? t("ITAC.ui.end.unused", { list: unused.join(", ") }) : t("ITAC.ui.end.tip"),
     disabled: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm: unused.length > 0, armed: !!own.endArmed }
     : { label: t("ITAC.ui.end"), tip: reasonText(t, "notYourTurn"), disabled: reasonText(t, "notYourTurn"), req: null, confirm: false, armed: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn
-  const turn = model?.turn?.combatant ? (bar.onTurn ? t("ITAC.ui.turn.yours", { name: bar.name ?? "" }) : t("ITAC.ui.turn.of", { name: model.turn.name ?? t("ITAC.Someone") })) : "";
+  const turn = model?.turn?.combatant ? (bar.onTurn && !facts.staff ? t("ITAC.ui.turn.yours", { name: bar.name ?? "" }) : t("ITAC.ui.turn.of", { name: model.turn.name ?? t("ITAC.Someone") })) : "";
   return {
     show: true, canRest, rest: canRest && !panel && !own.peek, onTurn: !!bar.onTurn, round: model?.turn?.round ?? null,
     chars: bars.length > 1 ? bars.map((b) => ({ id: b.combatant, name: b.name, img: facts.c?.(b.combatant)?.img ?? null, onTurn: !!b.onTurn, sel: b.combatant === bar.combatant, asked: asked.has(b.combatant) })) : [],
@@ -302,7 +308,7 @@ function instData(i, model, own, facts, t) {
   const amend = i.commands?.find((c) => c.id === "amend"), veto = i.commands?.find((c) => c.id === "veto"), ovr = i.commands?.find((c) => c.id === "override");
   const att = (i.rolls ?? []).find((r) => r.key === "attack" || r.key === "roll");
   const rolls = (i.rolls ?? []).map((r) => ({ key: r.key, label: rollLabel(t, r.key, facts), dice: r.dice ?? null, sixes: r.sixes, waiting: !!r.waiting,
-    text: r.waiting ? t("ITAC.ui.roll.waiting", { dice: r.dice ?? "?", users: (r.users ?? []).map((u) => facts.userName?.(u) ?? u).join(", ") || t("ITAC.ui.who.gm") }) : t("ITAC.ui.roll.done", { dice: r.dice ?? "?", sixes: r.sixes ?? 0 }),
+    text: r.waiting ? t("ITAC.ui.roll.waiting", { dice: r.dice ?? "?", users: (r.users ?? []).map((u) => (u === "gm" ? t("ITAC.ui.who.gm") : facts.userName?.(u) ?? t("ITAC.Someone"))).join(", ") || t("ITAC.ui.who.gm") }) : t("ITAC.ui.roll.done", { dice: r.dice ?? "?", sixes: r.sixes ?? 0 }),
     chance: r.waiting && Number.isFinite(r.dice) && r === att ? pct(dice.pSuccess(Math.max(1, r.dice))) : null }));
   const others = rosterOf({ ...facts, view: facts.view }, i.actor).filter((r) => !(i.targets ?? []).some((x) => x.id === r.id));
   const from = i.targets?.[0]?.id;
