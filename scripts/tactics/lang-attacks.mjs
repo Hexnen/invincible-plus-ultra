@@ -45,6 +45,9 @@ export const EN_ATTACKS = {
   "ITAC.reason.notHit": "that opponent is not hit",
   "ITAC.reason.notOffered": "not available here",
   "ITAC.reason.noMovement": "no movement left",
+  "ITAC.reason.sharp": "needs a sharp weapon",
+  "ITAC.reason.emptyZone": "nothing in this zone to trap them with",
+  "ITAC.reason.targetBudget": "too many stunts on a target that dodged",
 
   "ITAC.mod.weapon": "Weapon",
   "ITAC.mod.wreck": "Wrecking the zone",
@@ -144,6 +147,9 @@ export const PL_ATTACKS = {
   "ITAC.reason.notHit": "ten przeciwnik nie został trafiony",
   "ITAC.reason.notOffered": "tutaj niedostępne",
   "ITAC.reason.noMovement": "nie został już ruch",
+  "ITAC.reason.sharp": "potrzebna ostra broń",
+  "ITAC.reason.emptyZone": "w tej strefie nie ma czym unieruchomić celu",
+  "ITAC.reason.targetBudget": "za dużo stuntów na celu, który zrobił unik",
 
   "ITAC.mod.weapon": "Broń",
   "ITAC.mod.wreck": "Demolowanie strefy",

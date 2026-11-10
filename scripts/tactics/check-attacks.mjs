@@ -258,7 +258,8 @@ const city = () => { const T = new MTable(); T.hero("H1", "p1", { attrs: { stren
   const T = city();
   T.c.H1.movement = FLY;
   const reach = RM.moveProfile("flight", { tier: "basic" }).zones;
-  eq(code(await T.req("p1", decl("H1", "charge", ["N1"], { mode: "flight" }))), "ok", "J: a flying charge");
+  eq(code(await T.req("p1", decl("H1", "charge", ["N1"]))), "ok", "J: a flying charge");
+  eq(T.top().data.charge?.mode ?? T.state.stack[0].data.charge?.mode, "flight", "J: no way of moving named: the one that leaves the most movement for a Slam");
   await pass(T);
   await T.roll("attack", 2);
   const sp = T.prompt("stunts"), slam = sp.options.find((o) => o.data.stunt === "slam");
