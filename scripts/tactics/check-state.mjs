@@ -7,7 +7,7 @@ import { ok, eq, done } from "./testkit.mjs";
 /* shape */
 const s0 = S.newState({ mode: "tactical", opts: { redraw: "firstRoundOnly", junk: () => 1 } });
 ok(s0.v === 1 && s0.rev === 0 && s0.mode === "tactical" && s0.kind === "combat" && s0.round === 0 && s0.phase === "idle", "a new state");
-eq(Object.keys(s0).sort(), ["counters", "effects", "free", "init", "items", "karma", "kind", "knowledge", "ledger", "mode", "npc", "opts", "phase", "prompts", "revealed", "rev", "round", "sched", "seen", "seq", "stack", "statuses", "summons", "tokens", "triggers", "v"].sort(), "every field of the spec's State is there (plus seq, sched)");
+eq(Object.keys(s0).sort(), ["counters", "effects", "evSeq", "free", "init", "items", "karma", "kind", "knowledge", "ledger", "mode", "npc", "opts", "phase", "prompts", "revealed", "rev", "round", "sched", "seen", "seq", "stack", "statuses", "summons", "tokens", "triggers", "txOpen", "v"].sort(), "every field of the spec's State is there (plus seq, sched)");
 eq(s0.opts, { redraw: "firstRoundOnly", pushOrder: "afterDefence", playersEnd: true }, "options are typed");
 eq(S.newState({ mode: "zzz", kind: "zzz" }).mode + S.newState({ mode: "zzz", kind: "zzz" }).kind, "freecombat", "unknown mode and kind fall back");
 eq(S.parse(S.serialize(s0)), s0, "serialize / parse round trip");

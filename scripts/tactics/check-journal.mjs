@@ -1,5 +1,5 @@
 // node scripts/tactics/check-journal.mjs -- journal primitives (spec 15): paths, reversible ops, fine-grained diffs, the log cap, undo planning, drift.
-import { ok, eq, done, seeded } from "./testkit.mjs";
+import { ok, eqc as eq, done, seeded } from "./testkit.mjs";
 import * as J from "./journal-pure.mjs";
 
 /* ---- paths */
@@ -51,7 +51,9 @@ eq(J.inverseEffect({ t: "actor", uuid: "A", path: "health", from: 5, to: 2 }), {
 eq(J.inverseEffect({ t: "item+", actorUuid: "A", itemId: "I", data: {} }).t, "itemDelete", "a created item is deleted");
 eq(J.inverseEffect({ t: "item-", actorUuid: "A", data: { _id: "I" } }), { t: "itemCreate", actorUuid: "A", data: { _id: "I" }, keepId: true }, "a deleted item is recreated with its id");
 eq(J.inverseEffect({ t: "tokenMove", sceneId: "S", tokenId: "T", from: { x: 1 }, to: { x: 2 } }).to, { x: 1 }, "token move back");
-eq(J.inverseEffect({ t: "zones", call: "setZone", zone: "z", patch: { wrecked: true }, inverse: { call: "setZone", zone: "z", patch: { wrecked: null } } }), { t: "zones", call: "setZone", zone: "z", patch: { wrecked: null }, isInverse: true }, "zones: the adapter-built inverse");
+eq(J.inverseEffect({ t: "zones", op: { op: "zone", zone: "z", patch: { wrecked: true } }, inverse: { op: "zone", zone: "z", patch: { wrecked: null } } }), { t: "zones", op: { op: "zone", zone: "z", patch: { wrecked: null } }, isInverse: true }, "zones: the inverse op the zones API returned is given back to it");
+eq(J.inverseEffect({ t: "zones", op: { op: "zone", zone: "z", patch: { wrecked: true } } }), null, "zones: a write that returned no inverse cannot be undone by the journal");
+ok(J.same({ a: 1, b: { c: 2, d: [1, { e: 1, f: 2 }] } }, { b: { d: [1, { f: 2, e: 1 }], c: 2 }, a: 1 }) && !J.same({ a: [1, 2] }, { a: [2, 1] }), "equal as data: key order does not matter (the stored state is rebuilt key by key), list order does");
 eq(J.inverseEffect({ t: "zones", call: "setZone" }), null, "a zone op without an inverse cannot be undone (and is reported)");
 eq(J.inverseEffect({ t: "message", id: "M" }), { t: "messageStrike", id: "M" }, "messages are struck through, never deleted");
 for (const t of J.OP_TYPES) ok(t === "state" || J.inverseEffect({ t, inverse: {}, data: {} }) != null, `op type ${t} has an inverse`);

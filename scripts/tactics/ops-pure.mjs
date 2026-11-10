@@ -1,14 +1,17 @@
 /* Tactical combat (package P1): the REDUCER of the P1 operations and the round / turn driver (spec sections 3, 4.4, 6.1, 6.8, 12.2, 14.2).
    Pure ES module: NO Foundry globals; randomness only through ctx.rng. Node-tested by check-ops.mjs.
    reduce(state, action, ctx) -> { ok, changed, state, events, effects } | { ok:false, changed:false, error:{ key, code, params } }
-     ctx = { user, staff, owns(combatantId), parts:[Participant], rng, playersEnd?, sceneFacts? }
+     ctx = { user, staff, owns(combatantId), parts:[Participant], rng, playersEnd?, sceneFacts?, hold? }
+       hold: the caller runs due triggers as action instances (director-pure.mjs): after a blocking trigger queue (round start, round end)
+             the round waits in `sched.hold` until the caller sends `resume`; without it (the reducer alone) the round goes straight on
      Participant = { id, hero, owners:[userId], defeated, challenge, summonOf, veteran, reflexes, resolve }   (read live by the executor)
      events  = what happened, for the hooks of spec 16 (the executor adds combat, seq, at)
      effects = requests to the executor: { type:"stress", combatant, n, source } | { type:"recover", lines } | { type:"trigger", trigger }
                | { type:"roundEnd", round } | { type:"abortInstances", actor }
    The executor is the only caller that writes (spec 1.1); a player's request arrives here re-validated from scratch.
-   Operations of later packages (declare, amend, cancel, help, move, askException, other and the overrides of spec 14.1) are not known
-   here and answer `unknown`; P2 adds them through registerOp(). Citation marks as in dev/combat-spec.md 0.1. */
+   The operations of the action engine (declare, amend, cancel, help, move, askException, other and the overrides of spec 14.1) are not
+   known here and answer `unknown`: director-pure.mjs sends each request to this reducer or to engine-pure.mjs.
+   Citation marks as in dev/combat-spec.md 0.1. */
 import * as S from "./state-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
 import * as I from "./initiative-pure.mjs";
@@ -90,7 +93,7 @@ export function normalize(req, { staff = false } = {}) {
   try {
     switch (op) {
       case "endTurn": need("actor", id(req.actor)); if (Number.isFinite(Number(req.round))) a.round = Math.trunc(Number(req.round)); if (id(req.slot)) a.slot = req.slot; if (staff && req.force) a.force = true; break;
-      case "holdOff": need("actor", id(req.actor)); need("with", id(req.with)); break;
+      case "holdOff": need("actor", id(req.actor)); need("with", id(req.with)); if (staff && req.force === true) a.force = true; break;
       case "mark": need("actor", id(req.actor)); need("unit", ["full", "quick"].includes(req.unit) ? req.unit : undefined); a.on = req.on !== false; break;
       case "answer": {
         need("prompt", id(req.prompt));
@@ -102,7 +105,8 @@ export function normalize(req, { staff = false } = {}) {
       }
       case "start": a.mode = S.MODES.includes(req.mode) ? req.mode : undefined; a.kind = S.KINDS.includes(req.kind) ? req.kind : undefined; a.surprised = idList(req.surprised, 400) ?? [];
         a.groups = Array.isArray(req.groups) ? req.groups.slice(0, 100).map((g) => idList(g) ?? []).filter((g) => g.length > 1) : []; a.opts = isObj(req.opts) ? S.plain(req.opts) : {}; a.restart = req.restart === true; break;
-      case "stop": case "nextTurn": case "nextRound": case "prevTurn": case "roster": break;
+      case "stop": case "roster": case "resume": break;
+      case "nextTurn": case "nextRound": case "prevTurn": if (staff && req.force === true) a.force = true; break;
       case "setCard": need("slot", id(req.slot)); need("card", Number.isInteger(req.card) ? req.card : undefined); a.swap = req.swap === true; break;
       case "swapCards": need("a", id(req.a)); need("b", id(req.b)); break;
       case "group": need("members", idList(req.members)); break;
@@ -122,7 +126,7 @@ export function normalize(req, { staff = false } = {}) {
       case "triggerRemove": need("id", id(req.id)); break;
       case "setMode": need("mode", S.MODES.includes(req.mode) ? req.mode : undefined); break;
       case "setFree": if (id(req.combatant)) a.combatant = req.combatant; a.on = req.on !== false; break;
-      case "endScene": a.skip = idList(req.skip, 400) ?? []; a.order = idList(req.order, 400) ?? []; a.skipTriggers = idList(req.skipTriggers, 400) ?? []; break;
+      case "endScene": if (req.force === true) a.force = true; a.skip = idList(req.skip, 400) ?? []; a.order = idList(req.order, 400) ?? []; a.skipTriggers = idList(req.skipTriggers, 400) ?? []; break;
       case "challengeFail": need("challenge", id(req.challenge)); break;
       default: {
         const n = EXTRA_NORMALIZE[op];
@@ -200,6 +204,7 @@ function openTurn(W, nx) {
     const moment = { at: "nextTurnOf", who: nx.member };                                                         // "until your next turn" ends here [B1634], [B1772]
     s.triggers = Sch.expire(s.triggers, moment).keep;
     s.tokens = Sch.expire(s.tokens, moment).keep;
+    endEffects(W, moment);
     queueOnce(W, { at: "turnStart", combatant: nx.member }, `ts:${nx.member}`, false);
   }
   ev(W, "turnStart", { slot: nx.slot, combatant: nx.member, ...(r.resumed ? { resumed: true } : {}) });
@@ -211,14 +216,24 @@ function closeTurn(W, member) {
   for (const m of summonsOf(W, member)) s.ledger[m] = Lg.turnEnd(ledgerOf(W, m));
   for (const id of Object.keys(s.ledger)) s.ledger[id] = Lg.expireTurnOf(s.ledger[id], member);                  // [B1708]
   s.tokens = (s.tokens ?? []).filter((t) => !(t?.expires?.at === "turnEndOf" && t.expires.who === member));     // spec 6.2 expiry "turnEndOf"
+  endEffects(W, { at: "turnEndOf", who: member });
   queueOnce(W, { at: "turnEnd", combatant: member }, `te:${member}:${slotId}`, false);
   ev(W, "turnEnd", { slot: slotId, combatant: member });
   s.init = I.memberDone(s.init, member);
 }
 
+/* Ongoing effects that end at a scheduler point (spec 6.5) take along what they registered: their tokens, triggers and statuses. */
+function endEffects(W, point) {
+  const r = Sch.endEffects(W.s, point);
+  if (!r.ended.length) return;
+  Object.assign(W.s, r.state);
+  for (const e of r.ended) ev(W, "effectEnd", { effect: { id: e.id, kind: e.kind, source: e.source, holder: e.holder, zones: e.zones } });
+}
+
 /* run the automatic part of the round until a human is needed (spec 4.4) */
 function run(W) {
   const s = W.s, parts = W.ctx.parts ?? [];
+  if (s.sched.hold) return;                                       // the engine is running the triggers of a blocking queue (ctx.hold)
   let rounds = 0;
   for (let guard = 0; guard < 2000; guard++) {
     if (s.phase === "draw") {
@@ -252,6 +267,7 @@ function run(W) {
       if (!queueOnce(W, { at: "roundEnd" }, "re", true)) return;
       s.triggers = Sch.expire(s.triggers, { at: "roundEnd" }).keep;
       s.tokens = Sch.expire(s.tokens, { at: "roundEnd" }).keep;
+      endEffects(W, { at: "roundEnd" });
       ev(W, "roundEnd", { order: publicOrder(s) });
       W.effects.push({ type: "roundEnd", round: s.round });      // the challenge clock runs down here [R22] (executor)
       if (++rounds > 2) { s.phase = "turns"; return; }           // a round in which nobody could act, twice in a row: stop instead of spinning
@@ -382,13 +398,16 @@ const OPS = {
         const ids = p.options.map((o) => o.id), v = isObj(a.value) ? a.value : {};
         const skip = new Set(v.skip ?? []);
         const order = [...(v.order ?? []).filter((x) => ids.includes(x)), ...ids.filter((x) => !(v.order ?? []).includes(x))];
+        let ran = 0;
         for (const id of order) {
           const t = s.triggers.find((x) => x.id === id);
           if (!t || skip.has(id)) continue;
           ev(W, "trigger", { at: t.at, subject: t.subject, run: t.run, source: t.source });
           W.effects.push({ type: "trigger", trigger: S.clone(t) });
           s.triggers = Sch.ran(s.triggers, id);
+          ran++;
         }
+        if (W.ctx.hold && ran && p.data?.blocks) s.sched.hold = String(p.data.key ?? p.id);      // the round goes on when the caller sends `resume`
         drop(); break;
       }
       case "grantConsent": {
@@ -454,31 +473,11 @@ const OPS = {
     run(W);
   },
   ledgerEdit(W, a) {
-    const s = W.s, L = s.ledger[a.combatant];
-    if (!L) return err("gone");
-    let r = null;
-    switch (a.edit) {
-      case "grant": {
-        const g = isObj(a.grant) ? (a.grant.template ? { ...Lg.grantTemplate(a.grant.template, a.grant), ...(a.grant.source ? { source: a.grant.source } : {}) } : a.grant) : null;
-        if (!g || !g.unit) return err("badInput");
-        r = Lg.addGrant(L, g, a.combatant);
-        if (!r.ok) return err("illegal", { reason: r.reason });
-        if (r.grant.needsConsent && r.grant.consent === "pending") addPrompt(W, { kind: "grantConsent", step: "grant", to: addressees(W, a.combatant), about: a.combatant, data: { combatant: a.combatant, grant: r.grant.id, kind: r.grant.kind, from: r.grant.from ?? null },
-          options: [{ id: "yes", label: "yes" }, { id: "no", label: "no" }] });       // [plan 5.3], [B1708]
-        break;
-      }
-      case "revoke": r = Lg.removeGrant(L, a.grant); break;
-      case "consent": r = Lg.setConsent(L, a.grant, a.yes === true); break;
-      case "void": r = Lg.voidEntry(L, a.entry); break;
-      case "entry": r = Lg.pay(L, { cost: a.cost ?? "quick", onTurn: isOnTurn(s, a.combatant), force: true, grant: typeof a.grant === "string" ? a.grant : undefined }, { action: a.action ?? "gm", tags: a.tags ?? [], slot: s.init.cur ?? undefined }); break;
-      case "loseTurn": r = { ok: true, ledger: Lg.loseNextTurn(L, a.source ?? null) }; break;      // [L7]
-      case "clearLostTurn": r = { ok: true, ledger: Lg.clearLostTurn(L) }; break;
-      case "noFull": r = { ok: true, ledger: Lg.loseFull(L, a.source ?? null) }; break;            // [L8]
-      case "clearNoFull": r = { ok: true, ledger: Lg.clearNoFull(L) }; break;
-      default: return err("badInput");
-    }
-    if (!r?.ok) return err("illegal", { reason: r?.reason ?? "ledger" });
-    s.ledger[a.combatant] = r.ledger;
+    const r = ledgerEditOf(W.s, a);
+    if (!r.ok) return err(r.code, r.params);
+    W.s.ledger[a.combatant] = r.ledger;
+    if (r.consent) addPrompt(W, { kind: "grantConsent", step: "grant", to: addressees(W, a.combatant), about: a.combatant, data: { combatant: a.combatant, grant: r.consent.id, kind: r.consent.kind, from: r.consent.from ?? null },
+      options: [{ id: "yes", label: "yes" }, { id: "no", label: "no" }] });       // [plan 5.3], [B1708]
   },
   triggerAdd(W, a) {
     const t = S.sanitizeTrigger({ ...a.trigger, id: S.nextId(W.s, "t"), runs: 0 });
@@ -497,6 +496,8 @@ const OPS = {
     const s = W.s, ids = a.combatant ? [a.combatant] : s.init.slots.flatMap((x) => x.members);
     for (const id of ids) { if (a.on) s.free[id] = 1; else delete s.free[id]; }
   },
+  /* the engine finished the trigger instances of a blocking queue (ctx.hold): the round goes on */
+  resume(W) { if (!W.s.sched.hold) return { changed: false }; delete W.s.sched.hold; run(W); },
   /* the end-of-scene procedure (spec 6.8), run by the GM as one confirmed queue */
   endScene(W, a) {
     const s = W.s;
@@ -511,7 +512,8 @@ const OPS = {
       W.effects.push({ type: "trigger", trigger: S.clone(t) });
     }
     const c = Sch.sceneEndCleanup(s);
-    s.triggers = c.triggers; s.tokens = c.tokens; s.effects = c.effects; s.counters = c.counters;
+    s.triggers = c.triggers; s.tokens = c.tokens; s.effects = c.effects; s.counters = c.counters; s.statuses = c.statuses;
+    delete s.sched.hold;
     for (const e of c.ended) ev(W, "effectEnd", { effect: { id: e.id, kind: e.kind, source: e.source, holder: e.holder, zones: e.zones } });
     if (s.init.curMember) s.ledger[s.init.curMember] = Lg.turnEnd(ledgerOf(W, s.init.curMember));
     for (const sl of s.init.slots) if (sl.state === "active") sl.state = "done";
@@ -529,6 +531,34 @@ const OPS = {
     ev(W, "challenge", { challenge: a.challenge, state: "failed" });
   }
 };
+
+/** One GM edit of a ledger (spec 14.2 `ledgerEdit`), without writing: used by the reducer's operation above and by the engine's journaled
+    edit (engine-pure.mjs gmEdit). a = { combatant, edit, grant?, entry?, cost?, action?, tags?, yes?, source? }
+    -> { ok, ledger, consent?: Grant (a grant that now waits for its receiver's consent) } | { ok:false, code, params } */
+export function ledgerEditOf(state, a) {
+  const L = state?.ledger?.[a?.combatant];
+  if (!L) return { ok: false, code: "gone", params: {} };
+  let r = null;
+  switch (a.edit) {
+    case "grant": {
+      const g = isObj(a.grant) ? (a.grant.template ? { ...Lg.grantTemplate(a.grant.template, a.grant), ...(a.grant.source ? { source: a.grant.source } : {}) } : a.grant) : null;
+      if (!g || !g.unit) return { ok: false, code: "badInput", params: {} };
+      r = Lg.addGrant(L, g, a.combatant);
+      if (!r.ok) return { ok: false, code: "illegal", params: { reason: r.reason } };
+      return { ok: true, ledger: r.ledger, ...(r.grant.needsConsent && r.grant.consent === "pending" ? { consent: r.grant } : {}) };
+    }
+    case "revoke": r = Lg.removeGrant(L, a.grant); break;
+    case "consent": r = Lg.setConsent(L, a.grant, a.yes === true); break;
+    case "void": r = Lg.voidEntry(L, a.entry); break;
+    case "entry": r = Lg.pay(L, { cost: a.cost ?? "quick", onTurn: isOnTurn(state, a.combatant), force: true, grant: typeof a.grant === "string" ? a.grant : undefined }, { action: a.action ?? "gm", tags: a.tags ?? [], slot: state.init.cur ?? undefined }); break;
+    case "loseTurn": r = { ok: true, ledger: Lg.loseNextTurn(L, a.source ?? null) }; break;      // [L7]
+    case "clearLostTurn": r = { ok: true, ledger: Lg.clearLostTurn(L) }; break;
+    case "noFull": r = { ok: true, ledger: Lg.loseFull(L, a.source ?? null) }; break;            // [L8]
+    case "clearNoFull": r = { ok: true, ledger: Lg.clearNoFull(L) }; break;
+    default: return { ok: false, code: "badInput", params: {} };
+  }
+  return r?.ok ? { ok: true, ledger: r.ledger } : { ok: false, code: "illegal", params: { reason: r?.reason ?? "ledger" } };
+}
 
 function removeOne(W, id) {
   const s = W.s;

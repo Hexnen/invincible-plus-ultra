@@ -1,8 +1,8 @@
 // node scripts/tactics/check-desk.mjs -- models of the GM desk and of the player surface: a whole attack driven ONLY through the requests the models offer.
-import { ok, eq, done, Table } from "./testkit.mjs";
+import { ok, eqc as eq, done, Table } from "./testkit.mjs";
 import * as D from "./desk-pure.mjs";
 import * as V from "./view-pure.mjs";
-import * as P1 from "./p1-standin.mjs";
+import * as P1 from "./economy-pure.mjs";
 
 const mk = () => { const T = new Table(); T.hero("H1", "p1").hero("H2", "p2").npc("N1", { health: 5 }); T.order(["H1", "N1", "H2"]).turn("H1"); return T; };
 const ctx = (T, online = () => true) => ({ c: (id) => T.c[id] ?? null, online, P1 });

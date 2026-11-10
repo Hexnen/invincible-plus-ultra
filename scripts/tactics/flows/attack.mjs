@@ -6,7 +6,7 @@
    invented rule): wrecking, charge, area and full auto, Knockback / Slam movement, Bang Heads / Trick Shot extra targets, Disarm, Deadly Hit bookkeeping beyond the
    injury bonus, minion losses from area hits [OQ-1], the dodge move. */
 import { attack, stunts, damage, crits, dice, zones } from "../../rules/index.mjs";
-import * as P1 from "../p1-standin.mjs";
+import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 import * as C from "../catalog-pure.mjs";
 import * as K from "./kit.mjs";

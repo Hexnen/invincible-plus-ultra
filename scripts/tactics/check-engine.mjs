@@ -1,7 +1,10 @@
 // node scripts/tactics/check-engine.mjs -- the action engine end to end with scripted answers standing in for the humans (no Foundry).
-import { ok, eq, done, Table } from "./testkit.mjs";
-import * as P1 from "./p1-standin.mjs";
+import { ok, eqc as eq, done, Table } from "./testkit.mjs";
+import * as P1 from "./economy-pure.mjs";
 import * as M from "./mods-pure.mjs";
+import * as Lg from "./ledger-pure.mjs";
+/* the real end of a turn (ops-pure.mjs through the director): by the owner, or by the GM for an NPC */
+const endTurn = (T, user, actor) => T.req(user, { op: "endTurn", actor, round: T.state.round, slot: T.state.init.cur, ...(user === "gm" ? { force: true } : {}) });
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const snap = (T) => JSON.stringify({ ledger: T.state.ledger, statuses: T.state.statuses, tokens: T.state.tokens, counters: T.state.counters, karma: T.state.karma, effects: T.state.effects });
@@ -52,7 +55,7 @@ const PHASE = { id: "phase", flow: "plain", cost: "quick", src: [1940], stress: 
   eq(T.state.stack.length, 0, "A: the action closed");
   eq(T.c.N1.health, 2, "A: damage 2 doubled before Armor 1 = 3, Health 5 -> 2");
   eq(T.log.list.length, 1, "A: one transaction in the journal");
-  eq(T.log.list[0].ops.map((o) => o.t), ["state", "state", "actor", "state"], "A: ops = attacker's entry, defender's entry, Health, history facts");
+  eq(T.log.list[0].ops.map((o) => o.t), ["state", "state", "actor"], "A: ops = attacker's entry, defender's entry, Health (the history facts are derived from the entries, no op of their own)");
   eq(Object.keys(T.state.prompts).length, 0, "A: no prompt left behind");
   eq(Object.keys(T.state.txOpen).length, 0, "A: no open transaction left");
   eq(T.evs("actionClosed").length, 1, "A: actionClosed emitted");
@@ -231,7 +234,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   await T.roll("roll", 2);
   const tok = T.state.tokens[0];
   eq([tok.holder, tok.dice, tok.uses, tok.needsGm, tok.expires.at, tok.from], ["H2", 2, 1, 1, "roundEnd", "H1"], "H: +1 die per six on one roll this round, GM-confirmed purpose");
-  T.state = P1.endTurn(T.state, "H1").state; T.turn("H2");
+  await endTurn(T, "p1", "H1"); T.turn("H2");
   await T.req("p2", slug("H2", "N2", { tokens: [tok.id, "nope"] }));
   await T.answer("gm", "reaction", "pass", "N2");
   eq(T.prompt("tokenConfirm")?.data.tokens.map((t) => t.dice), [2], "H: the GM confirms that the roll carries out the order");
@@ -319,7 +322,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   await T.req("p1", slug("H1", "N1"));
   eq([T.top().step, T.prompts().length, Object.values(T.state.prompts)[0].auto, T.lastRequest().pool.mods], ["roll", 0, { option: "pass", reason: "unaware" }, [{ source: "unaware", dice: 2 }]], "J: an unaware target cannot block: passed automatically, +2 for the attacker");
   const U = base(); U.turn("N1");
-  U.state = { ...U.state, ledger: { ...U.state.ledger, H2: { ...P1.newLedger(1), grants: P1.newLedger(1).grants.map((g) => ({ ...g, usedBy: "x" })) } } };
+  U.state = { ...U.state, ledger: { ...U.state.ledger, H2: { ...Lg.newLedger(1), grants: Lg.newLedger(1).grants.map((g) => ({ ...g, usedBy: "x" })) } } };
   await U.gm(slug("N1", "H2"));
   eq([U.top().step, Object.values(U.state.prompts)[0].auto.reason], ["roll", "noOption"], "J: no quick action left -> never shown");
   const V = base();
@@ -390,7 +393,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   await H.req("p1", slug("H1", "N1"));
   eq(code(await H.req("p2", { op: "help", inst: H.top().id, helper: "H2" })), "ok", "K: help offered");
   eq([H.top().decl.helpers, P1.budget(H.state, "H2").full], [[{ id: "H2", consent: "yes" }], "used"], "K: the helper's full action is spent on the helped character's turn");
-  H.state = { ...H.state, ledger: { ...H.state.ledger, N2: P1.pay(H.state, "N2", { id: "zz", action: "x", inst: "x", cost: "full", pay: "A" }).ledger } };
+  H.state = { ...H.state, ledger: { ...H.state.ledger, N2: P1.pay(H.state, "N2", "full", { force: true }, { action: "x" }).ledger } };
   await H.gm({ op: "help", inst: H.top().id, helper: "N2" });
   eq([H.prompt("helpOverride")?.about, H.top().decl.helpers[1]], ["N2", { id: "N2", consent: "pending" }], "K: no free full action -> refused by the interface, GM card");
   await H.answer("gm", "helpOverride", "accept");
@@ -445,7 +448,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   await T.roll("attack", 3);
   eq([T.state.stack.length, T.c.N1.health, M.hasStatus(T.state, "N1", "grappled"), M.hasStatus(T.state, "H1", "grappling"), T.prompts().length], [0, 5, true, true, 0], "N: the grapple that takes hold: no damage, no stunts, statuses set");
   eq(M.conditions(T.state, "N1").held, true, "N: grappled maps to the library's 'held'");
-  T.state = P1.endTurn(T.state, "H1").state; T.turn("H2");
+  await endTurn(T, "p1", "H1"); T.turn("H2");
   await T.req("p2", slug("H2", "N1"));
   eq([Object.values(T.state.prompts)[0].auto?.reason, T.lastRequest().pool.mods], ["noOption", [{ source: "restrained", dice: 2 }]], "N: a held target cannot defend; +2 in slugfest");
   // shooting
@@ -481,7 +484,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   await R.roll("attack", 1);
   eq([R.c.N1.health, R.c.N1.resolve], [5, 3], "N: damage turned into stress lowers Resolve, Armor not used");
   // minions attack together
-  const Mn = base(); Mn.npc("G1", { kind: "minions", members: 5, health: 5 }); Mn.state = P1.setOrder(Mn.state, [{ members: ["G1"] }, { members: ["H1"] }]); Mn.turn("G1");
+  const Mn = base(); Mn.npc("G1", { kind: "minions", members: 5, health: 5 }); Mn.order(["G1", "H1", "N1", "H2", "N2"]);
   await Mn.gm(slug("G1", "H1"));
   await Mn.req("p1", { op: "answer", prompt: Mn.prompt("reaction").id, value: "pass" });
   eq(Mn.lastRequest().pool.mods, [{ source: "minions", dice: 4 }], "N: five minions attack with the helping rule: +4");
@@ -491,7 +494,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
 {
   const T = base();
   await T.req("p1", slug("H1", "N1")); await T.answer("gm", "reaction", "pass", "N1"); await T.roll("attack", 1);
-  T.state = P1.endTurn(T.state, "H1").state; T.turn("N1"); T.state = P1.endTurn(T.state, "N1").state; T.turn("H2");
+  await endTurn(T, "p1", "H1"); T.turn("N1"); await endTurn(T, "gm", "N1"); T.turn("H2");
   await T.req("p2", slug("H2", "N1")); await T.answer("gm", "reaction", "pass", "N1"); await T.roll("attack", 1);
   eq([T.c.N1.health, T.log.list.length], [3, 2], "O: two attacks on N1");
   const first = T.log.list[0].id;
@@ -512,8 +515,10 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   await U.gm({ op: "zoneSet", zone: "z1", patch: { wrecked: true } });
   eq(U.zoneMarks.z1.wrecked, true, "O: zone command performed");
   await U.gm({ op: "undo", tx: U.log.list.at(-1).id });
-  eq([U.zoneMarks.z1.wrecked, U.zonesLog.at(-1).undo.call], [null, "setZone"], "O: undo applies the zone inverse");
-  eq(code(await U.gm({ op: "setCard", combatant: "H1", card: 3 })), "unknown", "O: initiative operations belong to P1");
+  eq([U.zoneMarks.z1.wrecked ?? null, U.zonesLog.at(-1).undo], [null, { op: "zone", zone: "z1", patch: { wrecked: null } }], "O: undo gives the inverse the zones API returned back to it");
+  eq(code(await U.gm({ op: "zoneSet", zone: "z1", patch: { smoke: true } })), "badInput", "O: the engine never invents a zone state");
+  const sl = U.state.init.slots.find((x) => x.members.includes("H1"));
+  eq([code(await U.gm({ op: "setCard", combatant: "H1", card: 3 })), code(await U.gm({ op: "setCard", slot: sl.id, card: 10 })), U.state.init.slots.find((x) => x.id === sl.id).card], ["badInput", "ok", 10], "O: initiative operations run in the round driver, through the same door");
   eq(code(await U.gm({ op: "explode" })), "badInput", "O: unknown operation");
 }
 

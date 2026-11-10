@@ -1,8 +1,10 @@
 /* Tactical combat, package P2: the ACTION ENGINE (spec sections 5, 12.2, 14, 15). NO Foundry globals: everything that touches the world goes
    through `host`, so the whole engine runs in node with a scripted host (check-engine.mjs) and in Foundry with the executor's host (engine.mjs).
+   The engine is never called directly by the executor: director-pure.mjs is the one entry (it also runs the turn and round operations).
 
    handle({ state, log }, input, host) -> { state, log, env, events, changed }
      input  { t:"req", user:{ id, staff }, rid, req:{ op, ... } }     a request (already normalised by relay-pure.mjs); players and the GM use the same door
+            { t:"sys", effects:[...] }                               what the round driver hands over (director-pure.mjs): stress, recovery, due triggers, aborts
             { t:"roll", inst, key, rid, author, sixes, ones, pushed, pushable, messageId?, secret? }   a verified dice result read from chat (spec 11)
             { t:"tick" }                                             drive the stack again (reconnect, a document changed)
      host   { facts() -> Facts, perform(effect) -> Promise<{ op?, result? }>, now() -> ms, setting(key) }
@@ -16,12 +18,17 @@
      { t:"status+", who, status } / { t:"status-", who, id }            { t:"crit", who, n, id }      embeds the injury item (system adapter)
      { t:"dice", key, n }               dice rolled by the executor (hazards, injury D6); the faces come back in inst.data.res[key]
      { t:"roll", key, who, attr, pool, dice, maxPush, secret, label }   asks the owning user to roll; the result arrives later as input "roll"
-     { t:"fact", who, facts }           history facts (spec 4.2)        { t:"karma", note }           { t:"zones", call, ... }   { t:"message", ... } */
+     { t:"karma", note }                { t:"zones", op }  one write of the zones API (`apply`); its inverse op is journaled       { t:"message", ... }
+   The history facts of spec 4.2 are not an effect: they are derived from the ledger entries (ledger-pure.mjs factsOf). */
 import { damage } from "../rules/index.mjs";
 import * as J from "./journal-pure.mjs";
-import * as P1 from "./p1-standin.mjs";
+import * as P1 from "./economy-pure.mjs";
+import * as S from "./state-pure.mjs";
+import * as Lg from "./ledger-pure.mjs";
+import { ledgerEditOf } from "./ops-pure.mjs";
 import * as M from "./mods-pure.mjs";
 import * as C from "./catalog-pure.mjs";
+import * as ZP from "./zones-pure.mjs";
 import * as Attack from "./flows/attack.mjs";
 import { roll as Roll, other as Other, hazard as Hazard, composite as Composite } from "./flows/simple.mjs";
 
@@ -68,7 +75,7 @@ async function perform(X, txId, effect, inst = null, step = null, tag = null) {
   const r = (await X.host.perform(effect)) ?? {};
   if (r.op) { record(X, txId, r.op, inst, step, tag); X.changed = true; }
   X.facts = X.host.facts();
-  return r.result;
+  return r.ok === false ? { ok: false, reason: r.reason } : r.result;                    // a refused command (the map said no) is the caller's to answer
 }
 function openTx(X, { inst = null, label = null }) {
   const id = nextId(X, "x");
@@ -83,9 +90,14 @@ function closeTx(X, txId, label) {
   if (tx.ops.length || label?.keep) X.log = J.pushLog(X.log, J.closeTx(tx, label ? { pub: label.pub ?? "", gm: label.gm ?? "" } : tx.label));
   X.changed = true;
 }
+/* [L5] [B2293]: every ledger is new at the start of a round and nothing is carried over. An undo that reaches back over a round boundary
+   therefore leaves the ledger writes of the old round alone (they no longer exist); everything else is restored. [D] */
+const liveOp = (X, op, round) => (op.t === "state" && round != null && round !== X.state.round
+  ? { ...op, patch: op.patch.filter(([p]) => p[0] !== "ledger"), inverse: op.inverse.filter(([p]) => p[0] !== "ledger") } : op);
 /** Undo a list of ops (newest first). State ops are applied here, document ops go to the host as their inverse request. */
-async function undoOps(X, ops) {
-  for (const op of [...ops].reverse()) {
+async function undoOps(X, ops, round = null) {
+  for (const op0 of [...ops].reverse()) {
+    const op = liveOp(X, op0, round);
     if (op.t === "state") X.state = J.applyStateOp(X.state, op, true);
     else { const eff = J.inverseEffect(op); if (eff) await X.host.perform({ ...eff, undo: 1 }); }
   }
@@ -98,12 +110,11 @@ async function applyEffect(X, I, e, step) {
   switch (e.t) {
     case "state": write(X, tx, e.path, e.to, I, step); return false;
     case "pay": {
-      const cp = P1.canPay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense });
-      if (!cp.ok) { (I.data.unpaid ??= {})[e.key] = cp.reason; return false; }           // was legal when offered; shown to the GM instead of guessing
-      const id = nextId(X, "e");
-      const { ledger } = P1.pay(X.state, e.who, { id, action: e.action, inst: I.id, cost: e.cost, pay: cp.pay, interrupt: e.interrupt, tags: e.tags, target: e.target });
-      write(X, tx, ["ledger", e.who], ledger, I, step, e.own ? "cost" : null);
-      (I.data.paid ??= {})[e.key] = id;
+      const r = P1.pay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense, cause: e.cause, force: !!e.force }, { action: e.action, inst: I.id, tags: e.tags ?? (e.defense ? ["defence"] : []), target: e.target, onTurnOf: e.onTurnOf });
+      if (!r.ok) { (I.data.unpaid ??= {})[e.key] = r.reason; return false; }             // was legal when offered; shown to the GM instead of guessing
+      write(X, tx, ["ledger", e.who], r.ledger, I, step, e.own ? "cost" : null);
+      (I.data.paid ??= {})[e.key] = r.entryId;
+      if (r.stress > 0) await applyEffect(X, I, { t: "stress", who: e.who, n: r.stress, cost: e.own ? 1 : 0 }, step);     // the price of the unit that paid (spec 4.3; Quickness [R1], a defence grant [B2105])
       return false;
     }
     case "stress": {
@@ -127,13 +138,15 @@ async function applyEffect(X, I, e, step) {
       if (isObj(res) && Number.isFinite(res.sixes)) { Object.assign(I.rolls[e.key], { sixes: res.sixes, ones: res.ones ?? 0, pushed: res.pushed ?? 0, pushable: !!res.pushable, messageId: res.messageId }); return true; }
       return false;
     }
-    case "fact": write(X, tx, ["ledger", e.who], P1.noteFact(P1.ledgerOf(X.state, e.who), e.facts), I, step); return false;
+    case "fact": return false;                                                             // spec 4.2: the facts of a turn are derived from the ledger entries (their tags), nothing is written twice
     case "karma": write(X, tx, ["karma"], [...X.state.karma, { id: nextId(X, "k"), round: X.state.round, ...e.note }], I, step); return false;
     case "zones": await perform(X, tx, { ...e, tx }, I, step); return false;
     case "message": await perform(X, tx, { ...e, tx }, I, step); return false;
     default: return false;
   }
 }
+/* who answers for a combatant: its player owners, else the GM desk (spec 5.4) */
+const addresseeOf = (X, cid) => { const c = X.facts.c(cid), users = (c?.owners ?? []).filter((u) => !X.facts.user(u)?.staff); return !c || c.npc || !users.length ? "gm" : { users }; };
 function openPrompt(X, I, spec, step) {
   const id = nextId(X, "p");
   const p = { id, inst: I?.id ?? null, step, kind: spec.kind, to: spec.to, options: spec.options ?? [] };
@@ -210,7 +223,7 @@ async function abortInst(X, id, refund) {
     const ids = new Set([inst.id, ...Object.keys(inst.data.children ?? {})]);
     if (tx) {
       const mine = tx.ops.filter((o) => ids.has(o.i)), undo = mine.filter((o) => !(own && !refund && o.cost));
-      await undoOps(X, undo);
+      await undoOps(X, undo, tx.round);
       const left = tx.ops.filter((o) => !undo.includes(o));
       X.state = { ...X.state, txOpen: { ...X.state.txOpen, [inst.tx]: { ...tx, ops: left } } };
     }
@@ -271,7 +284,7 @@ async function rewind(X, id, step) {
   const later = new Set(flow.STEPS.slice(idx)), tx = X.state.txOpen[inst.tx];
   if (tx) {
     const undo = tx.ops.filter((o) => o.i === id && later.has(o.step));
-    await undoOps(X, undo);
+    await undoOps(X, undo, tx.round);
     X.state = { ...X.state, txOpen: { ...X.state.txOpen, [inst.tx]: { ...X.state.txOpen[inst.tx], ops: X.state.txOpen[inst.tx].ops.filter((o) => !undo.includes(o)) } } };
   }
   dropPrompts(X, (p) => p.inst === id && later.has(p.step));
@@ -343,7 +356,7 @@ async function opDeclare(X, a) {
   pushInst(X, inst);
   const I = J.clone(inst);
   if (entry.cost === "full" || entry.cost === "quick") {
-    await applyEffect(X, I, { t: "pay", who: actor, cost: entry.cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", tags: entry.tags, target: decl.targets }, "declare");
+    await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : entry.cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", tags: entry.tags, target: decl.targets }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
     I.entry = I.data.paid?.own ?? null;
   }
   if (!l.ok) {                                                                              // an illegal option with a request for an exception (spec 9.12): a desk card
@@ -439,16 +452,12 @@ async function opHelp(X, a) {
   if (!P1.isId(a.helper) || !owns(X, a.helper)) return bad("notOwner");
   if (inst.locked) return bad("locked");
   if (a.helper === inst.actor || (inst.decl.helpers ?? []).some((h) => h.id === a.helper)) return bad("badInput");
-  const has = P1.canPay(X.state, a.helper, "full", { gm: false });
-  const hasFull = has.ok || has.reason === "notYourTurn";                                  // [L2], [B2273]: the helper's full action is spent on the helped character's turn
-  const free = P1.budget(X.state, a.helper).full === "open";
+  const has = P1.canPay(X.state, a.helper, "full", { cause: "help" });                    // [L9], [L2], [B2273]: the helper's full action is spent on the helped character's turn
   const I = J.clone(inst);
   if ((I.decl.helpers ?? []).filter((h) => h.consent === "yes").length >= 3) return bad("illegal", { reason: "tooMany" });       // [B2238]
-  if (hasFull && free) {
-    const id = nextId(X, "e");
-    const l = P1.ledgerOf(X.state, a.helper), unit = l.grants.find((g) => g.id === "A");
-    const { ledger } = P1.pay(X.state, a.helper, { id, action: "help", inst: I.id, cost: "full", pay: unit && !unit.usedBy ? "A" : null, onTurnOf: I.actor, target: [I.actor] });
-    write(X, I.tx, ["ledger", a.helper], ledger, I, "declare");
+  const paid = has.ok ? P1.pay(X.state, a.helper, "full", { cause: "help" }, { action: "help", inst: I.id, onTurnOf: I.actor ?? undefined, target: [I.actor], tags: ["help"] }) : null;
+  if (paid?.ok) {
+    write(X, I.tx, ["ledger", a.helper], paid.ledger, I, "declare");
     I.decl.helpers = [...(I.decl.helpers ?? []), { id: a.helper, consent: "yes" }];
   } else {                                                                                  // [R11]: refused by the interface, the GM may accept anyway
     I.decl.helpers = [...(I.decl.helpers ?? []), { id: a.helper, consent: "pending" }];
@@ -466,20 +475,6 @@ function applyHelpAnswers(X) {
     I.decl.helpers = yes ? I.decl.helpers.map((x) => (x.id === h.id ? { ...x, consent: "yes" } : x)) : I.decl.helpers.filter((x) => x.id !== h.id);
     setInst(X, I);
   }
-}
-async function opEndTurn(X, a) {
-  if (!P1.isId(a.actor) || !X.facts.c(a.actor)) return bad("unknown");
-  if (!owns(X, a.actor)) return bad("notOwner");
-  if (!X.user.staff && X.host.setting?.("turnPlayersEnd") === false) return bad("playersOff");
-  const ti = P1.turnInfo(X.state);
-  if (a.round !== ti.round || a.slot !== ti.slot) return bad("stale");                      // spec 12.2: stale requests are refused
-  if (!P1.isOnTurn(X.state, a.actor)) return bad("notYourTurn");
-  if (X.state.stack.length || Object.values(X.state.prompts).some((p) => !p.answered && p.about === a.actor)) return bad("busy");      // spec 4.4
-  const r = P1.endTurn(X.state, a.actor);
-  if (!r.ok) return bad(r.reason ?? "illegal");
-  emit(X, null, { type: "turnEnd", slot: ti.slot, combatant: a.actor });
-  X.state = r.state; X.changed = true;
-  return ok();
 }
 async function opAsk(X, a, kind) {
   if (!P1.isId(a.actor) || !X.facts.c(a.actor)) return bad("unknown");
@@ -587,9 +582,9 @@ async function manual(X, I, res) {
   noteOverride(X, I, "manual", null, null);
   I.status = "manual"; I.data.manual = { note: String(res.note ?? "").slice(0, 300) };
   if (["full", "quick"].includes(res.cost) && I.actor && !I.entry) {
-    const cp = P1.canPay(X.state, I.actor, res.cost, {});
-    const id = nextId(X, "e"), { ledger } = P1.pay(X.state, I.actor, { id, action: I.action, inst: I.id, cost: res.cost, pay: cp.ok ? cp.pay : null });
-    write(X, I.tx, ["ledger", I.actor], ledger, I, "manual"); I.entry = id;
+    const r = P1.pay(X.state, I.actor, res.cost, { force: true }, { action: I.action, inst: I.id, tags: C.entryFor(X.state, I.actor, I.action)?.tags ?? [] });
+    if (r.ok) { write(X, I.tx, ["ledger", I.actor], r.ledger, I, "manual"); I.entry = r.entryId; }
+    else (I.data.notes ??= []).push({ note: "costNotCharged", cost: res.cost, reason: r.reason });      // no unit of that kind is left: nothing is invented, the GM sees the note
   }
   for (const d of (Array.isArray(res.damage) ? res.damage : []).slice(0, 24)) {
     const c = X.facts.c(d?.target), amount = Math.max(0, Math.trunc(Number(d?.amount) || 0));
@@ -613,7 +608,7 @@ async function gmEdit(X, op, a) {
   const tx = openTx(X, { label: { pub: "", gm: `GM: ${op}` } });
   const w = (path, to) => write(X, tx, path, to);
   const c = (id) => (P1.isId(id) ? X.facts.c(id) : null);
-  let err = null;
+  let err = null, errParams = {};
   switch (op) {
     case "statusAdd": if (c(a.combatant) && typeof a.status?.id === "string") { const x = M.statusAdd(X.state, a.combatant, { ...a.status, source: a.status.source ?? { kind: "gm", name: "gm" } }); w(x.path, x.to); } else err = "badInput"; break;
     case "statusRemove": if (P1.isId(a.combatant)) { const x = M.statusRemove(X.state, a.combatant, String(a.id)); w(x.path, x.to); } else err = "badInput"; break;
@@ -625,7 +620,7 @@ async function gmEdit(X, op, a) {
     }
     case "tokenAdd": { const t = M.makeToken({ ...a.token, id: a.token?.id ?? nextId(X, "t") }); if (t && c(t.holder)) w(["tokens", `#${t.id}`], t); else err = "badInput"; break; }
     case "tokenRemove": if (P1.isId(a.id)) w(["tokens", `#${a.id}`], null); else err = "badInput"; break;
-    case "triggerAdd": if (isObj(a.trigger) && typeof a.trigger.at === "string") { const id = P1.isId(a.trigger.id) ? a.trigger.id : nextId(X, "g"); w(["triggers", `#${id}`], { ...J.clone(a.trigger), id, source: M.source(a.trigger.source) }); } else err = "badInput"; break;
+    case "triggerAdd": { const t = isObj(a.trigger) ? S.sanitizeTrigger({ ...J.clone(a.trigger), id: P1.isId(a.trigger.id) ? a.trigger.id : nextId(X, "g"), source: M.source(a.trigger.source), runs: 0 }) : null; if (t) w(["triggers", `#${t.id}`], t); else err = "badInput"; break; }
     case "triggerRemove": if (P1.isId(a.id)) w(["triggers", `#${a.id}`], null); else err = "badInput"; break;
     case "counterSet": if (typeof a.key === "string" && /^(round|scene|zone|session):[\w.:@-]{1,56}$/.test(a.key) && Number.isFinite(a.value)) w(["counters", a.key], a.value > 0 ? Math.trunc(a.value) : null); else err = "badInput"; break;
     case "effectAdd": { const e = M.makeEffect({ ...a.effect, id: a.effect?.id ?? nextId(X, "f") }); if (e) w(["effects", `#${e.id}`], e); else err = "badInput"; break; }
@@ -643,25 +638,34 @@ async function gmEdit(X, op, a) {
     case "knowledgeSet": if (P1.isId(a.observer) && P1.isId(a.subject) && ["seen", "unseen", null].includes(a.value ?? null)) w(["knowledge", a.observer, a.subject], a.value ?? null); else err = "badInput"; break;
     case "karmaNote": if (isObj(a.note) && ["wreckedZone", "savedBystanders", "failedBystanders", "killed"].includes(a.note.kind)) w(["karma"], [...X.state.karma, { id: nextId(X, "k"), who: String(a.note.who ?? "").slice(0, 40), kind: a.note.kind, round: X.state.round, zone: typeof a.note.zone === "string" ? a.note.zone.slice(0, 40) : undefined, note: typeof a.note.note === "string" ? a.note.note.slice(0, 300) : undefined }]); else err = "badInput"; break;
     case "npcPolicy": if (P1.isId(a.combatant) && isObj(a.policy)) { const pol = {}; for (const k of ["block", "dodge"]) if (["ask", "always", "never"].includes(a.policy[k])) pol[k] = a.policy[k]; if (["ask", "never"].includes(a.policy.push)) pol.push = a.policy.push; if (["ask", "ko", "kill", "crit"].includes(a.policy.onBroken)) pol.onBroken = a.policy.onBroken; if (typeof a.policy.major === "boolean") pol.major = a.policy.major; if (["defence", "turn"].includes(a.policy.keepQuickFor)) pol.keepQuickFor = a.policy.keepQuickFor; w(["npc", a.combatant], pol); } else err = "badInput"; break;
-    case "ledgerEdit": {
-      if (!P1.isId(a.combatant)) { err = "badInput"; break; }
-      let l = P1.ledgerOf(X.state, a.combatant);
-      if (P1.isId(a.voidEntry)) l = P1.voidEntry(l, a.voidEntry);
-      if (isObj(a.grant)) l = { ...l, grants: [...l.grants, { id: nextId(X, "n"), kind: "gm", unit: ["full", "quick", "any", "defense"].includes(a.grant.unit) ? a.grant.unit : "any", window: ["ownTurn", "anytime", "interrupt"].includes(a.grant.window) ? a.grant.window : "anytime", expires: "roundEnd" }] };
-      w(["ledger", a.combatant], l);
+    case "ledgerEdit": {                                                                    // one implementation with the reducer's operation (ops-pure.ledgerEditOf); here it is journaled
+      if (!P1.isId(a.combatant) || !X.state.ledger[a.combatant]) { err = "gone"; break; }
+      const legacy = a.edit ? a : P1.isId(a.voidEntry) ? { ...a, edit: "void", entry: a.voidEntry } : isObj(a.grant) ? { ...a, edit: "grant", grant: { template: "gm", ...a.grant } } : null;
+      const r = legacy ? ledgerEditOf(X.state, legacy) : null;
+      if (!r?.ok) { err = r?.code ?? "badInput"; errParams = r?.params ?? {}; break; }
+      w(["ledger", a.combatant], r.ledger);
+      if (r.consent) openPrompt(X, null, { key: "c", kind: "grantConsent", to: addresseeOf(X, a.combatant), about: a.combatant, options: [{ id: "yes", label: "yes" }, { id: "no", label: "no" }], data: { combatant: a.combatant, grant: r.consent.id, kind: r.consent.kind, from: r.consent.from ?? null } }, "grant");   // [plan 5.3], [B1708]
       break;
     }
     case "setFree": if (a.combatant == null) w(["free"], a.on ? Object.fromEntries(Object.keys(X.state.ledger).map((k) => [k, 1])) : {}); else if (P1.isId(a.combatant)) w(["free", a.combatant], a.on ? 1 : null); else err = "badInput"; break;
     case "setMode": {
       if (!["tactical", "free", "off"].includes(a.mode)) { err = "badInput"; break; }
-      w(["mode"], a.mode);
+      if (w(["mode"], a.mode)) emit(X, null, { type: "mode", mode: a.mode });
       if (a.mode !== "tactical") X.state = { ...X.state, stack: X.state.stack.map((i) => ({ ...i, status: "manual" })) };       // spec 14.5: nothing is discarded, open instances are parked as manual
       break;
     }
-    case "zoneSet": case "levelSet": case "borderSet": await perform(X, tx, { t: "zones", call: { zoneSet: "setZone", levelSet: "setLevel", borderSet: "setBorder" }[op], ...J.clone(a), tx }); emit(X, null, { type: "zoneChange", zone: a.zone, border: a.border, change: a.patch ?? a.to ?? a.kind, cause: "gm" }); break;
-    default: err = "unknown";                                                               // setCard, swapCards, reorderGroup, addCombatant, removeCombatant, insertTurn: package P1
+    case "zoneSet": case "levelSet": case "borderSet": case "zoneOp": {                    // one write of the zones API; the inverse it returns is journaled (zones-pure.mjs)
+      const zop = op === "zoneSet" ? ZP.zoneOp(a.zone, a.patch) : op === "levelSet" ? ZP.levelOp(ZP.tokenIdOf(c(a.combatant)?.tokenUuid ?? a.token), a.to)
+        : op === "borderSet" ? ZP.borderOp(a.border, a) : ZP.validOp(a.zop) ? J.clone(a.zop) : null;
+      if (!zop) { err = "badInput"; break; }
+      const res = await perform(X, tx, { t: "zones", op: zop, tx });
+      if (res && res.ok === false) { err = "illegal"; errParams = { reason: String(res.reason ?? "zones").slice(0, 40) }; break; }
+      emit(X, null, { type: "zoneChange", ...ZP.changeOf(zop), cause: "gm" });
+      break;
+    }
+    default: err = "unknown";
   }
-  if (err) { const t = X.state.txOpen[tx]; await undoOps(X, t.ops); const { [tx]: _g, ...rest } = X.state.txOpen; X.state = { ...X.state, txOpen: rest }; return bad(err); }
+  if (err) { const t = X.state.txOpen[tx]; await undoOps(X, t.ops); const { [tx]: _g, ...rest } = X.state.txOpen; X.state = { ...X.state, txOpen: rest }; return bad(err, errParams); }
   closeTx(X, tx, { pub: "", gm: `GM: ${op}` });
   emit(X, null, { type: "override", op, gmOnly: 1 });
   return ok();
@@ -674,7 +678,8 @@ async function opUndo(X, a) {
   const mode = ["restore", "difference", "leave"].includes(a.drift) ? a.drift : null;
   if (a.force === true) {
     const tx = X.log.list.find((t) => t.id === a.tx), drifts = [];
-    for (const op of tx.ops) {
+    for (const op0 of tx.ops) {
+      const op = liveOp(X, op0, tx.round);
       const cur = op.t === "state" ? X.state : op.t === "actor" ? X.facts.actorValue?.(op.uuid, op.path) : undefined;
       const d = cur === undefined ? null : J.driftOf(op, cur);
       if (d) drifts.push({ t: op.t, path: op.t === "state" ? d.path : op.path, uuid: op.uuid, expected: d.expected, current: d.current });
@@ -683,7 +688,8 @@ async function opUndo(X, a) {
   }
   for (const id of list) {
     const tx = X.log.list.find((t) => t.id === id);
-    for (const op of [...tx.ops].reverse()) {
+    for (const op0 of [...tx.ops].reverse()) {
+      const op = liveOp(X, op0, tx.round);
       if (op.t === "state") {
         if (a.force && mode === "leave" && J.driftOf(op, X.state)) continue;
         X.state = J.applyStateOp(X.state, op, true);
@@ -706,16 +712,67 @@ async function opHazard(X, a) {
   inst.tx = openTx(X, { inst: inst.id });
   if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); inst.cause = "trigger"; }
   pushInst(X, inst);
-  emit(X, inst, { type: "trigger", at: a.at ?? "gm", subject: { zone: h.zone }, run: { type: h.kind } });
+  if (!a.quiet) emit(X, inst, { type: "trigger", at: a.at ?? "gm", subject: { zone: h.zone }, run: { type: h.kind } });
   return ok({ inst: inst.id });
 }
 
-export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer", "help", "move", "endTurn", "holdOff", "exception", "other"]);
+/* ------------------------------------------------------------------ what the round driver hands over (ops-pure.mjs effects; director-pure.mjs)
+   { type:"stress", combatant, n, source }   voluntary stress of a round decision (Combat Veteran [I7] [B2100]): one transaction, undoable
+   { type:"recover", lines }                 the end-of-scene recovery (spec 6.8): one transaction; a value that changed meanwhile is left alone
+   { type:"abortInstances", actor }          a combatant left the fight: its open instances end, refunded (spec 3.3)
+   { type:"trigger", trigger }               a due trigger the GM let run: its own action instance (spec 6.1). [D] How `run` is read:
+       run.type "hazard"      { hazard: { kind, intensity?, amount?, ... }, targets? }   -> flow hazard
+       run.type "fireAttack"  { intensity, targets? }                                     -> flow hazard, kind fire [B2925]
+       anything else (the rows of spec 6.1 the later packages bring)                      -> a GM-driven instance ("resolve manually", spec 5.3)
+     targets default to the trigger's subject combatant, else to facts.inZoneKey?.(subject.zone). Triggers are pushed last first, so the first runs first. */
+async function system(X, effects) {
+  const triggers = [];
+  for (const fx of Array.isArray(effects) ? effects : []) {
+    if (fx?.type === "stress") {
+      const c = X.facts.c(fx.combatant), n = Math.max(0, Math.trunc(Number(fx.n) || 0));
+      if (!c || !n) continue;
+      const s = damage.applyStress({ resolve: c.resolve, stress: n });                      // [B2816]
+      if (!s.lost) continue;
+      const tx = openTx(X, {});
+      await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: s.resolve, tx });
+      closeTx(X, tx, { pub: "", gm: `${c.name ?? fx.combatant}: stress ${n} (${String(fx.source ?? "").slice(0, 40)})` });
+    } else if (fx?.type === "recover") {
+      const tx = openTx(X, {});
+      for (const l of Array.isArray(fx.lines) ? fx.lines : []) {
+        const c = X.facts.c(l?.id);
+        if (!c) continue;
+        if (l.health && l.health.to !== l.health.from && c.health === l.health.from) await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "health", to: l.health.to, tx });
+        if (l.resolve && l.resolve.to !== l.resolve.from && c.resolve === l.resolve.from) await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: l.resolve.to, tx });
+      }
+      closeTx(X, tx, { pub: "", gm: "scene end: recovery" });
+    } else if (fx?.type === "abortInstances") {
+      for (const inst of [...X.state.stack].reverse()) if (inst.actor === fx.actor && instOf(X, inst.id)) await abortInst(X, inst.id, true);
+      dropPrompts(X, (p) => p.about === fx.actor);
+    } else if (fx?.type === "trigger" && isObj(fx.trigger)) triggers.push(fx.trigger);
+  }
+  for (const t of triggers.reverse()) await pushTrigger(X, t);
+}
+async function pushTrigger(X, t) {
+  const run = isObj(t.run) ? t.run : {}, sub = isObj(t.subject) ? t.subject : {};
+  const hz = run.type === "hazard" && isObj(run.hazard) ? run.hazard : run.type === "fireAttack" ? { kind: "fire", intensity: run.intensity, inZone: run.inZone !== false } : null;
+  if (hz) {
+    const targets = Array.isArray(run.targets) ? run.targets : P1.isId(sub.combatant) ? [sub.combatant] : X.facts.inZoneKey?.(sub.zone) ?? [];
+    const r = await opHazard(X, { hazard: { ...hz, id: t.id, zone: sub.zone, cause: "trigger" }, targets, cause: "trigger", at: t.at, quiet: true });
+    if (r.ok) { const I = J.clone(instOf(X, r.inst)); I.data.trigger = { id: t.id, at: t.at }; I.cause = "trigger"; setInst(X, I); return; }
+  }
+  const actor = P1.isId(sub.combatant) && X.facts.c(sub.combatant) ? sub.combatant : null;
+  const inst = makeInst(X, { action: "other", actor, decl: { action: "other", targets: [], helpers: [], exploits: [], stressTotal: 0, text: String(t.source?.name || run.type || "").slice(0, 300) }, cause: "trigger", flow: "other",
+    data: { trigger: { id: t.id, at: t.at, run: J.clone(run), source: J.clone(t.source ?? null) } }, initiator: { type: "trigger", id: String(t.id ?? "trigger").slice(0, 40) }, parent: top(X)?.id ?? null });
+  inst.tx = openTx(X, { inst: inst.id }); inst.status = "manual";
+  if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); }
+  pushInst(X, inst);
+}
+
+export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer", "help", "move", "exception", "other"]);       // endTurn, holdOff, mark: director-pure.mjs
 export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget"]);
 export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
-  "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet"]);
-export const GM_P1_OPS = Object.freeze(["setCard", "swapCards", "reorderGroup", "addCombatant", "removeCombatant", "insertTurn"]);       // spec 14.2 rows owned by P1
-export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, ...GM_P1_OPS, "answerFor", "undo", "hazard"]);
+  "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp"]);
+export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
 
 async function request(X, req) {
   const op = req?.op;
@@ -727,16 +784,15 @@ async function request(X, req) {
     case "answer": return opAnswer(X, req);
     case "answerFor": return opAnswer(X, req, true);
     case "help": return opHelp(X, req);
-    case "endTurn": return opEndTurn(X, req);
     case "exception": return opAsk(X, req, "exception");
     case "other": return opAsk(X, req, "other");
-    case "move": case "holdOff": return bad("unknown", { op });                             // P3 (move flow) and P1 (initiative) plug in here
+    case "move": return bad("unknown", { op });                                             // P3 (move flow) plugs in here; the turn and round operations are the director's (director-pure.mjs)
     case "undo": return opUndo(X, req);
     case "hazard": return opHazard(X, req);
     default:
       if (GM_INST_OPS.includes(op)) return gmInstOp(X, op, req);
       if (GM_EDIT_OPS.includes(op)) return gmEdit(X, op, req);
-      return bad(GM_P1_OPS.includes(op) ? "unknown" : "badInput", { op: String(op ?? "").slice(0, 24) });
+      return bad("badInput", { op: String(op ?? "").slice(0, 24) });
   }
 }
 function takeRoll(X, r) {
@@ -764,6 +820,8 @@ export async function handle({ state, log }, input, host) {
       if (state.mode === "off" && !user.staff) return { state, log, env: bad("off"), events: [], changed: false };
       env = await request(X, input.req);
       if (env.ok) { applyHelpAnswers(X); await drive(X); }
+    } else if (input?.t === "sys") {
+      await system(X, input.effects); env = ok(); await drive(X);
     } else if (input?.t === "roll") {
       env = takeRoll(X, input) ? ok() : bad("badInput");
       if (env.ok) await drive(X);

@@ -4,8 +4,12 @@
    Fields owned by P1 (init, ledger, triggers, the P1 prompt kinds, opts, free, sched, seq) are sanitised field by field; fields owned by
    later packages (stack, tokens, statuses, counters, effects, items, summons, knowledge, revealed, npc, karma, chase) pass through a
    generic JSON-safe copy so their data survives a P1 write untouched.
-   Additions to the spec's State shape, both [D]: `seq` (counter for ids made inside reducers) and `sched` (which scheduler points of the
-   round were already collected, and their open queue prompt). */
+   Additions to the spec's State shape, all [D]: `seq` (counter for ids made inside reducers and the action engine), `sched` (which
+   scheduler points of the round were already collected, their open queue prompt, and `hold`: the round waits for the trigger instances
+   the engine is running), `txOpen` (the open journal transactions of the action engine) and `evSeq` (event counter).
+   ONE STATE: the action engine (engine-pure.mjs) works on this very shape; every write of the executor goes through serialize() and every
+   read through parse(), so what the engine stores must survive sanitize() unchanged (check-fight.mjs and the engine checks round-trip
+   every step). The per-user view lives in view-pure.mjs (viewFor is re-exported there for the spec's name). */
 
 export const MOD_ID = "invincible-plus-ultra";
 export const V = 1;
@@ -21,33 +25,38 @@ export const TRIGGER_POINTS = ["roundStart", "roundEnd", "turnStart", "turnEnd",
 export const LIMITS = { slots: 200, members: 60, entries: 200, grants: 40, triggers: 400, prompts: 200, options: 60, text: 300, tags: 24, ledgers: 400, depth: 12, list: 600 };
 
 const ID_RE = /^[A-Za-z0-9_.:@|-]{1,64}$/;
-export const isId = (s) => typeof s === "string" && ID_RE.test(s);
+const BAD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+export const isId = (s) => typeof s === "string" && ID_RE.test(s) && !BAD_KEYS.has(s);
 const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 const int = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.trunc(n))) : d; };
 const str = (v, max = LIMITS.text) => (typeof v === "string" ? v.slice(0, max) : "");
 const idOr = (v, d = null) => (isId(v) ? v : d);
 const ids = (v, max = LIMITS.list) => (Array.isArray(v) ? [...new Set(v.filter(isId))].slice(0, max) : []);
-const BAD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 /** JSON-safe deep copy with caps: drops functions, symbols, hostile keys, anything deeper than LIMITS.depth; never throws. */
-export function plain(v, depth = 0) {
+export function plain(v, depth = 0, maxStr = 4000, maxDepth = LIMITS.depth) {
   if (v === null || typeof v === "boolean") return v;
   if (v === undefined || typeof v === "function" || typeof v === "symbol") return undefined;
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  if (typeof v === "string") return v.slice(0, 4000);
-  if (depth >= LIMITS.depth || typeof v !== "object") return null;
-  if (Array.isArray(v)) return v.slice(0, LIMITS.list).map((x) => plain(x, depth + 1) ?? null);
+  if (typeof v === "string") return v.slice(0, maxStr);
+  if (depth >= maxDepth || typeof v !== "object") return null;
+  if (Array.isArray(v)) return v.slice(0, LIMITS.list).map((x) => plain(x, depth + 1, maxStr, maxDepth) ?? null);
   const out = {};
   let n = 0;
   for (const k of Object.keys(v)) {
     if (BAD_KEYS.has(k) || k.length > 80 || ++n > LIMITS.list) continue;
-    const c = plain(v[k], depth + 1);
+    const c = plain(v[k], depth + 1, maxStr, maxDepth);
     if (c !== undefined) out[k] = c;
   }
   return out;
 }
 const plainList = (v) => (Array.isArray(v) ? plain(v) : []);
 const plainMap = (v) => (isObj(v) ? plain(v) : {});
+/* The action engine's own records (instances on the stack, open transactions): an instance keeps a JSON snapshot per step for goToStep,
+   and a transaction keeps whole inverse values, so strings and nesting get more room than the generic copy allows [D]. */
+const ENGINE_STR = 200000, ENGINE_DEPTH = 24;
+const engineList = (v) => (Array.isArray(v) ? plain(v, 0, ENGINE_STR, ENGINE_DEPTH) : []);
+const engineMap = (v) => (isObj(v) ? plain(v, 0, ENGINE_STR, ENGINE_DEPTH) : {});
 export const clone = (v) => JSON.parse(JSON.stringify(v));
 
 /* ------------------------------------------------------------------ errors (spec 12.1: { key, code, params }, never thrown) */
@@ -62,7 +71,7 @@ export function newState({ mode = "free", kind = "combat", opts = {} } = {}) {
     mode: MODES.includes(mode) ? mode : "free", kind: KINDS.includes(kind) ? kind : "combat",
     round: 0, phase: "idle",
     init: newInit(), ledger: {}, stack: [], prompts: {}, triggers: [], tokens: [], statuses: {}, counters: {}, effects: [], items: [], summons: [],
-    knowledge: {}, revealed: {}, npc: {}, free: {}, karma: [], sched: { done: [] },
+    knowledge: {}, revealed: {}, npc: {}, free: {}, karma: [], sched: { done: [] }, txOpen: {}, evSeq: 0,
     opts: sanitizeOpts(opts)
   };
 }
@@ -181,11 +190,12 @@ export function sanitizeTrigger(r) {
 
 export function sanitizePrompt(r) {
   if (!isObj(r) || !isId(r.id) || typeof r.kind !== "string") return null;
-  const p = { id: r.id, inst: idOr(r.inst), step: str(r.step, 40), kind: r.kind.slice(0, 40), to: r.to === "gm" ? "gm" : { users: ids(r.to?.users, 40) }, options: [] };
+  const p = { id: r.id, inst: idOr(r.inst), step: r.step === null ? null : str(r.step, 40), kind: r.kind.slice(0, 40), to: r.to === "gm" ? "gm" : { users: ids(r.to?.users, 40) }, options: [] };
   if (isId(r.about)) p.about = r.about;
   for (const o of Array.isArray(r.options) ? r.options.slice(0, LIMITS.options) : []) {
     if (!isObj(o) || !isId(String(o.id))) continue;
     const q = { id: String(o.id), label: str(o.label, 120) };
+    if (typeof o.name === "string" && o.name) q.name = o.name.slice(0, 120);
     if (o.cost !== undefined) q.cost = plain(o.cost);
     if (Number(o.stress) > 0) q.stress = int(o.stress, 1, 99, 1);
     if (Number.isFinite(Number(o.dice)) && o.dice !== undefined && o.dice !== null) q.dice = int(o.dice, -99, 99, 0);
@@ -218,11 +228,13 @@ export function sanitize(raw) {
     if (isObj(raw.prompts)) for (const [k, v] of Object.entries(raw.prompts).slice(0, LIMITS.prompts)) { const p = sanitizePrompt(v); if (p && p.id === k) s.prompts[k] = p; }
     if (isObj(raw.free)) for (const k of Object.keys(raw.free).slice(0, LIMITS.ledgers)) if (isId(k) && raw.free[k]) s.free[k] = 1;
     s.sched = { done: Array.isArray(raw.sched?.done) ? raw.sched.done.filter((x) => typeof x === "string" && x.length <= 120).slice(-400) : [] };
-    s.stack = plainList(raw.stack); s.tokens = plainList(raw.tokens); s.effects = plainList(raw.effects); s.items = plainList(raw.items);
+    if (typeof raw.sched?.hold === "string" && raw.sched.hold) s.sched.hold = raw.sched.hold.slice(0, 120);
+    s.evSeq = int(raw.evSeq, 0, 1e12, 0);
+    s.stack = engineList(raw.stack); s.tokens = plainList(raw.tokens); s.effects = plainList(raw.effects); s.items = plainList(raw.items);
     s.summons = plainList(raw.summons); s.karma = plainList(raw.karma);
     s.statuses = plainMap(raw.statuses); s.counters = plainMap(raw.counters); s.knowledge = plainMap(raw.knowledge); s.revealed = plainMap(raw.revealed); s.npc = plainMap(raw.npc);
     if (isObj(raw.chase)) s.chase = plain(raw.chase);
-    if (isObj(raw.txOpen)) s.txOpen = plain(raw.txOpen);          // the action engine keeps its open transactions here (P2 [D]); passed through untouched
+    s.txOpen = engineMap(raw.txOpen);                             // the action engine keeps its open transactions here [D]
     return s;
   } catch { return null; }
 }

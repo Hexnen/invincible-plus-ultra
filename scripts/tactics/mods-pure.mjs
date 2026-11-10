@@ -1,7 +1,7 @@
 /* Tactical combat, package P2: MODIFIER TOKENS, USE COUNTERS, STATUSES, DAMAGE TAGS, EFFECT SOURCES (spec 6.2-6.7). NO Foundry globals.
    Data helpers only. Each returns plain values or `{ path, to }` writes for the engine to journal (engine-pure.mjs turns a write into a
    reversible state op); nothing here mutates its input. Rule decisions carry the spec's citation marks. */
-import * as P1 from "./p1-standin.mjs";
+import { isId } from "./state-pure.mjs";
 
 /* ------------------------------------------------------------------ switches for open questions (cheap to flip, spec 0.1) */
 export const OQ2_IMMOBILISED_AS_SNARED = true;     // [OQ-2] provisional: Cold / Magnetism / Plant Control immobilisation counts like Snare
@@ -20,7 +20,7 @@ export const ROLL_KINDS = Object.freeze(["attack", "block", "dodge", "other"]);
 export const TOKEN_EXPIRES = Object.freeze(["roundEnd", "turnEndOf", "nextTurnOf", "sceneEnd", "used"]);
 export function makeToken(t) {
   const dice = Math.trunc(Number(t.dice) || 0);
-  if (!P1.isId(t.id) || !P1.isId(t.holder) || !dice) return null;
+  if (!isId(t.id) || !isId(t.holder) || !dice) return null;
   const scope = {};
   if (Array.isArray(t.scope?.rolls)) scope.rolls = t.scope.rolls.filter((r) => ROLL_KINDS.includes(r));
   if (Array.isArray(t.scope?.attrs)) scope.attrs = t.scope.attrs.filter((a) => typeof a === "string").slice(0, 6);
@@ -28,8 +28,8 @@ export function makeToken(t) {
   if (t.scope?.next) scope.next = 1;
   const out = { id: t.id, holder: t.holder, dice, scope, uses: t.uses === "all" ? "all" : Math.max(1, Math.trunc(Number(t.uses) || 1)), stacks: t.stacks === true,
     source: source(t.source), expires: { at: TOKEN_EXPIRES.includes(t.expires?.at) ? t.expires.at : "roundEnd" } };
-  if (P1.isId(t.expires?.who)) out.expires.who = t.expires.who;
-  if (P1.isId(t.from)) out.from = t.from;
+  if (isId(t.expires?.who)) out.expires.who = t.expires.who;
+  if (isId(t.from)) out.from = t.from;
   if (t.needsGm || scope.purpose) out.needsGm = 1;       // spec 6.2: a token with `purpose` or `needsGm` shows the GM a one-click confirmation
   return out;
 }
@@ -117,10 +117,10 @@ export function damageTags(t = {}) {
 
 /* ------------------------------------------------------------------ ongoing effects, ground items, summons (spec 6.5-6.7): records only */
 export function makeEffect(e) {
-  if (!P1.isId(e.id) || typeof e.kind !== "string") return null;
+  if (!isId(e.id) || typeof e.kind !== "string") return null;
   const out = { id: e.id, kind: e.kind.slice(0, 40), source: source(e.source), data: e.data && typeof e.data === "object" ? e.data : {}, ends: { at: String(e.ends?.at ?? "sceneEnd").slice(0, 24) } };
-  if (P1.isId(e.holder)) out.holder = e.holder;
-  if (P1.isId(e.ends?.who)) out.ends.who = e.ends.who;
+  if (isId(e.holder)) out.holder = e.holder;
+  if (isId(e.ends?.who)) out.ends.who = e.ends.who;
   for (const k of ["zones", "statusIds", "triggerIds", "tokenIds", "zoneStateIds"]) if (Array.isArray(e[k])) out[k] = e[k].filter((x) => typeof x === "string").slice(0, 40);
   return out;
 }
@@ -141,9 +141,9 @@ export const grantedEntries = (state, cid) => (state.effects ?? []).filter((e) =
 
 export const GROUND_STATES = Object.freeze(["held", "ground", "taken"]);
 export function makeGroundItem(i) {
-  if (!P1.isId(i.id)) return null;
+  if (!isId(i.id)) return null;
   const out = { id: i.id, itemUuid: typeof i.itemUuid === "string" ? i.itemUuid : null, name: String(i.name ?? "").slice(0, 80), owner: String(i.owner ?? ""), state: GROUND_STATES.includes(i.state) ? i.state : "ground" };
-  if (P1.isId(i.holder)) out.holder = i.holder;
+  if (isId(i.holder)) out.holder = i.holder;
   if (typeof i.zone === "string") out.zone = i.zone.slice(0, 40);        // a spot string, never a zone id (spec 2)
   return out;
 }

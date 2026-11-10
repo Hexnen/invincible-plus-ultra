@@ -9,7 +9,7 @@
        push:    spec of an action instance to put on top of the stack (interrupt, counterattack, part of a composite)
        goto:    next step id | wait: true | done: true } */
 import { dice, crits } from "../../rules/index.mjs";
-import * as P1 from "../p1-standin.mjs";
+import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 
 export const PASS = "pass";

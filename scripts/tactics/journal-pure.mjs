@@ -11,7 +11,9 @@ export const LOG_V = 1;
 const BAD_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 export const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
-export const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/* equal as data: the order of keys is not part of a value (the state is rebuilt key by key every time it is stored) */
+const canon = (v) => JSON.stringify(v ?? null, (k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((q) => [q, x[q]])) : x));
+export const same = (a, b) => canon(a) === canon(b);
 
 /* ------------------------------------------------------------------ state paths
    A path is an array of segments. A string segment is an object key; a segment "#<id>" addresses the element with that `id` inside an array
@@ -57,7 +59,7 @@ export function setAt(root, path, value) {
    effect+/-  { t:"effect+", actorUuid, effectId, data } / { t:"effect-", actorUuid, data }
    token+ / - { t:"token+", sceneId, tokenId, data } / { t:"token-", sceneId, data }
    tokenMove  { t:"tokenMove", sceneId, tokenId, from, to }
-   zones      { t:"zones", call, ...args, inverse }            // inverse built by the zones adapter [G-Z4]
+   zones      { t:"zones", op, inverse }                       // one write of the zones API: the op given to `apply` and the inverse op it returned
    message    { t:"message", id }
    Every op may carry `step` (the step of the instance that produced it; goToStep undoes by it) and `label`. */
 export const OP_TYPES = Object.freeze(["state", "actor", "item+", "item-", "effect+", "effect-", "token+", "token-", "tokenMove", "zones", "message"]);
@@ -87,7 +89,7 @@ export function inverseEffect(op) {
     case "token+": return { t: "tokenDelete", sceneId: op.sceneId, tokenId: op.tokenId };
     case "token-": return { t: "tokenCreate", sceneId: op.sceneId, data: op.data, keepId: true };
     case "tokenMove": return { t: "tokenMove", sceneId: op.sceneId, tokenId: op.tokenId, to: op.from, expect: op.to };
-    case "zones": return op.inverse ? { t: "zones", ...op.inverse, isInverse: true } : null;
+    case "zones": return op.inverse ? { t: "zones", op: op.inverse, isInverse: true } : null;
     case "message": return { t: "messageStrike", id: op.id };      // spec 15: struck through, never deleted (the dice stay)
     default: return null;
   }

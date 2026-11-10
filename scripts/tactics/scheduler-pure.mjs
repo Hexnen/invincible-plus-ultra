@@ -6,6 +6,8 @@
 
    Trigger = { id, at, subject:{ combatant?, zone?, any? }, run:{ type, ... }, source, order?, runs?, expires?:{ at, who?, afterRuns? } } */
 import { damage } from "../rules/index.mjs";
+import * as M from "./mods-pure.mjs";
+import { setAt } from "./journal-pure.mjs";
 
 /* [OQ-4] the book gives no order among the things that happen "at the start of the round" ([B2925-2927], [B2845], [B2876]).
    Provisional: fire attacks, then the fire spread rolls, then challenge effects, then everything else; the GM confirms or reorders the queue. */
@@ -75,10 +77,21 @@ export function sceneEndPlan(facts) {
 /* what the state loses at the end of the scene: triggers and modifier tokens that end with it, ongoing effects lasting "a few minutes" or
    the scene [B1650], scene-scoped use counters (spec 6.4). Wrecked zones and border states are not touched (a GM act [plan 5.4, 5.7.4]). */
 export function sceneEndCleanup(state) {
-  const out = { triggers: expire(state.triggers, { at: "sceneEnd" }).keep, tokens: expire(state.tokens, { at: "sceneEnd" }).keep, effects: [], counters: {}, ended: [] };
-  for (const e of state.effects ?? []) { if (e?.ends?.at === "sceneEnd") out.ended.push(e); else out.effects.push(e); }
-  for (const [k, v] of Object.entries(state.counters ?? {})) if (!k.startsWith("scene:") && !k.startsWith("round:")) out.counters[k] = v;
+  const r = endEffects({ ...state, effects: state.effects ?? [], tokens: state.tokens ?? [], triggers: state.triggers ?? [], statuses: state.statuses ?? {} }, { at: "sceneEnd" });
+  const out = { triggers: expire(r.state.triggers, { at: "sceneEnd" }).keep, tokens: expire(r.state.tokens, { at: "sceneEnd" }).keep, effects: r.state.effects, statuses: r.state.statuses, counters: {}, ended: r.ended };
+  for (const [k, v] of Object.entries(state.counters ?? {})) if (!SCENE_COUNTERS.some((p) => k.startsWith(p))) out.counters[k] = v;
   return out;
+}
+/* use counters that do not outlive the scene (spec 6.4, 6.8): per round, per scene and per zone; the per-session ones stay */
+export const SCENE_COUNTERS = ["scene:", "round:", "zone:"];
+/* Ongoing effects that end at a point (spec 6.5): { at: "sceneEnd" | "roundEnd" } or { at: "nextTurnOf" | "turnEndOf", who }. An effect that
+   ends takes along what it registered (its tokens, triggers and statuses: mods-pure.effectEndWrites). -> { state, ended: [Effect] } */
+export function endEffects(state, point) {
+  const keyed = point.at === "nextTurnOf" || point.at === "turnEndOf";
+  const ended = (state.effects ?? []).filter((e) => e?.ends?.at === point.at && (!keyed || e.ends.who === point.who));
+  let s = state;
+  for (const e of ended) for (const w of M.effectEndWrites(s, e.id)) s = setAt(s, w.path, w.to);
+  return { state: s, ended };
 }
 
 /* ------------------------------------------------------------------ the challenge clock [R22] [I12]
