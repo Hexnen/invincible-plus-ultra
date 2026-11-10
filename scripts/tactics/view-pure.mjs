@@ -1,0 +1,126 @@
+/* Tactical combat, package P2: HIDDEN INFORMATION (spec section 10). NO Foundry globals (node-tested in check-view.mjs).
+   `viewFor(state, viewer, meta)` is what a non-staff client may render from; `publicEvent(ev, meta)` filters the public hook stream (spec 16).
+   NOTE FOR THE MERGE: spec 10 places viewFor in state-pure.mjs (P1's file). It lives here until P1 lands; move or re-export it there.
+     viewer = { id, staff, owns: [combatantId] }       owns = combatants whose actor the user owns (OWNER), resolved by the caller
+     meta   = { hidden: [combatantId], npc: [combatantId] }   hidden = Foundry's own `hidden` flag on the token/combatant [spec 10]
+   Two layers: a structured pass (what a player may know about things they can see) and a final generic scrub that removes every trace of a concealed
+   combatant's id, so the guarantee "a hidden combatant leaks nothing" does not depend on the structured pass knowing every field. */
+
+const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
+const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+const SPLIT = /[:@|,\s]+/;
+const mentions = (s, ids) => typeof s === "string" && (ids.has(s) || (s.length > 2 && s.split(SPLIT).some((p) => ids.has(p))));
+const REF_KEYS = ["id", "about", "actor", "target", "holder", "from", "to", "who", "combatant", "owner", "subject", "observer", "by", "source"];
+
+/** Remove every trace of the ids: keys, array elements, records that refer to one, strings that name one. */
+export function scrub(value, ids) {
+  if (!ids.size) return value;
+  const rec = (v) => {
+    if (typeof v === "string") return mentions(v, ids) ? undefined : v;
+    if (Array.isArray(v)) return v.map(rec).filter((x) => x !== undefined);
+    if (!isObj(v)) return v;
+    for (const k of REF_KEYS) { const r = v[k]; if (mentions(r, ids) || (isObj(r) && mentions(r.id, ids))) return undefined; }
+    const out = {};
+    for (const [k, x] of Object.entries(v)) { if (mentions(k, ids)) continue; const y = rec(x); if (y !== undefined) out[k] = y; }
+    return out;
+  };
+  return rec(value) ?? null;
+}
+
+/** Combatants the viewer must not learn about: Foundry-hidden ones [spec 10], and those every combatant of the viewer has as `unseen` [B2075], [B1903]. */
+export function concealedFor(state, viewer, meta = {}) {
+  const out = new Set(meta.hidden ?? []);
+  const owns = viewer?.owns ?? [];
+  if (owns.length) {
+    const rows = owns.map((o) => state.knowledge?.[o] ?? {});
+    for (const subject of Object.keys(rows[0])) if (!owns.includes(subject) && rows.every((r) => r[subject] === "unseen")) out.add(subject);
+  }
+  for (const o of owns) out.delete(o);                                             // nobody is hidden from their own player
+  return out;
+}
+
+const addressed = (p, viewer) => (isObj(p.to) && Array.isArray(p.to.users) && p.to.users.includes(viewer.id)) || (p.about && viewer.owns.includes(p.about) && p.to !== "gm");
+function promptView(p, viewer) {
+  if (p.gmOnlyData) return null;
+  if (!addressed(p, viewer)) return { id: p.id, inst: p.inst, step: p.step, kind: p.kind, to: p.to === "gm" ? "gm" : { users: p.to?.users ?? [] }, about: p.about, answered: p.answered ? 1 : undefined };   // "waiting for X": nothing else
+  const q = { ...p, options: (p.options ?? []).filter((o) => !o.gmOnly).map((o) => { const { gm, ...rest } = o; return rest; }) };
+  if (isObj(q.data)) { const { gm, ...rest } = q.data; q.data = rest; }
+  if (q.auto) { delete q.auto; }                                                   // why an option was passed automatically is the GM's knowledge (NPC policy)
+  return q;
+}
+const numbersHidden = (state, cid, meta, part) => (meta.npc ?? []).includes(cid) && !state.revealed?.[cid]?.[part];
+function rollView(state, r, viewer, meta) {
+  if (r.secret) return null;                                                        // spec 10: secret rolls are absent
+  const out = { key: r.key, who: r.who, sixes: r.sixes, ones: r.ones, pushed: r.pushed, pushable: r.pushable, messageId: r.messageId };
+  if (r.forced != null) out.forced = { sixes: r.forced.sixes };
+  if (!numbersHidden(state, r.who, meta, "stats")) { out.attr = r.attr; out.pool = r.pool; }      // spec 10: unrevealed NPC numbers leave the roll record
+  if (r.req) out.req = r.req.users?.includes(viewer.id) ? { rid: r.req.rid, users: r.req.users, dice: out.pool ? r.req.dice : undefined, maxPush: r.req.maxPush, label: r.req.label } : { users: r.req.users };
+  return out;
+}
+const OUT_KEEP = ["hit", "net", "stunts", "autoMiss", "defence", "picked"];
+function instView(state, inst, viewer, meta, concealed) {
+  if (inst.actor && concealed.has(inst.actor)) return { id: inst.id, parent: inst.parent, status: inst.status, masked: 1 };
+  const mine = inst.actor && viewer.owns.includes(inst.actor);
+  const decl = clone(inst.decl ?? {});
+  if (!mine) { delete decl.exception; delete decl.tokens; if (decl.text && inst.status === "manual" && !inst.actor) delete decl.text; }
+  const out = { id: inst.id, action: inst.action, flow: inst.flow, actor: inst.actor, initiator: inst.initiator, parent: inst.parent, cause: inst.cause, step: inst.step, status: inst.status,
+    locked: inst.locked, part: inst.part, decl, rolls: {}, data: {} };
+  for (const [k, r] of Object.entries(inst.rolls ?? {})) { const v = rollView(state, r, viewer, meta); if (v) out.rolls[k] = v; }
+  const d = inst.data ?? {};
+  for (const k of ["kind", "retargets", "hold", "result"]) if (d[k] !== undefined) out.data[k] = clone(d[k]);
+  if (isObj(d.def)) out.data.def = Object.fromEntries(Object.entries(d.def).map(([t, x]) => [t, { defence: x?.defence }]));
+  if (isObj(d.out)) out.data.out = Object.fromEntries(Object.entries(d.out).map(([t, o]) => [t, numbersHidden(state, t, meta, "health") ? Object.fromEntries(OUT_KEEP.filter((k) => o?.[k] !== undefined).map((k) => [k, o[k]])) : clone(o)]));
+  out.waits = (inst.waits ?? []).slice();
+  return out;
+}
+
+/** The state a user may see. Staff see everything. The result is a fresh object; the input is never modified. */
+export function viewFor(state, viewer, meta = {}) {
+  if (!state) return null;
+  if (viewer?.staff) return state;
+  const V = { id: viewer?.id ?? null, staff: false, owns: Array.isArray(viewer?.owns) ? viewer.owns : [] };
+  const concealed = concealedFor(state, V, meta);
+  const keepKey = (o) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !concealed.has(k)));
+  const mineRec = (r) => ["holder", "owner", "who", "combatant"].some((k) => V.owns.includes(r?.[k]));
+  const prompts = {};
+  for (const p of Object.values(state.prompts ?? {})) { if (p.about && concealed.has(p.about)) continue; const q = promptView(p, V); if (q) prompts[p.id] = q; }
+  const ledger = {};
+  for (const [cid, l] of Object.entries(keepKey(state.ledger))) ledger[cid] = l;       // spent actions are table knowledge (spec 4: everyone sees who has acted)
+  const out = {
+    v: state.v, rev: state.rev, mode: state.mode, kind: state.kind, round: state.round, phase: state.phase,
+    init: clone(state.init), ledger: clone(ledger), statuses: clone(keepKey(state.statuses)), free: clone(keepKey(state.free)),
+    stack: (state.stack ?? []).map((i) => instView(state, i, V, meta, concealed)),
+    prompts,
+    triggers: clone((state.triggers ?? []).filter(mineRec)),                          // other people's armed reactions are not public
+    tokens: clone((state.tokens ?? []).filter((t) => !t.gmOnly)), counters: clone(state.counters ?? {}), effects: clone((state.effects ?? []).filter((e) => !e.gmOnly)),
+    items: clone(state.items ?? []), summons: clone(state.summons ?? []),
+    knowledge: Object.fromEntries(V.owns.map((o) => [o, clone(state.knowledge?.[o] ?? {})])),
+    revealed: clone(keepKey(state.revealed)), opts: clone(state.opts ?? {}),
+  };
+  // statuses carry GM-only notes on NPCs that are not revealed
+  for (const [cid, list] of Object.entries(out.statuses)) if (Array.isArray(list)) out.statuses[cid] = list.map((s) => { const { gmNote, ...rest } = s; return rest; });
+  return scrub(out, concealed);
+}
+
+/** Event types that only the GM stream carries (spec 16). */
+export const GM_ONLY_EVENTS = Object.freeze(["override", "gm", "trigger"]);
+/** The event as the public stream (every client) may carry it, or null. The public stream has no viewer: anything concealed from anybody is left out. */
+export function publicEvent(state, ev, meta = {}) {
+  if (!isObj(ev) || GM_ONLY_EVENTS.includes(ev.type) || ev.gmOnly || ev.secret) return null;
+  const concealed = new Set(meta.hidden ?? []);
+  for (const row of Object.values(state?.knowledge ?? {})) for (const [subject, k] of Object.entries(row ?? {})) if (k === "unseen") concealed.add(subject);
+  if (concealed.size && scrub({ e: [ev] }, concealed).e.length === 0) return null;
+  let e = scrub(clone(ev), concealed);
+  if (!e) return null;
+  if (e.type === "roll" && numbersHidden(state, e.who, meta, "stats")) { const { attr, dice, ...rest } = e; e = rest; }
+  if (e.type === "damage" && numbersHidden(state, e.target, meta, "health")) { const { armor, base, ...rest } = e; e = rest; }
+  if (e.type === "actionDeclared" && isObj(e.decl)) { const { exception, tokens, ...rest } = e.decl; e = { ...e, decl: rest }; }
+  return e;
+}
+
+/** Journal rows for a viewer: the public text only (spec 10: two texts), no operations. */
+export function journalFor(log, viewer) {
+  const list = log?.list ?? [];
+  if (viewer?.staff) return list.map((t) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, text: t.label?.gm ?? "", pub: t.label?.pub ?? "", undoable: t.state === "closed" && Array.isArray(t.ops), ops: t.ops?.length ?? 0 }));
+  return list.filter((t) => t.label?.pub).map((t) => ({ id: t.id, round: t.round, at: t.at, state: t.state, text: t.label.pub }));
+}
