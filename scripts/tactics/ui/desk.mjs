@@ -7,7 +7,7 @@
      Now      what is being settled by hand, the action(s) in progress with the step controls (Override opens them), then the queue of
               cards that wait for the GM (reactions of NPCs, exception requests, confirmations, round-point triggers, absent players)
      Journal  closed actions by round, newest first, each with Undo (last-in-first-out; "only this one" asks how to treat drift)
-     Table    rules enforced / free, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
+     Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
 import { h, icon, swap, askCard, waitChips, visibleRect } from "./dom.mjs";
 
 const ID = "invincible-tactics-desk";
@@ -91,7 +91,7 @@ function manual(m, L) {
 const section = (title, n, kids) => h("section.igd-sec", {}, h("h4.igd-h", {}, h("span", { text: title }), n ? h("b.igd-n", { text: String(n) }) : null), kids);
 
 function now(d) {
-  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone };
+  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again };
   if (!d.cards.length && !d.stack.length && !d.manual.length) return h("p.igd-empty", {}, icon("fa-mug-hot"), h("span", { text: d.empty }));
   return [
     d.manual.length ? section(d.labels.manual, d.manual.length, d.manual.map((m) => manual(m, d.labels))) : null,
@@ -111,8 +111,15 @@ function journal(d) {
 }
 function table(d) {
   const seg = (c, key) => h("span.igd-seg", {}, c.choices.map((x) => h("button", { fk: `${key}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => !x.on && send(x.req) } })));
+  const f = d.force, put = (patch) => handlers.force?.(patch);
+  const pickOf = (c, key) => h("div.igd-ctl", { data: { type: "select" } }, h("span.igd-cl", { text: c.label }),
+    h("select", { fk: `force:${key}`, attrs: { "aria-label": c.label }, on: { change: (e, el) => put({ [key]: el.value || null }) } }, h("option", { text: "…", attrs: { value: "", selected: !c.value } }), c.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id, selected: x.id === c.value } }))));
+  const numOf = (c, key) => h("div.igd-ctl", { data: { type: "number" } }, h("span.igd-cl", { text: c.label }),
+    h("span.igd-step", {}, h("input", { fk: `force:${key}`, attrs: { type: "number", min: c.min, max: c.max, value: c.value, "aria-label": c.label }, on: { change: (e, el) => put({ [key]: el.value }) } })));
+  const go = (b, key) => h("button.igd-btn", { fk: `force:${key}`, text: b.label, disabled: !!b.disabled, tip: b.disabled, on: { click: () => b.req && send(b.req, { tab: "now" }) } });
   return [
     h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: d.mode.label }), seg(d.mode, "mode")),
+    section(f.title, 0, h("article.igd-npc", {}, pickOf(f.who, "who"), pickOf(f.from, "from"), numOf(f.distance, "distance"), numOf(f.damage, "damage"), h("div.igd-cmds", {}, go(f.push, "push"), go(f.fall, "fall")))),
     section(d.npcsTitle, 0, d.npcs.length ? d.npcs.map((n) => h("article.igd-npc", {}, h("b.igd-actor", { text: n.name }),
       n.policy.map((p) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: p.label }), seg(p, `pol:${n.id}:${p.id}`))),
       h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: d.labels.reveal }), h("span.igd-seg.igd-multi", {}, n.reveal.map((r) => h("button", { fk: `rv:${n.id}:${r.id}`, attrs: { "aria-pressed": String(r.on) }, on: { click: () => send(r.req) } }, icon(r.on ? "fa-eye" : "fa-eye-slash"), h("span", { text: r.label }))))))) : h("p.igd-empty", {}, h("span", { text: d.npcsEmpty }))),

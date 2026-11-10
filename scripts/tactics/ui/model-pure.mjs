@@ -5,7 +5,9 @@
      dockData(model, own, facts, t) -> what the dock shows      model = playerModel(view, viewer, ctx)  |  { bars: [barModel], ... } for staff
      deskData(model, own, facts, t) -> what the desk shows      model = deskModel(state, log, ctx)
      askData(p, o)                 -> one question (a prompt of the player, a card of the desk): the same shape for both surfaces
-   facts = { view, c(id) -> { name, npc, img? } | null, attrs(id) -> { fighting, ... } | null, userName(userId), me: userId, staff: bool }
+   facts = { view, c(id) -> { name, npc, img? } | null, attrs(id) -> { fighting, ... } | null, userName(userId), me: userId, staff: bool,
+             move(cid) -> { options: [movement-pure.moveOptions], why: reason | null } | null (no map),   doors(cid) -> [flows/move.doorOptions],
+             zone(spot) -> { id, level, floor, area, roof } | null }      the last three are asked only for the combatant the dock drives
    own    = the surface's own state (which action is armed, the picked targets, drafts of text, open panels); never part of the fight.
    HIDDEN INFORMATION (spec 10): a player's data is built from the player's view only. `attrsFor` refuses an NPC's numbers unless the view
    says its stats are revealed, whatever `facts.attrs` would answer; the roster of possible targets is the view's ledger (a concealed
@@ -22,6 +24,18 @@ export const costText = (t, cost) => (cost ? t(`ITAC.ui.cost.${cost}`, {}, Strin
 export const attrText = (t, attr) => (attr ? t(`ITAC.ui.attr.${attr}`, {}, cap(attr)) : "");
 const nameOf = (facts, id, t) => (id ? facts.c?.(id)?.name ?? t("ITAC.Someone") : "");
 const pct = (p) => `${Math.round(p * 100)}%`;
+/** a place in words: "Zone 4", "Zone 4, on the roof", "Sky high" (the map's zone number; never a raw key when the map answers) */
+export function zoneText(facts, t, spot) {
+  if (!spot) return "";
+  const z = facts.zone?.(spot) ?? null, s = String(spot);
+  const area = z?.area ?? (s.startsWith("@") ? s.slice(1) : null);
+  if (area) return t(`ITAC.ui.area.${area}`, {}, cap(area));
+  const base = t("ITAC.ui.zone", { n: z?.id ?? s.split(":")[0] });
+  if (z?.level === "floor" && z.floor != null) return t("ITAC.ui.zone.floor", { zone: base, n: z.floor });
+  if (z?.level === "elevated" || /:elevated$/.test(s)) return t(z?.roof ? "ITAC.ui.zone.roof" : "ITAC.ui.zone.air", { zone: base });
+  return base;
+}
+const bare = (spot) => String(spot ?? "").split(":")[0];
 
 /* ------------------------------------------------------------------ chance (spec 10: bands for players, [D] thresholds) */
 export const BANDS = Object.freeze([{ id: "unlikely", below: 0.35 }, { id: "even", below: 0.6 }, { id: "likely", below: 0.8 }, { id: "nearCertain", below: 2 }]);
@@ -77,6 +91,7 @@ function titleOf(p, t, facts, round) {
   if (p.kind === "triggerQueue") { const at = ["roundStart", "roundEnd", "turnStart", "turnEnd"].includes(p.data?.at) ? p.data.at : "roundStart"; return t(`ITAC.Prompt.triggerQueue.Title.${at}`, { round: round ?? "", name: p.aboutName ?? "" }); }
   if (P1_KINDS.includes(p.kind)) return t(`ITAC.Prompt.${p.kind}.Title`);
   const k = p.kind === "proxy" && p.of ? p.of : p.kind;
+  if (k === "direction" && Array.isArray(p.data?.zones)) return t("ITAC.ui.card.forced");
   return t(`ITAC.${p.to === "desk" ? "card" : "prompt"}.${k}`, {}, null) ?? t(`ITAC.card.${k}`, {}, null) ?? t(`ITAC.Prompt.${k}.Title`, {}, cap(k));
 }
 function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
@@ -99,10 +114,21 @@ function linesOf(p, t, facts, x) {
     case "reaction": if (d.attacker) out.push(t("ITAC.ui.line.attack", { attacker: n(d.attacker), target: about, action: t(`ITAC.action.${x.inst?.action ?? d.attack}`, {}, t("ITAC.ui.anAttack")) })); else out.push(t("ITAC.ui.line.window", { name: about })); break;
     case "counter": out.push(t("ITAC.ui.line.counter", { name: about })); break;
     case "dodgeMove": out.push(t("ITAC.ui.line.dodgeMove", { name: about })); break;
+    case "moveStop": out.push(t("ITAC.ui.line.moveStop", { name: about, zone: zoneText(facts, t, d.spot), why: (d.why ?? []).map((w) => t(`ITAC.ui.why.${w}`, {}, String(w))).join(", ") })); break;
+    case "moveApprove": out.push(t("ITAC.ui.line.moveApprove", { name: about, from: zoneText(facts, t, d.from), to: zoneText(facts, t, d.to) })); if (d.cost && d.cost !== "none") out.push(t("ITAC.ui.line.moveCost", { cost: costText(t, d.cost) })); break;
     case "stunts": out.push(t("ITAC.ui.line.stunts", { n: p.max ?? 0 })); break;
     case "exception": if (d.text) out.push({ quote: String(d.text), by: about }); if (d.reason) out.push(t("ITAC.ui.line.why", { reason: reasonText(t, d.reason) })); break;
     case "other": if (d.text) out.push({ quote: String(d.text), by: about }); break;
-    case "direction": case "stunt": out.push(t("ITAC.ui.line.stunt", { by: n(d.by), stunt: t(`ITAC.stunt.${d.stunt}`, {}, String(d.stunt ?? "")), target: n(d.target) })); break;
+    case "direction": if (Array.isArray(d.zones)) {                                              // a forced move (P3): where the map says the character flies
+        const chain = d.zones.map((z) => zoneText(facts, t, z)), who = n(d.who ?? p.about);
+        if (chain.length > 1) out.push(t(d.by ? "ITAC.ui.line.forcedBy" : "ITAC.ui.line.forced", { name: who, by: n(d.by), n: chain.length - 1, chain: chain.join(" \u2192 ") }));
+        else out.push(t("ITAC.ui.line.forcedNowhere", { name: who }));
+        for (const w of d.walls ?? []) out.push(t("ITAC.ui.line.forcedWall", { armor: w.armor ?? 0 }));
+        if (d.edge) out.push(t("ITAC.ui.line.forcedEdge"));
+        break;
+      }
+    // falls through: the direction of a stunt
+    case "stunt": out.push(t("ITAC.ui.line.stunt", { by: n(d.by), stunt: t(`ITAC.stunt.${d.stunt}`, {}, String(d.stunt ?? "")), target: n(d.target) })); break;
     case "helpOverride": out.push(t("ITAC.ui.line.help", { helper: about, name: n(d.for), reason: reasonText(t, d.reason) })); break;
     case "revalidate": out.push(t("ITAC.ui.line.revalidate", { name: about, reasons: (d.reasons ?? []).map((r) => reasonText(t, r)).join(", ") })); break;
     case "npcBroken": out.push(t("ITAC.ui.line.npcBroken", { name: about })); break;
@@ -140,14 +166,25 @@ export function askData(p, o) {
   };
   /* stunts against one target only: the name goes into the sentence once instead of onto every button */
   const stuntTargets = [...new Set((p.options ?? []).map((x) => x.data?.stunt && x.data?.target).filter(Boolean))], oneTarget = stuntTargets.length === 1;
-  const options = (p.options ?? []).map((x) => {
+  const places = (p.options ?? []).filter((x) => typeof x.data?.to === "string" && !x.disabled);       // P3 (the move a dodge earns): one option per place and way of moving
+  const chosen = places.length ? own.zone?.[p.id] ?? null : null, here = places.filter((x) => bare(x.data.zone ?? x.data.to) === chosen);
+  const wayLabel = (x) => [t(`ITAC.mode.${x.data.mode}`, {}, cap(x.data.mode ?? "")), x.data.elevated === "roof" ? t("ITAC.ui.way.roof") : x.data.elevated === "air" ? t("ITAC.ui.way.air") : null].filter(Boolean).join(", ");
+  const placeOpts = !places.length ? [] : here.length
+    ? [...here.map((x) => ({ id: x.id, label: wayLabel(x), cost: zoneText(facts, t, x.data.to), note: null, disabled: null, picked: false, pass: false, zones: null, req: x.req, zoneReq: null })),
+      { id: "@again", label: t("ITAC.ui.move.again"), cost: null, note: null, disabled: null, picked: false, pass: true, zones: null, req: null, zoneReq: null, again: true }]
+    : [{ id: "@zone", label: t("ITAC.ui.pick.zone"), cost: null, note: null, disabled: null, picked: false, pass: false, pickZone: true,
+      zones: [...new Set(places.map((x) => bare(x.data.zone ?? x.data.to)))].map((z) => ({ zone: z, tip: [...new Set(places.filter((x) => bare(x.data.zone ?? x.data.to) === z).map(wayLabel))].join(" / ") })),
+      /* the zone clicked on the map: one way to get there answers at once, several are shown as buttons (main.mjs keeps the zone) */
+      zoneReq: (zone) => { const hit = places.filter((x) => bare(x.data.zone ?? x.data.to) === bare(zone)); return hit.length === 1 ? hit[0].req : null; }, req: null }];
+  const options = [...placeOpts, ...(p.options ?? []).filter((x) => !places.includes(x)).map((x) => {
     const value = text && p.free ? { id: x.id, text } : always ? { id: x.id, always: true } : null;
     const zones = Array.isArray(x.data?.zones) ? x.data.zones : null;
     return { id: x.id, label: optLabel(p, x, t, facts, desk, oneTarget), cost: [costText(t, x.cost), x.stress ? t("ITAC.ui.stress", { n: x.stress }) : null].filter(Boolean).join(", ") || null,
       note: odds(x.id), disabled: x.disabled ? reasonText(t, x.disabled) : null, picked: picks.includes(x.id), pass: x.id === "pass", zones,
       req: x.disabled || p.multi ? null : value && x.req ? p.answerReq(value) : x.req,
-      zoneReq: zones && !x.disabled ? (zone) => p.answerReq({ id: x.id, zone: String(zone) }) : null };      // an option that carries zones: the place picked on the map rides along [D]
-  });
+      zoneReq: zones && !x.disabled ? (zone) => p.answerReq({ id: x.id, zone: String(zone) }) : null,      // an option that carries zones: the place picked on the map rides along [D]
+      ...(places.length && kind === "dodgeMove" && x.id === "move" ? { label: t("ITAC.ui.move.byHand") } : {}) };
+  })];
   const lines = linesOf(p, t, facts, { inst });
   if (oneTarget) lines.push(t("ITAC.ui.line.against", { name: nameOf(facts, stuntTargets[0], t) }));
   if (attPool != null) lines.push(t("ITAC.ui.line.attPool", { dice: attPool, attr: attrText(t, inst.attr) }));
@@ -155,6 +192,7 @@ export function askData(p, o) {
   const multi = p.multi ? { min, max, n: picks.length } : null;
   const canSubmit = !multi || queue || (picks.length >= min && picks.length <= max);
   return {
+    map: desk && kind === "direction" && Array.isArray(p.data?.zones) && p.data.zones.length > 1 ? { zones: p.data.zones.map((z, i) => ({ zone: bare(z), label: i ? String(i) : "" })), borders: (p.data.walls ?? []).map((w) => w.border).filter(Boolean) } : null,
     id: p.id, kind, proxy: p.kind === "proxy", title: titleOf({ ...p, to: desk ? "desk" : "player" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options, multi,
     free: p.free ? { text: own.texts?.[p.id] ?? "", placeholder: t(desk ? "ITAC.ui.note.gm" : "ITAC.ui.note.player") } : null,
     always: desk && Array.isArray(p.always) && p.always.length ? { on: always, label: t("ITAC.ui.always", { name: p.aboutName ?? "" }) } : null,
@@ -220,8 +258,9 @@ function declarePanel(bar, a, own, facts, t) {
     chance = { level: c.level, text: t(`ITAC.ui.band.${c.band}`), defended: c.defended ? { level: c.defended.level, text: t(`ITAC.ui.band.${c.defended.band}`), label: t("ITAC.ui.ifDefends", { how: t(`ITAC.action.${a.defense}`) }) } : null };
   }
   const text = (own.text ?? "").trim();
-  const why = a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : a.needsText && !text ? t("ITAC.ui.need.text") : null;
-  const decl = { ...(a.needsTarget ? { targets: picked.slice() } : {}), ...((own.tokens ?? []).length ? { tokens: own.tokens.slice() } : {}), ...(a.needsText ? { text } : {}) };
+  const needsZone = a.flow === "fastball";
+  const why = a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : null;
+  const decl = { ...(a.needsTarget ? { targets: picked.slice() } : {}), ...(needsZone && own.to ? { to: own.to } : {}), ...((own.tokens ?? []).length ? { tokens: own.tokens.slice() } : {}), ...(a.needsText ? { text } : {}) };
   /* the executor refused this very declaration as against the rules (out of reach, no line of sight...): the reason stays in the panel
      with the way round it, a declaration that carries a request for an exception (a card on the GM desk; the GM's own goes there too) */
   const ref = own.refused && own.refused.action === a.id && own.refused.key === picked.join(",") ? own.refused : null;
@@ -229,9 +268,70 @@ function declarePanel(bar, a, own, facts, t) {
     submit: { label: facts.staff ? t("ITAC.ui.exception.anyway") : t("ITAC.ui.exception.ask"), disabled: why ?? (facts.staff || (own.why ?? "").trim() ? null : t("ITAC.ui.exception.needText")),
       req: !why && (facts.staff || (own.why ?? "").trim()) ? a.exceptionReq(decl, facts.staff ? t("ITAC.ui.who.gm") : own.why.trim()) : null } } : null;
   return { kind: "declare", action: a.id, title, cost, targets, picking: !!a.needsTarget && !picked.length, tokens, refused,
+    dest: needsZone ? { label: t("ITAC.ui.dest"), value: own.to ? zoneText(facts, t, own.to) : null, pick: t(own.to ? "ITAC.ui.move.again" : "ITAC.ui.pick.zone") } : null,
     pool: pool ? { total: pool.total, parts: pool.parts.map((x) => (x.id === "token" ? { label: t(`ITAC.mod.${x.source}`, {}, String(x.source || t("ITAC.ui.bonus"))), dice: x.dice } : { label: attrText(t, x.id), dice: x.dice })) } : null, chance,
     text: a.needsText ? { value: own.text ?? "", placeholder: t("ITAC.ui.text.placeholder") } : null,
     submit: { label: own.amend ? t("ITAC.ui.amend") : t("ITAC.ui.declare"), disabled: why, req: why ? null : own.amend ? { op: "amend", inst: own.amend, decl: { ...decl, action: a.id } } : a.req(decl) } };
+}
+/* ---- movement (P3): the map answers "where" (a zone picked on it, or a token dragged), the panel answers "how" and what it costs ---- */
+const COST_RANK = { none: 0, free: 0, quick: 1, full: 2, gm: 3 };
+const shortCost = (t, o) => [t(`ITAC.ui.costShort.${o.cost ?? "none"}`, {}, String(o.cost ?? "")), o.stress ? t("ITAC.ui.stress", { n: o.stress }) : null].filter(Boolean).join(", ");
+/** the way round a refusal: the GM's own client declares anyway; a player writes why and asks. `unpaid`: only the action economy says
+    no, which a declaration cannot carry past the executor, so the question goes to the GM as a free request. */
+function askBox(a, bar, decl, o, reason, own, facts, t, what) {
+  const text = (own.why ?? "").trim();
+  if (facts.staff) return { reason, text: null, placeholder: "", submit: { label: t(o.unpaid ? "ITAC.ui.move.gmFree" : "ITAC.ui.exception.anyway"), disabled: null,
+    req: o.unpaid ? { ...a.req(decl), gm: true } : a.exceptionReq(decl, t("ITAC.ui.who.gm")) } };
+  return { reason, text: own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"), submit: { label: t("ITAC.ui.exception.ask"), disabled: text ? null : t("ITAC.ui.exception.needText"),
+    req: !text ? null : o.unpaid ? bar.exception.req(`${what}: ${text}`.slice(0, 400)) : a.exceptionReq(decl, text) } };
+}
+function movePanel(bar, a, own, facts, t) {
+  const title = labelOf(t, a.label), m = facts.move?.(bar.combatant) ?? null, opts = m?.options ?? [];
+  const base = { kind: "move", action: a.id, title, cost: null, dest: null, near: [], nearLabel: t("ITAC.ui.move.near"), zones: [], picking: false, hint: null, ask: null, empty: null };
+  if (!m) return { ...base, empty: t("ITAC.ui.move.noMap") };
+  if (!opts.length) {
+    const reason = t("ITAC.move.cannot", { reason: reasonText(t, m.why ?? "noRoute") });
+    return { ...base, empty: reason, ask: askBox(a, bar, {}, { unpaid: 1 }, null, own, facts, t, title) };
+  }
+  const ref = own.refused?.action === a.id ? own.refused : null;
+  const row = (o) => {
+    const mine = ref && ref.key === o.id, disabled = mine ? reasonText(t, ref.reason, ref.params) : o.disabled ? reasonText(t, o.disabled) : null;
+    const where = o.area ? zoneText(facts, t, `@${o.area}`) : o.elevated === "roof" ? t("ITAC.ui.way.roof") : o.elevated === "air" ? t("ITAC.ui.way.air") : o.here ? t("ITAC.ui.way.down") : null;
+    const decl = { to: o.to, mode: o.mode, ...(o.stress ? { stress: 1 } : {}), ...(o.force ? { force: true } : {}) };
+    return { id: o.id, label: [t(`ITAC.mode.${o.mode}`, {}, cap(o.mode)), where].filter(Boolean).join(", "), cost: o.cost ?? null,
+      notes: [o.cost ? costText(t, o.cost) : null, o.stress ? t("ITAC.ui.stress", { n: o.stress }) : null, o.barriers?.length ? t("ITAC.move.force", { n: o.barriers.length }) : null, o.gm ? t("ITAC.ui.needsGm") : null].filter(Boolean),
+      warn: !!(o.stress || o.barriers?.length), disabled, asking: own.ask === o.id, req: disabled ? null : a.req(decl), o, decl };
+  };
+  const far = opts.filter((o) => !o.here && !o.area && o.zone), byZone = new Map();
+  for (const o of far) { if (!byZone.has(o.zone)) byZone.set(o.zone, []); byZone.get(o.zone).push(o); }
+  /* what the map offers: every zone one action reaches, in the colour of its cheapest way (blocked ones are shown too, so the reason can be read and the GM asked) */
+  const zones = [...byZone].map(([zone, list]) => {
+    const can = list.filter((o) => !o.disabled).sort((x, y) => (COST_RANK[x.cost] ?? 9) - (COST_RANK[y.cost] ?? 9) || (x.stress ?? 0) - (y.stress ?? 0) || (x.barriers?.length ?? 0) - (y.barriers?.length ?? 0));
+    const best = can[0] ?? list[0], mode = t(`ITAC.mode.${best.mode}`, {}, cap(best.mode));
+    return can.length ? { zone, label: shortCost(t, best), tip: `${mode}: ${shortCost(t, best)}`, color: best.barriers?.length ? "danger" : best.stress ? "stress" : "move" }
+      : { zone, label: "", tip: `${mode}: ${reasonText(t, best.disabled)}`, color: "blocked", style: "dashed" };
+  });
+  const to = own.to && byZone.has(bare(own.to)) ? bare(own.to) : null;
+  const rows = to ? byZone.get(to).map(row) : [], near = opts.filter((o) => o.here || o.area).map(row);
+  const asked = [...rows, ...near].find((r) => r.asking && r.disabled) ?? null;
+  const strip = (r) => ({ id: r.id, label: r.label, cost: r.cost, notes: r.notes, warn: r.warn, disabled: r.disabled, asking: !!asked && asked.id === r.id, req: r.req });
+  return { ...base, zones, picking: !to && zones.length > 0, hint: !to && zones.length ? t("ITAC.move.pickHint") : null,
+    dest: to ? { zone: to, label: zoneText(facts, t, to), rows: rows.map(strip), again: t("ITAC.ui.move.again") } : null, near: near.map(strip),
+    ask: asked ? askBox(a, bar, asked.decl, asked.o, t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${zoneText(facts, t, asked.o.to)} (${asked.label})`) : null,
+    empty: !zones.length && !near.length ? t("ITAC.move.cannot", { reason: reasonText(t, "noRoute") }) : null };
+}
+/* a door as an action (open, break a locked one, work the lock): the doors of the mover's own zone, each with its state */
+function doorPanel(bar, a, own, facts, t) {
+  const title = labelOf(t, a.label), ref = own.refused?.action === a.id ? own.refused : null;
+  const rows = (facts.doors?.(bar.combatant) ?? []).map((d) => {
+    const state = t(`ITAC.ui.door.${d.state}`, {}, String(d.state)), why = ref?.key === d.to ? ref.reason : d.actions?.[a.id] ?? null;
+    const disabled = !why ? null : why === "doorState" ? t("ITAC.ui.door.is", { state }) : reasonText(t, why, ref?.key === d.to ? ref.params : {});
+    return { id: d.to, label: t("ITAC.ui.door.to", { zone: zoneText(facts, t, d.zone) }), notes: [state, t("ITAC.ui.armor", { n: d.armor ?? 0 })], cost: a.cost, warn: false, disabled, asking: own.ask === d.to && !!disabled, req: disabled ? null : a.req({ to: d.to }), d };
+  });
+  const asked = rows.find((r) => r.asking) ?? null;
+  return { kind: "door", action: a.id, title, cost: costText(t, a.cost), rows: rows.map(({ d, ...r }) => r), borders: rows.map((r) => ({ border: r.id, label: r.notes[0], color: r.disabled ? "blocked" : "target" })),
+    empty: rows.length ? null : t("ITAC.ui.door.none"),
+    ask: asked ? askBox(a, bar, { to: asked.id }, {}, t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${asked.label}`) : null };
 }
 function minePanel(i, facts, t) {
   const roll = i.rolls?.[0];
@@ -257,6 +357,8 @@ export function dockData(model, own, facts, t) {
   if (own.mode === "other") panel = { kind: "other", title: t("ITAC.action.other"), text: own.text ?? "", placeholder: t("ITAC.ui.other.placeholder"), hint: t("ITAC.ui.other.hint"),
     submit: { label: t("ITAC.ui.other.send"), disabled: (own.text ?? "").trim() ? null : t("ITAC.ui.need.text"), req: (own.text ?? "").trim() ? bar.other.req(own.text.trim()) : null } };
   else if (own.mode === "holdOff") panel = { kind: "holdOff", title: t("ITAC.ui.holdOff"), hint: t("ITAC.ui.holdOff.hint"), targets: (bar.holdOff?.targets ?? []).map((x) => ({ slot: x.slot, card: x.card, names: x.names.join(", "), req: bar.holdOff.req(x.slot) })) };
+  else if (armed && (!armed.disabled || facts.staff) && armed.flow === "move") panel = movePanel(bar, armed, own, facts, t);
+  else if (armed && !armed.disabled && armed.flow === "barrier") panel = doorPanel(bar, armed, own, facts, t);
   else if (armed) panel = declarePanel(bar, armed, own, facts, t);
   else if (mine.length && !facts.staff) panel = minePanel(mine[mine.length - 1], facts, t);
   const unused = pipsOf(bar, t).filter((p) => p.state === "open").map((p) => p.label);
@@ -352,13 +454,21 @@ export function deskData(model, own, facts, t) {
     reveal: ["stats", "powers", "health"].map((k) => ({ id: k, label: t(`ITAC.ui.reveal.${k}`), on: !!n.revealed[k], req: n.revealReq({ [k]: !n.revealed[k] }) })) }));
   const waiting = waitingData(model.waiting, facts, t);
   const count = cards.length + model.manual.length;
+  /* [A36]: until a charge is the engine's, the GM orders a forced move (who, away from whom, how far, how hard) or a fall by hand */
+  const everyone = Object.keys(facts.view?.ledger ?? {}).filter((id) => facts.c?.(id)).map((id) => ({ id, label: facts.c(id).name }));
+  const fo = own.force ?? {}, fWho = everyone.some((x) => x.id === fo.who) ? fo.who : null, fFrom = fo.from !== fWho && everyone.some((x) => x.id === fo.from) ? fo.from : null;
+  const fDist = Math.max(1, Math.min(12, Math.trunc(Number(fo.distance) || 1))), fDmg = Math.max(0, Math.min(99, Math.trunc(Number(fo.damage) || 0)));
+  const force = { title: t("ITAC.ui.force"), who: { label: t("ITAC.ui.force.who"), value: fWho, choices: everyone }, from: { label: t("ITAC.ui.force.from"), value: fFrom, choices: everyone.filter((x) => x.id !== fWho) },
+    distance: { label: t("ITAC.ui.force.distance"), value: fDist, min: 1, max: 12 }, damage: { label: t("ITAC.ui.force.damage"), value: fDmg, min: 0, max: 99 },
+    push: { label: t("ITAC.ui.force.push"), disabled: !fWho ? t("ITAC.ui.force.needWho") : !fFrom ? t("ITAC.ui.force.needFrom") : null, req: fWho && fFrom ? { op: "forcedMove", combatant: fWho, awayFrom: fFrom, by: fFrom, distance: fDist, damage: fDmg, kind: "knockback" } : null },
+    fall: { label: t("ITAC.ui.force.fall"), disabled: fWho ? null : t("ITAC.ui.force.needWho"), req: fWho ? { op: "fall", combatant: fWho } : null } };
   return {
     show: true, count, tab: ["now", "journal", "table"].includes(own.tab) ? own.tab : "now", collapsed: !!own.collapsed,
     tabs: [{ id: "now", label: t("ITAC.ui.tab.now"), n: count }, { id: "journal", label: t("ITAC.ui.tab.journal"), n: 0 }, { id: "table", label: t("ITAC.ui.tab.table"), n: 0 }],
     title: t("ITAC.ui.desk"), waiting, waitingLabel: t("ITAC.ui.waitingFor"), nobody: model.turn?.combatant ? t("ITAC.ui.wait.nobody", { name: model.turn.name ?? "" }) : t("ITAC.ui.wait.idle"),
     turn: model.turn?.combatant ? t("ITAC.ui.turn.round", { n: model.turn.round ?? "?", name: model.turn.name ?? "" }) : "",
     stack: model.info.map((i) => instData(i, model, own, facts, t)).reverse(), manual: model.manual.map((m) => manualData(m, own, facts, t)),
-    cards, empty: t("ITAC.ui.desk.empty"), journal: rounds, journalEmpty: t("ITAC.ui.journal.empty"), npcs, npcsEmpty: t("ITAC.ui.table.empty"), npcsTitle: t("ITAC.ui.table.npcs"),
+    cards, force, empty: t("ITAC.ui.desk.empty"), journal: rounds, journalEmpty: t("ITAC.ui.journal.empty"), npcs, npcsEmpty: t("ITAC.ui.table.empty"), npcsTitle: t("ITAC.ui.table.npcs"),
     mode: { label: t("ITAC.ui.mode"), choices: ["tactical", "free"].map((m) => ({ id: m, label: t(`ITAC.ui.mode.${m}`), on: model.mode === m, req: model.modeReq(m) })) },
     labels: { override: t("ITAC.cmd.override"), set: t("ITAC.ui.set"), step: t("ITAC.ui.stepLabel"), queue: t("ITAC.ui.queue"), action: t("ITAC.ui.inProgress"), manual: t("ITAC.ui.manual"), collapse: t("ITAC.ui.desk.collapse"), expand: t("ITAC.ui.desk.expand", { n: count }),
       reveal: t("ITAC.ui.reveal"), groups: { dice: t("ITAC.ui.ovr.g.dice"), result: t("ITAC.ui.ovr.g.result"), step: t("ITAC.ui.ovr.g.step"), end: t("ITAC.ui.ovr.g.end") }, cost: t("ITAC.ui.manual.cost"), damage: t("ITAC.ui.manual.damage") },

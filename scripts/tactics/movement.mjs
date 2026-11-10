@@ -6,9 +6,12 @@
      install(h)                per client, when tactical combat runs: the step listener, the map's rules driver, the cost
                                confirmation on a dragged token (the drag becomes a `move` request; the executor moves the token)
      pickMove / talk           the reach highlight with a zone pick for a combatant; communication range as a query
+   With the designed surfaces running, the action dock shows the options itself (api.options / api.doors) and takes the drag
+   confirmation over (setDragSurface); the small dialog of `ask` stays for a client without them.
    h = { cid(tokenDoc) -> combatant id | null, c(cid) -> facts, state() -> view | null, facts() -> Facts, request(req) -> Promise<envelope> } */
 import * as Zones from "./zones-adapter.mjs";
 import * as MP from "./movement-pure.mjs";
+import { doorOptions } from "./flows/move.mjs";
 import { t, errText } from "./lang.mjs";
 
 const MOD = "invincible-plus-ultra";
@@ -28,6 +31,7 @@ export function zoneFacts(tok, byToken = () => null) {
     zone: (where) => Zones.zoneOf(keyOf(where)),
     states: (where) => Zones.zoneStates(where),
     border: (key) => { const [a, b] = String(key).split("|"); return a && b ? Zones.borderBetween(a, b) : null; },
+    borders: (where) => Zones.bordersOf(keyOf(where)),
     at: (spot) => Zones.tokensInZone(spot).map(byToken).filter(Boolean),
     range: (a, b) => (tok(a) && tok(b) ? Zones.range(tok(a), tok(b)) : null),
   };
@@ -67,7 +71,9 @@ export function talk(Z, a, b, link = false) {
 }
 
 /* ------------------------------------------------------------------ per client */
-let offStep = null, on = false, H = null;
+let offStep = null, on = false, H = null, surface = null;
+/** The action dock takes over the confirmation of a dragged token: fn(cid, spot) -> true when it showed the options itself. */
+export function setDragSurface(fn) { surface = typeof fn === "function" ? fn : null; }
 const costText = (o) => `${t(`ITAC.cost.${o.cost ?? "none"}`)}${o.stress ? ` + ${t("ITAC.move.stress", { n: o.stress })}` : ""}${o.barriers?.length ? ` + ${t("ITAC.move.force", { n: o.barriers.length })}` : ""}`;
 const modeText = (id) => t(`ITAC.mode.${id}`, {}, id);
 /** the options of one combatant for one destination, or all of them */
@@ -91,6 +97,7 @@ async function ask(h, cid, opts, title) {
 function onDrag(h, ctx) {
   try {
     const cid = h.cid(ctx.token?.document ?? ctx.token), to = ctx.to?.spot ?? null;
+    if (cid && to && surface) { let took = false; try { took = surface(cid, to) === true; } catch { took = false; } if (took) return false; }      // the dock shows the price (ui/main.mjs)
     if (cid && to) ask(h, cid, optionsFor(h, cid, to), `${h.c(cid)?.name ?? ""}: ${t("ITAC.action.move")}`).catch((err) => console.warn(`${MOD} | tactics: drag`, err));
   } catch (err) { console.warn(`${MOD} | tactics: drag`, err); }
   return false;                                                                                 // the token stays; the executor moves it step by step
@@ -124,5 +131,8 @@ export const api = {
   options: (cid, to = null) => (H ? optionsFor(H, cid, to) : []),
   pick: (cid) => (H ? pickMove(H, cid) : Promise.resolve(null)),
   move: (cid, to, o = {}) => (H ? H.request({ op: "move", actor: cid, to, ...o }) : Promise.resolve(null)),
+  /** why `cid` has no option at all: no zones here, held / snared / trapped / broken, in no zone | null */
+  why: (cid) => { try { const Z = H?.facts().zones, c = H?.c(cid), st = H?.state(); return !Z ? "noZones" : !c || !st ? "gone" : MP.cannotMove(st, cid, c) ?? (Z.place(cid) ? null : "noPlace"); } catch { return null; } },
+  doors: (cid) => { try { const Z = H?.facts().zones; return Z ? doorOptions(Z, H.c(cid), cid) : []; } catch { return []; } },
   canTalk: (a, b, link = false) => { const Z = H?.facts().zones; return Z ? talk(Z, a, b, link) : undefined; },
 };

@@ -238,6 +238,29 @@
 .itd-def b { color: #fff; font-weight: 700; }
 .itd-text { min-height: 44px; }
 #invincible-tactics-dock .itd-go-ask { color: var(--ita-ink); background: var(--ita-cyan); }
+/* movement: the ways to a chosen zone and the doors of a zone. One button per way: its name, then what it costs; a way that cannot be
+   taken is dashed and says why (a click opens the question to the GM under the list). */
+.itd-ways { flex: 1 1 260px; display: flex; flex-wrap: wrap; gap: 7px; }
+#invincible-tactics-dock .itd-way {
+  display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 7px; row-gap: 2px; min-width: 150px; max-width: 300px; padding: 5px 10px 6px;
+  color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink); box-shadow: 3px 3px 0 var(--ita-blue);
+  transition: translate .12s ease-out, box-shadow .12s ease-out;
+}
+#invincible-tactics-dock .itd-way > i { grid-row: 1; }
+.itd-way-l { grid-column: 2; font: 400 13px/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
+#invincible-tactics-dock .itd-way > .itd-way-l:first-child { grid-column: 1 / -1; }
+.itd-way-n, .itd-way-why { grid-column: 1 / -1; font: 400 11px/1.2 Comic, sans-serif; overflow-wrap: anywhere; }
+.itd-way-why { display: flex; align-items: baseline; gap: 5px; color: #fff; }
+.itd-way-why i { color: var(--ita-red-lt); }
+#invincible-tactics-dock .itd-way:hover:not([aria-disabled="true"]) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-way:active:not([aria-disabled="true"]) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-way[data-warn]:not([aria-disabled="true"]) { background: #fff; box-shadow: 3px 3px 0 var(--ita-red); }
+#invincible-tactics-dock .itd-way[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; cursor: pointer; }
+#invincible-tactics-dock .itd-way[aria-disabled="true"]:hover, #invincible-tactics-dock .itd-way[aria-disabled="true"].itd-armed { color: #fff; border-color: #fff; }
+#invincible-tactics-dock .itd-way[aria-disabled="true"].itd-armed { border-style: solid; }
+.itd-near { align-items: center; padding-top: 7px; border-top: 1px dashed var(--ita-line); }
+.itd-near .itd-k { flex: 1 1 100%; }
+.itd-destv { font: 700 13px/1.1 Comic, sans-serif; color: #fff; }
 
 /* waiting line */
 .itd-wait { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 7px; padding: 2px 9px 3px; background: rgba(12, 26, 46, .92); }

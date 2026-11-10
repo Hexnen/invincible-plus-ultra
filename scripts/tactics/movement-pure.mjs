@@ -10,6 +10,7 @@
      Z.chain(cid, { awayFrom, toward, distance }) -> plan | null      awayFrom / toward: a combatant id or a spot
      Z.reach(cid, apiProfile, max) -> [{ zone, d, cost }]             Z.within(where, n) -> [{ zone, d }]
      Z.zone(where) -> zone | null      Z.states(where) -> [state]     Z.border(borderKey) -> border | null      Z.at(spot) -> [cid]
+     Z.borders(zoneKey) -> [border]                   (every border of a zone, for the doors a mover stands at)
    A MOVE PLAN as the flows keep it (slim: the state is a document flag):
      { kind: "route" | "inZone" | "area" | "return", mode, way, from, to, end: { level, floor, airborne } | { area }, total, zones: [key],
        steps: [{ k, to, b?, x?, o? }], cost: "quick" | "full" | "free" | "none" | "gm", later?: cost paid after the GM's word, stress,
@@ -181,7 +182,8 @@ export function priceMove(Z, state, cid, c, decl, o = {}) {
 /* ------------------------------------------------------------------ the options a mover is shown (spec 9.6 step 1) */
 /** Every zone one action reaches, per way of moving, with its price and what stands in the way.
     canPay(cost) -> { ok, reason } is the action economy's answer for this combatant now. o = { free, mode, max }.
-    -> [{ id, to, zone, mode, d, cost, stress, disabled, gmMayAllow?, barriers, elevated?, here? }] nearest first. */
+    -> [{ id, to, zone, mode, d, cost, stress, disabled, gmMayAllow?, unpaid?, barriers, elevated?, here?, area? }] nearest first.
+       `unpaid`: the move itself is fine and only the action economy refuses it (no action left, not the mover's turn). */
 export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
   canPay ??= (cost) => P1.canPay(state, cid, cost, {});                                         // [L1]-[L4]: the action economy's answer
   const out = [], from = Z?.place?.(cid);
@@ -191,7 +193,7 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
     const pr = priceMove(Z, state, cid, c, { to, mode: m.id, stress: 1, force: extra.force }, o);
     const cost = pr.ok ? (pr.later ?? pr.cost) : null, pay = pr.ok && (cost === "quick" || cost === "full") ? canPay(cost) : { ok: true };
     out.push({ id: `${m.id}|${to}`, to, zone, mode: m.id, d, cost, stress: pr.ok ? pr.stress : 0, disabled: !pr.ok ? pr.reason : pay.ok ? null : pay.reason ?? "noAction",
-      ...(pr.ok ? {} : pr.gmMayAllow ? { gmMayAllow: true } : {}), barriers: pr.ok ? pr.barriers : pr.params?.barriers ?? [], ...(pr.ok && pr.gm ? { gm: 1 } : {}), ...extra });
+      ...(pr.ok ? (pay.ok ? {} : { unpaid: 1 }) : pr.gmMayAllow ? { gmMayAllow: true } : {}), barriers: pr.ok ? pr.barriers : pr.params?.barriers ?? [], ...(pr.ok && pr.gm ? { gm: 1 } : {}), ...extra });
   };
   for (const m of modes) {
     if (from.area) { continue; }

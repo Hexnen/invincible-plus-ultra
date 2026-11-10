@@ -249,6 +249,17 @@ function doorCheck(v, inst) {
   if (spec.attr === "strength" && !zones.canBreach(a.attrs?.strength ?? 0, Number(b.doorway.armor ?? b.armor ?? 0))) return bad("tooWeak", { armor: b.doorway.armor ?? b.armor ?? 0, gmMayAllow: 1 });   // [Z7] [B2418]
   return fine;
 }
+/** The doors at the zone `cid` stands in, for the surfaces: -> [{ to: borderKey, zone: the zone behind it, state, armor,
+    actions: { openDoor | breachDoor | unseal: null (possible) | reason } }]. The same reading as doorCheck. */
+export function doorOptions(Z, c, cid) {
+  const here = Z?.place?.(cid);
+  if (!here?.zone || typeof Z.borders !== "function") return [];
+  return (Z.borders(here.zone) ?? []).filter((b) => b?.doorway && typeof b.key === "string").map((b) => {
+    const armor = Number(b.doorway.armor ?? b.armor ?? 0), state = String(b.doorway.state ?? "");
+    return { to: b.key, zone: b.key.split("|").find((z) => z !== here.zone) ?? null, state, armor,
+      actions: Object.fromEntries(Object.entries(DOOR).map(([id, s]) => [id, !s.from.includes(state) ? "doorState" : s.attr === "strength" && !zones.canBreach(c?.attrs?.strength ?? 0, armor) ? "tooWeak" : null])) };
+  });
+}
 export const barrier = {
   STEPS: Object.freeze(["check", "roll", "effect", "close"]),
   legality: doorCheck,

@@ -49,7 +49,8 @@ export function face(img, name, cls = "ita-face") {
 export const costIcon = (cost) => (cost === "full" ? icon("fa-play") : cost === "quick" ? icon("fa-forward") : cost === "free" ? icon("fa-bolt") : null);
 
 const seen = new Set();          // questions already shown once: only a new one plays the entrance
-/** One question. handlers = { send(req), pick(promptId, optionId, max), text(promptId, value), always(promptId, on), zone(option, ask) } */
+/** One question. handlers = { send(req), pick(promptId, optionId, max), text(promptId, value), always(promptId, on), zone(option, ask),
+    again(ask): forget the zone picked on the map for this question } */
 export function askCard(a, handlers = {}) {
   const fresh = !seen.has(a.id);
   seen.add(a.id);
@@ -59,7 +60,7 @@ export function askCard(a, handlers = {}) {
       fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.disabled ?? null,
       attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.disabled].filter(Boolean).join(", ") },
       data: { pass: o.pass ? "1" : null },
-      on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.req ? handlers.send?.(o.req) : null) },
+      on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
     }, h("span.ita-opt-l", { text: o.label }), o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null, o.disabled ? h("span.ita-opt-why", { text: o.disabled }) : null);
     return b;
   };

@@ -41,6 +41,8 @@ export const zonesWithin = (where, n, opts) => call("zonesWithin", where, n, opt
 export const zoneOf = (where) => call("zone", where) ?? null;
 export const zoneStates = (where) => call("zoneStates", where) ?? [];
 export const borderBetween = (a, b) => call("borderBetween", a, b) ?? null;
+/** every border of a zone (zones-api.md section 5), each with its wall and its door */
+export const bordersOf = (where) => call("bordersOf", where) ?? [];
 /** the graph in the shape the rules library's zones.makeGraph takes (zones-api.md section 13) | null */
 export const graph = () => call("graph") ?? null;
 /** TokenDocuments in a zone. A token, a spot or a place: that level only (the book's "same zone"); a bare key: every level. */

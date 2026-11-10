@@ -67,6 +67,7 @@ function fakeZones(def) {
     zone: (key) => (Z.zones[key] ? { key, id: Z.zones[key].id, rooftop: !!Z.zones[key].rooftop, states: { ...(Z.marks[key] ?? {}) }, empty: false } : null),
     zoneStates: (where) => { const p = place(where); return p?.zone ? (Z.states[p.zone] ?? []).filter((s) => !s.at || s.at === p.spot) : []; },
     borderBetween: (a, b) => { const x = borderOf(a, b); if (!x) return null; const { _doorShut, ...rest } = x; return rest; },
+    bordersOf: (where) => { const z = place(where)?.zone; return Object.keys(Z.borders).filter((k) => k.split("|").includes(z)).map((k) => api.borderBetween(...k.split("|"))); },
     range: (a, b) => { const pa = place(a), pb = place(b); if (!pa || !pb) return null; if (pa.area || pb.area) return pa.area === pb.area ? { total: 0, borders: 0, levels: 0 } : null; const r = route(pa.zone, pb.zone, "through", false); const levels = pa.level === pb.level ? 0 : 1; return r ? { total: r.length - 1 + levels, borders: r.length - 1, levels } : null; },
     tokensInZone: (where) => { const p = place(where), bare = typeof where === "string" && !where.includes(":") && !where.startsWith("@"); return Object.values(Z.tokens).map((t) => ({ token: { id: t.id }, place: mk(t) })).filter((r) => (bare ? r.place.zone === p?.zone : r.place.spot === p?.spot)); },
     zonesWithin: (where, n) => api.reach(where, { way: "through", speed: n }, { max: n }).map((r) => ({ zone: r.zone, d: r.d })),
@@ -469,5 +470,114 @@ const FLY = [{ mode: "flight", tier: "basic" }];
   eq([Mv.talk(Zf, "H1", "H2").ok, Mv.talk(Zf, "H1", "H2").reason, Mv.talk(Zf, "H1", "H2", true).ok], [false, "wall", true], "P: a wall between neighbours impedes talk; a link does not care");
   Mv.uninstall();
   eq([T.map.drivenBy(), T.map.tacticalOn()], [null, false], "P: uninstall steps down");
+}
+/* ---- Q. the surfaces over movement (ui/model-pure.mjs on the real options): the dock's move and door panels send only what they
+        carry, a refused way names its reason and the way to ask, the desk's cards of a move read as sentences, nothing shows a raw key */
+{
+  const UI = await import("./ui/model-pure.mjs"), D = await import("./desk-pure.mjs"), V = await import("./view-pure.mjs"), { t } = await import("./lang.mjs");
+  const lang = (l) => { globalThis.game.i18n = { lang: l }; };
+  const setup = (place = {}) => {
+    const T = base(); T.c.H1.movement = FLY;
+    for (const [cid, spot] of Object.entries(place)) T.put(cid, spot);
+    const h = { cid: (td) => (T.c[td?.id] ? td.id : null), c: (cid) => T.c[cid] ?? null, state: () => T.state, facts: () => T.facts(), request: async (req) => T.req("p1", req) };
+    Mv.uninstall(); Mv.install(h);
+    const ctx = { c: (id) => T.c[id] ?? null, online: () => true, P1 }, meta = { hidden: [], npc: ["N1"] };
+    const facts = (uid, staff, view) => ({ view, me: uid, staff, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => u,
+      move: (id) => ({ options: Mv.api.options(id), why: Mv.api.why(id) }), doors: (id) => Mv.api.doors(id),
+      zone: (spot) => { const p = T.map.place(spot); return p ? { id: p.id, level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } });
+    const dock = (uid, cid, own = {}) => { const view = V.viewFor(T.state, { id: uid, staff: false, owns: [cid] }, meta); return UI.dockData(D.playerModel(view, { id: uid, owns: [cid] }, ctx), own, facts(uid, false, view), t); };
+    const staffDock = (cid, own = {}) => { const d = D.deskModel(T.state, T.log, ctx); return UI.dockData({ bars: [D.barModel(T.state, cid, ctx)], prompts: [], mine: [], stack: d.info, waiting: d.waiting, turn: d.turn }, own, facts("gm", true, T.state), t); };
+    const desk = (own = {}) => UI.deskData(D.deskModel(T.state, T.log, ctx), own, facts("gm", true, T.state), t);
+    return { T, dock, staffDock, desk };
+  };
+  const texts = (v) => { const out = []; JSON.stringify(v, (k, x) => { if (typeof x === "string" && !x.includes("|z") && !["id", "zone", "to", "border", "action", "color", "style", "kind", "cost", "op", "actor", "mode", "combatant", "awayFrom", "by"].includes(k)) out.push(x); return typeof x === "function" ? undefined : x; }); return out.join(" | "); };
+  const shown = (v, where) => { const s = texts(v); ok(!/ITAC\.|\bz\d\b/.test(s), `${where}: no raw key and no raw zone key is shown (${s.match(/ITAC\.[\w.]+|\bz\d\b/)?.[0] ?? ""})`); return s; };
+  for (const l of ["en", "pl"]) {
+    lang(l);
+    { // a move from the dock: the map is offered the zones, the panel lists the ways to the chosen one, the row's request moves the token
+      const { T, dock } = setup();
+      let d = dock("p1", "H1", { armed: "move" });
+      eq([d.panel.kind, d.panel.picking, !!d.panel.hint, d.panel.dest], ["move", true, true, null], `Q ${l}: Move armed: the panel asks for a zone on the map`);
+      const z2 = d.panel.zones.find((z) => z.zone === "z2");
+      eq([z2?.color, !!z2?.label, !!z2?.tip, d.panel.zones.every((z) => typeof z.zone === "string" && z.color)], ["move", true, true, true], `Q ${l}: the neighbouring zone is offered in the plain colour with its price`);
+      ok(new Set(d.panel.zones.map((z) => z.zone)).size === d.panel.zones.length, `Q ${l}: one entry per zone, whatever the ways into it`);
+      shown(d, `Q ${l} move, picking`);
+      d = dock("p1", "H1", { armed: "move", to: "z2" });
+      const walk = d.panel.dest.rows.find((r) => r.id === "walk|z2"), fly = d.panel.dest.rows.filter((r) => r.id.startsWith("flight|"));
+      eq([d.panel.picking, d.panel.dest.zone, d.panel.dest.label, walk.disabled, walk.notes.length > 0, fly.length], [false, "z2", t("ITAC.ui.zone", { n: 2 }), null, true, 2], `Q ${l}: the chosen zone lists every way into it with its cost (on foot, flying low, staying in the air)`);
+      eq(walk.req, { op: "declare", actor: "H1", decl: { action: "move", to: "z2", mode: "walk" } }, `Q ${l}: the row carries the declaration of that move`);
+      shown(d, `Q ${l} move, chosen`);
+      eq([(await T.req("p1", walk.req)).ok, T.spot("H1")], [true, "z2"], `Q ${l}: the row's request moves the token through the engine`);
+      ok(d.panel.near.some((r) => r.id.startsWith("flight|@sky")), `Q ${l}: off-map places a flyer can go to are listed in the panel, not on the map`);
+    }
+    { // a way the rules refuse: shown with the reason; the player asks with a reason, which becomes a card of the GM
+      const { T, dock, desk } = setup({ H1: "z5" });
+      T.c.H1.movement = []; T.c.H1.attrs.strength = 0;
+      let d = dock("p1", "H1", { armed: "move", to: "z6" });
+      const z6 = dock("p1", "H1", { armed: "move" }).panel.zones.find((z) => z.zone === "z6"), row = d.panel.dest?.rows[0];
+      eq([z6?.color, z6?.style, !!row?.disabled, row?.req ?? null, d.panel.ask], ["blocked", "dashed", true, null, null], `Q ${l}: a zone behind a wall too strong is shown as blocked, its row says why and sends nothing`);
+      d = dock("p1", "H1", { armed: "move", to: "z6", ask: row.id });
+      eq([!!d.panel.ask.reason, d.panel.ask.submit.req, !!d.panel.ask.submit.disabled], [true, null, true], `Q ${l}: asking the GM needs a reason first`);
+      d = dock("p1", "H1", { armed: "move", to: "z6", ask: row.id, why: "I know a way through" });
+      const req = d.panel.ask.submit.req;
+      eq([req.op, req.decl.action, req.decl.to, req.decl.exception.text], ["declare", "move", "z6", "I know a way through"], `Q ${l}: the question is the same move with a request for an exception`);
+      shown(d, `Q ${l} move, asking`);
+      eq([(await T.req("p1", req)).ok, desk().cards[0]?.kind, T.spot("H1")], [true, "exception", "z5"], `Q ${l}: it becomes a card on the GM desk and nothing moves`);
+    }
+    { // not the mover's turn: the player gets the reason and the free request; the GM's dock moves the character anyway at no cost
+      const { T, dock, staffDock } = setup();
+      const p = dock("p2", "H2", { armed: "move", peek: true }).panel;
+      eq([p.kind, !!p.reason], ["blocked", true], `Q ${l}: off turn a player's Move is refused with the reason and the way to ask`);
+      let d = staffDock("H2", { armed: "move", to: "z2" });
+      const row = d.panel.dest.rows[0];
+      eq([d.panel.kind, !!row.disabled, row.req], ["move", true, null], `Q ${l}: the GM's dock still shows the ways, refused by the action economy`);
+      d = staffDock("H2", { armed: "move", to: "z2", ask: row.id });
+      eq([d.panel.ask.text, d.panel.ask.submit.req.gm, d.panel.ask.submit.req.decl.to], [null, true, "z2"], `Q ${l}: the GM declares it anyway, costs waived, without writing a reason`);
+      eq([(await T.gm(d.panel.ask.submit.req)).ok, T.spot("H2"), entries(T, "H2").filter((e) => e.cost === "quick" || e.cost === "full").length], [true, "z2", 0], `Q ${l}: the token moves and no action of the character is spent`);
+    }
+    { // doors
+      const { T, dock } = setup({ H1: "z3" });
+      let d = dock("p1", "H1", { armed: "breachDoor" });
+      const row = d.panel.rows[0];
+      eq([d.panel.kind, row.id, row.disabled, row.notes.length, d.panel.borders[0].border], ["door", "z3|z4", null, 2, "z3|z4"], `Q ${l}: the locked door of the mover's zone is offered for breaking, with its state and Armor, and marked on the map`);
+      eq(row.req, { op: "declare", actor: "H1", decl: { action: "breachDoor", to: "z3|z4" } }, `Q ${l}: the door row carries the declaration`);
+      shown(d, `Q ${l} door`);
+      const o = dock("p1", "H1", { armed: "openDoor", ask: "z3|z4", why: "the guard has the key" }).panel;
+      eq([!!o.rows[0].disabled, o.rows[0].req, o.ask.submit.req.decl.exception.text, o.ask.submit.req.decl.to], [true, null, "the guard has the key", "z3|z4"], `Q ${l}: opening a locked door is refused with its state; the question to the GM carries the door`);
+      eq(dock("p1", "H1", { armed: "openDoor" }).panel.rows.length > 0 && dock("p1", "H1", { armed: "unseal" }).panel.rows[0].req, null, `Q ${l}: a lock that is not electronic cannot be worked`);
+      T.put("H1", "z1");
+      eq([dock("p1", "H1", { armed: "openDoor" }).panel.rows.length, !!dock("p1", "H1", { armed: "openDoor" }).panel.empty], [0, true], `Q ${l}: a zone without a door says so`);
+      T.put("H1", "z3");
+      eq([(await T.req("p1", row.req)).ok, T.state.stack.length > 0 || T.map.borderBetween("z3", "z4").doorway.state !== "locked"], [true, true], `Q ${l}: the door action runs through the engine`);
+    }
+    { // the GM's side: ordering a forced move by hand, the card that shows where the character flies
+      const { T, desk } = setup();
+      let k = desk({ tab: "table", force: { who: "N1", from: "H1", distance: 2, damage: 1 } });
+      eq([desk({ tab: "table" }).force.push.req, !!desk({ tab: "table" }).force.push.disabled, k.force.push.req], [null, true, { op: "forcedMove", combatant: "N1", awayFrom: "H1", by: "H1", distance: 2, damage: 1, kind: "knockback" }], `Q ${l}: the desk orders a forced move once it knows who and away from whom`);
+      eq((await T.gm(k.force.push.req)).ok, true, `Q ${l}: the order is accepted`);
+      k = desk();
+      const card = k.cards[0];
+      eq([card.kind, card.title, card.map?.zones.length > 1, card.options.map((o) => o.id)], ["direction", t("ITAC.ui.card.forced"), true, ["go", "goFall", "none"]], `Q ${l}: the card of a forced move names itself, carries the chain for the map and the three answers`);
+      ok(card.lines.some((x) => typeof x === "string" && x.includes(t("ITAC.ui.zone", { n: 3 }))), `Q ${l}: the chain is read out in zone numbers`);
+      shown(k, `Q ${l} desk, forced move`);
+      eq([(await T.gm(card.options[0].req)).ok, T.spot("N1") !== "z2"], [true, true], `Q ${l}: the answer of the card moves the character`);
+      eq(desk({ force: { who: "N1" } }).force.fall.req, { op: "fall", combatant: "N1" }, `Q ${l}: a fall is ordered for one character`);
+    }
+    { // the move a dodge earns: the places fold into one pick on the map; several ways into one zone become buttons
+      const { T } = setup();
+      const f = { view: T.state, me: "p1", staff: false, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: false } : null), zone: (s) => ({ id: Number(String(s).slice(1, 2)), level: String(s).includes(":") ? "elevated" : "ground", roof: false }) };
+      const p = { id: "q1", kind: "dodgeMove", about: "H1", aboutName: "Hero", data: { zones: 1 }, answerReq: (value) => ({ value }), options: [
+        { id: "walk|z2", label: "ITAC.opt.moveTo", data: { to: "z2", zone: "z2", mode: "walk" }, req: { n: 1 } }, { id: "flight|z2:elevated", label: "ITAC.opt.moveTo", data: { to: "z2:elevated", zone: "z2", mode: "flight", elevated: "air" }, req: { n: 2 } },
+        { id: "flight|z5", label: "ITAC.opt.moveTo", data: { to: "z5", zone: "z5", mode: "flight" }, req: { n: 3 } }, { id: "move", label: "ITAC.opt.dodgeMove", req: { n: 4 } }, { id: "pass", label: "ITAC.opt.pass", req: { n: 5 } }] };
+      let a = UI.askData(p, { t, facts: f, own: {} });
+      eq([a.options.map((o) => o.id), a.options[0].zones.map((z) => z.zone), a.options[0].zoneReq("z5"), a.options[0].zoneReq("z2"), a.options[1].label], [["@zone", "move", "pass"], ["z2", "z5"], { n: 3 }, null, t("ITAC.ui.move.byHand")],
+        `Q ${l}: one button picks on the map; a zone with one way answers at once, a zone with two waits for the way`);
+      a = UI.askData(p, { t, facts: f, own: { zone: { q1: "z2" } } });
+      eq([a.options.map((o) => o.id), a.options[0].req, a.options[1].req, a.options[2].again], [["walk|z2", "flight|z2:elevated", "@again", "move", "pass"], { n: 1 }, { n: 2 }, true], `Q ${l}: the ways into the picked zone are the answers; "another zone" forgets the pick`);
+      shown(a, `Q ${l} dodge move`);
+    }
+  }
+  lang("en");
+  Mv.uninstall();
 }
 done("check-move");

@@ -7,11 +7,15 @@
    notification in the user's language. The surfaces' own state (armed action, picked targets, drafts, open panels) lives here and is
    never part of the fight. While the dock shows, the turn tray stands down (scripts/turn/main.mjs asks api.tactics.ui.active()) and the
    minimal prompt dialogs are not opened (prompts.mjs keeps only the end-of-scene confirmation).
+   MOVEMENT (P3): the map answers "where", the dock answers "how". Arming Move starts the map's own zone pick over the zones one action
+   reaches (zones-adapter.pick; shown to this client only); a token dragged into another zone lands in the same panel with that zone
+   chosen (movement.setDragSurface), so the price is confirmed in one place. The move itself is a request like any other.
    Everything is in try / catch: a failure here must not break the tracker. */
 import * as Store from "../store.mjs";
 import * as Sys from "../system-adapter.mjs";
 import * as Engine from "../engine.mjs";
 import * as Zones from "../zones-adapter.mjs";
+import * as Mv from "../movement.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import { t, errText } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
@@ -21,10 +25,12 @@ import * as Pick from "./pick.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const NARROW = 1180;                       // below this window width the desk starts folded
-const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, picks: {}, texts: {}, quiet: false });
-const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {} });
+const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false });
+const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {} });
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
 let st = { dock: blankDock(), desk: blankDesk() };
+let rev = 0, moveMemo = null;             // the move options are counted once per change of the fight or of the map, not per keystroke
+let zonePick = null, shownDock = "", shownDesk = "";      // what this client has on the map for the surfaces: a running pick, two highlights
 
 const combatNow = () => { try { const c = Store.currentCombat(); return c && Api.active(c) && Api.mode(c) !== "off" && (!c.scene || c.scene.id === globalThis.canvas?.scene?.id) ? c : null; } catch { return null; } };
 const isVideo = (s) => /\.(webm|mp4|m4v|ogv)(\?|$)/i.test(String(s ?? ""));
@@ -39,6 +45,17 @@ function factsOf(combat) {
     c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, img: portrait(cb) } : null; },
     attrs: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner || view?.revealed?.[id]?.stats) ? Sys.actorFacts(a)?.attrs ?? null : null; } catch { return null; } },
     userName: (u) => game.users.get(u)?.name ?? null,
+    /* movement, only for a combatant this user drives; counted from this user's own view and the map (movement.mjs) */
+    move: (id) => {
+      try {
+        const a = Sys.actorOf(combat.combatants.get(id));
+        if (!a || !(staff || a.isOwner) || !Zones.available() || !Mv.api.installed()) return null;
+        if (moveMemo?.key !== `${combat.id}:${id}:${rev}`) moveMemo = { key: `${combat.id}:${id}:${rev}`, value: { options: Mv.api.options(id), why: Mv.api.why(id) } };
+        return moveMemo.value;
+      } catch { return null; }
+    },
+    doors: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Mv.api.doors(id) : []; } catch { return []; } },
+    zone: (spot) => { try { const p = Zones.place(spot); return p ? { id: p.id, level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } catch { return null; } },
   };
 }
 /* the dock's model for staff: the bar of whoever has the turn (or of the combatant the GM chose), from the full state */
@@ -57,29 +74,68 @@ function staffModel(combat, desk) {
 function refresh() {
   try {
     const combat = down ? null : combatNow();
-    if (!combat) { Pick.stop(); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
+    if (!combat) { Pick.stop(); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
-    if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts }; }        // a new turn: nothing stays armed
+    if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone }; }        // a new turn: nothing stays armed
     const desk = staff ? Api.desk(combat) : null;
+    let deskD = null;
     if (staff) {
       if (!st.desk.touched) st.desk.collapsed = window.innerWidth < NARROW;
-      Desk.render(Model.deskData(desk, st.desk, facts, t), st.desk);
+      deskD = Model.deskData(desk, st.desk, facts, t);
+      Desk.render(deskD, st.desk);
     } else Desk.render({ show: false });
     const model = staff ? staffModel(combat, desk) : Api.player(combat);
     const data = Model.dockData(model, st.dock, facts, t);
     Dock.render(data, st.dock);
     if (data.show && data.panel?.kind === "declare" && data.panel.targets) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => setDock({ targets: [cid] }));
     else Pick.stop();
+    mapSync(data, deskD);
     watch(); pokeTray();
   } catch (e) { console.warn(LOG, "refresh failed", e); }
 }
-const schedule = () => { clearTimeout(timer); timer = setTimeout(refresh, 40); };
+const schedule = () => { rev++; clearTimeout(timer); timer = setTimeout(refresh, 40); };
+
+/* ---------- what the surfaces put on the map (this client only; zones-api.md 17, 18) ---------- */
+function show(id, was, spec) {
+  const key = spec ? JSON.stringify(spec) : "";
+  if (key === was) return was;
+  try { if (spec) Zones.highlight({ id, ...spec }); else Zones.clearHighlights(id); } catch { /* the map is optional */ }
+  return key;
+}
+function mapSync(data, deskD) {
+  try {
+    const p = data?.show ? data.panel : null;
+    /* Move armed and no zone chosen yet: the map's pick over the zones one action reaches, each in the colour of its cheapest way */
+    if (p?.kind === "move" && p.picking) {
+      const key = `${data.who.id}|${p.action}|${JSON.stringify(p.zones)}`;
+      if (zonePick?.key !== key) {
+        const mine = (zonePick = { key });
+        Zones.pick({ zones: p.zones, title: t("ITAC.ui.pick.title", { name: data.who.name }), hint: p.hint, color: "move" }).then((r) => {
+          if (zonePick !== mine) return;                    // given up or replaced by a newer one
+          zonePick = null;
+          if (r?.ok) setDock({ to: r.zone, ask: null, why: "" });
+          else { if (r?.reason && !["cancelled", "replaced"].includes(r.reason)) notify("warn", t("ITAC.warn.zones", { reason: t(`ITAC.reason.${r.reason}`, {}, String(r.reason)) })); setDock({ armed: null, mode: null }); }
+        });
+      }
+    } else if (zonePick) { zonePick = null; Zones.cancelPick(); }
+    shownDock = show("ipu.dock", shownDock, p?.kind === "move" && p.dest ? { zones: [{ zone: p.dest.zone, color: "target" }] } : p?.kind === "door" && p.borders.length ? { borders: p.borders } : null);
+    const forced = (deskD?.cards ?? []).find((c) => c.map)?.map ?? null;      // the GM's card of a forced move: the chain on the map
+    shownDesk = show("ipu.forced", shownDesk, forced ? { zones: forced.zones, color: "danger", borders: forced.borders, borderColor: "danger" } : null);
+  } catch (e) { console.warn(LOG, "map sync failed", e); }
+}
 let trayWas = null;
 function pokeTray() { try { const on = active(); if (on !== trayWas) { trayWas = on; game.modules.get(MOD)?.api?.turn?.refresh?.(); } } catch { /* the tray is optional */ } }
 
 /* ---------- what the surfaces call ---------- */
-function setDock(patch) { Object.assign(st.dock, patch); refresh(); }
+/* another action armed, another character chosen: what belonged to the last one (the zone, the open question to the GM, a refusal) goes */
+function patchDock(patch) {
+  if (!patch) return;
+  if (("armed" in patch && patch.armed !== st.dock.armed) || ("sel" in patch && patch.sel !== st.dock.sel) || patch.mode) Object.assign(st.dock, { to: null, ask: null, why: "", refused: null });
+  if ("armed" in patch && !patch.armed && st.dock.dragged) Object.assign(st.dock, { sel: null, dragged: false });      // the character a drag brought up steps back
+  Object.assign(st.dock, patch);
+}
+function setDock(patch) { patchDock(patch); refresh(); }
 function setDesk(patch) { Object.assign(st.desk, patch); refresh(); }
 async function send(which, req, after) {
   try {
@@ -88,12 +144,16 @@ async function send(which, req, after) {
     const env = await Api.request(req, combat ?? undefined);
     if (env?.ok === false) {
       /* a declaration against the rules: the dock keeps the panel and shows the reason with the way to ask for an exception */
-      if (which === "dock" && req.op === "declare" && env.error?.code === "illegal" && !req.decl?.exception) st.dock.refused = { action: req.decl.action, key: (req.decl.targets ?? []).join(","), reason: env.error.params?.reason ?? "rules", params: env.error.params ?? {} };
+      if (which === "dock" && req.op === "declare" && env.error?.code === "illegal" && !req.decl?.exception) {
+        const d = req.decl, place = typeof d.to === "string";      // a move or a door is refused for its place (the row of the panel), anything else for its targets
+        st.dock.refused = { action: d.action, key: place ? (d.mode ? `${d.mode}|${d.to}` : d.to) : (d.targets ?? []).join(","), reason: env.error.params?.reason ?? "rules", params: env.error.params ?? {} };
+        if (place) st.dock.ask = st.dock.refused.key;
+      }
       else if (env.error?.code !== "gone") notify("warn", errText(env.error));
       refresh(); return env;
     }
     if (which === "dock") { st.dock.refused = null; st.dock.why = ""; }
-    if (after) Object.assign(st[which], after);
+    if (after) { if (which === "dock") patchDock(after); else Object.assign(st[which], after); }
     refresh();
     return env;
   } catch (e) { console.warn(LOG, "request failed", e); return null; }
@@ -104,8 +164,12 @@ function defaultPicks(id) { try { const p = Api.state(combatNow())?.prompts?.[id
 const text = (which) => (id, value) => { st[which].texts[id] = String(value).slice(0, 300); refresh(); };
 async function zone(which, option, ask) {
   try {
-    const r = await Zones.pick({ zones: option.zones, title: t("ITAC.ui.pick.title", { name: ask.about ?? "" }), color: "target" });
-    if (r?.ok) await send(which, option.zoneReq(r.spot ?? r.zone));
+    const r = await Zones.pick({ zones: option.zones, title: t("ITAC.ui.pick.title", { name: ask.about ?? "" }), color: option.pickZone ? "move" : "target" });
+    if (r?.ok) {
+      const req = option.zoneReq(option.pickZone ? r.zone : r.spot ?? r.zone);
+      if (req) await send(which, req);
+      else if (option.pickZone) { st[which].zone[ask.id] = r.zone; refresh(); }       // several ways into that zone: the card lists them
+    }
     else if (r?.reason && !["cancelled", "replaced"].includes(r.reason)) notify("warn", t("ITAC.warn.zones", { reason: t(`ITAC.reason.${r.reason}`, {}, String(r.reason)) }));
   } catch (e) { console.warn(LOG, "zone pick failed", e); }
 }
@@ -115,13 +179,16 @@ const label = (k) => t(LABELS[k] ?? k);
 function configure() {
   Dock.configure({
     set: setDock, send: (req, after) => send("dock", req, after), label,
-    pick: multi("dock"), text: text("dock"), always: () => {}, zone: (o, a) => zone("dock", o, a),
+    pick: multi("dock"), text: text("dock"), always: () => {}, zone: (o, a) => zone("dock", o, a), again: (a) => { delete st.dock.zone[a.id]; refresh(); },
+    /* an action that also names a place (Fastball Special): any zone of the map; the executor judges the throw */
+    zonePick: async () => { try { const r = await Zones.pick({ title: t("ITAC.ui.pick.title", { name: "" }).replace(/^[:\s]+/, ""), color: "target" }); if (r?.ok) setDock({ to: r.spot ?? r.zone }); } catch (e) { console.warn(LOG, "zone pick failed", e); } },
     target: (cid) => { try { Pick.show(combatNow(), cid); } catch { /* a courtesy */ } },
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });
   Desk.configure({
     set: setDesk, send: (req, after) => send("desk", req, after), label,
-    pick: multi("desk"), text: text("desk"), always: (id, on) => { st.desk.always[id] = !!on; refresh(); }, zone: (o, a) => zone("desk", o, a),
+    pick: multi("desk"), text: text("desk"), always: (id, on) => { st.desk.always[id] = !!on; refresh(); }, zone: (o, a) => zone("desk", o, a), again: (a) => { delete st.desk.zone[a.id]; refresh(); },
+    force: (patch) => { st.desk.force = { ...st.desk.force, ...patch }; refresh(); },
     val: (id, v) => { st.desk.vals[id] = v; refresh(); },
     manual: (id, patch) => { const cur = st.desk.manual[id] ?? {}; st.desk.manual[id] = { ...cur, ...patch, damage: { ...(cur.damage ?? {}), ...(patch.damage ?? {}) } }; refresh(); },
     forceUndo: async (j) => { const env = await send("desk", j.undo.force.req, { undo: null }); if (env?.ok === false && env.error?.code === "drift") setDesk({ drift: j.id }); },
@@ -153,7 +220,20 @@ export function start() {
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);
     Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) schedule(); });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
-    Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); Dock.hide(); });
+    Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Dock.hide(); });
+    Zones.onEvent(schedule);                 // a token entered a zone, a door changed: the options of a move are counted again
+    /* a token dragged into another zone (movement.mjs asks here first): the dock opens Move for that combatant with the zone chosen */
+    Mv.setDragSurface((cid, spot) => {
+      const combat = combatNow();
+      if (!combat || !st.dock) return false;
+      const staff = Store.isStaff(game.user), mine = staff || Api.player(combat).bars.some((b) => b.combatant === cid);
+      if (!mine) return false;
+      const other = staff ? Api.state(combat)?.init?.curMember !== cid : false;
+      patchDock({ sel: cid, armed: "move", mode: null, peek: true });
+      Object.assign(st.dock, { to: String(spot).split(":")[0], dragged: other });
+      refresh();
+      return true;
+    });
     for (const hk of ["collapseSidebar", "changeSidebarTab", "renderHotbar", "renderPlayers"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });
     window.addEventListener("resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
     document.addEventListener("keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.stopPropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
