@@ -18,6 +18,7 @@ import * as R from "./relay-pure.mjs";
 import * as Store from "./store.mjs";
 import * as Sys from "./system-adapter.mjs";
 import * as Zones from "./zones-adapter.mjs";
+import * as Mv from "./movement.mjs";
 import { t } from "./lang.mjs";
 
 const MOD = Store.MOD;
@@ -63,6 +64,8 @@ function makeFacts(combat) {
     inZone: (cid) => (tok(cid) ? Zones.tokensInZone(tok(cid)).map(byToken).filter((x) => x && x !== cid) : []),      // same spot: the book's "same zone"
     inZoneKey: (where) => Zones.tokensInZone(where).map(byToken).filter(Boolean),                                     // a key: every level; a spot: that level
     user: (uid) => { const u = game.users.get(uid); return u ? { id: u.id, staff: Store.isStaff(u), active: u.active === true } : null; },
+    zones: Zones.available() ? Mv.zoneFacts(tok, byToken) : null,                                                     // P3: the live zone facts of movement-pure.mjs
+    canTalk: (a, b) => (Zones.available() ? Mv.talk(Mv.zoneFacts(tok, byToken), a, b)?.ok : undefined),              // [Z11]
     actorValue: (uuid, field) => { const a = fromUuidSync(uuid); return a ? Sys.actorValue(a, field) : null; },
   };
 }
@@ -98,6 +101,7 @@ async function perform(combat, e) {
       if (!r.ok) { ui.notifications?.warn(t("ITAC.warn.zones", { reason: t(`ITAC.reason.${r.reason}`, {}, String(r.reason)) })); return { ok: false, reason: r.reason }; }
       return r.op ? { op: r.op, result: r.result } : { result: r.result };
     }
+    case "zmove": case "zput": return Mv.performMove(e, (cid) => tokenOf(combat.combatants.get(cid)));        // P3: one stretch of a move / an arrival; the map's inverse is journaled
     case "itemDelete": { const a = await fromUuid(e.actorUuid); if (a?.items.get(e.itemId)) await a.deleteEmbeddedDocuments("Item", [e.itemId], { ipuTactics: true }); return {}; }
     case "itemCreate": { const a = await fromUuid(e.actorUuid); if (a && e.data) await a.createEmbeddedDocuments("Item", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
     case "effectDelete": { const a = await fromUuid(e.actorUuid); if (a?.effects.get(e.effectId)) await a.deleteEmbeddedDocuments("ActiveEffect", [e.effectId], { ipuTactics: true }); return {}; }
@@ -217,6 +221,8 @@ export function journal(user = game.user, combat = undefined) { const c = pick(c
 /** names and presence for the desk and player models (desk-pure.mjs) */
 export const context = (combat = undefined) => { const c = pick(combat); return { c: (cid) => { const cb = c?.combatants.get(cid); return cb ? { name: cb.name, npc: Sys.actorOf(cb)?.type !== "superhero", owners: Sys.ownersOf(Sys.actorOf(cb)) } : null; }, online: (uid) => game.users.get(uid)?.active === true }; };
 
+/** what movement.mjs needs of this client (the cost confirmation on a drag, the reach pick) */
+export const moveHost = () => ({ cid: (td) => pick()?.combatants.find((x) => x.tokenId === td?.id)?.id ?? null, c: (cid) => (pick() ? makeFacts(pick()).c(cid) : null), state: () => view(), facts: () => (pick() ? makeFacts(pick()) : {}) });
 export function start() {
   if (started) return;
   started = true;

@@ -138,6 +138,24 @@ export function sceneFacts(combat) {
 
 /* ------------------------------------------------------------------ what a combatant is for an action (the action engine's readers) */
 const injuryNumber = (item) => { const f = item.flags?.[MOD]?.tactics?.crit; if (Number.isFinite(f)) return f; const n = INJ?.byName?.get(item.name); return Number.isFinite(n) ? n : null; };
+/* P3: the ways of moving an actor has. A power, boost or limit is known by the id of its compendium entry (the same in every language);
+   the GM may add ways by hand: flags.<module>.tactics.movement = [{ mode, tier }]. Speeds and rules: scripts/rules/movement.mjs. */
+const MOVE_POWERS = { "8wJ7WiatmSsAJYsJ": "burrowing", E6B4T5jbhoxFOqRC: "flight", XH6BNrsuvt6H7BvT: "leaping", QeM9FgUR0U3iCd5m: "superSpeed", "6IWySeMnq5uwhZ3u": "swimming", "60xT0tfR9306RCtA": "swinging", JeaiOHbh5MSrPakm: "teleportation",
+  muyhi7UPoPdDlrpI: "earthDrift", AQramXS4Ilmqe01y: "elongatedStride", jyqBPo53xFKMdXnT: "iceSlide" };
+const MOVE_EXTRAS = { nG8DLZMigiBg256a: "tunneling", iLlwnWwRa82gbpT3: "untouchableSpeed", dntiWPrtTegqNRAi: "teleportAllies", sPl5SC16bIT3AFxB: "quickTeleport", ZIKmnZgnR7qz4eSw: "portal", qXCQsdc6tlqalEcX: "gliding", g1FnuD4L5jDMvqC7: "brachiation" };
+const srcId = (it) => String(it?._stats?.compendiumSource ?? "").split(".").pop();
+export function movementOf(actor) {
+  const out = [], extras = new Set();
+  try {
+    for (const it of actor.items) {
+      const ids = [srcId(it), ...(Array.isArray(it.system?.boosts) ? it.system.boosts.map((b) => srcId(actor.items.get(b)) || String(b)) : [])];
+      for (const id of ids) { if (MOVE_EXTRAS[id]) extras.add(MOVE_EXTRAS[id]); const mode = MOVE_POWERS[id]; if (mode && !out.some((m) => m.mode === mode)) out.push({ mode, tier: it.system?.level ?? "basic", name: it.name }); }
+    }
+    for (const m of actor.flags?.[MOD]?.tactics?.movement ?? []) if (typeof m?.mode === "string" && !out.some((x) => x.mode === m.mode)) out.push({ mode: m.mode, tier: m.tier ?? "basic" });
+  } catch { /* an actor the adapter cannot read moves on foot */ }
+  const limits = [...extras].filter((x) => x === "gliding" || x === "brachiation");
+  return out.map((m) => ({ ...m, boosts: [...extras].filter((x) => !limits.includes(x)), limits }));
+}
 export function actorFacts(actor) {
   if (!actor) return null;
   const s = actor.system ?? {};
@@ -155,6 +173,7 @@ export function actorFacts(actor) {
     members: kind === "minions" ? num(s.derived?.health?.value) : undefined,           // the system keeps a group's size as its Health [B2827]
     huge: flags.huge === true, grown: flags.grown === true, impervious: flags.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
     regeneration: flags.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
+    movement: movementOf(actor),
     major: flags.major === true, immunities: Array.isArray(flags.immunities) ? flags.immunities : [], vulnerabilities: Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : [],
   };
 }

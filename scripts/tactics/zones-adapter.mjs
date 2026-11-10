@@ -89,3 +89,14 @@ export function beforeStep(fn) { const off = call("beforeStep", fn); return type
 /** Cost confirmation on a dragged token, per client: tactical({ profile, confirm, when, gm }) turns it on, tactical(false) off. */
 export const tactical = (cfg) => call("tactical", cfg) === true;
 export const tacticalOn = () => call("tacticalOn") === true;
+
+/* ------------------------------------------------------------------ interface parts (zones-api.md sections 17-19) */
+export const highlight = (spec) => call("highlight", spec) ?? null;
+export const clearHighlights = (what) => call("clearHighlights", what) ?? 0;
+export const showReach = (token, p, opts) => call("showReach", token, p, opts) ?? null;
+/** always resolves: { ok:true, zone, spot, place, x, y } | { ok:false, reason } */
+export const pick = (spec) => callAsync("pick", spec);
+export const cancelPick = (opts) => call("cancelPick", opts);
+/** The map's own rule mechanics (fire round, wrecking numbers) handed to this module, per client; rulesDriver(false, id) steps down. */
+export const rulesDriver = (...args) => call("rulesDriver", ...args);
+export const drivenBy = () => call("drivenBy") ?? null;

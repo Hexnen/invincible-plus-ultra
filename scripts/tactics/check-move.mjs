@@ -1,0 +1,473 @@
+/* node scripts/tactics/check-move.mjs -- package P3: whole scripted moves through the REAL director, engine, ledger, journal, zones adapter
+   and movement side (movement.mjs), against a FAKE ZONES API that keeps the contract of moinen-maps dev/zones-api.md: places and spots
+   (section 2), `plan` / `planAlong` / `forcedChain` / `reach` (section 14), `move` with the `beforeStep` listeners asked before every step,
+   the border re-read after the listeners, `stopped`, one `tokens` inverse per move, group moves, `moveToZone`, `apply` with inverses
+   (section 12), `tactical`, `pick`, `rulesDriver`. The fake has no geometry: zones carry a grid position only so that a straight chain
+   exists. Nothing here needs Foundry, a browser or a GPU. */
+import { ok, eqc as eq, done, Table } from "./testkit.mjs";
+import { movement as RM, zones as RZ, hazards as RH, maneuvers as RMan } from "../rules/index.mjs";
+import * as P1 from "./economy-pure.mjs";
+import * as M from "./mods-pure.mjs";
+
+/* ------------------------------------------------------------------ the fake map */
+function fakeZones(def) {
+  const Z = { zones: def.zones, borders: JSON.parse(JSON.stringify(def.borders)), tokens: {}, states: def.states ?? {}, listeners: [], seq: 0, log: [], cfg: {}, driver: null, picks: [], marks: {} };
+  const bkey = (a, b) => (Z.borders[`${a}|${b}`] ? `${a}|${b}` : Z.borders[`${b}|${a}`] ? `${b}|${a}` : null);
+  const spotOf = (p) => (p.area ? `@${p.area}` : p.level === "floor" ? `${p.zone}:f${p.floor}` : p.level && p.level !== "ground" ? `${p.zone}:${p.level}` : p.zone);
+  const mk = (p) => { const q = { zone: p.zone ?? null, id: p.zone ? Z.zones[p.zone]?.id ?? null : null, area: p.area ?? null, level: p.area ? null : p.level ?? "ground", floor: p.floor ?? null, airborne: p.level === "elevated" && p.airborne === true, roof: p.level === "elevated" && !p.airborne && !!Z.zones[p.zone]?.rooftop, below: null }; q.spot = spotOf(q); return q; };
+  const tokId = (t) => (typeof t === "string" ? t : t?.id ?? t?.document?.id);
+  function place(where) {
+    if (where == null) return null;
+    if (typeof where === "object" && (where.id || where.document) && Z.tokens[tokId(where)]) return mk(Z.tokens[tokId(where)]);
+    if (typeof where === "object") return where.area ? mk({ area: where.area }) : Z.zones[where.zone] ? mk(where) : null;
+    if (where.startsWith("@")) return ["sky", "orbit", "dimension", "chase"].includes(where.slice(1)) ? mk({ area: where.slice(1) }) : null;
+    const [zone, lv] = where.split(":"), f = /^f(\d+)$/.exec(lv ?? "");
+    if (!Z.zones[zone]) return null;
+    return mk(f ? { zone, level: "floor", floor: Number(f[1]) } : { zone, level: lv ?? "ground", airborne: lv === "elevated" && !Z.zones[zone].rooftop });
+  }
+  const borderOf = (a, b) => {
+    const key = bkey(a, b); if (!key) return null;
+    const d = Z.borders[key], wallUp = d.wall && d.wall.state === "intact", doorShut = d.doorway && ["locked", "sealed"].includes(d.doorway.state), doorOpen = d.doorway && ["open", "breached", "closed"].includes(d.doorway.state);
+    const solid = !!wallUp && !doorOpen;
+    return { key, kind: d.wall ? "wall" : "open", armor: d.wall?.armor ?? 0, door: d.doorway?.state ?? null, stops: { walk: solid, air: solid && !d.wall.outer, through: false }, wall: d.wall ? { ...d.wall } : null, doorway: d.doorway ? { ...d.doorway } : null, _doorShut: !!doorShut };
+  };
+  const stopWay = (way) => (["flight", "air", "leap", "superspeed", "swing"].includes(way) ? "air" : ["through", "burrow", "teleport", "phase"].includes(way) ? "through" : "walk");
+  const neighbours = (z) => Object.keys(Z.borders).filter((k) => k.split("|").includes(z)).map((k) => k.split("|").find((x) => x !== z));
+  function stepsAlong(from, keys, way, end, forced) {
+    const steps = []; let level = from.level, floor = from.floor, air = from.airborne;
+    for (let i = 1; i < keys.length; i++) {
+      const b = borderOf(keys[i - 1], keys[i]); if (!b) return null;
+      const sw = forced ? (from.level === "elevated" ? "air" : "walk") : stopWay(way), last = i === keys.length - 1;
+      if (last && end) { level = end.level ?? level; floor = end.floor ?? null; air = end.airborne === true; }
+      const to = mk({ zone: keys[i], level, floor, airborne: air });
+      steps.push({ kind: "border", from: i === 1 ? from.spot : steps[i - 2].to, to: to.spot, zone: keys[i], level, floor, border: { key: b.key, kind: b.kind, wall: b.wall, doorway: b.doorway, ...(b.stops[sw] ? { blocked: true } : {}), ...(sw === "air" && b.wall?.outer && b.wall.state === "intact" ? { over: true } : {}) } });
+    }
+    if (keys.length === 1 && end && (end.level ?? "ground") !== from.level) steps.push({ kind: "level", from: from.spot, to: mk({ zone: keys[0], ...end }).spot, zone: keys[0], level: end.level });
+    return steps;
+  }
+  function route(a, b, way, force) {                                    // breadth first, fewest borders; unblocked routes first
+    for (const allow of force ? [false, true] : [false]) {
+      const prev = { [a]: null }, q = [a];
+      while (q.length) {
+        const z = q.shift(); if (z === b) { const out = []; for (let x = b; x; x = prev[x]) out.unshift(x); return out; }
+        for (const n of neighbours(z).sort()) { if (n in prev) continue; if (borderOf(z, n).stops[stopWay(way)] && !allow) continue; prev[n] = z; q.push(n); }
+      }
+    }
+    return null;
+  }
+  const costOf = (total, p) => ({ total, speed: p?.speed ?? 1, actions: Math.ceil(total / (p?.speed ?? 1)), stressSpeed: null, stressActions: null, within: total === 0 ? "free" : total <= (p?.speed ?? 1) * (p?.actions ?? 1) ? "plain" : "no" });
+  function planOf(from, keys, profile, end, forced) {
+    const steps = stepsAlong(from, keys, profile?.way ?? "walk", end, forced); if (!steps) return null;
+    const last = steps[steps.length - 1], total = steps.filter((s) => s.kind === "border").length;
+    return { way: profile?.way ?? "walk", total, borders: total, levels: steps.length - total, zones: keys.slice(), steps, cost: costOf(total, profile), from, end: last ? place(last.to) : from, ...(forced ? { forced: true } : {}) };
+  }
+  const api = {
+    _: Z, version: () => "fake", canWrite: () => true,
+    zoneOfToken: (t) => (Z.tokens[tokId(t)] ? mk(Z.tokens[tokId(t)]) : null), place,
+    zone: (key) => (Z.zones[key] ? { key, id: Z.zones[key].id, rooftop: !!Z.zones[key].rooftop, states: { ...(Z.marks[key] ?? {}) }, empty: false } : null),
+    zoneStates: (where) => { const p = place(where); return p?.zone ? (Z.states[p.zone] ?? []).filter((s) => !s.at || s.at === p.spot) : []; },
+    borderBetween: (a, b) => { const x = borderOf(a, b); if (!x) return null; const { _doorShut, ...rest } = x; return rest; },
+    range: (a, b) => { const pa = place(a), pb = place(b); if (!pa || !pb) return null; if (pa.area || pb.area) return pa.area === pb.area ? { total: 0, borders: 0, levels: 0 } : null; const r = route(pa.zone, pb.zone, "through", false); const levels = pa.level === pb.level ? 0 : 1; return r ? { total: r.length - 1 + levels, borders: r.length - 1, levels } : null; },
+    tokensInZone: (where) => { const p = place(where), bare = typeof where === "string" && !where.includes(":") && !where.startsWith("@"); return Object.values(Z.tokens).map((t) => ({ token: { id: t.id }, place: mk(t) })).filter((r) => (bare ? r.place.zone === p?.zone : r.place.spot === p?.spot)); },
+    zonesWithin: (where, n) => api.reach(where, { way: "through", speed: n }, { max: n }).map((r) => ({ zone: r.zone, d: r.d })),
+    graph: () => ({ zones: Object.keys(Z.zones).map((key) => ({ key, ...Z.zones[key] })), borders: Object.keys(Z.borders).map((key) => ({ key, ...Z.borders[key] })) }),
+    profile: (p) => p,
+    plan(a, b, profile) {
+      const from = place(a), to = place(b); if (!from || !to || from.area || to.area) return null;
+      if (to.airborne && profile?.hover === false) return null;
+      const keys = route(from.zone, to.zone, profile?.way ?? "walk", !!profile?.force); if (!keys) return null;
+      return planOf(from, keys, profile, { level: to.level, floor: to.floor, airborne: to.airborne }, false);
+    },
+    moveCost(a, b, profile) { const plan = api.plan(a, b, profile); return plan ? { reachable: plan.cost.within !== "no", plan, cost: plan.cost } : null; },
+    reach(where, profile, { max } = {}) {
+      const from = place(where); if (!from?.zone) return [];
+      const d = { [from.zone]: 0 }, q = [from.zone], lim = max ?? (profile?.speed ?? 1) * (profile?.actions ?? 1);
+      while (q.length) { const z = q.shift(); if (d[z] >= lim) continue; for (const n of neighbours(z).sort()) { if (n in d) continue; if (borderOf(z, n).stops[stopWay(profile?.way)] && !profile?.force) continue; d[n] = d[z] + 1; q.push(n); } }
+      return Object.entries(d).sort((x, y) => x[1] - y[1]).map(([zone, dist]) => ({ zone, id: Z.zones[zone].id, d: dist, cost: costOf(dist, profile) }));
+    },
+    planAlong(fromRef, keys, { profile, end, forced } = {}) { const from = place(fromRef); if (!from?.zone || !Array.isArray(keys) || keys[0] !== from.zone) return null; return planOf(from, keys, profile, end, !!forced); },
+    forcedChain(who, { direction, awayFrom, toward, distance = 1 } = {}) {
+      const from = place(who); if (!from?.zone) return null;
+      const pos = (z) => Z.zones[z].pos, other = place(awayFrom ?? toward);
+      let dx = direction?.dx ?? 0, dy = direction?.dy ?? 0;
+      if (other?.zone) { dx = Math.sign(pos(from.zone)[0] - pos(other.zone)[0]) * (awayFrom ? 1 : -1); dy = Math.sign(pos(from.zone)[1] - pos(other.zone)[1]) * (awayFrom ? 1 : -1); }
+      if (!dx && !dy) return null;
+      const keys = [from.zone]; let end = "distance";
+      for (let i = 1; i <= distance; i++) { const p = [pos(from.zone)[0] + dx * i, pos(from.zone)[1] + dy * i], z = Object.keys(Z.zones).find((k) => pos(k)[0] === p[0] && pos(k)[1] === p[1]); if (!z || !bkey(keys[keys.length - 1], z)) { end = "edge"; break; } keys.push(z); }
+      const plan = planOf(from, keys, null, { level: from.level, floor: from.floor, airborne: from.level === "elevated" }, true);
+      return plan ? { ...plan, ray: { dx, dy, end, points: [] } } : null;
+    },
+    freeSpot: () => ({ x: 0, y: 0, crowded: false }),
+    beforeStep(fn) { Z.listeners.push(fn); return () => { Z.listeners = Z.listeners.filter((x) => x !== fn); }; },
+    async move(token, to, { profile, plan, group = [], forced = false, data } = {}) {
+      const id = tokId(token), t = Z.tokens[id]; if (!t) return { ok: false, reason: "noToken" };
+      const p = plan ?? api.plan(token, to, profile); if (!p) return { ok: false, reason: "noRoute" };
+      if (p.from.spot !== mk(t).spot) return { ok: false, reason: "stalePlan" };
+      const op = `mv${++Z.seq}`, movers = [id, ...group.map(tokId)], start = movers.map((m) => ({ id: m, zone: Z.tokens[m].zone, alt: Z.tokens[m].level, floor: Z.tokens[m].floor ?? null, air: Z.tokens[m].airborne ?? null, area: Z.tokens[m].area ?? null }));
+      let done = 0, stopped = null;
+      for (let index = 0; index < p.steps.length; index++) {
+        const step = p.steps[index], fromP = mk(t), toP = place(step.to), live = step.kind === "border" ? borderOf(fromP.zone, step.zone) : null;
+        const ctx = { op, index, last: index === p.steps.length - 1, step, remaining: p.steps.length - index, token: { id }, group, profile: profile ?? { way: p.way }, plan: p, forced, data, from: fromP, to: toP, border: live ? (({ _doorShut, ...r }) => r)(live) : undefined, statesFrom: api.zoneStates(fromP.spot), statesTo: api.zoneStates(toP.spot) };
+        let pass = false;
+        try { for (const fn of Z.listeners) { const a = await fn(ctx); if (a === false) { stopped = { index, reason: "listener", data: null, step }; break; } if (a && a.stop) { stopped = { index, reason: a.reason ?? "listener", data: a.data ?? null, step }; break; } if (a && a.pass) pass = true; } } catch { stopped = { index, reason: "error", data: null, step }; }
+        if (stopped) break;
+        const again = step.kind === "border" ? borderOf(fromP.zone, step.zone) : null, sw = forced ? (fromP.level === "elevated" ? "air" : "walk") : stopWay(profile?.way ?? p.way);
+        if (again && again.stops[sw] && !pass) { stopped = { index, reason: "blocked", data: null, step }; break; }
+        for (const m of movers) Object.assign(Z.tokens[m], { zone: toP.zone, level: toP.level, floor: toP.floor, airborne: toP.airborne, area: null });
+        done++; Z.log.push({ op, step: step.to, movers: movers.slice() });
+      }
+      return { ok: true, op, done, total: p.steps.length, stopped, place: mk(t), inverse: done ? { op: "tokens", rows: start } : null };
+    },
+    async moveToZone(token, where, { group = [] } = {}) {
+      const id = tokId(token), t = Z.tokens[id], p = place(where); if (!t) return { ok: false, reason: "noToken" }; if (!p) return { ok: false, reason: "noZone" };
+      const movers = [id, ...group.map(tokId)], rows = movers.map((m) => ({ id: m, zone: Z.tokens[m].zone, alt: Z.tokens[m].level, floor: Z.tokens[m].floor ?? null, air: Z.tokens[m].airborne ?? null, area: Z.tokens[m].area ?? null }));
+      for (const m of movers) Object.assign(Z.tokens[m], p.area ? { area: p.area } : { zone: p.zone, level: p.level, floor: p.floor, airborne: p.airborne, area: null });
+      Z.log.push({ put: p.spot, movers });
+      return { ok: true, inverse: { op: "tokens", rows }, place: mk(t) };
+    },
+    async apply(op) {
+      if (op.op === "tokens") { const rows = op.rows.map((r) => ({ id: r.id, zone: Z.tokens[r.id].zone, alt: Z.tokens[r.id].level, floor: Z.tokens[r.id].floor ?? null, air: Z.tokens[r.id].airborne ?? null, area: Z.tokens[r.id].area ?? null })); for (const r of op.rows) Object.assign(Z.tokens[r.id], { ...(r.zone !== undefined ? { zone: r.zone } : {}), level: r.alt ?? "ground", floor: r.floor ?? null, airborne: r.air === true, area: r.area ?? null }); return { ok: true, changed: true, inverse: { op: "tokens", rows }, result: null }; }
+      if (op.op === "border") { const d = Z.borders[op.border]; if (!d) return { ok: false, reason: "noBorder" }; const inv = { op: "border", border: op.border, ...(op.wall ? { wall: { state: d.wall.state } } : {}), ...(op.door ? { door: { state: d.doorway.state } } : {}) }; if (op.wall) d.wall.state = op.wall.state; if (op.door) d.doorway.state = op.door.state; return { ok: true, changed: true, inverse: inv, result: null }; }
+      if (op.op === "zone") { const before = { ...(Z.marks[op.zone] ?? {}) }; Z.marks[op.zone] = { ...before, ...op.patch }; return { ok: true, changed: true, inverse: { op: "zone", zone: op.zone, patch: Object.fromEntries(Object.keys(op.patch).map((k) => [k, before[k] ?? null])) }, result: null }; }
+      return { ok: false, reason: "badOp" };
+    },
+    tactical(cfg) { Z.cfg.tactical = cfg === false ? null : cfg; return true; }, tacticalOn: () => !!Z.cfg.tactical,
+    rulesDriver(cfg) { Z.driver = cfg === false ? null : cfg; return true; }, drivenBy: () => (Z.driver ? { id: Z.driver.id, title: Z.driver.title, fireRound: typeof Z.driver.fireRound === "function", distances: Z.driver.distances !== false } : null),
+    highlight: () => "h1", clearHighlights: () => 0, showReach: () => "reach", cancelPick: () => {},
+    async pick(spec) { Z.picks.push(spec); const want = Z.nextPick; return want ? { ok: true, zone: want.split(":")[0], spot: want, place: place(want), x: 0, y: 0 } : { ok: false, reason: "cancelled" }; },
+  };
+  return api;
+}
+/* a small city block:   z1 - z2 - z3 - z4      z2|z3 open, z3|z4 an interior wall (Armor 2) with a locked door (Armor 1)
+                          |         |            z1|z5 open, z5|z6 an exterior wall (Armor 3), z3|z6 open, z6 has a rooftop
+                         z5 ]wall[ z6                                                                                         */
+const CITY = () => ({
+  zones: { z1: { id: 1, pos: [0, 0] }, z2: { id: 2, pos: [1, 0] }, z3: { id: 3, pos: [2, 0] }, z4: { id: 4, pos: [3, 0] }, z5: { id: 5, pos: [0, 1] }, z6: { id: 6, pos: [2, 1], rooftop: true } },
+  borders: { "z1|z2": {}, "z2|z3": {}, "z3|z4": { wall: { armor: 2, state: "intact" }, doorway: { armor: 1, state: "locked" } }, "z1|z5": {}, "z5|z6": { wall: { armor: 3, state: "intact", outer: true } }, "z3|z6": {} },
+  states: {},
+});
+const warnings = [];
+let FAKE = null;
+globalThis.game = { modules: { get: (id) => (id.startsWith("moinen") && FAKE ? { active: true, api: { zones: FAKE } } : null) }, i18n: null, user: { id: "gm", isGM: true } };
+globalThis.ui = { notifications: { warn: (m) => warnings.push(m), info: (m) => warnings.push(m) } };
+globalThis.Hooks = { on: () => 1, off: () => {} };
+const dialogs = [];
+globalThis.foundry = { applications: { api: { DialogV2: { wait: async (cfg) => { dialogs.push(cfg); return cfg.buttons[0].action; } } } } };
+const Zones = await import("./zones-adapter.mjs");
+const Mv = await import("./movement.mjs");
+const MP = await import("./movement-pure.mjs");
+
+class MTable extends Table {
+  constructor(def = CITY()) { super(); FAKE = fakeZones(def); this.map = FAKE; Mv.uninstall(); FAKE._.listeners = []; Zones.beforeStep((ctx) => MP.stepVerdict(ctx)); }
+  handle(input) { FAKE = this.map; return super.handle(input); }      // the adapter talks to this table's map
+  put(cid, spot) { const p = this.map.place(spot); this.map._.tokens[cid] = { id: cid, zone: p.zone, level: p.level, floor: p.floor, airborne: p.airborne, area: p.area }; return this; }
+  spot(cid) { return this.map.zoneOfToken(cid)?.spot ?? null; }
+  tok(cid) { return this.map._.tokens[cid] ? { id: cid } : null; }
+  facts() {
+    FAKE = this.map;
+    const f = super.facts(), tok = (cid) => this.tok(cid), by = (t) => t?.id ?? null, Zf = Mv.zoneFacts(tok, by);
+    return { ...f, zones: Zf, range: (a, b) => Zones.range(tok(a), tok(b)), canTalk: (a, b) => Mv.talk(Zf, a, b)?.ok,
+      zone: (cid) => { const p = Zf.place(cid); return p ? { spot: p.spot, key: p.zone, level: p.level, area: p.area, airborne: p.airborne, states: {}, empty: false } : null; },
+      inZone: (cid) => Zf.at(Zf.place(cid)?.spot).filter((x) => x !== cid), inZoneKey: (z) => Zf.at(z) };
+  }
+  async perform(e) {
+    if (e.t === "zmove" || e.t === "zput") { this.performed.push(e); return Mv.performMove(e, (cid) => this.tok(cid)); }
+    if (e.t === "zones") { this.performed.push(e); const r = await Zones.perform(e); return r.ok ? (r.op ? { op: r.op, result: r.result } : { result: r.result }) : { ok: false, reason: r.reason }; }
+    return super.perform(e);
+  }
+}
+const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
+const why = (env) => env?.error?.params?.reason ?? null;
+const base = (def) => { const T = new MTable(def); T.hero("H1", "p1", { attrs: { strength: 5 } }).hero("H2", "p2", { attrs: { strength: 2 } }).npc("N1", { health: 5 }); T.put("H1", "z1").put("H2", "z1").put("N1", "z2"); T.order(["H1", "N1", "H2"]); return T; };
+const mv = (actor, to, extra = {}) => ({ op: "move", actor, to, ...extra });
+const entries = (T, cid) => T.state.ledger[cid].entries.filter((e) => !e.void);
+const lastTx = (T) => T.log.list[T.log.list.length - 1];
+const FLY = [{ mode: "flight", tier: "basic" }];
+
+/* ---- A. one zone on foot: a quick action, the token goes step by step, one transaction, undo puts everything back */
+{
+  const T = base();
+  const walk = RM.moveCost(1, RM.moveProfile("walk"), {});
+  eq((await T.req("p1", mv("H1", "z2"))).ok, true, "A: a move is accepted");
+  eq([T.spot("H1"), T.state.stack.length], ["z2", 0], "A: the token is in the next zone and the action closed");
+  const e = entries(T, "H1")[0];
+  eq([e.action, e.tags.includes("move"), e.zoneFrom, e.zoneTo], ["move", true, "z1", "z2"], "A: the ledger entry carries the move and its zones");
+  eq(P1.budget(T.state, "H1")[walk.options[0].action] !== "open", true, "A: the action the rules library named is spent");
+  eq(P1.history(T.state, "H1", "thisTurn", "move"), true, "A: the history fact `moved` is set (derived from the entry)");
+  const evm = T.evs("move").pop();
+  eq([evm.combatant, evm.from, evm.to, evm.stopped], ["H1", "z1", "z2", null], "A: the move is announced on the event stream");
+  eq(T.map._.log.length, 1, "A: one step was written by the map");
+  const tx = lastTx(T);
+  ok(tx.ops.some((o) => o.t === "zones" && o.inverse?.op === "tokens"), "A: the journal keeps the map's own inverse");
+  eq((await T.gm({ op: "undo", tx: tx.id })).ok, true, "A: undo");
+  eq([T.spot("H1"), entries(T, "H1").length], ["z1", 0], "A: undo puts the token back and frees the action");
+}
+/* ---- B. distance and legality come from the rules library */
+{
+  const T = base();
+  const two = RM.moveCost(2, RM.moveProfile("walk"), {});
+  const r = await T.req("p1", mv("H1", "z3"));
+  eq(r.ok, two.ok && two.options.some((o) => o.stress === 0), "B: two zones on foot in one action: as the rules library says");
+  eq((await T.req("p1", mv("H1", "z9"))).error.params.reason, "noZone", "B: an unknown zone is refused");
+  eq(why(await T.req("p1", mv("H1", "z2", { mode: "flight" }))), "noMode", "B: a way of moving the character does not have is refused");
+  eq(code(await T.req("p2", mv("H1", "z2"))), "notOwner", "B: only the owner moves a character");
+  eq(code(await T.req("p2", mv("H2", "z2"))), "notYourTurn", "B: a move costs an action of the own turn [L3]");
+  eq(why(await T.req("p1", mv("H1", "z4"))), "barrier", "B: behind a wall");
+  const T2 = base(); await T2.gm({ op: "statusAdd", combatant: "H1", status: { id: "grappled", data: { by: "N1" } } });
+  eq(why(await T2.req("p1", mv("H1", "z2"))), "held", "B: a held character does not move [B2496]");
+  eq(MP.cannotMove(T2.state, "H1", { ...T2.c.H1, health: 0 }), "broken", "B: a broken character does not move");
+}
+/* ---- C. inside the zone: free, own turn only [L6] */
+{
+  const T = base();
+  eq((await T.req("p1", mv("H1", "z1"))).ok, true, "C: a move inside the zone on the own turn");
+  const e = entries(T, "H1")[0];
+  eq([e.tags.includes("moveInZone"), P1.budget(T.state, "H1").quick, T.map._.log.length], [true, P1.budget(base().state, "H1").quick, 0], "C: it costs nothing, is recorded, and the map moves nobody");
+  eq([code(await T.req("p2", mv("H2", "z1"))), why(T.last)], ["illegal", "notYourTurn"], "C: not on another's turn");
+}
+/* ---- D. flight: further, over the exterior wall, ends in the air or on a roof; a mover that must land cannot end in the air */
+{
+  const T = base(); T.c.H1.movement = FLY;
+  const fl = RM.moveProfile("flight", { tier: "basic" });
+  const opts = MP.moveOptions(T.facts().zones, T.state, "H1", T.c.H1);
+  ok(opts.some((o) => o.mode === "flight" && o.to === "z6:elevated" && o.elevated === "roof" && !o.disabled), "D: the options name the rooftop for a flyer");
+  ok(opts.some((o) => o.mode === "walk" && o.to === "z2" && o.cost === "quick" && !o.disabled), "D: and the zones on foot with their cost");
+  ok(opts.every((o) => /^[A-Za-z0-9_.:@|-]{1,64}$/.test(o.id)), "D: option ids are prompt-safe");
+  ok(opts.some((o) => o.area === "sky"), "D: a flyer is offered sky high");
+  eq((await T.req("p1", mv("H1", "z2:elevated", { mode: "flight" }))).ok, true, "D: a flight into the air above the next zone");
+  eq([T.spot("H1"), T.map.zoneOfToken("H1").airborne], ["z2:elevated", true], "D: the flyer hovers there");
+  const W = base();
+  eq(why(await W.req("p1", mv("H1", "z2:elevated"))), RM.altitudeAccess(RM.moveProfile("walk"), "elevated").reason, "D: on foot nobody ends in the air");
+  ok(fl.ends.includes("air"), "D: (a flyer may)");
+  const L = base(); L.c.H1.movement = [{ mode: "leaping", tier: "basic" }];
+  eq((await L.req("p1", mv("H1", "z2:elevated", { mode: "leaping" }))).ok, false, "D: a leaper must land [ZR-3]");
+}
+/* ---- E. fire on the way: the move stops, the fire attacks, the move goes on; all of it is one transaction */
+{
+  const def = CITY(); def.states.z2 = [{ id: "s1", kind: "fire", level: 2 }];
+  const T = base(def); T.c.H1.movement = FLY; T.put("N1", "z4");
+  T.dice.push([6, 6]);
+  const fo = RH.fireOutcome({ sixes: 2, armor: 0, inBurningZone: true, wasBurning: false, immune: false });
+  eq((await T.req("p1", mv("H1", "z3", { mode: "flight" }))).ok, true, "E: a flight through a burning zone");
+  eq([T.spot("H1"), T.state.stack.length], ["z3", 0], "E: the mover arrives");
+  eq(T.c.H1.health, 6 - fo.taken, "E: the fire attacked on entering [B2925]");
+  eq(M.hasStatus(T.state, "H1", "burning"), !!fo.burning, "E: and set the mover on fire as the rules library says");
+  eq(T.performed.filter((e) => e.t === "zmove").length, 2, "E: two stretches: up to the fire, then the rest");
+  eq(T.log.list.length, 1, "E: ONE journal transaction");
+  await T.gm({ op: "undo", tx: lastTx(T).id });
+  eq([T.spot("H1"), T.c.H1.health, M.hasStatus(T.state, "H1", "burning"), entries(T, "H1").length], ["z1", 6, false, 0], "E: undo reverses position, wound, status and cost together");
+  /* a mover broken by the fire stays where it burns */
+  const B = base(def); B.c.H1.movement = FLY; B.c.H1.health = 1; B.put("N1", "z4"); B.dice.push([6, 6], [3]);
+  await B.req("p1", mv("H1", "z3", { mode: "flight" }));
+  for (let i = 0; i < 4 && B.state.stack.length; i++) { const p = B.prompts()[0]; if (p) await B.req("gm", { op: "answerFor", prompt: p.id, value: p.options[0].id }); }
+  eq([B.spot("H1"), B.evs("move").pop()?.stopped], ["z2", "broken"], "E: broken by the fire, the move ends in the burning zone");
+  /* arriving in a burning zone */
+  const A = base(def); A.dice.push([1, 1]);
+  await A.req("p1", mv("H1", "z2"));
+  eq([A.spot("H1"), A.performed.filter((e) => e.t === "dice").length], ["z2", 1], "E: the fire attacks a mover that ends in the burning zone, once");
+}
+/* ---- F. leaving darkness: an AGILITY roll that costs nothing; the maker is exempt [B1654] */
+{
+  const def = CITY(); def.states.z1 = [{ id: "d1", kind: "dark", owner: "N1" }];
+  const T = base(def);
+  await T.req("p1", mv("H1", "z2"));
+  const rq = T.lastRequest();
+  eq([T.spot("H1"), rq.attr, rq.maxPush, T.top()?.step], ["z1", "agility", 0, "travel"], "F: leaving the dark asks an AGILITY roll that cannot be pushed");
+  await T.roll("dark:z1", 0);
+  eq([T.spot("H1"), T.state.stack.length, T.evs("move").pop().stopped], ["z1", 0, "dark"], "F: failed: the mover stays in the dark, the action is spent");
+  eq(entries(T, "H1").length, 1, "F: (the cost stays paid [OQ-20])");
+  const S = base(def); await S.req("p1", mv("H1", "z2")); await S.roll("dark:z1", 2);
+  eq(S.spot("H1"), "z2", "F: one six finds the way out");
+  const def2 = CITY(); def2.states.z1 = [{ id: "d1", kind: "dark", owner: "H1" }];
+  const O = base(def2); await O.req("p1", mv("H1", "z2"));
+  eq([O.spot("H1"), O.requests.length], ["z2", 0], "F: the maker of the darkness is not held by it");
+}
+/* ---- G. barriers: crash through as part of the move [B2419]; break a locked door, open one [B2418] */
+{
+  const T = base(); T.put("H1", "z3");
+  const b = MP.barrierOf(T.facts().zones.border("z3|z4"));
+  eq([b.element, b.armor], ["door", 1], "G: the door is what a crash goes through where one stands");
+  eq(why(await T.req("p1", mv("H1", "z4"))), "barrier", "G: a wall refuses a plain move");
+  eq((await T.req("p1", mv("H1", "z4", { force: true }))).ok, true, "G: declared with force");
+  eq([T.spot("H1"), T.lastRequest().attr], ["z3", "strength"], "G: the mover stands at the barrier and rolls STRENGTH");
+  await T.roll("bar:z3|z4", 1);
+  eq([T.spot("H1"), T.map.borderBetween("z3", "z4").doorway.state, T.state.stack.length], ["z4", "breached", 0], "G: success: the door is breached and the mover is through");
+  ok(T.evs("zoneChange").some((e) => e.border === "z3|z4"), "G: the breach is announced");
+  await T.gm({ op: "undo", tx: lastTx(T).id });
+  eq([T.spot("H1"), T.map.borderBetween("z3", "z4").doorway.state], ["z3", "locked"], "G: undo restores the door and the mover");
+  /* failure: stopped at the barrier, damage = its Armor */
+  const F = base(); F.put("H1", "z3");
+  await F.req("p1", mv("H1", "z4", { force: { "z3|z4": "wall" } })); await F.roll("bar:z3|z4", 0);
+  const out = RZ.breachOutcome({ strength: 5, armor: 2, sixes: 0, crashing: true });
+  eq([F.spot("H1"), F.c.H1.health, F.evs("move").pop().stopped, F.state.stack.length], ["z3", 6 - out.damage, "barrier", 0], "G: failure: stopped, hurt by the wall's Armor");
+  /* too weak: STRENGTH against Armor decides before any roll */
+  const W = base(); W.put("H2", "z3"); W.turn("H2"); W.map._.borders["z3|z4"].wall.armor = 9; W.map._.borders["z3|z4"].doorway.armor = 9;
+  eq([why(await W.req("p2", mv("H2", "z4", { force: true }))), RZ.canBreach(2, 9)], ["tooWeak", false], "G: a barrier too strong for the mover is refused");
+  /* the door as an action */
+  const D = base(); D.put("H1", "z3");
+  eq(why(await D.req("p1", mv("H1", "z1|z2", { action: "breachDoor" }))), "noDoor", "G: no door on an open border");
+  eq(why(await D.req("p1", mv("H1", "z3|z4", { action: "openDoor" }))), "doorState", "G: a locked door does not simply open");
+  eq((await D.req("p1", mv("H1", "z3|z4", { action: "breachDoor" }))).ok, true, "G: breaking the locked door is declared");
+  eq(entries(D, "H1")[0].action, "breachDoor", "G: a quick action is paid");
+  await D.roll("roll", 1);
+  eq([D.map.borderBetween("z3", "z4").doorway.state, D.state.stack.length], ["breached", 0], "G: the door gives way");
+  eq((await D.req("p1", mv("H1", "z4"))).ok, true, "G: and the way is open");
+  const U = base(); U.put("H1", "z3"); U.map._.borders["z3|z4"].doorway.state = "sealed";
+  await U.req("p1", mv("H1", "z3|z4", { action: "unseal" }));
+  eq([U.lastRequest().attr, entries(U, "H1")[0].action], ["reason", "unseal"], "G: an electronic lock is a REASON roll for a full action");
+  await U.roll("roll", 1);
+  eq(U.map.borderBetween("z3", "z4").doorway.state, "open", "G: unlocked");
+  const C = base(); C.put("H1", "z3"); C.map._.borders["z3|z4"].doorway.state = "closed"; C.map._.borders["z3|z4"].wall.state = "intact";
+  eq((await C.req("p1", mv("H1", "z3|z4", { action: "openDoor" }))).ok, true, "G: an unlocked door opens without a roll");
+  eq([C.map.borderBetween("z3", "z4").doorway.state, entries(C, "H1").length, C.requests.length], ["open", 0, 0], "G: and without an action");
+}
+/* ---- H. teleport: an arrival, nothing in between; quick action only [R18] */
+{
+  const def = CITY(); def.states.z2 = [{ id: "s1", kind: "fire", level: 3 }];
+  const T = base(def); T.c.H1.movement = [{ mode: "teleportation", tier: "basic" }];
+  const tp = RM.moveProfile("teleportation", { tier: "basic" }), d = Math.min(2, tp.zones);
+  const to = d >= 2 ? "z3" : "z2";
+  const r = await T.req("p1", mv("H1", "z3", { mode: "teleportation" }));
+  if (tp.zones >= 2) {
+    eq([r.ok, T.spot("H1"), T.performed.filter((e) => e.t === "zput").length, T.performed.filter((e) => e.t === "dice").length], [true, "z3", 1, 0], "H: a teleport arrives without passing the burning zone");
+    eq(entries(T, "H1")[0].unit ?? entries(T, "H1")[0].cost ?? "quick", "quick", "H: for a quick action");
+  } else eq(why(r), "tooFar", `H: beyond the reach of a basic teleport (${to})`);
+}
+/* ---- I. sky high and the return [B2387], [R16] */
+{
+  const T = base(); T.c.H1.movement = FLY;
+  const W = base();
+  eq([why(await W.req("p1", mv("H1", "@sky"))), RM.altitudeAccess(RM.moveProfile("walk"), "sky").reason], ["needsFlight", "needsFlight"], "I: on foot nobody goes sky high");
+  eq((await T.req("p1", mv("H1", "@sky", { mode: "flight" }))).ok, true, "I: a flyer goes sky high");
+  eq([T.spot("H1"), entries(T, "H1").map((e) => e.unit ?? null).length, P1.budget(T.state, "H1").full !== "open"], ["@sky", 1, true], "I: for a full action");
+  await T.gm({ op: "nextTurn" }); T.turn("H1");
+  if (T.state.round === 1) { /* the same round: the full action is gone */ eq(code(await T.req("p1", mv("H1", "z3", { mode: "flight" }))), "illegal", "I: no second full action this round"); }
+  const R = base(); R.c.H1.movement = FLY; R.put("H1", "@sky");
+  eq((await R.req("p1", mv("H1", "z4", { mode: "flight" }))).ok, true, "I: the return is declared");
+  eq([R.prompt("moveApprove")?.to, R.spot("H1"), entries(R, "H1").length], ["gm", "@sky", 0], "I: the GM approves the zone of return first [R16]; nothing is paid yet");
+  await R.answer("gm", "moveApprove", "approve");
+  eq([R.spot("H1"), entries(R, "H1").length, R.state.stack.length], ["z4", 1, 0], "I: approved: the full action is paid and the flyer is back on the map");
+  const X = base(); X.c.H1.movement = FLY; X.put("H1", "@sky");
+  await X.req("p1", mv("H1", "z4", { mode: "flight" })); await X.answer("gm", "moveApprove", "refuse");
+  eq([X.spot("H1"), entries(X, "H1").length, X.state.stack.length], ["@sky", 0, 0], "I: refused: nothing moved, nothing paid");
+}
+/* ---- J. carrying [B2392] and pulling a held opponent [B2497] */
+{
+  const T = base(); T.c.H1.movement = FLY;
+  eq(why(await T.req("p1", mv("H1", "z2", { carry: ["H2"] }))), RMan.carryCheck({ canFly: false }).reason === "cannotFly" ? "cannotCarry" : "?", "J: on foot nobody is carried");
+  eq(why(await T.req("p1", mv("H1", "z2", { mode: "flight", carry: ["N1"] }))), "carryZone", "J: the carried character starts in the flyer's zone");
+  eq((await T.req("p1", mv("H1", "z2:elevated", { mode: "flight", carry: ["H2"] }))).ok, true, "J: a flyer carries one character");
+  eq([T.spot("H1"), T.spot("H2"), M.conditions(T.state, "H2").carriedAloft === true], ["z2:elevated", "z2:elevated", true], "J: both end in the air together and are carried aloft");
+  eq(T.map._.log.at(-1).movers, ["H1", "H2"], "J: the map moved them as one group");
+  await T.gm({ op: "undo", tx: lastTx(T).id });
+  eq([T.spot("H1"), T.spot("H2"), M.hasStatus(T.state, "H2", "carried")], ["z1", "z1", false], "J: undo brings both back");
+  const G = base(); G.put("N1", "z1");
+  await G.gm({ op: "statusAdd", combatant: "H1", status: { id: "grappling", data: { held: "N1" } } });
+  await G.req("p1", mv("H1", "z2"));
+  eq([G.spot("H1"), G.spot("N1")], ["z2", "z2"], "J: the holder of a grapple pulls the held opponent along");
+}
+/* ---- K. forced movement as a service: the GM's card, the chain from the map, barriers, the fall */
+{
+  const T = base(); T.put("N1", "z3"); T.put("H1", "z2");
+  eq((await T.gm({ op: "forcedMove", combatant: "N1", awayFrom: "H1", distance: 2, damage: 4, kind: "knockback" })).ok, true, "K: a forced move is opened");
+  const card = T.prompt("direction");
+  eq([card.to, card.data.zones, card.data.walls.map((w) => w.border), T.spot("N1")], ["gm", ["z3", "z4"], ["z3|z4"], "z3"], "K: the GM's card shows the chain and the wall on it; nothing moved yet");
+  await T.answer("gm", "direction", "go");
+  eq([T.spot("N1"), T.map.borderBetween("z3", "z4").wall.state, T.c.N1.health, T.state.stack.length], ["z4", "breached", 1, 0], "K: thrown through a wall weaker than the blow: the wall breaks, the blow is felt, the target lands beyond");
+  await T.gm({ op: "undo", tx: lastTx(T).id });
+  eq([T.spot("N1"), T.map.borderBetween("z3", "z4").wall.state, T.c.N1.health], ["z3", "intact", 5], "K: undo restores wall, wound and position");
+  const S = base(); S.put("N1", "z3"); S.put("H1", "z2");
+  await S.gm({ op: "forcedMove", combatant: "N1", awayFrom: "H1", distance: 2, damage: 2 }); await S.answer("gm", "direction", "go");
+  eq([S.spot("N1"), S.map.borderBetween("z3", "z4").wall.state, S.c.N1.health], ["z3", "intact", 3], "K: a wall as strong as the blow stops the target, which takes the blow");
+  const N = base(); N.put("N1", "z3"); N.put("H1", "z2");
+  await N.gm({ op: "forcedMove", combatant: "N1", awayFrom: "H1", distance: 1, damage: 0 }); await N.answer("gm", "direction", "none");
+  eq([N.spot("N1"), N.state.stack.length], ["z3", 0], "K: the GM may leave the target where it is");
+  const P = base(); P.put("H2", "z2");
+  eq((await P.req("p1", { op: "forcedMove", combatant: "H2", awayFrom: "H1", distance: 1 })).error.code, "noPermission", "K: only the GM throws characters around");
+  /* the fall */
+  const F = base(); F.put("N1", "z2:elevated"); F.dice.push([5]);
+  await F.gm({ op: "fall", combatant: "N1" });
+  eq([F.lastRequest().attr, F.lastRequest().maxPush], ["agility", 0], "K: a fall asks AGILITY, no action, no push [B2391]");
+  await F.roll("agi", 1);
+  const fo = RH.fallOutcome({ dice: [5], agilitySixes: 1 });
+  eq([F.spot("N1"), F.c.N1.health, F.state.stack.length], ["z2", 5 - fo.damage, 0], "K: lands on the ground with the damage the rules library gives");
+  eq(RH.fallDice("ground"), 0, "K: nobody falls from the ground");
+  const G = base(); await G.gm({ op: "fall", combatant: "N1" });
+  eq([G.state.stack.length, G.c.N1.health], [0, 5], "K: a fall from the ground is nothing");
+  const C = base(); C.put("N1", "z1:elevated"); C.put("H1", "z1"); C.put("H2", "z5");
+  await C.gm({ op: "forcedMove", combatant: "N1", direction: { dx: 1, dy: 0 }, distance: 1 });
+  C.dice.push([2]); await C.answer("gm", "direction", "goFall"); await C.roll("agi", 0);
+  eq([C.spot("N1"), C.c.N1.health, C.log.list.length], [C.spot("N1").split(":")[0], 3, 1], "K: thrown in the air and falling afterwards [A7]: one transaction");
+}
+/* ---- L. Fastball Special [B2390] */
+{
+  const T = base();
+  const fc = RMan.fastballCheck({ throwerStrength: 5, thrownStrength: 2 });
+  eq((await T.req("p1", { op: "declare", actor: "H1", decl: { action: "fastball", targets: ["H2"], to: "z3" } })).ok, true, "L: the stronger hero throws the weaker one");
+  eq([T.spot("H2"), T.spot("H1"), entries(T, "H1")[0].action, entries(T, "H2").length, fc.zones >= 2], ["z3", "z1", "fastball", 0, true], "L: the thrown one travels, the thrower pays the full action");
+  const W = base(); W.turn("H2");
+  eq(why(await W.req("p2", { op: "declare", actor: "H2", decl: { action: "fastball", targets: ["H1"], to: "z2" } })), "tooWeak", "L: the thrown character must be weaker");
+  const R = base();
+  eq(why(await R.req("p1", { op: "declare", actor: "H1", decl: { action: "fastball", targets: ["N1"], to: "z3" } })), "carryZone", "L: from the thrower's own zone only");
+}
+/* ---- M. the dodge move [B2526]: zones offered on the prompt, the move is part of the attack's transaction */
+{
+  const T = base(); T.put("N1", "z1"); T.weapons.pistol = { id: "pistol", name: "Pistol", bonus: 1, damage: 2, range: [0, 2], sharp: false };
+  await T.req("p1", { op: "declare", actor: "H1", decl: { action: "shoot", weapon: "pistol", targets: ["N1"] } });
+  await T.answer("gm", "reaction", "dodge", "N1"); await T.roll("attack", 1); await T.roll("def:N1", 3);
+  const p = T.prompt("dodgeMove"), o = p.options.find((x) => x.data?.to === "z2");
+  ok(!!o && p.options.some((x) => x.id === "pass") && p.options.some((x) => x.id === "move"), "M: the dodge move offers the zones within reach, by hand, or pass");
+  await T.answer("gm", "dodgeMove", o.id);
+  eq([T.spot("N1"), T.state.stack.length, entries(T, "N1").filter((e) => e.action === "move").length, T.log.list.length], ["z2", 0, 0, 1], "M: the dodger moved, free of cost, inside the attack's transaction");
+}
+/* ---- N. the step listener leaves other moves alone; stale and blocked stretches */
+{
+  const T = base();
+  const r = await T.map.move({ id: "H1" }, "z2", { profile: { way: "walk", speed: 1 } });
+  eq([r.ok, r.stopped, T.spot("H1")], [true, null, "z2"], "N: a move that is not the engine's passes the listener untouched");
+  eq(MP.stepVerdict({ data: {} }), null, "N: no verdict without the engine's mark");
+  eq(MP.stepVerdict({ data: { ipu: { mover: "H1", cleared: {}, forced: 1 } }, from: { spot: "z3" }, statesFrom: [], statesTo: [], border: { key: "z3|z4", stops: { walk: true } }, profile: { way: "walk" } }).reason, "ipu.hit", "N: a thrown character meets the barrier");
+  eq(MP.stateFlags([{ kind: "fire", level: 3 }, { kind: "weather", data: { type: "storm" }, owner: "H1" }, { kind: "gravity", data: { mode: "low" } }], "H1"), { fire: 3, dark: false, storm: false, highGravity: false, lowGravity: true }, "N: zone states as the rules read them (the maker of a storm is exempt)");
+}
+/* ---- O. conditions at the start: low gravity AGILITY [B1703]; a zone state met on the way is the GM's card [LR-18] */
+{
+  const def = CITY(); def.states.z1 = [{ id: "g1", kind: "gravity", data: { mode: "low" } }];
+  const T = base(def); await T.req("p1", mv("H1", "z2"));
+  eq([T.lastRequest()?.attr, T.spot("H1")], ["agility", "z1"], "O: low gravity asks AGILITY before the move");
+  await T.roll("start", 0);
+  eq([T.spot("H1"), T.evs("move").pop().stopped], ["z1", "rollFailed"], "O: failed: no move");
+  const def2 = CITY(); def2.states.z2 = [{ id: "w1", kind: "weather", data: { type: "storm" } }];
+  const S = base(def2); S.c.H1.movement = FLY; S.put("N1", "z4");
+  await S.req("p1", mv("H1", "z3", { mode: "flight" }));
+  eq([S.prompt("moveStop")?.data.why, S.spot("H1")], [["storm"], "z2"], "O: entering a storm on the way stops the move for the GM's word");
+  await S.answer("gm", "moveStop", "continue");
+  eq(S.spot("H1"), "z3", "O: continue");
+  const X = base(def2); X.c.H1.movement = FLY; X.put("N1", "z4");
+  await X.req("p1", mv("H1", "z3", { mode: "flight" })); await X.answer("gm", "moveStop", "stop");
+  eq([X.spot("H1"), X.evs("move").pop().stopped], ["z2", "storm"], "O: or stop there");
+}
+/* ---- P. the Foundry side: listener, rules driver, drag confirmation, pick, communication */
+{
+  const T = base(); const sent = [];
+  const h = { cid: (td) => (T.c[td?.id] ? td.id : null), c: (cid) => T.c[cid] ?? null, state: () => T.state, facts: () => T.facts(), request: async (req) => { sent.push(req); return T.req("p1", req); } };
+  eq(Mv.install(h), true, "P: installed on a scene with zones");
+  eq([T.map.drivenBy()?.id, T.map.drivenBy()?.fireRound, T.map._.driver.wreck("office")], ["invincible-plus-ultra", true, ""], "P: the map's rules driver is this module: no fire round, no wrecking numbers of the map's own");
+  const cfg = T.map._.cfg.tactical;
+  eq([cfg.gm, cfg.when({ id: "H1" }), cfg.when({ id: "nobody" }), typeof cfg.profile({ id: "H1" }).speed], [true, true, false, "number"], "P: cost confirmation on drags of combat tokens, the GM's too");
+  const res = cfg.confirm({ token: { id: "H1" }, to: T.map.place("z2") });
+  eq(res, false, "P: the drag itself never moves the token");
+  await new Promise((r) => setTimeout(r, 5));
+  eq([sent[0]?.op, sent[0]?.actor, sent[0]?.to, T.spot("H1"), dialogs.length], ["move", "H1", "z2", "z2", 1], "P: confirmed: the move goes to the executor as a request and the engine moves the token");
+  T.map._.nextPick = "z3";
+  await Mv.pickMove(h, "H1");
+  ok(T.map._.picks[0].zones.some((z) => z.zone === "z3" || z.zone === "z1"), "P: the pick offers the reachable zones");
+  eq(Mv.api.installed(), true, "P: api.tactics.movement is live");
+  ok(Array.isArray(Mv.api.options("H1")), "P: options through the API");
+  const Zf = T.facts().zones;
+  eq([Mv.talk(Zf, "H1", "H2").ok, Mv.talk(Zf, "H1", "N1")?.ok], [T.spot("H1") === T.spot("H2") || RZ.canCommunicateAt(Zf.range("H1", "H2"), Zf.place("H1"), Zf.place("H2"), {}).ok, RZ.canCommunicateAt(Zf.range("H1", "N1"), Zf.place("H1"), Zf.place("N1"), {}).ok], "P: communication range is the rules library's answer [Z11]");
+  T.put("H2", "z4"); T.put("H1", "z3");
+  eq([Mv.talk(Zf, "H1", "H2").ok, Mv.talk(Zf, "H1", "H2").reason, Mv.talk(Zf, "H1", "H2", true).ok], [false, "wall", true], "P: a wall between neighbours impedes talk; a link does not care");
+  Mv.uninstall();
+  eq([T.map.drivenBy(), T.map.tacticalOn()], [null, false], "P: uninstall steps down");
+}
+done("check-move");

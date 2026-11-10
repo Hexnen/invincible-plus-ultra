@@ -409,7 +409,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   eq(O.prompt("exception")?.data.text, "may I?", "K: card on the desk");
   await O.answer("gm", "exception", "grant");
   eq(O.prompts().length, 0, "K: answered and closed");
-  eq(code(await O.req("p1", { op: "move", actor: "H1", to: "z2" })), "unknown", "K: move is P3");
+  eq([code(await O.req("p1", { op: "move", actor: "H1", to: "z2" })), O.last.error?.params?.reason], ["illegal", "noZones"], "K: a move on a scene without zones is refused (the GM resolves it by hand; check-move.mjs runs the flow)");
 }
 
 /* ================================================================== L: free mode and switching off */
