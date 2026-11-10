@@ -28,7 +28,7 @@ const GLOBALS = /(^|[^.\w"'`])(game|Hooks|foundry|ui|canvas|CONFIG|ChatMessage|f
 const pureImport = (i) => /-pure\.mjs$|\/flows\/|^\.\/(kit|attack|simple|move|vehicle|challenge|chase)\.mjs$|\/rules\/index\.mjs$|^node:/.test(i);
 
 eq(PURE.slice().sort(), ["catalog-pure.mjs", "desk-pure.mjs", "director-pure.mjs", "economy-pure.mjs", "engine-pure.mjs", "flows/attack.mjs", "flows/challenge.mjs", "flows/chase.mjs", "flows/kit.mjs", "flows/move.mjs", "flows/simple.mjs", "flows/vehicle.mjs", "initiative-pure.mjs", "journal-pure.mjs",
-  "ledger-pure.mjs", "mods-pure.mjs", "movement-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "ui/model-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");
+  "ledger-pure.mjs", "mods-pure.mjs", "movement-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "ui/model-pure.mjs", "ui/scene-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");
 for (const f of PURE) {
   const c = strip(read(f));
   ok(!FORBIDDEN.test(c), `${f}: no Foundry or browser globals`);

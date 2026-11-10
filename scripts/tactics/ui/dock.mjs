@@ -128,6 +128,14 @@ function doorPanel(p) {
     p.empty ? h("div.itd-pbody", {}, h("p.itd-hint", {}, icon("fa-door-closed"), h("span", { text: p.empty }))) : h("div.itd-pbody", {}, h("div.itd-ways", { attrs: { role: "group", "aria-label": p.title } }, p.rows.map(wayRow))),
     askRow(p.ask));
 }
+/* P7: the ways of a challenge, one chip each, grouped by what they work on; the last chip is an idea of the player's own */
+function approach(a) {
+  const chip = (key, label, on, tip, patch, dim = false) => h(`button.itd-chip.itd-chip-plain${dim ? ".itd-chip-dim" : ""}`, { fk: `ap:${key}`, tip, attrs: { "aria-pressed": String(!!on) }, on: { click: () => set(patch) } }, h("span", { text: label }));
+  return h("div.itd-col.itd-approach", {}, h("span.itd-k", { text: a.label }),
+    a.groups.map((g) => h("div.itd-apg", { attrs: { role: "group", "aria-label": g.label } }, h("span.itd-apn", { text: g.label }), h("div.itd-chips", {}, g.rows.map((r) => chip(r.id, r.label, r.picked, r.tip, { opt: r.id }, r.dim))))),
+    a.own.lone ? null : h("div.itd-chips", {}, chip("own", a.own.label, a.own.picked, a.own.tip, { opt: "own" })),
+    a.own.attrs ? h("div.itd-apg", { attrs: { role: "group", "aria-label": a.own.attrLabel } }, h("span.itd-apn", { text: a.own.attrLabel }), h("div.itd-chips", {}, a.own.attrs.map((x) => chip(`at:${x.id}`, x.label, x.picked, null, { attr: x.id })))) : null);
+}
 function panel(p) {
   if (!p) return null;
   if (p.kind === "move") return movePanel(p);
@@ -139,6 +147,7 @@ function panel(p) {
         p.targets ? h("div.itd-col.itd-targets", {}, h("span.itd-k", { text: handlers.label?.("target") }),
           h("div.itd-chips", { attrs: { role: "group" } }, p.targets.map((x) => h(`button.itd-chip${x.likely ? "" : ".itd-chip-dim"}`, { fk: `tg:${x.id}`, tip: x.note, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => { toggle("targets", x.id); handlers.target?.(x.id); } } }, face(x.img, x.name), h("span", { text: x.name })))),
           p.picking ? h("p.itd-hint", {}, icon("fa-crosshairs"), h("span", { text: handlers.label?.("pick.hint") })) : null) : null,
+        p.approach ? approach(p.approach) : null,
         p.dest ? h("div.itd-col", {}, h("span.itd-k", { text: p.dest.label }), p.dest.value ? h("b.itd-destv", { text: p.dest.value }) : null,
           h("button.itd-ghost", { fk: "dest", on: { click: () => handlers.zonePick?.() } }, icon("fa-map-location-dot"), h("span", { text: p.dest.pick }))) : null,
         p.text ? h("div.itd-col.itd-grow", {}, textBox(p.text.value, p.text.placeholder)) : null,

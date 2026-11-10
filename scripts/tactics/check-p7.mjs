@@ -7,6 +7,9 @@ import * as Vehicle from "./flows/vehicle.mjs";
 import * as Chase from "./flows/chase.mjs";
 import * as D from "./desk-pure.mjs";
 import * as V from "./view-pure.mjs";
+import * as UI from "./ui/model-pure.mjs";
+import { sceneData } from "./ui/scene-pure.mjs";
+import { t as say, EN } from "./lang.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -357,5 +360,37 @@ const base = () => {
   eq([bar3.includes("objective"), bar3.includes("slugfest")], [false, true], "H: no challenge in the fight, no objective action");
   ok(D.CARD_KINDS.includes("objective") && D.CARD_KINDS.includes("chaseCatch") && D.CARD_KINDS.includes("chaseOption"), "H: the desk knows the new cards");
   void M;
+
+  /* ---- I: the surfaces (render data only) */
+  const raw = [], t = (k, p, fb) => { const s = say(k, p, fb === undefined ? k : fb); if (s === k) raw.push(k); return s; };
+  const special = (staff) => () => [{ id: "CH", name: "Device", kind: "challenge", ...(staff ? { health: 6, maxHealth: 6, resolve: 3, maxResolve: 3, timeUnit: "rounds" } : {}) },
+    { id: "V1", name: "Van", kind: "vehicle", ...(staff ? { health: 8, maxHealth: 8, vehicle: { type: "ground", speed: 3, maneuver: 1, passengers: 3, weapons: 0 } } : {}) }];
+  const facts = (v, staff) => ({ view: v, staff, me: staff ? "gm" : "p1", c: (id) => (T.c[id] ? { name: T.c[id].name ?? id, npc: !!T.c[id].npc } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => u, special: special(staff) });
+  const dock = (own) => UI.dockData({ bars: [D.barModel(view, "H1", { ...ctx, special: special(false) })], prompts: [], mine: [], stack: [], waiting: [], turn: { combatant: "H1", name: "H1", round: 1 } }, own, facts(view, false), t);
+  const p0 = dock({ armed: "objective", targets: [] }).panel;
+  eq([p0.kind, p0.targets.map((x) => [x.id, x.picked]), p0.approach.groups.length, p0.submit.disabled === EN["ITAC.ui.need.approach"], p0.submit.req], ["declare", [["CH", true]], 3, true, null], "I: the only challenge is picked by itself; its ways are listed; nothing is sent before one is chosen");
+  const p1 = dock({ armed: "objective", targets: [], opt: "overrideTheSystem.0" }).panel;
+  eq([p1.submit.req?.decl, p1.pool?.total > 0], [{ targets: ["CH"], mode: "overrideTheSystem.0", action: "objective" }, true], "I: a listed way declares its option and shows the dice");
+  const p2 = dock({ armed: "objective", targets: [], opt: "own", attr: "presence", text: "talk it down" }).panel;
+  eq([p2.submit.req?.decl, !!p2.text, p2.approach.own.attrs.length], [{ targets: ["CH"], attr: "presence", text: "talk it down", action: "objective" }, true, 6], "I: an idea of the player's own carries the attribute and the words");
+  eq(dock({ armed: "objective", targets: [], opt: "own", attr: "presence" }).panel.submit.req, null, "I: an own idea needs its words when the challenge lists ways");
+  const pr = dock({ armed: "ram", targets: [] }).panel;
+  eq(pr.targets.map((x) => x.id), ["N1", "H2"], "I: the own vehicle is not a target of the ram");
+  eq(dock({ armed: "vehicleHandle" }).panel.submit.disabled, EN["ITAC.ui.need.zone"], "I: driving asks for the zone first");
+  const sc = sceneData(T.state, { side: { V1: "prey", N1: "pursuer" }, distance: 2, obstacles: true }, facts(T.state, true), t);
+  eq([sc.chase.on, sc.chase.units.map((u) => u.id), sc.chase.start.req], [false, ["V1", "H2", "N1"], { op: "chaseStart", prey: ["V1"], pursuer: ["N1"], distance: 2, obstacles: true }], "I: the desk drafts a chase: a rider is listed as the vehicle");
+  eq(sceneData(T.state, {}, facts(T.state, true), t).chase.start.req, null, "I: no sides, no start");
+  eq([sc.vehicles.items[0].seats.map((x) => [x.id, x.driver]), sc.vehicles.items[0].board.choices.map((x) => x.req.seat), sc.challenges.items[0].preset.value, sc.challenges.items[0].objectives.length],
+    [[["H1", true]], [{ who: "H2", role: "passenger" }, { who: "N1", role: "passenger" }], "doomsdayDevice", 3], "I: who sits where, who can be put aboard, the preset of the challenge");
+  eq(code(await T.gm({ op: "vehicleSet", vehicle: "V1", started: true })), "ok", "I: the engine runs");
+  eq(code(await T.gm(sc.chase.start.req)), "ok", "I: the drafted request starts the chase");
+  const on = sceneData(T.state, {}, facts(T.state, true), t).chase;
+  eq([on.on, on.sides.map((s) => s.units.map((u) => u.id)), on.roll.req, on.end.map((b) => b.req.outcome)], [true, [["V1"], ["N1"]], { op: "chaseRound" }, ["combat", "escaped"]], "I: a running chase: the sides, the roll, the two ways out");
+  const pv = V.viewFor(T.state, { id: "p1", staff: false, owns: ["H1"] }, { hidden: [], npc: ["N1", "CH", "V1"] });
+  eq(UI.dockData({ bars: [D.barModel(pv, "H1", { ...ctx, special: special(false) })], prompts: [], mine: [], stack: [], waiting: [], turn: { combatant: null, round: 1 } }, {}, facts(pv, false), t).turn, say("ITAC.ui.chase.line", { n: 2 }), "I: the dock's line carries the chase and its distance");
+  const card = (p) => UI.askData({ id: "x", inst: null, options: [], answerReq: () => ({}), ...p }, { t, facts: facts(T.state, true), desk: true });
+  ok(card({ kind: "objective", about: "H1", data: { challenge: "CH", attr: "presence", why: "ownApproach", text: "talk" } }).lines.length === 2 && card({ kind: "chaseCatch", about: "N1", data: { target: "V1", ram: 1 } }).lines.length === 1
+    && card({ kind: "chaseOption", about: "H1", data: { obstacle: "shortcut", attr: "intuition" } }).lines.length === 1 && card({ kind: "challengeFail", about: "CH", data: { effects: ["blast"] } }).lines.length === 2, "I: the new cards say what they ask");
+  eq(raw, [], "I: no raw key on the surfaces");
 }
 done("check-p7");
