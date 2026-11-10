@@ -55,7 +55,8 @@ function factsOf(combat) {
       } catch { return null; }
     },
     doors: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Mv.api.doors(id) : []; } catch { return []; } },
-    zone: (spot) => { try { const p = Zones.place(spot); return p ? { id: p.id, level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } catch { return null; } },
+    /* the number the map shows on a zone's badge is its id + 1 (moinen-maps zones.zoneName; not on its API yet, so a map set to other numerals reads differently) */
+    zone: (spot) => { try { const p = Zones.place(spot); return p ? { id: Number.isInteger(p.id) ? p.id + 1 : null, level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } catch { return null; } },
   };
 }
 /* the dock's model for staff: the bar of whoever has the turn (or of the combatant the GM chose), from the full state */

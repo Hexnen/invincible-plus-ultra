@@ -264,7 +264,7 @@ export const EN = {
   "ITAC.action.forcedMove": "Forced move",
   "ITAC.action.fall": "Fall",
   "ITAC.move.stress": "{n} stress",
-  "ITAC.move.force": "{n} barrier(s) to break",
+  "ITAC.move.force": "barriers to break: {n}",
   "ITAC.move.cannot": "This move is not possible: {reason}.",
   "ITAC.move.confirm": "Choose how to make this move.",
   "ITAC.move.pickHint": "Click a lit zone to move there.",

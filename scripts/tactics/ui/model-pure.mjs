@@ -220,7 +220,7 @@ export function waitingData(waiting, facts, t) {
 
 /* ------------------------------------------------------------------ the player's dock */
 export const GROUPS = Object.freeze(["attack", "move", "act", "power", "free"]);
-export const groupOf = (a) => (a.kind === "custom" ? "power" : a.flow === "attack" || a.tags?.includes("attack") ? "attack" : a.flow === "move" || a.tags?.includes("move") ? "move" : a.cost === "free" ? "free" : "act");
+export const groupOf = (a) => (a.kind === "custom" ? "power" : a.flow === "attack" || a.tags?.includes("attack") ? "attack" : a.flow === "move" || a.flow === "barrier" || a.tags?.includes("move") ? "move" : a.cost === "free" ? "free" : "act");
 const PIP_ICON = { full: "full", quick: "quick" };
 
 function pipsOf(bar, t) {
@@ -316,7 +316,7 @@ function movePanel(bar, a, own, facts, t) {
   const asked = [...rows, ...near].find((r) => r.asking && r.disabled) ?? null;
   const strip = (r) => ({ id: r.id, label: r.label, cost: r.cost, notes: r.notes, warn: r.warn, disabled: r.disabled, asking: !!asked && asked.id === r.id, req: r.req });
   return { ...base, zones, picking: !to && zones.length > 0, hint: !to && zones.length ? t("ITAC.move.pickHint") : null,
-    dest: to ? { zone: to, label: zoneText(facts, t, to), rows: rows.map(strip), again: t("ITAC.ui.move.again") } : null, near: near.map(strip),
+    dest: to ? { zone: to, label: zoneText(facts, t, to), rows: rows.map(strip), again: t("ITAC.ui.move.again") } : null, near: to ? [] : near.map(strip),   // a zone is chosen: only its ways; "another zone" brings the rest back
     ask: asked ? askBox(a, bar, asked.decl, asked.o, t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${zoneText(facts, t, asked.o.to)} (${asked.label})`) : null,
     empty: !zones.length && !near.length ? t("ITAC.move.cannot", { reason: reasonText(t, "noRoute") }) : null };
 }
@@ -348,7 +348,10 @@ export function dockData(model, own, facts, t) {
   const asked = new Set((model?.prompts ?? []).map((p) => p.about));
   const bar = bars.find((b) => b.combatant === own.sel) ?? bars.find((b) => b.onTurn) ?? bars.find((b) => asked.has(b.combatant)) ?? bars[0];
   const c = facts.c?.(bar.combatant);
-  const acts = bar.actions.filter((a) => a.id !== "other");
+  /* a door action is a button only where a door stands that it could be tried on (no door at the zone: no button; a locked door: only breaking it) */
+  const doors = bar.actions.some((a) => a.flow === "barrier") ? facts.doors?.(bar.combatant) ?? [] : [];
+  const doorFits = (a) => doors.some((d) => d.actions?.[a.id] !== "doorState");
+  const acts = bar.actions.filter((a) => a.id !== "other" && (a.flow !== "barrier" || doorFits(a) || own.armed === a.id));
   const groups = GROUPS.map((g) => ({ id: g, label: t(`ITAC.ui.group.${g}`), items: acts.filter((a) => groupOf(a) === g).map((a) => ({ id: a.id, label: labelOf(t, a.label), cost: a.cost, costText: costText(t, a.cost),
     disabled: a.disabled ? reasonText(t, a.disabled) : null, armed: own.armed === a.id })) })).filter((g) => g.items.length);
   const mine = (model?.mine ?? []).filter((i) => i.actor === bar.combatant);

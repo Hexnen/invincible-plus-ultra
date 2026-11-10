@@ -114,7 +114,7 @@ const askRow = (a) => (a ? h("div.itd-pbody.itd-refused", {}, a.reason ? h("p.it
   a.text !== null ? h("div.itd-col.itd-grow", {}, textBox(a.text, a.placeholder, "why")) : null,
   h("div.itd-col.itd-submit", {}, submit(a.submit, ".itd-go-ask"))) : null);
 function movePanel(p) {
-  return h("section.itd-panel", { data: { kind: p.kind } },
+  return h("section.itd-panel", { data: { kind: p.kind, picking: p.picking && !p.near.length ? "1" : null } },
     h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.dest ? h("span.itd-arrow", {}, icon("fa-arrow-right"), h("b", { text: p.dest.label })) : null, cancelBtn()),
     p.empty ? h("div.itd-pbody", {}, h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: p.empty }))) : null,
     p.hint ? h("div.itd-pbody", {}, h("p.itd-hint", {}, icon("fa-map-location-dot"), h("span", { text: p.hint }))) : null,

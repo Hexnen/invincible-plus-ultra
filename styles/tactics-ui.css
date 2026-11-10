@@ -260,6 +260,9 @@
 #invincible-tactics-dock .itd-way[aria-disabled="true"].itd-armed { border-style: solid; }
 .itd-near { align-items: center; padding-top: 7px; border-top: 1px dashed var(--ita-line); }
 .itd-near .itd-k { flex: 1 1 100%; }
+/* while the zone is being picked on the map the panel is one short line, so the map stays visible */
+.itd-panel[data-picking] { align-self: center; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0; padding: 6px 10px 7px; }
+.itd-panel[data-picking] .itd-phead { margin-left: -3px; }
 .itd-destv { font: 700 13px/1.1 Comic, sans-serif; color: #fff; }
 
 /* waiting line */

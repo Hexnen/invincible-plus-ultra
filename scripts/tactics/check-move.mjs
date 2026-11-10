@@ -508,7 +508,7 @@ const FLY = [{ mode: "flight", tier: "basic" }];
       eq(walk.req, { op: "declare", actor: "H1", decl: { action: "move", to: "z2", mode: "walk" } }, `Q ${l}: the row carries the declaration of that move`);
       shown(d, `Q ${l} move, chosen`);
       eq([(await T.req("p1", walk.req)).ok, T.spot("H1")], [true, "z2"], `Q ${l}: the row's request moves the token through the engine`);
-      ok(d.panel.near.some((r) => r.id.startsWith("flight|@sky")), `Q ${l}: off-map places a flyer can go to are listed in the panel, not on the map`);
+      eq([d.panel.near.length, dock("p1", "H1", { armed: "move" }).panel.near.some((r) => r.id.startsWith("flight|@sky"))], [0, true], `Q ${l}: off-map places a flyer can go to are listed in the panel, not on the map, and give way once a zone is chosen`);
     }
     { // a way the rules refuse: shown with the reason; the player asks with a reason, which becomes a card of the GM
       const { T, dock, desk } = setup({ H1: "z5" });
@@ -542,10 +542,12 @@ const FLY = [{ mode: "flight", tier: "basic" }];
       eq([d.panel.kind, row.id, row.disabled, row.notes.length, d.panel.borders[0].border], ["door", "z3|z4", null, 2, "z3|z4"], `Q ${l}: the locked door of the mover's zone is offered for breaking, with its state and Armor, and marked on the map`);
       eq(row.req, { op: "declare", actor: "H1", decl: { action: "breachDoor", to: "z3|z4" } }, `Q ${l}: the door row carries the declaration`);
       shown(d, `Q ${l} door`);
+      eq(d.groups.find((g) => g.id === "move").items.map((a) => a.id).filter((id) => /Door|unseal/.test(id)), ["breachDoor"], `Q ${l}: at a locked door only breaking it is a button of the bar`);
       const o = dock("p1", "H1", { armed: "openDoor", ask: "z3|z4", why: "the guard has the key" }).panel;
       eq([!!o.rows[0].disabled, o.rows[0].req, o.ask.submit.req.decl.exception.text, o.ask.submit.req.decl.to], [true, null, "the guard has the key", "z3|z4"], `Q ${l}: opening a locked door is refused with its state; the question to the GM carries the door`);
       eq(dock("p1", "H1", { armed: "openDoor" }).panel.rows.length > 0 && dock("p1", "H1", { armed: "unseal" }).panel.rows[0].req, null, `Q ${l}: a lock that is not electronic cannot be worked`);
       T.put("H1", "z1");
+      ok(!dock("p1", "H1").groups.flatMap((g) => g.items).some((a) => /Door|unseal/.test(a.id)), `Q ${l}: away from every door the bar has no door button`);
       eq([dock("p1", "H1", { armed: "openDoor" }).panel.rows.length, !!dock("p1", "H1", { armed: "openDoor" }).panel.empty], [0, true], `Q ${l}: a zone without a door says so`);
       T.put("H1", "z3");
       eq([(await T.req("p1", row.req)).ok, T.state.stack.length > 0 || T.map.borderBetween("z3", "z4").doorway.state !== "locked"], [true, true], `Q ${l}: the door action runs through the engine`);
