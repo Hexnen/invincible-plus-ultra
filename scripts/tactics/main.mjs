@@ -62,7 +62,9 @@ async function startRunning() {
   Klass.setEndSceneAsk((combat) => Prompts.sceneEnd(combat));
   Store.subscribe(() => Prompts.sync());
   /* the designed surfaces (ui/main.mjs: the action dock and the GM desk); when they cannot start, the minimal dialogs above stay in charge */
-  try { const UI = await import("./ui/main.mjs"); if (UI.start()) Prompts.setSurfaces(true); } catch (e) { console.warn(`${MOD} | tactics surfaces failed to start`, e); }
+  /* one more try after a pause: a module fetch that fails once (a busy server) must not leave a player on the fallback dialogs for the whole session */
+  const load = () => import("./ui/main.mjs").catch(() => new Promise((r) => setTimeout(r, 1500)).then(() => import(`./ui/main.mjs?retry=${Date.now()}`)));
+  try { const UI = await load(); if (UI.start()) Prompts.setSurfaces(true); } catch (e) { console.warn(`${MOD} | tactics surfaces failed to start`, e); }
   Hooks.on("updateCombat", (combat, changes) => { if (changes?.flags?.[MOD] !== undefined || "round" in (changes ?? {}) || "turn" in (changes ?? {})) announce(combat); });
   Hooks.on("createCombat", (combat) => announce(combat));
   Hooks.on("deleteCombat", (combat) => { last.delete(combat.id); Store.notify({ kind: "deleted", combat, state: null }); });
