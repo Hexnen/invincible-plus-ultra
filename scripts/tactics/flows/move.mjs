@@ -81,11 +81,12 @@ function gate(v, I, R, g) {
   }
   if (g.reason === "ipu.hit") {                                                                  // [B2435]: thrown into a barrier
     const F = I.data.forced ?? {}, key = `hit:${d.border}`, b = MP.barrierOf(Z.border(d.border), "wall");
-    const raw = Math.max(0, (F.damage ?? 0) - (mv.hits ?? 0)), through = b.armor < raw;          // the same reading as rules/zones.forcedMove: each barrier takes one point off, a barrier with Armor below the rest gives way
+    const seen = (mv.hitLog ?? []).find((h) => h.border === d.border);                           // on the way back from the barrier's damage the verdict of the first visit stands
+    const raw = seen ? seen.raw : Math.max(0, (F.damage ?? 0) - (F.decay ?? 1) * (mv.hits ?? 0)), through = seen ? seen.through : b.armor < raw;          // the same reading as rules/zones.forcedMove: each barrier takes `decay` off (Knockback 1 [B2435], Slam 0 [B2494]), a barrier with Armor below the rest gives way
     if (!K.flag(I, key)) {
       K.setFlag(I, key); mv.hits = (mv.hits ?? 0) + 1; (mv.hitLog ??= []).push({ border: d.border, armor: b.armor, raw, through });
       if (through) { const op = ZP.borderOp(d.border, { wall: { state: "breached" } }); R.effects.push({ t: "zones", op }); R.events.push({ type: "zoneChange", ...ZP.changeOf(op), cause: "forced" }); }
-      if (raw > 0 && alive(v, mv.who)) { R.push = hazardChild([mv.who], { kind: "fixed", amount: raw, armor: false, source: "kinetic", cause: "barrier", id: "barrier" }); return "wait"; }
+      if (raw > 0 && alive(v, mv.who)) { R.push = hazardChild([mv.who], { kind: "fixed", amount: raw, armor: F.armor === true, source: "kinetic", cause: "barrier", id: "barrier" }); return "wait"; }      // [B2435], [B2494], [R8]: a stunt's barrier damage is reduced by the target's Armor
     }
     if (through) { (mv.cleared ??= {})[`bar:${d.border}`] = 1; return "go"; }
     mv.stop = "barrier"; return "stop";
@@ -124,7 +125,7 @@ function travel(v, I, R) {
 const moveEvent = (I, type = "move") => { const mv = I.data.mv; return { type, combatant: mv.who, from: mv.from, to: mv.at ?? mv.to, planned: mv.to, mode: mv.mode ?? null, zones: mv.total ?? 0, stopped: mv.stop ?? null, group: mv.group ?? [] }; };
 
 /* ------------------------------------------------------------------ move */
-const optsOf = (v, inst) => ({ free: inst.data?.free, prepaid: inst.cause === "interrupt", mode: v.entry(inst)?.move?.mode, charging: inst.data?.charging === true });
+const optsOf = (v, inst) => ({ free: inst.data?.free, prepaid: inst.cause === "interrupt" || inst.data?.prepaid === true, mode: v.entry(inst)?.move?.mode, charging: inst.data?.charging === true });
 const priced = (v, inst) => (v.facts.zones ? MP.priceMove(v.facts.zones, v.state, inst.actor, v.facts.c(inst.actor), inst.decl ?? {}, optsOf(v, inst)) : { ok: false, reason: "noZones", params: {}, gmMayAllow: true });
 export const move = {
   STEPS: Object.freeze(["check", "start", "travel", "arrive", "close"]),

@@ -97,7 +97,7 @@ export class Table {
       c: (id) => (T.c[id] ? T.c[id] : null),
       weapon: (cid, ref) => (ref === "unarmed" || ref == null ? { id: "unarmed", name: "unarmed", bonus: 0, damage: null, range: null, sharp: false } : T.weapons[ref] ?? null),
       range: (a, b) => { const k = [a, b].sort().join("|"); return k in T.ranges ? T.ranges[k] : (T.c[a]?.zone === T.c[b]?.zone ? { total: 0, borders: 0, levels: 0 } : { total: 1, borders: 1, levels: 0 }); },
-      zone: (cid) => ({ spot: T.c[cid]?.zone, states: T.zoneMarks[T.c[cid]?.zone] ?? {}, empty: false }),
+      zone: (cid) => ({ spot: T.c[cid]?.zone, key: T.c[cid]?.zone, states: T.zoneMarks[T.c[cid]?.zone] ?? {}, empty: false, terrain: T.terrain?.[T.c[cid]?.zone] ?? "", rooftop: !!T.rooftops?.[T.c[cid]?.zone] }),   // T.terrain = { zone: terrainId }
       inZone: (cid) => Object.values(T.c).filter((x) => x.zone === T.c[cid]?.zone && x.id !== cid).map((x) => x.id),
       inZoneKey: (zone) => Object.values(T.c).filter((x) => x.zone === zone).map((x) => x.id),
       user: (uid) => T.users[uid] ?? null,

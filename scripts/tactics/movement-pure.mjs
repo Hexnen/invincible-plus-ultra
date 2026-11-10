@@ -179,6 +179,18 @@ export function priceMove(Z, state, cid, c, decl, o = {}) {
   return { ...base, kind: "route", cost, stress, total: plan.total, zones: (plan.zones ?? []).slice(), steps, barriers, carry, pulled, profile: prof, teleport: P.mode === "teleportation" ? 1 : 0 };
 }
 
+/** The approach of a charge [B2490]: one move to the target's spot, paid with the quick action; nobody is carried. -> the move plan of priceMove plus
+    `allowance` (how far that one move could have gone: what is left of it feeds the Slam stunt [B2494]), or { ok:false, reason, params, gmMayAllow? }. */
+export function chargePlan(Z, state, cid, c, decl, to) {
+  const pr = priceMove(Z, state, cid, c, { to, mode: decl?.mode, stress: decl?.stress, pay: "quick", force: decl?.force }, { charging: true });
+  if (!pr.ok) return pr;
+  if (pr.kind !== "route") return no("chargeSameZone");
+  if (pr.cost !== "quick") return no("tooFar", { total: pr.total });                 // more than one move's worth
+  const m = modeOf(c, pr.mode), from = Z.place(cid);
+  const reach = movement.moveReach(m.profile, { conditions: conditionsOf(state, cid, c, Z.states(from.spot)), resolve: c.resolve });
+  return { ...pr, allowance: pr.stress > 0 ? reach.stressed : reach.plain };
+}
+
 /* ------------------------------------------------------------------ the options a mover is shown (spec 9.6 step 1) */
 /** Every zone one action reaches, per way of moving, with its price and what stands in the way.
     canPay(cost) -> { ok, reason } is the action economy's answer for this combatant now. o = { free, mode, max }.

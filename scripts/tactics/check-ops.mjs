@@ -338,14 +338,7 @@ function table(parts = PARTS, seed = 5) {
   const T2 = table([part("a"), part("b", { defeated: true })]);
   T2.gm("start"); T2.gm("nextTurn");
   ok(T2.state.round === 2 && T2.cur() === "a", "[D] a defeated combatant is not dealt a card");
-  /* P2 extension points */
-  ok(O.registerOp("p2test", { handler: (W, a) => { W.s.counters.x = a.n; }, normalize: (req) => ({ ok: true, action: { n: Number(req.n) || 0 } }), player: true }), "registerOp");
-  ok(!O.registerOp("endTurn", { handler() {} }), "a P1 operation cannot be replaced");
-  eq(O.normalize({ op: "p2test", n: 4 }).action, { n: 4, type: "p2test" }, "its own normalize");
-  ok(T2.do("u9", "p2test", { n: 4 }).ok && T2.state.counters.x === 4, "a registered operation runs through the same reducer");
-  ok(O.registerAnswer("reaction", (W, a, p) => { delete W.s.prompts[p.id]; }) && !O.registerAnswer("veteran", () => 0), "registerAnswer");
-  T2.state.prompts.p99 = { id: "p99", inst: "i1", step: "x", kind: "reaction", to: "gm", options: [] };
-  ok(T2.gm("answer", { prompt: "p99", value: "x" }).ok && !T2.state.prompts.p99, "an engine prompt is answered through `answer`");
+  /* a prompt kind the round driver does not own is not answered here (the action engine answers its own through the director) */
   T2.state.prompts.p98 = { id: "p98", inst: null, step: "x", kind: "mystery", to: "gm", options: [] };
   eq(T2.code(T2.gm("answer", { prompt: "p98", value: "x" })), "unknown", "a prompt kind nobody handles");
 }

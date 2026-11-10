@@ -1,29 +1,74 @@
-/* Tactical combat, package P2: ATTACK FLOW (spec 9.1) as a skeleton with a trivial attack. NO Foundry globals.
-   Steps (spec 9.1 numbers): check (2) -> gate (3) -> reactBefore (4) -> roll (5, 6) -> outcome -> stunts (7) -> damage (8) -> reactAfterDamage (9) -> effects (10) -> close (11).
-   Step 1 (declare) is the engine's `declare` / `amend` requests. Every number comes from scripts/rules (spec 1.1 principle 3).
-   IN P2: slugfest, shooting, grapple, counterattack against single targets; block and dodge; reactions given as catalog data (interrupting action, target
-   swap, automatic miss); gate rolls; Double Damage, Stun / Suppressed, Trap; breaking and the injury roll. LEFT TO P4 (each ends in a GM card here, never in an
-   invented rule): wrecking, charge, area and full auto, Knockback / Slam movement, Bang Heads / Trick Shot extra targets, Disarm, Deadly Hit bookkeeping beyond the
-   injury bonus, minion losses from area hits [OQ-1], the dodge move. */
+/* Tactical combat: ATTACK FLOW (spec 9.1, variants 9.2, stunts 9.3, special targets 9.4, damage 9.5). NO Foundry globals.
+   Steps (spec 9.1 numbers): check (2) -> gate (3) -> approach (the move of a charge) -> reactBefore (4) -> roll (5, 6) -> outcome -> stunts (7) -> damage (8)
+   -> reactAfterDamage (9) -> effects (10) -> close (11). Step 1 (declare) is the engine's `declare` / `amend`. Every number comes from scripts/rules.
+   ATTACK KINDS (rules/attack.mjs ATTACKS): slugfest, shooting, grapple, grappleAttack, charge, counterattack, ram.
+   OPTIONS OF A DECLARATION (P4):
+     decl.wreck      a slugfest attack that wrecks the attacker's zone [B2451-2457]: bonus dice by terrain, reach 1, the zone is marked wrecked when the
+                     declaration locks (hit or miss), counter `zone:<key>:wrecked`, a karma note for a hero
+     decl.area       an area attack [B2542]: needs an entry or a weapon with `area`; the targets become everyone in the zone of the first target
+     decl.fullAuto   full auto [B2543]: needs a weapon or entry with `fullAuto`; the declared targets stand in one zone, -1 die per target beyond the first
+   CHARGE [B2490-2494], [R19]: a full and a quick action; the approach is a move child (part of the same transaction) along the route the rules library
+   priced; the attack is rolled with STRENGTH, dodged, never blocked; what is left of the move feeds Slam.
+   STUNTS: Double Damage, Stun / Suppressed, Trap, Deadly Hit are settled here; Knockback and Slam are forced moves (flows/move.mjs) with the GM's card;
+   Bang Heads / Trick Shot name the extra opponent, who then takes damage and may get stunts of its own; Disarm asks the attacker what happens to the item and
+   the GM which item it is; Special and Your Own are GM cards.
+   MINIONS [B2825-2831]: Health is the number of members; a hit of an area attack, full auto, Bang Heads or Trick Shot asks the GM how many fall [OQ-1]. */
 import { attack, stunts, damage, crits, dice, zones } from "../../rules/index.mjs";
 import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 import * as C from "../catalog-pure.mjs";
 import * as K from "./kit.mjs";
 import * as MP from "../movement-pure.mjs";
+import * as ZP from "../zones-pure.mjs";
 import { freeMoveChild, forcedChild } from "./move.mjs";
 
-export const STEPS = Object.freeze(["check", "gate", "reactBefore", "roll", "outcome", "stunts", "damage", "reactAfterDamage", "effects", "close"]);
+export const STEPS = Object.freeze(["check", "gate", "approach", "reactBefore", "roll", "outcome", "stunts", "damage", "reactAfterDamage", "effects", "close"]);
 const SLUG = ["slugfest", "grapple", "grappleAttack", "counterattack", "ram"];
-const GM_STUNTS = { knockback: "direction", slam: "direction", special: "stunt", own: "stunt", bangHeads: "stunt", trickShot: "stunt", disarm: "stunt" };   // P2: resolved by the GM (P4 automates)
+const GM_STUNTS = { special: "stunt", own: "stunt", disarm: "stunt" };                 // the GM's word: [B2441-2442]; Disarm: which item it is
+const NO_MAP_STUNTS = { knockback: "direction", slam: "direction" };                    // without zones the forced move is the GM's, by hand
+const EXTRA_STUNTS = ["bangHeads", "trickShot"];                                         // [B2437], [B2518]: an extra opponent in the same zone
+const NOT_ON_EXTRA = [...EXTRA_STUNTS, "special", "own", "disarm", "slam"];              // an extra opponent starts no chain of its own (reading, combat-rulings)
+export const MINION_LOSS_MAX = 12;
+const WRECK_REASON = { terrainUnset: "wreckUnset", terrain: "wreckTerrain", strength: "wreckStrength", alreadyWrecked: "wreckDone" };
 export const INVISIBLE_GATE_DICE = -3;          // [B2075]
 const kindOf = (inst) => inst.data.kind ?? "slugfest";
 const weaponOf = (v, inst) => v.facts.weapon(inst.actor, inst.decl.weapon ?? "unarmed");
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 
+const multiOf = (d) => (d?.area ? "area" : d?.fullAuto ? "fullAuto" : null);
+const allTargets = (I) => [...I.decl.targets, ...(I.data.extras ?? []).map((x) => x.id)];
+/** May the attacker wreck the zone it stands in [B2451-2457]? -> { ok, zone, bonus, levelsRooftop } | { ok:false, reason, params } */
+export function wreckOf(v, cid) {
+  const z = v.facts.zone(cid), a = v.facts.c(cid);
+  if (!z || !(z.key ?? z.spot)) return { ok: false, reason: "noScene", params: { gmMayAllow: 1 } };
+  const key = String(z.key ?? z.spot).split(":")[0];
+  if (z.states?.wrecked || M.counterGet(v.state, M.counterKey.zone(key, "wrecked")) > 0) return { ok: false, reason: "wreckDone", params: {}, zone: key };      // once per scene, also when the mark was cleared by hand
+  const wc = zones.wreckCheck({ terrain: z.terrain && z.terrain !== "none" ? z.terrain : undefined, terrainUnset: !z.terrain, wrecked: false, rooftop: !!z.rooftop }, a?.attrs?.strength ?? 0);
+  if (!wc.ok) return { ok: false, reason: WRECK_REASON[wc.reason] ?? "wreckTerrain", params: { ...(wc.gmMayAllow ? { gmMayAllow: 1 } : {}), ...(wc.minStrength ? { min: wc.minStrength } : {}) }, zone: key };   // [A17]
+  return { ok: true, zone: key, bonus: wc.bonus, levelsRooftop: wc.levelsRooftop };
+}
+/** The approach of a charge [B2490]: the route to the target's spot, one move's worth, paid with the quick action. */
+export function chargeOf(v, inst) {
+  const Z = v.facts.zones, t = inst.decl?.targets?.[0], spot = t ? v.facts.zone(t)?.spot : null;
+  if (!Z) return { ok: false, reason: "noZones", params: { gmMayAllow: 1 } };
+  if (!spot) return { ok: false, reason: "noRange", params: {} };
+  const pr = MP.chargePlan(Z, v.state, inst.actor, v.facts.c(inst.actor), inst.decl, spot);
+  if (!pr.ok) return { ok: false, reason: pr.reason, params: { ...(pr.params ?? {}), ...(pr.gmMayAllow ? { gmMayAllow: 1 } : {}) } };
+  const cc = attack.chargeCheck({ sameZone: false, hasFull: true, hasQuick: true, moveDistance: pr.total, moveAllowance: pr.allowance });     // [B2490]; the actions are the ledger's question (chargeActions)
+  if (!cc.ok) return { ok: false, reason: cc.reason === "sameZone" ? "chargeSameZone" : cc.reason, params: { total: pr.total } };
+  return { ok: true, to: pr.to, from: pr.from, zones: pr.zones, total: pr.total, left: cc.movementLeft, mode: pr.mode, stress: pr.stress, prev: pr.zones.length > 1 ? pr.zones[pr.zones.length - 2] : pr.from };
+}
+/* a full AND a quick action [B2490]: asked of the ledger as it will be once the full action is paid */
+function chargeActions(v, inst) {
+  if (inst.data?.paid?.chargeQuick || inst.data?.prepaid) return true;
+  if (inst.entry) return P1.canPay(v.state, inst.actor, "quick", {}).ok;
+  const p = P1.pay(v.state, inst.actor, "full", {}, { action: inst.action });
+  return !!p.ok && P1.canPay({ ...v.state, ledger: { ...v.state.ledger, [inst.actor]: p.ledger } }, inst.actor, "quick", {}).ok;
+}
+
 /** Legality of the declaration (spec 9.1 step 2). Returns { ok, reason, params, gates, notes }. Costs are checked by the engine (ledger, P1). */
 export function legality(v, inst) {
-  const { state, facts } = v, d = inst.decl, kind = kindOf(inst);
+  const { state, facts } = v, d = inst.decl, kind = kindOf(inst), entry = v.entry(inst), multi = multiOf(d);
   if (!attack.ATTACKS[kind]) return bad("unknownAttack");
   const a = facts.c(inst.actor);
   if (!a || a.present === false) return bad("gone");
@@ -34,34 +79,59 @@ export function legality(v, inst) {
     if (ac.held) return bad("held");                                                                         // [B2496]
     if (ac.snared) return bad("snared");                                                                     // [R21]
     if (ac.carriedAloft) return bad("carriedAloft");                                                         // [B2392]
-    if (ac.trapped && SLUG.includes(kind)) return bad("trapped");                                            // [R20]
+    if (ac.trapped && (SLUG.includes(kind) || kind === "charge")) return bad("trapped");                     // [R20], [B2438]: no slugfest, no movement
     if (M.hasStatus(state, inst.actor, "grappling") && kind !== "grappleAttack") return bad("grappling");    // [B2497]
     if (kind === "grappleAttack" && !M.hasStatus(state, inst.actor, "grappling")) return bad("notHolding");  // [B2497]
     if ((d.stressTotal ?? 0) > 0 && !damage.canTakeVoluntaryStress(a.resolve)) return bad("stressedOut");    // [B2816], [B2228]
   }
   if (!Array.isArray(d.targets) || d.targets.length < 1) return bad("noTarget");
-  if (d.targets.length > 1 || d.area || d.fullAuto || d.wreck || d.special) return bad("notYet", { what: d.wreck ? "wreck" : d.special ?? "area" });   // P4; the exception path lets the GM run it by hand
-  const gates = [], notes = [];
+  if (d.targets.length > 1 && !multi) return bad("oneTarget");
   const w = weaponOf(v, inst);
+  if (multi) {                                                                                               // [B2542], [B2543]
+    if (!(entry?.[multi] || w?.[multi])) return bad(multi === "area" ? "noArea" : "noFullAuto", { gmMayAllow: 1 });
+    if (multi === "fullAuto" && attack.ATTACKS[kind].family !== "shooting") return bad("noFullAuto");
+    const spots = d.targets.map((t) => facts.zone(t)?.spot).filter((x) => x != null);
+    if (new Set(spots).size > 1) return bad("notSameZone");                                                 // the targets stand in one zone
+  }
+  if (d.wreck && !inst.data?.wreck) {                                                                        // [B2451]: an option of a slugfest attack
+    if (kind !== "slugfest") return bad("wreckNotSlugfest");
+    const wz = wreckOf(v, inst.actor);
+    if (!wz.ok) return bad(wz.reason, wz.params);
+  }
+  if (kind === "grappleAttack" && !counter) {
+    const held = M.statusesOf(state, inst.actor).find((s) => s.id === "grappling")?.data?.held;
+    if (held && d.targets[0] !== held) return bad("notHeld");                                                // [B2497]: against the one held
+  }
+  const gates = [], notes = [];
+  const approached = !!inst.data?.charge?.done;
   for (const t of d.targets) {
     const tf = facts.c(t);
     if (!tf || tf.present === false || t === inst.actor) return bad(t === inst.actor ? "self" : "gone");
     const unseen = state.knowledge?.[inst.actor]?.[t] === "unseen";
-    if (unseen && !d.blind) return bad("unseen");                                                            // spec 10: needs the stated intent to attack "where it should be"
+    if (unseen && !d.blind && !d.area) return bad("unseen");                                                 // spec 10: needs the stated intent to attack "where it should be"
     const r = facts.range(inst.actor, t);
     if (r === undefined) notes.push("noScene");                                                              // spec 7: positional steps fall back to the GM
     else if (r === null) return bad("noRange");                                                              // [Z4]
-    else if (SLUG.includes(kind)) { if (r.total !== 0) return bad("outOfReach", { distance: r.total }); }    // [Z2], [B2425]; elevated targets [Z5] are the zones adapter's `range`
+    else if (kind === "charge" && !approached) { if (r.total === 0) return bad("chargeSameZone"); }          // [B2490]
+    else if (SLUG.includes(kind) || kind === "charge") {                                                     // [Z2], [B2425]; huge and grown attackers reach elevated targets [B2500], [B1975]; wrecking reaches one zone [B2453]
+      const reach = zones.slugfestReachAt(r, facts.zone(inst.actor) ?? {}, facts.zone(t) ?? {}, { range: d.wreck ? 1 : 0, huge: stunts.reachesElevated(a) });
+      if (!reach.ok) return bad("outOfReach", { distance: r.total });
+    }
     else {
       if (!w || !Array.isArray(w.range)) return bad("noWeapon");                                             // [B2510]
       const sr = zones.shootingRange(r.total, w.range);                                                      // [B2511]
       if (!sr.ok) return bad(sr.reason, { distance: r.total });
     }
     if (kind === "grapple") { const g = attack.grappleCheck({ target: K.immunityFlags(tf), usesWeapon: !!d.weapon && d.weapon !== "unarmed" }); if (!g.ok) return bad(g.reason); }   // [B2496], [B2502]
-    if (!counter) {
+    if (!counter && !d.area) {
       if (M.hasStatus(state, t, "invisible")) gates.push({ kind: "invisible", target: t, attr: "intuition", dice: INVISIBLE_GATE_DICE, src: 2075 });   // [B2075]
       else if (unseen) gates.push({ kind: "unseen", target: t, gm: 1 });                                     // concealed by the GM: no cited number, so the GM sets the gate
     }
+  }
+  if (kind === "charge" && !approached && !counter) {                                                        // [B2490-2492]
+    const cp = chargeOf(v, inst);
+    if (!cp.ok) return bad(cp.reason, cp.params);
+    if (!chargeActions(v, inst)) return bad("chargeActions");
   }
   if (!counter && facts.zone(inst.actor)?.states?.lowgrav) gates.push({ kind: "lowGravity", attr: "agility", dice: 0, src: 1703 });   // [B1703]
   return { ok: true, reason: null, params: {}, gates, notes };
@@ -146,12 +216,29 @@ const windowKeys = (I, prefix) => Object.keys(I.data.pk ?? {}).filter((k) => k.s
 
 /* ------------------------------------------------------------------ steps */
 const withOut = (inst) => { const I = K.draft(inst); I.data.out ??= {}; return I; };      // a skipped step (spec 14.1 skipStep) must not break the later ones
+const blank = { helpers: [], exploits: [], stressTotal: 0 };
+const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); return entry?.damage?.base ?? (w && w.damage != null ? w.damage : a?.slugfest?.damage ?? 0); };   // [B2426], [B2428], [B2512]
 export const steps = {
-  /* step 2: legality was checked when the declaration came in; here the gates it found are fixed on the instance */
+  /* step 2: legality was checked when the declaration came in; here the gates it found are fixed on the instance, an area attack takes everyone in the
+     target zone [B2542], a charge pays its quick action and fixes its route [B2490] */
   check(v, inst) {
-    const I = K.draft(inst), R = K.result(I), l = legality(v, I);
+    const I = K.draft(inst), R = K.result(I), kind = kindOf(I);
+    I.data.multi = multiOf(I.decl);
+    if (I.decl.area && !K.flag(I, "area")) {                                                    // [A40]: the attacker's own area attack does not include the attacker
+      K.setFlag(I, "area");
+      const t0 = I.decl.targets[0], all = [t0, ...(v.facts.inZone(t0) ?? [])].filter((c, i, l) => c !== I.actor && l.indexOf(c) === i && v.facts.c(c) && v.facts.c(c).present !== false);
+      I.decl.targets = all.slice(0, 24);
+    }
+    const l = legality(v, I);
     if (!l.ok && !I.data.exception) { R.goto = "close"; I.data.result = "illegal"; I.data.reason = l.reason; return R; }
     I.data.gates = l.gates ?? []; I.data.notes = [...(I.data.notes ?? []), ...(l.notes ?? []).map((n) => ({ note: n }))];
+    if (kind === "charge" && !I.data.charge) {
+      const cp = chargeOf(v, I);
+      if (cp.ok) {
+        I.data.charge = { to: cp.to, from: cp.from, zones: cp.zones, total: cp.total, left: cp.left, prev: cp.prev, mode: cp.mode };
+        if (!I.data.prepaid) R.effects.push({ t: "pay", who: I.actor, cost: "quick", action: I.action, key: "chargeQuick", own: 1, tags: ["move", "charge"], zoneFrom: cp.from, zoneTo: cp.to, borders: cp.total });   // [B2490]: a full and a quick action
+      } else (I.data.notes ??= []).push({ note: "chargeByHand", reason: cp.reason });            // declared through an exception: the GM moves the charger
+    }
     R.goto = "gate";
     return R;
   },
@@ -180,6 +267,25 @@ export const steps = {
       if (!K.flag(I, key)) { K.setFlag(I, key); R.events.push({ type: "gate", gate: g.kind, roll: key, passed: K.sixesOf(I, key) > 0 }); }
       if (K.sixesOf(I, key) < 1) { I.data.result = "gateFailed"; R.goto = "close"; return R; }
     }
+    R.goto = "approach";
+    return R;
+  },
+
+  /* the move of a charge [B2490]: a child move along the priced route, in the attack's own transaction. The charger stops at the point of attack; a move
+     that is stopped on the way (a barrier that holds, a hazard, a GM stop) ends the charge with both actions spent. */
+  approach(v, inst) {
+    const I = K.draft(inst), R = K.result(I), ch = I.data.charge;
+    if (kindOf(I) !== "charge" || !ch || ch.done) { R.goto = "reactBefore"; return R; }
+    if (!K.flag(I, "approach")) {
+      K.setFlag(I, "approach");
+      if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }             // spec 5.5: a charge is committed once the charger moves
+      R.push = { action: "move", actor: I.actor, decl: { ...blank, action: "move", targets: [], to: ch.to, ...(ch.mode ? { mode: ch.mode } : {}), ...(I.decl.stress ? { stress: 1 } : {}), pay: "quick", ...(I.decl.force ? { force: I.decl.force } : {}) },
+        data: { charging: true, prepaid: true }, cause: "turn", part: 1 };
+      return R;
+    }
+    const res = (I.data.results ?? []).find((r) => r.action === "move"), r = v.facts.range(I.actor, I.decl.targets[0]);
+    if (!res || res.result !== "done" || !r || r.total !== 0) { ch.stopped = 1; I.data.result = "chargeStopped"; R.goto = "close"; return R; }
+    ch.done = 1;
     R.goto = "reactBefore";
     return R;
   },
@@ -212,10 +318,21 @@ export const steps = {
   roll(v, inst) {
     const I = K.draft(inst), R = K.result(I), kind = kindOf(I), A = attack.ATTACKS[kind], d = I.decl;
     const order = dice.OPPOSED_PUSH_ORDERS.includes(v.state.opts?.pushOrder) ? v.state.opts.pushOrder : "afterDefence";      // [R3], [OQ-9]
-    if (!I.locked) {
-      I.locked = true;                                                                          // spec 5.5
-      R.events.push({ type: "actionLocked" });
+    if (!K.flag(I, "lock")) {
+      K.setFlag(I, "lock");
+      if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }             // spec 5.5
       if ((d.stressTotal ?? 0) > 0) R.effects.push({ t: "stress", who: I.actor, n: d.stressTotal, cost: 1 });   // spec 4.3: charged when the declaration locks
+      if (d.wreck) {                                                                            // [B2451-2457]: the zone is wrecked whether or not the blow lands
+        const wz = wreckOf(v, I.actor), key = wz.zone ?? null;
+        I.data.wreck = { zone: key, bonus: wz.ok ? wz.bonus : 0, roof: wz.ok && wz.levelsRooftop ? 1 : 0 };
+        if (key) {
+          const op = ZP.zoneOp(key, { wrecked: true }), cw = M.counterBump(v.state, M.counterKey.zone(key, "wrecked"));
+          if (op) { R.effects.push({ t: "zones", op }); R.events.push({ type: "zoneChange", ...ZP.changeOf(op), cause: "wreck", by: I.actor }); }
+          R.effects.push({ t: "state", path: cw.path, to: cw.to });
+          if (!v.facts.c(I.actor)?.npc) R.effects.push({ t: "karma", note: { who: I.actor, kind: "wreckedZone", zone: key } });     // spec 9.11
+          if (wz.ok && wz.levelsRooftop) (I.data.notes ??= []).push({ note: "rooftopLevelled", zone: key });                       // [B2457]: who stood on it is the GM's word
+        }
+      }
     }
     if (kind === "counterattack") {                                                             // [B2448], [R4]: hits automatically with the surplus sixes, no dice
       if (!K.rollOf(I, "attack")) I.rolls.attack = { key: "attack", who: I.actor, attr: null, pool: { base: 0, mods: [], total: 0 }, sixes: I.data.counterSixes ?? 1, ones: 0, pushed: 0, pushable: false, auto: 1 };
@@ -225,12 +342,12 @@ export const steps = {
       const tg = K.tokenGate(v, I, R, I.actor, { kind: "attack", attr: A.attr }, d.tokens ?? [], "attack");
       if (tg.wait) { R.wait = true; return R; }
       const t0 = d.targets[0], a = v.facts.c(I.actor), w = weaponOf(v, I), r = v.facts.range(I.actor, t0);
-      const mods = attack.attackModifiers({ attack: kind, target: M.conditions(v.state, t0), weaponBonus: w?.bonus ?? 0, distance: r?.total ?? null, range: w?.range ?? null,
-        helpers: dice.helpDice((d.helpers ?? []).filter((h) => h.consent === "yes").length) });        // [B2536], [B2430], [R6], [B2511], [B2238]
+      const mods = attack.attackModifiers({ attack: kind, target: I.data.multi ? {} : M.conditions(v.state, t0), weaponBonus: w?.bonus ?? 0, wreckBonus: I.data.wreck?.bonus ?? 0, distance: r?.total ?? null, range: w?.range ?? null,
+        targets: I.data.multi === "fullAuto" ? d.targets.length : 1, helpers: dice.helpDice((d.helpers ?? []).filter((h) => h.consent === "yes").length) });        // [B2536], [B2430], [R6], [B2511], [B2238], [B2452], [B2543]
       if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });    // [B2827], [R24]
       const bp = K.buildPool(v, I, "attack", I.actor, A.attr, mods, { rollKind: "attack", tokens: tg.tokens });
       for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
-      R.effects.push(K.rollEffect("attack", I.actor, A.attr, bp.pool, { label: `ITAC.action.${I.action}` }));
+      R.effects.push(K.rollEffect("attack", I.actor, A.attr, bp.pool, { label: v.entry(I)?.label ?? `ITAC.action.${I.action}`, noPush: !K.mayPush(v, I.actor) }));
       R.wait = true; return R;
     }
     if (!K.rollRolled(I, "attack")) { R.wait = true; return R; }
@@ -261,15 +378,21 @@ export const steps = {
     return R;
   },
 
-  /* hit and defence arithmetic [B2207], [B2446], [B2524], [B2243]; GM overrides (spec 14.1 setOutcome) win */
+  /* hit and defence arithmetic [B2207], [B2446], [B2524], [B2243]; area and full auto [B2542-2543], [R14]: one attack roll against every target's own
+     dodge, a failed attack hurts nobody; GM overrides (spec 14.1 setOutcome) win */
   outcome(v, inst) {
     const I = K.draft(inst), R = K.result(I), kind = kindOf(I);
-    const atk = K.rollOf(I, "attack");
-    R.events.push({ type: "roll", key: "attack", who: I.actor, attr: atk?.attr, dice: atk?.pool?.total, sixes: K.sixesOf(I, "attack"), ones: atk?.ones ?? 0, pushed: atk?.pushed ?? 0, messageId: atk?.messageId });
+    const atk = K.rollOf(I, "attack"), sixes = K.sixesOf(I, "attack");
+    R.events.push({ type: "roll", key: "attack", who: I.actor, attr: atk?.attr, dice: atk?.pool?.total, sixes, ones: atk?.ones ?? 0, pushed: atk?.pushed ?? 0, messageId: atk?.messageId });
     I.data.out = {};
+    const dsix = (t) => (I.data.def?.[t]?.defence ? K.sixesOf(I, `def:${t}`) : 0);
+    const area = I.data.multi ? attack.resolveAreaAttack({ attackSixes: sixes, targets: I.decl.targets.map((t) => ({ id: t, dodgeSixes: dsix(t) })) }) : null;
+    if (area) I.data.budget = area.budget;
     for (const t of I.decl.targets) {
       const df = I.data.def?.[t]?.defence ?? null, forced = I.data.forced?.outcome?.[t], autoMiss = I.data.forced?.autoMiss?.[t];
-      let o = attack.resolveAttack({ attack: kind, attackSixes: K.sixesOf(I, "attack"), defence: df, defenceSixes: df ? K.sixesOf(I, `def:${t}`) : 0 });
+      const ar = area?.targets.find((x) => x.id === t);
+      let o = ar ? { hit: ar.hit, net: ar.net, stunts: ar.stuntsMax, counterattack: null, dodgeMove: df === "dodge" ? ar.dodgeMove : 0 }
+        : attack.resolveAttack({ attack: kind, attackSixes: sixes, defence: df, defenceSixes: dsix(t) });
       if (autoMiss) o = { hit: false, net: 0, stunts: 0, counterattack: null, dodgeMove: 0, autoMiss };
       if (forced === true && !o.hit) o = { ...o, hit: true, net: 1, stunts: 0, counterattack: null, dodgeMove: 0, forced: 1 };
       if (forced === false && o.hit) o = { ...o, hit: false, net: 0, stunts: 0, forced: 1 };
@@ -281,47 +404,76 @@ export const steps = {
     return R;
   },
 
-  /* step 7: one stunt per six beyond the first, each once per target [B2433], [B2515]; the GM has the last word [B2218] */
+  /* step 7: one stunt per six beyond the first, each once per target [B2433], [B2515]; an area attack shares one pool among those hit [R14];
+     the GM has the last word [B2218] */
   stunts(v, inst) {
-    const I = withOut(inst), R = K.result(I);
-    const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = Math.max(0, ...hit.map((t) => I.data.out[t].stunts));
+    const I = withOut(inst), R = K.result(I), kind = kindOf(I);
+    const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = budgetOf(I, hit);
     if (!hit.length || budget < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
-    if (!I.data.pk?.stunts) { R.prompts.push({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: budget, options: options(v, I, hit) }); R.wait = true; return R; }
+    if (!I.data.pk?.stunts) { R.prompts.push({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: budget, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } }); R.wait = true; return R; }
     if (!K.isAnswered(v, I, "stunts")) { R.wait = true; return R; }
     const picks = picksOf(K.answerOf(v, I, "stunts"));
     let waiting = false;
     const approved = [];
     picks.forEach((p, i) => {
-      const card = GM_STUNTS[p.stunt];
+      /* Disarm in slugfest [B2439]: the attacker keeps the item or throws it into an adjacent zone; a shot only makes it drop [B2519] */
+      if (p.stunt === "disarm" && attack.ATTACKS[kind]?.family === "slugfest") {
+        const dk = `dis:${i}`;
+        if (!I.data.pk?.[dk]) {
+          const zk = v.facts.zone(p.target)?.key, near = v.facts.zones && zk ? (v.facts.zones.borders(zk) ?? []).map((b) => String(b?.key ?? "").split("|").find((z) => z && z !== zk)).filter(Boolean).slice(0, 12) : [];
+          R.prompts.push({ key: dk, kind: "disarm", to: K.addressee(v, I.actor), about: I.actor, options: [{ id: "keep", label: "ITAC.opt.disarmKeep" }, ...near.map((z) => ({ id: `to:${z}`, label: "ITAC.opt.disarmThrow", data: { zone: z } })), ...(near.length ? [] : [{ id: "throw", label: "ITAC.opt.disarmThrowAny" }])], data: { target: p.target } });
+          waiting = true; return;
+        }
+        if (!K.isAnswered(v, I, dk)) { waiting = true; return; }
+        p.how = K.answerId(v, I, dk);
+      }
+      const card = GM_STUNTS[p.stunt] ?? (v.facts.zones ? null : NO_MAP_STUNTS[p.stunt]);
       if (!card) { approved.push(p); return; }
-      const key = `gs:${i}`;                                                                    // Knockback direction [R7], own and special stunts [B2442]: GM card
-      if (!I.data.pk?.[key]) { R.prompts.push({ key, kind: card, to: "gm", about: p.target, options: [{ id: "approve", label: "ITAC.opt.approve" }, { id: "refuse", label: "ITAC.opt.refuse" }], free: 1, data: { stunt: p.stunt, target: p.target, by: I.actor } }); waiting = true; }
+      const key = `gs:${i}`;                                                                    // own and special stunts [B2442], the item of a Disarm; without a map also the direction of a forced move [R7]
+      if (!I.data.pk?.[key]) { R.prompts.push({ key, kind: card, to: "gm", about: p.target, options: [{ id: "approve", label: "ITAC.opt.approve" }, { id: "refuse", label: "ITAC.opt.refuse" }], free: 1, data: { stunt: p.stunt, target: p.target, by: I.actor, ...(p.how ? { how: p.how } : {}) } }); waiting = true; }
       else if (!K.isAnswered(v, I, key)) waiting = true;
-      else if (K.answerId(v, I, key) === "approve") approved.push({ ...p, gm: 1 });
+      else if (K.answerId(v, I, key) === "approve") { const a = K.answerOf(v, I, key); approved.push({ ...p, gm: 1, ...(typeof a?.text === "string" && a.text ? { text: a.text.slice(0, 80) } : {}) }); }
     });
     if (waiting) { R.wait = true; return R; }
     I.data.stunts = approved;
-    for (const p of approved) R.events.push({ type: "stunt", target: p.target, stunt: p.stunt });
+    I.data.extras = [];
+    for (const p of approved) {
+      R.events.push({ type: "stunt", target: p.target, stunt: p.stunt, ...(p.extra ? { extra: p.extra } : {}) });
+      if (p.extra && EXTRA_STUNTS.includes(p.stunt) && !I.data.out[p.extra]) {                  // [B2437], [B2518]: the extra opponent is hit as well
+        I.data.extras.push({ id: p.extra, of: p.target, stunt: p.stunt });
+        I.data.out[p.extra] = { hit: true, net: 1, stunts: 0, counterattack: null, dodgeMove: 0, extra: p.stunt, of: p.target };
+      }
+    }
     R.goto = "damage";
     return R;
   },
 
-  /* step 8 and spec 9.5 steps 1-6: pulled punch, Double Damage before Armor, the single best Armor, then Health (or Resolve) */
+  /* step 8 and spec 9.5 steps 1-6: pulled punch, Double Damage before Armor, the single best Armor, then Health (or Resolve). An extra opponent of
+     Bang Heads takes half the attacker's STRENGTH [B2437], [B2444], of Trick Shot the base Damage [B2518]. A minion group loses one member per point
+     [B2828]; for an area attack, full auto, Bang Heads and Trick Shot the GM enters how many fall [OQ-1]. */
   damage(v, inst) {
     const I = withOut(inst), R = K.result(I), kind = kindOf(I), entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor);
     I.data.dmg = I.data.dmg ?? {};
-    for (const t of I.decl.targets) {
-      if (!I.data.out[t]?.hit || I.data.dmg[t] || kind === "grapple" || entry?.damage?.none) continue;          // [R5]: the grapple that takes hold does no damage
+    let waiting = false;
+    for (const t of allTargets(I)) {
+      const o = I.data.out[t];
+      if (!o?.hit || I.data.dmg[t] || kind === "grapple" || entry?.damage?.none) continue;                      // [R5]: the grapple that takes hold does no damage
       const tf = v.facts.c(t);
       if (!tf) continue;
-      const tags = M.damageTags({ source: entry?.damage?.source ?? w?.source, sharp: entry?.damage?.sharp ?? w?.sharp, toStress: entry?.damage?.toStress, ignoreArmor: entry?.damage?.ignoreArmor, cause: kind === "counterattack" ? "counter" : "attack" });
-      const base = entry?.damage?.base ?? (w && w.damage != null ? w.damage : a?.slugfest?.damage ?? 0);         // [B2426], [B2428], [B2512]
+      const tags = M.damageTags({ source: entry?.damage?.source ?? w?.source, sharp: entry?.damage?.sharp ?? w?.sharp, toStress: entry?.damage?.toStress, ignoreArmor: entry?.damage?.ignoreArmor, cause: kind === "counterattack" ? "counter" : o.extra ? "stunt" : "attack" });
+      const base = o.extra === "bangHeads" ? stunts.bangHeadsDamage(a?.attrs?.strength ?? 0) : o.extra === "trickShot" ? stunts.trickShotDamage(baseDamageOf(v, I)) : baseDamageOf(v, I);
       const doubled = (I.data.stunts ?? []).some((p) => p.stunt === "doubleDamage" && p.target === t);          // [B2434]
       const forced = I.data.forced?.damage?.[t];
       const ar = damage.selectArmor(tags.toStress ? [] : tf.armor ?? []);                                      // [B2682], [R13]; stress armor is [G-L4]
-      const hd = damage.hitDamage({ base, pulled: I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
-      const taken = Number.isFinite(forced?.amount) ? Math.max(0, forced.amount) : hd.taken;
-      const rec = { base, raw: hd.raw, doubled, armor: hd.armor, armorSource: ar.source?.id ?? null, taken, tags, forced: forced ? 1 : undefined };
+      const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
+      let taken = Number.isFinite(forced?.amount) ? Math.max(0, forced.amount) : hd.taken;
+      if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && (I.data.multi || o.extra) && taken > 0) {     // [OQ-1]
+        const key = `ml:${t}`, members = Math.max(0, tf.members ?? tf.health ?? 0), top = Math.min(members, MINION_LOSS_MAX);
+        if (!I.data.pk?.[key]) { R.prompts.push({ key, kind: "minionLoss", to: "gm", about: t, options: Array.from({ length: top + 1 }, (_, n) => ({ id: `n:${n}`, label: "ITAC.opt.minionsFall", data: { n } })), data: { suggested: Math.min(top, taken), members, by: I.actor } }); waiting = true; continue; }
+        if (!K.isAnswered(v, I, key)) { waiting = true; continue; }
+        taken = Math.max(0, Math.min(members, Number(String(K.answerId(v, I, key) ?? "").split(":")[1]) || 0));
+      }
+      const rec = { base, raw: hd.raw, doubled, armor: hd.armor, armorSource: ar.source?.id ?? null, taken, tags, forced: forced ? 1 : undefined, ...(o.extra ? { extra: o.extra } : {}) };
       if (tags.toStress) {
         const s = damage.applyStress({ resolve: tf.resolve, stress: taken });                                   // [B1591], [B2816]
         rec.resolveBefore = tf.resolve; rec.resolveAfter = s.resolve;
@@ -329,12 +481,14 @@ export const steps = {
       } else {
         const ad = damage.applyDamage({ health: tf.health, taken });                                            // [B2707], [B2708]
         Object.assign(rec, { healthBefore: tf.health, healthAfter: ad.health, broken: ad.broken, newlyBroken: ad.newlyBroken });
+        if (tf.kind === "minions") rec.minions = { removed: tf.health - ad.health, left: ad.health };           // [B2828]: one member per point
         if (taken > 0 && ad.health !== tf.health) R.effects.push({ t: "actor", who: t, path: "health", to: ad.health });
         if (damage.barrierBreached(ar.source, taken)) rec.barrierBreached = ar.source.id;                       // [B1859], [R13]: ending the Barrier effect is its power model's (P6)
       }
       I.data.dmg[t] = rec;
       R.events.push({ type: "damage", target: t, base, doubled, armor: hd.armor, taken, toStress: tags.toStress, dtype: tags.source, source: tags.cause });
     }
+    if (waiting) { R.wait = true; return R; }
     R.goto = "reactAfterDamage";
     return R;
   },
@@ -353,12 +507,12 @@ export const steps = {
     return R;
   },
 
-  /* step 10: immediate rolls, broken and injuries, statuses, counterattack or dodge move on a miss */
+  /* step 10: immediate rolls, broken and injuries, statuses, counterattack or dodge move on a miss, then the forced moves of Knockback and Slam */
   effects(v, inst) {
-    const I = withOut(inst), R = K.result(I), kind = kindOf(I);
+    const I = withOut(inst), R = K.result(I), kind = kindOf(I), Z = v.facts.zones;
     const picked = (t, s) => (I.data.stunts ?? []).some((p) => p.target === t && p.stunt === s);
     const once = (k) => { if (K.flag(I, k)) return false; K.setFlag(I, k); return true; };
-    for (const t of I.decl.targets) {
+    for (const t of allTargets(I)) {
       const o = I.data.out[t], dm = I.data.dmg?.[t], tf = v.facts.c(t);
       if (!o || !tf) continue;
       if (o.hit) {
@@ -371,6 +525,14 @@ export const steps = {
           R.effects.push({ t: "status+", who: t, status: { id: "trapped", source: { kind: "stunt", owner: I.actor, name: "trap" } } });
           R.events.push({ type: "status", target: t, status: { id: "trapped", on: true } });
         }
+        const dis = (I.data.stunts ?? []).find((p) => p.target === t && p.stunt === "disarm");
+        if (dis && once(`dis:${t}`)) {                                                          // [B2439], [B2519]: the item changes hands or lies on the ground (spec 6.6)
+          const how = dis.how ?? "drop", zone = how.startsWith("to:") ? how.slice(3) : how === "keep" ? null : v.facts.zone(t)?.spot ?? null;
+          const item = M.makeGroundItem({ id: `d${I.id}x${t}`.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40), name: dis.text ?? "", owner: t, state: how === "keep" ? "taken" : "ground", ...(how === "keep" ? { holder: I.actor } : {}), ...(zone ? { zone } : {}) });
+          if (item) R.effects.push({ t: "state", path: ["items", `#${item.id}`], to: item });
+          R.effects.push({ t: "status+", who: t, status: { id: "itemLost", source: { kind: "stunt", owner: I.actor, name: "disarm" }, data: { item: dis.text ?? "", how } } });
+          R.events.push({ type: "status", target: t, status: { id: "itemLost", on: true } });
+        }
         const stun = picked(t, "stun") ? "stun" : picked(t, "suppressed") ? "suppressed" : null;
         if (stun && dm && stunts.stunOutcome({ taken: dm.taken }).rollNeeded) {                 // [B2436], [B2517]
           const key = `stun:${t}`;
@@ -382,6 +544,7 @@ export const steps = {
             R.events.push({ type: "status", target: t, status: { id: "stunned", on: true } });
           }
         }
+        if (dm && K.minionsFate(v, I, R, t, dm, { by: I.actor })) return R;                     // [B2828]: knocked out or killed, the GM's word
         if (dm && K.brokenAndCrit(v, I, R, t, dm, { deadlyHit: picked(t, "deadlyHit"), by: I.actor })) return R;       // spec 9.5 steps 7-9
       } else if (o.counterattack && I.data.def?.[t]?.defence === "block") {                    // [B2448], [R4]
         const key = `counter:${t}`;
@@ -398,10 +561,10 @@ export const steps = {
           R.push = { action: "slugfest", actor: t, decl: { action: "slugfest", weapon: "unarmed", targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "counter", data: { kind: "counterattack", counterSixes: o.counterattack.sixes }, prepaid: 1 };
           return R;
         }
-      } else if (o.dodgeMove > 0 && I.data.def?.[t]?.defence === "dodge") {                    // [B2526]: the move itself is P3; the GM card records it
+      } else if (o.dodgeMove > 0 && I.data.def?.[t]?.defence === "dodge") {                    // [B2526]
         const key = `dodgeMove:${t}`;
-        if (!I.data.pk?.[key]) {                                                               // P3: with a map the options are the zones the dodger reaches, any way of moving it has, no cost and no stress option
-          const zs = v.facts.zones ? MP.moveOptions(v.facts.zones, v.state, t, v.facts.c(t), undefined, { free: o.dodgeMove }).filter((x) => !x.disabled && !x.area).slice(0, 50) : [];
+        if (!I.data.pk?.[key]) {                                                               // with a map the options are the zones the dodger reaches, any way of moving it has, no cost and no stress option
+          const zs = Z ? MP.moveOptions(Z, v.state, t, v.facts.c(t), undefined, { free: o.dodgeMove }).filter((x) => !x.disabled && !x.area).slice(0, 50) : [];
           R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, t), about: t, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated } })),
             { id: "move", label: "ITAC.opt.dodgeMove", data: { zones: o.dodgeMove } }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { zones: o.dodgeMove } }); R.wait = true; return R; }
         if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
@@ -412,12 +575,35 @@ export const steps = {
         }
       }
     }
-    /* P3: an approved Knockback throws the target straight away from the attacker, half the attacker's STRENGTH in zones [B2435]; the forced-move
-       flow asks the GM to confirm the chain (spec 9.5 step 6) and settles barriers. Slam [B2494] follows the charge route: by the GM's forcedMove until charges exist. */
-    if (v.facts.zones) for (const p of I.data.stunts ?? []) {
-      if (p.stunt !== "knockback" || !I.data.out[p.target]?.hit || !v.facts.c(p.target) || !once(`kb:${p.target}`)) continue;
-      R.push = forcedChild(p.target, { awayFrom: I.actor, distance: stunts.knockbackDistance(v.facts.c(I.actor)?.attrs?.strength ?? 0), damage: I.data.dmg?.[p.target]?.raw ?? 0, by: I.actor, kind: "knockback" });
-      return R;
+    /* Knockback [B2435], [B2444]: half the attacker's base STRENGTH in zones; that number is also the damage of the first barrier, one less at each further
+       one, reduced by the target's Armor [R8]. The attacker names the direction [R7] (straight away, or toward a neighbouring zone), the GM confirms the chain
+       on the forced move's own card (spec 9.5 step 6). Slam [B2494], [R7a]: further along the charge's route for what is left of the move, half STRENGTH
+       at every barrier, and the charger keeps moving behind the target. */
+    if (Z) for (const p of I.data.stunts ?? []) {
+      const t = p.target, str = v.facts.c(I.actor)?.attrs?.strength ?? 0;
+      if (!I.data.out[t]?.hit || !v.facts.c(t)) continue;
+      if (p.stunt === "knockback" && !K.flag(I, `kb:${t}`)) {
+        const key = `kbdir:${t}`, zk = v.facts.zone(t)?.key, near = zk ? (Z.borders(zk) ?? []).map((b) => String(b?.key ?? "").split("|").find((z) => z && z !== zk)).filter(Boolean).slice(0, 12) : [];
+        if (!I.data.pk?.[key]) {
+          const pr = { key, kind: "knockDir", to: K.addressee(v, I.actor), about: I.actor, options: [{ id: "away", label: "ITAC.opt.kbAway" }, ...near.map((z) => ({ id: `to:${z}`, label: "ITAC.opt.kbToward", data: { zone: z } }))], data: { target: t, distance: stunts.knockbackDistance(str) } };
+          if (!near.length) pr.auto = { option: "away", reason: "noOption" };
+          R.prompts.push(pr); R.wait = true; return R;
+        }
+        if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
+        K.setFlag(I, `kb:${t}`);
+        const dir = K.answerId(v, I, key) ?? "away", n = stunts.knockbackDistance(str);
+        R.push = forcedChild(t, { ...(dir.startsWith("to:") ? { toward: dir.slice(3) } : { awayFrom: I.actor }), distance: n, damage: n, decay: 1, armor: true, by: I.actor, kind: "knockback" });
+        return R;
+      }
+      if (p.stunt === "slam" && I.data.charge?.left > 0) {
+        if (!K.flag(I, `slam:${t}`)) {
+          K.setFlag(I, `slam:${t}`);
+          R.push = forcedChild(t, { awayFrom: I.data.charge.prev, distance: I.data.charge.left, damage: stunts.slamDamage(str), decay: 0, armor: true, by: I.actor, kind: "slam" });
+          return R;
+        }
+        const spot = v.facts.zone(t)?.spot;
+        if (spot && spot !== v.facts.zone(I.actor)?.spot && !I.data.res?.slamFollow) { R.effects.push({ t: "zput", key: "slamFollow", who: I.actor, to: spot, group: [] }); R.wait = true; return R; }
+      }
     }
     R.goto = "close";
     return R;
@@ -434,28 +620,72 @@ export const steps = {
 };
 
 /* ------------------------------------------------------------------ stunt options and validation */
+const stuntKind = (I) => { const k = kindOf(I); return k === "ram" ? "slugfest" : k; };
+/** who else stands in the target's zone and is not already a target of this attack (Bang Heads [B2437], Trick Shot [B2518]) */
+const othersNear = (v, I, t) => (v.facts.inZone(t) ?? []).filter((c) => c !== I.actor && !I.decl.targets.includes(c) && v.facts.c(c) && v.facts.c(c).present !== false);
 function ctxFor(v, I, t) {
-  const tf = v.facts.c(t), w = weaponOf(v, I), kind = kindOf(I);
-  const others = (v.facts.inZone(t) ?? []).filter((c) => c !== I.actor && c !== t).length;
-  return { attack: kind === "ram" ? "slugfest" : kind, target: K.immunityFlags(tf), sharp: !!(v.entry(I)?.damage?.sharp ?? w?.sharp), zoneEmpty: !!v.facts.zone(t)?.empty, movementLeft: 0, otherOpponents: others };   // [G-L7]: `huge` only for real huge creatures
+  const tf = v.facts.c(t), w = weaponOf(v, I);
+  return { attack: stuntKind(I), target: K.immunityFlags(tf), sharp: !!(v.entry(I)?.damage?.sharp ?? w?.sharp), zoneEmpty: !!v.facts.zone(t)?.empty, movementLeft: I.data.charge?.left ?? 0, otherOpponents: othersNear(v, I, t).length };   // [G-L7]: `huge` only for real huge creatures
 }
+/* the shared pool: an ordinary attack has the sixes of its one target; an area attack or full auto the attack's own sixes beyond the first [R14] */
+const budgetOf = (I, hit) => (I.data.multi ? Math.max(0, I.data.budget ?? 0) : Math.max(0, ...hit.map((t) => I.data.out[t].stunts)));
+/** Options of the stunt prompt. Ids: "<stunt>@<target>" for a target that was hit; "<stunt>@<target>|<extra>" for Bang Heads / Trick Shot naming the extra
+    opponent; "<stunt>@<extra>" for a further stunt on an extra opponent (legal only together with the pick that brings that opponent in). */
 function options(v, I, hit) {
-  const out = [];
-  for (const t of hit) for (const o of stunts.stuntOptions(ctxFor(v, I, t))) {
-    const opt = { id: `${o.id}@${t}`, label: `ITAC.stunt.${o.id}`, data: { stunt: o.id, target: t, gm: o.gm || !!GM_STUNTS[o.id] } };
-    if (!o.ok) opt.disabled = o.reason;
-    out.push(opt);
+  const out = [], more = [], seen = new Set();
+  const add = (o, list = out) => { if (!seen.has(o.id)) { seen.add(o.id); list.push(o); } };
+  for (const t of hit) {
+    const near = othersNear(v, I, t);
+    for (const o of stunts.stuntOptions(ctxFor(v, I, t))) {
+      if (EXTRA_STUNTS.includes(o.id) && near.length) { for (const x of near) add({ id: `${o.id}@${t}|${x}`, label: `ITAC.stunt.${o.id}`, data: { stunt: o.id, target: t, extra: x }, ...(o.ok ? {} : { disabled: o.reason }) }); continue; }
+      add({ id: `${o.id}@${t}`, label: `ITAC.stunt.${o.id}`, data: { stunt: o.id, target: t, gm: o.gm || !!GM_STUNTS[o.id] }, ...(o.ok ? {} : { disabled: o.reason }) });
+    }
+    if (stunts.STUNTS_BY_ATTACK[stuntKind(I)]?.some((s) => EXTRA_STUNTS.includes(s))) for (const x of near) for (const o of stunts.stuntOptions(ctxFor(v, I, x))) {
+      if (NOT_ON_EXTRA.includes(o.id)) continue;
+      add({ id: `${o.id}@${x}`, label: `ITAC.stunt.${o.id}`, data: { stunt: o.id, target: x, onExtra: 1 }, ...(o.ok ? {} : { disabled: o.reason }) }, more);
+    }
   }
-  return out;
+  return [...out, ...more].slice(0, 60);                                                        // state-pure LIMITS.options: the stunts of the targets hit come first
 }
-const picksOf = (value) => (Array.isArray(value) ? value : []).map((id) => String(id).split("@")).filter((p) => p.length === 2).map(([stunt, target]) => ({ stunt, target }));
-/** Is a multi answer legal as a whole? (budget, once per target, exclusions: stunts.validateStunts; the per-target cap of area attacks [A-3] is checked here, [G-L9]) */
+const picksOf = (value) => (Array.isArray(value) ? value : []).map((id) => /^([A-Za-z]+)@([^|]+)(?:\|(.+))?$/.exec(String(id))).filter(Boolean).map((m) => ({ stunt: m[1], target: m[2], ...(m[3] ? { extra: m[3] } : {}) }));
+/** Is a multi answer legal as a whole? Budget, once per target, exclusions (stunts.validateStunts); the per-target cap of area attacks [A-3], [G-L9];
+    an extra opponent is named once and may take further stunts only when a pick brings it in. */
 export function validate(v, inst, prompt, value) {
   if (prompt.kind !== "stunts") return { ok: true };
-  const picks = picksOf(value), out = inst.data.out ?? {};
-  const sixes = Math.max(0, ...inst.decl.targets.filter((t) => out[t]?.hit).map((t) => out[t].net));
-  const r = stunts.validateStunts({ picks, sixes, ctxFor: (t) => ctxFor(v, inst, t) });
+  const picks = picksOf(value), out = inst.data.out ?? {}, multi = inst.data.multi;
+  const hit = inst.decl.targets.filter((t) => out[t]?.hit);
+  const prim = picks.filter((p) => hit.includes(p.target)), sec = picks.filter((p) => !hit.includes(p.target));
+  const extras = prim.filter((p) => p.extra).map((p) => p.extra);
+  if (new Set(extras).size !== extras.length) return { ok: false, reason: "chosen" };
+  for (const p of prim) if (EXTRA_STUNTS.includes(p.stunt) && !(p.extra && othersNear(v, inst, p.target).includes(p.extra))) return { ok: false, reason: "noOtherTarget" };
+  const sixes = multi ? K.sixesOf(inst, "attack") : Math.max(0, ...hit.map((t) => out[t].net));
+  const r = stunts.validateStunts({ picks: prim.map((p) => ({ stunt: p.stunt, target: p.target })), sixes, ctxFor: (t) => ctxFor(v, inst, t), targets: multi ? inst.decl.targets.map((t) => ({ id: t, hit: !!out[t]?.hit, stuntsMax: out[t]?.stunts ?? 0 })) : null });
   if (!r.ok) return { ok: false, reason: r.errors[0].reason };
-  for (const t of new Set(picks.map((p) => p.target))) if (picks.filter((p) => p.target === t).length > (out[t]?.stunts ?? 0)) return { ok: false, reason: "budget" };
+  if (picks.length > budgetOf(inst, hit)) return { ok: false, reason: "budget" };
+  if (!multi) for (const t of new Set(prim.map((p) => p.target))) if (prim.filter((p) => p.target === t).length > (out[t]?.stunts ?? 0)) return { ok: false, reason: "budget" };
+  const chosen = new Map();
+  for (const p of sec) {                                                                         // further stunts on an extra opponent [B2437], [B2518]
+    if (!extras.includes(p.target) || NOT_ON_EXTRA.includes(p.stunt)) return { ok: false, reason: "notHit" };
+    const prev = chosen.get(p.target) ?? [], opt = stunts.stuntOptions({ ...ctxFor(v, inst, p.target), chosen: prev }).find((o) => o.id === p.stunt);
+    if (!opt?.ok) return { ok: false, reason: opt?.reason ?? "notOffered" };
+    chosen.set(p.target, [...prev, p.stunt]);
+  }
   return { ok: true };
 }
+
+/* ------------------------------------------------------------------ letting go of a grapple [B2497]: no action, no roll */
+export const release = {
+  STEPS: Object.freeze(["do", "close"]),
+  legality(v, inst) { return M.hasStatus(v.state, inst.actor, "grappling") ? { ok: true, reason: null, params: {}, gates: [], notes: [] } : bad("notHolding"); },
+  revalidate() { return { ok: true, reasons: [] }; },
+  steps: {
+    do(v, inst) {
+      const I = K.draft(inst), R = K.result(I);
+      for (const e of K.grappleRelease(v.state, I.actor)) R.effects.push(e);
+      const held = M.statusesOf(v.state, I.actor).find((s) => s.id === "grappling")?.data?.held;
+      if (held) R.events.push({ type: "status", target: held, status: { id: "grappled", on: false } });
+      I.data.result = "released"; R.goto = "close"; return R;
+    },
+    close(v, inst) { const I = K.draft(inst), R = K.result(I); R.done = true; return R; },
+  },
+};

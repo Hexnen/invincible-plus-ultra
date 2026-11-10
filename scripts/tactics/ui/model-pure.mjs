@@ -17,6 +17,8 @@ import { dice } from "../../rules/index.mjs";
 const isKey = (s) => typeof s === "string" && s.startsWith("ITAC.");
 const has = (t, key) => t(key, {}, null) !== null;
 const cap = (s) => { const x = String(s ?? ""); return x.charAt(0).toUpperCase() + x.slice(1); };
+/** the journal's `{ITAC.key}` marks (the engine has no language) in the reader's language; an unknown key reads as its last part */
+export const marks = (t, text) => String(text ?? "").replace(/\{(ITAC\.[\w.]+)\}/g, (m, key) => t(key, {}, key.split(".").pop()));
 /** a label of the models: an ITAC key, or text as it is */
 export const labelOf = (t, label, fallback = "") => (isKey(label) ? t(label, {}, label.split(".").pop()) : String(label ?? fallback));
 export const reasonText = (t, reason, params = {}) => (reason ? t(`ITAC.reason.${reason}`, params, String(reason)) : null);
@@ -99,8 +101,10 @@ function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
   if (desk && kind === "reaction" && o.id === "pass") return t("ITAC.ui.noReaction");
   if (o.name) return String(o.name);
   if (isKey(o.label)) {
-    const base = labelOf(t, o.label);
-    return o.data?.stunt && o.data?.target && !oneTarget ? `${base}: ${nameOf(facts, o.data.target, t)}` : base;
+    const d = o.data ?? {};
+    const base = d.zone || Number.isFinite(d.n) ? t(o.label, { zone: d.zone ? zoneText(facts, t, d.zone) : "", n: d.n ?? "" }, o.label.split(".").pop()) : labelOf(t, o.label);
+    if (d.stunt && d.extra) return t("ITAC.ui.stunt.into", { stunt: base, name: nameOf(facts, d.extra, t) });       // Bang Heads, Trick Shot: the extra opponent is always named
+    return d.stunt && d.target && (!oneTarget || d.onExtra) ? `${base}: ${nameOf(facts, d.target, t)}` : base;
   }
   if (kind === "reflexes") return t("ITAC.Prompt.reflexes.card", { card: o.id });
   const own = t(`ITAC.Prompt.${kind}.${o.id}`, { card: p.data?.card ?? o.data?.card ?? "" }, null) ?? t(`ITAC.ui.opt.${o.id}`, {}, null);
@@ -128,10 +132,16 @@ function linesOf(p, t, facts, x) {
         break;
       }
     // falls through: the direction of a stunt
-    case "stunt": out.push(t("ITAC.ui.line.stunt", { by: n(d.by), stunt: t(`ITAC.stunt.${d.stunt}`, {}, String(d.stunt ?? "")), target: n(d.target) })); break;
+    case "stunt": out.push(t("ITAC.ui.line.stunt", { by: n(d.by), stunt: t(`ITAC.stunt.${d.stunt}`, {}, String(d.stunt ?? "")), target: n(d.target) }));
+      if (d.stunt === "disarm") out.push(t(d.how === "keep" ? "ITAC.ui.line.disarmKeep" : "ITAC.ui.line.disarmDrop", { by: n(d.by) }));        // the GM names the item in the note
+      break;
     case "helpOverride": out.push(t("ITAC.ui.line.help", { helper: about, name: n(d.for), reason: reasonText(t, d.reason) })); break;
     case "revalidate": out.push(t("ITAC.ui.line.revalidate", { name: about, reasons: (d.reasons ?? []).map((r) => reasonText(t, r)).join(", ") })); break;
     case "npcBroken": out.push(t("ITAC.ui.line.npcBroken", { name: about })); break;
+    case "minionLoss": out.push(t("ITAC.ui.line.minionLoss", { name: about, by: n(d.by), n: d.suggested ?? 0, members: d.members ?? 0 })); break;
+    case "minionsFate": out.push(t("ITAC.ui.line.minionsFate", { name: about, n: d.removed ?? 0, left: d.left ?? 0 })); break;
+    case "knockDir": out.push(t("ITAC.ui.line.knockDir", { target: n(d.target), n: d.distance ?? 0 })); break;
+    case "disarm": out.push(t("ITAC.ui.line.disarm", { target: n(d.target) })); break;
     case "gate": out.push(t("ITAC.ui.line.gate", { name: about, gate: t(`ITAC.gate.${d.gate}`, {}, String(d.gate ?? "")) })); break;
     case "tokenConfirm": for (const k of d.tokens ?? []) out.push(t("ITAC.ui.line.token", { dice: k.dice, source: t(`ITAC.mod.${k.source}`, {}, String(k.source || "")), name: about })); break;
     case "veteran": out.push(t("ITAC.Prompt.veteran.Body", { name: about, card: d.card ?? "?" })); break;
@@ -165,7 +175,7 @@ export function askData(p, o) {
     return optId === "pass" ? t("ITAC.ui.odds.open", { p: pct(dice.pSuccess(attPool)) }) : null;
   };
   /* stunts against one target only: the name goes into the sentence once instead of onto every button */
-  const stuntTargets = [...new Set((p.options ?? []).map((x) => x.data?.stunt && x.data?.target).filter(Boolean))], oneTarget = stuntTargets.length === 1;
+  const stuntTargets = [...new Set((p.options ?? []).map((x) => x.data?.stunt && !x.data?.onExtra && x.data?.target).filter(Boolean))], oneTarget = stuntTargets.length === 1;
   const places = (p.options ?? []).filter((x) => typeof x.data?.to === "string" && !x.disabled);       // P3 (the move a dodge earns): one option per place and way of moving
   const chosen = places.length ? own.zone?.[p.id] ?? null : null, here = places.filter((x) => bare(x.data.zone ?? x.data.to) === chosen);
   const wayLabel = (x) => [t(`ITAC.mode.${x.data.mode}`, {}, cap(x.data.mode ?? "")), x.data.elevated === "roof" ? t("ITAC.ui.way.roof") : x.data.elevated === "air" ? t("ITAC.ui.way.air") : null].filter(Boolean).join(", ");
@@ -236,6 +246,30 @@ function extrasOf(bar, t) {
   for (const s of bar.statuses ?? []) out.push({ kind: "status", label: t(`ITAC.status.${s}`, {}, cap(s)), tip: "" });
   return out;
 }
+/* what an attack is made with and how [P4]: the weapon (slugfest: bare hands or a melee weapon; shooting: a weapon with a range), and the options of
+   the declaration the rules give it: wrecking the zone (a slugfest blow), an area or full auto (a weapon or an entry that has it). The executor
+   judges every one of them again; this only keeps impossible choices off the panel.
+   -> { weapons: { label, empty, items } | null, opts: [{ id, label, tip, on }], maxTargets, decl, dice: [{ label, dice }], why, notes: [text] } */
+const FULL_AUTO_MAX = 12;
+function armsOf(bar, a, own, facts, t) {
+  const none = { weapons: null, opts: [], maxTargets: 1, decl: {}, dice: [], why: null, notes: [] };
+  if (a.flow !== "attack") return none;
+  const shooting = a.attack === "shooting", melee = a.attack === "slugfest";
+  const list = shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : [];
+  const ids = [...(melee ? ["unarmed"] : []), ...list.map((w) => w.id)];
+  const sel = ids.includes(own.weapon) ? own.weapon : ids[0] ?? null, w = list.find((x) => x.id === sel) ?? null;
+  const rangeText = (x) => (Array.isArray(x.range) ? t(x.range[0] === x.range[1] ? "ITAC.ui.weapon.rangeOne" : "ITAC.ui.weapon.range", { min: x.range[0], max: x.range[1] }) : null);
+  const tipOf = (x) => [x.bonus ? t("ITAC.ui.weapon.bonus", { n: x.bonus }) : null, x.damage != null ? t("ITAC.ui.weapon.damage", { n: x.damage }) : null, rangeText(x), x.sharp ? t("ITAC.ui.weapon.sharp") : null].filter(Boolean).join(", ");
+  const weapons = ids.length > 1 || shooting ? { label: t("ITAC.ui.weapon"), empty: ids.length ? null : t("ITAC.ui.weapon.none"),
+    items: ids.map((id) => { const x = list.find((y) => y.id === id); return { id, name: x ? x.name : t("ITAC.ui.weapon.unarmed"), tip: x ? tipOf(x) : null, picked: id === sel }; }) } : null;
+  const can = { wreck: a.id === "slugfest", area: a.area || !!w?.area, fullAuto: shooting && (a.fullAuto || !!w?.fullAuto) };
+  const on = { wreck: can.wreck && !!own.opts?.wreck, area: can.area && !!own.opts?.area, fullAuto: can.fullAuto && !!own.opts?.fullAuto && !own.opts?.area };
+  const opts = ["wreck", "area", "fullAuto"].filter((k) => can[k]).map((k) => ({ id: k, label: t(`ITAC.ui.arm.${k}`), tip: t(`ITAC.ui.arm.${k}.tip`), on: on[k] }));
+  return { weapons, opts, maxTargets: on.fullAuto ? FULL_AUTO_MAX : 1,
+    decl: { ...(w ? { weapon: w.id } : {}), ...(on.wreck ? { wreck: true } : {}), ...(on.area ? { area: true } : {}), ...(on.fullAuto ? { fullAuto: true } : {}) },
+    dice: w?.bonus ? [{ label: w.name, dice: w.bonus }] : [], why: shooting && !w ? t("ITAC.ui.weapon.none") : null,
+    notes: [on.wreck ? t("ITAC.ui.arm.wreck.note") : null, on.area ? t("ITAC.ui.arm.area.note") : null, on.fullAuto ? t("ITAC.ui.arm.fullAuto.note") : null].filter(Boolean) };
+}
 /* the panel above the bar: what the selected action needs before it can be declared (or why it cannot be, and the way to ask) */
 function declarePanel(bar, a, own, facts, t) {
   const title = labelOf(t, a.label), cost = costText(t, a.cost);
@@ -246,10 +280,13 @@ function declarePanel(bar, a, own, facts, t) {
     return { kind: "blocked", action: a.id, title, cost, reason: t("ITAC.ui.blocked", { reason: reasonText(t, a.disabled) }), text: own.text ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
       submit: { label: t("ITAC.ui.exception.ask"), disabled: (own.text ?? "").trim() ? null : t("ITAC.ui.exception.needText"), req: (own.text ?? "").trim() ? bar.exception.req(`${title}${names ? ` (${names})` : ""}: ${own.text.trim()}`.slice(0, 400)) : null } };
   }
-  const targets = a.needsTarget ? targetsFor(a, facts, bar.combatant).map((r) => ({ id: r.id, name: r.name, img: r.img, likely: r.likely, picked: (own.targets ?? []).includes(r.id), note: r.unseen ? t("ITAC.reason.unseen") : null })) : null;
-  const picked = (own.targets ?? []).filter((id) => targets?.some((x) => x.id === id));
+  const arm = armsOf(bar, a, own, facts, t);
+  const all = a.needsTarget ? targetsFor(a, facts, bar.combatant) : null;
+  const picked = (own.targets ?? []).filter((id) => all?.some((x) => x.id === id)).slice(-arm.maxTargets);
+  const targets = all ? all.map((r) => ({ id: r.id, name: r.name, img: r.img, likely: r.likely, picked: picked.includes(r.id), note: r.unseen ? t("ITAC.reason.unseen") : null })) : null;
   const tokens = (bar.tokens ?? []).map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source?.name}`, {}, String(k.source?.name ?? "")), needsGm: !!k.needsGm, picked: (own.tokens ?? []).includes(k.id) }));
   const pool = poolPreview(a, bar, facts, own.tokens ?? []);
+  if (pool) for (const x of arm.dice) { pool.parts.push(x); pool.total = Math.max(1, pool.total + x.dice); }
   let chance = null;
   if (pool) {
     const tgt = picked[0], dAttr = DEF_ATTR[a.defense];
@@ -259,17 +296,17 @@ function declarePanel(bar, a, own, facts, t) {
   }
   const text = (own.text ?? "").trim();
   const needsZone = a.flow === "fastball";
-  const why = a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : null;
-  const decl = { ...(a.needsTarget ? { targets: picked.slice() } : {}), ...(needsZone && own.to ? { to: own.to } : {}), ...((own.tokens ?? []).length ? { tokens: own.tokens.slice() } : {}), ...(a.needsText ? { text } : {}) };
+  const why = arm.why ?? (a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : null);
+  const decl = { ...(a.needsTarget ? { targets: picked.slice() } : {}), ...arm.decl, ...(needsZone && own.to ? { to: own.to } : {}), ...((own.tokens ?? []).length ? { tokens: own.tokens.slice() } : {}), ...(a.needsText ? { text } : {}) };
   /* the executor refused this very declaration as against the rules (out of reach, no line of sight...): the reason stays in the panel
      with the way round it, a declaration that carries a request for an exception (a card on the GM desk; the GM's own goes there too) */
   const ref = own.refused && own.refused.action === a.id && own.refused.key === picked.join(",") ? own.refused : null;
   const refused = ref ? { reason: t("ITAC.ui.blocked", { reason: reasonText(t, ref.reason, ref.params) }), text: facts.staff ? null : own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
     submit: { label: facts.staff ? t("ITAC.ui.exception.anyway") : t("ITAC.ui.exception.ask"), disabled: why ?? (facts.staff || (own.why ?? "").trim() ? null : t("ITAC.ui.exception.needText")),
       req: !why && (facts.staff || (own.why ?? "").trim()) ? a.exceptionReq(decl, facts.staff ? t("ITAC.ui.who.gm") : own.why.trim()) : null } } : null;
-  return { kind: "declare", action: a.id, title, cost, targets, picking: !!a.needsTarget && !picked.length, tokens, refused,
+  return { kind: "declare", action: a.id, title, cost, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, maxTargets: arm.maxTargets, weapons: arm.weapons, opts: arm.opts, notes: arm.notes,
     dest: needsZone ? { label: t("ITAC.ui.dest"), value: own.to ? zoneText(facts, t, own.to) : null, pick: t(own.to ? "ITAC.ui.move.again" : "ITAC.ui.pick.zone") } : null,
-    pool: pool ? { total: pool.total, parts: pool.parts.map((x) => (x.id === "token" ? { label: t(`ITAC.mod.${x.source}`, {}, String(x.source || t("ITAC.ui.bonus"))), dice: x.dice } : { label: attrText(t, x.id), dice: x.dice })) } : null, chance,
+    pool: pool ? { total: pool.total, parts: pool.parts.map((x) => (x.label ? { label: x.label, dice: x.dice } : x.id === "token" ? { label: t(`ITAC.mod.${x.source}`, {}, String(x.source || t("ITAC.ui.bonus"))), dice: x.dice } : { label: attrText(t, x.id), dice: x.dice })) } : null, chance,
     text: a.needsText ? { value: own.text ?? "", placeholder: t("ITAC.ui.text.placeholder") } : null,
     submit: { label: own.amend ? t("ITAC.ui.amend") : t("ITAC.ui.declare"), disabled: why, req: why ? null : own.amend ? { op: "amend", inst: own.amend, decl: { ...decl, action: a.id } } : a.req(decl) } };
 }
@@ -443,12 +480,12 @@ export function deskData(model, own, facts, t) {
   for (const j of model.journal) {
     let r = rounds[rounds.length - 1];
     if (!r || r.round !== j.round) rounds.push((r = { round: j.round, label: t("ITAC.ui.round", { n: j.round ?? "?" }), rows: [] }));
-    r.rows.push({ id: j.id, text: j.text || j.pub || t("ITAC.ui.journal.noText"), state: j.state,
+    r.rows.push({ id: j.id, text: marks(t, j.text || j.pub) || t("ITAC.ui.journal.noText"), state: j.state,
       undo: j.undo ? { label: t("ITAC.ui.undo"), also: j.undo.alsoUndoes ? t("ITAC.ui.undo.also", { n: j.undo.alsoUndoes }) : null, req: j.undo.req, armed: own.undo === j.id,
         force: j.undo.alsoUndoes ? { label: t("ITAC.ui.undo.only"), req: j.undo.force.req() } : null,
         drift: own.drift === j.id ? j.undo.force.modes.map((m) => ({ id: m, label: t(`ITAC.ui.drift.${m}`), req: j.undo.force.req(m) })) : null } : null });
   }
-  const POL = { block: ["ask", "always", "never"], dodge: ["ask", "always", "never"], onBroken: ["ask", "ko", "kill", "crit"] };
+  const POL = { block: ["ask", "always", "never"], dodge: ["ask", "always", "never"], onBroken: ["ask", "ko", "kill", "crit"], push: ["rules", "ask", "never"], major: ["no", "yes"] };      // push "rules": major NPCs and minion groups push, others do not; major: injuries rolled like a hero's
   const npcs = (model.npcs ?? []).map((n) => ({ id: n.id, name: n.name,
     policy: Object.entries(POL).map(([k, vals]) => ({ id: k, label: t(`ITAC.ui.policy.${k}`), choices: vals.map((v) => ({ id: v, label: t(`ITAC.ui.policy.${v}`), on: n.policy[k] === v, req: n.policyReq({ [k]: v }) })) })),
     reveal: ["stats", "powers", "health"].map((k) => ({ id: k, label: t(`ITAC.ui.reveal.${k}`), on: !!n.revealed[k], req: n.revealReq({ [k]: !n.revealed[k] }) })) }));

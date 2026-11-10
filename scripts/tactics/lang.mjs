@@ -2,6 +2,7 @@
    start, so t() reads these tables directly. Flat keys, English underneath, Polish on top. All wording is OUR OWN short words; nothing
    is copied from the rulebook. ONE table for the whole tactics folder (check-lang.mjs: EN = PL, every key the code can ask for exists).
    Errors arrive as { key, code, params }: errText(error). */
+import { EN_ATTACKS, PL_ATTACKS } from "./lang-attacks.mjs";
 export const EN = {
   "ITAC.Settings.tacticsEnabled.Name": "Tactical combat",
   "ITAC.Settings.tacticsEnabled.Hint": "Off (the default): nothing of tactical combat runs and the combat tracker works as it did before. On: the module deals initiative cards, tracks the action budget and resolves declared actions; new fights start with the rules enforced, and the GM can switch a running fight to free mode at any time. Needs a reload.",
@@ -1136,6 +1137,7 @@ export const PL = {
   "ITAC.ui.sent": "Wysłano do MG.",
   "ITAC.ui.unsafe": "Rzuć kośćmi w oknie rzutu, które się otworzyło.",
 };
+Object.assign(EN, EN_ATTACKS); Object.assign(PL, PL_ATTACKS);      // package P4 keeps its strings in lang-attacks.mjs
 const table = () => { try { return String(globalThis.game?.i18n?.lang ?? "en").toLowerCase().startsWith("pl") ? PL : EN; } catch { return EN; } };
 /** t(key, params, fallback): the string in the client's language, {placeholders} filled (one without a value stays as written);
     falls back to English, then to `fallback` (default: the key). */

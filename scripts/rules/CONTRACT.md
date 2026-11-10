@@ -216,6 +216,8 @@ ModRule = { source, dice: n | { ref: "path", times?, min?, max? }, when?: Cond, 
 - The deal in steps: `dealStart` deals until somebody with a choice between two cards (Fast Reflexes) has drawn, and returns
   `DealState = { done, pending: null | { id, cards: [a, b], draw }, entries, deck, queue, order }`; `dealContinue(rng, state, card)` takes the
   chosen card and goes on. `dealRound` is the same deal with the choices made by `opts.choose` (same rng, same cards as before).
+- `dealAdvance(state)` deals the plain draws of a stored `DealState` (with `pending: null`) on until the next choice or the end; it takes
+  no rng and never changes the state it is given. For a table that keeps the deal between answers and resumes it from the stored deck and queue.
 - `opts.reflexesFirst` (dealStart, dealRound): those with a choice draw before the others (OQ-13; default: in the given order).
 - `opts.initiatorOnce` (holdOffTargets, holdOff): a character who already swapped this round as the initiator may not start another
   (OQ-17; default: no such limit).

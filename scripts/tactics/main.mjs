@@ -32,6 +32,8 @@ function registerSettings() {
   reg("tacticsInitiative", { ...name("tacticsInitiative"), scope: "world", config: true, type: Boolean, default: true, requiresReload: true });
   reg("tacticsRedraw", { ...name("tacticsRedraw"), scope: "world", config: true, type: String, default: "everyRound",
     choices: { everyRound: t("ITAC.Redraw.everyRound"), firstRoundOnly: t("ITAC.Redraw.firstRoundOnly") } });      // [I2] [B2277]
+  reg("tacticsPushOrder", { ...name("tacticsPushOrder"), scope: "world", config: true, type: String, default: "afterDefence",
+    choices: { afterDefence: t("ITAC.PushOrder.afterDefence"), beforeDefence: t("ITAC.PushOrder.beforeDefence") } });      // [R3] [OQ-9]: read when a fight starts
 }
 /** what stands in the way of tactical combat on this world: null (it runs) | "off" | "yze" | "noInitiative" */
 export function blocker() {

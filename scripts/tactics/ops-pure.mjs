@@ -128,13 +128,7 @@ export function normalize(req, { staff = false } = {}) {
       case "setFree": if (id(req.combatant)) a.combatant = req.combatant; a.on = req.on !== false; break;
       case "endScene": if (req.force === true) a.force = true; a.skip = idList(req.skip, 400) ?? []; a.order = idList(req.order, 400) ?? []; a.skipTriggers = idList(req.skipTriggers, 400) ?? []; break;
       case "challengeFail": need("challenge", id(req.challenge)); break;
-      default: {
-        const n = EXTRA_NORMALIZE[op];
-        if (!n) return err("unknown", { op: op.slice(0, 40) });
-        const r = n(req, { staff });
-        if (!r || r.ok === false) return r ?? err("badInput");
-        return { ok: true, action: { ...r.action, type: op } };
-      }
+      default: return err("unknown", { op: op.slice(0, 40) });
     }
   } catch { return err("badInput"); }
   return { ok: true, action: a };
@@ -373,7 +367,7 @@ const OPS = {
   answer(W, a) {
     const s = W.s, p = s.prompts[a.prompt];
     if (!p || p.answered) return err("gone");
-    if (!P1_PROMPTS.has(p.kind)) { const h = EXTRA_ANSWER[p.kind]; return h ? h(W, a, p) : err("unknown", { kind: p.kind }); }
+    if (!P1_PROMPTS.has(p.kind)) return err("unknown", { kind: p.kind });                 // the action engine answers its own prompts (engine-pure.mjs opAnswer; director-pure.mjs routes them)
     const mine = p.to !== "gm" && (p.to.users.includes(W.ctx.user) || (!!p.about && !!W.ctx.owns?.(p.about)));
     if (!W.ctx.staff && !mine) return err("notOwner");
     const drop = () => { delete s.prompts[p.id]; };
@@ -577,20 +571,7 @@ function removeOne(W, id) {
   ev(W, "combatantRemoved", { combatant: id });
 }
 
-/* ------------------------------------------------------------------ extension points for the action engine (P2) */
-const EXTRA_NORMALIZE = {}, EXTRA_ANSWER = {};
-/** registerOp("declare", { handler(W, action), normalize(req, { staff }) -> { ok, action }, player: true }) adds an operation;
-    handler works on W = { s (a private copy of the state), ctx, events, effects } like the ones above and may return an error envelope
-    or { changed:false }. helpers = { run, addPrompt, ev, ledgerOf, partOf, queueOnce, closeTurn, openTurn }. */
-export function registerOp(name, { handler, normalize: n, player = false } = {}) {
-  if (typeof name !== "string" || typeof handler !== "function" || OPS[name]) return false;
-  OPS[name] = handler;
-  if (typeof n === "function") EXTRA_NORMALIZE[name] = n;
-  if (player) PLAYER_OPS.add(name);
-  return true;
-}
-/** registerAnswer("reaction", (W, action, prompt) => ...) lets the engine answer its own prompt kinds through the same `answer` operation. */
-export function registerAnswer(kind, fn) { if (typeof kind !== "string" || typeof fn !== "function" || P1_PROMPTS.has(kind) || EXTRA_ANSWER[kind]) return false; EXTRA_ANSWER[kind] = fn; return true; }
+/* what the director and the engine use of this file's inner workings */
 export const helpers = { run, addPrompt, ev, ledgerOf, partOf, queueOnce, closeTurn, openTurn, addressees, removeOne };
 
 /* ------------------------------------------------------------------ reduce */

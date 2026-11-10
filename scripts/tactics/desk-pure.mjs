@@ -21,7 +21,7 @@ const optReq = (p, o, op) => ({ op, prompt: p.id, value: o.data && isObj(o.data)
 
 /** GM desk card kinds this engine raises (spec 13.1 + the ones the spec has no row for; reported as holes): */
 export const CARD_KINDS = Object.freeze(["reaction", "exception", "other", "direction", "stunt", "helpOverride", "revalidate", "npcBroken", "proxy",
-  "gate", "tokenConfirm", "counter", "dodgeMove", "stunts", "moveStop", "moveApprove"]);
+  "gate", "tokenConfirm", "counter", "dodgeMove", "stunts", "moveStop", "moveApprove", "minionLoss", "minionsFate", "knockDir", "disarm"]);
 
 function card(p, ctx, proxy = false) {
   return {
@@ -62,7 +62,7 @@ export function deskModel(state, log, ctx = {}) {
       force: { req: (drift) => ({ op: "undo", tx: t.id, force: true, ...(drift ? { drift } : {}) }), modes: ["restore", "difference", "leave"] } } : null })).reverse();
   /* spec 13.3 (standing reactions of an NPC) and spec 10 (what of an opponent the players have been shown) */
   const npcs = Object.keys(state.ledger ?? {}).filter((cid) => ctx.c?.(cid)?.npc).map((cid) => ({ id: cid, name: nameOf(ctx, cid),
-    policy: { block: "ask", dodge: "ask", onBroken: "ask", ...(state.npc?.[cid] ?? {}) }, revealed: { stats: !!state.revealed?.[cid]?.stats, powers: !!state.revealed?.[cid]?.powers, health: !!state.revealed?.[cid]?.health },
+    policy: { block: "ask", dodge: "ask", onBroken: "ask", push: "rules", major: "no", ...(state.npc?.[cid] ?? {}) }, revealed: { stats: !!state.revealed?.[cid]?.stats, powers: !!state.revealed?.[cid]?.powers, health: !!state.revealed?.[cid]?.health },
     policyReq: (patch) => ({ op: "npcPolicy", combatant: cid, policy: { ...(state.npc?.[cid] ?? {}), ...patch } }),
     revealReq: (patch) => ({ op: "reveal", combatant: cid, ...Object.fromEntries(Object.entries({ ...(state.revealed?.[cid] ?? {}), ...patch }).filter(([, v]) => v).map(([k]) => [k, true])) }) }));
   return { cards, info, manual, journal, waiting: waitingOn(state, ctx), npcs, mode: state.mode ?? null, modeReq: (mode) => ({ op: "setMode", mode }), turn: turnOf(state, ctx) };
@@ -90,7 +90,7 @@ export function barModel(view, cid, ctx = {}) {
     const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", {}) : { ok: false, reason: "noLedger" };
     const reason = busy ? "busy" : !onTurn && e.cost !== "free" ? "notYourTurn" : pay.ok ? null : pay.reason ?? "noAction";
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
-      attr: e.roll?.attr ?? null, defense: e.defense ?? null, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders", disabled: reason,
+      attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders", disabled: reason,
       req: (decl = {}) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id } }), exceptionReq: (decl, text) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id, exception: { text } } }) };
   });
   return { combatant: cid, name: nameOf(ctx, cid), onTurn, free: !!view.free?.[cid], budget: P1 ? P1.budget(view, cid) : null, statuses: (view.statuses?.[cid] ?? []).map((s) => s.id),

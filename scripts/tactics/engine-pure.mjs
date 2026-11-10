@@ -35,7 +35,7 @@ import { roll as Roll, other as Other, hazard as Hazard, composite as Composite 
 import * as Move from "./flows/move.mjs";
 
 export const FLOWS = Object.freeze({ attack: Attack, roll: Roll, other: Other, plain: Other, hazard: Hazard, composite: Composite,
-  move: Move.move, fastball: Move.fastball, barrier: Move.barrier, forced: Move.forced, fall: Move.fall });       // P3: movement (flows/move.mjs)
+  move: Move.move, fastball: Move.fastball, barrier: Move.barrier, forced: Move.forced, fall: Move.fall, release: Attack.release });       // P3: movement (flows/move.mjs)
 export const ERROR_CODES = Object.freeze(["noGM", "untrusted", "stale", "rate", "badInput", "off", "notOwner", "notYourTurn", "noAction", "locked", "illegal", "unknown", "gone", "busy", "playersOff", "internal", "relay", "tooBig", "noPermission", "drift"]);
 export const REVALIDATE_OPTIONS = Object.freeze(["continue", "amend", "forfeit", "cancel"]);      // [OQ-3]: the GM decides, no default
 const bad = (code, params = {}) => ({ ok: false, changed: false, error: { key: `ITAC.err.${code}`, code, params } });
@@ -183,9 +183,13 @@ function makeInst(X, { action, actor, decl, cause = "turn", parent = null, data 
 }
 function pushInst(X, inst) { X.state = { ...X.state, stack: [...X.state.stack, inst] }; X.changed = true; }
 function label(X, inst, what) {
-  const a = inst.actor ? X.facts.c(inst.actor) : null;
-  const pub = a?.hidden ? "" : `${a?.name ?? inst.initiator?.type ?? ""}: ${inst.action}${what ? ` (${what})` : ""}`;       // spec 10: two texts; a hidden actor has no public line
-  return { pub, gm: `${a?.name ?? inst.initiator?.id ?? ""}: ${inst.action} -> ${(inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name ?? t).join(", ")}${what ? ` (${what})` : ""}` };
+  const a = inst.actor ? X.facts.c(inst.actor) : null, e = C.entryFor(X.state, inst.actor, inst.action);
+  /* the engine has no language: an action and a result are written as `{key}` marks that the surfaces put into the reader's language (lang.mjs
+     `marks`); an entry with a name of its own (a granted power) keeps that name */
+  const act = e?.name || (typeof e?.label === "string" && !e.label.startsWith("ITAC.") ? e.label : `{ITAC.action.${inst.action}}`);
+  const res = what ? ` ({ITAC.result.${what}})` : "";
+  const pub = a?.hidden ? "" : `${a?.name ?? inst.initiator?.type ?? ""}: ${act}${res}`;       // spec 10: two texts; a hidden actor has no public line
+  return { pub, gm: `${a?.name ?? inst.initiator?.id ?? ""}: ${act} -> ${(inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name ?? t).join(", ")}${res}` };
 }
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {
@@ -197,7 +201,7 @@ function pushChild(X, parent, spec) {
   emit(X, inst, { type: "actionDeclared", decl: publicDecl(inst.decl), cost: "none", stress: 0, targets: inst.decl.targets ?? [], cause: inst.cause });
   return { ok: true, inst };
 }
-const publicDecl = (d) => ({ action: d.action, weapon: d.weapon, targets: d.targets ?? [], zone: d.zone, special: d.special, wreck: d.wreck, area: d.area, to: d.to, mode: d.mode });
+const publicDecl = (d) => ({ action: d.action, weapon: d.weapon, targets: d.targets ?? [], zone: d.zone, special: d.special, wreck: d.wreck, area: d.area, fullAuto: d.fullAuto, to: d.to, mode: d.mode });
 
 async function closeInst(X, I, result = null) {
   I.status = I.status === "aborted" ? "aborted" : "done";
@@ -322,7 +326,10 @@ function sanitizeDecl(d, action, staff = false) {
   if (Array.isArray(d?.path)) out.path = d.path.filter((z) => typeof z === "string").map((z) => z.slice(0, 40)).slice(0, 24);
   if (["charge", "grapple", "grappleAttack"].includes(d?.special)) out.special = d.special;
   for (const k of ["wreck", "area", "blind", "noPush", "secret"]) if (d?.[k] === true || d?.[k] === 1) out[k] = 1;
-  if (Array.isArray(d?.fullAuto)) out.fullAuto = ids(d.fullAuto);
+  if (Array.isArray(d?.fullAuto) ? d.fullAuto.length : d?.fullAuto === true || d?.fullAuto === 1) {       // [B2543]: the targets of full auto are the declaration's targets (the older list form is merged into them)
+    if (Array.isArray(d.fullAuto)) out.targets = [...new Set([...out.targets, ...ids(d.fullAuto)])].slice(0, 12);
+    out.fullAuto = 1;
+  }
   if (Array.isArray(d?.tokens)) out.tokens = ids(d.tokens);
   if (Array.isArray(d?.exploits)) out.exploits = d.exploits.filter((e) => e && P1.isId(e.id)).slice(0, 8).map((e) => ({ id: e.id, stress: Math.max(0, Math.min(20, Math.trunc(Number(e.stress) || 0))) }));
   out.stressTotal = out.exploits.reduce((s, e) => s + e.stress, 0);
