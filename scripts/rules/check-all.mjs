@@ -3,6 +3,7 @@ import { summary } from "./testkit.mjs";
 await import("./check-pure.mjs");
 await import("./check-dice.mjs");
 await import("./check-zones.mjs");
+await import("./check-places.mjs");
 await import("./check-initiative.mjs");
 await import("./check-crits.mjs");
 await import("./check-attack.mjs");

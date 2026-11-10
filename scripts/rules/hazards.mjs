@@ -41,18 +41,30 @@ export function fireSpreadRoll(d6) {
   return d6 <= 2 ? "out" : d6 >= 5 ? "spreads" : "stays";
 }
 /* zones a fire in `zone` can spread to (book 2927): neighbours behind a border that is not blocked, flammable, not yet burning.
-   burning: iterable of zone ids already on fire. */
-export function fireSpreadTargets(graph, zone, burning = []) {
+   burning: iterable of zone ids already on fire.
+   The book asks for a border that is "not blocked" and for "something that can burn" and says no more (question OQ-15 of the handoff),
+   so the criteria are parameters; the defaults are what this library did from the start:
+     opts.doors          "pass" (default): a border open to movement lets fire through, an unlocked door included;
+                         "block": any standing wall stops it, with or without a door (book 2254 calls a border with a door a blocked
+                         border; this is what the map's own fire round does)
+     opts.needFlammable  true (default): only zones marked flammable burn; false: every zone can
+     opts.water          "burns" (default) | "never": zones marked `water` do not catch fire (the map's own fire round) */
+export function fireSpreadTargets(graph, zone, burning = [], opts = {}) {
   const lit = new Set(burning);
   const out = new Set();
+  const passes = (border) => (opts.doors === "block" ? !(border.wall && border.wall.state === "intact") : borderOpen(border));
   for (const { to, border } of graph.adj.get(zone) ?? []) {
-    if (borderOpen(border) && graph.zones.get(to).flammable && !lit.has(to) && to !== zone) out.add(to);
+    const z = graph.zones.get(to);
+    if (!passes(border) || lit.has(to) || to === zone) continue;
+    if (opts.needFlammable !== false && !z.flammable) continue;
+    if (opts.water === "never" && z.water) continue;
+    out.add(to);
   }
   return [...out];
 }
 /* the random adjacent zone, or null when the fire has nowhere to go */
-export function pickFireSpread(rng, graph, zone, burning = []) {
-  const c = fireSpreadTargets(graph, zone, burning);
+export function pickFireSpread(rng, graph, zone, burning = [], opts = {}) {
+  const c = fireSpreadTargets(graph, zone, burning, opts);
   return c.length ? c[Math.floor(rng() * c.length)] : null;
 }
 

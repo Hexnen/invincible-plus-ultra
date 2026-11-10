@@ -3,15 +3,28 @@
    "book N" = line N of dev/book-dump.txt; "ruling N" = row N of section 4 of dev/combat-plan.md.
 
    ZoneGraph input: { zones: Zone[] | { [id]: Zone }, borders: Border[] }
-   Zone:   { id, level?: number, terrain?: string|null, rooftop?: boolean, empty?: boolean, wrecked?: boolean, flammable?: boolean }
-   Border: { id?, a, b, wall: null | { armor, state }, door: null | { armor, state } }
+   Zone:   { id, level?: number, terrain?: string|null, building?: boolean, rooftop?: boolean, floors?: number, empty?: boolean,
+             wrecked?: boolean, flammable?: boolean, water?: boolean, terrainUnset?: boolean }
+   Border: { id?, a, b, wall: null | { armor, state, outer? }, door: null | { armor, state } }
            wall.state: "intact" | "breached" | "removed"; door.state: "open" | "closed" | "locked" | "sealed" | "breached"
-   Position: { zone, alt }  alt: "ground" | "elevated" | "sky" | "orbit" */
+
+   A POSITION is a place in the model of the map's zones API (moinen-maps dev/zones-api.md), so both sides mean the same thing:
+     zone key + level ("underground" | "ground" | "elevated" | "floor" with a floor number), or an area off the map
+     ("sky" | "orbit" | "dimension" | "chase"). The floors of a large building are LEVELS of one zone (zone.floors), not zones of their own.
+   Every function that takes a position accepts any of these forms (toPlace):
+     a spot string        "z3" | "z3:elevated" | "z3:underground" | "z3:f2" | "@sky" | "@orbit" | "@dimension" | "@chase"
+     a place              { zone, level, floor?, area?, airborne? }   (what the zones API returns; extra fields are ignored)
+     the older form       { zone, alt }   alt: "ground" | "elevated" | "underground" | "sky" | "orbit" | "dimension" | "chase"
+   A graph in which every floor is a zone of its own joined by borders (the first version of this library) still works: such floors
+   are just zones on the ground level. */
 
 export const ALTITUDES = ["ground", "elevated", "sky", "orbit"];
+export const LEVELS = ["underground", "ground", "elevated", "floor"];
+/* book 2259-2260: sky high and orbit are off the map. "dimension" and "chase" are areas of the plan (5.7 item 6), not of the book. */
+export const AREAS = ["sky", "orbit", "dimension", "chase"];
 export const WALL_STATES = ["intact", "breached", "removed"];
 export const DOOR_STATES = ["open", "closed", "locked", "sealed", "breached"];
-const OFF_MAP = new Set(["sky", "orbit"]);
+const OFF_MAP = new Set(AREAS);
 export const isOffMap = (alt) => OFF_MAP.has(alt);
 
 /* book 2398-2416: Armor of doors and walls. Reinforced is 4 or more. */
@@ -30,7 +43,7 @@ export function makeGraph(data) {
   for (const z of list) {
     if (z.id == null) throw new Error("makeGraph: a zone has no id");
     if (zones.has(z.id)) throw new Error(`makeGraph: duplicate zone "${z.id}"`);
-    zones.set(z.id, { level: 0, terrain: null, rooftop: false, empty: false, wrecked: false, flammable: false, ...z });
+    zones.set(z.id, { level: 0, terrain: null, building: false, rooftop: false, floors: 0, empty: false, wrecked: false, flammable: false, ...z });
   }
   const adj = new Map([...zones.keys()].map((id) => [id, []]));
   const borders = [];
@@ -112,15 +125,110 @@ export function borderDistance(graph, zoneA, zoneB) {
   return seen.has(zoneB) ? seen.get(zoneB).dist : Infinity;
 }
 
-/* Range distance between two positions.
+/* ------------------------------------------------------------------ places (zone + level, or an area off the map) ------------------------------------------------------------------ */
+
+/* book 2262, 2417: the floors above the ground floor of a large building, each a vertical zone; a wrecked building has none (book 2457). */
+export const floorsOf = (zone) => (zone && (zone.building || zone.rooftop) && !zone.wrecked ? Math.max(0, Math.floor(zone.floors ?? 0)) : 0);
+
+const spotString = (zone, level, floor) => (level === "ground" ? `${zone}` : level === "floor" ? `${zone}:f${floor}` : `${zone}:${level}`);
+
+/* A spot string as { zone, alt, floor }, or null when it is not one. */
+export function parseSpot(s) {
+  if (typeof s !== "string" || !s) return null;
+  if (s[0] === "@") return AREAS.includes(s.slice(1)) ? { zone: s, alt: s.slice(1), floor: 0 } : null;
+  const i = s.indexOf(":");
+  if (i < 0) return { zone: s, alt: "ground", floor: 0 };
+  const zone = s.slice(0, i), t = s.slice(i + 1), m = /^f(\d+)$/.exec(t);
+  if (m) return { zone, alt: "ground", floor: Number(m[1]) };
+  return t === "elevated" || t === "underground" || t === "ground" ? { zone, alt: t, floor: 0 } : null;
+}
+
+/* Normalize a position (any of the forms in the header) to a place:
+     { zone, area, level, floor, airborne, roof, spot }
+   zone   the zone id / key (off the map: "@<area>");  area  null on the map;  level null off the map;  floor 1..n on level "floor";
+   roof   elevated and standing on the rooftop of a standing building; airborne  elevated and not on a rooftop (book 2258, 2396, 2457);
+   spot   the 3-D zone as one string: two characters are in the same zone in the book's sense exactly when their spots are equal (book 2258).
+   Same rules as the map's makePlace: a floor the building does not have is the ground; elevated over a standing building is its
+   rooftop unless the position says airborne. A string that names a zone of the graph is that zone (so an id may contain ":"). */
+export function toPlace(graph, pos) {
+  let zone, alt, floor = 0, air = false;
+  if (typeof pos === "string") {
+    const p = graph.zones.has(pos) ? { zone: pos, alt: "ground", floor: 0 } : parseSpot(pos);
+    if (!p) throw new Error(`toPlace: "${pos}" is not a spot`);
+    ({ zone, alt, floor } = p);
+  } else if (pos && typeof pos === "object") {
+    zone = pos.zone ?? null;
+    floor = pos.floor ?? 0;
+    air = !!(pos.airborne ?? pos.air);
+    const zoneArea = typeof zone === "string" && zone[0] === "@" && AREAS.includes(zone.slice(1)) ? zone.slice(1) : null;
+    alt = pos.area ?? zoneArea ?? (pos.level != null ? (pos.level === "floor" ? "ground" : pos.level) : pos.alt ?? "ground");
+  } else throw new Error("toPlace: no position");
+  if (AREAS.includes(alt)) return { zone: `@${alt}`, area: alt, level: null, floor: 0, airborne: false, roof: false, spot: `@${alt}` };
+  if (zone == null) return { zone: null, area: null, level: alt === "elevated" || alt === "underground" ? alt : "ground", floor: 0, airborne: alt === "elevated", roof: false, spot: null };
+  const z = graph.zones.get(zone);
+  if (!z) throw new Error(`unknown zone "${zone}"`);
+  const base = { zone, area: null, floor: 0, airborne: false, roof: false };
+  if (alt === "underground") return { ...base, level: "underground", spot: spotString(zone, "underground") };
+  if (alt === "elevated") {
+    const roof = !air && hasRooftop(z);
+    return { ...base, level: "elevated", roof, airborne: !roof, spot: spotString(zone, "elevated") };
+  }
+  const f = Math.round(Number(floor) || 0);
+  if (f > 0 && f <= floorsOf(z)) return { ...base, level: "floor", floor: f, spot: spotString(zone, "floor", f) };
+  return { ...base, level: "ground", spot: spotString(zone, "ground") };
+}
+/* book 2258: the same zone in the book's sense (elevated characters over one horizontal zone share a zone; so do all in one off-map area). */
+export function sameSpot(graph, a, b) {
+  const A = toPlace(graph, a), B = toPlace(graph, b);
+  return A.spot != null && A.spot === B.spot;
+}
+
+/* How many vertical zones above the ground a place is (null off the map):
+   book 2262, 2417 a floor its number; book 2258 an elevated position 1; the rooftop of a building with floors one above its top floor
+   (book 2417: inside the building every floor is a vertical zone);
+   underground -1: the book gives underground no height (book 1995); this is reading ZR-1 of the zones contract, taken over so that
+   both sides agree. */
+export function heightOf(graph, place) {
+  const p = place?.spot !== undefined && place?.level !== undefined ? place : toPlace(graph, place);
+  if (p.area) return null;
+  if (p.level === "underground") return -1;
+  if (p.level === "floor") return p.floor;
+  if (p.level === "elevated") return p.roof ? floorsOf(graph.zones.get(p.zone)) + 1 : 1;
+  return 0;
+}
+/* ruling 2 (book 2258-2262): the vertical part of a range. Two elevated places: 0. Otherwise the difference in height, where an
+   elevated place over ANOTHER zone counts 1 (book 2417: from outside, a rooftop is one zone up however many floors lie under it). */
+function levelGap(graph, A, B) {
+  if (A.level === "elevated" && B.level === "elevated") return 0;
+  const h = (p) => (p.level === "elevated" && A.zone !== B.zone ? 1 : heightOf(graph, p));
+  return Math.abs(h(A) - h(B));
+}
+
+/* Range between two positions, in parts: { borders, levels, total }, or null when no attack is possible at all.
+   Same answers as the zones API's range(a, b) on the same data (check-places.mjs holds the cases):
+   book 2254-2255 + ruling 23: borders on the shortest route, blocked ones included;
+   ruling 2 (book 2258-2262): a level difference adds its vertical zones (levelGap); two elevated characters count the horizontal
+   distance only; floors are vertical zones, so the difference can exceed 1;
+   book 2259-2260 + ruling 2: everybody in the same off-map area shares one zone (0); nobody attacks into or out of one (null).
+   null also for a position outside every zone and for zones that are not connected. */
+export function rangeBetween(graph, a, b) {
+  const A = toPlace(graph, a), B = toPlace(graph, b);
+  if (A.area || B.area) return A.area && A.area === B.area ? { borders: 0, levels: 0, total: 0 } : null;
+  if (A.zone == null || B.zone == null) return null;
+  const borders = borderDistance(graph, A.zone, B.zone);
+  if (borders === Infinity) return null;
+  const levels = levelGap(graph, A, B);
+  return { borders, levels, total: borders + levels };
+}
+
+/* Range distance between two positions as one number: rangeBetween(...).total, Infinity where that is null.
    ruling 2 (book 2258-2262): a ground / elevated difference adds one zone; two elevated characters count the horizontal distance only;
-   floors of large buildings are zones of their own in the graph, so they add their borders by themselves.
+   floors add one zone each (as levels of one zone, or as zones of their own in an older graph).
    book 2259-2260 + ruling 2: sky high and orbit are off the map: everybody at the same of these altitudes shares one zone (0), and nobody
    can attack or be attacked across (Infinity). */
 export function rangeDistance(graph, a, b) {
-  if (isOffMap(a.alt) || isOffMap(b.alt)) return a.alt === b.alt ? 0 : Infinity;
-  const d = borderDistance(graph, a.zone, b.zone);
-  return d + ((a.alt ?? "ground") !== (b.alt ?? "ground") ? 1 : 0);
+  const r = rangeBetween(graph, a, b);
+  return r ? r.total : Infinity;
 }
 
 /* zones within n borders of a zone, walls ignored (areas of powers, ranges): Map<zoneId, distance> (book 2255, ruling 23) */
@@ -132,13 +240,19 @@ export function zonesInRange(graph, zone, n) {
 
 /* ------------------------------------------------------------------ distance for movement (passable routes only) ------------------------------------------------------------------ */
 
-/* Which borders a mover may cross. profile: { aerial?: boolean, through?: "open" | "any" }.
+/* Which borders a mover may cross. profile: { aerial?: boolean, over?: "rooftop" | "exterior", through?: "open" | "any" }.
    Default (book 2383, 2418, ruling 23): open borders and unlocked doors only.
-   aerial (book 2385): flyers pass over the top of buildings without hindrance, so a blocked border is crossed when one of its two zones
-   has a rooftop (a city-map building that has not been levelled, book 2457); the step is marked `over`.
-   through "any" is for effects that do not travel through the space in between (book 2034, teleportation). */
+   aerial (book 2385): flyers pass over the top of buildings without hindrance; the step over a blocked border is marked `over`.
+   Which blocked borders that means the book does not say (question OQ-14 of the handoff), so it is a parameter:
+     over "rooftop" (default, reading 4): a blocked border is crossed when one of its two zones has a rooftop (a city-map building
+                    that has not been levelled, book 2457);
+     over "exterior": a blocked border is crossed when its wall is a building's exterior wall (wall.outer), the reading of the map's
+                    zones API for its way "air" (ZR-3): interior walls, reinforced interior walls and locked doors in them stop flyers.
+   through "any" is for effects that do not travel through the space in between (book 2034, teleportation; book 1995, burrowing
+   ignores all walls and doors). */
 function passFor(graph, profile = {}) {
   if (profile.through === "any") return () => true;
+  if (profile.aerial && profile.over === "exterior") return (border) => borderOpen(border) || !!border.wall?.outer;
   if (profile.aerial) return (border, from, to) => borderOpen(border) || hasRooftop(graph.zones.get(from)) || hasRooftop(graph.zones.get(to));
   return (border) => borderOpen(border);
 }
@@ -172,10 +286,48 @@ export function straightRoute(graph, from, to) {
   return path ? { ...path, steps: path.borders.map((border, i) => ({ from: path.zones[i], to: path.zones[i + 1], border, over: false })) } : null;
 }
 
+/* The vertical zones a mover crosses inside the building at one end of a route; null = this mover cannot be at / get to that place.
+   Walkers (book 2394, 2417): the stairs, one zone per floor, the rooftop one above the top floor (1 for a plain building); the air
+   cannot be walked to or from (landing or falling is a level change made first).
+   Aerial movers and movers that pass through (book 2386): nothing, ground and elevated change inside the move; leaving a floor by a
+   window costs them nothing (reading ZR-2 of the zones contract, taken over).
+   Underground is reached and left only by a mover with through "any" (book 1995 burrowing; reading ZR-4 of the zones contract). */
+function climb(graph, p, profile) {
+  if (p.level === "underground") return profile.through === "any" ? 0 : null;
+  if (profile.aerial || profile.through === "any") return 0;
+  if (p.level === "elevated") return p.roof ? floorsOf(graph.zones.get(p.zone)) + 1 : null;
+  return p.level === "floor" ? p.floor : 0;
+}
+
+/* Length of a movement route between two positions, in parts: { borders, levels, total }, or null when there is no way.
+   Same construction as the zones API's route(a, b, way): passable borders by profile (moveDistance) plus the vertical zones at both
+   ends (climb). Inside one zone a walker counts the floors between, the others count 1 for a change of level (a quick action,
+   book 2386). To or from an off-map area: null (that is one full action whatever the distance, book 2387-2388: altitudeChangeCost).
+   In live play routes come from the zones API; this is for callers that hold only a graph. */
+export function routeBetween(graph, a, b, profile = {}) {
+  const A = toPlace(graph, a), B = toPlace(graph, b);
+  if (A.area || B.area || A.zone == null || B.zone == null) return null;
+  const up = climb(graph, A, profile), down = climb(graph, B, profile);
+  if (up == null || down == null) return null;
+  if (A.zone === B.zone) {
+    if (A.spot === B.spot) return { borders: 0, levels: 0, total: 0 };
+    const levels = profile.aerial || profile.through === "any" ? 1 : Math.abs(up - down);
+    return { borders: 0, levels, total: levels };
+  }
+  const borders = moveDistance(graph, A.zone, B.zone, profile);
+  if (borders === Infinity) return null;
+  return { borders, levels: up + down, total: borders + up + down };
+}
+
 /* book 2386-2388, 2377: ground <-> elevated is a quick action and may be part of a horizontal move; to or from sky high or orbit is one
-   full action. Returns "none" | "quick" | "full". */
+   full action. Takes altitude / level / area names ("ground", "elevated", "underground", "sky", "orbit", "dimension", "chase").
+   Returns "none" | "quick" | "full" | "gm".
+   "gm": to or from "dimension" or "chase", which are areas of the plan and have no movement cost in the book: the GM says.
+   Underground <-> ground is given as "quick" like the map's altCost does; it is only possible for burrowers (book 1995), whose
+   burrowing is itself a movement action. A change of FLOOR is not a change of altitude: floors are walked as zones (routeBetween). */
 export function altitudeChangeCost(fromAlt, toAlt) {
   if (fromAlt === toAlt) return "none";
+  if ([fromAlt, toAlt].some((x) => x === "dimension" || x === "chase")) return "gm";
   return isOffMap(fromAlt) || isOffMap(toAlt) ? "full" : "quick";
 }
 
@@ -187,13 +339,25 @@ export function altitudeChangeCost(fromAlt, toAlt) {
    share a zone; 2429, 2500 a huge creature on the ground reaches elevated targets; 2259-2260 off-map altitudes are one zone each.
    The altitude difference is counted as in ruling 2, so a range-1 attack reaches an elevated target of the attacker's own zone. */
 export function slugfestReach(graph, attacker, target, opts = {}) {
-  const range = opts.range ?? 0;
-  const d = rangeDistance(graph, attacker, target);
-  if (d === Infinity) return { ok: false, reason: "altitude", distance: d };
-  if (d <= range) return { ok: true, reason: null, distance: d };
-  const sameZone = attacker.zone === target.zone && !isOffMap(attacker.alt);
-  if (sameZone && target.alt === "elevated" && (attacker.alt ?? "ground") === "ground" && (opts.huge || opts.reachesElevated)) return { ok: true, reason: null, distance: d };
-  return { ok: false, reason: sameZone ? "elevated" : "distance", distance: d };
+  return slugfestReachAt(rangeBetween(graph, attacker, target), toPlace(graph, attacker), toPlace(graph, target), opts);
+}
+/* The same decision from numbers, for callers that take distances from the zones API (the rule stays in one place):
+   range    what the zones API's range(a, b) returned: { borders, levels, total } | null
+   attacker, target   their places; only `level` and `area` are read ({ level: "ground" } is enough)
+   opts     as slugfestReach.
+   Reasons: "altitude" (an off-map area is involved, book 2259-2260) | "noRange" (no line between the two at all) | "distance"
+   (another horizontal zone) | "elevated" (same horizontal zone, ground against elevated, book 2258) | "level" (same horizontal zone,
+   another floor or underground: floors are vertical zones, book 2262).
+   Returns { ok, reason, distance } (distance Infinity when there is no range). */
+export function slugfestReachAt(range, attacker = {}, target = {}, opts = {}) {
+  if (!range) return { ok: false, reason: attacker.area || target.area ? "altitude" : "noRange", distance: Infinity };
+  const max = opts.range ?? 0, d = range.total;
+  if (d <= max) return { ok: true, reason: null, distance: d };
+  const level = (p) => p.level ?? "ground";
+  const sameZone = range.borders === 0;
+  if (sameZone && level(target) === "elevated" && level(attacker) === "ground" && (opts.huge || opts.reachesElevated)) return { ok: true, reason: null, distance: d };
+  const plain = (p) => level(p) === "ground" || level(p) === "elevated";
+  return { ok: false, reason: !sameZone ? "distance" : plain(attacker) && plain(target) ? "elevated" : "level", distance: d };
 }
 
 /* book 2511, 2538: a ranged attack has a minimum and maximum range; closer than the minimum = -3 dice, beyond the maximum = impossible.
@@ -217,13 +381,30 @@ export const canShoot = (graph, attacker, target, range) => {
    Reading: adjacency is horizontal (ground and elevated in the same or neighbouring zones can shout); off-map altitudes are one zone
    each and are not adjacent to anything. Returns { ok, direct, reason }. */
 export function canCommunicate(graph, a, b, opts = {}) {
+  const A = toPlace(graph, a), B = toPlace(graph, b);
+  const range = rangeBetween(graph, A, B);
+  const between = range && range.borders === 1 ? bordersBetween(graph, A.zone, B.zone) : [];
+  return canCommunicateAt(range, A, B, { link: opts.link, impeded: between.length > 0 && !between.some((x) => !borderImpedesTalk(x)) });
+}
+/* The same decision from numbers, for callers that take distances from the zones API:
+   range   what the zones API's range(a, b) returned: { borders, levels, total } | null
+   a, b    their places; only `level` and `area` are read
+   opts    { link (a communicator or power link exists), impeded (the border between two neighbouring zones impedes talking:
+           borderImpedesTalk on the library's border, or the GM's word) }
+   book 2381: same zone or adjacent zones. Reading (3): ground and elevated count as the same height for talking; reading (3a): any
+   other level difference counts its vertical zones (floors are zones, book 2262), so the next floor up or down is "adjacent", a
+   floor further is not, and the ground floor of a neighbouring building is adjacent only to the street level.
+   Everybody in one off-map area shares a zone (book 2259-2260); an off-map area is adjacent to nothing.
+   Returns { ok, direct, reason }; reasons "distance" | "wall". */
+export function canCommunicateAt(range, a = {}, b = {}, opts = {}) {
   let direct = false, reason = "distance";
-  if (isOffMap(a.alt) || isOffMap(b.alt)) direct = a.alt === b.alt;
-  else if (a.zone === b.zone) direct = true;
-  else {
-    const between = bordersBetween(graph, a.zone, b.zone);
-    if (between.length) {
-      direct = between.some((x) => !borderImpedesTalk(x));
+  if (a.area || b.area) direct = !!a.area && a.area === b.area;
+  else if (range) {
+    const plain = (p) => (p.level ?? "ground") === "ground" || p.level === "elevated";
+    const d = range.borders + (plain(a) && plain(b) ? 0 : range.levels);
+    if (d === 0) direct = true;
+    else if (d === 1) {
+      direct = !(range.borders === 1 && opts.impeded);
       if (!direct) reason = "wall";
     }
   }
@@ -267,9 +448,12 @@ export function breachOutcome({ strength, armor, sixes, crashing = false }) {
 /* book 2451-2457: as part of a slugfest attack the attacker may wreck the zone they are in: bonus dice, the attack reaches an adjacent
    zone (range 1), a zone is wrecked only once per scene, the terrain sets a minimum STRENGTH, some terrain cannot be wrecked, and a
    wrecked building of a city map is levelled (its rooftop stops being an elevated position).
-   Returns { ok, reason, bonus, range, levelsRooftop }. */
+   A zone whose terrain was never set on the map (zone.terrainUnset, see graphFromZonesApi) is neither wreckable nor "cannot be wrecked"
+   by the book: reason "terrainUnset" with gmMayAllow (question OQ-18 of the handoff); terrain that is set and not in the table gives "terrain".
+   Returns { ok, reason, bonus, range, levelsRooftop } (+ gmMayAllow on "terrainUnset", minStrength on "strength"). */
 export function wreckCheck(zone, strength) {
   const row = WRECK_TABLE[zone?.terrain];
+  if (!row && zone?.terrainUnset) return { ok: false, reason: "terrainUnset", bonus: 0, range: 0, levelsRooftop: false, gmMayAllow: true };
   if (!row) return { ok: false, reason: "terrain", bonus: 0, range: 0, levelsRooftop: false };
   if (zone.wrecked) return { ok: false, reason: "alreadyWrecked", bonus: 0, range: 0, levelsRooftop: false };
   if (strength < row[0]) return { ok: false, reason: "strength", bonus: 0, range: 0, levelsRooftop: false, minStrength: row[0] };
@@ -309,4 +493,62 @@ export function forcedMove(graph, { path, distance, damage, targetArmor = 0, dec
     zone = next; moved++;
   }
   return { zone, moved, stoppedBy, hits, breached };
+}
+
+/* ------------------------------------------------------------------ zone graph from the zones API's data ------------------------------------------------------------------ */
+
+/* Armor of the wall and door behind the map's older one-kind border marks. book 2398-2416 gives Armor by interior / exterior
+   (BARRIER_ARMOR), not by lock; the older marks have one Armor per border, so the wall around a "door" or "locked" mark is ASSUMED to
+   be an interior wall (the same assumption the map's own wall-plus-door model makes when it reads those marks) and flagged
+   `armorAssumed`: a forced move into such a border should ask the GM (reading 6). */
+export const BORDER_KINDS = {
+  open: null,
+  door: { wall: { armor: BARRIER_ARMOR.interiorWall, state: "intact", outer: false, armorAssumed: true }, door: { armor: 1, state: "closed" } },
+  locked: { wall: { armor: BARRIER_ARMOR.interiorWall, state: "intact", outer: false, armorAssumed: true }, door: { armor: 2, state: "locked" } },
+  wall: { wall: { armor: BARRIER_ARMOR.interiorWall, state: "intact", outer: false }, door: null },
+  outer: { wall: { armor: BARRIER_ARMOR.exteriorWall, state: "intact", outer: true }, door: null },
+  reinforced: { wall: { armor: BARRIER_ARMOR.reinforced, state: "intact", outer: false }, door: null },
+};
+
+/* Build the library's ZoneGraphData from what the map's zones API returns (pure data in, pure data out; no map code is imported):
+     zones    api.zoneList()            [{ key, building, floors, rooftop, terrain, empty, tags, states: { wrecked, fire, ... }, props? }]
+     borders  the borders of the scene  [{ key, zones: [keyA, keyB], kind, armor?, wall?, doorway? }] (api.bordersOf(...) of every zone,
+              or api.borderBetween results; duplicates by key are dropped)
+   Zones keep their key as id and their floors as LEVELS (zone.floors), so a position of the zones API (a place or a spot string) is a
+   position here without conversion.
+   Borders: where the map already gives a wall and a door of their own (`wall: { armor, state, outer }`, `doorway: { armor, state }`,
+   its wall-plus-door model) they are taken as they are; otherwise the one `kind` is translated with BORDER_KINDS.
+   Terrain: "" (never set) becomes terrain null + terrainUnset (wreckCheck then answers "terrainUnset", OQ-18); "none" and anything
+   outside WRECK_TABLE become terrain null (cannot be wrecked, book 2455).
+   Pass the result to makeGraph. */
+export function graphFromZonesApi({ zones = [], borders = [] } = {}) {
+  const outZones = zones.map((z) => {
+    const tags = Array.isArray(z.tags) ? z.tags : [];
+    const building = !!z.building;
+    return {
+      id: z.key, terrain: WRECK_TABLE[z.terrain] ? z.terrain : null, terrainUnset: z.terrain === "" || z.terrain == null,
+      building, rooftop: building, floors: building ? Math.max(0, Math.floor(z.props?.floors ?? z.floors ?? 0)) : 0,
+      empty: !!z.empty, wrecked: !!z.states?.wrecked, flammable: tags.includes("flammable"), water: tags.includes("water"),
+      fire: z.states?.fire ?? 0, tags: tags.slice(),
+    };
+  });
+  const seen = new Set(), outBorders = [];
+  for (const b of borders) {
+    if (!b || seen.has(b.key)) continue;
+    seen.add(b.key);
+    const part = (p, states) => (p && typeof p === "object" && states.includes(p.state) ? p : null);
+    let wall = null, door = null;
+    const own = "wall" in b && (b.wall === null || part(b.wall, WALL_STATES));
+    if (own) {
+      const w = part(b.wall, WALL_STATES), d = part(b.doorway ?? (typeof b.door === "object" ? b.door : null), DOOR_STATES);
+      wall = w ? { armor: w.armor ?? 0, state: w.state, outer: !!w.outer } : null;
+      door = w && d ? { armor: d.armor ?? 0, state: d.state } : null;
+    } else {
+      const k = BORDER_KINDS[b.kind ?? "open"];
+      if (k === undefined) throw new Error(`graphFromZonesApi: unknown border kind "${b.kind}"`);
+      if (k) { wall = { ...k.wall }; door = k.door ? { ...k.door } : null; }
+    }
+    outBorders.push({ id: b.key, a: b.zones[0], b: b.zones[1], wall, door });
+  }
+  return { zones: outZones, borders: outBorders };
 }
