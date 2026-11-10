@@ -63,7 +63,9 @@ export function applyPush(dice, rerolled, opts = {}) {
 /* May this roll be pushed? ctx: { resolve, passive, pushes (already made), maxPushes (1; talents may raise it), opposedDefender, hazard }.
    book 2227 passive or unaware rolls cannot be pushed; 2228 no push at Resolve 0 (a push is allowed even when the first roll shows more 1s
    than the current Resolve); 2229 only once unless a talent says otherwise; 2241 only the active party of an opposed roll pushes
-   (exception: chases, see chase.mjs); 2922 a blast roll is never pushed (plan 5.2: hazards never push). NPCs push like heroes (book 2231, 3907). */
+   (exception: chases, see chase.mjs); 2922 a blast roll is never pushed (plan 5.2: hazards never push). The library makes no difference between heroes and NPCs here: major NPCs push like
+   heroes (book 2231), NPCs in general push and take stress the same way (book 3909), a minion group has one Resolve used for pushing
+   (book 2830). Which NPCs are offered the push is the engine's policy (open question OQ-12). */
 export function canPush(ctx = {}) {
   if (ctx.hazard) return { ok: false, reason: "hazard" };
   if (ctx.passive) return { ok: false, reason: "passive" };

@@ -55,7 +55,7 @@ export function resolveCrit({ d6, bonus = 0, prior = [], cap = MAX_CRIT }) {
    ruling 9: Deadly Hit and breaking with the same blow = ONE roll with the higher of the two bonuses (the same is applied when a Deadly
    Hit lands on an already broken target: one roll, higher bonus);
    book 2771 ordinary NPCs: no crit needed, the GM states knocked out or killed; major NPCs roll like heroes;
-   book 2828 minions never roll crits; book 3159 vehicles never do.
+   book 2828 minions never roll crits; book 3222 vehicles never do.
    Returns { broken (is at 0 Health after the hit), newlyBroken, crit: null | { bonus, cause }, gmChoice } where cause is
    "broken" | "whileBroken" | "deadlyHit" and gmChoice is true when an ordinary NPC was broken (knocked out or killed, GM decides). */
 export function critForHit({ taken, healthBefore, deadlyHit = false, target = {} }) {

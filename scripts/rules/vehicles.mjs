@@ -3,8 +3,8 @@
 
 import { fallDice } from "./hazards.mjs";
 
-/* book 2955-3101. passengers excludes the driver or pilot (book 2939); passengersMin marks the table's "+" entries; maneuver 0 = the
-   table's dash; armor 0 = dash; cost null = dash; restricted = the table's R. A mount (book 3102) uses the creature's AGILITY instead
+/* book 2945-3143 (the table; rows 2955-3142). passengers excludes the driver or pilot (book 2939); passengersMin marks the table's "+" entries; maneuver 0 = the
+   table's dash; armor 0 = dash; cost null = dash; restricted = the table's R. A mount (book 3144) uses the creature's AGILITY instead
    of the rider's (a typical horse has AGILITY 4). */
 const V = (type, passengers, maneuver, speed, durability, armor, cost, extra = {}) => ({ type, passengers, maneuver, speed, durability, armor, cost, ...extra });
 export const VEHICLES = {
@@ -36,20 +36,20 @@ export const VEHICLES = {
 export const VEHICLE_ACTIONS = { start: "quick", enter: "quick", exit: "quick", handle: "quick" };
 export const HANDLE_ATTR = "agility";
 
-/* book 2941, 3104: handling a vehicle moves it up to its Speed in zones per quick action; like walking, it can be done twice a round. */
+/* book 2941, 3146: handling a vehicle moves it up to its Speed in zones per quick action; like walking, it can be done twice a round. */
 export const vehicleMoveZones = (vehicle) => vehicle.speed;
 
-/* book 3106: ramming is a slugfest attack rolled with AGILITY plus the vehicle's Maneuverability (book 3102: a rider uses the mount's
+/* book 3148: ramming is a slugfest attack rolled with AGILITY plus the vehicle's Maneuverability (book 3144: a rider uses the mount's
    AGILITY). Damage = the vehicle's Durability rating divided by two, rounded up. Returns { attr, agility, dice, damage }. */
 export function ramProfile({ agility, vehicle }) {
   return { attr: "agility", agility: vehicle.mount && vehicle.mountAgility != null ? vehicle.mountAgility : agility, dice: vehicle.maneuver ?? 0, damage: Math.ceil(vehicle.durability / 2) };
 }
-/* book 3160: a vehicle may ram another only when its maximum Durability is at least the target's. */
+/* book 3223: a vehicle may ram another only when its maximum Durability is at least the target's. */
 export const canRamVehicle = (ownMaxDurability, targetMaxDurability) => ownMaxDurability >= targetMaxDurability;
 
 /* Damage to a vehicle. input: { durability (points left), max, armor, amount, componentHits (component damage suffered before) }.
-   book 3158: vehicles take damage like people, Armor included; wrecked when the damage reaches the Durability.
-   book 3159: no critical injuries; a single hit of at least half the Durability (rounded up, after Armor) causes component damage;
+   book 3221: vehicles take damage like people, Armor included; wrecked when the damage reaches the Durability.
+   book 3222: no critical injuries; a single hit of at least half the Durability (rounded up, after Armor) causes component damage;
    a second component damage always wrecks the vehicle.
    Returns { taken, durability, component, wrecked }. */
 export function vehicleHit({ durability, max, armor = 0, amount, componentHits = 0 }) {
@@ -59,7 +59,7 @@ export function vehicleHit({ durability, max, armor = 0, amount, componentHits =
   return { taken, durability: left, component, wrecked: left === 0 || (component && componentHits >= 1) };
 }
 
-/* book 3163-3169: the component damage table. `damage` in the effects = the damage inflicted on the vehicle by that hit, after its Armor. */
+/* book 3224-3244: the component damage table. `damage` in the effects = the damage inflicted on the vehicle by that hit, after its Armor. */
 export const COMPONENT_DAMAGE = {
   1: { id: "pilotHit", occupants: "pilot" },
   2: { id: "passengerHit", occupants: "randomPassenger", rerollWithout: "passengers" },
@@ -68,7 +68,7 @@ export const COMPONENT_DAMAGE = {
   5: { id: "engineDisabled", cannotContinue: true, aerialControlledLanding: true },
   6: { id: "fuelExplosion", occupants: "all", fireIntensity: 9, destroyed: true },
 };
-/* Read a D6 on the table. ctx: { passengers, weapons } (counts aboard). Returns { ...entry, reroll } (reroll true = roll again, book 3165, 3167). */
+/* Read a D6 on the table. ctx: { passengers, weapons } (counts aboard). Returns { ...entry, reroll } (reroll true = roll again, book 3232, 3238). */
 export function componentDamage(d6, ctx = {}) {
   const e = COMPONENT_DAMAGE[d6];
   if (!e) throw new Error(`componentDamage: not a D6 result: ${d6}`);
@@ -76,10 +76,10 @@ export function componentDamage(d6, ctx = {}) {
   return { ...e, reroll };
 }
 
-/* book 3160: the people in a rammed vehicle are hurt only when it is wrecked: each then takes the damage the vehicle took (after its Armor). */
+/* book 3223: the people in a rammed vehicle are hurt only when it is wrecked: each then takes the damage the vehicle took (after its Armor). */
 export const ramOccupantDamage = ({ wrecked, taken }) => (wrecked ? taken : 0);
 
-/* book 3170-3171: a wrecked aircraft, or a spacecraft inside the atmosphere, crashes: the vehicle and everyone inside suffer falling
+/* book 3248: a wrecked aircraft, or a spacecraft inside the atmosphere, crashes: the vehicle and everyone inside suffer falling
    damage (hazards.mjs fallDice / fallOutcome). Returns the number of falling dice (0 = no crash). */
 export function crashFallDice({ type, alt, wrecked }) {
   if (!wrecked) return 0;
@@ -87,7 +87,7 @@ export function crashFallDice({ type, alt, wrecked }) {
   return 0;
 }
 
-/* Repairs. book 2790, 3173-3174: a REASON roll and at least a few hours; every 6 restores 1 Durability up to the starting value; a
+/* Repairs. book 2790, 3250-3251: a REASON roll and at least a few hours; every 6 restores 1 Durability up to the starting value; a
    wrecked vehicle that regains at least 1 point is no longer wrecked; a failed roll fixes the current Durability as the new maximum, and
    a machine at 0 is then destroyed. A disabled engine or weapon needs its own REASON roll and a few hours.
    Returns { durability, max, wrecked, destroyed }. */
@@ -99,5 +99,5 @@ export function repairOutcome({ durability, max, sixes }) {
   return { durability, max: durability, wrecked: durability === 0, destroyed: durability === 0 };
 }
 
-/* book 3137-3156: some vehicle weapons hit only ground, aerial or space targets. The caller says which class the target is in. */
+/* book 3190-3218 (the notes column of the table 3149-3219): some vehicle weapons hit only ground, aerial or space targets. The caller says which class the target is in. */
 export const weaponMayTarget = (profile, targetClass) => !profile.only || profile.only === targetClass;

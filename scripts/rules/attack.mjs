@@ -13,7 +13,7 @@ import { MIN_RANGE_PENALTY } from "./zones.mjs";
    grappleAttack  book 2497: a slugfest attack by the one holding, cannot be blocked
    counterattack  book 2448: hits automatically, cannot be blocked (ruling 4)
    shooting       book 2510, 2524: AGILITY, full action, dodged
-   ram            book 3106: a slugfest attack rolled with AGILITY (+ Maneuverability); in a chase it cannot be blocked (book 3434) */
+   ram            book 3148: a slugfest attack rolled with AGILITY (+ Maneuverability); in a chase it cannot be blocked (book 3434) */
 export const ATTACKS = {
   slugfest: { attr: "fighting", defence: "block", cost: ["full"], family: "slugfest" },
   charge: { attr: "strength", defence: "dodge", cost: ["full", "quick"], family: "slugfest" },

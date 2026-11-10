@@ -37,7 +37,7 @@ eq(C.critForHit({ taken: 4, healthBefore: 9, deadlyHit: true, target: { kind: "h
 eq(C.critForHit({ taken: 9, healthBefore: 2, target: { kind: "npc" } }), { broken: true, newlyBroken: true, crit: null, gmChoice: true }, "ordinary NPC: GM states the result (book 2771)");
 eq(C.critForHit({ taken: 9, healthBefore: 2, target: { kind: "majorNpc" } }).crit, { bonus: 7, cause: "broken" }, "major NPC rolls like a hero");
 eq(C.critForHit({ taken: 9, healthBefore: 2, target: { kind: "minions" } }).crit, null, "minions never crit (book 2828)");
-eq(C.critForHit({ taken: 9, healthBefore: 2, target: { kind: "vehicle" } }).crit, null, "vehicles never crit (book 3159)");
+eq(C.critForHit({ taken: 9, healthBefore: 2, target: { kind: "vehicle" } }).crit, null, "vehicles never crit (book 3222)");
 
 // penalties and states
 eq(C.critPenalty([2, 4, 6], "strength"), 2, "same attribute: worst only, not cumulative");

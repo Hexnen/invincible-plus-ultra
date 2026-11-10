@@ -4,7 +4,7 @@
    which are not zones (no conversion is stated, so such weapons carry no zone range here).
    Features (book 2541-2546): singleUse, areaEffect, fullAuto, sharp, noMovement (no moving in the round of firing), mounted.
    stunEffect: the table's "STUN effect" note (book 2576, 2583); the book does not spell out its mechanics beyond pointing at the stunts.
-   only: target class restriction of some vehicle weapons (book 3137-3156). fire: Intensity of the fire a hit starts (book 3132).
+   only: target class restriction of some vehicle weapons (book 3190-3218). fire: Intensity of the fire a hit starts (book 3183).
    blocksVision: smoke grenade (book 2646). bonus 0 = the table's dash. */
 
 /* book 2557-2675 */
@@ -28,7 +28,7 @@ export const WEAPONS = {
   "Nuclear missile": { bonus: 0, damage: 12, range: null, miles: 6000, areaEffect: true, areaMiles: 1, mounted: true, singleUse: true },
 };
 
-/* book 3113-3156 */
+/* book 3149-3219 (rows 3157-3218) */
 export const VEHICLE_WEAPONS = {
   "Autocannon": { bonus: 2, damage: 4, range: [1, 10], fullAuto: true, sharp: true },
   "Tank cannon": { bonus: 1, damage: 6, range: [1, 20], areaEffect: true },
@@ -40,7 +40,7 @@ export const VEHICLE_WEAPONS = {
   "Turbolaser battery": { bonus: 2, damage: 9, range: null, miles: 300, fullAuto: true, only: "space" },
   "Energy torpedo": { bonus: 1, damage: 10, range: null, miles: 100, only: "space" },
 };
-for (const w of Object.values(VEHICLE_WEAPONS)) w.mounted = true;      // book 2546, 3105: fitted to the vehicle
+for (const w of Object.values(VEHICLE_WEAPONS)) w.mounted = true;      // book 2546, 3147: fitted to the vehicle
 
 const FLAGS = ["sharp", "fullAuto", "areaEffect", "singleUse", "noMovement", "mounted", "stunEffect", "blocksVision"];
 
