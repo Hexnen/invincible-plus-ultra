@@ -37,6 +37,41 @@ for (let seed = 1; seed <= 200; seed++) {
   throws(() => I.dealRound(r, [{ id: "h", fastReflexes: true }], { choose: () => 99 }), "choosing a card that was not drawn");
   throws(() => I.dealRound(r, [{ id: "a", keep: 3 }, { id: "b", keep: 3 }]), "two draws cannot keep the same card");
 }
+// the deal in steps: the holder sees both cards, then chooses (book 2112)
+{
+  const draws = [{ id: "npcFr", fastReflexes: true }, { id: "vet", keep: 4 }, { id: "h1", hero: true }, { id: "hFr", hero: true, fastReflexes: true }, { id: "s", surprised: true }, { id: "n2" }];
+  for (let seed = 1; seed <= 60; seed++) {
+    // the same rng gives the same cards in one call and in steps
+    const whole = I.dealRound(seededRng(seed), draws, { choose: (_, c) => Math.max(...c) });
+    const r = seededRng(seed);
+    let s = I.dealStart(r, draws);
+    const asked = [];
+    while (!s.done) { asked.push(s.pending.id); ok(s.pending.cards.length === 2 && s.pending.cards.every((c) => !s.deck.includes(c)), `two cards out of the deck are shown (seed ${seed})`); s = I.dealContinue(r, s, Math.max(...s.pending.cards)); }
+    eq(s.order, whole, `stepwise deal = one-call deal (seed ${seed})`);
+    eq(asked, ["hFr", "npcFr"], `heroes are asked before NPCs (seed ${seed})`);
+    ok(s.order.find((e) => e.id === "s").card === 10 && s.order.find((e) => e.id === "vet").card === 4, `surprise and Combat Veteran as in the one-call deal (seed ${seed})`);
+  }
+  const r = seededRng(4);
+  const s0 = I.dealStart(r, draws);
+  const frozen = JSON.stringify(s0);
+  eq(JSON.parse(frozen).pending.id, "hFr", "a DealState is plain data and survives JSON");
+  const s1 = I.dealContinue(r, JSON.parse(frozen), s0.pending.cards[1]);
+  eq(JSON.stringify(s0), frozen, "dealContinue does not modify the state it is given");
+  eq(s1.entries.find((e) => e.id === "hFr").card, s0.pending.cards[1], "the chosen card is kept");
+  ok(s1.deck.includes(s0.pending.cards[0]) || s1.pending?.cards.includes(s0.pending.cards[0]) || s1.entries.some((e) => e.card === s0.pending.cards[0]), "the other card went back into the deck");
+  throws(() => I.dealContinue(r, s0, 99), "a card that was not shown");
+  const end = I.dealContinue(r, s1, s1.pending.cards[0]);
+  eq([end.done, end.pending, end.queue.length], [true, null, 0], "done after the last choice");
+  eq(I.dealContinue(r, end, 1), end, "continuing a finished deal changes nothing");
+  throws(() => I.dealContinue(r, { ...s1, pending: null }, 1), "no choice awaited");
+  eq(I.dealStart(seededRng(2), [{ id: "a" }, { id: "b" }]).done, true, "without Fast Reflexes the deal is done at once");
+  // draw order option (book 2112 leaves it open: OQ-13)
+  const order = (opts) => { const rr = seededRng(11); const seen = []; let st = I.dealStart(rr, draws, opts); while (!st.done) { seen.push(st.entries.filter((e) => !e.kept && !e.surprised).map((e) => e.id).join(",")); st = I.dealContinue(rr, st, st.pending.cards[0]); } return seen; };
+  eq(order({}), ["h1", "h1,hFr"], "default: the hero before the holder draws first, holders when their draw comes");
+  eq(order({ reflexesFirst: true }), ["", "hFr"], "reflexesFirst: holders draw before everybody else");
+  const rf = I.dealRound(seededRng(11), draws, { reflexesFirst: true });
+  ok(new Set(rf.map((e) => e.card)).size === draws.length, "reflexesFirst deals unique cards");
+}
 // the returned card of a Fast Reflexes draw is back in the deck: with ten draws everybody still gets a card
 {
   const d = I.dealRound(seededRng(5), [{ id: "fr", hero: true, fastReflexes: true }, ...ids(9)]);
@@ -56,6 +91,11 @@ eq(I.holdOffTargets(order.map((e) => (e.id === "a" ? { ...e, acted: true } : e))
   eq(o.find((e) => e.id === "a").heldOff, true, "initiator is marked");
   eq(order[0].card, 2, "input order is not modified");
   eq(I.holdOffTargets(o, "b"), ["c"], "the one who held off is no partner any more");
+  const again = o.map((e) => (e.id === "grp" ? { ...e, acted: true } : e.id === "b" ? { ...e, card: 8 } : e));   // grp acted; a (card 7, held off) is up, b comes later
+  eq(I.holdOffTargets(again, "a"), ["b"], "default: the one who held off may hold off again (book 2281 is silent, OQ-17)");
+  eq(I.holdOffTargets(again, "a", { initiatorOnce: true }), [], "initiatorOnce: not twice in a round");
+  throws(() => I.holdOff(again, "a", "b", { initiatorOnce: true }), "holdOff honours the option");
+  eq(I.holdOff(again, "a", "b").find((e) => e.id === "a").card, 8, "and swaps without it");
   throws(() => I.holdOff(order, "c", "a"), "cannot swap with an earlier turn");
 }
 
