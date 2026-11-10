@@ -158,11 +158,11 @@ export const PL_ATTACKS = {
   "ITAC.opt.kbToward": "W stronę: {zone}",
 
   "ITAC.card.minionLoss": "Ilu pada?",
-  "ITAC.card.minionsFate": "Powaleni pomagierzy",
+  "ITAC.card.minionsFate": "Powaleni sługusi",
   "ITAC.card.knockDir": "Kierunek odrzutu",
   "ITAC.card.disarm": "Rozbrojenie",
   "ITAC.prompt.minionLoss": "Ilu pada?",
-  "ITAC.prompt.minionsFate": "Powaleni pomagierzy",
+  "ITAC.prompt.minionsFate": "Powaleni sługusi",
   "ITAC.prompt.knockDir": "W którą stronę?",
   "ITAC.prompt.disarm": "Przedmiot jest twój. Co dalej?",
 
