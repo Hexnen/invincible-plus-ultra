@@ -385,7 +385,8 @@ export function dockData(model, own, facts, t) {
   const asked = new Set((model?.prompts ?? []).map((p) => p.about));
   const bar = bars.find((b) => b.combatant === own.sel) ?? bars.find((b) => b.onTurn) ?? bars.find((b) => asked.has(b.combatant)) ?? bars[0];
   const c = facts.c?.(bar.combatant);
-  const acts = bar.actions.filter((a) => a.id !== "other");
+  const holding = (bar.statuses ?? []).includes("grappling");                                   // the holder's two actions show only while it holds someone [P4]
+  const acts = bar.actions.filter((a) => a.id !== "other" && (holding || (a.id !== "release" && a.id !== "grappleAttack")));
   const groups = GROUPS.map((g) => ({ id: g, label: t(`ITAC.ui.group.${g}`), items: acts.filter((a) => groupOf(a) === g).map((a) => ({ id: a.id, label: labelOf(t, a.label), cost: a.cost, costText: costText(t, a.cost),
     disabled: a.disabled ? reasonText(t, a.disabled) : null, armed: own.armed === a.id })) })).filter((g) => g.items.length);
   const mine = (model?.mine ?? []).filter((i) => i.actor === bar.combatant);

@@ -320,6 +320,7 @@ const city = () => { const T = new MTable(); T.hero("H1", "p1", { attrs: { stren
   const dock = (own) => UI.dockData(D.playerModel(view, { id: "p1", owns: ["H1"] }, { c: (id) => T.c[id] ?? null, online: () => true, P1 }), own, facts, t);
   const acts = dock({}).groups.flatMap((g) => g.items).map((a) => a.id);
   ok(["slugfest", "shoot", "grapple", "charge"].every((id) => acts.includes(id)), "N: the dock offers slugfest, shoot, grapple and charge");
+  ok(!acts.includes("release") && !acts.includes("grappleAttack"), "N: letting go and the grapple attack are not on the bar of somebody who holds nobody");
   let p = dock({ armed: "shoot", targets: ["N1"] }).panel;
   eq([p.weapons.items.map((x) => [x.id, x.picked]), p.opts.map((o) => [o.id, o.on]), p.maxTargets, p.submit.req.decl.weapon, p.pool.total], [[["smg", true], ["nade", false]], [["fullAuto", false]], 1, "smg", T.c.H1.attrs.agility + 1], "N: shooting: the ranged weapons, the first is taken, its bonus is in the dice");
   p = dock({ armed: "shoot", targets: ["N1", "N2"], opts: { fullAuto: true } }).panel;
