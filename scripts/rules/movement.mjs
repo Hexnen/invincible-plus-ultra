@@ -25,6 +25,8 @@ export const MOVE_MODES = {
   walk: { way: "walk", tiers: { basic: [1, null] }, actions: ["quick"], medium: "ground" },
   grown: { way: "walk", tiers: { basic: [2, null] }, actions: BOTH, medium: "ground" },
   earthDrift: { way: "walk", tiers: { basic: [2, 4] }, actions: BOTH, medium: "ground" },
+  iceSlide: { way: "walk", tiers: { basic: [2, 4] }, actions: BOTH, medium: "ground" },
+  wings: { way: "air", tiers: { basic: [2, null] }, actions: BOTH, medium: "air", ends: ["ground", "rooftop", "air"] },
   elongatedStride: { way: "walk", tiers: { basic: [2, 4] }, actions: BOTH, medium: "ground", vertical: true },
   burrowing: { way: "through", tiers: { basic: [2, 4] }, actions: BOTH, medium: "ground" },
   flight: { way: "air", tiers: TIERED, actions: BOTH, medium: "air", ends: ["ground", "rooftop", "air"] },
@@ -130,4 +132,32 @@ export function moveReach(profile, opts = {}) {
   if (c.blocked) return { plain: 0, stressed: 0 };
   const mayStress = opts.resolve === undefined || opts.resolve > 0;
   return { plain: profile.zones, stressed: profile.stressZones != null && mayStress ? profile.stressZones : profile.zones };
+}
+
+/* May this way of moving change altitude to `to` ("elevated" | "sky" | "orbit")? book 2385-2388 puts every change of altitude under
+   aerial movement ("some powers and vehicles allow aerial movement"); 2007, 2013: leaping and super-speed end on the ground or a
+   rooftop; 1922: Elongated Stride moves vertically along walls.
+   Reading 29: sky high and orbit are open to ways that may END in the air (flight, wings, an aerial vehicle); every other way is
+   refused with gmMayAllow (the book names no list). Elevated is open to every aerial way and to a way marked `vertical`; a walker
+   reaches a rooftop only by a route through the building (the zones API's route), which is not this function's question.
+   -> { ok, reason: null | "needsFlight" | "needsAerial", gmMayAllow? } */
+export function altitudeAccess(profile, to) {
+  const hovers = profile.medium === "air" && (profile.mode === "vehicle" || (profile.ends ?? []).includes("air"));
+  if (to === "sky" || to === "orbit") return hovers ? { ok: true, reason: null } : { ok: false, reason: "needsFlight", gmMayAllow: true };
+  if (to === "elevated") return profile.way === "air" || profile.way === "swing" || profile.way === "through" || profile.vertical ? { ok: true, reason: null } : { ok: false, reason: "needsAerial", gmMayAllow: true };
+  return { ok: true, reason: null };
+}
+/* book 2004 Gliding (a limit of Flight): no zone at a higher altitude than where the move started. Heights as numbers
+   (ground 0, elevated 1, sky 2, orbit 3; a floor its number). The limit's other half (at least one quick action of movement per
+   turn until landing) is a fact of the turn, asked of the action ledger by the caller. -> { ok, reason } */
+export const ALTITUDE_HEIGHT = { underground: -1, ground: 0, elevated: 1, sky: 2, orbit: 3 };
+export function glidingCheck(fromHeight, toHeight) {
+  return toHeight > fromHeight ? { ok: false, reason: "glidingUp" } : { ok: true, reason: null };
+}
+/* book 2038 Teleport Allies: one willing person in the teleporter's zone comes along; up to three more for one stress each.
+   others = how many come along. -> { ok, reason, stress } */
+export function teleportAllies(others) {
+  const n = Math.max(0, Math.trunc(others));
+  if (n > 4) return { ok: false, reason: "tooMany", stress: 0 };
+  return { ok: true, reason: null, stress: Math.max(0, n - 1) };
 }

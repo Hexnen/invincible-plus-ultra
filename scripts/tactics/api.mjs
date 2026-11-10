@@ -18,6 +18,7 @@ import * as Eco from "./economy-pure.mjs";
 import * as Desk from "./desk-pure.mjs";
 import * as Src from "./source.mjs";
 import * as Store from "./store.mjs";
+import * as Mv from "./movement.mjs";
 import * as Relay from "./relay.mjs";
 import * as Engine from "./engine.mjs";
 import * as Sys from "./system-adapter.mjs";
@@ -120,6 +121,7 @@ export const tacticsApi = {
   /* ---- the surroundings */
   compat: () => Sys.compat(),
   zonesAvailable: () => Zones.available(),
+  movement: Mv.api,                                    // P3: options(cid, to?), pick(cid), move(cid, to, opts), canTalk(a, b)
   zones: Zones,
   pure: { state: S, ops: O, director: D, engine: E, relay: R, ledger: Lg, initiative: I, scheduler: Sch, economy: Eco, desk: Desk, source: Src },
   adapter: Sys,

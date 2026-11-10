@@ -21,6 +21,19 @@ export const makeRid = (senderId, id) => `${senderId}:${String(id ?? "").replace
 
 /* ------------------------------------------------------------------ what a player may send (spec 12.2): fields per op, everything else is dropped */
 const ids = (v, n = 12) => (Array.isArray(v) ? v.filter(isId).slice(0, n) : undefined);
+/* P3: what a move may carry (spec 9.6): where to, which way of moving, the stress option, quick or full, barriers to force, who is carried */
+function moveOf(r) {
+  const out = {};
+  if (typeof r.to === "string") out.to = r.to.slice(0, 60);
+  if (typeof r.mode === "string" && isId(r.mode)) out.mode = r.mode.slice(0, 24);
+  if (r.stress === true || r.stress === 1) out.stress = 1;
+  if (r.pay === "quick" || r.pay === "full") out.pay = r.pay;
+  if (typeof r.airborne === "boolean") out.airborne = r.airborne;
+  if (r.force === true || r.force === 1) out.force = true;
+  else if (isObj(r.force)) out.force = Object.fromEntries(Object.entries(r.force).filter(([k, x]) => k.length <= 50 && !BAD.has(k) && (x === "door" || x === "wall")).slice(0, 12));
+  const carry = ids(r.carry, 4); if (carry) out.carry = carry;
+  return out;
+}
 function declOf(d) {
   if (!isObj(d)) return null;
   const out = {};
@@ -29,6 +42,7 @@ function declOf(d) {
   for (const k of ["weapon", "power"]) if (typeof d[k] === "string") out[k] = d[k].slice(0, 120);
   for (const k of ["zone", "special", "attr"]) if (typeof d[k] === "string") out[k] = d[k].slice(0, 40);
   if (Array.isArray(d.path)) out.path = d.path.filter((z) => typeof z === "string").slice(0, 24).map((z) => z.slice(0, 40));
+  Object.assign(out, moveOf(d));
   for (const k of ["wreck", "area", "blind", "noPush"]) if (d[k] === true || d[k] === 1) out[k] = 1;
   if (Array.isArray(d.exploits)) out.exploits = d.exploits.filter((e) => isObj(e) && isId(e.id)).slice(0, 8).map((e) => ({ id: e.id, stress: Math.max(0, Math.min(20, Math.trunc(Number(e.stress) || 0))) }));
   if (Number.isFinite(d.pulled)) out.pulled = Math.max(0, Math.trunc(d.pulled));
@@ -51,7 +65,7 @@ const SHAPES = {
   cancel: (r) => (isId(r.inst) ? { inst: r.inst } : null),
   answer: (r) => { const value = valueOf(r.value); return isId(r.prompt) && value !== undefined && value !== null ? { prompt: r.prompt, value } : null; },
   help: (r) => (isId(r.inst) && isId(r.helper) ? { inst: r.inst, helper: r.helper } : null),
-  move: (r) => (isId(r.actor) ? { actor: r.actor, to: clamp(r.to, 40), path: Array.isArray(r.path) ? r.path.filter((z) => typeof z === "string").slice(0, 24).map((z) => z.slice(0, 40)) : undefined } : null),
+  move: (r) => (isId(r.actor) ? { actor: r.actor, ...moveOf(r), action: ["openDoor", "breachDoor", "unseal"].includes(r.action) ? r.action : undefined } : null),
   exception: (r) => (isId(r.actor) && typeof r.text === "string" && r.text ? { actor: r.actor, text: clamp(r.text), inst: isId(r.inst) ? r.inst : undefined } : null),
   other: (r) => (isId(r.actor) && typeof r.text === "string" && r.text ? { actor: r.actor, text: clamp(r.text) } : null),
 };

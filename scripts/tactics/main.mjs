@@ -16,7 +16,8 @@ import * as Engine from "./engine.mjs";
 import * as Klass from "./combat-class.mjs";
 import * as Sys from "./system-adapter.mjs";
 import { setLive } from "./source.mjs";
-import { attach, setRunning, isRunning } from "./api.mjs";
+import { attach, setRunning, isRunning, tacticsApi } from "./api.mjs";
+import * as Mv from "./movement.mjs";
 import { t } from "./lang.mjs";
 
 const MOD = Store.MOD;
@@ -73,6 +74,8 @@ async function startRunning() {
   Hooks.on("userConnected", () => Prompts.sync());                          // a prompt of a player who left falls to the executor
   for (const c of game.combats ?? []) last.set(c.id, rawOf(c));
   Prompts.sync();
+  const moveHost = { ...Engine.moveHost(), request: (req) => tacticsApi.request(req) };
+  Mv.install(moveHost); Hooks.on("canvasReady", () => Mv.install(moveHost));      // P3: step listener, the map's rules driver, cost confirmation on a dragged token
   if (Store.iAmExecutor()) {
     if (!Klass.installed()) ui.notifications.warn(t("ITAC.Note.NotInstalled"), { console: false });
     Sys.compat().then((list) => { const badNames = list.filter((x) => !x.ok).map((x) => x.name); if (badNames.length) { console.warn(`${MOD} | tactics: system compatibility`, list); ui.notifications?.warn(t("ITAC.warn.compat", { names: badNames.join(", ") })); } }).catch(() => {});

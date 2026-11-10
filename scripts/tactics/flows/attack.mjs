@@ -10,6 +10,8 @@ import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 import * as C from "../catalog-pure.mjs";
 import * as K from "./kit.mjs";
+import * as MP from "../movement-pure.mjs";
+import { freeMoveChild, forcedChild } from "./move.mjs";
 
 export const STEPS = Object.freeze(["check", "gate", "reactBefore", "roll", "outcome", "stunts", "damage", "reactAfterDamage", "effects", "close"]);
 const SLUG = ["slugfest", "grapple", "grappleAttack", "counterattack", "ram"];
@@ -398,10 +400,24 @@ export const steps = {
         }
       } else if (o.dodgeMove > 0 && I.data.def?.[t]?.defence === "dodge") {                    // [B2526]: the move itself is P3; the GM card records it
         const key = `dodgeMove:${t}`;
-        if (!I.data.pk?.[key]) { R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, t), about: t, options: [{ id: "move", label: "ITAC.opt.dodgeMove", data: { zones: o.dodgeMove } }, { id: K.PASS, label: "ITAC.opt.pass" }] }); R.wait = true; return R; }
+        if (!I.data.pk?.[key]) {                                                               // P3: with a map the options are the zones the dodger reaches, any way of moving it has, no cost and no stress option
+          const zs = v.facts.zones ? MP.moveOptions(v.facts.zones, v.state, t, v.facts.c(t), undefined, { free: o.dodgeMove }).filter((x) => !x.disabled && !x.area).slice(0, 50) : [];
+          R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, t), about: t, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated } })),
+            { id: "move", label: "ITAC.opt.dodgeMove", data: { zones: o.dodgeMove } }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { zones: o.dodgeMove } }); R.wait = true; return R; }
         if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
-        if (once(key) && K.answerId(v, I, key) === "move") (I.data.notes ??= []).push({ note: "dodgeMoveByHand", target: t, zones: o.dodgeMove });
+        if (once(key)) {
+          const a = K.answerId(v, I, key), pick = K.promptOf(v, I, key)?.options?.find((x) => x.id === a)?.data;
+          if (a === "move") (I.data.notes ??= []).push({ note: "dodgeMoveByHand", target: t, zones: o.dodgeMove });       // no map, or a place the options do not name: by hand
+          else if (pick?.to) { R.push = freeMoveChild(t, pick.to, pick.mode, o.dodgeMove); return R; }                  // [B2526]: one transaction with the attack
+        }
       }
+    }
+    /* P3: an approved Knockback throws the target straight away from the attacker, half the attacker's STRENGTH in zones [B2435]; the forced-move
+       flow asks the GM to confirm the chain (spec 9.5 step 6) and settles barriers. Slam [B2494] follows the charge route: by the GM's forcedMove until charges exist. */
+    if (v.facts.zones) for (const p of I.data.stunts ?? []) {
+      if (p.stunt !== "knockback" || !I.data.out[p.target]?.hit || !v.facts.c(p.target) || !once(`kb:${p.target}`)) continue;
+      R.push = forcedChild(p.target, { awayFrom: I.actor, distance: stunts.knockbackDistance(v.facts.c(I.actor)?.attrs?.strength ?? 0), damage: I.data.dmg?.[p.target]?.raw ?? 0, by: I.actor, kind: "knockback" });
+      return R;
     }
     R.goto = "close";
     return R;

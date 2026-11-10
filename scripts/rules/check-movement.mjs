@@ -82,4 +82,17 @@ eq(M.moveReach(P("flight"), { conditions: { highGravity: true } }), { plain: 0, 
   ok(Z.routeBetween(g, "a", "b") === null && M.moveCost(null, P("walk")).reason === "noRoute", "no route, no price");
 }
 
+/* P3 additions: two more ways of moving, altitude access, Gliding, Teleport Allies */
+eq([P("iceSlide").zones, P("iceSlide").stressZones, P("iceSlide").medium], [2, 4, "ground"], "Ice Slide moves like Earth Drift (book 1651)");
+eq([P("wings").zones, P("wings").stressZones, P("wings").way, P("wings").ends], [2, null, "air", ["ground", "rooftop", "air"]], "wings of a changed shape: 2 zones, no stress option (book 1956)");
+eq(M.altitudeAccess(P("flight"), "sky"), { ok: true, reason: null }, "a flyer reaches sky high");
+eq(M.altitudeAccess(P("wings"), "orbit").ok, true, "wings too");
+eq(M.altitudeAccess(P("leaping"), "sky"), { ok: false, reason: "needsFlight", gmMayAllow: true }, "a leaper must land (book 2007): not sky high, the GM may allow");
+eq(M.altitudeAccess(P("teleportation"), "sky").reason, "needsFlight", "teleportation counts zones: sky high is the GM's word");
+eq(M.altitudeAccess(M.moveProfile("vehicle", { speed: 3, aerial: true }), "sky").ok, true, "an aircraft");
+eq([M.altitudeAccess(P("walk"), "elevated").reason, M.altitudeAccess(P("leaping"), "elevated").ok, M.altitudeAccess(P("elongatedStride"), "elevated").ok, M.altitudeAccess(P("swinging"), "elevated").ok], ["needsAerial", true, true, true], "elevated: aerial ways and walls climbed (book 1922)");
+eq(M.altitudeAccess(P("walk"), "ground").ok, true, "coming down is not asked here");
+eq([M.glidingCheck(1, 1).ok, M.glidingCheck(1, 0).ok, M.glidingCheck(0, 1)], [true, true, { ok: false, reason: "glidingUp" }], "Gliding never climbs (book 2004)");
+eq([M.teleportAllies(0).stress, M.teleportAllies(1).stress, M.teleportAllies(2).stress, M.teleportAllies(4).stress, M.teleportAllies(5).ok], [0, 0, 1, 3, false], "Teleport Allies: one free, up to three more for a stress each (book 2038)");
+
 done("check-movement");
