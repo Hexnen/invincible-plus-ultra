@@ -17,7 +17,7 @@ for (const f of files) {
   ok(!/Math\.random/.test(code), `${f}: no Math.random (randomness is injected)`);
   if (f !== "index.mjs") ok(/book \d+|ruling \d+/.test(src), `${f}: comments cite book lines or rulings`);
 }
-eq(Object.keys(R).sort(), ["attack", "challenge", "chase", "crits", "damage", "dice", "hazards", "initiative", "maneuvers", "stunts", "vehicles", "weapons", "zones"], "index exports every module");
-eq(files.length, 14, "13 rule modules + index");
+eq(Object.keys(R).sort(), ["attack", "challenge", "chase", "conditions", "crits", "damage", "dice", "hazards", "initiative", "maneuvers", "movement", "stunts", "vehicles", "weapons", "zones"], "index exports every module");
+eq(files.length, 16, "15 rule modules + index");
 
 done("check-pure");

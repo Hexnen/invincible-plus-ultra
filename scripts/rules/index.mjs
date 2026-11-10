@@ -12,3 +12,5 @@ export * as weapons from "./weapons.mjs";
 export * as vehicles from "./vehicles.mjs";
 export * as chase from "./chase.mjs";
 export * as challenge from "./challenge.mjs";
+export * as movement from "./movement.mjs";
+export * as conditions from "./conditions.mjs";
