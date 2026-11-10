@@ -151,7 +151,7 @@ export function expectedPushStress(pool, given = "always") {
    push: "never" | "always" | "onFail" (attacker pushes before seeing the defence, only without a 6: ruling 3 "beforeDefence")
        | "ifLosing" (attacker sees the defence first and pushes when not winning: ruling 3 "afterDefence").
    defencePool null/undefined = unopposed. Returns { win, tie, lose, net } with net[k] = P(exactly k sixes left after cancelling), net[0] = P(not winning);
-   tie = P(equal 6s, at least... including 0-0), lose = P(fewer 6s than the defender). */
+   tie = P(equal 6s, 0-0 included), lose = P(fewer 6s than the defender). */
 export function opposedOdds(attackPool, defencePool = null, push = "never") {
   const n = poolSize(attackPool);
   const def = defencePool == null ? [1] : binomial(poolSize(defencePool), P6);
