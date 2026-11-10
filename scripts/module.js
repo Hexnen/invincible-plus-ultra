@@ -1872,9 +1872,10 @@ import("./session/main.mjs")
   .then((session) => session.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | end-of-session panel not loaded (everything else is unaffected)`, err));
 
-/* TACTICAL COMBAT, PACKAGE P1 (scripts/tactics/): the module's own card initiative (replaces Year Zero Engine: Combat), the action ledger, the trigger
-   scheduler with the end-of-scene procedure, the GM executor + relay, api.tactics. Off unless a fight is started; with the setting tacticsInitiative off
-   (or yze-combat still enabled) the tracker is not touched. Same mechanism and recorded phases as the blocks above. */
+/* TACTICAL COMBAT (scripts/tactics/): the module's own card initiative (replaces Year Zero Engine: Combat), the action ledger, the trigger scheduler with the
+   end-of-scene procedure, the action engine (stack, prompts, reaction windows, GM overrides, journal with undo), the per-observer view, the executor + relay,
+   the system and zones adapters, api.tactics. With the world setting tacticsEnabled off (the default) only the settings and an idle api.tactics exist: no Combat
+   class, no socket listener, no hook. With yze-combat still enabled the tracker is not touched. Same mechanism and recorded phases as the blocks above. */
 import("./tactics/main.mjs")
   .then((tactics) => tactics.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | tactical combat not loaded (everything else is unaffected)`, err));
