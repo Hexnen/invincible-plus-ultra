@@ -371,7 +371,7 @@ function paintPips(card, item) {
   const sayParts = [];
   groups.forEach((g) => {
     const label = g.slots > 1 ? ` (${t("IPT.Slot", { n: g.slot, m: g.slots })})` : "";
-    sayParts.push(g.pips.map((p) => `${t(`IPT.Pip.${p.k}`)}${label}: ${t(`IPT.Pip.${p.state}`)}`).join(", "));
+    sayParts.push(g.pips.map((p) => `${t(`IPT.Pip.${p.lk ?? p.k}`)}${label}: ${t(`IPT.Pip.${p.state}`)}`).join(", "));
   });
   if (box.dataset.key !== key) {
     box.dataset.key = key;

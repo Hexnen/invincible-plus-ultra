@@ -17,7 +17,7 @@ for (const f of ["main.mjs", "message.mjs", "tray.mjs"]) {
 }
 for (const k of used) if (!(k in EN) || !(k in PL)) fail(`used but not defined in both languages: ${k}`);
 // keys derived by hand: t(`ITN.Act.${kind}`)
-for (const k of ["fast", "slow", "one", "used", "open"]) if (!(`ITN.Act.${k}` in EN) || !(`ITN.Act.${k}` in PL)) fail(`action label ${k}`);
+for (const k of ["fast", "slow", "one", "full", "quick", "used", "open", "lost"]) if (!(`ITN.Act.${k}` in EN) || !(`ITN.Act.${k}` in PL)) fail(`action label ${k}`);
 for (const n of ["Message", "Tray", "Confirm", "AskAll", "GM", "Sound", "PlayersEnd"]) for (const p of ["Name", "Hint"]) if (!(`ITN.Settings.${n}.${p}` in EN) || !(`ITN.Settings.${n}.${p}` in PL)) fail(`settings ${n}.${p}`);
 console.log(bad ? `${bad} problem(s)` : `OK: ${Object.keys(EN).length} keys, ${used.size} used directly, EN = PL`);
 process.exit(bad ? 1 : 0);

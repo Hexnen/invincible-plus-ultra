@@ -29,7 +29,7 @@ export const STATUSES = ["active", "installing", "disabled", "broken", "lost"];
 export const CAUSES = ["manual", "stress", "damage", "undo", "chargen", "base-buy"];
 export const SOURCES = ["drop", "chargen", "sheet", "compendium", "transfer"];
 export const MODES = ["public", "gm", "blind"];
-export const ACTIONS = ["fastAction", "slowAction"];
+export const ACTIONS = ["fastAction", "slowAction", "fullAction", "quickAction"];   // the last two: tactical combat (scripts/tactics/)
 
 /* ------------------------------------------------------------------ tab, categories, keys */
 T("IPL.Tab", "Log", "Dziennik");
@@ -68,6 +68,7 @@ for (const [k, en, pl] of [
 ]) T(`IPL.Cause.${k}`, en, pl);
 for (const [k, en, pl] of [["drop", "dropped on the sheet", "upuszczone na kartę"], ["chargen", "from the generator", "z generatora"], ["sheet", "created on the sheet", "utworzone na karcie"], ["compendium", "from a compendium", "z kompendium"], ["transfer", "given from the base", "przekazane z bazy"]]) T(`IPL.Src.${k}`, en, pl);
 for (const [k, en, pl] of [["public", "public roll", "rzut publiczny"], ["gm", "private roll", "rzut prywatny"], ["blind", "blind roll", "rzut w ciemno"]]) T(`IPL.Mode.${k}`, en, pl);
+T("IPL.Action.fullAction", "Full action", "Pełna akcja"); T("IPL.Action.quickAction", "Quick action", "Szybka akcja");
 T("IPL.Action.fastAction", "Fast action", "Szybka akcja"); T("IPL.Action.slowAction", "Slow action", "Wolna akcja"); T("IPL.Action.n", "Action {n}", "Akcja {n}");
 
 /* ------------------------------------------------------------------ type names (IPL.Type.*) */

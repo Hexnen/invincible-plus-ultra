@@ -6,6 +6,19 @@
    current turn. Earlier entries show "past" (unknown), later ones "open". While the round's initiative is still being drawn everything is "open".
    A token with speed N is N combatants with the same tokenId (duplicateCombatantOnCombatStart): one pip group per entry. */
 import { yzeOn, yzeWaiting, yzeMode, hasStatus } from "../yze.mjs";
+/* TACTICAL COMBAT (scripts/tactics/): a combat that carries the module's own state is read from that state instead (source.mjs): one group per
+   combatant with three pips (full, quick, quick; state "used" | "open" | "lost"), marked `tactics: true`. Year Zero Engine: Combat is only the
+   fallback for a combat without that state. */
+import * as Tac from "../tactics/source.mjs";
+
+/* nobody has the turn yet (the round's cards are being dealt / drawn) */
+export function waitingOf(combat) {
+  try { return Tac.tacticsState(combat) ? Tac.waiting(combat) : (yzeOn() && yzeWaiting(combat)); } catch { return false; }
+}
+/* are action pips tracked for this combat at all? */
+export function actionsOn(combat) {
+  try { const s = Tac.tacticsState(combat); return s ? s.mode !== "off" : (yzeOn() && yzeMode() !== "none"); } catch { return false; }
+}
 
 /* the combat the pips belong to: the active combat of the viewed scene (or scene-less), else the one the tracker views; only once started */
 export function pickCombat() {
@@ -21,6 +34,7 @@ export const isActionStatus = (id) => id === "fastAction" || id === "slowAction"
 /* [{ slot, slots, active, pips: [{ k: "fast"|"slow"|"one", state: "used"|"open"|"past" }] }] or null (no combat / not in it / mode none / adaptations off) */
 export function groupsFor(tokenIds, actor, combat) {
   try {
+    if (combat && Tac.tacticsState(combat)) return Tac.groupsFor(tokenIds, combat);
     if (!combat || !actor || !yzeOn()) return null;
     const mode = yzeMode();
     if (mode === "none") return null;
@@ -51,6 +65,7 @@ export function groupsFor(tokenIds, actor, combat) {
 export function isTurnOf(tokenIds, combat) {
   try {
     const cb = combat ?? pickCombat();
+    if (Tac.tacticsState(cb)) return Tac.isTurnOf(tokenIds, cb);
     const id = cb?.combatant?.tokenId;
     return !!id && tokenIds.includes(id) && !(yzeOn() && yzeWaiting(cb));
   } catch { return false; }

@@ -15,10 +15,16 @@
    days / weeks is neither charged nor refunded (no key is recorded for it, so a later switch back to rounds finds nothing to refund; a point already
    charged while it was in rounds is not given back after the switch).
    Updates tagged turnEvents:false (core's own reorder after rolling initiative) are ignored: the pointer only follows the reordered list.
-   Nothing here may break combat: all entry points are try / catch, updates go through one sequential queue. */
+   Nothing here may break combat: all entry points are try / catch, updates go through one sequential queue.
+   TACTICAL COMBAT (scripts/tactics/, the module's own card initiative): everything above describes a combat run by core or by Year Zero Engine:
+   Combat. In a combat that carries the module's own state a challenge has no card and no turn [R22] [I12]; its time limit counted in rounds
+   runs down by one at the END of every round (onTacticsRound below), and when it reaches 0 the GM gets the "time is up" card
+   (api.tactics.gm.challengeFail). That state only moves the round forward (a finished round is never reopened), so there is no refund path. */
 import * as Camera from "./camera.mjs";
 import { t, unitOf, DEFAULT_UNIT } from "./lang.mjs";
 import { yzeWaiting } from "../yze.mjs";
+import { tacticsState } from "../tactics/source.mjs";
+import { clockTick } from "../tactics/scheduler-pure.mjs";
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (challenges combat) |`;
@@ -68,8 +74,30 @@ function tick(actor, delta, rec) {
 
 const posCmp = (r1, t1, r2, t2) => (r1 - r2) || (t1 - t2);
 
+/* tactical combat: one point per finished round for every challenge in the fight [R22] */
+function onTacticsRound(combat, changes) {
+  if (changes?.round === undefined) return;
+  const R = Number(combat.round) || 0, pr = Number(combat.previous?.round) || 0;
+  if (pr < 1 || R <= pr) return;
+  for (let r = Math.max(pr, R - MAX_ROUNDS_JUMP); r < R; r++) {
+    for (const c of combat.combatants) {
+      const actor = c?.token?.actor;
+      if (!actor || actor.type !== "challenge" || unitOf(actor) !== DEFAULT_UNIT || c.isDefeated) continue;
+      const key = `${combat.id}:end${r}:${tokenOf(c)}`;
+      if (counted.has(key)) continue;
+      const rec = { combatId: combat.id, round: r, tid: tokenOf(c), applied: null };
+      counted.set(key, rec);
+      const d = actor.system?.derived?.resolve;
+      const failed = clockTick({ value: d?.value, max: d?.max }).failed;
+      tick(actor, -1, rec);
+      if (failed) chain = chain.then(() => { if (rec.applied) return game.modules.get(MOD)?.api?.tactics?.gm?.challengeFail(c.id, combat); }).catch((e) => console.warn(LOG, e));
+    }
+  }
+}
+
 function onUpdateCombat(combat, changes, options) {
   if (!combat || !game.user.isActiveGM || !enabled()) return;
+  if (tacticsState(combat)) { onTacticsRound(combat, changes); return; }
   if (changes?.round === undefined && changes?.turn === undefined) return;
   // Year Zero Engine: Combat redraw of the round (update({turn: 0}, {diff: false}) after the initiative reset) is a rebuild of the order, not a move
   if (changes?.round === undefined && options?.diff === false) return;
