@@ -1,7 +1,7 @@
 // node scripts/tactics/check-relay.mjs -- the relay's pure half (spec 12): trust, whitelist, limits, replies; then abuse cases against the engine itself.
-import { ok, eq, done, Table } from "./testkit.mjs";
+import { ok, eqc as eq, done, Table } from "./testkit.mjs";
 import * as R from "./relay-pure.mjs";
-import * as E from "./engine-pure.mjs";
+import * as D from "./director-pure.mjs";
 
 const users = { gm: { id: "gm", staff: true }, p1: { id: "p1", staff: false }, p2: { id: "p2", staff: false } };
 const ctx = (senderId, o = {}) => ({ senderId, user: (id) => users[id] ?? null, combatId: "C1", gate: o.gate ?? new R.Gate(), now: o.now ?? 1000, seen: o.seen ?? new Map() });
@@ -43,7 +43,9 @@ eq(R.normalize({ op: "other", actor: "H1", text: "" }).code, "badInput", "empty 
 eq(R.normalize({ op: "other", actor: "H1", text: "z".repeat(5000) }).code, "tooBig", "payload above 4 KB");
 eq(R.normalize({ op: "manual", inst: "a1", result: { note: "z".repeat(5000) } }, { staff: true }).ok, true, "staff are not held to 4 KB");
 eq(R.sizeOf({ a: "ąę" }), 12, "size is counted in UTF-8 bytes");
-for (const op of E.PLAYER_OPS) ok(R.normalize({ op, actor: "H1", inst: "a1", prompt: "p1", helper: "H1", value: "x", text: "t", round: 1, slot: 0, decl: {} }).ok, `player op ${op} has a shape`);
+for (const op of D.PLAYER_OPS) ok(R.normalize({ op, actor: "H1", inst: "a1", prompt: "p1", helper: "H1", value: "x", text: "t", round: 1, slot: "s1", with: "s2", unit: "full", decl: {} }).ok, `player op ${op} has a shape`);
+eq([R.normalize({ op: "holdOff", actor: "H1", with: "s2", force: true, evil: 1 }).req, R.normalize({ op: "holdOff", actor: "H1" }).code], [{ op: "holdOff", actor: "H1", with: "s2" }, "badInput"], "the round driver's player operations pass its own whitelist");
+eq([R.normalize({ op: "nextRound" }).code, R.normalize({ op: "start" }).code, R.normalize({ op: "nextRound", force: true }, { staff: true }).ok], ["noPermission", "noPermission", true], "the round belongs to the GM");
 
 /* ---- limits */
 {

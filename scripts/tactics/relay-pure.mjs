@@ -1,12 +1,14 @@
-/* Tactical combat, package P2: RELAY, the pure half (spec section 12). NO Foundry globals (node-tested in check-relay.mjs).
+/* Tactical combat: RELAY, the pure half (spec section 12). NO Foundry globals (node-tested in check-relay.mjs).
    Protocol constants, the request whitelist per operation, the limits for non-staff, request ids, envelopes, and the decisions of both ends
    (is this incoming request admissible; is this incoming reply mine). relay.mjs only moves messages. Modelled on scripts/session (reviewed pattern). */
-import { PLAYER_OPS, GM_OPS, ERROR_CODES } from "./engine-pure.mjs";
+import { ERROR_CODES } from "./engine-pure.mjs";
+import { PLAYER_OPS, GM_OPS, ROUND_PLAYER_OPS } from "./director-pure.mjs";
+import * as O from "./ops-pure.mjs";
 
 export const PROTO = 1;
 export const KIND = Object.freeze({ req: "tcreq", res: "tcres", ev: "tcev", roll: "tcroll" });
 export const LIMITS = Object.freeze({ bytes: 4096, perMin: 90, inFlight: 3, text: 300, timeout: 8000, staleWait: 900 });   // spec 12.1
-export const RELAY_CODES = Object.freeze([...new Set([...ERROR_CODES, "relay"])]);
+export const RELAY_CODES = Object.freeze([...new Set([...ERROR_CODES, "relay", "noPrev"])]);          // every code either machine or the transport can answer
 const ID_RE = /^[A-Za-z0-9_.-]{1,40}$/;
 const BAD = new Set(["__proto__", "prototype", "constructor"]);
 export const isId = (v) => typeof v === "string" && ID_RE.test(v) && !BAD.has(v);
@@ -50,8 +52,6 @@ const SHAPES = {
   answer: (r) => { const value = valueOf(r.value); return isId(r.prompt) && value !== undefined && value !== null ? { prompt: r.prompt, value } : null; },
   help: (r) => (isId(r.inst) && isId(r.helper) ? { inst: r.inst, helper: r.helper } : null),
   move: (r) => (isId(r.actor) ? { actor: r.actor, to: clamp(r.to, 40), path: Array.isArray(r.path) ? r.path.filter((z) => typeof z === "string").slice(0, 24).map((z) => z.slice(0, 40)) : undefined } : null),
-  endTurn: (r) => (isId(r.actor) && Number.isFinite(r.round) && (typeof r.slot === "string" || Number.isFinite(r.slot)) ? { actor: r.actor, round: Math.trunc(r.round), slot: typeof r.slot === "string" ? r.slot.slice(0, 40) : Math.trunc(r.slot) } : null),
-  holdOff: (r) => (isId(r.actor) ? { actor: r.actor } : null),
   exception: (r) => (isId(r.actor) && typeof r.text === "string" && r.text ? { actor: r.actor, text: clamp(r.text), inst: isId(r.inst) ? r.inst : undefined } : null),
   other: (r) => (isId(r.actor) && typeof r.text === "string" && r.text ? { actor: r.actor, text: clamp(r.text) } : null),
 };
@@ -64,6 +64,12 @@ export function normalize(req, { staff = false } = {}) {
   if (staff) return sizeOf(req) <= 64 * 1024 ? { ok: true, req } : { ok: false, code: "badInput" };
   if (!PLAYER_OPS.includes(req.op)) return { ok: false, code: "noPermission" };
   if (sizeOf(req) > LIMITS.bytes) return { ok: false, code: "tooBig" };
+  if (ROUND_PLAYER_OPS.includes(req.op)) {                          // the round driver's own operations: its own whitelist (ops-pure.normalize), one definition
+    const n = O.normalize(req, { staff: false });
+    if (!n.ok) return { ok: false, code: n.error?.code === "notOwner" ? "noPermission" : "badInput" };
+    const { type, ...rest } = n.action;
+    return { ok: true, req: { op: type, ...rest } };
+  }
   const shaped = SHAPES[req.op]?.(req);
   if (!shaped) return { ok: false, code: "badInput" };
   for (const k of Object.keys(shaped)) if (shaped[k] === undefined) delete shaped[k];

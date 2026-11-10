@@ -1,10 +1,14 @@
-/* Tactical combat, package P2: HIDDEN INFORMATION (spec section 10). NO Foundry globals (node-tested in check-view.mjs).
+/* Tactical combat: HIDDEN INFORMATION (spec section 10). NO Foundry globals (node-tested in check-view.mjs).
    `viewFor(state, viewer, meta)` is what a non-staff client may render from; `publicEvent(ev, meta)` filters the public hook stream (spec 16).
-   NOTE FOR THE MERGE: spec 10 places viewFor in state-pure.mjs (P1's file). It lives here until P1 lands; move or re-export it there.
+   This is the ONE view the runtime uses (api.tactics.view). It stands on the base layer `state-pure.viewFor`, which owns the initiative part
+   (hidden members leave their slots, the undealt cards are nobody's business) and the round driver's prompts; the action engine's records
+   (stack, rolls, outcomes, knowledge, tokens) are filtered here.
      viewer = { id, staff, owns: [combatantId] }       owns = combatants whose actor the user owns (OWNER), resolved by the caller
      meta   = { hidden: [combatantId], npc: [combatantId] }   hidden = Foundry's own `hidden` flag on the token/combatant [spec 10]
    Two layers: a structured pass (what a player may know about things they can see) and a final generic scrub that removes every trace of a concealed
    combatant's id, so the guarantee "a hidden combatant leaks nothing" does not depend on the structured pass knowing every field. */
+
+import { viewFor as baseView } from "./state-pure.mjs";
 
 const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -81,14 +85,15 @@ export function viewFor(state, viewer, meta = {}) {
   const V = { id: viewer?.id ?? null, staff: false, owns: Array.isArray(viewer?.owns) ? viewer.owns : [] };
   const concealed = concealedFor(state, V, meta);
   const keepKey = (o) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !concealed.has(k)));
-  const mineRec = (r) => ["holder", "owner", "who", "combatant"].some((k) => V.owns.includes(r?.[k]));
+  const mineRec = (r) => V.owns.includes(r?.subject?.combatant) || V.owns.includes(r?.source?.owner);          // Trigger of spec 6.1: its subject or the owner of its source
+  const base = baseView(state, { gm: false, userId: V.id, hidden: [...concealed] });
   const prompts = {};
   for (const p of Object.values(state.prompts ?? {})) { if (p.about && concealed.has(p.about)) continue; const q = promptView(p, V); if (q) prompts[p.id] = q; }
   const ledger = {};
   for (const [cid, l] of Object.entries(keepKey(state.ledger))) ledger[cid] = l;       // spent actions are table knowledge (spec 4: everyone sees who has acted)
   const out = {
     v: state.v, rev: state.rev, mode: state.mode, kind: state.kind, round: state.round, phase: state.phase,
-    init: clone(state.init), ledger: clone(ledger), statuses: clone(keepKey(state.statuses)), free: clone(keepKey(state.free)),
+    init: base.init, sched: base.sched, ledger: clone(ledger), statuses: clone(keepKey(state.statuses)), free: clone(keepKey(state.free)),
     stack: (state.stack ?? []).map((i) => instView(state, i, V, meta, concealed)),
     prompts,
     triggers: clone((state.triggers ?? []).filter(mineRec)),                          // other people's armed reactions are not public

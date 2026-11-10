@@ -1,5 +1,5 @@
 // node scripts/tactics/check-view.mjs -- hidden information (spec 10): what a player's view and the public event stream may contain.
-import { ok, eq, done, Table, seeded } from "./testkit.mjs";
+import { ok, eqc as eq, done, Table, seeded } from "./testkit.mjs";
 import * as V from "./view-pure.mjs";
 
 const HID = "HIDDEN01", SECRET = "Lurker";
@@ -89,7 +89,8 @@ const slug = (actor, target, extra = {}) => ({ op: "declare", actor, decl: { act
   eq(V.viewFor(G.state, p2, meta(G)).knowledge.H1 ?? null, null, "knowledge rows of other observers are not shown");
   // triggers and exception text
   const X = mk();
-  await X.gm({ op: "triggerAdd", trigger: { at: "enterZone", owner: "H2", run: { type: "note" } } });
+  await X.gm({ op: "triggerAdd", trigger: { at: "zoneEnter", subject: { combatant: "H2" }, run: { type: "note" }, source: { kind: "power", owner: "H2", name: "Trap" } } });
+  eq((await X.gm({ op: "triggerAdd", trigger: { at: "enterZone", owner: "H2", run: { type: "note" } } })).error?.code, "badInput", "a trigger is the Trigger of the state (a known point), nothing else is stored");
   eq([V.viewFor(X.state, p1, meta(X)).triggers.length, V.viewFor(X.state, p2, meta(X)).triggers.length], [0, 1], "an armed trigger is shown to its owner only");
   X.setRange("H1", "N1", 2);
   await X.req("p1", slug("H1", "N1", { exception: { text: "secret plan" } }));
