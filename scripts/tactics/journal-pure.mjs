@@ -168,7 +168,9 @@ export function diffWrites(before, after, base) {
       const b = new Map(before.map((e) => [e.id, e])), a = new Map(after.map((e) => [e.id, e]));
       const kept = after.filter((e) => b.has(e.id)).map((e) => e.id), was = before.filter((e) => a.has(e.id)).map((e) => e.id);
       const appended = after.slice(kept.length).every((e) => !b.has(e.id));
-      if (same(kept, was) && appended) return [...new Set([...b.keys(), ...a.keys()])].flatMap((id) => diffWrites(b.get(id), a.get(id), [...base, `#${id}`]));
+      // removed records must be the tail of `before`: an inverse can only re-append, so a record taken from the middle would come back in another place
+      const gone = before.filter((e) => !a.has(e.id)).map((e) => e.id), tail = same(before.slice(before.length - gone.length).map((e) => e.id), gone);
+      if (same(kept, was) && appended && tail) return [...kept, ...gone.reverse(), ...after.slice(kept.length).map((e) => e.id)].flatMap((id) => diffWrites(b.get(id), a.get(id), [...base, `#${id}`]));
     }
   }
   return [[base, after ?? null]];
