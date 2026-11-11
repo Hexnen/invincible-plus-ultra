@@ -125,6 +125,7 @@ export function askCard(a, handlers = {}) {
   if (seen.size > 400) seen.clear();
   /* an answer: its picture (a reaction, a stunt), its name, the mark of its speed and its Resolve price, then the chance; what the
      marks stand for is said in words in the aria-label and, for a stunt, in its tooltip */
+
   /* U86-SCAFFOLD: an answer to something done by somebody else (a block, a dodge) is taken out of turn: the mark says so, and the
      answer's tooltip names the marks (it had none: the price stood only in the aria-label) */
   const V = costVersion(), outOf = V && a.kind === "reaction";
@@ -133,13 +134,14 @@ export function askCard(a, handlers = {}) {
   const unitOf = (o) => o.unit ?? (V && o.cost && handlers.noneName && String(o.cost).startsWith(handlers.noneName) ? "none" : null);
   const opt = (o) => optOf(o, unitOf(o));
   const optOf = (o, unit) => h("button.ita-opt", {
-    fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: V && !o.tip && unit && o.cost ? { cost: o.cost, price: { unit, stress: o.stress, out: outOf, outName: handlers.outName } } : o.tip ?? null, pv: o.pv, pvFor: a.pvFor,      // U51: the reason of a greyed answer is written on it, not said again in a tooltip
-    attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled].filter(Boolean).join(", ") },
+    fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.tip ?? null, pv: o.pv, pvFor: a.pvFor,      // U83: a greyed answer is as large as the others; the reason and the remedy are its tooltip and aria-label
+    attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled, o.tip?.why?.fix].filter(Boolean).join(", ") },
     data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null },
     on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
   }, a.check ? icon(o.picked ? "fa-square-check" : "fa-square") : o.icon ? actIcon(o.icon) : null,      // U18: a line of a round-point queue is a tick box: ticked = it happens
-  h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(unit, { out: outOf }), stressChip(o.stress, false)),
-    !unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null, o.disabled ? h("span.ita-opt-why", { text: o.disabled }) : null));
+  h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(unit, { out: outOf }), stressChip(o.stress, false), o.disabled ? h("i.fa-solid.fa-ban.ita-opt-no", { attrs: { "aria-hidden": "true" } }) : null),
+    !unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null));
+
   /* U23: the stunts stand in their groups (on the target; another opponent; on that opponent), each group after its caption */
   const groups = [];
   for (const o of a.options) { const id = o.group?.id ?? ""; let g = groups.find((x) => x.id === id); if (!g) groups.push((g = { id, label: o.group?.label ?? null, items: [] })); g.items.push(o); }

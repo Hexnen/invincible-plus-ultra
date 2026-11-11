@@ -7,9 +7,14 @@
    RESTYLE ONLY: the system's template, its fields, its numbers and its four ways to roll are all still there and work as before.
      plate              label.title              the name of the roll (it wraps, nothing is cut)
      pool               div.dices                "N x" and the die, at the right end of the plate's row
-     what it is made of div.breakdown            a read-only number is a chip (a fact: hairline, no fill); the Bonus is a FIELD (filled,
-                                                 framed, a caret): the one thing to type. "+" stands between the parts of the pool
-     the attack's facts second div.breakdown     chips under a hairline
+     what it is made of div.breakdown            (U82) a LEDGER: one line per part of the pool, the number in a fixed column, its name beside
+                                                 it on one line (cut with an ellipsis only past the card's width; then the whole name is
+                                                 the tooltip). The Bonus is the last line and the one FIELD (filled, framed, a caret) in
+                                                 the same column. Lines never share a row, so nothing can wrap
+     the attack's facts second div.breakdown     (U82) ONE strip under a hairline, like the dock's vitals: a drawing and the number;
+                                                 damage | range as "least - greatest" (U87: one number when both are the same) | armor | stress price. The names are the tooltips
+                                                 and stay in the window for a screen reader (scripts/rolldialog.mjs names the facts;
+                                                 without it the facts keep the worded chips)
      ways to roll       footer.form-footer       the kit's contract: ONE main button (yellow, blue hard shadow) = the way the chat is set
                                                  to roll; the other ways are hollow icon buttons in the system's own order, their names in
                                                  the tooltip and still in the button for a screen reader (scripts/rolldialog.mjs names the
@@ -93,21 +98,52 @@
   font: 400 11.5px/1.15 Titles, Comic, sans-serif; letter-spacing: .07em; text-align: left; text-transform: uppercase; overflow-wrap: anywhere;
   color: var(--ipu-label);
 }
-/* "+" between the parts of the pool (not between the attack's facts: those are not added up) */
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown > div.attribute:not(:has(> .attribute-control)) + div.attribute::before {
-  content: "+"; position: absolute; left: -14px; top: 50%; width: 12px; translate: 0 -54%; text-align: center;
-  font: 700 15px/1 Roboto, sans-serif; color: var(--ipu-label); pointer-events: none;
+/* ---------- U82 the parts of the pool: a ledger. One part = one line: the number in a 46px column, the name beside it ---------- */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute {
+  grid-column: 1 / -1; grid-row: auto; justify-self: stretch;        /* the system places its tiles by count (nth-child): not here */
+  display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 0 10px; min-height: 24px; padding: 0; border: 0;
 }
-/* the Bonus: the one field. Filled and framed, so it reads as "type here" beside the chips */
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> input:not(:disabled)) {
-  padding-left: 3px; background: var(--ird-track); border: 2px solid var(--ipu-frame); cursor: text;
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute > input { field-sizing: fixed; width: 100%; min-width: 0; max-width: none; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute > label.attribute-label {
+  font-size: 12px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal;
 }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute > input:not(:disabled) {
-  field-sizing: fixed; width: 46px; max-width: none; padding: 1px 0 1px 4px; caret-color: var(--ipu-yellow); color-scheme: dark;
+/* the Bonus: the one field. Filled and framed, so it reads as "type here" under the column of numbers */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute:has(> input:not(:disabled)) { min-height: 30px; margin-top: 3px; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute > input:not(:disabled) {
+  height: 28px; padding: 1px 0 1px 4px; background: var(--ird-track); border: 2px solid var(--ipu-frame); caret-color: var(--ipu-yellow); color-scheme: dark; cursor: text;
 }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> input:not(:disabled)) label.attribute-label { color: #fff; }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> input:not(:disabled)):hover { border-color: #fff; }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> input:focus-visible) { border-color: #fff; outline: var(--ipu-ring-w) solid var(--ipu-ring-ink); outline-offset: var(--ipu-ring-gap); }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute:has(> input:not(:disabled)) > label.attribute-label { color: #fff; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute > input:not(:disabled):hover { border-color: #fff; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute > input:not(:disabled):focus-visible { border-color: #fff; outline: var(--ipu-ring-w) solid var(--ipu-ring-ink); outline-offset: var(--ipu-ring-gap); }
+
+/* ---------- U82 the attack's facts: one strip, a drawing and the number (the name is the tooltip) ---------- */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] { flex-wrap: nowrap; align-items: center; gap: 0 22px; min-width: 0; padding-left: 2px; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute { flex: 0 1 auto; gap: 6px; min-height: 26px; padding: 0; border: 0; cursor: default; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute > input { field-sizing: content; width: auto; min-width: 1ch; max-width: 6ch; pointer-events: none; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute > label.attribute-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }   /* a fact the script does not know keeps its word */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact] { flex: none; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact]::before {
+  flex: none; width: 16px; text-align: center; font: 900 13px/1 var(--ipu-fa); color: var(--ipu-label); -webkit-font-smoothing: antialiased;
+}
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="damage"]::before { content: "\e4dc"; }      /* burst */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="min"]::before { content: "\f547"; }         /* ruler */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="armor"]::before { content: "\f3ed"; }       /* shield */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="stress"]::before { content: "\f0e7"; }      /* bolt: Determination, as on the dock */
+/* the range is one fact: "least - greatest" behind one ruler */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"] { margin-left: -17px; gap: 5px; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"]::before { content: "\2013"; width: auto; font: 400 15px/1 Roboto, sans-serif; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact] > label.attribute-label {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%);
+}
+/* U87 least and greatest are the same number (Slugfest: 0 and 0): the number once. The greatest stays in the window for a screen
+   reader, out of sight like the names; the one number's tooltip is the word for range (U92) */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"][data-ird-same] {
+  position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%);
+}
+
+/* an attack that states no facts (a talent roll): no hairline over nothing */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator:has(+ div.breakdown:not(:has(> .attribute))), .application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown:not(:has(> .attribute)) { display: none; }
 
 /* ---------- the stunts window (same class): the count is the pool's place, a row per stunt with its stepper ---------- */
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> .attribute-control) { flex: 1 1 45%; justify-content: space-between; flex-direction: row-reverse; padding: 3px 4px 3px 9px; }

@@ -69,6 +69,35 @@ ok(!SURFACES.includes("tactics"), "the dock and the desk name their own tooltip 
   ok(areWays(["public", "gm"]) && areWays(["publicroll", "selfroll"]) && !areWays(["yes", "no"]) && !areWays(["public"]) && !areWays(["0", "1"]), "only the ways to roll become icon buttons");
   ok(mainWay(["yes", "no"], "gm", "no") === "no" && mainWay(["yes", "no"], "gm") === "yes", "in a question the default answer is the main one, else the first");
   ok(mainWay([], "gm") === null && mainWay(undefined, undefined) === null, "no buttons, no main way");
+  // U82: the parts of the pool are a ledger, the attack's facts one strip; neither can wrap
+  const { factKind, FACTS } = await import("./rolldialog.mjs");
+  const pl = { damage: "Obrażenia podstawowe", min: "Zasięg minimalny", max: "Zasięg maksymalny", armor: "Pancerz", stress: "Koszt stresu" };
+  ok(Object.keys(FACTS).join() === "damage,min,max,armor,stress", "the five facts the system's roll window can show are known");
+  ok(factKind(" Zasięg maksymalny ", pl) === "max" && factKind("Obrażenia podstawowe", pl) === "damage" && factKind("Pancerz", pl) === "armor", "a fact is known by the client's own word for it");
+  ok(factKind("Something new", pl) === null && factKind("", pl) === null && factKind(null, pl) === null && factKind("Pancerz", null) === null, "an unknown fact keeps its word");
+  ok(/flex-wrap:\s*nowrap/.test(rules.match(/div\.breakdown\[data-ird-facts\] \{[^}]*\}/)?.[0] ?? ""), "the strip of the attack's facts never wraps");
+  const ledger = rules.match(/div\.dices \+ div\.breakdown:not\(:has\(\.attribute-control\)\) \{[^}]*\}/)?.[0] ?? "";
+  ok(/display:\s*grid/.test(ledger) && /grid-template-columns:\s*minmax\(0, 1fr\)/.test(ledger), "the parts of the pool stand one per line");
+  ok(/div\.dices \+ div\.breakdown[^{]*label\.attribute-label \{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/.test(rules), "a part's name stays on its one line");
+  ok(/data-ird-fact\] > label\.attribute-label \{[^}]*clip-path/.test(rules) && !/data-ird-fact[^{]*label[^{]*\{[^}]*display:\s*none/.test(rules), "a fact's name stays in the window for a screen reader");
+  ok(!/content:\s*"\+"/.test(rules), "no plus signs between chips any more");
+  // U87: a range whose least and greatest are the same number is that number once
+  const { oneRange, RANGE } = await import("./rolldialog.mjs");
+  ok(oneRange("0", "0") && oneRange(0, 0) && oneRange(" 0 ", "0"), "Slugfest's range 0 and 0 is one number");
+  ok(oneRange("3", "3") && oneRange("3", "3.0") && oneRange("-1", "-1"), "any equal pair is one number, not only zeros");
+  ok(!oneRange("0", "1") && !oneRange("1", "3") && !oneRange("3", "1"), "a real span keeps both numbers");
+  ok(!oneRange("", "") && !oneRange("", "0") && !oneRange(null, undefined) && !oneRange("x", "x") && !oneRange("0", "0 m"), "a missing or unreadable range keeps the pair as the system wrote it");
+  // U92: the one number's tooltip is the plain word for range, an existing translation, and only the tooltip changes
+  const plWord = (key) => key.split(".").reduce((o, k) => o?.[k], JSON.parse(readFileSync(new URL("../lang/pl.json", import.meta.url), "utf8")));
+  ok(RANGE === "INVINCIBLE.Automation.FIELDS.rollAttack.range.label" && !Object.values(FACTS).includes(RANGE), "the word for range is the system's own label of the least-and-greatest pair");
+  ok(plWord(RANGE) === "Zasięg" && plWord(FACTS.min) === pl.min && plWord(FACTS.max) === pl.max, "the Polish word for range is the one the module already has");
+  const code = readFileSync(new URL("./rolldialog.mjs", import.meta.url), "utf8");
+  const equal = code.match(/if \(min && max && oneRange[\s\S]*?\n  \}/)?.[0] ?? "";
+  ok(/min\.dataset\.tooltip = range;/.test(equal) && /localize\(RANGE\)/.test(equal) && !/names\.(min|max)|" = "|\$\{/.test(equal), "the one number's tooltip is that word alone, not both names joined");
+  ok(!/aria-label|setAttribute|textContent\s*=|innerHTML/.test(equal) && /setAttribute\("aria-label", name\)/.test(code), "an equal range changes the tooltip only: each number keeps its own name for a screen reader");
+  const same = rules.match(/\[data-ird-fact="max"\]\[data-ird-same\] \{[^}]*\}/)?.[0] ?? "";
+  ok(/clip-path/.test(same) && /position:\s*absolute/.test(same) && !/display:\s*none|visibility:\s*hidden/.test(same), "the second number of an equal range is out of sight but stays in the window for a screen reader");
+  ok(!/\[data-ird-same\][^{]*\{[^}]*(display:\s*none|visibility:\s*hidden)/.test(rules), "nothing of an equal range is removed from the window");
   const src = readFileSync(new URL("./rolldialog.mjs", import.meta.url), "utf8");
   ok(!/\.remove\(\)|appendChild|insertBefore|\.prototype\.|addEventListener/.test(src), "rolldialog.mjs adds, removes, moves and rewires nothing");
 }

@@ -271,7 +271,7 @@ function defencePrompt(v, I, t) {
       options.push(fo);
     }
   }
-  if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget")) options.push(K.reactionOption(v, t, e));      // [B2707]: out of action, no power answers
+  if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget" && K.reactionFit(v, I, t, e).ok)) options.push(K.reactionOption(v, t, e, I));      // [B2707]: out of action, no power answers
   const live = options.filter((o) => !o.disabled);
   const ways = [...new Set(live.map((o) => String(o.id).split(":")[0]).filter((id) => id === "block" || id === "dodge"))];
   const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, action: I.action, targets: I.decl.targets.slice(0, 12) } };
@@ -311,6 +311,10 @@ function applyReaction(v, I, R, cid, key, value, when) {
   }
   const e = C.reactionsFor(v.state, cid, when, v.facts).find((x) => `r:${x.id}` === id);
   if (!e) return false;
+  /* U91: the place is asked again when the answer is acted on, as the action of a defence is: the guardian may stand elsewhere by now
+     [B2115]. Nothing is paid then. Only the GM's own answer stands against it (spec 14). */
+  const staff = K.answeredByStaff(v, I, key), fit = K.reactionFit(v, I, cid, e);
+  if (!fit.ok && !staff) { (I.data.notes ??= []).push({ note: "reactionRefused", who: cid, entry: e.id, reason: fit.reason }); return false; }
   R.effects.push({ t: "pay", who: cid, cost: e.cost, action: e.id, interrupt: 1, key: `re:${when}:${cid}`, target: [I.actor] });
   if (e.stress?.fixed) R.effects.push({ t: "stress", who: cid, n: e.stress.fixed });
   R.events.push({ type: "reaction", who: cid, kind: e.id, cost: e.cost, stress: e.stress?.fixed ?? 0, for: I.decl.targets[0] });
@@ -319,15 +323,42 @@ function applyReaction(v, I, R, cid, key, value, when) {
     return true;
   }
   if (e.reaction.effect === "swapTarget") {        // retargeting (spec 9.1 step 4 "target swap"): the reactor becomes the target; its own window opens next
-    const from = I.decl.targets.includes(value?.for) ? value.for : I.decl.targets[0];
-    I.decl.targets = I.decl.targets.map((t) => (t === from ? cid : t));
-    (I.data.retargets ??= []).push({ from, to: cid, by: e.id });
-    if (I.data.def) delete I.data.def[from];
+    const mine = K.reactionFor(v, I, cid, e);                                                    // U91: only somebody attacked in the reactor's own zone [B2115]
+    const from = mine.includes(value?.for) ? value.for : mine[0] ?? (I.decl.targets.includes(value?.for) ? value.for : I.decl.targets[0]);      // (the GM's own answer, where nobody fits)
+    if (e.reaction.roll === "attack") {            // [B2115]: FIGHTING against a slugfest attack, AGILITY against shooting; the hit is taken only on a success
+      const rk = `sw:${cid}`, attr = attack.ATTACKS[kindOf(I)]?.family === "shooting" ? "agility" : "fighting";
+      const bp = K.buildPool(v, I, rk, cid, attr, [], { rollKind: "other" });
+      for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
+      R.effects.push(K.rollEffect(rk, cid, attr, bp.pool, { label: e.label, noPush: !K.mayPush(v, cid) }));
+      (I.data.swaps ??= []).push({ key: rk, by: cid, from, entry: e.id });
+      return false;
+    }
+    swapTarget(I, from, cid, e.id);
     return false;
   }
   if (e.reaction.effect === "autoMiss") { ((I.data.forced ??= {}).autoMiss ??= {})[cid] = e.id; return false; }
   (I.data.notes ??= []).push({ who: cid, entry: e.id, when });
   return false;
+}
+const swapTarget = (I, from, to, by) => {
+  I.decl.targets = I.decl.targets.map((t) => (t === from ? to : t));
+  (I.data.retargets ??= []).push({ from, to, by });
+  if (I.data.def) delete I.data.def[from];
+};
+/** U91: the rolls of those who dive in [B2115]. Each waits for its dice (the roller may push, as on any roll of its own); with a six the
+    reactor is the target now, without one the attack goes on against the intended target and the quick action is spent all the same.
+    Somebody who is no target any more (another guardian was faster) is not replaced. -> true while a roll is still out */
+function settleSwaps(v, I) {
+  let waiting = false;
+  for (const s of I.data.swaps ?? []) {
+    if (s.done) continue;
+    if (!K.rollFinal(I, s.key)) { waiting = true; continue; }
+    s.done = 1;
+    const won = K.sixesOf(I, s.key) >= 1 && I.decl.targets.includes(s.from) && !I.decl.targets.includes(s.by);
+    if (won) swapTarget(I, s.from, s.by, s.entry);
+    else (I.data.notes ??= []).push({ note: "swapFailed", who: s.by, entry: s.entry, for: s.from, sixes: K.sixesOf(I, s.key) });
+  }
+  return waiting;
 }
 /** Drive a set of window prompts (keys). Returns "wait" or "done". */
 function runWindow(v, I, R, keys, when) {
@@ -438,8 +469,9 @@ export const steps = {
     const before = I.decl.targets.join();
     const st = runWindow(v, I, R, keys, "beforeRoll");
     if (R.push) return R;
+    const rolling = settleSwaps(v, I);                                                // U91: a guardian's roll decides whether the target changes [B2115]
     if (I.decl.targets.join() !== before) { R.goto = "reactBefore"; return R; }      // retargeted: the new target's own window opens
-    if (st === "wait") { R.wait = true; return R; }
+    if (st === "wait" || rolling) { R.wait = true; return R; }
     I.data.window = null;
     R.goto = "roll";
     return R;
@@ -788,8 +820,20 @@ export const steps = {
 
 /* ------------------------------------------------------------------ stunt options and validation */
 const stuntKind = (I) => { const k = kindOf(I); return k === "ram" ? "slugfest" : k; };
-/** who else stands in the target's zone and is not already a target of this attack (Bang Heads [B2437], Trick Shot [B2518]) */
-const othersNear = (v, I, t) => (v.facts.inZone(t) ?? []).filter((c) => c !== I.actor && !I.decl.targets.includes(c) && v.facts.c(c) && v.facts.c(c).present !== false);
+/** U90 (ruling U17-R1). The "additional opponent in the same zone" of Bang Heads [B2437] and Trick Shot [B2518]: a character who stands in the zone
+    of the target that was hit, on that target's side (hero side / NPC side: the `npc` fact, a hero's summoned allies with the heroes [B1808]) and is
+    not a target of this attack already. Never the attacker, somebody defeated or gone, a challenge or a vehicle (no opponents: things), and nobody
+    the attacker does not know of: one the attacker has as "unseen", or, for an attacker of the heroes' side (whose player reads the card), one the
+    GM keeps hidden (spec 10: the list must not give such a figure away). Before, everybody else in the zone was offered: the attacker's allies too. */
+const NO_OPPONENT = ["challenge", "vehicle"];
+function othersNear(v, I, t) {
+  const tf = v.facts.c(t), a = v.facts.c(I.actor), known = v.state.knowledge?.[I.actor] ?? {};
+  if (!tf) return [];
+  return (v.facts.inZone(t) ?? []).filter((c) => {
+    const f = v.facts.c(c);
+    return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !!f.npc === !!tf.npc && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
+  });
+}
 function ctxFor(v, I, t) {
   const tf = v.facts.c(t), w = weaponOf(v, I);
   return { attack: stuntKind(I), target: K.immunityFlags(tf), sharp: !!(v.entry(I)?.damage?.sharp ?? w?.sharp), zoneEmpty: !!v.facts.zone(t)?.empty, movementLeft: I.data.charge?.left ?? 0, otherOpponents: othersNear(v, I, t).length };   // [G-L7]: `huge` only for real huge creatures
@@ -822,7 +866,7 @@ export function validate(v, inst, prompt, value, staff = false) {
     const id = typeof value === "string" ? value : value?.id, cid = prompt.about;
     if (!id || id === K.PASS || !cid) return { ok: true };
     const e = id.startsWith("r:") ? C.reactionsFor(v.state, cid, prompt.data?.when, v.facts).find((x) => `r:${x.id}` === id) : null;
-    const now = e ? K.reactionOption(v, cid, e) : inst.decl.targets.includes(cid) ? defencePrompt(v, inst, cid).options.find((o) => o.id === id) : null;
+    const now = e ? K.reactionOption(v, cid, e, inst) : inst.decl.targets.includes(cid) ? defencePrompt(v, inst, cid).options.find((o) => o.id === id) : null;
     return now?.disabled ? { ok: false, reason: now.disabled } : { ok: true };
   }
   if (prompt.kind !== "stunts") return { ok: true };
