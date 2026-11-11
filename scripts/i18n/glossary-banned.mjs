@@ -11,7 +11,7 @@ export const BANNED = Object.freeze([
   { id: "A4", re: /walk\p{L}* wręcz/iu, use: "Walka (atrybut), bijatyka (starcie wręcz)" },
   { id: "A5", re: /Zręcznoś|ZRĘCZNOŚ/u, use: "Zwinność", allow: [/^INVINCIBLE\.Ability\.Dex\./] },
   { id: "A6", re: /(?<!\p{L})stunt/iu, use: "wyczyn" },
-  { id: "A7", re: /(?<!\p{L})push|pchnię[tc]/iu, use: "forsować rzut / forsowanie / rzut forsowany" },
+  { id: "A7", re: /(?<!\p{L})push|(?<!\p{L})pchnię[tc]/iu, use: "forsować rzut / forsowanie / rzut forsowany" },
   { id: "A8", re: /slugfest/iu, use: "Bijatyka" },
   { id: "A9", re: /obrażeni\p{L}* krytyczn|krytyczn\p{L}* (ran|obrażeni)|(?<!\p{L})krytyk/iu, use: "rana krytyczna; Próg rany" },
   { id: "A10", re: /(?<!\p{L})BN(?!\p{L})/u, use: "NPC" },

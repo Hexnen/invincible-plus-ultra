@@ -155,5 +155,21 @@ for (const k of Object.keys(PLJ)) if (k.startsWith("IPU.Sys.")) ok(k.slice(8) in
   ok(translateNotice(42, i18n) === 42 && translateNotice("x", null) === "x", "non-strings and a missing i18n are safe");
 }
 
+/* The sibling modules carry a copy of the banned list (dev/glossary-banned.mjs): a copy that is found must be identical, so one glossary rules them all.
+   Looked for next to this module, in the worktrees named by IPU_SIBLINGS (a ; separated list of folders) and in the installed modules folder. */
+{
+  const here = readFileSync(join(ROOT, "scripts", "i18n", "glossary-banned.mjs"), "utf8").replace(/\r\n/g, "\n");
+  const dirs = [...(process.env.IPU_SIBLINGS ?? "").split(";").filter(Boolean)];
+  for (const n of ["moinen-maps", "invincible-splash", "invincible-balancer"]) {
+    dirs.push(join(ROOT, "..", n));
+    if (process.env.LOCALAPPDATA) dirs.push(join(process.env.LOCALAPPDATA, "FoundryVTT", "Data", "modules", n));
+  }
+  for (const d of new Set(dirs)) {
+    const f = join(d, "dev", "glossary-banned.mjs");
+    if (!existsSync(f)) continue;
+    ok(readFileSync(f, "utf8").replace(/\r\n/g, "\n") === here, `${f} differs from scripts/i18n/glossary-banned.mjs (copy this module's file over it)`);
+  }
+}
+
 console.log(failed ? `FAIL check-glossary: ${failed} of ${checks} checks failed` : `OK ${checks} checks (check-glossary; ${liveNote})`);
 process.exit(failed ? 1 : 0);
