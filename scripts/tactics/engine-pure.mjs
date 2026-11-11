@@ -518,9 +518,34 @@ async function opAmend(X, a) {
   const probe = { ...inst, decl };
   const l = K.legality(view(X), probe, FLOWS[probe.flow]);
   if (!l.ok && !X.user.staff) return bad("illegal", { reason: l.reason, ...l.params });
+  /* P8d: a flow that names its own cost (a move) is priced again for what it was changed into. The price was taken once, at the
+     declaration; a move the rules refused, declared with a request for an exception, has no price (the engine does not guess a route),
+     so changing it into a legal move ran that move for nothing. The first payment is given back and the new price is paid; one that
+     cannot be paid refuses the change (the GM's own change goes through with the cost waived). [L1]-[L4] */
+  const flow = FLOWS[inst.flow], reprice = typeof flow?.price === "function", ownCost = (o) => o.i === inst.id && o.cost;
+  const price = reprice && l.ok ? flow.price(view(X), probe) : null, cost = price?.cost ?? "none";
+  let waived = false;
+  if (reprice) {
+    let s = X.state;
+    for (const op of (X.state.txOpen[inst.tx]?.ops ?? []).filter(ownCost).reverse()) if (op.t === "state") s = J.applyStateOp(s, op, true);      // as if the first price had not been paid
+    const cp = P1.canPay(s, inst.actor, cost, { interrupt: inst.cause === "interrupt", resolve: X.facts.c(inst.actor)?.resolve });
+    if (!cp.ok && !X.user.staff) return bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason });
+    waived = !cp.ok;
+  }
   await rewind(X, inst.id, FLOWS[inst.flow].STEPS[0]);
+  if (reprice) {
+    const tx = X.state.txOpen[inst.tx], paid = (tx?.ops ?? []).filter(ownCost);
+    if (paid.length) { await undoOps(X, paid, tx.round); X.state = { ...X.state, txOpen: { ...X.state.txOpen, [inst.tx]: { ...X.state.txOpen[inst.tx], ops: X.state.txOpen[inst.tx].ops.filter((o) => !paid.includes(o)) } } }; }
+  }
   const I = J.clone(instOf(X, inst.id));
   I.decl = decl; delete I.data.hold; delete I.data.holdKey; I.locked = false; I.hist = {};
+  if (reprice) {
+    if (I.data.paid) delete I.data.paid.own; I.entry = null;
+    if (cost === "full" || cost === "quick" || (cost === "free" && price?.tags)) {
+      await applyEffect(X, I, { t: "pay", who: I.actor, cost: waived ? "none" : cost, action: I.action, key: "own", own: 1, interrupt: I.cause === "interrupt", tags: price?.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");
+      I.entry = I.data.paid?.own ?? null;
+    }
+  }
   if (!l.ok) I.data.exception = { reason: l.reason, params: l.params, by: "gm" };          // spec 14.1: the GM may amend into what the rules refuse; it runs as a granted exception
   setInst(X, I);
   emit(X, I, { type: "actionDeclared", decl: publicDecl(decl), amended: true, targets: decl.targets });
@@ -641,6 +666,9 @@ export function previewFor(state, facts, user, req) {
 async function opHelp(X, a) {
   const inst = instOf(X, a.inst);
   if (!inst || !inst.actor) return bad("gone");
+  /* P8d (spec 10; ruling P8-R17): the action of somebody the helper's player cannot know about (hidden by the GM, or unseen by the helper)
+     is not there to be helped. Before, the request was carried out: the hero's full action went into the hidden NPC's action. */
+  if (!X.user.staff && !owns(X, inst.actor) && (X.facts.c(inst.actor)?.hidden === true || X.state.knowledge?.[a.helper]?.[inst.actor] === "unseen")) return bad("gone");
   if (!P1.isId(a.helper) || !owns(X, a.helper)) return bad("notOwner");
   if (inst.locked) return bad("locked");
   if (a.helper === inst.actor || (inst.decl.helpers ?? []).some((h) => h.id === a.helper)) return bad("badInput");

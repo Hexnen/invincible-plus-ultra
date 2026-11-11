@@ -7,6 +7,7 @@ import * as V from "./view-pure.mjs";
 import * as I from "./initiative-pure.mjs";
 import * as Desk from "./desk-pure.mjs";
 import * as K from "./kit-pure.mjs";
+import { MTable } from "./check-kit-map.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? (env.changed === false ? "ok(unchanged)" : "ok") : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -261,6 +262,7 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
 {
   globalThis.Hooks ??= { on: () => 1, off: () => {} };
   let fake = null;
+  const game0 = globalThis.game;                 // the map table of check-kit-map.mjs put its own fake there: given back below
   globalThis.game = { ...(globalThis.game ?? {}), modules: { get: () => (fake ? { active: true, api: { zones: fake } } : null) } };
   const Z = await import("./zones-adapter.mjs");
   const place = (zone, area = null) => ({ zone, id: zone ? 1 : -1, spot: zone, area, level: area ? null : "ground" });
@@ -285,6 +287,49 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
   fake = api({ a: place("z1"), b: place("@sky", "sky") }, () => null);
   const B = mk(() => Z.range({ id: "a" }, { id: "b" }));
   eq(ans(await B.preq("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })), ["illegal", "noRange"], "D39: where the map itself says no attack is possible it is still refused");
+  globalThis.game = game0;
+}
+
+/* ================================================================== the unproven list of adversary 4, proved in node and fixed */
+/* `help` naming the action of a hidden NPC: it was CARRIED OUT (the hero's full action went into the hidden NPC's attack) */
+{
+  const mk = async (id) => { const T = new T4(); T.hero("H1", "p1").npc("N1").npc("NH", { hidden: true }).npc("NV"); T.order(["NH", "NV", "H1", "N1"]); if (id !== "NH") T.turn(id); await T.gm({ op: "declare", actor: id, decl: { action: "slugfest", targets: ["N1"] } }); return T; };
+  const paid = (T) => (T.state.ledger.H1?.entries ?? []).filter((e) => !e.void).length;
+  { const T = await mk("NH"), r = await T.preq("p1", { op: "help", inst: T.top().id, helper: "H1" }), q = await T.preq("p1", { op: "help", inst: "a999", helper: "H1" });
+    eq([ans(r), T.top().decl.helpers ?? [], paid(T)], [ans(q), [], 0], "P8d: helping the action of a hidden NPC answers as an action that is not there; nobody helps, nothing is spent"); }
+  { const T = await mk("NV"); await T.gm({ op: "knowledgeSet", observer: "H1", subject: "NV", value: "unseen" });
+    eq([code(await T.preq("p1", { op: "help", inst: T.top().id, helper: "H1" })), paid(T)], ["gone", 0], "P8d: the same for the action of somebody the helper cannot see"); }
+  { const T = await mk("NV"); eq([code(await T.preq("p1", { op: "help", inst: T.top().id, helper: "H1" })), T.top().decl.helpers.map((h) => h.id), paid(T)], ["ok", ["H1"], 1], "P8d: an action in plain sight is helped as before"); }
+  { const T = await mk("NH"); eq(code(await T.gm({ op: "help", inst: T.top().id, helper: "H1" })), "ok", "P8d: the GM puts a helper on any action"); }
+}
+/* a deck grown above ten cards for combatants the viewer does not see */
+{
+  let lower = 0, right = 0, gmDeck = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const T = new T4(); T.hero("H1", "p1"); for (let i = 1; i <= 9; i++) T.npc(`N${i}`); for (let i = 1; i <= 3; i++) T.npc(`X${i}`, { hidden: true });
+    T.rng = seeded(seed); await T.gm({ op: "start", mode: "tactical" }); await settle(T);
+    const v = T.view("p1").init, top = Math.max(...v.slots.map((s) => s.card));
+    if (top < T.state.init.deck) lower++;
+    if (v.slots.length === 10 && v.deck === Math.max(10, top)) right++;
+    if (T.view("gm").init.deck === 13 && T.state.init.deck === 13) gmDeck++;
+  }
+  ok(lower >= 1, `P8d: in some starts the highest card is held by somebody hidden (${lower} of 12)`);
+  eq([right, gmDeck], [12, 12], "P8d: the deck a player's view names is the highest card in sight (ten at least), not the count that includes hidden slots; the GM's view keeps the deck");
+}
+/* amend of a priced action: a move declared against the rules with a request for an exception has no price; changed into a legal move
+   it is priced then (before, it ran for nothing) */
+{
+  const mk = () => { const T = new MTable(); T.hero("H1", "p1", { attrs: { strength: 5 } }).npc("N1", { health: 5 }); T.put("H1", "z3").put("N1", "z4"); T.order(["H1", "N1"]); return T; };
+  const paid = (T) => T.state.ledger.H1.entries.filter((e) => !e.void).map((e) => e.cost);
+  { const T = mk(), r = await T.req("p1", { op: "declare", actor: "H1", decl: { action: "move", to: "z1", exception: { text: "please" } } });
+    eq([code(r), T.top()?.data.hold, paid(T), T.spot("H1")], ["ok", "exception", [], "z3"], "P8d: a move the rules refuse, declared with a request for an exception, waits for the GM and has no price yet");
+    const a = await T.req("p1", { op: "amend", inst: T.top().id, decl: { to: "z2" } });
+    eq([ans(a).join("/"), T.spot("H1"), paid(T), T.state.stack.length, T.prompts().length], ["ok/", "z2", ["quick"], 0, 0], "P8d: changed into a legal move it runs and costs what that move costs"); }
+  { const T = mk(); await T.req("p1", { op: "mark", actor: "H1", unit: "quick", on: true }); await T.req("p1", { op: "mark", actor: "H1", unit: "quick", on: true });
+    await T.gm({ op: "declare", actor: "H1", gm: true, decl: { action: "move", to: "z1", exception: { text: "please" } } });
+    const held = T.top()?.data.hold === "exception" || T.top()?.status === "manual", n = paid(T).length;
+    const a = held ? await T.req("p1", { op: "amend", inst: T.top().id, decl: { to: "z2" } }) : null;
+    ok(!held || (code(a) !== "ok" && T.spot("H1") === "z3" && paid(T).length === n), `P8d: with nothing left to pay with the change is refused and nobody moves (${a ? ans(a) : "not held"})`); }
 }
 
 done("check-defects4");
