@@ -482,7 +482,7 @@ async function opAnswer(X, a, forAnyone = false) {
   if (value == null) return bad("badInput");
   const inst = p.inst ? instOf(X, p.inst) : null;
   if (inst) {
-    const vr = FLOWS[inst.flow].validate?.(view(X), inst, p, value);
+    const vr = FLOWS[inst.flow].validate?.(view(X), inst, p, value, X.user.staff === true);
     if (vr && !vr.ok) return bad("illegal", { reason: vr.reason });
     if (p.answered && inst.data.done?.[Object.keys(inst.data.pk ?? {}).find((k) => inst.data.pk[k] === p.id)]) return bad("locked");   // already acted upon
   }
@@ -510,6 +510,9 @@ async function opHelp(X, a) {
   if (!P1.isId(a.helper) || !owns(X, a.helper)) return bad("notOwner");
   if (inst.locked) return bad("locked");
   if (a.helper === inst.actor || (inst.decl.helpers ?? []).some((h) => h.id === a.helper)) return bad("badInput");
+  if ((inst.decl.targets ?? []).includes(a.helper)) return bad("illegal", { reason: "helpTarget" });                   // [B2238]: an ally helps; nobody helps the action aimed at them
+  const out = M.outOfAction(X.state, a.helper, X.facts.c(a.helper));                                                    // [B2707]: out of action
+  if (out) return bad("illegal", { reason: out });
   const has = P1.canPay(X.state, a.helper, "full", { cause: "help" });                    // [L9], [L2], [B2273]: the helper's full action is spent on the helped character's turn
   const I = J.clone(inst);
   if ((I.decl.helpers ?? []).filter((h) => h.consent === "yes").length >= 3) return bad("illegal", { reason: "tooMany" });       // [B2238]

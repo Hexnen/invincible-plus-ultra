@@ -107,6 +107,15 @@ export function conditions(state, cid) {
   };
 }
 
+/** Why a combatant is out of action, or null [B2707]: broken (Health 0: no movement, no attribute roll, no power), or marked unconscious or
+    dead (a knock-out or a kill the GM stated [B2771], a fatal injury [B2749-2765]). A machine and a challenge have no such state. */
+export function outOfAction(state, cid, c) {
+  if (!c || c.kind === "vehicle" || c.kind === "challenge") return null;
+  if (hasStatus(state, cid, "dead")) return "dead";
+  if (!(c.health > 0)) return "broken";
+  return hasStatus(state, cid, "unconscious") ? "unconscious" : null;
+}
+
 /* ------------------------------------------------------------------ damage tags (spec 9.5 steps 1-6, events table "damage") */
 export const DAMAGE_CAUSES = Object.freeze(["attack", "barrier", "hazard", "fall", "stunt", "counter", "gm"]);
 /** Normalised tags of one damage event. source = the nature of the damage for immunities and vulnerabilities [B1877-1880], [B2193];

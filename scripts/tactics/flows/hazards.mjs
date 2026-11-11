@@ -37,9 +37,17 @@ export const blast = {
   ...common,
   STEPS: Object.freeze(["check", "dodge", "roll", "damage", "effects", "close"]),
   legality(v, inst) { const h = hzOf(inst); return !["blast", "area"].includes(h.kind) || !(h.kind === "blast" ? h.rating > 0 : h.pool > 0) ? bad("unknownHazard") : targetsNeeded(inst); },
+  /* a dodge that was offered is asked again when it is taken [B2525] */
+  validate(v, inst, prompt, value, staff = false) {
+    if (prompt.kind !== "hazardDodge" || staff || (typeof value === "string" ? value : value?.id) !== "dodge") return { ok: true };
+    const d = dodgeOf(v, prompt.about);
+    return d.ok ? { ok: true } : { ok: false, reason: d.reason };
+  },
   steps: {
     check(v, inst) { const [I, R] = lockTargets(v, inst); R.goto = "dodge"; return R; },
-    /* [B2922]: a blast can be dodged normally: AGILITY, a quick action as an interrupt [B2524-2525]. An NPC answers by its standing policy (spec 13.3). */
+    /* [B2922]: a blast can be dodged normally: AGILITY, a quick action as an interrupt [B2524-2525], by whoever could dodge a shot: not when
+       held, snared, stunned, unaware, carried aloft, holding somebody or out of action (flows/kit.defenceOf: one reading with the attack flow).
+       An NPC answers by its standing policy (spec 13.3). */
     dodge(v, inst) {
       const I = K.draft(inst), R = K.result(I);
       I.data.def ??= {};
@@ -47,16 +55,14 @@ export const blast = {
       for (const t of I.decl.targets) {
         const key = `dodge:${t}`, tf = v.facts.c(t);
         if (I.data.def[t] !== undefined) continue;
-        if (!(tf.health > 0)) { I.data.def[t] = null; continue; }                                 // [B2707]
         if (!I.data.pk?.[key]) {
-          const pay = P1.canPay(v.state, t, "quick", { interrupt: true, defense: true });
-          if (!pay.ok) { I.data.def[t] = null; continue; }                                        // nothing to pay with: not asked (plan 5.2 step 4)
+          if (!dodgeOf(v, t).ok) { I.data.def[t] = null; continue; }                              // cannot dodge, or nothing to pay with: not asked (plan 5.2 step 4)
           const pol = v.state.npc?.[t]?.dodge, p = { key, kind: "hazardDodge", to: K.addressee(v, t), about: t, options: [{ id: "dodge", label: "ITAC.action.dodge", cost: "quick" }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { hazard: hzOf(I).kind, dice: poolOf(hzOf(I)) } };
           if (tf.npc && pol === "always") p.auto = { option: "dodge", reason: "npcDefault" }; else if (tf.npc && pol === "never") p.auto = { option: K.PASS, reason: "npcDefault" };
           R.prompts.push(p); waiting = true; continue;
         }
         if (!K.isAnswered(v, I, key)) { waiting = true; continue; }
-        const id = K.answerId(v, I, key);
+        const id = K.answerId(v, I, key) === "dodge" && (K.answeredByStaff(v, I, key) || dodgeOf(v, t).ok) ? "dodge" : null;      // the action may be gone since the card opened [B2525]
         I.data.def[t] = id === "dodge" ? "dodge" : null;
         if (id === "dodge") R.effects.push({ t: "pay", who: t, cost: "quick", action: "dodge", interrupt: 1, defense: 1, key: `def:${t}` });
       }
@@ -121,6 +127,7 @@ export const blast = {
     close(v, inst) { const I = K.draft(inst), R = K.result(I); I.data.result = I.data.exploded ? "hit" : "dud"; R.done = true; return R; },
   },
 };
+const dodgeOf = (v, t) => (Veh.isMachine(v, t) ? { ok: false, reason: "notAllowed" } : K.defenceOf(v, t, "shooting").paid.dodge);
 const poolOf = (h) => (h.kind === "blast" ? hazards.blastPool(h.rating) : Math.max(1, int(h.pool, 1, 40, 1)));
 
 /* ------------------------------------------------------------------ fire spread [B2927] */

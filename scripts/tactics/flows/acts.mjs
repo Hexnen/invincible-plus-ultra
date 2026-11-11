@@ -204,6 +204,8 @@ function legality(v, inst) {
 export const act = {
   STEPS: Object.freeze(["check", "roll", "effect", "outcome", "close"]),
   legality,
+  /* [B2773] a broken character may try to get up on its own turn; Resilience turns the damage that broke it into stress [B2160] */
+  whenBroken(v, inst) { const kind = kindOf(v, inst); return (kind === "rally" && subjectOf(inst) === inst.actor) || kind === "convert"; },
   revalidate(v, inst) { const a = v.facts.c(inst.actor); const b = !a || a.present === false ? "gone" : null; return { ok: !b, reasons: b ? [b] : [] }; },
   steps: {
     check(v, inst) { const I = K.draft(inst), R = K.result(I); I.data.attr = attrOf(v, I); R.goto = I.data.attr ? "roll" : "effect"; return R; },

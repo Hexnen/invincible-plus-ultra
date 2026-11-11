@@ -31,7 +31,10 @@ export const DEFENCES = { block: { attr: "fighting", cost: "quick" }, dodge: { a
    trapped     the Trap stunt (book 2438; ruling 20: only movement and slugfest attacks are blocked; the target still blocks and dodges)
    unaware     does not know of the attacker (book 2430, 2524)
    noInterrupts lost its coming turn to Stun / Suppressed or a similar effect (book 2436, 2517; ruling 10)
-   carriedAloft carried by a flyer who stayed airborne, or that flyer (book 2392: no attack, block or dodge until landed) */
+   carriedAloft carried by a flyer who stayed airborne, or that flyer (book 2392: no attack, block or dodge until landed)
+   out         out of action: broken, unconscious or dead (book 2707: no movement, no attribute roll, no power); the value is the reason id
+   holding     holds somebody in a grapple (book 2497: the only actions left are movement and the grapple attack; a block and a dodge are
+               quick actions, book 2446, 2524) */
 export const restrained = (t = {}) => !!(t.held || t.snared);
 
 /* Dice modifiers of an attack roll (to be added to the attribute with dice.mjs buildPool).
@@ -66,13 +69,14 @@ export function attackModifiers({ attack, target = {}, weaponBonus = 0, wreckBon
    block: book 2446-2447 slugfest only, a quick action must be left; 2430 not when restrained or unaware; 2492 never a charge;
           2497 never a grapple attack; 2448 + ruling 4 never a counterattack; 3434 never the charge / ram that ends a chase.
    dodge: book 2524-2525 shooting attacks (and charges, book 2492), a quick action must be left, only when aware of the attacker.
-   both:  ruling 6 not while held; ruling 21 not while snared; ruling 20 a trapped target may do both; book 2436 / 2517 + ruling 10 not
-          after losing the coming turn; book 2392 not while carried aloft.
+   both:  book 2707 not while out of action; ruling 6 not while held; ruling 21 not while snared; book 2497 not while holding somebody;
+          ruling 20 a trapped target may do both; book 2436 / 2517 + ruling 10 not after losing the coming turn; book 2392 not while
+          carried aloft.
    Returns { block: { ok, reason }, dodge: { ok, reason } }. */
 export function defenceOptions({ attack, defender = {}, inChase = false }) {
   const def = ATTACKS[attack];
   if (!def) throw new Error(`defenceOptions: unknown attack "${attack}"`);
-  const common = defender.held ? "held" : defender.snared ? "snared" : defender.noInterrupts ? "noInterrupts" : defender.carriedAloft ? "carriedAloft"
+  const common = defender.out ? (typeof defender.out === "string" ? defender.out : "broken") : defender.held ? "held" : defender.snared ? "snared" : defender.holding ? "grappling" : defender.noInterrupts ? "noInterrupts" : defender.carriedAloft ? "carriedAloft"
     : defender.unaware ? "unaware" : defender.hasQuick === false ? "noQuickAction" : null;
   const one = (kind) => {
     if (def.defence !== kind || (inChase && (attack === "charge" || attack === "ram"))) return { ok: false, reason: "notAllowed" };

@@ -158,13 +158,12 @@ export function revalidate(v, inst) {
 
 /* ------------------------------------------------------------------ helpers */
 function defencePrompt(v, I, t) {
-  const kind = kindOf(I), tf = v.facts.c(t), conds = M.conditions(v.state, t);
-  const hasQuick = !Veh.isMachine(v, t) && P1.canPay(v.state, t, "quick", { interrupt: true, defense: true }).ok;      // a grant may pay the defence (spec 4.2)
+  const kind = kindOf(I), tf = v.facts.c(t);
   const dq = Veh.defenceOf(v, I, kind);                                                          // P7 [B3434]: the charge or ram that ends a chase
-  const opts = attack.defenceOptions({ attack: dq.attack, defender: { ...conds, hasQuick }, inChase: dq.inChase });        // [B2446], [B2524], [R6], [R20], [R21], [R10]
-  const options = [];
+  const df = K.defenceOf(v, t, dq.attack, { inChase: dq.inChase, machine: Veh.isMachine(v, t) }), conds = df.conds;        // [B2446], [B2524], [R6], [R20], [R21], [R10], [B2707], [B2497]; a grant may pay the defence (spec 4.2)
+  const opts = df.paid, options = [];
   /* P6 [B2105] Defensive: 1 stress instead of an action, as often as there is Resolve; asked for when the attack comes, never ahead of it */
-  const free = tf?.pass?.defensive === true && !Veh.isMachine(v, t) ? attack.defenceOptions({ attack: dq.attack, defender: { ...conds, hasQuick: true }, inChase: dq.inChase }) : null;
+  const free = tf?.pass?.defensive === true && !Veh.isMachine(v, t) ? df.free : null;
   const allowed = (set, id) => {
     let op = set[id];
     if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && tf?.pass?.deflection && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]
@@ -184,10 +183,10 @@ function defencePrompt(v, I, t) {
       options.push(fo);
     }
   }
-  for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget")) options.push(K.reactionOption(v, t, e));
+  if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget")) options.push(K.reactionOption(v, t, e));      // [B2707]: out of action, no power answers
   const live = options.filter((o) => !o.disabled);
   const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind } };
-  if (!live.length) p.auto = { option: K.PASS, reason: conds.unaware ? "unaware" : "noOption" };                 // plan 5.2 step 4
+  if (!live.length) p.auto = { option: K.PASS, reason: df.out ?? (conds.unaware ? "unaware" : "noOption") };                 // plan 5.2 step 4
   else if (tf?.npc) {                                                                                             // spec 13.3 NpcPolicy
     const pol = v.state.npc?.[t] ?? {}, def = live.find((o) => o.id === "block" || o.id === "dodge");
     if (def && pol[def.id] === "always") p.auto = { option: def.id, reason: "npcDefault" };
@@ -202,6 +201,12 @@ function applyReaction(v, I, R, cid, key, value, when) {
   if (!id || id === K.PASS) return false;
   if (["block", "dodge", "block:free", "dodge:free"].includes(id)) {
     const [how, free] = id.split(":");
+    /* [B2447], [B2525]: no action left, no defence. Asked again when the answer is acted on: the unit may have gone since the window opened
+       (another defence, a mark). Only the GM's own answer stands against it (spec 14). */
+    if (!K.answeredByStaff(v, I, key)) {
+      const dq = Veh.defenceOf(v, I, kindOf(I)), now = K.defenceOf(v, cid, dq.attack, { inChase: dq.inChase, machine: Veh.isMachine(v, cid) })[free ? "free" : "paid"][how];
+      if (now && !now.ok && now.reason !== "notAllowed") { (I.data.notes ??= []).push({ note: "defenceRefused", who: cid, reason: now.reason }); return false; }
+    }
     if (free) R.effects.push({ t: "stress", who: cid, n: 1 });                                  // P6 [B2105] Defensive: 1 stress, no action
     else R.effects.push({ t: "pay", who: cid, cost: "quick", action: how, interrupt: 1, defense: 1, key: `def:${cid}`, target: [I.actor] });     // [B2447], [B2525]
     (I.data.def ??= {})[cid] = { defence: how, tokens: Array.isArray(value?.tokens) ? value.tokens.slice(0, 12) : [], ...(free ? { free: "defensive" } : {}) };
@@ -588,7 +593,7 @@ export const steps = {
           const src = { kind: "power", owner: I.actor, name: w.of ?? w.name ?? "" };
           const st = oh.status ?? (oh.burn ? "burning" : null);
           if (st && once(`oh:${t}`)) { R.effects.push({ t: "status+", who: t, status: { id: st, source: src, ...(oh.data ? { data: oh.data } : {}) } }); R.events.push({ type: "status", target: t, status: { id: st, on: true } }); }
-          if (oh.stun) {                                                                          // [B1625-1627], [B1865]: PRESENCE (no action) or the next turn is lost
+          if (oh.stun && !M.outOfAction(v.state, t, tf)) {                                         // [B1625-1627], [B1865]: PRESENCE (no action) or the next turn is lost; [B2707] not asked of one who is out of action
             const key = `ohs:${t}`, rs = (oh.resist ?? 0) + (tf.pass?.resist ?? 0);
             if (!K.rollOf(I, key)) { const { pool } = K.buildPool(v, I, key, t, "presence", rs ? [{ source: "resist", dice: rs }] : []); R.effects.push(K.rollEffect(key, t, "presence", pool, { passive: true, label: "ITAC.stunt.stun" })); R.wait = true; return R; }
             if (!K.rollFinal(I, key)) { R.wait = true; return R; }
@@ -601,7 +606,7 @@ export const steps = {
           if (oh.throw && once(`oht:${t}`)) (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: oh.throw });      // [B1826]: the GM moves the one thrown
         }
         const stun = picked(t, "stun") ? "stun" : picked(t, "suppressed") ? "suppressed" : null;
-        if (stun && dm && stunts.stunOutcome({ taken: dm.taken }).rollNeeded) {                 // [B2436], [B2517]
+        if (stun && dm && stunts.stunOutcome({ taken: dm.taken }).rollNeeded && !M.outOfAction(v.state, t, tf)) {      // [B2707]: a target the blow broke rolls for nothing; it is out of action anyway                 // [B2436], [B2517]
           const key = `stun:${t}`;
           if (!K.rollOf(I, key)) { const { pool } = K.buildPool(v, I, key, t, "presence"); R.effects.push(K.rollEffect(key, t, "presence", pool, { passive: true, label: `ITAC.stunt.${stun}` })); R.wait = true; return R; }   // [A-2]: "no action" reaction rolls are passive
           if (!K.rollFinal(I, key)) { R.wait = true; return R; }
@@ -614,7 +619,7 @@ export const steps = {
         if (dm && Veh.afterHit(v, I, R, t, dm)) return R;                                                  // P7 [B3221-3248]: component damage, the wreck, the people aboard
         if (dm && K.minionsFate(v, I, R, t, dm, { by: I.actor })) return R;                     // [B2828]: knocked out or killed, the GM's word
         if (dm && !Veh.isMachine(v, t) && K.brokenAndCrit(v, I, R, t, dm, { deadlyHit: picked(t, "deadlyHit"), by: I.actor })) return R;       // spec 9.5 steps 7-9
-      } else if (o.counterattack && I.data.def?.[t]?.defence === "block") {                    // [B2448], [R4]
+      } else if (o.counterattack && I.data.def?.[t]?.defence === "block" && !M.outOfAction(v.state, t, tf)) {      // [B2448], [R4]; [B2707]
         const key = `counter:${t}`;
         if (!I.data.pk?.[key]) {
           const r = v.facts.range(t, I.actor), opt = { id: "counter", label: "ITAC.opt.counter", data: { sixes: o.counterattack.sixes } };
@@ -629,7 +634,7 @@ export const steps = {
           R.push = { action: "slugfest", actor: t, decl: { action: "slugfest", weapon: "unarmed", targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "counter", data: { kind: "counterattack", counterSixes: o.counterattack.sixes }, prepaid: 1 };
           return R;
         }
-      } else if (o.dodgeMove > 0 && I.data.def?.[t]?.defence === "dodge") {                    // [B2526]
+      } else if (o.dodgeMove > 0 && I.data.def?.[t]?.defence === "dodge" && !M.outOfAction(v.state, t, tf)) {      // [B2526]; [B2707]
         const key = `dodgeMove:${t}`;
         if (!I.data.pk?.[key]) {                                                               // with a map the options are the zones the dodger reaches, any way of moving it has, no cost and no stress option
           const zs = Z ? MP.moveOptions(Z, v.state, t, v.facts.c(t), undefined, { free: o.dodgeMove }).filter((x) => !x.disabled && !x.area).slice(0, 50) : [];
@@ -718,7 +723,14 @@ function optionsAll(v, I, hit) {
 const picksOf = (value) => (Array.isArray(value) ? value : []).map((id) => /^([A-Za-z]+)@([^|]+)(?:\|(.+))?$/.exec(String(id))).filter(Boolean).map((m) => ({ stunt: m[1], target: m[2], ...(m[3] ? { extra: m[3] } : {}) }));
 /** Is a multi answer legal as a whole? Budget, once per target, exclusions (stunts.validateStunts); the per-target cap of area attacks [A-3], [G-L9];
     an extra opponent is named once and may take further stunts only when a pick brings it in. */
-export function validate(v, inst, prompt, value) {
+export function validate(v, inst, prompt, value, staff = false) {
+  if (prompt.kind === "reaction" && !staff) {                                                    // what was offered when the window opened is asked again when it is taken: the action may be gone [B2447], [B2525]
+    const id = typeof value === "string" ? value : value?.id, cid = prompt.about;
+    if (!id || id === K.PASS || !cid) return { ok: true };
+    const e = id.startsWith("r:") ? C.reactionsFor(v.state, cid, prompt.data?.when, v.facts).find((x) => `r:${x.id}` === id) : null;
+    const now = e ? K.reactionOption(v, cid, e) : inst.decl.targets.includes(cid) ? defencePrompt(v, inst, cid).options.find((o) => o.id === id) : null;
+    return now?.disabled ? { ok: false, reason: now.disabled } : { ok: true };
+  }
   if (prompt.kind !== "stunts") return { ok: true };
   const picks = picksOf(value), out = inst.data.out ?? {}, multi = inst.data.multi;
   const hit = inst.decl.targets.filter((t) => out[t]?.hit);

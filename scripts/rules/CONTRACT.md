@@ -264,7 +264,7 @@ Stunt ids: `doubleDamage`, `knockback`, `stun`, `bangHeads`, `trap`, `disarm`, `
 `chargeEndZone(zone)`, `grappleCheck({ targetHuge, usesWeapon, target })`, `GRAPPLER_ACTIONS`, `HELD_ACTIONS`.
 
 Attack ids: `slugfest`, `charge`, `grapple`, `grappleAttack`, `counterattack`, `shooting`, `ram`.
-Target conditions: `held`, `snared`, `trapped`, `unaware`, `noInterrupts`, `carriedAloft`, `hasQuick`.
+Target conditions: `held`, `snared`, `trapped`, `unaware`, `noInterrupts`, `carriedAloft`, `hasQuick`, `out` (out of action: the reason id, book 2707), `holding` (holds somebody in a grapple, book 2497).
 `grappleCheck`: `target` (immunity flags as above) may be given instead of, or beside, `targetHuge`.
 
 ### `maneuvers.mjs`

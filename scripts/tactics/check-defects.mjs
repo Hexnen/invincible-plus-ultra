@@ -73,4 +73,106 @@ const stun = async (T, by = "H1", user = "p1", t = "N1") => {
   eq([T.state.round, T.state.init.curMember], [2, "N1"], "D2: N1 takes its turn of round 2");
 }
 
+/* ================================================================== D3: out of action means out of everything [B2707], [B2238] */
+{
+  const T = fight({ N1: { health: 6 } }); T.c.H2.health = 0;
+  T.turn("N1");
+  await T.gm(decl("N1", "slugfest", ["H2"]));
+  ok(!T.prompt("reaction", "H2"), "D3: a broken character gets no defence window");
+  eq(T.lastRequest()?.key, "attack", "D3: the attack goes straight to its roll");
+  await T.roll("attack", 3);
+  ok(!T.prompt("counter", "H2"), "D3: and no counterattack card");
+  eq(P1.budget(T.state, "H2").quick.join(","), "open,open", "D3: no action of the broken character was touched");
+}
+{
+  const T = fight({ N1: { health: 6 } }); T.c.H2.health = 0;
+  await T.req("p1", decl("H1", "slugfest", ["N1"]));
+  const r = await T.req("p2", { op: "help", inst: T.top().id, helper: "H2" });
+  eq([code(r), why(r)], ["illegal", "broken"], "D3: a broken character cannot help");
+  eq(T.top().decl.helpers ?? [], [], "D3: no helper is recorded");
+  const g = await T.gm({ op: "help", inst: T.top().id, helper: "N1" });
+  eq([code(g), why(g)], ["illegal", "helpTarget"], "D3: the target of an action does not help it");
+  eq(code(await T.gm({ op: "help", inst: T.top().id, helper: "N2" })), "ok", "D3: an able bystander still helps");
+}
+for (const s of ["unconscious", "dead"]) {
+  const T = fight({ N1: { health: 6 } });
+  await T.gm({ op: "statusAdd", combatant: "H2", status: { id: s } });
+  await T.req("p1", decl("H1", "slugfest", ["N1"]));
+  const h = await T.req("p2", { op: "help", inst: T.top().id, helper: "H2" });
+  eq([code(h), why(h)], ["illegal", s], `D3: ${s}: cannot help`);
+  await T.answer("gm", "reaction", "pass", "N1"); await T.roll("attack", 0);
+  T.turn("N1");
+  await T.gm(decl("N1", "slugfest", ["H2"]));
+  ok(!T.prompt("reaction", "H2"), `D3: ${s}: no defence window`);
+  await T.roll("attack", 0);
+  T.turn("H2");
+  const d = await T.req("p2", decl("H2", "slugfest", ["N1"]));
+  eq([code(d), why(d)], ["illegal", s], `D3: ${s}: declares nothing`);
+}
+{ /* the blow that breaks the target: no PRESENCE roll is asked of it for a Stun */
+  const T = fight({ N1: { health: 1 } });
+  await T.req("p1", decl("H1", "slugfest", ["N1"])); await T.answer("gm", "reaction", "pass", "N1"); await T.roll("attack", 2);
+  await T.req("p1", { op: "answer", prompt: T.prompt("stunts").id, value: ["stun@N1"] });
+  ok(T.lastRequest()?.key !== "stun:N1" || T.state.stack.length === 0, "D3: a target the blow broke is not asked the Stun roll");
+}
+
+/* ================================================================== D4: a defence is paid for when it is taken, not when it is offered */
+{
+  const T = fight({ N1: { health: 6 } }); T.turn("N1");
+  await T.gm(decl("N1", "slugfest", ["H1"]));
+  const p = T.prompt("reaction", "H1");
+  eq(opts(p), "block pass", "D4: the window offers a block");
+  await T.req("p1", { op: "mark", actor: "H1", unit: "quick" }); await T.req("p1", { op: "mark", actor: "H1", unit: "quick" });
+  const r = await T.req("p1", { op: "answer", prompt: p.id, value: "block" });
+  eq([code(r), why(r)], ["illegal", "noQuickAction"], "D4: a block with no action left is refused");
+  ok(!T.top().data.def?.H1, "D4: no defence is recorded");
+  eq(code(await T.req("p1", { op: "answer", prompt: p.id, value: "pass" })), "ok", "D4: the window still takes a pass");
+  await T.roll("attack", 1);
+  eq(T.c.H1.health < 6, true, "D4: the attack lands undefended");
+  ok(!T.prompt("counter", "H1"), "D4: no counterattack card");
+}
+{ /* the GM's own answer stands (spec 14) */
+  const T = fight({ N1: { health: 6 } }); T.turn("N1");
+  await T.gm(decl("N1", "slugfest", ["H1"]));
+  const p = T.prompt("reaction", "H1");
+  await T.req("p1", { op: "mark", actor: "H1", unit: "quick" }); await T.req("p1", { op: "mark", actor: "H1", unit: "quick" });
+  eq(code(await T.gm({ op: "answer", prompt: p.id, value: "block" })), "ok", "D4: the GM may still grant the block");
+  eq(T.top().data.def?.H1?.defence, "block", "D4: and it stands");
+}
+
+/* ================================================================== D5: who cannot dodge a shot cannot dodge a blast [B2922] */
+{
+  const mk = () => { const T = fight({ N1: { health: 6 } }); T.weapons.gun = { id: "gun", bonus: 1, damage: 2, range: [0, 2] }; return T; };
+  for (const s of [null, "snared", "grappled", "stunned", "unaware", "unconscious", "dead", "immobilised", "trapped"]) {
+    const add = (T) => (s ? T.gm({ op: "statusAdd", combatant: "H1", status: { id: s, ...(s === "grappled" ? { data: { by: "N2" } } : {}) } }) : null);
+    const T = mk(); await add(T); T.turn("N1");
+    await T.gm(decl("N1", "shoot", ["H1"], { weapon: "gun" }));
+    const shot = opts(T.prompt("reaction", "H1")).includes("dodge");
+    const U = mk(); await add(U);
+    await U.gm({ op: "hazardRun", run: { type: "blast", rating: 6, targets: ["H1"] } });
+    const blast = opts(U.prompt("hazardDodge", "H1")).includes("dodge");
+    eq(blast, shot, `D5: ${s ?? "free"}: a blast is dodged exactly when a shot is`);
+    eq(blast, s === null || s === "trapped", `D5: ${s ?? "free"}: dodge ${s === null || s === "trapped" ? "offered" : "not offered"}`);
+  }
+  /* the dodge that was offered is asked again when it is taken */
+  const T = mk();
+  await T.gm({ op: "hazardRun", run: { type: "blast", rating: 6, targets: ["H1"] } });
+  const p = T.prompt("hazardDodge", "H1");
+  await T.req("p1", { op: "mark", actor: "H1", unit: "quick" }); await T.req("p1", { op: "mark", actor: "H1", unit: "quick" });
+  const r = await T.req("p1", { op: "answer", prompt: p.id, value: "dodge" });
+  eq([code(r), why(r)], ["illegal", "noQuickAction"], "D5: a blast dodge with no action left is refused");
+}
+
+/* ================================================================== D9: the holder of a grapple moves or attacks the held one, nothing else [B2497] */
+{
+  const T = fight({ order: ["N1", "H1", "H2", "N2"] });
+  await T.gm(decl("N1", "grapple", ["H1"])); await T.answer("p1", "reaction", "pass", "H1"); await T.roll("attack", 1);
+  eq([st(T, "N1"), st(T, "H1")], ["grappling", "grappled"], "D9: the grapple stands");
+  T.turn("H1"); T.turn("H2");
+  await T.req("p2", decl("H2", "slugfest", ["N1"]));
+  ok(!opts(T.prompt("reaction", "N1")).includes("block"), "D9: the holder is offered no block");
+  eq(T.lastRequest()?.key, "attack", "D9: the attack on the holder goes to its roll");
+  eq(P1.budget(T.state, "N1").quick.filter((u) => u === "used").length, 0, "D9: no quick action of the holder is spent on a defence");
+}
+
 done("check-defects");

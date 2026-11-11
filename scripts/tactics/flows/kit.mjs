@@ -8,7 +8,7 @@
        events:  [...],  section 16 events
        push:    spec of an action instance to put on top of the stack (interrupt, counterattack, part of a composite)
        goto:    next step id | wait: true | done: true } */
-import { dice, crits, conditions } from "../../rules/index.mjs";
+import { dice, crits, conditions, attack } from "../../rules/index.mjs";
 import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 import { holderBlocks } from "../catalog-pure.mjs";
@@ -84,6 +84,9 @@ export function requirements(v, inst) {
 }
 /** Legality of an instance: the entry's requirements, then the flow's own rules. */
 export const legality = (v, inst, flow) => {
+  /* [B2707] out of action: whatever the flow, a broken, unconscious or dead character declares nothing and is no part of anything */
+  const out = inst.actor ? M.outOfAction(v.state, inst.actor, v.facts.c(inst.actor)) : null;
+  if (out && !(out === "broken" && flow.whenBroken?.(v, inst))) return { ok: false, reason: out, params: {} };      // the one thing a broken character may try is the flow's to name (rallying [B2773])
   const r = requirements(v, inst);
   if (!r.ok) return r;
   /* [B2497] the holder's own actions, whatever the flow (the attack flow and the action tables say it in their own words; a reaction, a part of
@@ -161,7 +164,8 @@ export function actorBlocked(v, inst) {
   if (!inst.actor) return null;
   const a = v.facts.c(inst.actor);
   if (!a || a.present === false) return "gone";
-  if (a.health <= 0) return "broken";                                                                       // [B2707]
+  const out = M.outOfAction(v.state, inst.actor, a);                                                        // [B2707]
+  if (out) return out;
   if (inst.cause === "interrupt" && !P1.canInterrupt(v.state, inst.actor).ok) return "noInterrupts";       // [L7]
   return null;
 }
@@ -171,7 +175,7 @@ export function windowPrompts(v, inst, when, { skip = [], reactions }) {
   for (const cid of Object.keys(v.state.ledger)) {
     if (cid === inst.actor || skip.includes(cid)) continue;
     const c = v.facts.c(cid);
-    if (!c || c.present === false || c.health <= 0) continue;
+    if (!c || c.present === false || M.outOfAction(v.state, cid, c)) continue;                              // [B2707]
     const list = reactions(v.state, cid, when, v.facts).filter((e) => e.reaction.who === "any" || inst.decl.targets.includes(cid));
     if (!list.length) continue;
     const options = list.map((e) => reactionOption(v, cid, e));
@@ -188,6 +192,18 @@ export function reactionOption(v, cid, e) {
   else if (e.stress?.fixed && !(v.facts.c(cid)?.resolve > 0)) o.disabled = "stressedOut";                   // [B2816]
   return o;
 }
+
+/** May `t` answer an attack of this kind with a block or a dodge now? ONE reading for the attack flow and for every hazard that can be
+    dodged [B2922]: the conditions of the state [R6], [R20], [R21], [R10], [B2392], out of action [B2707], holding somebody [B2497], and a
+    quick action to pay with (the base pair or a grant, spec 4.2). `free`: the same with the action waived (Defensive [B2105]).
+    -> { conds, hasQuick, out, paid: { block, dodge }, free: { block, dodge } }, each { ok, reason } (rules/attack.defenceOptions). */
+export function defenceOf(v, t, kind, { inChase = false, machine = false } = {}) {
+  const conds = M.conditions(v.state, t), hasQuick = !machine && P1.canPay(v.state, t, "quick", { interrupt: true, defense: true }).ok;
+  const defender = { ...conds, out: M.outOfAction(v.state, t, v.facts.c(t)), holding: M.hasStatus(v.state, t, "grappling") };
+  return { conds, hasQuick, out: defender.out, paid: attack.defenceOptions({ attack: kind, defender: { ...defender, hasQuick }, inChase }), free: attack.defenceOptions({ attack: kind, defender: { ...defender, hasQuick: true }, inChase }) };
+}
+/** Who answered a prompt of the instance: the GM's own answer may stand where the rules would refuse it (spec 14: the GM picks a greyed option). */
+export const answeredByStaff = (v, inst, key) => v.facts.user(promptOf(v, inst, key)?.answered?.by)?.staff === true;
 
 /** Is this combatant an NPC that rolls critical injuries like a hero [B2771]? The actor flag `major` or the GM's standing word (NpcPolicy.major). */
 export const isMajor = (v, cid) => { const c = v.facts.c(cid); return !!c && c.npc && c.kind !== "minions" && (c.major === true || [true, "yes"].includes(v.state.npc?.[cid]?.major)); };
