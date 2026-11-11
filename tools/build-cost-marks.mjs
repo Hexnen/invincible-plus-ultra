@@ -56,7 +56,7 @@ const arrow = (x, len) => poly([[x, 5], [x + len - 5.5, 5], [x + len - 5.5, 2.4]
 const stop = (x) => poly([[x, 1], [x + 2, 1], [x + 2, 11], [x, 11]]);
 Object.assign(A, { rmin: { w: 16, d: stop(0) + arrow(3, 13) }, rmax: { w: 16, d: arrow(0, 13) + stop(14) } });
 Object.assign(B, {
-  rmin: { w: 12, d: ring(4.4, 3.3) + circle(6, 6, 1.9) },                       // one wave round the point: near
+  rmin: { w: 12, d: ring(5.3, 4.2) + circle(6, 6, 2.3) },                       // one wave round the point: near
   rmax: { w: 12, d: ring(5.9, 4.9) + ring(3.8, 2.8) + circle(6, 6, 1.3) },      // two waves: far
 });
 const star = (cx, cy, n, r0, r1) => poly(Array.from({ length: 2 * n }, (_, i) => { const a = (Math.PI * i) / n, r = i % 2 ? r1 : r0; return [cx + r * Math.sin(a), cy - r * Math.cos(a)]; }));
@@ -71,7 +71,7 @@ Object.assign(C, {
   dice: { w: 12, raw: `<rect x='1.3' y='1.3' width='9.4' height='9.4' rx='1.6' fill='none' stroke='#000' stroke-width='1.6'/>${pips([[4, 4], [8, 8], [6, 6]], 1.05)}` },
   six: { w: 12, raw: `<mask id='m'><rect width='12' height='12' fill='#fff'/><g fill='#000'>${pips(SIX, 1.05)}</g></mask><rect x='0.5' y='0.5' width='11' height='11' rx='1.8' mask='url(#m)'/>` },
   push: { w: 12, raw: "<path fill='none' stroke='#000' stroke-width='1.9' d='M9.7,3.4A4.5,4.5 0 1 0 10.5,6.9'/><path d='M11.8,0.7V5.3H7.2Z'/><circle cx='6' cy='6.2' r='1.35'/>" },
-  crit: { w: 15, raw: `<path d='M2.4,4.6H6.6L5.2,7.4H2.4ZM8.4,4.6H12.6V7.4H7Z'/>${pips([[2.3, 4.1], [2.3, 7.9], [12.7, 4.1], [12.7, 7.9]], 2.05)}` },      // a bone broken in two
+  crit: { w: 15, raw: `<path d='M2.4,4.3H6.7L5.1,7.7H2.4ZM8.5,4.3H12.6V7.7H6.9Z'/>${pips([[2.3, 4.1], [2.3, 7.9], [12.7, 4.1], [12.7, 7.9]], 2.05)}` },      // a bone broken in two
 });
 /* ---- a slot that is spent (.ipu-off): the same shape, hollow; never told by colour alone ---- */
 const hollow = (pts, sw = 1.2) => `<path fill='none' stroke='#000' stroke-width='${f(sw)}' stroke-linejoin='miter' d='${poly(pts)}'/>`;
