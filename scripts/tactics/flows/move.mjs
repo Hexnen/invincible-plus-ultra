@@ -146,6 +146,7 @@ export const move = {
   STEPS: Object.freeze(["check", "start", "travel", "arrive", "close"]),
   legality(v, inst) {
     if (!inst.data?.free && M.statusesOf(v.state, inst.actor).some((s) => s.id === "inVehicle")) return bad("inVehicle", { gmMayAllow: 1 });   // P7 [B2325-2332]: aboard a vehicle one gets out first; the vehicle moves by being handled
+    if (!inst.data?.free && M.counterGet(v.state, M.counterKey.round(inst.actor, "firedNoMove")) > 0) return bad("firedNoMove", { gmMayAllow: 1 });   // [B2545]: a "no movement" weapon was fired this round (flows/attack.mjs FIRED_NO_MOVE)
     const pr = priced(v, inst);
     if (!pr.ok) return bad(pr.reason, { ...pr.params, ...(pr.gmMayAllow ? { gmMayAllow: 1 } : {}) });
     /* [B2392]: one carries a character who goes along; somebody of the other side is not carried but grappled and pulled [B2497]. Whether

@@ -33,6 +33,10 @@ export const MINION_LOSS_MAX = K.MINION_LOSS_MAX;
 const WRECK_REASON = { terrainUnset: "wreckUnset", terrain: "wreckTerrain", strength: "wreckStrength", alreadyWrecked: "wreckDone" };
 export const INVISIBLE_GATE_DICE = -3;          // [B2075]
 const kindOf = (inst) => inst.data.kind ?? "slugfest";
+/** [B2541]: a single use weapon that was used in this scene (per item) */
+const usedKey = (cid, w) => M.counterKey.scene(cid, `used:${String(w.item ?? w.id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)}`);
+/** [B2545]: the shooter fired a "no movement" weapon in this round (flows/move.mjs refuses the move) */
+export const FIRED_NO_MOVE = (cid) => M.counterKey.round(cid, "firedNoMove");
 const weaponOf = (v, inst) => v.facts.weapon(inst.actor, inst.decl.weapon ?? "unarmed");
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 
@@ -95,6 +99,10 @@ export function legality(v, inst) {
   if (entry?.unarmed && d.weapon && d.weapon !== "unarmed") return bad("noWeapon", { gmMayAllow: 1 });       // P6 [B2151]: Martial Arts is unarmed
   if (!counter && a.pass?.windup && SLUG.includes(kind) && (!d.weapon || String(d.weapon).startsWith("unarmed")) && !K.marked(state, inst.actor, "windup")) return bad("noWindup", { gmMayAllow: 1 });      // P6 [B1622]: the quick action first
   if (w?.fam === "shoot" && kind === "slugfest") return bad("noWeapon");                                      // P6: a power thrown from afar is a shooting attack
+  if (!counter && !inst.locked) {                                                                            // the features of the book's weapon table (kit-pure.mjs profileOf); once the dice are out the attack stands
+    if (w?.singleUse && M.counterGet(state, usedKey(inst.actor, w)) > 0) return bad("weaponUsed", { gmMayAllow: 1 });      // [B2541]: used once, then discarded (the GM allows a second one from the pack)
+    if (w?.noMove && (P1.history(state, inst.actor, "round", "moved") || P1.history(state, inst.actor, "round", "movedWithinZone"))) return bad("weaponNoMove", { gmMayAllow: 1 });      // [B2545]
+  }
   if (multi) {                                                                                               // [B2542], [B2543]
     if (!(entry?.[multi] || w?.[multi])) return bad(multi === "area" ? "noArea" : "noFullAuto", { gmMayAllow: 1 });
     if (multi === "fullAuto" && attack.ATTACKS[kind].family !== "shooting") return bad("noFullAuto");
@@ -362,6 +370,9 @@ export const steps = {
       const st = (d.stressTotal ?? 0) + (kind === "counterattack" ? 0 : weaponOf(v, I)?.stress ?? 0);
       if (st > 0) R.effects.push({ t: "stress", who: I.actor, n: st, cost: 1 });                 // spec 4.3: charged when the declaration locks; P6: with the stress of the power used
       if (kind !== "counterattack" && M.hasStatus(v.state, I.actor, "invisible")) R.effects.push({ t: "status-", who: I.actor, id: "invisible" });      // P6 [B2075]: attacking ends it
+      const w0 = kind === "counterattack" ? null : weaponOf(v, I);
+      if (w0?.singleUse) R.effects.push({ t: "state", ...M.counterBump(v.state, usedKey(I.actor, w0)) });      // [B2541]: gone, hit or miss
+      if (w0?.noMove) R.effects.push({ t: "state", ...M.counterBump(v.state, FIRED_NO_MOVE(I.actor)) });       // [B2545]: no moving for the rest of the round
       if (d.wreck) {                                                                            // [B2451-2457]: the zone is wrecked whether or not the blow lands
         const wz = wreckOf(v, I.actor), key = wz.zone ?? null;
         I.data.wreck = { zone: key, bonus: wz.ok ? wz.bonus : 0, roof: wz.ok && wz.levelsRooftop ? 1 : 0 };

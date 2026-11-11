@@ -13,6 +13,7 @@
                      fx: [{ id, name, on }], flags: { kit, off, types, alt }, wf: { sharp, fullAuto, area } }], attrs: { fighting: n, ... } } */
 import { ROWS, LEVELS } from "./kitdata-pure.mjs";
 import { BUILTIN } from "./catalog-pure.mjs";
+import { weapons as bookWeapons } from "../rules/index.mjs";
 
 export const norm = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const bare = (s) => norm(String(s ?? "").replace(/\([^)]*\)/g, ""));
@@ -66,6 +67,8 @@ const kid = (item, k) => `k-${String(item.id).replace(/[^A-Za-z0-9_-]/g, "").sli
 const pos = (n) => (Number.isFinite(Number(n)) && Number(n) > 0 ? Math.trunc(Number(n)) : 0);
 
 /* ------------------------------------------------------------------ attack profiles */
+/** the row of the book's weapon table behind a gear row of the kit (null for powers and for gear that is no weapon) */
+const bookRow = (row) => (row?.cat === "gear" && row.weapon ? bookWeapons.WEAPONS[row.name] ?? null : null);
 function patchProfile(p, patch = {}, attrs = {}) {
   const o = { ...p };
   if (patch.attrs) o.attr = patch.attrs.slice().sort((x, y) => (Number(attrs[y]) || 0) - (Number(attrs[x]) || 0))[0];
@@ -84,7 +87,12 @@ function patchProfile(p, patch = {}, attrs = {}) {
 function profileOf(item, row, a, lv, attrs, many = false) {
   const key = norm(baseName(a.name)), byKey = Object.keys(row?.atk?.by ?? {}).find((k) => norm(k) === key), h = { ...(row?.atk ?? {}), ...(byKey ? row.atk.by[byKey] : {}) };
   if (h.skip) return null;
-  const min = pos(a.min), max = pos(a.max), range = h.range ? h.range.slice() : max > 0 || min > 0 ? [min, max] : null, fam = h.fam ?? (range && (range[1] > 0 || h.range) ? "shoot" : "slug");
+  /* a weapon of the book's table [B2557-2675] keeps the whole of its row, not only what the item's automation can say: a range of "0/0" is
+     a ranged weapon used inside the zone (the system stores it as "no range": Taser, Pepper Spray [B2513], [B2538]), and the features
+     STUN effect, Single Use and No Movement have no field on the item at all. The item's own range wins when it carries one. */
+  const book = bookRow(row), min = pos(a.min), max = pos(a.max), own = max > 0 || min > 0;
+  if (book && !own && !book.range && book.miles) return null;                        // a range in miles is not a range in zones [A26]: nothing the engine can aim
+  const range = h.range ? h.range.slice() : own ? [min, max] : book?.range ? book.range.slice() : null, fam = h.fam ?? (range && (range[1] > 0 || h.range || (!own && book?.range)) ? "shoot" : "slug");
   const dflt = fam === "shoot" ? "agility" : "fighting", set = (a.attr ?? []).filter(Boolean);
   const p = { id: `${item.id}~${a.id}`, item: item.id, name: String(many && useName(item, a) ? `${item.name}: ${useName(item, a)}` : item.name).slice(0, 60), of: String(item.name ?? "").slice(0, 60), fam,
     attr: !set.length || set.includes(dflt) ? null : set.slice().sort((x, y) => (Number(attrs[y]) || 0) - (Number(attrs[x]) || 0))[0],
@@ -95,6 +103,9 @@ function profileOf(item, row, a, lv, attrs, many = false) {
   if (h.onHit) p.onHit = h.onHit.status ? { status: h.onHit.status, data: h.onHit.lv ? { dice: at(h.onHit.lv, lv) } : h.onHit.data } : { ...h.onHit };
   if (h.throws) p.onHit = { throw: at(h.throws, lv) };
   if (fam === "slug" && range && range[1] > 0) p.reach = range[1];
+  if (book?.stunEffect) p.stunEffect = true;                                         // [B2576], [B2583]; a mark, the book gives it no mechanics [A25]
+  if (book?.singleUse) p.singleUse = true;                                           // [B2541]
+  if (book?.noMovement) p.noMove = true;                                             // [B2545]
   return p;
 }
 
@@ -147,6 +158,9 @@ export function build(src = {}) {
     kit.rows.push(rec);
     if (row?.own) kit.sheetSkip.push(String(it.name ?? ""));                             // its sheet toggle is not counted: the engine applies the entry itself
     if (!live(x)) { rec.state = "off"; rec.note = "off"; continue; }
+    /* a row that asks for something else on the sheet (`needs`: the name of a row, [B3309] "Requires the Medic talent") gives nothing
+       without it: no fact, no dice, no action. The GM still decides at the table (the stabilize card has the gear as a tick). */
+    if (row?.needs && !known.some((k) => k !== x && live(k) && k.row?.key === norm(row.needs))) { rec.state = "hand"; rec.note = "lacks"; rec.lacks = String(row.needs).slice(0, 60); continue; }
     try {
       const autos = autosAt(it, lv), attacks = autos.filter((a) => a.type === "rollAttack"), uses = autos.filter((a) => ["usePower", "rollAttribute", "useGear"].includes(a.type));
       /* attack profiles: the item's own attack automations, each with the boosts of the power */
@@ -160,6 +174,7 @@ export function build(src = {}) {
         for (const o of row?.opts ?? []) kit.weapons.push({ ...patchProfile(p, { ...o.patch, stress: o.stress }, attrs), id: `${p.id}+${n++}`, opt: o.k });
       }
       if (!row && attacks.length) { rec.state = "auto"; rec.note = "weapon"; }
+      if (attacks.length && bookRow(row)?.miles && !kit.weapons.some((w) => w.item === it.id)) { rec.state = "hand"; rec.note = "story"; rec.why = "gmJudges"; }      // [A26]: a missile that flies for miles is the GM's own entry
       if (row?.atk && !row.mounted && !attacks.length) { rec.state = "assist"; rec.note = "noAttack"; }      // an attack of the book on an item that carries no numbers (a hand-made item mapped to an entry)
       if (row?.mounted && !attacks.length) { /* a vehicle's weapon: fired through the vehicle's own actions (P7) */ }
       /* a boost of the bare slugfest attack (Strike) */

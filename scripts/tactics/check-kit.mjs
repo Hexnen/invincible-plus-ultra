@@ -515,4 +515,42 @@ const nextRoundOf = async (T) => { T.turn("N1"); T.turn("H2"); T.turn("N2"); awa
   U.turn("H2");
   ok(why(await U.req("p2", decl("H2", "rally", { targets: ["H1"] }))) !== "rallyCopy", "D22: a duplicator without the boost is rallied as anybody");
 }
+/* ---- D23: the book's weapon table is the profile where the item is silent or says less [B2541-2546], [B2576-2590] */
+{
+  for (const [name, o] of [["Taser", { bonus: 1, damage: 2 }], ["Pepper Spray", { bonus: 2, damage: 1 }]]) {
+    const T = base([gun("w", name, o)], []), w = T.c.H1.kit.weapons[0];
+    eq([w.fam, w.range, w.stunEffect], ["shoot", [0, 0], true], `D23: ${name} is a ranged weapon of range 0/0 with the table's STUN effect mark, not a slugfest weapon`);
+    eq([code(await T.req("p1", decl("H1", "slugfest", { targets: ["N1"], weapon: w.id }))), T.state.stack.length], ["illegal", 0], `D23: ${name} is not swung in a slugfest`);
+    eq(code(await T.req("p1", decl("H1", "shoot", { targets: ["N1"], weapon: w.id }))), "ok", `D23: ${name} is shot in the same zone`);
+    eq((T.prompt("reaction", "N1")?.options ?? []).filter((x) => !x.disabled).map((x) => x.id).sort(), ["dodge", "pass"], `D23: ${name} is dodged, never blocked`);
+  }
+  { const T = base([gun("sr", "Sniper rifle", { bonus: 2, damage: 3, min: 1, max: 10 })], []), w = T.c.H1.kit.weapons[0];
+    T.setRange("H1", "N1", 2);
+    eq([w.noMove, code(await T.req("p1", decl("H1", "shoot", { targets: ["N1"], weapon: w.id })))], [true, "ok"], "D23: a Sniper rifle is fired by somebody who has not moved");
+    await T.answer("gm", "reaction", "pass", "N1"); await T.roll("attack", 0);
+    const r = await T.req("p1", decl("H1", "move", {}));
+    eq([code(r), why(r), r.error?.params?.gmMayAllow], ["illegal", "firedNoMove", 1], "D23: and then there is no moving for the rest of that round [B2545]");
+    await nextRoundOf(T);
+    ok(why(await T.req("p1", decl("H1", "move", {}))) !== "firedNoMove", "D23: the next round the shooter moves again"); }
+  { const T = base([gun("hg", "Hand grenade", { damage: 3, max: 1 })], []), w = T.c.H1.kit.weapons[0];
+    eq([w.singleUse, code(await T.req("p1", decl("H1", "shoot", { targets: ["N1"], weapon: w.id })))], [true, "ok"], "D23: a Hand grenade is thrown");
+    await T.answer("gm", "reaction", "pass", "N1"); await T.roll("attack", 0);
+    await nextRoundOf(T);
+    const r = await T.req("p1", decl("H1", "shoot", { targets: ["N1"], weapon: w.id }));
+    eq([code(r), why(r), r.error?.params?.gmMayAllow], ["illegal", "weaponUsed", 1], "D23: single use: gone after the throw, hit or miss [B2541] (a second one from the pack is the GM's word)"); }
+  { const kit = K.build({ items: [gun("cm", "Cruise missile", { damage: 9 }), gun("nm", "Nuclear missile", { damage: 12 }), gun("mg", "Machinegun", { bonus: 2, damage: 3, min: 1, max: 6 }), gun("rl", "Rocket launcher", { damage: 5, min: 1, max: 4 })], attrs: {} });
+    eq(kit.weapons.map((w) => [w.name, !!w.noMove, !!w.singleUse]), [["Machinegun", true, false], ["Rocket launcher", false, true]], "D23: Machinegun: no movement; Rocket launcher: single use");
+    eq(kit.rows.filter((r) => /missile/.test(r.name)).map((r) => [r.state, r.why]), [["hand", "gmJudges"], ["hand", "gmJudges"]], "D23: a weapon whose range is in miles is no zone weapon: by hand, the GM judges"); }
+  for (const k of ["stunEffect", "singleUse", "noMove"]) ok(typeof EN[`ITAC.ui.weapon.${k}`] === "string" && typeof PL[`ITAC.ui.weapon.${k}`] === "string", `D23: "${k}" is said in both languages`);
+}
+/* ---- D25: Medical instruments require the Medic talent [B3309] */
+{
+  const mi = item("mi", "Medical instruments", "gear"), medic = item("md", "Medic", "talent");
+  const dice = (items) => { const kit = K.build({ items, attrs: { reason: 3 } }); return [K.modsFor(kit, { action: "stabilize", attr: "reason" }).map((m) => m.dice), kit.pass.medicalGear === true]; };
+  eq(dice([mi]), [[], false], "D25: without Medic the instruments give no dice and no right to stabilise");
+  eq(dice([medic, mi]), [[2, 2], true], "D25: with Medic they do");
+  const row = K.build({ items: [mi], attrs: {} }).rows.find((r) => r.name === "Medical instruments");
+  eq([row?.state, row?.note, NOTES.includes("lacks")], ["hand", "lacks", true], "D25: the row says what is missing");
+  ok(ROWS.filter((r) => r.needs).every((r) => ROWS.some((x) => x.name === r.needs || x.key === r.needs)), "D25: every requirement names a row of the registry");
+}
 done("check-kit");

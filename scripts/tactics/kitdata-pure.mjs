@@ -31,7 +31,7 @@
 
 export const LEVELS = Object.freeze(["basic", "major", "massive", "monstrous"]);
 export const NOTES = Object.freeze(["attack", "noAttack", "sheet", "move", "toggle", "effect", "token", "outcome", "zone", "map", "gmCard", "flag", "passive", "story", "system", "interrupt",
-  "turn", "reaction", "stunt", "crit", "summon", "copies", "source", "initiative", "vehicle", "scene", "unknown", "off", "weapon", "roll", "control", "size", "poison", "resist", "barred", "critTwice"]);
+  "turn", "reaction", "stunt", "crit", "summon", "copies", "source", "initiative", "vehicle", "scene", "unknown", "off", "weapon", "roll", "control", "size", "poison", "resist", "barred", "critTwice", "lacks"]);
 /* why a row is left to the table (ITAC.kit.why.<id>): the book gives the engine nothing to apply or to offer there */
 export const WHYS = Object.freeze(["talk", "outOfFight", "partOfPower", "gmJudges", "senses", "story", "sheetNumbers", "beforeFight", "systemRoll", "roleplay", "noEffect"]);
 const MENTAL = ["reason", "intuition", "presence"];
@@ -318,7 +318,7 @@ export const ROWS = Object.freeze([
   G("Smoke grenade", [2531, 2676], "assist", "zone", { weapon: 1 }),
   ...["Kevlar vest", "Riot gear", "Archaic armor"].map((n) => G(n, [2682, 2700], "auto", "sheet")),
   ...["Air-to-air missile launcher", "Autocannon", "Energy torpedo", "Flamethrower", "Plasma cannon", "Ship laser", "Tactical missile launcher", "Tank cannon", "Turbolaser battery"].map((n) => G(n, [3149, 3219], "assist", "vehicle", { weapon: 1, mounted: 1 })),
-  G("Medical instruments", [3309, 2777], "auto", "passive", { pass: { medicalGear: 1 }, mods: [{ dice: 2, action: ["stabilize"], item: 1 }], acts: [] }),
+  G("Medical instruments", [3309, 2777], "auto", "passive", { needs: "Medic", pass: { medicalGear: 1 }, mods: [{ dice: 2, action: ["stabilize"], item: 1 }], acts: [] }),      // [B3309]: "Requires the Medic talent" [B2152]
   G("First aid kit", [3254, 3360], "assist", "roll", { cost: "full", prefix: 1 }),
   ...["Binoculars", "Drone, personal", "Laboratory instruments", "Supercomputer", "Tools, aerial vehicle", "Tools, armor", "Tools, general", "Tools, ground vehicle", "Tools, weapons"].map((n) => G(n, [3254, 3360], "assist", "roll", { cost: "full", prefix: 1 })),
   ...["Handcuffs", "Electronic restraints"].map((n) => G(n, [3322, 3329], "assist", "gmCard", { cost: "full", prefix: 1 })),

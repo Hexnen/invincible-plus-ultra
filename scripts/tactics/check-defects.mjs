@@ -580,6 +580,14 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     eq(code(await T.req("p1", decl("H1", "charge", ["N1"]))), "ok", "D20: a duplicator charges");
     for (let i = 0; i < 3 && T.prompt("reaction"); i++) await T.answer("gm", "reaction", "pass", T.prompt("reaction").about);
     eq((T.requests.filter((r) => r.key === "attack").at(-1)?.pool?.mods ?? []).filter((m) => m.source === "copies").map((m) => m.dice), [3], "D20: the copy bonus is in the pool of a charge"); }
+  { const sniper = { id: "sr", name: "Sniper rifle", type: "gear", level: null, power: null, boosts: [], autos: [{ id: "a", name: "Sniper rifle", type: "rollAttack", show: true, attr: ["agility"], bonus: 2, stress: 0, damage: 3, min: 1, max: 10, bypass: false }], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} };
+    const T = mk(), c = T.c.H1; c.kit = Kit.build({ items: [sniper], attrs: c.attrs }); c.pass = c.kit.pass;
+    const f0 = T.facts.bind(T); T.facts = () => { const f = f0(); return { ...f, weapon: (cid, ref) => T.c[cid]?.kit?.weapons?.find((w) => w.id === ref) ?? f.weapon(cid, ref) }; };
+    const w = c.kit.weapons[0];
+    eq([code(await T.req("p1", { op: "move", actor: "H1", to: "z2" })), T.spot("H1")], ["ok", "z2"], "D23: the shooter moves a zone");
+    const r = await T.req("p1", decl("H1", "shoot", ["N1"], { weapon: w.id }));
+    eq([code(r), why(r), r.error?.params?.gmMayAllow, T.state.stack.length], ["illegal", "weaponNoMove", 1, 0], "D23: a Sniper rifle is not fired in a round in which the shooter moved [B2545]");
+    eq([code(await T.req("p1", decl("H1", "shoot", ["N1"], { weapon: w.id, exception: { text: "braced on the ledge" } }))), T.prompt("exception")?.to], ["ok", "gm"], "D23: asked as an exception it is the GM's call"); }
 }
 
 done("check-defects");

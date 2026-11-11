@@ -340,7 +340,7 @@ function armsOf(bar, a, own, facts, t) {
   const wname = (x) => (x.opt ? `${x.name} (${t(`ITAC.kit.opt.${x.opt}`, {}, x.opt)})` : x.tag ? `${x.name} + ${x.tag}` : x.name);      // P6: a power's attack and its variants
   const sel = ids.includes(own.weapon) ? own.weapon : ids[0] ?? null, w = list.find((x) => x.id === sel) ?? null;
   const rangeText = (x) => (Array.isArray(x.range) ? t(x.range[0] === x.range[1] ? "ITAC.ui.weapon.rangeOne" : "ITAC.ui.weapon.range", { min: x.range[0], max: x.range[1] }) : null);
-  const tipOf = (x) => [x.bonus ? t("ITAC.ui.weapon.bonus", { n: x.bonus }) : null, x.damage != null ? t("ITAC.ui.weapon.damage", { n: x.damage }) : null, rangeText(x), x.sharp ? t("ITAC.ui.weapon.sharp") : null,
+  const tipOf = (x) => [x.bonus ? t("ITAC.ui.weapon.bonus", { n: x.bonus }) : null, x.damage != null ? t("ITAC.ui.weapon.damage", { n: x.damage }) : null, rangeText(x), x.sharp ? t("ITAC.ui.weapon.sharp") : null, x.stunEffect ? t("ITAC.ui.weapon.stunEffect") : null, x.singleUse ? t("ITAC.ui.weapon.singleUse") : null, x.noMove ? t("ITAC.ui.weapon.noMove") : null,
     x.noDamage ? t("ITAC.ui.weapon.noDamage") : null, x.toStress ? t("ITAC.ui.weapon.toStress") : null, x.onHit?.status ? t("ITAC.ui.weapon.gives", { status: t(`ITAC.status.${x.onHit.status}`, {}, x.onHit.status) }) : x.onHit?.stun ? t("ITAC.ui.weapon.stun") : null,
     x.attr ? attrText(t, x.attr) : null, x.stress ? t("ITAC.ui.stress", { n: x.stress }) : null].filter(Boolean).join(", ");
   const weapons = ids.length > 1 || shooting ? { label: t("ITAC.ui.weapon"), empty: ids.length ? null : t("ITAC.ui.weapon.none"),
