@@ -25,6 +25,7 @@ export function zoneFacts(tok, byToken = () => null) {
     placeOf: (where) => Zones.place(where),
     plan: (cid, where, profile) => (tok(cid) ? Zones.plan(tok(cid), where, profile) : null),
     along: (cid, keys, opts) => (tok(cid) ? Zones.planAlong(tok(cid), keys, opts) : null),
+    /* direction: { dx, dy } | { angle } along the map, or "up" | "down" for the levels of the mover's own zone (zones-api.md section 14) */
     chain: (cid, o = {}) => (tok(cid) ? Zones.forcedChain(tok(cid), { distance: o.distance, ...(o.direction ? { direction: o.direction } : {}), ...(o.awayFrom ? { awayFrom: ref(o.awayFrom) } : {}), ...(o.toward ? { toward: ref(o.toward) } : {}) }) : null),
     reach: (cid, profile, max) => (tok(cid) ? Zones.reach(tok(cid), profile, { max }) : []),
     within: (where, n) => Zones.zonesWithin(where, n),
@@ -37,26 +38,18 @@ export function zoneFacts(tok, byToken = () => null) {
     graph: () => Zones.graph(),                                                                  // P5: the whole map for the hazards (burning zones, where a fire may spread)
   };
 }
-/* A tab that draws no frames (minimised, in the background) never finishes an animated token movement, and the map's move would wait
-   for it: there the executor moves the tokens without animation. -> the `options` for the map's token updates */
-export async function drawOptions() {
-  if (typeof requestAnimationFrame !== "function") return undefined;
-  const alive = await Promise.race([new Promise((r) => requestAnimationFrame(() => r(true))), new Promise((r) => setTimeout(() => r(false), 250))]);
-  return alive ? undefined : { animate: false };
-}
 /** Carry out `zmove` / `zput` (engine-pure.mjs effects). -> { op, result } | { ok:false, reason } */
 export async function performMove(e, tok) {
   try {
     const token = tok(e.who), group = (e.group ?? []).map(tok).filter(Boolean);
     if (!token) return { ok: false, reason: "noToken" };
-    const options = await drawOptions();
     if (e.t === "zput") {
-      const r = await Zones.moveToZone(token, e.to, { group, ...(options ? { options } : {}) });
+      const r = await Zones.moveToZone(token, e.to, { group });
       return r.ok ? { op: r.journal, result: { ok: true, spot: r.place?.spot ?? null } } : { ok: false, reason: r.reason };
     }
     const plan = Zones.planAlong(token, e.zones ?? [], { ...(e.profile ? { profile: e.profile } : {}), ...(e.end ? { end: e.end } : {}), forced: !!e.forced });
     if (!plan) return { ok: false, reason: "noRoute" };
-    const r = await Zones.move(token, null, { plan, ...(e.profile ? { profile: e.profile } : {}), group, forced: !!e.forced, data: { ipu: e.data ?? {} }, wait: true, ...(options ? { options } : {}) });
+    const r = await Zones.move(token, null, { plan, ...(e.profile ? { profile: e.profile } : {}), group, forced: !!e.forced, data: { ipu: e.data ?? {} }, wait: true });
     if (!r.ok) return { ok: false, reason: r.reason };
     const at = (e.zones ?? []).lastIndexOf(r.place?.zone);
     return { op: r.journal, result: { ok: true, done: r.done ?? 0, total: r.total ?? 0, spot: r.place?.spot ?? null, left: at >= 0 ? e.zones.slice(at) : [],

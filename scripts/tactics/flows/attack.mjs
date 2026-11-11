@@ -221,6 +221,9 @@ const windowKeys = (I, prefix) => Object.keys(I.data.pk ?? {}).filter((k) => k.s
 /* ------------------------------------------------------------------ steps */
 const withOut = (inst) => { const I = K.draft(inst); I.data.out ??= {}; return I; };      // a skipped step (spec 14.1 skipStep) must not break the later ones
 const blank = { helpers: [], exploits: [], stressTotal: 0 };
+/* Knockback straight up or down (a vertical zone is a zone [B2258]): up unless the target is already as high as the map goes, down only for a
+   target off the ground (reading, combat-rulings INT-R3). Asked only where the map says on which level the target is. */
+const vertOf = (v, t) => { const z = v.facts.zone(t); return !z || z.area || z.level == null ? [] : [...(z.level === "elevated" ? [] : ["up"]), ...(z.level !== "ground" && z.level !== "underground" ? ["down"] : [])]; };
 const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); return Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : a?.slugfest?.damage ?? 0); };   // [B2426], [B2428], [B2512]; P7 [B3148]: a ram deals the vehicle's damage
 export const steps = {
   /* step 2: legality was checked when the declaration came in; here the gates it found are fixed on the instance, an area attack takes everyone in the
@@ -591,14 +594,14 @@ export const steps = {
       if (p.stunt === "knockback" && !K.flag(I, `kb:${t}`)) {
         const key = `kbdir:${t}`, zk = v.facts.zone(t)?.key, near = zk ? (Z.borders(zk) ?? []).map((b) => String(b?.key ?? "").split("|").find((z) => z && z !== zk)).filter(Boolean).slice(0, 12) : [];
         if (!I.data.pk?.[key]) {
-          const pr = { key, kind: "knockDir", to: K.addressee(v, I.actor), about: I.actor, options: [{ id: "away", label: "ITAC.opt.kbAway" }, ...near.map((z) => ({ id: `to:${z}`, label: "ITAC.opt.kbToward", data: { zone: z } }))], data: { target: t, distance: stunts.knockbackDistance(str) } };
+          const pr = { key, kind: "knockDir", to: K.addressee(v, I.actor), about: I.actor, options: [{ id: "away", label: "ITAC.opt.kbAway" }, ...near.map((z) => ({ id: `to:${z}`, label: "ITAC.opt.kbToward", data: { zone: z } })), ...vertOf(v, t).map((w) => ({ id: w, label: w === "up" ? "ITAC.opt.kbUp" : "ITAC.opt.kbDown" }))], data: { target: t, distance: stunts.knockbackDistance(str) } };
           if (!near.length) pr.auto = { option: "away", reason: "noOption" };
           R.prompts.push(pr); R.wait = true; return R;
         }
         if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
         K.setFlag(I, `kb:${t}`);
         const dir = K.answerId(v, I, key) ?? "away", n = stunts.knockbackDistance(str);
-        R.push = forcedChild(t, { ...(dir.startsWith("to:") ? { toward: dir.slice(3) } : { awayFrom: I.actor }), distance: n, damage: n, decay: 1, armor: true, by: I.actor, kind: "knockback" });
+        R.push = forcedChild(t, { ...(dir === "up" || dir === "down" ? { direction: dir } : dir.startsWith("to:") ? { toward: dir.slice(3) } : { awayFrom: I.actor }), distance: n, damage: n, decay: 1, armor: true, by: I.actor, kind: "knockback" });
         return R;
       }
       if (p.stunt === "slam" && I.data.charge?.left > 0) {

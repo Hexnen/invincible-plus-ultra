@@ -92,7 +92,15 @@ export function beforeStep(fn) { const off = call("beforeStep", fn); return type
 export const tactical = (cfg) => call("tactical", cfg) === true;
 export const tacticalOn = () => call("tacticalOn") === true;
 
-/* ------------------------------------------------------------------ interface parts (zones-api.md sections 17-19) */
+/* ------------------------------------------------------------------ interface parts (zones-api.md sections 17-19, 22-23) */
+/** the text on a zone's badge in the scene's numeral format ("3", "III", "C") | null (also on a map that does not have the call yet) */
+export const zoneName = (where) => call("zoneName", where) ?? null;
+/** the zone in words, in the user's language, as the map says it ("Zone III, floor 2", "Sky High") | null */
+export const zoneTitle = (where, opts) => call("zoneTitle", where, opts) ?? null;
+/** the scene's numerals or its zones changed ("params", "edited", "loaded"): texts that name a zone are said again. -> off() */
+export function onChange(fn) { const id = Hooks.on("moinenMapsZones", fn); return () => Hooks.off("moinenMapsZones", id); }
+/** a bar of ours that covers an edge of the window, so the map's pick keeps clear of it. -> off() */
+export const uiInset = (id, spec) => { const off = call("uiInset", id, spec); return typeof off === "function" ? off : () => {}; };
 export const highlight = (spec) => call("highlight", spec) ?? null;
 export const clearHighlights = (what) => call("clearHighlights", what) ?? 0;
 export const showReach = (token, p, opts) => call("showReach", token, p, opts) ?? null;

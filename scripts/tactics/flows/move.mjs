@@ -91,6 +91,21 @@ function gate(v, I, R, g) {
     if (through) { (mv.cleared ??= {})[`bar:${d.border}`] = 1; return "go"; }
     mv.stop = "barrier"; return "stop";
   }
+  if (g.reason === "ipu.slab") {                                                                 // thrown up or down into a floor or the roof [B2435]
+    /* The map holds no Armor for a floor or a roof, so the engine cannot say by itself whether it gives way: the thrown character takes
+       the barrier's damage as from a wall (the throw's number, less `decay` per barrier already hit, reduced by Armor for a stunt [R8])
+       and the GM says whether it goes through (provisional, combat-questions INT-2). */
+    const F = I.data.forced ?? {}, key = `slab:${d.spot}`, ask = `slabAsk:${d.spot}`;
+    const seen = (mv.hitLog ?? []).find((h) => h.slab && h.spot === d.spot), raw = seen ? seen.raw : Math.max(0, (F.damage ?? 0) - (F.decay ?? 1) * (mv.hits ?? 0));
+    if (!K.flag(I, key)) {
+      K.setFlag(I, key); mv.hits = (mv.hits ?? 0) + 1; (mv.hitLog ??= []).push({ slab: d.slab, spot: d.spot, raw });
+      if (raw > 0 && alive(v, mv.who)) { R.push = hazardChild([mv.who], { kind: "fixed", amount: raw, armor: F.armor === true, source: "kinetic", cause: "barrier", id: "barrier" }); return "wait"; }
+    }
+    if (!I.data.pk?.[ask]) { R.prompts.push({ key: ask, kind: "moveStop", to: "gm", about: mv.who, options: [{ id: "continue", label: "ITAC.opt.breakThrough" }, { id: "stop", label: "ITAC.opt.stopHere" }], data: { spot: d.spot, slab: d.slab, why: [d.slab] } }); return "wait"; }
+    if (!K.isAnswered(v, I, ask)) return "wait";
+    if (K.answerId(v, I, ask) === "stop") { mv.stop = "barrier"; return "stop"; }
+    (mv.cleared ??= {})[key] = 1; return "go";
+  }
   mv.stop = String(g.reason ?? "blocked").slice(0, 24); return "stop";                           // the map's own "blocked", another module's listener
 }
 /** The stretches of a route. Returns true when the travelling is over (R.goto is the caller's). */
@@ -292,18 +307,20 @@ export const forced = {
   steps: {
     check(v, inst) {
       const I = K.draft(inst), R = K.result(I), F = I.data.forced, Z = v.facts.zones, from = Z.place(F.who);
-      const chain = from && !from.area ? Z.chain(F.who, { awayFrom: F.awayFrom, toward: F.toward, direction: F.direction, distance: Math.max(1, Math.trunc(F.distance) || 1) }) : null;
+      const vert = F.direction === "up" || F.direction === "down" ? F.direction : null;       // straight up or down: the levels of the zone the character is in (zones-api.md section 14)
+      const chain = from && !from.area ? Z.chain(F.who, { ...(vert ? {} : { awayFrom: F.awayFrom, toward: F.toward }), direction: F.direction, distance: Math.max(1, Math.trunc(F.distance) || 1) }) : null;
       I.locked = true;
       I.data.mv = { who: F.who, kind: "route", mode: F.kind ?? "forced", forced: 1, from: from?.spot ?? null, to: chain?.end?.spot ?? null, zones: chain?.zones?.slice() ?? [], end: chain?.end ? { level: chain.end.level, floor: chain.end.floor, airborne: chain.end.airborne } : null,
-        total: chain?.total ?? 0, edge: chain?.ray?.end === "edge" ? 1 : 0, walls: (chain?.steps ?? []).filter((s) => s.border?.blocked).map((s) => MP.barrierOf(s.border, "wall")), group: [], seg: 0, cleared: from ? { [`enter:${from.spot}`]: 1 } : {} };
+        total: chain?.total ?? 0, edge: chain?.ray?.end === "edge" ? 1 : 0, walls: (chain?.steps ?? []).filter((s) => s.border?.blocked).map((s) => MP.barrierOf(s.border, "wall")), group: [], seg: 0, cleared: from ? { [`enter:${from.spot}`]: 1 } : {},
+        ...(vert ? { vertical: vert, slabs: (chain?.steps ?? []).map((s) => s.slab).filter((s) => s === "floor" || s === "roof") } : {}) };
       R.goto = "confirm"; return R;
     },
     /* spec 9.5 step 6: the GM confirms where a thrown character goes. [A7]: whether it then falls is the GM's word on the same card. */
     confirm(v, inst) {
-      const I = K.draft(inst), R = K.result(I), mv = I.data.mv, can = mv.zones.length > 1;
+      const I = K.draft(inst), R = K.result(I), mv = I.data.mv, can = mv.vertical ? mv.total > 0 : mv.zones.length > 1;
       if (!I.data.pk?.dir) {
         R.prompts.push({ key: "dir", kind: "direction", to: "gm", about: mv.who, options: [{ id: "go", label: "ITAC.opt.forcedGo", ...(can ? {} : { disabled: "noRoute" }) }, { id: "goFall", label: "ITAC.opt.forcedGoFall", ...(can ? {} : { disabled: "noRoute" }) }, { id: "none", label: "ITAC.opt.forcedNone" }],
-          data: { who: mv.who, by: I.data.forced.by ?? null, kind: mv.mode, zones: mv.zones, to: mv.to, walls: mv.walls, edge: mv.edge, distance: I.data.forced.distance } });
+          data: { who: mv.who, by: I.data.forced.by ?? null, kind: mv.mode, zones: mv.zones, to: mv.to, walls: mv.walls, edge: mv.edge, distance: I.data.forced.distance, ...(mv.vertical ? { vertical: mv.vertical, levels: mv.total, slabs: mv.slabs ?? [] } : {}) } });
         R.wait = true; return R;
       }
       if (!K.isAnswered(v, I, "dir")) { R.wait = true; return R; }

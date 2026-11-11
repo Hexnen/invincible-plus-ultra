@@ -285,7 +285,7 @@ const city = () => { const T = new MTable(); T.hero("H1", "p1", { attrs: { stren
   await T.roll("attack", 2);
   await T.req("p1", { op: "answer", prompt: T.prompt("stunts").id, value: ["knockback@N1"] });
   const kd = T.prompt("knockDir");
-  eq([kd?.to, kd?.options.map((o) => o.id).sort(), kd?.data.distance], [{ users: ["p1"] }, ["away", "to:z1", "to:z3"], RS.knockbackDistance(6)], "K: the attacker names the direction: straight away or toward a neighbouring zone");
+  eq([kd?.to, kd?.options.map((o) => o.id).sort(), kd?.data.distance], [{ users: ["p1"] }, ["away", "to:z1", "to:z3", "up"], RS.knockbackDistance(6)], "K: the attacker names the direction: straight away, toward a neighbouring zone, or straight up (the target stands on the ground: no down)");
   const hp = T.c.N1.health;
   await T.req("p1", { op: "answer", prompt: kd.id, value: "to:z3" });
   const dc = T.prompt("direction");

@@ -32,6 +32,7 @@ const pct = (p) => `${Math.round(p * 100)}%`;
 export function zoneText(facts, t, spot) {
   if (!spot) return "";
   const z = facts.zone?.(spot) ?? null, s = String(spot);
+  if (z?.title) return String(z.title);                                              // the map's own words for the place (number in the scene's numerals, level, off-map area)
   const area = z?.area ?? (s.startsWith("@") ? s.slice(1) : null);
   if (area) return t(`ITAC.ui.area.${area}`, {}, cap(area));
   const base = t("ITAC.ui.zone", { n: z?.id ?? s.split(":")[0] });
@@ -152,12 +153,20 @@ function linesOf(p, t, facts, x) {
     case "reaction": if (d.attacker) out.push(t("ITAC.ui.line.attack", { attacker: n(d.attacker), target: about, action: t(`ITAC.action.${x.inst?.action ?? d.attack}`, {}, t("ITAC.ui.anAttack")) })); else out.push(t("ITAC.ui.line.window", { name: about })); break;
     case "counter": out.push(t("ITAC.ui.line.counter", { name: about })); break;
     case "dodgeMove": out.push(t("ITAC.ui.line.dodgeMove", { name: about })); break;
-    case "moveStop": out.push(t("ITAC.ui.line.moveStop", { name: about, zone: zoneText(facts, t, d.spot), why: (d.why ?? []).map((w) => t(`ITAC.ui.why.${w}`, {}, String(w))).join(", ") })); break;
+    case "moveStop": if (d.slab) { out.push(t("ITAC.ui.line.slabStop", { name: about, slab: t(`ITAC.ui.slab.${d.slab}`, {}, String(d.slab)), zone: zoneText(facts, t, d.spot) })); break; }
+      out.push(t("ITAC.ui.line.moveStop", { name: about, zone: zoneText(facts, t, d.spot), why: (d.why ?? []).map((w) => t(`ITAC.ui.why.${w}`, {}, String(w))).join(", ") })); break;
     case "moveApprove": out.push(t("ITAC.ui.line.moveApprove", { name: about, from: zoneText(facts, t, d.from), to: zoneText(facts, t, d.to) })); if (d.cost && d.cost !== "none") out.push(t("ITAC.ui.line.moveCost", { cost: costText(t, d.cost) })); break;
     case "stunts": out.push(t("ITAC.ui.line.stunts", { n: p.max ?? 0 })); break;
     case "exception": if (d.text) out.push({ quote: String(d.text), by: about }); if (d.reason) out.push(t("ITAC.ui.line.why", { reason: reasonText(t, d.reason) })); break;
     case "other": if (d.text) out.push({ quote: String(d.text), by: about }); break;
-    case "direction": if (Array.isArray(d.zones)) {                                              // a forced move (P3): where the map says the character flies
+    case "direction": if (d.vertical) {                                                           // thrown straight up or down: levels of one zone, and what is in the way
+        const who = n(d.who ?? p.about), up = d.vertical === "up";
+        if (d.levels > 0) out.push(t(`ITAC.ui.line.forced${up ? "Up" : "Down"}${d.by ? "By" : ""}`, { name: who, by: n(d.by), n: d.levels }));
+        else out.push(t("ITAC.ui.line.forcedNoRoom", { name: who }));
+        if (d.slabs?.length) out.push(t("ITAC.ui.line.slabs", { list: d.slabs.map((s) => t(`ITAC.ui.slab.${s}`, {}, String(s))).join(", ") }));
+        break;
+      }
+      if (Array.isArray(d.zones)) {                                                              // a forced move (P3): where the map says the character flies
         const chain = d.zones.map((z) => zoneText(facts, t, z)), who = n(d.who ?? p.about);
         if (chain.length > 1) out.push(t(d.by ? "ITAC.ui.line.forcedBy" : "ITAC.ui.line.forced", { name: who, by: n(d.by), n: chain.length - 1, chain: chain.join(" \u2192 ") }));
         else out.push(t("ITAC.ui.line.forcedNowhere", { name: who }));
@@ -569,11 +578,11 @@ export function deskData(model, own, facts, t) {
   const count = cards.length + model.manual.length;
   /* [A36]: until a charge is the engine's, the GM orders a forced move (who, away from whom, how far, how hard) or a fall by hand */
   const everyone = Object.keys(facts.view?.ledger ?? {}).filter((id) => facts.c?.(id)).map((id) => ({ id, label: facts.c(id).name }));
-  const fo = own.force ?? {}, fWho = everyone.some((x) => x.id === fo.who) ? fo.who : null, fFrom = fo.from !== fWho && everyone.some((x) => x.id === fo.from) ? fo.from : null;
+  const fo = own.force ?? {}, fWho = everyone.some((x) => x.id === fo.who) ? fo.who : null, ways = [{ id: "@up", label: t("ITAC.ui.force.up"), dir: "up" }, { id: "@down", label: t("ITAC.ui.force.down"), dir: "down" }], fWay = ways.find((x) => x.id === fo.from) ?? null, fFrom = fWay ? fWay.id : fo.from !== fWho && everyone.some((x) => x.id === fo.from) ? fo.from : null;
   const fDist = Math.max(1, Math.min(12, Math.trunc(Number(fo.distance) || 1))), fDmg = Math.max(0, Math.min(99, Math.trunc(Number(fo.damage) || 0)));
-  const force = { title: t("ITAC.ui.force"), who: { label: t("ITAC.ui.force.who"), value: fWho, choices: everyone }, from: { label: t("ITAC.ui.force.from"), value: fFrom, choices: everyone.filter((x) => x.id !== fWho) },
+  const force = { title: t("ITAC.ui.force"), who: { label: t("ITAC.ui.force.who"), value: fWho, choices: everyone }, from: { label: t("ITAC.ui.force.from"), value: fFrom, choices: [...everyone.filter((x) => x.id !== fWho), ...ways.map(({ id, label }) => ({ id, label }))] },
     distance: { label: t("ITAC.ui.force.distance"), value: fDist, min: 1, max: 12 }, damage: { label: t("ITAC.ui.force.damage"), value: fDmg, min: 0, max: 99 },
-    push: { label: t("ITAC.ui.force.push"), disabled: !fWho ? t("ITAC.ui.force.needWho") : !fFrom ? t("ITAC.ui.force.needFrom") : null, req: fWho && fFrom ? { op: "forcedMove", combatant: fWho, awayFrom: fFrom, by: fFrom, distance: fDist, damage: fDmg, kind: "knockback" } : null },
+    push: { label: t("ITAC.ui.force.push"), disabled: !fWho ? t("ITAC.ui.force.needWho") : !fFrom ? t("ITAC.ui.force.needFrom") : null, req: fWho && fFrom ? (fWay ? { op: "forcedMove", combatant: fWho, direction: fWay.dir, distance: fDist, damage: fDmg, kind: "knockback" } : { op: "forcedMove", combatant: fWho, awayFrom: fFrom, by: fFrom, distance: fDist, damage: fDmg, kind: "knockback" }) : null },
     fall: { label: t("ITAC.ui.force.fall"), disabled: fWho ? null : t("ITAC.ui.force.needWho"), req: fWho ? { op: "fall", combatant: fWho } : null } };
   /* P5: a hazard the GM lets loose by hand (an explosion, an area attack, fire, vacuum, a disease), on a zone with people in it or on one character */
   const HZ = { blast: [["rating", 1, 20, 4]], area: [["pool", 1, 40, 8], ["damage", 0, 40, 5]], fire: [["intensity", 1, 12, 6]], vacuum: [], disease: [["virulence", 0, 12, 0]] };

@@ -892,7 +892,7 @@ function pushManual(X, cid, kind, o = {}) {
 async function opForced(X, op, a) {
   if (!P1.isId(a.combatant) || !X.facts.c(a.combatant)) return bad("badInput");
   const ref = (x) => (typeof x === "string" && x.length <= 60 ? x : undefined), n = (x, hi) => Math.max(0, Math.min(hi, Math.trunc(Number(x) || 0)));
-  const dir = isObj(a.direction) ? (Number.isFinite(a.direction.angle) ? { angle: a.direction.angle } : Number.isFinite(a.direction.dx) && Number.isFinite(a.direction.dy) ? { dx: a.direction.dx, dy: a.direction.dy } : undefined) : undefined;
+  const dir = a.direction === "up" || a.direction === "down" ? a.direction : isObj(a.direction) ? (Number.isFinite(a.direction.angle) ? { angle: a.direction.angle } : Number.isFinite(a.direction.dx) && Number.isFinite(a.direction.dy) ? { dx: a.direction.dx, dy: a.direction.dy } : undefined) : undefined;
   const spec = op === "fall" ? Move.fallChild(a.combatant, { canGrab: a.canGrab === true, immune: a.immune === true })
     : Move.forcedChild(a.combatant, { awayFrom: ref(a.awayFrom), toward: ref(a.toward), direction: dir, distance: Math.max(1, n(a.distance, 12)), damage: n(a.damage, 99), by: P1.isId(a.by) ? a.by : undefined, kind: ["knockback", "slam"].includes(a.kind) ? a.kind : "forced" });
   const inst = makeInst(X, { action: spec.action, actor: null, decl: spec.decl, cause: "gm", flow: spec.flow, data: spec.data, initiator: spec.initiator, parent: top(X)?.id ?? null });

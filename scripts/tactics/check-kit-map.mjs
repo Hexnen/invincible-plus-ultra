@@ -38,7 +38,7 @@ export function fakeZones(def) {
       const to = mk({ zone: keys[i], level, floor, airborne: air });
       steps.push({ kind: "border", from: i === 1 ? from.spot : steps[i - 2].to, to: to.spot, zone: keys[i], level, floor, border: { key: b.key, kind: b.kind, wall: b.wall, doorway: b.doorway, ...(b.stops[sw] ? { blocked: true } : {}), ...(sw === "air" && b.wall?.outer && b.wall.state === "intact" ? { over: true } : {}) } });
     }
-    if (keys.length === 1 && end && (end.level ?? "ground") !== from.level) steps.push({ kind: "level", from: from.spot, to: mk({ zone: keys[0], ...end }).spot, zone: keys[0], level: end.level });
+    if (keys.length === 1 && end && (end.level ?? "ground") !== from.level) steps.push({ kind: "level", from: from.spot, to: mk({ zone: keys[0], ...end }).spot, zone: keys[0], level: end.level, dir: end.level === "elevated" ? 1 : -1, slab: Z.zones[keys[0]].rooftop ? "roof" : null });
     return steps;
   }
   function route(a, b, way, force) {                                    // breadth first, fewest borders; unblocked routes first
@@ -85,6 +85,11 @@ export function fakeZones(def) {
     planAlong(fromRef, keys, { profile, end, forced } = {}) { const from = place(fromRef); if (!from?.zone || !Array.isArray(keys) || keys[0] !== from.zone) return null; return planOf(from, keys, profile, end, !!forced); },
     forcedChain(who, { direction, awayFrom, toward, distance = 1 } = {}) {
       const from = place(who); if (!from?.zone) return null;
+      if (direction === "up" || direction === "down") {                                         // zones-api.md section 14: the rungs of one zone (here: the ground and the elevated position, a rooftop between them)
+        const up = direction === "up", can = up ? from.level !== "elevated" : from.level !== "ground";
+        const plan = planOf(from, [from.zone], null, can ? { level: up ? "elevated" : "ground", floor: null, airborne: up } : null, true);
+        return { ...plan, vertical: true, ray: { dx: 0, dy: 0, dz: up ? 1 : -1, end: can && distance <= 1 ? "distance" : up ? "top" : "ground", points: [] } };
+      }
       const pos = (z) => Z.zones[z].pos, other = place(awayFrom ?? toward);
       let dx = direction?.dx ?? 0, dy = direction?.dy ?? 0;
       if (other?.zone) { dx = Math.sign(pos(from.zone)[0] - pos(other.zone)[0]) * (awayFrom ? 1 : -1); dy = Math.sign(pos(from.zone)[1] - pos(other.zone)[1]) * (awayFrom ? 1 : -1); }

@@ -97,8 +97,7 @@ async function perform(combat, e) {
     }
     case "rollRequest": sendRoll(combat, e); return {};
     case "zones": {                                                                        // one write of the map; the journal keeps the inverse it returned
-      const still = e.isInverse && e.op?.op === "tokens" ? await Mv.drawOptions() : null;                 // undoing a move in a tab that draws no frames: no animation
-      const r = await Zones.perform(still ? { ...e, op: { ...e.op, options: still } } : e);
+      const r = await Zones.perform(e);
       if (!r.ok) { ui.notifications?.warn(t("ITAC.warn.zones", { reason: t(`ITAC.reason.${r.reason}`, {}, String(r.reason)) })); return { ok: false, reason: r.reason }; }
       return r.op ? { op: r.op, result: r.result } : { result: r.result };
     }

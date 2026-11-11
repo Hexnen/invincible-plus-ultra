@@ -251,13 +251,15 @@ export function enterNeeds(states, md, place) {
   if ((md?.trig ?? []).some((z) => z === place?.zone || z === place?.spot)) return true;
   return !!md?.cond && (f.storm || f.highGravity);
 }
-/** -> null (go on) | { stop: true, reason: "ipu.enter" | "ipu.dark" | "ipu.barrier" | "ipu.hit", data } */
+/** -> null (go on) | { stop: true, reason: "ipu.enter" | "ipu.dark" | "ipu.barrier" | "ipu.hit" | "ipu.slab", data } */
 export function stepVerdict(ctx) {
   const md = ctx?.data?.ipu;
   if (!isObj(md)) return null;                                                        // not a move of the engine
   const cl = md.cleared ?? {}, from = ctx.from?.spot ?? ctx.step?.from, stop = (reason, data) => ({ stop: true, reason, data });
   if (from && !cl[`enter:${from}`] && enterNeeds(ctx.statesFrom, md, ctx.from)) return stop("ipu.enter", { spot: from });
   if (!md.forced && from && !cl[`dark:${from}`] && stateFlags(ctx.statesFrom, md.mover).dark && !stateFlags(ctx.statesTo, md.mover).dark) return stop("ipu.dark", { spot: from });   // [B1654]
+  const slab = ctx.step?.slab;                                                        // thrown up or down through a building: a floor or the roof is in the way (zones-api.md section 14)
+  if (md.forced && (slab === "floor" || slab === "roof") && from && !cl[`slab:${from}`]) return stop("ipu.slab", { spot: from, slab });
   const b = ctx.border;
   if (b && b.stops?.[stopWayOf(ctx.profile?.way)]) {
     if (md.forced) return stop("ipu.hit", { border: b.key });                         // [B2435], [B2494]

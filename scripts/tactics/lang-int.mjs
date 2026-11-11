@@ -58,8 +58,6 @@ export const EN_INT = {
   "ITAC.opt.kbUp": "Straight up",
   "ITAC.opt.kbDown": "Straight down",
   "ITAC.opt.breakThrough": "It gives way",
-  "ITAC.ui.force.dir": "Which way",
-  "ITAC.ui.force.away": "Away from somebody",
   "ITAC.ui.force.up": "Straight up",
   "ITAC.ui.force.down": "Straight down",
   "ITAC.ui.line.forcedUp": "{name} is thrown straight up, levels: {n}.",
@@ -71,8 +69,7 @@ export const EN_INT = {
   "ITAC.ui.slab.floor": "a floor",
   "ITAC.ui.slab.roof": "the roof",
   "ITAC.ui.slab.ground": "the ground",
-  "ITAC.ui.stop.floor": "a floor is in the way: does it give way?",
-  "ITAC.ui.stop.roof": "the roof is in the way: does it give way?",
+  "ITAC.ui.line.slabStop": "{name} hits {slab} ({zone}). Does it give way?",
 };
 export const PL_INT = {
   "ITAC.journal.gm": "MG",
@@ -132,8 +129,6 @@ export const PL_INT = {
   "ITAC.opt.kbUp": "Prosto w górę",
   "ITAC.opt.kbDown": "Prosto w dół",
   "ITAC.opt.breakThrough": "Ustępuje",
-  "ITAC.ui.force.dir": "W którą stronę",
-  "ITAC.ui.force.away": "Od kogoś",
   "ITAC.ui.force.up": "Prosto w górę",
   "ITAC.ui.force.down": "Prosto w dół",
   "ITAC.ui.line.forcedUp": "{name} leci prosto w górę, poziomy: {n}.",
@@ -145,6 +140,5 @@ export const PL_INT = {
   "ITAC.ui.slab.floor": "strop",
   "ITAC.ui.slab.roof": "dach",
   "ITAC.ui.slab.ground": "grunt",
-  "ITAC.ui.stop.floor": "po drodze jest strop: czy ustępuje?",
-  "ITAC.ui.stop.roof": "po drodze jest dach: czy ustępuje?",
+  "ITAC.ui.line.slabStop": "{name} uderza w przeszkodę: {slab} ({zone}). Czy ustępuje?",
 };

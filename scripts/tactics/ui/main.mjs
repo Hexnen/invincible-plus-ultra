@@ -69,8 +69,9 @@ function factsOf(combat) {
       try { for (const id of Object.keys(view?.ledger ?? {})) { const cb = combat.combatants.get(id), z = cb?.token ? Zones.placeOf(cb.token)?.zone : null; if (z) by.set(z, [...(by.get(z) ?? []), id]); } } catch { /* the map is optional */ }
       return [...by].map(([zone, ids]) => ({ zone, ids }));
     },
-    /* the number the map shows on a zone's badge is its id + 1 (moinen-maps zones.zoneName; not on its API yet, so a map set to other numerals reads differently) */
-    zone: (spot) => { try { const p = Zones.place(spot); return p ? { id: Number.isInteger(p.id) ? p.id + 1 : null, level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } catch { return null; } },
+    /* a zone reads as its badge on the map does: the map gives the number in the scene's numerals and the whole phrase in the user's
+       language (zones-api.md section 22); on an older map the number is the id + 1 and the phrase is ours */
+    zone: (spot) => { try { const p = Zones.place(spot); return p ? { id: Zones.zoneName(spot) ?? (Number.isInteger(p.id) ? p.id + 1 : null), title: Zones.zoneTitle(spot, { level: true }), level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } catch { return null; } },
   };
 }
 /* the dock's model for staff: the bar of whoever has the turn (or of the combatant the GM chose), from the full state */
@@ -241,6 +242,8 @@ export function start() {
     Hooks.on("canvasReady", () => { down = false; schedule(); });
     Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Dock.hide(); });
     Zones.onEvent(schedule);                 // a token entered a zone, a door changed: the options of a move are counted again
+    Zones.onChange(() => schedule());        // the scene's numerals or its zones changed: every text that names a zone is said again
+    Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock", top: "#invincible-combat-bar" });      // the pick's banner and its "more" chips keep clear of our two bars (zones-api.md section 23)
     /* a token dragged into another zone (movement.mjs asks here first): the dock opens Move for that combatant with the zone chosen */
     Mv.setDragSurface((cid, spot) => {
       const combat = combatNow();
