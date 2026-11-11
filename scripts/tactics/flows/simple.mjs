@@ -17,7 +17,16 @@ const fine = { ok: true, reason: null, params: {}, gates: [], notes: [] };
 
 /* ------------------------------------------------------------------ roll */
 const attrOf = (v, inst) => v.entry(inst)?.roll?.attr ?? inst.decl.attr ?? null;
+/* The pool of the roll: ONE builder for the roll and for what the dock shows before the declaration (preview). */
+function rollPool(v, I, tokens) {
+  const d = I.decl, attr = attrOf(v, I), mods = [];
+  if (I.action === "gmRoll" && Number.isFinite(d.mod) && d.mod) mods.push({ source: "gm", dice: Math.trunc(d.mod) });
+  const hd = (d.helpers ?? []).filter((h) => h.consent === "yes").length;
+  if (hd) mods.push({ source: "help", dice: Math.min(3, hd) });                           // [B2238]
+  return { attr, ...K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens }) };
+}
 export const roll = {
+  preview(v, inst) { const I = K.draft(inst); return attrOf(v, I) ? rollPool(v, I, I.decl.tokens ?? []) : null; },
   STEPS: Object.freeze(["check", "roll", "effect", "close"]),
   legality(v, inst) {
     const a = v.facts.c(inst.actor), e = v.entry(inst);
@@ -41,11 +50,7 @@ export const roll = {
         if (tg.wait) { R.wait = true; return R; }
         I.locked = true; R.events.push({ type: "actionLocked" });                               // spec 5.5: locks at the first die
         if ((d.stressTotal ?? 0) > 0) R.effects.push({ t: "stress", who: I.actor, n: d.stressTotal, cost: 1 });
-        const mods = [];
-        if (I.action === "gmRoll" && Number.isFinite(d.mod) && d.mod) mods.push({ source: "gm", dice: Math.trunc(d.mod) });
-        const hd = (d.helpers ?? []).filter((h) => h.consent === "yes").length;
-        if (hd) mods.push({ source: "help", dice: Math.min(3, hd) });                           // [B2238]
-        const bp = K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens: tg.tokens });
+        const bp = rollPool(v, I, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
         R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { passive: e?.roll?.passive === true || d.noPush === true, secret: d.secret === true, label: e?.label }));   // [B2227]
         R.wait = true; return R;

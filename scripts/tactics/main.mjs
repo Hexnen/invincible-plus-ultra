@@ -71,6 +71,7 @@ async function startRunning() {
   Hooks.on("createCombat", (combat) => announce(combat));
   Hooks.on("deleteCombat", (combat) => { last.delete(combat.id); Store.notify({ kind: "deleted", combat, state: null }); });
   Hooks.on("combatStart", () => Prompts.sync());
+  Hooks.on("preCreateChatMessage", (m) => Sys.keepRollPrivate(m));       // U7: a roll for the GM alone stays so when it is pushed
   // joining and leaving (spec 3.3): the executor brings the state in line
   Hooks.on("createCombatant", (c) => Engine.scheduleRoster(c.parent));
   Hooks.on("deleteCombatant", (c) => Engine.scheduleRoster(c.parent));

@@ -45,6 +45,13 @@ const instLine = (i, ctx, state = null) => ({ steps: (FLOWS[i.flow]?.STEPS ?? []
   defs: Object.entries(isObj(i.data?.def) ? i.data.def : {}).filter(([, x]) => isObj(x) && x.defence).map(([t, x]) => ({ target: t, defence: x.defence, dice: Number.isFinite(x.dice) ? x.dice : null })),      // the defences declared so far; `dice` only in the full state (a player's view carries the kind alone)
   inst: i.id, action: i.action, label: i.data?.label ?? null, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text });
 
+/* U1 / U2: one roll of an action as a surface needs it to offer "roll", "accept" and "push" itself. `state`: "owed" (no dice yet),
+   "push" (rolled, may still be pushed: the exchange waits for the roller's word), "done". The request id, the dice and the chat
+   message are only in the row of somebody the roll was asked of (view-pure.rollView) and in the GM's. */
+export const rollState = (r) => (r.forced != null ? "done" : r.sixes == null ? "owed" : r.pushable ? "push" : "done");
+const rollRow = (i, r, ctx) => ({ inst: i.id, key: r.key, who: r.who, whoName: nameOf(ctx, r.who), attr: r.attr ?? null, dice: r.req?.dice ?? null, sixes: r.forced?.sixes ?? r.sixes ?? null, pushed: r.pushed ?? 0,
+  state: rollState(r), waiting: r.sixes == null && r.forced == null, users: r.req?.users ?? [], rid: r.req?.rid ?? null, maxPush: r.req?.maxPush ?? null, label: r.req?.label ?? null, mode: r.req?.mode ?? null,
+  messageId: r.messageId ?? null, action: i.action, actionLabel: i.data?.label ?? null, actor: i.actor ?? null });
 /** Everything the GM desk shows. `log` is the journal flag. */
 export function deskModel(state, log, ctx = {}) {
   if (!state) return { cards: [], info: [], manual: [], journal: [], waiting: [], npcs: [], mode: null, turn: null, karma: [], statuses: {} };
@@ -61,7 +68,10 @@ export function deskModel(state, log, ctx = {}) {
     if (i.status === "manual") { manual.push({ ...line, commands: [{ id: "resolve", label: "ITAC.cmd.resolve", needs: "result", req: (result) => ({ op: "manual", inst: i.id, result }) }, { id: "abort", label: "ITAC.cmd.abort", req: { op: "abort", inst: i.id, refund: true } }] }); continue; }
     if (!i.locked) cmds.push({ id: "veto", label: "ITAC.cmd.veto", req: { op: "abort", inst: i.id, refund: true } }, { id: "amend", label: "ITAC.cmd.amend", needs: "decl", req: (decl) => ({ op: "amend", inst: i.id, decl }) });   // spec 13.2
     cmds.push({ id: "override", label: "ITAC.cmd.override", ops: ["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "retarget", "abort", "manual"], req: (op, payload) => ({ op, inst: i.id, ...payload }) });
-    info.push({ ...line, rolls: Object.values(i.rolls ?? {}).map((r) => ({ key: r.key, who: r.who, whoName: nameOf(ctx, r.who), attr: r.attr, dice: r.req?.dice, sixes: r.forced?.sixes ?? r.sixes ?? null, waiting: r.sixes == null && r.forced == null, users: r.req?.users ?? [] })), commands: cmds });
+    cmds[cmds.length - 1].ops.push("askRoll");
+    /* U1 / U4: per roll, what the GM can do about it from the desk: ask for the dice again, or take the result as it stands */
+    info.push({ ...line, rolls: Object.values(i.rolls ?? {}).map((r) => { const row = rollRow(i, r, ctx);
+      return { ...row, askReq: row.state === "owed" && r.req ? { op: "askRoll", inst: i.id, roll: r.key } : null, acceptReq: row.state === "push" ? { op: "setSixes", inst: i.id, roll: r.key, sixes: r.sixes } : null }; }), commands: cmds });
   }
   const list = log?.list ?? [];
   const journal = list.map((t, at) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, text: t.label?.gm ?? "", pub: t.label?.pub ?? "",
@@ -83,7 +93,8 @@ export function deskModel(state, log, ctx = {}) {
 export function waitingOn(state, ctx = {}) {
   const out = [];
   for (const p of Object.values(state?.prompts ?? {})) if (!p.answered) out.push({ what: "prompt", kind: p.kind, prompt: p.id, to: p.to === "gm" ? "gm" : usersOf(p), about: p.about ?? null, aboutName: nameOf(ctx, p.about) });
-  for (const i of state?.stack ?? []) for (const r of Object.values(i.rolls ?? {})) if (r.sixes == null && r.forced == null && r.req) out.push({ what: "roll", key: r.key, inst: i.id, to: r.req.users ?? [], about: r.who, aboutName: nameOf(ctx, r.who) });
+  /* U1: a roll that may still be pushed holds the exchange exactly like dice that were never thrown: the table waits for the roller */
+  for (const i of state?.stack ?? []) for (const r of Object.values(i.rolls ?? {})) { const s = rollState(r); if (s !== "done" && r.req) out.push({ what: s === "push" ? "push" : "roll", key: r.key, inst: i.id, to: r.req.users ?? [], about: r.who, aboutName: nameOf(ctx, r.who) }); }
   return out;
 }
 
@@ -122,7 +133,7 @@ export function barModel(view, cid, ctx = {}) {
     move: typeof ctx.move === "function" ? ctx.move(cid) : undefined,                             // P3: the reachable zones with their cost (movement-pure.moveOptions), each with a ready request
     endTurn: onTurn ? { disabled: busy ? "busy" : null, req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,
     holdOff: holdOffOf(view, cid, onTurn, busy, ctx), markReq: (unit, on = true) => ({ op: "mark", actor: cid, unit, on }),
-    other: { req: (text) => ({ op: "other", actor: cid, text }) }, exception: { req: (text, inst) => ({ op: "exception", actor: cid, text, ...(inst ? { inst } : {}) }) } };
+    other: { req: (text) => ({ op: "other", actor: cid, text }) }, exception: { req: (text, inst, more = {}) => ({ op: "exception", actor: cid, text, ...(inst ? { inst } : {}), ...(more.reason ? { reason: more.reason } : {}), ...(more.decl ? { decl: more.decl } : {}) }) } };
 }
 /* spec 3.1 hold off: the slots the combatant's card can be swapped with now (none unless it is this combatant's own turn) */
 function holdOffOf(view, cid, onTurn, busy, ctx) {
@@ -143,6 +154,8 @@ export function playerModel(view, viewer, ctx = {}) {
     rolls: Object.values(i.rolls ?? {}).filter((r) => r.req?.users?.includes(viewer.id) && r.sixes == null && !r.forced).map((r) => ({ key: r.key, rid: r.req.rid, dice: r.req.dice, attr: r.attr, maxPush: r.req.maxPush })),
     commands: [...(i.locked ? [] : [{ id: "amend", label: "ITAC.cmd.amend", needs: "decl", req: (decl) => ({ op: "amend", inst: i.id, decl }) }]), { id: "cancel", label: i.locked ? "ITAC.cmd.cancelAsk" : "ITAC.cmd.cancel", req: { op: "cancel", inst: i.id } }] }));
   const helpable = (view.stack ?? []).filter((i) => !i.masked && !i.locked && i.actor && !owns.includes(i.actor)).flatMap((i) => owns.map((h) => ({ inst: i.id, helper: h, req: { op: "help", inst: i.id, helper: h } })));
-  return { prompts, mine, stack, helpable, bars: owns.map((cid) => barModel(view, cid, ctx)), waiting: waitingOn(view, ctx), turn: turnOf(view, ctx) };
+  /* U1 / U2: every roll this user owes or may still push, in anybody's action (a defence is rolled inside the attacker's) */
+  const rolls = (view.stack ?? []).filter((i) => !i.masked).flatMap((i) => Object.values(i.rolls ?? {}).filter((r) => r.req?.users?.includes(viewer.id) && rollState(r) !== "done").map((r) => rollRow(i, r, ctx)));
+  return { prompts, mine, rolls, stack, helpable, bars: owns.map((cid) => barModel(view, cid, ctx)), waiting: waitingOn(view, ctx), turn: turnOf(view, ctx) };
 }
 export { REVALIDATE_OPTIONS };

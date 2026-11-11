@@ -15,6 +15,13 @@ import { holderBlocks } from "../catalog-pure.mjs";
 import { modsFor } from "../kit-pure.mjs";
 
 export const PASS = "pass";
+/** U11: "no reaction until the round ends": the standing answer of somebody who is not the target (an absent player, a bystander who will not step in). */
+export const PASS_ROUND = "pass:round";
+export const passKey = (cid) => M.counterKey.round(cid, "passWindows");
+/* How likely, in words: the bands every surface names a chance with (ui/model-pure draws them; the defender's card gets the band of each
+   answer from the engine, never the number: U11). */
+export const BANDS = Object.freeze([{ id: "unlikely", below: 0.35 }, { id: "even", below: 0.6 }, { id: "likely", below: 0.8 }, { id: "nearCertain", below: 2 }]);
+export const bandOf = (p) => BANDS.findIndex((b) => p < b.below);
 export const draft = (inst) => JSON.parse(JSON.stringify(inst));
 export const result = (inst) => ({ inst, effects: [], prompts: [], events: [], push: null, goto: null, wait: false, done: false });
 export const flag = (I, k) => !!I.data.ph?.[k];
@@ -205,7 +212,11 @@ export function windowPrompts(v, inst, when, { skip = [], reactions }) {
     if (!list.length) continue;
     const options = list.map((e) => reactionOption(v, cid, e));
     if (!options.some((o) => !o.disabled)) continue;                 // no legal option: skipped automatically (plan 5.2 step 4)
-    out.push({ key: `w:${when}:${cid}`, kind: "reaction", to: addressee(v, cid), about: cid, options: [...options, { id: PASS, label: "ITAC.opt.pass" }], data: { when } });
+    const target = inst.decl.targets.includes(cid);
+    if (!target && M.counterGet(v.state, passKey(cid))) continue;    // U11: said "no reaction this round" already
+    /* U11: the card says who attacks whom with what (the view takes the attacker out again for somebody who cannot see it) */
+    out.push({ key: `w:${when}:${cid}`, kind: "reaction", to: addressee(v, cid), about: cid, options: [...options, { id: PASS, label: "ITAC.opt.pass" }, ...(target || c.npc ? [] : [{ id: PASS_ROUND, label: "ITAC.opt.passRound" }])],
+      data: { when, attacker: inst.actor ?? undefined, action: inst.action, targets: inst.decl.targets.slice(0, 12), ...(target ? {} : { bystander: 1 }) } });
   }
   return out;
 }

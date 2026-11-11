@@ -201,7 +201,16 @@ function legality(v, inst) {
   }
 }
 
+/* The pool of the action's own roll: ONE builder for the roll and for what the dock shows before the declaration (preview). */
+function actPool(v, I, tokens) {
+  const d = I.decl, e = v.entry(I), attr = I.data.attr, mods = [];
+  if (e?.effect?.escape === "snare" && e.effect.from === "snared") mods.push({ source: "snare", dice: snarePenalty(statusOf(v, I.actor, "snared")) });      // [B1606-1609]
+  const hd = K.helpDiceOf(v, d);
+  if (hd) mods.push({ source: "help", dice: hd });                         // [B2238]
+  return { attr, ...K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens }) };
+}
 export const act = {
+  preview(v, inst) { const I = K.draft(inst); I.data.attr = attrOf(v, I); return I.data.attr ? actPool(v, I, I.decl.tokens ?? []) : null; },
   STEPS: Object.freeze(["check", "roll", "effect", "outcome", "close"]),
   legality,
   /* [B2773] a broken character may try to get up on its own turn; Resilience turns the damage that broke it into stress [B2160] */
@@ -217,11 +226,7 @@ export const act = {
         if (tg.wait) { R.wait = true; return R; }
         I.locked = true; R.events.push({ type: "actionLocked" });                               // spec 5.5: locks at the first die
         if (stressOf(v, I) > 0) { K.setFlag(I, "stress"); R.effects.push({ t: "stress", who: I.actor, n: stressOf(v, I), cost: 1 }); }
-        const mods = [];
-        if (e?.effect?.escape === "snare" && e.effect.from === "snared") mods.push({ source: "snare", dice: snarePenalty(statusOf(v, I.actor, "snared")) });      // [B1606-1609]
-        const hd = K.helpDiceOf(v, d);
-        if (hd) mods.push({ source: "help", dice: hd });                         // [B2238]
-        const bp = K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens: tg.tokens });
+        const bp = actPool(v, I, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
         R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { passive: d.noPush === true, noPush: !K.mayPush(v, I.actor), label: e?.label }));
         R.wait = true; return R;

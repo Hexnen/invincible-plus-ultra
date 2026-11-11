@@ -59,10 +59,12 @@ async function onRequest(msg, senderId) {
 }
 function onRoll(msg, senderId) {
   if (!game.users.get(senderId)?.isGM || !Array.isArray(msg.to) || !msg.to.includes(game.user.id) || !msg.req || typeof msg.req.rid !== "string") return;
-  if (opened.has(msg.req.rid)) return;                                                     // one dialog per request, even if it is sent twice
+  if (opened.has(msg.req.rid)) return;                                                     // one throw per request, even if it is sent twice
   opened.add(msg.req.rid); if (opened.size > 200) opened.delete(opened.values().next().value);
+  /* U2: several players own the character: the first of them at the table throws at once, the others keep the dock's "Roll" */
+  if (msg.to.find((u) => game.users.get(u)?.active) !== game.user.id) return;
   // the engine's breakdown is only a display: the executor reads the dice from the chat message and checks its author against the request
-  Sys.openRoll(msg.req, (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s))).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
+  Sys.rollNow(msg.req, (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s))).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
 }
 function onMessage(msg, senderId) {
   try {

@@ -78,8 +78,8 @@ const metaOf = (combat) => ({ hidden: combat.combatants.filter((cb) => cb.hidden
 const labelOf = (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s));
 function sendRoll(combat, e) {
   const mine = e.users.includes("gm") || e.users.includes(game.user.id) || !e.users.some((u) => game.users.get(u)?.active);
-  const req = { combat: combat.id, inst: e.inst, key: e.key, rid: e.rid, actorUuid: e.actorUuid, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, label: t(`ITAC.roll.${String(e.key).split(":")[0]}`, {}, e.label ?? e.key) };
-  if (mine) Sys.openRoll(req, labelOf).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
+  const req = { combat: combat.id, inst: e.inst, key: e.key, rid: e.rid, actorUuid: e.actorUuid, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, label: t(`ITAC.roll.${String(e.key).split(":")[0]}`, {}, e.label ?? e.key), ...(e.mode ? { mode: e.mode } : {}) };
+  if (mine) Sys.rollNow(req, labelOf).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
   else game.socket.emit(CHANNEL, { k: R.KIND.roll, to: e.users, req }, { recipients: e.users });
 }
 async function perform(combat, e) {

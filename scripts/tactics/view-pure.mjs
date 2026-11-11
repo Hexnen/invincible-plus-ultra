@@ -44,11 +44,16 @@ export function concealedFor(state, viewer, meta = {}) {
 }
 
 const addressed = (p, viewer) => (isObj(p.to) && Array.isArray(p.to.users) && p.to.users.includes(viewer.id)) || (p.about && viewer.owns.includes(p.about) && p.to !== "gm");
-function promptView(p, viewer) {
+function promptView(p, viewer, concealed = new Set()) {
   if (p.gmOnlyData) return null;
   if (!addressed(p, viewer)) return { id: p.id, inst: p.inst, step: p.step, kind: p.kind, to: p.to === "gm" ? "gm" : { users: p.to?.users ?? [] }, about: p.about, answered: p.answered ? 1 : undefined };   // "waiting for X": nothing else
   const q = { ...p, options: (p.options ?? []).filter((o) => !o.gmOnly).map((o) => { const { gm, ...rest } = o; return rest; }) };
-  if (isObj(q.data)) { const { gm, ...rest } = q.data; q.data = rest; }
+  if (isObj(q.data)) {
+    const { gm, ...rest } = q.data; q.data = rest;
+    /* U11 / CU10: an attacker the viewer cannot see is "somebody": no name (scrub takes the id out below), and no chance either, which
+       would tell how strong the unseen one is */
+    if (typeof rest.attacker === "string" && concealed.has(rest.attacker)) { const { odds, ...kept } = rest; q.data = { ...kept, unseen: 1 }; }
+  }
   if (q.auto) { delete q.auto; }                                                   // why an option was passed automatically is the GM's knowledge (NPC policy)
   return q;
 }
@@ -58,7 +63,7 @@ function rollView(state, r, viewer, meta) {
   const out = { key: r.key, who: r.who, sixes: r.sixes, ones: r.ones, pushed: r.pushed, pushable: r.pushable, messageId: r.messageId };
   if (r.forced != null) out.forced = { sixes: r.forced.sixes };
   if (!numbersHidden(state, r.who, meta, "stats")) { out.attr = r.attr; out.pool = r.pool; }      // spec 10: unrevealed NPC numbers leave the roll record
-  if (r.req) out.req = r.req.users?.includes(viewer.id) ? { rid: r.req.rid, users: r.req.users, dice: out.pool ? r.req.dice : undefined, maxPush: r.req.maxPush, label: r.req.label } : { users: r.req.users };
+  if (r.req) out.req = r.req.users?.includes(viewer.id) ? { rid: r.req.rid, users: r.req.users, dice: out.pool ? r.req.dice : undefined, maxPush: r.req.maxPush, label: r.req.label, mode: r.req.mode } : { users: r.req.users };
   return out;
 }
 const OUT_KEEP = ["hit", "net", "stunts", "autoMiss", "defence", "picked"];
@@ -94,7 +99,7 @@ export function viewFor(state, viewer, meta = {}) {
   const secret = (cid) => powersHidden(state, cid, meta) && !V.owns.includes(cid);
   const base = baseView(state, { gm: false, userId: V.id, hidden: [...concealed] });
   const prompts = {};
-  for (const p of Object.values(state.prompts ?? {})) { if (p.about && concealed.has(p.about)) continue; const q = promptView(p, V); if (q) prompts[p.id] = q; }
+  for (const p of Object.values(state.prompts ?? {})) { if (p.about && concealed.has(p.about)) continue; const q = promptView(p, V, concealed); if (q) prompts[p.id] = q; }
   const ledger = {};
   for (const [cid, l] of Object.entries(keepKey(state.ledger))) ledger[cid] = l;       // spent actions are table knowledge (spec 4: everyone sees who has acted)
   const out = {
@@ -114,6 +119,9 @@ export function viewFor(state, viewer, meta = {}) {
   };
   /* P7: who sits in which vehicle, the chase and its distance, and the approaches of a challenge are table knowledge [B2839]; the side
      effects of a challenge and the numbers of its ward are the GM's until they happen */
+  /* U10 / U3: what the table was told happened. An action's result is table knowledge like its chat card (a concealed actor or target
+     leaves with scrub; a secret action is absent); the GM's word on an exception is for the one who asked. */
+  out.news = clone((state.news ?? []).filter((n) => isObj(n) && !n.secret && (n.kind !== "exception" || V.owns.includes(n.actor)))).map(({ tx, ...n }) => n);
   if (isObj(state.vehicles)) out.vehicles = clone(keepKey(state.vehicles));
   if (isObj(state.chase)) { const { back, ...pub } = state.chase; out.chase = clone(pub); }
   if (isObj(state.challenges)) out.challenges = Object.fromEntries(Object.entries(keepKey(state.challenges)).map(([cid, c]) => [cid, clone({ preset: c.preset ?? null, name: c.name, objectives: c.objectives ?? [], dice: c.dice ?? 0, started: c.started ?? {}, done: c.done })]));

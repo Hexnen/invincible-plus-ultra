@@ -28,6 +28,8 @@ export const PRIVATE_NAMES = Object.freeze([
   { name: "roll dialog class", where: ROLL_DIALOG_PATH, need: "default export; constructor(rollName, { actor, breakdown, bonus, maxPush, rollOptions, attribute }); wait() or render()" },
   { name: "stunts dialog class", where: STUNT_DIALOG_PATH, need: "default export with prototype.wait (wrapped: no pop-up for tactical rolls)" },
   { name: "roll options pass-through", where: "message.rolls[0].options", need: "rollOptions given to the dialog arrive there (tactics = { inst, key, rid })" },
+  { name: "roll without the dialog", where: ROLL_DIALOG_PATH, need: "prototype._prepareContext() and prototype._roll({ submitter: { dataset: { action: <chat mode> } } }) (U2 / U7: the engine's rolls are thrown at once)" },
+  { name: "push / accept of a roll", where: "ui.chat.options.actions.{pushRoll, acceptRoll}", need: "handlers that read the message id from event.target.closest('[data-message-id]').dataset (U1: the dock's own buttons)" },
   { name: "roll result getters", where: "message.rolls[0]", need: "successCount, baneCount, pushCount, pushable" },
   { name: "actor attributes", where: "actor.system.attributes.<attr>.value", need: "six attributes" },
   { name: "Health / Resolve", where: "actor.system.derived.health|resolve.{value,max}", need: "numbers; minions: Health value = members" },
@@ -66,6 +68,8 @@ export async function compat() {
   const out = [], add = (name, ok, detail = "") => out.push({ name, ok: !!ok, detail });
   add("system id and version", game.system?.id === SYSTEM_ID, `${game.system?.id} ${game.system?.version} (verified ${SYSTEM_VERIFIED})`);
   try { const D = await rollDialog(); add("roll dialog class", typeof D === "function" && (typeof D.prototype.wait === "function" || typeof D.prototype.render === "function")); } catch (e) { add("roll dialog class", false, String(e)); }
+  try { const D = await rollDialog(); add("roll without the dialog", typeof D?.prototype?._prepareContext === "function" && typeof D?.prototype?._roll === "function"); } catch (e) { add("roll without the dialog", false, String(e)); }
+  { const acts = ui.chat?.options?.actions ?? CONFIG.ui?.chat?.DEFAULT_OPTIONS?.actions; add("push / accept of a roll", typeof acts?.pushRoll === "function" && typeof acts?.acceptRoll === "function"); }
   try { add("stunts dialog class", await patchStunts()); } catch (e) { add("stunts dialog class", false, String(e)); }
   const a = game.actors?.find((x) => ["superhero", "npc"].includes(x.type));
   if (a) {
@@ -329,7 +333,7 @@ const attrLabel = (a) => { const k = `INVINCIBLE.Actor.base.FIELDS.attributes.${
 /** On the ROLLER's client: open the system's roll dialog for an engine roll request. The dice are evaluated here, as everywhere in Foundry (spec 11).
     `labelOf(source)` localises a modifier source (lang.mjs). Deliberately no `attackInfo`: the system then adds neither its stunt pop-up nor its
     "apply damage" button to the card, and steps 7-8 of the flow stay the engine's. */
-export async function openRoll(req, labelOf = (s) => s) {
+async function dialogFor(req, labelOf) {
   const Dlg = await rollDialog();
   if (typeof Dlg !== "function") throw new Error("roll dialog unavailable");
   const actor = req.actorUuid ? await fromUuid(req.actorUuid) : null;
@@ -340,10 +344,53 @@ export async function openRoll(req, labelOf = (s) => s) {
   for (const m of req.pool?.mods ?? []) put(labelOf(m.source), num(m.dice));
   const sum = Object.values(breakdown).reduce((a, b) => a + b, 0);
   if (sum !== num(req.dice)) put(labelOf("floor"), num(req.dice) - sum);                 // the one-die floor of the rules library, shown as its own line
-  const opts = { actor, breakdown, bonus: 0, rollOptions: { tactics: { inst: req.inst, key: req.key, rid: req.rid, ...(req.combat ? { combat: req.combat } : {}) } }, attribute: req.attr ?? undefined };
+  const opts = { actor, breakdown, bonus: 0, rollOptions: { tactics: { inst: req.inst, key: req.key, rid: req.rid, ...(req.combat ? { combat: req.combat } : {}), ...(req.mode === "gm" ? { mode: "gm" } : {}) } }, attribute: req.attr ?? undefined };
   if (req.maxPush === 0) opts.maxPush = 0;                                               // passive and defender rolls are never pushed [B2227], [B2241]
-  const dlg = new Dlg(String(req.label ?? req.key), opts);
+  return new Dlg(String(req.label ?? req.key), opts);
+}
+/** The system's own dialog for an engine roll (kept for the API; the engine's rolls no longer open it: rollNow). */
+export async function openRoll(req, labelOf = (s) => s) {
+  const dlg = await dialogFor(req, labelOf);
   return typeof dlg.wait === "function" ? dlg.wait() : dlg.render({ force: true });
+}
+/* U2 / U7: an engine roll is thrown AT ONCE on the roller's client: no dialog to read, to dismiss or to pick a chat mode in. The pool is
+   the engine's and the dialog had nothing to decide about it; who may see the dice is the engine's word too (req.mode "gm": a hidden
+   combatant, a secret roll), everything else of a fight is rolled in the open. The dice are still the system's own roll and chat card.
+   One throw per request id on this client; `force` (the dock's "Roll" after a throw that never arrived) throws again. */
+const thrown = new Map();
+export const rollStarted = (rid) => thrown.get(rid) ?? 0;
+export const ROLL_RETRY_MS = 4000;
+export async function rollNow(req, labelOf = (s) => s, { force = false } = {}) {
+  const at = thrown.get(req.rid) ?? 0;
+  if (at && !(force && Date.now() - at >= ROLL_RETRY_MS)) return null;
+  thrown.set(req.rid, Date.now()); if (thrown.size > 200) thrown.delete(thrown.keys().next().value);
+  try {
+    const dlg = await dialogFor(req, labelOf);
+    if (typeof dlg._prepareContext !== "function" || typeof dlg._roll !== "function") return typeof dlg.wait === "function" ? dlg.wait() : dlg.render({ force: true });      // the system changed: its dialog, as before
+    await dlg._prepareContext();
+    return await dlg._roll({ submitter: { dataset: { action: req.mode === "gm" ? "gm" : "public" } } }, undefined, undefined);
+  } catch (err) { thrown.delete(req.rid); throw err; }
+}
+/* U1: the system's own "push" and "accept" of a roll, pressed from the tactical surfaces. They are the chat log's click handlers and read
+   nothing but the message id from the event, so they are called with a stand-in event; the system's rules (stress, max pushes) stay its own. */
+async function chatAction(name, messageId) {
+  const message = game.messages.get(messageId);
+  if (!message || !tacticsOf(message)) return false;
+  const fn = ui.chat?.options?.actions?.[name] ?? CONFIG.ui?.chat?.DEFAULT_OPTIONS?.actions?.[name];
+  if (typeof fn !== "function") throw new Error(`no ${name} in the system's chat log`);
+  await fn.call(ui.chat ?? null, { target: { closest: () => ({ dataset: { messageId } }) }, preventDefault() {}, stopPropagation() {} });
+  return true;
+}
+export const pushRoll = (messageId) => chatAction("pushRoll", messageId);
+export const acceptRoll = (messageId) => chatAction("acceptRoll", messageId);
+/** U7: a roll the engine marked for the GM alone stays so when its card is made again (the system's push writes a new message in the
+    roller's own chat mode). Called from preCreateChatMessage on every client. */
+export function keepRollPrivate(message) {
+  try {
+    if (message?.rolls?.[0]?.options?.tactics?.mode !== "gm") return;
+    const gms = game.users.filter((u) => u.isGM).map((u) => u.id);
+    message.updateSource({ whisper: gms, blind: false });
+  } catch (err) { console.warn(`${MOD} | tactics: private roll`, err); }
 }
 /** The engine tag of a chat message's roll, or null. */
 export function tacticsOf(message) {

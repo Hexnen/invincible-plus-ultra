@@ -39,7 +39,16 @@ const hasPower = (c, name) => (c?.powers ?? []).some((p) => norm(p) === norm(nam
 
 /* ------------------------------------------------------------------ the objective roll */
 const attrOf = (v, inst) => optionOf(cfgOf(v.state, inst.decl.targets?.[0]), inst.decl.mode)?.option.attr ?? inst.decl.attr ?? null;
+/* The pool of an attempt: ONE builder for the roll and for what the dock shows before the declaration (preview). */
+function objectivePool(v, I, tokens) {
+  const d = I.decl, attr = attrOf(v, I), cfg = cfgOf(v.state, d.targets?.[0]);
+  const mods = [], hd = (d.helpers ?? []).filter((h) => h.consent === "yes").length;
+  if (hd) mods.push({ source: "help", dice: dice.helpDice(hd) });                          // [B2238]
+  if (cfg?.dice) mods.push({ source: "ward", dice: Math.trunc(cfg.dice) });                // [B2876]: the ward's cumulative penalty after a reset
+  return { attr, ...K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens }) };
+}
 export const objective = {
+  preview(v, inst) { const I = K.draft(inst); return attrOf(v, I) ? objectivePool(v, I, I.decl.tokens ?? []) : null; },
   STEPS: Object.freeze(["check", "approve", "roll", "effect", "close"]),
   legality(v, inst) {
     const a = v.facts.c(inst.actor), t = inst.decl.targets?.[0], ch = t ? v.facts.c(t) : null;
@@ -74,10 +83,7 @@ export const objective = {
         const tg = K.tokenGate(v, I, R, I.actor, { kind: "other", attr }, d.tokens ?? [], "roll");
         if (tg.wait) { R.wait = true; return R; }
         I.locked = true; R.events.push({ type: "actionLocked" });                                // spec 5.5
-        const mods = [], hd = (d.helpers ?? []).filter((h) => h.consent === "yes").length;
-        if (hd) mods.push({ source: "help", dice: dice.helpDice(hd) });                          // [B2238]
-        if (cfg?.dice) mods.push({ source: "ward", dice: Math.trunc(cfg.dice) });                // [B2876]: the ward's cumulative penalty after a reset
-        const bp = K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens: tg.tokens });
+        const bp = objectivePool(v, I, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
         R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { label: "ITAC.action.objective" }));
         R.wait = true; return R;

@@ -223,7 +223,7 @@ function newsOf(I) {
   const rows = (I.decl?.targets ?? []).map((t) => { const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
     return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}) }; });
   return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
-    result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), rows };
+    result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret ? { secret: 1 } : {}), rows };
 }
 function pushInst(X, inst) { X.state = { ...X.state, stack: [...X.state.stack, inst] }; X.changed = true; }
 const JOURNAL_HAZARDS = ["fire", "blast", "area", "vacuum", "disease"];
@@ -681,9 +681,10 @@ async function gmInstOp(X, op, a) {
       noteOverride(X, I, op, I.data.out?.[a.target]?.hit ?? null, a.hit); setInst(X, I);
       if (idx(I.step) > idx("outcome")) { await rewind(X, I.id, "outcome"); I = J.clone(instOf(X, I.id)); }
       ((I.data.forced ??= {}).outcome ??= {})[a.target] = a.hit;
-      /* U4: the result of every target is the GM's word and the dice have not decided yet: what the exchange was still waiting for
-         (a reaction, a roll somebody owes) is dropped and it goes on to that result. The roll step locks and charges the action as usual. */
-      if (idx("reactBefore") >= 0 && idx(I.step) >= idx("reactBefore") && idx(I.step) < idx("outcome") && I.decl.targets.every((t) => typeof I.data.forced.outcome[t] === "boolean")) {
+      /* U4: the exchange stands on its dice (a roll somebody owes, a push not taken) and the result of every target is now the GM's word:
+         what it was still waiting for is dropped and it goes on to that result (flows/attack.mjs roll). Before the dice (a reaction still
+         open) the word is only recorded, as before: the GM may still set the damage, and answers the reaction for whoever is missing. */
+      if (I.step === "roll" && idx("roll") < idx("outcome") && I.decl.targets.every((t) => typeof I.data.forced.outcome[t] === "boolean")) {
         dropPrompts(X, (p) => p.inst === I.id && p.step === I.step);
         delete I.data.hold; delete I.data.holdKey; I.data.window = null; I.step = "roll"; I.status = "open";
       }

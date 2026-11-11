@@ -158,7 +158,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   const T = base(); T.turn("N1");
   await T.gm({ op: "powerGrant", combatant: "H1", entry: GUARD });
   await T.gm(slug("N1", "H2"));
-  eq(T.prompts("reaction").map((p) => [p.about, p.options.map((o) => o.id)]), [["H2", ["block", "pass"]], ["H1", ["r:guardian", "pass"]]], "E: the window is open to the target and to the third party who holds a reaction");
+  eq(T.prompts("reaction").map((p) => [p.about, p.options.map((o) => o.id)]), [["H2", ["block", "pass"]], ["H1", ["r:guardian", "pass", "pass:round"]]], "E: the window is open to the target and to the third party who holds a reaction");
   await T.req("p2", { op: "answer", prompt: T.prompt("reaction", "H2").id, value: "pass" });
   eq(T.top().step, "reactBefore", "E: waits for everyone entitled");
   await T.req("p1", { op: "answer", prompt: T.prompt("reaction", "H1").id, value: "r:guardian" });

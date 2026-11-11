@@ -180,6 +180,14 @@ function attackPool(v, I, tokens) {
   if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });
   return { attr, ...K.buildPool(v, I, "attack", I.actor, attr, mods, { rollKind: "attack", tokens }) };
 }
+/** The dice this declaration would roll, before it is declared: the roll's own builder on a copy (engine-pure.opPreview). Nothing is spent. */
+export function preview(v, inst) {
+  const I = K.draft(inst);
+  if (!I.decl.targets?.length || kindOf(I) === "counterattack") return null;
+  if (weaponOf(v, I)?.always?.includes("area")) I.decl.area = 1;
+  I.data.multi = multiOf(I.decl);
+  return attackPool(v, I, I.decl.tokens ?? []);
+}
 /* What the dice of an exchange look like before any is rolled, for the GM only (`data.gm` never reaches a player: view-pure.promptView):
    the attacker's pool as the roll will build it (the bonus dice the declaration names counted in) and the defender's pool for each way of
    defending. Built on a copy: nothing is spent and no note is written. -> { att: { dice, attr } | null, def: { block?, dodge? } } */
@@ -187,6 +195,14 @@ function oddsFacts(v, I, t, ways) {
   const J = K.draft(I), out = { att: null, def: {} };
   try { const p = attackPool(v, J, I.decl.tokens ?? []); out.att = { dice: p.pool.dice, attr: p.attr }; } catch { out.att = null; }
   for (const id of ways) { try { out.def[id] = defencePool(v, J, t, id, []).pool.dice; } catch { /* no number rather than a wrong one */ } }
+  return out;
+}
+/* U11: the same facts as the defender may know them: no pool of the opponent, only HOW LIKELY the attack is to land with each answer, in
+   the bands the dock names every chance with. -> { open, block?, dodge? } (band levels) | null */
+function oddsBands(g) {
+  if (!Number.isFinite(g?.att?.dice)) return null;
+  const a = Math.max(1, g.att.dice), out = { open: K.bandOf(dice.pSuccess(a)) };
+  for (const [id, n] of Object.entries(g.def ?? {})) if (Number.isFinite(n)) out[id] = K.bandOf(dice.pHit(a, Math.max(1, n)));
   return out;
 }
 const defencePool = (v, I, t, how, tokens) => K.buildPool(v, I, `def:${t}`, t, attack.DEFENCES[how].attr, [], { rollKind: how, tokens });
@@ -221,7 +237,10 @@ function defencePrompt(v, I, t) {
   if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget")) options.push(K.reactionOption(v, t, e));      // [B2707]: out of action, no power answers
   const live = options.filter((o) => !o.disabled);
   const ways = [...new Set(live.map((o) => String(o.id).split(":")[0]).filter((id) => id === "block" || id === "dodge"))];
-  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, gm: oddsFacts(v, I, t, ways) } };
+  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, action: I.action, targets: I.decl.targets.slice(0, 12) } };
+  p.data.gm = oddsFacts(v, I, t, ways);
+  const bands = oddsBands(p.data.gm);
+  if (bands) p.data.odds = bands;
   if (!live.length) p.auto = { option: K.PASS, reason: df.out ?? (conds.unaware ? "unaware" : "noOption") };                 // plan 5.2 step 4
   else if (tf?.npc) {                                                                                             // spec 13.3 NpcPolicy
     const pol = v.state.npc?.[t] ?? {}, def = live.find((o) => o.id === "block" || o.id === "dodge");
@@ -234,7 +253,8 @@ function defencePrompt(v, I, t) {
 function applyReaction(v, I, R, cid, key, value, when) {
   const id = typeof value === "string" ? value : value?.id;
   (I.data.done ??= {})[key] = 1;
-  if (!id || id === K.PASS) return false;
+  if (id === K.PASS_ROUND && !M.counterGet(v.state, K.passKey(cid))) R.effects.push({ t: "state", ...M.counterBump(v.state, K.passKey(cid)) });      // U11: not asked again this round as a bystander
+  if (!id || id === K.PASS || id === K.PASS_ROUND) return false;
   if (["block", "dodge", "block:free", "dodge:free"].includes(id)) {
     const [how, free] = id.split(":");
     /* [B2447], [B2525]: no action left, no defence. Asked again when the answer is acted on: the unit may have gone since the window opened
@@ -414,6 +434,14 @@ export const steps = {
     }
     if (kind === "counterattack") {                                                             // [B2448], [R4]: hits automatically with the surplus sixes, no dice
       if (!K.rollOf(I, "attack")) I.rolls.attack = { key: "attack", who: I.actor, attr: null, pool: { base: 0, mods: [], total: 0 }, sixes: I.data.counterSixes ?? 1, ones: 0, pushed: 0, pushable: false, auto: 1 };
+      R.goto = "outcome"; return R;
+    }
+    /* U4: the GM said "hit" or "miss" for every target (setOutcome) while the exchange stood on its dice: no die is waited for any more.
+       A roll that never came is dropped, one that waited for its push stands as it is, and the outcome is the GM's word. */
+    const fo = I.data.forced?.outcome;
+    if (fo && d.targets.length && d.targets.every((t) => typeof fo[t] === "boolean")) {
+      for (const k of Object.keys(I.rolls)) { if (I.rolls[k].sixes == null && I.rolls[k].forced == null) delete I.rolls[k]; else if (I.rolls[k].pushable) I.rolls[k] = { ...I.rolls[k], pushable: false }; }
+      I.data.window = null;
       R.goto = "outcome"; return R;
     }
     if (!K.rollOf(I, "attack")) {
