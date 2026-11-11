@@ -131,10 +131,10 @@ function previewOf(combat, view, cid, decl) {
   } catch { return null; }
 }
 /* W1 (U33 / U34): WHO IS IN REACH of a declaration and what a hit would do: one question to the executor per declaration and state of
-   the fight or of the map (`rev` counts both), never per mouse move; while the answer is on its way the last one for the same action stands. */
+   the fight (its own rev) or of the map and the sheets (`factsRev`), never per mouse move and never per redraw; while the answer is on its way the last one for the same action stands. */
 function reachOf(combat, view, cid, decl, ids) {
   try {
-    const who = `${cid}|${decl.action}`, key = `${combat.id}|${view?.rev}|${rev}|${cid}|${JSON.stringify(decl)}|${ids.join(",")}`, hit = reaches.get(key), old = () => (reachLast?.who === who ? reachLast.value : null);
+    const who = `${cid}|${decl.action}`, key = `${combat.id}|${view?.rev}|${factsRev}|${cid}|${JSON.stringify(decl)}|${ids.join(",")}`, hit = reaches.get(key), old = () => (reachLast?.who === who ? reachLast.value : null);
     if (hit) return hit.value !== undefined ? hit.value : old();
     if (reaches.size > 40) reaches.clear();
     reaches.set(key, { value: undefined });
@@ -226,6 +226,8 @@ function refresh() {
   } catch (e) { console.warn(LOG, "refresh failed", e); }
 }
 const schedule = () => { rev++; clearTimeout(timer); timer = setTimeout(refresh, 40); };
+let factsRev = 0;                         // W1: what can change who is in reach besides the fight itself: a token entered a zone, a door, an actor's numbers
+const moved = () => { factsRev++; schedule(); };
 
 /* ---------- what the surfaces put on the map (this client only; zones-api.md 17, 18) ---------- */
 function show(id, was, spec) {
@@ -412,13 +414,13 @@ export function start() {
     configure();
     Store.subscribe(schedule);
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);
-    Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) schedule(); });
+    Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) moved(); });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
     Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Board.reset(); Dock.hide(); });
     Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size
     Hooks.on("deleteChatMessage", () => setTimeout(relayout, 60));
-    Zones.onEvent(schedule);                 // a token entered a zone, a door changed: the options of a move are counted again
-    Zones.onChange(() => schedule());        // the scene's numerals or its zones changed: every text that names a zone is said again
+    Zones.onEvent(moved);                    // a token entered a zone, a door changed: the options of a move are counted again
+    Zones.onChange(() => moved());           // the scene's numerals or its zones changed: every text that names a zone is said again
     Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock", top: "#invincible-combat-bar" });      // the pick's banner and its "more" chips keep clear of our two bars (zones-api.md section 23)
     /* a token dragged into another zone (movement.mjs asks here first): the dock opens Move for that combatant with the zone chosen */
     Mv.setDragSurface((cid, spot) => {

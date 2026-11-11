@@ -31,12 +31,12 @@ const join = (parts) => parts.filter(Boolean).map((x) => String(x).replace(/\.$/
 export function hitWords(hit, t) {
   if (!hit || !fin(hit.base)) return null;
   const known = fin(hit.taken), n = known ? hit.taken : hit.base, what = t(hit.toStress ? "ITAC.ui.vital.resolve" : "ITAC.ui.vital.health");
-  const lines = [known ? t("ITAC.map.hit.taken", { n, what }) : t("ITAC.map.hit.upTo", { n })];
+  const lines = [known ? (n > 0 ? t("ITAC.map.hit.taken", { n, what }) : t("ITAC.map.hit.none")) : t("ITAC.map.hit.upTo", { n })];
   if (known && fin(hit.most) && hit.most > n) lines.push(t("ITAC.map.hit.most", { n: hit.most }));
   const life = fin(hit.now) && fin(hit.max) && hit.max > 0, now = life ? Math.max(0, hit.now) : 0;
-  if (known && life) lines.push(t("ITAC.map.hit.left", { v: Math.max(0, now - n), max: hit.max }));
+  if (known && life && n > 0) lines.push(t("ITAC.map.hit.left", { v: Math.max(0, now - n), max: hit.max }));
   const bar = life ? { value: now, max: hit.max, ...(known ? { loss: Math.min(now, n), lossMax: Math.min(now, Math.max(n, fin(hit.most) ? hit.most : n)) } : {}) } : null;
-  return { short: known ? `-${n}` : `≤${n}`, tip: lines.join(" "), bar };
+  return { short: known ? (n > 0 ? `-${n}` : "0") : `≤${n}`, tip: lines.join(" "), bar };
 }
 const oddsTip = (o, t) => (o ? join([`${t("ITAC.ui.chance")}: ${o.say}`, o.defended ? `${o.defended.label}: ${o.defended.say}` : null]) : null);
 

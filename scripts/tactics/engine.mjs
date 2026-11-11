@@ -175,7 +175,7 @@ export async function exec(user, combatRef, req, meta = {}) {
     if (!combat) return bad("gone");
     if (r.op === "start") r = { ...r, mode: S.MODES.includes(r.mode) ? r.mode : startMode(), opts: { ...startOpts(), ...(r.opts && typeof r.opts === "object" ? r.opts : {}) } };
     const rid = meta.rid ?? R.makeRid(user.id, `l${++ctr}${Math.random().toString(36).slice(2, 6)}`);
-    return await run(combat.id, { t: "req", user: { id: user.id, staff }, rid, req: r }, { claimKey: meta.via === "relay" ? `q:${rid}` : null, low: !staff });
+    return await run(combat.id, { t: "req", user: { id: user.id, staff }, rid, req: r }, { claimKey: meta.via === "relay" && r.op !== "preview" ? `q:${rid}` : null, low: !staff });      // a preview only reads: no claim, no write of the combat per question
   } catch (err) {
     console.warn(`${MOD} | tactics request failed`, err);
     return bad("internal", { msg: String(err?.message ?? err).slice(0, 80) });
