@@ -192,8 +192,8 @@ export function place() {
 const keyAttrs = (key) => (key ? { "aria-keyshortcuts": key } : {});
 const slot = (p) => h("button.itd-slot", { fk: `slot:${p.key}`, tip: p.tip, disabled: !p.req, data: { key: p.key, kind: p.kind, state: p.state, as: p.as, extra: p.extra ? "1" : null }, attrs: { "aria-label": p.tip }, on: { click: () => p.req && send(p.req) } }, slotMark(p));
 /* U86-SCAFFOLD: with a version on, the Armor of a door (the last note of its row) is the mark of Armor with its number */
-const wayNotes = (r) => (costVersion() && r.d && r.notes.length > 1
-  ? h("span.itd-way-n.itd-way-marks", {}, h("span", { text: r.notes.slice(0, -1).join(" \u00b7 ") }), symMark("armor", { n: r.d.armor ?? 0 }))
+const wayNotes = (r) => (costVersion() && r.u86armor !== undefined && r.notes.length > 1
+  ? h("span.itd-way-n.itd-way-marks", {}, h("span", { text: r.notes.slice(0, -1).join(" \u00b7 ") }), symMark("armor", { n: r.u86armor }))
   : h("span.itd-way-n", { text: r.notes.join(" \u00b7 ") }));
 /* U86-SCAFFOLD: with version b or c on, a slot of the turn is drawn in that version's shape of its action (spent: the same shape, hollow) */
 const slotMark = (p, v = costVersion()) => (v && v !== "a" && (p.kind === "full" || p.kind === "quick")
@@ -261,9 +261,10 @@ const submit = (s, cls = "", pv = null, said = false) => h(`button.itd-go${cls}`
 const cancelBtn = () => h("button.itd-x", { fk: "x", tip: handlers.label?.("cancel"), on: { click: close } }, icon("fa-xmark"));
 /* U86-SCAFFOLD: with a version on, the price beside the name is its marks alone; the words are their tooltip (hover and keyboard focus) */
 const costOf = (p) => { if (!p.cost) return null;
-  if (!costVersion() || !p.unit) return h("span.itd-cost", {}, speed(p.unit), h("span", { text: p.cost }));
+  const unit = p.unit ?? (costVersion() ? p.u86unit : null);
+  if (!costVersion() || !unit) return h("span.itd-cost", {}, speed(p.unit), h("span", { text: p.cost }));
   const n = Number(/(\d+)\D*$/.exec(String(p.cost).split(", ").slice(1).join(", "))?.[1]) || 0;
-  return h("span.itd-cost.itd-cost-marks", { tip: { cost: p.cost, price: { unit: p.unit, stress: n } }, attrs: { tabindex: "0", "aria-label": p.cost } }, speed(p.unit, { gm: true }), stressChip(n)); };
+  return h("span.itd-cost.itd-cost-marks", { tip: { cost: p.cost, price: { unit, stress: n } }, attrs: { tabindex: "0", "aria-label": p.cost } }, speed(unit, { gm: true }), stressChip(n)); };
 const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), costOf(p),
   p.aim?.length ? h("span.itd-arrow", {}, icon("fa-arrow-right"), p.aim.map((x) => h("span.itd-tgt", {}, face(x.img, x.name), h("b", { text: x.name })))) : null, cancelBtn());      // W1: the target chosen on the map
 

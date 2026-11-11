@@ -17,6 +17,9 @@
 #invincible-tactics-dock .itd-row[aria-disabled="true"] > :is(.ipu-cost, .ipu-costs) { color: var(--ita-label); }
 #invincible-tactics-dock .itd-row > .ipu-stress { margin-left: 2px; }
 .itd-way-marks { display: inline-flex; align-items: center; gap: 8px; }
+#invincible-tactics-dock .itd-way .itd-way-l > :is(.ipu-cost, .ipu-costs) { color: inherit; }
+#invincible-tactics-dock .itd-way:not([aria-disabled="true"]) { --ipu-sym-ink: var(--ita-yellow); }      /* a way that can be taken lies on yellow: the token's picture is knocked out to yellow */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ipu-stress > .ipu-cost { color: var(--ipu-ink); }
 /* the name plate of the armed action: the marks alone (their words are the tooltip) */
 .itd-cost-marks { gap: 6px; padding: 2px 3px; color: var(--ita-yellow); cursor: help; }
 .itd-cost-marks:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
