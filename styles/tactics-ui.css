@@ -479,3 +479,4 @@ body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-tile[data-active] .icbar
 body.ita-desk-open #chat-notifications .overflow { height: auto; max-height: var(--igd-toast-maxh, 40vh); }
 /* U6: the module's own end-of-session notice stands above the dock instead of on it */
 body.ita-tactics .ips-notice { bottom: var(--itd-clear, 124px); }
+body.ita-tactics.ita-notice-wait .ips-notice { visibility: hidden; }

@@ -84,7 +84,12 @@ export function place() {
   root.style.setProperty("--itd-maxh", `${Math.max(110, Math.round(above - (panelEl ? Math.min(panelEl.scrollHeight + 4, panelMax) + GAP : 0)))}px`);
   tipSides();
   /* what floats at the bottom centre besides the dock (the module's end-of-session notice) stands above it: styles/tactics-ui.css */
-  try { document.body.style.setProperty("--itd-clear", `${Math.round(bottom + Math.min(stack.offsetHeight, room) + 10)}px`); } catch { /* no body */ }
+  try {
+    const clear = Math.round(bottom + Math.min(stack.offsetHeight, room) + 10);
+    document.body.style.setProperty("--itd-clear", `${clear}px`);
+    /* an open panel that reaches the bars at the top leaves the notice no free strip: it waits until the panel closes rather than lie on the initiative bar */
+    document.body.classList.toggle("ita-notice-wait", H - clear - 64 < ceil);
+  } catch { /* no body */ }
   const w = Math.min(stack.offsetWidth, avail);
   let cx = cx0;
   if (cx + w / 2 > hi) cx = hi - w / 2;

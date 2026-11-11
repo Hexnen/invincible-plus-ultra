@@ -248,4 +248,24 @@ for (const l of ["en", "pl"]) { // P5: the other actions (the list behind "More 
   eq([s.options.map((o) => !!o.req && !o.zones), s.options[0].label !== s.options[1].label.replace("z3", "z2"), s.lines.length], [[true, true, true], true, 1], "spread card: plain answers, the zone the die picked is marked");
   eq([...missing], [], "P5: every key the model asks for without a fallback exists");
 }
+{ // U1 layout pass: the words kept in the model, the quiet turn line, the veto that asks twice, the zone beside the name
+  lang("en");
+  eq([Object.keys(M.WORDS.en).sort(), Object.values(M.WORDS.pl).every((v) => typeof v === "string" && v.length > 0)], [Object.keys(M.WORDS.pl).sort(), true], "U1 words: both languages carry the same keys");
+  eq([M.word("pl", "IU1.here", { zone: "Zone 5" }), M.word("xx", "IU1.turn.notYours"), M.word("pl", "IU1.none")], ["Jesteś w: Zone 5", "Not your turn", null], "U1 words: parameters are filled, an unknown language reads English, an unknown key is null");
+  const w = M.withWords((k) => `file:${k}`, () => "pl");
+  eq([w("IU1.sure.veto"), w("ITAC.ui.end"), w("IU1.none", {}, "fb")], ["Zawetować?", "file:ITAC.ui.end", "fb"], "U1 words: own keys are answered here, every other key by the language file");
+  const T = new Table();
+  T.hero("H1", "p1", { name: "Atom Eve" }).npc("N1", { name: "Mauler", attrs: { fighting: 9, agility: 8 } }).npc("N2", { name: "Zzyxq", hidden: true, attrs: { fighting: 11 } });
+  T.order(["H1", "N1", "N2"]).turn("N2");
+  const tw = M.withWords(t, () => "pl");
+  const view = viewOf(T, "p1", ["H1"]);
+  const hid = M.dockData(D.playerModel(view, { id: "p1", owns: ["H1"] }, ctx(T)), {}, { ...facts(T, view, "p1"), where: (id) => (id === "H1" ? "z5" : null) }, tw);
+  eq([hid.turn, /Zzyxq/.test(JSON.stringify(hid))], ["Nie twoja tura", false], "U15: a concealed combatant's turn still says it is not the player's, and names nobody");
+  eq([/5/.test(hid.who?.zone?.label ?? ""), hid.who?.zone?.tip === `Jesteś w: ${hid.who?.zone?.label}. ${M.WORDS.pl["IU1.legend"]}`], [true, true], "U8: the own zone stands beside the name with the legend in its tip");
+  eq(dock(T, "p1", ["H1"]).who?.zone ?? null, null, "U8: no zone fact, no chip");
+  T.turn("H1");
+  eq((await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })).ok, true, "U20: an action is declared");
+  const i0 = desk(T).stack[0], cmd = (g) => g.stack[0].commands.find((c) => c.id === "veto");
+  eq([cmd(desk(T)).confirm, cmd(desk(T)).armed, cmd(desk(T, { sure: `${T.top().id}:veto` })).armed, cmd(desk(T, { sure: `${T.top().id}:veto` })).label === cmd(desk(T)).label, !!i0], [true, false, true, false, true], "U20: veto asks twice: the armed command reads as a question");
+}
 done("check-ui");
