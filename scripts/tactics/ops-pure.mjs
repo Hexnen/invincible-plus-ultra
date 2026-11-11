@@ -200,6 +200,18 @@ function openTurn(W, nx) {
     s.init = I.memberDone(s.init, nx.member, { lost: true });
     return;
   }
+  /* U9 [B2707], [B2749], [B2773]: a combatant with nothing to do on its turn (dead, unconscious, broken with no way to rally) does not make the
+     table wait. The turn still COMES: what lasts "until your next turn" ends, what is due at its start and at its end is queued for the GM
+     (a poison, the vacuum, fire), what ends with it ends. Not for a turn handed on or stepped back to (the GM opened it), not for an
+     inserted turn (the GM or a power gave it), and not when nobody in the order could act (the round would run by itself). */
+  const idle = !r.resumed && !r.extra ? idleOf(W, nx.member) : null;
+  if (idle && s.init.slots.some((sl) => sl.members.some((m) => m !== nx.member && !idleOf(W, m)))) {
+    turnMoment(W, nx.member);
+    ev(W, "turnPassed", { slot: nx.slot, combatant: nx.member, reason: idle });
+    W.effects.push({ type: "turnPassed", combatant: nx.member, reason: idle });      // the journal line and the table's news (engine-pure)
+    closeTurn(W, nx.member, { quiet: true });
+    return;
+  }
   s.summons = (s.summons ?? []).map((su) => (su?.owner === nx.member && su.wait ? { id: su.id, owner: su.owner, combatants: su.combatants } : su));      // [B1816]: delayed allies arrive now
   for (const m of summonsOf(W, nx.member)) s.ledger[m] = Lg.turnStart(ledgerOf(W, m)).ledger;                    // [I14]
   /* Not for a turn that had already begun and was handed on by holding off, and not for an extra turn (hole, reported: the book does
@@ -207,6 +219,8 @@ function openTurn(W, nx) {
   if (!r.resumed && !r.extra) turnMoment(W, nx.member);
   ev(W, "turnStart", { slot: nx.slot, combatant: nx.member, ...(r.resumed ? { resumed: true } : {}) });
 }
+const IDLE = ["broken", "unconscious", "dead"];
+const idleOf = (W, id) => { try { const r = W.ctx.idle?.(id, W.s); return IDLE.includes(r) ? r : null; } catch { return null; } };
 /* the own turn of `member` has come (taken or lost): "until your next turn" ends here [B1634], [B1772]; the turn-start triggers are due */
 function turnMoment(W, member) {
   const s = W.s, moment = { at: "nextTurnOf", who: member };
@@ -228,7 +242,7 @@ function endStatuses(W, moment, cid = null, ids = []) {
   }
 }
 
-function closeTurn(W, member) {
+function closeTurn(W, member, { quiet = false } = {}) {
   const s = W.s, slotId = s.init.cur;
   s.ledger[member] = Lg.turnEnd(ledgerOf(W, member));
   for (const m of summonsOf(W, member)) s.ledger[m] = Lg.turnEnd(ledgerOf(W, m));
@@ -237,7 +251,7 @@ function closeTurn(W, member) {
   endEffects(W, { at: "turnEndOf", who: member });
   endStatuses(W, { at: "turnEndOf", who: member });
   queueOnce(W, { at: "turnEnd", combatant: member }, `te:${member}:${slotId}`, false);
-  ev(W, "turnEnd", { slot: slotId, combatant: member });
+  if (!quiet) ev(W, "turnEnd", { slot: slotId, combatant: member });
   s.init = I.memberDone(s.init, member);
 }
 

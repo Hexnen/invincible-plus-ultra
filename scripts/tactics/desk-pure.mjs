@@ -104,6 +104,14 @@ function promptModel(p, ctx) {
     options: (p.options ?? []).map((o) => ({ id: o.id, label: o.label ?? `ITAC.opt.${o.id}`, disabled: o.disabled ?? null, cost: o.cost, stress: o.stress, data: o.data, req: o.disabled ? null : optReq(p, o, "answer") })),
     answerReq: (value) => ({ op: "answer", prompt: p.id, value }) };
 }
+/** U9: is the combatant out of action, as the statuses of the view say it ([B2707]; the engine marks broken, unconscious, dying and dead)?
+    -> null | { reason: "dead" | "unconscious" | "broken", canRally, label }. canRally: broken, and nothing says it cannot get up
+    ([B2773]: an injury of 9 or worse leaves the character unconscious, dying or dead). The engine's own answer stays the legality of a declaration. */
+export function outOf(view, cid) {
+  const has = (id) => (view?.statuses?.[cid] ?? []).some((s) => s.id === id);
+  const reason = has("dead") ? "dead" : has("unconscious") ? "unconscious" : has("broken") ? "broken" : null;
+  return reason ? { reason, canRally: reason === "broken" && !has("dying"), label: `ITAC.ui.out.${reason}` } : null;
+}
 /** The action bar of one combatant: budget, and each catalog action with whether its cost is payable now (legality against a target is the executor's). */
 export function barModel(view, cid, ctx = {}) {
   const P1 = ctx.P1;
@@ -115,7 +123,8 @@ export function barModel(view, cid, ctx = {}) {
   const holding = (view.statuses?.[cid] ?? []).some((s) => s.id === "grappling");
   const heldNow = (view.statuses?.[cid] ?? []).some((s) => s.id === "grappled");            // [B2496]: the one held makes no attack until it breaks free (the attack flow refuses it with the same word)
   const broken = Object.keys(view.statuses ?? {}).filter((id) => (view.statuses[id] ?? []).some((s) => s.id === "broken"));
-  const actions = C.entriesFor(view, cid, kitFacts(ctx)).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && fits(e) && applies(e, cid, view.statuses ?? {}, broken) && (!e.gm || ctx.staff)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
+  const out = outOf(view, cid), left = (e) => !out || (out.reason === "broken" && (e.effect?.kind === "convert" || (out.canRally && e.effect?.kind === "rally" && (e.target?.n?.[0] ?? 0) === 0)));      // U9 [B2707], [B2773]
+  const actions = C.entriesFor(view, cid, kitFacts(ctx)).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && fits(e) && left(e) && applies(e, cid, view.statuses ?? {}, broken) && (!e.gm || ctx.staff)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
     const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", {}) : { ok: false, reason: "noLedger" };
     const unit = pay.ok && pay.pay ? (view.ledger?.[cid]?.grants ?? []).find((g) => g.id === pay.pay) : null, granted = !onTurn && !!unit && unit.kind !== "base";      // a unit usable out of turn pays it (the crew's attack in a chase [B3438], a GM grant)
     const anytime = !!e.kit && e.cost === "none";                                               // P6: what costs no action is used when it applies (the flow checks the rest)
@@ -131,8 +140,11 @@ export function barModel(view, cid, ctx = {}) {
     tokens: (view.tokens ?? []).filter((t) => t.holder === cid).map((t) => ({ id: t.id, dice: t.dice, source: t.source, needsGm: !!t.needsGm, scope: t.scope ?? null, forced: !!t.forced, standing: standing(t) })), actions,
     kitRows: (typeof ctx.kit === "function" ? ctx.kit(cid)?.rows : null) ?? [],                    // P6: every item of the sheet with its state (automated, confirmed by the GM, by hand)
     move: typeof ctx.move === "function" ? ctx.move(cid) : undefined,                             // P3: the reachable zones with their cost (movement-pure.moveOptions), each with a ready request
-    endTurn: onTurn ? { disabled: busy ? "busy" : null, req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,
-    holdOff: holdOffOf(view, cid, onTurn, busy, ctx), markReq: (unit, on = true) => ({ op: "mark", actor: cid, unit, on }),
+    out,                                                                                          // U9: null, or why nothing (or only getting up) is offered
+    /* U9 / P9-5: `noConfirm` = ending this turn leaves nothing behind that needs a second look: the combatant is out of action, or it is
+       an NPC in the GM's own hands (the surface asks "sure?" only where a player would lose actions by a slip) */
+    endTurn: onTurn ? { disabled: busy ? "busy" : null, noConfirm: !!out || (!!ctx.staff && ctx.c?.(cid)?.npc === true), req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,
+    holdOff: out ? { disabled: out.reason, targets: [], req: (slotId) => ({ op: "holdOff", actor: cid, with: slotId }) } : holdOffOf(view, cid, onTurn, busy, ctx), markReq: (unit, on = true) => ({ op: "mark", actor: cid, unit, on }),
     other: { req: (text) => ({ op: "other", actor: cid, text }) }, exception: { req: (text, inst, more = {}) => ({ op: "exception", actor: cid, text, ...(inst ? { inst } : {}), ...(more.reason ? { reason: more.reason } : {}), ...(more.decl ? { decl: more.decl } : {}) }) } };
 }
 /* spec 3.1 hold off: the slots the combatant's card can be swapped with now (none unless it is this combatant's own turn) */
