@@ -16,6 +16,7 @@ import { dice } from "../../rules/index.mjs";
 import { sceneData } from "./scene-pure.mjs";
 import { allRows, CAT_OF } from "../kit-pure.mjs";
 import * as Lg from "../ledger-pure.mjs";
+import { outOf } from "../desk-pure.mjs";
 import * as Keys from "./keys-pure.mjs";
 import { BANDS, bandOf } from "../flows/kit.mjs";      // the bands of a chance: one definition for the dock and for the engine's reaction cards (U11)
 export { BANDS, bandOf };
@@ -206,6 +207,7 @@ function linesOf(p, t, facts, x) {
     case "revalidate": out.push(t("ITAC.ui.line.revalidate", { name: about, reasons: (d.reasons ?? []).map((r) => reasonText(t, r)).join(", ") })); break;
     case "npcBroken": out.push(t("ITAC.ui.line.npcBroken", { name: about })); break;
     case "minionLoss": out.push(t("ITAC.ui.line.minionLoss", { name: about, by: n(d.by), n: d.suggested ?? 0, members: d.members ?? 0 })); break;
+    case "minionsQuick": out.push(t("ITAC.ui.line.minionsQuick", { name: about, by: d.by ? n(d.by) : t("ITAC.ui.who.gm"), n: d.suggested ?? 0, members: d.members ?? 0 })); break;
     case "minionsFate": out.push(t("ITAC.ui.line.minionsFate", { name: about, n: d.removed ?? 0, left: d.left ?? 0 })); break;
     case "knockDir": out.push(t("ITAC.ui.line.knockDir", { target: n(d.target), n: d.distance ?? 0 })); break;
     case "disarm": out.push(t("ITAC.ui.line.disarm", { target: n(d.target) })); break;
@@ -297,6 +299,15 @@ export function askData(p, o) {
       ...(places.length && kind === "dodgeMove" && x.id === "move" ? { label: t("ITAC.ui.move.byHand") } : {}) };
   })];
   const lines = linesOf(p, t, facts, { inst, desk });
+  /* U61: the one card of a quickly settled minion group: how many fall is a number on the card (it starts at what the damage says), and
+     the two answers (knocked out, killed) send that number with them; at zero the one answer is "nobody falls" */
+  if (kind === "minionsQuick") {
+    const top = Math.max(0, ...(p.options ?? []).map((x) => Number(x.data?.n) || 0)), raw = own.vals?.[`mq:${p.id}`], v = Math.max(0, Math.min(top, Math.trunc(Number(raw ?? p.data?.suggested) || 0)));
+    const pickOpt = (id) => options.find((x) => x.id === id) ?? null, mk = (x, label, icon) => (x ? { ...x, label, icon, group: null } : null);
+    const shown = v > 0 ? [mk(pickOpt(`ko:${v}`), t("ITAC.opt.ko.n", { n: v }), "fate:ko"), mk(pickOpt(`kill:${v}`), t("ITAC.opt.kill.n", { n: v }), "fate:kill")] : [mk(pickOpt("none"), t("ITAC.opt.minionsNone"), "react:pass")];
+    return { map: null, id: p.id, kind, proxy: false, pvFor: null, aboutId: p.about ?? null, aboutHead: true, check: false, title: titleOf({ ...p, to: "desk" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options: shown.filter(Boolean), multi: null, tokens: [], free: null, always: null, submit: null,
+      count: { id: `mq:${p.id}`, value: v, min: 0, max: top, label: t("ITAC.ui.minions.fall"), of: t("ITAC.ui.minions.of", { n: p.data?.members ?? top }) } };
+  }
   if (oneTarget) lines.push(t("ITAC.ui.line.against", { name: nameOf(facts, stuntTargets[0], t) }));
   if (attPool != null) lines.push(t("ITAC.ui.line.attPool", { dice: attPool, attr: attrText(t, gmOdds.att.attr ?? inst?.attr) }));
   const max = p.max ?? options.length, min = p.min ?? 0;
@@ -313,7 +324,9 @@ export function askData(p, o) {
 }
 
 /* ------------------------------------------------------------------ who the table waits for */
-/** -> [{ who, mine, gm, what: [text] }] grouped by addressee; `mine` = this client is asked */
+/** -> [{ who, mine, gm, what: [text] }] grouped by addressee; `mine` = this client is asked.
+    U59, staff only: `since` = when the oldest thing asked of that addressee was asked (ms of the executor's clock; null when not kept),
+    `nudge` = { label, tip, req } for others who are at the table (the engine sends them one line; no limit of time comes with it). */
 export function waitingData(waiting, facts, t) {
   const rows = new Map();
   for (const w of waiting ?? []) {
@@ -323,8 +336,13 @@ export function waitingData(waiting, facts, t) {
     const what = w.what === "roll" || w.what === "push" ? t(w.what === "push" ? "ITAC.ui.wait.push" : "ITAC.ui.wait.roll", { roll: rollLabel(t, w.key, { c: () => null }) }) : titleOf({ ...w, to: "player", aboutName: w.aboutName }, t, facts);
     const text = w.aboutName ? t("ITAC.ui.wait.about", { what, name: w.aboutName }) : what;
     const key = gm ? "gm" : users.join(",");
-    if (!rows.has(key)) rows.set(key, { who, mine, gm, what: [] });
-    rows.get(key).what.push(text);
+    if (!rows.has(key)) rows.set(key, { who, mine, gm, what: [], since: null, nudge: null });
+    const row = rows.get(key);
+    row.what.push(text);
+    if (facts.staff && Number.isFinite(w.at) && (row.since === null || w.at <= row.since)) {
+      row.since = w.at;
+      row.nudge = !gm && !mine && w.nudgeReq && users.some((u) => facts.online?.(u)) ? { label: t("ITAC.ui.nudge", { name: who }), tip: t("ITAC.ui.nudge.tip"), req: w.nudgeReq } : null;
+    }
   }
   return [...rows.values()].sort((a, b) => Number(b.mine) - Number(a.mine));
 }
@@ -356,6 +374,7 @@ function newsText(n, facts, t) {
   const who = n.actor ? nameOf(facts, n.actor, t) : "";
   const act = n.name ? String(n.name) : n.hazard ? t(`ITAC.ui.hz.kind.${n.hazard}`, {}, String(n.hazard)) : n.action ? t(`ITAC.action.${n.action}`, {}, String(n.action)) : "";
   const head = [who, act].filter(Boolean).join(": ");
+  if (n.kind === "nudge") return t(n.roll ? "ITAC.ui.news.nudge.roll" : "ITAC.ui.news.nudge");      // U59: the GM asks for the answer the table waits for
   if (n.kind === "undo") return head ? t("ITAC.ui.news.undo", { what: head }) : t("ITAC.ui.news.undoAny");
   if (n.kind === "exception") {
     const note = n.note ? ` ("${String(n.note)}")` : "";
@@ -377,8 +396,8 @@ export function newsData(view, own, facts, t) {
   const list = (view?.news ?? []).filter((n) => newsNo(n) > seen && (n.round == null || n.round >= round - 1) && !(n.kind === "action" && ["move", "forced", "fall", "release", "seat"].includes(n.flow) && !(n.rows ?? []).some((r) => typeof r.hit === "boolean")));
   if (!list.length) return null;
   const last = list[list.length - 1], mine = (id) => !!id && Object.keys(view?.knowledge ?? {}).includes(id);
-  const tone = last.kind === "exception" ? (last.granted ? "good" : "bad") : last.kind === "undo" || last.undone ? "warn" : (last.rows ?? []).some((r) => r.hit && mine(r.target)) ? "bad" : mine(last.actor) && (last.rows ?? []).some((r) => r.hit) ? "good" : "info";
-  return { id: last.id, text: newsText(last, facts, t), tone, older: list.slice(-4, -1).reverse().map((n) => newsText(n, facts, t)), seen: newsNo(last), label: t("ITAC.ui.news.dismiss") };
+  const tone = last.kind === "nudge" ? "nudge" : last.kind === "exception" ? (last.granted ? "good" : "bad") : last.kind === "undo" || last.undone ? "warn" : (last.rows ?? []).some((r) => r.hit && mine(r.target)) ? "bad" : mine(last.actor) && (last.rows ?? []).some((r) => r.hit) ? "good" : "info";
+  return { id: last.id, kind: last.kind, text: newsText(last, facts, t), tone, older: list.slice(-4, -1).reverse().map((n) => newsText(n, facts, t)), seen: newsNo(last), label: t("ITAC.ui.news.dismiss") };
 }
 
 /* ------------------------------------------------------------------ the player's dock */
@@ -857,6 +876,29 @@ function manualData(m, own, facts, t) {
     costs: ["none", "quick", "full"].map((id) => ({ id, label: costText(t, id), on: id === cost })), note: { value: f.note ?? "", placeholder: t("ITAC.ui.manual.note") }, damage,
     resolve: { label: t("ITAC.ui.manual.resolve"), req: resolve.req(result) }, abort: { label: labelOf(t, abort.label), req: abort.req } };
 }
+/* U60: ONE COMBATANT AT A GLANCE, for the GM (the head of the desk's character tab; the token clicked on the map is the one shown):
+   where it stands, Health and Resolve, the slots of its turn, its states, and the last things done by it or to it (the journal's own
+   lines). Staff only: the desk is never built for a player. Nothing here is new knowledge: the sheet, the map and the journal hold it.
+   -> { id, name, img, zone, group, hidden, vitals, slots, states: [{ id, icon, label, tip }], last: [{ id, round, text, undone }], lastLabel, lastNone } */
+const STATE_ICON = { broken: "fa-heart-crack", unconscious: "fa-bed", dying: "fa-skull-crossbones", dead: "fa-skull", stressedOut: "fa-battery-empty", grappled: "fa-hands-holding", grappling: "fa-hand-back-fist", snared: "fa-link", immobilised: "fa-lock", trapped: "fa-dungeon",
+  unaware: "fa-eye-slash", stunned: "fa-face-dizzy", burning: "fa-fire", airborne: "fa-dove", carrying: "fa-people-carry-box", carried: "fa-people-carry-box", invisible: "fa-ghost", huge: "fa-up-right-and-down-left-from-center", suffocating: "fa-lungs", inVehicle: "fa-car-side", intangible: "fa-ghost" };
+export const UNIT_LAST = 3;
+export function unitData(cid, model, facts, t) {
+  const c = facts.c?.(cid);
+  if (!c) return null;
+  const st = facts.view?.statuses?.[cid] ?? [], other = (id) => (id && facts.c?.(id) ? facts.c(id).name : t("ITAC.Someone")), spot = facts.where?.(cid) ?? null, v = facts.vitals?.(cid) ?? null, group = c.kind === "minions";
+  const states = st.map((s) => ({ id: s.id, icon: STATE_ICON[s.id] ?? "fa-circle-dot", label: t(`ITAC.status.${s.id}`, {}, cap(s.id)),
+    tip: s.id === "grappled" && s.data?.by ? t("ITAC.ui.status.heldBy", { name: other(s.data.by) }) : s.id === "grappling" && s.data?.held ? t("ITAC.ui.status.holds", { name: other(s.data.held) }) : s.id === "carried" && s.data?.by ? t("ITAC.ui.status.carriedBy", { name: other(s.data.by) }) : null }));
+  const out = outOf(facts.view, cid, facts.sheet?.(cid) ?? null);
+  if (out && !states.some((s) => s.id === out.reason)) states.unshift({ id: out.reason, icon: STATE_ICON[out.reason], label: t(`ITAC.status.${out.reason}`, {}, cap(out.reason)), tip: null });      // Health 0 with no mark yet (U45)
+  const budget = facts.budget?.(cid) ?? null;
+  const last = (model?.journal ?? []).filter((j) => (j.who ?? []).includes(cid) && j.state !== "open").slice(0, UNIT_LAST).map((j) => ({ id: j.id, round: j.round ?? null, roundTip: j.round != null ? t("ITAC.ui.round", { n: j.round }) : null, text: marks(t, j.text || j.pub, facts) || t("ITAC.ui.journal.noText"), undone: j.state === "undone" }));
+  return { id: cid, name: c.name ?? "", img: c.img ?? null, zone: spot ? zoneText(facts, t, spot) : null, hidden: facts.hidden?.(cid) ? t("ITAC.map.mark.hidden") : null,
+    /* a minion group: its Health is how many stand [B2827] (the system keeps a fixed top of ten for it, which is no fact of the group) */
+    group: group && v && Number.isFinite(v.health) ? { n: Math.max(0, v.health), label: t("ITAC.ui.unit.members", { n: Math.max(0, v.health) }) } : null,
+    vitals: vitalsOf(facts, cid, t).filter((x) => !(group && x.id === "health")), slots: budget ? slotsOf({ budget }, t).map(({ req, ...s }) => s) : [], states,
+    last, lastLabel: t("ITAC.ui.unit.last"), lastNone: t("ITAC.ui.unit.last.none"), statesNone: t("ITAC.ui.unit.fine") };
+}
 /** Everything the desk draws. -> { show, count, tab, waiting, turn, stack, manual, cards, journal, npcs, mode } */
 const kitNames = (type) => allRows().filter((r) => r.cat === (CAT_OF[type] ?? type)).map((r) => ({ id: r.name, label: r.of ? `${r.name} (${r.of})` : r.name })).sort((x, y) => x.label.localeCompare(y.label));
 export function deskData(model, own, facts, t) {
@@ -875,7 +917,9 @@ export function deskData(model, own, facts, t) {
   /* an NPC out of Resolve often gives up or runs: a hint for the GM, nothing happens by itself */
   const spent = (id) => (facts.staff && facts.resolve?.(id) === 0 ? t("ITAC.ui.npc.spent") : null);
   const npcs = (model.npcs ?? []).map((n) => ({ id: n.id, name: n.name, note: spent(n.id),
-    policy: Object.entries(POL).map(([k, vals]) => ({ id: k, label: t(`ITAC.ui.policy.${k}`), choices: vals.map((v) => ({ id: v, label: t(`ITAC.ui.policy.${v}`), on: n.policy[k] === v, req: n.policyReq({ [k]: v }) })) })),
+    policy: [...Object.entries(POL).map(([k, vals]) => ({ id: k, label: t(`ITAC.ui.policy.${k}`), choices: vals.map((v) => ({ id: v, label: t(`ITAC.ui.policy.${v}`), on: n.policy[k] === v, req: n.policyReq({ [k]: v }) })) })),
+      /* U61: a minion group can be settled quickly: one card per hit (how many fall, knocked out or killed), no defence, no pushed roll */
+      ...(n.group ? [{ id: "quick", label: t("ITAC.ui.policy.quick"), tip: t("ITAC.ui.policy.quick.tip"), choices: [false, true].map((v) => ({ id: v ? "yes" : "no", label: t(`ITAC.ui.policy.${v ? "yes" : "no"}`), on: (n.policy.quick === true) === v, req: n.policyReq({ quick: v }) })) }] : [])],
     reveal: ["stats", "powers", "health"].map((k) => ({ id: k, label: t(`ITAC.ui.reveal.${k}`), on: !!n.revealed[k], req: n.revealReq({ [k]: !n.revealed[k] }) })) }));
   const waiting = waitingData(model.waiting, facts, t);
   const count = cards.length + model.manual.length;
@@ -905,7 +949,7 @@ export function deskData(model, own, facts, t) {
   /* P6: every item of a sheet with its state, and the GM's settings for it (out of the fight, which book entry, what it is about, who summoned whom) */
   const kq = own.kit ?? {}, kitWho = everyone.some((x) => x.id === kq.who) ? kq.who : model.turn?.combatant && everyone.some((x) => x.id === model.turn.combatant) ? model.turn.combatant : everyone[0]?.id ?? null;
   const kk = own.tab === "kit" && kitWho ? facts.kit?.(kitWho) ?? null : null, kRows = kk?.rows ?? [], cnt = (s) => kRows.filter((r) => r.state === s).length;
-  const kit = own.tab !== "kit" ? null : { who: { label: t("ITAC.ui.kit.who"), value: kitWho, choices: everyone }, empty: kRows.length ? null : t("ITAC.ui.kit.empty"),
+  const kit = own.tab !== "kit" ? null : { unit: kitWho ? unitData(kitWho, model, facts, t) : null, who: { label: t("ITAC.ui.kit.who"), value: kitWho, choices: everyone }, empty: kRows.length ? null : t("ITAC.ui.kit.empty"),
     counts: kRows.length ? t("ITAC.ui.kit.counts", { auto: cnt("auto"), assist: cnt("assist"), hand: cnt("hand") }) : null,
     summon: kitWho ? { label: t("ITAC.ui.kit.summonOf"), value: facts.c?.(kitWho)?.summonOf ?? null, none: t("ITAC.ui.kit.nobody"), choices: everyone.filter((x) => x.id !== kitWho), req: (owner) => model.summonReq(kitWho, owner) } : null,
     groups: CAT_ORDER.filter((c) => c !== "boost" && c !== "limit").map((c) => ({ id: c, label: t(`ITAC.kit.cat.${c}`), rows: kRows.filter((r) => (["boost", "limit"].includes(r.cat) ? "power" : r.cat) === c)
@@ -926,6 +970,6 @@ export function deskData(model, own, facts, t) {
     cards, force, hazard, karma, empty: t("ITAC.ui.desk.empty"), journal: rounds, journalEmpty: t("ITAC.ui.journal.empty"), npcs, npcsEmpty: t("ITAC.ui.table.empty"), npcsTitle: t("ITAC.ui.table.npcs"),
     mode: { label: t("ITAC.ui.mode"), choices: ["tactical", "free"].map((m) => ({ id: m, label: t(`ITAC.ui.mode.${m}`), on: model.mode === m, req: model.modeReq(m) })) },
     labels: { override: t("ITAC.cmd.override"), set: t("ITAC.ui.set"), step: t("ITAC.ui.stepLabel"), queue: t("ITAC.ui.queue"), action: t("ITAC.ui.inProgress"), manual: t("ITAC.ui.manual"), collapse: t("ITAC.ui.desk.collapse"), expand: t("ITAC.ui.desk.expand", { n: count }),
-      reveal: t("ITAC.ui.reveal"), groups: { dice: t("ITAC.ui.ovr.g.dice"), result: t("ITAC.ui.ovr.g.result"), step: t("ITAC.ui.ovr.g.step"), end: t("ITAC.ui.ovr.g.end") }, cost: t("ITAC.ui.manual.cost"), damage: t("ITAC.ui.manual.damage") },
+      reveal: t("ITAC.ui.reveal"), since: t("ITAC.ui.wait.since"), groups: { dice: t("ITAC.ui.ovr.g.dice"), result: t("ITAC.ui.ovr.g.result"), step: t("ITAC.ui.ovr.g.step"), end: t("ITAC.ui.ovr.g.end") }, cost: t("ITAC.ui.manual.cost"), damage: t("ITAC.ui.manual.damage") },
   };
 }

@@ -139,11 +139,14 @@ export function doorItems(bar, door, t) {
 export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobilised", "trapped"]);
 /** Health, Resolve and the common states of one combatant as steppers and switches; each change is its own GM edit of the engine
     (setHealth, setResolve, statusAdd, statusRemove: journaled, undoable like any other). `vitals` = { health, maxHealth, resolve, maxResolve } | null */
-export function gmItems(cid, vitals, statuses, t) {
+export function gmItems(cid, vitals, statuses, t, group = null) {
   const out = [], v = vitals ?? {};
   if (fin(v.health) && fin(v.maxHealth) && v.maxHealth > 0) out.push({ id: "health", label: t("ITAC.ui.vital.health"), icon: "fa-solid fa-heart", stepper: { value: Math.max(0, v.health), min: 0, max: v.maxHealth }, req: (n) => ({ op: "setHealth", combatant: cid, value: n }) });
   if (fin(v.resolve) && fin(v.maxResolve) && v.maxResolve > 0) out.push({ id: "resolve", label: t("ITAC.ui.vital.resolve"), icon: "fa-solid fa-bolt", stepper: { value: Math.max(0, v.resolve), min: 0, max: v.maxResolve }, req: (n) => ({ op: "setResolve", combatant: cid, value: n }) });
+  /* U61: a minion group: settle it quickly (one card per hit), the GM's switch. `group` = { quick, req(on) } | null */
+  const quick = group ? { id: "quick", label: t("ITAC.ui.policy.quick"), tip: t("ITAC.ui.policy.quick.tip"), icon: "fa-solid fa-forward-fast", toggle: true, on: !!group.quick, req: (on) => group.req(on) } : null;
   const has = new Set((statuses ?? []).map((s) => s.id));
+  if (quick) out.push(quick);
   for (const id of GM_STATES) out.push({ id: `st:${id}`, label: t(`ITAC.status.${id}`, {}, id), icon: "fa-solid fa-circle-dot", toggle: true, on: has.has(id), req: (on) => (on ? { op: "statusAdd", combatant: cid, status: { id } } : { op: "statusRemove", combatant: cid, id }) });
   return out;
 }

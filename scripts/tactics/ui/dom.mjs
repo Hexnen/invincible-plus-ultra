@@ -44,6 +44,7 @@ const ICONS = {
   "kit:power": "fa-bolt", "kit:boost": "fa-angles-up", "kit:limit": "fa-triangle-exclamation", "kit:talent": "fa-medal", "kit:drawback": "fa-heart-crack", "kit:gear": "fa-toolbox",
   "stunt:doubleDamage": "fa-burst", "stunt:knockback": "fa-arrow-right-from-bracket", "stunt:stun": "fa-face-dizzy", "stunt:bangHeads": "fa-people-arrows", "stunt:trap": "fa-dungeon", "stunt:disarm": "fa-hand-holding",
   "stunt:deadlyHit": "fa-skull", "stunt:slam": "fa-angles-right", "stunt:suppressed": "fa-arrows-down-to-line", "stunt:trickShot": "fa-bullseye", "stunt:special": "fa-star", "stunt:own": "fa-pen",
+  "fate:ko": "fa-bed", "fate:kill": "fa-skull",
   "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark", "react:r": "fa-bolt",
 };
 export const actIcon = (key) => icon(ICONS[key] ?? "fa-circle-dot");
@@ -108,6 +109,12 @@ export function askCard(a, handlers = {}) {
     h("header.ita-head", {}, h("h3.ita-plate", { text: a.title }), a.about && a.aboutHead !== false ? h("span.ita-about", { text: a.about }) : null),
     a.lines.map((l) => (typeof l === "string" ? h("p.ita-line", { text: l }) : h("blockquote.ita-quote", {}, h("span", { text: l.quote }), l.by ? h("cite", { text: l.by }) : null))),
     a.tokens?.length ? h("div.itd-chips", {}, a.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${a.id}:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => handlers.pick?.(`tk:${a.id}`, k.id, 12) } }, h("span", { text: `${k.label} ${k.source}` })))) : null,
+    /* U61: a number the answers carry (how many of a minion group fall): minus, the number, plus; the answers under it say it back */
+    a.count ? h("div.ita-count", { attrs: { role: "group", "aria-label": a.count.label } }, h("span.ita-count-l", { text: a.count.label }),
+      h("span.ita-step", {}, h("button", { fk: `cm:${a.id}`, disabled: a.count.value <= a.count.min, attrs: { "aria-label": "-1" }, on: { click: () => handlers.count?.(a.count.id, a.count.value - 1) } }, icon("fa-minus")),
+        h("b", { text: String(a.count.value), attrs: { "aria-live": "polite" } }),
+        h("button", { fk: `cp:${a.id}`, disabled: a.count.value >= a.count.max, attrs: { "aria-label": "+1" }, on: { click: () => handlers.count?.(a.count.id, a.count.value + 1) } }, icon("fa-plus"))),
+      h("span.ita-count-of", { text: a.count.of })) : null,
     groups.length > 1 ? groups.map((g) => h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(opt))))
       : h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(opt)),
     a.free ? h("input.ita-text", { fk: `text:${a.id}`, attrs: { type: "text", maxlength: 300, placeholder: a.free.placeholder, "aria-label": a.free.placeholder, value: a.free.text }, on: { input: (e, el) => handlers.text?.(a.id, el.value) } }) : null,

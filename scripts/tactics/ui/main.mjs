@@ -53,8 +53,10 @@ let previewLast = null;
 let rev = 0, moveMemo = null;             // the move options are counted once per change of the fight or of the map, not per keystroke
 let lastModel = null, reachLast = null;      // W1: the bars the dock was built from (the board's menus read them); the last answer about who is in reach
 const reaches = new Map();
+let deskIdle = false;                     // U60: the desk's Now tab has nothing on it (no card, no action in progress)
 let lastDock = null, byPointer = true;      // U41: what the dock shows now (the keys act on it); was the focus put where it is by the pointer?
 let zonePick = null, shownDock = "", shownDesk = "";      // what this client has on the map for the surfaces: a running pick, two highlights
+let nudgeSaid = null;                     // U59: the nudge this client already said aloud
 let cardsWere = null;                     // the ids of the desk's waiting cards at the last draw: a new one brings the Now tab forward (U12)
 /* the room the map has: the window less an open sidebar (U6: with the sidebar open at 1366 px the desk, the dock and the map's own panels do not fit side by side) */
 const mapWidth = () => { try { const sb = document.getElementById("sidebar"), r = sb?.getBoundingClientRect(); return r && r.width > 120 && r.left > window.innerWidth * 0.5 ? r.left : window.innerWidth; } catch { return window.innerWidth; } };
@@ -69,10 +71,12 @@ function factsOf(combat) {
   const staff = Store.isStaff(game.user), view = Api.state(combat), ctx = Engine.context(combat);
   return {
     view, me: game.user.id, staff,
-    c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null } : null; },
+    c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, kind: base.kind ?? null, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null } : null; },
     kit: (id) => ctx.kit(id), bonus: (id) => ctx.bonus?.(id) ?? null,                                                                  // P6: the abilities of a sheet this user may read (engine.context)
     attrs: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner || view?.revealed?.[id]?.stats) ? Sys.actorFacts(a)?.attrs ?? null : null; } catch { return null; } },
-    userName: (u) => game.users.get(u)?.name ?? null,
+    userName: (u) => game.users.get(u)?.name ?? null, online: (u) => game.users.get(u)?.active === true,
+    /* U60 (the desk's character tab, staff only): the sheet's Health and injuries as the engine reads them, and the slots of the turn */
+    sheet: (id) => (staff ? ctx.c(id) : null), budget: (id) => { try { return staff && view?.ledger?.[id] ? Api.pure.economy.budget(view, id) : null; } catch { return null; } },
     rollBusy: (rid) => { const at = Sys.rollStarted(rid); return !!at && Date.now() - at < Sys.ROLL_RETRY_MS; },      // U2: the throw is on its way: no "Roll" button yet
     preview: (cid, decl) => previewOf(combat, view, cid, decl),
     /* W1: the play on the map (ui/board.mjs). `reach`: the engine's answer about every candidate of a declaration; `onMap`: does that
@@ -199,7 +203,8 @@ function refresh() {
       if (!st.desk.touched) st.desk.collapsed = mapWidth() < NARROW;
       /* U12: a card that was not waiting a moment ago brings the Now tab forward, unless the GM is typing in the desk */
       const ids = (desk?.cards ?? []).map((c) => c.id), fresh = cardsWere !== null && ids.some((id) => !cardsWere.includes(id));
-      cardsWere = ids;
+      cardsWere = ids; deskIdle = !ids.length && !(desk?.info ?? []).length && !(desk?.manual ?? []).length;
+      if (fresh && st.desk.auto) st.desk.auto = false;
       if (fresh && st.desk.tab !== "now" && !/^(INPUT|TEXTAREA|SELECT)$/.test(Desk.el()?.contains(document.activeElement) ? document.activeElement.tagName : "")) st.desk.tab = "now";
       deskD = Model.deskData(desk, st.desk, facts, t);
       Desk.render(deskD, st.desk);
@@ -209,6 +214,8 @@ function refresh() {
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
     lastDock = data; lastModel = model;
+    /* U59: the GM nudged this user: the line stands on the dock (news) and is said once as a notification, wherever the eyes are */
+    if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", data.news.text); }
     Dock.render(data, st.dock);
     /* U21: this client's target marks follow what is still aimed at (the open panel, the actions in progress) */
     Pick.keep(combat, [...(data.show && data.panel?.kind === "declare" ? (data.panel.targets ?? []).filter((x) => x.picked).map((x) => x.id) : []), ...(staff ? desk?.info ?? [] : model.mine ?? []).flatMap((i) => (i.targets ?? []).map((x) => x.id))]);
@@ -296,7 +303,27 @@ function setDock(patch) {
 /* a tooltip for the keyboard: Foundry opens its tooltips for the pointer only; the surfaces ask for the same one on focus */
 const tipShow = (el) => { try { game.tooltip?.activate(el); } catch { /* a courtesy */ } };
 const tipHide = () => { try { game.tooltip?.deactivate(); } catch { /* a courtesy */ } };
-function setDesk(patch) { Object.assign(st.desk, patch); refresh(); }
+function setDesk(patch) { if (patch && "tab" in patch) st.desk.auto = false; Object.assign(st.desk, patch); refresh(); }
+/* U60: THE TOKEN THE GM CLICKED is the one the desk's character tab is about. The tab comes forward by itself only when the desk has
+   nothing else to say (the Now tab is open and empty) and steps back when the token is let go; with cards waiting or an action in
+   progress the GM's click changes nothing on screen (the map menu's "Show on the desk" brings the tab up at any time). Staff only. */
+function unitOf(cid, force = false) {
+  try {
+    if (!cid || !Store.isStaff(game.user) || !combatNow()?.combatants.get(cid)) return;
+    st.desk.kit = { ...st.desk.kit, who: cid, open: null };
+    if (force) Object.assign(st.desk, { collapsed: false, touched: true, tab: "kit", auto: false });
+    else if (!st.desk.collapsed && st.desk.tab === "now" && deskIdle) Object.assign(st.desk, { tab: "kit", auto: true });
+    refresh();
+  } catch (e) { console.warn(LOG, "unit failed", e); }
+}
+function onControl(token, on) {
+  try {
+    if (!Store.isStaff(game.user)) return;
+    const combat = combatNow(), cid = combat?.combatants.find((c) => c.tokenId === token?.document?.id)?.id ?? null;
+    if (on && cid) return unitOf(cid);
+    if (!on && st.desk.auto && st.desk.tab === "kit" && !(canvas.tokens?.controlled ?? []).length) { Object.assign(st.desk, { tab: "now", auto: false }); refresh(); }
+  } catch (e) { console.warn(LOG, "control failed", e); }
+}
 /* ---------- U41: the keyboard (keys-pure.mjs says what a key does; here only: is the keyboard ours right now, and do it) ----------
    Never while the user types (a text field, the chat box, anything editable) and never while another window has the focus (a sheet, the
    sidebar): only with the focus on the page itself, the map, or one of the two surfaces. A focus that the POINTER left on a button
@@ -337,6 +364,7 @@ async function send(which, req, after) {
     }
     if (which === "dock") { st.dock.refused = null; st.dock.why = ""; }
     /* U4: an override says what it did (the desk's row changes too, but the GM's eyes are on the control just pressed) */
+    if (which === "desk" && req.op === "nudge") notify("info", t("ITAC.ui.nudge.done"));      // U59
     if (which === "desk" && ["setOutcome", "setSixes", "setPool", "setDamage", "skipStep", "goToStep", "askRoll", "retarget"].includes(req.op)) notify("info", t(`ITAC.ui.ovr.did.${req.op}`, { name: combat?.combatants.get(req.target)?.name ?? "", n: req.sixes ?? req.total ?? req.amount ?? "", result: req.op === "setOutcome" ? t(req.hit ? "ITAC.ui.ovr.hit" : "ITAC.ui.ovr.miss") : "" }));
     /* U5: a move the user made from the dock may end under the dock or the macro bar: once the token has arrived the map slides by
        the least that brings that zone into the free part of the window (this client's view only; nothing when it is there already) */
@@ -416,6 +444,7 @@ export function start() {
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);
     Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) moved(); });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
+    Hooks.on("controlToken", onControl);      // U60
     Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Board.reset(); Dock.hide(); });
     Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size
     Hooks.on("deleteChatMessage", () => setTimeout(relayout, 60));
@@ -444,7 +473,7 @@ export function start() {
     document.addEventListener("pointerdown", () => { byPointer = true; }, true);
     document.addEventListener("keydown", (ev) => { if (ev.key === "Tab" && !ev.defaultPrevented) byPointer = false; });      // the browser walked the focus
     try { if (globalThis.localStorage?.getItem(KEYS_ON) === "1") document.body.classList.add("ita-keys"); } catch { /* private window */ }
-    Board.start({ t, set: setDock, send: (req, after) => send("dock", req, after), press: (fk) => Dock.press(fk), notify, refresh, showToken, dock: () => st.dock,
+    Board.start({ t, set: setDock, send: (req, after) => send("dock", req, after), press: (fk) => Dock.press(fk), notify, refresh, showToken, dock: () => st.dock, unit: (cid) => unitOf(cid, true),
       bar: (cid) => lastModel?.bars?.find((b) => b.combatant === cid) ?? null,
       request: async (req, combat) => { try { const env = await Api.request(req, combat ?? combatNow() ?? undefined); if (env?.ok === false && env.error?.code !== "gone") notify("warn", errText(env.error)); return env; } catch { return null; } } });
     Api.ui = { active, refresh, state: () => st };
