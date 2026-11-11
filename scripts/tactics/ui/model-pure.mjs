@@ -531,7 +531,9 @@ function declarePanel(bar, a, own, facts, t) {
      panel, the reaction card, "in progress" and the dice thrown say one number. facts.preview is asked by main.mjs through the relay
      and remembered; until it answers, and where nobody can know yet (no target), no number is shown rather than a guess. */
   const pv = facts.preview?.(bar.combatant, { ...decl, action: a.id }) ?? null;
-  const pool = pv && Number.isFinite(pv.dice) ? { total: pv.dice, parts: [{ id: pv.attr ?? "base", dice: pv.base ?? 0 }, ...(pv.mods ?? []).map((m) => ({ label: t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source)), dice: m.dice }))] } : null;
+  /* D49: dice that still wait for the GM's word are listed apart and are not in the total */
+  const pool = pv && Number.isFinite(pv.dice) ? { total: pv.dice, parts: [{ id: pv.attr ?? "base", dice: pv.base ?? 0 }, ...(pv.mods ?? []).map((m) => ({ label: t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source)), dice: m.dice })),
+    ...(pv.pending ?? []).map((m) => ({ label: `${t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source))} (${t("ITAC.ui.needsGm")})`, dice: m.dice, pending: true }))], pending: (pv.pending ?? []).reduce((n, m) => n + m.dice, 0) } : null;
   let chance = null;
   if (pool) {
     const tgt = picked[0], dAttr = a.opposeAttr ?? DEF_ATTR[a.defense];

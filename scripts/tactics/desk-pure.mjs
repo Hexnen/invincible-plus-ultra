@@ -73,7 +73,7 @@ export function deskModel(state, log, ctx = {}) {
     cmds[cmds.length - 1].ops.push("askRoll");
     /* U1 / U4: per roll, what the GM can do about it from the desk: ask for the dice again, or take the result as it stands */
     info.push({ ...line, rolls: Object.values(i.rolls ?? {}).map((r) => { const row = rollRow(i, r, ctx);
-      return { ...row, askReq: row.state === "owed" && r.req ? { op: "askRoll", inst: i.id, roll: r.key } : null, acceptReq: row.state === "push" ? { op: "setSixes", inst: i.id, roll: r.key, sixes: r.sixes } : null }; }), commands: cmds });
+      return { ...row, askReq: row.state === "owed" && r.req ? { op: "askRoll", inst: i.id, roll: r.key } : null, acceptReq: row.state === "push" ? { op: "setSixes", inst: i.id, roll: r.key, sixes: r.sixes, accept: true, pushed: r.pushed ?? 0 } : null      /* D48: tied to the result the button shows */ }; }), commands: cmds });
   }
   const list = log?.list ?? [];
   const journal = list.map((t, at) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, text: t.label?.gm ?? "", pub: pubLine(t.label, (cid) => ctx.c?.(cid)?.name),

@@ -701,9 +701,17 @@ function opPreview(X, a) {
       const ghost = (t) => (X.state.knowledge?.[actor]?.[t] === "unseen" ? nobody : t);
       decl.targets = decl.targets.map(ghost); if (decl.carry) decl.carry = decl.carry.map(ghost);
     }
-    const inst = makeInst(X, { action: entry.id, actor, decl });
-    const p = FLOWS[inst.flow]?.preview?.(view(X), inst) ?? null;
-    if (p?.pool && Number.isFinite(p.pool.dice)) out = { attr: p.attr ?? null, dice: p.pool.dice, base: p.pool.base ?? 0, mods: (p.pool.mods ?? []).filter((m) => m.dice).slice(0, 24).map((m) => ({ source: String(m.source ?? "").slice(0, 40), dice: Math.trunc(m.dice) })) };
+    const run = (d) => { const inst = makeInst(X, { action: entry.id, actor, decl: d }); return FLOWS[inst.flow]?.preview?.(view(X), inst) ?? null; };
+    const line = (m) => ({ source: String(m.source ?? "").slice(0, 40), dice: Math.trunc(m.dice) });
+    /* D49 (spec 6.2): a bonus die that needs the GM's word at the roll (flows/kit.mjs tokenGate) is not a die of the pool yet: the GM may
+       refuse it. The preview counted it as certain; now the number is the pool without such dice, and they are listed apart as `pending`. */
+    const wait = new Set((X.state.tokens ?? []).filter((t) => t?.needsGm && (decl.tokens ?? []).includes(t.id)).map((t) => t.id));
+    const full = wait.size ? run(decl) : null, p = run(wait.size ? { ...decl, tokens: decl.tokens.filter((id) => !wait.has(id)) } : decl);
+    if (p?.pool && Number.isFinite(p.pool.dice)) {
+      out = { attr: p.attr ?? null, dice: p.pool.dice, base: p.pool.base ?? 0, mods: (p.pool.mods ?? []).filter((m) => m.dice).slice(0, 24).map(line) };
+      const pending = (full?.pool?.mods ?? []).filter((m) => m.dice && String(m.source ?? "").startsWith("token:") && wait.has(String(m.source).slice(6))).slice(0, 12).map(line);
+      if (pending.length) out.pending = pending;
+    }
   } catch { out = null; }
   X.state = before;                                                                         // the probe took an id from the counter: given back
   return { ok: true, changed: false, preview: out };
@@ -802,6 +810,10 @@ async function gmInstOp(X, op, a) {
     case "setSixes": {
       const key = String(a.roll ?? "").slice(0, 40), sixes = Math.max(0, Math.min(40, Math.trunc(Number(a.sixes))));
       if (!Number.isFinite(sixes)) return bad("badInput");
+      /* D48: "Accept for them" takes the result the desk showed (a roll that may still be pushed) as it stands. When the roller's push
+         came in first, that result is no more: the request was still carried out, put the old sixes back and threw away the stunt card
+         of a push whose stress was paid. It is out of date now; a number the GM types in (no `accept`) stays an override of anything. */
+      if (a.accept === true) { const rec = I.rolls[key]; if (!rec || rec.forced != null || rec.sixes !== sixes || !rec.pushable || (rec.pushed ?? 0) !== Math.max(0, Math.trunc(Number(a.pushed) || 0))) return bad("stale", { roll: key }); }
       noteOverride(X, I, op, I.rolls[key]?.forced ?? I.rolls[key]?.sixes ?? null, sixes);
       setInst(X, I);
       const rs = rollStepOf(I, key), keep = I.rolls;
@@ -1154,6 +1166,12 @@ async function challengeFailRun(X, cid) {
     write(X, tx, ["challenges", cid, "dice"], r.ward.dice); write(X, tx, ["challenges", cid, "resets"], r.ward.resets); write(X, tx, ["challenges", cid, "started"], {});
     closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.wardReset}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.wardReset} (${r.ward.dice})` });
     emit(X, null, { type: "challenge", challenge: cid, rating: r.ward.rating, timeLeft: r.ward.time, state: "reset", dice: r.ward.dice });
+  }
+  else if (cfg && Object.keys(cfg).length && !cfg.done && X.state.challenges?.[cid]) {      // D47 [B2841]: failed for good, its clock stops (journaled, so an undo gives the challenge back); what it had set going stays with the GM
+    const tx = openTx(X, {});
+    write(X, tx, ["challenges", cid, "done"], "failed");
+    closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.challengeFailed}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.challengeFailed}` });
+    emit(X, null, { type: "challenge", challenge: cid, rating: c.health, timeLeft: c.resolve, state: "failed", done: 1 });
   }
   for (const kind of r.manual) pushManual(X, cid, kind, { at: "onFail" });
 }

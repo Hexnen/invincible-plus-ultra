@@ -8,6 +8,8 @@ import * as K from "./kit-pure.mjs";
 import * as M from "./mods-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
 import * as P1 from "./economy-pure.mjs";
+import * as Desk from "./desk-pure.mjs";
+import * as Ch from "./flows/challenge.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? (env.changed === false ? "ok(unchanged)" : "ok") : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -260,6 +262,76 @@ const paid = (T, cid, action) => T.state.ledger[cid].entries.filter((x) => !x.vo
   eq([planTokens(), (T.state.statuses.H2 ?? []).map((s) => s.id)], [[], []], "D46: the planner leaves the fight: the plan dice and the status that waited for its turn are gone");
   eq([T.state.tokens.map((t) => t.id), (T.state.statuses.H3 ?? []).map((s) => s.id)], [["other"], ["kept"]], "D46: what waits for somebody else's turn stays");
   eq(T.preview("p2", "H2", { action: "slugfest", targets: ["N1"] })?.mods?.filter((m) => String(m.source).startsWith("token")) ?? [], [], "D46: the ally's roll has no plan dice");
+}
+
+/* ================================================================== D47: a challenge whose time ran out is failed and is not overcome
+   afterwards ([B2841]; spec 9.9). */
+{
+  const mk = async (preset = "doomsdayDevice") => { const T = new T5(); T.hero("H1", "p1", { attrs: { strength: 6 } }).npc("N1"); T.add("CH", { kind: "challenge", npc: true, health: 6, resolve: 1, maxResolve: 3, name: "Device" });
+    T.order(["H1", "N1"]).turn("H1");
+    await T.gm({ op: "challengeSetup", challenge: "CH", preset }); T.c.CH.resolve = 1; return T; };
+  const roll = (T) => T.preq("p1", decl("H1", "objective", { targets: ["CH"], mode: `${Ch.cfgOf(T.state, "CH").objectives[0].id}.0` }));
+  { const T = await mk();
+    await T.gm({ op: "nextRound", force: true });
+    const p = T.prompts().find((x) => x.kind === "challengeFail");
+    eq([T.c.CH.resolve, !!p], [0, true], "D47: (the clock reaches 0 and the 'time is up' card opens)");
+    if (T.state.init.curMember !== "H1") T.turn("H1");
+    eq(ans(await roll(T)), ["illegal", "challengeOver"], "D47 [B2841]: with the time up no objective roll is taken, also before the GM answers the card");
+    await T.gm({ op: "answer", prompt: p.id, value: "run" });
+    for (let n = 0; n < 4 && T.top(); n++) await T.gm({ op: "manual", inst: T.top().id, result: { note: "boom" } });
+    eq(Ch.cfgOf(T.state, "CH").done, "failed", "D47: 'apply it' marks the challenge failed");
+    eq([ans(await roll(T)), T.c.CH.health], [["illegal", "challengeOver"], 6], "D47: and it stays failed: the rating is not touched");
+    const tx = T.log.list.filter((t) => String(t.label?.gm ?? "").includes("challengeFailed")).pop();
+    ok(!!tx, "D47: the journal has a line for it"); }
+  { const T = await mk(); await T.gm({ op: "nextRound", force: true });                           // "I will settle it": the time is still up
+    await T.gm({ op: "answer", prompt: T.prompts().find((x) => x.kind === "challengeFail").id, value: "other" });
+    if (T.state.init.curMember !== "H1") T.turn("H1");
+    eq(ans(await roll(T)), ["illegal", "challengeOver"], "D47: the same when the GM settles the consequence by hand");
+    T.c.CH.resolve = 2;
+    eq(code(await roll(T)), "ok", "D47: time the GM gives back opens it again"); }
+  { const T = await mk();                                                                         // in time: as before
+    eq(code(await roll(T)), "ok", "D47: an objective roll in time is taken");
+    await settle(T); if (T.top()) { await T.roll("roll", 6); await settle(T); }
+    eq([T.c.CH.health, Ch.cfgOf(T.state, "CH").done], [0, "overcome"], "D47: and overcomes the challenge"); }
+  { const T = new T5(); T.hero("H1", "p1"); T.add("CH", { kind: "challenge", npc: true, health: 6, resolve: 0, maxResolve: 0, name: "Riddle" }); T.order(["H1"]);
+    eq(Ch.timeUp(T.facts().c("CH")), false, "D47: a challenge without a time limit is never out of time"); }
+}
+
+/* ================================================================== D48: "Accept for them" takes the result the desk showed; when the roller's
+   push came in first the request is out of date and changes nothing. */
+{
+  const mk = async () => { const T = new T5(); T.hero("H1", "p1").npc("N1", { name: "Stalker", health: 9 }); T.give("H1", []).give("N1", []); T.order(["H1", "N1"]);
+    await T.preq("p1", decl("H1", "slugfest", { targets: ["N1"] })); await T.answer("gm", "reaction", "pass", "N1");
+    await T.roll("attack", 1, { pushable: true }); return T; };
+  const button = (T) => Desk.deskModel(T.state, T.log, {}).info.flatMap((i) => i.rolls).find((r) => r.acceptReq)?.acceptReq;
+  const now = (T) => [T.top().step, T.top().rolls.attack.sixes, T.top().rolls.attack.pushed, T.prompts().map((p) => p.kind), T.top().rolls.attack.forced ?? null];
+  { const T = await mk(), acceptFor = button(T);
+    eq([acceptFor?.op, acceptFor?.sixes, acceptFor?.accept, acceptFor?.pushed], ["setSixes", 1, true, 0], "D48: the desk button names the result it accepts");
+    await T.roll("attack", 3, { pushed: 1, pushable: false });
+    const before = now(T);
+    eq(before, ["stunts", 3, 1, ["stunts"], null], "D48: (the player's push arrives first: 3 sixes, the stunt card is open)");
+    eq([code(await T.gm(acceptFor)), now(T)], ["stale", before], "D48: the GM's late 'accept' is out of date: the pushed result and its stunt card stay"); }
+  { const T = await mk();
+    eq([code(await T.gm(button(T))), T.top()?.rolls?.attack?.pushable ?? false], ["ok", false], "D48: accepted in time, the result stands and cannot be pushed any more"); }
+  { const T = await mk(); await T.roll("attack", 3, { pushed: 1, pushable: false });
+    eq(code(await T.gm({ op: "setSixes", inst: T.top().id, roll: "attack", sixes: 1 })), "ok", "D48: a number the GM sets by hand stays an override of any result (spec 14.1)"); }
+}
+
+/* ================================================================== D49: the preview does not count a bonus die that still waits for the GM's
+   word (spec 6.2); it lists it apart. */
+{
+  const run = async (answer) => { const T = new T5(); T.hero("H1", "p1").npc("N1", { health: 9 }); T.give("H1", []).give("N1", []); T.order(["H1", "N1"]);
+    await T.gm({ op: "tokenAdd", token: { id: "tk1", holder: "H1", dice: 2, scope: { rolls: ["attack"], purpose: "the high ground" }, needsGm: 1, uses: 1, source: { kind: "gm", name: "gm" } } });
+    await T.gm({ op: "tokenAdd", token: { id: "tk2", holder: "H1", dice: 1, scope: { rolls: ["attack"] }, uses: 1, source: { kind: "gm", name: "other" } } });
+    const d = { action: "slugfest", targets: ["N1"], tokens: ["tk1", "tk2"] };
+    const pv = (await T.preq("p1", { op: "preview", actor: "H1", decl: d })).preview, plain = (await T.preq("p1", { op: "preview", actor: "H1", decl: { ...d, tokens: [] } })).preview;
+    await T.preq("p1", { op: "declare", actor: "H1", decl: d });
+    for (let n = 0; n < 6 && !T.top()?.rolls?.attack; n++) { const p = T.prompts()[0]; if (!p) break; await T.gm({ op: "answerFor", prompt: p.id, value: p.options.find((o) => o.id === "pass" || o.id === answer)?.id ?? p.options[0].id }); }
+    return { pv, plain, roll: T.lastRequest()?.dice }; };
+  const no = await run("refuse"), yes = await run("approve");
+  eq([no.pv.dice, no.pv.pending, no.pv.mods.map((m) => m.source)], [no.plain.dice + 1, [{ source: "token:tk1", dice: 2 }], ["token:tk2"]], "D49: the previewed pool is the certain one (a die that needs no word is in it); the die that waits for the GM is listed apart");
+  eq([no.roll, yes.roll], [no.pv.dice, no.pv.dice + 2], "D49: the roll has exactly the previewed dice when the GM refuses the die, and the pending ones on top when the GM approves");
+  eq(no.plain.pending ?? null, null, "D49: a preview without such a die has no pending list");
 }
 
 done("check-defects5");
