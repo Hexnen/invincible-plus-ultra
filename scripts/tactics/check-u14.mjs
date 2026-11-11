@@ -79,6 +79,11 @@ const ctx = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
   ok(/\.itd-refusal \{[^}]*border-bottom: 1px dashed/.test(css) && !/itd-refused/.test(css) && !/itd-refused/.test(dock), "C: a refusal is one line under the head");
   ok(/\.itd-panel \.ita-rollbtn\[data-id="push"\] \{[^}]*background: transparent/.test(css), "C: in the panel Accept is the yellow button and Push the hollow one");
   ok(/:is\(\.itd-mini, \.itd-x, \.itd-tog/.test(css), "C: the switches grow for touch with the other small buttons");
+  ok(/\.itd-refusal \{[^}]*flex-direction: column[^}]*width: 0; min-width: 100%/.test(css), "C: a refusal takes the width the panel has and never widens it");
+  ok(!/\.itd-how \{[^}]*min-width: min\(100%/.test(css), "C: the left group of the foot has no percentage least width (it broke the foot in two rows)");
+  ok(/\.itd-act \{[^}]*flex: none/.test(css) && /h\("div\.itd-act"/.test(dock), "C: the dice and the button are one group that never splits");
+  const model = readFileSync(new URL("./ui/model-pure.mjs", import.meta.url), "utf8");
+  ok(/kind: "door", action: a\.id, title, cost: costText\(t, a\.cost\), unit: a\.cost/.test(model), "C: the door panel carries the speed too, so its plate wears the same mark as every other");
 }
 
 done("check-u14");
