@@ -25,6 +25,7 @@ import * as Desk from "./desk.mjs";
 import * as Pick from "./pick.mjs";
 import * as Board from "./board.mjs";
 import * as Feedback from "./feedback.mjs";
+import * as Camera from "./camera.mjs";
 import * as Lay from "./layout-pure.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
@@ -233,7 +234,7 @@ function refresh() {
     const combat = down ? null : combatNow();
     try { document.body.classList.toggle("ita-tactics", !!combat); } catch { /* no body */ }      // styles/tactics-ui.css: what the other surfaces of the module give up while the dock shows
     hotbarSync(!!combat);
-    if (!combat) { cardsWere = null; lastDock = lastModel = null; Pick.stop(); Pick.keep(null, []); Board.sync(null, null); mapSync(null, null); Dock.render({ show: false, prompts: [], sum: Feedback.idle().sum }); Desk.render({ show: false }); pokeTray(); return; }      // U57: the card of the fight that just ended may still stand
+    if (!combat) { cardsWere = null; lastDock = lastModel = null; Pick.stop(); Pick.keep(null, []); Board.sync(null, null); Camera.sync(null); mapSync(null, null); Dock.render({ show: false, prompts: [], sum: Feedback.idle().sum }); Desk.render({ show: false }); pokeTray(); return; }      // U57: the card of the fight that just ended may still stand
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
     if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen, hotbar: st.dock.hotbar }; }        // a new turn: nothing stays armed
@@ -272,6 +273,7 @@ function refresh() {
       setDock({ targets: max > 1 ? ((st.dock.targets ?? []).includes(cid) ? cur : [...cur, cid].slice(-max)) : [cid] }); });
     else Pick.stop();
     mapSync(data, deskD, board);
+    Camera.sync({ combat, view: facts.view, staff, model, dock: st.dock, data });      // U94: what this user's own view and hand give the map's camera (ui/camera.mjs)
     watch(); pokeTray();
   } catch (e) { console.warn(LOG, "refresh failed", e); }
 }
@@ -314,6 +316,7 @@ function mapSync(data, deskD, board = false) {
    panel has just opened over the map) and after a move made from the dock; never on a timer, never for another user's view. */
 function showToken(cid) {
   try {
+    if (Camera.ready()) return;      // U94: the map's camera keeps the dock's unit in the free part of the screen itself (the cues "arm" and "ownMove")
     const tok = combatNow()?.combatants.get(cid)?.token?.object, stage = canvas?.stage;
     if (!tok || !stage || !tok.visible) return;
     const W = window.innerWidth, H = window.innerHeight, s = stage.scale.x || 1;
@@ -489,7 +492,7 @@ export function start() {
     Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) moved(); });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
     Hooks.on("controlToken", onControl);      // U60
-    Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Board.reset(); Dock.hide(); });
+    Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Board.reset(); Camera.reset(); Dock.hide(); });
     Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size
     Hooks.on("deleteChatMessage", () => setTimeout(relayout, 60));
     Zones.onEvent(moved);                    // a token entered a zone, a door changed: the options of a move are counted again
@@ -528,6 +531,8 @@ export function start() {
       bar: (cid) => lastModel?.bars?.find((b) => b.combatant === cid) ?? null,
       request: async (req, combat) => { try { const env = await Api.request(req, combat ?? combatNow() ?? undefined); for (const text of Model.envNotes(env, t, Store.isStaff(game.user))) notify("warn", text); if (env?.ok === false && env.error?.code !== "gone") notify("warn", errText(env.error)); return env; } catch { return null; } } });
     Feedback.start({ t, refresh });
+    Camera.start();
+    Api.camera = { state: () => Camera.state() };      // for a look from the console
     Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
     refresh();
     return true;
