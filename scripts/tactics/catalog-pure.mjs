@@ -14,6 +14,10 @@ import { ACTIONS } from "./actions-pure.mjs";
 export const WINDOWS = Object.freeze(["beforeRoll", "afterRoll", "afterDamage"]);
 export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other", "barrier", "fastball", "release", "act"]);
 export const REACTION_EFFECTS = Object.freeze(["defence", "action", "swapTarget", "autoMiss", "note"]);
+/** U91: where the book lets a reaction be taken. "targetZone": the reactor stands in the zone of the attacked character (Guardian [B2115]);
+    "allyZone": an ally stands in the reactor's own zone (Discretion [B2108]). `reaction.roll: "attack"`: the reactor first rolls FIGHTING
+    against a slugfest attack, AGILITY against shooting, and the reaction works only on a success [B2115]. Read by flows/kit.reactionFit. */
+export const REACTION_PLACES = Object.freeze(["targetZone", "allyZone"]);
 
 export const BUILTIN = Object.freeze({
   slugfest: { id: "slugfest", label: "ITAC.action.slugfest", src: [2341, 2425], kind: "builtin", cost: "full", flow: "attack", attack: "slugfest", roll: { attr: "fighting" }, target: { who: "enemy", n: [1, 1] }, defense: "block", stunts: "slugfest", tags: ["attack"] },
@@ -86,7 +90,8 @@ export function sanitizeEntry(e) {
   for (const k of ["area", "fullAuto"]) if (e[k] === true) out[k] = true;                                  // [B2542], [B2543]
   if (Array.isArray(e.range) && e.range.length === 2) out.range = [Math.max(0, Math.trunc(e.range[0]) || 0), Math.max(0, Math.trunc(e.range[1]) || 0)];
   if (e.reaction && typeof e.reaction === "object" && REACTION_EFFECTS.includes(e.reaction.effect)) {
-    out.reaction = { when: (Array.isArray(e.reaction.when) ? e.reaction.when : []).filter((w) => WINDOWS.includes(w)), who: e.reaction.who === "target" ? "target" : "any", effect: e.reaction.effect };
+    out.reaction = { when: (Array.isArray(e.reaction.when) ? e.reaction.when : []).filter((w) => WINDOWS.includes(w)), who: e.reaction.who === "target" ? "target" : "any", effect: e.reaction.effect,
+      ...(REACTION_PLACES.includes(e.reaction.place) ? { place: e.reaction.place } : {}), ...(e.reaction.roll === "attack" ? { roll: "attack" } : {}) };      // U91
     out.interrupt = { on: out.reaction.when };
   }
   if (e.flow === "move" && e.move && typeof e.move === "object" && /^[A-Za-z]{1,24}$/.test(e.move.mode ?? "")) out.move = { mode: e.move.mode };     // a way of moving fixed by the entry
