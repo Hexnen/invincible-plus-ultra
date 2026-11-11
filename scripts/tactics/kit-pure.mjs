@@ -132,7 +132,7 @@ function actionOf(item, row, a, lv, extra = {}) {
     for (const k of ["lv", "armor"]) if (Array.isArray(e.effect[k])) e.effect[k] = at(e.effect[k], lv);
     if (a.reaction) {
       const who = ["autoMiss", "note"].includes(a.reaction) && a.k !== "warn" ? "target" : "any";
-      Object.assign(e, { flow: "plain", reaction: { when: ["beforeRoll"], who, effect: a.reaction }, interrupt: { on: ["beforeRoll"] }, reactionOnly: 1 });
+      Object.assign(e, { flow: "plain", reaction: { when: ["beforeRoll"], who, effect: a.reaction, ...(a.place ? { place: a.place } : {}), ...(a.check ? { roll: a.check } : {}) }, interrupt: { on: ["beforeRoll"] }, reactionOnly: 1 });
     }
   }
   if (a.stress) e.stress = { fixed: a.stress };
