@@ -717,9 +717,49 @@ function opPreview(X, a) {
       if (pending.length) out.pending = pending;
     }
   } catch { out = null; }
+  /* W1 (U33, U34): WHOM THIS DECLARATION COULD BE AIMED AT. `of` = the candidates the asker's map would mark. For each one the
+     answer of the SAME legality the declaration will meet (so the map never promises what "declare" then refuses), the dice of the
+     same builder as the roll, and what a plain hit would do (the damage step's own numbers). Per asker: nobody concealed from the
+     asker is answered about (hidden in Foundry, or unseen by every character of theirs: view-pure.concealedFor), and of an NPC the
+     numbers after its Armor and its Health go out only once the GM revealed them (spec 10). */
+  let per = null, acts = null;
+  const staff = X.user.staff === true, mine = staff ? [] : Object.keys(X.state.ledger ?? {}).filter((id) => owns(X, id));
+  const concealed = (t) => !staff && (X.facts.c(t)?.hidden === true || (mine.length > 0 && mine.every((o) => X.state.knowledge?.[o]?.[t] === "unseen")));
+  const probe = (en, decl, t) => {
+    try {
+      const tf = X.facts.c(t);
+      if (!tf || t === actor || concealed(t)) return null;
+      const inst = makeInst(X, { action: en.id, actor, decl: sanitizeDecl({ ...(isObj(decl) ? decl : {}), targets: [t] }, en.id, staff) });
+      const l = K.legality(view(X), inst, FLOWS[inst.flow]);
+      const row = l.ok ? { ok: true } : { ok: false, reason: String(l.reason ?? "rules").slice(0, 40), params: Object.fromEntries(Object.entries(l.params ?? {}).filter(([k, x]) => k.length <= 24 && (Number.isFinite(x) || (typeof x === "string" && x.length <= 40))).slice(0, 6)) };
+      const p = FLOWS[inst.flow]?.preview?.(view(X), inst) ?? null;
+      if (p?.pool && Number.isFinite(p.pool.dice)) row.dice = p.pool.dice;
+      const h = l.ok ? FLOWS[inst.flow]?.hitPreview?.(view(X), inst, t) ?? null : null;
+      if (h) {
+        const npc = tf.npc === true, rv = X.state.revealed?.[t] ?? {};
+        row.hit = { base: h.base, toStress: h.toStress, ...(staff || !npc || rv.stats ? { taken: h.taken, most: h.most } : {}), ...(staff || !npc || rv.health ? { now: h.now, max: h.max } : {}) };
+      }
+      return row;
+    } catch { return null; }                                                                // no answer about that one rather than a wrong one
+  };
+  if (Array.isArray(a.of)) {
+    per = {};
+    for (const t of a.of.filter(P1.isId).slice(0, REACH_MAX)) { if (per[t]) continue; const row = probe(entry, a.decl, t); if (row) per[t] = row; }
+  }
+  /* ... and WHAT COULD BE DONE TO ONE OF THEM (U35: the menu at a token): the same answer for several actions against `at` */
+  if (Array.isArray(a.acts) && P1.isId(a.at)) {
+    acts = {};
+    for (const d of a.acts.filter(isObj).slice(0, ACTS_MAX)) {
+      const en = C.entryFor(X.state, actor, d.action, X.facts);
+      if (!en || en.reaction?.effect === "defence" || acts[en.id]) continue;
+      const row = probe(en, d, a.at);
+      if (row) acts[en.id] = row;
+    }
+  }
   X.state = before;                                                                         // the probe took an id from the counter: given back
-  return { ok: true, changed: false, preview: out };
+  return { ok: true, changed: false, preview: per || acts ? { ...(out ?? {}), ...(per ? { per } : {}), ...(acts ? { acts } : {}) } : out };
 }
+export const REACH_MAX = 40, ACTS_MAX = 12;
 /** The same, at once and without a host that can do anything: for the executor's own client and the checks. -> { attr, dice, base, mods } | null */
 export function previewFor(state, facts, user, req) {
   try { const env = opPreview(makeX(state, null, { facts: () => facts, now: () => 0 }, user), req ?? {}); return env.ok ? env.preview ?? null : null; } catch { return null; }
@@ -993,6 +1033,16 @@ async function gmEdit(X, op, a) {
     case "summonSet": {
       if (!c(a.combatant) || (a.owner != null && !c(a.owner)) || a.owner === a.combatant) { err = "badInput"; break; }
       await perform(X, tx, { t: "summonFlag", combatant: a.combatant, owner: a.owner ?? null, tx });
+      break;
+    }
+    /* W1 (U44): the GM put a token down by hand on the map (Alt-drop: no route, no price, nobody asked). The map has already moved it
+       and handed over the op that puts it back; the placement becomes a transaction of its own, so it is in the journal and is
+       undone like every other override. */
+    case "placed": {
+      const cc = c(a.combatant), inv = a.inverse;
+      if (!cc || !isObj(inv) || inv.op !== "tokens" || !Array.isArray(inv.rows) || !inv.rows.length || inv.rows.length > 24) { err = "badInput"; break; }
+      await perform(X, tx, { t: "placed", who: a.combatant, inverse: J.clone(inv), to: typeof a.zone === "string" ? a.zone.slice(0, 60) : null, tx });
+      emit(X, null, { type: "placed", combatant: a.combatant, zone: typeof a.zone === "string" ? a.zone.slice(0, 60) : undefined, cause: "gm" });
       break;
     }
     case "zoneSet": case "levelSet": case "borderSet": case "zoneOp": {                    // one write of the zones API; the inverse it returns is journaled (zones-pure.mjs)
@@ -1305,7 +1355,7 @@ export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer",
 export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget", "askRoll"]);
 export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
   "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp",
-  "challengeSetup", "vehicleSet", "chaseStart", "chaseSet", "chaseEnd", "kitFlag", "summonSet"]);                                                                    // P7
+  "challengeSetup", "vehicleSet", "chaseStart", "chaseSet", "chaseEnd", "kitFlag", "summonSet", "placed"]);                                                                    // P7
 export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard", "forcedMove", "fall", "hazardRun", "chaseRound"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
 
 async function request(X, req) {

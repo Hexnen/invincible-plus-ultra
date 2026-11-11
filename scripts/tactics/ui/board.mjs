@@ -1,0 +1,238 @@
+/* Tactical combat, the surfaces: THE PLAY ON THE MAP, the Foundry side (W1; ledger rows U32-U40, U42-U44). What ui/board-pure.mjs and
+   ui/model-pure.mjs say stands on the map is handed to the map module here, through the one zones adapter, and what the user does on
+   the map (a zone clicked, a right click on a token or a door) comes back as a patch of the dock's own state or as a request.
+   EVERYTHING HERE IS A SHOW ON THIS CLIENT, built from this user's own view: marks, lines, warnings and areas are never sent to
+   another user (no `users`), so nothing a player's view withholds can reach that player's map, and the GM's client does no work for
+   a player's map. The one thing that leaves the client is the armed intention (U43), which the map sends to the GMs alone.
+   COST. Nothing runs per mouse move: the map itself draws the route, the hover parts of a mark and the caught tokens of an area from
+   what it was handed once. The engine is asked once per change of the declaration or of the fight (main.mjs, facts.reach), once per
+   right click on a token (the menu). An intention is said again only when what is armed or the marked token under the pointer
+   changes (the map's own enter / leave hook), and the map throttles it.
+   The surface writes nothing: requests only (main.mjs `send`). Everything is in try / catch: the map is optional. */
+import * as Zones from "../zones-adapter.mjs";
+import * as Mv from "../movement.mjs";
+import * as Model from "./model-pure.mjs";
+import * as BP from "./board-pure.mjs";
+import { faOf } from "./dom.mjs";
+
+const LOG = "invincible-plus-ultra (tactics board) |";
+const DONE = { armed: null, mode: null, to: null, ask: null, why: "", targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} };
+const HZ_ID = "ipu.hz";
+const ARM = { mode: null, tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, peek: true };
+let H = null;                 // main.mjs: { t, set(patch), send(req, after), press(fk), notify(kind, text), refresh(), request(req), bar(cid), dock(), showToken(cid) }
+let started = false, on = false, last = null, shown = {};
+let movePick = null, areaPick = null, menuBusy = false, hover = null, intentKey = "null", intentAt = 0, fire = null;
+const steps = {};             // the GM's steppers: one request once the clicking stops
+
+const t = (...a) => H.t(...a);
+const tokDoc = (cid) => { try { const td = last?.combat?.combatants.get(cid)?.token ?? null; return td?.object?.visible ? td : null; } catch { return null; } };
+const tid = (cid) => tokDoc(cid)?.id ?? null;
+const cidOf = (td) => { try { const id = td?.document?.id ?? td?.id ?? null; return id ? last?.combat?.combatants.find((c) => c.tokenId === id)?.id ?? null : null; } catch { return null; } };
+const zoneOfCid = (cid) => { try { const td = tokDoc(cid); return td ? Zones.placeOf(td)?.zone ?? null : null; } catch { return null; } };
+const norm = (key) => String(key ?? "").split("|").sort().join("|");
+function put(id, set, clear, spec) {
+  const key = spec ? JSON.stringify(spec) : "";
+  if ((shown[id] ?? "") === key) return;
+  shown[id] = key;
+  try { if (spec) set({ id, ...spec }); else clear(id); } catch (e) { console.warn(LOG, id, e); }
+}
+/** the fire of the map, read once per change of the fight or of the map */
+function fireNow() {
+  if (!last) return null;
+  if (fire?.rev !== last.rev) fire = { rev: last.rev, map: BP.fireMap(Mv.api.zoneFacts()) };
+  return fire.map;
+}
+/** U32: what waits on a way of `cid` beyond its walls (model-pure.movePanel asks through facts.hazards) */
+export function hazards(cid, zones, to) { try { return last ? BP.zoneHazards(fireNow(), zones, to, Mv.api.c(cid), Mv.api.zoneFacts(), t) : []; } catch { return []; } }
+
+/* ---------- U38 / U39: the state of the table, from this user's view ---------- */
+function table() {
+  const s = BP.tableShow(last.view, last.facts, t);
+  const tokens = s.marks.map((m) => ({ token: tid(m.cid), marks: m.marks })).filter((x) => x.token);
+  put(BP.IDS.table, Zones.markTokens, Zones.clearTokenMarks, tokens.length ? { order: 0, tokens } : null);
+  const links = s.links.map((l) => ({ ...(tid(l.from) ? { from: tid(l.from) } : {}), to: tid(l.to), label: l.label, color: l.color })).filter((l) => l.to);
+  put(BP.IDS.links, Zones.link, Zones.clearLinks, links.length ? { links } : null);
+}
+/* ---------- U33 / U34 / U36: whom the armed action can be aimed at ---------- */
+function reach() {
+  const d = last.data, p = d?.show ? d.panel : null, dec = p?.kind === "declare" ? p : null, who = d?.who?.id;
+  const tokens = (dec ? BP.reachMarks(dec, t) : []).map(({ cid, ...r }) => ({ token: tid(cid), ...r })).filter((x) => x.token);
+  put(BP.IDS.reach, Zones.markTokens, Zones.clearTokenMarks, tokens.length ? { order: 2, color: "target", tokens } : null);
+  const aim = dec?.aim?.length && tid(who) ? dec.aim.map((x) => ({ from: tid(who), to: tid(x.id) })).filter((l) => l.to) : [];
+  put(BP.IDS.aim, Zones.link, Zones.clearLinks, aim.length ? { color: "target", style: "dashed", links: aim } : null);      // dashed: chosen, not declared yet
+  /* U36: an area attack is put on a zone: the map fills it and rings everyone caught under the pointer, friends too */
+  const area = !!dec && areaMode(dec), inReach = area ? dec.targets.filter((x) => x.map && x.reach === "in") : [];
+  const zones = [...new Set(inReach.map((x) => zoneOfCid(x.id)).filter(Boolean))];
+  if (area && zones.length && tid(who)) {
+    const key = `${who}|${dec.action}|${zones.join(",")}|${dec.submit?.req ? 1 : 0}`;
+    if (areaPick?.key !== key && !menuBusy) {
+      const mine = (areaPick = { key });
+      Zones.pickArea({ zones: zones.map((zone) => ({ zone, color: "target" })), radius: 0, token: tid(who), intent: { label: dec.title }, color: "target", title: t("ITAC.map.area.title", { name: d.who.name }), hint: t("ITAC.map.area.hint"),
+        tokens: (doc) => { const cid = cidOf(doc); if (cid === who) return false; const x = dec.targets.find((y) => y.id === cid); return x?.reach === "in" && x.odds?.say ? { label: x.odds.say } : true; } }).then((r) => {
+        if (areaPick !== mine) return;
+        areaPick = null;
+        if (!r?.ok) { if (r?.reason !== "replaced") H.set({ armed: null, mode: null }); return; }
+        const first = inReach.find((x) => zoneOfCid(x.id) === r.zone);
+        if (!first) return H.refresh();
+        if (dec.targets.some((x) => x.picked && zoneOfCid(x.id) === r.zone) && dec.submit?.req) H.press("go");      // the same zone again: declare
+        else H.set({ targets: [first.id] });
+      });
+    }
+  } else if (areaPick) { areaPick = null; Zones.cancelPick(); }
+  const chosen = area ? dec.targets.find((x) => x.picked && x.map) : null, z = chosen ? zoneOfCid(chosen.id) : null;
+  put(BP.IDS.area, Zones.areaPreview, Zones.clearArea, z ? { at: z, radius: 0, tokens: true, level: tid(chosen.id) } : null);
+  /* the GM's hazard tool (the desk): the zone chosen there, with everyone standing in it, before the hazard is let loose */
+  put(HZ_ID, Zones.areaPreview, Zones.clearArea, last.hz ? { at: last.hz, radius: 0, tokens: true, color: "danger" } : null);
+}
+/** is the armed declaration an area attack that is put on the map? (main.mjs then leaves the token pick off) */
+export const areaMode = (p) => p?.kind === "declare" && !!p.area && !!p.onMap && !!p.reached && Zones.hasBoard();
+
+/* ---------- U32 / U14: a move under the pointer ---------- */
+function waysMenu(p, zone, drag = false) {
+  const rows = p.ways?.[zone] ?? [];
+  if (!rows.length) { if (drag) { H.notify("warn", t("ITAC.move.cannot", { reason: Model.reasonText(t, "noRoute") })); H.set({ armed: null, mode: null }); } return; }
+  const blocked = rows.filter((r) => r.disabled);
+  const items = rows.map((r) => ({ id: r.id, label: r.label, icon: faOf("move"), hint: r.hint, ...(r.disabled ? { disabled: r.disabled } : {}) }));
+  if (blocked.length === rows.length) items.push({ separator: true }, { id: "@ask", label: t(last.staff ? "ITAC.map.menu.gm" : "ITAC.map.menu.ask"), icon: last.staff ? "fa-solid fa-gavel" : "fa-solid fa-comment" });
+  menuBusy = true;
+  Zones.menu({ zone, title: Model.zoneText(last.facts, t, zone), sub: p.title, items }).then((r) => {
+    menuBusy = false;
+    if (!r?.ok) return drag ? H.set({ armed: null, mode: null }) : H.refresh();
+    if (r.id === "@ask") return H.set({ ask: blocked[0].id, why: "" });
+    const w = rows.find((x) => x.id === r.id);
+    return w?.req ? H.send(w.req, DONE) : H.refresh();
+  }).catch(() => { menuBusy = false; });
+}
+function move() {
+  const d = last.data, p = d?.show ? d.panel : null, who = d?.who?.id;
+  if (!(p?.kind === "move" && p.picking && p.ways && tid(who))) { if (movePick) { movePick = null; Zones.cancelPick(); } return; }
+  const own = H.dock();
+  if (own.menuAt) {                                                                           // a token was dragged into that zone, or a wall was asked about: its ways, priced
+    const z = own.menuAt, drag = !!own.dragMenu; own.menuAt = null; own.dragMenu = false;
+    if (movePick) { movePick = null; Zones.cancelPick(); }
+    return waysMenu(p, z, drag);
+  }
+  const key = `${who}|${p.action}|${JSON.stringify(p.zones)}`;
+  if (movePick?.key === key || menuBusy) return;
+  const mine = (movePick = { key });
+  setTimeout(() => { if (movePick === mine) H.showToken(who); }, 350);                        // U5: the character is kept out from under the dock
+  Zones.pickMove({ token: tid(who), zones: p.zones.map(({ way, ask, menu, tip, ...z }) => z), intent: { label: p.title }, title: t("ITAC.ui.pick.title", { name: d.who.name }), hint: p.hint, color: "move" }).then((r) => {
+    if (movePick !== mine) return;                                                            // given up or replaced by a newer one
+    movePick = null;
+    if (!r?.ok) {
+      if (r?.reason && !["cancelled", "replaced"].includes(r.reason)) H.notify("warn", t("ITAC.warn.zones", { reason: t(`ITAC.reason.${r.reason}`, {}, String(r.reason)) }));
+      if (r?.reason !== "replaced") H.set({ armed: null, mode: null });
+      return;
+    }
+    const e = p.zones.find((z) => z.zone === r.zone);
+    if (!e) return H.refresh();
+    if (r.alt || e.menu || (!e.way && !e.ask)) return waysMenu(p, e.zone);                    // another way was asked for (right click), or there is no single default
+    if (e.way) { const w = (p.ways[e.zone] ?? []).find((x) => x.id === e.way); return w?.req ? H.send(w.req, DONE) : H.refresh(); }      // ONE CLICK: the default way
+    return H.set({ ask: e.ask, why: "" });                                                    // a zone nobody can pay for or reach: the reason and the way to ask
+  }).catch(() => { if (movePick === mine) movePick = null; });
+}
+/* ---------- U40: the zone where the turn would end ---------- */
+function warn() {
+  const d = last.data, who = d?.show && d.onTurn ? d.who?.id : null, spot = who ? last.facts.where?.(who) : null;
+  const w = spot ? BP.endWarnings(fireNow(), spot, Mv.api.c(who), Mv.api.zoneFacts(), t) : [];
+  put(BP.IDS.warn, Zones.warnOn, Zones.clearHighlights, w.length ? { zones: w } : null);
+}
+/* ---------- U43: what this user has armed, for the GMs (a player's client; the map sends it to the GMs alone) ---------- */
+function intent() {
+  if (!last || last.staff) return;
+  const d = last.data, p = d?.show && d.panel?.kind === "declare" && !areaMode(d.panel) ? d.panel : null, from = p ? tid(d.who.id) : null;
+  const to = p && hover && p.targets?.some((x) => x.id === hover && x.map) ? hover : p?.aim?.[0]?.id ?? null;
+  const spec = from ? { token: from, ...(to && tid(to) ? { to: tid(to) } : {}), label: String(p.title ?? "").slice(0, 40), ttl: 120000 } : null;
+  const key = JSON.stringify(spec), now = Date.now();
+  if (key === intentKey && (!spec || now - intentAt < 100000)) return;
+  intentKey = key; intentAt = now;
+  try { Zones.intent(spec); } catch { /* the map is optional */ }
+}
+
+/* ---------- U35 / U44: a right click on a thing ---------- */
+function tokenMenu(cid, acts) {
+  const { combat, facts, staff, data } = last, who = data.who.id, name = facts.c?.(cid)?.name ?? "";
+  const fix = () => {
+    if (!staff) return [];
+    const items = BP.gmItems(cid, facts.vitals?.(cid), last.view?.statuses?.[cid] ?? [], t);
+    return items.map((it) => (it.stepper ? { id: it.id, label: it.label, icon: it.icon, stepper: it.stepper, onStep: (v) => { const k = `${cid}|${it.id}`; clearTimeout(steps[k]); steps[k] = setTimeout(() => { steps[k] = 0; H.request(it.req(v)); }, 450); return v; } }
+      : { id: it.id, label: it.label, icon: it.icon, toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return env?.ok === false ? !o : o; } }));
+  };
+  const spec = (rows) => {
+    const list = BP.actItems(acts, rows, cid, facts, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.tip ? { tip: a.tip } : {}), ...(a.disabled ? { disabled: a.disabled } : {}),
+      run: () => H.set({ ...ARM, sel: who, armed: a.id, targets: [cid] }) })), gm = fix();
+    /* the GM's menu stands where Foundry's token HUD would open: one entry brings that HUD up (Shift + right click opens it directly) */
+    const hud = staff ? [{ separator: true }, { id: "@hud", label: t("ITAC.map.menu.hud"), icon: "fa-solid fa-id-badge", run: () => { try { const tok = tokDoc(cid)?.object; (canvas.hud?.token ?? tok?.layer?.hud)?.bind(tok); } catch { /* a courtesy */ } } }] : [];
+    const items = [...list, ...(list.length && gm.length ? [{ separator: true }] : []), ...gm, ...hud];
+    return items.length ? { title: name, ...(gm.length && !list.length ? { sub: t("ITAC.map.menu.fix") } : {}), items } : null;
+  };
+  if (!acts.length) return spec(null);
+  /* one question to the engine for the whole menu: is each action legal against this one, what does it roll, what would a hit do */
+  return H.request({ op: "preview", actor: who, decl: acts[0].decl, acts: acts.map((a) => a.decl), at: cid }, combat).then((env) => spec(env?.ok ? env.preview?.acts ?? null : null)).catch(() => spec(null));
+}
+function borderMenu(br, bar) {
+  const { facts, staff, data } = last, who = data.who.id, key = norm(br?.key);
+  const door = (facts.doors?.(who) ?? []).find((d) => norm(d.to) === key) ?? null;
+  const items = door ? BP.doorItems(bar, door, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.disabled ? { disabled: a.disabled } : {}), run: () => a.req && H.send(a.req, DONE) })) : [];
+  /* a wall (or a door that stays shut) can be gone through by force: the ways of moving that break this very border */
+  const through = [...new Set((facts.move?.(who)?.options ?? []).filter((o) => o.zone && (o.barriers ?? []).some((b) => norm(b.border) === key)).map((o) => o.zone))];
+  for (const z of through.slice(0, 4)) items.push({ id: `@go:${z}`, label: t("ITAC.map.menu.breach", { zone: Model.zoneText(facts, t, z) }), icon: "fa-solid fa-hammer", run: () => { H.dock().menuAt = z; H.dock().dragMenu = true; H.set({ ...ARM, sel: who, armed: "move" }); } });
+  if (!items.length || (staff && !items.some((x) => !x.disabled))) return null;              // nothing of ours here (the GM keeps the map's own door menu)
+  const title = door ? t("ITAC.ui.door.to", { zone: Model.zoneText(facts, t, door.zone) }) : t("ITAC.map.haz.wall", { n: br?.armor ?? 0 });
+  return { title, ...(door ? { sub: `${t(`ITAC.ui.door.${door.state}`, {}, String(door.state))}, ${t("ITAC.ui.armor", { n: door.armor ?? 0 })}` } : {}), items };
+}
+function onCtx(ctx) {
+  try {
+    if (!last?.data?.show || ctx?.shift || menuBusy) return null;                              // Shift + right click: Foundry's own and the map's own menus
+    const who = last.data.who.id, bar = H.bar(who);
+    if (!bar) return null;
+    if (ctx.kind === "token") {
+      const cid = cidOf(ctx.token);
+      if (!cid) return null;
+      const acts = cid === who || (last.staff && last.data.rest) ? [] : Model.targetActs(bar, cid, last.facts, t);      // (the GM's dock rests while a player drives the hero: only the corrections)
+      if (!acts.length && !last.staff) return null;                                            // a player's own token, somebody nothing can be done to: Foundry's token HUD
+      return tokenMenu(cid, acts);
+    }
+    if (ctx.kind === "border") return borderMenu(ctx.border, bar);
+    return null;
+  } catch (e) { console.warn(LOG, "context failed", e); return null; }
+}
+
+/* ---------- main.mjs calls ---------- */
+function clear() {
+  try {
+    if (movePick || areaPick) { movePick = areaPick = null; Zones.cancelPick(); }
+    for (const id of [BP.IDS.reach, BP.IDS.table]) put(id, Zones.markTokens, Zones.clearTokenMarks, null);
+    for (const id of [BP.IDS.links, BP.IDS.aim]) put(id, Zones.link, Zones.clearLinks, null);
+    put(BP.IDS.warn, Zones.warnOn, Zones.clearHighlights, null);
+    put(BP.IDS.area, Zones.areaPreview, Zones.clearArea, null); put(HZ_ID, Zones.areaPreview, Zones.clearArea, null);
+    if (intentKey !== "null") { intentKey = "null"; Zones.intent(null); }
+  } catch (e) { console.warn(LOG, "clear failed", e); }
+}
+/** Put on the map what the dock's data and this user's view say. ctx = { combat, facts, view, staff, rev, hz } | null (no fight here).
+    -> true when the map plays (main.mjs then leaves its own zone pick and target marks off) */
+export function sync(data, ctx) {
+  try {
+    if (!started || !Zones.hasBoard()) return false;
+    last = ctx?.combat ? { data, ...ctx } : null;
+    if (!last) { clear(); if (on) { on = false; Zones.present(null); } return true; }
+    if (!on) { on = true; Zones.present({ numbers: "always", distances: false, show: true }); }      // U37: one language of zones for the whole table while a fight runs
+    table(); reach(); move(); warn(); intent();
+    return true;
+  } catch (e) { console.warn(LOG, "sync failed", e); return false; }
+}
+/** the scene goes away: what was shown went with it */
+export function reset() { shown = {}; movePick = areaPick = null; menuBusy = false; hover = null; fire = null; }
+export const camera = () => { try { return Zones.hasBoard() ? Zones.camera() : null; } catch { return null; } };
+export const setCamera = (follow) => { try { Zones.camera({ follow }); } catch { /* the map is optional */ } };
+export function start(h) {
+  try {
+    if (started) return true;
+    H = h; started = true;
+    if (!Zones.hasBoard()) return false;
+    Zones.camera({ default: "turn" });                                                        // U42: the view moves only for a turn that starts off this user's screen
+    Zones.onContext(onCtx);
+    Zones.onTokenHover((doc) => { try { const cid = doc ? cidOf(doc) : null; if (cid !== hover) { hover = cid; intent(); } } catch { /* a courtesy */ } });
+    return true;
+  } catch (e) { console.warn(LOG, "start failed", e); return false; }
+}

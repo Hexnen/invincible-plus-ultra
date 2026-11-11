@@ -139,6 +139,7 @@ export class Table {
         const inverse = { op: "zone", zone: op.zone, patch: Object.fromEntries(Object.keys(op.patch ?? {}).map((k) => [k, before[k] ?? null])) };
         return e.undo ? {} : { op: { t: "zones", op, inverse } };
       }
+      case "placed": return { op: { t: "zones", op: { op: "move", id: null, done: null }, inverse: e.inverse }, result: { ok: true } };      // W1: a free placement the map already made
       default: return {};
     }
   }

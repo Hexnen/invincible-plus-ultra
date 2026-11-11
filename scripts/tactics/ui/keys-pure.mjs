@@ -5,7 +5,7 @@
                  Abilities)  >  the action buttons of the bar (the lists keep the last digits: Abilities 0). On a card a digit only CHOOSES the answer (Enter sends it): a key meant
                  for the bar a moment before the card came up must not spend a reaction. A stunt card (several answers) ticks with it.
                  While Foundry's macro bar is shown (the dock's keyboard button) the digits are its own again.
-     Tab         the next target of the armed action (Shift: the one before); on a card the next answer
+     Tab         the next target IN REACH of the armed action (Shift: the one before; W1: the map marks who is in reach); on a card the next answer
      Enter       confirms: the chosen answer (a ticked stunt card: its Confirm), Declare, the one way of a chosen move, "Sure?" of End
                  turn, Accept (or Roll) of a roll this user owes. On a card of several answers with NOTHING ticked the first Enter only
                  chooses its Confirm and the second sends it: an Enter meant for "Accept" a moment before the stunt card came up must
@@ -64,7 +64,8 @@ export function plan(d, own = {}, ev = {}) {
   if (key === "Tab") {
     if (L.id === "card") { const fk = around(L.keys.map((k) => k.fk), chosen, !!ev.shift); return fk ? { set: { kopt: fk } } : null; }
     if (card) return null;
-    if (p?.kind === "declare" && p.targets?.length) { const id = around(p.targets.map((x) => x.id), p.targets.filter((x) => x.picked).map((x) => x.id).pop() ?? null, !!ev.shift); return id ? { target: id } : null; }
+    if (p?.kind === "declare" && p.targets?.length) { const reach = p.targets.filter((x) => x.reach !== "out"), walk = reach.length ? reach : p.targets;      /* W1: Tab walks the targets in reach (all of them only when none is) */
+      const id = around(walk.map((x) => x.id), p.targets.filter((x) => x.picked).map((x) => x.id).pop() ?? null, !!ev.shift); return id ? { target: id } : null; }
     return null;
   }
   if (key === "Enter") {

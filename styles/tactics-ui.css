@@ -657,3 +657,6 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 /* U19: "remember the next answer" is ticked: every answer on that card carries the repeat mark until one is picked */
 .ita-ask[data-always] .ita-opt::after { content: "\f363"; margin-left: 6px; font: 900 10px/1 var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free"; opacity: .8; }
 .ita-ask[data-always] .ita-check { color: var(--ita-yellow); }
+/* W1 (U33): the target chosen on the map is named in the head of the declare panel, small (the map carries the ring) */
+#invincible-tactics-dock .itd-panel[data-kind="declare"] .itd-phead .itd-tgt .ita-face { width: 22px; height: 22px; border-width: 1px; font-size: 12px; }
+#invincible-tactics-dock .itd-mini[data-cam="off"] { opacity: .6; }
