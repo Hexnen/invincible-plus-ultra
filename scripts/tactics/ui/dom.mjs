@@ -47,12 +47,15 @@ const ICONS = {
   "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark", "react:r": "fa-bolt",
 };
 export const actIcon = (key) => icon(ICONS[key] ?? "fa-circle-dot");
-/** the mark of speed: the shape of the slot the thing takes (long = full action, short = quick action); what costs no action carries none */
-export const speed = (cost) => (cost === "full" || cost === "quick" ? h("span.ita-spd", { data: { unit: cost }, attrs: { "aria-hidden": "true" } }) : null);
+/** the mark of speed: the shape of the slot the thing takes (long = full action, short = quick action); what takes NO action carries a
+    mark of its own, an open ring (U50: with no mark at all it read as a mark gone missing); a price the GM decides carries none */
+export const speed = (cost) => (cost === "full" || cost === "quick" ? h("span.ita-spd", { data: { unit: cost }, attrs: { "aria-hidden": "true" } })
+  : cost === "none" || cost === "free" ? h("span.ita-spd", { data: { unit: "free" }, attrs: { "aria-hidden": "true" } }) : null);
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
 /** a tooltip of the model as HTML (Foundry cleans it again); names of items and characters are escaped here */
-export const tipHtml = (tip) => `<div class="ita-tt"><b>${esc(tip.title)}${tip.key ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</b>${tip.cost ? `<small>${esc(tip.cost)}</small>` : ""}${(tip.lines ?? []).map((l) => `<p>${esc(l)}</p>`).join("")}${tip.note ? `<em>${esc(tip.note)}</em>` : ""}</div>`;
+/* U51: a tooltip without a title belongs to something that shows its own name (a row of a list, an answer on a card): it starts with what is not on screen */
+export const tipHtml = (tip) => `<div class="ita-tt">${tip.title ? `<b>${esc(tip.title)}${tip.key ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</b>` : ""}${tip.cost || (tip.key && !tip.title) ? `<small>${esc(tip.cost ?? "")}${tip.key && !tip.title ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</small>` : ""}${(tip.lines ?? []).map((l) => `<p>${esc(l)}</p>`).join("")}${tip.note ? `<em>${esc(tip.note)}</em>` : ""}</div>`;
 export const tipText = (tip) => [tip.title, tip.cost, ...(tip.lines ?? []), tip.note].filter(Boolean).join(", ");
 
 /** Replace the children of `host`; whoever had the focus (by `fk`) keeps it, with the caret where it was. */
@@ -85,7 +88,7 @@ export function askCard(a, handlers = {}) {
   /* an answer: its picture (a reaction, a stunt), its name, the mark of its speed and its Resolve price, then the chance; what the
      marks stand for is said in words in the aria-label and, for a stunt, in its tooltip */
   const opt = (o) => h("button.ita-opt", {
-    fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.disabled ?? o.tip ?? null, pv: o.pv, pvFor: a.pvFor,
+    fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.tip ?? null, pv: o.pv, pvFor: a.pvFor,      // U51: the reason of a greyed answer is written on it, not said again in a tooltip
     attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled].filter(Boolean).join(", ") },
     data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null },
     on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
@@ -98,7 +101,9 @@ export function askCard(a, handlers = {}) {
   /* U19: the pointer on a card shows on the map whom it is about (this client only; two namesakes are told apart by where they stand) */
   const locate = a.aboutId && handlers.locate ? { pointerenter: () => handlers.locate(a.aboutId, true), pointerleave: () => handlers.locate(a.aboutId, false) } : {};
   return h(`article.ita-ask${fresh ? ".ita-new" : ""}`, { on: locate, data: { kind: a.kind, proxy: a.proxy ? "1" : null, wide: a.options.length > 4 ? "1" : null, always: a.always?.on ? "1" : null } },
-    h("header.ita-head", {}, h("h3.ita-plate", { text: a.title }), a.about ? h("span.ita-about", { text: a.about }) : null, a.multi && a.kind === "stunts" ? h("b.ita-count", { text: `${a.multi.n}/${a.multi.max}` }) : null),
+    /* U51: the head names whom the card is about unless the bar right under it already does (aboutHead: model-pure.dockData); how many
+       stunts are ticked stands on the Confirm button alone */
+    h("header.ita-head", {}, h("h3.ita-plate", { text: a.title }), a.about && a.aboutHead !== false ? h("span.ita-about", { text: a.about }) : null),
     a.lines.map((l) => (typeof l === "string" ? h("p.ita-line", { text: l }) : h("blockquote.ita-quote", {}, h("span", { text: l.quote }), l.by ? h("cite", { text: l.by }) : null))),
     a.tokens?.length ? h("div.itd-chips", {}, a.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${a.id}:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => handlers.pick?.(`tk:${a.id}`, k.id, 12) } }, h("span", { text: `${k.label} ${k.source}` })))) : null,
     groups.length > 1 ? groups.map((g) => h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(opt))))

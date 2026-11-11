@@ -124,7 +124,7 @@
    U28 / U29: ONE ROW AT THE BOTTOM EDGE, read left to right like the unit bar of a tactics game:
      the unit (face, name, zone, Health and Resolve bars) | the slots of the turn | the actions as pictures | the tail (End turn).
    THE MARK OF SPEED (.ita-spd) is the shape of the slot a thing takes: a LONG bar = the full action, a SHORT bar = a quick action,
-   none = no action. The same two shapes are the slots themselves, so the bar teaches its own legend. Resolve prices are a cyan chip. */
+   an open diamond = no action (U50). The same two shapes are the slots themselves, so the bar teaches its own legend. Resolve prices are a cyan chip. */
 #invincible-tactics-dock {
   left: var(--itd-cx, 50%);
   bottom: var(--itd-bottom, 8px);
@@ -146,6 +146,9 @@
 /* the marks shared by the bar, the lists and the cards */
 .ita-spd { flex: none; display: inline-block; width: 22px; height: 5px; background: currentColor; transform: skewX(-14deg); }
 .ita-spd[data-unit="quick"] { width: 10px; }
+/* U50: what takes NO action has a mark too, unlike either slot: an open diamond (nothing of the turn is filled by it). Its tooltip
+   says in a sentence that it takes no action and what it still costs. */
+.ita-spd[data-unit="free"] { width: 8px; height: 8px; margin-inline: 2px; background: transparent; border: 2px solid currentColor; transform: rotate(45deg); box-sizing: border-box; }
 .ita-rs { flex: none; display: inline-grid; place-items: center; min-width: 17px; height: 15px; padding: 0 3px; font: 400 11px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; color: var(--ita-ink, #0c1a2e); background: var(--ita-cyan, #3bb8e8); border: 1px solid var(--ita-ink, #0c1a2e); }
 
 /* the bar: the slanted plate is drawn behind (::before), everything stands straight on it */
@@ -175,6 +178,7 @@
 #invincible-tactics-dock .itd-char-asked::after { background: var(--ita-red-lt); }
 .itd-id { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; }
 .itd-nameline { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.itd-nameno { flex: none; margin-left: -3px; font: 700 12.5px/1.1 Comic, sans-serif; color: #fff; }
 .itd-name { max-width: 11em; font: 700 12.5px/1.1 Comic, sans-serif; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* U8: where the character stands, in the words the cards use; the tooltip is the legend of the map's badges */
 .itd-zone { flex: none; display: inline-flex; align-items: baseline; gap: 4px; font: 400 11px/1.1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-cyan); white-space: nowrap; cursor: help; }
@@ -229,6 +233,7 @@
 #invincible-tactics-dock .itd-ic > i { font-size: 15px; }
 #invincible-tactics-dock .itd-ic > .ita-spd { position: absolute; left: 50%; bottom: 3px; height: 4px; margin-left: -11px; }
 #invincible-tactics-dock .itd-ic > .ita-spd[data-unit="quick"] { margin-left: -5px; }
+#invincible-tactics-dock .itd-ic > .ita-spd[data-unit="free"] { bottom: 1px; width: 7px; height: 7px; margin: 0 0 0 -3.5px; }
 #invincible-tactics-dock .itd-ic > .ita-rs { position: absolute; top: -7px; right: -7px; }
 #invincible-tactics-dock .itd-ic:hover:not([aria-disabled="true"], .itd-armed) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-ic:active:not([aria-disabled="true"]), #invincible-tactics-dock .itd-ic.itd-armed { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
@@ -293,6 +298,11 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 .itd-cost { display: inline-flex; align-items: center; gap: 7px; font: 400 11.5px/1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); white-space: nowrap; }
 .itd-arrow { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ita-label); }
 .itd-arrow b { font: 700 13px/1.1 Comic, sans-serif; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* U52: the panel of the own action: every target with its picture; the roll (dice or sixes, Roll / Accept / Push) stands in the body */
+.itd-tgt { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+#invincible-tactics-dock .itd-tgt .ita-face { width: 34px; height: 34px; border: 2px solid var(--ita-line); font-size: 16px; }
+.itd-myrolls { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+#invincible-tactics-dock .itd-myrolls .ita-roll { padding-block: 3px; }
 .itd-pbody { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 18px; }
 .itd-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .itd-grow { flex: 1 1 240px; }
@@ -491,8 +501,19 @@ body.itd-picking #board { cursor: crosshair; }
 .itd-lists { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 14px; }
 .itd-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .itd-rows { display: grid; grid-template-columns: minmax(170px, 290px); gap: 3px 6px; }
-/* a long list (a character with a dozen powers) runs in columns of five: it grows sideways, where the room is, not up over the map */
-.itd-panel[data-list="kit"] .itd-rows:has(> :nth-child(6)) { grid-template-columns: none; grid-auto-flow: column; grid-template-rows: repeat(5, auto); grid-auto-columns: minmax(170px, 230px); }
+/* U49: the Abilities list. A long one (a character with a dozen powers) runs in columns: it grows sideways, where the room is, not up
+   over the map. The columns are the model's (model-pure.kitCols): a power with its uses is never cut in two. The uses of one power
+   stand under its name, said once; a power with a single use is one row, the name first and the use after it in the label's colour. */
+.itd-cols { display: flex; align-items: flex-start; gap: 3px 8px; }
+.itd-colm { flex: 0 1 236px; display: flex; flex-direction: column; gap: 3px; min-width: 170px; }
+.itd-entry { display: flex; flex-direction: column; gap: 3px; }
+.itd-entry-n { display: flex; align-items: center; gap: 7px; height: 19px; padding-left: 2px; font: 400 12.5px/1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-yellow); white-space: nowrap; }
+.itd-entry-n::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--ita-line); opacity: .6; }
+#invincible-tactics-dock .itd-row-sub { margin-left: 11px; border-left: 3px solid var(--ita-yellow); }
+#invincible-tactics-dock .itd-row-sub[aria-disabled="true"] { border-left: 3px solid var(--ita-line); }
+#invincible-tactics-dock .itd-panel[data-list="kit"] .itd-row { height: auto; min-height: 28px; padding-block: 3px; }
+.itd-panel[data-list="kit"] .itd-row-l { white-space: normal; line-height: 1.12; overflow: visible; }
+.itd-row-l > small { margin-left: 7px; font: inherit; font-size: 11.5px; color: var(--ita-label); }
 .itd-panel[data-list="menu"] .itd-rows { grid-template-columns: repeat(3, minmax(170px, 230px)); }
 #invincible-tactics-dock[data-tight] .itd-panel[data-list="menu"] .itd-rows { grid-template-columns: repeat(2, minmax(150px, 230px)); }
 #invincible-tactics-dock .itd-row { display: flex; align-items: center; gap: 7px; min-width: 0; height: 28px; padding: 0 8px 0 7px; font: 400 12.5px/1 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #fff; background: var(--ita-tile); border: 1px solid var(--ita-line); }
