@@ -199,7 +199,7 @@ function cycleDisplay() {
    The column may occupy [top, bottom] on the left edge. Bottom = the smallest top of any lower-screen UI element that overlaps the column's
    horizontal extent (the FULL card width, whatever the state, so a state change never moves it) minus 12; top = the lowest bottom of the scene
    controls (top-left) plus 12. Every element is hit-tested by its rect and ResizeObserved; also window resize, collapseSidebar, hotbar renders. */
-const LOW_SEL = "#players, #players-active, #players-inactive, #hotbar, #ui-bottom > *";   // leaf boxes: core's #ui-left-column-* and #scene-controls are tall, transparent flex columns
+const LOW_SEL = "#players, #players-active, #players-inactive, #hotbar, #ui-bottom > *, .mm-vram";      // U47: the map's VRAM meter stands low on the left by default (and where the user drags it): the party column ends above it   // leaf boxes: core's #ui-left-column-* and #scene-controls are tall, transparent flex columns
 const HIGH_SEL = "#scene-controls-layers > *, #scene-controls-tools > *";   // the real buttons (li), not their full-height menus
 const seen = new Set();
 let ro = null, mo = null, raf = 0;
@@ -215,7 +215,7 @@ function measure() {
     const visible = (el) => { const cs = getComputedStyle(el); return cs.display !== "none" && cs.visibility !== "hidden"; };
     for (const el of document.querySelectorAll(`${LOW_SEL}, ${HIGH_SEL}`)) {
       if (el === own || el.contains(own) || own?.contains(el)) continue;
-      if (window.ResizeObserver && ro && !seen.has(el)) { seen.add(el); ro.observe(el); }
+      if (window.ResizeObserver && ro && !seen.has(el)) { seen.add(el); ro.observe(el); if (el.matches(".mm-vram") && window.MutationObserver) new MutationObserver(scheduleMeasure).observe(el, { attributes: true, attributeFilter: ["style", "class", "hidden"] }); }      // a dragged card moves by its style
       const r = el.getBoundingClientRect();
       if (r.width < 8 || r.height < 8 || r.left >= x1 || r.right <= 0) continue;   // not over the column
       if (!visible(el)) continue;
@@ -247,6 +247,8 @@ function watch() {
   }
   const bottom = document.getElementById("ui-bottom");
   if (bottom && !seen.has(bottom)) { seen.add(bottom); ro.observe(bottom); }
+  /* U47: the VRAM meter is a child of the body that comes and goes */
+  if (window.MutationObserver && !seen.has(document.body)) { seen.add(document.body); new MutationObserver((recs) => { if (recs.some((r) => [...r.addedNodes, ...r.removedNodes].some((n) => n.nodeType === 1 && n.classList?.contains("mm-vram")))) scheduleMeasure(); }).observe(document.body, { childList: true }); }
   scheduleMeasure();
 }
 
