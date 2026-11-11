@@ -22,6 +22,7 @@
    MOTION: transform / opacity / clip-path only (Web Animations on the individual translate / scale properties), nothing per frame. One
    choreography, morph() below, serves every change: FLIP for the tiles, the chrome and the ring, the camera (auto-centring) folded into the
    same FLIP, expand / collapse of the active tile, rapid-click hold, round-chip digit slide. */
+import { costVersion } from "../kit.mjs";      // U86-SCAFFOLD
 import { t } from "./lang.mjs";
 import { freeArea, hudLimit, relayout as relayoutBanner } from "./banner.mjs";
 import { unitOf, unitName } from "../challenges/lang.mjs";
@@ -618,6 +619,7 @@ function paintActs(card, it) {
       const el = mk("span", "icbar-act");
       el.dataset.k = p.k;
       el.append(mk("i", "icbar-pip"), mk("b", "icbar-pl", t(`ICB.Bar.ActL.${p.lk}`)));
+      if (costVersion()) el.dataset.tooltip = t(`ICB.Bar.Act.${p.lk}`);      // U86-SCAFFOLD: the slot's name as its tooltip; the word beside it is hidden while a version of the marks is compared (styles/u86-scaffold.css)
       return el;
     }));
     card.actsKey = key;

@@ -25,7 +25,8 @@
             Abilities: rows by kind) | something else | hold off | the own action in progress (what it waits for, change / cancel)
    RESTING (not the user's turn, nothing armed, nothing asked): the unit and its slots; the chevron opens the bar to look or to ask for
    an exception. A question addressed to the user always shows, whoever's turn it is. */
-import { h, icon, swap, face, speed, actIcon, tipText, askCard, sumCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
+import { h, icon, swap, face, speed, stressChip, actIcon, tipText, askCard, sumCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
+import { costVersion, symMark } from "../../kit.mjs";      // U86-SCAFFOLD (stage 1 of ledger U86): see dom.mjs speed()
 import * as Lay from "./layout-pure.mjs";
 
 const ID = "invincible-tactics-dock";
@@ -191,7 +192,7 @@ export function place() {
 const keyAttrs = (key) => (key ? { "aria-keyshortcuts": key } : {});
 const slot = (p) => h("button.itd-slot", { fk: `slot:${p.key}`, tip: p.tip, disabled: !p.req, data: { key: p.key, kind: p.kind, state: p.state, as: p.as, extra: p.extra ? "1" : null }, attrs: { "aria-label": p.tip }, on: { click: () => p.req && send(p.req) } }, h("i"));
 const vital = (v) => h("div.itd-vital", { data: { id: v.id, v: v.v }, attrs: { role: "img", "aria-label": v.say, style: `--itd-v:${v.v};--itd-max:${v.max}` } },
-  icon(v.id === "health" ? "fa-heart" : "fa-bolt"), h("span.itd-vbar", {}, h("i.itd-vfill"), h("i.itd-vpv")), h("b.itd-vnum", {}, h("span", { text: String(v.v) }), h("small", { text: `/${v.max}` })), h("b.itd-vdelta"));
+  costVersion() && v.id === "health" ? symMark("health") : icon(v.id === "health" ? "fa-heart" : "fa-bolt"), h("span.itd-vbar", {}, h("i.itd-vfill"), h("i.itd-vpv")), h("b.itd-vnum", {}, h("span", { text: String(v.v) }), h("small", { text: `/${v.max}` })), h("b.itd-vdelta"));
 
 const nameParts = (name) => { const m = /^(.*\S)\s+(#\d+)$/.exec(String(name ?? "")); return m ? [h("span.itd-name", { text: m[1] }), h("b.itd-nameno", { text: m[2] })] : h("span.itd-name", { text: name }); };
 function unit(d) {
@@ -206,13 +207,15 @@ function unit(d) {
   h("div.itd-slots", { attrs: { role: "group", "aria-label": handlers.label?.("slots") } }, d.slots.map(slot),
     d.extras.map((x) => h(`span.itd-extra`, { text: x.label, tip: x.tip || null, data: { kind: x.kind }, attrs: x.tip ? { tabindex: "0" } : {} })), w.free ? h("span.itd-extra", { text: w.freeLabel, data: { kind: "free" } }) : null)];
 }
-const rs = (n) => (n ? h("b.ita-rs", { text: `-${n}`, attrs: { "aria-hidden": "true" } }) : null);
+const rs = (n) => stressChip(n);
+/* U86-SCAFFOLD: with a version on, a tooltip's price line names the marks (dom.mjs priceHtml) */
+const priced = (tip, unit, stress) => (costVersion() && tip && typeof tip === "object" ? { ...tip, price: { unit, stress } } : tip);
 function actionBtn(a) {
   /* P5 / P6: the other rows of the action tables, and the character's own abilities: one button each, a list behind it */
   if (a.more) { const m = a.mode ?? "menu";
     return h(`button.itd-ic.itd-ic-more${a.armed ? ".itd-armed" : ""}`, { fk: `more:${m}`, tip: a.tip, data: { key: a.key ?? null }, attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true", "aria-label": a.label, ...keyAttrs(a.key) },
       on: { click: () => set(last?.ui?.mode === m ? { mode: null } : { mode: m, armed: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } }, actIcon(a.icon), icon("fa-caret-up")); }
-  return h(`button.itd-ic${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null, key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.tip, pv: a.pv, attrs: { "aria-pressed": String(!!a.armed), "aria-label": tipText(a.tip), ...keyAttrs(a.key) },
+  return h(`button.itd-ic${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null, key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: priced(a.tip, a.cost, a.stress), pv: a.pv, attrs: { "aria-pressed": String(!!a.armed), "aria-label": tipText(a.tip), ...keyAttrs(a.key) },
     on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, actIcon(a.icon), speed(a.cost), rs(a.stress));
 }
 const CAM_ICON = { turn: "fa-video", off: "fa-video-slash", all: "fa-film" };
@@ -234,13 +237,27 @@ function bar(d) {
     ]);
 }
 
+/* U86-SCAFFOLD: with a version on, what a weapon brings is written with the marks: bonus dice, damage, range (nearest and farthest);
+   the rest of its line stays in words. `x.marks` is put on by model-pure only for this (stage 2: the tooltip is built from it for good). */
+function weaponTip(x) {
+  const m = costVersion() ? x.marks : null;
+  if (!m) return x.tip;
+  const el = h("div.ita-tt", {}, h("div.ita-tt-marks", {}, m.bonus ? symMark("dice", { n: `+${m.bonus}` }) : null, m.damage != null ? symMark("damage", { n: m.damage }) : null,
+    m.range ? [m.range[0] !== m.range[1] ? symMark("rmin", { n: m.range[0] }) : null, symMark("rmax", { n: m.range[1] })] : null), m.rest ? h("p", { text: m.rest }) : null);
+  return { html: el.outerHTML, say: x.tip };
+}
 const OPT_ICON = { wreck: "fa-house-crack", area: "fa-burst", fullAuto: "fa-ellipsis" };
 const KIT_STATE = { auto: "fa-gears", assist: "fa-user-check", hand: "fa-hand", off: "fa-ban" };
 const close = () => set({ armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} });
 const textBox = (value, placeholder, key = "text") => h("textarea.itd-text", { fk: `draft:${key}`, text: value, attrs: { rows: 2, maxlength: 300, placeholder, "aria-label": placeholder }, on: { input: (e, el) => set({ [key]: el.value }) } });
 const submit = (s, cls = "", pv = null, said = false) => h(`button.itd-go${cls}`, { fk: `go${cls}`, text: s.label, disabled: !!s.disabled, tip: said ? null : s.disabled, pv: s.disabled ? null : pv, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} }) } });
 const cancelBtn = () => h("button.itd-x", { fk: "x", tip: handlers.label?.("cancel"), on: { click: close } }, icon("fa-xmark"));
-const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.cost ? h("span.itd-cost", {}, speed(p.unit), h("span", { text: p.cost })) : null,
+/* U86-SCAFFOLD: with a version on, the price beside the name is its marks alone; the words are their tooltip (hover and keyboard focus) */
+const costOf = (p) => { if (!p.cost) return null;
+  if (!costVersion()) return h("span.itd-cost", {}, speed(p.unit), h("span", { text: p.cost }));
+  const n = Number(/(\d+)\D*$/.exec(String(p.cost).split(", ").slice(1).join(", "))?.[1]) || 0;
+  return h("span.itd-cost.itd-cost-marks", { tip: { cost: p.cost, price: { unit: p.unit, stress: n } }, attrs: { tabindex: "0", "aria-label": p.cost } }, speed(p.unit, { gm: true }), stressChip(n)); };
+const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), costOf(p),
   p.aim?.length ? h("span.itd-arrow", {}, icon("fa-arrow-right"), p.aim.map((x) => h("span.itd-tgt", {}, face(x.img, x.name), h("b", { text: x.name })))) : null, cancelBtn());      // W1: the target chosen on the map
 
 function meter(c) {
@@ -279,7 +296,7 @@ function doorPanel(p) {
    U49: in the Abilities list the uses of one power stand under its name, said once (entries of the model, in its columns): a row
    under a name carries only the use; a power with one use is one row, its name first and the use after it. */
 function listPanel(p) {
-  const row = (r, under = false) => h(`button.itd-row${under ? ".itd-row-sub" : ""}`, { fk: `menu:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, tip: r.tip, pv: r.pv, data: { state: r.state ?? null, key: r.key ?? null },
+  const row = (r, under = false) => h(`button.itd-row${under ? ".itd-row-sub" : ""}`, { fk: `menu:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, tip: priced(r.tip, r.cost, r.stress), pv: r.pv, data: { state: r.state ?? null, key: r.key ?? null },
     attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", "), ...keyAttrs(r.key) }, on: { click: () => set({ armed: r.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } },
     actIcon(r.icon), r.of === undefined ? h("span.itd-row-l", { text: r.label }) : under ? h("span.itd-row-l", { text: r.use ?? r.of }) : h("span.itd-row-l", {}, h("span", { text: r.of }), r.use ? h("small", { text: r.use }) : null),
     speed(r.cost), rs(r.stress), r.state ? icon(KIT_STATE[r.state] ?? "fa-circle") : null);
@@ -319,7 +336,7 @@ function panel(p) {
           p.self ? h("p.itd-hint", {}, icon("fa-user"), h("span", { text: p.self })) : null) : null,
         p.weapons || p.opts?.length ? h("div.itd-col.itd-arms", {},
           p.weapons ? [h("span.itd-k", { text: p.weapons.label }), p.weapons.empty ? h("p.itd-hint", {}, icon("fa-ban"), h("span", { text: p.weapons.empty }))
-            : h("div.itd-chips", { attrs: { role: "group", "aria-label": p.weapons.label } }, p.weapons.items.map((x) => h("button.itd-chip.itd-chip-arm", { fk: `wp:${x.id}`, tip: x.tip, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ weapon: x.id }) } }, h("span", { text: x.name }))))] : null,
+            : h("div.itd-chips", { attrs: { role: "group", "aria-label": p.weapons.label } }, p.weapons.items.map((x) => h("button.itd-chip.itd-chip-arm", { fk: `wp:${x.id}`, tip: weaponTip(x), attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ weapon: x.id }) } }, h("span", { text: x.name }))))] : null,
           p.opts?.length ? h("div.itd-chips", { attrs: { role: "group" } }, p.opts.map((o) => h("button.itd-chip.itd-chip-opt", { fk: `op:${o.id}`, tip: o.tip, attrs: { "aria-pressed": String(o.on) }, on: { click: () => set({ opts: { ...(last.ui?.opts ?? {}), [o.id]: !o.on, ...(o.id === "area" && !o.on ? { fullAuto: false } : {}), ...(o.id === "fullAuto" && !o.on ? { area: false } : {}) } }) } }, icon(OPT_ICON[o.id] ?? "fa-circle"), h("span", { text: o.label })))) : null,
           (p.notes ?? []).map((n) => h("p.itd-hint", {}, icon("fa-circle-info"), h("span", { text: n })))) : null,
         p.attrs ? h("div.itd-col.itd-attrs", {}, h("span.itd-k", { text: p.attrs.label }),
@@ -331,7 +348,7 @@ function panel(p) {
         p.text ? h("div.itd-col.itd-grow", {}, textBox(p.text.value, p.text.placeholder)) : null,
         p.pool || p.tokens.length ? h("div.itd-col.itd-odds", {},
           /* U55: the pool is its number; where the dice come from is its tooltip (hover and keyboard focus), one line per source */
-          p.pool ? h("div.itd-pool", { tip: p.pool.tip, data: { sum: p.pool.tip ? "1" : null }, attrs: p.pool.tip ? { tabindex: "0" } : {} }, h("span.itd-k", { text: handlers.label?.("pool") }), h("b.itd-dice", { text: String(p.pool.total) })) : null,
+          p.pool ? h("div.itd-pool", { tip: p.pool.tip, data: { sum: p.pool.tip ? "1" : null }, attrs: p.pool.tip ? { tabindex: "0" } : {} }, costVersion() ? symMark("dice") : h("span.itd-k", { text: handlers.label?.("pool") }), h("b.itd-dice", { text: String(p.pool.total), attrs: costVersion() ? { "aria-label": `${handlers.label?.("pool")}: ${p.pool.total}` } : {} })) : null,      // U86-SCAFFOLD: the mark of dice stands for the words "Your dice"
           p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null,
           p.chance ? meter(p.chance) : null) : null,
         h("div.itd-col.itd-submit", {}, p.submit.disabled && !p.submit.quiet ? h("span.itd-why", { text: p.submit.disabled }) : null, submit(p.submit, "", p.pv, true))));      // U51: why it cannot be declared is written beside the button, not said again in its tooltip
@@ -365,7 +382,7 @@ function draw(d, ui) {
   const pk = d.show && d.panel ? `${d.panel.kind}|${d.panel.list ?? d.panel.action ?? ""}` : null;
   root.classList.toggle("itd-same", pk !== null && pk === panelKey);
   panelKey = pk;
-  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
+  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate, outName: handlers.label?.("ITAC.ui.cause.interrupt") };
   swap(stack, [
     /* U57: the summary of the round (or of the fight) that just ended stands where the questions stand, after them */
     d.prompts?.length || d.sum ? h("div.itd-asks", {}, (d.prompts ?? []).map((a) => askCard(a, askH)), d.sum ? sumCard(d.sum, { sumClose: handlers.sumClose }) : null) : null,

@@ -16,6 +16,7 @@
               the vehicles (who sits where, the state of the machine) and the challenges (a book preset, what the GM runs by hand)
      Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), a hazard let loose by hand, the karma notes, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
 import { h, icon, swap, askCard, rollButtons, visibleRect, face } from "./dom.mjs";
+import { costVersion, costMark, symMark } from "../../kit.mjs";      // U86-SCAFFOLD (stage 1 of ledger U86): see dom.mjs speed()
 import * as Lay from "./layout-pure.mjs";
 
 const ID = "invincible-tactics-desk";
@@ -113,10 +114,14 @@ function override(i, L) {
     return list.length || extra.length ? h("div.igd-og", { data: { g }, attrs: { role: "group", "aria-label": L.groups[g] } }, list.map(draw), extra) : null;
   }));
 }
+/* U86-SCAFFOLD: with a version on, "interrupt" on an action in progress is the mark of out-of-turn; the word is its tooltip. (The
+   model hands the tag over as words, so the mark is found by comparing them; stage 2: the model hands over the cause itself.) */
+const causeTag = (cause) => (!cause ? null : costVersion() && cause === handlers.label?.("ITAC.ui.cause.interrupt")
+  ? h("span.igd-tag.igd-tag-mark", { tip: cause, attrs: { "aria-label": cause, tabindex: "0" } }, costMark("out")) : h("span.igd-tag", { text: cause }));
 function inst(i, L) {
   return h(`article.igd-inst${i.child ? ".igd-child" : ""}`, { data: { locked: i.locked ? "1" : null } },
     h("header.igd-ihead", {}, h("b.igd-actor", { text: i.actor }), icon("fa-caret-right"), h("span.igd-action", { text: i.action }), i.targets.length ? [icon("fa-caret-right"), h("b.igd-target", { text: i.targets.join(", ") })] : null),
-    h("div.igd-meta", {}, h("span.igd-stepchip", {}, h("span", { text: `${L.step}: ` }), h("b", { text: i.step })), i.cause ? h("span.igd-tag", { text: i.cause }) : null,
+    h("div.igd-meta", {}, h("span.igd-stepchip", {}, h("span", { text: `${L.step}: ` }), h("b", { text: i.step })), causeTag(i.cause),
       i.outcomes.map((o) => h(`span.igd-tag${o.hit ? ".igd-hit" : ".igd-miss"}`, { text: `${o.name}: ${o.text}` }))),
     i.text ? h("blockquote.ita-quote", {}, h("span", { text: i.text })) : null,
     i.rolls.length ? h("ul.igd-rolls", {}, i.rolls.map((r) => h(`li${r.waiting ? ".igd-waiting" : ""}`, {}, icon(r.waiting ? "fa-hourglass-half" : "fa-dice"), h("b", { text: r.label }),
@@ -129,10 +134,10 @@ function inst(i, L) {
 function manual(m, L) {
   const put = (patch) => handlers.manual?.(m.id, patch);
   return h("article.igd-inst.igd-manual", {},
-    h("header.igd-ihead", {}, h("b.igd-actor", { text: m.actor }), icon("fa-caret-right"), h("span.igd-action", { text: m.title }), m.cause ? h("span.igd-tag", { text: m.cause }) : null),
+    h("header.igd-ihead", {}, h("b.igd-actor", { text: m.actor }), icon("fa-caret-right"), h("span.igd-action", { text: m.title }), causeTag(m.cause)),
     m.text ? h("blockquote.ita-quote", {}, h("span", { text: m.text })) : null,
     m.why ? h("p.igd-note", {}, icon("fa-triangle-exclamation"), h("span", { text: ` ${m.why}` })) : null,      // D90: why the action lies here
-    h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: L.cost }), h("span.igd-seg", {}, m.costs.map((c) => h("button", { fk: `mc:${m.id}:${c.id}`, text: c.label, attrs: { "aria-pressed": String(c.on) }, on: { click: () => put({ cost: c.id }) } })))),
+    h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: L.cost }), h("span.igd-seg", {}, m.costs.map((c) => h("button", { fk: `mc:${m.id}:${c.id}`, text: costVersion() ? null : c.label, tip: costVersion() ? c.label : null, attrs: { "aria-pressed": String(c.on), ...(costVersion() ? { "aria-label": c.label } : {}) }, on: { click: () => put({ cost: c.id }) } }, costVersion() ? costMark(c.id) : null))      /* U86-SCAFFOLD: the three prices as their marks, named in the tooltip */)),
     m.damage.map((d) => h("div.igd-ctl", { data: { type: "number" } }, h("span.igd-cl", { text: `${L.damage}: ${d.name}` }), h("span.igd-step", {}, h("input", { fk: `md:${m.id}:${d.target}`, attrs: { type: "number", min: 0, max: 99, value: d.amount, "aria-label": `${L.damage}: ${d.name}` }, on: { change: (e, el) => put({ damage: { [d.target]: el.value } }) } })))),
     h("input.ita-text", { fk: `mn:${m.id}`, attrs: { type: "text", maxlength: 300, value: m.note.value, placeholder: m.note.placeholder, "aria-label": m.note.placeholder }, on: { input: (e, el) => put({ note: el.value }) } }),
     h("div.igd-cmds", {}, h("button.igd-btn.igd-primary", { fk: `mr:${m.id}`, text: m.resolve.label, on: { click: () => send(m.resolve.req) } }), h("button.igd-btn.igd-danger", { fk: `ma:${m.id}`, text: m.abort.label, on: { click: () => send(m.abort.req) } })));
@@ -199,7 +204,7 @@ function kitTab(k) {
     h("select", { fk: key, attrs: { "aria-label": c.label }, on: { change: (e, el) => onChange(el.value || null) } }, h("option", { text: blank, attrs: { value: "", selected: !c.value } }), c.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id, selected: x.id === c.value } }))));
   /* U60: the one combatant at a glance: face, where it stands, Health and Resolve, the slots of its turn, its states, the last things
      done by it or to it. The name is the picker beside the face (said once); a click on a token of the map chooses it too. */
-  const u = k.unit, bar = (v) => h("div.igd-uv", { data: { id: v.id }, tip: v.say, attrs: { role: "img", "aria-label": v.say, style: `--v:${v.v};--max:${v.max}` } }, icon(v.id === "health" ? "fa-heart" : "fa-bolt"), h("span.igd-uv-bar", {}, h("i")), h("b", { text: `${v.v}/${v.max}` }));
+  const u = k.unit, bar = (v) => h("div.igd-uv", { data: { id: v.id }, tip: v.say, attrs: { role: "img", "aria-label": v.say, style: `--v:${v.v};--max:${v.max}` } }, costVersion() && v.id === "health" ? symMark("health") : icon(v.id === "health" ? "fa-heart" : "fa-bolt"), h("span.igd-uv-bar", {}, h("i")), h("b", { text: `${v.v}/${v.max}` }));
   const unit = u ? h("article.igd-unit.ipu-on-ink", { attrs: { "aria-label": u.name } },
     h("div.igd-uhead", {}, face(u.img, u.name, "ita-face.igd-uface"),
       h("div.igd-umain", {}, h("select.igd-uwho", { fk: "kit:who", attrs: { "aria-label": k.who.label }, on: { change: (e, el) => put({ who: el.value || null, open: null }) } }, k.who.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id, selected: x.id === k.who.value } }))),
@@ -207,7 +212,9 @@ function kitTab(k) {
           u.hidden ? h("span.ipu-chip.igd-uhid", { tip: u.hidden, attrs: { "aria-label": u.hidden } }, icon("fa-eye-slash")) : null,
           u.slots.length ? h("span.igd-uslots", { attrs: { role: "img", "aria-label": u.slots.map((s) => s.tip).join(". ") } }, u.slots.map((s) => h("i.igd-uslot", { tip: s.tip, data: { kind: s.kind, state: s.state, extra: s.extra ? "1" : null } }))) : null))),
     u.vitals.length ? h("div.igd-uvs", {}, u.vitals.map(bar)) : null,
-    h("div.igd-ustates", {}, u.states.length ? u.states.map((s) => h("span.ipu-chip.igd-ustate", { tip: s.tip, data: { id: s.id } }, icon(s.icon), h("span", { text: s.label }))) : h("span.igd-unone", {}, icon("fa-circle-check"), h("span", { text: u.statesNone }))),
+    h("div.igd-ustates", {}, u.states.length ? u.states.map((s) => (costVersion()      /* U86-SCAFFOLD: a condition is its picture in the set's frame; its name (and who keeps it up) is the tooltip */
+      ? h("span.igd-ustate.igd-ustate-mark", { tip: [s.label, s.tip].filter(Boolean).join(". "), data: { id: s.id }, attrs: { "aria-label": [s.label, s.tip].filter(Boolean).join(". "), tabindex: "0" } }, symMark("cond", { glyph: s.icon }))
+      : h("span.ipu-chip.igd-ustate", { tip: s.tip, data: { id: s.id } }, icon(s.icon), h("span", { text: s.label })))) : h("span.igd-unone", {}, icon("fa-circle-check"), h("span", { text: u.statesNone }))),
     h("h4.igd-h", {}, h("span", { text: u.lastLabel })),
     u.last.length ? h("ol.igd-ulast", {}, u.last.map((j) => h("li", { data: { undone: j.undone ? "1" : null } }, j.round != null ? h("b", { text: String(j.round), tip: j.roundTip }) : null, h("span", { text: j.text })))) : h("p.igd-hint", { text: u.lastNone })) : null;
   return [
