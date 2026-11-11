@@ -29,6 +29,7 @@ import { h, icon, swap, face, speed, actIcon, tipText, askCard, waitChips, rollC
 const ID = "invincible-tactics-dock";
 const GAP = 6;
 const EDGE = 6;          // px between the dock and the bottom edge of the window
+const BAR_BAND = 126;    // px of height the bar itself may take (two rows and the status line): the band its own room is measured in
 const TWO_ROWS = 500;    // px the two-row dock needs between what lies on the bottom edge; with less it stands above those things
 /* what lies on the bottom edge besides the dock: the map's director bar (GM), the chat box Foundry floats there while the sidebar is folded */
 const LOW_OBSTACLES = "#mm-dir-bar, #chat-notifications #chat-message, #chat-notifications .chat-form";
@@ -83,9 +84,9 @@ export function place() {
   let ceil = 8;
   for (const el of document.querySelectorAll(TOP_OBSTACLES)) { const r = visibleRect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) ceil = Math.max(ceil, r.bottom + 8); }
   /* the free band between what stands at the sides, for a dock whose bottom is at `floor` */
-  const sides = (floor) => {
+  const sides = (floor, tall = stack.offsetHeight || 60) => {
     let lo = 12, hi = W - 12;
-    const yBot = floor - GAP, yTop = yBot - Math.min(stack.offsetHeight || 60, Math.max(150, yBot - ceil)) - 4, inBand = (r) => r && r.top < yBot && r.bottom > yTop;
+    const yBot = floor - GAP, yTop = yBot - Math.min(tall, Math.max(150, yBot - ceil)) - 4, inBand = (r) => r && r.top < yBot && r.bottom > yTop;
     const sb = visibleRect(document.getElementById("sidebar"));
     if (sb && sb.left > W * 0.5) hi = Math.min(hi, sb.left - 12);
     for (const m of document.querySelectorAll("#chat-notifications .chat-message")) { const r = visibleRect(m); if (inBand(r) && r.left > W * 0.3) hi = Math.min(hi, r.left - 10); }
@@ -108,17 +109,26 @@ export function place() {
   /* WHAT LIES ON THE BOTTOM EDGE besides the dock: the map's director bar (GM, left) and the chat box of a folded sidebar (right). The
      dock stands BETWEEN them, in one row when that fits and in two when not (two rows on the edge take no more of the map than one
      row lifted over those things, and less of its width); only when even two rows have no room there does it stand ABOVE them. */
-  const A = sides(ground), lows = [];
-  for (const el of document.querySelectorAll(LOW_OBSTACLES)) { const r = visibleRect(el); if (r && r.height < 90 && r.bottom > ground - 70 && r.top < ground && r.right > A.lo && r.left < A.hi) lows.push(r); }
-  let pick = A;
   const barEl = stack.querySelector(".itd-bar");
   delete root.dataset.tight;
   const natural = barEl ? barEl.scrollWidth + 2 : 0;
+  const lows = [], wide = sides(ground, BAR_BAND);
+  for (const el of document.querySelectorAll(LOW_OBSTACLES)) { const r = visibleRect(el); if (r && r.height < 90 && r.bottom > ground - 70 && r.top < ground && r.right > wide.lo && r.left < wide.hi) lows.push(r); }
+  const between = (A) => {
+    const mid = (A.lo + A.hi) / 2, B = { ...A };
+    for (const r of lows) { if ((r.left + r.right) / 2 < mid) B.lo = Math.max(B.lo, r.right + 10); else B.hi = Math.min(B.hi, r.left - 10); }
+    return B;
+  };
+  /* THE BAR keeps the room of its own height: a panel that opens above it reaches up beside other things (the party, the players
+     list), and a bar that folded into two rows for that made its buttons jump under the pointer. The panel and the questions get
+     the narrower room of the whole stack and are shifted into it (--itd-up-dx). */
+  let pick = wide, up = sides(ground);
   if (lows.length) {
-    const mid = (A.lo + A.hi) / 2, between = { ...A };
-    for (const r of lows) { if ((r.left + r.right) / 2 < mid) between.lo = Math.max(between.lo, r.right + 10); else between.hi = Math.min(between.hi, r.left - 10); }
-    pick = between.hi - between.lo >= Math.min(natural, TWO_ROWS) ? between : sides(Math.min(ground, ...lows.map((r) => r.top)));
+    const B = between(wide);
+    if (B.hi - B.lo >= Math.min(natural, TWO_ROWS)) { pick = B; up = between(up); }
+    else { const f = Math.min(ground, ...lows.map((r) => r.top)); pick = sides(f, BAR_BAND); up = sides(f); }
   }
+  up = { lo: Math.max(up.lo, pick.lo), hi: Math.min(up.hi, pick.hi) };
   const { lo, hi, floor } = pick;
   const bottom = H - floor + GAP;
   const room = Math.max(150, H - bottom - ceil);
@@ -126,6 +136,7 @@ export function place() {
   const avail = Math.max(280, hi - lo);
   root.style.setProperty("--itd-bottom", `${Math.round(bottom)}px`);
   root.style.setProperty("--itd-maxw", `${Math.round(avail)}px`);
+  root.style.setProperty("--itd-up-maxw", `${Math.round(Math.max(280, Math.min(avail, up.hi - up.lo)))}px`);
   /* one row when it fits; else the actions go under the unit (measured above, with the row laid out unbroken) */
   if (natural > avail) { root.dataset.tight = "1"; if ([".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) > avail) root.dataset.tight = "2"; }      // "2": even the unit and the tail do not share a row (a 1366 px window with the sidebar and the desk open)
   /* the panel and the questions share what is left above the bar: the panel takes what it needs first (it is what the user is doing),
@@ -148,6 +159,9 @@ export function place() {
   if (cx + w / 2 > hi) cx = hi - w / 2;
   if (cx - w / 2 < lo) cx = lo + w / 2;
   root.style.setProperty("--itd-cx", `${Math.round(cx)}px`);
+  let dx = 0;
+  for (const el of stack.querySelectorAll(":scope > :is(.itd-panel, .itd-asks)")) { const pw = el.offsetWidth; dx = Math.max(dx, up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > up.hi) dx = Math.min(dx, up.hi - pw / 2 - cx); }
+  root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
 }
 
 /* ---------- pieces ---------- */
