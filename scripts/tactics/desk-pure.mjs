@@ -136,7 +136,7 @@ export function barModel(view, cid, ctx = {}) {
   const tied = ["grappled", "snared", "immobilised"].some((st) => (view.statuses?.[cid] ?? []).some((s) => s.id === st));
   const left = (e) => !out || (out.reason === "broken" && (e.effect?.kind === "convert" || (out.canRally && e.effect?.kind === "rally" && (e.target?.n?.[0] ?? 0) === 0)));      // U9 [B2707], [B2773]
   const actions = C.entriesFor(view, cid, kitFacts(ctx)).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && fits(e) && left(e) && applies(e, cid, view.statuses ?? {}, broken) && (!e.gm || ctx.staff)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
-    const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", {}) : { ok: false, reason: "noLedger" };
+    const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", { ranged: P1.isRanged?.(e) }) : { ok: false, reason: "noLedger" };
     const unit = pay.ok && pay.pay ? (view.ledger?.[cid]?.grants ?? []).find((g) => g.id === pay.pay) : null, granted = !onTurn && !!unit && unit.kind !== "base";      // a unit usable out of turn pays it (the crew's attack in a chase [B3438], a GM grant)
     const anytime = !!e.kit && e.cost === "none";                                               // P6: what costs no action is used when it applies (the flow checks the rest)
     const reason = busy ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go

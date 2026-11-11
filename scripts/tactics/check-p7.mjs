@@ -271,7 +271,9 @@ const base = () => {
   /* the crew attack out of turn, with the chase distance as the range */
   eq(P1.canPay(T.state, "H1", "full", {}).ok, false, "F: the driver has no action of their own");
   await T.gm({ op: "chaseRound" }); await T.roll("prey", 0); await T.roll("pursuer", 0);
-  eq([T.state.chase.distance, T.state.chase.last.winner, P1.canPay(T.state, "H2", "full", {}).ok], [1, null, true], "F: a tie keeps the distance; the passenger may act");
+  eq([T.state.chase.distance, T.state.chase.last.winner, P1.canPay(T.state, "H2", "full", { ranged: true }).ok, P1.canPay(T.state, "H2", "full", {}).ok], [1, null, true, false], "F: a tie keeps the distance; the passenger may make a ranged attack, and only that (P8e [B3438])");
+  eq(code(await T.req("p2", decl("H2", { action: "slugfest", targets: ["N1"] }))) === "ok", false, "P8e: the crew's unit pays no slugfest");
+  { const r = await T.req("p2", decl("H2", { action: "slugfest", targets: ["N1"] })); eq([code(r), T.state.stack.length, T.state.ledger.H2.grants.filter((g) => g.kind === "chaseCrew" && !g.usedBy).length], ["notYourTurn", 0, 1], "P8e: refused as out of turn, nothing on the stack, the crew's unit unspent"); }
   eq(code(await T.req("p2", decl("H2", { action: "shoot", targets: ["N1"], weapon: "gun" }))), "ok", "F: a ranged attack out of turn");
   await T.answer("gm", "reaction", "pass", "N1");
   eq(T.top().rolls.attack.pool.mods.some((m) => /range|distance/i.test(m.source)) || T.lastRequest().dice >= 3, true, "F: the attack is rolled");

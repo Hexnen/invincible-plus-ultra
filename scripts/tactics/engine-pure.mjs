@@ -145,7 +145,7 @@ async function applyEffect(X, I, e, step) {
   switch (e.t) {
     case "state": write(X, tx, e.path, e.to, I, step); return false;
     case "pay": {
-      const r = P1.pay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense, cause: e.cause, force: !!e.force, resolve: c?.resolve, ...(e.grant ? { grant: e.grant } : {}) }, { action: e.action, inst: I.id, tags: e.tags ?? (e.defense ? ["defence"] : []), target: e.target, onTurnOf: e.onTurnOf,
+      const r = P1.pay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense, ranged: !!e.ranged, cause: e.cause, force: !!e.force, resolve: c?.resolve, ...(e.grant ? { grant: e.grant } : {}) }, { action: e.action, inst: I.id, tags: e.tags ?? (e.defense ? ["defence"] : []), target: e.target, onTurnOf: e.onTurnOf,
         ...(e.zoneFrom ? { zoneFrom: e.zoneFrom } : {}), ...(e.zoneTo ? { zoneTo: e.zoneTo } : {}), ...(Number.isFinite(e.borders) ? { borders: e.borders } : {}) });
       if (!r.ok) { (I.data.unpaid ??= {})[e.key] = r.reason; return false; }             // was legal when offered; shown to the GM instead of guessing
       write(X, tx, ["ledger", e.who], r.ledger, I, step, e.own ? "cost" : null);
@@ -483,7 +483,7 @@ async function opDeclare(X, a) {
   }
   const gm = X.user.staff && a.gm === true;                                                // the GM acting through an override: costs waived
   const priced = typeof FLOWS[entry.flow]?.price === "function";                           // P3: a flow that names its own cost (a move: quick or full, free inside the zone)
-  const payable = (cost) => { if (pl.grant && cost !== "full" && cost !== "quick") return bad("busy"); const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, resolve: X.facts.c(actor)?.resolve, ...(pl.grant ? { grant: pl.grant } : {}) });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
+  const payable = (cost) => { if (pl.grant && cost !== "full" && cost !== "quick") return bad("busy"); const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, ranged: P1.isRanged(entry), resolve: X.facts.c(actor)?.resolve, ...(pl.grant ? { grant: pl.grant } : {}) });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
   if (!priced) { const no = payable(entry.cost); if (no) return no; }
   const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
   const l = K.legality(view(X), inst, FLOWS[inst.flow]);
@@ -495,7 +495,7 @@ async function opDeclare(X, a) {
   pushInst(X, inst);
   const I = J.clone(inst);
   if (cost === "full" || cost === "quick" || (cost === "free" && price?.tags)) {
-    await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", grant: pl.grant, tags: price?.tags ?? entry.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
+    await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", grant: pl.grant, ranged: P1.isRanged(entry), tags: price?.tags ?? entry.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
     I.entry = I.data.paid?.own ?? null;
   }
   if (a.granted === true && X.user.staff) { I.data.exception = { reason: l.ok ? null : l.reason, params: l.ok ? {} : l.params, by: "gm" }; I.decl.exception = { ...I.decl.exception, state: "granted" }; }      // U3: the GM already said yes on the card of the request: no second card
@@ -527,7 +527,7 @@ function refusalsOf(X, actor, d) {
     const cost = priced ? (l.ok ? flow.price(view(X), inst)?.cost ?? "none" : null) : entry.cost;
     if (!priced && (cost === "none" || cost == null)) { if (!P1.isOnTurn(X.state, actor) && (!pl.ok || pl.cause === "turn") && (!entry.kit || entry.roll || ["resist", "narrative"].includes(entry.effect?.kind))) { reasons.push("notYourTurn"); waive = true; } }
     else if (cost != null) {
-      const cp = pl.ok && pl.grant && cost !== "full" && cost !== "quick" ? { ok: false, reason: "busy" } : P1.canPay(X.state, actor, cost, { interrupt: pl.ok && pl.cause === "interrupt", resolve: X.facts.c(actor)?.resolve, ...(pl.ok && pl.grant ? { grant: pl.grant } : {}) });
+      const cp = pl.ok && pl.grant && cost !== "full" && cost !== "quick" ? { ok: false, reason: "busy" } : P1.canPay(X.state, actor, cost, { interrupt: pl.ok && pl.cause === "interrupt", ranged: P1.isRanged(entry), resolve: X.facts.c(actor)?.resolve, ...(pl.ok && pl.grant ? { grant: pl.grant } : {}) });
       if (!cp.ok) { reasons.push(cp.reason ?? "noAction"); waive = true; }
     }
     if (!l.ok) reasons.push(l.reason ?? "illegal");
