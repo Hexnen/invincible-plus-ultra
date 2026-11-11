@@ -167,9 +167,11 @@ function linesOf(p, t, facts, x) {
     case "stunts": out.push(t("ITAC.ui.line.stunts", { n: p.max ?? 0 })); break;
     case "exception": {      // U3: the player's words, the rule that said no, and what a grant will do
       if (d.text) out.push({ quote: String(d.text), by: about });
-      if (d.reason) out.push(t("ITAC.ui.line.why", { reason: reasonText(t, d.reason) }));
+      /* D42: every rule that refuses it now (the engine's own list), and whether the grant waives the cost (P9F-R1) or the action is paid as always */
+      const whys = Array.isArray(d.reasons) ? d.reasons : d.reason ? [d.reason] : [];
+      if (whys.length) out.push(t("ITAC.ui.line.why", { reason: whys.map((r) => reasonText(t, r)).join(", ") }));
       const act = d.decl?.action ? t(`ITAC.action.${d.decl.action}`, {}, String(d.decl.action)) : null, to = (d.decl?.targets ?? []).map(n).join(", ");
-      if (x.desk) out.push(p.inst ? t("ITAC.ui.line.grantGoes") : act && !d.other ? t("ITAC.ui.line.grantRuns", { name: about, action: to ? `${act} (${to})` : act }) : t("ITAC.ui.line.grantHand"));
+      if (x.desk) out.push(p.inst ? t("ITAC.ui.line.grantGoes") : act && !d.other ? t(Array.isArray(d.reasons) && !d.waive ? "ITAC.ui.line.grantRunsPaid" : "ITAC.ui.line.grantRuns", { name: about, action: to ? `${act} (${to})` : act }) : t("ITAC.ui.line.grantHand"));
       break;
     }
     case "other": if (d.text) out.push({ quote: String(d.text), by: about }); break;

@@ -133,7 +133,7 @@ const facts = (r) => {
 };
 function sanitizeGrant(r) {
   if (!isObj(r) || !isId(r.id) || !GRANT_UNITS.includes(r.unit)) return null;
-  const g = { id: r.id, kind: str(r.kind, 40) || "gm", unit: r.unit, window: /^(ownTurn|anytime|interrupt|turnOf:[A-Za-z0-9_.-]{1,64})$/.test(r.window) ? r.window : "ownTurn", expires: GRANT_EXPIRES.includes(r.expires) ? r.expires : "roundEnd" };
+  const g = { id: r.id, kind: str(r.kind, 40) || "gm", unit: r.unit, window: /^(ownTurn|anytime|interrupt|turnOrInterrupt|turnOf:[A-Za-z0-9_.-]{1,64})$/.test(r.window) ? r.window : "ownTurn", expires: GRANT_EXPIRES.includes(r.expires) ? r.expires : "roundEnd" };
   if (isId(r.from)) g.from = r.from;
   if (isObj(r.source)) g.source = plain(r.source);
   if (Number(r.stress) > 0) g.stress = int(r.stress, 1, 99, 1);

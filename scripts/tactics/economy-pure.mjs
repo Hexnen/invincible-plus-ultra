@@ -66,6 +66,9 @@ export function budget(state, cid) {
 export const history = (state, cid, scope, tag) => { const v = Lg.history(ledgerOf(state, cid), scope, tag); return typeof v === "number" ? v > 0 : Array.isArray(v) ? v.length > 0 : !!v; };
 export const loseNextTurn = (ledger, source) => Lg.loseNextTurn(ledger, source ?? null);
 export const loseFull = (ledger, source) => Lg.loseFull(ledger, source ?? null);          // [L8]: the full action of this round is gone (the toxin [B2889])
+/* D40 [R1] [B1953]: the unused extra unit of Quickness, the one unit that lets an action which is no interrupt of its own (an attack, a
+   move) answer somebody else's declared action before its dice. -> grant id | null */
+export const extraUnit = (state, cid) => ledgerOf(state, cid).grants.find((g) => g.kind === "quickness" && !g.usedBy)?.id ?? null;
 export function canInterrupt(state, cid) {
   const L = ledgerOf(state, cid);
   return L.noInterrupts || L.lostTurn ? { ok: false, reason: "noInterrupts" } : { ok: true, reason: null };      // [L7]
