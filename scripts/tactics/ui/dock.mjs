@@ -265,7 +265,7 @@ function doorPanel(p) {
     askRow(p.ask));
 }
 /* U23: a list behind one button (More actions; Abilities by kind). One line per entry: its picture, its name, the mark of its speed, its
-   Resolve price and, for an ability, how it is run. The tooltip says in words what the marks stand for and nothing the row already
+   Resolve price (U67: how an ability is run is a small mark on the GM's dock only). The tooltip says what the entry does and its price in words, nothing the row already
    says (U51); the aria-label says all of it.
    U49: in the Abilities list the uses of one power stand under its name, said once (entries of the model, in its columns): a row
    under a name carries only the use; a power with one use is one row, its name first and the use after it. */
@@ -278,7 +278,7 @@ function listPanel(p) {
   const rows = (g) => (g.cols ? h("div.itd-cols", {}, g.cols.map((c) => h("div.itd-colm", {}, c.map((i) => entry(g.entries[i]))))) : h("div.itd-rows", {}, g.rows.map((r) => row(r))));
   return h("section.itd-panel", { data: { kind: p.kind, list: p.list } }, h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), cancelBtn()),
     h("div.itd-lists", {}, p.groups.map((g) => h("div.itd-list", { attrs: { role: "group", "aria-label": g.label ?? p.title } }, g.label ? h("span.itd-k", { text: g.label }) : null, rows(g)))),
-    (p.foot ?? []).map((x) => h("p.itd-hint.itd-foot", {}, icon("fa-hand"), h("span", { text: x }))));
+    (p.foot ?? []).map((x) => h("p.itd-hint.itd-foot", {}, icon("fa-circle-info"), h("span", { text: x }))));
 }
 /* P7: the ways of a challenge, one chip each, grouped by what they work on; the last chip is an idea of the player's own */
 function approach(a) {

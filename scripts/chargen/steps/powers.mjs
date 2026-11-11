@@ -13,7 +13,7 @@ import { t } from "../lang.mjs";
 import { ATTRS, ATTR_MIN, SLOT_VALUE, levelCap, powerMaxLevel, slots, budget, powerSlots, validateStep, normName } from "../rules.mjs";
 import { addPower, removePower, setPowerLevel, setPowerSource, setPowerNote, addBoost, removeBoost, addLimit, removeLimit, addSource, removeSource } from "../state.mjs";
 import { substream } from "../rng.mjs";
-import { esc, icon, msgText, delegate, levelName } from "./util.mjs";
+import { esc, icon, msgText, delegate, levelName, pl, hit } from "./util.mjs";
 import { slug, enrich, descBlock, rowLinks, chip, openBook } from "./shared.mjs";   // shared with the talents step (5c)
 
 const PAGE = 12;
@@ -108,10 +108,10 @@ function levelGroup(ctx, p) {
 function sourceCell(ctx, p) {
   const s = ctx.state;
   if (s.sources.length >= 2) {
-    return `<div class="ipc-pw-src"><label class="ipc-field"><span>${esc(t("IPC.Powers.Source"))}</span><select class="ipc-input" name="srcfor-${esc(p.key)}" data-fk="srcfor-${esc(p.key)}">${s.sources.map((x) => `<option value="${esc(x.key)}"${x.key === p.sourceKey ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label></div>`;
+    return `<div class="ipc-pw-src"><label class="ipc-field"><span>${esc(t("IPC.Powers.Source"))}</span><select class="ipc-input" name="srcfor-${esc(p.key)}" data-fk="srcfor-${esc(p.key)}">${s.sources.map((x) => `<option value="${esc(x.key)}"${x.key === p.sourceKey ? " selected" : ""}>${esc(pl(x.name, "powerSource"))}</option>`).join("")}</select></label></div>`;
   }
   const only = s.sources[0];
-  return `<div class="ipc-pw-src"><span class="ipc-pw-src-l">${esc(t("IPC.Powers.Source"))}</span><span class="${only ? "" : "ipc-muted"}">${esc(only ? only.name : t("IPC.Powers.SourceNone"))}</span></div>`;
+  return `<div class="ipc-pw-src"><span class="ipc-pw-src-l">${esc(t("IPC.Powers.Source"))}</span><span class="${only ? "" : "ipc-muted"}">${esc(only ? pl(only.name, "powerSource") : t("IPC.Powers.SourceNone"))}</span></div>`;
 }
 
 function pickerRows(ctx, p, kind) {
@@ -123,14 +123,14 @@ function pickerRows(ctx, p, kind) {
   const grants = d.pick.grants, room = limitRoom(p);
   const can = kind === "boost" ? guardOk(ctx.state, 1) : !!grants && room[grants];
   return `<ul class="ipc-pw-rows ipc-pw-rows-sm">${avail.map((e) => `<li class="ipc-pw-row">
-      <div class="ipc-pw-row-main"><span class="ipc-pw-name">${esc(e.name.replace(/\s*\([^)]*\)\s*$/, ""))}</span>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
+      <div class="ipc-pw-row-main"><span class="ipc-pw-name">${esc(pl(e.name, kind).replace(/\s*\([^)]*\)\s*$/, ""))}</span>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
       <button type="button" class="ipc-btn ipc-btn-small" data-act="${kind === "boost" ? "add-boost" : "add-limit"}" data-key="${esc(p.key)}" data-name="${esc(e.name)}" data-uuid="${esc(e.packUuid ?? "")}" data-fk="${kind}-${esc(p.key)}-${esc(slug(e.name))}"${can ? "" : ' aria-disabled="true"'}>${icon("fa-solid fa-plus")} ${esc(t(kind === "boost" ? "IPC.Powers.BoostTake" : "IPC.Powers.LimitTake"))}</button>
     </li>`).join("")}</ul>`;
 }
 
 function boostBlock(ctx, p) {
   const d = ctx.data, open = d.pick?.key === p.key && d.pick.name === p.name && d.pick.kind === "boost";
-  const chips = p.boosts.map((b, i) => chip(esc(b.name), t("IPC.Powers.BoostRemoveAria", { name: b.name }), "rm-boost", `data-key="${esc(p.key)}" data-i="${i}" data-fk="rmb-${esc(p.key)}-${i}"`)).join("");
+  const chips = p.boosts.map((b, i) => chip(esc(pl(b.name, "boost")), t("IPC.Powers.BoostRemoveAria", { name: b.name }), "rm-boost", `data-key="${esc(p.key)}" data-i="${i}" data-fk="rmb-${esc(p.key)}-${i}"`)).join("");
   return `<div class="ipc-pw-blk">
     <div class="ipc-pw-blk-head"><h5>${esc(t("IPC.Powers.Boosts"))}</h5><span class="ipc-muted">${esc(t("IPC.Powers.BoostCost"))}</span>
       <button type="button" class="ipc-btn ipc-btn-small" data-act="pick" data-kind="boost" data-key="${esc(p.key)}" data-fk="pick-b-${esc(p.key)}" aria-expanded="${open}">${icon(open ? "fa-solid fa-chevron-up" : "fa-solid fa-plus")} ${esc(t(open ? "IPC.Powers.Close" : "IPC.Powers.BoostAdd"))}</button></div>
@@ -141,7 +141,7 @@ function boostBlock(ctx, p) {
 
 function limitBlock(ctx, p) {
   const d = ctx.data, open = d.pick?.key === p.key && d.pick.name === p.name && d.pick.kind === "limit", bad = badLimits(p), room = limitRoom(p);
-  const chips = p.limits.map((l, i) => chip(`${esc(l.name)} <small>${esc(l.grants ? t(`IPC.Powers.PaysChip.${l.grants}`) : t("IPC.Powers.PaysChip.none"))}</small>${bad.has(i) ? ` ${icon("fa-solid fa-triangle-exclamation")}` : ""}`, t("IPC.Powers.LimitRemoveAria", { name: l.name }), "rm-limit", `data-key="${esc(p.key)}" data-i="${i}" data-fk="rml-${esc(p.key)}-${i}"`, bad.has(i) ? " is-bad" : "")).join("");
+  const chips = p.limits.map((l, i) => chip(`${esc(pl(l.name, "limit"))} <small>${esc(l.grants ? t(`IPC.Powers.PaysChip.${l.grants}`) : t("IPC.Powers.PaysChip.none"))}</small>${bad.has(i) ? ` ${icon("fa-solid fa-triangle-exclamation")}` : ""}`, t("IPC.Powers.LimitRemoveAria", { name: l.name }), "rm-limit", `data-key="${esc(p.key)}" data-i="${i}" data-fk="rml-${esc(p.key)}-${i}"`, bad.has(i) ? " is-bad" : "")).join("");
   let picker = "";
   if (open) {
     const g = d.pick.grants;
@@ -176,7 +176,7 @@ function powerCard(ctx, p) {
   const landed = d.landed === `p:${p.key}`;
   return `<li class="ipc-pw-card${landed ? " ipc-landed" : ""}" data-key="${esc(p.key)}">
     <div class="ipc-pw-card-head">
-      <h4 class="ipc-pw-cname">${esc(p.name)}</h4>
+      <h4 class="ipc-pw-cname">${esc(pl(p.name, "power"))}</h4>
       ${ent ? `<span class="ipc-pw-type">${esc(t(`IPC.Powers.Type.${ent.type}`))}</span>` : `<span class="ipc-pw-type ipc-pw-unknown">${esc(t("IPC.Powers.Unknown"))}</span>`}
       ${fromArch ? `<span class="ipc-pw-badge">${icon("fa-solid fa-scroll")} ${esc(t("IPC.Powers.FromArchetype"))}</span>` : ""}
       <span class="ipc-pw-slotchip">${esc(t("IPC.Powers.SlotsN", { n: powerSlots(p) }))}</span>
@@ -202,13 +202,13 @@ function minePanel(ctx) {
 function sourceRows(ctx) {
   const d = ctx.data, q = norm(d.sq), s = ctx.state;
   const have = new Set(s.sources.map((x) => norm(x.name)));
-  const all = d.sources.filter((e) => !q || norm(e.name).includes(q));
+  const all = d.sources.filter((e) => hit(q, e.name, norm, "powerSource"));
   const shown = all.slice(0, d.slimit);
   const verb = targetVerb(ctx);
   const rows = shown.map((e) => {
     const taken = have.has(norm(e.name));
     return `<li class="ipc-pw-row${taken ? " is-added" : ""}">
-      <div class="ipc-pw-row-main"><span class="ipc-pw-name">${esc(e.name)}</span>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
+      <div class="ipc-pw-row-main"><span class="ipc-pw-name">${esc(pl(e.name, "powerSource"))}</span>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
       <button type="button" class="ipc-btn ipc-btn-small${taken ? "" : " ipc-btn-primary"}" data-act="src-use" data-name="${esc(e.name)}" data-uuid="${esc(e.packUuid ?? "")}" data-fk="srcuse-${esc(slug(e.name))}"${taken ? ' aria-disabled="true"' : ""}>${taken ? icon("fa-solid fa-check") : icon("fa-solid fa-plus")} ${esc(taken ? t("IPC.Powers.Cat.Added") : verb)}</button>
     </li>`;
   }).join("");
@@ -232,7 +232,7 @@ function sourcePanel(ctx) {
     const n = s.powers.filter((p) => p.sourceKey === x.key).length;
     const arch = d.suggestNames?.has(norm(x.name));
     return `<li class="ipc-src-item">
-      <span class="ipc-src-name">${esc(x.name)}</span>
+      <span class="ipc-src-name">${esc(pl(x.name, "powerSource"))}</span>
       ${arch ? `<span class="ipc-pw-badge">${icon("fa-solid fa-scroll")} ${esc(t("IPC.Powers.FromArchetype"))}</span>` : ""}
       <span class="ipc-muted ipc-src-use">${esc(n ? t("IPC.Powers.Src.UsedBy", { n }) : t("IPC.Powers.Src.Unused"))}</span>
       <button type="button" class="ipc-btn ipc-btn-small" data-act="src-change" data-key="${esc(x.key)}" data-fk="srcch-${esc(x.key)}" aria-label="${esc(t("IPC.Powers.Src.ChangeAria", { name: x.name }))}">${esc(t("IPC.Powers.Src.Change"))}</button>
@@ -258,12 +258,12 @@ function sourcePanel(ctx) {
 function catalogRows(ctx) {
   const d = ctx.data, s = ctx.state, q = norm(d.q);
   const have = new Set(s.powers.map((p) => norm(p.name)));
-  const all = d.powers.filter((p) => (d.type === "all" || p.type === d.type) && (!q || norm(p.name).includes(q)));
+  const all = d.powers.filter((p) => (d.type === "all" || p.type === d.type) && hit(q, p.name, norm, "power"));
   const shown = all.slice(0, d.limit);
   const rows = shown.map((e) => {
     const on = have.has(norm(e.name));
     return `<li class="ipc-pw-row${on ? " is-added" : ""}">
-      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(e.name)}</span><span class="ipc-pw-type">${esc(t(`IPC.Powers.Type.${e.type}`))}</span>${e.split ? `<span class="ipc-pw-type">${esc(t("IPC.Powers.Levels"))}</span>` : ""}</div>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
+      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(pl(e.name, "power"))}</span><span class="ipc-pw-type">${esc(t(`IPC.Powers.Type.${e.type}`))}</span>${e.split ? `<span class="ipc-pw-type">${esc(t("IPC.Powers.Levels"))}</span>` : ""}</div>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
       <button type="button" class="ipc-btn ipc-btn-small${on ? "" : " ipc-btn-primary"}" data-act="toggle-power" data-name="${esc(e.name)}" data-fk="pw-${esc(slug(e.name))}" aria-pressed="${on}" aria-label="${esc(t(on ? "IPC.Powers.Cat.RemoveAria" : "IPC.Powers.Cat.AddAria", { name: e.name }))}">${icon(on ? "fa-solid fa-check" : "fa-solid fa-plus")} ${esc(t(on ? "IPC.Powers.Cat.Added" : "IPC.Powers.Cat.Add"))}</button>
     </li>`;
   }).join("");

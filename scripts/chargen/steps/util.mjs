@@ -1,6 +1,7 @@
 /* Small helpers shared by the wizard shell and every step module (no state, no Foundry writes).
    Step modules: import what they need from here instead of re-implementing it. */
 import { t } from "../lang.mjs";
+import { catalogName } from "../../i18n/item-names.mjs";
 import { ATTRS } from "../rules.mjs";
 
 /** HTML-escape a value for a template string */
@@ -38,6 +39,12 @@ export function delegate(root, type, selector, handler) {
 }
 
 /** icon markup (FontAwesome, decorative) */
+/* ITEM NAMES: the catalogue and the state keep the stored (English) names, which is what the creator matches and writes; what a list
+   SHOWS is the name this client displays (i18n/item-names.mjs), and a search box finds an entry by either name. */
+const NAME_ORDER = ["power", "boost", "limit", "talent", "drawback", "powerSource", "gear"];
+export function pl(name, type = null) { for (const ty of type ? [type] : NAME_ORDER) { const s = catalogName(ty, name); if (s !== String(name ?? "")) return s; } return String(name ?? ""); }
+const fold = (x) => String(x ?? "").normalize("NFD").replace(/\p{M}/gu, "").replace(/ł/g, "l").replace(/Ł/g, "L");      // "wiaz" finds "Wiązka"
+export const hit = (q, name, norm, type = null) => { if (!q || norm(name).includes(q)) return true; const s = pl(name, type); return norm(s).includes(q) || norm(fold(s)).includes(q); };
 export const icon = (cls) => `<i class="${esc(cls)}" aria-hidden="true"></i>`;
 
 /** HTML of a <dl> from rows [{label, value, empty}] (value is plain text, escaped here) */
