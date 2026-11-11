@@ -22,7 +22,10 @@
    MOTION: transform / opacity / clip-path only (Web Animations on the individual translate / scale properties), nothing per frame. One
    choreography, morph() below, serves every change: FLIP for the tiles, the chrome and the ring, the camera (auto-centring) folded into the
    same FLIP, expand / collapse of the active tile, rapid-click hold, round-chip digit slide. */
-import { costVersion, costClasses } from "../kit.mjs";      // U86-SCAFFOLD
+import { costClasses } from "../kit.mjs";      // U93: an action of the turn is the kit's mark (one drawing on every surface)
+/* which mark an action of the turn is: Invincible's full / quick; Year Zero's slow / fast and a single action take the same two shapes */
+const PIP_MARK = { full: "full", quick: "quick", fast: "quick", slow: "full", one: "full" };
+const pipName = (p) => t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.lk}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") });
 import { t } from "./lang.mjs";
 import { freeArea, hudLimit, relayout as relayoutBanner } from "./banner.mjs";
 import { unitOf, unitName } from "../challenges/lang.mjs";
@@ -613,19 +616,24 @@ function paintActs(card, it) {
     if (!box.hidden || card.actsKey) { box.hidden = true; box.replaceChildren(); card.actsKey = ""; }
     return;
   }
-  const key = a.map((p) => p.lk).join("|") + (costVersion() ? `|${costVersion()}` : "");      // U86-SCAFFOLD: rebuilt when the version of the marks changes
+  const key = a.map((p) => p.lk).join("|");
   if (key !== card.actsKey) {
     box.replaceChildren(...a.map((p) => {
       const el = mk("span", "icbar-act");
       el.dataset.k = p.k;
-      el.append(mk("i", "icbar-pip"), mk("b", "icbar-pl", t(`ICB.Bar.ActL.${p.lk}`)));
-      if (costVersion() && (p.lk === "full" || p.lk === "quick")) { el.dataset.u86 = "1"; el.firstElementChild.className += ` ${costClasses(p.lk)[0]}`; el.dataset.tooltip = t(`ICB.Bar.Act.${p.lk}`); }      // U86-SCAFFOLD: the slot's name as its tooltip; the word beside it is hidden while a version of the marks is compared (styles/u86-scaffold.css)
+      el.append(mk("i", `icbar-pip ${costClasses(PIP_MARK[p.lk] ?? "full")[0]}`));      // U93: the mark alone; its name and state are the tooltip (the tile's label reads them out)
       return el;
     }));
     card.actsKey = key;
   }
   box.hidden = false;
-  a.forEach((p, i) => { const el = box.children[i]; if (el) el.dataset.st = p.used ? "used" : "open"; });
+  a.forEach((p, i) => {
+    const el = box.children[i];
+    if (!el) return;
+    el.dataset.st = p.used ? "used" : "open";
+    el.firstElementChild.classList.toggle("ipu-off", !!p.used);      // a spent action: the same shape, hollow
+    el.dataset.tooltip = pipName(p);
+  });
 }
 
 /* GM buttons: rebuilt only when the kinds / ids change, otherwise patched in place (hover and focus survive a status change) */
@@ -644,9 +652,9 @@ function paintGm(card, it) {
       b.type = "button";
       b.dataset.id = p.id;
       b.dataset.k = p.k;
-      const ico = mk("i", "icbar-gb-i");
+      const ico = mk("i", `icbar-gb-i ${costClasses(PIP_MARK[p.lk] ?? "full")[0]}`);      // U93: the button is the action's mark; its name and state are the tooltip and the label
       ico.setAttribute("aria-hidden", "true");
-      b.append(ico, mk("span", "icbar-gb-t", t(`ICB.Bar.ActL.${p.lk}`)));
+      b.append(ico);
       return b;
     }));
     card.gmKey = key;
@@ -657,7 +665,9 @@ function paintGm(card, it) {
     if (!b) return;
     b.dataset.st = p.used ? "used" : "open";
     b.setAttribute("aria-pressed", p.used ? "true" : "false");
-    b.setAttribute("aria-label", t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.lk}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") }));
+    b.firstElementChild.classList.toggle("ipu-off", !!p.used);
+    b.setAttribute("aria-label", pipName(p));
+    b.dataset.tooltip = pipName(p);
   });
 }
 

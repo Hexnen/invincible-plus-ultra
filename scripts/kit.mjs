@@ -23,65 +23,107 @@ export function tipClassFor(el) {
   return el.closest(SURFACES) ? TIP : null;
 }
 
-/* ---------- THE MARKS OF COST (ledger U86; drawn by styles/kit.css) ----------
-   One piece for every surface: what a thing costs in time (a full action, a quick one, the whole turn, longer than a turn, no action, a
-   price the GM names), when it is taken (out of turn: an interrupt) and what it costs in stress. A surface never writes the cost as a word
-   beside the thing: it draws the mark, and the mark's NAME goes to the tooltip and the aria-label of whatever carries it.
-     costMark(kind, { out, v })      -> an element (the DOM surfaces)        kind: one of COST_KINDS except "stress"; out: taken out of turn
-     costMarkHtml(kind, { out, v })  -> the same as a string (tooltips; classes only, so Foundry's cleaning keeps it)
-     stressMark(n, { v }) / stressMarkHtml(n, { v })   the price in stress: the mark with its number (no number: "some stress")
-   U86-SCAFFOLD: `v` and costVersion() exist only while three versions are compared (stage 1). Stage 2 drops the parameter, the version
-   class and costVersion(); every caller then draws the one set unconditionally. */
+/* ---------- THE MARKS (ledger U86 / U93; drawn by styles/kit.css) ----------
+   ONE LANGUAGE for every surface. What a thing costs in time, when it is taken, what it costs in stress, and the things that used to
+   stand as words (Health, damage, Armor, range, dice, successes, pushing, a critical injury, a condition) are DRAWN; the name of a
+   mark is said in the tooltip and to a screen reader, never as a word beside it. The bar is the unit:
+     full   a long slanted bar        quick  a short bar            turn  both bars (the whole turn)      long  a bar and a chevron pair
+     none   an open diamond           gm     a question mark        out   a hooked arrow, alone or before the bar it is paid with
+     stress a bolt on the colour of Resolve, with its number
+   A surface never draws a variant of its own. It calls:
+     costMark(kind, { out, off, name }) / costMarkHtml(...)   kind: full | quick | turn | long | none | gm | out; out: taken out of turn;
+                                                              off: a slot that is spent (the same shape, hollow: never by colour alone)
+     stressMark(n, { name }) / stressMarkHtml(...)            the price in stress: the mark with its number (no number: "some stress")
+     symMark(kind, { n, glyph, name }) / symMarkHtml(...)     kind: one of SYM_KINDS; n: the number (or text such as "+2") after the mark;
+                                                              glyph: for "cond", the Font Awesome class of that condition
+   NAMING. A mark is silent (aria-hidden) when what carries it says its name (a button's tooltip and aria-label). A mark that stands by
+   itself is given `name`: it then is role="img" with that aria-label and opens that tooltip. `name: true` takes the mark's own name
+   (markName) with the number after it.
+   INLINE. A sentence may hold a mark as a token: "[[dice:6]]", "[[stress:1]]", "[[full]]". rich(text) gives the nodes, richHtml(text) the
+   escaped HTML (a tooltip), plain(text) the words (an aria-label, a notification, anything that cannot draw). */
+import { MARK_EN, MARK_PL } from "./kit-lang.mjs";
 export const COST_KINDS = Object.freeze(["full", "quick", "turn", "long", "none", "gm", "out", "stress"]);
-export const COST_VERSIONS = Object.freeze(["a", "b", "c"]);      // U86-SCAFFOLD
-const U86_KEY = "ipu.u86";                                         // U86-SCAFFOLD
-/** U86-SCAFFOLD: the version this browser compares ("a" | "b" | "c"), or null: the interface as it is today */
-export function costVersion() { try { const v = globalThis.localStorage?.getItem(U86_KEY); return COST_VERSIONS.includes(v) ? v : null; } catch { return null; } }
+export const SYM_KINDS = Object.freeze(["health", "damage", "armor", "pierce", "rmin", "rmax", "dice", "six", "push", "crit", "cond"]);
 const KIND = (k) => (k === "free" ? "none" : COST_KINDS.includes(k) ? k : null);
-/* pure: the class names of the mark(s) of one cost, first to last. Version b has no mark of its own for "out of turn": the action's
-   slice stands alone, out of the dial; the other versions put the out-of-turn mark before the action's. */
-export function costClasses(kind, { out = false, off = false, v = costVersion() } = {}) {
+/** the name of a mark in the reader's language (kit-lang.mjs) */
+export function markName(kind, lang = globalThis.game?.i18n?.lang ?? "en") {
+  const k = kind === "free" ? "none" : kind, T = String(lang).startsWith("pl") ? MARK_PL : MARK_EN;
+  return T[k] ?? MARK_EN[k] ?? String(kind ?? "");
+}
+const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
+const numOf = (n) => (n === null || n === undefined || n === "" ? "" : String(n).replace(/[<>&"']/g, ""));
+/** what a mark with a number says: "Stress: 1", "Extra damage: +2", "Dice: 6" ("extra" damage is the damage mark with a number that starts with "+") */
+export function markSay(kind, n = null, lang) {
+  const num = numOf(n), k = kind === "damage" && num.startsWith("+") ? "extra" : kind;
+  return num ? `${markName(k, lang)}: ${num}` : markName(k, lang);
+}
+const named = (name, kind, n) => { const say = name === true ? markSay(kind, n) : name ? String(name) : null; return say ? ` role="img" aria-label="${esc(say)}" data-tooltip="${esc(say)}"` : ' aria-hidden="true"'; };
+/* pure: the class names of the mark(s) of one cost, first to last (out of turn: the hook, then the action's bar) */
+export function costClasses(kind, { out = false, off = false } = {}) {
   const k = KIND(kind);
-  if (!k || k === "stress" || !COST_VERSIONS.includes(v)) return [];
-  const one = (x, more = "") => `ipu-cost ipu-cost-${v} ipu-k-${x}${more}`;
-  if (k === "out") return [one("out")];
-  if (off && (k === "full" || k === "quick")) return [one(k, " ipu-off")];      // a slot that is spent: the same shape, hollow
+  if (!k) return [];
+  const one = (x, more = "") => `ipu-cost ipu-k-${x}${more}`;
+  if (off && (k === "full" || k === "quick")) return [one(k, " ipu-off")];
   if (!out || !(k === "full" || k === "quick")) return [one(k)];
-  return v === "b" ? [one(k, " ipu-out")] : [one("out"), one(k)];
+  return [one("out"), one(k)];
 }
 export function costMarkHtml(kind, o = {}) {
-  const c = costClasses(kind, o);
-  return c.length > 1 ? `<span class="ipu-costs">${c.map((x) => `<i class="${x}"></i>`).join("")}</span>` : c.length ? `<i class="${c[0]}"></i>` : "";
+  const c = costClasses(kind, o), k = KIND(kind);
+  if (!c.length) return "";
+  const at = named(o.name === true ? (c.length > 1 ? markName(k === "full" ? "outFull" : "outQuick") : markName(k)) : o.name, k, null);
+  return c.length > 1 ? `<span class="ipu-costs"${at}>${c.map((x) => `<i class="${x}"></i>`).join("")}</span>` : `<i class="${c[0]}"${at}></i>`;
 }
-export function stressMarkHtml(n = null, { v = costVersion() } = {}) {
-  if (!COST_VERSIONS.includes(v)) return "";
+export function stressMarkHtml(n = null, o = {}) {
   const num = Number.isFinite(Number(n)) && n !== null && n !== "" ? String(Math.abs(Number(n))) : "";
-  return `<b class="ipu-stress"><i class="ipu-cost ipu-cost-${v} ipu-k-stress"></i>${num}</b>`;
+  return `<b class="ipu-stress"${named(o.name, "stress", num)}><i class="ipu-cost ipu-k-stress"></i>${num}</b>`;
 }
-const toEl = (html) => { if (!html || typeof document === "undefined") return null; const t = document.createElement("template"); t.innerHTML = html; const el = t.content.firstElementChild; el?.setAttribute("aria-hidden", "true"); return el; };
+/* Font Awesome draws these (the pictures the interface already had); kit.css draws the rest as masks (range, Armor) */
+const SYM_FA = { health: "fa-heart", damage: "fa-burst", dice: "fa-dice-d6", six: "fa-dice-six", push: "fa-arrows-rotate", crit: "fa-bone" };
+export function symMarkHtml(kind, { n = null, glyph = null, name = null } = {}) {
+  if (!SYM_KINDS.includes(kind)) return "";
+  const fa = kind === "cond" ? glyph : SYM_FA[kind], k = kind === "pierce" ? "armor" : kind;
+  const pic = fa ? `<i class="ipu-sym-g fa-solid ${String(fa).replace(/[^a-z0-9 -]/gi, "")}"></i>` : `<i class="ipu-sym-g ipu-cost ipu-k-${k}"></i>`;
+  const num = numOf(n);
+  return `<span class="ipu-sym ipu-s-${kind}"${named(name, kind, num)}>${kind === "pierce" ? `<span class="ipu-cut">${pic}</span>` : pic}${num ? `<b>${num}</b>` : ""}</span>`;
+}
+const toEl = (html) => { if (!html || typeof document === "undefined") return null; const t = document.createElement("template"); t.innerHTML = html; return t.content.firstElementChild; };
 export const costMark = (kind, o = {}) => toEl(costMarkHtml(kind, o));
 export const stressMark = (n = null, o = {}) => toEl(stressMarkHtml(n, o));
-
-/* THE MARKS OF THINGS (second part of U86): Health, damage, Armor, range, dice, successes, pushing, a critical injury, a condition.
-     symMark(kind, { n, v, glyph }) / symMarkHtml(...)   kind: one of SYM_KINDS; n: the number (or text such as "+2", "0-2") written after
-                                                          the mark; glyph: for "cond", the Font Awesome class of that condition
-   Where the interface already had a picture (the heart of Health, the burst of damage dealt, the die, each condition's own picture) the
-   sets keep it; a version draws its own only where SYM_FA has no entry for it (then styles/kit.css has a mask for that kind).
-   "Extra" damage is the damage mark with a number that starts with "+"; "ignores Armor" (pierce) is the Armor mark cut through. */
-export const SYM_KINDS = Object.freeze(["health", "damage", "armor", "pierce", "rmin", "rmax", "dice", "six", "push", "crit", "cond"]);
-const SYM_FA = {      // U86-SCAFFOLD: three tables; stage 2 keeps one
-  a: { health: "fa-heart", damage: "fa-burst", armor: "fa-shield", pierce: "fa-shield", dice: "fa-dice-d6", six: "fa-dice-six", push: "fa-arrows-rotate", crit: "fa-bone" },
-  b: { health: "fa-heart", damage: "fa-burst", armor: "fa-vest", pierce: "fa-vest", dice: "fa-dice-d6", six: "fa-star", push: "fa-repeat", crit: "fa-bandage" },
-  c: {},
-};
-export function symMarkHtml(kind, { n = null, v = costVersion(), glyph = null } = {}) {
-  if (!SYM_KINDS.includes(kind) || !COST_VERSIONS.includes(v)) return "";
-  const fa = kind === "cond" ? glyph : SYM_FA[v][kind], k = kind === "pierce" && !fa ? "armor" : kind;
-  const pic = fa ? `<i class="ipu-sym-g fa-solid ${String(fa).replace(/[^a-z0-9 -]/gi, "")}"></i>` : `<i class="ipu-sym-g ipu-cost ipu-cost-${v} ipu-k-${k}"></i>`;
-  const num = n === null || n === undefined || n === "" ? "" : `<b>${String(n).replace(/[<>&"']/g, "")}</b>`;
-  return `<span class="ipu-sym ipu-sym-${v} ipu-s-${kind}">${kind === "pierce" ? `<span class="ipu-cut">${pic}</span>` : pic}${num}</span>`;
-}
 export const symMark = (kind, o = {}) => toEl(symMarkHtml(kind, o));
+
+/* ---- a mark inside a sentence: [[kind]] or [[kind:n]] ---- */
+const TOKEN = /\[\[([a-z]+)(?::([^\]\[]{0,12}))?\]\]/g;
+const tokenHtml = (kind, n, name) => (kind === "stress" ? stressMarkHtml(n, { name }) : SYM_KINDS.includes(kind) ? symMarkHtml(kind, { n, name }) : KIND(kind) ? costMarkHtml(kind, { name }) : "");
+export const hasMarks = (text) => typeof text === "string" && text.includes("[[");
+/** the sentence as words: every token says its name ("Dice: 6") */
+export const plain = (text, lang) => String(text ?? "").replace(TOKEN, (m, k, n) => (tokenHtml(k, n, null) ? markSay(k, n ?? null, lang) : m));
+/** the sentence as escaped HTML, its tokens drawn; each mark names itself (tooltip, screen reader) unless `silent` */
+export function richHtml(text, { silent = false } = {}) {
+  const s = String(text ?? ""); let out = "", at = 0;
+  for (const m of s.matchAll(TOKEN)) { const html = tokenHtml(m[1], m[2] ?? null, silent ? null : true); out += esc(s.slice(at, m.index)) + (html || esc(m[0])); at = m.index + m[0].length; }
+  return out + esc(s.slice(at));
+}
+/** the sentence as DOM nodes (text and marks) */
+export function rich(text, o = {}) {
+  if (typeof document === "undefined") return [];
+  const t = document.createElement("template"); t.innerHTML = richHtml(text, o);
+  return [...t.content.childNodes];
+}
+
+/* ---- THE LEGEND: every mark with its name, in the order a player meets them (legendHtml draws it; the dock opens it) ---- */
+export const LEGEND = Object.freeze([
+  { group: "time", rows: [["full", () => costMarkHtml("full")], ["quick", () => costMarkHtml("quick")], ["turn", () => costMarkHtml("turn")], ["long", () => costMarkHtml("long")], ["none", () => costMarkHtml("none")],
+    ["gm", () => costMarkHtml("gm")], ["out", () => costMarkHtml("out")], ["outQuick", () => costMarkHtml("quick", { out: true })], ["outFull", () => costMarkHtml("full", { out: true })], ["spent", () => `<span class="ipu-costs" aria-hidden="true">${costMarkHtml("full", { off: true })}${costMarkHtml("quick", { off: true })}</span>`]] },
+  { group: "things", rows: [["stress", () => stressMarkHtml(1)], ["health", () => symMarkHtml("health", { n: 9 })], ["damage", () => symMarkHtml("damage", { n: 3 })], ["extra", () => symMarkHtml("damage", { n: "+2" })],
+    ["armor", () => symMarkHtml("armor", { n: 2 })], ["pierce", () => symMarkHtml("pierce")], ["rmin", () => symMarkHtml("rmin", { n: 1 })], ["rmax", () => symMarkHtml("rmax", { n: 3 })]] },
+  { group: "roll", rows: [["dice", () => symMarkHtml("dice", { n: 6 })], ["six", () => symMarkHtml("six", { n: 2 })], ["push", () => symMarkHtml("push")], ["crit", () => symMarkHtml("crit")],
+    ["cond", () => symMarkHtml("cond", { glyph: "fa-face-dizzy" }) + symMarkHtml("cond", { glyph: "fa-hands-holding" })]] },
+]);
+export function legendHtml(lang = globalThis.game?.i18n?.lang ?? "en") {
+  const col = (g) => `<div class="ipu-legend-col"><h4 class="ipu-legend-h">${esc(markName(`legend.${g.group}`, lang))}</h4><dl>${g.rows.map(([id, draw]) => `<div class="ipu-legend-row"><dt>${draw()}</dt><dd>${esc(markName(id, lang))}</dd></div>`).join("")}</dl></div>`;
+  return `<div class="ipu-legend">${LEGEND.map(col).join("")}</div>`;
+}
 
 function onEnter(ev) {
   const el = ev.target;

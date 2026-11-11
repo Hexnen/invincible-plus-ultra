@@ -9,9 +9,10 @@
      UNIT    face, name, zone; Health and Resolve as two bars with their numbers
      SLOTS   the two slots of a turn (U31): the long one is the full action (or a second quick one), the short one the quick action; a
              further one only when the character has it; then bonus dice and statuses as small chips
-     ACTIONS one picture per action, in the groups of the rules, each carrying THE MARK OF SPEED (dom.speed: long bar = full action,
-             short bar = quick action, an open ring = no action) and its Resolve price; the name, the price in words and the reason of a greyed
-             one are the tooltip (hover and keyboard focus) and the aria-label; a click arms it and the panel's head says it again
+     ACTIONS one picture per action, in the groups of the rules, each carrying THE MARK OF SPEED (dom.speed, the shared kit's marks: long
+             bar = full action, short bar = quick action, an open diamond = no action, a question mark = the GM decides) and the bolt of its
+             price in stress; the name, the names of the marks and the reason of a greyed one are the tooltip (hover and keyboard focus)
+             and the aria-label; a click arms it and the panel's head carries the same marks
      TAIL    Something else, Hold off, the macro bar, End turn
    When the row does not fit (data-tight, measured in place()), the actions take a row of their own over the unit; in the narrowest
    room (data-tight="2") the tail takes a third.
@@ -25,8 +26,8 @@
             Abilities: rows by kind) | something else | hold off | the own action in progress (what it waits for, change / cancel)
    RESTING (not the user's turn, nothing armed, nothing asked): the unit and its slots; the chevron opens the bar to look or to ask for
    an exception. A question addressed to the user always shows, whoever's turn it is. */
-import { h, icon, swap, face, speed, stressChip, actIcon, tipText, askCard, sumCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
-import { costVersion, costClasses, symMark } from "../../kit.mjs";      // U86-SCAFFOLD (stage 1 of ledger U86): see dom.mjs speed()
+import { h, icon, swap, face, speed, stressChip, markOf, actIcon, tipText, askCard, sumCard, legendCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
+import { symMark, costMark, markName, hasMarks, plain } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
 import * as Lay from "./layout-pure.mjs";
 
 const ID = "invincible-tactics-dock";
@@ -190,16 +191,23 @@ export function place() {
 
 /* ---------- pieces ---------- */
 const keyAttrs = (key) => (key ? { "aria-keyshortcuts": key } : {});
-const slot = (p) => h("button.itd-slot", { fk: `slot:${p.key}`, tip: p.tip, disabled: !p.req, data: { key: p.key, kind: p.kind, state: p.state, as: p.as, extra: p.extra ? "1" : null }, attrs: { "aria-label": p.tip }, on: { click: () => p.req && send(p.req) } }, slotMark(p));
-/* U86-SCAFFOLD: with a version on, the Armor of a door (the last note of its row) is the mark of Armor with its number */
-const wayNotes = (r) => (costVersion() && r.u86armor !== undefined && r.notes.length > 1
-  ? h("span.itd-way-n.itd-way-marks", {}, h("span", { text: r.notes.slice(0, -1).join(" \u00b7 ") }), symMark("armor", { n: r.u86armor }))
-  : h("span.itd-way-n", { text: r.notes.join(" \u00b7 ") }));
-/* U86-SCAFFOLD: with version b or c on, a slot of the turn is drawn in that version's shape of its action (spent: the same shape, hollow) */
-const slotMark = (p, v = costVersion()) => (v && v !== "a" && (p.kind === "full" || p.kind === "quick")
-  ? h(`i.${costClasses(p.kind, { v, off: p.state === "used" || p.state === "lost" })[0].replace(/ /g, ".")}`) : h("i"));
+/* a slot of the turn is a control with five states (free, granted, being paid, spent, lost: U63, each its own drawing); its free
+   shape IS the bar of the kit's marks (long = the full action, short = a quick one), so the bar teaches its own legend */
+const slot = (p) => h("button.itd-slot", { fk: `slot:${p.key}`, tip: p.tip, disabled: !p.req, data: { key: p.key, kind: p.kind, state: p.state, as: p.as, extra: p.extra ? "1" : null }, attrs: { "aria-label": p.tip }, on: { click: () => p.req && send(p.req) } }, h("i"));
+/* U93: under a way or a door: what has no mark in words, then the marks of the model (a door's Armor), each naming itself */
+const wayNotes = (r) => (r.notes.length || r.marks?.length ? h("span.itd-way-n", {}, r.notes.length ? h("span", { text: r.notes.join(" \u00b7 ") }) : null, (r.marks ?? []).map((m) => markOf(m))) : null);
+/* U93: Health is the heart, Resolve the bolt (the same bolt a price in stress carries: stress is taken from this bar) */
 const vital = (v) => h("div.itd-vital", { data: { id: v.id, v: v.v }, attrs: { role: "img", "aria-label": v.say, style: `--itd-v:${v.v};--itd-max:${v.max}` } },
-  costVersion() && v.id === "health" ? symMark("health") : icon(v.id === "health" ? "fa-heart" : "fa-bolt"), h("span.itd-vbar", {}, h("i.itd-vfill"), h("i.itd-vpv")), h("b.itd-vnum", {}, h("span", { text: String(v.v) }), h("small", { text: `/${v.max}` })), h("b.itd-vdelta"));
+  v.id === "health" ? symMark("health") : costMark("stress"), h("span.itd-vbar", {}, h("i.itd-vfill"), h("i.itd-vpv")), h("b.itd-vnum", {}, h("span", { text: String(v.v) }), h("small", { text: `/${v.max}` })), h("b.itd-vdelta"));
+/* U93: what the character has besides its two slots. A granted unit that is no slot: a plus and the mark of the unit (its price in
+   stress beside it); bonus dice: the die with their number (the model's text carries the mark); a condition: its picture in the
+   kit's frame. Each names itself in its tooltip and to a screen reader. */
+function extra(x) {
+  const say = [x.label, x.tip].filter(Boolean).join(". ");
+  if (x.kind === "status") return h("span.itd-extra", { tip: say, data: { kind: x.kind, id: x.id, mark: "1" }, attrs: { tabindex: "0", role: "img", "aria-label": say } }, symMark("cond", { glyph: x.icon }));
+  if (x.kind === "grant" && x.stress) return h("span.itd-extra", { tip: say, data: { kind: x.kind }, attrs: { tabindex: "0", "aria-label": say } }, h("span", { text: x.label }), stressChip(x.stress));
+  return h("span.itd-extra", { text: x.label, tip: x.tip || null, data: { kind: x.kind }, attrs: x.tip ? { tabindex: "0" } : {} });
+}
 
 const nameParts = (name) => { const m = /^(.*\S)\s+(#\d+)$/.exec(String(name ?? "")); return m ? [h("span.itd-name", { text: m[1] }), h("b.itd-nameno", { text: m[2] })] : h("span.itd-name", { text: name }); };
 function unit(d) {
@@ -212,59 +220,48 @@ function unit(d) {
       h("span.itd-nameline", {}, nameParts(w.name), w.zone ? h("span.itd-zone", { tip: w.zone.tip, attrs: { tabindex: "0", "aria-label": `${w.zone.say}. ${w.zone.tip}` } }, icon("fa-location-dot"), h("span", { text: w.zone.label })) : null),
       d.vitals.length ? h("div.itd-vitals", {}, d.vitals.map(vital)) : null)),
   h("div.itd-slots", { attrs: { role: "group", "aria-label": handlers.label?.("slots") } }, d.slots.map(slot),
-    d.extras.map((x) => h(`span.itd-extra`, { text: x.label, tip: x.tip || null, data: { kind: x.kind }, attrs: x.tip ? { tabindex: "0" } : {} })), w.free ? h("span.itd-extra", { text: w.freeLabel, data: { kind: "free" } }) : null)];
+    d.extras.map(extra), w.free ? h("span.itd-extra", { text: w.freeLabel, data: { kind: "free" } }) : null)];
 }
 const rs = (n) => stressChip(n);
-/* U86-SCAFFOLD: with a version on, a tooltip's price line names the marks (dom.mjs priceHtml) */
-const priced = (tip, unit, stress) => (costVersion() && tip && typeof tip === "object" ? { ...tip, price: { unit, stress } } : tip);
 function actionBtn(a) {
   /* P5 / P6: the other rows of the action tables, and the character's own abilities: one button each, a list behind it */
   if (a.more) { const m = a.mode ?? "menu";
     return h(`button.itd-ic.itd-ic-more${a.armed ? ".itd-armed" : ""}`, { fk: `more:${m}`, tip: a.tip, data: { key: a.key ?? null }, attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true", "aria-label": a.label, ...keyAttrs(a.key) },
       on: { click: () => set(last?.ui?.mode === m ? { mode: null } : { mode: m, armed: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } }, actIcon(a.icon), icon("fa-caret-up")); }
-  return h(`button.itd-ic${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null, key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: priced(a.tip, a.cost, a.stress), pv: a.pv, attrs: { "aria-pressed": String(!!a.armed), "aria-label": tipText(a.tip), ...keyAttrs(a.key) },
+  return h(`button.itd-ic${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null, key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.tip, pv: a.pv, attrs: { "aria-pressed": String(!!a.armed), "aria-label": tipText(a.tip), ...keyAttrs(a.key) },
     on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, actIcon(a.icon), speed(a.cost), rs(a.stress));
 }
 const CAM_ICON = { turn: "fa-video", off: "fa-video-slash", all: "fa-film" };
 /* W1 (U42): how much the map's camera follows the fight, this user's own switch (turn -> off -> all) */
 const cameraBtn = (d) => (d.camera ? h("button.itd-mini", { fk: "camera", tip: d.camera.tip, data: { cam: d.camera.follow }, attrs: { "aria-label": d.camera.tip }, on: { click: () => set({ camera: d.camera.next }) } }, icon(CAM_ICON[d.camera.follow] ?? "fa-video")) : null);
+/* U93: where a player looks a mark up: the legend of the marks, a card over the bar (the kit draws it) */
+const legendBtn = () => h("button.itd-mini", { fk: "legend", tip: markName("legend"), attrs: { "aria-pressed": String(!!last?.ui?.legend), "aria-label": markName("legend") }, on: { click: () => set({ legend: !last?.ui?.legend }) } }, icon("fa-shapes"));
 const hotbarBtn = (d) => h("button.itd-mini", { fk: "hotbar", tip: d.hotbar.tip ?? d.hotbar.label, attrs: { "aria-pressed": String(d.hotbar.open), "aria-label": d.hotbar.label }, on: { click: () => set({ hotbar: !d.hotbar.open }) } }, icon("fa-keyboard"));
 function bar(d) {
   const e = d.end;
   return h("div.itd-bar", {},
     unit(d),
-    d.rest ? h("div.itd-tail", {}, cameraBtn(d), hotbarBtn(d), h("button.itd-mini", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up"))) : [
+    d.rest ? h("div.itd-tail", {}, legendBtn(), cameraBtn(d), hotbarBtn(d), h("button.itd-mini", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up"))) : [
       h("div.itd-acts", {}, d.out ? h("p.itd-out", { data: { reason: d.out.reason } }, icon(d.out.reason === "dead" ? "fa-skull" : d.out.reason === "unconscious" ? "fa-bed" : "fa-heart-crack"), h("span", { text: d.out.text })) : null, d.groups.map((g) => h("div.itd-group", { attrs: { role: "group", "aria-label": g.label } }, g.items.map(actionBtn)))),
       h("div.itd-tail", {},
         h(`button.itd-ic.itd-ic-ghost${d.other.armed ? ".itd-armed" : ""}`, { fk: "other", tip: d.other.tip, attrs: { "aria-pressed": String(d.other.armed), "aria-label": d.other.label }, on: { click: () => set(d.other.armed ? { mode: null } : { mode: "other", armed: null, text: "", endArmed: false }) } }, actIcon("@other")),
         h(`button.itd-ic.itd-ic-ghost${d.holdOff.armed ? ".itd-armed" : ""}`, { fk: "hold", disabled: !!d.holdOff.disabled, tip: d.holdOff.tip, attrs: { "aria-pressed": String(d.holdOff.armed), "aria-label": d.holdOff.label }, on: { click: () => set(d.holdOff.armed ? { mode: null } : { mode: "holdOff", armed: null, endArmed: false }) } }, actIcon("@hold")),
         h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}`, { fk: "end", disabled: !!e.disabled, tip: e.tip, attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space" }, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && send(e.req, { endArmed: false })) } }, actIcon("@end"), h("span", { text: e.label })),
-        cameraBtn(d), hotbarBtn(d),
+        legendBtn(), cameraBtn(d), hotbarBtn(d),
         d.canRest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("cancel"), on: { click: () => set({ peek: false, armed: null, mode: null }) } }, icon("fa-chevron-down")) : null),
     ]);
 }
 
-/* U86-SCAFFOLD: with a version on, what a weapon brings is written with the marks: bonus dice, damage, range (nearest and farthest);
-   the rest of its line stays in words. `x.marks` is put on by model-pure only for this (stage 2: the tooltip is built from it for good). */
-function weaponTip(x) {
-  const m = costVersion() ? x.marks : null;
-  if (!m) return x.tip;
-  const el = h("div.ita-tt", {}, h("div.ita-tt-marks", {}, m.bonus ? symMark("dice", { n: `+${m.bonus}` }) : null, m.damage != null ? symMark("damage", { n: m.damage }) : null,
-    m.range ? [m.range[0] !== m.range[1] ? symMark("rmin", { n: m.range[0] }) : null, symMark("rmax", { n: m.range[1] })] : null), m.rest ? h("p", { text: m.rest }) : null);
-  return { html: el.outerHTML, say: x.tip };
-}
 const OPT_ICON = { wreck: "fa-house-crack", area: "fa-burst", fullAuto: "fa-ellipsis" };
 const KIT_STATE = { auto: "fa-gears", assist: "fa-user-check", hand: "fa-hand", off: "fa-ban" };
 const close = () => set({ armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} });
 const textBox = (value, placeholder, key = "text") => h("textarea.itd-text", { fk: `draft:${key}`, text: value, attrs: { rows: 2, maxlength: 300, placeholder, "aria-label": placeholder }, on: { input: (e, el) => set({ [key]: el.value }) } });
 const submit = (s, cls = "", pv = null, said = false) => h(`button.itd-go${cls}`, { fk: `go${cls}`, text: s.label, disabled: !!s.disabled, tip: said ? null : s.disabled, pv: s.disabled ? null : pv, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} }) } });
 const cancelBtn = () => h("button.itd-x", { fk: "x", tip: handlers.label?.("cancel"), on: { click: close } }, icon("fa-xmark"));
-/* U86-SCAFFOLD: with a version on, the price beside the name is its marks alone; the words are their tooltip (hover and keyboard focus) */
-const costOf = (p) => { if (!p.cost) return null;
-  const unit = p.unit ?? (costVersion() ? p.u86unit : null);
-  if (!costVersion() || !unit) return h("span.itd-cost", {}, speed(p.unit), h("span", { text: p.cost }));
-  const n = Number(/(\d+)\D*$/.exec(String(p.cost).split(", ").slice(1).join(", "))?.[1]) || 0;
-  return h("span.itd-cost.itd-cost-marks", { tip: { cost: p.cost, price: { unit, stress: n } }, attrs: { tabindex: "0", "aria-label": p.cost } }, speed(unit, { gm: true }), stressChip(n)); };
+/* U93: the price beside the name of the armed action is its marks alone (the model's `price`); their names are the tooltip (hover and
+   keyboard focus) and what a screen reader is told. A price the model could not take apart keeps its words. */
+const costOf = (p) => (p.price ? h("span.itd-cost.itd-cost-marks", { tip: { cost: p.cost, price: { parts: p.price.parts } }, attrs: { tabindex: "0", role: "img", "aria-label": p.cost } }, speed(p.price.unit, { out: p.price.out }), stressChip(p.price.stress))
+  : p.cost ? h("span.itd-cost", { text: p.cost }) : null);
 const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), costOf(p),
   p.aim?.length ? h("span.itd-arrow", {}, icon("fa-arrow-right"), p.aim.map((x) => h("span.itd-tgt", {}, face(x.img, x.name), h("b", { text: x.name })))) : null, cancelBtn());      // W1: the target chosen on the map
 
@@ -275,9 +272,9 @@ function meter(c) {
 }
 /* one way to make a move / one door: the name, what it costs, and when it cannot be done the reason (a click then opens the way to ask) */
 const wayRow = (r) => h(`button.itd-way${r.asking ? ".itd-armed" : ""}`, { fk: `way:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, pv: r.pv, data: { warn: r.warn ? "1" : null },
-  attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", "), "aria-pressed": r.disabled ? String(!!r.asking) : null },
+  attrs: { "aria-label": [r.label, ...(r.say ?? r.notes), r.disabled].filter(Boolean).join(", "), "aria-pressed": r.disabled ? String(!!r.asking) : null },
   on: { click: () => (r.disabled ? set({ ask: r.asking ? null : r.id, why: "" }) : r.req && send(r.req, { armed: null, mode: null, to: null, ask: null, why: "" })) } },
-  h("span.itd-way-l", {}, r.warn && !r.disabled ? icon("fa-triangle-exclamation") : null, h("span", { text: r.label }), speed(r.cost)), wayNotes(r), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null);
+  h("span.itd-way-l", {}, r.warn && !r.disabled ? icon("fa-triangle-exclamation") : null, h("span", { text: r.label }), speed(r.cost), stressChip(r.stress)), wayNotes(r), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null);
 const askRow = (a) => (a ? h("div.itd-pbody.itd-refused", {}, a.reason ? h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: a.reason })) : null,
   a.text !== null ? h("div.itd-col.itd-grow", {}, textBox(a.text, a.placeholder, "why")) : null,
   h("div.itd-col.itd-submit", {}, submit(a.submit, ".itd-go-ask"))) : null);
@@ -304,7 +301,7 @@ function doorPanel(p) {
    U49: in the Abilities list the uses of one power stand under its name, said once (entries of the model, in its columns): a row
    under a name carries only the use; a power with one use is one row, its name first and the use after it. */
 function listPanel(p) {
-  const row = (r, under = false) => h(`button.itd-row${under ? ".itd-row-sub" : ""}`, { fk: `menu:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, tip: priced(r.tip, r.cost, r.stress), pv: r.pv, data: { state: r.state ?? null, key: r.key ?? null },
+  const row = (r, under = false) => h(`button.itd-row${under ? ".itd-row-sub" : ""}`, { fk: `menu:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, tip: r.tip, pv: r.pv, data: { state: r.state ?? null, key: r.key ?? null },
     attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", "), ...keyAttrs(r.key) }, on: { click: () => set({ armed: r.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } },
     actIcon(r.icon), r.of === undefined ? h("span.itd-row-l", { text: r.label }) : under ? h("span.itd-row-l", { text: r.use ?? r.of }) : h("span.itd-row-l", {}, h("span", { text: r.of }), r.use ? h("small", { text: r.use }) : null),
     speed(r.cost), rs(r.stress), r.state ? icon(KIT_STATE[r.state] ?? "fa-circle") : null);
@@ -344,7 +341,7 @@ function panel(p) {
           p.self ? h("p.itd-hint", {}, icon("fa-user"), h("span", { text: p.self })) : null) : null,
         p.weapons || p.opts?.length ? h("div.itd-col.itd-arms", {},
           p.weapons ? [h("span.itd-k", { text: p.weapons.label }), p.weapons.empty ? h("p.itd-hint", {}, icon("fa-ban"), h("span", { text: p.weapons.empty }))
-            : h("div.itd-chips", { attrs: { role: "group", "aria-label": p.weapons.label } }, p.weapons.items.map((x) => h("button.itd-chip.itd-chip-arm", { fk: `wp:${x.id}`, tip: weaponTip(x), attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ weapon: x.id }) } }, h("span", { text: x.name }))))] : null,
+            : h("div.itd-chips", { attrs: { role: "group", "aria-label": p.weapons.label } }, p.weapons.items.map((x) => h("button.itd-chip.itd-chip-arm", { fk: `wp:${x.id}`, tip: x.tip, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ weapon: x.id }) } }, h("span", { text: x.name }))))] : null,
           p.opts?.length ? h("div.itd-chips", { attrs: { role: "group" } }, p.opts.map((o) => h("button.itd-chip.itd-chip-opt", { fk: `op:${o.id}`, tip: o.tip, attrs: { "aria-pressed": String(o.on) }, on: { click: () => set({ opts: { ...(last.ui?.opts ?? {}), [o.id]: !o.on, ...(o.id === "area" && !o.on ? { fullAuto: false } : {}), ...(o.id === "fullAuto" && !o.on ? { area: false } : {}) } }) } }, icon(OPT_ICON[o.id] ?? "fa-circle"), h("span", { text: o.label })))) : null,
           (p.notes ?? []).map((n) => h("p.itd-hint", {}, icon("fa-circle-info"), h("span", { text: n })))) : null,
         p.attrs ? h("div.itd-col.itd-attrs", {}, h("span.itd-k", { text: p.attrs.label }),
@@ -356,8 +353,8 @@ function panel(p) {
         p.text ? h("div.itd-col.itd-grow", {}, textBox(p.text.value, p.text.placeholder)) : null,
         p.pool || p.tokens.length ? h("div.itd-col.itd-odds", {},
           /* U55: the pool is its number; where the dice come from is its tooltip (hover and keyboard focus), one line per source */
-          p.pool ? h("div.itd-pool", { tip: p.pool.tip, data: { sum: p.pool.tip ? "1" : null }, attrs: p.pool.tip ? { tabindex: "0" } : {} }, costVersion() ? symMark("dice") : h("span.itd-k", { text: handlers.label?.("pool") }), h("b.itd-dice", { text: String(p.pool.total), attrs: costVersion() ? { "aria-label": `${handlers.label?.("pool")}: ${p.pool.total}` } : {} })) : null,      // U86-SCAFFOLD: the mark of dice stands for the words "Your dice"
-          p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null,
+          p.pool ? h("div.itd-pool", { tip: p.pool.tip, data: { sum: p.pool.tip ? "1" : null }, attrs: p.pool.tip ? { tabindex: "0" } : {} }, symMark("dice"), h("b.itd-dice", { text: String(p.pool.total), attrs: { "aria-label": `${handlers.label?.("pool")}: ${p.pool.total}` } })) : null,      // U93: the die stands for the words "Your dice"; they are what a screen reader is told
+          p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, hasMarks(k.label) ? null : icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null,
           p.chance ? meter(p.chance) : null) : null,
         h("div.itd-col.itd-submit", {}, p.submit.disabled && !p.submit.quiet ? h("span.itd-why", { text: p.submit.disabled }) : null, submit(p.submit, "", p.pv, true))));      // U51: why it cannot be declared is written beside the button, not said again in its tooltip
   }
@@ -370,7 +367,7 @@ function panel(p) {
   return h("section.itd-panel", { data: { kind: "mine", rolling: p.rolling ? "1" : null } },
     h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.targets.length ? h("span.itd-arrow", {}, icon("fa-arrow-right"), p.targets.map((x) => h("span.itd-tgt", {}, face(x.img, x.name), h("b", { text: x.name })))) : null),
     h("div.itd-pbody", {}, p.rolls.length ? h("div.itd-myrolls", { attrs: { role: "status" } }, p.rolls.map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) }))) : null,
-      p.status ? h("p.itd-status", {}, icon(p.rolling ? "fa-dice" : "fa-hourglass-half"), h("span", { text: p.status })) : null, p.text ? h("blockquote.ita-quote", {}, h("span", { text: p.text })) : null,
+      p.status ? h("p.itd-status", {}, hasMarks(p.status) ? null : icon(p.rolling ? "fa-dice" : "fa-hourglass-half"), h("span", { text: p.status })) : null, p.text ? h("blockquote.ita-quote", {}, h("span", { text: p.text })) : null,
       h("div.itd-col.itd-submit", {}, p.commands.map((c) => h("button.itd-ghost", { fk: `cmd:${c.id}`, text: c.label, on: { click: () => (c.amend ? handlers.amend?.(p) : c.req && send(c.req)) } })))));
 }
 
@@ -390,10 +387,11 @@ function draw(d, ui) {
   const pk = d.show && d.panel ? `${d.panel.kind}|${d.panel.list ?? d.panel.action ?? ""}` : null;
   root.classList.toggle("itd-same", pk !== null && pk === panelKey);
   panelKey = pk;
-  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate, outName: handlers.label?.("ITAC.ui.cause.interrupt"), noneName: handlers.label?.("ITAC.ui.cost.none") };
+  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
   swap(stack, [
     /* U57: the summary of the round (or of the fight) that just ended stands where the questions stand, after them */
-    d.prompts?.length || d.sum ? h("div.itd-asks", {}, (d.prompts ?? []).map((a) => askCard(a, askH)), d.sum ? sumCard(d.sum, { sumClose: handlers.sumClose }) : null) : null,
+    d.prompts?.length || d.sum || (ui.legend && d.show) ? h("div.itd-asks", {}, (d.prompts ?? []).map((a) => askCard(a, askH)), d.sum ? sumCard(d.sum, { sumClose: handlers.sumClose }) : null,
+      ui.legend && d.show ? legendCard({ legendClose: () => set({ legend: false }) }) : null) : null,
     d.show ? panel(d.panel) : null,
     /* the line on top of the bar, only while it has something the rest of the screen does not say (U51 / U52: model-pure.dockData):
        a roll this user owes or may push that is not the roll of its own action (that one stands in the action's panel), who ELSE the
@@ -412,7 +410,7 @@ function draw(d, ui) {
   /* U41: the answer the keyboard chose on a card (Enter sends it) */
   try { const kp = d.keys?.chosen; if (kp) for (const el of stack.querySelectorAll(".ita-opt, .ita-submit")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
   /* U51: the news chip's tooltip holds the older lines; the last line joins them only when the chip had to cut it short */
-  try { const nt = stack.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = [d.news.text, ...d.news.older].join("<br>"); } catch { /* a courtesy */ }
+  try { const nt = stack.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = plain([d.news.text, ...d.news.older].join("<br>")); } catch { /* a courtesy */ }
   place();
   reveal();
   try { preview(stack.querySelector("[data-pv]:hover, [data-pv]:focus-visible")); } catch { /* a courtesy */ }      // the pointer may still rest on what it was previewing

@@ -19,6 +19,7 @@ import * as Mv from "../movement.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import { t as langT, errText } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
+import { plain } from "../../kit.mjs";      // U93: a notification cannot draw a mark: it says its name
 import * as Keys from "./keys-pure.mjs";
 import * as Dock from "./dock.mjs";
 import * as Desk from "./desk.mjs";
@@ -258,7 +259,7 @@ function refresh() {
     data.sum = fb.sum; data.hint = fb.hint;
     lastDock = data; lastModel = model;
     /* U59: the GM nudged this user: the line stands on the dock (news) and is said once as a notification, wherever the eyes are */
-    if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", data.news.text); }
+    if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", plain(data.news.text)); }
     Dock.render(data, st.dock);
     /* U21: this client's target marks follow what is still aimed at (the open panel, the actions in progress) */
     Pick.keep(combat, [...(data.show && data.panel?.kind === "declare" ? (data.panel.targets ?? []).filter((x) => x.picked).map((x) => x.id) : []), ...(staff ? desk?.info ?? [] : model.mine ?? []).flatMap((i) => (i.targets ?? []).map((x) => x.id))]);

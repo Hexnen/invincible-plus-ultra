@@ -807,3 +807,61 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 #invincible-tactics-dock .itd-hint1-x:hover { background: var(--ita-yellow); }
 #invincible-tactics-dock .itd-hint1-x:focus-visible { outline: 3px solid var(--ita-blue); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { #invincible-tactics-dock .itd-hint1 { animation: none; } }
+
+/* ============================ THE MARKS ON THE SURFACES (ledger U93) ============================
+   The drawings and their names are the kit's (styles/kit.css, scripts/kit.mjs); here they are only placed and given the colour of the
+   ground they stand on. No rule here draws a mark of its own. */
+/* a mark inside a sentence (a line of a card, a roll chip, a status): on the line, in the colour of what is worth reading */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-status, .itd-news-t, .igd-rollmarks, .ita-opt-n, .itd-hint1) .ipu-sym { margin-inline: 1px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-status, .igd-rollmarks, .ita-opt-n, .itd-hint1) .ipu-sym > .ipu-sym-g { color: var(--ita-yellow); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-hint1) > :is(.ipu-cost, .ipu-costs) { color: var(--ita-yellow); margin-inline: 2px; }
+/* a way of a move, a door: its price after the name, what it meets after that */
+#invincible-tactics-dock .itd-way .itd-way-l > :is(.ipu-cost, .ipu-costs) { color: inherit; }
+.itd-way-marks { display: inline-flex; align-items: center; gap: 8px; }
+/* the name plate of the armed action: the marks alone (their names are the tooltip) */
+.itd-cost-marks { gap: 6px; padding: 2px 3px; color: var(--ita-yellow); cursor: help; }
+.itd-cost-marks:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.itd-cost-marks > .ipu-cost, .itd-cost-marks > .ipu-costs > .ipu-cost { --ipu-cost-h: 12px; }
+/* the dice of the armed action: the mark in place of the words "Your dice" */
+#invincible-tactics-dock .itd-pool > .ipu-sym { color: var(--ita-label); }
+#invincible-tactics-dock .itd-pool > .ipu-sym .ipu-sym-g.fa-solid { font-size: 15px; }
+/* a chip of bonus dice, something extra the unit has */
+.itd-chip-token .ipu-sym, .itd-extra .ipu-sym { color: inherit; }
+.itd-extra { gap: 4px; }
+.itd-extra[data-mark] { padding: 0; border: 0; height: auto; cursor: help; }
+.itd-extra[data-kind="status"]:is([data-id="broken"], [data-id="dying"], [data-id="dead"], [data-id="unconscious"], [data-id="stressedOut"]) { color: var(--ita-red-lt); }
+/* the roll chip (yellow ground) and its buttons */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll-t:has(.ipu-sym) { display: inline-flex; align-items: center; gap: 6px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn:has(> .ipu-sym) { display: inline-flex; align-items: center; gap: 5px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn > .ipu-stress { height: 14px; }
+/* an answer on a card, the summary of a fight */
+.ita-opt .ipu-stress { margin-left: 1px; }
+.ita-opt-l > :is(.ipu-cost, .ipu-costs) { color: var(--ita-yellow); }
+.ita-opt[aria-disabled="true"] .ita-opt-l > :is(.ipu-cost, .ipu-costs) { color: var(--ita-label); }
+.ita-sum-chip > .ipu-cost { height: 11px; color: var(--ita-cyan); }
+.ita-sum-chip > .ipu-sym { color: var(--ita-red-lt); }
+/* the unit: Health and stress before their bars */
+#invincible-tactics-dock .itd-vital > .ipu-sym { width: 11px; justify-content: center; color: var(--c); }
+#invincible-tactics-dock .itd-vital > .ipu-sym .ipu-sym-g.fa-solid { all: unset; display: inline-block; font: 900 9.5px/1 var(--ipu-fa); }
+#invincible-tactics-dock .itd-vital > .ipu-cost { height: 10px; color: var(--c); }
+.igd-uv > .ipu-sym { color: var(--ita-red-lt); }
+.igd-uv > .ipu-sym .ipu-sym-g.fa-solid { all: unset; display: inline-block; font: 900 10px/1 var(--ipu-fa); }
+.igd-uv > .ipu-cost { height: 11px; color: var(--ita-cyan); }
+:is(#invincible-tactics-dock .itd-vital, .igd-uv) > .ipu-sym .ipu-sym-g.fa-solid::before { color: inherit; }
+/* the GM desk */
+.igd-rollmarks { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px 6px; color: var(--ita-text); }
+#invincible-tactics-desk .igd-seg button > :is(.ipu-cost, .ipu-costs) { --ipu-cost-h: 11px; }
+.igd-tag-mark { display: inline-flex; align-items: center; color: var(--ita-yellow); cursor: help; }
+.igd-ustate-mark { display: inline-flex; padding: 0; border: 0; color: var(--ita-text); cursor: help; }
+.igd-ustate-mark:is([data-id="broken"], [data-id="dying"], [data-id="dead"], [data-id="unconscious"], [data-id="stressedOut"]) { color: var(--ita-red-lt); border: 0; }
+/* tooltips: the price line and a weapon's numbers are pairs, the mark and then its name */
+#tooltip.ita-tip .ita-tt small.ita-tt-price { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; }
+#tooltip.ita-tip .ita-tt-pp { display: inline-flex; align-items: center; gap: 5px; }
+#tooltip.ita-tip .ita-tt-pp > :is(.ipu-cost, .ipu-costs) { color: #ffe72a; }
+#tooltip.ita-tip .ita-tt-price .ipu-stress { font-size: 11px; }
+#tooltip.ita-tip .ita-tt-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: #fff; }
+#tooltip.ita-tip .ita-tt .ita-tt-marks b { font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: 0; text-transform: none; color: #fff; }
+#tooltip.ita-tip .ita-tt-marks .ipu-sym > .ipu-sym-g { color: #ffe72a; }
+/* THE LEGEND: every mark with its name, a card above the dock (the Marks button of the dock's tail) and on the GM desk */
+.ita-legend { width: max-content; max-width: 100%; }
+.ita-legend-b { padding: 8px 12px 10px; }

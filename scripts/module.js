@@ -1817,8 +1817,6 @@ import("./combat/main.mjs")
 import("./kit.mjs")
   .then((kit) => kit.start())
   .catch((err) => console.warn(`${MODULE_ID} | shared kit not loaded (tooltips keep Foundry's default look, everything else is unaffected)`, err));
-/* U86-SCAFFOLD (stage 1 of ledger U86): the switch between three versions of the marks of cost, and their legend. Stage 2 deletes this import. */
-import("./u86-scaffold.mjs").then((m) => m.start()).catch((err) => console.warn(`${MODULE_ID} | U86 scaffold not loaded`, err));
 
 /* THE SYSTEM'S ROLL DIALOG in the module's look (scripts/rolldialog.mjs, styles/rolldialog.css; ledger U69): the window keeps the system's
    template and buttons; this names the main way to roll and opens it at the width of a caption card. */

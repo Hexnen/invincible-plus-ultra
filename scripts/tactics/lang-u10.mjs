@@ -5,6 +5,7 @@
    The key of a sentence is the engine's own reason id (ITAC.reason.<id> stays the short word inside other sentences). */
 export const EN_U10 = {
   "ITAC.ui.tip.cost": "Costs: {cost}",
+  "ITAC.ui.tip.costLead": "Costs",
   "ITAC.why.other": "Not possible right now: {reason}.",
   "ITAC.fix.ask": "Click it to ask the GM for an exception.",
   "ITAC.fix.gm": "Click it to allow it anyway.",
@@ -131,13 +132,14 @@ export const EN_U10 = {
   /* U53: first-fight hints */
   "ITAC.Settings.tacticsHints.Name": "Tactical combat: first-fight hints",
   "ITAC.Settings.tacticsHints.Hint": "Shows each short hint once, the first time you meet the thing (the two slots, the mark of speed, pushing). Turn it off and on again to see them once more.",
-  "ITAC.hint.slots": "A turn is two slots: the long one takes a full action or a second quick one, the short one a quick action.",
-  "ITAC.hint.speed": "The mark under a picture is its speed: a long bar is a full action, a short bar a quick one, a diamond takes no action. Hover for the rest.",
-  "ITAC.hint.push": "Pushing rolls again every die that shows neither a six nor a one. Each one after it costs 1 Resolve. Once per roll.",
+  "ITAC.hint.slots": "Your turn: [[full]] and [[quick]]. [[full]] also pays for a second [[quick]].",
+  "ITAC.hint.speed": "The mark under a picture is its price: [[full]], [[quick]] or [[none]]. Hover a mark for its name. All of them: the Marks button.",
+  "ITAC.hint.push": "[[push]] rolls again every die that shows neither a six nor a one. Each one after it costs [[stress:1]]. Once per roll.",
   "ITAC.hint.close": "Got it",
 };
 export const PL_U10 = {
   "ITAC.ui.tip.cost": "Koszt: {cost}",
+  "ITAC.ui.tip.costLead": "Koszt",
   "ITAC.why.other": "Teraz niemożliwe: {reason}.",
   "ITAC.fix.ask": "Kliknij, żeby zapytać MG o wyjątek.",
   "ITAC.fix.gm": "Kliknij, żeby mimo to na to pozwolić.",
@@ -258,8 +260,8 @@ export const PL_U10 = {
   "ITAC.Settings.tacticsSummary.Hint": "Pokazuje małą kartę na koniec rundy i na koniec walki: kto ile zadał i ile stracił. Znika sama.",
   "ITAC.Settings.tacticsHints.Name": "Walka taktyczna: podpowiedzi w pierwszej walce",
   "ITAC.Settings.tacticsHints.Hint": "Każda krótka podpowiedź pokazuje się raz, przy pierwszym zetknięciu (dwa sloty, znak szybkości, forsowanie). Wyłącz i włącz, żeby zobaczyć je jeszcze raz.",
-  "ITAC.hint.slots": "Tura to dwa sloty: długi na pełną akcję albo drugą szybką, krótki na szybką akcję.",
-  "ITAC.hint.speed": "Znak pod ikoną to szybkość: długa kreska to pełna akcja, krótka to szybka, romb nie zajmuje akcji. Resztę powie podpowiedź.",
-  "ITAC.hint.push": "Forsując, rzucasz ponownie kośćmi bez szóstki i bez jedynki. Każda jedynka po forsowaniu kosztuje 1 punkt Determinacji. Raz na rzut.",
+  "ITAC.hint.slots": "Twoja tura: [[full]] i [[quick]]. [[full]] opłaci też drugą [[quick]].",
+  "ITAC.hint.speed": "Znak pod ikoną to cena: [[full]], [[quick]] albo [[none]]. Nazwę znaku pokaże podpowiedź. Wszystkie: przycisk Znaki.",
+  "ITAC.hint.push": "[[push]]: rzucasz ponownie kośćmi bez szóstki i bez jedynki. Każda jedynka po forsowaniu kosztuje [[stress:1]]. Raz na rzut.",
   "ITAC.hint.close": "Jasne",
 };
