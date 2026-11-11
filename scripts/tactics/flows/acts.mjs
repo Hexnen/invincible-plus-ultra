@@ -99,13 +99,21 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
       if (old) for (const w of M.effectEndWrites(v.state, old.id)) R.effects.push({ t: "state", path: w.path, to: w.to });
       break;
     }
+    case "summon": {                                                                         // [B1808-1815]: three allies as one group of minions, two more per "more"; a power for them costs 1 stress
+      const f = String(opt ?? "").split("+").filter(Boolean), n = (id) => f.filter((x) => x === id).length;
+      if (n("powered") > 0) R.effects.push({ t: "stress", who: I.actor, n: n("powered"), cost: 1 });
+      R.effects.push({ t: "summon", who: I.actor, members: 3 + 2 * n("more"), item: e.kit?.item ?? null, delayed: a?.pass?.summonDelay ? 1 : 0 });
+      if (n("versatile") + n("powered") > 0) R.effects.push({ t: "message", gmOnly: 1, key: "ITAC.msg.summonFinish", params: { name: a?.name ?? "", versatile: n("versatile"), powered: n("powered"), text: String(I.decl.text ?? "").slice(0, 200) } });
+      I.data.gain = 3 + 2 * n("more"); break;
+    }
+    case "dismiss": R.effects.push({ t: "summonLeave", combatants: K.summonsOf(v, I.actor) }); break;      // [B1812]
     case "regen": if (a && a.health < a.maxHealth) { R.effects.push({ t: "actor", who: I.actor, path: "health", to: a.health + 1 }); I.data.gain = 1; } break;      // [B1893]
     case "toggle": R.effects.push({ t: "fx", who: I.actor, item: fx.item, fx: fx.fx, on: !e.fxOn }); I.data.on = e.fxOn ? 0 : 1; break;      // a form, a size, a stance: the sheet's own active effect
     default: break;
   }
 }
 const P1L = (v, cid) => v.state.ledger?.[cid];
-export const KIT_KINDS = Object.freeze(["shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle"]);
+export const KIT_KINDS = Object.freeze(["shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss"]);
 const sameZone = (v, a, b) => { const r = v.facts.range?.(a, b); return r === undefined ? undefined : !!r && r.total === 0; };   // undefined: no map, the GM judges
 
 function legality(v, inst) {
@@ -126,6 +134,10 @@ function legality(v, inst) {
   if (other && (e?.sameZone || (e?.touch && !a.pass?.healReach)) && sameZone(v, inst.actor, subject) === false) return bad("notSameZone", GM);
   if (other && e?.immuneHuge && sf?.huge) return bad("hugeTarget");
   if (kind === "reabsorb" && !(K.copiesOf(v.state, inst.actor) > 0)) return bad("noCopies");
+  if (kind === "summon" && K.summonsOf(v, inst.actor).length) return bad("summonsOut", GM);                       // [B1812]: not while the earlier allies are still there
+  if (kind === "summon" && String(d.opt ?? "").includes("powered") && !damage.canTakeVoluntaryStress(a.resolve)) return bad("stressedOut");
+  if (kind === "dismiss" && !K.summonsOf(v, inst.actor).length) return bad("noSummons");
+  if (other && e?.near && (v.facts.range?.(inst.actor, subject)?.total ?? 0) > 1) return bad("tooFar", GM);          // [B1637]: this zone or the next
   if (kind === "regen" && !(a.health < a.maxHealth)) return bad("healthFull");
   if (kind === "inspire" && !(sf.resolve < sf.maxResolve)) return bad("resolveFull");
   if (kind === "inspire" && other && v.facts.canTalk?.(inst.actor, subject) === false) return bad("cannotHear", GM);
@@ -254,6 +266,7 @@ export const act = {
       const a = K.answerOf(v, I, "outcome"), id = K.answerId(v, I, "outcome") ?? I.data.result;
       I.data.result = id === "fail" ? "fail" : "success";
       if (a && typeof a === "object" && a.text) I.data.said = String(a.text).slice(0, 300);
+      if (v.entry(I)?.effect?.then === "control" && I.data.result === "success" && !K.flag(I, "control")) { K.setFlag(I, "control"); R.effects.push({ t: "summonFlag", who: subjectOf(I), owner: I.actor }); }      // [B1637]: the animal acts on its controller's turn from now on
       if (kind === "bystanders" && !K.flag(I, "karma")) { K.setFlag(I, "karma"); R.effects.push({ t: "karma", note: { who: I.actor, kind: I.data.result === "success" ? "savedBystanders" : "failedBystanders", zone: v.facts.zone?.(I.actor)?.spot ?? undefined, note: I.data.said } }); }
       R.events.push({ type: "outcome", result: I.data.result, text: I.data.said ?? "" });
       R.goto = "close"; return R;

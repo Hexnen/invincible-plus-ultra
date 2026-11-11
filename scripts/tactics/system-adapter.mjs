@@ -116,6 +116,7 @@ export function participant(c) {
     challenge: a?.type === "challenge",                              // no card [I12] [R22]
     vehicle: a?.type === "vehicle",                                  // P7: no card either, the people aboard act [B2936]
     summonOf: S.isId(summonOf) ? summonOf : null,                    // acts on its owner's turn [I14]; set by the action engine or the GM
+    summonDelayed: c?.flags?.[MOD]?.tactics?.summon?.delayed === 1,  // [B1816]: not on the turn it appears
     veteran: hasTalent(a, "combatVeteran"),                          // [I7]
     reflexes: hasTalent(a, "fastReflexes"),                          // [I6]
     resolve: num(a?.system?.derived?.resolve?.value, 0)

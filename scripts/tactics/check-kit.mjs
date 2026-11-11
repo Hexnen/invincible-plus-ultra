@@ -271,6 +271,76 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   eq(code(await T.gm({ op: "undo", tx: a })), "ok", "kitFlag: undone through the journal");
   eq(T.c.H1.itemFlags.blast.off, null, "the item's flag is back");
 }
+/* ================================================================== Summoning [B1808-1816]: allies that really stand in the fight */
+{
+  const summ = (level = "basic", more = []) => [item("su", "Summoning", "power", { level }), ...more];
+  const slotOf = (T, id) => T.state.init.slots.some((s) => s.members.includes(id));
+  const T = base(summ());
+  const a = act(T, "H1", "summon"), dm = act(T, "H1", "dismiss");
+  eq([a.pick, a.cost, a.kit.state], [["versatile", "powered", "more"], "full", "assist"], "Summoning at Basic: one feature to choose, a full action");
+  eq([code(await T.req("p1", decl("H1", dm.id))), why(T.last)], ["illegal", "noSummons"], "nothing to dismiss yet");
+  eq(code(await T.req("p1", decl("H1", a.id, { opt: "more" }))), "ok", "summon: declared");
+  const sid = Object.keys(T.c).find((k) => T.c[k].summonOf === "H1"), S1 = T.c[sid];
+  eq([S1.kind, S1.members, S1.attrs.strength, S1.resolve, S1.owners, S1.npc], ["minions", 5, 4, 6, ["p1"], false], "five allies as one group of minions: attributes 4, Resolve 6, run by the summoner's player [B1808], [B1811]");
+  eq([T.state.summons.map((s) => [s.owner, s.combatants]), slotOf(T, sid), P1.budget(T.state, sid).full, P1.budget(T.state, "H1").full], [[["H1", [sid]]], false, "open", "used"], "they hold no card and act on the summoner's turn, also the turn they appear");
+  eq(code(await T.req("p1", decl(sid, "slugfest", { targets: ["N1"] }))), "ok", "the player declares the group's attack on the hero's own turn");
+  await pass(T); await T.roll("attack", 0);
+  eq([code(await T.gm({ op: "declare", actor: "H1", gm: true, decl: { action: a.id, opt: "more" } })), why(T.last)], ["illegal", "summonsOut"], "no second group while the first is out [B1812]");
+  /* the journal: the arrival is one transaction, undone as one */
+  const tx = T.log.list.find((x) => x.ops.some((o) => o.t === "summon+"));
+  ok(!!tx, "the arrival is journaled");
+  /* broken allies leave by themselves; the leave is journaled and can be undone */
+  await T.gm({ op: "setHealth", combatant: sid, value: 0 });
+  eq([!!T.c[sid], T.state.summons, !!T.state.ledger[sid], T.log.list.at(-1).ops.map((o) => o.t)], [false, [], false, ["summon-"]], "a broken group leaves the fight (token, combatant, its place in the round)");
+  await T.gm({ op: "undo", tx: T.log.list.at(-1).id });
+  eq([!!T.c[sid], T.state.summons.map((s) => s.combatants)], [true, [[sid]]], "undo of the leave: the group stands again (the GM sets its Health)");
+  await T.gm({ op: "setHealth", combatant: sid, value: 3 });
+  /* dismissed by a full action */
+  eq(code(await T.gm({ op: "declare", actor: "H1", gm: true, decl: { action: dm.id } })), "ok", "dismiss");
+  eq([!!T.c[sid], T.state.summons], [false, []], "dismissed: gone [B1812]");
+  /* the summoner is broken: the allies go */
+  const U = base(summ("major"));
+  const ua = act(U, "H1", "summon");
+  eq(ua.pick.length, 6, "Major: two features, the same one twice if wished [B1813]");
+  eq([code(await U.req("p1", decl("H1", ua.id, { opt: "powered" }))), why(U.last)], ["illegal", "noChoice"], "one feature is not a choice at Major");
+  await U.req("p1", decl("H1", ua.id, { opt: "powered+more", text: "wolves with a Blast" }));
+  const uid = Object.keys(U.c).find((k) => U.c[k].summonOf === "H1");
+  eq([U.c[uid].members, U.c.H1.resolve, U.performed.filter((e) => e.t === "message").map((e) => [e.key, e.gmOnly, e.params.powered, e.params.text])], [5, 4, [["ITAC.msg.summonFinish", 1, 1, "wolves with a Blast"]]], "powered and more: 1 stress, five allies, the GM is told what to finish on the group's sheet [B1810]");
+  await U.gm({ op: "undo", tx: U.log.list.at(-1).id });
+  eq([!!U.c[uid], U.state.summons, U.c.H1.resolve, P1.budget(U.state, "H1").full], [false, [], 5, "open"], "undo of the summoning: the group is gone, the stress and the action are back");
+  await U.req("p1", decl("H1", ua.id, { opt: "more+more" }));
+  const uid2 = Object.keys(U.c).find((k) => U.c[k].summonOf === "H1");
+  eq(U.c[uid2].members, 7, "more twice: seven");
+  await U.gm({ op: "setHealth", combatant: "H1", value: 0 });
+  eq([!!U.c[uid2], U.state.summons], [false, []], "the summoner is broken: the allies leave [B1812]");
+  /* Delayed Summoning [B1816]; the end of the scene */
+  const V = base([item("su", "Summoning", "power", { boosts: ["ds"] }), item("ds", "Delayed Summoning", "limit", { power: "su" })]);
+  await V.req("p1", decl("H1", act(V, "H1", "summon").id, { opt: "versatile" }));
+  const vid = Object.keys(V.c).find((k) => V.c[k].summonOf === "H1");
+  eq([V.c[vid].members, code(await V.req("p1", decl(vid, "slugfest", { targets: ["N1"] }))), V.state.summons[0].wait], [3, "notYourTurn", [vid]], "Delayed Summoning: three allies that do not act on the turn they appear");
+  V.turn("N1").turn("H2").turn("N2");
+  await V.gm({ op: "nextRound" });
+  for (let i = 0; i < 6 && V.state.init.curMember !== "H1"; i++) await V.gm({ op: "nextTurn" });
+  eq([V.state.round, V.state.summons[0].wait, code(await V.req("p1", decl(vid, "slugfest", { targets: ["N1"] })))], [2, undefined, "ok"], "they act from the summoner's next turn on");
+  await pass(V); await V.roll("attack", 0);
+  await V.gm({ op: "endScene" });
+  eq([V.state.phase, !!V.c[vid]], ["sceneEnd", false], "the scene ends: summoned allies are gone");
+}
+/* ================================================================== Animal Control [B1637]: the controlled animal acts on the hero's turn */
+{
+  const T = base([item("ac", "Animal Control", "power")]);
+  const a = act(T, "H1", "control");
+  eq([code(await T.req("p1", decl("H1", a.id, { targets: ["N2"] }))), why(T.last)], ["illegal", "hugeTarget"], "not a huge creature");
+  T.setRange("H1", "N1", 2);
+  eq([code(await T.req("p1", decl("H1", a.id, { targets: ["N1"] }))), why(T.last)], ["illegal", "tooFar"], "this zone or the next");
+  T.setRange("H1", "N1", 1);
+  await T.req("p1", decl("H1", a.id, { targets: ["N1"], text: "the guard dog" }));
+  eq(T.prompt("outcome")?.to, "gm", "the GM confirms that it is an animal and that it obeys");
+  await T.gm({ op: "answerFor", prompt: T.prompt("outcome").id, value: "success" });
+  eq([T.c.N1.summonOf, T.state.summons.map((s) => [s.owner, s.combatants]), T.state.init.slots.some((s) => s.members.includes("N1")), P1.budget(T.state, "N1").full], ["H1", [["H1", ["N1"]]], false, "open"], "controlled: it acts on the hero's turn, the very same turn too");
+  await T.gm({ op: "setHealth", combatant: "H1", value: 0 });
+  ok(!!T.c.N1, "a controlled animal is not removed like summoned allies");
+}
 /* ================================================================== Defensive [B2105]: offered when the attack comes, never ahead of it */
 {
   const T = base([item("de", "Defensive", "talent")], [], { h1: { resolve: 2, maxResolve: 5 } });

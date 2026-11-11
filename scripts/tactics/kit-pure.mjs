@@ -100,6 +100,7 @@ function profileOf(item, row, a, lv, attrs, many = false) {
 
 /* ------------------------------------------------------------------ actions */
 const AS = { orders: "orders", slugfest: "slugfest", shoot: "shoot", rally: "rally", persuade: "persuade" };
+const multisets = (list, n, from = 0) => (n <= 0 ? [[]] : list.slice(from).flatMap((x, i) => multisets(list, n - 1, from + i).map((r) => [x, ...r])));
 function actionOf(item, row, a, lv, extra = {}) {
   const id = kid(item, a.k), meta = { item: item.id, key: row?.key ?? null, k: a.k };
   let e;
@@ -114,7 +115,8 @@ function actionOf(item, row, a, lv, extra = {}) {
   } else {
     e = { id, src: row?.src ?? [], kind: "kit", cost: a.cost ?? "full", flow: "act", tags: ["kit"], effect: { ...(a.effect ?? { kind: "narrative" }) } };
     for (const k of ["roll", "oppose", "target", "when", "pick"]) if (a[k]) e[k] = JSON.parse(JSON.stringify(a[k]));
-    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge"]) if (a[k]) e[k] = 1;
+    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near"]) if (a[k]) e[k] = 1;
+    if (a.combo && Array.isArray(a.pick)) e.pick = multisets(a.pick, Math.max(1, at(a.combo, lv))).map((c) => c.join("+"));          // Summoning [B1813-1815]: as many features as the level, repeats allowed
     if (a.once) e.once = a.once;
     for (const k of ["lv", "armor"]) if (Array.isArray(e.effect[k])) e.effect[k] = at(e.effect[k], lv);
     if (a.reaction) {

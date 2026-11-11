@@ -104,7 +104,7 @@ export class Table {
       actorValue: (uuid, path) => Object.values(T.c).find((x) => x.actorUuid === uuid)?.[path],
     };
   }
-  parts() { return Object.values(this.c).map((x) => ({ id: x.id, hero: !x.npc, owners: x.owners.slice(), defeated: !!x.defeated, challenge: x.kind === "challenge", vehicle: x.kind === "vehicle", summonOf: x.summonOf, veteran: x.veteran, reflexes: x.reflexes, resolve: x.resolve })); }
+  parts() { return Object.values(this.c).map((x) => ({ id: x.id, hero: !x.npc, owners: x.owners.slice(), defeated: !!x.defeated, challenge: x.kind === "challenge", vehicle: x.kind === "vehicle", summonOf: x.summonOf, summonDelayed: x.summon?.delayed === 1, veteran: x.veteran, reflexes: x.reflexes, resolve: x.resolve })); }
   sceneFacts() { return Object.values(this.c).map((x) => ({ id: x.id, name: x.name, type: x.kind === "hero" ? "superhero" : x.kind, health: x.health, maxHealth: x.maxHealth, resolve: x.resolve, maxResolve: x.maxResolve, strength: x.attrs.strength, regeneration: x.regeneration })); }
   now() { return ++this.clock; }
   setting(key) { return this.settings[key]; }
@@ -119,6 +119,14 @@ export class Table {
       case "rollRequest": this.requests.push(e); return {};
       case "kitFlag": { const c = byUuid(e.uuid), fl = ((c.itemFlags ??= {})[e.item] ??= {}), from = fl[e.key] ?? null; fl[e.key] = e.value ?? null; return e.undo || JSON.stringify(from) === JSON.stringify(e.value ?? null) ? {} : { op: { t: "itemFlag", actorUuid: e.uuid, itemId: e.item, key: e.key, from, to: e.value ?? null } }; }
       case "summonFlag": { const c = this.c[e.combatant], from = c.summonOf ?? null; c.summonOf = e.owner ?? null; return e.undo || from === c.summonOf ? {} : { op: { t: "summonFlag", combatant: e.combatant, from, to: c.summonOf } }; }
+      case "summonCreate": {                                           // a group of minions beside its owner, run by the owner's player
+        const o = this.c[e.owner], id = `S${++this.n}`;
+        this.add(id, { name: `${o.name}: allies`, owners: o.owners, npc: o.npc, kind: "minions", attrs: Object.fromEntries(Object.keys(ATTRS).map((k) => [k, 4])), health: e.members, maxHealth: 10, resolve: 6, members: e.members, zone: o.zone, summonOf: e.owner });
+        Object.assign(this.c[id], { summon: { kind: "summon", auto: 1, ...(e.delayed ? { delayed: 1 } : {}) } });
+        return { op: { t: "summon+", combatId: "c", combatantId: id, sceneId: "s", tokenId: id }, result: { combatant: id } };
+      }
+      case "summonRemove": { const c = this.c[e.combatant]; if (!c) return {}; delete this.c[e.combatant]; return e.undo ? {} : { op: { t: "summon-", combatId: "c", sceneId: "s", combatant: c, token: { _id: c.id } } }; }
+      case "summonRestore": if (e.combatant?.id) this.c[e.combatant.id] = e.combatant; return {};
       case "zones": {                                                  // the zones API's write path: apply(op) -> { ok, inverse } (zones-api.md section 12), here for { op:"zone" }
         const op = e.op ?? {};
         this.zonesLog.push(e.undo ? { undo: op } : op);

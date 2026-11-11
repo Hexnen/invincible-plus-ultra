@@ -162,6 +162,11 @@ async function applyEffect(X, I, e, step) {
        about (`zput`). The host answers { ok, done, total, stop: { reason, data } | null, spot, left } and the journal keeps the map's inverse. */
     case "zmove": case "zput": { const res = await perform(X, tx, { ...e, tx }, I, step); (I.data.res ??= {})[e.key] = isObj(res) ? res : { ok: false, reason: "noZones" }; return true; }
     case "message": await perform(X, tx, { ...e, tx }, I, step); return false;
+    /* P6 [B1808]: a summoned group arrives beside its owner, or leaves; [B1637] a combatant acts for another from now on. Documents of the
+       table: the host creates, removes or marks them and hands back the op that undoes it. The round driver follows (director-pure.mjs). */
+    case "summon": { const res = await perform(X, tx, { t: "summonCreate", owner: e.who, members: e.members, item: e.item ?? null, delayed: e.delayed ? 1 : 0, tx }, I, step); if (isObj(res) && res.combatant) I.data.summoned = res.combatant; return false; }
+    case "summonLeave": for (const id of Array.isArray(e.combatants) ? e.combatants : []) await perform(X, tx, { t: "summonRemove", combatant: id, tx }, I, step); return false;
+    case "summonFlag": await perform(X, tx, { t: "summonFlag", combatant: e.who, owner: e.owner ?? null, tx }, I, step); return false;
     default: return false;
   }
 }
@@ -965,6 +970,10 @@ async function system(X, effects) {
         if (l.resolve && l.resolve.to !== l.resolve.from && c.resolve === l.resolve.from) await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: l.resolve.to, tx });
       }
       closeTx(X, tx, { pub: "", gm: "{ITAC.journal.sceneEnd}" });
+    } else if (fx?.type === "summonLeave") {                                                 // P6 [B1812]: its owner is broken, the group is, or the scene is over
+      const tx = openTx(X, {});
+      for (const id of Array.isArray(fx.combatants) ? fx.combatants : []) await perform(X, tx, { t: "summonRemove", combatant: id, tx });
+      closeTx(X, tx, { pub: "{ITAC.journal.summonLeft}", gm: "{ITAC.journal.summonLeft}" });
     } else if (fx?.type === "abortInstances") {
       for (const inst of [...X.state.stack].reverse()) if (inst.actor === fx.actor && instOf(X, inst.id)) await abortInst(X, inst.id, true);
       dropPrompts(X, (p) => p.about === fx.actor);

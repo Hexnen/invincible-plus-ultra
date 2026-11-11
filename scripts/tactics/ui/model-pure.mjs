@@ -122,6 +122,11 @@ function titleOf(p, t, facts, round) {
   if (k === "direction" && Array.isArray(p.data?.zones)) return t("ITAC.ui.card.forced");
   return t(`ITAC.${p.to === "desk" ? "card" : "prompt"}.${k}`, {}, null) ?? t(`ITAC.card.${k}`, {}, null) ?? t(`ITAC.Prompt.${k}.Title`, {}, cap(k));
 }
+/* a choice of several features at once ("more+more+powered"): each named once, with how many times */
+function comboLabel(t, id) {
+  const parts = String(id).split("+"), uniq = [...new Set(parts)];
+  return uniq.map((p) => { const n = parts.filter((x) => x === p).length, s = t(`ITAC.kit.pick.${p}`, {}, p); return n > 1 ? `${s} x${n}` : s; }).join(" + ");
+}
 function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
   const kind = p.of ?? p.kind;
   if (desk && kind === "reaction" && o.id === "pass") return t("ITAC.ui.noReaction");
@@ -372,7 +377,7 @@ function declarePanel(bar, a, own, facts, t) {
   const pool = poolPreview({ ...a, attr: ap?.attr ?? arm.attr ?? attr }, bar, facts, own.tokens ?? []);
   /* P6: the choice an ability asks for (a plan, good or bad luck, how much) */
   const pickId = a.pick?.includes(own.choice) ? own.choice : a.pick?.length === 1 ? a.pick[0] : null;
-  const choice = a.pick?.length ? { label: t("ITAC.ui.kit.choice"), hint: a.kit?.state === "assist" ? t("ITAC.ui.kit.gmWord") : null, items: a.pick.map((id) => ({ id, label: t(`ITAC.kit.pick.${id}`, {}, String(id)), picked: id === pickId })) } : null;
+  const choice = a.pick?.length ? { label: t("ITAC.ui.kit.choice"), hint: a.kit?.state === "assist" ? t("ITAC.ui.kit.gmWord") : null, items: a.pick.map((id) => ({ id, label: comboLabel(t, id), picked: id === pickId })) } : null;
   if (pool) for (const x of arm.dice) { pool.parts.push(x); pool.total = Math.max(1, pool.total + x.dice); }
   let chance = null;
   if (pool) {

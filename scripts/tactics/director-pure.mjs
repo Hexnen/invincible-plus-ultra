@@ -71,8 +71,16 @@ async function round(state, log, action, user, host) {
    has none while people stand in it (a chase just ended, or its start was undone) gets them dealt by the round driver [A-1]. */
 const summonSig = (list, parts) => (parts ? parts.filter((p) => p.summonOf && !p.defeated && parts.some((o) => o.id === p.summonOf)).map((p) => `${p.summonOf}>${p.id}`)
   : (list ?? []).flatMap((su) => (su.combatants ?? []).map((id) => `${su.owner}>${id}`))).sort().join(",");
-async function cards(state, log, events, host) {
+function leaving(state, host) {
+  const parts = (host.parts?.() ?? []).filter((p) => p.summonOf);
+  if (!parts.length) return [];
+  const f = host.facts();
+  return parts.filter((p) => { const c = f.c(p.id), o = f.c(p.summonOf); return c?.summon?.auto && (state.phase === "sceneEnd" || !o || o.present === false || !(o.health > 0) || !(c.health > 0)); }).map((p) => p.id);
+}
+async function cards(state, log, events, host, sweep = true) {
   if (!state) return { state, log };
+  const gone = state.stack.length || !sweep ? [] : leaving(state, host);                              // P6 [B1812]: summoned allies leave by themselves
+  if (gone.length) { const e = await E.handle({ state, log }, { t: "sys", effects: [{ type: "summonLeave", combatants: gone }] }, host); if (e.changed) { state = e.state; log = e.log; events.push(...e.events); } }
   if (summonSig(state.summons) !== summonSig(null, host.parts?.() ?? [])) {                 // P6 [I14]: a summoned group came, left or changed hands: the round driver follows at once
     const r = await round(state, log, { type: "roster" }, { id: "engine", staff: true }, host);
     if (r.ok && !r.same) { events.push(...r.events); state = r.state; log = r.log; }
@@ -86,8 +94,8 @@ async function cards(state, log, events, host) {
   return { state: r.state, log: r.log };
 }
 /* the round waits for the trigger instances of a blocking queue: when the stack is empty again it goes on */
-async function settle(state, log, events, host) {
-  const c = await cards(state, log, events, host);
+async function settle(state, log, events, host, sweep = true) {
+  const c = await cards(state, log, events, host, sweep);
   let s = c.state, l = c.log;
   for (let guard = 0; guard < 6 && s?.sched?.hold && !s.stack.length; guard++) {
     const r = await round(s, l, { type: "resume" }, { id: "engine", staff: true }, host);
@@ -111,7 +119,7 @@ export async function handle({ state, log }, input, host) {
       const e0 = await E.handle({ state: st0, log: lg0 }, input, host);
       const e = pre.length ? { ...e0, events: [...pre, ...e0.events], changed: true, state: e0.changed ? e0.state : st0, log: e0.changed ? e0.log : lg0 } : e0;
       if (!e.changed) return e;
-      const done = await settle(e.state, e.log, e.events, host);
+      const done = await settle(e.state, e.log, e.events, host, input?.req?.op !== "undo");      // an undone leave stands until the next request: the GM puts right what made the allies go
       return { ...e, state: done.state, log: done.log };
     }
     const user = input.user, req = input.req, op = req.op;

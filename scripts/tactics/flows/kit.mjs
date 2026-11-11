@@ -40,6 +40,8 @@ export const sixesOf = (inst, key) => { const r = rollOf(inst, key); return r ? 
 
 /** The immunity flags of a target as the rules library reads them (stunts.immunitiesOf): `huge`, `grown`, `impervious` and a free
     list `immune`. Which character carries which flag is the GM's word (actor flags, system-adapter.mjs); nothing is decided here. */
+/** P6 [B1808]: the summoned groups of a combatant that leave by themselves (not a controlled animal, not what the GM marked by hand) */
+export const summonsOf = (v, cid) => (v.state.summons ?? []).filter((su) => su.owner === cid).flatMap((su) => su.combatants ?? []).filter((id) => v.facts.c(id)?.summon?.auto);
 export const immunityFlags = (tf) => ({ kind: tf?.kind, huge: !!tf?.huge, grown: !!tf?.grown, impervious: !!tf?.impervious, immune: Array.isArray(tf?.immune) ? tf.immune.slice() : [] });
 
 /* ------------------------------------------------------------------ catalog predicates (spec 8: `requires`, `roll.mods`)

@@ -115,7 +115,7 @@ async function perform(combat, e) {
     case "effectCreate": { const a = await fromUuid(e.actorUuid); if (a && e.data) await a.createEmbeddedDocuments("ActiveEffect", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
     case "tokenMove": { const d = game.scenes.get(e.sceneId)?.tokens.get(e.tokenId); if (d && e.to) await d.update({ x: e.to.x, y: e.to.y, ...(e.to.elevation !== undefined ? { elevation: e.to.elevation } : {}) }, { ipuTactics: true, animate: false }); return {}; }
     case "messageStrike": await Sys.strikeMessage(e.id); return {};
-    case "message": { try { const m = await ChatMessage.create({ content: foundry.utils.escapeHTML?.(String(e.text ?? "")) ?? "", whisper: e.gmOnly ? ChatMessage.getWhisperRecipients("GM").map((u) => u.id) : [], flags: { [MOD]: { tactics: { note: 1 } } } }, { ipuTactics: true }); return m?.id ? { op: { t: "message", id: m.id } } : {}; } catch { return {}; } }
+    case "message": { try { const m = await ChatMessage.create({ content: foundry.utils.escapeHTML?.(e.key ? t(e.key, e.params ?? {}) : String(e.text ?? "")) ?? "", whisper: e.gmOnly ? ChatMessage.getWhisperRecipients("GM").map((u) => u.id) : [], flags: { [MOD]: { tactics: { note: 1 } } } }, { ipuTactics: true }); return m?.id ? { op: { t: "message", id: m.id } } : {}; } catch { return {}; } }
     default: return {};
   }
 }

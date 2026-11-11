@@ -35,7 +35,7 @@ export function onTurnIds(state) {
   const m = state?.phase === "turns" ? state.init.curMember : null;
   if (!m) return [];
   const out = [m];
-  for (const su of state.summons ?? []) if (su?.owner === m && Array.isArray(su.combatants)) out.push(...su.combatants.filter((x) => typeof x === "string"));
+  for (const su of state.summons ?? []) if (su?.owner === m && Array.isArray(su.combatants)) out.push(...su.combatants.filter((x) => typeof x === "string" && !su.wait?.includes(x)));      // [B1816]: not yet arrived
   return out;
 }
 export const isOnTurn = (state, id) => onTurnIds(state).includes(id);
@@ -195,6 +195,7 @@ function openTurn(W, nx) {
     s.init = I.memberDone(s.init, nx.member, { lost: true });
     return;
   }
+  s.summons = (s.summons ?? []).map((su) => (su?.owner === nx.member && su.wait ? { id: su.id, owner: su.owner, combatants: su.combatants } : su));      // [B1816]: delayed allies arrive now
   for (const m of summonsOf(W, nx.member)) s.ledger[m] = Lg.turnStart(ledgerOf(W, m)).ledger;                    // [I14]
   /* Not for a turn that had already begun and was handed on by holding off, and not for an extra turn (hole, reported: the book does
      not say whether turn-start effects and "until your next turn" apply to a commanded turn [B1761]). */
@@ -463,7 +464,7 @@ const OPS = {
       for (const p of parts) {
         if (p.challenge || p.vehicle) continue;
         if (!s.ledger[p.id]) s.ledger[p.id] = Lg.newLedger(s.round);
-        if (fresh.has(p.id) && s.phase === "turns" && s.init.curMember === p.summonOf) s.ledger[p.id] = Lg.turnStart(ledgerOf(W, p.id)).ledger;      // [B1808]: allies act on the turn they appear
+        if (fresh.has(p.id) && !p.summonDelayed && s.phase === "turns" && s.init.curMember === p.summonOf) s.ledger[p.id] = Lg.turnStart(ledgerOf(W, p.id)).ledger;      // [B1808]: allies act on the turn they appear
         if (!I.eligible(p) || I.slotOf(s.init, p.id)) continue;
         const r = I.addCombatant(s.init, p.id, mkId(W));                              // [A-1]
         s.init = r.init;
@@ -567,8 +568,12 @@ function syncSummons(W, parts) {
   const s = W.s, by = new Map(), was = new Set((s.summons ?? []).flatMap((su) => (Array.isArray(su?.combatants) ? su.combatants : [])));
   const ids = new Set(parts.map((p) => p.id));
   for (const p of parts) if (p.summonOf && !p.defeated && ids.has(p.summonOf) && p.summonOf !== p.id) by.set(p.summonOf, [...(by.get(p.summonOf) ?? []), p.id]);
-  s.summons = [...by.entries()].map(([owner, combatants]) => ({ id: `su_${owner}`, owner, combatants }));
+  const waits = new Map((s.summons ?? []).map((su) => [su.owner, su.wait ?? []]));
   const fresh = new Set([...by.values()].flat().filter((id) => !was.has(id)));
+  s.summons = [...by.entries()].map(([owner, combatants]) => {
+    const wait = combatants.filter((id) => waits.get(owner)?.includes(id) || (fresh.has(id) && parts.find((p) => p.id === id)?.summonDelayed));
+    return { id: `su_${owner}`, owner, combatants, ...(wait.length ? { wait } : {}) };
+  });
   for (const id of fresh) if (I.slotOf(s.init, id) && s.init.curMember !== id) s.init = I.removeCombatant(s.init, id).init;
   return fresh;
 }

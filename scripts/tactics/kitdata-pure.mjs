@@ -20,6 +20,7 @@
              medicalGear, stressArmor: [per level], resist: [per level], immune: "flag" | "nonKinetic", vulnerable: "flag", shrunkDice: [per level], grown }
      mods    dice the sheet does not carry: [{ dice, action?: [ids], attack?: [kinds], attr?, vsHuge?, lv?: [per level] }]
      opt     a boost or limit that changes the attacks of its power: { patch, stress?, optional?, on?: "slug" }
+             (`combo: [n per level]` on an action: that many of its `pick` are chosen together, the same one more than once if wished)
      cost    the cost of the row's generic use ("full" unless stated)
      own     the engine applies the entry's dice itself (a dock variant, a rule of its own): what the item's sheet toggle adds is left out of the pools,
              so the two never add up
@@ -27,7 +28,7 @@
 
 export const LEVELS = Object.freeze(["basic", "major", "massive", "monstrous"]);
 export const NOTES = Object.freeze(["attack", "sheet", "move", "toggle", "effect", "token", "outcome", "zone", "map", "gmCard", "flag", "passive", "story", "system", "interrupt",
-  "turn", "reaction", "stunt", "crit", "summon", "copies", "source", "initiative", "vehicle", "scene", "unknown", "off", "weapon", "roll"]);
+  "turn", "reaction", "stunt", "crit", "summon", "copies", "source", "initiative", "vehicle", "scene", "unknown", "off", "weapon", "roll", "control"]);
 const MENTAL = ["reason", "intuition", "presence"];
 const row = (cat, name, src, state, note, more = {}) => ({ cat, name, src, state, note, ...more });
 const P = (name, src, state, note, more) => row("power", name, src, state, note, more);
@@ -76,7 +77,8 @@ export const ROWS = Object.freeze([
 
   /* ================================================================ CONTROL POWERS [B1631-1847] */
   P("Action Plan", [1634], "auto", "token", { acts: [{ k: "plan", cost: "full", roll: { attr: "reason" }, pick: ["attack", "defend", "misdirect"], effect: { kind: "plan" } }] }),
-  P("Animal Control", [1637], "assist", "outcome", { cost: "full" }),
+  P("Animal Control", [1637], "assist", "control", { acts: [{ k: "control", cost: "full", target: { who: "any", n: [1, 1] }, immuneHuge: 1, near: 1, effect: { kind: "narrative", then: "control" }, text: 1 },
+    narr("command", "quick", { roll: { attr: "presence" } })] }),
   B("Animal Control", "Animal Mindlink", [1638], "hand", "story"),
   L("Animal Control", "Specific Animal Only", [1639, 1640, 1641], "hand", "story"),
   P("Cold Control", [1644, 1645, 1646, 1647, 1648, 1649], "assist", "zone", { atk: { source: "cold", by: { "immobilize target": { skip: 1 } } },
@@ -135,8 +137,9 @@ export const ROWS = Object.freeze([
   P("Sound Control", [1799, 1800], "assist", "zone", { atk: { noDamage: 1, ignoreArmor: 1, stunts: "none", immuneHuge: 1, onHit: { stun: 1 } } }),
   burst("Sound Control", "Sonic Boom", [1801]),
   B("Sound Control", "Sonar", [1802, 1803, 1804, 1805], "hand", "passive"),
-  P("Summoning", [1808, 1809, 1810, 1811, 1812, 1813, 1814, 1815], "assist", "summon", { acts: [{ k: "summon", cost: "full", pick: ["versatile", "powered", "more"], effect: { kind: "narrative" }, text: 1 }] }),
-  L("Summoning", "Delayed Summoning", [1816], "hand", "turn"),
+  P("Summoning", [1808, 1809, 1810, 1811, 1812, 1813, 1814, 1815], "assist", "summon", { acts: [{ k: "summon", cost: "full", pick: ["versatile", "powered", "more"], combo: [1, 2, 3, 4], effect: { kind: "summon" }, text: 1 },
+    { k: "dismiss", cost: "full", effect: { kind: "dismiss" } }] }),
+  L("Summoning", "Delayed Summoning", [1816], "auto", "turn", { pass: { summonDelay: 1 } }),
   P("Technology Control", [1819], "assist", "outcome", { cost: "full" }),
   P("Telekinesis", [1822, 1823, 1824, 1825, 1826, 1827, 1828], "assist", "gmCard", { atk: { by: { "throw target": { noDamage: 1, stunts: "none", throws: [3, 4, 5, 6], zones: [2, 3, 4, 5] } } } }),
   B("Telekinesis", "Multiple Targets", [1829], "hand", "story"),

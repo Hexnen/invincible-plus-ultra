@@ -39,11 +39,12 @@ export async function perform(combat, e, roster) {
       case "summonCreate": {
         const owner = combat.combatants.get(e.owner), ot = owner?.token, scene = ot?.parent;
         if (!ot || !scene) { ui.notifications?.warn(t("ITAC.warn.summonNoToken")); return { ok: false, reason: "noToken" }; }
-        const { actor, delta } = await Sys.summonGroup({ name: e.name, members: e.members, template: t("ITAC.kit.summonActor") }, Sys.actorOf(owner));
-        const data = (await actor.getTokenDocument({ ...beside(scene, ot), elevation: ot.elevation, hidden: ot.hidden, disposition: ot.disposition, actorLink: false, name: e.name, delta })).toObject();
+        const name = t("ITAC.kit.summonName", { name: owner.name });
+        const { actor, delta } = await Sys.summonGroup({ name, members: e.members, template: t("ITAC.kit.summonActor") }, Sys.actorOf(owner));
+        const data = (await actor.getTokenDocument({ ...beside(scene, ot), elevation: ot.elevation, hidden: ot.hidden, disposition: ot.disposition, actorLink: false, name, delta })).toObject();
         const [tok] = await scene.createEmbeddedDocuments("Token", [data], OPT);
         const [cb] = await combat.createEmbeddedDocuments("Combatant", [{ tokenId: tok.id, sceneId: scene.id, actorId: actor.id, hidden: tok.hidden,
-          flags: { [MOD]: { tactics: { summonOf: e.owner, summon: { kind: "summon", item: e.item ?? null, auto: 1 } } } } }], OPT);
+          flags: { [MOD]: { tactics: { summonOf: e.owner, summon: { kind: "summon", item: e.item ?? null, auto: 1, ...(e.delayed ? { delayed: 1 } : {}) } } } } }], OPT);
         const spot = Zones.available() ? Zones.spotOf(ot) : null;
         if (spot) await Mv.performMove({ t: "zput", who: cb.id, to: spot, group: [] }, (cid) => (cid === cb.id ? tok : combat.combatants.get(cid)?.token)).catch(() => {});      // the map stands it in its owner's zone
         return { op: { t: "summon+", combatId: combat.id, combatantId: cb.id, sceneId: scene.id, tokenId: tok.id }, result: { combatant: cb.id } };
@@ -72,12 +73,12 @@ export async function perform(combat, e, roster) {
 /* ------------------------------------------------------------------ the copies of a duplicator, as tokens (a picture of the state) */
 const copyOf = (td) => flagOf(td).copyOf ?? null;
 let busy = Promise.resolve();
-/** Bring the copy tokens of every duplicator in line with the state: `n` tokens beside the owner, none when the bonus is gone. */
+/** Bring the copy tokens of every duplicator in line with the state: a few tokens beside the owner, none when the bonus is gone. */
 export function syncCopies(combat, state) {
   busy = busy.then(async () => {
     try {
       if (!Store.iAmExecutor() || !combat) return;
-      const want = new Map((state?.effects ?? []).filter((x) => x.kind === "copies" && Number(x.data?.n) > 0).map((x) => [x.holder, Math.min(8, Math.trunc(x.data.n))]));
+      const want = new Map((state?.effects ?? []).filter((x) => x.kind === "copies" && Number(x.data?.n) > 0).map((x) => [x.holder, Math.min(3, Math.ceil(x.data.n / 3))]));      // the exact number does not matter [B1907]: one to three tokens, fewer as the bonus shrinks
       const scenes = new Set([...combat.combatants].map((cb) => cb.token?.parent).filter(Boolean));
       for (const scene of scenes) {
         const have = scene.tokens.filter((td) => copyOf(td)?.combat === combat.id);
@@ -87,6 +88,8 @@ export function syncCopies(combat, state) {
           if (!ot || ot.parent !== scene) continue;
           const mine = have.filter((td) => copyOf(td).owner === owner);
           gone.push(...mine.slice(n).map((td) => td.id));
+          const far = mine.slice(0, n).filter((td) => Math.hypot(td.x - ot.x, td.y - ot.y) > step(scene) * 2.5 * Math.max(1, ot.width ?? 1) || td.elevation !== ot.elevation);      // the owner moved on: its copies follow
+          for (const [i, td] of far.entries()) await td.update({ ...beside(scene, ot, i), elevation: ot.elevation }, { ...OPT, animate: false });
           for (let i = mine.length; i < n; i++) make.push({ ...ot.toObject(), ...beside(scene, ot, i), _id: undefined, actorLink: false, name: t("ITAC.kit.copyName", { name: ot.name }), alpha: 0.7, locked: true,
             bar1: { attribute: null }, bar2: { attribute: null }, displayBars: 0, flags: { [MOD]: { tactics: { copyOf: { combat: combat.id, owner } } } } });
         }
