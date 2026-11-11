@@ -660,3 +660,60 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 /* W1 (U33): the target chosen on the map is named in the head of the declare panel, small (the map carries the ring) */
 #invincible-tactics-dock .itd-panel[data-kind="declare"] .itd-phead .itd-tgt .ita-face { width: 22px; height: 22px; border-width: 1px; font-size: 12px; }
 #invincible-tactics-dock .itd-mini[data-cam="off"] { opacity: .6; }
+
+/* ---------- U59: since when the table waits (the desk's strip): the time counts up beside each addressee, the bell nudges ---------- */
+#invincible-tactics-desk .igd-wait .ita-wait { align-items: center; }
+.igd-since { flex: none; font: 400 12px/1.2 Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--ita-label); cursor: help; }
+.ita-wait-me .igd-since { color: var(--ita-ink); }
+#invincible-tactics-desk .igd-nudge { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; margin: -1px -5px -2px 0; font-size: 11px; color: var(--ita-text); border: 1px solid var(--ita-frame); transition: translate .12s ease-out; }
+#invincible-tactics-desk .igd-nudge:hover { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); translate: var(--ipu-lift); }
+#invincible-tactics-desk .igd-nudge:active { translate: var(--ipu-sink); }
+.itd-news[data-tone="nudge"] { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
+.itd-news[data-tone="nudge"] > i, .itd-news[data-tone="nudge"] .itd-news-x { color: var(--ita-ink); }
+/* ---------- U60: one combatant at a glance (the head of the desk's character tab) ---------- */
+.igd-unit { display: flex; flex-direction: column; gap: 7px; padding: 8px 10px 9px; background: var(--ita-tile); }
+.igd-uhead { display: flex; align-items: center; gap: 9px; min-width: 0; }
+#invincible-tactics-desk .igd-uface { width: 46px; height: 46px; border: 2px solid var(--ita-line); font-size: 20px; }
+.igd-umain { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+#invincible-tactics-desk select.igd-uwho { width: 100%; min-width: 0; max-width: none; min-height: 26px; padding: 2px 6px; font: 400 14px/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #fff; }
+.igd-ufacts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; }
+.igd-ufacts .ipu-chip { max-width: 100%; }
+.igd-ufacts .ipu-chip > span { overflow: hidden; text-overflow: ellipsis; }
+.igd-ufacts .ipu-chip > i, .igd-ustate > i { font-size: 10px; color: var(--ita-label); }
+.igd-uhid { cursor: help; }
+.igd-uslots { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.igd-uslot { display: block; width: 26px; height: 11px; background: var(--ita-yellow); border: 2px solid var(--ita-ink); outline: 1px solid var(--ita-line); transform: skewX(-14deg); cursor: help; }
+.igd-uslot[data-kind="quick"] { width: 14px; }
+.igd-uslot[data-extra] { background: var(--ita-cyan); }
+.igd-uslot[data-state="pending"] { background: transparent; border: 2px dashed var(--ita-cyan); outline: 0; }
+.igd-uslot[data-state="used"] { background: linear-gradient(to top right, transparent calc(50% - 1px), var(--ita-line) calc(50% - 1px), var(--ita-line) calc(50% + 1px), transparent calc(50% + 1px)); border-color: var(--ita-line); outline: 0; }
+.igd-uslot[data-state="lost"] { background: transparent; border: 2px dashed var(--ita-line); outline: 0; }
+.igd-uvs { display: flex; flex-direction: column; gap: 3px; }
+.igd-uv { --c: var(--ita-red-lt); display: flex; align-items: center; gap: 6px; cursor: help; }
+.igd-uv[data-id="resolve"] { --c: var(--ita-cyan); }
+.igd-uv > i { flex: none; width: 13px; text-align: center; font-size: 11px; color: var(--c); }
+.igd-uv-bar { flex: 1 1 0; height: 8px; background: var(--ita-track); border: 1px solid var(--ita-line); }
+.igd-uv-bar > i { display: block; height: 100%; width: calc(100% * var(--v) / max(1, var(--max))); max-width: 100%; background: var(--c); }
+.igd-uv > b { flex: none; min-width: 38px; text-align: right; font: 400 12px/1 Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
+.igd-ustates { display: flex; flex-wrap: wrap; gap: 4px 5px; }
+.igd-ustate[data-tooltip] { cursor: help; }
+.igd-ustate:is([data-id="broken"], [data-id="dying"], [data-id="dead"], [data-id="unconscious"], [data-id="stressedOut"]) { color: #fff; border-color: var(--ita-red-lt); }
+.igd-ustate:is([data-id="broken"], [data-id="dying"], [data-id="dead"], [data-id="unconscious"], [data-id="stressedOut"]) > i { color: var(--ita-red-lt); }
+.igd-unone { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ita-label); }
+#invincible-tactics-desk .igd-unit > .igd-h { margin-top: 2px !important; }
+.igd-ulast { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.igd-ulast li { display: flex; align-items: baseline; gap: 7px; font-size: 12px; line-height: 1.35; color: var(--ita-text); }
+.igd-ulast li > b { flex: none; min-width: 16px; text-align: center; font: 400 11px/1.5 Titles, Comic, sans-serif; color: var(--ita-label); border: 1px solid var(--ita-line); cursor: help; }
+.igd-ulast li[data-undone] > span { text-decoration: line-through; color: var(--ita-label); }
+.igd-cl[data-tooltip] { cursor: help; text-decoration: underline dotted var(--ita-line); text-underline-offset: 3px; }
+/* ---------- U61: the number on the quick card of a minion group ---------- */
+.ita-count { display: flex; align-items: center; gap: 8px; }
+.ita-count-l { color: var(--ita-text); }
+.ita-count-of { color: var(--ita-label); font-variant-numeric: tabular-nums; }
+.ita-step { display: inline-flex; align-items: center; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button { display: inline-grid; place-items: center; width: 28px; height: 28px; font-size: 11px; color: var(--ita-text); border: 1px solid var(--ita-frame); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button:hover:not(:disabled) { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button:disabled { color: var(--ita-label); border: 1px dashed var(--ita-line); cursor: not-allowed; }
+.ita-step > b { min-width: 34px; text-align: center; font: 400 18px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
+@media (pointer: coarse) { #invincible-tactics-desk .igd-nudge { width: 34px; height: 34px; } :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button { width: 36px; height: 36px; } }
+@media (prefers-reduced-motion: reduce) { #invincible-tactics-desk .igd-nudge { transition: none; } #invincible-tactics-desk .igd-nudge:is(:hover, :active) { translate: none; } }

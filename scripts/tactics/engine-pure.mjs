@@ -209,7 +209,7 @@ async function applyEffect(X, I, e, step) {
 const addresseeOf = (X, cid) => { const c = X.facts.c(cid), users = (c?.owners ?? []).filter((u) => !X.facts.user(u)?.staff); return !c || c.npc || !users.length ? "gm" : { users }; };
 function openPrompt(X, I, spec, step) {
   const id = nextId(X, "p");
-  const p = { id, inst: I?.id ?? null, step, kind: spec.kind, to: spec.to, options: spec.options ?? [] };
+  const p = { id, inst: I?.id ?? null, step, kind: spec.kind, to: spec.to, options: spec.options ?? [], at: X.host.now() };      // U59: since when the table waits for this answer
   for (const k of ["about", "multi", "min", "max", "free", "gmOnlyData", "data"]) if (spec[k] != null) p[k] = spec[k];      // (a card about nobody, a hazard's, carries no `about`: null does not survive the store)
   if (spec.auto) { p.auto = spec.auto; p.answered = { by: "auto", at: X.host.now(), value: spec.auto.option }; }     // plan 5.2 step 4: never shown
   X.state = { ...X.state, prompts: { ...X.state.prompts, [id]: p } }; X.changed = true;
@@ -1114,7 +1114,7 @@ async function gmEdit(X, op, a) {
     case "reveal": if (c(a.combatant)) { const r = {}; for (const k of ["stats", "powers", "health"]) if (a[k]) r[k] = 1; w(["revealed", a.combatant], Object.keys(r).length ? r : null); } else err = "badInput"; break;
     case "knowledgeSet": if (P1.isId(a.observer) && P1.isId(a.subject) && ["seen", "unseen", null].includes(a.value ?? null)) w(["knowledge", a.observer, a.subject], a.value ?? null); else err = "badInput"; break;
     case "karmaNote": if (isObj(a.note) && ["wreckedZone", "savedBystanders", "failedBystanders", "killed"].includes(a.note.kind)) w(["karma"], [...X.state.karma, { id: nextId(X, "k"), who: String(a.note.who ?? "").slice(0, 40), kind: a.note.kind, round: X.state.round, zone: typeof a.note.zone === "string" ? a.note.zone.slice(0, 40) : undefined, note: typeof a.note.note === "string" ? a.note.note.slice(0, 300) : undefined }]); else err = "badInput"; break;
-    case "npcPolicy": if (P1.isId(a.combatant) && isObj(a.policy)) { const pol = {}; for (const k of ["block", "dodge"]) if (["ask", "always", "never"].includes(a.policy[k])) pol[k] = a.policy[k]; if (["ask", "never"].includes(a.policy.push)) pol.push = a.policy.push; if (["ask", "ko", "kill", "crit"].includes(a.policy.onBroken)) pol.onBroken = a.policy.onBroken; if (typeof a.policy.major === "boolean") pol.major = a.policy.major; if (["defence", "turn"].includes(a.policy.keepQuickFor)) pol.keepQuickFor = a.policy.keepQuickFor; w(["npc", a.combatant], pol); } else err = "badInput"; break;
+    case "npcPolicy": if (P1.isId(a.combatant) && isObj(a.policy)) { const pol = {}; for (const k of ["block", "dodge"]) if (["ask", "always", "never"].includes(a.policy[k])) pol[k] = a.policy[k]; if (["ask", "never"].includes(a.policy.push)) pol.push = a.policy.push; if (["ask", "ko", "kill", "crit"].includes(a.policy.onBroken)) pol.onBroken = a.policy.onBroken; if (typeof a.policy.major === "boolean") pol.major = a.policy.major; if (a.policy.quick === true) pol.quick = true;      /* U61: a minion group settled quickly (flows/kit.mjs quickGroup) */ if (["defence", "turn"].includes(a.policy.keepQuickFor)) pol.keepQuickFor = a.policy.keepQuickFor; w(["npc", a.combatant], pol); } else err = "badInput"; break;
     case "ledgerEdit": {                                                                    // one implementation with the reducer's operation (ops-pure.ledgerEditOf); here it is journaled
       if (!P1.isId(a.combatant) || !X.state.ledger[a.combatant]) { err = "gone"; break; }
       const legacy = a.edit ? a : P1.isId(a.voidEntry) ? { ...a, edit: "void", entry: a.voidEntry } : isObj(a.grant) ? { ...a, edit: "grant", grant: { template: "gm", ...a.grant } } : null;
@@ -1483,7 +1483,7 @@ export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "
 export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
   "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp",
   "challengeSetup", "vehicleSet", "chaseStart", "chaseSet", "chaseEnd", "kitFlag", "summonSet", "placed"]);                                                                    // P7
-export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard", "forcedMove", "fall", "hazardRun", "chaseRound"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
+export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard", "forcedMove", "fall", "hazardRun", "chaseRound", "nudge"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
 
 async function request(X, req) {
   const op = req?.op;
@@ -1504,11 +1504,27 @@ async function request(X, req) {
     case "hazard": return opHazard(X, req);
     case "hazardRun": return opHazardRun(X, req);
     case "chaseRound": return opChaseRound(X);
+    case "nudge": return opNudge(X, req);
     default:
       if (GM_INST_OPS.includes(op)) return gmInstOp(X, op, req);
       if (GM_EDIT_OPS.includes(op)) return gmEdit(X, op, req);
       return bad("badInput", { op: String(op ?? "").slice(0, 24) });
   }
+}
+/* U59: THE GM'S NUDGE. The table waits for somebody's answer or dice; the GM asks them to hurry. Nothing of the fight changes and nothing is
+   journaled: the ones waited for get one line of news (state.news, kind "nudge", read only by them: view-pure.viewFor), which their own
+   surface shows. A newer nudge of the same people replaces the older one. No limit of time follows from it [U]. */
+function opNudge(X, a) {
+  let to = null, what = null;
+  if (P1.isId(a.prompt)) { const p = X.state.prompts[a.prompt]; if (!p || p.answered) return bad("gone"); to = p.to; what = { prompt: p.id, ask: p.kind }; }
+  else if (P1.isId(a.inst)) { const r = instOf(X, a.inst)?.rolls?.[String(a.roll ?? "").slice(0, 40)]; if (!r?.req || r.forced != null || (r.sixes != null && !r.pushable)) return bad("gone"); to = { users: r.req.users }; what = { inst: a.inst, roll: r.key }; }
+  else return bad("badInput");
+  const users = (isObj(to) && Array.isArray(to.users) ? to.users : []).filter((u) => { const x = X.facts.user(u); return !!x && !x.staff && x.active; }).slice(0, 12);
+  if (!users.length) return bad("gone");                                                    // nobody at the table to nudge (the GM answers for an absent player: spec 13.1 proxy)
+  const same = (n) => n.kind === "nudge" && Array.isArray(n.to) && n.to.length === users.length && n.to.every((u) => users.includes(u));
+  X.state = { ...X.state, news: (X.state.news ?? []).filter((n) => !same(n)) };
+  pushNews(X, { kind: "nudge", to: users, ...what });
+  return ok();
 }
 function takeRoll(X, r) {
   const inst = instOf(X, r.inst), rec = inst?.rolls?.[r.key];

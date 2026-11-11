@@ -192,6 +192,7 @@ export function sanitizePrompt(r) {
   if (!isObj(r) || !isId(r.id) || typeof r.kind !== "string") return null;
   const p = { id: r.id, inst: idOr(r.inst), step: r.step === null ? null : str(r.step, 40), kind: r.kind.slice(0, 40), to: r.to === "gm" ? "gm" : { users: ids(r.to?.users, 40) }, options: [] };
   if (isId(r.about)) p.about = r.about;
+  if (Number.isFinite(r.at)) p.at = r.at;                                                   // U59: when it was asked
   for (const o of Array.isArray(r.options) ? r.options.slice(0, LIMITS.options) : []) {
     if (!isObj(o) || !isId(String(o.id))) continue;
     const q = { id: String(o.id), label: str(o.label, 120) };

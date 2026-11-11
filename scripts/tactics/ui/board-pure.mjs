@@ -173,11 +173,14 @@ export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobil
     menu opened with): the executor adds it to what the character has at that moment, so damage that landed while the menu stood
     open is not taken back. The engine keeps the state with the number: Health 0 is broken, Health above 0 is not (D59); "Stunned"
     is the lost next turn and its mark together (D53). */
-export function gmItems(cid, vitals, statuses, t) {
+export function gmItems(cid, vitals, statuses, t, group = null) {
   const out = [], v = vitals ?? {};
   if (fin(v.health) && fin(v.maxHealth) && v.maxHealth > 0) out.push({ id: "health", label: t("ITAC.ui.vital.health"), icon: "fa-solid fa-heart", stepper: { value: Math.max(0, v.health), min: 0, max: v.maxHealth }, req: (n, from = Math.max(0, v.health)) => ({ op: "setHealth", combatant: cid, delta: n - from }) });
   if (fin(v.resolve) && fin(v.maxResolve) && v.maxResolve > 0) out.push({ id: "resolve", label: t("ITAC.ui.vital.resolve"), icon: "fa-solid fa-bolt", stepper: { value: Math.max(0, v.resolve), min: 0, max: v.maxResolve }, req: (n, from = Math.max(0, v.resolve)) => ({ op: "setResolve", combatant: cid, delta: n - from }) });
+  /* U61: a minion group: settle it quickly (one card per hit), the GM's switch. `group` = { quick, req(on) } | null */
+  const quick = group ? { id: "quick", label: t("ITAC.ui.policy.quick"), tip: t("ITAC.ui.policy.quick.tip"), icon: "fa-solid fa-forward-fast", toggle: true, on: !!group.quick, req: (on) => group.req(on) } : null;
   const has = new Set((statuses ?? []).map((s) => s.id));
+  if (quick) out.push(quick);
   for (const id of GM_STATES) out.push({ id: `st:${id}`, label: t(`ITAC.status.${id}`, {}, id), icon: "fa-solid fa-circle-dot", toggle: true, on: has.has(id), req: (on) => (on ? { op: "statusAdd", combatant: cid, status: { id } } : { op: "statusRemove", combatant: cid, id }) });
   return out;
 }

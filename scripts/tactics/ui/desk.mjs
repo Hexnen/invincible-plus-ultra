@@ -15,11 +15,21 @@
      Scene    (P7) what stands in the fight without a card: the chase (who flees, who follows, the distance, the chase roll, its end),
               the vehicles (who sits where, the state of the machine) and the challenges (a book preset, what the GM runs by hand)
      Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), a hazard let loose by hand, the karma notes, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
-import { h, icon, swap, askCard, waitChips, rollButtons, visibleRect } from "./dom.mjs";
+import { h, icon, swap, askCard, rollButtons, visibleRect, face } from "./dom.mjs";
 
 const ID = "invincible-tactics-desk";
 const minH = (H) => Math.round(Math.max(240, Math.min(320, H * 0.36)));      // px the open desk keeps whatever floats under it (276 in a 768 px window)
-let root = null, handleBtn = null, box = null, handlers = {}, last = null;
+let root = null, handleBtn = null, box = null, handlers = {}, last = null, tick = 0;
+/* U59: SINCE WHEN THE TABLE WAITS. Each row of the "waiting for" strip carries the moment the oldest thing asked of that addressee was
+   asked (the executor's clock); the strip counts up from it once a second by rewriting the text of its own <time> elements (no redraw
+   of the desk, nothing of the fight read). It is a clock, not a limit: nothing happens at any value [U]. */
+export const elapsed = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)), hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), two = (n) => String(n).padStart(2, "0"); return hh ? `${hh}:${two(mm)}:${two(s % 60)}` : `${mm}:${two(s % 60)}`; };
+function count() { try { const now = Date.now(); for (const el of root?.querySelectorAll("time[data-at]") ?? []) { const x = elapsed(now - Number(el.dataset.at)); if (el.textContent !== x) el.textContent = x; } } catch { /* not drawn */ } }
+const clock = (at) => { try { return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+/* one addressee the table waits for: who, what for, since when, and (for somebody else who is at the table) the nudge */
+const waitRow = (w, L) => h(`span.ita-wait${w.mine ? ".ita-wait-me" : ""}`, {}, h("b", { text: w.who }), h("span", { text: w.what.join(", ") }),
+  Number.isFinite(w.since) ? h("time.igd-since", { text: elapsed(Date.now() - w.since), tip: `${L.since} ${clock(w.since)}`, data: { at: w.since }, attrs: { datetime: new Date(w.since).toISOString(), "aria-label": `${L.since} ${clock(w.since)}` } }) : null,
+  w.nudge ? h("button.ipu-ic.igd-nudge", { fk: `nudge:${w.who}`, tip: { title: w.nudge.label, lines: [w.nudge.tip] }, on: { click: () => send(w.nudge.req) } }, icon("fa-bell")) : null);
 
 export function configure(x) { handlers = x ?? {}; }
 const set = (patch) => handlers.set?.(patch);
@@ -129,7 +139,7 @@ function manual(m, L) {
 const section = (title, n, kids) => h("section.igd-sec", {}, h("h4.igd-h", {}, h("span", { text: title }), n ? h("b.igd-n", { text: String(n) }) : null), kids);
 
 function now(d) {
-  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
+  const askH = { send: (req) => send(req), count: (id, v) => setVal(id, v), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
   if (!d.cards.length && !d.stack.length && !d.manual.length) return h("p.igd-empty", {}, icon("fa-mug-hot"), h("span", { text: d.empty }));
   return [
     d.manual.length ? section(d.labels.manual, d.manual.length, d.manual.map((m) => manual(m, d.labels))) : null,
@@ -169,7 +179,7 @@ function table(d) {
       sel(k.kind, "kind", kput, "karma", false), sel(k.who, "who", kput, "karma"), h("input.ita-text", { fk: "karma:note", attrs: { type: "text", maxlength: 200, value: k.note.value, placeholder: k.note.placeholder, "aria-label": k.note.placeholder }, on: { input: (e, el) => kput({ note: el.value }) } }),
       h("div.igd-cmds", {}, h("button.igd-btn", { fk: "karma:add", text: k.add.label, disabled: !!k.add.disabled, tip: k.add.disabled, on: { click: () => { if (k.add.req) { send(k.add.req); kput({ note: "" }); } } } })))),
     section(d.npcsTitle, 0, d.npcs.length ? d.npcs.map((n) => h("article.igd-npc", {}, h("b.igd-actor", { text: n.name }), n.note ? h("p.igd-tip", {}, icon("fa-person-running"), h("span", { text: n.note })) : null,
-      n.policy.map((p) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: p.label }), seg(p, `pol:${n.id}:${p.id}`))),
+      n.policy.map((p) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: p.label, tip: p.tip ?? null }), seg(p, `pol:${n.id}:${p.id}`))),
       h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: d.labels.reveal }), h("span.igd-seg.igd-multi", {}, n.reveal.map((r) => h("button", { fk: `rv:${n.id}:${r.id}`, attrs: { "aria-pressed": String(r.on) }, on: { click: () => send(r.req) } }, icon(r.on ? "fa-eye" : "fa-eye-slash"), h("span", { text: r.label }))))))) : h("p.igd-empty", {}, h("span", { text: d.npcsEmpty }))),
   ];
 }
@@ -181,8 +191,22 @@ function kitTab(k) {
   const seg = (c, key) => h("span.igd-seg", {}, c.choices.map((x) => h("button", { fk: `${key}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => !x.on && send(x.req) } })));
   const pick = (c, key, onChange, blank = "…") => h("div.igd-ctl", { data: { type: "select" } }, h("span.igd-cl", { text: c.label }),
     h("select", { fk: key, attrs: { "aria-label": c.label }, on: { change: (e, el) => onChange(el.value || null) } }, h("option", { text: blank, attrs: { value: "", selected: !c.value } }), c.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id, selected: x.id === c.value } }))));
+  /* U60: the one combatant at a glance: face, where it stands, Health and Resolve, the slots of its turn, its states, the last things
+     done by it or to it. The name is the picker beside the face (said once); a click on a token of the map chooses it too. */
+  const u = k.unit, bar = (v) => h("div.igd-uv", { data: { id: v.id }, tip: v.say, attrs: { role: "img", "aria-label": v.say, style: `--v:${v.v};--max:${v.max}` } }, icon(v.id === "health" ? "fa-heart" : "fa-bolt"), h("span.igd-uv-bar", {}, h("i")), h("b", { text: `${v.v}/${v.max}` }));
+  const unit = u ? h("article.igd-unit.ipu-on-ink", { attrs: { "aria-label": u.name } },
+    h("div.igd-uhead", {}, face(u.img, u.name, "ita-face.igd-uface"),
+      h("div.igd-umain", {}, h("select.igd-uwho", { fk: "kit:who", attrs: { "aria-label": k.who.label }, on: { change: (e, el) => put({ who: el.value || null, open: null }) } }, k.who.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id, selected: x.id === k.who.value } }))),
+        h("div.igd-ufacts", {}, u.zone ? h("span.ipu-chip", {}, icon("fa-location-dot"), h("span", { text: u.zone })) : null, u.group ? h("span.ipu-chip", {}, icon("fa-people-group"), h("span", { text: u.group.label })) : null,
+          u.hidden ? h("span.ipu-chip.igd-uhid", { tip: u.hidden, attrs: { "aria-label": u.hidden } }, icon("fa-eye-slash")) : null,
+          u.slots.length ? h("span.igd-uslots", { attrs: { role: "img", "aria-label": u.slots.map((s) => s.tip).join(". ") } }, u.slots.map((s) => h("i.igd-uslot", { tip: s.tip, data: { kind: s.kind, state: s.state, extra: s.extra ? "1" : null } }))) : null))),
+    u.vitals.length ? h("div.igd-uvs", {}, u.vitals.map(bar)) : null,
+    h("div.igd-ustates", {}, u.states.length ? u.states.map((s) => h("span.ipu-chip.igd-ustate", { tip: s.tip, data: { id: s.id } }, icon(s.icon), h("span", { text: s.label }))) : h("span.igd-unone", {}, icon("fa-circle-check"), h("span", { text: u.statesNone }))),
+    h("h4.igd-h", {}, h("span", { text: u.lastLabel })),
+    u.last.length ? h("ol.igd-ulast", {}, u.last.map((j) => h("li", { data: { undone: j.undone ? "1" : null } }, j.round != null ? h("b", { text: String(j.round), tip: j.roundTip }) : null, h("span", { text: j.text })))) : h("p.igd-hint", { text: u.lastNone })) : null;
   return [
-    h("article.igd-npc", {}, pick(k.who, "kit:who", (v) => put({ who: v, open: null })), k.summon ? pick(k.summon, "kit:summon", (v) => send(k.summon.req(v)), k.summon.none) : null, k.counts ? h("p.igd-hint.igd-kit-sum", { text: k.counts }) : null),
+    unit,
+    h("article.igd-npc", {}, u ? null : pick(k.who, "kit:who", (v) => put({ who: v, open: null })), k.summon ? pick(k.summon, "kit:summon", (v) => send(k.summon.req(v)), k.summon.none) : null, k.counts ? h("p.igd-hint.igd-kit-sum", { text: k.counts }) : null),
     k.empty ? h("p.igd-hint", { text: k.empty }) : null,
     k.groups.map((g) => section(g.label, g.rows.length, h("div.igd-kitlist", {}, g.rows.map((r) => h("article.igd-kit", { data: { state: r.state, open: r.open ? "1" : null } },
       h("button.igd-kit-head", { fk: `kit:row:${r.id}`, attrs: { "aria-expanded": String(!!r.open), "aria-label": [r.name, r.stateText].join(", ") }, on: { click: () => put({ open: r.open ? null : r.id }) } },
@@ -253,11 +277,12 @@ function draw(d, ui) {
     h("header.igd-head", {}, h("h2.ita-plate.igd-title", { text: d.title }), h("span.igd-turn", { text: d.turn })),
     d.turnNote ? h("p.igd-tip", { attrs: { role: "note" } }, icon("fa-person-running"), h("span", { text: d.turnNote })) : null,
     h("nav.igd-tabs", { attrs: { role: "tablist" } }, d.tabs.map((t) => h("button", { fk: `tab:${t.id}`, attrs: { role: "tab", "aria-selected": String(d.tab === t.id) }, on: { click: () => set({ tab: t.id }) } }, h("span", { text: t.label }), t.n ? h("b.igd-badge", { text: String(t.n) }) : null))),
-    h("div.igd-wait", { attrs: { role: "status" } }, h("span.igd-k", { text: d.waitingLabel }), d.waiting.length ? waitChips(d.waiting) : h("span.igd-nobody", { text: d.nobody })),
+    h("div.igd-wait", { attrs: { role: "status" } }, h("span.igd-k", { text: d.waitingLabel }), d.waiting.length ? d.waiting.map((w) => waitRow(w, d.labels)) : h("span.igd-nobody", { text: d.nobody })),
     h("div.igd-body", { data: { keepScroll: d.tab }, attrs: { role: "tabpanel" } }, d.tab === "journal" ? journal(d) : d.tab === "table" ? table(d) : d.tab === "scene" && d.scene ? scene(d.scene) : d.tab === "kit" && d.kit ? kitTab(d.kit) : now(d)),
   ]);
+  if (!tick) tick = setInterval(count, 1000);
   place();
 }
 export const relayout = () => { if (root) place(); };
 export const el = () => root;
-export function destroy() { root?.remove(); root = handleBtn = box = null; try { document.body.classList.remove("ita-desk-open"); } catch { /* no body */ } }
+export function destroy() { if (tick) { clearInterval(tick); tick = 0; } root?.remove(); root = handleBtn = box = null; try { document.body.classList.remove("ita-desk-open"); } catch { /* no body */ } }

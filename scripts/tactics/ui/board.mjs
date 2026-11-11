@@ -14,6 +14,7 @@ import * as Mv from "../movement.mjs";
 import * as Model from "./model-pure.mjs";
 import * as BP from "./board-pure.mjs";
 import { faOf } from "./dom.mjs";
+import { policyReq } from "../desk-pure.mjs";
 
 const LOG = "invincible-plus-ultra (tactics board) |";
 const DONE = { armed: null, mode: null, to: null, ask: null, why: "", targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} };
@@ -183,18 +184,18 @@ function tokenMenu(cid, acts) {
   const { combat, facts, staff, data } = last, who = data.who.id, name = facts.c?.(cid)?.name ?? "";
   const fix = () => {
     if (!staff) return [];
-    const items = BP.gmItems(cid, facts.vitals?.(cid), last.view?.statuses?.[cid] ?? [], t);
+    const items = BP.gmItems(cid, facts.vitals?.(cid), last.view?.statuses?.[cid] ?? [], t, facts.c?.(cid)?.kind === "minions" ? { quick: last.view?.npc?.[cid]?.quick === true, req: (on) => policyReq(last.view, cid, { quick: on }) } : null);
     /* a stepper sends ONE request once the clicking stops (450 ms): the STEP from the number the last request was counted from, which
        the executor adds to what the character has at that moment (so a hit that landed while the menu stood open is kept). One
        burst of clicks is one journal entry, one undo. A request that fails is said by main.mjs (`request` warns). */
     return items.map((it) => { let from = it.stepper?.value; return (it.stepper ? { id: it.id, label: it.label, icon: it.icon, stepper: it.stepper, onStep: (v) => { const k = `${cid}|${it.id}`; clearTimeout(steps[k]); steps[k] = setTimeout(() => { steps[k] = 0; const was = from; from = v; if (v !== was) H.request(it.req(v, was)); }, 450); return v; } }
-      : { id: it.id, label: it.label, icon: it.icon, toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return env?.ok === false ? !o : o; } }); });
+      : { id: it.id, label: it.label, icon: it.icon, ...(it.tip ? { tip: it.tip } : {}), toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return env?.ok === false ? !o : o; } }); });
   };
   const spec = (rows) => {
     const list = BP.actItems(acts, rows, cid, facts, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.tip ? { tip: a.tip } : {}), ...(a.disabled ? { disabled: a.disabled } : {}),
       run: () => H.set({ ...ARM, sel: who, armed: a.id, targets: [cid] }) })), gm = fix();
     /* the GM's menu stands where Foundry's token HUD would open: one entry brings that HUD up (Shift + right click opens it directly) */
-    const hud = staff ? [{ separator: true }, { id: "@hud", label: t("ITAC.map.menu.hud"), icon: "fa-solid fa-id-badge", run: () => { try { const tok = tokDoc(cid)?.object; (canvas.hud?.token ?? tok?.layer?.hud)?.bind(tok); } catch { /* a courtesy */ } } }] : [];
+    const hud = staff ? [{ separator: true }, { id: "@unit", label: t("ITAC.map.menu.unit"), icon: "fa-solid fa-address-card", run: () => H.unit?.(cid) }, { id: "@hud", label: t("ITAC.map.menu.hud"), icon: "fa-solid fa-id-badge", run: () => { try { const tok = tokDoc(cid)?.object; (canvas.hud?.token ?? tok?.layer?.hud)?.bind(tok); } catch { /* a courtesy */ } } }] : [];
     const items = [...list, ...(list.length && gm.length ? [{ separator: true }] : []), ...gm, ...hud];
     return items.length ? { title: name, ...(gm.length && !list.length ? { sub: t("ITAC.map.menu.fix") } : {}), items } : null;
   };

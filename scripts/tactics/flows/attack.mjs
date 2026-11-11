@@ -282,6 +282,7 @@ function defencePrompt(v, I, t) {
   else if (tf?.npc) {                                                                                             // spec 13.3 NpcPolicy
     const pol = v.state.npc?.[t] ?? {}, def = live.find((o) => o.id === "block" || o.id === "dodge");
     if (def && pol[def.id] === "always") p.auto = { option: def.id, reason: "npcDefault" };
+    else if (K.quickGroup(v, t)) p.auto = { option: K.PASS, reason: "quick" };                                    // U61: a group settled quickly takes the hit
     else if (live.every((o) => pol[String(o.id).split(":")[0]] === "never")) p.auto = { option: K.PASS, reason: "npcDefault" };
   }
   return p;
@@ -610,7 +611,7 @@ export const steps = {
       const pierce = w?.noDamage && w.pierce && !o.extra ? { pierced: taken > 0 } : null;                       // P6 [B1574], [B1625]: no damage, but it has to get through the Armor
       if (pierce) taken = 0;
       if (!tags.toStress && M.hasStatus(v.state, t, "intangible") && !Number.isFinite(forced?.amount)) taken = 0;   // P6 [B1941]
-      if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && (I.data.multi || o.extra) && taken > 0) {     // [OQ-1]
+      if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && (I.data.multi || o.extra || K.quickCard(v, t)) && taken > 0) {     // [OQ-1]; U61: a quickly settled group is always asked on its one card
         const ml = K.minionLoss(v, I, R, t, taken, { by: I.actor });
         if (ml.wait) { waiting = true; continue; }
         taken = ml.taken;

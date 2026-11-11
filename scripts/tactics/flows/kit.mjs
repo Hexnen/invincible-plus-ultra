@@ -259,7 +259,7 @@ export function mayPush(v, cid) {
   if (c?.pass?.overconfident && c.health > Math.ceil((c.maxHealth ?? 0) / 2)) return false;       // P6 [B2186]: no pushing above half Health
   if (!c || !c.npc) return true;
   const pol = v.state.npc?.[cid] ?? {};
-  if (pol.push === "never") return false;
+  if (pol.push === "never" || quickGroup(v, cid)) return false;                              // U61: a group settled quickly rolls once
   return c.kind === "minions" || isMajor(v, cid) || pol.push === "ask";
 }
 /** The effects that end a grapple `cid` is part of, as the holder or as the one held [B2496-2497]. */
@@ -303,8 +303,24 @@ export function carryRelease(state, cid) {
 /** How many of a minion group fall to a hit that takes several at once (an area attack, full auto, a blast, a stunt that hits more than one) [OQ-1]:
     the GM's number, the damage taken is the suggestion. One card for the attack flow and for the hazards. -> { wait: true } | { taken } */
 export const MINION_LOSS_MAX = 12;
+/** U61 QUICK RESOLUTION, the GM's switch for one minion group (NpcPolicy.quick, set by the op npcPolicy; never by itself). Such a group
+    gives the GM ONE card per hit instead of up to three: it takes the hit without a block or a dodge (unless the GM's standing answer
+    says "always"), its own rolls are not pushed, and how many fall and whether they are knocked out or killed [B2828] is asked together
+    (the card "minionsQuick"). The book knows no such mode: it is a convenience the GM turns on (ruling U8-R1). */
+export const quickGroup = (v, cid) => v.facts.c(cid)?.kind === "minions" && v.state.npc?.[cid]?.quick === true;
+/** Does a hit on `t` go to the one card of a quickly settled group? Not when the GM already gave the fate as a standing answer (then
+    nothing needs asking beyond the number the old card asks for). */
+export const quickCard = (v, t) => quickGroup(v, t) && !["ko", "kill"].includes(v.state.npc?.[t]?.onBroken);
 export function minionLoss(v, I, R, t, taken, { by = null } = {}) {
   const tf = v.facts.c(t), key = `ml:${t}`, members = Math.max(0, tf?.members ?? tf?.health ?? 0), top = Math.min(members, MINION_LOSS_MAX);
+  if (quickCard(v, t)) {                                                                    // U61: the number and the fate on one card
+    const qk = `mq:${t}`;
+    if (!I.data.pk?.[qk]) { R.prompts.push({ key: qk, kind: "minionsQuick", to: "gm", about: t, options: [{ id: "none", label: "ITAC.opt.minionsNone", data: { n: 0 } }, ...["ko", "kill"].flatMap((f) => Array.from({ length: top }, (_, i) => ({ id: `${f}:${i + 1}`, label: `ITAC.opt.${f}`, data: { n: i + 1, fate: f } })))], data: { suggested: Math.min(top, taken), members, by } }); return { wait: true }; }
+    if (!isAnswered(v, I, qk)) return { wait: true };
+    const [fate, n] = String(answerId(v, I, qk) ?? "").split(":");
+    if (fate === "ko" || fate === "kill") (I.data.mqf ??= {})[t] = fate;
+    return { taken: fate === "ko" || fate === "kill" ? Math.max(0, Math.min(members, Number(n) || 0)) : 0 };
+  }
   if (!I.data.pk?.[key]) { R.prompts.push({ key, kind: "minionLoss", to: "gm", about: t, options: Array.from({ length: top + 1 }, (_, n) => ({ id: `n:${n}`, label: "ITAC.opt.minionsFall", data: { n } })), data: { suggested: Math.min(top, taken), members, by } }); return { wait: true }; }
   if (!isAnswered(v, I, key)) return { wait: true };
   return { taken: Math.max(0, Math.min(members, Number(String(answerId(v, I, key) ?? "").split(":")[1]) || 0)) };
@@ -313,7 +329,11 @@ export function minionLoss(v, I, R, t, taken, { by = null } = {}) {
 export function minionsFate(v, I, R, t, dm, { by = null } = {}) {
   const tf = v.facts.c(t);
   if (!tf || tf.kind !== "minions" || !(dm?.minions?.removed > 0)) return false;
-  const key = `mfate:${t}`;
+  const key = `mfate:${t}`, said = I.data.mqf?.[t];
+  if (said && !I.data.pk?.[key]) {                                                           // U61: the one card of a quickly settled group already said it
+    if (!flag(I, key)) { setFlag(I, key); fateOf(v, R, t, dm, said, by); }
+    return false;
+  }
   if (!I.data.pk?.[key]) {
     const pol = v.state.npc?.[t]?.onBroken, p = { key, kind: "minionsFate", to: "gm", about: t, options: [{ id: "ko", label: "ITAC.opt.ko" }, { id: "kill", label: "ITAC.opt.kill" }], data: { removed: dm.minions.removed, left: dm.minions.left } };
     if (["ko", "kill"].includes(pol)) p.auto = { option: pol, reason: "npcDefault" };
@@ -322,12 +342,14 @@ export function minionsFate(v, I, R, t, dm, { by = null } = {}) {
   if (!isAnswered(v, I, key)) { R.wait = true; return true; }
   if (!flag(I, key)) {
     setFlag(I, key);
-    const id = answerId(v, I, key);
-    dm.npcOutcome = id;
-    if (id === "kill" && by && v.facts.c(by) && !v.facts.c(by).npc) R.effects.push({ t: "karma", note: { who: by, kind: "killed", target: t, n: dm.minions.removed } });     // [B815]
-    if (dm.minions.left === 0) R.effects.push({ t: "status+", who: t, status: { id: id === "kill" ? "dead" : "unconscious", source: { kind: "gm", name: "minions" } } });
+    fateOf(v, R, t, dm, answerId(v, I, key), by);
   }
   return false;
+}
+function fateOf(v, R, t, dm, id, by) {
+  dm.npcOutcome = id;
+  if (id === "kill" && by && v.facts.c(by) && !v.facts.c(by).npc) R.effects.push({ t: "karma", note: { who: by, kind: "killed", target: t, n: dm.minions.removed } });     // [B815]
+  if (dm.minions.left === 0) R.effects.push({ t: "status+", who: t, status: { id: id === "kill" ? "dead" : "unconscious", source: { kind: "gm", name: "minions" } } });
 }
 
 /** Broken and critical injuries after one damage event (spec 9.5 steps 7-9), shared by attacks and hazards. `dm` is the damage record of the flow

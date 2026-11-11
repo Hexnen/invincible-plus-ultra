@@ -58,7 +58,7 @@ export const blast = {
         if (!I.data.pk?.[key]) {
           if (!dodgeOf(v, t).ok) { I.data.def[t] = null; continue; }                              // cannot dodge, or nothing to pay with: not asked (plan 5.2 step 4)
           const pol = v.state.npc?.[t]?.dodge, p = { key, kind: "hazardDodge", to: K.addressee(v, t), about: t, options: [{ id: "dodge", label: "ITAC.action.dodge", cost: "quick" }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { hazard: hzOf(I).kind, dice: poolOf(hzOf(I)) } };
-          if (tf.npc && pol === "always") p.auto = { option: "dodge", reason: "npcDefault" }; else if (tf.npc && pol === "never") p.auto = { option: K.PASS, reason: "npcDefault" };
+          if (tf.npc && pol === "always") p.auto = { option: "dodge", reason: "npcDefault" }; else if (tf.npc && (pol === "never" || K.quickGroup(v, t))) p.auto = { option: K.PASS, reason: K.quickGroup(v, t) ? "quick" : "npcDefault" };      // U61
           R.prompts.push(p); waiting = true; continue;
         }
         if (!K.isAnswered(v, I, key)) { waiting = true; continue; }
