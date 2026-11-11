@@ -12,6 +12,7 @@
    per-attribute LOCKS live in state.locks["attrs.<name>"] and hold a value while distributing (randomly or evenly). Auto-balance and Reset ignore locks.
    Descriptions of the six attributes are read at RUNTIME from the book page (never stored); descriptor words come from the system's own labels. */
 import { t } from "../lang.mjs";
+import { gradePl } from "../../i18n/terms.mjs";
 import { ATTRS, ATTR_MIN, attributeBudget, budget, slots, extraSources, derive, reconcileAttributes, validateStep, attrSum } from "../rules.mjs";
 import { setAttr, setAttrs, toggleLock } from "../state.mjs";
 import { substream } from "../rng.mjs";
@@ -29,9 +30,10 @@ const signed = (v) => (v > 0 ? `+${v}` : String(v));
 const reduced = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
 
 /** descriptor word of a score: the system's own label in English, our table in Polish (the system ships English only) */
-function word(n) {
+function word(n, attr = null) {
   const key = `INVINCIBLE.Actor.base.FIELDS.attributes.graduation.${n}`;
   try { if (game.i18n.lang !== "pl" && game.i18n.has(key)) return game.i18n.localize(key); } catch { /* fall through */ }
+  try { if (game.i18n.lang === "pl") return gradePl(n, attr) ?? t(`IPC.Grad.${n}`); } catch { /* fall through */ }      // Polish: the adjective agrees with the attribute ("Dobra Walka", "Dobry Rozum")
   return t(`IPC.Grad.${n}`);
 }
 
@@ -231,7 +233,7 @@ function sync(ctx, root) {
   for (const k of ATTRS) {
     const row = root.querySelector(`.ipc-at-row[data-k="${k}"]`);
     const v = s.attrs[k] ?? 0, locked = !!s.locks?.[lockKey(k)], above = v > r.cap;
-    const w = word(v);
+    const w = word(v, k);
     setText(row.querySelector('[data-r="num"]'), v);
     setText(row.querySelector('[data-r="word"]'), w);
     const sp = row.querySelector('[role="spinbutton"]');

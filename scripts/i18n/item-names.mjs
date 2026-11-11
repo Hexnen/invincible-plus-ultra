@@ -30,16 +30,19 @@ const ID_LEN = 16;
 
 /* ------------------------------------------------------------------ the dictionary (pure) */
 const BY_ID = new Map();       // identifier -> { type, en, pl }
+const OWN = new Map();         // the id of an item that sits on a pregenerated character -> its entries (such ids repeat from sheet to sheet, so the stored name picks one)
 const ENTRIES = new Map();     // "type|en" -> the same entry
 const entry = (type, en) => {
   const k = `${type}|${en}`;
-  if (!ENTRIES.has(k)) { const pl = NAMES_PL[type]?.[en]; ENTRIES.set(k, typeof pl === "string" && pl ? Object.freeze({ type, en, pl }) : null); }
+  if (!ENTRIES.has(k)) { const pl = NAMES_PL[type]?.[en] ?? NAMES_PL[type]?.[String(en).replace(/\s+/g, " ").trim()]; ENTRIES.set(k, typeof pl === "string" && pl ? Object.freeze({ type, en, pl }) : null); }
   return ENTRIES.get(k);
 };
-for (const table of [PACK_IDS, EMBEDDED_IDS]) for (const [type, names] of Object.entries(table)) for (const [en, ids] of Object.entries(names)) {
+for (const [table, own] of [[PACK_IDS, false], [EMBEDDED_IDS, true]]) for (const [type, names] of Object.entries(table)) for (const [en, ids] of Object.entries(names)) {
   const e = entry(type, en);
-  if (e) for (let i = 0; i + ID_LEN <= ids.length; i += ID_LEN) BY_ID.set(ids.slice(i, i + ID_LEN), e);
+  if (e) for (let i = 0; i + ID_LEN <= ids.length; i += ID_LEN) { const id = ids.slice(i, i + ID_LEN); if (!own) { if (!BY_ID.has(id) || en.length < BY_ID.get(id).en.length) BY_ID.set(id, e); } if (!OWN.has(id)) OWN.set(id, []); if (!OWN.get(id).includes(e)) OWN.get(id).push(e); }
 }
+/** Every entry an identifier may stand for (for the checks). */
+export const entriesById = (id) => OWN.get(String(id ?? "").split(".").pop()) ?? [];
 /** The entry an identifier (a compendium id, or a whole "Compendium....<id>" source) stands for, or null. */
 export const entryById = (id) => BY_ID.get(String(id ?? "").split(".").pop()) ?? null;
 const SUFFIX = /^(.*?)(\s*\(([^()]*)\)|\s*[x×]\s*\d+)$/i;
@@ -98,11 +101,16 @@ export const shownAuto = (text, e, shown, level) => String(text ?? "").split(/\s
 const srcOf = (item) => item?._stats?.compendiumSource ?? item?._source?._stats?.compendiumSource ?? item?.flags?.core?.sourceId ?? null;
 const rawName = (item) => item?._source?.name ?? item?.name ?? "";
 /** The dictionary entry behind an item, or null (no source, a deleted or foreign source, another type than the entry's). */
+/* the item's own id: a compendium entry opened from its pack, or an item of a pregenerated character (the entry whose name the item carries) */
+function own(item) {
+  const list = (OWN.get(item.id ?? item._id) ?? []).filter((e) => e.type === item.type), n = rawName(item);
+  return list.find((e) => shownName(n, e) !== n) ?? list[0] ?? null;
+}
 export function entryOf(item) {
   try {
     if (!item || !NAMES_PL[item.type]) return null;
     const ok = (e) => (e && e.type === item.type ? e : null);
-    return ok(entryById(srcOf(item))) ?? ok(BY_ID.get(item.id ?? item._id)) ?? (item.flags?.[MOD]?.chargenRun ? entryByName(item.type, rawName(item)) : null);
+    return ok(entryById(srcOf(item))) ?? own(item) ?? (item.flags?.[MOD]?.chargenRun ? entryByName(item.type, rawName(item)) : null);
   } catch { return null; }
 }
 let forced = null;

@@ -16,6 +16,16 @@ export const TERMS = Object.freeze({
 });
 /** Polish accusative of the attributes ("rzut na Walkę"). */
 export const ATTR_ACC_PL = Object.freeze({ fighting: "Walkę", agility: "Zwinność", strength: "Siłę", reason: "Rozum", intuition: "Intuicję", presence: "Prezencję" });
+/* GRADES of an attribute (the word beside its number: "Good", "Astounding"). User decision 2026-11-11 (dev/glossary-pl.md): in Polish the
+   adjective AGREES with the attribute's gender: "Oszałamiająca Walka", "Fenomenalna Siła", "Dobry Rozum". A grade shown with no attribute
+   beside it keeps the masculine form (the dictionary form; it is also what lang/pl.json carries under the system's keys, because the
+   system's template asks for ONE word per grade, whatever the attribute). gradePl(n, attr) is the one place that picks the form. */
+export const ATTR_GENDER_PL = Object.freeze({ fighting: "f", agility: "f", strength: "f", reason: "m", intuition: "f", presence: "f" });
+export const GRADES_PL = Object.freeze({
+  m: Object.freeze(["Brak", "Słaby", "Przeciętny", "Dobry", "Świetny", "Niezwykły", "Niesamowity", "Zdumiewający", "Oszałamiający", "Fenomenalny", "Niebywały", "Boski", "Niezwyciężony"]),
+  f: Object.freeze(["Brak", "Słaba", "Przeciętna", "Dobra", "Świetna", "Niezwykła", "Niesamowita", "Zdumiewająca", "Oszałamiająca", "Fenomenalna", "Niebywała", "Boska", "Niezwyciężona"]),
+});
+export const gradePl = (n, attr = null) => GRADES_PL[ATTR_GENDER_PL[attr] ?? "m"][Number(n)] ?? null;
 /** The system key that carries each term (what the sheet shows). */
 const B = "INVINCIBLE.Actor.base.FIELDS.";
 export const TERM_KEYS = Object.freeze({
