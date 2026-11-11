@@ -22,7 +22,7 @@ const PURE = code.filter((f) => /-pure\.mjs$/.test(f) || f.startsWith("flows/") 
 /* the designed surfaces (the action dock and the GM desk): DOM builders and their wiring. Not thin by nature, so they are not under the
    cap of the Foundry-facing files; they hold no rule (checked below) and their logic is ui/model-pure.mjs, which is under the pure rules. */
 const SURFACE = ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs", "ui/pick.mjs", "ui/main.mjs"];
-const FACING = code.filter((f) => !PURE.includes(f) && !SURFACE.includes(f) && !["testkit.mjs", "lang.mjs", "lang-attacks.mjs", "lang-int.mjs", "lang-kit.mjs"].includes(f));
+const FACING = code.filter((f) => !PURE.includes(f) && !SURFACE.includes(f) && !["testkit.mjs", "lang.mjs", "lang-attacks.mjs", "lang-int.mjs", "lang-kit.mjs", "lang-fx.mjs"].includes(f));
 const FORBIDDEN = /(?<![.\w])(game|ui|canvas|foundry|Hooks|CONFIG|CONST|ChatMessage|Roll|fromUuid|fromUuidSync|window|document|globalThis|setTimeout|socketlib)\s*[.(\[]/;
 const GLOBALS = /(^|[^.\w"'`])(game|Hooks|foundry|ui|canvas|CONFIG|ChatMessage|fromUuid|fromUuidSync|document|window|globalThis|setTimeout|Math\.random|Date\.now)\s*[.(\[]|\bnew Roll\b/;
 const pureImport = (i) => /-pure\.mjs$|\/flows\/|^\.\/(kit|attack|simple|move|vehicle|challenge|chase)\.mjs$|\/rules\/index\.mjs$|^node:/.test(i);
@@ -69,7 +69,7 @@ ok(/conditions\.evalConds/.test(read("flows/kit.mjs")) && /conditions\.evalModRu
 /* book text is private: no long quoted prose in strings (a crude guard: no string literal of 14+ words) */
 for (const f of code) {
   const long = [...strip(read(f)).matchAll(/"([^"\n]{80,})"/g)].map((m) => m[1]).filter((s) => s.split(/\s+/).length >= 14 && /^[A-Za-z ,.'-]+$/.test(s));
-  eq(long.filter(() => f !== "lang.mjs" && f !== "lang-attacks.mjs" && f !== "lang-int.mjs" && f !== "lang-kit.mjs").length, 0, `${f}: no long prose in string literals`);
+  eq(long.filter(() => f !== "lang.mjs" && f !== "lang-attacks.mjs" && f !== "lang-int.mjs" && f !== "lang-kit.mjs" && f !== "lang-fx.mjs").length, 0, `${f}: no long prose in string literals`);
 }
 /* the Foundry-facing files: thin, guarded, no rule of the ledger or the draw. The caps: 130 lines of code, except the three files that
    are by design the meeting point of both halves (the executor's host with every document effect, the one system adapter with the

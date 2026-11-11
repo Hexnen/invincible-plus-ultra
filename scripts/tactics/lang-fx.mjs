@@ -60,7 +60,7 @@ const FX = {
   soundcontrol: ["You shape sound in a zone, and shoot a deafening burst (Range 0/1, Armor does not count): the target rolls Presence or loses its next turn.",
     "Kształtujesz dźwięk w strefie i strzelasz ogłuszającym hukiem (zasięg 0/1, Pancerz się nie liczy): cel rzuca na Prezencję albo traci następną turę."],
   summoning: ["Full action: three allies arrive beside you and act on your turn as a group of minions. Each use you pick one feature for them: versatile, powered or more of them.",
-    "Pełna akcja: obok ciebie zjawia się trzech sojuszników, którzy działają w twojej turze jako grupa sługusów. Przy każdym użyciu wybierasz ich cechę: wszechstronni, z mocą albo liczniejsi."],
+    "Pełna akcja: obok ciebie zjawia się trzech sojuszników, którzy działają w twojej turze jako grupa sługusów. Przy każdym użyciu wybierasz, jacy są: wszechstronni, z mocą albo liczniejsi."],
   technologycontrol: ["Full action: you operate, start or shut down any machine in your zone or the next. Restricted functions need a Reason roll; a weapon you seize fires at once on Agility.",
     "Pełna akcja: obsługujesz, uruchamiasz albo wyłączasz dowolną maszynę w twojej lub sąsiedniej strefie. Zastrzeżone funkcje wymagają rzutu na Rozum; przejęta broń strzela od razu, na Zwinność."],
   telekinesis: ["Full action: you move an object or a person up to 2 zones, throw an unwilling target into barriers (Agility roll, Damage 3 per impact) or hurl things (Damage 3, Range 0/2).",

@@ -273,7 +273,7 @@ function listPanel(p) {
   const rows = (g) => (g.cols ? h("div.itd-cols", {}, g.cols.map((c) => h("div.itd-colm", {}, c.map((i) => entry(g.entries[i]))))) : h("div.itd-rows", {}, g.rows.map((r) => row(r))));
   return h("section.itd-panel", { data: { kind: p.kind, list: p.list } }, h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), cancelBtn()),
     h("div.itd-lists", {}, p.groups.map((g) => h("div.itd-list", { attrs: { role: "group", "aria-label": g.label ?? p.title } }, g.label ? h("span.itd-k", { text: g.label }) : null, rows(g)))),
-    (p.foot ?? []).map((x) => h("p.itd-hint.itd-foot", {}, icon("fa-hand"), h("span", { text: x }))));
+    (p.foot ?? []).map((x) => h("p.itd-hint.itd-foot", {}, icon("fa-circle-info"), h("span", { text: x }))));
 }
 /* P7: the ways of a challenge, one chip each, grouped by what they work on; the last chip is an idea of the player's own */
 function approach(a) {

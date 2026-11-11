@@ -521,7 +521,7 @@ function declarePanel(bar, a, own, facts, t) {
   const tokens = (bar.tokens ?? []).filter(fits).map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source?.name}`, {}, String(k.source?.name ?? "")), needsGm: !!k.needsGm, picked: (own.tokens ?? []).includes(k.id) }));
   /* P6: the choice an ability asks for (a plan, good or bad luck, how much) */
   const pickId = a.pick?.includes(own.choice) ? own.choice : a.pick?.length === 1 ? a.pick[0] : null;
-  const choice = a.pick?.length ? { label: t("ITAC.ui.kit.choice"), hint: a.kit?.state === "assist" ? t("ITAC.ui.kit.gmWord") : null, items: a.pick.map((id) => ({ id, label: comboLabel(t, id), picked: id === pickId })) } : null;
+  const choice = a.pick?.length ? { label: t("ITAC.ui.kit.choice"), hint: a.kit?.state === "assist" && facts.staff ? t("ITAC.ui.kit.gmWord") : null, items: a.pick.map((id) => ({ id, label: comboLabel(t, id), picked: id === pickId })) } : null;
   const text = (own.text ?? "").trim();
   const needsZone = a.flow === "fastball" || a.flow === "drive";      // drive (P7): where the vehicle goes
   const decl = { ...(wantsTarget ? { targets: picked.slice() } : {}), ...arm.decl, ...(chooser && attr ? { attr } : {}), ...(a.wantsText && text ? { text } : {}), ...(needsZone && own.to ? { to: own.to } : {}), ...((own.tokens ?? []).length ? { tokens: own.tokens.slice() } : {}), ...(a.needsText ? { text } : {}), ...(ap?.decl ?? {}), ...(pickId ? { opt: pickId } : {}) };
@@ -653,7 +653,7 @@ export function dockData(model, own, facts, t) {
      the situation calls for (break free, put out the fire, stabilize, rally), which stand on the bar while they apply */
   const inMenu = (a) => !a.kit && a.flow === "act" && !a.situational && groupOf(a) === "act", menu = acts.filter(inMenu);
   /* P6: what the character's own sheet brings stands behind ONE button (the bar stays as short as it was); its list says for every entry
-     whether the engine applies it, the GM confirms it, or it is run by hand */
+     what it does and what it costs (U67: how it is run is the GM's business; a mark of it is drawn for the GM only) */
   const kitActs = acts.filter((a) => a.kit).sort((x, y) => CAT_ORDER.indexOf(x.kit.cat) - CAT_ORDER.indexOf(y.kit.cat)), kitRows = bar.kitRows ?? [], hasKit = kitActs.length > 0 || kitRows.some((r) => r.state === "hand");
   const loose = hasKit ? acts.filter((a) => !a.kit && groupOf(a) === "power") : [];        // "Use a power" and the like: with a kit they go to the end of its list, so the bar is no longer than before
   const stateText = (s) => t(`ITAC.kit.state.${s}`, {}, String(s));
@@ -666,7 +666,7 @@ export function dockData(model, own, facts, t) {
      attribute, how it is run, and the reason of a greyed one. `notes` (all of it, for a screen reader) go to the aria-label. */
   const row = (a, notes, more = {}) => { const label = a.kit ? kitLabel(t, a) : labelOf(t, a.label), why = a.disabled ? reasonText(t, a.disabled) : null;
     const attr = a.attr ? attrText(t, a.attr) : a.attrs?.length && !a.kit ? t(a.attrOptional ? "ITAC.ui.attr.maybe" : "ITAC.ui.attr.yours") : null;
-    return { id: a.id, label, cost: a.cost, stress: Number(a.stress) || 0, icon: iconOf(a), notes, disabled: why, pv: pvOf(a), tip: tipOf(null, isFree(a.cost) ? [attr, priceWords(t, a.cost, a.stress)].filter(Boolean).join(". ") : [priceWords(t, a.cost, a.stress), attr].filter(Boolean).join(", "), why, [more.explain ?? null]), ...more }; };
+    return { id: a.id, label, cost: a.cost, stress: Number(a.stress) || 0, icon: iconOf(a), notes, disabled: why, pv: pvOf(a), tip: tipOf(null, isFree(a.cost) ? [attr, priceWords(t, a.cost, a.stress)].filter(Boolean).join(". ") : [priceWords(t, a.cost, a.stress), attr].filter(Boolean).join(", "), why, more.fx ?? []), ...more }; };
   const groups = GROUPS.map((g) => ({ id: g, label: t(`ITAC.ui.group.${g}`), items: [...acts.filter((a) => !a.kit && groupOf(a) === g && !inMenu(a) && !loose.includes(a)).sort((x, y) => Number(!!y.situational) - Number(!!x.situational)).map(item),
     ...(g === "act" && menu.length ? [{ id: "@more", more: true, icon: "@more", label: t("ITAC.ui.more"), tip: tipOf(t("ITAC.ui.more"), null, null, [t("ITAC.ui.more.tip")]), armed: own.mode === "menu" || menu.some((a) => a.id === own.armed) }] : []),
     ...(g === "power" && hasKit ? [{ id: "@kit", more: true, mode: "kit", icon: "@kit", label: t("ITAC.ui.kit"), tip: tipOf(t("ITAC.ui.kit"), null, null, [t("ITAC.ui.kit.tip")]), armed: own.mode === "kit" || kitActs.some((a) => a.id === own.armed) || loose.some((a) => a.id === own.armed) }] : [])] })).filter((g) => g.items.length);
@@ -679,15 +679,18 @@ export function dockData(model, own, facts, t) {
     panel = { kind: "menu", list: "menu", title: t("ITAC.ui.more"), rows, groups: [{ id: "all", label: null, rows }] }; }
   else if (own.mode === "kit") { const hand = kitRows.filter((r) => r.state === "hand").map((r) => r.name);
     /* U23: the abilities are sorted by what they are (powers with their boosts and limits, talents, drawbacks, gear); each row says its
-       price by the mark of its speed and how it is run (the engine, the GM confirms) by a mark with its words in the tooltip */
-    const stateOf = (st) => ({ state: st, stateText: stateText(st), explain: t(`ITAC.ui.kit.how.${st}`, {}, stateText(st)) });
+       price by the mark of its speed; its tooltip says what it does (U67: the effect line of the entry, then of its boosts and limits). How it
+       is run is told to the GM alone, by a small mark. */
+    const stateOf = (st) => (facts.staff ? { state: st, stateText: stateText(st) } : {}), said = (st) => (facts.staff ? stateText(st) : null);
+    const fxOf = (key) => (key ? t(`ITAC.kit.fx.${key}`, {}, "") : ""), rowOf = (a) => kitRows.find((r) => r.item === a.kit.item) ?? null;
+    const fxLines = (a) => { const r = rowOf(a), kids = r && !r.of ? kitRows.filter((k) => k.of === r.name && k.state !== "off" && fxOf(k.key)) : []; return [fxOf(a.kit.key ?? r?.key) || null, ...kids.map((k) => `${k.name}: ${fxOf(k.key)}`)].filter(Boolean).slice(0, 6); };
     /* U49: ONE ENTRY PER POWER. The uses of one item stand together under its name, said once; a row then carries only the use
        ("Create a copy"), an item with a single use is one row (its name, the use after it). The rows are ordered entry by entry (so
        the digits of the keyboard run down the list as it is drawn) and laid out in columns that never split an entry (KIT_LINES). */
     const itemName = (a) => kitRows.find((r) => r.item === a.kit.item)?.name ?? null, catOf = (a) => (["boost", "limit"].includes(a.kit.cat) ? "power" : a.kit.cat);
     const made = kitActs.map((a) => { const p = kitParts(t, a, itemName(a));
-      return row(a, [costText(t, a.cost), a.stress ? t("ITAC.ui.stress", { n: a.stress }) : null, a.attr ? attrText(t, a.attr) : null, stateText(a.kit.state)].filter(Boolean), { cat: catOf(a), entry: `${catOf(a)}|${a.kit.item ?? p.name}`, of: p.name, use: p.use, ...stateOf(a.kit.state) }); })
-      .concat(loose.map((a) => row(a, [costText(t, a.cost), stateText("assist")], { cat: "power", entry: `power|@${a.id}`, of: labelOf(t, a.label), use: null, ...stateOf("assist") })));
+      return row(a, [costText(t, a.cost), a.stress ? t("ITAC.ui.stress", { n: a.stress }) : null, a.attr ? attrText(t, a.attr) : null, said(a.kit.state)].filter(Boolean), { cat: catOf(a), entry: `${catOf(a)}|${a.kit.item ?? p.name}`, of: p.name, use: p.use, fx: fxLines(a), ...stateOf(a.kit.state) }); })
+      .concat(loose.map((a) => row(a, [costText(t, a.cost), said("assist")].filter(Boolean), { cat: "power", entry: `power|@${a.id}`, of: labelOf(t, a.label), use: null, ...stateOf("assist") })));
     const cats = CAT_ORDER.filter((c) => c !== "boost" && c !== "limit"), entriesOf = (c) => { const out = []; for (const r of made.filter((x) => x.cat === c)) { let e = out.find((x) => x.id === r.entry); if (!e) out.push((e = { id: r.entry, name: r.of, rows: [] })); e.rows.push(r); } return out; };
     const groups = cats.map((c) => { const entries = entriesOf(c).map((e) => ({ ...e, head: e.rows.length > 1 })); return { id: c, label: t(`ITAC.kit.cat.${c}`), entries, rows: entries.flatMap((e) => e.rows), cols: kitCols(entries) }; }).filter((g) => g.rows.length);
     const kRows = groups.flatMap((g) => g.rows);

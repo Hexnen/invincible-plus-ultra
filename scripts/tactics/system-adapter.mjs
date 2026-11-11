@@ -12,6 +12,7 @@ import * as O from "./ops-pure.mjs";
 import { weapons } from "../rules/index.mjs";
 import * as Kit from "./kit-pure.mjs";
 import { labelVariants } from "../i18n/sys-labels.mjs";
+import { showKit } from "../i18n/kit-names.mjs";      // what the kit SHOWS takes the name this client displays; it is still built from the stored names
 
 export const SYSTEM_ID = "invincible";
 export const SYSTEM_VERIFIED = "2.1.8";
@@ -193,7 +194,7 @@ export function kitOf(actor) {
     if (!actor) return Kit.EMPTY;
     if (!kitHooks && globalThis.Hooks) { kitHooks = true; for (const k of ["createItem", "updateItem", "deleteItem", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "updateActor"]) Hooks.on(k, () => KITS.clear()); }
     const key = actor.uuid ?? actor.id;
-    if (!KITS.has(key)) KITS.set(key, Kit.build(kitSource(actor)));
+    if (!KITS.has(key)) KITS.set(key, showKit(Kit.build(kitSource(actor)), actor));
     return KITS.get(key);
   } catch (err) { console.warn(`${MOD} | tactics: kit`, err); return Kit.EMPTY; }
 }
