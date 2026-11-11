@@ -65,6 +65,10 @@ export function poolPreview(action, bar, facts, tokens = []) {
   const base = Number(attrsFor(facts, bar.combatant)?.[action.attr]);
   if (!action.attr || !Number.isFinite(base)) return null;
   const parts = [{ id: action.attr, dice: base }];
+  /* P6: what the sheet's active effects add (the engine counts the same in flows/kit.mjs kitDice) */
+  const b = facts.bonus?.(bar.combatant) ?? null, kind = action.flow === "attack" ? action.attack ?? action.id : null;
+  const sheet = b ? (Number(b[action.attr]) || 0) + (kind ? (Number(b.attack) || 0) + (["slugfest", "charge", "grapple"].includes(kind) ? Number(b[kind]) || 0 : 0) : 0) : 0;
+  if (sheet) parts.push({ id: "sheet", dice: Math.trunc(sheet) });
   for (const tk of bar.tokens ?? []) if (tokens.includes(tk.id)) parts.push({ id: "token", token: tk.id, source: tk.source?.name ?? "", dice: tk.dice });
   return { total: Math.max(1, parts.reduce((n, p) => n + p.dice, 0)), parts };
 }
@@ -199,7 +203,7 @@ function linesOf(p, t, facts, x) {
     case "triggerQueue": out.push(t("ITAC.Prompt.triggerQueue.Body")); break;
     /* P5: the GM's word on a narrative action, and the cards of the hazards */
     case "outcome": {
-      const act = t(`ITAC.action.${d.action}`, {}, String(d.action ?? ""));
+      const act = d.name ? String(d.name) : t(`ITAC.action.${d.action}`, {}, String(d.action ?? ""));
       out.push(d.rolled ? t(d.suggests === "fail" ? "ITAC.ui.line.outcomeFail" : "ITAC.ui.line.outcomeOk", { name: about, action: act, attr: attrText(t, d.attr), n: d.sixes ?? 0 }) : t("ITAC.ui.line.outcomeNoRoll", { name: about, action: act }));
       if (d.rolled && d.suggests !== "fail" && Number(d.net) > 1) out.push(t("ITAC.ui.line.outcomeSurplus", { n: Number(d.net) - 1 }));
       if (d.text) out.push({ quote: String(d.text), by: about });
@@ -292,6 +296,7 @@ export function waitingData(waiting, facts, t) {
 /* P6: an action of the character's own sheet reads as "Sniper: Aim"; a plain use as the item's name; a switch says what it is now */
 export const kitLabel = (t, a) => { const act = labelOf(t, a.label), k = String(a.label ?? "").split(".").pop(); return !a.name ? act : k === "toggle" ? t(a.fxOn ? "ITAC.ui.kit.on" : "ITAC.ui.kit.offNow", { name: a.name }) : k === "use" ? a.name : t("ITAC.ui.kit.name", { name: a.name, act }); };
 const actLabel = (t, a) => (a.kit ? kitLabel(t, a) : labelOf(t, a.label));
+const instTitle = (t, i) => (i.label?.name ? kitLabel(t, i.label) : labelOf(t, `ITAC.action.${i.action}`));     // P6: a running action of the sheet is called by its own name
 const CAT_ORDER = ["power", "boost", "limit", "talent", "drawback", "gear"];
 export const GROUPS = Object.freeze(["attack", "move", "act", "power", "free"]);
 export const groupOf = (a) => (a.kind === "custom" || a.tags?.includes("power") ? "power" : a.flow === "attack" || a.tags?.includes("attack") ? "attack" : a.flow === "move" || a.flow === "barrier" || a.tags?.includes("move") ? "move" : a.cost === "free" ? "free" : "act");
@@ -360,7 +365,10 @@ function declarePanel(bar, a, own, facts, t) {
   const picked = lone ?? (own.targets ?? []).filter((id) => all?.some((x) => x.id === id)).slice(-arm.maxTargets);
   const targets = all ? all.map((r) => ({ id: r.id, name: r.name, img: r.img, likely: r.likely, picked: picked.includes(r.id), note: r.unseen ? t("ITAC.reason.unseen") : null })) : null;
   const ap = a.flow === "challenge" ? approachOf(facts, picked[0], own, bar, t) : null;
-  const tokens = (bar.tokens ?? []).map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source?.name}`, {}, String(k.source?.name ?? "")), needsGm: !!k.needsGm, picked: (own.tokens ?? []).includes(k.id) }));
+  /* P6: only the dice that can go on THIS roll are offered (a +2 for a FIGHTING attack is not a choice on a shot, nor on an action without a roll) */
+  const rAttr = ap?.attr ?? arm.attr ?? attr ?? null, rKind = a.flow === "attack" ? "attack" : "other", rolls = a.flow === "attack" || a.flow === "challenge" || !!rAttr || chooser;
+  const fits = (k) => rolls && !k.forced && (!k.scope?.rolls?.length || k.scope.rolls.includes(rKind)) && (!k.scope?.attrs?.length || !rAttr || k.scope.attrs.includes(rAttr));
+  const tokens = (bar.tokens ?? []).filter(fits).map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source?.name}`, {}, String(k.source?.name ?? "")), needsGm: !!k.needsGm, picked: (own.tokens ?? []).includes(k.id) }));
   const pool = poolPreview({ ...a, attr: ap?.attr ?? arm.attr ?? attr }, bar, facts, own.tokens ?? []);
   /* P6: the choice an ability asks for (a plan, good or bad luck, how much) */
   const pickId = a.pick?.includes(own.choice) ? own.choice : a.pick?.length === 1 ? a.pick[0] : null;
@@ -386,7 +394,7 @@ function declarePanel(bar, a, own, facts, t) {
   return { kind: "declare", action: a.id, title, cost, choice, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, attrs, approach: ap, maxTargets: arm.maxTargets, weapons: arm.weapons, opts: arm.opts, notes: arm.notes,
     self: a.optTarget && !picked.length ? t("ITAC.ui.target.self", { name: bar.name ?? "" }) : null,
     dest: needsZone ? { label: t("ITAC.ui.dest"), value: own.to ? zoneText(facts, t, own.to) : null, pick: t(own.to ? "ITAC.ui.move.again" : "ITAC.ui.pick.zone") } : null,
-    pool: pool ? { total: pool.total, parts: pool.parts.map((x) => (x.label ? { label: x.label, dice: x.dice } : x.id === "token" ? { label: t(`ITAC.mod.${x.source}`, {}, String(x.source || t("ITAC.ui.bonus"))), dice: x.dice } : { label: attrText(t, x.id), dice: x.dice })) } : null, chance,
+    pool: pool ? { total: pool.total, parts: pool.parts.map((x) => (x.label ? { label: x.label, dice: x.dice } : x.id === "token" ? { label: t(`ITAC.mod.${x.source}`, {}, String(x.source || t("ITAC.ui.bonus"))), dice: x.dice } : x.id === "sheet" ? { label: t("ITAC.mod.sheet"), dice: x.dice } : { label: attrText(t, x.id), dice: x.dice })) } : null, chance,
     text: a.needsText || a.wantsText || ap?.own.picked ? { value: own.text ?? "", placeholder: t(ap ? "ITAC.ui.approach.placeholder" : a.needsText ? "ITAC.ui.text.placeholder" : "ITAC.ui.text.optional") } : null,
     submit: { label: own.amend ? t("ITAC.ui.amend") : t("ITAC.ui.declare"), disabled: why, req: why ? null : own.amend ? { op: "amend", inst: own.amend, decl: { ...decl, action: a.id } } : a.req(decl) } };
 }
@@ -452,7 +460,7 @@ function doorPanel(bar, a, own, facts, t) {
 }
 function minePanel(i, facts, t) {
   const roll = i.rolls?.[0];
-  return { kind: "mine", inst: i.inst, title: labelOf(t, `ITAC.action.${i.action}`), targets: (i.targets ?? []).map((x) => x.name ?? nameOf(facts, x.id, t)), text: i.text ?? null,
+  return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => x.name ?? nameOf(facts, x.id, t)), text: i.text ?? null,
     status: roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t("ITAC.ui.mine.open"),
     rolling: !!roll, commands: (i.commands ?? []).map((c) => ({ id: c.id, label: labelOf(t, c.label), req: c.needs ? null : c.req, amend: c.id === "amend" })) };
 }
@@ -479,11 +487,12 @@ export function dockData(model, own, facts, t) {
   /* P6: what the character's own sheet brings stands behind ONE button (the bar stays as short as it was); its list says for every entry
      whether the engine applies it, the GM confirms it, or it is run by hand */
   const kitActs = acts.filter((a) => a.kit).sort((x, y) => CAT_ORDER.indexOf(x.kit.cat) - CAT_ORDER.indexOf(y.kit.cat)), kitRows = bar.kitRows ?? [], hasKit = kitActs.length > 0 || kitRows.some((r) => r.state === "hand");
+  const loose = hasKit ? acts.filter((a) => !a.kit && groupOf(a) === "power") : [];        // "Use a power" and the like: with a kit they go to the end of its list, so the bar is no longer than before
   const stateText = (s) => t(`ITAC.kit.state.${s}`, {}, String(s));
   const item = (a) => ({ id: a.id, label: labelOf(t, a.label), cost: a.cost, costText: costText(t, a.cost), disabled: a.disabled ? reasonText(t, a.disabled) : null, armed: own.armed === a.id, urgent: !!a.situational });
-  const groups = GROUPS.map((g) => ({ id: g, label: t(`ITAC.ui.group.${g}`), items: [...acts.filter((a) => !a.kit && groupOf(a) === g && !inMenu(a)).sort((x, y) => Number(!!y.situational) - Number(!!x.situational)).map(item),
+  const groups = GROUPS.map((g) => ({ id: g, label: t(`ITAC.ui.group.${g}`), items: [...acts.filter((a) => !a.kit && groupOf(a) === g && !inMenu(a) && !loose.includes(a)).sort((x, y) => Number(!!y.situational) - Number(!!x.situational)).map(item),
     ...(g === "act" && menu.length ? [{ id: "@more", more: true, label: t("ITAC.ui.more"), tip: t("ITAC.ui.more.tip"), armed: own.mode === "menu" || menu.some((a) => a.id === own.armed) }] : []),
-    ...(g === "power" && hasKit ? [{ id: "@kit", more: true, mode: "kit", label: t("ITAC.ui.kit"), tip: t("ITAC.ui.kit.tip"), armed: own.mode === "kit" || kitActs.some((a) => a.id === own.armed) }] : [])] })).filter((g) => g.items.length);
+    ...(g === "power" && hasKit ? [{ id: "@kit", more: true, mode: "kit", label: t("ITAC.ui.kit"), tip: t("ITAC.ui.kit.tip"), armed: own.mode === "kit" || kitActs.some((a) => a.id === own.armed) || loose.some((a) => a.id === own.armed) }] : [])] })).filter((g) => g.items.length);
   const mine = (model?.mine ?? []).filter((i) => i.actor === bar.combatant);
   const armed = own.armed ? bar.actions.find((a) => a.id === own.armed) : null;
   let panel = null;
@@ -493,7 +502,7 @@ export function dockData(model, own, facts, t) {
     notes: [costText(t, a.cost), a.attr ? attrText(t, a.attr) : a.attrs?.length ? t(a.attrOptional ? "ITAC.ui.attr.maybe" : "ITAC.ui.attr.yours") : null].filter(Boolean), disabled: a.disabled ? reasonText(t, a.disabled) : null })) };
   else if (own.mode === "kit") { const hand = kitRows.filter((r) => r.state === "hand").map((r) => r.name);
     panel = { kind: "menu", title: t("ITAC.ui.kit"), rows: kitActs.map((a) => ({ id: a.id, label: kitLabel(t, a), cost: a.cost,
-      notes: [costText(t, a.cost), a.stress ? t("ITAC.ui.stress", { n: a.stress }) : null, a.attr ? attrText(t, a.attr) : null, stateText(a.kit.state)].filter(Boolean), disabled: a.disabled ? reasonText(t, a.disabled) : null })),
+      notes: [costText(t, a.cost), a.stress ? t("ITAC.ui.stress", { n: a.stress }) : null, a.attr ? attrText(t, a.attr) : null, stateText(a.kit.state)].filter(Boolean), disabled: a.disabled ? reasonText(t, a.disabled) : null })).concat(loose.map((a) => ({ id: a.id, label: labelOf(t, a.label), cost: a.cost, notes: [costText(t, a.cost), stateText("assist")], disabled: a.disabled ? reasonText(t, a.disabled) : null }))),
       foot: [kitActs.length ? null : t("ITAC.ui.kit.none"), hand.length ? t("ITAC.ui.kit.hand", { list: hand.join(", ") }) : null].filter(Boolean) }; }
   else if (own.mode === "holdOff") panel = { kind: "holdOff", title: t("ITAC.ui.holdOff"), hint: t("ITAC.ui.holdOff.hint"), targets: (bar.holdOff?.targets ?? []).map((x) => ({ slot: x.slot, card: x.card, names: x.names.join(", "), req: bar.holdOff.req(x.slot) })) };
   else if (armed && (!armed.disabled || facts.staff) && armed.flow === "move") panel = movePanel(bar, armed, own, facts, t);
@@ -558,7 +567,7 @@ function instData(i, model, own, facts, t) {
   const others = rosterOf({ ...facts, view: facts.view }, i.actor).filter((r) => !(i.targets ?? []).some((x) => x.id === r.id));
   const from = i.targets?.[0]?.id;
   return {
-    id: i.inst, actor: i.actorName ?? t("ITAC.ui.who.gm"), action: labelOf(t, `ITAC.action.${i.action}`), targets: (i.targets ?? []).map((x) => x.name), text: i.text ?? null,
+    id: i.inst, actor: i.actorName ?? t("ITAC.ui.who.gm"), action: instTitle(t, i), targets: (i.targets ?? []).map((x) => x.name), text: i.text ?? null,
     step: stepText(t, i.step), cause: i.cause && i.cause !== "turn" ? t(`ITAC.ui.cause.${i.cause}`, {}, String(i.cause)) : null, locked: !!i.locked, child: !!i.parent,
     rolls, outcomes: (i.outcomes ?? []).map((o) => ({ name: o.name, text: o.hit ? t("ITAC.ui.ovr.hit") : t("ITAC.ui.ovr.miss"), hit: o.hit })),
     commands: [veto ? { id: "veto", label: labelOf(t, veto.label), req: veto.req, danger: true } : null, ovr ? { id: "override", label: labelOf(t, ovr.label), toggle: true, on: open } : null].filter(Boolean),
@@ -571,7 +580,7 @@ function manualData(m, own, facts, t) {
   const cost = ["none", "quick", "full"].includes(f.cost) ? f.cost : "none";
   const damage = (m.targets ?? []).map((x) => ({ target: x.id, name: x.name, amount: Math.max(0, Math.trunc(Number(f.damage?.[x.id]) || 0)) }));
   const result = { cost, note: String(f.note ?? "").slice(0, 300), damage: damage.filter((d) => d.amount > 0).map((d) => ({ target: d.target, amount: d.amount })) };
-  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: labelOf(t, `ITAC.action.${m.action}`), text: m.text ?? null, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null,
+  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: m.text ?? null, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null,
     costs: ["none", "quick", "full"].map((id) => ({ id, label: costText(t, id), on: id === cost })), note: { value: f.note ?? "", placeholder: t("ITAC.ui.manual.note") }, damage,
     resolve: { label: t("ITAC.ui.manual.resolve"), req: resolve.req(result) }, abort: { label: labelOf(t, abort.label), req: abort.req } };
 }
@@ -627,8 +636,8 @@ export function deskData(model, own, facts, t) {
     counts: kRows.length ? t("ITAC.ui.kit.counts", { auto: cnt("auto"), assist: cnt("assist"), hand: cnt("hand") }) : null,
     summon: kitWho ? { label: t("ITAC.ui.kit.summonOf"), value: facts.c?.(kitWho)?.summonOf ?? null, none: t("ITAC.ui.kit.nobody"), choices: everyone.filter((x) => x.id !== kitWho), req: (owner) => model.summonReq(kitWho, owner) } : null,
     groups: CAT_ORDER.filter((c) => c !== "boost" && c !== "limit").map((c) => ({ id: c, label: t(`ITAC.kit.cat.${c}`), rows: kRows.filter((r) => (["boost", "limit"].includes(r.cat) ? "power" : r.cat) === c)
-      .sort((x, y) => String(x.of ?? x.name).localeCompare(String(y.of ?? y.name)) || Number(!!x.of) - Number(!!y.of)).map((r) => ({ id: r.item, name: r.name, sub: r.of ? t("ITAC.ui.kit.of", { name: r.of }) : null, cat: ["boost", "limit"].includes(r.cat) ? t(`ITAC.kit.cat.${r.cat}`) : null,
-        state: r.state, stateText: t(`ITAC.kit.state.${r.state}`), note: t(`ITAC.kit.note.${r.note}`, {}, ""), open: kq.open === r.item || !!r.unknown || !!r.needs,
+      .sort((x, y) => String(x.of ?? x.name).localeCompare(String(y.of ?? y.name)) || Number(!!x.of) - Number(!!y.of)).map((r) => ({ id: r.item, name: r.name, sub: r.of ? t("ITAC.ui.kit.of", { name: r.of }) : r.unknown ? t("ITAC.ui.kit.unknown") : null, cat: ["boost", "limit"].includes(r.cat) ? t(`ITAC.kit.cat.${r.cat}`) : null,
+        state: r.state, stateText: t(`ITAC.kit.state.${r.state}`), note: t(`ITAC.kit.note.${r.note}`, {}, ""), open: kq.open === r.item || (kq.open === undefined && !!r.needs),
         off: { label: t("ITAC.ui.kit.off"), choices: [{ id: "has", label: t("ITAC.ui.kit.has"), on: r.state !== "off", req: model.kitReq(kitWho, r.item, "off", false) }, { id: "lost", label: t("ITAC.ui.kit.lost"), on: r.state === "off", req: model.kitReq(kitWho, r.item, "off", true) }] },
         map: r.unknown ? { label: t("ITAC.ui.kit.map"), choices: kitNames(r.type), req: (name) => model.kitReq(kitWho, r.item, "kit", name || null) } : null,
         types: r.note === "flag" ? { label: t("ITAC.ui.kit.types"), value: (kk.pass?.[r.key === "vulnerable" ? "vulnerable" : "immune"] ?? []).join(", "), req: (text) => model.kitReq(kitWho, r.item, "types", String(text ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) } : null })) })).filter((g) => g.rows.length) };

@@ -186,7 +186,7 @@ export const ROWS = Object.freeze([
   B("Intangibility", "Controlled Phasing", [1942], "hand", "story"),
   B("Intangibility", "Shared Intangibility", [1943], "hand", "story"),
   B("Intangibility", "Environment Phasing", [1944], "auto", "effect", { acts: [{ k: "envPhase", cost: "full", target: { who: "enemy", n: [1, 1] }, effect: { kind: "status", id: "trapped", on: "target", data: { dice: -2 } }, sameZone: 1 }] }),
-  P("Life Support", [1947], "assist", "outcome", { cost: "full", pass: { vacuumSafe: 1 } }),
+  P("Life Support", [1947], "assist", "outcome", { cost: "none", pass: { vacuumSafe: 1 } }),
   B("Life Support", "Effective Support", [1948], "hand", "story"),
   L("Life Support", "Breathing Only", [1949, 1950], "hand", "story"),
   P("Quickness", [1953], "auto", "effect", { acts: [{ k: "quickness", cost: "none", effect: { kind: "grant", template: "quickness" }, once: "round", anytime: 1 }] }),

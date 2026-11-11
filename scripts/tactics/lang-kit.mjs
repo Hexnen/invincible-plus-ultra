@@ -135,6 +135,7 @@ export const EN_KIT = {
   "ITAC.ui.kit.summonOf": "Summoned by",
   "ITAC.ui.kit.nobody": "nobody",
   "ITAC.ui.kit.of": "of {name}",
+  "ITAC.ui.kit.unknown": "not in the book",
 };
 export const PL_KIT = {
   "ITAC.warn.noEffect": "Tego efektu nie ma już na karcie. Przełącz go ręcznie.",
@@ -271,4 +272,5 @@ export const PL_KIT = {
   "ITAC.ui.kit.summonOf": "Przywołany przez",
   "ITAC.ui.kit.nobody": "nikt",
   "ITAC.ui.kit.of": "od: {name}",
+  "ITAC.ui.kit.unknown": "spoza podręcznika",
 };

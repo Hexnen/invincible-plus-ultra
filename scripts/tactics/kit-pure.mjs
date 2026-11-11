@@ -36,10 +36,12 @@ export function rowFor(item, parentName = "") {
   const cat = CAT_OF[item?.type] ?? null;
   const best = (list) => { if (!list?.length) return null; const same = list.filter((r) => r.cat === cat); const pool = same.length ? same : cat ? [] : list; return pool.find((r) => r.of && norm(r.of) === norm(parentName)) ?? pool[0] ?? null; };
   if (item?.flags?.kit) { const r = rowByKey(item.flags.kit); if (r) return r; }
-  return best(INDEX.exact.get(norm(item?.name))) ?? best(INDEX.exact.get(bare(item?.name))) ?? best(INDEX.prefix.filter((r) => norm(item?.name).startsWith(r.key))) ?? null;
+  const find = (name) => best(INDEX.exact.get(norm(name))) ?? best(INDEX.exact.get(bare(name))) ?? best(INDEX.prefix.filter((r) => norm(name).startsWith(r.key)));
+  return find(item?.name) ?? find(String(item?.name ?? "").replace(/[\s(]*[x×]\s*\d+\)?\s*$/i, "")) ?? null;     // "Durable x3": a talent taken several times on one item
 }
 const lvWord = (s) => { const m = LEVEL_RX.exec(String(s ?? "")); return m ? LEVELS.indexOf(m[1].toLowerCase()) : -1; };
 const baseName = (s) => String(s ?? "").replace(LEVEL_RX, "").trim();
+const useName = (it, a) => { const b = baseName(a.name), n = String(it.name ?? ""); return b.toLowerCase().startsWith(n.toLowerCase()) ? b.slice(n.length).replace(/^[\s\-–:]+/, "").trim() : b; };   // "Strike - Reduce Armor" on Strike -> "Reduce Armor"
 /** The level of a power: its own field, else the highest level its visible automations name. -> 0..3 */
 export function levelOf(item) {
   const own = LEVELS.indexOf(String(item?.level ?? "").toLowerCase());
@@ -79,12 +81,12 @@ function patchProfile(p, patch = {}, attrs = {}) {
   if (patch.resist && o.onHit?.stun) o.onHit = { ...o.onHit, resist: (o.onHit.resist ?? 0) + patch.resist };
   return o;
 }
-function profileOf(item, row, a, lv, attrs) {
+function profileOf(item, row, a, lv, attrs, many = false) {
   const key = norm(baseName(a.name)), byKey = Object.keys(row?.atk?.by ?? {}).find((k) => norm(k) === key), h = { ...(row?.atk ?? {}), ...(byKey ? row.atk.by[byKey] : {}) };
   if (h.skip) return null;
   const min = pos(a.min), max = pos(a.max), range = h.range ? h.range.slice() : max > 0 || min > 0 ? [min, max] : null, fam = h.fam ?? (range && (range[1] > 0 || h.range) ? "shoot" : "slug");
   const dflt = fam === "shoot" ? "agility" : "fighting", set = (a.attr ?? []).filter(Boolean);
-  const p = { id: `${item.id}~${a.id}`, item: item.id, name: String(set.length || row ? baseName(a.name) || item.name : item.name).slice(0, 60), of: String(item.name ?? "").slice(0, 60), fam,
+  const p = { id: `${item.id}~${a.id}`, item: item.id, name: String(many && useName(item, a) ? `${item.name}: ${useName(item, a)}` : item.name).slice(0, 60), of: String(item.name ?? "").slice(0, 60), fam,
     attr: !set.length || set.includes(dflt) ? null : set.slice().sort((x, y) => (Number(attrs[y]) || 0) - (Number(attrs[x]) || 0))[0],
     bonus: Math.trunc(Number(a.bonus) || 0), damage: pos(a.damage) || null, range: fam === "shoot" ? range ?? [0, 1] : null, stress: pos(a.stress),
     sharp: item.wf?.sharp === true, fullAuto: item.wf?.fullAuto === true, area: item.wf?.area === true || h.area === 1, source: h.source ?? undefined,
@@ -146,7 +148,7 @@ export function build(src = {}) {
       const autos = autosAt(it, lv), attacks = autos.filter((a) => a.type === "rollAttack"), uses = autos.filter((a) => ["usePower", "rollAttribute", "useGear"].includes(a.type));
       /* attack profiles: the item's own attack automations, each with the boosts of the power */
       if (!row?.mounted) for (const a of attacks) {
-        let p = profileOf(it, row, a, lv, attrs);
+        let p = profileOf(it, row, a, lv, attrs, attacks.length > 1);
         if (!p) continue;
         for (const o of optsOf(it).filter((o) => !o.row.opt.optional && !o.row.opt.on && o.row.opt.patch)) p = patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress }, attrs);
         kit.weapons.push(p);
@@ -172,13 +174,16 @@ export function build(src = {}) {
           const set = (a.attr ?? []).filter(Boolean), byKey = Object.keys(row?.by ?? {}).find((k) => norm(k) === norm(baseName(a.name)));
           const roll = set.length === 1 ? { attr: set[0] } : set.length > 1 ? { attrs: set } : a.type === "rollAttribute" ? { attrs: "any" } : null;
           if (roll && a.bonus) roll.mods = [{ source: `kit:${row?.key ?? "item"}`, dice: Math.trunc(a.bonus) }];
-          kit.actions.push(actionOf(it, row, { k: `u${i}`, label: "use", name: baseName(a.name) && norm(baseName(a.name)) !== norm(it.name) ? `${it.name}: ${baseName(a.name)}` : it.name, cost: row?.by?.[byKey]?.cost ?? row?.cost ?? (cat === "gear" ? "quick" : "full"),
+          kit.actions.push(actionOf(it, row, { k: `u${i}`, label: "use", name: useName(it, a) ? `${it.name}: ${useName(it, a)}` : it.name, cost: row?.by?.[byKey]?.cost ?? row?.cost ?? (cat === "gear" ? "quick" : "full"),
             stress: pos(a.stress) || undefined, roll, effect: { kind: "narrative" }, text: 1 }, lv, { state: "assist" }));
         });
         if (row && !row.acts && !uses.length && !attacks.length && !row.fx && !row.pass && !row.mods && !row.opt && ["zone", "outcome", "gmCard", "roll"].includes(row.note) && row.state === "assist")
           kit.actions.push(actionOf(it, row, { k: "u0", label: "use", cost: row.cost ?? "full", effect: { kind: "narrative" }, text: 1, roll: { attrs: "any", optional: true } }, lv));
         if (!row && uses.length) { rec.state = "assist"; rec.note = "unknown"; }
       }
+      /* a known entry whose item carries a use of its own at a price (a hero's "Strike - Reduce Armor"): offered, the GM says what it does */
+      else if (row && row.acts && !row.acts.length && row.state !== "hand") uses.filter((a) => pos(a.stress) > 0 && useName(it, a)).slice(0, 3).forEach((a, i) =>
+        kit.actions.push(actionOf(it, row, { k: `u${i}`, label: "use", name: `${it.name}: ${useName(it, a)}`, cost: "none", stress: pos(a.stress), effect: { kind: "narrative" }, text: 1 }, lv, { state: "assist" })));
       /* switching the item's active effects from the dock */
       if (row?.fx) {
         const host = row.fx.ofParent ? x.parent : it, list = (host?.fx ?? []).filter((f) => !row.fx.only || norm(f.name).includes(norm(row.fx.only)));

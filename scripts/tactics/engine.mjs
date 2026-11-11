@@ -224,6 +224,7 @@ export function view(user = game.user, combat = undefined) {
 export function journal(user = game.user, combat = undefined) { const c = pick(combat); return c && Store.stateOf(c) ? V.journalFor(Store.logOf(c), viewer(user, c)) : []; }
 /** names and presence for the desk and player models (desk-pure.mjs) */
 export const context = (combat = undefined) => { const c = pick(combat); return { staff: Store.isStaff(game.user),
+  bonus: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.sheetBonuses(a) : null; } catch { return null; } },   // P6: the dice the sheet's effects add, for the preview
   kit: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.kitOf(a) : null; } catch { return null; } },      // P6: only of a sheet this user may read
   c: (cid) => { const cb = c?.combatants.get(cid); return cb ? { name: cb.name, npc: Sys.actorOf(cb)?.type !== "superhero", owners: Sys.ownersOf(Sys.actorOf(cb)) } : null; }, online: (uid) => game.users.get(uid)?.active === true,
   special: () => (c?.combatants?.contents ?? []).filter((cb) => ["challenge", "vehicle"].includes(Sys.actorOf(cb)?.type) && (Store.isStaff(game.user) || !cb.hidden)).map((cb) => ({ id: cb.id, name: cb.name, kind: Sys.actorOf(cb).type })) }; };      // P7

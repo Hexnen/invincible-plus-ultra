@@ -190,6 +190,7 @@ function makeInst(X, { action, actor, decl, cause = "turn", parent = null, data 
   const inst = { id: nextId(X, "a"), action, flow: FLOWS[f] ? f : "other", actor: actor ?? null, initiator: initiator ?? (actor ? { type: "combatant", id: actor } : { type: "gm", id: X.user.id }),
     by: X.user.id, parent, cause, step: FLOWS[FLOWS[f] ? f : "other"].STEPS[0], status: "open", decl, locked: false, waits: [], rolls: {}, data: { ...data }, overrides: [], tx: null };
   if (entry?.flow === "attack" && !inst.data.kind) inst.data.kind = entry.attack ?? "slugfest";
+  if (entry?.kit && entry.name) inst.data.label = { label: entry.label, name: String(entry.name).slice(0, 80), ...(entry.fxOn !== undefined ? { fxOn: !!entry.fxOn } : {}) };   // P6: an action of the sheet keeps its name for the lists
   if (part) inst.part = 1;
   return inst;
 }

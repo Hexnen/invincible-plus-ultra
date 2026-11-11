@@ -43,7 +43,7 @@ function factsOf(combat) {
   return {
     view, me: game.user.id, staff,
     c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null } : null; },
-    kit: (id) => ctx.kit(id),                                                                  // P6: the abilities of a sheet this user may read (engine.context)
+    kit: (id) => ctx.kit(id), bonus: (id) => ctx.bonus?.(id) ?? null,                                                                  // P6: the abilities of a sheet this user may read (engine.context)
     attrs: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner || view?.revealed?.[id]?.stats) ? Sys.actorFacts(a)?.attrs ?? null : null; } catch { return null; } },
     userName: (u) => game.users.get(u)?.name ?? null,
     /* P7: challenges and vehicles of the fight (no card, no ledger); their numbers only for staff */

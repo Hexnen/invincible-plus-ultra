@@ -39,7 +39,7 @@ const turnOf = (state, ctx) => ({ round: state.round ?? null, phase: state.phase
 const entryOf = (state, i) => { try { return state ? C.entryFor(state, i.actor, i.action) : null; } catch { return null; } };
 const kitFacts = (ctx) => (typeof ctx.kit === "function" ? { c: (id) => ({ kit: ctx.kit(id) }) } : null);      // P6: the entries of a character's own sheet (only where this user may read it)
 const instLine = (i, ctx, state = null) => ({ steps: (FLOWS[i.flow]?.STEPS ?? []).slice(), attr: entryOf(state, i)?.roll?.attr ?? null, defense: entryOf(state, i)?.defense ?? null,
-  outcomes: Object.entries(i.data?.out ?? {}).map(([t, o]) => ({ target: t, name: nameOf(ctx, t), hit: o?.hit === true, net: o?.net ?? null })), inst: i.id, action: i.action, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text });
+  outcomes: Object.entries(i.data?.out ?? {}).map(([t, o]) => ({ target: t, name: nameOf(ctx, t), hit: o?.hit === true, net: o?.net ?? null })), inst: i.id, action: i.action, label: i.data?.label ?? null, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text });
 
 /** Everything the GM desk shows. `log` is the journal flag. */
 export function deskModel(state, log, ctx = {}) {
@@ -113,7 +113,7 @@ export function barModel(view, cid, ctx = {}) {
       req: (decl = {}) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id } }), exceptionReq: (decl, text) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id, exception: { text } } }) };
   });
   return { combatant: cid, name: nameOf(ctx, cid), onTurn, free: !!view.free?.[cid], budget: P1 ? P1.budget(view, cid) : null, statuses: (view.statuses?.[cid] ?? []).map((s) => s.id),
-    tokens: (view.tokens ?? []).filter((t) => t.holder === cid).map((t) => ({ id: t.id, dice: t.dice, source: t.source, needsGm: !!t.needsGm })), actions,
+    tokens: (view.tokens ?? []).filter((t) => t.holder === cid).map((t) => ({ id: t.id, dice: t.dice, source: t.source, needsGm: !!t.needsGm, scope: t.scope ?? null, forced: !!t.forced })), actions,
     kitRows: (typeof ctx.kit === "function" ? ctx.kit(cid)?.rows : null) ?? [],                    // P6: every item of the sheet with its state (automated, confirmed by the GM, by hand)
     move: typeof ctx.move === "function" ? ctx.move(cid) : undefined,                             // P3: the reachable zones with their cost (movement-pure.moveOptions), each with a ready request
     endTurn: onTurn ? { disabled: busy ? "busy" : null, req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,
