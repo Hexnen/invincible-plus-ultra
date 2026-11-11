@@ -34,6 +34,10 @@ export function makeToken(t) {
   if (t.forced) out.forced = 1;                          // P6: put on the holder's roll by somebody else (Luck Control [B1727]); counted without being chosen       // spec 6.2: a token with `purpose` or `needsGm` shows the GM a one-click confirmation
   return out;
 }
+/** A token that counts on every roll of its scope without being chosen: put there by somebody else (`forced`, Luck Control [B1727]), or
+    standing for all rolls of its scope (`uses: "all"`, Action Plan: "+1 die to ALL attribute rolls covered by the plan" [B1634]) and not
+    waiting for the GM's word. Everything else is a die the holder chooses to spend. */
+export const standing = (t) => !!t && (t.forced === 1 || t.forced === true || (t.uses === "all" && !t.needsGm));
 /** Tokens `holder` may add to a roll. roll = { kind: one of ROLL_KINDS, attr }. */
 export function tokensFor(state, holder, roll) {
   const list = (state.tokens ?? []).filter((t) => t.holder === holder

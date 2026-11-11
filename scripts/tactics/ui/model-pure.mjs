@@ -69,7 +69,8 @@ export function poolPreview(action, bar, facts, tokens = []) {
   const b = facts.bonus?.(bar.combatant) ?? null, kind = action.flow === "attack" ? action.attack ?? action.id : null;
   const sheet = b ? (Number(b[action.attr]) || 0) + (kind ? (Number(b.attack) || 0) + (["slugfest", "charge", "grapple"].includes(kind) ? Number(b[kind]) || 0 : 0) : 0) : 0;
   if (sheet) parts.push({ id: "sheet", dice: Math.trunc(sheet) });
-  for (const tk of bar.tokens ?? []) if (tokens.includes(tk.id)) parts.push({ id: "token", token: tk.id, source: tk.source?.name ?? "", dice: tk.dice });
+  const rKind = action.flow === "attack" ? "attack" : "other", onRoll = (k) => (!k.scope?.rolls?.length || k.scope.rolls.includes(rKind)) && (!k.scope?.attrs?.length || k.scope.attrs.includes(action.attr));
+  for (const tk of bar.tokens ?? []) if (tokens.includes(tk.id) || (tk.standing && onRoll(tk))) parts.push({ id: "token", token: tk.id, source: tk.source?.name ?? "", dice: tk.dice });      // a standing die (a plan [B1634], bad luck) counts without being chosen
   return { total: Math.max(1, parts.reduce((n, p) => n + p.dice, 0)), parts };
 }
 const DEF_ATTR = { block: "fighting", dodge: "agility" };
@@ -255,8 +256,13 @@ export function askData(p, o) {
       zones: [...new Set(places.map((x) => bare(x.data.zone ?? x.data.to)))].map((z) => ({ zone: z, tip: [...new Set(places.filter((x) => bare(x.data.zone ?? x.data.to) === z).map(wayLabel))].join(" / ") })),
       /* the zone clicked on the map: one way to get there answers at once, several are shown as buttons (main.mjs keeps the zone) */
       zoneReq: (zone) => { const hit = places.filter((x) => bare(x.data.zone ?? x.data.to) === bare(zone)); return hit.length === 1 ? hit[0].req : null; }, req: null }];
+  /* the bonus dice an answer may take along (a block or a dodge, spec 6.2): chips on the card, sent with the answer as { id, tokens } */
+  const spare = new Map(); for (const x of p.options ?? []) for (const k of Array.isArray(x.data?.tokens) ? x.data.tokens : []) if (!spare.has(k.id)) spare.set(k.id, k);
+  const tkPicked = (own.picks?.[`tk:${p.id}`] ?? []).filter((id) => spare.has(id));
+  const tokens = [...spare.values()].map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source}`, {}, String(k.source ?? "")), needsGm: !!k.needsGm, picked: tkPicked.includes(k.id) }));
   const options = [...placeOpts, ...(p.options ?? []).filter((x) => !places.includes(x)).map((x) => {
-    const value = text && p.free ? { id: x.id, text } : always ? { id: x.id, always: true } : null;
+    const mine = tkPicked.filter((id) => (x.data?.tokens ?? []).some((k) => k.id === id));
+    const value = text && p.free ? { id: x.id, text } : always ? { id: x.id, always: true } : mine.length ? { id: x.id, tokens: mine } : null;
     const zones = Array.isArray(x.data?.zones) ? x.data.zones : null;
     return { id: x.id, label: optLabel(p, x, t, facts, desk, oneTarget), cost: [costText(t, x.cost), x.stress ? t("ITAC.ui.stress", { n: x.stress }) : null].filter(Boolean).join(", ") || null,
       note: odds(x.id), disabled: x.disabled ? reasonText(t, x.disabled) : null, picked: picks.includes(x.id), pass: x.id === "pass", zones,
@@ -272,7 +278,7 @@ export function askData(p, o) {
   const canSubmit = !multi || queue || (picks.length >= min && picks.length <= max);
   return {
     map: desk && kind === "direction" && Array.isArray(p.data?.zones) && p.data.zones.length > 1 ? { zones: p.data.zones.map((z, i) => ({ zone: bare(z), label: i ? String(i) : "" })), borders: (p.data.walls ?? []).map((w) => w.border).filter(Boolean) } : null,
-    id: p.id, kind, proxy: p.kind === "proxy", title: titleOf({ ...p, to: desk ? "desk" : "player" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options, multi,
+    id: p.id, kind, proxy: p.kind === "proxy", title: titleOf({ ...p, to: desk ? "desk" : "player" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options, multi, tokens,
     free: p.free ? { text: own.texts?.[p.id] ?? "", placeholder: t(desk ? "ITAC.ui.note.gm" : "ITAC.ui.note.player") } : null,
     always: desk && Array.isArray(p.always) && p.always.length ? { on: always, label: t("ITAC.ui.always", { name: p.aboutName ?? "" }) } : null,
     submit: multi ? { label: queue ? t("ITAC.Prompt.triggerQueue.Go") : t("ITAC.ui.confirm", { n: picks.length, max }), disabled: canSubmit ? null : t("ITAC.ui.pickMore"),
@@ -372,7 +378,7 @@ function declarePanel(bar, a, own, facts, t) {
   const ap = a.flow === "challenge" ? approachOf(facts, picked[0], own, bar, t) : null;
   /* P6: only the dice that can go on THIS roll are offered (a +2 for a FIGHTING attack is not a choice on a shot, nor on an action without a roll) */
   const rAttr = ap?.attr ?? arm.attr ?? attr ?? null, rKind = a.flow === "attack" ? "attack" : "other", rolls = a.flow === "attack" || a.flow === "challenge" || !!rAttr || chooser;
-  const fits = (k) => rolls && !k.forced && (!k.scope?.rolls?.length || k.scope.rolls.includes(rKind)) && (!k.scope?.attrs?.length || !rAttr || k.scope.attrs.includes(rAttr));
+  const fits = (k) => rolls && !k.forced && !k.standing && (!k.scope?.rolls?.length || k.scope.rolls.includes(rKind)) && (!k.scope?.attrs?.length || !rAttr || k.scope.attrs.includes(rAttr));
   const tokens = (bar.tokens ?? []).filter(fits).map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source?.name}`, {}, String(k.source?.name ?? "")), needsGm: !!k.needsGm, picked: (own.tokens ?? []).includes(k.id) }));
   const pool = poolPreview({ ...a, attr: ap?.attr ?? arm.attr ?? attr }, bar, facts, own.tokens ?? []);
   /* P6: the choice an ability asks for (a plan, good or bad luck, how much) */

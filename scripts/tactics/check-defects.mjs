@@ -9,6 +9,9 @@ import * as Kit from "./kit-pure.mjs";
 import { LEVELS } from "./kitdata-pure.mjs";
 import { NAMES } from "./check-kit-names.mjs";
 import * as Eng from "./engine-pure.mjs";
+import * as Desk from "./desk-pure.mjs";
+import * as View from "./view-pure.mjs";
+import * as UiM from "./ui/model-pure.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -365,6 +368,50 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
   await U.req("p2", { op: "help", inst: U.top().id, helper: "H2" });
   const r = await U.req("p1", { op: "amend", inst: U.top().id, decl: { action: "slugfest", targets: ["H2"] } });
   eq([code(r), why(r), U.top().decl.targets], ["illegal", "helpTarget", ["N1"]], "D18: an action is not turned against its own helper");
+}
+
+/* ================================================================== D13: bonus dice for a block or a dodge reach the defence roll [B1634] */
+{
+  const plan = (holder, rolls, more = {}) => ({ op: "tokenAdd", token: { id: `tk${holder}${rolls.join("")}`, holder, dice: 2, scope: { rolls }, uses: "all", source: { kind: "power", name: "Action Plan", owner: "H1" }, expires: { at: "nextTurnOf", who: "H1" }, ...more } });
+  const defDice = async (T, how = "block", value = how) => {
+    T.turn("N1"); await T.gm(decl("N1", how === "block" ? "slugfest" : "shoot", ["H2"], how === "block" ? {} : { weapon: "gun" }));
+    const p = T.prompt("reaction", "H2"); await T.req("p2", { op: "answer", prompt: p.id, value }); await T.roll("attack", 1);
+    return T.requests.filter((x) => x.key === "def:H2").pop();
+  };
+  const mk = () => { const T = fight(); T.weapons.gun = { id: "gun", bonus: 1, damage: 2, range: [0, 2] }; return T; };
+  { const T = mk(); await T.gm(plan("H2", ["block", "dodge"]));
+    const q = await defDice(T);
+    eq([q?.dice, q?.pool?.mods.map((m) => m.dice)], [T.c.H2.attrs.fighting + 2, [2]], "D13: the plan to defend adds its dice to a block, unasked");
+    ok(T.state.tokens.some((k) => k.holder === "H2"), "D13: a standing die is not used up"); }
+  { const T = mk(); await T.gm(plan("H2", ["block", "dodge"]));
+    const q = await defDice(T, "dodge");
+    eq(q?.dice, T.c.H2.attrs.agility + 2, "D13: and to a dodge"); }
+  { const T = mk(); await T.gm(plan("H2", ["attack"]));
+    const q = await defDice(T);
+    eq(q?.dice, T.c.H2.attrs.fighting, "D13: a plan to attack adds nothing to a defence");
+    const U = mk(); await U.gm(plan("H2", ["attack"])); U.turn("H2"); await U.req("p2", decl("H2", "slugfest", ["N1"])); await U.answer("gm", "reaction", "pass", "N1");
+    eq(U.requests.filter((x) => x.key === "attack").pop()?.dice, T.c.H2.attrs.fighting + 2, "D13: it stands on every attack roll, unasked, as the book has it"); }
+  { /* a die the holder chooses: offered on the card, sent with the answer, spent */
+    const T = mk(); await T.gm({ op: "tokenAdd", token: { id: "ea", holder: "H2", dice: 3, scope: { attrs: ["fighting", "strength", "agility"] }, uses: 1, source: { kind: "power", name: "Energy Absorption", owner: "H2" }, expires: { at: "roundEnd" } } });
+    T.turn("N1"); await T.gm(decl("N1", "slugfest", ["H2"]));
+    const p = T.prompt("reaction", "H2");
+    eq(p.options.find((o) => o.id === "block")?.data?.tokens?.map((k) => [k.id, k.dice]), [["ea", 3]], "D13: the block option names the die that may go on it");
+    const meta = { hidden: [], npc: ["N1", "N2"] }, ctx = { c: (id) => T.c[id] ?? null, online: () => true, P1 };
+    const pmodel = Desk.playerModel(View.viewFor(T.state, { id: "p2", staff: false, owns: ["H2"] }, meta), { id: "p2", owns: ["H2"] }, ctx).prompts.find((x) => x.id === p.id);
+    const tr = (k, prm, fb) => fb ?? k, facts = { view: { ledger: {} }, c: (id) => T.c[id] ?? null, zone: () => null };
+    const bare = UiM.askData(pmodel, { t: tr, facts, own: {} });
+    eq([(bare.tokens ?? []).map((k) => [k.id, k.picked]), bare.options.find((o) => o.id === "block").req.value], [[["ea", false]], "block"], "D13: the card shows the die as a chip; untouched, the answer is the plain option");
+    const picked = UiM.askData(pmodel, { t: tr, facts, own: { picks: { [`tk:${p.id}`]: ["ea"] } } });
+    eq([picked.tokens?.[0]?.picked, picked.options.find((o) => o.id === "block").req.value, picked.options.find((o) => o.id === "pass").req.value], [true, { id: "block", tokens: ["ea"] }, "pass"], "D13: ticked, it rides with the block and not with a pass");
+    await T.req("p2", picked.options.find((o) => o.id === "block").req); await T.roll("attack", 1);
+    eq(T.requests.filter((x) => x.key === "def:H2").pop()?.dice, T.c.H2.attrs.fighting + 3, "D13: the chosen die is in the block");
+    ok(!T.state.tokens.some((k) => k.id === "ea"), "D13: and it is spent"); }
+  { /* the bar model of a holder (the declare panel): a standing die is counted in the preview and is not a chip */
+    const T = mk(); await T.gm(plan("H1", ["attack"]));
+    const bar = Desk.barModel(View.viewFor(T.state, { id: "p1", staff: false, owns: ["H1"] }, { hidden: [], npc: ["N1", "N2"] }), "H1", { c: (id) => T.c[id] ?? null, online: () => true, P1 });
+    eq(bar.tokens.map((k) => k.standing), [true], "D13: the bar marks the standing die");
+    const pv = UiM.poolPreview({ attr: "fighting", flow: "attack", id: "slugfest" }, bar, { c: (id) => T.c[id] ?? null, attrs: (id) => T.c[id]?.attrs ?? null, view: {} }, []);
+    eq(pv?.total, T.c.H1.attrs.fighting + 2, "D13: and the preview counts it"); }
 }
 
 done("check-defects");

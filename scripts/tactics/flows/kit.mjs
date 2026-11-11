@@ -112,7 +112,7 @@ export function buildPool(v, inst, key, cid, attr, mods = [], { rollKind = "othe
   for (const m of kitDice(v, inst, cid, attr, rollKind)) if (!list.some((x) => x.source === m.source)) list.push(m);      // P6: the sheet's bonuses, the kit's dice, Affliction
   const pen = attr ? crits.critPenalty(c?.crits ?? [], attr) : 0;
   if (pen && !list.some((m) => m.source === "crit")) list.push({ source: "crit", dice: -pen });
-  const must = M.tokensFor(v.state, cid, { kind: rollKind, attr }).filter((t) => t.forced).map((t) => t.id);            // P6: dice somebody else put on the roll (bad luck) are not the roller's to leave out
+  const must = M.tokensFor(v.state, cid, { kind: rollKind, attr }).filter(M.standing).map((t) => t.id);                // P6: dice somebody else put on the roll (bad luck) are not the roller's to leave out; [B1634]: a plan covers ALL rolls of its kind, attack and defence alike
   const tk = M.spendTokens(v.state, cid, { kind: rollKind, attr }, [...new Set([...tokens, ...must])]);
   list.push(...tk.mods.map((m) => ({ source: m.source, dice: m.dice })));
   const forced = inst.data.forced?.pool?.[key];

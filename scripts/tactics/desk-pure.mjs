@@ -8,6 +8,7 @@ import * as C from "./catalog-pure.mjs";
 import { REVALIDATE_OPTIONS, FLOWS } from "./engine-pure.mjs";
 import * as Init from "./initiative-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
+import { standing } from "./mods-pure.mjs";
 import { applies, attrChoices } from "./actions-pure.mjs";
 /* ADDED FOR THE SURFACES (scripts/tactics/ui/; all additive, checked in check-ui.mjs):
      instance lines carry `steps` (the flow's step ids, for "back to step"), `attr` / `defense` of the catalog entry and `outcomes`;
@@ -114,7 +115,7 @@ export function barModel(view, cid, ctx = {}) {
       req: (decl = {}) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id } }), exceptionReq: (decl, text) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id, exception: { text } } }) };
   });
   return { combatant: cid, name: nameOf(ctx, cid), onTurn, free: !!view.free?.[cid], budget: P1 ? P1.budget(view, cid) : null, statuses: (view.statuses?.[cid] ?? []).map((s) => s.id),
-    tokens: (view.tokens ?? []).filter((t) => t.holder === cid).map((t) => ({ id: t.id, dice: t.dice, source: t.source, needsGm: !!t.needsGm, scope: t.scope ?? null, forced: !!t.forced })), actions,
+    tokens: (view.tokens ?? []).filter((t) => t.holder === cid).map((t) => ({ id: t.id, dice: t.dice, source: t.source, needsGm: !!t.needsGm, scope: t.scope ?? null, forced: !!t.forced, standing: standing(t) })), actions,
     kitRows: (typeof ctx.kit === "function" ? ctx.kit(cid)?.rows : null) ?? [],                    // P6: every item of the sheet with its state (automated, confirmed by the GM, by hand)
     move: typeof ctx.move === "function" ? ctx.move(cid) : undefined,                             // P3: the reachable zones with their cost (movement-pure.moveOptions), each with a ready request
     endTurn: onTurn ? { disabled: busy ? "busy" : null, req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,

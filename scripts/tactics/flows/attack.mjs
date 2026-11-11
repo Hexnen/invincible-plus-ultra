@@ -174,11 +174,13 @@ function defencePrompt(v, I, t) {
   for (const id of ["block", "dodge"]) {
     const op = allowed(opts, id);
     if (op.reason === "notAllowed") continue;                                                    // this attack cannot be answered that way at all
-    const o = { id, label: `ITAC.action.${id}`, cost: "quick" };
+    /* the bonus dice the defender may choose to put on this defence (spec 6.2); the answer names them: { id, tokens } */
+    const spare = M.tokensFor(v.state, t, { kind: id, attr: attack.DEFENCES[id].attr }).filter((k) => !M.standing(k)).map((k) => ({ id: k.id, dice: k.dice, source: k.source?.name ?? "", ...(k.needsGm ? { needsGm: 1 } : {}) }));
+    const o = { id, label: `ITAC.action.${id}`, cost: "quick", ...(spare.length ? { data: { tokens: spare } } : {}) };
     if (!op.ok) o.disabled = op.reason;
     options.push(o);
     if (free) {
-      const f = allowed(free, id), fo = { id: `${id}:free`, label: `ITAC.opt.${id}Free`, cost: "none", stress: 1 };
+      const f = allowed(free, id), fo = { id: `${id}:free`, label: `ITAC.opt.${id}Free`, cost: "none", stress: 1, ...(spare.length ? { data: { tokens: spare } } : {}) };
       if (!f.ok) fo.disabled = f.reason; else if (!(tf.resolve > 0)) fo.disabled = "stressedOut";                   // [B2105]: not without Resolve
       options.push(fo);
     }
@@ -397,7 +399,9 @@ export const steps = {
       if (!df?.defence) continue;
       const key = `def:${t}`;
       if (!K.rollOf(I, key)) {
-        const bp = K.buildPool(v, I, key, t, attack.DEFENCES[df.defence].attr, [], { rollKind: df.defence, tokens: df.tokens ?? [] });
+        const tg = K.tokenGate(v, I, R, t, { kind: df.defence, attr: attack.DEFENCES[df.defence].attr }, df.tokens ?? [], key);      // a die with a purpose waits for the GM's word, as on an attack (spec 6.2)
+        if (tg.wait) { waiting = true; continue; }
+        const bp = K.buildPool(v, I, key, t, attack.DEFENCES[df.defence].attr, [], { rollKind: df.defence, tokens: tg.tokens });
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
         R.effects.push(K.rollEffect(key, t, attack.DEFENCES[df.defence].attr, bp.pool, { defender: true, label: `ITAC.action.${df.defence}` }));
         waiting = true;
