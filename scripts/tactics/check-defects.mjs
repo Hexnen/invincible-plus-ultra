@@ -51,8 +51,9 @@ const stun = async (T, by = "H1", user = "p1", t = "N1") => {
   eq(st(T, "N1"), "", "D1: clearing the lost turn clears the mark");
   eq(code(await T.gm({ op: "statusAdd", combatant: "N2", status: { id: "stunned" } })), "ok", "D1: a mark set by hand");
   ok(M.conditions(T.state, "N2").noInterrupts, "D1: bans interrupts while it stands");
-  T.turn("N2");
-  eq(st(T, "N2"), "", "D1: and ends when that character's turn comes");
+  ok(!!T.state.ledger.N2.lostTurn, "D53: the mark set by hand takes the next turn away, as the state means [B2436]");
+  T.turn("H2"); await T.gm({ op: "nextTurn" });
+  eq([st(T, "N2"), T.state.init.curMember === "N2", !!T.state.ledger.N2.lostTurn], ["", false, false], "D1: and ends with the turn it takes away");
 }
 { /* sibling: any status with `ends`, and what lasts "until your next turn" of a character whose turn is lost */
   const T = fight();

@@ -114,7 +114,7 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   eq([by.N1?.state, by.N3?.state, "H2" in by, "N2" in by], ["in", "out", false, false], "C: in reach a ring, out of reach dimmed; no mark for one that is not on the map or not in the view");
   ok(/reach/i.test(by.N3.tip ?? ""), "C: the dimmed token says why, in the words of the reason table");
   ok(typeof by.N1.label === "string" && by.N1.label.length <= 18 && !/%/.test(by.N1.label), "C: a player reads the chance as a word over the token");
-  ok(by.N1.hover && /≤/.test(by.N1.hover.label) && !by.N1.hover.bar, "C: of an NPC that is not revealed the hover says `up to` the own Damage and draws no Health bar");
+  ok(by.N1.hover && /~\d/.test(by.N1.hover.label) && !/up to/i.test(by.N1.hover.tip) && !by.N1.hover.bar, "C: of an NPC that is not revealed the hover says the own Damage (no bound: D51) and draws no Health bar");
   eq(p.chance, null, "C: the chance is not said a second time in the panel");
   ok(p.targets.find((x) => x.id === "H2")?.map === false, "C: a candidate that is not on the map keeps its chip");
   /* choosing one out of reach: the reason at once, with the way to ask; nothing can be declared */
@@ -153,7 +153,7 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   eq(code(await T.gm({ op: "declare", actor: "N1", decl: { action: "slugfest", targets: ["H1"] } })) === "ok" || true, true, "C: (an open attacker)");
 
   /* what a hit would do, in words */
-  eq(BP.hitWords({ base: 3, toStress: false }, t), { short: "≤3", tip: T0("ITAC.map.hit.upTo", { n: 3 }), bar: null }, "C: only the own Damage known");
+  eq(BP.hitWords({ base: 3, toStress: false }, t), { short: "~3", tip: T0("ITAC.map.hit.base", { n: 3 }), bar: null }, "C: only the own Damage known");
   const hw = BP.hitWords({ base: 3, toStress: false, taken: 2, most: 5, now: 4, max: 6 }, t);
   eq([hw.short, hw.bar], ["-2", { value: 4, max: 6, loss: 2, lossMax: 4 }], "C: the whole effect: what goes, what may go at most (never more than is left)");
   ok(/Resolve/.test(BP.hitWords({ base: 2, toStress: true, taken: 2, most: 2, now: 5, max: 6 }, t).tip), "C: damage to Resolve says so");
@@ -168,9 +168,9 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   ok(/reach/i.test(it.slugfest.disabled ?? "") && (!it.shoot || !it.shoot.disabled), "C: an action the engine refuses against this target is greyed with the reason");
   const gi = BP.gmItems("N1", { health: 4, maxHealth: 6, resolve: 2, maxResolve: 5 }, [{ id: "stunned" }], t);
   eq([gi[0].stepper, gi[0].req(3), gi[1].req(0), gi.find((x) => x.id === "st:stunned").on, gi.find((x) => x.id === "st:stunned").req(false), gi.find((x) => x.id === "st:trapped").req(true)],
-    [{ value: 4, min: 0, max: 6 }, { op: "setHealth", combatant: "N1", value: 3 }, { op: "setResolve", combatant: "N1", value: 0 }, true, { op: "statusRemove", combatant: "N1", id: "stunned" }, { op: "statusAdd", combatant: "N1", status: { id: "trapped" } }], "C: the GM's corrections are the engine's own journaled edits");
+    [{ value: 4, min: 0, max: 6 }, { op: "setHealth", combatant: "N1", delta: -1 }, { op: "setResolve", combatant: "N1", delta: -2 }, true, { op: "statusRemove", combatant: "N1", id: "stunned" }, { op: "statusAdd", combatant: "N1", status: { id: "trapped" } }], "C: the GM's corrections are the engine's own journaled edits");
   for (const r of [gi[0].req(3), gi.find((x) => x.id === "st:trapped").req(true), gi.find((x) => x.id === "st:trapped").req(false)]) eq(code(await T.gm(r)), "ok", `C: the edit ${r.op} is accepted`);
-  eq(T.c.N1.health, 3, "C: the stepper's request sets the Health");
+  eq(T.c.N1.health, 5, "C: the stepper's request is a step from what the character has now (6 on the sheet, one down)");
   eq(code(await T.gm({ op: "undo", tx: T.log.list.at(-1).id })), "ok", "C: a correction is undone like any other entry");
 
   /* the camera switch */
@@ -203,8 +203,8 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   const fm = { burning: { z2: 3 }, spread: { z5: 1 } };
   eq([BP.endWarnings(fm, "z2", T.c.H1, Zf, t).map((x) => x.icon), BP.endWarnings(fm, "z5:elevated", T.c.H1, Zf, t).map((x) => x.text), BP.endWarnings(fm, "z1", T.c.H1, Zf, t), BP.endWarnings(fm, "@sky", T.c.H1, Zf, t)],
     [["burning"], [T0("ITAC.map.warn.spread")], [], []], "C2: ending the turn in a burning zone or next to one is warned of; elsewhere nothing");
-  eq(BP.zoneHazards(fm, ["z1", "z2", "z3"], "z3", T.c.H1, Zf, t).map((h) => [h.zone, h.text]), [["z2", "Fire 3"]], "C2: fire on the way is named on the route");
-  eq(BP.fireMap(Zf), { burning: {}, spread: {} }, "C2: a map without fire warns of nothing");
+  eq(BP.zoneHazards(fm, ["z1", "z2", "z3"], "z3", T.c.H1, { ...Zf, states: undefined }, t).map((h) => [h.zone, h.text]), [["z2", T0("ITAC.map.haz.fire", { n: 3 })]], "C2: fire on the way is named on the route");
+  eq(BP.fireMap(Zf), { list: [], burning: {}, spread: {} }, "C2: a map without fire warns of nothing");
   for (const x of [...BP.endWarnings(fm, "z2", T.c.H1, Zf, t), ...z2.hazards]) ok(x.text.length <= 28, `C2: a chip on the map is short (${x.text})`);
   /* the menu at a door */
   const door = { to: "z3|z4", zone: "z4", state: "locked", armor: 1, actions: { openDoor: "doorState", breachDoor: null, unseal: "notAtDoor" } };

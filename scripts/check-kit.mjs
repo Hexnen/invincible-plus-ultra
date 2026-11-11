@@ -51,5 +51,27 @@ ok(tipClassFor(null) === null && tipClassFor({}) === null, "no element, no class
 for (const s of [".invincible.sheet", ".invincible-plus-ultra", "li.chat-message", "#invincible-party", "#invincible-challenges", "#invincible-combat-bar", "#invincible-turn-tray"]) ok(SURFACES.includes(s), `SURFACES lists ${s}`);
 ok(!SURFACES.includes("tactics"), "the dock and the desk name their own tooltip class");
 
+// 6. the system's roll dialog (ledger U69): drawn from the kit's tokens, one main way to roll, nothing of the system rewired
+{
+  const { mainWay, areWays, WIDTH } = await import("./rolldialog.mjs");
+  const rd = read("rolldialog.css");
+  ok(imports.includes("rolldialog.css"), "rolldialog.css is imported by sheet-plus.css");
+  const rules = rd.replace(/\/\*[\s\S]*?\*\//g, "");
+  ok(!/#(?:0c1a2e|ffe72a|3465a3|a9bcdc|d5dff0|7d93b9|6b82a6)\b/i.test(rules), "rolldialog.css takes the kit's colours from the tokens, not as literals");
+  ok(rules.split("\n").filter((l) => /^\s*\./.test(l)).every((l) => /.roll-application.(dialog|choices-dialog)/.test(l)), "every rule of rolldialog.css stays inside the roll dialog");
+  ok(/button:is\(:disabled[^{]*\{[^}]*dashed/.test(rules) && !/button:is\(:disabled[^{]*\{[^}]*opacity:\s*\.\d/.test(rules), "an unavailable way to roll is dashed, not faded");
+  ok(WIDTH >= 380 && WIDTH <= 480, "the dialog opens at the width of a caption card");
+  ok(mainWay(["public", "gm", "blind", "self"], "gm") === "gm", "the main way to roll is the chat's current way");
+  ok(mainWay(["public", "gm", "blind", "self"], "blindroll") === "blind", "a legacy roll mode name is understood");
+  ok(mainWay(["public", "gm", "blind", "self"], null) === "public" && mainWay(["public", "gm"], "ic") === "public", "no known way: the first button is the main one");
+  ok(mainWay(["confirm"], "gm") === "confirm", "a single button (the stunts window) is the main one");
+  ok(mainWay(["publicroll", "gmroll", "blindroll", "selfroll"], "gm") === "gmroll", "the small window's legacy action names meet the chat's way");
+  ok(areWays(["public", "gm"]) && areWays(["publicroll", "selfroll"]) && !areWays(["yes", "no"]) && !areWays(["public"]) && !areWays(["0", "1"]), "only the ways to roll become icon buttons");
+  ok(mainWay(["yes", "no"], "gm", "no") === "no" && mainWay(["yes", "no"], "gm") === "yes", "in a question the default answer is the main one, else the first");
+  ok(mainWay([], "gm") === null && mainWay(undefined, undefined) === null, "no buttons, no main way");
+  const src = readFileSync(new URL("./rolldialog.mjs", import.meta.url), "utf8");
+  ok(!/\.remove\(\)|appendChild|insertBefore|\.prototype\.|addEventListener/.test(src), "rolldialog.mjs adds, removes, moves and rewires nothing");
+}
+
 if (bad) { console.log(`FAIL ${bad} of ${n}`); process.exit(1); }
 console.log(`OK ${n} checks (check-kit)`);

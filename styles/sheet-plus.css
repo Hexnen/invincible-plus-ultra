@@ -16,6 +16,7 @@
 @import url("session.css");   /* the end-of-session review panel and its Actors directory button (scripts/session/ui/) */
 @import url("tactics-ui.css");   /* tactical combat: the action dock and the GM desk (scripts/tactics/ui/) */
 @import url("tactics.css");   /* tactical combat: the third pip state and the minimal prompt dialogs (scripts/tactics/) */
+@import url("rolldialog.css");   /* the system's roll dialog (and its stunts sibling) as a caption card of the dock's family (scripts/rolldialog.mjs; ledger U69) */
 @import url("pl.css");   /* Polish for the texts written by CSS (content strings), under html[lang="pl"] */
 
 /* Invincible — Sheet Plus: actor sheets only. Palette: yellow #ffe72a, cyan #0096cb, blue #3465a3. */

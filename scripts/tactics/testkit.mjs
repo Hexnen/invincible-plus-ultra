@@ -48,7 +48,12 @@ export class Table {
     this.ranges = {};                // "a|b" -> { total } | null ; default: same zone (0)
     this.clock = 1000; this.n = 0; this.weapons = {};
     this.rng = seeded(1);            // the cards are shuffled with this (order() looks for a seed that deals the wanted order)
+    /* FAILURES of the world (D90, D99): `failOn(effect)` is asked before every effect; "throw" = the document write is rejected (a
+       permission, a validation, a document deleted under the write), "refuse" = the host answers { ok:false } (the map said no).
+       Nothing of that effect happens then. `warns` = what the engine reported to its host instead of failing. */
+    this.failOn = null; this.warns = [];
   }
+  warn(what, err, more) { this.warns.push({ what, msg: String(err?.message ?? err), ...(more ?? {}) }); }
   user(id, staff = false) { this.users[id] = { id, staff, active: true }; return this; }
   add(id, o) {
     this.c[id] = { id, name: o.name ?? id, actorUuid: `Actor.${id}`, tokenUuid: `Scene.s.Token.${id}`, owners: o.owners ?? [], npc: !!o.npc, kind: o.kind ?? (o.npc ? "npc" : "hero"), hidden: !!o.hidden, present: true,
@@ -112,7 +117,12 @@ export class Table {
   setting(key) { return this.settings[key]; }
   async perform(e) {
     this.performed.push(e);
+    const f = this.failOn?.(e);
+    if (f === "throw") throw new Error(`rejected: ${e.t}`);
+    if (f === "refuse") return { ok: false, reason: "refused" };
     const byUuid = (uuid) => Object.values(this.c).find((x) => x.actorUuid === uuid);
+    /* as the executor (engine.mjs perform): a write to an actor that is gone does nothing; an undo that finds it gone says so */
+    if ((e.uuid ?? e.actorUuid) && !byUuid(e.uuid ?? e.actorUuid)) return e.undo && ["actor", "itemCreate", "effectCreate"].includes(e.t) ? { ok: false, reason: "gone" } : {};
     switch (e.t) {
       case "actor": { const c = byUuid(e.uuid), from = c[e.path]; c[e.path] = e.to; return e.undo ? {} : { op: { t: "actor", uuid: e.uuid, path: e.path, from, to: e.to } }; }
       case "critAdd": { const c = byUuid(e.uuid), itemId = `it${++this.n}`; c.crits = [...c.crits, e.n]; c.items.push({ id: itemId, n: e.n }); return { op: { t: "item+", actorUuid: e.uuid, itemId, data: { n: e.n, id: e.id } } }; }
@@ -150,7 +160,7 @@ export class Table {
     if (r.state) {
       const back = S.parse(S.serialize(r.state));
       const d = firstDiff(JSON.parse(JSON.stringify(r.state)), back);
-      if (d) ok(false, `the state does not survive the store's sanitize round trip at ${d}`);
+      if (d) ok(false, `the state does not survive the store's sanitize round trip at ${d}${/^.prompts./.test(d) ? ` (${JSON.stringify(r.state.prompts[d.split("/")[2]]).slice(0, 400)})` : ""}`);
       this.state = back;
     } else this.state = null;
     this.log = J.parseLog(J.serializeLog(r.log));

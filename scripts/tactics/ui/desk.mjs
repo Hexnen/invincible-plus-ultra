@@ -130,6 +130,7 @@ function manual(m, L) {
   return h("article.igd-inst.igd-manual", {},
     h("header.igd-ihead", {}, h("b.igd-actor", { text: m.actor }), icon("fa-caret-right"), h("span.igd-action", { text: m.title }), m.cause ? h("span.igd-tag", { text: m.cause }) : null),
     m.text ? h("blockquote.ita-quote", {}, h("span", { text: m.text })) : null,
+    m.why ? h("p.igd-note", {}, icon("fa-triangle-exclamation"), h("span", { text: ` ${m.why}` })) : null,      // D90: why the action lies here
     h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: L.cost }), h("span.igd-seg", {}, m.costs.map((c) => h("button", { fk: `mc:${m.id}:${c.id}`, text: c.label, attrs: { "aria-pressed": String(c.on) }, on: { click: () => put({ cost: c.id }) } })))),
     m.damage.map((d) => h("div.igd-ctl", { data: { type: "number" } }, h("span.igd-cl", { text: `${L.damage}: ${d.name}` }), h("span.igd-step", {}, h("input", { fk: `md:${m.id}:${d.target}`, attrs: { type: "number", min: 0, max: 99, value: d.amount, "aria-label": `${L.damage}: ${d.name}` }, on: { change: (e, el) => put({ damage: { [d.target]: el.value } }) } })))),
     h("input.ita-text", { fk: `mn:${m.id}`, attrs: { type: "text", maxlength: 300, value: m.note.value, placeholder: m.note.placeholder, "aria-label": m.note.placeholder }, on: { input: (e, el) => put({ note: el.value }) } }),

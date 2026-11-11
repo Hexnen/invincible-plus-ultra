@@ -101,7 +101,10 @@ export function viewFor(state, viewer, meta = {}) {
   const prompts = {};
   for (const p of Object.values(state.prompts ?? {})) { if (p.about && concealed.has(p.about)) continue; const q = promptView(p, V, concealed); if (q) prompts[p.id] = q; }
   const ledger = {};
-  for (const [cid, l] of Object.entries(keepKey(state.ledger))) ledger[cid] = l;       // spent actions are table knowledge (spec 4: everyone sees who has acted)
+  /* spent actions are table knowledge (spec 4: everyone sees who has acted). P8e-2: not the SLOT they were spent in when that slot is a
+     concealed combatant's: a block on a hidden NPC's turn carried the id of the slot the view otherwise does not hold (next to D30 / D31) */
+  const slotsSeen = new Set((base.init?.slots ?? []).map((x) => x.id));
+  for (const [cid, l] of Object.entries(keepKey(state.ledger))) ledger[cid] = (l.entries ?? []).some((e) => e.slot && !slotsSeen.has(e.slot)) ? { ...l, entries: l.entries.map((e) => { if (!e.slot || slotsSeen.has(e.slot)) return e; const { slot, ...rest } = e; return rest; }) } : l;
   const out = {
     v: state.v, rev: state.rev, mode: state.mode, kind: state.kind, round: state.round, phase: state.phase,
     init: base.init, sched: base.sched, ledger: clone(ledger), statuses: clone(keepKey(state.statuses)), free: clone(keepKey(state.free)),

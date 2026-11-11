@@ -305,7 +305,7 @@ export const disease = {
 export function specOf(run, subject, v) {
   if (!run || !TYPES.includes(run.type)) return null;
   const sub = subject ?? {}, zone = typeof (run.zone ?? sub.zone) === "string" ? String(run.zone ?? sub.zone).slice(0, 40) : undefined;
-  const targets = (Array.isArray(run.targets) ? run.targets : P1.isId(sub.combatant) ? [sub.combatant] : zone ? v.facts.inZoneKey?.(zone) ?? [] : []).filter(P1.isId).slice(0, 40);
+  const targets = (Array.isArray(run.targets) ? run.targets : P1.isId(sub.combatant) ? [sub.combatant] : zone ? v.facts.inZoneKey?.(zone) ?? [] : []).filter((id, i, all) => P1.isId(id) && all.indexOf(id) === i).slice(0, 40);      // D92: each target once
   const mk = (flow, hz, tg = targets) => ({ action: run.type, flow, actor: null, decl: { ...blank, action: run.type, targets: tg, ...(zone ? { zone } : {}) }, data: { hz: { ...hz, ...(zone ? { zone } : {}), ...(typeof run.name === "string" ? { name: run.name.slice(0, 80) } : {}) } }, initiator: { type: "hazard", id: run.type } });
   switch (run.type) {
     case "blast": return mk("blast", { kind: "blast", rating: int(run.rating, 1, 20, 4), ...(typeof run.source === "string" ? { source: run.source.slice(0, 24) } : {}) });

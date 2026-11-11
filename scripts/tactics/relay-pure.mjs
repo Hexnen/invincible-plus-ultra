@@ -7,7 +7,7 @@ import * as O from "./ops-pure.mjs";
 
 export const PROTO = 1;
 export const KIND = Object.freeze({ req: "tcreq", res: "tcres", ev: "tcev", roll: "tcroll" });
-export const LIMITS = Object.freeze({ bytes: 4096, perMin: 90, inFlight: 3, text: 300, timeout: 8000, staleWait: 900 });   // spec 12.1
+export const LIMITS = Object.freeze({ bytes: 4096, perMin: 90, inFlight: 3, readsPerMin: 180, text: 300, timeout: 8000, staleWait: 900 });   // spec 12.1
 export const RELAY_CODES = Object.freeze([...new Set([...ERROR_CODES, "relay", "noPrev"])]);          // every code either machine or the transport can answer
 const ID_RE = /^[A-Za-z0-9_.-]{1,40}$/;
 const BAD = new Set(["__proto__", "prototype", "constructor"]);
@@ -20,7 +20,7 @@ export const clamp = (s, n = LIMITS.text) => (typeof s === "string" ? s.slice(0,
 export const makeRid = (senderId, id) => `${senderId}:${String(id ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)}`;
 
 /* ------------------------------------------------------------------ what a player may send (spec 12.2): fields per op, everything else is dropped */
-const ids = (v, n = 12) => (Array.isArray(v) ? v.filter(isId).slice(0, n) : undefined);
+const ids = (v, n = 12) => (Array.isArray(v) ? [...new Set(v.filter(isId))].slice(0, n) : undefined);      // D92: an id named twice is named once
 /* P3: what a move may carry (spec 9.6): where to, which way of moving, the stress option, quick or full, barriers to force, who is carried */
 function moveOf(r) {
   const out = {};
@@ -96,11 +96,23 @@ export function normalize(req, { staff = false } = {}) {
 }
 
 /* ------------------------------------------------------------------ limits for non-staff (spec 12.1): 90 per minute, 3 in flight */
+/** a request that only asks (nothing is written, nothing is spent, no card): counted apart from the ones that act */
+export const isRead = (req) => req?.op === "preview";
 export class Gate {
-  constructor(limits = LIMITS) { this.limits = limits; this.times = new Map(); this.flying = new Map(); }
-  /** null when admitted (and counted), else "rate" / "busy". Staff are never limited. */
-  admit(userId, now, staff = false) {
+  constructor(limits = LIMITS) { this.limits = limits; this.times = new Map(); this.flying = new Map(); this.reads = new Map(); }
+  /** null when admitted (and counted), else "rate" / "busy". Staff are never limited.
+      `read` (P8f): a question that changes nothing (op "preview": the pool, who is in reach, the menu at a token) has a budget of its
+      own and is not counted as in flight. The surfaces ask such questions by themselves on every change of the fight, of the map and
+      of a sheet; counted with the real requests they could use up the 90 a minute, and the answer to a reaction card or a
+      declaration then came back `rate` / `busy` although the player had done nothing. A flood of questions is still stopped. */
+  admit(userId, now, staff = false, read = false) {
     if (staff) return null;
+    if (read) {
+      const rl = (this.reads.get(userId) ?? []).filter((t) => now - t < 60000);
+      if (rl.length >= (this.limits.readsPerMin ?? this.limits.perMin)) { this.reads.set(userId, rl); return "rate"; }
+      rl.push(now); this.reads.set(userId, rl);
+      return null;
+    }
     const list = (this.times.get(userId) ?? []).filter((t) => now - t < 60000);
     if (list.length >= this.limits.perMin) { this.times.set(userId, list); return "rate"; }
     if ((this.flying.get(userId) ?? 0) >= this.limits.inFlight) return "busy";
@@ -108,7 +120,7 @@ export class Gate {
     this.flying.set(userId, (this.flying.get(userId) ?? 0) + 1);
     return null;
   }
-  release(userId, staff = false) { if (!staff) this.flying.set(userId, Math.max(0, (this.flying.get(userId) ?? 0) - 1)); }
+  release(userId, staff = false, read = false) { if (!staff && !read) this.flying.set(userId, Math.max(0, (this.flying.get(userId) ?? 0) - 1)); }
 }
 
 /* ------------------------------------------------------------------ the executor's admission of one incoming tcreq
@@ -132,7 +144,7 @@ export function admit(msg, ctx) {
   }
   const n = normalize(msg.req, { staff: !!user.staff });
   if (!n.ok) return { ok: false, env: bad(n.code), to };
-  const lim = ctx.gate ? ctx.gate.admit(user.id, ctx.now, !!user.staff) : null;
+  const lim = ctx.gate ? ctx.gate.admit(user.id, ctx.now, !!user.staff, isRead(n.req)) : null;
   if (lim) return { ok: false, env: bad(lim), to };
   return { ok: true, rid: makeRid(user.id, msg.id), req: n.req, user: { id: user.id, staff: !!user.staff }, to };
 }
@@ -141,6 +153,16 @@ export function wireEnv(env) {
   if (!isObj(env)) return bad("internal");
   const out = { ok: env.ok === true, changed: env.changed === true };
   for (const k of ["dup", "inst", "prompt"]) if (env[k] !== undefined) out[k] = env[k];
+  /* D99 (spec 15: a failed inverse is told to the GM): what the request could not do travels too, to the GM's own desk (this function
+     also shapes the local executor's answers) and to a player whose request it was: `partial` (carried out only in part), `failed`
+     (which kind of write stayed as it was; kinds and reason ids only, no name and no value), `parked` (the action that went to the
+     GM's hand), `undone` (the transactions an undo took back), `rev` (the state the answer is about). */
+  if (env.partial) out.partial = true;
+  if (Array.isArray(env.failed) && env.failed.length) out.failed = env.failed.filter(isObj).slice(0, 20).map((f) => ({ ...(isId(f.tx) ? { tx: f.tx } : {}), t: String(f.t ?? "").slice(0, 24), ...(isId(f.reason) ? { reason: f.reason } : {}), ...(isId(f.what) ? { what: f.what } : {}) }));
+  if (isId(env.parked)) out.parked = env.parked;
+  if (Array.isArray(env.undone)) out.undone = env.undone.filter(isId).slice(0, 200);
+  if (Number.isFinite(env.rev) || env.rev === null) out.rev = env.rev;
+  if (env.asked) out.asked = 1;
   if (isObj(env.preview)) out.preview = env.preview;                 // the asker's own pool (engine-pure.opPreview refuses anything the asker does not own)
   if (!out.ok) out.error = isObj(env.error) && RELAY_CODES.includes(env.error.code) ? { key: `ITAC.err.${env.error.code}`, code: env.error.code, params: isObj(env.error.params) ? env.error.params : {} } : bad("internal").error;
   return out;

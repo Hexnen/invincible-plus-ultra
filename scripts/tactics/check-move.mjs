@@ -423,7 +423,8 @@ const FLY = [{ mode: "flight", tier: "basic" }];
   const W = base(); W.turn("H2");
   eq(why(await W.req("p2", { op: "declare", actor: "H2", decl: { action: "fastball", targets: ["H1"], to: "z2" } })), "tooWeak", "L: the thrown character must be weaker");
   const R = base();
-  eq(why(await R.req("p1", { op: "declare", actor: "H1", decl: { action: "fastball", targets: ["N1"], to: "z3" } })), "carryZone", "L: from the thrower's own zone only");
+  eq(why(await R.gm({ op: "declare", actor: "H1", decl: { action: "fastball", targets: ["N1"], to: "z3" } })), "carryZone", "L: from the thrower's own zone only");
+  eq(why(await R.req("p1", { op: "declare", actor: "H1", decl: { action: "fastball", targets: ["N1"], to: "z3" } })), "notAlly", "L: a player's hero throws no NPC whose numbers are not revealed without the GM (D54: the refusal would tell its Strength)");
 }
 /* ---- M. the dodge move [B2526]: zones offered on the prompt, the move is part of the attack's transaction */
 {

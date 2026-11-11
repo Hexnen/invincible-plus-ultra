@@ -214,7 +214,7 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
     const pr = priceMove(Z, state, cid, c, { to, mode: m.id, stress: 1, force: extra.force }, o);
     const cost = pr.ok ? (pr.later ?? pr.cost) : null, pay = pr.ok && (cost === "quick" || cost === "full") ? canPay(cost) : { ok: true };
     out.push({ id: `${m.id}|${to}`, to, zone, mode: m.id, d, cost, stress: pr.ok ? pr.stress : 0, disabled: !pr.ok ? pr.reason : pay.ok ? null : pay.reason ?? "noAction",
-      ...(pr.ok ? (pay.ok ? {} : { unpaid: 1 }) : pr.gmMayAllow ? { gmMayAllow: true } : {}), barriers: pr.ok ? pr.barriers : pr.params?.barriers ?? [], ...(pr.ok && pr.gm ? { gm: 1 } : {}), ...(pr.ok && pr.zones?.length ? { route: pr.zones.slice() } : {}), ...extra });      // W1 (U32): `route` = the zones this way enters, for the preview on the map
+      ...(pr.ok ? (pay.ok ? {} : { unpaid: 1 }) : pr.gmMayAllow ? { gmMayAllow: true } : {}), barriers: pr.ok ? pr.barriers : pr.params?.barriers ?? [], ...(pr.ok && pr.gm ? { gm: 1 } : {}), ...(pr.ok && pr.zones?.length ? { route: pr.zones.slice() } : {}), ...(pr.ok && pr.steps?.length ? { enters: [...new Set(pr.steps.map((s) => s.to).filter((x) => typeof x === "string"))] } : {}), ...extra });      // W1 (U32): `route` = the zones this way enters, for the preview on the map
   };
   for (const m of modes) {
     if (from.area) { continue; }

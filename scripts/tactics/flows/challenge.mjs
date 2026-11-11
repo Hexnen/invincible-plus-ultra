@@ -47,6 +47,9 @@ function objectivePool(v, I, tokens) {
   if (cfg?.dice) mods.push({ source: "ward", dice: Math.trunc(cfg.dice) });                // [B2876]: the ward's cumulative penalty after a reset
   return { attr, ...K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens }) };
 }
+/* D47 [B2841]: a challenge counted in rounds whose time limit has run out is failed: nothing takes points off its rating any more (it was
+   still overcome by a roll after the "time is up" card). A ward that resets has its clock again [B2876]. */
+export const timeUp = (c) => !!c && c.kind === "challenge" && (c.timeUnit ?? "rounds") === "rounds" && c.maxResolve > 0 && !(c.resolve > 0);
 export const objective = {
   preview(v, inst) { const I = K.draft(inst); return attrOf(v, I) ? objectivePool(v, I, I.decl.tokens ?? []) : null; },
   STEPS: Object.freeze(["check", "approve", "roll", "effect", "close"]),
@@ -55,7 +58,7 @@ export const objective = {
     if (!a || a.present === false) return bad("gone");
     if (a.health <= 0) return bad("broken");                                                     // [B2707]
     if (!ch || ch.kind !== "challenge" || ch.present === false) return bad("noChallenge");
-    if (!(ch.health > 0) || cfgOf(v.state, t)?.done) return bad("challengeOver");                // [B2841]
+    if (!(ch.health > 0) || cfgOf(v.state, t)?.done || timeUp(ch)) return bad("challengeOver");  // [B2841]
     if (!ATTRS.includes(attrOf(v, inst))) return bad("noAttribute");
     const pick = optionOf(cfgOf(v.state, t), inst.decl.mode);
     if (pick?.option.minAttr && !challenge.objectiveAvailable({ attr: pick.option.attr, minAttr: pick.option.minAttr }, a).ok) return bad("attrTooLow", { attr: pick.option.attr, min: pick.option.minAttr, gmMayAllow: 1 });   // [B2857], [B2878]

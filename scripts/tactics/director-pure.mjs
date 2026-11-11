@@ -66,7 +66,9 @@ async function round(state, log, action, user, host) {
   if (fx.length) {
     const e = await E.handle({ state: s, log: l }, { t: "sys", effects: fx }, host);
     s = e.state; l = e.log; events.push(...e.events);
-    if (!e.env.ok) env.partial = e.env.error;
+    /* D90 / D99: the round driver's step is done; what the engine could not carry out of what it handed over is said in the answer */
+    if (!e.env.ok || e.env.partial || e.env.failed?.length) { env.partial = true; if (e.env.failed?.length) env.failed = e.env.failed; }
+    if (e.env.parked) env.parked = e.env.parked;
   }
   return { ok: true, env, state: s, log: l, events };
 }
@@ -80,33 +82,45 @@ function leaving(state, host) {
   const f = host.facts();
   return parts.filter((p) => { const c = f.c(p.id), o = f.c(p.summonOf); return c?.summon?.auto && (state.phase === "sceneEnd" || !o || o.present === false || !(o.health > 0) || !(c.health > 0)); }).map((p) => p.id);
 }
-async function cards(state, log, events, host, sweep = true) {
-  if (!state) return { state, log };
-  const gone = state.stack.length || !sweep ? [] : leaving(state, host);                              // P6 [B1812]: summoned allies leave by themselves
-  if (gone.length) { const e = await E.handle({ state, log }, { t: "sys", effects: [{ type: "summonLeave", combatants: gone }] }, host); if (e.changed) { state = e.state; log = e.log; events.push(...e.events); } }
-  if (summonSig(state.summons) !== summonSig(null, host.parts?.() ?? [])) {                 // P6 [I14]: a summoned group came, left or changed hands: the round driver follows at once
-    const r = await round(state, log, { type: "roster" }, { id: "engine", staff: true }, host);
-    if (r.ok && !r.same) { events.push(...r.events); state = r.state; log = r.log; }
+/* `box` = { state, log }: kept up to date after every stage, so a stage that fails leaves what the stages before it did (D90) */
+async function cards(box, events, host, sweep = true) {
+  if (!box.state) return;
+  const gone = box.state.stack.length || !sweep ? [] : leaving(box.state, host);                              // P6 [B1812]: summoned allies leave by themselves
+  if (gone.length) { const e = await E.handle({ state: box.state, log: box.log }, { t: "sys", effects: [{ type: "summonLeave", combatants: gone }] }, host); if (e.changed) { box.state = e.state; box.log = e.log; events.push(...e.events); } if (e.env?.failed?.length) (box.failed ??= []).push(...e.env.failed); }
+  if (summonSig(box.state.summons) !== summonSig(null, host.parts?.() ?? [])) {                 // P6 [I14]: a summoned group came, left or changed hands: the round driver follows at once
+    const r = await round(box.state, box.log, { type: "roster" }, { id: "engine", staff: true }, host);
+    if (r.ok && !r.same) { events.push(...r.events); box.state = r.state; box.log = r.log; }
   }
-  if (state.stack.length || state.phase !== "turns") return { state, log };
-  if (state.kind === "chase") return state.init.slots.length ? { state: { ...state, init: { ...S.newInit(), deck: state.init.deck } }, log } : { state, log };
-  if (state.init.slots.length || !(state.round >= 1)) return { state, log };
-  const r = await round(state, log, { type: "roster" }, { id: "engine", staff: true }, host);
-  if (!r.ok || r.same) return { state, log };
+  const state = box.state;
+  if (state.stack.length || state.phase !== "turns") return;
+  if (state.kind === "chase") { if (state.init.slots.length) box.state = { ...state, init: { ...S.newInit(), deck: state.init.deck } }; return; }
+  if (state.init.slots.length || !(state.round >= 1)) return;
+  const r = await round(state, box.log, { type: "roster", deal: true }, { id: "engine", staff: true }, host);      // D43 [B3436]: the fight after a chase draws initiative
+  if (!r.ok || r.same) return;
   events.push(...r.events);
-  return { state: r.state, log: r.log };
+  box.state = r.state; box.log = r.log;
 }
-/* the round waits for the trigger instances of a blocking queue: when the stack is empty again it goes on */
+/* the round waits for the trigger instances of a blocking queue: when the stack is empty again it goes on.
+   D90 (spec 12): this runs AFTER the request was carried out (documents written, the state changed). A failure in here must not
+   throw that away: the answer would say "failed, nothing changed" about a request whose effects are on the sheets. What was reached
+   is kept and the answer says `partial`. -> { state, log, failed?: true | [..] } */
 async function settle(state, log, events, host, sweep = true) {
-  const c = await cards(state, log, events, host, sweep);
-  let s = c.state, l = c.log;
-  for (let guard = 0; guard < 6 && s?.sched?.hold && !s.stack.length; guard++) {
-    const r = await round(s, l, { type: "resume" }, { id: "engine", staff: true }, host);
-    if (!r.ok || r.same) break;
-    s = r.state; l = r.log; events.push(...r.events);
+  const box = { state, log };
+  try {
+    await cards(box, events, host, sweep);
+    for (let guard = 0; guard < 6 && box.state?.sched?.hold && !box.state.stack.length; guard++) {
+      const r = await round(box.state, box.log, { type: "resume" }, { id: "engine", staff: true }, host);
+      if (!r.ok || r.same) break;
+      box.state = r.state; box.log = r.log; events.push(...r.events);
+      if (r.env?.partial) (box.failed ??= []).push(...(r.env.failed ?? [{ t: "sys", what: "resume" }]));
+    }
+  } catch (e) {
+    try { host.warn?.("settle", e, {}); } catch { /* a courtesy */ }
+    (box.failed ??= []).push({ t: "sys", what: "settle" });
   }
-  return { state: s, log: l };
+  return box;
 }
+const withFailed = (env, done) => (done.failed?.length ? { ...env, partial: true, failed: [...(env.failed ?? []), ...done.failed].slice(0, E.FAILED_MAX) } : env);
 
 /* Spec 10: a combatant the GM keeps hidden does not exist for a player. A player's request that names one (as the actor, a target, a
    helper, somebody carried) is handled exactly as the same request naming nobody: the name is swapped for an id no combatant has before
@@ -166,7 +180,7 @@ async function handle0({ state, log }, input, host) {
       const e = pre.length ? { ...e0, events: [...pre, ...e0.events], changed: true, state: e0.changed ? e0.state : st0, log: e0.changed ? e0.log : lg0 } : e0;
       if (!e.changed) return e;
       const done = await settle(e.state, e.log, e.events, host, input?.req?.op !== "undo");      // an undone leave stands until the next request: the GM puts right what made the allies go
-      return { ...e, state: done.state, log: done.log };
+      return { ...e, env: withFailed(e.env, done), state: done.state, log: done.log };
     }
     const user = input.user, req = input.req, op = req.op;
     if (!user || !S.isId(user.id)) return out(state, lg, bad("untrusted"));
@@ -182,7 +196,7 @@ async function handle0({ state, log }, input, host) {
     if (!r.ok || r.same) return out(state, lg, r.env);
     if (r.state === null) return { state: null, log: r.log, env: r.env, events: r.events, changed: true };
     const done = await settle(r.state, r.log, r.events, host);
-    return { state: done.state, log: done.log, env: { ...r.env, rev: done.state.rev }, events: r.events, changed: true };
+    return { state: done.state, log: done.log, env: withFailed({ ...r.env, rev: done.state.rev }, done), events: r.events, changed: true };
   } catch (e) {
     return out(state, lg, bad("internal", { msg: String(e?.message ?? e).slice(0, 120) }));
   }

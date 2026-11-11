@@ -623,8 +623,9 @@ const DMG_TXT = {
 const DMG_FLAVOR_KEY = "INVINCIBLE.Chat.DamageInfo.DamageTaken";
 const dmgNum = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Math.round(Number(v)) : null);
 
-Hooks.on("preUpdateActor", (actor, changes) => {
+Hooks.on("preUpdateActor", (actor, changes, options) => {
   try {
+    if (options?.ipuTactics !== undefined) return;   // tactics spec 1.3 (D96): a write of the tactical executor is no hand-applied damage
     const key = "system.derived.health.value";
     const raw = changes?.[key] ?? foundry.utils.getProperty(changes ?? {}, key);
     const to = dmgNum(raw), from = dmgNum(actor?.system?.derived?.health?.value);
@@ -1043,9 +1044,9 @@ document.addEventListener("click", (ev) => {
   } catch (err) { console.warn(`${MODULE_ID} | undo ledger (click)`, err); }
 }, true);   // capture phase: the selection is read before the system's handler runs
 
-Hooks.on("preUpdateActor", (actor, changes) => {
+Hooks.on("preUpdateActor", (actor, changes, options) => {
   try {
-    if (!APPLY_OPEN.length) return;
+    if (!APPLY_OPEN.length || options?.ipuTactics !== undefined) return;   // tactics spec 1.3 (D96)
     const key = "system.derived.health.value";
     const to = dmgNum(changes?.[key] ?? foundry.utils.getProperty(changes ?? {}, key));
     const from = dmgNum(actor?.system?.derived?.health?.value);
@@ -1070,9 +1071,9 @@ const conditionMatches = (item, uuid) => {
   return !!name && item.name === name;
 };
 
-Hooks.on("createItem", (item) => {
+Hooks.on("createItem", (item, options) => {
   try {
-    if (!APPLY_OPEN.length) return;
+    if (!APPLY_OPEN.length || options?.ipuTactics !== undefined) return;   // tactics spec 1.3 (D96)
     const actor = item.parent;
     if (!actor || actor.documentName !== "Actor") return;
     const injury = item.type === "criticalInjury";
@@ -1816,6 +1817,12 @@ import("./combat/main.mjs")
 import("./kit.mjs")
   .then((kit) => kit.start())
   .catch((err) => console.warn(`${MODULE_ID} | shared kit not loaded (tooltips keep Foundry's default look, everything else is unaffected)`, err));
+
+/* THE SYSTEM'S ROLL DIALOG in the module's look (scripts/rolldialog.mjs, styles/rolldialog.css; ledger U69): the window keeps the system's
+   template and buttons; this names the main way to roll and opens it at the width of a caption card. */
+import("./rolldialog.mjs")
+  .then((rd) => rd.start())
+  .catch((err) => console.warn(`${MODULE_ID} | roll dialog look not loaded (the dialog keeps four worded buttons, everything else is unaffected)`, err));
 
 /* COMIC FONT OPTION (scripts/fontoption.mjs, fonts/user/): client setting "Font: comic lettering" (Komikah / ActionFigure BB from the user's own
    file / condensed sans); injects a <style id="isp-font-style"> redefining the family Comic. Same mechanism and recorded phases as above. */
