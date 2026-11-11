@@ -62,9 +62,10 @@ export function chargeOf(v, inst) {
 /* a full AND a quick action [B2490]: asked of the ledger as it will be once the full action is paid */
 function chargeActions(v, inst) {
   if (inst.data?.paid?.chargeQuick || inst.data?.prepaid) return true;
-  if (inst.entry) return P1.canPay(v.state, inst.actor, "quick", {}).ok;
-  const p = P1.pay(v.state, inst.actor, "full", {}, { action: inst.action });
-  return !!p.ok && P1.canPay({ ...v.state, ledger: { ...v.state.ledger, [inst.actor]: p.ledger } }, inst.actor, "quick", {}).ok;
+  const o = { resolve: v.facts.c(inst.actor)?.resolve };
+  if (inst.entry) return P1.canPay(v.state, inst.actor, "quick", o).ok;
+  const p = P1.pay(v.state, inst.actor, "full", o, { action: inst.action });
+  return !!p.ok && P1.canPay({ ...v.state, ledger: { ...v.state.ledger, [inst.actor]: p.ledger } }, inst.actor, "quick", o).ok;
 }
 
 /** Legality of the declaration (spec 9.1 step 2). Returns { ok, reason, params, gates, notes }. Costs are checked by the engine (ledger, P1). */

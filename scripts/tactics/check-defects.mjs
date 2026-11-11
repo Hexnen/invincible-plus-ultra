@@ -549,4 +549,24 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
   eq(View.viewFor(U.state, { id: "p2", staff: false, owns: ["H2"] }, meta).stack[0].decl.pulled, 1, "view: another hero's declaration is whole");
 }
 
+/* ================================================================== a unit that costs stress pays nothing at Resolve 0 [B2816], [B2228] */
+{
+  const mk = (resolve) => { const T = fight(); T.c.H1.resolve = resolve; T.c.N1.resolve = resolve; T.turn("H1"); return T; };
+  const grant = async (T, cid, template) => code(await T.gm({ op: "ledgerEdit", combatant: cid, edit: "grant", grant: { template } }));
+  for (const [resolve, want] of [[0, ["noAction", 0, 0]], [2, ["ok", 1, 1]]]) {
+    const T = mk(resolve);
+    eq([await grant(T, "H1", "quickness"), code(await T.req("p1", { op: "mark", actor: "H1", unit: "full" })), code(await T.req("p1", { op: "mark", actor: "H1", unit: "quick" }))], ["ok", "ok", "ok"], `stress unit, Resolve ${resolve}: the extra unit of Quickness is there and the base pair is spent`);
+    const r = await T.req("p1", decl("H1", "slugfest", ["N1"]));
+    eq([code(r), T.state.stack.length, T.c.H1.resolve], want, `stress unit, Resolve ${resolve}: the third action ${resolve ? "is paid with it, for 1 stress" : "is refused: no stress can be taken"}`);
+  }
+  for (const [resolve, want] of [[0, false], [2, true]]) {      /* the same for the defence a grant pays (Defender [B2105]) */
+    const T = mk(resolve);
+    await grant(T, "N1", "defender"); T.turn("N1");
+    await T.gm({ op: "mark", actor: "N1", unit: "full" }); await T.gm({ op: "mark", actor: "N1", unit: "quick" }); T.turn("H1");
+    await T.req("p1", decl("H1", "slugfest", ["N1"]));
+    const p = T.prompt("reaction", "N1"), block = p?.options.find((o) => o.id === "block");
+    eq(!!block && !block.disabled, want, `stress unit, Resolve ${resolve}: a block paid by a stress grant is ${want ? "offered" : "not offered"}`);
+  }
+}
+
 done("check-defects");

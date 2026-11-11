@@ -192,7 +192,7 @@ export function windowPrompts(v, inst, when, { skip = [], reactions }) {
 export function reactionOption(v, cid, e) {
   const o = { id: `r:${e.id}`, label: e.label, name: e.name || undefined, cost: e.cost, data: { entry: e.id, effect: e.reaction.effect } };
   if (e.stress?.fixed) o.stress = e.stress.fixed;
-  const pay = P1.canPay(v.state, cid, e.cost, { interrupt: true });
+  const pay = P1.canPay(v.state, cid, e.cost, { interrupt: true, resolve: v.facts.c(cid)?.resolve });
   if (!pay.ok) o.disabled = pay.reason;
   else if (e.stress?.fixed && !(v.facts.c(cid)?.resolve > 0)) o.disabled = "stressedOut";                   // [B2816]
   return o;
@@ -203,7 +203,7 @@ export function reactionOption(v, cid, e) {
     quick action to pay with (the base pair or a grant, spec 4.2). `free`: the same with the action waived (Defensive [B2105]).
     -> { conds, hasQuick, out, paid: { block, dodge }, free: { block, dodge } }, each { ok, reason } (rules/attack.defenceOptions). */
 export function defenceOf(v, t, kind, { inChase = false, machine = false } = {}) {
-  const conds = M.conditions(v.state, t), hasQuick = !machine && P1.canPay(v.state, t, "quick", { interrupt: true, defense: true }).ok;
+  const conds = M.conditions(v.state, t), hasQuick = !machine && P1.canPay(v.state, t, "quick", { interrupt: true, defense: true, resolve: v.facts.c(t)?.resolve }).ok;
   const defender = { ...conds, out: M.outOfAction(v.state, t, v.facts.c(t)), holding: M.hasStatus(v.state, t, "grappling") };
   return { conds, hasQuick, out: defender.out, paid: attack.defenceOptions({ attack: kind, defender: { ...defender, hasQuick }, inChase }), free: attack.defenceOptions({ attack: kind, defender: { ...defender, hasQuick: true }, inChase }) };
 }

@@ -128,7 +128,7 @@ async function applyEffect(X, I, e, step) {
   switch (e.t) {
     case "state": write(X, tx, e.path, e.to, I, step); return false;
     case "pay": {
-      const r = P1.pay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense, cause: e.cause, force: !!e.force }, { action: e.action, inst: I.id, tags: e.tags ?? (e.defense ? ["defence"] : []), target: e.target, onTurnOf: e.onTurnOf,
+      const r = P1.pay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense, cause: e.cause, force: !!e.force, resolve: c?.resolve }, { action: e.action, inst: I.id, tags: e.tags ?? (e.defense ? ["defence"] : []), target: e.target, onTurnOf: e.onTurnOf,
         ...(e.zoneFrom ? { zoneFrom: e.zoneFrom } : {}), ...(e.zoneTo ? { zoneTo: e.zoneTo } : {}), ...(Number.isFinite(e.borders) ? { borders: e.borders } : {}) });
       if (!r.ok) { (I.data.unpaid ??= {})[e.key] = r.reason; return false; }             // was legal when offered; shown to the GM instead of guessing
       write(X, tx, ["ledger", e.who], r.ledger, I, step, e.own ? "cost" : null);
@@ -407,7 +407,7 @@ async function opDeclare(X, a) {
   if (!pl.ok) return bad(pl.code, pl.params);
   const gm = X.user.staff && a.gm === true;                                                // the GM acting through an override: costs waived
   const priced = typeof FLOWS[entry.flow]?.price === "function";                           // P3: a flow that names its own cost (a move: quick or full, free inside the zone)
-  const payable = (cost) => { const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm }); return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
+  const payable = (cost) => { const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, resolve: X.facts.c(actor)?.resolve });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
   if (!priced) { const no = payable(entry.cost); if (no) return no; }
   const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
   const l = K.legality(view(X), inst, FLOWS[inst.flow]);
@@ -522,7 +522,7 @@ async function opHelp(X, a) {
   if ((inst.decl.targets ?? []).includes(a.helper)) return bad("illegal", { reason: "helpTarget" });                   // [B2238]: an ally helps; nobody helps the action aimed at them
   const out = M.outOfAction(X.state, a.helper, X.facts.c(a.helper));                                                    // [B2707]: out of action
   if (out) return bad("illegal", { reason: out });
-  const has = P1.canPay(X.state, a.helper, "full", { cause: "help" });                    // [L9], [L2], [B2273]: the helper's full action is spent on the helped character's turn
+  const has = P1.canPay(X.state, a.helper, "full", { cause: "help", resolve: X.facts.c(a.helper)?.resolve });                    // [L9], [L2], [B2273]: the helper's full action is spent on the helped character's turn
   const I = J.clone(inst);
   if ((I.decl.helpers ?? []).filter((h) => h.consent === "yes").length >= 3) return bad("illegal", { reason: "tooMany" });       // [B2238]
   const paid = has.ok ? P1.pay(X.state, a.helper, "full", { cause: "help" }, { action: "help", inst: I.id, onTurnOf: I.actor ?? undefined, target: [I.actor], tags: ["help"] }) : null;

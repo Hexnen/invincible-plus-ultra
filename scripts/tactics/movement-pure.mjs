@@ -204,7 +204,7 @@ export function chargePlan(Z, state, cid, c, decl, to) {
     -> [{ id, to, zone, mode, d, cost, stress, disabled, gmMayAllow?, unpaid?, barriers, elevated?, here?, area? }] nearest first.
        `unpaid`: the move itself is fine and only the action economy refuses it (no action left, not the mover's turn). */
 export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
-  canPay ??= (cost) => P1.canPay(state, cid, cost, {});                                         // [L1]-[L4]: the action economy's answer
+  canPay ??= (cost) => P1.canPay(state, cid, cost, { resolve: c?.resolve });                                         // [L1]-[L4]: the action economy's answer
   const out = [], from = Z?.place?.(cid);
   if (!from || cannotMove(state, cid, c)) return out;
   const modes = modesOf(c).filter((m) => !o.mode || m.id === o.mode);

@@ -153,7 +153,7 @@ export const move = {
     const me = v.facts.c(inst.actor);
     for (const x of Array.isArray(inst.decl?.carry) ? inst.decl.carry : []) { const o = v.facts.c(x); if (o && o.present !== false && !!o.npc !== !!me?.npc) return bad("carryUnwilling", { who: x, gmMayAllow: 1 }); }
     if (pr.kind === "inZone" && pr.cost === "free" && !P1.isOnTurn(v.state, inst.actor)) return bad("notYourTurn", { gmMayAllow: 1 });   // [L6] [B2383]
-    if (pr.later && pr.later !== "none" && pr.later !== "gm" && !P1.canPay(v.state, inst.actor, pr.later, {}).ok) return bad("noAction");
+    if (pr.later && pr.later !== "none" && pr.later !== "gm" && !P1.canPay(v.state, inst.actor, pr.later, { resolve: me?.resolve }).ok) return bad("noAction");
     return fine;
   },
   /** what the declaration costs (engine-pure opDeclare): the action the rules library named, the facts of the ledger entry */
