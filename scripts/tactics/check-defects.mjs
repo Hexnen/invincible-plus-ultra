@@ -596,6 +596,10 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     const o = MP.moveOptions(T.facts().zones, T.state, "V1", T.c.V1);
     ok(o.some((x) => x.to === "z6" && !x.barriers?.length && x.disabled !== "barrier" && x.disabled !== "noRoute"), "D24: an aircraft crosses the exterior wall z5|z6 without breaking it");
     ok(o.some((x) => x.to === "z5:elevated" && x.elevated === "air"), "D24: and may end its move in the air"); }
+  /* D27: the Scene tab calls a chase lost only ABOVE the end distance (ruling I4), as the engine does */
+  { const tt = (k) => k, tag = (d) => SceneUi.sceneData({ kind: "chase", round: 2, stack: [], ledger: {}, chase: { sides: { prey: ["A"], pursuer: ["B"] }, distance: d, lostAt: 5, round: 1 } }, {}, { c: (id) => ({ name: id }), special: () => [] }, tt).chase.state?.text ?? null;
+    eq([tag(4), tag(5), tag(6)], [null, null, "ITAC.ui.chase.escaped"], "D27: at the end distance the chase goes on; beyond it the prey has escaped");
+    eq([4, 5, 6].map((d) => Rules.chase.chaseRoll({ distance: d, preySixes: 0, pursuerSixes: 0, endDistance: 5 }).escaped), [false, false, true], "D27: (the rules library says the same)"); }
 }
 
 done("check-defects");

@@ -22,7 +22,7 @@ function chaseData(state, own, facts, t, machines) {
       t("ITAC.ui.chase.moved", { from: l.from ?? "?", to: ch.distance })].filter(Boolean);
     return {
       on: true, title: t("ITAC.ui.chase"), headline: t("ITAC.ui.chase.apart", { n: ch.distance }), lost: t("ITAC.ui.chase.lostAt", { n: ch.lostAt }), round: ch.round ? t("ITAC.ui.chase.round", { n: ch.round }) : t("ITAC.ui.chase.notRolled"),
-      state: ch.distance <= 0 ? { text: t("ITAC.ui.chase.caught"), tone: "hit" } : ch.over || ch.distance >= ch.lostAt ? { text: t("ITAC.ui.chase.escaped"), tone: "miss" } : null,
+      state: ch.distance <= 0 ? { text: t("ITAC.ui.chase.caught"), tone: "hit" } : ch.over || ch.distance > ch.lostAt ? { text: t("ITAC.ui.chase.escaped"), tone: "miss" } : null,
       sides: SIDES.map((s) => ({ id: s, label: t(`ITAC.ui.chase.${s}`), units: (ch.sides?.[s] ?? []).map((u) => ({ id: u, name: unitName(u) })) })), last,
       crew: crew.filter((id) => facts.c?.(id)).map((id) => ({ id, name: nameOf(facts, id, t), tip: t("ITAC.ui.chase.act") })), crewLabel: t("ITAC.ui.chase.crew"),
       distance: { id: `chase:distance:${ch.round ?? 0}:${ch.distance}`, label: t("ITAC.ui.chase.distance"), value: ch.distance, min: 0, max: 99, req: (v) => ({ op: "chaseSet", distance: v }) },
