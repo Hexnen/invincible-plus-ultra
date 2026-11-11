@@ -414,8 +414,8 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     const T = mk(); await T.gm(plan("H1", ["attack"]));
     const bar = Desk.barModel(View.viewFor(T.state, { id: "p1", staff: false, owns: ["H1"] }, { hidden: [], npc: ["N1", "N2"] }), "H1", { c: (id) => T.c[id] ?? null, online: () => true, P1 });
     eq(bar.tokens.map((k) => k.standing), [true], "D13: the bar marks the standing die");
-    const pv = UiM.poolPreview({ attr: "fighting", flow: "attack", id: "slugfest" }, bar, { c: (id) => T.c[id] ?? null, attrs: (id) => T.c[id]?.attrs ?? null, view: {} }, []);
-    eq(pv?.total, T.c.H1.attrs.fighting + 2, "D13: and the preview counts it"); }
+    const pv = (await T.req("p1", { op: "preview", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })).preview;      // the engine's own preview: the builder of the roll
+    eq(pv?.dice, T.c.H1.attrs.fighting + 2, "D13: and the preview counts it"); }
 }
 
 /* ================================================================== D15: Stun may buy Double Damage to get through Armor, and nothing else [B1625] */
@@ -608,7 +608,7 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
   const tr = (k, prm = {}, fb) => { const x = fb === undefined ? k : fb; return x === null ? null : `${x}|${Object.entries(prm ?? {}).map(([a, b]) => `${a}=${b}`).join(",")}`; };      // the key and its parameters, no language
   const ctx = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
   /* facts that answer only the BARE attributes, as the live surfaces do: whatever else is on a roll has to come from the engine */
-  const facts = (T, view, staff) => ({ view, me: staff ? "gm" : "p1", staff, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => u, zone: (spot) => ({ title: String(spot) }) });
+  const facts = (T, view, staff) => ({ view, me: staff ? "gm" : "p1", staff, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => u, zone: (spot) => ({ title: String(spot) }), preview: (cid, decl) => T.preview(staff ? "gm" : "p1", cid, decl) });
   const desk = (T) => UiM.deskData(Desk.deskModel(T.state, T.log, ctx(T)), {}, facts(T, T.state, true), tr);
   const num = (text, k) => Number(new RegExp(`[|,]${k}=(-?\\d+)`).exec(String(text ?? ""))?.[1] ?? NaN);
   const pct = (p) => `${Math.round(p * 100)}%`, P = Rules.dice;
@@ -658,7 +658,8 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     const meta = { hidden: [], npc: ["T"] }, view = () => View.viewFor(T.state, { id: "p1", staff: false, owns: ["K"] }, meta), p = T.prompt("reaction", "K");
     eq([p.data.gm.att.dice, view().prompts[p.id].data.gm ?? null, /"dice":8|"gm":/.test(JSON.stringify(view().prompts[p.id]))], [8, null, false], "D28: an NPC's attack pool is on the GM's record of the question and not in the player's");
     const pm = Desk.playerModel(view(), { id: "p1", owns: ["K"] }, ctx(T)), a = UiM.askData(pm.prompts[0], { t: tr, facts: facts(T, view(), false), own: {}, info: pm.stack });
-    eq([a.options.map((o) => o.id), a.options.every((o) => o.note === null), a.lines.some((l) => /attPool/.test(String(l)))], [["block", "pass"], true, false], "D28: the player's card shows no pool and no percentage of the NPC");
+    eq([a.options.map((o) => o.id), a.options.every((o) => typeof o.note === "string" && !/\d|%/.test(o.note)), a.lines.some((l) => /attPool/.test(String(l)))], [["block", "pass"], true, false], "D28 / U11: the player's card shows no pool and no percentage of the NPC, only how likely the attack is to land, in words");
+    eq([view().prompts[p.id].data.odds, Object.keys(view().prompts[p.id].data.odds).every((k) => ["open", "block", "dodge"].includes(k))], [{ open: UiM.bandOf(Rules.dice.pSuccess(8)), block: UiM.bandOf(Rules.dice.pHit(8, T.c.K.attrs.fighting)) }, true], "U11: the bands of the answers come from the engine's own pools");
     await T.answer("p1", "reaction", "block", "K");
     eq([T.top().data.def.K.dice, view().stack[0].data.def], [T.c.K.attrs.fighting, { K: { defence: "block" } }], "D28: the dice noted with the chosen defence stay out of a player's view");
   }

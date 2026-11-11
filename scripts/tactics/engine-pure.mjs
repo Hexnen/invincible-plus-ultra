@@ -221,7 +221,7 @@ function pushNews(X, n) {
 }
 function newsOf(I) {
   const rows = (I.decl?.targets ?? []).map((t) => { const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
-    return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}) }; });
+    return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.tags?.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}) }; });
   return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
     result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret ? { secret: 1 } : {}), rows };
 }
@@ -445,7 +445,7 @@ async function opDeclare(X, a) {
     await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", tags: price?.tags ?? entry.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
     I.entry = I.data.paid?.own ?? null;
   }
-  if (!l.ok && a.granted === true && X.user.staff) { I.data.exception = { reason: l.reason, params: l.params, by: "gm" }; I.decl.exception = { ...I.decl.exception, state: "granted" }; }      // U3: the GM already said yes on the card of the request: no second card
+  if (a.granted === true && X.user.staff) { I.data.exception = { reason: l.ok ? null : l.reason, params: l.ok ? {} : l.params, by: "gm" }; I.decl.exception = { ...I.decl.exception, state: "granted" }; }      // U3: the GM already said yes on the card of the request: no second card
   else if (!l.ok) {                                                                         // an illegal option with a request for an exception (spec 9.12): a desk card
     I.data.exception = { reason: l.reason, params: l.params }; I.data.hold = "exception"; I.status = "waiting";
     openPrompt(X, I, { key: "exception", kind: "exception", to: "gm", about: actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { reason: l.reason, text: decl.exception.text } }, "declare");
@@ -530,7 +530,7 @@ async function opAnswer(X, a, forAnyone = false) {
     const I = J.clone(inst), id = typeof value === "string" ? value : value.id;
     delete I.data.hold; delete I.data.holdKey; I.decl.exception = { ...I.decl.exception, state: id === "grant" ? "granted" : "denied" };
     setInst(X, I);
-    pushNews(X, { kind: "exception", actor: I.actor, action: I.action, granted: id === "grant", ran: id === "grant" ? 1 : 0, ...(typeof value?.text === "string" && value.text ? { note: value.text.slice(0, 200) } : {}) });      // U3: the asker is told
+    pushNews(X, { kind: "exception", actor: I.actor, action: I.action, held: 1, granted: id === "grant", ran: id === "grant" ? 1 : 0, ...(typeof value?.text === "string" && value.text ? { note: value.text.slice(0, 200) } : {}) });      // U3: the asker is told
     if (id !== "grant") await abortInst(X, I.id, true);
   } else if (inst.data.pk?.cancelAsk === p.id) { const id = typeof value === "string" ? value : value.id; if (id === "cancel") await abortInst(X, inst.id, true); else if (id === "forfeit") await abortInst(X, inst.id, false); }
   return ok({ prompt: p.id });
@@ -582,6 +582,10 @@ function opPreview(X, a) {
   } catch { out = null; }
   X.state = before;                                                                         // the probe took an id from the counter: given back
   return { ok: true, changed: false, preview: out };
+}
+/** The same, at once and without a host that can do anything: for the executor's own client and the checks. -> { attr, dice, base, mods } | null */
+export function previewFor(state, facts, user, req) {
+  try { const env = opPreview(makeX(state, null, { facts: () => facts, now: () => 0 }, user), req ?? {}); return env.ok ? env.preview ?? null : null; } catch { return null; }
 }
 
 async function opHelp(X, a) {
@@ -953,7 +957,10 @@ async function opUndo(X, a) {
       } else { const eff = J.inverseEffect(op); if (eff) await host(id, op, eff); }
     }
     X.log = J.markUndone(X.log, id, X.host.now());
-    if ((X.state.news ?? []).some((n) => n.tx === id && !n.undone)) X.state = { ...X.state, news: X.state.news.map((n) => (n.tx === id ? { ...n, undone: 1 } : n)) };      // U10: the player is told what the GM took back
+    /* U10: the players are told what the GM took back: the result they read is marked, and a line of its own says so */
+    const was = (X.state.news ?? []).find((n) => n.tx === id && n.kind === "action" && !n.undone);
+    if (was) X.state = { ...X.state, news: X.state.news.map((n) => (n.tx === id ? { ...n, undone: 1 } : n)) };
+    pushNews(X, { kind: "undo", ...(was ? { actor: was.actor, action: was.action, ...(was.name ? { name: was.name } : {}), ...(was.secret ? { secret: 1 } : {}) } : {}) });
     emit(X, null, { type: "undo", tx: id, ...(failed.length > n0 ? { failed: failed.slice(n0).map((f) => ({ t: f.t, reason: f.reason })) } : {}) });
   }
   X.facts = liveFacts(X); X.changed = true;

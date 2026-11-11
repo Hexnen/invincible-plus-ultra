@@ -14,7 +14,7 @@
             the own action in progress (what it waits for, change / cancel)
    RESTING (not the user's turn, nothing armed, nothing asked): only the who block; the chevron opens the bar to look or to ask for an
    exception. A question addressed to the user always shows, whoever's turn it is. */
-import { h, icon, swap, face, costIcon, askCard, waitChips, visibleRect } from "./dom.mjs";
+import { h, icon, swap, face, costIcon, askCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
 
 const ID = "invincible-tactics-dock";
 const GAP = 6;
@@ -254,7 +254,14 @@ function draw(d, ui) {
     d.prompts?.length ? h("div.itd-asks", {}, d.prompts.map((a) => askCard(a, askH))) : null,
     d.show ? panel(d.panel) : null,
     d.show ? bar(d) : null,
-    d.show && (d.waiting?.length || d.turn) ? h("div.itd-wait", { attrs: { role: "status" } }, d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null) : null,
+    /* the line under the bar: whose turn, who the table waits for; and, only while there is one, the roll this user owes or may push
+       (U1 / U2: its buttons are here, not on a chat toast) and the last thing the table was told (U10 / U3: one chip, the older lines in
+       its tooltip, put away with its x) */
+    d.show && (d.waiting?.length || d.turn || d.rolls?.length || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
+      (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
+      d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.rolls?.length ? d.waiting.filter((w) => !w.mine || w.what.length > d.rolls.length) : d.waiting)] : null,
+      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null }, icon("fa-bullhorn"), h("span.itd-news-t", { text: d.news.text }),
+        h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null,
   ]);
   place();
   reveal();

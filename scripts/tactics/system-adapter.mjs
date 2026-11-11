@@ -348,11 +348,6 @@ async function dialogFor(req, labelOf) {
   if (req.maxPush === 0) opts.maxPush = 0;                                               // passive and defender rolls are never pushed [B2227], [B2241]
   return new Dlg(String(req.label ?? req.key), opts);
 }
-/** The system's own dialog for an engine roll (kept for the API; the engine's rolls no longer open it: rollNow). */
-export async function openRoll(req, labelOf = (s) => s) {
-  const dlg = await dialogFor(req, labelOf);
-  return typeof dlg.wait === "function" ? dlg.wait() : dlg.render({ force: true });
-}
 /* U2 / U7: an engine roll is thrown AT ONCE on the roller's client: no dialog to read, to dismiss or to pick a chat mode in. The pool is
    the engine's and the dialog had nothing to decide about it; who may see the dice is the engine's word too (req.mode "gm": a hidden
    combatant, a secret roll), everything else of a fight is rolled in the open. The dice are still the system's own roll and chat card.

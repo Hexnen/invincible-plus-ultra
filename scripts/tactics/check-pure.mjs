@@ -75,7 +75,7 @@ for (const f of code) {
    are by design the meeting point of both halves (the executor's host with every document effect, the one system adapter with the
    readers of the round driver and of the action engine, the one API object). */
 eq(FACING.slice().sort(), ["api.mjs", "combat-class.mjs", "engine.mjs", "main.mjs", "movement.mjs", "relay.mjs", "store.mjs", "summons.mjs", "system-adapter.mjs", "ui/prompts.mjs", "zones-adapter.mjs"], "the Foundry-facing files: one executor (and its tokens that come and go), one relay, one store, one system adapter, one zones adapter, one API, one entry");
-const CAP = { "engine.mjs": 200, "system-adapter.mjs": 305, "api.mjs": 150 };      // P6: the adapter also reads every item of the sheet (automations, effects, bonuses)
+const CAP = { "engine.mjs": 200, "system-adapter.mjs": 340, "api.mjs": 150 };      // P6: the adapter also reads every item of the sheet (automations, effects, bonuses); U1 / U2 / U7: it throws the engine's rolls itself and presses the system's push / accept (still the one file that touches the system)
 for (const f of FACING) {
   const c = strip(read(f)), n = c.split("\n").filter((l) => l.trim()).length;
   ok(n <= (CAP[f] ?? 130), `${f}: thin (${n} lines of code, cap ${CAP[f] ?? 130})`);

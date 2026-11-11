@@ -183,7 +183,7 @@ function attackPool(v, I, tokens) {
 /** The dice this declaration would roll, before it is declared: the roll's own builder on a copy (engine-pure.opPreview). Nothing is spent. */
 export function preview(v, inst) {
   const I = K.draft(inst);
-  if (!I.decl.targets?.length || kindOf(I) === "counterattack") return null;
+  if (kindOf(I) === "counterattack") return null;      // (no target yet: the pool without what the target would add or take)
   if (weaponOf(v, I)?.always?.includes("area")) I.decl.area = 1;
   I.data.multi = multiOf(I.decl);
   return attackPool(v, I, I.decl.tokens ?? []);

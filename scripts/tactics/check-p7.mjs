@@ -369,7 +369,7 @@ const base = () => {
   const raw = [], t = (k, p, fb) => { const s = say(k, p, fb === undefined ? k : fb); if (s === k) raw.push(k); return s; };
   const special = (staff) => () => [{ id: "CH", name: "Device", kind: "challenge", ...(staff ? { health: 6, maxHealth: 6, resolve: 3, maxResolve: 3, timeUnit: "rounds" } : {}) },
     { id: "V1", name: "Van", kind: "vehicle", ...(staff ? { health: 8, maxHealth: 8, vehicle: { type: "ground", speed: 3, maneuver: 1, passengers: 3, weapons: 0 } } : {}) }];
-  const facts = (v, staff) => ({ view: v, staff, me: staff ? "gm" : "p1", c: (id) => (T.c[id] ? { name: T.c[id].name ?? id, npc: !!T.c[id].npc } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => u, special: special(staff) });
+  const facts = (v, staff) => ({ view: v, staff, me: staff ? "gm" : "p1", c: (id) => (T.c[id] ? { name: T.c[id].name ?? id, npc: !!T.c[id].npc } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => u, special: special(staff), preview: (cid, decl) => T.preview(staff ? "gm" : "p1", cid, decl) });
   const dock = (own) => UI.dockData({ bars: [D.barModel(view, "H1", { ...ctx, special: special(false) })], prompts: [], mine: [], stack: [], waiting: [], turn: { combatant: "H1", name: "H1", round: 1 } }, own, facts(view, false), t);
   const p0 = dock({ armed: "objective", targets: [] }).panel;
   eq([p0.kind, p0.targets.map((x) => [x.id, x.picked]), p0.approach.groups.length, p0.submit.disabled === EN["ITAC.ui.need.approach"], p0.submit.req], ["declare", [["CH", true]], 3, true, null], "I: the only challenge is picked by itself; its ways are listed; nothing is sent before one is chosen");

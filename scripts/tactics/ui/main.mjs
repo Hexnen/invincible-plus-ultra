@@ -24,12 +24,14 @@ import * as Desk from "./desk.mjs";
 import * as Pick from "./pick.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
-const t = Model.withWords(langT, () => { try { return game.i18n.lang; } catch { return "en"; } });      // the surfaces' own words (model-pure.WORDS) before the language file
+const t = langT;
 const NARROW = 1180;                       // with less room than this between the window's left edge and the sidebar the desk starts folded
 const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false, opt: null, attr: null });
 const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, sure: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {}, scene: {}, kit: {} });
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
 let st = { dock: blankDock(), desk: blankDesk() };
+const previews = new Map();           // U: the engine's answer to "what would this declaration roll", per declaration and state (facts.preview)
+let previewLast = null;
 let rev = 0, moveMemo = null;             // the move options are counted once per change of the fight or of the map, not per keystroke
 let zonePick = null, shownDock = "", shownDesk = "";      // what this client has on the map for the surfaces: a running pick, two highlights
 let cardsWere = null;                     // the ids of the desk's waiting cards at the last draw: a new one brings the Now tab forward (U12)
@@ -50,6 +52,8 @@ function factsOf(combat) {
     kit: (id) => ctx.kit(id), bonus: (id) => ctx.bonus?.(id) ?? null,                                                                  // P6: the abilities of a sheet this user may read (engine.context)
     attrs: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner || view?.revealed?.[id]?.stats) ? Sys.actorFacts(a)?.attrs ?? null : null; } catch { return null; } },
     userName: (u) => game.users.get(u)?.name ?? null,
+    rollBusy: (rid) => { const at = Sys.rollStarted(rid); return !!at && Date.now() - at < Sys.ROLL_RETRY_MS; },      // U2: the throw is on its way: no "Roll" button yet
+    preview: (cid, decl) => previewOf(combat, view, cid, decl),
     /* P7: challenges and vehicles of the fight (no card, no ledger); their numbers only for staff */
     special: () => ctx.special().map((x) => {
       const cb = combat.combatants.get(x.id), f = staff ? Sys.actorFacts(Sys.actorOf(cb)) : null;
@@ -81,10 +85,47 @@ function factsOf(combat) {
     zone: (spot) => { try { const p = Zones.place(spot); return p ? { id: Zones.zoneName(spot) ?? (Number.isInteger(p.id) ? p.id + 1 : null), title: Zones.zoneTitle(spot, { level: true }), level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } catch { return null; } },
   };
 }
+/* THE POOL OF A DECLARATION (every number about one roll has one source): asked of the executor (op "preview", through the relay for a
+   player), remembered per declaration and state of the fight; while the answer is on its way the last one for the same action stands. */
+function previewOf(combat, view, cid, decl) {
+  try {
+    const key = `${combat.id}|${view?.rev}|${cid}|${JSON.stringify(decl)}`, hit = previews.get(key);
+    if (hit) return hit.value !== undefined ? hit.value : previewLast?.who === `${cid}|${decl.action}` ? previewLast.value : null;
+    previews.set(key, { value: undefined }); if (previews.size > 60) { previews.clear(); previews.set(key, { value: undefined }); }
+    Api.request({ op: "preview", actor: cid, decl }, combat).then((env) => {
+      const value = env?.ok ? env.preview ?? null : null;
+      if (previews.has(key)) previews.set(key, { value });
+      previewLast = { who: `${cid}|${decl.action}`, value };
+      clearTimeout(timer); timer = setTimeout(refresh, 20);
+    }).catch(() => { /* no number */ });
+    return previewLast?.who === `${cid}|${decl.action}` ? previewLast.value : null;
+  } catch { return null; }
+}
+/* U1 / U2: a roll button of the surfaces (model-pure.rollButtons `act`): the system's own roll, accept or push, on this client */
+const acting = new Map();
+async function rollAct(act) {
+  try {
+    const combat = combatNow(), state = combat ? Api.state(combat) : null;
+    const r = state?.stack?.find((i) => i.id === act.inst)?.rolls?.[act.key];
+    if (!r) return;
+    const k = `${act.do}:${act.inst}:${act.key}`;
+    if (Date.now() - (acting.get(k) ?? 0) < 2500) return;      // a second click while the first is on its way
+    acting.set(k, Date.now());
+    if (act.do === "roll") {
+      if (!r.req?.rid || r.sixes != null) return;
+      const actor = Sys.actorOf(combat.combatants.get(r.who));
+      await Sys.rollNow({ combat: combat.id, inst: act.inst, key: act.key, rid: r.req.rid, actorUuid: actor?.uuid ?? null, attr: r.attr, pool: r.pool, dice: r.req.dice, maxPush: r.req.maxPush, label: t(`ITAC.roll.${String(act.key).split(":")[0]}`, {}, r.req.label ?? act.key), ...(r.req.mode ? { mode: r.req.mode } : {}) },
+        (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s)), { force: true });
+      setTimeout(refresh, Sys.ROLL_RETRY_MS + 100);
+    } else if (r.messageId) await (act.do === "push" ? Sys.pushRoll(r.messageId) : Sys.acceptRoll(r.messageId));
+    refresh();
+  } catch (e) { console.warn(LOG, "roll action failed", e); notify("warn", t("ITAC.warn.rollDialog")); }
+}
 /* the dock's model for staff: the bar of whoever has the turn (or of the combatant the GM chose), from the full state */
 function staffModel(combat, desk) {
   const state = Api.state(combat), cid = st.dock.sel && state?.ledger?.[st.dock.sel] ? st.dock.sel : state?.init?.curMember ?? null;
-  if (!state || !cid) return { bars: [], prompts: [], mine: [], stack: desk?.info ?? [], waiting: desk?.waiting ?? [], turn: desk?.turn ?? null };
+  const rolls = (desk?.info ?? []).flatMap((i) => i.rolls ?? []);      // U1: the GM's own rolls (NPCs, absent players) stand in the dock's line too when the desk is folded
+  if (!state || !cid) return { bars: [], prompts: [], mine: [], rolls, stack: desk?.info ?? [], waiting: desk?.waiting ?? [], turn: desk?.turn ?? null };
   const bar = Api.pure.desk.barModel(state, cid, { ...Engine.context(combat), P1: Api.pure.economy });
   if (bar.endTurn) bar.endTurn = { ...bar.endTurn, req: { ...bar.endTurn.req, force: true } };
   /* a hero whose player is at the table: the GM's dock rests (the chevron opens it to act for them) */
@@ -94,7 +135,7 @@ function staffModel(combat, desk) {
   /* what this one summoned acts in the same turn: its bars stand beside (the dock's switcher) */
   const cur = state.init?.curMember, more = (state.summons ?? []).filter((x) => x.owner === cur).flatMap((x) => x.combatants.filter((id) => !(x.wait ?? []).includes(id)));
   const bars = more.length ? [...new Set([cur, ...more, cid])].map((id) => (id === cid ? bar : Api.pure.desk.barModel(state, id, { ...Engine.context(combat), P1: Api.pure.economy }))) : [bar];
-  return { bars, prompts: [], mine, stack: desk?.info ?? [], waiting: desk?.waiting ?? [], turn: desk?.turn ?? null };
+  return { bars, prompts: [], mine, rolls, stack: desk?.info ?? [], waiting: desk?.waiting ?? [], turn: desk?.turn ?? null };
 }
 
 function refresh() {
@@ -104,7 +145,7 @@ function refresh() {
     if (!combat) { cardsWere = null; Pick.stop(); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
-    if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone }; }        // a new turn: nothing stays armed
+    if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen }; }        // a new turn: nothing stays armed
     const desk = staff ? Api.desk(combat) : null;
     let deskD = null;
     if (staff) {
@@ -119,7 +160,7 @@ function refresh() {
     const model = staff ? staffModel(combat, desk) : Api.player(combat);
     const data = Model.dockData(model, st.dock, facts, t);
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
-    if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; }
+    if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
     Dock.render(data, st.dock);
     if (data.show && data.panel?.kind === "declare" && data.panel.targets) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => { const max = data.panel.maxTargets ?? 1, cur = (st.dock.targets ?? []).filter((x) => x !== cid); setDock({ targets: max > 1 ? ((st.dock.targets ?? []).includes(cid) ? cur : [...cur, cid].slice(-max)) : [cid] }); });
     else Pick.stop();
@@ -206,6 +247,8 @@ async function send(which, req, after) {
       refresh(); return env;
     }
     if (which === "dock") { st.dock.refused = null; st.dock.why = ""; }
+    /* U4: an override says what it did (the desk's row changes too, but the GM's eyes are on the control just pressed) */
+    if (which === "desk" && ["setOutcome", "setSixes", "setPool", "setDamage", "skipStep", "goToStep", "askRoll", "retarget"].includes(req.op)) notify("info", t(`ITAC.ui.ovr.did.${req.op}`, { name: combat?.combatants.get(req.target)?.name ?? "", n: req.sixes ?? req.total ?? req.amount ?? "", result: req.op === "setOutcome" ? t(req.hit ? "ITAC.ui.ovr.hit" : "ITAC.ui.ovr.miss") : "" }));
     /* U5: a move the user made from the dock may end under the dock or the macro bar: once the token has arrived the map slides by
        the least that brings that zone into the free part of the window (this client's view only; nothing when it is there already) */
     if (which === "dock" && req.op === "declare" && req.decl?.mode && typeof req.decl.to === "string" && !req.decl.exception) { const cid = req.actor ?? st.dock.sel ?? Api.state(combat)?.init?.curMember; for (const ms of [1200, 2600]) setTimeout(() => showToken(cid), ms); }
@@ -239,6 +282,7 @@ function configure() {
     /* an action that also names a place (Fastball Special): any zone of the map; the executor judges the throw */
     zonePick: async () => { try { const r = await Zones.pick({ title: t("ITAC.ui.pick.title", { name: "" }).replace(/^[:\s]+/, ""), color: "target" }); if (r?.ok) setDock({ to: r.spot ?? r.zone }); } catch (e) { console.warn(LOG, "zone pick failed", e); } },
     target: (cid) => { try { Pick.show(combatNow(), cid); } catch { /* a courtesy */ } },
+    roll: rollAct,
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });
   Desk.configure({
@@ -249,6 +293,7 @@ function configure() {
     karma: (patch) => { st.desk.karma = { ...st.desk.karma, ...patch }; refresh(); },
     kit: (patch) => { st.desk.kit = { ...st.desk.kit, ...patch }; refresh(); },                // P6: whose abilities the tab shows, which row is open
     scene: (patch) => { st.desk.scene = { ...st.desk.scene, ...patch, side: { ...(st.desk.scene.side ?? {}), ...(patch.side ?? {}) } }; refresh(); },      // P7: the draft of a chase
+    roll: rollAct,
     act: (cid) => { patchDock({ sel: cid, armed: null, mode: null, peek: true }); refresh(); },      // P7: the dock for somebody who has no turn (the crew in a chase)
     val: (id, v) => { st.desk.vals[id] = v; refresh(); },
     manual: (id, patch) => { const cur = st.desk.manual[id] ?? {}; st.desk.manual[id] = { ...cur, ...patch, damage: { ...(cur.damage ?? {}), ...(patch.damage ?? {}) } }; refresh(); },

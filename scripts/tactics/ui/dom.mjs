@@ -74,6 +74,10 @@ export function askCard(a, handlers = {}) {
     a.submit ? h("button.ita-submit", { fk: `submit:${a.id}`, text: a.submit.label, disabled: !!a.submit.disabled, tip: a.submit.disabled, on: { click: () => a.submit.req && handlers.send?.(a.submit.req) } }) : null);
 }
 
+/** U1 / U2: the buttons of one roll (model-pure.rollButtons): `act` is done on this client (handlers.roll), `req` is sent. One element, re-skinnable. */
+export const rollButtons = (id, buttons, handlers = {}) => (buttons ?? []).map((b) => h("button.ita-rollbtn", { fk: `rb:${id}:${b.id}`, text: b.label, tip: b.tip, data: { id: b.id }, on: { click: () => (b.act ? handlers.roll?.(b.act) : b.req ? handlers.send?.(b.req) : null) } }));
+/** U1 / U2: a roll this client owes or may push, as one chip: what it is, and its buttons (model-pure.rollsData) */
+export const rollChip = (r, handlers = {}) => h("span.ita-roll", { data: { state: r.state } }, icon(r.state === "rolling" ? "fa-spinner" : "fa-dice"), h("span.ita-roll-t", { text: r.text }), rollButtons(r.id, r.buttons, handlers));
 /** the "who are we waiting for" chips (model-pure.waitingData) */
 export const waitChips = (rows) => rows.map((w) => h(`span.ita-wait${w.mine ? ".ita-wait-me" : ""}`, {}, h("b", { text: w.who }), h("span", { text: w.what.join(", ") })));
 

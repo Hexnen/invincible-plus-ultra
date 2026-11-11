@@ -317,7 +317,7 @@ const city = () => { const T = new MTable(); T.hero("H1", "p1", { attrs: { stren
   const W = [{ id: "smg", name: "SMG", bonus: 1, damage: 2, range: [0, 2], sharp: true, fullAuto: true, area: false }, { id: "nade", name: "Grenade", bonus: 0, damage: 3, range: [0, 1], area: true }, { id: "bat", name: "Bat", bonus: 1, damage: 2, range: null }];
   T.weapons = Object.fromEntries(W.map((w) => [w.id, w]));
   const meta = { hidden: [], npc: ["N1", "N2"] }, view = V.viewFor(T.state, { id: "p1", staff: false, owns: ["H1"] }, meta);
-  const facts = { view, me: "p1", staff: false, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => (id === "H1" ? T.c.H1.attrs : null), userName: (u) => u, weapons: (id) => (id === "H1" ? W : []) };
+  const facts = { view, me: "p1", staff: false, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => (id === "H1" ? T.c.H1.attrs : null), userName: (u) => u, weapons: (id) => (id === "H1" ? W : []), preview: (cid, decl) => T.preview("p1", cid, decl) };
   const dock = (own) => UI.dockData(D.playerModel(view, { id: "p1", owns: ["H1"] }, { c: (id) => T.c[id] ?? null, online: () => true, P1 }), own, facts, t);
   const acts = dock({}).groups.flatMap((g) => g.items).map((a) => a.id);
   ok(["slugfest", "shoot", "grapple", "charge"].every((id) => acts.includes(id)), "N: the dock offers slugfest, shoot, grapple and charge");

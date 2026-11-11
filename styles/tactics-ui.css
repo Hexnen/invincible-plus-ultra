@@ -480,3 +480,23 @@ body.ita-desk-open #chat-notifications .overflow { height: auto; max-height: var
 /* U6: the module's own end-of-session notice stands above the dock instead of on it */
 body.ita-tactics .ips-notice { bottom: var(--itd-clear, 124px); }
 body.ita-tactics.ita-notice-wait .ips-notice { visibility: hidden; }
+
+/* ---------- U1 / U2 / U10 / U3 (roll and exchange flow): the roll a user owes or may push, and the last news of the table.
+   Both live on the dock's waiting line (and the roll buttons on the desk's roll rows) and exist only while there is one. ---------- */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 4px 2px 8px; color: var(--ita-ink); background: var(--ita-yellow); border: 1px solid var(--ita-ink); font-weight: 700; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll[data-state="rolling"] { background: transparent; color: var(--ita-text); border-color: var(--ita-line); font-weight: 400; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll[data-state="rolling"] i { animation: fa-spin 1.2s linear infinite; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn { flex: none; width: auto; min-height: 24px; height: auto; margin: 0; padding: 1px 9px 2px; font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #fff; background: var(--ita-ink, #0c1a2e); border: 1px solid var(--ita-ink, #0c1a2e); border-radius: 0; cursor: pointer; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn:is(:hover, :focus-visible) { color: var(--ita-ink); background: #fff; outline: none; box-shadow: none; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn[data-id="push"] { background: var(--ita-red, #b3261e); border-color: var(--ita-red, #b3261e); }
+#invincible-tactics-desk .igd-rolls li { flex-wrap: wrap; }
+#invincible-tactics-desk .igd-rolls .ita-rollbtn { margin-left: 2px; border-color: var(--ita-line); }
+.itd-news { display: inline-flex; align-items: center; gap: 6px; max-width: min(100%, 560px); padding: 1px 2px 2px 8px; color: var(--ita-text); border: 1px solid var(--ita-line); border-left-width: 3px; }
+.itd-news[data-tone="good"] { border-left-color: #5fd08a; }
+.itd-news[data-tone="bad"] { border-left-color: var(--ita-red, #e0483f); }
+.itd-news[data-tone="warn"] { border-left-color: var(--ita-yellow); }
+.itd-news-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itd-news > i { flex: none; color: var(--ita-label); }
+.itd-news-x { flex: none; width: 22px; min-height: 22px; height: 22px; margin: 0; padding: 0; color: var(--ita-label); background: transparent; border: 0; border-radius: 0; cursor: pointer; }
+.itd-news-x:is(:hover, :focus-visible) { color: #fff; outline: none; box-shadow: none; }

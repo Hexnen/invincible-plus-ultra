@@ -118,7 +118,7 @@ const IDS = /\b(H1|H2|N1|N2|M1|V1|z\d|hz\w*|gm)\b/;
   const T = base((x) => { x.npc("TUR", { name: "Turret", health: 8 }); }, ["TUR"]);
   const acts = (user, cid, attrs) => {
     const staff = user === "gm", view = V.viewFor(T.state, { id: user, staff, owns: staff ? [] : [cid] }, { hidden: [], npc: ["N1", "N2", "TUR"] });
-    const facts = { view, me: user, staff, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => attrs[id] ?? null, userName: (u) => u, weapons: () => [] };
+    const facts = { view, me: user, staff, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => attrs[id] ?? null, userName: (u) => u, weapons: () => [], preview: (cid, decl) => T.preview(user, cid, decl) };
     const m = staff ? D.gmModel?.(view, { c: (id) => T.c[id] ?? null, online: () => true, P1 }, cid) : D.playerModel(view, { id: user, owns: [cid] }, { c: (id) => T.c[id] ?? null, online: () => true, P1 });
     return m ? UI.dockData(m, {}, facts, t).groups.flatMap((g) => g.items).map((a) => a.id) : null;
   };

@@ -15,7 +15,7 @@
      Scene    (P7) what stands in the fight without a card: the chase (who flees, who follows, the distance, the chase roll, its end),
               the vehicles (who sits where, the state of the machine) and the challenges (a book preset, what the GM runs by hand)
      Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), a hazard let loose by hand, the karma notes, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
-import { h, icon, swap, askCard, waitChips, visibleRect } from "./dom.mjs";
+import { h, icon, swap, askCard, waitChips, rollButtons, visibleRect } from "./dom.mjs";
 
 const ID = "invincible-tactics-desk";
 const minH = (H) => Math.round(Math.max(240, Math.min(320, H * 0.36)));      // px the open desk keeps whatever floats under it (276 in a 768 px window)
@@ -96,7 +96,8 @@ function inst(i, L) {
     h("div.igd-meta", {}, h("span.igd-stepchip", {}, h("span", { text: `${L.step}: ` }), h("b", { text: i.step })), i.cause ? h("span.igd-tag", { text: i.cause }) : null,
       i.outcomes.map((o) => h(`span.igd-tag${o.hit ? ".igd-hit" : ".igd-miss"}`, { text: `${o.name}: ${o.text}` }))),
     i.text ? h("blockquote.ita-quote", {}, h("span", { text: i.text })) : null,
-    i.rolls.length ? h("ul.igd-rolls", {}, i.rolls.map((r) => h(`li${r.waiting ? ".igd-waiting" : ""}`, {}, icon(r.waiting ? "fa-hourglass-half" : "fa-dice"), h("b", { text: r.label }), h("span", { text: r.text }), r.chance ? h("span.igd-pct", { text: r.chance }) : null))) : null,
+    i.rolls.length ? h("ul.igd-rolls", {}, i.rolls.map((r) => h(`li${r.waiting ? ".igd-waiting" : ""}`, {}, icon(r.waiting ? "fa-hourglass-half" : "fa-dice"), h("b", { text: r.label }), h("span", { text: r.text }), r.chance ? h("span.igd-pct", { text: r.chance }) : null,
+      rollButtons(`${i.id}:${r.key}`, r.buttons, { roll: handlers.roll, send: (req) => send(req) })))) : null,      // U1 / U4: roll, accept, push, ask again: on the row of the roll
     h("div.igd-cmds", {}, i.commands.map((c) => (c.toggle
       ? h("button.igd-btn.igd-toggle", { fk: `ovr:${i.id}`, attrs: { "aria-expanded": String(c.on) }, on: { click: () => set({ override: c.on ? null : i.id }) } }, icon("fa-sliders"), h("span", { text: c.label }))
       : h(`button.igd-btn${c.danger ? ".igd-danger" : ""}${c.armed ? ".igd-sure" : ""}`, { fk: `cmd:${i.id}:${c.id}`, text: c.label, on: { click: () => (c.confirm && !c.armed ? set({ sure: `${i.id}:${c.id}` }) : send(c.req, { sure: null })) } })))),

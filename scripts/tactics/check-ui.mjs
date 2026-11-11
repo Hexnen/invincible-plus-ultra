@@ -17,7 +17,7 @@ const ctx = (T, online = () => true) => ({ c: (id) => T.c[id] ?? null, online, P
 const meta = (T) => ({ hidden: Object.values(T.c).filter((c) => c.hidden).map((c) => c.id), npc: Object.values(T.c).filter((c) => c.npc).map((c) => c.id) });
 const viewOf = (T, uid, owns) => V.viewFor(T.state, { id: uid, staff: false, owns }, meta(T));
 /* facts that would LEAK if the model asked: every combatant and every attribute is answered, as a careless caller might */
-const facts = (T, view, me, staff = false) => ({ view, me, staff, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => `user-${u}` });
+const facts = (T, view, me, staff = false) => ({ view, me, staff, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => `user-${u}`, preview: (cid, decl) => T.preview(me, cid, decl) });
 const dock = (T, uid, owns, own = {}) => { const view = viewOf(T, uid, owns); return M.dockData(D.playerModel(view, { id: uid, owns }, ctx(T)), own, facts(T, view, uid), t); };
 const desk = (T, own = {}, online) => M.deskData(D.deskModel(T.state, T.log, ctx(T, online)), own, facts(T, T.state, "gm", true), t);
 const staffDock = (T, cid, own = {}) => { const d = D.deskModel(T.state, T.log, ctx(T)); return M.dockData({ bars: [D.barModel(T.state, cid, ctx(T))], prompts: [], mine: [], stack: d.info, waiting: d.waiting, turn: d.turn }, own, facts(T, T.state, "gm", true), t); };
@@ -98,12 +98,25 @@ lang("en");
   let d = dock(T, "p2", ["H2"]);
   eq([d.onTurn, d.canRest, d.rest, d.end.disabled != null, act(d, "slugfest").disabled], [false, true, true, true, T0("ITAC.reason.notYourTurn")], "off turn: the dock rests; actions greyed with the reason in words");
   d = dock(T, "p2", ["H2"], { armed: "slugfest" });
-  eq([d.rest, d.panel.kind, d.panel.submit.req, /turn/i.test(d.panel.reason)], [false, "blocked", null, true], "a greyed action opens 'ask the GM': needs words first");
-  d = dock(T, "p2", ["H2"], { armed: "slugfest", text: " I was ready for this ", targets: ["N1"] });
-  eq((await T.req("p2", d.panel.submit.req)).ok, true, "the exception request is accepted");
+  eq([d.rest, d.panel.kind, d.panel.submit.req, /turn/i.test(d.panel.refused.reason), d.panel.refused.submit.req, typeof d.panel.refused.submit.disabled], [false, "declare", null, true, null, "string"], "a greyed action keeps its panel with the reason and 'ask the GM': needs a target and words first (U3)");
+  d = dock(T, "p2", ["H2"], { armed: "slugfest", why: " I was ready for this ", targets: ["N1"] });
+  eq([d.panel.refused.submit.req.reason, d.panel.refused.submit.req.decl.action, d.panel.refused.submit.req.decl.targets, d.panel.submit.req], ["notYourTurn", "slugfest", ["N1"], null], "U3: the request names the rule that refused and carries the declaration it is about");
+  eq((await T.req("p2", d.panel.refused.submit.req)).ok, true, "the exception request is accepted");
   let g = desk(T);
-  eq(g.cards.map((c) => [c.kind, c.about, c.lines.some((l) => l.quote === "Slugfest (Mauler): I was ready for this"), c.options.length > 1]), [["exception", "Rex", true, true]], "desk: the exception card quotes the player, with the action and the target meant");
+  eq(g.cards.map((c) => [c.kind, c.about, c.lines.some((l) => l.quote === "Slugfest (Mauler): I was ready for this"), c.options.length > 1, c.lines.some((l) => typeof l === "string" && /not your turn/i.test(l)), c.lines.some((l) => typeof l === "string" && /Slugfest \(Mauler\)/.test(l) && /no cost/i.test(l))]), [["exception", "Rex", true, true, true, true]], "desk: the exception card quotes the player, names the rule that refused and says what a grant will do (U3)");
   eq((await T.gm(g.cards[0].options.find((x) => x.id === "deny").req)).ok, true, "GM answers the exception");
+  eq([T.state.stack.length, dock(T, "p2", ["H2"]).news?.tone, /refused/i.test(dock(T, "p2", ["H2"]).news?.text ?? ""), dock(T, "p1", ["H1"]).news ?? null, viewOf(T, "p1", ["H1"]).news.length], [0, "bad", true, null, 0], "U3: a refusal is told to the one who asked, in the dock, and to nobody else");
+  { // U3: granted: the very declaration runs, at no cost, and both sides see it
+    const G = mk();
+    const dd = dock(G, "p2", ["H2"], { armed: "slugfest", why: "let me", targets: ["N1"] });
+    await G.req("p2", dd.panel.refused.submit.req);
+    const before = JSON.stringify(P1.budget(G.state, "H2"));
+    eq((await G.gm(desk(G).cards[0].options.find((x) => x.id === "grant").req)).ok, true, "U3: the GM grants");
+    const top = G.top(), dn = dock(G, "p2", ["H2"]);
+    eq([top?.actor, top?.action, top?.decl.targets, top?.decl.exception?.state, JSON.stringify(P1.budget(G.state, "H2")) === before, desk(G).cards.some((c) => c.kind === "exception")], ["H2", "slugfest", ["N1"], "granted", true, false], "U3: the granted declaration is in progress for the asker, its cost waived, with no second exception card");
+    eq([dn.news?.tone, /agreed/i.test(dn.news?.text ?? ""), /Slugfest/.test(dn.news?.text ?? ""), dn.panel?.kind], ["good", true, true, "mine"], "U3: the asker's dock says the GM agreed and shows the action in progress");
+    eq(dock(G, "p2", ["H2"], { newsSeen: dn.news.seen }).news, null, "U10: a line that was put away stays away");
+  }
   if (T.top()) await T.gm({ op: "abort", inst: T.top().id });
   T.turn("N1");
   let s = staffDock(T, "N1", { armed: "slugfest", targets: ["H2"] });
@@ -111,7 +124,8 @@ lang("en");
   eq((await T.gm(s.panel.submit.req)).ok, true, "the GM declares for the NPC through the same panel");
   d = dock(T, "p2", ["H2"]);
   eq([d.rest, d.prompts.map((p) => [p.kind, p.about, p.options.map((x) => x.id)])], [true, [["reaction", "Rex", ["block", "dodge", "pass"].filter((x) => d.prompts[0].options.some((q) => q.id === x))]]], "out of turn: the reaction question shows above a resting bar");
-  ok(d.prompts[0].options.every((x) => x.note == null) && !JSON.stringify(d.prompts[0].lines).includes("9"), "a player's reaction question carries no attacker numbers");
+  ok(d.prompts[0].options.every((x) => x.note == null || !/\d|%/.test(x.note)) && !JSON.stringify(d.prompts[0].lines).includes("9"), "a player's reaction question carries no attacker numbers");
+  eq([d.prompts[0].options.find((x) => x.id === "pass").label, /attack lands: /.test(d.prompts[0].options.find((x) => x.id === "pass").note ?? ""), d.prompts[0].lines.some((l) => /Mauler attacks Rex/.test(String(l)))], ["No reaction", true, true], "U11: the card names the attacker, says in words how likely the attack is to land, and calls a pass what the GM's card calls it");
   eq(d.waiting[0].mine, true, "the wait line says it is me");
   eq(desk(T).cards.length, 0, "online addressee: no desk card");
   g = desk(T, {}, (u) => u !== "p2");
@@ -250,18 +264,16 @@ for (const l of ["en", "pl"]) { // P5: the other actions (the list behind "More 
 }
 { // U1 layout pass: the words kept in the model, the quiet turn line, the veto that asks twice, the zone beside the name
   lang("en");
-  eq([Object.keys(M.WORDS.en).sort(), Object.values(M.WORDS.pl).every((v) => typeof v === "string" && v.length > 0)], [Object.keys(M.WORDS.pl).sort(), true], "U1 words: both languages carry the same keys");
-  eq([M.word("pl", "IU1.here", { zone: "Zone 5" }), M.word("xx", "IU1.turn.notYours"), M.word("pl", "IU1.none")], ["Jesteś w: Zone 5", "Not your turn", null], "U1 words: parameters are filled, an unknown language reads English, an unknown key is null");
-  const w = M.withWords((k) => `file:${k}`, () => "pl");
-  eq([w("IU1.sure.veto"), w("ITAC.ui.end"), w("IU1.none", {}, "fb")], ["Zawetować?", "file:ITAC.ui.end", "fb"], "U1 words: own keys are answered here, every other key by the language file");
+  eq(["ITAC.ui.turn.notYours", "ITAC.ui.sure.veto", "ITAC.ui.here", "ITAC.ui.here.of", "ITAC.ui.legend"].every((k) => typeof EN[k] === "string" && typeof PL[k] === "string"), true, "U1 words: the layout's own words are in the language file, in both languages (the wrapper is gone)");
   const T = new Table();
   T.hero("H1", "p1", { name: "Atom Eve" }).npc("N1", { name: "Mauler", attrs: { fighting: 9, agility: 8 } }).npc("N2", { name: "Zzyxq", hidden: true, attrs: { fighting: 11 } });
   T.order(["H1", "N1", "N2"]).turn("N2");
-  const tw = M.withWords(t, () => "pl");
+  const tw = t; lang("pl");
   const view = viewOf(T, "p1", ["H1"]);
   const hid = M.dockData(D.playerModel(view, { id: "p1", owns: ["H1"] }, ctx(T)), {}, { ...facts(T, view, "p1"), where: (id) => (id === "H1" ? "z5" : null) }, tw);
   eq([hid.turn, /Zzyxq/.test(JSON.stringify(hid))], ["Nie twoja tura", false], "U15: a concealed combatant's turn still says it is not the player's, and names nobody");
-  eq([/5/.test(hid.who?.zone?.label ?? ""), hid.who?.zone?.tip === `Jesteś w: ${hid.who?.zone?.label}. ${M.WORDS.pl["IU1.legend"]}`], [true, true], "U8: the own zone stands beside the name with the legend in its tip");
+  eq([/5/.test(hid.who?.zone?.label ?? ""), hid.who?.zone?.tip === `Jesteś w: ${hid.who?.zone?.label}. ${PL["ITAC.ui.legend"]}`], [true, true], "U8: the own zone stands beside the name with the legend in its tip");
+  lang("en");
   eq(dock(T, "p1", ["H1"]).who?.zone ?? null, null, "U8: no zone fact, no chip");
   T.turn("H1");
   eq((await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })).ok, true, "U20: an action is declared");

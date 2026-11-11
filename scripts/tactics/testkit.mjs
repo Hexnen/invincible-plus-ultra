@@ -91,6 +91,8 @@ export class Table {
   setRange(a, b, total) { this.ranges[[a, b].sort().join("|")] = total == null ? null : { total, borders: total, levels: 0 }; return this; }
 
   /* ---- the director's host */
+  /** the dice a declaration would roll (engine-pure.previewFor): what the dock's panel is given as facts.preview */
+  preview(userId, cid, decl) { return E.previewFor(this.state, this.facts(), this.users[userId] ?? { id: userId, staff: false }, { actor: cid, decl }); }
   facts() {
     const T = this;
     return {
