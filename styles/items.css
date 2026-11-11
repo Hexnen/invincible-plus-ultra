@@ -168,8 +168,9 @@
   min-height: 34px;
   margin: 0;
   padding: 0 8px;
-  font: 700 13px/1 Roboto, sans-serif;
-  letter-spacing: .3px;
+  font: 400 14px/1 Titles, Comic, sans-serif;   /* a tab is a label: Titles caps, like the dock's and the windows' (styles/kit.css) */
+  letter-spacing: .05em;
+  text-transform: uppercase;
   white-space: nowrap;
   text-decoration: none;
   user-select: none;
@@ -180,22 +181,24 @@
   transform: skewX(-6deg);
   transition: transform .16s var(--isp-ease), box-shadow .16s var(--isp-ease), background-color .16s var(--isp-ease);
 }
+/* the kit's states. The tabs stand on the comic art, where a blue shadow would vanish, so their hard shadow stays ink.
+   Hover lifts 1px, press sinks 2px; the open tab is the CHOSEN one among yellow siblings: white and sunk. */
 .invincible.sheet.item.application nav a:hover {
   background: var(--isp-hover);
-  transform: skewX(-6deg) translateY(-2px);
-  box-shadow: 2px 4px 0 var(--isp-ink);
+  transform: skewX(-6deg) translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--isp-ink);
 }
 .invincible.sheet.item.application nav a:active {
-  transform: skewX(-6deg) translate(1px, 1px);
-  box-shadow: 1px 1px 0 var(--isp-ink);
+  transform: skewX(-6deg) translate(2px, 2px);
+  box-shadow: 0 0 0 var(--isp-ink);
 }
 .invincible.sheet.item.application nav a.active {
-  color: #fff;
-  background: var(--isp-blue);
+  color: var(--isp-ink);
+  background: #fff;
   border: 2px solid var(--isp-ink);
   text-shadow: none;
-  transform: skewX(-6deg) translateY(-2px);
-  box-shadow: 3px 3px 0 var(--isp-ink);
+  transform: skewX(-6deg) translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--isp-ink);
 }
 
 /* =====================================================================
@@ -330,7 +333,7 @@
   transform: translate(1px, 1px);
   box-shadow: 1px 1px 0 var(--isp-ink);
 }
-.invincible.sheet.item.application section.tab input[type="checkbox"]:disabled { cursor: not-allowed; box-shadow: none; opacity: .6; }
+.invincible.sheet.item.application section.tab input[type="checkbox"]:disabled { cursor: not-allowed; box-shadow: none; border-style: dashed; border-color: var(--isp-hint); }   /* unavailable = dashed, never opacity alone */
 
 /* =====================================================================
    Form groups: label + field, rows that wrap instead of squeezing
@@ -511,8 +514,8 @@
   min-height: 32px;
   margin: 10px 8px 0 0;
   padding: 0 10px;
-  font: 700 12px/1 Comic, sans-serif;
-  letter-spacing: .4px;
+  font: 400 13px/1 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
   text-transform: uppercase;
   text-align: left;
   text-decoration: none;
@@ -520,12 +523,12 @@
   color: var(--isp-ink);
   background: #fff;
   border: 2px solid var(--isp-ink);
-  box-shadow: 2px 2px 0 var(--isp-ink);
+  box-shadow: none;   /* a secondary button is hollow (styles/kit.css) */
   transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
 }
-/* hover lifts like the create button and the tabs (same tactile vocabulary everywhere) */
-.invincible.sheet.item.application section.tab details > a.delete:hover { background: var(--isp-yellow); text-shadow: none; transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--isp-ink); }
-.invincible.sheet.item.application section.tab details > a.delete:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--isp-ink); }
+/* hover lifts 1px, press sinks 2px (the kit's states) */
+.invincible.sheet.item.application section.tab details > a.delete:hover { background: var(--isp-yellow); text-shadow: none; transform: translate(-1px, -1px); }
+.invincible.sheet.item.application section.tab details > a.delete:active { transform: translate(2px, 2px); }
 /* Update / Duplicate: a block-level row of their own. The system prints a boost's description as bare text,
    so an inline button used to trail the last line of it. */
 .invincible.sheet.item.application section.tab details > a.delete:not([data-action^="delete"]) {
@@ -541,15 +544,12 @@
   margin: 8px 0 0 auto;
   color: var(--isp-red-ink);
   border-color: var(--isp-red-ink);
-  box-shadow: 2px 2px 0 var(--isp-red-ink);
 }
 .invincible.sheet.item.application section.tab details > a.delete[data-action^="delete"]:is(:hover, :focus-visible) {
   color: #fff;
   background: var(--isp-red);
   border-color: var(--isp-ink);
-  box-shadow: 3px 3px 0 var(--isp-ink);
 }
-.invincible.sheet.item.application section.tab details > a.delete[data-action^="delete"]:active { box-shadow: 1px 1px 0 var(--isp-red-ink); }
 /* =====================================================================
    Automations tab
    ===================================================================== */
@@ -568,19 +568,19 @@
   gap: 8px;
   min-height: 34px;
   padding: 0 14px;
-  font: 700 13px/1 Comic, sans-serif;
-  letter-spacing: .5px;
+  font: 400 14px/1 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
   text-transform: uppercase;
   text-decoration: none;
   cursor: pointer;
   color: var(--isp-ink);
   background: var(--isp-yellow);
   border: 2px solid var(--isp-ink);
-  box-shadow: 3px 3px 0 var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--ipu-press);   /* the thing to press now, on paper: the blue hard shadow */
   transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease);
 }
-.invincible.sheet.item.application a.automation-create:hover { background: var(--isp-hover); transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--isp-ink); text-shadow: none; }
-.invincible.sheet.item.application a.automation-create:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--isp-ink); }
+.invincible.sheet.item.application a.automation-create:hover { background: var(--isp-hover); transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ipu-press); text-shadow: none; }
+.invincible.sheet.item.application a.automation-create:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ipu-press); }
 
 /* "open item / open macro" links inside a label: small, clearly clickable */
 .invincible.sheet.item.application section.tab div.form-group.uuid-field > label {
@@ -606,11 +606,11 @@
   color: var(--isp-ink);
   background: #fff;
   border: 2px solid var(--isp-ink);
-  box-shadow: 2px 2px 0 var(--isp-ink);
-  transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease);
+  box-shadow: none;
+  transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease);
 }
-.invincible.sheet.item.application section.tab :is(a.automation-open-item, a.automation-open-macro):hover { background: var(--isp-yellow); text-shadow: none; transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--isp-ink); }
-.invincible.sheet.item.application section.tab :is(a.automation-open-item, a.automation-open-macro):active { transform: translate(1px, 1px); box-shadow: none; }
+.invincible.sheet.item.application section.tab :is(a.automation-open-item, a.automation-open-macro):hover { background: var(--isp-yellow); text-shadow: none; transform: translate(-1px, -1px); }
+.invincible.sheet.item.application section.tab :is(a.automation-open-item, a.automation-open-macro):active { transform: translate(2px, 2px); }
 
 /* UUID tag field and code editor: framed like the other fields */
 .invincible.sheet.item.application section.tab document-tags {
@@ -659,7 +659,7 @@
   & li.effects-header a[data-action="createDoc"] {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     min-height: 28px; margin: 0; padding: 2px 10px;
-    font: 700 12px/1 Comic, sans-serif; letter-spacing: .4px; text-transform: uppercase; white-space: nowrap; text-decoration: none; cursor: pointer;
+    font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; text-decoration: none; cursor: pointer;
     color: var(--isp-ink); background: var(--isp-yellow);
     border: 2px solid var(--isp-ink); box-shadow: 2px 2px 0 var(--isp-ink);
     transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease);
@@ -758,9 +758,11 @@
    ===================================================================== */
 .invincible.sheet.item.application ::selection { background: var(--isp-yellow); color: var(--isp-ink); }
 .invincible.sheet.item.application :is(a, button, summary, input, select, textarea, [tabindex], .ProseMirror):focus-visible {
-  outline: 3px solid var(--isp-ink);
-  outline-offset: 2px;
+  outline: var(--ipu-ring-w) solid var(--ipu-ring-paper);   /* the kit's ring: cyan on paper */
+  outline-offset: var(--ipu-ring-gap);
 }
+/* white where the thing stands on the comic art or on the window's dark header */
+.invincible.sheet.item.application :is(nav a, .window-header :is(a, button)):focus-visible { outline-color: var(--ipu-ring-ink); }
 .invincible.sheet.item.application section.tab :is(details, .effect, .form-group, section) { min-width: 0; }
 .invincible.sheet.item.application :is(nav a, section.tab a, summary, button) { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .invincible.sheet.item.application section.tab :is(label, summary, .effect-name, .tag) { overflow-wrap: anywhere; }

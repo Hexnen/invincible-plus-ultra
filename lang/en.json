@@ -1,0 +1,87 @@
+{
+  "INVINCIBLE": {
+    "Actor": {
+      "Tabs": {
+        "weapons": "Vehicle Weapons"
+      }
+    },
+    "Item": {
+      "Gear": {
+        "FIELDS": {
+          "quantity": {
+            "label": "Quantity"
+          }
+        }
+      }
+    },
+    "Automation": {
+      "FIELDS": {
+        "rollAttack": {
+          "stressCost": {
+            "label": "Stress Cost"
+          },
+          "notLoaded": "You cannot attack with a weapon that is not loaded/charged."
+        },
+        "reloadWeapon": {
+          "reloaded": "Weapon reloaded / recharged. Supplies consumed: {supplyConsumed}. Supplies available: {newQuantity}."
+        }
+      }
+    },
+    "Effects": {
+      "system": {
+        "civilianName": "Civilian Name"
+      }
+    }
+  },
+  "YZUR": {
+    "CHAT": {
+      "ROLL": {
+        "ATTACK": {
+          "BLIGHT": "Blight",
+          "DESPAIR": "Despair"
+        }
+      }
+    }
+  },
+  "TYPES": {
+    "Item": {
+      "spell": "Spell"
+    }
+  },
+  " CHAT": {
+    "Dismiss": "Dismiss"
+  },
+  "IPU": {
+    "Sys": {
+      "noResolve": "You don't have enough resolve to use this.",
+      "badAutomation": "You can't execute this kind of automation",
+      "needAttribute": "You need to have an attribute selected for the automation.",
+      "singleUsed": "Single item used and deleted from the sheet.",
+      "notGM": "You are not a GM!",
+      "challengeNoItems": "Challenge does not accept any kind of item",
+      "boostsOnPower": "You can't add boosts/limits directly to the actor. Open a Power and drop the boost/limit on the item sheet.",
+      "vehicleOnlyWeapons": "Vehicle only accepts Vehicle Weapons.",
+      "macroOwnedOnly": "You can only create macro buttons for owned Items",
+      "macroItemGone": "Could not find item {name}. You may need to delete and recreate this macro.",
+      "migrating": "Migrating your data to version {version}. Please, wait until it finishes.",
+      "migrated": "Data migrated to version {version}.",
+      "condition": "Condition",
+      "extraConfiguration": "Extra Configuration",
+      "docNewEffect": "New Effect",
+      "docCreateEffect": "Create Effect",
+      "docDeleteEffect": "Delete Effect",
+      "docUpdateEffect": "Update Effect",
+      "docNewAutomation": "New Automation",
+      "docDeleteAutomation": "Delete Automation",
+      "docDuplicateAutomation": "Duplicate Automation",
+      "docNewBoost": "New Boost",
+      "docDeleteBoost": "Delete Boost",
+      "docUpdateBoost": "Update Boost",
+      "docDeleteLimit": "Delete Limit",
+      "docUpdateLimit": "Update Limit",
+      "docNewFeature": "New feature",
+      "docDeleteFeature": "Delete feature",
+      "docUpdateFeature": "Update feature"
+    }
+  }
+}

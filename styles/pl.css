@@ -1,0 +1,53 @@
+/* Invincible - Plus Ultra: POLISH for the texts that live in CSS.
+   Some visible copy of the module is written by CSS (content: "..."), where game.i18n cannot reach: the tokens --isp-t-* of chat.css,
+   items.css and actors-extra.css and a few literal content strings of sheet-plus.css. Foundry puts the client's language on <html lang>,
+   so each of them gets its Polish here under html[lang="pl"] (higher specificity than the English rule, so the order of the sheets does
+   not matter). Vocabulary: dev/glossary-pl.md. scripts/i18n/check-glossary.mjs fails when a CSS text has no Polish here (a token by its
+   name; a literal string by the comment "en: <the English text>" beside its rule) or when a Polish text uses a banned variant. */
+
+/* ---- chat cards (chat.css) ---- */
+html[lang="pl"] li.chat-message.message {
+  --isp-t-show: "Kości";
+  --isp-t-hide: "Ukryj";
+  --isp-t-whisper: "Szept";
+  --isp-t-blind: "Rzut ślepy";
+  --isp-t-first: "Pierwszy rzut";
+  --isp-t-pushed: "Rzut forsowany";
+}
+
+/* ---- item sheets (items.css) ---- */
+html[lang="pl"] .invincible.sheet.item.application {
+  --isp-t-boosts: "Ta moc nie ma jeszcze wzmocnień.";
+  --isp-t-limits: "Ta moc nie ma jeszcze ograniczeń.";
+  --isp-t-automations: "Brak automatyzacji. Dodasz ją przyciskiem „Nowa automatyzacja”.";
+  --isp-t-attributes: "Ten typ przedmiotu nie ma nic do ustawienia.";
+  --isp-t-description: "Brak opisu. Użyj przycisku edycji, żeby go dodać.";
+  --isp-t-fx-temporary: "Brak efektów czasowych. „Nowy efekt” dodaje efekt na 1 rundę.";
+  --isp-t-fx-passive: "Brak efektów pasywnych. Te działają zawsze.";
+  --isp-t-fx-inactive: "Nic nie jest wyłączone.";
+}
+
+/* ---- challenge and vehicle sheets (actors-extra.css) ---- */
+html[lang="pl"] .invincible.sheet.actor:is(.challenge, .vehicle) {
+  --isp-t-cr: "Stopień wyzwania";
+  --isp-t-tl: "Limit czasu";
+  --isp-t-dur: "Wytrzymałość";
+  --isp-t-bio-readonly: "Nikt jeszcze nie opisał tego wyzwania.";
+  --isp-t-bio-empty: "Brak opisu. Użyj przycisku edycji i opisz, jak działa to wyzwanie i jak się je pokonuje.";
+  --isp-t-drop: "Wyzwanie nie przyjmuje przedmiotów";
+  --isp-t-weapons-empty: "Brak zamontowanej broni. Przeciągnij tu broń pojazdu.";
+  --isp-t-weapons-hint: "Kliknij nazwę broni, żeby jej użyć. Prawy przycisk na karcie: wyślij na czat, edytuj albo usuń.";
+}
+
+/* ---- hero sheet (sheet-plus.css): literal strings ---- */
+html[lang="pl"] .invincible.sheet.actor section.tab.powers:not(:has(.powers-info))::after   { content: "Brak mocy. Przeciągnij tu źródło mocy."; }            /* en: No powers yet. Drag a power source here. */
+html[lang="pl"] .invincible.sheet.actor section.tab.talents:not(:has(.talent-info))::after  { content: "Brak talentów i wad. Przeciągnij tu którąś pozycję."; } /* en: No talents or drawbacks yet. Drag one here. */
+html[lang="pl"] .invincible.sheet.actor section.tab.gear:not(:has(.gear-info))::after       { content: "Brak sprzętu. Przeciągnij tu przedmiot."; }           /* en: No gear yet. Drag an item here. */
+html[lang="pl"] .invincible.sheet.actor section.tab.injuries:not(:has(.injury-info))::after { content: "Brak ran krytycznych. Szczęście bohatera."; }          /* en: No critical injuries. Lucky hero. */
+html[lang="pl"] .invincible.sheet.actor section.tab.talents div.separator::before { content: "Wady"; }                                                       /* en: Drawbacks */
+html[lang="pl"] .invincible.sheet.actor section.tab.effects [data-effect-type="temporary"] + ol.effect-list:not(:has(> li))::after { content: "Brak efektów czasowych. „Nowy efekt” dodaje efekt na 1 rundę."; } /* en: No timed effects. New Effect adds one that lasts 1 round. */
+html[lang="pl"] .invincible.sheet.actor section.tab.effects [data-effect-type="passive"] + ol.effect-list:not(:has(> li))::after { content: "Brak efektów pasywnych. Te działają zawsze."; }                 /* en: No passive effects. These are always on. */
+html[lang="pl"] .invincible.sheet.actor section.tab.effects [data-effect-type="inactive"] + ol.effect-list:not(:has(> li))::after { content: "Nic nie jest wyłączone."; }                                    /* en: Nothing switched off. */
+html[lang="pl"] .invincible.sheet.actor section.tab.effects .effect-list > li.effect > .effect-source::before { content: "Źródło: "; }                       /* en: Source:  */
+html[lang="pl"] .invincible.sheet.actor section.tab.effects .effect-list > li.effect > .effect-duration::before { content: "Czas trwania: "; }               /* en: Duration:  */
+html[lang="pl"] .invincible.sheet.actor.isp-dropping::after { content: "+  Upuść, żeby dodać"; }                                                         /* en: +  Drop to add */

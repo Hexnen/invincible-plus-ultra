@@ -210,7 +210,7 @@
   letter-spacing: .3px;
   box-shadow: 3px 3px 0 var(--isp-ink);
 }
-.invincible.sheet.actor.challenge header.sheet-header div.grid > .isp-timeunit > select:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+.invincible.sheet.actor.challenge header.sheet-header div.grid > .isp-timeunit > select:focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: var(--ipu-ring-gap); }
 .invincible.sheet.actor.challenge header.sheet-header div.grid > .isp-timeunit > .isp-tu-note {
   font: 12px/1.25 Comic, sans-serif;
   color: var(--isp-label);

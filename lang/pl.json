@@ -1,0 +1,778 @@
+{
+  "INVINCIBLE": {
+    "Ability": {
+      "Str": {
+        "long": "Siła",
+        "abbr": "sił"
+      },
+      "Con": {
+        "long": "Kondycja",
+        "abbr": "kon"
+      },
+      "Dex": {
+        "long": "Zręczność",
+        "abbr": "zrę"
+      },
+      "Int": {
+        "long": "Inteligencja",
+        "abbr": "int"
+      },
+      "Wis": {
+        "long": "Mądrość",
+        "abbr": "mąd"
+      },
+      "Cha": {
+        "long": "Charyzma",
+        "abbr": "cha"
+      }
+    },
+    "SheetLabels": {
+      "Actor": "Karta aktora Invincible",
+      "Item": "Karta przedmiotu Invincible"
+    },
+    "Actor": {
+      "Tabs": {
+        "Biography": "Biografia",
+        "Portrait": "Portret",
+        "Personal": "Sprawy osobiste",
+        "Powers": "Moce i wzmocnienia",
+        "Talents": "Talenty i wady",
+        "Injuries": "Rany krytyczne",
+        "Gear": "Sprzęt",
+        "Spells": "Zaklęcia",
+        "Effects": "Efekty",
+        "weapons": "Broń pojazdu"
+      },
+      "base": {
+        "FIELDS": {
+          "biography": {
+            "label": "Biografia"
+          },
+          "attributes": {
+            "label": "Atrybuty",
+            "graduation": {
+              "0": "Brak",
+              "1": "Słaby",
+              "2": "Przeciętny",
+              "3": "Dobry",
+              "4": "Świetny",
+              "5": "Niezwykły",
+              "6": "Niesamowity",
+              "7": "Zdumiewający",
+              "8": "Oszałamiający",
+              "9": "Fenomenalny",
+              "10": "Niebywały",
+              "11": "Boski",
+              "12": "Niezwyciężony"
+            },
+            "fighting": {
+              "label": "Walka"
+            },
+            "agility": {
+              "label": "Zwinność"
+            },
+            "strength": {
+              "label": "Siła"
+            },
+            "reason": {
+              "label": "Rozum"
+            },
+            "intuition": {
+              "label": "Intuicja"
+            },
+            "presence": {
+              "label": "Prezencja"
+            }
+          },
+          "civilianName": {
+            "label": "Imię cywilne"
+          },
+          "role": {
+            "label": "Rola"
+          },
+          "appearance": {
+            "label": "Wygląd"
+          },
+          "reputation": {
+            "label": "Reputacja"
+          },
+          "karma": {
+            "label": "Karma"
+          },
+          "occupation": {
+            "label": "Zawód"
+          },
+          "personality": {
+            "label": "Osobowość"
+          },
+          "drive": {
+            "label": "Motywacja"
+          },
+          "flaw": {
+            "label": "Słabość"
+          },
+          "relationships": {
+            "label": "Kluczowe relacje"
+          },
+          "team": {
+            "label": "Drużyna"
+          },
+          "teamBase": {
+            "label": "Baza"
+          },
+          "derived": {
+            "health": {
+              "value": {
+                "label": "Zdrowie"
+              }
+            },
+            "resolve": {
+              "value": {
+                "label": "Determinacja"
+              }
+            },
+            "slugfest": {
+              "label": "Bijatyka",
+              "tooltip": "Podstawowe obrażenia w <strong>bijatyce</strong>: {max}",
+              "slugfest": "Bijatyka",
+              "damage": "Obrażenia w bijatyce",
+              "charge": "Szarża",
+              "grapple": "Chwyt",
+              "wreckZone": "{attack} + demolka strefy",
+              "wreckZoneBonus": "Demolka strefy"
+            }
+          },
+          "resources": {
+            "label": "Zasoby"
+          },
+          "dodge": {
+            "label": "Unik"
+          },
+          "block": {
+            "label": "Blok"
+          }
+        }
+      },
+      "Superhero": {
+        "FIELDS": {
+          "name": {
+            "label": "Imię bohatera"
+          }
+        }
+      },
+      "Npc": {
+        "FIELDS": {
+          "name": {
+            "label": "Imię"
+          }
+        }
+      },
+      "Minions": {
+        "FIELDS": {
+          "name": {
+            "label": "Nazwa sługusów"
+          },
+          "derived": {
+            "health": {
+              "value": {
+                "label": "Sługusy"
+              }
+            },
+            "resolve": {
+              "value": {
+                "label": "Determinacja"
+              }
+            }
+          }
+        }
+      },
+      "Challenge": {
+        "FIELDS": {
+          "name": {
+            "label": ""
+          },
+          "subtitle": {
+            "label": ""
+          },
+          "derived": {
+            "health": {
+              "value": {
+                "label": "SW",
+                "hint": "Stopień wyzwania"
+              }
+            },
+            "resolve": {
+              "value": {
+                "label": "LC",
+                "hint": "Limit czasu"
+              }
+            }
+          }
+        }
+      },
+      "Vehicle": {
+        "FIELDS": {
+          "name": {
+            "label": "Pojazd"
+          },
+          "type": {
+            "ground": {
+              "label": "Lądowy"
+            },
+            "aerial": {
+              "label": "Powietrzny"
+            },
+            "water": {
+              "label": "Wodny"
+            },
+            "space": {
+              "label": "Kosmiczny"
+            },
+            "label": "Typ"
+          },
+          "passengers": {
+            "label": "Pasażerowie"
+          },
+          "maneuverability": {
+            "label": "Zwrotność"
+          },
+          "speed": {
+            "label": "Prędkość"
+          },
+          "derived": {
+            "health": {
+              "value": {
+                "label": "W",
+                "hint": "Wytrzymałość"
+              }
+            }
+          },
+          "armour": {
+            "label": "Pancerz"
+          },
+          "cost": {
+            "label": "Koszt"
+          }
+        }
+      },
+      "Character": {
+        "FIELDS": {
+          "attributes": {
+            "level": {
+              "value": {
+                "label": "Poziom"
+              }
+            }
+          }
+        }
+      },
+      "Embed": {
+        "gear": "Sprzęt",
+        "talents": "Talenty",
+        "drawback": "Wada",
+        "minionGroups": "Grupa sługusów ma tyle Zdrowia, ilu liczy członków",
+        "knownPowers": "Znane moce",
+        "knownTalents": "Znane talenty",
+        "knownDrawbacks": "Znane wady"
+      }
+    },
+    "Item": {
+      "Tabs": {
+        "Attributes": "Atrybuty",
+        "Description": "Opis",
+        "Effects": "Efekty",
+        "Automations": "Auto",
+        "Boosts": "Wzmocnienia",
+        "Limits": "Ograniczenia",
+        "ExtraConfiguration": "Dodatkowa konfiguracja"
+      },
+      "Gear": {
+        "FIELDS": {
+          "cost": {
+            "label": "Koszt"
+          },
+          "singleUse": {
+            "label": "Jednorazowy"
+          },
+          "restricted": {
+            "label": "Reglamentowany (R)"
+          },
+          "quantity": {
+            "label": "Ilość"
+          }
+        }
+      },
+      "Spell": {
+        "FIELDS": {
+          "level": {
+            "label": "Poziom zaklęcia"
+          }
+        },
+        "SpellLVL": "Zaklęcia poziomu {level}",
+        "AddLVL": "Dodaj poz. {level}"
+      },
+      "CriticalInjury": {
+        "FIELDS": {
+          "healingTime": {
+            "label": "Czas leczenia"
+          },
+          "lethal": {
+            "label": "Śmiertelna"
+          }
+        }
+      },
+      "Power": {
+        "FIELDS": {
+          "boosts": {
+            "label": "Wzmocnienia",
+            "single": "Wzmocnienie"
+          },
+          "powerSource": {
+            "label": "Źródło mocy",
+            "hint": "Wybierz źródło tej mocy:"
+          },
+          "level": {
+            "": {
+              "label": ""
+            },
+            "dynamic": "(zmienny)",
+            "basic": {
+              "label": "Podstawowy "
+            },
+            "major": {
+              "label": "Większy "
+            },
+            "massive": {
+              "label": "Potężny "
+            },
+            "monstrous": {
+              "label": "Monstrualny "
+            }
+          }
+        }
+      },
+      "VehicleWeapon": {
+        "FIELDS": {
+          "cost": {
+            "label": "Koszt"
+          },
+          "restricted": {
+            "label": "Reglamentowany (R)"
+          }
+        }
+      }
+    },
+    "Effect": {
+      "Source": "Źródło",
+      "Toggle": "Przełącz efekt",
+      "Temporary": "Efekty tymczasowe",
+      "Passive": "Efekty pasywne",
+      "Inactive": "Efekty nieaktywne"
+    },
+    "Automation": {
+      "new": "Nowa: {type}",
+      "addNew": "Dodaj automatyzację",
+      "automate": "Automatyzuj: {name} [{actor}]",
+      "actorBroken": "„{actor}”: postać jest złamana. Wykonać rzut mimo to?",
+      "sendToChat": "Wyślij na czat",
+      "Type": {
+        "label": "Typ",
+        "automation": "Automatyzacja",
+        "rollAttribute": "Rzut na atrybut",
+        "rollAttack": "Rzut na atak",
+        "rollAttackWithActor": "Rzut na atak (z aktorem)",
+        "rollArmor": "Rzut na ochronę pancerza",
+        "modifyRollAttack": "Modyfikuj rzut na atak",
+        "reloadWeapon": "Przeładuj lub naładuj broń",
+        "runMacro": "Uruchom makro",
+        "consume": "Zużyj przedmiot",
+        "consumeSupply": "Zużyj zapasy",
+        "runSequence": "Uruchom automatyzacje po kolei",
+        "rollArmorDamage": "Rzut na ochronę pancerza przed obrażeniami",
+        "rollArmorBlight": "Rzut na ochronę pancerza przed plagą",
+        "rollCreatureAttack": "Rzut na atak stworzenia",
+        "rollBirdPower": "Rzut na moc ptaka",
+        "rollUpgrade": "Rzut na ulepszenie",
+        "useGear": "Użyj sprzętu",
+        "toggleActiveEffect": "Przełącz efekt aktywny",
+        "usePower": "Użyj mocy",
+        "modifyUsePower": "Modyfikuj użycie mocy"
+      },
+      "Category": {
+        "Default": "Domyślne",
+        "Weapons": "Broń",
+        "Armor": "Pancerz",
+        "Talent": "Talent",
+        "Equipment": "Ekwipunek",
+        "Bird": "Ptak",
+        "Crew": "Załoga",
+        "Upgrades": "Ulepszenia",
+        "Other": "Inne"
+      },
+      "FIELDS": {
+        "selectWhenRolling": {
+          "label": "Wybierz przy rzucie"
+        },
+        "rollBonus": {
+          "label": "Premia do rzutu"
+        },
+        "showAsSelection": {
+          "label": "Pokaż jako wybór"
+        },
+        "attribute": {
+          "label": "Atrybut"
+        },
+        "rollAttribute": {
+          "requireAttribute": {
+            "label": "Wymaga atrybutu"
+          },
+          "stressCost": {
+            "label": "Koszt stresu"
+          }
+        },
+        "rollAttack": {
+          "notLoaded": "Nie można atakować bronią, która nie jest załadowana ani naładowana.",
+          "postExecutionMacro": {
+            "label": "Makro po wykonaniu"
+          },
+          "baseDamage": {
+            "label": "Obrażenia podstawowe"
+          },
+          "additionalDamage": {
+            "label": "Obrażenia dodatkowe"
+          },
+          "range": {
+            "label": "Zasięg"
+          },
+          "minRange": {
+            "label": "Zasięg minimalny"
+          },
+          "maxRange": {
+            "label": "Zasięg maksymalny"
+          },
+          "actualDamage": {
+            "label": "Obrażenia faktyczne"
+          },
+          "bypassArmor": {
+            "label": "Pomija Pancerz"
+          },
+          "conditionToApply": {
+            "label": "Stan do nałożenia",
+            "hint": "Upuść tu stan albo wklej UUID w pole"
+          },
+          "stressCost": {
+            "label": "Koszt stresu"
+          }
+        },
+        "rollArmor": {
+          "armor": {
+            "label": "Pancerz"
+          }
+        },
+        "reloadWeapon": {
+          "reloaded": "Broń przeładowana lub naładowana. Zużyte zapasy: {supplyConsumed}. Dostępne zapasy: {newQuantity}."
+        },
+        "toggleActiveEffect": {
+          "activeEffect": {
+            "label": "Efekt aktywny"
+          }
+        },
+        "macro": {
+          "open": "Otwórz makro",
+          "drop": "Upuść tu makro albo wklej UUID w pole",
+          "error": "Ta automatyzacja nie jest typu „Uruchom makro”.",
+          "notFound": "Nie ustawiono albo nie znaleziono: makro. Sprawdź."
+        },
+        "item": {
+          "open": "Otwórz przedmiot",
+          "drop": "Upuść tu przedmiot albo wklej UUID w pole",
+          "notFound": "Nie ustawiono albo nie znaleziono: przedmiot. Sprawdź."
+        },
+        "consume": {
+          "noQuantity": "Ten przedmiot nie ma ilości. Sprawdź automatyzację.",
+          "notConsumable": "Ten przedmiot nie jest oznaczony jako zużywalny. Sprawdź automatyzację.",
+          "notEnough": "Nie masz już ani jednej sztuki tego przedmiotu.",
+          "itemUsed": "Przedmiot użyty. Pozostała ilość: {newQuantity}"
+        },
+        "consumeSupply": {
+          "noSupplyConsumed": "Ten przedmiot nie ma ustawionego zużycia zapasów. Sprawdź konfigurację przedmiotu.",
+          "notEnough": "Za mało zapasów, żeby użyć tego przedmiotu. Wymagane zapasy: {required}. Dostępne zapasy: {available}.",
+          "itemUsed": "Przedmiot użyty, zapasy zużyte. Zużyte zapasy: {supplyConsumed}. Dostępne zapasy: {newQuantity}"
+        },
+        "sequence": {
+          "add": "Dodaj do sekwencji",
+          "delete": "Usuń z sekwencji"
+        },
+        "armorRoll": {
+          "notArmor": "Przedmiot powiązany z tą automatyzacją nie jest pancerzem. Sprawdź konfigurację.",
+          "armorRatingTitle": "Ochrona przed obrażeniami",
+          "blightProtectionTitle": "Ochrona przed plagą",
+          "armorRatingZero": "Wartość pancerza jest ustawiona na zero. Sprawdź konfigurację przedmiotu.",
+          "blightProtectionZero": "Ochrona przed plagą jest ustawiona na zero. Sprawdź konfigurację przedmiotu."
+        },
+        "birdPower": {
+          "noExplorer": "Wybierz odkrywcę, który wyda ptakowi polecenie.",
+          "notEnoughEnergy": "Ptak ma za mało energii, żeby użyć tej mocy."
+        },
+        "upgrade": {
+          "noExplorer": "Wybierz odkrywcę, który użyje ulepszenia pojazdu."
+        },
+        "modify": {
+          "autoModify": {
+            "label": "Modyfikuj automatycznie",
+            "hint": "Zaznaczone: automatyzacja zmienia się sama. Odznaczone: wybierasz, czy użyć wzmocnienia albo ograniczenia."
+          },
+          "description": {
+            "label": "Opis"
+          }
+        }
+      }
+    },
+    "Roll": {
+      "bonus": "Premia",
+      "damage": "Obrażenia",
+      "brokenByDamageAndStress": "Ta postać jest złamana i wyczerpana stresem. Wykonać rzut mimo to?",
+      "brokenByDamage": "Ta postać jest złamana przez obrażenia. Wykonać rzut mimo to?",
+      "brokenByStress": "Ta postać jest wyczerpana stresem. Wykonać rzut mimo to?"
+    },
+    "Chat": {
+      "BoostRoll": {
+        "Flavor": "{power} – wzmocnienie"
+      },
+      "DamageInfo": {
+        "DamageTaken": "Otrzymane obrażenia",
+        "DamageInfo": "<strong>{actor}</strong>: otrzymane obrażenia: <strong>{damage}</strong>.",
+        "CriticalInjury": "Do tego rana krytyczna: <strong>{ciName}</strong>."
+      }
+    },
+    "Stunts": {
+      "DoubleDamage": {
+        "label": "Podwójne obrażenia",
+        "stunt": "Podwójne obrażenia"
+      },
+      "Knockback": {
+        "label": "Odrzut",
+        "stunt": "Odrzut: {value} (strefy)"
+      },
+      "Stun": {
+        "label": "Ogłuszenie",
+        "stunt": "Ogłuszenie"
+      },
+      "BangHeads": {
+        "label": "Zderzenie głów",
+        "stunt": "Zderzenie głów ({value}): obrażenia {damage}"
+      },
+      "Suppressed": {
+        "label": "Przygwożdżenie",
+        "stunt": "Przygwożdżenie"
+      },
+      "TrickShot": {
+        "label": "Popisowy strzał",
+        "stunt": "Popisowy strzał"
+      },
+      "Trap": {
+        "label": "Uwięzienie",
+        "stunt": "Uwięzienie"
+      },
+      "Disarm": {
+        "label": "Rozbrojenie",
+        "stunt": "Rozbrojenie"
+      },
+      "DeadlyHit": {
+        "label": "Zabójcze trafienie",
+        "stunt": "Zabójcze trafienie"
+      },
+      "SpecialStunt": {
+        "label": "Wyczyn specjalny",
+        "stunt": "Wyczyn specjalny"
+      },
+      "YourOwn": {
+        "label": "Własny wyczyn",
+        "stunt": "Własny wyczyn"
+      },
+      "Slam": {
+        "label": "Taran",
+        "stunt": "Taran"
+      },
+      "ApplyStunts": "Zastosuj wyczyny"
+    },
+    "Settings": {
+      "showItemDescription": {
+        "label": "Pokazuj opis przedmiotu",
+        "hint": "Pokazuje lub ukrywa opis przedmiotu na karcie aktora."
+      }
+    },
+    "Effects": {
+      "system": {
+        "attributes": {
+          "fighting": {
+            "value": "Atrybut: Walka"
+          },
+          "agility": {
+            "value": "Atrybut: Zwinność"
+          },
+          "strength": {
+            "value": "Atrybut: Siła"
+          },
+          "reason": {
+            "value": "Atrybut: Rozum"
+          },
+          "intuition": {
+            "value": "Atrybut: Intuicja"
+          },
+          "presence": {
+            "value": "Atrybut: Prezencja"
+          }
+        },
+        "maxPush": {
+          "fighting": "Zmienia limit forsowań rzutów na Walkę",
+          "agility": "Zmienia limit forsowań rzutów na Zwinność",
+          "strength": "Zmienia limit forsowań rzutów na Siłę",
+          "reason": "Zmienia limit forsowań rzutów na Rozum",
+          "intuition": "Zmienia limit forsowań rzutów na Intuicję",
+          "presence": "Zmienia limit forsowań rzutów na Prezencję",
+          "all": "Zmienia limit forsowań wszystkich rzutów"
+        },
+        "derived": {
+          "slugfest": {
+            "bonus": "Atak w bijatyce",
+            "damage": "Obrażenia w bijatyce"
+          },
+          "health": {
+            "bonus": "Maksymalne Zdrowie"
+          },
+          "resolve": {
+            "bonus": "Maksymalna Determinacja"
+          }
+        },
+        "biography": "Biografia",
+        "civilianName": "Imię cywilne",
+        "role": "Rola",
+        "appearance": "Wygląd",
+        "reputation": "Reputacja",
+        "karma": "Karma",
+        "resources": "Zasoby",
+        "occupation": "Zawód",
+        "personality": "Osobowość",
+        "drive": "Motywacja",
+        "flaw": "Słabość",
+        "relationships": "Relacje",
+        "team": "Drużyna",
+        "teamBase": "Baza drużyny"
+      },
+      "bonus": {
+        "fighting": "Wszystkie rzuty na Walkę",
+        "agility": "Wszystkie rzuty na Zwinność",
+        "strength": "Wszystkie rzuty na Siłę",
+        "reason": "Wszystkie rzuty na Rozum",
+        "intuition": "Wszystkie rzuty na Intuicję",
+        "presence": "Wszystkie rzuty na Prezencję",
+        "armorProtection": "Ustaw wartość Pancerza",
+        "block": "Premia do bloku",
+        "dodge": "Premia do uniku",
+        "charge": "Atak szarżą",
+        "grapple": "Atak w chwycie",
+        "attack": "Każdy atak (bijatyka, szarża, chwyt, każda automatyzacja rzutu na atak)"
+      },
+      "token": {
+        "texture": {
+          "src": "Grafika żetonu"
+        }
+      }
+    },
+    "SystemManual": "Podręcznik systemu Invincible"
+  },
+  "YZUR": {
+    "CHAT": {
+      "ROLL": {
+        "Success": "Sukcesy",
+        "Push": "Forsuj",
+        "Accept": "Przyjmij",
+        "EnergyUsed": "Zużyta energia",
+        "AttackDamage": "Obrażenia ataku",
+        "Trauma": "Stres",
+        "ATTACK": {
+          "DAMAGE": "Obrażenia ataku",
+          "RANGE": "Zasięg",
+          "CRITICAL": "Próg rany",
+          "STUNTS": "Wyczyny",
+          "ARMOR": "Pancerz",
+          "ApplyDamage": "Zadaj obrażenia",
+          "BLIGHT": "Plaga",
+          "DESPAIR": "Rozpacz"
+        }
+      }
+    },
+    "DIETERMS": {
+      "BaseDie": "Podstawowa liczba sukcesów"
+    }
+  },
+  "TYPES": {
+    "Actor": {
+      "superhero": "Superbohater",
+      "npc": "NPC",
+      "challenge": "Wyzwanie",
+      "minions": "Sługusy",
+      "vehicle": "Pojazd"
+    },
+    "Item": {
+      "powerSource": "Źródło mocy",
+      "power": "Moc",
+      "talent": "Talent",
+      "drawback": "Wada",
+      "gear": "Sprzęt",
+      "criticalInjury": "Rana krytyczna",
+      "boost": "Wzmocnienie",
+      "limit": "Ograniczenie",
+      "vehicleWeapon": "Broń pojazdu",
+      "spell": "Zaklęcie"
+    }
+  },
+  "Name": "Nazwa",
+  "Yes": "Tak",
+  "No": "Nie",
+  "Duplicate": "Duplikuj",
+  "Edit": "Edytuj",
+  "Delete": "Usuń",
+  "Apply": "Zastosuj",
+  "Save": "Zapisz",
+  "Power Boost": "Wzmocnienie mocy",
+  "Select the attribute": "Wybierz atrybut",
+  "Create item": "Utwórz przedmiot",
+  " CHAT": {
+    "Dismiss": "Odrzuć"
+  },
+  "IPU": {
+    "Sys": {
+      "noResolve": "Masz za mało Determinacji, żeby tego użyć.",
+      "badAutomation": "Tego rodzaju automatyzacji nie da się uruchomić.",
+      "needAttribute": "Automatyzacja wymaga wybranego atrybutu.",
+      "singleUsed": "Jednorazowy przedmiot użyty i usunięty z karty postaci.",
+      "notGM": "Nie jesteś MG!",
+      "challengeNoItems": "Wyzwanie nie przyjmuje żadnych przedmiotów.",
+      "boostsOnPower": "Wzmocnień i ograniczeń nie dodaje się bezpośrednio do aktora. Otwórz moc i upuść wzmocnienie albo ograniczenie na jej karcie przedmiotu.",
+      "vehicleOnlyWeapons": "Pojazd przyjmuje tylko broń pojazdu.",
+      "macroOwnedOnly": "Przyciski makr można tworzyć tylko dla przedmiotów na karcie postaci.",
+      "macroItemGone": "Nie znaleziono przedmiotu {name}. Być może trzeba usunąć to makro i utworzyć je od nowa.",
+      "migrating": "Trwa migracja danych do wersji {version}. Poczekaj, aż się skończy.",
+      "migrated": "Dane zmigrowane do wersji {version}.",
+      "condition": "Stan",
+      "extraConfiguration": "Dodatkowa konfiguracja",
+      "docNewEffect": "Nowy efekt",
+      "docCreateEffect": "Utwórz efekt",
+      "docDeleteEffect": "Usuń efekt",
+      "docUpdateEffect": "Edytuj efekt",
+      "docNewAutomation": "Nowa automatyzacja",
+      "docDeleteAutomation": "Usuń automatyzację",
+      "docDuplicateAutomation": "Duplikuj automatyzację",
+      "docNewBoost": "Nowe wzmocnienie",
+      "docDeleteBoost": "Usuń wzmocnienie",
+      "docUpdateBoost": "Edytuj wzmocnienie",
+      "docDeleteLimit": "Usuń ograniczenie",
+      "docUpdateLimit": "Edytuj ograniczenie",
+      "docNewFeature": "Nowy przedmiot",
+      "docDeleteFeature": "Usuń przedmiot",
+      "docUpdateFeature": "Edytuj przedmiot"
+    }
+  }
+}

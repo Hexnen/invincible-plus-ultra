@@ -191,7 +191,7 @@ const pview = (T, u, owns) => V.viewFor(T.state, { id: u, staff: false, owns }, 
 /* ------------------------------------------------------------------ U26: one vocabulary in the Polish table */
 {
   const bad = [[/\bHealth\b/, "Health (Zdrowie)"], [/\bResolve\b/, "Resolve (Determinacja)"], [/(?<!\p{L})BN(?!\p{L})/u, "BN (NPC)"], [/\(y\)|\(ów\)|\(e\)/, "a bracketed ending"], [/wyzwalacz/i, "wyzwalacz"],
-    [/\bbez tego\b/, "a placeholder word"], [/(?<!\p{L})dok(u|iem)?(?!\p{L})|(?<!\p{L})pulpi/iu,"dok / pulpit (pasek akcji, biurko MG)"], [/\btoken/i, "token (żeton)"], [/Zręczno|Prezencj/, "an attribute name unlike the character creator's"],
+    [/\bbez tego\b/, "a placeholder word"], [/(?<!\p{L})dok(u|iem)?(?!\p{L})|(?<!\p{L})pulpi/iu,"dok / pulpit (pasek akcji, biurko MG)"], [/\btoken/i, "token (żeton)"], [/Zręczno|Charyzm|Obecnoś/, "an attribute name unlike the glossary's (Zwinność, Prezencja)"],
     [/(?<!\p{L})cech[aęy](?!\p{L})(?!.*liczą się same)/iu,"cecha for an attribute (atrybut)"], [/\b1 stresu\b|\{n\} stresu/, "'n stresu'"], [/\{(n|dice)\} kości|\{(n|dice)\} kośćmi/, "a die count without its plural forms"]];
   for (const [k, v] of Object.entries(PL)) for (const [re, what] of bad) ok(!re.test(v), `PL ${k}: ${what} in "${v.slice(0, 60)}"`);
   for (const [k, v] of Object.entries(EN)) ok(!/\(s\)|\{(n|dice)\} dice\b/.test(v), `EN ${k}: a count without its plural forms in "${v.slice(0, 60)}"`);

@@ -94,7 +94,7 @@ function vehRow(ctx, v, list) {
     : `<button type="button" class="ipb-btn ipb-btn-small" aria-disabled="true" data-gr-act="none" data-fk="gr-vo-${esc(v.id)}" aria-describedby="${esc(ctx.app.id)}-gr-vr-${esc(v.id)}">${icon("fa-solid fa-up-right-from-square")}${esc(t("IPB.Gr.OpenSheet"))}</button>`);
   if (ctx.canEdit) {
     if (!m.primary) acts.push(`<button type="button" class="ipb-btn ipb-btn-small" data-gr-act="veh-primary" data-vid="${esc(v.id)}" data-fk="gr-vp-${esc(v.id)}" aria-pressed="false" aria-label="${esc(t("IPB.Gr.StarMake", { name: nm }))}">${icon("fa-regular fa-star")}${esc(t("IPB.Gr.Star"))}</button>`);
-    acts.push(`<button type="button" class="ipb-btn ipb-btn-small" data-gr-act="veh-remove" data-vid="${esc(v.id)}" data-fk="gr-vx-${esc(v.id)}" aria-label="${esc(t("IPB.Gr.RemoveVehAria", { name: nm }))}">${icon("fa-solid fa-trash-can")}${esc(t("IPB.Gr.RemoveVeh"))}</button>`);
+    acts.push(`<button type="button" class="ipb-btn ipb-btn-small" data-gr-act="veh-remove" data-vid="${esc(v.id)}" data-fk="gr-vx-${esc(v.id)}" aria-label="${esc(t("IPB.Gr.RemoveVehAria", { name: nm }))}">${icon("fa-solid fa-trash")}${esc(t("IPB.Gr.RemoveVeh"))}</button>`);
   }
   const lines = [];
   if (!m.exists) lines.push(`<p class="ipb-bt-warn" id="${esc(ctx.app.id)}-gr-vr-${esc(v.id)}">${icon("fa-solid fa-triangle-exclamation")}<span>${esc(t("IPB.Gr.Missing"))}</span></p>`);
@@ -212,7 +212,7 @@ function crateRow(ctx, r) {
     acts.push(g.list.length
       ? `<button type="button" class="ipb-btn ipb-btn-small" data-gr-act="${act}" data-cid="${esc(r.id)}" data-fk="gr-g-${esc(r.id)}" aria-label="${esc(aria)}">${icon("fa-solid fa-hand-holding-hand")}${esc(label)}</button>`
       : `<button type="button" class="ipb-btn ipb-btn-small" aria-disabled="true" data-gr-act="none" data-fk="gr-g-${esc(r.id)}" aria-describedby="${esc(rid)}" aria-label="${esc(aria)}">${icon("fa-solid fa-hand-holding-hand")}${esc(label)}</button><span class="ipb-gr-why" id="${esc(rid)}">${esc(t(g.why))}</span>`);
-    acts.push(`<button type="button" class="ipb-btn ipb-btn-small" data-gr-act="crate-remove" data-cid="${esc(r.id)}" data-fk="gr-cx-${esc(r.id)}" aria-label="${esc(t("IPB.Gr.RemoveAria", { name: nm }))}">${icon("fa-solid fa-trash-can")}${esc(t("IPB.Gr.Remove"))}</button>`);
+    acts.push(`<button type="button" class="ipb-btn ipb-btn-small" data-gr-act="crate-remove" data-cid="${esc(r.id)}" data-fk="gr-cx-${esc(r.id)}" aria-label="${esc(t("IPB.Gr.RemoveAria", { name: nm }))}">${icon("fa-solid fa-trash")}${esc(t("IPB.Gr.Remove"))}</button>`);
   }
   const note = ctx.canEdit
     ? `<details class="ipb-up-notebox" data-gr-box="${esc(pk(ctx, `cn-${r.id}`))}"${r.note || openBoxes.has(pk(ctx, `cn-${r.id}`)) ? " open" : ""}><summary>${icon("fa-solid fa-pen")}<span>${esc(t("IPB.Gr.NoteSummary"))}</span></summary>`
@@ -309,7 +309,7 @@ function trackerRow(ctx, r) {
       </div>
       <label class="ipb-gr-tmax"><span class="ipb-sr">${esc(t("IPB.Gr.TrackMaxOf", { name: nm }))}</span><span class="ipb-gr-tof" aria-hidden="true">${esc(t("IPB.Gr.TrackOf", { max: "" }).trim())}</span><input class="ipb-input" type="number" inputmode="numeric" min="0" step="1" name="ipb-gr-tm-${esc(r.id)}" data-gr-trk="max" data-id="${esc(r.id)}" value="${r.max ?? ""}" placeholder="-"></label>
       <button type="button" class="ipb-btn ipb-btn-small" data-gr-act="trk-reset" data-id="${esc(r.id)}" data-fk="gr-tr-${esc(r.id)}" aria-label="${esc(t("IPB.Gr.TrackResetAria", { name: nm }))}"${dis(atZero)}>${icon("fa-solid fa-rotate-left")}${esc(t("IPB.Gr.TrackReset"))}</button>
-      <button type="button" class="ipb-btn ipb-btn-small" data-gr-act="trk-remove" data-id="${esc(r.id)}" data-fk="gr-tx-${esc(r.id)}" aria-label="${esc(t("IPB.Gr.TrackRemoveAria", { name: nm }))}">${icon("fa-solid fa-trash-can")}${esc(t("IPB.Gr.TrackRemove"))}</button>
+      <button type="button" class="ipb-btn ipb-btn-small" data-gr-act="trk-remove" data-id="${esc(r.id)}" data-fk="gr-tx-${esc(r.id)}" aria-label="${esc(t("IPB.Gr.TrackRemoveAria", { name: nm }))}">${icon("fa-solid fa-trash")}${esc(t("IPB.Gr.TrackRemove"))}</button>
     </div>
     ${bar}
     ${why ? `<span class="ipb-sr" id="${esc(rid)}">${esc(why)}</span>` : ""}
@@ -347,7 +347,7 @@ function trackersBlock(ctx) {
 function undoBar(ctx) {
   const rec = undoRec.get(ctx.team.id);
   if (!rec) return "";
-  return `<p class="ipb-up-undo ipb-gr-undo" role="status">${ctx.icon("fa-solid fa-trash-can")}<span>${ctx.esc(rec.text)}</span><button type="button" class="ipb-bt-link" data-gr-act="undo" data-fk="gr-undo">${ctx.icon("fa-solid fa-rotate-left")}${ctx.esc(ctx.t("IPB.Gr.Undo"))}</button></p>`;
+  return `<p class="ipb-up-undo ipb-gr-undo" role="status">${ctx.icon("fa-solid fa-trash")}<span>${ctx.esc(rec.text)}</span><button type="button" class="ipb-bt-link" data-gr-act="undo" data-fk="gr-undo">${ctx.icon("fa-solid fa-rotate-left")}${ctx.esc(ctx.t("IPB.Gr.Undo"))}</button></p>`;
 }
 
 function render(ctx) {

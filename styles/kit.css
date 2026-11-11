@@ -1,0 +1,114 @@
+/* Invincible - Plus Ultra: THE SHARED KIT (ledger U65: one look outside the fight). Loaded FIRST by sheet-plus.css, so every surface file can
+   use the tokens below and can still override a kit class with a selector of its own.
+   The reference is the tactical dock (styles/tactics-ui.css): what the dock says about a button, a state, a tooltip is said here once, for the
+   sheets, the chat cards, the windows (creator, team & base, log, session review) and the map pieces (party, challenges, combat bar, turn tray).
+   A NEW SURFACE uses the --ipu-* tokens and the .ipu-* classes; it does not invent a button of its own.
+
+   THE CONTRACT
+     pressable now (the main thing)  yellow, ink text, 2px ink frame, hard shadow 3px in --ipu-press (blue). Only this button has the hard shadow.
+     secondary                       hollow: paper or transparent, 2px frame, no shadow.
+     hover                           lifts 1px (--ipu-lift); the hard shadow grows to 4px.
+     press                           sinks 2px (--ipu-sink); the hard shadow shrinks to 1px.
+     chosen among yellow siblings    white, sunk 2px, 1px shadow (the dock's armed action, a sheet's open tab).
+     chosen among hollow siblings    yellow (the dock's picked target, a window's open tab, the current question).
+     unavailable                     hollow, DASHED frame, muted text, no shadow, still readable. Never opacity alone.
+     focus                           a ring 3px wide, 2px away: WHITE on ink and on the comic art, CYAN on paper (--ipu-ring-ink / --ipu-ring-paper).
+                                     The ring is the colour the frames around it are not: the character sheet frames in cyan, so it sets
+                                     --ipu-ring-paper to ink on its root. Width and distance never change.
+     label, button, plate            Titles caps with letter-spacing; sentences in Comic (map pieces, chat, tooltips) or the reading sans (long text in windows).
+     icon                            Font Awesome solid, one per button, the same picture for the same thing on every surface.
+     tooltip                         #tooltip.ipu-tip: ink panel, yellow hairline, the NAME in Titles yellow, then only what is not on screen.
+   Hard shadows on PANELS (the sheet's ink and cyan offsets) are comic panel depth, not buttons, and stay as they are. */
+
+:root {
+  --ipu-ink: #0c1a2e;
+  --ipu-tile: #112540;
+  --ipu-yellow: #ffe72a;
+  --ipu-yellow-hi: #fff27a;      /* hover of a yellow thing */
+  --ipu-blue: #3465a3;
+  --ipu-cyan: #0096cb;           /* on paper: 3.4 on #f7fafd (rings, big marks) */
+  --ipu-cyan-lt: #3bb8e8;        /* on ink: 7.7 */
+  --ipu-red: #b3261e;
+  --ipu-red-lt: #ff8178;
+  --ipu-paper: #f7fafd;
+  --ipu-text: #d5dff0;           /* sentences on ink 13.0 */
+  --ipu-label: #a9bcdc;          /* labels on ink 9.1 */
+  --ipu-frame: #7d93b9;          /* a hollow button's frame on ink 5.6 */
+  --ipu-line: #6b82a6;           /* hairlines and dashes on ink */
+  --ipu-off-paper: #56688a;      /* unavailable text on paper 5.6 */
+  --ipu-press: var(--ipu-blue);  /* the hard shadow of the thing you can press now */
+  --ipu-ring-w: 3px;
+  --ipu-ring-gap: 2px;
+  --ipu-ring-ink: #fff;
+  --ipu-ring-paper: var(--ipu-cyan);
+  --ipu-lift: -1px -1px;
+  --ipu-sink: 2px 2px;
+  --ipu-out: cubic-bezier(.16, 1, .3, 1);
+  --ipu-fa: var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free";
+}
+
+/* ---------- the tooltip of every surface outside the fight (scripts/kit.mjs puts the class on; chat's .isp-tip is the same panel) ----------
+   Same panel as the dock's #tooltip.ita-tip. A tooltip that is one plain line (an icon button's name) is that line; one built as
+   <strong>name</strong><p>what it does</p> gets the name in Titles yellow (the :has() form catches that shape where no class was named). */
+#tooltip:is(.ipu-tip, .isp-tip, :has(> strong:first-child + p:last-child)) {
+  max-width: min(290px, 90vw);
+  padding: 6px 10px 7px;
+  font: 400 12px/1.35 Comic, sans-serif;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+  text-wrap: pretty;
+  color: var(--ipu-text);
+  background: var(--ipu-ink);
+  border: 2px solid var(--ipu-ink);
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 231, 42, .55), 0 4px 12px rgba(0, 0, 0, .5);
+}
+#tooltip:is(.isp-tip, :has(> strong:first-child + p:last-child)) { max-width: min(330px, 90vw); }   /* rules text of a stunt: a little wider, the same panel */
+#tooltip:is(.ipu-tip, .isp-tip, :has(> strong:first-child + p:last-child)) :is(strong:first-child, b:first-child) {
+  display: block;
+  margin: 0 0 2px;
+  font: 400 13.5px/1.15 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--ipu-yellow);
+}
+#tooltip:is(.ipu-tip, .isp-tip, :has(> strong:first-child + p:last-child)) p { margin: 0; color: inherit; }
+#tooltip:is(.ipu-tip, .isp-tip, :has(> strong:first-child + p:last-child)) p + p { margin-top: .45em; }
+#tooltip:is(.ipu-tip, .isp-tip, :has(> strong:first-child + p:last-child)) em { font-style: normal; color: var(--ipu-red-lt); }
+@media (forced-colors: active) { #tooltip:is(.ipu-tip, .isp-tip, :has(> strong:first-child + p:last-child)) { border-color: CanvasText; } }
+
+/* ---------- classes for NEW surfaces (:where keeps them at zero specificity, so a surface can tune a size without a fight) ---------- */
+:where(.ipu-btn, .ipu-ic) {
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 0 12px;
+  font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+  color: var(--ipu-ink); background: #fff; border: 2px solid var(--ipu-ink);
+  cursor: pointer; user-select: none;
+  transition: translate .12s ease-out, box-shadow .12s ease-out;
+}
+:where(.ipu-ic) { width: 36px; height: 36px; min-height: 0; padding: 0; }                      /* an icon button: one Font Awesome picture, its name in the tooltip and the aria-label */
+:where(.ipu-btn, .ipu-ic):where([data-kind="main"]) { background: var(--ipu-yellow); box-shadow: 3px 3px 0 var(--ipu-press); }
+:where(.ipu-btn, .ipu-ic):where([data-kind="danger"]) { color: #fff; background: var(--ipu-red); box-shadow: 3px 3px 0 var(--ipu-press); }
+:where(.ipu-on-ink) :where(.ipu-btn, .ipu-ic):where(:not([data-kind])) { color: var(--ipu-text); background: transparent; border-color: var(--ipu-frame); }
+:where(.ipu-btn, .ipu-ic):where(:hover):where(:not([aria-disabled="true"], :disabled)) { translate: var(--ipu-lift); }
+:where(.ipu-btn, .ipu-ic):where(:active):where(:not([aria-disabled="true"], :disabled)) { translate: var(--ipu-sink); }
+:where(.ipu-btn, .ipu-ic):where([data-kind]):where(:hover):where(:not([aria-disabled="true"], :disabled)) { box-shadow: 4px 4px 0 var(--ipu-press); }
+:where(.ipu-btn, .ipu-ic):where([data-kind]):where(:active):where(:not([aria-disabled="true"], :disabled)) { box-shadow: 1px 1px 0 var(--ipu-press); }
+:where(.ipu-btn, .ipu-ic):where([aria-pressed="true"], [aria-selected="true"]) { color: var(--ipu-ink); background: var(--ipu-yellow); border-color: var(--ipu-ink); }
+:where(.ipu-btn, .ipu-ic):where([data-kind="main"]):where([aria-pressed="true"], [aria-selected="true"]) { background: #fff; translate: var(--ipu-sink); box-shadow: 1px 1px 0 var(--ipu-press); }
+:where(.ipu-btn, .ipu-ic):where([aria-disabled="true"], :disabled) { color: var(--ipu-off-paper); background: transparent; border: 2px dashed var(--ipu-off-paper); box-shadow: none; cursor: not-allowed; }
+:where(.ipu-on-ink) :where(.ipu-btn, .ipu-ic):where([aria-disabled="true"], :disabled) { color: var(--ipu-label); border-color: var(--ipu-line); }
+:where(.ipu-btn, .ipu-ic):where(:focus-visible) { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: var(--ipu-ring-gap); }
+:where(.ipu-on-ink) :where(.ipu-btn, .ipu-ic):where(:focus-visible) { outline-color: var(--ipu-ring-ink); }
+/* a chip states a fact (a tag, a count, a price); it is square, framed, and has no shadow because it is not pressed */
+:where(.ipu-chip) { display: inline-flex; align-items: center; gap: 5px; min-height: 20px; padding: 1px 7px 2px; font: 400 11.5px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: var(--ipu-ink); border: 2px solid var(--ipu-ink); }
+:where(.ipu-on-ink) :where(.ipu-chip) { color: var(--ipu-text); border: 1px solid var(--ipu-line); }
+/* the name of a thing: the skewed yellow plate of the sheet's section titles and of the dock */
+:where(.ipu-plate) { width: fit-content; max-width: 100%; padding: 1px 9px 2px 8px; font: 400 14px/1.15 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ipu-ink); background: var(--ipu-yellow); border: 2px solid var(--ipu-ink); transform: rotate(-1deg) skewX(-6deg); transform-origin: left center; }
+@media (prefers-reduced-motion: reduce) { :where(.ipu-btn, .ipu-ic) { transition: none; } :where(.ipu-btn, .ipu-ic):where(:hover, :active) { translate: none; } }
+@media (forced-colors: active) {
+  :where(.ipu-btn, .ipu-ic) { border-color: ButtonText; }
+  :where(.ipu-btn, .ipu-ic):where([aria-disabled="true"], :disabled) { color: GrayText; border-color: GrayText; }
+  :where(.ipu-btn, .ipu-ic):where(:focus-visible) { outline-color: Highlight; }
+}
