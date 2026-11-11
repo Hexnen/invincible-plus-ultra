@@ -837,7 +837,7 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
    ground they stand on. No rule here draws a mark of its own. */
 /* a mark inside a sentence (a line of a card, a roll chip, a status): on the line, in the colour of what is worth reading */
 :is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-status, .itd-news-t, .igd-rollmarks, .ita-opt-n, .itd-hint1) .ipu-sym { margin-inline: 1px; }
-:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-status, .igd-rollmarks, .ita-opt-n, .itd-hint1) .ipu-sym > .ipu-sym-g { color: var(--ita-yellow); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-status, .igd-rollmarks, .itd-hint1) .ipu-sym > .ipu-sym-g { color: var(--ita-yellow); }      /* (on an answer the mark keeps the ink of the button it stands on) */
 :is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-hint1) > :is(.ipu-cost, .ipu-costs) { color: var(--ita-yellow); margin-inline: 2px; }
 /* a way of a move, a door: its price after the name, what it meets after that */
 #invincible-tactics-dock .itd-way .itd-way-l > :is(.ipu-cost, .ipu-costs) { color: inherit; }
@@ -858,8 +858,6 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn > .ipu-stress { height: 14px; }
 /* an answer on a card, the summary of a fight */
 .ita-opt .ipu-stress { margin-left: 1px; }
-.ita-opt-l > :is(.ipu-cost, .ipu-costs) { color: var(--ita-yellow); }
-.ita-opt[aria-disabled="true"] .ita-opt-l > :is(.ipu-cost, .ipu-costs) { color: var(--ita-label); }
 .ita-sum-chip > .ipu-cost { height: 11px; color: var(--ita-cyan); }
 .ita-sum-chip > .ipu-sym { color: var(--ita-red-lt); }
 /* the unit: Health and stress before their bars */
@@ -891,3 +889,5 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 .igd-legend-b { margin-left: auto; flex: none; }
 #invincible-tactics-desk .ita-legend { margin: 0 8px 6px; max-width: calc(100% - 16px); }
 #invincible-tactics-desk .ita-legend .ipu-legend { gap: 6px 14px; }
+/* U93: a way's notes are words and marks in one line: each part keeps its distance from the next */
+.itd-way-n { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }

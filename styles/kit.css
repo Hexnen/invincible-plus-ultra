@@ -138,9 +138,10 @@
 :where(.ipu-sym) > :where(b) { font: 400 12px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; color: inherit; }
 .ipu-sym .ipu-sym-g.fa-solid { font-size: 11px; line-height: 1; }
 :where(.ipu-sym) :where(.ipu-sym-g.ipu-cost) { height: 11px; vertical-align: 0; }
-:where(.ipu-cut) { display: inline-flex; -webkit-mask: linear-gradient(135deg, #000 0 34%, transparent 34% 66%, #000 66%); mask: linear-gradient(135deg, #000 0 34%, transparent 34% 66%, #000 66%); }
+:where(.ipu-cut) { display: inline-flex; -webkit-mask: linear-gradient(135deg, #000 0 41%, transparent 41% 59%, #000 59%); mask: linear-gradient(135deg, #000 0 41%, transparent 41% 59%, #000 59%); }
 .ipu-s-pierce { position: relative; }
-.ipu-s-pierce::after { content: ""; position: absolute; left: 50%; top: 50%; width: 140%; height: 1.6px; translate: -50% -50%; rotate: -45deg; background: currentColor; border-radius: 1px; pointer-events: none; }
+.ipu-s-pierce .ipu-sym-g.ipu-cost { height: 13px; }
+.ipu-s-pierce::after { content: ""; position: absolute; left: 50%; top: 50%; width: 150%; height: 1.5px; translate: -50% -50%; rotate: -45deg; background: currentColor; border-radius: 1px; pointer-events: none; }
 /* a condition: its own picture in the frame of a chip (U93: bare, it read as decoration, not as a state) */
 .ipu-s-cond .ipu-sym-g.fa-solid { box-sizing: border-box; display: inline-grid; place-items: center; width: 19px; height: 19px; font-size: 10.5px; border: 1.5px solid currentColor; }
 /* a mark that names itself (role="img": kit.mjs `name`) shows that there is something to read */
