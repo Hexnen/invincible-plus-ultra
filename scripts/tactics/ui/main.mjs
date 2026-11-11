@@ -214,7 +214,8 @@ function refresh() {
     Pick.keep(combat, [...(data.show && data.panel?.kind === "declare" ? (data.panel.targets ?? []).filter((x) => x.picked).map((x) => x.id) : []), ...(staff ? desk?.info ?? [] : model.mine ?? []).flatMap((i) => (i.targets ?? []).map((x) => x.id))]);
     /* W1: on a map with the board the targets are chosen there (rings, the chance, the reason of one out of reach: ui/board.mjs); a
        second click on the one chosen target declares, like Enter. An area attack is put on a zone instead (the board's own pick). */
-    const board = Board.sync(data, { combat, facts, view: facts.view, staff, rev });
+    const hzAt = deskD?.show && !deskD.collapsed ? String(deskD.hazard?.where?.value ?? "") : "";      // U36: the zone chosen in the GM's hazard tool is shown on the GM's map before the hazard runs
+    const board = Board.sync(data, { combat, facts, view: facts.view, staff, rev, hz: hzAt.startsWith("z:") ? hzAt.slice(2) : null });
     Pick.setPlain(board);
     if (data.show && data.panel?.kind === "declare" && data.panel.targets && !(board && Board.areaMode(data.panel))) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => { const max = data.panel.maxTargets ?? 1, cur = (st.dock.targets ?? []).filter((x) => x !== cid);
       if (board && max === 1 && (st.dock.targets ?? []).length === 1 && st.dock.targets[0] === cid && lastDock?.panel?.submit?.req) { Dock.press("go"); return; }

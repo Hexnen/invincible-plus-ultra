@@ -28,6 +28,7 @@ export const EN_MAP = {
   "ITAC.map.menu.ask": "Ask the GM for an exception",
   "ITAC.map.menu.breach": "Break through to {zone}",
   "ITAC.map.menu.fix": "GM's correction",
+  "ITAC.map.menu.hud": "Token panel (Shift + right click)",
   "ITAC.map.area.title": "{name}: where does it land?",
   "ITAC.map.area.hint": "Everyone in the zone is caught, friends too.",
 };
@@ -58,6 +59,7 @@ export const PL_MAP = {
   "ITAC.map.menu.ask": "Zapytaj MG o wyjątek",
   "ITAC.map.menu.breach": "Przebij się: {zone}",
   "ITAC.map.menu.fix": "Poprawka MG",
+  "ITAC.map.menu.hud": "Panel żetonu (Shift + prawy przycisk)",
   "ITAC.map.area.title": "{name}: gdzie uderza?",
   "ITAC.map.area.hint": "Trafia każdego w strefie, także swoich.",
 };

@@ -17,6 +17,7 @@ import { faOf } from "./dom.mjs";
 
 const LOG = "invincible-plus-ultra (tactics board) |";
 const DONE = { armed: null, mode: null, to: null, ask: null, why: "", targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} };
+const HZ_ID = "ipu.hz";
 const ARM = { mode: null, tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, peek: true };
 let H = null;                 // main.mjs: { t, set(patch), send(req, after), press(fk), notify(kind, text), refresh(), request(req), bar(cid), dock(), showToken(cid) }
 let started = false, on = false, last = null, shown = {};
@@ -80,6 +81,8 @@ function reach() {
   } else if (areaPick) { areaPick = null; Zones.cancelPick(); }
   const chosen = area ? dec.targets.find((x) => x.picked && x.map) : null, z = chosen ? zoneOfCid(chosen.id) : null;
   put(BP.IDS.area, Zones.areaPreview, Zones.clearArea, z ? { at: z, radius: 0, tokens: true, level: tid(chosen.id) } : null);
+  /* the GM's hazard tool (the desk): the zone chosen there, with everyone standing in it, before the hazard is let loose */
+  put(HZ_ID, Zones.areaPreview, Zones.clearArea, last.hz ? { at: last.hz, radius: 0, tokens: true, color: "danger" } : null);
 }
 /** is the armed declaration an area attack that is put on the map? (main.mjs then leaves the token pick off) */
 export const areaMode = (p) => p?.kind === "declare" && !!p.area && !!p.onMap && !!p.reached && Zones.hasBoard();
@@ -87,7 +90,7 @@ export const areaMode = (p) => p?.kind === "declare" && !!p.area && !!p.onMap &&
 /* ---------- U32 / U14: a move under the pointer ---------- */
 function waysMenu(p, zone, drag = false) {
   const rows = p.ways?.[zone] ?? [];
-  if (!rows.length) { if (drag) H.set({ armed: null, mode: null }); return; }
+  if (!rows.length) { if (drag) { H.notify("warn", t("ITAC.move.cannot", { reason: Model.reasonText(t, "noRoute") })); H.set({ armed: null, mode: null }); } return; }
   const blocked = rows.filter((r) => r.disabled);
   const items = rows.map((r) => ({ id: r.id, label: r.label, icon: faOf("move"), hint: r.hint, ...(r.disabled ? { disabled: r.disabled } : {}) }));
   if (blocked.length === rows.length) items.push({ separator: true }, { id: "@ask", label: t("ITAC.map.menu.ask"), icon: "fa-solid fa-comment" });
@@ -158,7 +161,9 @@ function tokenMenu(cid, acts) {
   const spec = (rows) => {
     const list = BP.actItems(acts, rows, cid, facts, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.tip ? { tip: a.tip } : {}), ...(a.disabled ? { disabled: a.disabled } : {}),
       run: () => H.set({ ...ARM, sel: who, armed: a.id, targets: [cid] }) })), gm = fix();
-    const items = [...list, ...(list.length && gm.length ? [{ separator: true }] : []), ...gm];
+    /* the GM's menu stands where Foundry's token HUD would open: one entry brings that HUD up (Shift + right click opens it directly) */
+    const hud = staff ? [{ separator: true }, { id: "@hud", label: t("ITAC.map.menu.hud"), icon: "fa-solid fa-id-badge", run: () => { try { const tok = tokDoc(cid)?.object; (canvas.hud?.token ?? tok?.layer?.hud)?.bind(tok); } catch { /* a courtesy */ } } }] : [];
+    const items = [...list, ...(list.length && gm.length ? [{ separator: true }] : []), ...gm, ...hud];
     return items.length ? { title: name, ...(gm.length && !list.length ? { sub: t("ITAC.map.menu.fix") } : {}), items } : null;
   };
   if (!acts.length) return spec(null);
@@ -200,11 +205,11 @@ function clear() {
     for (const id of [BP.IDS.reach, BP.IDS.table]) put(id, Zones.markTokens, Zones.clearTokenMarks, null);
     for (const id of [BP.IDS.links, BP.IDS.aim]) put(id, Zones.link, Zones.clearLinks, null);
     put(BP.IDS.warn, Zones.warnOn, Zones.clearHighlights, null);
-    put(BP.IDS.area, Zones.areaPreview, Zones.clearArea, null);
+    put(BP.IDS.area, Zones.areaPreview, Zones.clearArea, null); put(HZ_ID, Zones.areaPreview, Zones.clearArea, null);
     if (intentKey !== "null") { intentKey = "null"; Zones.intent(null); }
   } catch (e) { console.warn(LOG, "clear failed", e); }
 }
-/** Put on the map what the dock's data and this user's view say. ctx = { combat, facts, view, staff, rev } | null (no fight here).
+/** Put on the map what the dock's data and this user's view say. ctx = { combat, facts, view, staff, rev, hz } | null (no fight here).
     -> true when the map plays (main.mjs then leaves its own zone pick and target marks off) */
 export function sync(data, ctx) {
   try {
