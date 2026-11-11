@@ -50,7 +50,7 @@ async function onRequest(msg, senderId) {
   const a = R.admit(msg, { senderId: typeof senderId === "string" && game.users.has(senderId) ? senderId : null, user: userOf, hasCombat: (id) => id.length <= 64 && !!Store.combatOf(id), gate, now: Date.now(), seen });
   let env = a.env;
   if (a.ok) {
-    try { env = await Engine.exec(game.users.get(a.user.id), msg.combat, a.req, { rid: a.rid, via: "relay" }); } catch { env = R.bad("internal"); } finally { gate.release(a.user.id, a.user.staff); }
+    try { env = await Engine.exec(game.users.get(a.user.id), msg.combat, a.req, { rid: a.rid, via: "relay" }); } catch { env = R.bad("internal"); } finally { gate.release(a.user.id, a.user.staff, R.isRead(a.req)); }
   }
   if (!a.to || !env) return env ?? null;
   const res = { k: R.KIND.res, id: msg.id, n: msg.n, to: a.to, env: R.wireEnv(env) };
@@ -90,4 +90,4 @@ export async function _runAs(userId, combatId, req, meta = {}) {
   return env ?? R.bad("untrusted");
 }
 /** Test helper: forget the rate counters. */
-export const _resetLimits = () => { gate.times.clear(); gate.flying.clear(); seen.clear(); };
+export const _resetLimits = () => { gate.times.clear(); gate.flying.clear(); gate.reads.clear(); seen.clear(); };

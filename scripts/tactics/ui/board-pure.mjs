@@ -17,6 +17,7 @@
      gmItems(cid, vitals, statuses, t)  U44: the GM's quick corrections at a token -> [{ id, label, icon, stepper | toggle, req(value) }] */
 import { reasonText, labelOf, oddsFor, isFree } from "./model-pure.mjs";
 import * as HZ from "../flows/hazards.mjs";
+import { stateFlags } from "../movement-pure.mjs";
 
 export const IDS = Object.freeze({ reach: "ipu.reach", table: "ipu.table", links: "ipu.x", aim: "ipu.aim", warn: "ipu.warn", area: "ipu.area" });
 const LABEL = 18;
@@ -25,18 +26,21 @@ const fin = Number.isFinite;
 const join = (parts) => parts.filter(Boolean).map((x) => String(x).replace(/\.$/, "")).join(". ");
 
 /* ------------------------------------------------------------------ U34: what a hit would do */
-/** `hit` = the engine's answer { base, toStress, taken?, most?, now?, max? }: `taken` / `most` (after Armor; `most` with Double Damage
-    [B2434]) and `now` / `max` are there only when this user may know them (engine-pure.opPreview). Without `taken` the word is "up to
-    the Damage before Armor": it says what the attacker knows of the own weapon and nothing of the target. */
+/** `hit` = the engine's answer { base, toStress, taken?, most?, copies?, now?, max? }: `taken` / `most` (what the character loses:
+    after Armor and after the copies of Duplication took their part [B1910], D50; `most` with Double Damage [B2434]), `copies` (how
+    much the copies take) and `now` / `max` are there only when this user may know them (engine-pure.opPreview). Without `taken` the
+    word is the Damage of the attack before Armor: what the attacker knows of the own weapon and nothing of the target. It is NOT a
+    bound (D51: a Vulnerable target takes twice that [B2193], a stunt doubles it), so it does not say "up to". */
 export function hitWords(hit, t) {
   if (!hit || !fin(hit.base)) return null;
-  const known = fin(hit.taken), n = known ? hit.taken : hit.base, what = t(hit.toStress ? "ITAC.ui.vital.resolve" : "ITAC.ui.vital.health");
-  const lines = [known ? (n > 0 ? t("ITAC.map.hit.taken", { n, what }) : t("ITAC.map.hit.none")) : t("ITAC.map.hit.upTo", { n })];
+  const known = fin(hit.taken), n = known ? hit.taken : hit.base, what = t(hit.toStress ? "ITAC.ui.vital.resolve" : "ITAC.ui.vital.health"), soak = known && hit.copies > 0 ? hit.copies : 0;
+  const lines = [known ? (n > 0 ? t("ITAC.map.hit.taken", { n, what }) : t(soak ? "ITAC.map.hit.copiesAll" : "ITAC.map.hit.none")) : t("ITAC.map.hit.base", { n })];
+  if (soak && n > 0) lines.push(t("ITAC.map.hit.copies", { n: soak }));
   if (known && fin(hit.most) && hit.most > n) lines.push(t("ITAC.map.hit.most", { n: hit.most }));
   const life = fin(hit.now) && fin(hit.max) && hit.max > 0, now = life ? Math.max(0, hit.now) : 0;
   if (known && life && n > 0) lines.push(t("ITAC.map.hit.left", { v: Math.max(0, now - n), max: hit.max }));
   const bar = life ? { value: now, max: hit.max, ...(known ? { loss: Math.min(now, n), lossMax: Math.min(now, Math.max(n, fin(hit.most) ? hit.most : n)) } : {}) } : null;
-  return { short: known ? (n > 0 ? `-${n}` : "0") : `≤${n}`, tip: lines.join(" "), bar };
+  return { short: known ? (n > 0 ? `-${n}` : "0") : `~${n}`, tip: lines.join(" "), bar };
 }
 const oddsTip = (o, t) => (o ? join([`${t("ITAC.ui.chance")}: ${o.say}`, o.defended ? `${o.defended.label}: ${o.defended.say}` : null]) : null);
 
@@ -87,32 +91,55 @@ export function tableShow(view, facts, t) {
 }
 
 /* ------------------------------------------------------------------ U32 / U40: what waits in a zone */
-/** the fire of the whole map, read once per change: where it burns (the highest intensity of a zone) and where it may go [B2927] */
+/** The fire of the whole map, read once per change: every burning record as the engine keeps it (flows/hazards.burningZones: a zone,
+    the LEVEL it burns on or null for all of them [A23], the intensity) and where the fire may go [B2927].
+    -> { list: [{ zone, at, intensity }], burning: { zone: highest of any level }, spread: { zone: 1 } } */
 export function fireMap(Z) {
-  const burning = {}, spread = {};
+  const burning = {}, spread = {}, list = [];
   try {
-    for (const b of HZ.burningZones(Z)) burning[b.zone] = Math.max(burning[b.zone] ?? 0, b.intensity);
+    for (const b of HZ.burningZones(Z)) { list.push({ zone: b.zone, at: b.at ?? null, intensity: b.intensity }); burning[b.zone] = Math.max(burning[b.zone] ?? 0, b.intensity); }
     for (const z of Object.keys(burning)) for (const n of HZ.spreadCandidates(Z, z) ?? []) { const k = typeof n === "string" ? n : n?.zone ?? n?.id; if (k && !burning[k]) spread[k] = 1; }
   } catch { /* a map that cannot be read warns of nothing */ }
-  return { burning, spread };
+  return { list, burning, spread };
 }
 const bareKey = (spot) => String(spot ?? "").split(":")[0];
-/** what ending the turn in `zone` means: the fire attack of the next round [B2925], a fire next door [B2927], no air [B2929] */
+const levelKey = (spot) => String(spot ?? "").split(":")[1] || "ground";
+/** D56: the fire that attacks whoever starts the round on `spot`: the first record of that zone that burns on the spot's LEVEL or on
+    every level, exactly as the round start reads it (flows/hazards.derived, occupants). A fire upstairs is no fire down here. -> intensity | 0 */
+export function fireAt(fm, spot) {
+  const z = bareKey(spot), lv = levelKey(spot);
+  if (Array.isArray(fm?.list)) return fm.list.find((b) => b.zone === z && (!b.at || b.at === lv))?.intensity ?? 0;
+  return fm?.burning?.[z] ?? 0;
+}
+/** what ending the turn on `zone` (a spot: the zone and the level) means: the fire attack of the next round [B2925], a fire next
+    door [B2927], no air [B2929] */
 export function endWarnings(fm, zone, c, Z, t) {
-  const z = bareKey(zone), out = [];
+  const z = bareKey(zone), out = [], n = fireAt(fm, zone);
   if (!z || z.startsWith("@")) return out;
-  if (fm?.burning?.[z]) out.push({ zone: z, text: t("ITAC.map.warn.fire", { n: fm.burning[z] }), tip: t("ITAC.map.warn.fire.tip", { n: fm.burning[z] }), icon: "burning" });
+  if (n) out.push({ zone: z, text: t("ITAC.map.warn.fire", { n }), tip: t("ITAC.map.warn.fire.tip", { n }), icon: "burning" });
   else if (fm?.spread?.[z]) out.push({ zone: z, text: t("ITAC.map.warn.spread"), tip: t("ITAC.map.warn.spread.tip"), icon: "warn" });
   let vac = false;
   try { vac = !c?.vacuumSafe && !!(Z?.zone?.(z)?.tags ?? []).includes("vacuum"); } catch { vac = false; }
   if (vac) out.push({ zone: z, text: t("ITAC.map.warn.vacuum"), tip: t("ITAC.map.warn.vacuum.tip"), icon: "warn" });
   return out;
 }
-/** the hazards of a way of moving beyond the walls it breaks (those are the option's own `barriers`): fire in a zone passed, and what
-    ending the turn at the destination means (the same words as the standing warning of U40) */
+/** The hazards of a way of moving beyond the walls it breaks (those are the option's own `barriers`). `zones` = the spots the way
+    ENTERS, in order (movement-pure `enters`), or its route of zone keys, which begins with the zone the mover stands in.
+    D57 [B2925]: a fire attacks whoever ENTERS its zone, at once, and whoever starts a round there. So every spot entered, the last
+    one too, says "fire on entering" with the intensity the move will meet (the states of that spot's level, the mover's own
+    exemptions: the same reading as flows/move.enterGate); the zone the mover LEAVES says nothing, nothing attacks on the way out.
+    The destination also carries what ending the turn there means (the standing warning of U40). */
 export function zoneHazards(fm, zones, to, c, Z, t) {
-  const end = bareKey(to), out = [];
-  for (const z of [...new Set((zones ?? []).map(bareKey))]) if (z !== end && fm?.burning?.[z]) out.push({ zone: z, text: t("ITAC.map.haz.fire", { n: fm.burning[z] }), color: "danger", icon: "burning" });
+  const end = String(to ?? ""), out = [], cid = c?.id ?? null;
+  let here = null;
+  try { here = cid != null ? Z?.place?.(cid)?.spot ?? null : null; } catch { here = null; }
+  const list = (zones ?? []).map(String), route = here != null && list.length && bareKey(list[0]) === bareKey(here) ? list.slice(1) : list;
+  const fireOn = (spot) => { try { const st = Z?.states?.(spot); return Array.isArray(st) ? stateFlags(st, cid).fire : fireAt(fm, spot); } catch { return fireAt(fm, spot); } };
+  for (const s of [...new Set([...route.filter((x) => bareKey(x) !== bareKey(end)), end])]) {
+    if (!s || s.startsWith("@") || s === here) continue;
+    const n = fireOn(s);
+    if (n > 0) out.push({ zone: bareKey(s), text: t("ITAC.map.haz.fire", { n }), tip: t("ITAC.map.haz.fire.tip", { n }), color: "danger", icon: "burning" });
+  }
   for (const w of endWarnings(fm, end, c, Z, t)) out.push({ zone: w.zone, text: w.text, tip: w.tip, color: "danger", icon: w.icon });
   return out;
 }
@@ -123,7 +150,7 @@ const priceShort = (t, a) => [isFree(a.cost) ? null : t(`ITAC.ui.costShort.${a.c
     An action the bar refuses (not your turn, nothing to pay with) or the engine refuses against this target is listed greyed with the reason. */
 export function actItems(acts, rows, tid, facts, t) {
   return (acts ?? []).map((a) => {
-    const r = rows?.[a.id] ?? null, odds = r?.ok ? oddsFor(a, r.dice, tid, facts, t) : null, hit = r?.ok ? hitWords(r.hit, t) : null;
+    const r = rows?.[a.id] ?? null, odds = r?.ok ? oddsFor(a, r.dice, tid, facts, t, r.def) : null, hit = r?.ok ? hitWords(r.hit, t) : null;
     const why = a.disabled ?? (r && !r.ok ? reasonText(t, r.reason, r.params) : null);
     return { id: a.id, label: a.label, icon: a.icon, hint: [...priceShort(t, a), odds?.say ?? null, hit?.short ?? null].filter(Boolean).join(" · "), tip: join([oddsTip(odds, t), hit?.tip]) || null, disabled: why || null };
   });
@@ -137,12 +164,16 @@ export function doorItems(bar, door, t) {
 }
 /* ------------------------------------------------------------------ U44: the GM's quick corrections */
 export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobilised", "trapped"]);
-/** Health, Resolve and the common states of one combatant as steppers and switches; each change is its own GM edit of the engine
-    (setHealth, setResolve, statusAdd, statusRemove: journaled, undoable like any other). `vitals` = { health, maxHealth, resolve, maxResolve } | null */
+/** Health, Resolve and the common states of one combatant as steppers and switches; each change is a GM edit of the engine
+    (setHealth, setResolve, statusAdd, statusRemove: journaled, undoable like any other). `vitals` = { health, maxHealth, resolve, maxResolve } | null.
+    A stepper's request is a STEP (`delta` = the number chosen minus `from`, the number it was counted from; by default the one the
+    menu opened with): the executor adds it to what the character has at that moment, so damage that landed while the menu stood
+    open is not taken back. The engine keeps the state with the number: Health 0 is broken, Health above 0 is not (D59); "Stunned"
+    is the lost next turn and its mark together (D53). */
 export function gmItems(cid, vitals, statuses, t) {
   const out = [], v = vitals ?? {};
-  if (fin(v.health) && fin(v.maxHealth) && v.maxHealth > 0) out.push({ id: "health", label: t("ITAC.ui.vital.health"), icon: "fa-solid fa-heart", stepper: { value: Math.max(0, v.health), min: 0, max: v.maxHealth }, req: (n) => ({ op: "setHealth", combatant: cid, value: n }) });
-  if (fin(v.resolve) && fin(v.maxResolve) && v.maxResolve > 0) out.push({ id: "resolve", label: t("ITAC.ui.vital.resolve"), icon: "fa-solid fa-bolt", stepper: { value: Math.max(0, v.resolve), min: 0, max: v.maxResolve }, req: (n) => ({ op: "setResolve", combatant: cid, value: n }) });
+  if (fin(v.health) && fin(v.maxHealth) && v.maxHealth > 0) out.push({ id: "health", label: t("ITAC.ui.vital.health"), icon: "fa-solid fa-heart", stepper: { value: Math.max(0, v.health), min: 0, max: v.maxHealth }, req: (n, from = Math.max(0, v.health)) => ({ op: "setHealth", combatant: cid, delta: n - from }) });
+  if (fin(v.resolve) && fin(v.maxResolve) && v.maxResolve > 0) out.push({ id: "resolve", label: t("ITAC.ui.vital.resolve"), icon: "fa-solid fa-bolt", stepper: { value: Math.max(0, v.resolve), min: 0, max: v.maxResolve }, req: (n, from = Math.max(0, v.resolve)) => ({ op: "setResolve", combatant: cid, delta: n - from }) });
   const has = new Set((statuses ?? []).map((s) => s.id));
   for (const id of GM_STATES) out.push({ id: `st:${id}`, label: t(`ITAC.status.${id}`, {}, id), icon: "fa-solid fa-circle-dot", toggle: true, on: has.has(id), req: (on) => (on ? { op: "statusAdd", combatant: cid, status: { id } } : { op: "statusRemove", combatant: cid, id }) });
   return out;

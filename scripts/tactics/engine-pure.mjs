@@ -456,6 +456,20 @@ function placement(X, actor, entry) {
   return unit ? { ok: true, cause: "interrupt", parent: t.id, grant: unit } : { ok: false, code: "busy" };
 }
 const priced0 = (entry) => typeof FLOWS[entry.flow]?.price === "function";                 // a flow that names its own cost answers for the turn itself
+/* D54 (spec 10: an NPC's numbers stay the GM's until revealed). An action for "an ally" (recover Resolve [B2818], rally [B2773],
+   Healing, Inspiration ...) asks about its subject's numbers before anything is rolled: `resolveFull`, `notBroken`, `notDying`. Asked
+   by a PLAYER about an NPC whose statistics the GM has not revealed, every such answer (of "preview", which costs nothing and takes 40
+   targets a question, and of a refused "declare") told a number that player may not know. For a player such a subject is therefore
+   refused BEFORE its numbers are read, with one reason that says nothing of them (`notAlly`; the GM may allow: the request for an
+   exception, whose card the GM answers knowing the numbers). The GM's own hand and a granted declaration are not asked (ruling P8f-R1).
+   -> { ok: false, reason, params } | null */
+function strangerGate(X, entry, decl, actor) {
+  if (X.user.staff === true || entry?.target?.who !== "ally" || X.facts.c(actor)?.npc) return null;
+  const t = (decl.targets ?? []).find((id) => id !== actor && X.facts.c(id)?.npc === true && !X.state.revealed?.[id]?.stats);
+  return t ? { ok: false, reason: "notAlly", params: { gmMayAllow: 1 } } : null;
+}
+/** the legality a declaration of this user meets: the gate of D54, then the entry's and the flow's own rules */
+const legalFor = (X, inst, entry) => strangerGate(X, entry, inst.decl ?? {}, inst.actor) ?? K.legality(view(X), inst, FLOWS[inst.flow]);
 async function opDeclare(X, a) {
   const actor = a.actor;
   if (X.state.mode === "off") return bad("off");
@@ -490,7 +504,7 @@ async function opDeclare(X, a) {
   const payable = (cost) => { if (pl.grant && cost !== "full" && cost !== "quick") return bad("busy"); const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, ranged: P1.isRanged(entry), resolve: X.facts.c(actor)?.resolve, ...(pl.grant ? { grant: pl.grant } : {}) });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
   if (!priced) { const no = payable(entry.cost); if (no) return no; }
   const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
-  const l = K.legality(view(X), inst, FLOWS[inst.flow]);
+  const l = legalFor(X, inst, entry);
   if (!l.ok && !decl.exception) return bad("illegal", { reason: l.reason, ...l.params });
   const price = priced ? FLOWS[inst.flow].price(view(X), inst) : null, cost = priced ? price?.cost ?? "none" : entry.cost;
   if (priced) { const no = payable(cost); if (no) return no; }
@@ -527,7 +541,7 @@ function refusalsOf(X, actor, d) {
     const pl = placement(X, actor, entry);
     if (!pl.ok) { reasons.push(pl.params?.reason ?? pl.code); waive = true; }
     const inst = makeInst(X, { action: entry.id, actor, decl: sanitizeDecl(d, entry.id, false), cause: pl.ok ? pl.cause : "turn", parent: pl.ok ? pl.parent : null });
-    const flow = FLOWS[inst.flow], l = K.legality(view(X), inst, flow), priced = typeof flow?.price === "function";
+    const flow = FLOWS[inst.flow], l = strangerGate({ ...X, user: { ...X.user, staff: false } }, entry, inst.decl, actor) ?? K.legality(view(X), inst, flow), priced = typeof flow?.price === "function";      // (as its owner would meet it: D54)
     const cost = priced ? (l.ok ? flow.price(view(X), inst)?.cost ?? "none" : null) : entry.cost;
     if (!priced && (cost === "none" || cost == null)) { if (!P1.isOnTurn(X.state, actor) && (!pl.ok || pl.cause === "turn") && (!entry.kit || entry.roll || ["resist", "narrative"].includes(entry.effect?.kind))) { reasons.push("notYourTurn"); waive = true; } }
     else if (cost != null) {
@@ -550,7 +564,7 @@ async function opAmend(X, a) {
   decl.helpers = J.clone(inst.decl.helpers ?? []);
   if (decl.helpers.some((h) => decl.targets.includes(h.id))) return bad("illegal", { reason: "helpTarget" });
   const probe = { ...inst, decl };
-  const l = K.legality(view(X), probe, FLOWS[probe.flow]);
+  const l = legalFor(X, probe, C.entryFor(X.state, inst.actor, inst.action, X.facts));
   if (!l.ok && !X.user.staff) return bad("illegal", { reason: l.reason, ...l.params });
   /* P8d: a flow that names its own cost (a move) is priced again for what it was changed into. The price was taken once, at the
      declaration; a move the rules refused, declared with a request for an exception, has no price (the engine does not guess a route),
@@ -715,6 +729,9 @@ function opPreview(X, a) {
       out = { attr: p.attr ?? null, dice: p.pool.dice, base: p.pool.base ?? 0, mods: (p.pool.mods ?? []).filter((m) => m.dice).slice(0, 24).map(line) };
       const pending = (full?.pool?.mods ?? []).filter((m) => m.dice && String(m.source ?? "").startsWith("token:") && wait.has(String(m.source).slice(6))).slice(0, 12).map(line);
       if (pending.length) out.pending = pending;
+      /* D60: the dice the one target would defend with, from the builder of the roll, for whoever may know that target's numbers */
+      const t0 = decl.targets.length === 1 ? decl.targets[0] : null;
+      if (t0 && X.facts.c(t0) && numbersOpen(X, t0)) { const inst = makeInst(X, { action: entry.id, actor, decl }), df = FLOWS[inst.flow]?.defPreview?.(view(X), inst, t0); if (df && Object.keys(df).length) out.def = df; }
     }
   } catch { out = null; }
   /* W1 (U33, U34): WHOM THIS DECLARATION COULD BE AIMED AT. `of` = the candidates the asker's map would mark. For each one the
@@ -729,16 +746,22 @@ function opPreview(X, a) {
     try {
       const tf = X.facts.c(t);
       if (!tf || t === actor || concealed(t)) return null;
-      const inst = makeInst(X, { action: en.id, actor, decl: sanitizeDecl({ ...(isObj(decl) ? decl : {}), targets: [t] }, en.id, staff) });
-      const l = K.legality(view(X), inst, FLOWS[inst.flow]);
+      /* D52 [B2543]: full auto is ONE roll at everybody named, a die less per target beyond the first, all of them in one zone. The
+         answer about `t` is therefore the answer for the declaration with `t` beside the targets already chosen (the declaration's
+         own `targets`): the dice over each token are the dice of the roll that will be made, and a candidate in another zone than
+         the chosen ones is refused here (`notSameZone`), not after "Declare". Any other declaration has one target: `t` alone. */
+      const d0 = sanitizeDecl(isObj(decl) ? decl : {}, en.id, staff), base = d0.fullAuto ? d0.targets.filter((x) => x !== t && x !== actor && X.facts.c(x) && !concealed(x) && X.state.knowledge?.[actor]?.[x] !== "unseen") : [];
+      const inst = makeInst(X, { action: en.id, actor, decl: { ...d0, targets: [...base, t].slice(0, 12) } });
+      const l = legalFor(X, inst, en);
       const row = l.ok ? { ok: true } : { ok: false, reason: String(l.reason ?? "rules").slice(0, 40), params: Object.fromEntries(Object.entries(l.params ?? {}).filter(([k, x]) => k.length <= 24 && (Number.isFinite(x) || (typeof x === "string" && x.length <= 40))).slice(0, 6)) };
       const p = FLOWS[inst.flow]?.preview?.(view(X), inst) ?? null;
       if (p?.pool && Number.isFinite(p.pool.dice)) row.dice = p.pool.dice;
       const h = l.ok ? FLOWS[inst.flow]?.hitPreview?.(view(X), inst, t) ?? null : null;
       if (h) {
         const npc = tf.npc === true, rv = X.state.revealed?.[t] ?? {};
-        row.hit = { base: h.base, toStress: h.toStress, ...(staff || !npc || rv.stats ? { taken: h.taken, most: h.most } : {}), ...(staff || !npc || rv.health ? { now: h.now, max: h.max } : {}) };
+        row.hit = { base: h.base, toStress: h.toStress, ...(staff || !npc || rv.stats ? { taken: h.taken, most: h.most, ...(h.copies ? { copies: h.copies } : {}) } : {}), ...(staff || !npc || rv.health ? { now: h.now, max: h.max } : {}) };
       }
+      if (l.ok && numbersOpen(X, t)) { const df = FLOWS[inst.flow]?.defPreview?.(view(X), inst, t); if (df && Object.keys(df).length) row.def = df; }      // D60
       return row;
     } catch { return null; }                                                                // no answer about that one rather than a wrong one
   };
@@ -760,6 +783,8 @@ function opPreview(X, a) {
   return { ok: true, changed: false, preview: per || acts ? { ...(out ?? {}), ...(per ? { per } : {}), ...(acts ? { acts } : {}) } : out };
 }
 export const REACH_MAX = 40, ACTS_MAX = 12;
+/** may this user know the dice `t` rolls? the GM; the owner of `t`; anybody once the GM revealed its statistics (spec 10; as the surfaces' `attrs`) */
+function numbersOpen(X, t) { return X.user.staff === true || owns(X, t) || !!X.state.revealed?.[t]?.stats; }
 /** The same, at once and without a host that can do anything: for the executor's own client and the checks. -> { attr, dice, base, mods } | null */
 export function previewFor(state, facts, user, req) {
   try { const env = opPreview(makeX(state, null, { facts: () => facts, now: () => 0 }, user), req ?? {}); return env.ok ? env.preview ?? null : null; } catch { return null; }
@@ -976,12 +1001,39 @@ async function gmEdit(X, op, a) {
   const c = (id) => (P1.isId(id) ? X.facts.c(id) : null);
   let err = null, errParams = {};
   switch (op) {
-    case "statusAdd": if (c(a.combatant) && typeof a.status?.id === "string") { const x = M.statusAdd(X.state, a.combatant, { ...a.status, source: a.status.source ?? { kind: "gm", name: "gm" } }); w(x.path, x.to); } else err = "badInput"; break;
-    case "statusRemove": if (P1.isId(a.combatant)) { const x = M.statusRemove(X.state, a.combatant, String(a.id)); w(x.path, x.to); } else err = "badInput"; break;
+    /* D53 [B2436], [R10] (D1, D2): "stunned" IS the lost next turn; the mark and the ledger's lost turn belong together. The GM's switch
+       wrote the mark alone: switched off after a real Stun, the turn was still taken away with no mark to say why; switched on, no
+       turn was lost. Now the GM's word on that state writes both, in one journal entry (one undo). */
+    case "statusAdd": if (c(a.combatant) && typeof a.status?.id === "string") {
+      const src = a.status.source ?? { kind: "gm", name: "gm" }, x = M.statusAdd(X.state, a.combatant, { ...a.status, source: src }); w(x.path, x.to);
+      if (a.status.id === "stunned" && X.state.ledger?.[a.combatant] && !X.state.ledger[a.combatant].lostTurn) w(["ledger", a.combatant], Lg.loseNextTurn(X.state.ledger[a.combatant], M.source(src)));
+    } else err = "badInput"; break;
+    case "statusRemove": if (P1.isId(a.combatant)) {
+      const x = M.statusRemove(X.state, a.combatant, String(a.id)); w(x.path, x.to);
+      const L = X.state.ledger?.[a.combatant];
+      if (String(a.id) === "stunned" && L && (L.lostTurn || L.noInterrupts)) w(["ledger", a.combatant], Lg.clearLostTurn(L));
+    } else err = "badInput"; break;
+    /* `value`: the number to set; `delta` (P8f): a step from what the character has NOW, read by the executor at the moment of the
+       edit. The map's steppers send steps: an absolute number counted on the GM's screen from what stood there when the menu opened
+       took back whatever hit the character in the meantime. */
     case "setHealth": case "setResolve": {
-      const cc = c(a.combatant), v = Math.trunc(Number(a.value));
+      const cc = c(a.combatant), hp = op === "setHealth", cur = Number(hp ? cc?.health : cc?.resolve), max = Number(hp ? cc?.maxHealth : cc?.maxResolve);
+      const d = Number.isFinite(Number(a.delta)) && a.value == null ? Math.trunc(Number(a.delta)) : null;
+      const v = d == null ? Math.trunc(Number(a.value)) : Math.max(0, Math.min(Number.isFinite(max) && max > 0 ? max : Infinity, (Number.isFinite(cur) ? cur : 0) + d));
       if (!cc || !Number.isFinite(v) || v < 0) { err = "badInput"; break; }
-      await perform(X, tx, { t: "actor", uuid: cc.actorUuid, path: op === "setHealth" ? "health" : "resolve", to: v, tx });
+      await perform(X, tx, { t: "actor", uuid: cc.actorUuid, path: hp ? "health" : "resolve", to: v, tx });
+      /* D59 [B2707]: Health is the character's state, so a correction of it corrects the state with it, in the same journal entry.
+         Raised from 0: no longer broken, nor knocked out by that break. Set to 0: broken (it holds and carries nobody); no injury is
+         rolled and nobody is asked: the correction is the GM's word (ruling P8f-R3, question P8f-2). A machine and a challenge have
+         no such state (mods-pure.outOfAction). */
+      if (hp && cc.kind !== "vehicle" && cc.kind !== "challenge" && Number.isFinite(cur)) {
+        const drop = (who, id) => { if (M.hasStatus(X.state, who, id)) { const x = M.statusRemove(X.state, who, id); w(x.path, x.to); } };
+        if (v > 0) { drop(a.combatant, "broken"); if (cur <= 0) drop(a.combatant, "unconscious"); }
+        else if (cur > 0) {
+          if (!M.hasStatus(X.state, a.combatant, "broken")) { const x = M.statusAdd(X.state, a.combatant, { id: "broken", source: { kind: "gm", name: "gm" } }); w(x.path, x.to); }
+          for (const e of [...K.grappleRelease(X.state, a.combatant), ...K.carryRelease(X.state, a.combatant)]) drop(e.who, e.id);
+        }
+      }
       break;
     }
     case "tokenAdd": { const t = M.makeToken({ ...a.token, id: a.token?.id ?? nextId(X, "t") }); if (t && c(t.holder)) w(["tokens", `#${t.id}`], t); else err = "badInput"; break; }
@@ -1042,6 +1094,10 @@ async function gmEdit(X, op, a) {
       const cc = c(a.combatant), inv = a.inverse;
       if (!cc || !isObj(inv) || inv.op !== "tokens" || !Array.isArray(inv.rows) || !inv.rows.length || inv.rows.length > 24) { err = "badInput"; break; }
       await perform(X, tx, { t: "placed", who: a.combatant, inverse: J.clone(inv), to: typeof a.zone === "string" ? a.zone.slice(0, 60) : null, tx });
+      /* D55 [B2496-2497], [B2392] (D7, D12): a grapple and a carry are two characters in ONE place. Put somewhere else by hand, the
+         pair is over, as after a move, a throw or a fall (flows/kit.separated), in this same journal entry: undo puts the token back
+         and the link with it. */
+      for (const e of K.separated(view(X), [a.combatant])) if (e.t === "status-" && M.hasStatus(X.state, e.who, e.id)) { const x = M.statusRemove(X.state, e.who, e.id); w(x.path, x.to); }
       emit(X, null, { type: "placed", combatant: a.combatant, zone: typeof a.zone === "string" ? a.zone.slice(0, 60) : undefined, cause: "gm" });
       break;
     }
