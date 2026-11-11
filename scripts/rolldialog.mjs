@@ -10,9 +10,11 @@
        buttons; the words stay inside the button for a screen reader),
      - (U82) names the attack's facts (damage, least and greatest range, armor, stress price) so the stylesheet can draw each as a
        picture with its number on one strip; the fact's name becomes its tooltip and stays in the window for a screen reader,
+     - (U87) marks a range whose least and greatest are the same number (Slugfest: 0 and 0), so the strip shows that number once;
+       its tooltip then carries both names, and both numbers with their names stay in the window for a screen reader,
      - (U82) gives a part of the pool whose name does not fit on its line the whole name as its tooltip,
      - gives the window the module's tooltip panel.
-   Nothing is computed here and no button is added, removed, reordered or rewired. If this file does not run, the stylesheet falls
+   Nothing is computed here (two shown numbers are compared, no more) and no button is added, removed, reordered or rewired. If this file does not run, the stylesheet falls
    back to worded buttons. */
 export const WIDTH = 440;
 const LEGACY = { publicroll: "public", gmroll: "gm", blindroll: "blind", selfroll: "self" };
@@ -49,19 +51,35 @@ export function factKind(label, names) {
   for (const [kind, name] of Object.entries(names ?? {})) if (name === text) return kind;
   return null;
 }
+/* U87 pure: are the least and the greatest range the same number, so that one number says both? Any equal pair, not only 0 and 0:
+   "3 - 3" says no more than "3". A value that is missing or not a number keeps the pair as the system wrote it. */
+export function oneRange(min, max) {
+  const a = String(min ?? "").trim(), b = String(max ?? "").trim();
+  if (!a || !b) return false;
+  const x = Number(a), y = Number(b);
+  return Number.isFinite(x) && Number.isFinite(y) && x === y;
+}
+/* U87 pure: the tooltip of the one number that stands for both ends of the range: both of the system's names */
+export const bothNames = (min, max) => `${min} = ${max}`;
 
 function facts(el) {
   const box = el.querySelector("div.separator + div.breakdown");
   if (!box) return;
   const names = Object.fromEntries(Object.entries(FACTS).map(([kind, key]) => [kind, game.i18n.localize(key)]));
+  const found = {};
   for (const part of box.querySelectorAll(":scope > div.attribute")) {
     const name = part.querySelector("label.attribute-label")?.textContent?.trim();
     if (!name) continue;
     const kind = factKind(name, names);
-    if (kind) part.dataset.irdFact = kind;
+    if (kind) { part.dataset.irdFact = kind; found[kind] = part; }
     part.dataset.tooltip = name;
     part.dataset.tooltipDirection = "UP";
     part.querySelector("input")?.setAttribute("aria-label", name);
+  }
+  const { min, max } = found;
+  if (min && max && oneRange(min.querySelector("input")?.value, max.querySelector("input")?.value)) {
+    max.dataset.irdSame = "";                                                                          // drawn out of sight, still read out
+    min.dataset.tooltip = bothNames(names.min, names.max);
   }
   box.dataset.irdFacts = "";
 }
