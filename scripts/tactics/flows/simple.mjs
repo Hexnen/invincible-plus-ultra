@@ -139,7 +139,7 @@ export const hazard = {
         if (h.kind === "fire" && !K.flag(I, `burn:${t}`)) {                                     // [B2926]: damage sets the character on fire; an attack outside a burning zone without damage ends it
           K.setFlag(I, `burn:${t}`);
           const was = M.hasStatus(v.state, t, "burning");
-          if (dm.burning && !was) { R.effects.push({ t: "status+", who: t, status: { id: "burning", source: { kind: "hazard", name: "fire" } } }); R.events.push({ type: "status", target: t, status: { id: "burning", on: true } }); }
+          if (dm.burning && !was) { R.effects.push({ t: "status+", who: t, status: { id: "burning", source: { kind: "hazard", name: "fire" }, data: { intensity: h.intensity } } }); R.events.push({ type: "status", target: t, status: { id: "burning", on: true } }); }
           if (!dm.burning && was) { R.effects.push({ t: "status-", who: t, id: "burning" }); R.events.push({ type: "status", target: t, status: { id: "burning", on: false } }); }
         }
         if (K.brokenAndCrit(v, I, R, t, dm, {})) return R;

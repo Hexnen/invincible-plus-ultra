@@ -25,8 +25,8 @@ import * as Pick from "./pick.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const NARROW = 1180;                       // below this window width the desk starts folded
-const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false });
-const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {} });
+const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false, attr: null });
+const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {} });
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
 let st = { dock: blankDock(), desk: blankDesk() };
 let rev = 0, moveMemo = null;             // the move options are counted once per change of the fight or of the map, not per keystroke
@@ -57,6 +57,13 @@ function factsOf(combat) {
     resolve: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && staff ? Sys.actorFacts(a)?.resolve ?? null : null; } catch { return null; } },      // the desk's hint for an NPC out of Resolve
     weapons: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Sys.weaponList(a) : []; } catch { return []; } },      // [P4] what this user's own character can attack with
     doors: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Mv.api.doors(id) : []; } catch { return []; } },
+    /* P5 (the hazard tool, staff only): the zones with somebody of the fight in them */
+    places: () => {
+      const by = new Map();
+      if (!staff) return [];
+      try { for (const id of Object.keys(view?.ledger ?? {})) { const cb = combat.combatants.get(id), z = cb?.token ? Zones.placeOf(cb.token)?.zone : null; if (z) by.set(z, [...(by.get(z) ?? []), id]); } } catch { /* the map is optional */ }
+      return [...by].map(([zone, ids]) => ({ zone, ids }));
+    },
     /* the number the map shows on a zone's badge is its id + 1 (moinen-maps zones.zoneName; not on its API yet, so a map set to other numerals reads differently) */
     zone: (spot) => { try { const p = Zones.place(spot); return p ? { id: Number.isInteger(p.id) ? p.id + 1 : null, level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } catch { return null; } },
   };
@@ -134,7 +141,7 @@ function pokeTray() { try { const on = active(); if (on !== trayWas) { trayWas =
 /* another action armed, another character chosen: what belonged to the last one (the zone, the open question to the GM, a refusal) goes */
 function patchDock(patch) {
   if (!patch) return;
-  if (("armed" in patch && patch.armed !== st.dock.armed) || ("sel" in patch && patch.sel !== st.dock.sel) || patch.mode) Object.assign(st.dock, { to: null, ask: null, why: "", refused: null });
+  if (("armed" in patch && patch.armed !== st.dock.armed) || ("sel" in patch && patch.sel !== st.dock.sel) || patch.mode) Object.assign(st.dock, { to: null, ask: null, why: "", refused: null, attr: null });
   if ("armed" in patch && !patch.armed && st.dock.dragged) Object.assign(st.dock, { sel: null, dragged: false });      // the character a drag brought up steps back
   Object.assign(st.dock, patch);
 }
@@ -192,6 +199,8 @@ function configure() {
     set: setDesk, send: (req, after) => send("desk", req, after), label,
     pick: multi("desk"), text: text("desk"), always: (id, on) => { st.desk.always[id] = !!on; refresh(); }, zone: (o, a) => zone("desk", o, a), again: (a) => { delete st.desk.zone[a.id]; refresh(); },
     force: (patch) => { st.desk.force = { ...st.desk.force, ...patch }; refresh(); },
+    hazard: (patch) => { st.desk.hazard = { ...st.desk.hazard, ...patch }; refresh(); },
+    karma: (patch) => { st.desk.karma = { ...st.desk.karma, ...patch }; refresh(); },
     val: (id, v) => { st.desk.vals[id] = v; refresh(); },
     manual: (id, patch) => { const cur = st.desk.manual[id] ?? {}; st.desk.manual[id] = { ...cur, ...patch, damage: { ...(cur.damage ?? {}), ...(patch.damage ?? {}) } }; refresh(); },
     forceUndo: async (j) => { const env = await send("desk", j.undo.force.req, { undo: null }); if (env?.ok === false && env.error?.code === "drift") setDesk({ drift: j.id }); },

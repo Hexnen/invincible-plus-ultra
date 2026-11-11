@@ -75,7 +75,7 @@ export const counterReset = (state, scope) => Object.keys(state.counters ?? {}).
 
 /* ------------------------------------------------------------------ statuses (spec 6.3) */
 export const STATUS_IDS = Object.freeze(["broken", "unconscious", "dying", "dead", "stressedOut", "grappled", "grappling", "snared", "immobilised", "trapped", "unaware",
-  "stunned", "burning", "airborne", "carrying", "carried", "afflicted", "invisible", "huge", "noLegs", "sick", "itemLost", "inVehicle"]);
+  "stunned", "burning", "airborne", "carrying", "carried", "afflicted", "invisible", "huge", "noLegs", "sick", "itemLost", "inVehicle", "suffocating"]);
 export const statusesOf = (state, cid) => state.statuses?.[cid] ?? [];
 export const hasStatus = (state, cid, id) => statusesOf(state, cid).some((s) => s.id === id);
 export function statusAdd(state, cid, st) {

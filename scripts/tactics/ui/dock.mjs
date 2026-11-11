@@ -77,7 +77,10 @@ function whoBlock(d) {
       h("div.itd-pips", { attrs: { role: "group" } }, d.pips.map(pip), d.extras.map((x) => h(`span.itd-extra`, { text: x.label, tip: x.tip || null, data: { kind: x.kind } })), w.free ? h("span.itd-extra", { text: w.freeLabel, data: { kind: "free" } }) : null)));
 }
 function actionBtn(a) {
-  return h(`button.itd-act${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.disabled ? a.disabled : a.costText, attrs: { "aria-pressed": String(!!a.armed), "aria-label": [a.label, a.costText, a.disabled].filter(Boolean).join(", ") },
+  /* P5: the rows of the action tables that are not on the bar open as a list */
+  if (a.more) return h(`button.itd-ghost.itd-more${a.armed ? ".itd-armed" : ""}`, { fk: "more", tip: a.tip, attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true" },
+    on: { click: () => set(last?.ui?.mode === "menu" ? { mode: null } : { mode: "menu", armed: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, icon("fa-ellipsis"), h("span", { text: a.label }));
+  return h(`button.itd-act${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.disabled ? a.disabled : a.costText, attrs: { "aria-pressed": String(!!a.armed), "aria-label": [a.label, a.costText, a.disabled].filter(Boolean).join(", ") },
     on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, costIcon(a.cost), h("span", { text: a.label }));
 }
 function bar(d) {
@@ -133,18 +136,26 @@ function panel(p) {
   if (!p) return null;
   if (p.kind === "move") return movePanel(p);
   if (p.kind === "door") return doorPanel(p);
+  if (p.kind === "menu") return h("section.itd-panel", { data: { kind: p.kind } }, h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), cancelBtn()),
+    h("div.itd-pbody", {}, h("div.itd-ways.itd-menu", { attrs: { role: "group", "aria-label": p.title } }, p.rows.map((r) => h("button.itd-way", { fk: `menu:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true,
+      attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", ") }, on: { click: () => set({ armed: r.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false }) } },
+      costIcon(r.cost), h("span.itd-way-l", { text: r.label }), h("span.itd-way-n", { text: r.notes.join(" · ") }), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null)))));
   if (p.kind === "declare") {
     const toggle = (key, id, max = 1) => { const cur = (last.ui?.[key] ?? []).slice(); const i = cur.indexOf(id); if (i >= 0) cur.splice(i, 1); else { cur.push(id); while (cur.length > max) cur.shift(); } set({ [key]: cur }); };
     return h("section.itd-panel", { data: { kind: p.kind } }, head(p),
       h("div.itd-pbody", {},
         p.targets ? h("div.itd-col.itd-targets", {}, h("span.itd-k", { text: handlers.label?.("target") }),
           h("div.itd-chips", { attrs: { role: "group" } }, p.targets.map((x) => h(`button.itd-chip${x.likely ? "" : ".itd-chip-dim"}`, { fk: `tg:${x.id}`, tip: x.note, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => { toggle("targets", x.id, p.maxTargets ?? 1); handlers.target?.(x.id); } } }, face(x.img, x.name), h("span", { text: x.name })))),
-          p.picking ? h("p.itd-hint", {}, icon("fa-crosshairs"), h("span", { text: handlers.label?.("pick.hint") })) : null) : null,
+          p.picking ? h("p.itd-hint", {}, icon("fa-crosshairs"), h("span", { text: handlers.label?.("pick.hint") })) : null,
+          p.self ? h("p.itd-hint", {}, icon("fa-user"), h("span", { text: p.self })) : null) : null,
         p.weapons || p.opts?.length ? h("div.itd-col.itd-arms", {},
           p.weapons ? [h("span.itd-k", { text: p.weapons.label }), p.weapons.empty ? h("p.itd-hint", {}, icon("fa-ban"), h("span", { text: p.weapons.empty }))
             : h("div.itd-chips", { attrs: { role: "group", "aria-label": p.weapons.label } }, p.weapons.items.map((x) => h("button.itd-chip.itd-chip-arm", { fk: `wp:${x.id}`, tip: x.tip, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ weapon: x.id }) } }, h("span", { text: x.name }))))] : null,
           p.opts?.length ? h("div.itd-chips", { attrs: { role: "group" } }, p.opts.map((o) => h("button.itd-chip.itd-chip-opt", { fk: `op:${o.id}`, tip: o.tip, attrs: { "aria-pressed": String(o.on) }, on: { click: () => set({ opts: { ...(last.ui?.opts ?? {}), [o.id]: !o.on, ...(o.id === "area" && !o.on ? { fullAuto: false } : {}), ...(o.id === "fullAuto" && !o.on ? { area: false } : {}) } }) } }, icon(OPT_ICON[o.id] ?? "fa-circle"), h("span", { text: o.label })))) : null,
           (p.notes ?? []).map((n) => h("p.itd-hint", {}, icon("fa-circle-info"), h("span", { text: n })))) : null,
+        p.attrs ? h("div.itd-col.itd-attrs", {}, h("span.itd-k", { text: p.attrs.label }),
+          h("div.itd-chips", { attrs: { role: "group", "aria-label": p.attrs.label } }, p.attrs.items.map((x) => h("button.itd-chip.itd-chip-attr", { fk: `at:${x.id}`, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ attr: x.picked ? null : x.id }) } }, x.dice != null ? h("b", { text: String(x.dice) }) : null, h("span", { text: x.label })))),
+          p.attrs.hint ? h("p.itd-hint", { text: p.attrs.hint }) : null) : null,
         p.dest ? h("div.itd-col", {}, h("span.itd-k", { text: p.dest.label }), p.dest.value ? h("b.itd-destv", { text: p.dest.value }) : null,
           h("button.itd-ghost", { fk: "dest", on: { click: () => handlers.zonePick?.() } }, icon("fa-map-location-dot"), h("span", { text: p.dest.pick }))) : null,
         p.text ? h("div.itd-col.itd-grow", {}, textBox(p.text.value, p.text.placeholder)) : null,

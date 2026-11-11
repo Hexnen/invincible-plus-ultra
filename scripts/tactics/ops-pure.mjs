@@ -155,8 +155,12 @@ function queueOnce(W, point, key, blocks) {
   const s = W.s, k = `${s.round}:${key}`;
   if (!s.sched.done.includes(k)) {
     s.sched.done.push(k);
-    const list = Sch.due(s.triggers, point);
-    if (list.length) addPrompt(W, { kind: "triggerQueue", step: point.at, to: "gm", about: point.combatant, multi: 1, options: list.map((t) => ({ id: t.id, label: String(t.source?.name || t.run.type).slice(0, 120), data: { type: t.run.type } })), data: { at: point.at, key: k, blocks: blocks ? 1 : 0 } });
+    let extra = [];                                               // what the map and the statuses make due by themselves (P5: burning zones and characters, vacuum; flows/hazards.mjs `derived`)
+    try { extra = (W.ctx.derived?.(point, s) ?? []).filter((t) => t && S.isId(t.id) && t.at === point.at && typeof t.run?.type === "string"); } catch { extra = []; }
+    const list = Sch.due([...s.triggers, ...extra], point);
+    const info = (t) => ({ type: t.run.type, ...(t.subject?.zone ? { zone: t.subject.zone } : {}), ...(t.subject?.combatant ? { combatant: t.subject.combatant } : {}), ...(Number.isFinite(t.run.intensity) ? { intensity: t.run.intensity } : {}),
+      ...(Array.isArray(t.run.targets) ? { targets: t.run.targets.slice(0, 24) } : {}), ...(t.derived ? { trigger: S.clone(t) } : {}) });
+    if (list.length) addPrompt(W, { kind: "triggerQueue", step: point.at, to: "gm", about: point.combatant, multi: 1, options: list.map((t) => ({ id: t.id, label: String(t.source?.name || t.run.type).slice(0, 120), data: info(t) })), data: { at: point.at, key: k, blocks: blocks ? 1 : 0 } });
   }
   return !blocks || !Object.values(s.prompts).some((p) => p.kind === "triggerQueue" && !p.answered && p.data?.key === k);
 }
@@ -394,7 +398,7 @@ const OPS = {
         const order = [...(v.order ?? []).filter((x) => ids.includes(x)), ...ids.filter((x) => !(v.order ?? []).includes(x))];
         let ran = 0;
         for (const id of order) {
-          const t = s.triggers.find((x) => x.id === id);
+          const t = s.triggers.find((x) => x.id === id) ?? p.options.find((o) => o.id === id)?.data?.trigger ?? null;       // a derived trigger rides in its option
           if (!t || skip.has(id)) continue;
           ev(W, "trigger", { at: t.at, subject: t.subject, run: t.run, source: t.source });
           W.effects.push({ type: "trigger", trigger: S.clone(t) });

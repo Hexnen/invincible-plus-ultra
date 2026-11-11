@@ -181,4 +181,71 @@ lang("en");
   const fam = { "cost": ["full", "quick", "free", "none"], "band": M.BANDS.map((b) => b.id), "group": M.GROUPS, "pip": ["full", "quick"], "pip.tip": ["open", "used", "lost"], "policy": ["block", "dodge", "onBroken", "ask", "always", "never", "ko", "kill", "crit"], "reveal": ["stats", "powers", "health"], "drift": ["restore", "difference", "leave"], "mode": ["tactical", "free"], "tab": ["now", "journal", "table"], "attr": ["fighting", "agility", "strength", "reason", "intuition", "presence"] };
   for (const [f, ids] of Object.entries(fam)) for (const id of ids) ok(`ITAC.ui.${f}.${id}` in EN && `ITAC.ui.${f}.${id}` in PL, `key built by template exists in both languages: ITAC.ui.${f}.${id}`);
 }
+for (const l of ["en", "pl"]) { // P5: the other actions (the list behind "More actions", the attribute a player names, a target that may be left out), the hazard tool, the karma notes, the new cards
+  lang(l);
+  const T = mk();
+  let d = dock(T, "p1", ["H1"]);
+  const more = act(d, "@more");
+  eq([!!more, more?.more, act(d, "scan") ?? null, act(d, "breakFree") ?? null, act(d, "extinguish") ?? null, d.groups.find((g) => g.items.some((a) => a.id === "usePower"))?.id], [true, true, null, null, null, "power"], `${l} dock: the other rows wait behind one button; an escape is not offered to a free character; a power is in the powers group`);
+  d = dock(T, "p1", ["H1"], { mode: "menu" });
+  eq([d.panel.kind, ["pickUp", "scan", "banter", "useItem", "breakLift", "technology", "recoverResolve", "persuade", "saveBystanders"].every((id) => d.panel.rows.some((r) => r.id === id)), d.panel.rows.every((r) => r.label && r.notes.length && r.disabled === null), act(d, "@more").armed], ["menu", true, true, true], `${l} menu: every row with its cost; nothing greyed on the own turn`);
+  noKeys(d, `${l} menu`);
+  d = dock(T, "p1", ["H1"], { armed: "saveBystanders" });
+  eq([d.panel.attrs.items.length, d.panel.attrs.items.some((x) => x.picked), d.panel.submit.req, typeof d.panel.submit.disabled, d.panel.pool, act(d, "@more").armed], [6, false, null, "string", null, true], `${l} an attribute of the player's choice must be named first`);
+  d = dock(T, "p1", ["H1"], { armed: "saveBystanders", attr: "agility" });
+  eq([d.panel.submit.req.decl.attr, d.panel.pool.parts.length, d.panel.attrs.items.find((x) => x.picked).id, d.panel.attrs.hint], ["agility", 1, "agility", null], `${l} the named attribute rides in the declaration and makes the pool`);
+  d = dock(T, "p1", ["H1"], { armed: "useItem", text: " the fire hose " });
+  eq([d.panel.submit.disabled, d.panel.submit.req.decl.attr ?? null, d.panel.submit.req.decl.text, typeof d.panel.attrs.hint, d.panel.text != null], [null, null, "the fire hose", "string", true], `${l} an item used without a roll: no attribute needed, the words ride along`);
+  d = dock(T, "p1", ["H1"], { armed: "recoverResolve" });
+  eq([typeof d.panel.self, d.panel.picking, d.panel.submit.disabled, d.panel.submit.req.decl.targets], ["string", false, null, []], `${l} a target that may be left out: the action is then about the actor`);
+  d = dock(T, "p1", ["H1"], { armed: "banter", targets: ["N1"] });
+  eq([d.panel.submit.req.decl.targets, d.panel.chance.defended ?? null], [["N1"], null], `${l} banter: the target rides along; the opponent's dice stay unknown to a player`);
+  noKeys(d, `${l} banter`);
+  eq(staffDock(T, "H1", { armed: "banter", targets: ["N1"] }).panel.chance.defended != null, true, `${l} staff see the chance against the resisting attribute`);
+  /* a held character: the escape stands on the bar, marked */
+  await T.gm({ op: "statusAdd", combatant: "H1", status: { id: "grappled", data: { by: "N1" } } });
+  d = dock(T, "p1", ["H1"]);
+  eq([act(d, "breakFree")?.urgent, act(d, "breakFree")?.disabled ?? null, d.groups.find((g) => g.id === "act").items[0].id], [true, null, "breakFree"], `${l} held: Break free is on the bar, first of its group`);
+  await T.gm({ op: "statusRemove", combatant: "H1", id: "grappled" });
+  /* a narrative action ends on a GM card that says what the dice say */
+  eq((await T.req("p1", dock(T, "p1", ["H1"], { armed: "scan" }).panel.submit.req)).ok, true, `${l} scan declared through the panel's request`);
+  await T.roll("roll", 2);
+  let g = desk(T);
+  const oc = g.cards.find((c) => c.kind === "outcome");
+  eq([!!oc, oc?.options.map((o) => o.id), oc?.lines.length >= 2, oc?.free != null], [true, ["success", "fail"], true, true], `${l} desk: the outcome card with what the dice say and the sixes to spare`);
+  noKeys(g, `${l} desk outcome`);
+  eq((await T.gm(oc.options[0].req)).ok, true, `${l} answered through the card`);
+  /* the hazard tool */
+  const places = () => [{ zone: "z1", ids: ["H1", "N1"] }];
+  const deskP = (own) => M.deskData(D.deskModel(T.state, T.log, ctx(T)), own, { ...facts(T, T.state, "gm", true), places }, t);
+  g = deskP({ tab: "table" });
+  eq([g.hazard.kind.value, g.hazard.kind.choices.length, g.hazard.run.req, typeof g.hazard.run.disabled, g.hazard.where.choices.map((x) => x.id), g.hazard.nums.map((n) => [n.id, n.value])], ["blast", 5, null, "string", ["z:z1", "c:H1", "c:H2", "c:N1"], [["rating", 4]]], `${l} hazard tool: an explosion by default, nothing runs before a place is chosen`);
+  noKeys(g, `${l} desk table`);
+  g = deskP({ hazard: { kind: "blast", where: "z:z1", rating: 6 } });
+  eq(g.hazard.run.req, { op: "hazardRun", run: { type: "blast", rating: 6, zone: "z1", targets: ["H1", "N1"] }, subject: { zone: "z1" } }, `${l} hazard tool: an explosion on a zone names everybody there`);
+  eq(deskP({ hazard: { kind: "fire", where: "c:H2", intensity: 99 } }).hazard.run.req, { op: "hazard", hazard: { kind: "fire", intensity: 12, inZone: false }, targets: ["H2"] }, `${l} hazard tool: fire on one character, the number kept in range`);
+  eq([deskP({ hazard: { kind: "vacuum", where: "z:z1" } }).hazard.run.req, deskP({ hazard: { kind: "vacuum" } }).hazard.where.choices.length, deskP({ hazard: { kind: "disease", where: "c:H2", virulence: 2 } }).hazard.run.req], [null, 3, { op: "hazardRun", run: { type: "disease", virulence: 2, targets: ["H2"] }, subject: { combatant: "H2" } }], `${l} hazard tool: vacuum and disease are about one character`);
+  eq((await T.gm(g.hazard.run.req)).ok, true, `${l} the explosion runs from the tool's request`);
+  d = dock(T, "p1", ["H1"]);
+  eq([d.prompts.some((p) => p.kind === "hazardDodge" && p.lines.length === 1 && p.options.length === 2)], [true], `${l} the hero is asked whether to dodge, in words`);
+  noKeys(d, `${l} dock dodge`); noKeys(deskP({}), `${l} desk blast`);
+  /* karma */
+  g = deskP({ karma: { kind: "wreckedZone", who: "H1", note: " the bridge " } });
+  eq([deskP({}).karma.add.req, g.karma.add.req], [null, { op: "karmaNote", note: { who: "H1", kind: "wreckedZone", note: "the bridge" } }], `${l} karma: a note needs a name; the request carries the kind and the words`);
+  const before = deskP({}).karma.rows.length;
+  eq((await T.gm(g.karma.add.req)).ok, true, `${l} karma note taken`);
+  g = deskP({});
+  eq([g.karma.rows.length - before, g.karma.rows.at(-1).who, g.karma.rows.at(-1).note], [1, "Atom Eve", "the bridge"], `${l} karma: the note is listed with who and what`);
+  noKeys(g, `${l} desk karma`);
+}
+{ // P5: a round-point queue names what burns and who is hit; the spread card names zones
+  lang("en");
+  const f = { view: { ledger: {} }, c: (id) => ({ name: `name-${id}` }), zone: () => null };
+  const q = M.askData({ id: "p1", kind: "triggerQueue", multi: true, data: { at: "roundStart" }, answerReq: (v) => ({ v }),
+    options: [{ id: "a", label: "hazard", data: { type: "fireAttack", zone: "z2", intensity: 7, targets: ["H1"] } }, { id: "b", label: "hazard", data: { type: "fireAttack", combatant: "H2", intensity: 6, targets: ["H2"] } }, { id: "c", label: "hazard", data: { type: "fireSpread", zone: "z2" } }, { id: "d", label: "My own trigger", data: { type: "hazard" } }] }, { t, facts: f, desk: true, round: 2 });
+  eq([/z2/.test(q.options[0].label) && /7/.test(q.options[0].label) && /name-H1/.test(q.options[0].label), /name-H2/.test(q.options[1].label), /z2/.test(q.options[2].label), q.options[3].label], [true, true, true, "My own trigger"], "queue: the lines of the hazards are written out; a registered trigger keeps its own name");
+  const s = M.askData({ id: "p2", kind: "fireSpread", data: { from: "z1", pick: "z2", intensity: 6 }, answerReq: (v) => ({ v }), options: [{ id: "z:z2", label: "z2", data: { zone: "z2", rolled: 1 }, req: { r: 1 } }, { id: "z:z3", label: "z3", data: { zone: "z3" }, req: { r: 2 } }, { id: "none", label: "ITAC.opt.noSpread", req: { r: 3 } }] }, { t, facts: f, desk: true });
+  eq([s.options.map((o) => !!o.req && !o.zones), s.options[0].label !== s.options[1].label.replace("z3", "z2"), s.lines.length], [[true, true, true], true, 1], "spread card: plain answers, the zone the die picked is marked");
+  eq([...missing], [], "P5: every key the model asks for without a fallback exists");
+}
 done("check-ui");

@@ -34,6 +34,7 @@ export function zoneFacts(tok, byToken = () => null) {
     borders: (where) => Zones.bordersOf(keyOf(where)),
     at: (spot) => Zones.tokensInZone(spot).map(byToken).filter(Boolean),
     range: (a, b) => (tok(a) && tok(b) ? Zones.range(tok(a), tok(b)) : null),
+    graph: () => Zones.graph(),                                                                  // P5: the whole map for the hazards (burning zones, where a fire may spread)
   };
 }
 /* A tab that draws no frames (minimised, in the background) never finishes an animated token movement, and the map's move would wait

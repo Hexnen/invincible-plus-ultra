@@ -23,6 +23,7 @@ import * as S from "./state-pure.mjs";
 import * as O from "./ops-pure.mjs";
 import * as E from "./engine-pure.mjs";
 import * as J from "./journal-pure.mjs";
+import * as Hz from "./flows/hazards.mjs";
 
 export const ROUND_OPS = Object.freeze(["start", "stop", "endTurn", "nextTurn", "nextRound", "prevTurn", "holdOff", "mark", "setCard", "swapCards", "group", "ungroup",
   "reorderGroup", "insertTurn", "roster", "endScene", "challengeFail"]);
@@ -39,7 +40,8 @@ const isRound = (state, req) => ROUND_OPS.includes(req?.op)
 function ctxFor(host, user) {
   const facts = host.facts();
   return { user: user.id, staff: !!user.staff, owns: (cid) => !!facts.c(cid)?.owners?.includes(user.id), parts: host.parts?.() ?? [], rng: host.rng,
-    playersEnd: host.setting?.("turnPlayersEnd") !== false, sceneFacts: host.sceneFacts?.() ?? [], hold: true };
+    playersEnd: host.setting?.("turnPlayersEnd") !== false, sceneFacts: host.sceneFacts?.() ?? [], hold: true,
+    derived: (point, s) => Hz.derived(s, facts, point) };                                   // P5: what burning zones, burning characters and the vacuum make due (spec 6.1)
 }
 /* one sequence, the acting user and the time on the round driver's events (the engine stamps its own the same way) */
 function stamp(state, events, user, host) {

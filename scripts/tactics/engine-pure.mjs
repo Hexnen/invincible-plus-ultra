@@ -33,9 +33,12 @@ import * as K from "./flows/kit.mjs";
 import * as Attack from "./flows/attack.mjs";
 import { roll as Roll, other as Other, hazard as Hazard, composite as Composite } from "./flows/simple.mjs";
 import * as Move from "./flows/move.mjs";
+import { act as Act } from "./flows/acts.mjs";
+import * as Hz from "./flows/hazards.mjs";
 
 export const FLOWS = Object.freeze({ attack: Attack, roll: Roll, other: Other, plain: Other, hazard: Hazard, composite: Composite,
-  move: Move.move, fastball: Move.fastball, barrier: Move.barrier, forced: Move.forced, fall: Move.fall, release: Attack.release });       // P3: movement (flows/move.mjs)
+  move: Move.move, fastball: Move.fastball, barrier: Move.barrier, forced: Move.forced, fall: Move.fall, release: Attack.release,       // P3: movement (flows/move.mjs)
+  act: Act, blast: Hz.blast, fireSpread: Hz.fireSpread, vacuum: Hz.vacuum, disease: Hz.disease });       // P5: the other actions (flows/acts.mjs) and the hazards (flows/hazards.mjs)
 export const ERROR_CODES = Object.freeze(["noGM", "untrusted", "stale", "rate", "badInput", "off", "notOwner", "notYourTurn", "noAction", "locked", "illegal", "unknown", "gone", "busy", "playersOff", "internal", "relay", "tooBig", "noPermission", "drift"]);
 export const REVALIDATE_OPTIONS = Object.freeze(["continue", "amend", "forfeit", "cancel"]);      // [OQ-3]: the GM decides, no default
 const bad = (code, params = {}) => ({ ok: false, changed: false, error: { key: `ITAC.err.${code}`, code, params } });
@@ -132,7 +135,7 @@ async function applyEffect(X, I, e, step) {
     case "status+": { const w = M.statusAdd(X.state, e.who, e.status); write(X, tx, w.path, w.to, I, step); return false; }
     case "status-": { const w = M.statusRemove(X.state, e.who, e.id); write(X, tx, w.path, w.to, I, step); return false; }
     case "crit": if (c) await perform(X, tx, { t: "critAdd", uuid: c.actorUuid, n: e.n, id: e.id, tx }, I, step); return false;
-    case "dice": { const faces = await perform(X, tx, { t: "dice", n: e.n, why: e.key }, I, step); (I.data.res ??= {})[e.key] = Array.isArray(faces) ? faces : []; return true; }
+    case "dice": { const faces = await perform(X, tx, { t: "dice", n: e.n, why: e.key, ...(e.sides > 0 ? { sides: Math.trunc(e.sides) } : {}) }, I, step); (I.data.res ??= {})[e.key] = Array.isArray(faces) ? faces : []; return true; }
     case "roll": {
       const rid = nextId(X, "r");
       const who = e.who === "hazard" ? null : X.facts.c(e.who);
@@ -337,6 +340,7 @@ function sanitizeDecl(d, action, staff = false) {
   if (typeof d?.attr === "string") out.attr = d.attr.slice(0, 12);
   if (Number.isFinite(d?.mod)) out.mod = Math.max(-12, Math.min(12, Math.trunc(d.mod)));
   if (typeof d?.text === "string") out.text = d.text.slice(0, 300);
+  if (P1.isId(d?.item)) out.item = d.item;                                                  // P5: the ground item a "pick up" takes
   if (Array.isArray(d?.parts)) out.parts = d.parts.filter(isObj).slice(0, 6).map((p) => ({ action: String(p.action ?? "").slice(0, 32), decl: p.decl ? { targets: ids(p.decl.targets), weapon: typeof p.decl.weapon === "string" ? p.decl.weapon.slice(0, 120) : undefined } : undefined }));
   if (isObj(d?.exception) && typeof d.exception.text === "string") out.exception = { text: d.exception.text.slice(0, 300), state: "asked" };
   if (staff && Array.isArray(d?.confirmed)) out.confirmed = d.confirmed.filter((x) => typeof x === "string").map((x) => x.slice(0, 40)).slice(0, 12);      // `{ gm: id }` conditions the GM vouches for (rules/conditions.mjs)
@@ -760,6 +764,21 @@ async function opForced(X, op, a) {
   return ok({ inst: inst.id });
 }
 
+/** P5, GM op: a hazard the GM (or a trigger) sets off: { op:"hazardRun", run: { type: "blast" | "area" | "fireSpread" | "vacuum" | "disease", ... }, subject?: { zone?, combatant? } }
+    (flows/hazards.mjs specOf). As every hazard it is an instance of its own, or sits on top of the open action. */
+async function opHazardRun(X, a) {
+  const spec = Hz.specOf(isObj(a.run) ? a.run : null, isObj(a.subject) ? a.subject : {}, view(X));
+  if (!spec) return bad("badInput");
+  const inst = makeInst(X, { action: spec.action, actor: null, decl: spec.decl, cause: a.cause === "trigger" ? "trigger" : "gm", flow: spec.flow, data: spec.data, initiator: spec.initiator, parent: top(X)?.id ?? null });
+  const l = FLOWS[inst.flow].legality(view(X), inst);
+  if (!l.ok) return bad("illegal", { reason: l.reason });
+  inst.tx = openTx(X, { inst: inst.id });
+  if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); inst.cause = "trigger"; }
+  pushInst(X, inst);
+  if (!a.quiet) emit(X, inst, { type: "trigger", at: a.at ?? "gm", subject: { zone: spec.decl.zone }, run: { type: spec.action } });
+  return ok({ inst: inst.id });
+}
+
 /* ------------------------------------------------------------------ what the round driver hands over (ops-pure.mjs effects; director-pure.mjs)
    { type:"stress", combatant, n, source }   voluntary stress of a round decision (Combat Veteran [I7] [B2100]): one transaction, undoable
    { type:"recover", lines }                 the end-of-scene recovery (spec 6.8): one transaction; a value that changed meanwhile is left alone
@@ -804,6 +823,10 @@ async function pushTrigger(X, t) {
     const r = await opHazard(X, { hazard: { ...hz, id: t.id, zone: sub.zone, cause: "trigger" }, targets, cause: "trigger", at: t.at, quiet: true });
     if (r.ok) { const I = J.clone(instOf(X, r.inst)); I.data.trigger = { id: t.id, at: t.at }; I.cause = "trigger"; setInst(X, I); return; }
   }
+  if (Hz.TYPES.includes(run.type)) {                                                        // P5: the hazards of flows/hazards.mjs
+    const r = await opHazardRun(X, { run, subject: sub, cause: "trigger", at: t.at, quiet: true });
+    if (r.ok) { const I = J.clone(instOf(X, r.inst)); I.data.trigger = { id: t.id, at: t.at }; I.cause = "trigger"; setInst(X, I); return; }
+  }
   const actor = P1.isId(sub.combatant) && X.facts.c(sub.combatant) ? sub.combatant : null;
   const inst = makeInst(X, { action: "other", actor, decl: { action: "other", targets: [], helpers: [], exploits: [], stressTotal: 0, text: String(t.source?.name || run.type || "").slice(0, 300) }, cause: "trigger", flow: "other",
     data: { trigger: { id: t.id, at: t.at, run: J.clone(run), source: J.clone(t.source ?? null) } }, initiator: { type: "trigger", id: String(t.id ?? "trigger").slice(0, 40) }, parent: top(X)?.id ?? null });
@@ -816,7 +839,7 @@ export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer",
 export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget"]);
 export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
   "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp"]);
-export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard", "forcedMove", "fall"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
+export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard", "forcedMove", "fall", "hazardRun"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
 
 async function request(X, req) {
   const op = req?.op;
@@ -834,6 +857,7 @@ async function request(X, req) {
     case "forcedMove": case "fall": return opForced(X, op, req);
     case "undo": return opUndo(X, req);
     case "hazard": return opHazard(X, req);
+    case "hazardRun": return opHazardRun(X, req);
     default:
       if (GM_INST_OPS.includes(op)) return gmInstOp(X, op, req);
       if (GM_EDIT_OPS.includes(op)) return gmEdit(X, op, req);

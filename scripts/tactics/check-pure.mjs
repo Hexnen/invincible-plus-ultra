@@ -27,8 +27,10 @@ const FORBIDDEN = /(?<![.\w])(game|ui|canvas|foundry|Hooks|CONFIG|CONST|ChatMess
 const GLOBALS = /(^|[^.\w"'`])(game|Hooks|foundry|ui|canvas|CONFIG|ChatMessage|fromUuid|fromUuidSync|document|window|globalThis|setTimeout|Math\.random|Date\.now)\s*[.(\[]|\bnew Roll\b/;
 const pureImport = (i) => /-pure\.mjs$|\/flows\/|^\.\/(kit|attack|simple|move)\.mjs$|\/rules\/index\.mjs$|^node:/.test(i);
 
-eq(PURE.slice().sort(), ["catalog-pure.mjs", "desk-pure.mjs", "director-pure.mjs", "economy-pure.mjs", "engine-pure.mjs", "flows/attack.mjs", "flows/kit.mjs", "flows/move.mjs", "flows/simple.mjs", "initiative-pure.mjs", "journal-pure.mjs",
+const P5_PURE = ["actions-pure.mjs", "flows/acts.mjs", "flows/hazards.mjs"];                 // package P5: the other actions and the hazards
+eq(PURE.filter((f) => !P5_PURE.includes(f)).sort(), ["catalog-pure.mjs", "desk-pure.mjs", "director-pure.mjs", "economy-pure.mjs", "engine-pure.mjs", "flows/attack.mjs", "flows/kit.mjs", "flows/move.mjs", "flows/simple.mjs", "initiative-pure.mjs", "journal-pure.mjs",
   "ledger-pure.mjs", "mods-pure.mjs", "movement-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "ui/model-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");
+for (const f of P5_PURE) ok(PURE.includes(f), `${f}: a pure file of package P5`);
 for (const f of PURE) {
   const c = strip(read(f));
   ok(!FORBIDDEN.test(c), `${f}: no Foundry or browser globals`);
@@ -43,7 +45,7 @@ for (const f of PURE) {
 for (const f of ["state-pure.mjs", "ledger-pure.mjs", "initiative-pure.mjs", "scheduler-pure.mjs", "ops-pure.mjs"]) ok(/\[(B\d+|R\d+|I\d+|L\d+|A-\d+|OQ-\d+|D|plan [\d.]+)\]/.test(read(f)), `${f}: rules carry the spec's citation marks`);
 const MARK = /\[(B\d{3,4}|R\d+|OQ-\d+|U|D|A-\d+|LR-\d+|ZR-\d+|G-[ZL]\d+|L\d+|I\d+|plan [\d.]+)\]|spec \d+(\.\d+)*/g;
 for (const [f, min] of [["flows/attack.mjs", 40], ["flows/simple.mjs", 10], ["flows/kit.mjs", 8], ["engine-pure.mjs", 40], ["mods-pure.mjs", 15], ["catalog-pure.mjs", 1], ["view-pure.mjs", 5], ["relay-pure.mjs", 4], ["journal-pure.mjs", 5],
-  ["economy-pure.mjs", 4], ["director-pure.mjs", 3], ["zones-pure.mjs", 2], ["flows/move.mjs", 30], ["movement-pure.mjs", 30]]) {
+  ["economy-pure.mjs", 4], ["director-pure.mjs", 3], ["zones-pure.mjs", 2], ["flows/move.mjs", 30], ["movement-pure.mjs", 30], ["flows/acts.mjs", 15], ["flows/hazards.mjs", 15], ["actions-pure.mjs", 5]]) {
   const n = (read(f).match(MARK) ?? []).length;
   ok(n >= min, `${f}: citation marks present (${n}, want at least ${min})`);
 }
