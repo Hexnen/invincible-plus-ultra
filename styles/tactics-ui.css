@@ -334,7 +334,6 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 .itd-pool { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; }
 .itd-pool .itd-k { grid-column: 1 / -1; }
 .itd-dice { display: grid; place-items: center; min-width: 34px; height: 34px; padding: 0 4px; font: 400 24px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--ita-ink); background: #fff; border: 2px solid var(--ita-ink); border-radius: 5px; box-shadow: 2px 2px 0 var(--ita-blue); }
-.itd-parts { color: var(--ita-text); }
 .itd-chance { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 8px; }
 .itd-chance .itd-k { grid-column: 1 / -1; }
 .itd-meter { display: inline-flex; gap: 2px; transform: skewX(-15deg); }
