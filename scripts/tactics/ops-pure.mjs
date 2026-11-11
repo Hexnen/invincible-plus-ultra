@@ -190,7 +190,12 @@ function openTurn(W, nx) {
   const slot = I.slotById(s.init, nx.slot);
   const r = Lg.turnStart(ledgerOf(W, nx.member), { extra: slot?.extra ? slot.id : null });
   s.ledger[nx.member] = r.ledger;
+  /* [B2436], [B2517], [R10]: "stunned" lasts until the turn it takes away has come; the mark never outlives that turn, whoever set it */
+  if (!r.resumed && !r.extra) endStatuses(W, { at: "nextTurnOf", who: nx.member }, nx.member, ["stunned"]);
   if (r.lost) {                                                                                                  // [L7] [B2436], [B2517], [R10]
+    /* the turn that is missed is still that character's next turn: what lasts "until your next turn" ends here [B1634], [B1772], and what is
+       due "at the start of your turn" (a poison, the vacuum) is due as well (reading, combat-rulings P8-R2) */
+    turnMoment(W, nx.member);
     ev(W, "turnLost", { slot: nx.slot, combatant: nx.member });
     s.init = I.memberDone(s.init, nx.member, { lost: true });
     return;
@@ -199,14 +204,28 @@ function openTurn(W, nx) {
   for (const m of summonsOf(W, nx.member)) s.ledger[m] = Lg.turnStart(ledgerOf(W, m)).ledger;                    // [I14]
   /* Not for a turn that had already begun and was handed on by holding off, and not for an extra turn (hole, reported: the book does
      not say whether turn-start effects and "until your next turn" apply to a commanded turn [B1761]). */
-  if (!r.resumed && !r.extra) {
-    const moment = { at: "nextTurnOf", who: nx.member };                                                         // "until your next turn" ends here [B1634], [B1772]
-    s.triggers = Sch.expire(s.triggers, moment).keep;
-    s.tokens = Sch.expire(s.tokens, moment).keep;
-    endEffects(W, moment);
-    queueOnce(W, { at: "turnStart", combatant: nx.member }, `ts:${nx.member}`, false);
-  }
+  if (!r.resumed && !r.extra) turnMoment(W, nx.member);
   ev(W, "turnStart", { slot: nx.slot, combatant: nx.member, ...(r.resumed ? { resumed: true } : {}) });
+}
+/* the own turn of `member` has come (taken or lost): "until your next turn" ends here [B1634], [B1772]; the turn-start triggers are due */
+function turnMoment(W, member) {
+  const s = W.s, moment = { at: "nextTurnOf", who: member };
+  s.triggers = Sch.expire(s.triggers, moment).keep;
+  s.tokens = Sch.expire(s.tokens, moment).keep;
+  endEffects(W, moment);
+  endStatuses(W, moment);
+  queueOnce(W, { at: "turnStart", combatant: member }, `ts:${member}`, false);
+}
+/* Statuses that end at a scheduler point (a status may carry `ends: { at, who? }` like a token or an effect), and the named ones of `cid`. */
+function endStatuses(W, moment, cid = null, ids = []) {
+  const s = W.s;
+  for (const [who, list] of Object.entries(s.statuses ?? {})) {
+    if (!Array.isArray(list)) continue;
+    const keep = list.filter((st) => !(who === cid && ids.includes(st?.id)) && !(st?.ends?.at === moment.at && (st.ends.who == null || st.ends.who === moment.who)));
+    if (keep.length === list.length) continue;
+    for (const st of list) if (!keep.includes(st)) ev(W, "status", { target: who, status: { id: st.id, on: false }, cause: moment.at });
+    if (keep.length) s.statuses[who] = keep; else delete s.statuses[who];
+  }
 }
 
 function closeTurn(W, member) {
@@ -216,6 +235,7 @@ function closeTurn(W, member) {
   for (const id of Object.keys(s.ledger)) s.ledger[id] = Lg.expireTurnOf(s.ledger[id], member);                  // [B1708]
   s.tokens = (s.tokens ?? []).filter((t) => !(t?.expires?.at === "turnEndOf" && t.expires.who === member));     // spec 6.2 expiry "turnEndOf"
   endEffects(W, { at: "turnEndOf", who: member });
+  endStatuses(W, { at: "turnEndOf", who: member });
   queueOnce(W, { at: "turnEnd", combatant: member }, `te:${member}:${slotId}`, false);
   ev(W, "turnEnd", { slot: slotId, combatant: member });
   s.init = I.memberDone(s.init, member);
@@ -267,6 +287,7 @@ function run(W) {
       s.triggers = Sch.expire(s.triggers, { at: "roundEnd" }).keep;
       s.tokens = Sch.expire(s.tokens, { at: "roundEnd" }).keep;
       endEffects(W, { at: "roundEnd" });
+      endStatuses(W, { at: "roundEnd" });
       ev(W, "roundEnd", { order: publicOrder(s) });
       W.effects.push({ type: "roundEnd", round: s.round });      // the challenge clock runs down here [R22] (executor)
       if (++rounds > 2) { s.phase = "turns"; return; }           // a round in which nobody could act, twice in a row: stop instead of spinning

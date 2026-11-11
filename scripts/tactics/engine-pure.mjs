@@ -105,9 +105,13 @@ function closeTx(X, txId, label) {
   X.changed = true;
 }
 /* [L5] [B2293]: every ledger is new at the start of a round and nothing is carried over. An undo that reaches back over a round boundary
-   therefore leaves the ledger writes of the old round alone (they no longer exist); everything else is restored. [D] */
+   therefore leaves the ledger writes of the old round alone (they no longer exist); everything else is restored. [D]
+   The one thing a ledger does carry over is a lost turn that has not come yet, with its interrupt ban [L7] [B2436]: undoing the Stun that
+   took the turn gives it back in whatever round the undo happens. */
+const CARRIED = ["lostTurn", "noInterrupts"];                                                // what a new ledger takes over from the old one (ledger-pure.newLedger [L7]): these writes are still alive
+const dead = ([p]) => p[0] === "ledger" && !(p.length === 3 && CARRIED.includes(p[2]));
 const liveOp = (X, op, round) => (op.t === "state" && round != null && round !== X.state.round
-  ? { ...op, patch: op.patch.filter(([p]) => p[0] !== "ledger"), inverse: op.inverse.filter(([p]) => p[0] !== "ledger") } : op);
+  ? { ...op, patch: op.patch.filter((w) => !dead(w)), inverse: op.inverse.filter((w) => !dead(w)) } : op);
 /** Undo a list of ops (newest first). State ops are applied here, document ops go to the host as their inverse request. */
 async function undoOps(X, ops, round = null) {
   for (const op0 of [...ops].reverse()) {
@@ -703,6 +707,7 @@ async function gmEdit(X, op, a) {
       const r = legacy ? ledgerEditOf(X.state, legacy) : null;
       if (!r?.ok) { err = r?.code ?? "badInput"; errParams = r?.params ?? {}; break; }
       w(["ledger", a.combatant], r.ledger);
+      if (legacy.edit === "clearLostTurn" && M.hasStatus(X.state, a.combatant, "stunned")) { const x = M.statusRemove(X.state, a.combatant, "stunned"); w(x.path, x.to); }      // the mark goes with the lost turn it stands for [B2436]
       if (r.consent) openPrompt(X, null, { key: "c", kind: "grantConsent", to: addresseeOf(X, a.combatant), about: a.combatant, options: [{ id: "yes", label: "yes" }, { id: "no", label: "no" }], data: { combatant: a.combatant, grant: r.consent.id, kind: r.consent.kind, from: r.consent.from ?? null } }, "grant");   // [plan 5.3], [B1708]
       break;
     }
