@@ -212,6 +212,71 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   ok(!di.some((x) => x.id === "openDoor") && di.find((x) => x.id === "breachDoor")?.req?.decl?.to === "z3|z4" && !!di.find((x) => x.id === "unseal")?.disabled, "C2: a door offers what fits its state; what cannot be done says why");
 }
 
+/* ------------------------------------------------------------------ E. the surface: what really goes to the map (ui/board.mjs over a recording map) */
+{
+  const T = new MTable(); T.hero("H1", "p1", { name: "Ada" }).hero("H2", "p2", { name: "Rex" }).npc("N1", { name: "Thug", health: 9 }).npc("N2", { name: "Ghost", health: 9, hidden: true }).npc("N3", { name: "Far", health: 9 });
+  T.put("H1", "z1").put("H2", "z1").put("N1", "z1").put("N2", "z1").put("N3", "z3"); T.order(["H1", "N1", "H2", "N2", "N3"]).turn("H1");
+  const calls = [], rec = (name, ret) => (...a) => { calls.push([name, ...a]); return typeof ret === "function" ? ret(...a) : ret; };
+  let pickAnswer = null, menuAnswer = null, ctxFn = null;
+  Object.assign(T.map, { markTokens: rec("markTokens", "id"), clearTokenMarks: rec("clearTokenMarks", 1), link: rec("link", "id"), clearLinks: rec("clearLinks", 1), areaPreview: rec("areaPreview", {}), clearArea: rec("clearArea", 1),
+    warn: rec("warn", "id"), clearHighlights: rec("clearHighlights", 1), present: rec("present", {}), camera: rec("camera", { follow: "turn" }), intent: rec("intent", true), cancelPick: rec("cancelPick", true),
+    pickMove: rec("pickMove", () => new Promise((r) => { pickAnswer = r; })), pickArea: rec("pickArea", () => new Promise(() => {})), menu: rec("menu", () => new Promise((r) => { menuAnswer = r; })), onContext: (fn) => { ctxFn = fn; return () => {}; } });
+  const Board = await import("./ui/board.mjs"), Mv = await import("./movement.mjs");
+  const sent = [], sets = [], dockSt = {};
+  const tokens = Object.fromEntries(Object.keys(T.c).map((id) => [id, { id, object: { visible: id !== "N2" } }]));
+  const combat = { id: "c", combatants: { get: (id) => (tokens[id] ? { id, token: tokens[id], tokenId: id } : null), find: (fn) => Object.keys(tokens).map((id) => ({ id, tokenId: id })).find(fn) } };
+  Mv.install({ cid: (td) => td?.id ?? null, c: (cid) => T.c[cid] ?? null, state: () => viewOf(T, "p1", ["H1"]), facts: () => T.facts(), request: async () => ({ ok: true }) });
+  const H = { t, set: (p) => sets.push(p), send: (req) => { sent.push(req); return Promise.resolve({ ok: true }); }, press: (fk) => sets.push({ press: fk }), notify: () => {}, refresh: () => {}, showToken: () => {}, dock: () => dockSt, request: async (req) => (await T.req("p1", req)), bar: (cid) => D.playerModel(viewOf(T, "p1", ["H1"]), { id: "p1", owns: ["H1"] }, ctx(T)).bars.find((b) => b.combatant === cid) ?? null };
+  eq(Board.start(H), true, "E: the board starts on a map that has the calls");
+  ok(calls.some((c) => c[0] === "camera" && c[1]?.default === "turn"), "E: the camera's default is 'turn' (U42)");
+  const view = viewOf(T, "p1", ["H1"]), reach = {};
+  const facts = { view, me: "p1", staff: false, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => (T.c[id]?.npc ? null : T.c[id]?.attrs ?? null), userName: (u) => u, weapons: () => [], preview: (cid, decl) => T.preview("p1", cid, decl),
+    board: true, onMap: (id) => !!tokens[id]?.object.visible, reach: (cid, decl) => reach[JSON.stringify(decl)] ?? null, where: (id) => T.spot(id), zone: (spot) => ({ id: String(spot).replace(/\D/g, ""), title: null }), doors: () => [],
+    move: () => ({ options: MP.moveOptions(T.facts().zones, view, "H1", T.c.H1), why: null }), hazards: (cid, zones, to) => Board.hazards(cid, zones, to) };
+  const data = (own) => UI.dockData(D.playerModel(view, { id: "p1", owns: ["H1"] }, ctx(T)), own, facts, t);
+  const cx = { combat, facts, view, staff: false, rev: 1 };
+  /* a declare panel: the engine's answer becomes the marks */
+  reach[JSON.stringify({ action: "slugfest" })] = (await pv(T, "p1", { actor: "H1", decl: { action: "slugfest" }, of: ["N1", "N3", "H2"] })).preview.per;
+  eq(Board.sync(data({ armed: "slugfest", targets: ["N1"] }), cx), true, "E: the board plays");
+  const marks = calls.filter((c) => c[0] === "markTokens").map((c) => c[1]), rm = marks.find((m) => m.id === "ipu.reach");
+  eq(rm?.tokens.map((x) => [x.token, x.state]).sort(), [["H2", "in"], ["N1", "chosen"], ["N3", "out"]], "E: the map gets the ring, the chosen ring and the dimmed one, by token");
+  ok(calls.some((c) => c[0] === "present" && c[1]?.numbers === "always" && c[1].distances === false), "E: one language of zones while the fight runs (U37)");
+  ok(calls.some((c) => c[0] === "link" && c[1].id === "ipu.aim" && c[1].style === "dashed" && c[1].links[0].to === "N1"), "E: the chosen target is joined by a dashed line (not declared yet)");
+  const it = calls.filter((c) => c[0] === "intent").at(-1)?.[1];
+  eq([it?.token, it?.to, typeof it?.label], ["H1", "N1", "string"], "E: a player's armed intention goes to the map's GM channel with the target chosen (U43)");
+  ok(!calls.some((c) => JSON.stringify(c).includes("N2") || JSON.stringify(c).includes("Ghost")), "E: nothing that names the hidden NPC is handed to a player's map");
+  ok(!calls.some((c) => c[1] && typeof c[1] === "object" && "users" in c[1]), "E: nothing is sent to another user: every show is this client's own");
+  /* the same data again costs nothing */
+  const n0 = calls.length; Board.sync(data({ armed: "slugfest", targets: ["N1"] }), cx);
+  eq(calls.length, n0, "E: an unchanged state hands the map nothing again");
+  /* a right click on a token: one question to the engine, a menu with the actions and the reason of the refused one */
+  const spec = await ctxFn({ kind: "token", token: tokens.N3 });
+  ok(spec && spec.items.some((x) => x.id === "slugfest" && /reach/i.test(String(x.disabled))), "E: the menu at a token out of reach greys the blow with the engine's reason");
+  spec.items.find((x) => x.id === "shoot")?.run?.();
+  const arm = sets.find((p) => p.armed === "shoot");
+  ok(!spec.items.find((x) => x.id === "shoot") || (arm && arm.targets[0] === "N3"), "E: choosing an entry arms that action with the token as its target");
+  eq([ctxFn({ kind: "token", token: tokens.H1 }), ctxFn({ kind: "token", token: tokens.N2 }), ctxFn({ kind: "token", token: tokens.N3, shift: true })], [null, null, null], "E: a player's own token, a token the view does not hold and Shift + right click are left to Foundry");
+  /* a move: the map's pick with the entries, one click sends the default way */
+  Board.sync(data({ armed: "move" }), { ...cx, rev: 2 });
+  const pm = calls.filter((c) => c[0] === "pickMove").at(-1)?.[1];
+  ok(pm && pm.token === "H1" && pm.zones.length > 0 && pm.zones.every((z) => !("way" in z) && !("ask" in z) && typeof z.cost === "string") && pm.intent?.label, "E: Move starts the map's move preview with priced entries and the intention for the GM");
+  pickAnswer({ ok: true, zone: "z2", spot: "z2" }); await new Promise((r) => setTimeout(r, 5));
+  eq([sent.at(-1)?.op, sent.at(-1)?.decl?.action, sent.at(-1)?.decl?.to], ["declare", "move", "z2"], "E: ONE CLICK on a zone sends the default way");
+  /* a right click on the zone (another way): the ways as a menu */
+  Board.sync(data({ armed: "move" }), { ...cx, rev: 3 });
+  pickAnswer({ ok: true, zone: "z2", spot: "z2", alt: true }); await new Promise((r) => setTimeout(r, 5));
+  const mn = calls.filter((c) => c[0] === "menu").at(-1)?.[1];
+  ok(mn && mn.zone === "z2" && mn.items.length >= 1 && mn.items.every((x) => x.label && "hint" in x), "E: a right click on a zone lists its ways with their prices");
+  menuAnswer({ ok: false, reason: "cancelled" }); await new Promise((r) => setTimeout(r, 5));
+  /* the fight is over: everything goes */
+  Board.sync(data({ armed: "slugfest", targets: ["N1"] }), { ...cx, rev: 4 });
+  const n1 = calls.length; Board.sync(null, null);
+  const after = calls.slice(n1).map((c) => c[0]);
+  ok(after.includes("clearTokenMarks") && after.includes("clearLinks") && calls.at(-1)[0] === "present" && calls.at(-1)[1] === null, "E: with the fight gone the marks, the lines and the zone numbers go");
+  ok(calls.some((c) => c[0] === "intent" && c[1] === null), "E: and the intention is taken back");
+  Mv.uninstall();
+}
+
 /* every string the board asks for exists in both languages, and a label over a token fits */
 for (const k of Object.keys(EN).filter((k) => k.startsWith("ITAC.map."))) ok(k in PL, `PL has ${k}`);
 for (const l of ["en", "pl"]) { globalThis.game.i18n.lang = l; for (const b of ["unlikely", "even", "likely", "nearCertain"]) ok(`${T0(`ITAC.ui.band.${b}`)} · -12`.length <= 19, `${l}: the band ${b} with a hit fits over a token`); }
