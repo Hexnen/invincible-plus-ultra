@@ -279,7 +279,7 @@
 .ipb-dlg-field { display: grid; gap: 4px; }
 
 /* ---------- entry points: header button, personal row, party button ---------- */
-.application .window-header .header-control.ipb-header-btn { color: var(--ipb-cyan-lt, #3bb8e8); }
+.application .window-header .header-control.ipb-header-btn { color: #ffe72a; }   /* the module's own header buttons are one yellow (styles/kit.css) */
 .application .window-header .header-control.ipb-header-btn:hover, .application .window-header .header-control.ipb-header-btn:focus-visible { color: #fff; text-shadow: 0 0 0 transparent; }
 .invincible.sheet.actor section.tab.personal .form-group.ipb-personal { align-items: center; }
 .invincible.sheet.actor section.tab.personal .form-group.ipb-personal > label { padding-top: 0; }
@@ -298,12 +298,13 @@
   position: absolute; top: 0; left: calc(var(--ipb-hw, 90px) + 10px);
   pointer-events: auto; display: grid; place-items: center; width: 28px; height: 28px; margin: 0; padding: 0;
   font: 900 .72rem/1 var(--ipb-fa, "Font Awesome 6 Free");
-  color: #0c1a2e; background: #ffe72a; border: 2px solid #0c1a2e; border-radius: 0; box-shadow: 3px 3px 0 #0096cb;
+  color: #0c1a2e; background: #ffe72a; border: 2px solid #0c1a2e; border-radius: 0; box-shadow: 3px 3px 0 var(--ipu-press);
   cursor: var(--cursor-pointer, pointer); transform: skewX(-6deg);
-  transition: transform .12s cubic-bezier(.16, 1, .3, 1), background-color .12s linear;
+  transition: transform .12s cubic-bezier(.16, 1, .3, 1), box-shadow .12s cubic-bezier(.16, 1, .3, 1), background-color .12s linear;
 }
 #invincible-party .ipb-party-btn > i { transform: skewX(6deg); }
-#invincible-party .ipb-party-btn:is(:hover, :focus-visible) { background: #fff27a; transform: skewX(-6deg) translate(1px, -1px); }
+#invincible-party .ipb-party-btn:is(:hover, :focus-visible) { background: #fff27a; transform: skewX(-6deg) translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ipu-press); }
+#invincible-party .ipb-party-btn:active { transform: skewX(-6deg) translate(2px, 2px); box-shadow: 1px 1px 0 var(--ipu-press); }
 #invincible-party .ipb-party-btn:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 #invincible-party[data-display="hidden"] .ipb-party-btn { display: none; }
 

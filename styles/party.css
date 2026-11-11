@@ -76,14 +76,14 @@
   background: var(--ipt-yellow);
   border: 2px solid var(--ipt-ink);
   border-radius: 0;
-  box-shadow: 3px 3px 0 var(--ipt-cyan);
+  box-shadow: 3px 3px 0 var(--ipu-press);   /* a button: the kit's blue hard shadow (styles/kit.css), like the dock's */
   cursor: var(--cursor-pointer, pointer);
   transform: skewX(-6deg);
   transition: translate .42s var(--ipt-out), transform .12s var(--ipt-out), background-color .12s var(--ipt-out), box-shadow .12s var(--ipt-out);
 }
 #invincible-party .ipt-handle > * { display: inline-block; transform: skewX(6deg); }
-#invincible-party .ipt-handle:is(:hover, :focus-visible) { background: #fff27a; transform: skewX(-6deg) translate(1px, -1px); }
-#invincible-party .ipt-handle:active { transform: skewX(-6deg) translate(2px, 2px); box-shadow: 1px 1px 0 var(--ipt-cyan); }
+#invincible-party .ipt-handle:is(:hover, :focus-visible) { background: #fff27a; transform: skewX(-6deg) translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ipu-press); }
+#invincible-party .ipt-handle:active { transform: skewX(-6deg) translate(2px, 2px); box-shadow: 1px 1px 0 var(--ipu-press); }
 #invincible-party .ipt-handle:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 #invincible-party .ipt-hi::before { content: "\f0c0"; font: 900 .68rem/1 var(--ipt-fa); display: block; }   /* users */
 #invincible-party .ipt-lvl { display: inline-flex; gap: 2.5px; }
