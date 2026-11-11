@@ -145,7 +145,7 @@ export function idle() { cueWas = null; hintShown = null; return { sum: sum?.car
 function onDelete(combat) {
   try {
     if (!tally || tally.combat !== combat?.id) return;
-    const card = setting("tacticsSummary", true) !== false ? FP.fightCard(tally, who, statusesWere, t, roundWas) : null;
+    const card = setting("tacticsSummary", true) !== false ? FP.fightCard(tally, who, statusesWere, t) : null;
     tally = null; saveTally(); combatWas = null; roundWas = null;
     showCard(card, FIGHT_MS);
     H.refresh();

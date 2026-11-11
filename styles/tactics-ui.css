@@ -776,18 +776,18 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 :is(#invincible-tactics-dock, #invincible-tactics-desk) [data-sum]:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
 /* U57 */
-#invincible-tactics-dock .ita-sum { width: 330px; gap: 5px; }
+#invincible-tactics-dock .ita-sum { width: 330px; max-width: 100%; gap: 5px; }      /* narrower when the dock has less room (a large interface scale beside the open desk): the counts then go under the name */
 #invincible-tactics-dock .ita-sum .ita-about { font-weight: 400; color: var(--ita-label); }
 #invincible-tactics-dock .ita-sum-x { all: unset; box-sizing: border-box; flex: none; display: grid; place-items: center; width: 24px; height: 24px; margin-left: auto; font-size: 12px; color: var(--ita-label); border: 1px solid var(--ita-line); cursor: pointer; }
 #invincible-tactics-dock .ita-sum-x:hover { color: #fff; border-color: #fff; }
 #invincible-tactics-dock .ita-sum-x:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-#invincible-tactics-dock .ita-sum-rows { display: grid; gap: 0; max-height: 236px; margin: 0; padding: 0; overflow-y: auto; list-style: none; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
-#invincible-tactics-dock .ita-sum-row { display: flex; align-items: center; gap: 7px; min-height: 28px; margin: 0; padding: 2px 2px; color: var(--ita-text); }
+#invincible-tactics-dock .ita-sum-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; max-height: 236px; margin: 0; padding: 0; overflow-y: auto; list-style: none; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
+#invincible-tactics-dock .ita-sum-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 7px; min-height: 28px; margin: 0; padding: 2px 2px; color: var(--ita-text); }
 #invincible-tactics-dock .ita-sum-row + .ita-sum-row { border-top: 1px solid rgba(107, 130, 166, .35); }
 #invincible-tactics-dock .ita-sum-row[data-mine] { color: #fff; }
 #invincible-tactics-dock .ita-sum-row[data-mine] .ita-face { outline: 1px solid var(--ita-yellow); }
-#invincible-tactics-dock .ita-sum-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#invincible-tactics-dock .ita-sum-chips { flex: none; display: grid; grid-template-columns: 36px 44px 36px 36px 16px; align-items: center; column-gap: 4px; }
+#invincible-tactics-dock .ita-sum-n { flex: 1 1 60px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#invincible-tactics-dock .ita-sum-chips { flex: none; margin-left: auto; display: grid; grid-template-columns: 36px 44px 36px 36px 16px; align-items: center; column-gap: 4px; }
 #invincible-tactics-dock .ita-sum-chip { display: inline-flex; align-items: center; gap: 4px; font: 400 13.5px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
 #invincible-tactics-dock .ita-sum-chip i { font-size: 11px; color: var(--ita-label); }
 #invincible-tactics-dock .ita-sum-chip[data-id="dealt"] i { color: var(--ita-yellow); }

@@ -128,8 +128,8 @@ function card(tally, round, who, statuses, t, head) {
   return { ...head, rows: rows.slice(0, SUM_ROWS), more: rows.length > SUM_ROWS ? t("ITAC.sum.more", { n: rows.length - SUM_ROWS }) : null, quiet: quiet ? t("ITAC.sum.quiet") : null, close: t("ITAC.sum.close") };
 }
 export const roundCard = (tally, round, who, statuses, t) => card(tally, round, who, statuses, t, { id: `r:${tally?.combat ?? ""}:${round}`, kind: "round", title: t("ITAC.sum.round", { n: round }), sub: t("ITAC.sum.round.sub") });
-export const fightCard = (tally, who, statuses, t, rounds = null) => { const n = rounds ?? roundsOf(tally).pop() ?? 0;
-  return card(tally, null, who, statuses, t, { id: `f:${tally?.combat ?? ""}`, kind: "fight", title: t("ITAC.sum.fight"), sub: n > 0 ? t("ITAC.sum.fight.sub", { n }) : "" }); };
+/* the fight s card says neither "the fight is over" nor after how many rounds: the banner over the map says both (U52) */
+export const fightCard = (tally, who, statuses, t) => card(tally, null, who, statuses, t, { id: `f:${tally?.combat ?? ""}`, kind: "fight", title: t("ITAC.sum.fight"), sub: t("ITAC.sum.round.sub") });
 
 /* ------------------------------------------------------------------ U58: the two sounds */
 /** `now` = { turn: [ids of this user's characters whose turn it is], asks: [ids of what the table waits for from this user] }.
