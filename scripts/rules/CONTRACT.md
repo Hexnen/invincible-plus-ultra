@@ -280,7 +280,7 @@ Target conditions: `held`, `snared`, `trapped`, `unaware`, `noInterrupts`, `carr
 `FIRE_DAMAGE_PER_SIX`, `firePool(intensity)`, `fireDamage(sixes)`, `fireAttackDue({ when, inBurningZone, burning })`, `fireOutcome({ ... })`,
 `EXTINGUISH`, `extinguishOutcome(sixes)`, `fireSpreadRoll(d6)`, `fireSpreadTargets(graph, zone, burning, opts)`,
 `pickFireSpread(rng, graph, zone, burning, opts)`, `fallDice(fromAlt)`, `fallOutcome({ dice, agilitySixes, canGrab, immune })`, `blastDamage(rating)`,
-`blastPool(rating)`, `blastOutcome({ rating, sixes, targets }, rng)`, `VACUUM_PROTECTION`, `vacuumDice(roundOfExposure)`, `vacuumOutcome(sixes)`,
+`blastPool(rating)`, `blastOutcome({ rating, sixes, targets: [{ id, dodgeSixes, armor, vulnerable, immune }] }, rng)` (book 2193: `vulnerable` doubles and removes Armor, also in `fireOutcome({ ..., vulnerable })`), `VACUUM_PROTECTION`, `vacuumDice(roundOfExposure)`, `vacuumOutcome(sixes)`,
 `DISEASE`, `diseaseDice(virulence)`, `diseaseStep({ state, sixes, broken })`.
 
 Fire spread options: `doors: "pass" | "block"`, `needFlammable: true | false`, `water: "burns" | "never"` (defaults first).

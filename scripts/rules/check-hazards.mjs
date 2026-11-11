@@ -16,6 +16,10 @@ eq(H.fireOutcome({ sixes: 2, armor: 3, inBurningZone: true }), { raw: 4, taken: 
 eq(H.fireOutcome({ sixes: 1, armor: 3, inBurningZone: false, wasBurning: true }), { raw: 2, taken: 0, burning: false }, "no damage outside the zone: no longer on fire");
 eq(H.fireOutcome({ sixes: 0, inBurningZone: true, wasBurning: true }).burning, true, "no damage inside the zone changes nothing");
 eq(H.fireOutcome({ sixes: 3, inBurningZone: true, immune: true }), { raw: 6, taken: 0, burning: false }, "immune to fire");
+eq(H.fireOutcome({ sixes: 1, armor: 5, inBurningZone: true, vulnerable: true }), { raw: 4, taken: 4, burning: true }, "book 2193: vulnerable to fire: doubled, Armor has no effect");
+eq(H.fireOutcome({ sixes: 0, armor: 0, inBurningZone: true, vulnerable: true }).taken, 0, "book 2193: nothing doubled is nothing");
+{ const o = H.blastOutcome({ rating: 6, sixes: 1, targets: [{ id: "a", armor: 9, vulnerable: true }, { id: "b", armor: 1 }, { id: "c", immune: true }] }, seededRng(1)).targets;
+  eq(o.map((t) => [t.raw, t.taken]), [[6, 6], [3, 2], [3, 0]], "book 2193, 1877: a blast against a vulnerable, an armored and an immune target"); }
 eq([H.extinguishOutcome(1).burning, H.extinguishOutcome(0).burning], [false, true], "AGILITY roll puts the flames out");
 eq([1, 2, 3, 4, 5, 6].map(H.fireSpreadRoll), ["out", "out", "stays", "stays", "spreads", "spreads"], "fire D6");
 {

@@ -229,4 +229,32 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     eq([code(g), T.prompt("exception")?.to], ["ok", "gm"], "D12: asked as an exception it becomes a card for the GM"); }
 }
 
+/* ================================================================== D6: Vulnerable doubles the damage and takes the Armor away, whatever deals it [B2193] */
+{
+  const suit = [{ id: "suit", armor: 3 }];
+  const run = async (vul, how) => {
+    const T = fight({ H1: { health: 20, armor: suit, vulnerabilities: vul } });
+    if (how === "fire") { T.dice.push([6, 6, 1, 1, 1, 1]); await T.gm({ op: "hazard", hazard: { kind: "fire", intensity: 6 }, targets: ["H1"] }); }
+    if (how === "blast") { T.dice.push([6, 1, 1, 1, 1, 1]); await T.gm({ op: "hazardRun", run: { type: "blast", rating: 6, source: "fire", targets: ["H1"] } }); await T.answer("p1", "hazardDodge", "pass", "H1"); }
+    if (how === "area") { T.dice.push([6, 1, 1, 1]); await T.gm({ op: "hazardRun", run: { type: "area", pool: 4, damage: 4, source: "fire", targets: ["H1"] } }); if (T.prompt("hazardDodge", "H1")) await T.answer("p1", "hazardDodge", "pass", "H1"); }
+    if (how === "fixed") await T.gm({ op: "hazard", hazard: { kind: "fixed", amount: 4, armor: true, source: "fire" }, targets: ["H1"] });
+    return [T.state.stack.length, 20 - T.c.H1.health];
+  };
+  eq(await run([], "fire"), [0, 1], "D6: fire, two sixes, Armor 3: 1 damage");
+  eq(await run(["fire"], "fire"), [0, 8], "D6: fire against one vulnerable to fire: 4 doubled, no Armor");
+  eq(await run([], "blast"), [0, 0], "D6: Blast 6 on Armor 3: nothing gets through");
+  eq(await run(["fire"], "blast"), [0, 6], "D6: a fire blast against one vulnerable to fire: 3 doubled, no Armor");
+  eq(await run(["cold"], "blast"), [0, 0], "D6: a vulnerability to something else changes nothing");
+  eq(await run([], "area"), [0, 1], "D6: an area hazard of Damage 4 on Armor 3: 1 damage");
+  eq(await run(["fire"], "area"), [0, 8], "D6: the same against one vulnerable to its source: 8");
+  eq(await run(["fire"], "fixed"), [0, 8], "D6: fixed damage did it already");
+  /* sibling: the Armor that counts against a hazard is the one that works against its source [B2682] */
+  const T = fight({ H1: { health: 20, armor: [{ id: "asbestos", armor: 3, only: ["fire"] }] } });
+  T.dice.push([6, 6, 1, 1, 1, 1]); await T.gm({ op: "hazard", hazard: { kind: "fire", intensity: 6 }, targets: ["H1"] });
+  eq(20 - T.c.H1.health, 1, "D6: Armor that works only against fire counts against a fire attack");
+  const U = fight({ H1: { health: 20, armor: [{ id: "vest", armor: 3, only: ["kinetic"] }] } });
+  U.dice.push([6, 6, 1, 1, 1, 1]); await U.gm({ op: "hazard", hazard: { kind: "fire", intensity: 6 }, targets: ["H1"] });
+  eq(20 - U.c.H1.health, 4, "D6: Armor that works only against blows does not");
+}
+
 done("check-defects");

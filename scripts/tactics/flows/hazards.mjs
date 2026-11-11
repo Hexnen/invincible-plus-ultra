@@ -85,16 +85,17 @@ export const blast = {
     damage(v, inst) {
       const I = K.draft(inst), R = K.result(I), h = hzOf(I), faces = I.data.res.blast, sixes = Number.isFinite(I.data.forced?.sixes) ? I.data.forced.sixes : sixesIn(faces);
       const src = typeof h.source === "string" ? h.source : "kinetic", tags = M.damageTags({ source: src, cause: "hazard" });
-      const rows = I.decl.targets.map((t) => { const tf = v.facts.c(t); return { id: t, dodgeSixes: I.data.def?.[t] === "dodge" ? K.sixesOf(I, `def:${t}`) : 0, armor: I.data.forced?.damage?.[t]?.armor ?? damage.selectArmor(tf.armor ?? []).armor }; });
+      const rows = I.decl.targets.map((t) => { const tf = v.facts.c(t); return { id: t, dodgeSixes: I.data.def?.[t] === "dodge" ? K.sixesOf(I, `def:${t}`) : 0, armor: I.data.forced?.damage?.[t]?.armor ?? damage.selectArmor(tf.armor ?? [], { source: src }).armor,
+        vulnerable: (tf.vulnerabilities ?? []).includes(src), immune: immuneTo(tf, src) }; });                 // [B2193], [B1877-1880]: one reading with damage.hitDamage
       let out;
       if (h.kind === "blast") out = hazards.blastOutcome({ rating: h.rating, sixes, targets: rows }, dice.seededRng(faces.reduce((a, f) => a * 7 + f, 1 + v.state.round)));       // [B2921-2923]: the dice themselves decide who gets the extra sixes
-      else out = { exploded: sixes > 0, base: h.damage, targets: rows.map((r) => { const hit = dice.opposed(sixes, r.dodgeSixes).win; return { id: r.id, hit, doubled: false, raw: hit ? h.damage : 0, taken: hit ? Math.max(0, h.damage - r.armor) : 0 }; }) };   // [B2876]: a fixed Damage, the surplus is the GM's
+      else out = { exploded: sixes > 0, base: h.damage, targets: rows.map((r) => { const hit = dice.opposed(sixes, r.dodgeSixes).win; const hd = damage.hitDamage({ base: hit ? h.damage : 0, armor: r.armor, source: src, immunities: r.immune ? [src] : [], vulnerabilities: r.vulnerable ? [src] : [] }); return { id: r.id, hit, doubled: false, raw: hd.raw, taken: hd.taken }; }) };   // [B2876]: a fixed Damage, the surplus is the GM's
       I.data.sixes = sixes; I.data.exploded = out.exploded; I.data.dmg = I.data.dmg ?? {}; I.data.out = I.data.out ?? {};
       let waiting = false;
       for (const o of out.targets) {
         if (I.data.dmg[o.id]) continue;                                                           // the step comes back after a card of the GM
         const tf = v.facts.c(o.id), forced = I.data.forced?.damage?.[o.id], row = rows.find((r) => r.id === o.id);
-        let taken = Number.isFinite(forced?.amount) ? forced.amount : immuneTo(tf, src) ? 0 : o.taken;
+        let taken = Number.isFinite(forced?.amount) ? forced.amount : o.taken;
         if (tf.kind === "minions" && !Number.isFinite(forced?.amount) && taken > 0) {             // [OQ-1]: a blast takes several at once, as an area attack does: the GM's number
           const ml = K.minionLoss(v, I, R, o.id, taken);
           if (ml.wait) { waiting = true; continue; }
@@ -102,7 +103,7 @@ export const blast = {
         }
         const ad = damage.applyDamage({ health: tf.health, taken });                              // [B2707]
         I.data.out[o.id] = { hit: o.hit, net: sixes - row.dodgeSixes };
-        I.data.dmg[o.id] = { base: out.base, raw: o.raw, armor: row.armor, taken, doubled: o.doubled, healthBefore: tf.health, healthAfter: ad.health, tags, ...(tf.kind === "minions" ? { minions: { removed: tf.health - ad.health, left: ad.health } } : {}) };   // [B2828]
+        I.data.dmg[o.id] = { base: out.base, raw: o.raw, armor: row.vulnerable ? 0 : row.armor, ...(row.vulnerable ? { vulnerable: true } : {}), taken, doubled: o.doubled, healthBefore: tf.health, healthAfter: ad.health, tags, ...(tf.kind === "minions" ? { minions: { removed: tf.health - ad.health, left: ad.health } } : {}) };   // [B2828]
         if (taken > 0 && ad.health !== tf.health) R.effects.push({ t: "actor", who: o.id, path: "health", to: ad.health });
         R.events.push({ type: "damage", target: o.id, base: out.base, armor: row.armor, taken, dtype: src, source: "hazard", ...(o.doubled ? { doubled: true } : {}) });
       }

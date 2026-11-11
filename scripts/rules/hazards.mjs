@@ -21,12 +21,13 @@ export function fireAttackDue({ when, inBurningZone, burning = false }) {
   return false;
 }
 
-/* Result of a fire attack on one character. input: { sixes, armor, inBurningZone, wasBurning, immune }.
+/* Result of a fire attack on one character. input: { sixes, armor, inBurningZone, wasBurning, immune, vulnerable }.
+   book 2193 (Vulnerable to fire): the damage is doubled and no Armor counts; as in damage.hitDamage a vulnerability goes before an immunity.
    book 2926: damage from a fire attack sets the character on fire; a fire attack suffered outside a burning zone that does no damage
    ends it. (Inside a burning zone an attack without damage changes nothing.) Returns { raw, taken, burning }. */
-export function fireOutcome({ sixes, armor = 0, inBurningZone, wasBurning = false, immune = false }) {
-  const raw = fireDamage(sixes);
-  const taken = immune ? 0 : Math.max(0, raw - Math.max(0, armor));
+export function fireOutcome({ sixes, armor = 0, inBurningZone, wasBurning = false, immune = false, vulnerable = false }) {
+  const raw = fireDamage(sixes) * (vulnerable ? 2 : 1);
+  const taken = immune && !vulnerable ? 0 : Math.max(0, raw - (vulnerable ? 0 : Math.max(0, armor)));
   const burning = taken > 0 ? true : inBurningZone ? wasBurning : false;
   return { raw, taken, burning };
 }
@@ -90,7 +91,9 @@ export function fallOutcome({ dice, agilitySixes = 0, canGrab = false, immune = 
 export const blastDamage = (rating) => Math.ceil(rating / 2);
 export const blastPool = (rating) => Math.max(1, Math.floor(rating));
 
-/* Outcome of a blast. input: { rating, sixes, targets: [{ id, dodgeSixes?, armor? }] }, rng.
+/* Outcome of a blast. input: { rating, sixes, targets: [{ id, dodgeSixes?, armor?, vulnerable?, immune? }] }, rng.
+   book 2193: a target vulnerable to the source of the blast suffers double damage and its Armor does not count; book 1877: a target
+   immune to it suffers none (a vulnerability goes first, as in damage.hitDamage).
    book 2921 one 6 or more: everybody in the zone suffers the base Damage; 2922 never pushed, can be dodged normally, Armor applies;
    2923 6s beyond the first go to random potential targets, never more than one each, and double that target's damage before Armor.
    Reading: a dodge is the usual opposed roll against the blast's 6s; the extra 6s are dealt among ALL potential targets, so one may
@@ -107,8 +110,8 @@ export function blastOutcome({ rating, sixes, targets }, rng) {
     targets: targets.map((t, i) => {
       const hit = opposed(sixes, t.dodgeSixes ?? 0).win;
       const doubled = hit && lucky.has(i);
-      const raw = hit ? base * (doubled ? 2 : 1) : 0;
-      return { id: t.id, hit, doubled, raw, taken: Math.max(0, raw - Math.max(0, t.armor ?? 0)) };
+      const raw = hit ? base * (doubled ? 2 : 1) * (t.vulnerable ? 2 : 1) : 0;
+      return { id: t.id, hit, doubled, raw, taken: t.immune && !t.vulnerable ? 0 : Math.max(0, raw - (t.vulnerable ? 0 : Math.max(0, t.armor ?? 0))) };
     }),
   };
 }

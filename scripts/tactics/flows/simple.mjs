@@ -115,13 +115,14 @@ export const hazard = {
         const tf = v.facts.c(t), forced = I.data.forced?.damage?.[t];
         const tags = M.damageTags({ source: h.kind === "fire" ? "fire" : h.source, cause: h.cause ?? "hazard" });
         const immune = (tf.immunities ?? []).includes(tags.source) || (tags.source !== "kinetic" && (tf.immunities ?? []).includes("nonKinetic"));     // [B1877-1880]
+        const vulnerable = (tf.vulnerabilities ?? []).includes(tags.source);                                                                        // [B2193]: doubled, no Armor
         let rec;
         if (h.kind === "fire") {
-          const sixes = I.data.res[`fire:${t}`].filter((d) => d === 6).length, ar = damage.selectArmor(tf.armor ?? []);                                // [B2925]: Armor applies
-          const fo = hazards.fireOutcome({ sixes, armor: forced?.armor ?? ar.armor, inBurningZone: h.inZone !== false, wasBurning: M.hasStatus(v.state, t, "burning"), immune });   // [B2925-2926]
-          rec = { base: fo.raw, raw: fo.raw, armor: forced?.armor ?? ar.armor, taken: Number.isFinite(forced?.amount) ? forced.amount : fo.taken, burning: fo.burning, sixes, tags };
+          const sixes = I.data.res[`fire:${t}`].filter((d) => d === 6).length, ar = damage.selectArmor(tf.armor ?? [], { source: tags.source });         // [B2925]: Armor applies, the one that works against fire
+          const fo = hazards.fireOutcome({ sixes, armor: forced?.armor ?? ar.armor, inBurningZone: h.inZone !== false, wasBurning: M.hasStatus(v.state, t, "burning"), immune, vulnerable });   // [B2925-2926], [B2193]
+          rec = { base: hazards.fireDamage(sixes), raw: fo.raw, armor: vulnerable ? 0 : forced?.armor ?? ar.armor, ...(vulnerable ? { vulnerable: true } : {}), taken: Number.isFinite(forced?.amount) ? forced.amount : fo.taken, burning: fo.burning, sixes, tags };
         } else {
-          const armor = h.armor === true ? (forced?.armor ?? damage.selectArmor(tf.armor ?? []).armor) : 0;                                          // [OQ-11]: the Armor line is the GM's tick
+          const armor = h.armor === true ? (forced?.armor ?? damage.selectArmor(tf.armor ?? [], { source: tags.source }).armor) : 0;                 // [OQ-11]: the Armor line is the GM's tick
           const hd = damage.hitDamage({ base: h.amount ?? 0, armor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });
           rec = { base: h.amount ?? 0, raw: hd.raw, armor: hd.armor, taken: Number.isFinite(forced?.amount) ? forced.amount : hd.taken, tags };
         }
