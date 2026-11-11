@@ -17,20 +17,24 @@ import * as Engine from "../engine.mjs";
 import * as Zones from "../zones-adapter.mjs";
 import * as Mv from "../movement.mjs";
 import { tacticsApi as Api } from "../api.mjs";
-import { t, errText } from "../lang.mjs";
+import { t as langT, errText } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
 import * as Dock from "./dock.mjs";
 import * as Desk from "./desk.mjs";
 import * as Pick from "./pick.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
-const NARROW = 1180;                       // below this window width the desk starts folded
+const t = Model.withWords(langT, () => { try { return game.i18n.lang; } catch { return "en"; } });      // the surfaces' own words (model-pure.WORDS) before the language file
+const NARROW = 1180;                       // with less room than this between the window's left edge and the sidebar the desk starts folded
 const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false, opt: null, attr: null });
-const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {}, scene: {}, kit: {} });
+const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, sure: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {}, scene: {}, kit: {} });
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
 let st = { dock: blankDock(), desk: blankDesk() };
 let rev = 0, moveMemo = null;             // the move options are counted once per change of the fight or of the map, not per keystroke
 let zonePick = null, shownDock = "", shownDesk = "";      // what this client has on the map for the surfaces: a running pick, two highlights
+let cardsWere = null;                     // the ids of the desk's waiting cards at the last draw: a new one brings the Now tab forward (U12)
+/* the room the map has: the window less an open sidebar (U6: with the sidebar open at 1366 px the desk, the dock and the map's own panels do not fit side by side) */
+const mapWidth = () => { try { const sb = document.getElementById("sidebar"), r = sb?.getBoundingClientRect(); return r && r.width > 120 && r.left > window.innerWidth * 0.5 ? r.left : window.innerWidth; } catch { return window.innerWidth; } };
 
 const combatNow = () => { try { const c = Store.currentCombat(); return c && Api.active(c) && Api.mode(c) !== "off" && (!c.scene || c.scene.id === globalThis.canvas?.scene?.id) ? c : null; } catch { return null; } };
 const isVideo = (s) => /\.(webm|mp4|m4v|ogv)(\?|$)/i.test(String(s ?? ""));
@@ -63,6 +67,8 @@ function factsOf(combat) {
     resolve: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && staff ? Sys.actorFacts(a)?.resolve ?? null : null; } catch { return null; } },      // the desk's hint for an NPC out of Resolve
     weapons: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Sys.weaponList(a) : []; } catch { return []; } },      // [P4] what this user's own character can attack with
     doors: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Mv.api.doors(id) : []; } catch { return []; } },
+    /* U8: the spot of a combatant this user drives (its own token: nothing a player does not see on the map) */
+    where: (id) => { try { const cb = combat.combatants.get(id), a = Sys.actorOf(cb); return a && (staff || a.isOwner) && cb?.token && Zones.available() ? Zones.spotOf(cb.token) : null; } catch { return null; } },
     /* P5 (the hazard tool, staff only): the zones with somebody of the fight in them */
     places: () => {
       const by = new Map();
@@ -94,19 +100,26 @@ function staffModel(combat, desk) {
 function refresh() {
   try {
     const combat = down ? null : combatNow();
-    if (!combat) { Pick.stop(); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
+    try { document.body.classList.toggle("ita-tactics", !!combat); } catch { /* no body */ }      // styles/tactics-ui.css: what the other surfaces of the module give up while the dock shows
+    if (!combat) { cardsWere = null; Pick.stop(); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
     if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone }; }        // a new turn: nothing stays armed
     const desk = staff ? Api.desk(combat) : null;
     let deskD = null;
     if (staff) {
-      if (!st.desk.touched) st.desk.collapsed = window.innerWidth < NARROW;
+      if (!st.desk.touched) st.desk.collapsed = mapWidth() < NARROW;
+      /* U12: a card that was not waiting a moment ago brings the Now tab forward, unless the GM is typing in the desk */
+      const ids = (desk?.cards ?? []).map((c) => c.id), fresh = cardsWere !== null && ids.some((id) => !cardsWere.includes(id));
+      cardsWere = ids;
+      if (fresh && st.desk.tab !== "now" && !/^(INPUT|TEXTAREA|SELECT)$/.test(Desk.el()?.contains(document.activeElement) ? document.activeElement.tagName : "")) st.desk.tab = "now";
       deskD = Model.deskData(desk, st.desk, facts, t);
       Desk.render(deskD, st.desk);
-    } else Desk.render({ show: false });
+    } else { cardsWere = null; Desk.render({ show: false }); }
     const model = staff ? staffModel(combat, desk) : Api.player(combat);
     const data = Model.dockData(model, st.dock, facts, t);
+    /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
+    if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; }
     Dock.render(data, st.dock);
     if (data.show && data.panel?.kind === "declare" && data.panel.targets) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => { const max = data.panel.maxTargets ?? 1, cur = (st.dock.targets ?? []).filter((x) => x !== cid); setDock({ targets: max > 1 ? ((st.dock.targets ?? []).includes(cid) ? cur : [...cur, cid].slice(-max)) : [cid] }); });
     else Pick.stop();
@@ -131,6 +144,8 @@ function mapSync(data, deskD) {
       const key = `${data.who.id}|${p.action}|${JSON.stringify(p.zones)}`;
       if (zonePick?.key !== key) {
         const mine = (zonePick = { key });
+        /* U5: the panel that just opened may lie over the character: the map slides by the least that shows the zone it stands in (this client's view only) */
+        setTimeout(() => { if (zonePick === mine) showToken(data.who.id); }, 350);
         Zones.pick({ zones: p.zones, title: t("ITAC.ui.pick.title", { name: data.who.name }), hint: p.hint, color: "move" }).then((r) => {
           if (zonePick !== mine) return;                    // given up or replaced by a newer one
           zonePick = null;
@@ -143,6 +158,24 @@ function mapSync(data, deskD) {
     const forced = (deskD?.cards ?? []).find((c) => c.map)?.map ?? null;      // the GM's card of a forced move: the chain on the map
     shownDesk = show("ipu.forced", shownDesk, forced ? { zones: forced.zones, color: "danger", borders: forced.borders, borderColor: "danger" } : null);
   } catch (e) { console.warn(LOG, "map sync failed", e); }
+}
+/* U5: the token of the character the dock drives is kept out from under the surfaces: when it lies under the dock (or the macro bar below
+   it), above the initiative bar or off to a side, this client's view slides by the least that shows it. Called when Move is armed (its
+   panel has just opened over the map) and after a move made from the dock; never on a timer, never for another user's view. */
+function showToken(cid) {
+  try {
+    const tok = combatNow()?.combatants.get(cid)?.token?.object, stage = canvas?.stage;
+    if (!tok || !stage || !tok.visible) return;
+    const W = window.innerWidth, H = window.innerHeight, s = stage.scale.x || 1;
+    const c = canvas.clientCoordinatesFromCanvas(tok.center), half = Math.min(90, ((tok.h ?? 100) * s) / 2) + 16;
+    const dk = Dock.el()?.querySelector(".itd-stack")?.getBoundingClientRect(), sb = document.getElementById("sidebar")?.getBoundingClientRect();
+    const top = (Number(document.documentElement.dataset.icbarBottom) || 96) + half, bottom = (dk && dk.height ? dk.top : H - 150) - half;
+    const left = Math.min(W * 0.22, 300) + half, right = Math.min(W * 0.72, (sb && sb.width > 120 ? sb.left : W) - 60) - half;
+    if (bottom - top < 40 || right - left < 40) return;      // no room to show it in: leave the view alone
+    const dx = c.x < left ? c.x - left : c.x > right ? c.x - right : 0, dy = c.y < top ? c.y - top : c.y > bottom ? c.y - bottom : 0;
+    if (!dx && !dy) return;
+    canvas.animatePan({ x: stage.pivot.x + dx / s, y: stage.pivot.y + dy / s, duration: 320 });
+  } catch (e) { console.warn(LOG, "show token failed", e); }
 }
 let trayWas = null;
 function pokeTray() { try { const on = active(); if (on !== trayWas) { trayWas = on; game.modules.get(MOD)?.api?.turn?.refresh?.(); } } catch { /* the tray is optional */ } }
@@ -173,6 +206,9 @@ async function send(which, req, after) {
       refresh(); return env;
     }
     if (which === "dock") { st.dock.refused = null; st.dock.why = ""; }
+    /* U5: a move the user made from the dock may end under the dock or the macro bar: once the token has arrived the map slides by
+       the least that brings that zone into the free part of the window (this client's view only; nothing when it is there already) */
+    if (which === "dock" && req.op === "declare" && req.decl?.mode && typeof req.decl.to === "string" && !req.decl.exception) { const cid = req.actor ?? st.dock.sel ?? Api.state(combat)?.init?.curMember; for (const ms of [1200, 2600]) setTimeout(() => showToken(cid), ms); }
     if (after) { if (which === "dock") patchDock(after); else Object.assign(st[which], after); }
     refresh();
     return env;
@@ -225,8 +261,8 @@ function relayout() { try { Desk.relayout(); Dock.relayout(); } catch { /* not b
 function watch() {
   if (!window.ResizeObserver) return;
   ro ??= new ResizeObserver(() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; relayout(); }); });
-  for (const id of ["hotbar", "sidebar", "invincible-party", "invincible-challenges", "invincible-tactics-desk", "chat-notifications", "players", "mm-dir-bar"]) {
-    const el = document.getElementById(id);
+  const els = ["hotbar", "sidebar", "invincible-party", "invincible-challenges", "invincible-tactics-desk", "chat-notifications", "players", "mm-dir-bar", "mm-orbit-strip", "mm-vram", "invincible-combat-bar"].map((id) => document.getElementById(id));
+  for (const el of [...els, document.querySelector("#chat-notifications .chat-log"), document.querySelector(".mm-filter")]) {
     if (el && el.dataset.itdWatched !== "1") { el.dataset.itdWatched = "1"; ro.observe(el); }
   }
 }
@@ -246,6 +282,8 @@ export function start() {
     Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) schedule(); });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
     Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Dock.hide(); });
+    Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size
+    Hooks.on("deleteChatMessage", () => setTimeout(relayout, 60));
     Zones.onEvent(schedule);                 // a token entered a zone, a door changed: the options of a move are counted again
     Zones.onChange(() => schedule());        // the scene's numerals or its zones changed: every text that names a zone is said again
     Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock", top: "#invincible-combat-bar" });      // the pick's banner and its "more" chips keep clear of our two bars (zones-api.md section 23)
@@ -261,7 +299,8 @@ export function start() {
       refresh();
       return true;
     });
-    for (const hk of ["collapseSidebar", "changeSidebarTab", "renderHotbar", "renderPlayers"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });
+    for (const hk of ["changeSidebarTab", "renderHotbar", "renderPlayers"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });
+    Hooks.on("collapseSidebar", () => { relayout(); setTimeout(() => (st.desk.touched ? relayout() : schedule()), 320); });      // the desk folds or opens with the room the sidebar leaves, until the GM chose
     window.addEventListener("resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
     document.addEventListener("keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.stopPropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
     Api.ui = { active, refresh, state: () => st };

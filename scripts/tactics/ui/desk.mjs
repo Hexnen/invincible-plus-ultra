@@ -3,9 +3,14 @@
    WHERE: a column at the right edge of the map, ending at the sidebar's left edge, BELOW the challenges HUD (which keeps the top right
    corner) and above the bottom edge; its handle folds it to a yellow tab that carries the number of things waiting. The action dock
    treats the open desk as an obstacle, so the two never overlap; in a narrow window the desk starts folded.
+   CHAT TOASTS (U6): the messages Foundry floats above the chat box share this column while the sidebar is folded. They never lie on
+   the desk: while one shows, the desk ends above it and scrolls inside, but never above the end of the FIRST thing that waits for the
+   GM (its buttons stay on screen whatever floats in), nor shorter than minH(); the toasts are held to the strip that is left under
+   that (body.ita-desk-open + --igd-toast-maxh, styles/tactics-ui.css; the newest end of a toast shows, the strip scrolls).
    STRUCTURE: head (title, round and whose turn, three tabs) / "waiting for" strip (always visible) / body:
-     Now      what is being settled by hand, the action(s) in progress with the step controls (Override opens them), then the queue of
-              cards that wait for the GM (reactions of NPCs, exception requests, confirmations, round-point triggers, absent players)
+     Now      what is being settled by hand, then the queue of cards that wait for the GM (reactions of NPCs, exception requests,
+              confirmations, round-point triggers, absent players): what needs an answer stands first (U12); then the action(s) in
+              progress with the step controls (Override opens them; Veto asks a second click, U20)
      Journal  closed actions by round, newest first, each with Undo (last-in-first-out; "only this one" asks how to treat drift)
      Scene    (P7) what stands in the fight without a card: the chase (who flees, who follows, the distance, the chase roll, its end),
               the vehicles (who sits where, the state of the machine) and the challenges (a book preset, what the GM runs by hand)
@@ -13,6 +18,7 @@
 import { h, icon, swap, askCard, waitChips, visibleRect } from "./dom.mjs";
 
 const ID = "invincible-tactics-desk";
+const minH = (H) => Math.round(Math.max(240, Math.min(320, H * 0.36)));      // px the open desk keeps whatever floats under it (276 in a 768 px window)
 let root = null, handleBtn = null, box = null, handlers = {}, last = null;
 
 export function configure(x) { handlers = x ?? {}; }
@@ -43,7 +49,20 @@ export function place() {
   /* the chat box that floats at the bottom right while the sidebar is collapsed stays free: the desk ends above it and scrolls inside */
   let floor = H - 14;
   for (const el of document.querySelectorAll("#chat-notifications #chat-message, #chat-notifications textarea, #chat-notifications .chat-form")) { const r = visibleRect(el); if (r && r.top > H * 0.6 && r.right > W - right - 380) floor = Math.min(floor, r.top - 10); }
-  root.style.setProperty("--igd-maxh", `${Math.round(Math.max(220, floor - Math.min(top, maxTop)))}px`);
+  /* a chat toast in this column: the desk ends above the highest of them, down to MIN_H; the toasts keep to what is left under that */
+  const t0 = Math.min(top, maxTop);
+  let need = t0 + minH(H);
+  try { const body = box?.querySelector(".igd-body"), first = body?.querySelector(".ita-ask, .igd-manual"); if (first) need = Math.max(need, first.getBoundingClientRect().bottom + body.scrollTop + 14); } catch { /* not drawn */ }
+  const least = Math.min(floor, need);
+  let end = floor;
+  if (!last?.d?.collapsed) for (const m of document.querySelectorAll("#chat-notifications .chat-log > .chat-message")) { const r = visibleRect(m); if (r && r.right > W - right - 380 && r.left < W - right && r.bottom > t0) end = Math.min(end, r.top - 8); }
+  end = Math.max(least, end);
+  root.style.setProperty("--igd-maxh", `${Math.round(Math.max(220, end - t0))}px`);
+  /* the toasts' own box ends where Foundry ends it (above the chat box and its controls); under 44 px of strip no toast shows at all
+     (the chat tab keeps its unread mark) */
+  let strip = floor - least - 8;
+  try { const ov = document.querySelector("#chat-notifications .overflow")?.getBoundingClientRect(); if (ov && ov.width > 0 && ov.bottom > H * 0.4) strip = ov.bottom - least - 8; } catch { /* no chat box */ }
+  try { document.body.style.setProperty("--igd-toast-maxh", `${strip >= 44 ? Math.round(strip) : 0}px`); } catch { /* no body */ }
 }
 
 /* ---------- pieces ---------- */
@@ -80,7 +99,7 @@ function inst(i, L) {
     i.rolls.length ? h("ul.igd-rolls", {}, i.rolls.map((r) => h(`li${r.waiting ? ".igd-waiting" : ""}`, {}, icon(r.waiting ? "fa-hourglass-half" : "fa-dice"), h("b", { text: r.label }), h("span", { text: r.text }), r.chance ? h("span.igd-pct", { text: r.chance }) : null))) : null,
     h("div.igd-cmds", {}, i.commands.map((c) => (c.toggle
       ? h("button.igd-btn.igd-toggle", { fk: `ovr:${i.id}`, attrs: { "aria-expanded": String(c.on) }, on: { click: () => set({ override: c.on ? null : i.id }) } }, icon("fa-sliders"), h("span", { text: c.label }))
-      : h(`button.igd-btn${c.danger ? ".igd-danger" : ""}`, { fk: `cmd:${i.id}:${c.id}`, text: c.label, on: { click: () => send(c.req) } })))),
+      : h(`button.igd-btn${c.danger ? ".igd-danger" : ""}${c.armed ? ".igd-sure" : ""}`, { fk: `cmd:${i.id}:${c.id}`, text: c.label, on: { click: () => (c.confirm && !c.armed ? set({ sure: `${i.id}:${c.id}` }) : send(c.req, { sure: null })) } })))),
     i.override ? override(i, L) : null);
 }
 function manual(m, L) {
@@ -100,8 +119,8 @@ function now(d) {
   if (!d.cards.length && !d.stack.length && !d.manual.length) return h("p.igd-empty", {}, icon("fa-mug-hot"), h("span", { text: d.empty }));
   return [
     d.manual.length ? section(d.labels.manual, d.manual.length, d.manual.map((m) => manual(m, d.labels))) : null,
-    d.stack.length ? section(d.labels.action, 0, d.stack.map((i) => inst(i, d.labels))) : null,
     d.cards.length ? section(d.labels.queue, d.cards.length, d.cards.map((c) => askCard(c, askH))) : null,
+    d.stack.length ? section(d.labels.action, 0, d.stack.map((i) => inst(i, d.labels))) : null,
   ];
 }
 function journal(d) {
@@ -209,6 +228,7 @@ function draw(d, ui) {
   last = { d, ui };
   if (!d?.show) return destroy();
   ensure(d.title);
+  try { document.body.classList.toggle("ita-desk-open", !d.collapsed); } catch { /* no body */ }
   root.classList.toggle("igd-collapsed", !!d.collapsed);
   root.classList.toggle("igd-busy", d.count > 0);
   swap(handleBtn, [icon(d.collapsed ? "fa-inbox" : "fa-chevron-right"), d.collapsed ? h("span.igd-hl", { text: d.title }) : null, d.count ? h("b.igd-badge", { text: String(d.count) }) : null]);
@@ -226,4 +246,4 @@ function draw(d, ui) {
 }
 export const relayout = () => { if (root) place(); };
 export const el = () => root;
-export function destroy() { root?.remove(); root = handleBtn = box = null; }
+export function destroy() { root?.remove(); root = handleBtn = box = null; try { document.body.classList.remove("ita-desk-open"); } catch { /* no body */ } }
