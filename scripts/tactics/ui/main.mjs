@@ -27,6 +27,7 @@ import * as Board from "./board.mjs";
 import * as Feedback from "./feedback.mjs";
 import * as Camera from "./camera.mjs";
 import * as Lay from "./layout-pure.mjs";
+import * as Tip from "./tip.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
@@ -487,6 +488,7 @@ export function start() {
     started = true;
     down = !globalThis.canvas?.scene;        // this can run before Foundry made the canvas: canvasReady lifts it
     configure();
+    Tip.start(game.tooltip);      // U88 / U97: the tooltips of the dock, the cards and the desk open outside the block of their owner (ui/tip-pure.mjs)
     Store.subscribe(schedule);
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);
     Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) moved(); });

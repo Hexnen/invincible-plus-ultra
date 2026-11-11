@@ -36,6 +36,9 @@ export const reasonText = (t, reason, params = {}) => (reason ? t(`ITAC.reason.$
    under a price ("full action" / "no action") read as a second price. `whyText` is that sentence alone, where the way round it is
    already on screen (the panel with the request to the GM) or there is none. */
 const whyText = (t, reason, params = {}, o = {}) => whyOf(t, reason, params, o)?.text ?? null;
+/* U89: why a way of moving or a door cannot be taken AND what to do about it, for the row's tooltip and its aria-label (the row itself
+   keeps its size). A click on such a row opens the question to the GM, so a reason with no remedy of its own gets that one. */
+const wayWhy = (t, facts, reason, params = {}) => { const w = whyOf(t, reason, params, { staff: facts.staff }); return w ? { text: w.text, fix: w.fix ?? t(facts.staff ? "ITAC.fix.gm" : "ITAC.fix.ask") } : null; };
 export const costText = (t, cost) => (cost ? t(`ITAC.ui.cost.${cost}`, {}, String(cost)) : null);
 export const attrText = (t, attr) => (attr ? t(`ITAC.ui.attr.${attr}`, {}, cap(attr)) : "");
 const nameOf = (facts, id, t) => (id ? facts.c?.(id)?.name ?? t("ITAC.Someone") : "");
@@ -532,7 +535,8 @@ function armsOf(bar, a, own, facts, t) {
     items: ids.map((id) => { const x = list.find((y) => y.id === id); return { id, name: x ? wname(x) : t("ITAC.ui.weapon.unarmed"), tip: x ? tipOf(x) : null, picked: id === sel }; }) } : null;
   const can = { wreck: a.id === "slugfest" && !w?.always, area: a.area || !!w?.area, fullAuto: shooting && (a.fullAuto || !!w?.fullAuto) };
   const on = { wreck: can.wreck && !!own.opts?.wreck, area: can.area && !!own.opts?.area, fullAuto: can.fullAuto && !!own.opts?.fullAuto && !own.opts?.area };
-  const opts = ["wreck", "area", "fullAuto"].filter((k) => can[k]).map((k) => ({ id: k, label: t(`ITAC.ui.arm.${k}`), tip: t(`ITAC.ui.arm.${k}.tip`), on: on[k] }));
+  /* U85: an option is a picture; its name and what it does are its tooltip (the line that used to appear under a switched-on option says nothing the tooltip does not, except for full auto, whose line is carried there) */
+  const opts = ["wreck", "area", "fullAuto"].filter((k) => can[k]).map((k) => ({ id: k, label: t(`ITAC.ui.arm.${k}`), tip: { title: t(`ITAC.ui.arm.${k}`), lines: [t(`ITAC.ui.arm.${k}.tip`), ...(k === "fullAuto" ? [t("ITAC.ui.arm.fullAuto.note")] : [])] }, on: on[k] }));
   return { weapons, opts, maxTargets: on.fullAuto ? FULL_AUTO_MAX : 1,
     decl: { ...(w ? { weapon: w.id } : {}), ...(on.wreck ? { wreck: true } : {}), ...(on.area ? { area: true } : {}), ...(on.fullAuto ? { fullAuto: true } : {}) },
     attr: w?.attr ?? null, dice: w?.bonus ? [{ label: w.name, dice: w.bonus }] : [], why: shooting && !w ? t("ITAC.ui.weapon.none") : null,
@@ -547,7 +551,7 @@ function declarePanel(bar, a, own, facts, t) {
     /* the bar's reasons (not your turn, busy, nothing left to pay with) are refused by "declare" outright, so the way round them is the
        free-standing request to the GM; the action and the targets meant ride in its words */
     const names = (own.targets ?? []).map((id) => facts.view?.ledger?.[id] && facts.c?.(id)?.name).filter(Boolean).join(", ");
-    return { kind: "blocked", action: a.id, title, cost, reason: whyText(t, a.disabled), text: own.text ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
+    return { kind: "blocked", action: a.id, title, cost, unit: a.cost, stress: Number(a.stress) || 0, reason: whyText(t, a.disabled), text: own.text ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
       submit: { label: t("ITAC.ui.exception.ask"), disabled: (own.text ?? "").trim() ? null : t("ITAC.ui.exception.needText"), req: (own.text ?? "").trim() ? bar.exception.req(`${title}${names ? ` (${names})` : ""}: ${own.text.trim()}`.slice(0, 400), null, { reason: a.disabled }) : null } };
   }
   const arm = armsOf(bar, a, own, facts, t);
@@ -601,6 +605,8 @@ function declarePanel(bar, a, own, facts, t) {
   const pool = pv && Number.isFinite(pv.dice) ? { total: pv.dice, parts: [{ id: pv.attr ?? "base", dice: pv.base ?? 0 }, ...(pv.mods ?? []).map((m) => ({ label: t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source)), dice: m.dice })),
     ...(pv.pending ?? []).map((m) => ({ label: `${t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source))} (${t("ITAC.ui.needsGm")})`, dice: m.dice, pending: true }))], pending: (pv.pending ?? []).reduce((n, m) => n + m.dice, 0) } : null;
   const chance = pool && !onMap ? oddsOf(pool.total, picked[0], pv.def) : null;      // W1: with the targets on the map the chance stands over each token, not in the panel
+  /* U85: WHAT IS STILL MISSING is marked where it is chosen (the empty target place in the head, the caption of the group); the words are the tooltip of Declare */
+  const need = arm.why ? "weapon" : choice && !pickId ? "choice" : a.needsTarget && !picked.length ? "target" : chooser && !attr && !a.attrOptional ? "attr" : needsZone && !own.to ? "zone" : a.needsText && !text ? "text" : ap?.why ? "approach" : null;
   const why = arm.why ?? (choice && !pickId ? t("ITAC.ui.need.choice") : a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : chooser && !attr && !a.attrOptional ? t("ITAC.ui.need.attr") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : ap?.why ?? null);
   /* the executor refused this very declaration as against the rules (out of reach, no line of sight...): the reason stays in the panel
      with the way round it, a declaration that carries a request for an exception (a card on the GM desk; the GM's own goes there too) */
@@ -613,7 +619,8 @@ function declarePanel(bar, a, own, facts, t) {
     : a.disabled ? { reason: whyText(t, a.disabled), text: own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
       submit: { label: t("ITAC.ui.exception.ask"), disabled: why ?? ((own.why ?? "").trim() ? null : t("ITAC.ui.exception.needText")),
         req: !why && (own.why ?? "").trim() ? bar.exception.req(`${title}${picked.length ? ` (${picked.map((id) => nameOf(facts, id, t)).join(", ")})` : ""}: ${own.why.trim()}`.slice(0, 400), null, { reason: a.disabled, decl: { ...decl, action: a.id } }) : null } } : null;
-  return { kind: "declare", action: a.id, title, cost, unit: a.cost, pv: pvOf(a), choice, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, onMap, reached: !!reach, area: !!arm.decl.area,
+  return { kind: "declare", action: a.id, title, cost, unit: a.cost, stress: Number(a.stress) || 0, need, pv: pvOf(a), choice, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, onMap, reached: !!reach, area: !!arm.decl.area,
+    slot: a.needsTarget && !picked.length && onMap ? { label: t(arm.maxTargets > 1 ? "ITAC.ui.slot.picks" : "ITAC.ui.slot.pick"), tip: t("ITAC.ui.slot.tip") } : null,
     aim: onMap ? picked.map((id) => (targets ?? []).find((x) => x.id === id)).filter(Boolean).map((x) => ({ id: x.id, name: x.name, img: x.img })) : null, attrs, approach: ap, maxTargets: arm.maxTargets, weapons: arm.weapons, opts: arm.opts, notes: arm.notes,
     self: a.optTarget && !picked.length ? t("ITAC.ui.target.self", { name: bar.name ?? "" }) : null,
     dest: needsZone ? { label: t("ITAC.ui.dest"), value: own.to ? zoneText(facts, t, own.to) : null, pick: t(own.to ? "ITAC.ui.move.again" : "ITAC.ui.pick.zone") } : null,
@@ -659,7 +666,7 @@ function movePanel(bar, a, own, facts, t) {
     const decl = { to: o.to, mode: o.mode, ...(o.stress ? { stress: 1 } : {}), ...(o.force ? { force: true } : {}) };
     return { id: o.id, label: [t(`ITAC.mode.${o.mode}`, {}, cap(o.mode)), where].filter(Boolean).join(", "), cost: o.cost ?? null,
       notes: [o.cost ? costText(t, o.cost) : null, o.stress ? t("ITAC.ui.stress", { n: o.stress }) : null, o.barriers?.length ? t("ITAC.move.force", { n: o.barriers.length }) : null, o.gm ? t("ITAC.ui.needsGm") : null].filter(Boolean),
-      warn: !!(o.stress || o.barriers?.length), disabled, asking: own.ask === o.id, req: disabled ? null : a.req(decl), o, decl, pv: disabled ? null : pvCost(bar, o.cost, o.stress) };
+      warn: !!(o.stress || o.barriers?.length), disabled, why: disabled ? (mine ? wayWhy(t, facts, ref.reason, ref.params) : wayWhy(t, facts, o.disabled)) : null, asking: own.ask === o.id, req: disabled ? null : a.req(decl), o, decl, pv: disabled ? null : pvCost(bar, o.cost, o.stress) };
   };
   const board = !!facts.board;
   const hazardsOf = (o) => [...(o.barriers ?? []).map((b) => ({ border: b.border, text: t(b.element === "door" ? "ITAC.map.haz.door" : "ITAC.map.haz.wall", { n: b.armor ?? 0 }), color: "danger" })), ...(facts.hazards?.(bar.combatant, o.enters ?? o.route ?? [o.zone], o.to) ?? [])];      // D57: the spots the way enters (each with its level), else its zones
@@ -683,16 +690,16 @@ function movePanel(bar, a, own, facts, t) {
     if (here.length && spot) { const z = bare(spot), rows = here.map((o) => item(all.find((r) => r.id === o.id))), can = rows.filter((r) => !r.disabled);
       ways[z] = rows; zones.push({ zone: z, label: t("ITAC.map.move.here"), tip: t("ITAC.ui.move.near"), cost: t("ITAC.ui.move.near"), color: can.length ? "move" : "blocked", ...(can.length ? {} : { style: "dashed" }), hazards: [], more: rows.length > 1, way: rows.length === 1 && can.length ? rows[0].id : null, ask: null, menu: rows.length > 1 || !can.length }); }
     return { ...base, zones, ways, picking: zones.length > 0, bare: !asked, hint: zones.length ? t("ITAC.map.move.hint") : null,
-      ask: asked ? askBox(a, bar, asked.decl, asked.o, t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${zoneText(facts, t, asked.o.to)} (${asked.label})`) : null,
+      ask: asked ? askBox(a, bar, asked.decl, asked.o, asked.why?.text ?? t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${zoneText(facts, t, asked.o.to)} (${asked.label})`) : null,
       empty: !zones.length ? t("ITAC.move.cannot", { reason: reasonText(t, "noRoute") }) : null };
   }
   const to = own.to && byZone.has(bare(own.to)) ? bare(own.to) : null;
   const rows = to ? byZone.get(to).map(row) : [], near = opts.filter((o) => o.here || o.area).map(row);
   const asked = [...rows, ...near].find((r) => r.asking && r.disabled) ?? null;
-  const strip = (r) => ({ id: r.id, label: r.label, cost: r.cost, notes: r.notes, warn: r.warn, disabled: r.disabled, asking: !!asked && asked.id === r.id, req: r.req, pv: r.pv });
+  const strip = (r) => ({ id: r.id, label: r.label, cost: r.cost, notes: r.notes, warn: r.warn, disabled: r.disabled, why: r.why, asking: !!asked && asked.id === r.id, req: r.req, pv: r.pv });
   return { ...base, zones, picking: !to && zones.length > 0, hint: !to && zones.length ? t("ITAC.move.pickHint") : null,
     dest: to ? { zone: to, label: zoneText(facts, t, to), rows: rows.map(strip), again: t("ITAC.ui.move.again") } : null, near: to ? [] : near.map(strip),   // a zone is chosen: only its ways; "another zone" brings the rest back
-    ask: asked ? askBox(a, bar, asked.decl, asked.o, t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${zoneText(facts, t, asked.o.to)} (${asked.label})`) : null,
+    ask: asked ? askBox(a, bar, asked.decl, asked.o, asked.why?.text ?? t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${zoneText(facts, t, asked.o.to)} (${asked.label})`) : null,
     empty: !zones.length && !near.length ? t("ITAC.move.cannot", { reason: reasonText(t, "noRoute") }) : null };
 }
 /* a door as an action (open, break a locked one, work the lock): the doors of the mover's own zone, each with its state */
@@ -701,12 +708,14 @@ function doorPanel(bar, a, own, facts, t) {
   const rows = (facts.doors?.(bar.combatant) ?? []).map((d) => {
     const state = t(`ITAC.ui.door.${d.state}`, {}, String(d.state)), why = ref?.key === d.to ? ref.reason : d.actions?.[a.id] ?? null;
     const disabled = !why ? null : why === "doorState" ? t("ITAC.ui.door.is", { state }) : whyText(t, why, ref?.key === d.to ? ref.params : {});
-    return { id: d.to, label: t("ITAC.ui.door.to", { zone: zoneText(facts, t, d.zone) }), notes: [state, t("ITAC.ui.armor", { n: d.armor ?? 0 })], cost: a.cost, warn: false, disabled, asking: own.ask === d.to && !!disabled, req: disabled ? null : a.req({ to: d.to }), d, pv: disabled ? null : pvOf(a) };
+    /* U89: a door in the wrong state says which state and what to do with such a door ("This door is locked." / "Break it open.") */
+    const w = !why ? null : why === "doorState" && has(t, `ITAC.why.doorState.${d.state}`) ? wayWhy(t, facts, `doorState.${d.state}`) : wayWhy(t, facts, why, ref?.key === d.to ? ref.params : {});
+    return { id: d.to, label: t("ITAC.ui.door.to", { zone: zoneText(facts, t, d.zone) }), notes: [state, t("ITAC.ui.armor", { n: d.armor ?? 0 })], cost: a.cost, warn: false, disabled, why: w, asking: own.ask === d.to && !!disabled, req: disabled ? null : a.req({ to: d.to }), d, pv: disabled ? null : pvOf(a) };
   });
   const asked = rows.find((r) => r.asking) ?? null;
-  return { kind: "door", action: a.id, title, cost: costText(t, a.cost), rows: rows.map(({ d, ...r }) => r), borders: rows.map((r) => ({ border: r.id, label: r.notes[0], color: r.disabled ? "blocked" : "target" })),
+  return { kind: "door", action: a.id, title, cost: costText(t, a.cost), unit: a.cost, stress: Number(a.stress) || 0, rows: rows.map(({ d, ...r }) => r), borders: rows.map((r) => ({ border: r.id, label: r.notes[0], color: r.disabled ? "blocked" : "target" })),
     empty: rows.length ? null : t("ITAC.ui.door.none"),
-    ask: asked ? askBox(a, bar, { to: asked.id }, {}, t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${asked.label}`) : null };
+    ask: asked ? askBox(a, bar, { to: asked.id }, {}, asked.why?.text ?? t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${asked.label}`) : null };
 }
 /* U46: `asked` = the table waits for this very user (a card above, a roll of its own): the panel must not tell them to wait for the others */
 /* U52: THE ROLL LIVES HERE. `rolls` = the rows of rollsData that belong to this action (the dice or the sixes, with Roll / Accept /
@@ -719,7 +728,7 @@ function minePanel(i, facts, t, rolls = [], asked = false) {
   const roll = i.rolls?.[0];
   return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => ({ id: x.id, name: x.name ?? nameOf(facts, x.id, t), img: seenImg(facts, x.id) })), text: i.text ?? null, rolls,
     status: rolls.length ? null : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t(asked ? "ITAC.ui.mine.declared" : "ITAC.ui.mine.open"),      // `asked`: the card above or the line below already says who the table waits for
-    rolling: !!roll || rolls.length > 0, commands: (i.commands ?? []).map((c) => ({ id: c.id, label: labelOf(t, c.label), req: c.needs ? null : c.req, amend: c.id === "amend" })) };
+    rolling: !!roll || rolls.length > 0, commands: (i.commands ?? []).map((c) => ({ id: c.id, label: labelOf(t, c.label), req: c.needs ? null : c.req, amend: c.id === "amend" })) };      // U85: drawn as small picture buttons (dock.mjs CMD_ICON), the label is the tooltip
 }
 /* W1 (U42): the camera is the player's. The map moves the view at the start of a turn only when the active character is off this
    user's screen ("turn", what this module asks for); the switch goes round turn -> off -> all. Null where the map has no such stage. */
