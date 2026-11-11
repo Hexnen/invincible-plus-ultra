@@ -124,6 +124,7 @@ export function barModel(view, cid, ctx = {}) {
       attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders" || e.effect?.token === "orders",
       name: e.name || null, kit: e.kit ?? null, pick: Array.isArray(e.pick) ? e.pick.slice() : null, stress: e.stress?.fixed ?? 0, fxOn: e.fxOn === true, unarmed: e.unarmed === 1,      // P6
       when: typeof e.when === "string" ? e.when : null, disabled: reason,
+      pay: pay.ok && !reason ? { grant: pay.pay ?? null, stress: pay.stress ?? 0, forfeitsFull: !!pay.forfeitsFull } : null,      // U30: the unit the ledger would take for it now (the surfaces preview the cost on that slot)
       attrs: attrChoices(e), attrOptional: e.roll?.optional === true, optTarget: (e.target?.n?.[0] ?? 0) === 0 && (e.target?.n?.[1] ?? 0) > 0, wantsText: e.text === 1, opposeAttr: e.oppose?.who === "target" ? e.oppose.attr : null, about: e.when?.anyone ?? null, situational: !!e.when && typeof e.when === "object",   // P5 (flow "act")
       req: (decl = {}) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id } }), exceptionReq: (decl, text) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id, exception: { text } } }) };
   });

@@ -284,6 +284,17 @@ export function budget(L, { slot = null } = {}) {
   };
   return out;
 }
+/* U31 [B2289] [B2291]: the base pair as the TWO slots of a turn, which is how the surfaces draw it (three pips read as three actions).
+   A = the big unit: the full action, or the second quick one (the full action is then given up [L3]); B = the quick unit.
+   -> [{ id: "A", unit, as: "full" | "quick" | null, state }, { id: "B", unit: "quick", as, state }]   state: "open" | "used" | "lost";
+   `unit` is what a hand-made mark of that slot asks for (and what taking it back names); `only: "quick"` = A is open for a quick action only [L8]. */
+export function slots(b) {
+  const q = b?.quick ?? [], full = b?.full ?? "lost", q2 = q[1] ?? "lost";
+  const a = full === "used" ? { state: "used", as: "full", unit: "full" } : q2 === "used" ? { state: "used", as: "quick", unit: "quick" }
+    : full === "open" ? { state: "open", as: null, unit: "full" } : q2 === "open" ? { state: "open", as: null, unit: "quick", only: "quick" } : { state: "lost", as: null, unit: "full" };
+  const q1 = q[0] ?? "lost";
+  return [{ id: "A", ...a }, { id: "B", unit: "quick", as: q1 === "used" ? "quick" : null, state: q1 }];
+}
 /* nothing of the base pair is left */
 export const spent = (L, o = {}) => { const b = budget(L, o); return b.full !== "open" && b.quick.every((q) => q !== "open"); };
 

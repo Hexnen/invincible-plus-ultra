@@ -34,7 +34,7 @@ lang("en");
   const T = mk();
   let d = dock(T, "p1", ["H1"]);
   eq([d.show, d.onTurn, d.rest, d.canRest, d.who.name, d.chars.length], [true, true, false, false, "Atom Eve", 0], "dock: shown on the turn, cannot rest, one character");
-  eq(d.pips.map((p) => [p.unit, p.state]), [["full", "open"], ["quick", "open"], ["quick", "open"]], "dock: three pips, all open");
+  eq(d.slots.map((p) => [p.key, p.kind, p.state, p.extra]), [["a", "full", "open", false], ["b", "quick", "open", false]], "U31: two slots a turn (the big one, the quick one), both open");
   eq([d.groups[0].id, !!act(d, "slugfest"), act(d, "slugfest").disabled, act(d, "slugfest").costText, act(d, "other") ?? null, act(d, "block") ?? null], ["attack", true, null, "Full action", null, null], "dock: attacks first; 'something else' and defences are not buttons of the groups");
   ok(d.groups.every((g) => g.label && g.items.length), "dock: no empty group is drawn");
   eq([d.end.disabled, d.end.confirm, d.end.label, d.panel], [null, true, "End turn", null], "dock: end turn asks once more while actions are unused");
@@ -141,7 +141,7 @@ lang("en");
   eq(g.manual.map((m) => [m.actor, m.text, m.costs.find((c) => c.on).id]), [["Atom Eve", "swing from the crane", "quick"]], "desk: the free-form action with its form");
   eq((await T.gm(g.manual[0].resolve.req)).ok, true, "resolved by hand through the form's request");
   d = dock(T, "p1", ["H1"]);
-  ok(d.pips.some((p) => p.state === "used"), "the cost shows on the pips");
+  ok(d.slots.some((p) => p.state === "used"), "the cost shows on the slots");
   eq([d.holdOff.label.length > 0, typeof d.holdOff.disabled === "string" || d.holdOff.disabled === null], [true, true], "hold off is offered or greyed with words");
   const h = dock(T, "p1", ["H1"], { mode: "holdOff" });
   eq([h.panel.kind, h.panel.targets.every((x) => x.req?.op === "holdOff")], ["holdOff", true], "hold off: each later card carries its request");
@@ -192,7 +192,8 @@ lang("en");
   }
   lang("en");
   eq([...missing], [], "every key the model asks for without a fallback exists");
-  const fam = { "cost": ["full", "quick", "free", "none"], "band": M.BANDS.map((b) => b.id), "group": M.GROUPS, "pip": ["full", "quick"], "pip.tip": ["open", "used", "lost"], "policy": ["block", "dodge", "onBroken", "ask", "always", "never", "ko", "kill", "crit"], "reveal": ["stats", "powers", "health"], "drift": ["restore", "difference", "leave"], "mode": ["tactical", "free"], "tab": ["now", "journal", "table"], "attr": ["fighting", "agility", "strength", "reason", "intuition", "presence"] };
+  const fam = { "cost": ["full", "quick", "free", "none"], "band": M.BANDS.map((b) => b.id), "group": M.GROUPS, "pip": ["full", "quick"], "pip.tip": ["open", "used", "lost"], "slot.a": ["open", "openQuick", "used", "usedQuick", "lost"], "slot.b": ["open", "used", "lost"], "kit.how": ["auto", "assist", "hand", "off"], "vital": ["health", "resolve", "of"],
+    "stunt.tip": ["doubleDamage", "knockback", "stun", "bangHeads", "trap", "disarm", "deadlyHit", "slam", "suppressed", "trickShot", "special", "own"], "policy": ["block", "dodge", "onBroken", "ask", "always", "never", "ko", "kill", "crit"], "reveal": ["stats", "powers", "health"], "drift": ["restore", "difference", "leave"], "mode": ["tactical", "free"], "tab": ["now", "journal", "table"], "attr": ["fighting", "agility", "strength", "reason", "intuition", "presence"] };
   for (const [f, ids] of Object.entries(fam)) for (const id of ids) ok(`ITAC.ui.${f}.${id}` in EN && `ITAC.ui.${f}.${id}` in PL, `key built by template exists in both languages: ITAC.ui.${f}.${id}`);
 }
 for (const l of ["en", "pl"]) { // P5: the other actions (the list behind "More actions", the attribute a player names, a target that may be left out), the hazard tool, the karma notes, the new cards
@@ -279,5 +280,52 @@ for (const l of ["en", "pl"]) { // P5: the other actions (the list behind "More 
   eq((await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })).ok, true, "U20: an action is declared");
   const i0 = desk(T).stack[0], cmd = (g) => g.stack[0].commands.find((c) => c.id === "veto");
   eq([cmd(desk(T)).confirm, cmd(desk(T)).armed, cmd(desk(T, { sure: `${T.top().id}:veto` })).armed, cmd(desk(T, { sure: `${T.top().id}:veto` })).label === cmd(desk(T)).label, !!i0], [true, false, true, false, true], "U20: veto asks twice: the armed command reads as a question");
+}
+for (const l of ["en", "pl"]) { // U28 - U31, U23, U4: the compact dock: slots, pictures, tooltips, the cost preview, the grouped lists, the override's end buttons
+  lang(l);
+  const T = mk();
+  const VIT = { H1: { health: 4, maxHealth: 6, resolve: 3, maxResolve: 5 } };
+  const fx = (view, me, staff = false) => ({ ...facts(T, view, me, staff), vitals: (id) => VIT[id] ?? null });
+  const dk = (uid, owns, own = {}) => { const view = viewOf(T, uid, owns); return M.dockData(D.playerModel(view, { id: uid, owns }, ctx(T)), own, fx(view, uid), t); };
+  let d = dk("p1", ["H1"]);
+  eq([d.vitals.map((v) => [v.id, v.v, v.max]), d.vitals.every((v) => v.label && v.say.includes(String(v.max)))], [[["health", 4, 6], ["resolve", 3, 5]], true], `${l} U29: Health and Resolve of the driven character, with their words`);
+  eq(dock(T, "p1", ["H1"]).vitals, [], `${l} U29: no fact, no bars`);
+  eq(dk("p2", ["H2"]).vitals, [], `${l} U30: a character whose numbers the caller does not give shows none`);
+  const items = d.groups.flatMap((g) => g.items);
+  ok(items.every((a) => a.icon && a.tip && typeof a.tip.title === "string" && a.tip.title.length), `${l} U29: every button of the bar has a picture and a tooltip with its name`);
+  ok(items.filter((a) => !a.more).every((a) => (a.cost === "full" || a.cost === "quick" ? !!a.tip.cost : true)), `${l} U29: the tooltip says the price in words`);
+  eq([act(d, "slugfest").pv, act(d, "move").pv, act(d, "@more").pv ?? null], [{ slot: "a", forfeits: false, stress: 0 }, { slot: "b", forfeits: false, stress: 0 }, null], `${l} U30: a full action previews the big slot, a quick one the quick slot, a list nothing`);
+  eq([d.hotbar.open, dk("p1", ["H1"], { hotbar: true }).hotbar.open, d.hotbar.label !== dk("p1", ["H1"], { hotbar: true }).hotbar.label], [false, true, true], `${l} U28: the macro bar is folded by default; the button says what it will do`);
+  eq([d.other.tip.title.length > 0, d.holdOff.tip.title.length > 0], [true, true], `${l} U29: the tail buttons carry tooltips`);
+  /* the slots follow the ledger */
+  eq((await T.req("p1", { op: "mark", actor: "H1", unit: "quick", on: true })).ok, true, `${l} a quick action marked`);
+  d = dk("p1", ["H1"]);
+  eq([d.slots.map((p) => [p.key, p.state]), act(d, "move").pv, act(d, "move").tip.lines.length], [[["a", "open"], ["b", "used"]], { slot: "a", forfeits: true, stress: 0 }, 1], `${l} U31 / U30: the quick slot is spent; a second quick action would take the big slot, and says so`);
+  eq((await T.req("p1", { op: "mark", actor: "H1", unit: "quick", on: true })).ok, true, `${l} a second quick action marked`);
+  d = dk("p1", ["H1"]);
+  eq([d.slots.map((p) => [p.key, p.state, p.as]), d.slots[0].req, act(d, "slugfest").pv, typeof act(d, "slugfest").tip.note], [[["a", "used", "quick"], ["b", "used", "quick"]], { op: "mark", actor: "H1", unit: "quick", on: false }, null, "string"], `${l} U31: two quick actions fill both slots (never a third mark); a greyed action previews nothing and says why`);
+  eq((await T.req("p1", d.slots[0].req)).ok, true, `${l} the hand-made mark on the big slot is taken back through its own request`);
+  eq((await T.req("p1", dk("p1", ["H1"]).slots[1].req)).ok, true, `${l} and the one on the quick slot`);
+  eq(dk("p1", ["H1"]).slots.map((p) => p.state), ["open", "open"], `${l} both slots are free again`);
+  /* U23: the list behind More actions: rows with a picture, the unit and a tooltip */
+  d = dk("p1", ["H1"], { mode: "menu" });
+  eq([d.panel.list, d.panel.groups.length, d.panel.groups[0].rows.length === d.panel.rows.length, d.panel.rows.every((r) => r.icon && r.tip.title === r.label && (r.cost === "full" || r.cost === "quick") && r.pv)], ["menu", 1, true, true], `${l} U23: More actions is one list of rows, each with its picture, its unit, its tooltip and its preview`);
+  /* U23: the stunt card */
+  eq((await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })).ok, true, `${l} an attack is declared`);
+  const g = desk(T, { override: T.top().id });
+  const ovr = g.stack[0].override, end = ovr.filter((c) => c.group === "end");
+  eq([end.map((c) => [c.id, c.confirm, c.armed, !!c.icon]), ovr.filter((c) => c.group !== "end").some((c) => c.confirm)], [[["abortRefund", true, false, true], ["abortSpent", true, false, true], ["manual", true, false, true]], false], `${l} U4: the three ways to end an action ask twice, nothing else does`);
+  eq(desk(T, { override: T.top().id, sure: `${T.top().id}:abortSpent` }).stack[0].override.filter((c) => c.armed).map((c) => c.id), ["abortSpent"], `${l} U4: only the one clicked is armed`);
+  noKeys(dk("p1", ["H1"], { mode: "kit" }), `${l} compact dock`);
+  eq((await T.gm(end[0].req)).ok, true, `${l} aborted with a refund through the override's request`);
+}
+{ // U23: the stunts of a card stand in groups and say what they do (askData on a stunts prompt)
+  lang("en");
+  const mkP = (options) => ({ id: "p", kind: "stunts", about: "H1", to: { combatant: "H1" }, n: 2, max: 2, options });
+  const o = (id, data, more = {}) => ({ id, label: `ITAC.stunt.${data.stunt}`, data, ...more });
+  const T = mk(), view = viewOf(T, "p1", ["H1"]);
+  const a = M.askData(mkP([o("s1", { stunt: "doubleDamage" }), o("s2", { stunt: "bangHeads", extra: "H2" }), o("s3", { stunt: "stun", onExtra: true, target: "H2" })]), { t, facts: facts(T, view, "p1"), own: {} });
+  eq(a.options.map((x) => [x.icon, x.group?.id, typeof x.tip?.lines?.[0]]), [["stunt:doubleDamage", "main", "string"], ["stunt:bangHeads", "more", "string"], ["stunt:stun", "on:H2", "string"]], "U23: a stunt has its picture, its group (the target, another opponent, on that opponent) and what it does");
+  eq([a.options[1].group.label.length > 0, /Rex/.test(a.options[2].group.label), a.pvFor], [true, true, null], "U23: the groups are captioned; no preview without the asked character's own bar");
 }
 done("check-ui");

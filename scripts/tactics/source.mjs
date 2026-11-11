@@ -3,8 +3,9 @@
    (flags, combatants), so it runs in node as well (check-source.mjs) and can be imported statically by those parts.
    When a combat carries the module's own state, that state is the truth; otherwise the callers fall back to scripts/yze.mjs (so a table
    that still runs yze-combat with tactical mode off loses nothing).
-   What a pip is here [L1] [B2288]: the base budget of a turn is one full and one quick action, or two quick ones. Three pips are shown:
-   full, quick, quick; taking the full action spends the second quick pip ("lost") and two quick actions spend the full pip [L3]. */
+   What a pip is here [L1] [B2289] [B2291]: the base budget of a turn is one full and one quick action, or two quick ones: TWO slots
+   (U31: three pips read as three actions). The big one is the full action, or the second quick one (the full action is then given
+   up [L3]); the small one is the quick action. */
 import * as S from "./state-pure.mjs";
 import * as O from "./ops-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
@@ -39,14 +40,14 @@ export const onTurn = (combat) => { const s = tacticsState(combat); return s ? O
 
 const combatantsOf = (combat) => { const c = combat?.combatants; return Array.isArray(c) ? c : c?.contents ?? (c && typeof c[Symbol.iterator] === "function" ? [...c] : []); };
 
-/** The pips of one ledger: [{ id, k, lk, unit, state: "open"|"used"|"lost" }]. k is the look the existing widgets know ("slow" = the big
-    action, "fast" = the small one), lk the label kind ("full" | "quick"). */
+/** The pips of one ledger, one per slot: [{ id, k, lk, unit, state: "open"|"used"|"lost" }]. k is the look the existing widgets know
+    ("slow" = the big slot, "fast" = the small one), lk the label kind ("full" | "quick": the big slot spent on a quick action reads
+    "quick"), unit what a hand-made mark of it asks for. */
 export function pipsOf(ledger) {
-  const b = Lg.budget(ledger);
+  const [a, b] = Lg.slots(Lg.budget(ledger));
   return [
-    { id: "tac:full", k: "slow", lk: "full", unit: "full", state: b.full },
-    { id: "tac:quick", k: "fast", lk: "quick", unit: "quick", state: b.quick[0] },
-    { id: "tac:quick2", k: "fast", lk: "quick", unit: "quick", state: b.quick[1] }
+    { id: "tac:full", k: "slow", lk: a.as ?? a.only ?? "full", unit: a.unit, state: a.state },
+    { id: "tac:quick", k: "fast", lk: "quick", unit: "quick", state: b.state }
   ];
 }
 /** Same shape as party/actions.mjs groupsFor(): [{ id, slot, slots, active, tactics, lostTurn, pips }] for the first of these tokens that

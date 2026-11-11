@@ -144,7 +144,7 @@ function read(c, isActive, ctx) {
   let acts = null;
   try {
     const g = td?.id && !c.isDefeated && !challenge ? groupsFor([td.id], td.actor ?? actor, ctx.combat)?.find((x) => x.id === c.id) : null;
-    if (g?.pips?.length && g.pips.every((p) => p.state !== "past")) acts = g.pips.map((p) => ({ k: p.k, lk: p.lk ?? p.k, used: p.state !== "open", id: g.tactics ? p.id : p.k === "fast" ? "fastAction" : p.k === "slow" ? "slowAction" : `action${g.slot}` }));   /* tactical combat (scripts/tactics/): three pips full / quick / quick with ids "tac:*"; "lost" shows as used */   // id = the status the GM buttons toggle (same ids as turn/main.mjs)
+    if (g?.pips?.length && g.pips.every((p) => p.state !== "past")) acts = g.pips.map((p) => ({ k: p.k, lk: p.lk ?? p.k, used: p.state !== "open", unit: p.unit ?? null, id: g.tactics ? p.id : p.k === "fast" ? "fastAction" : p.k === "slow" ? "slowAction" : `action${g.slot}` }));   /* tactical combat (scripts/tactics/): the two slots of a turn (full, quick) with ids "tac:*"; "lost" shows as used */   // id = the status the GM buttons toggle (same ids as turn/main.mjs)
   } catch { acts = null; }
   return {
     acts,
@@ -486,7 +486,8 @@ async function toggleAct(btn) {
   try {
     if (btn.dataset.id.startsWith("tac:")) {   // tactical combat: ask the executor (api.tactics.mark); the bar repaints from the combat update
       const api = game.modules.get("invincible-plus-ultra")?.api?.tactics;
-      const env = await api?.mark(c.id, btn.dataset.id === "tac:full" ? "full" : "quick", btn.dataset.st === "open", c.parent);
+      const unit = tiles.get(id)?.item?.acts?.find((p) => p.id === btn.dataset.id)?.unit ?? (btn.dataset.id === "tac:full" ? "full" : "quick");      // U31: the big slot spent on a quick action is taken back as one
+      const env = await api?.mark(c.id, unit, btn.dataset.st === "open", c.parent);
       if (env && env.ok === false) ui.notifications.warn(api.errText(env.error), { console: false });
     } else await toggleActionMark(actor, c, btn.dataset.id);
   } catch (e) { console.warn(LOG, "action toggle", e); } finally { gmBusy = false; }

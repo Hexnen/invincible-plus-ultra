@@ -2,6 +2,10 @@
      h("button.ita-opt", { text, tip, fk, disabled, on: { click }, attrs, data }, ...children)   one element
      swap(host, nodes)        replace a host's children and keep the keyboard focus / caret on the element with the same `fk`
      askCard(a, handlers)     one question (model-pure.askData) as a caption card: the player's prompts and the desk's cards are the same thing
+     actIcon(key)             the picture of an action, a stunt or an answer (Font Awesome solid, shipped by Foundry); speed(cost): THE MARK OF
+                              SPEED, the shape of the slot the thing takes: a long bar = the full action, a short bar = a quick one, nothing = no action
+     tipHtml(tip)             a tooltip of the model ({ title, cost, lines, note }) as escaped HTML; every such tooltip is also the aria-label
+     props.pv                 what the element would spend ({ slot, forfeits, stress }): the dock previews it on hover and on focus (U30)
    Every surface is rebuilt from its data on a change of the fight (never per frame); `fk` (focus key) is what survives the rebuild. */
 
 export function h(sel, props = {}, ...kids) {
@@ -10,7 +14,9 @@ export function h(sel, props = {}, ...kids) {
   if (cls.length) el.className = cls.join(" ");
   const p = props ?? {};
   if (p.text !== undefined && p.text !== null) el.textContent = String(p.text);
-  if (p.tip) { el.dataset.tooltip = String(p.tip); if (!p.text && !p.attrs?.["aria-label"]) el.setAttribute("aria-label", String(p.tip)); }
+  if (p.tip && typeof p.tip === "object") { el.dataset.tooltipHtml = tipHtml(p.tip); if (!p.attrs?.["aria-label"]) el.setAttribute("aria-label", tipText(p.tip)); }
+  else if (p.tip) { el.dataset.tooltip = String(p.tip); if (!p.text && !p.attrs?.["aria-label"]) el.setAttribute("aria-label", String(p.tip)); }
+  if (p.pv) { el.dataset.pv = "1"; if (p.pv.slot) el.dataset.pvSlot = p.pv.slot; if (p.pv.forfeits) el.dataset.pvForfeits = "1"; if (p.pv.stress) el.dataset.pvStress = String(p.pv.stress); if (p.pvFor) el.dataset.pvFor = String(p.pvFor); }
   if (p.fk) el.dataset.fk = String(p.fk);
   for (const [k, v] of Object.entries(p.attrs ?? {})) if (v !== null && v !== undefined && v !== false) el.setAttribute(k, v === true ? "" : String(v));
   for (const [k, v] of Object.entries(p.data ?? {})) if (v !== null && v !== undefined) el.dataset[k] = String(v);
@@ -25,6 +31,29 @@ export function h(sel, props = {}, ...kids) {
   return el;
 }
 export const icon = (name) => h(`i.fa-solid.${name}`, { attrs: { "aria-hidden": "true" } });
+
+/* ---------- U29: pictures, the mark of speed, tooltips ---------- */
+const ICONS = {
+  slugfest: "fa-hand-fist", shoot: "fa-crosshairs", grapple: "fa-people-pulling", charge: "fa-meteor", grappleAttack: "fa-hand-back-fist", release: "fa-hand", ram: "fa-car-burst",
+  move: "fa-person-running", openDoor: "fa-door-open", breachDoor: "fa-hammer", unseal: "fa-unlock-keyhole", fastball: "fa-baseball",
+  orders: "fa-bullhorn", objective: "fa-puzzle-piece", vehicleEnter: "fa-car-side", vehicleExit: "fa-person-walking-arrow-right", vehicleStart: "fa-key", vehicleHandle: "fa-road",
+  pickUp: "fa-hand-holding", scan: "fa-binoculars", banter: "fa-comment", useItem: "fa-toolbox", usePower: "fa-bolt", breakLift: "fa-dumbbell", technology: "fa-microchip",
+  stabilize: "fa-kit-medical", rally: "fa-flag", recoverResolve: "fa-battery-half", persuade: "fa-handshake", saveBystanders: "fa-people-group", shakeOff: "fa-rotate",
+  breakFree: "fa-link-slash", escapeTrap: "fa-dungeon", escapeSnare: "fa-scissors", escapeImmobilised: "fa-unlock", extinguish: "fa-fire-extinguisher",
+  "@more": "fa-ellipsis", "@kit": "fa-star", "@other": "fa-pen", "@hold": "fa-hourglass-half", "@end": "fa-forward-step",
+  "kit:power": "fa-bolt", "kit:boost": "fa-angles-up", "kit:limit": "fa-triangle-exclamation", "kit:talent": "fa-medal", "kit:drawback": "fa-heart-crack", "kit:gear": "fa-toolbox",
+  "stunt:doubleDamage": "fa-burst", "stunt:knockback": "fa-arrow-right-from-bracket", "stunt:stun": "fa-face-dizzy", "stunt:bangHeads": "fa-people-arrows", "stunt:trap": "fa-dungeon", "stunt:disarm": "fa-hand-holding",
+  "stunt:deadlyHit": "fa-skull", "stunt:slam": "fa-angles-right", "stunt:suppressed": "fa-arrows-down-to-line", "stunt:trickShot": "fa-bullseye", "stunt:special": "fa-star", "stunt:own": "fa-pen",
+  "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark",
+};
+export const actIcon = (key) => icon(ICONS[key] ?? "fa-circle-dot");
+/** the mark of speed: the shape of the slot the thing takes (long = full action, short = quick action); what costs no action carries none */
+export const speed = (cost) => (cost === "full" || cost === "quick" ? h("span.ita-spd", { data: { unit: cost }, attrs: { "aria-hidden": "true" } }) : null);
+const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
+/** a tooltip of the model as HTML (Foundry cleans it again); names of items and characters are escaped here */
+export const tipHtml = (tip) => `<div class="ita-tt"><b>${esc(tip.title)}</b>${tip.cost ? `<small>${esc(tip.cost)}</small>` : ""}${(tip.lines ?? []).map((l) => `<p>${esc(l)}</p>`).join("")}${tip.note ? `<em>${esc(tip.note)}</em>` : ""}</div>`;
+export const tipText = (tip) => [tip.title, tip.cost, ...(tip.lines ?? []), tip.note].filter(Boolean).join(", ");
 
 /** Replace the children of `host`; whoever had the focus (by `fk`) keeps it, with the caret where it was. */
 export function swap(host, nodes) {
@@ -45,8 +74,6 @@ export function face(img, name, cls = "ita-face") {
   if (img) { const i = h("img", { attrs: { alt: "", decoding: "async", src: img } }); box.append(i); } else box.append(h("b", { text: String(name || "?").trim().charAt(0).toUpperCase() }));
   return box;
 }
-/** the glyph of a cost, the same pair the turn tray and the party pips use (full = play, quick = forward) */
-export const costIcon = (cost) => (cost === "full" ? icon("fa-play") : cost === "quick" ? icon("fa-forward") : cost === "free" ? icon("fa-bolt") : null);
 
 const seen = new Set();          // questions already shown once: only a new one plays the entrance
 /** One question. handlers = { send(req), pick(promptId, optionId, max), text(promptId, value), always(promptId, on), zone(option, ask),
@@ -55,20 +82,25 @@ export function askCard(a, handlers = {}) {
   const fresh = !seen.has(a.id);
   seen.add(a.id);
   if (seen.size > 400) seen.clear();
-  const opt = (o) => {
-    const b = h("button.ita-opt", {
-      fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.disabled ?? null,
-      attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.disabled].filter(Boolean).join(", ") },
-      data: { pass: o.pass ? "1" : null },
-      on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
-    }, h("span.ita-opt-l", { text: o.label }), o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null, o.disabled ? h("span.ita-opt-why", { text: o.disabled }) : null);
-    return b;
-  };
+  /* an answer: its picture (a reaction, a stunt), its name, the mark of its speed and its Resolve price, then the chance; what the
+     marks stand for is said in words in the aria-label and, for a stunt, in its tooltip */
+  const opt = (o) => h("button.ita-opt", {
+    fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.disabled ?? o.tip ?? null, pv: o.pv, pvFor: a.pvFor,
+    attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled].filter(Boolean).join(", ") },
+    data: { pass: o.pass ? "1" : null, ic: o.icon ? "1" : null },
+    on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
+  }, o.icon ? actIcon(o.icon) : null,
+  h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(o.unit), o.stress ? h("b.ita-rs", { text: `-${o.stress}` }) : null),
+    !o.unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null, o.disabled ? h("span.ita-opt-why", { text: o.disabled }) : null));
+  /* U23: the stunts stand in their groups (on the target; another opponent; on that opponent), each group after its caption */
+  const groups = [];
+  for (const o of a.options) { const id = o.group?.id ?? ""; let g = groups.find((x) => x.id === id); if (!g) groups.push((g = { id, label: o.group?.label ?? null, items: [] })); g.items.push(o); }
   return h(`article.ita-ask${fresh ? ".ita-new" : ""}`, { data: { kind: a.kind, proxy: a.proxy ? "1" : null, wide: a.options.length > 4 ? "1" : null } },
-    h("header.ita-head", {}, h("h3.ita-plate", { text: a.title }), a.about ? h("span.ita-about", { text: a.about }) : null),
+    h("header.ita-head", {}, h("h3.ita-plate", { text: a.title }), a.about ? h("span.ita-about", { text: a.about }) : null, a.multi && a.kind === "stunts" ? h("b.ita-count", { text: `${a.multi.n}/${a.multi.max}` }) : null),
     a.lines.map((l) => (typeof l === "string" ? h("p.ita-line", { text: l }) : h("blockquote.ita-quote", {}, h("span", { text: l.quote }), l.by ? h("cite", { text: l.by }) : null))),
     a.tokens?.length ? h("div.itd-chips", {}, a.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${a.id}:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => handlers.pick?.(`tk:${a.id}`, k.id, 12) } }, h("span", { text: `${k.label} ${k.source}` })))) : null,
-    h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(opt)),
+    groups.length > 1 ? groups.map((g) => h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(opt))))
+      : h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(opt)),
     a.free ? h("input.ita-text", { fk: `text:${a.id}`, attrs: { type: "text", maxlength: 300, placeholder: a.free.placeholder, "aria-label": a.free.placeholder, value: a.free.text }, on: { input: (e, el) => handlers.text?.(a.id, el.value) } }) : null,
     a.always ? h("label.ita-check", {}, h("input", { fk: `always:${a.id}`, attrs: { type: "checkbox", checked: a.always.on }, on: { change: (e, el) => handlers.always?.(a.id, el.checked) } }), h("span", { text: a.always.label })) : null,
     a.submit ? h("button.ita-submit", { fk: `submit:${a.id}`, text: a.submit.label, disabled: !!a.submit.disabled, tip: a.submit.disabled, on: { click: () => a.submit.req && handlers.send?.(a.submit.req) } }) : null);

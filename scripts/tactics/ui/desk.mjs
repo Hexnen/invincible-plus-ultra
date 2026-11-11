@@ -27,7 +27,9 @@ const send = (req, after) => handlers.send?.(req, after);
 
 function ensure(label) {
   if (root?.isConnected) return;
-  root = h("div", { attrs: { id: ID, role: "region", "aria-label": label } });
+  root = h("div", { attrs: { id: ID, role: "region", "aria-label": label }, data: { tooltipClass: "ita-tip" } });
+  root.addEventListener("focusin", (e) => { try { const el = e.target.closest?.("[data-tooltip], [data-tooltip-html]"); if (el?.matches(":focus-visible")) handlers.tipShow?.(el); } catch { /* a courtesy */ } });
+  root.addEventListener("focusout", () => { try { handlers.tipHide?.(); } catch { /* a courtesy */ } });
   handleBtn = h("button.igd-handle", { fk: "handle", on: { click: () => set({ collapsed: !last?.d?.collapsed, touched: true }) } });
   box = h("section.igd");
   root.append(handleBtn, box);
@@ -75,19 +77,25 @@ const num = (c) => {
     h("span.igd-step", {}, h("button", { fk: `m:${c.id}`, tip: "-1", on: { click: () => setVal(c.id, clamp(cur - 1)) } }, icon("fa-minus")),
       h("input", { fk: `n:${c.id}`, attrs: { type: "number", min: c.min, max: c.max, value: cur, "aria-label": c.label }, on: { change: (e, el) => setVal(c.id, clamp(el.value)) } }),
       h("button", { fk: `p:${c.id}`, tip: "+1", on: { click: () => setVal(c.id, clamp(cur + 1)) } }, icon("fa-plus"))),
-    h("button.igd-set", { fk: `s:${c.id}`, text: last.d.labels.set, on: { click: () => send(c.req(clamp(cur))) } }));
+    h("button.igd-set", { fk: `s:${c.id}`, tip: `${last.d.labels.set}: ${c.label}`, on: { click: () => send(c.req(clamp(cur))) } }, icon("fa-check")));
 };
 const choice = (c) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: c.label }), h("span.igd-seg", {}, c.choices.map((x) => h("button", { fk: `c:${c.id}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(c.value === x.id) }, on: { click: () => send(x.req) } }))));
 const select = (c, key) => h("div.igd-ctl", { data: { type: "select" } }, h("span.igd-cl", { text: c.label }),
   h("select", { fk: `sel:${key}`, attrs: { "aria-label": c.label }, on: { change: (e, el) => { const x = c.choices.find((q) => q.id === el.value); el.value = ""; if (x) send(x.req); } } }, h("option", { text: "…", attrs: { value: "" } }), c.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id } }))));
-const button = (c) => h(`button.igd-btn${c.danger ? ".igd-danger" : ""}`, { fk: `b:${c.id}`, text: c.label, on: { click: () => send(c.req, c.id === "manual" || c.id.startsWith("abort") ? { override: null } : undefined) } });
+/* U4: a button of the override panel. Skip says its name; the three ways to end the action are pictures that ARM on the first click
+   (the button then spells itself out) and act on the second, so a slip of the pointer ends nothing */
+const OVR_ICON = { skip: "fa-forward-step", refund: "fa-rotate-left", spent: "fa-ban", hand: "fa-hand" };
+const button = (c, inst) => (c.confirm
+  ? h(`button.igd-btn.igd-ovb${c.danger ? ".igd-danger" : ""}${c.armed ? ".igd-sure" : ""}`, { fk: `b:${inst}:${c.id}`, tip: c.armed ? null : c.label, attrs: { "aria-label": c.label, "aria-pressed": String(!!c.armed) },
+    on: { click: () => (c.armed ? send(c.req, { override: null, sure: null }) : set({ sure: `${inst}:${c.id}` })) } }, icon(OVR_ICON[c.icon] ?? "fa-circle"), c.armed ? h("span", { text: c.label }) : null)
+  : h("button.igd-btn", { fk: `b:${inst}:${c.id}`, on: { click: () => send(c.req) } }, c.icon ? icon(OVR_ICON[c.icon] ?? "fa-circle") : null, h("span", { text: c.label })));
 
 function override(i, L) {
   const by = (g) => i.override.filter((c) => c.group === g);
-  const draw = (c) => (c.type === "number" ? num({ ...c, id: `${i.id}:${c.id}` }) : c.type === "choice" ? choice(c) : c.type === "select" ? select(c, `${i.id}:${c.id}`) : button(c));
+  const draw = (c) => (c.type === "number" ? num({ ...c, id: `${i.id}:${c.id}` }) : c.type === "choice" ? choice(c) : c.type === "select" ? select(c, `${i.id}:${c.id}`) : button(c, i.id));
   return h("div.igd-ovr", {}, ["dice", "result", "step", "end"].map((g) => {
     const list = by(g), extra = g === "result" && i.retarget ? [select(i.retarget, `${i.id}:retarget`)] : [];
-    return list.length || extra.length ? h("fieldset.igd-og", { data: { g } }, h("legend", { text: L.groups[g] }), list.map(draw), extra) : null;
+    return list.length || extra.length ? h("div.igd-og", { data: { g }, attrs: { role: "group", "aria-label": L.groups[g] } }, list.map(draw), extra) : null;
   }));
 }
 function inst(i, L) {

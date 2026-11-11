@@ -1,24 +1,33 @@
 /* Tactical combat, the surfaces: THE ACTION DOCK (the player's surface; the same dock serves the GM driving an NPC). DOM + placement only:
    main.mjs hands over the render data of model-pure.dockData and receives clicks through configure({ ... }). No Foundry documents here.
-   WHERE: bottom centre, 6 px above the macro bar: the place of the turn tray, which this dock replaces while tactical combat runs
-   (its pips are the budget chips here, its End turn is the red button). Placement is the tray's: measured, never per frame; pushed clear
-   of the party column and the map's pins panel (left), of the sidebar, the chat notifications and the GM desk (right); a window too
-   narrow lets the bar wrap, and under TIGHT px of room the two side buttons (Something else, Hold off) keep only their glyph.
-   HEIGHT (U5, U6): the bar is one flow of buttons (who, the action groups parted by a rule, the tail), two rows at 1366 px. What stands
-   above it (panel, questions) ends below whatever hangs from the top of the window over the dock's width (the initiative bar, the map's
-   orbit strip): each of them scrolls inside its share instead of climbing over those. Tooltips open away from the other buttons: up from
-   the bar's first row, down from its last (place() says which).
-   STRUCTURE (bottom up):  waiting line  <  the bar  <  the panel of the armed action  <  the questions asked of this user.
-     bar:   [character tabs] [face, name, budget chips, bonus dice, statuses] [action groups] [Something else] [Hold off] [End turn]
-     panel: declare (target chips + map pick, dice, chance band, Declare) | blocked (reason + ask the GM) | something else | hold off |
-            the own action in progress (what it waits for, change / cancel)
-   RESTING (not the user's turn, nothing armed, nothing asked): only the who block; the chevron opens the bar to look or to ask for an
-   exception. A question addressed to the user always shows, whoever's turn it is. */
-import { h, icon, swap, face, costIcon, askCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
+   WHERE (U28): at the bottom edge, centred in the free part of the window. Foundry's macro bar is folded away while the dock is up
+   (body.ita-tactics, styles/tactics-ui.css; the keyboard button on the dock brings it back, and then the dock stands above it as
+   before). Pushed clear of the party column and the map's panels (left), of the sidebar, the chat notifications and the GM desk
+   (right). The map's director bar keeps its corner: the dock starts right of it when that leaves room, else stands above it.
+   ONE ROW (U29), read like the unit bar of a tactics game, left to right:
+     UNIT    face, name, zone; Health and Resolve as two bars with their numbers
+     SLOTS   the two slots of a turn (U31): the long one is the full action (or a second quick one), the short one the quick action; a
+             further one only when the character has it; then bonus dice and statuses as small chips
+     ACTIONS one picture per action, in the groups of the rules, each carrying THE MARK OF SPEED (dom.speed: long bar = full action,
+             short bar = quick action, none = no action) and its Resolve price; the name, the price in words and the reason of a greyed
+             one are the tooltip (hover and keyboard focus) and the aria-label; a click arms it and the panel's head says it again
+     TAIL    Something else, Hold off, the macro bar, End turn
+   When the row does not fit (data-tight, measured in place()), the actions take a second row under the unit.
+   COST PREVIEW (U30): hovering or focusing anything that carries `pv` (an action, a row of a list, a way of moving, an answer on a
+   card, Declare) lights the slot it would spend and shows the Resolve it would cost on the Resolve bar. Only for the character the
+   dock drives; nothing is rebuilt for it (attributes on the unit block).
+   STRUCTURE (bottom up):  the bar  <  the status line (rolls owed, whose turn, who the table waits for, the last news)  <  the panel of
+   the armed action  <  the questions asked of this user. The panel and the questions scroll inside what is left under the initiative bar.
+     panel: declare (target chips + map pick, dice, chance band, Declare) | blocked (reason + ask the GM) | a list (More actions,
+            Abilities: rows by kind) | something else | hold off | the own action in progress (what it waits for, change / cancel)
+   RESTING (not the user's turn, nothing armed, nothing asked): the unit and its slots; the chevron opens the bar to look or to ask for
+   an exception. A question addressed to the user always shows, whoever's turn it is. */
+import { h, icon, swap, face, speed, actIcon, tipText, askCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
 
 const ID = "invincible-tactics-dock";
 const GAP = 6;
-const TIGHT = 1000;      // px of room for the bar below which the side buttons are glyphs
+const EDGE = 6;          // px between the dock and the bottom edge of the window
+const ROOM_BESIDE = 560; // px the dock wants to stand beside the map's director bar rather than above it
 /* what hangs from the top of the window and must stay readable above the dock: the initiative bar's tiles and their pip tabs, the map's orbit strip */
 const TOP_OBSTACLES = "#invincible-combat-bar .icbar-tile, #invincible-combat-bar .icbar-acts:not([hidden]), #invincible-combat-bar .icbar-gma:not([hidden]), #mm-orbit-strip";
 /* panels of other modules at the left edge that reach down into the dock's band (the map's pins / filter panel, its VRAM meter) */
@@ -31,36 +40,51 @@ const send = (req, after) => handlers.send?.(req, after);
 
 function ensure(label) {
   if (root?.isConnected) return;
-  root = h(`div.itd-hidden`, { attrs: { id: ID, role: "region", "aria-label": label } });
+  root = h(`div.itd-hidden`, { attrs: { id: ID, role: "region", "aria-label": label }, data: { tooltipDirection: "UP", tooltipClass: "ita-tip" } });
   stack = h("div.itd-stack");
   root.append(stack);
+  /* U30: the cost preview follows the pointer and the keyboard focus; a tooltip opens for the keyboard as it does for the pointer */
+  root.addEventListener("pointerover", (e) => preview(e.target));
+  root.addEventListener("pointerout", (e) => { if (!root.contains(e.relatedTarget) || !e.relatedTarget?.closest?.("[data-pv]")) preview(null); });
+  root.addEventListener("focusin", (e) => { preview(e.target); try { const el = e.target.closest?.("[data-tooltip], [data-tooltip-html]"); if (el?.matches(":focus-visible")) handlers.tipShow?.(el); } catch { /* a courtesy */ } });
+  root.addEventListener("focusout", () => { preview(null); try { handlers.tipHide?.(); } catch { /* a courtesy */ } });
   document.body.appendChild(root);
 }
 
-/* ---------- placement (the turn tray's algorithm, with the GM desk as one more thing on the right) ---------- */
+/* ---------- U30: the cost of what is under the pointer, on the slots and on the Resolve bar ---------- */
+function preview(from) {
+  try {
+    if (!stack) return;
+    const el = from?.closest?.("[data-pv]") ?? null, who = last?.d?.who?.id ?? null;
+    const on = el && el.getAttribute("aria-disabled") !== "true" && (!el.dataset.pvFor || el.dataset.pvFor === who) ? el : null;
+    for (const s of stack.querySelectorAll(".itd-slot")) { if (on && s.dataset.key === on.dataset.pvSlot) s.dataset.pv = on.dataset.pvForfeits ? "forfeit" : "1"; else delete s.dataset.pv; }
+    const rs = stack.querySelector('.itd-vital[data-id="resolve"]');
+    if (rs) {
+      const n = on ? Math.min(Number(on.dataset.pvStress) || 0, Number(rs.dataset.v) || 0) : 0;
+      if (n > 0) { rs.dataset.pv = "1"; rs.style.setProperty("--itd-pv", String(n)); rs.querySelector(".itd-vdelta").textContent = `-${n}`; }
+      else { delete rs.dataset.pv; rs.style.removeProperty("--itd-pv"); rs.querySelector(".itd-vdelta").textContent = ""; }
+    }
+  } catch { /* a courtesy */ }
+}
+
+/* ---------- placement ---------- */
 export function place() {
   if (!root) return;
   const W = window.innerWidth, H = window.innerHeight;
   const hot = visibleRect(document.getElementById("hotbar"));
-  /* other modules park their own strips right above the macro bar (the map director's bar): the dock stands above the highest of them */
-  let floor = hot && hot.top > H * 0.4 ? hot.top : H - 14;
-  for (const id of ["mm-dir-bar"]) { const r = visibleRect(document.getElementById(id)); if (r && r.top > H * 0.5 && r.top < floor && r.left < W * 0.6 && r.right > W * 0.4) floor = r.top; }
-  const bottom = H - floor + GAP;
-  const cx0 = hot ? (hot.left + hot.right) / 2 : W / 2;
+  let floor = hot && hot.top > H * 0.4 ? hot.top : H - EDGE + GAP;
   let lo = 12, hi = W - 12;
   /* the room above the dock: down from the lowest thing that hangs from the top over the middle of the window */
   let ceil = 8;
   for (const el of document.querySelectorAll(TOP_OBSTACLES)) { const r = visibleRect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) ceil = Math.max(ceil, r.bottom + 8); }
-  const room = Math.max(150, H - bottom - ceil);
-  root.style.setProperty("--itd-room", `${Math.round(room)}px`);
-  const yBot = H - bottom, yTop = yBot - Math.min(stack.offsetHeight || 60, room) - 4;
-  const inBand = (r) => r && r.top < yBot && r.bottom > yTop;
+  const band = (bottomY) => { const yBot = bottomY, yTop = yBot - Math.min(stack.offsetHeight || 60, Math.max(150, bottomY - ceil)) - 4; return (r) => r && r.top < yBot && r.bottom > yTop; };
+  let inBand = band(floor - GAP);
   const sb = visibleRect(document.getElementById("sidebar"));
   if (sb && sb.left > W * 0.5) hi = Math.min(hi, sb.left - 12);
   for (const m of document.querySelectorAll("#chat-notifications .chat-message")) { const r = visibleRect(m); if (inBand(r) && r.left > W * 0.3) hi = Math.min(hi, r.left - 10); }
   /* the open GM desk and a panel at the left edge that hangs lower than the top obstacles are kept clear of WHATEVER the dock's height
      is now: a dock that changed its width with every panel that opened made the buttons jump under the pointer (U6) */
-  const low = (r) => r && r.bottom > ceil + 60 && r.top < yBot;
+  const low = (r) => r && r.bottom > ceil + 60 && r.top < floor;
   for (const el of document.querySelectorAll("#invincible-tactics-desk .igd, #invincible-tactics-desk .igd-handle")) { const r = visibleRect(el); if ((el.classList.contains("igd") ? low(r) : inBand(r)) && r.left > W * 0.4) hi = Math.min(hi, r.left - 10); }
   const partyEl = document.getElementById("invincible-party"), party = visibleRect(partyEl);
   if (party && party.right < W * 0.5) {
@@ -70,19 +94,31 @@ export function place() {
   const pl = visibleRect(document.getElementById("players"));
   if (inBand(pl) && pl.right < W * 0.3) lo = Math.max(lo, pl.right + 8);
   for (const el of document.querySelectorAll(LEFT_OBSTACLES)) { const r = visibleRect(el); if (low(r) && r.right < W * 0.4) lo = Math.max(lo, r.right + 8); }
+  /* the map's director bar (GM): beside it when the dock keeps ROOM_BESIDE px, else above it */
+  const dir = visibleRect(document.getElementById("mm-dir-bar"));
+  if (dir && dir.bottom > floor - 70 && dir.top < floor && dir.right > lo && dir.left < hi) {
+    if (dir.left < W * 0.5 && hi - (dir.right + 10) >= ROOM_BESIDE) lo = Math.max(lo, dir.right + 10);
+    else if (dir.left >= W * 0.5 && dir.left - 10 - lo >= ROOM_BESIDE) hi = Math.min(hi, dir.left - 10);
+    else { floor = Math.min(floor, dir.top); inBand = band(floor - GAP); }
+  }
+  const bottom = H - floor + GAP;
+  const room = Math.max(150, H - bottom - ceil);
+  root.style.setProperty("--itd-room", `${Math.round(room)}px`);
   const avail = Math.max(280, hi - lo);
-  if (avail < TIGHT) root.dataset.tight = "1"; else delete root.dataset.tight;
   root.style.setProperty("--itd-bottom", `${Math.round(bottom)}px`);
   root.style.setProperty("--itd-maxw", `${Math.round(avail)}px`);
+  /* one row when it fits; else the actions go under the unit (measured with the row laid out unbroken) */
+  const barEl = stack.querySelector(".itd-bar");
+  delete root.dataset.tight;
+  if (barEl && barEl.scrollWidth > barEl.clientWidth + 1) root.dataset.tight = "1";
   /* the panel and the questions share what is left above the bar: the panel takes what it needs first (it is what the user is doing),
      the questions the rest; each scrolls inside its share */
   const part = (sel) => stack.querySelector(sel)?.offsetHeight ?? 0;
-  const fixed = part(".itd-bar") + part(".itd-wait") + 2 * GAP, asks = stack.querySelector(".itd-asks"), panelEl = stack.querySelector(".itd-panel");
+  const fixed = part(".itd-bar") + part(".itd-status") + 2 * GAP, asks = stack.querySelector(".itd-asks"), panelEl = stack.querySelector(".itd-panel");
   const above = Math.max(120, room - fixed);
   const panelMax = asks && panelEl ? Math.max(110, Math.round(above * 0.6)) : above;
   root.style.setProperty("--itd-panel-maxh", `${Math.round(panelMax)}px`);
   root.style.setProperty("--itd-maxh", `${Math.max(110, Math.round(above - (panelEl ? Math.min(panelEl.scrollHeight + 4, panelMax) + GAP : 0)))}px`);
-  tipSides();
   /* what floats at the bottom centre besides the dock (the module's end-of-session notice) stands above it: styles/tactics-ui.css */
   try {
     const clear = Math.round(bottom + Math.min(stack.offsetHeight, room) + 10);
@@ -91,63 +127,60 @@ export function place() {
     document.body.classList.toggle("ita-notice-wait", H - clear - 64 < ceil);
   } catch { /* no body */ }
   const w = Math.min(stack.offsetWidth, avail);
-  let cx = cx0;
+  let cx = hot ? (hot.left + hot.right) / 2 : (lo + hi) / 2;
   if (cx + w / 2 > hi) cx = hi - w / 2;
   if (cx - w / 2 < lo) cx = lo + w / 2;
   root.style.setProperty("--itd-cx", `${Math.round(cx)}px`);
 }
 
-/* U27: a tooltip of the bar opens away from the bar's other buttons: up from the first row, down from the last one (a bar of one row:
-   up, over the map; the panel above is never under the pointer's way to a neighbour) */
-function tipSides() {
-  const bar = stack.querySelector(".itd-bar");
-  if (!bar) return;
-  const btns = [...bar.querySelectorAll("button, .itd-zone, .itd-extra[data-tooltip]")], tops = btns.map((b) => b.getBoundingClientRect().top);
-  const first = Math.min(...tops), last = Math.max(...tops);
-  btns.forEach((b, i) => { b.dataset.tooltipDirection = last - first > 12 && tops[i] > (first + last) / 2 ? "DOWN" : "UP"; });
-}
-
 /* ---------- pieces ---------- */
-const GLYPH = { door: "fa-door-open", move: "fa-person-running" };
-const pip = (p) => h("button.itd-pip", { fk: `pip:${p.key}`, tip: p.tip, disabled: !p.req, data: { state: p.state, kind: p.kind }, attrs: { "aria-label": p.tip }, on: { click: () => p.req && send(p.req) } }, costIcon(p.unit), h("span", { text: p.label }));
+const slot = (p) => h("button.itd-slot", { fk: `slot:${p.key}`, tip: p.tip, disabled: !p.req, data: { key: p.key, kind: p.kind, state: p.state, as: p.as, extra: p.extra ? "1" : null }, attrs: { "aria-label": p.tip }, on: { click: () => p.req && send(p.req) } }, h("i"));
+const vital = (v) => h("div.itd-vital", { data: { id: v.id, v: v.v }, attrs: { role: "img", "aria-label": v.say, style: `--itd-v:${v.v};--itd-max:${v.max}` } },
+  icon(v.id === "health" ? "fa-heart" : "fa-bolt"), h("span.itd-vbar", {}, h("i.itd-vfill"), h("i.itd-vpv")), h("b.itd-vnum", {}, h("span", { text: String(v.v) }), h("small", { text: `/${v.max}` })), h("b.itd-vdelta"));
 
-function whoBlock(d) {
+function unit(d) {
   const w = d.who;
-  return h("div.itd-who", {},
+  return [h("div.itd-unit", {},
     d.chars.length ? h("div.itd-chars", { attrs: { role: "group" } }, d.chars.map((c) => h(`button.itd-char${c.onTurn ? ".itd-char-turn" : ""}${c.asked ? ".itd-char-asked" : ""}`, { fk: `char:${c.id}`, tip: c.name, attrs: { "aria-pressed": String(c.sel) }, on: { click: () => set({ sel: c.id, armed: null, mode: null, targets: [], tokens: [], text: "" }) } }, face(c.img, c.name)))) : null,
     !d.chars.length ? face(w.img, w.name, "ita-face.itd-face") : null,
     h("div.itd-id", {},
       h("span.itd-nameline", {}, h("span.itd-name", { text: w.name }), w.zone ? h("span.itd-zone", { tip: w.zone.tip, attrs: { tabindex: "0", "aria-label": w.zone.tip } }, icon("fa-location-dot"), h("span", { text: w.zone.label })) : null),
-      h("div.itd-pips", { attrs: { role: "group" } }, d.pips.map(pip), d.extras.map((x) => h(`span.itd-extra`, { text: x.label, tip: x.tip || null, data: { kind: x.kind } })), w.free ? h("span.itd-extra", { text: w.freeLabel, data: { kind: "free" } }) : null)));
+      d.vitals.length ? h("div.itd-vitals", {}, d.vitals.map(vital)) : null)),
+  h("div.itd-slots", { attrs: { role: "group", "aria-label": handlers.label?.("slots") } }, d.slots.map(slot),
+    d.extras.map((x) => h(`span.itd-extra`, { text: x.label, tip: x.tip || null, data: { kind: x.kind }, attrs: x.tip ? { tabindex: "0" } : {} })), w.free ? h("span.itd-extra", { text: w.freeLabel, data: { kind: "free" } }) : null)];
 }
+const rs = (n) => (n ? h("b.ita-rs", { text: `-${n}`, attrs: { "aria-hidden": "true" } }) : null);
 function actionBtn(a) {
-  /* P5: the rows of the action tables that are not on the bar open as a list */
-  if (a.more) { const m = a.mode ?? "menu";      // "More actions", and (P6) the character's own abilities: one button each, a list behind it
-    return h(`button.itd-ghost.itd-more${a.armed ? ".itd-armed" : ""}`, { fk: `more:${m}`, tip: a.tip, attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true" },
-      on: { click: () => set(last?.ui?.mode === m ? { mode: null } : { mode: m, armed: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } }, icon(m === "kit" ? "fa-bolt" : "fa-ellipsis"), h("span", { text: a.label })); }
-  return h(`button.itd-act${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.disabled ? a.disabled : a.costText, attrs: { "aria-pressed": String(!!a.armed), "aria-label": [a.label, a.costText, a.disabled].filter(Boolean).join(", ") },
-    on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, costIcon(a.cost) ?? (GLYPH[a.glyph] ? icon(GLYPH[a.glyph]) : null), h("span", { text: a.label }));
+  /* P5 / P6: the other rows of the action tables, and the character's own abilities: one button each, a list behind it */
+  if (a.more) { const m = a.mode ?? "menu";
+    return h(`button.itd-ic.itd-ic-more${a.armed ? ".itd-armed" : ""}`, { fk: `more:${m}`, tip: a.tip, attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true", "aria-label": a.label },
+      on: { click: () => set(last?.ui?.mode === m ? { mode: null } : { mode: m, armed: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } }, actIcon(a.icon), icon("fa-caret-up")); }
+  return h(`button.itd-ic${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.tip, pv: a.pv, attrs: { "aria-pressed": String(!!a.armed), "aria-label": tipText(a.tip) },
+    on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, actIcon(a.icon), speed(a.cost), rs(a.stress));
 }
+const hotbarBtn = (d) => h("button.itd-mini", { fk: "hotbar", tip: d.hotbar.label, attrs: { "aria-pressed": String(d.hotbar.open), "aria-label": d.hotbar.label }, on: { click: () => set({ hotbar: !d.hotbar.open }) } }, icon("fa-keyboard"));
 function bar(d) {
   const e = d.end;
   return h("div.itd-bar", {},
-    whoBlock(d),
-    d.rest ? h("button.itd-peek", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up")) : [
-      d.groups.map((g) => h("div.itd-group", { attrs: { role: "group", "aria-label": g.label } }, g.items.map(actionBtn))),
+    unit(d),
+    d.rest ? h("div.itd-tail", {}, hotbarBtn(d), h("button.itd-mini", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up"))) : [
+      h("div.itd-acts", {}, d.groups.map((g) => h("div.itd-group", { attrs: { role: "group", "aria-label": g.label } }, g.items.map(actionBtn)))),
       h("div.itd-tail", {},
-        h(`button.itd-ghost${d.other.armed ? ".itd-armed" : ""}`, { fk: "other", tip: `${d.other.label}: ${d.other.tip}`, attrs: { "aria-pressed": String(d.other.armed), "aria-label": d.other.label }, on: { click: () => set(d.other.armed ? { mode: null } : { mode: "other", armed: null, text: "", endArmed: false }) } }, icon("fa-pen"), h("span", { text: d.other.label })),
-        h(`button.itd-ghost${d.holdOff.armed ? ".itd-armed" : ""}`, { fk: "hold", disabled: !!d.holdOff.disabled, tip: `${d.holdOff.label}: ${d.holdOff.disabled ?? d.holdOff.tip}`, attrs: { "aria-pressed": String(d.holdOff.armed), "aria-label": d.holdOff.label }, on: { click: () => set(d.holdOff.armed ? { mode: null } : { mode: "holdOff", armed: null, endArmed: false }) } }, icon("fa-hourglass-half"), h("span", { text: d.holdOff.label })),
-        h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}`, { fk: "end", disabled: !!e.disabled, tip: e.tip, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && send(e.req, { endArmed: false })) } }, icon("fa-forward-step"), h("span", { text: e.label })),
-        d.canRest ? h("button.itd-peek", { fk: "peek", tip: handlers.label?.("cancel"), on: { click: () => set({ peek: false, armed: null, mode: null }) } }, icon("fa-chevron-down")) : null),
+        h(`button.itd-ic.itd-ic-ghost${d.other.armed ? ".itd-armed" : ""}`, { fk: "other", tip: d.other.tip, attrs: { "aria-pressed": String(d.other.armed), "aria-label": d.other.label }, on: { click: () => set(d.other.armed ? { mode: null } : { mode: "other", armed: null, text: "", endArmed: false }) } }, actIcon("@other")),
+        h(`button.itd-ic.itd-ic-ghost${d.holdOff.armed ? ".itd-armed" : ""}`, { fk: "hold", disabled: !!d.holdOff.disabled, tip: d.holdOff.tip, attrs: { "aria-pressed": String(d.holdOff.armed), "aria-label": d.holdOff.label }, on: { click: () => set(d.holdOff.armed ? { mode: null } : { mode: "holdOff", armed: null, endArmed: false }) } }, actIcon("@hold")),
+        h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}`, { fk: "end", disabled: !!e.disabled, tip: e.tip, attrs: { "aria-label": `${e.label}. ${e.tip}` }, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && send(e.req, { endArmed: false })) } }, actIcon("@end"), h("span", { text: e.label })),
+        hotbarBtn(d),
+        d.canRest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("cancel"), on: { click: () => set({ peek: false, armed: null, mode: null }) } }, icon("fa-chevron-down")) : null),
     ]);
 }
 
 const OPT_ICON = { wreck: "fa-house-crack", area: "fa-burst", fullAuto: "fa-ellipsis" };
+const KIT_STATE = { auto: "fa-gears", assist: "fa-user-check", hand: "fa-hand", off: "fa-ban" };
 const close = () => set({ armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} });
 const textBox = (value, placeholder, key = "text") => h("textarea.itd-text", { fk: `draft:${key}`, text: value, attrs: { rows: 2, maxlength: 300, placeholder, "aria-label": placeholder }, on: { input: (e, el) => set({ [key]: el.value }) } });
-const submit = (s, cls = "") => h(`button.itd-go${cls}`, { fk: `go${cls}`, text: s.label, disabled: !!s.disabled, tip: s.disabled, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} }) } });
+const submit = (s, cls = "", pv = null) => h(`button.itd-go${cls}`, { fk: `go${cls}`, text: s.label, disabled: !!s.disabled, tip: s.disabled, pv: s.disabled ? null : pv, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} }) } });
 const cancelBtn = () => h("button.itd-x", { fk: "x", tip: handlers.label?.("cancel"), on: { click: close } }, icon("fa-xmark"));
-const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.cost ? h("span.itd-cost", { text: p.cost }) : null, cancelBtn());
+const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.cost ? h("span.itd-cost", {}, speed(p.unit), h("span", { text: p.cost })) : null, cancelBtn());
 
 function meter(c) {
   return h("div.itd-chance", {}, h("span.itd-k", { text: handlers.label?.("chance") }),
@@ -155,10 +188,10 @@ function meter(c) {
     c.defended ? h("span.itd-def", {}, h("span", { text: `${c.defended.label}: ` }), h("b", { text: c.defended.text })) : null);
 }
 /* one way to make a move / one door: the name, what it costs, and when it cannot be done the reason (a click then opens the way to ask) */
-const wayRow = (r) => h(`button.itd-way${r.asking ? ".itd-armed" : ""}`, { fk: `way:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, data: { warn: r.warn ? "1" : null },
+const wayRow = (r) => h(`button.itd-way${r.asking ? ".itd-armed" : ""}`, { fk: `way:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, pv: r.pv, data: { warn: r.warn ? "1" : null },
   attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", "), "aria-pressed": r.disabled ? String(!!r.asking) : null },
   on: { click: () => (r.disabled ? set({ ask: r.asking ? null : r.id, why: "" }) : r.req && send(r.req, { armed: null, mode: null, to: null, ask: null, why: "" })) } },
-  costIcon(r.cost), h("span.itd-way-l", { text: r.label }), h("span.itd-way-n", { text: r.notes.join(" · ") }), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null);
+  h("span.itd-way-l", {}, h("span", { text: r.label }), speed(r.cost)), h("span.itd-way-n", { text: r.notes.join(" · ") }), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null);
 const askRow = (a) => (a ? h("div.itd-pbody.itd-refused", {}, a.reason ? h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: a.reason })) : null,
   a.text !== null ? h("div.itd-col.itd-grow", {}, textBox(a.text, a.placeholder, "why")) : null,
   h("div.itd-col.itd-submit", {}, submit(a.submit, ".itd-go-ask"))) : null);
@@ -178,6 +211,16 @@ function doorPanel(p) {
     p.empty ? h("div.itd-pbody", {}, h("p.itd-hint", {}, icon("fa-door-closed"), h("span", { text: p.empty }))) : h("div.itd-pbody", {}, h("div.itd-ways", { attrs: { role: "group", "aria-label": p.title } }, p.rows.map(wayRow))),
     askRow(p.ask));
 }
+/* U23: a list behind one button (More actions; Abilities by kind). One line per entry: its picture, its name, the mark of its speed, its
+   Resolve price and, for an ability, how it is run; the words of all of them are the tooltip and the aria-label. */
+function listPanel(p) {
+  const row = (r) => h("button.itd-row", { fk: `menu:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, tip: r.tip, pv: r.pv, data: { state: r.state ?? null },
+    attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", ") }, on: { click: () => set({ armed: r.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } },
+    actIcon(r.icon), h("span.itd-row-l", { text: r.label }), speed(r.cost), rs(r.stress), r.state ? icon(KIT_STATE[r.state] ?? "fa-circle") : null);
+  return h("section.itd-panel", { data: { kind: p.kind, list: p.list } }, h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), cancelBtn()),
+    h("div.itd-lists", {}, p.groups.map((g) => h("div.itd-list", { attrs: { role: "group", "aria-label": g.label ?? p.title } }, g.label ? h("span.itd-k", { text: g.label }) : null, h("div.itd-rows", {}, g.rows.map(row))))),
+    (p.foot ?? []).map((x) => h("p.itd-hint.itd-foot", {}, icon("fa-hand"), h("span", { text: x }))));
+}
 /* P7: the ways of a challenge, one chip each, grouped by what they work on; the last chip is an idea of the player's own */
 function approach(a) {
   const chip = (key, label, on, tip, patch, dim = false) => h(`button.itd-chip.itd-chip-plain${dim ? ".itd-chip-dim" : ""}`, { fk: `ap:${key}`, tip, attrs: { "aria-pressed": String(!!on) }, on: { click: () => set(patch) } }, h("span", { text: label }));
@@ -190,11 +233,7 @@ function panel(p) {
   if (!p) return null;
   if (p.kind === "move") return movePanel(p);
   if (p.kind === "door") return doorPanel(p);
-  if (p.kind === "menu") return h("section.itd-panel", { data: { kind: p.kind } }, h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), cancelBtn()),
-    h("div.itd-pbody", {}, h("div.itd-ways.itd-menu", { attrs: { role: "group", "aria-label": p.title } }, p.rows.map((r) => h("button.itd-way", { fk: `menu:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true,
-      attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", ") }, on: { click: () => set({ armed: r.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } },
-      costIcon(r.cost), h("span.itd-way-l", { text: r.label }), h("span.itd-way-n", { text: r.notes.join(" · ") }), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null))),
-      (p.foot ?? []).map((x) => h("p.itd-hint.itd-foot", {}, icon("fa-hand"), h("span", { text: x })))));
+  if (p.kind === "menu") return listPanel(p);
   if (p.kind === "declare") {
     const toggle = (key, id, max = 1) => { const cur = (last.ui?.[key] ?? []).slice(); const i = cur.indexOf(id); if (i >= 0) cur.splice(i, 1); else { cur.push(id); while (cur.length > max) cur.shift(); } set({ [key]: cur }); };
     return h("section.itd-panel", { data: { kind: p.kind } }, head(p),
@@ -221,11 +260,11 @@ function panel(p) {
         p.dest ? h("div.itd-col", {}, h("span.itd-k", { text: p.dest.label }), p.dest.value ? h("b.itd-destv", { text: p.dest.value }) : null,
           h("button.itd-ghost", { fk: "dest", on: { click: () => handlers.zonePick?.() } }, icon("fa-map-location-dot"), h("span", { text: p.dest.pick }))) : null,
         p.text ? h("div.itd-col.itd-grow", {}, textBox(p.text.value, p.text.placeholder)) : null,
-        p.pool || p.tokens.length ? h("div.itd-col", {},
+        p.pool || p.tokens.length ? h("div.itd-col.itd-odds", {},
           p.pool ? h("div.itd-pool", {}, h("span.itd-k", { text: handlers.label?.("pool") }), h("b.itd-dice", { text: String(p.pool.total) }), h("span.itd-parts", { text: p.pool.parts.map((x) => `${x.label} ${x.dice > 0 && x !== p.pool.parts[0] ? "+" : ""}${x.dice}`).join(" · ") })) : null,
           p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null,
           p.chance ? meter(p.chance) : null) : null,
-        h("div.itd-col.itd-submit", {}, submit(p.submit), p.submit.disabled ? h("span.itd-why", { text: p.submit.disabled }) : null)));
+        h("div.itd-col.itd-submit", {}, p.submit.disabled ? h("span.itd-why", { text: p.submit.disabled }) : null, submit(p.submit, "", p.pv))));
   }
   if (p.kind === "blocked") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: p.reason })), h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder)), h("div.itd-col.itd-submit", {}, submit(p.submit, ".itd-go-ask"))));
   if (p.kind === "other") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder), h("p.itd-hint", { text: p.hint })), h("div.itd-col.itd-submit", {}, submit(p.submit, ".itd-go-ask"))));
@@ -251,25 +290,26 @@ function draw(d, ui) {
   root.classList.toggle("itd-rest", !!d.rest);
   /* the panel rises once, when it opens: a rebuild of the same panel (a key typed in its text box, a target picked) must not play the
      entry again, whose first frames clip the top of the panel, where the request to the GM is */
-  const pk = d.show && d.panel ? `${d.panel.kind}|${d.panel.action ?? ""}` : null;
+  const pk = d.show && d.panel ? `${d.panel.kind}|${d.panel.list ?? d.panel.action ?? ""}` : null;
   root.classList.toggle("itd-same", pk !== null && pk === panelKey);
   panelKey = pk;
   const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again };
   swap(stack, [
     d.prompts?.length ? h("div.itd-asks", {}, d.prompts.map((a) => askCard(a, askH))) : null,
     d.show ? panel(d.panel) : null,
-    d.show ? bar(d) : null,
-    /* the line under the bar: whose turn, who the table waits for; and, only while there is one, the roll this user owes or may push
+    /* the line on top of the bar: whose turn, who the table waits for; and, only while there is one, the roll this user owes or may push
        (U1 / U2: its buttons are here, not on a chat toast) and the last thing the table was told (U10 / U3: one chip, the older lines in
        its tooltip, put away with its x) */
-    d.show && (d.waiting?.length || d.turn || d.rolls?.length || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
+    d.show && (waitRest(d).length || d.turn || d.rolls?.length || d.news) ? h("div.itd-status", { attrs: { role: "status" } },
       (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
       d.turn ? h("span.itd-turnline", { text: d.turn }) : null, waitRest(d).length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(waitRest(d))] : null,
-      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: [d.news.text, ...d.news.older].join("<br>") }, icon("fa-bullhorn"), h("span.itd-news-t", { text: d.news.text }),
+      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: [d.news.text, ...d.news.older].join("<br>"), attrs: { tabindex: "0" } }, icon("fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
         h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null,
+    d.show ? bar(d) : null,
   ]);
   place();
   reveal();
+  try { preview(stack.querySelector("[data-pv]:hover, [data-pv]:focus-visible")); } catch { /* a courtesy */ }      // the pointer may still rest on what it was previewing
 }
 /* who the table waits for, without this client's own roll while its chip (with the buttons) already says it */
 const waitRest = (d) => (d.rolls?.length ? (d.waiting ?? []).filter((w) => !w.mine || w.what.length > d.rolls.length) : d.waiting ?? []);

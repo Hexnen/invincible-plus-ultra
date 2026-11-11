@@ -3,6 +3,7 @@
 import * as Src from "./source.mjs";
 import * as O from "./ops-pure.mjs";
 import * as S from "./state-pure.mjs";
+import * as Lg from "./ledger-pure.mjs";
 import { dice } from "../rules/index.mjs";
 import { ok, eq, done } from "./testkit.mjs";
 
@@ -26,18 +27,22 @@ ok(!Src.waiting(c) && Src.isTurnOf([tok(cur)], c) && !Src.isTurnOf([tok(other)],
 eq(Src.onTurn(c), [cur], "onTurn");
 let g = Src.groupsFor([tok(cur)], c);
 eq(g.map((x) => [x.id, x.slot, x.slots, x.active, x.tactics]), [[cur, 1, 1, true, true]], "one group per combatant of the token");
-eq(g[0].pips.map((p) => [p.id, p.k, p.lk, p.state]), [["tac:full", "slow", "full", "open"], ["tac:quick", "fast", "quick", "open"], ["tac:quick2", "fast", "quick", "open"]], "three pips: full, quick, quick");
+eq(g[0].pips.map((p) => [p.id, p.k, p.lk, p.state]), [["tac:full", "slow", "full", "open"], ["tac:quick", "fast", "quick", "open"]], "U31: two slots, the big one (full) and the small one (quick)");
 ok(Src.groupsFor(["tc"], c) === null && Src.groupsFor(["zz"], c) === null, "[I12] a challenge has no pips; a stranger neither");
 eq(Src.groupsFor(["zz", tok(other)], c)[0].active, false, "the first token that is in the fight");
 /* marks */
 eq(Src.pipClick(g[0].pips, "tac:full"), { unit: "full", on: true }, "a click on an open pip marks it");
 st = O.reduce(st, { type: "mark", actor: cur, unit: "full" }, ctx).state; c = doc(st);
 g = Src.groupsFor([tok(cur)], c);
-eq(g[0].pips.map((p) => p.state), ["used", "open", "lost"], "[L1] the full action spends the second quick pip");
-eq([Src.pipClick(g[0].pips, "tac:full"), Src.pipClick(g[0].pips, "tac:quick2"), Src.pipClick(g[0].pips, "nope")], [{ unit: "full", on: false }, null, null], "a used pip is taken back, a lost one does nothing");
+eq(g[0].pips.map((p) => [p.lk, p.state]), [["full", "used"], ["quick", "open"]], "[L1] the full action spends the big slot; the quick one stays");
+eq([Src.pipClick(g[0].pips, "tac:full"), Src.pipClick(g[0].pips, "tac:quick2"), Src.pipClick(g[0].pips, "nope")], [{ unit: "full", on: false }, null, null], "a used pip is taken back, an unknown one does nothing");
 st = O.reduce(st, { type: "ledgerEdit", combatant: cur, edit: "void", entry: st.ledger[cur].entries[0].id }, ctx).state;
 st = O.reduce(O.reduce(st, { type: "mark", actor: cur, unit: "quick" }, ctx).state, { type: "mark", actor: cur, unit: "quick" }, ctx).state;
-eq(Src.groupsFor([tok(cur)], doc(st))[0].pips.map((p) => p.state), ["lost", "used", "used"], "[L3] two quick actions spend the full pip");
+eq(Src.groupsFor([tok(cur)], doc(st))[0].pips.map((p) => [p.lk, p.unit, p.state]), [["quick", "quick", "used"], ["quick", "quick", "used"]], "[L3] two quick actions: the big slot reads as spent on a quick one");
+eq(Src.pipClick(Src.groupsFor([tok(cur)], doc(st))[0].pips, "tac:full"), { unit: "quick", on: false }, "and its mark is taken back as a quick action");
+{ const one = O.reduce(O.reduce(st, { type: "mark", actor: cur, unit: "quick", on: false }, ctx).state, { type: "mark", actor: cur, unit: "quick", on: false }, ctx).state, q = O.reduce(one, { type: "mark", actor: cur, unit: "quick" }, ctx).state;
+  eq(Src.groupsFor([tok(cur)], doc(q))[0].pips.map((p) => [p.lk, p.state]), [["full", "open"], ["quick", "used"]], "one quick action: the small slot, the big one still whole"); }
+eq([Lg.slots({ full: "lost", quick: ["open", "open"] })[0], Lg.slots({ full: "lost", quick: ["open", "lost"] })[0].state, Lg.slots(null).map((x) => x.state)], [{ id: "A", state: "open", as: null, unit: "quick", only: "quick" }, "lost", ["lost", "lost"]], "[L8] the big slot without its full action takes a quick one; nothing left: lost");
 /* a lost turn shows on the group */
 st = O.reduce(st, { type: "ledgerEdit", combatant: other, edit: "loseTurn" }, ctx).state;
 ok(Src.groupsFor([tok(other)], doc(st))[0].lostTurn === true, "[L7] the lost turn is visible");
@@ -51,6 +56,6 @@ ok(Src.groupsFor(["ta"], doc(off)) === null && Src.sourceOf(doc(off)) === "tacti
 /* combatants given as a collection */
 const coll = { ...doc(st), combatants: { contents: [{ id: cur, tokenId: "tx" }] } };
 ok(Src.isTurnOf(["tx"], coll), "a Collection of combatants is read too");
-eq(Src.pipsOf(st.ledger[other]).length, 3, "pipsOf");
+eq(Src.pipsOf(st.ledger[other]).length, 2, "pipsOf");
 
 done("check-source");

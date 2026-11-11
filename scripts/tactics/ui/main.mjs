@@ -29,7 +29,23 @@ const NARROW = 1180;                       // with less room than this between t
 const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false, opt: null, attr: null });
 const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, sure: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {}, scene: {}, kit: {} });
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
-let st = { dock: blankDock(), desk: blankDesk() };
+/* U28: Foundry's macro bar is folded away while the dock is up; the dock's keyboard button brings it back. The choice is this
+   browser's own (it is about the room on this screen), so it is kept in localStorage and outlives the turn and the fight. */
+const HOTBAR_KEY = `${MOD}.tactics.hotbar`;
+const hotbarWas = () => { try { return globalThis.localStorage?.getItem(HOTBAR_KEY) === "1"; } catch { return false; } };
+let st = { dock: { ...blankDock(), hotbar: hotbarWas() }, desk: blankDesk() };
+let hotbarShown = null;
+function hotbarSync(on) {
+  try {
+    const open = !!on && !!st.dock.hotbar, fold = !!on && !st.dock.hotbar, key = `${open}|${fold}`;
+    document.body.classList.toggle("ita-hotbar-open", open);
+    document.body.classList.toggle("ita-hotbar-fold", fold);
+    if (key === hotbarShown) return;
+    const first = hotbarShown === null; hotbarShown = key;
+    /* what stands on the macro bar (the map's director bar) finds its place again */
+    if (!first || fold) setTimeout(() => { try { window.dispatchEvent(new Event("resize")); } catch { /* no window */ } }, 30);
+  } catch { /* no body */ }
+}
 const previews = new Map();           // U: the engine's answer to "what would this declaration roll", per declaration and state (facts.preview)
 let previewLast = null;
 let rev = 0, moveMemo = null;             // the move options are counted once per change of the fight or of the map, not per keystroke
@@ -68,6 +84,8 @@ function factsOf(combat) {
         return moveMemo.value;
       } catch { return null; }
     },
+    /* U29 / U30: Health and Resolve of a combatant this user drives (the bars of the dock's unit block); nobody else's numbers */
+    vitals: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); if (!a || !(staff || a.isOwner)) return null; const f = Sys.actorFacts(a); return f ? { health: f.health, maxHealth: f.maxHealth, resolve: f.resolve, maxResolve: f.maxResolve } : null; } catch { return null; } },
     resolve: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && staff ? Sys.actorFacts(a)?.resolve ?? null : null; } catch { return null; } },      // the desk's hint for an NPC out of Resolve
     weapons: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Sys.weaponList(a) : []; } catch { return []; } },      // [P4] what this user's own character can attack with
     doors: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Mv.api.doors(id) : []; } catch { return []; } },
@@ -142,10 +160,11 @@ function refresh() {
   try {
     const combat = down ? null : combatNow();
     try { document.body.classList.toggle("ita-tactics", !!combat); } catch { /* no body */ }      // styles/tactics-ui.css: what the other surfaces of the module give up while the dock shows
+    hotbarSync(!!combat);
     if (!combat) { cardsWere = null; Pick.stop(); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
-    if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen }; }        // a new turn: nothing stays armed
+    if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen, hotbar: st.dock.hotbar }; }        // a new turn: nothing stays armed
     const desk = staff ? Api.desk(combat) : null;
     let deskD = null;
     if (staff) {
@@ -229,7 +248,13 @@ function patchDock(patch) {
   if ("armed" in patch && !patch.armed && st.dock.dragged) Object.assign(st.dock, { sel: null, dragged: false });      // the character a drag brought up steps back
   Object.assign(st.dock, patch);
 }
-function setDock(patch) { patchDock(patch); refresh(); }
+function setDock(patch) {
+  if (patch && "hotbar" in patch) { try { globalThis.localStorage?.setItem(HOTBAR_KEY, patch.hotbar ? "1" : "0"); } catch { /* private window */ } }
+  patchDock(patch); refresh();
+}
+/* a tooltip for the keyboard: Foundry opens its tooltips for the pointer only; the surfaces ask for the same one on focus */
+const tipShow = (el) => { try { game.tooltip?.activate(el); } catch { /* a courtesy */ } };
+const tipHide = () => { try { game.tooltip?.deactivate(); } catch { /* a courtesy */ } };
 function setDesk(patch) { Object.assign(st.desk, patch); refresh(); }
 async function send(which, req, after) {
   try {
@@ -272,12 +297,12 @@ async function zone(which, option, ask) {
     else if (r?.reason && !["cancelled", "replaced"].includes(r.reason)) notify("warn", t("ITAC.warn.zones", { reason: t(`ITAC.reason.${r.reason}`, {}, String(r.reason)) }));
   } catch (e) { console.warn(LOG, "zone pick failed", e); }
 }
-const LABELS = { peek: "ITAC.ui.peek", cancel: "ITAC.ui.cancel", chance: "ITAC.ui.chance", target: "ITAC.ui.target", pool: "ITAC.ui.pool", dock: "ITAC.ui.dock", waitingFor: "ITAC.ui.waitingFor", "pick.hint": "ITAC.ui.pick.hint", "undo.sure": "ITAC.ui.undo.sure" };
+const LABELS = { peek: "ITAC.ui.peek", cancel: "ITAC.ui.cancel", chance: "ITAC.ui.chance", target: "ITAC.ui.target", pool: "ITAC.ui.pool", dock: "ITAC.ui.dock", waitingFor: "ITAC.ui.waitingFor", "pick.hint": "ITAC.ui.pick.hint", "undo.sure": "ITAC.ui.undo.sure", slots: "ITAC.ui.slots" };
 const label = (k) => t(LABELS[k] ?? k);
 
 function configure() {
   Dock.configure({
-    set: setDock, send: (req, after) => send("dock", req, after), label,
+    set: setDock, send: (req, after) => send("dock", req, after), label, tipShow, tipHide,
     pick: multi("dock"), text: text("dock"), always: () => {}, zone: (o, a) => zone("dock", o, a), again: (a) => { delete st.dock.zone[a.id]; refresh(); },
     /* an action that also names a place (Fastball Special): any zone of the map; the executor judges the throw */
     zonePick: async () => { try { const r = await Zones.pick({ title: t("ITAC.ui.pick.title", { name: "" }).replace(/^[:\s]+/, ""), color: "target" }); if (r?.ok) setDock({ to: r.spot ?? r.zone }); } catch (e) { console.warn(LOG, "zone pick failed", e); } },
@@ -286,7 +311,7 @@ function configure() {
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });
   Desk.configure({
-    set: setDesk, send: (req, after) => send("desk", req, after), label,
+    set: setDesk, send: (req, after) => send("desk", req, after), label, tipShow, tipHide,
     pick: multi("desk"), text: text("desk"), always: (id, on) => { st.desk.always[id] = !!on; refresh(); }, zone: (o, a) => zone("desk", o, a), again: (a) => { delete st.desk.zone[a.id]; refresh(); },
     force: (patch) => { st.desk.force = { ...st.desk.force, ...patch }; refresh(); },
     hazard: (patch) => { st.desk.hazard = { ...st.desk.hazard, ...patch }; refresh(); },
