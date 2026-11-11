@@ -1405,8 +1405,8 @@ let STUNT_UID = 0;
 function registerInlineStunts() {
   if (game.settings.settings.has(`${MODULE_ID}.${INLINE_STUNTS}`)) return;
   game.settings.register(MODULE_ID, INLINE_STUNTS, {
-    name: "Stunty wybierane na karcie rzutu",
-    hint: "Zamiast okna dialogowego po ataku wybierasz stunty bezpośrednio na karcie (przyciski, licznik, Zatwierdź). Wyłączone = system działa po staremu, z oknem.",
+    name: "Wyczyny wybierane na karcie rzutu",
+    hint: "Zamiast okna dialogowego po ataku wybierasz wyczyny bezpośrednio na karcie czatu (przyciski, licznik, Zastosuj wyczyny). Wyłączone = system działa po staremu, z oknem.",
     scope: "client",
     config: true,
     type: Boolean,

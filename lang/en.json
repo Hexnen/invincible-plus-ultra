@@ -66,8 +66,7 @@
       "migrating": "Migrating your data to version {version}. Please, wait until it finishes.",
       "migrated": "Data migrated to version {version}.",
       "condition": "Condition",
-      "extraConfiguration": "Extra Configuration",
-      "rollTitle": "Invincible: {flavor}"
+      "extraConfiguration": "Extra Configuration"
     }
   }
 }

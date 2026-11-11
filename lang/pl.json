@@ -756,8 +756,7 @@
       "migrating": "Trwa migracja danych do wersji {version}. Poczekaj, aż się skończy.",
       "migrated": "Dane zmigrowane do wersji {version}.",
       "condition": "Stan",
-      "extraConfiguration": "Dodatkowa konfiguracja",
-      "rollTitle": "Invincible: {flavor}"
+      "extraConfiguration": "Dodatkowa konfiguracja"
     }
   }
 }

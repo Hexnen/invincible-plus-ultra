@@ -1,7 +1,7 @@
 /* Collects every Polish interface string of the module for the glossary check (node only, no Foundry).
    1) the lang tables: every scripts/<area>/lang*.mjs and *-lang.mjs module, pairing each exported PL table with its EN twin by name
       (EN/PL, UI_EN/UI_PL, EN_X/PL_X); 2) inline tables in code: the text of every `pl: ...` value (object, array or string) in the other
-      scripts; 3) lang/pl.json (the system translation) when present. Returns rows { file, key, en, pl }. */
+      scripts, plus every other string literal there that has Polish letters; 3) lang/pl.json (the system translation) when present. Returns rows { file, key, en, pl }. */
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
@@ -45,6 +45,18 @@ export function inlinePl(src) {
   return out;
 }
 
+/** String literals with Polish letters or common Polish words anywhere in a script (a hardcoded Polish text outside a `pl:` table), comments left out. */
+const PL_LETTER = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]|(?<![\w.\/-])(jest|przy|oraz|albo|lub|rzutu|rzut|karcie|karty|postaci|tylko|bez|dla|wybierane|po)(?![\w.\/-]) \p{L}/u;
+export function polishLiterals(src) {
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " ")).replace(/(^|\s)\/\/[^\n]*/g, "$1");
+  const out = [];
+  for (const s of code.matchAll(STR)) {
+    const t = s[1] ?? s[2] ?? s[3];
+    if (t && PL_LETTER.test(t)) out.push({ line: code.slice(0, s.index).split("\n").length, text: t.replace(/\\(["'`])/g, "$1") });
+  }
+  return out;
+}
+
 export async function collect(root = ROOT) {
   const rows = [];
   const files = walk(join(root, "scripts")).filter((p) => /\.(mjs|js)$/.test(p));
@@ -60,7 +72,8 @@ export async function collect(root = ROOT) {
       }
       continue;
     }
-    for (const { line, text } of inlinePl(readFileSync(p, "utf8"))) rows.push({ file: r, key: `inline:${line}`, en: "", pl: text });
+    const src = readFileSync(p, "utf8"), seen = new Set();
+    for (const { line, text } of [...inlinePl(src), ...polishLiterals(src)]) { if (seen.has(text)) continue; seen.add(text); rows.push({ file: r, key: `inline:${line}`, en: "", pl: text }); }
   }
   const sys = join(root, "lang", "pl.json");
   if (existsSync(sys)) for (const [k, v] of Object.entries(flat(JSON.parse(readFileSync(sys, "utf8"))))) rows.push({ file: "lang/pl.json", key: k, en: "", pl: v });

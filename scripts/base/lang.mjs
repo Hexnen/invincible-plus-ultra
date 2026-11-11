@@ -917,7 +917,7 @@ Object.assign(PL, {
   "IPB.Ev.Prop.46": "Hakerzy wyłączyli ulepszenia. Rzut K6: {n}.",
   "IPB.Ev.Hint.46": "Przywrócenie ich wymaga Wyzwania 8 z limitem 4 rund. Rozegrajcie je przy stole, a potem ustaw ulepszenia z powrotem na Aktywne.",
   "IPB.Ev.Prop.53": "Jedno ulepszenie się psuje i trzeba je odbudować.",
-  "IPB.Ev.Prop.61": "Gdy bohaterowie następnym razem zbiorą się w bazie, zaatakują ją najeźdźcy. Na 3k6 wypadło {n}.",
+  "IPB.Ev.Prop.61": "Gdy bohaterowie następnym razem zbiorą się w bazie, zaatakują ją najeźdźcy. Rzut 3K6: {n}.",
   "IPB.Ev.Prop.64": "Obca siła przejmuje kontrolę nad systemami bazy. Co zrobi, decyduje MG. Karta się nie zmienia.",
   "IPB.Ev.Prop.66": "Przeciwnicy przejmują bazę. Wszystkie ulepszenia są stracone, dopóki bohaterowie jej nie odzyskają.",
   "IPB.Ev.Prop.text": "Ten wynik zapisano tylko jako tekst. Nie ma automatycznego skutku.",

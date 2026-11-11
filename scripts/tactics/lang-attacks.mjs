@@ -144,7 +144,7 @@ export const PL_ATTACKS = {
   "ITAC.reason.noScene": "brak pozycji na mapie",
   "ITAC.reason.notHeld": "atak w chwycie trafia tylko tego, kogo trzymasz",
   "ITAC.reason.chargeSameZone": "szarża wymaga celu w innej strefie",
-  "ITAC.reason.chargeActions": "szarża zajmuje akcję pełną i szybką",
+  "ITAC.reason.chargeActions": "szarża zajmuje pełną i szybką akcję",
   "ITAC.reason.chosen": "już wybrano",
   "ITAC.reason.noOtherTarget": "w tej strefie nie ma innego przeciwnika",
   "ITAC.reason.notHit": "ten przeciwnik nie został trafiony",
