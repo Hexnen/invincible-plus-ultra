@@ -72,7 +72,7 @@ export const LEVEL_WORDS = Object.freeze({ basic: "basic", major: "major", massi
 /* what the compendium's automations are called beside the item's own name (the few that recur; the rest stays as written) */
 const AUTO_PL = Object.freeze({
   "normal": "zwykłe użycie", "attack": "atak", "reduce armor": "obniżenie Pancerza", "grapple": "chwyt", "area effect": "efekt obszarowy", "break free": "wyrwanie się",
-  "wreck zone": "demolka strefy", "requires touch": "wymaga dotyku", "reduced range": "skrócony zasięg", "pull": "przyciągnięcie", "charge bonus": "premia do szarży",
+  "wreck zone": "demolka strefy", "requires touch": "wymaga dotyku", "reduced range": "zmniejszony zasięg", "pull": "przyciągnięcie", "charge bonus": "premia do szarży",
 });
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** One " - " segment of an automation name or a chat flavor, for an item of entry `e` whose name is shown as `shown`.
