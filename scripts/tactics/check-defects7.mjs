@@ -1,4 +1,4 @@
-// node scripts/tactics/check-defects6.mjs -- the defects D90-D100 of dev/combat-defects.md ("Bug hunt 1") and the class behind D90 / D91:
+// node scripts/tactics/check-defects7.mjs -- the defects D90-D100 of dev/combat-defects.md ("Bug hunt 1") and the class behind D90 / D91:
 // no throwing flow step and no failing write of the world, reachable by any request of a player or the GM, may leave the fight wedged or
 // make an answer lie about what was saved. The table of the test kit can now FAIL (Table.failOn: a write that is rejected or refused; an
 // actor that is gone answers as the real executor does), and every step of every flow can be made to throw (fault, below).
@@ -276,4 +276,4 @@ async function play(T, host, sixes, each) {
   const src = readFileSync(new URL("./ui/main.mjs", import.meta.url), "utf8");
   ok((src.match(/key = previewKey\(combat\.id, view\?\.rev, factsRev, /g) ?? []).length === 2 && /const previewKey = Model\.previewKey;/.test(src), "D94: both caches of ui/main.mjs (pool and reach) build their key with previewKey");
 }
-done("check-defects6");
+done("check-defects7");
