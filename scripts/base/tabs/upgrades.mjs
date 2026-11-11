@@ -100,7 +100,7 @@ function ownedRow(ctx, u, own, hint) {
   if (ctx.isStaff || (ctx.canEdit && u.source === "start")) {
     const one = u.count > 1;
     const aria = t(one ? "IPB.Up.RemoveOneAria" : "IPB.Up.RemoveAria", { name: label });
-    acts.push(`<button type="button" class="ipb-btn ipb-btn-small" data-up-act="remove" data-uid="${esc(u.id)}" data-fk="up-rm-${esc(u.id)}" aria-label="${esc(aria)}">${icon("fa-solid fa-trash-can")}${esc(t(one ? "IPB.Up.RemoveOne" : "IPB.Up.Remove"))}</button>`);
+    acts.push(`<button type="button" class="ipb-btn ipb-btn-small" data-up-act="remove" data-uid="${esc(u.id)}" data-fk="up-rm-${esc(u.id)}" aria-label="${esc(aria)}">${icon("fa-solid fa-trash")}${esc(t(one ? "IPB.Up.RemoveOne" : "IPB.Up.Remove"))}</button>`);
   }
   const note = ctx.canEdit
     ? `<details class="ipb-up-notebox"${u.note ? " open" : ""}><summary>${icon("fa-solid fa-pen")}<span>${esc(t("IPB.Up.NoteSummary"))}</span></summary>`
@@ -122,7 +122,7 @@ function ownedBlock(ctx, own) {
   const { esc, icon, t } = ctx;
   const hint = U.trainingHint(own, ctx.B.base.occupied);
   const rec = undoRec.get(ctx.team.id);
-  const undo = rec ? `<p class="ipb-up-undo" role="status">${icon("fa-solid fa-trash-can")}<span>${esc(rec.text)}</span><button type="button" class="ipb-bt-link" data-up-act="undo" data-fk="up-undo">${icon("fa-solid fa-rotate-left")}${esc(t("IPB.Up.Undo"))}</button></p>` : "";
+  const undo = rec ? `<p class="ipb-up-undo" role="status">${icon("fa-solid fa-trash")}<span>${esc(rec.text)}</span><button type="button" class="ipb-bt-link" data-up-act="undo" data-fk="up-undo">${icon("fa-solid fa-rotate-left")}${esc(t("IPB.Up.Undo"))}</button></p>` : "";
   const empty = `<p class="ipb-muted ipb-up-empty">${esc(t(ctx.canEdit ? "IPB.Up.EmptyEdit" : "IPB.Up.EmptyRo"))}</p>`;
   return `<section class="ipb-up-owned" aria-labelledby="${esc(ctx.app.id)}-up-own-h">
     <h2 class="ipb-bt-h" id="${esc(ctx.app.id)}-up-own-h">${esc(t("IPB.Up.OwnedH"))}</h2>

@@ -187,7 +187,7 @@
 .ips-hero[data-v="yes"] .ips-sw > .ips-sw-box { color: var(--ips-yellow); background: var(--ips-ink); border: 2px solid var(--ips-ink); }   /* > : the flaw toggle's own box must not look ticked because the main answer is yes */
 .ips-hero[data-v="yes"] .ips-sw > .ips-sw-box i { animation: ips-stamp-in .16s var(--ips-ease); }
 .ips-app button.ips-sw:hover:not([aria-disabled="true"]) { translate: -1px -1px; }
-.ips-app button.ips-sw:active:not([aria-disabled="true"]) { translate: 1px 1px; }
+.ips-app button.ips-sw:active:not([aria-disabled="true"]) { translate: var(--ipu-sink); }
 .ips-hero[data-off="1"] .ips-sw, .ips-app button.ips-sw[aria-disabled="true"] { cursor: not-allowed; border-style: dashed; }
 .ips-hero[data-off="1"][data-v="yes"] .ips-sw { box-shadow: none; }
 .ips-hero[data-busy="1"] .ips-sw { cursor: progress; }

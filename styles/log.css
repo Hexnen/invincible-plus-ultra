@@ -60,7 +60,7 @@
 }
 .ipl summary.ipl-btn::-webkit-details-marker { display: none; }
 .ipl .ipl-btn:hover { background: var(--ipl-tone); translate: -1px -1px; }
-.ipl .ipl-btn:active { translate: 1px 1px; }
+.ipl .ipl-btn:active { translate: var(--ipu-sink); }
 .ipl .ipl-btn.ipl-primary { background: var(--ipl-yellow); box-shadow: 3px 3px 0 var(--ipl-blue); }
 .ipl .ipl-btn.ipl-primary:hover { background: #fff27a; box-shadow: 4px 4px 0 var(--ipl-blue); }
 .ipl .ipl-btn.ipl-primary:active { box-shadow: 1px 1px 0 var(--ipl-blue); }

@@ -679,7 +679,7 @@
 .ipc-at-ctl { grid-area: ctl; display: flex; align-items: center; gap: 6px; }
 .ipc-app button.ipc-at-step { display: grid; place-items: center; width: 44px; height: 44px; margin: 0; padding: 0; color: var(--ipc-ink); background: #fff; border: 2px solid var(--ipc-ink); border-radius: 0; box-shadow: none; cursor: pointer; transition: translate .12s var(--ipc-ease), background-color .12s var(--ipc-ease); }
 .ipc-app button.ipc-at-step:hover { background: var(--ipc-yellow); translate: -1px -1px; }
-.ipc-app button.ipc-at-step:active { translate: 1px 1px; }
+.ipc-app button.ipc-at-step:active { translate: var(--ipu-sink); }
 .ipc-app button.ipc-at-step[aria-disabled="true"] { color: var(--ipc-disabled); background: transparent; border-style: dashed; border-color: var(--ipc-line); cursor: not-allowed; translate: none; }
 .ipc-at-val { display: grid; place-items: center; width: 3.6rem; height: 44px; background: var(--ipc-yellow); border: 2px solid var(--ipc-ink); box-shadow: var(--ipc-sh-ink); cursor: ns-resize; user-select: none; }
 .ipc-at-val b { font: 400 1.9rem/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; }
