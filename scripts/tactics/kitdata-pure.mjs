@@ -75,7 +75,7 @@ export const ROWS = Object.freeze([
   B("Strike", "Deadly Strike", [1620], "auto", "attack", { opt: { patch: { sharp: 1 }, on: "slug" } }),
   B("Strike", "Toxic Strike", [1621], "auto", "poison", { opt: { patch: { onHit: { status: "sick", data: { toxic: 1, virulence: 0 }, ifDamage: 1 } }, on: "slug" } }),
   L("Strike", "Windup Strike", [1622], "assist", "effect", { pass: { windup: 1 }, acts: [{ k: "ready", cost: "quick", effect: { kind: "mark", id: "windup" } }] }),
-  P("Stun", [1625], "auto", "attack", { atk: { noDamage: 1, pierce: 1, stunts: "none", immuneHuge: 1, onHit: { stun: 1 } } }),
+  P("Stun", [1625], "auto", "attack", { atk: { noDamage: 1, pierce: 1, stunts: "doubleOnly", immuneHuge: 1, onHit: { stun: 1 } } }),
   B("Stun", "Mental Stun", [1626], "auto", "attack", { opt: { patch: { attrs: MENTAL, ignoreArmor: 1 } } }),
   B("Stun", "Potent Stun", [1627], "auto", "attack", { opt: { patch: { resist: -2 } } }),
   L("Stun", "Requires Touch (Stun)", [1628], "auto", "attack", { opt: { patch: { fam: "slug" } } }),
