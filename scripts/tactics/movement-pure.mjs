@@ -22,7 +22,7 @@ import * as P1 from "./economy-pure.mjs";
 /* the name the zones API's profile takes for each way of moving (zones-api.md section 14 `way`; spec 7.4 mapping [D]).
    [ZR-3]: leaping and super-speed are the map's "leap" / "superspeed" (over exterior walls, must land). Elongated Stride climbs walls
    [B1922]: the map has no such way, so it is sent as "leap" (over an exterior wall, lands) - a reading, listed in the questions. */
-export const API_WAY = Object.freeze({ walk: "walk", grown: "walk", earthDrift: "walk", iceSlide: "walk", elongatedStride: "leap", burrowing: "burrow", flight: "flight", wings: "flight",
+export const API_WAY = Object.freeze({ walk: "walk", grown: "walk", earthDrift: "walk", iceSlide: "walk", elongatedStride: "leap", adhesion: "leap", burrowing: "burrow", flight: "flight", wings: "flight",
   leaping: "leap", superSpeed: "superspeed", teleportation: "teleport", swimming: "swim", swinging: "swing", vehicle: "walk" });
 export const BOOSTS = Object.freeze(["tunneling", "teleportAllies", "portal", "untouchableSpeed", "quickTeleport"]);
 export const LIMITS = Object.freeze(["gliding", "brachiation"]);

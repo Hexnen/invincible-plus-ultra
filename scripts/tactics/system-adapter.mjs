@@ -145,11 +145,11 @@ export function sceneFacts(combat) {
 const injuryNumber = (item) => { const f = item.flags?.[MOD]?.tactics?.crit; if (Number.isFinite(f)) return f; const n = INJ?.byName?.get(item.name); return Number.isFinite(n) ? n : null; };
 /* P3: the ways of moving an actor has. A power, boost or limit is known by the id of its compendium entry (the same in every language);
    the GM may add ways by hand: flags.<module>.tactics.movement = [{ mode, tier }]. Speeds and rules: scripts/rules/movement.mjs. */
-const MOVE_POWERS = { "8wJ7WiatmSsAJYsJ": "burrowing", E6B4T5jbhoxFOqRC: "flight", XH6BNrsuvt6H7BvT: "leaping", QeM9FgUR0U3iCd5m: "superSpeed", "6IWySeMnq5uwhZ3u": "swimming", "60xT0tfR9306RCtA": "swinging", JeaiOHbh5MSrPakm: "teleportation",
+const MOVE_POWERS = { adhesion: "adhesion", "8wJ7WiatmSsAJYsJ": "burrowing", E6B4T5jbhoxFOqRC: "flight", XH6BNrsuvt6H7BvT: "leaping", QeM9FgUR0U3iCd5m: "superSpeed", "6IWySeMnq5uwhZ3u": "swimming", "60xT0tfR9306RCtA": "swinging", JeaiOHbh5MSrPakm: "teleportation",
   muyhi7UPoPdDlrpI: "earthDrift", AQramXS4Ilmqe01y: "elongatedStride", jyqBPo53xFKMdXnT: "iceSlide" };
 const MOVE_EXTRAS = { nG8DLZMigiBg256a: "tunneling", iLlwnWwRa82gbpT3: "untouchableSpeed", dntiWPrtTegqNRAi: "teleportAllies", sPl5SC16bIT3AFxB: "quickTeleport", ZIKmnZgnR7qz4eSw: "portal", qXCQsdc6tlqalEcX: "gliding", g1FnuD4L5jDMvqC7: "brachiation" };
 /* an item made by hand or by a pregenerated actor carries no compendium id: then its English name decides (as for the talents) */
-const MOVE_NAMES = { burrowing: "burrowing", flight: "flight", leaping: "leaping", superspeed: "superSpeed", swimming: "swimming", swinging: "swinging", teleportation: "teleportation", earthdrift: "earthDrift", elongatedstride: "elongatedStride", iceslide: "iceSlide",
+const MOVE_NAMES = { adhesion: "adhesion", burrowing: "burrowing", flight: "flight", leaping: "leaping", superspeed: "superSpeed", swimming: "swimming", swinging: "swinging", teleportation: "teleportation", earthdrift: "earthDrift", elongatedstride: "elongatedStride", iceslide: "iceSlide",
   tunneling: "tunneling", untouchablespeed: "untouchableSpeed", teleportallies: "teleportAllies", quickteleport: "quickTeleport", portal: "portal", gliding: "gliding", brachiation: "brachiation" };
 const NAME_TYPES = ["power", "boost", "limit"];
 const srcId = (it) => { const id = String(it?._stats?.compendiumSource ?? "").split(".").pop(); if (MOVE_POWERS[id] || MOVE_EXTRAS[id] || !it || !NAME_TYPES.includes(it.type)) return id; const n = MOVE_NAMES[String(it.name ?? "").toLowerCase().replace(/[^a-z]/g, "")]; return n ? Object.keys({ ...MOVE_POWERS, ...MOVE_EXTRAS }).find((k) => MOVE_POWERS[k] === n || MOVE_EXTRAS[k] === n) ?? id : id; };
@@ -247,7 +247,7 @@ export function actorFacts(actor) {
     members: kind === "minions" ? num(s.derived?.health?.value) : undefined,           // the system keeps a group's size as its Health [B2827]
     huge: flags.huge === true || pass.huge === true, grown: flags.grown === true || pass.grown === true, impervious: flags.impervious === true || pass.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
     regeneration: flags.regeneration === true || pass.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
-    movement: kind === "vehicle" ? [{ mode: "vehicle", speed: p7.vehicle.speed, aerial: ["aerial", "space"].includes(p7.vehicle.type) }] : movementOf(actor),
+    movement: kind === "vehicle" ? [{ mode: "vehicle", speed: p7.vehicle.speed, aerial: ["aerial", "space"].includes(p7.vehicle.type) }] : movementOf(actor).map((m) => ((m.mode === "swimming" && pass.fastSwim) || (m.mode === "swinging" && pass.fastSwing) ? { ...m, tier: "fast" } : ["swimming", "swinging"].includes(m.mode) ? { ...m, tier: "basic" } : m)),      // [B2022], [B2030]
     vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true || actor.items.some((i) => NAME_TYPES.includes(i.type) && /^(adaptation|lifesupport)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
     major: flags.major === true, immunities: [...(Array.isArray(flags.immunities) ? flags.immunities : []), ...pass.immune], vulnerabilities: [...(Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : []), ...pass.vulnerable],
   };

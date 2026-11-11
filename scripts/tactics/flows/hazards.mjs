@@ -266,8 +266,9 @@ export const disease = {
       const I = K.draft(inst), R = K.result(I), t = I.decl.targets[0], tf = v.facts.c(t), h = hzOf(I);
       if (!K.flag(I, "done")) {
         K.setFlag(I, "done");
-        const sick = M.hasStatus(v.state, t, "sick");
-        const o = hazards.diseaseStep({ state: sick ? "sick" : "exposed", sixes: K.sixesOf(I, "roll"), broken: tf.health <= 0 });       // [B2901]
+        const sick = M.hasStatus(v.state, t, "sick"), toxic = M.statusesOf(v.state, t).some((x) => x.id === "sick" && x.data?.toxic);
+        const o0 = hazards.diseaseStep({ state: sick ? "sick" : "exposed", sixes: K.sixesOf(I, "roll"), broken: tf.health <= 0 });       // [B2901]
+        const o = toxic && (o0.state === "dead" || (o0.damage > 0 && tf.health - o0.damage <= 0)) ? { ...o0, state: "cured" } : o0;       // P6 [B1621]: the poison of a strike ends when its victim is broken, it never kills
         const st = (id, on) => { R.effects.push(on ? { t: "status+", who: t, status: { id, source: { kind: "hazard", name: String(h.name ?? "disease").slice(0, 40) }, ...(id === "sick" ? { data: { virulence: int(h.virulence, 0, 12, 0) } } : {}) } } : { t: "status-", who: t, id }); R.events.push({ type: "status", target: t, status: { id, on } }); };
         if (o.damage > 0) {                                                                      // Armor does not help; being broken by it gives no critical injury
           const ad = damage.applyDamage({ health: tf.health, taken: o.damage });
@@ -327,6 +328,7 @@ export function derived(state, facts, point) {
     } else if (point.at === "turnStart" && point.combatant) {
       const cid = point.combatant;
       if (M.hasStatus(state, cid, "suffocating") || inVacuum(facts, cid)) out.push(trig(`dvac.${cid}`, "turnStart", { combatant: cid }, { type: "vacuum" }));       // [B2929]
+      if (M.statusesOf(state, cid).some((x) => x.id === "sick" && x.data?.toxic) && facts.c(cid)?.health > 0) out.push(trig(`dtox.${cid}`, "turnStart", { combatant: cid }, { type: "disease", virulence: 0, name: "Toxic Strike" }));      // P6 [B1621]: STRENGTH each turn or 1 damage
     }
   } catch { /* a map that cannot be read makes nothing due: the GM runs the hazard by hand */ }
   /* what somebody registered by hand for the same thing is not doubled */

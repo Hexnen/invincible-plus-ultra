@@ -28,6 +28,7 @@ export const MOVE_MODES = {
   iceSlide: { way: "walk", tiers: { basic: [2, 4] }, actions: BOTH, medium: "ground" },
   wings: { way: "air", tiers: { basic: [2, null] }, actions: BOTH, medium: "air", ends: ["ground", "rooftop", "air"] },
   elongatedStride: { way: "walk", tiers: { basic: [2, 4] }, actions: BOTH, medium: "ground", vertical: true },
+  adhesion: { way: "walk", tiers: { basic: [1, null] }, actions: ["quick"], medium: "ground", vertical: true },      // book 1900: on foot, up walls to an elevated position or a rooftop
   burrowing: { way: "through", tiers: { basic: [2, 4] }, actions: BOTH, medium: "ground" },
   flight: { way: "air", tiers: TIERED, actions: BOTH, medium: "air", ends: ["ground", "rooftop", "air"] },
   leaping: { way: "air", tiers: TIERED, actions: BOTH, medium: "air", assumed: true, ends: ["ground", "rooftop"] },

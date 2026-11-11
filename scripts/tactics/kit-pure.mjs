@@ -115,7 +115,7 @@ function actionOf(item, row, a, lv, extra = {}) {
   } else {
     e = { id, src: row?.src ?? [], kind: "kit", cost: a.cost ?? "full", flow: "act", tags: ["kit"], effect: { ...(a.effect ?? { kind: "narrative" }) } };
     for (const k of ["roll", "oppose", "target", "when", "pick"]) if (a[k]) e[k] = JSON.parse(JSON.stringify(a[k]));
-    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near"]) if (a[k]) e[k] = 1;
+    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near", "stressPick", "stressExtra"]) if (a[k]) e[k] = 1;
     if (a.combo && Array.isArray(a.pick)) e.pick = multisets(a.pick, Math.max(1, at(a.combo, lv))).map((c) => c.join("+"));          // Summoning [B1813-1815]: as many features as the level, repeats allowed
     if (a.once) e.once = a.once;
     for (const k of ["lv", "armor"]) if (Array.isArray(e.effect[k])) e.effect[k] = at(e.effect[k], lv);
@@ -168,11 +168,16 @@ export function build(src = {}) {
       }
       /* the row's own actions; else what the sheet's use / roll buttons say, as an action whose effect the GM confirms */
       const luck = row?.key === "luckcontrol" ? optsOf(it).map((o) => o.row.opt.luck).filter(Boolean) : [];
-      for (const a of row?.acts ?? []) {
+      const barred = known.some((k) => k.parent === it && live(k) && k.row?.bars);             // a limit that keeps the power out of a fight (Hypnosis, Ritual Casting)
+      if (barred) rec.barred = 1;
+      if (row?.throwOf && x.parent && Number(attrs.strength) > 0) { const n = Math.ceil(Number(attrs.strength) / 2);      // [B1970]: thrown, damage and range from half the STRENGTH
+        kit.weapons.push({ id: `${it.id}~throw`, item: it.id, name: rec.name, of: rec.of, fam: "shoot", attr: null, bonus: 0, damage: n, range: [0, n], stress: 0, sharp: x.parent.wf?.sharp === true, state: row.state }); }
+      for (const a of barred ? [] : row?.acts ?? []) {
         const b = luck.length && a.pick ? { ...a, pick: a.pick.filter((p) => luck.includes(p)) } : a;
         kit.actions.push(actionOf(it, row, b, lv));
       }
-      if (row && !row.acts && row.state !== "hand" && !row.mv || !row) {
+      if (barred) { /* nothing is offered in a fight */ }
+      else if (row && !row.acts && row.state !== "hand" && !row.mv || !row) {
         uses.slice(0, 6).forEach((a, i) => {
           const set = (a.attr ?? []).filter(Boolean), byKey = Object.keys(row?.by ?? {}).find((k) => norm(k) === norm(baseName(a.name)));
           const roll = set.length === 1 ? { attr: set[0] } : set.length > 1 ? { attrs: set } : a.type === "rollAttribute" ? { attrs: "any" } : null;
@@ -188,6 +193,7 @@ export function build(src = {}) {
       else if (row && row.acts && !row.acts.length && row.state !== "hand") uses.filter((a) => pos(a.stress) > 0 && useName(it, a)).slice(0, 3).forEach((a, i) =>
         kit.actions.push(actionOf(it, row, { k: `u${i}`, label: "use", name: `${it.name}: ${useName(it, a)}`, cost: "none", stress: pos(a.stress), effect: { kind: "narrative" }, text: 1 }, lv, { state: "assist" })));
       /* switching the item's active effects from the dock */
+      if (row?.why && rec.state === "hand") rec.why = row.why;
       if (row?.alt) { rec.alt = row.alt; rec.altOn = it.flags?.alt === true; }                                 // a setting of the GM's: the entry's other reading
       if (row?.size) {                                                                                          // Size Alteration [B1974-1981]
         const kids = known.filter((k) => k.parent === it && live(k) && k.row?.sizeOnly), always = kids.find((k) => k.it.flags?.alt === true)?.row.sizeOnly ?? null;
@@ -197,10 +203,11 @@ export function build(src = {}) {
       }
       if (row?.fx) {
         const only = row.size ? known.filter((k) => k.parent === it && live(k) && k.row?.sizeOnly) : [], fixed = only.some((k) => k.it.flags?.alt === true);
-        const host = row.fx.ofParent ? x.parent : it, list = fixed ? [] : (host?.fx ?? []).filter((f) => (!row.fx.only || norm(f.name).includes(norm(row.fx.only))) && only.every((k) => norm(f.name).includes(k.row.sizeOnly)));
+        const lock = known.some((k) => k.parent === it && live(k) && k.row?.lockFx);         // Continual Emanation [B1603]: it can be switched on, never off
+        const host = row.fx.ofParent ? x.parent : it, list = fixed ? [] : (host?.fx ?? []).filter((f) => !(lock && f.on === true) && (!row.fx.only || norm(f.name).includes(norm(row.fx.only))) && only.every((k) => norm(f.name).includes(k.row.sizeOnly)));
         list.slice(0, 4).forEach((f, i) => kit.actions.push(actionOf(it, row, { k: `fx${i}`, label: "toggle", name: String(f.name ?? host.name), cost: row.fx.cost ?? "quick", stress: row.fx.stress, gm: row.fx.gm,
           effect: { kind: "toggle", item: host.id, fx: f.id } }, lv, { entry: { fxOn: f.on === true } })));
-        if (!list.length && !row.mv && !row.pass && !fixed) { rec.state = "hand"; rec.note = "toggle"; }
+        if (!list.length && !row.mv && !row.pass && !fixed && !lock) { rec.state = "hand"; rec.note = "toggle"; rec.why = "noEffect"; }
       }
       /* passive facts and dice */
       for (const [k, v] of Object.entries(row?.pass ?? {})) {

@@ -40,6 +40,8 @@ export const sixesOf = (inst, key) => { const r = rollOf(inst, key); return r ? 
 
 /** The immunity flags of a target as the rules library reads them (stunts.immunitiesOf): `huge`, `grown`, `impervious` and a free
     list `immune`. Which character carries which flag is the GM's word (actor flags, system-adapter.mjs); nothing is decided here. */
+/** P6: something a kit action switched on for the round (a wind-up) or for the scene (an activation): flows/acts.mjs kind "mark" */
+export const marked = (state, cid, id, scene = false) => M.counterGet(state, scene ? M.counterKey.scene(cid, id) : M.counterKey.round(cid, id)) > 0;
 /** P6 [B1808]: the summoned groups of a combatant that leave by themselves (not a controlled animal, not what the GM marked by hand) */
 export const summonsOf = (v, cid) => (v.state.summons ?? []).filter((su) => su.owner === cid).flatMap((su) => su.combatants ?? []).filter((id) => v.facts.c(id)?.summon?.auto);
 export const immunityFlags = (tf) => ({ kind: tf?.kind, huge: !!tf?.huge, grown: !!tf?.grown, impervious: !!tf?.impervious, immune: Array.isArray(tf?.immune) ? tf.immune.slice() : [] });
@@ -274,10 +276,13 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
     if (id !== "crit") return false;
     cf = crits.critForHit({ taken: dm.taken, healthBefore: dm.healthBefore, deadlyHit, target: { ...flags, kind: "majorNpc" } });      // rolled like a hero's [B2771]
   }
+  if (cf.crit && tf.pass?.noCrit) cf = { ...cf, crit: null };                                  // P6 [B1915] Sequestered Original: a copy went down, no injury is rolled
   if (cf.crit) {
-    const key = `crit:${t}`;
-    if (I.data.res?.[key] == null) { if (once(`${key}:asked`)) R.effects.push({ t: "dice", key, n: 1 }); R.wait = true; return true; }
+    const key = `crit:${t}`, killer = !!(by && v.facts.c(by)?.pass?.killer), lucky = tf.pass?.luckyBreak === true, two = killer !== lucky;      // P6 [B2121], [B2149]: two dice, one kept
+    if (I.data.res?.[key] == null) { if (once(`${key}:asked`)) R.effects.push({ t: "dice", key, n: two ? 2 : 1 }); R.wait = true; return true; }
     if (once(key)) {
+      const faces = I.data.res[key], kept = two && faces.length > 1 ? (killer ? Math.max(faces[0], faces[1]) : Math.min(faces[0], faces[1])) : faces[0];
+      I.data.res[key] = [kept, ...faces.filter((_, i) => i !== faces.indexOf(kept))];
       const rc = crits.resolveCrit({ d6: I.data.res[key][0], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap: v.state.opts?.critCap9 ? crits.FAMILY_CAP : crits.MAX_CRIT });   // [B2707], [B2709], [B2769]
       dm.crit = { d6: I.data.res[key][0], bonus: cf.crit.bonus, cause: cf.crit.cause, n: rc.n, id: rc.entry?.id, shifted: rc.shifted };
       R.effects.push({ t: "crit", who: t, n: rc.n, id: rc.entry?.id });

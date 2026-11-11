@@ -43,7 +43,9 @@ export function snarePenalty(st) {
   return maneuvers.SNARE_ESCAPE_DICE[st?.data?.level] ?? maneuvers.SNARE_ESCAPE_DICE.basic;
 }
 /* P6: the actions a character's own powers, talents and gear give (kit-pure.mjs). The stress an entry costs is charged when it locks. */
-export const stressOf = (v, inst) => (inst.decl?.stressTotal ?? 0) + (v.entry(inst)?.stress?.fixed ?? 0);
+export const stressOf = (v, inst) => { const e = v.entry(inst);      // a fixed price, 1 per extra target chosen as a number, 1 per target beyond the first
+  return (inst.decl?.stressTotal ?? 0) + (e?.stress?.fixed ?? 0) + (e?.stressPick ? Math.max(0, Math.trunc(Number(inst.decl?.opt) || 0)) : 0) + (e?.stressExtra ? Math.max(0, (inst.decl?.targets?.length ?? 0) - 1) : 0); };
+const markKey = (cid, fx) => (fx.scene ? M.counterKey.scene(cid, fx.id) : M.counterKey.round(cid, fx.id));
 export const onceKey = (inst, e) => (e?.once === "round" ? M.counterKey.round(inst.actor, e.id) : e?.once ? M.counterKey.scene(inst.actor, e.id) : null);
 const sid = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
 const srcOf = (I, e) => ({ kind: ["power", "talent", "drawback", "gear"].includes(e?.kit?.cat) ? e.kit.cat : "power", owner: I.actor, name: e?.name ?? "" });
@@ -69,8 +71,37 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
       if (ef) R.effects.push({ t: "state", path: ["effects", `#${ef.id}`], to: ef });
       I.data.gain = fx.armor ?? 3; break;
     }
-    case "heal": if (success && sf) { const to = Math.min(sf.maxHealth, sf.health + (fx.per ?? 3) * sixes); if (to > sf.health) R.effects.push({ t: "actor", who: subject, path: "health", to }); I.data.gain = to - sf.health;       // [B1932]
-      if (to > 0 && sf.health <= 0 && M.hasStatus(v.state, subject, "broken")) { R.effects.push({ t: "status-", who: subject, id: "broken" }); status(subject, "broken", false); } } break;
+    case "heal": if (success) for (const who of fx.mass && I.decl.targets?.length ? [...new Set(I.decl.targets)] : [subject]) {      // [B1932]; Mass Healing [B1934]: one roll for all of them
+      const hf = v.facts.c(who); if (!hf) continue;
+      const to = Math.min(hf.maxHealth, hf.health + (fx.per ?? 3) * sixes); if (to > hf.health) R.effects.push({ t: "actor", who, path: "health", to }); I.data.gain = (I.data.gain ?? 0) + to - hf.health;
+      if (to > 0 && hf.health <= 0 && M.hasStatus(v.state, who, "broken")) { R.effects.push({ t: "status-", who, id: "broken" }); status(who, "broken", false); } } break;
+    case "cleanse": if (success && M.hasStatus(v.state, subject, "sick")) { R.effects.push({ t: "status-", who: subject, id: "sick" }); status(subject, "sick", false); } break;      // [B1935]
+    case "leech": if (success && sf && a) {                                                    // [B1937]: what the healer gains the target loses; Armor does not help
+      const n = Math.max(0, Math.min((fx.per ?? 3) * sixes, a.maxHealth - a.health, sf.health));
+      if (n > 0) { R.effects.push({ t: "actor", who: I.actor, path: "health", to: a.health + n }); R.effects.push({ t: "actor", who: subject, path: "health", to: sf.health - n }); R.events.push({ type: "damage", target: subject, base: n, armor: 0, taken: n, dtype: "leech", source: "power" });
+        if (sf.health - n <= 0 && !M.hasStatus(v.state, subject, "broken")) { R.effects.push({ t: "status+", who: subject, status: { id: "broken", source: src } }); status(subject, "broken", true); } }
+      I.data.gain = n;
+    } break;
+    case "convert": if (a) {                                                                   // Resilience [B2160]: damage just taken becomes stress, point for point
+      const n = Math.max(0, Math.min(Math.trunc(Number(opt) || 1), a.maxHealth - a.health, a.resolve));
+      if (n > 0) { R.effects.push({ t: "stress", who: I.actor, n, cost: 1 }); R.effects.push({ t: "actor", who: I.actor, path: "health", to: a.health + n });
+        if (a.health <= 0 && M.hasStatus(v.state, I.actor, "broken")) { R.effects.push({ t: "status-", who: I.actor, id: "broken" }); status(I.actor, "broken", false); } }
+      I.data.gain = n;
+    } break;
+    case "mark": R.effects.push({ t: "state", ...M.counterBump(v.state, markKey(I.actor, fx)) }); break;      // a thing that is on for the turn or the scene (a wind-up, an activation)
+    case "resist": {                                                                           // the one it is about rolls (no action, never pushed); each six takes 1 stress off
+      const key = `res:${subject}`;
+      if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, subject, fx.attr, [], { rollKind: "other" }); R.effects.push(K.rollEffect(key, subject, fx.attr, bp.pool, { passive: true, label: e?.label })); return "wait"; }
+      if (!K.rollFinal(I, key)) return "wait";
+      const six = K.sixesOf(I, key), n = Math.max(0, (fx.stress ?? 0) - six);
+      I.data.result = six > 0 ? "success" : "fail"; I.data.net = six; I.data.stress = n;
+      if (K.flag(I, "resisted")) break;
+      K.setFlag(I, "resisted");
+      if (n > 0) { R.effects.push({ t: "stress", who: subject, n }); R.events.push({ type: "stress", target: subject, n, source: "power" }); }
+      if (six < 1 && fx.loseTurn) { R.effects.push({ t: "state", path: ["ledger", subject], to: Lg.loseNextTurn(P1L(v, subject), src) }); R.effects.push({ t: "status+", who: subject, status: { id: "stunned", source: src } }); status(subject, "stunned", true); }
+      if (six < 1 && fx.forfeit) for (const cost of ["full", "quick"]) R.effects.push({ t: "pay", who: subject, cost, force: 1, key: `ff:${cost}`, action: I.action });      // this very turn is lost
+      break;
+    }
     case "gainResolve": if (success && sf) { const raw = sf.resolve + (fx.per ?? 1) * sixes, to = fx.over ? raw : Math.min(sf.maxResolve, raw); if (to > sf.resolve) R.effects.push({ t: "actor", who: subject, path: "resolve", to }); I.data.gain = Math.max(0, to - sf.resolve); } break;   // [B1686], [B2064]
     case "sap": if (success && sixes > 0) { R.effects.push({ t: "stress", who: subject, n: sixes * (fx.per ?? 1) }); R.events.push({ type: "stress", target: subject, n: sixes * (fx.per ?? 1), source: "power" }); I.data.stress = sixes; } break;   // [B2064]
     case "luck": token(R, { id: sid(`l${I.id}`), holder: subject, dice: (opt === "bad" ? -1 : 1) * (fx.lv ?? 1), scope: { next: 1 }, uses: 1, source: src, from: I.actor, forced: 1, expires: { at: "roundEnd" } }); break;       // [B1727-1730]
@@ -113,7 +144,7 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
   }
 }
 const P1L = (v, cid) => v.state.ledger?.[cid];
-export const KIT_KINDS = Object.freeze(["shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss"]);
+export const KIT_KINDS = Object.freeze(["shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist"]);
 const sameZone = (v, a, b) => { const r = v.facts.range?.(a, b); return r === undefined ? undefined : !!r && r.total === 0; };   // undefined: no map, the GM judges
 
 function legality(v, inst) {
@@ -122,7 +153,7 @@ function legality(v, inst) {
   const subject = subjectOf(inst), sf = v.facts.c(subject), other = subject !== inst.actor;
   if (other && (!sf || sf.present === false)) return bad("noTarget");
   if ((e?.target?.n?.[0] ?? 0) > 0 && !other) return bad("noTarget");
-  if (a.health <= 0 && !(kind === "rally" && !other)) return bad("broken");                                  // [B2707]: a broken character may only try to rally [B2773]
+  if (a.health <= 0 && !(kind === "rally" && !other) && kind !== "convert") return bad("broken");                                  // [B2707]: a broken character may only try to rally [B2773]
   if (M.hasStatus(v.state, inst.actor, "grappling")) return bad("grappling", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else
   if (e?.tags?.includes("physical")) { const r = RESTRAINTS.find((s) => M.hasStatus(v.state, inst.actor, s)); if (r) return bad("restrained", { ...GM, status: r }); }
   if (e?.roll && !e.roll.optional && !attrOf(v, inst)) return bad("noAttribute");
@@ -139,6 +170,9 @@ function legality(v, inst) {
   if (kind === "dismiss" && !K.summonsOf(v, inst.actor).length) return bad("noSummons");
   if (other && e?.near && (v.facts.range?.(inst.actor, subject)?.total ?? 0) > 1) return bad("tooFar", GM);          // [B1637]: this zone or the next
   if (kind === "regen" && !(a.health < a.maxHealth)) return bad("healthFull");
+  if (kind === "convert" && !(a.health < a.maxHealth)) return bad("healthFull");
+  if (kind === "convert" && !(a.resolve > 0)) return bad("stressedOut");
+  if (kind === "mark" && M.counterGet(v.state, markKey(inst.actor, e.effect)) > 0) return bad("usedAlready");
   if (kind === "inspire" && !(sf.resolve < sf.maxResolve)) return bad("resolveFull");
   if (kind === "inspire" && other && v.facts.canTalk?.(inst.actor, subject) === false) return bad("cannotHear", GM);
   switch (kind) {
@@ -218,7 +252,7 @@ export const act = {
         if (stressOf(v, I) > 0) R.effects.push({ t: "stress", who: I.actor, n: stressOf(v, I), cost: 1 });
       }
       if (e?.once && !K.flag(I, "once")) { K.setFlag(I, "once"); R.effects.push({ t: "state", ...M.counterBump(v.state, onceKey(I, e)) }); }
-      if (KIT_KINDS.includes(kind)) kitEffect(v, I, R, e, { kind, subject, sf, success, sixes });
+      if (KIT_KINDS.includes(kind) && kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) === "wait") { R.wait = true; return R; }
       switch (kind) {
         case "banter": {                                                                         // [B2785]: 1 stress per six more than the target rolled; once per round per target
           R.effects.push({ t: "state", ...M.counterBump(v.state, M.counterKey.round(subject, "bantered")) });

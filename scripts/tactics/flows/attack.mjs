@@ -92,6 +92,7 @@ export function legality(v, inst) {
   const w = weaponOf(v, inst);
   if (!counter && d.weapon && d.weapon !== "unarmed" && !w) return bad("noWeapon");
   if (entry?.unarmed && d.weapon && d.weapon !== "unarmed") return bad("noWeapon", { gmMayAllow: 1 });       // P6 [B2151]: Martial Arts is unarmed
+  if (!counter && a.pass?.windup && SLUG.includes(kind) && (!d.weapon || String(d.weapon).startsWith("unarmed")) && !K.marked(state, inst.actor, "windup")) return bad("noWindup", { gmMayAllow: 1 });      // P6 [B1622]: the quick action first
   if (w?.fam === "shoot" && kind === "slugfest") return bad("noWeapon");                                      // P6: a power thrown from afar is a shooting attack
   if (multi) {                                                                                               // [B2542], [B2543]
     if (!(entry?.[multi] || w?.[multi])) return bad(multi === "area" ? "noArea" : "noFullAuto", { gmMayAllow: 1 });
@@ -498,7 +499,7 @@ export const steps = {
       const base = o.extra === "bangHeads" ? stunts.bangHeadsDamage(a?.attrs?.strength ?? 0) : o.extra === "trickShot" ? stunts.trickShotDamage(baseDamageOf(v, I)) : baseDamageOf(v, I);
       const doubled = (I.data.stunts ?? []).some((p) => p.stunt === "doubleDamage" && p.target === t);          // [B2434]
       const forced = I.data.forced?.damage?.[t];
-      const sources = [...(tf.armor ?? []), ...K.barriersOf(v.state, t)];                                      // P6: Barriers [B1859]; Defiance stops stress only [B1865]
+      const sources = [...(tf.armor ?? []).filter((x) => !(x.id === "defiance" && tf.pass?.defianceOff && !K.marked(v.state, t, "defiance", true))), ...K.barriersOf(v.state, t)];                                      // P6: Barriers [B1859]; Defiance stops stress only [B1865]
       const ar0 = damage.selectArmor(tags.toStress ? sources.filter((s) => s.stress) : sources, { toStress: tags.toStress, source: tags.source });   // [B2682], [R13]
       const ar = w?.halveArmor && !o.extra ? { ...ar0, armor: damage.halvedArmor(ar0.armor) } : ar0;             // P6 [B1679]
       const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
@@ -583,7 +584,7 @@ export const steps = {
           R.events.push({ type: "status", target: t, status: { id: "itemLost", on: true } });
         }
         const w = weaponOf(v, I), oh = o.extra || kind === "counterattack" ? null : w?.onHit;       // P6: what a power's hit does beside (or instead of) damage
-        if (oh && (!w.pierce || dm?.pierced)) {
+        if (oh && (!w.pierce || dm?.pierced) && (!oh.ifDamage || dm?.taken > 0)) {
           const src = { kind: "power", owner: I.actor, name: w.of ?? w.name ?? "" };
           const st = oh.status ?? (oh.burn ? "burning" : null);
           if (st && once(`oh:${t}`)) { R.effects.push({ t: "status+", who: t, status: { id: st, source: src, ...(oh.data ? { data: oh.data } : {}) } }); R.events.push({ type: "status", target: t, status: { id: st, on: true } }); }

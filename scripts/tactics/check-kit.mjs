@@ -8,10 +8,11 @@ import * as M from "./mods-pure.mjs";
 import * as C from "./catalog-pure.mjs";
 import * as K from "./kit-pure.mjs";
 import * as J from "./journal-pure.mjs";
-import { ROWS, NOTES, LEVELS } from "./kitdata-pure.mjs";
+import { ROWS, NOTES, LEVELS, WHYS } from "./kitdata-pure.mjs";
 import { NAMES } from "./check-kit-names.mjs";
 import { EN, PL } from "./lang.mjs";
 import { KIT_KINDS } from "./flows/acts.mjs";
+import { marked } from "./flows/kit.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -29,7 +30,8 @@ const both = (k) => typeof EN[k] === "string" && typeof PL[k] === "string";
     ok(NOTES.includes(r.note) && both(`ITAC.kit.note.${r.note}`), `${r.name}: its note exists in both languages (${r.note})`);
     ok(Array.isArray(r.src) && r.src.length > 0 && r.src.every(Number.isInteger), `${r.name}: cites its book lines`);
     ok(r.state !== "hand" || (!r.acts?.length && !r.fx && !r.opt), `${r.name}: an entry run by hand offers nothing`);
-    ok(r.state === "hand" || r.acts?.length || r.atk || r.fx || r.mv || r.pass || r.mods || r.opt || r.weapon || r.cost || r.size || r.sizeOnly || ["sheet", "system", "initiative", "off", "interrupt", "gmCard", "zone", "outcome", "roll", "move"].includes(r.note), `${r.name}: an entry that is not by hand has something behind it`);
+    ok(r.state === "hand" || r.acts?.length || r.atk || r.fx || r.mv || r.pass || r.mods || r.opt || r.weapon || r.cost || r.size || r.sizeOnly || r.lockFx || r.bars || r.throwOf || ["sheet", "system", "initiative", "off", "interrupt", "gmCard", "zone", "outcome", "roll", "move"].includes(r.note), `${r.name}: an entry that is not by hand has something behind it`);
+    ok(r.state === "hand" ? WHYS.includes(r.why) && both(`ITAC.kit.why.${r.why}`) : !r.why, `${r.name}: by hand only with the reason the book leaves it to the table, in both languages (${r.why ?? "none"})`);
     for (const a of r.acts ?? []) {
       ok(both(`ITAC.kit.act.${a.k}`), `${r.name}: the action "${a.k}" has a name in both languages`);
       for (const p of a.pick ?? []) ok(/^\d+$/.test(p) || both(`ITAC.kit.pick.${p}`), `${r.name}: the choice "${p}" has a name`);
@@ -340,6 +342,72 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   eq([T.c.N1.summonOf, T.state.summons.map((s) => [s.owner, s.combatants]), T.state.init.slots.some((s) => s.members.includes("N1")), P1.budget(T.state, "N1").full], ["H1", [["H1", ["N1"]]], false, "open"], "controlled: it acts on the hero's turn, the very same turn too");
   await T.gm({ op: "setHealth", combatant: "H1", value: 0 });
   ok(!!T.c.N1, "a controlled animal is not removed like summoned allies");
+}
+/* ================================================================== entries that used to be run by hand */
+{
+  const strike = (more) => [item("st", "Strike", "power", { boosts: more.map((m) => m.id) }), ...more];
+  /* Toxic Strike [B1621] */
+  const T = base(strike([item("tx", "Toxic Strike", "boost", { power: "st" })]), [], { n1: { health: 6 } });
+  await T.req("p1", decl("H1", "slugfest", { targets: ["N1"] })); await pass(T); await T.roll("attack", 1); await noStunts(T);
+  eq([T.c.N1.health < 6, M.statusesOf(T.state, "N1").find((s) => s.id === "sick")?.data], [true, { toxic: 1, virulence: 0 }], "Toxic Strike: a hit that does damage poisons the target");
+  const h0 = T.c.N1.health;
+  await T.gm({ op: "endTurn", actor: "H1" });
+  for (let i = 0; i < 4 && !T.requests.some((r) => r.label === "ITAC.roll.disease"); i++) { const q = T.prompt("triggerQueue"); if (q) await T.gm({ op: "answerFor", prompt: q.id, value: q.options[0].id }); else break; }
+  ok(T.state.init.curMember === "N1" && T.requests.some((r) => r.label === "ITAC.roll.disease" && r.attr === "strength" && r.combatant === "N1"), "at the start of the victim's turn the engine asks for its STRENGTH roll");
+  await T.roll("roll", 0);
+  eq([T.c.N1.health, M.hasStatus(T.state, "N1", "sick")], [h0 - 1, true], "failed: 1 damage past the armor, the poison stays");
+  /* a roll the target makes to resist: Terrifying Illusions [B1717], Phobic [B2187] */
+  const U = base([item("il", "Illusion", "power", { boosts: ["ti"] }), item("ti", "Terrifying Illusions", "boost", { power: "il" }), item("ph", "Phobic", "drawback")]);
+  await U.req("p1", decl("H1", act(U, "H1", "terrify").id, { targets: ["N1"] }));
+  eq([U.lastRequest().key, U.lastRequest().attr, U.lastRequest().combatant], ["res:N1", "intuition", "N1"], "Terrifying Illusions: the target rolls INTUITION, no action of its own");
+  await U.roll("res:N1", 1);
+  eq([U.c.N1.resolve, M.hasStatus(U.state, "N1", "stunned")], [3, false], "one six: 2 of the 3 stress land, the turn is kept");
+  await U.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(U, "H1", "terrify").id, targets: ["N1"] } }); await U.roll("res:N1", 0);
+  eq([U.c.N1.resolve, M.hasStatus(U.state, "N1", "stunned"), !!U.state.ledger.N1.lostTurn], [0, true, true], "no six: all 3 stress and the next turn is lost");
+  const V = base([item("ph", "Phobic", "drawback")]);
+  await V.req("p1", decl("H1", act(V, "H1", "phobia").id)); await V.roll("res:H1", 0);
+  eq([P1.budget(V.state, "H1").full, P1.budget(V.state, "H1").quick], ["used", ["used", "lost"]], "Phobic: the PRESENCE roll failed, this turn is lost");
+  /* Mass Healing [B1934], Cleansing Healing [B1935], Resilience [B2160], Life Leech [B1937] */
+  const W = base([item("he", "Healing", "power", { boosts: ["mh", "ch"] }), item("mh", "Mass Healing", "boost", { power: "he" }), item("ch", "Cleansing Healing", "boost", { power: "he" }), item("rs", "Resilience", "talent")], [], { h1: { health: 2, maxHealth: 6 } });
+  W.add("H3", { owners: ["p3"], health: 1, maxHealth: 6 }); W.c.H2.health = 3;
+  await W.gm({ op: "roster" });
+  await W.req("p1", decl("H1", act(W, "H1", "massHeal").id, { targets: ["H2", "H3"] })); await W.roll("roll", 1);
+  eq([W.c.H2.health, W.c.H3.health, W.c.H1.resolve], [6, 4, 4], "Mass Healing: one roll heals both, 1 stress for the second target");
+  eq([code(await W.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(W, "H1", "resilience").id, opt: "3" } })), W.c.H1.health, W.c.H1.resolve], ["ok", 5, 1], "Resilience: 3 damage just taken become 3 stress");
+  await W.gm({ op: "statusAdd", combatant: "H2", status: { id: "sick" } });
+  await W.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(W, "H1", "cleanse").id, targets: ["H2"] } }); await W.roll("roll", 1);
+  ok(!M.hasStatus(W.state, "H2", "sick"), "Cleansing Healing: the sickness is gone");
+  const X = base([item("he", "Healing", "power", { boosts: ["ll"] }), item("ll", "Life Leech", "limit", { power: "he" })], [], { h1: { health: 2, maxHealth: 6 } });
+  await X.req("p1", decl("H1", act(X, "H1", "leech").id, { targets: ["N1"] })); await X.roll("roll", 1);
+  eq([X.c.H1.health, X.c.N1.health], [5, 3], "Life Leech: what the healer gains the target loses");
+  /* Windup Strike [B1622]; Requires Activation (Defiance) [B1869]; an extra target for a point of stress [B1763] */
+  const Y = base([...strike([item("ws", "Windup Strike", "limit", { power: "st" })]), item("df", "Defiance", "power", { boosts: ["ra"] }), item("ra", "Requires Activation (Defiance)", "limit", { power: "df" }),
+    item("mc", "Mind Control", "power", { boosts: ["ac"] }), item("ac", "Area Control", "boost", { power: "mc" })]);
+  eq([code(await Y.req("p1", decl("H1", "slugfest", { targets: ["N1"] }))), why(Y.last), Y.last.error.params.gmMayAllow], ["illegal", "noWindup", 1], "Windup Strike: no unarmed attack before the quick action (the GM may allow it)");
+  await Y.req("p1", decl("H1", act(Y, "H1", "ready").id));
+  eq(code(await Y.req("p1", decl("H1", "slugfest", { targets: ["N1"] }))), "ok", "readied: the attack goes ahead");
+  await pass(Y); await Y.roll("attack", 0);
+  eq([Y.c.H1.pass.defianceOff, marked(Y.state, "H1", "defiance", true)], [true, false], "Defiance that needs activating is off at first");
+  await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "activate").id } });
+  eq([marked(Y.state, "H1", "defiance", true), code(await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "activate").id } })), why(Y.last)], [true, "illegal", "usedAlready"], "activated for the scene, once");
+  const r0 = Y.c.H1.resolve;
+  await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "many").id, opt: "2" } });
+  eq(Y.c.H1.resolve, r0 - 2, "Area Control: two targets beyond the first, 2 stress");
+  /* Killer [B2121], Lucky Break [B2149], Sequestered Original [B1915]: the injury roll */
+  const crit = async (nItems, hItems) => { const Z = base(hItems, nItems, { h1: { health: 1, maxHealth: 6 } }); Z.turn("N1"); Z.dice = [[2, 5]]; await Z.gm(decl("N1", "slugfest", { targets: ["H1"] })); await pass(Z); await Z.roll("attack", 1); const p = Z.prompt("stunts"); if (p) await Z.gm({ op: "answerFor", prompt: p.id, value: [] });
+    return [Z.performed.filter((e) => e.t === "dice" && String(e.why).startsWith("crit")).map((e) => e.n), Z.evs("crit").map((e) => e.crit.roll)]; };
+  eq(await crit([], []), [[1], [3]], "an ordinary injury: one die (2, and 1 for the hit)");
+  eq(await crit([item("ki", "Killer", "talent")], []), [[2], [6]], "Killer: two dice, the higher is kept");
+  eq(await crit([], [item("lb", "Lucky Break", "talent")]), [[2], [3]], "Lucky Break: two dice, the lower is kept");
+  eq(await crit([], [item("du", "Duplication", "power", { boosts: ["so"] }), item("so", "Sequestered Original", "boost", { power: "du" })]), [[], []], "Sequestered Original: broken, no injury is rolled");
+  /* what the builder makes of the rest */
+  const k = K.build({ items: [item("mc", "Mind Control", "power", { boosts: ["hy"] }), item("hy", "Hypnosis", "limit", { power: "mc" }), item("si", "Signature Item", "power", { boosts: ["th"] }), item("th", "Throwable Item", "boost", { power: "si" }),
+    item("sw", "Swimming", "power", { boosts: ["fs"] }), item("fs", "Fast Swimmer", "boost", { power: "sw" }), item("du", "Duplication", "power", { boosts: ["so"] }), item("so", "Sequestered Original", "boost", { power: "du" }),
+    item("ki", "Killer", "talent"), item("em", "Emanation", "power", { boosts: ["ce"], fx: [{ id: "e", name: "Emanation", on: true }] }), item("ce", "Continual Emanation", "limit", { power: "em" }), item("an", "Analysis", "talent")], attrs: { strength: 5 } });
+  eq([k.actions.some((a) => a.kit.item === "mc"), k.rows.find((r) => r.item === "mc").barred], [false, 1], "Hypnosis: Mind Control is not offered during a fight [B1764]");
+  eq(k.weapons.filter((w) => w.id === "th~throw").map((w) => [w.fam, w.damage, w.range]), [["shoot", 3, [0, 3]]], "Throwable Item: a shooting attack, damage and range half the STRENGTH [B1970]");
+  eq([k.pass.fastSwim, k.pass.noCrit, k.pass.killer, k.actions.some((a) => a.kit.item === "em")], [true, true, true, false], "Fast Swimmer, Sequestered Original and Killer are facts the engine reads; a continual Emanation is never switched off");
+  eq(k.rows.find((r) => r.item === "an").why, "outOfFight", "a row left to the table carries its reason");
 }
 /* ================================================================== Size Alteration [B1974-1981]: the size has its effects */
 {
