@@ -15,6 +15,7 @@
    - a REWORDED keyless text: the exact-match table below no longer matches (check-glossary compares the table with the system's sources
      when the system is installed next to the module);
    - a changed template: the DOM fixes find nothing. */
+import { ATTRS, gradePl } from "./terms.mjs";
 const MOD = "invincible-plus-ultra", SYSTEM = "invincible", NS = "IPU.Sys.";
 
 /** id -> the English text exactly as the system's code has it ({name} = any text). Wording of both languages: IPU.Sys.<id> in lang/*.json. */
@@ -118,6 +119,18 @@ function swapDocPhrases(root) {
   if (game.i18n.has(BLANK_LEVEL.key)) for (const o of root.querySelectorAll('select option[value=""]')) if (o.textContent.trim() === BLANK_LEVEL.text) o.textContent = game.i18n.localize(BLANK_LEVEL.key);
 }
 const rootOf = (html) => (html instanceof HTMLElement ? html : html?.[0] ?? null);
+/* The grade beside an attribute on the system's actor sheet (templates/actor/header.hbs: <div class="attribute {{name}}"> ... <label
+   class="graduation">): the template localizes ONE key per grade, so the word cannot agree with the attribute through lang/pl.json. In
+   Polish the label is rewritten on render with the agreeing form (terms.mjs gradePl); the key keeps the masculine form for every other use. */
+function agreeGrades(app, el) {
+  if (game.i18n.lang !== "pl") return;
+  const attrs = app?.document?.system?.attributes;
+  if (!attrs) return;
+  for (const box of el.querySelectorAll(".attribute")) {
+    const k = ATTRS.find((a) => box.classList.contains(a)), label = k ? box.querySelector("label.graduation") : null, word = label ? gradePl(attrs[k]?.value, k) : null;
+    if (word && label.textContent.trim() !== word) label.textContent = word;
+  }
+}
 
 /** Called when the module's script loads. That is BEFORE Foundry knows the system (game.system is not there yet), and, because the file
     is imported dynamically, it may also be AFTER the init hook has fired: so start now when the system is known, else on init. */
@@ -139,6 +152,7 @@ function start() {
       if (!el?.classList) return;
       if (el.classList.contains("invincible") && el.classList.contains("item")) swapText(el, "label", "extraConfiguration");
       if (el.classList.contains("invincible")) swapDocPhrases(el);
+      if (el.classList.contains("invincible") && el.classList.contains("actor")) agreeGrades(app, el);
       // the name field of every sheet: placeholder='Name' (templates/actor/header.hbs, challenge.hbs, vehicle.hbs, item/header.hbs); "Name" is a literal key of lang/pl.json
       if (el.classList.contains("invincible") && game.i18n.has(NAME_PLACEHOLDER)) for (const inp of el.querySelectorAll(`input[name="name"][placeholder="${NAME_PLACEHOLDER}"]`)) inp.placeholder = game.i18n.localize(NAME_PLACEHOLDER);
       const title = el.querySelector?.(".window-header .window-title");
