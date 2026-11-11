@@ -164,7 +164,7 @@ function bar(d) {
   return h("div.itd-bar", {},
     unit(d),
     d.rest ? h("div.itd-tail", {}, hotbarBtn(d), h("button.itd-mini", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up"))) : [
-      h("div.itd-acts", {}, d.groups.map((g) => h("div.itd-group", { attrs: { role: "group", "aria-label": g.label } }, g.items.map(actionBtn)))),
+      h("div.itd-acts", {}, d.out ? h("p.itd-out", { data: { reason: d.out.reason } }, icon(d.out.reason === "dead" ? "fa-skull" : d.out.reason === "unconscious" ? "fa-bed" : "fa-heart-crack"), h("span", { text: d.out.text })) : null, d.groups.map((g) => h("div.itd-group", { attrs: { role: "group", "aria-label": g.label } }, g.items.map(actionBtn)))),
       h("div.itd-tail", {},
         h(`button.itd-ic.itd-ic-ghost${d.other.armed ? ".itd-armed" : ""}`, { fk: "other", tip: d.other.tip, attrs: { "aria-pressed": String(d.other.armed), "aria-label": d.other.label }, on: { click: () => set(d.other.armed ? { mode: null } : { mode: "other", armed: null, text: "", endArmed: false }) } }, actIcon("@other")),
         h(`button.itd-ic.itd-ic-ghost${d.holdOff.armed ? ".itd-armed" : ""}`, { fk: "hold", disabled: !!d.holdOff.disabled, tip: d.holdOff.tip, attrs: { "aria-pressed": String(d.holdOff.armed), "aria-label": d.holdOff.label }, on: { click: () => set(d.holdOff.armed ? { mode: null } : { mode: "holdOff", armed: null, endArmed: false }) } }, actIcon("@hold")),

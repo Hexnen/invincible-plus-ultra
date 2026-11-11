@@ -653,7 +653,7 @@ export function dockData(model, own, facts, t) {
   else if (mine.length && !facts.staff) panel = minePanel(mine[mine.length - 1], facts, t, (model?.rolls ?? []).some((r) => r.inst === mine[mine.length - 1].inst && r.state === "push"));
   const slots = slotsOf(bar, t), unused = slots.filter((p) => p.state === "open").map((p) => p.label);
   const end = bar.endTurn ? { label: own.endArmed ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), tip: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : unused.length ? t("ITAC.ui.end.unused", { list: unused.join(", ") }) : t("ITAC.ui.end.tip"),
-    disabled: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm: unused.length > 0, armed: !!own.endArmed }
+    disabled: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm: unused.length > 0 && !bar.endTurn.noConfirm, armed: !!own.endArmed && !bar.endTurn.noConfirm }
     : { label: t("ITAC.ui.end"), tip: reasonText(t, "notYourTurn"), disabled: reasonText(t, "notYourTurn"), req: null, confirm: false, armed: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn
   const chase = facts.view?.chase ? t("ITAC.ui.chase.line", { n: facts.view.chase.distance }) : null;      // P7: a chase has no turns, the line carries the distance
@@ -666,6 +666,7 @@ export function dockData(model, own, facts, t) {
     who: { id: bar.combatant, name: bar.name ?? c?.name ?? "", img: c?.img ?? null, onTurn: !!bar.onTurn, free: !!bar.free, freeLabel: t("ITAC.ui.freeMode"),
       zone: zoneNow ? { label: zoneNow, tip: `${facts.staff ? t("ITAC.ui.here.of", { name: bar.name ?? c?.name ?? "", zone: zoneNow }) : t("ITAC.ui.here", { zone: zoneNow })}. ${t("ITAC.ui.legend")}` } : null },
     slots, vitals: vitalsOf(facts, bar.combatant, t), extras: extrasOf(bar, t), groups,
+    out: bar.out ? { reason: bar.out.reason, text: t(bar.out.label) } : null,      // U9: why nothing (or only getting up) is offered: said where the actions were
     hotbar: { open: !!own.hotbar, label: t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show") },      // U28: Foundry's macro bar is folded away while the dock is up; this brings it back
     other: { label: t("ITAC.action.other"), armed: own.mode === "other", tip: tipOf(t("ITAC.action.other"), null, null, [t("ITAC.ui.other.hint")]) },
     holdOff: { label: t("ITAC.ui.holdOff"), armed: own.mode === "holdOff", disabled: bar.holdOff?.disabled ? reasonText(t, bar.holdOff.disabled) : null,
