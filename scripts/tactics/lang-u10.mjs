@@ -134,7 +134,7 @@ export const EN_U10 = {
   "ITAC.Settings.tacticsHints.Hint": "Shows each short hint once, the first time you meet the thing (the two slots, the mark of speed, pushing). Turn it off and on again to see them once more.",
   "ITAC.hint.slots": "Your turn: [[full]] and [[quick]]. [[full]] also pays for a second [[quick]].",
   "ITAC.hint.speed": "The mark under a picture is its price: [[full]], [[quick]] or [[none]]. Hover a mark for its name. All of them: the Marks button.",
-  "ITAC.hint.push": "[[push]] rolls again every die that shows neither a six nor a one. Each one after it costs [[stress:1]]. Once per roll.",
+  "ITAC.hint.push": "Pushing rolls again every die that shows neither a six nor a one. Each one after it costs [[stress:1]]. Once per roll.",
   "ITAC.hint.close": "Got it",
 };
 export const PL_U10 = {
@@ -262,6 +262,6 @@ export const PL_U10 = {
   "ITAC.Settings.tacticsHints.Hint": "Każda krótka podpowiedź pokazuje się raz, przy pierwszym zetknięciu (dwa sloty, znak szybkości, forsowanie). Wyłącz i włącz, żeby zobaczyć je jeszcze raz.",
   "ITAC.hint.slots": "Twoja tura: [[full]] i [[quick]]. [[full]] opłaci też drugą [[quick]].",
   "ITAC.hint.speed": "Znak pod ikoną to cena: [[full]], [[quick]] albo [[none]]. Nazwę znaku pokaże podpowiedź. Wszystkie: przycisk Znaki.",
-  "ITAC.hint.push": "[[push]]: rzucasz ponownie kośćmi bez szóstki i bez jedynki. Każda jedynka po forsowaniu kosztuje [[stress:1]]. Raz na rzut.",
+  "ITAC.hint.push": "Forsując, rzucasz ponownie kośćmi bez szóstki i bez jedynki. Każda jedynka po forsowaniu kosztuje [[stress:1]]. Raz na rzut.",
   "ITAC.hint.close": "Jasne",
 };

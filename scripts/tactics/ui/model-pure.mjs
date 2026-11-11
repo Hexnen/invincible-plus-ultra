@@ -308,7 +308,7 @@ export function askData(p, o) {
       /* U83: a greyed answer keeps the size of the others: why it cannot be chosen and what to do about it (U54 / U68) stand in its
          tooltip, under what it does; U51: the answer shows its name, the tooltip says what is not on it. U93: an answer that shows
          its price as marks names them in its tooltip (the price line: each mark, then its name) */
-      tip: stTip || why || price ? tipOf(null, why && unit ? tipCost(t, x.cost, x.stress, why) : null, why, [stTip], tipPrice(t, x.cost, x.stress, why, { out: kind === "reaction" })) : null, pv: pb && !x.disabled ? pvCost(pb, x.cost, x.stress) : null,
+      tip: stTip || why || price ? tipOf(null, why && unit && !isFree(x.cost) ? tipCost(t, x.cost, x.stress, why) : null, why, [stTip], tipPrice(t, x.cost, x.stress, why, { out: kind === "reaction" })) : null, pv: pb && !x.disabled ? pvCost(pb, x.cost, x.stress) : null,
       note: odds(x.id), disabled: why?.text ?? null, picked: picks.includes(x.id), pass: x.id === "pass", zones,
       req: x.disabled || p.multi ? null : value && x.req ? p.answerReq(value) : x.req,
       zoneReq: zones && !x.disabled ? (zone) => p.answerReq({ id: x.id, zone: String(zone) }) : null,      // an option that carries zones: the place picked on the map rides along [D]

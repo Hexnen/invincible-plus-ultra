@@ -45,7 +45,7 @@ for (const l of ["en", "pl"]) {
   const r = M.askData(react, { t, facts: facts(T, view, "p1"), own: {} }), by = (id) => r.options.find((x) => x.id === id);
   eq([by("block").tip.cost.toLowerCase(), by("block").tip.why], [t("ITAC.ui.tip.cost", { cost: T0("ITAC.cost.quick") }).toLowerCase(), FP.whyOf(t, "noQuickAction", {}, { ask: false })], `A7 ${l}: a greyed reaction: "Costs: quick action", then the reason and the remedy`);
   ok(by("block").tip.cost !== by("block").tip.why.text && /[.!?]$/.test(by("block").tip.why.text), `A8 ${l}: the reason is a sentence, not the words of the price (U68)`);
-  eq([by("dodge").tip, by("pass").tip], [null, null], `A9 ${l}: an answer that can be given and has nothing more to say has no tooltip`);
+  eq([by("dodge").tip?.price?.parts?.map((x) => x.mark), by("dodge").tip?.lines, by("dodge").tip?.cost, by("pass").tip], [["quick"], [], null, null], `A9 ${l}: an answer that can be given says nothing more than the names of its marks (U93); one without a price has no tooltip`);
   eq([by("block:free").tip.cost, by("block:free").tip.why.text], [null, t("ITAC.why.stressedOut")], `A10 ${l}: a price the tile writes out in words is not repeated in the tooltip (U51)`);
   eq([typeof by("odd").disabled, by("odd").tip.why.text, by("odd").tip.why.fix], ["string", by("odd").disabled, null], `A11 ${l}: an unknown reason still gets its sentence in the tooltip; a card's answer has no "ask the GM" click`);
   for (const id of STUNT_WHY) {
