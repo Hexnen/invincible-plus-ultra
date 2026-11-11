@@ -98,7 +98,7 @@ const base = (extra = () => {}, more = []) => { const T = new Table(); T.hero("H
   await pass(T);
   await T.roll("attack", 4);
   const sp = T.prompt("stunts"), ids = sp.options.map((o) => o.id);
-  ok(ids.includes("bangHeads@N1|N2") && ids.includes("bangHeads@N1|H2") && ids.includes("stun@N2"), "D: Bang Heads names the extra opponent; that opponent may get stunts of its own");
+  ok(ids.includes("bangHeads@N1|N2") && !ids.includes("bangHeads@N1|H2") && ids.includes("stun@N2") && !ids.includes("stun@H2"), "D: Bang Heads names the extra opponent, never the attacker's ally (U90); that opponent may get stunts of its own");
   const ans = (value) => T.req("p1", { op: "answer", prompt: sp.id, value });
   eq(why(await ans(["stun@N2"])), "notHit", "D: no stunt on someone the blow does not reach");
   eq(why(await ans(["bangHeads@N1|N2", "bangHeads@N1|N2"])), "chosen", "D: the same extra opponent only once");

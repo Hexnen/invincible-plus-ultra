@@ -81,6 +81,16 @@ ok(!SURFACES.includes("tactics"), "the dock and the desk name their own tooltip 
   ok(/div\.dices \+ div\.breakdown[^{]*label\.attribute-label \{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/.test(rules), "a part's name stays on its one line");
   ok(/data-ird-fact\] > label\.attribute-label \{[^}]*clip-path/.test(rules) && !/data-ird-fact[^{]*label[^{]*\{[^}]*display:\s*none/.test(rules), "a fact's name stays in the window for a screen reader");
   ok(!/content:\s*"\+"/.test(rules), "no plus signs between chips any more");
+  // U87: a range whose least and greatest are the same number is that number once
+  const { oneRange, bothNames } = await import("./rolldialog.mjs");
+  ok(oneRange("0", "0") && oneRange(0, 0) && oneRange(" 0 ", "0"), "Slugfest's range 0 and 0 is one number");
+  ok(oneRange("3", "3") && oneRange("3", "3.0") && oneRange("-1", "-1"), "any equal pair is one number, not only zeros");
+  ok(!oneRange("0", "1") && !oneRange("1", "3") && !oneRange("3", "1"), "a real span keeps both numbers");
+  ok(!oneRange("", "") && !oneRange("", "0") && !oneRange(null, undefined) && !oneRange("x", "x") && !oneRange("0", "0 m"), "a missing or unreadable range keeps the pair as the system wrote it");
+  ok(bothNames(pl.min, pl.max).includes(pl.min) && bothNames(pl.min, pl.max).includes(pl.max), "the one number's tooltip names the least and the greatest");
+  const same = rules.match(/\[data-ird-fact="max"\]\[data-ird-same\] \{[^}]*\}/)?.[0] ?? "";
+  ok(/clip-path/.test(same) && /position:\s*absolute/.test(same) && !/display:\s*none|visibility:\s*hidden/.test(same), "the second number of an equal range is out of sight but stays in the window for a screen reader");
+  ok(!/\[data-ird-same\][^{]*\{[^}]*(display:\s*none|visibility:\s*hidden)/.test(rules), "nothing of an equal range is removed from the window");
   const src = readFileSync(new URL("./rolldialog.mjs", import.meta.url), "utf8");
   ok(!/\.remove\(\)|appendChild|insertBefore|\.prototype\.|addEventListener/.test(src), "rolldialog.mjs adds, removes, moves and rewires nothing");
 }

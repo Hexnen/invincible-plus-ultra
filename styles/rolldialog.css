@@ -12,7 +12,7 @@
                                                  the tooltip). The Bonus is the last line and the one FIELD (filled, framed, a caret) in
                                                  the same column. Lines never share a row, so nothing can wrap
      the attack's facts second div.breakdown     (U82) ONE strip under a hairline, like the dock's vitals: a drawing and the number;
-                                                 damage | range as "least - greatest" | armor | stress price. The names are the tooltips
+                                                 damage | range as "least - greatest" (U87: one number when both are the same) | armor | stress price. The names are the tooltips
                                                  and stay in the window for a screen reader (scripts/rolldialog.mjs names the facts;
                                                  without it the facts keep the worded chips)
      ways to roll       footer.form-footer       the kit's contract: ONE main button (yellow, blue hard shadow) = the way the chat is set
@@ -135,6 +135,11 @@
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"]::before { content: "\2013"; width: auto; font: 400 15px/1 Roboto, sans-serif; }
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact] > label.attribute-label {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%);
+}
+/* U87 least and greatest are the same number (Slugfest: 0 and 0): the number once. The greatest stays in the window for a screen
+   reader, out of sight like the names; the one number's tooltip names both */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"][data-ird-same] {
+  position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%);
 }
 
 /* an attack that states no facts (a talent roll): no hairline over nothing */
