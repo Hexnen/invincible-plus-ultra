@@ -64,6 +64,13 @@ export function chanceOf(pool, defPool = null) {
   return out;
 }
 const DEF_ATTR = { block: "fighting", dodge: "agility" };
+/** The chance of a roll of `n` dice of action `a` (its `opposeAttr` / `defense`) against `tgt`, in the words this user gets [D9]: a
+    band for a player, the number for the GM (`say`); `defended` only when the defender's pool is this user's to know (attrsFor). */
+export function oddsFor(a, n, tgt, facts, t) {
+  if (!Number.isFinite(n)) return null;
+  const dAttr = a?.opposeAttr ?? DEF_ATTR[a?.defense], dp = tgt && dAttr ? Number(attrsFor(facts, tgt)?.[dAttr]) : NaN, c = chanceOf(n, Number.isFinite(dp) ? dp : null), say = (x) => (facts.staff ? pct(x.p) : t(`ITAC.ui.band.${x.band}`));
+  return { level: c.level, text: t(`ITAC.ui.band.${c.band}`), say: say(c), defended: c.defended ? { level: c.defended.level, text: t(`ITAC.ui.band.${c.defended.band}`), say: say(c.defended), label: a.opposeAttr ? t("ITAC.ui.ifResists", { attr: attrText(t, a.opposeAttr) }) : t("ITAC.ui.ifDefends", { how: t(`ITAC.action.${a.defense}`) }) } : null };
+}
 
 /* ------------------------------------------------------------------ the roster a target is picked from */
 /** everybody of the view except `cid`: { id, name, npc, unseen, side } ; `side` = "own" for the actor's own kind (hero / NPC) */
@@ -529,19 +536,30 @@ function declarePanel(bar, a, own, facts, t) {
      panel, the reaction card, "in progress" and the dice thrown say one number. facts.preview is asked by main.mjs through the relay
      and remembered; until it answers, and where nobody can know yet (no target), no number is shown rather than a guess. */
   const pv = facts.preview?.(bar.combatant, { ...decl, action: a.id }) ?? null;
-  const pool = pv && Number.isFinite(pv.dice) ? { total: pv.dice, parts: [{ id: pv.attr ?? "base", dice: pv.base ?? 0 }, ...(pv.mods ?? []).map((m) => ({ label: t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source)), dice: m.dice }))] } : null;
-  let chance = null;
-  if (pool) {
-    const tgt = picked[0], dAttr = a.opposeAttr ?? DEF_ATTR[a.defense];
-    const defPool = tgt && dAttr ? Number(attrsFor(facts, tgt)?.[dAttr]) : NaN;
-    const c = chanceOf(pool.total, Number.isFinite(defPool) ? defPool : null);
-    chance = { level: c.level, text: t(`ITAC.ui.band.${c.band}`), defended: c.defended ? { level: c.defended.level, text: t(`ITAC.ui.band.${c.defended.band}`), label: a.opposeAttr ? t("ITAC.ui.ifResists", { attr: attrText(t, a.opposeAttr) }) : t("ITAC.ui.ifDefends", { how: t(`ITAC.action.${a.defense}`) }) } : null };
+  /* W1 (U33 / U34 / U13): THE TARGETS ARE CHOSEN ON THE MAP. facts.reach asks the engine (op "preview" with `of`) about every candidate
+     of this very declaration: the answer of the legality the declaration will meet, the dice of the roll, what a hit would do. One
+     question per change of the declaration or of the fight (never per mouse move; the words typed for the GM are not part of it).
+     A target that stands on this user's map (`map`) is marked there and has no chip in the panel; a chosen one the engine refuses
+     shows the reason at once, with the way to ask, before anything is declared. Nothing is marked until the engine answered. */
+  const { targets: tg0, text: tx0, ...core } = decl;
+  const reach = facts.board && all?.length && !lone ? facts.reach?.(bar.combatant, { ...core, action: a.id }, all.map((r) => r.id)) ?? null : null;
+  const oddsOf = (n, tgt) => oddsFor(a, n, tgt, facts, t);
+  if (targets) for (const x of targets) {
+    const r = reach?.[x.id] ?? null;
+    x.map = !!facts.board && !!facts.onMap?.(x.id);
+    x.reach = r ? (r.ok ? "in" : "out") : reach && x.note ? "out" : null;
+    x.why = r && !r.ok ? reasonText(t, r.reason, r.params) : x.reach === "out" ? x.note : null;
+    x.odds = r?.ok ? oddsOf(r.dice, x.id) : null;
+    x.hit = r?.ok ? r.hit ?? null : null;
   }
+  const early = (targets ?? []).find((x) => x.picked && x.reach === "out") ?? null, onMap = (targets ?? []).some((x) => x.map);
+  const pool = pv && Number.isFinite(pv.dice) ? { total: pv.dice, parts: [{ id: pv.attr ?? "base", dice: pv.base ?? 0 }, ...(pv.mods ?? []).map((m) => ({ label: t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source)), dice: m.dice }))] } : null;
+  const chance = pool && !onMap ? oddsOf(pool.total, picked[0]) : null;      // W1: with the targets on the map the chance stands over each token, not in the panel
   const why = arm.why ?? (choice && !pickId ? t("ITAC.ui.need.choice") : a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : chooser && !attr && !a.attrOptional ? t("ITAC.ui.need.attr") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : ap?.why ?? null);
   /* the executor refused this very declaration as against the rules (out of reach, no line of sight...): the reason stays in the panel
      with the way round it, a declaration that carries a request for an exception (a card on the GM desk; the GM's own goes there too) */
-  const ref = own.refused && own.refused.action === a.id && own.refused.key === picked.join(",") ? own.refused : null;
-  const refused = ref ? { reason: t("ITAC.ui.blocked", { reason: reasonText(t, ref.reason, ref.params) }), text: facts.staff ? null : own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
+  const ref = own.refused && own.refused.action === a.id && own.refused.key === picked.join(",") ? own.refused : early ? { early: 1 } : null;
+  const refused = ref ? { reason: t("ITAC.ui.blocked", { reason: ref.early ? early.why : reasonText(t, ref.reason, ref.params) }), text: facts.staff ? null : own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
     submit: { label: facts.staff ? t("ITAC.ui.exception.anyway") : t("ITAC.ui.exception.ask"), disabled: why ?? (facts.staff || (own.why ?? "").trim() ? null : t("ITAC.ui.exception.needText")),
       req: !why && (facts.staff || (own.why ?? "").trim()) ? a.exceptionReq(decl, facts.staff ? t("ITAC.ui.who.gm") : own.why.trim()) : null } }
     /* U3: the bar itself says no (not your turn, no action left, the table is busy): the panel stays whole, so the request to the GM
@@ -549,12 +567,24 @@ function declarePanel(bar, a, own, facts, t) {
     : a.disabled ? { reason: t("ITAC.ui.blocked", { reason: reasonText(t, a.disabled) }), text: own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
       submit: { label: t("ITAC.ui.exception.ask"), disabled: why ?? ((own.why ?? "").trim() ? null : t("ITAC.ui.exception.needText")),
         req: !why && (own.why ?? "").trim() ? bar.exception.req(`${title}${picked.length ? ` (${picked.map((id) => nameOf(facts, id, t)).join(", ")})` : ""}: ${own.why.trim()}`.slice(0, 400), null, { reason: a.disabled, decl: { ...decl, action: a.id } }) : null } } : null;
-  return { kind: "declare", action: a.id, title, cost, unit: a.cost, pv: pvOf(a), choice, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, attrs, approach: ap, maxTargets: arm.maxTargets, weapons: arm.weapons, opts: arm.opts, notes: arm.notes,
+  return { kind: "declare", action: a.id, title, cost, unit: a.cost, pv: pvOf(a), choice, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, onMap, reached: !!reach, area: !!arm.decl.area,
+    aim: onMap ? picked.map((id) => (targets ?? []).find((x) => x.id === id)).filter(Boolean).map((x) => ({ id: x.id, name: x.name, img: x.img })) : null, attrs, approach: ap, maxTargets: arm.maxTargets, weapons: arm.weapons, opts: arm.opts, notes: arm.notes,
     self: a.optTarget && !picked.length ? t("ITAC.ui.target.self", { name: bar.name ?? "" }) : null,
     dest: needsZone ? { label: t("ITAC.ui.dest"), value: own.to ? zoneText(facts, t, own.to) : null, pick: t(own.to ? "ITAC.ui.move.again" : "ITAC.ui.pick.zone") } : null,
     pool: pool ? { total: pool.total, parts: pool.parts.map((x) => (x.label ? { label: x.label, dice: x.dice } : x.id === "token" ? { label: t(`ITAC.mod.${x.source}`, {}, String(x.source || t("ITAC.ui.bonus"))), dice: x.dice } : x.id === "sheet" ? { label: t("ITAC.mod.sheet"), dice: x.dice } : { label: attrText(t, x.id), dice: x.dice })) } : null, chance,
     text: a.needsText || a.wantsText || ap?.own.picked ? { value: own.text ?? "", placeholder: t(ap ? "ITAC.ui.approach.placeholder" : a.needsText ? "ITAC.ui.text.placeholder" : "ITAC.ui.text.optional") } : null,
-    submit: { label: own.amend ? t("ITAC.ui.amend") : t("ITAC.ui.declare"), disabled: a.disabled ? reasonText(t, a.disabled) : why, req: why || a.disabled ? null : own.amend ? { op: "amend", inst: own.amend, decl: { ...decl, action: a.id } } : a.req(decl) } };
+    submit: { label: own.amend ? t("ITAC.ui.amend") : t("ITAC.ui.declare"), disabled: a.disabled ? reasonText(t, a.disabled) : why ?? early?.why ?? null, quiet: !why && !a.disabled && !!early, req: why || a.disabled || early ? null : own.amend ? { op: "amend", inst: own.amend, decl: { ...decl, action: a.id } } : a.req(decl) } };
+}
+/* W1 (U35): WHAT THE DRIVEN CHARACTER COULD DO TO `tid` (the menu at a token on the map): the actions of its bar that take a target
+   and count `tid` among their candidates, each with the declaration it would start from (the first weapon, no options). The engine
+   answers for every one of them whether it is legal and what it rolls (op "preview" with `acts`); this only names them.
+   -> [{ id, label, icon, cost, stress, disabled, decl, opposeAttr, defense }] */
+export function targetActs(bar, tid, facts, t) {
+  const holding = (bar?.statuses ?? []).includes("grappling");
+  return (bar?.actions ?? []).filter((a) => a.id !== "other" && (a.needsTarget || a.optTarget) && !["move", "barrier", "challenge", "drive"].includes(a.flow) && !["challenge", "vehicle"].includes(a.targetWho)
+    && (holding || (a.id !== "release" && a.id !== "grappleAttack")) && (!a.about || (facts.view?.statuses?.[tid] ?? []).some((s) => s.id === a.about)) && targetsFor(a, facts, bar.combatant).some((r) => r.id === tid))
+    .slice(0, 12).map((a) => { const arm = armsOf(bar, a, {}, facts, t);
+      return { id: a.id, label: actLabel(t, a), icon: iconOf(a), cost: a.cost, stress: Number(a.stress) || 0, disabled: a.disabled ? reasonText(t, a.disabled) : arm.why, decl: { action: a.id, ...arm.decl }, opposeAttr: a.opposeAttr ?? null, defense: a.defense ?? null }; });
 }
 /* ---- movement (P3): the map answers "where" (a zone picked on it, or a token dragged), the panel answers "how" and what it costs ---- */
 const COST_RANK = { none: 0, free: 0, quick: 1, full: 2, gm: 3 };
@@ -585,15 +615,31 @@ function movePanel(bar, a, own, facts, t) {
       notes: [o.cost ? costText(t, o.cost) : null, o.stress ? t("ITAC.ui.stress", { n: o.stress }) : null, o.barriers?.length ? t("ITAC.move.force", { n: o.barriers.length }) : null, o.gm ? t("ITAC.ui.needsGm") : null].filter(Boolean),
       warn: !!(o.stress || o.barriers?.length), disabled, asking: own.ask === o.id, req: disabled ? null : a.req(decl), o, decl, pv: disabled ? null : pvCost(bar, o.cost, o.stress) };
   };
+  const board = !!facts.board;
+  const hazardsOf = (o) => [...(o.barriers ?? []).map((b) => ({ border: b.border, text: t(b.element === "door" ? "ITAC.map.haz.door" : "ITAC.map.haz.wall", { n: b.armor ?? 0 }), color: "danger" })), ...(facts.hazards?.(bar.combatant, o.route ?? [o.zone], o.to) ?? [])];
   const far = opts.filter((o) => !o.here && !o.area && o.zone), byZone = new Map();
   for (const o of far) { if (!byZone.has(o.zone)) byZone.set(o.zone, []); byZone.get(o.zone).push(o); }
   /* what the map offers: every zone one action reaches, in the colour of its cheapest way (blocked ones are shown too, so the reason can be read and the GM asked) */
   const zones = [...byZone].map(([zone, list]) => {
     const can = list.filter((o) => !o.disabled).sort((x, y) => (COST_RANK[x.cost] ?? 9) - (COST_RANK[y.cost] ?? 9) || (x.stress ?? 0) - (y.stress ?? 0) || (x.barriers?.length ?? 0) - (y.barriers?.length ?? 0));
     const best = can[0] ?? list[0], mode = t(`ITAC.mode.${best.mode}`, {}, cap(best.mode));
-    return can.length ? { zone, label: shortCost(t, best), tip: `${mode}: ${shortCost(t, best)}`, color: best.barriers?.length ? "danger" : best.stress ? "stress" : "move" }
+    const e = can.length ? { zone, label: shortCost(t, best), tip: `${mode}: ${shortCost(t, best)}`, color: best.barriers?.length ? "danger" : best.stress ? "stress" : "move" }
       : { zone, label: "", tip: `${mode}: ${reasonText(t, best.disabled)}`, color: "blocked", style: "dashed" };
+    /* W1 (U32 / U14): the same zone as an entry of the map's move preview: the default way (the cheapest that can be paid) goes with
+       one click, its price in words, the zones it enters, what waits on it; `more`: there is another way (a right click lists them) */
+    return board ? { ...e, cost: can.length ? `${mode}: ${priceWords(t, best.cost, best.stress)}` : `${mode}: ${reasonText(t, best.disabled)}`, ...(best.route?.length ? { route: best.route } : {}), hazards: can.length ? hazardsOf(best) : [], more: list.length > 1, way: can.length ? best.id : null, ask: can.length ? null : best.id } : e;
   });
+  if (board) {
+    const all = opts.map(row), asked = all.find((r) => r.asking && r.disabled) ?? null, here = opts.filter((o) => o.here || o.area), spot = facts.where?.(bar.combatant) ?? null;
+    const item = (r) => ({ id: r.id, label: r.label, cost: r.cost, hint: r.notes.join(" · "), disabled: r.disabled, req: r.req, pv: r.pv });
+    const ways = {}; for (const [zone, list] of byZone) ways[zone] = list.map((o) => item(all.find((r) => r.id === o.id)));
+    /* up, down and off the map have no zone of their own to click: they hang on the zone the character stands in */
+    if (here.length && spot) { const z = bare(spot), rows = here.map((o) => item(all.find((r) => r.id === o.id))), can = rows.filter((r) => !r.disabled);
+      ways[z] = rows; zones.push({ zone: z, label: t("ITAC.map.move.here"), tip: t("ITAC.ui.move.near"), cost: t("ITAC.ui.move.near"), color: can.length ? "move" : "blocked", ...(can.length ? {} : { style: "dashed" }), hazards: [], more: rows.length > 1, way: rows.length === 1 && can.length ? rows[0].id : null, ask: null, menu: rows.length > 1 || !can.length }); }
+    return { ...base, zones, ways, picking: zones.length > 0, bare: !asked, hint: zones.length ? t("ITAC.map.move.hint") : null,
+      ask: asked ? askBox(a, bar, asked.decl, asked.o, t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${zoneText(facts, t, asked.o.to)} (${asked.label})`) : null,
+      empty: !zones.length ? t("ITAC.move.cannot", { reason: reasonText(t, "noRoute") }) : null };
+  }
   const to = own.to && byZone.has(bare(own.to)) ? bare(own.to) : null;
   const rows = to ? byZone.get(to).map(row) : [], near = opts.filter((o) => o.here || o.area).map(row);
   const asked = [...rows, ...near].find((r) => r.asking && r.disabled) ?? null;
@@ -628,6 +674,15 @@ function minePanel(i, facts, t, rolls = [], asked = false) {
   return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => ({ id: x.id, name: x.name ?? nameOf(facts, x.id, t), img: seenImg(facts, x.id) })), text: i.text ?? null, rolls,
     status: rolls.length ? null : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t(asked ? "ITAC.ui.mine.declared" : "ITAC.ui.mine.open"),      // `asked`: the card above or the line below already says who the table waits for
     rolling: !!roll || rolls.length > 0, commands: (i.commands ?? []).map((c) => ({ id: c.id, label: labelOf(t, c.label), req: c.needs ? null : c.req, amend: c.id === "amend" })) };
+}
+/* W1 (U42): the camera is the player's. The map moves the view at the start of a turn only when the active character is off this
+   user's screen ("turn", what this module asks for); the switch goes round turn -> off -> all. Null where the map has no such stage. */
+export const CAMERA = Object.freeze(["turn", "off", "all"]);
+export function cameraOf(facts, t) {
+  const c = facts.camera?.() ?? null, now = CAMERA.includes(c?.follow) ? c.follow : null;
+  if (!now) return null;
+  const next = CAMERA[(CAMERA.indexOf(now) + 1) % CAMERA.length];
+  return { follow: now, next, label: t(`ITAC.map.cam.${now}`), tip: `${t(`ITAC.map.cam.${now}`)}. ${t("ITAC.map.cam.next", { next: t(`ITAC.map.cam.${next}`) })}` };
 }
 /** Everything the dock draws. -> { show: false } | { show, rest, chars, who, slots, vitals, extras, groups, other, holdOff, hotbar, end, panel, prompts, waiting, turn } */
 export function dockData(model, own, facts, t) {
@@ -723,6 +778,7 @@ export function dockData(model, own, facts, t) {
       zone: zoneNow ? { label: zoneNow, say: facts.staff ? t("ITAC.ui.here.of", { name: bar.name ?? c?.name ?? "", zone: zoneNow }) : t("ITAC.ui.here", { zone: zoneNow }), tip: t("ITAC.ui.legend") } : null },      // U51: the chip says the zone; its tooltip only what the chip does not (the legend of the map's badges); `say` is for a screen reader
     slots, vitals: vitalsOf(facts, bar.combatant, t), extras: extrasOf(bar, t, facts), groups,
     out: bar.out ? { reason: bar.out.reason, text: t(bar.out.label) } : null,      // U9: why nothing (or only getting up) is offered: said where the actions were
+    camera: cameraOf(facts, t),      // W1 (U42): how much the map's camera follows the fight, this user's own switch
     hotbar: { open: !!own.hotbar, label: t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show"), tip: `${t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show")}. ${t(own.hotbar ? "ITAC.ui.keys.macros" : "ITAC.ui.keys")}` },      // U28: Foundry's macro bar is folded away while the dock is up; this brings it back
     other: { label: t("ITAC.action.other"), armed: own.mode === "other", tip: tipOf(t("ITAC.action.other"), null, null, [t("ITAC.ui.other.hint")]) },
     holdOff: { label: t("ITAC.ui.holdOff"), armed: own.mode === "holdOff", disabled: bar.holdOff?.disabled ? reasonText(t, bar.holdOff.disabled) : null,
