@@ -105,7 +105,7 @@ async function perform(combat, e) {
       if (!r.ok) { ui.notifications?.warn(t("ITAC.warn.zones", { reason: t(`ITAC.reason.${r.reason}`, {}, String(r.reason)) })); return { ok: false, reason: r.reason }; }
       return r.op ? { op: r.op, result: r.result } : { result: r.result };
     }
-    case "zmove": case "zput": return Mv.performMove(e, (cid) => tokenOf(combat.combatants.get(cid)));        // P3: one stretch of a move / an arrival; the map's inverse is journaled
+    case "zmove": case "zput": case "placed": return Mv.performMove(e, (cid) => tokenOf(combat.combatants.get(cid)));        // P3: one stretch of a move / an arrival; the map's inverse is journaled
     case "fx": { const actor = await fromUuid(e.uuid); const op = actor ? await Sys.setItemEffect(actor, e.item, e.fx, e.on) : null; if (!op) ui.notifications?.warn(t("ITAC.warn.noEffect")); return op ? { op } : {}; }      // P6: a form, a size, a stance switched from the dock
     case "kitFlag": { const op = await Sys.setKitFlag(e.uuid, e.item, e.key, e.value); return op && !e.undo ? { op } : {}; }      // journaled: the undo writes back what stood there
     case "summonFlag": case "summonCreate": case "summonRemove": case "summonRestore": case "tokenDelete": case "tokenCreate": return Summons.perform(combat, e, scheduleRoster);      // P6: tokens and combatants that come and go (summons.mjs)

@@ -51,6 +51,7 @@ export function zoneFacts(tok, byToken = () => null) {
 /** Carry out `zmove` / `zput` (engine-pure.mjs effects). -> { op, result } | { ok:false, reason } */
 export async function performMove(e, tok) {
   try {
+    if (e.t === "placed") return { op: { t: "zones", op: { op: "move", id: null, done: null }, inverse: e.inverse }, result: { ok: true } };      // W1 (U44): the GM's free placement is on the map already; the journal keeps the map's own way back
     const token = tok(e.who), group = (e.group ?? []).map(tok).filter(Boolean);
     if (!token) return { ok: false, reason: "noToken" };
     if (e.t === "zput") {

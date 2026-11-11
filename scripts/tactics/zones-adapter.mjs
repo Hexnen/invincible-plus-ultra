@@ -119,3 +119,30 @@ export const cancelPick = (opts) => call("cancelPick", opts);
 /** The map's own rule mechanics (fire round, wrecking numbers) handed to this module, per client; rulesDriver(false, id) steps down. */
 export const rulesDriver = (...args) => call("rulesDriver", ...args);
 export const drivenBy = () => call("drivenBy") ?? null;
+
+/* ------------------------------------------------------------------ interaction on the map (zones-api.md sections 25-33; W1)
+   Everything here is a SHOW on this client (nothing is stored, nothing is sent to another user): what a player's map shows is built
+   from that player's own view, on that player's own client. The one thing that leaves the client is `intent`, which the map sends to
+   the GMs alone. On a map that does not have a call yet it answers null / false and the surfaces keep working without it. */
+export const hasBoard = () => typeof api()?.markTokens === "function" && typeof api()?.pickMove === "function";
+export const markTokens = (spec) => call("markTokens", spec) ?? null;
+export const clearTokenMarks = (what) => call("clearTokenMarks", what) ?? 0;
+export const link = (spec) => call("link", spec) ?? null;
+export const clearLinks = (what) => call("clearLinks", what) ?? 0;
+/** always resolves: the pick's answer plus { alt, route, entry } | { ok:false, reason } */
+export const pickMove = (spec) => callAsync("pickMove", spec);
+export const pickArea = (spec) => callAsync("pickArea", spec);
+export const areaPreview = (spec) => call("areaPreview", spec) ?? null;
+export const clearArea = (id) => call("clearArea", id) ?? 0;
+export const warnOn = (spec) => call("warn", spec) ?? null;
+export const menu = (spec) => callAsync("menu", spec);
+export const closeMenu = () => call("closeMenu");
+export const menuOpen = () => call("menuOpen") === true;
+/** fn(ctx) is asked about every right click on a token, a wall or door, a zone. -> off() */
+export const onContext = (fn) => { const off = call("onContext", fn); return typeof off === "function" ? off : () => {}; };
+export const camera = (o) => call("camera", o) ?? null;
+export const present = (o) => call("present", o) ?? null;
+export const intent = (spec) => call("intent", spec) === true;
+export const reveal = (where) => call("reveal", where);
+/** the pointer came onto or left a marked token of this client: fn(tokenDoc | null, entry). -> off() */
+export function onTokenHover(fn) { const id = Hooks.on("moinenMapsTokenHover", fn); return () => Hooks.off("moinenMapsTokenHover", id); }

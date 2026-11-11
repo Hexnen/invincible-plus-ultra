@@ -5,6 +5,7 @@
 import { EN_ATTACKS, PL_ATTACKS } from "./lang-attacks.mjs";
 import { EN_INT, PL_INT } from "./lang-int.mjs";
 import { EN_KIT, PL_KIT } from "./lang-kit.mjs";
+import { EN_MAP, PL_MAP } from "./lang-map.mjs";
 export const EN = {
   "ITAC.Settings.tacticsEnabled.Name": "Tactical combat",
   "ITAC.Settings.tacticsEnabled.Hint": "Off (the default): nothing of tactical combat runs and the combat tracker works as it did before. On: the module deals initiative cards, tracks the action budget and resolves declared actions; new fights start with the rules enforced, and the GM can switch a running fight to free mode at any time. Needs a reload.",
@@ -1943,7 +1944,7 @@ export const PL = {
   "ITAC.ui.stunt.g.on": "Na: {name}",
   "ITAC.ui.stunt.g.more": "Kolejny przeciwnik",
 };
-Object.assign(EN, EN_ATTACKS, EN_INT, EN_KIT); Object.assign(PL, PL_ATTACKS, PL_INT, PL_KIT);      // package P4 keeps its strings in lang-attacks.mjs
+Object.assign(EN, EN_ATTACKS, EN_INT, EN_KIT, EN_MAP); Object.assign(PL, PL_ATTACKS, PL_INT, PL_KIT, PL_MAP);      // package P4 keeps its strings in lang-attacks.mjs
 const table = () => { try { return String(globalThis.game?.i18n?.lang ?? "en").toLowerCase().startsWith("pl") ? PL : EN; } catch { return EN; } };
 /** The form of a counted word (U26). English: [one, other]. Polish: [one, few, many]: 1 kość, 2-4 kości, 5+ kości, with 12-14 and
     every number ending in 0, 1, 5-9 taking the last form (1 strefę, 3 strefy, 5 stref, 12 stref, 22 strefy). Not a whole number: the last form. */
