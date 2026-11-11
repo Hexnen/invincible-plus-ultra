@@ -134,7 +134,7 @@ export function shownText(text, item) {
 }
 /** The Polish word of a power level, as the system's own label gives it ("Większy"). */
 export function levelWord(id) {
-  try { const k = `INVINCIBLE.Item.Power.FIELDS.level.${id}.label`, i18n = globalThis.game?.i18n; if (i18n?.has?.(k)) return i18n.localize(k).trim(); } catch { /* the id is shown */ }
+  try { const k = `INVINCIBLE.Item.Power.FIELDS.level.${id}.label`, i18n = globalThis.game?.i18n; const w = i18n?.has?.(k) ? i18n.localize(k).trim() : ""; if (w && w.toLowerCase() !== String(id).toLowerCase()) return w; } catch { /* the table below */ }      // the system's English word (lang/pl.json not loaded yet: the server reads the language list at start) gives way to the table
   return ({ basic: "Podstawowy", major: "Większy", massive: "Potężny", monstrous: "Monstrualny" })[id] ?? String(id);
 }
 /** A power's label: the system glues "<level> <name>" (in Polish the level word does not agree with the name: "Większy Wiązka"), we write "<name> (<level>)". */
