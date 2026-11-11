@@ -30,6 +30,8 @@ function ensure(label) {
   root = h("div", { attrs: { id: ID, role: "region", "aria-label": label }, data: { tooltipClass: "ita-tip" } });
   root.addEventListener("focusin", (e) => { try { const el = e.target.closest?.("[data-tooltip], [data-tooltip-html]"); if (el?.matches(":focus-visible")) handlers.tipShow?.(el); } catch { /* a courtesy */ } });
   root.addEventListener("focusout", () => { try { handlers.tipHide?.(); } catch { /* a courtesy */ } });
+  /* Tab walks the buttons of the surface: Foundry's own key handler (on the window) would take it for "next token" */
+  root.addEventListener("keydown", (e) => { if (e.key === "Tab") e.stopPropagation(); });
   handleBtn = h("button.igd-handle", { fk: "handle", on: { click: () => set({ collapsed: !last?.d?.collapsed, touched: true }) } });
   box = h("section.igd");
   root.append(handleBtn, box);

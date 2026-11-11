@@ -13,7 +13,8 @@
              short bar = quick action, none = no action) and its Resolve price; the name, the price in words and the reason of a greyed
              one are the tooltip (hover and keyboard focus) and the aria-label; a click arms it and the panel's head says it again
      TAIL    Something else, Hold off, the macro bar, End turn
-   When the row does not fit (data-tight, measured in place()), the actions take a second row under the unit.
+   When the row does not fit (data-tight, measured in place()), the actions take a row of their own over the unit; in the narrowest
+   room (data-tight="2") the tail takes a third.
    COST PREVIEW (U30): hovering or focusing anything that carries `pv` (an action, a row of a list, a way of moving, an answer on a
    card, Declare) lights the slot it would spend and shows the Resolve it would cost on the Resolve bar. Only for the character the
    dock drives; nothing is rebuilt for it (attributes on the unit block).
@@ -51,6 +52,8 @@ function ensure(label) {
   root.addEventListener("pointerout", (e) => { if (!root.contains(e.relatedTarget) || !e.relatedTarget?.closest?.("[data-pv]")) preview(null); });
   root.addEventListener("focusin", (e) => { preview(e.target); try { const el = e.target.closest?.("[data-tooltip], [data-tooltip-html]"); if (el?.matches(":focus-visible")) handlers.tipShow?.(el); } catch { /* a courtesy */ } });
   root.addEventListener("focusout", () => { preview(null); try { handlers.tipHide?.(); } catch { /* a courtesy */ } });
+  /* Tab walks the buttons of the surface: Foundry's own key handler (on the window) would take it for "next token" */
+  root.addEventListener("keydown", (e) => { if (e.key === "Tab") e.stopPropagation(); });
   document.body.appendChild(root);
 }
 
@@ -95,9 +98,11 @@ export function place() {
       const kids = [...partyEl.querySelectorAll(".ipt-item")].map(visibleRect).filter(inBand);
       if (kids.length || inBand(party)) lo = Math.max(lo, Math.max(party.right, ...kids.map((k) => k.right)) + 10);
     }
-    const pl = visibleRect(document.getElementById("players"));
-    if (inBand(pl) && pl.right < W * 0.3) lo = Math.max(lo, pl.right + 8);
-    for (const el of document.querySelectorAll(LEFT_OBSTACLES)) { const r = visibleRect(el); if (low(r) && r.right < W * 0.4) lo = Math.max(lo, r.right + 8); }
+    /* Foundry's players list: its box is narrower than the lists inside it */
+    for (const el of document.querySelectorAll("#players, #players > *")) { const r = visibleRect(el); if (inBand(r) && r.right < W * 0.3) lo = Math.max(lo, r.right + 8); }
+    /* a panel of the map at the left edge counts once it reaches the lower half of the window, or the dock's stack has grown up to it:
+       the bar itself lies on the bottom edge now, far under the pins panel, and must not give up its one row for it */
+    for (const el of document.querySelectorAll(LEFT_OBSTACLES)) { const r = visibleRect(el); if (r && r.right < W * 0.4 && r.top < floor && (r.bottom > H * 0.5 || inBand(r))) lo = Math.max(lo, r.right + 8); }
     return { lo, hi, floor };
   };
   /* WHAT LIES ON THE BOTTOM EDGE besides the dock: the map's director bar (GM, left) and the chat box of a folded sidebar (right). The
@@ -122,7 +127,7 @@ export function place() {
   root.style.setProperty("--itd-bottom", `${Math.round(bottom)}px`);
   root.style.setProperty("--itd-maxw", `${Math.round(avail)}px`);
   /* one row when it fits; else the actions go under the unit (measured above, with the row laid out unbroken) */
-  if (natural > avail) root.dataset.tight = "1";
+  if (natural > avail) { root.dataset.tight = "1"; if ([".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) > avail) root.dataset.tight = "2"; }      // "2": even the unit and the tail do not share a row (a 1366 px window with the sidebar and the desk open)
   /* the panel and the questions share what is left above the bar: the panel takes what it needs first (it is what the user is doing),
      the questions the rest; each scrolls inside its share */
   const part = (sel) => stack.querySelector(sel)?.offsetHeight ?? 0;
