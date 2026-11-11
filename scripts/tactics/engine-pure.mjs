@@ -1101,6 +1101,12 @@ async function system(X, effects) {
       const tx = openTx(X, {});
       for (const id of Array.isArray(fx.combatants) ? fx.combatants : []) await perform(X, tx, { t: "summonRemove", combatant: id, tx });
       closeTx(X, tx, { pub: "{ITAC.journal.summonLeft}", gm: "{ITAC.journal.summonLeft}" });
+    } else if (fx?.type === "turnPassed") {                                                  // U9: the round driver let a turn pass (ops-pure.openTurn); the GM reads it in the journal, the table in its news
+      const c = X.facts.c(fx.combatant), why = ["broken", "unconscious", "dead"].includes(fx.reason) ? fx.reason : "broken";
+      if (!c) continue;
+      const line = `${c.name ?? ""}: {ITAC.journal.turnPassed.${why}}`;
+      closeTx(X, openTx(X, {}), { pub: c.hidden ? "" : line, gm: line, keep: true });
+      pushNews(X, { kind: "turn", actor: fx.combatant, result: `pass.${why}` });             // view-pure drops it for whoever the combatant is concealed from
     } else if (fx?.type === "abortInstances") {
       for (const inst of [...X.state.stack].reverse()) if (inst.actor === fx.actor && instOf(X, inst.id)) await abortInst(X, inst.id, true);
       dropPrompts(X, (p) => p.about === fx.actor);

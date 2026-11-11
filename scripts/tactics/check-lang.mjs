@@ -71,6 +71,7 @@ for (const k of ["weapon", "wreck", "fullAuto", "minRange"]) need.add(`ITAC.mod.
 for (const k of O.P1_PROMPTS) if (k !== "triggerQueue") need.add(`ITAC.Prompt.${k}.Title`).add(`ITAC.Prompt.${k}.Body`);
 for (const k of ["roundStart", "roundEnd", "turnStart", "turnEnd"]) need.add(`ITAC.Prompt.triggerQueue.Title.${k}`);
 for (const r of ["noZonesApi", "badOp", "notGM", "notActiveGM", "noZones", "error", "requirement", "immune", "openAction", "rules"]) need.add(`ITAC.reason.${r}`);      // the zones API's refusals, the director's, the predicates'
+for (const k of ["broken", "unconscious", "dead"]) need.add(`ITAC.journal.turnPassed.${k}`).add(`ITAC.result.pass.${k}`).add(`ITAC.ui.out.${k}`);      // U9: a passed turn (engine-pure, ops-pure), the bar of one who is out (desk-pure.outOf)
 for (const k of need) ok(k in EN && k in PL, `used by the code but not defined in both languages: ${k}`);
 ok(need.size > 200, `keys collected from the code (${need.size})`);
 

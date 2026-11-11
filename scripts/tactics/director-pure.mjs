@@ -24,6 +24,7 @@ import * as O from "./ops-pure.mjs";
 import * as E from "./engine-pure.mjs";
 import * as J from "./journal-pure.mjs";
 import * as Hz from "./flows/hazards.mjs";
+import { sitsOut } from "./flows/kit.mjs";
 
 export const ROUND_OPS = Object.freeze(["start", "stop", "endTurn", "nextTurn", "nextRound", "prevTurn", "holdOff", "mark", "setCard", "swapCards", "group", "ungroup",
   "reorderGroup", "insertTurn", "roster", "endScene", "challengeFail"]);
@@ -42,6 +43,7 @@ function ctxFor(host, user, state = null) {
   const parts = state?.kind === "chase" ? all.map((p) => ({ ...p, noCard: 1 })) : all;      // P7 [B3412]: nobody holds a card while a chase runs; the round still turns
   return { user: user.id, staff: !!user.staff, owns: (cid) => !!facts.c(cid)?.owners?.includes(user.id), parts, rng: host.rng,
     playersEnd: host.setting?.("turnPlayersEnd") !== false, sceneFacts: host.sceneFacts?.() ?? [], hold: true,
+    idle: (cid, s) => sitsOut(s, cid, facts.c(cid)),                                          // U9: a turn on which nothing can be done passes by itself (ops-pure.openTurn)
     derived: (point, s) => Hz.derived(s, facts, point) };                                   // P5: what burning zones, burning characters and the vacuum make due (spec 6.1)
 }
 /* one sequence, the acting user and the time on the round driver's events (the engine stamps its own the same way) */

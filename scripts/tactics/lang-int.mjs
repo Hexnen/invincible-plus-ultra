@@ -71,6 +71,15 @@ export const EN_INT = {
   "ITAC.ui.slab.roof": "the roof",
   "ITAC.ui.slab.ground": "the ground",
   "ITAC.ui.line.slabStop": "{name} hits {slab} ({zone}). Does it give way?",
+  "ITAC.journal.turnPassed.broken": "at 0 Health and cannot get up: the turn passes",
+  "ITAC.journal.turnPassed.unconscious": "unconscious: the turn passes",
+  "ITAC.journal.turnPassed.dead": "dead: the turn passes",
+  "ITAC.result.pass.broken": "at 0 Health and cannot get up, the turn passes",
+  "ITAC.result.pass.unconscious": "unconscious, the turn passes",
+  "ITAC.result.pass.dead": "dead, the turn passes",
+  "ITAC.ui.out.broken": "At 0 Health. The only thing left is to try to get up.",
+  "ITAC.ui.out.unconscious": "Unconscious. Nothing to do this turn.",
+  "ITAC.ui.out.dead": "Dead. Nothing to do this turn."
 };
 export const PL_INT = {
   "ITAC.journal.gm": "MG",
@@ -83,7 +92,7 @@ export const PL_INT = {
   "ITAC.edit.statusAdd": "dodany status",
   "ITAC.edit.statusRemove": "usunięty status",
   "ITAC.edit.setHealth": "ustawione Zdrowie",
-  "ITAC.edit.setResolve": "ustawione Resolve",
+  "ITAC.edit.setResolve": "ustawiona Determinacja",
   "ITAC.edit.tokenAdd": "dodane kości premii",
   "ITAC.edit.tokenRemove": "zabrane kości premii",
   "ITAC.edit.triggerAdd": "dodany czekający efekt",
@@ -143,4 +152,13 @@ export const PL_INT = {
   "ITAC.ui.slab.roof": "dach",
   "ITAC.ui.slab.ground": "grunt",
   "ITAC.ui.line.slabStop": "{name} uderza w przeszkodę: {slab} ({zone}). Czy ustępuje?",
+  "ITAC.journal.turnPassed.broken": "0 Zdrowia i nie da się wstać: tura przepada",
+  "ITAC.journal.turnPassed.unconscious": "brak przytomności: tura przepada",
+  "ITAC.journal.turnPassed.dead": "postać nie żyje: tura przepada",
+  "ITAC.result.pass.broken": "0 Zdrowia i nie da się wstać, tura przepada",
+  "ITAC.result.pass.unconscious": "brak przytomności, tura przepada",
+  "ITAC.result.pass.dead": "postać nie żyje, tura przepada",
+  "ITAC.ui.out.broken": "0 Zdrowia. Zostaje tylko próba stanięcia na nogi.",
+  "ITAC.ui.out.unconscious": "Brak przytomności. W tej turze nie ma nic do zrobienia.",
+  "ITAC.ui.out.dead": "Postać nie żyje. W tej turze nie ma nic do zrobienia."
 };

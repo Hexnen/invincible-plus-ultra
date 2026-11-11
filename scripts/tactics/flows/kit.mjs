@@ -89,6 +89,15 @@ export function requirements(v, inst) {
   }
   return { ok: true };
 }
+/** U9: why a combatant has nothing to do on its own turn, or null. Dead or unconscious: nothing at all [B2707], [B2749]. Broken: the one
+    thing left is to try to get up, on the own turn [B2773]; whoever cannot even do that (an injury of 9 or worse, the primary copy of
+    Sequestered Original [B1915]) has nothing either. A broken character that may rally keeps its turn. */
+export function sitsOut(state, cid, c) {
+  const out = M.outOfAction(state, cid, c);
+  if (out !== "broken") return out;
+  if (M.hasStatus(state, cid, "unconscious")) return "unconscious";
+  return crits.canRally({ broken: true, crits: c.crits ?? [], primaryCopy: c.pass?.noRally === true }).ok ? null : "broken";
+}
 /** Legality of an instance: the entry's requirements, then the flow's own rules. */
 export const legality = (v, inst, flow) => {
   /* [B2707] out of action: whatever the flow, a broken, unconscious or dead character declares nothing and is no part of anything */
