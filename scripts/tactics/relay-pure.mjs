@@ -20,7 +20,7 @@ export const clamp = (s, n = LIMITS.text) => (typeof s === "string" ? s.slice(0,
 export const makeRid = (senderId, id) => `${senderId}:${String(id ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)}`;
 
 /* ------------------------------------------------------------------ what a player may send (spec 12.2): fields per op, everything else is dropped */
-const ids = (v, n = 12) => (Array.isArray(v) ? v.filter(isId).slice(0, n) : undefined);
+const ids = (v, n = 12) => (Array.isArray(v) ? [...new Set(v.filter(isId))].slice(0, n) : undefined);      // D92: an id named twice is named once
 /* P3: what a move may carry (spec 9.6): where to, which way of moving, the stress option, quick or full, barriers to force, who is carried */
 function moveOf(r) {
   const out = {};
@@ -141,6 +141,16 @@ export function wireEnv(env) {
   if (!isObj(env)) return bad("internal");
   const out = { ok: env.ok === true, changed: env.changed === true };
   for (const k of ["dup", "inst", "prompt"]) if (env[k] !== undefined) out[k] = env[k];
+  /* D99 (spec 15: a failed inverse is told to the GM): what the request could not do travels too, to the GM's own desk (this function
+     also shapes the local executor's answers) and to a player whose request it was: `partial` (carried out only in part), `failed`
+     (which kind of write stayed as it was; kinds and reason ids only, no name and no value), `parked` (the action that went to the
+     GM's hand), `undone` (the transactions an undo took back), `rev` (the state the answer is about). */
+  if (env.partial) out.partial = true;
+  if (Array.isArray(env.failed) && env.failed.length) out.failed = env.failed.filter(isObj).slice(0, 20).map((f) => ({ ...(isId(f.tx) ? { tx: f.tx } : {}), t: String(f.t ?? "").slice(0, 24), ...(isId(f.reason) ? { reason: f.reason } : {}), ...(isId(f.what) ? { what: f.what } : {}) }));
+  if (isId(env.parked)) out.parked = env.parked;
+  if (Array.isArray(env.undone)) out.undone = env.undone.filter(isId).slice(0, 200);
+  if (Number.isFinite(env.rev) || env.rev === null) out.rev = env.rev;
+  if (env.asked) out.asked = 1;
   if (isObj(env.preview)) out.preview = env.preview;                 // the asker's own pool (engine-pure.opPreview refuses anything the asker does not own)
   if (!out.ok) out.error = isObj(env.error) && RELAY_CODES.includes(env.error.code) ? { key: `ITAC.err.${env.error.code}`, code: env.error.code, params: isObj(env.error.params) ? env.error.params : {} } : bad("internal").error;
   return out;

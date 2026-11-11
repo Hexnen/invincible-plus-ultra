@@ -51,7 +51,9 @@ const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 
 /* ------------------------------------------------------------------ context */
 function makeX(state, log, host, user) {
-  const X = { state, log: log ?? J.emptyLog(), host, user: user ?? { id: "engine", staff: true }, facts: null, events: [], changed: false };
+  /* D90: `did` counts what was asked of the host (documents, the map, dice), `undid` the inverses among it, `ops` keeps the journal ops the
+     host handed back in this call (a request that fails before it is through takes them back), `failed` what the host could not do. */
+  const X = { state, log: log ?? J.emptyLog(), host, user: user ?? { id: "engine", staff: true }, facts: null, events: [], changed: false, did: 0, undid: 0, ops: [], failed: [], parked: null };
   X.facts = liveFacts(X);
   return X;
 }
@@ -86,8 +88,9 @@ function write(X, txId, path, to, inst = null, step = null, tag = null) {
   return true;
 }
 async function perform(X, txId, effect, inst = null, step = null, tag = null) {
+  X.did++;
   const r = (await X.host.perform(effect)) ?? {};
-  if (r.op) { record(X, txId, r.op, inst, step, tag); X.changed = true; }
+  if (r.op) { record(X, txId, r.op, inst, step, tag); X.changed = true; X.ops.push(r.op); }
   X.facts = liveFacts(X);
   return r.ok === false ? { ok: false, reason: r.reason } : r.result;                    // a refused command (the map said no) is the caller's to answer
 }
@@ -125,10 +128,22 @@ async function undoOps(X, ops, round = null) {
   for (const op0 of [...ops].reverse()) {
     const op = liveOp(X, op0, round);
     if (op.t === "state") X.state = J.applyStateOp(X.state, op, true);
-    else { const eff = J.inverseEffect(op); if (eff) await X.host.perform({ ...eff, undo: 1 }); }
+    else { const eff = J.inverseEffect(op); if (eff) await inverse(X, op, eff); }
   }
   X.facts = liveFacts(X); X.changed = true;
 }
+/* D90 / D99 (spec 15): one inverse asked of the host. One that the host refuses ({ ok:false }: the map said no, the document is gone)
+   or that throws (a rejected update) does not stop the others: the writes before it cannot be taken back as one, so the rest is
+   still undone and what stayed as it was is NAMED in the answer (`failed`), for the GM to put right by hand. -> true when it was done */
+async function inverse(X, op, eff, tx = null) {
+  X.did++; X.undid++;
+  let reason = null;
+  try { const r = await X.host.perform({ ...eff, undo: 1 }); if (r && r.ok === false) reason = String(r.reason ?? "error").slice(0, 40); }
+  catch (e) { reason = "error"; warn(X, "inverse", e, { t: op.t }); }
+  if (reason) X.failed.push({ ...(tx ? { tx } : {}), t: String(op.t).slice(0, 24), reason });
+  return !reason;
+}
+const warn = (X, what, e, more = {}) => { try { X.host.warn?.(what, e, more); } catch { /* a courtesy */ } };
 
 /* who rolls: the players who own the character and are at the table; NPC rolls and rolls of absent players are made at the GM desk */
 function rollUsers(X, who) {
@@ -345,27 +360,68 @@ async function drive(X) {
   for (let guard = 0; guard < 500; guard++) {
     const inst = top(X);
     if (!inst || inst.status === "manual" || inst.status === "aborted") return;
-    if (inst.data.hold) { if (!(await resolveHold(X, inst))) return; continue; }
-    const flow = FLOWS[inst.flow], fn = flow.steps[inst.step];
-    if (!fn) { const I = J.clone(inst); I.status = "manual"; setInst(X, I); return; }      // unknown step: never guess, hand it to the GM
-    const R = fn(view(X), inst), I = R.inst;
-    if (!I.hist?.[I.step]) (I.hist ??= {})[I.step] = JSON.stringify({ data: inst.data, rolls: inst.rolls, locked: inst.locked, decl: inst.decl });   // for goToStep / amend
-    let progress = false;
-    for (const e of R.effects) progress = (await applyEffect(X, I, e, inst.step)) || progress;
-    for (const p of R.prompts) progress = openPrompt(X, I, p, inst.step) || progress;
-    for (const ev of R.events) emit(X, I, ev);
-    if (R.done) { setInst(X, I); await closeInst(X, I); continue; }
-    if (R.push) {
-      I.status = "waiting"; I.waits = waitsOf(X, I); setInst(X, I);
-      const r = pushChild(X, I, R.push);
-      if (!r.ok) { const P = J.clone(instOf(X, I.id)); (P.data.notes ??= []).push({ note: "pushRefused", action: R.push.action, reason: r.reason }); if (R.push.part) (P.data.results ??= []).push({ action: R.push.action, status: "aborted", result: "illegal" }); P.status = "open"; setInst(X, P); }
-      continue;
-    }
-    if (R.goto) { I.step = R.goto; I.status = "open"; I.waits = waitsOf(X, I); setInst(X, I); continue; }
-    I.status = I.status === "manual" ? "manual" : "waiting"; I.waits = waitsOf(X, I);
-    setInst(X, I);
-    if (!progress) return;
+    /* D90 / D91 (spec 5.3; principle 4: nothing blocks the table): a step that throws does not leave the fight. Before, the instance
+       stayed on top at the throwing step, so EVERY later request ran into it again and was answered `internal` although its own effect
+       was saved. Now the failure ends here: what the step had not yet handed to the host is as if it never ran, what it had is kept
+       (and journaled), and the instance is handed to the GM (`manual`, with `data.failed`) to settle by hand, to step or to cancel. */
+    const snap = { state: X.state, log: X.log, events: X.events.length, did: X.did }, at = { I: null, post: null };
+    let go;
+    try { go = await stepOnce(X, inst, at); } catch (e) { failStep(X, inst, e, snap, at); return; }
+    if (!go) return;
   }
+}
+/* one turn of the driver -> true: again, false: the stack waits */
+async function stepOnce(X, inst, at) {
+  if (inst.data.hold) return resolveHold(X, inst);
+  const flow = FLOWS[inst.flow], fn = flow.steps[inst.step];
+  if (!fn) { const I = J.clone(inst); I.status = "manual"; setInst(X, I); return false; }      // unknown step: never guess, hand it to the GM
+  const R = fn(view(X), inst), I = R.inst;
+  at.I = I;
+  if (!I.hist?.[I.step]) (I.hist ??= {})[I.step] = JSON.stringify({ data: inst.data, rolls: inst.rolls, locked: inst.locked, decl: inst.decl });   // for goToStep / amend
+  let progress = false;
+  for (const e of R.effects) progress = (await applyEffect(X, I, e, inst.step)) || progress;
+  for (const p of R.prompts) progress = openPrompt(X, I, p, inst.step) || progress;
+  for (const ev of R.events) emit(X, I, ev);
+  at.post = { state: X.state, log: X.log, events: X.events.length };                         // the step's effects are through; what follows only moves the stack
+  if (R.done) { setInst(X, I); await closeInst(X, I); return true; }
+  if (R.push) {
+    I.status = "waiting"; I.waits = waitsOf(X, I); setInst(X, I);
+    const r = pushChild(X, I, R.push);
+    if (!r.ok) { const P = J.clone(instOf(X, I.id)); (P.data.notes ??= []).push({ note: "pushRefused", action: R.push.action, reason: r.reason }); if (R.push.part) (P.data.results ??= []).push({ action: R.push.action, status: "aborted", result: "illegal" }); P.status = "open"; setInst(X, P); }
+    return true;
+  }
+  if (R.goto) { I.step = R.goto; I.status = "open"; I.waits = waitsOf(X, I); setInst(X, I); return true; }
+  I.status = I.status === "manual" ? "manual" : "waiting"; I.waits = waitsOf(X, I);
+  setInst(X, I);
+  return progress;
+}
+/* The instance whose step failed goes to the GM. `at.post`: the effects were through and only the bookkeeping after them failed (pure:
+   put back exactly, the step's results kept on the instance). Nothing asked of the host: the whole step is taken back. Otherwise the
+   effects carried out stay, journaled in the open transaction, so "cancel" undoes them and "by hand" keeps them. */
+function failStep(X, inst, e, snap, at) {
+  warn(X, "step", e, { inst: inst.id, action: inst.action, flow: inst.flow, step: inst.step });
+  const pure = X.did === snap.did;
+  if (at.post) { X.state = at.post.state; X.log = at.post.log; X.events.length = at.post.events; }
+  else if (pure) { X.state = snap.state; X.log = snap.log; X.events.length = snap.events; }
+  X.facts = liveFacts(X);
+  const cur = instOf(X, inst.id);
+  park(X, cur ? (at.I && (at.post || !pure) ? { ...at.I, step: cur.step } : cur) : top(X), inst, e);
+}
+function park(X, base, inst, e) {
+  if (!base) return;
+  const I = J.clone(base);
+  I.status = "manual";
+  I.data.failed = { step: String(inst.step ?? "").slice(0, 40), msg: String(e?.message ?? e).slice(0, 120), ...(I.id !== inst.id ? { after: inst.id } : {}) };
+  I.waits = waitsOf(X, I);
+  setInst(X, I);
+  X.parked = I.id;
+  emit(X, I, { type: "stepFailed", step: I.data.failed.step, gmOnly: 1 });
+}
+/* D90: a transaction nobody holds any more (its instance left the stack on a failure before it was closed) is closed, so what was
+   written under it is in the journal and can be undone. Every open transaction belongs to an instance of the stack otherwise. */
+function sweepTx(X) {
+  const held = new Set(X.state.stack.map((i) => i.tx));
+  for (const id of Object.keys(X.state.txOpen ?? {})) if (!held.has(id)) { const tx = X.state.txOpen[id]; closeTx(X, id, { pub: "", gm: tx.label?.gm || "{ITAC.journal.cutShort}" }); }
 }
 /** An instance held after a failed revalidation: the GM's answer decides (spec 5.1, [OQ-3]). Returns true when the driver may continue. */
 async function resolveHold(X, inst) {
@@ -407,7 +463,9 @@ async function rewind(X, id, step) {
 /** The longest id of a choice (`decl.opt`): the relay and the engine cut at the same length, and no choice of the kit is longer (check-defects). */
 export const OPT_MAX = 120;
 function sanitizeDecl(d, action, staff = false) {
-  const ids = (v, n = 12) => (Array.isArray(v) ? v.filter(P1.isId).slice(0, n) : []);
+  /* D92 (spec 1.4): somebody named twice is named once. A doubled target counted as one target more (full auto lost a die for it) and
+     the ledger entry in memory then differed from what the store keeps (state-pure dedupes an entry's targets). */
+  const ids = (v, n = 12) => (Array.isArray(v) ? [...new Set(v.filter(P1.isId))].slice(0, n) : []);
   const out = { action, targets: ids(d?.targets), helpers: [], exploits: [], stressTotal: 0 };
   if (typeof d?.weapon === "string") out.weapon = d.weapon.slice(0, 120);
   if (typeof d?.power === "string") out.power = d.power.slice(0, 120);
@@ -898,6 +956,7 @@ async function gmInstOp(X, op, a) {
       noteOverride(X, I, op, rec.req.rid, rid);
       I.rolls[key] = { ...rec, req: { ...rec.req, rid, users, at: X.host.now() } };
       setInst(X, I);
+      X.did++;
       await X.host.perform({ t: "rollRequest", inst: I.id, key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: rec.who, attr: rec.attr, pool: rec.pool, dice: rec.req.dice, maxPush: rec.req.maxPush, secret: rec.secret, label: rec.req.label, ...(rec.req.mode ? { mode: rec.req.mode } : {}) });
       return ok({ inst: I.id });
     }
@@ -921,7 +980,7 @@ async function gmInstOp(X, op, a) {
       noteOverride(X, I, op, a.from, a.to); setInst(X, I);
       const back = flow.STEPS.includes("reactBefore") && idx(I.step) >= idx("reactBefore") ? "reactBefore" : flow.STEPS[0];
       await rewind(X, I.id, back); I = J.clone(instOf(X, I.id));
-      I.decl.targets = I.decl.targets.map((t) => (t === a.from ? a.to : t));
+      I.decl.targets = [...new Set(I.decl.targets.map((t) => (t === a.from ? a.to : t)))];      // D92: turned onto somebody who is a target already, that one stays one target
       (I.data.retargets ??= []).push({ from: a.from, to: a.to, by: "gm" });
       dropPrompts(X, (p) => p.inst === I.id && p.about === a.from);
       break;
@@ -1142,9 +1201,9 @@ async function opUndo(X, a) {
   }
   /* an inverse the host could not carry out (the map refused it, a document is gone): the undo goes on, since the writes before it
      cannot be taken back as one, and the answer and the event NAME what stayed as it was, for the GM to put right by hand */
-  const failed = [], host = async (id, op, eff) => { const r = await X.host.perform({ ...eff, undo: 1 }); if (r && r.ok === false) failed.push({ tx: id, t: op.t, reason: String(r.reason ?? "error").slice(0, 40) }); };
+  const f0 = X.failed.length, host = (id, op, eff) => inverse(X, op, eff, id);
   for (const id of list) {
-    const tx = X.log.list.find((t) => t.id === id), n0 = failed.length;
+    const tx = X.log.list.find((t) => t.id === id), n0 = X.failed.length;
     for (const op0 of [...tx.ops].reverse()) {
       const op = liveOp(X, op0, tx.round);
       if (op.t === "state") {
@@ -1160,14 +1219,14 @@ async function opUndo(X, a) {
     const was = (X.state.news ?? []).find((n) => n.tx === id && n.kind === "action" && !n.undone);
     if (was) X.state = { ...X.state, news: X.state.news.map((n) => (n.tx === id ? { ...n, undone: 1 } : n)) };
     pushNews(X, { kind: "undo", ...(was ? { actor: was.actor, action: was.action, ...(was.name ? { name: was.name } : {}), ...(was.secret ? { secret: 1 } : {}) } : {}) });
-    emit(X, null, { type: "undo", tx: id, ...(failed.length > n0 ? { failed: failed.slice(n0).map((f) => ({ t: f.t, reason: f.reason })) } : {}) });
+    emit(X, null, { type: "undo", tx: id, ...(X.failed.length > n0 ? { failed: X.failed.slice(n0).map((f) => ({ t: f.t, reason: f.reason })) } : {}) });
   }
   X.facts = liveFacts(X); X.changed = true;
-  return ok({ undone: list, ...(failed.length ? { failed } : {}) });
+  return ok({ undone: list });                                                              // what an inverse could not do is in the answer's `failed` (handle)
 }
 async function opHazard(X, a) {
   const h = isObj(a.hazard) ? { kind: String(a.hazard.kind), intensity: Math.max(1, Math.min(12, Math.trunc(Number(a.hazard.intensity) || 1))), inZone: a.hazard.inZone !== false, amount: Math.max(0, Math.trunc(Number(a.hazard.amount) || 0)), armor: a.hazard.armor === true, source: typeof a.hazard.source === "string" ? a.hazard.source.slice(0, 24) : undefined, cause: a.hazard.cause, id: String(a.hazard.id ?? a.hazard.kind).slice(0, 40), zone: typeof a.hazard.zone === "string" ? a.hazard.zone.slice(0, 40) : undefined } : null;
-  const inst = makeInst(X, { action: "hazard", actor: null, decl: { action: "hazard", targets: (Array.isArray(a.targets) ? a.targets : []).filter(P1.isId).slice(0, 40), helpers: [], exploits: [], stressTotal: 0 }, cause: a.cause === "trigger" ? "trigger" : "gm", flow: "hazard", data: { hazard: h }, initiator: { type: "hazard", id: h?.id ?? "hazard" }, parent: top(X)?.id ?? null });
+  const inst = makeInst(X, { action: "hazard", actor: null, decl: { action: "hazard", targets: [...new Set((Array.isArray(a.targets) ? a.targets : []).filter(P1.isId))].slice(0, 40), helpers: [], exploits: [], stressTotal: 0 }, cause: a.cause === "trigger" ? "trigger" : "gm", flow: "hazard", data: { hazard: h }, initiator: { type: "hazard", id: h?.id ?? "hazard" }, parent: top(X)?.id ?? null });
   const l = Hazard.legality(view(X), inst);
   if (!l.ok) return bad("illegal", { reason: l.reason });
   inst.tx = openTx(X, { inst: inst.id });
@@ -1284,12 +1343,25 @@ async function opHazardRun(X, a) {
      targets default to the trigger's subject combatant, else to facts.inZoneKey?.(subject.zone). Triggers are pushed last first, so the first runs first. */
 async function system(X, effects) {
   const triggers = [];
+  /* D90: each thing the round driver hands over stands for itself. One that fails (a rejected write of a sheet) is named in the answer
+     (`failed`), what it had written is closed into the journal (sweepTx), and the others still happen: a due trigger is not lost
+     because the recovery before it could not be written. */
   for (const fx of Array.isArray(effects) ? effects : []) {
+    try { await systemOne(X, fx, triggers); }
+    catch (e) { warn(X, "sys", e, { type: fx?.type }); X.failed.push({ t: "sys", what: String(fx?.type ?? "error").slice(0, 40) }); X.facts = liveFacts(X); X.changed = true; }
+  }
+  for (const t of triggers.reverse()) {
+    try { await pushTrigger(X, t); }
+    catch (e) { warn(X, "trigger", e, { id: t?.id }); X.failed.push({ t: "sys", what: "trigger" }); X.changed = true; }
+  }
+}
+async function systemOne(X, fx, triggers) {
+  {
     if (fx?.type === "stress") {
       const c = X.facts.c(fx.combatant), n = Math.max(0, Math.trunc(Number(fx.n) || 0));
-      if (!c || !n) continue;
+      if (!c || !n) return;
       const s = damage.applyStress({ resolve: c.resolve, stress: n });                      // [B2816]
-      if (!s.lost) continue;
+      if (!s.lost) return;
       const tx = openTx(X, {});
       await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: s.resolve, tx });
       closeTx(X, tx, { pub: "", gm: `${c.name ?? ""}: {ITAC.journal.stress} ${n} (${String(fx.source ?? "").slice(0, 40)})` });
@@ -1308,7 +1380,7 @@ async function system(X, effects) {
       closeTx(X, tx, { pub: "{ITAC.journal.summonLeft}", gm: "{ITAC.journal.summonLeft}" });
     } else if (fx?.type === "turnPassed") {                                                  // U9: the round driver let a turn pass (ops-pure.openTurn); the GM reads it in the journal, the table in its news
       const c = X.facts.c(fx.combatant), why = ["broken", "unconscious", "dead"].includes(fx.reason) ? fx.reason : "broken";
-      if (!c) continue;
+      if (!c) return;
       const line = `${c.name ?? ""}: {ITAC.journal.turnPassed.${why}}`;
       closeTx(X, openTx(X, {}), { pub: c.hidden ? "" : `${cMark(fx.combatant)}: {ITAC.journal.turnPassed.${why}}`, who: whoOf(X, [fx.combatant]), gm: line, keep: true });
       pushNews(X, { kind: "turn", actor: fx.combatant, result: `pass.${why}` });             // view-pure drops it for whoever the combatant is concealed from
@@ -1320,7 +1392,6 @@ async function system(X, effects) {
     else if (fx?.type === "challengeFail") await challengeFailRun(X, fx.challenge);
     else if (fx?.type === "trigger" && isObj(fx.trigger)) triggers.push(fx.trigger);
   }
-  for (const t of triggers.reverse()) await pushTrigger(X, t);
 }
 async function pushTrigger(X, t) {
   const run = isObj(t.run) ? t.run : {}, sub = isObj(t.subject) ? t.subject : {};
@@ -1402,7 +1473,7 @@ function takeRoll(X, r) {
 export async function handle({ state, log }, input, host) {
   const user = input?.t === "req" ? input.user : null;
   const X = makeX(state, log, host, user);
-  let env;
+  let env, driving = false;
   try {
     if (!state) return { state, log, env: bad("off"), events: [], changed: false };
     if (input?.t === "req") {
@@ -1410,21 +1481,40 @@ export async function handle({ state, log }, input, host) {
       if (input.rid && state.seen.includes(input.rid)) return { state, log, env: { ok: true, changed: false, dup: true }, events: [], changed: false };     // spec 1.3: two tabs of one GM are harmless
       if (state.mode === "off" && !user.staff) return { state, log, env: bad("off"), events: [], changed: false };
       env = await request(X, input.req);
-      if (env.ok && input.req?.op !== "preview") { applyHelpAnswers(X); await drive(X); }
+      if (env.ok && input.req?.op !== "preview") { applyHelpAnswers(X); driving = true; await drive(X); }
     } else if (input?.t === "sys") {
-      await system(X, input.effects); env = ok(); await drive(X);
+      await system(X, input.effects); env = ok(); driving = true; await drive(X);
     } else if (input?.t === "roll") {
       env = takeRoll(X, input) ? ok() : bad("badInput");
-      if (env.ok) await drive(X);
-    } else { env = ok({ changed: false }); await drive(X); }
+      if (env.ok) { driving = true; await drive(X); }
+    } else { env = ok({ changed: false }); driving = true; await drive(X); }
   } catch (e) {
-    env = bad("internal", { msg: String(e?.message ?? e).slice(0, 120) });                  // what was already performed stays journaled in the open transaction
-    if (X.changed) env.partial = true;
+    /* D90 (spec 12: an answer says what was saved). A request that fails before it is through is taken back whole: what it had asked of
+       the host is undone, the state and the journal are the ones it found, and the answer is `internal` with nothing changed, so it can
+       be sent again. Only when that is not possible (it had already undone something itself, or an inverse failed) the state it left
+       is kept, every transaction of it is closed into the journal, and the answer says `partial`. The driver does not throw (see
+       `drive`); should it, the request itself was carried out and stays, and the action on top goes to the GM. */
+    warn(X, driving ? "drive" : "request", e, { op: input?.req?.op ?? input?.t });
+    const msg = String(e?.message ?? e).slice(0, 120);
+    if (!driving && !X.undid) {
+      const n0 = X.failed.length;
+      for (const op of [...X.ops].reverse()) { const eff = J.inverseEffect(op); if (eff) await inverse(X, op, eff); }
+      env = bad("internal", { msg });
+      if (X.failed.length > n0) { env.partial = true; env.failed = X.failed.slice(0, FAILED_MAX); }
+      return { state, log, env, events: [], changed: false };
+    }
+    try { if (driving && top(X)) park(X, top(X), top(X), e); } catch { /* the state as it stands */ }
+    env = driving && env?.ok ? { ...env, partial: true } : { ...bad("internal", { msg }), partial: true };
+    X.changed = true;
   }
-  if (!X.changed) return { state, log, env: { ...env, changed: false }, events: X.events, changed: false };
+  if (!X.changed) return { state, log, env: { ...env, changed: false, ...(X.failed.length ? { failed: X.failed.slice(0, FAILED_MAX) } : {}) }, events: X.events, changed: false };
+  try { sweepTx(X); } catch (e) { warn(X, "sweep", e); }
+  if (X.failed.length) env = { ...env, failed: X.failed.slice(0, FAILED_MAX) };
+  if (X.parked && instOf(X, X.parked)) env = { ...env, parked: X.parked };                     // an action went to the GM's hand in this call (D90)
   const seen = input?.rid ? [...X.state.seen, input.rid].slice(-P1.SEEN_MAX) : X.state.seen;
   return { state: { ...X.state, rev: (state.rev ?? 0) + 1, seen }, log: X.log, env: env.ok ? { ...env, changed: true } : env, events: X.events, changed: true };
 }
+export const FAILED_MAX = 20;
 /** Read helpers for the API and the checks. */
 export const topInstance = (state) => state?.stack?.[state.stack.length - 1] ?? null;
 export const openPrompts = (state) => Object.values(state?.prompts ?? {}).filter((p) => !p.answered);

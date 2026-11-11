@@ -78,6 +78,9 @@ export const seat = {
     check(v, inst) { const I = K.draft(inst), R = K.result(I); I.locked = true; R.goto = "apply"; return R; },
     apply(v, inst) {
       const I = K.draft(inst), R = K.result(I), ride = rideOf(v.state, I.actor);
+      /* D91 (spec 9.12): "get in" allowed by the GM as an exception although the declaration names no vehicle of the fight (the van is
+         scenery, not a token). There is no seat to write: the action is the GM's to settle by hand, as a move without a route is. */
+      if (I.action === "vehicleEnter" && v.facts.c(I.decl.targets?.[0])?.kind !== "vehicle") { I.status = "manual"; if (!K.flag(I, "byHand")) { K.setFlag(I, "byHand"); (I.data.notes ??= []).push({ note: "seatByHand", why: "noVehicle" }); } R.wait = true; return R; }
       if (!K.flag(I, "done")) {
         K.setFlag(I, "done");
         if (I.action === "vehicleEnter") {

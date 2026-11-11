@@ -44,6 +44,14 @@ for (const f of files) {
   for (const m of src.matchAll(/\berr\("([A-Za-z]+)"/g)) codes.add(m[1]);
   for (const m of src.matchAll(/\? "([A-Za-z]+)" : "([A-Za-z]+)"\)/g)) if (/err\(/.test(src.slice(Math.max(0, m.index - 80), m.index))) { codes.add(m[1]); codes.add(m[2]); }
 }
+/* D93: every reason the action record and the cards can refuse with (ledger-pure, initiative-pure: `fail("...")`) is passed on in an
+   error as it stands (ops-pure setCard, ledgerEditOf, mark; engine-pure pay), so each one needs its sentence: read from the sources,
+   so a new refusal cannot be added without one. A reason that is itself an error code has the code's text. */
+const refusals = new Set(["ledger"]);
+for (const f of ["ledger-pure.mjs", "initiative-pure.mjs"]) for (const m of readFileSync(join(dir, f), "utf8").matchAll(/\bfail\("([A-Za-z]+)"/g)) refusals.add(m[1]);
+ok(refusals.size >= 20, `refusals collected from the action record and the cards (${refusals.size})`);
+for (const r of refusals) ok((`ITAC.reason.${r}` in EN && `ITAC.reason.${r}` in PL) || (`ITAC.err.${r}` in EN && `ITAC.err.${r}` in PL), `a refusal of the action record or the cards has no text in both languages: ${r}`);
+for (const r of refusals) if (`ITAC.reason.${r}` in EN) ok(errText({ code: "illegal", params: { reason: r } }) !== t("ITAC.err.illegal", { reason: r }), `a refusal reads as words, not as its id: ${r}`);
 for (const c of ["noGM", "untrusted", "stale", "rate", "badInput", "off", "notOwner", "notYourTurn", "noAction", "locked", "illegal", "unknown", "gone", "busy", "playersOff", "internal"]) codes.add(c);   // spec 12.1
 for (const c of [...E.ERROR_CODES, ...R.RELAY_CODES]) codes.add(c);
 for (const c of codes) need.add(`ITAC.err.${c}`);
