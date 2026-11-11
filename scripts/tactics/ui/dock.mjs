@@ -260,7 +260,7 @@ function doorPanel(p) {
     askRow(p.ask));
 }
 /* U23: a list behind one button (More actions; Abilities by kind). One line per entry: its picture, its name, the mark of its speed, its
-   Resolve price and, for an ability, how it is run. The tooltip says in words what the marks stand for and nothing the row already
+   Resolve price (U67: how an ability is run is a small mark on the GM's dock only). The tooltip says what the entry does and its price in words, nothing the row already
    says (U51); the aria-label says all of it.
    U49: in the Abilities list the uses of one power stand under its name, said once (entries of the model, in its columns): a row
    under a name carries only the use; a power with one use is one row, its name first and the use after it. */
