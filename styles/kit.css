@@ -13,6 +13,8 @@
      chosen among hollow siblings    yellow (the dock's picked target, a window's open tab, the current question).
      unavailable                     hollow, DASHED frame, muted text, no shadow, still readable. Never opacity alone.
      focus                           a ring 3px wide, 2px away: WHITE on ink and on the comic art, CYAN on paper (--ipu-ring-ink / --ipu-ring-paper).
+                                     The ring is the colour the frames around it are not: the character sheet frames in cyan, so it sets
+                                     --ipu-ring-paper to ink on its root. Width and distance never change.
      label, button, plate            Titles caps with letter-spacing; sentences in Comic (map pieces, chat, tooltips) or the reading sans (long text in windows).
      icon                            Font Awesome solid, one per button, the same picture for the same thing on every surface.
      tooltip                         #tooltip.ipu-tip: ink panel, yellow hairline, the NAME in Titles yellow, then only what is not on screen.

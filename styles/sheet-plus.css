@@ -23,6 +23,7 @@
   --isp-cyan: #0096cb;
   --isp-blue: #3465a3;
   --isp-ink: #0c1a2e; /* tinted, not pure black */
+  --ipu-ring-paper: var(--isp-ink); /* the kit's focus ring is the colour the frames around it are NOT: this sheet frames everything in cyan, so its ring on paper is ink (other paper surfaces frame in ink and ring in cyan) */
   --isp-dots: radial-gradient(circle, rgba(12, 26, 46, .2) 1.2px, transparent 1.7px) 0 0 / 9px 9px; /* only on empty tracks and empty states */
 }
 
@@ -278,7 +279,7 @@
 .invincible.sheet.actor nav.sheet-tabs a:active { transform: skewY(-4deg) translate(2px, 2px); }
 .invincible.sheet.actor .rollable:active { transform: translateY(1px); }
 .invincible.sheet.actor :is(a, button, .rollable, input, textarea, select):focus-visible {
-  outline: var(--ipu-ring-w) solid var(--ipu-ring-paper);   /* the kit's ring (styles/kit.css): cyan on paper */
+  outline: var(--ipu-ring-w) solid var(--ipu-ring-paper);   /* the kit's ring (styles/kit.css); ink here, see the root */
   outline-offset: var(--ipu-ring-gap);
 }
 /* white where the thing stands on the comic art, on a blue bar or on the window's dark header */
