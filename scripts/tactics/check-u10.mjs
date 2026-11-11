@@ -120,6 +120,9 @@ ok(typeof UI.tipHtml !== "function", "A15 the model draws nothing");
   ok(big.rows.length === FP.SUM_ROWS && typeof big.more === "string", "D20 a long list is cut and says how many more");
   let flood = null; for (let i = 1; i <= FP.TALLY_MAX + 30; i++) flood = FP.tallyAdd(flood, "C5", [{ id: `n${i}`, kind: "action", round: 1, actor: "pc", rows: [{ target: "npc", hit: true, taken: 1 }] }]);
   ok(Object.keys(flood.entries).length === FP.TALLY_MAX && !flood.entries[1] && flood.entries[FP.TALLY_MAX + 30], "D21 the tally is bounded, the oldest go");
+  eq(FP.roundCard(FP.tallyAdd(null, "C6", [{ id: "n1", kind: "action", round: 1, actor: "pc", rows: [{ target: "npc", taken: 0 }] }]), 1, who, {}, t), null, "D23 an action that came to nothing for anybody has no card");
+  const named = FP.roundCard(FP.tallyAdd(null, "C7", [{ id: "n1", kind: "action", round: 1, actor: "pc", rows: [{ target: "npc", hit: true, taken: 2 }, { target: "pc", taken: 0 }] }]), 1, who, {}, t);
+  ok(named.rows.every((r) => r.chips.length > 0), "D24 no line without a count");
   lang("pl"); const cp = FP.roundCard(t2, 1, who, {}, t); ok(cp.title !== c1.title && cp.close !== c1.close, "D22 in Polish"); lang("en");
 }
 
