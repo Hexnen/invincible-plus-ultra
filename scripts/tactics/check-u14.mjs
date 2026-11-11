@@ -69,7 +69,7 @@ const ctx = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
   ok(/tip: s\.disabled \|\| null/.test(dock), "C: why a button cannot be pressed is its tooltip");
   ok(/button\.itd-tog", \{ fk: `op:\$\{o\.id\}`, tip: o\.tip, attrs: \{ "aria-pressed"/.test(dock) && !/itd-chip-opt/.test(dock), "C: an option is a picture switch with a tooltip, the same focus key as before");
   ok(/p\.pool \? h\("div\.itd-pool", \{ tip: p\.pool\.tip \? \{ \.\.\.p\.pool\.tip, title: handlers\.label\?\.\("pool"\) \}/.test(dock), "C: the dice are a number; 'your dice' and where they come from are the tooltip");
-  ok(!/itd-way-why/.test(dock) && /tip: r\.disabled \? \{ why: \{ text: r\.disabled \} \} : null/.test(dock), "C (U83): a way that cannot be taken says why in its tooltip and keeps its size");
+  ok(!/itd-way-why/.test(dock) && /tip: r\.disabled \? \{ why: r\.why \?\? \{ text: r\.disabled \} \} : null/.test(dock), "C (U83): a way that cannot be taken says why in its tooltip and keeps its size");
   ok(/y\.id === "push"\) - \(x\.id === "push"\)/.test(dock), "C: in the action's own panel Push stands before Accept, which stands where Declare stood");
   for (const fk of ["`wp:${x.id}`", "`tk:${k.id}`", "`ch:${x.id}`", "`at:${x.id}`", "`tg:${x.id}`", '"dest"', "`cmd:${c.id}`", "`go${cls}`", '"x"']) ok(dock.includes(`fk: ${fk}`), `C: the control ${fk} keeps its focus key`);
   ok(/\.itd-pfoot \{[^}]*flex-wrap: wrap[^}]*justify-content: flex-end/.test(css) && /\.itd-how \{[^}]*margin-right: auto/.test(css), "C: the foot: how on the left, the dice and the button on the right");
