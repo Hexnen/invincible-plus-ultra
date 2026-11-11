@@ -15,14 +15,14 @@ import * as FP from "./feedback-pure.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics feedback) |`;
 const SUM_KEY = `${MOD}.tactics.sum`;
-const ROUND_MS = 14000, FIGHT_MS = 40000, FLOAT_GAP = 420, CUE_GAP = 1200;
+const ROUND_MS = 20000, FIGHT_MS = 45000, HOLD_MS = 4000, FLOAT_GAP = 420, CUE_GAP = 1200, HIT_AFTER = 8000;
 let H = null;                       // main.mjs: { t, refresh() }
 let started = false;
 let tally = null, snap = {}, statusesWere = {}, roundWas = null, combatWas = null;
 let sum = null, sumTimer = 0;       // the card on screen: { card, until }
 let cueWas = null, cueAt = 0;
 let hintShown = null;
-const heard = new Set(), pending = {};      // U56: events already taken; the batch of one combat that waits for its last event
+const heard = new Set(), pending = {}, lossAt = {};      // U56: events already taken; the batch of one combat that waits for its last event
 
 const t = (...a) => H.t(...a);
 const setting = (key, fallback) => Store.setting(key, fallback);
@@ -36,7 +36,9 @@ function showCard(card, ms) {
   clearTimeout(sumTimer);
   if (!card) { sum = null; return; }
   sum = { card };
-  sumTimer = setTimeout(() => { sum = null; H.refresh(); }, ms);
+  /* it goes away by itself, but never from under the pointer or the keyboard focus of somebody reading it */
+  const away = () => { try { if (document.querySelector(".ita-sum:hover, .ita-sum:focus-within")) { sumTimer = setTimeout(away, HOLD_MS); return; } } catch { /* no page */ } sum = null; H.refresh(); };
+  sumTimer = setTimeout(away, ms);
 }
 export function closeSum() { clearTimeout(sumTimer); sum = null; H?.refresh(); }
 const who = (id) => snap[id] ?? null;
@@ -73,15 +75,22 @@ function flush(combatId) {
     const combat = game.combats?.get(combatId), scene = globalThis.canvas?.scene;
     if (!combat || !scene || !canvas.ready || (combat.scene && combat.scene.id !== scene.id)) return;
     const staff = Store.isStaff(game.user), n = new Map();
+    /* the text lives on the map (Foundry draws it at font size x the scene s interface scale x the zoom), so a map seen from far
+       away would shrink it to nothing: sized by what the SCREEN shows (about 30 px) */
+    const zoom = Math.max(0.05, Math.min(3, Number(canvas.stage?.scale?.x) || 1)), ui = Math.max(0.25, Number(canvas.dimensions?.uiScale) || 1);
+    const px = (v) => Math.round(v / (zoom * ui)), far = (v) => Math.round(v / zoom);
     for (const f of FP.floats(list, t)) {
       const doc = combat.combatants.get(f.target)?.token ?? null, tok = doc?.object ?? null;
       /* only over a token this user's canvas draws: a token Foundry hides from a player, or one out of that player's sight, gets no number */
       if (!tok || tok.visible === false || (!staff && doc.hidden === true)) continue;
+      const at = Date.now();
+      if (f.loss) lossAt[f.target] = at;
+      if (f.hit && at - (lossAt[f.target] ?? 0) < HIT_AFTER) continue;      // the number of this blow already stood there
       const k = n.get(f.target) ?? 0; n.set(f.target, k + 1);
       setTimeout(() => {
         try {
-          canvas.interface.createScrollingText(tok.center, f.text, { anchor: CONST.TEXT_ANCHOR_POINTS.CENTER, direction: CONST.TEXT_ANCHOR_POINTS.TOP, distance: Math.max(60, (tok.h ?? 100) * 0.9), duration: 2200, jitter: 0.15,
-            fontSize: 30, fontFamily: "Titles, Comic, Signika, sans-serif", fill: TONE[f.tone] ?? 0xffffff, stroke: 0x0c1a2e, strokeThickness: 5 });
+          canvas.interface.createScrollingText(tok.center, f.text, { anchor: CONST.TEXT_ANCHOR_POINTS.CENTER, direction: CONST.TEXT_ANCHOR_POINTS.TOP, distance: Math.max(far(64), (tok.h ?? 100) * 0.9), duration: 2600, jitter: 0.1,
+            fontSize: px(30), fontFamily: "Titles, Comic, Signika, sans-serif", fill: TONE[f.tone] ?? 0xffffff, stroke: 0x0c1a2e, strokeThickness: Math.max(4, px(5)) });
         } catch (e) { console.warn(LOG, "float failed", e); }
       }, k * FLOAT_GAP);
     }

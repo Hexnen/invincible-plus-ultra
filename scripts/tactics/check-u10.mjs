@@ -75,6 +75,7 @@ ok(typeof UI.tipHtml !== "function", "A15 the model draws nothing");
   ok(!f.some((x) => !x.target), "C2 nothing for an event without a target (a concealed one is not in the public stream)");
   eq(FP.floats([{ type: "damage", target: { combatant: "z" }, taken: 1 }], t)[0].target, "z", "C3 a target given as an object");
   eq(FP.floats(null, t), [], "C4 nothing from nothing");
+  eq([f.filter((x) => x.hit).map((x) => x.target), f.filter((x) => x.loss).map((x) => x.target)], [["e"], ["a", "f", "g"]], "C4b the bare word and the numbers are marked (the surface drops a Hit that comes after its number)");
   lang("pl"); ok(FP.floats([{ type: "damage", target: "a", taken: 3 }], t)[0].text.includes("Zdrowi"), "C5 in Polish"); lang("en");
   ok(FP.eventKey({ combat: "c", seq: 4, type: "damage", target: "a" }) === FP.eventKey({ combat: "c", seq: 4, type: "damage", target: { combatant: "a" } }), "C6 the same event heard twice has one key");
   ok(FP.eventKey({ combat: "c", seq: 4, type: "damage", target: "a" }) !== FP.eventKey({ combat: "c", seq: 5, type: "damage", target: "a" }), "C7 another event, another key");

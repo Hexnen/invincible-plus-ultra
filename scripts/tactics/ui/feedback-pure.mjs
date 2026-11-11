@@ -52,7 +52,9 @@ export function rollPool(r, t, attrLabel) {
 const idOf = (x) => (typeof x === "string" ? x : x && typeof x === "object" && typeof x.combatant === "string" ? x.combatant : null);
 /** One batch of events of one exchange (the public ones on a player's client, spec 16: a concealed combatant is in none of them).
     Per target ONE word for the defence that worked or the miss, or the loss it took (a hit that did no damage of its own says "Hit").
-    tone: "health" | "resolve" | "miss" | "none" | "state" (the surface gives each its own colour AND its own word: U63). */
+    tone: "health" | "resolve" | "miss" | "none" | "state" (the surface gives each its own colour AND its own word: U63).
+    hit: the bare word "Hit"; loss: a number. The two of one blow may come in two batches (a question in between): the surface
+    then leaves out a "Hit" that comes after the number. */
 export function floats(events, t) {
   const out = [], hurt = new Set(), list = (events ?? []).filter((e) => e && typeof e === "object");
   for (const e of list) if (e.type === "damage" && idOf(e.target)) hurt.add(idOf(e.target));
@@ -61,10 +63,10 @@ export function floats(events, t) {
     if (!target) continue;
     if (e.type === "outcome" && typeof e.hit === "boolean") {
       if (!e.hit) out.push({ target, tone: "miss", text: t(e.blocked ? "ITAC.float.block" : e.dodged ? "ITAC.float.dodge" : "ITAC.float.miss") });
-      else if (!hurt.has(target)) out.push({ target, tone: "none", text: t("ITAC.float.hit") });
+      else if (!hurt.has(target)) out.push({ target, tone: "none", text: t("ITAC.float.hit"), hit: true });
     } else if (e.type === "damage" && Number.isFinite(e.taken)) {
       const n = Math.max(0, Math.trunc(e.taken));
-      out.push(n > 0 ? { target, tone: e.toStress ? "resolve" : "health", text: t(e.toStress ? "ITAC.float.resolve" : "ITAC.float.health", { n }) } : { target, tone: "none", text: t("ITAC.float.none") });
+      out.push(n > 0 ? { target, tone: e.toStress ? "resolve" : "health", text: t(e.toStress ? "ITAC.float.resolve" : "ITAC.float.health", { n }), loss: true } : { target, tone: "none", text: t("ITAC.float.none"), loss: true });
     } else if (e.type === "broken") out.push({ target, tone: "state", text: t("ITAC.float.broken") });
   }
   return out.slice(0, 40);
@@ -120,7 +122,8 @@ function card(tally, round, who, statuses, t, head) {
       r.taken > 0 ? { id: "taken", n: String(r.taken), tip: t("ITAC.sum.taken", { n: r.taken }) } : null, r.stress > 0 ? { id: "stress", n: String(r.stress), tip: t("ITAC.sum.stress", { n: r.stress }) } : null].filter(Boolean);
     return { id: r.id, name: r.c.name, img: r.c.img ?? null, mine: !!r.c.mine, chips, out: out ? { id: out, tip: t(`ITAC.status.${out}`, {}, out) } : null,
       say: [r.c.name, ...chips.map((c) => c.tip), out ? t(`ITAC.status.${out}`, {}, out) : null].filter(Boolean).join(". ") };
-  });
+  }).filter((r) => r.chips.length);      /* somebody an action only named (no roll against, nothing lost) has no line */
+  if (!rows.length) return null;
   const quiet = rows.every((r) => !r.chips.some((c) => c.id !== "hits"));
   return { ...head, rows: rows.slice(0, SUM_ROWS), more: rows.length > SUM_ROWS ? t("ITAC.sum.more", { n: rows.length - SUM_ROWS }) : null, quiet: quiet ? t("ITAC.sum.quiet") : null, close: t("ITAC.sum.close") };
 }

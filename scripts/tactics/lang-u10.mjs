@@ -224,6 +224,6 @@ export const PL_U10 = {
   "ITAC.Settings.tacticsHints.Hint": "Każda krótka podpowiedź pokazuje się raz, przy pierwszym zetknięciu (dwa sloty, znak szybkości, forsowanie). Wyłącz i włącz, żeby zobaczyć je jeszcze raz.",
   "ITAC.hint.slots": "Tura to dwa sloty: długi na pełną akcję albo drugą szybką, krótki na szybką akcję.",
   "ITAC.hint.speed": "Znak pod ikoną to szybkość: długa kreska to pełna akcja, krótka to szybka, romb nie zajmuje akcji. Resztę powie podpowiedź.",
-  "ITAC.hint.push": "Forsując, rzucasz ponownie kośćmi bez szóstki i bez jedynki. Każda jedynka po forsowaniu kosztuje 1 Determinacji. Raz na rzut.",
+  "ITAC.hint.push": "Forsując, rzucasz ponownie kośćmi bez szóstki i bez jedynki. Każda jedynka po forsowaniu kosztuje 1 punkt Determinacji. Raz na rzut.",
   "ITAC.hint.close": "Jasne",
 };

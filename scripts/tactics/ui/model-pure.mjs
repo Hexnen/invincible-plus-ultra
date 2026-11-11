@@ -377,7 +377,7 @@ export function rollsData(rows, facts, t) {
   return (rows ?? []).filter((r) => r.state !== "done" && rollMine(r, facts)).map((r) => {
     const roll = rollLabel(t, r.key, facts), busy = r.state === "owed" && !!facts.rollBusy?.(r.rid);
     const pool = rollPool(r, t, r.attr ? attrText(t, r.attr) : null);      // U55: where the dice of a roll this user owes come from
-    return { id: `${r.inst}:${r.key}`, inst: r.inst, state: busy ? "rolling" : r.state, tip: r.state === "owed" && pool ? poolTip(pool, t) : null, text: r.state === "push" ? t("ITAC.ui.rollbar.sixes", { roll, sixes: r.sixes ?? 0 }) : t(busy ? "ITAC.ui.rollbar.rolling" : "ITAC.ui.rollbar.owed", { roll, dice: r.dice ?? "?" }), buttons: rollButtons(r, facts, t) };
+    return { id: `${r.inst}:${r.key}`, inst: r.inst, state: busy ? "rolling" : r.state, tip: pool ? poolTip(pool, t) : null, text: r.state === "push" ? t("ITAC.ui.rollbar.sixes", { roll, sixes: r.sixes ?? 0 }) : t(busy ? "ITAC.ui.rollbar.rolling" : "ITAC.ui.rollbar.owed", { roll, dice: r.dice ?? "?" }), buttons: rollButtons(r, facts, t) };
   });
 }
 const newsNo = (n) => Number(String(n?.id ?? "").replace(/\D/g, "")) || 0;
