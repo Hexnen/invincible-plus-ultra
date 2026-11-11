@@ -1784,6 +1784,10 @@ for (const phase of Object.keys(SPLASH_PHASES)) Hooks.once(phase, () => { SPLASH
 import("./i18n/system-texts.mjs")
   .then((sys) => sys.init())
   .catch((err) => console.warn(`${MODULE_ID} | system texts not loaded (the system's keyless texts stay English)`, err));
+/* ITEM NAMES (scripts/i18n/item-names.mjs): a Polish client sees the Polish names of powers, talents, gear; the data stays English. */
+import("./i18n/item-names.mjs")
+  .then((names) => names.init())
+  .catch((err) => console.warn(`${MODULE_ID} | item names not loaded (items keep their stored names)`, err));
 
 import("./splash/main.mjs")
   .then((splash) => splash.start({ ...SPLASH_PHASES }))
