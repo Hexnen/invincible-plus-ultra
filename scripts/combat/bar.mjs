@@ -235,12 +235,15 @@ function place() {
     const r = (document.querySelector("#scene-navigation .scene-navigation-menu") ?? document.getElementById("scene-navigation"))?.getBoundingClientRect();
     if (r && r.width > 0 && r.height > 0 && r.top < 150) navR = r.right;
   } catch { navR = 0; }
-  let top = 0, lo = Math.max(left, navR ? navR + 14 : left), hi = Math.min(right, hudLimit(0, band));
+  /* the map module's pins / filter panel floats at the left under the navigation: the bar starts right of it where its band would run under it
+     (with the sidebar open at 1366 px the first tiles and the round chip were under that panel) */
+  const pins = (t0) => { try { const r = document.querySelector(".mm-filter")?.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 && r.right < window.innerWidth * 0.45 && r.top < t0 + band + 30 && r.bottom > t0 ? r.right + 10 : 0; } catch { return 0; } };
+  let top = 0, lo = Math.max(left, navR ? navR + 14 : left, pins(0)), hi = Math.min(right, hudLimit(0, band));
   const low = lowRow ? hi - lo < BACK_GAP : hi - lo < MIN_GAP;
   lowRow = low;
   if (low) {
     top = Math.round(Math.min(150, Math.max(navBottom(), 36)) + 6);
-    lo = left;
+    lo = Math.max(left, pins(top));
     hi = Math.min(right, hudLimit(top, band));
   }
   const avail = Math.max(160, hi - lo);
