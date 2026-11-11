@@ -15,7 +15,7 @@ import { t } from "../lang.mjs";
 import { validateStep, normName, REPEATABLE_TALENTS } from "../rules.mjs";
 import { substream } from "../rng.mjs";
 import { FX_FIELDS, fxOf, itemRefs, bonusSum, warmBonuses } from "../bonuses.mjs";
-import { esc, icon, msgText, delegate } from "./util.mjs";
+import { esc, icon, msgText, delegate, pl } from "./util.mjs";
 import { slug, enrich, descBlock, rowLinks, openBook, bindAutosave } from "./shared.mjs";
 
 const nm = normName;
@@ -141,7 +141,7 @@ function talentSection(ctx) {
   const inList = !!cur?.name && book && !!info?.tal.some((x) => nm(x.name) === nm(cur.name));   // a chosen subject variant (Knowledgeable (Technology)) keeps its card so the subject is visible
   const curCard = inList ? "" : cur?.name
     ? `<div class="ipc-pw-card ipc-tl-hero${d.landed === "tal" ? " ipc-landed" : ""}">
-        <div class="ipc-pw-card-head"><h4 class="ipc-pw-cname">${esc(cur.name)}</h4><span class="ipc-pw-badge">${icon("fa-solid fa-briefcase")} ${esc(t("IPC.Life.Tal.Badge"))}</span>${fxSlot(d, uu(d, cur), cur)}
+        <div class="ipc-pw-card-head"><h4 class="ipc-pw-cname">${esc(pl(cur.name, "talent"))}</h4><span class="ipc-pw-badge">${icon("fa-solid fa-briefcase")} ${esc(t("IPC.Life.Tal.Badge"))}</span>${fxSlot(d, uu(d, cur), cur)}
           <button type="button" class="ipc-btn ipc-btn-small ipc-btn-danger" data-act="clear-tal" data-fk="clear-tal" aria-label="${esc(t("IPC.Life.Tal.ClearAria", { name: cur.name }))}">${icon("fa-solid fa-xmark")} ${esc(t("IPC.Life.Tal.Clear"))}</button></div>
         ${descBlock(d, uu(d, cur))}${rowLinks(d, uu(d, cur), cur.name)}
       </div>`
@@ -158,7 +158,7 @@ function talentSection(ctx) {
         ? `<button type="button" class="ipc-btn ipc-btn-small" data-act="pick-tal" data-name="${esc(e.name)}" data-fk="tal-${i}" aria-disabled="true" aria-label="${esc(t("IPC.Life.Tal.TakenAria", { name: e.name }))}">${icon("fa-solid fa-ban")} ${esc(t("IPC.Talents.Row.Taken"))}</button>`
         : `<button type="button" class="ipc-btn ipc-btn-small${on ? "" : " ipc-btn-primary"}" data-act="pick-tal" data-name="${esc(e.name)}" data-fk="tal-${i}" aria-pressed="${on}" aria-label="${esc(t(bare && !on ? "IPC.Life.Tal.SubjectAria" : "IPC.Life.Tal.PickAria", { name: e.name }))}">${bare && !on ? `${icon("fa-solid fa-dice")} ${esc(t("IPC.Talents.Row.RollSubject"))}` : chosenCheck(on)}</button>`;
       return `<li class="ipc-pw-row${on ? " is-added" : ""}">
-        <div class="ipc-pw-row-main"><div class="ipc-pw-row-head">${die(i + 1)}<span class="ipc-pw-name">${esc(e.name)}</span>${taken ? `<span class="ipc-pw-badge">${esc(t("IPC.Life.Tal.TakenBy"))}</span>` : ""}${fxSlot(d, uuid, e)}</div>${descBlock(d, uuid)}${rowLinks(d, uuid, e.name)}</div>
+        <div class="ipc-pw-row-main"><div class="ipc-pw-row-head">${die(i + 1)}<span class="ipc-pw-name">${esc(pl(e.name, "talent"))}</span>${taken ? `<span class="ipc-pw-badge">${esc(t("IPC.Life.Tal.TakenBy"))}</span>` : ""}${fxSlot(d, uuid, e)}</div>${descBlock(d, uuid)}${rowLinks(d, uuid, e.name)}</div>
         ${btn}
       </li>`;
     }).join("")}</ul>`;

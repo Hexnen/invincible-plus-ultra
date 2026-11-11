@@ -34,7 +34,7 @@ for (const k of Object.keys(EN)) if (/^ITAC\.(err|warn|Settings)\./.test(k) && E
 
 const need = new Set(), codes = new Set();
 const sub = (d) => readdirSync(join(dir, d)).filter((f) => f.endsWith(".mjs")).map((f) => `${d}/${f}`);
-const files = [...readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.startsWith("check-") && f !== "lang.mjs" && f !== "lang-attacks.mjs" && f !== "lang-int.mjs" && f !== "lang-kit.mjs" && f !== "testkit.mjs"), ...sub("flows"), ...sub("ui")];
+const files = [...readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.startsWith("check-") && f !== "lang.mjs" && f !== "lang-attacks.mjs" && f !== "lang-int.mjs" && f !== "lang-kit.mjs" && f !== "lang-fx.mjs" && f !== "testkit.mjs"), ...sub("flows"), ...sub("ui")];
 for (const f of files) {
   const src = readFileSync(join(dir, f), "utf8");
   for (const m of src.matchAll(/["'`](ITAC\.[A-Za-z][\w.]*[A-Za-z0-9])["'`]/g)) need.add(m[1]);

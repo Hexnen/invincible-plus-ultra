@@ -16,7 +16,7 @@ import { ATTRS, ATTR_MIN, MAX_DRAWBACKS, REPEATABLE_TALENTS, REPEATABLE_DRAWBACK
 import { setHeroTalent, addExtraTalent, removeExtraTalent, addDrawback, removeDrawback } from "../state.mjs";
 import { substream } from "../rng.mjs";
 import { FX_FIELDS, fxOf, itemRefs, bonusSum, warmBonuses } from "../bonuses.mjs";
-import { esc, icon, msgText, delegate } from "./util.mjs";
+import { esc, icon, msgText, delegate, pl, hit } from "./util.mjs";
 import { slug, enrich, descBlock, rowLinks, chip, openBook } from "./shared.mjs";
 
 const PAGE = 12;
@@ -91,7 +91,7 @@ function heroBlock(ctx) {
   const card = h
     ? `<div class="ipc-pw-card ipc-tl-hero${landed}">
         <div class="ipc-pw-card-head">
-          <h4 class="ipc-pw-cname">${esc(h.name)}</h4>
+          <h4 class="ipc-pw-cname">${esc(pl(h.name, "talent"))}</h4>
           <span class="ipc-pw-badge">${icon("fa-solid fa-star")} ${esc(t("IPC.Talents.Hero.Badge"))}</span>
           ${fxSlot(d, uu(d, "talent", h), h, "talent")}
           <button type="button" class="ipc-btn ipc-btn-small ipc-btn-danger" data-act="clear-hero" data-fk="clear-hero" aria-label="${esc(t("IPC.Talents.Hero.ClearAria", { name: h.name }))}">${icon("fa-solid fa-xmark")} ${esc(t("IPC.Talents.Hero.Clear"))}</button>
@@ -103,7 +103,7 @@ function heroBlock(ctx) {
     ? `<p class="ipc-tl-occ">${icon("fa-solid fa-briefcase")} <span>${esc(t("IPC.Talents.Occ.Have", { name: s.occTalent.name }))}</span> <button type="button" class="ipc-link" data-act="go-life" data-fk="go-life">${esc(t("IPC.Talents.Occ.Open"))}</button></p>`
     : `<p class="ipc-tl-occ">${icon("fa-solid fa-briefcase")} <span>${esc(t("IPC.Talents.Occ.Later"))}</span> <button type="button" class="ipc-link" data-act="go-life" data-fk="go-life">${esc(t("IPC.Talents.Occ.Open"))}</button></p>`;
   const extras = s.extraTalents.length
-    ? `<ul class="ipc-chips">${s.extraTalents.map((x, i) => chip(`${esc(x.name)} ${fxSlot(d, uu(d, "talent", x), x, "talent")}`, t("IPC.Talents.Extra.RemoveAria", { name: x.name }), "rm-extra", `data-i="${i}" data-fk="rmx-${i}"`)).join("")}</ul>`
+    ? `<ul class="ipc-chips">${s.extraTalents.map((x, i) => chip(`${esc(pl(x.name, "talent"))} ${fxSlot(d, uu(d, "talent", x), x, "talent")}`, t("IPC.Talents.Extra.RemoveAria", { name: x.name }), "rm-extra", `data-i="${i}" data-fk="rmx-${i}"`)).join("")}</ul>`
     : `<p class="ipc-muted ipc-pw-none">${esc(t("IPC.Talents.Extra.None"))}</p>`;
   return `<section class="ipc-pw-sec" aria-labelledby="ipc-tl-h-mine">
     <div class="ipc-cn-head"><h3 id="ipc-tl-h-mine" tabindex="-1">${esc(t("IPC.Talents.Mine"))}</h3>
@@ -132,7 +132,7 @@ function talentList(ctx) {
 }
 function talentRows(ctx) {
   const d = ctx.data, s = ctx.state, q = nm(d.tq);
-  const all = talentList(ctx).filter((e) => !q || nm(e.name).includes(q));
+  const all = talentList(ctx).filter((e) => hit(q, e.name, nm, "talent"));
   const shown = all.slice(0, d.tlimit);
   const rows = shown.map((e) => {
     const k = talentKey(e.name);
@@ -147,7 +147,7 @@ function talentRows(ctx) {
       ? `<button type="button" class="ipc-btn ipc-btn-small" data-act="pick-talent" data-name="${esc(e.name)}" data-uuid="${esc(e.packUuid ?? "")}" data-fk="tl-${esc(slug(e.name))}" aria-disabled="true" aria-label="${esc(t("IPC.Talents.Row.TakenAria", { name: e.name }))}">${icon("fa-solid fa-check")} ${esc(t("IPC.Talents.Row.Taken"))}</button>`
       : `<button type="button" class="ipc-btn ipc-btn-small ipc-btn-primary" data-act="pick-talent" data-name="${esc(e.name)}" data-uuid="${esc(e.packUuid ?? "")}" data-fk="tl-${esc(slug(e.name))}" aria-label="${esc(aria)}">${icon(bare ? "fa-solid fa-dice" : "fa-solid fa-plus")} ${esc(verb)}</button>`;
     return `<li class="ipc-pw-row${where ? " is-added" : ""}">
-      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(e.name)}</span>${where ? `<span class="ipc-pw-badge">${esc(where)}</span>` : ""}${limitNote(e.name) ? `<span class="ipc-pw-type">${esc(limitNote(e.name))}</span>` : ""}${fxSlot(d, e.packUuid, e, "talent")}</div>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
+      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(pl(e.name, "talent"))}</span>${where ? `<span class="ipc-pw-badge">${esc(where)}</span>` : ""}${limitNote(e.name) ? `<span class="ipc-pw-type">${esc(limitNote(e.name))}</span>` : ""}${fxSlot(d, e.packUuid, e, "talent")}</div>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
       ${btn}
     </li>`;
   }).join("");
@@ -176,7 +176,7 @@ function drawbackCards(ctx) {
   if (!s.drawbacks.length) return `<div class="ipc-note-box ipc-pw-empty">${icon("fa-solid fa-link-slash")} ${esc(t("IPC.Talents.Dr.None"))}</div>`;
   return `<ul class="ipc-pw-cards">${s.drawbacks.map((x, i) => `<li class="ipc-pw-card ipc-tl-dr${d.landed === `d${i}` ? " ipc-landed" : ""}">
       <div class="ipc-pw-card-head">
-        <h4 class="ipc-pw-cname">${esc(x.name)}</h4>
+        <h4 class="ipc-pw-cname">${esc(pl(x.name))}</h4>
         <span class="ipc-pw-badge">${icon("fa-solid fa-plus")} ${esc(t("IPC.Talents.Dr.Gives"))}</span>
         ${fxSlot(d, uu(d, "drawback", x), x, "drawback")}
         <button type="button" class="ipc-btn ipc-btn-small ipc-btn-danger" data-act="rm-drawback" data-i="${i}" data-fk="rmd-${i}" aria-label="${esc(t("IPC.Talents.Dr.RemoveAria", { name: x.name }))}">${icon("fa-solid fa-trash")} ${esc(t("IPC.Talents.Dr.Remove"))}</button>
@@ -199,7 +199,7 @@ function drawbackList(ctx) {
 }
 function drawbackRows(ctx) {
   const d = ctx.data, s = ctx.state, q = nm(d.dq);
-  const all = drawbackList(ctx).filter((e) => !q || nm(e.name).includes(q));
+  const all = drawbackList(ctx).filter((e) => hit(q, e.name, nm, "drawback"));
   const shown = all.slice(0, d.dlimit);
   const full = s.drawbacks.length >= MAX_DRAWBACKS;
   const rows = shown.map((e) => {
@@ -208,7 +208,7 @@ function drawbackRows(ctx) {
       ? `<button type="button" class="ipc-btn ipc-btn-small" data-act="take-drawback" data-name="${esc(e.name)}" data-uuid="${esc(e.packUuid ?? "")}" data-fk="dr-${esc(slug(e.name))}" aria-disabled="true" aria-label="${esc(t("IPC.Talents.Dr.TakenAria", { name: e.name }))}">${icon("fa-solid fa-check")} ${esc(t("IPC.Talents.Row.Taken"))}</button>`
       : `<button type="button" class="ipc-btn ipc-btn-small${full ? "" : " ipc-btn-primary"}" data-act="take-drawback" data-name="${esc(e.name)}" data-uuid="${esc(e.packUuid ?? "")}" data-fk="dr-${esc(slug(e.name))}"${full ? ' aria-disabled="true"' : ""} aria-label="${esc(t("IPC.Talents.Dr.TakeAria", { name: e.name }))}">${icon("fa-solid fa-plus")} ${esc(t("IPC.Talents.Dr.Take"))}</button>`;
     return `<li class="ipc-pw-row${taken ? " is-added" : ""}">
-      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(e.name)}</span>${fxSlot(d, e.packUuid, e, "drawback")}</div>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
+      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(pl(e.name, "drawback"))}</span>${fxSlot(d, e.packUuid, e, "drawback")}</div>${descBlock(d, e.packUuid)}${rowLinks(d, e.packUuid, e.name)}</div>
       ${btn}
     </li>`;
   }).join("");
@@ -239,7 +239,7 @@ function drawbackPanel(ctx) {
 function fxPanel(ctx) {
   const s = ctx.state, b = bonusSum(s), r = ctx.rank;
   const items = itemRefs(s).map(({ type, ref }) => ({ ref, fx: fxOf(type, ref) })).filter((x) => x.fx && FX_FIELDS.some((k) => x.fx[k]));
-  const list = items.length ? `<ul class="ipc-tl-fxlist">${items.map((x) => `<li><b>${esc(x.ref.name)}</b> ${esc(fxText(x.fx))}</li>`).join("")}</ul>` : `<p class="ipc-muted">${esc(t("IPC.Talents.Fx.None"))}</p>`;
+  const list = items.length ? `<ul class="ipc-tl-fxlist">${items.map((x) => `<li><b>${esc(pl(x.ref.name))}</b> ${esc(fxText(x.fx))}</li>`).join("")}</ul>` : `<p class="ipc-muted">${esc(t("IPC.Talents.Fx.None"))}</p>`;
   const rep = b.reputation ? t("IPC.Talents.Fx.Rep", { total: r.reputation + b.reputation, base: r.reputation, delta: signed(b.reputation) }) : t("IPC.Talents.Fx.RepBase", { total: r.reputation });
   const res = b.resources ? `<p>${icon("fa-solid fa-coins")} ${esc(t("IPC.Talents.Fx.Res", { delta: signed(b.resources) }))}</p>` : "";
   return `<section class="ipc-pw-sec ipc-tl-fxsec" aria-labelledby="ipc-tl-h-fx">
