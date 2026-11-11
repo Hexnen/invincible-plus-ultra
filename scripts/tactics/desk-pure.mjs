@@ -52,7 +52,7 @@ const instLine = (i, ctx, state = null) => ({ steps: (FLOWS[i.flow]?.STEPS ?? []
    "push" (rolled, may still be pushed: the exchange waits for the roller's word), "done". The request id, the dice and the chat
    message are only in the row of somebody the roll was asked of (view-pure.rollView) and in the GM's. */
 export const rollState = (r) => (r.forced != null ? "done" : r.sixes == null ? "owed" : r.pushable ? "push" : "done");
-const rollRow = (i, r, ctx) => ({ inst: i.id, key: r.key, who: r.who, whoName: nameOf(ctx, r.who), attr: r.attr ?? null, dice: r.req?.dice ?? null, sixes: r.forced?.sixes ?? r.sixes ?? null, pushed: r.pushed ?? 0,
+const rollRow = (i, r, ctx) => ({ inst: i.id, key: r.key, who: r.who, whoName: nameOf(ctx, r.who), attr: r.attr ?? null, pool: r.pool ?? null /* U55: the parts of the pool, where the view holds them */, dice: r.req?.dice ?? null, sixes: r.forced?.sixes ?? r.sixes ?? null, pushed: r.pushed ?? 0,
   state: rollState(r), waiting: r.sixes == null && r.forced == null, users: r.req?.users ?? [], rid: r.req?.rid ?? null, maxPush: r.req?.maxPush ?? null, label: r.req?.label ?? null, mode: r.req?.mode ?? null,
   messageId: r.messageId ?? null, action: i.action, actionLabel: i.data?.label ?? null, actor: i.actor ?? null });
 /** Everything the GM desk shows. `log` is the journal flag. */

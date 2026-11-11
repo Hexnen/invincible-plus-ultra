@@ -35,6 +35,12 @@ function registerSettings() {
     choices: { everyRound: t("ITAC.Redraw.everyRound"), firstRoundOnly: t("ITAC.Redraw.firstRoundOnly") } });      // [I2] [B2277]
   reg("tacticsPushOrder", { ...name("tacticsPushOrder"), scope: "world", config: true, type: String, default: "afterDefence",
     choices: { afterDefence: t("ITAC.PushOrder.afterDefence"), beforeDefence: t("ITAC.PushOrder.beforeDefence") } });      // [R3] [OQ-9]: read when a fight starts
+  /* U53 / U57 / U58: feedback to the player, each user's own (client scope): the first-fight hints and which of them were already
+     shown, the summary card, the volume of the two sounds (0 = off) */
+  reg("tacticsHints", { ...name("tacticsHints"), scope: "client", config: true, type: Boolean, default: true, onChange: (on) => { try { tacticsApi.ui?.hintsSwitched?.(on); } catch { /* the surfaces are not up */ } } });
+  reg("tacticsHintsSeen", { scope: "client", config: false, type: String, default: "[]" });
+  reg("tacticsSummary", { ...name("tacticsSummary"), scope: "client", config: true, type: Boolean, default: true });
+  reg("tacticsSoundVolume", { ...name("tacticsSoundVolume"), scope: "client", config: true, type: Number, range: { min: 0, max: 1, step: 0.05 }, default: 0.5 });
   /* U62: the size of the dock, the desk and their cards on this browser (a slider; separate from Foundry's interface scale) */
   reg("tacticsUiScale", { ...name("tacticsUiScale"), scope: "client", config: true, type: Number, range: { min: 80, max: 140, step: 5 }, default: 100, onChange: (v) => { try { tacticsApi.ui?.rescale?.(v); } catch { /* the surfaces are not up */ } } });
 }

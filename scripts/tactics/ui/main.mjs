@@ -24,6 +24,7 @@ import * as Dock from "./dock.mjs";
 import * as Desk from "./desk.mjs";
 import * as Pick from "./pick.mjs";
 import * as Board from "./board.mjs";
+import * as Feedback from "./feedback.mjs";
 import * as Lay from "./layout-pure.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
@@ -232,7 +233,7 @@ function refresh() {
     const combat = down ? null : combatNow();
     try { document.body.classList.toggle("ita-tactics", !!combat); } catch { /* no body */ }      // styles/tactics-ui.css: what the other surfaces of the module give up while the dock shows
     hotbarSync(!!combat);
-    if (!combat) { cardsWere = null; lastDock = lastModel = null; Pick.stop(); Pick.keep(null, []); Board.sync(null, null); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
+    if (!combat) { cardsWere = null; lastDock = lastModel = null; Pick.stop(); Pick.keep(null, []); Board.sync(null, null); mapSync(null, null); Dock.render({ show: false, prompts: [], sum: Feedback.idle().sum }); Desk.render({ show: false }); pokeTray(); return; }      // U57: the card of the fight that just ended may still stand
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
     if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen, hotbar: st.dock.hotbar }; }        // a new turn: nothing stays armed
@@ -252,6 +253,9 @@ function refresh() {
     const data = Model.dockData(model, st.dock, facts, t);
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
+    /* U53 / U57 / U58: the first-fight hint over the bar, the summary card of the round that just ended, the two sounds (ui/feedback.mjs) */
+    const fb = Feedback.sync({ combat, facts, model, data, cards: desk?.cards ?? null, staff, own: st.dock });
+    data.sum = fb.sum; data.hint = fb.hint;
     lastDock = data; lastModel = model;
     /* U59: the GM nudged this user: the line stands on the dock (news) and is said once as a notification, wherever the eyes are */
     if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", data.news.text); }
@@ -439,7 +443,7 @@ function configure() {
     zonePick: async () => { try { const r = await Zones.pick({ title: t("ITAC.ui.pick.title", { name: "" }).replace(/^[:\s]+/, ""), color: "target" }); if (r?.ok) setDock({ to: r.spot ?? r.zone }); } catch (e) { console.warn(LOG, "zone pick failed", e); } },
     target: (cid) => { try { Pick.show(combatNow(), cid); } catch { /* a courtesy */ } },
     locate: (cid, on) => Pick.locate(combatNow(), cid, on), deskRelayout: () => { try { Desk.relayout(); } catch { /* not built */ } },
-    roll: rollAct,
+    roll: rollAct, sumClose: () => Feedback.closeSum(), hintClose: (id) => Feedback.closeHint(id),
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });
   Desk.configure({
@@ -523,7 +527,8 @@ export function start() {
     Board.start({ t, set: setDock, send: (req, after) => send("dock", req, after), press: (fk) => Dock.press(fk), notify, refresh, showToken, dock: () => st.dock, unit: (cid) => unitOf(cid, true),
       bar: (cid) => lastModel?.bars?.find((b) => b.combatant === cid) ?? null,
       request: async (req, combat) => { try { const env = await Api.request(req, combat ?? combatNow() ?? undefined); for (const text of Model.envNotes(env, t, Store.isStaff(game.user))) notify("warn", text); if (env?.ok === false && env.error?.code !== "gone") notify("warn", errText(env.error)); return env; } catch { return null; } } });
-    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), layout: () => layout };
+    Feedback.start({ t, refresh });
+    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
     refresh();
     return true;
   } catch (e) { console.warn(LOG, "start failed", e); return false; }
