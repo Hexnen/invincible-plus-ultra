@@ -1,6 +1,7 @@
 /* Chat cards live in chat.css, the splash layer in splash.css. Foundry reads a module's style list once, when the server starts, so a file added to module.json
    later is not loaded until a restart; an @import from an already registered sheet is picked up on the next page load. splash.css is the
    comic splash / chat badge of the built-in splash feature (scripts/splash/). */
+@import url("kit.css");   /* the shared kit: tokens, the tooltip panel, classes for new surfaces (ledger U65). First, so every file below can use it */
 @import url("fonts.css");   /* Polish-glyph patched Komika Hand (../fonts/) */
 @import url("chat.css");
 @import url("splash.css");
@@ -15,6 +16,7 @@
 @import url("session.css");   /* the end-of-session review panel and its Actors directory button (scripts/session/ui/) */
 @import url("tactics-ui.css");   /* tactical combat: the action dock and the GM desk (scripts/tactics/ui/) */
 @import url("tactics.css");   /* tactical combat: the third pip state and the minimal prompt dialogs (scripts/tactics/) */
+@import url("pl.css");   /* Polish for the texts written by CSS (content strings), under html[lang="pl"] */
 
 /* Invincible — Sheet Plus: actor sheets only. Palette: yellow #ffe72a, cyan #0096cb, blue #3465a3. */
 .invincible.sheet.actor {
@@ -22,6 +24,7 @@
   --isp-cyan: #0096cb;
   --isp-blue: #3465a3;
   --isp-ink: #0c1a2e; /* tinted, not pure black */
+  --ipu-ring-paper: var(--isp-ink); /* the kit's focus ring is the colour the frames around it are NOT: this sheet frames everything in cyan, so its ring on paper is ink (other paper surfaces frame in ink and ring in cyan) */
   --isp-dots: radial-gradient(circle, rgba(12, 26, 46, .2) 1.2px, transparent 1.7px) 0 0 / 9px 9px; /* only on empty tracks and empty states */
 }
 
@@ -150,6 +153,16 @@
   color: var(--isp-blue);
   letter-spacing: 1px;
 }
+/* The label keeps its whole word in any language ("DETERMINACJA" is twice as long as "RESOLVE" and was cut to "DETERMIN"):
+   it never shrinks, both rows share one label column so the two bars stay equally long. */
+.invincible.sheet.actor:not(.challenge):not(.vehicle) div.bar > label:first-child {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 8.6em;
+  font-size: 15px;
+  letter-spacing: .5px;
+  white-space: nowrap;
+}
 
 /* ---------- bar rows on a plate (they sit on the busy backdrop) ---------- */
 .invincible.sheet.actor:not(.challenge):not(.vehicle) div.bar {
@@ -277,10 +290,11 @@
 .invincible.sheet.actor nav.sheet-tabs a:active { transform: skewY(-4deg) translate(2px, 2px); }
 .invincible.sheet.actor .rollable:active { transform: translateY(1px); }
 .invincible.sheet.actor :is(a, button, .rollable, input, textarea, select):focus-visible {
-  outline: 3px solid var(--isp-ink);
-  outline-offset: 2px;
+  outline: var(--ipu-ring-w) solid var(--ipu-ring-paper);   /* the kit's ring (styles/kit.css); ink here, see the root */
+  outline-offset: var(--ipu-ring-gap);
 }
-.invincible.sheet.actor nav.sheet-tabs a:focus-visible { outline-color: #fff; }
+/* white where the thing stands on the comic art, on a blue bar or on the window's dark header */
+.invincible.sheet.actor :is(nav.sheet-tabs a, .window-header :is(a, button), .effects-header a):focus-visible { outline-color: var(--ipu-ring-ink); }
 .invincible.sheet.actor :is(.item-description, .powers-info, .talent-info, .gear-info) p { text-wrap: pretty; max-width: 68ch; }
 .invincible.sheet.actor label.title { text-wrap: balance; }
 .invincible.sheet.actor :is(input[data-dtype="Number"], .attribute input, .bar input, .form-fields label) { font-variant-numeric: tabular-nums; }
@@ -440,6 +454,7 @@
     box-shadow: 2px 2px 0 var(--isp-ink); white-space: nowrap; margin: 0;
   }
   & .effects-header a[data-action="createDoc"]:hover { background: #fff27a; text-shadow: none; }
+  & .effects-header a[data-action="createDoc"]:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--isp-ink); }
   & .effects-header a[data-action="createDoc"]:active { transform: translate(2px, 2px); box-shadow: none; }
   & .effects-header + ol.effect-list:not(:has(> li))::after {
     display: block; margin: 4px 0 0; padding: 10px 12px;

@@ -138,7 +138,16 @@ export function publicEvent(state, ev, meta = {}) {
   const concealed = new Set(meta.hidden ?? []);
   for (const row of Object.values(state?.knowledge ?? {})) for (const [subject, k] of Object.entries(row ?? {})) if (k === "unseen") concealed.add(subject);
   if (concealed.size && scrub({ e: [ev] }, concealed).e.length === 0) return null;
-  let e = scrub(clone(ev), concealed);
+  /* D31: an initiative record ({ slot, card, members }: a `draw`, a line of `roundStart.order`) whose members are all concealed is not
+     there, as in the state view (state-pure.viewFor: a slot left empty disappears); a slot shared with somebody visible keeps its card */
+  let src = ev;
+  if (concealed.size) {
+    const gone = (r) => isObj(r) && Array.isArray(r.members) && r.members.length > 0 && r.members.every((m) => concealed.has(m));
+    if (gone(ev) || Object.entries(ev).some(([k, v]) => k !== "type" && typeof v === "string" && mentions(v, concealed))) return null;      // and an event that names a concealed one in a field of its own (`challenge`, `vehicle`) is not public
+    src = { ...ev };
+    for (const [k, v] of Object.entries(ev)) if (Array.isArray(v) && v.some(gone)) src[k] = v.filter((r) => !gone(r));
+  }
+  let e = scrub(clone(src), concealed);
   if (!e) return null;
   if (e.type === "roll" && numbersHidden(state, e.who, meta, "stats")) { const { attr, dice, ...rest } = e; e = rest; }
   if (e.type === "damage" && numbersHidden(state, e.target, meta, "health")) { const { armor, base, ...rest } = e; e = rest; }
@@ -146,15 +155,29 @@ export function publicEvent(state, ev, meta = {}) {
   return e;
 }
 
-/** Journal rows for a viewer: the public text only (spec 10: two texts), no operations. */
-export function journalFor(log, viewer) {
+/** The public text of a journal line with its `{c:<id>}` marks (engine-pure.cMark) put into names: name(id) is the reader's own name for
+    that combatant; one that has left the fight keeps the plain name the line was written with. */
+export function pubLine(label, name = null) {
+  const pub = typeof label?.pub === "string" ? label.pub : "";
+  return pub.includes("{c:") ? pub.replace(/\{c:([^{}]{1,64})\}/g, (_, id) => String((typeof name === "function" ? name(id) : null) ?? label.who?.[id] ?? "")).replace(/^: /, "") : pub;
+}
+/** Journal rows for a viewer: the public text only (spec 10: two texts), no operations.
+    ctx = { concealed: ids the viewer must not learn about (concealedFor), name: (id) -> the viewer's name for a combatant }
+    D32 / D33: a player gets no line about somebody concealed from that player (the doer or a target, `label.who`), the names are the
+    player's own (namesakes numbered without the hidden ones), and the GM's word on an exception is for the one who asked (`label.own`). */
+export function journalFor(log, viewer, ctx = {}) {
   const list = log?.list ?? [];
-  if (viewer?.staff) return list.map((t) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, text: t.label?.gm ?? "", pub: t.label?.pub ?? "", undoable: t.state === "closed" && Array.isArray(t.ops), ops: t.ops?.length ?? 0 }));
-  return list.filter((t) => t.label?.pub).map((t) => ({ id: t.id, round: t.round, at: t.at, state: t.state, text: t.label.pub }));
+  if (viewer?.staff) return list.map((t) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, text: t.label?.gm ?? "", pub: pubLine(t.label, ctx.name), undoable: t.state === "closed" && Array.isArray(t.ops), ops: t.ops?.length ?? 0 }));
+  const concealed = ctx.concealed instanceof Set ? ctx.concealed : new Set(ctx.concealed ?? []), owns = Array.isArray(viewer?.owns) ? viewer.owns : [];
+  return list.filter((t) => t.label?.pub && !Object.keys(t.label.who ?? {}).some((id) => concealed.has(id)) && (!t.label.own || owns.includes(t.label.own)))
+    .map((t) => ({ id: t.id, round: t.round, at: t.at, state: t.state, text: pubLine(t.label, ctx.name) }));
 }
 /** U19: two combatants with one name are told apart in every text of the fight: "Soldier #1", "Soldier #2". The order is the one of the
-    list (the fight's own, the same on every client) with the hidden ones LAST, so the numbers a player reads are the GM's and no gap in
-    them gives a hidden namesake away. list = [{ id, name, hidden }] -> { id: name } */
+    list (the fight's own, the same on every client) with the hidden ones LAST. Ruling U5-7: the GM's list holds everybody; a player's
+    list is given WITHOUT those concealed from that player, so one visible "Soldier" beside a hidden one has no number for the player
+    (the number would give the hidden one away), and a player's number may change when somebody is revealed. Every text a player reads
+    is numbered from the player's own list (the surfaces' context, the journal); the engine's facts hold the GM's numbers and go into
+    the GM's texts only. list = [{ id, name, hidden }] -> { id: name } */
 export function distinctNames(list) {
   const by = new Map(), out = {};
   for (const x of list ?? []) { const k = String(x.name ?? ""); if (!by.has(k)) by.set(k, []); by.get(k).push(x); }
@@ -163,4 +186,10 @@ export function distinctNames(list) {
     [...same.filter((x) => !x.hidden), ...same.filter((x) => x.hidden)].forEach((x, i) => { out[x.id] = `${name} #${i + 1}`; });
   }
   return out;
+}
+/** The names one reader gets, and who is concealed from that reader. The GM reads everybody; a player's numbers never count somebody
+    concealed from that player (U5-7). list = [{ id, name, hidden }] of the whole fight -> { concealed: Set, names: { id: name } } */
+export function readerNames(state, viewer, meta = {}, list = []) {
+  const concealed = viewer?.staff ? new Set() : state ? concealedFor(state, { id: viewer?.id ?? null, owns: Array.isArray(viewer?.owns) ? viewer.owns : [] }, meta) : new Set(meta.hidden ?? []);
+  return { concealed, names: distinctNames((list ?? []).filter((x) => !concealed.has(x.id))) };
 }

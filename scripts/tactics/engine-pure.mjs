@@ -101,7 +101,7 @@ function closeTx(X, txId, label) {
   if (!tx) return;
   const { [txId]: _gone, ...rest } = X.state.txOpen;
   X.state = { ...X.state, txOpen: rest };
-  if (tx.ops.length || label?.keep) X.log = J.pushLog(X.log, J.closeTx(tx, label ? { pub: label.pub ?? "", gm: label.gm ?? "" } : tx.label));
+  if (tx.ops.length || label?.keep) X.log = J.pushLog(X.log, J.closeTx(tx, label ? { pub: label.pub ?? "", gm: label.gm ?? "", ...(label.pub && isObj(label.who) ? { who: label.who } : {}), ...(label.pub && label.own ? { own: label.own } : {}) } : tx.label));
   X.changed = true;
 }
 /* [L5] [B2293]: every ledger is new at the start of a round and nothing is carried over. An undo that reaches back over a round boundary
@@ -110,8 +110,16 @@ function closeTx(X, txId, label) {
    took the turn gives it back in whatever round the undo happens. */
 const CARRIED = ["lostTurn", "noInterrupts"];                                                // what a new ledger takes over from the old one (ledger-pure.newLedger [L7]): these writes are still alive
 const dead = ([p]) => p[0] === "ledger" && !(p.length === 3 && CARRIED.includes(p[2]));
-const liveOp = (X, op, round) => (op.t === "state" && round != null && round !== X.state.round
-  ? { ...op, patch: op.patch.filter((w) => !dead(w)), inverse: op.inverse.filter((w) => !dead(w)) } : op);
+/* D38 (spec 3.3, 15): somebody who has left the fight has no ledger, no statuses, no entry of any per-combatant table (ops-pure.removeOne
+   takes them away); an undo gives back what still exists, so the writes into those tables for one who is gone are left out, as the
+   writes into the ledgers of a finished round are. (One whom the same undo brings back, a summoned group, is there again by then.) */
+const PER_COMBATANT = ["ledger", "statuses", "free", "npc", "revealed", "knowledge"];
+const goneOf = (X) => { let f = null; return ([p]) => PER_COMBATANT.includes(p[0]) && p.length >= 2 && !(f ??= X.host.facts()).c(p[1]); };
+const liveOp = (X, op, round) => {
+  if (op.t !== "state") return op;
+  const old = round != null && round !== X.state.round, gone = goneOf(X), out = (w) => (old && dead(w)) || gone(w);
+  return op.patch.some(out) || op.inverse.some(out) ? { ...op, patch: op.patch.filter((w) => !out(w)), inverse: op.inverse.filter((w) => !out(w)) } : op;
+};
 /** Undo a list of ops (newest first). State ops are applied here, document ops go to the host as their inverse request. */
 async function undoOps(X, ops, round = null) {
   for (const op0 of [...ops].reverse()) {
@@ -225,6 +233,12 @@ function newsOf(I) {
   return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
     result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret ? { secret: 1 } : {}), rows };
 }
+/* D32 / D33: a public journal line does not carry a name. It carries the mark `{c:<id>}` and the list `who` of the combatants it is about
+   (the doer, and the targets, whom it does not name), so each reader gets the name as THAT reader knows it (namesake numbers never count
+   somebody hidden from a player, ruling U5-7) and no line about somebody concealed from that reader (view-pure.journalFor).
+   who = { id: the plain name, kept for when the combatant has left the fight } */
+const cMark = (id) => `{c:${id}}`;
+const whoOf = (X, ids) => Object.fromEntries([...new Set(ids)].filter((id) => typeof id === "string" && id).map((id) => { const c = X.facts.c(id); return [id, String(c?.bare ?? c?.name ?? "").slice(0, 80)]; }));
 function pushInst(X, inst) { X.state = { ...X.state, stack: [...X.state.stack, inst] }; X.changed = true; }
 const JOURNAL_HAZARDS = ["fire", "blast", "area", "vacuum", "disease"];
 function label(X, inst, what) {
@@ -240,8 +254,8 @@ function label(X, inst, what) {
   const who = a?.name ?? (inst.cause === "gm" || inst.initiator?.type === "gm" ? "{ITAC.journal.gm}" : "");
   const spot = inst.decl?.zone ?? inst.data?.hz?.zone ?? inst.data?.hazard?.zone ?? (["move", "drive", "fastball"].includes(inst.flow) ? inst.data?.mv?.at ?? inst.data?.mv?.to ?? null : null);
   const names = (inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name).filter(Boolean).join(", ");
-  const pub = a?.hidden ? "" : `${a?.name ? `${a.name}: ` : ""}${a ? act : what0}${res}`;       // spec 10: two texts; a hidden actor has no public line, and no public line names a target or a place
-  return { pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? pub : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}` };
+  const pub = a?.hidden ? "" : `${a?.name ? `${cMark(inst.actor)}: ` : ""}${a ? act : what0}${res}`;       // spec 10: two texts; a hidden actor has no public line, and no public line names a target or a place
+  return { who: whoOf(X, [inst.actor, ...(inst.decl?.targets ?? [])]), pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? pub : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}` };
 }
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {
@@ -278,6 +292,29 @@ async function closeInst(X, I, result = null) {
   }
   P.status = "open";
   setInst(X, P);
+}
+/* D37 (spec 3.3; spec 0 principle 4): somebody an open action is aimed at has left the fight. Its cards went with it, so an action that
+   waited for its answer waited for nothing, and one that went on hit nobody. Now the one who left is taken out of every open action
+   (as a target, as a helper); an action that still has a target goes on, and one left without any is held on the GM's card `revalidate`
+   [OQ-3] (the owner aims it again, or it is given up with or without its cost): the engine never decides that by itself. */
+function targetGone(X, id) {
+  for (const inst of X.state.stack) {
+    const d = inst.decl ?? {}, aimed = (d.targets ?? []).includes(id), helps = (d.helpers ?? []).some((h) => h.id === id);
+    if (!aimed && !helps) continue;
+    const I = J.clone(inst);
+    if (helps) I.decl.helpers = I.decl.helpers.filter((h) => h.id !== id);
+    if (aimed) {
+      I.decl.targets = I.decl.targets.filter((t) => t !== id);
+      for (const k of ["def", "out"]) if (isObj(I.data[k])) delete I.data[k][id];
+      (I.data.notes ??= []).push({ note: "targetGone", target: id });
+      if (!I.decl.targets.length && !I.data.hold) {
+        I.data.hold = "revalidate"; I.data.holdReasons = ["noTarget"]; I.data.holdKey = `gone:${id}`;
+        openPrompt(X, I, { key: `gone:${id}`, kind: "revalidate", to: "gm", about: I.actor, options: REVALIDATE_OPTIONS.filter((o) => o !== "continue").map((o) => ({ id: o, label: `ITAC.opt.${o}` })), data: { reasons: ["noTarget"] } }, I.step);
+      }
+    }
+    I.waits = waitsOf(X, I);
+    setInst(X, I);
+  }
 }
 /** End an instance and undo what it did (spec 14.1 abort). refund=false keeps the ops tagged as the action's own cost ("action spent"). */
 async function abortInst(X, id, refund) {
@@ -411,13 +448,14 @@ function placement(X, actor, entry) {
   if (t.actor === actor) return { ok: false, code: "busy" };
   return { ok: true, cause: "interrupt", parent: t.id };
 }
+const priced0 = (entry) => typeof FLOWS[entry.flow]?.price === "function";                 // a flow that names its own cost answers for the turn itself
 async function opDeclare(X, a) {
   const actor = a.actor;
   if (X.state.mode === "off") return bad("off");
   if (!P1.isId(actor) || !X.facts.c(actor) || (X.facts.c(actor).hidden && !X.user.staff)) return bad("unknown");
   if (!owns(X, actor)) return bad("notOwner");
   const entry = C.entryFor(X.state, actor, a.decl?.action, X.facts);
-  if (!entry || entry.reaction?.effect === "defence") return bad("unknown", { action: String(a.decl?.action ?? "").slice(0, 32) });
+  if (!entry || entry.reaction?.effect === "defence" || (entry.reactionOnly && !X.user.staff)) return bad("unknown", { action: String(a.decl?.action ?? "").slice(0, 32) });      // D34: what exists only as an answer in a reaction window (Discretion) is never declared by a player
   const decl = sanitizeDecl(a.decl, entry.id, X.user.staff === true);
   if (X.state.mode === "free" || X.state.free?.[actor]) {                                  // spec 14.5: nothing is validated, nobody is prompted; logged as declared
     const inst = makeInst(X, { action: entry.id, actor, decl, flow: "other", data: { free: 1 } });
@@ -428,6 +466,18 @@ async function opDeclare(X, a) {
   if (entry.id === "gmRoll" && !X.user.staff) return bad("noPermission");
   const pl = placement(X, actor, entry);
   if (!pl.ok) return bad(pl.code, pl.params);
+  /* D34 [L2] [L4] [B2290], [B2292]: on an empty stack a new action is the action of the one whose turn it is. What costs no action passed
+     here whatever the turn (economy-pure.canPay asks nothing for cost "none"), so a player out of turn could put an instance on the
+     stack and hold the one whose turn it is. Now: "something else" from a player out of turn is the request to the GM that the op
+     `other` makes of it (ruling P8-R11: a card, nobody held); another built-in that costs no action is refused as the bar already
+     shows it (desk-pure.barModel). The GM's hand, a grant, free mode and what a character's own kit lets it use at any time stay. */
+  if (pl.cause === "turn" && !X.user.staff && !priced0(entry) && (entry.cost === "none" || entry.cost == null) && !P1.isOnTurn(X.state, actor)) {
+    if (!entry.kit) return entry.id === "other" && decl.text ? opAsk(X, { actor, text: decl.text }, "other") : bad("notYourTurn");
+    /* the same for what a character's kit uses without an action when it cannot end at once (a roll somebody owes, the GM's word): out of
+       turn it is a request to the GM that carries the declaration, and the GM's yes runs it. What ends at once (Quickness, Regeneration,
+       Resilience ...) holds nobody and goes through. */
+    if (entry.roll || ["resist", "narrative"].includes(entry.effect?.kind)) return opAsk(X, { actor, text: String(entry.name ?? entry.id).slice(0, 120), decl: a.decl, reason: "notYourTurn" }, "exception");
+  }
   const gm = X.user.staff && a.gm === true;                                                // the GM acting through an override: costs waived
   const priced = typeof FLOWS[entry.flow]?.price === "function";                           // P3: a flow that names its own cost (a move: quick or full, free inside the zone)
   const payable = (cost) => { const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, resolve: X.facts.c(actor)?.resolve });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
@@ -468,9 +518,34 @@ async function opAmend(X, a) {
   const probe = { ...inst, decl };
   const l = K.legality(view(X), probe, FLOWS[probe.flow]);
   if (!l.ok && !X.user.staff) return bad("illegal", { reason: l.reason, ...l.params });
+  /* P8d: a flow that names its own cost (a move) is priced again for what it was changed into. The price was taken once, at the
+     declaration; a move the rules refused, declared with a request for an exception, has no price (the engine does not guess a route),
+     so changing it into a legal move ran that move for nothing. The first payment is given back and the new price is paid; one that
+     cannot be paid refuses the change (the GM's own change goes through with the cost waived). [L1]-[L4] */
+  const flow = FLOWS[inst.flow], reprice = typeof flow?.price === "function", ownCost = (o) => o.i === inst.id && o.cost;
+  const price = reprice && l.ok ? flow.price(view(X), probe) : null, cost = price?.cost ?? "none";
+  let waived = false;
+  if (reprice) {
+    let s = X.state;
+    for (const op of (X.state.txOpen[inst.tx]?.ops ?? []).filter(ownCost).reverse()) if (op.t === "state") s = J.applyStateOp(s, op, true);      // as if the first price had not been paid
+    const cp = P1.canPay(s, inst.actor, cost, { interrupt: inst.cause === "interrupt", resolve: X.facts.c(inst.actor)?.resolve });
+    if (!cp.ok && !X.user.staff) return bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason });
+    waived = !cp.ok;
+  }
   await rewind(X, inst.id, FLOWS[inst.flow].STEPS[0]);
+  if (reprice) {
+    const tx = X.state.txOpen[inst.tx], paid = (tx?.ops ?? []).filter(ownCost);
+    if (paid.length) { await undoOps(X, paid, tx.round); X.state = { ...X.state, txOpen: { ...X.state.txOpen, [inst.tx]: { ...X.state.txOpen[inst.tx], ops: X.state.txOpen[inst.tx].ops.filter((o) => !paid.includes(o)) } } }; }
+  }
   const I = J.clone(instOf(X, inst.id));
   I.decl = decl; delete I.data.hold; delete I.data.holdKey; I.locked = false; I.hist = {};
+  if (reprice) {
+    if (I.data.paid) delete I.data.paid.own; I.entry = null;
+    if (cost === "full" || cost === "quick" || (cost === "free" && price?.tags)) {
+      await applyEffect(X, I, { t: "pay", who: I.actor, cost: waived ? "none" : cost, action: I.action, key: "own", own: 1, interrupt: I.cause === "interrupt", tags: price?.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");
+      I.entry = I.data.paid?.own ?? null;
+    }
+  }
   if (!l.ok) I.data.exception = { reason: l.reason, params: l.params, by: "gm" };          // spec 14.1: the GM may amend into what the rules refuse; it runs as a granted exception
   setInst(X, I);
   emit(X, I, { type: "actionDeclared", decl: publicDecl(decl), amended: true, targets: decl.targets });
@@ -563,7 +638,7 @@ async function exceptionAnswered(X, p) {
   }
   pushNews(X, { kind: "exception", actor: p.about, ...(action ? { action } : {}), granted, ran, ...(why ? { why } : {}), ...(note ? { note } : {}) });
   const mark = granted ? "{ITAC.journal.exceptionGranted}" : "{ITAC.journal.exceptionDenied}", text = String(d.text ?? "").slice(0, 120);
-  closeTx(X, openTx(X, {}), { pub: X.facts.c(p.about)?.hidden ? "" : `${name}: ${mark}`, gm: `${name}: ${mark}${text ? ` ("${text}")` : ""}${note ? ` / ${note}` : ""}`, keep: 1 });
+  closeTx(X, openTx(X, {}), { pub: X.facts.c(p.about)?.hidden ? "" : `${cMark(p.about)}: ${mark}`, who: whoOf(X, [p.about]), own: p.about, gm: `${name}: ${mark}${text ? ` ("${text}")` : ""}${note ? ` / ${note}` : ""}`, keep: 1 });
 }
 /* The dice an action would roll if it were declared like this, from the SAME builder the roll uses (each flow's `preview`): what the
    dock's panel shows before "Declare". Nothing is written, nothing is spent, no instance is kept. -> env.preview = { attr, dice, base, mods } | null */
@@ -631,6 +706,9 @@ export function previewFor(state, facts, user, req) {
 async function opHelp(X, a) {
   const inst = instOf(X, a.inst);
   if (!inst || !inst.actor) return bad("gone");
+  /* P8d (spec 10; ruling P8-R17): the action of somebody the helper's player cannot know about (hidden by the GM, or unseen by the helper)
+     is not there to be helped. Before, the request was carried out: the hero's full action went into the hidden NPC's action. */
+  if (!X.user.staff && !owns(X, inst.actor) && (X.facts.c(inst.actor)?.hidden === true || X.state.knowledge?.[a.helper]?.[inst.actor] === "unseen")) return bad("gone");
   if (!P1.isId(a.helper) || !owns(X, a.helper)) return bad("notOwner");
   if (inst.locked) return bad("locked");
   if (a.helper === inst.actor || (inst.decl.helpers ?? []).some((h) => h.id === a.helper)) return bad("badInput");
@@ -1051,7 +1129,7 @@ async function challengeClock(X) {
     if (r.to != null && r.to !== c.resolve) {
       const tx = openTx(X, {});
       await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: r.to, tx });
-      closeTx(X, tx, { pub: `${c.name ?? ""}: {ITAC.journal.clock} ${r.to}`, gm: `${c.name ?? ""}: {ITAC.journal.clock} ${c.resolve} -> ${r.to}` });
+      closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(p.id)}: {ITAC.journal.clock} ${r.to}`, who: whoOf(X, [p.id]), gm: `${c.name ?? ""}: {ITAC.journal.clock} ${c.resolve} -> ${r.to}` });
       emit(X, null, { type: "challenge", challenge: p.id, rating: c.health, timeLeft: r.to, state: r.failed ? "failed" : "active", clock: 1 });
     }
     if (r.failed && !Object.values(X.state.prompts).some((q) => q.kind === "challengeFail" && q.about === p.id && !q.answered))
@@ -1070,7 +1148,7 @@ async function challengeFailRun(X, cid) {
     await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "health", to: r.ward.rating, tx });
     await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: r.ward.time, tx });
     write(X, tx, ["challenges", cid, "dice"], r.ward.dice); write(X, tx, ["challenges", cid, "resets"], r.ward.resets); write(X, tx, ["challenges", cid, "started"], {});
-    closeTx(X, tx, { pub: `${c.name ?? ""}: {ITAC.journal.wardReset}`, gm: `${c.name ?? ""}: {ITAC.journal.wardReset} (${r.ward.dice})` });
+    closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.wardReset}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.wardReset} (${r.ward.dice})` });
     emit(X, null, { type: "challenge", challenge: cid, rating: r.ward.rating, timeLeft: r.ward.time, state: "reset", dice: r.ward.dice });
   }
   for (const kind of r.manual) pushManual(X, cid, kind, { at: "onFail" });
@@ -1155,11 +1233,12 @@ async function system(X, effects) {
       const c = X.facts.c(fx.combatant), why = ["broken", "unconscious", "dead"].includes(fx.reason) ? fx.reason : "broken";
       if (!c) continue;
       const line = `${c.name ?? ""}: {ITAC.journal.turnPassed.${why}}`;
-      closeTx(X, openTx(X, {}), { pub: c.hidden ? "" : line, gm: line, keep: true });
+      closeTx(X, openTx(X, {}), { pub: c.hidden ? "" : `${cMark(fx.combatant)}: {ITAC.journal.turnPassed.${why}}`, who: whoOf(X, [fx.combatant]), gm: line, keep: true });
       pushNews(X, { kind: "turn", actor: fx.combatant, result: `pass.${why}` });             // view-pure drops it for whoever the combatant is concealed from
     } else if (fx?.type === "abortInstances") {
       for (const inst of [...X.state.stack].reverse()) if (inst.actor === fx.actor && instOf(X, inst.id)) await abortInst(X, inst.id, true);
       dropPrompts(X, (p) => p.about === fx.actor);
+      targetGone(X, fx.actor);
     } else if (fx?.type === "roundEnd") await challengeClock(X);                          // P7
     else if (fx?.type === "challengeFail") await challengeFailRun(X, fx.challenge);
     else if (fx?.type === "trigger" && isObj(fx.trigger)) triggers.push(fx.trigger);

@@ -64,7 +64,7 @@ const pview = (T, u, owns) => V.viewFor(T.state, { id: u, staff: false, owns }, 
   ok(!(T.state.statuses.H2 ?? []).some((s) => s.id === "afflicted"), "what lasted until the end of its turn has ended");
   /* the table is told */
   const line = T.log.list.slice(logFrom).find((x) => /turnPassed/.test(x.label?.gm ?? ""));
-  eq([line?.label.gm, line?.label.pub], ["N1: {ITAC.journal.turnPassed.unconscious}", "N1: {ITAC.journal.turnPassed.unconscious}"], "the journal has a line for the GM and for the players");
+  eq([line?.label.gm, V.pubLine(line?.label)], ["N1: {ITAC.journal.turnPassed.unconscious}", "N1: {ITAC.journal.turnPassed.unconscious}"], "the journal has a line for the GM and for the players");
   const news = pview(T, "p1", ["H1"]).news.filter((n) => n.kind === "turn");
   eq(news.map((n) => [n.actor, n.result]), [["N1", "pass.unconscious"]], "the players' news says whose turn passed and why");
   ok("ITAC.result.pass.unconscious" in EN && "ITAC.result.pass.unconscious" in PL, "and that reads as a sentence in both languages");
@@ -191,7 +191,7 @@ const pview = (T, u, owns) => V.viewFor(T.state, { id: u, staff: false, owns }, 
 /* ------------------------------------------------------------------ U26: one vocabulary in the Polish table */
 {
   const bad = [[/\bHealth\b/, "Health (Zdrowie)"], [/\bResolve\b/, "Resolve (Determinacja)"], [/(?<!\p{L})BN(?!\p{L})/u, "BN (NPC)"], [/\(y\)|\(ów\)|\(e\)/, "a bracketed ending"], [/wyzwalacz/i, "wyzwalacz"],
-    [/\bbez tego\b/, "a placeholder word"], [/(?<!\p{L})dok(u|iem)?(?!\p{L})|(?<!\p{L})pulpi/iu,"dok / pulpit (pasek akcji, biurko MG)"], [/\btoken/i, "token (żeton)"], [/Zręczno|Prezencj/, "an attribute name unlike the character creator's"],
+    [/\bbez tego\b/, "a placeholder word"], [/(?<!\p{L})dok(u|iem)?(?!\p{L})|(?<!\p{L})pulpi/iu,"dok / pulpit (pasek akcji, biurko MG)"], [/\btoken/i, "token (żeton)"], [/Zręczno|Charyzm|Obecnoś/, "an attribute name unlike the glossary's (Zwinność, Prezencja)"],
     [/(?<!\p{L})cech[aęy](?!\p{L})(?!.*liczą się same)/iu,"cecha for an attribute (atrybut)"], [/\b1 stresu\b|\{n\} stresu/, "'n stresu'"], [/\{(n|dice)\} kości|\{(n|dice)\} kośćmi/, "a die count without its plural forms"]];
   for (const [k, v] of Object.entries(PL)) for (const [re, what] of bad) ok(!re.test(v), `PL ${k}: ${what} in "${v.slice(0, 60)}"`);
   for (const [k, v] of Object.entries(EN)) ok(!/\(s\)|\{(n|dice)\} dice\b/.test(v), `EN ${k}: a count without its plural forms in "${v.slice(0, 60)}"`);

@@ -43,6 +43,10 @@
       }
     ]
   },
+  "languages": [
+    { "lang": "pl", "name": "Polski", "path": "lang/pl.json" },
+    { "lang": "en", "name": "English", "path": "lang/en.json" }
+  ],
   "esmodules": [
     "scripts/module.js"
   ],

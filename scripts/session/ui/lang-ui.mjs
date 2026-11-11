@@ -1,6 +1,7 @@
 /* End-of-session panel, phase S3: the strings of the WINDOW (IPL.Session.UI.*), merged into the tables of ../lang.mjs. Kept apart so the data layer's file stays short.
    Rules (dev/session-spec.md section 12): complete sentences with {params} (no "(s)"), PL counts are phrased so that one form fits ("Odpowiedziało 3 z 5"),
    no book text here (the question text is read at runtime). */
+import { TERMS } from "../../i18n/terms.mjs";
 export const UI_EN = {
   "IPL.Session.UI.Title": "End-of-session review",
   "IPL.Session.UI.Progress": "Question {n} of {total}",
@@ -72,7 +73,7 @@ export const UI_EN = {
   "IPL.Session.UI.Sum.yes": "Yes answers",
   "IPL.Session.UI.Sum.gain": "Gained",
   "IPL.Session.UI.Sum.loss": "Lost",
-  "IPL.Session.UI.Sum.karma": "Karma",
+  "IPL.Session.UI.Sum.karma": TERMS.en.karma,
   "IPL.Session.UI.Sum.karmaAfter": "Karma after awarding",
   "IPL.Session.UI.Sum.karmaDone": "Karma after the award",
   "IPL.Session.UI.Sum.total": "Total",
@@ -212,7 +213,7 @@ export const UI_PL = {
   "IPL.Session.UI.Sum.yes": "Odpowiedzi „tak”",
   "IPL.Session.UI.Sum.gain": "Zdobyte",
   "IPL.Session.UI.Sum.loss": "Utracone",
-  "IPL.Session.UI.Sum.karma": "Karma",
+  "IPL.Session.UI.Sum.karma": TERMS.en.karma,
   "IPL.Session.UI.Sum.karmaAfter": "Karma po przyznaniu",
   "IPL.Session.UI.Sum.karmaDone": "Karma po przyznaniu",
   "IPL.Session.UI.Sum.total": "Razem",

@@ -294,10 +294,11 @@ export function viewFor(state, viewer = {}) {
   delete s.init.draw;                                 // the cards still in the deck are nobody's business
   if (!hidden.size) return s;
   // initiative: hidden members leave their slots; a slot left empty disappears; nobody learns whose turn it is when that one is hidden
-  const init = s.init;
+  const init = s.init, slots0 = init.slots.length;
   init.slots = init.slots.map((sl) => ({ ...sl, members: sl.members.filter((m) => !hidden.has(m)), done: sl.done.filter((m) => !hidden.has(m)), ...(sl.extra?.by && hidden.has(sl.extra.by) ? { extra: { kind: sl.extra.kind } } : {}) })).filter((sl) => sl.members.length);
   if (!init.slots.some((sl) => sl.id === init.cur)) { init.cur = null; init.curMember = null; }
   else if (hidden.has(init.curMember)) init.curMember = null;
+  if (init.slots.length < slots0) init.deck = Math.max(10, ...init.slots.map((sl) => sl.card ?? 0));      // P8d: a deck grown for slots the viewer does not see would count them [I3] [R12]; the highest card in sight says all the viewer may know
   init.trail = init.trail.filter((m) => !hidden.has(m));
   if (init.surprised) init.surprised = init.surprised.filter((m) => !hidden.has(m));
   s.triggers = s.triggers.filter((t) => !hidden.has(t.subject.combatant) && !hidden.has(t.expires?.who));       // a trigger about a hidden combatant goes as a whole

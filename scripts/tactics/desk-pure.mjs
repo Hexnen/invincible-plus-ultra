@@ -11,6 +11,7 @@ import * as Lg from "./ledger-pure.mjs";
 import { standing, conditions as condsOf } from "./mods-pure.mjs";
 import { crits } from "../rules/index.mjs";
 import { applies, attrChoices } from "./actions-pure.mjs";
+import { pubLine } from "./view-pure.mjs";
 /* ADDED FOR THE SURFACES (scripts/tactics/ui/; all additive, checked in check-ui.mjs):
      instance lines carry `steps` (the flow's step ids, for "back to step"), `attr` / `defense` of the catalog entry `outcomes`, and `defs` (the defences declared, with their dice in the GM's model);
      deskModel: `npcs` (standing reactions + what is revealed, with ready requests), `mode` + `modeReq`, `turn`;
@@ -75,7 +76,7 @@ export function deskModel(state, log, ctx = {}) {
       return { ...row, askReq: row.state === "owed" && r.req ? { op: "askRoll", inst: i.id, roll: r.key } : null, acceptReq: row.state === "push" ? { op: "setSixes", inst: i.id, roll: r.key, sixes: r.sixes } : null }; }), commands: cmds });
   }
   const list = log?.list ?? [];
-  const journal = list.map((t, at) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, text: t.label?.gm ?? "", pub: t.label?.pub ?? "",
+  const journal = list.map((t, at) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, text: t.label?.gm ?? "", pub: pubLine(t.label, (cid) => ctx.c?.(cid)?.name),
     undo: t.state === "closed" && Array.isArray(t.ops) ? { req: { op: "undo", tx: t.id }, alsoUndoes: list.slice(at + 1).filter((x) => x.state === "closed").length,       // spec 15: LIFO
       force: { req: (drift) => ({ op: "undo", tx: t.id, force: true, ...(drift ? { drift } : {}) }), modes: ["restore", "difference", "leave"] } } : null })).reverse();
   /* spec 13.3 (standing reactions of an NPC) and spec 10 (what of an opponent the players have been shown) */

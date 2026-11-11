@@ -11,6 +11,7 @@ import * as S from "./state-pure.mjs";
 import * as O from "./ops-pure.mjs";
 import { weapons } from "../rules/index.mjs";
 import * as Kit from "./kit-pure.mjs";
+import { labelVariants } from "../i18n/sys-labels.mjs";
 
 export const SYSTEM_ID = "invincible";
 export const SYSTEM_VERIFIED = "2.1.8";
@@ -200,7 +201,8 @@ export function kitOf(actor) {
 export function sheetBonuses(actor, kit = null) {
   /* left out: the group's size (the attack flow counts it [B2827]) and the toggles of entries the engine applies itself (Sniper, Rapid Fire, Hard Hitter,
      Martial Arts, Bigger They Are: a dock variant or a rule of the engine), so a switched-on sheet effect and the dock never add up */
-  const skip = new Set(["Minions", ...((kit ?? kitOf(actor)).sheetSkip ?? [])]);
+  /* the system names the group bonus with its LOCALIZED type label ("Minions" / "Sługusy"): every known rendering is skipped */
+  const skip = new Set([...labelVariants("TYPES.Actor.minions"), ...((kit ?? kitOf(actor)).sheetSkip ?? [])]);
   const b = actor?.system?.bonuses ?? {}, sum = (k) => Object.entries(b[k] ?? {}).reduce((a, [src, v]) => a + (skip.has(src) ? 0 : num(v)), 0), out = {};
   for (const k of [...ATTRS, "attack", "block", "dodge", "charge", "grapple"]) { const v = sum(k); if (v) out[k] = v; }
   const sl = num(actor?.system?.derived?.slugfest?.bonus) || sum("system.derived.slugfest.bonus") || sum("derived.slugfest.bonus");
