@@ -37,6 +37,7 @@ function card(p, ctx, proxy = false) {
 }
 const turnOf = (state, ctx) => ({ round: state.round ?? null, phase: state.phase ?? null, combatant: state.init?.curMember ?? null, name: nameOf(ctx, state.init?.curMember ?? null) });
 const entryOf = (state, i) => { try { return state ? C.entryFor(state, i.actor, i.action) : null; } catch { return null; } };
+const kitFacts = (ctx) => (typeof ctx.kit === "function" ? { c: (id) => ({ kit: ctx.kit(id) }) } : null);      // P6: the entries of a character's own sheet (only where this user may read it)
 const instLine = (i, ctx, state = null) => ({ steps: (FLOWS[i.flow]?.STEPS ?? []).slice(), attr: entryOf(state, i)?.roll?.attr ?? null, defense: entryOf(state, i)?.defense ?? null,
   outcomes: Object.entries(i.data?.out ?? {}).map(([t, o]) => ({ target: t, name: nameOf(ctx, t), hit: o?.hit === true, net: o?.net ?? null })), inst: i.id, action: i.action, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text });
 
@@ -69,7 +70,7 @@ export function deskModel(state, log, ctx = {}) {
     revealReq: (patch) => ({ op: "reveal", combatant: cid, ...Object.fromEntries(Object.entries({ ...(state.revealed?.[cid] ?? {}), ...patch }).filter(([, v]) => v).map(([k]) => [k, true])) }) }));
   /* P5: the karma notes of the fight (spec 9.11) and the two requests of the hazard tool */
   const karma = (state.karma ?? []).map((k) => ({ id: k.id, who: k.who, whoName: nameOf(ctx, k.who), kind: k.kind, round: k.round ?? null, zone: k.zone ?? null, note: k.note ?? "", target: k.target ? nameOf(ctx, k.target) : null }));
-  return { cards, info, manual, journal, waiting: waitingOn(state, ctx), npcs, mode: state.mode ?? null, modeReq: (mode) => ({ op: "setMode", mode }), turn: turnOf(state, ctx), karma,
+  return { cards, info, manual, journal, waiting: waitingOn(state, ctx), npcs, mode: state.mode ?? null, modeReq: (mode) => ({ op: "setMode", mode }), kitReq: (combatant, item, key, value) => ({ op: "kitFlag", combatant, item, key, value }), summonReq: (combatant, owner) => ({ op: "summonSet", combatant, owner: owner || null }), turn: turnOf(state, ctx), karma,
     karmaReq: (note) => ({ op: "karmaNote", note }), hazardReq: (run, subject) => ({ op: "hazardRun", run, subject }), fireReq: (intensity, targets, inZone = true) => ({ op: "hazard", hazard: { kind: "fire", intensity, inZone }, targets }),
     statuses: state.statuses ?? {} };
 }
@@ -99,17 +100,21 @@ export function barModel(view, cid, ctx = {}) {
   const holding = (view.statuses?.[cid] ?? []).some((s) => s.id === "grappling");
   const heldNow = (view.statuses?.[cid] ?? []).some((s) => s.id === "grappled");            // [B2496]: the one held makes no attack until it breaks free (the attack flow refuses it with the same word)
   const broken = Object.keys(view.statuses ?? {}).filter((id) => (view.statuses[id] ?? []).some((s) => s.id === "broken"));
-  const actions = C.entriesFor(view, cid).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && fits(e) && applies(e, cid, view.statuses ?? {}, broken)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
+  const actions = C.entriesFor(view, cid, kitFacts(ctx)).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && fits(e) && applies(e, cid, view.statuses ?? {}, broken) && (!e.gm || ctx.staff)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
     const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", {}) : { ok: false, reason: "noLedger" };
     const unit = pay.ok && pay.pay ? (view.ledger?.[cid]?.grants ?? []).find((g) => g.id === pay.pay) : null, granted = !onTurn && !!unit && unit.kind !== "base";      // a unit usable out of turn pays it (the crew's attack in a chase [B3438], a GM grant)
-    const reason = busy ? "busy" : !onTurn && e.cost !== "free" && !granted ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
+    const anytime = !!e.kit && e.cost === "none";                                               // P6: what costs no action is used when it applies (the flow checks the rest)
+    const reason = busy ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
-      attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders", when: typeof e.when === "string" ? e.when : null, disabled: reason,
+      attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders" || e.effect?.token === "orders",
+      name: e.name || null, kit: e.kit ?? null, pick: Array.isArray(e.pick) ? e.pick.slice() : null, stress: e.stress?.fixed ?? 0, fxOn: e.fxOn === true, unarmed: e.unarmed === 1,      // P6
+      when: typeof e.when === "string" ? e.when : null, disabled: reason,
       attrs: attrChoices(e), attrOptional: e.roll?.optional === true, optTarget: (e.target?.n?.[0] ?? 0) === 0 && (e.target?.n?.[1] ?? 0) > 0, wantsText: e.text === 1, opposeAttr: e.oppose?.who === "target" ? e.oppose.attr : null, about: e.when?.anyone ?? null, situational: !!e.when && typeof e.when === "object",   // P5 (flow "act")
       req: (decl = {}) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id } }), exceptionReq: (decl, text) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id, exception: { text } } }) };
   });
   return { combatant: cid, name: nameOf(ctx, cid), onTurn, free: !!view.free?.[cid], budget: P1 ? P1.budget(view, cid) : null, statuses: (view.statuses?.[cid] ?? []).map((s) => s.id),
     tokens: (view.tokens ?? []).filter((t) => t.holder === cid).map((t) => ({ id: t.id, dice: t.dice, source: t.source, needsGm: !!t.needsGm })), actions,
+    kitRows: (typeof ctx.kit === "function" ? ctx.kit(cid)?.rows : null) ?? [],                    // P6: every item of the sheet with its state (automated, confirmed by the GM, by hand)
     move: typeof ctx.move === "function" ? ctx.move(cid) : undefined,                             // P3: the reachable zones with their cost (movement-pure.moveOptions), each with a ready request
     endTurn: onTurn ? { disabled: busy ? "busy" : null, req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,
     holdOff: holdOffOf(view, cid, onTurn, busy, ctx), markReq: (unit, on = true) => ({ op: "mark", actor: cid, unit, on }),

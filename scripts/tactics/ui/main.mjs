@@ -26,7 +26,7 @@ import * as Pick from "./pick.mjs";
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const NARROW = 1180;                       // below this window width the desk starts folded
 const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false, opt: null, attr: null });
-const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {}, scene: {} });
+const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {}, scene: {}, kit: {} });
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
 let st = { dock: blankDock(), desk: blankDesk() };
 let rev = 0, moveMemo = null;             // the move options are counted once per change of the fight or of the map, not per keystroke
@@ -42,7 +42,8 @@ function factsOf(combat) {
   const staff = Store.isStaff(game.user), view = Api.state(combat), ctx = Engine.context(combat);
   return {
     view, me: game.user.id, staff,
-    c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, img: portrait(cb) } : null; },
+    c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null } : null; },
+    kit: (id) => ctx.kit(id),                                                                  // P6: the abilities of a sheet this user may read (engine.context)
     attrs: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner || view?.revealed?.[id]?.stats) ? Sys.actorFacts(a)?.attrs ?? null : null; } catch { return null; } },
     userName: (u) => game.users.get(u)?.name ?? null,
     /* P7: challenges and vehicles of the fight (no card, no ledger); their numbers only for staff */
@@ -207,6 +208,7 @@ function configure() {
     force: (patch) => { st.desk.force = { ...st.desk.force, ...patch }; refresh(); },
     hazard: (patch) => { st.desk.hazard = { ...st.desk.hazard, ...patch }; refresh(); },
     karma: (patch) => { st.desk.karma = { ...st.desk.karma, ...patch }; refresh(); },
+    kit: (patch) => { st.desk.kit = { ...st.desk.kit, ...patch }; refresh(); },                // P6: whose abilities the tab shows, which row is open
     scene: (patch) => { st.desk.scene = { ...st.desk.scene, ...patch, side: { ...(st.desk.scene.side ?? {}), ...(patch.side ?? {}) } }; refresh(); },      // P7: the draft of a chase
     act: (cid) => { patchDock({ sel: cid, armed: null, mode: null, peek: true }); refresh(); },      // P7: the dock for somebody who has no turn (the crew in a chase)
     val: (id, v) => { st.desk.vals[id] = v; refresh(); },

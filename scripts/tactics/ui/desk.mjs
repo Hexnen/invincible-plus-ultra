@@ -141,6 +141,25 @@ function table(d) {
   ];
 }
 
+/* ---------- the Abilities tab (P6): every item of one sheet with its state (automated, confirmed by the GM, by hand); a row opens to the GM's
+   settings for it: out of this fight, which book entry it is, what it is about; and who summoned the chosen character ---------- */
+function kitTab(k) {
+  const put = (patch) => handlers.kit?.(patch);
+  const seg = (c, key) => h("span.igd-seg", {}, c.choices.map((x) => h("button", { fk: `${key}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => !x.on && send(x.req) } })));
+  const pick = (c, key, onChange, blank = "…") => h("div.igd-ctl", { data: { type: "select" } }, h("span.igd-cl", { text: c.label }),
+    h("select", { fk: key, attrs: { "aria-label": c.label }, on: { change: (e, el) => onChange(el.value || null) } }, h("option", { text: blank, attrs: { value: "", selected: !c.value } }), c.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id, selected: x.id === c.value } }))));
+  return [
+    h("article.igd-npc", {}, pick(k.who, "kit:who", (v) => put({ who: v, open: null })), k.summon ? pick(k.summon, "kit:summon", (v) => send(k.summon.req(v)), k.summon.none) : null, k.counts ? h("p.igd-hint.igd-kit-sum", { text: k.counts }) : null),
+    k.empty ? h("p.igd-hint", { text: k.empty }) : null,
+    k.groups.map((g) => section(g.label, g.rows.length, h("div.igd-kitlist", {}, g.rows.map((r) => h("article.igd-kit", { data: { state: r.state, open: r.open ? "1" : null } },
+      h("button.igd-kit-head", { fk: `kit:row:${r.id}`, attrs: { "aria-expanded": String(!!r.open), "aria-label": [r.name, r.stateText].join(", ") }, on: { click: () => put({ open: r.open ? null : r.id }) } },
+        h("span.igd-kit-name", {}, h("b", { text: r.name }), r.sub || r.cat ? h("small", { text: [r.cat, r.sub].filter(Boolean).join(", ") }) : null), h("span.igd-kit-state", { text: r.stateText, data: { state: r.state } })),
+      r.open ? [r.note ? h("p.igd-hint", { text: r.note }) : null,
+        r.map ? pick(r.map, `kit:map:${r.id}`, (v) => send(r.map.req(v))) : null,
+        r.types ? h("div.igd-ctl", { data: { type: "text" } }, h("span.igd-cl", { text: r.types.label }), h("input.ita-text", { fk: `kit:ty:${r.id}`, attrs: { type: "text", maxlength: 120, value: r.types.value, "aria-label": r.types.label }, on: { change: (e, el) => send(r.types.req(el.value)) } })) : null,
+        h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: r.off.label }), seg(r.off, `kit:off:${r.id}`))] : null))))),
+  ];
+}
 /* ---------- the Scene tab (P7): the chase, the vehicles, the challenges (ui/scene-pure.mjs) ---------- */
 function scene(s) {
   const put = (patch) => handlers.scene?.(patch);
@@ -200,7 +219,7 @@ function draw(d, ui) {
     d.turnNote ? h("p.igd-tip", { attrs: { role: "note" } }, icon("fa-person-running"), h("span", { text: d.turnNote })) : null,
     h("nav.igd-tabs", { attrs: { role: "tablist" } }, d.tabs.map((t) => h("button", { fk: `tab:${t.id}`, attrs: { role: "tab", "aria-selected": String(d.tab === t.id) }, on: { click: () => set({ tab: t.id }) } }, h("span", { text: t.label }), t.n ? h("b.igd-badge", { text: String(t.n) }) : null))),
     h("div.igd-wait", { attrs: { role: "status" } }, h("span.igd-k", { text: d.waitingLabel }), d.waiting.length ? waitChips(d.waiting) : h("span.igd-nobody", { text: d.nobody })),
-    h("div.igd-body", { data: { keepScroll: d.tab }, attrs: { role: "tabpanel" } }, d.tab === "journal" ? journal(d) : d.tab === "table" ? table(d) : d.tab === "scene" && d.scene ? scene(d.scene) : now(d)),
+    h("div.igd-body", { data: { keepScroll: d.tab }, attrs: { role: "tabpanel" } }, d.tab === "journal" ? journal(d) : d.tab === "table" ? table(d) : d.tab === "scene" && d.scene ? scene(d.scene) : d.tab === "kit" && d.kit ? kitTab(d.kit) : now(d)),
   ]);
   place();
 }
