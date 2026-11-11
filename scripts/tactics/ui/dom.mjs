@@ -58,8 +58,14 @@ const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
 /** a tooltip of the model as HTML (Foundry cleans it again); names of items and characters are escaped here */
 /* U51: a tooltip without a title belongs to something that shows its own name (a row of a list, an answer on a card): it starts with what is not on screen */
-export const tipHtml = (tip) => `<div class="ita-tt">${tip.title ? `<b>${esc(tip.title)}${tip.key ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</b>` : ""}${tip.cost || (tip.key && !tip.title) ? `<small>${esc(tip.cost ?? "")}${tip.key && !tip.title ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</small>` : ""}${(tip.lines ?? []).map((l) => `<p>${esc(l)}</p>`).join("")}${tip.note ? `<em>${esc(tip.note)}</em>` : ""}</div>`;
-export const tipText = (tip) => [tip.title, tip.cost, ...(tip.lines ?? []), tip.note].filter(Boolean).join(", ");
+/* U54 / U68: the reason of a greyed thing and what to do about it stand apart from the price, under a dashed line (the look of
+   "unavailable" everywhere), each with its own picture (styles/tactics-ui.css): a price is a label, a reason is a sentence.
+   U55: a tooltip with `rows` is a small sum: where the dice come from, one line each, the total under a line. */
+const whyHtml = (w) => (w ? `<div class="ita-tt-why">${w.text ? `<p class="ita-tt-no">${esc(w.text)}</p>` : ""}${w.fix ? `<p class="ita-tt-fix">${esc(w.fix)}</p>` : ""}</div>` : "");
+const rowHtml = (r, cls = "") => `<span class="ita-tt-row${cls}"><span>${esc(r.label)}</span><b>${esc(r.value)}</b></span>`;
+const sumHtml = (tip) => (tip.rows ? `<div class="ita-tt-sum">${tip.rows.map((r) => rowHtml(r)).join("")}${tip.total ? rowHtml(tip.total, " ita-tt-total") : ""}${tip.wait ? `<small>${esc(tip.wait.label)}</small>${tip.wait.rows.map((r) => rowHtml(r, " ita-tt-wait")).join("")}` : ""}</div>` : "");
+export const tipHtml = (tip) => `<div class="ita-tt">${tip.title ? `<b>${esc(tip.title)}${tip.key ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</b>` : ""}${tip.cost || (tip.key && !tip.title) ? `<small>${esc(tip.cost ?? "")}${tip.key && !tip.title ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</small>` : ""}${(tip.lines ?? []).map((l) => `<p>${esc(l)}</p>`).join("")}${tip.note ? `<em>${esc(tip.note)}</em>` : ""}${sumHtml(tip)}${whyHtml(tip.why)}</div>`;
+export const tipText = (tip) => [tip.title, tip.cost, ...(tip.lines ?? []), tip.note, tip.say, tip.why?.text, tip.why?.fix].filter(Boolean).join(", ");
 
 /** Replace the children of `host`; whoever had the focus (by `fk`) keeps it, with the caret where it was. */
 export function swap(host, nodes) {
@@ -122,10 +128,25 @@ export function askCard(a, handlers = {}) {
     a.submit ? h("button.ita-submit", { fk: `submit:${a.id}`, text: a.submit.label, disabled: !!a.submit.disabled, tip: a.submit.disabled, data: { key: a.keyEnter ?? null }, on: { click: () => a.submit.req && handlers.send?.(a.submit.req) } }) : null);
 }
 
+/* U57: THE SUMMARY of a round or of a fight (feedback-pure.roundCard / fightCard): a caption card like a question, without answers.
+   One line per combatant: face, name, then what it dealt and what it lost as small counts, each with its picture; the words of a
+   count are its tooltip and the line's aria-label. It goes away by itself; the x puts it away at once. */
+const SUM_COLS = ["dealt", "hits", "taken", "stress"];
+const SUM_ICON = { dealt: "fa-burst", hits: "fa-crosshairs", taken: "fa-heart-crack", stress: "fa-bolt", broken: "fa-heart-crack", unconscious: "fa-bed", dead: "fa-skull" };
+export const sumCard = (c, handlers = {}) => h("article.ita-ask.ita-sum", { data: { kind: c.kind }, attrs: { role: "status" } },
+  h("header.ita-head", {}, h("h3.ita-plate", { text: c.title }), c.sub ? h("span.ita-about", { text: c.sub }) : null,
+    h("button.ita-sum-x", { fk: "sum:x", tip: c.close, attrs: { "aria-label": c.close }, on: { click: () => handlers.sumClose?.() } }, icon("fa-xmark"))),
+  c.quiet ? h("p.ita-line", { text: c.quiet }) : null,
+  h("ul.ita-sum-rows", {}, c.rows.map((r) => h("li.ita-sum-row", { data: { mine: r.mine ? "1" : null }, attrs: { "aria-label": r.say } }, face(r.img, r.name), h("span.ita-sum-n", { text: r.name }),
+    /* the counts stand in fixed columns (dealt, hits, Health lost, Resolve lost), so a column reads down the card; an empty place stays empty */
+    h("span.ita-sum-chips", {}, SUM_COLS.map((id) => { const k = r.chips.find((x) => x.id === id); return k ? h("span.ita-sum-chip", { tip: k.tip, data: { id: k.id } }, icon(SUM_ICON[k.id]), h("b", { text: k.n })) : h("span.ita-sum-chip", { data: { id, empty: "1" } }); }),
+      r.out ? h("span.ita-sum-chip", { tip: r.out.tip, data: { id: "out" } }, icon(SUM_ICON[r.out.id])) : null)))),
+  c.more ? h("p.ita-sum-more", { text: c.more }) : null);
+
 /** U1 / U2: the buttons of one roll (model-pure.rollButtons): `act` is done on this client (handlers.roll), `req` is sent. One element, re-skinnable. */
 export const rollButtons = (id, buttons, handlers = {}) => (buttons ?? []).map((b) => h("button.ita-rollbtn", { fk: `rb:${id}:${b.id}`, text: b.label, tip: b.tip, data: { id: b.id }, on: { click: () => (b.act ? handlers.roll?.(b.act) : b.req ? handlers.send?.(b.req) : null) } }));
 /** U1 / U2: a roll this client owes or may push, as one chip: what it is, and its buttons (model-pure.rollsData) */
-export const rollChip = (r, handlers = {}) => h("span.ita-roll", { data: { state: r.state } }, icon(r.state === "rolling" ? "fa-spinner" : "fa-dice"), h("span.ita-roll-t", { text: r.text }), rollButtons(r.id, r.buttons, handlers));
+export const rollChip = (r, handlers = {}) => h("span.ita-roll", { data: { state: r.state } }, icon(r.state === "rolling" ? "fa-spinner" : "fa-dice"), h("span.ita-roll-t", { text: r.text, tip: r.tip ?? null, data: { sum: r.tip ? "1" : null }, attrs: r.tip ? { tabindex: "0" } : {} }), rollButtons(r.id, r.buttons, handlers));
 /** the "who are we waiting for" chips (model-pure.waitingData) */
 export const waitChips = (rows) => rows.map((w) => h(`span.ita-wait${w.mine ? ".ita-wait-me" : ""}`, {}, h("b", { text: w.who }), h("span", { text: w.what.join(", ") })));
 
