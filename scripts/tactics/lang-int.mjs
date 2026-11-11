@@ -92,7 +92,7 @@ export const PL_INT = {
   "ITAC.edit.statusAdd": "dodany status",
   "ITAC.edit.statusRemove": "usunięty status",
   "ITAC.edit.setHealth": "ustawione Zdrowie",
-  "ITAC.edit.setResolve": "ustawione Resolve",
+  "ITAC.edit.setResolve": "ustawiona Determinacja",
   "ITAC.edit.tokenAdd": "dodane kości premii",
   "ITAC.edit.tokenRemove": "zabrane kości premii",
   "ITAC.edit.triggerAdd": "dodany czekający efekt",
