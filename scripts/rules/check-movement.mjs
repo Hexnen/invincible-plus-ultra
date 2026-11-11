@@ -21,6 +21,7 @@ eq(Object.entries(M.MOVE_MODES).filter(([, m]) => m.assumed).map(([k]) => k), ["
 eq(Object.values(M.MOVE_MODES).map((m) => m.way).every((w) => ["walk", "air", "through", "swim", "swing"].includes(w)), true, "every way is one of the zones contract's");
 eq(P("vehicle", { speed: 3 }), { mode: "vehicle", way: "walk", zones: 3, stressZones: null, stress: 1, actions: ["quick"], medium: "ground", assumed: false }, "a vehicle: its Speed per quick action (book 2941, 3146)");
 eq([P("vehicle", { speed: 5, aerial: true }).way, P("vehicle", { speed: 5, aerial: true }).medium], ["air", "air"], "a flying vehicle");
+eq([P("vehicle", { speed: 5, aerial: true }).ends, P("vehicle", { speed: 5 }).ends, P("flight").ends.includes("air")], [["ground", "rooftop", "air"], undefined, true], "a flying vehicle may end its move on the ground, on a rooftop or in the air, as flight does (book 3247, 2385); a ground vehicle has no such choice");
 throws(() => P("vehicle"), "a vehicle without Speed");
 throws(() => P("hover"), "an unknown way");
 throws(() => P("swimming", { tier: "major" }), "a tier the way does not have");

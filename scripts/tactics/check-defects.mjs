@@ -588,6 +588,14 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     const r = await T.req("p1", decl("H1", "shoot", ["N1"], { weapon: w.id }));
     eq([code(r), why(r), r.error?.params?.gmMayAllow, T.state.stack.length], ["illegal", "weaponNoMove", 1, 0], "D23: a Sniper rifle is not fired in a round in which the shooter moved [B2545]");
     eq([code(await T.req("p1", decl("H1", "shoot", ["N1"], { weapon: w.id, exception: { text: "braced on the ledge" } }))), T.prompt("exception")?.to], ["ok", "gm"], "D23: asked as an exception it is the GM's call"); }
+  /* D24: every kind of vehicle is handed to the map with its own way of moving [B3247], [B2385] */
+  { const api = (mv) => MP.modesOf({ kind: "vehicle", movement: [mv] }).map((m) => { const a = MP.apiProfile(m.profile); return [a.way, a.hover, a.speed]; })[0];
+    eq([api({ mode: "vehicle", speed: 4, aerial: true }), api({ mode: "vehicle", speed: 4 })], [["flight", true, 4], ["walk", false, 4]], "D24: an aircraft or a spacecraft flies (over walls, may stay in the air); a ground or a water vehicle takes the ground route");
+    eq(api({ mode: "vehicle", speed: 4, aerial: true }).slice(0, 2), ((a) => [a.way, a.hover])(MP.apiProfile(MP.modesOf({ movement: [{ mode: "flight", tier: "basic" }] }).find((m) => m.mode === "flight").profile)), "D24: the same way of moving as the power of flight");
+    const T = new MTable(); T.hero("H1", "p1").npc("V1", { health: 10 }); T.put("H1", "z1").put("V1", "z5"); T.order(["H1", "V1"]); T.c.V1.kind = "vehicle"; T.c.V1.movement = [{ mode: "vehicle", speed: 4, aerial: true }];
+    const o = MP.moveOptions(T.facts().zones, T.state, "V1", T.c.V1);
+    ok(o.some((x) => x.to === "z6" && !x.barriers?.length && x.disabled !== "barrier" && x.disabled !== "noRoute"), "D24: an aircraft crosses the exterior wall z5|z6 without breaking it");
+    ok(o.some((x) => x.to === "z5:elevated" && x.elevated === "air"), "D24: and may end its move in the air"); }
 }
 
 done("check-defects");

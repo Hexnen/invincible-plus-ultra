@@ -42,12 +42,15 @@ export const MOVE_MODES = {
      mode   a key of MOVE_MODES, or "vehicle"
      opts.tier     "basic" (default) | "major" | "massive" | "monstrous" for the tiered powers; "basic" | "fast" for swimming and swinging
                    (Fast Swimmer book 2022, Fast Swinging book 2030)
-     opts.speed, opts.aerial   for "vehicle": its Speed in zones per quick action (book 2941, 3146) and whether it flies
+     opts.speed, opts.aerial   for "vehicle": its Speed in zones per quick action (book 2941, 3146) and whether it flies (an aircraft or
+                   a spacecraft, book 3247: way "air", may end in the air; a ground or water vehicle keeps to the ground route)
    -> MoveProfile { mode, way, zones, stressZones (null = no stress option), stress: 1, actions, medium, assumed, ends? } */
 export function moveProfile(mode, opts = {}) {
   if (mode === "vehicle") {
     if (!(opts.speed >= 0)) throw new Error("moveProfile: a vehicle needs its Speed");
-    return { mode, way: opts.aerial ? "air" : "walk", zones: opts.speed, stressZones: null, stress: 1, actions: ["quick"], medium: opts.aerial ? "air" : "ground", assumed: false };
+    const p = { mode, way: opts.aerial ? "air" : "walk", zones: opts.speed, stressZones: null, stress: 1, actions: ["quick"], medium: opts.aerial ? "air" : "ground", assumed: false };
+    if (opts.aerial) p.ends = ["ground", "rooftop", "air"];      // book 3247 with 2385: an aircraft moves as the aerial powers do, over buildings, and stays in the air
+    return p;
   }
   const m = MOVE_MODES[mode];
   if (!m) throw new Error(`moveProfile: unknown way of moving "${mode}"`);
