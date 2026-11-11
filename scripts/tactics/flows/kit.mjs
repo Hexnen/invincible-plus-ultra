@@ -8,7 +8,7 @@
        events:  [...],  section 16 events
        push:    spec of an action instance to put on top of the stack (interrupt, counterattack, part of a composite)
        goto:    next step id | wait: true | done: true } */
-import { dice, crits, conditions, attack, chase } from "../../rules/index.mjs";
+import { dice, crits, conditions, attack, chase, damage } from "../../rules/index.mjs";
 import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 import { holderBlocks } from "../catalog-pure.mjs";
@@ -140,7 +140,7 @@ export function kitDice(v, inst, cid, attr, rollKind) {
     if (kind === "grapple") add("sheet:grapple", b.grapple);
     if (["slugfest", "grappleAttack"].includes(kind)) add("sheet:slugfest", b.slugfest);
     const n = copiesOf(v.state, cid);
-    if (n > 0 && ["slugfest", "shooting"].includes(kind)) add("copies", n);                    // [B1908]
+    if (n > 0 && COPY_ATTACKS.includes(kind)) add("copies", n);                               // [B1908]: every slugfest and shooting attack
     const small = v.facts.c(inst.decl?.targets?.[0])?.pass?.shrunkDice;
     if (small > 0 && !["reason", "intuition", "presence"].includes(attr)) add("shrunk", -small);  // [B1976]: physical attacks against a shrunk character (an attack of the mind is not one)
   }
@@ -159,6 +159,26 @@ export const helpDiceOf = (v, d) => dice.helpDice((d?.helpers ?? []).filter((h) 
 export const barriersOf = (state, cid) => (state.effects ?? []).filter((e) => e.kind === "barrier" && e.holder === cid).map((e) => ({ id: e.id, armor: Number(e.data?.armor) || 0, barrier: true }));
 /** the copy bonus a character has left (Duplication [B1907]: an effect of the state) */
 export const copiesOf = (state, cid) => Math.max(0, Number((state.effects ?? []).find((e) => e.kind === "copies" && e.holder === cid)?.data?.n) || 0);
+/** [B1908]: the copy bonus goes on the duplicator's own attack roll "whether in slugfest or shooting". The charge, the grapple and the
+    grapple attack are slugfest attacks by the book ([B2431], [B2490], [B2496], [B2497]: rules/attack.mjs ATTACKS family). Not the ram: the
+    vehicle attacks, not the copies [B3148]. The counterattack rolls no dice at all [B2448]. */
+export const COPY_ATTACKS = Object.freeze(["slugfest", "shooting", "charge", "grapple", "grappleAttack"]);
+/** [B1910]: "When you suffer damage, the damage is first applied to your copy bonus": EVERY place that takes damage off Health calls this
+    with the damage left after Armor (an attack, fire, a blast or an area hazard, a fall, a barrier, a slam, a wreck, the GM's own number),
+    right before damage.applyDamage. Not for damage an attack turned into stress [B1591]. Pushes the write of the smaller bonus (the effect
+    ends at zero) and the stress of Traumatic Duplication [B1916] on R.effects; a second hit in the same step counts from what the first
+    one left. -> { taken (what goes on to Health), copies: { absorbed, left } | null } */
+export function copiesAbsorb(v, R, t, taken) {
+  const ef = (v.state.effects ?? []).find((x) => x.kind === "copies" && x.holder === t);
+  if (!ef || !(taken > 0)) return { taken: Math.max(0, Number(taken) || 0), copies: null };
+  const path1 = `#${ef.id}`, pend = R.effects.filter((e) => e.t === "state" && e.path?.[0] === "effects" && e.path?.[1] === path1).pop();
+  const have = pend ? Math.max(0, Number(pend.to?.data?.n) || 0) : copiesOf(v.state, t);
+  if (!(have > 0)) return { taken, copies: null };
+  const ab = damage.absorbByCopies({ taken, copies: have });
+  R.effects.push({ t: "state", path: ["effects", path1], to: ab.gone ? null : { ...ef, data: { ...ef.data, n: ab.copies } } });
+  if (v.facts.c(t)?.pass?.traumatic && ab.absorbed > 0) R.effects.push({ t: "stress", who: t, n: 1 });
+  return { taken: ab.taken, copies: { absorbed: ab.absorbed, left: ab.copies } };
+}
 
 /** Roll request effect. passive rolls and defender rolls cannot be pushed [B2227], [B2241]. */
 export const rollEffect = (key, who, attr, pool, { passive = false, defender = false, secret = false, label = null, noPush = false } = {}) =>

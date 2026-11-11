@@ -59,6 +59,7 @@ eq([C.critState([8]).canRally, C.critState([9]).canRally, C.critState([10]).canR
 eq(C.canRally({ broken: false }).reason, "notBroken", "rally only when broken");
 eq(C.canRally({ broken: true, crits: [4, 9] }).reason, "crit", "no rally with a cracked skull");
 eq(C.canRally({ broken: true, crits: [7] }).ok, true, "rally with a crushed arm");
+eq([C.canRally({ broken: true, primaryCopy: true }).reason, C.canRally({ broken: false, primaryCopy: true }).reason], ["copy", "notBroken"], "book 1915: the killed primary copy of Sequestered Original is not rallied");
 eq(C.rallyOutcome({ sixes: 2, maxHealth: 8 }), { rallied: true, health: 2 }, "1 Health per six");
 eq(C.rallyOutcome({ sixes: 0, maxHealth: 8 }).rallied, false, "failed rally");
 eq(C.canStabilize({ crits: [10], hasGear: true }).ok, true, "stabilise with gear");

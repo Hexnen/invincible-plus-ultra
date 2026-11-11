@@ -181,8 +181,8 @@ function legality(v, inst) {
       return r.ok ? fine : bad(r.reason === "zone" ? "notSameZone" : r.reason === "oncePerRound" ? "banteredAlready" : r.reason === "huge" ? "hugeTarget" : "immune", r.gmMayAllow ? GM : {});
     }
     case "rally": {                                                                                          // [B2773-2775]
-      const r = crits.canRally({ broken: sf.health <= 0, crits: sf.crits ?? [] });
-      if (!r.ok) return bad(r.reason === "crit" ? "rallyCrit" : "notBroken");
+      const r = crits.canRally({ broken: sf.health <= 0, crits: sf.crits ?? [], primaryCopy: sf.pass?.noRally === true });      // P6 [B1915] Sequestered Original: the primary copy was killed
+      if (!r.ok) return bad(r.reason === "crit" ? "rallyCrit" : r.reason === "copy" ? "rallyCopy" : "notBroken", r.reason === "copy" ? GM : {});      // the GM may allow (broken by something that was not damage)
       return other && v.facts.canTalk?.(inst.actor, subject) === false ? bad("cannotHear", GM) : fine;       // [Z11]; undefined = the map cannot tell, the GM judges
     }
     case "resolve":                                                                                          // [B2818]

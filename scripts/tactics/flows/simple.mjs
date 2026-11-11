@@ -126,6 +126,8 @@ export const hazard = {
           const hd = damage.hitDamage({ base: h.amount ?? 0, armor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });
           rec = { base: h.amount ?? 0, raw: hd.raw, armor: hd.armor, taken: Number.isFinite(forced?.amount) ? forced.amount : hd.taken, tags };
         }
+        const ab = K.copiesAbsorb(v, R, t, rec.taken);                                                                                               // [B1910]: fire, a fall, a barrier, a slam, a wreck: any damage goes to the copy bonus first
+        if (ab.copies) { rec.taken = ab.taken; rec.copies = ab.copies; }
         const ad = damage.applyDamage({ health: tf.health, taken: rec.taken });                                                                     // [B2707]
         Object.assign(rec, { healthBefore: tf.health, healthAfter: ad.health });
         if (tf.kind === "minions") rec.minions = { removed: tf.health - ad.health, left: ad.health };                                                // [B2828]: one member per point

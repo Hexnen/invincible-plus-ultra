@@ -101,9 +101,11 @@ export const blast = {
           if (ml.wait) { waiting = true; continue; }
           taken = ml.taken;
         }
+        const ab = K.copiesAbsorb(v, R, o.id, taken);                                             // [B1910]: any damage goes to the copy bonus first
+        taken = ab.taken;
         const ad = damage.applyDamage({ health: tf.health, taken });                              // [B2707]
         I.data.out[o.id] = { hit: o.hit, net: sixes - row.dodgeSixes };
-        I.data.dmg[o.id] = { base: out.base, raw: o.raw, armor: row.vulnerable ? 0 : row.armor, ...(row.vulnerable ? { vulnerable: true } : {}), taken, doubled: o.doubled, healthBefore: tf.health, healthAfter: ad.health, tags, ...(tf.kind === "minions" ? { minions: { removed: tf.health - ad.health, left: ad.health } } : {}) };   // [B2828]
+        I.data.dmg[o.id] = { base: out.base, raw: o.raw, armor: row.vulnerable ? 0 : row.armor, ...(row.vulnerable ? { vulnerable: true } : {}), taken, ...(ab.copies ? { copies: ab.copies } : {}), doubled: o.doubled, healthBefore: tf.health, healthAfter: ad.health, tags, ...(tf.kind === "minions" ? { minions: { removed: tf.health - ad.health, left: ad.health } } : {}) };   // [B2828]
         if (taken > 0 && ad.health !== tf.health) R.effects.push({ t: "actor", who: o.id, path: "health", to: ad.health });
         R.events.push({ type: "damage", target: o.id, base: out.base, armor: row.armor, taken, dtype: src, source: "hazard", ...(o.doubled ? { doubled: true } : {}) });
       }

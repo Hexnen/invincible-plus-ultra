@@ -523,13 +523,8 @@ export const steps = {
         taken = ml.taken;
       }
       const rec = { base, raw: hd.raw, doubled, armor: hd.armor, armorSource: ar.source?.id ?? null, taken, tags, forced: forced ? 1 : undefined, ...(o.extra ? { extra: o.extra } : {}), ...(pierce ?? {}) };
-      const cp = tags.toStress || pierce ? 0 : K.copiesOf(v.state, t);                                          // P6 [B1910]: the copies take it first
-      if (cp > 0 && taken > 0) {
-        const ab = damage.absorbByCopies({ taken, copies: cp }), ef = (v.state.effects ?? []).find((x) => x.kind === "copies" && x.holder === t);
-        taken = rec.taken = ab.taken; rec.copies = { absorbed: ab.absorbed, left: ab.copies };
-        if (ef) R.effects.push(ab.gone ? { t: "state", path: ["effects", `#${ef.id}`], to: null } : { t: "state", path: ["effects", `#${ef.id}`], to: { ...ef, data: { ...ef.data, n: ab.copies } } });
-        if (tf.pass?.traumatic && ab.absorbed > 0) R.effects.push({ t: "stress", who: t, n: 1 });               // [B1916]
-      }
+      const through = taken;                                                                                    // what got past the Armor (a Barrier is breached by this, whoever takes it then)
+      if (!tags.toStress && !pierce) { const ab = K.copiesAbsorb(v, R, t, taken); if (ab.copies) { taken = rec.taken = ab.taken; rec.copies = ab.copies; } }      // P6 [B1910], [B1916]: the copies take it first
       if (tf.pass?.absorb && !tags.toStress && !ar.source?.barrier && Math.min(hd.raw, hd.armor) > 0) {         // P6 [B1887]: a die per point the Protection stopped, for the next turn
         const tk = M.makeToken({ id: `ea${I.id}x${t}`.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40), holder: t, dice: Math.min(hd.raw, hd.armor), scope: { attrs: ["fighting", "strength", "agility"] }, uses: 1, stacks: true, source: { kind: "power", owner: t, name: "Energy Absorption" }, expires: { at: "turnEndOf", who: t } });
         if (tk) R.effects.push({ t: "state", path: ["tokens", `#${tk.id}`], to: tk });
@@ -543,7 +538,7 @@ export const steps = {
         Object.assign(rec, { healthBefore: tf.health, healthAfter: ad.health, broken: ad.broken, newlyBroken: ad.newlyBroken });
         if (tf.kind === "minions") rec.minions = { removed: tf.health - ad.health, left: ad.health };           // [B2828]: one member per point
         if (taken > 0 && ad.health !== tf.health) R.effects.push({ t: "actor", who: t, path: "health", to: ad.health });
-        if (damage.barrierBreached(ar.source, taken)) { rec.barrierBreached = ar.source.id; for (const x of M.effectEndWrites(v.state, ar.source.id)) R.effects.push({ t: "state", path: x.path, to: x.to }); }      // [B1859], [R13]: a breached Barrier is gone
+        if (damage.barrierBreached(ar.source, through)) { rec.barrierBreached = ar.source.id; for (const x of M.effectEndWrites(v.state, ar.source.id)) R.effects.push({ t: "state", path: x.path, to: x.to }); }      // [B1859], [R13]: a breached Barrier is gone
       }
       I.data.dmg[t] = rec;
       R.events.push({ type: "damage", target: t, base, doubled, armor: hd.armor, taken, toStress: tags.toStress, dtype: tags.source, source: tags.cause });

@@ -225,7 +225,7 @@ ModRule = { source, dice: n | { ref: "path", times?, min?, max? }, when?: Cond, 
 ### `crits.mjs`
 `CRIT_TABLE`, `MAX_CRIT`, `FAMILY_CAP`, `DEADLY_HIT_MAX_BONUS`, `deadlyHitBonus(taken)`, `resolveCrit({ d6, bonus, prior, cap })`,
 `critForHit({ taken, healthBefore, deadlyHit, target })`, `critPenalty(crits, attr, opts)`, `critState(crits)`, `BROKEN_ALLOWED`,
-`canRally({ broken, crits })`, `rallyOutcome({ sixes, maxHealth })`, `canStabilize({ crits, attempted, hasGear, power })`, `stabilizeOutcome(sixes)`.
+`canRally({ broken, crits, primaryCopy })` (book 1915: `primaryCopy` = the broken one is the primary copy of Sequestered Original, reason `"copy"`), `rallyOutcome({ sixes, maxHealth })`, `canStabilize({ crits, attempted, hasGear, power })`, `stabilizeOutcome(sixes)`.
 
 Crits are passed as arrays of table numbers (`[6, 2]`). `critForHit` asks `stunts.isImmune(target, "deadlyHit")`.
 

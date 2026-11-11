@@ -468,4 +468,51 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   const k = K.build({ items: [item("sn", "Sniper", "talent"), item("rf", "Rapid Fire", "talent"), item("hh", "Hard Hitter", "talent"), item("ma", "Martial Arts", "talent"), item("bt", "Bigger They Are", "talent"), item("ev", "Evasive", "talent")], attrs: {} });
   eq(k.sheetSkip.slice().sort(), ["Bigger They Are", "Hard Hitter", "Martial Arts", "Rapid Fire", "Sniper"], "their sheet effects are left out of the pools (the engine applies the dice itself)");
 }
+/* ================================================================== adversary 3 (combat-defects.md D20, D22, D23, D25) */
+const gun = (id, name, o = {}) => item(id, name, "gear", { autos: [auto("a", name, "rollAttack", { attr: ["agility"], ...o })] });
+const nextRoundOf = async (T) => { T.turn("N1"); T.turn("H2"); T.turn("N2"); await T.gm({ op: "nextRound" }).catch(() => {}); if (T.state.init?.curMember !== "H1") T.turn("H1"); };
+/* ---- D20: Duplication. Any damage goes to the copy bonus first [B1910]; the bonus is added to every slugfest and shooting attack [B1908] */
+{
+  const copies = (T, c = "H1") => T.state.effects.find((e) => e.kind === "copies" && e.holder === c)?.data?.n ?? 0;
+  const mk = async (extra = []) => { const T = base([item("du", "Duplication", "power"), ...extra], [], { h1: { health: 8, maxHealth: 8, resolve: 5 } }); await T.req("p1", decl("H1", act(T, "H1", "copies").id)); return T; };
+  { const T = await mk(); T.dice.push([6, 6, 1, 1, 1, 1]);
+    await T.gm({ op: "hazard", hazard: { kind: "fire", intensity: 6 }, targets: ["H1"] });
+    eq([copies(T), T.c.H1.health], [0, 7], "D20: a fire's 4 damage takes the 3 copies first, 1 goes on to Health [B1910]"); }
+  { const T = await mk();
+    await T.gm({ op: "hazard", hazard: { kind: "fixed", amount: 2, armor: false, source: "kinetic", cause: "fall" }, targets: ["H1"] });
+    eq([copies(T), T.c.H1.health], [1, 8], "D20: fixed damage (a fall, a barrier, a slam) is taken by the copies"); }
+  { const T = await mk(); T.dice.push([6, 1, 1, 1, 1, 1]);
+    await T.gm({ op: "hazardRun", run: { type: "blast", rating: 6, targets: ["H1"] } }); await T.answer("p1", "hazardDodge", "pass", "H1");
+    eq([copies(T), T.c.H1.health], [0, 8], "D20: a blast's damage is taken by the copies"); }
+  { const T = await mk(); T.turn("N1");
+    await T.gm(decl("N1", "slugfest", { targets: ["H1"] }));
+    await T.gm({ op: "manual", inst: T.top().id, result: { note: "by hand", damage: [{ target: "H1", amount: 4 }] } });
+    eq([copies(T), T.c.H1.health], [0, 7], "D20: damage the GM enters by hand is damage too: copies first"); }
+  { const T = await mk([item("td", "Traumatic Duplication", "limit", { power: "du" })]), r0 = T.c.H1.resolve;
+    await T.gm({ op: "hazard", hazard: { kind: "fixed", amount: 2, armor: false, source: "kinetic", cause: "fall" }, targets: ["H1"] });
+    eq([copies(T), T.c.H1.health, r0 - T.c.H1.resolve], [1, 8, 1], "D20: Traumatic Duplication costs its stress when the copies take damage outside an attack as well [B1916]"); }
+  for (const action of ["slugfest", "grapple"]) {
+    const T = await mk(); await nextRoundOf(T);
+    eq(code(await T.req("p1", decl("H1", action, { targets: ["N1"] }))), "ok", `D20: ${action} with copies out`);
+    const rp = T.prompt("reaction"); if (rp) await T.answer("gm", "reaction", "pass", rp.about);
+    eq((T.requests.filter((r) => r.key === "attack").at(-1)?.pool?.mods ?? []).filter((m) => m.source === "copies").map((m) => m.dice), [3], `D20: the copy bonus is in the ${action} pool [B1908], [B2431]`);
+  }
+}
+/* ---- D22: Sequestered Original: the broken primary copy is killed and cannot be rallied [B1915] */
+{
+  const T = base([item("du", "Duplication", "power", { boosts: ["so"] }), item("so", "Sequestered Original", "boost", { power: "du" })], [], { h1: { health: 2, maxHealth: 8 } });
+  eq([T.c.H1.kit.pass.noCrit, T.c.H1.kit.pass.noRally], [true, true], "D22: the boost says both halves of the book line: no injury, no rallying");
+  T.turn("N1");
+  await T.gm(decl("N1", "slugfest", { targets: ["H1"] })); await T.answer("p1", "reaction", "pass", "H1"); await T.roll("attack", 1);
+  eq([T.c.H1.health, M.hasStatus(T.state, "H1", "broken")], [0, true], "D22: the primary copy is broken by the hit");
+  T.turn("H1");
+  eq([code(await T.req("p1", decl("H1", "rally"))), why(T.last), T.last.error?.params?.gmMayAllow], ["illegal", "rallyCopy", 1], "D22: it cannot rally itself (the GM may rule otherwise)");
+  T.turn("H2");
+  eq([code(await T.req("p2", decl("H2", "rally", { targets: ["H1"] }))), why(T.last)], ["illegal", "rallyCopy"], "D22: nor can a friend rally it");
+  const U = base([item("du", "Duplication", "power")], [], { h1: { health: 2, maxHealth: 8 } });
+  U.turn("N1"); await U.gm(decl("N1", "slugfest", { targets: ["H1"] })); await U.answer("p1", "reaction", "pass", "H1"); await U.roll("attack", 1);
+  for (const p of U.prompts()) if (p.kind !== "reaction") await U.gm({ op: "answerFor", prompt: p.id, value: p.options?.[0]?.id ?? "pass" }).catch(() => {});
+  U.turn("H2");
+  ok(why(await U.req("p2", decl("H2", "rally", { targets: ["H1"] }))) !== "rallyCopy", "D22: a duplicator without the boost is rallied as anybody");
+}
 done("check-kit");

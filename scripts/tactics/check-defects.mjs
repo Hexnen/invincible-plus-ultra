@@ -12,6 +12,9 @@ import * as Eng from "./engine-pure.mjs";
 import * as Desk from "./desk-pure.mjs";
 import * as View from "./view-pure.mjs";
 import * as UiM from "./ui/model-pure.mjs";
+import * as SceneUi from "./ui/scene-pure.mjs";
+import * as MP from "./movement-pure.mjs";
+import * as Rules from "../rules/index.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -567,6 +570,16 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     const p = T.prompt("reaction", "N1"), block = p?.options.find((o) => o.id === "block");
     eq(!!block && !block.disabled, want, `stress unit, Resolve ${resolve}: a block paid by a stress grant is ${want ? "offered" : "not offered"}`);
   }
+}
+
+/* ================================================================== adversary 3 on the map and the Scene tab (D20 charge, D23 "no movement", D24, D27) */
+{
+  const mk = () => { const T = new MTable(); T.hero("H1", "p1", { attrs: { strength: 6 } }).hero("H2", "p2").npc("N1", { health: 12 }); T.put("H1", "z1").put("H2", "z1").put("N1", "z3"); T.order(["H1", "H2", "N1"]); return T; };
+  { const T = mk(); T.put("N1", "z2");                                                             // D20: a charge is a slugfest attack [B2431]
+    await T.gm({ op: "effectAdd", effect: { id: "cp", kind: "copies", source: { kind: "power", name: "Duplication", owner: "H1" }, holder: "H1", data: { n: 3 }, ends: { at: "sceneEnd" } } });
+    eq(code(await T.req("p1", decl("H1", "charge", ["N1"]))), "ok", "D20: a duplicator charges");
+    for (let i = 0; i < 3 && T.prompt("reaction"); i++) await T.answer("gm", "reaction", "pass", T.prompt("reaction").about);
+    eq((T.requests.filter((r) => r.key === "attack").at(-1)?.pool?.mods ?? []).filter((m) => m.source === "copies").map((m) => m.dice), [3], "D20: the copy bonus is in the pool of a charge"); }
 }
 
 done("check-defects");

@@ -178,7 +178,7 @@ export const ROWS = Object.freeze([
   P("Duplication", [1907, 1908, 1909, 1910, 1911, 1912, 1913], "auto", "copies", { acts: [{ k: "copies", cost: "full", stress: 1, effect: { kind: "copies", lv: [3, 5, 7, 9] } },
     { k: "copyAct", cost: "none", stress: 1, effect: { kind: "grant", template: "gm", unit: "full", expires: "turnEnd" }, once: "round" }, { k: "reabsorb", cost: "full", effect: { kind: "reabsorb" } }] }),
   B("Duplication", "Restorative Duplication", [1914], "auto", "copies", { acts: [{ k: "restore", cost: "full", stress: 1, effect: { kind: "reabsorb", heal: 1 } }] }),
-  B("Duplication", "Sequestered Original", [1915], "auto", "passive", { pass: { noCrit: 1 } }),
+  B("Duplication", "Sequestered Original", [1915], "auto", "passive", { pass: { noCrit: 1, noRally: 1 } }),      // [B1915]: the broken primary copy is killed: no injury, no rallying
   L("Duplication", "Traumatic Duplication", [1916], "auto", "copies", { pass: { traumatic: 1 } }),
   P("Elongation", [1919], "auto", "passive", { pass: { reach: 1 }, acts: [] }),
   B("Elongation", "Plasticity", [1920], "auto", "sheet", { pass: { armorOnly: ["kinetic"] } }),

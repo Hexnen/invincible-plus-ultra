@@ -121,9 +121,11 @@ export const BROKEN_ALLOWED = ["rally"];
 
 /* Rallying (book 2773-2775): only when broken and without a 9+ crit; a full action on the broken character's own turn with a PRESENCE
    roll, or another character who can communicate with them rolls PRESENCE instead; 1 Health back per 6; the crit stays.
-   Returns { ok, reason } for the attempt. */
-export function canRally({ broken, crits = [] }) {
+   book 1915 (Sequestered Original): the broken body is the primary copy, it is killed and cannot be rallied (`primaryCopy`: the broken
+   character lives through a copy). Returns { ok, reason } for the attempt. */
+export function canRally({ broken, crits = [], primaryCopy = false }) {
   if (!broken) return { ok: false, reason: "notBroken" };
+  if (primaryCopy) return { ok: false, reason: "copy" };
   if (!critState(crits).canRally) return { ok: false, reason: "crit" };
   return { ok: true, reason: null };
 }

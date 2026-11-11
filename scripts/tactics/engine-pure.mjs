@@ -662,7 +662,10 @@ async function manual(X, I, res) {
   }
   for (const d of (Array.isArray(res.damage) ? res.damage : []).slice(0, 24)) {
     const c = X.facts.c(d?.target), amount = Math.max(0, Math.trunc(Number(d?.amount) || 0));
-    if (c && amount) await perform(X, I.tx, { t: "actor", uuid: c.actorUuid, path: "health", to: damage.applyDamage({ health: c.health, taken: amount }).health, tx: I.tx }, I, "manual");   // [B2708]: never below 0
+    if (!c || !amount) continue;
+    const R = { effects: [] }, ab = K.copiesAbsorb({ state: X.state, facts: X.facts }, R, d.target, amount);                 // [B1910]: the GM's number is damage too, the copy bonus takes it first
+    for (const e of R.effects) await applyEffect(X, I, e, "manual");
+    if (ab.taken) await perform(X, I.tx, { t: "actor", uuid: c.actorUuid, path: "health", to: damage.applyDamage({ health: c.health, taken: ab.taken }).health, tx: I.tx }, I, "manual");   // [B2708]: never below 0
   }
   for (const d of (Array.isArray(res.stress) ? res.stress : []).slice(0, 24)) {
     const c = X.facts.c(d?.target), n = Math.max(0, Math.trunc(Number(d?.amount) || 0));
