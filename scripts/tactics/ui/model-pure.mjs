@@ -294,7 +294,7 @@ export function waitingData(waiting, facts, t) {
 
 /* ------------------------------------------------------------------ the player's dock */
 /* P6: an action of the character's own sheet reads as "Sniper: Aim"; a plain use as the item's name; a switch says what it is now */
-export const kitLabel = (t, a) => { const act = labelOf(t, a.label), k = String(a.label ?? "").split(".").pop(); return !a.name ? act : k === "toggle" ? t(a.fxOn ? "ITAC.ui.kit.on" : "ITAC.ui.kit.offNow", { name: a.name }) : k === "use" ? a.name : t("ITAC.ui.kit.name", { name: a.name, act }); };
+export const kitLabel = (t, a) => { const act = labelOf(t, a.label), k = String(a.label ?? "").split(".").pop(); return !a.name ? act : k === "toggle" ? t(a.fxOn ? "ITAC.ui.kit.on" : "ITAC.ui.kit.offNow", { name: a.name }) : k === "use" || act.toLowerCase() === String(a.name).toLowerCase() ? a.name : t("ITAC.ui.kit.name", { name: a.name, act }); };
 const actLabel = (t, a) => (a.kit ? kitLabel(t, a) : labelOf(t, a.label));
 const instTitle = (t, i) => (i.label?.name ? kitLabel(t, i.label) : labelOf(t, `ITAC.action.${i.action}`));     // P6: a running action of the sheet is called by its own name
 const CAT_ORDER = ["power", "boost", "limit", "talent", "drawback", "gear"];

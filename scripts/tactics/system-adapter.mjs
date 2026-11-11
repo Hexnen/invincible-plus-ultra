@@ -193,7 +193,7 @@ export function kitOf(actor) {
 }
 /** The dice the sheet's active effects add (the system's own roll buttons add the same): per attribute and per kind of roll. */
 export function sheetBonuses(actor) {
-  const b = actor?.system?.bonuses ?? {}, sum = (k) => Object.values(b[k] ?? {}).reduce((a, v) => a + num(v), 0), out = {};
+  const b = actor?.system?.bonuses ?? {}, sum = (k) => Object.entries(b[k] ?? {}).reduce((a, [src, v]) => a + (src === "Minions" ? 0 : num(v)), 0), out = {};   // the group's size is counted by the attack flow itself [B2827]
   for (const k of [...ATTRS, "attack", "block", "dodge", "charge", "grapple"]) { const v = sum(k); if (v) out[k] = v; }
   const sl = num(actor?.system?.derived?.slugfest?.bonus) || sum("system.derived.slugfest.bonus") || sum("derived.slugfest.bonus");
   if (sl) out.slugfest = sl;
