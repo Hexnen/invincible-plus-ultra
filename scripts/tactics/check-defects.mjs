@@ -15,6 +15,7 @@ import * as UiM from "./ui/model-pure.mjs";
 import * as SceneUi from "./ui/scene-pure.mjs";
 import * as MP from "./movement-pure.mjs";
 import * as Rules from "../rules/index.mjs";
+import * as MoveFlow from "./flows/move.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -676,6 +677,28 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     const full = UiM.askData({ id: "x", kind: "direction", about: "T", options: [], data: { who: "T", by: "K", zones: ["z1", "z2", "z3", "z4"], distance: 3, walls: [], edge: 0 }, answerReq: () => null }, { t: tr, facts: facts(T, T.state, true), own: {}, desk: true });
     eq([num(full.lines[0], "n"), full.lines.length], [3, 1], "D28: a chain of the full distance needs no second line");
   }
+}
+
+/* ================================================================== D29: NOT A DEFECT. An unlocked door, open or closed, does not affect
+   movement [B2418], [B2254]: walking through the closed door of the audit is an ordinary move. What a closed door does stop is talking
+   across the wall (ruling A27), which is what "Open the door" is for; only a locked or a sealed door has to be dealt with first. */
+{
+  const mk = (state) => { const T = new MTable(); T.hero("H1", "p1", { attrs: { strength: 5 } }).hero("H2", "p2").npc("N1", { health: 5 }); T.put("H1", "z3").put("H2", "z4").put("N1", "z1"); T.order(["H1", "H2", "N1"]); T.map._.borders["z3|z4"].doorway.state = state; return T; };
+  const price = (T, to) => { const p = MP.priceMove(T.facts().zones, T.state, "H1", T.c.H1, { to }); return p.ok ? [p.cost, p.total, p.barriers?.length ?? 0, p.roll ?? null] : p.reason; };
+  const paid = (T) => T.state.ledger.H1.entries.filter((e) => !e.void).map((e) => e.cost);
+  const doors = (T) => MoveFlow.doorOptions(T.facts().zones, T.c.H1, "H1").map((d) => [d.state, Object.keys(d.actions).filter((k) => d.actions[k] === null)]);
+  { const T = mk("closed");
+    eq([price(T, "z4"), price(T, "z2")], [["quick", 1, 0, null], ["quick", 1, 0, null]], "D29: through a closed (unlocked) door a move costs what it costs across an open border: no barrier, no roll");
+    eq(doors(T), [["closed", ["openDoor"]]], "D29: the closed door can be opened as an action of its own, nothing else");
+    eq(T.facts().canTalk("H1", "H2"), false, "D29: shut, it keeps the two sides from talking (A27): the reason to open it");
+    eq([code(await T.req("p1", mv("H1", "z4"))), T.spot("H1"), paid(T), T.prompts().length, T.requests.length, T.map.borderBetween("z3", "z4").doorway.state], ["ok", "z4", ["quick"], 0, 0, "closed"],
+      "D29: the walk goes through for one quick action with no door step, and the door stays as it was"); }
+  { const T = mk("closed");
+    eq([code(await T.req("p1", mv("H1", "z3|z4", { action: "openDoor" }))), T.map.borderBetween("z3", "z4").doorway.state, paid(T), T.facts().canTalk("H1", "H2")], ["ok", "open", [], true], "D29: opening it costs no action [B2418] and lets the two sides talk"); }
+  { const T = mk("locked"); const r = await T.req("p1", mv("H1", "z4"));
+    eq([price(T, "z4"), code(r), why(r), T.spot("H1"), paid(T), doors(T)], ["barrier", "illegal", "barrier", "z3", [], [["locked", ["breachDoor"]]]], "D29: a locked door refuses the same walk; breaking it is the way through"); }
+  { const T = mk("sealed");
+    eq([price(T, "z4"), doors(T)], ["barrier", [["sealed", ["unseal"]]]], "D29: and so does a sealed one"); }
 }
 
 done("check-defects");
