@@ -7,6 +7,8 @@
      Now      what is being settled by hand, the action(s) in progress with the step controls (Override opens them), then the queue of
               cards that wait for the GM (reactions of NPCs, exception requests, confirmations, round-point triggers, absent players)
      Journal  closed actions by round, newest first, each with Undo (last-in-first-out; "only this one" asks how to treat drift)
+     Scene    (P7) what stands in the fight without a card: the chase (who flees, who follows, the distance, the chase roll, its end),
+              the vehicles (who sits where, the state of the machine) and the challenges (a book preset, what the GM runs by hand)
      Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), a hazard let loose by hand, the karma notes, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
 import { h, icon, swap, askCard, waitChips, visibleRect } from "./dom.mjs";
 
@@ -130,9 +132,49 @@ function table(d) {
     section(k.title, k.rows.length, h("article.igd-npc", {}, k.rows.length ? h("ul.igd-karma", {}, k.rows.map((r) => h("li", {}, h("b", { text: r.kind }), h("span", { text: [r.who, r.round].filter(Boolean).join(", ") }), r.note ? h("q", { text: r.note }) : null))) : h("p.igd-hint", { text: k.empty }),
       sel(k.kind, "kind", kput, "karma", false), sel(k.who, "who", kput, "karma"), h("input.ita-text", { fk: "karma:note", attrs: { type: "text", maxlength: 200, value: k.note.value, placeholder: k.note.placeholder, "aria-label": k.note.placeholder }, on: { input: (e, el) => kput({ note: el.value }) } }),
       h("div.igd-cmds", {}, h("button.igd-btn", { fk: "karma:add", text: k.add.label, disabled: !!k.add.disabled, tip: k.add.disabled, on: { click: () => { if (k.add.req) { send(k.add.req); kput({ note: "" }); } } } })))),
-    section(d.npcsTitle, 0, d.npcs.length ? d.npcs.map((n) => h("article.igd-npc", {}, h("b.igd-actor", { text: n.name }), n.note ? h("p.igd-note", {}, icon("fa-person-running"), h("span", { text: n.note })) : null,
+    section(d.npcsTitle, 0, d.npcs.length ? d.npcs.map((n) => h("article.igd-npc", {}, h("b.igd-actor", { text: n.name }), n.note ? h("p.igd-tip", {}, icon("fa-person-running"), h("span", { text: n.note })) : null,
       n.policy.map((p) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: p.label }), seg(p, `pol:${n.id}:${p.id}`))),
       h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: d.labels.reveal }), h("span.igd-seg.igd-multi", {}, n.reveal.map((r) => h("button", { fk: `rv:${n.id}:${r.id}`, attrs: { "aria-pressed": String(r.on) }, on: { click: () => send(r.req) } }, icon(r.on ? "fa-eye" : "fa-eye-slash"), h("span", { text: r.label }))))))) : h("p.igd-empty", {}, h("span", { text: d.npcsEmpty }))),
+  ];
+}
+
+/* ---------- the Scene tab (P7): the chase, the vehicles, the challenges (ui/scene-pure.mjs) ---------- */
+function scene(s) {
+  const put = (patch) => handlers.scene?.(patch);
+  const tags = (list) => (list.length ? h("div.igd-meta", {}, list.map((x) => h(`span.igd-tag${x.tone === "hit" ? ".igd-hit" : x.tone === "miss" ? ".igd-miss" : ""}`, { text: x.text }))) : null);
+  const note = (text) => (text ? h("p.igd-note", { text }) : null);
+  const go = (b, key, cls = "") => h(`button.igd-btn${cls}`, { fk: key, text: b.label, disabled: !!b.disabled, tip: b.disabled, on: { click: () => b.req && send(b.req) } });
+  const segSend = (c, key) => h("span.igd-seg", {}, c.choices.map((x) => h("button", { fk: `${key}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => !x.on && send(x.req) } })));
+  const c = s.chase;
+  const chase = c.on ? h("article.igd-npc", {},
+    h("div.igd-chase", {}, h("b.igd-big", { text: c.headline }), h("span.igd-note", { text: `${c.round} \u00b7 ${c.lost}` })),
+    c.state ? tags([c.state]) : null,
+    c.sides.map((x) => h("div.igd-ctl", {}, h("span.igd-cl", { text: x.label }), h("b.igd-names", { text: x.units.map((u) => u.name).join(", ") }))),
+    c.last ? note(c.last.join(" \u00b7 ")) : null,
+    c.crew.length ? h("div.igd-ctl", {}, h("span.igd-cl", { text: c.crewLabel }), h("span.igd-cmds", {}, c.crew.map((x) => h("button.igd-btn", { fk: `crew:${x.id}`, text: x.name, tip: x.tip, on: { click: () => handlers.act?.(x.id) } })))) : null,
+    num(c.distance),
+    h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: c.obstacles.label }), segSend(c.obstacles, "chase:obs")),
+    h("div.igd-cmds", {}, go(c.roll, "chase:roll", ".igd-primary"), c.end.map((b) => go(b, `chase:end:${b.id}`))))
+    : h("article.igd-npc", {}, note(c.hint),
+      c.none ? note(c.none) : c.units.map((u) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: u.name }),
+        h("span.igd-seg", {}, u.choices.map((x) => h("button", { fk: `side:${u.id}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => put({ side: { [u.id]: x.side } }) } }))))),
+      h("div.igd-ctl", { data: { type: "number" } }, h("span.igd-cl", { text: c.distance.label }), h("span.igd-step", {}, h("input", { fk: "chase:d0", attrs: { type: "number", min: c.distance.min, max: c.distance.max, value: c.distance.value, "aria-label": c.distance.label }, on: { change: (e, el) => put({ distance: el.value }) } }))),
+      h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: c.obstacles.label }), h("span.igd-seg", {}, c.obstacles.choices.map((x) => h("button", { fk: `obs0:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => put({ obstacles: x.value }) } })))),
+      h("div.igd-cmds", {}, go(c.start, "chase:start", ".igd-primary"), c.start.disabled ? h("span.igd-note", { text: c.start.disabled }) : null));
+  const pickOf = (p, selected) => h("div.igd-ctl", { data: { type: "select" } }, h("span.igd-cl", { text: p.label }),
+    h("select", { fk: `sel:${p.id}`, attrs: { "aria-label": p.label }, on: { change: (e, el) => { const x = p.choices.find((q) => q.id === el.value); if (!selected) el.value = ""; if (x) send(x.req); } } },
+      selected ? null : h("option", { text: "\u2026", attrs: { value: "" } }), p.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id, selected: selected && x.id === p.value } }))));
+  const vehicle = (v) => h("article.igd-npc", {}, h("b.igd-actor", { text: v.name }), tags(v.tags), note(v.stats.join(" \u00b7 ")),
+    v.seats.map((x) => h("div.igd-ctl", {}, h("span.igd-cl", {}, h("b.igd-names", { text: x.name }), h("span.igd-note", { text: ` ${x.role}` })),
+      h("span.igd-cmds", {}, x.swap ? go(x.swap, `wheel:${v.id}:${x.id}`) : null, go(x.out, `out:${v.id}:${x.id}`)))),
+    note(v.empty), v.board ? pickOf(v.board, false) : null,
+    h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: v.flags.label }), h("span.igd-seg.igd-multi", {}, v.flags.items.map((x) => h("button", { fk: `vf:${v.id}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => send(x.req) } })))));
+  const task = (x) => h("article.igd-npc", {}, h("b.igd-actor", { text: x.name }), x.tag ? tags([x.tag]) : null, note(x.stats.join(" \u00b7 ")), pickOf(x.preset, true),
+    x.objectives.length ? note(x.objectives.join(" \u00b7 ")) : null, x.manual ? h("p.igd-note", {}, h("span", { text: `${x.manual.label}: ` }), h("b", { text: x.manual.items.join(", ") })) : null, note(x.hint));
+  return [
+    section(c.title, 0, chase),
+    section(s.vehicles.title, s.vehicles.items.length, s.vehicles.items.length ? s.vehicles.items.map(vehicle) : h("p.igd-empty", {}, h("span", { text: s.vehicles.empty }))),
+    section(s.challenges.title, s.challenges.items.length, s.challenges.items.length ? s.challenges.items.map(task) : h("p.igd-empty", {}, h("span", { text: s.challenges.empty }))),
   ];
 }
 
@@ -152,10 +194,10 @@ function draw(d, ui) {
   handleBtn.setAttribute("aria-expanded", String(!d.collapsed));
   swap(box, d.collapsed ? [] : [
     h("header.igd-head", {}, h("h2.ita-plate.igd-title", { text: d.title }), h("span.igd-turn", { text: d.turn })),
-    d.turnNote ? h("p.igd-note", { attrs: { role: "note" } }, icon("fa-person-running"), h("span", { text: d.turnNote })) : null,
+    d.turnNote ? h("p.igd-tip", { attrs: { role: "note" } }, icon("fa-person-running"), h("span", { text: d.turnNote })) : null,
     h("nav.igd-tabs", { attrs: { role: "tablist" } }, d.tabs.map((t) => h("button", { fk: `tab:${t.id}`, attrs: { role: "tab", "aria-selected": String(d.tab === t.id) }, on: { click: () => set({ tab: t.id }) } }, h("span", { text: t.label }), t.n ? h("b.igd-badge", { text: String(t.n) }) : null))),
     h("div.igd-wait", { attrs: { role: "status" } }, h("span.igd-k", { text: d.waitingLabel }), d.waiting.length ? waitChips(d.waiting) : h("span.igd-nobody", { text: d.nobody })),
-    h("div.igd-body", { data: { keepScroll: d.tab }, attrs: { role: "tabpanel" } }, d.tab === "journal" ? journal(d) : d.tab === "table" ? table(d) : now(d)),
+    h("div.igd-body", { data: { keepScroll: d.tab }, attrs: { role: "tabpanel" } }, d.tab === "journal" ? journal(d) : d.tab === "table" ? table(d) : d.tab === "scene" && d.scene ? scene(d.scene) : now(d)),
   ]);
   place();
 }

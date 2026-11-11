@@ -325,7 +325,9 @@ function registerHooks() {
     schedule();
   });
   // actor data: linked tokens read the world actor, unlinked ones a synthetic actor whose changes arrive via updateToken (delta) as well
-  Hooks.on("updateActor", (actor, changes, _o, userId) => { if (actor?.type === "challenge") { schedule(); cam(Camera.onUpdateActor, actor, changes, userId); } });
+  /* a plain tick of the tactics clock (time left changes, still above 0, the rating untouched) stays out of the cinematic camera, as the turn clock does */
+  const plainTick = (changes, o) => !!o?.ipuTactics && Number(changes?.system?.derived?.resolve?.value) > 0 && changes?.system?.derived?.health === undefined;
+  Hooks.on("updateActor", (actor, changes, o, userId) => { if (actor?.type === "challenge") { schedule(); const quiet = plainTick(changes, o); if (quiet) cam(Camera.hush, 2500); cam(Camera.onUpdateActor, actor, changes, userId); if (quiet) cam(Camera.hush, 0); } });
   Hooks.on("renderApplicationV2", (app, el) => { try { injectUnitSelect(app, el); } catch (e) { console.warn(LOG, "sheet time unit", e); } });
   Hooks.on("deleteActor", (actor) => { if (actor?.type === "challenge") schedule(); });
   Hooks.on("createActor", (actor) => { if (actor?.type === "challenge") schedule(); });

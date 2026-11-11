@@ -94,7 +94,7 @@ function gate(v, I, R, g) {
   mv.stop = String(g.reason ?? "blocked").slice(0, 24); return "stop";                           // the map's own "blocked", another module's listener
 }
 /** The stretches of a route. Returns true when the travelling is over (R.goto is the caller's). */
-function travel(v, I, R) {
+export function travel(v, I, R) {
   const mv = I.data.mv;
   if (mv.kind === "inZone" || mv.stop) return true;
   if (mv.put) {                                                                                  // an arrival nobody is asked about: a teleport [B2034], sky high and orbit [B2387-2388], the return [R16]
@@ -122,7 +122,7 @@ function travel(v, I, R) {
   }
   mv.stop = "tooManyStops"; return true;
 }
-const moveEvent = (I, type = "move") => { const mv = I.data.mv; return { type, combatant: mv.who, from: mv.from, to: mv.at ?? mv.to, planned: mv.to, mode: mv.mode ?? null, zones: mv.total ?? 0, stopped: mv.stop ?? null, group: mv.group ?? [] }; };
+export const moveEvent = (I, type = "move") => { const mv = I.data.mv; return { type, combatant: mv.who, from: mv.from, to: mv.at ?? mv.to, planned: mv.to, mode: mv.mode ?? null, zones: mv.total ?? 0, stopped: mv.stop ?? null, group: mv.group ?? [] }; };
 
 /* ------------------------------------------------------------------ move */
 const optsOf = (v, inst) => ({ free: inst.data?.free, prepaid: inst.cause === "interrupt" || inst.data?.prepaid === true, mode: v.entry(inst)?.move?.mode, charging: inst.data?.charging === true });
@@ -130,6 +130,7 @@ const priced = (v, inst) => (v.facts.zones ? MP.priceMove(v.facts.zones, v.state
 export const move = {
   STEPS: Object.freeze(["check", "start", "travel", "arrive", "close"]),
   legality(v, inst) {
+    if (!inst.data?.free && M.statusesOf(v.state, inst.actor).some((s) => s.id === "inVehicle")) return bad("inVehicle", { gmMayAllow: 1 });   // P7 [B2325-2332]: aboard a vehicle one gets out first; the vehicle moves by being handled
     const pr = priced(v, inst);
     if (!pr.ok) return bad(pr.reason, { ...pr.params, ...(pr.gmMayAllow ? { gmMayAllow: 1 } : {}) });
     if (pr.kind === "inZone" && pr.cost === "free" && !P1.isOnTurn(v.state, inst.actor)) return bad("notYourTurn", { gmMayAllow: 1 });   // [L6] [B2383]

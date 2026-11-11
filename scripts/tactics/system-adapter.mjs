@@ -99,8 +99,7 @@ export function ownersOf(actor) {
 }
 /** does this user own the combatant (its actor's REAL ownership table; a claimed role never counts)? */
 export function owns(combatant, user) {
-  const a = actorOf(combatant);
-  return !!a && !!user && O.ownsFrom(a.ownership, user.id, CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
+  const a = actorOf(combatant); return !!a && !!user && O.ownsFrom(a.ownership, user.id, CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
 }
 /** One Participant of ops-pure for a Combatant document. */
 export function participant(c) {
@@ -112,6 +111,7 @@ export function participant(c) {
     owners: ownersOf(a),
     defeated: !!c.isDefeated,
     challenge: a?.type === "challenge",                              // no card [I12] [R22]
+    vehicle: a?.type === "vehicle",                                  // P7: no card either, the people aboard act [B2936]
     summonOf: S.isId(summonOf) ? summonOf : null,                    // acts on its owner's turn [I14]; set by the action engine or the GM
     veteran: hasTalent(a, "combatVeteran"),                          // [I7]
     reflexes: hasTalent(a, "fastReflexes"),                          // [I6]
@@ -165,11 +165,14 @@ export function actorFacts(actor) {
   if (!actor) return null;
   const s = actor.system ?? {};
   const attrs = Object.fromEntries(ATTRS.map((k) => [k, num(s.attributes?.[k]?.value)]));
-  const armorMax = Math.max(0, ...Object.values(s.bonuses?.armorProtection ?? {}).map((v) => num(v)));
   const kind = actor.type === "superhero" ? "hero" : actor.type === "minions" ? "minions" : actor.type === "challenge" ? "challenge" : actor.type === "vehicle" ? "vehicle" : "npc";
   const flags = actor.flags?.[MOD]?.tactics ?? {};
+  const armorMax = kind === "vehicle" ? num(s.armour) : Math.max(0, ...Object.values(s.bonuses?.armorProtection ?? {}).map((v) => num(v)));
+  /* P7: a challenge counts its time in the unit of the challenges HUD (missing = rounds); a vehicle carries its table row [B2936-2941] */
+  const p7 = kind === "challenge" ? { timeUnit: actor.flags?.[MOD]?.timeUnit ?? "rounds" } : kind === "vehicle" ? { vehicle: { type: s.type ?? "ground", speed: Math.max(1, num(s.speed)), maneuver: num(s.maneuverability), passengers: num(s.passengers),
+    weapons: actor.items.filter((i) => weaponFacts(actor, i.id)?.damage != null).length } } : { powers: actor.items.filter((i) => i.type === "power").map((i) => String(i.name ?? "").slice(0, 60)).slice(0, 40) };
   return {
-    kind, npc: kind !== "hero", attrs,
+    kind, npc: kind !== "hero", attrs, ...p7,
     health: num(s.derived?.health?.value), maxHealth: num(s.derived?.health?.max), resolve: num(s.derived?.resolve?.value), maxResolve: num(s.derived?.resolve?.max),
     crits: actor.items.filter((i) => i.type === "criticalInjury").map(injuryNumber).filter((n) => n != null),
     unknownInjuries: actor.items.filter((i) => i.type === "criticalInjury" && injuryNumber(i) == null).length,     // injuries added by hand that the table does not resolve: shown to the GM, never guessed
@@ -178,7 +181,7 @@ export function actorFacts(actor) {
     members: kind === "minions" ? num(s.derived?.health?.value) : undefined,           // the system keeps a group's size as its Health [B2827]
     huge: flags.huge === true, grown: flags.grown === true, impervious: flags.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
     regeneration: flags.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
-    movement: movementOf(actor),
+    movement: kind === "vehicle" ? [{ mode: "vehicle", speed: p7.vehicle.speed, aerial: ["aerial", "space"].includes(p7.vehicle.type) }] : movementOf(actor),
     vacuumSafe: flags.vacuumSafe === true || actor.items.some((i) => NAME_TYPES.includes(i.type) && /^(adaptation|lifesupport)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
     major: flags.major === true, immunities: Array.isArray(flags.immunities) ? flags.immunities : [], vulnerabilities: Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : [],
   };

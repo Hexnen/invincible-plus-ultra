@@ -169,7 +169,7 @@ function queueOnce(W, point, key, blocks) {
 function startRound(W, round) {
   const s = W.s, parts = W.ctx.parts ?? [];
   s.round = round; s.phase = "draw"; s.sched = { done: [] };
-  const live = new Set(parts.filter((p) => !p.challenge).map((p) => p.id));
+  const live = new Set(parts.filter((p) => !p.challenge && !p.vehicle).map((p) => p.id));
   for (const id of Object.keys(s.ledger)) if (!live.has(id)) delete s.ledger[id];
   for (const id of live) s.ledger[id] = Lg.newLedger(round, s.ledger[id]);
   for (const k of Object.keys(s.counters ?? {})) if (k.startsWith("round:")) delete s.counters[k];                 // spec 6.4: per-round use counters
@@ -321,6 +321,7 @@ const OPS = {
     if (s.phase !== "turns") return err("busy");
     if (s.init.curMember) closeTurn(W, s.init.curMember);
     s.init = I.closeRound(s.init);
+    if (s.kind === "chase" && !s.init.slots.length) s.phase = "roundEnd";      // P7 [B3432]: a chase holds no cards; its rounds turn at the GM's word
     run(W);
   },
   prevTurn(W) {
@@ -415,7 +416,7 @@ const OPS = {
         if (r.ok) s.ledger[who] = r.ledger;
         drop(); break;
       }
-      case "challengeFail": ev(W, "challenge", { challenge: p.about, state: "failed", choice: String(a.value ?? "") }); drop(); break;
+      case "challengeFail": ev(W, "challenge", { challenge: p.about, state: "failed", choice: String(a.value ?? "") }); if (a.value === "run") W.effects.push({ type: "challengeFail", challenge: p.about }); drop(); break;      // P7: the consequence is the engine's (flows/challenge.mjs)
       default: return err("unknown");
     }
     run(W);
@@ -459,7 +460,7 @@ const OPS = {
     for (const id of known) if (!ids.has(id)) removeOne(W, id);
     if (s.round >= 1 && s.phase !== "idle" && s.phase !== "sceneEnd") {
       for (const p of parts) {
-        if (p.challenge) continue;
+        if (p.challenge || p.vehicle) continue;
         if (!s.ledger[p.id]) s.ledger[p.id] = Lg.newLedger(s.round);
         if (!I.eligible(p) || I.slotOf(s.init, p.id)) continue;
         const r = I.addCombatant(s.init, p.id, mkId(W));                              // [A-1]

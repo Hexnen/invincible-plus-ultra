@@ -23,7 +23,7 @@ const optReq = (p, o, op) => ({ op, prompt: p.id, value: o.data && isObj(o.data)
 /** GM desk card kinds this engine raises (spec 13.1 + the ones the spec has no row for; reported as holes): */
 export const CARD_KINDS = Object.freeze(["reaction", "exception", "other", "direction", "stunt", "helpOverride", "revalidate", "npcBroken", "proxy",
   "gate", "tokenConfirm", "counter", "dodgeMove", "stunts", "moveStop", "moveApprove", "minionLoss", "minionsFate", "knockDir", "disarm",
-  "outcome", "hazardDodge", "hazardStunts", "fireSpread", "vacuumDeath"]);                    // P5: the GM's word on a narrative action, a dodge against a blast, the hazards' cards
+  "outcome", "hazardDodge", "hazardStunts", "fireSpread", "vacuumDeath", "objective", "chaseCatch", "chaseOption"]);                    // P5: the GM's word on a narrative action, a dodge against a blast, the hazards' cards
 
 function card(p, ctx, proxy = false) {
   return {
@@ -92,13 +92,18 @@ function promptModel(p, ctx) {
 export function barModel(view, cid, ctx = {}) {
   const P1 = ctx.P1;
   const onTurn = P1 ? P1.isOnTurn(view, cid) : false, busy = (view.stack ?? []).length > 0;
+  /* P7: an entry with a `when` word (P5 rows carry an object there: see `applies`) is offered only in its situation (a challenge in the fight, a vehicle to get into, aboard, at the wheel).
+     ctx.special() -> [{ id, name, kind: "challenge" | "vehicle" }] the combatants without a card the viewer may see. */
+  const ride = (view.statuses?.[cid] ?? []).find((s) => s.id === "inVehicle")?.data ?? null, special = typeof ctx.special === "function" ? ctx.special() : [];
+  const fits = (e) => typeof e.when !== "string" || (e.when === "challenge" ? special.some((x) => x.kind === "challenge") : e.when === "onFoot" ? !ride && special.some((x) => x.kind === "vehicle") : e.when === "aboard" ? !!ride : e.when === "driver" ? ride?.role === "driver" : true);
   const broken = Object.keys(view.statuses ?? {}).filter((id) => (view.statuses[id] ?? []).some((s) => s.id === "broken"));
-  const actions = C.entriesFor(view, cid).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && applies(e, cid, view.statuses ?? {}, broken)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
+  const actions = C.entriesFor(view, cid).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && fits(e) && applies(e, cid, view.statuses ?? {}, broken)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
     const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", {}) : { ok: false, reason: "noLedger" };
-    const reason = busy ? "busy" : !onTurn && e.cost !== "free" ? "notYourTurn" : pay.ok ? null : pay.reason ?? "noAction";
+    const unit = pay.ok && pay.pay ? (view.ledger?.[cid]?.grants ?? []).find((g) => g.id === pay.pay) : null, granted = !onTurn && !!unit && unit.kind !== "base";      // a unit usable out of turn pays it (the crew's attack in a chase [B3438], a GM grant)
+    const reason = busy ? "busy" : !onTurn && e.cost !== "free" && !granted ? "notYourTurn" : pay.ok ? null : pay.reason ?? "noAction";
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
-      attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders", disabled: reason,
-      attrs: attrChoices(e), attrOptional: e.roll?.optional === true, optTarget: (e.target?.n?.[0] ?? 0) === 0 && (e.target?.n?.[1] ?? 0) > 0, wantsText: e.text === 1, opposeAttr: e.oppose?.who === "target" ? e.oppose.attr : null, about: e.when?.anyone ?? null, situational: !!e.when,   // P5 (flow "act")
+      attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders", when: typeof e.when === "string" ? e.when : null, disabled: reason,
+      attrs: attrChoices(e), attrOptional: e.roll?.optional === true, optTarget: (e.target?.n?.[0] ?? 0) === 0 && (e.target?.n?.[1] ?? 0) > 0, wantsText: e.text === 1, opposeAttr: e.oppose?.who === "target" ? e.oppose.attr : null, about: e.when?.anyone ?? null, situational: !!e.when && typeof e.when === "object",   // P5 (flow "act")
       req: (decl = {}) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id } }), exceptionReq: (decl, text) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id, exception: { text } } }) };
   });
   return { combatant: cid, name: nameOf(ctx, cid), onTurn, free: !!view.free?.[cid], budget: P1 ? P1.budget(view, cid) : null, statuses: (view.statuses?.[cid] ?? []).map((s) => s.id),

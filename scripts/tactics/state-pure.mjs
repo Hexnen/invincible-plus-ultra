@@ -234,6 +234,8 @@ export function sanitize(raw) {
     s.summons = plainList(raw.summons); s.karma = plainList(raw.karma);
     s.statuses = plainMap(raw.statuses); s.counters = plainMap(raw.counters); s.knowledge = plainMap(raw.knowledge); s.revealed = plainMap(raw.revealed); s.npc = plainMap(raw.npc);
     if (isObj(raw.chase)) s.chase = plain(raw.chase);
+    if (isObj(raw.vehicles)) s.vehicles = plain(raw.vehicles);               // P7: who sits where, what is broken (flows/vehicle.mjs)
+    if (isObj(raw.challenges)) s.challenges = plain(raw.challenges);         // P7: the objectives and side effects the GM set up (flows/challenge.mjs)
     s.txOpen = engineMap(raw.txOpen);                             // the action engine keeps its open transactions here [D]
     return s;
   } catch { return null; }

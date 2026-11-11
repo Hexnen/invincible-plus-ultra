@@ -13,6 +13,7 @@
    says its stats are revealed, whatever `facts.attrs` would answer; the roster of possible targets is the view's ledger (a concealed
    combatant is not in it). The chance shown to a player is a BAND from the player's own pool [D]; the desk shows the GM percentages. */
 import { dice } from "../../rules/index.mjs";
+import { sceneData } from "./scene-pure.mjs";
 
 const isKey = (s) => typeof s === "string" && s.startsWith("ITAC.");
 const has = (t, key) => t(key, {}, null) !== null;
@@ -77,9 +78,27 @@ export function rosterOf(facts, cid) {
 }
 /** candidates in the order the action most likely wants them (an attack: the other side first; orders: the own side first) */
 export function targetsFor(action, facts, cid) {
+  if (action.targetWho === "challenge" || action.targetWho === "vehicle") return specialOf(facts, action.targetWho);
   const first = action.targetWho === "ally" ? "own" : "other";
-  const list = rosterOf(facts, cid);
-  return [...list.filter((r) => r.side === first), ...list.filter((r) => r.side !== first)].map((r) => ({ ...r, likely: r.side === first }));
+  const list = rosterOf(facts, cid), ride = (facts.view?.statuses?.[cid] ?? []).find((s) => s.id === "inVehicle")?.data?.vehicle ?? null;
+  return [...[...list.filter((r) => r.side === first), ...list.filter((r) => r.side !== first)].map((r) => ({ ...r, likely: r.side === first })), ...(action.flow === "attack" ? specialOf(facts, "vehicle", false).filter((x) => x.id !== ride) : [])];
+}
+/* P7: what stands in the fight without a card (a challenge, a vehicle); a concealed one is not in facts.special() */
+const specialOf = (facts, kind, likely = true) => (facts.special?.() ?? []).filter((x) => x.kind === kind).map((x) => ({ id: x.id, name: x.name, npc: true, img: x.img ?? null, side: "other", unseen: false, likely }));
+const ATTR_IDS = ["fighting", "agility", "strength", "reason", "intuition", "presence"];
+/* P7 [B2839]: how the hero goes about a challenge: one of its listed ways (attribute, a minimum, a power), or an idea of the player's own
+   (an attribute and a few words; the GM accepts it on a card) */
+function approachOf(facts, ch, own, bar, t) {
+  const cfg = ch ? facts.view?.challenges?.[ch] : null, mine = attrsFor(facts, bar.combatant) ?? {};
+  const groups = (cfg?.objectives ?? []).map((o) => ({ id: o.id, label: t(`ITAC.ui.objective.${o.id}`, {}, String(o.id)), rows: (o.options ?? []).map((x, i) => {
+    const id = `${o.id}.${i}`, low = x.minAttr && Number(mine[x.attr]) < x.minAttr;
+    return { id, attr: x.attr, label: [[attrText(t, x.attr), x.minAttr ? t("ITAC.ui.approach.min", { n: x.minAttr }) : null].filter(Boolean).join(" "), x.power ? String(x.power) : null].filter(Boolean).join(" \u00b7 "),
+      tip: low ? reasonText(t, "attrTooLow") : x.power ? t("ITAC.ui.approach.power", { power: String(x.power) }) : null, dim: !!low, picked: own.opt === id };
+  }) }));
+  const rows = groups.flatMap((g) => g.rows), sel = rows.find((r) => r.picked) ?? null, ownOn = !sel && (own.opt === "own" || !rows.length), attr = ATTR_IDS.includes(own.attr) ? own.attr : null, text = (own.text ?? "").trim();
+  const why = sel ? null : !ownOn ? t("ITAC.ui.need.approach") : !attr ? t("ITAC.ui.need.attr") : rows.length && !text ? t("ITAC.ui.need.text") : null;
+  return { label: t("ITAC.ui.approach"), groups, attr: sel?.attr ?? (ownOn ? attr : null), why, decl: sel ? { mode: sel.id } : ownOn && attr ? { attr, text } : {},
+    own: { label: t("ITAC.ui.approach.own"), picked: ownOn, lone: !rows.length, tip: t("ITAC.ui.approach.own.tip"), attrLabel: t("ITAC.ui.approach.attr"), attrs: ownOn ? ATTR_IDS.map((k) => ({ id: k, label: attrText(t, k), picked: attr === k })) : null } };
 }
 
 /* ------------------------------------------------------------------ one question (player prompt / desk card) */
@@ -161,7 +180,11 @@ function linesOf(p, t, facts, x) {
     case "veteran": out.push(t("ITAC.Prompt.veteran.Body", { name: about, card: d.card ?? "?" })); break;
     case "reflexes": out.push(t("ITAC.Prompt.reflexes.Body", { name: about })); break;
     case "grantConsent": out.push(t("ITAC.Prompt.grantConsent.Body", { name: about, from: d.from ? n(d.from) : t("ITAC.Someone") })); break;
-    case "challengeFail": out.push(t("ITAC.Prompt.challengeFail.Body", { name: about })); break;
+    case "challengeFail": out.push(t("ITAC.Prompt.challengeFail.Body", { name: about })); if ((d.effects ?? []).length) out.push(t("ITAC.ui.line.failEffects", { list: d.effects.map((k) => t(`ITAC.ui.effect.${k}`, {}, String(k))).join(", ") })); break;
+    /* P7 */
+    case "objective": out.push(t(d.why === "power" ? "ITAC.ui.line.objectivePower" : "ITAC.ui.line.objective", { name: about, challenge: n(d.challenge), attr: attrText(t, d.attr), power: String(d.power ?? "") })); if (d.text) out.push({ quote: String(d.text), by: about }); break;
+    case "chaseCatch": out.push(t(d.ram ? "ITAC.ui.line.chaseRam" : "ITAC.ui.line.chaseCharge", { name: about, target: n(d.target) })); break;
+    case "chaseOption": out.push(t("ITAC.ui.line.chaseOption", { name: about, obstacle: t(`ITAC.ui.chase.obstacle.${d.obstacle}`, {}, String(d.obstacle ?? "")), attr: attrText(t, d.attr) })); break;
     case "triggerQueue": out.push(t("ITAC.Prompt.triggerQueue.Body")); break;
     /* P5: the GM's word on a narrative action, and the cards of the hazards */
     case "outcome": {
@@ -315,10 +338,12 @@ function declarePanel(bar, a, own, facts, t) {
     items: list.map((id) => ({ id, label: attrText(t, id), dice: Number.isFinite(Number(mineA[id])) ? Number(mineA[id]) : null, picked: id === attr })) } : null;
   const wantsTarget = a.needsTarget || a.optTarget, carries = (id) => !a.about || (facts.view?.statuses?.[id] ?? []).some((s) => s.id === a.about);
   const pool0 = wantsTarget ? targetsFor(a, facts, bar.combatant) : [], fit = pool0.filter((r) => carries(r.id)), all = wantsTarget ? (fit.length ? fit : pool0) : null;
-  const picked = (own.targets ?? []).filter((id) => all?.some((x) => x.id === id)).slice(-arm.maxTargets);
+  const lone = all && ["challenge", "vehicle"].includes(a.targetWho) && all.length === 1 ? [all[0].id] : null;      // P7: one challenge, one vehicle: nothing to pick
+  const picked = lone ?? (own.targets ?? []).filter((id) => all?.some((x) => x.id === id)).slice(-arm.maxTargets);
   const targets = all ? all.map((r) => ({ id: r.id, name: r.name, img: r.img, likely: r.likely, picked: picked.includes(r.id), note: r.unseen ? t("ITAC.reason.unseen") : null })) : null;
+  const ap = a.flow === "challenge" ? approachOf(facts, picked[0], own, bar, t) : null;
   const tokens = (bar.tokens ?? []).map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source?.name}`, {}, String(k.source?.name ?? "")), needsGm: !!k.needsGm, picked: (own.tokens ?? []).includes(k.id) }));
-  const pool = poolPreview({ ...a, attr }, bar, facts, own.tokens ?? []);
+  const pool = poolPreview({ ...a, attr: ap?.attr ?? attr }, bar, facts, own.tokens ?? []);
   if (pool) for (const x of arm.dice) { pool.parts.push(x); pool.total = Math.max(1, pool.total + x.dice); }
   let chance = null;
   if (pool) {
@@ -328,20 +353,20 @@ function declarePanel(bar, a, own, facts, t) {
     chance = { level: c.level, text: t(`ITAC.ui.band.${c.band}`), defended: c.defended ? { level: c.defended.level, text: t(`ITAC.ui.band.${c.defended.band}`), label: a.opposeAttr ? t("ITAC.ui.ifResists", { attr: attrText(t, a.opposeAttr) }) : t("ITAC.ui.ifDefends", { how: t(`ITAC.action.${a.defense}`) }) } : null };
   }
   const text = (own.text ?? "").trim();
-  const needsZone = a.flow === "fastball";
-  const why = arm.why ?? (a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : chooser && !attr && !a.attrOptional ? t("ITAC.ui.need.attr") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : null);
-  const decl = { ...(wantsTarget ? { targets: picked.slice() } : {}), ...arm.decl, ...(chooser && attr ? { attr } : {}), ...(a.wantsText && text ? { text } : {}), ...(needsZone && own.to ? { to: own.to } : {}), ...((own.tokens ?? []).length ? { tokens: own.tokens.slice() } : {}), ...(a.needsText ? { text } : {}) };
+  const needsZone = a.flow === "fastball" || a.flow === "drive";      // drive (P7): where the vehicle goes
+  const why = arm.why ?? (a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : chooser && !attr && !a.attrOptional ? t("ITAC.ui.need.attr") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : ap?.why ?? null);
+  const decl = { ...(wantsTarget ? { targets: picked.slice() } : {}), ...arm.decl, ...(chooser && attr ? { attr } : {}), ...(a.wantsText && text ? { text } : {}), ...(needsZone && own.to ? { to: own.to } : {}), ...((own.tokens ?? []).length ? { tokens: own.tokens.slice() } : {}), ...(a.needsText ? { text } : {}), ...(ap?.decl ?? {}) };
   /* the executor refused this very declaration as against the rules (out of reach, no line of sight...): the reason stays in the panel
      with the way round it, a declaration that carries a request for an exception (a card on the GM desk; the GM's own goes there too) */
   const ref = own.refused && own.refused.action === a.id && own.refused.key === picked.join(",") ? own.refused : null;
   const refused = ref ? { reason: t("ITAC.ui.blocked", { reason: reasonText(t, ref.reason, ref.params) }), text: facts.staff ? null : own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
     submit: { label: facts.staff ? t("ITAC.ui.exception.anyway") : t("ITAC.ui.exception.ask"), disabled: why ?? (facts.staff || (own.why ?? "").trim() ? null : t("ITAC.ui.exception.needText")),
       req: !why && (facts.staff || (own.why ?? "").trim()) ? a.exceptionReq(decl, facts.staff ? t("ITAC.ui.who.gm") : own.why.trim()) : null } } : null;
-  return { kind: "declare", action: a.id, title, cost, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, attrs, maxTargets: arm.maxTargets, weapons: arm.weapons, opts: arm.opts, notes: arm.notes,
+  return { kind: "declare", action: a.id, title, cost, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, attrs, approach: ap, maxTargets: arm.maxTargets, weapons: arm.weapons, opts: arm.opts, notes: arm.notes,
     self: a.optTarget && !picked.length ? t("ITAC.ui.target.self", { name: bar.name ?? "" }) : null,
     dest: needsZone ? { label: t("ITAC.ui.dest"), value: own.to ? zoneText(facts, t, own.to) : null, pick: t(own.to ? "ITAC.ui.move.again" : "ITAC.ui.pick.zone") } : null,
     pool: pool ? { total: pool.total, parts: pool.parts.map((x) => (x.label ? { label: x.label, dice: x.dice } : x.id === "token" ? { label: t(`ITAC.mod.${x.source}`, {}, String(x.source || t("ITAC.ui.bonus"))), dice: x.dice } : { label: attrText(t, x.id), dice: x.dice })) } : null, chance,
-    text: a.needsText || a.wantsText ? { value: own.text ?? "", placeholder: t(a.needsText ? "ITAC.ui.text.placeholder" : "ITAC.ui.text.optional") } : null,
+    text: a.needsText || a.wantsText || ap?.own.picked ? { value: own.text ?? "", placeholder: t(ap ? "ITAC.ui.approach.placeholder" : a.needsText ? "ITAC.ui.text.placeholder" : "ITAC.ui.text.optional") } : null,
     submit: { label: own.amend ? t("ITAC.ui.amend") : t("ITAC.ui.declare"), disabled: why, req: why ? null : own.amend ? { op: "amend", inst: own.amend, decl: { ...decl, action: a.id } } : a.req(decl) } };
 }
 /* ---- movement (P3): the map answers "where" (a zone picked on it, or a token dragged), the panel answers "how" and what it costs ---- */
@@ -447,7 +472,8 @@ export function dockData(model, own, facts, t) {
     disabled: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm: unused.length > 0, armed: !!own.endArmed }
     : { label: t("ITAC.ui.end"), tip: reasonText(t, "notYourTurn"), disabled: reasonText(t, "notYourTurn"), req: null, confirm: false, armed: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn
-  const turn = model?.turn?.combatant ? (bar.onTurn && !facts.staff ? t("ITAC.ui.turn.yours", { name: bar.name ?? "" }) : t("ITAC.ui.turn.of", { name: model.turn.name ?? t("ITAC.Someone") })) : "";
+  const chase = facts.view?.chase ? t("ITAC.ui.chase.line", { n: facts.view.chase.distance }) : null;      // P7: a chase has no turns, the line carries the distance
+  const turn = chase ?? (model?.turn?.combatant ? (bar.onTurn && !facts.staff ? t("ITAC.ui.turn.yours", { name: bar.name ?? "" }) : t("ITAC.ui.turn.of", { name: model.turn.name ?? t("ITAC.Someone") })) : "");
   return {
     show: true, canRest, rest: canRest && !panel && !own.peek, onTurn: !!bar.onTurn, round: model?.turn?.round ?? null,
     chars: bars.length > 1 ? bars.map((b) => ({ id: b.combatant, name: b.name, img: facts.c?.(b.combatant)?.img ?? null, onTurn: !!b.onTurn, sel: b.combatant === bar.combatant, asked: asked.has(b.combatant) })) : [],
@@ -561,8 +587,9 @@ export function deskData(model, own, facts, t) {
     kind: { label: t("ITAC.ui.karma.kind"), value: kKind, choices: KK.map((id) => ({ id, label: t(`ITAC.ui.karma.${id}`) })) }, who: { label: t("ITAC.ui.force.who"), value: kWho, choices: everyone },
     note: { value: ko.note ?? "", placeholder: t("ITAC.ui.karma.note") }, add: { label: t("ITAC.ui.karma.add"), disabled: kWho ? null : t("ITAC.ui.force.needWho"), req: kWho ? model.karmaReq({ who: kWho, kind: kKind, ...(kNote.trim() ? { note: kNote.trim() } : {}) }) : null } };
   return {
-    show: true, count, tab: ["now", "journal", "table"].includes(own.tab) ? own.tab : "now", collapsed: !!own.collapsed,
-    tabs: [{ id: "now", label: t("ITAC.ui.tab.now"), n: count }, { id: "journal", label: t("ITAC.ui.tab.journal"), n: 0 }, { id: "table", label: t("ITAC.ui.tab.table"), n: 0 }],
+    show: true, count, tab: ["now", "journal", "scene", "table"].includes(own.tab) ? own.tab : "now", collapsed: !!own.collapsed,
+    tabs: [{ id: "now", label: t("ITAC.ui.tab.now"), n: count }, { id: "journal", label: t("ITAC.ui.tab.journal"), n: 0 }, { id: "scene", label: t("ITAC.ui.tab.scene"), n: 0 }, { id: "table", label: t("ITAC.ui.tab.table"), n: 0 }],
+    scene: own.tab === "scene" ? sceneData(facts.view, own.scene ?? {}, facts, t) : null,      // P7: the chase, the vehicles, the challenges (scene-pure.mjs)
     title: t("ITAC.ui.desk"), waiting, waitingLabel: t("ITAC.ui.waitingFor"), nobody: model.turn?.combatant ? t("ITAC.ui.wait.nobody", { name: model.turn.name ?? "" }) : t("ITAC.ui.wait.idle"),
     turn: model.turn?.combatant ? t("ITAC.ui.turn.round", { n: model.turn.round ?? "?", name: model.turn.name ?? "" }) : "",
     turnNote: model.turn?.combatant && facts.c?.(model.turn.combatant)?.npc ? spent(model.turn.combatant) : null,
