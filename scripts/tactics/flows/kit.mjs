@@ -217,23 +217,57 @@ export function windowPrompts(v, inst, when, { skip = [], reactions }) {
     if (cid === inst.actor || skip.includes(cid)) continue;
     const c = v.facts.c(cid);
     if (!c || c.present === false || M.outOfAction(v.state, cid, c)) continue;                              // [B2707]
-    const list = reactions(v.state, cid, when, v.facts).filter((e) => e.reaction.who === "any" || inst.decl.targets.includes(cid));
+    const list = reactions(v.state, cid, when, v.facts).filter((e) => (e.reaction.who === "any" || inst.decl.targets.includes(cid)) && reactionFit(v, inst, cid, e).ok);      // U91: only what the book lets this one do from where it stands
     if (!list.length) continue;
-    const options = list.map((e) => reactionOption(v, cid, e));
+    const options = list.map((e) => reactionOption(v, cid, e, inst));
     if (!options.some((o) => !o.disabled)) continue;                 // no legal option: skipped automatically (plan 5.2 step 4)
     const target = inst.decl.targets.includes(cid);
     if (!target && M.counterGet(v.state, passKey(cid))) continue;    // U11: said "no reaction this round" already
     /* U11: the card says who attacks whom with what (the view takes the attacker out again for somebody who cannot see it) */
     out.push({ key: `w:${when}:${cid}`, kind: "reaction", to: addressee(v, cid), about: cid, options: [...options, { id: PASS, label: "ITAC.opt.pass" }, ...(target || c.npc ? [] : [{ id: PASS_ROUND, label: "ITAC.opt.passRound" }])],
-      data: { when, attacker: inst.actor ?? undefined, action: inst.action, targets: inst.decl.targets.slice(0, 12), ...(target ? {} : { bystander: 1 }) } });
+      data: { when, attacker: inst.actor ?? undefined, action: inst.action, targets: (target ? inst.decl.targets : [...new Set(list.flatMap((e) => reactionFor(v, inst, cid, e)))]).slice(0, 12), ...(target ? {} : { bystander: 1 }) } });      // U91: a bystander's card names only those its answers are about
   }
   return out;
 }
-export function reactionOption(v, cid, e) {
+/** U91: WHERE a reaction may be taken, and about whom. The book ties some reactions to a place: Guardian answers an attack on "another
+    character in your zone" [B2115]; Discretion needs "an ally in the same zone" [B2108]. The entry says so in `reaction.place`
+    ("targetZone" / "allyZone"); before U91 nothing read a place, so a guardian two zones away was asked.
+    "The same zone" is the same spot, as everywhere else (facts.inZone). Where nobody can say where one of the two stands (no map of
+    zones, a combatant without a token) the place is not refused: the GM settles it, as with a grapple (`separated`).
+    Nobody is asked about somebody they do not know of (spec 10): a figure the reactor has as "unseen", or, for a reactor of the heroes'
+    side (whose player reads the card), one the GM keeps hidden. */
+const knownTo = (v, cid, t) => { const f = v.facts.c(t); return !!f && f.present !== false && v.state.knowledge?.[cid]?.[t] !== "unseen" && !(f.hidden === true && !v.facts.c(cid)?.npc); };
+const spotOf = (v, id) => v.facts.zone?.(id)?.spot ?? null;
+export const sameSpot = (v, a, b) => { const x = spotOf(v, a), y = spotOf(v, b); return x == null || y == null ? null : x === y; };      // null: nobody can say
+const NO_ALLY = ["challenge", "vehicle"];
+/** The attacked characters a reaction of somebody else may be about: other than the reactor, known to it, and in its zone where the entry asks for that. */
+export function reactionFor(v, inst, cid, e) {
+  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t));
+  return e?.reaction?.place === "targetZone" ? list.filter((t) => sameSpot(v, cid, t) !== false) : list;
+}
+/** The allies a target could put in its place [B2108]: of its side, in its zone, known to it, not the attacker and not attacked already. */
+export function alliesNear(v, inst, cid) {
+  const me = v.facts.c(cid);
+  return Object.keys(v.state.ledger ?? {}).filter((id) => { const f = v.facts.c(id);
+    return id !== cid && id !== inst.actor && !(inst.decl?.targets ?? []).includes(id) && !!f && !NO_ALLY.includes(f.kind) && !!f.npc === !!me?.npc && knownTo(v, cid, id) && sameSpot(v, cid, id) !== false; });
+}
+/** May `cid` take this reaction to this action now, from where it stands? Asked when the card is made AND when it is answered (the
+    guardian may have been moved away in between) AND when the answer is acted on. -> { ok, reason } */
+export function reactionFit(v, inst, cid, e) {
+  const r = e?.reaction;
+  if (!r || !inst) return { ok: true, reason: null };
+  if (r.place === "allyZone") return alliesNear(v, inst, cid).length ? { ok: true, reason: null } : { ok: false, reason: "noAllyNear" };
+  if (r.who !== "any") return { ok: true, reason: null };
+  if (reactionFor(v, inst, cid, e).length) return { ok: true, reason: null };
+  return { ok: false, reason: r.place === "targetZone" && (inst.decl?.targets ?? []).some((t) => t !== cid && knownTo(v, cid, t)) ? "notInYourZone" : "unseen" };
+}
+export function reactionOption(v, cid, e, inst = null) {
   const o = { id: `r:${e.id}`, label: e.label, name: e.name || undefined, cost: e.cost, data: { entry: e.id, effect: e.reaction.effect } };
   if (e.stress?.fixed) o.stress = e.stress.fixed;
   const pay = P1.canPay(v.state, cid, e.cost, { interrupt: true, resolve: v.facts.c(cid)?.resolve });
-  if (!pay.ok) o.disabled = pay.reason;
+  const fit = inst ? reactionFit(v, inst, cid, e) : { ok: true };
+  if (!fit.ok) o.disabled = fit.reason;                                                                     // U91: the place first: it is the reason the player can do something about
+  else if (!pay.ok) o.disabled = pay.reason;
   else if (e.stress?.fixed && !(v.facts.c(cid)?.resolve > 0)) o.disabled = "stressedOut";                   // [B2816]
   return o;
 }
