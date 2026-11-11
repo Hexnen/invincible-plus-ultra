@@ -21,7 +21,7 @@ const code = all.filter((f) => !f.startsWith("check-"));
 const PURE = code.filter((f) => /-pure\.mjs$/.test(f) || f.startsWith("flows/") || f === "source.mjs");
 /* the designed surfaces (the action dock and the GM desk): DOM builders and their wiring. Not thin by nature, so they are not under the
    cap of the Foundry-facing files; they hold no rule (checked below) and their logic is ui/model-pure.mjs, which is under the pure rules. */
-const SURFACE = ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs", "ui/pick.mjs", "ui/main.mjs", "ui/board.mjs", "ui/feedback.mjs"];      // W1: ui/board.mjs is the play on the map (its logic is ui/board-pure.mjs)
+const SURFACE = ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs", "ui/pick.mjs", "ui/main.mjs", "ui/board.mjs", "ui/feedback.mjs", "ui/tip.mjs"];      // W1: ui/board.mjs is the play on the map (its logic is ui/board-pure.mjs)
 const FACING = code.filter((f) => !PURE.includes(f) && !SURFACE.includes(f) && !["testkit.mjs", "lang.mjs", "lang-attacks.mjs", "lang-int.mjs", "lang-kit.mjs", "lang-fx.mjs", "lang-map.mjs", "lang-u10.mjs"].includes(f));
 const FORBIDDEN = /(?<![.\w])(game|ui|canvas|foundry|Hooks|CONFIG|CONST|ChatMessage|Roll|fromUuid|fromUuidSync|window|document|globalThis|setTimeout|socketlib)\s*[.(\[]/;
 const GLOBALS = /(^|[^.\w"'`])(game|Hooks|foundry|ui|canvas|CONFIG|ChatMessage|fromUuid|fromUuidSync|document|window|globalThis|setTimeout|Math\.random|Date\.now)\s*[.(\[]|\bnew Roll\b/;
@@ -31,7 +31,7 @@ const P5_PURE = ["actions-pure.mjs", "flows/acts.mjs", "flows/hazards.mjs"];    
 const P6_PURE = ["kit-pure.mjs", "kitdata-pure.mjs"];                                          // package P6: what a character brings (the book's entries as data, and their reader)
 for (const f of P6_PURE) ok(PURE.includes(f), `${f}: a pure file of package P6`);
 eq(PURE.filter((f) => !P5_PURE.includes(f) && !P6_PURE.includes(f)).sort(), ["catalog-pure.mjs", "desk-pure.mjs", "director-pure.mjs", "economy-pure.mjs", "engine-pure.mjs", "flows/attack.mjs", "flows/challenge.mjs", "flows/chase.mjs", "flows/kit.mjs", "flows/move.mjs", "flows/simple.mjs", "flows/vehicle.mjs", "initiative-pure.mjs", "journal-pure.mjs",
-  "ledger-pure.mjs", "mods-pure.mjs", "movement-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "ui/board-pure.mjs", "ui/feedback-pure.mjs", "ui/keys-pure.mjs", "ui/layout-pure.mjs", "ui/model-pure.mjs", "ui/scene-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");
+  "ledger-pure.mjs", "mods-pure.mjs", "movement-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "ui/board-pure.mjs", "ui/feedback-pure.mjs", "ui/keys-pure.mjs", "ui/layout-pure.mjs", "ui/model-pure.mjs", "ui/scene-pure.mjs", "ui/tip-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");      // U88 / U97: ui/tip-pure.mjs is where a tooltip opens (ui/tip.mjs is its DOM half, a surface file)
 for (const f of P5_PURE) ok(PURE.includes(f), `${f}: a pure file of package P5`);
 for (const f of PURE) {
   const c = strip(read(f));
