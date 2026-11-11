@@ -3,6 +3,7 @@
 import { ok, eqc as eq, done, Table } from "./testkit.mjs";
 import * as M from "./mods-pure.mjs";
 import * as P1 from "./economy-pure.mjs";
+import { MTable } from "./check-kit-map.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -173,6 +174,59 @@ for (const s of ["unconscious", "dead"]) {
   ok(!opts(T.prompt("reaction", "N1")).includes("block"), "D9: the holder is offered no block");
   eq(T.lastRequest()?.key, "attack", "D9: the attack on the holder goes to its roll");
   eq(P1.budget(T.state, "N1").quick.filter((u) => u === "used").length, 0, "D9: no quick action of the holder is spent on a defence");
+}
+
+/* ================================================================== D7: a grapple is two characters in one place [B2496-2497] */
+const mv = (actor, to, extra = {}) => ({ op: "move", actor, to, ...extra });
+const FLY = [{ mode: "flight", tier: "basic" }];
+const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().length; i++) { const p = T.prompts()[0]; if (code(await T.gm({ op: "answerFor", prompt: p.id, value: pick[p.kind] ?? p.options?.[0]?.id })) !== "ok") break; } };
+{
+  const city = () => { const T = new MTable(); T.hero("H1", "p1", { attrs: { strength: 6 } }).hero("H2", "p2", { attrs: { strength: 6 } }).npc("N1", { health: 12 }).npc("N2", { health: 12, attrs: { strength: 6 } }); for (const c of ["H1", "H2", "N1", "N2"]) T.put(c, "z1"); T.order(["N1", "H1", "H2", "N2"]); return T; };
+  const grab = async (T) => { await T.gm(decl("N1", "grapple", ["H1"])); await T.answer("p1", "reaction", "pass", "H1"); await T.roll("attack", 1); await drain(T); };
+  const knock = async (T, by, user, t) => {
+    await T.req(user, decl(by, "slugfest", [t])); if (T.prompt("reaction", t)) await T.answer("gm", "reaction", "pass", t);
+    await T.roll("attack", 2); await T.req(user, { op: "answer", prompt: T.prompt("stunts").id, value: [`knockback@${t}`] });
+    await drain(T, { knockDir: "to:z2", direction: "go" });
+  };
+  { const T = city(); await grab(T);
+    eq([st(T, "N1"), st(T, "H1")], ["grappling", "grappled"], "D7: the grapple stands");
+    T.turn("H1"); T.turn("H2"); await knock(T, "H2", "p2", "N1");
+    ok(T.spot("N1") !== "z1" && T.spot("H1") === "z1", "D7: the holder is knocked out of the zone, the held one stays");
+    eq([st(T, "N1"), st(T, "H1")], ["", ""], "D7: the grapple ends for both");
+    eq(code(await T.gm({ op: "undo", tx: T.log.list[T.log.list.length - 1].id })), "ok", "D7: the knockback is undone");
+    eq([st(T, "N1"), st(T, "H1"), T.spot("N1")], ["grappling", "grappled", "z1"], "D7: and the grapple is back with the holder"); }
+  { const T = city(); await grab(T);                                                              // the mirror: the held one is knocked away
+    T.turn("H1"); T.turn("H2"); T.turn("N2"); await knock(T, "N2", "gm", "H1");
+    ok(T.spot("H1") !== "z1" && T.spot("N1") === "z1", "D7: the held one is knocked out of the zone, the holder stays");
+    eq([st(T, "N1"), st(T, "H1")], ["", ""], "D7: the grapple ends for both (the held one thrown)"); }
+  { const T = city(); await grab(T);                                                              // the holder's own move pulls the held one along [B2497]
+    eq(code(await T.gm(mv("N1", "z2"))), "ok", "D7: the holder moves");
+    eq([T.spot("N1"), T.spot("H1"), st(T, "N1"), st(T, "H1")], ["z2", "z2", "grappling", "grappled"], "D7: the held one is pulled along and stays held"); }
+}
+
+/* ================================================================== D12: a carry ends when the pair parts; only an ally is carried [B2392] */
+{
+  const air = () => { const T = new MTable(); T.hero("H1", "p1", { movement: FLY }).hero("H2", "p2").npc("N1", { health: 5 }); T.put("H1", "z1").put("H2", "z1").put("N1", "z3"); T.order(["H1", "H2", "N1"]); return T; };
+  { const T = air();
+    eq(code(await T.req("p1", mv("H1", "z2:elevated", { mode: "flight", carry: ["H2"] }))), "ok", "D12: a flyer carries an ally aloft");
+    eq([st(T, "H1"), st(T, "H2")], ["airborne,carrying", "airborne,carried"], "D12: both carry the marks while they stay in the air");
+    await T.gm({ op: "nextTurn" });
+    eq(code(await T.req("p2", mv("H2", "z2"))), "ok", "D12: the carried one gets down by itself");
+    eq([st(T, "H1"), st(T, "H2")], ["", ""], "D12: the carry is over for both");
+    eq(code(await T.req("p2", mv("H2", "z1"))), "ok", "D12: and it walks on");
+    await T.gm({ op: "nextTurn" }); for (let i = 0; i < 6 && T.state.init.curMember !== "H1"; i++) await T.gm({ op: "nextTurn" });
+    eq(code(await T.req("p1", mv("H1", "z3:elevated", { mode: "flight" }))), "ok", "D12: the flyer moves on alone"); }
+  { const T = air();                                                                              // a stale mark from before the fix never pins the carrier
+    await T.req("p1", mv("H1", "z2:elevated", { mode: "flight", carry: ["H2"] })); T.put("H2", "z5");
+    await T.gm({ op: "nextTurn" }); for (let i = 0; i < 6 && T.state.init.curMember !== "H1"; i++) await T.gm({ op: "nextTurn" });
+    eq(code(await T.req("p1", mv("H1", "z3:elevated", { mode: "flight" }))), "ok", "D12: a carrier whose passenger is elsewhere still moves");
+    eq([st(T, "H1"), st(T, "H2")], ["", ""], "D12: and the stale marks go when it arrives"); }
+  { const T = air(); T.put("N1", "z1");
+    const r = await T.req("p1", mv("H1", "z2:elevated", { mode: "flight", carry: ["N1"] }));
+    eq([code(r), why(r), r.error?.params?.gmMayAllow], ["illegal", "carryUnwilling", 1], "D12: a player does not carry an enemy; the GM may allow it");
+    eq([T.spot("N1"), st(T, "N1")], ["z1", ""], "D12: the enemy stays where it was");
+    const g = await T.req("p1", { ...mv("H1", "z2:elevated", { mode: "flight", carry: ["N1"] }), decl: { exception: { text: "I grab him" } } });
+    eq([code(g), T.prompt("exception")?.to], ["ok", "gm"], "D12: asked as an exception it becomes a card for the GM"); }
 }
 
 done("check-defects");

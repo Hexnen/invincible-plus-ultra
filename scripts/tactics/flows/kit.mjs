@@ -225,6 +225,35 @@ export function grappleRelease(state, cid) {
   if (held) { out.push({ t: "status-", who: cid, id: "grappled" }); if (held.data?.by && M.hasStatus(state, held.data.by, "grappling")) out.push({ t: "status-", who: held.data.by, id: "grappling" }); }
   return out;
 }
+/** A grapple and a carry are links between two characters in ONE place [B2496-2497], [B2392]: the holder pulls the held one along, the
+    flyer and the carried one start and end a move together. Whatever takes one of a pair somewhere else (a forced move, a fall, a move
+    of its own, a throw) ends the link for both. Called by every flow that moves somebody, after the move, in the same transaction.
+    -> effects */
+const LINKS = Object.freeze({ grappling: ["held", "grappled"], grappled: ["by", "grappling"], carrying: ["held", "carried"], carried: ["by", "carrying"] });
+export function separated(v, ids) {
+  const Z = v.facts.zones, out = [], seen = new Set();
+  if (!Z) return out;
+  const drop = (who, id) => { const k = `${who}:${id}`; if (!seen.has(k) && M.hasStatus(v.state, who, id)) { seen.add(k); out.push({ t: "status-", who, id }); } };
+  for (const cid of new Set(ids)) for (const s of M.statusesOf(v.state, cid)) {
+    const link = LINKS[s.id], other = link ? s.data?.[link[0]] : null;
+    if (!link || typeof other !== "string") continue;
+    const a = Z.place(cid)?.spot, b = Z.place(other)?.spot;
+    if (a && b && a === b && M.hasStatus(v.state, other, link[1])) continue;
+    drop(cid, s.id); drop(other, link[1]);
+    if (s.id === "carrying" || s.id === "carried") { drop(cid, "airborne"); drop(other, "airborne"); }      // the mark of the pair that stayed in the air [B2392]
+  }
+  return out;
+}
+/** The carry marks of a character that is broken: nobody broken carries anybody [B2707]. -> effects */
+export function carryRelease(state, cid) {
+  const s = M.statusesOf(state, cid).find((x) => x.id === "carrying"), out = [];
+  if (!s) return out;
+  out.push({ t: "status-", who: cid, id: "carrying" });
+  if (M.hasStatus(state, cid, "airborne")) out.push({ t: "status-", who: cid, id: "airborne" });
+  const o = s.data?.held;
+  if (typeof o === "string") for (const id of ["carried", "airborne"]) if (M.hasStatus(state, o, id)) out.push({ t: "status-", who: o, id });
+  return out;
+}
 /** How many of a minion group fall to a hit that takes several at once (an area attack, full auto, a blast, a stunt that hits more than one) [OQ-1]:
     the GM's number, the damage taken is the suggestion. One card for the attack flow and for the hazards. -> { wait: true } | { taken } */
 export const MINION_LOSS_MAX = 12;
@@ -268,7 +297,7 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
   let cf = crits.critForHit({ taken: dm.taken, healthBefore: dm.healthBefore, deadlyHit, target: flags });   // [B2707], [B2708], [R9], [B2771], [B2828]
   if (cf.newlyBroken && once(`broken:${t}`)) {
     R.effects.push({ t: "status+", who: t, status: { id: "broken", source: { kind: "crit", owner: by ?? undefined, name: "broken" } } });
-    for (const e of grappleRelease(v.state, t)) R.effects.push(e);                             // [B2707]: a broken character holds nobody
+    for (const e of [...grappleRelease(v.state, t), ...carryRelease(v.state, t)]) R.effects.push(e);      // [B2707]: a broken character holds nobody and carries nobody
     R.events.push({ type: "broken", target: t });
     const bf = by ? v.facts.c(by) : null;                                                      // P6 [B2154] Merciless: 1 Resolve for breaking an enemy
     if (bf?.pass?.merciless && bf.resolve < bf.maxResolve && !!bf.npc !== !!tf.npc) R.effects.push({ t: "actor", who: by, path: "resolve", to: bf.resolve + 1 });

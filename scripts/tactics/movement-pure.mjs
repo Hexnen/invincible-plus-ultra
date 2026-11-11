@@ -160,9 +160,10 @@ export function priceMove(Z, state, cid, c, decl, o = {}) {
   }
   if (steps.some((s) => s.o)) notes.push("overWall");                                // [OQ-14]
   /* who goes along */
-  const held = M.statusesOf(state, cid).find((s) => s.id === "grappling")?.data?.held;
+  const beside = (x) => (typeof x === "string" && Z.place(x)?.spot === from.spot ? x : null);       // a link to somebody who is somewhere else is over (flows/kit.separated ends it when this move arrives)
+  const held = beside(M.statusesOf(state, cid).find((s) => s.id === "grappling")?.data?.held);
   const pulled = held ? [held] : [];                                                  // [B2497]: the held opponent is pulled along
-  const aloft = M.statusesOf(state, cid).find((s) => s.id === "carrying")?.data?.held;      // still carrying from an earlier move: the carried one goes along [B2392]
+  const aloft = beside(M.statusesOf(state, cid).find((s) => s.id === "carrying")?.data?.held);      // still carrying from an earlier move: the carried one goes along [B2392]
   const carry = [...new Set([...(Array.isArray(decl.carry) ? decl.carry : []), ...(aloft ? [aloft] : [])].filter((x) => typeof x === "string" && x !== cid))];
   if (carry.length) {
     for (const x of carry) if (Z.place(x)?.spot !== from.spot) return no("carryZone", { who: x });           // [B2392], [B2038]: from the mover's own zone

@@ -148,6 +148,10 @@ export const move = {
     if (!inst.data?.free && M.statusesOf(v.state, inst.actor).some((s) => s.id === "inVehicle")) return bad("inVehicle", { gmMayAllow: 1 });   // P7 [B2325-2332]: aboard a vehicle one gets out first; the vehicle moves by being handled
     const pr = priced(v, inst);
     if (!pr.ok) return bad(pr.reason, { ...pr.params, ...(pr.gmMayAllow ? { gmMayAllow: 1 } : {}) });
+    /* [B2392]: one carries a character who goes along; somebody of the other side is not carried but grappled and pulled [B2497]. Whether
+       an ally agrees is settled at the table [A34]; anybody else is the GM's word. */
+    const me = v.facts.c(inst.actor);
+    for (const x of Array.isArray(inst.decl?.carry) ? inst.decl.carry : []) { const o = v.facts.c(x); if (o && o.present !== false && !!o.npc !== !!me?.npc) return bad("carryUnwilling", { who: x, gmMayAllow: 1 }); }
     if (pr.kind === "inZone" && pr.cost === "free" && !P1.isOnTurn(v.state, inst.actor)) return bad("notYourTurn", { gmMayAllow: 1 });   // [L6] [B2383]
     if (pr.later && pr.later !== "none" && pr.later !== "gm" && !P1.canPay(v.state, inst.actor, pr.later, {}).ok) return bad("noAction");
     return fine;
@@ -204,6 +208,7 @@ export const move = {
           if (!aloft && M.hasStatus(v.state, cid, id)) R.effects.push({ t: "status-", who: cid, id });
         }
       }
+      if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [mv.who, ...(mv.group ?? [])])) if (!R.effects.some((x) => x.t === e.t && x.who === e.who && x.id === e.id)) R.effects.push(e); }   // [B2497], [B2392]: who left its pair behind is no longer of it
       R.events.push(moveEvent(I));
       I.data.result = mv.stop ? "stopped" : "done"; R.goto = "close"; return R;
     },
@@ -245,6 +250,7 @@ export const fastball = {
       const I = K.draft(inst), R = K.result(I), mv = I.data.mv, here = v.facts.zones.place(mv.who);
       mv.at = here?.spot ?? mv.at ?? mv.from;
       if (!mv.stop && here && !mv.cleared?.[`enter:${here.spot}`]) { const g = enterGate(v, I, R, here.spot); if (g === "wait") { R.wait = true; return R; } }
+      for (const e of K.separated(v, [mv.who])) R.effects.push(e);                               // thrown out of a grapple or a carry
       (I.data.notes ??= []).push({ note: "thrownMayCharge", who: mv.who });                     // [B2390]: the thrown character's charge is its own declaration
       R.events.push(moveEvent(I, "move")); I.data.result = mv.stop ? "stopped" : "done"; R.goto = "close"; return R;
     },
@@ -333,6 +339,7 @@ export const forced = {
       const I = K.draft(inst), R = K.result(I), mv = I.data.mv, here = v.facts.zones.place(mv.who);
       mv.at = here?.spot ?? mv.at ?? mv.from;
       if (here && !here.area && !mv.cleared?.[`enter:${here.spot}`]) { const g = enterGate(v, I, R, here.spot); if (g === "wait") { R.wait = true; return R; } }
+      if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [mv.who])) R.effects.push(e); }      // [B2497], [B2392]: knocked or thrown away from the one it held, was held by, carried or was carried by
       if (mv.fall && !K.flag(I, "fall")) { K.setFlag(I, "fall"); R.push = fallChild(mv.who, {}); return R; }
       R.events.push(moveEvent(I, "forcedMove")); I.data.result = mv.stop === "barrier" ? "barrier" : "done"; R.goto = "close"; return R;
     },
@@ -369,6 +376,7 @@ export const fall = {
       F.damage = out.damage; F.rolled = out.rolled;
       if (F.zone && !K.flag(I, "put")) { K.setFlag(I, "put"); R.effects.push({ t: "zput", key: "put", who: F.who, to: F.zone, group: [] }); R.wait = true; return R; }
       if (!F.zone && !K.flag(I, "note")) { K.setFlag(I, "note"); (I.data.notes ??= []).push({ note: "landingByGm", who: F.who }); }      // from the sky: where it comes down is the GM's word [R16]
+      if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [F.who])) R.effects.push(e); }      // fell out of a grapple or a carry
       if (out.damage > 0 && !K.flag(I, "dmg")) { K.setFlag(I, "dmg"); R.push = hazardChild([F.who], { kind: "fixed", amount: out.damage, armor: false, source: "kinetic", cause: "fall", id: "fall" }); return R; }   // no Armor against a fall [OQ-11] (the GM may change the number)
       R.events.push({ type: "fall", combatant: F.who, from: F.from, damage: out.damage }); I.data.result = "done"; R.goto = "close"; return R;
     },
