@@ -21,7 +21,7 @@ const HZ_ID = "ipu.hz";
 const ARM = { mode: null, tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, peek: true };
 let H = null;                 // main.mjs: { t, set(patch), send(req, after), press(fk), notify(kind, text), refresh(), request(req), bar(cid), dock(), showToken(cid) }
 let started = false, on = false, last = null, shown = {};
-let movePick = null, areaPick = null, menuBusy = false, hover = null, intentKey = "null", intentAt = 0, fire = null;
+let movePick = null, areaPick = null, menuBusy = false, hover = null, intentKey = "null", intentAt = 0, intentSpec = null, intentTimer = 0, fire = null;
 const steps = {};             // the GM's steppers: one request once the clicking stops
 
 const t = (...a) => H.t(...a);
@@ -29,7 +29,22 @@ const tokDoc = (cid) => { try { const td = last?.combat?.combatants.get(cid)?.to
 const tid = (cid) => tokDoc(cid)?.id ?? null;
 const cidOf = (td) => { try { const id = td?.document?.id ?? td?.id ?? null; return id ? last?.combat?.combatants.find((c) => c.tokenId === id)?.id ?? null : null; } catch { return null; } };
 const zoneOfCid = (cid) => { try { const td = tokDoc(cid); return td ? Zones.placeOf(td)?.zone ?? null : null; } catch { return null; } };
+const spotOfCid = (cid) => { try { const td = tokDoc(cid); return td ? Zones.placeOf(td)?.spot ?? null : null; } catch { return null; } };
 const norm = (key) => String(key ?? "").split("|").sort().join("|");
+/* U36: is this token ringed as caught by the area under the pointer? The map hands over every token it draws for this user; whom a
+   PLAYER may be told about is decided here as well, from the player's own view (P8f: it rested on the map alone): a combatant that
+   is not among the candidates of the declaration (the view does not hold it), one the character has not seen, and a token Foundry
+   hides or does not draw for this user are never counted. */
+function caught(doc, who, dec, staff) {
+  const cid = cidOf(doc);
+  if (cid === who) return false;
+  const x = cid ? dec.targets.find((y) => y.id === cid) : null;
+  if (!staff) {
+    if (doc?.hidden === true || doc?.document?.hidden === true || (doc?.object ?? doc)?.visible === false) return false;
+    if (cid && (!x || x.note)) return false;
+  }
+  return x?.reach === "in" && x.odds?.say ? { label: x.odds.say } : true;
+}
 function put(id, set, clear, spec) {
   const key = spec ? JSON.stringify(spec) : "";
   if ((shown[id] ?? "") === key) return;
@@ -43,7 +58,7 @@ function fireNow() {
   return fire.map;
 }
 /** U32: what waits on a way of `cid` beyond its walls (model-pure.movePanel asks through facts.hazards) */
-export function hazards(cid, zones, to) { try { return last ? BP.zoneHazards(fireNow(), zones, to, Mv.api.c(cid), Mv.api.zoneFacts(), t) : []; } catch { return []; } }
+export function hazards(cid, zones, to) { try { return last ? BP.zoneHazards(fireNow(), zones, to, { ...(Mv.api.c(cid) ?? {}), id: cid }, Mv.api.zoneFacts(), t) : []; } catch { return []; } }
 
 /* ---------- U38 / U39: the state of the table, from this user's view ---------- */
 function table() {
@@ -61,14 +76,14 @@ function reach() {
   const aim = dec?.aim?.length && tid(who) ? dec.aim.map((x) => ({ from: tid(who), to: tid(x.id) })).filter((l) => l.to) : [];
   put(BP.IDS.aim, Zones.link, Zones.clearLinks, aim.length ? { color: "target", style: "dashed", links: aim } : null);      // dashed: chosen, not declared yet
   /* U36: an area attack is put on a zone: the map fills it and rings everyone caught under the pointer, friends too */
-  const area = !!dec && areaMode(dec), inReach = area ? dec.targets.filter((x) => x.map && x.reach === "in") : [];
+  const area = !!dec && areaMode(dec), inReach = area ? dec.targets.filter((x) => x.map && x.reach === "in") : [], staff = !!last.staff;
   const zones = [...new Set(inReach.map((x) => zoneOfCid(x.id)).filter(Boolean))];
   if (area && zones.length && tid(who)) {
     const key = `${who}|${dec.action}|${zones.join(",")}|${dec.submit?.req ? 1 : 0}`;
     if (areaPick?.key !== key && !menuBusy) {
       const mine = (areaPick = { key });
       Zones.pickArea({ zones: zones.map((zone) => ({ zone, color: "target" })), radius: 0, token: tid(who), intent: { label: dec.title }, color: "target", title: t("ITAC.map.area.title", { name: d.who.name }), hint: t("ITAC.map.area.hint"),
-        tokens: (doc) => { const cid = cidOf(doc); if (cid === who) return false; const x = dec.targets.find((y) => y.id === cid); return x?.reach === "in" && x.odds?.say ? { label: x.odds.say } : true; } }).then((r) => {
+        tokens: (doc) => caught(doc, who, dec, staff) }).then((r) => {
         if (areaPick !== mine) return;
         areaPick = null;
         if (!r?.ok) { if (r?.reason !== "replaced") H.set({ armed: null, mode: null }); return; }
@@ -80,7 +95,10 @@ function reach() {
     }
   } else if (areaPick) { areaPick = null; Zones.cancelPick(); }
   const chosen = area ? dec.targets.find((x) => x.picked && x.map) : null, z = chosen ? zoneOfCid(chosen.id) : null;
-  put(BP.IDS.area, Zones.areaPreview, Zones.clearArea, z ? { at: z, radius: 0, tokens: true, level: tid(chosen.id) } : null);
+  /* D79: `level` is the SPOT the chosen target stands on (the zone and its level). A token id is not one of the forms the map reads
+     there: it took it for a spot that does not exist and rang everybody on every level of the zone. */
+  const lv = chosen ? spotOfCid(chosen.id) : null;
+  put(BP.IDS.area, Zones.areaPreview, Zones.clearArea, z && lv ? { at: z, radius: 0, tokens: true, level: lv } : null);
   /* the GM's hazard tool (the desk): the zone chosen there, with everyone standing in it, before the hazard is let loose */
   put(HZ_ID, Zones.areaPreview, Zones.clearArea, last.hz ? { at: last.hz, radius: 0, tokens: true, color: "danger" } : null);
 }
@@ -142,11 +160,22 @@ function intent() {
   if (!last || last.staff) return;
   const d = last.data, p = d?.show && d.panel?.kind === "declare" && !areaMode(d.panel) ? d.panel : null, from = p ? tid(d.who.id) : null;
   const to = p && hover && p.targets?.some((x) => x.id === hover && x.map) ? hover : p?.aim?.[0]?.id ?? null;
-  const spec = from ? { token: from, ...(to && tid(to) ? { to: tid(to) } : {}), label: String(p.title ?? "").slice(0, 40), ttl: 120000 } : null;
+  const spec = from ? { token: from, ...(to && tid(to) ? { to: tid(to) } : {}), label: String(p.title ?? "").slice(0, 40), ttl: INTENT_TTL } : null;
   const key = JSON.stringify(spec), now = Date.now();
-  if (key === intentKey && (!spec || now - intentAt < 100000)) return;
-  intentKey = key; intentAt = now;
+  if (key === intentKey && (!spec || now - intentAt < INTENT_AGAIN)) return;
+  say(spec, key);
+}
+/* D58 (U43, W1-7): the GMs' maps drop an intention after its `ttl` unless it is said again, and this surface spoke only inside a sync
+   or a change of the token under the pointer: an action armed and left standing fell silent, and left the GM's map with the action
+   still armed. Now a clock of the board's own says the standing intention again every INTENT_AGAIN ms, for as long as it stands
+   (the same words: the map sends an intention said again to the GMs again, zones-api.md section 32); it stops when the intention
+   is taken back. One message per period, never per mouse move. */
+export const INTENT_AGAIN = 100000, INTENT_TTL = 120000;
+function say(spec, key) {
+  intentKey = key; intentAt = Date.now(); intentSpec = spec;
+  clearTimeout(intentTimer); intentTimer = 0;
   try { Zones.intent(spec); } catch { /* the map is optional */ }
+  if (spec) { intentTimer = setTimeout(() => { intentTimer = 0; if (intentSpec && intentKey !== "null") say(intentSpec, intentKey); }, INTENT_AGAIN); intentTimer?.unref?.(); }
 }
 
 /* ---------- U35 / U44: a right click on a thing ---------- */
@@ -155,8 +184,11 @@ function tokenMenu(cid, acts) {
   const fix = () => {
     if (!staff) return [];
     const items = BP.gmItems(cid, facts.vitals?.(cid), last.view?.statuses?.[cid] ?? [], t);
-    return items.map((it) => (it.stepper ? { id: it.id, label: it.label, icon: it.icon, stepper: it.stepper, onStep: (v) => { const k = `${cid}|${it.id}`; clearTimeout(steps[k]); steps[k] = setTimeout(() => { steps[k] = 0; H.request(it.req(v)); }, 450); return v; } }
-      : { id: it.id, label: it.label, icon: it.icon, toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return env?.ok === false ? !o : o; } }));
+    /* a stepper sends ONE request once the clicking stops (450 ms): the STEP from the number the last request was counted from, which
+       the executor adds to what the character has at that moment (so a hit that landed while the menu stood open is kept). One
+       burst of clicks is one journal entry, one undo. A request that fails is said by main.mjs (`request` warns). */
+    return items.map((it) => { let from = it.stepper?.value; return (it.stepper ? { id: it.id, label: it.label, icon: it.icon, stepper: it.stepper, onStep: (v) => { const k = `${cid}|${it.id}`; clearTimeout(steps[k]); steps[k] = setTimeout(() => { steps[k] = 0; const was = from; from = v; if (v !== was) H.request(it.req(v, was)); }, 450); return v; } }
+      : { id: it.id, label: it.label, icon: it.icon, toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return env?.ok === false ? !o : o; } }); });
   };
   const spec = (rows) => {
     const list = BP.actItems(acts, rows, cid, facts, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.tip ? { tip: a.tip } : {}), ...(a.disabled ? { disabled: a.disabled } : {}),
@@ -206,7 +238,7 @@ function clear() {
     for (const id of [BP.IDS.links, BP.IDS.aim]) put(id, Zones.link, Zones.clearLinks, null);
     put(BP.IDS.warn, Zones.warnOn, Zones.clearHighlights, null);
     put(BP.IDS.area, Zones.areaPreview, Zones.clearArea, null); put(HZ_ID, Zones.areaPreview, Zones.clearArea, null);
-    if (intentKey !== "null") { intentKey = "null"; Zones.intent(null); }
+    if (intentKey !== "null") say(null, "null");
   } catch (e) { console.warn(LOG, "clear failed", e); }
 }
 /** Put on the map what the dock's data and this user's view say. ctx = { combat, facts, view, staff, rev, hz } | null (no fight here).
@@ -222,7 +254,7 @@ export function sync(data, ctx) {
   } catch (e) { console.warn(LOG, "sync failed", e); return false; }
 }
 /** the scene goes away: what was shown went with it */
-export function reset() { shown = {}; movePick = areaPick = null; menuBusy = false; hover = null; fire = null; }
+export function reset() { shown = {}; movePick = areaPick = null; menuBusy = false; hover = null; fire = null; clearTimeout(intentTimer); intentTimer = 0; intentSpec = null; intentKey = "null"; }
 export const camera = () => { try { return Zones.hasBoard() ? Zones.camera() : null; } catch { return null; } };
 export const setCamera = (follow) => { try { Zones.camera({ follow }); } catch { /* the map is optional */ } };
 export function start(h) {

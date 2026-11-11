@@ -194,14 +194,28 @@ function hitMath(v, I, t, o = {}, forced = null, doubled = false) {
   return { tags, base, ar, hd };
 }
 /** What a plain hit of this declaration would do to `t`, before anything is declared (engine-pure.opPreview, the map's preview on the
-    target's bar): the same numbers the damage step will use. `most` = with Double Damage [B2434]. Nothing is spent or written.
-    -> { base, taken, most, toStress, now, max } | null (an attack that does no damage) */
+    target's bar): the same numbers the damage step will use, TO ITS END (D50: the copies of Duplication take the damage first [B1910],
+    so with copies standing the bar loses less, or nothing). `most` = with Double Damage [B2434]; `copies` = how many points the copies
+    take of a plain hit. Nothing is spent or written.
+    -> { base, taken, most, copies, toStress, now, max } | null (an attack that does no damage) */
 export function hitPreview(v, inst, t) {
   const I = K.draft(inst), kind = kindOf(I), entry = v.entry(I), w = weaponOf(v, I), tf = v.facts.c(t);
   if (!tf || kind === "grapple" || entry?.damage?.none || w?.noDamage) return null;
   const one = hitMath(v, I, t), two = hitMath(v, I, t, {}, null, true), toStress = !!one.tags.toStress;
   const through = !toStress && M.hasStatus(v.state, t, "intangible") ? 0 : 1;                               // P6 [B1941]
-  return { base: one.base, taken: one.hd.taken * through, most: two.hd.taken * through, toStress, now: toStress ? tf.resolve : tf.health, max: toStress ? tf.maxResolve : tf.maxHealth };
+  const soak = (n) => (toStress ? { taken: n, absorbed: 0 } : damage.absorbByCopies({ taken: n, copies: K.copiesOf(v.state, t) }));      // P6 [B1910], as the damage step (K.copiesAbsorb)
+  const a = soak(one.hd.taken * through), b = soak(two.hd.taken * through);
+  return { base: one.base, taken: a.taken, most: b.taken, copies: a.absorbed, toStress, now: toStress ? tf.resolve : tf.health, max: toStress ? tf.maxResolve : tf.maxHealth };
+}
+/** The dice `t` would roll with each way of defending against this declaration, before anything is declared (D60): the defence pool of
+    the roll itself (the builder of the reaction card and of the dice thrown), so the chance "if they defend" on the map is the
+    engine's, as the attack side is. -> { block?, dodge? } */
+export function defPreview(v, inst, t) {
+  const I = K.draft(inst), out = {};
+  if (!v.facts.c(t) || kindOf(I) === "counterattack") return out;
+  I.data.multi = multiOf(I.decl);
+  for (const id of ["block", "dodge"]) { try { const n = defencePool(v, I, t, id, []).pool.dice; if (Number.isFinite(n)) out[id] = n; } catch { /* no number rather than a wrong one */ } }
+  return out;
 }
 /** The dice this declaration would roll, before it is declared: the roll's own builder on a copy (engine-pure.opPreview). Nothing is spent. */
 export function preview(v, inst) {
