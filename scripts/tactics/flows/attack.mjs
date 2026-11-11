@@ -29,7 +29,7 @@ const GM_STUNTS = { special: "stunt", own: "stunt", disarm: "stunt" };          
 const NO_MAP_STUNTS = { knockback: "direction", slam: "direction" };                    // without zones the forced move is the GM's, by hand
 const EXTRA_STUNTS = ["bangHeads", "trickShot"];                                         // [B2437], [B2518]: an extra opponent in the same zone
 const NOT_ON_EXTRA = [...EXTRA_STUNTS, "special", "own", "disarm", "slam"];              // an extra opponent starts no chain of its own (reading, combat-rulings)
-export const MINION_LOSS_MAX = 12;
+export const MINION_LOSS_MAX = K.MINION_LOSS_MAX;
 const WRECK_REASON = { terrainUnset: "wreckUnset", terrain: "wreckTerrain", strength: "wreckStrength", alreadyWrecked: "wreckDone" };
 export const INVISIBLE_GATE_DICE = -3;          // [B2075]
 const kindOf = (inst) => inst.data.kind ?? "slugfest";
@@ -476,10 +476,9 @@ export const steps = {
       const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
       let taken = Number.isFinite(forced?.amount) ? Math.max(0, forced.amount) : hd.taken;
       if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && (I.data.multi || o.extra) && taken > 0) {     // [OQ-1]
-        const key = `ml:${t}`, members = Math.max(0, tf.members ?? tf.health ?? 0), top = Math.min(members, MINION_LOSS_MAX);
-        if (!I.data.pk?.[key]) { R.prompts.push({ key, kind: "minionLoss", to: "gm", about: t, options: Array.from({ length: top + 1 }, (_, n) => ({ id: `n:${n}`, label: "ITAC.opt.minionsFall", data: { n } })), data: { suggested: Math.min(top, taken), members, by: I.actor } }); waiting = true; continue; }
-        if (!K.isAnswered(v, I, key)) { waiting = true; continue; }
-        taken = Math.max(0, Math.min(members, Number(String(K.answerId(v, I, key) ?? "").split(":")[1]) || 0));
+        const ml = K.minionLoss(v, I, R, t, taken, { by: I.actor });
+        if (ml.wait) { waiting = true; continue; }
+        taken = ml.taken;
       }
       const rec = { base, raw: hd.raw, doubled, armor: hd.armor, armorSource: ar.source?.id ?? null, taken, tags, forced: forced ? 1 : undefined, ...(o.extra ? { extra: o.extra } : {}) };
       if (tags.toStress) {

@@ -189,8 +189,11 @@ export const round = {
       if (!K.isAnswered(v, I, "catch")) { R.wait = true; return R; }
       if (K.answerId(v, I, "catch") === "attack" && !K.flag(I, "catch")) {
         K.setFlag(I, "catch");
-        const action = u.vehicle ? "ram" : "slugfest";
-        R.push = { action, actor: u.roller, decl: { ...blank, action, targets: [c.prey.id], ...(u.vehicle ? {} : { weapon: "unarmed" }) }, cause: "reaction", data: { kind: action, chaseCatch: 1 }, part: 1, prepaid: 1 };
+        /* on foot it is the charge of the attack flow [B2490]: STRENGTH, its own stunts. The chase brought the pursuer there, so the charge has no
+           approach of its own and no movement left over (no Slam) */
+        const action = u.vehicle ? "ram" : "charge";
+        R.push = { action, actor: u.roller, decl: { ...blank, action, targets: [c.prey.id], ...(u.vehicle ? {} : { weapon: "unarmed" }) }, cause: "reaction",
+          data: { kind: action, chaseCatch: 1, ...(u.vehicle ? {} : { charge: { done: 1, left: 0, total: 0, zones: [] } }) }, part: 1, prepaid: 1 };
         return R;
       }
       R.goto = "crew"; return R;

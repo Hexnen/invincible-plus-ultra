@@ -167,6 +167,15 @@ export function grappleRelease(state, cid) {
   if (held) { out.push({ t: "status-", who: cid, id: "grappled" }); if (held.data?.by && M.hasStatus(state, held.data.by, "grappling")) out.push({ t: "status-", who: held.data.by, id: "grappling" }); }
   return out;
 }
+/** How many of a minion group fall to a hit that takes several at once (an area attack, full auto, a blast, a stunt that hits more than one) [OQ-1]:
+    the GM's number, the damage taken is the suggestion. One card for the attack flow and for the hazards. -> { wait: true } | { taken } */
+export const MINION_LOSS_MAX = 12;
+export function minionLoss(v, I, R, t, taken, { by = null } = {}) {
+  const tf = v.facts.c(t), key = `ml:${t}`, members = Math.max(0, tf?.members ?? tf?.health ?? 0), top = Math.min(members, MINION_LOSS_MAX);
+  if (!I.data.pk?.[key]) { R.prompts.push({ key, kind: "minionLoss", to: "gm", about: t, options: Array.from({ length: top + 1 }, (_, n) => ({ id: `n:${n}`, label: "ITAC.opt.minionsFall", data: { n } })), data: { suggested: Math.min(top, taken), members, by } }); return { wait: true }; }
+  if (!isAnswered(v, I, key)) return { wait: true };
+  return { taken: Math.max(0, Math.min(members, Number(String(answerId(v, I, key) ?? "").split(":")[1]) || 0)) };
+}
 /** A minion group that lost members [B2828]: knocked out or killed is the GM's word (NpcPolicy.onBroken answers it without a card). Returns true while waiting. */
 export function minionsFate(v, I, R, t, dm, { by = null } = {}) {
   const tf = v.facts.c(t);

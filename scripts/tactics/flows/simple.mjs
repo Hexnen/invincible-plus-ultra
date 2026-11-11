@@ -10,6 +10,7 @@ import { maneuvers, hazards, damage } from "../../rules/index.mjs";
 import * as M from "../mods-pure.mjs";
 import * as C from "../catalog-pure.mjs";
 import * as K from "./kit.mjs";
+import * as Veh from "./vehicle.mjs";                                                          // P7: a hazard that hits a vehicle
 
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 const fine = { ok: true, reason: null, params: {}, gates: [], notes: [] };
@@ -126,6 +127,7 @@ export const hazard = {
         }
         const ad = damage.applyDamage({ health: tf.health, taken: rec.taken });                                                                     // [B2707]
         Object.assign(rec, { healthBefore: tf.health, healthAfter: ad.health });
+        if (tf.kind === "minions") rec.minions = { removed: tf.health - ad.health, left: ad.health };                                                // [B2828]: one member per point
         if (rec.taken > 0 && ad.health !== tf.health) R.effects.push({ t: "actor", who: t, path: "health", to: ad.health });
         I.data.dmg[t] = rec;
         R.events.push({ type: "damage", target: t, base: rec.base, armor: rec.armor, taken: rec.taken, dtype: tags.source, source: tags.cause });
@@ -142,7 +144,9 @@ export const hazard = {
           if (dm.burning && !was) { R.effects.push({ t: "status+", who: t, status: { id: "burning", source: { kind: "hazard", name: "fire" }, data: { intensity: h.intensity } } }); R.events.push({ type: "status", target: t, status: { id: "burning", on: true } }); }
           if (!dm.burning && was) { R.effects.push({ t: "status-", who: t, id: "burning" }); R.events.push({ type: "status", target: t, status: { id: "burning", on: false } }); }
         }
-        if (K.brokenAndCrit(v, I, R, t, dm, {})) return R;
+        if (dm && Veh.afterHit(v, I, R, t, dm)) return R;                                       // [B3221-3248]: a fall, a wall or a fire hurts a vehicle the way a hit does
+        if (dm && K.minionsFate(v, I, R, t, dm, {})) return R;                                  // [B2828]
+        if (!Veh.isMachine(v, t) && K.brokenAndCrit(v, I, R, t, dm, {})) return R;
       }
       R.goto = "close"; return R;
     },

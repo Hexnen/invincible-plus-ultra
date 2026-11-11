@@ -15,6 +15,7 @@ import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 import * as ZP from "../zones-pure.mjs";
 import * as K from "./kit.mjs";
+import * as Veh from "./vehicle.mjs";                                                          // P7: a blast that hits a vehicle
 
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 const fine = { ok: true, reason: null, params: {}, gates: [], notes: [] };
@@ -82,20 +83,34 @@ export const blast = {
       let out;
       if (h.kind === "blast") out = hazards.blastOutcome({ rating: h.rating, sixes, targets: rows }, dice.seededRng(faces.reduce((a, f) => a * 7 + f, 1 + v.state.round)));       // [B2921-2923]: the dice themselves decide who gets the extra sixes
       else out = { exploded: sixes > 0, base: h.damage, targets: rows.map((r) => { const hit = dice.opposed(sixes, r.dodgeSixes).win; return { id: r.id, hit, doubled: false, raw: hit ? h.damage : 0, taken: hit ? Math.max(0, h.damage - r.armor) : 0 }; }) };   // [B2876]: a fixed Damage, the surplus is the GM's
-      I.data.sixes = sixes; I.data.exploded = out.exploded; I.data.dmg = I.data.dmg ?? {}; I.data.out = {};
+      I.data.sixes = sixes; I.data.exploded = out.exploded; I.data.dmg = I.data.dmg ?? {}; I.data.out = I.data.out ?? {};
+      let waiting = false;
       for (const o of out.targets) {
+        if (I.data.dmg[o.id]) continue;                                                           // the step comes back after a card of the GM
         const tf = v.facts.c(o.id), forced = I.data.forced?.damage?.[o.id], row = rows.find((r) => r.id === o.id);
-        const taken = Number.isFinite(forced?.amount) ? forced.amount : immuneTo(tf, src) ? 0 : o.taken, ad = damage.applyDamage({ health: tf.health, taken });       // [B2707]
+        let taken = Number.isFinite(forced?.amount) ? forced.amount : immuneTo(tf, src) ? 0 : o.taken;
+        if (tf.kind === "minions" && !Number.isFinite(forced?.amount) && taken > 0) {             // [OQ-1]: a blast takes several at once, as an area attack does: the GM's number
+          const ml = K.minionLoss(v, I, R, o.id, taken);
+          if (ml.wait) { waiting = true; continue; }
+          taken = ml.taken;
+        }
+        const ad = damage.applyDamage({ health: tf.health, taken });                              // [B2707]
         I.data.out[o.id] = { hit: o.hit, net: sixes - row.dodgeSixes };
-        I.data.dmg[o.id] = { base: out.base, raw: o.raw, armor: row.armor, taken, doubled: o.doubled, healthBefore: tf.health, healthAfter: ad.health, tags };
+        I.data.dmg[o.id] = { base: out.base, raw: o.raw, armor: row.armor, taken, doubled: o.doubled, healthBefore: tf.health, healthAfter: ad.health, tags, ...(tf.kind === "minions" ? { minions: { removed: tf.health - ad.health, left: ad.health } } : {}) };   // [B2828]
         if (taken > 0 && ad.health !== tf.health) R.effects.push({ t: "actor", who: o.id, path: "health", to: ad.health });
         R.events.push({ type: "damage", target: o.id, base: out.base, armor: row.armor, taken, dtype: src, source: "hazard", ...(o.doubled ? { doubled: true } : {}) });
       }
+      if (waiting) { R.wait = true; return R; }
       R.goto = "effects"; return R;
     },
     effects(v, inst) {
       const I = K.draft(inst), R = K.result(I), h = hzOf(I);
-      for (const t of I.decl.targets) if (K.brokenAndCrit(v, I, R, t, I.data.dmg[t], {})) return R;
+      for (const t of I.decl.targets) {                                                         // the same aftermath as a hit of the attack flow
+        const dm = I.data.dmg[t];
+        if (dm && Veh.afterHit(v, I, R, t, dm)) return R;                                         // [B3221-3248]: component damage, the wreck, the people aboard
+        if (dm && K.minionsFate(v, I, R, t, dm, {})) return R;                                    // [B2828]
+        if (dm && !Veh.isMachine(v, t) && K.brokenAndCrit(v, I, R, t, dm, {})) return R;
+      }
       const surplus = h.kind === "area" && I.data.exploded ? I.data.sixes - 1 : 0;              // [B2876]: resolved as an area attack, the GM distributes the stunts
       if (surplus > 0) {
         if (!I.data.pk?.stunts) { R.prompts.push({ key: "stunts", kind: "hazardStunts", to: "gm", free: 1, options: [{ id: "done", label: "ITAC.opt.done" }], data: { surplus, targets: I.decl.targets.filter((t) => I.data.out[t]?.hit) } }); R.wait = true; return R; }
