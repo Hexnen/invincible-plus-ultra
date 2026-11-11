@@ -414,4 +414,87 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     eq(pv?.total, T.c.H1.attrs.fighting + 2, "D13: and the preview counts it"); }
 }
 
+/* ================================================================== D15: Stun may buy Double Damage to get through Armor, and nothing else [B1625] */
+{
+  const item = (name) => ({ id: "it", name, type: "power", level: null, power: null, boosts: [], autos: [{ id: "a", name, type: "rollAttack", show: true, attr: ["agility"], bonus: 0, stress: 0, damage: 3, min: 0, max: 3, bypass: false }], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} });
+  const mk = (armor) => {
+    const T = fight({ N1: { health: 6, armor: [{ id: "plate", armor }] } }), c = T.c.H1; c.kit = Kit.build({ items: [item("Stun")], attrs: c.attrs }); c.pass = c.kit.pass;
+    const f0 = T.facts.bind(T); T.facts = () => { const f = f0(); return { ...f, canTalk: () => true, inZone: (cid) => ["H1", "H2", "N1", "N2"].filter((x) => x !== cid), weapon: (cid, ref) => T.c[cid]?.kit?.weapons?.find((w) => w.id === ref) ?? f.weapon(cid, ref) }; };
+    return T;
+  };
+  const shoot = async (T, sixes) => { await T.req("p1", decl("H1", "shoot", ["N1"], { weapon: T.c.H1.kit.weapons[0].id })); await T.answer("gm", "reaction", "pass", "N1"); await T.roll("attack", sixes); };
+  { const T = mk(3);
+    eq(T.c.H1.kit.weapons[0].stunts, "doubleOnly", "D15: the Stun row allows Double Damage only");
+    await shoot(T, 3);
+    const sp = T.prompt("stunts");
+    eq(sp?.options.map((o) => o.id), ["doubleDamage@N1"], "D15: the stunt card offers Double Damage on the target, and no bystander (nothing brings one in)");
+    await T.req("p1", { op: "answer", prompt: sp.id, value: ["doubleDamage@N1"] });
+    eq(T.lastRequest()?.key, "ohs:N1", "D15: doubled, Damage 3 gets through Armor 3: the PRESENCE roll is asked");
+    await T.roll("ohs:N1", 0);
+    eq([st(T, "N1"), T.c.N1.health, !!T.state.ledger.N1.lostTurn], ["stunned", 6, true], "D15: failed: the next turn is lost, no damage is done"); }
+  { const T = mk(3); await shoot(T, 1);
+    eq([T.state.stack.length, st(T, "N1"), T.requests.some((q) => q.key === "ohs:N1")], [0, "", false], "D15: without the stunt Damage 3 does not get through Armor 3"); }
+}
+
+/* ================================================================== D16: Hidden path: the pursuer rolls too, or the chase is over [B3473] */
+{
+  const run = async (preySixes, pursuerSixes) => {
+    const T = new Table(); T.hero("H1", "p1").npc("N1", { health: 6 }); T.order(["H1", "N1"]);
+    await T.gm({ op: "chaseStart", prey: ["N1"], pursuer: ["H1"], distance: 3, obstacles: true });
+    T.dice.push([6, 3]); await T.gm({ op: "chaseRound" });
+    const asked = [];
+    for (let i = 0; i < 10 && T.top(); i++) {
+      const p = T.prompts()[0];
+      if (p) { await T.gm({ op: "answerFor", prompt: p.id, value: p.options[0].id }); continue; }
+      const pend = Object.values(T.top().rolls).find((r) => r.sixes == null && r.forced == null);
+      if (!pend) break;
+      asked.push(`${pend.key}:${pend.attr}`); await T.roll(pend.key, pend.key === "obs:prey" ? preySixes : pend.key === "obs:pursuer" ? pursuerSixes : 0);
+    }
+    return [asked.join(" "), T.state.chase?.over ?? T.state.chase?.last?.escaped ?? null, T.state.chase?.last?.obstacle ?? null];
+  };
+  eq(await run(1, 0), ["obs:prey:intuition obs:pursuer:intuition", "hiddenPath", "hiddenPath"], "D16: the prey finds the path, the pursuer does not: the chase is over, no chase roll");
+  eq((await run(1, 1))[0], "obs:prey:intuition obs:pursuer:intuition prey:agility pursuer:agility", "D16: both find it: the round goes on to the chase roll");
+  eq((await run(0, 0))[0], "obs:prey:intuition prey:agility pursuer:agility", "D16: the prey does not find it: the pursuer is not asked");
+}
+
+/* ================================================================== D17: a chase obstacle that takes dice from all AGILITY rolls takes them from the crew's too [B3455], [B3461] */
+{
+  const car = (o = {}) => ({ kind: "vehicle", npc: true, health: 8, vehicle: { type: "ground", speed: 3, maneuver: 1, passengers: 3, weapons: 0 }, ...o });
+  const run = async (d66, attackOf = "shoot") => {
+    const T = new Table();
+    T.hero("H1", "p1").hero("H2", "p2").npc("N1", { attrs: { agility: 4 } }).npc("N2");
+    T.add("V1", car({ name: "Van" })).add("V2", car({ name: "Bike" }));
+    T.weapons.gun = { id: "gun", name: "gun", bonus: 1, damage: 3, range: [0, 3], sharp: false };
+    T.order(["H1", "N1", "H2", "N2"]).turn("H1");
+    await T.gm({ op: "vehicleSet", vehicle: "V1", seat: { who: "H1", role: "driver" }, started: true }); await T.gm({ op: "vehicleSet", vehicle: "V1", seat: { who: "H2", role: "passenger" } });
+    await T.gm({ op: "vehicleSet", vehicle: "V2", seat: { who: "N1", role: "driver" }, started: true }); await T.gm({ op: "vehicleSet", vehicle: "V2", seat: { who: "N2", role: "passenger" } });
+    await T.gm({ op: "chaseStart", prey: ["V2"], pursuer: ["V1"], distance: 2, obstacles: true });
+    T.dice.push(d66); await T.gm({ op: "chaseRound" });
+    for (let i = 0; i < 10 && T.top()?.flow === "chase"; i++) { const p = T.prompts()[0]; if (p) { await T.gm({ op: "answerFor", prompt: p.id, value: p.options[0].id }); continue; } const pend = Object.values(T.top().rolls).find((r) => r.sixes == null); if (!pend) break; await T.roll(pend.key, 1); }
+    await T.req("p2", decl("H2", "shoot", ["N2"], { weapon: "gun" }));
+    const rp = T.prompt("reaction", "N2"), canDodge = opts(rp).includes("dodge");
+    if (canDodge) await T.answer("gm", "reaction", "dodge", "N2"); else if (rp) await T.answer("gm", "reaction", "pass", "N2");
+    const q = T.requests.filter((x) => x.key === "attack").pop();
+    if (canDodge) await T.roll("attack", 1);
+    const dq = canDodge ? T.requests.filter((x) => x.key === "def:N2").pop() : null;
+    return { obstacle: T.state.chase.last?.obstacle, shot: q?.dice, shotMods: (q?.pool?.mods ?? []).map((m) => m.source).sort().join(), dodge: dq ? [dq.dice, (dq.pool?.mods ?? []).map((m) => m.dice)] : null, agi: T.c.H2.attrs.agility, nagi: T.c.N2.attrs.agility };
+  };
+  const clear = await run([1, 1]), fog = await run([4, 3]), shaky = await run([5, 1]);
+  eq([clear.obstacle, clear.shot], ["clear", clear.agi + 1], "D17: all clear: the crew shoots with AGILITY and the weapon");
+  eq([fog.obstacle, fog.shot, fog.shotMods], ["cantSee", fog.agi + 1 - 2, "cantSee,weapon"], "D17: Can't see a thing: -2 dice on the crew's shot");
+  eq([shaky.obstacle, shaky.shot, shaky.shotMods], ["unsteady", shaky.agi + 1 - 2, "unsteady,weapon"], "D17: Unsteady: -2 dice on the crew's shot");
+  if (fog.dodge) eq(fog.dodge, [Math.max(1, fog.nagi - 2), [-2]], "D17: and on a dodge of that round"); else ok(clear.dodge === null, "D17: (no dodge offered in this set-up)");
+}
+
+/* ================================================================== the catch of a chase: no block [B3434]; a charge is still dodged [B2492], a ram is not */
+{
+  const T = new Table(); T.hero("H1", "p1").npc("N1", { health: 6 }); T.order(["H1", "N1"]);
+  await T.gm({ op: "chaseStart", prey: ["N1"], pursuer: ["H1"], distance: 1 });
+  await T.gm({ op: "chaseRound" }); await T.roll("prey", 0); await T.roll("pursuer", 1);
+  await T.req("p1", { op: "answer", prompt: T.prompt("chaseCatch").id, value: "attack" });
+  eq(all(T.prompt("reaction", "N1")), "dodge pass", "catch: the charge that ends a chase offers a dodge and no block");
+  await T.answer("gm", "reaction", "dodge", "N1"); await T.roll("attack", 1);
+  eq([T.lastRequest()?.key, T.lastRequest()?.attr], ["def:N1", "agility"], "catch: the prey dodges with AGILITY");
+}
+
 done("check-defects");

@@ -67,7 +67,7 @@ export function attackModifiers({ attack, target = {}, weaponBonus = 0, wreckBon
 /* May the target answer with a block or a dodge?
    input: { attack, defender: conditions + { hasQuick }, inChase }
    block: book 2446-2447 slugfest only, a quick action must be left; 2430 not when restrained or unaware; 2492 never a charge;
-          2497 never a grapple attack; 2448 + ruling 4 never a counterattack; 3434 never the charge / ram that ends a chase.
+          2497 never a grapple attack; 2448 + ruling 4 never a counterattack; 3434 no block against the charge / ram that ends a chase (the charge is still dodged, book 2492).
    dodge: book 2524-2525 shooting attacks (and charges, book 2492), a quick action must be left, only when aware of the attacker.
    both:  book 2707 not while out of action; ruling 6 not while held; ruling 21 not while snared; book 2497 not while holding somebody;
           ruling 20 a trapped target may do both; book 2436 / 2517 + ruling 10 not after losing the coming turn; book 2392 not while
@@ -79,7 +79,7 @@ export function defenceOptions({ attack, defender = {}, inChase = false }) {
   const common = defender.out ? (typeof defender.out === "string" ? defender.out : "broken") : defender.held ? "held" : defender.snared ? "snared" : defender.holding ? "grappling" : defender.noInterrupts ? "noInterrupts" : defender.carriedAloft ? "carriedAloft"
     : defender.unaware ? "unaware" : defender.hasQuick === false ? "noQuickAction" : null;
   const one = (kind) => {
-    if (def.defence !== kind || (inChase && (attack === "charge" || attack === "ram"))) return { ok: false, reason: "notAllowed" };
+    if (def.defence !== kind || (inChase && kind === "block" && (attack === "charge" || attack === "ram"))) return { ok: false, reason: "notAllowed" };      // book 3434 takes the block away, nothing else: a charge is still dodged (book 2492), a ram has no other defence
     return common ? { ok: false, reason: common } : { ok: true, reason: null };
   };
   return { block: one("block"), dodge: one("dodge") };

@@ -87,7 +87,9 @@ eq(defs({ attack: "shooting", defender: { unaware: true } }), ["notAllowed", "un
 eq(defs({ attack: "slugfest", defender: { hasQuick: false } }), ["noQuickAction", "notAllowed"], "needs a quick action");
 eq(defs({ attack: "shooting", defender: { noInterrupts: true } }), ["notAllowed", "noInterrupts"], "stunned: no interrupts (ruling 10)");
 eq(defs({ attack: "shooting", defender: { carriedAloft: true } }), ["notAllowed", "carriedAloft"], "carried aloft (book 2392)");
-eq(defs({ attack: "charge", inChase: true }), ["notAllowed", "notAllowed"], "the charge that ends a chase");
+eq(defs({ attack: "charge", inChase: true }), ["notAllowed", true], "the charge that ends a chase is not blocked (book 3434) and, like every charge, may be dodged (book 2492)");
+eq(defs({ attack: "ram", inChase: true }), ["notAllowed", "notAllowed"], "the ram that ends a chase: no block (book 3434), and a ram was never dodged");
+eq(defs({ attack: "ram" }), [true, "notAllowed"], "a ram outside a chase is blocked like a slugfest attack (book 3148)");
 
 // outcomes
 eq(A.resolveAttack({ attack: "slugfest", attackSixes: 3 }), { hit: true, net: 3, stunts: 2, counterattack: null, dodgeMove: 0 }, "book example 2504: three sixes, two stunts");

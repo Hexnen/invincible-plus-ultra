@@ -338,7 +338,8 @@ const base = () => {
   const cp = T2.prompt("chaseCatch");
   eq([cp?.data.ram, cp?.options.map((o) => o.id)], [0, ["attack", "pass"]], "G: on foot the catch is a charge");
   await T2.req("p1", { op: "answer", prompt: cp.id, value: "attack" });
-  eq([T2.top().action, T2.top().data.chaseCatch, T2.state.prompts[T2.top().data.pk["rb:N1"]]?.auto?.option], ["charge", 1, "pass"], "G: the catch is the charge of the attack flow, and nobody blocks or dodges it");
+  eq([T2.top().action, T2.top().data.chaseCatch, T2.prompt("reaction", "N1")?.options.map((o) => o.id)], ["charge", 1, ["dodge", "pass"]], "G: the catch is the charge of the attack flow: nobody blocks it [B3434], it is dodged like any charge [B2492] (P8)");
+  await T2.answer("gm", "reaction", "pass", "N1");
   await T2.roll("attack", 1);
   eq([T2.c.N1.health, T2.state.stack.length], [4, 0], "G: it lands and the round closes");
   await T2.gm({ op: "chaseRound" });
