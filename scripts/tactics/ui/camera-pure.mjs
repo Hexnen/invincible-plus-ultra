@@ -63,7 +63,8 @@ export function cues(before, now) {
   const turned = now.cur !== before.cur || now.round !== before.round;
   /* the user's own hand */
   if (!turned && now.sel && now.sel !== before.sel) add("select", now.sel);
-  if (now.armed && now.targets[0] && now.targets[0] !== before.targets?.[0]) add("aim", now.targets[0], { with: now.who && now.who !== now.targets[0] ? [now.who] : [] });
+  const fresh = now.armed ? now.targets.filter((x) => !(before.targets ?? []).includes(x)).pop() ?? null : null;      // (several targets: the one just added)
+  if (fresh) add("aim", fresh, { with: now.who && now.who !== fresh ? [now.who] : [] });
   if (now.armed === "move" && before.armed !== "move" && now.who) add("arm", now.who);
   /* a question put to this user */
   for (const [id, a] of Object.entries(now.asks)) if (!before.asks?.[id]) add("asked", a.about, { with: a.attacker && a.attacker !== a.about ? [a.attacker] : [] });

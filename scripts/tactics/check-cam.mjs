@@ -60,6 +60,7 @@ const pass = async (T, each = null) => { for (let n = 0; n < 24 && T.state.stack
   eq(CP.cues(base, armed), [], "A: arming an attack moves nothing");
   eq([CP.cue(armed, aim)?.why, CP.cue(armed, aim)?.focus, CP.cue(armed, aim)?.with, CP.cue(armed, aim)?.hand], ["aim", "N1", ["H1"], true], "A: a target walked to: the target first, the user's unit with it");
   eq([CP.cue(aim, aim2)?.focus, CP.cues(aim, aim)], ["N3", []], "A: the next target; the same target again is nothing");
+  eq([CP.cue(aim, { ...armed, targets: ["N1", "N3"] })?.focus, CP.cues({ ...armed, targets: ["N1", "N3"] }, aim)], ["N3", []], "A: several targets: the one just added; one taken off is nothing");
   const mv = { ...base, armed: "move" };
   eq([CP.cue(base, mv)?.why, CP.cue(base, mv)?.focus, CP.cues(mv, mv)], ["arm", "H1", []], "A: Move armed: the unit out from under the bars, once");
   /* a concealed id handed in by the dock is not looked at */
