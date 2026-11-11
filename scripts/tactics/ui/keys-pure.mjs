@@ -40,7 +40,7 @@ export function number(d, own = {}) {
   if (!L.id || own.hotbar) return d;
   const keyOf = (fk) => L.keys.find((k) => k.fk === fk)?.key ?? null, put = (x, fk) => { const key = keyOf(fk); return key ? { ...x, key, ...(x.tip && typeof x.tip === "object" ? { tip: { ...x.tip, key } } : {}) } : x; };
   if (L.id === "card") return { ...d, prompts: d.prompts.map((a, i) => (i ? a : { ...a, options: a.options.map((o) => put(o, `opt:${a.id}:${o.id}`)) })) };
-  if (L.id === "list") { const row = (r) => put(r, `menu:${r.id}`); return { ...d, panel: { ...d.panel, rows: d.panel.rows.map(row), groups: d.panel.groups.map((g) => ({ ...g, rows: g.rows.map(row) })) } }; }
+  if (L.id === "list") { const row = (r) => put(r, `menu:${r.id}`); return { ...d, panel: { ...d.panel, rows: d.panel.rows.map(row), groups: d.panel.groups.map((g) => ({ ...g, rows: g.rows.map(row), ...(g.entries ? { entries: g.entries.map((e) => ({ ...e, rows: e.rows.map(row) })) } : {}) })) } }; }
   return { ...d, groups: d.groups.map((g) => ({ ...g, items: g.items.map((a) => put(a, actFk(a))) })) };
 }
 
@@ -69,7 +69,7 @@ export function plan(d, own = {}, ev = {}) {
     if (p?.kind === "other" || p?.kind === "blocked") return p.submit?.req ? { click: "go.itd-go-ask" } : null;
     if (p?.kind === "move" && p.dest) { const can = p.dest.rows.filter((r) => !r.disabled && r.req); return can.length === 1 ? { click: `way:${can[0].id}` } : null; }
     if (d.show && !d.rest && d.end?.armed && d.end.req) return { click: "end" };
-    for (const r of d.show ? d.rolls ?? [] : []) { const b = (r.buttons ?? []).find((x) => x.id === "accept" || x.id === "acceptFor") ?? (r.buttons ?? []).find((x) => x.id === "roll"); if (b) return { click: `rb:${r.id}:${b.id}` }; }
+    for (const r of d.show ? [...(p?.kind === "mine" ? p.rolls ?? [] : []), ...(d.rolls ?? [])] : []) {      /* U52: the roll of the own action stands in its panel, any other in the line over the bar */ const b = (r.buttons ?? []).find((x) => x.id === "accept" || x.id === "acceptFor") ?? (r.buttons ?? []).find((x) => x.id === "roll"); if (b) return { click: `rb:${r.id}:${b.id}` }; }
     return null;
   }
   /* Space */
