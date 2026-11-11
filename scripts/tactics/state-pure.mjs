@@ -229,6 +229,7 @@ export function sanitize(raw) {
     if (isObj(raw.free)) for (const k of Object.keys(raw.free).slice(0, LIMITS.ledgers)) if (isId(k) && raw.free[k]) s.free[k] = 1;
     s.sched = { done: Array.isArray(raw.sched?.done) ? raw.sched.done.filter((x) => typeof x === "string" && x.length <= 120).slice(-400) : [] };
     if (typeof raw.sched?.hold === "string" && raw.sched.hold) s.sched.hold = raw.sched.hold.slice(0, 120);
+    if (isObj(raw.moved) && Object.keys(raw.moved).length) s.moved = Object.fromEntries(Object.entries(raw.moved).filter(([k, v]) => isId(k) && isObj(v)).slice(0, LIMITS.ledgers).map(([k, v]) => [k, plain(v)]));      // D44: what the opening of a turn ended, kept while that turn may still be handed on (ops-pure.momentKept)
     s.evSeq = int(raw.evSeq, 0, 1e12, 0);
     s.stack = engineList(raw.stack); s.tokens = plainList(raw.tokens); s.effects = plainList(raw.effects); s.items = plainList(raw.items);
     s.summons = plainList(raw.summons); s.karma = plainList(raw.karma);
