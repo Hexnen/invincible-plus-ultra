@@ -101,7 +101,7 @@ function closeTx(X, txId, label) {
   if (!tx) return;
   const { [txId]: _gone, ...rest } = X.state.txOpen;
   X.state = { ...X.state, txOpen: rest };
-  if (tx.ops.length || label?.keep) X.log = J.pushLog(X.log, J.closeTx(tx, label ? { pub: label.pub ?? "", gm: label.gm ?? "" } : tx.label));
+  if (tx.ops.length || label?.keep) X.log = J.pushLog(X.log, J.closeTx(tx, label ? { pub: label.pub ?? "", gm: label.gm ?? "", ...(label.pub && isObj(label.who) ? { who: label.who } : {}), ...(label.pub && label.own ? { own: label.own } : {}) } : tx.label));
   X.changed = true;
 }
 /* [L5] [B2293]: every ledger is new at the start of a round and nothing is carried over. An undo that reaches back over a round boundary
@@ -225,6 +225,12 @@ function newsOf(I) {
   return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
     result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret ? { secret: 1 } : {}), rows };
 }
+/* D32 / D33: a public journal line does not carry a name. It carries the mark `{c:<id>}` and the list `who` of the combatants it is about
+   (the doer, and the targets, whom it does not name), so each reader gets the name as THAT reader knows it (namesake numbers never count
+   somebody hidden from a player, ruling U5-7) and no line about somebody concealed from that reader (view-pure.journalFor).
+   who = { id: the plain name, kept for when the combatant has left the fight } */
+const cMark = (id) => `{c:${id}}`;
+const whoOf = (X, ids) => Object.fromEntries([...new Set(ids)].filter((id) => typeof id === "string" && id).map((id) => { const c = X.facts.c(id); return [id, String(c?.bare ?? c?.name ?? "").slice(0, 80)]; }));
 function pushInst(X, inst) { X.state = { ...X.state, stack: [...X.state.stack, inst] }; X.changed = true; }
 const JOURNAL_HAZARDS = ["fire", "blast", "area", "vacuum", "disease"];
 function label(X, inst, what) {
@@ -240,8 +246,8 @@ function label(X, inst, what) {
   const who = a?.name ?? (inst.cause === "gm" || inst.initiator?.type === "gm" ? "{ITAC.journal.gm}" : "");
   const spot = inst.decl?.zone ?? inst.data?.hz?.zone ?? inst.data?.hazard?.zone ?? (["move", "drive", "fastball"].includes(inst.flow) ? inst.data?.mv?.at ?? inst.data?.mv?.to ?? null : null);
   const names = (inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name).filter(Boolean).join(", ");
-  const pub = a?.hidden ? "" : `${a?.name ? `${a.name}: ` : ""}${a ? act : what0}${res}`;       // spec 10: two texts; a hidden actor has no public line, and no public line names a target or a place
-  return { pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? pub : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}` };
+  const pub = a?.hidden ? "" : `${a?.name ? `${cMark(inst.actor)}: ` : ""}${a ? act : what0}${res}`;       // spec 10: two texts; a hidden actor has no public line, and no public line names a target or a place
+  return { who: whoOf(X, [inst.actor, ...(inst.decl?.targets ?? [])]), pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? pub : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}` };
 }
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {
@@ -563,7 +569,7 @@ async function exceptionAnswered(X, p) {
   }
   pushNews(X, { kind: "exception", actor: p.about, ...(action ? { action } : {}), granted, ran, ...(why ? { why } : {}), ...(note ? { note } : {}) });
   const mark = granted ? "{ITAC.journal.exceptionGranted}" : "{ITAC.journal.exceptionDenied}", text = String(d.text ?? "").slice(0, 120);
-  closeTx(X, openTx(X, {}), { pub: X.facts.c(p.about)?.hidden ? "" : `${name}: ${mark}`, gm: `${name}: ${mark}${text ? ` ("${text}")` : ""}${note ? ` / ${note}` : ""}`, keep: 1 });
+  closeTx(X, openTx(X, {}), { pub: X.facts.c(p.about)?.hidden ? "" : `${cMark(p.about)}: ${mark}`, who: whoOf(X, [p.about]), own: p.about, gm: `${name}: ${mark}${text ? ` ("${text}")` : ""}${note ? ` / ${note}` : ""}`, keep: 1 });
 }
 /* The dice an action would roll if it were declared like this, from the SAME builder the roll uses (each flow's `preview`): what the
    dock's panel shows before "Declare". Nothing is written, nothing is spent, no instance is kept. -> env.preview = { attr, dice, base, mods } | null */
@@ -1001,7 +1007,7 @@ async function challengeClock(X) {
     if (r.to != null && r.to !== c.resolve) {
       const tx = openTx(X, {});
       await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: r.to, tx });
-      closeTx(X, tx, { pub: `${c.name ?? ""}: {ITAC.journal.clock} ${r.to}`, gm: `${c.name ?? ""}: {ITAC.journal.clock} ${c.resolve} -> ${r.to}` });
+      closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(p.id)}: {ITAC.journal.clock} ${r.to}`, who: whoOf(X, [p.id]), gm: `${c.name ?? ""}: {ITAC.journal.clock} ${c.resolve} -> ${r.to}` });
       emit(X, null, { type: "challenge", challenge: p.id, rating: c.health, timeLeft: r.to, state: r.failed ? "failed" : "active", clock: 1 });
     }
     if (r.failed && !Object.values(X.state.prompts).some((q) => q.kind === "challengeFail" && q.about === p.id && !q.answered))
@@ -1020,7 +1026,7 @@ async function challengeFailRun(X, cid) {
     await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "health", to: r.ward.rating, tx });
     await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: r.ward.time, tx });
     write(X, tx, ["challenges", cid, "dice"], r.ward.dice); write(X, tx, ["challenges", cid, "resets"], r.ward.resets); write(X, tx, ["challenges", cid, "started"], {});
-    closeTx(X, tx, { pub: `${c.name ?? ""}: {ITAC.journal.wardReset}`, gm: `${c.name ?? ""}: {ITAC.journal.wardReset} (${r.ward.dice})` });
+    closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.wardReset}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.wardReset} (${r.ward.dice})` });
     emit(X, null, { type: "challenge", challenge: cid, rating: r.ward.rating, timeLeft: r.ward.time, state: "reset", dice: r.ward.dice });
   }
   for (const kind of r.manual) pushManual(X, cid, kind, { at: "onFail" });
@@ -1105,7 +1111,7 @@ async function system(X, effects) {
       const c = X.facts.c(fx.combatant), why = ["broken", "unconscious", "dead"].includes(fx.reason) ? fx.reason : "broken";
       if (!c) continue;
       const line = `${c.name ?? ""}: {ITAC.journal.turnPassed.${why}}`;
-      closeTx(X, openTx(X, {}), { pub: c.hidden ? "" : line, gm: line, keep: true });
+      closeTx(X, openTx(X, {}), { pub: c.hidden ? "" : `${cMark(fx.combatant)}: {ITAC.journal.turnPassed.${why}}`, who: whoOf(X, [fx.combatant]), gm: line, keep: true });
       pushNews(X, { kind: "turn", actor: fx.combatant, result: `pass.${why}` });             // view-pure drops it for whoever the combatant is concealed from
     } else if (fx?.type === "abortInstances") {
       for (const inst of [...X.state.stack].reverse()) if (inst.actor === fx.actor && instOf(X, inst.id)) await abortInst(X, inst.id, true);

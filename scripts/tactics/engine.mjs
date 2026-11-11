@@ -55,8 +55,9 @@ function combatantFacts(cb) {
 }
 function makeFacts(combat) {
   const memo = new Map(); let names = null;
-  /* U19: namesakes are numbered, the hidden ones last (view-pure.distinctNames) */
-  const c = (cid) => { if (!memo.has(cid)) { const cb = combat.combatants.get(cid); let f = null; try { f = cb ? combatantFacts(cb) : null; if (f) f.name = (names ??= V.distinctNames(combat.combatants.map((x) => ({ id: x.id, name: x.name ?? Sys.actorOf(x)?.name ?? "", hidden: x.hidden === true || tokenOf(x)?.hidden === true }))))[cb.id] ?? f.name; } catch (err) { console.warn(`${MOD} | tactics facts`, err); } memo.set(cid, f); } return memo.get(cid); };
+  /* U19: namesakes are numbered, the hidden ones last (view-pure.distinctNames). These are the GM's numbers: they go into the GM's texts only;
+     `bare` is the name without a number, for a public journal line about somebody who has left the fight (D33) */
+  const c = (cid) => { if (!memo.has(cid)) { const cb = combat.combatants.get(cid); let f = null; try { f = cb ? combatantFacts(cb) : null; if (f) f.bare = f.name; if (f) f.name = (names ??= V.distinctNames(combat.combatants.map((x) => ({ id: x.id, name: x.name ?? Sys.actorOf(x)?.name ?? "", hidden: x.hidden === true || tokenOf(x)?.hidden === true }))))[cb.id] ?? f.name; } catch (err) { console.warn(`${MOD} | tactics facts`, err); } memo.set(cid, f); } return memo.get(cid); };
   const tok = (cid) => tokenOf(combat.combatants.get(cid));
   const byToken = (token) => combat.combatants.find((x) => x.tokenId === (token?.id ?? token?.document?.id))?.id ?? null;
   return {
@@ -223,12 +224,15 @@ export function view(user = game.user, combat = undefined) {
   const c = pick(combat), state = c ? Store.stateOf(c) : null;
   return state ? V.viewFor(state, viewer(user, c), metaOf(c)) : null;
 }
-export function journal(user = game.user, combat = undefined) { const c = pick(combat); return c && Store.stateOf(c) ? V.journalFor(Store.logOf(c), viewer(user, c)) : []; }
+/* U19 / U5-7: the names `user` reads (view-pure.readerNames): a player's namesake numbers never count somebody concealed from that player */
+const namesFor = (c, user) => V.readerNames(Store.stateOf(c), viewer(user, c), metaOf(c), c.combatants.map((x) => ({ id: x.id, name: x.name ?? Sys.actorOf(x)?.name ?? "", hidden: x.hidden === true || tokenOf(x)?.hidden === true })));
+/** the journal as `user` may read it: the GM's lines for staff; for a player the public lines, none about somebody concealed from that player, with the player's own names (D32, D33) */
+export function journal(user = game.user, combat = undefined) { const c = pick(combat); if (!c || !Store.stateOf(c)) return []; const n = namesFor(c, user); return V.journalFor(Store.logOf(c), viewer(user, c), { concealed: n.concealed, name: (id) => n.names[id] ?? null }); }
 /** names and presence for the desk and player models (desk-pure.mjs) */
 export const context = (combat = undefined) => { const c = pick(combat); let names = null; return { staff: Store.isStaff(game.user),
   bonus: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.sheetBonuses(a) : null; } catch { return null; } },   // P6: the dice the sheet's effects add, for the preview
   kit: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.kitOf(a) : null; } catch { return null; } },      // P6: only of a sheet this user may read
-  c: (cid) => { const cb = c?.combatants.get(cid); if (!cb) return null; const hid = (x) => x.hidden === true || tokenOf(x)?.hidden === true;      /* U19: numbered namesakes; a player's numbers never count somebody hidden from them */ names ??= V.distinctNames(c.combatants.filter((x) => Store.isStaff(game.user) || !hid(x)).map((x) => ({ id: x.id, name: x.name ?? "", hidden: hid(x) }))); const a = Sys.actorOf(cb), f = a && (Store.isStaff(game.user) || a.isOwner) ? Sys.actorFacts(a) : null;      /* U45: Health and injuries of a sheet this user may read: the bar of somebody at 0 */ return { name: names[cb.id] ?? cb.name, npc: isNpc(cb), owners: Sys.ownersOf(a), ...(f ? { kind: f.kind, health: f.health, crits: f.crits, pass: f.pass } : {}) }; }, online: (uid) => game.users.get(uid)?.active === true,
+  c: (cid) => { const cb = c?.combatants.get(cid); if (!cb) return null;      /* U19: numbered namesakes; a player's numbers never count somebody hidden from them */ names ??= namesFor(c, game.user).names; const a = Sys.actorOf(cb), f = a && (Store.isStaff(game.user) || a.isOwner) ? Sys.actorFacts(a) : null;      /* U45: Health and injuries of a sheet this user may read: the bar of somebody at 0 */ return { name: names[cb.id] ?? cb.name, npc: isNpc(cb), owners: Sys.ownersOf(a), ...(f ? { kind: f.kind, health: f.health, crits: f.crits, pass: f.pass } : {}) }; }, online: (uid) => game.users.get(uid)?.active === true,
   special: () => (c?.combatants?.contents ?? []).filter((cb) => ["challenge", "vehicle"].includes(Sys.actorOf(cb)?.type) && (Store.isStaff(game.user) || !cb.hidden)).map((cb) => ({ id: cb.id, name: cb.name, kind: Sys.actorOf(cb).type })) }; };      // P7
 
 /** what movement.mjs needs of this client (the cost confirmation on a drag, the reach pick) */

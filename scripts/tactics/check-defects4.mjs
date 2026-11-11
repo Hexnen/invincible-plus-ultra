@@ -22,7 +22,7 @@ class T4 extends Table {
   meta() { return { hidden: Object.values(this.c).filter((x) => x.hidden).map((x) => x.id), npc: Object.values(this.c).filter((x) => x.npc).map((x) => x.id) }; }
   viewer(userId) { return { id: userId, staff: !!this.users[userId]?.staff, owns: Object.values(this.c).filter((x) => x.owners.includes(userId)).map((x) => x.id) }; }
   view(userId) { return V.viewFor(this.state, this.viewer(userId), this.meta()); }
-  journal(userId) { const v = this.viewer(userId), n = V.readerNames(this.state, v, this.meta(), Object.values(this.c).map((x) => ({ id: x.id, name: x.bare ?? x.name, hidden: x.hidden }))); return V.journalFor(this.log, v, { concealed: n.concealed, name: (id) => n.names[id] ?? null }); }
+  journal(userId) { const v = this.viewer(userId); if (!V.readerNames) return V.journalFor(this.log, v);      /* (the reviewed tree: the journal took the log and the viewer alone) */ const n = V.readerNames(this.state, v, this.meta(), Object.values(this.c).map((x) => ({ id: x.id, name: x.bare ?? x.name, hidden: x.hidden }))); return V.journalFor(this.log, v, { concealed: n.concealed, name: (id) => n.names[id] ?? null }); }
   pub(events = this.events) { return events.map((e) => V.publicEvent(this.state, e, this.meta())).filter(Boolean); }
 }
 /* answer every open card as the GM (pass / none / first enabled) until none is left */
@@ -54,6 +54,77 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
     ok(code(r) === "ok" || why(r) === "holdOff", `D30: and the player's request about it is judged by the rules alone (${ans(r)})`);
     const hold = I.holdOffTargets(T.state.init, slotOf(T, "H1")).includes(g);
     eq(code(r) === "ok", hold, "D30: (it is allowed exactly when the order allows it)"); }
+}
+
+/* ================================================================== D31: the public event stream holds no initiative record of somebody
+   concealed: no `draw`, no line of `roundStart.order`, as the state view of the same moment holds no such slot (spec 10, 16). */
+{
+  const T = new T4(); T.hero("H1", "p1").npc("N1").npc("NH", { hidden: true });
+  await T.gm({ op: "start", mode: "tactical" });
+  const hid = T.state.init.slots.find((s) => s.members.includes("NH")), seen = T.view("p1").init.slots.map((s) => s.id).sort();
+  const pub = T.pub(), draws = pub.filter((e) => e.type === "draw"), order = pub.find((e) => e.type === "roundStart")?.order ?? [];
+  eq([draws.map((e) => e.slot).sort(), order.map((o) => o.slot).sort()], [seen, seen], "D31: the public draws and the public order name exactly the slots of the player's view");
+  ok(!JSON.stringify(pub).includes(`"${hid.id}"`) && draws.every((e) => e.members.length) && order.every((o) => o.members.length), "D31: nothing public carries the hidden slot's id, and no record is left with an empty member list");
+  eq(T.events.filter((e) => e.type === "draw").length, 3, "D31: the GM's stream keeps all three draws");
+  T.npc("NZ", { hidden: true }); T.events = []; await T.gm({ op: "roster" });
+  eq([T.events.filter((e) => e.type === "draw").length, T.pub()], [1, []], "D31: a hidden combatant that joins later draws for the GM alone");
+  if (T.state.init.curMember !== "H1") T.turn("H1");
+  T.events = []; await T.gm({ op: "holdOff", actor: "H1", with: hid.id, force: true });
+  const sw = T.pub().filter((e) => e.type === "draw");
+  ok(sw.length <= 1 && sw.every((e) => e.members.includes("H1")), "D31: of a swap with a hidden slot the table hears the visible half only");
+}
+{ /* a card shared by a hidden and a visible NPC is public with the visible member, as in the view */
+  const T = new T4(); T.hero("H1", "p1").npc("N1").npc("NH", { hidden: true });
+  await T.gm({ op: "start", mode: "tactical", groups: [["N1", "NH"]] });
+  const g = T.state.init.slots.find((s) => s.members.includes("N1")), d = T.pub().find((e) => e.type === "draw" && e.slot === g.id);
+  eq([g.members.length, d?.members, d?.card], [2, ["N1"], g.card], "D31: a shared card stays public with its visible member");
+  /* an unseen one (concealed from somebody) is treated by the public stream as a hidden one */
+  const U = new T4(); U.hero("H1", "p1").npc("N1"); U.order(["H1", "N1"]); await U.gm({ op: "knowledgeSet", observer: "H1", subject: "N1", value: "unseen" });
+  const ev = { type: "roundStart", order: [{ slot: "sA", card: 1, members: ["H1"] }, { slot: "sB", card: 2, members: ["N1"] }] };
+  eq(V.publicEvent(U.state, ev, U.meta())?.order.map((o) => o.slot), ["sA"], "D31: the same for somebody unseen");
+  eq([V.publicEvent(U.state, { type: "challenge", challenge: "N1", state: "failed" }, U.meta()), V.publicEvent(U.state, { type: "vehicle", vehicle: "N1", who: "H1", state: "entered" }, U.meta())], [null, null],
+    "D31 (sibling): an event that names a concealed one in a field of its own is not public at all");
+}
+
+/* ================================================================== D32: the journal a player reads has no line about somebody concealed
+   from that player (spec 10 [B2075], [B1903]; P9F-8). */
+{
+  const T = new T4(); T.hero("H1", "p1").hero("H2", "p2").npc("N1", { name: "Stalker" }); T.order(["N1", "H1", "H2"]);
+  await T.gm({ op: "knowledgeSet", observer: "H1", subject: "N1", value: "unseen" });
+  await exchange(T, "gm", "N1", "H1");
+  eq([T.journal("p1"), T.journal("p2").map((j) => j.text), T.journal("gm").map((j) => j.text).slice(-1)], [[], ["Stalker: {ITAC.action.slugfest} ({ITAC.result.hit})"], ["Stalker: {ITAC.action.slugfest} -> H1 ({ITAC.result.hit})"]],
+    "D32: the one who cannot see the attacker reads no line; the player who can, and the GM, read it");
+  await T.gm({ op: "knowledgeSet", observer: "H1", subject: "N1", value: "seen" });
+  eq(T.journal("p1").length, T.state.knowledge?.H1?.N1 === "unseen" ? 0 : 1, "D32: the line is there once the attacker is seen");
+}
+{ /* the target concealed from the reader: no line either (the line would tell that somebody is there) */
+  const T = new T4(); T.hero("H1", "p1").hero("H2", "p2").npc("N1"); T.order(["H2", "H1", "N1"]);
+  await T.gm({ op: "knowledgeSet", observer: "H1", subject: "N1", value: "unseen" });
+  await exchange(T, "p2", "H2", "N1");
+  eq([T.journal("p1").length, T.journal("p2").length], [0, 1], "D32 (sibling): a line about an action against somebody the reader cannot see is not read by that reader");
+}
+{ /* the GM's word on a request is for the one who asked (P9F-8) */
+  const T = new T4(); T.hero("H1", "p1").hero("H2", "p2").npc("N1"); T.order(["H2", "H1", "N1"]);
+  await T.preq("p1", { op: "other", actor: "H1", text: "I shout" }); await T.gm({ op: "answerFor", prompt: T.prompts("exception")[0].id, value: "deny" });
+  eq([T.journal("p1").map((j) => j.text), T.journal("p2")], [["H1: {ITAC.journal.exceptionDenied}"], []], "D32 (sibling): the journal line of an answered request is read by the asker alone");
+}
+
+/* ================================================================== D33: the names in a player's journal are numbered from the player's own
+   list: a hidden namesake is not counted (ruling U5-7). The names are composed as engine.mjs makeFacts does. */
+{
+  const T = new T4(); T.hero("H1", "p1").npc("N1", { name: "Soldier" }).npc("NH", { name: "Soldier", hidden: true });
+  const gmNames = V.distinctNames(Object.values(T.c).map((x) => ({ id: x.id, name: x.name, hidden: x.hidden })));
+  for (const [id, n] of Object.entries(gmNames)) { T.c[id].bare = T.c[id].name; T.c[id].name = n; }
+  T.order(["N1", "H1", "NH"]);
+  await exchange(T, "gm", "N1", "H1");
+  eq([T.journal("p1").map((j) => j.text), T.journal("gm").map((j) => [j.text, j.pub])], [["Soldier: {ITAC.action.slugfest} ({ITAC.result.hit})"], [["Soldier #1: {ITAC.action.slugfest} -> H1 ({ITAC.result.hit})", "Soldier #1: {ITAC.action.slugfest} ({ITAC.result.hit})"]]],
+    "D33: one visible Soldier beside a hidden one has no number in the player's journal; the GM reads the GM's number");
+  ok(!JSON.stringify(T.log.list.map((t) => t.label.pub)).includes("#"), "D33: the stored public line carries no name at all, only the mark");
+  eq(Desk.deskModel(T.state, T.log, { c: (id) => T.c[id] ?? null, staff: true })?.journal?.[0]?.pub, "Soldier #1: {ITAC.action.slugfest} ({ITAC.result.hit})", "D33: the desk's own row is put into names too");
+  T.c.NH.hidden = false;
+  eq(T.journal("p1").map((j) => j.text), ["Soldier #1: {ITAC.action.slugfest} ({ITAC.result.hit})"], "D33: once the namesake is revealed the player's number is the table's");
+  delete T.c.N1; await T.gm({ op: "roster" });
+  eq(T.journal("p1").map((j) => j.text), ["Soldier: {ITAC.action.slugfest} ({ITAC.result.hit})"], "D33: somebody who has left the fight keeps the plain name in the line");
 }
 
 done("check-defects4");
