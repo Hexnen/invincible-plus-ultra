@@ -70,9 +70,10 @@ export async function perform(e) {
   if (e?.isInverse ? !op || typeof op !== "object" : !ZP.validOp(op)) return { ok: false, reason: "badOp" };      // an inverse goes back as the map gave it
   if (!canWrite()) return { ok: false, reason: "notActiveGM" };
   try {
+    const painted = !e.isInverse && op.op === "zone" ? ZP.paintedFire(zoneStates(op.zone)) : 0;      // U72: what the fire layer shows before the write
     const r = await a.apply(op);
     if (!r?.ok) return { ok: false, reason: String(r?.reason ?? "error").slice(0, 40) };
-    return { ok: true, changed: r.changed !== false, result: r.result ?? null, op: e.isInverse ? null : { t: "zones", op, inverse: r.inverse ?? null } };
+    return { ok: true, changed: r.changed !== false, result: r.result ?? null, op: e.isInverse ? null : { t: "zones", op, inverse: ZP.repaintInverse(op, r.inverse ?? null, painted) } };
   } catch (err) { warn("apply", err); return { ok: false, reason: "error" }; }
 }
 

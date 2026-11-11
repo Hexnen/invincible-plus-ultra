@@ -81,7 +81,9 @@ function instView(state, inst, viewer, meta, concealed) {
     locked: inst.locked, part: inst.part, decl, rolls: {}, data: {} };
   for (const [k, r] of Object.entries(inst.rolls ?? {})) { const v = rollView(state, r, viewer, meta); if (v) out.rolls[k] = v; }
   const d = inst.data ?? {};
-  for (const k of ["kind", "retargets", "hold", "result", "label"]) if (d[k] !== undefined) out.data[k] = clone(d[k]);
+  /* U77: `window` = which moment of the action stands open ("beforeRoll": declared, its dice not thrown yet). The table knows that much of
+     every action it was told about; a player's bar needs it to offer what may still answer the action (the Quickness interrupt, D40). */
+  for (const k of ["kind", "retargets", "hold", "result", "label", "window"]) if (d[k] !== undefined) out.data[k] = clone(d[k]);
   if (isObj(d.def)) out.data.def = Object.fromEntries(Object.entries(d.def).map(([t, x]) => [t, { defence: x?.defence }]));
   if (isObj(d.out)) out.data.out = Object.fromEntries(Object.entries(d.out).map(([t, o]) => [t, numbersHidden(state, t, meta, "health") ? Object.fromEntries(OUT_KEEP.filter((k) => o?.[k] !== undefined).map((k) => [k, o[k]])) : clone(o)]));
   out.waits = (inst.waits ?? []).slice();

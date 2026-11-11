@@ -402,7 +402,7 @@ export function newsData(view, own, facts, t) {
   if (!list.length) return null;
   const last = list[list.length - 1], mine = (id) => !!id && Object.keys(view?.knowledge ?? {}).includes(id);
   const tone = last.kind === "nudge" ? "nudge" : last.kind === "exception" ? (last.granted ? "good" : "bad") : last.kind === "undo" || last.undone ? "warn" : (last.rows ?? []).some((r) => r.hit && mine(r.target)) ? "bad" : mine(last.actor) && (last.rows ?? []).some((r) => r.hit) ? "good" : "info";
-  return { id: last.id, kind: last.kind, text: newsText(last, facts, t), tone, older: list.slice(-4, -1).reverse().map((n) => newsText(n, facts, t)), seen: newsNo(last), label: t("ITAC.ui.news.dismiss") };
+  return { id: last.id, kind: last.kind, text: newsText(last, facts, t), tone, icon: NEWS_ICON[tone] ?? NEWS_ICON.info, older: list.slice(-4, -1).reverse().map((n) => newsText(n, facts, t)), seen: newsNo(last), label: t("ITAC.ui.news.dismiss") };
 }
 
 /* ------------------------------------------------------------------ the player's dock */
@@ -483,6 +483,8 @@ function vitalsOf(facts, cid, t) {
     .map(([id, n, max]) => ({ id, v: Math.max(0, n), max, label: t(`ITAC.ui.vital.${id}`), say: t("ITAC.ui.vital.of", { label: t(`ITAC.ui.vital.${id}`), v: Math.max(0, n), max }) }));
 }
 /* the picture of an action: its own id, or for something of the sheet its category (dom.mjs has the glyphs) */
+/* U63: the tone of the news line is told by its PICTURE too, never by its colour alone */
+export const NEWS_ICON = Object.freeze({ info: "fa-comment-dots", good: "fa-circle-check", bad: "fa-triangle-exclamation", warn: "fa-rotate-left", nudge: "fa-bell" });
 const iconOf = (a) => (a.kit ? `kit:${a.kit.cat}` : a.id);
 /* everything a tooltip says about an action: its name, what it costs, and when it cannot be done why */
 const tipOf = (title, cost, note = null, lines = []) => ({ title, cost: cost || null, lines: lines.filter(Boolean), note: note || null });
@@ -610,7 +612,7 @@ function declarePanel(bar, a, own, facts, t) {
 export function targetActs(bar, tid, facts, t) {
   const holding = (bar?.statuses ?? []).includes("grappling");
   return (bar?.actions ?? []).filter((a) => a.id !== "other" && (a.needsTarget || a.optTarget) && !["move", "barrier", "challenge", "drive"].includes(a.flow) && !["challenge", "vehicle"].includes(a.targetWho)
-    && (holding || (a.id !== "release" && a.id !== "grappleAttack")) && (!a.about || (facts.view?.statuses?.[tid] ?? []).some((s) => s.id === a.about)) && targetsFor(a, facts, bar.combatant).some((r) => r.id === tid))
+    && (holding || (a.id !== "release" && a.id !== "grappleAttack")) && (!a.about || (facts.view?.statuses?.[tid] ?? []).some((s) => s.id === a.about)) && targetsFor(a, facts, bar.combatant).some((r) => r.id === tid && (r.likely || (a.flow === "attack" && r.side === "other"))))      // U75: only what the action is meant for (the other side for an attack, the own side for help; a vehicle can be attacked): the rest stays in the dock, where any target can still be chosen
     .slice(0, 12).map((a) => { const arm = armsOf(bar, a, {}, facts, t);
       return { id: a.id, label: actLabel(t, a), icon: iconOf(a), cost: a.cost, stress: Number(a.stress) || 0, disabled: a.disabled ? reasonText(t, a.disabled) : arm.why, decl: { action: a.id, ...arm.decl }, opposeAttr: a.opposeAttr ?? null, defense: a.defense ?? null }; });
 }

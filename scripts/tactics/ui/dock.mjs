@@ -26,6 +26,7 @@
    RESTING (not the user's turn, nothing armed, nothing asked): the unit and its slots; the chevron opens the bar to look or to ask for
    an exception. A question addressed to the user always shows, whoever's turn it is. */
 import { h, icon, swap, face, speed, actIcon, tipText, askCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
+import * as Lay from "./layout-pure.mjs";
 
 const ID = "invincible-tactics-dock";
 const GAP = 6;
@@ -86,7 +87,7 @@ export function place() {
   for (const el of document.querySelectorAll(TOP_OBSTACLES)) { const r = visibleRect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) ceil = Math.max(ceil, r.bottom + 8); }
   /* the free band between what stands at the sides, for a dock whose bottom is at `floor` */
   let deskOff = false;
-  const sides = (floor, tall = stack.offsetHeight || 60, bar = false) => {
+  const sides = (floor, tall = (stack.offsetHeight || 60) * k, bar = false) => {
     let lo = 12, hi = W - 12;
     const yBot = floor - GAP, yTop = yBot - Math.min(tall, Math.max(150, yBot - ceil)) - 4, inBand = (r) => r && r.top < yBot && r.bottom > yTop;
     const sb = visibleRect(document.getElementById("sidebar"));
@@ -113,14 +114,17 @@ export function place() {
      row lifted over those things, and less of its width); only when even two rows have no room there does it stand ABOVE them. */
   const barEl = stack.querySelector(".itd-bar");
   delete root.dataset.tight;
-  const natural = barEl ? barEl.scrollWidth + 2 : 0;
+  /* U62: the stack is drawn at the user's size (CSS zoom). Its own lengths (offsetWidth, scrollWidth) are in its unscaled pixels,
+     the room is in window pixels: every length read from inside the stack is multiplied by k before it meets the room. */
+  const k = Lay.factor(document.body);
+  const natural = barEl ? barEl.scrollWidth * k + 2 : 0;
   /* U48: THE BOTTOM EDGE IS THE BAR'S. Where the open GM desk would squeeze the bar into three rows (a 1366 px window with the sidebar
      open too), the bar takes the edge under the desk instead and the desk ends above it (desk.mjs reads data-under); the panel and the
      questions above the bar still keep clear of the desk. Tried only when the first pass ends in three rows. */
   const deskOpen = !!visibleRect(document.querySelector("#invincible-tactics-desk .igd"));
   for (const off of [false, true]) {
   deskOff = off; delete root.dataset.tight;
-  const lows = [], wide = sides(ground, BAR_BAND, true);
+  const lows = [], wide = sides(ground, BAR_BAND * k, true);
   for (const el of document.querySelectorAll(LOW_OBSTACLES)) { const r = visibleRect(el); if (r && r.height < 90 && r.bottom > ground - 70 && r.top < ground && r.right > wide.lo && r.left < wide.hi) lows.push(r); }
   const between = (A) => {
     const mid = (A.lo + A.hi) / 2, B = { ...A };
@@ -133,8 +137,8 @@ export function place() {
   let pick = wide, up = sides(ground);
   if (lows.length) {
     const B = between(wide);
-    if (B.hi - B.lo >= Math.min(natural, TWO_ROWS)) { pick = B; up = between(up); }
-    else { const f = Math.min(ground, ...lows.map((r) => r.top)); pick = sides(f, BAR_BAND, true); up = sides(f); }
+    if (B.hi - B.lo >= Math.min(natural, TWO_ROWS * k)) { pick = B; up = between(up); }
+    else { const f = Math.min(ground, ...lows.map((r) => r.top)); pick = sides(f, BAR_BAND * k, true); up = sides(f); }
   }
   up = { lo: Math.max(up.lo, pick.lo), hi: Math.min(up.hi, pick.hi) };
   const { lo, hi, floor } = pick;
@@ -146,30 +150,32 @@ export function place() {
   root.style.setProperty("--itd-maxw", `${Math.round(avail)}px`);
   root.style.setProperty("--itd-up-maxw", `${Math.round(Math.max(280, Math.min(avail, up.hi - up.lo)))}px`);
   /* one row when it fits; else the actions go under the unit (measured above, with the row laid out unbroken) */
-  if (natural > avail) { root.dataset.tight = "1"; if ([".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) > avail) root.dataset.tight = "2"; }      // "2": even the unit and the tail do not share a row (a 1366 px window with the sidebar and the desk open)
+  if (natural > avail) { root.dataset.tight = "1"; if ([".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) * k > avail) root.dataset.tight = "2"; }      // "2": even the unit and the tail do not share a row (a 1366 px window with the sidebar and the desk open)
   /* the panel and the questions share what is left above the bar: the panel takes what it needs first (it is what the user is doing),
      the questions the rest; each scrolls inside its share */
-  const part = (sel) => stack.querySelector(sel)?.offsetHeight ?? 0;
+  const part = (sel) => (stack.querySelector(sel)?.offsetHeight ?? 0) * k;
   const fixed = part(".itd-bar") + part(".itd-wait") + 2 * GAP, asks = stack.querySelector(".itd-asks"), panelEl = stack.querySelector(".itd-panel");
   const above = Math.max(120, room - fixed);
   const panelMax = asks && panelEl ? Math.max(110, Math.round(above * 0.6)) : above;
   root.style.setProperty("--itd-panel-maxh", `${Math.round(panelMax)}px`);
-  root.style.setProperty("--itd-maxh", `${Math.max(110, Math.round(above - (panelEl ? Math.min(panelEl.scrollHeight + 4, panelMax) + GAP : 0)))}px`);
+  root.style.setProperty("--itd-maxh", `${Math.max(110, Math.round(above - (panelEl ? Math.min(panelEl.scrollHeight * k + 4, panelMax) + GAP : 0)))}px`);
   /* what floats at the bottom centre besides the dock (the module's end-of-session notice) stands above it: styles/tactics-ui.css */
   try {
     const clear = Math.round(bottom + Math.min(fixed - GAP, room) + 10);
     document.body.style.setProperty("--itd-clear", `${clear}px`);
+    /* U70: where the whole stack ends (the bar, the panel and the questions over it), for what must stand above ALL of it */
+    document.body.style.setProperty("--itd-over", `${Math.round(bottom + Math.min((stack.offsetHeight || 0) * k, room) + 12)}px`);
     /* U47: the notice stands right above the bar; while a panel or a question is open over the bar it waits (it would float over the
        middle of the map, above what the user is doing) */
     document.body.classList.toggle("ita-notice-wait", !!(panelEl || asks) || H - clear - 64 < ceil);
   } catch { /* no body */ }
-  const w = Math.min(stack.offsetWidth, avail);
+  const w = Math.min(stack.offsetWidth * k, avail);
   let cx = hot ? (hot.left + hot.right) / 2 : (lo + hi) / 2;
   if (cx + w / 2 > hi) cx = hi - w / 2;
   if (cx - w / 2 < lo) cx = lo + w / 2;
   root.style.setProperty("--itd-cx", `${Math.round(cx)}px`);
   let dx = 0;
-  for (const el of stack.querySelectorAll(":scope > :is(.itd-panel, .itd-asks)")) { const pw = el.offsetWidth; dx = Math.max(dx, up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > up.hi) dx = Math.min(dx, up.hi - pw / 2 - cx); }
+  for (const el of stack.querySelectorAll(":scope > :is(.itd-panel, .itd-asks)")) { const pw = el.offsetWidth * k; dx = Math.max(dx, up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > up.hi) dx = Math.min(dx, up.hi - pw / 2 - cx); }
   root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
   if (root.dataset.tight !== "2" || !deskOpen) break;
   }
@@ -243,7 +249,7 @@ function meter(c) {
 const wayRow = (r) => h(`button.itd-way${r.asking ? ".itd-armed" : ""}`, { fk: `way:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, pv: r.pv, data: { warn: r.warn ? "1" : null },
   attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", "), "aria-pressed": r.disabled ? String(!!r.asking) : null },
   on: { click: () => (r.disabled ? set({ ask: r.asking ? null : r.id, why: "" }) : r.req && send(r.req, { armed: null, mode: null, to: null, ask: null, why: "" })) } },
-  h("span.itd-way-l", {}, h("span", { text: r.label }), speed(r.cost)), h("span.itd-way-n", { text: r.notes.join(" · ") }), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null);
+  h("span.itd-way-l", {}, r.warn && !r.disabled ? icon("fa-triangle-exclamation") : null, h("span", { text: r.label }), speed(r.cost)), h("span.itd-way-n", { text: r.notes.join(" · ") }), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null);
 const askRow = (a) => (a ? h("div.itd-pbody.itd-refused", {}, a.reason ? h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: a.reason })) : null,
   a.text !== null ? h("div.itd-col.itd-grow", {}, textBox(a.text, a.placeholder, "why")) : null,
   h("div.itd-col.itd-submit", {}, submit(a.submit, ".itd-go-ask"))) : null);
@@ -366,7 +372,7 @@ function draw(d, ui) {
     d.show && (d.waiting?.length || d.turn || d.rolls?.length || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
       (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
       d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null,
-      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon("fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
+      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon(d.news.icon ?? "fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
         h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null,
     d.show ? bar(d) : null,
   ]);

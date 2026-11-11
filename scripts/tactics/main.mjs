@@ -35,6 +35,8 @@ function registerSettings() {
     choices: { everyRound: t("ITAC.Redraw.everyRound"), firstRoundOnly: t("ITAC.Redraw.firstRoundOnly") } });      // [I2] [B2277]
   reg("tacticsPushOrder", { ...name("tacticsPushOrder"), scope: "world", config: true, type: String, default: "afterDefence",
     choices: { afterDefence: t("ITAC.PushOrder.afterDefence"), beforeDefence: t("ITAC.PushOrder.beforeDefence") } });      // [R3] [OQ-9]: read when a fight starts
+  /* U62: the size of the dock, the desk and their cards on this browser (a slider; separate from Foundry's interface scale) */
+  reg("tacticsUiScale", { ...name("tacticsUiScale"), scope: "client", config: true, type: Number, range: { min: 80, max: 140, step: 5 }, default: 100, onChange: (v) => { try { tacticsApi.ui?.rescale?.(v); } catch { /* the surfaces are not up */ } } });
 }
 /** what stands in the way of tactical combat on this world: null (it runs) | "off" | "yze" | "noInitiative" */
 export function blocker() {
@@ -84,7 +86,12 @@ async function startRunning() {
   Mv.install(moveHost); Hooks.on("canvasReady", () => Mv.install(moveHost));      // P3: step listener, the map's rules driver, cost confirmation on a dragged token
   if (Store.iAmExecutor()) {
     if (!Klass.installed()) ui.notifications.warn(t("ITAC.Note.NotInstalled"), { console: false });
-    Sys.compat().then((list) => { const badNames = list.filter((x) => !x.ok).map((x) => x.name); if (badNames.length) { console.warn(`${MOD} | tactics: system compatibility`, list); ui.notifications?.warn(t("ITAC.warn.compat", { names: badNames.join(", ") })); } }).catch(() => {});
+    Sys.compat().then((list) => {
+      const { changed, closed } = Sys.compatNotes(list);
+      if (changed.length || closed.length) console.warn(`${MOD} | tactics: system compatibility`, list);
+      if (changed.length) ui.notifications?.warn(t("ITAC.warn.compat", { names: changed.join(", ") }));
+      if (closed.length) ui.notifications?.warn(t("ITAC.warn.packsClosed", { names: closed.join(", ") }), { permanent: false });      // U73: the server's matter, not the system's
+    }).catch(() => {});
   }
 }
 
