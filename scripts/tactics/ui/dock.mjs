@@ -114,7 +114,7 @@ export function place() {
   /* the panel and the questions share what is left above the bar: the panel takes what it needs first (it is what the user is doing),
      the questions the rest; each scrolls inside its share */
   const part = (sel) => stack.querySelector(sel)?.offsetHeight ?? 0;
-  const fixed = part(".itd-bar") + part(".itd-status") + 2 * GAP, asks = stack.querySelector(".itd-asks"), panelEl = stack.querySelector(".itd-panel");
+  const fixed = part(".itd-bar") + part(".itd-wait") + 2 * GAP, asks = stack.querySelector(".itd-asks"), panelEl = stack.querySelector(".itd-panel");
   const above = Math.max(120, room - fixed);
   const panelMax = asks && panelEl ? Math.max(110, Math.round(above * 0.6)) : above;
   root.style.setProperty("--itd-panel-maxh", `${Math.round(panelMax)}px`);
@@ -300,7 +300,7 @@ function draw(d, ui) {
     /* the line on top of the bar: whose turn, who the table waits for; and, only while there is one, the roll this user owes or may push
        (U1 / U2: its buttons are here, not on a chat toast) and the last thing the table was told (U10 / U3: one chip, the older lines in
        its tooltip, put away with its x) */
-    d.show && (waitRest(d).length || d.turn || d.rolls?.length || d.news) ? h("div.itd-status", { attrs: { role: "status" } },
+    d.show && (waitRest(d).length || d.turn || d.rolls?.length || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
       (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
       d.turn ? h("span.itd-turnline", { text: d.turn }) : null, waitRest(d).length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(waitRest(d))] : null,
       d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: [d.news.text, ...d.news.older].join("<br>"), attrs: { tabindex: "0" } }, icon("fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
