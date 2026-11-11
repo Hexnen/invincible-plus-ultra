@@ -40,11 +40,12 @@ export function costVersion() { try { const v = globalThis.localStorage?.getItem
 const KIND = (k) => (k === "free" ? "none" : COST_KINDS.includes(k) ? k : null);
 /* pure: the class names of the mark(s) of one cost, first to last. Version b has no mark of its own for "out of turn": the action's
    slice stands alone, out of the dial; the other versions put the out-of-turn mark before the action's. */
-export function costClasses(kind, { out = false, v = costVersion() } = {}) {
+export function costClasses(kind, { out = false, off = false, v = costVersion() } = {}) {
   const k = KIND(kind);
   if (!k || k === "stress" || !COST_VERSIONS.includes(v)) return [];
   const one = (x, more = "") => `ipu-cost ipu-cost-${v} ipu-k-${x}${more}`;
   if (k === "out") return [one("out")];
+  if (off && (k === "full" || k === "quick")) return [one(k, " ipu-off")];      // a slot that is spent: the same shape, hollow
   if (!out || !(k === "full" || k === "quick")) return [one(k)];
   return v === "b" ? [one(k, " ipu-out")] : [one("out"), one(k)];
 }

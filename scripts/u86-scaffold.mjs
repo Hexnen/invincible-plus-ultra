@@ -7,7 +7,7 @@
      ipuU86.set(null)              back to today's interface
      ipuU86.get()                  the version now on, or null
      ipuU86.legend(true | false)   the legend card: every mark of the three versions side by side with its name (needs no version on)
-   Only the initiative bar's tooltips need a reload after the switch (its pips are built once per turn). */
+   The dock, the desk and the initiative bar are redrawn at once. */
 import { costVersion, costMarkHtml, stressMarkHtml, symMarkHtml, COST_VERSIONS } from "./kit.mjs";
 
 const MOD = "invincible-plus-ultra", KEY = "ipu.u86", ID = "ipu-u86-legend";
@@ -19,6 +19,7 @@ function apply() {
   const v = costVersion();
   try { if (v) document.body.dataset.u86 = v; else delete document.body.dataset.u86; } catch { /* no body yet */ }
   try { game.modules.get(MOD)?.api?.tactics?.ui?.refresh?.(); } catch { /* the fight's surfaces are not up */ }
+  import("./combat/bar.mjs").then((m) => m.refresh?.()).catch(() => {});
 }
 function set(v) {
   try { if (COST_VERSIONS.includes(v)) localStorage.setItem(KEY, v); else localStorage.removeItem(KEY); } catch { /* private window */ }

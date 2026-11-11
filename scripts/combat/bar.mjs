@@ -22,7 +22,7 @@
    MOTION: transform / opacity / clip-path only (Web Animations on the individual translate / scale properties), nothing per frame. One
    choreography, morph() below, serves every change: FLIP for the tiles, the chrome and the ring, the camera (auto-centring) folded into the
    same FLIP, expand / collapse of the active tile, rapid-click hold, round-chip digit slide. */
-import { costVersion } from "../kit.mjs";      // U86-SCAFFOLD
+import { costVersion, costClasses } from "../kit.mjs";      // U86-SCAFFOLD
 import { t } from "./lang.mjs";
 import { freeArea, hudLimit, relayout as relayoutBanner } from "./banner.mjs";
 import { unitOf, unitName } from "../challenges/lang.mjs";
@@ -613,13 +613,13 @@ function paintActs(card, it) {
     if (!box.hidden || card.actsKey) { box.hidden = true; box.replaceChildren(); card.actsKey = ""; }
     return;
   }
-  const key = a.map((p) => p.lk).join("|");
+  const key = a.map((p) => p.lk).join("|") + (costVersion() ? `|${costVersion()}` : "");      // U86-SCAFFOLD: rebuilt when the version of the marks changes
   if (key !== card.actsKey) {
     box.replaceChildren(...a.map((p) => {
       const el = mk("span", "icbar-act");
       el.dataset.k = p.k;
       el.append(mk("i", "icbar-pip"), mk("b", "icbar-pl", t(`ICB.Bar.ActL.${p.lk}`)));
-      if (costVersion()) el.dataset.tooltip = t(`ICB.Bar.Act.${p.lk}`);      // U86-SCAFFOLD: the slot's name as its tooltip; the word beside it is hidden while a version of the marks is compared (styles/u86-scaffold.css)
+      if (costVersion() && (p.lk === "full" || p.lk === "quick")) { el.dataset.u86 = "1"; el.firstElementChild.className += ` ${costClasses(p.lk)[0]}`; el.dataset.tooltip = t(`ICB.Bar.Act.${p.lk}`); }      // U86-SCAFFOLD: the slot's name as its tooltip; the word beside it is hidden while a version of the marks is compared (styles/u86-scaffold.css)
       return el;
     }));
     card.actsKey = key;

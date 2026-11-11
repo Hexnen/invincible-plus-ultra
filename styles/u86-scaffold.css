@@ -16,6 +16,7 @@
 #invincible-tactics-dock .itd-row > :is(.ipu-cost, .ipu-costs) { color: var(--ita-yellow); }
 #invincible-tactics-dock .itd-row[aria-disabled="true"] > :is(.ipu-cost, .ipu-costs) { color: var(--ita-label); }
 #invincible-tactics-dock .itd-row > .ipu-stress { margin-left: 2px; }
+.itd-way-marks { display: inline-flex; align-items: center; gap: 8px; }
 /* the name plate of the armed action: the marks alone (their words are the tooltip) */
 .itd-cost-marks { gap: 6px; padding: 2px 3px; color: var(--ita-yellow); cursor: help; }
 .itd-cost-marks:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
@@ -37,11 +38,15 @@
 .ita-sum-chip > .ipu-sym { color: var(--ita-red-lt); }
 /* the unit: the Health picture of versions that draw their own */
 #invincible-tactics-dock .itd-vital > .ipu-sym { width: 11px; justify-content: center; color: var(--c); }
-#invincible-tactics-dock .itd-vital > .ipu-sym .ipu-sym-g { all: unset; display: inline-block; font: 900 9.5px/1 var(--ipu-fa); }
-#invincible-tactics-dock .itd-vital > .ipu-sym .ipu-sym-g.ipu-cost { height: 9.5px; aspect-ratio: 1; background: currentColor; -webkit-mask: center / 100% 100% no-repeat; mask: center / 100% 100% no-repeat; }
+#invincible-tactics-dock .itd-vital > .ipu-sym .ipu-sym-g.fa-solid { all: unset; display: inline-block; font: 900 9.5px/1 var(--ipu-fa); }
+#invincible-tactics-dock .itd-vital > .ipu-sym .ipu-sym-g.ipu-cost { height: 9.5px; }
 .igd-uv > .ipu-sym { color: var(--ita-red-lt); }
-.igd-uv > .ipu-sym .ipu-sym-g { all: unset; display: inline-block; font: 900 10px/1 var(--ipu-fa); }
-.igd-uv > .ipu-sym .ipu-sym-g.ipu-cost { height: 10px; aspect-ratio: 1; background: currentColor; -webkit-mask: center / 100% 100% no-repeat; mask: center / 100% 100% no-repeat; }
+:is(#invincible-tactics-dock .itd-vital, .igd-uv) > .ipu-sym .ipu-sym-g.fa-solid::before { color: inherit; }
+.igd-rollmarks { display: inline-flex; align-items: center; gap: 9px; color: var(--ita-text); }
+.igd-rollmarks .ipu-sym > .ipu-sym-g { color: var(--ita-yellow); }
+.igd-rollmarks .ipu-sym-b > .ipu-sym-g.fa-solid::before { color: var(--ipu-ink); }
+.igd-uv > .ipu-sym .ipu-sym-g.fa-solid { all: unset; display: inline-block; font: 900 10px/1 var(--ipu-fa); }
+.igd-uv > .ipu-sym .ipu-sym-g.ipu-cost { height: 10px; }
 
 /* ---- tooltips: the price line names its marks; a weapon's numbers ---- */
 #tooltip.ita-tip .ita-tt small.ita-tt-price { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; }
@@ -54,7 +59,27 @@
 #tooltip.ita-tip .ita-tt-marks .ipu-sym-b > .ipu-sym-g.fa-solid::before { color: #0c1a2e; }
 
 /* ---- the initiative bar: the words under the active card go to the slots' tooltips ---- */
-body[data-u86] #invincible-combat-bar .icbar-tile[data-active] .icbar-pl { display: none; }
+body[data-u86] #invincible-combat-bar .icbar-tile[data-active] .icbar-act[data-u86] .icbar-pl { display: none; }
+#invincible-combat-bar .icbar-pip.ipu-cost { width: auto; height: .8em; border: 0; transform: none; background: var(--icbar-yellow); }
+#invincible-combat-bar .icbar-tile[data-active] .icbar-pip.ipu-cost { width: auto; height: .86em; }
+#invincible-combat-bar .icbar-pip.ipu-cost::before, #invincible-combat-bar .icbar-pip.ipu-cost::after { content: none; }
+#invincible-combat-bar .icbar-act[data-st="used"] .icbar-pip.ipu-cost { background: var(--icbar-frame); }
+
+/* ---- the two slots of the turn in the shapes of versions b and c (a keeps today's bars: they are its shapes) ---- */
+#invincible-tactics-dock .itd-slot:has(> i.ipu-cost) { width: 30px; }
+.itd-slot > i.ipu-cost { width: auto; height: 22px; border: 0; box-shadow: none; transform: none; background: var(--ita-yellow); }
+.itd-slot > i.ipu-cost::after { content: none !important; }
+.itd-slot[data-extra] > i.ipu-cost { background: var(--ita-cyan); }
+.itd-slot[data-state="pending"] > i.ipu-cost { background: var(--ita-cyan); border: 0; }
+.itd-slot:is([data-state="used"], [data-state="lost"]) > i.ipu-cost { background: var(--ita-label); border: 0; opacity: 1; }
+.itd-slot[data-state="lost"] > i.ipu-cost { opacity: .55; }
+.itd-slot[data-pv] > i.ipu-cost { background: #fff; }
+.igd-uslot.ipu-cost { width: auto; height: 14px; border: 0; outline: 0; transform: none; background: var(--ita-yellow); }
+.igd-uslot.ipu-cost[data-kind="quick"] { width: auto; }
+.igd-uslot.ipu-cost::after { content: none !important; }
+.igd-uslot.ipu-cost[data-extra] { background: var(--ita-cyan); }
+.igd-uslot.ipu-cost[data-state="pending"] { background: var(--ita-cyan); border: 0; }
+.igd-uslot.ipu-cost:is([data-state="used"], [data-state="lost"]) { background: var(--ita-label); border: 0; }
 
 /* ---- the GM desk ---- */
 #invincible-tactics-desk .igd-seg button > :is(.ipu-cost, .ipu-costs) { --ipu-cost-h: 11px; }

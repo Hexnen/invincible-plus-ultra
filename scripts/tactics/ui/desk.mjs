@@ -16,7 +16,7 @@
               the vehicles (who sits where, the state of the machine) and the challenges (a book preset, what the GM runs by hand)
      Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), a hazard let loose by hand, the karma notes, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
 import { h, icon, swap, askCard, rollButtons, visibleRect, face } from "./dom.mjs";
-import { costVersion, costMark, symMark } from "../../kit.mjs";      // U86-SCAFFOLD (stage 1 of ledger U86): see dom.mjs speed()
+import { costVersion, costClasses, costMark, symMark } from "../../kit.mjs";      // U86-SCAFFOLD (stage 1 of ledger U86): see dom.mjs speed()
 import * as Lay from "./layout-pure.mjs";
 
 const ID = "invincible-tactics-desk";
@@ -118,6 +118,13 @@ function override(i, L) {
    model hands the tag over as words, so the mark is found by comparing them; stage 2: the model hands over the cause itself.) */
 const causeTag = (cause) => (!cause ? null : costVersion() && cause === handlers.label?.("ITAC.ui.cause.interrupt")
   ? h("span.igd-tag.igd-tag-mark", { tip: cause, attrs: { "aria-label": cause, tabindex: "0" } }, costMark("out")) : h("span.igd-tag", { text: cause }));
+/* U86-SCAFFOLD: with a version on, "N dice, sixes: M" on the row of a roll is the mark of dice and the mark of a success with their
+   numbers (cut out of the model's sentence; stage 2: the model hands over the two numbers) */
+const uslotCls = (s, v = costVersion()) => (v && v !== "a" && (s.kind === "full" || s.kind === "quick") ? `.${costClasses(s.kind, { v, off: s.state === "used" || s.state === "lost" })[0].replace(/ /g, ".")}` : "");      // U86-SCAFFOLD: a slot in the version's shape (b, c)
+function rollWords(text) {
+  const m = costVersion() ? /^(\d+)\D+(\d+)\D*$/.exec(String(text ?? "")) : null;
+  return m ? h("span.igd-rollmarks", { tip: text, attrs: { "aria-label": text } }, symMark("dice", { n: m[1] }), symMark("six", { n: m[2] })) : h("span", { text });
+}
 function inst(i, L) {
   return h(`article.igd-inst${i.child ? ".igd-child" : ""}`, { data: { locked: i.locked ? "1" : null } },
     h("header.igd-ihead", {}, h("b.igd-actor", { text: i.actor }), icon("fa-caret-right"), h("span.igd-action", { text: i.action }), i.targets.length ? [icon("fa-caret-right"), h("b.igd-target", { text: i.targets.join(", ") })] : null),
@@ -125,7 +132,7 @@ function inst(i, L) {
       i.outcomes.map((o) => h(`span.igd-tag${o.hit ? ".igd-hit" : ".igd-miss"}`, { text: `${o.name}: ${o.text}` }))),
     i.text ? h("blockquote.ita-quote", {}, h("span", { text: i.text })) : null,
     i.rolls.length ? h("ul.igd-rolls", {}, i.rolls.map((r) => h(`li${r.waiting ? ".igd-waiting" : ""}`, {}, icon(r.waiting ? "fa-hourglass-half" : "fa-dice"), h("b", { text: r.label }),
-      rollButtons(`${i.id}:${r.key}`, r.buttons, { roll: handlers.roll, send: (req) => send(req) }), h("span", { text: r.text }), r.chance ? h("span.igd-pct", { text: r.chance }) : null))) : null,      // U1 / U4: roll, accept, push, ask again: on the row of the roll
+      rollButtons(`${i.id}:${r.key}`, r.buttons, { roll: handlers.roll, send: (req) => send(req) }), rollWords(r.text), r.chance ? h("span.igd-pct", { text: r.chance }) : null))) : null,      // U1 / U4: roll, accept, push, ask again: on the row of the roll
     h("div.igd-cmds", {}, i.commands.map((c) => (c.toggle
       ? h("button.igd-btn.igd-toggle", { fk: `ovr:${i.id}`, attrs: { "aria-expanded": String(c.on) }, on: { click: () => set({ override: c.on ? null : i.id }) } }, icon("fa-sliders"), h("span", { text: c.label }))
       : h(`button.igd-btn${c.danger ? ".igd-danger" : ""}${c.armed ? ".igd-sure" : ""}`, { fk: `cmd:${i.id}:${c.id}`, text: c.label, on: { click: () => (c.confirm && !c.armed ? set({ sure: `${i.id}:${c.id}` }) : send(c.req, { sure: null })) } })))),
@@ -150,7 +157,7 @@ const foldSec = (id, title, n, kids) => { const shut = !!last?.ui?.folds?.[id];
     icon(shut ? "fa-chevron-right" : "fa-chevron-down"), h("span", { text: title }), n ? h("b.igd-n", { text: String(n) }) : null)), shut ? null : kids); };
 
 function now(d) {
-  const askH = { send: (req) => send(req), count: (id, v) => setVal(id, v), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate, outName: handlers.label?.("ITAC.ui.cause.interrupt") };
+  const askH = { send: (req) => send(req), count: (id, v) => setVal(id, v), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate, outName: handlers.label?.("ITAC.ui.cause.interrupt"), noneName: handlers.label?.("ITAC.ui.cost.none") };
   if (!d.cards.length && !d.stack.length && !d.manual.length) return h("p.igd-empty", {}, icon("fa-mug-hot"), h("span", { text: d.empty }));
   return [
     d.manual.length ? section(d.labels.manual, d.manual.length, d.manual.map((m) => manual(m, d.labels))) : null,
@@ -210,7 +217,7 @@ function kitTab(k) {
       h("div.igd-umain", {}, h("select.igd-uwho", { fk: "kit:who", attrs: { "aria-label": k.who.label }, on: { change: (e, el) => put({ who: el.value || null, open: null }) } }, k.who.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id, selected: x.id === k.who.value } }))),
         h("div.igd-ufacts", {}, u.zone ? h("span.ipu-chip", {}, icon("fa-location-dot"), h("span", { text: u.zone })) : null, u.group ? h("span.ipu-chip", {}, icon("fa-people-group"), h("span", { text: u.group.label })) : null,
           u.hidden ? h("span.ipu-chip.igd-uhid", { tip: u.hidden, attrs: { "aria-label": u.hidden } }, icon("fa-eye-slash")) : null,
-          u.slots.length ? h("span.igd-uslots", { attrs: { role: "img", "aria-label": u.slots.map((s) => s.tip).join(". ") } }, u.slots.map((s) => h("i.igd-uslot", { tip: s.tip, data: { kind: s.kind, state: s.state, extra: s.extra ? "1" : null } }))) : null))),
+          u.slots.length ? h("span.igd-uslots", { attrs: { role: "img", "aria-label": u.slots.map((s) => s.tip).join(". ") } }, u.slots.map((s) => h(`i.igd-uslot${uslotCls(s)}`, { tip: s.tip, data: { kind: s.kind, state: s.state, extra: s.extra ? "1" : null } }))) : null))),
     u.vitals.length ? h("div.igd-uvs", {}, u.vitals.map(bar)) : null,
     h("div.igd-ustates", {}, u.states.length ? u.states.map((s) => (costVersion()      /* U86-SCAFFOLD: a condition is its picture in the set's frame; its name (and who keeps it up) is the tooltip */
       ? h("span.igd-ustate.igd-ustate-mark", { tip: [s.label, s.tip].filter(Boolean).join(". "), data: { id: s.id }, attrs: { "aria-label": [s.label, s.tip].filter(Boolean).join(". "), tabindex: "0" } }, symMark("cond", { glyph: s.icon }))

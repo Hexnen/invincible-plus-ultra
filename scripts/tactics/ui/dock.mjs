@@ -26,7 +26,7 @@
    RESTING (not the user's turn, nothing armed, nothing asked): the unit and its slots; the chevron opens the bar to look or to ask for
    an exception. A question addressed to the user always shows, whoever's turn it is. */
 import { h, icon, swap, face, speed, stressChip, actIcon, tipText, askCard, sumCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
-import { costVersion, symMark } from "../../kit.mjs";      // U86-SCAFFOLD (stage 1 of ledger U86): see dom.mjs speed()
+import { costVersion, costClasses, symMark } from "../../kit.mjs";      // U86-SCAFFOLD (stage 1 of ledger U86): see dom.mjs speed()
 import * as Lay from "./layout-pure.mjs";
 
 const ID = "invincible-tactics-dock";
@@ -190,7 +190,14 @@ export function place() {
 
 /* ---------- pieces ---------- */
 const keyAttrs = (key) => (key ? { "aria-keyshortcuts": key } : {});
-const slot = (p) => h("button.itd-slot", { fk: `slot:${p.key}`, tip: p.tip, disabled: !p.req, data: { key: p.key, kind: p.kind, state: p.state, as: p.as, extra: p.extra ? "1" : null }, attrs: { "aria-label": p.tip }, on: { click: () => p.req && send(p.req) } }, h("i"));
+const slot = (p) => h("button.itd-slot", { fk: `slot:${p.key}`, tip: p.tip, disabled: !p.req, data: { key: p.key, kind: p.kind, state: p.state, as: p.as, extra: p.extra ? "1" : null }, attrs: { "aria-label": p.tip }, on: { click: () => p.req && send(p.req) } }, slotMark(p));
+/* U86-SCAFFOLD: with a version on, the Armor of a door (the last note of its row) is the mark of Armor with its number */
+const wayNotes = (r) => (costVersion() && r.d && r.notes.length > 1
+  ? h("span.itd-way-n.itd-way-marks", {}, h("span", { text: r.notes.slice(0, -1).join(" \u00b7 ") }), symMark("armor", { n: r.d.armor ?? 0 }))
+  : h("span.itd-way-n", { text: r.notes.join(" \u00b7 ") }));
+/* U86-SCAFFOLD: with version b or c on, a slot of the turn is drawn in that version's shape of its action (spent: the same shape, hollow) */
+const slotMark = (p, v = costVersion()) => (v && v !== "a" && (p.kind === "full" || p.kind === "quick")
+  ? h(`i.${costClasses(p.kind, { v, off: p.state === "used" || p.state === "lost" })[0].replace(/ /g, ".")}`) : h("i"));
 const vital = (v) => h("div.itd-vital", { data: { id: v.id, v: v.v }, attrs: { role: "img", "aria-label": v.say, style: `--itd-v:${v.v};--itd-max:${v.max}` } },
   costVersion() && v.id === "health" ? symMark("health") : icon(v.id === "health" ? "fa-heart" : "fa-bolt"), h("span.itd-vbar", {}, h("i.itd-vfill"), h("i.itd-vpv")), h("b.itd-vnum", {}, h("span", { text: String(v.v) }), h("small", { text: `/${v.max}` })), h("b.itd-vdelta"));
 
@@ -269,7 +276,7 @@ function meter(c) {
 const wayRow = (r) => h(`button.itd-way${r.asking ? ".itd-armed" : ""}`, { fk: `way:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, pv: r.pv, data: { warn: r.warn ? "1" : null },
   attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", "), "aria-pressed": r.disabled ? String(!!r.asking) : null },
   on: { click: () => (r.disabled ? set({ ask: r.asking ? null : r.id, why: "" }) : r.req && send(r.req, { armed: null, mode: null, to: null, ask: null, why: "" })) } },
-  h("span.itd-way-l", {}, r.warn && !r.disabled ? icon("fa-triangle-exclamation") : null, h("span", { text: r.label }), speed(r.cost)), h("span.itd-way-n", { text: r.notes.join(" · ") }), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null);
+  h("span.itd-way-l", {}, r.warn && !r.disabled ? icon("fa-triangle-exclamation") : null, h("span", { text: r.label }), speed(r.cost)), wayNotes(r), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null);
 const askRow = (a) => (a ? h("div.itd-pbody.itd-refused", {}, a.reason ? h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: a.reason })) : null,
   a.text !== null ? h("div.itd-col.itd-grow", {}, textBox(a.text, a.placeholder, "why")) : null,
   h("div.itd-col.itd-submit", {}, submit(a.submit, ".itd-go-ask"))) : null);
@@ -382,7 +389,7 @@ function draw(d, ui) {
   const pk = d.show && d.panel ? `${d.panel.kind}|${d.panel.list ?? d.panel.action ?? ""}` : null;
   root.classList.toggle("itd-same", pk !== null && pk === panelKey);
   panelKey = pk;
-  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate, outName: handlers.label?.("ITAC.ui.cause.interrupt") };
+  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate, outName: handlers.label?.("ITAC.ui.cause.interrupt"), noneName: handlers.label?.("ITAC.ui.cost.none") };
   swap(stack, [
     /* U57: the summary of the round (or of the fight) that just ended stands where the questions stand, after them */
     d.prompts?.length || d.sum ? h("div.itd-asks", {}, (d.prompts ?? []).map((a) => askCard(a, askH)), d.sum ? sumCard(d.sum, { sumClose: handlers.sumClose }) : null) : null,

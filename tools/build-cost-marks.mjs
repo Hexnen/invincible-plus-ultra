@@ -56,8 +56,8 @@ const arrow = (x, len) => poly([[x, 5], [x + len - 5.5, 5], [x + len - 5.5, 2.4]
 const stop = (x) => poly([[x, 1], [x + 2, 1], [x + 2, 11], [x, 11]]);
 Object.assign(A, { rmin: { w: 16, d: stop(0) + arrow(3, 13) }, rmax: { w: 16, d: arrow(0, 13) + stop(14) } });
 Object.assign(B, {
-  rmin: { w: 12, d: ring(5.7, 4.9) + circle(6, 6, 2.7) },
-  rmax: { w: 12, d: ring(5.7, 3.7) + circle(6, 6, 1.2) },
+  rmin: { w: 12, d: ring(4.4, 3.3) + circle(6, 6, 1.9) },                       // one wave round the point: near
+  rmax: { w: 12, d: ring(5.9, 4.9) + ring(3.8, 2.8) + circle(6, 6, 1.3) },      // two waves: far
 });
 const star = (cx, cy, n, r0, r1) => poly(Array.from({ length: 2 * n }, (_, i) => { const a = (Math.PI * i) / n, r = i % 2 ? r1 : r0; return [cx + r * Math.sin(a), cy - r * Math.cos(a)]; }));
 const pips = (list, r) => list.map(([x, y]) => `<circle cx='${f(x)}' cy='${f(y)}' r='${f(r)}'/>`).join("");
@@ -71,7 +71,22 @@ Object.assign(C, {
   dice: { w: 12, raw: `<rect x='1.3' y='1.3' width='9.4' height='9.4' rx='1.6' fill='none' stroke='#000' stroke-width='1.6'/>${pips([[4, 4], [8, 8], [6, 6]], 1.05)}` },
   six: { w: 12, raw: `<mask id='m'><rect width='12' height='12' fill='#fff'/><g fill='#000'>${pips(SIX, 1.05)}</g></mask><rect x='0.5' y='0.5' width='11' height='11' rx='1.8' mask='url(#m)'/>` },
   push: { w: 12, raw: "<path fill='none' stroke='#000' stroke-width='1.9' d='M9.7,3.4A4.5,4.5 0 1 0 10.5,6.9'/><path d='M11.8,0.7V5.3H7.2Z'/><circle cx='6' cy='6.2' r='1.35'/>" },
-  crit: { w: 12, raw: `<path stroke='#000' stroke-width='2.3' d='M3.5,8.5L8.5,3.5'/>${pips([[2.2, 7.2], [4.8, 9.8], [7.2, 2.2], [9.8, 4.8]], 1.75)}` },
+  crit: { w: 15, raw: `<path d='M2.4,4.6H6.6L5.2,7.4H2.4ZM8.4,4.6H12.6V7.4H7Z'/>${pips([[2.3, 4.1], [2.3, 7.9], [12.7, 4.1], [12.7, 7.9]], 2.05)}` },      // a bone broken in two
+});
+/* ---- a slot that is spent (.ipu-off): the same shape, hollow; never told by colour alone ---- */
+const hollow = (pts, sw = 1.2) => `<path fill='none' stroke='#000' stroke-width='${f(sw)}' stroke-linejoin='miter' d='${poly(pts)}'/>`;
+Object.assign(A, {
+  "full-off": { w: 24, raw: hollow([[2.4, 4.1], [23.2, 4.1], [21.6, 7.9], [0.8, 7.9]]) },
+  "quick-off": { w: 12, raw: hollow([[2.4, 4.1], [11.2, 4.1], [9.6, 7.9], [0.8, 7.9]]) },
+});
+const spoke = (deg) => { const a = (deg * Math.PI) / 180; return `M6,6L${f(6 + 4.6 * Math.sin(a))},${f(6 - 4.6 * Math.cos(a))}`; };
+Object.assign(B, {
+  "full-off": { w: 12, d: ring(5.6, 4.6), raw: `<path fill='none' stroke='#000' stroke-width='1' d='${spoke(0)}${spoke(240)}'/>` },
+  "quick-off": { w: 12, d: ring(5.6, 4.6), raw: `<path fill='none' stroke='#000' stroke-width='1' d='${spoke(0)}${spoke(120)}'/>` },
+});
+Object.assign(C, {
+  "full-off": { w: 10, raw: hollow([[1.2, 2.2], [8.8, 2.2], [8.8, 9.8], [1.2, 9.8]]) },
+  "quick-off": { w: 10, raw: hollow([[1.3, 2.3], [7.8, 6], [1.3, 9.7]]) },
 });
 const SETS = { a: A, b: B, c: C };
 
@@ -79,7 +94,7 @@ const svg = (g) => `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${f(g.w
 const uri = (g) => `url("data:image/svg+xml,${svg(g).replace(/</g, "%3C").replace(/>/g, "%3E").replace(/#/g, "%23")}")`;
 const lines = [];
 for (const [v, set] of Object.entries(SETS)) for (const [k, g] of Object.entries(set)) {
-  const sel = k.endsWith("-out") ? `.ipu-cost-${v}.ipu-k-${k.slice(0, -4)}.ipu-out` : `.ipu-cost-${v}.ipu-k-${k}`;
+  const sel = k.endsWith("-out") ? `.ipu-cost-${v}.ipu-k-${k.slice(0, -4)}.ipu-out` : k.endsWith("-off") ? `.ipu-cost-${v}.ipu-k-${k.slice(0, -4)}.ipu-off` : `.ipu-cost-${v}.ipu-k-${k}`;
   lines.push(`${sel} { aspect-ratio: ${f(g.w)} / 12; -webkit-mask-image: ${uri(g)}; mask-image: ${uri(g)}; }`);
 }
 const file = new URL("../styles/kit.css", import.meta.url), src = readFileSync(file, "utf8");

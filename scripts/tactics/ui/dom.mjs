@@ -84,10 +84,10 @@ function priceHtml(tip) {
   const v = costVersion(), p = tip.price;
   if (!v || !p || !tip.cost) return null;
   const unit = p.unit === "free" ? "none" : p.unit, part = (mark, text) => `<span class="ita-tt-pp">${mark}<span>${esc(text)}</span></span>`;
-  if (unit === "none" || !(unit === "full" || unit === "quick" || unit === "gm")) return `${part(costMarkHtml(unit ?? "none", { v }), tip.cost)}${p.stress ? stressMarkHtml(p.stress, { v }) : ""}`;
+  if (!(unit === "full" || unit === "quick" || unit === "gm" || unit === "none")) return `${part(costMarkHtml(unit ?? "none", { v }), tip.cost)}${p.stress ? stressMarkHtml(p.stress, { v }) : ""}`;
   const parts = String(tip.cost).split(", "), cut = parts[0].indexOf(": "), lead = cut > 0 ? parts[0].slice(0, cut + 2) : "", name = cut > 0 ? parts[0].slice(cut + 2) : parts[0];
   const out = [(lead ? `<span>${esc(lead)}</span>` : "") + part(costMarkHtml(unit, { v }), name)];
-  if (p.out && p.outName) out.push(part(costMarkHtml("out", { v }), p.outName));
+  if (p.out && p.outName && unit !== "none") out.push(part(costMarkHtml("out", { v }), p.outName));
   let rest = parts.slice(1);
   if (p.stress && rest.length) { out.push(part(stressMarkHtml(p.stress, { v }), rest[0].replace(/\d+/, "").replace(/^[\s:]+|[\s:]+$/g, ""))); rest = rest.slice(1); }
   for (const x of rest) out.push(`<span>${esc(x)}</span>`);
@@ -128,14 +128,18 @@ export function askCard(a, handlers = {}) {
   /* U86-SCAFFOLD: an answer to something done by somebody else (a block, a dodge) is taken out of turn: the mark says so, and the
      answer's tooltip names the marks (it had none: the price stood only in the aria-label) */
   const V = costVersion(), outOf = V && a.kind === "reaction";
-  const opt = (o) => h("button.ita-opt", {
-    fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: V && !o.tip && o.unit && o.cost ? { cost: o.cost, price: { unit: o.unit, stress: o.stress, out: outOf, outName: handlers.outName } } : o.tip ?? null, pv: o.pv, pvFor: a.pvFor,      // U51: the reason of a greyed answer is written on it, not said again in a tooltip
+  /* (an answer that takes no action is handed over with its price in words only: with a version on, the words are matched against
+     the name of "no action" so that it too is written with marks; stage 2: the model hands over the unit) */
+  const unitOf = (o) => o.unit ?? (V && o.cost && handlers.noneName && String(o.cost).startsWith(handlers.noneName) ? "none" : null);
+  const opt = (o) => optOf(o, unitOf(o));
+  const optOf = (o, unit) => h("button.ita-opt", {
+    fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: V && !o.tip && unit && o.cost ? { cost: o.cost, price: { unit, stress: o.stress, out: outOf, outName: handlers.outName } } : o.tip ?? null, pv: o.pv, pvFor: a.pvFor,      // U51: the reason of a greyed answer is written on it, not said again in a tooltip
     attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled].filter(Boolean).join(", ") },
     data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null },
     on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
   }, a.check ? icon(o.picked ? "fa-square-check" : "fa-square") : o.icon ? actIcon(o.icon) : null,      // U18: a line of a round-point queue is a tick box: ticked = it happens
-  h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(o.unit, { out: outOf }), stressChip(o.stress, false)),
-    !o.unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null, o.disabled ? h("span.ita-opt-why", { text: o.disabled }) : null));
+  h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(unit, { out: outOf }), stressChip(o.stress, false)),
+    !unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null, o.disabled ? h("span.ita-opt-why", { text: o.disabled }) : null));
   /* U23: the stunts stand in their groups (on the target; another opponent; on that opponent), each group after its caption */
   const groups = [];
   for (const o of a.options) { const id = o.group?.id ?? ""; let g = groups.find((x) => x.id === id); if (!g) groups.push((g = { id, label: o.group?.label ?? null, items: [] })); g.items.push(o); }
