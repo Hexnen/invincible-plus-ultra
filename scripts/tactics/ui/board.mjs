@@ -93,7 +93,7 @@ function waysMenu(p, zone, drag = false) {
   if (!rows.length) { if (drag) { H.notify("warn", t("ITAC.move.cannot", { reason: Model.reasonText(t, "noRoute") })); H.set({ armed: null, mode: null }); } return; }
   const blocked = rows.filter((r) => r.disabled);
   const items = rows.map((r) => ({ id: r.id, label: r.label, icon: faOf("move"), hint: r.hint, ...(r.disabled ? { disabled: r.disabled } : {}) }));
-  if (blocked.length === rows.length) items.push({ separator: true }, { id: "@ask", label: t("ITAC.map.menu.ask"), icon: "fa-solid fa-comment" });
+  if (blocked.length === rows.length) items.push({ separator: true }, { id: "@ask", label: t(last.staff ? "ITAC.map.menu.gm" : "ITAC.map.menu.ask"), icon: last.staff ? "fa-solid fa-gavel" : "fa-solid fa-comment" });
   menuBusy = true;
   Zones.menu({ zone, title: Model.zoneText(last.facts, t, zone), sub: p.title, items }).then((r) => {
     menuBusy = false;
