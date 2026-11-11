@@ -68,7 +68,10 @@ const SHAPES = {
   answer: (r) => { const value = valueOf(r.value); return isId(r.prompt) && value !== undefined && value !== null ? { prompt: r.prompt, value } : null; },
   help: (r) => (isId(r.inst) && isId(r.helper) ? { inst: r.inst, helper: r.helper } : null),
   move: (r) => (isId(r.actor) ? { actor: r.actor, ...moveOf(r), action: ["openDoor", "breachDoor", "unseal"].includes(r.action) ? r.action : undefined } : null),
-  exception: (r) => (isId(r.actor) && typeof r.text === "string" && r.text ? { actor: r.actor, text: clamp(r.text), inst: isId(r.inst) ? r.inst : undefined } : null),
+  exception: (r) => (isId(r.actor) && typeof r.text === "string" && r.text ? { actor: r.actor, text: clamp(r.text), inst: isId(r.inst) ? r.inst : undefined,
+    /* U3: the rule that refused (an id from the engine's own refusal) and the declaration that was refused, so a grant can run it */
+    reason: isId(r.reason) ? r.reason : undefined, decl: isObj(r.decl) ? declOf(r.decl) : undefined } : null),
+  preview: (r) => (isId(r.actor) && isObj(r.decl) ? { actor: r.actor, decl: declOf(r.decl) } : null),   // reads only: the dice a declaration would roll
   other: (r) => (isId(r.actor) && typeof r.text === "string" && r.text ? { actor: r.actor, text: clamp(r.text) } : null),
 };
 /** Normalise a request. Players: whitelist + size cap. Staff: any known operation, payload as sent (the executor still validates every field).
@@ -138,6 +141,7 @@ export function wireEnv(env) {
   if (!isObj(env)) return bad("internal");
   const out = { ok: env.ok === true, changed: env.changed === true };
   for (const k of ["dup", "inst", "prompt"]) if (env[k] !== undefined) out[k] = env[k];
+  if (isObj(env.preview)) out.preview = env.preview;                 // the asker's own pool (engine-pure.opPreview refuses anything the asker does not own)
   if (!out.ok) out.error = isObj(env.error) && RELAY_CODES.includes(env.error.code) ? { key: `ITAC.err.${env.error.code}`, code: env.error.code, params: isObj(env.error.params) ? env.error.params : {} } : bad("internal").error;
   return out;
 }

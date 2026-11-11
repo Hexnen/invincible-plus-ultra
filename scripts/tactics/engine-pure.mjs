@@ -122,6 +122,15 @@ async function undoOps(X, ops, round = null) {
   X.facts = liveFacts(X); X.changed = true;
 }
 
+/* who rolls: the players who own the character and are at the table; NPC rolls and rolls of absent players are made at the GM desk */
+function rollUsers(X, who) {
+  const players = (who?.owners ?? []).filter((u) => !X.facts.user(u)?.staff && X.facts.user(u)?.active !== false);
+  return who && !who.npc && players.length ? players : ["gm"];
+}
+/* U7: who may see the dice. A secret roll and the roll of a combatant Foundry hides from the players go to the GM alone ("gm"), whatever
+   the roller's own chat mode is; every other roll of a fight is public (undefined). The roller's client applies it (system-adapter). */
+const rollMode = (e, who) => (e.secret || who?.hidden === true ? "gm" : undefined);
+
 /* ------------------------------------------------------------------ effects of a flow step */
 async function applyEffect(X, I, e, step) {
   const tx = I.tx, c = e.who ? X.facts.c(e.who) : null;
@@ -152,10 +161,9 @@ async function applyEffect(X, I, e, step) {
     case "roll": {
       const rid = nextId(X, "r");
       const who = e.who === "hazard" ? null : X.facts.c(e.who);
-      const players = (who?.owners ?? []).filter((u) => !X.facts.user(u)?.staff && X.facts.user(u)?.active !== false);
-      const users = who && !who.npc && players.length ? players : ["gm"];              // NPC rolls and rolls of absent players are made at the GM desk
-      I.rolls[e.key] = { key: e.key, who: e.who, attr: e.attr, pool: e.pool, pushed: 0, pushable: false, ...(e.secret ? { secret: 1 } : {}), req: { rid, users, at: X.host.now(), dice: e.dice, maxPush: e.maxPush, label: e.label ?? null } };
-      const res = await perform(X, tx, { t: "rollRequest", inst: I.id, key: e.key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: e.who, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, secret: e.secret, label: e.label }, I, step);
+      const users = rollUsers(X, who), mode = rollMode(e, who);
+      I.rolls[e.key] = { key: e.key, who: e.who, attr: e.attr, pool: e.pool, pushed: 0, pushable: false, ...(e.secret ? { secret: 1 } : {}), req: { rid, users, at: X.host.now(), dice: e.dice, maxPush: e.maxPush, label: e.label ?? null, ...(mode ? { mode } : {}) } };
+      const res = await perform(X, tx, { t: "rollRequest", inst: I.id, key: e.key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: e.who, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, secret: e.secret, label: e.label, ...(mode ? { mode } : {}) }, I, step);
       if (isObj(res) && Number.isFinite(res.sixes)) { Object.assign(I.rolls[e.key], { sixes: res.sixes, ones: res.ones ?? 0, pushed: res.pushed ?? 0, pushable: !!res.pushable, messageId: res.messageId }); return true; }
       return false;
     }
@@ -203,6 +211,20 @@ function makeInst(X, { action, actor, decl, cause = "turn", parent = null, data 
   if (part) inst.part = 1;
   return inst;
 }
+/* U10 / U3: what the table is told happened, kept in the state (the last NEWS_MAX) so every client can say it in its own surface: the result
+   of an action that closed (who, what, per target: hit or not, damage taken, stunts), and the GM's word on a request for an exception. It
+   is not journaled (an undo marks the entry instead of removing it) and it reaches a player only through view-pure.viewFor, which drops
+   whatever names somebody concealed from that player. */
+export const NEWS_MAX = 12;
+function pushNews(X, n) {
+  X.state = { ...X.state, news: [...(X.state.news ?? []), { id: nextId(X, "n"), round: X.state.round ?? null, at: X.host.now(), ...n }].slice(-NEWS_MAX) }; X.changed = true;
+}
+function newsOf(I) {
+  const rows = (I.decl?.targets ?? []).map((t) => { const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
+    return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}) }; });
+  return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
+    result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), rows };
+}
 function pushInst(X, inst) { X.state = { ...X.state, stack: [...X.state.stack, inst] }; X.changed = true; }
 const JOURNAL_HAZARDS = ["fire", "blast", "area", "vacuum", "disease"];
 function label(X, inst, what) {
@@ -239,6 +261,7 @@ async function closeInst(X, I, result = null) {
   dropPrompts(X, (p) => p.inst === I.id);
   X.state = { ...X.state, stack: X.state.stack.filter((i) => i.id !== I.id) };
   if (!I.part) closeTx(X, I.tx, label(X, I, I.data.result));
+  if (!I.part && I.status !== "aborted" && !I.data?.free) pushNews(X, newsOf(I));
   emit(X, I, { type: "actionClosed", summary: { result: I.data.result ?? null, status: I.status }, tx: I.part ? null : I.tx });
   const parent = I.parent ? instOf(X, I.parent) : null;
   if (!parent) return;
@@ -422,7 +445,8 @@ async function opDeclare(X, a) {
     await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", tags: price?.tags ?? entry.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
     I.entry = I.data.paid?.own ?? null;
   }
-  if (!l.ok) {                                                                              // an illegal option with a request for an exception (spec 9.12): a desk card
+  if (!l.ok && a.granted === true && X.user.staff) { I.data.exception = { reason: l.reason, params: l.params, by: "gm" }; I.decl.exception = { ...I.decl.exception, state: "granted" }; }      // U3: the GM already said yes on the card of the request: no second card
+  else if (!l.ok) {                                                                         // an illegal option with a request for an exception (spec 9.12): a desk card
     I.data.exception = { reason: l.reason, params: l.params }; I.data.hold = "exception"; I.status = "waiting";
     openPrompt(X, I, { key: "exception", kind: "exception", to: "gm", about: actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { reason: l.reason, text: decl.exception.text } }, "declare");
     I.data.holdKey = "exception";
@@ -506,12 +530,59 @@ async function opAnswer(X, a, forAnyone = false) {
     const I = J.clone(inst), id = typeof value === "string" ? value : value.id;
     delete I.data.hold; delete I.data.holdKey; I.decl.exception = { ...I.decl.exception, state: id === "grant" ? "granted" : "denied" };
     setInst(X, I);
+    pushNews(X, { kind: "exception", actor: I.actor, action: I.action, granted: id === "grant", ran: id === "grant" ? 1 : 0, ...(typeof value?.text === "string" && value.text ? { note: value.text.slice(0, 200) } : {}) });      // U3: the asker is told
     if (id !== "grant") await abortInst(X, I.id, true);
   } else if (inst.data.pk?.cancelAsk === p.id) { const id = typeof value === "string" ? value : value.id; if (id === "cancel") await abortInst(X, inst.id, true); else if (id === "forfeit") await abortInst(X, inst.id, false); }
   return ok({ prompt: p.id });
 }
 /** Prompts that belong to no instance (exception request without an action, token confirmation ...): answering closes them. */
-async function standalone(X, p) { dropPrompts(X, (q) => q.id === p.id); emit(X, null, { type: "override", op: "card", kind: p.kind, value: p.answered.value }); }
+async function standalone(X, p) {
+  dropPrompts(X, (q) => q.id === p.id); emit(X, null, { type: "override", op: "card", kind: p.kind, value: p.answered.value });
+  if (p.kind === "exception" && p.about && X.facts.c(p.about)) await exceptionAnswered(X, p);
+}
+/* U3: the GM's word on a free-standing request for an exception has a consequence both sides can see and use. Granted, and the request
+   named the action it was about (the dock sends the declaration it could not make): that action is declared for the asker at once, its
+   cost waived (the refusal was "no action left" or "not your turn": there is nothing to pay with, and the GM said yes) and the rules'
+   own refusal overruled. Granted without a declaration that can run (free words, or the table is busy): an action "by hand" opens on the
+   desk when nothing else is in progress, so the GM has the card to settle it on. Either way, and on a refusal, the asker's dock says what
+   was decided (state.news) and the journal keeps a line. */
+async function exceptionAnswered(X, p) {
+  const v = p.answered.value, id = typeof v === "string" ? v : v?.id, granted = id === "grant", note = typeof v?.text === "string" ? v.text.slice(0, 200) : "";
+  const d = p.data ?? {}, name = X.facts.c(p.about)?.name ?? "";
+  let ran = 0, why = null;
+  const action = isObj(d.decl) && typeof d.decl.action === "string" ? d.decl.action.slice(0, 40) : d.other ? "other" : null;
+  if (granted && action && !d.other) {
+    const env = await opDeclare(X, { actor: p.about, gm: true, granted: true, decl: { ...d.decl, exception: { text: String(d.text ?? "").slice(0, 300) } } });
+    if (env.ok) ran = 1; else why = String(env.error?.params?.reason ?? env.error?.code ?? "internal").slice(0, 40);
+  }
+  if (granted && !ran && !X.state.stack.length && !queueHolds(X.state)) {
+    const inst = makeInst(X, { action: "other", actor: p.about, decl: { action: "other", targets: [], helpers: [], exploits: [], stressTotal: 0, text: String(d.text ?? "").slice(0, 300) }, flow: "other" });
+    inst.tx = openTx(X, { inst: inst.id }); inst.status = "manual"; pushInst(X, inst);
+    emit(X, inst, { type: "actionDeclared", decl: { action: "other" }, cost: "none", stress: 0, targets: [] });
+    ran = 2;
+  }
+  pushNews(X, { kind: "exception", actor: p.about, ...(action ? { action } : {}), granted, ran, ...(why ? { why } : {}), ...(note ? { note } : {}) });
+  const mark = granted ? "{ITAC.journal.exceptionGranted}" : "{ITAC.journal.exceptionDenied}", text = String(d.text ?? "").slice(0, 120);
+  closeTx(X, openTx(X, {}), { pub: X.facts.c(p.about)?.hidden ? "" : `${name}: ${mark}`, gm: `${name}: ${mark}${text ? ` ("${text}")` : ""}${note ? ` / ${note}` : ""}`, keep: 1 });
+}
+/* The dice an action would roll if it were declared like this, from the SAME builder the roll uses (each flow's `preview`): what the
+   dock's panel shows before "Declare". Nothing is written, nothing is spent, no instance is kept. -> env.preview = { attr, dice, base, mods } | null */
+function opPreview(X, a) {
+  const actor = a.actor;
+  if (!P1.isId(actor) || !X.facts.c(actor) || (X.facts.c(actor).hidden && !X.user.staff)) return bad("unknown");
+  if (!owns(X, actor)) return bad("notOwner");
+  const entry = C.entryFor(X.state, actor, a.decl?.action, X.facts);
+  if (!entry) return bad("unknown");
+  const before = X.state;
+  let out = null;
+  try {
+    const inst = makeInst(X, { action: entry.id, actor, decl: sanitizeDecl(a.decl, entry.id, X.user.staff === true) });
+    const p = FLOWS[inst.flow]?.preview?.(view(X), inst) ?? null;
+    if (p?.pool && Number.isFinite(p.pool.dice)) out = { attr: p.attr ?? null, dice: p.pool.dice, base: p.pool.base ?? 0, mods: (p.pool.mods ?? []).filter((m) => m.dice).slice(0, 24).map((m) => ({ source: String(m.source ?? "").slice(0, 40), dice: Math.trunc(m.dice) })) };
+  } catch { out = null; }
+  X.state = before;                                                                         // the probe took an id from the counter: given back
+  return { ok: true, changed: false, preview: out };
+}
 
 async function opHelp(X, a) {
   const inst = instOf(X, a.inst);
@@ -563,7 +634,11 @@ async function opAsk(X, a, kind) {
     return ok({ inst: inst.id });
   }
   if (Object.values(X.state.prompts).filter((p) => p.kind === "exception" && !p.inst && p.about === a.actor).length >= 3) return bad("rate");
-  openPrompt(X, null, { key: "x", kind: "exception", to: "gm", about: a.actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { text, inst: P1.isId(a.inst) ? a.inst : undefined, ...(kind === "other" ? { other: 1 } : {}) } }, null);
+  /* U3: the request may name the rule that said no and the declaration it was about (the dock sends both): the GM's card shows them, and a grant runs that declaration */
+  const reason = typeof a.reason === "string" && /^[A-Za-z]{1,40}$/.test(a.reason) ? a.reason : undefined;
+  const entry = isObj(a.decl) && kind !== "other" ? C.entryFor(X.state, a.actor, a.decl.action, X.facts) : null;
+  const decl = entry && entry.reaction?.effect !== "defence" && entry.id !== "gmRoll" ? (({ helpers, exploits, stressTotal, exception, ...rest }) => rest)(sanitizeDecl(a.decl, entry.id, false)) : undefined;
+  openPrompt(X, null, { key: "x", kind: "exception", to: "gm", about: a.actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { text, inst: P1.isId(a.inst) ? a.inst : undefined, ...(kind === "other" ? { other: 1 } : {}), ...(reason ? { reason } : {}), ...(decl ? { decl } : {}) } }, null);
   return ok(kind === "other" ? { asked: 1 } : undefined);
 }
 
@@ -606,6 +681,12 @@ async function gmInstOp(X, op, a) {
       noteOverride(X, I, op, I.data.out?.[a.target]?.hit ?? null, a.hit); setInst(X, I);
       if (idx(I.step) > idx("outcome")) { await rewind(X, I.id, "outcome"); I = J.clone(instOf(X, I.id)); }
       ((I.data.forced ??= {}).outcome ??= {})[a.target] = a.hit;
+      /* U4: the result of every target is the GM's word and the dice have not decided yet: what the exchange was still waiting for
+         (a reaction, a roll somebody owes) is dropped and it goes on to that result. The roll step locks and charges the action as usual. */
+      if (idx("reactBefore") >= 0 && idx(I.step) >= idx("reactBefore") && idx(I.step) < idx("outcome") && I.decl.targets.every((t) => typeof I.data.forced.outcome[t] === "boolean")) {
+        dropPrompts(X, (p) => p.inst === I.id && p.step === I.step);
+        delete I.data.hold; delete I.data.holdKey; I.data.window = null; I.step = "roll"; I.status = "open";
+      }
       break;
     }
     case "setDamage": {
@@ -616,6 +697,16 @@ async function gmInstOp(X, op, a) {
       if (idx(I.step) > idx("damage")) { await rewind(X, I.id, "damage"); I = J.clone(instOf(X, I.id)); }
       ((I.data.forced ??= {}).damage ??= {})[a.target] = v;
       break;
+    }
+    case "askRoll": {                                                                       // U4: the dice somebody owes are asked for again (a new request id: the old one is void)
+      const key = String(a.roll ?? "").slice(0, 40), rec = I.rolls[key];
+      if (!rec?.req || rec.forced != null || rec.sixes != null) return bad("locked");
+      const who = rec.who === "hazard" ? null : X.facts.c(rec.who), rid = nextId(X, "r"), users = rollUsers(X, who);
+      noteOverride(X, I, op, rec.req.rid, rid);
+      I.rolls[key] = { ...rec, req: { ...rec.req, rid, users, at: X.host.now() } };
+      setInst(X, I);
+      await X.host.perform({ t: "rollRequest", inst: I.id, key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: rec.who, attr: rec.attr, pool: rec.pool, dice: rec.req.dice, maxPush: rec.req.maxPush, secret: rec.secret, label: rec.req.label, ...(rec.req.mode ? { mode: rec.req.mode } : {}) });
+      return ok({ inst: I.id });
     }
     case "skipStep": {
       const next = flow.STEPS[idx(I.step) + 1];
@@ -861,6 +952,7 @@ async function opUndo(X, a) {
       } else { const eff = J.inverseEffect(op); if (eff) await host(id, op, eff); }
     }
     X.log = J.markUndone(X.log, id, X.host.now());
+    if ((X.state.news ?? []).some((n) => n.tx === id && !n.undone)) X.state = { ...X.state, news: X.state.news.map((n) => (n.tx === id ? { ...n, undone: 1 } : n)) };      // U10: the player is told what the GM took back
     emit(X, null, { type: "undo", tx: id, ...(failed.length > n0 ? { failed: failed.slice(n0).map((f) => ({ t: f.t, reason: f.reason })) } : {}) });
   }
   X.facts = liveFacts(X); X.changed = true;
@@ -1039,8 +1131,8 @@ async function pushTrigger(X, t) {
   pushInst(X, inst);
 }
 
-export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer", "help", "move", "exception", "other"]);       // endTurn, holdOff, mark: director-pure.mjs
-export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget"]);
+export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer", "help", "move", "exception", "other", "preview"]);       // endTurn, holdOff, mark: director-pure.mjs
+export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget", "askRoll"]);
 export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
   "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp",
   "challengeSetup", "vehicleSet", "chaseStart", "chaseSet", "chaseEnd", "kitFlag", "summonSet"]);                                                                    // P7
@@ -1057,6 +1149,7 @@ async function request(X, req) {
     case "answerFor": return opAnswer(X, req, true);
     case "help": return opHelp(X, req);
     case "exception": return opAsk(X, req, "exception");
+    case "preview": return opPreview(X, req);
     case "other": return opAsk(X, req, "other");
     case "move": return opDeclare(X, { actor: req.actor, gm: req.gm, decl: { ...(isObj(req.decl) ? req.decl : {}), action: typeof req.action === "string" ? req.action : "move", to: req.to, mode: req.mode, stress: req.stress, pay: req.pay, force: req.force, carry: req.carry, airborne: req.airborne } });   // P3: a move is a declaration like any other
     case "forcedMove": case "fall": return opForced(X, op, req);
@@ -1076,6 +1169,9 @@ function takeRoll(X, r) {
   const author = X.facts.user(r.author);
   if (!author || !(author.staff || rec.req.users.includes(r.author))) return false;         // spec 11: identity = the message author, checked against the user the roll was asked from
   if (!Number.isFinite(r.sixes) || r.sixes < 0) return false;
+  /* a result that is in stays: only its own message (accepted) or a push of it (one push more) replaces it. A second roll of the same
+     request (two owners of one hero, a click on "Roll" after the dice were already thrown) changes nothing. */
+  if (rec.sixes != null && !(rec.pushable && ((typeof r.messageId === "string" && r.messageId === rec.messageId) || (Math.trunc(Number(r.pushed) || 0) > (rec.pushed ?? 0))))) return false;
   const I = J.clone(inst);
   I.rolls[r.key] = { ...rec, sixes: Math.trunc(r.sixes), ones: Math.max(0, Math.trunc(Number(r.ones) || 0)), pushed: Math.max(0, Math.trunc(Number(r.pushed) || 0)), pushable: r.pushable === true && rec.req.maxPush !== 0, messageId: typeof r.messageId === "string" ? r.messageId : rec.messageId };
   setInst(X, I);
@@ -1094,7 +1190,7 @@ export async function handle({ state, log }, input, host) {
       if (input.rid && state.seen.includes(input.rid)) return { state, log, env: { ok: true, changed: false, dup: true }, events: [], changed: false };     // spec 1.3: two tabs of one GM are harmless
       if (state.mode === "off" && !user.staff) return { state, log, env: bad("off"), events: [], changed: false };
       env = await request(X, input.req);
-      if (env.ok) { applyHelpAnswers(X); await drive(X); }
+      if (env.ok && input.req?.op !== "preview") { applyHelpAnswers(X); await drive(X); }
     } else if (input?.t === "sys") {
       await system(X, input.effects); env = ok(); await drive(X);
     } else if (input?.t === "roll") {

@@ -409,6 +409,8 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   eq(O.prompt("exception")?.data.text, "may I?", "K: card on the desk");
   await O.answer("gm", "exception", "grant");
   eq(O.prompts().length, 0, "K: answered and closed");
+  eq([O.top()?.flow, O.top()?.status, O.top()?.decl.text, O.state.news.at(-1)?.kind, O.state.news.at(-1)?.granted, O.state.news.at(-1)?.ran], ["other", "manual", "may I?", "exception", true, 2], "K (U3): a granted free-standing request opens the action by hand for the GM and tells the asker");
+  await O.gm({ op: "manual", inst: O.top().id, result: { cost: "none" } });
   eq([code(await O.req("p1", { op: "move", actor: "H1", to: "z2" })), O.last.error?.params?.reason], ["illegal", "noZones"], "K: a move on a scene without zones is refused (the GM resolves it by hand; check-move.mjs runs the flow)");
 }
 

@@ -160,7 +160,9 @@ export class Table {
   roll(key, sixes, o = {}) {
     const inst = o.inst ? this.state.stack.find((i) => i.id === o.inst) : this.top();
     const rec = inst?.rolls?.[key];
-    return this.handle({ t: "roll", inst: inst?.id, key, rid: o.rid ?? rec?.req?.rid, author: o.author ?? (rec?.req?.users?.[0] ?? "gm"), sixes, ones: o.ones ?? 0, pushed: o.pushed ?? 0, pushable: o.pushable === true, messageId: `m${++this.n}` });
+    return this.handle({ t: "roll", inst: inst?.id, key, rid: o.rid ?? rec?.req?.rid, author: o.author ?? (rec?.req?.users?.[0] ?? "gm"), sixes, ones: o.ones ?? 0, pushed: o.pushed ?? 0, pushable: o.pushable === true,
+      /* as the system does it: accepting a roll re-writes its own message, a push makes a new one */
+      messageId: o.messageId ?? (rec?.messageId && Math.trunc(o.pushed ?? 0) === (rec.pushed ?? 0) && o.fresh !== true ? rec.messageId : `m${++this.n}`) });
   }
   top() { return E.topInstance(this.state); }
   prompts(kind = null) { return E.openPrompts(this.state).filter((p) => !kind || p.kind === kind); }

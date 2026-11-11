@@ -232,6 +232,7 @@ export function sanitize(raw) {
     s.evSeq = int(raw.evSeq, 0, 1e12, 0);
     s.stack = engineList(raw.stack); s.tokens = plainList(raw.tokens); s.effects = plainList(raw.effects); s.items = plainList(raw.items);
     s.summons = plainList(raw.summons); s.karma = plainList(raw.karma);
+    if (Array.isArray(raw.news)) s.news = plainList(raw.news).slice(-12);      // what the table was told happened (engine-pure.pushNews)
     s.statuses = plainMap(raw.statuses); s.counters = plainMap(raw.counters); s.knowledge = plainMap(raw.knowledge); s.revealed = plainMap(raw.revealed); s.npc = plainMap(raw.npc);
     if (isObj(raw.chase)) s.chase = plain(raw.chase);
     if (isObj(raw.vehicles)) s.vehicles = plain(raw.vehicles);               // P7: who sits where, what is broken (flows/vehicle.mjs)
