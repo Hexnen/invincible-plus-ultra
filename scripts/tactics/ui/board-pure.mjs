@@ -25,6 +25,9 @@ import { stateFlags } from "../movement-pure.mjs";
 export const IDS = Object.freeze({ reach: "ipu.reach", table: "ipu.table", links: "ipu.x", aim: "ipu.aim", warn: "ipu.warn", area: "ipu.area" });
 const LABEL = 18;
 const cut = (s, n = LABEL) => { const x = String(s ?? ""); return x.length > n ? `${x.slice(0, n - 1)}…` : x; };
+/** U76: the words of an armed intention as the map can carry them: the action's name, whole when it fits the map's 18 characters, else
+    cut with an ellipsis (the map cut it mid-word without one). The user's name in front of it is the map's own addition. */
+export const intentLabel = (title) => cut(String(title ?? "").trim());
 const fin = Number.isFinite;
 const join = (parts) => parts.filter(Boolean).map((x) => String(x).replace(/\.$/, "")).join(". ");
 
@@ -173,6 +176,8 @@ export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobil
     menu opened with): the executor adds it to what the character has at that moment, so damage that landed while the menu stood
     open is not taken back. The engine keeps the state with the number: Health 0 is broken, Health above 0 is not (D59); "Stunned"
     is the lost next turn and its mark together (D53). */
+/** U80: did a correction sent from the map menu fail (refused by the executor, or never answered)? Then the menu shows a number nobody has. */
+export const stepFailed = (env) => !env || env.ok === false;
 export function gmItems(cid, vitals, statuses, t, group = null) {
   const out = [], v = vitals ?? {};
   if (fin(v.health) && fin(v.maxHealth) && v.maxHealth > 0) out.push({ id: "health", label: t("ITAC.ui.vital.health"), icon: "fa-solid fa-heart", stepper: { value: Math.max(0, v.health), min: 0, max: v.maxHealth }, req: (n, from = Math.max(0, v.health)) => ({ op: "setHealth", combatant: cid, delta: n - from }) });

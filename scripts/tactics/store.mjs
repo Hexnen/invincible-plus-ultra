@@ -30,6 +30,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ------------------------------------------------------------------ settings, identity */
 export const setting = (key, fallback) => { try { return game.settings.get(MOD, key); } catch { return fallback; } };
+/* U64: what a user set up for themselves (the layout of the tactical surfaces) lives in a flag on that user's own document, which every
+   user may write. Kept as one string so a write replaces the whole of it. Nothing of the fight goes here. */
+export const userPref = (key) => { try { const raw = game.user?.flags?.[MOD]?.[key] ?? null; return typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return null; } };
+export async function saveUserPref(key, value) { try { await game.user?.update({ [`flags.${MOD}.${key}`]: JSON.stringify(value ?? {}) }); return true; } catch (e) { console.warn(`${MOD} | tactics: preference not saved`, e); return false; } }
 export const isStaff = (u) => !!u && (u.isGM === true || u.hasRole?.(CONST.USER_ROLES.ASSISTANT) === true);
 export const iAmExecutor = () => !!game.user?.isGM && game.users.activeGM?.id === game.user.id;
 export const ownerLevel = () => CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3;

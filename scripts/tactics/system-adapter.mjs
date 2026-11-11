@@ -65,6 +65,11 @@ export async function patchStunts() {
   } catch (err) { console.warn(`${MOD} | tactics: stunts dialog not patched`, err); return false; }
 }
 
+/** U73 (pure): is the pack `id` ("invincible.critical-injuries") one the system declares (`declared`: the pack names of its manifest)
+    and the world does not have (`has(id)`)? Then the server could not open it; the system did not change. */
+export const closedPack = (id, declared, has) => { const [sys, name] = String(id ?? "").split("."); return sys === SYSTEM_ID && !!name && (declared ?? []).includes(name) && !has(id); };
+/** U73 (pure): the compat list in the two sentences the GM is told: what changed in the system, and which compendia the server did not open. */
+export const compatNotes = (list) => { const bad = (list ?? []).filter((x) => !x.ok); return { changed: bad.filter((x) => !x.closed).map((x) => x.name), closed: [...new Set(bad.filter((x) => x.closed).map((x) => x.closed))] }; };
 /** Live compatibility check: [{ name, ok, detail }]. Run from api.tactics.compat() or at start (logged once when something fails). */
 export async function compat() {
   const out = [], add = (name, ok, detail = "") => out.push({ name, ok: !!ok, detail });
@@ -80,8 +85,14 @@ export async function compat() {
     add("slugfest damage", Number.isFinite(a.system?.derived?.slugfest?.damage));
     add("armor", a.system?.bonuses === undefined || typeof a.system.bonuses === "object");
   } else add("actor data", false, "no superhero or npc actor in the world to look at");
-  add("injuries pack", !!game.packs?.get(INJURY_PACK));
-  try { add("injuries table", !!(await fromUuid(INJURY_TABLE))); } catch (e) { add("injuries table", false, String(e)); }
+  /* U73: a compendium the system's manifest still declares but this server did not open is NOT a changed system: the world runs without
+     it (a second Foundry server on the same data folder holds the pack's files, or the pack is damaged). It is named as that (`closed`),
+     with its own sentence (main.mjs), so the GM looks at the server and not at the system's version. */
+  const closed = (id) => closedPack(id, [...(game.system?.packs ?? [])].map((p) => p?.name ?? p?.id ?? ""), (k) => !!game.packs?.get(k));
+  const pack = (name, id, ok) => out.push({ name, ok: !!ok, detail: !ok && closed(id) ? "the server did not open this compendium" : "", ...(!ok && closed(id) ? { closed: id } : {}) });
+  pack("injuries pack", INJURY_PACK, !!game.packs?.get(INJURY_PACK));
+  let table = false; try { table = !!(await fromUuid(INJURY_TABLE)); } catch { table = false; }
+  pack("injuries table", INJURY_TABLE.split(".").slice(1, 3).join("."), table);
   const m = [...(game.messages?.contents ?? [])].reverse().find((x) => x.rolls?.[0]?.options?.game === "inv" || x.rolls?.[0]?.terms?.[0]?.constructor?.TYPE === "base");
   if (m) add("roll result getters", ["successCount", "baneCount", "pushCount"].every((k) => Number.isFinite(m.rolls[0][k])) && typeof m.rolls[0].pushable === "boolean");
   else add("roll result getters", false, "no system roll in the chat log to look at");

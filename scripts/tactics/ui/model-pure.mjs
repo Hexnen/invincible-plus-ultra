@@ -610,7 +610,7 @@ function declarePanel(bar, a, own, facts, t) {
 export function targetActs(bar, tid, facts, t) {
   const holding = (bar?.statuses ?? []).includes("grappling");
   return (bar?.actions ?? []).filter((a) => a.id !== "other" && (a.needsTarget || a.optTarget) && !["move", "barrier", "challenge", "drive"].includes(a.flow) && !["challenge", "vehicle"].includes(a.targetWho)
-    && (holding || (a.id !== "release" && a.id !== "grappleAttack")) && (!a.about || (facts.view?.statuses?.[tid] ?? []).some((s) => s.id === a.about)) && targetsFor(a, facts, bar.combatant).some((r) => r.id === tid))
+    && (holding || (a.id !== "release" && a.id !== "grappleAttack")) && (!a.about || (facts.view?.statuses?.[tid] ?? []).some((s) => s.id === a.about)) && targetsFor(a, facts, bar.combatant).some((r) => r.id === tid && (r.likely || (a.flow === "attack" && r.side === "other"))))      // U75: only what the action is meant for (the other side for an attack, the own side for help; a vehicle can be attacked): the rest stays in the dock, where any target can still be chosen
     .slice(0, 12).map((a) => { const arm = armsOf(bar, a, {}, facts, t);
       return { id: a.id, label: actLabel(t, a), icon: iconOf(a), cost: a.cost, stress: Number(a.stress) || 0, disabled: a.disabled ? reasonText(t, a.disabled) : arm.why, decl: { action: a.id, ...arm.decl }, opposeAttr: a.opposeAttr ?? null, defense: a.defense ?? null }; });
 }

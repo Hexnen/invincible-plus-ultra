@@ -137,6 +137,11 @@ function manual(m, L) {
     h("div.igd-cmds", {}, h("button.igd-btn.igd-primary", { fk: `mr:${m.id}`, text: m.resolve.label, on: { click: () => send(m.resolve.req) } }), h("button.igd-btn.igd-danger", { fk: `ma:${m.id}`, text: m.abort.label, on: { click: () => send(m.abort.req) } })));
 }
 const section = (title, n, kids) => h("section.igd-sec", {}, h("h4.igd-h", {}, h("span", { text: title }), n ? h("b.igd-n", { text: String(n) }) : null), kids);
+/* U64 / U80: a part of the Table tab that FOLDS: its heading is the switch (a chevron that points right when folded, down when open, the
+   title, the count), its content is drawn only while open. Which parts are folded is the user's layout (main.mjs `fold`). */
+const foldSec = (id, title, n, kids) => { const shut = !!last?.ui?.folds?.[id];
+  return h("section.igd-sec", { data: { fold: shut ? "shut" : "open" } }, h("h4.igd-h", {}, h("button.igd-foldb", { fk: `fold:${id}`, attrs: { "aria-expanded": String(!shut) }, on: { click: () => handlers.fold?.(id) } },
+    icon(shut ? "fa-chevron-right" : "fa-chevron-down"), h("span", { text: title }), n ? h("b.igd-n", { text: String(n) }) : null)), shut ? null : kids); };
 
 function now(d) {
   const askH = { send: (req) => send(req), count: (id, v) => setVal(id, v), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
@@ -173,12 +178,12 @@ function table(d) {
   const go = (b, key) => h("button.igd-btn", { fk: `force:${key}`, text: b.label, disabled: !!b.disabled, tip: b.disabled, on: { click: () => b.req && send(b.req, { tab: "now" }) } });
   return [
     h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: d.mode.label }), seg(d.mode, "mode")),
-    section(f.title, 0, h("article.igd-npc", {}, pickOf(f.who, "who"), pickOf(f.from, "from"), numOf(f.distance, "distance"), numOf(f.damage, "damage"), h("div.igd-cmds", {}, go(f.push, "push"), go(f.fall, "fall")))),
-    section(z.title, 0, h("article.igd-npc", {}, sel(z.kind, "kind", hput, "hz", false), h("p.igd-hint", { text: z.hint }), sel(z.where, "where", hput, "hz"), z.nums.map((n) => numIn(n, n.id, hput, "hz")), h("div.igd-cmds", {}, go(z.run, "hzrun")))),
-    section(k.title, k.rows.length, h("article.igd-npc", {}, k.rows.length ? h("ul.igd-karma", {}, k.rows.map((r) => h("li", {}, h("b", { text: r.kind }), h("span", { text: [r.who, r.round].filter(Boolean).join(", ") }), r.note ? h("q", { text: r.note }) : null))) : h("p.igd-hint", { text: k.empty }),
+    foldSec("force", f.title, 0, h("article.igd-npc", {}, pickOf(f.who, "who"), pickOf(f.from, "from"), numOf(f.distance, "distance"), numOf(f.damage, "damage"), h("div.igd-cmds", {}, go(f.push, "push"), go(f.fall, "fall")))),
+    foldSec("hazard", z.title, 0, h("article.igd-npc", {}, sel(z.kind, "kind", hput, "hz", false), h("p.igd-hint", { text: z.hint }), sel(z.where, "where", hput, "hz"), z.nums.map((n) => numIn(n, n.id, hput, "hz")), h("div.igd-cmds", {}, go(z.run, "hzrun")))),
+    foldSec("karma", k.title, k.rows.length, h("article.igd-npc", {}, k.rows.length ? h("ul.igd-karma", {}, k.rows.map((r) => h("li", {}, h("b", { text: r.kind }), h("span", { text: [r.who, r.round].filter(Boolean).join(", ") }), r.note ? h("q", { text: r.note }) : null))) : h("p.igd-hint", { text: k.empty }),
       sel(k.kind, "kind", kput, "karma", false), sel(k.who, "who", kput, "karma"), h("input.ita-text", { fk: "karma:note", attrs: { type: "text", maxlength: 200, value: k.note.value, placeholder: k.note.placeholder, "aria-label": k.note.placeholder }, on: { input: (e, el) => kput({ note: el.value }) } }),
       h("div.igd-cmds", {}, h("button.igd-btn", { fk: "karma:add", text: k.add.label, disabled: !!k.add.disabled, tip: k.add.disabled, on: { click: () => { if (k.add.req) { send(k.add.req); kput({ note: "" }); } } } })))),
-    section(d.npcsTitle, 0, d.npcs.length ? d.npcs.map((n) => h("article.igd-npc", {}, h("b.igd-actor", { text: n.name }), n.note ? h("p.igd-tip", {}, icon("fa-person-running"), h("span", { text: n.note })) : null,
+    foldSec("npcs", d.npcsTitle, d.npcs.length, d.npcs.length ? d.npcs.map((n) => h("article.igd-npc", {}, h("b.igd-actor", { text: n.name }), n.note ? h("p.igd-tip", {}, icon("fa-person-running"), h("span", { text: n.note })) : null,
       n.policy.map((p) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: p.label, tip: p.tip ?? null }), seg(p, `pol:${n.id}:${p.id}`))),
       h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: d.labels.reveal }), h("span.igd-seg.igd-multi", {}, n.reveal.map((r) => h("button", { fk: `rv:${n.id}:${r.id}`, attrs: { "aria-pressed": String(r.on) }, on: { click: () => send(r.req) } }, icon(r.on ? "fa-eye" : "fa-eye-slash"), h("span", { text: r.label }))))))) : h("p.igd-empty", {}, h("span", { text: d.npcsEmpty }))),
   ];
