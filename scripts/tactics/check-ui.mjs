@@ -371,7 +371,11 @@ for (const l of ["en", "pl"]) {
     d = dock(T, "p1", ["H1"]);
     if (d.prompts[0]?.kind === "stunts") {
       const c2 = d.prompts[0], o1 = c2.options.filter((o) => !o.disabled)[0];
-      eq([Keys.plan(d, {}, { key: "1" }), Keys.plan(d, {}, { key: "Enter" })], [{ click: `opt:${c2.id}:${o1.id}` }, { click: `submit:${c2.id}` }], `${l} U41: on a stunt card a digit ticks, Enter is its Confirm`);
+      const sfk = `submit:${c2.id}`, dT = dock(T, "p1", ["H1"], { picks: { [c2.id]: [o1.id] } }), dS = dock(T, "p1", ["H1"], { kopt: sfk });
+      eq([Keys.plan(d, {}, { key: "1" }), Keys.plan(dT, { picks: { [c2.id]: [o1.id] } }, { key: "Enter" })], [{ click: `opt:${c2.id}:${o1.id}` }, { click: sfk }], `${l} U41: on a stunt card a digit ticks, Enter is its Confirm`);
+      /* P8e (unproven list of adversary 5): an Enter with NOTHING ticked only chooses Confirm, the second one sends; Space never reaches past a card */
+      eq([Keys.plan(d, {}, { key: "Enter" }), Keys.plan(dS, { kopt: sfk }, { key: "Enter" }), dS.keys.chosen, Keys.plan(dS, { kopt: sfk }, { key: "Escape" }), Keys.plan(d, {}, { key: " " }), Keys.plan(dT, {}, { key: " " })],
+        [{ set: { kopt: sfk } }, { click: sfk }, sfk, { set: { kopt: null } }, null, null], `${l} P8e: Enter on a stunt card with nothing ticked first chooses Confirm, then sends; Escape puts it away; Space does nothing while a card stands`);
       /* U46: the panel of the own action does not say "waiting for the others" to the one the table waits for */
       eq([d.panel.kind, d.panel.status === t("ITAC.ui.mine.declared"), d.panel.status === t("ITAC.ui.mine.open"), d.waiting.some((w) => w.mine), c2.aboutHead, dock(T, "p2", ["H2"]).panel ?? null], ["mine", true, false, false, false, null], `${l} U46 / U51: with a question of their own open (the card above), the panel says only that the action is declared, and the line does not list the question again`);
     } else ok(false, `${l} U41 / U46: the stunt card did not come up (${d.prompts[0]?.kind})`);

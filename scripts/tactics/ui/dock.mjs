@@ -365,7 +365,7 @@ function draw(d, ui) {
     d.show ? bar(d) : null,
   ]);
   /* U41: the answer the keyboard chose on a card (Enter sends it) */
-  try { const kp = d.keys?.chosen; if (kp) for (const el of stack.querySelectorAll(".ita-opt")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
+  try { const kp = d.keys?.chosen; if (kp) for (const el of stack.querySelectorAll(".ita-opt, .ita-submit")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
   /* U51: the news chip's tooltip holds the older lines; the last line joins them only when the chip had to cut it short */
   try { const nt = stack.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = [d.news.text, ...d.news.older].join("<br>"); } catch { /* a courtesy */ }
   place();

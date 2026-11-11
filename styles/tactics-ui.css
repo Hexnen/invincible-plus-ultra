@@ -648,7 +648,7 @@ body.ita-keys #invincible-tactics-dock :is(.itd-go:not(.itd-go-ask), .ita-submit
 body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\21B5"; margin-left: 6px; font: 700 12px/1 ui-monospace, Consolas, monospace; opacity: .75; }
 .ita-tt kbd { display: inline-block; min-width: 14px; margin-left: 4px; padding: 0 3px; font: 700 10px/14px ui-monospace, Consolas, monospace; text-align: center; color: var(--ita-yellow, #ffe72a); background: transparent; border: 1px solid currentColor; border-radius: 0; box-shadow: none; vertical-align: 1px; }
 /* the answer the keyboard chose on a card: Enter sends it */
-:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-kpick] { outline: 2px solid #fff; outline-offset: 2px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-opt, .ita-submit)[data-kpick] { outline: 2px solid #fff; outline-offset: 2px; }
 /* U18: a line of a round-point queue is a tick box. Ticked: it will happen (the look of an ordinary answer, with the tick). Unticked: it
    will not (dashed, dim, struck through), so the two states differ by shape, mark and text, not by fill alone. */
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-check][aria-pressed="true"] { color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink); box-shadow: 3px 3px 0 var(--ita-blue); translate: none; }
