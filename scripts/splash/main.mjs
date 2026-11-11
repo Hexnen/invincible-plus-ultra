@@ -123,8 +123,11 @@ export function start(phases = {}) {
       console.info(`${LOG} the standalone "${STANDALONE}" module is active, so the splash built into Plus Ultra stays disabled to avoid duplicate splashes. Disable the standalone module to use this one.`);
       return;
     }
-    Hooks.on('i18nInit', mergeLang);   // tłumaczenia budowane od nowa: scal ponownie
+    /* tłumaczenia budowane od nowa: scal ponownie. Etykiety plakietek też już tutaj, nie dopiero w ready: log czatu renderuje
+       stare wiadomości PRZED hookiem ready, więc ich plakietki wychodziły po angielsku ("1 IN 33 · PUSH") na polskim kliencie. */
+    Hooks.on('i18nInit', () => { mergeLang(); applyLabels(); });
     mergeLang();
+    applyLabels();
     registerSettings();
     registerHooks();
     run('setup', wrapRollDialog);
