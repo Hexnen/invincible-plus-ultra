@@ -22,13 +22,16 @@
      opt     a boost or limit that changes the attacks of its power: { patch, stress?, optional?, on?: "slug" }
              (`combo: [n per level]` on an action: that many of its `pick` are chosen together, the same one more than once if wished)
      cost    the cost of the row's generic use ("full" unless stated)
+     size    [dice per level]: the item's effects "Grow" and "Shrink" are the size the engine reads (grown: reach, stride, immunities [B1975];
+             shrunk: fewer dice for physical attacks against [B1976]); a limit with `sizeOnly` leaves one of the two, and with the GM's
+             setting `alt` on (ITAC.kit.alt.<id>) the character is always that size (a huge creature [B2499], or tiny) [B1980], [B1981]
      own     the engine applies the entry's dice itself (a dock variant, a rule of its own): what the item's sheet toggle adds is left out of the pools,
              so the two never add up
      why     for a row "by hand": why the book leaves it to the table (ITAC.kit.why.<id>, WHYS below) */
 
 export const LEVELS = Object.freeze(["basic", "major", "massive", "monstrous"]);
 export const NOTES = Object.freeze(["attack", "sheet", "move", "toggle", "effect", "token", "outcome", "zone", "map", "gmCard", "flag", "passive", "story", "system", "interrupt",
-  "turn", "reaction", "stunt", "crit", "summon", "copies", "source", "initiative", "vehicle", "scene", "unknown", "off", "weapon", "roll", "control"]);
+  "turn", "reaction", "stunt", "crit", "summon", "copies", "source", "initiative", "vehicle", "scene", "unknown", "off", "weapon", "roll", "control", "size"]);
 const MENTAL = ["reason", "intuition", "presence"];
 const row = (cat, name, src, state, note, more = {}) => ({ cat, name, src, state, note, ...more });
 const P = (name, src, state, note, more) => row("power", name, src, state, note, more);
@@ -203,9 +206,9 @@ export const ROWS = Object.freeze([
   B("Signature Item", "Blocking Item", [1969], "auto", "sheet"),
   B("Signature Item", "Throwable Item", [1970], "hand", "gmCard"),
   L("Signature Item", "Item Dependent", [1971], "hand", "source"),
-  P("Size Alteration", [1974, 1975, 1976, 1977, 1978, 1979], "auto", "toggle", { fx: { cost: "full" }, pass: { size: [2, 3, 4, 5] } }),
-  L("Size Alteration", "Grow Only", [1980], "hand", "story"),
-  L("Size Alteration", "Shrink Only", [1981], "hand", "story"),
+  P("Size Alteration", [1974, 1975, 1976, 1977, 1978, 1979], "auto", "size", { fx: { cost: "full" }, size: [2, 3, 4, 5] }),
+  L("Size Alteration", "Grow Only", [1980], "auto", "size", { sizeOnly: "grow", alt: "huge" }),
+  L("Size Alteration", "Shrink Only", [1981], "auto", "size", { sizeOnly: "shrink", alt: "tiny" }),
   P("Transformation", [1984, 1985, 1986, 1987, 1988], "assist", "outcome", { atk: { ignoreArmor: 1, range: [0, 0] }, acts: [narr("matter", "full")] }),
   L("Transformation", "Temporary Transformation", [1989], "hand", "story"),
 

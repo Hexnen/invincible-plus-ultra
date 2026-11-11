@@ -157,6 +157,7 @@ function kitTab(k) {
       r.open ? [r.note ? h("p.igd-hint", { text: r.note }) : null,
         r.map ? pick(r.map, `kit:map:${r.id}`, (v) => send(r.map.req(v))) : null,
         r.types ? h("div.igd-ctl", { data: { type: "text" } }, h("span.igd-cl", { text: r.types.label }), h("input.ita-text", { fk: `kit:ty:${r.id}`, attrs: { type: "text", maxlength: 120, value: r.types.value, "aria-label": r.types.label }, on: { change: (e, el) => send(r.types.req(el.value)) } })) : null,
+        r.alt ? h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: r.alt.label }), seg(r.alt, `kit:alt:${r.id}`)) : null,
         h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: r.off.label }), seg(r.off, `kit:off:${r.id}`))] : null))))),
   ];
 }

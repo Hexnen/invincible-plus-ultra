@@ -645,6 +645,7 @@ export function deskData(model, own, facts, t) {
         state: r.state, stateText: t(`ITAC.kit.state.${r.state}`), note: t(`ITAC.kit.note.${r.note}`, {}, ""), open: kq.open === r.item || (kq.open === undefined && !!r.needs),
         off: { label: t("ITAC.ui.kit.off"), choices: [{ id: "has", label: t("ITAC.ui.kit.has"), on: r.state !== "off", req: model.kitReq(kitWho, r.item, "off", false) }, { id: "lost", label: t("ITAC.ui.kit.lost"), on: r.state === "off", req: model.kitReq(kitWho, r.item, "off", true) }] },
         map: r.unknown ? { label: t("ITAC.ui.kit.map"), choices: kitNames(r.type), req: (name) => model.kitReq(kitWho, r.item, "kit", name || null) } : null,
+        alt: r.alt ? { label: t(`ITAC.kit.alt.${r.alt}`), choices: [{ id: "no", label: t("ITAC.ui.no"), on: !r.altOn, req: model.kitReq(kitWho, r.item, "alt", false) }, { id: "yes", label: t("ITAC.ui.yes"), on: !!r.altOn, req: model.kitReq(kitWho, r.item, "alt", true) }] } : null,
         types: r.note === "flag" ? { label: t("ITAC.ui.kit.types"), value: (kk.pass?.[r.key === "vulnerable" ? "vulnerable" : "immune"] ?? []).join(", "), req: (text) => model.kitReq(kitWho, r.item, "types", String(text ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) } : null })) })).filter((g) => g.rows.length) };
   return {
     show: true, count, tab: ["now", "journal", "scene", "table", "kit"].includes(own.tab) ? own.tab : "now", collapsed: !!own.collapsed, kit,

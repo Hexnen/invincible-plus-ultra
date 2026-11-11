@@ -176,7 +176,7 @@ export function kitSource(actor) {
         autos: Object.entries(sy.automations ?? {}).map(([id, a]) => ({ id: a?._id ?? id, name: String(a?.name ?? ""), type: String(a?.type ?? ""), show: a?.showAsSelection !== false, attr: listOf(a?.attribute).filter((x) => ATTRS.includes(x)),
           bonus: num(a?.rollBonus), stress: num(a?.stressCost), damage: num(a?.baseDamage), min: num(a?.minRange), max: num(a?.maxRange), bypass: a?.bypassArmor === true })),
         fx: [...(it.effects ?? [])].map((e) => ({ id: e.id, name: e.name, on: e.disabled !== true })),
-        flags: { kit: typeof fl.kit === "string" ? fl.kit : null, off: fl.off === true, types: listOf(fl.types).slice(0, 12) }, wf: weaponFlags(it) });
+        flags: { kit: typeof fl.kit === "string" ? fl.kit : null, off: fl.off === true, types: listOf(fl.types).slice(0, 12), alt: fl.alt === true }, wf: weaponFlags(it) });
     }
   } catch { /* an actor the adapter cannot read brings nothing */ }
   return { items, attrs: Object.fromEntries(ATTRS.map((k) => [k, num(actor?.system?.attributes?.[k]?.value)])) };
@@ -213,7 +213,7 @@ export async function setKitFlag(actorUuid, itemId, key, value) {
   await it.update({ [`flags.${MOD}.tactics.${key}`]: to }, { ipuTactics: true });
   return { t: "itemFlag", actorUuid: a.uuid, itemId, key, from, to };
 }
-export const KIT_FLAGS = Object.freeze(["kit", "off", "types"]);
+export const KIT_FLAGS = Object.freeze(["kit", "off", "types", "alt"]);
 /** Switch an item's active effect (a form, a size, a stance). Returns the journal op `fx`. */
 export async function setItemEffect(actor, itemId, effectId, on) {
   const fx = actor?.items?.get?.(itemId)?.effects?.get?.(effectId);
@@ -245,7 +245,7 @@ export function actorFacts(actor) {
     armor: armors, kit, pass, bonus,
     slugfest: { damage: num(s.derived?.slugfest?.damage) },
     members: kind === "minions" ? num(s.derived?.health?.value) : undefined,           // the system keeps a group's size as its Health [B2827]
-    huge: flags.huge === true, grown: flags.grown === true, impervious: flags.impervious === true || pass.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
+    huge: flags.huge === true || pass.huge === true, grown: flags.grown === true || pass.grown === true, impervious: flags.impervious === true || pass.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
     regeneration: flags.regeneration === true || pass.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
     movement: kind === "vehicle" ? [{ mode: "vehicle", speed: p7.vehicle.speed, aerial: ["aerial", "space"].includes(p7.vehicle.type) }] : movementOf(actor),
     vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true || actor.items.some((i) => NAME_TYPES.includes(i.type) && /^(adaptation|lifesupport)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag

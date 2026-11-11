@@ -150,6 +150,12 @@ export const EN_KIT = {
   "ITAC.reason.noSummons": "no summoned allies are out",
   "ITAC.journal.summonLeft": "Summoned allies leave",
   "ITAC.msg.summonFinish": "{name} summoned allies that need finishing on the group's sheet. Versatile: {versatile} (two attributes raised by 2 each time, Resolve follows). Powered: {powered} (a basic power or a talent each time). The player's note: {text}",
+  "ITAC.kit.note.size": "The size is switched in the dock (the sheet's Grow and Shrink effects change the attributes). Grown: reaches elevated targets in slugfest, strides 2 zones, cannot be grappled, knocked back or slammed. Shrunk: physical attacks against the character lose dice by the level.",
+  "ITAC.kit.alt.huge": "Always huge (a huge creature)",
+  "ITAC.kit.alt.tiny": "Always tiny",
+  "ITAC.mod.shrunk": "Shrunk target",
+  "ITAC.ui.yes": "Yes",
+  "ITAC.ui.no": "No",
 };
 export const PL_KIT = {
   "ITAC.warn.noEffect": "Tego efektu nie ma już na karcie. Przełącz go ręcznie.",
@@ -301,4 +307,10 @@ export const PL_KIT = {
   "ITAC.reason.noSummons": "nie ma żadnych przywołanych sojuszników",
   "ITAC.journal.summonLeft": "Przywołani sojusznicy odchodzą",
   "ITAC.msg.summonFinish": "{name} przywołuje sojuszników, których trzeba dopracować na karcie grupy. Wszechstronni: {versatile} (za każdym razem dwa atrybuty o 2 wyżej, Determinacja idzie za nimi). Z mocą: {powered} (za każdym razem moc na poziomie podstawowym albo talent). Notatka gracza: {text}",
+  "ITAC.kit.note.size": "Rozmiar przełącza się w doku (efekty Grow i Shrink z karty zmieniają atrybuty). Powiększony: w zwarciu sięga celów na podwyższeniu, przechodzi 2 strefy, nie można go pochwycić, odrzucić ani powalić ciosem. Pomniejszony: ataki fizyczne przeciw postaci tracą kości zależnie od poziomu.",
+  "ITAC.kit.alt.huge": "Zawsze ogromny (ogromna istota)",
+  "ITAC.kit.alt.tiny": "Zawsze maleńki",
+  "ITAC.mod.shrunk": "Pomniejszony cel",
+  "ITAC.ui.yes": "Tak",
+  "ITAC.ui.no": "Nie",
 };

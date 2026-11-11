@@ -10,7 +10,7 @@
    An item is known by the GM's flag `flags.invincible-plus-ultra.tactics.kit` (a row's name), else by its English name; the flag `off`
    switches an item off for the fight (a lost item, a power source that is gone); `types` names what an Immunity or a Vulnerable is about.
    src = { items: [{ id, name, type, level, power, boosts: [id], autos: [{ id, name, type, show, attr: [..], bonus, stress, damage, min, max, bypass }],
-                     fx: [{ id, name, on }], flags: { kit, off, types }, wf: { sharp, fullAuto, area } }], attrs: { fighting: n, ... } } */
+                     fx: [{ id, name, on }], flags: { kit, off, types, alt }, wf: { sharp, fullAuto, area } }], attrs: { fighting: n, ... } } */
 import { ROWS, LEVELS } from "./kitdata-pure.mjs";
 import { BUILTIN } from "./catalog-pure.mjs";
 
@@ -188,11 +188,19 @@ export function build(src = {}) {
       else if (row && row.acts && !row.acts.length && row.state !== "hand") uses.filter((a) => pos(a.stress) > 0 && useName(it, a)).slice(0, 3).forEach((a, i) =>
         kit.actions.push(actionOf(it, row, { k: `u${i}`, label: "use", name: `${it.name}: ${useName(it, a)}`, cost: "none", stress: pos(a.stress), effect: { kind: "narrative" }, text: 1 }, lv, { state: "assist" })));
       /* switching the item's active effects from the dock */
+      if (row?.alt) { rec.alt = row.alt; rec.altOn = it.flags?.alt === true; }                                 // a setting of the GM's: the entry's other reading
+      if (row?.size) {                                                                                          // Size Alteration [B1974-1981]
+        const kids = known.filter((k) => k.parent === it && live(k) && k.row?.sizeOnly), always = kids.find((k) => k.it.flags?.alt === true)?.row.sizeOnly ?? null;
+        const on = (n) => always === n || (!always && (it.fx ?? []).some((f) => f.on === true && norm(f.name).includes(n)));
+        if (always === "grow") kit.pass.huge = true; else if (on("grow")) kit.pass.grown = true;
+        if (on("shrink")) kit.pass.shrunkDice = at(row.size, lv);
+      }
       if (row?.fx) {
-        const host = row.fx.ofParent ? x.parent : it, list = (host?.fx ?? []).filter((f) => !row.fx.only || norm(f.name).includes(norm(row.fx.only)));
+        const only = row.size ? known.filter((k) => k.parent === it && live(k) && k.row?.sizeOnly) : [], fixed = only.some((k) => k.it.flags?.alt === true);
+        const host = row.fx.ofParent ? x.parent : it, list = fixed ? [] : (host?.fx ?? []).filter((f) => (!row.fx.only || norm(f.name).includes(norm(row.fx.only))) && only.every((k) => norm(f.name).includes(k.row.sizeOnly)));
         list.slice(0, 4).forEach((f, i) => kit.actions.push(actionOf(it, row, { k: `fx${i}`, label: "toggle", name: String(f.name ?? host.name), cost: row.fx.cost ?? "quick", stress: row.fx.stress, gm: row.fx.gm,
           effect: { kind: "toggle", item: host.id, fx: f.id } }, lv, { entry: { fxOn: f.on === true } })));
-        if (!list.length && !row.mv && !row.pass) { rec.state = "hand"; rec.note = "toggle"; }
+        if (!list.length && !row.mv && !row.pass && !fixed) { rec.state = "hand"; rec.note = "toggle"; }
       }
       /* passive facts and dice */
       for (const [k, v] of Object.entries(row?.pass ?? {})) {

@@ -131,6 +131,8 @@ export function kitDice(v, inst, cid, attr, rollKind) {
     if (["slugfest", "grappleAttack"].includes(kind)) add("sheet:slugfest", b.slugfest);
     const n = copiesOf(v.state, cid);
     if (n > 0 && ["slugfest", "shooting"].includes(kind)) add("copies", n);                    // [B1908]
+    const small = v.facts.c(inst.decl?.targets?.[0])?.pass?.shrunkDice;
+    if (small > 0 && !["reason", "intuition", "presence"].includes(attr)) add("shrunk", -small);  // [B1976]: physical attacks against a shrunk character (an attack of the mind is not one)
   }
   if (own && (rollKind === "attack" || rollKind === "other")) {
     const t0 = inst.decl?.targets?.[0];

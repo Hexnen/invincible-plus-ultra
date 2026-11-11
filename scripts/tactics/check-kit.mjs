@@ -29,7 +29,7 @@ const both = (k) => typeof EN[k] === "string" && typeof PL[k] === "string";
     ok(NOTES.includes(r.note) && both(`ITAC.kit.note.${r.note}`), `${r.name}: its note exists in both languages (${r.note})`);
     ok(Array.isArray(r.src) && r.src.length > 0 && r.src.every(Number.isInteger), `${r.name}: cites its book lines`);
     ok(r.state !== "hand" || (!r.acts?.length && !r.fx && !r.opt), `${r.name}: an entry run by hand offers nothing`);
-    ok(r.state === "hand" || r.acts?.length || r.atk || r.fx || r.mv || r.pass || r.mods || r.opt || r.weapon || r.cost || ["sheet", "system", "initiative", "off", "interrupt", "gmCard", "zone", "outcome", "roll", "move"].includes(r.note), `${r.name}: an entry that is not by hand has something behind it`);
+    ok(r.state === "hand" || r.acts?.length || r.atk || r.fx || r.mv || r.pass || r.mods || r.opt || r.weapon || r.cost || r.size || r.sizeOnly || ["sheet", "system", "initiative", "off", "interrupt", "gmCard", "zone", "outcome", "roll", "move"].includes(r.note), `${r.name}: an entry that is not by hand has something behind it`);
     for (const a of r.acts ?? []) {
       ok(both(`ITAC.kit.act.${a.k}`), `${r.name}: the action "${a.k}" has a name in both languages`);
       for (const p of a.pick ?? []) ok(/^\d+$/.test(p) || both(`ITAC.kit.pick.${p}`), `${r.name}: the choice "${p}" has a name`);
@@ -56,7 +56,7 @@ const item = (id, name, type, o = {}) => ({ id, name, type, level: o.level ?? nu
 const levels = (name, type, fn) => LEVELS.map((lv, i) => auto(`${name.slice(0, 2)}${i}`, `${name} - ${lv[0].toUpperCase()}${lv.slice(1)}`, type, fn(i)));
 const blast = (lv = 0) => item("blast", "Blast", "power", { autos: levels("Blast", "rollAttack", (i) => ({ attr: ["agility"], damage: 3 + i, max: 3 + i, show: i === lv })) });
 class Tbl extends Table {
-  give(cid, items, bonus = {}) { const c = this.c[cid]; c.src = items; c.kit = K.build({ items, attrs: c.attrs }); c.pass = c.kit.pass; c.bonus = bonus; if (c.pass.stressArmor) c.armor = [...c.armor, { id: "defiance", armor: c.pass.stressArmor, stress: true }]; return this; }
+  give(cid, items, bonus = {}) { const c = this.c[cid]; c.src = items; c.kit = K.build({ items, attrs: c.attrs }); c.pass = c.kit.pass; c.bonus = bonus; c.grown = c.pass.grown === true; c.huge = (c.hugeBase ??= c.huge) || c.pass.huge === true; if (c.pass.stressArmor) c.armor = [...c.armor, { id: "defiance", armor: c.pass.stressArmor, stress: true }]; return this; }
   facts() { const f = super.facts(), T = this; return { ...f, canTalk: () => true, weapon: (cid, ref) => (ref == null || ref === "unarmed" ? { ...f.weapon(cid, ref), ...(T.c[cid]?.kit?.unarmed ?? {}) } : T.c[cid]?.kit?.weapons.find((w) => w.id === ref) ?? f.weapon(cid, ref)) }; }
   async perform(e) {
     if (e.t === "fx" || e.t === "fxSet") {
@@ -340,6 +340,34 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   eq([T.c.N1.summonOf, T.state.summons.map((s) => [s.owner, s.combatants]), T.state.init.slots.some((s) => s.members.includes("N1")), P1.budget(T.state, "N1").full], ["H1", [["H1", ["N1"]]], false, "open"], "controlled: it acts on the hero's turn, the very same turn too");
   await T.gm({ op: "setHealth", combatant: "H1", value: 0 });
   ok(!!T.c.N1, "a controlled animal is not removed like summoned allies");
+}
+/* ================================================================== Size Alteration [B1974-1981]: the size has its effects */
+{
+  const size = (level, grow, shrink, more = []) => [item("sz", "Size Alteration", "power", { level, boosts: more.map((m) => m.id), fx: [{ id: "g", name: "Grow", on: grow }, { id: "s", name: "Shrink", on: shrink }] }), ...more];
+  const T = base(size("basic", false, false), size("major", false, true));
+  eq(T.c.H1.kit.actions.filter((x) => x.effect.kind === "toggle").map((x) => [x.name, x.cost]), [["Grow", "full"], ["Shrink", "full"]], "growing and shrinking are full actions of the dock");
+  eq([T.c.H1.grown, T.c.N1.pass.shrunkDice], [false, 3], "the size is read from the sheet's effects: nobody grown, the NPC shrunk at Major");
+  eq(code(await T.req("p1", decl("H1", "slugfest", { targets: ["N1"] }))), "ok", "an attack on the shrunk character");
+  await pass(T);
+  eq(T.requests.find((r) => r.key === "attack").pool.mods.filter((m) => m.source === "shrunk").map((m) => m.dice), [-3], "physical attacks against a shrunk character lose 3 dice at Major [B1977]");
+  await T.roll("attack", 0);
+  const U = base(size("basic", false, false));
+  await U.req("p1", decl("H1", U.c.H1.kit.actions.find((x) => x.name === "Grow").id));
+  eq([U.c.H1.grown, U.c.H1.pass.shrunkDice ?? 0], [true, 0], "Grow switched on from the dock: the character is grown");
+  U.turn("N1");
+  eq([code(await U.gm(decl("N1", "grapple", { targets: ["H1"] }))), why(U.last)], ["illegal", "immune"], "a grown character cannot be grappled [B1975]");
+  await U.gm(decl("N1", "slugfest", { targets: ["H1"] })); await pass(U, "gm"); await U.roll("attack", 4);
+  const offered = (U.prompt("stunts")?.options ?? []).filter((o) => ["knockback", "slam"].includes(o.data?.stunt) && o.data?.target === "H1").map((o) => [o.data.stunt, o.disabled ?? null]);
+  ok(offered.length >= 1 && offered.every((o) => o[1] === "immune"), `Knockback and Slam are refused against a grown character [B1975]: ${JSON.stringify(offered)}`);
+  /* the limits: one direction only, or always that size */
+  const g = K.build({ items: size("basic", false, false, [item("go", "Grow Only", "limit", { power: "sz" })]), attrs: {} });
+  eq([g.actions.filter((x) => x.effect.kind === "toggle").map((x) => x.name), g.rows.find((r) => r.name === "Grow Only").alt], [["Grow"], "huge"], "Grow Only: the dock offers only growing; the GM may say 'always huge'");
+  const h = K.build({ items: size("basic", false, false, [item("go", "Grow Only", "limit", { power: "sz", flags: { alt: true } })]), attrs: {} });
+  eq([h.actions.filter((x) => x.effect.kind === "toggle").length, h.pass.huge, h.pass.grown ?? false, h.rows.find((r) => r.name === "Size Alteration").state], [0, true, false, "auto"], "always huge: a huge creature, nothing to switch [B1980]");
+  const s = K.build({ items: size("massive", false, false, [item("so", "Shrink Only", "limit", { power: "sz", flags: { alt: true } })]), attrs: {} });
+  eq([s.actions.filter((x) => x.effect.kind === "toggle").length, s.pass.shrunkDice], [0, 4], "always tiny: attacks against lose the dice of the level all the time [B1981]");
+  const W = base([blast(0)]);
+  eq(code(await W.gm({ op: "kitFlag", combatant: "H1", item: "blast", key: "alt", value: true })), "ok", "the GM's setting travels as a journaled operation");
 }
 /* ================================================================== Defensive [B2105]: offered when the attack comes, never ahead of it */
 {

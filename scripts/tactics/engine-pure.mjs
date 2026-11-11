@@ -716,9 +716,9 @@ async function gmEdit(X, op, a) {
     /* ---- P6: what the GM says about an item of a sheet (which book entry it is, whether it is out of the fight, what an Immunity is about) and who
        summoned a combatant [I14]. Both are edits of documents outside the state; the host hands back what stood there before, so the journal undoes them. */
     case "kitFlag": {
-      const cc = c(a.combatant), key = ["kit", "off", "types"].includes(a.key) ? a.key : null;
+      const cc = c(a.combatant), key = ["kit", "off", "types", "alt"].includes(a.key) ? a.key : null;
       if (!cc || !key || typeof a.item !== "string") { err = "badInput"; break; }
-      const value = key === "off" ? a.value === true : key === "kit" ? (typeof a.value === "string" && a.value ? a.value.slice(0, 60) : null) : Array.isArray(a.value) ? a.value.filter((s) => typeof s === "string" && s).map((s) => s.slice(0, 24)).slice(0, 12) : null;
+      const value = key === "off" || key === "alt" ? a.value === true : key === "kit" ? (typeof a.value === "string" && a.value ? a.value.slice(0, 60) : null) : Array.isArray(a.value) ? a.value.filter((s) => typeof s === "string" && s).map((s) => s.slice(0, 24)).slice(0, 12) : null;
       await perform(X, tx, { t: "kitFlag", uuid: cc.actorUuid, item: a.item.slice(0, 40), key, value, tx });
       break;
     }
