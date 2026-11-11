@@ -612,3 +612,26 @@ body.ita-tactics.ita-notice-wait .ips-notice { visibility: hidden; }
 .itd-news:not([data-tone="good"], [data-tone="bad"], [data-tone="warn"]) > i { color: var(--ita-label); }
 .itd-news-x { flex: none; width: 22px; min-height: 22px; height: 22px; margin: 0; padding: 0; color: var(--ita-label); background: transparent; border: 0; border-radius: 0; cursor: pointer; }
 .itd-news-x:is(:hover, :focus-visible) { color: #fff; outline: none; box-shadow: none; }
+
+/* ------------------------------------------------------------------ U5: keyboard, the queue's tick boxes, standing answers
+   U41: the key that reaches a control is a small mark on its corner, shown only once the user has used the keyboard on the dock
+   (body.ita-keys, kept per browser); it is in the tooltip and in aria-keyshortcuts for everybody. */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-opt, .itd-row) { position: relative; }
+body.ita-keys #invincible-tactics-dock :is(.itd-ic, .itd-row, .ita-opt)[data-key]::before {
+  content: attr(data-key); position: absolute; top: -7px; left: -7px; z-index: 1; display: grid; place-items: center; min-width: 13px; height: 13px; padding: 0 2px; box-sizing: border-box;
+  font: 700 9.5px/1 ui-monospace, Consolas, monospace; letter-spacing: 0; color: var(--ita-yellow); background: var(--ita-ink); border: 1px solid var(--ita-yellow); pointer-events: none;
+}
+body.ita-keys #invincible-tactics-dock .itd-row[data-key]::before { top: 50%; left: -6px; translate: 0 -50%; }
+body.ita-keys #invincible-tactics-dock :is(.itd-go:not(.itd-go-ask), .ita-submit):not([aria-disabled="true"])::after,
+body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\21B5"; margin-left: 6px; font: 700 12px/1 ui-monospace, Consolas, monospace; opacity: .75; }
+.ita-tt kbd { display: inline-block; min-width: 14px; margin-left: 4px; padding: 0 3px; font: 700 10px/14px ui-monospace, Consolas, monospace; text-align: center; color: var(--ita-yellow, #ffe72a); background: transparent; border: 1px solid currentColor; border-radius: 0; box-shadow: none; vertical-align: 1px; }
+/* the answer the keyboard chose on a card: Enter sends it */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-kpick] { outline: 2px solid #fff; outline-offset: 2px; }
+/* U18: a line of a round-point queue is a tick box. Ticked: it will happen (the look of an ordinary answer, with the tick). Unticked: it
+   will not (dashed, dim, struck through), so the two states differ by shape, mark and text, not by fill alone. */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-check][aria-pressed="true"] { color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink); box-shadow: 3px 3px 0 var(--ita-blue); translate: none; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-check][aria-pressed="false"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; }
+.ita-opt[data-check][aria-pressed="false"] .ita-opt-l { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+/* U19: "remember the next answer" is ticked: every answer on that card carries the repeat mark until one is picked */
+.ita-ask[data-always] .ita-opt::after { content: "\f363"; margin-left: 6px; font: 900 10px/1 var(--font-awesome, "Font Awesome 7 Pro"), "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free"; opacity: .8; }
+.ita-ask[data-always] .ita-check { color: var(--ita-yellow); }

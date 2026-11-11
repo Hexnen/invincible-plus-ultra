@@ -53,6 +53,8 @@ export function place() {
   /* the chat box that floats at the bottom right while the sidebar is collapsed stays free: the desk ends above it and scrolls inside */
   let floor = H - 14;
   for (const el of document.querySelectorAll("#chat-notifications #chat-message, #chat-notifications textarea, #chat-notifications .chat-form")) { const r = visibleRect(el); if (r && r.top > H * 0.6 && r.right > W - right - 380) floor = Math.min(floor, r.top - 10); }
+  /* U48: the dock's bar took the bottom edge under this column (dock.mjs place(), data-under): the desk ends above it */
+  try { const dk = document.getElementById("invincible-tactics-dock"), r = dk?.dataset.under === "1" ? visibleRect(dk.querySelector(".itd-bar")) : null; if (r && r.top > H * 0.4) floor = Math.min(floor, r.top - 10); } catch { /* no dock */ }
   /* a chat toast in this column: the desk ends above the highest of them, down to MIN_H; the toasts keep to what is left under that */
   const t0 = Math.min(top, maxTop);
   let need = t0 + minH(H);
@@ -126,7 +128,7 @@ function manual(m, L) {
 const section = (title, n, kids) => h("section.igd-sec", {}, h("h4.igd-h", {}, h("span", { text: title }), n ? h("b.igd-n", { text: String(n) }) : null), kids);
 
 function now(d) {
-  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again };
+  const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
   if (!d.cards.length && !d.stack.length && !d.manual.length) return h("p.igd-empty", {}, icon("fa-mug-hot"), h("span", { text: d.empty }));
   return [
     d.manual.length ? section(d.labels.manual, d.manual.length, d.manual.map((m) => manual(m, d.labels))) : null,

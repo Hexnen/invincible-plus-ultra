@@ -8,6 +8,7 @@ import * as Store from "../store.mjs";
 
 let cur = null;      // { combat, ids:Set, onPick }
 let hookId = null;
+let mine = new Set();      // U21: the tokens whose target mark this surface set (never a mark the user set for something else)
 
 const boardEl = () => { try { return canvas?.app?.canvas ?? canvas?.app?.view ?? document.getElementById("board"); } catch { return null; } };
 const tokenOf = (combat, cid) => { try { return combat?.combatants?.get(cid)?.token?.object ?? null; } catch { return null; } };
@@ -34,7 +35,26 @@ function onDown(ev) {
     cur.onPick(b.cid);
   } catch (e) { console.warn(`${Store.MOD} | tactics pick`, e); }
 }
-function mark(tok) { try { tok.setTarget(true, { releaseOthers: true }); } catch { /* the mark is a courtesy */ } }
+function mark(tok) { try { tok.setTarget(true, { releaseOthers: true }); mine.clear(); mine.add(tok); } catch { /* the mark is a courtesy */ } }
+/** U21: the marks this surface set stay only on what is still aimed at: the targets picked in the open panel and those of this user's
+    actions in progress. A mark on anybody else (the action was withdrawn, vetoed, undone, or is over) is taken off. `ids` = combatant ids. */
+export function keep(combat, ids = []) {
+  try {
+    if (!mine.size) return;
+    const want = new Set(ids.map((id) => tokenOf(combat, id)).filter(Boolean));
+    const gone = [...mine].filter((tok) => !want.has(tok));
+    mine = new Set([...mine].filter((tok) => want.has(tok)));
+    for (const tok of gone) { try { if (tok.isTargeted && !tok.destroyed) tok.setTarget(false, { releaseOthers: false }); } catch { /* the token is gone */ } }
+  } catch (e) { console.warn(`${Store.MOD} | tactics pick`, e); }
+}
+/** U19: show on the map whom a card is about: Foundry's own hover look of the token (this client only; a token the user cannot see is left alone) */
+export function locate(combat, cid, on) {
+  try {
+    const tok = tokenOf(combat, cid);
+    if (!tok || !tok.visible) return;
+    if (on) tok._onHoverIn?.(new PointerEvent("pointerenter"), { hoverOutOthers: true }); else tok._onHoverOut?.(new PointerEvent("pointerleave"));
+  } catch { /* a courtesy */ }
+}
 /** show Foundry's target mark on a combatant chosen from the dock's list */
 export function show(combat, cid) { const tok = tokenOf(combat, cid); if (tok) mark(tok); }
 
@@ -50,7 +70,7 @@ export function start(combat, ids, onPick) {
       try {
         if (!cur || !targeted || user?.id !== game.user.id) return;
         const cid = [...cur.ids].find((id) => tokenOf(cur.combat, id) === token);
-        if (cid) cur.onPick(cid);
+        if (cid) { mine.add(token); cur.onPick(cid); }
       } catch { /* ignore */ }
     });
   } catch (e) { console.warn(`${Store.MOD} | tactics pick`, e); }

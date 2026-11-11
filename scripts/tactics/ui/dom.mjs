@@ -52,7 +52,7 @@ export const speed = (cost) => (cost === "full" || cost === "quick" ? h("span.it
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
 /** a tooltip of the model as HTML (Foundry cleans it again); names of items and characters are escaped here */
-export const tipHtml = (tip) => `<div class="ita-tt"><b>${esc(tip.title)}</b>${tip.cost ? `<small>${esc(tip.cost)}</small>` : ""}${(tip.lines ?? []).map((l) => `<p>${esc(l)}</p>`).join("")}${tip.note ? `<em>${esc(tip.note)}</em>` : ""}</div>`;
+export const tipHtml = (tip) => `<div class="ita-tt"><b>${esc(tip.title)}${tip.key ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</b>${tip.cost ? `<small>${esc(tip.cost)}</small>` : ""}${(tip.lines ?? []).map((l) => `<p>${esc(l)}</p>`).join("")}${tip.note ? `<em>${esc(tip.note)}</em>` : ""}</div>`;
 export const tipText = (tip) => [tip.title, tip.cost, ...(tip.lines ?? []), tip.note].filter(Boolean).join(", ");
 
 /** Replace the children of `host`; whoever had the focus (by `fk`) keeps it, with the caret where it was. */
@@ -87,23 +87,25 @@ export function askCard(a, handlers = {}) {
   const opt = (o) => h("button.ita-opt", {
     fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.disabled ?? o.tip ?? null, pv: o.pv, pvFor: a.pvFor,
     attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled].filter(Boolean).join(", ") },
-    data: { pass: o.pass ? "1" : null, ic: o.icon ? "1" : null },
+    data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null },
     on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
-  }, o.icon ? actIcon(o.icon) : null,
+  }, a.check ? icon(o.picked ? "fa-square-check" : "fa-square") : o.icon ? actIcon(o.icon) : null,      // U18: a line of a round-point queue is a tick box: ticked = it happens
   h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(o.unit), o.stress ? h("b.ita-rs", { text: `-${o.stress}` }) : null),
     !o.unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null, o.disabled ? h("span.ita-opt-why", { text: o.disabled }) : null));
   /* U23: the stunts stand in their groups (on the target; another opponent; on that opponent), each group after its caption */
   const groups = [];
   for (const o of a.options) { const id = o.group?.id ?? ""; let g = groups.find((x) => x.id === id); if (!g) groups.push((g = { id, label: o.group?.label ?? null, items: [] })); g.items.push(o); }
-  return h(`article.ita-ask${fresh ? ".ita-new" : ""}`, { data: { kind: a.kind, proxy: a.proxy ? "1" : null, wide: a.options.length > 4 ? "1" : null } },
+  /* U19: the pointer on a card shows on the map whom it is about (this client only; two namesakes are told apart by where they stand) */
+  const locate = a.aboutId && handlers.locate ? { pointerenter: () => handlers.locate(a.aboutId, true), pointerleave: () => handlers.locate(a.aboutId, false) } : {};
+  return h(`article.ita-ask${fresh ? ".ita-new" : ""}`, { on: locate, data: { kind: a.kind, proxy: a.proxy ? "1" : null, wide: a.options.length > 4 ? "1" : null, always: a.always?.on ? "1" : null } },
     h("header.ita-head", {}, h("h3.ita-plate", { text: a.title }), a.about ? h("span.ita-about", { text: a.about }) : null, a.multi && a.kind === "stunts" ? h("b.ita-count", { text: `${a.multi.n}/${a.multi.max}` }) : null),
     a.lines.map((l) => (typeof l === "string" ? h("p.ita-line", { text: l }) : h("blockquote.ita-quote", {}, h("span", { text: l.quote }), l.by ? h("cite", { text: l.by }) : null))),
     a.tokens?.length ? h("div.itd-chips", {}, a.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${a.id}:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => handlers.pick?.(`tk:${a.id}`, k.id, 12) } }, h("span", { text: `${k.label} ${k.source}` })))) : null,
     groups.length > 1 ? groups.map((g) => h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(opt))))
       : h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(opt)),
     a.free ? h("input.ita-text", { fk: `text:${a.id}`, attrs: { type: "text", maxlength: 300, placeholder: a.free.placeholder, "aria-label": a.free.placeholder, value: a.free.text }, on: { input: (e, el) => handlers.text?.(a.id, el.value) } }) : null,
-    a.always ? h("label.ita-check", {}, h("input", { fk: `always:${a.id}`, attrs: { type: "checkbox", checked: a.always.on }, on: { change: (e, el) => handlers.always?.(a.id, el.checked) } }), h("span", { text: a.always.label })) : null,
-    a.submit ? h("button.ita-submit", { fk: `submit:${a.id}`, text: a.submit.label, disabled: !!a.submit.disabled, tip: a.submit.disabled, on: { click: () => a.submit.req && handlers.send?.(a.submit.req) } }) : null);
+    a.always ? h("label.ita-check", { tip: a.always.tip }, h("input", { fk: `always:${a.id}`, attrs: { type: "checkbox", checked: a.always.on }, on: { change: (e, el) => handlers.always?.(a.id, el.checked) } }), h("span", { text: a.always.label })) : null,
+    a.submit ? h("button.ita-submit", { fk: `submit:${a.id}`, text: a.submit.label, disabled: !!a.submit.disabled, tip: a.submit.disabled, data: { key: a.keyEnter ?? null }, on: { click: () => a.submit.req && handlers.send?.(a.submit.req) } }) : null);
 }
 
 /** U1 / U2: the buttons of one roll (model-pure.rollButtons): `act` is done on this client (handlers.roll), `req` is sent. One element, re-skinnable. */

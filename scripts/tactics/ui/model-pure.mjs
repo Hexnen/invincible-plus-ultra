@@ -16,6 +16,7 @@ import { dice } from "../../rules/index.mjs";
 import { sceneData } from "./scene-pure.mjs";
 import { allRows, CAT_OF } from "../kit-pure.mjs";
 import * as Lg from "../ledger-pure.mjs";
+import * as Keys from "./keys-pure.mjs";
 import { BANDS, bandOf } from "../flows/kit.mjs";      // the bands of a chance: one definition for the dock and for the engine's reaction cards (U11)
 export { BANDS, bandOf };
 
@@ -296,9 +297,9 @@ export function askData(p, o) {
   const canSubmit = !multi || queue || (picks.length >= min && picks.length <= max);
   return {
     map: desk && kind === "direction" && Array.isArray(p.data?.zones) && p.data.zones.length > 1 ? { zones: p.data.zones.map((z, i) => ({ zone: bare(z), label: i ? String(i) : "" })), borders: (p.data.walls ?? []).map((w) => w.border).filter(Boolean) } : null,
-    id: p.id, kind, proxy: p.kind === "proxy", pvFor: pb ? p.about : null, title: titleOf({ ...p, to: desk ? "desk" : "player" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options, multi, tokens,
+    id: p.id, kind, proxy: p.kind === "proxy", pvFor: pb ? p.about : null, aboutId: p.about ?? null, check: queue, title: titleOf({ ...p, to: desk ? "desk" : "player" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options, multi, tokens,
     free: p.free ? { text: own.texts?.[p.id] ?? "", placeholder: t(desk ? "ITAC.ui.note.gm" : "ITAC.ui.note.player") } : null,
-    always: desk && Array.isArray(p.always) && p.always.length ? { on: always, label: t("ITAC.ui.always", { name: p.aboutName ?? "" }) } : null,
+    always: desk && Array.isArray(p.always) && p.always.length ? { on: always, label: t("ITAC.ui.always", { name: p.aboutName ?? "" }), tip: t("ITAC.ui.always.tip", { name: p.aboutName ?? "" }) } : null,
     submit: multi ? { label: queue ? t("ITAC.Prompt.triggerQueue.Go") : t("ITAC.ui.confirm", { n: picks.length, max }), disabled: canSubmit ? null : t("ITAC.ui.pickMore"),
       req: canSubmit ? p.answerReq(queue ? { order: [], skip: allIds.filter((id) => !picks.includes(id)) } : picks.slice()) : null } : null,
   };
@@ -430,11 +431,14 @@ function vitalsOf(facts, cid, t) {
 const iconOf = (a) => (a.kit ? `kit:${a.kit.cat}` : a.id);
 /* everything a tooltip says about an action: its name, what it costs, and when it cannot be done why */
 const tipOf = (title, cost, note = null, lines = []) => ({ title, cost: cost || null, lines: lines.filter(Boolean), note: note || null });
-function extrasOf(bar, t) {
+function extrasOf(bar, t, facts = {}) {
   const out = [];
   for (const g of bar.budget?.grants ?? []) if (g.state !== "used" && g.state !== "refused" && g.unit !== "full" && g.unit !== "quick") out.push({ kind: "grant", label: t("ITAC.ui.grant", { unit: t(`ITAC.ui.pip.${g.unit}`, {}, String(g.unit ?? "")) }), tip: g.stress ? t("ITAC.ui.stress", { n: g.stress }) : "" });      // a full or quick unit is a slot (slotsOf)
   for (const k of bar.tokens ?? []) out.push({ kind: "token", label: t("ITAC.ui.bonusDice", { n: k.dice }), tip: t(`ITAC.mod.${k.source?.name}`, {}, String(k.source?.name ?? "")) + (k.needsGm ? ` (${t("ITAC.ui.needsGm")})` : "") });
-  for (const s of bar.statuses ?? []) out.push({ kind: "status", label: t(`ITAC.status.${s}`, {}, cap(s)), tip: "" });
+  /* U22: a status that somebody else keeps up says who (held: the holder; holding: the one held); a name the viewer is not shown reads "somebody" */
+  const st = facts.view?.statuses?.[bar.combatant] ?? [], other = (id) => (id && facts.view?.ledger?.[id] && facts.c?.(id) ? facts.c(id).name : t("ITAC.Someone"));
+  for (const s of bar.statuses ?? []) { const d = st.find((x) => x.id === s)?.data ?? {};
+    out.push({ kind: "status", label: t(`ITAC.status.${s}`, {}, cap(s)), tip: s === "grappled" ? t("ITAC.ui.status.heldBy", { name: other(d.by) }) : s === "grappling" && d.held ? t("ITAC.ui.status.holds", { name: other(d.held) }) : s === "carried" && d.by ? t("ITAC.ui.status.carriedBy", { name: other(d.by) }) : "" }); }
   return out;
 }
 /* what an attack is made with and how [P4]: the weapon (slugfest: bare hands or a melee weapon; shooting: a weapon with a range), and the options of
@@ -588,10 +592,11 @@ function doorPanel(bar, a, own, facts, t) {
     empty: rows.length ? null : t("ITAC.ui.door.none"),
     ask: asked ? askBox(a, bar, { to: asked.id }, {}, t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${asked.label}`) : null };
 }
-function minePanel(i, facts, t, pushing = false) {
+/* U46: `asked` = the table waits for this very user (a card above, a roll of its own): the panel must not tell them to wait for the others */
+function minePanel(i, facts, t, pushing = false, asked = false) {
   const roll = i.rolls?.[0];
   return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => x.name ?? nameOf(facts, x.id, t)), text: i.text ?? null,
-    status: pushing ? t("ITAC.ui.mine.push") : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t("ITAC.ui.mine.open"),
+    status: pushing ? t("ITAC.ui.mine.push") : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t(asked ? "ITAC.ui.mine.you" : "ITAC.ui.mine.open"),
     rolling: !!roll, commands: (i.commands ?? []).map((c) => ({ id: c.id, label: labelOf(t, c.label), req: c.needs ? null : c.req, amend: c.id === "amend" })) };
 }
 /** Everything the dock draws. -> { show: false } | { show, rest, chars, who, slots, vitals, extras, groups, other, holdOff, hotbar, end, panel, prompts, waiting, turn } */
@@ -599,7 +604,7 @@ export function dockData(model, own, facts, t) {
   const bars = model?.bars ?? [];
   const info = model?.stack ?? [];
   const prompts = (model?.prompts ?? []).map((p) => askData(p, { t, facts, own, info, round: model?.turn?.round, bars }));
-  if (!bars.length) return { show: false, prompts, waiting: waitingData(model?.waiting, facts, t), rolls: [], news: null };
+  if (!bars.length) return Keys.number({ show: false, prompts, waiting: waitingData(model?.waiting, facts, t), rolls: [], news: null, keys: { on: !own.hotbar, enter: t("ITAC.ui.key.enter"), chosen: own.kopt ?? null } }, own);
   const asked = new Set((model?.prompts ?? []).map((p) => p.about));
   const bar = bars.find((b) => b.combatant === own.sel) ?? bars.find((b) => b.onTurn) ?? bars.find((b) => asked.has(b.combatant)) ?? bars[0];
   const c = facts.c?.(bar.combatant);
@@ -623,7 +628,7 @@ export function dockData(model, own, facts, t) {
   const priceOf = (a) => [costText(t, a.cost), a.stress ? t("ITAC.ui.stress", { n: a.stress }) : null].filter(Boolean).join(", ");
   const item = (a) => { const label = actLabel(t, a), why = a.disabled ? reasonText(t, a.disabled) : null;
     return { id: a.id, label, cost: a.cost, costText: costText(t, a.cost), stress: Number(a.stress) || 0, disabled: why, armed: own.armed === a.id, urgent: !!a.situational, icon: iconOf(a), pv: pvOf(a),
-      tip: tipOf(label, priceOf(a), why, [a.pay?.forfeitsFull ? t("ITAC.ui.pv.forfeits") : null]) }; };
+      tip: tipOf(label, priceOf(a), why, [a.pay?.forfeitsFull ? t("ITAC.ui.pv.forfeits") : null, a.situational ? t("ITAC.ui.urgent") : null]) }; };
   /* the rows of a list behind one button (More actions, Abilities): the same facts, with the name written out */
   const row = (a, notes, more = {}) => { const label = a.kit ? kitLabel(t, a) : labelOf(t, a.label), why = a.disabled ? reasonText(t, a.disabled) : null;
     return { id: a.id, label, cost: a.cost, stress: Number(a.stress) || 0, icon: iconOf(a), notes, disabled: why, pv: pvOf(a), tip: tipOf(label, notes.join(", "), why, [more.explain ?? null]), ...more }; };
@@ -650,9 +655,9 @@ export function dockData(model, own, facts, t) {
   else if (armed && (!armed.disabled || facts.staff) && armed.flow === "move") panel = movePanel(bar, armed, own, facts, t);
   else if (armed && !armed.disabled && armed.flow === "barrier") panel = doorPanel(bar, armed, own, facts, t);
   else if (armed) panel = declarePanel(bar, armed, own, facts, t);
-  else if (mine.length && !facts.staff) panel = minePanel(mine[mine.length - 1], facts, t, (model?.rolls ?? []).some((r) => r.inst === mine[mine.length - 1].inst && r.state === "push"));
+  else if (mine.length && !facts.staff) panel = minePanel(mine[mine.length - 1], facts, t, (model?.rolls ?? []).some((r) => r.inst === mine[mine.length - 1].inst && r.state === "push"), prompts.length > 0 || waitingData(model?.waiting, facts, t).some((w) => w.mine));
   const slots = slotsOf(bar, t), unused = slots.filter((p) => p.state === "open").map((p) => p.label);
-  const end = bar.endTurn ? { label: own.endArmed ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), tip: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : unused.length ? t("ITAC.ui.end.unused", { list: unused.join(", ") }) : t("ITAC.ui.end.tip"),
+  const end = bar.endTurn ? { label: own.endArmed ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"), tip: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : `${unused.length ? t("ITAC.ui.end.unused", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]`,
     disabled: bar.endTurn.disabled ? reasonText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm: unused.length > 0 && !bar.endTurn.noConfirm, armed: !!own.endArmed && !bar.endTurn.noConfirm }
     : { label: t("ITAC.ui.end"), tip: reasonText(t, "notYourTurn"), disabled: reasonText(t, "notYourTurn"), req: null, confirm: false, armed: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn
@@ -660,20 +665,21 @@ export function dockData(model, own, facts, t) {
   const turn = chase ?? (model?.turn?.combatant ? (bar.onTurn && !facts.staff ? t("ITAC.ui.turn.yours", { name: bar.name ?? "" }) : t("ITAC.ui.turn.of", { name: model.turn.name ?? t("ITAC.Someone") })) : model?.turn?.phase === "turns" && !facts.staff ? t("ITAC.ui.turn.notYours") : "");      // U15: a turn this user is not shown (a hidden NPC acts) still says whose turn it is not
   /* U8: where the driven character stands, in the words the cards use ("Zone 5"), with the legend of the map's badges behind it */
   const spot = facts.where?.(bar.combatant) ?? null, zoneNow = spot ? zoneText(facts, t, spot) : "";
-  return {
+  return Keys.number({
     show: true, canRest, rest: canRest && !panel && !own.peek, onTurn: !!bar.onTurn, round: model?.turn?.round ?? null,
     chars: bars.length > 1 ? bars.map((b) => ({ id: b.combatant, name: b.name, img: facts.c?.(b.combatant)?.img ?? null, onTurn: !!b.onTurn, sel: b.combatant === bar.combatant, asked: asked.has(b.combatant) })) : [],
     who: { id: bar.combatant, name: bar.name ?? c?.name ?? "", img: c?.img ?? null, onTurn: !!bar.onTurn, free: !!bar.free, freeLabel: t("ITAC.ui.freeMode"),
       zone: zoneNow ? { label: zoneNow, tip: `${facts.staff ? t("ITAC.ui.here.of", { name: bar.name ?? c?.name ?? "", zone: zoneNow }) : t("ITAC.ui.here", { zone: zoneNow })}. ${t("ITAC.ui.legend")}` } : null },
-    slots, vitals: vitalsOf(facts, bar.combatant, t), extras: extrasOf(bar, t), groups,
+    slots, vitals: vitalsOf(facts, bar.combatant, t), extras: extrasOf(bar, t, facts), groups,
     out: bar.out ? { reason: bar.out.reason, text: t(bar.out.label) } : null,      // U9: why nothing (or only getting up) is offered: said where the actions were
-    hotbar: { open: !!own.hotbar, label: t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show") },      // U28: Foundry's macro bar is folded away while the dock is up; this brings it back
+    hotbar: { open: !!own.hotbar, label: t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show"), tip: `${t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show")}. ${t(own.hotbar ? "ITAC.ui.keys.macros" : "ITAC.ui.keys")}` },      // U28: Foundry's macro bar is folded away while the dock is up; this brings it back
     other: { label: t("ITAC.action.other"), armed: own.mode === "other", tip: tipOf(t("ITAC.action.other"), null, null, [t("ITAC.ui.other.hint")]) },
     holdOff: { label: t("ITAC.ui.holdOff"), armed: own.mode === "holdOff", disabled: bar.holdOff?.disabled ? reasonText(t, bar.holdOff.disabled) : null,
       tip: tipOf(t("ITAC.ui.holdOff"), null, bar.holdOff?.disabled ? reasonText(t, bar.holdOff.disabled) : null, [t("ITAC.ui.holdOff.hint")]) },
     end, panel, prompts, waiting: waitingData(model?.waiting, facts, t), turn,
     rolls: rollsData(model?.rolls, facts, t), news: newsData(facts.view, own, facts, t),      // U1 / U2 / U10 / U3
-  };
+    keys: { on: !own.hotbar, enter: t("ITAC.ui.key.enter"), chosen: own.kopt ?? null },      // U41 (keys-pure.mjs): what a digit reaches carries `key`
+  }, own);
 }
 
 /* ------------------------------------------------------------------ the GM desk */

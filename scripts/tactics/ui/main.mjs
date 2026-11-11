@@ -19,6 +19,7 @@ import * as Mv from "../movement.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import { t as langT, errText } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
+import * as Keys from "./keys-pure.mjs";
 import * as Dock from "./dock.mjs";
 import * as Desk from "./desk.mjs";
 import * as Pick from "./pick.mjs";
@@ -26,7 +27,7 @@ import * as Pick from "./pick.mjs";
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
 const NARROW = 1180;                       // with less room than this between the window's left edge and the sidebar the desk starts folded
-const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false, opt: null, attr: null });
+const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false, opt: null, attr: null, kopt: null });
 const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, sure: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {}, scene: {}, kit: {} });
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
 /* U28: Foundry's macro bar is folded away while the dock is up; the dock's keyboard button brings it back. The choice is this
@@ -49,6 +50,7 @@ function hotbarSync(on) {
 const previews = new Map();           // U: the engine's answer to "what would this declaration roll", per declaration and state (facts.preview)
 let previewLast = null;
 let rev = 0, moveMemo = null;             // the move options are counted once per change of the fight or of the map, not per keystroke
+let lastDock = null, byPointer = true;      // U41: what the dock shows now (the keys act on it); was the focus put where it is by the pointer?
 let zonePick = null, shownDock = "", shownDesk = "";      // what this client has on the map for the surfaces: a running pick, two highlights
 let cardsWere = null;                     // the ids of the desk's waiting cards at the last draw: a new one brings the Now tab forward (U12)
 /* the room the map has: the window less an open sidebar (U6: with the sidebar open at 1366 px the desk, the dock and the map's own panels do not fit side by side) */
@@ -161,7 +163,7 @@ function refresh() {
     const combat = down ? null : combatNow();
     try { document.body.classList.toggle("ita-tactics", !!combat); } catch { /* no body */ }      // styles/tactics-ui.css: what the other surfaces of the module give up while the dock shows
     hotbarSync(!!combat);
-    if (!combat) { cardsWere = null; Pick.stop(); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
+    if (!combat) { cardsWere = null; lastDock = null; Pick.stop(); Pick.keep(null, []); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
     if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen, hotbar: st.dock.hotbar }; }        // a new turn: nothing stays armed
@@ -180,7 +182,10 @@ function refresh() {
     const data = Model.dockData(model, st.dock, facts, t);
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
+    lastDock = data;
     Dock.render(data, st.dock);
+    /* U21: this client's target marks follow what is still aimed at (the open panel, the actions in progress) */
+    Pick.keep(combat, [...(data.show && data.panel?.kind === "declare" ? (data.panel.targets ?? []).filter((x) => x.picked).map((x) => x.id) : []), ...(staff ? desk?.info ?? [] : model.mine ?? []).flatMap((i) => (i.targets ?? []).map((x) => x.id))]);
     if (data.show && data.panel?.kind === "declare" && data.panel.targets) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => { const max = data.panel.maxTargets ?? 1, cur = (st.dock.targets ?? []).filter((x) => x !== cid); setDock({ targets: max > 1 ? ((st.dock.targets ?? []).includes(cid) ? cur : [...cur, cid].slice(-max)) : [cid] }); });
     else Pick.stop();
     mapSync(data, deskD);
@@ -256,6 +261,29 @@ function setDock(patch) {
 const tipShow = (el) => { try { game.tooltip?.activate(el); } catch { /* a courtesy */ } };
 const tipHide = () => { try { game.tooltip?.deactivate(); } catch { /* a courtesy */ } };
 function setDesk(patch) { Object.assign(st.desk, patch); refresh(); }
+/* ---------- U41: the keyboard (keys-pure.mjs says what a key does; here only: is the keyboard ours right now, and do it) ----------
+   Never while the user types (a text field, the chat box, anything editable) and never while another window has the focus (a sheet, the
+   sidebar): only with the focus on the page itself, the map, or one of the two surfaces. A focus that the POINTER left on a button
+   of a surface does not make Enter or Space press that button again (it would un-arm the action just clicked, or veto twice): the
+   keys keep their meaning; only a focus walked there by Tab leaves Tab, Enter and Space to the browser. */
+const KEYS_ON = `${MOD}.tactics.keys`;
+function onKey(ev) {
+  try {
+    if (!lastDock || ev.defaultPrevented || ev.repeat || ev.ctrlKey || ev.altKey || ev.metaKey || !Keys.KEYS.includes(ev.key)) return;
+    const a = document.activeElement, inOurs = !!a && (!!Dock.el()?.contains(a) || !!Desk.el()?.contains(a));
+    if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
+    if (a && a !== document.body && a !== document.documentElement && a.tagName !== "CANVAS" && !inOurs) return;
+    if (document.querySelector("dialog[open], .application.dialog, #context-menu")) return;      // a dialog or a menu of Foundry is up: its keys
+    const plan = Keys.plan(lastDock, st.dock, { key: ev.key, shift: ev.shiftKey, walking: inOurs && !byPointer });
+    if (!plan) return;
+    ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+    if (inOurs && byPointer) { try { a.blur(); } catch { /* nothing focused */ } }
+    if (!document.body.classList.contains("ita-keys")) { document.body.classList.add("ita-keys"); try { globalThis.localStorage?.setItem(KEYS_ON, "1"); } catch { /* private window */ } }
+    if (plan.click) Dock.press(plan.click);
+    else if (plan.target) { setDock({ targets: [plan.target] }); try { Pick.show(combatNow(), plan.target); } catch { /* a courtesy */ } }
+    else if (plan.set) setDock(plan.set);
+  } catch (e) { console.warn(LOG, "key failed", e); }
+}
 async function send(which, req, after) {
   try {
     if (!req) return null;
@@ -307,11 +335,12 @@ function configure() {
     /* an action that also names a place (Fastball Special): any zone of the map; the executor judges the throw */
     zonePick: async () => { try { const r = await Zones.pick({ title: t("ITAC.ui.pick.title", { name: "" }).replace(/^[:\s]+/, ""), color: "target" }); if (r?.ok) setDock({ to: r.spot ?? r.zone }); } catch (e) { console.warn(LOG, "zone pick failed", e); } },
     target: (cid) => { try { Pick.show(combatNow(), cid); } catch { /* a courtesy */ } },
+    locate: (cid, on) => Pick.locate(combatNow(), cid, on), deskRelayout: () => { try { Desk.relayout(); } catch { /* not built */ } },
     roll: rollAct,
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });
   Desk.configure({
-    set: setDesk, send: (req, after) => send("desk", req, after), label, tipShow, tipHide,
+    set: setDesk, send: (req, after) => send("desk", req, after), label, tipShow, tipHide, locate: (cid, on) => Pick.locate(combatNow(), cid, on),
     pick: multi("desk"), text: text("desk"), always: (id, on) => { st.desk.always[id] = !!on; refresh(); }, zone: (o, a) => zone("desk", o, a), again: (a) => { delete st.desk.zone[a.id]; refresh(); },
     force: (patch) => { st.desk.force = { ...st.desk.force, ...patch }; refresh(); },
     hazard: (patch) => { st.desk.hazard = { ...st.desk.hazard, ...patch }; refresh(); },
@@ -373,6 +402,11 @@ export function start() {
     Hooks.on("collapseSidebar", () => { relayout(); setTimeout(() => (st.desk.touched ? relayout() : schedule()), 320); });      // the desk folds or opens with the room the sidebar leaves, until the GM chose
     window.addEventListener("resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
     document.addEventListener("keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.stopPropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
+    /* U41 */
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", () => { byPointer = true; }, true);
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Tab" && !ev.defaultPrevented) byPointer = false; });      // the browser walked the focus
+    try { if (globalThis.localStorage?.getItem(KEYS_ON) === "1") document.body.classList.add("ita-keys"); } catch { /* private window */ }
     Api.ui = { active, refresh, state: () => st };
     refresh();
     return true;

@@ -79,7 +79,17 @@ export const EN_INT = {
   "ITAC.result.pass.dead": "dead, the turn passes",
   "ITAC.ui.out.broken": "At 0 Health. The only thing left is to try to get up.",
   "ITAC.ui.out.unconscious": "Unconscious. Nothing to do this turn.",
-  "ITAC.ui.out.dead": "Dead. Nothing to do this turn."
+  "ITAC.ui.out.dead": "Dead. Nothing to do this turn.",
+  "ITAC.ui.always.tip": "Tick before you answer. The answer you pick is then given for {name} without asking. Change it on the Table tab.",
+  "ITAC.ui.mine.you": "Declared. The table waits for you.",
+  "ITAC.ui.status.heldBy": "Held by: {name}. Break free to move or attack.",
+  "ITAC.ui.status.holds": "Holds: {name}",
+  "ITAC.ui.status.carriedBy": "Carried by: {name}",
+  "ITAC.ui.urgent": "Red shadow: an answer to what is happening to the character right now.",
+  "ITAC.ui.key.space": "Space",
+  "ITAC.ui.key.enter": "Enter",
+  "ITAC.ui.keys": "Keys: digits pick an action, Tab the target, Enter confirms, Space ends the turn, Esc backs out.",
+  "ITAC.ui.keys.macros": "While the macro bar shows, the digits are its own. Tab, Enter, Space and Esc still work on this bar."
 };
 export const PL_INT = {
   "ITAC.journal.gm": "MG",
@@ -160,5 +170,15 @@ export const PL_INT = {
   "ITAC.result.pass.dead": "postać nie żyje, tura przepada",
   "ITAC.ui.out.broken": "0 Zdrowia. Zostaje tylko próba stanięcia na nogi.",
   "ITAC.ui.out.unconscious": "Brak przytomności. W tej turze nie ma nic do zrobienia.",
-  "ITAC.ui.out.dead": "Postać nie żyje. W tej turze nie ma nic do zrobienia."
+  "ITAC.ui.out.dead": "Postać nie żyje. W tej turze nie ma nic do zrobienia.",
+  "ITAC.ui.always.tip": "Zaznacz przed odpowiedzią. Wybrana odpowiedź będzie potem dawana za: {name} bez pytania. Zmienisz to w zakładce Stół.",
+  "ITAC.ui.mine.you": "Zadeklarowane. Stół czeka na ciebie.",
+  "ITAC.ui.status.heldBy": "Trzyma: {name}. Trzeba się wyrwać, żeby się ruszyć albo zaatakować.",
+  "ITAC.ui.status.holds": "W uchwycie: {name}",
+  "ITAC.ui.status.carriedBy": "Niesie: {name}",
+  "ITAC.ui.urgent": "Czerwony cień: odpowiedź na to, co się teraz dzieje z postacią.",
+  "ITAC.ui.key.space": "Spacja",
+  "ITAC.ui.key.enter": "Enter",
+  "ITAC.ui.keys": "Klawisze: cyfry wybierają akcję, Tab cel, Enter zatwierdza, Spacja kończy turę, Esc cofa.",
+  "ITAC.ui.keys.macros": "Dopóki widać pasek makr, cyfry należą do niego. Tab, Enter, Spacja i Esc dalej działają na tym pasku."
 };

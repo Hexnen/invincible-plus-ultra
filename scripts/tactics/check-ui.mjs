@@ -6,6 +6,7 @@ import * as D from "./desk-pure.mjs";
 import * as V from "./view-pure.mjs";
 import * as P1 from "./economy-pure.mjs";
 import * as M from "./ui/model-pure.mjs";
+import * as Keys from "./ui/keys-pure.mjs";
 import { EN, PL, t as T0 } from "./lang.mjs";
 
 const missing = new Set();
@@ -332,5 +333,82 @@ for (const l of ["en", "pl"]) { // U28 - U31, U23, U4: the compact dock: slots, 
   const a = M.askData(mkP([o("s1", { stunt: "doubleDamage" }), o("s2", { stunt: "bangHeads", extra: "H2" }), o("s3", { stunt: "stun", onExtra: true, target: "H2" })]), { t, facts: facts(T, view, "p1"), own: {} });
   eq(a.options.map((x) => [x.icon, x.group?.id, typeof x.tip?.lines?.[0]]), [["stunt:doubleDamage", "main", "string"], ["stunt:bangHeads", "more", "string"], ["stunt:stun", "on:H2", "string"]], "U23: a stunt has its picture, its group (the target, another opponent, on that opponent) and what it does");
   eq([a.options[1].group.label.length > 0, /Rex/.test(a.options[2].group.label), a.pvFor], [true, true, null], "U23: the groups are captioned; no preview without the asked character's own bar");
+}
+/* ------------------------------------------------------------------ U5: the keyboard, and the rows closed with it */
+for (const l of ["en", "pl"]) {
+  lang(l);
+  { // U41: digits reach the bar, then the open list, then the first card; every key is a click on a control of the render data
+    const T = mk();
+    let d = dock(T, "p1", ["H1"]);
+    const flat = d.groups.flatMap((g) => g.items);
+    eq([flat.slice(0, 10).map((a) => a.key), flat.slice(10).some((a) => a.key), flat[0].tip.key, d.keys.on], [Keys.DIGITS.slice(0, Math.min(10, flat.length)), false, "1", true], `${l} U41: the buttons of the bar are numbered 1..9, 0 in the order they stand; the tooltip says the key`);
+    eq([Keys.plan(d, {}, { key: "1" }), Keys.plan(d, {}, { key: " " }), Keys.plan(d, {}, { key: "Enter" }), Keys.plan(d, {}, { key: "Tab" }), Keys.plan(d, {}, { key: "Escape" }), Keys.plan(d, {}, { key: "a" })],
+      [{ click: `act:${flat[0].id}` }, { click: "end" }, null, null, null, null], `${l} U41: a digit clicks that action, Space clicks End turn; Enter, Tab and Escape have nothing to act on yet`);
+    eq([Keys.plan(d, { hotbar: true }, { key: "1" }), dock(T, "p1", ["H1"], { hotbar: true }).groups[0].items[0].key ?? null, Keys.plan(d, { hotbar: true }, { key: " " })], [null, null, { click: "end" }], `${l} U41: while the macro bar shows the digits are its own; Space still ends the turn`);
+    eq(Keys.plan(dock(T, "p1", ["H1"], { endArmed: true }), { endArmed: true }, { key: "Enter" }), { click: "end" }, `${l} U41: Enter confirms the armed End turn`);
+    eq([Keys.plan(d, {}, { key: " ", walking: true }), Keys.plan(d, {}, { key: "1", walking: true })], [null, { click: `act:${flat[0].id}` }], `${l} U41: a focus walked by Tab keeps Space for the focused button; digits still act`);
+    const own = { armed: "slugfest" };
+    d = dock(T, "p1", ["H1"], own);
+    eq([Keys.plan(d, own, { key: "Tab" }), Keys.plan(d, own, { key: "Tab", shift: true }), Keys.plan(d, own, { key: "Enter" }), Keys.plan(d, own, { key: "Escape" })], [{ target: "N1" }, { target: "H2" }, null, { set: { armed: null, mode: null, amend: null } }], `${l} U41: Tab walks the targets in the order of the panel (Shift: backwards); Enter waits for a target; Escape puts the action away`);
+    const own2 = { armed: "slugfest", targets: ["N1"] };
+    d = dock(T, "p1", ["H1"], own2);
+    eq([Keys.plan(d, own2, { key: "Tab" }), Keys.plan(d, own2, { key: "Enter" }), d.panel.submit.req != null], [{ target: "H2" }, { click: "go" }, true], `${l} U41: Tab goes on from the picked target; Enter is Declare`);
+    const ownM = { mode: "menu" };
+    d = dock(T, "p1", ["H1"], ownM);
+    eq([d.panel.rows[0].key, d.panel.groups[0].rows[0].key, d.groups.flatMap((g) => g.items).some((a) => a.key), Keys.plan(d, ownM, { key: "1" })], ["1", "1", false, { click: `menu:${d.panel.rows[0].id}` }], `${l} U41: with a list open the digits are its rows, not the bar's buttons`);
+    eq(Keys.plan(dock(T, "p2", ["H2"]), {}, { key: " " }), null, `${l} U41: Space does nothing for somebody whose turn it is not`);
+    /* a card: a digit only chooses, Enter sends; a stunt card ticks and Enter is its Confirm */
+    await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["H2"] } });
+    d = dock(T, "p2", ["H2"]);
+    const card = d.prompts[0], first = card.options.filter((o) => !o.disabled)[0], fk = `opt:${card.id}:${first.id}`;
+    eq([card.kind, first.key, Keys.plan(d, {}, { key: "1" }), Keys.plan(d, {}, { key: "Enter" }), Keys.plan(d, {}, { key: "Tab" })], ["reaction", "1", { set: { kopt: fk } }, null, { set: { kopt: fk } }], `${l} U41: on a reaction card a digit (or Tab) only chooses the answer; Enter alone sends nothing`);
+    const dk2 = dock(T, "p2", ["H2"], { kopt: fk });
+    eq([Keys.plan(dk2, { kopt: fk }, { key: "Enter" }), dk2.keys.chosen, Keys.plan(dk2, { kopt: fk }, { key: "Escape" }), Keys.plan(dk2, { kopt: "opt:gone:x" }, { key: "Enter" })], [{ click: fk }, fk, { set: { kopt: null } }, null], `${l} U41: Enter sends the chosen answer, Escape puts the choice away, a choice of a card that is gone sends nothing`);
+    await T.answer("p2", "reaction", "pass"); await T.roll("attack", 3); await T.roll("def:H2", 0);
+    d = dock(T, "p1", ["H1"]);
+    if (d.prompts[0]?.kind === "stunts") {
+      const c2 = d.prompts[0], o1 = c2.options.filter((o) => !o.disabled)[0];
+      eq([Keys.plan(d, {}, { key: "1" }), Keys.plan(d, {}, { key: "Enter" })], [{ click: `opt:${c2.id}:${o1.id}` }, { click: `submit:${c2.id}` }], `${l} U41: on a stunt card a digit ticks, Enter is its Confirm`);
+      /* U46: the panel of the own action does not say "waiting for the others" to the one the table waits for */
+      eq([d.panel.kind, d.panel.status === t("ITAC.ui.mine.you"), d.panel.status === t("ITAC.ui.mine.open"), dock(T, "p2", ["H2"]).panel ?? null], ["mine", true, false, null], `${l} U46: with a question of their own open, the panel says the table waits for them`);
+    } else ok(false, `${l} U41 / U46: the stunt card did not come up (${d.prompts[0]?.kind})`);
+    noKeys(d, `${l} keys`);
+  }
+  { // U45: Health 0 with no mark yet is out of action on the bar, as it is for the engine
+    const W = mk(); W.c.H1.health = 0;
+    const o = dock(W, "p1", ["H1"]), ids = o.groups.flatMap((g) => g.items).filter((a) => !a.more).map((a) => a.id);
+    eq([o.out?.reason, typeof o.out?.text, ids, o.end.confirm], ["broken", "string", ["rally"], false], `${l} U45: at 0 Health without the status the bar says broken and offers only getting up`);
+    const N = mk().turn("N1"); N.c.N1.health = 0;
+    const s = staffDock(N, "N1");
+    eq([s.out?.reason, s.groups.flatMap((g) => g.items).filter((a) => !a.more).map((a) => a.id)], ["broken", ["rally"]], `${l} U45: the same for an NPC in the GM's hands`);
+    eq(D.outOf({ statuses: {} }, "V1", { kind: "vehicle", health: 0 }), null, `${l} U45: a machine has no such state`);
+    W.c.H1.crits = [9];
+    eq(D.outOf(W.state, "H1", W.c.H1)?.canRally, false, `${l} U45: an injury of 9 or worse leaves nothing to do`);
+  }
+  { // U22: the held one: Move is greyed with the engine's word, the status says who holds
+    const T = mk();
+    await T.gm({ op: "statusAdd", combatant: "H1", status: { id: "grappled", data: { by: "N1" } } });
+    let d = dock(T, "p1", ["H1"]);
+    const held = d.extras.find((x) => x.kind === "status");
+    eq([act(d, "move").disabled === M.reasonText(t, "held"), act(d, "slugfest").disabled === M.reasonText(t, "held"), act(d, "breakFree").disabled ?? null, /Mauler/.test(held?.tip ?? ""), act(d, "breakFree").tip.lines.includes(t("ITAC.ui.urgent")), act(d, "move").tip.lines.includes(t("ITAC.ui.urgent"))],
+      [true, true, null, true, true, false], `${l} U22: held: Move and the attacks are greyed with the reason, Break free is not; the status names the holder; the red mark is explained in its tooltip`);
+    T.c.N1.hidden = true;
+    d = dock(T, "p1", ["H1"]);
+    eq([/Mauler/.test(JSON.stringify(d.extras)), d.extras.find((x) => x.kind === "status")?.tip.includes(t("ITAC.Someone"))], [false, true], `${l} U22: a holder the player is not shown is "somebody"`);
+  }
+  { // U18 / U19: the queue is a list of tick boxes; the standing answer says when to tick it
+    const T = mk(), view = viewOf(T, "p1", ["H1"]);
+    const q = M.askData({ id: "q", kind: "triggerQueue", about: null, data: { at: "roundStart" }, multi: true, options: [{ id: "a", label: "x" }, { id: "b", label: "y" }], answerReq: (v) => ({ op: "answer", prompt: "q", value: v }) }, { t, facts: facts(T, T.state, "gm", true), own: { picks: { q: ["a"] } }, desk: true });
+    eq([q.check, q.options.map((o) => o.picked)], [true, [true, false]], `${l} U18: a round-point queue is marked as a list of tick boxes`);
+    const r = M.askData({ id: "r", kind: "reaction", about: "N1", aboutName: "Mauler #2", always: ["block"], data: {}, options: [{ id: "pass", label: "ITAC.opt.pass", req: {} }], answerReq: (v) => ({ op: "answer", prompt: "r", value: v }) }, { t, facts: facts(T, T.state, "gm", true), own: {}, desk: true });
+    eq([r.check, r.aboutId, /Mauler #2/.test(r.always.label), /Mauler #2/.test(r.always.tip), r.always.tip !== r.always.label], [false, "N1", true, true, true], `${l} U19: the card knows whom it is about (the map shows it) and the standing answer says it is ticked before answering`);
+    void view;
+  }
+}
+{ // U19: namesakes are numbered, the hidden ones last, so a player's numbers are the GM's and show no gap
+  const all = [{ id: "a", name: "Soldier", hidden: true }, { id: "b", name: "Soldier" }, { id: "c", name: "Rex" }, { id: "d", name: "Soldier" }];
+  eq(V.distinctNames(all), { b: "Soldier #1", d: "Soldier #2", a: "Soldier #3", c: "Rex" }, "U19: two of a name get a number; the hidden one counts last; a single name stays as it is");
+  eq(V.distinctNames(all.filter((x) => !x.hidden)), { b: "Soldier #1", d: "Soldier #2", c: "Rex" }, "U19: the visible ones read the same without the hidden one");
+  eq(V.distinctNames([]), {}, "U19: nobody, nothing");
 }
 done("check-ui");
