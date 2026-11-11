@@ -417,13 +417,14 @@ function placement(X, actor, entry) {
   if (t.actor === actor) return { ok: false, code: "busy" };
   return { ok: true, cause: "interrupt", parent: t.id };
 }
+const priced0 = (entry) => typeof FLOWS[entry.flow]?.price === "function";                 // a flow that names its own cost answers for the turn itself
 async function opDeclare(X, a) {
   const actor = a.actor;
   if (X.state.mode === "off") return bad("off");
   if (!P1.isId(actor) || !X.facts.c(actor) || (X.facts.c(actor).hidden && !X.user.staff)) return bad("unknown");
   if (!owns(X, actor)) return bad("notOwner");
   const entry = C.entryFor(X.state, actor, a.decl?.action, X.facts);
-  if (!entry || entry.reaction?.effect === "defence") return bad("unknown", { action: String(a.decl?.action ?? "").slice(0, 32) });
+  if (!entry || entry.reaction?.effect === "defence" || (entry.reactionOnly && !X.user.staff)) return bad("unknown", { action: String(a.decl?.action ?? "").slice(0, 32) });      // D34: what exists only as an answer in a reaction window (Discretion) is never declared by a player
   const decl = sanitizeDecl(a.decl, entry.id, X.user.staff === true);
   if (X.state.mode === "free" || X.state.free?.[actor]) {                                  // spec 14.5: nothing is validated, nobody is prompted; logged as declared
     const inst = makeInst(X, { action: entry.id, actor, decl, flow: "other", data: { free: 1 } });
@@ -434,6 +435,18 @@ async function opDeclare(X, a) {
   if (entry.id === "gmRoll" && !X.user.staff) return bad("noPermission");
   const pl = placement(X, actor, entry);
   if (!pl.ok) return bad(pl.code, pl.params);
+  /* D34 [L2] [L4] [B2290], [B2292]: on an empty stack a new action is the action of the one whose turn it is. What costs no action passed
+     here whatever the turn (economy-pure.canPay asks nothing for cost "none"), so a player out of turn could put an instance on the
+     stack and hold the one whose turn it is. Now: "something else" from a player out of turn is the request to the GM that the op
+     `other` makes of it (ruling P8-R11: a card, nobody held); another built-in that costs no action is refused as the bar already
+     shows it (desk-pure.barModel). The GM's hand, a grant, free mode and what a character's own kit lets it use at any time stay. */
+  if (pl.cause === "turn" && !X.user.staff && !priced0(entry) && (entry.cost === "none" || entry.cost == null) && !P1.isOnTurn(X.state, actor)) {
+    if (!entry.kit) return entry.id === "other" && decl.text ? opAsk(X, { actor, text: decl.text }, "other") : bad("notYourTurn");
+    /* the same for what a character's kit uses without an action when it cannot end at once (a roll somebody owes, the GM's word): out of
+       turn it is a request to the GM that carries the declaration, and the GM's yes runs it. What ends at once (Quickness, Regeneration,
+       Resilience ...) holds nobody and goes through. */
+    if (entry.roll || ["resist", "narrative"].includes(entry.effect?.kind)) return opAsk(X, { actor, text: String(entry.name ?? entry.id).slice(0, 120), decl: a.decl, reason: "notYourTurn" }, "exception");
+  }
   const gm = X.user.staff && a.gm === true;                                                // the GM acting through an override: costs waived
   const priced = typeof FLOWS[entry.flow]?.price === "function";                           // P3: a flow that names its own cost (a move: quick or full, free inside the zone)
   const payable = (cost) => { const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, resolve: X.facts.c(actor)?.resolve });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]

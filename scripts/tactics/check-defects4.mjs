@@ -6,6 +6,7 @@ import * as R from "./relay-pure.mjs";
 import * as V from "./view-pure.mjs";
 import * as I from "./initiative-pure.mjs";
 import * as Desk from "./desk-pure.mjs";
+import * as K from "./kit-pure.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? (env.changed === false ? "ok(unchanged)" : "ok") : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -125,6 +126,43 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
   eq(T.journal("p1").map((j) => j.text), ["Soldier #1: {ITAC.action.slugfest} ({ITAC.result.hit})"], "D33: once the namesake is revealed the player's number is the table's");
   delete T.c.N1; await T.gm({ op: "roster" });
   eq(T.journal("p1").map((j) => j.text), ["Soldier: {ITAC.action.slugfest} ({ITAC.result.hit})"], "D33: somebody who has left the fight keeps the plain name in the line");
+}
+
+/* ================================================================== D34: on an empty stack a new action is the action of the one whose turn
+   it is [B2290], [B2292]; a player out of turn cannot put one there by naming something that costs no action (ruling P8-R11). */
+{
+  const mk = () => { const T = new T4(); T.hero("H1", "p1").hero("H2", "p2").npc("N1"); T.order(["H2", "H1", "N1"]); return T; };
+  const stack = (T) => T.state.stack.map((i) => `${i.action}/${i.actor}/${i.status}`);
+  { const T = mk(), r = await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "other", text: "I shout a warning" } });
+    eq([code(r), stack(T), T.prompts("exception").map((p) => [p.to, p.about, p.data?.text, p.data?.other])], ["ok", [], [["gm", "H1", "I shout a warning", 1]]], "D34: 'something else' declared by a player out of turn is a card for the GM, not an action on the stack");
+    const d = await T.preq("p2", { op: "declare", actor: "H2", decl: { action: "slugfest", targets: ["N1"] } });
+    eq(code(d), "ok", "D34: the one whose turn it is acts on");
+    const V2 = mk(); await V2.preq("p1", { op: "other", actor: "H1", text: "I shout a warning" });
+    eq([stack(V2), V2.prompts("exception").map((p) => [p.to, p.about, p.data?.text, p.data?.other])], [[], [["gm", "H1", "I shout a warning", 1]]], "D34: exactly what the op `other` makes of it"); }
+  { const T = mk(); await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "other", text: "x" } });
+    eq(code(await T.preq("p2", { op: "endTurn", actor: "H2" })), "ok", "D34: and the turn can be ended"); }
+  { const T = mk(); eq([code(await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "other" } })), stack(T), T.prompts().length], ["notYourTurn", [], 0], "D34: without a text there is nothing to ask: refused, not your turn"); }
+  { const T = mk(); eq([code(await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "release" } })), stack(T)], ["notYourTurn", []], "D34 (sibling): another built-in that costs no action is refused out of turn, as the bar shows it"); }
+  { const T = mk(); eq([code(await T.preq("p2", { op: "declare", actor: "H2", decl: { action: "other", text: "I look around" } })), stack(T)], ["ok", ["other/H2/manual"]], "D34: on the player's own turn 'something else' is the action it was"); }
+  { const T = mk(); eq([code(await T.gm({ op: "declare", actor: "H1", decl: { action: "other", text: "the GM's hand" } })), stack(T)], ["ok", ["other/H1/manual"]], "D34: the GM declares it for anybody at any time"); }
+  { const T = mk(); await T.gm({ op: "setFree", combatant: "H1", free: true });
+    const r = await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "other", text: "x" } });
+    ok(code(r) === "ok" && (!T.state.free?.H1 || stack(T).length === 1), "D34: a participant the GM marked free is not held to the turn"); }
+  /* the same door for what a kit uses without an action */
+  const item = (id, name, type) => ({ id, name, type, level: null, power: null, boosts: [], autos: [], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} });
+  const kit = () => { const T = mk(); const c = T.c.H1; c.health = 4; c.kit = K.build({ items: [item("ph", "Phobic", "drawback"), item("re", "Regeneration", "power"), item("di", "Discretion", "talent")], attrs: c.attrs }); c.pass = c.kit.pass; return T; };
+  const act = (T, k) => T.c.H1.kit.actions.find((a) => a.id.endsWith(`-${k}`)).id;
+  { const T = kit(), r = await T.preq("p1", { op: "declare", actor: "H1", decl: { action: act(T, "phobia") } });
+    eq([code(r), stack(T), T.requests.length, T.prompts("exception").map((p) => [p.to, p.about, p.data?.decl?.action])], ["ok", [], 0, [["gm", "H1", act(T, "phobia")]]], "D34 (sibling): a kit use without an action that waits for a roll is, out of turn, a request to the GM that carries the declaration");
+    eq(code(await T.preq("p2", { op: "declare", actor: "H2", decl: { action: "slugfest", targets: ["N1"] } })), "ok", "D34 (sibling): nobody is held meanwhile");
+    await settle(T); if (T.top()) await T.roll("attack", 0); await settle(T);
+    const U = kit(); await U.preq("p1", { op: "declare", actor: "H1", decl: { action: act(U, "phobia") } });
+    await U.gm({ op: "answerFor", prompt: U.prompts("exception")[0]?.id, value: "grant" });
+    eq([stack(U).map((x) => x.split("/").slice(0, 2).join("/")), U.requests.length], [[`${act(U, "phobia")}/H1`], 1], "D34 (sibling): the GM's yes runs it: the roll is asked for"); }
+  { const T = kit(), r = await T.preq("p1", { op: "declare", actor: "H1", decl: { action: act(T, "regen") } });
+    eq([code(r), stack(T), T.c.H1.health, T.prompts().length], ["ok", [], 5, 0], "D34: a kit use that ends at once (Regeneration) goes through out of turn and holds nobody"); }
+  { const T = kit(); const id = T.c.H1.kit.actions.find((a) => a.reactionOnly)?.id;
+    eq([!!id, code(await T.preq("p1", { op: "declare", actor: "H1", decl: { action: id } })), stack(T)], [true, "unknown", []], "D34 (sibling): what exists only as an answer in a reaction window (Discretion) cannot be declared by a player as an action"); }
 }
 
 done("check-defects4");
