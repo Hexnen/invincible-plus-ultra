@@ -16,6 +16,35 @@ import { dice } from "../../rules/index.mjs";
 import { sceneData } from "./scene-pure.mjs";
 import { allRows, CAT_OF } from "../kit-pure.mjs";
 
+/* WORDS OF THE SURFACES' OWN (package U1: layout and finish). Texts the layout work needed while the language files were being changed
+   by another package; kept here so the two branches merge. Keys are "IU1.*": main.mjs wraps the language file's t() with withWords, so
+   every such key is answered here and every other key there. Whoever merges may move them into lang.mjs and drop the wrapper. */
+export const WORDS = Object.freeze({
+  en: Object.freeze({
+    "IU1.turn.notYours": "Not your turn",
+    "IU1.sure.veto": "Veto it?",
+    "IU1.here": "You are in: {zone}",
+    "IU1.here.of": "{name} is in: {zone}",
+    "IU1.legend": "On the map a zone shows how far it is from the selected token (the big number) and its own number (the small tag). Cards and texts name a zone by its own number.",
+  }),
+  pl: Object.freeze({
+    "IU1.turn.notYours": "Nie twoja tura",
+    "IU1.sure.veto": "Zawetować?",
+    "IU1.here": "Jesteś w: {zone}",
+    "IU1.here.of": "{name} jest w: {zone}",
+    "IU1.legend": "Na mapie strefa pokazuje, jak daleko jest od zaznaczonego tokena (duża liczba), oraz swój numer (mała plakietka). Karty i teksty nazywają strefę jej numerem.",
+  }),
+});
+/** one of the surfaces' own texts in `lang` ("pl..." or anything else: English), {placeholders} filled; null: not one of them */
+export function word(lang, key, params = {}) {
+  const s = WORDS[String(lang ?? "en").toLowerCase().startsWith("pl") ? "pl" : "en"][key] ?? WORDS.en[key];
+  return typeof s === "string" ? s.replace(/\{(\w+)\}/g, (m, k) => (params?.[k] !== undefined && params?.[k] !== null ? String(params[k]) : m)) : null;
+}
+/** the language file's t(key, params, fallback) with the surfaces' own keys answered first; lang() -> the client's language now */
+/* asked through t() with the English text as the fallback, so a t() that was not wrapped (the node checks) still answers */
+const ownWord = (t, key, params = {}) => t(key, params, word("en", key, params));
+export const withWords = (t, lang) => (key, params = {}, fallback = key) => (String(key).startsWith("IU1.") ? word(lang(), key, params) ?? fallback : t(key, params, fallback));
+
 const isKey = (s) => typeof s === "string" && s.startsWith("ITAC.");
 const has = (t, key) => t(key, {}, null) !== null;
 const cap = (s) => { const x = String(s ?? ""); return x.charAt(0).toUpperCase() + x.slice(1); };
@@ -500,7 +529,7 @@ export function dockData(model, own, facts, t) {
   const kitActs = acts.filter((a) => a.kit).sort((x, y) => CAT_ORDER.indexOf(x.kit.cat) - CAT_ORDER.indexOf(y.kit.cat)), kitRows = bar.kitRows ?? [], hasKit = kitActs.length > 0 || kitRows.some((r) => r.state === "hand");
   const loose = hasKit ? acts.filter((a) => !a.kit && groupOf(a) === "power") : [];        // "Use a power" and the like: with a kit they go to the end of its list, so the bar is no longer than before
   const stateText = (s) => t(`ITAC.kit.state.${s}`, {}, String(s));
-  const item = (a) => ({ id: a.id, label: labelOf(t, a.label), cost: a.cost, costText: costText(t, a.cost), disabled: a.disabled ? reasonText(t, a.disabled) : null, armed: own.armed === a.id, urgent: !!a.situational });
+  const item = (a) => ({ id: a.id, label: labelOf(t, a.label), cost: a.cost, costText: costText(t, a.cost), disabled: a.disabled ? reasonText(t, a.disabled) : null, armed: own.armed === a.id, urgent: !!a.situational, glyph: a.flow === "barrier" ? "door" : a.flow === "move" ? "move" : null });
   const groups = GROUPS.map((g) => ({ id: g, label: t(`ITAC.ui.group.${g}`), items: [...acts.filter((a) => !a.kit && groupOf(a) === g && !inMenu(a) && !loose.includes(a)).sort((x, y) => Number(!!y.situational) - Number(!!x.situational)).map(item),
     ...(g === "act" && menu.length ? [{ id: "@more", more: true, label: t("ITAC.ui.more"), tip: t("ITAC.ui.more.tip"), armed: own.mode === "menu" || menu.some((a) => a.id === own.armed) }] : []),
     ...(g === "power" && hasKit ? [{ id: "@kit", more: true, mode: "kit", label: t("ITAC.ui.kit"), tip: t("ITAC.ui.kit.tip"), armed: own.mode === "kit" || kitActs.some((a) => a.id === own.armed) || loose.some((a) => a.id === own.armed) }] : [])] })).filter((g) => g.items.length);
@@ -526,11 +555,14 @@ export function dockData(model, own, facts, t) {
     : { label: t("ITAC.ui.end"), tip: reasonText(t, "notYourTurn"), disabled: reasonText(t, "notYourTurn"), req: null, confirm: false, armed: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn
   const chase = facts.view?.chase ? t("ITAC.ui.chase.line", { n: facts.view.chase.distance }) : null;      // P7: a chase has no turns, the line carries the distance
-  const turn = chase ?? (model?.turn?.combatant ? (bar.onTurn && !facts.staff ? t("ITAC.ui.turn.yours", { name: bar.name ?? "" }) : t("ITAC.ui.turn.of", { name: model.turn.name ?? t("ITAC.Someone") })) : "");
+  const turn = chase ?? (model?.turn?.combatant ? (bar.onTurn && !facts.staff ? t("ITAC.ui.turn.yours", { name: bar.name ?? "" }) : t("ITAC.ui.turn.of", { name: model.turn.name ?? t("ITAC.Someone") })) : model?.turn?.phase === "turns" && !facts.staff ? ownWord(t, "IU1.turn.notYours") : "");      // U15: a turn this user is not shown (a hidden NPC acts) still says whose turn it is not
+  /* U8: where the driven character stands, in the words the cards use ("Zone 5"), with the legend of the map's badges behind it */
+  const spot = facts.where?.(bar.combatant) ?? null, zoneNow = spot ? zoneText(facts, t, spot) : "";
   return {
     show: true, canRest, rest: canRest && !panel && !own.peek, onTurn: !!bar.onTurn, round: model?.turn?.round ?? null,
     chars: bars.length > 1 ? bars.map((b) => ({ id: b.combatant, name: b.name, img: facts.c?.(b.combatant)?.img ?? null, onTurn: !!b.onTurn, sel: b.combatant === bar.combatant, asked: asked.has(b.combatant) })) : [],
-    who: { id: bar.combatant, name: bar.name ?? c?.name ?? "", img: c?.img ?? null, onTurn: !!bar.onTurn, free: !!bar.free, freeLabel: t("ITAC.ui.freeMode") },
+    who: { id: bar.combatant, name: bar.name ?? c?.name ?? "", img: c?.img ?? null, onTurn: !!bar.onTurn, free: !!bar.free, freeLabel: t("ITAC.ui.freeMode"),
+      zone: zoneNow ? { label: zoneNow, tip: `${facts.staff ? ownWord(t, "IU1.here.of", { name: bar.name ?? c?.name ?? "", zone: zoneNow }) : ownWord(t, "IU1.here", { zone: zoneNow })}. ${ownWord(t, "IU1.legend")}` } : null },
     pips: pipsOf(bar, t), extras: extrasOf(bar, t), groups,
     other: { label: t("ITAC.action.other"), armed: own.mode === "other", tip: t("ITAC.ui.other.hint") },
     holdOff: { label: t("ITAC.ui.holdOff"), armed: own.mode === "holdOff", disabled: bar.holdOff?.disabled ? reasonText(t, bar.holdOff.disabled) : null, tip: t("ITAC.ui.holdOff.hint") },
@@ -581,7 +613,7 @@ function instData(i, model, own, facts, t) {
     id: i.inst, actor: i.actorName ?? t("ITAC.ui.who.gm"), action: instTitle(t, i), targets: (i.targets ?? []).map((x) => x.name), text: i.text ?? null,
     step: stepText(t, i.step), cause: i.cause && i.cause !== "turn" ? t(`ITAC.ui.cause.${i.cause}`, {}, String(i.cause)) : null, locked: !!i.locked, child: !!i.parent,
     rolls, outcomes: (i.outcomes ?? []).map((o) => ({ name: o.name, text: o.hit ? t("ITAC.ui.ovr.hit") : t("ITAC.ui.ovr.miss"), hit: o.hit })),
-    commands: [veto ? { id: "veto", label: labelOf(t, veto.label), req: veto.req, danger: true } : null, ovr ? { id: "override", label: labelOf(t, ovr.label), toggle: true, on: open } : null].filter(Boolean),
+    commands: [veto ? { id: "veto", label: own.sure === `${i.inst}:veto` ? ownWord(t, "IU1.sure.veto") : labelOf(t, veto.label), req: veto.req, danger: true, confirm: true, armed: own.sure === `${i.inst}:veto` } : null, ovr ? { id: "override", label: labelOf(t, ovr.label), toggle: true, on: open } : null].filter(Boolean),
     override: open ? overrideControls(i, facts, t) : null,
     retarget: open && from && others.length ? { label: t("ITAC.ui.ovr.retarget"), choices: others.map((r) => ({ id: r.id, label: r.name, req: amend ? amend.req({ action: i.action, targets: [r.id] }) : ovr.req("retarget", { from, to: r.id }) })) } : null,
   };

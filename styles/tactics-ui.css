@@ -124,22 +124,24 @@
   transition: translate .26s var(--ita-out), opacity .2s ease-out;
 }
 #invincible-tactics-dock.itd-hidden { translate: 0 calc(100% + 16px); opacity: 0; }
-.itd-stack { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; }
+.itd-stack { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; max-height: var(--itd-room, 100vh); }
+.itd-stack > :is(.itd-bar, .itd-wait) { flex: none; }
 .itd-stack > * { pointer-events: auto; max-width: 100%; }
 
 /* the questions asked of this user sit on top, whoever's turn it is */
-.itd-asks { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 8px; max-height: var(--itd-maxh, 60vh); overflow-y: auto; padding: 4px 6px 2px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
+.itd-asks { flex: 0 1 auto; min-height: 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 8px; max-height: var(--itd-maxh, 60vh); overflow-y: auto; overscroll-behavior: contain; padding: 4px 6px 2px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
 
 /* the bar */
+/* U5: ONE FLOW. Who, then every action button, then the tail; the groups are parted by a rule instead of a caption row, so the bar is
+   two rows at 1366 px where it was four. The slanted plate is drawn behind (::before), the buttons stand straight on it. */
 .itd-bar {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px; padding: 5px 10px 6px 6px;
-  background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
-  transform: skewX(-4deg); transform-origin: center bottom;
+  position: relative; isolation: isolate;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; padding: 5px 12px 6px 9px;
 }
-.itd-bar > * { transform: skewX(4deg); }
-#invincible-tactics-dock.itd-turn .itd-bar { box-shadow: inset 0 0 0 1px var(--ita-yellow), 0 2px 8px rgba(0, 0, 0, .45); }
-.itd-who { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.itd-face { width: 38px; height: 38px; border: 2px solid var(--ita-line); font-size: 18px; }
+.itd-bar::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); transform: skewX(-4deg); transform-origin: center bottom; }
+#invincible-tactics-dock.itd-turn .itd-bar::before { box-shadow: inset 0 0 0 1px var(--ita-yellow), 0 2px 8px rgba(0, 0, 0, .45); }
+.itd-who { display: flex; align-items: center; gap: 7px; min-width: 0; margin-right: 4px; }
+.itd-face { width: 34px; height: 34px; border: 2px solid var(--ita-line); font-size: 17px; }
 #invincible-tactics-dock.itd-turn .itd-face { border-color: var(--ita-yellow); }
 .itd-chars { display: flex; gap: 3px; }
 #invincible-tactics-dock .itd-char { position: relative; width: 30px; height: 30px; border: 2px solid var(--ita-line); }
@@ -148,7 +150,11 @@
 #invincible-tactics-dock .itd-char-turn::after, #invincible-tactics-dock .itd-char-asked::after { content: ""; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; background: var(--ita-yellow); border: 2px solid var(--ita-ink); border-radius: 50%; }
 #invincible-tactics-dock .itd-char-asked::after { background: var(--ita-red-lt); }
 .itd-id { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.itd-nameline { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
 .itd-name { max-width: 15em; font: 700 12.5px/1.1 Comic, sans-serif; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* U8: where the character stands, in the words the cards use; the tooltip is the legend of the map's badges */
+.itd-zone { flex: none; display: inline-flex; align-items: baseline; gap: 4px; font: 400 11px/1.1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-cyan); white-space: nowrap; cursor: help; }
+.itd-zone:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .itd-pips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 #invincible-tactics-dock .itd-pip {
   display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 6px;
@@ -163,14 +169,14 @@
 .itd-extra[data-kind="token"], .itd-extra[data-kind="grant"] { color: var(--ita-cyan); border-color: var(--ita-cyan); }
 .itd-extra[data-kind="free"] { color: var(--ita-ink); background: var(--ita-cyan); border-color: var(--ita-ink); }
 
-.itd-groups { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 6px 12px; }
-.itd-group { display: flex; flex-direction: column; gap: 2px; }
-.itd-glabel { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label); }
-.itd-gacts, .itd-tail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.itd-tail { align-self: flex-end; }
+/* a group gives its buttons to the bar's own flow (so a long group wraps button by button) and leaves a rule in front of them */
+.itd-group { display: contents; }
+#invincible-tactics-dock .itd-group > :first-child { position: relative; margin-left: 12px; }      /* the rule travels with the group's first button, so it never ends a row alone */
+#invincible-tactics-dock .itd-group > :first-child::before { content: ""; position: absolute; left: -11px; top: 3px; bottom: 3px; width: 2px; background: var(--ita-line); opacity: .7; transform: skewX(-10deg); pointer-events: none; }
+.itd-tail { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin-left: auto; padding-left: 6px; }
 #invincible-tactics-dock :is(.itd-act, .itd-ghost, .itd-end) {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; min-width: 56px; padding: 0 10px;
-  font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 30px; min-width: 44px; padding: 0 9px;
+  font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap;
   border: 2px solid var(--ita-ink);
   transition: translate .12s ease-out, box-shadow .12s ease-out;
 }
@@ -182,7 +188,10 @@
 #invincible-tactics-dock .itd-act[aria-disabled="true"].itd-armed { color: #fff; border-style: solid; border-color: #fff; translate: none; }
 #invincible-tactics-dock .itd-ghost { color: var(--ita-text); background: transparent; border-color: var(--ita-frame); }
 #invincible-tactics-dock .itd-ghost:hover:not([aria-disabled="true"]) { color: #fff; border-color: #fff; }
-#invincible-tactics-dock .itd-ghost.itd-armed { color: var(--ita-ink); background: #fff; border-color: var(--ita-ink); }
+#invincible-tactics-dock .itd-ghost.itd-armed, #invincible-tactics-dock .itd-ghost.itd-armed:hover:not([aria-disabled="true"]) { color: var(--ita-ink); background: #fff; border-color: var(--ita-ink); box-shadow: 1px 1px 0 var(--ita-blue); }      /* U25: the hover rule above used to turn the chosen button's text white on white */
+/* under TIGHT px of room (dock.mjs) the two side buttons keep their glyph; the name is in the tooltip and the aria-label */
+#invincible-tactics-dock[data-tight] .itd-tail .itd-ghost { min-width: 32px; padding: 0 8px; }
+#invincible-tactics-dock[data-tight] .itd-tail .itd-ghost span { display: none; }
 #invincible-tactics-dock .itd-ghost[aria-disabled="true"] { color: #8fa3c4; border: 2px dashed var(--ita-line); }
 #invincible-tactics-dock .itd-end { color: #fff; background: var(--ita-red); box-shadow: 3px 3px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-end:hover:not([aria-disabled="true"]) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
@@ -193,7 +202,9 @@
 #invincible-tactics-dock :is(.itd-peek, .itd-x):hover { color: #fff; border-color: #fff; }
 
 /* the panel of the armed action */
-.itd-panel { align-self: stretch; display: flex; flex-direction: column; gap: 7px; min-width: min(440px, 100%); padding: 8px 12px 10px; background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: inset 0 0 0 1px rgba(125, 147, 185, .55), 0 5px 14px rgba(0, 0, 0, .5); animation: itd-rise .2s var(--ita-out); }
+.itd-panel { flex: 0 1 auto; min-height: 0; align-self: stretch; display: flex; flex-direction: column; gap: 6px; min-width: min(440px, 100%); max-height: var(--itd-panel-maxh, 60vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; padding: 0 12px 9px; background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: inset 0 0 0 1px rgba(125, 147, 185, .55), 0 5px 14px rgba(0, 0, 0, .5); animation: itd-rise .2s var(--ita-out); }
+.itd-panel > * { flex: none; }
+.itd-panel > .itd-phead { position: sticky; top: 0; z-index: 1; margin: 0 -12px 0 -17px; padding: 7px 12px 4px 12px; background: var(--ita-ink); box-shadow: inset 0 1px 0 rgba(125, 147, 185, .55); }
 @keyframes itd-rise { from { opacity: 0; clip-path: inset(40% 0 0 0); translate: 0 8px; } to { opacity: 1; clip-path: inset(0 0 0 0); translate: 0 0; } }
 .itd-phead { display: flex; align-items: center; gap: 9px; min-width: 0; margin-left: -5px; }
 .itd-phead .itd-x { margin-left: auto; }
@@ -221,6 +232,7 @@
 .itd-reason i { color: var(--ita-red-lt); }
 .itd-status i { color: var(--ita-yellow); }
 .itd-refused { align-items: center; padding-top: 7px; border-top: 1px dashed var(--ita-line); }
+.itd-refused-top { padding: 0 0 7px; border-top: 0; border-bottom: 1px dashed var(--ita-line); }
 .itd-refused .itd-reason { flex: 1 1 220px; }
 .itd-panel[data-rolling] { box-shadow: inset 0 0 0 1px var(--ita-yellow), 0 5px 14px rgba(0, 0, 0, .5); }
 .itd-pool { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; }
@@ -258,11 +270,14 @@
 #invincible-tactics-dock .itd-way[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; cursor: pointer; }
 #invincible-tactics-dock .itd-way[aria-disabled="true"]:hover, #invincible-tactics-dock .itd-way[aria-disabled="true"].itd-armed { color: #fff; border-color: #fff; }
 #invincible-tactics-dock .itd-way[aria-disabled="true"].itd-armed { border-style: solid; }
-.itd-near { align-items: center; padding-top: 7px; border-top: 1px dashed var(--ita-line); }
-.itd-near .itd-k { flex: 1 1 100%; }
+.itd-near { align-items: center; gap: 6px 12px; }
+.itd-near .itd-k { flex: none; max-width: 9em; line-height: 1.25; }
+.itd-near .itd-ways { flex: 1 1 300px; }
+.itd-hint-head { flex: 1 1 auto; min-width: 0; }
+.itd-hint-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* while the zone is being picked on the map the panel is one short line, so the map stays visible */
 .itd-panel[data-picking] { align-self: center; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0; padding: 6px 10px 7px; }
-.itd-panel[data-picking] .itd-phead { margin-left: -3px; }
+.itd-panel[data-picking] > .itd-phead { position: static; margin: 0 0 0 -3px; padding: 0; box-shadow: none; }
 .itd-destv { font: 700 13px/1.1 Comic, sans-serif; color: #fff; }
 
 /* waiting line */
@@ -307,7 +322,13 @@ body.itd-picking #board { cursor: crosshair; }
 .igd-wait { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 7px 10px; background: var(--ita-track); }
 .igd-k { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label); }
 .igd-nobody { color: var(--ita-text); }
-.igd-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 10px 12px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
+/* U12: more below the fold shows as a cyan edge at the bottom of the body (and one at the top once scrolled); the two covers travel with the content and hide the edge at either end */
+.igd-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 10px 12px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent;
+  background:
+    linear-gradient(var(--ita-ink) 40%, rgba(12, 26, 46, 0)) top / 100% 26px no-repeat local,
+    linear-gradient(rgba(12, 26, 46, 0), var(--ita-ink) 60%) bottom / 100% 26px no-repeat local,
+    linear-gradient(rgba(59, 184, 232, .55), rgba(59, 184, 232, 0)) top / 100% 9px no-repeat scroll,
+    linear-gradient(rgba(59, 184, 232, 0), rgba(59, 184, 232, .7)) bottom / 100% 12px no-repeat scroll; }
 .igd-sec { display: flex; flex-direction: column; gap: 7px; }
 .igd-h { display: flex; align-items: center; gap: 6px; margin-top: 12px !important; font: 400 11.5px/1 Titles, Comic, sans-serif !important; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label) !important; }
 .igd-n { font: inherit; color: var(--ita-yellow); }
@@ -363,8 +384,10 @@ body.itd-picking #board { cursor: crosshair; }
 .igd-log { display: flex; flex-direction: column; }
 .igd-log li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 0; border-bottom: 1px solid #22375a; }
 .igd-jt { flex: 1 1 170px; min-width: 0; overflow-wrap: anywhere; }
-.igd-jc { flex: none; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-.igd-also { color: var(--ita-red-lt); font-size: 11.5px; }
+.igd-jc { flex: 0 1 auto; min-width: 0; max-width: 100%; display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 6px; margin-left: auto; }      /* U20: the confirm row wraps inside the desk instead of running past its edge */
+.igd-also { flex: 1 1 100%; text-align: right; color: var(--ita-red-lt); font-size: 11.5px; overflow-wrap: anywhere; }
+#invincible-tactics-desk .igd-jc .igd-btn, #invincible-tactics-desk .igd-jc .igd-link { flex: none; }
+#invincible-tactics-desk .igd-sure, #invincible-tactics-desk .igd-sure:hover { color: #fff; background: var(--ita-red); border-color: var(--ita-red); }
 .igd-log li[data-state="undone"] .igd-jt { color: #8fa3c4; text-decoration: line-through; }
 .igd-log li[data-state="open"] .igd-jt { color: var(--ita-label); font-style: italic; }
 #invincible-tactics-desk .igd-body > .igd-ctl { margin-top: 10px; }
@@ -444,3 +467,15 @@ body.itd-picking #board { cursor: crosshair; }
 .igd-kit-state[data-state="off"] { color: var(--ita-red-lt); border-color: var(--ita-red-lt); text-decoration: line-through; }
 .igd-kit[data-state="off"] .igd-kit-name b { color: var(--ita-label); text-decoration: line-through; }
 .igd-kit-sum { padding-top: 2px; }
+
+/* ============================ U1: LIVING WITH THE OTHER SURFACES ============================
+   body.ita-tactics     the dock is up (ui/main.mjs)        body.ita-desk-open     the GM desk is open (ui/desk.mjs) */
+/* U27 / CU2: the GM marks an action on the dock's own pips, so the initiative bar gives up its second set of big buttons under the
+   active tile (they also hung over the head of the dock's panel); the tile keeps its small passive pip tab like every other tile. */
+body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-gma { display: none !important; }
+body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-scroller { padding-bottom: 1.5em; }
+body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-tile[data-active] .icbar-acts:not([hidden]) { display: flex; }
+/* U6: chat toasts keep to the strip under the open desk (ui/desk.mjs measures it); the newest stays, older ones scroll out of it */
+body.ita-desk-open #chat-notifications .overflow { height: auto; max-height: var(--igd-toast-maxh, 40vh); }
+/* U6: the module's own end-of-session notice stands above the dock instead of on it */
+body.ita-tactics .ips-notice { bottom: var(--itd-clear, 124px); }
