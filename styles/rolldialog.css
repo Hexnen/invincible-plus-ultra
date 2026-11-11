@@ -101,6 +101,7 @@
 /* ---------- U82 the parts of the pool: a ledger. One part = one line: the number in a 46px column, the name beside it ---------- */
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute {
+  grid-column: 1 / -1; grid-row: auto; justify-self: stretch;        /* the system places its tiles by count (nth-child): not here */
   display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 0 10px; min-height: 24px; padding: 0; border: 0;
 }
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute > input { field-sizing: fixed; width: 100%; min-width: 0; max-width: none; }
@@ -117,24 +118,27 @@
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown:not(:has(.attribute-control)) > div.attribute > input:not(:disabled):focus-visible { border-color: #fff; outline: var(--ipu-ring-w) solid var(--ipu-ring-ink); outline-offset: var(--ipu-ring-gap); }
 
 /* ---------- U82 the attack's facts: one strip, a drawing and the number (the name is the tooltip) ---------- */
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] { flex-wrap: nowrap; align-items: center; gap: 0 20px; min-width: 0; }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute { flex: 0 1 auto; gap: 6px; min-height: 26px; padding: 0; border: 0; cursor: default; }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute > input { width: 1.4ch; min-width: 1.2ch; pointer-events: none; }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute > label.attribute-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }   /* a fact the script does not know keeps its word */
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute[data-ird-fact] { flex: none; }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute[data-ird-fact]::before {
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] { flex-wrap: nowrap; align-items: center; gap: 0 22px; min-width: 0; padding-left: 2px; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute { flex: 0 1 auto; gap: 6px; min-height: 26px; padding: 0; border: 0; cursor: default; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute > input { field-sizing: content; width: auto; min-width: 1ch; max-width: 6ch; pointer-events: none; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute > label.attribute-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }   /* a fact the script does not know keeps its word */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact] { flex: none; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact]::before {
   flex: none; width: 16px; text-align: center; font: 900 13px/1 var(--ipu-fa); color: var(--ipu-label); -webkit-font-smoothing: antialiased;
 }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="damage"]::before { content: "\e4dc"; }      /* burst */
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="min"]::before { content: "\f547"; }         /* ruler */
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="armor"]::before { content: "\f3ed"; }       /* shield */
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="stress"]::before { content: "\f0e7"; }      /* bolt: Determination, as on the dock */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="damage"]::before { content: "\e4dc"; }      /* burst */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="min"]::before { content: "\f547"; }         /* ruler */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="armor"]::before { content: "\f3ed"; }       /* shield */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="stress"]::before { content: "\f0e7"; }      /* bolt: Determination, as on the dock */
 /* the range is one fact: "least - greatest" behind one ruler */
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"] { margin-left: -16px; gap: 4px; }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"]::before { content: "\2013"; width: auto; font: 400 15px/1 Roboto, sans-serif; }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown[data-ird-facts] > div.attribute[data-ird-fact] > label.attribute-label {
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"] { margin-left: -17px; gap: 5px; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"]::before { content: "\2013"; width: auto; font: 400 15px/1 Roboto, sans-serif; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact] > label.attribute-label {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%);
 }
+
+/* an attack that states no facts (a talent roll): no hairline over nothing */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator:has(+ div.breakdown:not(:has(> .attribute))), .application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown:not(:has(> .attribute)) { display: none; }
 
 /* ---------- the stunts window (same class): the count is the pool's place, a row per stunt with its stepper ---------- */
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> .attribute-control) { flex: 1 1 45%; justify-content: space-between; flex-direction: row-reverse; padding: 3px 4px 3px 9px; }
