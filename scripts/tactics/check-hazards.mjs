@@ -231,4 +231,33 @@ async function gmBurn(T, cid) { await T.gm({ op: "statusAdd", combatant: cid, st
   await T.answer("p1", "hazardDodge", "pass", "H1"); await T.answer("gm", "hazardDodge", "pass", "N1");
   eq([T.c.H1.health, T.state.triggers.length, T.state.round], [4, 0, 2], "it ran once, expired, and the round went on");
 }
+/* ================================================================== P8: Burning Building [B2845]: the fire spreads by itself, one zone a round, and no D6 of a typical fire [B2927] puts it out */
+{
+  const T = base();
+  T.add("CH", { kind: "challenge", npc: true, health: 6, resolve: 3, maxResolve: 3, name: "Burning Building", zone: "z1" });
+  T.map.zones.z3.flammable = true; T.map.borders.find((b) => b.id === "z1|z3").wall = null;      // z2 and z3 can both catch fire
+  eq(code(await T.gm({ op: "challengeSetup", challenge: "CH", preset: "burningBuilding", zone: "z1" })), "ok", "burning building: set up in z1");
+  eq([T.zoneMarks.z1?.fire, T.state.triggers.filter((t) => t.run.type === "fireSpread").map((t) => [t.at, t.run.automatic, t.run.zone, t.run.intensity])], [8, [["roundStart", 1, "z1", 8]]], "burning building: Intensity 8, and its own spread trigger names the zone");
+  await endRound(T);
+  let q = T.prompt("triggerQueue");
+  eq(q.options.map((o) => o.data.type).sort(), ["fireAttack", "fireSpread"], "burning building: the round starts with the fire attack and ONE spread, the challenge's own; no D6 spread of a typical fire");
+  T.dice.push([1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1], [1]);                           // no fire damage; the pick among the candidates (no spread die is asked)
+  await T.gm({ op: "answer", prompt: q.id, value: { order: [] } });
+  const card = T.prompt("fireSpread");
+  eq([card?.data?.from, card?.options.map((o) => o.id)], ["z1", ["z:z2", "z:z3", "none"]], "burning building: it spreads without a roll; the GM confirms where");
+  await T.gm({ op: "answerFor", prompt: card.id, value: "z:z2" });
+  eq([T.zoneMarks.z1?.fire, T.zoneMarks.z2?.fire], [8, 8], "burning building: the next zone burns with the same Intensity, the first one still burns");
+  for (let g = 0; g < 12 && T.state.round < 3; g++) { const p = T.prompts()[0]; if (p && p.kind !== "triggerQueue") { await T.gm({ op: "answerFor", prompt: p.id, value: p.options[0].id }); continue; } if (T.state.phase !== "turns") break; await endTurn(T, "gm", T.state.init.curMember); }
+  q = T.prompt("triggerQueue");
+  eq(q?.options.filter((o) => o.data.type === "fireSpread").length, 1, "burning building: next round again one spread for the whole fire");
+  T.dice.push([1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1], [1]);
+  await T.gm({ op: "answer", prompt: q.id, value: { order: [] } });
+  eq(T.prompt("fireSpread")?.options.map((o) => o.id), ["z:z3", "none"], "burning building: it goes on from wherever it burns by now");
+}
+{ /* once the challenge is overcome the fire is a typical one again (and the GM puts it out) */
+  const T = base(); T.zoneMarks.z1 = { fire: 7 };
+  T.state = { ...T.state, challenges: { CH: { preset: "burningBuilding", name: "x", objectives: [], effects: [{ when: "roundStart", kind: "fireSpread", zones: 1, automatic: true }], done: "overcome" } } };
+  await endRound(T);
+  eq(T.prompt("triggerQueue").options.map((o) => o.data.type).includes("fireSpread"), true, "a fire with no running challenge of its own rolls the D6 of a typical fire as before");
+}
 done("check-hazards");

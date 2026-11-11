@@ -163,6 +163,7 @@ export const fireSpread = {
     check(v, inst) { const I = K.draft(inst), R = K.result(I); I.locked = true; R.goto = "roll"; return R; },
     roll(v, inst) {
       const I = K.draft(inst), R = K.result(I);
+      if (hzOf(I).automatic) { I.data.spread = ["out", "stays", "spreads"].includes(I.data.forced?.spread) ? I.data.forced.spread : "spreads"; R.goto = "effect"; return R; }      // [B2845]: it spreads, no die
       if (I.data.res?.spread == null) { if (!K.flag(I, "spread")) { K.setFlag(I, "spread"); R.effects.push({ t: "dice", key: "spread", n: 1 }); } R.wait = true; return R; }
       I.data.spread = ["out", "stays", "spreads"].includes(I.data.forced?.spread) ? I.data.forced.spread : hazards.fireSpreadRoll(I.data.res.spread[0] ?? 3);
       R.goto = "effect"; return R;
@@ -178,7 +179,8 @@ export const fireSpread = {
         change(h.zone, null);
       }
       if (I.data.spread === "spreads") {
-        const list = I.data.candidates ?? (I.data.candidates = spreadCandidates(Z, h.zone));
+        /* a fire that spreads by itself goes on from wherever it burns by now, not only from where it started */
+        const list = I.data.candidates ?? (I.data.candidates = h.automatic ? [...new Set([h.zone, ...burningZones(Z).map((b) => b.zone)].flatMap((z) => spreadCandidates(Z, z)))] : spreadCandidates(Z, h.zone));
         if (!list.length) { I.data.spread = "nowhere"; R.goto = "close"; return R; }
         if (I.data.res?.pick == null) { if (!K.flag(I, "pick")) { K.setFlag(I, "pick"); R.effects.push({ t: "dice", key: "pick", n: 1, sides: list.length }); } R.wait = true; return R; }      // a random adjacent zone
         const pick = list[Math.max(0, Math.min(list.length - 1, (I.data.res.pick[0] ?? 1) - 1))];
@@ -306,7 +308,7 @@ export function specOf(run, subject, v) {
   switch (run.type) {
     case "blast": return mk("blast", { kind: "blast", rating: int(run.rating, 1, 20, 4), ...(typeof run.source === "string" ? { source: run.source.slice(0, 24) } : {}) });
     case "area": return mk("blast", { kind: "area", pool: int(run.pool, 1, 40, 8), damage: int(run.damage, 0, 40, 5), ...(typeof run.source === "string" ? { source: run.source.slice(0, 24) } : {}) });
-    case "fireSpread": return mk("fireSpread", { kind: "fireSpread", intensity: int(run.intensity, 1, 12, BURNING_DEFAULT), ...(typeof run.at === "string" ? { at: run.at.slice(0, 24) } : {}),
+    case "fireSpread": return mk("fireSpread", { kind: "fireSpread", intensity: int(run.intensity, 1, 12, BURNING_DEFAULT), ...(typeof run.at === "string" ? { at: run.at.slice(0, 24) } : {}), ...(run.automatic ? { automatic: 1 } : {}),
       refs: (Array.isArray(run.refs) ? run.refs : []).slice(0, 12).map((r) => ({ source: ["registry", "mark", "map"].includes(r?.source) ? r.source : "mark", id: String(r?.id ?? "").slice(0, 40) })) }, []);
     case "vacuum": return mk("vacuum", { kind: "vacuum" }, targets.slice(0, 1));
     case "disease": return mk("disease", { kind: "disease", virulence: int(run.virulence, 0, 12, 0), ...(P1.isId(run.carer) ? { carer: run.carer } : {}), ...(run.secret === true ? { secret: true } : {}) }, targets.slice(0, 1));
@@ -332,7 +334,10 @@ export function derived(state, facts, point) {
         const s = M.statusesOf(state, cid).find((x) => x.id === "burning");
         if (s && !hit.has(cid) && facts.c(cid) && facts.c(cid).present !== false) out.push(trig(`dfb.${cid}`, "roundStart", { combatant: cid }, { type: "fireAttack", intensity: int(s.data?.intensity, 1, 12, BURNING_DEFAULT), inZone: false, targets: [cid] }));
       }
-      for (const b of burn) out.push(trig(`dfs.${slug(b.zone)}.${slug(b.at ?? "")}`, "roundStart", { zone: b.zone }, { type: "fireSpread", zone: b.zone, intensity: b.intensity, refs: b.refs, ...(b.at ? { at: b.at } : {}) }));     // [B2927]
+      /* [B2927] is the rule of a TYPICAL fire. While a challenge whose fire spreads by itself is on (Burning Building [B2845]: one adjacent
+         zone a round, burning until the challenge is overcome) no zone rolls the D6 that could put it out or spread it a second time. */
+      const own = Object.values(state.challenges ?? {}).some((c) => c && !c.done && (c.effects ?? []).some((e) => e.kind === "fireSpread" && e.automatic));
+      if (!own) for (const b of burn) out.push(trig(`dfs.${slug(b.zone)}.${slug(b.at ?? "")}`, "roundStart", { zone: b.zone }, { type: "fireSpread", zone: b.zone, intensity: b.intensity, refs: b.refs, ...(b.at ? { at: b.at } : {}) }));     // [B2927]
     } else if (point.at === "turnStart" && point.combatant) {
       const cid = point.combatant;
       if (M.hasStatus(state, cid, "suffocating") || inVacuum(facts, cid)) out.push(trig(`dvac.${cid}`, "turnStart", { combatant: cid }, { type: "vacuum" }));       // [B2929]

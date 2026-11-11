@@ -156,8 +156,11 @@ export function setup(id, { challenge: cid, name = "", zone = null, heroes = [] 
   const cfg = presetConfig(id), triggers = [], manual = [];
   let zonePatch = null;
   const src = (kind) => ({ kind: "challenge", owner: cid, name: `${name || id || "challenge"}: ${kind}`.slice(0, 80) });
+  const fire = cfg.effects.find((e) => e.when === "onStart" && e.kind === "fire");
   for (const e of cfg.effects) {
-    const run = { type: e.kind === "toxin" ? "challengeRoll" : e.kind === "fireSpread" ? "fireSpread" : "challenge", kind: e.kind, challenge: cid, ...(e.attr ? { attr: e.attr } : {}), ...(e.onFail ? { onFail: e.onFail } : {}) };
+    const run = { type: e.kind === "toxin" ? "challengeRoll" : e.kind === "fireSpread" ? "fireSpread" : "challenge", kind: e.kind, challenge: cid, ...(e.attr ? { attr: e.attr } : {}), ...(e.onFail ? { onFail: e.onFail } : {}),
+      /* [B2845]: this fire is no typical one: it spreads by itself, to one adjacent zone a round, and never goes out by a die. With the zone named the hazard flow does it. */
+      ...(e.kind === "fireSpread" && e.automatic ? { automatic: 1, ...(zone ? { zone } : {}), ...(fire?.intensity ? { intensity: fire.intensity } : {}) } : {}) };
     if (e.when === "roundStart") triggers.push({ at: "roundStart", subject: {}, run, source: src(e.kind) });
     else if (e.when === "heroTurnStart") for (const h of heroes) triggers.push({ at: "turnStart", subject: { combatant: h }, run, source: src(e.kind) });
     else if (e.when === "enterZone") { if (zone) triggers.push({ at: "zoneEnter", subject: { zone }, run, source: src(e.kind) }); else manual.push(e.kind); }
