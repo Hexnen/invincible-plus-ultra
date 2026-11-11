@@ -93,7 +93,7 @@ function promptModel(p, ctx) {
 /** The action bar of one combatant: budget, and each catalog action with whether its cost is payable now (legality against a target is the executor's). */
 export function barModel(view, cid, ctx = {}) {
   const P1 = ctx.P1;
-  const onTurn = P1 ? P1.isOnTurn(view, cid) : false, busy = (view.stack ?? []).length > 0;
+  const onTurn = P1 ? P1.isOnTurn(view, cid) : false, busy = (view.stack ?? []).length > 0 || Object.values(view.prompts ?? {}).some((p) => p.kind === "triggerQueue" && !p.answered);      // an open action, or the triggers of the turn waiting for the GM (spec 4.4)
   /* P7: an entry with a `when` word (P5 rows carry an object there: see `applies`) is offered only in its situation (a challenge in the fight, a vehicle to get into, aboard, at the wheel).
      ctx.special() -> [{ id, name, kind: "challenge" | "vehicle" }] the combatants without a card the viewer may see. */
   const ride = (view.statuses?.[cid] ?? []).find((s) => s.id === "inVehicle")?.data ?? null, special = typeof ctx.special === "function" ? ctx.special() : [];

@@ -274,4 +274,41 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
   eq(U.state.init.curMember, "H2", "D8: the partner has the turn");
 }
 
+/* ================================================================== D10: what is due at the start of a turn comes before the turn's actions (spec 4.4) [B2889] */
+{
+  const endTurn = (T, user, actor) => T.req(user, { op: "endTurn", actor, round: T.state.round, slot: T.state.init.cur, ...(user === "gm" ? { force: true } : {}) });
+  const T = new Table();
+  T.hero("H1", "p1").hero("H2", "p2", { attrs: { strength: 5 } }).npc("N1", { health: 6, damage: 5 });
+  T.add("CH", { kind: "challenge", npc: true, health: 6, resolve: 3, maxResolve: 3, name: "Toxin" });
+  T.order(["H1", "N1", "H2"]).turn("H1");
+  await T.gm({ op: "challengeSetup", challenge: "CH", preset: "toxicAccident" });
+  await endTurn(T, "p1", "H1"); await endTurn(T, "gm", "N1");
+  const q = T.prompt("triggerQueue");
+  ok(!!q && T.state.init.curMember === "H2", "D10: H2's turn opens with the toxin due");
+  const r = await T.req("p2", decl("H2", "slugfest", ["N1"]));
+  eq([code(r), why(r)], ["busy", "triggersFirst"], "D10: no action before the trigger is resolved");
+  eq(code(await T.req("p2", { op: "move", actor: "H2", to: "z2" })) === "ok", false, "D10: no move either");
+  eq(code(await T.req("p2", { op: "other", actor: "H2", text: "x" })), "busy", "D10: nor 'something else'");
+  eq([P1.budget(T.state, "H2").full, T.state.stack.length], ["open", 0], "D10: nothing was spent, nothing is open");
+  await T.gm({ op: "answer", prompt: q.id, value: { order: q.options.map((o) => o.id) } });
+  await T.roll("save", 0);
+  eq(P1.budget(T.state, "H2").full, "lost", "D10: the failed STRENGTH roll takes the full action that is still there");
+  eq(code(await T.req("p2", decl("H2", "slugfest", ["N1"]))), "noAction", "D10: and the attack is not available this turn");
+  eq(code(await T.req("p2", decl("H2", "banter", ["N1"]))), "ok", "D10: a quick action is");
+}
+
+/* ================================================================== D19: 'something else' from a player who is not on turn holds nobody */
+{
+  const T = fight();
+  const r = await T.req("p2", { op: "other", actor: "H2", text: "I shout a warning" });
+  eq([code(r), T.state.stack.length], ["ok", 0], "D19: off turn it opens no instance");
+  const card = T.prompts().find((p) => p.kind === "exception" && p.about === "H2");
+  eq([card?.to, card?.data?.text], ["gm", "I shout a warning"], "D19: the GM gets a card with the text");
+  eq(code(await T.req("p1", decl("H1", "slugfest", ["N1"]))), "ok", "D19: the player on turn declares");
+  await T.answer("gm", "reaction", "pass", "N1"); await T.roll("attack", 0);
+  eq(code(await T.req("p1", { op: "endTurn", actor: "H1", round: T.state.round, slot: T.state.init.cur })), "ok", "D19: and ends the turn");
+  const U = fight();
+  eq([code(await U.req("p1", { op: "other", actor: "H1", text: "x" })), U.state.stack.map((i) => `${i.flow}/${i.status}`).join()], ["ok", "other/manual"], "D19: on one's own turn it is an action the GM runs, as before");
+}
+
 done("check-defects");

@@ -376,9 +376,12 @@ function sanitizeDecl(d, action, staff = false) {
 }
 /** Where may a new action go? Empty stack: the actor's own turn (or a grant). Otherwise only as a legal interrupt of the top instance, declared before
     its dice ([B2292], spec 5.5). Returns { ok, cause, parent } or an error code. */
+/** The triggers due at the start or the end of a turn come BEFORE whatever is done next (spec 4.4: turnStart runs the turn-start triggers,
+    then opens the turn; [B2889], [B2926], [B2929]): while their queue card waits for the GM nothing new is declared. */
+export const queueHolds = (state) => Object.values(state?.prompts ?? {}).some((p) => p.kind === "triggerQueue" && !p.answered);
 function placement(X, actor, entry) {
   const t = top(X);
-  if (!t) return { ok: true, cause: "turn", parent: null };
+  if (!t) return queueHolds(X.state) ? { ok: false, code: "busy", params: { reason: "triggersFirst" } } : { ok: true, cause: "turn", parent: null };
   if (t.locked || !t.data.window || !entry.interrupt?.on?.includes(t.data.window)) return { ok: false, code: "busy" };
   if (t.actor === actor) return { ok: false, code: "busy" };
   return { ok: true, cause: "interrupt", parent: t.id };
@@ -399,7 +402,7 @@ async function opDeclare(X, a) {
   }
   if (entry.id === "gmRoll" && !X.user.staff) return bad("noPermission");
   const pl = placement(X, actor, entry);
-  if (!pl.ok) return bad(pl.code);
+  if (!pl.ok) return bad(pl.code, pl.params);
   const gm = X.user.staff && a.gm === true;                                                // the GM acting through an override: costs waived
   const priced = typeof FLOWS[entry.flow]?.price === "function";                           // P3: a flow that names its own cost (a move: quick or full, free inside the zone)
   const payable = (cost) => { const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm }); return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
@@ -542,16 +545,20 @@ async function opAsk(X, a, kind) {
   if (!owns(X, a.actor)) return bad("notOwner");
   const text = String(a.text ?? "").slice(0, 300);
   if (!text) return bad("badInput");
-  if (kind === "other") {                                                                   // "something else" (spec 9.12): a GM-driven instance
+  /* "something else" (spec 9.12) is a GM-driven instance and, like every instance, it is somebody's action: on the stack it holds the
+     table. From a player whose turn it is not it is a request to the GM instead (the card below), which holds nobody. */
+  const asAction = kind === "other" && (X.user.staff || X.state.mode !== "tactical" || X.state.free?.[a.actor] || P1.isOnTurn(X.state, a.actor));
+  if (asAction) {
     if (X.state.stack.length) return bad("busy");
+    if (queueHolds(X.state)) return bad("busy", { reason: "triggersFirst" });
     const inst = makeInst(X, { action: "other", actor: a.actor, decl: { action: "other", targets: [], helpers: [], exploits: [], stressTotal: 0, text }, flow: "other" });
     inst.tx = openTx(X, { inst: inst.id }); inst.status = "manual"; pushInst(X, inst);
     emit(X, inst, { type: "actionDeclared", decl: { action: "other" }, cost: "none", stress: 0, targets: [] });
     return ok({ inst: inst.id });
   }
   if (Object.values(X.state.prompts).filter((p) => p.kind === "exception" && !p.inst && p.about === a.actor).length >= 3) return bad("rate");
-  openPrompt(X, null, { key: "x", kind: "exception", to: "gm", about: a.actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { text, inst: P1.isId(a.inst) ? a.inst : undefined } }, null);
-  return ok();
+  openPrompt(X, null, { key: "x", kind: "exception", to: "gm", about: a.actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { text, inst: P1.isId(a.inst) ? a.inst : undefined, ...(kind === "other" ? { other: 1 } : {}) } }, null);
+  return ok(kind === "other" ? { asked: 1 } : undefined);
 }
 
 /* ------------------------------------------------------------------ requests: GM overrides (spec 14) */
