@@ -717,3 +717,62 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 .ita-step > b { min-width: 34px; text-align: center; font: 400 18px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
 @media (pointer: coarse) { #invincible-tactics-desk .igd-nudge { width: 34px; height: 34px; } :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button { width: 36px; height: 36px; } }
 @media (prefers-reduced-motion: reduce) { #invincible-tactics-desk .igd-nudge { transition: none; } #invincible-tactics-desk .igd-nudge:is(:hover, :active) { translate: none; } }
+
+/* ============================================================ FEEDBACK TO THE PLAYER (ledger U53 - U58, U68; scripts/tactics/ui/feedback*.mjs)
+   U54 / U68  the tooltip of a greyed thing: the PRICE is a label ("Costs: full action", Titles caps, as before); the REASON is a sentence
+              under a dashed line (the look of "unavailable" on every surface) with the no-entry sign; WHAT TO DO is a second sentence with
+              an arrow. Three different shapes, so "full action" over "no action" can no longer be read as two prices.
+   U55        a pool is its number; where the dice come from is a small sum in the tooltip (one line per source, the total under a line).
+              What carries such a sum has a dotted underline on its label and takes the keyboard focus.
+   U57        the summary card: a caption card like a question, counts in fixed columns, pictures instead of column heads (words in tooltips).
+   U53        one hint over the bar: a white caption box (the comic's caption), its tick on the thing it is about.
+   Contrast on ink #0c1a2e: red text #ff8178 7.2, white 17.5, label #a9bcdc 9.1; ink on white 17.5. */
+#tooltip.ita-tip .ita-tt-why { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed #6b82a6; }
+#tooltip.ita-tip .ita-tt-why:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+#tooltip.ita-tip .ita-tt-why p { position: relative; margin: 0; padding-left: 17px; }
+#tooltip.ita-tip .ita-tt-why p::before { position: absolute; left: 0; top: 2px; font: 900 11px/1.2 var(--ipu-fa, "Font Awesome 6 Free"); }
+#tooltip.ita-tip .ita-tt-no { color: #ff8178; }
+#tooltip.ita-tip .ita-tt-no::before { content: "\f05e"; }
+#tooltip.ita-tip .ita-tt-fix { color: #fff; }
+#tooltip.ita-tip .ita-tt-fix::before { content: "\f061"; color: #ffe72a; }
+#tooltip.ita-tip .ita-tt-sum { display: grid; gap: 1px; min-width: 150px; }
+#tooltip.ita-tip .ita-tt-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+#tooltip.ita-tip .ita-tt .ita-tt-row b { font: 400 13px/1.25 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; color: #fff; }
+#tooltip.ita-tip .ita-tt-total { margin-top: 3px; padding-top: 3px; border-top: 1px solid #6b82a6; color: #ffe72a; }
+#tooltip.ita-tip .ita-tt .ita-tt-total b { font-size: 15px; color: #ffe72a; }
+#tooltip.ita-tip .ita-tt-sum small { margin-top: 4px; }
+#tooltip.ita-tip .ita-tt-wait, #tooltip.ita-tip .ita-tt .ita-tt-wait b { color: #a9bcdc; }
+
+:is(#invincible-tactics-dock, #invincible-tactics-desk) [data-sum] { cursor: help; }
+#invincible-tactics-dock .itd-pool[data-sum] .itd-k, :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll-t[data-sum] { text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) [data-sum]:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+
+/* U57 */
+#invincible-tactics-dock .ita-sum { width: 330px; gap: 5px; }
+#invincible-tactics-dock .ita-sum .ita-about { font-weight: 400; color: var(--ita-label); }
+#invincible-tactics-dock .ita-sum-x { all: unset; box-sizing: border-box; flex: none; display: grid; place-items: center; width: 24px; height: 24px; margin-left: auto; font-size: 12px; color: var(--ita-label); border: 1px solid var(--ita-line); cursor: pointer; }
+#invincible-tactics-dock .ita-sum-x:hover { color: #fff; border-color: #fff; }
+#invincible-tactics-dock .ita-sum-x:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-tactics-dock .ita-sum-rows { display: grid; gap: 0; max-height: 236px; margin: 0; padding: 0; overflow-y: auto; list-style: none; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
+#invincible-tactics-dock .ita-sum-row { display: flex; align-items: center; gap: 7px; min-height: 28px; margin: 0; padding: 2px 2px; color: var(--ita-text); }
+#invincible-tactics-dock .ita-sum-row + .ita-sum-row { border-top: 1px solid rgba(107, 130, 166, .35); }
+#invincible-tactics-dock .ita-sum-row[data-mine] { color: #fff; }
+#invincible-tactics-dock .ita-sum-row[data-mine] .ita-face { outline: 1px solid var(--ita-yellow); }
+#invincible-tactics-dock .ita-sum-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#invincible-tactics-dock .ita-sum-chips { flex: none; display: grid; grid-template-columns: 36px 44px 36px 36px 16px; align-items: center; column-gap: 4px; }
+#invincible-tactics-dock .ita-sum-chip { display: inline-flex; align-items: center; gap: 4px; font: 400 13.5px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
+#invincible-tactics-dock .ita-sum-chip i { font-size: 11px; color: var(--ita-label); }
+#invincible-tactics-dock .ita-sum-chip[data-id="dealt"] i { color: var(--ita-yellow); }
+#invincible-tactics-dock .ita-sum-chip[data-id="taken"] i, #invincible-tactics-dock .ita-sum-chip[data-id="out"] i { color: var(--ita-red-lt); }
+#invincible-tactics-dock .ita-sum-chip[data-id="stress"] i { color: var(--ita-cyan); }
+#invincible-tactics-dock .ita-sum-more { margin: 0; font: 400 11px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); }
+
+/* U53 */
+#invincible-tactics-dock .itd-hint1 { position: relative; flex: none; display: flex; align-items: center; gap: 9px; max-width: min(100%, 640px); margin-bottom: 4px; padding: 5px 6px 6px 10px; font: 400 12.5px/1.3 Comic, sans-serif; color: var(--ita-ink); background: #fff; border: 2px solid var(--ita-ink); box-shadow: 0 4px 12px rgba(0, 0, 0, .45); animation: ita-pop .28s var(--ita-out); }
+#invincible-tactics-dock .itd-hint1 > i { flex: none; font-size: 14px; color: var(--ita-blue); }
+#invincible-tactics-dock .itd-hint1 > span { min-width: 0; text-wrap: pretty; }
+#invincible-tactics-dock .itd-hint1[data-tick]::after { content: ""; position: absolute; left: calc(var(--itd-hint-x, 40px) - 6px); bottom: -8px; width: 11px; height: 11px; background: #fff; border: solid var(--ita-ink); border-width: 0 2px 2px 0; rotate: 45deg; }
+#invincible-tactics-dock .itd-hint1-x { all: unset; box-sizing: border-box; flex: none; padding: 3px 9px 2px; font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-ink); border: 2px solid var(--ita-ink); cursor: pointer; }
+#invincible-tactics-dock .itd-hint1-x:hover { background: var(--ita-yellow); }
+#invincible-tactics-dock .itd-hint1-x:focus-visible { outline: 3px solid var(--ita-blue); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { #invincible-tactics-dock .itd-hint1 { animation: none; } }

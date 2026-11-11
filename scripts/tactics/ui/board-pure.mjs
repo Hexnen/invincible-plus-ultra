@@ -18,7 +18,8 @@
      doorItems(bar, door, t)            U35: the menu at a door -> [{ id, label, icon, hint, disabled, req }]
      gmItems(cid, vitals, statuses, t)  U44: the GM's quick corrections at a token -> [{ id, label, icon, stepper | toggle, req(value, from?) }];
                                         a stepper's request is a step (`delta`), a switch's the state as the rules mean it (D53, D59) */
-import { reasonText, labelOf, oddsFor, isFree } from "./model-pure.mjs";
+import { labelOf, oddsFor, isFree } from "./model-pure.mjs";
+import { whyOf, whyLine } from "./feedback-pure.mjs";
 import * as HZ from "../flows/hazards.mjs";
 import { stateFlags } from "../movement-pure.mjs";
 
@@ -154,14 +155,14 @@ const priceShort = (t, a) => [isFree(a.cost) ? null : t(`ITAC.ui.costShort.${a.c
 export function actItems(acts, rows, tid, facts, t) {
   return (acts ?? []).map((a) => {
     const r = rows?.[a.id] ?? null, odds = r?.ok ? oddsFor(a, r.dice, tid, facts, t, r.def) : null, hit = r?.ok ? hitWords(r.hit, t) : null;
-    const why = a.disabled ?? (r && !r.ok ? reasonText(t, r.reason, r.params) : null);
+    const why = a.disabled ?? (r && !r.ok ? whyLine(whyOf(t, r.reason, r.params, { staff: facts?.staff })) : null);      // U54: a whole sentence and what to do about it
     return { id: a.id, label: a.label, icon: a.icon, hint: [...priceShort(t, a), odds?.say ?? null, hit?.short ?? null].filter(Boolean).join(" · "), tip: join([oddsTip(odds, t), hit?.tip]) || null, disabled: why || null };
   });
 }
 /** `door` = a row of flows/move.doorOptions for the border clicked; the door actions of the bar that fit its state */
 export function doorItems(bar, door, t) {
   return (bar?.actions ?? []).filter((a) => a.flow === "barrier" && door?.actions && a.id in door.actions && door.actions[a.id] !== "doorState").map((a) => {
-    const why = a.disabled ? reasonText(t, a.disabled) : door.actions[a.id] ? reasonText(t, door.actions[a.id]) : null;
+    const why = whyLine(whyOf(t, a.disabled || door.actions[a.id] || null));
     return { id: a.id, label: labelOf(t, a.label), icon: a.id, hint: priceShort(t, a).join(" · "), disabled: why, req: why ? null : a.req({ to: door.to }) };
   });
 }

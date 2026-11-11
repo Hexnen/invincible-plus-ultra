@@ -25,7 +25,7 @@
             Abilities: rows by kind) | something else | hold off | the own action in progress (what it waits for, change / cancel)
    RESTING (not the user's turn, nothing armed, nothing asked): the unit and its slots; the chevron opens the bar to look or to ask for
    an exception. A question addressed to the user always shows, whoever's turn it is. */
-import { h, icon, swap, face, speed, actIcon, tipText, askCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
+import { h, icon, swap, face, speed, actIcon, tipText, askCard, sumCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
 
 const ID = "invincible-tactics-dock";
 const GAP = 6;
@@ -150,7 +150,7 @@ export function place() {
   /* the panel and the questions share what is left above the bar: the panel takes what it needs first (it is what the user is doing),
      the questions the rest; each scrolls inside its share */
   const part = (sel) => stack.querySelector(sel)?.offsetHeight ?? 0;
-  const fixed = part(".itd-bar") + part(".itd-wait") + 2 * GAP, asks = stack.querySelector(".itd-asks"), panelEl = stack.querySelector(".itd-panel");
+  const fixed = part(".itd-bar") + part(".itd-wait") + part(".itd-hint1") + 2 * GAP, asks = stack.querySelector(".itd-asks"), panelEl = stack.querySelector(".itd-panel");
   const above = Math.max(120, room - fixed);
   const panelMax = asks && panelEl ? Math.max(110, Math.round(above * 0.6)) : above;
   root.style.setProperty("--itd-panel-maxh", `${Math.round(panelMax)}px`);
@@ -173,6 +173,9 @@ export function place() {
   root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
   if (root.dataset.tight !== "2" || !deskOpen) break;
   }
+  /* U53: the hint's tick points at what the hint is about (the slots, the actions) */
+  try { const hint = stack.querySelector(".itd-hint1"), at = hint?.dataset.at ? stack.querySelector(hint.dataset.at === "slots" ? ".itd-slots" : ".itd-acts") : null;
+    if (hint && at) { const a = at.getBoundingClientRect(), b = hint.getBoundingClientRect(); hint.style.setProperty("--itd-hint-x", `${Math.round(Math.max(14, Math.min(b.width - 14, a.left + Math.min(a.width / 2, 60) - b.left)))}px`); hint.dataset.tick = "1"; } } catch { /* a courtesy */ }
   const under = deskOff && deskOpen, top = under ? Math.round(barEl?.getBoundingClientRect().top ?? 0) : null;
   if (under) root.dataset.under = "1"; else delete root.dataset.under;
   if (top !== underTop) { underTop = top; handlers.deskRelayout?.(); }
@@ -321,7 +324,8 @@ function panel(p) {
           h("button.itd-ghost", { fk: "dest", on: { click: () => handlers.zonePick?.() } }, icon("fa-map-location-dot"), h("span", { text: p.dest.pick }))) : null,
         p.text ? h("div.itd-col.itd-grow", {}, textBox(p.text.value, p.text.placeholder)) : null,
         p.pool || p.tokens.length ? h("div.itd-col.itd-odds", {},
-          p.pool ? h("div.itd-pool", {}, h("span.itd-k", { text: handlers.label?.("pool") }), h("b.itd-dice", { text: String(p.pool.total) }), h("span.itd-parts", { text: p.pool.parts.map((x) => `${x.label} ${x.dice > 0 && x !== p.pool.parts[0] ? "+" : ""}${x.dice}`).join(" · ") })) : null,
+          /* U55: the pool is its number; where the dice come from is its tooltip (hover and keyboard focus), one line per source */
+          p.pool ? h("div.itd-pool", { tip: p.pool.tip, data: { sum: p.pool.tip ? "1" : null }, attrs: p.pool.tip ? { tabindex: "0" } : {} }, h("span.itd-k", { text: handlers.label?.("pool") }), h("b.itd-dice", { text: String(p.pool.total) })) : null,
           p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null,
           p.chance ? meter(p.chance) : null) : null,
         h("div.itd-col.itd-submit", {}, p.submit.disabled && !p.submit.quiet ? h("span.itd-why", { text: p.submit.disabled }) : null, submit(p.submit, "", p.pv, true))));      // U51: why it cannot be declared is written beside the button, not said again in its tooltip
@@ -345,7 +349,7 @@ export function render(d, ui = {}) {
 }
 function draw(d, ui) {
   last = { d, ui };
-  const any = d?.show || d?.prompts?.length;
+  const any = d?.show || d?.prompts?.length || d?.sum;
   if (!any) return hide();
   ensure(handlers.label?.("dock") ?? "");
   root.classList.toggle("itd-turn", !!d.onTurn);
@@ -357,7 +361,8 @@ function draw(d, ui) {
   panelKey = pk;
   const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
   swap(stack, [
-    d.prompts?.length ? h("div.itd-asks", {}, d.prompts.map((a) => askCard(a, askH))) : null,
+    /* U57: the summary of the round (or of the fight) that just ended stands where the questions stand, after them */
+    d.prompts?.length || d.sum ? h("div.itd-asks", {}, (d.prompts ?? []).map((a) => askCard(a, askH)), d.sum ? sumCard(d.sum, { sumClose: handlers.sumClose }) : null) : null,
     d.show ? panel(d.panel) : null,
     /* the line on top of the bar, only while it has something the rest of the screen does not say (U51 / U52: model-pure.dockData):
        a roll this user owes or may push that is not the roll of its own action (that one stands in the action's panel), who ELSE the
@@ -368,6 +373,9 @@ function draw(d, ui) {
       d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null,
       d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon("fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
         h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null,
+    /* U53: one first-fight hint, right over the bar, its tick on the thing it is about (place() sets --itd-hint-x) */
+    d.show && d.hint ? h("div.itd-hint1", { attrs: { role: "note" }, data: { at: d.hint.at } }, icon("fa-lightbulb"), h("span", { text: d.hint.text }),
+      h("button.itd-hint1-x", { fk: "hint:x", text: d.hint.close, on: { click: () => handlers.hintClose?.(d.hint.id) } })) : null,
     d.show ? bar(d) : null,
   ]);
   /* U41: the answer the keyboard chose on a card (Enter sends it) */
