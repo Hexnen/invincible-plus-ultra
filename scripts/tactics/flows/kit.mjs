@@ -8,7 +8,7 @@
        events:  [...],  section 16 events
        push:    spec of an action instance to put on top of the stack (interrupt, counterattack, part of a composite)
        goto:    next step id | wait: true | done: true } */
-import { dice, crits, conditions, attack } from "../../rules/index.mjs";
+import { dice, crits, conditions, attack, chase } from "../../rules/index.mjs";
 import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 import { holderBlocks } from "../catalog-pure.mjs";
@@ -110,6 +110,11 @@ export function buildPool(v, inst, key, cid, attr, mods = [], { rollKind = "othe
   list.push(...em.mods.map((m) => ({ source: m.source, dice: m.dice })));
   for (const p of em.pending) if (!(inst.data.notes ??= []).some((n) => n.note === "modNeedsGm" && n.source === p.source)) inst.data.notes.push({ note: "modNeedsGm", source: p.source, dice: p.dice, key });   // only the GM's word decides it: shown on the desk, not guessed
   for (const m of kitDice(v, inst, cid, attr, rollKind)) if (!list.some((x) => x.source === m.source)) list.push(m);      // P6: the sheet's bonuses, the kit's dice, Affliction
+  /* P7 [B3455], [B3461]: an obstacle of the chase round that makes it hard to see or to keep steady takes its dice from ALL AGILITY rolls
+     of that round: the chase roll, a dodge, a shot of the crew. One entry per roll (the chase roll brings it itself, rules/chase.chaseModifiers). */
+  const ob = attr === "agility" && v.state.kind === "chase" ? inst.data?.ch?.obstacle ?? (v.state.chase?.rolled === v.state.round ? v.state.chase?.last?.obstacle : null) : null;
+  const obDice = ob ? chase.CHASE_OBSTACLES[ob]?.agilityDice : 0;
+  if (obDice && !list.some((m) => m.source === ob)) list.push({ source: ob, dice: obDice });
   const pen = attr ? crits.critPenalty(c?.crits ?? [], attr) : 0;
   if (pen && !list.some((m) => m.source === "crit")) list.push({ source: "crit", dice: -pen });
   const must = M.tokensFor(v.state, cid, { kind: rollKind, attr }).filter(M.standing).map((t) => t.id);                // P6: dice somebody else put on the roll (bad luck) are not the roller's to leave out; [B1634]: a plan covers ALL rolls of its kind, attack and defence alike

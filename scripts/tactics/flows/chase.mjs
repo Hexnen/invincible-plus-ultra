@@ -135,7 +135,10 @@ export const round = {
         R.events.push({ type: "chase", distance: c.distance, obstacle: c.obstacle, d66: c.d66 });
       }
       const def = obstacleOf(I), list = (def?.rolls ?? []).slice();
-      if (def?.hiddenPath && c.results.prey > 0) list.push({ who: "pursuer", attr: "intuition" });      // [B3473]: the pursuer looks for the path only when the prey found it
+      /* [B3473]: the pursuer looks for the path only when the prey found it, so its roll joins the list when the prey's result is known
+         (in this pass, right after the prey's roll, or in a later one) */
+      const follow = () => { if (def?.hiddenPath && c.results.prey > 0 && !list.some((x) => x.who === "pursuer")) list.push({ who: "pursuer", attr: "intuition" }); };
+      follow();
       for (const r of list) {
         const u = c[r.who], key = `obs:${r.who}`;
         if (c.results[r.who] !== undefined) continue;
@@ -148,6 +151,7 @@ export const round = {
         const mods = r.attr === "agility" && u.maneuver ? [{ source: "maneuverability", dice: u.maneuver }] : [];     // [B2940]
         if (sideRoll(v, I, R, key, u, r.attr, { passive: true, mods }) === "wait") { R.wait = true; return R; }
         c.results[r.who] = K.sixesOf(I, key);
+        follow();
         R.events.push({ type: "roll", key, who: u.roller, attr: r.attr, dice: K.rollOf(I, key)?.pool?.total, sixes: c.results[r.who], ones: 0, pushed: 0, messageId: K.rollOf(I, key)?.messageId });
       }
       const res = Object.fromEntries(Object.entries(c.results).filter(([, n]) => n != null));
