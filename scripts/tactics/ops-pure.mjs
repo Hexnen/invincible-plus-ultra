@@ -169,13 +169,19 @@ function queueOnce(W, point, key, blocks) {
 /* round start, fixed part (spec 6.1): every ledger is new [L5] [B2293], then the draw [I1] [B2266] */
 function startRound(W, round) {
   const s = W.s, parts = W.ctx.parts ?? [];
-  s.round = round; s.phase = "draw"; s.sched = { done: [] };
+  s.round = round; s.phase = "draw"; s.sched = { done: [] }; delete s.moved;
   const live = new Set(parts.filter((p) => !p.challenge && !p.vehicle).map((p) => p.id));
   for (const id of Object.keys(s.ledger)) if (!live.has(id)) delete s.ledger[id];
   for (const id of live) s.ledger[id] = Lg.newLedger(round, s.ledger[id]);
   for (const k of Object.keys(s.counters ?? {})) if (k.startsWith("round:")) delete s.counters[k];                 // spec 6.4: per-round use counters
+  drawCards(W, round, s.opts.redraw);
+}
+/* the draw itself [I1] [B2266]: the cards are dealt (or kept [I2]); a Combat Veteran is asked first [I7] */
+function drawCards(W, round, redraw) {
+  const s = W.s, parts = W.ctx.parts ?? [];
+  s.phase = "draw";
   for (const [pid, p] of Object.entries(s.prompts)) if (p.kind === "veteran" || p.kind === "reflexes") delete s.prompts[pid];
-  const r = I.startDraw(s.init, round, parts, { redraw: s.opts.redraw, surprised: W.surprised ?? [], groups: W.groups ?? [], mkId: mkId(W) });
+  const r = I.startDraw(s.init, round, parts, { redraw, surprised: W.surprised ?? [], groups: W.groups ?? [], mkId: mkId(W) });
   s.init = r.init;
   if (r.ask.length) {
     const vet = [];
@@ -191,6 +197,7 @@ function openTurn(W, nx) {
   const slot = I.slotById(s.init, nx.slot);
   const r = Lg.turnStart(ledgerOf(W, nx.member), { extra: slot?.extra ? slot.id : null });
   s.ledger[nx.member] = r.ledger;
+  const st0 = statusList(s).filter((x) => !(x.who === nx.member && x.status?.id === "stunned"));      // D44: what stood before this turn opened
   /* [B2436], [B2517], [R10]: "stunned" lasts until the turn it takes away has come; the mark never outlives that turn, whoever set it */
   if (!r.resumed && !r.extra) endStatuses(W, { at: "nextTurnOf", who: nx.member }, nx.member, ["stunned"]);
   if (r.lost) {                                                                                                  // [L7] [B2436], [B2517], [R10]
@@ -217,8 +224,48 @@ function openTurn(W, nx) {
   for (const m of summonsOf(W, nx.member)) s.ledger[m] = Lg.turnStart(ledgerOf(W, m)).ledger;                    // [I14]
   /* Not for a turn that had already begun and was handed on by holding off, and not for an extra turn (hole, reported: the book does
      not say whether turn-start effects and "until your next turn" apply to a commanded turn [B1761]). */
-  if (!r.resumed && !r.extra) turnMoment(W, nx.member);
+  /* D44 [I9] [B2282]: the turn of one who then holds off has not happened; what its opening ended and queued is put back (momentBack), and
+     the moment comes again when the swapped card comes up. */
+  const again = r.resumed && s.moved?.[nx.member]?.back === 1;
+  if (!r.extra && (!r.resumed || again)) momentKept(W, nx.member, st0);
   ev(W, "turnStart", { slot: nx.slot, combatant: nx.member, ...(r.resumed ? { resumed: true } : {}) });
+}
+/* D44: the moment of a turn that may still be handed on by holding off. What it took away is remembered (state.moved[member]: the tokens,
+   triggers, effects and statuses that ended "until your next turn", and the turn-start queue card it made) until the turn is used or ends. */
+const idsOf = (list) => new Set((list ?? []).map((x) => x?.id));
+const statusList = (s) => Object.entries(s.statuses ?? {}).flatMap(([who, list]) => (Array.isArray(list) ? list.map((status) => ({ who, status })) : []));
+function momentKept(W, member, st0) {
+  const s = W.s, k = `${s.round}:ts:${member}`, had = s.sched.done.includes(k);
+  const before = { tokens: s.tokens ?? [], triggers: s.triggers ?? [], effects: s.effects ?? [], statuses: st0 ?? statusList(s) };
+  turnMoment(W, member);
+  const gone = (key) => { const ids = idsOf(s[key]); return before[key].filter((x) => !ids.has(x?.id)); };
+  const card = had ? null : Object.keys(s.prompts).find((pid) => s.prompts[pid].kind === "triggerQueue" && s.prompts[pid].data?.key === k) ?? null;
+  (s.moved ??= {})[member] = S.clone({ tokens: gone("tokens"), triggers: gone("triggers"), effects: gone("effects"),
+    statuses: before.statuses.filter(({ who, status }) => !(s.statuses?.[who] ?? []).some((y) => y?.id === status?.id)), ...(card ? { card } : {}), ...(had ? {} : { queued: 1 }) });
+}
+/* D44 [I9] [B2282]: the one whose turn it was holds off. Everything "on your turn" moves with the card: what ended at the opening of the
+   turn is there again (unless something else has taken its place since), a turn-start queue card nobody answered yet is withdrawn and
+   will be made anew when the turn really comes. Triggers the GM already ran from that card have happened and are not run twice. */
+function momentBack(W, member) {
+  const s = W.s, m = s.moved?.[member];
+  if (!m || m.back) return;
+  for (const key of ["tokens", "triggers", "effects"]) { const ids = idsOf(s[key]), back = (m[key] ?? []).filter((x) => x && !ids.has(x.id)); if (back.length) s[key] = [...(s[key] ?? []), ...back]; }
+  for (const { who, status } of m.statuses ?? []) {
+    if (!s.ledger[who] || !status || (s.statuses[who] ?? []).some((y) => y?.id === status.id)) continue;
+    s.statuses[who] = [...(s.statuses[who] ?? []), status];
+    ev(W, "status", { target: who, status: { id: status.id, on: true }, cause: "holdOff" });
+  }
+  const k = `${s.round}:ts:${member}`, open = m.card && s.prompts[m.card] && !s.prompts[m.card].answered;
+  if (open) delete s.prompts[m.card];
+  if (m.queued && (open || !m.card)) s.sched.done = s.sched.done.filter((x) => x !== k);
+  s.moved[member] = { back: 1 };
+}
+const queueOpen = (s) => Object.values(s.prompts ?? {}).some((p) => p.kind === "triggerQueue" && !p.answered);
+/* would the turn of `nx` go by without anybody's click (a lost turn [L7], or a turn of one who cannot act, U9)? As openTurn decides it. */
+function passesAlone(W, nx) {
+  const s = W.s, L = ledgerOf(W, nx.member);
+  if (I.slotById(s.init, nx.slot)?.extra || L.held) return false;
+  return !!L.lostTurn || (!!idleOf(W, nx.member) && s.init.slots.some((sl) => sl.members.some((m) => m !== nx.member && !idleOf(W, m))));
 }
 const IDLE = ["broken", "unconscious", "dead"];
 const idleOf = (W, id) => { try { const r = W.ctx.idle?.(id, W.s); return IDLE.includes(r) ? r : null; } catch { return null; } };
@@ -245,6 +292,7 @@ function endStatuses(W, moment, cid = null, ids = []) {
 
 function closeTurn(W, member, { quiet = false } = {}) {
   const s = W.s, slotId = s.init.cur;
+  if (s.moved) { delete s.moved[member]; if (!Object.keys(s.moved).length) delete s.moved; }      // D44: the turn happened
   s.ledger[member] = Lg.turnEnd(ledgerOf(W, member));
   for (const m of summonsOf(W, member)) s.ledger[m] = Lg.turnEnd(ledgerOf(W, m));
   for (const id of Object.keys(s.ledger)) s.ledger[id] = Lg.expireTurnOf(s.ledger[id], member);                  // [B1708]
@@ -295,6 +343,11 @@ function run(W) {
       if (s.init.curMember) return;
       if (!s.init.slots.length) return;                           // nobody to act: the round waits for combatants
       const nx = I.nextUp(s.init);
+      /* D45 (spec 4.4, 6.1; handoff U4): the triggers of a turn's start or end are settled before the round moves on by itself. With
+         their queue card still open the round does not end (its expiry took the very triggers the card was about, and the GM's answer
+         then ran nothing) and no turn is passed for one who cannot act (the card of that turn was asked a round late). A turn somebody
+         takes opens as before: its owner waits for the card anyway (ruling P8-R10). */
+      if ((!nx || passesAlone(W, nx)) && queueOpen(s)) return;
       if (!nx) { s.phase = "roundEnd"; continue; }
       openTurn(W, nx);
     } else if (s.phase === "roundEnd") {
@@ -389,6 +442,7 @@ const OPS = {
     if (!a.force && Lg.turnUsed(s.ledger[a.actor])) return err("illegal", { reason: "turnUsed" });      // [B2281-2282]: holding off is instead of the turn, not after part of it (the GM may force it)
     const r = I.holdOff(s.init, from, a.with);
     if (!r.ok) return err("illegal", { reason: "holdOff" });
+    if (!Lg.turnUsed(s.ledger[a.actor])) momentBack(W, a.actor);                    // D44 [B2282]: what was triggered "on your turn" moves with the card
     s.ledger[a.actor] = Lg.turnSuspend(ledgerOf(W, a.actor));                       // the turn did not happen yet [B2282]; spent interrupts stay spent [B2283]
     for (const m of summonsOf(W, a.actor)) s.ledger[m] = Lg.turnSuspend(ledgerOf(W, m));
     s.init = r.init;
@@ -453,7 +507,9 @@ const OPS = {
           s.triggers = Sch.ran(s.triggers, id);
           ran++;
         }
-        if (W.ctx.hold && ran && p.data?.blocks) s.sched.hold = String(p.data.key ?? p.id);      // the round goes on when the caller sends `resume`
+        /* D45: the same wait for the triggers of a turn's start or end when what comes next comes by itself (the end of the round, a passed turn) */
+        const alone = () => { if (s.phase !== "turns" || s.init.curMember) return false; const nx = I.nextUp(s.init); return !nx || passesAlone(W, nx); };
+        if (W.ctx.hold && ran && (p.data?.blocks || alone())) s.sched.hold = String(p.data.key ?? p.id);      // the round goes on when the caller sends `resume`
         drop(); break;
       }
       case "grantConsent": {
@@ -499,13 +555,23 @@ const OPS = {
     run(W);
   },
   /* joining and leaving (spec 3.3): bring the state in line with the combatants that exist now */
-  roster(W) {
+  roster(W, a) {
     const s = W.s, parts = W.ctx.parts ?? [];
     const before = JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? []]);
     const ids = new Set(parts.map((p) => p.id));
     const known = new Set([...Object.keys(s.ledger), ...s.init.slots.flatMap((x) => x.members)]);
     for (const id of known) if (!ids.has(id)) removeOne(W, id);
     const fresh = syncSummons(W, parts);
+    /* D43 [B3436] (spec 9.10; ruling P7-R8): a chase that turns into a fight draws initiative. The fight stands without a single card
+       (a chase holds none), so this is a deal of the deck like the one of a round, not the late joiner's "next free card" for each in
+       list order [A-1], which made the first round after every chase the same and known in advance. The round and the ledgers stay. */
+    if (a?.deal === true && s.kind !== "chase" && s.round >= 1 && s.phase === "turns" && !s.init.slots.length && parts.some((p) => I.eligible(p))) {
+      for (const p of parts) if (!p.challenge && !p.vehicle && !s.ledger[p.id]) s.ledger[p.id] = Lg.newLedger(s.round);
+      W.surprised = []; W.groups = [];
+      drawCards(W, s.round, "everyRound");
+      run(W);
+      return;
+    }
     if (s.round >= 1 && s.phase !== "idle" && s.phase !== "sceneEnd") {
       for (const p of parts) {
         if (p.challenge || p.vehicle) continue;
@@ -635,6 +701,19 @@ function removeOne(W, id) {
     s.init.pendingDraw = { veteran: s.init.pendingDraw.veteran.filter(live), reflexes: s.init.pendingDraw.reflexes.filter(live) };
   }
   s.triggers = Sch.dropSubject(s.triggers, id);
+  /* D46 [B1634] (spec 3.3): what lasts "until the next turn of" or "to the end of the turn of" somebody who has left the fight has nothing
+     left to wait for: that turn never comes, so the bonus dice (an Action Plan), effects and statuses hung on it stayed for the rest of
+     the fight. They end with the leaving, as the triggers about a leaver do (scheduler-pure.dropSubject). */
+  const keyed = (x) => !!x && x.who === id && (x.at === "nextTurnOf" || x.at === "turnEndOf");
+  s.tokens = (s.tokens ?? []).filter((t) => !keyed(t?.expires));
+  for (const at of ["nextTurnOf", "turnEndOf"]) endEffects(W, { at, who: id });
+  for (const [who, list] of Object.entries(s.statuses ?? {})) {
+    if (!Array.isArray(list) || !list.some((st) => keyed(st?.ends))) continue;
+    for (const st of list) if (keyed(st?.ends)) ev(W, "status", { target: who, status: { id: st.id, on: false }, cause: "left" });
+    const keep = list.filter((st) => !keyed(st?.ends));
+    if (keep.length) s.statuses[who] = keep; else delete s.statuses[who];
+  }
+  if (s.moved) { delete s.moved[id]; if (!Object.keys(s.moved).length) delete s.moved; }
   s.summons = (s.summons ?? []).filter((su) => su?.owner !== id).map((su) => (Array.isArray(su?.combatants) ? { ...su, combatants: su.combatants.filter((x) => x !== id) } : su));
   W.effects.push({ type: "abortInstances", actor: id });          // spec 3.3: its open action instances end through the engine's abort path (P2)
   ev(W, "combatantRemoved", { combatant: id });

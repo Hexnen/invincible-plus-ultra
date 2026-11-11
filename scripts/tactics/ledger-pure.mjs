@@ -52,14 +52,22 @@ function pair(L, slot) {
 const UNIT_PAYS = { A: ["full", "quick"], B: ["quick"], full: ["full"], fullOnly: ["full"], quick: ["quick"], any: ["full", "quick"], defense: ["quick"] };
 
 /* May the grant pay this request? req as in canPay. */
+/* P8e [B3438]: what the crew of a chase vehicle gets after the chase roll is ONE RANGED ATTACK, not an action of any kind (the unit read
+   "full" and paid Action Plan, a rally, a slugfest or a dodge). The request says it is one with the tag "ranged". */
+const crewShot = (g, req) => g?.kind !== "chaseCrew" || (req.cost === "full" && (req.tags ?? []).includes("ranged"));
 function grantUsable(L, g, req) {
   if (!g) return fail("unknownGrant");
   if (used(g)) return fail("grantUsed");
   if (g.needsConsent && g.consent !== "yes") return fail(g.consent === "no" ? "grantRefused" : "grantConsent");            // [plan 5.3], [B1708]
   if (!UNIT_PAYS[g.unit]?.includes(req.cost)) return fail("grantUnit");
   if (g.unit === "defense" && !(req.tags ?? []).includes("defence")) return fail("grantUnit");                               // [B1709], [B2170], [B2105]: a block or dodge only
+  if (!crewShot(g, req)) return fail("grantUnit");
   if (g.window === "ownTurn" && !req.onTurn) return fail("notYourTurn", { gmMayAllow: true });
   if (g.window === "interrupt" && req.onTurn) return fail("grantWindow");
+  /* D40 [R1] [B1953], [B2292]: the extra action of Quickness is taken on the own turn or as an interrupt of an action somebody declared,
+     never in the middle of another's turn with nothing to interrupt (it read "anytime" and paid a full action at any moment). Helping
+     stays the book's own exception [B2273]. A grant of an older state (kind quickness, window "anytime") is read the same way. */
+  if ((g.window === "turnOrInterrupt" || g.kind === "quickness") && !req.onTurn && !req.interrupt && req.cause !== "help") return fail("notYourTurn", { gmMayAllow: true });
   if (g.window.startsWith("turnOf:") && req.turnOf !== g.window.slice(7)) return fail("grantWindow");                        // [B1708]: on the guide's turn
   if (g.stress > 0 && req.resolve !== undefined && req.resolve !== null && !damage.canTakeVoluntaryStress(req.resolve)) return fail("noStress", { gmMayAllow: true });   // [B2816], [B2228]
   return { ok: true };
@@ -84,7 +92,7 @@ export function canPay(L, req) {
   if (!req.force && !req.onTurn && L.noInterrupts) return fail("noInterrupts", { gmMayAllow: true });                        // [L7] [B2436], [B2517], [R10]
   if (req.grant && req.grant !== BASE_A && req.grant !== BASE_B) {
     const g = grantOf(L, req.grant);
-    const u = req.force ? (g && !used(g) && UNIT_PAYS[g.unit]?.includes(cost) ? { ok: true } : fail("grantUnit")) : grantUsable(L, g, req);
+    const u = req.force ? (g && !used(g) && UNIT_PAYS[g.unit]?.includes(cost) && crewShot(g, req) ? { ok: true } : fail("grantUnit")) : grantUsable(L, g, req);
     return u.ok ? { ok: true, pay: { grant: g.id, stress: g.stress ?? 0 } } : u;
   }
   const { a, b } = pair(L, req.slot);
@@ -177,7 +185,7 @@ export function voidEntry(L0, entryId) {
 /* Templates for the grants whose terms the book or a ruling states completely. Everything else is passed in full by its catalog entry (P6). */
 export function grantTemplate(kind, p = {}) {
   switch (kind) {
-    case "quickness": return { kind, unit: "any", stress: 1, window: "anytime", expires: "roundEnd" };                              // [R1] [B1953]: once per round, quick or full, own turn or interrupt
+    case "quickness": return { kind, unit: "any", stress: 1, window: "turnOrInterrupt", expires: "roundEnd" };                      // [R1] [B1953]: once per round, quick or full, own turn or interrupt
     case "guidance": return { kind, unit: p.unit === "quick" ? "quick" : "full", from: p.from, window: `turnOf:${p.from}`, expires: "turnEnd", needsConsent: 1 };   // [B1708]: on the guide's turn, refusable
     case "defender": return { kind, unit: "defense", stress: 1, window: "anytime", expires: "roundEnd" };                           // [B2105]: repeatable (REPEATABLE)
     case "gm": return { kind, unit: GRANT_UNIT(p.unit), window: p.window ?? "anytime", expires: p.expires ?? "roundEnd" };          // [plan 5.6]

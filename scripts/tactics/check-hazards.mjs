@@ -28,7 +28,15 @@ class HT extends Table {
 const base = (o = {}) => { const T = new HT(); T.hero("H1", "p1", { zone: "z1", ...(o.H1 ?? {}) }).hero("H2", "p2", { zone: "z2" }).npc("N1", { health: 5, zone: "z1", armor: [{ id: "vest", armor: 1 }] }).npc("N2", { health: 4, zone: "z4" }); T.order(["H1", "N1", "H2", "N2"]).turn("H1"); return T; };
 const endTurn = (T, user, actor) => T.req(user, { op: "endTurn", actor, round: T.state.round, slot: T.state.init.cur, ...(user === "gm" ? { force: true } : {}) });
 /* play the round out: everybody ends the turn in the order of the cards */
-async function endRound(T) { for (let g = 0; g < 8 && T.state.phase === "turns" && T.state.init.curMember; g++) await endTurn(T, "gm", T.state.init.curMember); }
+/* D45: the round does not end over an open queue card of a turn's start or end; the GM leaves those triggers out here */
+async function endRound(T) {
+  for (let g = 0, n = 0; g < 40 && n < 8 && T.state.phase === "turns"; g++) {
+    if (T.state.init.curMember) { await endTurn(T, "gm", T.state.init.curMember); n++; continue; }
+    const p = T.prompts("triggerQueue")[0];
+    if (!p) break;
+    await T.gm({ op: "answerFor", prompt: p.id, value: { order: [], skip: p.options.map((o) => o.id) } });
+  }
+}
 
 /* ================================================================== placed explosive [B2905-2923] */
 {

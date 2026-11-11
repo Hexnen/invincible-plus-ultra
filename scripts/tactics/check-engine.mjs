@@ -596,7 +596,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   const dm = Desk.deskModel(T.state, T.log, ctx(T));
   eq([T.state.stack.length, pm.rolls.map((r) => [r.key, r.state, r.sixes, typeof r.messageId]), pm.waiting.map((w) => [w.what, w.to]), dm.waiting.map((w) => [w.what, w.to])], [1, [["attack", "push", 2, "string"]], [["push", ["p1"]]], [["push", ["p1"]]]], "U1: a pushable result holds the exchange and both surfaces say who it waits for (never 'nobody')");
   const row = dm.info[0].rolls[0];
-  eq([row.state, row.acceptReq, row.askReq], ["push", { op: "setSixes", inst: T.top().id, roll: "attack", sixes: 2 }, null], "U1: the GM's row can accept the result as it stands");
+  eq([row.state, row.acceptReq, row.askReq], ["push", { op: "setSixes", inst: T.top().id, roll: "attack", sixes: 2, accept: true, pushed: 0 }, null], "U1: the GM's row can accept the result as it stands");
   /* a second throw of the same request changes nothing; the roll's own message (accept) and a push do */
   const mid = T.top().rolls.attack.messageId;
   await T.roll("attack", 5, { pushable: false, fresh: true });

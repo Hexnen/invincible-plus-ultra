@@ -91,7 +91,7 @@ async function cards(state, log, events, host, sweep = true) {
   if (state.stack.length || state.phase !== "turns") return { state, log };
   if (state.kind === "chase") return state.init.slots.length ? { state: { ...state, init: { ...S.newInit(), deck: state.init.deck } }, log } : { state, log };
   if (state.init.slots.length || !(state.round >= 1)) return { state, log };
-  const r = await round(state, log, { type: "roster" }, { id: "engine", staff: true }, host);
+  const r = await round(state, log, { type: "roster", deal: true }, { id: "engine", staff: true }, host);      // D43 [B3436]: the fight after a chase draws initiative
   if (!r.ok || r.same) return { state, log };
   events.push(...r.events);
   return { state: r.state, log: r.log };

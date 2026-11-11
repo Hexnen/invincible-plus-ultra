@@ -174,9 +174,11 @@ function linesOf(p, t, facts, x) {
     case "stunts": out.push(t("ITAC.ui.line.stunts", { n: p.max ?? 0 })); break;
     case "exception": {      // U3: the player's words, the rule that said no, and what a grant will do
       if (d.text) out.push({ quote: String(d.text), by: about });
-      if (d.reason) out.push(t("ITAC.ui.line.why", { reason: reasonText(t, d.reason) }));
+      /* D42: every rule that refuses it now (the engine's own list), and whether the grant waives the cost (P9F-R1) or the action is paid as always */
+      const whys = Array.isArray(d.reasons) ? d.reasons : d.reason ? [d.reason] : [];
+      if (whys.length) out.push(t("ITAC.ui.line.why", { reason: whys.map((r) => reasonText(t, r)).join(", ") }));
       const act = d.decl?.action ? t(`ITAC.action.${d.decl.action}`, {}, String(d.decl.action)) : null, to = (d.decl?.targets ?? []).map(n).join(", ");
-      if (x.desk) out.push(p.inst ? t("ITAC.ui.line.grantGoes") : act && !d.other ? t("ITAC.ui.line.grantRuns", { name: about, action: to ? `${act} (${to})` : act }) : t("ITAC.ui.line.grantHand"));
+      if (x.desk) out.push(p.inst ? t("ITAC.ui.line.grantGoes") : act && !d.other ? t(Array.isArray(d.reasons) && !d.waive ? "ITAC.ui.line.grantRunsPaid" : "ITAC.ui.line.grantRuns", { name: about, action: to ? `${act} (${to})` : act }) : t("ITAC.ui.line.grantHand"));
       break;
     }
     case "other": if (d.text) out.push({ quote: String(d.text), by: about }); break;
@@ -553,7 +555,9 @@ function declarePanel(bar, a, own, facts, t) {
     x.hit = r?.ok ? r.hit ?? null : null;
   }
   const early = (targets ?? []).find((x) => x.picked && x.reach === "out") ?? null, onMap = (targets ?? []).some((x) => x.map);
-  const pool = pv && Number.isFinite(pv.dice) ? { total: pv.dice, parts: [{ id: pv.attr ?? "base", dice: pv.base ?? 0 }, ...(pv.mods ?? []).map((m) => ({ label: t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source)), dice: m.dice }))] } : null;
+  /* D49: dice that still wait for the GM's word are listed apart and are not in the total */
+  const pool = pv && Number.isFinite(pv.dice) ? { total: pv.dice, parts: [{ id: pv.attr ?? "base", dice: pv.base ?? 0 }, ...(pv.mods ?? []).map((m) => ({ label: t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source)), dice: m.dice })),
+    ...(pv.pending ?? []).map((m) => ({ label: `${t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source))} (${t("ITAC.ui.needsGm")})`, dice: m.dice, pending: true }))], pending: (pv.pending ?? []).reduce((n, m) => n + m.dice, 0) } : null;
   const chance = pool && !onMap ? oddsOf(pool.total, picked[0]) : null;      // W1: with the targets on the map the chance stands over each token, not in the panel
   const why = arm.why ?? (choice && !pickId ? t("ITAC.ui.need.choice") : a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : chooser && !attr && !a.attrOptional ? t("ITAC.ui.need.attr") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : ap?.why ?? null);
   /* the executor refused this very declaration as against the rules (out of reach, no line of sight...): the reason stays in the panel
