@@ -67,9 +67,9 @@
 .ipl .ipl-btn.ipl-sm { min-height: 30px; padding: 0 .65em; font-size: .78rem; }
 .ipl .ipl-btn.ipl-danger { color: var(--ipl-red); border-color: var(--ipl-red); }
 .ipl .ipl-btn[aria-disabled="true"], .ipl .ipl-btn:disabled { color: #56688a; background: transparent; border-style: dashed; box-shadow: none; cursor: not-allowed; translate: none; }
-.ipl .ipl-btn[aria-expanded="true"]:not(.ipl-primary), .ipl .ipl-seg-b[aria-pressed="true"] { color: #fff; background: var(--ipl-ink); }
-.ipl .ipl-btn[aria-expanded="true"]:not(.ipl-primary):hover, .ipl .ipl-seg-b[aria-pressed="true"]:hover { background: var(--ipl-ink); translate: none; }
-.ipl .ipl-btn[aria-expanded="true"]:focus-visible, .ipl .ipl-seg-b[aria-pressed="true"]:focus-visible, .ipl .ipl-cat[aria-pressed="true"]:focus-visible { outline-color: var(--ipl-cyan); box-shadow: 0 0 0 2px #fff; }
+/* the chosen one among hollow siblings is yellow, as in the other windows and on the dock (styles/kit.css) */
+.ipl .ipl-btn[aria-expanded="true"]:not(.ipl-primary), .ipl .ipl-seg-b[aria-pressed="true"] { color: var(--ipl-ink); background: var(--ipl-yellow); }
+.ipl .ipl-btn[aria-expanded="true"]:not(.ipl-primary):hover, .ipl .ipl-seg-b[aria-pressed="true"]:hover { background: var(--ipl-yellow); translate: none; }
 .ipl .ipl-linkbtn { display: inline; padding: 0; margin: 0; font: inherit; font-weight: 600; color: var(--ipl-blue); background: none; border: 0; text-decoration: underline; text-underline-offset: .18em; cursor: pointer; }
 .ipl .ipl-linkbtn:hover { color: var(--ipl-ink); }
 .ipl .ipl-input, .ipl select.ipl-input, .ipl textarea.ipl-input {
@@ -115,8 +115,8 @@
 .ipl .ipl-chip { display: inline-flex; align-items: center; gap: .4em; font: 400 .8rem/1.1 Roboto, sans-serif; }
 .ipl button.ipl-cat { min-height: 28px; padding: 0 .55em; margin: 0; font-weight: 600; color: var(--ipl-ink); background: var(--ipl-paper); border: 2px solid var(--ipl-ink); border-radius: 0; cursor: pointer; box-shadow: none; }
 .ipl button.ipl-cat:hover { background: var(--ipl-tone); }
-.ipl button.ipl-cat[aria-pressed="true"] { color: #fff; background: var(--ipl-ink); }
-.ipl button.ipl-cat[aria-pressed="true"] .ipl-cat-n { color: var(--ipl-yellow); }
+.ipl button.ipl-cat[aria-pressed="true"] { color: var(--ipl-ink); background: var(--ipl-yellow); }
+.ipl button.ipl-cat[aria-pressed="true"] .ipl-cat-n { color: var(--ipl-ink); }
 .ipl .ipl-cat-n { font-weight: 700; color: var(--ipl-text-2); font-variant-numeric: tabular-nums; }
 
 /* filters panel */
@@ -267,8 +267,8 @@
 .ipl.ipl-ttabs { display: flex; gap: 0; min-height: 0; padding: 10px 12px 0; background: var(--ipl-tone); border-bottom: 2px solid var(--ipl-ink); }
 .ipl .ipl-ttab { min-height: 38px; margin-bottom: -2px; border-bottom-color: transparent; background: var(--ipl-tone); }
 .ipl .ipl-ttab + .ipl-ttab { margin-left: -2px; }
-.ipl .ipl-ttab[aria-selected="true"] { color: #fff; background: var(--ipl-ink); border-color: var(--ipl-ink); }
-.ipl .ipl-ttab[aria-selected="true"]:hover { translate: none; background: var(--ipl-ink); }
+.ipl .ipl-ttab[aria-selected="true"] { color: var(--ipl-ink); background: var(--ipl-yellow); border-color: var(--ipl-ink); }
+.ipl .ipl-ttab[aria-selected="true"]:hover { translate: none; background: var(--ipl-yellow); }
 .ipl-tpane { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .ipl-tpane[hidden] { display: none; }
 .ipl-tpane > .ipl { min-height: 100%; }
