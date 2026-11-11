@@ -51,9 +51,13 @@ export const zoneOp = (zone, patch) => (isPlaceKey(zone) && validZonePatch(patch
    nothing, so "undo" of a fire that went out left the zone dark. The level the layer showed before the write (`painted`, the map's own
    state record with source "map") is put into that inverse: the zone burns again at the Intensity it had (the map paints one fire of
    that level and keeps it as the zone's mark; the strokes themselves are the map's to give back: dev/combat-handoff.md U11).
-   An inverse that already restores a fire, a write that puts nothing out and a zone that showed no painted fire are left as they came. */
+   An inverse that already restores a fire, a write that puts nothing out and a zone that showed no painted fire are left as they came.
+   U81: since the map's M5 an inverse may carry `fireLayer` (the very strokes the write put out or painted; zones-api.md 12, 37). Such an
+   inverse is the true one and is left EXACTLY as the map gave it: a fire put into its patch as well would be written as a GM mark the
+   zone never had. The repair stays only for a map that hands out no `fireLayer` (an older map module). */
 export function repaintInverse(op, inverse, painted) {
   const lvl = Number(painted);
+  if (isObj(inverse) && isObj(inverse.fireLayer)) return inverse;
   if (!isObj(op) || op.op !== "zone" || !isObj(op.patch) || !("fire" in op.patch) || Number(op.patch.fire) > 0) return inverse ?? null;
   if (!isObj(inverse) || inverse.op !== "zone" || !isObj(inverse.patch) || Number(inverse.patch.fire) > 0 || !(lvl >= 1)) return inverse ?? null;
   return { ...inverse, patch: { ...inverse.patch, fire: Math.min(12, Math.trunc(lvl)) } };
