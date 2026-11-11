@@ -23,6 +23,7 @@ import * as Keys from "./keys-pure.mjs";
 import * as Dock from "./dock.mjs";
 import * as Desk from "./desk.mjs";
 import * as Pick from "./pick.mjs";
+import * as Board from "./board.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
@@ -50,6 +51,8 @@ function hotbarSync(on) {
 const previews = new Map();           // U: the engine's answer to "what would this declaration roll", per declaration and state (facts.preview)
 let previewLast = null;
 let rev = 0, moveMemo = null;             // the move options are counted once per change of the fight or of the map, not per keystroke
+let lastModel = null, reachLast = null;      // W1: the bars the dock was built from (the board's menus read them); the last answer about who is in reach
+const reaches = new Map();
 let lastDock = null, byPointer = true;      // U41: what the dock shows now (the keys act on it); was the focus put where it is by the pointer?
 let zonePick = null, shownDock = "", shownDesk = "";      // what this client has on the map for the surfaces: a running pick, two highlights
 let cardsWere = null;                     // the ids of the desk's waiting cards at the last draw: a new one brings the Now tab forward (U12)
@@ -72,6 +75,12 @@ function factsOf(combat) {
     userName: (u) => game.users.get(u)?.name ?? null,
     rollBusy: (rid) => { const at = Sys.rollStarted(rid); return !!at && Date.now() - at < Sys.ROLL_RETRY_MS; },      // U2: the throw is on its way: no "Roll" button yet
     preview: (cid, decl) => previewOf(combat, view, cid, decl),
+    /* W1: the play on the map (ui/board.mjs). `reach`: the engine's answer about every candidate of a declaration; `onMap`: does that
+       combatant stand on this user's map (a token this user sees); `hazards`: what waits on a way of moving; `camera`: the map's switch */
+    board: Zones.hasBoard(), reach: (cid, decl, ids) => reachOf(combat, view, cid, decl, ids),
+    onMap: (id) => { try { return !!combat.combatants.get(id)?.token?.object?.visible; } catch { return false; } },
+    hazards: (cid, zones, to) => Board.hazards(cid, zones, to), camera: () => Board.camera(),
+    hidden: (id) => { try { const cb = combat.combatants.get(id); return cb?.hidden === true || cb?.token?.hidden === true; } catch { return false; } },
     /* P7: challenges and vehicles of the fight (no card, no ledger); their numbers only for staff */
     special: () => ctx.special().map((x) => {
       const cb = combat.combatants.get(x.id), f = staff ? Sys.actorFacts(Sys.actorOf(cb)) : null;
@@ -121,6 +130,23 @@ function previewOf(combat, view, cid, decl) {
     return previewLast?.who === `${cid}|${decl.action}` ? previewLast.value : null;
   } catch { return null; }
 }
+/* W1 (U33 / U34): WHO IS IN REACH of a declaration and what a hit would do: one question to the executor per declaration and state of
+   the fight (its own rev) or of the map and the sheets (`factsRev`), never per mouse move and never per redraw; while the answer is on its way the last one for the same action stands. */
+function reachOf(combat, view, cid, decl, ids) {
+  try {
+    const who = `${cid}|${decl.action}`, key = `${combat.id}|${view?.rev}|${factsRev}|${cid}|${JSON.stringify(decl)}|${ids.join(",")}`, hit = reaches.get(key), old = () => (reachLast?.who === who ? reachLast.value : null);
+    if (hit) return hit.value !== undefined ? hit.value : old();
+    if (reaches.size > 40) reaches.clear();
+    reaches.set(key, { value: undefined });
+    Api.request({ op: "preview", actor: cid, decl, of: ids.slice(0, 40) }, combat).then((env) => {
+      const value = env?.ok ? env.preview?.per ?? null : null;
+      if (reaches.has(key)) reaches.set(key, { value });
+      reachLast = { who, value };
+      clearTimeout(timer); timer = setTimeout(refresh, 20);
+    }).catch(() => { /* no marks */ });
+    return old();
+  } catch { return null; }
+}
 /* U1 / U2: a roll button of the surfaces (model-pure.rollButtons `act`): the system's own roll, accept or push, on this client */
 const acting = new Map();
 async function rollAct(act) {
@@ -163,7 +189,7 @@ function refresh() {
     const combat = down ? null : combatNow();
     try { document.body.classList.toggle("ita-tactics", !!combat); } catch { /* no body */ }      // styles/tactics-ui.css: what the other surfaces of the module give up while the dock shows
     hotbarSync(!!combat);
-    if (!combat) { cardsWere = null; lastDock = null; Pick.stop(); Pick.keep(null, []); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
+    if (!combat) { cardsWere = null; lastDock = lastModel = null; Pick.stop(); Pick.keep(null, []); Board.sync(null, null); mapSync(null, null); Dock.render({ show: false }); Desk.render({ show: false }); pokeTray(); return; }
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
     if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen, hotbar: st.dock.hotbar }; }        // a new turn: nothing stays armed
@@ -182,17 +208,26 @@ function refresh() {
     const data = Model.dockData(model, st.dock, facts, t);
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
-    lastDock = data;
+    lastDock = data; lastModel = model;
     Dock.render(data, st.dock);
     /* U21: this client's target marks follow what is still aimed at (the open panel, the actions in progress) */
     Pick.keep(combat, [...(data.show && data.panel?.kind === "declare" ? (data.panel.targets ?? []).filter((x) => x.picked).map((x) => x.id) : []), ...(staff ? desk?.info ?? [] : model.mine ?? []).flatMap((i) => (i.targets ?? []).map((x) => x.id))]);
-    if (data.show && data.panel?.kind === "declare" && data.panel.targets) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => { const max = data.panel.maxTargets ?? 1, cur = (st.dock.targets ?? []).filter((x) => x !== cid); setDock({ targets: max > 1 ? ((st.dock.targets ?? []).includes(cid) ? cur : [...cur, cid].slice(-max)) : [cid] }); });
+    /* W1: on a map with the board the targets are chosen there (rings, the chance, the reason of one out of reach: ui/board.mjs); a
+       second click on the one chosen target declares, like Enter. An area attack is put on a zone instead (the board's own pick). */
+    const hzAt = deskD?.show && !deskD.collapsed ? String(deskD.hazard?.where?.value ?? "") : "";      // U36: the zone chosen in the GM's hazard tool is shown on the GM's map before the hazard runs
+    const board = Board.sync(data, { combat, facts, view: facts.view, staff, rev, hz: hzAt.startsWith("z:") ? hzAt.slice(2) : null });
+    Pick.setPlain(board);
+    if (data.show && data.panel?.kind === "declare" && data.panel.targets && !(board && Board.areaMode(data.panel))) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => { const max = data.panel.maxTargets ?? 1, cur = (st.dock.targets ?? []).filter((x) => x !== cid);
+      if (board && max === 1 && (st.dock.targets ?? []).length === 1 && st.dock.targets[0] === cid && lastDock?.panel?.submit?.req) { Dock.press("go"); return; }
+      setDock({ targets: max > 1 ? ((st.dock.targets ?? []).includes(cid) ? cur : [...cur, cid].slice(-max)) : [cid] }); });
     else Pick.stop();
-    mapSync(data, deskD);
+    mapSync(data, deskD, board);
     watch(); pokeTray();
   } catch (e) { console.warn(LOG, "refresh failed", e); }
 }
 const schedule = () => { rev++; clearTimeout(timer); timer = setTimeout(refresh, 40); };
+let factsRev = 0;                         // W1: what can change who is in reach besides the fight itself: a token entered a zone, a door, an actor's numbers
+const moved = () => { factsRev++; schedule(); };
 
 /* ---------- what the surfaces put on the map (this client only; zones-api.md 17, 18) ---------- */
 function show(id, was, spec) {
@@ -201,9 +236,9 @@ function show(id, was, spec) {
   try { if (spec) Zones.highlight({ id, ...spec }); else Zones.clearHighlights(id); } catch { /* the map is optional */ }
   return key;
 }
-function mapSync(data, deskD) {
+function mapSync(data, deskD, board = false) {
   try {
-    const p = data?.show ? data.panel : null;
+    const p = data?.show && !(board && data.panel?.kind === "move") ? data.panel : null;      // W1: with the board a move is picked by ui/board.mjs (pickMove)
     /* Move armed and no zone chosen yet: the map's pick over the zones one action reaches, each in the colour of its cheapest way */
     if (p?.kind === "move" && p.picking) {
       const key = `${data.who.id}|${p.action}|${JSON.stringify(p.zones)}`;
@@ -254,6 +289,7 @@ function patchDock(patch) {
   Object.assign(st.dock, patch);
 }
 function setDock(patch) {
+  if (patch && "camera" in patch) { Board.setCamera(patch.camera); patch = Object.fromEntries(Object.entries(patch).filter(([k]) => k !== "camera")); }      // W1 (U42): the map keeps this user's choice
   if (patch && "hotbar" in patch) { try { globalThis.localStorage?.setItem(HOTBAR_KEY, patch.hotbar ? "1" : "0"); } catch { /* private window */ } }
   patchDock(patch); refresh();
 }
@@ -378,13 +414,13 @@ export function start() {
     configure();
     Store.subscribe(schedule);
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);
-    Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) schedule(); });
+    Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) moved(); });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
-    Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Dock.hide(); });
+    Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Board.reset(); Dock.hide(); });
     Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size
     Hooks.on("deleteChatMessage", () => setTimeout(relayout, 60));
-    Zones.onEvent(schedule);                 // a token entered a zone, a door changed: the options of a move are counted again
-    Zones.onChange(() => schedule());        // the scene's numerals or its zones changed: every text that names a zone is said again
+    Zones.onEvent(moved);                    // a token entered a zone, a door changed: the options of a move are counted again
+    Zones.onChange(() => moved());           // the scene's numerals or its zones changed: every text that names a zone is said again
     Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock", top: "#invincible-combat-bar" });      // the pick's banner and its "more" chips keep clear of our two bars (zones-api.md section 23)
     /* a token dragged into another zone (movement.mjs asks here first): the dock opens Move for that combatant with the zone chosen */
     Mv.setDragSurface((cid, spot) => {
@@ -394,7 +430,8 @@ export function start() {
       if (!mine) return false;
       const other = staff ? Api.state(combat)?.init?.curMember !== cid : false;
       patchDock({ sel: cid, armed: "move", mode: null, peek: true });
-      Object.assign(st.dock, { to: String(spot).split(":")[0], dragged: other });
+      /* W1: with the board the priced ways into that zone open as a menu at the zone (ui/board.mjs); without it the panel lists them */
+      Object.assign(st.dock, Zones.hasBoard() ? { menuAt: String(spot).split(":")[0], dragMenu: true, dragged: other } : { to: String(spot).split(":")[0], dragged: other });
       refresh();
       return true;
     });
@@ -407,6 +444,9 @@ export function start() {
     document.addEventListener("pointerdown", () => { byPointer = true; }, true);
     document.addEventListener("keydown", (ev) => { if (ev.key === "Tab" && !ev.defaultPrevented) byPointer = false; });      // the browser walked the focus
     try { if (globalThis.localStorage?.getItem(KEYS_ON) === "1") document.body.classList.add("ita-keys"); } catch { /* private window */ }
+    Board.start({ t, set: setDock, send: (req, after) => send("dock", req, after), press: (fk) => Dock.press(fk), notify, refresh, showToken, dock: () => st.dock,
+      bar: (cid) => lastModel?.bars?.find((b) => b.combatant === cid) ?? null,
+      request: async (req, combat) => { try { const env = await Api.request(req, combat ?? combatNow() ?? undefined); if (env?.ok === false && env.error?.code !== "gone") notify("warn", errText(env.error)); return env; } catch { return null; } } });
     Api.ui = { active, refresh, state: () => st };
     refresh();
     return true;

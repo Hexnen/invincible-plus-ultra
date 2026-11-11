@@ -180,6 +180,29 @@ function attackPool(v, I, tokens) {
   if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });
   return { attr, ...K.buildPool(v, I, "attack", I.actor, attr, mods, { rollKind: "attack", tokens }) };
 }
+/* THE DAMAGE OF ONE HIT, built in ONE place: for the damage step and for what the map shows on a target before the declaration
+   (hitPreview). Spec 9.5 steps 1-4: the base, a pulled punch, Double Damage before Armor, the single best Armor. `o` = the outcome
+   record of the target (an extra opponent of a stunt takes another base), `forced` = the GM's word on this hit. */
+function hitMath(v, I, t, o = {}, forced = null, doubled = false) {
+  const kind = kindOf(I), entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor), tf = v.facts.c(t) ?? {};
+  const tags = M.damageTags({ source: entry?.damage?.source ?? w?.source, sharp: entry?.damage?.sharp ?? w?.sharp, toStress: entry?.damage?.toStress ?? w?.toStress, ignoreArmor: entry?.damage?.ignoreArmor ?? w?.ignoreArmor, cause: kind === "counterattack" ? "counter" : o.extra ? "stunt" : "attack" });
+  const base = o.extra === "bangHeads" ? stunts.bangHeadsDamage(a?.attrs?.strength ?? 0) : o.extra === "trickShot" ? stunts.trickShotDamage(baseDamageOf(v, I)) : baseDamageOf(v, I);
+  const sources = [...(tf.armor ?? []).filter((x) => !(x.id === "defiance" && tf.pass?.defianceOff && !K.marked(v.state, t, "defiance", true))), ...K.barriersOf(v.state, t)];                                      // P6: Barriers [B1859]; Defiance stops stress only [B1865]
+  const ar0 = damage.selectArmor(tags.toStress ? sources.filter((s) => s.stress) : sources, { toStress: tags.toStress, source: tags.source });   // [B2682], [R13]
+  const ar = w?.halveArmor && !o.extra ? { ...ar0, armor: damage.halvedArmor(ar0.armor) } : ar0;             // P6 [B1679]
+  const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
+  return { tags, base, ar, hd };
+}
+/** What a plain hit of this declaration would do to `t`, before anything is declared (engine-pure.opPreview, the map's preview on the
+    target's bar): the same numbers the damage step will use. `most` = with Double Damage [B2434]. Nothing is spent or written.
+    -> { base, taken, most, toStress, now, max } | null (an attack that does no damage) */
+export function hitPreview(v, inst, t) {
+  const I = K.draft(inst), kind = kindOf(I), entry = v.entry(I), w = weaponOf(v, I), tf = v.facts.c(t);
+  if (!tf || kind === "grapple" || entry?.damage?.none || w?.noDamage) return null;
+  const one = hitMath(v, I, t), two = hitMath(v, I, t, {}, null, true), toStress = !!one.tags.toStress;
+  const through = !toStress && M.hasStatus(v.state, t, "intangible") ? 0 : 1;                               // P6 [B1941]
+  return { base: one.base, taken: one.hd.taken * through, most: two.hd.taken * through, toStress, now: toStress ? tf.resolve : tf.health, max: toStress ? tf.maxResolve : tf.maxHealth };
+}
 /** The dice this declaration would roll, before it is declared: the roll's own builder on a copy (engine-pure.opPreview). Nothing is spent. */
 export function preview(v, inst) {
   const I = K.draft(inst);
@@ -566,14 +589,9 @@ export const steps = {
       if (!o?.hit || I.data.dmg[t] || kind === "grapple" || entry?.damage?.none || (w?.noDamage && !w.pierce && !o.extra)) continue;      // [R5]: the grapple that takes hold does no damage; P6: nor does a Snare
       const tf = v.facts.c(t);
       if (!tf) continue;
-      const tags = M.damageTags({ source: entry?.damage?.source ?? w?.source, sharp: entry?.damage?.sharp ?? w?.sharp, toStress: entry?.damage?.toStress ?? w?.toStress, ignoreArmor: entry?.damage?.ignoreArmor ?? w?.ignoreArmor, cause: kind === "counterattack" ? "counter" : o.extra ? "stunt" : "attack" });
-      const base = o.extra === "bangHeads" ? stunts.bangHeadsDamage(a?.attrs?.strength ?? 0) : o.extra === "trickShot" ? stunts.trickShotDamage(baseDamageOf(v, I)) : baseDamageOf(v, I);
       const doubled = (I.data.stunts ?? []).some((p) => p.stunt === "doubleDamage" && p.target === t);          // [B2434]
       const forced = I.data.forced?.damage?.[t];
-      const sources = [...(tf.armor ?? []).filter((x) => !(x.id === "defiance" && tf.pass?.defianceOff && !K.marked(v.state, t, "defiance", true))), ...K.barriersOf(v.state, t)];                                      // P6: Barriers [B1859]; Defiance stops stress only [B1865]
-      const ar0 = damage.selectArmor(tags.toStress ? sources.filter((s) => s.stress) : sources, { toStress: tags.toStress, source: tags.source });   // [B2682], [R13]
-      const ar = w?.halveArmor && !o.extra ? { ...ar0, armor: damage.halvedArmor(ar0.armor) } : ar0;             // P6 [B1679]
-      const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
+      const { tags, base, ar, hd } = hitMath(v, I, t, o, forced, doubled);
       let taken = Number.isFinite(forced?.amount) ? Math.max(0, forced.amount) : hd.taken;
       const pierce = w?.noDamage && w.pierce && !o.extra ? { pierced: taken > 0 } : null;                       // P6 [B1574], [B1625]: no damage, but it has to get through the Armor
       if (pierce) taken = 0;

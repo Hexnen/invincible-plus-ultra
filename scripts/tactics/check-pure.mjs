@@ -21,8 +21,8 @@ const code = all.filter((f) => !f.startsWith("check-"));
 const PURE = code.filter((f) => /-pure\.mjs$/.test(f) || f.startsWith("flows/") || f === "source.mjs");
 /* the designed surfaces (the action dock and the GM desk): DOM builders and their wiring. Not thin by nature, so they are not under the
    cap of the Foundry-facing files; they hold no rule (checked below) and their logic is ui/model-pure.mjs, which is under the pure rules. */
-const SURFACE = ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs", "ui/pick.mjs", "ui/main.mjs"];
-const FACING = code.filter((f) => !PURE.includes(f) && !SURFACE.includes(f) && !["testkit.mjs", "lang.mjs", "lang-attacks.mjs", "lang-int.mjs", "lang-kit.mjs", "lang-fx.mjs"].includes(f));
+const SURFACE = ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs", "ui/pick.mjs", "ui/main.mjs", "ui/board.mjs"];      // W1: ui/board.mjs is the play on the map (its logic is ui/board-pure.mjs)
+const FACING = code.filter((f) => !PURE.includes(f) && !SURFACE.includes(f) && !["testkit.mjs", "lang.mjs", "lang-attacks.mjs", "lang-int.mjs", "lang-kit.mjs", "lang-fx.mjs", "lang-map.mjs"].includes(f));
 const FORBIDDEN = /(?<![.\w])(game|ui|canvas|foundry|Hooks|CONFIG|CONST|ChatMessage|Roll|fromUuid|fromUuidSync|window|document|globalThis|setTimeout|socketlib)\s*[.(\[]/;
 const GLOBALS = /(^|[^.\w"'`])(game|Hooks|foundry|ui|canvas|CONFIG|ChatMessage|fromUuid|fromUuidSync|document|window|globalThis|setTimeout|Math\.random|Date\.now)\s*[.(\[]|\bnew Roll\b/;
 const pureImport = (i) => /-pure\.mjs$|\/flows\/|^\.\/(kit|attack|simple|move|vehicle|challenge|chase)\.mjs$|\/rules\/index\.mjs$|^node:/.test(i);
@@ -31,7 +31,7 @@ const P5_PURE = ["actions-pure.mjs", "flows/acts.mjs", "flows/hazards.mjs"];    
 const P6_PURE = ["kit-pure.mjs", "kitdata-pure.mjs"];                                          // package P6: what a character brings (the book's entries as data, and their reader)
 for (const f of P6_PURE) ok(PURE.includes(f), `${f}: a pure file of package P6`);
 eq(PURE.filter((f) => !P5_PURE.includes(f) && !P6_PURE.includes(f)).sort(), ["catalog-pure.mjs", "desk-pure.mjs", "director-pure.mjs", "economy-pure.mjs", "engine-pure.mjs", "flows/attack.mjs", "flows/challenge.mjs", "flows/chase.mjs", "flows/kit.mjs", "flows/move.mjs", "flows/simple.mjs", "flows/vehicle.mjs", "initiative-pure.mjs", "journal-pure.mjs",
-  "ledger-pure.mjs", "mods-pure.mjs", "movement-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "ui/keys-pure.mjs", "ui/model-pure.mjs", "ui/scene-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");
+  "ledger-pure.mjs", "mods-pure.mjs", "movement-pure.mjs", "ops-pure.mjs", "relay-pure.mjs", "scheduler-pure.mjs", "source.mjs", "state-pure.mjs", "ui/board-pure.mjs", "ui/keys-pure.mjs", "ui/model-pure.mjs", "ui/scene-pure.mjs", "view-pure.mjs", "zones-pure.mjs"], "the pure files of the folder");
 for (const f of P5_PURE) ok(PURE.includes(f), `${f}: a pure file of package P5`);
 for (const f of PURE) {
   const c = strip(read(f));
@@ -69,7 +69,7 @@ ok(/conditions\.evalConds/.test(read("flows/kit.mjs")) && /conditions\.evalModRu
 /* book text is private: no long quoted prose in strings (a crude guard: no string literal of 14+ words) */
 for (const f of code) {
   const long = [...strip(read(f)).matchAll(/"([^"\n]{80,})"/g)].map((m) => m[1]).filter((s) => s.split(/\s+/).length >= 14 && /^[A-Za-z ,.'-]+$/.test(s));
-  eq(long.filter(() => f !== "lang.mjs" && f !== "lang-attacks.mjs" && f !== "lang-int.mjs" && f !== "lang-kit.mjs" && f !== "lang-fx.mjs").length, 0, `${f}: no long prose in string literals`);
+  eq(long.filter(() => f !== "lang.mjs" && f !== "lang-attacks.mjs" && f !== "lang-int.mjs" && f !== "lang-kit.mjs" && f !== "lang-fx.mjs" && f !== "lang-map.mjs").length, 0, `${f}: no long prose in string literals`);
 }
 /* the Foundry-facing files: thin, guarded, no rule of the ledger or the draw. The caps: 130 lines of code, except the three files that
    are by design the meeting point of both halves (the executor's host with every document effect, the one system adapter with the
