@@ -250,7 +250,7 @@ const cancelBtn = () => h("button.itd-x", { fk: "x", tip: handlers.label?.("canc
                 button: Declare, or the question to the GM while the declaration is refused. Once declared the same foot carries
                 Change / Withdraw as small picture buttons on the left and, where the dice and Declare stood, the roll with Accept / Push. */
 const what = (p) => h("div.itd-what", { tip: p.unit && p.cost ? { cost: p.cost } : null, attrs: p.unit && p.cost ? { tabindex: "0", "aria-label": `${p.title}, ${p.cost}` } : {} },
-  h("h3.ita-plate", { text: p.title }), speed(p.unit), rs(p.stress), p.cost && !speed(p.unit) ? h("span.itd-cost", { text: p.cost }) : null);
+  h("h3.ita-plate", {}, h("span", { text: p.title }), speed(p.unit)), rs(p.stress), p.cost && !speed(p.unit) ? h("span.itd-cost", { text: p.cost }) : null);      // the mark of speed rides on the plate, as it does on the action's button
 const aim = (list, slot = null) => (list?.length || slot ? h("span.itd-arrow", {}, icon("fa-arrow-right"),
   list?.length ? list.map((x) => (list.length > 1 ? h("span.itd-tgt", { tip: x.name, attrs: { tabindex: "0", role: "img", "aria-label": x.name } }, face(x.img, x.name)) : h("span.itd-tgt", {}, face(x.img, x.name), h("b", { text: x.name }))))
     : h("span.itd-tgt.itd-tgt-none", { tip: slot.tip, attrs: { tabindex: "0", "aria-label": `${slot.label}. ${slot.tip}` } }, h("span.itd-tgt-hole", {}, icon("fa-crosshairs")), h("b", { text: slot.label }))) : null);
@@ -350,11 +350,11 @@ function panel(p) {
           p.opts?.length ? h("div.itd-togs", { attrs: { role: "group" } }, p.opts.map((o) => h("button.itd-tog", { fk: `op:${o.id}`, tip: o.tip, attrs: { "aria-pressed": String(o.on), "aria-label": typeof o.tip === "object" ? tipText(o.tip) : o.label }, on: { click: () => set({ opts: { ...(last.ui?.opts ?? {}), [o.id]: !o.on, ...(o.id === "area" && !o.on ? { fullAuto: false } : {}), ...(o.id === "fullAuto" && !o.on ? { area: false } : {}) } }) } }, icon(OPT_ICON[o.id] ?? "fa-circle")))) : null,
           p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null),
         /* THE DICE (U55: the number; where they come from is the tooltip, on hover and on keyboard focus), then the one button */
-        p.chance ? meter(p.chance) : null,
+        h("div.itd-act", {}, p.chance ? meter(p.chance) : null,
         p.pool ? h("div.itd-pool", { tip: p.pool.tip ? { ...p.pool.tip, title: handlers.label?.("pool") } : handlers.label?.("pool"), data: { sum: p.pool.tip ? "1" : null }, attrs: { tabindex: "0", "aria-label": `${handlers.label?.("pool")}: ${p.pool.tip?.say ?? p.pool.total}` } }, icon("fa-dice-d6"), h("b.itd-dice", { text: String(p.pool.total) })) : null,
-        ref ? submit(ref.submit, ".itd-go-ask") : submit(p.submit, "", p.pv)));
+        ref ? submit(ref.submit, ".itd-go-ask") : submit(p.submit, "", p.pv))));      // the dice and the button are one group: a narrow panel wraps the weapons, never these two apart
   }
-  if (p.kind === "other") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder), h("p.itd-hint", { text: p.hint }))), h("footer.itd-pfoot", {}, h("span.itd-how"), submit(p.submit, ".itd-go-ask")));
+  if (p.kind === "other") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder))), h("footer.itd-pfoot", {}, h("div.itd-how", {}, h("p.itd-hint", { text: p.hint })), submit(p.submit, ".itd-go-ask")));
   if (p.kind === "holdOff") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("p.itd-hint", { text: p.hint }),
     h("div.itd-chips", {}, p.targets.map((x) => h("button.itd-chip.itd-chip-card", { fk: `ho:${x.slot}`, on: { click: () => send(x.req, { mode: null }) } }, h("b", { text: String(x.card ?? "?") }), h("span", { text: x.names }))))));
   /* the own action in progress. U52: the roll lives HERE (its dice or its sixes with Roll / Accept / Push; no chip in the line over

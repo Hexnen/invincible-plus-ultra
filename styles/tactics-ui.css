@@ -313,11 +313,13 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 #invincible-tactics-dock .itd-phead .itd-x { margin-left: auto; }
 /* U85: WHAT (the name on its plate, the mark of its speed, its Resolve price: the words are the tooltip) -> ON WHOM */
 .itd-what { flex: none; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; color: #fff; }
+#invincible-tactics-dock .itd-what .ita-plate { display: inline-flex; align-items: center; gap: 8px; }
+#invincible-tactics-dock .itd-what .ita-plate > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 .itd-what[tabindex] { cursor: help; }
 .itd-what:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .itd-cost { font: 400 11.5px/1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); white-space: nowrap; }
 .itd-arrow { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ita-label); }
-.itd-arrow b { font: 700 13px/1.1 Comic, sans-serif; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itd-arrow b { font: 700 13px/1.5 Comic, sans-serif; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* U52 / U85: the target stands in the head with its picture, the same size before the declaration and after it; several targets are
    pictures (the names are their tooltips); the place of a target not chosen yet is an empty dashed frame that says what to do */
 .itd-tgt { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
@@ -327,7 +329,7 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 .itd-tgt-none { color: var(--ita-yellow); cursor: help; }
 .itd-tgt-hole { display: grid; place-items: center; box-sizing: border-box; border: 2px dashed var(--ita-yellow); }
 #invincible-tactics-dock .itd-tgt-hole i { font-size: 14px; }
-.itd-arrow .itd-tgt-none b { font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-yellow); }
+.itd-arrow .itd-tgt-none b { font: 400 13px/1.5 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-yellow); }
 .itd-myrolls { flex: 0 1 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
 /* the roll of the own action, where the dice and Declare stood: the result as a number of the panel, Accept (or Roll) as the one
    yellow button, Push as the hollow one beside it (the chip of the waiting line and the desk's rows keep their own look) */
@@ -348,12 +350,14 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 .itd-targets > .itd-hint { flex: 1 1 100%; }
 /* U85: THE FOOT, the one line every state of the panel ends with: HOW on the left (weapons, the options as picture switches, bonus
    dice; after the declaration Change / Withdraw), THE DICE and the ONE button on the right. It wraps by groups, never inside one. */
-.itd-pfoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; min-height: 34px; }
-.itd-how { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; margin-right: auto; }
+.itd-pfoot { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: flex-end; gap: 8px 14px; min-height: 34px; }
+.itd-how { flex: 1 1 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: min(100%, 150px); min-height: 34px; margin-right: auto; }
+.itd-how:empty { min-width: 0; }
+.itd-act { flex: none; display: flex; align-items: center; gap: 12px; max-width: 100%; margin-left: auto; }
 .itd-how .itd-hint { margin: 0; }
 .itd-togs { display: inline-flex; gap: 5px; }
 #invincible-tactics-dock .itd-tog { display: inline-grid; place-items: center; width: 30px; height: 30px; color: var(--ita-text); background: transparent; border: 2px solid var(--ita-frame); transition: translate .12s ease-out, box-shadow .12s ease-out; }
-#invincible-tactics-dock .itd-tog > i { font-size: 13px; }
+#invincible-tactics-dock .itd-tog > i { font-size: 15px; }
 #invincible-tactics-dock .itd-tog:hover { color: #fff; border-color: #fff; }
 #invincible-tactics-dock .itd-tog[aria-pressed="true"] { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); box-shadow: 2px 2px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-how .itd-mini { width: 30px; height: 30px; color: var(--ita-text); border: 2px solid var(--ita-frame); }
@@ -364,12 +368,12 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 .itd-refusal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding-bottom: 8px; border-bottom: 1px dashed var(--ita-line); }
 .itd-refusal .itd-reason { flex: 1 1 190px; max-width: 46ch; margin: 0; line-height: 1.3; }
 #invincible-tactics-dock .itd-refusal .itd-text { flex: 2 1 210px; min-height: 30px; height: 30px; max-height: 66px; padding-block: 4px; field-sizing: content; }
-.itd-panel:is([data-kind="declare"], [data-kind="blocked"], [data-kind="mine"]) { max-width: min(100%, 560px, calc(var(--itd-up-maxw, 100%) / var(--ita-scale, 1))); }
+.itd-panel:is([data-kind="declare"], [data-kind="blocked"], [data-kind="mine"]) { max-width: min(100%, 640px, calc(var(--itd-up-maxw, 100%) / var(--ita-scale, 1))); }
 .itd-submit { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; align-self: flex-end; }
 .itd-k { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label); }
 .itd-chips { display: flex; flex-wrap: wrap; gap: 5px; }
 #invincible-tactics-dock .itd-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 100%; padding: 0 9px 0 2px; font: 700 12px/1 Comic, sans-serif; color: #fff; background: var(--ita-tile-hi); border: 2px solid var(--ita-frame); }
-#invincible-tactics-dock .itd-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#invincible-tactics-dock .itd-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.6; }      /* U85: with a line box of 1 the hidden overflow cut the tails of the Polish capitals ("WIAZKA", "STREFE") */
 #invincible-tactics-dock .itd-chip:hover { border-color: #fff; }
 #invincible-tactics-dock .itd-chip-dim { color: var(--ita-label); background: transparent; border-color: var(--ita-line); }
 #invincible-tactics-dock .itd-chip[aria-pressed="true"] { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); box-shadow: 2px 2px 0 var(--ita-blue); }
