@@ -69,6 +69,18 @@ ok(!SURFACES.includes("tactics"), "the dock and the desk name their own tooltip 
   ok(areWays(["public", "gm"]) && areWays(["publicroll", "selfroll"]) && !areWays(["yes", "no"]) && !areWays(["public"]) && !areWays(["0", "1"]), "only the ways to roll become icon buttons");
   ok(mainWay(["yes", "no"], "gm", "no") === "no" && mainWay(["yes", "no"], "gm") === "yes", "in a question the default answer is the main one, else the first");
   ok(mainWay([], "gm") === null && mainWay(undefined, undefined) === null, "no buttons, no main way");
+  // U82: the parts of the pool are a ledger, the attack's facts one strip; neither can wrap
+  const { factKind, FACTS } = await import("./rolldialog.mjs");
+  const pl = { damage: "Obrażenia podstawowe", min: "Zasięg minimalny", max: "Zasięg maksymalny", armor: "Pancerz", stress: "Koszt stresu" };
+  ok(Object.keys(FACTS).join() === "damage,min,max,armor,stress", "the five facts the system's roll window can show are known");
+  ok(factKind(" Zasięg maksymalny ", pl) === "max" && factKind("Obrażenia podstawowe", pl) === "damage" && factKind("Pancerz", pl) === "armor", "a fact is known by the client's own word for it");
+  ok(factKind("Something new", pl) === null && factKind("", pl) === null && factKind(null, pl) === null && factKind("Pancerz", null) === null, "an unknown fact keeps its word");
+  ok(/flex-wrap:\s*nowrap/.test(rules.match(/div\.breakdown\[data-ird-facts\] \{[^}]*\}/)?.[0] ?? ""), "the strip of the attack's facts never wraps");
+  const ledger = rules.match(/div\.dices \+ div\.breakdown:not\(:has\(\.attribute-control\)\) \{[^}]*\}/)?.[0] ?? "";
+  ok(/display:\s*grid/.test(ledger) && /grid-template-columns:\s*minmax\(0, 1fr\)/.test(ledger), "the parts of the pool stand one per line");
+  ok(/div\.dices \+ div\.breakdown[^{]*label\.attribute-label \{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/.test(rules), "a part's name stays on its one line");
+  ok(/data-ird-fact\] > label\.attribute-label \{[^}]*clip-path/.test(rules) && !/data-ird-fact[^{]*label[^{]*\{[^}]*display:\s*none/.test(rules), "a fact's name stays in the window for a screen reader");
+  ok(!/content:\s*"\+"/.test(rules), "no plus signs between chips any more");
   const src = readFileSync(new URL("./rolldialog.mjs", import.meta.url), "utf8");
   ok(!/\.remove\(\)|appendChild|insertBefore|\.prototype\.|addEventListener/.test(src), "rolldialog.mjs adds, removes, moves and rewires nothing");
 }
