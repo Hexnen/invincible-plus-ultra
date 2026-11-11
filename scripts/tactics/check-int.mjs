@@ -69,6 +69,8 @@ const IDS = /\b(H1|H2|N1|N2|M1|V1|z\d|hz\w*|gm)\b/;
   eq([off.shoot, off.orders, off.pickUp, off.fastball, off.grappleAttack, off.release, off.move], ["grappling", "grappling", "grappling", "grappling", null, null, null], "B: the bar says the same: only the grapple attack, letting go and movement stay open");
   eq(code(await U.req("p1", decl("H1", "grappleAttack", ["N1"]))), "ok", "B: the grapple attack is allowed");
   T.turn("N1");
+  const heldBar = D.playerModel(T.state, { id: "gm", owns: ["N1"] }, { c: (id) => T.c[id] ?? null, online: () => true, P1 }).bars[0], hb = Object.fromEntries(heldBar.actions.map((a) => [a.id, a.disabled ?? null]));
+  eq([hb.slugfest, hb.shoot, hb.grapple, hb.charge, hb.breakFree, why(await T.gm(decl("N1", "slugfest", ["H1"])))], ["held", "held", "held", "held", null, "held"], "B: the one held is told on the bar what the attack flow would say: no attack, the escape is open");
   eq(code(await T.gm(decl("N1", "breakFree"))), "ok", "B: the one held tries to break free (P5)");
   await T.roll("roll", 3); await T.roll("def:H1", 1);
   eq([has(T, "H1", "grappling"), has(T, "N1", "grappled"), T.state.stack.length], [false, false, 0], "B: the escape ends the hold on both sides");
