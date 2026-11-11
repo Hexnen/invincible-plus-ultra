@@ -47,6 +47,8 @@ const ICONS = {
   "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark", "react:r": "fa-bolt",
 };
 export const actIcon = (key) => icon(ICONS[key] ?? "fa-circle-dot");
+/** the same picture as a Font Awesome class, for a menu the map draws at a token or a door (W1) */
+export const faOf = (key) => `fa-solid ${ICONS[key] ?? "fa-circle-dot"}`;
 /** the mark of speed: the shape of the slot the thing takes (long = full action, short = quick action); what takes NO action carries a
     mark of its own, an open ring (U50: with no mark at all it read as a mark gone missing); a price the GM decides carries none */
 export const speed = (cost) => (cost === "full" || cost === "quick" ? h("span.ita-spd", { data: { unit: cost }, attrs: { "aria-hidden": "true" } })

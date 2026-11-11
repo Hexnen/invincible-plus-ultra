@@ -1,5 +1,5 @@
 /* Tactical combat, the surfaces: PICKING A TARGET TOKEN ON THE MAP. While the dock has an action armed that needs a target, a left
-   click on the token of a possible target chooses it (and sets Foundry's own target mark on it, so the table sees what is aimed at).
+   click on the token of a possible target chooses it (and, on a map without the board of W1, sets Foundry's own target mark on it).
    The candidates are combatant ids from the user's view (model-pure.targetsFor): a token that is not among them is never picked, so
    nothing the view withholds can be chosen here. Foundry's own targeting (the T key, the target tool) picks as well.
    Zones are not picked here: that is the map module's own pick mode, reached through zones-adapter.pick.
@@ -9,6 +9,8 @@ import * as Store from "../store.mjs";
 let cur = null;      // { combat, ids:Set, onPick }
 let hookId = null;
 let mine = new Set();      // U21: the tokens whose target mark this surface set (never a mark the user set for something else)
+let plain = false;         // W1: the map itself rings who is chosen (ui/board.mjs): Foundry's target mark is then not set here
+export const setPlain = (on) => { plain = !!on; };
 
 const boardEl = () => { try { return canvas?.app?.canvas ?? canvas?.app?.view ?? document.getElementById("board"); } catch { return null; } };
 const tokenOf = (combat, cid) => { try { return combat?.combatants?.get(cid)?.token?.object ?? null; } catch { return null; } };
@@ -35,7 +37,7 @@ function onDown(ev) {
     cur.onPick(b.cid);
   } catch (e) { console.warn(`${Store.MOD} | tactics pick`, e); }
 }
-function mark(tok) { try { tok.setTarget(true, { releaseOthers: true }); mine.clear(); mine.add(tok); } catch { /* the mark is a courtesy */ } }
+function mark(tok) { if (plain) return; try { tok.setTarget(true, { releaseOthers: true }); mine.clear(); mine.add(tok); } catch { /* the mark is a courtesy */ } }
 /** U21: the marks this surface set stay only on what is still aimed at: the targets picked in the open panel and those of this user's
     actions in progress. A mark on anybody else (the action was withdrawn, vetoed, undone, or is over) is taken off. `ids` = combatant ids. */
 export function keep(combat, ids = []) {

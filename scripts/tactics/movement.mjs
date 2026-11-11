@@ -141,7 +141,7 @@ export function install(h) {
     /* `levels`: the map also holds a level change made with its token HUD (zones-api.md section 14); a map that does not know the option ignores it */
     Zones.tactical({ gm: true, levels: true, when: (td) => !!h.cid(td) && h.state()?.mode === "tactical" && !h.state()?.free?.[h.cid(td)],
       profile: (td) => { const m = MP.modesOf(h.c(h.cid(td)) ?? {}); const best = m.reduce((a, b) => ((b.profile.stressZones ?? b.profile.zones) > (a.profile.stressZones ?? a.profile.zones) ? b : a), m[0]); return best ? MP.apiProfile(best.profile, { stress: true, force: true }) : { way: "walk", speed: 1 }; },
-      confirm: (ctx) => onDrag(h, ctx) });
+      confirm: (ctx) => onDrag(h, ctx), place: (ctx) => { const cid = h.cid(ctx?.token?.document ?? ctx?.token); if (cid && ctx?.inverse) h.request({ op: "placed", combatant: cid, inverse: ctx.inverse, zone: ctx.to?.zone ?? null }); } });      // W1 (U44): the GM's Alt-drop is journaled, so "undo" takes it back
     on = true;
   } catch (err) { console.warn(`${MOD} | tactics: movement`, err); }
   return on;
@@ -149,7 +149,7 @@ export function install(h) {
 export function uninstall() { try { offStep?.(); offStep = null; Zones.tactical(false); Zones.rulesDriver(false, MOD); on = false; } catch (err) { console.warn(`${MOD} | tactics: movement`, err); } }
 /** api.tactics.movement: the same calls for the widgets (the action bar, the GM desk) */
 export const api = {
-  installed: () => on,
+  installed: () => on, zoneFacts: () => { try { return H?.facts().zones ?? null; } catch { return null; } }, c: (cid) => { try { return H?.c(cid) ?? null; } catch { return null; } },      // W1: the board's warnings read the same zone facts
   options: (cid, to = null) => (H ? optionsFor(H, cid, to) : []),
   pick: (cid) => (H ? pickMove(H, cid) : Promise.resolve(null)),
   move: (cid, to, o = {}) => (H ? H.request({ op: "move", actor: cid, to, ...o }) : Promise.resolve(null)),
