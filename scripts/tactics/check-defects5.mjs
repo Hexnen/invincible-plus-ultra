@@ -353,4 +353,34 @@ const paid = (T, cid, action) => T.state.ledger[cid].entries.filter((x) => !x.vo
   eq(new Set(all).size, all.length, "P8e-1: no number of the id counter is handed out twice");
 }
 
+/* ================================================================== P8e-2 (the "unproven" list: ledger entries in a player's view carry
+   slot ids): a block on a hidden NPC's turn showed every player the id of the hidden slot */
+{
+  const T = new T5(); T.hero("H1", "p1").hero("H2", "p2").npc("N1", { health: 5, hidden: true }).npc("N2", { health: 4 }); T.order(["N1", "H1", "H2", "N2"]).turn("N1");
+  await T.gm({ op: "declare", actor: "N1", decl: { action: "slugfest", targets: ["H1"] } });
+  await T.req("p1", { op: "answer", prompt: T.prompt("reaction", "H1").id, value: "block" });
+  const hid = T.state.init.slots.find((x) => x.members.includes("N1")).id, e = T.state.ledger.H1.entries[0];
+  const v = T.view("p2"), ve = v.ledger.H1.entries[0], s = JSON.stringify(v);
+  eq([e.slot, e.action, ve.action, ve.cost, ve.slot ?? null, s.includes(`"${hid}"`), s.includes('"N1"')], [hid, "block", "block", "quick", null, false, false], "P8e-2: the player's view keeps the spent block and drops the hidden slot it was spent in");
+  eq(T.view("gm").ledger.H1.entries[0].slot, hid, "P8e-2: the GM's view keeps it");
+  await T.gm({ op: "abort", inst: T.top().id, refund: true });
+  T.turn("H2"); await T.req("p2", decl("H2", "slugfest", { targets: ["N2"] }));
+  eq(T.view("p1").ledger.H2.entries.at(-1).slot, T.state.init.cur, "P8e-2: an entry of a slot the viewer sees keeps its slot");
+}
+
+/* ================================================================== P8e-3 (the "chase join / leave and hidden participants" area): the
+   view and the public events of a chase with concealed participants hold none of them (sound); joining or leaving under a chase roll */
+{
+  const T = new T5(); T.hero("H1", "p1").hero("H2", "p2").npc("N1", { health: 5, hidden: true }).npc("N2", { health: 4 }).npc("N3", { hidden: true }); T.order(["H1", "N1", "H2", "N2", "N3"]).turn("H1");
+  const n0 = T.events.length;
+  eq(code(await T.gm({ op: "chaseStart", prey: ["N1", "N2"], pursuer: ["H1", "H2"], distance: 2 })), "ok", "P8e-3: a chase with a hidden prey");
+  eq(code(await T.gm({ op: "chaseSet", unit: "N3", side: "prey" })), "ok", "P8e-3: a hidden one joins");
+  const v = T.view("p2"), pub = JSON.stringify(T.events.slice(n0).map((e) => V.publicEvent(T.state, e, T.meta())).filter(Boolean));
+  eq([v.chase.sides, /"N[13]"/.test(JSON.stringify(v)), /"N[13]"/.test(pub)], [{ prey: ["N2"], pursuer: ["H1", "H2"] }, false, false], "P8e-3: the player's view and the public events name neither hidden participant");
+  eq(code(await T.gm({ op: "chaseSet", unit: "N3", side: null })), "ok", "P8e-3: and leaves");
+  await T.gm({ op: "chaseRound" });
+  eq([T.requests.at(-1).combatant, T.requests.at(-1).users, JSON.stringify(T.view("p2").stack).includes("N1")], ["N1", ["gm"], false], "P8e-3: the hidden prey's roll is the GM's and not in the player's view");
+  eq([code(await T.gm({ op: "chaseSet", unit: "N1", side: null })), code(await T.gm({ op: "chaseSet", unit: "N3", side: "prey" })), T.state.chase.sides.prey, code(await T.gm({ op: "chaseSet", distance: 3 })), T.state.chase.distance], ["busy", "busy", ["N1", "N2"], "ok", 3], "P8e-3: under a chase roll nobody joins or drops out; the distance can still be set");
+}
+
 done("check-defects5");

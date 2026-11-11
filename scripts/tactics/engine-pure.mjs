@@ -1046,6 +1046,7 @@ async function gmEdit(X, op, a) {
       break;
     }
     case "chaseSet": {
+      if (P1.isId(a.unit) && X.state.stack.length) { err = "busy"; break; }                  // P8e-3: nobody joins or drops out under a chase roll that is being made (the one asked to roll could leave it); the distance can still be set
       const next = Chase.setPatch(X.state, a);
       if (!next) { err = "gone"; break; }
       if (P1.isId(a.unit)) {                                                                 // somebody joins or drops out: the token follows, and the way back is remembered [D]
