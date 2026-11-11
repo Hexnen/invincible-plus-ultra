@@ -454,21 +454,23 @@ const OPS = {
   /* joining and leaving (spec 3.3): bring the state in line with the combatants that exist now */
   roster(W) {
     const s = W.s, parts = W.ctx.parts ?? [];
-    const before = JSON.stringify([s.init, Object.keys(s.ledger)]);
+    const before = JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? []]);
     const ids = new Set(parts.map((p) => p.id));
     const known = new Set([...Object.keys(s.ledger), ...s.init.slots.flatMap((x) => x.members)]);
     for (const id of known) if (!ids.has(id)) removeOne(W, id);
+    const fresh = syncSummons(W, parts);
     if (s.round >= 1 && s.phase !== "idle" && s.phase !== "sceneEnd") {
       for (const p of parts) {
         if (p.challenge || p.vehicle) continue;
         if (!s.ledger[p.id]) s.ledger[p.id] = Lg.newLedger(s.round);
+        if (fresh.has(p.id) && s.phase === "turns" && s.init.curMember === p.summonOf) s.ledger[p.id] = Lg.turnStart(ledgerOf(W, p.id)).ledger;      // [B1808]: allies act on the turn they appear
         if (!I.eligible(p) || I.slotOf(s.init, p.id)) continue;
         const r = I.addCombatant(s.init, p.id, mkId(W));                              // [A-1]
         s.init = r.init;
         if (r.changed && r.card !== null) ev(W, "draw", { slot: r.slot, card: r.card, members: [p.id], reason: "join" });
       }
     }
-    if (before === JSON.stringify([s.init, Object.keys(s.ledger)])) return { changed: false };
+    if (before === JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? []])) return { changed: false };
     run(W);
   },
   ledgerEdit(W, a) {
@@ -559,6 +561,17 @@ export function ledgerEditOf(state, a) {
   return r?.ok ? { ok: true, ledger: r.ledger } : { ok: false, code: "illegal", params: { reason: r?.reason ?? "ledger" } };
 }
 
+/* [I14] [B1808], [B1637]: who acts on whose turn is read from the participants (the flag "summoned by" of a combatant, set by the engine or by
+   the GM). One record per owner; a summoned combatant holds no card of its own. -> the ids that were not summoned before */
+function syncSummons(W, parts) {
+  const s = W.s, by = new Map(), was = new Set((s.summons ?? []).flatMap((su) => (Array.isArray(su?.combatants) ? su.combatants : [])));
+  const ids = new Set(parts.map((p) => p.id));
+  for (const p of parts) if (p.summonOf && !p.defeated && ids.has(p.summonOf) && p.summonOf !== p.id) by.set(p.summonOf, [...(by.get(p.summonOf) ?? []), p.id]);
+  s.summons = [...by.entries()].map(([owner, combatants]) => ({ id: `su_${owner}`, owner, combatants }));
+  const fresh = new Set([...by.values()].flat().filter((id) => !was.has(id)));
+  for (const id of fresh) if (I.slotOf(s.init, id) && s.init.curMember !== id) s.init = I.removeCombatant(s.init, id).init;
+  return fresh;
+}
 function removeOne(W, id) {
   const s = W.s;
   const r = I.removeCombatant(s.init, id);

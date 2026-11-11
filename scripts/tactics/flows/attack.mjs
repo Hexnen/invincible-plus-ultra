@@ -162,15 +162,26 @@ function defencePrompt(v, I, t) {
   const dq = Veh.defenceOf(v, I, kind);                                                          // P7 [B3434]: the charge or ram that ends a chase
   const opts = attack.defenceOptions({ attack: dq.attack, defender: { ...conds, hasQuick }, inChase: dq.inChase });        // [B2446], [B2524], [R6], [R20], [R21], [R10]
   const options = [];
-  for (const id of ["block", "dodge"]) {
-    let op = opts[id];
+  /* P6 [B2105] Defensive: 1 stress instead of an action, as often as there is Resolve; asked for when the attack comes, never ahead of it */
+  const free = tf?.pass?.defensive === true && !Veh.isMachine(v, t) ? attack.defenceOptions({ attack: dq.attack, defender: { ...conds, hasQuick: true }, inChase: dq.inChase }) : null;
+  const allowed = (set, id) => {
+    let op = set[id];
     if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && tf?.pass?.deflection && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]
-      const other = opts[id === "block" ? "dodge" : "block"]; op = other.reason === "notAllowed" ? { ok: true, reason: null } : other;
+      const other = set[id === "block" ? "dodge" : "block"]; op = other.reason === "notAllowed" ? { ok: true, reason: null } : other;
     }
+    return op;
+  };
+  for (const id of ["block", "dodge"]) {
+    const op = allowed(opts, id);
     if (op.reason === "notAllowed") continue;                                                    // this attack cannot be answered that way at all
     const o = { id, label: `ITAC.action.${id}`, cost: "quick" };
     if (!op.ok) o.disabled = op.reason;
     options.push(o);
+    if (free) {
+      const f = allowed(free, id), fo = { id: `${id}:free`, label: `ITAC.opt.${id}Free`, cost: "none", stress: 1 };
+      if (!f.ok) fo.disabled = f.reason; else if (!(tf.resolve > 0)) fo.disabled = "stressedOut";                   // [B2105]: not without Resolve
+      options.push(fo);
+    }
   }
   for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget")) options.push(K.reactionOption(v, t, e));
   const live = options.filter((o) => !o.disabled);
@@ -179,7 +190,7 @@ function defencePrompt(v, I, t) {
   else if (tf?.npc) {                                                                                             // spec 13.3 NpcPolicy
     const pol = v.state.npc?.[t] ?? {}, def = live.find((o) => o.id === "block" || o.id === "dodge");
     if (def && pol[def.id] === "always") p.auto = { option: def.id, reason: "npcDefault" };
-    else if (live.every((o) => pol[o.id] === "never")) p.auto = { option: K.PASS, reason: "npcDefault" };
+    else if (live.every((o) => pol[String(o.id).split(":")[0]] === "never")) p.auto = { option: K.PASS, reason: "npcDefault" };
   }
   return p;
 }
@@ -188,10 +199,12 @@ function applyReaction(v, I, R, cid, key, value, when) {
   const id = typeof value === "string" ? value : value?.id;
   (I.data.done ??= {})[key] = 1;
   if (!id || id === K.PASS) return false;
-  if (id === "block" || id === "dodge") {
-    R.effects.push({ t: "pay", who: cid, cost: "quick", action: id, interrupt: 1, defense: 1, key: `def:${cid}`, target: [I.actor] });     // [B2447], [B2525]
-    (I.data.def ??= {})[cid] = { defence: id, tokens: Array.isArray(value?.tokens) ? value.tokens.slice(0, 12) : [] };
-    R.events.push({ type: "reaction", who: cid, kind: id, cost: "quick", stress: 0 });
+  if (["block", "dodge", "block:free", "dodge:free"].includes(id)) {
+    const [how, free] = id.split(":");
+    if (free) R.effects.push({ t: "stress", who: cid, n: 1 });                                  // P6 [B2105] Defensive: 1 stress, no action
+    else R.effects.push({ t: "pay", who: cid, cost: "quick", action: how, interrupt: 1, defense: 1, key: `def:${cid}`, target: [I.actor] });     // [B2447], [B2525]
+    (I.data.def ??= {})[cid] = { defence: how, tokens: Array.isArray(value?.tokens) ? value.tokens.slice(0, 12) : [], ...(free ? { free: "defensive" } : {}) };
+    R.events.push({ type: "reaction", who: cid, kind: how, cost: free ? "none" : "quick", stress: free ? 1 : 0 });
     return false;
   }
   const e = C.reactionsFor(v.state, cid, when, v.facts).find((x) => `r:${x.id}` === id);

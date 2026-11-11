@@ -20,7 +20,10 @@
              medicalGear, stressArmor: [per level], resist: [per level], immune: "flag" | "nonKinetic", vulnerable: "flag", shrunkDice: [per level], grown }
      mods    dice the sheet does not carry: [{ dice, action?: [ids], attack?: [kinds], attr?, vsHuge?, lv?: [per level] }]
      opt     a boost or limit that changes the attacks of its power: { patch, stress?, optional?, on?: "slug" }
-     cost    the cost of the row's generic use ("full" unless stated) */
+     cost    the cost of the row's generic use ("full" unless stated)
+     own     the engine applies the entry's dice itself (a dock variant, a rule of its own): what the item's sheet toggle adds is left out of the pools,
+             so the two never add up
+     why     for a row "by hand": why the book leaves it to the table (ITAC.kit.why.<id>, WHYS below) */
 
 export const LEVELS = Object.freeze(["basic", "major", "massive", "monstrous"]);
 export const NOTES = Object.freeze(["attack", "sheet", "move", "toggle", "effect", "token", "outcome", "zone", "map", "gmCard", "flag", "passive", "story", "system", "interrupt",
@@ -235,12 +238,12 @@ export const ROWS = Object.freeze([
 
   /* ================================================================ TALENTS [B2094-2171] */
   T("Analysis", [2097], "hand", "scene"),
-  T("Bigger They Are", [2098], "auto", "roll", { mods: [{ dice: 2, attack: ["slugfest", "grappleAttack"], vsHuge: 1 }], acts: [] }),
+  T("Bigger They Are", [2098], "auto", "roll", { own: 1, mods: [{ dice: 2, attack: ["slugfest", "grappleAttack"], vsHuge: 1 }], acts: [] }),
   T("Charger", [2099], "auto", "sheet"),
   T("Combat Veteran", [2100], "auto", "initiative"),
   T("Commander", [2101], "auto", "effect", { acts: [{ k: "orders", cost: "quick", as: "orders" }] }),
   T("Compelling", [2102], "auto", "system"), T("Coordinated", [2103], "auto", "system"), T("Cunning", [2104], "auto", "system"),
-  T("Defensive", [2105], "assist", "reaction", { acts: [{ k: "defensive", cost: "none", effect: { kind: "grant", template: "defender" }, anytime: 1 }] }),
+  T("Defensive", [2105], "auto", "reaction", { pass: { defensive: 1 }, acts: [] }),
   T("Deflection", [2106], "auto", "passive", { pass: { deflection: 1 } }),
   T("Determined", [2107], "auto", "sheet"),
   T("Discretion", [2108], "assist", "reaction", { acts: [{ k: "discretion", cost: "none", stress: 1, roll: { attr: "presence" }, effect: { kind: "narrative" }, reaction: "note" }] }),
@@ -251,7 +254,7 @@ export const ROWS = Object.freeze([
   T("Find Weakness", [2113], "hand", "stunt"),
   T("Formidable", [2114], "auto", "system"),
   T("Guardian", [2115], "assist", "reaction", { acts: [{ k: "guardian", cost: "quick", effect: { kind: "narrative" }, reaction: "swapTarget" }] }),
-  T("Hard Hitter", [2116], "auto", "token", { acts: [{ k: "windup", cost: "quick", effect: { kind: "aim", dice: 2, rolls: ["attack"], attrs: ["fighting"], until: "roundEnd" } }] }),
+  T("Hard Hitter", [2116], "auto", "token", { own: 1, acts: [{ k: "windup", cost: "quick", effect: { kind: "aim", dice: 2, rolls: ["attack"], attrs: ["fighting"], until: "roundEnd" } }] }),
   T("Indomitable", [2117], "hand", "roll"),
   T("Insightful", [2118], "auto", "system"),
   T("Inspiration", [2119], "auto", "effect", { acts: [{ k: "inspire", cost: "quick", target: { who: "ally", n: [1, 1] }, pick: ["1", "2", "3", "4", "5"], effect: { kind: "inspire" } }] }),
@@ -262,19 +265,19 @@ export const ROWS = Object.freeze([
   T("Loner", [2148], "hand", "scene"),
   T("Lucky Break", [2149], "hand", "crit"),
   T("Manipulator", [2150], "assist", "roll", { acts: [{ k: "manipulate", cost: "full", as: "persuade", dice: 2 }] }),
-  T("Martial Arts", [2151], "auto", "attack", { acts: [{ k: "quickStrike", cost: "quick", as: "slugfest", dice: -2, unarmed: 1 }] }),
+  T("Martial Arts", [2151], "auto", "attack", { own: 1, acts: [{ k: "quickStrike", cost: "quick", as: "slugfest", dice: -2, unarmed: 1 }] }),
   T("Medic", [2152], "auto", "roll", { mods: [{ dice: 2, action: ["stabilize"], attr: "reason" }], acts: [{ k: "medicRally", cost: "full", as: "rally", attr: "reason", other: 1 }] }),
   T("Menacing", [2153], "assist", "roll", { acts: [{ k: "menace", cost: "full", as: "persuade", attr: "strength", dice: 2 }] }),
   T("Merciless", [2154], "auto", "passive", { pass: { merciless: 1 } }),
   T("Mighty", [2155], "auto", "system"),
   T("Motivator", [2156], "auto", "effect", { acts: [{ k: "motivate", cost: "quick", as: "rally", dice: 2, other: 1 }] }),
   T("Pilot", [2157], "auto", "roll", { mods: [{ dice: 2, action: ["vehicleHandle", "ram"], attr: "agility" }], acts: [] }),
-  T("Rapid Fire", [2158], "auto", "attack", { acts: [{ k: "quickShot", cost: "quick", as: "shoot", dice: -2 }] }),
+  T("Rapid Fire", [2158], "auto", "attack", { own: 1, acts: [{ k: "quickShot", cost: "quick", as: "shoot", dice: -2 }] }),
   T("Renowned", [2159], "hand", "story"),
   T("Resilience", [2160], "hand", "gmCard"),
   T("Second Wind", [2161], "auto", "effect", { acts: [{ k: "secondWind", cost: "full", as: "rally", attr: "strength", self: 1 }] }),
   T("Sharp-Tongued", [2162], "auto", "roll", { mods: [{ dice: 2, action: ["banter"] }], acts: [] }),
-  T("Sniper", [2163], "auto", "token", { acts: [{ k: "aim", cost: "quick", effect: { kind: "aim", dice: 2, rolls: ["attack"], attrs: ["agility"] } }] }),
+  T("Sniper", [2163], "auto", "token", { own: 1, acts: [{ k: "aim", cost: "quick", effect: { kind: "aim", dice: 2, rolls: ["attack"], attrs: ["agility"] } }] }),
   T("Stealthy", [2164], "hand", "initiative"),
   T("Streetwise", [2165], "hand", "initiative"),
   T("Subdue", [2166], "auto", "sheet"),

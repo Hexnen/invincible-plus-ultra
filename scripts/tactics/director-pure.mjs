@@ -69,8 +69,15 @@ async function round(state, log, action, user, host) {
 }
 /* P7: the cards follow the kind of the scene. A chase holds no cards (also after an undo that brought a chase back); a fight that
    has none while people stand in it (a chase just ended, or its start was undone) gets them dealt by the round driver [A-1]. */
+const summonSig = (list, parts) => (parts ? parts.filter((p) => p.summonOf && !p.defeated && parts.some((o) => o.id === p.summonOf)).map((p) => `${p.summonOf}>${p.id}`)
+  : (list ?? []).flatMap((su) => (su.combatants ?? []).map((id) => `${su.owner}>${id}`))).sort().join(",");
 async function cards(state, log, events, host) {
-  if (!state || state.stack.length || state.phase !== "turns") return { state, log };
+  if (!state) return { state, log };
+  if (summonSig(state.summons) !== summonSig(null, host.parts?.() ?? [])) {                 // P6 [I14]: a summoned group came, left or changed hands: the round driver follows at once
+    const r = await round(state, log, { type: "roster" }, { id: "engine", staff: true }, host);
+    if (r.ok && !r.same) { events.push(...r.events); state = r.state; log = r.log; }
+  }
+  if (state.stack.length || state.phase !== "turns") return { state, log };
   if (state.kind === "chase") return state.init.slots.length ? { state: { ...state, init: { ...S.newInit(), deck: state.init.deck } }, log } : { state, log };
   if (state.init.slots.length || !(state.round >= 1)) return { state, log };
   const r = await round(state, log, { type: "roster" }, { id: "engine", staff: true }, host);

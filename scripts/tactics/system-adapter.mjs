@@ -192,20 +192,27 @@ export function kitOf(actor) {
   } catch (err) { console.warn(`${MOD} | tactics: kit`, err); return Kit.EMPTY; }
 }
 /** The dice the sheet's active effects add (the system's own roll buttons add the same): per attribute and per kind of roll. */
-export function sheetBonuses(actor) {
-  const b = actor?.system?.bonuses ?? {}, sum = (k) => Object.entries(b[k] ?? {}).reduce((a, [src, v]) => a + (src === "Minions" ? 0 : num(v)), 0), out = {};   // the group's size is counted by the attack flow itself [B2827]
+export function sheetBonuses(actor, kit = null) {
+  /* left out: the group's size (the attack flow counts it [B2827]) and the toggles of entries the engine applies itself (Sniper, Rapid Fire, Hard Hitter,
+     Martial Arts, Bigger They Are: a dock variant or a rule of the engine), so a switched-on sheet effect and the dock never add up */
+  const skip = new Set(["Minions", ...((kit ?? kitOf(actor)).sheetSkip ?? [])]);
+  const b = actor?.system?.bonuses ?? {}, sum = (k) => Object.entries(b[k] ?? {}).reduce((a, [src, v]) => a + (skip.has(src) ? 0 : num(v)), 0), out = {};
   for (const k of [...ATTRS, "attack", "block", "dodge", "charge", "grapple"]) { const v = sum(k); if (v) out[k] = v; }
   const sl = num(actor?.system?.derived?.slugfest?.bonus) || sum("system.derived.slugfest.bonus") || sum("derived.slugfest.bonus");
   if (sl) out.slugfest = sl;
   return out;
 }
-/** Set one of the GM's item flags (kit: a book row, off: out of the fight, types: what an Immunity is about). GM client only; not journaled (a sheet edit). */
+/** Set one of the GM's item flags (kit: a book row, off: out of the fight, types: what an Immunity is about). GM client only. Returns the journal op `itemFlag`
+    (what stood there before), or null when the item is gone. */
 export async function setKitFlag(actorUuid, itemId, key, value) {
   const a = await fromUuid(actorUuid), it = a?.items?.get?.(itemId);
-  if (!it || !["kit", "off", "types"].includes(key)) return false;
-  await it.update({ [`flags.${MOD}.tactics.${key}`]: value ?? null }, { ipuTactics: true });
-  return true;
+  if (!it || !KIT_FLAGS.includes(key)) return null;
+  const raw = it.flags?.[MOD]?.tactics?.[key], from = raw === undefined ? null : JSON.parse(JSON.stringify(raw)), to = value ?? null;
+  if (JSON.stringify(from) === JSON.stringify(to)) return null;
+  await it.update({ [`flags.${MOD}.tactics.${key}`]: to }, { ipuTactics: true });
+  return { t: "itemFlag", actorUuid: a.uuid, itemId, key, from, to };
 }
+export const KIT_FLAGS = Object.freeze(["kit", "off", "types"]);
 /** Switch an item's active effect (a form, a size, a stance). Returns the journal op `fx`. */
 export async function setItemEffect(actor, itemId, effectId, on) {
   const fx = actor?.items?.get?.(itemId)?.effects?.get?.(effectId);
@@ -221,7 +228,7 @@ export function actorFacts(actor) {
   const kind = actor.type === "superhero" ? "hero" : actor.type === "minions" ? "minions" : actor.type === "challenge" ? "challenge" : actor.type === "vehicle" ? "vehicle" : "npc";
   const flags = actor.flags?.[MOD]?.tactics ?? {};
   const armorMax = kind === "vehicle" ? num(s.armour) : Math.max(0, ...Object.values(s.bonuses?.armorProtection ?? {}).map((v) => num(v)));
-  const kit = ["hero", "npc", "minions"].includes(kind) ? kitOf(actor) : Kit.EMPTY, pass = kit.pass, bonus = kind === "vehicle" || kind === "challenge" ? {} : sheetBonuses(actor);
+  const kit = ["hero", "npc", "minions"].includes(kind) ? kitOf(actor) : Kit.EMPTY, pass = kit.pass, bonus = kind === "vehicle" || kind === "challenge" ? {} : sheetBonuses(actor, kit);
   if (kind === "minions") delete bonus.attack;                                       // the group's own bonus: the rules library counts the members [B2827]
   /* P6: each source of Armor on its own (Plasticity stops kinetic damage only [B1920]); Defiance is Armor against stress [B1865] */
   const armors = kind === "vehicle" ? (armorMax > 0 ? [{ id: "armor", armor: armorMax }] : []) : Object.entries(s.bonuses?.armorProtection ?? {}).filter(([, v]) => num(v) > 0).map(([k, v]) => ({ id: String(k).slice(0, 40), armor: num(v), ...(pass.armorOnly && /plasticity/i.test(k) ? { only: pass.armorOnly } : {}) }));
@@ -265,6 +272,12 @@ function weaponFlags(item) {
 }
 /** The items of the actor an attack can be made with (an automation that carries damage or a range), as weaponFacts gives them. */
 export const weaponList = (actor) => { try { const k = kitOf(actor), have = new Set(k.weapons.map((w) => w.item)); return [...k.weapons, ...[...(actor?.items ?? [])].filter((it) => !have.has(it.id)).map((it) => weaponFacts(actor, it.id, k)).filter((w) => w && (w.damage != null || w.range))].slice(0, 40); } catch { return []; } };
+/** P6 [B1808]: a summoned group is a token of one "minions" actor kept for the purpose (the GM may give it a portrait); the numbers of the book
+    and the summoner's ownership sit on the token's own delta. -> { actor, delta } */
+export async function summonGroup(e, owner) {
+  const actor = game.actors.find((a) => a.type === "minions" && a.flags?.[MOD]?.tactics?.summonTemplate) ?? await Actor.create({ name: e.template, type: "minions", flags: { [MOD]: { tactics: { summonTemplate: true } } } }, { ipuTactics: true });
+  return { actor, delta: { name: e.name, ownership: { ...(owner?.ownership ?? {}) }, system: { attributes: Object.fromEntries(ATTRS.map((k) => [k, { value: 4 }])), derived: { health: { value: Math.max(1, Math.trunc(num(e.members, 3))) }, resolve: { value: 6 } } } } };
+}
 /** The value behind an engine field name (drift check of an undo, journal-pure.driftOf). */
 export const actorValue = (actor, field) => (FIELDS[field] ? num(foundry.utils.getProperty(actor, FIELDS[field]), null) : null);
 /** Write an engine field. Returns the journal op. The option `ipuTactics` lets the legacy heuristics of scripts/module.js skip or label it (spec 1.3). */

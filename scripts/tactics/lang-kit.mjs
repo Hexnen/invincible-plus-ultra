@@ -136,6 +136,12 @@ export const EN_KIT = {
   "ITAC.ui.kit.nobody": "nobody",
   "ITAC.ui.kit.of": "of {name}",
   "ITAC.ui.kit.unknown": "not in the book",
+  "ITAC.opt.blockFree": "Block, no action (Defensive)",
+  "ITAC.opt.dodgeFree": "Dodge, no action (Defensive)",
+  "ITAC.warn.summonNoToken": "The summoner has no token on the scene, so the allies cannot arrive.",
+  "ITAC.warn.summonFailed": "The token could not be created or removed. Do it by hand.",
+  "ITAC.kit.summonActor": "Summoned allies",
+  "ITAC.kit.copyName": "{name} (copy)",
 };
 export const PL_KIT = {
   "ITAC.warn.noEffect": "Tego efektu nie ma już na karcie. Przełącz go ręcznie.",
@@ -273,4 +279,10 @@ export const PL_KIT = {
   "ITAC.ui.kit.nobody": "nikt",
   "ITAC.ui.kit.of": "od: {name}",
   "ITAC.ui.kit.unknown": "spoza podręcznika",
+  "ITAC.opt.blockFree": "Blok bez akcji (Defensywny)",
+  "ITAC.opt.dodgeFree": "Unik bez akcji (Defensywny)",
+  "ITAC.warn.summonNoToken": "Przywołujący nie ma żetonu na scenie, więc sojusznicy nie mogą się pojawić.",
+  "ITAC.warn.summonFailed": "Nie udało się utworzyć ani usunąć żetonu. Zrób to ręcznie.",
+  "ITAC.kit.summonActor": "Przywołani sojusznicy",
+  "ITAC.kit.copyName": "{name} (kopia)",
 };

@@ -129,7 +129,7 @@ function actionOf(item, row, a, lv, extra = {}) {
 /** The kit of one actor. Never throws on odd data: an item it cannot read is listed "by hand". */
 export function build(src = {}) {
   const items = Array.isArray(src.items) ? src.items : [], attrs = src.attrs ?? {}, byId = new Map(items.map((i) => [i.id, i]));
-  const kit = { rows: [], actions: [], weapons: [], unarmed: {}, pass: { immune: [], vulnerable: [] }, mods: [] };
+  const kit = { rows: [], actions: [], weapons: [], unarmed: {}, pass: { immune: [], vulnerable: [] }, mods: [], sheetSkip: [] };
   const parentOf = (it) => byId.get(it.power) ?? items.find((p) => p.type === "power" && (p.boosts ?? []).includes(it.id)) ?? null;
   const known = items.map((it) => { let row = null; try { row = rowFor(it, parentOf(it)?.name); } catch { row = null; } return { it, row, lv: 0 }; });
   for (const x of known) { const p = ["boost", "limit"].includes(x.it.type) ? parentOf(x.it) : x.it; x.lv = levelOf(p ?? x.it); x.parent = p !== x.it ? p : null; }
@@ -143,6 +143,7 @@ export function build(src = {}) {
     if (x.parent) rec.of = String(x.parent.name ?? "").slice(0, 60);
     if (!row) rec.unknown = 1;
     kit.rows.push(rec);
+    if (row?.own) kit.sheetSkip.push(String(it.name ?? ""));                             // its sheet toggle is not counted: the engine applies the entry itself
     if (!live(x)) { rec.state = "off"; rec.note = "off"; continue; }
     try {
       const autos = autosAt(it, lv), attacks = autos.filter((a) => a.type === "rollAttack"), uses = autos.filter((a) => ["usePower", "rollAttribute", "useGear"].includes(a.type));
@@ -205,7 +206,7 @@ export function build(src = {}) {
   kit.actions = kit.actions.slice(0, 60); kit.weapons = kit.weapons.slice(0, 40);
   return kit;
 }
-export const EMPTY = Object.freeze({ rows: [], actions: [], weapons: [], unarmed: {}, pass: { immune: [], vulnerable: [] }, mods: [] });
+export const EMPTY = Object.freeze({ rows: [], actions: [], weapons: [], unarmed: {}, pass: { immune: [], vulnerable: [] }, mods: [], sheetSkip: [] });
 /** Dice of the kit for a roll: { action, attack, attr, target } -> [{ source, dice }] (a rule that needs the GM's word is left to the GM) */
 export function modsFor(kit, { action = null, attack = null, attr = null, target = null } = {}) {
   return (kit?.mods ?? []).filter((m) => !m.gm && (!m.action || m.action.includes(action)) && (!m.attack || m.attack.includes(attack)) && (!m.attr || m.attr === attr) && (m.action || m.attack) && (!m.vsHuge || target?.huge === true))

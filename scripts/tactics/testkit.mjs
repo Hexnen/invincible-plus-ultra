@@ -117,6 +117,8 @@ export class Table {
       case "itemDelete": { const c = byUuid(e.actorUuid), it = c.items.find((x) => x.id === e.itemId); c.items = c.items.filter((x) => x !== it); if (it) { const i = c.crits.lastIndexOf(it.n); if (i >= 0) c.crits = c.crits.filter((_, k) => k !== i); } return {}; }
       case "dice": return { result: this.dice.length ? this.dice.shift() : Array.from({ length: e.n }, () => 3) };
       case "rollRequest": this.requests.push(e); return {};
+      case "kitFlag": { const c = byUuid(e.uuid), fl = ((c.itemFlags ??= {})[e.item] ??= {}), from = fl[e.key] ?? null; fl[e.key] = e.value ?? null; return e.undo || JSON.stringify(from) === JSON.stringify(e.value ?? null) ? {} : { op: { t: "itemFlag", actorUuid: e.uuid, itemId: e.item, key: e.key, from, to: e.value ?? null } }; }
+      case "summonFlag": { const c = this.c[e.combatant], from = c.summonOf ?? null; c.summonOf = e.owner ?? null; return e.undo || from === c.summonOf ? {} : { op: { t: "summonFlag", combatant: e.combatant, from, to: c.summonOf } }; }
       case "zones": {                                                  // the zones API's write path: apply(op) -> { ok, inverse } (zones-api.md section 12), here for { op:"zone" }
         const op = e.op ?? {};
         this.zonesLog.push(e.undo ? { undo: op } : op);

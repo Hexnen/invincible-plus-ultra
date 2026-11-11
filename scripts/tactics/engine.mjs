@@ -19,6 +19,7 @@ import * as Store from "./store.mjs";
 import * as Sys from "./system-adapter.mjs";
 import * as Zones from "./zones-adapter.mjs";
 import * as Mv from "./movement.mjs";
+import * as Summons from "./summons.mjs";
 import { t } from "./lang.mjs";
 
 const MOD = Store.MOD;
@@ -43,12 +44,14 @@ export const startMode = () => "tactical";
 
 /* ------------------------------------------------------------------ live facts (engine-pure.mjs "Facts") */
 const tokenOf = (cb) => cb?.token ?? null;
+/* a hero's summoned allies are run by the hero's player: they stand on the heroes' side [B1808] */
+const isNpc = (cb) => Sys.actorOf(cb)?.type !== "superhero" && Sys.actorOf(cb?.parent?.combatants.get(cb.flags?.[MOD]?.tactics?.summonOf))?.type !== "superhero";
 function combatantFacts(cb) {
   const actor = Sys.actorOf(cb), f = Sys.actorFacts(actor);
   if (!f) return null;
   const summonOf = cb.flags?.[MOD]?.tactics?.summonOf;
   return { id: cb.id, name: cb.name ?? actor.name, actorUuid: actor.uuid, tokenUuid: tokenOf(cb)?.uuid ?? null, owners: Sys.ownersOf(actor), hidden: cb.hidden === true || tokenOf(cb)?.hidden === true,
-    present: !(cb.isDefeated ?? cb.defeated) && !!tokenOf(cb), defeated: !!(cb.isDefeated ?? cb.defeated), summonOf: S.isId(summonOf) ? summonOf : null, ...f };
+    present: !(cb.isDefeated ?? cb.defeated) && !!tokenOf(cb), defeated: !!(cb.isDefeated ?? cb.defeated), summonOf: S.isId(summonOf) ? summonOf : null, summon: cb.flags?.[MOD]?.tactics?.summon ?? null, ...f, npc: isNpc(cb) };
 }
 function makeFacts(combat) {
   const memo = new Map();
@@ -69,7 +72,7 @@ function makeFacts(combat) {
     actorValue: (uuid, field) => { const a = fromUuidSync(uuid); return a ? Sys.actorValue(a, field) : null; },
   };
 }
-const metaOf = (combat) => ({ hidden: combat.combatants.filter((cb) => cb.hidden === true || cb.token?.hidden === true).map((cb) => cb.id), npc: combat.combatants.filter((cb) => Sys.actorOf(cb)?.type !== "superhero").map((cb) => cb.id) });
+const metaOf = (combat) => ({ hidden: combat.combatants.filter((cb) => cb.hidden === true || cb.token?.hidden === true).map((cb) => cb.id), npc: combat.combatants.filter(isNpc).map((cb) => cb.id) });
 
 /* ------------------------------------------------------------------ effects on documents (engine-pure.mjs "Host effects") */
 const labelOf = (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s));
@@ -103,15 +106,13 @@ async function perform(combat, e) {
     }
     case "zmove": case "zput": return Mv.performMove(e, (cid) => tokenOf(combat.combatants.get(cid)));        // P3: one stretch of a move / an arrival; the map's inverse is journaled
     case "fx": { const actor = await fromUuid(e.uuid); const op = actor ? await Sys.setItemEffect(actor, e.item, e.fx, e.on) : null; if (!op) ui.notifications?.warn(t("ITAC.warn.noEffect")); return op ? { op } : {}; }      // P6: a form, a size, a stance switched from the dock
-    case "kitFlag": await Sys.setKitFlag(e.uuid, e.item, e.key, e.value); return {};
-    case "summonFlag": { const cb = combat.combatants.get(e.combatant); if (cb) { await cb.update({ [`flags.${MOD}.tactics.summonOf`]: e.owner ?? null }, { ipuTactics: true }); scheduleRoster(combat); } return {}; }
+    case "kitFlag": { const op = await Sys.setKitFlag(e.uuid, e.item, e.key, e.value); return op && !e.undo ? { op } : {}; }      // journaled: the undo writes back what stood there
+    case "summonFlag": case "summonCreate": case "summonRemove": case "summonRestore": case "tokenDelete": case "tokenCreate": return Summons.perform(combat, e, scheduleRoster);      // P6: tokens and combatants that come and go (summons.mjs)
     case "fxSet": { const actor = await fromUuid(e.actorUuid); if (actor) await Sys.setItemEffect(actor, e.itemId, e.effectId, e.on); return {}; }
     case "itemDelete": { const a = await fromUuid(e.actorUuid); if (a?.items.get(e.itemId)) await a.deleteEmbeddedDocuments("Item", [e.itemId], { ipuTactics: true }); return {}; }
     case "itemCreate": { const a = await fromUuid(e.actorUuid); if (a && e.data) await a.createEmbeddedDocuments("Item", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
     case "effectDelete": { const a = await fromUuid(e.actorUuid); if (a?.effects.get(e.effectId)) await a.deleteEmbeddedDocuments("ActiveEffect", [e.effectId], { ipuTactics: true }); return {}; }
     case "effectCreate": { const a = await fromUuid(e.actorUuid); if (a && e.data) await a.createEmbeddedDocuments("ActiveEffect", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
-    case "tokenDelete": { const s = game.scenes.get(e.sceneId); if (s?.tokens.get(e.tokenId)) await s.deleteEmbeddedDocuments("Token", [e.tokenId], { ipuTactics: true }); return {}; }
-    case "tokenCreate": { const s = game.scenes.get(e.sceneId); if (s && e.data) await s.createEmbeddedDocuments("Token", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
     case "tokenMove": { const d = game.scenes.get(e.sceneId)?.tokens.get(e.tokenId); if (d && e.to) await d.update({ x: e.to.x, y: e.to.y, ...(e.to.elevation !== undefined ? { elevation: e.to.elevation } : {}) }, { ipuTactics: true, animate: false }); return {}; }
     case "messageStrike": await Sys.strikeMessage(e.id); return {};
     case "message": { try { const m = await ChatMessage.create({ content: foundry.utils.escapeHTML?.(String(e.text ?? "")) ?? "", whisper: e.gmOnly ? ChatMessage.getWhisperRecipients("GM").map((u) => u.id) : [], flags: { [MOD]: { tactics: { note: 1 } } } }, { ipuTactics: true }); return m?.id ? { op: { t: "message", id: m.id } } : {}; } catch { return {}; } }
@@ -150,7 +151,7 @@ function run(combatRef, input, { claimKey = null, low = false } = {}) {
       if (claimKey && !(await Store.claim(combat, claimKey))) return { ok: true, changed: false, dup: true };
       const { state, log } = Store.read(combat);
       const out = await D.handle({ state, log }, input, hostFor(combat));
-      if (out.changed) await Store.write(combat, out.state, out.log !== log ? out.log : undefined);
+      if (out.changed) { await Store.write(combat, out.state, out.log !== log ? out.log : undefined); Summons.syncCopies(combat, out.state); }
       publish(combat, out.state ?? state, out.events);
       return out.env ?? { ok: true, changed: !!out.changed };
     } catch (err) {
@@ -226,7 +227,7 @@ export function journal(user = game.user, combat = undefined) { const c = pick(c
 export const context = (combat = undefined) => { const c = pick(combat); return { staff: Store.isStaff(game.user),
   bonus: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.sheetBonuses(a) : null; } catch { return null; } },   // P6: the dice the sheet's effects add, for the preview
   kit: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.kitOf(a) : null; } catch { return null; } },      // P6: only of a sheet this user may read
-  c: (cid) => { const cb = c?.combatants.get(cid); return cb ? { name: cb.name, npc: Sys.actorOf(cb)?.type !== "superhero", owners: Sys.ownersOf(Sys.actorOf(cb)) } : null; }, online: (uid) => game.users.get(uid)?.active === true,
+  c: (cid) => { const cb = c?.combatants.get(cid); return cb ? { name: cb.name, npc: isNpc(cb), owners: Sys.ownersOf(Sys.actorOf(cb)) } : null; }, online: (uid) => game.users.get(uid)?.active === true,
   special: () => (c?.combatants?.contents ?? []).filter((cb) => ["challenge", "vehicle"].includes(Sys.actorOf(cb)?.type) && (Store.isStaff(game.user) || !cb.hidden)).map((cb) => ({ id: cb.id, name: cb.name, kind: Sys.actorOf(cb).type })) }; };      // P7
 
 /** what movement.mjs needs of this client (the cost confirmation on a drag, the reach pick) */

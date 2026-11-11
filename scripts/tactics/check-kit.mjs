@@ -262,5 +262,41 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   await T.gm({ op: "summonSet", combatant: "N2", owner: "N1" });
   eq(T.performed.filter((e) => e.t === "summonFlag").map((e) => [e.combatant, e.owner]), [["N2", "N1"]], "summonSet: who summoned whom [B1808]");
   eq(code(await T.gm({ op: "summonSet", combatant: "N2", owner: "N2" })), "badInput", "nobody summons itself");
+  /* both are journaled: the undo writes back what stood there */
+  eq([T.c.H1.itemFlags.blast.off, T.c.N2.summonOf, T.state.summons.map((s) => [s.owner, s.combatants])], [true, "N1", [["N1", ["N2"]]]], "the flags stand, and the round driver knows who acts on whose turn [I14]");
+  ok(!T.state.init.slots.some((s) => s.members.includes("N2")), "a summoned combatant holds no card of its own");
+  const [a, b] = T.log.list.slice(-2).map((x) => x.id);
+  eq(code(await T.gm({ op: "undo", tx: b })), "ok", "summonSet: undone through the journal");
+  eq([T.c.N2.summonOf, T.state.summons, T.state.init.slots.some((s) => s.members.includes("N2"))], [null, [], true], "the flag is back, the combatant draws a card again");
+  eq(code(await T.gm({ op: "undo", tx: a })), "ok", "kitFlag: undone through the journal");
+  eq(T.c.H1.itemFlags.blast.off, null, "the item's flag is back");
+}
+/* ================================================================== Defensive [B2105]: offered when the attack comes, never ahead of it */
+{
+  const T = base([item("de", "Defensive", "talent")], [], { h1: { resolve: 2, maxResolve: 5 } });
+  ok(!T.c.H1.kit.actions.some((x) => /defensive/.test(x.id)), "Defensive: no action of its own in the dock (nothing is armed without an attack)");
+  T.turn("N1");
+  await T.gm(decl("N1", "slugfest", { targets: ["H1"] }));
+  let p = T.prompt("reaction");
+  eq(p.options.map((o) => [o.id, o.cost, o.stress ?? 0, o.disabled ?? null]), [["block", "quick", 0, null], ["block:free", "none", 1, null], ["pass", undefined, 0, null]], "Defensive: the defence that fits the attack is also offered for 1 stress and no action");
+  eq(p.to, { users: ["p1"] }, "the question goes to the player");
+  await T.req("p1", { op: "answer", prompt: p.id, value: "block:free" });
+  eq([T.c.H1.resolve, P1.budget(T.state, "H1").quick], [1, ["open", "open"]], "1 stress, the quick action is still there");
+  await T.roll("attack", 1); await T.roll("def:H1", 2);
+  await T.req("p1", { op: "answer", prompt: T.prompt("counter").id, value: "pass" });
+  T.turn("H2").turn("N2");
+  await T.gm(decl("N2", "slugfest", { targets: ["H1"] }));
+  p = T.prompt("reaction");
+  await T.req("p1", { op: "answer", prompt: p.id, value: "block:free" });
+  eq(T.c.H1.resolve, 0, "again in the same round, as long as there is Resolve");
+  await T.roll("attack", 0);
+  const U = base([item("de", "Defensive", "talent")], [], { h1: { resolve: 0, maxResolve: 5 } });
+  U.turn("N1"); await U.gm(decl("N1", "slugfest", { targets: ["H1"] }));
+  eq(U.prompt("reaction").options.filter((o) => o.id.endsWith(":free")).map((o) => o.disabled), ["stressedOut"], "without Resolve it is shown and refused");
+}
+/* ================================================================== the five talents the dock runs itself: the sheet's switch is not counted a second time */
+{
+  const k = K.build({ items: [item("sn", "Sniper", "talent"), item("rf", "Rapid Fire", "talent"), item("hh", "Hard Hitter", "talent"), item("ma", "Martial Arts", "talent"), item("bt", "Bigger They Are", "talent"), item("ev", "Evasive", "talent")], attrs: {} });
+  eq(k.sheetSkip.slice().sort(), ["Bigger They Are", "Hard Hitter", "Martial Arts", "Rapid Fire", "Sniper"], "their sheet effects are left out of the pools (the engine applies the dice itself)");
 }
 done("check-kit");

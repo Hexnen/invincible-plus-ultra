@@ -709,17 +709,17 @@ async function gmEdit(X, op, a) {
       break;
     }
     /* ---- P6: what the GM says about an item of a sheet (which book entry it is, whether it is out of the fight, what an Immunity is about) and who
-       summoned a combatant [I14]. Both are edits of documents outside the state: logged, not undone by the journal (set them back the same way). */
+       summoned a combatant [I14]. Both are edits of documents outside the state; the host hands back what stood there before, so the journal undoes them. */
     case "kitFlag": {
       const cc = c(a.combatant), key = ["kit", "off", "types"].includes(a.key) ? a.key : null;
       if (!cc || !key || typeof a.item !== "string") { err = "badInput"; break; }
       const value = key === "off" ? a.value === true : key === "kit" ? (typeof a.value === "string" && a.value ? a.value.slice(0, 60) : null) : Array.isArray(a.value) ? a.value.filter((s) => typeof s === "string" && s).map((s) => s.slice(0, 24)).slice(0, 12) : null;
-      await perform(X, tx, { t: "kitFlag", uuid: cc.actorUuid, item: a.item.slice(0, 40), key, value });
+      await perform(X, tx, { t: "kitFlag", uuid: cc.actorUuid, item: a.item.slice(0, 40), key, value, tx });
       break;
     }
     case "summonSet": {
       if (!c(a.combatant) || (a.owner != null && !c(a.owner)) || a.owner === a.combatant) { err = "badInput"; break; }
-      await perform(X, tx, { t: "summonFlag", combatant: a.combatant, owner: a.owner ?? null });
+      await perform(X, tx, { t: "summonFlag", combatant: a.combatant, owner: a.owner ?? null, tx });
       break;
     }
     case "zoneSet": case "levelSet": case "borderSet": case "zoneOp": {                    // one write of the zones API; the inverse it returns is journaled (zones-pure.mjs)

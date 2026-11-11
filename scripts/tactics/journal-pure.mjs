@@ -61,8 +61,12 @@ export function setAt(root, path, value) {
    tokenMove  { t:"tokenMove", sceneId, tokenId, from, to }
    zones      { t:"zones", op, inverse }                       // one write of the zones API: the op given to `apply` and the inverse op it returned
    message    { t:"message", id }
+   fx         { t:"fx", actorUuid, itemId, effectId, from, to }            // P6: an item's active effect (a form, a size)
+   itemFlag   { t:"itemFlag", actorUuid, itemId, key, from, to }           // P6: the GM's word on an item of a sheet (kit, off, types)
+   summonFlag { t:"summonFlag", combatant, from, to }                      // P6: who a combatant acts for [I14]
+   summon+ / -{ t:"summon+", combatId, combatantId, sceneId, tokenId } / { t:"summon-", combatId, sceneId, combatant, token }   // P6: a summoned group joins / leaves (token and combatant together)
    Every op may carry `step` (the step of the instance that produced it; goToStep undoes by it) and `label`. */
-export const OP_TYPES = Object.freeze(["state", "actor", "item+", "item-", "effect+", "effect-", "token+", "token-", "tokenMove", "zones", "message", "fx"]);
+export const OP_TYPES = Object.freeze(["state", "actor", "item+", "item-", "effect+", "effect-", "token+", "token-", "tokenMove", "zones", "message", "fx", "itemFlag", "summonFlag", "summon+", "summon-"]);
 
 /** Build the reversible state op for writing `to` at `path` of `state`. Returns { state, op } (op null when nothing changes). */
 export function stateOp(state, path, to) {
@@ -91,6 +95,10 @@ export function inverseEffect(op) {
     case "tokenMove": return { t: "tokenMove", sceneId: op.sceneId, tokenId: op.tokenId, to: op.from, expect: op.to };
     case "zones": return op.inverse ? { t: "zones", op: op.inverse, isInverse: true } : null;
     case "fx": return { t: "fxSet", actorUuid: op.actorUuid, itemId: op.itemId, effectId: op.effectId, on: op.from === true };      // P6: an item's active effect switched back
+    case "itemFlag": return { t: "kitFlag", uuid: op.actorUuid, item: op.itemId, key: op.key, value: op.from ?? null };
+    case "summonFlag": return { t: "summonFlag", combatant: op.combatant, owner: op.from ?? null };
+    case "summon+": return { t: "summonRemove", combatId: op.combatId, combatant: op.combatantId, sceneId: op.sceneId, tokenId: op.tokenId };
+    case "summon-": return { t: "summonRestore", combatId: op.combatId, sceneId: op.sceneId, combatant: op.combatant, token: op.token };
     case "message": return { t: "messageStrike", id: op.id };      // spec 15: struck through, never deleted (the dice stay)
     default: return null;
   }
