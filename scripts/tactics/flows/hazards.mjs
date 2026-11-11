@@ -135,7 +135,7 @@ const poolOf = (h) => (h.kind === "blast" ? hazards.blastPool(h.rating) : Math.m
 
 /* ------------------------------------------------------------------ fire spread [B2927] */
 const graphOf = (Z) => { try { const g = Z?.graph?.(); if (!g?.zones) return null; return RZ.makeGraph(g.zones.some((z) => z.id == null) ? RZ.graphFromZonesApi(g) : g); } catch { return null; } };
-const fireOf = (Z, key) => (Z?.states?.(key) ?? []).filter((s) => s?.kind === "fire" && (s.level ?? 1) >= 1);
+const fireOf = (Z, key) => (Z?.statesAll?.(key) ?? Z?.states?.(key) ?? []).filter((s) => s?.kind === "fire" && (s.level ?? 1) >= 1);
 /** every burning zone of the map: [{ zone, at: level | null, intensity, refs: [{ source, id }] }] (a state without a level burns on all of them [A23]) */
 export function burningZones(Z) {
   const out = [];

@@ -9,7 +9,7 @@
      Z.plan(cid, where, apiProfile) -> plan | null    Z.along(cid, keys, { profile, end, forced }) -> plan | null
      Z.chain(cid, { awayFrom, toward, distance }) -> plan | null      awayFrom / toward: a combatant id or a spot
      Z.reach(cid, apiProfile, max) -> [{ zone, d, cost }]             Z.within(where, n) -> [{ zone, d }]
-     Z.zone(where) -> zone | null      Z.states(where) -> [state]     Z.border(borderKey) -> border | null      Z.at(spot) -> [cid]
+     Z.zone(where) -> zone | null      Z.states(spot) -> [state] of that level (and those naming none; Z.statesAll(key): every level)     Z.border(borderKey) -> border | null      Z.at(spot) -> [cid] on that level
      Z.borders(zoneKey) -> [border]                   (every border of a zone, for the doors a mover stands at)
    A MOVE PLAN as the flows keep it (slim: the state is a document flag):
      { kind: "route" | "inZone" | "area" | "return", mode, way, from, to, end: { level, floor, airborne } | { area }, total, zones: [key],
@@ -238,6 +238,20 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
     if (!Number.isFinite(o.free)) for (const a of ["sky", "orbit"]) if (movement.altitudeAccess(m.profile, a).ok) push(m, `@${a}`, null, null, { area: a });   // [B2387-2388]
   }
   return out.sort((a, b) => (a.d ?? 99) - (b.d ?? 99));
+}
+/** The ways of `cid` to ONE named place, each priced like a row of moveOptions [D21]: a level the list above does not offer by itself
+    (a floor, underground, a way down for somebody on foot) still has a price when the map's token HUD asks for it. */
+export function optionsTo(Z, state, cid, c, to, canPay = null) {
+  canPay ??= (cost) => P1.canPay(state, cid, cost, { resolve: c?.resolve });
+  const from = Z?.place?.(cid), want = typeof to === "string" ? Z?.placeOf?.(to) : null;
+  if (!from || !want) return [];
+  return modesOf(c).map((m) => {
+    const pr = priceMove(Z, state, cid, c, { to, mode: m.id, stress: 1 });
+    const cost = pr.ok ? (pr.later ?? pr.cost) : null, pay = pr.ok && (cost === "quick" || cost === "full") ? canPay(cost) : { ok: true };
+    return { id: `${m.id}|${to}`, to, zone: want.zone ?? null, mode: m.id, d: pr.ok ? pr.total ?? 0 : null, cost, stress: pr.ok ? pr.stress : 0, disabled: !pr.ok ? pr.reason : pay.ok ? null : pay.reason ?? "noAction",
+      ...(pr.ok ? (pay.ok ? {} : { unpaid: 1 }) : pr.gmMayAllow ? { gmMayAllow: true } : {}), barriers: pr.ok ? pr.barriers : pr.params?.barriers ?? [], ...(pr.ok && pr.gm ? { gm: 1 } : {}),
+      ...(want.area ? { area: want.area } : want.zone === from.zone ? { here: 1 } : {}) };
+  });
 }
 
 /* ------------------------------------------------------------------ what the map's step listener answers (zones-api.md section 14 `beforeStep`)

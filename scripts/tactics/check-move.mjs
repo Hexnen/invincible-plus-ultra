@@ -58,18 +58,20 @@ function fakeZones(def) {
   const costOf = (total, p) => ({ total, speed: p?.speed ?? 1, actions: Math.ceil(total / (p?.speed ?? 1)), stressSpeed: null, stressActions: null, within: total === 0 ? "free" : total <= (p?.speed ?? 1) * (p?.actions ?? 1) ? "plain" : "no" });
   function planOf(from, keys, profile, end, forced) {
     const steps = stepsAlong(from, keys, profile?.way ?? "walk", end, forced); if (!steps) return null;
-    const last = steps[steps.length - 1], total = steps.filter((s) => s.kind === "border").length;
-    return { way: profile?.way ?? "walk", total, borders: total, levels: steps.length - total, zones: keys.slice(), steps, cost: costOf(total, profile), from, end: last ? place(last.to) : from, ...(forced ? { forced: true } : {}) };
+    const last = steps[steps.length - 1], borders = steps.filter((s) => s.kind === "border").length, total = steps.length;      // as the map: steps.length === total (a level step is one of them)
+    return { way: profile?.way ?? "walk", total, borders, levels: steps.length - borders, zones: keys.slice(), steps, cost: costOf(total, profile), from, end: last ? place(last.to) : from, ...(forced ? { forced: true } : {}) };
   }
   const api = {
     _: Z, version: () => "fake", canWrite: () => true,
     zoneOfToken: (t) => (Z.tokens[tokId(t)] ? mk(Z.tokens[tokId(t)]) : null), place,
     zone: (key) => (Z.zones[key] ? { key, id: Z.zones[key].id, rooftop: !!Z.zones[key].rooftop, states: { ...(Z.marks[key] ?? {}) }, empty: false } : null),
-    zoneStates: (where) => { const p = place(where); return p?.zone ? (Z.states[p.zone] ?? []).filter((s) => !s.at || s.at === p.spot) : []; },
+    /* as the map (zones-api.md sections 2, 10): a bare key is EVERY level; a spot with a level, a place or a token is that level and the
+       states naming none (`at`: "ground" | "elevated" | "underground" | "f2"); anyLevel says it outright. The ground spot IS the bare key. */
+    zoneStates: (where, o = {}) => { const p = place(where), bare = typeof where === "string" && !where.includes(":"), lv = p ? (p.level === "floor" ? `f${p.floor}` : p.level) : null; return p?.zone ? (Z.states[p.zone] ?? []).filter((s) => (o.anyLevel ?? bare) || !s.at || s.at === lv) : []; },
     borderBetween: (a, b) => { const x = borderOf(a, b); if (!x) return null; const { _doorShut, ...rest } = x; return rest; },
     bordersOf: (where) => { const z = place(where)?.zone; return Object.keys(Z.borders).filter((k) => k.split("|").includes(z)).map((k) => api.borderBetween(...k.split("|"))); },
     range: (a, b) => { const pa = place(a), pb = place(b); if (!pa || !pb) return null; if (pa.area || pb.area) return pa.area === pb.area ? { total: 0, borders: 0, levels: 0 } : null; const r = route(pa.zone, pb.zone, "through", false); const levels = pa.level === pb.level ? 0 : 1; return r ? { total: r.length - 1 + levels, borders: r.length - 1, levels } : null; },
-    tokensInZone: (where) => { const p = place(where), bare = typeof where === "string" && !where.includes(":") && !where.startsWith("@"); return Object.values(Z.tokens).map((t) => ({ token: { id: t.id }, place: mk(t) })).filter((r) => (bare ? r.place.zone === p?.zone : r.place.spot === p?.spot)); },
+    tokensInZone: (where, o = {}) => { const p = place(where), bare = o.anyLevel ?? (typeof where === "string" && !where.includes(":") && !where.startsWith("@")); return Object.values(Z.tokens).map((t) => ({ token: { id: t.id }, place: mk(t) })).filter((r) => (bare ? r.place.zone === p?.zone : r.place.spot === p?.spot)); },
     zonesWithin: (where, n) => api.reach(where, { way: "through", speed: n }, { max: n }).map((r) => ({ zone: r.zone, d: r.d })),
     graph: () => ({ zones: Object.keys(Z.zones).map((key) => ({ key, ...Z.zones[key] })), borders: Object.keys(Z.borders).map((key) => ({ key, ...Z.borders[key] })) }),
     profile: (p) => p,
@@ -133,6 +135,17 @@ function fakeZones(def) {
       return { ok: false, reason: "badOp" };
     },
     tactical(cfg) { Z.cfg.tactical = cfg === false ? null : cfg; return true; }, tacticalOn: () => !!Z.cfg.tactical,
+    /* the token HUD's altitude button (zones-api.md section 14 "Level changes"): written at once, unless tactical({ levels: true, confirm })
+       holds it for a token `when` accepts: then confirm() is asked and only a `true` writes the level */
+    async setAltitude(t, spot) {
+      const id = tokId(t), cur = Z.tokens[id], to = cur ? place(`${cur.zone}${String(spot).includes(":") ? `:${String(spot).split(":")[1]}` : spot === "ground" ? "" : `:${spot}`}`) : null;
+      if (!cur || !to) return false;
+      const from = mk(cur), T = Z.cfg.tactical, write = () => { Object.assign(cur, { level: to.level, floor: to.floor, airborne: to.airborne, area: null }); return true; };
+      if (from.spot === to.spot) return true;
+      if (!T?.levels || !T.confirm || (T.when && !T.when({ id }))) return write();
+      const yes = await T.confirm({ token: { id }, from, to, level: true, drop: null, profile: T.profile?.({ id }) ?? null, plan: null, cost: null, reachable: true });
+      return yes === true ? write() : false;
+    },
     rulesDriver(cfg) { Z.driver = cfg === false ? null : cfg; return true; }, drivenBy: () => (Z.driver ? { id: Z.driver.id, title: Z.driver.title, fireRound: typeof Z.driver.fireRound === "function", distances: Z.driver.distances !== false } : null),
     highlight: () => "h1", clearHighlights: () => 0, showReach: () => "reach", cancelPick: () => {},
     async pick(spec) { Z.picks.push(spec); const want = Z.nextPick; return want ? { ok: true, zone: want.split(":")[0], spot: want, place: place(want), x: 0, y: 0 } : { ok: false, reason: "cancelled" }; },
@@ -157,6 +170,7 @@ globalThis.foundry = { applications: { api: { DialogV2: { wait: async (cfg) => {
 const Zones = await import("./zones-adapter.mjs");
 const Mv = await import("./movement.mjs");
 const MP = await import("./movement-pure.mjs");
+const ZP = await import("./zones-pure.mjs");
 
 class MTable extends Table {
   constructor(def = CITY()) { super(); FAKE = fakeZones(def); this.map = FAKE; Mv.uninstall(); FAKE._.listeners = []; Zones.beforeStep((ctx) => MP.stepVerdict(ctx)); }
@@ -169,7 +183,7 @@ class MTable extends Table {
     const f = super.facts(), tok = (cid) => this.tok(cid), by = (t) => t?.id ?? null, Zf = Mv.zoneFacts(tok, by);
     return { ...f, zones: Zf, range: (a, b) => Zones.range(tok(a), tok(b)), canTalk: (a, b) => Mv.talk(Zf, a, b)?.ok,
       zone: (cid) => { const p = Zf.place(cid); return p ? { spot: p.spot, key: p.zone, level: p.level, area: p.area, airborne: p.airborne, states: {}, empty: false } : null; },
-      inZone: (cid) => Zf.at(Zf.place(cid)?.spot).filter((x) => x !== cid), inZoneKey: (z) => Zf.at(z) };
+      inZone: (cid) => Zf.at(Zf.place(cid)?.spot).filter((x) => x !== cid), inZoneKey: (z) => Zones.tokensInZone(z).map(by).filter(Boolean) };      // as engine.mjs: a key is every level, "z:ground" the ground alone
   }
   async perform(e) {
     if (e.t === "zmove" || e.t === "zput") { this.performed.push(e); return Mv.performMove(e, (cid) => this.tok(cid)); }
@@ -581,5 +595,46 @@ const FLY = [{ mode: "flight", tier: "basic" }];
   }
   lang("en");
   Mv.uninstall();
+}
+/* ---- R. [D21] a level change made with the map's token HUD is movement with a price [B2386-2388]: held, confirmed, sent as a `move` */
+{
+  const T = base(); T.c.H1.movement = FLY; const sent = [], tick = () => new Promise((r) => setTimeout(r, 5));
+  const h = { cid: (td) => (T.c[td?.id] ? td.id : null), c: (cid) => T.c[cid] ?? null, state: () => T.state, facts: () => T.facts(), request: async (req) => { sent.push(req); return T.req("p1", req); } };
+  Mv.install(h);
+  eq(T.map._.cfg.tactical.levels, true, "R: the map is told to hold level changes too");
+  const d0 = dialogs.length;
+  let r = await T.map.setAltitude({ id: "H1" }, "elevated"); await tick();
+  eq([r, sent.length, sent[0]?.op, sent[0]?.actor, sent[0]?.to, sent[0]?.mode, dialogs.length - d0], [false, 1, "move", "H1", "z1:elevated", "flight", 1], "R: the HUD's altitude button writes nothing itself: the price is confirmed and a `move` request goes to the executor");
+  eq([T.spot("H1"), entries(T, "H1").map((e) => e.action ?? e.tags?.[0] ?? null).length, P1.budget(T.state, "H1").quick.filter((q) => q === "used").length], ["z1:elevated", 1, 1], "R: the engine changes the level and the ledger is paid one quick action [B2386]");
+  const w0 = warnings.length;
+  r = await T.map.setAltitude({ id: "H2" }, "elevated"); await tick();
+  eq([r, sent.length, T.spot("H2"), warnings.length > w0], [false, 1, "z1", true], "R: somebody on foot does not rise into the air by the button: no request, the token stays, the reason is said");
+  r = await T.map.setAltitude({ id: "H1" }, "z1:f2"); await tick();
+  eq([r, sent[1]?.op, sent[1]?.to], [false, "move", "z1:f2"], "R: a level the Move panel does not list (a floor) is priced for that very place and sent the same way");
+  T.put("H1", "z1");
+  let seen = null; Mv.setDragSurface((cid, to) => { seen = [cid, to]; return true; });
+  const n = sent.length, d1 = dialogs.length;
+  r = await T.map.setAltitude({ id: "H1" }, "elevated"); await tick();
+  eq([r, seen, sent.length - n, dialogs.length - d1, T.spot("H1")], [false, ["H1", "z1:elevated"], 0, 0, "z1"], "R: with the dock running the price is shown there (one place for it), and the token waits");
+  Mv.setDragSurface(null);
+  T.map._.tokens.X = { id: "X", zone: "z1", level: "ground", floor: null, airborne: false, area: null };
+  eq([await T.map.setAltitude({ id: "X" }, "elevated"), T.map.zoneOfToken("X").spot], [true, "z1:elevated"], "R: a token outside the fight changes level freely");
+  eq(MP.optionsTo(T.facts().zones, T.state, "H1", T.c.H1, "nowhere"), [], "R: no such place, no option");
+  Mv.uninstall();
+}
+/* ---- S. [D26] "this level" asked with a ground spot: the ground spot is the bare zone key, which the map reads as every level */
+{
+  const def = CITY(); def.states = { z1: [{ id: "s1", kind: "gravity", data: { mode: "low" }, at: "elevated" }, { id: "s2", kind: "fire", level: 2, at: "f2" }, { id: "s3", kind: "weather", data: { type: "fog" } }] };
+  const T = base(def); T.c.H2.movement = FLY; T.put("H2", "z1:elevated");
+  const Z = T.facts().zones, ids = (l) => l.map((s) => s.id);
+  eq([ZP.levelRef("z1"), ZP.levelRef("z1:elevated"), ZP.levelRef("z1:f2"), ZP.levelRef("@sky"), ZP.levelRef(null)], ["z1:ground", "z1:elevated", "z1:f2", "@sky", null], "S: a ground spot names the ground outright; every other reference passes unchanged");
+  eq([ids(Zones.zoneStates("z1")), ids(Zones.zoneStates("z1:ground"))], [["s1", "s2", "s3"], ["s3"]], "S: (the map: a bare key is every level, \"z1:ground\" the ground alone)");
+  eq([ids(Z.states("z1")), ids(Z.states("z1:elevated")), ids(Z.states("z1:f2")), ids(Z.statesAll("z1"))], [["s3"], ["s1", "s3"], ["s2", "s3"], ["s1", "s2", "s3"]], "S: the states of a spot are those of its level and those naming none; every level only when asked");
+  eq([Z.at("z1"), Z.at("z1:elevated"), T.facts().inZoneKey("z1").sort(), T.facts().inZoneKey("z1:ground")], [["H1"], ["H2"], ["H1", "H2"], ["H1"]], "S: who is on a spot: that level; a zone key given to an area effect: every level, \"z1:ground\" the ground");
+  eq([MP.priceMove(Z, T.state, "H1", T.c.H1, { to: "z2", mode: "walk" }).roll, MP.priceMove(Z, T.state, "H2", T.c.H2, { to: "z2:elevated", mode: "flight" }).roll], [null, "agility"], "S: low gravity stored on \"elevated\" asks its roll of the flyer up there, not of the walker below [B1703]");
+  eq([Mv.levelStates({ id: "H1" }, { states: { lowgrav: true, fire: 2, wrecked: true } }), Mv.levelStates({ id: "H2" }, { states: { lowgrav: true, fire: 2 } })], [{ wrecked: true }, { lowgrav: true }], "S: a combatant's zone facts carry the states of its own level (wrecking stays the zone's)");
+  eq(ZP.propsOfStates([{ kind: "fire", level: 3 }, { kind: "fire", level: 1 }, { kind: "dark" }, { kind: "gravity", data: { mode: "low" } }, { kind: "gravity", data: { mode: "high" } }, null]), { fire: 3, dark: true, lowgrav: true }, "S: state records read as zone properties the way the map reads them");
+  /* a fire on the ground is fought on the ground: the hazard side still sees every level of the zone */
+  ok(typeof Z.statesAll === "function" && ids(Z.statesAll("z1:elevated")).length === 3, "S: the fire round reads the whole zone, whichever spot names it");
 }
 done("check-move");

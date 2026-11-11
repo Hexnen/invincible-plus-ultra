@@ -13,6 +13,24 @@ const ID = /^[A-Za-z0-9_.-]{1,64}$/;
 export const isPlaceKey = (s) => typeof s === "string" && KEY.test(s);
 export const isBorderKey = (s) => typeof s === "string" && BORDER.test(s);
 
+/** "This level" as the map understands it [D26]. The spot string of the ground level is the bare zone key ("z3"), and the map reads
+    a bare key as EVERY level of the zone (zones-api.md section 2). So a spot that is handed on as a question about one level
+    ("the states where I stand", "who is in this spot") names the ground outright: "z3" -> "z3:ground". Spots of other levels,
+    off-map areas ("@sky") and anything that is no string (a token, a place) already mean one level and pass unchanged. */
+export const levelRef = (where) => (typeof where === "string" && where && !where.startsWith("@") && !where.includes(":") ? `${where}:ground` : where);
+/** The zone properties a list of state records stands for (the map's states.mjs propsOf: wrecked, fire as its Intensity, dark, ice,
+    flooded, lowgrav), so the states of ONE level can be read the way `zone.states` is read for the whole zone. */
+export function propsOfStates(records) {
+  const p = {};
+  for (const r of Array.isArray(records) ? records : []) {
+    if (!isObj(r)) continue;
+    if (["wrecked", "dark", "ice", "flooded"].includes(r.kind)) p[r.kind] = true;
+    else if (r.kind === "fire") { const n = Math.min(12, Math.round(Number(r.level ?? 1) || 0)); if (n >= 1) p.fire = Math.max(p.fire ?? 0, n); }
+    else if (r.kind === "gravity" && r.data?.mode === "low") p.lowgrav = true;
+  }
+  return p;
+}
+
 /* the GM's own marks a `{ op:"zone" }` patch may set (zones-api.md section 5 `states`, section 12): the map's six drawn states */
 export const ZONE_MARKS = Object.freeze(["wrecked", "fire", "dark", "ice", "flooded", "lowgrav"]);
 export const WALL_STATES = Object.freeze(["intact", "breached", "removed"]);

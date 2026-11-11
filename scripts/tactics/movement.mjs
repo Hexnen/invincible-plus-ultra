@@ -11,12 +11,20 @@
    h = { cid(tokenDoc) -> combatant id | null, c(cid) -> facts, state() -> view | null, facts() -> Facts, request(req) -> Promise<envelope> } */
 import * as Zones from "./zones-adapter.mjs";
 import * as MP from "./movement-pure.mjs";
+import * as ZP from "./zones-pure.mjs";
 import { doorOptions } from "./flows/move.mjs";
 import { t, errText } from "./lang.mjs";
 
 const MOD = "invincible-plus-ultra";
 const keyOf = (where) => (typeof where === "string" ? where.split(":")[0] : where?.zone ?? where);
 
+/* [D26] the states of the zone ON THE COMBATANT'S LEVEL as zone properties (a token asks for its own level and the states that name
+   none); the whole zone's `zone.states` would hand a character on the ground what is stored on "elevated" or a floor. Wrecking is of
+   the zone as a whole and stays zone-wide. */
+export function levelStates(token, z) {
+  if (!token) return z?.states ?? {};
+  return { ...ZP.propsOfStates(Zones.zoneStates(token)), ...(z?.states?.wrecked ? { wrecked: true } : {}) };
+}
 /** the zone facts of movement-pure.mjs (header there) over the live map */
 export function zoneFacts(tok, byToken = () => null) {
   const ref = (x) => (typeof x === "string" ? tok(x) ?? Zones.place(x) ?? x : x);
@@ -30,10 +38,12 @@ export function zoneFacts(tok, byToken = () => null) {
     reach: (cid, profile, max) => (tok(cid) ? Zones.reach(tok(cid), profile, { max }) : []),
     within: (where, n) => Zones.zonesWithin(where, n),
     zone: (where) => Zones.zoneOf(keyOf(where)),
-    states: (where) => Zones.zoneStates(where),
+    /* [D26] a spot asks about ITS level: the ground spot is the bare key, which the map reads as every level (zones-pure levelRef) */
+    states: (where) => Zones.zoneStates(ZP.levelRef(where)),
+    statesAll: (key) => Zones.zoneStates(keyOf(key)),                                             // every level of the zone (a fire by level: hazards fireOf)
     border: (key) => { const [a, b] = String(key).split("|"); return a && b ? Zones.borderBetween(a, b) : null; },
     borders: (where) => Zones.bordersOf(keyOf(where)),
-    at: (spot) => Zones.tokensInZone(spot).map(byToken).filter(Boolean),
+    at: (spot) => Zones.tokensInZone(ZP.levelRef(spot)).map(byToken).filter(Boolean),             // that level only
     range: (a, b) => (tok(a) && tok(b) ? Zones.range(tok(a), tok(b)) : null),
     graph: () => Zones.graph(),                                                                  // P5: the whole map for the hazards (burning zones, where a fire may spread)
   };
@@ -87,8 +97,24 @@ async function ask(h, cid, opts, title) {
   if (env && env.ok === false) ui.notifications?.warn(errText(env.error));
   return env;
 }
+/** [D21] A level change asked for outside a move (the map's token HUD altitude button, held by tactical({ levels: true })): changing
+    altitude is movement with a price [B2386-2388], so it is confirmed and sent to the executor exactly like a drag. The dock shows
+    the price when its Move panel lists that level; a level it does not list (a floor, underground, down on foot) is priced here. */
+function onLevel(h, ctx) {
+  try {
+    const cid = h.cid(ctx.token?.document ?? ctx.token), to = ctx.to?.spot ?? null;
+    if (!cid || !to) return false;
+    const st = h.state(), Z = h.facts().zones, c = h.c(cid);
+    const listed = st && Z && c ? MP.moveOptions(Z, st, cid, c).filter((o) => o.to === to) : [];
+    if (listed.length && surface) { let took = false; try { took = surface(cid, to) === true; } catch { took = false; } if (took) return false; }
+    const opts = listed.length ? listed : st && Z && c ? MP.optionsTo(Z, st, cid, c, to) : [];
+    ask(h, cid, opts, `${c?.name ?? ""}: ${t("ITAC.action.move")}`).catch((err) => console.warn(`${MOD} | tactics: level`, err));
+  } catch (err) { console.warn(`${MOD} | tactics: level`, err); }
+  return false;                                                                                 // the token stays on its level; the executor changes it
+}
 /** A token was dragged into another zone during tactical play: the cost is confirmed and the move goes to the executor as a request. */
 function onDrag(h, ctx) {
+  if (ctx?.level === true) return onLevel(h, ctx);
   try {
     const cid = h.cid(ctx.token?.document ?? ctx.token), to = ctx.to?.spot ?? null;
     if (cid && to && surface) { let took = false; try { took = surface(cid, to) === true; } catch { took = false; } if (took) return false; }      // the dock shows the price (ui/main.mjs)
@@ -111,7 +137,8 @@ export function install(h) {
     if (on || !Zones.available()) return on;
     offStep = Zones.beforeStep((ctx) => MP.stepVerdict(ctx));                                    // only the engine's own moves carry `data.ipu`; every other move passes
     Zones.rulesDriver({ id: MOD, title: "Invincible Plus Ultra", fireRound: async () => { ui.notifications?.info(t("ITAC.move.fireByTactics")); }, wreck: () => "" });   // the map stops rolling fire and showing wrecking numbers [G-Z9]
-    Zones.tactical({ gm: true, when: (td) => !!h.cid(td) && h.state()?.mode === "tactical" && !h.state()?.free?.[h.cid(td)],
+    /* `levels`: the map also holds a level change made with its token HUD (zones-api.md section 14); a map that does not know the option ignores it */
+    Zones.tactical({ gm: true, levels: true, when: (td) => !!h.cid(td) && h.state()?.mode === "tactical" && !h.state()?.free?.[h.cid(td)],
       profile: (td) => { const m = MP.modesOf(h.c(h.cid(td)) ?? {}); const best = m.reduce((a, b) => ((b.profile.stressZones ?? b.profile.zones) > (a.profile.stressZones ?? a.profile.zones) ? b : a), m[0]); return best ? MP.apiProfile(best.profile, { stress: true, force: true }) : { way: "walk", speed: 1 }; },
       confirm: (ctx) => onDrag(h, ctx) });
     on = true;
