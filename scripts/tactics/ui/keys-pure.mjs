@@ -2,7 +2,7 @@
    The keys act on what the dock already shows: every key is a click on a control of the render data (its focus key `fk`, dom.mjs) or
    a patch of the dock's own state; nothing here builds a request, so the keyboard can do nothing the pointer could not.
      1 .. 9, 0   the n-th thing of THE TOP LAYER:  the answers of the first question card  >  the rows of an open list (More actions,
-                 Abilities)  >  the action buttons of the bar. On a card a digit only CHOOSES the answer (Enter sends it): a key meant
+                 Abilities)  >  the action buttons of the bar (the lists keep the last digits: Abilities 0). On a card a digit only CHOOSES the answer (Enter sends it): a key meant
                  for the bar a moment before the card came up must not spend a reaction. A stunt card (several answers) ticks with it.
                  While Foundry's macro bar is shown (the dock's keyboard button) the digits are its own again.
      Tab         the next target of the armed action (Shift: the one before); on a card the next answer
@@ -28,7 +28,11 @@ export function layer(d) {
   if (!d.show) return none;
   if (d.panel?.kind === "menu") return { id: "list", keys: numbered(d.panel.rows ?? [], (r) => `menu:${r.id}`) };
   if (d.rest) return none;
-  return { id: "bar", keys: numbered((d.groups ?? []).flatMap((g) => g.items), actFk) };
+  /* the two lists keep the LAST digits whatever else stands on the bar (Abilities is 0, More actions the digit before it), so a bar
+     that grew a door or a rescue never pushes them off the keyboard; the plain actions count from 1 */
+  const all = (d.groups ?? []).flatMap((g) => g.items), lists = all.filter((a) => a.more), plain = all.filter((a) => !a.more).slice(0, DIGITS.length - lists.length);
+  const at = (a) => (a.more ? DIGITS.length - lists.length + lists.indexOf(a) : plain.indexOf(a));
+  return { id: "bar", keys: all.filter((a) => at(a) >= 0).map((a) => ({ key: DIGITS[at(a)], id: a.id, fk: actFk(a) })) };
 }
 /** the render data with the key written on what it reaches (a copy of the touched lists; `d` itself is not changed) */
 export function number(d, own = {}) {

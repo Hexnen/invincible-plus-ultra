@@ -225,10 +225,10 @@ export function view(user = game.user, combat = undefined) {
 }
 export function journal(user = game.user, combat = undefined) { const c = pick(combat); return c && Store.stateOf(c) ? V.journalFor(Store.logOf(c), viewer(user, c)) : []; }
 /** names and presence for the desk and player models (desk-pure.mjs) */
-export const context = (combat = undefined) => { const c = pick(combat); return { staff: Store.isStaff(game.user),
+export const context = (combat = undefined) => { const c = pick(combat); let names = null; return { staff: Store.isStaff(game.user),
   bonus: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.sheetBonuses(a) : null; } catch { return null; } },   // P6: the dice the sheet's effects add, for the preview
   kit: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.kitOf(a) : null; } catch { return null; } },      // P6: only of a sheet this user may read
-  c: (cid) => { const cb = c?.combatants.get(cid); return cb ? { name: cb.name, npc: isNpc(cb), owners: Sys.ownersOf(Sys.actorOf(cb)) } : null; }, online: (uid) => game.users.get(uid)?.active === true,
+  c: (cid) => { const cb = c?.combatants.get(cid); if (!cb) return null; const hid = (x) => x.hidden === true || tokenOf(x)?.hidden === true;      /* U19: numbered namesakes; a player's numbers never count somebody hidden from them */ names ??= V.distinctNames(c.combatants.filter((x) => Store.isStaff(game.user) || !hid(x)).map((x) => ({ id: x.id, name: x.name ?? "", hidden: hid(x) }))); return { name: names[cb.id] ?? cb.name, npc: isNpc(cb), owners: Sys.ownersOf(Sys.actorOf(cb)) }; }, online: (uid) => game.users.get(uid)?.active === true,
   special: () => (c?.combatants?.contents ?? []).filter((cb) => ["challenge", "vehicle"].includes(Sys.actorOf(cb)?.type) && (Store.isStaff(game.user) || !cb.hidden)).map((cb) => ({ id: cb.id, name: cb.name, kind: Sys.actorOf(cb).type })) }; };      // P7
 
 /** what movement.mjs needs of this client (the cost confirmation on a drag, the reach pick) */

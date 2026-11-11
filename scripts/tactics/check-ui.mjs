@@ -341,7 +341,10 @@ for (const l of ["en", "pl"]) {
     const T = mk();
     let d = dock(T, "p1", ["H1"]);
     const flat = d.groups.flatMap((g) => g.items);
-    eq([flat.slice(0, 10).map((a) => a.key), flat.slice(10).some((a) => a.key), flat[0].tip.key, d.keys.on], [Keys.DIGITS.slice(0, Math.min(10, flat.length)), false, "1", true], `${l} U41: the buttons of the bar are numbered 1..9, 0 in the order they stand; the tooltip says the key`);
+    const plainK = flat.filter((a) => !a.more).map((a) => a.key ?? null), listK = flat.filter((a) => a.more).map((a) => a.key);
+    eq([plainK.slice(0, 10 - listK.length), plainK.slice(10 - listK.length).some(Boolean), listK, flat[0].tip.key, d.keys.on], [Keys.DIGITS.slice(0, Math.min(10 - listK.length, plainK.length)), false, Keys.DIGITS.slice(10 - listK.length), "1", true], `${l} U41: the actions of the bar are numbered from 1 in the order they stand, the lists keep the last digits; the tooltip says the key`);
+    { const big = { show: true, groups: [{ items: [...Array.from({ length: 12 }, (_, i) => ({ id: `a${i}` })), { id: "@more", more: true }, { id: "@kit", more: true, mode: "kit" }] }] }, L = Keys.layer(big);
+      eq([L.keys.length, L.keys.find((k) => k.fk === "more:kit").key, L.keys.find((k) => k.fk === "more:menu").key, L.keys.find((k) => k.fk === "act:a7").key, L.keys.some((k) => k.fk === "act:a8")], [10, "0", "9", "8", false], `${l} U41: a long bar: eight actions, then More actions on 9 and Abilities on 0`); }
     eq([Keys.plan(d, {}, { key: "1" }), Keys.plan(d, {}, { key: " " }), Keys.plan(d, {}, { key: "Enter" }), Keys.plan(d, {}, { key: "Tab" }), Keys.plan(d, {}, { key: "Escape" }), Keys.plan(d, {}, { key: "a" })],
       [{ click: `act:${flat[0].id}` }, { click: "end" }, null, null, null, null], `${l} U41: a digit clicks that action, Space clicks End turn; Enter, Tab and Escape have nothing to act on yet`);
     eq([Keys.plan(d, { hotbar: true }, { key: "1" }), dock(T, "p1", ["H1"], { hotbar: true }).groups[0].items[0].key ?? null, Keys.plan(d, { hotbar: true }, { key: " " })], [null, null, { click: "end" }], `${l} U41: while the macro bar shows the digits are its own; Space still ends the turn`);
