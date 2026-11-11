@@ -178,8 +178,11 @@ function linesOf(p, t, facts, x) {
         break;
       }
       if (Array.isArray(d.zones)) {                                                              // a forced move (P3): where the map says the character flies
-        const chain = d.zones.map((z) => zoneText(facts, t, z)), who = n(d.who ?? p.about);
-        if (chain.length > 1) out.push(t(d.by ? "ITAC.ui.line.forcedBy" : "ITAC.ui.line.forced", { name: who, by: n(d.by), n: chain.length - 1, chain: chain.join(" \u2192 ") }));
+        /* the distance is the one of the rule (Knockback: half the STRENGTH [B2435]), the same number the attacker's own card names; the
+           chain is what the map has room for, and when that is shorter the card says so beside it (D28: it used to call the length of the
+           chain the distance: "3 zones" on the player's card, "1 zone" on the GM's) */
+        const chain = d.zones.map((z) => zoneText(facts, t, z)), who = n(d.who ?? p.about), room = chain.length - 1, dist = Number.isFinite(d.distance) && d.distance > 0 ? Math.trunc(d.distance) : room;
+        if (chain.length > 1) { out.push(t(d.by ? "ITAC.ui.line.forcedBy" : "ITAC.ui.line.forced", { name: who, by: n(d.by), n: dist, chain: chain.join(" \u2192 ") })); if (room < dist) out.push(t("ITAC.ui.line.forcedShort", { n: room, of: dist })); }
         else out.push(t("ITAC.ui.line.forcedNowhere", { name: who }));
         for (const w of d.walls ?? []) out.push(t("ITAC.ui.line.forcedWall", { armor: w.armor ?? 0 }));
         if (d.edge) out.push(t("ITAC.ui.line.forcedEdge"));
@@ -235,13 +238,15 @@ export function askData(p, o) {
   const allIds = (p.options ?? []).filter((x) => !x.disabled).map((x) => x.id);
   const picks = own.picks?.[p.id] ?? (kind === "triggerQueue" ? allIds : []);
   const queue = kind === "triggerQueue";
-  /* what the GM sees on a reaction card: the attacker's dice and, per answer, the chance that the attack still lands */
-  let attPool = null;
-  if (desk && kind === "reaction" && p.data?.attacker && inst?.attr) { const a = Number(attrsFor(facts, p.data.attacker)?.[inst.attr]); if (Number.isFinite(a)) attPool = Math.max(1, a); }
+  /* what the GM sees on a reaction card: the attacker's dice and, per answer, the chance that the attack still lands. The pools are the
+     ENGINE's (flows/attack.mjs oddsFacts: the same builder as the roll), never an attribute read here: the sheet's dice, a weapon, bonus
+     dice, a penalty are all in them, so the card, the roll that follows and "in progress" say the same number (D28). */
+  const gmOdds = desk && kind === "reaction" && p.data?.attacker ? p.data.gm ?? null : null;
+  const attPool = Number.isFinite(gmOdds?.att?.dice) ? Math.max(1, gmOdds.att.dice) : null;
   const odds = (optId) => {
     if (attPool == null) return null;
-    const dAttr = DEF_ATTR[optId], dPool = dAttr ? Number(attrsFor(facts, p.about)?.[dAttr]) : null;
-    if (dAttr && Number.isFinite(dPool)) return t("ITAC.ui.odds.defended", { dice: dPool, p: pct(dice.pHit(attPool, Math.max(1, dPool))) });
+    const how = String(optId).split(":")[0], dPool = DEF_ATTR[how] ? gmOdds.def?.[how] : null;
+    if (Number.isFinite(dPool)) return t("ITAC.ui.odds.defended", { dice: Math.max(1, dPool), p: pct(dice.pHit(attPool, Math.max(1, dPool))) });
     return optId === "pass" ? t("ITAC.ui.odds.open", { p: pct(dice.pSuccess(attPool)) }) : null;
   };
   /* stunts against one target only: the name goes into the sentence once instead of onto every button */
@@ -272,7 +277,7 @@ export function askData(p, o) {
   })];
   const lines = linesOf(p, t, facts, { inst });
   if (oneTarget) lines.push(t("ITAC.ui.line.against", { name: nameOf(facts, stuntTargets[0], t) }));
-  if (attPool != null) lines.push(t("ITAC.ui.line.attPool", { dice: attPool, attr: attrText(t, inst.attr) }));
+  if (attPool != null) lines.push(t("ITAC.ui.line.attPool", { dice: attPool, attr: attrText(t, gmOdds.att.attr ?? inst?.attr) }));
   const max = p.max ?? options.length, min = p.min ?? 0;
   const multi = p.multi ? { min, max, n: picks.length } : null;
   const canSubmit = !multi || queue || (picks.length >= min && picks.length <= max);
@@ -568,13 +573,22 @@ export function overrideControls(i, facts, t) {
     { id: "manual", type: "button", group: "end", label: t("ITAC.cmd.resolve"), req: R("manual", { result: {} }) });
   return out;
 }
+/* the chance that the attack about to be rolled lands: against the defence its target has declared (the pool the engine noted with the
+   answer), else against nobody. Several targets with a defence among them have no one number: none is shown (D28: the line showed the
+   undefended chance after a block or a dodge had been chosen on a card that named a lower one). */
+function attChance(i, pool) {
+  const defs = (i.defs ?? []).filter((x) => (i.targets ?? []).some((q) => q.id === x.target));
+  if (!defs.length) return pct(dice.pSuccess(Math.max(1, pool)));
+  if ((i.targets ?? []).length !== 1 || !Number.isFinite(defs[0].dice)) return null;
+  return pct(dice.pHit(Math.max(1, pool), Math.max(1, defs[0].dice)));
+}
 function instData(i, model, own, facts, t) {
   const open = own.override === i.inst;
   const amend = i.commands?.find((c) => c.id === "amend"), veto = i.commands?.find((c) => c.id === "veto"), ovr = i.commands?.find((c) => c.id === "override");
   const att = (i.rolls ?? []).find((r) => r.key === "attack" || r.key === "roll");
   const rolls = (i.rolls ?? []).map((r) => ({ key: r.key, label: rollLabel(t, r.key, facts), dice: r.dice ?? null, sixes: r.sixes, waiting: !!r.waiting,
     text: r.waiting ? t("ITAC.ui.roll.waiting", { dice: r.dice ?? "?", users: (r.users ?? []).map((u) => (u === "gm" ? t("ITAC.ui.who.gm") : facts.userName?.(u) ?? t("ITAC.Someone"))).join(", ") || t("ITAC.ui.who.gm") }) : t("ITAC.ui.roll.done", { dice: r.dice ?? "?", sixes: r.sixes ?? 0 }),
-    chance: r.waiting && Number.isFinite(r.dice) && r === att ? pct(dice.pSuccess(Math.max(1, r.dice))) : null }));
+    chance: r.waiting && Number.isFinite(r.dice) && r === att ? attChance(i, r.dice) : null }));
   const others = rosterOf({ ...facts, view: facts.view }, i.actor).filter((r) => !(i.targets ?? []).some((x) => x.id === r.id));
   const from = i.targets?.[0]?.id;
   return {

@@ -602,4 +602,80 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     eq([4, 5, 6].map((d) => Rules.chase.chaseRoll({ distance: d, preySixes: 0, pursuerSixes: 0, endDistance: 5 }).escaped), [false, false, true], "D27: (the rules library says the same)"); }
 }
 
+/* ================================================================== D28: one exchange, one set of numbers on every surface */
+{
+  const tr = (k, prm = {}, fb) => { const x = fb === undefined ? k : fb; return x === null ? null : `${x}|${Object.entries(prm ?? {}).map(([a, b]) => `${a}=${b}`).join(",")}`; };      // the key and its parameters, no language
+  const ctx = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
+  /* facts that answer only the BARE attributes, as the live surfaces do: whatever else is on a roll has to come from the engine */
+  const facts = (T, view, staff) => ({ view, me: staff ? "gm" : "p1", staff, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => u, zone: (spot) => ({ title: String(spot) }) });
+  const desk = (T) => UiM.deskData(Desk.deskModel(T.state, T.log, ctx(T)), {}, facts(T, T.state, true), tr);
+  const num = (text, k) => Number(new RegExp(`[|,]${k}=(-?\\d+)`).exec(String(text ?? ""))?.[1] ?? NaN);
+  const pct = (p) => `${Math.round(p * 100)}%`, P = Rules.dice;
+  const mk = () => { const T = new Table(); T.hero("K", "p1", { name: "Kid" }).npc("T", { name: "Turret", health: 12, attrs: { fighting: 3, agility: 3 } }); T.order(["K", "T"]); return T; };
+  const card = (T) => desk(T).cards.find((c) => c.kind === "reaction");
+  const note = (c, id) => c.options.find((o) => o.id === id)?.note ?? null;
+  { /* the audit's exchange: FIGHTING 4 and +2 from the sheet's effects, against a turret that may block */
+    const T = mk(); T.c.K.bonus = { fighting: 2 }; T.c.T.bonus = { block: 1 };
+    await T.req("p1", decl("K", "slugfest", ["T"]));
+    const p = T.prompt("reaction", "T"), c = card(T);
+    eq(p.data.gm, { att: { dice: 6, attr: "fighting" }, def: { block: 4 } }, "D28: the reaction window carries the pools the engine will roll (attacker 4 + 2, a block 3 + 1)");
+    eq([num(c.lines.find((l) => /attPool/.test(l)), "dice"), note(c, "pass"), note(c, "block")], [6, `ITAC.ui.odds.open|p=${pct(P.pSuccess(6))}`, `ITAC.ui.odds.defended|dice=4,p=${pct(P.pHit(6, 4))}`], "D28: the GM's card names those dice and the chances that follow from them, not the bare attributes");
+    await T.answer("gm", "reaction", "block", "T");
+    const req = T.lastRequest(), line = desk(T).stack[0].rolls.find((r) => r.key === "attack");
+    eq([req.key, req.dice, line.dice, line.chance], ["attack", 6, 6, pct(P.pHit(6, 4))], "D28: the roll that follows has the dice the card named, and 'in progress' counts the block that was chosen");
+    await T.roll("attack", 2);
+    eq(T.requests.filter((r) => r.key === "def:T").pop()?.dice, 4, "D28: the block is rolled with the dice the card named");
+  }
+  { /* no defence: 'in progress' is the open chance of the card */
+    const T = mk(); T.c.K.bonus = { fighting: 2 };
+    await T.req("p1", decl("K", "slugfest", ["T"])); const c = card(T);
+    await T.answer("gm", "reaction", "pass", "T");
+    eq([note(c, "pass"), desk(T).stack[0].rolls[0].chance], [`ITAC.ui.odds.open|p=${pct(P.pSuccess(6))}`, pct(P.pSuccess(6))], "D28: undefended, the card and 'in progress' say the same chance");
+  }
+  { /* everything else that is on the roll is on the card: a weapon, a die the declaration names, the defender's own standing die */
+    const T = mk(); T.c.T.attrs.agility = 5; T.weapons.gun = { id: "gun", name: "Gun", bonus: 2, damage: 3, range: [0, 4], sharp: false };
+    await T.gm({ op: "tokenAdd", token: { id: "hh", holder: "K", dice: 2, scope: { rolls: ["attack"] }, uses: 1, source: { kind: "talent", name: "Hard Hitter", owner: "K" }, expires: { at: "roundEnd" } } });
+    await T.gm({ op: "tokenAdd", token: { id: "plan", holder: "T", dice: 2, scope: { rolls: ["dodge"] }, uses: "all", source: { kind: "power", name: "Action Plan", owner: "T" }, expires: { at: "roundEnd" } } });
+    eq(code(await T.req("p1", decl("K", "shoot", ["T"], { weapon: "gun", tokens: ["hh"] }))), "ok", "D28: a shot with a weapon and a named bonus die is declared");
+    const p = T.prompt("reaction", "T"), c = card(T);
+    await T.answer("gm", "reaction", "dodge", "T");
+    const att = T.lastRequest(); await T.roll("attack", 1);
+    const def = T.requests.filter((r) => r.key === "def:T").pop();
+    eq([p.data.gm.att.dice, p.data.gm.def.dodge], [att.dice, def.dice], "D28: the card's two pools are the two rolls");
+    ok(att.dice > T.c.K.attrs.agility && def.dice > T.c.T.attrs.agility, "D28: (and both are more than the bare attributes)");
+    eq(note(c, "dodge"), `ITAC.ui.odds.defended|dice=${def.dice},p=${pct(P.pHit(att.dice, def.dice))}`, "D28: the dodge on the card is priced with them");
+    ok(!T.state.tokens.some((k) => k.id === "hh"), "D28: (the named die is spent by the roll)");
+  }
+  { /* the numbers shown before the roll spend nothing and write nothing */
+    const T = mk(); await T.gm({ op: "tokenAdd", token: { id: "hh", holder: "K", dice: 2, scope: { rolls: ["attack"] }, uses: 1, source: { kind: "talent", name: "Hard Hitter", owner: "K" }, expires: { at: "roundEnd" } } });
+    await T.req("p1", decl("K", "slugfest", ["T"], { tokens: ["hh"] }));
+    eq([T.prompt("reaction", "T").data.gm.att.dice, T.state.tokens.find((k) => k.id === "hh")?.uses, T.requests.length, (T.top().data.notes ?? []).length], [6, 1, 0, 0], "D28: the card counts the named die without spending it");
+  }
+  { /* hidden information: the pools are the GM's; the player who is asked gets none of them, nor the dice noted with a defence */
+    const T = mk(); T.c.T.bonus = { fighting: 5 }; T.turn("T");
+    await T.gm(decl("T", "slugfest", ["K"]));
+    const meta = { hidden: [], npc: ["T"] }, view = () => View.viewFor(T.state, { id: "p1", staff: false, owns: ["K"] }, meta), p = T.prompt("reaction", "K");
+    eq([p.data.gm.att.dice, view().prompts[p.id].data.gm ?? null, /"dice":8|"gm":/.test(JSON.stringify(view().prompts[p.id]))], [8, null, false], "D28: an NPC's attack pool is on the GM's record of the question and not in the player's");
+    const pm = Desk.playerModel(view(), { id: "p1", owns: ["K"] }, ctx(T)), a = UiM.askData(pm.prompts[0], { t: tr, facts: facts(T, view(), false), own: {}, info: pm.stack });
+    eq([a.options.map((o) => o.id), a.options.every((o) => o.note === null), a.lines.some((l) => /attPool/.test(String(l)))], [["block", "pass"], true, false], "D28: the player's card shows no pool and no percentage of the NPC");
+    await T.answer("p1", "reaction", "block", "K");
+    eq([T.top().data.def.K.dice, view().stack[0].data.def], [T.c.K.attrs.fighting, { K: { defence: "block" } }], "D28: the dice noted with the chosen defence stay out of a player's view");
+  }
+  { /* Knockback: the distance of the rule on both cards; what the map has room for is said beside it, not instead of it */
+    const T = new MTable(); T.hero("K", "p1", { name: "Kid", attrs: { strength: 6 } }).npc("T", { name: "Turret", health: 12 }); T.put("K", "z2").put("T", "z2"); T.order(["K", "T"]);
+    await T.req("p1", decl("K", "slugfest", ["T"])); await T.answer("gm", "reaction", "pass", "T"); await T.roll("attack", 2);
+    await T.req("p1", { op: "answer", prompt: T.prompt("stunts").id, value: ["knockback@T"] });
+    const view = View.viewFor(T.state, { id: "p1", staff: false, owns: ["K"] }, { hidden: [], npc: ["T"] }), pm = Desk.playerModel(view, { id: "p1", owns: ["K"] }, ctx(T));
+    const mine = UiM.askData(pm.prompts.find((x) => x.kind === "knockDir"), { t: tr, facts: facts(T, view, false), own: {}, info: pm.stack });
+    eq(num(mine.lines[0], "n"), 3, "D28: the attacker's card: Knockback of half the STRENGTH 6, three zones [B2435]");
+    await T.req("p1", mine.options.find((o) => o.id === "to:z1").req);
+    const gm = desk(T).cards.find((c) => c.kind === "direction"), d = T.prompt("direction").data;
+    eq([d.distance, d.zones, d.edge], [3, ["z2", "z1"], 1], "D28: toward z1 the map ends after one zone");
+    eq([num(gm.lines[0], "n"), /forcedBy/.test(gm.lines[0]), gm.lines.find((l) => /forcedShort/.test(l)) ?? null, gm.lines.some((l) => /forcedEdge/.test(l))], [3, true, "ITAC.ui.line.forcedShort|n=1,of=3", true],
+      "D28: the GM's card names the same three zones, and says the map has room for one of them and why");
+    const full = UiM.askData({ id: "x", kind: "direction", about: "T", options: [], data: { who: "T", by: "K", zones: ["z1", "z2", "z3", "z4"], distance: 3, walls: [], edge: 0 }, answerReq: () => null }, { t: tr, facts: facts(T, T.state, true), own: {}, desk: true });
+    eq([num(full.lines[0], "n"), full.lines.length], [3, 1], "D28: a chain of the full distance needs no second line");
+  }
+}
+
 done("check-defects");

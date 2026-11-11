@@ -166,6 +166,30 @@ export function revalidate(v, inst) {
 }
 
 /* ------------------------------------------------------------------ helpers */
+/* The attacker's pool, built in ONE place: for the roll itself (step 5) and for the numbers of the reaction window before it (D28: the
+   GM's card counted the bare attribute while the roll carried the sheet's dice, the weapon, the bonus dice ... on top of it).
+   [B2536], [B2430], [R6], [B2511], [B2238], [B2452], [B2543]; P6: a power may be thrown with another attribute; P7 [B3148]: Maneuverability
+   on a ram; [B2827], [R24]: a group of minions. Before the declaration locks the wreck bonus is the one the zone would give now. */
+function attackPool(v, I, tokens) {
+  const kind = kindOf(I), d = I.decl, w = weaponOf(v, I), attr = w?.attr ?? attack.ATTACKS[kind].attr;
+  const t0 = d.targets[0], a = v.facts.c(I.actor), r = v.facts.range(I.actor, t0);
+  const wz = !I.data.wreck && d.wreck ? wreckOf(v, I.actor) : null, wreckBonus = I.data.wreck ? I.data.wreck.bonus ?? 0 : wz?.ok ? wz.bonus : 0;
+  const mods = attack.attackModifiers({ attack: kind, target: I.data.multi ? {} : M.conditions(v.state, t0), weaponBonus: w?.bonus ?? 0, wreckBonus, distance: r?.total ?? null, range: w?.range ?? null,
+    targets: I.data.multi === "fullAuto" ? d.targets.length : 1, helpers: K.helpDiceOf(v, d) });
+  mods.push(...Veh.attackMods(v, I));
+  if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });
+  return { attr, ...K.buildPool(v, I, "attack", I.actor, attr, mods, { rollKind: "attack", tokens }) };
+}
+/* What the dice of an exchange look like before any is rolled, for the GM only (`data.gm` never reaches a player: view-pure.promptView):
+   the attacker's pool as the roll will build it (the bonus dice the declaration names counted in) and the defender's pool for each way of
+   defending. Built on a copy: nothing is spent and no note is written. -> { att: { dice, attr } | null, def: { block?, dodge? } } */
+function oddsFacts(v, I, t, ways) {
+  const J = K.draft(I), out = { att: null, def: {} };
+  try { const p = attackPool(v, J, I.decl.tokens ?? []); out.att = { dice: p.pool.dice, attr: p.attr }; } catch { out.att = null; }
+  for (const id of ways) { try { out.def[id] = defencePool(v, J, t, id, []).pool.dice; } catch { /* no number rather than a wrong one */ } }
+  return out;
+}
+const defencePool = (v, I, t, how, tokens) => K.buildPool(v, I, `def:${t}`, t, attack.DEFENCES[how].attr, [], { rollKind: how, tokens });
 function defencePrompt(v, I, t) {
   const kind = kindOf(I), tf = v.facts.c(t);
   const dq = Veh.defenceOf(v, I, kind);                                                          // P7 [B3434]: the charge or ram that ends a chase
@@ -196,7 +220,8 @@ function defencePrompt(v, I, t) {
   }
   if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget")) options.push(K.reactionOption(v, t, e));      // [B2707]: out of action, no power answers
   const live = options.filter((o) => !o.disabled);
-  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind } };
+  const ways = [...new Set(live.map((o) => String(o.id).split(":")[0]).filter((id) => id === "block" || id === "dodge"))];
+  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, gm: oddsFacts(v, I, t, ways) } };
   if (!live.length) p.auto = { option: K.PASS, reason: df.out ?? (conds.unaware ? "unaware" : "noOption") };                 // plan 5.2 step 4
   else if (tf?.npc) {                                                                                             // spec 13.3 NpcPolicy
     const pol = v.state.npc?.[t] ?? {}, def = live.find((o) => o.id === "block" || o.id === "dodge");
@@ -220,7 +245,9 @@ function applyReaction(v, I, R, cid, key, value, when) {
     }
     if (free) R.effects.push({ t: "stress", who: cid, n: 1 });                                  // P6 [B2105] Defensive: 1 stress, no action
     else R.effects.push({ t: "pay", who: cid, cost: "quick", action: how, interrupt: 1, defense: 1, key: `def:${cid}`, target: [I.actor] });     // [B2447], [B2525]
-    (I.data.def ??= {})[cid] = { defence: how, tokens: Array.isArray(value?.tokens) ? value.tokens.slice(0, 12) : [], ...(free ? { free: "defensive" } : {}) };
+    const dTokens = Array.isArray(value?.tokens) ? value.tokens.slice(0, 12) : [];
+    let dDice = null; try { dDice = defencePool(v, K.draft(I), cid, how, dTokens).pool.dice; } catch { dDice = null; }      // what the defender will roll, as far as it is known now (the desk's chance, D28)
+    (I.data.def ??= {})[cid] = { defence: how, tokens: dTokens, ...(free ? { free: "defensive" } : {}), ...(Number.isFinite(dDice) ? { dice: dDice } : {}) };
     R.events.push({ type: "reaction", who: cid, kind: how, cost: free ? "none" : "quick", stress: free ? 1 : 0 });
     return false;
   }
@@ -390,15 +417,10 @@ export const steps = {
       R.goto = "outcome"; return R;
     }
     if (!K.rollOf(I, "attack")) {
-      const w = weaponOf(v, I), AT = w?.attr ?? A.attr;                                          // P6: a power may be thrown with another attribute
+      const AT = weaponOf(v, I)?.attr ?? A.attr;                                                 // P6: a power may be thrown with another attribute
       const tg = K.tokenGate(v, I, R, I.actor, { kind: "attack", attr: AT }, d.tokens ?? [], "attack");
       if (tg.wait) { R.wait = true; return R; }
-      const t0 = d.targets[0], a = v.facts.c(I.actor), r = v.facts.range(I.actor, t0);
-      const mods = attack.attackModifiers({ attack: kind, target: I.data.multi ? {} : M.conditions(v.state, t0), weaponBonus: w?.bonus ?? 0, wreckBonus: I.data.wreck?.bonus ?? 0, distance: r?.total ?? null, range: w?.range ?? null,
-        targets: I.data.multi === "fullAuto" ? d.targets.length : 1, helpers: K.helpDiceOf(v, d) });        // [B2536], [B2430], [R6], [B2511], [B2238], [B2452], [B2543]
-      mods.push(...Veh.attackMods(v, I));                                                          // P7 [B3148]: Maneuverability on a ram
-      if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });    // [B2827], [R24]
-      const bp = K.buildPool(v, I, "attack", I.actor, AT, mods, { rollKind: "attack", tokens: tg.tokens });
+      const bp = attackPool(v, I, tg.tokens);                                                    // the same builder the reaction window showed its numbers from
       for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
       R.effects.push(K.rollEffect("attack", I.actor, AT, bp.pool, { label: v.entry(I)?.label ?? `ITAC.action.${I.action}`, noPush: !K.mayPush(v, I.actor) }));
       R.wait = true; return R;
@@ -413,7 +435,7 @@ export const steps = {
       if (!K.rollOf(I, key)) {
         const tg = K.tokenGate(v, I, R, t, { kind: df.defence, attr: attack.DEFENCES[df.defence].attr }, df.tokens ?? [], key);      // a die with a purpose waits for the GM's word, as on an attack (spec 6.2)
         if (tg.wait) { waiting = true; continue; }
-        const bp = K.buildPool(v, I, key, t, attack.DEFENCES[df.defence].attr, [], { rollKind: df.defence, tokens: tg.tokens });
+        const bp = defencePool(v, I, t, df.defence, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
         R.effects.push(K.rollEffect(key, t, attack.DEFENCES[df.defence].attr, bp.pool, { defender: true, label: `ITAC.action.${df.defence}` }));
         waiting = true;

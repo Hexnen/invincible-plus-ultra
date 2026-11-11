@@ -11,7 +11,7 @@ import * as Lg from "./ledger-pure.mjs";
 import { standing } from "./mods-pure.mjs";
 import { applies, attrChoices } from "./actions-pure.mjs";
 /* ADDED FOR THE SURFACES (scripts/tactics/ui/; all additive, checked in check-ui.mjs):
-     instance lines carry `steps` (the flow's step ids, for "back to step"), `attr` / `defense` of the catalog entry and `outcomes`;
+     instance lines carry `steps` (the flow's step ids, for "back to step"), `attr` / `defense` of the catalog entry `outcomes`, and `defs` (the defences declared, with their dice in the GM's model);
      deskModel: `npcs` (standing reactions + what is revealed, with ready requests), `mode` + `modeReq`, `turn`;
      barModel: `holdOff` (the slots the turn can be swapped with), `markReq`, and per action `attr`, `defense`, `targetWho`, `kind`, `tags`
                (and `needsTarget` is also true for a non-attack entry that names a target, e.g. orders);
@@ -41,7 +41,9 @@ const turnOf = (state, ctx) => ({ round: state.round ?? null, phase: state.phase
 const entryOf = (state, i) => { try { return state ? C.entryFor(state, i.actor, i.action) : null; } catch { return null; } };
 const kitFacts = (ctx) => (typeof ctx.kit === "function" ? { c: (id) => ({ kit: ctx.kit(id) }) } : null);      // P6: the entries of a character's own sheet (only where this user may read it)
 const instLine = (i, ctx, state = null) => ({ steps: (FLOWS[i.flow]?.STEPS ?? []).slice(), attr: entryOf(state, i)?.roll?.attr ?? null, defense: entryOf(state, i)?.defense ?? null,
-  outcomes: Object.entries(i.data?.out ?? {}).map(([t, o]) => ({ target: t, name: nameOf(ctx, t), hit: o?.hit === true, net: o?.net ?? null })), inst: i.id, action: i.action, label: i.data?.label ?? null, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text });
+  outcomes: Object.entries(i.data?.out ?? {}).map(([t, o]) => ({ target: t, name: nameOf(ctx, t), hit: o?.hit === true, net: o?.net ?? null })),
+  defs: Object.entries(isObj(i.data?.def) ? i.data.def : {}).filter(([, x]) => isObj(x) && x.defence).map(([t, x]) => ({ target: t, defence: x.defence, dice: Number.isFinite(x.dice) ? x.dice : null })),      // the defences declared so far; `dice` only in the full state (a player's view carries the kind alone)
+  inst: i.id, action: i.action, label: i.data?.label ?? null, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text });
 
 /** Everything the GM desk shows. `log` is the journal flag. */
 export function deskModel(state, log, ctx = {}) {
