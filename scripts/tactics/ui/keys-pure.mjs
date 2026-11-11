@@ -71,7 +71,7 @@ export function plan(d, own = {}, ev = {}) {
   if (key === "Enter") {
     if (card && !L.multi) return chosen && chosen !== sfk ? { click: chosen } : null;
     if (card) return !card.submit?.req ? null : (card.options ?? []).some((o) => o.picked) || chosen === sfk ? { click: sfk } : { set: { kopt: sfk } };
-    if (p?.kind === "declare") return p.submit?.req ? { click: "go" } : p.refused?.submit?.req ? { click: "go.itd-go-ask" } : null;
+    if (p?.kind === "declare") return p.refused ? (p.refused.submit?.req ? { click: "go.itd-go-ask" } : null) : p.submit?.req ? { click: "go" } : null;      /* U85: while a declaration is refused the panel has ONE button, the question to the GM (Declare comes back when the refusal goes) */
     if (p?.kind === "other" || p?.kind === "blocked") return p.submit?.req ? { click: "go.itd-go-ask" } : null;
     if (p?.kind === "move" && p.dest) { const can = p.dest.rows.filter((r) => !r.disabled && r.req); return can.length === 1 ? { click: `way:${can[0].id}` } : null; }
     if (d.show && !d.rest && d.end?.armed && d.end.req) return { click: "end" };
