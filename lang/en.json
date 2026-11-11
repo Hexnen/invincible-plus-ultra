@@ -66,7 +66,22 @@
       "migrating": "Migrating your data to version {version}. Please, wait until it finishes.",
       "migrated": "Data migrated to version {version}.",
       "condition": "Condition",
-      "extraConfiguration": "Extra Configuration"
+      "extraConfiguration": "Extra Configuration",
+      "docNewEffect": "New Effect",
+      "docCreateEffect": "Create Effect",
+      "docDeleteEffect": "Delete Effect",
+      "docUpdateEffect": "Update Effect",
+      "docNewAutomation": "New Automation",
+      "docDeleteAutomation": "Delete Automation",
+      "docDuplicateAutomation": "Duplicate Automation",
+      "docNewBoost": "New Boost",
+      "docDeleteBoost": "Delete Boost",
+      "docUpdateBoost": "Update Boost",
+      "docDeleteLimit": "Delete Limit",
+      "docUpdateLimit": "Update Limit",
+      "docNewFeature": "New feature",
+      "docDeleteFeature": "Delete feature",
+      "docUpdateFeature": "Update feature"
     }
   }
 }

@@ -15,6 +15,7 @@
 @import url("session.css");   /* the end-of-session review panel and its Actors directory button (scripts/session/ui/) */
 @import url("tactics-ui.css");   /* tactical combat: the action dock and the GM desk (scripts/tactics/ui/) */
 @import url("tactics.css");   /* tactical combat: the third pip state and the minimal prompt dialogs (scripts/tactics/) */
+@import url("pl.css");   /* Polish for the texts written by CSS (content strings), under html[lang="pl"] */
 
 /* Invincible — Sheet Plus: actor sheets only. Palette: yellow #ffe72a, cyan #0096cb, blue #3465a3. */
 .invincible.sheet.actor {
@@ -149,6 +150,16 @@
 .invincible.sheet.actor div.bar > label:first-child {
   color: var(--isp-blue);
   letter-spacing: 1px;
+}
+/* The label keeps its whole word in any language ("DETERMINACJA" is twice as long as "RESOLVE" and was cut to "DETERMIN"):
+   it never shrinks, both rows share one label column so the two bars stay equally long. */
+.invincible.sheet.actor:not(.challenge):not(.vehicle) div.bar > label:first-child {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 8.6em;
+  font-size: 15px;
+  letter-spacing: .5px;
+  white-space: nowrap;
 }
 
 /* ---------- bar rows on a plate (they sit on the busy backdrop) ---------- */

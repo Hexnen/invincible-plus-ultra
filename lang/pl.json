@@ -738,6 +738,7 @@
   "Save": "Zapisz",
   "Power Boost": "Wzmocnienie mocy",
   "Select the attribute": "Wybierz atrybut",
+  "Create item": "Utwórz przedmiot",
   " CHAT": {
     "Dismiss": "Odrzuć"
   },
@@ -756,7 +757,22 @@
       "migrating": "Trwa migracja danych do wersji {version}. Poczekaj, aż się skończy.",
       "migrated": "Dane zmigrowane do wersji {version}.",
       "condition": "Stan",
-      "extraConfiguration": "Dodatkowa konfiguracja"
+      "extraConfiguration": "Dodatkowa konfiguracja",
+      "docNewEffect": "Nowy efekt",
+      "docCreateEffect": "Utwórz efekt",
+      "docDeleteEffect": "Usuń efekt",
+      "docUpdateEffect": "Edytuj efekt",
+      "docNewAutomation": "Nowa automatyzacja",
+      "docDeleteAutomation": "Usuń automatyzację",
+      "docDuplicateAutomation": "Duplikuj automatyzację",
+      "docNewBoost": "Nowe wzmocnienie",
+      "docDeleteBoost": "Usuń wzmocnienie",
+      "docUpdateBoost": "Edytuj wzmocnienie",
+      "docDeleteLimit": "Usuń ograniczenie",
+      "docUpdateLimit": "Edytuj ograniczenie",
+      "docNewFeature": "Nowy przedmiot",
+      "docDeleteFeature": "Usuń przedmiot",
+      "docUpdateFeature": "Edytuj przedmiot"
     }
   }
 }

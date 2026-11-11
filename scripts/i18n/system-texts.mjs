@@ -36,6 +36,20 @@ export const KEYLESS = Object.freeze({
 export const DOM_TEXTS = Object.freeze({ condition: "Condition", extraConfiguration: "Extra Configuration" });
 /** The system's roll-mode dialog title has a typo ("Invincilble: <flavor>"); shown corrected in every language. */
 export const TITLE_TYPO = "Invincilble: ";
+/** The system's templates call the CORE's phrases with an English word inside: {{localize 'DOCUMENT.New' type='Automation'}} gives
+    "Nowa Automation". id -> [core key, the type word of the template]; the whole phrase in both languages is IPU.Sys.<id>. */
+export const DOC_PHRASES = Object.freeze({
+  docNewEffect: ["DOCUMENT.New", "Effect"], docCreateEffect: ["DOCUMENT.Create", "Effect"], docDeleteEffect: ["DOCUMENT.Delete", "Effect"], docUpdateEffect: ["DOCUMENT.Update", "Effect"],
+  docNewAutomation: ["DOCUMENT.New", "Automation"], docDeleteAutomation: ["DOCUMENT.Delete", "Automation"], docDuplicateAutomation: ["DOCUMENT.Duplicate", "Automation"],
+  docNewBoost: ["DOCUMENT.New", "Boost"], docDeleteBoost: ["DOCUMENT.Delete", "Boost"], docUpdateBoost: ["DOCUMENT.Update", "Boost"],
+  docDeleteLimit: ["DOCUMENT.Delete", "Limit"], docUpdateLimit: ["DOCUMENT.Update", "Limit"],
+  docNewFeature: ["DOCUMENT.New", "feature"], docDeleteFeature: ["DOCUMENT.Delete", "feature"], docUpdateFeature: ["DOCUMENT.Update", "feature"],
+});
+/** The blank option of the power-level select is written in the template (blank="(dynamic)"); its Polish is the system key below. */
+export const BLANK_LEVEL = Object.freeze({ text: "(dynamic)", key: "INVINCIBLE.Item.Power.FIELDS.level.dynamic" });
+const squash = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+/** The placeholder of the name field in the system's sheet templates (a literal, no key). */
+export const NAME_PLACEHOLDER = "Name";
 
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const MATCHERS = Object.entries(KEYLESS).map(([id, en]) => {
@@ -82,10 +96,38 @@ function swapText(root, selector, id) {
     if (el.children.length === 0 && el.textContent.trim() === from) el.textContent = el.textContent.replace(from, to);
   }
 }
+/** Pure: what the core made of each phrase in this language -> our text. `i18n` needs has / localize / format. */
+export function docPhraseMap(i18n) {
+  const map = new Map();
+  for (const [id, [key, type]] of Object.entries(DOC_PHRASES)) {
+    if (!i18n.has(NS + id) || !i18n.has(key)) continue;
+    const from = squash(i18n.format(key, { type })), to = i18n.localize(NS + id);
+    if (from && to && from !== to) map.set(from, to);
+  }
+  return map;
+}
+let docMap = null;
+function swapDocPhrases(root) {
+  docMap ??= docPhraseMap(game.i18n);
+  if (!docMap.size || !root?.querySelectorAll) return;
+  for (const el of root.querySelectorAll("a, button, [data-tooltip]")) {
+    const tip = el.getAttribute("data-tooltip");                       // the templates break some of these over two lines: compare with the spaces squashed
+    if (tip && docMap.has(squash(tip))) el.setAttribute("data-tooltip", docMap.get(squash(tip)));
+    for (const n of el.childNodes) if (n.nodeType === 3 && docMap.has(squash(n.nodeValue))) n.nodeValue = n.nodeValue.replace(n.nodeValue.trim(), docMap.get(squash(n.nodeValue)));
+  }
+  if (game.i18n.has(BLANK_LEVEL.key)) for (const o of root.querySelectorAll('select option[value=""]')) if (o.textContent.trim() === BLANK_LEVEL.text) o.textContent = game.i18n.localize(BLANK_LEVEL.key);
+}
 const rootOf = (html) => (html instanceof HTMLElement ? html : html?.[0] ?? null);
 
+/** Called when the module's script loads. That is BEFORE Foundry knows the system (game.system is not there yet), and, because the file
+    is imported dynamically, it may also be AFTER the init hook has fired: so start now when the system is known, else on init. */
 export function init() {
-  if (game.system?.id !== SYSTEM) return;
+  if (globalThis.game?.system?.id) start(); else Hooks.once("init", start);
+}
+let started = false;
+function start() {
+  if (started || game.system?.id !== SYSTEM) return;
+  started = true;
   for (const hook of ["init", "setup", "ready"]) Hooks.once(hook, wrapNotifier);
   wrapNotifier();
   // the roll card: "<li><strong>Condition</strong>: ..." (templates/dice/infos.hbs)
@@ -96,15 +138,19 @@ export function init() {
       const el = rootOf(element) ?? app?.element;
       if (!el?.classList) return;
       if (el.classList.contains("invincible") && el.classList.contains("item")) swapText(el, "label", "extraConfiguration");
+      if (el.classList.contains("invincible")) swapDocPhrases(el);
+      // the name field of every sheet: placeholder='Name' (templates/actor/header.hbs, challenge.hbs, vehicle.hbs, item/header.hbs); "Name" is a literal key of lang/pl.json
+      if (el.classList.contains("invincible") && game.i18n.has(NAME_PLACEHOLDER)) for (const inp of el.querySelectorAll(`input[name="name"][placeholder="${NAME_PLACEHOLDER}"]`)) inp.placeholder = game.i18n.localize(NAME_PLACEHOLDER);
       const title = el.querySelector?.(".window-header .window-title");
       if (title && title.textContent.startsWith(TITLE_TYPO)) title.textContent = `Invincible: ${title.textContent.slice(TITLE_TYPO.length)}`;
     } catch { /* cosmetic */ }
   });
-  Hooks.once("ready", () => {
+  const warn = () => {
     try {
       if (game.i18n.lang === "pl" && game.i18n.localize("INVINCIBLE.Actor.Tabs.Portrait") !== "Portret") {
         console.warn(`${MOD} | The Polish translation of the Invincible system (lang/pl.json) is not loaded: restart the Foundry server once so it reads this module's language list.`);
       }
     } catch { /* nothing to report */ }
-  });
+  };
+  if (game.ready) warn(); else Hooks.once("ready", warn);
 }

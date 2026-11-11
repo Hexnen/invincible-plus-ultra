@@ -3,6 +3,7 @@
  * are deliberately narrow and every lookup is guarded, so a changed system degrades to "no effect", not to errors.
  */
 
+import "./i18n/early-lang.mjs";   // FIRST: the client's language before the init hooks name the settings (see the file)
 import { isLabel } from "./i18n/sys-labels.mjs";
 
 const T0 = performance.now(); // shared clock: looping animations keep their phase when the system re-renders the whole sheet
