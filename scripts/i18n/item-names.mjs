@@ -172,7 +172,7 @@ function actorSheet(actor, el) {
     const label = host.matches("label") ? host : host.querySelector(":scope > label, :scope > .item-name, :scope > div > label");
     if (item.type === "power") {
       const lvl = String(item.system?.powerLevel ?? ""), shown = displayName(item);
-      if (label && lvl.trim()) swapIn(label, `${lvl}${rawName(item)}`, powerLabel(shown, lvl)) || swapIn(label, rawName(item), shown);
+      if (label && lvl.trim()) swapIn(label, `${lvl}${rawName(item)}`, powerLabel(shown, item.system?.level ? levelWord(item.system.level) : lvl)) || swapIn(label, rawName(item), shown);
       else if (label) swapIn(label, rawName(item), shown);
       /* its boosts and limits stand under it without an identifier: they are this actor's items of that power */
       for (const strong of host.querySelectorAll(":scope .boostLimit > strong")) {
@@ -208,6 +208,16 @@ function itemSheet(app, item, el) {
   for (const t of el.querySelectorAll(`[data-tooltip="${CSS.escape(p.en)}"]`)) t.dataset.tooltip = p.shown;
   const title = (app?.window?.title ?? el.querySelector(".window-header .window-title"));
   if (title && title.textContent.includes(p.en)) title.textContent = title.textContent.replace(p.en, p.shown);
+}
+/* the system's roll dialog of an item (it carries `item`): its heading and its window title name the item and the automation ("Blast - Basic") */
+function rollDialog(app, el) {
+  const item = app.item;
+  if (!pairOf(item)) return;
+  for (const node of el.querySelectorAll("label.title, .window-header .window-title")) for (const n of node.childNodes) {
+    if (n.nodeType !== 3 || !n.nodeValue.includes(rawName(item))) continue;
+    const text = n.nodeValue.trim(), at = text.indexOf(rawName(item));
+    n.nodeValue = n.nodeValue.replace(text, text.slice(0, at) + shownText(text.slice(at), item));
+  }
 }
 /* the sidebar's item lists: the world's items and the item compendia (templates/sidebar/*-entry-partial.hbs glue the level before a power's name) */
 function directory(app, el) {
@@ -278,6 +288,7 @@ function start() {
       if (doc?.documentName === "Actor" && el.classList.contains(SYSTEM)) actorSheet(doc, el);
       else if (doc?.documentName === "Item") itemSheet(app, doc, el);
       else if (app?.collection?.documentName === "Item") directory(app, el);
+      else if (app?.item?.documentName === "Item" && NAMES_PL[app.item.type]) rollDialog(app, el);
     } catch { /* cosmetic: the stored names stay */ }
   });
   Hooks.on("renderChatMessageHTML", (message, html) => { try { if (active()) chatCard(message, rootOf(html)); } catch { /* cosmetic */ } });
