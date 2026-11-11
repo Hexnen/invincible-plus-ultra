@@ -229,7 +229,7 @@ const closed = (T) => T.evs("actionClosed").pop()?.summary?.result;
   /* the holder itself: only movement and the grapple attack [B2497] */
   const U = base();
   await gmStatus(U, "H1", "grappling", { held: "N1" });
-  eq([code(await U.req("p1", decl("H1", "scan"))), why(U.last), U.last.error.params.gmMayAllow], ["illegal", "holding", 1], "the holder can do nothing of this package while holding");
+  eq([code(await U.req("p1", decl("H1", "scan"))), why(U.last), U.last.error.params.gmMayAllow], ["illegal", "grappling", 1], "the holder can do nothing of this package while holding (the one word of the attack flow and of the declare gate)");
 }
 /* ================================================================== escapeTrap [B2438]: AGILITY or STRENGTH, quick, not opposed */
 {

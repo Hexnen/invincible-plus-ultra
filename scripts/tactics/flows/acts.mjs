@@ -50,7 +50,7 @@ function legality(v, inst) {
   if (other && (!sf || sf.present === false)) return bad("noTarget");
   if ((e?.target?.n?.[0] ?? 0) > 0 && !other) return bad("noTarget");
   if (a.health <= 0 && !(kind === "rally" && !other)) return bad("broken");                                  // [B2707]: a broken character may only try to rally [B2773]
-  if (M.hasStatus(v.state, inst.actor, "grappling")) return bad("holding", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else
+  if (M.hasStatus(v.state, inst.actor, "grappling")) return bad("grappling", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else
   if (e?.tags?.includes("physical")) { const r = RESTRAINTS.find((s) => M.hasStatus(v.state, inst.actor, s)); if (r) return bad("restrained", { ...GM, status: r }); }
   if (e?.roll && !e.roll.optional && !attrOf(v, inst)) return bad("noAttribute");
   if (d.attr && e?.roll && !e.roll.attr && !attrChoices(e).includes(d.attr)) return bad("noAttribute");

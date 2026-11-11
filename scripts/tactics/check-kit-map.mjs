@@ -88,7 +88,7 @@ export function fakeZones(def) {
       if (direction === "up" || direction === "down") {                                         // zones-api.md section 14: the rungs of one zone (here: the ground and the elevated position, a rooftop between them)
         const up = direction === "up", can = up ? from.level !== "elevated" : from.level !== "ground";
         const plan = planOf(from, [from.zone], null, can ? { level: up ? "elevated" : "ground", floor: null, airborne: up } : null, true);
-        return { ...plan, vertical: true, ray: { dx: 0, dy: 0, dz: up ? 1 : -1, end: can && distance <= 1 ? "distance" : up ? "top" : "ground", points: [] } };
+        return { ...plan, total: plan.steps.length, borders: 0, levels: plan.steps.length, vertical: true, ray: { dx: 0, dy: 0, dz: up ? 1 : -1, end: can && distance <= 1 ? "distance" : up ? "top" : "ground", points: [] } };
       }
       const pos = (z) => Z.zones[z].pos, other = place(awayFrom ?? toward);
       let dx = direction?.dx ?? 0, dy = direction?.dy ?? 0;
