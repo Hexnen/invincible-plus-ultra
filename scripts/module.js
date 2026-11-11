@@ -1812,6 +1812,11 @@ import("./combat/main.mjs")
   .then((combat) => combat.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | combat banners not loaded (everything else is unaffected)`, err));
 
+/* THE SHARED KIT (scripts/kit.mjs, styles/kit.css; ledger U65): the module's tooltip panel for every surface outside the fight. */
+import("./kit.mjs")
+  .then((kit) => kit.start())
+  .catch((err) => console.warn(`${MODULE_ID} | shared kit not loaded (tooltips keep Foundry's default look, everything else is unaffected)`, err));
+
 /* COMIC FONT OPTION (scripts/fontoption.mjs, fonts/user/): client setting "Font: comic lettering" (Komikah / ActionFigure BB from the user's own
    file / condensed sans); injects a <style id="isp-font-style"> redefining the family Comic. Same mechanism and recorded phases as above. */
 import("./fontoption.mjs")

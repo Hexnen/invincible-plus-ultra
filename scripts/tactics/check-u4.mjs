@@ -64,7 +64,7 @@ const pview = (T, u, owns) => V.viewFor(T.state, { id: u, staff: false, owns }, 
   ok(!(T.state.statuses.H2 ?? []).some((s) => s.id === "afflicted"), "what lasted until the end of its turn has ended");
   /* the table is told */
   const line = T.log.list.slice(logFrom).find((x) => /turnPassed/.test(x.label?.gm ?? ""));
-  eq([line?.label.gm, line?.label.pub], ["N1: {ITAC.journal.turnPassed.unconscious}", "N1: {ITAC.journal.turnPassed.unconscious}"], "the journal has a line for the GM and for the players");
+  eq([line?.label.gm, V.pubLine(line?.label)], ["N1: {ITAC.journal.turnPassed.unconscious}", "N1: {ITAC.journal.turnPassed.unconscious}"], "the journal has a line for the GM and for the players");
   const news = pview(T, "p1", ["H1"]).news.filter((n) => n.kind === "turn");
   eq(news.map((n) => [n.actor, n.result]), [["N1", "pass.unconscious"]], "the players' news says whose turn passed and why");
   ok("ITAC.result.pass.unconscious" in EN && "ITAC.result.pass.unconscious" in PL, "and that reads as a sentence in both languages");

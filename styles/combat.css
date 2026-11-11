@@ -309,7 +309,7 @@
   background: var(--icbar-yellow);
   border: 2px solid var(--icbar-ink);
   border-radius: 0;
-  box-shadow: 3px 3px 0 var(--icbar-cyan);
+  box-shadow: 3px 3px 0 var(--ipu-press);   /* a button: the kit's blue hard shadow (styles/kit.css), like the dock's */
   cursor: var(--cursor-pointer, pointer);
   transform: none;                  /* leans -6deg with the band, like the Challenges handle */
   transition: transform .12s var(--icbar-out), background-color .12s var(--icbar-out), box-shadow .12s var(--icbar-out);
@@ -318,10 +318,10 @@
 #invincible-combat-bar .icbar-nav > i { display: block; transform: skewX(6deg); font: 900 .8em/1 var(--icbar-fa); }
 #invincible-combat-bar .icbar-g-prev::before { content: "\f048"; }
 #invincible-combat-bar .icbar-g-next::before { content: "\f051"; }
-#invincible-combat-bar .icbar-nav:not(:disabled):is(:hover, :focus-visible) { background: #fff27a; transform: translate(-1px, -1px); }
-#invincible-combat-bar .icbar-nav:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--icbar-cyan); }
+#invincible-combat-bar .icbar-nav:not(:disabled):is(:hover, :focus-visible) { background: #fff27a; transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ipu-press); }
+#invincible-combat-bar .icbar-nav:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ipu-press); }
 #invincible-combat-bar .icbar-nav:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-#invincible-combat-bar .icbar-nav:disabled { opacity: .4; cursor: default; box-shadow: 1px 1px 0 var(--icbar-cyan); }
+#invincible-combat-bar .icbar-nav:disabled { color: var(--ipu-label); background: transparent; border: 2px dashed var(--ipu-line); box-shadow: none; cursor: default; }   /* unavailable = hollow and dashed, never opacity alone */
 
 /* ---------- the strip: scrolls sideways when the tiles do not fit; thin bar, fades at the edges that have more ---------- */
 #invincible-combat-bar .icbar-scroller {
@@ -735,7 +735,7 @@
   background: var(--icbar-yellow);
   border: 2px solid var(--icbar-ink);
   border-radius: 0;
-  box-shadow: 3px 3px 0 var(--icbar-cyan);
+  box-shadow: 3px 3px 0 var(--ipu-press);
   cursor: var(--cursor-pointer, pointer);
   transition: translate .12s var(--icbar-out), box-shadow .12s var(--icbar-out), background-color .16s linear, color .16s linear, border-color .16s linear;
 }
@@ -749,9 +749,9 @@
   box-shadow: none;
 }
 #invincible-combat-bar .icbar-gb[data-st="used"] .icbar-gb-t { text-decoration: line-through; text-decoration-thickness: 1.5px; }
-#invincible-combat-bar .icbar-gb:hover { translate: -1px -1px; box-shadow: 4px 4px 0 var(--icbar-cyan); }
+#invincible-combat-bar .icbar-gb:hover { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ipu-press); }
 #invincible-combat-bar .icbar-gb[data-st="used"]:hover { box-shadow: 1px 1px 0 var(--icbar-frame); color: #fff; }
-#invincible-combat-bar .icbar-gb:active { translate: 2px 2px; box-shadow: 1px 1px 0 var(--icbar-cyan); }
+#invincible-combat-bar .icbar-gb:active { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ipu-press); }
 #invincible-combat-bar .icbar-gb:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 #invincible-combat-bar.icbar-gm .icbar-tile[data-active] .icbar-acts { display: none; }
 @media (pointer: coarse) {

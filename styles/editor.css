@@ -64,7 +64,7 @@ body:has(.invincible.sheet prose-mirror.active) :is(#prosemirror-dropdown, .pros
   background: #fff;
   border: 2px solid #0c1a2e;
   border-radius: 0;
-  box-shadow: 2px 2px 0 #0c1a2e;
+  box-shadow: none;   /* a tool is a hollow button; only Save, the thing to press, has the hard shadow (styles/kit.css) */
   cursor: pointer;
   transition: transform .12s cubic-bezier(.2, .7, .2, 1), background-color .12s;
 }
@@ -72,15 +72,15 @@ body:has(.invincible.sheet prose-mirror.active) :is(#prosemirror-dropdown, .pros
   background: #ffe72a;
   color: #0c1a2e;
   transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 #0c1a2e;
 }
-.invincible.sheet.application prose-mirror menu button:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 #0c1a2e; }
+.invincible.sheet.application prose-mirror menu button:active { transform: translate(2px, 2px); }
+/* a tool that is on is the CHOSEN one among hollow siblings: yellow */
 .invincible.sheet.application prose-mirror menu button.active,
 .invincible.sheet.application prose-mirror menu button.source-code-action {
-  background: #3465a3;
-  color: #fff;
+  background: #ffe72a;
+  color: #0c1a2e;
 }
-.invincible.sheet.application prose-mirror menu button:focus-visible { outline: 3px solid #0c1a2e; outline-offset: 2px; }
+.invincible.sheet.application prose-mirror menu button:focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: var(--ipu-ring-gap); }
 .invincible.sheet.application prose-mirror menu .pm-dropdown { width: auto; min-width: 30px; }
 .invincible.sheet.application prose-mirror menu .pm-dropdown.format { min-width: 92px; justify-content: space-between; }
 .invincible.sheet.application prose-mirror menu .pm-dropdown > span { font-size: 13px; }
@@ -88,8 +88,9 @@ body:has(.invincible.sheet prose-mirror.active) :is(#prosemirror-dropdown, .pros
 /* the two buttons that finish the job sit on the right of the first row */
 .invincible.sheet.application prose-mirror menu li.right { margin-left: auto; }
 .invincible.sheet.application prose-mirror menu li.right ~ li.right { margin-left: 0; }
-.invincible.sheet.application prose-mirror menu li.right > button[data-action="save"] { background: #ffe72a; }
-.invincible.sheet.application prose-mirror menu li.right > button[data-action="save"]:hover { background: #fff27a; }
+.invincible.sheet.application prose-mirror menu li.right > button[data-action="save"] { background: #ffe72a; box-shadow: 3px 3px 0 var(--ipu-press); }
+.invincible.sheet.application prose-mirror menu li.right > button[data-action="save"]:hover { background: #fff27a; box-shadow: 4px 4px 0 var(--ipu-press); }
+.invincible.sheet.application prose-mirror menu li.right > button[data-action="save"]:active { box-shadow: 1px 1px 0 var(--ipu-press); }
 .invincible.sheet.application prose-mirror menu .concurrent-users {
   height: 30px;
   padding: 0 6px;

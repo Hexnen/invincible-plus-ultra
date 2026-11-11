@@ -125,7 +125,7 @@ li.chat-message.message {
   & .message-header .message-metadata a.message-dismiss:is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-yellow); border-color: var(--isp-ink); }
   & .message-header .message-metadata a.message-delete:is(:hover, :focus-visible)  { color: #fff; background: var(--isp-red); border-color: var(--isp-ink); }
   & .message-header .message-metadata :is(a.message-delete, a.message-dismiss):active { transform: translate(1px, 1px); }
-  & .message-header .message-metadata :is(a.message-delete, a.message-dismiss):focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 1px; }
+  & .message-header .message-metadata :is(a.message-delete, a.message-dismiss):focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: 1px; }
 
   & .message-header div.sender { border-bottom: 2px solid var(--isp-cyan); }
 
@@ -250,7 +250,7 @@ li.chat-message.message {
   & .message-content :is(a.content-link, a.inline-roll) > i { color: var(--isp-blue); }
   & .message-content :is(a.content-link, a.inline-roll):is(:hover, :focus-visible) { background: var(--isp-hover); transform: translate(-1px, -1px); }
   & .message-content :is(a.content-link, a.inline-roll):active { transform: translate(1px, 1px); }
-  & .message-content a:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+  & .message-content a:focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: var(--ipu-ring-gap); }
   & .message-content a.content-link.broken { border-style: dashed; color: var(--isp-red-ink); }
 
   /* ======================================================================
@@ -355,7 +355,7 @@ li.chat-message.message {
   & .message-content .dice-roll.expanded .dice-formula::after { transform: rotate(180deg); }
   & .message-content .dice-roll:hover .dice-formula { background: var(--isp-paper); transform: translate(-1px, -1px); }
   & .message-content .dice-roll:active .dice-formula { transform: translate(3px, 3px); }
-  & .message-content .dice-roll:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 3px; }   /* active as soon as the template gets tabindex */
+  & .message-content .dice-roll:focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: 3px; }   /* active as soon as the template gets tabindex */
 
   /* ======================================================================
      EXPANDED: core already animates grid-template-rows 0fr -> 1fr; this adds easing, a fade and a small slide of the wrapper
@@ -648,33 +648,34 @@ li.chat-message.message {
     height: auto;
     min-height: 36px;
     padding: 4px 6px;
-    font: 700 .88rem/1 Comic, sans-serif;
-    letter-spacing: .03em;
+    font: 400 .95rem/1 Titles, Comic, sans-serif;   /* a button's label: Titles caps, like the dock and the windows (styles/kit.css) */
+    letter-spacing: .05em;
     white-space: nowrap;   /* Push / Accept side by side at 312px: a label may never break inside a word ("ACCEP / T") */
     text-transform: uppercase;
     color: var(--isp-ink);
     background: var(--isp-yellow);
     border: 2px solid var(--isp-ink);
-    box-shadow: 3px 3px 0 var(--isp-ink);
+    box-shadow: 3px 3px 0 var(--ipu-press);   /* the thing to press now: yellow with the blue hard shadow */
     cursor: pointer;
-    transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
+    transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
   }
   & .message-content div.dice-buttons button.dice-button::before { font: 900 .8em/1 var(--isp-fa); }
   & .message-content div.dice-buttons button.dice-button[data-action="pushRoll"]::before,
   & .message-content div.dice-buttons button.dice-button[data-action="push"]::before { content: "\f021"; }
   & .message-content div.dice-buttons button.dice-button[data-action="acceptRoll"]::before { content: "\f00c"; }
   & .message-content div.dice-buttons button.dice-button[data-action="applyTargetDamage"]::before { content: "\f0e7"; }
-  /* accept: the quiet one (white, ink frame) */
-  & .message-content div.dice-buttons button.dice-button[data-action="acceptRoll"] { background: #fff; }
-  /* hover keeps the system's blue flip (white on blue 5.94); accept goes paper (ink on paper 15.5) */
-  & .message-content div.dice-buttons button.dice-button:not([disabled]):is(:hover, :focus-visible) { color: #fff; background: var(--isp-blue); transform: translate(-1px, -1px); }
-  & .message-content div.dice-buttons button.dice-button[data-action="acceptRoll"]:not([disabled]):is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-paper); }
-  & .message-content div.dice-buttons button.dice-button:not([disabled]):active { transform: translate(3px, 3px); }
-  & .message-content div.dice-buttons button.dice-button:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
-  & .message-content div.dice-buttons button.dice-button[disabled] { cursor: not-allowed; box-shadow: none; }
-  /* apply damage: consequential, so inverted (yellow on ink 13.9) with a cyan shadow */
+  /* accept: the quiet one (hollow: white, ink frame, no shadow) */
+  & .message-content div.dice-buttons button.dice-button[data-action="acceptRoll"] { background: #fff; box-shadow: none; }
+  /* the kit's states: hover lifts 1px and the shadow grows, press sinks 2px and it shrinks; accept goes paper (ink on paper 15.5); unavailable is dashed */
+  & .message-content div.dice-buttons button.dice-button:not([disabled]):is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-hover); transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ipu-press); }
+  & .message-content div.dice-buttons button.dice-button[data-action="acceptRoll"]:not([disabled]):is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-paper); box-shadow: none; }
+  & .message-content div.dice-buttons button.dice-button:not([disabled]):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ipu-press); }
+  & .message-content div.dice-buttons button.dice-button[data-action="acceptRoll"]:not([disabled]):active { box-shadow: none; }
+  & .message-content div.dice-buttons button.dice-button:focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: var(--ipu-ring-gap); }
+  & .message-content div.dice-buttons button.dice-button[disabled] { color: var(--isp-hint); background: transparent; border-style: dashed; border-color: var(--isp-hint); box-shadow: none; cursor: not-allowed; }
+  /* apply damage: consequential, so inverted (yellow on ink 13.9); the same blue hard shadow */
   & .message-content div.dice-buttons.apply-damage { margin-top: 8px; }
-  & .message-content div.dice-buttons.apply-damage button.dice-button { color: var(--isp-yellow); background: var(--isp-ink); box-shadow: 3px 3px 0 var(--isp-cyan); }
+  & .message-content div.dice-buttons.apply-damage button.dice-button { color: var(--isp-yellow); background: var(--isp-ink); box-shadow: 3px 3px 0 var(--ipu-press); }
   & .message-content div.dice-buttons.apply-damage button.dice-button:not([disabled]):is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-yellow); }
 
   /* ======================================================================
@@ -1297,7 +1298,7 @@ li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li:not(:ha
 /* with a tooltip: only the help cursor and a darker border on hover/focus say "there are rules here" (no icon, so the tags stay short) */
 li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li[data-tooltip-html]:not(:has(> p)) { cursor: help; }
 li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li[data-tooltip-html]:not(:has(> p)):is(:hover, :focus-visible) { border-color: var(--t-ink); }
-li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li:not(:has(> p)):focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li:not(:has(> p)):focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: var(--ipu-ring-gap); }
 
 /* ---- effect label ("[Boost] Fists of Fury" is split by module.js into .isp-etype + .isp-ename) ---- */
 li.chat-message.message .message-content ul.effects > li .isp-etype {
@@ -1343,29 +1344,7 @@ li.chat-message.message .message-content ul.effects > li > p:first-child { margi
   li.chat-message.message .message-content :is(ul.stunts, ul.effects) > li:not(:has(> p)) { min-height: 44px; }
 }
 
-/* ---- Foundry's tooltip for these tags: ink panel, yellow name, white rules text (module.js adds .isp-tip; the :has() fallback
-   catches the stunt tooltips' <strong>name</strong><p>rules</p> shape without it). Floating, so a soft shadow, not a hard one. ---- */
-#tooltip:is(.isp-tip, :has(> strong:first-child + p:last-child)) {
-  max-width: min(22rem, 90vw);
-  padding: 8px 12px 10px;
-  font: 500 .875rem/1.45 Comic, sans-serif;
-  text-align: left;
-  text-wrap: pretty;
-  color: #e9eff9;               /* 15.2 on ink */
-  background: #0c1a2e;
-  border: 1px solid #ffe72a;
-  border-radius: 0;
-  box-shadow: 0 6px 18px rgba(12, 26, 46, .38);
-}
-#tooltip:is(.isp-tip, :has(> strong:first-child + p:last-child)) > strong {
-  display: block;
-  margin: 0 0 4px;
-  font: 700 .95rem/1.2 Comic, sans-serif;
-  letter-spacing: .02em;
-  color: #ffe72a;               /* 13.9 on ink */
-}
-#tooltip:is(.isp-tip, :has(> strong:first-child + p:last-child)) p { margin: 0; color: inherit; }
-#tooltip:is(.isp-tip, :has(> strong:first-child + p:last-child)) p + p { margin-top: .45em; }
+/* ---- Foundry's tooltip for these tags (module.js adds .isp-tip): the module's one tooltip panel, styles/kit.css ---- */
 
 /* the Splash badge tucks up over the portrait strip; the content box clips by default, so it must not clip here */
 li.chat-message.message .message-content:has(> .ins-chat) { overflow: visible; }
@@ -1808,8 +1787,8 @@ li.chat-message.message .message-content .isp-dmg-act button.isp-undo {
   min-height: 32px;
   margin: 0;
   padding: 4px 12px;
-  font: 700 .84rem/1 Comic, sans-serif;
-  letter-spacing: .03em;
+  font: 400 .9rem/1 Titles, Comic, sans-serif;
+  letter-spacing: .05em;
   white-space: nowrap;
   text-transform: uppercase;
   text-shadow: none;
@@ -1817,14 +1796,14 @@ li.chat-message.message .message-content .isp-dmg-act button.isp-undo {
   background: #fff;
   border: 2px solid var(--isp-ink);
   border-radius: 0;
-  box-shadow: 3px 3px 0 var(--isp-ink);
+  box-shadow: none;   /* a secondary button is hollow (styles/kit.css) */
   cursor: pointer;
   transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
 }
 li.chat-message.message .message-content .isp-dmg-act button.isp-undo::before { content: "\f2ea"; font: 900 .8em/1 var(--isp-fa); }   /* rotate-left */
 li.chat-message.message .message-content .isp-dmg-act button.isp-undo:not([disabled]):is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-paper); transform: translate(-1px, -1px); }
-li.chat-message.message .message-content .isp-dmg-act button.isp-undo:not([disabled]):active { transform: translate(3px, 3px); }
-li.chat-message.message .message-content .isp-dmg-act button.isp-undo:focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+li.chat-message.message .message-content .isp-dmg-act button.isp-undo:not([disabled]):active { transform: translate(2px, 2px); }
+li.chat-message.message .message-content .isp-dmg-act button.isp-undo:focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: var(--ipu-ring-gap); }
 li.chat-message.message .message-content .isp-dmg-act button.isp-undo[disabled] { color: var(--isp-hint); background: #fff; border-style: dashed; border-color: var(--isp-hint); box-shadow: none; cursor: progress; }
 li.chat-message.message .message-content .isp-dmg-act .isp-undo-sr {
   position: absolute;
@@ -1977,7 +1956,7 @@ li.chat-message.message .message-content .isp-stunts li.isp-pk:not([data-off="1"
   box-shadow: 2px 2px 0 var(--isp-ink);
 }
 li.chat-message.message .message-content .isp-stunts li.isp-pk[data-on="1"]:hover { background: var(--isp-hover); }
-li.chat-message.message .message-content .isp-stunts li.isp-pk:has(.isp-pk-btn:focus-visible) { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+li.chat-message.message .message-content .isp-stunts li.isp-pk:has(.isp-pk-btn:focus-visible) { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: var(--ipu-ring-gap); }
 li.chat-message.message .message-content .isp-stunts li.isp-pk:has(.isp-pk-btn:active):not([data-off="1"]) { transform: translate(1px, 1px); box-shadow: none; }
 
 /* the buttons inside a pick: reset Foundry's button chrome, the pick itself is the frame */
@@ -2091,20 +2070,21 @@ li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go, butto
   background: var(--isp-yellow);
   border: 2px solid var(--isp-ink);
   border-radius: 0;
-  box-shadow: 3px 3px 0 var(--isp-ink);
+  box-shadow: 3px 3px 0 var(--ipu-press);
   text-shadow: none;
   cursor: pointer;
-  transition: transform .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
+  transition: transform .12s var(--isp-ease), box-shadow .12s var(--isp-ease), background-color .12s var(--isp-ease), color .12s var(--isp-ease);
 }
 li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go, button.isp-st-clear)[hidden] { display: none; }
 li.chat-message.message .message-content .isp-stunts button.isp-st-go::before { content: "\e4e9"; font: 900 .8em/1 var(--isp-fa); }
-li.chat-message.message .message-content .isp-stunts button.isp-st-clear { background: #fff; }
+li.chat-message.message .message-content .isp-stunts button.isp-st-clear { background: #fff; box-shadow: none; }
 li.chat-message.message .message-content .isp-stunts button.isp-st-clear:not(.isp-st-dialog)::before { content: "\f0e2"; font: 900 .8em/1 var(--isp-fa); }
 li.chat-message.message .message-content .isp-stunts button.isp-st-dialog { margin-top: 8px; width: auto; }
-li.chat-message.message .message-content .isp-stunts button.isp-st-go:not([aria-disabled="true"]):is(:hover, :focus-visible) { color: #fff; background: var(--isp-blue); transform: translate(-1px, -1px); }
+li.chat-message.message .message-content .isp-stunts button.isp-st-go:not([aria-disabled="true"]):is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-hover); transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ipu-press); }
 li.chat-message.message .message-content .isp-stunts button.isp-st-clear:is(:hover, :focus-visible) { color: var(--isp-ink); background: var(--isp-paper); transform: translate(-1px, -1px); }
-li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go:not([aria-disabled="true"]), button.isp-st-clear):active { transform: translate(3px, 3px); }
-li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go, button.isp-st-clear):focus-visible { outline: 3px solid var(--isp-ink); outline-offset: 2px; }
+li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go:not([aria-disabled="true"]), button.isp-st-clear):active { transform: translate(2px, 2px); }
+li.chat-message.message .message-content .isp-stunts button.isp-st-go:not([aria-disabled="true"]):active { box-shadow: 1px 1px 0 var(--ipu-press); }
+li.chat-message.message .message-content .isp-stunts :is(button.isp-st-go, button.isp-st-clear):focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-paper); outline-offset: var(--ipu-ring-gap); }
 /* not ready: dashed, no shadow, hint text (still focusable; pressing it says how many are missing) */
 li.chat-message.message .message-content .isp-stunts button.isp-st-go[aria-disabled="true"] {
   color: var(--isp-hint);

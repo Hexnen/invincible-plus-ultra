@@ -23,6 +23,11 @@ const callAsync = async (name, ...args) => {
   try { return (await a[name](...args)) ?? { ok: false, reason: "error" }; } catch (err) { warn(name, err); return { ok: false, reason: "error" }; }
 };
 export const available = () => typeof api()?.zoneOfToken === "function" && typeof api()?.range === "function";
+/** D39 (spec 7.3): is there a map to ask on this client's scene? No zones drawn, or the fight's scene is not the one open here: nothing
+    positional is asked of the map and the steps fall back to the GM, exactly as without the map module. */
+export const usable = () => { if (!available()) return false; const k = call("keys"); return !Array.isArray(k) || k.length > 0; };
+/* a token the map cannot place: of a scene that is not open (null), or standing outside every zone (zone null, no off-map area) */
+const placed = (token) => { const p = call("zoneOfToken", token); return !!p && (p.zone != null || !!p.area); };
 /** May this client write (the active GM)? Without the map's own answer nobody may. */
 export const canWrite = () => call("canWrite") === true;
 export const version = () => call("version") ?? null;
@@ -34,7 +39,7 @@ export const place = (where) => call("place", where) ?? null;
 /** the 3-D zone of a token as one string ("z3", "z3:f2", "@sky") | null. Two combatants share a zone exactly when their spots are equal. */
 export const spotOf = (token) => placeOf(token)?.spot ?? null;
 /** { total, borders, levels } | null (no attack possible) | undefined (no zones on this scene: the engine then asks nothing of range). */
-export const range = (a, b) => (available() ? call("range", a, b) ?? null : undefined);
+export const range = (a, b) => (usable() && placed(a) && placed(b) ? call("range", a, b) ?? null : undefined);      // D39: `null` is the map's own "no attack possible" (off-map areas), never "I do not know where they stand"
 export const route = (a, b, way = "walk") => call("route", a, b, way) ?? null;
 export const path = (a, b, opts) => call("path", a, b, opts) ?? null;
 export const zonesWithin = (where, n, opts) => call("zonesWithin", where, n, opts) ?? [];
