@@ -136,4 +136,73 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
   ok(/"\.\.\/check-kit"/.test(src) && /"u11"/.test(src), "U79: check-all runs scripts/check-kit.mjs and this suite");
 }
 
+/* ---- I. U62: the size */
+{
+  eq([Lay.scaleOf(100), Lay.scaleOf(79), Lay.scaleOf(500), Lay.scaleOf(117), Lay.scaleOf("125"), Lay.scaleOf("x"), Lay.scaleOf(0)], [100, 80, 140, 115, 125, 100, 100], "U62: the size is clamped to 80..140 on steps of 5; anything unreadable is 100");
+  eq([Lay.factorOf(130), Lay.factorOf(null)], ["1.3", "1"], "U62: the factor the stylesheet multiplies by");
+  const body = (v) => ({ style: { getPropertyValue: () => v } });
+  eq([Lay.factor(body("1.3")), Lay.factor(body("")), Lay.factor(null), Lay.factor(body("-2"))], [1.3, 1, 1, 1], "U62: the factor in force is read back from the body (absent = 1)");
+  const css = readFileSync(new URL("../../styles/tactics-ui.css", import.meta.url), "utf8");
+  ok(/\.itd-stack \{[^}]*zoom: var\(--ita-scale, 1\)[^}]*max-height: calc\(var\(--itd-room, 100vh\) \/ var\(--ita-scale, 1\)\)/.test(css), "U62: the dock's stack is zoomed and its room divided back");
+  ok(/width: 348px; zoom: var\(--ita-scale, 1\)/.test(css) && /\.igd-handle \{\s*zoom: var\(--ita-scale, 1\)/.test(css), "U62: the desk and its handle are zoomed");
+  ok(/calc\(\(var\(--igd-maxh, 80vh\) - 4px\) \/ var\(--ita-scale, 1\)\)/.test(css) && /calc\(var\(--itd-panel-maxh, 60vh\) \/ var\(--ita-scale, 1\)\)/.test(css), "U62: every window length handed into a zoomed box is divided by the size");
+  const dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8");
+  ok(/const k = Lay\.factor\(document\.body\)/.test(dock) && /barEl\.scrollWidth \* k/.test(dock) && /stack\.offsetWidth \* k/.test(dock) && /offsetHeight \?\? 0\) \* k/.test(dock), "U62: the placement multiplies the stack's own lengths by the size before they meet the window");
+  const main = readFileSync(new URL("./main.mjs", import.meta.url), "utf8");
+  ok(/reg\("tacticsUiScale", \{[^}]*scope: "client"[^}]*range: \{ min: 80, max: 140, step: 5 \}[^}]*default: 100/.test(main), "U62: a client setting with a slider, separate from Foundry's scale");
+  ok(EN["ITAC.Settings.tacticsUiScale.Name"] && PL["ITAC.Settings.tacticsUiScale.Name"] && PL["ITAC.Settings.tacticsUiScale.Hint"], "U62: named in both languages");
+}
+
+/* ---- J. U64: the layout a user left */
+{
+  eq(Lay.clean(null), { hotbar: false, keys: false, desk: null, folds: {} }, "U64: nothing stored = the default layout");
+  eq(Lay.clean(null, { hotbar: true, keys: true }), { hotbar: true, keys: true, desk: null, folds: {} }, "U64: what the browser remembered before seeds a user without a layout");
+  eq(Lay.clean({ hotbar: false }, { hotbar: true }).hotbar, false, "U64: (a stored choice wins over the seed)");
+  eq(Lay.clean({ hotbar: "yes", desk: "left", folds: { force: false, bogus: true, npcs: "x", karma: true }, extra: 1 }), { hotbar: false, keys: false, desk: null, folds: { force: false } }, "U64: an unknown key, a wrong type and a default value are dropped");
+  eq([Lay.folded(Lay.clean(null), "force"), Lay.folded(Lay.clean(null), "npcs"), Lay.folded(Lay.clean({ folds: { npcs: true } }), "npcs"), Lay.folded(Lay.clean(null), "nope")], [true, false, true, false], "U64 / U80: the three tools start folded, the NPC answers open");
+  const a = Lay.clean(null), b = Lay.merge(a, { folds: { force: false } }), c = Lay.merge(b, { desk: "folded" });
+  ok(b !== a && Lay.merge(b, { folds: { force: false } }) === b && Lay.merge(a, {}) === a, "U64: a change gives a new layout, no change gives the same object (nothing is written)");
+  eq(c, { hotbar: false, keys: false, desk: "folded", folds: { force: false } }, "U64: changes add up");
+  eq([Lay.stored(a), Lay.stored(c), Lay.stored(Lay.merge(c, { folds: { force: true } }))], [{}, { desk: "folded", folds: { force: false } }, { desk: "folded" }], "U64: only what differs from the default is stored");
+  eq([Lay.deskStart(a), Lay.deskStart(c), Lay.deskStart(Lay.merge(c, { desk: "open" }))], [null, { collapsed: true, touched: true }, { collapsed: false, touched: true }], "U64: the desk starts as it was left, or by the room when never chosen");
+  const store = readFileSync(new URL("./store.mjs", import.meta.url), "utf8"), ui = readFileSync(new URL("./ui/main.mjs", import.meta.url), "utf8"), desk = readFileSync(new URL("./ui/desk.mjs", import.meta.url), "utf8");
+  ok(/export async function saveUserPref\(key, value\) \{ try \{ await game\.user\?\.update\(/.test(store), "U64: the layout is written to the user's own document (store.mjs)");
+  ok(/Store\.saveUserPref\(LAYOUT_FLAG, Lay\.stored\(layout\)\)/.test(ui) && /layoutStart\(\);/.test(ui), "U64: read when the surfaces start, written after a change");
+  for (const id of Object.keys(Lay.FOLDS)) ok(new RegExp(`foldSec\\("${id}"`).test(desk), `U80: the "${id}" part of the Table tab folds`);
+  ok(/"aria-expanded": String\(!shut\)/.test(desk), "U63 / U80: a folded part says so to a screen reader, and by its chevron");
+}
+
+/* ---- K. U63: a state is never told by colour alone */
+{
+  const css = readFileSync(new URL("../../styles/tactics-ui.css", import.meta.url), "utf8"), dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8");
+  eq(new Set(Object.values(M.NEWS_ICON)).size, Object.keys(M.NEWS_ICON).length, "U63: every tone of the news line has its own picture");
+  eq(Object.keys(M.NEWS_ICON).sort(), ["bad", "good", "info", "nudge", "warn"], "U63: (all five tones)");
+  ok(/icon\(d\.news\.icon \?\? "fa-comment-dots"\)/.test(dock), "U63: the dock draws the tone's picture");
+  ok(/\.itd-char-asked::after \{[^}]*border-radius: 0; rotate: 45deg/.test(css), "U63: asked = a diamond, on turn = a disc");
+  ok(/\.itd-slot\[data-state="lost"\] > i \{ background: var\(--ita-x\)/.test(css) && /\.igd-uslot\[data-state="lost"\] \{ background: var\(--ita-x\)/.test(css), "U63: a lost slot is crossed out (a pending one is an empty dashed frame)");
+  ok(/\[data-extra\]\):not\(\[data-state="used"\], \[data-state="lost"\]\)::after \{ content: "\+"/.test(css), "U63: a granted slot carries a plus");
+  ok(/\.itd-ic\[data-urgent\]:not\(\[aria-disabled="true"\]\)::after \{ content: "!"/.test(css), "U63: 'only now' is a mark on the button");
+  ok(/r\.warn && !r\.disabled \? icon\("fa-triangle-exclamation"\)/.test(dock), "U63: a way with something waiting on it carries the warning sign");
+}
+
+/* ---- L. U70, U71: what stands over the dock */
+{
+  const css = readFileSync(new URL("../../styles/tactics-ui.css", import.meta.url), "utf8"), dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8"), ui = readFileSync(new URL("./ui/main.mjs", import.meta.url), "utf8");
+  ok(/body\.ita-tactics \.mm-dst-chip \{ top: auto !important; bottom: var\(--itd-over, 120px\); \}/.test(css) && /setProperty\("--itd-over"/.test(dock), "U70: the map's 'My view' chip stands above the dock's whole stack");
+  ok(/Hooks\.on\("renderChatMessageHTML",[^\n]*Sys\.tacticsOf\(message\)[^\n]*classList\.add\("ita-troll"\)/.test(ui) && /body\.ita-tactics #chat-notifications \.chat-message\.ita-troll \{ display: none; \}/.test(css), "U71: the toast of a tactical roll's card is not shown while the dock is up");
+}
+
+/* ---- M. U78: the names the system writes without the item */
+{
+  const N = await import("../i18n/item-names.mjs");
+  const lv = (id) => ({ basic: "Podstawowy", major: "Większy" })[id] ?? id;
+  eq(N.shownLoose("basic Flight - 2 zones", lv), "Lot (Podstawowy) - strefy: 2", "U78: a power's use offered in the choice dialog");
+  eq(N.shownLoose("Blast attack", lv), `${N.entryByName("power", "Blast").pl}: atak`, "U78: an automation named after its power");
+  eq([N.shownLoose("Concussion Turret", lv), N.shownLoose("Bijatyka", lv), N.shownLoose("", lv)], ["Concussion Turret", "Bijatyka", ""], "U78: a text that names no power stays as written");
+  eq([N.entryIn("Major Fire Control attack")?.en, N.entryIn("Blasting cap")], ["Fire Control", null], "U78: a name is found as whole words only");
+  const src = readFileSync(new URL("../i18n/item-names.mjs", import.meta.url), "utf8");
+  ok(/looseDialog\(el\)/.test(src) && /unnamedEffects\(el\)/.test(src) && /localize\("DOCUMENT\.ActiveEffect"\)/.test(src), "U78: the choice dialog, the confirmation's title and an unnamed effect in the pool are said in the client's language");
+}
+
+
 done("check-u11");

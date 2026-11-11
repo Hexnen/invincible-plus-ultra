@@ -515,6 +515,9 @@ export function start() {
     layoutStart();      // U64
     applyScale();       // U62
     /* U62: the slider in the settings window shows the size while it is dragged; closing the window without saving puts the kept size back */
+    /* U71: the card of a tactical roll is marked: while the dock is up its toast is not shown (the roll, its Push and Accept are on the
+       dock's own chip; the card itself stays in the chat log) */
+    Hooks.on("renderChatMessageHTML", (message, html) => { try { if (Sys.tacticsOf(message)) (html instanceof HTMLElement ? html : html?.[0])?.classList.add("ita-troll"); } catch { /* the toast shows */ } });
     Hooks.on("renderSettingsConfig", (_app, el) => { try { const box = el instanceof HTMLElement ? el : el?.[0]; const input = box?.querySelector(`[name="${MOD}.tacticsUiScale"]`); for (const ev of ["input", "change"]) input?.addEventListener(ev, () => applyScale(input.value)); } catch { /* the saved value still applies */ } });
     Hooks.on("closeSettingsConfig", () => setTimeout(() => applyScale(), 50));
     Board.start({ t, set: setDock, send: (req, after) => send("dock", req, after), press: (fk) => Dock.press(fk), notify, refresh, showToken, dock: () => st.dock, unit: (cid) => unitOf(cid, true),

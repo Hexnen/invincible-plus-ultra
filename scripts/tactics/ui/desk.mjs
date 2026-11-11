@@ -16,6 +16,7 @@
               the vehicles (who sits where, the state of the machine) and the challenges (a book preset, what the GM runs by hand)
      Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), a hazard let loose by hand, the karma notes, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
 import { h, icon, swap, askCard, rollButtons, visibleRect, face } from "./dom.mjs";
+import * as Lay from "./layout-pure.mjs";
 
 const ID = "invincible-tactics-desk";
 const minH = (H) => Math.round(Math.max(240, Math.min(320, H * 0.36)));      // px the open desk keeps whatever floats under it (276 in a 768 px window)
@@ -68,7 +69,7 @@ export function place() {
   /* a chat toast in this column: the desk ends above the highest of them, down to MIN_H; the toasts keep to what is left under that */
   const t0 = Math.min(top, maxTop);
   let need = t0 + minH(H);
-  try { const body = box?.querySelector(".igd-body"), first = body?.querySelector(".ita-ask, .igd-manual"); if (first) need = Math.max(need, first.getBoundingClientRect().bottom + body.scrollTop + 14); } catch { /* not drawn */ }
+  try { const body = box?.querySelector(".igd-body"), first = body?.querySelector(".ita-ask, .igd-manual"); if (first) need = Math.max(need, first.getBoundingClientRect().bottom + body.scrollTop * Lay.factor(document.body) + 14); } catch { /* not drawn */ }
   const least = Math.min(floor, need);
   let end = floor;
   if (!last?.d?.collapsed) for (const m of document.querySelectorAll("#chat-notifications .chat-log > .chat-message")) { const r = visibleRect(m); if (r && r.right > W - right - 380 && r.left < W - right && r.bottom > t0) end = Math.min(end, r.top - 8); }

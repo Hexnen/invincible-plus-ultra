@@ -17,6 +17,10 @@ export function scaleOf(v) {
 }
 /** the factor the stylesheet multiplies by ("1.15") */
 export const factorOf = (v) => String(scaleOf(v) / 100);
+/** the factor in force, read back from where the stylesheet reads it (--ita-scale on the body; absent or unreadable = 1) */
+export function factor(body) {
+  try { const n = parseFloat(body?.style?.getPropertyValue?.("--ita-scale")); return Number.isFinite(n) && n > 0 ? n : 1; } catch { return 1; }
+}
 
 /* the parts of the desk's Table tab that fold, and how they stand for a GM who never touched them: the three tools used now and then
    start folded (their headings stay, with their counts), so the per-NPC answers are on screen without scrolling (U80) */

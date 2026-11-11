@@ -179,7 +179,7 @@
 #invincible-tactics-dock .itd-char .ita-face { width: 100%; height: 100%; }
 #invincible-tactics-dock .itd-char[aria-pressed="true"] { border-color: var(--ita-yellow); }
 #invincible-tactics-dock .itd-char-turn::after, #invincible-tactics-dock .itd-char-asked::after { content: ""; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; background: var(--ita-yellow); border: 2px solid var(--ita-ink); border-radius: 50%; }
-#invincible-tactics-dock .itd-char-asked::after { background: var(--ita-red-lt); }
+#invincible-tactics-dock .itd-char-asked::after { background: var(--ita-red-lt); border-radius: 0; rotate: 45deg; }      /* U63: asked = a diamond, its turn = a disc */
 .itd-id { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; }
 .itd-nameline { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
 .itd-nameno { flex: none; margin-left: -3px; font: 700 12.5px/1.1 Comic, sans-serif; color: #fff; }
@@ -215,7 +215,13 @@
 .itd-slot[data-extra] > i { background: var(--ita-cyan); }
 .itd-slot[data-state="pending"] > i { background: transparent; border: 2px dashed var(--ita-cyan); box-shadow: none; }
 .itd-slot[data-state="used"] > i { background: linear-gradient(to top right, transparent calc(50% - 1px), var(--ita-line) calc(50% - 1px), var(--ita-line) calc(50% + 1px), transparent calc(50% + 1px)); border-color: var(--ita-line); box-shadow: none; }
-.itd-slot[data-state="lost"] > i { background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; opacity: .7; }
+.itd-slot[data-state="lost"] > i { background: var(--ita-x); border: 2px dashed var(--ita-line); box-shadow: none; opacity: .7; }
+/* U63 NOT BY COLOUR ALONE: every state of a slot has its own drawing. Free = filled; granted on top (extra) = filled with a plus;
+   being paid = an empty dashed frame; used = one stroke across; lost = a dashed frame crossed out. The same on the desk's unit card. */
+:is(.itd-slot > i, .igd-uslot) { --ita-x: linear-gradient(to top right, transparent calc(50% - 1px), var(--ita-line) calc(50% - 1px), var(--ita-line) calc(50% + 1px), transparent calc(50% + 1px)), linear-gradient(to bottom right, transparent calc(50% - 1px), var(--ita-line) calc(50% - 1px), var(--ita-line) calc(50% + 1px), transparent calc(50% + 1px)); }
+:is(.itd-slot[data-extra] > i, .igd-uslot[data-extra]):not([data-state="used"], [data-state="lost"])::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; font: 700 11px/1 ui-monospace, Consolas, monospace; color: var(--ita-ink); transform: skewX(14deg); }
+.itd-slot[data-extra]:is([data-state="used"], [data-state="lost"]) > i::after { content: none; }
+:is(.itd-slot[data-extra][data-state="pending"] > i, .igd-uslot[data-extra][data-state="pending"])::after { color: var(--ita-cyan); }
 #invincible-tactics-dock .itd-slot:hover:not([aria-disabled="true"]) > i { translate: -1px -1px; }
 #invincible-tactics-dock .itd-slot[aria-disabled="true"] { cursor: help; }
 .itd-slot[data-pv] > i { background: #fff; animation: itd-blink .8s steps(2, jump-none) infinite; }
@@ -248,6 +254,8 @@
 #invincible-tactics-dock .itd-ic[data-urgent]:hover:not([aria-disabled="true"], .itd-armed) { box-shadow: 4px 4px 0 var(--ita-red); }
 #invincible-tactics-dock .itd-ic[data-urgent]:active:not([aria-disabled="true"]), #invincible-tactics-dock .itd-ic[data-urgent].itd-armed { box-shadow: 1px 1px 0 var(--ita-red); }
 #invincible-tactics-dock .itd-ic[data-urgent][aria-disabled="true"] { box-shadow: none; }
+/* U63: "only now" is a mark on the button's corner as well as the red shadow */
+#invincible-tactics-dock .itd-ic[data-urgent]:not([aria-disabled="true"])::after { content: "!"; position: absolute; right: -6px; bottom: -6px; display: grid; place-items: center; width: 11px; height: 12px; font: 700 9.5px/1 ui-monospace, Consolas, monospace; color: #fff; background: var(--ita-red); border: 1px solid var(--ita-ink); pointer-events: none; }
 /* a button that opens a list (More actions, Abilities) is hollow yellow with a caret: it spends nothing by itself */
 #invincible-tactics-dock .itd-ic-more { color: var(--ita-yellow); background: transparent; border-color: var(--ita-yellow); box-shadow: none; }
 #invincible-tactics-dock .itd-ic-more > i + i { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-size: 9px; }
@@ -367,6 +375,7 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 #invincible-tactics-dock .itd-way:hover:not([aria-disabled="true"]) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-way:active:not([aria-disabled="true"]) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-way[data-warn]:not([aria-disabled="true"]) { background: #fff; box-shadow: 3px 3px 0 var(--ita-red); }
+.itd-way-l > i { font-size: 11px; color: var(--ita-red); }      /* U63: a way with something waiting on it carries the warning sign */
 #invincible-tactics-dock .itd-way[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; cursor: pointer; }
 #invincible-tactics-dock .itd-way[aria-disabled="true"]:hover, #invincible-tactics-dock .itd-way[aria-disabled="true"].itd-armed { color: #fff; border-color: #fff; }
 #invincible-tactics-dock .itd-way[aria-disabled="true"].itd-armed { border-style: solid; }
@@ -622,6 +631,11 @@ body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-gma { display: none !imp
 body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-scroller { padding-bottom: 1.5em; }
 body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-tile[data-active] .icbar-acts:not([hidden]) { display: flex; }
 /* U6: chat toasts keep to the strip under the open desk (ui/desk.mjs measures it); the newest stays, older ones scroll out of it */
+/* U71: the toast of a tactical roll's own card is not shown while the dock is up (ui/main.mjs marks the card) */
+body.ita-tactics #chat-notifications .chat-message.ita-troll { display: none; }
+/* U70: the map's "My view" chip stands above the dock's WHOLE stack. The map puts it above the declared dock only while the dock is
+   lower than 60 % of the window; with a panel and a question open the stack is taller and the chip (drawn over the dock) landed on it. */
+body.ita-tactics .mm-dst-chip { top: auto !important; bottom: var(--itd-over, 120px); }
 body.ita-desk-open #chat-notifications .overflow { height: auto; max-height: var(--igd-toast-maxh, 40vh); }
 /* U6: the module's own end-of-session notice stands above the dock instead of on it */
 body.ita-tactics .ips-notice { bottom: var(--itd-clear, 124px); }
@@ -700,7 +714,9 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 .igd-uslot[data-extra] { background: var(--ita-cyan); }
 .igd-uslot[data-state="pending"] { background: transparent; border: 2px dashed var(--ita-cyan); outline: 0; }
 .igd-uslot[data-state="used"] { background: linear-gradient(to top right, transparent calc(50% - 1px), var(--ita-line) calc(50% - 1px), var(--ita-line) calc(50% + 1px), transparent calc(50% + 1px)); border-color: var(--ita-line); outline: 0; }
-.igd-uslot[data-state="lost"] { background: transparent; border: 2px dashed var(--ita-line); outline: 0; }
+.igd-uslot { position: relative; }
+.igd-uslot::after { font-size: 9px !important; }
+.igd-uslot[data-state="lost"] { background: var(--ita-x); border: 2px dashed var(--ita-line); outline: 0; }
 .igd-uvs { display: flex; flex-direction: column; gap: 3px; }
 .igd-uv { --c: var(--ita-red-lt); display: flex; align-items: center; gap: 6px; cursor: help; }
 .igd-uv[data-id="resolve"] { --c: var(--ita-cyan); }
