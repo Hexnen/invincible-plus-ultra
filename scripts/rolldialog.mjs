@@ -11,7 +11,8 @@
      - (U82) names the attack's facts (damage, least and greatest range, armor, stress price) so the stylesheet can draw each as a
        picture with its number on one strip; the fact's name becomes its tooltip and stays in the window for a screen reader,
      - (U87) marks a range whose least and greatest are the same number (Slugfest: 0 and 0), so the strip shows that number once;
-       its tooltip then carries both names, and both numbers with their names stay in the window for a screen reader,
+       its tooltip is then the plain word for range (U92), and both numbers with their own names ("least", "greatest") stay in
+       the window for a screen reader,
      - (U82) gives a part of the pool whose name does not fit on its line the whole name as its tooltip,
      - gives the window the module's tooltip panel.
    Nothing is computed here (two shown numbers are compared, no more) and no button is added, removed, reordered or rewired. If this file does not run, the stylesheet falls
@@ -59,8 +60,10 @@ export function oneRange(min, max) {
   const x = Number(a), y = Number(b);
   return Number.isFinite(x) && Number.isFinite(y) && x === y;
 }
-/* U87 pure: the tooltip of the one number that stands for both ends of the range: both of the system's names */
-export const bothNames = (min, max) => `${min} = ${max}`;
+/* U92 the tooltip of the one number that stands for both ends of the range is the plain word for range: the system's own label of
+   the least-and-greatest pair on an item's attack ("Range"; "Zasięg" in the module's Polish). Only the tooltip: the two numbers keep
+   their own names for a screen reader */
+export const RANGE = "INVINCIBLE.Automation.FIELDS.rollAttack.range.label";
 
 function facts(el) {
   const box = el.querySelector("div.separator + div.breakdown");
@@ -79,7 +82,8 @@ function facts(el) {
   const { min, max } = found;
   if (min && max && oneRange(min.querySelector("input")?.value, max.querySelector("input")?.value)) {
     max.dataset.irdSame = "";                                                                          // drawn out of sight, still read out
-    min.dataset.tooltip = bothNames(names.min, names.max);
+    const range = game.i18n.localize(RANGE);
+    if (range && range !== RANGE) min.dataset.tooltip = range;                                         // no such word: the least's own name stays
   }
   box.dataset.irdFacts = "";
 }
