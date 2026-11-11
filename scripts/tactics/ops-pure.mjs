@@ -16,6 +16,7 @@ import * as S from "./state-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
 import * as I from "./initiative-pure.mjs";
 import * as Sch from "./scheduler-pure.mjs";
+import { statusAdd } from "./mods-pure.mjs";
 
 export const PROTO = 1;
 /* what a player may send in P1 (spec 12.2 rows endTurn, holdOff, answer) plus `mark`, the manual action mark that replaces the old tray
@@ -330,6 +331,15 @@ const OPS = {
     W.surprised = a.surprised ?? []; W.groups = a.groups ?? [];
     ev(W, "combatStart", { mode: W.s.mode, kind: W.s.kind });
     startRound(W, 1);
+    /* spec 6.3 [B2279], [B2430]: a defender who failed the surprise roll is unaware of the attacker: no block, no dodge, +2 for a slugfest
+       attacker. Each one on the GM's list gets the status here (whatever card its group drew); the book does not say when it ends, so
+       only the GM clears it [OQ-7]. */
+    for (const id of new Set(a.surprised ?? [])) {
+      const p = partOf(W, id);
+      if (!p || p.defeated || p.challenge || p.vehicle) continue;
+      W.s.statuses = { ...(W.s.statuses ?? {}), [id]: statusAdd(W.s, id, { id: "unaware", source: { kind: "gm", name: "surprise" } }).to };
+      ev(W, "status", { target: id, status: { id: "unaware", on: true }, cause: "surprise" });
+    }
     run(W);
   },
   stop(W) { ev(W, "combatEnd", { mode: W.s.mode, kind: W.s.kind }); W.s = null; },

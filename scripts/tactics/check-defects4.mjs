@@ -8,6 +8,7 @@ import * as I from "./initiative-pure.mjs";
 import * as Desk from "./desk-pure.mjs";
 import * as K from "./kit-pure.mjs";
 import { MTable } from "./check-kit-map.mjs";
+import * as M from "./mods-pure.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? (env.changed === false ? "ok(unchanged)" : "ok") : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -330,6 +331,24 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
     const held = T.top()?.data.hold === "exception" || T.top()?.status === "manual", n = paid(T).length;
     const a = held ? await T.req("p1", { op: "amend", inst: T.top().id, decl: { to: "z2" } }) : null;
     ok(!held || (code(a) !== "ok" && T.spot("H1") === "z3" && paid(T).length === n), `P8d: with nothing left to pay with the change is refused and nobody moves (${a ? ans(a) : "not held"})`); }
+}
+
+/* ================================================================== docs against code, spec 6.3 [B2279], [B2430]: a defender on the list of
+   the surprised is unaware from the start (the spec was right, `start` wrote no status); only the GM clears it [OQ-7]. */
+{
+  const T = new T4(); T.hero("H1", "p1").npc("N1").npc("N2");
+  await T.gm({ op: "start", mode: "tactical", surprised: ["N1", "ghost"] }); await settle(T);
+  const st = (id) => M.statusesOf(T.state, id).map((s) => s.id);
+  eq([st("N1"), st("N2"), st("H1"), Object.keys(T.state.statuses)], [["unaware"], [], [], ["N1"]], "spec 6.3: the surprised defender is unaware from the start, nobody else, and no entry for an id that is not in the fight");
+  ok(T.events.some((e) => e.type === "status" && e.target === "N1" && e.status?.id === "unaware" && e.status.on === true), "spec 6.3: the status is announced");
+  if (T.state.init.curMember !== "H1") T.turn("H1");
+  await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } });
+  const p = T.state.prompts[Object.keys(T.state.prompts).find((k) => T.state.prompts[k].kind === "reaction" && T.state.prompts[k].about === "N1")];
+  eq([p?.auto?.reason ?? null, (p?.options ?? []).filter((o) => !o.disabled && o.id !== "pass").map((o) => o.id)], ["unaware", []], "spec 6.3 [B2430]: the unaware defender neither blocks nor dodges");
+  await settle(T);
+  eq(T.lastRequest()?.pool?.mods?.find((m) => /unaware/i.test(String(m.source)))?.dice ?? null, 2, "spec 6.3 [B2430]: the slugfest attacker rolls two dice more");
+  await T.roll("attack", 0); await settle(T);
+  eq([code(await T.gm({ op: "statusRemove", combatant: "N1", id: "unaware" })), st("N1")], ["ok", []], "spec 6.3 [OQ-7]: it stays until the GM takes it away");
 }
 
 done("check-defects4");
