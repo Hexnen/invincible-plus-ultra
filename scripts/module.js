@@ -1818,6 +1818,12 @@ import("./kit.mjs")
   .then((kit) => kit.start())
   .catch((err) => console.warn(`${MODULE_ID} | shared kit not loaded (tooltips keep Foundry's default look, everything else is unaffected)`, err));
 
+/* THE SYSTEM'S ROLL DIALOG in the module's look (scripts/rolldialog.mjs, styles/rolldialog.css; ledger U69): the window keeps the system's
+   template and buttons; this names the main way to roll and opens it at the width of a caption card. */
+import("./rolldialog.mjs")
+  .then((rd) => rd.start())
+  .catch((err) => console.warn(`${MODULE_ID} | roll dialog look not loaded (the dialog keeps four worded buttons, everything else is unaffected)`, err));
+
 /* COMIC FONT OPTION (scripts/fontoption.mjs, fonts/user/): client setting "Font: comic lettering" (Komikah / ActionFigure BB from the user's own
    file / condensed sans); injects a <style id="isp-font-style"> redefining the family Comic. Same mechanism and recorded phases as above. */
 import("./fontoption.mjs")
