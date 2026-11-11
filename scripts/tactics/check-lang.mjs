@@ -50,7 +50,7 @@ for (const c of codes) need.add(`ITAC.err.${c}`);
 for (const o of E.REVALIDATE_OPTIONS) need.add(`ITAC.opt.${o}`);
 /* the journal: every GM edit and every word a flow may close with reads as a string of the reader's language, never as an id */
 for (const op of E.GM_EDIT_OPS) need.add(`ITAC.edit.${op}`);
-for (const k of ["gm", "clock", "wardReset", "stress", "sceneEnd"]) need.add(`ITAC.journal.${k}`);
+for (const k of ["gm", "clock", "wardReset", "stress", "sceneEnd", "fireSpread"]) need.add(`ITAC.journal.${k}`);
 for (const f of files) for (const m of readFileSync(join(dir, f), "utf8").matchAll(/data\.result = ([^;\n]*)/g)) for (const w of m[1].matchAll(/"([A-Za-z]+)"/g)) need.add(`ITAC.result.${w[1]}`);
 for (const k of ["out", "stays", "spreads", "nowhere", "held", "healthy", "sick", "cured", "dead", "manual"]) need.add(`ITAC.result.${k}`);      // the words that come from the rules library (fire spread, disease) and from a resolution by hand
 for (const k of ["fire", "blast", "area", "vacuum", "disease"]) need.add(`ITAC.ui.hz.kind.${k}`);

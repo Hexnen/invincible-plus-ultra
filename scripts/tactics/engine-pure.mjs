@@ -198,7 +198,7 @@ function label(X, inst, what) {
   const a = inst.actor ? X.facts.c(inst.actor) : null, e = C.entryFor(X.state, inst.actor, inst.action);
   /* the engine has no language: an action and a result are written as `{key}` marks that the surfaces put into the reader's language (lang.mjs
      `marks`); an entry with a name of its own (a granted power) keeps that name */
-  const act = e?.name || (typeof e?.label === "string" && !e.label.startsWith("ITAC.") ? e.label : `{ITAC.action.${inst.action}}`);
+  const act = e?.name || (typeof e?.label === "string" && !e.label.startsWith("ITAC.") ? e.label : inst.action === "fireSpread" ? "{ITAC.journal.fireSpread}" : `{ITAC.action.${inst.action}}`);      // the card of the spread is titled with a question; the journal states what it was
   const res = what ? ` ({ITAC.result.${what}})` : "";
   /* nobody's action (a hazard, a forced move, a consequence of a challenge, a waiting trigger): the doer is the GM's hand or nobody, never an id;
      what it is comes from the hazard's kind or from the trigger's own name; `{zone:key}` is the place, named by the surface as the map names it */

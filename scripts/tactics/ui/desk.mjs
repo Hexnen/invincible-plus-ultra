@@ -40,7 +40,10 @@ export function place() {
   const maxTop = Math.max(11, H - 300);
   root.style.setProperty("--igd-right", `${Math.round(right)}px`);
   root.style.setProperty("--igd-top", `${Math.round(Math.min(top, maxTop))}px`);
-  root.style.setProperty("--igd-maxh", `${Math.round(H - Math.min(top, maxTop) - 14)}px`);
+  /* the chat box that floats at the bottom right while the sidebar is collapsed stays free: the desk ends above it and scrolls inside */
+  let floor = H - 14;
+  for (const el of document.querySelectorAll("#chat-notifications #chat-message, #chat-notifications textarea, #chat-notifications .chat-form")) { const r = visibleRect(el); if (r && r.top > H * 0.6 && r.right > W - right - 380) floor = Math.min(floor, r.top - 10); }
+  root.style.setProperty("--igd-maxh", `${Math.round(Math.max(220, floor - Math.min(top, maxTop)))}px`);
 }
 
 /* ---------- pieces ---------- */
