@@ -10,6 +10,7 @@ import * as D from "./diff.mjs";
 import * as CO from "./coalesce.mjs";
 import * as C from "./capture-pure.mjs";
 import * as Store from "./store.mjs";
+import { isLabel } from "../i18n/sys-labels.mjs";
 
 const MOD = E.MOD_ID;
 const LOG = `${MOD} | log |`;
@@ -398,9 +399,9 @@ const onFxUpdate = guard("updateActiveEffect", (e, c, o, u) => effectEvent("upda
 const onFxDelete = guard("deleteActiveEffect", (e, o, u) => effectEvent("delete", e, null, o, u));
 
 /* ---- chat: rolls, damage taken, undo */
-const DAMAGE_FLAVOR = () => game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken");
 const speakerActor = (m) => { try { return m.speakerActor ?? game.actors.get(m.speaker?.actor) ?? null; } catch { return null; } };
-const isDamageCard = (m) => !!m?.flavor && m.flavor.trim() === DAMAGE_FLAVOR();
+/* the flavor is stored text in the language of whoever applied the damage: matched in every language (scripts/i18n/sys-labels.mjs) */
+const isDamageCard = (m) => !!m?.flavor && isLabel(m.flavor, "INVINCIBLE.Chat.DamageInfo.DamageTaken");
 /** Time of a chat message: the server stamp (_stats.createdTime), never the author's `timestamp`; an implausible stamp is replaced by the scribe's clock. */
 function chatTime(message) {
   const now = nowT(), ct = Number(message._stats?.createdTime);

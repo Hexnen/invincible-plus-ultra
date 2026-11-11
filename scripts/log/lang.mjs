@@ -3,6 +3,7 @@
    built at display time from IPL.Sum.<type>[.<variant>] with {placeholders}, so the language switch applies to old entries too and a translator may
    reorder the words. Names of items, people and book data are never translated. Polish uses nominal phrases after "{who}:" so no gendered verb is needed.
    Plurals: KEY.one / KEY.other (EN) and KEY.one / KEY.few / KEY.many (PL), picked by tn(). Pure module: no Foundry globals except a guarded game.i18n.lang. */
+import { TERMS } from "../i18n/terms.mjs";
 export const EN = {};
 export const PL = {};
 const T = (key, en, pl) => { EN[key] = en; PL[key] = pl; };
@@ -44,36 +45,36 @@ for (const [c, en, pl] of [
   ["sync", "Sync", "Synchronizacja"], ["access", "Access", "Dostęp"]
 ]) T(`IPL.Cat.${c}`, en, pl);
 for (const [k, en, pl] of [
-  ["fighting", "Fighting", "Walka wręcz"], ["agility", "Agility", "Zwinność"], ["strength", "Strength", "Siła"], ["reason", "Reason", "Rozum"], ["intuition", "Intuition", "Intuicja"],
-  ["presence", "Presence", "Obecność"], ["health", "Health", "Zdrowie"], ["resolve", "Resolve", "Determinacja"], ["slugfest", "Slugfest", "Slugfest"],
-  ["karma", "Karma", "Karma"], ["reputation", "Reputation", "Reputacja"], ["resources", "Resources", "Zasoby"],
+  ["fighting", TERMS.en.fighting, TERMS.pl.fighting], ["agility", TERMS.en.agility, TERMS.pl.agility], ["strength", TERMS.en.strength, TERMS.pl.strength], ["reason", TERMS.en.reason, TERMS.pl.reason], ["intuition", TERMS.en.intuition, TERMS.pl.intuition],
+  ["presence", TERMS.en.presence, TERMS.pl.presence], ["health", TERMS.en.health, TERMS.pl.health], ["resolve", TERMS.en.resolve, TERMS.pl.resolve], ["slugfest", TERMS.en.slugfest, TERMS.pl.slugfest],
+  ["karma", TERMS.en.karma, TERMS.pl.karma], ["reputation", TERMS.en.reputation, TERMS.pl.reputation], ["resources", TERMS.en.resources, TERMS.pl.resources],
   ["civilianName", "Civilian name", "Imię cywilne"], ["role", "Role", "Rola"], ["appearance", "Appearance", "Wygląd"], ["occupation", "Occupation", "Zawód"],
-  ["personality", "Personality", "Osobowość"], ["drive", "Drive", "Motywacja"], ["flaw", "Flaw", "Wada"], ["relationships", "Relationships", "Relacje"],
+  ["personality", "Personality", "Osobowość"], ["drive", "Drive", "Motywacja"], ["flaw", "Flaw", "Słabość"], ["relationships", "Relationships", "Relacje"],
   ["team", "Team", "Drużyna"], ["teamBase", "Team base", "Baza drużyny"], ["biography", "Biography", "Biografia"],
   ["kind", "Kind", "Rodzaj"], ["where", "Location", "Lokalizacja"], ["description", "Description", "Opis"], ["purpose", "Purpose", "Cel"], ["background", "Background", "Tło"], ["motto", "Motto", "Motto"]
 ]) T(`IPL.Key.${k}`, en, pl);
 for (const [k, en, pl] of [
-  ["power", "power", "moc"], ["talent", "talent", "talent"], ["gear", "gear", "sprzęt"], ["criticalInjury", "critical injury", "krytyczna rana"], ["powerSource", "power source", "źródło mocy"],
+  ["power", "power", "moc"], ["talent", "talent", "talent"], ["gear", "gear", "sprzęt"], ["criticalInjury", "critical injury", "rana krytyczna"], ["powerSource", "power source", "źródło mocy"],
   ["boost", "boost", "wzmocnienie"], ["limit", "limit", "ograniczenie"], ["drawback", "drawback", "wada"], ["spell", "spell", "zaklęcie"]
 ]) T(`IPL.ItemType.${k}`, en, pl);
 for (const [k, en, pl] of [
   ["name", "name", "nazwa"], ["level", "level", "poziom"], ["powerSource", "power source", "źródło mocy"], ["power", "power", "moc"], ["cost", "cost", "koszt"],
-  ["singleUse", "single use", "jednorazowe"], ["restricted", "restricted", "ograniczone"], ["lethal", "lethal", "śmiertelne"], ["healingTime", "healing time", "czas leczenia"],
+  ["singleUse", "single use", "jednorazowe"], ["restricted", "restricted", "reglamentowany"], ["lethal", "lethal", "śmiertelna"], ["healingTime", "healing time", "czas leczenia"],
   ["description", "description", "opis"], ["type", "type", "typ"]
 ]) T(`IPL.Path.${k}`, en, pl);
 for (const [k, en, pl] of [["NONE", "No access", "Brak dostępu"], ["LIMITED", "Limited", "Ograniczony"], ["OBSERVER", "Observer", "Obserwator"], ["OWNER", "Owner", "Właściciel"]]) T(`IPL.Level.${k}`, en, pl);
 for (const [k, en, pl] of [["active", "active", "aktywne"], ["installing", "installing", "w budowie"], ["disabled", "disabled", "wyłączone"], ["broken", "broken", "zepsute"], ["lost", "lost", "utracone"]]) T(`IPL.Status.${k}`, en, pl);
 for (const [k, en, pl] of [
-  ["manual", "by hand", "ręcznie"], ["stress", "from stress", "ze stresu"], ["damage", "from damage", "z obrażeń"], ["undo", "from an undo", "przez cofnięcie"], ["chargen", "by the generator", "przez generator"], ["base-buy", "base purchase", "zakup bazy"]
+  ["manual", "by hand", "ręcznie"], ["stress", "from stress", "ze stresu"], ["damage", "from damage", "z obrażeń"], ["undo", "from an undo", "przez cofnięcie"], ["chargen", "by the generator", "przez kreator postaci"], ["base-buy", "base purchase", "zakup bazy"]
 ]) T(`IPL.Cause.${k}`, en, pl);
-for (const [k, en, pl] of [["drop", "dropped on the sheet", "upuszczone na kartę"], ["chargen", "from the generator", "z generatora"], ["sheet", "created on the sheet", "utworzone na karcie"], ["compendium", "from a compendium", "z kompendium"], ["transfer", "given from the base", "przekazane z bazy"]]) T(`IPL.Src.${k}`, en, pl);
+for (const [k, en, pl] of [["drop", "dropped on the sheet", "upuszczone na kartę"], ["chargen", "from the generator", "z kreatora postaci"], ["sheet", "created on the sheet", "utworzone na karcie"], ["compendium", "from a compendium", "z kompendium"], ["transfer", "given from the base", "przekazane z bazy"]]) T(`IPL.Src.${k}`, en, pl);
 for (const [k, en, pl] of [["public", "public roll", "rzut publiczny"], ["gm", "private roll", "rzut prywatny"], ["blind", "blind roll", "rzut w ciemno"]]) T(`IPL.Mode.${k}`, en, pl);
 T("IPL.Action.fullAction", "Full action", "Pełna akcja"); T("IPL.Action.quickAction", "Quick action", "Szybka akcja");
 T("IPL.Action.fastAction", "Fast action", "Szybka akcja"); T("IPL.Action.slowAction", "Slow action", "Wolna akcja"); T("IPL.Action.n", "Action {n}", "Akcja {n}");
 
 /* ------------------------------------------------------------------ type names (IPL.Type.*) */
 const TYPE_NAMES = [
-  ["stat.attr", "Attribute change", "Zmiana atrybutu"], ["stat.vital", "Health, Resolve or Slugfest", "Zdrowie, Determinacja lub Slugfest"], ["stat.track", "Karma, Reputation or Resources", "Karma, Reputacja lub Zasoby"],
+  ["stat.attr", "Attribute change", "Zmiana atrybutu"], ["stat.vital", "Health, Resolve or Slugfest", "Zdrowie, Determinacja lub Bijatyka"], ["stat.track", "Karma, Reputation or Resources", "Karma, Reputacja lub Zasoby"],
   ["stat.text", "Text edit", "Edycja tekstu"], ["actor.rename", "Rename", "Zmiana nazwy"], ["actor.img", "Image change", "Zmiana obrazu"],
   ["item.add", "Item added", "Dodano przedmiot"], ["item.remove", "Item removed", "Usunięto przedmiot"], ["item.edit", "Item edited", "Edycja przedmiotu"], ["item.toggle", "Item switched", "Przełączenie przedmiotu"],
   ["effect.add", "Effect added", "Dodano efekt"], ["effect.remove", "Effect removed", "Usunięto efekt"], ["effect.edit", "Effect edited", "Edycja efektu"],
@@ -219,7 +220,7 @@ TP("IPL.Plural.Success", "{n} success", "{n} successes", "{n} sukces", "{n} sukc
 TP("IPL.Plural.Bane", "{n} bane", "{n} banes", "{n} jedynka", "{n} jedynki", "{n} jedynek");
 TP("IPL.Plural.Matching", "{n} entry matches", "{n} entries match", "Pasuje {n} wpis", "Pasują {n} wpisy", "Pasuje {n} wpisów");
 T("IPL.Out.None", "no successes", "brak sukcesów");
-T("IPL.Out.Push", "pushed {n}×", "pchnięty {n}×");
+T("IPL.Out.Push", "pushed {n}×", "forsowany {n}×");
 T("IPL.Out.Dmg", "damage {n}", "obrażenia {n}");
 T("IPL.Out.Stunts", "stunts {n}", "wyczyny {n}");
 T("IPL.Out.Stress", "stress {n}", "stres {n}");
@@ -342,7 +343,7 @@ const UI = [
   ["Off", "The activity log is off.", "Dziennik aktywności jest wyłączony."],
   ["OffGm", "The activity log is off. Turn it on in the module settings (Activity log).", "Dziennik aktywności jest wyłączony. Włącz go w ustawieniach modułu (Dziennik aktywności)."],
   ["Empty", "Nothing logged yet.", "Jeszcze nic nie zapisano."],
-  ["EmptyHint", "From now on, changes appear here: stats, items, effects, damage, rolls, combat, the character generator, team links and notes.", "Od teraz tu pojawią się zmiany: statystyki, przedmioty, efekty, obrażenia, rzuty, walka, generator postaci, powiązania z drużyną i notatki."],
+  ["EmptyHint", "From now on, changes appear here: stats, items, effects, damage, rolls, combat, the character generator, team links and notes.", "Od teraz tu pojawią się zmiany: statystyki, przedmioty, efekty, obrażenia, rzuty, walka, kreator postaci, powiązania z drużyną i notatki."],
   ["EmptyBase", "From now on, changes appear here: the card, members, upgrades, events, gear, syncing and notes.", "Od teraz tu pojawią się zmiany: karta, członkowie, ulepszenia, zdarzenia, sprzęt, synchronizacja i notatki."],
   ["EmptyFiltered", "No entries match these filters.", "Żaden wpis nie pasuje do filtrów."],
   ["EmptyFilteredMinor", "Minor events are hidden. Turn them on in Filters to see turn starts and action marks.", "Drobne zdarzenia są ukryte. Włącz je w Filtrach, by zobaczyć początki tur i znaczniki akcji."],

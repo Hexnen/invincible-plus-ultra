@@ -26,8 +26,8 @@ export const PL = {
   "IDF.Settings.Strength.bold": "Mocne",
   "IDF.Settings.Sixes.Name": "Efekty kości: pod szóstkami",
   "IDF.Settings.Sixes.Hint": "Złoty rastrowy wybuch pod każdą kością, która pokazuje 6.",
-  "IDF.Settings.OnesPush.Name": "Efekty kości: jedynki tylko przy pushu",
-  "IDF.Settings.OnesPush.Hint": "W Year Zero jedynka boli dopiero przy pushu, więc znak pod jedynką pojawia się tylko przy rzutach z pushem. Wyłącz, by widzieć go przy każdym rzucie.",
+  "IDF.Settings.OnesPush.Name": "Efekty kości: jedynki tylko przy forsowaniu",
+  "IDF.Settings.OnesPush.Hint": "W Year Zero jedynka boli dopiero przy forsowaniu, więc znak pod jedynką pojawia się tylko przy rzutach forsowanych. Wyłącz, by widzieć go przy każdym rzucie.",
   "IDF.Settings.Ones.Name": "Efekty kości: pod jedynkami",
   "IDF.Settings.Ones.Hint": "Magentowy krzyżyk w rastrowym pierścieniu pod każdą kością, która pokazuje 1."
 };

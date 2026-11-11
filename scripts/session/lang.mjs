@@ -112,7 +112,7 @@ export const PL = {
   "IPL.Session.q.failAid": "Brak pomocy koledze z drużyny lub bliskiej osobie",
   "IPL.Session.q.failBystanders": "Brak pomocy postronnym",
   "IPL.Session.q.failOccupation": "Zaniedbanie obowiązków zawodu",
-  "IPL.Session.q.wreckZone": "Zniszczenie strefy",
+  "IPL.Session.q.wreckZone": "Demolka strefy",
   "IPL.Session.q.kill": "Zabicie kogoś",
   "IPL.Session.q.immoral": "Inny niemoralny czyn",
   "IPL.Session.err.noPermission": "Nie możesz tego zrobić.",

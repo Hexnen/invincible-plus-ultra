@@ -3,6 +3,9 @@
  * are deliberately narrow and every lookup is guarded, so a changed system degrades to "no effect", not to errors.
  */
 
+import "./i18n/early-lang.mjs";   // FIRST: the client's language before the init hooks name the settings (see the file)
+import { isLabel } from "./i18n/sys-labels.mjs";
+
 const T0 = performance.now(); // shared clock: looping animations keep their phase when the system re-renders the whole sheet
 const LAST = new Map();       // `${uuid}:${kind}` -> last fill (0-100), so bars animate between values
 
@@ -21,7 +24,7 @@ function registerSettings() {
   if (game.settings.settings.has(`${MODULE_ID}.${EXPERIMENTAL}`)) return;
   game.settings.register(MODULE_ID, EXPERIMENTAL, {
     name: "Eksperymentalne: krew i pęknięcia",
-    hint: "Zakrwawienie kart przy niskim Health, pęknięcia przy niskim Resolve, błysk rany i krwawe logo. Domyślnie wyłączone.",
+    hint: "Zakrwawienie kart przy niskim Zdrowiu, pęknięcia przy niskiej Determinacji, błysk rany i krwawe logo. Domyślnie wyłączone.",
     scope: "client",
     config: true,
     type: Boolean,
@@ -446,7 +449,7 @@ function effectTags(root) {
    labels; a label that is not recognised keeps its full text. */
 const STAT_SHORT = {
   en: { damage: "Damage", range: "Range", crit: "Crit", stress: "Stress", stunts: "Stunts", armor: "Armor", despair: "Despair", blight: "Blight" },
-  pl: { damage: "Obrażenia", range: "Zasięg", crit: "Krytyk", stress: "Stres", stunts: "Stunty", armor: "Pancerz", despair: "Rozpacz", blight: "Plaga" }
+  pl: { damage: "Obrażenia", range: "Zasięg", crit: "Próg rany", stress: "Stres", stunts: "Wyczyny", armor: "Pancerz", despair: "Rozpacz", blight: "Plaga" }
 };
 const STAT_KEYS = { damage: "YZUR.CHAT.ROLL.ATTACK.DAMAGE", range: "YZUR.CHAT.ROLL.ATTACK.RANGE", stunts: "YZUR.CHAT.ROLL.ATTACK.STUNTS", armor: "YZUR.CHAT.ROLL.ATTACK.ARMOR" };
 const normLabel = (t) => t.replace(/[:\s]+$/, "").trim().toLowerCase();
@@ -461,10 +464,10 @@ const STAT_TIPS = {
     crit: ["Crit threshold", "This attack's damage reached the critical threshold of the weapon or power."]
   },
   pl: {
-    damage: ["Obrażenia", "Bazowe obrażenia tego ataku, jeśli trafi. Pancerz może je zmniejszyć, a stunty Extra Damage je zwiększają."],
-    range: ["Zasięg", "Minimalny i maksymalny zasięg w strefach. 0 to ta sama strefa. Atak z bliższej odległości niż minimum dostaje -3 kostki; poza maksimum broni nie da się użyć."],
-    stress: ["Stres", "Stres, jaki kosztuje ten rzut: 1 za każdą jedynkę wyrzuconą po pushu. Zmniejsza Resolve."],
-    crit: ["Próg krytyka", "Obrażenia tego ataku osiągnęły próg krytyczny broni lub mocy."]
+    damage: ["Obrażenia", "Podstawowe obrażenia tego ataku, jeśli trafi. Pancerz może je zmniejszyć, a wyczyny dające dodatkowe obrażenia je zwiększają."],
+    range: ["Zasięg", "Minimalny i maksymalny zasięg w strefach. 0 to ta sama strefa. Atak z bliższej odległości niż minimum dostaje -3 kości; poza maksimum broni nie da się użyć."],
+    stress: ["Stres", "Stres, jaki kosztuje ten rzut: 1 za każdą jedynkę po forsowaniu. Zmniejsza Determinację."],
+    crit: ["Próg rany krytycznej", "Obrażenia tego ataku osiągnęły próg rany krytycznej broni lub mocy."]
   }
 };
 
@@ -615,6 +618,9 @@ const DMG_TXT = {
     brokenSr: "Złamany.", by: (name) => `Atakujący: ${name}.`
   }
 };
+/* The system's "Damage Taken" card is recognised by its flavor in ANY language (scripts/i18n/sys-labels.mjs): the flavor is stored text,
+   written in the language of whoever applied the damage. */
+const DMG_FLAVOR_KEY = "INVINCIBLE.Chat.DamageInfo.DamageTaken";
 const dmgNum = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Math.round(Number(v)) : null);
 
 Hooks.on("preUpdateActor", (actor, changes) => {
@@ -643,7 +649,7 @@ document.addEventListener("click", (ev) => {
 
 Hooks.on("preCreateChatMessage", (message) => {
   try {
-    if (!message?.flavor || message.flavor.trim() !== game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken")) return;
+    if (!message?.flavor || !isLabel(message.flavor, DMG_FLAVOR_KEY)) return;
     const now = Date.now();
     const dmg = {};
     const actor = message.speakerActor;
@@ -712,8 +718,7 @@ function dmgPlay(message, hp, toEl, from, to) {
 }
 
 function damageCard(message, html) {
-  const flavor = game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken");
-  if (!message?.flavor || message.flavor.trim() !== flavor) return;
+  if (!message?.flavor || !isLabel(message.flavor, DMG_FLAVOR_KEY)) return;
   const li = html.matches?.(".chat-message") ? html : html.querySelector?.(".chat-message");
   const content = html.querySelector?.(".message-content");
   if (!li || !content || content.querySelector(".isp-dmg")) return;
@@ -742,7 +747,7 @@ function damageCard(message, html) {
   const broken = to === 0;
   const healthKey = "INVINCIBLE.Actor.base.FIELDS.derived.health.value.label";
   const sys = game.i18n.has?.(healthKey) ? game.i18n.localize(healthKey) : "";
-  const healthWord = sys && sys !== "Health" && sys !== healthKey ? sys : t.health;
+  const healthWord = sys && sys !== healthKey && (sys !== "Health" || game.i18n.lang === "en") ? sys : t.health;
 
   // ---- top row: the hit (damage hero) and, when known, who dealt it; the fist tile on the seam is the impact ----
   const root = make("div", "isp-dmg");
@@ -1081,7 +1086,7 @@ Hooks.on("createItem", (item) => {
 Hooks.on("createChatMessage", (message) => {
   try {
     if (!APPLY_OPEN.length || message?.author?.id !== game.user.id) return;
-    if (!message.flavor || message.flavor.trim() !== game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken")) return;
+    if (!message.flavor || !isLabel(message.flavor, DMG_FLAVOR_KEY)) return;
     const actor = message.speakerActor;
     if (!actor) return;
     const hit = applySlot(actor.uuid, (w, s) => s.healthTo !== null && !s.damageMsgId);
@@ -1123,7 +1128,7 @@ const UNDO_TXT = {
     title: "Zdrowie się zmieniło", yes: "Przywróć", no: "Zostaw",
     ask: (name, now, to) => `Zdrowie ${name} zmieniło się od zadania obrażeń (teraz ${now}). Przywrócić mimo to do ${to}?`,
     kept: (name, now) => `Zdrowie ${name} zostaje na ${now}.`,
-    done: (name) => `Cofnięto obrażenia: ${name}`, doneHp: (name, a, b) => `Cofnięto obrażenia: ${name}, zdrowie ${a} -> ${b}`,
+    done: (name) => `Cofnięto obrażenia: ${name}`, doneHp: (name, a, b) => `Cofnięto obrażenia: ${name}, Zdrowie ${a} -> ${b}`,
     fail: "Nie udało się cofnąć obrażeń. Szczegóły w konsoli."
   }
 };
@@ -1266,7 +1271,7 @@ async function runUndo(attackId, uid, btn) {
         await undoPlay(entry.damageMsgId, back);
         const taken = game.messages.get(entry.damageMsgId);
         // the card is deleted, not greyed out: an undone hit leaves nothing in the log to misread
-        if (taken && taken.flavor?.trim() === game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken")) await taken.delete();
+        if (taken && isLabel(taken.flavor, DMG_FLAVOR_KEY)) await taken.delete();
       }
       UNDONE.add(uid);   // from here the entry can never be re-added by a late flush
       done = true;
@@ -1297,7 +1302,7 @@ async function runUndo(attackId, uid, btn) {
 /* the button, appended after the card's panels (GM only, only for a card that has a ledger entry) */
 function undoOnCard(message, li) {
   if (!game.user.isGM || !message?.id || !li?.querySelector) return;
-  if (!message.flavor || message.flavor.trim() !== game.i18n.localize("INVINCIBLE.Chat.DamageInfo.DamageTaken")) return;
+  if (!message.flavor || !isLabel(message.flavor, DMG_FLAVOR_KEY)) return;
   const content = li.querySelector(".message-content");
   if (!content) return;
   const old = content.querySelector(":scope > .isp-dmg-act");
@@ -1401,8 +1406,8 @@ let STUNT_UID = 0;
 function registerInlineStunts() {
   if (game.settings.settings.has(`${MODULE_ID}.${INLINE_STUNTS}`)) return;
   game.settings.register(MODULE_ID, INLINE_STUNTS, {
-    name: "Stunty wybierane na karcie rzutu",
-    hint: "Zamiast okna dialogowego po ataku wybierasz stunty bezpośrednio na karcie (przyciski, licznik, Zatwierdź). Wyłączone = system działa po staremu, z oknem.",
+    name: "Wyczyny wybierane na karcie rzutu",
+    hint: "Zamiast okna dialogowego po ataku wybierasz wyczyny bezpośrednio na karcie czatu (przyciski, licznik, Zastosuj wyczyny). Wyłączone = system działa po staremu, z oknem.",
     scope: "client",
     config: true,
     type: Boolean,
@@ -1475,7 +1480,7 @@ async function openStuntDialog(message) {
   return dlg.wait();
 }
 
-const stuntPl = (n) => (n === 1 ? "stunt" : n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14) ? "stunty" : "stuntów");
+const stuntPl = (n) => (n === 1 ? "wyczyn" : n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14) ? "wyczyny" : "wyczynów");
 const STUNT_TXT = {
   en: {
     pick: "Pick stunts", choose: (n) => `Choose ${n} ${n === 1 ? "stunt" : "stunts"}`,
@@ -1488,14 +1493,14 @@ const STUNT_TXT = {
     idleDialog: (n) => `${n} ${n === 1 ? "stunt" : "stunts"} to choose in the pop-up`, idleNone: "No stunts to choose for this attack"
   },
   pl: {
-    pick: "Wybierz stunty", choose: (n) => `Wybierz ${n} ${stuntPl(n)}`,
-    progress: (k, n) => `Wybrano ${k} z ${n}, jeszcze ${n - k}`, ready: (n) => `Wybrano wszystkie (${n}). Zatwierdź, aby zastosować.`,
-    confirm: "Zatwierdź stunty", applying: "Zapisuję...", clear: "Wyczyść", clearAria: "Wyczyść wybrane stunty",
+    pick: "Wybierz wyczyny", choose: (n) => `Wybierz ${n} ${stuntPl(n)}`,
+    progress: (k, n) => `Wybrano ${k} z ${n}, jeszcze ${n - k}`, ready: (n) => `Wybrano wszystkie (${n}). Możesz je zastosować.`,
+    confirm: "Zastosuj wyczyny", applying: "Zapisuję...", clear: "Wyczyść", clearAria: "Wyczyść wybrane wyczyny",
     more: (s) => `Więcej: ${s}`, fewer: (s) => `Mniej: ${s}`, count: (n) => `Wybrano: ${n}.`,
-    clash: (s) => `Nie łączy się z: ${s}.`, none: "Nie ma już wolnych stuntów.", need: (n) => `Wybierz jeszcze ${n}, aby zatwierdzić.`,
-    done: "Stunty zastosowane.", fail: "Nie udało się zastosować stuntów. Spróbuj ponownie albo użyj okna.", dialog: "Otwórz okno",
-    idlePush: (n) => `${n} ${stuntPl(n)} do wyboru po zaakceptowaniu rzutu`, idleOther: (n) => `${n} ${stuntPl(n)} do wyboru, wybiera właściciel postaci lub MG`,
-    idleDialog: (n) => `${n} ${stuntPl(n)} do wyboru w oknie`, idleNone: "Ten atak nie ma stuntów do wyboru"
+    clash: (s) => `Nie łączy się z: ${s}.`, none: "Nie ma już dostępnych wyczynów.", need: (n) => `Wybierz jeszcze ${n}, aby zastosować.`,
+    done: "Wyczyny zastosowane.", fail: "Nie udało się zastosować wyczynów. Spróbuj ponownie albo użyj okna.", dialog: "Otwórz okno",
+    idlePush: (n) => `${n} ${stuntPl(n)} do wyboru po przyjęciu rzutu`, idleOther: (n) => `${n} ${stuntPl(n)} do wyboru, wybiera właściciel postaci lub MG`,
+    idleDialog: (n) => `${n} ${stuntPl(n)} do wyboru w oknie`, idleNone: "Ten atak nie ma wyczynów do wyboru"
   }
 };
 
@@ -1737,14 +1742,13 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
 const X2_KEY = "INVINCIBLE.Stunts.DoubleDamage.stunt";
 const X2_TXT = {
   en: { word: "Double", sr: "Damage doubled.", title: "Double Damage", tip: "The Double Damage stunt doubled this attack's base damage. The number on the tile is already the doubled value." },
-  pl: { word: "Podwójne", sr: "Obrażenia podwojone.", title: "Podwójne obrażenia", tip: "Stunt Double Damage podwoił bazowe obrażenia tego ataku. Liczba na kafelku to już wartość po podwojeniu." }
+  pl: { word: "Podwójne", sr: "Obrażenia podwojone.", title: "Podwójne obrażenia", tip: "Wyczyn Podwójne obrażenia podwoił podstawowe obrażenia tego ataku. Liczba na kafelku to już wartość po podwojeniu." }
 };
 
 function doubleBadge(message, html) {
   const list = message.rolls?.[0]?.options?.stuntsList;
   if (!Array.isArray(list) || !list.length) return;
-  const own = game.i18n.has?.(X2_KEY) ? game.i18n.localize(X2_KEY) : "";
-  const n = list.filter((s) => typeof s === "string" && (s.trim() === "Double Damage" || (own && s.trim() === own))).length;
+  const n = list.filter((s) => typeof s === "string" && isLabel(s, X2_KEY)).length;   // stored text: any language
   if (!n) return;
   const hero = html.querySelector?.('.dice-infos > [data-stat="damage"]:first-child');
   if (!hero || hero.querySelector(":scope > .isp-x2")) return;
@@ -1776,6 +1780,11 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
    them; start() runs a passed phase at once and waits for the others. start() does nothing when the standalone module is active. */
 const SPLASH_PHASES = { init: false, setup: false, ready: false };
 for (const phase of Object.keys(SPLASH_PHASES)) Hooks.once(phase, () => { SPLASH_PHASES[phase] = true; });
+/* SYSTEM TEXTS (scripts/i18n/system-texts.mjs, lang/pl.json): Polish for the system's texts that have no language key. */
+import("./i18n/system-texts.mjs")
+  .then((sys) => sys.init())
+  .catch((err) => console.warn(`${MODULE_ID} | system texts not loaded (the system's keyless texts stay English)`, err));
+
 import("./splash/main.mjs")
   .then((splash) => splash.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | splash feature not loaded (sheets and chat cards are unaffected)`, err));

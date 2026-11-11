@@ -2,6 +2,7 @@
    t() reads these tables directly (no game.i18n merge), the same approach as the Challenges HUD and the combat bar. Flat keys, English
    underneath, Polish on top. Setting names carry a "Party: " / "Drużyna: " prefix because they share the Plus Ultra settings list.
    Parity check: node scripts/party/check-lang.mjs */
+import { TERMS } from "../i18n/terms.mjs";
 export const EN = {
   "IPT.Settings.Display.Name": "Party: display",
   "IPT.Settings.Display.Hint": "The character cards at the bottom left (player characters that have a token on the scene you are viewing). Hidden: only a small tab. Peek: only the portraits stick out, hover one to slide its card all the way out. Full: every card is out. This client only.",
@@ -28,8 +29,8 @@ export const EN = {
   "IPT.State.peek": "portraits only",
   "IPT.State.full": "full",
   "IPT.Player": "Player {name}",
-  "IPT.Health": "Health",
-  "IPT.Resolve": "Resolve",
+  "IPT.Health": TERMS.en.health,
+  "IPT.Resolve": TERMS.en.resolve,
   "IPT.Of": "{label} {value} of {max}",
   "IPT.Low": "low",
   "IPT.Defeated": "Defeated",
@@ -53,7 +54,7 @@ export const EN = {
 
 export const PL = {
   "IPT.Settings.Display.Name": "Drużyna: wyświetlanie",
-  "IPT.Settings.Display.Hint": "Karty postaci w lewym dolnym rogu (postacie graczy, które mają token na oglądanej scenie). Ukryte: tylko mała zakładka. Wyglądanie: wystają same portrety, najedź na jeden, by wysunąć jego kartę do końca. Pełne: wszystkie karty wysunięte. Tylko ten klient.",
+  "IPT.Settings.Display.Hint": "Karty postaci w lewym dolnym rogu (postacie graczy, które mają żeton na oglądanej scenie). Ukryte: tylko mała zakładka. Wyglądanie: wystają same portrety, najedź na jeden, by wysunąć jego kartę do końca. Pełne: wszystkie karty wysunięte. Tylko ten klient.",
   "IPT.Settings.Display.hidden": "Ukryte",
   "IPT.Settings.Display.peek": "Wyglądanie (same portrety)",
   "IPT.Settings.Display.full": "Pełne",
@@ -65,7 +66,7 @@ export const PL = {
   "IPT.Settings.Size.normal": "Normalny",
   "IPT.Settings.Size.large": "Duży",
   "IPT.Settings.Style.Name": "Drużyna: styl kart",
-  "IPT.Settings.Style.Hint": "Klasyczny: dotychczasowe karty. Nowy: przebudowa (większe Health, ikony stanów, miernik Health / Resolve na krawędzi portretu, widoczny też w widoku samych portretów). Działa od razu. Tylko ten klient.",
+  "IPT.Settings.Style.Hint": "Klasyczny: dotychczasowe karty. Nowy: przebudowa (większe Zdrowie, ikony stanów, miernik Zdrowia / Determinacji na krawędzi portretu, widoczny też w widoku samych portretów). Działa od razu. Tylko ten klient.",
   "IPT.Settings.Style.classic": "Klasyczny",
   "IPT.Settings.Style.new": "Nowy",
   "IPT.Settings.Players.Name": "Drużyna: pokaż graczom",
@@ -77,25 +78,25 @@ export const PL = {
   "IPT.State.peek": "same portrety",
   "IPT.State.full": "pełne",
   "IPT.Player": "Gracz {name}",
-  "IPT.Health": "Health",
-  "IPT.Resolve": "Resolve",
+  "IPT.Health": TERMS.pl.health,
+  "IPT.Resolve": TERMS.pl.resolve,
   "IPT.Of": "{label} {value} z {max}",
   "IPT.Low": "niskie",
   "IPT.Defeated": "Pokonany",
   "IPT.Turn": "Aktywna tura",
   "IPT.Effects": "Aktywne efekty: {n}",
-  "IPT.Tokens": "Tokenów na scenie: {n}, kliknij ponownie po następny",
+  "IPT.Tokens": "Żetonów na scenie: {n}, kliknij ponownie po następny",
   "IPT.Pip.fast": "Szybka akcja",
   "IPT.Pip.slow": "Wolna akcja",
   "IPT.Pip.one": "Akcja",
   "IPT.Pip.full": "Pełna akcja",
   "IPT.Pip.quick": "Szybka akcja",
   "IPT.Pip.lost": "niedostępna",
-  "IPT.Pip.used": "użyta",
+  "IPT.Pip.used": "zużyta",
   "IPT.Pip.open": "dostępna",
   "IPT.Pip.past": "bez śledzenia",
   "IPT.Slot": "akcja {n} z {m}",
-  "IPT.Hint": "Enter zaznacza token, Shift+Enter otwiera kartę, Spacja przypina kartę.",
+  "IPT.Hint": "Enter zaznacza żeton, Shift+Enter otwiera kartę, Spacja przypina kartę.",
   "IPT.Live.Appeared": "{name} dołącza do kart drużyny",
   "IPT.Live.Gone": "{name} znika z kart drużyny"
 };
