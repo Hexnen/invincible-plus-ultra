@@ -97,14 +97,17 @@
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt > i { font-size: 14px; }
 .ita-opt-b { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; min-width: 0; }
 .ita-opt-l { display: inline-flex; align-items: center; gap: 7px; font: 400 13px/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
-.ita-opt-c, .ita-opt-n, .ita-opt-why { font: 400 10.5px/1.15 Comic, sans-serif; letter-spacing: 0; text-transform: none; }
+.ita-opt-c, .ita-opt-n { font: 400 10.5px/1.15 Comic, sans-serif; letter-spacing: 0; text-transform: none; }
 .ita-opt-n { font-variant-numeric: tabular-nums; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt:hover:not([aria-disabled="true"]) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt:active:not([aria-disabled="true"]) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-pass] { color: var(--ita-text); background: transparent; border-color: var(--ita-frame); box-shadow: none; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[aria-pressed="false"] { color: var(--ita-yellow); background: transparent; border-color: var(--ita-yellow); box-shadow: none; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[aria-pressed="true"] { color: var(--ita-ink); background: #fff; box-shadow: 1px 1px 0 var(--ita-blue); translate: 2px 2px; }
-:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; cursor: help; }
+/* U83: an answer that cannot be chosen now is as large as the others. It is told by the dashed frame and the no-entry mark after its
+   name (shape, not colour alone: U63); why, and what to do about it, are its tooltip (scripts/tactics/ui/dom.mjs askCard) */
+.ita-opt-l > .ita-opt-no { font-size: 11px; color: var(--ita-red-lt); }
 .ita-check { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--ita-label); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check input { all: unset; box-sizing: border-box; flex: none; display: grid; place-items: center; width: 16px; height: 16px; background: var(--ita-track); border: 2px solid var(--ita-frame); cursor: pointer; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-check input:checked { background: var(--ita-yellow); border-color: var(--ita-yellow); }

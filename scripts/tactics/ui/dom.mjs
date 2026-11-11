@@ -97,13 +97,15 @@ export function askCard(a, handlers = {}) {
   /* an answer: its picture (a reaction, a stunt), its name, the mark of its speed and its Resolve price, then the chance; what the
      marks stand for is said in words in the aria-label and, for a stunt, in its tooltip */
   const opt = (o) => h("button.ita-opt", {
-    fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.tip ?? null, pv: o.pv, pvFor: a.pvFor,      // U51: the reason of a greyed answer is written on it, not said again in a tooltip
-    attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled].filter(Boolean).join(", ") },
+    /* U83: a greyed answer is as large as the others: the dashed frame and the no-entry mark after its name say "not now", the reason
+       and what to do about it are its tooltip (pointer and keyboard focus) and its aria-label; it stays in the Tab order */
+    fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.tip ?? null, pv: o.pv, pvFor: a.pvFor,
+    attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled, o.tip?.why?.fix].filter(Boolean).join(", ") },
     data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null },
     on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
   }, a.check ? icon(o.picked ? "fa-square-check" : "fa-square") : o.icon ? actIcon(o.icon) : null,      // U18: a line of a round-point queue is a tick box: ticked = it happens
-  h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(o.unit), o.stress ? h("b.ita-rs", { text: `-${o.stress}` }) : null),
-    !o.unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null, o.disabled ? h("span.ita-opt-why", { text: o.disabled }) : null));
+  h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(o.unit), o.stress ? h("b.ita-rs", { text: `-${o.stress}` }) : null, o.disabled ? h("i.fa-solid.fa-ban.ita-opt-no", { attrs: { "aria-hidden": "true" } }) : null),
+    !o.unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null));
   /* U23: the stunts stand in their groups (on the target; another opponent; on that opponent), each group after its caption */
   const groups = [];
   for (const o of a.options) { const id = o.group?.id ?? ""; let g = groups.find((x) => x.id === id); if (!g) groups.push((g = { id, label: o.group?.label ?? null, items: [] })); g.items.push(o); }

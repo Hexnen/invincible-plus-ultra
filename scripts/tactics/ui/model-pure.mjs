@@ -300,10 +300,14 @@ export function askData(p, o) {
     const st = x.data?.stunt ?? null, stTip = st && has(t, `ITAC.ui.stunt.tip.${st}`) ? t(`ITAC.ui.stunt.tip.${st}`) : null;
     const group = !st ? null : x.data.onExtra ? { id: `on:${x.data.target}`, label: t("ITAC.ui.stunt.g.on", { name: nameOf(facts, x.data.target, t) }) } : x.data.extra ? { id: "more", label: t("ITAC.ui.stunt.g.more") } : { id: "main", label: null };
     const costWords = [costText(t, x.cost), x.stress ? t("ITAC.ui.stress", { n: x.stress }) : null].filter(Boolean).join(", ") || null;
+    const why = x.disabled ? whyOf(t, x.disabled, {}, { ask: false, ...(x.data?.stunt ? { ctx: "stunt" } : {}) }) : null, unit = x.cost === "full" || x.cost === "quick" ? x.cost : null;
     return { id: x.id, label: st && x.data.onExtra ? labelOf(t, x.label) : optLabel(p, x, t, facts, desk, oneTarget), cost: costWords,
-      unit: x.cost === "full" || x.cost === "quick" ? x.cost : null, stress: Number(x.stress) || 0, icon: st ? `stunt:${st}` : kind === "reaction" ? `react:${String(x.id).split(":")[0]}` : null, group,
-      tip: stTip ? tipOf(null, null, null, [stTip]) : x.disabled && whyOf(t, x.disabled, {}, { ask: false })?.fix ? tipOf(null, null, { text: null, fix: whyOf(t, x.disabled, {}, { ask: false }).fix }) : null /* U54: what to do about a greyed answer; U51: the answer shows its name; the tooltip says what it does */, pv: pb && !x.disabled ? pvCost(pb, x.cost, x.stress) : null,
-      note: odds(x.id), disabled: x.disabled ? whyText(t, x.disabled, {}, { ask: false }) : null, picked: picks.includes(x.id), pass: x.id === "pass", zones,
+      unit, stress: Number(x.stress) || 0, icon: st ? `stunt:${st}` : kind === "reaction" ? `react:${String(x.id).split(":")[0]}` : null, group,
+      /* U83: a greyed answer keeps the size of the others: why it cannot be chosen and what to do about it (U54 / U68) stand in its
+         tooltip, under what it does and (for an answer that shows its price only as the mark of speed) the price in words; U51: the
+         answer shows its name, the tooltip says what is not on it */
+      tip: stTip || why ? tipOf(null, why && unit ? tipCost(t, x.cost, x.stress, why) : null, why, [stTip]) : null, pv: pb && !x.disabled ? pvCost(pb, x.cost, x.stress) : null,
+      note: odds(x.id), disabled: why?.text ?? null, picked: picks.includes(x.id), pass: x.id === "pass", zones,
       req: x.disabled || p.multi ? null : value && x.req ? p.answerReq(value) : x.req,
       zoneReq: zones && !x.disabled ? (zone) => p.answerReq({ id: x.id, zone: String(zone) }) : null,      // an option that carries zones: the place picked on the map rides along [D]
       ...(places.length && kind === "dodgeMove" && x.id === "move" ? { label: t("ITAC.ui.move.byHand") } : {}) };
