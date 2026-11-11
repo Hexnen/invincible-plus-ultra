@@ -100,7 +100,7 @@ eq(types(e1), ["trigger", "trigger", "override", "actionClosed", "damage", "stat
 eq([T.state.tokens.length, Object.keys(T.state.counters).length, T.state.triggers.map((t) => t.runs)], [0, 0, [1, 1]], "the scheduler dropped the round's token and counter and counted the runs");
 eq(["H1", "N1"].map((c) => [P1.budget(T.state, c).full, P1.budget(T.state, c).quick.join()]), [["open", "open,open"], ["open", "open,open"]], "new ledgers for the new round");
 const haz = T.log.list.at(-1);
-eq([haz.state, haz.round, /hazard/.test(haz.label.gm)], ["closed", 1, true], "the hazard is a transaction of round 1");
+eq([haz.state, haz.round, haz.label.gm, haz.label.pub], ["closed", 1, "{ITAC.ui.hz.kind.fire} -> H2 ({ITAC.result.done})", "{ITAC.ui.hz.kind.fire} ({ITAC.result.done})"], "the hazard is a transaction of round 1, named by what it is and whom it hit, with no raw id");
 
 /* ---- round 2: a kept card costs stress, applied by the engine and journaled */
 const vp = T.prompt("veteran");

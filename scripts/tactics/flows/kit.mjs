@@ -11,6 +11,7 @@
 import { dice, crits, conditions } from "../../rules/index.mjs";
 import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
+import { holderBlocks } from "../catalog-pure.mjs";
 
 export const PASS = "pass";
 export const draft = (inst) => JSON.parse(JSON.stringify(inst));
@@ -77,7 +78,14 @@ export function requirements(v, inst) {
   return { ok: true };
 }
 /** Legality of an instance: the entry's requirements, then the flow's own rules. */
-export const legality = (v, inst, flow) => { const r = requirements(v, inst); return r.ok ? flow.legality(v, inst) : r; };
+export const legality = (v, inst, flow) => {
+  const r = requirements(v, inst);
+  if (!r.ok) return r;
+  /* [B2497] the holder's own actions, whatever the flow (the attack flow and the action tables say it in their own words; a reaction, a part of
+     another action and a child are not the holder's own declaration) */
+  if (inst.actor && !inst.parent && !inst.part && !["attack", "act"].includes(inst.flow) && holderBlocks(v.entry(inst)) && M.hasStatus(v.state, inst.actor, "grappling")) return { ok: false, reason: "grappling", params: { gmMayAllow: 1 } };
+  return flow.legality(v, inst);
+};
 /** Conditional modifiers of the entry's roll (`roll.mods`) for the actor's own roll. -> { mods: [{ source, dice }], pending: [...] } */
 export function entryMods(v, inst, cid, attr, rollKind) {
   const rules = cid === inst.actor ? v.entry(inst)?.roll?.mods : null;

@@ -193,14 +193,22 @@ function makeInst(X, { action, actor, decl, cause = "turn", parent = null, data 
   return inst;
 }
 function pushInst(X, inst) { X.state = { ...X.state, stack: [...X.state.stack, inst] }; X.changed = true; }
+const JOURNAL_HAZARDS = ["fire", "blast", "area", "vacuum", "disease"];
 function label(X, inst, what) {
   const a = inst.actor ? X.facts.c(inst.actor) : null, e = C.entryFor(X.state, inst.actor, inst.action);
   /* the engine has no language: an action and a result are written as `{key}` marks that the surfaces put into the reader's language (lang.mjs
      `marks`); an entry with a name of its own (a granted power) keeps that name */
   const act = e?.name || (typeof e?.label === "string" && !e.label.startsWith("ITAC.") ? e.label : `{ITAC.action.${inst.action}}`);
   const res = what ? ` ({ITAC.result.${what}})` : "";
-  const pub = a?.hidden ? "" : `${a?.name ?? inst.initiator?.type ?? ""}: ${act}${res}`;       // spec 10: two texts; a hidden actor has no public line
-  return { pub, gm: `${a?.name ?? (inst.cause === "gm" ? "GM" : inst.initiator?.id ?? "")}: ${act} -> ${(inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name ?? t).join(", ")}${res}` };
+  /* nobody's action (a hazard, a forced move, a consequence of a challenge, a waiting trigger): the doer is the GM's hand or nobody, never an id;
+     what it is comes from the hazard's kind or from the trigger's own name; `{zone:key}` is the place, named by the surface as the map names it */
+  const hk = inst.data?.hazard?.kind, own = !inst.actor && typeof inst.decl?.text === "string" && inst.decl.text.trim() ? inst.decl.text.trim().slice(0, 80) : null;
+  const what0 = own ?? (inst.action === "hazard" && JOURNAL_HAZARDS.includes(hk) ? `{ITAC.ui.hz.kind.${hk}}` : act);
+  const who = a?.name ?? (inst.cause === "gm" || inst.initiator?.type === "gm" ? "{ITAC.journal.gm}" : "");
+  const spot = inst.decl?.zone ?? inst.data?.hz?.zone ?? inst.data?.hazard?.zone ?? (["move", "drive", "fastball"].includes(inst.flow) ? inst.data?.mv?.at ?? inst.data?.mv?.to ?? null : null);
+  const names = (inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name).filter(Boolean).join(", ");
+  const pub = a?.hidden ? "" : `${a?.name ? `${a.name}: ` : ""}${a ? act : what0}${res}`;       // spec 10: two texts; a hidden actor has no public line, and no public line names a target or a place
+  return { pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? pub : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}` };
 }
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {
@@ -642,8 +650,13 @@ async function manual(X, I, res) {
   return ok();
 }
 /** One GM edit of the state = one transaction of its own (spec 14.2), so every edit is undoable from the journal. */
+const editLabel = (X, op, a) => {                                                          // "GM: Health set -> Omni-Man": the edit as a language mark, whom or what it was about by name
+  const about = [a?.combatant, a?.challenge, a?.vehicle, a?.observer, a?.subject, a?.token?.holder, a?.prey, a?.pursuer].flat().filter((id) => P1.isId(id)).map((id) => X.facts.c(id)?.name).filter(Boolean);
+  const spot = typeof a?.zone === "string" ? a.zone : typeof a?.op?.zone === "string" ? a.op.zone : null;
+  return { pub: "", gm: `{ITAC.journal.gm}: {ITAC.edit.${op}}${about.length ? ` -> ${[...new Set(about)].join(", ")}` : ""}${spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}` };
+};
 async function gmEdit(X, op, a) {
-  const tx = openTx(X, { label: { pub: "", gm: `GM: ${op}` } });
+  const tx = openTx(X, { label: editLabel(X, op, a) });
   const w = (path, to) => write(X, tx, path, to);
   const c = (id) => (P1.isId(id) ? X.facts.c(id) : null);
   let err = null, errParams = {};
@@ -766,7 +779,7 @@ async function gmEdit(X, op, a) {
     default: err = "unknown";
   }
   if (err) { const t = X.state.txOpen[tx]; await undoOps(X, t.ops); const { [tx]: _g, ...rest } = X.state.txOpen; X.state = { ...X.state, txOpen: rest }; return bad(err, errParams); }
-  closeTx(X, tx, { pub: "", gm: `GM: ${op}` });
+  closeTx(X, tx, editLabel(X, op, a));
   emit(X, null, { type: "override", op, gmOnly: 1 });
   return ok();
 }
@@ -839,7 +852,7 @@ async function challengeClock(X) {
     if (r.to != null && r.to !== c.resolve) {
       const tx = openTx(X, {});
       await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: r.to, tx });
-      closeTx(X, tx, { pub: `${c.name ?? p.id}: ${r.to}`, gm: `${c.name ?? p.id}: clock ${c.resolve} -> ${r.to}` });
+      closeTx(X, tx, { pub: `${c.name ?? ""}: {ITAC.journal.clock} ${r.to}`, gm: `${c.name ?? ""}: {ITAC.journal.clock} ${c.resolve} -> ${r.to}` });
       emit(X, null, { type: "challenge", challenge: p.id, rating: c.health, timeLeft: r.to, state: r.failed ? "failed" : "active", clock: 1 });
     }
     if (r.failed && !Object.values(X.state.prompts).some((q) => q.kind === "challengeFail" && q.about === p.id && !q.answered))
@@ -858,7 +871,7 @@ async function challengeFailRun(X, cid) {
     await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "health", to: r.ward.rating, tx });
     await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: r.ward.time, tx });
     write(X, tx, ["challenges", cid, "dice"], r.ward.dice); write(X, tx, ["challenges", cid, "resets"], r.ward.resets); write(X, tx, ["challenges", cid, "started"], {});
-    closeTx(X, tx, { pub: `${c.name ?? cid}: reset`, gm: `${c.name ?? cid}: ward reset (${r.ward.dice})` });
+    closeTx(X, tx, { pub: `${c.name ?? ""}: {ITAC.journal.wardReset}`, gm: `${c.name ?? ""}: {ITAC.journal.wardReset} (${r.ward.dice})` });
     emit(X, null, { type: "challenge", challenge: cid, rating: r.ward.rating, timeLeft: r.ward.time, state: "reset", dice: r.ward.dice });
   }
   for (const kind of r.manual) pushManual(X, cid, kind, { at: "onFail" });
@@ -925,7 +938,7 @@ async function system(X, effects) {
       if (!s.lost) continue;
       const tx = openTx(X, {});
       await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: s.resolve, tx });
-      closeTx(X, tx, { pub: "", gm: `${c.name ?? fx.combatant}: stress ${n} (${String(fx.source ?? "").slice(0, 40)})` });
+      closeTx(X, tx, { pub: "", gm: `${c.name ?? ""}: {ITAC.journal.stress} ${n} (${String(fx.source ?? "").slice(0, 40)})` });
     } else if (fx?.type === "recover") {
       const tx = openTx(X, {});
       for (const l of Array.isArray(fx.lines) ? fx.lines : []) {
@@ -934,7 +947,7 @@ async function system(X, effects) {
         if (l.health && l.health.to !== l.health.from && c.health === l.health.from) await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "health", to: l.health.to, tx });
         if (l.resolve && l.resolve.to !== l.resolve.from && c.resolve === l.resolve.from) await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: l.resolve.to, tx });
       }
-      closeTx(X, tx, { pub: "", gm: "scene end: recovery" });
+      closeTx(X, tx, { pub: "", gm: "{ITAC.journal.sceneEnd}" });
     } else if (fx?.type === "abortInstances") {
       for (const inst of [...X.state.stack].reverse()) if (inst.actor === fx.actor && instOf(X, inst.id)) await abortInst(X, inst.id, true);
       dropPrompts(X, (p) => p.about === fx.actor);

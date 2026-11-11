@@ -99,6 +99,11 @@ export function entryFor(state, cid, actionId) {
   const granted = cid ? M.grantedEntries(state, cid).find((e) => e.id === actionId) : null;
   return granted ?? (Object.prototype.hasOwnProperty.call(BUILTIN, actionId) ? BUILTIN[actionId] : null);
 }
+/** [B2497] While holding somebody the holder may only move (with the one held) and make a grapple attack, until it lets go. This is the
+    one test of "is this entry one of the other actions": a full or quick action that is not a reaction. What costs nothing (talking,
+    opening a door on the way, the GM's "something else") is not an action in that sense. Used by the declare gate (flows/kit.mjs) and by the bar. */
+export const HOLDER_FLOWS = Object.freeze(["move", "release", "other", "plain"]);
+export const holderBlocks = (e) => !!e && (e.cost === "full" || e.cost === "quick") && !e.reaction && e.id !== "grappleAttack" && !HOLDER_FLOWS.includes(e.flow);
 export const entriesFor = (state, cid) => [...Object.values(BUILTIN), ...M.grantedEntries(state, cid)];
 /** Reaction entries `cid` holds for a window (the two built-in defences are handled by the attack flow through the rules library, not from here). */
 export const reactionsFor = (state, cid, when) => M.grantedEntries(state, cid).filter((e) => e.reaction && e.reaction.effect !== "defence" && e.reaction.when.includes(when));

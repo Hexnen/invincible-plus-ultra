@@ -34,7 +34,7 @@ for (const k of Object.keys(EN)) if (/^ITAC\.(err|warn|Settings)\./.test(k) && E
 
 const need = new Set(), codes = new Set();
 const sub = (d) => readdirSync(join(dir, d)).filter((f) => f.endsWith(".mjs")).map((f) => `${d}/${f}`);
-const files = [...readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.startsWith("check-") && f !== "lang.mjs" && f !== "lang-attacks.mjs" && f !== "testkit.mjs"), ...sub("flows"), ...sub("ui")];
+const files = [...readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.startsWith("check-") && f !== "lang.mjs" && f !== "lang-attacks.mjs" && f !== "lang-int.mjs" && f !== "testkit.mjs"), ...sub("flows"), ...sub("ui")];
 for (const f of files) {
   const src = readFileSync(join(dir, f), "utf8");
   for (const m of src.matchAll(/["'`](ITAC\.[A-Za-z][\w.]*[A-Za-z0-9])["'`]/g)) need.add(m[1]);
@@ -48,6 +48,13 @@ for (const c of ["noGM", "untrusted", "stale", "rate", "badInput", "off", "notOw
 for (const c of [...E.ERROR_CODES, ...R.RELAY_CODES]) codes.add(c);
 for (const c of codes) need.add(`ITAC.err.${c}`);
 for (const o of E.REVALIDATE_OPTIONS) need.add(`ITAC.opt.${o}`);
+/* the journal: every GM edit and every word a flow may close with reads as a string of the reader's language, never as an id */
+for (const op of E.GM_EDIT_OPS) need.add(`ITAC.edit.${op}`);
+for (const k of ["gm", "clock", "wardReset", "stress", "sceneEnd"]) need.add(`ITAC.journal.${k}`);
+for (const f of files) for (const m of readFileSync(join(dir, f), "utf8").matchAll(/data\.result = ([^;\n]*)/g)) for (const w of m[1].matchAll(/"([A-Za-z]+)"/g)) need.add(`ITAC.result.${w[1]}`);
+for (const k of ["out", "stays", "spreads", "nowhere", "held", "healthy", "sick", "cured", "dead", "manual"]) need.add(`ITAC.result.${k}`);      // the words that come from the rules library (fire spread, disease) and from a resolution by hand
+for (const k of ["fire", "blast", "area", "vacuum", "disease"]) need.add(`ITAC.ui.hz.kind.${k}`);
+for (const k of ["forcedMove", "fall", "hazard", "challengeEffect", "chaseRound", "other"]) need.add(`ITAC.action.${k}`);
 for (const id of Object.keys(C.BUILTIN)) need.add(`ITAC.action.${id}`);
 for (const id of Object.keys(stunts.STUNTS)) need.add(`ITAC.stunt.${id}`);
 for (const k of D.CARD_KINDS) { need.add(`ITAC.card.${k}`); need.add(`ITAC.prompt.${k}`); }

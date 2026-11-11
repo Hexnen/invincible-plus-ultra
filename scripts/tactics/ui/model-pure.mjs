@@ -19,7 +19,8 @@ const isKey = (s) => typeof s === "string" && s.startsWith("ITAC.");
 const has = (t, key) => t(key, {}, null) !== null;
 const cap = (s) => { const x = String(s ?? ""); return x.charAt(0).toUpperCase() + x.slice(1); };
 /** the journal's `{ITAC.key}` marks (the engine has no language) in the reader's language; an unknown key reads as its last part */
-export const marks = (t, text) => String(text ?? "").replace(/\{(ITAC\.[\w.]+)\}/g, (m, key) => t(key, {}, key.split(".").pop()));
+/* ... and `{zone:key}` is a place, named as the map names it (zoneText below) */
+export const marks = (t, text, facts = null) => String(text ?? "").replace(/\{(ITAC\.[\w.]+)\}/g, (m, key) => t(key, {}, key.split(".").pop())).replace(/\{zone:([^{}]+)\}/g, (m, spot) => zoneText(facts ?? {}, t, spot));
 /** a label of the models: an ITAC key, or text as it is */
 export const labelOf = (t, label, fallback = "") => (isKey(label) ? t(label, {}, label.split(".").pop()) : String(label ?? fallback));
 export const reasonText = (t, reason, params = {}) => (reason ? t(`ITAC.reason.${reason}`, params, String(reason)) : null);
@@ -448,7 +449,10 @@ export function dockData(model, own, facts, t) {
   const doors = bar.actions.some((a) => a.flow === "barrier") ? facts.doors?.(bar.combatant) ?? [] : [];
   const doorFits = (a) => doors.some((d) => d.actions?.[a.id] !== "doorState");
   const holding = (bar.statuses ?? []).includes("grappling");                                   // the holder's two actions show only while it holds someone [P4]
-  const acts = bar.actions.filter((a) => a.id !== "other" && (a.flow !== "barrier" || doorFits(a) || own.armed === a.id) && (holding || (a.id !== "release" && a.id !== "grappleAttack")));
+  /* the Fastball Special stands on the bar only for somebody who has a friend to throw: one of the own side, weaker where both Strengths are known [B2390] */
+  const myStr = Number(attrsFor(facts, bar.combatant)?.strength);
+  const canThrow = (a) => targetsFor(a, facts, bar.combatant).some((r) => { const s = Number(attrsFor(facts, r.id)?.strength); return r.side === "own" && (!Number.isFinite(myStr) || !Number.isFinite(s) || s < myStr); });
+  const acts = bar.actions.filter((a) => a.id !== "other" && (a.flow !== "barrier" || doorFits(a) || own.armed === a.id) && (holding || (a.id !== "release" && a.id !== "grappleAttack")) && (a.flow !== "fastball" || canThrow(a) || own.armed === a.id));
   /* P5: the bar keeps what is asked for most; the other rows of the action tables wait behind one "More actions" button, except the ones
      the situation calls for (break free, put out the fire, stabilize, rally), which stand on the bar while they apply */
   const inMenu = (a) => a.flow === "act" && !a.situational && groupOf(a) === "act", menu = acts.filter(inMenu);
@@ -550,7 +554,7 @@ export function deskData(model, own, facts, t) {
   for (const j of model.journal) {
     let r = rounds[rounds.length - 1];
     if (!r || r.round !== j.round) rounds.push((r = { round: j.round, label: t("ITAC.ui.round", { n: j.round ?? "?" }), rows: [] }));
-    r.rows.push({ id: j.id, text: marks(t, j.text || j.pub) || t("ITAC.ui.journal.noText"), state: j.state,
+    r.rows.push({ id: j.id, text: marks(t, j.text || j.pub, facts) || t("ITAC.ui.journal.noText"), state: j.state,
       undo: j.undo ? { label: t("ITAC.ui.undo"), also: j.undo.alsoUndoes ? t("ITAC.ui.undo.also", { n: j.undo.alsoUndoes }) : null, req: j.undo.req, armed: own.undo === j.id,
         force: j.undo.alsoUndoes ? { label: t("ITAC.ui.undo.only"), req: j.undo.force.req() } : null,
         drift: own.drift === j.id ? j.undo.force.modes.map((m) => ({ id: m, label: t(`ITAC.ui.drift.${m}`), req: j.undo.force.req(m) })) : null } : null });
