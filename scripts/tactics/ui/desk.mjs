@@ -150,7 +150,7 @@ const foldSec = (id, title, n, kids) => { const shut = !!last?.ui?.folds?.[id];
     icon(shut ? "fa-chevron-right" : "fa-chevron-down"), h("span", { text: title }), n ? h("b.igd-n", { text: String(n) }) : null)), shut ? null : kids); };
 
 function now(d) {
-  const askH = { send: (req) => send(req), count: (id, v) => setVal(id, v), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
+  const askH = { send: (req) => send(req), count: (id, v) => setVal(id, v), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate, outName: handlers.label?.("ITAC.ui.cause.interrupt") };
   if (!d.cards.length && !d.stack.length && !d.manual.length) return h("p.igd-empty", {}, icon("fa-mug-hot"), h("span", { text: d.empty }));
   return [
     d.manual.length ? section(d.labels.manual, d.manual.length, d.manual.map((m) => manual(m, d.labels))) : null,

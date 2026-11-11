@@ -254,7 +254,7 @@ const submit = (s, cls = "", pv = null, said = false) => h(`button.itd-go${cls}`
 const cancelBtn = () => h("button.itd-x", { fk: "x", tip: handlers.label?.("cancel"), on: { click: close } }, icon("fa-xmark"));
 /* U86-SCAFFOLD: with a version on, the price beside the name is its marks alone; the words are their tooltip (hover and keyboard focus) */
 const costOf = (p) => { if (!p.cost) return null;
-  if (!costVersion()) return h("span.itd-cost", {}, speed(p.unit), h("span", { text: p.cost }));
+  if (!costVersion() || !p.unit) return h("span.itd-cost", {}, speed(p.unit), h("span", { text: p.cost }));
   const n = Number(/(\d+)\D*$/.exec(String(p.cost).split(", ").slice(1).join(", "))?.[1]) || 0;
   return h("span.itd-cost.itd-cost-marks", { tip: { cost: p.cost, price: { unit: p.unit, stress: n } }, attrs: { tabindex: "0", "aria-label": p.cost } }, speed(p.unit, { gm: true }), stressChip(n)); };
 const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), costOf(p),
