@@ -94,9 +94,9 @@
   color: var(--ipu-label);
 }
 /* "+" between the parts of the pool (not between the attack's facts: those are not added up) */
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown > div.attribute + div.attribute::before {
-  content: "+"; position: absolute; left: -12px; top: 50%; translate: 0 -52%;
-  font: 400 13px/1 Titles, Comic, sans-serif; color: var(--ipu-label); pointer-events: none;
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.dices + div.breakdown > div.attribute:not(:has(> .attribute-control)) + div.attribute::before {
+  content: "+"; position: absolute; left: -14px; top: 50%; width: 12px; translate: 0 -54%; text-align: center;
+  font: 700 15px/1 Roboto, sans-serif; color: var(--ipu-label); pointer-events: none;
 }
 /* the Bonus: the one field. Filled and framed, so it reads as "type here" beside the chips */
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> input:not(:disabled)) {
@@ -107,7 +107,7 @@
 }
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> input:not(:disabled)) label.attribute-label { color: #fff; }
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> input:not(:disabled)):hover { border-color: #fff; }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> input:focus-visible) { border-color: var(--ipu-yellow); outline: var(--ipu-ring-w) solid var(--ipu-ring-ink); outline-offset: var(--ipu-ring-gap); }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> input:focus-visible) { border-color: #fff; outline: var(--ipu-ring-w) solid var(--ipu-ring-ink); outline-offset: var(--ipu-ring-gap); }
 
 /* ---------- the stunts window (same class): the count is the pool's place, a row per stunt with its stepper ---------- */
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.breakdown div.attribute:has(> .attribute-control) { flex: 1 1 45%; justify-content: space-between; flex-direction: row-reverse; padding: 3px 4px 3px 9px; }
@@ -143,7 +143,7 @@
   color: var(--ipu-ink); background: var(--ipu-yellow-hi); border-color: var(--ipu-ink); box-shadow: 4px 4px 0 var(--ipu-press);
 }
 .application:is(.invincible.roll-dialog, .roll-application.dialog) footer.form-footer button:is([data-ird-main], :first-child:not([data-ird-way])):not(:disabled):active { box-shadow: 1px 1px 0 var(--ipu-press); }
-.application:is(.invincible.roll-dialog, .roll-application.dialog) footer.form-footer button:disabled {
+.application:is(.invincible.roll-dialog, .roll-application.dialog) footer.form-footer button:is(:disabled, [data-ird-main]:disabled, :first-child:disabled) {
   color: var(--ipu-label); background: transparent; border: 2px dashed var(--ipu-line); box-shadow: none; filter: none; opacity: 1; cursor: not-allowed;
 }
 /* named by the script: the main way keeps its words and takes the room, the other ways are icon buttons (their words stay for a screen reader) */

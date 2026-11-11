@@ -59,7 +59,7 @@ ok(!SURFACES.includes("tactics"), "the dock and the desk name their own tooltip 
   const rules = rd.replace(/\/\*[\s\S]*?\*\//g, "");
   ok(!/#(?:0c1a2e|ffe72a|3465a3|a9bcdc|d5dff0|7d93b9|6b82a6)\b/i.test(rules), "rolldialog.css takes the kit's colours from the tokens, not as literals");
   ok(rules.split("\n").filter((l) => /^\s*\./.test(l)).every((l) => /.roll-application.(dialog|choices-dialog)/.test(l)), "every rule of rolldialog.css stays inside the roll dialog");
-  ok(/button:disabled \{[^}]*dashed/.test(rules) && !/button:disabled \{[^}]*opacity:\s*\.\d/.test(rules), "an unavailable way to roll is dashed, not faded");
+  ok(/button:is\(:disabled[^{]*\{[^}]*dashed/.test(rules) && !/button:is\(:disabled[^{]*\{[^}]*opacity:\s*\.\d/.test(rules), "an unavailable way to roll is dashed, not faded");
   ok(WIDTH >= 380 && WIDTH <= 480, "the dialog opens at the width of a caption card");
   ok(mainWay(["public", "gm", "blind", "self"], "gm") === "gm", "the main way to roll is the chat's current way");
   ok(mainWay(["public", "gm", "blind", "self"], "blindroll") === "blind", "a legacy roll mode name is understood");
