@@ -277,12 +277,13 @@ export function grappleRelease(state, cid) {
 const LINKS = Object.freeze({ grappling: ["held", "grappled"], grappled: ["by", "grappling"], carrying: ["held", "carried"], carried: ["by", "carrying"] });
 export function separated(v, ids) {
   const Z = v.facts.zones, out = [], seen = new Set();
-  if (!Z) return out;
+  const spot = (id) => (Z ? Z.place?.(id)?.spot : v.facts.zone?.(id)?.spot) ?? null;      // (no map of zones: the place the facts name, if any)
   const drop = (who, id) => { const k = `${who}:${id}`; if (!seen.has(k) && M.hasStatus(v.state, who, id)) { seen.add(k); out.push({ t: "status-", who, id }); } };
   for (const cid of new Set(ids)) for (const s of M.statusesOf(v.state, cid)) {
     const link = LINKS[s.id], other = link ? s.data?.[link[0]] : null;
     if (!link || typeof other !== "string") continue;
-    const a = Z.place(cid)?.spot, b = Z.place(other)?.spot;
+    const a = spot(cid), b = spot(other);
+    if (!a && !b) continue;                                                                  // nobody can say where they are: the GM's to settle
     if (a && b && a === b && M.hasStatus(v.state, other, link[1])) continue;
     drop(cid, s.id); drop(other, link[1]);
     if (s.id === "carrying" || s.id === "carried") { drop(cid, "airborne"); drop(other, "airborne"); }      // the mark of the pair that stayed in the air [B2392]

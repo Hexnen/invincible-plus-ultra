@@ -64,7 +64,7 @@ export function plan(d, own = {}, ev = {}) {
   if (key === "Tab") {
     if (L.id === "card") { const fk = around(L.keys.map((k) => k.fk), chosen, !!ev.shift); return fk ? { set: { kopt: fk } } : null; }
     if (card) return null;
-    if (p?.kind === "declare" && p.targets?.length) { const reach = p.targets.filter((x) => x.reach !== "out"), walk = reach.length ? reach : p.targets;      /* W1: Tab walks the targets in reach (all of them only when none is) */
+    if (p?.kind === "declare" && p.targets?.length) { const sure = p.reached ? p.targets.filter((x) => x.reach === "in") : [], reach = p.targets.filter((x) => x.reach !== "out"), walk = sure.length ? sure : reach.length ? reach : p.targets;      /* W1: Tab walks the targets in reach (all of them only when none is). P8f: once the engine answered, "in reach" is what it said yes to; one it said nothing about is not walked onto */
       const id = around(walk.map((x) => x.id), p.targets.filter((x) => x.picked).map((x) => x.id).pop() ?? null, !!ev.shift); return id ? { target: id } : null; }
     return null;
   }

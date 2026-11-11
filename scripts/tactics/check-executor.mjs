@@ -40,8 +40,10 @@ globalThis.game = { user: users[0], users, actors, combat, combats, messages: co
   socket: { on: (ch, fn) => { socketListener = fn; }, emit: (ch, msg, opts) => { outbox.push({ msg, to: opts?.recipients ?? null }); } } };
 globalThis.fromUuid = async (u) => actors.find((a) => a.uuid === u) ?? null;
 globalThis.fromUuidSync = (u) => actors.find((a) => a.uuid === u) ?? null;
-globalThis.Roll = class { constructor(f) { this.n = parseInt(f, 10); } async evaluate() { this.dice = [{ results: Array.from({ length: this.n }, () => ({ result: 3 })) }]; return this; } async toMessage() { return { id: `dm${++nid}` }; } };
-globalThis.ChatMessage = { create: async () => ({ id: `cm${++nid}` }), getWhisperRecipients: () => [] };
+/* as Foundry 14 (client/dice/roll.mjs toMessage): the second argument is { messageMode, create }, NOT document options; with create:false the chat data comes back */
+const chatMade = [];
+globalThis.Roll = class { constructor(f) { this.n = parseInt(f, 10); } async evaluate() { this.dice = [{ results: Array.from({ length: this.n }, () => ({ result: 3 })) }]; return this; } async toMessage(data = {}, { create = true } = {}) { const d = { ...data, rolls: [this] }; return create ? ChatMessage.create(d) : d; } };
+globalThis.ChatMessage = { create: async (data, opts) => { chatMade.push({ data, opts: opts ?? null }); return { id: `cm${++nid}` }; }, getWhisperRecipients: () => [] };
 
 const Main = await import("./main.mjs");
 const Store = await import("./store.mjs");
@@ -142,6 +144,56 @@ eq((await fromPlayer("p1", { op: "endTurn", actor: "cbH1", round: 1, slot: 0 }, 
   await Summons.syncCopies(combat, { effects: [] });
   eq(scene.tokens.length, 1, "copies: gone with the bonus");
   game.modules.get = get0; combatants.get("cbH1").token = tok0;
+}
+/* ---- P8g: D95, D97, D98, D100, D96 (the Foundry half) */
+{
+  const { readFileSync } = await import("node:fs");
+  const src = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
+  /* D95: every chat message the executor makes carries the engine's mark as a DOCUMENT option */
+  const E = await import("./engine.mjs"), n0 = chatMade.length;
+  ok(/ChatMessage\.create\(await roll\.toMessage\([^\n]*\{ create: false \}\), \{ ipuTactics: true \}\)/.test(src("./engine.mjs")), "D95: the engine's dice card is created by ChatMessage.create with the ipuTactics option (Roll#toMessage passes no document options)");
+  void E; void n0;
+  /* D97: own startCombat tells of a start only when the fight did start, and hands the combat to the effect registry */
+  const Own = Klass.makeClass(class { async startCombat() { return this; } }), heard = [], refreshed = [];
+  Hooks.on("combatStart", (c, d) => heard.push([c.id, d]));
+  CONFIG.ActiveEffect.documentClass = { registry: { refresh: async (ev, ctx) => { refreshed.push([ev, ctx?.combat?.id ?? null]); } } };
+  const mk = (id) => Object.assign(new Own(), { id, _playCombatSound: (s) => heard.push(["sound", s]) });
+  await mk("nope").startCombat();
+  eq([heard.length, refreshed.length], [0, 0], "D97: a start that was refused (no such combat) plays no sound, calls no combatStart hook, refreshes no effect");
+  await mk(combat.id).startCombat();
+  eq([heard.map((h) => h[0]), heard[1]?.[1], refreshed], [["sound", combat.id], { round: 1, turn: 0 }, [["combatStart", combat.id]]], "D97: a start that went through: sound, the hook with core's payload, the registry refreshed WITH the combat");
+  ok(!!api.state(), "D97: the fight is on after the class's startCombat");
+  delete CONFIG.ActiveEffect.documentClass;
+  await api._runAs("gmuser", { op: "hazard", hazard: { kind: "fire", intensity: 2 }, targets: ["cbN1"] });
+  ok(chatMade.length > 0 && chatMade.every((m) => m.opts?.ipuTactics === true && m.data.rolls?.length === 1 && m.data.flags[MOD].tactics.dice), `D95: the dice card of a hazard was created with the option and the roll (${chatMade.length})`);
+  /* suspicion (bug hunt 1): an edit of an old roll card, its action long over, costs the executor no write at all */
+  { const up0 = combat.update; let writes = 0; combat.update = async (...a) => { writes++; return up0(...a); };
+    Hooks.callAll("updateChatMessage", rollMsg("p1", { inst: "a999", key: "attack", rid: "r1" }, 2)); await settle();
+    eq(writes, 0, "an old roll card that is edited (its instance is not on the stack) costs no claim write");
+    combat.update = up0; }
+  /* D98: the copy tokens of a deleted fight leave the scene; other fights' copies and real tokens stay */
+  const Summons = await import("./summons.mjs");
+  const mkScene = (id, toks) => { const s = { id, tokens: coll(toks), deleteEmbeddedDocuments: async (k, ids) => { for (const i of ids) { const at = s.tokens.findIndex((x) => x.id === i); if (at >= 0) s.tokens.splice(at, 1); } } }; s.tokens.filter = Array.prototype.filter.bind(s.tokens); return s; };
+  const cp = (id, c) => ({ id, flags: { [MOD]: { tactics: { copyOf: { combat: c, owner: "cbH1" } } } } });
+  const s1 = mkScene("s1", [cp("a", combat.id), cp("b", "other"), { id: "real", flags: {} }]), s2 = mkScene("s2", [cp("c", combat.id)]);
+  game.scenes = [s1, s2];
+  Hooks.callAll("deleteCombat", combat); await Summons.clearCopies(null);
+  eq([s1.tokens.map((x) => x.id), s2.tokens.length], [["b", "real"], 0], "D98: deleting the Combat removes its copy tokens from every scene, and nothing else");
+  delete game.scenes;
+  /* D100: an injuries table that could not be read is not kept: the next caller reads it again */
+  const Sys = await import("./system-adapter.mjs"), from0 = globalThis.fromUuid, hero = actors[0], items0 = hero.items.length;
+  eq(await Sys.addInjury(hero, 3, "tx"), null, "D100: no table yet: no injury (the GM is told)");
+  globalThis.fromUuid = async (u) => (/RollTable/.test(u) ? { results: [{ range: [3, 4], documentUuid: "Compendium.x.Item.i3", name: "Cracked ribs" }] } : u === "Compendium.x.Item.i3" ? { toObject: () => ({ _id: "i3", name: "Cracked ribs", type: "criticalInjury" }) } : from0(u));
+  const op = await Sys.addInjury(hero, 4, "tx");
+  eq([op?.t, op?.data?.crit, hero.items.length - items0], ["item+", 4, 1], "D100: the table became readable: the next injury resolves (an early empty read is not cached for the session)");
+  globalThis.fromUuid = async () => { throw new Error("pack gone"); };
+  eq((await Sys.addInjury(hero, 3, "tx"))?.t ?? null, null, "D100: a table that was read is kept: a later failing read of the item only loses that item");
+  globalThis.fromUuid = async (u) => (u === "Compendium.x.Item.i3" ? { toObject: () => ({ name: "Cracked ribs", type: "criticalInjury" }) } : null);
+  eq((await Sys.addInjury(hero, 3, "tx"))?.t, "item+", "D100: ... and the kept table still answers when the table itself can no longer be read");
+  globalThis.fromUuid = from0; hero.items.length = items0;
+  /* D96: the legacy heuristics of scripts/module.js skip the executor's writes (spec 1.3) */
+  const mod = src("../module.js");
+  eq([(mod.match(/Hooks\.on\("preUpdateActor", \(actor, changes, options\) => \{\s*try \{\s*if \([^\n]*options\?\.ipuTactics !== undefined\) return;/g) ?? []).length, /Hooks\.on\("createItem", \(item, options\) => \{\s*try \{\s*if \([^\n]*options\?\.ipuTactics !== undefined\) return;/.test(mod), /Hooks\.on\("preUpdateActor", \(actor, changes\)/.test(mod)], [2, true, false], "D96: both preUpdateActor heuristics and the createItem one return early on an ipuTactics write");
 }
 console.warn = origWarn;
 eq(warns.filter((w) => !/roll dialog|stunts dialog|injuries table|system compatibility/.test(w)).length, 0, "no unexpected warnings");

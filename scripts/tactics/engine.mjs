@@ -88,7 +88,7 @@ async function perform(combat, e) {
   switch (e.t) {
     case "actor": {
       const actor = await fromUuid(e.uuid);
-      if (!actor) return {};
+      if (!actor) return e.undo ? { ok: false, reason: "gone" } : {};                          // D99: an undo that finds the sheet gone says so (the answer's `failed`); a new write to nobody is nothing
       const op = await Sys.setActorField(actor, e.path, e.to, e.tx);
       return e.undo ? {} : { op };
     }
@@ -97,7 +97,7 @@ async function perform(combat, e) {
       const roll = await new Roll(`${Math.max(1, Math.trunc(e.n))}d${e.sides > 0 ? Math.trunc(e.sides) : 6}`).evaluate();        // P5: `sides` for a random pick among N (where a fire spreads)
       const faces = roll.dice[0]?.results?.map((r) => r.result) ?? [];
       let op = null;
-      try { const m = await roll.toMessage({ flavor: t(`ITAC.dice.${String(e.why ?? "").split(":")[0]}`, {}, t("ITAC.dice.engine")), flags: { [MOD]: { tactics: { dice: e.why ?? "" } } } }, { ipuTactics: true }); if (m?.id) op = { t: "message", id: m.id }; } catch { /* the faces count; the card is a courtesy */ }
+      try { const m = await ChatMessage.create(await roll.toMessage({ flavor: t(`ITAC.dice.${String(e.why ?? "").split(":")[0]}`, {}, t("ITAC.dice.engine")), flags: { [MOD]: { tactics: { dice: e.why ?? "" } } } }, { create: false }), { ipuTactics: true }); if (m?.id) op = { t: "message", id: m.id }; } catch { /* the faces count; the card is a courtesy */ }   // D95: Roll#toMessage hands no document options on: the card is created here, with the engine's mark
       return { result: faces, op };
     }
     case "rollRequest": sendRoll(combat, e); return {};
@@ -112,10 +112,10 @@ async function perform(combat, e) {
     case "summonFlag": case "summonCreate": case "summonRemove": case "summonRestore": case "tokenDelete": case "tokenCreate": return Summons.perform(combat, e, scheduleRoster);      // P6: tokens and combatants that come and go (summons.mjs)
     case "fxSet": { const actor = await fromUuid(e.actorUuid); if (actor) await Sys.setItemEffect(actor, e.itemId, e.effectId, e.on); return {}; }
     case "itemDelete": { const a = await fromUuid(e.actorUuid); if (a?.items.get(e.itemId)) await a.deleteEmbeddedDocuments("Item", [e.itemId], { ipuTactics: true }); return {}; }
-    case "itemCreate": { const a = await fromUuid(e.actorUuid); if (a && e.data) await a.createEmbeddedDocuments("Item", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
+    case "itemCreate": { const a = await fromUuid(e.actorUuid); if (!a) return { ok: false, reason: "gone" }; if (e.data) await a.createEmbeddedDocuments("Item", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
     case "effectDelete": { const a = await fromUuid(e.actorUuid); if (a?.effects.get(e.effectId)) await a.deleteEmbeddedDocuments("ActiveEffect", [e.effectId], { ipuTactics: true }); return {}; }
-    case "effectCreate": { const a = await fromUuid(e.actorUuid); if (a && e.data) await a.createEmbeddedDocuments("ActiveEffect", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
-    case "tokenMove": { const d = game.scenes.get(e.sceneId)?.tokens.get(e.tokenId); if (d && e.to) await d.update({ x: e.to.x, y: e.to.y, ...(e.to.elevation !== undefined ? { elevation: e.to.elevation } : {}) }, { ipuTactics: true, animate: false }); return {}; }
+    case "effectCreate": { const a = await fromUuid(e.actorUuid); if (!a) return { ok: false, reason: "gone" }; if (e.data) await a.createEmbeddedDocuments("ActiveEffect", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
+    case "tokenMove": { const d = game.scenes.get(e.sceneId)?.tokens.get(e.tokenId); if (!d) return { ok: false, reason: "gone" }; if (e.to) await d.update({ x: e.to.x, y: e.to.y, ...(e.to.elevation !== undefined ? { elevation: e.to.elevation } : {}) }, { ipuTactics: true, animate: false }); return {}; }
     case "messageStrike": await Sys.strikeMessage(e.id); return {};
     case "message": { try { const m = await ChatMessage.create({ content: foundry.utils.escapeHTML?.(e.key ? t(e.key, e.params ?? {}) : String(e.text ?? "")) ?? "", whisper: e.gmOnly ? ChatMessage.getWhisperRecipients("GM").map((u) => u.id) : [], flags: { [MOD]: { tactics: { note: 1 } } } }, { ipuTactics: true }); return m?.id ? { op: { t: "message", id: m.id } } : {}; } catch { return {}; } }
     default: return {};
@@ -125,7 +125,8 @@ async function perform(combat, e) {
 const hostFor = (combat) => ({
   facts: () => makeFacts(combat), perform: (e) => perform(combat, e), now: () => Date.now(),
   setting: (key) => { try { return game.settings.get(MOD, key); } catch { return undefined; } },
-  parts: () => Sys.participants(combat), rng, sceneFacts: () => Sys.sceneFacts(combat),
+  /* `warn` (D90): a failure the engine contained (a step that threw, an inverse the documents refused): the fight goes on, the console keeps the trace */
+  parts: () => Sys.participants(combat), rng, sceneFacts: () => Sys.sceneFacts(combat), warn: (what, err, more) => { try { console.warn(`${MOD} | tactics: ${what} failed`, more ?? {}, err); } catch { /* no console */ } },
 });
 
 /* ------------------------------------------------------------------ events (spec 16) */
@@ -153,7 +154,8 @@ function run(combatRef, input, { claimKey = null, low = false } = {}) {
       if (claimKey && !(await Store.claim(combat, claimKey))) return { ok: true, changed: false, dup: true };
       const { state, log } = Store.read(combat);
       const out = await D.handle({ state, log }, input, hostFor(combat));
-      if (out.changed) { await Store.write(combat, out.state, out.log !== log ? out.log : undefined); Summons.syncCopies(combat, out.state); }
+      /* D90: the effects are on the documents by now. A state write that is rejected must not read as "nothing happened": the answer says `partial` */
+      if (out.changed) { try { await Store.write(combat, out.state, out.log !== log ? out.log : undefined); } catch (err) { console.warn(`${MOD} | tactics: the state could not be written`, err); return { ...bad("internal", { msg: String(err?.message ?? err).slice(0, 80) }), partial: true }; } Summons.syncCopies(combat, out.state); }
       publish(combat, out.state ?? state, out.events);
       return out.env ?? { ok: true, changed: !!out.changed };
     } catch (err) {
@@ -190,7 +192,7 @@ function onRollMessage(message) {
     const r = Sys.readRollMessage(message);
     if (!r || !r.author) return;
     const combat = combatOfRoll(r);
-    if (!combat) return;
+    if (!combat || !(Store.stateOf(combat)?.stack ?? []).some((i) => i.id === r.inst)) return;      // (an edit of an old roll card, its action long over, costs no claim write)
     const key = `r:${r.messageId}:${r.pushed}:${r.pushable ? 1 : 0}:${r.sixes}`;
     if (doneRolls.has(key)) return;
     doneRolls.add(key); if (doneRolls.size > 400) doneRolls.delete(doneRolls.values().next().value);

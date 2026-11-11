@@ -51,7 +51,9 @@ const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 
 /* ------------------------------------------------------------------ context */
 function makeX(state, log, host, user) {
-  const X = { state, log: log ?? J.emptyLog(), host, user: user ?? { id: "engine", staff: true }, facts: null, events: [], changed: false };
+  /* D90: `did` counts what was asked of the host (documents, the map, dice), `undid` the inverses among it, `ops` keeps the journal ops the
+     host handed back in this call (a request that fails before it is through takes them back), `failed` what the host could not do. */
+  const X = { state, log: log ?? J.emptyLog(), host, user: user ?? { id: "engine", staff: true }, facts: null, events: [], changed: false, did: 0, undid: 0, ops: [], failed: [], parked: null };
   X.facts = liveFacts(X);
   return X;
 }
@@ -86,8 +88,9 @@ function write(X, txId, path, to, inst = null, step = null, tag = null) {
   return true;
 }
 async function perform(X, txId, effect, inst = null, step = null, tag = null) {
+  X.did++;
   const r = (await X.host.perform(effect)) ?? {};
-  if (r.op) { record(X, txId, r.op, inst, step, tag); X.changed = true; }
+  if (r.op) { record(X, txId, r.op, inst, step, tag); X.changed = true; X.ops.push(r.op); }
   X.facts = liveFacts(X);
   return r.ok === false ? { ok: false, reason: r.reason } : r.result;                    // a refused command (the map said no) is the caller's to answer
 }
@@ -125,10 +128,22 @@ async function undoOps(X, ops, round = null) {
   for (const op0 of [...ops].reverse()) {
     const op = liveOp(X, op0, round);
     if (op.t === "state") X.state = J.applyStateOp(X.state, op, true);
-    else { const eff = J.inverseEffect(op); if (eff) await X.host.perform({ ...eff, undo: 1 }); }
+    else { const eff = J.inverseEffect(op); if (eff) await inverse(X, op, eff); }
   }
   X.facts = liveFacts(X); X.changed = true;
 }
+/* D90 / D99 (spec 15): one inverse asked of the host. One that the host refuses ({ ok:false }: the map said no, the document is gone)
+   or that throws (a rejected update) does not stop the others: the writes before it cannot be taken back as one, so the rest is
+   still undone and what stayed as it was is NAMED in the answer (`failed`), for the GM to put right by hand. -> true when it was done */
+async function inverse(X, op, eff, tx = null) {
+  X.did++; X.undid++;
+  let reason = null;
+  try { const r = await X.host.perform({ ...eff, undo: 1 }); if (r && r.ok === false) reason = String(r.reason ?? "error").slice(0, 40); }
+  catch (e) { reason = "error"; warn(X, "inverse", e, { t: op.t }); }
+  if (reason) X.failed.push({ ...(tx ? { tx } : {}), t: String(op.t).slice(0, 24), reason });
+  return !reason;
+}
+const warn = (X, what, e, more = {}) => { try { X.host.warn?.(what, e, more); } catch { /* a courtesy */ } };
 
 /* who rolls: the players who own the character and are at the table; NPC rolls and rolls of absent players are made at the GM desk */
 function rollUsers(X, who) {
@@ -195,7 +210,7 @@ const addresseeOf = (X, cid) => { const c = X.facts.c(cid), users = (c?.owners ?
 function openPrompt(X, I, spec, step) {
   const id = nextId(X, "p");
   const p = { id, inst: I?.id ?? null, step, kind: spec.kind, to: spec.to, options: spec.options ?? [] };
-  for (const k of ["about", "multi", "min", "max", "free", "gmOnlyData", "data"]) if (spec[k] !== undefined) p[k] = spec[k];
+  for (const k of ["about", "multi", "min", "max", "free", "gmOnlyData", "data"]) if (spec[k] != null) p[k] = spec[k];      // (a card about nobody, a hazard's, carries no `about`: null does not survive the store)
   if (spec.auto) { p.auto = spec.auto; p.answered = { by: "auto", at: X.host.now(), value: spec.auto.option }; }     // plan 5.2 step 4: never shown
   X.state = { ...X.state, prompts: { ...X.state.prompts, [id]: p } }; X.changed = true;
   if (I) (I.data.pk ??= {})[spec.key] = id;
@@ -345,27 +360,68 @@ async function drive(X) {
   for (let guard = 0; guard < 500; guard++) {
     const inst = top(X);
     if (!inst || inst.status === "manual" || inst.status === "aborted") return;
-    if (inst.data.hold) { if (!(await resolveHold(X, inst))) return; continue; }
-    const flow = FLOWS[inst.flow], fn = flow.steps[inst.step];
-    if (!fn) { const I = J.clone(inst); I.status = "manual"; setInst(X, I); return; }      // unknown step: never guess, hand it to the GM
-    const R = fn(view(X), inst), I = R.inst;
-    if (!I.hist?.[I.step]) (I.hist ??= {})[I.step] = JSON.stringify({ data: inst.data, rolls: inst.rolls, locked: inst.locked, decl: inst.decl });   // for goToStep / amend
-    let progress = false;
-    for (const e of R.effects) progress = (await applyEffect(X, I, e, inst.step)) || progress;
-    for (const p of R.prompts) progress = openPrompt(X, I, p, inst.step) || progress;
-    for (const ev of R.events) emit(X, I, ev);
-    if (R.done) { setInst(X, I); await closeInst(X, I); continue; }
-    if (R.push) {
-      I.status = "waiting"; I.waits = waitsOf(X, I); setInst(X, I);
-      const r = pushChild(X, I, R.push);
-      if (!r.ok) { const P = J.clone(instOf(X, I.id)); (P.data.notes ??= []).push({ note: "pushRefused", action: R.push.action, reason: r.reason }); if (R.push.part) (P.data.results ??= []).push({ action: R.push.action, status: "aborted", result: "illegal" }); P.status = "open"; setInst(X, P); }
-      continue;
-    }
-    if (R.goto) { I.step = R.goto; I.status = "open"; I.waits = waitsOf(X, I); setInst(X, I); continue; }
-    I.status = I.status === "manual" ? "manual" : "waiting"; I.waits = waitsOf(X, I);
-    setInst(X, I);
-    if (!progress) return;
+    /* D90 / D91 (spec 5.3; principle 4: nothing blocks the table): a step that throws does not leave the fight. Before, the instance
+       stayed on top at the throwing step, so EVERY later request ran into it again and was answered `internal` although its own effect
+       was saved. Now the failure ends here: what the step had not yet handed to the host is as if it never ran, what it had is kept
+       (and journaled), and the instance is handed to the GM (`manual`, with `data.failed`) to settle by hand, to step or to cancel. */
+    const snap = { state: X.state, log: X.log, events: X.events.length, did: X.did }, at = { I: null, post: null };
+    let go;
+    try { go = await stepOnce(X, inst, at); } catch (e) { failStep(X, inst, e, snap, at); return; }
+    if (!go) return;
   }
+}
+/* one turn of the driver -> true: again, false: the stack waits */
+async function stepOnce(X, inst, at) {
+  if (inst.data.hold) return resolveHold(X, inst);
+  const flow = FLOWS[inst.flow], fn = flow.steps[inst.step];
+  if (!fn) { const I = J.clone(inst); I.status = "manual"; setInst(X, I); return false; }      // unknown step: never guess, hand it to the GM
+  const R = fn(view(X), inst), I = R.inst;
+  at.I = I;
+  if (!I.hist?.[I.step]) (I.hist ??= {})[I.step] = JSON.stringify({ data: inst.data, rolls: inst.rolls, locked: inst.locked, decl: inst.decl });   // for goToStep / amend
+  let progress = false;
+  for (const e of R.effects) progress = (await applyEffect(X, I, e, inst.step)) || progress;
+  for (const p of R.prompts) progress = openPrompt(X, I, p, inst.step) || progress;
+  for (const ev of R.events) emit(X, I, ev);
+  at.post = { state: X.state, log: X.log, events: X.events.length };                         // the step's effects are through; what follows only moves the stack
+  if (R.done) { setInst(X, I); await closeInst(X, I); return true; }
+  if (R.push) {
+    I.status = "waiting"; I.waits = waitsOf(X, I); setInst(X, I);
+    const r = pushChild(X, I, R.push);
+    if (!r.ok) { const P = J.clone(instOf(X, I.id)); (P.data.notes ??= []).push({ note: "pushRefused", action: R.push.action, reason: r.reason }); if (R.push.part) (P.data.results ??= []).push({ action: R.push.action, status: "aborted", result: "illegal" }); P.status = "open"; setInst(X, P); }
+    return true;
+  }
+  if (R.goto) { I.step = R.goto; I.status = "open"; I.waits = waitsOf(X, I); setInst(X, I); return true; }
+  I.status = I.status === "manual" ? "manual" : "waiting"; I.waits = waitsOf(X, I);
+  setInst(X, I);
+  return progress;
+}
+/* The instance whose step failed goes to the GM. `at.post`: the effects were through and only the bookkeeping after them failed (pure:
+   put back exactly, the step's results kept on the instance). Nothing asked of the host: the whole step is taken back. Otherwise the
+   effects carried out stay, journaled in the open transaction, so "cancel" undoes them and "by hand" keeps them. */
+function failStep(X, inst, e, snap, at) {
+  warn(X, "step", e, { inst: inst.id, action: inst.action, flow: inst.flow, step: inst.step });
+  const pure = X.did === snap.did;
+  if (at.post) { X.state = at.post.state; X.log = at.post.log; X.events.length = at.post.events; }
+  else if (pure) { X.state = snap.state; X.log = snap.log; X.events.length = snap.events; }
+  X.facts = liveFacts(X);
+  const cur = instOf(X, inst.id);
+  park(X, cur ? (at.I && (at.post || !pure) ? { ...at.I, step: cur.step } : cur) : top(X), inst, e);
+}
+function park(X, base, inst, e) {
+  if (!base) return;
+  const I = J.clone(base);
+  I.status = "manual";
+  I.data.failed = { step: String(inst.step ?? "").slice(0, 40), msg: String(e?.message ?? e).slice(0, 120), ...(I.id !== inst.id ? { after: inst.id } : {}) };
+  I.waits = waitsOf(X, I);
+  setInst(X, I);
+  X.parked = I.id;
+  emit(X, I, { type: "stepFailed", step: I.data.failed.step, gmOnly: 1 });
+}
+/* D90: a transaction nobody holds any more (its instance left the stack on a failure before it was closed) is closed, so what was
+   written under it is in the journal and can be undone. Every open transaction belongs to an instance of the stack otherwise. */
+function sweepTx(X) {
+  const held = new Set(X.state.stack.map((i) => i.tx));
+  for (const id of Object.keys(X.state.txOpen ?? {})) if (!held.has(id)) { const tx = X.state.txOpen[id]; closeTx(X, id, { pub: "", gm: tx.label?.gm || "{ITAC.journal.cutShort}" }); }
 }
 /** An instance held after a failed revalidation: the GM's answer decides (spec 5.1, [OQ-3]). Returns true when the driver may continue. */
 async function resolveHold(X, inst) {
@@ -407,7 +463,9 @@ async function rewind(X, id, step) {
 /** The longest id of a choice (`decl.opt`): the relay and the engine cut at the same length, and no choice of the kit is longer (check-defects). */
 export const OPT_MAX = 120;
 function sanitizeDecl(d, action, staff = false) {
-  const ids = (v, n = 12) => (Array.isArray(v) ? v.filter(P1.isId).slice(0, n) : []);
+  /* D92 (spec 1.4): somebody named twice is named once. A doubled target counted as one target more (full auto lost a die for it) and
+     the ledger entry in memory then differed from what the store keeps (state-pure dedupes an entry's targets). */
+  const ids = (v, n = 12) => (Array.isArray(v) ? [...new Set(v.filter(P1.isId))].slice(0, n) : []);
   const out = { action, targets: ids(d?.targets), helpers: [], exploits: [], stressTotal: 0 };
   if (typeof d?.weapon === "string") out.weapon = d.weapon.slice(0, 120);
   if (typeof d?.power === "string") out.power = d.power.slice(0, 120);
@@ -456,6 +514,20 @@ function placement(X, actor, entry) {
   return unit ? { ok: true, cause: "interrupt", parent: t.id, grant: unit } : { ok: false, code: "busy" };
 }
 const priced0 = (entry) => typeof FLOWS[entry.flow]?.price === "function";                 // a flow that names its own cost answers for the turn itself
+/* D54 (spec 10: an NPC's numbers stay the GM's until revealed). An action for "an ally" (recover Resolve [B2818], rally [B2773],
+   Healing, Inspiration ...) asks about its subject's numbers before anything is rolled: `resolveFull`, `notBroken`, `notDying`. Asked
+   by a PLAYER about an NPC whose statistics the GM has not revealed, every such answer (of "preview", which costs nothing and takes 40
+   targets a question, and of a refused "declare") told a number that player may not know. For a player such a subject is therefore
+   refused BEFORE its numbers are read, with one reason that says nothing of them (`notAlly`; the GM may allow: the request for an
+   exception, whose card the GM answers knowing the numbers). The GM's own hand and a granted declaration are not asked (ruling P8f-R1).
+   -> { ok: false, reason, params } | null */
+function strangerGate(X, entry, decl, actor) {
+  if (X.user.staff === true || entry?.target?.who !== "ally" || X.facts.c(actor)?.npc) return null;
+  const t = (decl.targets ?? []).find((id) => id !== actor && X.facts.c(id)?.npc === true && !X.state.revealed?.[id]?.stats);
+  return t ? { ok: false, reason: "notAlly", params: { gmMayAllow: 1 } } : null;
+}
+/** the legality a declaration of this user meets: the gate of D54, then the entry's and the flow's own rules */
+const legalFor = (X, inst, entry) => strangerGate(X, entry, inst.decl ?? {}, inst.actor) ?? K.legality(view(X), inst, FLOWS[inst.flow]);
 async function opDeclare(X, a) {
   const actor = a.actor;
   if (X.state.mode === "off") return bad("off");
@@ -490,7 +562,7 @@ async function opDeclare(X, a) {
   const payable = (cost) => { if (pl.grant && cost !== "full" && cost !== "quick") return bad("busy"); const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, ranged: P1.isRanged(entry), resolve: X.facts.c(actor)?.resolve, ...(pl.grant ? { grant: pl.grant } : {}) });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
   if (!priced) { const no = payable(entry.cost); if (no) return no; }
   const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
-  const l = K.legality(view(X), inst, FLOWS[inst.flow]);
+  const l = legalFor(X, inst, entry);
   if (!l.ok && !decl.exception) return bad("illegal", { reason: l.reason, ...l.params });
   const price = priced ? FLOWS[inst.flow].price(view(X), inst) : null, cost = priced ? price?.cost ?? "none" : entry.cost;
   if (priced) { const no = payable(cost); if (no) return no; }
@@ -527,7 +599,7 @@ function refusalsOf(X, actor, d) {
     const pl = placement(X, actor, entry);
     if (!pl.ok) { reasons.push(pl.params?.reason ?? pl.code); waive = true; }
     const inst = makeInst(X, { action: entry.id, actor, decl: sanitizeDecl(d, entry.id, false), cause: pl.ok ? pl.cause : "turn", parent: pl.ok ? pl.parent : null });
-    const flow = FLOWS[inst.flow], l = K.legality(view(X), inst, flow), priced = typeof flow?.price === "function";
+    const flow = FLOWS[inst.flow], l = strangerGate({ ...X, user: { ...X.user, staff: false } }, entry, inst.decl, actor) ?? K.legality(view(X), inst, flow), priced = typeof flow?.price === "function";      // (as its owner would meet it: D54)
     const cost = priced ? (l.ok ? flow.price(view(X), inst)?.cost ?? "none" : null) : entry.cost;
     if (!priced && (cost === "none" || cost == null)) { if (!P1.isOnTurn(X.state, actor) && (!pl.ok || pl.cause === "turn") && (!entry.kit || entry.roll || ["resist", "narrative"].includes(entry.effect?.kind))) { reasons.push("notYourTurn"); waive = true; } }
     else if (cost != null) {
@@ -550,7 +622,7 @@ async function opAmend(X, a) {
   decl.helpers = J.clone(inst.decl.helpers ?? []);
   if (decl.helpers.some((h) => decl.targets.includes(h.id))) return bad("illegal", { reason: "helpTarget" });
   const probe = { ...inst, decl };
-  const l = K.legality(view(X), probe, FLOWS[probe.flow]);
+  const l = legalFor(X, probe, C.entryFor(X.state, inst.actor, inst.action, X.facts));
   if (!l.ok && !X.user.staff) return bad("illegal", { reason: l.reason, ...l.params });
   /* P8d: a flow that names its own cost (a move) is priced again for what it was changed into. The price was taken once, at the
      declaration; a move the rules refused, declared with a request for an exception, has no price (the engine does not guess a route),
@@ -715,6 +787,9 @@ function opPreview(X, a) {
       out = { attr: p.attr ?? null, dice: p.pool.dice, base: p.pool.base ?? 0, mods: (p.pool.mods ?? []).filter((m) => m.dice).slice(0, 24).map(line) };
       const pending = (full?.pool?.mods ?? []).filter((m) => m.dice && String(m.source ?? "").startsWith("token:") && wait.has(String(m.source).slice(6))).slice(0, 12).map(line);
       if (pending.length) out.pending = pending;
+      /* D60: the dice the one target would defend with, from the builder of the roll, for whoever may know that target's numbers */
+      const t0 = decl.targets.length === 1 ? decl.targets[0] : null;
+      if (t0 && X.facts.c(t0) && numbersOpen(X, t0)) { const inst = makeInst(X, { action: entry.id, actor, decl }), df = FLOWS[inst.flow]?.defPreview?.(view(X), inst, t0); if (df && Object.keys(df).length) out.def = df; }
     }
   } catch { out = null; }
   /* W1 (U33, U34): WHOM THIS DECLARATION COULD BE AIMED AT. `of` = the candidates the asker's map would mark. For each one the
@@ -729,16 +804,22 @@ function opPreview(X, a) {
     try {
       const tf = X.facts.c(t);
       if (!tf || t === actor || concealed(t)) return null;
-      const inst = makeInst(X, { action: en.id, actor, decl: sanitizeDecl({ ...(isObj(decl) ? decl : {}), targets: [t] }, en.id, staff) });
-      const l = K.legality(view(X), inst, FLOWS[inst.flow]);
+      /* D52 [B2543]: full auto is ONE roll at everybody named, a die less per target beyond the first, all of them in one zone. The
+         answer about `t` is therefore the answer for the declaration with `t` beside the targets already chosen (the declaration's
+         own `targets`): the dice over each token are the dice of the roll that will be made, and a candidate in another zone than
+         the chosen ones is refused here (`notSameZone`), not after "Declare". Any other declaration has one target: `t` alone. */
+      const d0 = sanitizeDecl(isObj(decl) ? decl : {}, en.id, staff), base = d0.fullAuto ? d0.targets.filter((x) => x !== t && x !== actor && X.facts.c(x) && !concealed(x) && X.state.knowledge?.[actor]?.[x] !== "unseen") : [];
+      const inst = makeInst(X, { action: en.id, actor, decl: { ...d0, targets: [...base, t].slice(0, 12) } });
+      const l = legalFor(X, inst, en);
       const row = l.ok ? { ok: true } : { ok: false, reason: String(l.reason ?? "rules").slice(0, 40), params: Object.fromEntries(Object.entries(l.params ?? {}).filter(([k, x]) => k.length <= 24 && (Number.isFinite(x) || (typeof x === "string" && x.length <= 40))).slice(0, 6)) };
       const p = FLOWS[inst.flow]?.preview?.(view(X), inst) ?? null;
       if (p?.pool && Number.isFinite(p.pool.dice)) row.dice = p.pool.dice;
       const h = l.ok ? FLOWS[inst.flow]?.hitPreview?.(view(X), inst, t) ?? null : null;
       if (h) {
         const npc = tf.npc === true, rv = X.state.revealed?.[t] ?? {};
-        row.hit = { base: h.base, toStress: h.toStress, ...(staff || !npc || rv.stats ? { taken: h.taken, most: h.most } : {}), ...(staff || !npc || rv.health ? { now: h.now, max: h.max } : {}) };
+        row.hit = { base: h.base, toStress: h.toStress, ...(staff || !npc || rv.stats ? { taken: h.taken, most: h.most, ...(h.copies ? { copies: h.copies } : {}) } : {}), ...(staff || !npc || rv.health ? { now: h.now, max: h.max } : {}) };
       }
+      if (l.ok && numbersOpen(X, t)) { const df = FLOWS[inst.flow]?.defPreview?.(view(X), inst, t); if (df && Object.keys(df).length) row.def = df; }      // D60
       return row;
     } catch { return null; }                                                                // no answer about that one rather than a wrong one
   };
@@ -760,6 +841,8 @@ function opPreview(X, a) {
   return { ok: true, changed: false, preview: per || acts ? { ...(out ?? {}), ...(per ? { per } : {}), ...(acts ? { acts } : {}) } : out };
 }
 export const REACH_MAX = 40, ACTS_MAX = 12;
+/** may this user know the dice `t` rolls? the GM; the owner of `t`; anybody once the GM revealed its statistics (spec 10; as the surfaces' `attrs`) */
+function numbersOpen(X, t) { return X.user.staff === true || owns(X, t) || !!X.state.revealed?.[t]?.stats; }
 /** The same, at once and without a host that can do anything: for the executor's own client and the checks. -> { attr, dice, base, mods } | null */
 export function previewFor(state, facts, user, req) {
   try { const env = opPreview(makeX(state, null, { facts: () => facts, now: () => 0 }, user), req ?? {}); return env.ok ? env.preview ?? null : null; } catch { return null; }
@@ -898,6 +981,7 @@ async function gmInstOp(X, op, a) {
       noteOverride(X, I, op, rec.req.rid, rid);
       I.rolls[key] = { ...rec, req: { ...rec.req, rid, users, at: X.host.now() } };
       setInst(X, I);
+      X.did++;
       await X.host.perform({ t: "rollRequest", inst: I.id, key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: rec.who, attr: rec.attr, pool: rec.pool, dice: rec.req.dice, maxPush: rec.req.maxPush, secret: rec.secret, label: rec.req.label, ...(rec.req.mode ? { mode: rec.req.mode } : {}) });
       return ok({ inst: I.id });
     }
@@ -921,7 +1005,7 @@ async function gmInstOp(X, op, a) {
       noteOverride(X, I, op, a.from, a.to); setInst(X, I);
       const back = flow.STEPS.includes("reactBefore") && idx(I.step) >= idx("reactBefore") ? "reactBefore" : flow.STEPS[0];
       await rewind(X, I.id, back); I = J.clone(instOf(X, I.id));
-      I.decl.targets = I.decl.targets.map((t) => (t === a.from ? a.to : t));
+      I.decl.targets = [...new Set(I.decl.targets.map((t) => (t === a.from ? a.to : t)))];      // D92: turned onto somebody who is a target already, that one stays one target
       (I.data.retargets ??= []).push({ from: a.from, to: a.to, by: "gm" });
       dropPrompts(X, (p) => p.inst === I.id && p.about === a.from);
       break;
@@ -976,12 +1060,39 @@ async function gmEdit(X, op, a) {
   const c = (id) => (P1.isId(id) ? X.facts.c(id) : null);
   let err = null, errParams = {};
   switch (op) {
-    case "statusAdd": if (c(a.combatant) && typeof a.status?.id === "string") { const x = M.statusAdd(X.state, a.combatant, { ...a.status, source: a.status.source ?? { kind: "gm", name: "gm" } }); w(x.path, x.to); } else err = "badInput"; break;
-    case "statusRemove": if (P1.isId(a.combatant)) { const x = M.statusRemove(X.state, a.combatant, String(a.id)); w(x.path, x.to); } else err = "badInput"; break;
+    /* D53 [B2436], [R10] (D1, D2): "stunned" IS the lost next turn; the mark and the ledger's lost turn belong together. The GM's switch
+       wrote the mark alone: switched off after a real Stun, the turn was still taken away with no mark to say why; switched on, no
+       turn was lost. Now the GM's word on that state writes both, in one journal entry (one undo). */
+    case "statusAdd": if (c(a.combatant) && typeof a.status?.id === "string") {
+      const src = a.status.source ?? { kind: "gm", name: "gm" }, x = M.statusAdd(X.state, a.combatant, { ...a.status, source: src }); w(x.path, x.to);
+      if (a.status.id === "stunned" && X.state.ledger?.[a.combatant] && !X.state.ledger[a.combatant].lostTurn) w(["ledger", a.combatant], Lg.loseNextTurn(X.state.ledger[a.combatant], M.source(src)));
+    } else err = "badInput"; break;
+    case "statusRemove": if (P1.isId(a.combatant)) {
+      const x = M.statusRemove(X.state, a.combatant, String(a.id)); w(x.path, x.to);
+      const L = X.state.ledger?.[a.combatant];
+      if (String(a.id) === "stunned" && L && (L.lostTurn || L.noInterrupts)) w(["ledger", a.combatant], Lg.clearLostTurn(L));
+    } else err = "badInput"; break;
+    /* `value`: the number to set; `delta` (P8f): a step from what the character has NOW, read by the executor at the moment of the
+       edit. The map's steppers send steps: an absolute number counted on the GM's screen from what stood there when the menu opened
+       took back whatever hit the character in the meantime. */
     case "setHealth": case "setResolve": {
-      const cc = c(a.combatant), v = Math.trunc(Number(a.value));
+      const cc = c(a.combatant), hp = op === "setHealth", cur = Number(hp ? cc?.health : cc?.resolve), max = Number(hp ? cc?.maxHealth : cc?.maxResolve);
+      const d = Number.isFinite(Number(a.delta)) && a.value == null ? Math.trunc(Number(a.delta)) : null;
+      const v = d == null ? Math.trunc(Number(a.value)) : Math.max(0, Math.min(Number.isFinite(max) && max > 0 ? max : Infinity, (Number.isFinite(cur) ? cur : 0) + d));
       if (!cc || !Number.isFinite(v) || v < 0) { err = "badInput"; break; }
-      await perform(X, tx, { t: "actor", uuid: cc.actorUuid, path: op === "setHealth" ? "health" : "resolve", to: v, tx });
+      await perform(X, tx, { t: "actor", uuid: cc.actorUuid, path: hp ? "health" : "resolve", to: v, tx });
+      /* D59 [B2707]: Health is the character's state, so a correction of it corrects the state with it, in the same journal entry.
+         Raised from 0: no longer broken, nor knocked out by that break. Set to 0: broken (it holds and carries nobody); no injury is
+         rolled and nobody is asked: the correction is the GM's word (ruling P8f-R3, question P8f-2). A machine and a challenge have
+         no such state (mods-pure.outOfAction). */
+      if (hp && cc.kind !== "vehicle" && cc.kind !== "challenge" && Number.isFinite(cur)) {
+        const drop = (who, id) => { if (M.hasStatus(X.state, who, id)) { const x = M.statusRemove(X.state, who, id); w(x.path, x.to); } };
+        if (v > 0) { drop(a.combatant, "broken"); if (cur <= 0) drop(a.combatant, "unconscious"); }
+        else if (cur > 0) {
+          if (!M.hasStatus(X.state, a.combatant, "broken")) { const x = M.statusAdd(X.state, a.combatant, { id: "broken", source: { kind: "gm", name: "gm" } }); w(x.path, x.to); }
+          for (const e of [...K.grappleRelease(X.state, a.combatant), ...K.carryRelease(X.state, a.combatant)]) drop(e.who, e.id);
+        }
+      }
       break;
     }
     case "tokenAdd": { const t = M.makeToken({ ...a.token, id: a.token?.id ?? nextId(X, "t") }); if (t && c(t.holder)) w(["tokens", `#${t.id}`], t); else err = "badInput"; break; }
@@ -1042,6 +1153,10 @@ async function gmEdit(X, op, a) {
       const cc = c(a.combatant), inv = a.inverse;
       if (!cc || !isObj(inv) || inv.op !== "tokens" || !Array.isArray(inv.rows) || !inv.rows.length || inv.rows.length > 24) { err = "badInput"; break; }
       await perform(X, tx, { t: "placed", who: a.combatant, inverse: J.clone(inv), to: typeof a.zone === "string" ? a.zone.slice(0, 60) : null, tx });
+      /* D55 [B2496-2497], [B2392] (D7, D12): a grapple and a carry are two characters in ONE place. Put somewhere else by hand, the
+         pair is over, as after a move, a throw or a fall (flows/kit.separated), in this same journal entry: undo puts the token back
+         and the link with it. */
+      for (const e of K.separated(view(X), [a.combatant])) if (e.t === "status-" && M.hasStatus(X.state, e.who, e.id)) { const x = M.statusRemove(X.state, e.who, e.id); w(x.path, x.to); }
       emit(X, null, { type: "placed", combatant: a.combatant, zone: typeof a.zone === "string" ? a.zone.slice(0, 60) : undefined, cause: "gm" });
       break;
     }
@@ -1142,9 +1257,9 @@ async function opUndo(X, a) {
   }
   /* an inverse the host could not carry out (the map refused it, a document is gone): the undo goes on, since the writes before it
      cannot be taken back as one, and the answer and the event NAME what stayed as it was, for the GM to put right by hand */
-  const failed = [], host = async (id, op, eff) => { const r = await X.host.perform({ ...eff, undo: 1 }); if (r && r.ok === false) failed.push({ tx: id, t: op.t, reason: String(r.reason ?? "error").slice(0, 40) }); };
+  const f0 = X.failed.length, host = (id, op, eff) => inverse(X, op, eff, id);
   for (const id of list) {
-    const tx = X.log.list.find((t) => t.id === id), n0 = failed.length;
+    const tx = X.log.list.find((t) => t.id === id), n0 = X.failed.length;
     for (const op0 of [...tx.ops].reverse()) {
       const op = liveOp(X, op0, tx.round);
       if (op.t === "state") {
@@ -1160,14 +1275,14 @@ async function opUndo(X, a) {
     const was = (X.state.news ?? []).find((n) => n.tx === id && n.kind === "action" && !n.undone);
     if (was) X.state = { ...X.state, news: X.state.news.map((n) => (n.tx === id ? { ...n, undone: 1 } : n)) };
     pushNews(X, { kind: "undo", ...(was ? { actor: was.actor, action: was.action, ...(was.name ? { name: was.name } : {}), ...(was.secret ? { secret: 1 } : {}) } : {}) });
-    emit(X, null, { type: "undo", tx: id, ...(failed.length > n0 ? { failed: failed.slice(n0).map((f) => ({ t: f.t, reason: f.reason })) } : {}) });
+    emit(X, null, { type: "undo", tx: id, ...(X.failed.length > n0 ? { failed: X.failed.slice(n0).map((f) => ({ t: f.t, reason: f.reason })) } : {}) });
   }
   X.facts = liveFacts(X); X.changed = true;
-  return ok({ undone: list, ...(failed.length ? { failed } : {}) });
+  return ok({ undone: list });                                                              // what an inverse could not do is in the answer's `failed` (handle)
 }
 async function opHazard(X, a) {
   const h = isObj(a.hazard) ? { kind: String(a.hazard.kind), intensity: Math.max(1, Math.min(12, Math.trunc(Number(a.hazard.intensity) || 1))), inZone: a.hazard.inZone !== false, amount: Math.max(0, Math.trunc(Number(a.hazard.amount) || 0)), armor: a.hazard.armor === true, source: typeof a.hazard.source === "string" ? a.hazard.source.slice(0, 24) : undefined, cause: a.hazard.cause, id: String(a.hazard.id ?? a.hazard.kind).slice(0, 40), zone: typeof a.hazard.zone === "string" ? a.hazard.zone.slice(0, 40) : undefined } : null;
-  const inst = makeInst(X, { action: "hazard", actor: null, decl: { action: "hazard", targets: (Array.isArray(a.targets) ? a.targets : []).filter(P1.isId).slice(0, 40), helpers: [], exploits: [], stressTotal: 0 }, cause: a.cause === "trigger" ? "trigger" : "gm", flow: "hazard", data: { hazard: h }, initiator: { type: "hazard", id: h?.id ?? "hazard" }, parent: top(X)?.id ?? null });
+  const inst = makeInst(X, { action: "hazard", actor: null, decl: { action: "hazard", targets: [...new Set((Array.isArray(a.targets) ? a.targets : []).filter(P1.isId))].slice(0, 40), helpers: [], exploits: [], stressTotal: 0 }, cause: a.cause === "trigger" ? "trigger" : "gm", flow: "hazard", data: { hazard: h }, initiator: { type: "hazard", id: h?.id ?? "hazard" }, parent: top(X)?.id ?? null });
   const l = Hazard.legality(view(X), inst);
   if (!l.ok) return bad("illegal", { reason: l.reason });
   inst.tx = openTx(X, { inst: inst.id });
@@ -1284,12 +1399,25 @@ async function opHazardRun(X, a) {
      targets default to the trigger's subject combatant, else to facts.inZoneKey?.(subject.zone). Triggers are pushed last first, so the first runs first. */
 async function system(X, effects) {
   const triggers = [];
+  /* D90: each thing the round driver hands over stands for itself. One that fails (a rejected write of a sheet) is named in the answer
+     (`failed`), what it had written is closed into the journal (sweepTx), and the others still happen: a due trigger is not lost
+     because the recovery before it could not be written. */
   for (const fx of Array.isArray(effects) ? effects : []) {
+    try { await systemOne(X, fx, triggers); }
+    catch (e) { warn(X, "sys", e, { type: fx?.type }); X.failed.push({ t: "sys", what: String(fx?.type ?? "error").slice(0, 40) }); X.facts = liveFacts(X); X.changed = true; }
+  }
+  for (const t of triggers.reverse()) {
+    try { await pushTrigger(X, t); }
+    catch (e) { warn(X, "trigger", e, { id: t?.id }); X.failed.push({ t: "sys", what: "trigger" }); X.changed = true; }
+  }
+}
+async function systemOne(X, fx, triggers) {
+  {
     if (fx?.type === "stress") {
       const c = X.facts.c(fx.combatant), n = Math.max(0, Math.trunc(Number(fx.n) || 0));
-      if (!c || !n) continue;
+      if (!c || !n) return;
       const s = damage.applyStress({ resolve: c.resolve, stress: n });                      // [B2816]
-      if (!s.lost) continue;
+      if (!s.lost) return;
       const tx = openTx(X, {});
       await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: s.resolve, tx });
       closeTx(X, tx, { pub: "", gm: `${c.name ?? ""}: {ITAC.journal.stress} ${n} (${String(fx.source ?? "").slice(0, 40)})` });
@@ -1308,7 +1436,7 @@ async function system(X, effects) {
       closeTx(X, tx, { pub: "{ITAC.journal.summonLeft}", gm: "{ITAC.journal.summonLeft}" });
     } else if (fx?.type === "turnPassed") {                                                  // U9: the round driver let a turn pass (ops-pure.openTurn); the GM reads it in the journal, the table in its news
       const c = X.facts.c(fx.combatant), why = ["broken", "unconscious", "dead"].includes(fx.reason) ? fx.reason : "broken";
-      if (!c) continue;
+      if (!c) return;
       const line = `${c.name ?? ""}: {ITAC.journal.turnPassed.${why}}`;
       closeTx(X, openTx(X, {}), { pub: c.hidden ? "" : `${cMark(fx.combatant)}: {ITAC.journal.turnPassed.${why}}`, who: whoOf(X, [fx.combatant]), gm: line, keep: true });
       pushNews(X, { kind: "turn", actor: fx.combatant, result: `pass.${why}` });             // view-pure drops it for whoever the combatant is concealed from
@@ -1320,7 +1448,6 @@ async function system(X, effects) {
     else if (fx?.type === "challengeFail") await challengeFailRun(X, fx.challenge);
     else if (fx?.type === "trigger" && isObj(fx.trigger)) triggers.push(fx.trigger);
   }
-  for (const t of triggers.reverse()) await pushTrigger(X, t);
 }
 async function pushTrigger(X, t) {
   const run = isObj(t.run) ? t.run : {}, sub = isObj(t.subject) ? t.subject : {};
@@ -1402,7 +1529,7 @@ function takeRoll(X, r) {
 export async function handle({ state, log }, input, host) {
   const user = input?.t === "req" ? input.user : null;
   const X = makeX(state, log, host, user);
-  let env;
+  let env, driving = false;
   try {
     if (!state) return { state, log, env: bad("off"), events: [], changed: false };
     if (input?.t === "req") {
@@ -1410,21 +1537,40 @@ export async function handle({ state, log }, input, host) {
       if (input.rid && state.seen.includes(input.rid)) return { state, log, env: { ok: true, changed: false, dup: true }, events: [], changed: false };     // spec 1.3: two tabs of one GM are harmless
       if (state.mode === "off" && !user.staff) return { state, log, env: bad("off"), events: [], changed: false };
       env = await request(X, input.req);
-      if (env.ok && input.req?.op !== "preview") { applyHelpAnswers(X); await drive(X); }
+      if (env.ok && input.req?.op !== "preview") { applyHelpAnswers(X); driving = true; await drive(X); }
     } else if (input?.t === "sys") {
-      await system(X, input.effects); env = ok(); await drive(X);
+      await system(X, input.effects); env = ok(); driving = true; await drive(X);
     } else if (input?.t === "roll") {
       env = takeRoll(X, input) ? ok() : bad("badInput");
-      if (env.ok) await drive(X);
-    } else { env = ok({ changed: false }); await drive(X); }
+      if (env.ok) { driving = true; await drive(X); }
+    } else { env = ok({ changed: false }); driving = true; await drive(X); }
   } catch (e) {
-    env = bad("internal", { msg: String(e?.message ?? e).slice(0, 120) });                  // what was already performed stays journaled in the open transaction
-    if (X.changed) env.partial = true;
+    /* D90 (spec 12: an answer says what was saved). A request that fails before it is through is taken back whole: what it had asked of
+       the host is undone, the state and the journal are the ones it found, and the answer is `internal` with nothing changed, so it can
+       be sent again. Only when that is not possible (it had already undone something itself, or an inverse failed) the state it left
+       is kept, every transaction of it is closed into the journal, and the answer says `partial`. The driver does not throw (see
+       `drive`); should it, the request itself was carried out and stays, and the action on top goes to the GM. */
+    warn(X, driving ? "drive" : "request", e, { op: input?.req?.op ?? input?.t });
+    const msg = String(e?.message ?? e).slice(0, 120);
+    if (!driving && !X.undid) {
+      const n0 = X.failed.length;
+      for (const op of [...X.ops].reverse()) { const eff = J.inverseEffect(op); if (eff) await inverse(X, op, eff); }
+      env = bad("internal", { msg });
+      if (X.failed.length > n0) { env.partial = true; env.failed = X.failed.slice(0, FAILED_MAX); }
+      return { state, log, env, events: [], changed: false };
+    }
+    try { if (driving && top(X)) park(X, top(X), top(X), e); } catch { /* the state as it stands */ }
+    env = driving && env?.ok ? { ...env, partial: true } : { ...bad("internal", { msg }), partial: true };
+    X.changed = true;
   }
-  if (!X.changed) return { state, log, env: { ...env, changed: false }, events: X.events, changed: false };
+  if (!X.changed) return { state, log, env: { ...env, changed: false, ...(X.failed.length ? { failed: X.failed.slice(0, FAILED_MAX) } : {}) }, events: X.events, changed: false };
+  try { sweepTx(X); } catch (e) { warn(X, "sweep", e); }
+  if (X.failed.length) env = { ...env, failed: X.failed.slice(0, FAILED_MAX) };
+  if (X.parked && instOf(X, X.parked)) env = { ...env, parked: X.parked };                     // an action went to the GM's hand in this call (D90)
   const seen = input?.rid ? [...X.state.seen, input.rid].slice(-P1.SEEN_MAX) : X.state.seen;
   return { state: { ...X.state, rev: (state.rev ?? 0) + 1, seen }, log: X.log, env: env.ok ? { ...env, changed: true } : env, events: X.events, changed: true };
 }
+export const FAILED_MAX = 20;
 /** Read helpers for the API and the checks. */
 export const topInstance = (state) => state?.stack?.[state.stack.length - 1] ?? null;
 export const openPrompts = (state) => Object.values(state?.prompts ?? {}).filter((p) => !p.answered);

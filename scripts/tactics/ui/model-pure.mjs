@@ -65,10 +65,13 @@ export function chanceOf(pool, defPool = null) {
 }
 const DEF_ATTR = { block: "fighting", dodge: "agility" };
 /** The chance of a roll of `n` dice of action `a` (its `opposeAttr` / `defense`) against `tgt`, in the words this user gets [D9]: a
-    band for a player, the number for the GM (`say`); `defended` only when the defender's pool is this user's to know (attrsFor). */
-export function oddsFor(a, n, tgt, facts, t) {
+    band for a player, the number for the GM (`say`); `defended` only when the defender's pool is this user's to know.
+    D60: against a DEFENCE (block, dodge) the defender's dice are the engine's (`def` = the `def` of its answer: the pool the roll
+    will have, sheet dice and injuries in it), never a count of this client's; without that answer nothing is said of a defence.
+    Against a resisting attribute the number is still the attribute this user may see (attrsFor). */
+export function oddsFor(a, n, tgt, facts, t, def = null) {
   if (!Number.isFinite(n)) return null;
-  const dAttr = a?.opposeAttr ?? DEF_ATTR[a?.defense], dp = tgt && dAttr ? Number(attrsFor(facts, tgt)?.[dAttr]) : NaN, c = chanceOf(n, Number.isFinite(dp) ? dp : null), say = (x) => (facts.staff ? pct(x.p) : t(`ITAC.ui.band.${x.band}`));
+  const dAttr = a?.opposeAttr ?? DEF_ATTR[a?.defense], dp = !tgt || !dAttr ? NaN : a?.opposeAttr ? Number(attrsFor(facts, tgt)?.[dAttr]) : Number(def?.[a.defense] ?? NaN), c = chanceOf(n, Number.isFinite(dp) ? dp : null), say = (x) => (facts.staff ? pct(x.p) : t(`ITAC.ui.band.${x.band}`));
   return { level: c.level, text: t(`ITAC.ui.band.${c.band}`), say: say(c), defended: c.defended ? { level: c.defended.level, text: t(`ITAC.ui.band.${c.defended.band}`), say: say(c.defended), label: a.opposeAttr ? t("ITAC.ui.ifResists", { attr: attrText(t, a.opposeAttr) }) : t("ITAC.ui.ifDefends", { how: t(`ITAC.action.${a.defense}`) }) } : null };
 }
 
@@ -544,21 +547,23 @@ function declarePanel(bar, a, own, facts, t) {
      A target that stands on this user's map (`map`) is marked there and has no chip in the panel; a chosen one the engine refuses
      shows the reason at once, with the way to ask, before anything is declared. Nothing is marked until the engine answered. */
   const { targets: tg0, text: tx0, ...core } = decl;
-  const reach = facts.board && all?.length && !lone ? facts.reach?.(bar.combatant, { ...core, action: a.id }, all.map((r) => r.id)) ?? null : null;
-  const oddsOf = (n, tgt) => oddsFor(a, n, tgt, facts, t);
+  /* D52: a declaration of several targets (full auto) is asked about WITH the ones already chosen: the dice over each token are then
+     those of the one roll at all of them, and a candidate the chosen ones rule out (another zone) is refused before "Declare" */
+  const reach = facts.board && all?.length && !lone ? facts.reach?.(bar.combatant, { ...core, action: a.id, ...(arm.maxTargets > 1 && picked.length ? { targets: picked.slice() } : {}) }, all.map((r) => r.id)) ?? null : null;
+  const oddsOf = (n, tgt, def) => oddsFor(a, n, tgt, facts, t, def);
   if (targets) for (const x of targets) {
     const r = reach?.[x.id] ?? null;
     x.map = !!facts.board && !!facts.onMap?.(x.id);
     x.reach = r ? (r.ok ? "in" : "out") : reach && x.note ? "out" : null;
     x.why = r && !r.ok ? reasonText(t, r.reason, r.params) : x.reach === "out" ? x.note : null;
-    x.odds = r?.ok ? oddsOf(r.dice, x.id) : null;
+    x.odds = r?.ok ? oddsOf(r.dice, x.id, r.def) : null;
     x.hit = r?.ok ? r.hit ?? null : null;
   }
   const early = (targets ?? []).find((x) => x.picked && x.reach === "out") ?? null, onMap = (targets ?? []).some((x) => x.map);
   /* D49: dice that still wait for the GM's word are listed apart and are not in the total */
   const pool = pv && Number.isFinite(pv.dice) ? { total: pv.dice, parts: [{ id: pv.attr ?? "base", dice: pv.base ?? 0 }, ...(pv.mods ?? []).map((m) => ({ label: t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source)), dice: m.dice })),
     ...(pv.pending ?? []).map((m) => ({ label: `${t(`ITAC.mod.${String(m.source).split(":")[0]}`, {}, String(m.source))} (${t("ITAC.ui.needsGm")})`, dice: m.dice, pending: true }))], pending: (pv.pending ?? []).reduce((n, m) => n + m.dice, 0) } : null;
-  const chance = pool && !onMap ? oddsOf(pool.total, picked[0]) : null;      // W1: with the targets on the map the chance stands over each token, not in the panel
+  const chance = pool && !onMap ? oddsOf(pool.total, picked[0], pv.def) : null;      // W1: with the targets on the map the chance stands over each token, not in the panel
   const why = arm.why ?? (choice && !pickId ? t("ITAC.ui.need.choice") : a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : chooser && !attr && !a.attrOptional ? t("ITAC.ui.need.attr") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : ap?.why ?? null);
   /* the executor refused this very declaration as against the rules (out of reach, no line of sight...): the reason stays in the panel
      with the way round it, a declaration that carries a request for an exception (a card on the GM desk; the GM's own goes there too) */
@@ -620,7 +625,7 @@ function movePanel(bar, a, own, facts, t) {
       warn: !!(o.stress || o.barriers?.length), disabled, asking: own.ask === o.id, req: disabled ? null : a.req(decl), o, decl, pv: disabled ? null : pvCost(bar, o.cost, o.stress) };
   };
   const board = !!facts.board;
-  const hazardsOf = (o) => [...(o.barriers ?? []).map((b) => ({ border: b.border, text: t(b.element === "door" ? "ITAC.map.haz.door" : "ITAC.map.haz.wall", { n: b.armor ?? 0 }), color: "danger" })), ...(facts.hazards?.(bar.combatant, o.route ?? [o.zone], o.to) ?? [])];
+  const hazardsOf = (o) => [...(o.barriers ?? []).map((b) => ({ border: b.border, text: t(b.element === "door" ? "ITAC.map.haz.door" : "ITAC.map.haz.wall", { n: b.armor ?? 0 }), color: "danger" })), ...(facts.hazards?.(bar.combatant, o.enters ?? o.route ?? [o.zone], o.to) ?? [])];      // D57: the spots the way enters (each with its level), else its zones
   const far = opts.filter((o) => !o.here && !o.area && o.zone), byZone = new Map();
   for (const o of far) { if (!byZone.has(o.zone)) byZone.set(o.zone, []); byZone.get(o.zone).push(o); }
   /* what the map offers: every zone one action reaches, in the colour of its cheapest way (blocked ones are shown too, so the reason can be read and the GM asked) */
@@ -798,6 +803,23 @@ export function dockData(model, own, facts, t) {
 
 /* ------------------------------------------------------------------ the GM desk */
 const stepText = (t, s) => t(`ITAC.ui.step.${s}`, {}, cap(s));
+/** D99 (spec 15): what an answer says beyond yes or no: carried out only in part, which kind of change stayed as it was (an undo
+    whose inverse the map or a sheet refused), an action that went to the GM's hand (D90). The GM reads what to do about it; a player
+    is only told to turn to the GM (U67: nothing about how the fight is run). -> [text] for a warning each */
+/** D94 (U33: every number about one roll has one source): what an answer of the executor about a declaration is remembered under, the
+    pool and the reach alike: the fight's revision AND the revision of the map and the sheets (ui/main.mjs `factsRev`). */
+export const previewKey = (combatId, rev, facts, cid, decl, ids = null) => `${combatId}|${rev}|${facts}|${cid}|${JSON.stringify(decl)}${ids ? `|${ids.join(",")}` : ""}`;
+const FAILED_KIND = (k) => (k === "actor" ? "actor" : k.startsWith("item") ? "item" : k.startsWith("effect") || k === "fx" ? "effect" : k.startsWith("token") ? "token" : k === "zones" ? "zones" : k === "message" ? "message" : k.startsWith("summon") ? "summon" : k === "sys" ? "sys" : "other");
+export function envNotes(env, t, staff = false) {
+  if (!env || typeof env !== "object") return [];
+  const failed = Array.isArray(env.failed) ? env.failed : [];
+  if (!staff) return env.partial || failed.length ? [t("ITAC.warn.partialPlayer")] : [];
+  const out = [];
+  if (failed.length) out.push(t("ITAC.warn.failed", { list: [...new Set(failed.map((f) => t(`ITAC.failed.${FAILED_KIND(String(f?.t ?? ""))}`)))].join(", ") }));
+  else if (env.partial) out.push(t("ITAC.warn.partial"));
+  if (env.parked) out.push(t("ITAC.warn.parked"));
+  return out;
+}
 /** The override controls of one instance in progress (spec 14.1): each control carries the request it sends.
     -> [{ id, type: "number" | "choice" | "button" | "select", group, label, value?, min?, max?, choices?, req }] */
 export function overrideControls(i, facts, t) {
@@ -860,7 +882,7 @@ function manualData(m, own, facts, t) {
   const cost = ["none", "quick", "full"].includes(f.cost) ? f.cost : "none";
   const damage = (m.targets ?? []).map((x) => ({ target: x.id, name: x.name, amount: Math.max(0, Math.trunc(Number(f.damage?.[x.id]) || 0)) }));
   const result = { cost, note: String(f.note ?? "").slice(0, 300), damage: damage.filter((d) => d.amount > 0).map((d) => ({ target: d.target, amount: d.amount })) };
-  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: m.text ?? null, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null,
+  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: m.text ?? null, why: m.failed ? t("ITAC.ui.manual.failed", { step: stepText(t, m.failed.step) }) : m.byHand === "seat" ? t("ITAC.ui.manual.seat") : null, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null,
     costs: ["none", "quick", "full"].map((id) => ({ id, label: costText(t, id), on: id === cost })), note: { value: f.note ?? "", placeholder: t("ITAC.ui.manual.note") }, damage,
     resolve: { label: t("ITAC.ui.manual.resolve"), req: resolve.req(result) }, abort: { label: labelOf(t, abort.label), req: abort.req } };
 }
