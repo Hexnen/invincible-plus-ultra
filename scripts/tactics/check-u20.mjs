@@ -1,6 +1,6 @@
 // node scripts/tactics/check-u20.mjs -- ledger rows U88, U97, U89.
-//   A. WHERE A TOOLTIP OPENS (ui/tip-pure.mjs): outside the block its owner stands in, never on it; over the block first, beside it when
-//      another card or the panel stands there or the window ends, under it last; the bar's tooltips only over the bar; a tight side
+//   A. WHERE A TOOLTIP OPENS (ui/tip-pure.mjs): outside the block its owner stands in, never on it; at the nearest free place (over the
+//      block, beside it, under it), not on another card, the panel or the desk while a free place is left; the bar's only over the bar; a tight side
 //      takes a narrower tooltip; a block as large as the window gets the place that covers least of it
 //   B. the drawing (source pins): the rule is wired for the pointer and the keyboard, the dock's blocks are the ones the rule knows,
 //      the armed action's panel stands on the bar with the hint and the table's line over it (U97)
@@ -55,12 +55,19 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   ok(n === WINS.length * SIZES.length * (12 + 3 + 2), `A: ${n} placements over three windows and three interface sizes kept the block clear`);
 
   const win = { w: 1600, h: 900 }, card = R(500, 380, 600, 190), owner = R(520, 500, 160, 32), tip1 = { w: 290, h: 132 };
-  let p = placeTip({ owner, block: card, size: tip1, win });
-  eq([p.side, p.top, p.left, p.free], ["up", 380 - GAP - 132, Math.round(520 + 80 - 145), true], "A: first choice: over the block, centred on the owner's column");
-  p = placeTip({ owner, block: card, size: tip1, win, avoid: [R(400, 200, 800, 170)] });
-  eq([p.side, p.left, p.top], ["left", 500 - GAP - 290, Math.round(516 - 66)], "A: another card over the block: beside the block at the owner's height, on the side the owner is nearer to");
-  p = placeTip({ owner: R(900, 500, 160, 32), block: card, size: tip1, win, avoid: [R(400, 200, 800, 170)] });
-  eq([p.side, p.left], ["right", 1100 + GAP], "A: ... the right side for an owner in the right half");
+  /* the nearest free place: an answer of the top row -> over the card; one at the card's left or right edge, lower down -> beside it */
+  let p = placeTip({ owner: R(720, 440, 160, 32), block: card, size: tip1, win });
+  eq([p.side, p.top, p.left, p.free], ["up", 380 - GAP - 132, Math.round(720 + 80 - 145), true], "A: an answer of the top row: over the block, centred on the owner's column");
+  p = placeTip({ owner, block: card, size: tip1, win });
+  eq([p.side, p.left, p.top], ["left", 500 - GAP - 290, Math.round(516 - 66)], "A: an answer at the left edge, lower down: beside the block at the owner's height");
+  p = placeTip({ owner: R(920, 500, 160, 32), block: card, size: tip1, win });
+  eq([p.side, p.left], ["right", 1100 + GAP], "A: ... on the right for one at the right edge");
+  p = placeTip({ owner: R(520, 392, 160, 32), block: card, size: tip1, win });
+  eq(p.side, "up", "A: two places about as near (the top left corner): over the block wins");
+  p = placeTip({ owner: R(720, 440, 160, 32), block: card, size: tip1, win, avoid: [R(400, 200, 800, 170), R(450, 578, 700, 60)] });
+  eq([p.side, p.free], ["left", true], "A: another card stands over the block (and the bar under it): beside the block, on neither");
+  p = placeTip({ owner: R(720, 440, 160, 32), block: card, size: tip1, win, avoid: [R(400, 200, 800, 170), R(0, 300, 492, 400), R(1108, 300, 492, 400)] });
+  eq([p.side, p.top, p.free], ["down", 570 + GAP, true], "A: ... and with both sides taken too: under the block");
   p = placeTip({ owner, block: R(500, 60, 600, 510), size: tip1, win });
   eq(p.side, "left", "A: no room over a block that reaches the top of the window: beside it");
   /* the desk: a column at the right edge, its tooltips open on the map side whichever half the owner is in */
@@ -77,7 +84,7 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   p = placeTip({ owner: R(700, 500, 100, 30), block: R(20, 20, 1560, 860), size: tip1, win });
   ok(p.left >= PAD && p.top >= PAD && p.left + p.w <= win.w - PAD && p.top + p.h <= win.h - PAD && p.free === false, "A: nothing fits outside: the tooltip is pulled into the window and says it is not free");
   /* nothing free of the other cards: the place that covers least of them */
-  p = placeTip({ owner, block: card, size: tip1, win, avoid: [R(0, 0, 1600, 372), R(0, 380, 492, 520)], order: ["up", "left"] });
+  p = placeTip({ owner, block: card, size: tip1, win, avoid: [R(0, 0, 1600, 300), R(0, 380, 492, 520)], order: ["up", "left"] });
   eq(p.side, "up", "A: every place lies on something: the one that covers least");
   eq(shown(R(100, 100, 200, 300), R(0, 180, 1000, 400)), R(100, 180, 200, 220), "A: a card scrolled half out of its box counts by what shows of it");
   eq([ORDER, orderFor("bar"), orderFor("block")], [["up", "side", "down"], ["up"], ["up", "side", "down"]], "A: the order of places: up, side, down; the bar only up");
@@ -93,7 +100,7 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   const blocks = /const DOCK_BLOCKS = "([^"]+)"/.exec(tip)?.[1].split(", ") ?? [];
   eq(blocks, [".ita-ask", ".itd-panel", ".itd-bar", ".itd-wait", ".itd-hint1"], "B: the blocks of the dock");
   ok(/h\(`article\.ita-ask/.test(dom) && /h\("section\.itd-panel"/.test(dock) && /h\("div\.itd-bar"/.test(dock) && /h\("div\.itd-wait"/.test(dock) && /h\("div\.itd-hint1"/.test(dock), "B: ... are the ones the dock draws");
-  ok(/KEEP_OFF = `\$\{DOCK\} \.ita-ask, \$\{DOCK\} \.itd-panel`/.test(tip) && /b\.classList\.contains\("itd-bar"\) \? "bar" : "block"/.test(tip), "B: a tooltip keeps off the other cards and the panel; the bar's own stand over the bar");
+  ok(/KEEP_OFF = `\$\{DOCK\} \.ita-ask, \$\{DOCK\} \.itd-panel, \$\{DOCK\} \.itd-bar, \$\{DESK\} \.igd`/.test(tip) && /b\.classList\.contains\("itd-bar"\) \? "bar" : "block"/.test(tip), "B: a tooltip keeps off the other cards, the panel, the bar and the desk; the bar's own stand over the bar");
   ok(/el\.closest\("\.igd"\)/.test(tip) && /order: \["side", "up", "down"\]/.test(tip), "B: the desk is one block: its tooltips open beside the column");
   /* U97: the stack, bottom up: bar, panel, hint, the table's line, the questions */
   const draw = dock.slice(dock.indexOf("swap(stack, ["), dock.indexOf("/* U41: the answer the keyboard chose"));

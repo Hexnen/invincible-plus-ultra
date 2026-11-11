@@ -7,9 +7,9 @@
 import { placeTip, shown, orderFor } from "./tip-pure.mjs";
 
 const DOCK = "#invincible-tactics-dock", DESK = "#invincible-tactics-desk";
-/* the blocks of the dock (dock.mjs draw()) and what a tooltip keeps off besides its own block: the other cards and the panel */
+/* the blocks of the dock (dock.mjs draw()) and what a tooltip keeps off besides its own block: the other cards, the panel, the bar, the desk */
 const DOCK_BLOCKS = ".ita-ask, .itd-panel, .itd-bar, .itd-wait, .itd-hint1";
-const KEEP_OFF = `${DOCK} .ita-ask, ${DOCK} .itd-panel`;
+const KEEP_OFF = `${DOCK} .ita-ask, ${DOCK} .itd-panel, ${DOCK} .itd-bar, ${DESK} .igd`;
 const rectOf = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
 
 /** the block of `el` and the order of places for it -> null: not ours, Foundry places it */
