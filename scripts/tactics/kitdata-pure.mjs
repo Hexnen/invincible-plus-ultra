@@ -30,7 +30,7 @@
      why     for a row "by hand": why the book leaves it to the table (ITAC.kit.why.<id>, WHYS below) */
 
 export const LEVELS = Object.freeze(["basic", "major", "massive", "monstrous"]);
-export const NOTES = Object.freeze(["attack", "sheet", "move", "toggle", "effect", "token", "outcome", "zone", "map", "gmCard", "flag", "passive", "story", "system", "interrupt",
+export const NOTES = Object.freeze(["attack", "noAttack", "sheet", "move", "toggle", "effect", "token", "outcome", "zone", "map", "gmCard", "flag", "passive", "story", "system", "interrupt",
   "turn", "reaction", "stunt", "crit", "summon", "copies", "source", "initiative", "vehicle", "scene", "unknown", "off", "weapon", "roll", "control", "size", "poison", "resist", "barred", "critTwice"]);
 /* why a row is left to the table (ITAC.kit.why.<id>): the book gives the engine nothing to apply or to offer there */
 export const WHYS = Object.freeze(["talk", "outOfFight", "partOfPower", "gmJudges", "senses", "story", "sheetNumbers", "beforeFight", "systemRoll", "roleplay", "noEffect"]);

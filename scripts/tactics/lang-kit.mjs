@@ -196,6 +196,7 @@ export const EN_KIT = {
   "ITAC.kit.act.resilience": "Turn damage just taken into stress",
   "ITAC.kit.act.wisdom": "Size them up (Unconventional Wisdom)",
   "ITAC.kit.act.phobia": "Face the phobia (roll at the start of the turn)",
+  "ITAC.kit.note.noAttack": "An attack of the book, but this item carries no attack numbers (dice bonus, damage, range), so it is not offered as a weapon. Drag the power from the compendium onto the sheet, or declare it with Use a power and settle it on the GM's card.",
 };
 export const PL_KIT = {
   "ITAC.warn.noEffect": "Tego efektu nie ma już na karcie. Przełącz go ręcznie.",
@@ -393,4 +394,5 @@ export const PL_KIT = {
   "ITAC.kit.act.resilience": "Zamień otrzymane obrażenia na stres",
   "ITAC.kit.act.wisdom": "Oceń ich (Niekonwencjonalna mądrość)",
   "ITAC.kit.act.phobia": "Zmierz się z fobią (rzut na początku tury)",
+  "ITAC.kit.note.noAttack": "Atak z podręcznika, ale ten przedmiot nie ma liczb ataku (premia do kości, obrażenia, zasięg), więc nie pojawia się jako broń. Przeciągnij moc z kompendium na kartę albo zadeklaruj ją przez Użyj mocy i rozstrzygnij na karcie MG.",
 };

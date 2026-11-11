@@ -160,6 +160,7 @@ export function build(src = {}) {
         for (const o of row?.opts ?? []) kit.weapons.push({ ...patchProfile(p, { ...o.patch, stress: o.stress }, attrs), id: `${p.id}+${n++}`, opt: o.k });
       }
       if (!row && attacks.length) { rec.state = "auto"; rec.note = "weapon"; }
+      if (row?.atk && !row.mounted && !attacks.length) { rec.state = "assist"; rec.note = "noAttack"; }      // an attack of the book on an item that carries no numbers (a hand-made item mapped to an entry)
       if (row?.mounted && !attacks.length) { /* a vehicle's weapon: fired through the vehicle's own actions (P7) */ }
       /* a boost of the bare slugfest attack (Strike) */
       if (row?.opt?.on === "slug" && x.parent) {

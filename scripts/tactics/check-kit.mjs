@@ -400,6 +400,9 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   eq(await crit([item("ki", "Killer", "talent")], []), [[2], [6]], "Killer: two dice, the higher is kept");
   eq(await crit([], [item("lb", "Lucky Break", "talent")]), [[2], [3]], "Lucky Break: two dice, the lower is kept");
   eq(await crit([], [item("du", "Duplication", "power", { boosts: ["so"] }), item("so", "Sequestered Original", "boost", { power: "du" })]), [[], []], "Sequestered Original: broken, no injury is rolled");
+  /* an attack of the book on an item with no attack data of its own (a hand-made item the GM mapped to the entry) */
+  const bare = K.build({ items: [item("db", "Blast", "power")], attrs: { agility: 4 } });
+  eq([bare.weapons.length, bare.rows.find((r) => r.item === "db").state, bare.rows.find((r) => r.item === "db").note], [0, "assist", "noAttack"], "an attack entry on an item without attack numbers is not called automated: the row says what is missing");
   /* what the builder makes of the rest */
   const k = K.build({ items: [item("mc", "Mind Control", "power", { boosts: ["hy"] }), item("hy", "Hypnosis", "limit", { power: "mc" }), item("si", "Signature Item", "power", { boosts: ["th"] }), item("th", "Throwable Item", "boost", { power: "si" }),
     item("sw", "Swimming", "power", { boosts: ["fs"] }), item("fs", "Fast Swimmer", "boost", { power: "sw" }), item("du", "Duplication", "power", { boosts: ["so"] }), item("so", "Sequestered Original", "boost", { power: "du" }),

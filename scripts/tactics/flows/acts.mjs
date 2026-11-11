@@ -134,7 +134,7 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
       const f = String(opt ?? "").split("+").filter(Boolean), n = (id) => f.filter((x) => x === id).length;
       if (n("powered") > 0) R.effects.push({ t: "stress", who: I.actor, n: n("powered"), cost: 1 });
       R.effects.push({ t: "summon", who: I.actor, members: 3 + 2 * n("more"), item: e.kit?.item ?? null, delayed: a?.pass?.summonDelay ? 1 : 0 });
-      if (n("versatile") + n("powered") > 0) R.effects.push({ t: "message", gmOnly: 1, key: "ITAC.msg.summonFinish", params: { name: a?.name ?? "", versatile: n("versatile"), powered: n("powered"), text: String(I.decl.text ?? "").slice(0, 200) } });
+      if (n("versatile") + n("powered") > 0) R.effects.push({ t: "message", gmOnly: 1, key: "ITAC.msg.summonFinish", params: { name: a?.name ?? "", versatile: n("versatile"), powered: n("powered"), text: String(I.decl.text ?? "").slice(0, 200) || "-" } });
       I.data.gain = 3 + 2 * n("more"); break;
     }
     case "dismiss": R.effects.push({ t: "summonLeave", combatants: K.summonsOf(v, I.actor) }); break;      // [B1812]

@@ -85,7 +85,10 @@ function staffModel(combat, desk) {
   const actor = combat.combatants.get(cid)?.actor ?? null;
   st.dock.quiet = !!actor && game.users.some((u) => u.active && !Store.isStaff(u) && actor.testUserPermission(u, "OWNER"));
   const mine = (desk?.info ?? []).filter((i) => i.actor === cid).map((i) => ({ ...i, rolls: [], commands: [] }));
-  return { bars: [bar], prompts: [], mine, stack: desk?.info ?? [], waiting: desk?.waiting ?? [], turn: desk?.turn ?? null };
+  /* what this one summoned acts in the same turn: its bars stand beside (the dock's switcher) */
+  const cur = state.init?.curMember, more = (state.summons ?? []).filter((x) => x.owner === cur).flatMap((x) => x.combatants.filter((id) => !(x.wait ?? []).includes(id)));
+  const bars = more.length ? [...new Set([cur, ...more, cid])].map((id) => (id === cid ? bar : Api.pure.desk.barModel(state, id, { ...Engine.context(combat), P1: Api.pure.economy }))) : [bar];
+  return { bars, prompts: [], mine, stack: desk?.info ?? [], waiting: desk?.waiting ?? [], turn: desk?.turn ?? null };
 }
 
 function refresh() {
