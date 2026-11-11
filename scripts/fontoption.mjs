@@ -87,7 +87,7 @@ const STR = {
     loadFail: "Nie udało się wczytać dołączonego fontu {file}. Zostaje Komikah.",
     capFail: "Nie udało się wczytać dołączonego fontu podpisów {file}. Podpisy zostają w kroju pisma komiksowego.",
     missing: "Wybrano font \"ActionFigure\", ale nie znaleziono pliku fontu. Umieść własną, licencjonowaną kopię ActionFigure BB w {path} (działa też .otf, .woff2 i .woff). Do tego czasu zostaje Komikah.",
-    unreadable: "Wybrano font \"ActionFigure\", ale plik {file} nie daje się wczytać jako font. Zostaje Komikah. Sprawdź, czy to Twoja poprawna kopia ActionFigure BB.",
+    unreadable: "Wybrano font \"ActionFigure\", ale plik {file} nie daje się wczytać jako font. Zostaje Komikah. Sprawdź, czy to twoja poprawna kopia ActionFigure BB.",
     fallback: "Brakujące w pliku ActionFigure znaki ({n}) są brane z Komikah: {list}"
   }
 };

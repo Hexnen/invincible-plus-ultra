@@ -4,6 +4,7 @@
    prefix because they share the Plus Ultra settings list (as "Splash: " and "Challenges: " do).
    Plural forms: ICB.Ctx.Combatants.* and ICB.End.After.* exist in all four CLDR categories used by Polish (one / few / many / other) in BOTH
    languages, so the parity check (tools: scripts/combat/check-lang.mjs) can demand identical key sets. */
+import { TERMS } from "../i18n/terms.mjs";
 export const EN = {
   "ICB.Settings.Enabled.Name": "Combat: show banners",
   "ICB.Settings.Enabled.Hint": "A banner slides in from the top of the screen when a combat starts, when a new round begins and when the combat ends (only for the combat on the scene you are viewing; this client only).",
@@ -58,8 +59,8 @@ export const EN = {
   "ICB.Bar.Defeated": "Defeated",
   "ICB.Bar.Active": "Active turn",
   "ICB.Bar.Yours": "Yours",
-  "ICB.Bar.Health": "Health",
-  "ICB.Bar.Resolve": "Resolve",
+  "ICB.Bar.Health": TERMS.en.health,
+  "ICB.Bar.Resolve": TERMS.en.resolve,
   "ICB.Bar.Progress": "Progress",
   "ICB.Bar.TimeLeft": "Time left",
   "ICB.Bar.Of": "{label} {value} of {max}",
@@ -115,16 +116,16 @@ export const PL = {
   "ICB.End.After.many": "po {n} rundach",
   "ICB.End.After.other": "po {n} rundach",
   "ICB.Settings.BarEnabled.Name": "Walka: pokaż pasek inicjatywy",
-  "ICB.Settings.BarEnabled.Hint": "Pasek u góry ekranu z kolejnością tur walki na oglądanej scenie: portrety, inicjatywa, Health i Resolve (tylko ten klient).",
+  "ICB.Settings.BarEnabled.Hint": "Pasek u góry ekranu z kolejnością tur walki na oglądanej scenie: portrety, inicjatywa, Zdrowie i Determinacja (tylko ten klient).",
   "ICB.Settings.BarSize.Name": "Walka: rozmiar paska",
   "ICB.Settings.BarSize.Hint": "Jak duży jest pasek inicjatywy. Tylko ten klient.",
-  "ICB.Settings.BarRes.Name": "Walka: zasoby na pasku",
+  "ICB.Settings.BarRes.Name": "Walka: wskaźniki na pasku",
   "ICB.Settings.BarRes.Hint": "Które paski pokazują kafelki. To tylko ukrywa elementy na tym kliencie; to, co gracze w ogóle mogą zobaczyć, ustawia MG w ustawieniu świata.",
-  "ICB.Settings.BarRes.both": "Health i Resolve",
-  "ICB.Settings.BarRes.health": "Tylko Health",
+  "ICB.Settings.BarRes.both": "Zdrowie i Determinacja",
+  "ICB.Settings.BarRes.health": "Tylko Zdrowie",
   "ICB.Settings.BarRes.none": "Brak",
   "ICB.Settings.BarPlayers.Name": "Pasek walki: co widzą gracze",
-  "ICB.Settings.BarPlayers.Hint": "Tylko MG. Czyje paski Health i Resolve gracze widzą na pasku inicjatywy. Gracze zawsze widzą portret, nazwę i inicjatywę każdego uczestnika, którego mogą zobaczyć; liczby tylko dla postaci, które posiadają lub obserwują. Ukrytych uczestników i tajnych tokenów gracze nigdy nie widzą.",
+  "ICB.Settings.BarPlayers.Hint": "Tylko MG. Czyje paski Zdrowia i Determinacji gracze widzą na pasku inicjatywy. Gracze zawsze widzą portret, nazwę i inicjatywę każdego uczestnika, którego mogą zobaczyć; liczby tylko dla postaci, które posiadają lub obserwują. Ukrytych uczestników i tajnych żetonów gracze nigdy nie widzą.",
   "ICB.Settings.BarPlayers.friendly": "Tylko własne i przyjazne",
   "ICB.Settings.BarPlayers.all": "Paski wszystkich",
   "ICB.Settings.BarPlayers.none": "Bez pasków",
@@ -144,16 +145,16 @@ export const PL = {
   "ICB.Bar.Defeated": "Pokonany",
   "ICB.Bar.Active": "Aktywna tura",
   "ICB.Bar.Yours": "Twój",
-  "ICB.Bar.Health": "Health",
-  "ICB.Bar.Resolve": "Resolve",
+  "ICB.Bar.Health": TERMS.pl.health,
+  "ICB.Bar.Resolve": TERMS.pl.resolve,
   "ICB.Bar.Progress": "Postęp",
   "ICB.Bar.TimeLeft": "Pozostały czas",
   "ICB.Bar.Of": "{label} {value} z {max}",
   "ICB.Bar.OfUnit": "{label} {value} z {max} {unit}",
   "ICB.Bar.Pct": "{label} {pct} procent",
-  "ICB.Bar.Hint.Select": "Enter zaznacza token. Shift+Enter otwiera kartę.",
-  "ICB.Bar.Hint.Sheet": "Shift+Enter otwiera kartę. Enter pokazuje token na mapie.",
-  "ICB.Bar.Hint.Pan": "Enter pokazuje token na mapie.",
+  "ICB.Bar.Hint.Select": "Enter zaznacza żeton. Shift+Enter otwiera kartę.",
+  "ICB.Bar.Hint.Sheet": "Shift+Enter otwiera kartę. Enter pokazuje żeton na mapie.",
+  "ICB.Bar.Hint.Pan": "Enter pokazuje żeton na mapie.",
   "ICB.Settings.Yze.Name": "Walka: dopasuj do Year Zero Engine Combat",
   "ICB.Settings.Yze.Hint": "Gdy moduł Year Zero Engine Combat jest aktywny, pasek inicjatywy (oraz karty Wyzwań i drużyny) pokazuje też, które akcje zostały zużyte w tej rundzie. Wyłącz, by zignorować ten moduł.",
   "ICB.Bar.Act.fast": "Szybka akcja",
@@ -171,9 +172,9 @@ export const PL = {
   "ICB.Bar.Act.Line": "{name}: {state}",
   "ICB.Bar.Gm.Group": "Oznacz zużyte akcje",
   "ICB.Bar.Dup": "Wpis {k} z {n}: ta sama postać",
-  "ICB.Bar.DupBars": "Health i Resolve są przy jej pierwszym wpisie",
-  "ICB.Bar.Waiting": "Trwa losowanie inicjatywy",
-  "ICB.Bar.WaitingShort": "Losowanie…"
+  "ICB.Bar.DupBars": "Zdrowie i Determinacja są przy jej pierwszym wpisie",
+  "ICB.Bar.Waiting": "Trwa dobieranie inicjatywy",
+  "ICB.Bar.WaitingShort": "Dobieranie…"
 };
 
 /* Local resolver. Language: game.i18n.lang, PL on top of EN. A missing key shows the key (never throws). */

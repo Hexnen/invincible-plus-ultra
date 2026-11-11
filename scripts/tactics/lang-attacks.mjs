@@ -152,7 +152,7 @@ export const PL_ATTACKS = {
   "ITAC.reason.noMovement": "nie został już ruch",
   "ITAC.reason.sharp": "potrzebna ostra broń",
   "ITAC.reason.emptyZone": "w tej strefie nie ma czym unieruchomić celu",
-  "ITAC.reason.targetBudget": "za dużo stuntów na celu, który zrobił unik",
+  "ITAC.reason.targetBudget": "za dużo wyczynów na celu, który zrobił unik",
 
   "ITAC.mod.weapon": "Broń",
   "ITAC.mod.wreck": "Demolowanie strefy",
@@ -167,11 +167,11 @@ export const PL_ATTACKS = {
   "ITAC.opt.kbToward": "W stronę: {zone}",
 
   "ITAC.card.minionLoss": "Ilu pada?",
-  "ITAC.card.minionsFate": "Powaleni sługusi",
+  "ITAC.card.minionsFate": "Powalone sługusy",
   "ITAC.card.knockDir": "Kierunek odrzutu",
   "ITAC.card.disarm": "Rozbrojenie",
   "ITAC.prompt.minionLoss": "Ilu pada?",
-  "ITAC.prompt.minionsFate": "Powaleni sługusi",
+  "ITAC.prompt.minionsFate": "Powalone sługusy",
   "ITAC.prompt.knockDir": "W którą stronę?",
   "ITAC.prompt.disarm": "Przedmiot jest twój. Co dalej?",
 
@@ -206,7 +206,7 @@ export const PL_ATTACKS = {
   "ITAC.ui.npc.spent": "Determinacja na zerze. NPC w tym stanie często się poddaje albo ucieka.",
   "ITAC.ui.policy.push": "Forsuje rzuty",
   "ITAC.ui.policy.rules": "Wg zasad",
-  "ITAC.ui.policy.major": "Ważny NPC",
+  "ITAC.ui.policy.major": "Znaczący NPC",
   "ITAC.ui.policy.no": "Nie",
   "ITAC.ui.policy.yes": "Tak",
 };
