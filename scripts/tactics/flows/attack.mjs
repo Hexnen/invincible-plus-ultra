@@ -788,8 +788,20 @@ export const steps = {
 
 /* ------------------------------------------------------------------ stunt options and validation */
 const stuntKind = (I) => { const k = kindOf(I); return k === "ram" ? "slugfest" : k; };
-/** who else stands in the target's zone and is not already a target of this attack (Bang Heads [B2437], Trick Shot [B2518]) */
-const othersNear = (v, I, t) => (v.facts.inZone(t) ?? []).filter((c) => c !== I.actor && !I.decl.targets.includes(c) && v.facts.c(c) && v.facts.c(c).present !== false);
+/** U90 (ruling U17-R1). The "additional opponent in the same zone" of Bang Heads [B2437] and Trick Shot [B2518]: a character who stands in the zone
+    of the target that was hit, on that target's side (hero side / NPC side: the `npc` fact, a hero's summoned allies with the heroes [B1808]) and is
+    not a target of this attack already. Never the attacker, somebody defeated or gone, a challenge or a vehicle (no opponents: things), and nobody
+    the attacker does not know of: one the attacker has as "unseen", or, for an attacker of the heroes' side (whose player reads the card), one the
+    GM keeps hidden (spec 10: the list must not give such a figure away). Before, everybody else in the zone was offered: the attacker's allies too. */
+const NO_OPPONENT = ["challenge", "vehicle"];
+function othersNear(v, I, t) {
+  const tf = v.facts.c(t), a = v.facts.c(I.actor), known = v.state.knowledge?.[I.actor] ?? {};
+  if (!tf) return [];
+  return (v.facts.inZone(t) ?? []).filter((c) => {
+    const f = v.facts.c(c);
+    return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !!f.npc === !!tf.npc && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
+  });
+}
 function ctxFor(v, I, t) {
   const tf = v.facts.c(t), w = weaponOf(v, I);
   return { attack: stuntKind(I), target: K.immunityFlags(tf), sharp: !!(v.entry(I)?.damage?.sharp ?? w?.sharp), zoneEmpty: !!v.facts.zone(t)?.empty, movementLeft: I.data.charge?.left ?? 0, otherOpponents: othersNear(v, I, t).length };   // [G-L7]: `huge` only for real huge creatures
