@@ -160,7 +160,7 @@ export class Table {
     if (r.state) {
       const back = S.parse(S.serialize(r.state));
       const d = firstDiff(JSON.parse(JSON.stringify(r.state)), back);
-      if (d) ok(false, `the state does not survive the store's sanitize round trip at ${d}`);
+      if (d) ok(false, `the state does not survive the store's sanitize round trip at ${d}${/^.prompts./.test(d) ? ` (${JSON.stringify(r.state.prompts[d.split("/")[2]]).slice(0, 400)})` : ""}`);
       this.state = back;
     } else this.state = null;
     this.log = J.parseLog(J.serializeLog(r.log));

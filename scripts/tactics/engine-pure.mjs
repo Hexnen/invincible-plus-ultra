@@ -210,7 +210,7 @@ const addresseeOf = (X, cid) => { const c = X.facts.c(cid), users = (c?.owners ?
 function openPrompt(X, I, spec, step) {
   const id = nextId(X, "p");
   const p = { id, inst: I?.id ?? null, step, kind: spec.kind, to: spec.to, options: spec.options ?? [] };
-  for (const k of ["about", "multi", "min", "max", "free", "gmOnlyData", "data"]) if (spec[k] !== undefined) p[k] = spec[k];
+  for (const k of ["about", "multi", "min", "max", "free", "gmOnlyData", "data"]) if (spec[k] != null) p[k] = spec[k];      // (a card about nobody, a hazard's, carries no `about`: null does not survive the store)
   if (spec.auto) { p.auto = spec.auto; p.answered = { by: "auto", at: X.host.now(), value: spec.auto.option }; }     // plan 5.2 step 4: never shown
   X.state = { ...X.state, prompts: { ...X.state.prompts, [id]: p } }; X.changed = true;
   if (I) (I.data.pk ??= {})[spec.key] = id;
