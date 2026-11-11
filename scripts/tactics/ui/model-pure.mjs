@@ -656,7 +656,7 @@ function instData(i, model, own, facts, t) {
   const amend = i.commands?.find((c) => c.id === "amend"), veto = i.commands?.find((c) => c.id === "veto"), ovr = i.commands?.find((c) => c.id === "override");
   const att = (i.rolls ?? []).find((r) => r.key === "attack" || r.key === "roll");
   const rolls = (i.rolls ?? []).map((r) => ({ key: r.key, label: rollLabel(t, r.key, facts), dice: r.dice ?? null, sixes: r.sixes, waiting: !!r.waiting,
-    text: r.waiting ? t("ITAC.ui.roll.waiting", { dice: r.dice ?? "?", users: usersText(r, facts, t) }) : t(r.state === "push" ? "ITAC.ui.roll.pushable" : "ITAC.ui.roll.done", { dice: r.dice ?? "?", sixes: r.sixes ?? 0, users: usersText(r, facts, t) }),
+    text: r.waiting ? t("ITAC.ui.roll.waiting", { dice: r.dice ?? "?", users: usersText(r, facts, t) }) : t(r.state === "push" && !rollMine(r, facts) ? "ITAC.ui.roll.pushable" : "ITAC.ui.roll.done", { dice: r.dice ?? "?", sixes: r.sixes ?? 0, users: usersText(r, facts, t) }),
     state: r.state ?? (r.waiting ? "owed" : "done"), buttons: r.state ? rollButtons(r, facts, t) : [],
     chance: r.waiting && Number.isFinite(r.dice) && r === att ? attChance(i, r.dice) : null }));
   const others = rosterOf({ ...facts, view: facts.view }, i.actor).filter((r) => !(i.targets ?? []).some((x) => x.id === r.id));

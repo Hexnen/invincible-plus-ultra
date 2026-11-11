@@ -96,8 +96,8 @@ function inst(i, L) {
     h("div.igd-meta", {}, h("span.igd-stepchip", {}, h("span", { text: `${L.step}: ` }), h("b", { text: i.step })), i.cause ? h("span.igd-tag", { text: i.cause }) : null,
       i.outcomes.map((o) => h(`span.igd-tag${o.hit ? ".igd-hit" : ".igd-miss"}`, { text: `${o.name}: ${o.text}` }))),
     i.text ? h("blockquote.ita-quote", {}, h("span", { text: i.text })) : null,
-    i.rolls.length ? h("ul.igd-rolls", {}, i.rolls.map((r) => h(`li${r.waiting ? ".igd-waiting" : ""}`, {}, icon(r.waiting ? "fa-hourglass-half" : "fa-dice"), h("b", { text: r.label }), h("span", { text: r.text }), r.chance ? h("span.igd-pct", { text: r.chance }) : null,
-      rollButtons(`${i.id}:${r.key}`, r.buttons, { roll: handlers.roll, send: (req) => send(req) })))) : null,      // U1 / U4: roll, accept, push, ask again: on the row of the roll
+    i.rolls.length ? h("ul.igd-rolls", {}, i.rolls.map((r) => h(`li${r.waiting ? ".igd-waiting" : ""}`, {}, icon(r.waiting ? "fa-hourglass-half" : "fa-dice"), h("b", { text: r.label }),
+      rollButtons(`${i.id}:${r.key}`, r.buttons, { roll: handlers.roll, send: (req) => send(req) }), h("span", { text: r.text }), r.chance ? h("span.igd-pct", { text: r.chance }) : null))) : null,      // U1 / U4: roll, accept, push, ask again: on the row of the roll
     h("div.igd-cmds", {}, i.commands.map((c) => (c.toggle
       ? h("button.igd-btn.igd-toggle", { fk: `ovr:${i.id}`, attrs: { "aria-expanded": String(c.on) }, on: { click: () => set({ override: c.on ? null : i.id }) } }, icon("fa-sliders"), h("span", { text: c.label }))
       : h(`button.igd-btn${c.danger ? ".igd-danger" : ""}${c.armed ? ".igd-sure" : ""}`, { fk: `cmd:${i.id}:${c.id}`, text: c.label, on: { click: () => (c.confirm && !c.armed ? set({ sure: `${i.id}:${c.id}` }) : send(c.req, { sure: null })) } })))),
