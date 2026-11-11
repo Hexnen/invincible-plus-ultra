@@ -9,12 +9,15 @@
      reachMarks(panel, t)               U33 / U34: the candidates of the armed action -> [{ cid, state, label, tip, hover }]
      hitWords(hit, t)                   U34: what a plain hit would do, from the engine's answer -> { short, tip, bar } | null
      tableShow(view, facts, t)          U38 / U39: state chips and "who acts on whom" -> { marks: [{ cid, marks }], links: [{ from, to, label, color }] }
-     fireMap(Z)                         the burning zones of the map and where the fire may go -> { burning: { zone: n }, spread: { zone: 1 } }
-     zoneHazards(fm, zones, to, c, Z, t) U32: what waits on a route (fire on the way, what ending the turn there means)
-     endWarnings(fm, zone, c, Z, t)     U40: what ending the turn in `zone` means -> [{ zone, text, tip, icon }]
+     fireMap(Z)                         the fire of the map, by zone AND level, and where it may go -> { list: [{ zone, at, intensity }], burning, spread }
+     fireAt(fm, spot)                   the fire that attacks whoever starts the round on that spot (its level, D56) -> intensity | 0
+     zoneHazards(fm, zones, to, c, Z, t) U32: what waits on a way: fire on ENTERING each spot of it (never the one left, D57), and what
+                                        ending the turn on the last spot means
+     endWarnings(fm, spot, c, Z, t)     U40: what ending the turn on `spot` (the zone and its level) means -> [{ zone, text, tip, icon }]
      actItems(acts, rows, tid, facts, t) U35: the menu at a token -> [{ id, label, icon, hint, tip, disabled }]
      doorItems(bar, door, t)            U35: the menu at a door -> [{ id, label, icon, hint, disabled, req }]
-     gmItems(cid, vitals, statuses, t)  U44: the GM's quick corrections at a token -> [{ id, label, icon, stepper | toggle, req(value) }] */
+     gmItems(cid, vitals, statuses, t)  U44: the GM's quick corrections at a token -> [{ id, label, icon, stepper | toggle, req(value, from?) }];
+                                        a stepper's request is a step (`delta`), a switch's the state as the rules mean it (D53, D59) */
 import { reasonText, labelOf, oddsFor, isFree } from "./model-pure.mjs";
 import * as HZ from "../flows/hazards.mjs";
 import { stateFlags } from "../movement-pure.mjs";
