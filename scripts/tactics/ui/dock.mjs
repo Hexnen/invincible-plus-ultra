@@ -256,28 +256,41 @@ const OPT_ICON = { wreck: "fa-house-crack", area: "fa-burst", fullAuto: "fa-elli
 const KIT_STATE = { auto: "fa-gears", assist: "fa-user-check", hand: "fa-hand", off: "fa-ban" };
 const close = () => set({ armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} });
 const textBox = (value, placeholder, key = "text") => h("textarea.itd-text", { fk: `draft:${key}`, text: value, attrs: { rows: 2, maxlength: 300, placeholder, "aria-label": placeholder }, on: { input: (e, el) => set({ [key]: el.value }) } });
-const submit = (s, cls = "", pv = null, said = false) => h(`button.itd-go${cls}`, { fk: `go${cls}`, text: s.label, disabled: !!s.disabled, tip: said ? null : s.disabled, pv: s.disabled ? null : pv, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} }) } });
+const submit = (s, cls = "", pv = null) => h(`button.itd-go${cls}`, { fk: `go${cls}`, text: s.label, disabled: !!s.disabled, tip: s.disabled || null, pv: s.disabled ? null : pv, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} }) } });
 const cancelBtn = () => h("button.itd-x", { fk: "x", tip: handlers.label?.("cancel"), on: { click: close } }, icon("fa-xmark"));
-/* U93: the price beside the name of the armed action is its marks alone (the model's `price`); their names are the tooltip (hover and
-   keyboard focus) and what a screen reader is told. A price the model could not take apart keeps its words. */
-const costOf = (p) => (p.price ? h("span.itd-cost.itd-cost-marks", { tip: { cost: p.cost, price: { parts: p.price.parts } }, attrs: { tabindex: "0", role: "img", "aria-label": p.cost } }, speed(p.price.unit, { out: p.price.out }), stressChip(p.price.stress))
-  : p.cost ? h("span.itd-cost", { text: p.cost }) : null);
-const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), costOf(p),
-  p.aim?.length ? h("span.itd-arrow", {}, icon("fa-arrow-right"), p.aim.map((x) => h("span.itd-tgt", {}, face(x.img, x.name), h("b", { text: x.name })))) : null, cancelBtn());      // W1: the target chosen on the map
+/* U85: THE PANEL OF THE ARMED ACTION reads in one order in every state, and nothing in it changes place between them:
+     the head   WHAT (the name on its plate, the mark of its speed, its Resolve price; the words are the tooltip)  ->  ON WHOM (the
+                target's picture and name; several targets: pictures, the names in their tooltips; none yet: an empty dashed place
+                that says what to do)  ...  x
+     a refusal  (only when there is one) the reason and the words for the GM, under the head, above everything that stays put
+     the body   (only for an action that asks for more) a choice, an attribute, a way, a place, a few words
+     the foot   HOW on the left (weapons, the options as picture switches, bonus dice)  |  on the right THE DICE and, last, the ONE
+                button: Declare, or the question to the GM while the declaration is refused. Once declared the same foot carries
+                Change / Withdraw as small picture buttons on the left and, where the dice and Declare stood, the roll with Accept / Push. */
+/* U93: the price is the kit's marks (the model's `price`: the bar of the action on the plate, out of turn its hook before it, the
+   chip of stress beside it); their names are the tooltip's price line, each mark with its name, and what a screen reader is told */
+const what = (p) => h("div.itd-what", { tip: p.price ? { cost: p.price.say, price: { parts: p.price.parts } } : p.unit && p.cost ? { cost: p.cost } : null, attrs: p.price || (p.unit && p.cost) ? { tabindex: "0", "aria-label": `${p.title}, ${p.price?.say ?? p.cost}` } : {} },
+  h("h3.ita-plate", {}, h("span", { text: p.title }), speed(p.price?.unit ?? p.unit, { out: !!p.price?.out })), rs(p.price?.stress ?? p.stress), p.cost && !speed(p.price?.unit ?? p.unit) && !(p.price?.stress) ? h("span.itd-cost", { text: p.cost }) : null);      // the mark of speed rides on the plate, as it does on the action's button
+const aim = (list, slot = null) => (list?.length || slot ? h("span.itd-arrow", {}, icon("fa-arrow-right"),
+  list?.length ? list.map((x) => (list.length > 1 ? h("span.itd-tgt", { tip: x.name, attrs: { tabindex: "0", role: "img", "aria-label": x.name } }, face(x.img, x.name)) : h("span.itd-tgt", {}, face(x.img, x.name), h("b", { text: x.name }))))
+    : h("span.itd-tgt.itd-tgt-none", { tip: slot.tip, attrs: { tabindex: "0", "aria-label": `${slot.label}. ${slot.tip}` } }, h("span.itd-tgt-hole", {}, icon("fa-crosshairs")), h("b", { text: slot.label }))) : null);
+const head = (p, x = true) => h("header.itd-phead", {}, what(p), aim(p.aim ?? (p.kind === "mine" ? p.targets : null), p.slot), x ? cancelBtn() : null);
+/* the reason of a refusal and the words for the GM: one line under the head (the button that sends it stands in the foot, where Declare stood) */
+const refusal = (r, key = "why") => h("div.itd-refusal", { attrs: { role: "status" } }, r.reason ? h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: r.reason })) : null, r.text !== null && r.text !== undefined ? textBox(r.text, r.placeholder, key) : null);
+const cap = (p, id, text) => h(`span.itd-k${p.need === id ? ".itd-k-need" : ""}`, {}, p.need === id ? icon("fa-caret-right") : null, h("span", { text }));
+const CMD_ICON = { amend: "fa-pen", cancel: "fa-rotate-left", cancelAsk: "fa-reply", abort: "fa-ban" };
 
 function meter(c) {
-  return h("div.itd-chance", {}, h("span.itd-k", { text: handlers.label?.("chance") }),
+  return h("div.itd-chance", { tip: handlers.label?.("chance"), attrs: { tabindex: "0", "aria-label": `${handlers.label?.("chance")}: ${c.text}` } },
     h("span.itd-meter", { data: { level: c.level }, attrs: { role: "img", "aria-label": c.text } }, [0, 1, 2, 3].map((i) => h(`i${i <= c.level ? ".on" : ""}`))), h("b.itd-band", { text: c.text }),
     c.defended ? h("span.itd-def", {}, h("span", { text: `${c.defended.label}: ` }), h("b", { text: c.defended.text })) : null);
 }
 /* one way to make a move / one door: the name, what it costs, and when it cannot be done the reason (a click then opens the way to ask) */
-const wayRow = (r) => h(`button.itd-way${r.asking ? ".itd-armed" : ""}`, { fk: `way:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, pv: r.pv, data: { warn: r.warn ? "1" : null },
+const wayRow = (r) => h(`button.itd-way${r.asking ? ".itd-armed" : ""}`, { fk: `way:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, pv: r.pv, data: { warn: r.warn ? "1" : null }, tip: r.disabled ? { why: { text: r.disabled } } : null,
   attrs: { "aria-label": [r.label, ...(r.say ?? r.notes), r.disabled].filter(Boolean).join(", "), "aria-pressed": r.disabled ? String(!!r.asking) : null },
   on: { click: () => (r.disabled ? set({ ask: r.asking ? null : r.id, why: "" }) : r.req && send(r.req, { armed: null, mode: null, to: null, ask: null, why: "" })) } },
-  h("span.itd-way-l", {}, r.warn && !r.disabled ? icon("fa-triangle-exclamation") : null, h("span", { text: r.label }), speed(r.cost), stressChip(r.stress)), wayNotes(r), r.disabled ? h("span.itd-way-why", {}, icon("fa-ban"), h("span", { text: r.disabled })) : null);
-const askRow = (a) => (a ? h("div.itd-pbody.itd-refused", {}, a.reason ? h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: a.reason })) : null,
-  a.text !== null ? h("div.itd-col.itd-grow", {}, textBox(a.text, a.placeholder, "why")) : null,
-  h("div.itd-col.itd-submit", {}, submit(a.submit, ".itd-go-ask"))) : null);
+  h("span.itd-way-l", {}, r.disabled ? icon("fa-ban") : r.warn ? icon("fa-triangle-exclamation") : null, h("span", { text: r.label }), speed(r.cost), stressChip(r.stress)), wayNotes(r));      // U83: why a way cannot be taken is its tooltip (and the line of the question to the GM a click opens): the row keeps its size
+const askRow = (a) => (a ? [a.reason || a.text !== null ? refusal({ reason: a.reason ?? "", text: a.text, placeholder: a.placeholder }) : null, h("footer.itd-pfoot", {}, h("span.itd-how"), submit(a.submit, ".itd-go-ask"))] : null);
 function movePanel(p) {
   if (p.bare && !p.empty) return null;      // W1 (U32): the map shows where, how and for what price; nothing to say here
   return h("section.itd-panel", { data: { kind: p.kind, picking: p.picking && !p.near.length ? "1" : null } },
@@ -324,51 +337,57 @@ function panel(p) {
   if (p.kind === "move") return movePanel(p);
   if (p.kind === "door") return doorPanel(p);
   if (p.kind === "menu") return listPanel(p);
+  if (p.kind === "blocked") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), refusal(p, "text"), h("footer.itd-pfoot", {}, h("span.itd-how"), submit(p.submit, ".itd-go-ask")));
   if (p.kind === "declare") {
     const toggle = (key, id, max = 1) => { const cur = (last.ui?.[key] ?? []).slice(); const i = cur.indexOf(id); if (i >= 0) cur.splice(i, 1); else { cur.push(id); while (cur.length > max) cur.shift(); } set({ [key]: cur }); };
-    return h("section.itd-panel", { data: { kind: p.kind } }, head(p),
-      p.refused ? h("div.itd-pbody.itd-refused.itd-refused-top", {}, h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: p.refused.reason })),
-        p.refused.text !== null ? h("div.itd-col.itd-grow", {}, textBox(p.refused.text, p.refused.placeholder, "why")) : null,
-        h("div.itd-col.itd-submit", {}, submit(p.refused.submit, ".itd-go-ask"))) : null,
-      h("div.itd-pbody", {},
-        p.choice ? h("div.itd-col.itd-attrs", {}, h("span.itd-k", { text: p.choice.label }),
-          h("div.itd-chips", { attrs: { role: "group", "aria-label": p.choice.label } }, p.choice.items.map((x) => h("button.itd-chip.itd-chip-plain", { fk: `ch:${x.id}`, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ choice: x.id }) } }, h("span", { text: x.label })))),
-          p.choice.hint ? h("p.itd-hint", {}, icon("fa-user-shield"), h("span", { text: p.choice.hint })) : null) : null,
-        /* W1 (U33): a target that stands on the map is chosen there; a chip is left only for one that does not (another scene, out of sight) */
-        p.targets && (!p.onMap || p.targets.some((x) => !x.map) || p.self) ? h("div.itd-col.itd-targets", {}, p.targets.some((x) => !x.map) ? h("span.itd-k", { text: handlers.label?.("target") }) : null,
-          h("div.itd-chips", { attrs: { role: "group" } }, p.targets.filter((x) => !x.map).map((x) => h(`button.itd-chip${x.likely ? "" : ".itd-chip-dim"}`, { fk: `tg:${x.id}`, tip: x.note, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => { toggle("targets", x.id, p.maxTargets ?? 1); handlers.target?.(x.id); } } }, face(x.img, x.name), h("span", { text: x.name })))),
-          p.picking && !p.onMap ? h("p.itd-hint", {}, icon("fa-crosshairs"), h("span", { text: handlers.label?.("pick.hint") })) : null,
-          p.self ? h("p.itd-hint", {}, icon("fa-user"), h("span", { text: p.self })) : null) : null,
-        p.weapons || p.opts?.length ? h("div.itd-col.itd-arms", {},
-          p.weapons ? [h("span.itd-k", { text: p.weapons.label }), p.weapons.empty ? h("p.itd-hint", {}, icon("fa-ban"), h("span", { text: p.weapons.empty }))
-            : h("div.itd-chips", { attrs: { role: "group", "aria-label": p.weapons.label } }, p.weapons.items.map((x) => h("button.itd-chip.itd-chip-arm", { fk: `wp:${x.id}`, tip: x.tip, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ weapon: x.id }) } }, h("span", { text: x.name }))))] : null,
-          p.opts?.length ? h("div.itd-chips", { attrs: { role: "group" } }, p.opts.map((o) => h("button.itd-chip.itd-chip-opt", { fk: `op:${o.id}`, tip: o.tip, attrs: { "aria-pressed": String(o.on) }, on: { click: () => set({ opts: { ...(last.ui?.opts ?? {}), [o.id]: !o.on, ...(o.id === "area" && !o.on ? { fullAuto: false } : {}), ...(o.id === "fullAuto" && !o.on ? { area: false } : {}) } }) } }, icon(OPT_ICON[o.id] ?? "fa-circle"), h("span", { text: o.label })))) : null,
-          (p.notes ?? []).map((n) => h("p.itd-hint", {}, icon("fa-circle-info"), h("span", { text: n })))) : null,
-        p.attrs ? h("div.itd-col.itd-attrs", {}, h("span.itd-k", { text: p.attrs.label }),
-          h("div.itd-chips", { attrs: { role: "group", "aria-label": p.attrs.label } }, p.attrs.items.map((x) => h("button.itd-chip.itd-chip-attr", { fk: `at:${x.id}`, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ attr: x.picked ? null : x.id }) } }, x.dice != null ? h("b", { text: String(x.dice) }) : null, h("span", { text: x.label })))),
-          p.attrs.hint ? h("p.itd-hint", { text: p.attrs.hint }) : null) : null,
-        p.approach ? approach(p.approach) : null,
-        p.dest ? h("div.itd-col", {}, h("span.itd-k", { text: p.dest.label }), p.dest.value ? h("b.itd-destv", { text: p.dest.value }) : null,
-          h("button.itd-ghost", { fk: "dest", on: { click: () => handlers.zonePick?.() } }, icon("fa-map-location-dot"), h("span", { text: p.dest.pick }))) : null,
-        p.text ? h("div.itd-col.itd-grow", {}, textBox(p.text.value, p.text.placeholder)) : null,
-        p.pool || p.tokens.length ? h("div.itd-col.itd-odds", {},
-          /* U55: the pool is its number; where the dice come from is its tooltip (hover and keyboard focus), one line per source */
-          p.pool ? h("div.itd-pool", { tip: p.pool.tip, data: { sum: p.pool.tip ? "1" : null }, attrs: p.pool.tip ? { tabindex: "0" } : {} }, symMark("dice"), h("b.itd-dice", { text: String(p.pool.total), attrs: { "aria-label": `${handlers.label?.("pool")}: ${p.pool.total}` } })) : null,      // U93: the die stands for the words "Your dice"; they are what a screen reader is told
-          p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, hasMarks(k.label) ? null : icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null,
-          p.chance ? meter(p.chance) : null) : null,
-        h("div.itd-col.itd-submit", {}, p.submit.disabled && !p.submit.quiet ? h("span.itd-why", { text: p.submit.disabled }) : null, submit(p.submit, "", p.pv, true))));      // U51: why it cannot be declared is written beside the button, not said again in its tooltip
+    const offMap = p.targets && (!p.onMap || p.targets.some((x) => !x.map) || p.self);
+    const body = [
+      p.choice ? h("div.itd-col.itd-attrs", {}, cap(p, "choice", p.choice.label),
+        h("div.itd-chips", { attrs: { role: "group", "aria-label": p.choice.label } }, p.choice.items.map((x) => h("button.itd-chip.itd-chip-plain", { fk: `ch:${x.id}`, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ choice: x.id }) } }, h("span", { text: x.label })))),
+        p.choice.hint ? h("p.itd-hint", {}, icon("fa-user-shield"), h("span", { text: p.choice.hint })) : null) : null,
+      /* W1 (U33): a target that stands on the map is chosen there; a chip is left only for one that does not (another scene, out of sight) */
+      offMap ? h("div.itd-col.itd-targets", {}, p.targets.some((x) => !x.map) ? cap(p, p.slot ? "" : "target", handlers.label?.("target")) : null,
+        h("div.itd-chips", { attrs: { role: "group" } }, p.targets.filter((x) => !x.map).map((x) => h(`button.itd-chip${x.likely ? "" : ".itd-chip-dim"}`, { fk: `tg:${x.id}`, tip: x.note, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => { toggle("targets", x.id, p.maxTargets ?? 1); handlers.target?.(x.id); } } }, face(x.img, x.name), h("span", { text: x.name })))),
+        p.picking && !p.onMap ? h("p.itd-hint", {}, icon("fa-crosshairs"), h("span", { text: handlers.label?.("pick.hint") })) : null,
+        p.self ? h("p.itd-hint", {}, icon("fa-user"), h("span", { text: p.self })) : null) : null,
+      p.attrs ? h("div.itd-col.itd-attrs", {}, cap(p, "attr", p.attrs.label),
+        h("div.itd-chips", { attrs: { role: "group", "aria-label": p.attrs.label } }, p.attrs.items.map((x) => h("button.itd-chip.itd-chip-attr", { fk: `at:${x.id}`, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ attr: x.picked ? null : x.id }) } }, x.dice != null ? h("b", { text: String(x.dice) }) : null, h("span", { text: x.label })))),
+        p.attrs.hint && p.need !== "attr" ? h("p.itd-hint", { text: p.attrs.hint }) : null) : null,      // (what is still to choose is marked on the caption and said by Declare's tooltip: not a third time here)
+      p.approach ? approach(p.approach) : null,
+      p.dest ? h("div.itd-col", {}, cap(p, "zone", p.dest.label), p.dest.value ? h("b.itd-destv", { text: p.dest.value }) : null,
+        h("button.itd-ghost", { fk: "dest", on: { click: () => handlers.zonePick?.() } }, icon("fa-map-location-dot"), h("span", { text: p.dest.pick }))) : null,
+      p.text ? h("div.itd-col.itd-grow", {}, textBox(p.text.value, p.text.placeholder)) : null,
+    ].filter(Boolean);
+    const ref = p.refused;
+    return h("section.itd-panel", { data: { kind: p.kind, need: p.need ?? null } }, head(p),
+      ref ? refusal(ref) : null,
+      body.length ? h("div.itd-pbody", {}, body) : null,
+      h("footer.itd-pfoot", {},
+        /* HOW: what the attack is made with, the options as switches (a picture each; the name and what it does are the tooltip), bonus dice */
+        h("div.itd-how", {},
+          p.weapons ? (p.weapons.empty ? h("p.itd-hint", {}, icon("fa-ban"), h("span", { text: p.weapons.empty }))
+            : h("div.itd-chips", { attrs: { role: "group", "aria-label": p.weapons.label } }, p.weapons.items.map((x) => h("button.itd-chip.itd-chip-arm", { fk: `wp:${x.id}`, tip: x.tip, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ weapon: x.id }) } }, h("span", { text: x.name }))))) : null,
+          p.opts?.length ? h("div.itd-togs", { attrs: { role: "group" } }, p.opts.map((o) => h("button.itd-tog", { fk: `op:${o.id}`, tip: o.tip, attrs: { "aria-pressed": String(o.on), "aria-label": typeof o.tip === "object" ? tipText(o.tip) : o.label }, on: { click: () => set({ opts: { ...(last.ui?.opts ?? {}), [o.id]: !o.on, ...(o.id === "area" && !o.on ? { fullAuto: false } : {}), ...(o.id === "fullAuto" && !o.on ? { area: false } : {}) } }) } }, icon(OPT_ICON[o.id] ?? "fa-circle")))) : null,
+          p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, hasMarks(k.label) ? null : icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null),
+        /* THE DICE (U55: the number; where they come from is the tooltip, on hover and on keyboard focus), then the one button */
+        h("div.itd-act", {}, p.chance ? meter(p.chance) : null,
+        p.pool ? h("div.itd-pool", { tip: p.pool.tip ? { ...p.pool.tip, title: handlers.label?.("pool") } : handlers.label?.("pool"), data: { sum: p.pool.tip ? "1" : null }, attrs: { tabindex: "0", "aria-label": `${handlers.label?.("pool")}: ${p.pool.tip?.say ?? p.pool.total}` } }, symMark("dice"), h("b.itd-dice", { text: String(p.pool.total) })) : null,      /* U93: the kit's die */
+        ref ? submit(ref.submit, ".itd-go-ask") : submit(p.submit, "", p.pv))));      // the dice and the button are one group: a narrow panel wraps the weapons, never these two apart
   }
-  if (p.kind === "blocked") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: p.reason })), h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder)), h("div.itd-col.itd-submit", {}, submit(p.submit, ".itd-go-ask"))));
-  if (p.kind === "other") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder), h("p.itd-hint", { text: p.hint })), h("div.itd-col.itd-submit", {}, submit(p.submit, ".itd-go-ask"))));
+  if (p.kind === "other") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder))), h("footer.itd-pfoot", {}, h("div.itd-how", {}, h("p.itd-hint", { text: p.hint })), submit(p.submit, ".itd-go-ask")));
   if (p.kind === "holdOff") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("p.itd-hint", { text: p.hint }),
     h("div.itd-chips", {}, p.targets.map((x) => h("button.itd-chip.itd-chip-card", { fk: `ho:${x.slot}`, on: { click: () => send(x.req, { mode: null }) } }, h("b", { text: String(x.card ?? "?") }), h("span", { text: x.names }))))));
   /* the own action in progress. U52: the roll lives HERE (its dice or its sixes with Roll / Accept / Push; no chip in the line over
-     the bar, no sentence about it), and every target stands with its picture (those the viewer's view holds) */
+     the bar, no sentence about it), and every target stands with its picture (those the viewer's view holds).
+     U85: the same head and the same foot as before it was declared: Change / Withdraw where the options stood, the roll where the
+     dice and Declare stood */
   return h("section.itd-panel", { data: { kind: "mine", rolling: p.rolling ? "1" : null } },
-    h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.targets.length ? h("span.itd-arrow", {}, icon("fa-arrow-right"), p.targets.map((x) => h("span.itd-tgt", {}, face(x.img, x.name), h("b", { text: x.name })))) : null),
-    h("div.itd-pbody", {}, p.rolls.length ? h("div.itd-myrolls", { attrs: { role: "status" } }, p.rolls.map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) }))) : null,
-      p.status ? h("p.itd-status", {}, hasMarks(p.status) ? null : icon(p.rolling ? "fa-dice" : "fa-hourglass-half"), h("span", { text: p.status })) : null, p.text ? h("blockquote.ita-quote", {}, h("span", { text: p.text })) : null,
-      h("div.itd-col.itd-submit", {}, p.commands.map((c) => h("button.itd-ghost", { fk: `cmd:${c.id}`, text: c.label, on: { click: () => (c.amend ? handlers.amend?.(p) : c.req && send(c.req)) } })))));
+    head(p, false),
+    p.text ? h("div.itd-pbody", {}, h("blockquote.ita-quote", {}, h("span", { text: p.text }))) : null,
+    h("footer.itd-pfoot", {},
+      h("div.itd-how", {}, p.commands.map((c) => h("button.itd-mini", { fk: `cmd:${c.id}`, tip: c.label, attrs: { "aria-label": c.label }, on: { click: () => (c.amend ? handlers.amend?.(p) : c.req && send(c.req)) } }, icon(CMD_ICON[c.id] ?? "fa-circle")))),
+      p.status ? h("p.itd-status", {}, hasMarks(p.status) ? null : icon(p.rolling ? "fa-dice" : "fa-hourglass-half"), h("span", { text: p.status })) : null,
+      p.rolls.length ? h("div.itd-myrolls", { attrs: { role: "status" } }, p.rolls.map((r) => rollChip({ ...r, buttons: [...(r.buttons ?? [])].sort((x, y) => (y.id === "push") - (x.id === "push")) }, { roll: handlers.roll, send: (req) => send(req) }))) : null));      // Accept (or Roll) last, where Declare stood; Push before it
 }
 
 /* ---------- render ---------- */

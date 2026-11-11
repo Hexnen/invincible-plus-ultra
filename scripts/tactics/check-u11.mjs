@@ -182,7 +182,7 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
   ok(/\.itd-slot\[data-state="lost"\] > i \{ background: var\(--ita-x\)/.test(css) && /\.igd-uslot\[data-state="lost"\] \{ background: var\(--ita-x\)/.test(css), "U63: a lost slot is crossed out (a pending one is an empty dashed frame)");
   ok(/\[data-extra\]\):not\(\[data-state="used"\], \[data-state="lost"\]\)::after \{ content: "\+"/.test(css), "U63: a granted slot carries a plus");
   ok(/\.itd-ic\[data-urgent\]:not\(\[aria-disabled="true"\]\)::after \{ content: "!"/.test(css), "U63: 'only now' is a mark on the button");
-  ok(/r\.warn && !r\.disabled \? icon\("fa-triangle-exclamation"\)/.test(dock), "U63: a way with something waiting on it carries the warning sign");
+  ok(/r\.disabled \? icon\("fa-ban"\) : r\.warn \? icon\("fa-triangle-exclamation"\)/.test(dock), "U63: a way with something waiting on it carries the warning sign");
 }
 
 /* ---- L. U70, U71: what stands over the dock */
