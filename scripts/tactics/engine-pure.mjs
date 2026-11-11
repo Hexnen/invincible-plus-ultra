@@ -225,7 +225,11 @@ function makeInst(X, { action, actor, decl, cause = "turn", parent = null, data 
    whatever names somebody concealed from that player. */
 export const NEWS_MAX = 12;
 function pushNews(X, n) {
-  X.state = { ...X.state, news: [...(X.state.news ?? []), { id: nextId(X, "n"), round: X.state.round ?? null, at: X.host.now(), ...n }].slice(-NEWS_MAX) }; X.changed = true;
+  /* P8e-1: the id is drawn FIRST. Inside the object literal the spread had already copied the old counter, so the number was handed out
+     and then forgotten: two lines in a row (two undos, two turns passed) carried one id, and the surface, which tells "already read" by
+     that number (ui/model-pure.newsData), never showed the second one to whoever had dismissed the first. */
+  const id = nextId(X, "n");
+  X.state = { ...X.state, news: [...(X.state.news ?? []), { id, round: X.state.round ?? null, at: X.host.now(), ...n }].slice(-NEWS_MAX) }; X.changed = true;
 }
 function newsOf(I) {
   const rows = (I.decl?.targets ?? []).map((t) => { const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);

@@ -10,6 +10,7 @@ import * as Lg from "./ledger-pure.mjs";
 import * as P1 from "./economy-pure.mjs";
 import * as Desk from "./desk-pure.mjs";
 import * as Ch from "./flows/challenge.mjs";
+import * as Model from "./ui/model-pure.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? (env.changed === false ? "ok(unchanged)" : "ok") : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -332,6 +333,24 @@ const paid = (T, cid, action) => T.state.ledger[cid].entries.filter((x) => !x.vo
   eq([no.pv.dice, no.pv.pending, no.pv.mods.map((m) => m.source)], [no.plain.dice + 1, [{ source: "token:tk1", dice: 2 }], ["token:tk2"]], "D49: the previewed pool is the certain one (a die that needs no word is in it); the die that waits for the GM is listed apart");
   eq([no.roll, yes.roll], [no.pv.dice, no.pv.dice + 2], "D49: the roll has exactly the previewed dice when the GM refuses the die, and the pending ones on top when the GM approves");
   eq(no.plain.pending ?? null, null, "D49: a preview without such a die has no pending list");
+}
+
+/* ================================================================== P8e-1 (found by the fixer in the "gmEdit and its undo" area): two
+   news lines in a row carried one id, so the second was "already read" for whoever dismissed the first */
+{
+  const T = new T5(); T.hero("H1", "p1").hero("H2", "p2").npc("N1", { health: 5 }).npc("N2", { health: 4 }); T.order(["H1", "N1", "H2", "N2"]).turn("H1");
+  await T.gm({ op: "statusAdd", combatant: "N1", status: { id: "stunned" } });
+  await T.gm({ op: "tokenAdd", token: { holder: "H1", dice: 2, source: "gm" } });
+  const s0 = T.state.seq;
+  await T.gm({ op: "undo", tx: T.log.list.at(-1).id });
+  const one = Model.newsData(T.state, {}, T.facts(), (k) => k);
+  await T.gm({ op: "undo", tx: T.log.list[0].id });
+  const ids = T.state.news.map((n) => n.id), two = Model.newsData(T.state, { newsSeen: one?.seen }, T.facts(), (k) => k);
+  eq([new Set(ids).size, ids.length, T.state.seq >= s0 + 2], [2, 2, true], "P8e-1: two undos in a row are two news lines with two ids, and the counter keeps both numbers");
+  eq([one != null, two != null && two.id !== one.id], [true, true], "P8e-1: who dismissed the first line still gets the second");
+  await T.gm({ op: "tokenAdd", token: { holder: "H1", dice: 2, source: "gm" } });
+  const all = [...T.log.list.map((t) => t.id), ...T.state.news.map((n) => n.id), ...T.state.tokens.map((t) => t.id)].map((x) => x.replace(/\D/g, ""));
+  eq(new Set(all).size, all.length, "P8e-1: no number of the id counter is handed out twice");
 }
 
 done("check-defects5");
