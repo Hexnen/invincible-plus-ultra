@@ -97,7 +97,7 @@ async function perform(combat, e) {
       const roll = await new Roll(`${Math.max(1, Math.trunc(e.n))}d${e.sides > 0 ? Math.trunc(e.sides) : 6}`).evaluate();        // P5: `sides` for a random pick among N (where a fire spreads)
       const faces = roll.dice[0]?.results?.map((r) => r.result) ?? [];
       let op = null;
-      try { const m = await roll.toMessage({ flavor: t(`ITAC.dice.${String(e.why ?? "").split(":")[0]}`, {}, t("ITAC.dice.engine")), flags: { [MOD]: { tactics: { dice: e.why ?? "" } } } }, { ipuTactics: true }); if (m?.id) op = { t: "message", id: m.id }; } catch { /* the faces count; the card is a courtesy */ }
+      try { const m = await ChatMessage.create(await roll.toMessage({ flavor: t(`ITAC.dice.${String(e.why ?? "").split(":")[0]}`, {}, t("ITAC.dice.engine")), flags: { [MOD]: { tactics: { dice: e.why ?? "" } } } }, { create: false }), { ipuTactics: true }); if (m?.id) op = { t: "message", id: m.id }; } catch { /* the faces count; the card is a courtesy */ }   // D95: Roll#toMessage hands no document options on: the card is created here, with the engine's mark
       return { result: faces, op };
     }
     case "rollRequest": sendRoll(combat, e); return {};

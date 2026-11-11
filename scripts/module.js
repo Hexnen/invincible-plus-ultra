@@ -623,8 +623,9 @@ const DMG_TXT = {
 const DMG_FLAVOR_KEY = "INVINCIBLE.Chat.DamageInfo.DamageTaken";
 const dmgNum = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Math.round(Number(v)) : null);
 
-Hooks.on("preUpdateActor", (actor, changes) => {
+Hooks.on("preUpdateActor", (actor, changes, options) => {
   try {
+    if (options?.ipuTactics !== undefined) return;   // tactics spec 1.3 (D96): a write of the tactical executor is no hand-applied damage
     const key = "system.derived.health.value";
     const raw = changes?.[key] ?? foundry.utils.getProperty(changes ?? {}, key);
     const to = dmgNum(raw), from = dmgNum(actor?.system?.derived?.health?.value);
@@ -1043,9 +1044,9 @@ document.addEventListener("click", (ev) => {
   } catch (err) { console.warn(`${MODULE_ID} | undo ledger (click)`, err); }
 }, true);   // capture phase: the selection is read before the system's handler runs
 
-Hooks.on("preUpdateActor", (actor, changes) => {
+Hooks.on("preUpdateActor", (actor, changes, options) => {
   try {
-    if (!APPLY_OPEN.length) return;
+    if (!APPLY_OPEN.length || options?.ipuTactics !== undefined) return;   // tactics spec 1.3 (D96)
     const key = "system.derived.health.value";
     const to = dmgNum(changes?.[key] ?? foundry.utils.getProperty(changes ?? {}, key));
     const from = dmgNum(actor?.system?.derived?.health?.value);
@@ -1070,9 +1071,9 @@ const conditionMatches = (item, uuid) => {
   return !!name && item.name === name;
 };
 
-Hooks.on("createItem", (item) => {
+Hooks.on("createItem", (item, options) => {
   try {
-    if (!APPLY_OPEN.length) return;
+    if (!APPLY_OPEN.length || options?.ipuTactics !== undefined) return;   // tactics spec 1.3 (D96)
     const actor = item.parent;
     if (!actor || actor.documentName !== "Actor") return;
     const injury = item.type === "criticalInjury";

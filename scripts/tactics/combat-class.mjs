@@ -50,10 +50,13 @@ export function makeClass(Base) {
     async startCombat() {
       if (!ownInitiative()) return super.startCombat();
       try {
+        /* D97: as core does (client/documents/combat.mjs startCombat), but only for a fight that DID start: a refused or failed request
+           tells nobody of a start, and the effect registry gets the combat as its context (durations are framed by it). */
+        const env = tell(await Relay.request(this.id, { op: "start", restart: true }));
+        if (!env?.ok) return this;
         try { this._playCombatSound?.("startEncounter"); } catch { /* no sound */ }
         try { Hooks.callAll("combatStart", this, { round: 1, turn: 0 }); } catch { /* a listener threw */ }
-        const env = tell(await Relay.request(this.id, { op: "start", restart: true }));
-        if (env?.ok) { try { CONFIG.ActiveEffect.documentClass?.registry?.refresh?.("combatStart"); } catch { /* not in this core version */ } }
+        try { await CONFIG.ActiveEffect.documentClass?.registry?.refresh?.("combatStart", { combat: this }); } catch { /* not in this core version */ }
       } catch (e) { console.warn(`${MOD} | tactics startCombat`, e); }
       return this;
     }
