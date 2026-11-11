@@ -285,6 +285,29 @@ async function closeInst(X, I, result = null) {
   P.status = "open";
   setInst(X, P);
 }
+/* D37 (spec 3.3; spec 0 principle 4): somebody an open action is aimed at has left the fight. Its cards went with it, so an action that
+   waited for its answer waited for nothing, and one that went on hit nobody. Now the one who left is taken out of every open action
+   (as a target, as a helper); an action that still has a target goes on, and one left without any is held on the GM's card `revalidate`
+   [OQ-3] (the owner aims it again, or it is given up with or without its cost): the engine never decides that by itself. */
+function targetGone(X, id) {
+  for (const inst of X.state.stack) {
+    const d = inst.decl ?? {}, aimed = (d.targets ?? []).includes(id), helps = (d.helpers ?? []).some((h) => h.id === id);
+    if (!aimed && !helps) continue;
+    const I = J.clone(inst);
+    if (helps) I.decl.helpers = I.decl.helpers.filter((h) => h.id !== id);
+    if (aimed) {
+      I.decl.targets = I.decl.targets.filter((t) => t !== id);
+      for (const k of ["def", "out"]) if (isObj(I.data[k])) delete I.data[k][id];
+      (I.data.notes ??= []).push({ note: "targetGone", target: id });
+      if (!I.decl.targets.length && !I.data.hold) {
+        I.data.hold = "revalidate"; I.data.holdReasons = ["noTarget"]; I.data.holdKey = `gone:${id}`;
+        openPrompt(X, I, { key: `gone:${id}`, kind: "revalidate", to: "gm", about: I.actor, options: REVALIDATE_OPTIONS.filter((o) => o !== "continue").map((o) => ({ id: o, label: `ITAC.opt.${o}` })), data: { reasons: ["noTarget"] } }, I.step);
+      }
+    }
+    I.waits = waitsOf(X, I);
+    setInst(X, I);
+  }
+}
 /** End an instance and undo what it did (spec 14.1 abort). refund=false keeps the ops tagged as the action's own cost ("action spent"). */
 async function abortInst(X, id, refund) {
   const at = X.state.stack.findIndex((i) => i.id === id);
@@ -1129,6 +1152,7 @@ async function system(X, effects) {
     } else if (fx?.type === "abortInstances") {
       for (const inst of [...X.state.stack].reverse()) if (inst.actor === fx.actor && instOf(X, inst.id)) await abortInst(X, inst.id, true);
       dropPrompts(X, (p) => p.about === fx.actor);
+      targetGone(X, fx.actor);
     } else if (fx?.type === "roundEnd") await challengeClock(X);                          // P7
     else if (fx?.type === "challengeFail") await challengeFailRun(X, fx.challenge);
     else if (fx?.type === "trigger" && isObj(fx.trigger)) triggers.push(fx.trigger);

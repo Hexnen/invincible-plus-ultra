@@ -165,4 +165,43 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
     eq([!!id, code(await T.preq("p1", { op: "declare", actor: "H1", decl: { action: id } })), stack(T)], [true, "unknown", []], "D34 (sibling): what exists only as an answer in a reaction window (Discretion) cannot be declared by a player as an action"); }
 }
 
+/* ================================================================== D37: the target of an open attack leaves the fight (spec 3.3; spec 0
+   principle 4). Nothing waits for a card that is gone, and nothing hits nobody. */
+{
+  const mk = () => { const T = new T4(); T.hero("H1", "p1").npc("N1").npc("N2"); T.order(["H1", "N1", "N2"]); return T; };
+  const st = (T) => T.state.stack.map((i) => `${i.action}/${i.actor}->${i.decl.targets} ${i.step} ${i.status}${i.data.hold ? ` hold:${i.data.hold}` : ""}`);
+  const paid = (T) => (T.state.ledger.H1?.entries ?? []).filter((e) => !e.void).map((e) => e.cost);
+  const open = async () => { const T = mk(); await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } }); return T; };
+  const leave = async (T, id = "N1") => { delete T.c[id]; return T.gm({ op: "roster" }); };
+  const card = (T) => T.prompts("revalidate")[0] ?? null;
+  { const T = await open(); await leave(T);
+    eq([st(T), T.prompts().map((p) => [p.kind, p.to, p.about, p.options.map((o) => o.id), p.data?.reasons])], [["slugfest/H1-> reactBefore waiting hold:revalidate"], [["revalidate", "gm", "H1", ["amend", "forfeit", "cancel"], ["noTarget"]]]],
+      "D37 (a): the target left while its defence card was open: the attack is held on a card of the GM (aim again, give up with or without the cost)");
+    ok(Desk.waitingOn(T.state).some((w) => w.kind === "revalidate" && w.to === "gm"), "D37 (a): the desk says what the table waits for");
+    await T.gm({ op: "answerFor", prompt: card(T).id, value: "cancel" });
+    eq([st(T), paid(T), code(await T.preq("p1", { op: "endTurn", actor: "H1" }))], [[], [], "ok"], "D37 (a): given up: off the stack, the action is the attacker's again, the turn can be ended"); }
+  { const T = await open(); await leave(T); await T.gm({ op: "answerFor", prompt: card(T).id, value: "forfeit" });
+    eq([st(T), paid(T)], [[], ["full"]], "D37 (a): forfeited: off the stack, the action stays spent"); }
+  { const T = await open(); await leave(T); await T.gm({ op: "answerFor", prompt: card(T).id, value: "amend" });
+    const r = await T.preq("p1", { op: "amend", inst: T.top().id, decl: { targets: ["N2"] } });
+    eq([code(r), T.top()?.decl.targets, T.prompts().map((p) => [p.kind, p.about])], ["ok", ["N2"], [["reaction", "N2"]]], "D37 (a): aimed again by its owner, it goes on against the new target");
+    await settle(T); await T.roll("attack", 2); await settle(T);
+    eq([st(T), T.journal("gm").map((j) => j.text)], [[], ["H1: {ITAC.action.slugfest} -> N2 ({ITAC.result.hit})"]], "D37 (a): and ends as an ordinary attack on that target"); }
+  { const T = await open(); await settle(T); const before = T.requests.length; await leave(T);
+    await T.roll("attack", 3);
+    eq([st(T).map((x) => x.replace(/ (roll|reactBefore) /, " * ")), !!card(T), T.journal("gm").filter((j) => /result\.hit/.test(j.text)), before], [["slugfest/H1-> * waiting hold:revalidate"], true, [], 1],
+      "D37 (b): the target left after its defence, before the dice: the dice hit nobody, the attack waits for the GM's word; the journal records no hit");
+    await T.gm({ op: "answerFor", prompt: card(T).id, value: "cancel" });
+    eq([st(T), paid(T)], [[], []], "D37 (b): given up and refunded"); }
+  { const T = new T4(); T.hero("H1", "p1").npc("N1").npc("N2"); T.weapons.smg = { id: "smg", bonus: 1, damage: 2, range: [0, 2], sharp: true, fullAuto: true }; T.order(["H1", "N1", "N2"]);
+    const r = await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "shoot", targets: ["N1", "N2"], weapon: "smg", fullAuto: true } });
+    await leave(T);
+    eq([code(r), T.top()?.decl.targets, !!T.top()?.data.hold, T.prompts().map((p) => [p.kind, p.about])], ["ok", ["N2"], false, [["reaction", "N2"]]], "D37: one of several targets left: the attack goes on against the rest, held by nobody");
+    await settle(T); await T.roll("attack", 2); await settle(T);
+    eq(st(T), [], "D37: and comes to its end"); }
+  { const T = mk(); T.hero("H2", "p2"); await T.gm({ op: "roster" }); await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } });
+    const h = await T.preq("p2", { op: "help", inst: T.top().id, helper: "H2" }); await leave(T, "H2");
+    eq([code(h), T.top()?.decl.helpers], ["ok", []], "D37 (sibling): a helper who left the fight no longer helps the open action"); }
+}
+
 done("check-defects4");
