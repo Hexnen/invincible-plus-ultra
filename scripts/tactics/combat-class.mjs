@@ -93,7 +93,10 @@ export function makeClass(Base) {
       try {
         const s = tacticsState(this);
         if (s && s.phase !== "sceneEnd" && s.mode !== "off" && Store.iAmExecutor() && endSceneAsk) {
+          /* U17: the end of the scene is the ONE question of ending a fight (recover, end without, cancel): its answer ends the
+             fight, Foundry's own "End combat?" is not asked on top of it (it left a fight with tactics already off when cancelled) */
           if ((await endSceneAsk(this)) === "cancel") return this;
+          return this.delete();
         }
       } catch (e) { console.warn(`${MOD} | tactics endCombat`, e); }
       return super.endCombat();
