@@ -283,7 +283,7 @@ export function askData(p, o) {
     const costWords = [costText(t, x.cost), x.stress ? t("ITAC.ui.stress", { n: x.stress }) : null].filter(Boolean).join(", ") || null;
     return { id: x.id, label: st && x.data.onExtra ? labelOf(t, x.label) : optLabel(p, x, t, facts, desk, oneTarget), cost: costWords,
       unit: x.cost === "full" || x.cost === "quick" ? x.cost : null, stress: Number(x.stress) || 0, icon: st ? `stunt:${st}` : kind === "reaction" ? `react:${String(x.id).split(":")[0]}` : null, group,
-      tip: stTip ? tipOf(null, null, null, [stTip]) : null,      // U51: the answer shows its name; the tooltip says what it does pv: pb && !x.disabled ? pvCost(pb, x.cost, x.stress) : null,
+      tip: stTip ? tipOf(null, null, null, [stTip]) : null /* U51: the answer shows its name; the tooltip says what it does */, pv: pb && !x.disabled ? pvCost(pb, x.cost, x.stress) : null,
       note: odds(x.id), disabled: x.disabled ? reasonText(t, x.disabled) : null, picked: picks.includes(x.id), pass: x.id === "pass", zones,
       req: x.disabled || p.multi ? null : value && x.req ? p.answerReq(value) : x.req,
       zoneReq: zones && !x.disabled ? (zone) => p.answerReq({ id: x.id, zone: String(zone) }) : null,      // an option that carries zones: the place picked on the map rides along [D]
@@ -626,7 +626,7 @@ const seenImg = (facts, id) => (facts.view?.ledger?.[id] ? facts.c?.(id)?.img ??
 function minePanel(i, facts, t, rolls = [], asked = false) {
   const roll = i.rolls?.[0];
   return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => ({ id: x.id, name: x.name ?? nameOf(facts, x.id, t), img: seenImg(facts, x.id) })), text: i.text ?? null, rolls,
-    status: rolls.length ? null : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t(asked ? "ITAC.ui.mine.declared" : "ITAC.ui.mine.open"),
+    status: rolls.length ? null : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t(asked ? "ITAC.ui.mine.declared" : "ITAC.ui.mine.open"),      // `asked`: the card above or the line below already says who the table waits for
     rolling: !!roll || rolls.length > 0, commands: (i.commands ?? []).map((c) => ({ id: c.id, label: labelOf(t, c.label), req: c.needs ? null : c.req, amend: c.id === "amend" })) };
 }
 /** Everything the dock draws. -> { show: false } | { show, rest, chars, who, slots, vitals, extras, groups, other, holdOff, hotbar, end, panel, prompts, waiting, turn } */
@@ -698,7 +698,7 @@ export function dockData(model, own, facts, t) {
   else if (armed && !armed.disabled && armed.flow === "barrier") panel = doorPanel(bar, armed, own, facts, t);
   else if (armed) panel = declarePanel(bar, armed, own, facts, t);
   const allRolls = rollsData(model?.rolls, facts, t), waitAll = waitingData(model?.waiting, facts, t);
-  if (!panel && mine.length && !facts.staff) { const i = mine[mine.length - 1]; panel = minePanel(i, facts, t, allRolls.filter((r) => r.inst === i.inst), prompts.length > 0 || waitAll.some((w) => w.mine)); }
+  if (!panel && mine.length && !facts.staff) { const i = mine[mine.length - 1]; panel = minePanel(i, facts, t, allRolls.filter((r) => r.inst === i.inst), prompts.length > 0 || waitAll.length > 0); }      // U51: the line over the bar names who the table waits for: the panel does not say "waiting for the others" beside it
   /* U51 / U52: ONE HOME PER FACT on the line over the bar. A roll that the panel of the own action carries has no chip there; and what
      the table waits for FROM THIS USER is not listed again when every piece of it is already in front of them (a card above, a roll
      with its buttons): the line then names only the others. */

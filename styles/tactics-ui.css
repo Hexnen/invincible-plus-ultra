@@ -284,6 +284,7 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 #tooltip.ita-tip .ita-tt { display: flex; flex-direction: column; gap: 2px; }
 #tooltip.ita-tip .ita-tt b { font: 400 13.5px/1.15 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #ffe72a; }
 #tooltip.ita-tip .ita-tt small { font: 400 11px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #a9bcdc; }
+#tooltip.ita-tip .ita-tt small:first-child { font-size: 12px; color: #fff; }      /* U51: a tooltip without a name starts with the price in words: it is the headline then */
 #tooltip.ita-tip .ita-tt p { margin: 2px 0 0; }
 #tooltip.ita-tip .ita-tt em { margin-top: 2px; font-style: normal; color: #ff8178; }
 
