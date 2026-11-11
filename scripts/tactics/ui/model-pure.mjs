@@ -708,7 +708,7 @@ function doorPanel(bar, a, own, facts, t) {
     return { id: d.to, label: t("ITAC.ui.door.to", { zone: zoneText(facts, t, d.zone) }), notes: [state, t("ITAC.ui.armor", { n: d.armor ?? 0 })], cost: a.cost, warn: false, disabled, asking: own.ask === d.to && !!disabled, req: disabled ? null : a.req({ to: d.to }), d, pv: disabled ? null : pvOf(a) };
   });
   const asked = rows.find((r) => r.asking) ?? null;
-  return { kind: "door", action: a.id, title, cost: costText(t, a.cost), rows: rows.map(({ d, ...r }) => r), borders: rows.map((r) => ({ border: r.id, label: r.notes[0], color: r.disabled ? "blocked" : "target" })),
+  return { kind: "door", action: a.id, title, cost: costText(t, a.cost), unit: a.cost, stress: Number(a.stress) || 0, rows: rows.map(({ d, ...r }) => r), borders: rows.map((r) => ({ border: r.id, label: r.notes[0], color: r.disabled ? "blocked" : "target" })),
     empty: rows.length ? null : t("ITAC.ui.door.none"),
     ask: asked ? askBox(a, bar, { to: asked.id }, {}, t("ITAC.ui.blocked", { reason: asked.disabled }), own, facts, t, `${title}, ${asked.label}`) : null };
 }
