@@ -158,6 +158,7 @@ for (const k of Object.keys(PLJ)) if (k.startsWith("IPU.Sys.")) ok(k.slice(8) in
 /* The sibling modules carry a copy of the banned list (dev/glossary-banned.mjs): a copy that is found must be identical, so one glossary rules them all.
    Looked for next to this module, in the worktrees named by IPU_SIBLINGS (a ; separated list of folders) and in the installed modules folder. */
 {
+  const norm2 = (t) => t.split(String.fromCharCode(13)).join("");
   const here = readFileSync(join(ROOT, "scripts", "i18n", "glossary-banned.mjs"), "utf8").replace(/\r\n/g, "\n");
   const dirs = [...(process.env.IPU_SIBLINGS ?? "").split(";").filter(Boolean)];
   for (const n of ["moinen-maps", "invincible-splash", "invincible-balancer"]) {
@@ -168,6 +169,8 @@ for (const k of Object.keys(PLJ)) if (k.startsWith("IPU.Sys.")) ok(k.slice(8) in
     const f = join(d, "dev", "glossary-banned.mjs");
     if (!existsSync(f)) continue;
     ok(readFileSync(f, "utf8").replace(/\r\n/g, "\n") === here, `${f} differs from scripts/i18n/glossary-banned.mjs (copy this module's file over it)`);
+    const lab = join(d, "scripts", "sys-labels.mjs");                       // invincible-splash carries the label table too
+    if (existsSync(lab)) ok(norm2(readFileSync(lab, "utf8")) === norm2(readFileSync(join(ROOT, "scripts", "i18n", "sys-labels.mjs"), "utf8")), `${lab} differs from scripts/i18n/sys-labels.mjs (copy this module's file over it)`);
   }
 }
 
