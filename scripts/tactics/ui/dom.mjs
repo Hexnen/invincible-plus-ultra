@@ -43,15 +43,15 @@ const ICONS = {
   slugfest: "fa-hand-fist", shoot: "fa-crosshairs", grapple: "fa-people-pulling", charge: "fa-meteor", grappleAttack: "fa-hand-back-fist", release: "fa-hand", ram: "fa-car-burst",
   move: "fa-person-running", openDoor: "fa-door-open", breachDoor: "fa-hammer", unseal: "fa-unlock-keyhole", fastball: "fa-baseball",
   orders: "fa-bullhorn", objective: "fa-puzzle-piece", vehicleEnter: "fa-car-side", vehicleExit: "fa-person-walking-arrow-right", vehicleStart: "fa-key", vehicleHandle: "fa-road",
-  pickUp: "fa-hand-holding", scan: "fa-binoculars", banter: "fa-comment", useItem: "fa-toolbox", usePower: "fa-bolt", breakLift: "fa-dumbbell", technology: "fa-microchip",
+  pickUp: "fa-hand-holding", scan: "fa-binoculars", banter: "fa-comment", useItem: "fa-toolbox", usePower: "fa-hand-sparkles", breakLift: "fa-dumbbell", technology: "fa-microchip",
   stabilize: "fa-kit-medical", rally: "fa-flag", recoverResolve: "fa-battery-half", persuade: "fa-handshake", saveBystanders: "fa-people-group", shakeOff: "fa-rotate",
   breakFree: "fa-link-slash", escapeTrap: "fa-dungeon", escapeSnare: "fa-scissors", escapeImmobilised: "fa-unlock", extinguish: "fa-fire-extinguisher",
   "@more": "fa-ellipsis", "@kit": "fa-star", "@other": "fa-pen", "@hold": "fa-hourglass-half", "@end": "fa-forward-step",
-  "kit:power": "fa-bolt", "kit:boost": "fa-angles-up", "kit:limit": "fa-triangle-exclamation", "kit:talent": "fa-medal", "kit:drawback": "fa-heart-crack", "kit:gear": "fa-toolbox",
+  "kit:power": "fa-hand-sparkles", "kit:boost": "fa-angles-up", "kit:limit": "fa-triangle-exclamation", "kit:talent": "fa-medal", "kit:drawback": "fa-heart-crack", "kit:gear": "fa-toolbox",
   "stunt:doubleDamage": "fa-burst", "stunt:knockback": "fa-arrow-right-from-bracket", "stunt:stun": "fa-face-dizzy", "stunt:bangHeads": "fa-people-arrows", "stunt:trap": "fa-dungeon", "stunt:disarm": "fa-hand-holding",
   "stunt:deadlyHit": "fa-skull", "stunt:slam": "fa-angles-right", "stunt:suppressed": "fa-arrows-down-to-line", "stunt:trickShot": "fa-bullseye", "stunt:special": "fa-star", "stunt:own": "fa-pen",
   "fate:ko": "fa-bed", "fate:kill": "fa-skull",
-  "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark", "react:r": "fa-bolt",
+  "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark", "react:r": "fa-reply",
 };
 export const actIcon = (key) => icon(ICONS[key] ?? "fa-circle-dot");
 /** the same picture as a Font Awesome class, for a menu the map draws at a token or a door (W1) */

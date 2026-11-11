@@ -111,6 +111,7 @@ const read = (f) => readFileSync(join(root, f), "utf8");
   const ui = src("styles/tactics-ui.css");
   ok(!/\.ita-spd\b|\.ita-rs\b/.test(ui) && !/ita-spd|ita-rs\b/.test(src("scripts/tactics/ui/dom.mjs") + src("scripts/tactics/ui/dock.mjs") + src("scripts/tactics/ui/desk.mjs")), "C12 the dock and the desk have no mark of their own");
   ok(!/mask-image:\s*url\(/.test(ui + rd + src("styles/combat.css") + src("styles/party.css") + src("styles/turn.css")), "C13 no surface sheet holds a drawing: they are the kit's");
+  ok(!/fa-bolt/.test(src("scripts/tactics/ui/dom.mjs")), "C16 on the dock and the desk the bolt is stress alone: no picture of an action or of a kind is a bolt");
   /* the surfaces that cannot draw say the names */
   ok(/ui\.notifications\[kind\]\(plain\(text\)/.test(src("scripts/tactics/ui/main.mjs")), "C14 a notification says a mark by its name");
   ok(/const t = \(\.\.\.a\) => plain\(tr\(\.\.\.a\)\)/.test(src("scripts/tactics/ui/prompts.mjs")), "C15 a plain dialog says a mark by its name");
