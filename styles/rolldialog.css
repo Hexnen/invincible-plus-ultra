@@ -137,7 +137,7 @@
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%);
 }
 /* U87 least and greatest are the same number (Slugfest: 0 and 0): the number once. The greatest stays in the window for a screen
-   reader, out of sight like the names; the one number's tooltip names both */
+   reader, out of sight like the names; the one number's tooltip is the word for range (U92) */
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"][data-ird-same] {
   position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%);
 }
