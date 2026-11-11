@@ -110,8 +110,16 @@ function closeTx(X, txId, label) {
    took the turn gives it back in whatever round the undo happens. */
 const CARRIED = ["lostTurn", "noInterrupts"];                                                // what a new ledger takes over from the old one (ledger-pure.newLedger [L7]): these writes are still alive
 const dead = ([p]) => p[0] === "ledger" && !(p.length === 3 && CARRIED.includes(p[2]));
-const liveOp = (X, op, round) => (op.t === "state" && round != null && round !== X.state.round
-  ? { ...op, patch: op.patch.filter((w) => !dead(w)), inverse: op.inverse.filter((w) => !dead(w)) } : op);
+/* D38 (spec 3.3, 15): somebody who has left the fight has no ledger, no statuses, no entry of any per-combatant table (ops-pure.removeOne
+   takes them away); an undo gives back what still exists, so the writes into those tables for one who is gone are left out, as the
+   writes into the ledgers of a finished round are. (One whom the same undo brings back, a summoned group, is there again by then.) */
+const PER_COMBATANT = ["ledger", "statuses", "free", "npc", "revealed", "knowledge"];
+const goneOf = (X) => { let f = null; return ([p]) => PER_COMBATANT.includes(p[0]) && p.length >= 2 && !(f ??= X.host.facts()).c(p[1]); };
+const liveOp = (X, op, round) => {
+  if (op.t !== "state") return op;
+  const old = round != null && round !== X.state.round, gone = goneOf(X), out = (w) => (old && dead(w)) || gone(w);
+  return op.patch.some(out) || op.inverse.some(out) ? { ...op, patch: op.patch.filter((w) => !out(w)), inverse: op.inverse.filter((w) => !out(w)) } : op;
+};
 /** Undo a list of ops (newest first). State ops are applied here, document ops go to the host as their inverse request. */
 async function undoOps(X, ops, round = null) {
   for (const op0 of [...ops].reverse()) {

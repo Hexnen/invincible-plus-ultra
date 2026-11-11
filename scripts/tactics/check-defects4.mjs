@@ -178,12 +178,12 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
     eq([st(T), T.prompts().map((p) => [p.kind, p.to, p.about, p.options.map((o) => o.id), p.data?.reasons])], [["slugfest/H1-> reactBefore waiting hold:revalidate"], [["revalidate", "gm", "H1", ["amend", "forfeit", "cancel"], ["noTarget"]]]],
       "D37 (a): the target left while its defence card was open: the attack is held on a card of the GM (aim again, give up with or without the cost)");
     ok(Desk.waitingOn(T.state).some((w) => w.kind === "revalidate" && w.to === "gm"), "D37 (a): the desk says what the table waits for");
-    await T.gm({ op: "answerFor", prompt: card(T).id, value: "cancel" });
+    await T.gm({ op: "answerFor", prompt: card(T)?.id, value: "cancel" });
     eq([st(T), paid(T), code(await T.preq("p1", { op: "endTurn", actor: "H1" }))], [[], [], "ok"], "D37 (a): given up: off the stack, the action is the attacker's again, the turn can be ended"); }
-  { const T = await open(); await leave(T); await T.gm({ op: "answerFor", prompt: card(T).id, value: "forfeit" });
+  { const T = await open(); await leave(T); await T.gm({ op: "answerFor", prompt: card(T)?.id, value: "forfeit" });
     eq([st(T), paid(T)], [[], ["full"]], "D37 (a): forfeited: off the stack, the action stays spent"); }
-  { const T = await open(); await leave(T); await T.gm({ op: "answerFor", prompt: card(T).id, value: "amend" });
-    const r = await T.preq("p1", { op: "amend", inst: T.top().id, decl: { targets: ["N2"] } });
+  { const T = await open(); await leave(T); await T.gm({ op: "answerFor", prompt: card(T)?.id, value: "amend" });
+    const r = await T.preq("p1", { op: "amend", inst: T.top()?.id, decl: { targets: ["N2"] } });
     eq([code(r), T.top()?.decl.targets, T.prompts().map((p) => [p.kind, p.about])], ["ok", ["N2"], [["reaction", "N2"]]], "D37 (a): aimed again by its owner, it goes on against the new target");
     await settle(T); await T.roll("attack", 2); await settle(T);
     eq([st(T), T.journal("gm").map((j) => j.text)], [[], ["H1: {ITAC.action.slugfest} -> N2 ({ITAC.result.hit})"]], "D37 (a): and ends as an ordinary attack on that target"); }
@@ -191,7 +191,7 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
     await T.roll("attack", 3);
     eq([st(T).map((x) => x.replace(/ (roll|reactBefore) /, " * ")), !!card(T), T.journal("gm").filter((j) => /result\.hit/.test(j.text)), before], [["slugfest/H1-> * waiting hold:revalidate"], true, [], 1],
       "D37 (b): the target left after its defence, before the dice: the dice hit nobody, the attack waits for the GM's word; the journal records no hit");
-    await T.gm({ op: "answerFor", prompt: card(T).id, value: "cancel" });
+    await T.gm({ op: "answerFor", prompt: card(T)?.id, value: "cancel" });
     eq([st(T), paid(T)], [[], []], "D37 (b): given up and refunded"); }
   { const T = new T4(); T.hero("H1", "p1").npc("N1").npc("N2"); T.weapons.smg = { id: "smg", bonus: 1, damage: 2, range: [0, 2], sharp: true, fullAuto: true }; T.order(["H1", "N1", "N2"]);
     const r = await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "shoot", targets: ["N1", "N2"], weapon: "smg", fullAuto: true } });
@@ -200,8 +200,91 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
     await settle(T); await T.roll("attack", 2); await settle(T);
     eq(st(T), [], "D37: and comes to its end"); }
   { const T = mk(); T.hero("H2", "p2"); await T.gm({ op: "roster" }); await T.preq("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } });
-    const h = await T.preq("p2", { op: "help", inst: T.top().id, helper: "H2" }); await leave(T, "H2");
+    const h = await T.preq("p2", { op: "help", inst: T.top()?.id, helper: "H2" }); await leave(T, "H2");
     eq([code(h), T.top()?.decl.helpers], ["ok", []], "D37 (sibling): a helper who left the fight no longer helps the open action"); }
+}
+
+/* ================================================================== D35: NOT A DEFECT of the code; the entry A19 was stale. The book gives
+   the highest cards to the defenders who failed the roll [B2279] and lets the GM put a group of NPCs on one card [B2275]; it does not
+   say what a group does when only some of its members failed. The behaviour since P1 (initiative-pure.GROUP_SURPRISE = "all"): the
+   group's card is a surprise card only when EVERY member is on the list; the GM builds both the groups and the list. Question P8d-1. */
+{
+  eq(I.GROUP_SURPRISE, "all", "D35: the constant");
+  let part = 0, whole = 0, lone = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const mk = async (surprised) => { const T = new T4(); T.hero("H1", "p1").hero("H2", "p2").hero("H3", "p3").npc("N1").npc("N2"); T.rng = seeded(seed); await T.gm({ op: "start", mode: "tactical", groups: [["N1", "N2"]], surprised }); return T; };
+    const top = (T, id) => { const g = T.state.init.slots.find((x) => x.members.includes(id)); return g.card === Math.max(...T.state.init.slots.map((x) => x.card)) && g.card === T.state.init.deck; };
+    const A = await mk(["N1"]), B = await mk(["N1", "N2"]), C = await mk(["H1"]);
+    if (top(A, "N1")) part++; if (top(B, "N1")) whole++; if (top(C, "H1")) lone++;
+    if (seed === 1) eq([A.state.init.surprised ?? [], B.state.init.surprised?.slice().sort(), A.state.init.slots.find((x) => x.members.includes("N1")).members.length], [[], ["N1", "N2"], 2], "D35: a group with one surprised member is not on the list of the surprised; a group surprised as a whole is");
+  }
+  eq([whole, lone], [60, 60], "D35: a group whose members are all surprised, and a single surprised defender, hold the highest card of the deck in every start [B2279]");
+  ok(part < 30, `D35: a group with only one surprised member draws with everybody else (the highest card in ${part} of 60 starts, by chance)`);
+}
+
+/* ================================================================== D36: NOT A DEFECT of the code; the entry C10 was read too widely. C10
+   is about the turn pointer: a finished round is not opened again (prevTurn stops at the first turn of a round). The undo of the journal
+   is not bound to the round (spec 15; plan 5.6): what an older exchange did to the world is given back; only the ledgers of the finished
+   round are left alone, because actions are reset at the start of every round and nothing is carried over [B2293] [L5]. Question P8d-2. */
+{
+  const T = new T4(); T.hero("H1", "p1").npc("N1", { health: 6 }); T.order(["H1", "N1"]);
+  await exchange(T, "p1", "H1", "N1", 3);
+  const tx = T.log.list.at(-1), hp = T.c.N1.health;
+  await T.preq("p1", { op: "endTurn", actor: "H1" }); await T.gm({ op: "nextTurn" }); await settle(T);
+  eq([tx.round, T.state.round, hp < 6], [1, 2, true], "D36: the exchange of round 1, seen from round 2");
+  const first = T.state.init.curMember, back = await T.gm({ op: "prevTurn" });
+  eq([code(back), T.state.round, T.state.init.curMember], ["noPrev", 2, first], "D36 (C10): the finished round is not opened again: no step back from the first turn of a round");
+  const led = JSON.stringify(T.state.ledger), r = await T.gm({ op: "undo", tx: tx.id });
+  eq([code(r), T.c.N1.health, T.log.list.find((t) => t.id === tx.id).state, JSON.stringify(T.state.ledger) === led], ["ok", 6, "undone", true],
+    "D36: the undo of the journal reaches over the round: the damage is given back, the line is marked undone, and the ledgers of the new round are untouched [B2293]");
+}
+
+/* ================================================================== D38: an undo gives back what still exists; somebody who has left the
+   fight gets no ledger back (spec 3.3, 15). */
+{
+  const T = new T4(); T.hero("H1", "p1").npc("N1", { health: 6 }); T.order(["H1", "N1"]);
+  await exchange(T, "p1", "H1", "N1", 3);
+  const tx = T.log.list.at(-1).id, hp = T.c.N1.health;
+  delete T.c.H1; await T.gm({ op: "roster" });
+  const r = await T.gm({ op: "undo", tx });          // the kit fails a check by itself when the state does not survive the round trip of the store
+  eq([code(r), Object.keys(T.state.ledger), hp, T.c.N1.health, Object.keys(T.state.statuses ?? {}).includes("H1")], ["ok", ["N1"], 4, 6, false],
+    "D38: undoing the exchange of an attacker who has left gives the target its Health back and writes no ledger for the one who is gone");
+  const U = new T4(); U.hero("H1", "p1").npc("N1", { health: 6 }); U.order(["H1", "N1"]);
+  await exchange(U, "p1", "H1", "N1", 3); const n = U.state.ledger.H1.entries.filter((e) => !e.void).length;
+  await U.gm({ op: "undo", tx: U.log.list.at(-1).id });
+  eq([n, U.state.ledger.H1.entries.filter((e) => !e.void).length, U.c.N1.health], [1, 0, 6], "D38: with the attacker still in the fight the undo gives the action back as before");
+}
+
+/* ================================================================== D39: the zones adapter says "no map here" (undefined: nothing is asked
+   of range, the GM settles positions) when the scene has no zones, when a token cannot be placed, or when one stands outside every
+   zone; `null` stays the answer of the map itself, "no attack possible" (spec 7.3; zones-api.md sections 2, 3). */
+{
+  globalThis.Hooks ??= { on: () => 1, off: () => {} };
+  let fake = null;
+  globalThis.game = { ...(globalThis.game ?? {}), modules: { get: () => (fake ? { active: true, api: { zones: fake } } : null) } };
+  const Z = await import("./zones-adapter.mjs");
+  const place = (zone, area = null) => ({ zone, id: zone ? 1 : -1, spot: zone, area, level: area ? null : "ground" });
+  const api = (places, range, keys = ["z1", "z2"]) => ({ zoneOfToken: (t) => places[t.id] ?? null, place: () => null, range, keys: () => keys, version: () => "x", canWrite: () => true });
+  const a = { id: "a" }, b = { id: "b" };
+  eq(String(Z.range(a, b)), "undefined", "D39: no map module: nothing is asked");
+  fake = api({ a: place(null), b: place(null) }, () => null, []);
+  eq([String(Z.range(a, b)), Z.available(), Z.usable?.()], ["undefined", true, false], "D39: a scene without zones: undefined, not a refusal of every attack");
+  fake = api({ a: place("z1"), b: place(null) }, () => null);
+  eq(String(Z.range(a, b)), "undefined", "D39: one of the two stands outside every zone: undefined");
+  fake = api({ a: place("z1") }, () => null);
+  eq(String(Z.range(a, b)), "undefined", "D39: a token of a scene that is not open on the executor has no place: undefined");
+  fake = api({ a: place("z1"), b: place("z2") }, () => ({ total: 1, borders: 1, levels: 0 }));
+  eq([Z.range(a, b), Z.usable?.()], [{ total: 1, borders: 1, levels: 0 }, true], "D39: on a map both stand on, the range of the map");
+  fake = api({ a: place("z1"), b: place("@sky", "sky") }, () => null);
+  eq(Z.range(a, b), null, "D39: the null of the map itself (to an off-map area) stays: no attack possible");
+  /* and what the engine makes of the two answers */
+  const mk = (range) => { const T = new T4(); T.hero("H1", "p1").npc("N1"); T.order(["H1", "N1"]); const f0 = T.facts.bind(T); T.facts = () => ({ ...f0(), range }); return T; };
+  fake = api({ a: place(null), b: place(null) }, () => null, []);
+  const A = mk(() => Z.range({ id: "a" }, { id: "b" })), r = await A.preq("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } });
+  eq([code(r), A.prompts().map((p) => p.kind)], ["ok", ["reaction"]], "D39: on a scene without zones an attack is declared and runs (the GM settles the positions)");
+  fake = api({ a: place("z1"), b: place("@sky", "sky") }, () => null);
+  const B = mk(() => Z.range({ id: "a" }, { id: "b" }));
+  eq(ans(await B.preq("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })), ["illegal", "noRange"], "D39: where the map itself says no attack is possible it is still refused");
 }
 
 done("check-defects4");
