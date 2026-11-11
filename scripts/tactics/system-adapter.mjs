@@ -148,7 +148,8 @@ export function sceneFacts(combat) {
 }
 
 /* ------------------------------------------------------------------ what a combatant is for an action (the action engine's readers) */
-const injuryNumber = (item) => { const f = item.flags?.[MOD]?.tactics?.crit; if (Number.isFinite(f)) return f; const n = INJ?.byName?.get(item.name); return Number.isFinite(n) ? n : null; };
+/* D100: when the table was not read yet (or the first read failed) it is asked for again, at most every 5 s: the next reading of the facts has it */
+let injAsked = 0; const injuryNumber = (item) => { const f = item.flags?.[MOD]?.tactics?.crit; if (Number.isFinite(f)) return f; if (!INJ && Date.now() - injAsked > 5000) { injAsked = Date.now(); injuries().catch(() => {}); } const n = INJ?.byName?.get(item.name); return Number.isFinite(n) ? n : null; };
 /* P3: the ways of moving an actor has. A power, boost or limit is known by the id of its compendium entry (the same in every language);
    the GM may add ways by hand: flags.<module>.tactics.movement = [{ mode, tier }]. Speeds and rules: scripts/rules/movement.mjs. */
 const MOVE_POWERS = { adhesion: "adhesion", "8wJ7WiatmSsAJYsJ": "burrowing", E6B4T5jbhoxFOqRC: "flight", XH6BNrsuvt6H7BvT: "leaping", QeM9FgUR0U3iCd5m: "superSpeed", "6IWySeMnq5uwhZ3u": "swimming", "60xT0tfR9306RCtA": "swinging", JeaiOHbh5MSrPakm: "teleportation",
@@ -313,8 +314,11 @@ async function injuries() {
       if (name) byName.set(name, lo);
     }
   } catch (err) { console.warn(`${MOD} | tactics: injuries table unreadable`, err); }
-  INJ = { byNumber, byName, top: Math.max(0, ...byNumber.keys()) };
-  return INJ;
+  /* D100: only a table that was READ is kept. An early read that fails or finds nothing (the pack not loaded yet) is tried again by the
+     next caller instead of leaving every injury of the session unresolved. */
+  const idx = { byNumber, byName, top: Math.max(0, ...byNumber.keys()) };
+  if (byNumber.size) INJ = idx;
+  return idx;
 }
 export const warmUp = async () => { await injuries(); await patchStunts(); };
 /** Embed injury number `n` on the actor. Returns the journal op `item+`, or null when the pack has no such row (then the GM is told by the executor). */

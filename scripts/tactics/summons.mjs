@@ -109,3 +109,17 @@ export function syncCopies(combat, state) {
   });
   return busy;
 }
+/** D98: the fight is gone (the Combat was deleted: no state write follows, so `syncCopies` never runs for it): its copy tokens leave
+    every scene. They carry the combat's id in their flag, so no other fight's copies and no real token is touched. */
+export function clearCopies(combatId) {
+  busy = busy.then(async () => {
+    try {
+      if (!Store.iAmExecutor() || !combatId) return;
+      for (const scene of game.scenes ?? []) {
+        const gone = scene.tokens.filter((td) => copyOf(td)?.combat === combatId).map((td) => td.id);
+        if (gone.length) await scene.deleteEmbeddedDocuments("Token", gone, OPT);
+      }
+    } catch (err) { console.warn(`${MOD} | tactics copies`, err); }
+  });
+  return busy;
+}

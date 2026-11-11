@@ -803,6 +803,23 @@ export function dockData(model, own, facts, t) {
 
 /* ------------------------------------------------------------------ the GM desk */
 const stepText = (t, s) => t(`ITAC.ui.step.${s}`, {}, cap(s));
+/** D99 (spec 15): what an answer says beyond yes or no: carried out only in part, which kind of change stayed as it was (an undo
+    whose inverse the map or a sheet refused), an action that went to the GM's hand (D90). The GM reads what to do about it; a player
+    is only told to turn to the GM (U67: nothing about how the fight is run). -> [text] for a warning each */
+/** D94 (U33: every number about one roll has one source): what an answer of the executor about a declaration is remembered under, the
+    pool and the reach alike: the fight's revision AND the revision of the map and the sheets (ui/main.mjs `factsRev`). */
+export const previewKey = (combatId, rev, facts, cid, decl, ids = null) => `${combatId}|${rev}|${facts}|${cid}|${JSON.stringify(decl)}${ids ? `|${ids.join(",")}` : ""}`;
+const FAILED_KIND = (k) => (k === "actor" ? "actor" : k.startsWith("item") ? "item" : k.startsWith("effect") || k === "fx" ? "effect" : k.startsWith("token") ? "token" : k === "zones" ? "zones" : k === "message" ? "message" : k.startsWith("summon") ? "summon" : k === "sys" ? "sys" : "other");
+export function envNotes(env, t, staff = false) {
+  if (!env || typeof env !== "object") return [];
+  const failed = Array.isArray(env.failed) ? env.failed : [];
+  if (!staff) return env.partial || failed.length ? [t("ITAC.warn.partialPlayer")] : [];
+  const out = [];
+  if (failed.length) out.push(t("ITAC.warn.failed", { list: [...new Set(failed.map((f) => t(`ITAC.failed.${FAILED_KIND(String(f?.t ?? ""))}`)))].join(", ") }));
+  else if (env.partial) out.push(t("ITAC.warn.partial"));
+  if (env.parked) out.push(t("ITAC.warn.parked"));
+  return out;
+}
 /** The override controls of one instance in progress (spec 14.1): each control carries the request it sends.
     -> [{ id, type: "number" | "choice" | "button" | "select", group, label, value?, min?, max?, choices?, req }] */
 export function overrideControls(i, facts, t) {
@@ -865,7 +882,7 @@ function manualData(m, own, facts, t) {
   const cost = ["none", "quick", "full"].includes(f.cost) ? f.cost : "none";
   const damage = (m.targets ?? []).map((x) => ({ target: x.id, name: x.name, amount: Math.max(0, Math.trunc(Number(f.damage?.[x.id]) || 0)) }));
   const result = { cost, note: String(f.note ?? "").slice(0, 300), damage: damage.filter((d) => d.amount > 0).map((d) => ({ target: d.target, amount: d.amount })) };
-  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: m.text ?? null, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null,
+  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: m.text ?? null, why: m.failed ? t("ITAC.ui.manual.failed", { step: stepText(t, m.failed.step) }) : m.byHand === "seat" ? t("ITAC.ui.manual.seat") : null, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null,
     costs: ["none", "quick", "full"].map((id) => ({ id, label: costText(t, id), on: id === cost })), note: { value: f.note ?? "", placeholder: t("ITAC.ui.manual.note") }, damage,
     resolve: { label: t("ITAC.ui.manual.resolve"), req: resolve.req(result) }, abort: { label: labelOf(t, abort.label), req: abort.req } };
 }

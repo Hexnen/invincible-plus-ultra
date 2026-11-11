@@ -15,6 +15,7 @@ import * as Relay from "./relay.mjs";
 import * as Engine from "./engine.mjs";
 import * as Klass from "./combat-class.mjs";
 import * as Sys from "./system-adapter.mjs";
+import * as Summons from "./summons.mjs";
 import { setLive } from "./source.mjs";
 import { attach, setRunning, isRunning, tacticsApi } from "./api.mjs";
 import * as Mv from "./movement.mjs";
@@ -69,7 +70,7 @@ async function startRunning() {
   try { const UI = await load(); if (UI.start()) Prompts.setSurfaces(true); } catch (e) { console.warn(`${MOD} | tactics surfaces failed to start`, e); }
   Hooks.on("updateCombat", (combat, changes) => { if (changes?.flags?.[MOD] !== undefined || "round" in (changes ?? {}) || "turn" in (changes ?? {})) announce(combat); });
   Hooks.on("createCombat", (combat) => announce(combat));
-  Hooks.on("deleteCombat", (combat) => { last.delete(combat.id); Store.notify({ kind: "deleted", combat, state: null }); });
+  Hooks.on("deleteCombat", (combat) => { last.delete(combat.id); Store.notify({ kind: "deleted", combat, state: null }); Summons.clearCopies(combat.id); });   // D98
   Hooks.on("combatStart", () => Prompts.sync());
   Hooks.on("preCreateChatMessage", (m) => Sys.keepRollPrivate(m));       // U7: a roll for the GM alone stays so when it is pushed
   // joining and leaving (spec 3.3): the executor brings the state in line

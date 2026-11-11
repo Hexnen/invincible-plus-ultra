@@ -45,6 +45,7 @@ const kitFacts = (ctx) => (typeof ctx.kit === "function" ? { c: (id) => ({ kit: 
 const instLine = (i, ctx, state = null) => ({ steps: (FLOWS[i.flow]?.STEPS ?? []).slice(), attr: entryOf(state, i)?.roll?.attr ?? null, defense: entryOf(state, i)?.defense ?? null,
   outcomes: Object.entries(i.data?.out ?? {}).map(([t, o]) => ({ target: t, name: nameOf(ctx, t), hit: o?.hit === true, net: o?.net ?? null })),
   defs: Object.entries(isObj(i.data?.def) ? i.data.def : {}).filter(([, x]) => isObj(x) && x.defence).map(([t, x]) => ({ target: t, defence: x.defence, dice: Number.isFinite(x.dice) ? x.dice : null })),      // the defences declared so far; `dice` only in the full state (a player's view carries the kind alone)
+  failed: isObj(i.data?.failed) ? { step: String(i.data.failed.step ?? "").slice(0, 40) } : null, byHand: (i.data?.notes ?? []).some((n) => n?.note === "seatByHand") ? "seat" : null,      // D90 / D91: why it lies in the GM's hand (only in the full state: a player's view carries no such data)
   inst: i.id, action: i.action, label: i.data?.label ?? null, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text });
 
 /* U1 / U2: one roll of an action as a surface needs it to offer "roll", "accept" and "push" itself. `state`: "owed" (no dice yet),

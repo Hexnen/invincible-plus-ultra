@@ -115,10 +115,13 @@ function factsOf(combat) {
   };
 }
 /* THE POOL OF A DECLARATION (every number about one roll has one source): asked of the executor (op "preview", through the relay for a
-   player), remembered per declaration and state of the fight; while the answer is on its way the last one for the same action stands. */
+   player), remembered per declaration and state of the fight; while the answer is on its way the last one for the same action stands.
+   D94: ... and per state of the map and the sheets (`factsRev`), as the reach below: a sheet edit or a token put into another zone
+   changed the chance over the tokens and left the panel's pool at the old number. One key for both (model-pure.previewKey). */
+const previewKey = Model.previewKey;
 function previewOf(combat, view, cid, decl) {
   try {
-    const key = `${combat.id}|${view?.rev}|${cid}|${JSON.stringify(decl)}`, hit = previews.get(key);
+    const key = previewKey(combat.id, view?.rev, factsRev, cid, decl), hit = previews.get(key);
     if (hit) return hit.value !== undefined ? hit.value : previewLast?.who === `${cid}|${decl.action}` ? previewLast.value : null;
     previews.set(key, { value: undefined }); if (previews.size > 60) { previews.clear(); previews.set(key, { value: undefined }); }
     Api.request({ op: "preview", actor: cid, decl }, combat).then((env) => {
@@ -134,7 +137,7 @@ function previewOf(combat, view, cid, decl) {
    the fight (its own rev) or of the map and the sheets (`factsRev`), never per mouse move and never per redraw; while the answer is on its way the last one for the same action stands. */
 function reachOf(combat, view, cid, decl, ids) {
   try {
-    const who = `${cid}|${decl.action}`, key = `${combat.id}|${view?.rev}|${factsRev}|${cid}|${JSON.stringify(decl)}|${ids.join(",")}`, hit = reaches.get(key), old = () => (reachLast?.who === who ? reachLast.value : null);
+    const who = `${cid}|${decl.action}`, key = previewKey(combat.id, view?.rev, factsRev, cid, decl, ids), hit = reaches.get(key), old = () => (reachLast?.who === who ? reachLast.value : null);
     if (hit) return hit.value !== undefined ? hit.value : old();
     if (reaches.size > 40) reaches.clear();
     reaches.set(key, { value: undefined });
@@ -156,6 +159,7 @@ async function rollAct(act) {
     if (!r) return;
     const k = `${act.do}:${act.inst}:${act.key}`;
     if (Date.now() - (acting.get(k) ?? 0) < 2500) return;      // a second click while the first is on its way
+    if (acting.size > 200) acting.clear();      // (the marks of clicks long answered are dropped: the map does not grow with the session)
     acting.set(k, Date.now());
     if (act.do === "roll") {
       if (!r.req?.rid || r.sixes != null) return;
@@ -325,6 +329,7 @@ async function send(which, req, after) {
     if (!req) return null;
     const combat = combatNow();
     const env = await Api.request(req, combat ?? undefined);
+    for (const text of Model.envNotes(env, t, Store.isStaff(game.user))) notify("warn", text);      // D99: carried out only in part, an inverse that failed, an action handed to the GM
     if (env?.ok === false) {
       /* a declaration against the rules: the dock keeps the panel and shows the reason with the way to ask for an exception */
       if (which === "dock" && req.op === "declare" && env.error?.code === "illegal" && !req.decl?.exception) {
@@ -446,7 +451,7 @@ export function start() {
     try { if (globalThis.localStorage?.getItem(KEYS_ON) === "1") document.body.classList.add("ita-keys"); } catch { /* private window */ }
     Board.start({ t, set: setDock, send: (req, after) => send("dock", req, after), press: (fk) => Dock.press(fk), notify, refresh, showToken, dock: () => st.dock,
       bar: (cid) => lastModel?.bars?.find((b) => b.combatant === cid) ?? null,
-      request: async (req, combat) => { try { const env = await Api.request(req, combat ?? combatNow() ?? undefined); if (env?.ok === false && env.error?.code !== "gone") notify("warn", errText(env.error)); return env; } catch { return null; } } });
+      request: async (req, combat) => { try { const env = await Api.request(req, combat ?? combatNow() ?? undefined); for (const text of Model.envNotes(env, t, Store.isStaff(game.user))) notify("warn", text); if (env?.ok === false && env.error?.code !== "gone") notify("warn", errText(env.error)); return env; } catch { return null; } } });
     Api.ui = { active, refresh, state: () => st };
     refresh();
     return true;
