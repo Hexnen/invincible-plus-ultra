@@ -145,7 +145,7 @@ async function applyEffect(X, I, e, step) {
   switch (e.t) {
     case "state": write(X, tx, e.path, e.to, I, step); return false;
     case "pay": {
-      const r = P1.pay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense, cause: e.cause, force: !!e.force, resolve: c?.resolve }, { action: e.action, inst: I.id, tags: e.tags ?? (e.defense ? ["defence"] : []), target: e.target, onTurnOf: e.onTurnOf,
+      const r = P1.pay(X.state, e.who, e.cost, { interrupt: !!e.interrupt, defense: !!e.defense, ranged: !!e.ranged, cause: e.cause, force: !!e.force, resolve: c?.resolve, ...(e.grant ? { grant: e.grant } : {}) }, { action: e.action, inst: I.id, tags: e.tags ?? (e.defense ? ["defence"] : []), target: e.target, onTurnOf: e.onTurnOf,
         ...(e.zoneFrom ? { zoneFrom: e.zoneFrom } : {}), ...(e.zoneTo ? { zoneTo: e.zoneTo } : {}), ...(Number.isFinite(e.borders) ? { borders: e.borders } : {}) });
       if (!r.ok) { (I.data.unpaid ??= {})[e.key] = r.reason; return false; }             // was legal when offered; shown to the GM instead of guessing
       write(X, tx, ["ledger", e.who], r.ledger, I, step, e.own ? "cost" : null);
@@ -225,7 +225,11 @@ function makeInst(X, { action, actor, decl, cause = "turn", parent = null, data 
    whatever names somebody concealed from that player. */
 export const NEWS_MAX = 12;
 function pushNews(X, n) {
-  X.state = { ...X.state, news: [...(X.state.news ?? []), { id: nextId(X, "n"), round: X.state.round ?? null, at: X.host.now(), ...n }].slice(-NEWS_MAX) }; X.changed = true;
+  /* P8e-1: the id is drawn FIRST. Inside the object literal the spread had already copied the old counter, so the number was handed out
+     and then forgotten: two lines in a row (two undos, two turns passed) carried one id, and the surface, which tells "already read" by
+     that number (ui/model-pure.newsData), never showed the second one to whoever had dismissed the first. */
+  const id = nextId(X, "n");
+  X.state = { ...X.state, news: [...(X.state.news ?? []), { id, round: X.state.round ?? null, at: X.host.now(), ...n }].slice(-NEWS_MAX) }; X.changed = true;
 }
 function newsOf(I) {
   const rows = (I.decl?.targets ?? []).map((t) => { const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
@@ -444,9 +448,12 @@ export const queueHolds = (state) => Object.values(state?.prompts ?? {}).some((p
 function placement(X, actor, entry) {
   const t = top(X);
   if (!t) return queueHolds(X.state) ? { ok: false, code: "busy", params: { reason: "triggersFirst" } } : { ok: true, cause: "turn", parent: null };
-  if (t.locked || !t.data.window || !entry.interrupt?.on?.includes(t.data.window)) return { ok: false, code: "busy" };
-  if (t.actor === actor) return { ok: false, code: "busy" };
-  return { ok: true, cause: "interrupt", parent: t.id };
+  if (t.locked || !t.data.window || t.actor === actor) return { ok: false, code: "busy" };
+  if (entry.interrupt?.on?.includes(t.data.window)) return { ok: true, cause: "interrupt", parent: t.id };
+  /* D40 [R1] [B1953], [B2292]: the extra action of Quickness may be any action, quick or full, taken as an interrupt: it answers an action
+     somebody else declared, before that action's dice, and is paid with that unit and nothing else. */
+  const unit = t.data.window === "beforeRoll" && (entry.cost === "full" || entry.cost === "quick" || priced0(entry)) ? P1.extraUnit(X.state, actor) : null;
+  return unit ? { ok: true, cause: "interrupt", parent: t.id, grant: unit } : { ok: false, code: "busy" };
 }
 const priced0 = (entry) => typeof FLOWS[entry.flow]?.price === "function";                 // a flow that names its own cost answers for the turn itself
 async function opDeclare(X, a) {
@@ -480,7 +487,7 @@ async function opDeclare(X, a) {
   }
   const gm = X.user.staff && a.gm === true;                                                // the GM acting through an override: costs waived
   const priced = typeof FLOWS[entry.flow]?.price === "function";                           // P3: a flow that names its own cost (a move: quick or full, free inside the zone)
-  const payable = (cost) => { const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, resolve: X.facts.c(actor)?.resolve });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
+  const payable = (cost) => { if (pl.grant && cost !== "full" && cost !== "quick") return bad("busy"); const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, ranged: P1.isRanged(entry), resolve: X.facts.c(actor)?.resolve, ...(pl.grant ? { grant: pl.grant } : {}) });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
   if (!priced) { const no = payable(entry.cost); if (no) return no; }
   const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
   const l = K.legality(view(X), inst, FLOWS[inst.flow]);
@@ -492,7 +499,7 @@ async function opDeclare(X, a) {
   pushInst(X, inst);
   const I = J.clone(inst);
   if (cost === "full" || cost === "quick" || (cost === "free" && price?.tags)) {
-    await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", tags: price?.tags ?? entry.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
+    await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", grant: pl.grant, ranged: P1.isRanged(entry), tags: price?.tags ?? entry.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
     I.entry = I.data.paid?.own ?? null;
   }
   if (a.granted === true && X.user.staff) { I.data.exception = { reason: l.ok ? null : l.reason, params: l.ok ? {} : l.params, by: "gm" }; I.decl.exception = { ...I.decl.exception, state: "granted" }; }      // U3: the GM already said yes on the card of the request: no second card
@@ -504,6 +511,33 @@ async function opDeclare(X, a) {
   setInst(X, I);
   emit(X, I, { type: "actionDeclared", decl: publicDecl(decl), cost, stress: decl.stressTotal, targets: decl.targets, zone: decl.zone, path: decl.path });
   return ok({ inst: inst.id });
+}
+/* D42 (handoff U3; spec 9.12): what refuses this declaration from its owner at this moment, as opDeclare would: the table (another
+   action open, triggers first), the cost (not the turn, no unit left) and the rules of the flow, ALL of them, in the order they are
+   asked. The GM's card of a free-standing request for an exception shows this list, never a word the asking client sent, and a grant
+   overrules exactly this list. -> { reasons: [id], waive }   waive: a refusal of the table or of the cost is among them (ruling P9F-R1:
+   there is nothing to pay with, so the granted declaration goes in with its cost waived); with only a rule of the flow overruled the
+   action is paid for as always. Nothing is written. */
+function refusalsOf(X, actor, d) {
+  const entry = isObj(d) ? C.entryFor(X.state, actor, d.action, X.facts) : null;
+  if (!entry || X.state.mode !== "tactical" || X.state.free?.[actor]) return { reasons: [], waive: false };
+  const reasons = [], before = X.state;
+  let waive = false;
+  try {
+    const pl = placement(X, actor, entry);
+    if (!pl.ok) { reasons.push(pl.params?.reason ?? pl.code); waive = true; }
+    const inst = makeInst(X, { action: entry.id, actor, decl: sanitizeDecl(d, entry.id, false), cause: pl.ok ? pl.cause : "turn", parent: pl.ok ? pl.parent : null });
+    const flow = FLOWS[inst.flow], l = K.legality(view(X), inst, flow), priced = typeof flow?.price === "function";
+    const cost = priced ? (l.ok ? flow.price(view(X), inst)?.cost ?? "none" : null) : entry.cost;
+    if (!priced && (cost === "none" || cost == null)) { if (!P1.isOnTurn(X.state, actor) && (!pl.ok || pl.cause === "turn") && (!entry.kit || entry.roll || ["resist", "narrative"].includes(entry.effect?.kind))) { reasons.push("notYourTurn"); waive = true; } }
+    else if (cost != null) {
+      const cp = pl.ok && pl.grant && cost !== "full" && cost !== "quick" ? { ok: false, reason: "busy" } : P1.canPay(X.state, actor, cost, { interrupt: pl.ok && pl.cause === "interrupt", ranged: P1.isRanged(entry), resolve: X.facts.c(actor)?.resolve, ...(pl.ok && pl.grant ? { grant: pl.grant } : {}) });
+      if (!cp.ok) { reasons.push(cp.reason ?? "noAction"); waive = true; }
+    }
+    if (!l.ok) reasons.push(l.reason ?? "illegal");
+  } catch { /* a declaration that cannot even be read refuses nothing by name: the grant runs into the engine's own answer */ }
+  X.state = before;                                                                         // the probe took an id from the counter: given back
+  return { reasons: [...new Set(reasons.map((r) => String(r).slice(0, 40)))], waive };
 }
 async function opAmend(X, a) {
   const inst = instOf(X, a.inst);
@@ -594,6 +628,16 @@ async function opAnswer(X, a, forAnyone = false) {
     if (vr && !vr.ok) return bad("illegal", { reason: vr.reason });
     if (p.answered && inst.data.done?.[Object.keys(inst.data.pk ?? {}).find((k) => inst.data.pk[k] === p.id)]) return bad("locked");   // already acted upon
   }
+  /* D42: a grant overrules what the card showed. When the table has changed since the card was made (another rule refuses now, or none
+     does any more), the card is brought up to date and the GM is told so; nothing runs on a reason the GM never read. */
+  if (!inst && p.kind === "exception" && isObj(p.data?.decl) && !p.data.other && Array.isArray(p.data.reasons) && (typeof value === "string" ? value : value.id) === "grant" && X.facts.c(p.about)) {
+    const now = refusalsOf(X, p.about, p.data.decl);
+    if (JSON.stringify(now.reasons) !== JSON.stringify(p.data.reasons) || !!now.waive !== !!p.data.waive) {
+      const { reason: _r, reasons: _rs, waive: _w, ...rest } = p.data;
+      X.state = { ...X.state, prompts: { ...X.state.prompts, [p.id]: { ...p, data: { ...rest, reasons: now.reasons, ...(now.reasons.length ? { reason: now.reasons[0] } : {}), ...(now.waive ? { waive: 1 } : {}) } } } }; X.changed = true;
+      return bad("stale", { reason: now.reasons[0] ?? null, prompt: p.id });
+    }
+  }
   X.state = { ...X.state, prompts: { ...X.state.prompts, [p.id]: { ...p, answered: { by: X.user.id, at: X.host.now(), value } } } }; X.changed = true;
   if (value?.always && p.kind === "reaction" && p.about) {                                  // spec 13.1 "always do this for this NPC"
     const pol = { ...(X.state.npc[p.about] ?? {}) };
@@ -627,7 +671,7 @@ async function exceptionAnswered(X, p) {
   let ran = 0, why = null;
   const action = isObj(d.decl) && typeof d.decl.action === "string" ? d.decl.action.slice(0, 40) : d.other ? "other" : null;
   if (granted && action && !d.other) {
-    const env = await opDeclare(X, { actor: p.about, gm: true, granted: true, decl: { ...d.decl, exception: { text: String(d.text ?? "").slice(0, 300) } } });
+    const env = await opDeclare(X, { actor: p.about, gm: !Array.isArray(d.reasons) || !!d.waive, granted: true, decl: { ...d.decl, exception: { text: String(d.text ?? "").slice(0, 300) } } });
     if (env.ok) ran = 1; else why = String(env.error?.params?.reason ?? env.error?.code ?? "internal").slice(0, 40);
   }
   if (granted && !ran && !X.state.stack.length && !queueHolds(X.state)) {
@@ -651,9 +695,27 @@ function opPreview(X, a) {
   const before = X.state;
   let out = null;
   try {
-    const inst = makeInst(X, { action: entry.id, actor, decl: sanitizeDecl(a.decl, entry.id, X.user.staff === true) });
-    const p = FLOWS[inst.flow]?.preview?.(view(X), inst) ?? null;
-    if (p?.pool && Number.isFinite(p.pool.dice)) out = { attr: p.attr ?? null, dice: p.pool.dice, base: p.pool.base ?? 0, mods: (p.pool.mods ?? []).filter((m) => m.dice).slice(0, 24).map((m) => ({ source: String(m.source ?? "").slice(0, 40), dice: Math.trunc(m.dice) })) };
+    const decl = sanitizeDecl(a.decl, entry.id, X.user.staff === true);
+    /* D41 (spec 10; [B2075], [B1903]; ruling P8-R17): somebody the asking player's character has as `unseen` is not there for that player.
+       The preview answered about it all the same (the minimum-range penalty told whether it stood in the hero's own zone, the modifiers
+       named its conditions), and the op costs nothing and may be asked at will. Such a target is swapped for an id nobody has, so the
+       answer is the one a target that does not exist gets, as the director's veil does for one Foundry hides. */
+    if (!X.user.staff) {
+      let nobody = "nobody"; for (let i = 0; X.facts.c(nobody); i++) nobody = `nobody${i}`;
+      const ghost = (t) => (X.state.knowledge?.[actor]?.[t] === "unseen" ? nobody : t);
+      decl.targets = decl.targets.map(ghost); if (decl.carry) decl.carry = decl.carry.map(ghost);
+    }
+    const run = (d) => { const inst = makeInst(X, { action: entry.id, actor, decl: d }); return FLOWS[inst.flow]?.preview?.(view(X), inst) ?? null; };
+    const line = (m) => ({ source: String(m.source ?? "").slice(0, 40), dice: Math.trunc(m.dice) });
+    /* D49 (spec 6.2): a bonus die that needs the GM's word at the roll (flows/kit.mjs tokenGate) is not a die of the pool yet: the GM may
+       refuse it. The preview counted it as certain; now the number is the pool without such dice, and they are listed apart as `pending`. */
+    const wait = new Set((X.state.tokens ?? []).filter((t) => t?.needsGm && (decl.tokens ?? []).includes(t.id)).map((t) => t.id));
+    const full = wait.size ? run(decl) : null, p = run(wait.size ? { ...decl, tokens: decl.tokens.filter((id) => !wait.has(id)) } : decl);
+    if (p?.pool && Number.isFinite(p.pool.dice)) {
+      out = { attr: p.attr ?? null, dice: p.pool.dice, base: p.pool.base ?? 0, mods: (p.pool.mods ?? []).filter((m) => m.dice).slice(0, 24).map(line) };
+      const pending = (full?.pool?.mods ?? []).filter((m) => m.dice && String(m.source ?? "").startsWith("token:") && wait.has(String(m.source).slice(6))).slice(0, 12).map(line);
+      if (pending.length) out.pending = pending;
+    }
   } catch { out = null; }
   /* W1 (U33, U34): WHOM THIS DECLARATION COULD BE AIMED AT. `of` = the candidates the asker's map would mark. For each one the
      answer of the SAME legality the declaration will meet (so the map never promises what "declare" then refuses), the dice of the
@@ -756,11 +818,15 @@ async function opAsk(X, a, kind) {
     return ok({ inst: inst.id });
   }
   if (Object.values(X.state.prompts).filter((p) => p.kind === "exception" && !p.inst && p.about === a.actor).length >= 3) return bad("rate");
-  /* U3: the request may name the rule that said no and the declaration it was about (the dock sends both): the GM's card shows them, and a grant runs that declaration */
-  const reason = typeof a.reason === "string" && /^[A-Za-z]{1,40}$/.test(a.reason) ? a.reason : undefined;
+  /* U3: the request may name the declaration it was about (the dock sends it): the GM's card shows it, and a grant runs that declaration.
+     D42: the rule that said no is the engine's own answer about that declaration at this moment (refusalsOf), every refusal of it, not the
+     word the asking client sent: a crafted request put "no action left" on the card of a punch at somebody out of reach, and the grant
+     overruled the reach. The client's word stays only on a request that names no declaration (a grant of that runs nothing). */
   const entry = isObj(a.decl) && kind !== "other" ? C.entryFor(X.state, a.actor, a.decl.action, X.facts) : null;
   const decl = entry && entry.reaction?.effect !== "defence" && entry.id !== "gmRoll" ? (({ helpers, exploits, stressTotal, exception, ...rest }) => rest)(sanitizeDecl(a.decl, entry.id, false)) : undefined;
-  openPrompt(X, null, { key: "x", kind: "exception", to: "gm", about: a.actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { text, inst: P1.isId(a.inst) ? a.inst : undefined, ...(kind === "other" ? { other: 1 } : {}), ...(reason ? { reason } : {}), ...(decl ? { decl } : {}) } }, null);
+  const no = decl ? refusalsOf(X, a.actor, decl) : null;
+  const reason = no ? no.reasons[0] : typeof a.reason === "string" && /^[A-Za-z]{1,40}$/.test(a.reason) ? a.reason : undefined;
+  openPrompt(X, null, { key: "x", kind: "exception", to: "gm", about: a.actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { text, inst: P1.isId(a.inst) ? a.inst : undefined, ...(kind === "other" ? { other: 1 } : {}), ...(reason ? { reason } : {}), ...(no ? { reasons: no.reasons, ...(no.waive ? { waive: 1 } : {}) } : {}), ...(decl ? { decl } : {}) } }, null);
   return ok(kind === "other" ? { asked: 1 } : undefined);
 }
 
@@ -788,6 +854,10 @@ async function gmInstOp(X, op, a) {
     case "setSixes": {
       const key = String(a.roll ?? "").slice(0, 40), sixes = Math.max(0, Math.min(40, Math.trunc(Number(a.sixes))));
       if (!Number.isFinite(sixes)) return bad("badInput");
+      /* D48: "Accept for them" takes the result the desk showed (a roll that may still be pushed) as it stands. When the roller's push
+         came in first, that result is no more: the request was still carried out, put the old sixes back and threw away the stunt card
+         of a push whose stress was paid. It is out of date now; a number the GM types in (no `accept`) stays an override of anything. */
+      if (a.accept === true) { const rec = I.rolls[key]; if (!rec || rec.forced != null || rec.sixes !== sixes || !rec.pushable || (rec.pushed ?? 0) !== Math.max(0, Math.trunc(Number(a.pushed) || 0))) return bad("stale", { roll: key }); }
       noteOverride(X, I, op, I.rolls[key]?.forced ?? I.rolls[key]?.sixes ?? null, sixes);
       setInst(X, I);
       const rs = rollStepOf(I, key), keep = I.rolls;
@@ -1026,6 +1096,7 @@ async function gmEdit(X, op, a) {
       break;
     }
     case "chaseSet": {
+      if (P1.isId(a.unit) && X.state.stack.length) { err = "busy"; break; }                  // P8e-3: nobody joins or drops out under a chase roll that is being made (the one asked to roll could leave it); the distance can still be set
       const next = Chase.setPatch(X.state, a);
       if (!next) { err = "gone"; break; }
       if (P1.isId(a.unit)) {                                                                 // somebody joins or drops out: the token follows, and the way back is remembered [D]
@@ -1150,6 +1221,12 @@ async function challengeFailRun(X, cid) {
     write(X, tx, ["challenges", cid, "dice"], r.ward.dice); write(X, tx, ["challenges", cid, "resets"], r.ward.resets); write(X, tx, ["challenges", cid, "started"], {});
     closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.wardReset}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.wardReset} (${r.ward.dice})` });
     emit(X, null, { type: "challenge", challenge: cid, rating: r.ward.rating, timeLeft: r.ward.time, state: "reset", dice: r.ward.dice });
+  }
+  else if (cfg && Object.keys(cfg).length && !cfg.done && X.state.challenges?.[cid]) {      // D47 [B2841]: failed for good, its clock stops (journaled, so an undo gives the challenge back); what it had set going stays with the GM
+    const tx = openTx(X, {});
+    write(X, tx, ["challenges", cid, "done"], "failed");
+    closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.challengeFailed}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.challengeFailed}` });
+    emit(X, null, { type: "challenge", challenge: cid, rating: c.health, timeLeft: c.resolve, state: "failed", done: 1 });
   }
   for (const kind of r.manual) pushManual(X, cid, kind, { at: "onFail" });
 }

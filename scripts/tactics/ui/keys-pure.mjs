@@ -7,8 +7,11 @@
                  While Foundry's macro bar is shown (the dock's keyboard button) the digits are its own again.
      Tab         the next target IN REACH of the armed action (Shift: the one before; W1: the map marks who is in reach); on a card the next answer
      Enter       confirms: the chosen answer (a ticked stunt card: its Confirm), Declare, the one way of a chosen move, "Sure?" of End
-                 turn, Accept (or Roll) of a roll this user owes
-     Space       End turn (the first press arms "Sure?" where the pointer would)
+                 turn, Accept (or Roll) of a roll this user owes. On a card of several answers with NOTHING ticked the first Enter only
+                 chooses its Confirm and the second sends it: an Enter meant for "Accept" a moment before the stunt card came up must
+                 not throw the stunts away (the same guard as the digits).
+     Space       End turn (the first press arms "Sure?" where the pointer would). Not while a card stands: the card is the top layer,
+                 and a key never reaches past it to the bar.
      Escape      puts away the chosen answer, else the armed action or the open list
    main.mjs calls plan() from one keydown listener and never while the user types (a text field, the chat box, another window).
      number(d, own)  -> d with `key` on what a digit reaches (the surfaces show it as a small mark and say it in the tooltip)
@@ -49,7 +52,8 @@ export function plan(d, own = {}, ev = {}) {
   const key = ev.key;
   if (!d || !KEYS.includes(key)) return null;
   const L = layer(d), card = L.id === "card" ? d.prompts[0] : null, p = d.show ? d.panel : null;
-  const chosen = card && L.id === "card" && L.keys.some((k) => k.fk === own.kopt) ? own.kopt : null;
+  const sfk = card && L.multi ? `submit:${card.id}` : null;                                  // the Confirm of a card of several answers
+  const chosen = card && L.id === "card" && (L.keys.some((k) => k.fk === own.kopt) || (sfk && own.kopt === sfk)) ? own.kopt : null;
   if (DIGITS.includes(key)) {
     const hit = own.hotbar ? null : L.keys.find((k) => k.key === key);
     if (!hit) return null;
@@ -65,7 +69,8 @@ export function plan(d, own = {}, ev = {}) {
     return null;
   }
   if (key === "Enter") {
-    if (card) return L.multi ? (card.submit?.req ? { click: `submit:${card.id}` } : null) : chosen ? { click: chosen } : null;
+    if (card && !L.multi) return chosen && chosen !== sfk ? { click: chosen } : null;
+    if (card) return !card.submit?.req ? null : (card.options ?? []).some((o) => o.picked) || chosen === sfk ? { click: sfk } : { set: { kopt: sfk } };
     if (p?.kind === "declare") return p.submit?.req ? { click: "go" } : p.refused?.submit?.req ? { click: "go.itd-go-ask" } : null;
     if (p?.kind === "other" || p?.kind === "blocked") return p.submit?.req ? { click: "go.itd-go-ask" } : null;
     if (p?.kind === "move" && p.dest) { const can = p.dest.rows.filter((r) => !r.disabled && r.req); return can.length === 1 ? { click: `way:${can[0].id}` } : null; }
@@ -74,5 +79,6 @@ export function plan(d, own = {}, ev = {}) {
     return null;
   }
   /* Space */
+  if (card) return null;
   return d.show && !d.rest && d.end?.req && !d.end.disabled ? { click: "end" } : null;
 }
