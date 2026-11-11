@@ -100,6 +100,7 @@ ok(/timeout: 8000, staleWait: 900/.test(read("relay-pure.mjs")) && /R\.LIMITS\.t
 /* one of everything */
 ok(!all.some((f) => /standin/i.test(f)), "no stand-in file is left");
 for (const f of all.filter((f) => f !== "check-pure.mjs")) ok(!/p1-standin|STAND-IN/.test(read(f)), `${f}: no reference to a stand-in`);
+ok(read("engine.mjs").includes("health: f.health, crits: f.crits"), "U45: the context of the surfaces carries Health and injuries of a sheet the user may read (the bar of somebody at 0 Health)");
 ok(!fs.existsSync(path.join(here, "gm.mjs")), "the executor is engine.mjs alone (spec 1.2)");
 for (const f of code.filter((f) => f !== "engine.mjs" && f !== "testkit.mjs")) ok(!/\bD\.handle\(/.test(strip(read(f))), `${f}: only the executor runs the director`);
 for (const f of code.filter((f) => !["store.mjs", "source.mjs"].includes(f))) ok(!/\.tactics\.(state|log|claim)`\]/.test(strip(read(f))), `${f}: only the store writes the state and the journal`);
