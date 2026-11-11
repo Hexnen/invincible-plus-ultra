@@ -96,7 +96,7 @@ export const OUTCOMES = Object.freeze(["escaped", "caught", "gaveUp", "combat"])
 /** -> { puts: [{ who, to, group }] }: everyone back where the chase began (the GM moves them on from there) [D] */
 export function endPlan(state) {
   const ch = chaseOf(state);
-  return { puts: ch ? SIDES.flatMap((s) => ch.sides[s]).filter((u) => typeof ch.back?.[u] === "string").map((u) => ({ who: u, to: ch.back[u], group: occupants(state, u) })) : [] };
+  return { puts: ch ? Object.keys(ch.back ?? {}).filter((u) => typeof ch.back[u] === "string").map((u) => ({ who: u, to: ch.back[u], group: occupants(state, u) })) : [] };
 }
 
 /* ------------------------------------------------------------------ one chase round */

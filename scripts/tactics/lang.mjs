@@ -642,7 +642,7 @@ export const EN = {
   "ITAC.ui.chase.pursuer.one": "Pursues",
   "ITAC.ui.chase.stays": "Stays",
   "ITAC.ui.chase.driven": "{vehicle} ({name})",
-  "ITAC.ui.chase.rolls": "sixes {prey} to {pursuer}",
+  "ITAC.ui.chase.rolls": "sixes: fleeing {prey}, pursuing {pursuer}",
   "ITAC.ui.chase.moved": "distance {from} to {to}",
   "ITAC.ui.chase.crew": "May act now",
   "ITAC.ui.chase.act": "Open the action dock for this character",
@@ -654,7 +654,7 @@ export const EN = {
   "ITAC.ui.chase.toFight": "Back to the fight",
   "ITAC.ui.chase.over": "End the chase",
   "ITAC.ui.chase.needSides": "Mark who flees and who pursues",
-  "ITAC.ui.chase.hint": "The fight pauses, the cards go away and the tokens leave the map until the chase ends.",
+  "ITAC.ui.chase.hint": "The fight pauses and the cards go away until the chase ends. Tokens stay where they are.",
   "ITAC.ui.chase.nobody": "Nobody in this fight can run.",
   "ITAC.ui.chase.start": "Start the chase",
   "ITAC.ui.chase.obstacle.clear": "Clear road",
@@ -741,6 +741,7 @@ export const EN = {
   "ITAC.ui.effect.wardReset": "the ward resets",
   "ITAC.ui.effect.crash": "a crash",
   "ITAC.ui.effect.toxin": "the toxin",
+  "ITAC.action.chaseRound": "Chase round",
 };
 export const PL = {
   "ITAC.Settings.tacticsEnabled.Name": "Walka taktyczna",
@@ -1382,7 +1383,7 @@ export const PL = {
   "ITAC.ui.chase.pursuer.one": "Goni",
   "ITAC.ui.chase.stays": "Zostaje",
   "ITAC.ui.chase.driven": "{vehicle} ({name})",
-  "ITAC.ui.chase.rolls": "szóstki {prey} do {pursuer}",
+  "ITAC.ui.chase.rolls": "szóstki: uciekający {prey}, goniący {pursuer}",
   "ITAC.ui.chase.moved": "dystans z {from} na {to}",
   "ITAC.ui.chase.crew": "Mogą teraz działać",
   "ITAC.ui.chase.act": "Otwórz pasek akcji tej postaci",
@@ -1394,7 +1395,7 @@ export const PL = {
   "ITAC.ui.chase.toFight": "Wróć do walki",
   "ITAC.ui.chase.over": "Zakończ pościg",
   "ITAC.ui.chase.needSides": "Zaznacz, kto ucieka, a kto goni",
-  "ITAC.ui.chase.hint": "Walka się zatrzymuje, karty znikają, a żetony schodzą z mapy do końca pościgu.",
+  "ITAC.ui.chase.hint": "Walka się zatrzymuje, a karty znikają do końca pościgu. Żetony zostają na miejscu.",
   "ITAC.ui.chase.nobody": "W tej walce nie ma nikogo, kto mógłby uciekać.",
   "ITAC.ui.chase.start": "Zacznij pościg",
   "ITAC.ui.chase.obstacle.clear": "Wolna droga",
@@ -1481,6 +1482,7 @@ export const PL = {
   "ITAC.ui.effect.wardReset": "bariera się odnawia",
   "ITAC.ui.effect.crash": "katastrofa",
   "ITAC.ui.effect.toxin": "toksyna",
+  "ITAC.action.chaseRound": "Runda pościgu",
 };
 const table = () => { try { return String(globalThis.game?.i18n?.lang ?? "en").toLowerCase().startsWith("pl") ? PL : EN; } catch { return EN; } };
 /** t(key, params, fallback): the string in the client's language, {placeholders} filled (one without a value stays as written);

@@ -193,7 +193,7 @@ function pushInst(X, inst) { X.state = { ...X.state, stack: [...X.state.stack, i
 function label(X, inst, what) {
   const a = inst.actor ? X.facts.c(inst.actor) : null;
   const pub = a?.hidden ? "" : `${a?.name ?? inst.initiator?.type ?? ""}: ${inst.action}${what ? ` (${what})` : ""}`;       // spec 10: two texts; a hidden actor has no public line
-  return { pub, gm: `${a?.name ?? inst.initiator?.id ?? ""}: ${inst.action} -> ${(inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name ?? t).join(", ")}${what ? ` (${what})` : ""}` };
+  return { pub, gm: `${a?.name ?? (inst.cause === "gm" ? "GM" : inst.initiator?.id ?? "")}: ${inst.action} -> ${(inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name ?? t).join(", ")}${what ? ` (${what})` : ""}` };
 }
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {
@@ -731,7 +731,18 @@ async function gmEdit(X, op, a) {
       emit(X, null, { type: "chase", state: "start", distance: plan.chase.distance, sides: plan.chase.sides });
       break;
     }
-    case "chaseSet": { const next = Chase.setPatch(X.state, a); if (next) { w(["chase"], next); emit(X, null, { type: "chase", state: "set", distance: next.distance }); } else err = "gone"; break; }
+    case "chaseSet": {
+      const next = Chase.setPatch(X.state, a);
+      if (!next) { err = "gone"; break; }
+      if (P1.isId(a.unit)) {                                                                 // somebody joins or drops out: the token follows, and the way back is remembered [D]
+        const was = Chase.chaseOf(X.state).back?.[a.unit], spot = X.facts.zone?.(a.unit)?.spot, group = Vehicle.occupants(X.state, a.unit), back = { ...(next.back ?? {}) };
+        if (a.side && typeof spot === "string" && !spot.startsWith("@")) { back[a.unit] = spot; await perform(X, tx, { t: "zput", who: a.unit, to: "@chase", group, tx }); }
+        else if (!a.side && typeof was === "string") { delete back[a.unit]; await perform(X, tx, { t: "zput", who: a.unit, to: was, group, tx }); }
+        next.back = back;
+      }
+      w(["chase"], next); emit(X, null, { type: "chase", state: "set", distance: next.distance });
+      break;
+    }
     case "chaseEnd": {                                                                      // chase -> fight (or its end) [B3436]: everyone back where the chase began; the round driver deals the cards
       const ch = Chase.chaseOf(X.state);
       if (!ch) { err = "gone"; break; }
