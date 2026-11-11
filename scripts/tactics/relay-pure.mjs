@@ -39,8 +39,10 @@ function declOf(d) {
   const out = {};
   if (typeof d.action === "string") out.action = d.action.slice(0, 40);
   for (const k of ["targets", "fullAuto", "tokens"]) { const v = ids(d[k]); if (v) out[k] = v; }
+  if (d.fullAuto === true || d.fullAuto === 1) out.fullAuto = true;                          // [B2543]: the flag the declare panel sends; the targets are the declaration's
   for (const k of ["weapon", "power"]) if (typeof d[k] === "string") out[k] = d[k].slice(0, 120);
-  for (const k of ["zone", "special", "attr", "item", "opt"]) if (typeof d[k] === "string") out[k] = d[k].slice(0, 40);
+  for (const k of ["zone", "special", "attr", "item"]) if (typeof d[k] === "string") out[k] = d[k].slice(0, 40);
+  if (typeof d.opt === "string") out.opt = d.opt.slice(0, 120);                              // as long as the engine keeps it (engine-pure.OPT_MAX)
   if (Array.isArray(d.path)) out.path = d.path.filter((z) => typeof z === "string").slice(0, 24).map((z) => z.slice(0, 40));
   Object.assign(out, moveOf(d));
   for (const k of ["wreck", "area", "blind", "noPush"]) if (d[k] === true || d[k] === 1) out[k] = 1;

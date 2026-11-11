@@ -340,6 +340,8 @@ async function rewind(X, id, step) {
 }
 
 /* ------------------------------------------------------------------ requests: players (spec 12.2) */
+/** The longest id of a choice (`decl.opt`): the relay and the engine cut at the same length, and no choice of the kit is longer (check-defects). */
+export const OPT_MAX = 120;
 function sanitizeDecl(d, action, staff = false) {
   const ids = (v, n = 12) => (Array.isArray(v) ? v.filter(P1.isId).slice(0, n) : []);
   const out = { action, targets: ids(d?.targets), helpers: [], exploits: [], stressTotal: 0 };
@@ -365,7 +367,7 @@ function sanitizeDecl(d, action, staff = false) {
   out.stressTotal = out.exploits.reduce((s, e) => s + e.stress, 0);
   if (Number.isFinite(d?.pulled)) out.pulled = Math.max(0, Math.trunc(d.pulled));
   if (typeof d?.attr === "string") out.attr = d.attr.slice(0, 12);
-  if (typeof d?.opt === "string") out.opt = d.opt.slice(0, 24);                               // P6: the choice an action of the kit asks for (a plan, good or bad luck, how much)
+  if (typeof d?.opt === "string") out.opt = d.opt.slice(0, OPT_MAX);                          // P6: the choice an action of the kit asks for (a plan, good or bad luck, how much, the features of summoned allies [B1813-1815])
   if (Number.isFinite(d?.mod)) out.mod = Math.max(-12, Math.min(12, Math.trunc(d.mod)));
   if (typeof d?.text === "string") out.text = d.text.slice(0, 300);
   if (P1.isId(d?.item)) out.item = d.item;                                                  // P5: the ground item a "pick up" takes
@@ -435,6 +437,10 @@ async function opAmend(X, a) {
   if (!inst.actor || !owns(X, inst.actor)) return bad("notOwner");
   if (inst.locked && !X.user.staff) return bad("locked");                                  // spec 5.5: after the lock only the GM changes it
   const decl = sanitizeDecl({ ...a.decl, action: inst.action }, inst.action, X.user.staff === true);
+  /* who helps, helps the action, whatever it is changed into before its dice [B2238]: their full action is spent and stays theirs to
+     have spent. Only an action turned against its own helper cannot keep that helper. */
+  decl.helpers = J.clone(inst.decl.helpers ?? []);
+  if (decl.helpers.some((h) => decl.targets.includes(h.id))) return bad("illegal", { reason: "helpTarget" });
   const probe = { ...inst, decl };
   const l = K.legality(view(X), probe, FLOWS[probe.flow]);
   if (!l.ok && !X.user.staff) return bad("illegal", { reason: l.reason, ...l.params });

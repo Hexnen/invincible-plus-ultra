@@ -4,6 +4,11 @@ import { ok, eqc as eq, done, Table } from "./testkit.mjs";
 import * as M from "./mods-pure.mjs";
 import * as P1 from "./economy-pure.mjs";
 import { MTable } from "./check-kit-map.mjs";
+import * as Relay from "./relay-pure.mjs";
+import * as Kit from "./kit-pure.mjs";
+import { LEVELS } from "./kitdata-pure.mjs";
+import { NAMES } from "./check-kit-names.mjs";
+import * as Eng from "./engine-pure.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -309,6 +314,57 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
   eq(code(await T.req("p1", { op: "endTurn", actor: "H1", round: T.state.round, slot: T.state.init.cur })), "ok", "D19: and ends the turn");
   const U = fight();
   eq([code(await U.req("p1", { op: "other", actor: "H1", text: "x" })), U.state.stack.map((i) => `${i.flow}/${i.status}`).join()], ["ok", "other/manual"], "D19: on one's own turn it is an action the GM runs, as before");
+}
+
+/* ================================================================== D11: the full auto flag of the declare panel reaches the executor [B2543] */
+{
+  const mk = () => { const T = new Table(); T.hero("H1", "p1").npc("N1", { health: 6 }).npc("N2", { health: 6 }); T.weapons.smg = { id: "smg", bonus: 1, damage: 2, range: [0, 2], sharp: true, fullAuto: true }; T.order(["H1", "N1", "N2"]).turn("H1"); return T; };
+  const sent = { op: "declare", actor: "H1", decl: { action: "shoot", targets: ["N1", "N2"], weapon: "smg", fullAuto: true } };      // what the declare panel builds (ui/model-pure armsOf)
+  const n = Relay.normalize(sent, { staff: false });
+  eq(n.req?.decl?.fullAuto, true, "D11: the relay keeps the flag");
+  const T = mk();
+  eq(code(await T.req("p1", n.req)), "ok", "D11: a player fires full auto at two targets");
+  eq([T.top()?.decl?.fullAuto, T.top()?.decl?.targets], [1, ["N1", "N2"]], "D11: the declaration carries it");
+  eq(Relay.normalize({ ...sent, decl: { ...sent.decl, fullAuto: "yes" } }, { staff: false }).req?.decl?.fullAuto, undefined, "D11: anything else is still dropped");
+  eq(Relay.normalize({ ...sent, decl: { ...sent.decl, fullAuto: ["N1"] } }, { staff: false }).req?.decl?.fullAuto, ["N1"], "D11: the older list form still passes");
+}
+
+/* ================================================================== D14: every choice of the kit survives the way to the executor [B1813-1815] */
+{
+  const item = (name, type, level) => ({ id: "it", name, type, level, power: null, boosts: [], autos: [], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} });
+  let longest = "", n = 0;
+  for (const [type, name] of NAMES) for (const level of LEVELS) {
+    let kit; try { kit = Kit.build({ items: [item(name, type, level)], attrs: { fighting: 4, agility: 4, strength: 4, reason: 4, intuition: 4, presence: 4 } }); } catch { continue; }
+    for (const a of kit.actions ?? []) for (const p of Array.isArray(a.pick) ? a.pick : []) { n++; if (String(p).length > longest.length) longest = String(p); }
+  }
+  ok(n > 50 && longest.length > 24, "D14: the kit has choices longer than the old limit");
+  ok(longest.length <= Eng.OPT_MAX, `D14: no choice of the kit is longer than the engine keeps (${longest.length} <= ${Eng.OPT_MAX})`);
+  eq(Relay.normalize({ op: "declare", actor: "H1", decl: { action: "x", opt: longest } }, { staff: false }).req?.decl?.opt, longest, "D14: the relay passes the longest one whole");
+  for (const level of ["massive", "monstrous"]) {
+    const T = new Table(); T.hero("H1", "p1").npc("N1", { health: 6 }); const c = T.c.H1; c.kit = Kit.build({ items: [item("Summoning", "power", level)], attrs: c.attrs }); c.pass = c.kit.pass; T.order(["H1", "N1"]).turn("H1");
+    const a = c.kit.actions.find((x) => x.id.endsWith("-summon")), pick = a.pick[a.pick.length - 1], long = a.pick.reduce((m, p) => (p.length > m.length ? p : m), "");
+    const r = await T.req("p1", Relay.normalize({ op: "declare", actor: "H1", decl: { action: a.id, opt: long, text: "wolves" } }, { staff: false }).req);
+    eq([code(r), why(r)], ["ok", null], `D14: Summoning at ${level}: the longest feature combination (${long.length} characters) is declared`);
+    ok(pick.length > 0, "D14: (fixture) the action offers combinations");
+  }
+}
+
+/* ================================================================== D18: who helped an action still helps it after it is amended [B2238] */
+{
+  const T = fight({ N1: { health: 9 }, N2: { health: 9 } });
+  await T.req("p1", decl("H1", "slugfest", ["N1"]));
+  const inst = T.top().id;
+  eq(code(await T.req("p2", { op: "help", inst, helper: "H2" })), "ok", "D18: H2 helps");
+  eq(code(await T.req("p1", { op: "amend", inst, decl: { action: "slugfest", targets: ["N2"] } })), "ok", "D18: H1 changes the target");
+  eq([T.top().decl.helpers, P1.budget(T.state, "H2").full], [[{ id: "H2", consent: "yes" }], "used"], "D18: the helper stays with the action it paid for");
+  await T.answer("gm", "reaction", "pass", "N2");
+  const q = T.requests.filter((x) => x.key === "attack").pop();
+  eq(q?.pool?.mods.filter((m) => m.source === "help").map((m) => m.dice), [1], "D18: and its die is in the roll");
+  const U = fight();
+  await U.req("p1", decl("H1", "slugfest", ["N1"]));
+  await U.req("p2", { op: "help", inst: U.top().id, helper: "H2" });
+  const r = await U.req("p1", { op: "amend", inst: U.top().id, decl: { action: "slugfest", targets: ["H2"] } });
+  eq([code(r), why(r), U.top().decl.targets], ["illegal", "helpTarget", ["N1"]], "D18: an action is not turned against its own helper");
 }
 
 done("check-defects");
