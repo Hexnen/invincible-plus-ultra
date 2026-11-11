@@ -192,7 +192,7 @@ function onRollMessage(message) {
     const r = Sys.readRollMessage(message);
     if (!r || !r.author) return;
     const combat = combatOfRoll(r);
-    if (!combat) return;
+    if (!combat || !(Store.stateOf(combat)?.stack ?? []).some((i) => i.id === r.inst)) return;      // (an edit of an old roll card, its action long over, costs no claim write)
     const key = `r:${r.messageId}:${r.pushed}:${r.pushable ? 1 : 0}:${r.sixes}`;
     if (doneRolls.has(key)) return;
     doneRolls.add(key); if (doneRolls.size > 400) doneRolls.delete(doneRolls.values().next().value);

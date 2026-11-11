@@ -166,6 +166,11 @@ eq((await fromPlayer("p1", { op: "endTurn", actor: "cbH1", round: 1, slot: 0 }, 
   delete CONFIG.ActiveEffect.documentClass;
   await api._runAs("gmuser", { op: "hazard", hazard: { kind: "fire", intensity: 2 }, targets: ["cbN1"] });
   ok(chatMade.length > 0 && chatMade.every((m) => m.opts?.ipuTactics === true && m.data.rolls?.length === 1 && m.data.flags[MOD].tactics.dice), `D95: the dice card of a hazard was created with the option and the roll (${chatMade.length})`);
+  /* suspicion (bug hunt 1): an edit of an old roll card, its action long over, costs the executor no write at all */
+  { const up0 = combat.update; let writes = 0; combat.update = async (...a) => { writes++; return up0(...a); };
+    Hooks.callAll("updateChatMessage", rollMsg("p1", { inst: "a999", key: "attack", rid: "r1" }, 2)); await settle();
+    eq(writes, 0, "an old roll card that is edited (its instance is not on the stack) costs no claim write");
+    combat.update = up0; }
   /* D98: the copy tokens of a deleted fight leave the scene; other fights' copies and real tokens stay */
   const Summons = await import("./summons.mjs");
   const mkScene = (id, toks) => { const s = { id, tokens: coll(toks), deleteEmbeddedDocuments: async (k, ids) => { for (const i of ids) { const at = s.tokens.findIndex((x) => x.id === i); if (at >= 0) s.tokens.splice(at, 1); } } }; s.tokens.filter = Array.prototype.filter.bind(s.tokens); return s; };

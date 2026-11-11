@@ -159,6 +159,7 @@ async function rollAct(act) {
     if (!r) return;
     const k = `${act.do}:${act.inst}:${act.key}`;
     if (Date.now() - (acting.get(k) ?? 0) < 2500) return;      // a second click while the first is on its way
+    if (acting.size > 200) acting.clear();      // (the marks of clicks long answered are dropped: the map does not grow with the session)
     acting.set(k, Date.now());
     if (act.do === "roll") {
       if (!r.req?.rid || r.sixes != null) return;
