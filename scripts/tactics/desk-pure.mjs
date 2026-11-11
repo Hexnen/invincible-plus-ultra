@@ -27,7 +27,7 @@ const optReq = (p, o, op) => ({ op, prompt: p.id, value: o.data && isObj(o.data)
 /** GM desk card kinds this engine raises (spec 13.1 + the ones the spec has no row for; reported as holes): */
 export const CARD_KINDS = Object.freeze(["reaction", "exception", "other", "direction", "stunt", "helpOverride", "revalidate", "npcBroken", "proxy",
   "gate", "tokenConfirm", "counter", "dodgeMove", "stunts", "moveStop", "moveApprove", "minionLoss", "minionsFate", "knockDir", "disarm",
-  "outcome", "hazardDodge", "hazardStunts", "fireSpread", "vacuumDeath", "objective", "chaseCatch", "chaseOption"]);                    // P5: the GM's word on a narrative action, a dodge against a blast, the hazards' cards
+  "outcome", "hazardDodge", "hazardStunts", "fireSpread", "vacuumDeath", "objective", "chaseCatch", "chaseOption", "minionsQuick"]);                    // P5: the GM's word on a narrative action, a dodge against a blast, the hazards' cards
 
 function card(p, ctx, proxy = false) {
   return {
@@ -76,27 +76,30 @@ export function deskModel(state, log, ctx = {}) {
       return { ...row, askReq: row.state === "owed" && r.req ? { op: "askRoll", inst: i.id, roll: r.key } : null, acceptReq: row.state === "push" ? { op: "setSixes", inst: i.id, roll: r.key, sixes: r.sixes } : null }; }), commands: cmds });
   }
   const list = log?.list ?? [];
-  const journal = list.map((t, at) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, text: t.label?.gm ?? "", pub: pubLine(t.label, (cid) => ctx.c?.(cid)?.name),
+  const journal = list.map((t, at) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, who: Object.keys(isObj(t.label?.who) ? t.label.who : {}), text: t.label?.gm ?? "", pub: pubLine(t.label, (cid) => ctx.c?.(cid)?.name),
     undo: t.state === "closed" && Array.isArray(t.ops) ? { req: { op: "undo", tx: t.id }, alsoUndoes: list.slice(at + 1).filter((x) => x.state === "closed").length,       // spec 15: LIFO
       force: { req: (drift) => ({ op: "undo", tx: t.id, force: true, ...(drift ? { drift } : {}) }), modes: ["restore", "difference", "leave"] } } : null })).reverse();
   /* spec 13.3 (standing reactions of an NPC) and spec 10 (what of an opponent the players have been shown) */
-  const npcs = Object.keys(state.ledger ?? {}).filter((cid) => ctx.c?.(cid)?.npc).map((cid) => ({ id: cid, name: nameOf(ctx, cid),
+  const npcs = Object.keys(state.ledger ?? {}).filter((cid) => ctx.c?.(cid)?.npc).map((cid) => ({ id: cid, name: nameOf(ctx, cid), group: ctx.c?.(cid)?.kind === "minions",      // U61: a minion group can be settled quickly (policy.quick)
     policy: { block: "ask", dodge: "ask", onBroken: "ask", push: "rules", major: "no", ...(state.npc?.[cid] ?? {}) }, revealed: { stats: !!state.revealed?.[cid]?.stats, powers: !!state.revealed?.[cid]?.powers, health: !!state.revealed?.[cid]?.health },
-    policyReq: (patch) => ({ op: "npcPolicy", combatant: cid, policy: { ...(state.npc?.[cid] ?? {}), ...patch } }),
+    policyReq: (patch) => policyReq(state, cid, patch),
     revealReq: (patch) => ({ op: "reveal", combatant: cid, ...Object.fromEntries(Object.entries({ ...(state.revealed?.[cid] ?? {}), ...patch }).filter(([, v]) => v).map(([k]) => [k, true])) }) }));
   /* P5: the karma notes of the fight (spec 9.11) and the two requests of the hazard tool */
   const karma = (state.karma ?? []).map((k) => ({ id: k.id, who: k.who, whoName: nameOf(ctx, k.who), kind: k.kind, round: k.round ?? null, zone: k.zone ?? null, note: k.note ?? "", target: k.target ? nameOf(ctx, k.target) : null }));
-  return { cards, info, manual, journal, waiting: waitingOn(state, ctx), npcs, mode: state.mode ?? null, modeReq: (mode) => ({ op: "setMode", mode }), kitReq: (combatant, item, key, value) => ({ op: "kitFlag", combatant, item, key, value }), summonReq: (combatant, owner) => ({ op: "summonSet", combatant, owner: owner || null }), turn: turnOf(state, ctx), karma,
+  return { cards, info, manual, journal, waiting: waitingOn(state, { ...ctx, nudge: true }), npcs, mode: state.mode ?? null, modeReq: (mode) => ({ op: "setMode", mode }), kitReq: (combatant, item, key, value) => ({ op: "kitFlag", combatant, item, key, value }), summonReq: (combatant, owner) => ({ op: "summonSet", combatant, owner: owner || null }), turn: turnOf(state, ctx), karma,
     karmaReq: (note) => ({ op: "karmaNote", note }), hazardReq: (run, subject) => ({ op: "hazardRun", run, subject }), fireReq: (intensity, targets, inZone = true) => ({ op: "hazard", hazard: { kind: "fire", intensity, inZone }, targets }),
     statuses: state.statuses ?? {} };
 }
 
-/** Who the table is waiting for right now (both surfaces show it). */
+/** the request that changes the GM's standing answers for one NPC (spec 13.3); U61: `quick` is on only while it is said */
+export const policyReq = (state, cid, patch) => { const { quick, ...pol } = { ...(state?.npc?.[cid] ?? {}), ...patch }; return { op: "npcPolicy", combatant: cid, policy: { ...pol, ...(quick === true ? { quick: true } : {}) } }; };
+/** Who the table is waiting for right now (both surfaces show it). U59: `at` = since when (the executor's clock, ms; absent in a
+    state written before it was kept), `nudgeReq` = the GM's nudge of the ones waited for (only in the desk's model; the engine refuses it when none is at the table). */
 export function waitingOn(state, ctx = {}) {
   const out = [];
-  for (const p of Object.values(state?.prompts ?? {})) if (!p.answered) out.push({ what: "prompt", kind: p.kind, prompt: p.id, to: p.to === "gm" ? "gm" : usersOf(p), about: p.about ?? null, aboutName: nameOf(ctx, p.about) });
+  for (const p of Object.values(state?.prompts ?? {})) if (!p.answered) out.push({ what: "prompt", kind: p.kind, prompt: p.id, to: p.to === "gm" ? "gm" : usersOf(p), about: p.about ?? null, aboutName: nameOf(ctx, p.about), at: Number.isFinite(p.at) ? p.at : null, nudgeReq: ctx.nudge && p.to !== "gm" ? { op: "nudge", prompt: p.id } : null });
   /* U1: a roll that may still be pushed holds the exchange exactly like dice that were never thrown: the table waits for the roller */
-  for (const i of state?.stack ?? []) for (const r of Object.values(i.rolls ?? {})) { const s = rollState(r); if (s !== "done" && r.req) out.push({ what: s === "push" ? "push" : "roll", key: r.key, inst: i.id, to: r.req.users ?? [], about: r.who, aboutName: nameOf(ctx, r.who) }); }
+  for (const i of state?.stack ?? []) for (const r of Object.values(i.rolls ?? {})) { const s = rollState(r); if (s !== "done" && r.req) out.push({ what: s === "push" ? "push" : "roll", key: r.key, inst: i.id, to: r.req.users ?? [], about: r.who, aboutName: nameOf(ctx, r.who), at: Number.isFinite(r.req.at) ? r.req.at : null, nudgeReq: ctx.nudge ? { op: "nudge", inst: i.id, roll: r.key } : null }); }
   return out;
 }
 

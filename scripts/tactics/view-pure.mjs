@@ -121,7 +121,7 @@ export function viewFor(state, viewer, meta = {}) {
      effects of a challenge and the numbers of its ward are the GM's until they happen */
   /* U10 / U3: what the table was told happened. An action's result is table knowledge like its chat card (a concealed actor or target
      leaves with scrub; a secret action is absent); the GM's word on an exception is for the one who asked. */
-  out.news = clone((state.news ?? []).filter((n) => isObj(n) && !n.secret && (n.kind !== "exception" || V.owns.includes(n.actor)))).map(({ tx, ...n }) => n);
+  out.news = clone((state.news ?? []).filter((n) => isObj(n) && !n.secret && (n.kind !== "exception" || V.owns.includes(n.actor)) && (n.kind !== "nudge" || (Array.isArray(n.to) && n.to.includes(V.id)))))      /* U59: a nudge is read by the ones nudged */.map(({ tx, ...n }) => n);
   if (isObj(state.vehicles)) out.vehicles = clone(keepKey(state.vehicles));
   if (isObj(state.chase)) { const { back, ...pub } = state.chase; out.chase = clone(pub); }
   if (isObj(state.challenges)) out.challenges = Object.fromEntries(Object.entries(keepKey(state.challenges)).map(([cid, c]) => [cid, clone({ preset: c.preset ?? null, name: c.name, objectives: c.objectives ?? [], dice: c.dice ?? 0, started: c.started ?? {}, done: c.done })]));
