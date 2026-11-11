@@ -164,6 +164,8 @@ function swapIn(el, from, to) {
 }
 const pairOf = (item) => { const en = rawName(item), shown = displayName(item); return shown !== en ? { en, shown } : null; };
 
+/* the level beside a power on the sheet: the system prints its own label (English while lang/pl.json is not loaded, and for a power whose level is derived) */
+const levelShown = (item, text) => { const id = LEVEL_WORDS[String(item.system?.level ?? "").toLowerCase()] ?? LEVEL_WORDS[String(text ?? "").trim().toLowerCase()]; return id ? levelWord(id) : String(text ?? "").trim(); };
 /* an actor sheet of the system: every element that names an item carries data-item-id (templates/actor/*.hbs) */
 function actorSheet(actor, el) {
   for (const host of el.querySelectorAll("[data-item-id]")) {
@@ -172,7 +174,7 @@ function actorSheet(actor, el) {
     const label = host.matches("label") ? host : host.querySelector(":scope > label, :scope > .item-name, :scope > div > label");
     if (item.type === "power") {
       const lvl = String(item.system?.powerLevel ?? ""), shown = displayName(item);
-      if (label && lvl.trim()) swapIn(label, `${lvl}${rawName(item)}`, powerLabel(shown, item.system?.level ? levelWord(item.system.level) : lvl)) || swapIn(label, rawName(item), shown);
+      if (label && lvl.trim()) swapIn(label, `${lvl}${rawName(item)}`, powerLabel(shown, levelShown(item, lvl))) || swapIn(label, rawName(item), shown);
       else if (label) swapIn(label, rawName(item), shown);
       /* its boosts and limits stand under it without an identifier: they are this actor's items of that power */
       for (const strong of host.querySelectorAll(":scope .boostLimit > strong")) {
