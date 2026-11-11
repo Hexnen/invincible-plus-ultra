@@ -138,7 +138,7 @@ lang("en");
   T.hero("H1", "p1", { name: "Atom Eve" }).npc("N1", { name: "Mauler", attrs: { fighting: 9, agility: 8 } }).npc("N2", { name: "Zzyxq", hidden: true, attrs: { fighting: 11 } });
   T.order(["H1", "N1", "N2"]).turn("H1");
   let g = desk(T, { tab: "table" });
-  eq([g.tab, g.npcs.map((n) => n.name).sort(), g.npcs[0].policy.map((p) => p.id), g.npcs[0].reveal.map((r) => [r.id, r.on])], ["table", ["Mauler", "Zzyxq"], ["block", "dodge", "onBroken"], [["stats", false], ["powers", false], ["health", false]]], "desk: every NPC with reaction defaults and reveal switches");
+  eq([g.tab, g.npcs.map((n) => n.name).sort(), g.npcs[0].policy.map((p) => p.id), g.npcs[0].reveal.map((r) => [r.id, r.on])], ["table", ["Mauler", "Zzyxq"], ["block", "dodge", "onBroken", "push", "major"], [["stats", false], ["powers", false], ["health", false]]], "desk: every NPC with reaction defaults and reveal switches");
   eq(g.mode.choices.map((m) => [m.id, m.on]), [["tactical", true], ["free", false]], "desk: the rules mode");
   let d = dock(T, "p1", ["H1"], { armed: "slugfest", targets: ["N1"] });
   let s = noKeys(d, "player dock");

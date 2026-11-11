@@ -382,3 +382,14 @@ body.itd-picking #board { cursor: crosshair; }
   #invincible-tactics-dock button, #invincible-tactics-desk button { transition: none !important; }
   #invincible-tactics-dock button:hover, #invincible-tactics-desk button:hover { translate: none !important; }
 }
+
+/* P4: what an attack is made with (weapon chips) and its options (wreck the zone, area, full auto) */
+.itd-arms { max-width: 340px; }
+.itd-arms .itd-hint { max-width: 40ch; line-height: 1.3; align-items: flex-start; }
+.itd-arms .itd-hint i { margin-top: 2px; }
+#invincible-tactics-dock .itd-chip-arm, #invincible-tactics-dock .itd-chip-opt { padding-left: 9px; }
+#invincible-tactics-dock .itd-chip-opt:not([aria-pressed="true"]) { color: var(--ita-label); background: transparent; border-color: var(--ita-line); }
+#invincible-tactics-dock .itd-chip-opt:not([aria-pressed="true"]):hover { color: #fff; border-color: #fff; }
+#invincible-tactics-dock .itd-chip-opt i { font-size: 11px; }
+.igd-note { display: flex; align-items: flex-start; gap: 6px; margin: 4px 0 !important; font-size: 12px; line-height: 1.3; color: var(--ita-label); }
+.igd-note i { margin-top: 2px; color: var(--ita-yellow); }

@@ -34,7 +34,7 @@ for (const k of Object.keys(EN)) if (/^ITAC\.(err|warn|Settings)\./.test(k) && E
 
 const need = new Set(), codes = new Set();
 const sub = (d) => readdirSync(join(dir, d)).filter((f) => f.endsWith(".mjs")).map((f) => `${d}/${f}`);
-const files = [...readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.startsWith("check-") && f !== "lang.mjs" && f !== "testkit.mjs"), ...sub("flows"), ...sub("ui")];
+const files = [...readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.startsWith("check-") && f !== "lang.mjs" && f !== "lang-attacks.mjs" && f !== "testkit.mjs"), ...sub("flows"), ...sub("ui")];
 for (const f of files) {
   const src = readFileSync(join(dir, f), "utf8");
   for (const m of src.matchAll(/["'`](ITAC\.[A-Za-z][\w.]*[A-Za-z0-9])["'`]/g)) need.add(m[1]);
@@ -55,8 +55,12 @@ for (const s of M.STATUS_IDS) need.add(`ITAC.status.${s}`);
 for (const g of ["invisible", "lowGravity", "unseen"]) need.add(`ITAC.gate.${g}`);
 for (const k of ["attack", "def", "gate", "stun", "roll"]) need.add(`ITAC.roll.${k}`);
 for (const k of ["base", "floor", "crit", "help", "minions", "restrained", "unaware", "cantSee", "gm", "gate"]) need.add(`ITAC.mod.${k}`);
-for (const k of ["tacticsEnabled", "tacticsInitiative", "tacticsRedraw"]) for (const p of ["Name", "Hint"]) need.add(`ITAC.Settings.${k}.${p}`);
+for (const k of ["tacticsEnabled", "tacticsInitiative", "tacticsRedraw", "tacticsPushOrder"]) for (const p of ["Name", "Hint"]) need.add(`ITAC.Settings.${k}.${p}`);
 for (const k of ["everyRound", "firstRoundOnly"]) need.add(`ITAC.Redraw.${k}`);
+for (const k of ["afterDefence", "beforeDefence"]) need.add(`ITAC.PushOrder.${k}`);
+for (const k of ["hit", "miss", "done", "stopped", "barrier", "illegal", "gateFailed", "chargeStopped", "noFall", "none", "refused", "released", "success", "fail", "aborted", "rollFailed"]) need.add(`ITAC.result.${k}`);   // the journal's result marks (engine-pure label)
+for (const k of ["wreck", "area", "fullAuto"]) for (const x of ["", ".tip", ".note"]) need.add(`ITAC.ui.arm.${k}${x}`);
+for (const k of ["weapon", "wreck", "fullAuto", "minRange"]) need.add(`ITAC.mod.${k}`);
 for (const k of O.P1_PROMPTS) if (k !== "triggerQueue") need.add(`ITAC.Prompt.${k}.Title`).add(`ITAC.Prompt.${k}.Body`);
 for (const k of ["roundStart", "roundEnd", "turnStart", "turnEnd"]) need.add(`ITAC.Prompt.triggerQueue.Title.${k}`);
 for (const r of ["noZonesApi", "badOp", "notGM", "notActiveGM", "noZones", "error", "requirement", "immune", "openAction", "rules"]) need.add(`ITAC.reason.${r}`);      // the zones API's refusals, the director's, the predicates'

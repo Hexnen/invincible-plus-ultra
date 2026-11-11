@@ -11,13 +11,18 @@ import * as M from "./mods-pure.mjs";
 import { conditions } from "../rules/index.mjs";
 
 export const WINDOWS = Object.freeze(["beforeRoll", "afterRoll", "afterDamage"]);
-export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other", "barrier", "fastball"]);
+export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other", "barrier", "fastball", "release"]);
 export const REACTION_EFFECTS = Object.freeze(["defence", "action", "swapTarget", "autoMiss", "note"]);
 
 export const BUILTIN = Object.freeze({
   slugfest: { id: "slugfest", label: "ITAC.action.slugfest", src: [2341, 2425], kind: "builtin", cost: "full", flow: "attack", attack: "slugfest", roll: { attr: "fighting" }, target: { who: "enemy", n: [1, 1] }, defense: "block", stunts: "slugfest", tags: ["attack"] },
   shoot: { id: "shoot", label: "ITAC.action.shoot", src: [2347, 2510], kind: "builtin", cost: "full", flow: "attack", attack: "shooting", roll: { attr: "agility" }, target: { who: "enemy", n: [1, 1] }, defense: "dodge", stunts: "shooting", tags: ["attack", "shot"] },
   grapple: { id: "grapple", label: "ITAC.action.grapple", src: [2496], kind: "builtin", cost: "full", flow: "attack", attack: "grapple", roll: { attr: "fighting" }, target: { who: "enemy", n: [1, 1] }, defense: "block", stunts: "none", tags: ["attack"] },
+  /* P4: the special attacks [B2490-2497]. A charge is priced by the attack flow (the full action here, the quick action with its move); `area` and
+     `fullAuto` on an entry allow those options without a weapon that has them (powers, P6). */
+  charge: { id: "charge", label: "ITAC.action.charge", src: [2344, 2490, 2491, 2492, 2493, 2494], kind: "builtin", cost: "full", flow: "attack", attack: "charge", roll: { attr: "strength" }, target: { who: "enemy", n: [1, 1] }, defense: "dodge", stunts: "charge", tags: ["attack", "move", "charge"] },
+  grappleAttack: { id: "grappleAttack", label: "ITAC.action.grappleAttack", src: [2497], kind: "builtin", cost: "full", flow: "attack", attack: "grappleAttack", roll: { attr: "fighting" }, target: { who: "enemy", n: [1, 1] }, stunts: "grappleAttack", tags: ["attack"] },
+  release: { id: "release", label: "ITAC.action.release", src: [2497], kind: "builtin", cost: "none", flow: "release", tags: [] },
   block: { id: "block", label: "ITAC.action.block", src: [2310, 2446, 2447], kind: "builtin", cost: "quick", flow: "plain", interrupt: { on: ["beforeRoll"] }, roll: { attr: "fighting", passive: false }, reaction: { when: ["beforeRoll"], who: "target", effect: "defence" }, tags: ["defence"] },
   dodge: { id: "dodge", label: "ITAC.action.dodge", src: [2313, 2524, 2525], kind: "builtin", cost: "quick", flow: "plain", interrupt: { on: ["beforeRoll"] }, roll: { attr: "agility", passive: false }, reaction: { when: ["beforeRoll"], who: "target", effect: "defence" }, tags: ["defence"] },
   orders: { id: "orders", label: "ITAC.action.orders", src: [2362, 2297], kind: "builtin", cost: "full", flow: "roll", roll: { attr: "presence" }, target: { who: "ally", n: [1, 1] }, effect: { token: "orders" }, tags: [] },
@@ -68,6 +73,7 @@ export function sanitizeEntry(e) {
   if (e.requires !== undefined) { const r = sanitizeCond(e.requires); if (r === undefined) return null; out.requires = r; }       // a requirement that cannot be read makes the entry unusable, it is never dropped silently
   if (Number.isInteger(e.stress?.fixed) && e.stress.fixed > 0) out.stress = { fixed: Math.min(20, e.stress.fixed) };
   if (e.damage && typeof e.damage === "object") out.damage = { base: Number.isFinite(e.damage.base) ? Math.max(0, Math.trunc(e.damage.base)) : undefined, ...M.damageTags(e.damage), none: e.damage.none === true };
+  for (const k of ["area", "fullAuto"]) if (e[k] === true) out[k] = true;                                  // [B2542], [B2543]
   if (Array.isArray(e.range) && e.range.length === 2) out.range = [Math.max(0, Math.trunc(e.range[0]) || 0), Math.max(0, Math.trunc(e.range[1]) || 0)];
   if (e.reaction && typeof e.reaction === "object" && REACTION_EFFECTS.includes(e.reaction.effect)) {
     out.reaction = { when: (Array.isArray(e.reaction.when) ? e.reaction.when : []).filter((w) => WINDOWS.includes(w)), who: e.reaction.who === "target" ? "target" : "any", effect: e.reaction.effect };

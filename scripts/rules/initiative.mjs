@@ -86,8 +86,9 @@ export function dealContinue(rng, state, card) {
   const entries = [...state.entries, { id, card, surprised: false, kept: false, drawn: cards.slice() }];
   return dealAdvance({ done: false, pending: null, entries, deck, queue: state.queue.slice(1), order: null });
 }
-/* deal plain draws until a Fast Reflexes draw (or the end); works on the fresh state object it is given */
-function dealAdvance(s) {
+/* Deal plain draws until a Fast Reflexes draw (or the end); never modifies the state it is given. Exported for a table that stores the
+   deal between answers and resumes it from the stored deck and queue (a DealState with `pending: null`). */
+export function dealAdvance(s) {
   const deck = s.deck.slice(), entries = s.entries.slice(), queue = s.queue.slice();
   while (queue.length) {
     const d = queue[0];

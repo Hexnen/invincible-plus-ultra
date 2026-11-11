@@ -128,52 +128,62 @@ export function answerVeteran(init0, slotId, keep) {
   return { ok: true, init, kept: !!(keep && s && Number.isFinite(card)), card: card ?? null, member: s?.members[0] ?? null };
 }
 
-/* Carry the draw on as far as it goes without a human. Order (spec 3.1, the rules library's dealRound):
-   kept cards leave the deck [I7]; surprise cards = the highest of the deck, at random among the surprised [I5] [R12]; the rest of the deck is
-   shuffled; heroes draw before NPCs [B2112] [OQ-13]; a Fast Reflexes holder takes two and the draw stops for the choice [I6].
+/* Carry the draw on as far as it goes without a human. The deal itself is the rules library's (rules/initiative.mjs): `dealStart` opens it
+   (kept cards leave the deck [I7]; surprise cards = the highest of the deck, at random among the surprised [I5] [R12]; the rest of the deck
+   is shuffled; heroes draw before NPCs [B2112] [OQ-13]) and stops at a Fast Reflexes holder, who takes two cards and chooses [I6];
+   `dealContinue` (answerReflexes below) shuffles the other card back; `dealAdvance` deals on from the stored deck and queue. This file only
+   keeps the deal in the combat state between the answers (`draw.left` = the deck, `draw.queue` = the slots still to draw, `draw.wait` =
+   the two cards out) and maps slots to the library's draws: one draw per slot, a group shares one card and has no holder of its own.
    -> { init, done, ask:[{ kind:"reflexes", slot, member, cards:[a,b] }], dealt:[{ slot, card, members, reason }] } */
 export function continueDraw(init0, parts, rng) {
   const init = copy(init0);
   const d = init.draw;
   const dealt = [];
   if (!d) return { init, done: true, ask: [], dealt };
+  const byId = new Map(parts.map((p) => [p.id, p]));
+  const drawOf = (s, extra = {}) => ({ id: s.id, hero: !!byId.get(s.members[0])?.hero, fastReflexes: s.members.length === 1 && !!byId.get(s.members[0])?.reflexes, ...extra });
+  const take = (entries) => {
+    for (const e of entries) {
+      const s = slotById(init, e.id);
+      if (!s) continue;
+      s.card = e.card;
+      dealt.push({ slot: s.id, card: e.card, members: s.members.slice(), reason: e.kept ? "veteran" : e.surprised ? "surprise" : "draw" });
+    }
+  };
+  const hold = (ds) => {
+    d.left = ds.deck.slice(); d.queue = ds.queue.map((q) => q.id);
+    d.wait = ds.pending ? { slot: ds.pending.id, drawn: ds.pending.cards.slice(), prompt: null } : null;
+  };
   if (d.stage === "veteran") {
     if (d.vetWait?.length) return { init, done: false, ask: [], dealt };
     d.stage = "deal";
-    d.size = Math.max(initiative.deckSize(init.slots.length), ...Object.values(d.keeps), 1);
-    let deck = initiative.newDeck(d.size);
-    const live = new Set(init.slots.map((s) => s.id));
-    for (const [sid, card] of Object.entries(d.keeps)) {
-      const s = slotById(init, sid);
-      if (!s || !deck.includes(card)) continue;
-      s.card = card; deck = deck.filter((c) => c !== card); dealt.push({ slot: s.id, card, members: s.members.slice(), reason: "veteran" });
+    const open = init.slots.filter((s) => s.card === null);
+    const size = initiative.deckSize(open.length), seen = new Set();
+    /* a kept card must be a card of this round's deck, and only one slot keeps it; a card from a longer deck of an earlier round is kept
+       beside the deck (nobody else can draw it) */
+    const keepOf = (s) => { const c = d.keeps[s.id]; if (!Number.isFinite(c) || seen.has(c)) return null; seen.add(c); return c; };
+    const draws = [], beside = [];
+    for (const s of open) {
+      const keep = keepOf(s);
+      if (keep != null && keep > size) { beside.push({ id: s.id, card: keep, kept: true }); continue; }
+      draws.push(drawOf(s, { ...(keep != null ? { keep } : {}), surprised: keep == null && d.surprised.includes(s.id) }));
     }
-    const sur = d.surprised.filter((sid) => live.has(sid) && slotById(init, sid).card === null);
-    if (sur.length) {
-      const high = deck.slice().sort((a, b) => b - a).slice(0, sur.length);
-      const mixed = initiative.shuffle(rng, high);
-      sur.forEach((sid, i) => { const s = slotById(init, sid); s.card = mixed[i]; deck = deck.filter((c) => c !== mixed[i]); dealt.push({ slot: s.id, card: s.card, members: s.members.slice(), reason: "surprise" }); });
-    }
-    d.left = initiative.shuffle(rng, deck);
-    const hero = new Map(parts.map((p) => [p.id, !!p.hero]));
-    const rest = init.slots.filter((s) => s.card === null);
-    d.queue = [...rest.filter((s) => hero.get(s.members[0])), ...rest.filter((s) => !hero.get(s.members[0]))].map((s) => s.id);
+    d.size = Math.max(size, ...Object.values(d.keeps), 1);
+    take(beside);
+    const ds = initiative.dealStart(rng, draws, {});
+    take(ds.entries);
+    hold(ds);
   }
-  if (d.wait) return { init, done: false, ask: [], dealt };
-  const byId = new Map(parts.map((p) => [p.id, p]));
-  while (d.queue.length) {
-    const s = slotById(init, d.queue[0]);
-    if (!s || s.card !== null) { d.queue.shift(); continue; }
-    if (!d.left.length) { s.card = nextFreeCard(init); d.queue.shift(); dealt.push({ slot: s.id, card: s.card, members: s.members.slice(), reason: "draw" }); continue; }   // cannot happen with a deck of deckSize; never leave a slot without a card
-    // [I6] [B2112]: two cards, one kept, the other back into the deck; one holder at a time. A group shares one card and has no holder of its own.
-    if (s.members.length === 1 && byId.get(s.members[0])?.reflexes && d.left.length >= 2) {
-      d.wait = { slot: s.id, drawn: [d.left.pop(), d.left.pop()], prompt: null };
-      return { init, done: false, ask: [{ kind: "reflexes", slot: s.id, member: s.members[0], cards: d.wait.drawn.slice() }], dealt };
-    }
-    s.card = d.left.pop(); d.queue.shift();
-    dealt.push({ slot: s.id, card: s.card, members: s.members.slice(), reason: "draw" });
+  if (d.wait) return { init, done: false, ask: d.wait.prompt ? [] : [{ kind: "reflexes", slot: d.wait.slot, member: slotById(init, d.wait.slot)?.members[0] ?? null, cards: d.wait.drawn.slice() }], dealt };
+  /* after a choice, and for slots that joined while the draw was waiting [A-1]: deal on from the stored deck, as far as it has cards */
+  const queue = d.queue.map((id) => slotById(init, id)).filter((s) => s && s.card === null).slice(0, d.left.length);
+  if (queue.length) {
+    const ds = initiative.dealAdvance({ done: false, pending: null, entries: [], deck: d.left.slice(), queue: queue.map((s) => drawOf(s)), order: null });
+    take(ds.entries);
+    hold(ds);
+    if (d.wait) return { init, done: false, ask: [{ kind: "reflexes", slot: d.wait.slot, member: slotById(init, d.wait.slot)?.members[0] ?? null, cards: d.wait.drawn.slice() }], dealt };
   }
-  for (const s of init.slots) if (s.card === null && !s.extra) { s.card = nextFreeCard(init); dealt.push({ slot: s.id, card: s.card, members: s.members.slice(), reason: "draw" }); }   // joined while the draw was waiting [A-1]
+  for (const s of init.slots) if (s.card === null && !s.extra) { s.card = nextFreeCard(init); dealt.push({ slot: s.id, card: s.card, members: s.members.slice(), reason: "draw" }); }   // more joiners than cards left: never leave a slot without a card
   if (d.round === 1 && d.surprised.length) init.surprised = d.surprised.flatMap((sid) => slotById(init, sid)?.members ?? []);
   init.deck = Math.max(d.size, ...usedCards(init), 1);
   delete init.draw; delete init.pendingDraw;
@@ -181,15 +191,16 @@ export function continueDraw(init0, parts, rng) {
   return { init, done: true, ask: [], dealt };
 }
 
-/* the Fast Reflexes holder chose [I6]: the other card is shuffled back before anybody else draws */
+/* the Fast Reflexes holder chose [I6]: the other card is shuffled back before anybody else draws (the library's dealContinue) */
 export function answerReflexes(init0, slotId, card, rng) {
   const w = init0.draw?.wait;
   if (!w || w.slot !== slotId) return fail("gone");
   if (!w.drawn.includes(card)) return fail("badInput");
   const init = copy(init0);
   const d = init.draw, s = slotById(init, slotId);
+  const ds = initiative.dealContinue(rng, { done: false, pending: { id: slotId, cards: w.drawn.slice(0, 2), draw: { id: slotId } }, entries: [], deck: d.left.slice(), queue: [{ id: slotId }], order: null }, card);
   if (s) s.card = card;
-  d.left = initiative.shuffle(rng, [...d.left, ...w.drawn.filter((c) => c !== card).slice(0, 1)]);
+  d.left = ds.deck.slice();
   d.wait = null;
   d.queue = d.queue.filter((x) => x !== slotId);
   return { ok: true, init, dealt: s ? [{ slot: s.id, card, members: s.members.slice(), reason: "reflexes" }] : [] };

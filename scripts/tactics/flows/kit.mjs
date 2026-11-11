@@ -104,8 +104,8 @@ export function buildPool(v, inst, key, cid, attr, mods = [], { rollKind = "othe
   return { pool, writes: tk.writes, needGm: tk.needGm };
 }
 /** Roll request effect. passive rolls and defender rolls cannot be pushed [B2227], [B2241]. */
-export const rollEffect = (key, who, attr, pool, { passive = false, defender = false, secret = false, label = null } = {}) =>
-  ({ t: "roll", key, who, attr, pool: { base: pool.base, mods: pool.mods, total: pool.total }, dice: pool.dice, maxPush: passive || defender ? 0 : null, secret: secret ? 1 : 0, label });
+export const rollEffect = (key, who, attr, pool, { passive = false, defender = false, secret = false, label = null, noPush = false } = {}) =>
+  ({ t: "roll", key, who, attr, pool: { base: pool.base, mods: pool.mods, total: pool.total }, dice: pool.dice, maxPush: passive || defender || noPush ? 0 : null, secret: secret ? 1 : 0, label });
 
 /** Can the instance's actor still act (spec 5.1 revalidation, first bullet)? Returns a reason id or null. */
 export function actorBlocked(v, inst) {
@@ -140,17 +140,80 @@ export function reactionOption(v, cid, e) {
   return o;
 }
 
+/** Is this combatant an NPC that rolls critical injuries like a hero [B2771]? The actor flag `major` or the GM's standing word (NpcPolicy.major). */
+export const isMajor = (v, cid) => { const c = v.facts.c(cid); return !!c && c.npc && c.kind !== "minions" && (c.major === true || [true, "yes"].includes(v.state.npc?.[cid]?.major)); };
+/** May a roll of this combatant be pushed at all? Heroes always (the system's own rules decide the rest). The book gives pushing to major NPCs and to
+    minion groups [B2231], [B2830]; any other NPC only when the GM said so for it (NpcPolicy.push "ask"), and never with "never" [OQ-12], [A12]. */
+export function mayPush(v, cid) {
+  const c = v.facts.c(cid);
+  if (!c || !c.npc) return true;
+  const pol = v.state.npc?.[cid] ?? {};
+  if (pol.push === "never") return false;
+  return c.kind === "minions" || isMajor(v, cid) || pol.push === "ask";
+}
+/** The effects that end a grapple `cid` is part of, as the holder or as the one held [B2496-2497]. */
+export function grappleRelease(state, cid) {
+  const out = [], st = M.statusesOf(state, cid);
+  const holding = st.find((s) => s.id === "grappling"), held = st.find((s) => s.id === "grappled");
+  if (holding) { out.push({ t: "status-", who: cid, id: "grappling" }); if (holding.data?.held && M.hasStatus(state, holding.data.held, "grappled")) out.push({ t: "status-", who: holding.data.held, id: "grappled" }); }
+  if (held) { out.push({ t: "status-", who: cid, id: "grappled" }); if (held.data?.by && M.hasStatus(state, held.data.by, "grappling")) out.push({ t: "status-", who: held.data.by, id: "grappling" }); }
+  return out;
+}
+/** A minion group that lost members [B2828]: knocked out or killed is the GM's word (NpcPolicy.onBroken answers it without a card). Returns true while waiting. */
+export function minionsFate(v, I, R, t, dm, { by = null } = {}) {
+  const tf = v.facts.c(t);
+  if (!tf || tf.kind !== "minions" || !(dm?.minions?.removed > 0)) return false;
+  const key = `mfate:${t}`;
+  if (!I.data.pk?.[key]) {
+    const pol = v.state.npc?.[t]?.onBroken, p = { key, kind: "minionsFate", to: "gm", about: t, options: [{ id: "ko", label: "ITAC.opt.ko" }, { id: "kill", label: "ITAC.opt.kill" }], data: { removed: dm.minions.removed, left: dm.minions.left } };
+    if (["ko", "kill"].includes(pol)) p.auto = { option: pol, reason: "npcDefault" };
+    R.prompts.push(p); R.wait = true; return true;
+  }
+  if (!isAnswered(v, I, key)) { R.wait = true; return true; }
+  if (!flag(I, key)) {
+    setFlag(I, key);
+    const id = answerId(v, I, key);
+    dm.npcOutcome = id;
+    if (id === "kill" && by && v.facts.c(by) && !v.facts.c(by).npc) R.effects.push({ t: "karma", note: { who: by, kind: "killed", target: t, n: dm.minions.removed } });     // [B815]
+    if (dm.minions.left === 0) R.effects.push({ t: "status+", who: t, status: { id: id === "kill" ? "dead" : "unconscious", source: { kind: "gm", name: "minions" } } });
+  }
+  return false;
+}
+
 /** Broken and critical injuries after one damage event (spec 9.5 steps 7-9), shared by attacks and hazards. `dm` is the damage record of the flow
-    ({ taken, healthBefore, tags }). Returns true when the step has to wait (an injury die, or the GM's word on an NPC). */
+    ({ taken, healthBefore, tags }). Returns true when the step has to wait (an injury die, or the GM's word on an NPC).
+    NPCs [B2771]: an ordinary NPC that is broken needs no injury, the GM states knocked out or killed, or has it rolled like a hero's; a major NPC
+    always rolls. Minions never do [B2828]. Whoever is broken lets go of a grapple and is let go of. */
 export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } = {}) {
   if (!dm || dm.tags?.toStress || !(dm.taken > 0)) return false;
   const tf = v.facts.c(t);
   if (!tf) return false;
   const once = (k) => { if (flag(I, k)) return false; setFlag(I, k); return true; };
-  const cf = crits.critForHit({ taken: dm.taken, healthBefore: dm.healthBefore, deadlyHit, target: immunityFlags(tf) });   // [B2707], [B2708], [R9], [B2771], [B2828]
+  const flags = { ...immunityFlags(tf), kind: isMajor(v, t) ? "majorNpc" : tf.kind };
+  let cf = crits.critForHit({ taken: dm.taken, healthBefore: dm.healthBefore, deadlyHit, target: flags });   // [B2707], [B2708], [R9], [B2771], [B2828]
   if (cf.newlyBroken && once(`broken:${t}`)) {
     R.effects.push({ t: "status+", who: t, status: { id: "broken", source: { kind: "crit", owner: by ?? undefined, name: "broken" } } });
+    for (const e of grappleRelease(v.state, t)) R.effects.push(e);                             // [B2707]: a broken character holds nobody
     R.events.push({ type: "broken", target: t });
+  }
+  if (cf.gmChoice) {                                                                           // [B2771]: an ordinary NPC needs no injury, the GM states the outcome
+    const key = `npcBroken:${t}`;
+    if (!I.data.pk?.[key]) {
+      const pol = v.state.npc?.[t]?.onBroken, p = { key, kind: "npcBroken", to: "gm", about: t, options: [{ id: "ko", label: "ITAC.opt.ko" }, { id: "kill", label: "ITAC.opt.kill" }, { id: "crit", label: "ITAC.opt.rollCrit" }] };
+      if (["ko", "kill", "crit"].includes(pol)) p.auto = { option: pol, reason: "npcDefault" };       // spec 13.3 NpcPolicy.onBroken
+      R.prompts.push(p); R.wait = true; return true;
+    }
+    if (!isAnswered(v, I, key)) { R.wait = true; return true; }
+    const id = answerId(v, I, key);
+    if (once(key)) {
+      dm.npcOutcome = id;
+      if (id === "kill") {
+        R.effects.push({ t: "status+", who: t, status: { id: "dead", source: { kind: "gm", name: "npcBroken" } } });
+        if (by && v.facts.c(by) && !v.facts.c(by).npc) R.effects.push({ t: "karma", note: { who: by, kind: "killed", target: t } });     // [B815], spec 9.11
+      } else if (id === "ko") R.effects.push({ t: "status+", who: t, status: { id: "unconscious", source: { kind: "gm", name: "npcBroken" } } });
+    }
+    if (id !== "crit") return false;
+    cf = crits.critForHit({ taken: dm.taken, healthBefore: dm.healthBefore, deadlyHit, target: { ...flags, kind: "majorNpc" } });      // rolled like a hero's [B2771]
   }
   if (cf.crit) {
     const key = `crit:${t}`;
@@ -166,25 +229,6 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
         R.effects.push({ t: "status+", who: t, status: st });
       }
       R.events.push({ type: "crit", target: t, crit: { roll: rc.roll, total: rc.n, id: rc.entry?.id } });
-    }
-    return false;
-  }
-  if (cf.gmChoice) {                                                                           // [B2771]: an ordinary NPC needs no injury, the GM states the outcome
-    const key = `npcBroken:${t}`;
-    if (!I.data.pk?.[key]) {
-      const pol = v.state.npc?.[t]?.onBroken, p = { key, kind: "npcBroken", to: "gm", about: t, options: [{ id: "ko", label: "ITAC.opt.ko" }, { id: "kill", label: "ITAC.opt.kill" }, { id: "crit", label: "ITAC.opt.rollCrit" }] };
-      if (["ko", "kill"].includes(pol)) p.auto = { option: pol, reason: "npcDefault" };       // spec 13.3 NpcPolicy.onBroken
-      R.prompts.push(p); R.wait = true; return true;
-    }
-    if (!isAnswered(v, I, key)) { R.wait = true; return true; }
-    if (once(key)) {
-      const id = answerId(v, I, key);
-      dm.npcOutcome = id;
-      if (id === "kill") {
-        R.effects.push({ t: "status+", who: t, status: { id: "dead", source: { kind: "gm", name: "npcBroken" } } });
-        if (by && v.facts.c(by) && !v.facts.c(by).npc) R.effects.push({ t: "karma", note: { who: by, kind: "killed", target: t } });     // [B815], spec 9.11
-      } else if (id === "ko") R.effects.push({ t: "status+", who: t, status: { id: "unconscious", source: { kind: "gm", name: "npcBroken" } } });
-      else (I.data.notes ??= []).push({ note: "npcCritByHand", target: t });                   // rolled like a hero: run by the GM from the card until P4
     }
   }
   return false;

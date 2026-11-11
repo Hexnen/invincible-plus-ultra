@@ -9,6 +9,7 @@
    which wins when present. A renamed or translated talent item needs the flag. */
 import * as S from "./state-pure.mjs";
 import * as O from "./ops-pure.mjs";
+import { weapons } from "../rules/index.mjs";
 
 export const SYSTEM_ID = "invincible";
 export const SYSTEM_VERIFIED = "2.1.8";
@@ -189,8 +190,17 @@ export function weaponFacts(actor, ref) {
   const autos = item.system?.automations ?? {}, a = autos[Object.keys(autos)[0]] ?? {};
   const min = num(a.minRange, NaN), max = num(a.maxRange, NaN);
   return { id: item.id, name: item.name, bonus: num(a.rollBonus), damage: Number.isFinite(Number(a.baseDamage)) && Number(a.baseDamage) > 0 ? Number(a.baseDamage) : null,
-    range: Number.isFinite(max) && (min > 0 || max > 0) ? [Number.isFinite(min) ? min : 0, max] : null, sharp: item.flags?.[MOD]?.tactics?.sharp === true };
+    range: Number.isFinite(max) && (min > 0 || max > 0) ? [Number.isFinite(min) ? min : 0, max] : null, ...weaponFlags(item) };
 }
+/* Sharp, full auto and area have no system field. The GM's item flags `flags.invincible-plus-ultra.tactics.{sharp, fullAuto, area}` decide (true or
+   false); without a flag, an item named exactly like a row of the book's weapon table takes that row's features. */
+function weaponFlags(item) {
+  const f = item.flags?.[MOD]?.tactics ?? {}, row = Object.entries(weapons.WEAPONS).find(([k]) => k.toLowerCase() === String(item.name ?? "").trim().toLowerCase())?.[1] ?? {};
+  const pick = (flag, table) => (typeof f[flag] === "boolean" ? f[flag] : table === true);
+  return { sharp: pick("sharp", row.sharp), fullAuto: pick("fullAuto", row.fullAuto), area: pick("area", row.areaEffect) };
+}
+/** The items of the actor an attack can be made with (an automation that carries damage or a range), as weaponFacts gives them. */
+export const weaponList = (actor) => { try { return [...(actor?.items ?? [])].map((it) => weaponFacts(actor, it.id)).filter((w) => w && (w.damage != null || w.range)).slice(0, 24); } catch { return []; } };
 /** The value behind an engine field name (drift check of an undo, journal-pure.driftOf). */
 export const actorValue = (actor, field) => (FIELDS[field] ? num(foundry.utils.getProperty(actor, FIELDS[field]), null) : null);
 /** Write an engine field. Returns the journal op. The option `ipuTactics` lets the legacy heuristics of scripts/module.js skip or label it (spec 1.3). */

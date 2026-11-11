@@ -25,7 +25,7 @@ import * as Pick from "./pick.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const NARROW = 1180;                       // below this window width the desk starts folded
-const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false });
+const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false });
 const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {} });
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
 let st = { dock: blankDock(), desk: blankDesk() };
@@ -54,6 +54,8 @@ function factsOf(combat) {
         return moveMemo.value;
       } catch { return null; }
     },
+    resolve: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && staff ? Sys.actorFacts(a)?.resolve ?? null : null; } catch { return null; } },      // the desk's hint for an NPC out of Resolve
+    weapons: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Sys.weaponList(a) : []; } catch { return []; } },      // [P4] what this user's own character can attack with
     doors: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Mv.api.doors(id) : []; } catch { return []; } },
     /* the number the map shows on a zone's badge is its id + 1 (moinen-maps zones.zoneName; not on its API yet, so a map set to other numerals reads differently) */
     zone: (spot) => { try { const p = Zones.place(spot); return p ? { id: Number.isInteger(p.id) ? p.id + 1 : null, level: p.level, floor: p.floor, area: p.area, roof: p.roof } : null; } catch { return null; } },
@@ -89,7 +91,7 @@ function refresh() {
     const model = staff ? staffModel(combat, desk) : Api.player(combat);
     const data = Model.dockData(model, st.dock, facts, t);
     Dock.render(data, st.dock);
-    if (data.show && data.panel?.kind === "declare" && data.panel.targets) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => setDock({ targets: [cid] }));
+    if (data.show && data.panel?.kind === "declare" && data.panel.targets) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => { const max = data.panel.maxTargets ?? 1, cur = (st.dock.targets ?? []).filter((x) => x !== cid); setDock({ targets: max > 1 ? ((st.dock.targets ?? []).includes(cid) ? cur : [...cur, cid].slice(-max)) : [cid] }); });
     else Pick.stop();
     mapSync(data, deskD);
     watch(); pokeTray();
