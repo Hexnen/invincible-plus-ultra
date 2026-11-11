@@ -81,13 +81,13 @@ const num = (c) => {
 };
 const choice = (c) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: c.label }), h("span.igd-seg", {}, c.choices.map((x) => h("button", { fk: `c:${c.id}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(c.value === x.id) }, on: { click: () => send(x.req) } }))));
 const select = (c, key) => h("div.igd-ctl", { data: { type: "select" } }, h("span.igd-cl", { text: c.label }),
-  h("select", { fk: `sel:${key}`, attrs: { "aria-label": c.label }, on: { change: (e, el) => { const x = c.choices.find((q) => q.id === el.value); el.value = ""; if (x) send(x.req); } } }, h("option", { text: "…", attrs: { value: "" } }), c.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id } }))));
-/* U4: a button of the override panel. Skip says its name; the three ways to end the action are pictures that ARM on the first click
-   (the button then spells itself out) and act on the second, so a slip of the pointer ends nothing */
+  h("select", { fk: `sel:${key}`, attrs: { "aria-label": c.label }, on: { change: (e, el) => { const x = c.choices.find((q) => q.id === el.value); el.value = ""; if (x) send(x.req); } } }, h("option", { text: c.id === "goto" ? `${c.label}…` : "…", attrs: { value: "" } }), c.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id } }))));
+/* U4: a button of the override panel: Skip and the three ways to end the action are pictures that ARM on the first click (the button
+   then spells itself out) and act on the second, so a slip of the pointer skips or ends nothing and a finger reads what it is about to do */
 const OVR_ICON = { skip: "fa-forward-step", refund: "fa-rotate-left", spent: "fa-ban", hand: "fa-hand" };
 const button = (c, inst) => (c.confirm
   ? h(`button.igd-btn.igd-ovb${c.danger ? ".igd-danger" : ""}${c.armed ? ".igd-sure" : ""}`, { fk: `b:${inst}:${c.id}`, tip: c.armed ? null : c.label, attrs: { "aria-label": c.label, "aria-pressed": String(!!c.armed) },
-    on: { click: () => (c.armed ? send(c.req, { override: null, sure: null }) : set({ sure: `${inst}:${c.id}` })) } }, icon(OVR_ICON[c.icon] ?? "fa-circle"), c.armed ? h("span", { text: c.label }) : null)
+    on: { click: () => (c.armed ? send(c.req, c.group === "end" ? { override: null, sure: null } : { sure: null }) : set({ sure: `${inst}:${c.id}` })) } }, icon(OVR_ICON[c.icon] ?? "fa-circle"), c.armed ? h("span", { text: c.label }) : null)
   : h("button.igd-btn", { fk: `b:${inst}:${c.id}`, on: { click: () => send(c.req) } }, c.icon ? icon(OVR_ICON[c.icon] ?? "fa-circle") : null, h("span", { text: c.label })));
 
 function override(i, L) {

@@ -3,7 +3,8 @@
    WHERE (U28): at the bottom edge, centred in the free part of the window. Foundry's macro bar is folded away while the dock is up
    (body.ita-tactics, styles/tactics-ui.css; the keyboard button on the dock brings it back, and then the dock stands above it as
    before). Pushed clear of the party column and the map's panels (left), of the sidebar, the chat notifications and the GM desk
-   (right). The map's director bar keeps its corner: the dock starts right of it when that leaves room, else stands above it.
+   (right). The map's director bar and the chat box of a folded sidebar keep the bottom edge: the dock stands between them when its
+   bar fits there (in one row or in two), else above them (place()).
    ONE ROW (U29), read like the unit bar of a tactics game, left to right:
      UNIT    face, name, zone; Health and Resolve as two bars with their numbers
      SLOTS   the two slots of a turn (U31): the long one is the full action (or a second quick one), the short one the quick action; a
@@ -27,7 +28,9 @@ import { h, icon, swap, face, speed, actIcon, tipText, askCard, waitChips, rollC
 const ID = "invincible-tactics-dock";
 const GAP = 6;
 const EDGE = 6;          // px between the dock and the bottom edge of the window
-const ROOM_BESIDE = 560; // px the dock wants to stand beside the map's director bar rather than above it
+const TWO_ROWS = 500;    // px the two-row dock needs between what lies on the bottom edge; with less it stands above those things
+/* what lies on the bottom edge besides the dock: the map's director bar (GM), the chat box Foundry floats there while the sidebar is folded */
+const LOW_OBSTACLES = "#mm-dir-bar, #chat-notifications #chat-message, #chat-notifications .chat-form";
 /* what hangs from the top of the window and must stay readable above the dock: the initiative bar's tiles and their pip tabs, the map's orbit strip */
 const TOP_OBSTACLES = "#invincible-combat-bar .icbar-tile, #invincible-combat-bar .icbar-acts:not([hidden]), #invincible-combat-bar .icbar-gma:not([hidden]), #mm-orbit-strip";
 /* panels of other modules at the left edge that reach down into the dock's band (the map's pins / filter panel, its VRAM meter) */
@@ -72,45 +75,54 @@ export function place() {
   if (!root) return;
   const W = window.innerWidth, H = window.innerHeight;
   const hot = visibleRect(document.getElementById("hotbar"));
-  let floor = hot && hot.top > H * 0.4 ? hot.top : H - EDGE + GAP;
-  let lo = 12, hi = W - 12;
+  const ground = hot && hot.top > H * 0.4 ? hot.top : H - EDGE + GAP;
   /* the room above the dock: down from the lowest thing that hangs from the top over the middle of the window */
   let ceil = 8;
   for (const el of document.querySelectorAll(TOP_OBSTACLES)) { const r = visibleRect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) ceil = Math.max(ceil, r.bottom + 8); }
-  const band = (bottomY) => { const yBot = bottomY, yTop = yBot - Math.min(stack.offsetHeight || 60, Math.max(150, bottomY - ceil)) - 4; return (r) => r && r.top < yBot && r.bottom > yTop; };
-  let inBand = band(floor - GAP);
-  const sb = visibleRect(document.getElementById("sidebar"));
-  if (sb && sb.left > W * 0.5) hi = Math.min(hi, sb.left - 12);
-  for (const m of document.querySelectorAll("#chat-notifications .chat-message")) { const r = visibleRect(m); if (inBand(r) && r.left > W * 0.3) hi = Math.min(hi, r.left - 10); }
-  /* the open GM desk and a panel at the left edge that hangs lower than the top obstacles are kept clear of WHATEVER the dock's height
-     is now: a dock that changed its width with every panel that opened made the buttons jump under the pointer (U6) */
-  const low = (r) => r && r.bottom > ceil + 60 && r.top < floor;
-  for (const el of document.querySelectorAll("#invincible-tactics-desk .igd, #invincible-tactics-desk .igd-handle")) { const r = visibleRect(el); if ((el.classList.contains("igd") ? low(r) : inBand(r)) && r.left > W * 0.4) hi = Math.min(hi, r.left - 10); }
-  const partyEl = document.getElementById("invincible-party"), party = visibleRect(partyEl);
-  if (party && party.right < W * 0.5) {
-    const kids = [...partyEl.querySelectorAll(".ipt-item")].map(visibleRect).filter(inBand);
-    if (kids.length || inBand(party)) lo = Math.max(lo, Math.max(party.right, ...kids.map((k) => k.right)) + 10);
+  /* the free band between what stands at the sides, for a dock whose bottom is at `floor` */
+  const sides = (floor) => {
+    let lo = 12, hi = W - 12;
+    const yBot = floor - GAP, yTop = yBot - Math.min(stack.offsetHeight || 60, Math.max(150, yBot - ceil)) - 4, inBand = (r) => r && r.top < yBot && r.bottom > yTop;
+    const sb = visibleRect(document.getElementById("sidebar"));
+    if (sb && sb.left > W * 0.5) hi = Math.min(hi, sb.left - 12);
+    for (const m of document.querySelectorAll("#chat-notifications .chat-message")) { const r = visibleRect(m); if (inBand(r) && r.left > W * 0.3) hi = Math.min(hi, r.left - 10); }
+    /* the open GM desk and a panel at the left edge that hangs lower than the top obstacles are kept clear of WHATEVER the dock's height
+       is now: a dock that changed its width with every panel that opened made the buttons jump under the pointer (U6) */
+    const low = (r) => r && r.bottom > ceil + 60 && r.top < floor;
+    for (const el of document.querySelectorAll("#invincible-tactics-desk .igd, #invincible-tactics-desk .igd-handle")) { const r = visibleRect(el); if ((el.classList.contains("igd") ? low(r) : inBand(r)) && r.left > W * 0.4) hi = Math.min(hi, r.left - 10); }
+    const partyEl = document.getElementById("invincible-party"), party = visibleRect(partyEl);
+    if (party && party.right < W * 0.5) {
+      const kids = [...partyEl.querySelectorAll(".ipt-item")].map(visibleRect).filter(inBand);
+      if (kids.length || inBand(party)) lo = Math.max(lo, Math.max(party.right, ...kids.map((k) => k.right)) + 10);
+    }
+    const pl = visibleRect(document.getElementById("players"));
+    if (inBand(pl) && pl.right < W * 0.3) lo = Math.max(lo, pl.right + 8);
+    for (const el of document.querySelectorAll(LEFT_OBSTACLES)) { const r = visibleRect(el); if (low(r) && r.right < W * 0.4) lo = Math.max(lo, r.right + 8); }
+    return { lo, hi, floor };
+  };
+  /* WHAT LIES ON THE BOTTOM EDGE besides the dock: the map's director bar (GM, left) and the chat box of a folded sidebar (right). The
+     dock stands BETWEEN them, in one row when that fits and in two when not (two rows on the edge take no more of the map than one
+     row lifted over those things, and less of its width); only when even two rows have no room there does it stand ABOVE them. */
+  const A = sides(ground), lows = [];
+  for (const el of document.querySelectorAll(LOW_OBSTACLES)) { const r = visibleRect(el); if (r && r.height < 90 && r.bottom > ground - 70 && r.top < ground && r.right > A.lo && r.left < A.hi) lows.push(r); }
+  let pick = A;
+  const barEl = stack.querySelector(".itd-bar");
+  delete root.dataset.tight;
+  const natural = barEl ? barEl.scrollWidth + 2 : 0;
+  if (lows.length) {
+    const mid = (A.lo + A.hi) / 2, between = { ...A };
+    for (const r of lows) { if ((r.left + r.right) / 2 < mid) between.lo = Math.max(between.lo, r.right + 10); else between.hi = Math.min(between.hi, r.left - 10); }
+    pick = between.hi - between.lo >= Math.min(natural, TWO_ROWS) ? between : sides(Math.min(ground, ...lows.map((r) => r.top)));
   }
-  const pl = visibleRect(document.getElementById("players"));
-  if (inBand(pl) && pl.right < W * 0.3) lo = Math.max(lo, pl.right + 8);
-  for (const el of document.querySelectorAll(LEFT_OBSTACLES)) { const r = visibleRect(el); if (low(r) && r.right < W * 0.4) lo = Math.max(lo, r.right + 8); }
-  /* the map's director bar (GM): beside it when the dock keeps ROOM_BESIDE px, else above it */
-  const dir = visibleRect(document.getElementById("mm-dir-bar"));
-  if (dir && dir.bottom > floor - 70 && dir.top < floor && dir.right > lo && dir.left < hi) {
-    if (dir.left < W * 0.5 && hi - (dir.right + 10) >= ROOM_BESIDE) lo = Math.max(lo, dir.right + 10);
-    else if (dir.left >= W * 0.5 && dir.left - 10 - lo >= ROOM_BESIDE) hi = Math.min(hi, dir.left - 10);
-    else { floor = Math.min(floor, dir.top); inBand = band(floor - GAP); }
-  }
+  const { lo, hi, floor } = pick;
   const bottom = H - floor + GAP;
   const room = Math.max(150, H - bottom - ceil);
   root.style.setProperty("--itd-room", `${Math.round(room)}px`);
   const avail = Math.max(280, hi - lo);
   root.style.setProperty("--itd-bottom", `${Math.round(bottom)}px`);
   root.style.setProperty("--itd-maxw", `${Math.round(avail)}px`);
-  /* one row when it fits; else the actions go under the unit (measured with the row laid out unbroken) */
-  const barEl = stack.querySelector(".itd-bar");
-  delete root.dataset.tight;
-  if (barEl && barEl.scrollWidth > barEl.clientWidth + 1) root.dataset.tight = "1";
+  /* one row when it fits; else the actions go under the unit (measured above, with the row laid out unbroken) */
+  if (natural > avail) root.dataset.tight = "1";
   /* the panel and the questions share what is left above the bar: the panel takes what it needs first (it is what the user is doing),
      the questions the rest; each scrolls inside its share */
   const part = (sel) => stack.querySelector(sel)?.offsetHeight ?? 0;

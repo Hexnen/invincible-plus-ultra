@@ -147,12 +147,13 @@
 .ita-rs { flex: none; display: inline-grid; place-items: center; min-width: 17px; height: 15px; padding: 0 3px; font: 400 11px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; color: var(--ita-ink, #0c1a2e); background: var(--ita-cyan, #3bb8e8); border: 1px solid var(--ita-ink, #0c1a2e); }
 
 /* the bar: the slanted plate is drawn behind (::before), everything stands straight on it */
-.itd-bar { position: relative; isolation: isolate; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px 12px; min-width: 0; padding: 6px 12px 7px 9px; }
+.itd-bar { position: relative; isolation: isolate; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px 10px; min-width: 0; padding: 6px 11px 7px 9px; }
 .itd-bar > * { flex: none; }
 .itd-bar::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--ita-ink); border: 2px solid var(--ita-ink); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); transform: skewX(-4deg); transform-origin: center bottom; }
 #invincible-tactics-dock.itd-turn .itd-bar::before { box-shadow: inset 0 0 0 1px var(--ita-yellow), 0 2px 8px rgba(0, 0, 0, .45); }
-/* too narrow for one row (dock.mjs measures it): the actions go under the unit */
-#invincible-tactics-dock[data-tight] .itd-bar { display: grid; grid-template-columns: auto auto 1fr; grid-template-areas: "unit slots tail" "acts acts acts"; }
+/* too narrow for one row (dock.mjs measures it): the actions stand OVER the unit, so their tooltips rise clear of the slots and the
+   Resolve bar, where the cost of the thing under the pointer shows */
+#invincible-tactics-dock[data-tight] .itd-bar { display: grid; grid-template-columns: auto auto 1fr; grid-template-areas: "acts acts acts" "unit slots tail"; }
 #invincible-tactics-dock[data-tight] .itd-unit { grid-area: unit; }
 #invincible-tactics-dock[data-tight] .itd-slots { grid-area: slots; }
 #invincible-tactics-dock[data-tight] .itd-tail { grid-area: tail; justify-self: end; }
@@ -160,7 +161,7 @@
 
 /* the unit */
 .itd-unit { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.itd-face { width: 42px; height: 42px; border: 2px solid var(--ita-line); font-size: 19px; }
+#invincible-tactics-dock .itd-face { width: 42px; height: 42px; border: 2px solid var(--ita-line); font-size: 19px; }
 #invincible-tactics-dock.itd-turn .itd-face { border-color: var(--ita-yellow); }
 .itd-chars { display: flex; gap: 3px; }
 #invincible-tactics-dock .itd-char { position: relative; width: 32px; height: 32px; border: 2px solid var(--ita-line); }
@@ -180,7 +181,7 @@
 .itd-vital { --c: var(--ita-red-lt); display: flex; align-items: center; gap: 5px; height: 12px; }
 .itd-vital[data-id="resolve"] { --c: var(--ita-cyan); }
 #invincible-tactics-dock .itd-vital > i { width: 11px; text-align: center; font-size: 9.5px; color: var(--c); }
-.itd-vbar { position: relative; flex: none; width: 86px; height: 9px; overflow: hidden; background: var(--ita-track); border: 1px solid var(--ita-line); transform: skewX(-14deg); }
+.itd-vbar { position: relative; flex: none; width: 74px; height: 9px; overflow: hidden; background: var(--ita-track); border: 1px solid var(--ita-line); transform: skewX(-14deg); }
 .itd-vbar > i { position: absolute; top: 0; bottom: 0; }
 .itd-vfill { left: 0; width: calc(100% * var(--itd-v) / var(--itd-max)); background: var(--c); }
 .itd-vpv { left: calc(100% * (var(--itd-v) - var(--itd-pv, 0)) / var(--itd-max)); width: calc(100% * var(--itd-pv, 0) / var(--itd-max)); background: #fff; opacity: 0; }
@@ -196,7 +197,7 @@
    only while the character really has it (cyan). FREE = solid with the hard shadow | SPENT = hollow, struck through | GONE = dashed.
    A slot is a button: a click marks it spent by hand (the tooltip and the aria-label say so). */
 .itd-slots { display: flex; align-items: center; gap: 5px; }
-#invincible-tactics-dock .itd-slot { display: grid; place-items: center; width: 46px; height: 30px; }
+#invincible-tactics-dock .itd-slot { display: grid; place-items: center; width: 44px; height: 30px; }
 #invincible-tactics-dock .itd-slot[data-kind="quick"] { width: 26px; }
 .itd-slot > i { position: relative; display: block; width: calc(100% - 4px); height: 15px; background: var(--ita-yellow); border: 2px solid var(--ita-ink); box-shadow: 2px 2px 0 var(--ita-blue); transform: skewX(-14deg); transition: translate .12s ease-out; }
 .itd-slot[data-extra] > i { background: var(--ita-cyan); }
@@ -213,11 +214,11 @@
 .itd-extra:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* the actions: one picture each, in the groups of the rules; a rule parts the groups */
-.itd-acts { display: flex; align-items: center; gap: 5px 14px; min-width: 0; }
-.itd-group { position: relative; display: flex; align-items: center; gap: 6px; }
-.itd-group + .itd-group::before { content: ""; position: absolute; left: -8px; top: 5px; bottom: 5px; width: 2px; background: var(--ita-line); opacity: .7; transform: skewX(-10deg); pointer-events: none; }
+.itd-acts { display: flex; align-items: center; gap: 5px 12px; min-width: 0; }
+.itd-group { position: relative; display: flex; align-items: center; gap: 5px; }
+.itd-group + .itd-group::before { content: ""; position: absolute; left: -7px; top: 5px; bottom: 5px; width: 2px; background: var(--ita-line); opacity: .7; transform: skewX(-10deg); pointer-events: none; }
 #invincible-tactics-dock .itd-ic {
-  position: relative; display: inline-grid; place-items: center; width: 38px; height: 36px; padding-bottom: 6px;
+  position: relative; display: inline-grid; place-items: center; width: 36px; height: 36px; padding-bottom: 6px;
   color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink); box-shadow: 3px 3px 0 var(--ita-blue);
   transition: translate .12s ease-out, box-shadow .12s ease-out;
 }
@@ -284,14 +285,17 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 #invincible-tactics-dock.itd-same .itd-panel { animation: none; }
 @keyframes itd-rise { from { opacity: 0; clip-path: inset(40% 0 0 0); translate: 0 8px; } to { opacity: 1; clip-path: inset(0 0 0 0); translate: 0 0; } }
 .itd-phead { display: flex; align-items: center; gap: 9px; min-width: 0; margin-left: -5px; }
-.itd-phead .itd-x { margin-left: auto; }
+#invincible-tactics-dock .itd-phead .itd-x { margin-left: auto; }
 .itd-cost { display: inline-flex; align-items: center; gap: 7px; font: 400 11.5px/1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); white-space: nowrap; }
 .itd-arrow { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ita-label); }
 .itd-arrow b { font: 700 13px/1.1 Comic, sans-serif; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .itd-pbody { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 18px; }
 .itd-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .itd-grow { flex: 1 1 240px; }
-.itd-targets { flex: 1 1 200px; max-width: 420px; }
+/* the targets take a line of their own (chips side by side), what the attack is made with and the odds share the next with Declare */
+.itd-targets { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 5px 8px; }
+.itd-targets > .itd-hint { flex: 1 1 100%; }
+.itd-odds { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: 6px 16px; }
 .itd-submit { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; align-self: flex-end; }
 .itd-k { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label); }
 .itd-chips { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -316,14 +320,14 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 .itd-pool .itd-k { grid-column: 1 / -1; }
 .itd-dice { display: grid; place-items: center; min-width: 34px; height: 34px; padding: 0 4px; font: 400 24px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--ita-ink); background: #fff; border: 2px solid var(--ita-ink); border-radius: 5px; box-shadow: 2px 2px 0 var(--ita-blue); }
 .itd-parts { color: var(--ita-text); }
-.itd-chance { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.itd-chance .itd-k { flex: 1 1 100%; }
+.itd-chance { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 8px; }
+.itd-chance .itd-k { grid-column: 1 / -1; }
 .itd-meter { display: inline-flex; gap: 2px; transform: skewX(-15deg); }
 .itd-meter i { display: block; width: 18px; height: 11px; background: var(--ita-dots), var(--ita-track); border: 1px solid var(--ita-line); }
 .itd-meter i.on { background: var(--ita-yellow); border-color: var(--ita-ink); }
 .itd-meter[data-level="0"] i.on { background: var(--ita-red-lt); }
 .itd-band { font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #fff; }
-.itd-def { flex: 1 1 100%; color: var(--ita-label); }
+.itd-def { grid-column: 1 / -1; color: var(--ita-label); }
 .itd-def b { color: #fff; font-weight: 700; }
 .itd-text { min-height: 44px; }
 #invincible-tactics-dock .itd-go-ask { color: var(--ita-ink); background: var(--ita-cyan); }
@@ -445,12 +449,13 @@ body.itd-picking #board { cursor: crosshair; }
 .igd-ovr { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 8px; padding: 7px 8px 8px; background: var(--ita-ink); animation: itd-rise .2s var(--ita-out); }
 .igd-og { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
 .igd-og:is([data-g="dice"], [data-g="result"]) { flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 6px 10px; }
-.igd-og[data-g="end"] { margin-left: auto; }
+.igd-og[data-g="step"] { flex-wrap: nowrap; }
+.igd-og[data-g="end"] { flex-wrap: nowrap; margin-left: auto; }
 .igd-ovr .igd-og:is([data-g="dice"], [data-g="result"]) .igd-ctl { display: grid; grid-template-columns: auto auto 1fr; justify-content: start; align-items: center; gap: 2px 4px; min-width: 0; }
 .igd-ovr .igd-og:is([data-g="dice"], [data-g="result"]) .igd-cl { grid-column: 1 / -1; flex: none; max-width: 100%; font-size: 11px; line-height: 1.2; color: var(--ita-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .igd-ovr .igd-og[data-g="step"] .igd-ctl { flex-wrap: nowrap; gap: 5px; }
-.igd-ovr .igd-og[data-g="step"] .igd-cl { flex: none; font-size: 11px; color: var(--ita-label); }
-#invincible-tactics-desk .igd-ovr .igd-ctl select { min-width: 96px; max-width: 150px; }
+.igd-ovr .igd-og[data-g="step"] .igd-cl { display: none; }      /* the select says it itself (its first option, its aria-label) */
+#invincible-tactics-desk .igd-ovr .igd-ctl select { min-width: 96px; max-width: 140px; }
 #invincible-tactics-desk .igd-set { width: 26px; padding: 0; color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
 #invincible-tactics-desk .igd-set:hover { color: var(--ita-ink); background: #fff; border-color: var(--ita-ink); }
 #invincible-tactics-desk .igd-ovb { min-width: 28px; padding: 0 7px; }
@@ -481,7 +486,7 @@ body.itd-picking #board { cursor: crosshair; }
 /* U23: a list behind one button: one line per entry (picture, name, the mark of its speed, its Resolve price, how it is run) */
 .itd-lists { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 14px; }
 .itd-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.itd-rows { display: grid; grid-template-columns: minmax(170px, 230px); gap: 3px 6px; }
+.itd-rows { display: grid; grid-template-columns: minmax(170px, 290px); gap: 3px 6px; }
 .itd-panel[data-list="menu"] .itd-rows { grid-template-columns: repeat(3, minmax(170px, 230px)); }
 #invincible-tactics-dock[data-tight] .itd-panel[data-list="menu"] .itd-rows { grid-template-columns: repeat(2, minmax(150px, 230px)); }
 #invincible-tactics-dock .itd-row { display: flex; align-items: center; gap: 7px; min-width: 0; height: 28px; padding: 0 8px 0 7px; font: 400 12.5px/1 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #fff; background: var(--ita-tile); border: 1px solid var(--ita-line); }

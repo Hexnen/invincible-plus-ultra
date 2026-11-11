@@ -314,7 +314,7 @@ for (const l of ["en", "pl"]) { // U28 - U31, U23, U4: the compact dock: slots, 
   eq((await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })).ok, true, `${l} an attack is declared`);
   const g = desk(T, { override: T.top().id });
   const ovr = g.stack[0].override, end = ovr.filter((c) => c.group === "end");
-  eq([end.map((c) => [c.id, c.confirm, c.armed, !!c.icon]), ovr.filter((c) => c.group !== "end").some((c) => c.confirm)], [[["abortRefund", true, false, true], ["abortSpent", true, false, true], ["manual", true, false, true]], false], `${l} U4: the three ways to end an action ask twice, nothing else does`);
+  eq([end.map((c) => [c.id, c.confirm, c.armed, !!c.icon]), ovr.filter((c) => c.type !== "button").some((c) => c.confirm), ovr.filter((c) => c.type === "button").every((c) => c.confirm && c.icon)], [[["abortRefund", true, false, true], ["abortSpent", true, false, true], ["manual", true, false, true]], false, true], `${l} U4: the buttons of the override (skip, the three ways to end the action) are pictures that ask twice; the numbers and choices do not`);
   eq(desk(T, { override: T.top().id, sure: `${T.top().id}:abortSpent` }).stack[0].override.filter((c) => c.armed).map((c) => c.id), ["abortSpent"], `${l} U4: only the one clicked is armed`);
   noKeys(dk("p1", ["H1"], { mode: "kit" }), `${l} compact dock`);
   { // U9: the bar of one who is out says why, and End turn does not ask twice

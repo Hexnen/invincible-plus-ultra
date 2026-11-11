@@ -731,7 +731,7 @@ function instData(i, model, own, facts, t) {
     rolls, outcomes: (i.outcomes ?? []).map((o) => ({ name: o.name, text: o.hit ? t("ITAC.ui.ovr.hit") : t("ITAC.ui.ovr.miss"), hit: o.hit })),
     commands: [veto ? { id: "veto", label: own.sure === `${i.inst}:veto` ? t("ITAC.ui.sure.veto") : labelOf(t, veto.label), req: veto.req, danger: true, confirm: true, armed: own.sure === `${i.inst}:veto` } : null, ovr ? { id: "override", label: labelOf(t, ovr.label), toggle: true, on: open } : null].filter(Boolean),
     /* U4: the three ways to end the action by hand are small buttons that ask a second click (the first one spells the button out) */
-    override: open ? overrideControls(i, facts, t).map((c) => (c.group === "end" ? { ...c, confirm: true, armed: own.sure === `${i.inst}:${c.id}` } : c)) : null,
+    override: open ? overrideControls(i, facts, t).map((c) => (c.type === "button" ? { ...c, confirm: true, armed: own.sure === `${i.inst}:${c.id}` } : c)) : null,
     retarget: open && from && others.length ? { label: t("ITAC.ui.ovr.retarget"), choices: others.map((r) => ({ id: r.id, label: r.name, req: amend ? amend.req({ action: i.action, targets: [r.id] }) : ovr.req("retarget", { from, to: r.id }) })) } : null,
   };
 }
