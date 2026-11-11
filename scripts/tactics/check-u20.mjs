@@ -33,23 +33,23 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
     /* every answer of the card, row by row: the tooltip is never on the card, whichever answer it belongs to (U88) */
     for (let row = 0; row < 3; row++) for (let col = 0; col < 4; col++) {
       const owner = R(card.left + 10 + col * (cw - 20) / 4, card.top + 60 * k + row * 38 * k, (cw - 20) / 4 - 8, 32 * k);
-      const p = placeTip({ owner, block: card, size: tip, win, avoid: [panel], order: orderFor("block") });
+      const p = placeTip({ owner, block: card, size: tip, win, avoid: [panel], order: orderFor("dock") });
       n++;
       if (overlap(boxOf(p), card) || overlap(boxOf(p), panel) || p.left < PAD || p.top < PAD || p.left + p.w > win.w - PAD || p.top + p.h > win.h - PAD) ok(false, `A: an answer's tooltip left its card alone (${win.w}x${win.h}, size ${k}, row ${row}, col ${col}): ${JSON.stringify(p)}`);
     }
     /* the controls of the panel's foot: never on the panel's own head (U97), and not on the card over it while a side is free */
     for (const x of [0.08, 0.5, 0.92]) {
       const owner = R(panel.left + x * (pw - 40), panel.bottom - 40 * k, 36, 32 * k);
-      const p = placeTip({ owner, block: panel, size: tip, win, avoid: [card], order: orderFor("block") });
+      const p = placeTip({ owner, block: panel, size: tip, win, avoid: [card], order: orderFor("dock") });
       n++;
       if (overlap(boxOf(p), panel)) ok(false, `A: a foot control's tooltip left its panel alone (${win.w}x${win.h}, size ${k}): ${JSON.stringify(p)}`);
       if (p.free && overlap(boxOf(p), card)) ok(false, `A: "free" means not on another card (${win.w}x${win.h}, size ${k})`);
     }
-    /* the bar: right over the bar, whichever row of it the owner is in */
+    /* the bar: with the armed action's panel standing on it, a button's tooltip lies neither on the bar nor on the panel (it slides off the panel, or opens over it, or beside the bar); with nothing on the bar, right over the bar */
     for (const y of [bar.top + 4, bar.bottom - 30]) {
-      const p = placeTip({ owner: R(bar.left + 200, y, 35, 26), block: bar, size: tip, win, avoid: [card, panel], order: orderFor("bar") });
+      const p = placeTip({ owner: R(bar.left + 200, y, 35, 26), block: bar, size: tip, win, avoid: [card, panel], order: orderFor("dock") }), lone = placeTip({ owner: R(bar.left + 200, y, 35, 26), block: bar, size: tip, win, avoid: [], order: orderFor("dock") });
       n++;
-      if (p.side !== "up" || p.top + p.h !== Math.round(bar.top - GAP) || overlap(boxOf(p), bar)) ok(false, `A: a bar tooltip stands right over the bar (${win.w}x${win.h}, size ${k}): ${JSON.stringify(p)}`);
+      if (overlap(boxOf(p), bar) || (p.free && (overlap(boxOf(p), panel) || overlap(boxOf(p), card))) || lone.side !== "up" || lone.top + lone.h !== Math.round(bar.top - GAP)) ok(false, `A: a bar tooltip keeps off the bar and the panel on it (${win.w}x${win.h}, size ${k}): ${JSON.stringify(p)} ${JSON.stringify(lone)}`);
     }
   }
   ok(n === WINS.length * SIZES.length * (12 + 3 + 2), `A: ${n} placements over three windows and three interface sizes kept the block clear`);
@@ -72,7 +72,7 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   eq(p.side, "left", "A: no room over a block that reaches the top of the window: beside it");
   /* the desk: a column at the right edge, its tooltips open on the map side whichever half the owner is in */
   const desk = R(1600 - 348 - 60, 11, 348, 700);
-  for (const ox of [desk.left + 10, desk.right - 60]) { p = placeTip({ owner: R(ox, 300, 50, 30), block: desk, size: tip1, win, order: ["side", "up", "down"] }); eq([p.side, p.left + p.w <= desk.left - GAP + 1, overlap(boxOf(p), desk)], ["left", true, 0], "A: the desk's tooltips open beside the column, over the map"); }
+  for (const ox of [desk.left + 10, desk.right - 60]) { p = placeTip({ owner: R(ox, 300, 50, 30), block: desk, size: tip1, win, order: orderFor("desk") }); eq([p.side, p.left + p.w <= desk.left - GAP + 1, overlap(boxOf(p), desk)], ["left", true, 0], "A: the desk's tooltips open beside the column, over the map"); }
   /* a side with too little room takes a narrower tooltip, measured again at that width */
   const asked = [], size = (maxW) => { asked.push(maxW); return maxW ? { w: maxW, h: Math.ceil(132 * 290 / maxW) } : tip1; };
   p = placeTip({ owner: R(300, 400, 100, 30), block: R(250, 40, 1100, 600), size, win, order: ["side"] });
@@ -86,8 +86,16 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   /* nothing free of the other cards: the place that covers least of them */
   p = placeTip({ owner, block: card, size: tip1, win, avoid: [R(0, 0, 1600, 300), R(0, 380, 492, 520)], order: ["up", "left"] });
   eq(p.side, "up", "A: every place lies on something: the one that covers least");
+  /* over what stands there: a bar button under the panel -> over the panel, in the button's column; at the bar's end -> slid off the panel, right over the bar */
+  { const bar = R(520, 795, 560, 99), panel = R(610, 695, 380, 94);
+    p = placeTip({ owner: R(780, 805, 35, 36), block: bar, size: tip1, win, avoid: [panel], order: orderFor("dock") });
+    eq([p.side, p.top, overlap(boxOf(p), panel), p.left <= 780 && p.left + p.w >= 815], ["over", 695 - GAP - 132, 0, true], "A: a bar button under the armed action's panel: its tooltip opens over the panel, in the button's column");
+    p = placeTip({ owner: R(530, 805, 35, 36), block: bar, size: { w: 82, h: 48 }, win, avoid: [panel], order: orderFor("dock") });
+    eq([p.side, p.top, overlap(boxOf(p), panel), p.free], ["up", 795 - GAP - 48, 0, true], "A: a button at the bar's end: right over the bar, beside the panel");
+    p = placeTip({ owner: R(570, 805, 35, 36), block: bar, size: { w: 140, h: 48 }, win, avoid: [panel], order: orderFor("dock") });
+    eq([p.side, overlap(boxOf(p), panel), p.left + p.w <= 610, p.left + p.w >= 587 + 12], ["up", 0, true, true], "A: a place that would lie on the panel slides along the bar's edge off it, still standing at its owner"); }
   eq(shown(R(100, 100, 200, 300), R(0, 180, 1000, 400)), R(100, 180, 200, 220), "A: a card scrolled half out of its box counts by what shows of it");
-  eq([ORDER, orderFor("bar"), orderFor("block")], [["up", "side", "down"], ["up"], ["up", "side", "down"]], "A: the order of places: up, side, down; the bar only up");
+  eq([ORDER, orderFor("dock"), orderFor("desk")], [["up", "side", "down"], ["up", "side"], ["side", "up", "down"]], "A: the places: a block of the dock over it or beside it (never down into the rest of the dock); the desk beside it first");
 }
 
 /* ------------------------------------------------------------------ B. the drawing */
@@ -100,8 +108,8 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   const blocks = /const DOCK_BLOCKS = "([^"]+)"/.exec(tip)?.[1].split(", ") ?? [];
   eq(blocks, [".ita-ask", ".itd-panel", ".itd-bar", ".itd-wait", ".itd-hint1"], "B: the blocks of the dock");
   ok(/h\(`article\.ita-ask/.test(dom) && /h\("section\.itd-panel"/.test(dock) && /h\("div\.itd-bar"/.test(dock) && /h\("div\.itd-wait"/.test(dock) && /h\("div\.itd-hint1"/.test(dock), "B: ... are the ones the dock draws");
-  ok(/KEEP_OFF = `\$\{DOCK\} \.ita-ask, \$\{DOCK\} \.itd-panel, \$\{DOCK\} \.itd-bar, \$\{DESK\} \.igd`/.test(tip) && /b\.classList\.contains\("itd-bar"\) \? "bar" : "block"/.test(tip), "B: a tooltip keeps off the other cards, the panel, the bar and the desk; the bar's own stand over the bar");
-  ok(/el\.closest\("\.igd"\)/.test(tip) && /order: \["side", "up", "down"\]/.test(tip), "B: the desk is one block: its tooltips open beside the column");
+  ok(/KEEP_OFF = `\$\{DOCK\} \.ita-ask, \$\{DOCK\} \.itd-panel, \$\{DOCK\} \.itd-bar, \$\{DESK\} \.igd`/.test(tip) && /order: orderFor\("dock"\)/.test(tip), "B: a tooltip keeps off the other cards, the panel, the bar and the desk");
+  ok(/el\.closest\("\.igd"\)/.test(tip) && /order: orderFor\("desk"\)/.test(tip), "B: the desk is one block: its tooltips open beside the column");
   /* U97: the stack, bottom up: bar, panel, hint, the table's line, the questions */
   const draw = dock.slice(dock.indexOf("swap(stack, ["), dock.indexOf("/* U41: the answer the keyboard chose"));
   const at = (re) => draw.search(re), order = [at(/h\("div\.itd-asks"/), at(/h\("div\.itd-wait"/), at(/h\("div\.itd-hint1"/), at(/d\.show \? panel\(d\.panel\) : null/), at(/d\.show \? bar\(d\) : null/)];
