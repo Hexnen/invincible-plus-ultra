@@ -199,8 +199,8 @@ const wayNotes = (r) => (r.notes.length || r.marks?.length ? h("span.itd-way-n",
 /* U93: Health is the heart, Resolve the bolt (the same bolt a price in stress carries: stress is taken from this bar) */
 const vital = (v) => h("div.itd-vital", { data: { id: v.id, v: v.v }, attrs: { role: "img", "aria-label": v.say, style: `--itd-v:${v.v};--itd-max:${v.max}` } },
   v.id === "health" ? symMark("health") : costMark("stress"), h("span.itd-vbar", {}, h("i.itd-vfill"), h("i.itd-vpv")), h("b.itd-vnum", {}, h("span", { text: String(v.v) }), h("small", { text: `/${v.max}` })), h("b.itd-vdelta"));
-/* U93: what the character has besides its two slots. A granted unit that is no slot: a plus and the mark of the unit (its price in
-   stress beside it); bonus dice: the die with their number (the model's text carries the mark); a condition: its picture in the
+/* U93: what the character has besides its two slots. A granted unit that is no slot keeps its name (it is no price), its price in
+   stress is the chip beside it; bonus dice: the die with their number (the model's text carries the mark); a condition: its picture in the
    kit's frame. Each names itself in its tooltip and to a screen reader. */
 function extra(x) {
   const say = [x.label, x.tip].filter(Boolean).join(". ");
