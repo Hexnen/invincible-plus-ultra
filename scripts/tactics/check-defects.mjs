@@ -428,9 +428,9 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     await shoot(T, 3);
     const sp = T.prompt("stunts");
     eq(sp?.options.map((o) => o.id), ["doubleDamage@N1"], "D15: the stunt card offers Double Damage on the target, and no bystander (nothing brings one in)");
-    await T.req("p1", { op: "answer", prompt: sp.id, value: ["doubleDamage@N1"] });
+    await T.req("p1", { op: "answer", prompt: sp?.id, value: ["doubleDamage@N1"] });
     eq(T.lastRequest()?.key, "ohs:N1", "D15: doubled, Damage 3 gets through Armor 3: the PRESENCE roll is asked");
-    await T.roll("ohs:N1", 0);
+    if (T.lastRequest()?.key === "ohs:N1") await T.roll("ohs:N1", 0);
     eq([st(T, "N1"), T.c.N1.health, !!T.state.ledger.N1.lostTurn], ["stunned", 6, true], "D15: failed: the next turn is lost, no damage is done"); }
   { const T = mk(3); await shoot(T, 1);
     eq([T.state.stack.length, st(T, "N1"), T.requests.some((q) => q.key === "ohs:N1")], [0, "", false], "D15: without the stunt Damage 3 does not get through Armor 3"); }
@@ -495,6 +495,58 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
   eq(all(T.prompt("reaction", "N1")), "dodge pass", "catch: the charge that ends a chase offers a dodge and no block");
   await T.answer("gm", "reaction", "dodge", "N1"); await T.roll("attack", 1);
   eq([T.lastRequest()?.key, T.lastRequest()?.attr], ["def:N1", "agility"], "catch: the prey dodges with AGILITY");
+}
+
+/* ================================================================== spec 10: a hidden combatant does not exist for a player's request */
+{
+  const mk = () => { const T = new Table(); T.hero("H1", "p1").hero("H2", "p2").npc("N1", { health: 6 }).npc("N2", { health: 6, hidden: true }); T.weapons.gun = { id: "gun", bonus: 1, damage: 2, range: [0, 2] }; T.order(["H1", "N1", "H2", "N2"]); return T; };
+  const answer = (env) => JSON.stringify([env?.error?.code ?? (env?.ok ? "ok" : "?"), env?.error?.params ?? {}]);
+  const reqs = {
+    slugfest: (t) => decl("H1", "slugfest", [t]), shoot: (t) => decl("H1", "shoot", [t], { weapon: "gun" }), banter: (t) => decl("H1", "banter", [t]), grapple: (t) => decl("H1", "grapple", [t]),
+    "two targets": (t) => decl("H1", "slugfest", ["N1", t]), "declare as": (t) => decl(t, "slugfest", ["N1"]), mark: (t) => ({ op: "mark", actor: t, unit: "quick" }), other: (t) => ({ op: "other", actor: t, text: "x" }),
+    move: (t) => ({ op: "move", actor: t, to: "z2" }), carry: (t) => ({ op: "move", actor: "H1", to: "z2", carry: [t] }), endTurn: (t) => ({ op: "endTurn", actor: t }),
+  };
+  for (const [name, req] of Object.entries(reqs)) {
+    const T = mk(), a = await T.req("p1", req("N2")), b = await mk().req("p1", req("ZZ"));
+    eq(answer(a), answer(b).replace(/ZZ/g, "N2"), `hidden: '${name}' naming a hidden NPC is answered like one naming nobody`);
+    ok(!T.state.stack.some((i) => JSON.stringify(i.decl ?? {}).includes("N2")), `hidden: '${name}': no action of a player names the hidden NPC`);
+  }
+  { const T = mk(); await T.req("p1", decl("H1", "slugfest", ["N1"]));
+    eq(answer(await T.req("p2", { op: "help", inst: T.top().id, helper: "N2" })), answer(await T.req("p2", { op: "help", inst: T.top().id, helper: "ZZ" })), "hidden: nor does it help"); }
+  { const T = mk(); const G = mk(); G.turn("N2"); eq(code(await G.gm(decl("N2", "slugfest", ["H1"]))), "ok", "hidden: the GM plays it as before");
+    G.turn("N1"); await G.answer("p1", "reaction", "pass", "H1"); await G.roll("attack", 0);
+    const U = mk(); U.turn("N1"); eq(why(await U.gm(decl("N1", "slugfest", ["N2"]))) === "gone", false, "hidden: and names it as a target");
+    T.c.N2.owners = ["p1"];
+    ok(why(await T.req("p1", { op: "mark", actor: "N2", unit: "quick" })) !== "gone", "hidden: nobody is hidden from their own player"); }
+}
+
+/* ================================================================== spec 10: what an unrevealed NPC can do is not in a player's view */
+{
+  const T = fight();
+  const meta = { hidden: [], npc: ["N1", "N2"] }, p1 = { id: "p1", staff: false, owns: ["H1"] };
+  await T.gm({ op: "tokenAdd", token: { id: "npcdie", holder: "N1", dice: 3, scope: { rolls: ["attack"] }, uses: 1, source: { kind: "power", name: "Hidden Trick", owner: "N1" }, expires: { at: "sceneEnd" } } });
+  await T.gm({ op: "tokenAdd", token: { id: "curse", holder: "H1", dice: -1, scope: { next: 1 }, uses: 1, forced: 1, source: { kind: "power", name: "Luck Control", owner: "N1" }, expires: { at: "roundEnd" } } });
+  await T.gm({ op: "tokenAdd", token: { id: "h2die", holder: "H2", dice: 1, scope: {}, uses: 1, source: { kind: "power", name: "Aim", owner: "H2" }, expires: { at: "roundEnd" } } });
+  await T.gm({ op: "effectAdd", effect: { id: "fx1", kind: "shield", source: { kind: "power", name: "Secret Shield", owner: "N1" }, holder: "N1", ends: { at: "sceneEnd" } } });
+  await T.gm({ op: "effectAdd", effect: { id: "fx2", kind: "hex", source: { kind: "power", name: "Hex", owner: "N1" }, holder: "H1", ends: { at: "sceneEnd" } } });
+  await T.gm({ op: "effectAdd", effect: { id: "fx3", kind: "zone", source: { kind: "power", name: "Secret Zone", owner: "N1" }, zones: ["z1"], ends: { at: "sceneEnd" } } });
+  await T.gm({ op: "counterSet", key: "scene:N1:secretPower", value: 1 }); await T.gm({ op: "counterSet", key: "scene:H1:rally", value: 1 }); await T.gm({ op: "counterSet", key: "zone:z1:fire", value: 2 });
+  T.turn("N1");
+  await T.gm({ op: "declare", actor: "N1", decl: { action: "slugfest", targets: ["H1"], opt: "secretOpt", text: "gm note", mod: 2, pulled: 1, exploits: [{ id: "x", stress: 1 }] } });
+  let v = View.viewFor(T.state, p1, meta), s = JSON.stringify(v);
+  eq(v.tokens.map((k) => k.id).sort(), ["curse", "h2die"], "view: an unrevealed NPC's bonus dice are not there; a die on a hero and a hero's own are");
+  eq(v.effects.map((e) => e.id).sort(), ["fx2"], "view: nor its running effects, except the one a hero is under");
+  eq(Object.keys(v.counters).sort(), ["scene:H1:rally", "zone:z1:fire"], "view: nor its use counters");
+  eq(Object.keys(v.stack[0].decl).sort(), ["action", "helpers", "targets"], "view: of its declaration only what the table was told");
+  eq(["Hidden Trick", "Secret Shield", "Secret Zone", "secretPower", "secretOpt", "gm note"].filter((x) => s.includes(x)), [], "view: none of it anywhere in the view");
+  const gmv = View.viewFor(T.state, { id: "gm", staff: true, owns: [] }, meta);
+  eq([gmv.tokens.length, gmv.effects.length, gmv.stack[0].decl.opt], [3, 3, "secretOpt"], "view: the GM sees everything");
+  await T.gm({ op: "reveal", combatant: "N1", powers: true });
+  v = View.viewFor(T.state, p1, meta);
+  eq([v.tokens.length, v.effects.length, Object.keys(v.counters).length, v.stack[0].decl.opt], [3, 3, 3, "secretOpt"], "view: once the GM reveals the NPC's powers, all of it shows");
+  /* a hero's declaration is table knowledge as before */
+  const U = fight(); await U.req("p2", { op: "mark", actor: "H2", unit: "quick" }); await U.req("p1", decl("H1", "slugfest", ["N1"], { mod: 0, pulled: 1 }));
+  eq(View.viewFor(U.state, { id: "p2", staff: false, owns: ["H2"] }, meta).stack[0].decl.pulled, 1, "view: another hero's declaration is whole");
 }
 
 done("check-defects");

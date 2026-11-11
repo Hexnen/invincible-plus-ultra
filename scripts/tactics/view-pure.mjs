@@ -62,11 +62,16 @@ function rollView(state, r, viewer, meta) {
   return out;
 }
 const OUT_KEEP = ["hit", "net", "stunts", "autoMiss", "defence", "picked"];
+/* Spec 10: what an NPC can do stays the GM's until that opponent is revealed (`revealed[cid].powers`). Of the declaration of such an NPC a
+   player sees what the table was told when it was declared (the public `actionDeclared` event, engine-pure.publicDecl) and who helps. */
+const DECL_PUBLIC = ["action", "weapon", "targets", "zone", "special", "wreck", "area", "fullAuto", "to", "mode", "attr", "helpers"];
+const powersHidden = (state, cid, meta) => typeof cid === "string" && (meta.npc ?? []).includes(cid) && !state.revealed?.[cid]?.powers;
 function instView(state, inst, viewer, meta, concealed) {
   if (inst.actor && concealed.has(inst.actor)) return { id: inst.id, parent: inst.parent, status: inst.status, masked: 1 };
   const mine = inst.actor && viewer.owns.includes(inst.actor);
-  const decl = clone(inst.decl ?? {});
+  let decl = clone(inst.decl ?? {});
   if (!mine) { delete decl.exception; delete decl.tokens; if (decl.text && inst.status === "manual" && !inst.actor) delete decl.text; }
+  if (!mine && powersHidden(state, inst.actor, meta)) decl = Object.fromEntries(DECL_PUBLIC.filter((k) => decl[k] !== undefined).map((k) => [k, decl[k]]));
   const out = { id: inst.id, action: inst.action, flow: inst.flow, actor: inst.actor, initiator: inst.initiator, parent: inst.parent, cause: inst.cause, step: inst.step, status: inst.status,
     locked: inst.locked, part: inst.part, decl, rolls: {}, data: {} };
   for (const [k, r] of Object.entries(inst.rolls ?? {})) { const v = rollView(state, r, viewer, meta); if (v) out.rolls[k] = v; }
@@ -86,6 +91,7 @@ export function viewFor(state, viewer, meta = {}) {
   const concealed = concealedFor(state, V, meta);
   const keepKey = (o) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !concealed.has(k)));
   const mineRec = (r) => V.owns.includes(r?.subject?.combatant) || V.owns.includes(r?.source?.owner);          // Trigger of spec 6.1: its subject or the owner of its source
+  const secret = (cid) => powersHidden(state, cid, meta) && !V.owns.includes(cid);
   const base = baseView(state, { gm: false, userId: V.id, hidden: [...concealed] });
   const prompts = {};
   for (const p of Object.values(state.prompts ?? {})) { if (p.about && concealed.has(p.about)) continue; const q = promptView(p, V); if (q) prompts[p.id] = q; }
@@ -97,7 +103,11 @@ export function viewFor(state, viewer, meta = {}) {
     stack: (state.stack ?? []).map((i) => instView(state, i, V, meta, concealed)),
     prompts,
     triggers: clone((state.triggers ?? []).filter(mineRec)),                          // other people's armed reactions are not public
-    tokens: clone((state.tokens ?? []).filter((t) => !t.gmOnly)), counters: clone(state.counters ?? {}), effects: clone((state.effects ?? []).filter((e) => !e.gmOnly)),
+    /* bonus dice, running effects and use counters are part of what a character can do: those of an NPC that is not revealed stay with
+       the GM; what sits on a hero (a die somebody put on the hero's roll, an effect the hero is under) is that hero's to know */
+    tokens: clone((state.tokens ?? []).filter((t) => !t.gmOnly && !secret(t.holder))),
+    counters: clone(Object.fromEntries(Object.entries(state.counters ?? {}).filter(([k]) => { const m = /^(?:round|scene):([^:]+):/.exec(k); return !m || !secret(m[1]); }))),
+    effects: clone((state.effects ?? []).filter((e) => !e.gmOnly && !(e.holder ? secret(e.holder) : secret(e.source?.owner)))),
     items: clone(state.items ?? []), summons: clone(state.summons ?? []),
     knowledge: Object.fromEntries(V.owns.map((o) => [o, clone(state.knowledge?.[o] ?? {})])),
     revealed: clone(keepKey(state.revealed)), opts: clone(state.opts ?? {}),

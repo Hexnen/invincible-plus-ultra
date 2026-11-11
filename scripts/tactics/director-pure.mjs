@@ -105,7 +105,37 @@ async function settle(state, log, events, host, sweep = true) {
   return { state: s, log: l };
 }
 
-export async function handle({ state, log }, input, host) {
+/* Spec 10: a combatant the GM keeps hidden does not exist for a player. A player's request that names one (as the actor, a target, a
+   helper, somebody carried) is handled exactly as the same request naming nobody: the name is swapped for an id no combatant has before
+   anything looks at it, and put back in what the refusal echoes. One place, for the round driver and the action engine alike. */
+const NAMES_ONE = ["actor", "helper", "combatant"], NAMES_MANY = ["targets", "carry", "fullAuto"];
+function veil(input, host) {
+  if (input?.t !== "req" || !input.user || input.user.staff || !input.req || typeof input.req !== "object") return null;
+  let f; try { f = host.facts(); } catch { return null; }
+  const ghost = (id) => { if (typeof id !== "string") return false; const c = f.c?.(id); return !!c && c.hidden === true && !(c.owners ?? []).includes(input.user.id); };
+  let nobody = "nobody"; for (let i = 0; f.c?.(nobody); i++) nobody = `nobody${i}`;
+  const swapped = new Set();
+  const swap = (id) => (ghost(id) ? (swapped.add(id), nobody) : id);
+  const walk = (o, depth = 0) => {
+    if (Array.isArray(o)) return depth > 6 ? o : o.map((x) => walk(x, depth + 1));
+    if (!o || typeof o !== "object" || depth > 6) return o;
+    const out = {};
+    for (const [k, x] of Object.entries(o)) out[k] = NAMES_ONE.includes(k) ? swap(x) : NAMES_MANY.includes(k) && Array.isArray(x) ? x.map(swap) : k === "text" || k === "value" ? x : walk(x, depth + 1);
+    return out;
+  };
+  const req = walk(input.req);
+  if (!swapped.size) return null;
+  const only = swapped.size === 1 ? [...swapped][0] : null;
+  const back = (o, depth = 0) => (o === nobody && only ? only : Array.isArray(o) ? o.map((x) => back(x, depth + 1)) : o && typeof o === "object" && depth < 6 ? Object.fromEntries(Object.entries(o).map(([k, x]) => [k, back(x, depth + 1)])) : o);
+  return { req, back };
+}
+export async function handle(io, input, host) {
+  const v = veil(input, host);
+  if (!v) return handle0(io, input, host);
+  const r = await handle0(io, { ...input, req: v.req }, host);
+  return r?.env?.error ? { ...r, env: { ...r.env, error: v.back(r.env.error) } } : r;
+}
+async function handle0({ state, log }, input, host) {
   const lg = log ?? J.emptyLog();
   try {
     if (input?.t !== "req" || !isRound(state, input.req)) {
