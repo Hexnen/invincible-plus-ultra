@@ -23,7 +23,7 @@ const TIGHT = 1000;      // px of room for the bar below which the side buttons 
 const TOP_OBSTACLES = "#invincible-combat-bar .icbar-tile, #invincible-combat-bar .icbar-acts:not([hidden]), #invincible-combat-bar .icbar-gma:not([hidden]), #mm-orbit-strip";
 /* panels of other modules at the left edge that reach down into the dock's band (the map's pins / filter panel, its VRAM meter) */
 const LEFT_OBSTACLES = ".mm-filter, #mm-vram";
-let root = null, stack = null, handlers = {}, shown = false, hideTimer = 0, last = null;
+let root = null, stack = null, handlers = {}, shown = false, hideTimer = 0, last = null, panelKey = null;
 
 export function configure(x) { handlers = x ?? {}; }
 const set = (patch) => handlers.set?.(patch);
@@ -249,6 +249,11 @@ function draw(d, ui) {
   ensure(handlers.label?.("dock") ?? "");
   root.classList.toggle("itd-turn", !!d.onTurn);
   root.classList.toggle("itd-rest", !!d.rest);
+  /* the panel rises once, when it opens: a rebuild of the same panel (a key typed in its text box, a target picked) must not play the
+     entry again, whose first frames clip the top of the panel, where the request to the GM is */
+  const pk = d.show && d.panel ? `${d.panel.kind}|${d.panel.action ?? ""}` : null;
+  root.classList.toggle("itd-same", pk !== null && pk === panelKey);
+  panelKey = pk;
   const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again };
   swap(stack, [
     d.prompts?.length ? h("div.itd-asks", {}, d.prompts.map((a) => askCard(a, askH))) : null,
@@ -259,13 +264,15 @@ function draw(d, ui) {
        its tooltip, put away with its x) */
     d.show && (d.waiting?.length || d.turn || d.rolls?.length || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
       (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
-      d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.rolls?.length ? d.waiting.filter((w) => !w.mine || w.what.length > d.rolls.length) : d.waiting)] : null,
-      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null }, icon("fa-bullhorn"), h("span.itd-news-t", { text: d.news.text }),
+      d.turn ? h("span.itd-turnline", { text: d.turn }) : null, waitRest(d).length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(waitRest(d))] : null,
+      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: [d.news.text, ...d.news.older].join("<br>") }, icon("fa-bullhorn"), h("span.itd-news-t", { text: d.news.text }),
         h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null,
   ]);
   place();
   reveal();
 }
+/* who the table waits for, without this client's own roll while its chip (with the buttons) already says it */
+const waitRest = (d) => (d.rolls?.length ? (d.waiting ?? []).filter((w) => !w.mine || w.what.length > d.rolls.length) : d.waiting ?? []);
 function reveal() {
   clearTimeout(hideTimer);
   if (shown) return;
