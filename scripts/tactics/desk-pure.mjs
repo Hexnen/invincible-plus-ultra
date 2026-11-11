@@ -8,7 +8,8 @@ import * as C from "./catalog-pure.mjs";
 import { REVALIDATE_OPTIONS, FLOWS } from "./engine-pure.mjs";
 import * as Init from "./initiative-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
-import { standing } from "./mods-pure.mjs";
+import { standing, conditions as condsOf } from "./mods-pure.mjs";
+import { crits } from "../rules/index.mjs";
 import { applies, attrChoices } from "./actions-pure.mjs";
 /* ADDED FOR THE SURFACES (scripts/tactics/ui/; all additive, checked in check-ui.mjs):
      instance lines carry `steps` (the flow's step ids, for "back to step"), `attr` / `defense` of the catalog entry `outcomes`, and `defs` (the defences declared, with their dice in the GM's model);
@@ -104,13 +105,17 @@ function promptModel(p, ctx) {
     options: (p.options ?? []).map((o) => ({ id: o.id, label: o.label ?? `ITAC.opt.${o.id}`, disabled: o.disabled ?? null, cost: o.cost, stress: o.stress, data: o.data, req: o.disabled ? null : optReq(p, o, "answer") })),
     answerReq: (value) => ({ op: "answer", prompt: p.id, value }) };
 }
-/** U9: is the combatant out of action, as the statuses of the view say it ([B2707]; the engine marks broken, unconscious, dying and dead)?
+/** U9: is the combatant out of action [B2707]? The statuses of the view say it (the engine marks broken, unconscious, dying and dead), and
+    so does Health 0 of the combatant's own facts `c` (U45: the engine and the round driver read Health, mods-pure.outOfAction, so a
+    character brought to 0 with no mark yet, by hand or while the GM's card about a broken NPC still waits, is out all the same).
     -> null | { reason: "dead" | "unconscious" | "broken", canRally, label }. canRally: broken, and nothing says it cannot get up
     ([B2773]: an injury of 9 or worse leaves the character unconscious, dying or dead). The engine's own answer stays the legality of a declaration. */
-export function outOf(view, cid) {
+export function outOf(view, cid, c = null) {
   const has = (id) => (view?.statuses?.[cid] ?? []).some((s) => s.id === id);
-  const reason = has("dead") ? "dead" : has("unconscious") ? "unconscious" : has("broken") ? "broken" : null;
-  return reason ? { reason, canRally: reason === "broken" && !has("dying"), label: `ITAC.ui.out.${reason}` } : null;
+  const zero = !!c && c.kind !== "vehicle" && c.kind !== "challenge" && Number.isFinite(c.health) && !(c.health > 0);
+  const reason = has("dead") ? "dead" : has("unconscious") ? "unconscious" : has("broken") || zero ? "broken" : null;
+  const rally = reason === "broken" && !has("dying") && (!c || crits.canRally({ broken: true, crits: c.crits ?? [], primaryCopy: c.pass?.noRally === true }).ok);
+  return reason ? { reason, canRally: rally, label: `ITAC.ui.out.${reason}` } : null;
 }
 /** The action bar of one combatant: budget, and each catalog action with whether its cost is payable now (legality against a target is the executor's). */
 export function barModel(view, cid, ctx = {}) {
@@ -122,13 +127,18 @@ export function barModel(view, cid, ctx = {}) {
   const fits = (e) => typeof e.when !== "string" || (e.when === "challenge" ? special.some((x) => x.kind === "challenge") : e.when === "onFoot" ? !ride && special.some((x) => x.kind === "vehicle") : e.when === "aboard" ? !!ride : e.when === "driver" ? ride?.role === "driver" : true);
   const holding = (view.statuses?.[cid] ?? []).some((s) => s.id === "grappling");
   const heldNow = (view.statuses?.[cid] ?? []).some((s) => s.id === "grappled");            // [B2496]: the one held makes no attack until it breaks free (the attack flow refuses it with the same word)
-  const broken = Object.keys(view.statuses ?? {}).filter((id) => (view.statuses[id] ?? []).some((s) => s.id === "broken"));
-  const out = outOf(view, cid), left = (e) => !out || (out.reason === "broken" && (e.effect?.kind === "convert" || (out.canRally && e.effect?.kind === "rally" && (e.target?.n?.[0] ?? 0) === 0)));      // U9 [B2707], [B2773]
+  const out = outOf(view, cid, ctx.c?.(cid) ?? null);
+  const broken = [...new Set([...Object.keys(view.statuses ?? {}).filter((id) => (view.statuses[id] ?? []).some((s) => s.id === "broken")), ...(out?.reason === "broken" ? [cid] : [])])];
+  /* U22 [B2496] [R20] [R21]: one who is held, snared or trapped does not move, nor does anything that needs the body: the bar greys it with
+     the engine's own word (movement-pure.cannotMove, flows/acts.mjs) instead of offering it and refusing the declaration */
+  const cond = condsOf(view, cid), stuck = cond.held ? "held" : cond.snared ? "snared" : cond.trapped ? "trapped" : null;
+  const tied = ["grappled", "snared", "immobilised"].some((st) => (view.statuses?.[cid] ?? []).some((s) => s.id === st));
+  const left = (e) => !out || (out.reason === "broken" && (e.effect?.kind === "convert" || (out.canRally && e.effect?.kind === "rally" && (e.target?.n?.[0] ?? 0) === 0)));      // U9 [B2707], [B2773]
   const actions = C.entriesFor(view, cid, kitFacts(ctx)).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && fits(e) && left(e) && applies(e, cid, view.statuses ?? {}, broken) && (!e.gm || ctx.staff)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
     const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", {}) : { ok: false, reason: "noLedger" };
     const unit = pay.ok && pay.pay ? (view.ledger?.[cid]?.grants ?? []).find((g) => g.id === pay.pay) : null, granted = !onTurn && !!unit && unit.kind !== "base";      // a unit usable out of turn pays it (the crew's attack in a chase [B3438], a GM grant)
     const anytime = !!e.kit && e.cost === "none";                                               // P6: what costs no action is used when it applies (the flow checks the rest)
-    const reason = busy ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
+    const reason = busy ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
       attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders" || e.effect?.token === "orders",
       name: e.name || null, kit: e.kit ?? null, pick: Array.isArray(e.pick) ? e.pick.slice() : null, stress: e.stress?.fixed ?? 0, fxOn: e.fxOn === true, unarmed: e.unarmed === 1,      // P6

@@ -152,3 +152,15 @@ export function journalFor(log, viewer) {
   if (viewer?.staff) return list.map((t) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, text: t.label?.gm ?? "", pub: t.label?.pub ?? "", undoable: t.state === "closed" && Array.isArray(t.ops), ops: t.ops?.length ?? 0 }));
   return list.filter((t) => t.label?.pub).map((t) => ({ id: t.id, round: t.round, at: t.at, state: t.state, text: t.label.pub }));
 }
+/** U19: two combatants with one name are told apart in every text of the fight: "Soldier #1", "Soldier #2". The order is the one of the
+    list (the fight's own, the same on every client) with the hidden ones LAST, so the numbers a player reads are the GM's and no gap in
+    them gives a hidden namesake away. list = [{ id, name, hidden }] -> { id: name } */
+export function distinctNames(list) {
+  const by = new Map(), out = {};
+  for (const x of list ?? []) { const k = String(x.name ?? ""); if (!by.has(k)) by.set(k, []); by.get(k).push(x); }
+  for (const [name, same] of by) {
+    if (same.length < 2) { out[same[0].id] = name; continue; }
+    [...same.filter((x) => !x.hidden), ...same.filter((x) => x.hidden)].forEach((x, i) => { out[x.id] = `${name} #${i + 1}`; });
+  }
+  return out;
+}

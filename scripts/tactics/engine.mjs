@@ -54,8 +54,9 @@ function combatantFacts(cb) {
     present: !(cb.isDefeated ?? cb.defeated) && !!tokenOf(cb), defeated: !!(cb.isDefeated ?? cb.defeated), summonOf: S.isId(summonOf) ? summonOf : null, summon: cb.flags?.[MOD]?.tactics?.summon ?? null, ...f, npc: isNpc(cb) };
 }
 function makeFacts(combat) {
-  const memo = new Map();
-  const c = (cid) => { if (!memo.has(cid)) { const cb = combat.combatants.get(cid); let f = null; try { f = cb ? combatantFacts(cb) : null; } catch (err) { console.warn(`${MOD} | tactics facts`, err); } memo.set(cid, f); } return memo.get(cid); };
+  const memo = new Map(); let names = null;
+  /* U19: namesakes are numbered, the hidden ones last (view-pure.distinctNames) */
+  const c = (cid) => { if (!memo.has(cid)) { const cb = combat.combatants.get(cid); let f = null; try { f = cb ? combatantFacts(cb) : null; if (f) f.name = (names ??= V.distinctNames(combat.combatants.map((x) => ({ id: x.id, name: x.name ?? Sys.actorOf(x)?.name ?? "", hidden: x.hidden === true || tokenOf(x)?.hidden === true }))))[cb.id] ?? f.name; } catch (err) { console.warn(`${MOD} | tactics facts`, err); } memo.set(cid, f); } return memo.get(cid); };
   const tok = (cid) => tokenOf(combat.combatants.get(cid));
   const byToken = (token) => combat.combatants.find((x) => x.tokenId === (token?.id ?? token?.document?.id))?.id ?? null;
   return {
