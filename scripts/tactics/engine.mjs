@@ -69,8 +69,8 @@ function makeFacts(combat) {
     inZone: (cid) => (tok(cid) ? Zones.tokensInZone(tok(cid)).map(byToken).filter((x) => x && x !== cid) : []),      // same spot: the book's "same zone"
     inZoneKey: (where) => Zones.tokensInZone(where).map(byToken).filter(Boolean),                                     // a key: every level; a spot: that level; the ground alone: "z3:ground" (the ground spot is the bare key) [D26]
     user: (uid) => { const u = game.users.get(uid); return u ? { id: u.id, staff: Store.isStaff(u), active: u.active === true } : null; },
-    zones: Zones.available() ? Mv.zoneFacts(tok, byToken) : null,                                                     // P3: the live zone facts of movement-pure.mjs
-    canTalk: (a, b) => (Zones.available() ? Mv.talk(Mv.zoneFacts(tok, byToken), a, b)?.ok : undefined),              // [Z11]
+    zones: Zones.usable() ? Mv.zoneFacts(tok, byToken) : null,                                                     // P3: the live zone facts of movement-pure.mjs
+    canTalk: (a, b) => (Zones.usable() ? Mv.talk(Mv.zoneFacts(tok, byToken), a, b)?.ok : undefined),              // [Z11]
     actorValue: (uuid, field) => { const a = fromUuidSync(uuid); return a ? Sys.actorValue(a, field) : null; },
   };
 }
