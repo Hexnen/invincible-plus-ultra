@@ -57,7 +57,7 @@ function makeFacts(combat) {
   const byToken = (token) => combat.combatants.find((x) => x.tokenId === (token?.id ?? token?.document?.id))?.id ?? null;
   return {
     c,
-    weapon: (cid, ref) => (ref == null || ref === "unarmed" ? { id: "unarmed", name: "unarmed", bonus: 0, damage: null, range: null, sharp: false } : Sys.weaponFacts(Sys.actorOf(combat.combatants.get(cid)), ref)),
+    weapon: (cid, ref) => (ref == null || ref === "unarmed" ? { id: "unarmed", name: "unarmed", bonus: 0, damage: null, range: null, sharp: false, ...(c(cid)?.kit?.unarmed ?? {}) } : Sys.weaponFacts(Sys.actorOf(combat.combatants.get(cid)), ref, c(cid)?.kit ?? null)),
     range: (a, b) => { const ta = tok(a), tb = tok(b); return ta && tb ? Zones.range(ta, tb) : undefined; },
     /* the combatant's 3-D zone: its spot string, and the zone's states and emptiness as the map reports them */
     zone: (cid) => { const p = tok(cid) ? Zones.placeOf(tok(cid)) : null; const z = p?.zone ? Zones.zoneOf(p.zone) : null; return p ? { spot: p.spot ?? null, key: p.zone ?? null, level: p.level ?? null, area: p.area ?? null, airborne: p.airborne === true, states: z?.states ?? {}, empty: z?.empty === true, terrain: typeof z?.terrain === "string" ? z.terrain : "", rooftop: z?.rooftop === true } : null; },   // terrain and rooftop: what wrecking the zone reads [P4]
@@ -102,6 +102,10 @@ async function perform(combat, e) {
       return r.op ? { op: r.op, result: r.result } : { result: r.result };
     }
     case "zmove": case "zput": return Mv.performMove(e, (cid) => tokenOf(combat.combatants.get(cid)));        // P3: one stretch of a move / an arrival; the map's inverse is journaled
+    case "fx": { const actor = await fromUuid(e.uuid); const op = actor ? await Sys.setItemEffect(actor, e.item, e.fx, e.on) : null; if (!op) ui.notifications?.warn(t("ITAC.warn.noEffect")); return op ? { op } : {}; }      // P6: a form, a size, a stance switched from the dock
+    case "kitFlag": await Sys.setKitFlag(e.uuid, e.item, e.key, e.value); return {};
+    case "summonFlag": { const cb = combat.combatants.get(e.combatant); if (cb) { await cb.update({ [`flags.${MOD}.tactics.summonOf`]: e.owner ?? null }, { ipuTactics: true }); scheduleRoster(combat); } return {}; }
+    case "fxSet": { const actor = await fromUuid(e.actorUuid); if (actor) await Sys.setItemEffect(actor, e.itemId, e.effectId, e.on); return {}; }
     case "itemDelete": { const a = await fromUuid(e.actorUuid); if (a?.items.get(e.itemId)) await a.deleteEmbeddedDocuments("Item", [e.itemId], { ipuTactics: true }); return {}; }
     case "itemCreate": { const a = await fromUuid(e.actorUuid); if (a && e.data) await a.createEmbeddedDocuments("Item", [e.data], { keepId: !!e.keepId, ipuTactics: true }); return {}; }
     case "effectDelete": { const a = await fromUuid(e.actorUuid); if (a?.effects.get(e.effectId)) await a.deleteEmbeddedDocuments("ActiveEffect", [e.effectId], { ipuTactics: true }); return {}; }
@@ -219,7 +223,9 @@ export function view(user = game.user, combat = undefined) {
 }
 export function journal(user = game.user, combat = undefined) { const c = pick(combat); return c && Store.stateOf(c) ? V.journalFor(Store.logOf(c), viewer(user, c)) : []; }
 /** names and presence for the desk and player models (desk-pure.mjs) */
-export const context = (combat = undefined) => { const c = pick(combat); return { c: (cid) => { const cb = c?.combatants.get(cid); return cb ? { name: cb.name, npc: Sys.actorOf(cb)?.type !== "superhero", owners: Sys.ownersOf(Sys.actorOf(cb)) } : null; }, online: (uid) => game.users.get(uid)?.active === true,
+export const context = (combat = undefined) => { const c = pick(combat); return { staff: Store.isStaff(game.user),
+  kit: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.kitOf(a) : null; } catch { return null; } },      // P6: only of a sheet this user may read
+  c: (cid) => { const cb = c?.combatants.get(cid); return cb ? { name: cb.name, npc: Sys.actorOf(cb)?.type !== "superhero", owners: Sys.ownersOf(Sys.actorOf(cb)) } : null; }, online: (uid) => game.users.get(uid)?.active === true,
   special: () => (c?.combatants?.contents ?? []).filter((cb) => ["challenge", "vehicle"].includes(Sys.actorOf(cb)?.type) && (Store.isStaff(game.user) || !cb.hidden)).map((cb) => ({ id: cb.id, name: cb.name, kind: Sys.actorOf(cb).type })) }; };      // P7
 
 /** what movement.mjs needs of this client (the cost confirmation on a drag, the reach pick) */

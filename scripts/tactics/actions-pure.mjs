@@ -34,6 +34,7 @@ export const ACTIONS = Object.freeze({
   escapeTrap: row("escapeTrap", "quick", [2438], { roll: { attrs: ["agility", "strength"] }, effect: { kind: "escape", from: "trapped", escape: "trap" }, when: { self: "trapped" }, tags: ["escape"] }),
   escapeSnare: row("escapeSnare", "full", [1606, 1607, 1608, 1609], { roll: { attr: "strength" }, effect: { kind: "escape", from: "snared", escape: "snare" }, when: { self: "snared" }, tags: ["escape"] }),
   escapeImmobilised: row("escapeImmobilised", "full", [1645, 1736, 1779], { roll: { attr: "strength" }, effect: { kind: "escape", from: "immobilised", escape: "snare" }, when: { self: "immobilised" }, tags: ["escape"] }),
+  shakeOff: row("shakeOff", "none", [1574], { roll: { attr: "presence" }, effect: { kind: "shake" }, when: { self: "afflicted" }, once: "round", tags: ["escape"] }),      // P6: no action, one attempt a round
   extinguish: row("extinguish", "full", [2926], { roll: { attr: "agility" }, target: { who: "ally", n: [0, 1] }, effect: { kind: "extinguish" }, tags: ["physical"], when: { anyone: "burning" } }),
 });
 export const ATTRS = Object.freeze(["fighting", "agility", "strength", "reason", "intuition", "presence"]);

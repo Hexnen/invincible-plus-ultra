@@ -30,7 +30,8 @@ export function makeToken(t) {
     source: source(t.source), expires: { at: TOKEN_EXPIRES.includes(t.expires?.at) ? t.expires.at : "roundEnd" } };
   if (isId(t.expires?.who)) out.expires.who = t.expires.who;
   if (isId(t.from)) out.from = t.from;
-  if (t.needsGm || scope.purpose) out.needsGm = 1;       // spec 6.2: a token with `purpose` or `needsGm` shows the GM a one-click confirmation
+  if (t.needsGm || scope.purpose) out.needsGm = 1;
+  if (t.forced) out.forced = 1;                          // P6: put on the holder's roll by somebody else (Luck Control [B1727]); counted without being chosen       // spec 6.2: a token with `purpose` or `needsGm` shows the GM a one-click confirmation
   return out;
 }
 /** Tokens `holder` may add to a roll. roll = { kind: one of ROLL_KINDS, attr }. */
@@ -75,7 +76,7 @@ export const counterReset = (state, scope) => Object.keys(state.counters ?? {}).
 
 /* ------------------------------------------------------------------ statuses (spec 6.3) */
 export const STATUS_IDS = Object.freeze(["broken", "unconscious", "dying", "dead", "stressedOut", "grappled", "grappling", "snared", "immobilised", "trapped", "unaware",
-  "stunned", "burning", "airborne", "carrying", "carried", "afflicted", "invisible", "huge", "noLegs", "sick", "itemLost", "inVehicle", "suffocating"]);
+  "stunned", "burning", "airborne", "carrying", "carried", "afflicted", "invisible", "huge", "noLegs", "sick", "itemLost", "inVehicle", "suffocating", "intangible"]);
 export const statusesOf = (state, cid) => state.statuses?.[cid] ?? [];
 export const hasStatus = (state, cid, id) => statusesOf(state, cid).some((s) => s.id === id);
 export function statusAdd(state, cid, st) {

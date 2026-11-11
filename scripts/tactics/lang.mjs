@@ -4,6 +4,7 @@
    Errors arrive as { key, code, params }: errText(error). */
 import { EN_ATTACKS, PL_ATTACKS } from "./lang-attacks.mjs";
 import { EN_INT, PL_INT } from "./lang-int.mjs";
+import { EN_KIT, PL_KIT } from "./lang-kit.mjs";
 export const EN = {
   "ITAC.Settings.tacticsEnabled.Name": "Tactical combat",
   "ITAC.Settings.tacticsEnabled.Hint": "Off (the default): nothing of tactical combat runs and the combat tracker works as it did before. On: the module deals initiative cards, tracks the action budget and resolves declared actions; new fights start with the rules enforced, and the GM can switch a running fight to free mode at any time. Needs a reload.",
@@ -1722,7 +1723,7 @@ export const PL = {
   "ITAC.ui.effect.toxin": "toksyna",
   "ITAC.action.chaseRound": "Runda pościgu",
 };
-Object.assign(EN, EN_ATTACKS, EN_INT); Object.assign(PL, PL_ATTACKS, PL_INT);      // package P4 keeps its strings in lang-attacks.mjs
+Object.assign(EN, EN_ATTACKS, EN_INT, EN_KIT); Object.assign(PL, PL_ATTACKS, PL_INT, PL_KIT);      // package P4 keeps its strings in lang-attacks.mjs
 const table = () => { try { return String(globalThis.game?.i18n?.lang ?? "en").toLowerCase().startsWith("pl") ? PL : EN; } catch { return EN; } };
 /** t(key, params, fallback): the string in the client's language, {placeholders} filled (one without a value stays as written);
     falls back to English, then to `fallback` (default: the key). */

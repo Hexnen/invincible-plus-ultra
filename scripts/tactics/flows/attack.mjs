@@ -85,11 +85,14 @@ export function legality(v, inst) {
     if (ac.trapped && (SLUG.includes(kind) || kind === "charge")) return bad("trapped");                     // [R20], [B2438]: no slugfest, no movement
     if (M.hasStatus(state, inst.actor, "grappling") && kind !== "grappleAttack") return bad("grappling");    // [B2497]
     if (kind === "grappleAttack" && !M.hasStatus(state, inst.actor, "grappling")) return bad("notHolding");  // [B2497]
-    if ((d.stressTotal ?? 0) > 0 && !damage.canTakeVoluntaryStress(a.resolve)) return bad("stressedOut");    // [B2816], [B2228]
+    if ((d.stressTotal ?? 0) + (weaponOf(v, inst)?.stress ?? 0) > 0 && !damage.canTakeVoluntaryStress(a.resolve)) return bad("stressedOut");    // [B2816], [B2228]; P6: the stress a power's attack costs
   }
   if (!Array.isArray(d.targets) || d.targets.length < 1) return bad("noTarget");
   if (d.targets.length > 1 && !multi) return bad("oneTarget");
   const w = weaponOf(v, inst);
+  if (!counter && d.weapon && d.weapon !== "unarmed" && !w) return bad("noWeapon");
+  if (entry?.unarmed && d.weapon && d.weapon !== "unarmed") return bad("noWeapon", { gmMayAllow: 1 });       // P6 [B2151]: Martial Arts is unarmed
+  if (w?.fam === "shoot" && kind === "slugfest") return bad("noWeapon");                                      // P6: a power thrown from afar is a shooting attack
   if (multi) {                                                                                               // [B2542], [B2543]
     if (!(entry?.[multi] || w?.[multi])) return bad(multi === "area" ? "noArea" : "noFullAuto", { gmMayAllow: 1 });
     if (multi === "fullAuto" && attack.ATTACKS[kind].family !== "shooting") return bad("noFullAuto");
@@ -110,6 +113,7 @@ export function legality(v, inst) {
   for (const t of d.targets) {
     const tf = facts.c(t);
     if (!tf || tf.present === false || t === inst.actor) return bad(t === inst.actor ? "self" : "gone");
+    if (w?.immuneHuge && tf.huge) return bad("hugeTarget");                                                  // P6 [B1606], [B1625]
     const unseen = state.knowledge?.[inst.actor]?.[t] === "unseen";
     if (unseen && !d.blind && !d.area) return bad("unseen");                                                 // spec 10: needs the stated intent to attack "where it should be"
     const r = facts.range(inst.actor, t);
@@ -117,7 +121,7 @@ export function legality(v, inst) {
     else if (r === null) return bad("noRange");                                                              // [Z4]
     else if (kind === "charge" && !approached) { if (r.total === 0) return bad("chargeSameZone"); }          // [B2490]
     else if (SLUG.includes(kind) || kind === "charge") {                                                     // [Z2], [B2425]; huge and grown attackers reach elevated targets [B2500], [B1975]; wrecking reaches one zone [B2453]
-      const reach = zones.slugfestReachAt(r, facts.zone(inst.actor) ?? {}, facts.zone(t) ?? {}, { range: d.wreck ? 1 : 0, huge: stunts.reachesElevated(a) });
+      const reach = zones.slugfestReachAt(r, facts.zone(inst.actor) ?? {}, facts.zone(t) ?? {}, { range: Math.max(d.wreck ? 1 : 0, w?.reach ?? 0, a.pass?.reach ? 1 : 0, K.copiesOf(state, inst.actor) > 0 ? 1 : 0), huge: stunts.reachesElevated(a) });      // P6: Elongation [B1919], copies [B1908]
       if (!reach.ok) return bad("outOfReach", { distance: r.total });
     }
     else {
@@ -159,12 +163,16 @@ function defencePrompt(v, I, t) {
   const opts = attack.defenceOptions({ attack: dq.attack, defender: { ...conds, hasQuick }, inChase: dq.inChase });        // [B2446], [B2524], [R6], [R20], [R21], [R10]
   const options = [];
   for (const id of ["block", "dodge"]) {
-    if (opts[id].reason === "notAllowed") continue;                                              // this attack cannot be answered that way at all
+    let op = opts[id];
+    if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && tf?.pass?.deflection && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]
+      const other = opts[id === "block" ? "dodge" : "block"]; op = other.reason === "notAllowed" ? { ok: true, reason: null } : other;
+    }
+    if (op.reason === "notAllowed") continue;                                                    // this attack cannot be answered that way at all
     const o = { id, label: `ITAC.action.${id}`, cost: "quick" };
-    if (!opts[id].ok) o.disabled = opts[id].reason;
+    if (!op.ok) o.disabled = op.reason;
     options.push(o);
   }
-  for (const e of C.reactionsFor(v.state, t, "beforeRoll").filter((e) => e.reaction.effect !== "swapTarget")) options.push(K.reactionOption(v, t, e));
+  for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget")) options.push(K.reactionOption(v, t, e));
   const live = options.filter((o) => !o.disabled);
   const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind } };
   if (!live.length) p.auto = { option: K.PASS, reason: conds.unaware ? "unaware" : "noOption" };                 // plan 5.2 step 4
@@ -186,7 +194,7 @@ function applyReaction(v, I, R, cid, key, value, when) {
     R.events.push({ type: "reaction", who: cid, kind: id, cost: "quick", stress: 0 });
     return false;
   }
-  const e = C.reactionsFor(v.state, cid, when).find((x) => `r:${x.id}` === id);
+  const e = C.reactionsFor(v.state, cid, when, v.facts).find((x) => `r:${x.id}` === id);
   if (!e) return false;
   R.effects.push({ t: "pay", who: cid, cost: e.cost, action: e.id, interrupt: 1, key: `re:${when}:${cid}`, target: [I.actor] });
   if (e.stress?.fixed) R.effects.push({ t: "stress", who: cid, n: e.stress.fixed });
@@ -230,6 +238,7 @@ export const steps = {
      target zone [B2542], a charge pays its quick action and fixes its route [B2490] */
   check(v, inst) {
     const I = K.draft(inst), R = K.result(I), kind = kindOf(I);
+    if (weaponOf(v, I)?.always?.includes("area")) I.decl.area = 1;                              // P6: a power that always takes the whole zone [B1671]
     I.data.multi = multiOf(I.decl);
     if (I.decl.area && !K.flag(I, "area")) {                                                    // [A40]: the attacker's own area attack does not include the attacker
       K.setFlag(I, "area");
@@ -328,7 +337,9 @@ export const steps = {
     if (!K.flag(I, "lock")) {
       K.setFlag(I, "lock");
       if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }             // spec 5.5
-      if ((d.stressTotal ?? 0) > 0) R.effects.push({ t: "stress", who: I.actor, n: d.stressTotal, cost: 1 });   // spec 4.3: charged when the declaration locks
+      const st = (d.stressTotal ?? 0) + (kind === "counterattack" ? 0 : weaponOf(v, I)?.stress ?? 0);
+      if (st > 0) R.effects.push({ t: "stress", who: I.actor, n: st, cost: 1 });                 // spec 4.3: charged when the declaration locks; P6: with the stress of the power used
+      if (kind !== "counterattack" && M.hasStatus(v.state, I.actor, "invisible")) R.effects.push({ t: "status-", who: I.actor, id: "invisible" });      // P6 [B2075]: attacking ends it
       if (d.wreck) {                                                                            // [B2451-2457]: the zone is wrecked whether or not the blow lands
         const wz = wreckOf(v, I.actor), key = wz.zone ?? null;
         I.data.wreck = { zone: key, bonus: wz.ok ? wz.bonus : 0, roof: wz.ok && wz.levelsRooftop ? 1 : 0 };
@@ -346,16 +357,17 @@ export const steps = {
       R.goto = "outcome"; return R;
     }
     if (!K.rollOf(I, "attack")) {
-      const tg = K.tokenGate(v, I, R, I.actor, { kind: "attack", attr: A.attr }, d.tokens ?? [], "attack");
+      const w = weaponOf(v, I), AT = w?.attr ?? A.attr;                                          // P6: a power may be thrown with another attribute
+      const tg = K.tokenGate(v, I, R, I.actor, { kind: "attack", attr: AT }, d.tokens ?? [], "attack");
       if (tg.wait) { R.wait = true; return R; }
-      const t0 = d.targets[0], a = v.facts.c(I.actor), w = weaponOf(v, I), r = v.facts.range(I.actor, t0);
+      const t0 = d.targets[0], a = v.facts.c(I.actor), r = v.facts.range(I.actor, t0);
       const mods = attack.attackModifiers({ attack: kind, target: I.data.multi ? {} : M.conditions(v.state, t0), weaponBonus: w?.bonus ?? 0, wreckBonus: I.data.wreck?.bonus ?? 0, distance: r?.total ?? null, range: w?.range ?? null,
-        targets: I.data.multi === "fullAuto" ? d.targets.length : 1, helpers: dice.helpDice((d.helpers ?? []).filter((h) => h.consent === "yes").length) });        // [B2536], [B2430], [R6], [B2511], [B2238], [B2452], [B2543]
+        targets: I.data.multi === "fullAuto" ? d.targets.length : 1, helpers: K.helpDiceOf(v, d) });        // [B2536], [B2430], [R6], [B2511], [B2238], [B2452], [B2543]
       mods.push(...Veh.attackMods(v, I));                                                          // P7 [B3148]: Maneuverability on a ram
       if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });    // [B2827], [R24]
-      const bp = K.buildPool(v, I, "attack", I.actor, A.attr, mods, { rollKind: "attack", tokens: tg.tokens });
+      const bp = K.buildPool(v, I, "attack", I.actor, AT, mods, { rollKind: "attack", tokens: tg.tokens });
       for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
-      R.effects.push(K.rollEffect("attack", I.actor, A.attr, bp.pool, { label: v.entry(I)?.label ?? `ITAC.action.${I.action}`, noPush: !K.mayPush(v, I.actor) }));
+      R.effects.push(K.rollEffect("attack", I.actor, AT, bp.pool, { label: v.entry(I)?.label ?? `ITAC.action.${I.action}`, noPush: !K.mayPush(v, I.actor) }));
       R.wait = true; return R;
     }
     if (!K.rollRolled(I, "attack")) { R.wait = true; return R; }
@@ -417,6 +429,7 @@ export const steps = {
   stunts(v, inst) {
     const I = withOut(inst), R = K.result(I), kind = kindOf(I);
     const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = budgetOf(I, hit);
+    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => (ws === "none" ? [] : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage") : optionsAll(vv, II, hh));      // P6: what the power lets a surplus six do
     if (!hit.length || budget < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
     if (!I.data.pk?.stunts) { R.prompts.push({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: budget, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } }); R.wait = true; return R; }
     if (!K.isAnswered(v, I, "stunts")) { R.wait = true; return R; }
@@ -465,22 +478,38 @@ export const steps = {
     let waiting = false;
     for (const t of allTargets(I)) {
       const o = I.data.out[t];
-      if (!o?.hit || I.data.dmg[t] || kind === "grapple" || entry?.damage?.none) continue;                      // [R5]: the grapple that takes hold does no damage
+      if (!o?.hit || I.data.dmg[t] || kind === "grapple" || entry?.damage?.none || (w?.noDamage && !w.pierce && !o.extra)) continue;      // [R5]: the grapple that takes hold does no damage; P6: nor does a Snare
       const tf = v.facts.c(t);
       if (!tf) continue;
-      const tags = M.damageTags({ source: entry?.damage?.source ?? w?.source, sharp: entry?.damage?.sharp ?? w?.sharp, toStress: entry?.damage?.toStress, ignoreArmor: entry?.damage?.ignoreArmor, cause: kind === "counterattack" ? "counter" : o.extra ? "stunt" : "attack" });
+      const tags = M.damageTags({ source: entry?.damage?.source ?? w?.source, sharp: entry?.damage?.sharp ?? w?.sharp, toStress: entry?.damage?.toStress ?? w?.toStress, ignoreArmor: entry?.damage?.ignoreArmor ?? w?.ignoreArmor, cause: kind === "counterattack" ? "counter" : o.extra ? "stunt" : "attack" });
       const base = o.extra === "bangHeads" ? stunts.bangHeadsDamage(a?.attrs?.strength ?? 0) : o.extra === "trickShot" ? stunts.trickShotDamage(baseDamageOf(v, I)) : baseDamageOf(v, I);
       const doubled = (I.data.stunts ?? []).some((p) => p.stunt === "doubleDamage" && p.target === t);          // [B2434]
       const forced = I.data.forced?.damage?.[t];
-      const ar = damage.selectArmor(tags.toStress ? [] : tf.armor ?? []);                                      // [B2682], [R13]; stress armor is [G-L4]
+      const sources = [...(tf.armor ?? []), ...K.barriersOf(v.state, t)];                                      // P6: Barriers [B1859]; Defiance stops stress only [B1865]
+      const ar0 = damage.selectArmor(tags.toStress ? sources.filter((s) => s.stress) : sources, { toStress: tags.toStress, source: tags.source });   // [B2682], [R13]
+      const ar = w?.halveArmor && !o.extra ? { ...ar0, armor: damage.halvedArmor(ar0.armor) } : ar0;             // P6 [B1679]
       const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
       let taken = Number.isFinite(forced?.amount) ? Math.max(0, forced.amount) : hd.taken;
+      const pierce = w?.noDamage && w.pierce && !o.extra ? { pierced: taken > 0 } : null;                       // P6 [B1574], [B1625]: no damage, but it has to get through the Armor
+      if (pierce) taken = 0;
+      if (!tags.toStress && M.hasStatus(v.state, t, "intangible") && !Number.isFinite(forced?.amount)) taken = 0;   // P6 [B1941]
       if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && (I.data.multi || o.extra) && taken > 0) {     // [OQ-1]
         const ml = K.minionLoss(v, I, R, t, taken, { by: I.actor });
         if (ml.wait) { waiting = true; continue; }
         taken = ml.taken;
       }
-      const rec = { base, raw: hd.raw, doubled, armor: hd.armor, armorSource: ar.source?.id ?? null, taken, tags, forced: forced ? 1 : undefined, ...(o.extra ? { extra: o.extra } : {}) };
+      const rec = { base, raw: hd.raw, doubled, armor: hd.armor, armorSource: ar.source?.id ?? null, taken, tags, forced: forced ? 1 : undefined, ...(o.extra ? { extra: o.extra } : {}), ...(pierce ?? {}) };
+      const cp = tags.toStress || pierce ? 0 : K.copiesOf(v.state, t);                                          // P6 [B1910]: the copies take it first
+      if (cp > 0 && taken > 0) {
+        const ab = damage.absorbByCopies({ taken, copies: cp }), ef = (v.state.effects ?? []).find((x) => x.kind === "copies" && x.holder === t);
+        taken = rec.taken = ab.taken; rec.copies = { absorbed: ab.absorbed, left: ab.copies };
+        if (ef) R.effects.push(ab.gone ? { t: "state", path: ["effects", `#${ef.id}`], to: null } : { t: "state", path: ["effects", `#${ef.id}`], to: { ...ef, data: { ...ef.data, n: ab.copies } } });
+        if (tf.pass?.traumatic && ab.absorbed > 0) R.effects.push({ t: "stress", who: t, n: 1 });               // [B1916]
+      }
+      if (tf.pass?.absorb && !tags.toStress && !ar.source?.barrier && Math.min(hd.raw, hd.armor) > 0) {         // P6 [B1887]: a die per point the Protection stopped, for the next turn
+        const tk = M.makeToken({ id: `ea${I.id}x${t}`.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40), holder: t, dice: Math.min(hd.raw, hd.armor), scope: { attrs: ["fighting", "strength", "agility"] }, uses: 1, stacks: true, source: { kind: "power", owner: t, name: "Energy Absorption" }, expires: { at: "turnEndOf", who: t } });
+        if (tk) R.effects.push({ t: "state", path: ["tokens", `#${tk.id}`], to: tk });
+      }
       if (tags.toStress) {
         const s = damage.applyStress({ resolve: tf.resolve, stress: taken });                                   // [B1591], [B2816]
         rec.resolveBefore = tf.resolve; rec.resolveAfter = s.resolve;
@@ -490,7 +519,7 @@ export const steps = {
         Object.assign(rec, { healthBefore: tf.health, healthAfter: ad.health, broken: ad.broken, newlyBroken: ad.newlyBroken });
         if (tf.kind === "minions") rec.minions = { removed: tf.health - ad.health, left: ad.health };           // [B2828]: one member per point
         if (taken > 0 && ad.health !== tf.health) R.effects.push({ t: "actor", who: t, path: "health", to: ad.health });
-        if (damage.barrierBreached(ar.source, taken)) rec.barrierBreached = ar.source.id;                       // [B1859], [R13]: ending the Barrier effect is its power model's (P6)
+        if (damage.barrierBreached(ar.source, taken)) { rec.barrierBreached = ar.source.id; for (const x of M.effectEndWrites(v.state, ar.source.id)) R.effects.push({ t: "state", path: x.path, to: x.to }); }      // [B1859], [R13]: a breached Barrier is gone
       }
       I.data.dmg[t] = rec;
       R.events.push({ type: "damage", target: t, base, doubled, armor: hd.armor, taken, toStress: tags.toStress, dtype: tags.source, source: tags.cause });
@@ -539,6 +568,23 @@ export const steps = {
           if (item) R.effects.push({ t: "state", path: ["items", `#${item.id}`], to: item });
           R.effects.push({ t: "status+", who: t, status: { id: "itemLost", source: { kind: "stunt", owner: I.actor, name: "disarm" }, data: { item: dis.text ?? "", how } } });
           R.events.push({ type: "status", target: t, status: { id: "itemLost", on: true } });
+        }
+        const w = weaponOf(v, I), oh = o.extra || kind === "counterattack" ? null : w?.onHit;       // P6: what a power's hit does beside (or instead of) damage
+        if (oh && (!w.pierce || dm?.pierced)) {
+          const src = { kind: "power", owner: I.actor, name: w.of ?? w.name ?? "" };
+          const st = oh.status ?? (oh.burn ? "burning" : null);
+          if (st && once(`oh:${t}`)) { R.effects.push({ t: "status+", who: t, status: { id: st, source: src, ...(oh.data ? { data: oh.data } : {}) } }); R.events.push({ type: "status", target: t, status: { id: st, on: true } }); }
+          if (oh.stun) {                                                                          // [B1625-1627], [B1865]: PRESENCE (no action) or the next turn is lost
+            const key = `ohs:${t}`, rs = (oh.resist ?? 0) + (tf.pass?.resist ?? 0);
+            if (!K.rollOf(I, key)) { const { pool } = K.buildPool(v, I, key, t, "presence", rs ? [{ source: "resist", dice: rs }] : []); R.effects.push(K.rollEffect(key, t, "presence", pool, { passive: true, label: "ITAC.stunt.stun" })); R.wait = true; return R; }
+            if (!K.rollFinal(I, key)) { R.wait = true; return R; }
+            if (once(key) && K.sixesOf(I, key) < 1) {
+              R.effects.push({ t: "state", path: ["ledger", t], to: P1.loseNextTurn(P1.ledgerOf(v.state, t), src) });
+              R.effects.push({ t: "status+", who: t, status: { id: "stunned", source: src } });
+              R.events.push({ type: "status", target: t, status: { id: "stunned", on: true } });
+            }
+          }
+          if (oh.throw && once(`oht:${t}`)) (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: oh.throw });      // [B1826]: the GM moves the one thrown
         }
         const stun = picked(t, "stun") ? "stun" : picked(t, "suppressed") ? "suppressed" : null;
         if (stun && dm && stunts.stunOutcome({ taken: dm.taken }).rollNeeded) {                 // [B2436], [B2517]
@@ -639,7 +685,7 @@ function ctxFor(v, I, t) {
 const budgetOf = (I, hit) => (I.data.multi ? Math.max(0, I.data.budget ?? 0) : Math.max(0, ...hit.map((t) => I.data.out[t].stunts)));
 /** Options of the stunt prompt. Ids: "<stunt>@<target>" for a target that was hit; "<stunt>@<target>|<extra>" for Bang Heads / Trick Shot naming the extra
     opponent; "<stunt>@<extra>" for a further stunt on an extra opponent (legal only together with the pick that brings that opponent in). */
-function options(v, I, hit) {
+function optionsAll(v, I, hit) {
   const out = [], more = [], seen = new Set();
   const add = (o, list = out) => { if (!seen.has(o.id)) { seen.add(o.id); list.push(o); } };
   for (const t of hit) {

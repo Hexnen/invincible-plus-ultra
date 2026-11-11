@@ -12,6 +12,7 @@ import { dice, crits, conditions } from "../../rules/index.mjs";
 import * as P1 from "../economy-pure.mjs";
 import * as M from "../mods-pure.mjs";
 import { holderBlocks } from "../catalog-pure.mjs";
+import { modsFor } from "../kit-pure.mjs";
 
 export const PASS = "pass";
 export const draft = (inst) => JSON.parse(JSON.stringify(inst));
@@ -101,9 +102,11 @@ export function buildPool(v, inst, key, cid, attr, mods = [], { rollKind = "othe
   const em = entryMods(v, inst, cid, attr, rollKind);                                // the entry's conditional modifiers (rules/conditions.mjs)
   list.push(...em.mods.map((m) => ({ source: m.source, dice: m.dice })));
   for (const p of em.pending) if (!(inst.data.notes ??= []).some((n) => n.note === "modNeedsGm" && n.source === p.source)) inst.data.notes.push({ note: "modNeedsGm", source: p.source, dice: p.dice, key });   // only the GM's word decides it: shown on the desk, not guessed
+  for (const m of kitDice(v, inst, cid, attr, rollKind)) if (!list.some((x) => x.source === m.source)) list.push(m);      // P6: the sheet's bonuses, the kit's dice, Affliction
   const pen = attr ? crits.critPenalty(c?.crits ?? [], attr) : 0;
   if (pen && !list.some((m) => m.source === "crit")) list.push({ source: "crit", dice: -pen });
-  const tk = M.spendTokens(v.state, cid, { kind: rollKind, attr }, tokens);
+  const must = M.tokensFor(v.state, cid, { kind: rollKind, attr }).filter((t) => t.forced).map((t) => t.id);            // P6: dice somebody else put on the roll (bad luck) are not the roller's to leave out
+  const tk = M.spendTokens(v.state, cid, { kind: rollKind, attr }, [...new Set([...tokens, ...must])]);
   list.push(...tk.mods.map((m) => ({ source: m.source, dice: m.dice })));
   const forced = inst.data.forced?.pool?.[key];
   if (forced?.mods) list.push(...forced.mods.map((m) => ({ source: `gm:${String(m.label ?? "").slice(0, 24)}`, dice: Math.trunc(Number(m.dice) || 0) })));
@@ -111,6 +114,38 @@ export function buildPool(v, inst, key, cid, attr, mods = [], { rollKind = "othe
   if (Number.isFinite(forced?.total)) pool = { base: pool.base, mods: [...pool.mods, { source: "gm:total", dice: forced.total - pool.total }], total: forced.total, dice: dice.poolSize(forced.total) };
   return { pool, writes: tk.writes, needGm: tk.needGm };
 }
+/** P6: what the character's sheet and kit add to a roll of `cid`: the active effects of the sheet (per attribute; block and dodge; the kind of
+    attack for the attacker's own attack roll), the dice of talents and gear (kit-pure.modsFor), Affliction [B1574], copies [B1908], Defiance [B1865]. */
+export function kitDice(v, inst, cid, attr, rollKind) {
+  const c = v.facts.c(cid), out = [], b = c?.bonus ?? {}, add = (source, dice) => { if (dice) out.push({ source, dice: Math.trunc(dice) }); };
+  if (!c) return out;
+  if (attr) add("sheet", b[attr]);
+  if (rollKind === "block" || rollKind === "dodge") add(`sheet:${rollKind}`, b[rollKind]);
+  const own = cid === inst.actor, kind = inst.flow === "attack" ? inst.data?.kind ?? "slugfest" : null;
+  if (own && rollKind === "attack" && kind) {
+    add("sheet:attack", b.attack);
+    if (kind === "charge") add("sheet:charge", b.charge);
+    if (kind === "grapple") add("sheet:grapple", b.grapple);
+    if (["slugfest", "grappleAttack"].includes(kind)) add("sheet:slugfest", b.slugfest);
+    const n = copiesOf(v.state, cid);
+    if (n > 0 && ["slugfest", "shooting"].includes(kind)) add("copies", n);                    // [B1908]
+  }
+  if (own && (rollKind === "attack" || rollKind === "other")) {
+    const t0 = inst.decl?.targets?.[0];
+    for (const m of modsFor(c.kit, { action: inst.action, attack: rollKind === "attack" ? kind : null, attr, target: t0 ? v.facts.c(t0) : null })) add(m.source, m.dice);
+  }
+  if (!own && rollKind === "other" && inst.flow === "attack" && String(v.entry(inst)?.id ?? "")) { /* a resisting roll inside an attack: see `resist` in the attack flow */ }
+  const aff = M.statusesOf(v.state, cid).find((s) => s.id === "afflicted");
+  if (aff && attr) add("afflicted", Number.isFinite(aff.data?.dice) ? aff.data.dice : -3);     // [B1574]: every attribute roll
+  return out;
+}
+/** [B2238], [B2167]: the dice of those who help; a Supportive helper gives two */
+export const helpDiceOf = (v, d) => dice.helpDice((d?.helpers ?? []).filter((h) => h.consent === "yes").map((h) => ({ supportive: v.facts.c(h.id)?.pass?.supportive === true })));
+/** the Barriers standing on a character, as Armor sources of the rules library [B1859] */
+export const barriersOf = (state, cid) => (state.effects ?? []).filter((e) => e.kind === "barrier" && e.holder === cid).map((e) => ({ id: e.id, armor: Number(e.data?.armor) || 0, barrier: true }));
+/** the copy bonus a character has left (Duplication [B1907]: an effect of the state) */
+export const copiesOf = (state, cid) => Math.max(0, Number((state.effects ?? []).find((e) => e.kind === "copies" && e.holder === cid)?.data?.n) || 0);
+
 /** Roll request effect. passive rolls and defender rolls cannot be pushed [B2227], [B2241]. */
 export const rollEffect = (key, who, attr, pool, { passive = false, defender = false, secret = false, label = null, noPush = false } = {}) =>
   ({ t: "roll", key, who, attr, pool: { base: pool.base, mods: pool.mods, total: pool.total }, dice: pool.dice, maxPush: passive || defender || noPush ? 0 : null, secret: secret ? 1 : 0, label });
@@ -131,7 +166,7 @@ export function windowPrompts(v, inst, when, { skip = [], reactions }) {
     if (cid === inst.actor || skip.includes(cid)) continue;
     const c = v.facts.c(cid);
     if (!c || c.present === false || c.health <= 0) continue;
-    const list = reactions(v.state, cid, when).filter((e) => e.reaction.who === "any" || inst.decl.targets.includes(cid));
+    const list = reactions(v.state, cid, when, v.facts).filter((e) => e.reaction.who === "any" || inst.decl.targets.includes(cid));
     if (!list.length) continue;
     const options = list.map((e) => reactionOption(v, cid, e));
     if (!options.some((o) => !o.disabled)) continue;                 // no legal option: skipped automatically (plan 5.2 step 4)
@@ -154,6 +189,7 @@ export const isMajor = (v, cid) => { const c = v.facts.c(cid); return !!c && c.n
     minion groups [B2231], [B2830]; any other NPC only when the GM said so for it (NpcPolicy.push "ask"), and never with "never" [OQ-12], [A12]. */
 export function mayPush(v, cid) {
   const c = v.facts.c(cid);
+  if (c?.pass?.overconfident && c.health > Math.ceil((c.maxHealth ?? 0) / 2)) return false;       // P6 [B2186]: no pushing above half Health
   if (!c || !c.npc) return true;
   const pol = v.state.npc?.[cid] ?? {};
   if (pol.push === "never") return false;
@@ -212,6 +248,8 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
     R.effects.push({ t: "status+", who: t, status: { id: "broken", source: { kind: "crit", owner: by ?? undefined, name: "broken" } } });
     for (const e of grappleRelease(v.state, t)) R.effects.push(e);                             // [B2707]: a broken character holds nobody
     R.events.push({ type: "broken", target: t });
+    const bf = by ? v.facts.c(by) : null;                                                      // P6 [B2154] Merciless: 1 Resolve for breaking an enemy
+    if (bf?.pass?.merciless && bf.resolve < bf.maxResolve && !!bf.npc !== !!tf.npc) R.effects.push({ t: "actor", who: by, path: "resolve", to: bf.resolve + 1 });
   }
   if (cf.gmChoice) {                                                                           // [B2771]: an ordinary NPC needs no injury, the GM states the outcome
     const key = `npcBroken:${t}`;

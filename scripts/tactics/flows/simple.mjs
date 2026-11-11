@@ -161,7 +161,7 @@ export const composite = {
   legality(v, inst) {
     const parts = partsOf(v, inst);
     if (!parts.length) return bad("noParts");
-    for (const p of parts) if (!C.entryFor(v.state, inst.actor, p.action)) return bad("unknownPart", { part: p.action });
+    for (const p of parts) if (!C.entryFor(v.state, inst.actor, p.action, v.facts)) return bad("unknownPart", { part: p.action });
     const a = v.facts.c(inst.actor);
     if (!a || a.present === false) return bad("gone");
     if (a.health <= 0) return bad("broken");                                                    // [B2707]

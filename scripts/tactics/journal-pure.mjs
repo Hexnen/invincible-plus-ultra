@@ -62,7 +62,7 @@ export function setAt(root, path, value) {
    zones      { t:"zones", op, inverse }                       // one write of the zones API: the op given to `apply` and the inverse op it returned
    message    { t:"message", id }
    Every op may carry `step` (the step of the instance that produced it; goToStep undoes by it) and `label`. */
-export const OP_TYPES = Object.freeze(["state", "actor", "item+", "item-", "effect+", "effect-", "token+", "token-", "tokenMove", "zones", "message"]);
+export const OP_TYPES = Object.freeze(["state", "actor", "item+", "item-", "effect+", "effect-", "token+", "token-", "tokenMove", "zones", "message", "fx"]);
 
 /** Build the reversible state op for writing `to` at `path` of `state`. Returns { state, op } (op null when nothing changes). */
 export function stateOp(state, path, to) {
@@ -90,6 +90,7 @@ export function inverseEffect(op) {
     case "token-": return { t: "tokenCreate", sceneId: op.sceneId, data: op.data, keepId: true };
     case "tokenMove": return { t: "tokenMove", sceneId: op.sceneId, tokenId: op.tokenId, to: op.from, expect: op.to };
     case "zones": return op.inverse ? { t: "zones", op: op.inverse, isInverse: true } : null;
+    case "fx": return { t: "fxSet", actorUuid: op.actorUuid, itemId: op.itemId, effectId: op.effectId, on: op.from === true };      // P6: an item's active effect switched back
     case "message": return { t: "messageStrike", id: op.id };      // spec 15: struck through, never deleted (the dice stay)
     default: return null;
   }

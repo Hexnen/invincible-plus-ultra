@@ -10,6 +10,7 @@
 import * as S from "./state-pure.mjs";
 import * as O from "./ops-pure.mjs";
 import { weapons } from "../rules/index.mjs";
+import * as Kit from "./kit-pure.mjs";
 
 export const SYSTEM_ID = "invincible";
 export const SYSTEM_VERIFIED = "2.1.8";
@@ -35,6 +36,8 @@ export const PRIVATE_NAMES = Object.freeze([
   { name: "actor types", where: "actor.type", need: "superhero | npc | minions | challenge | vehicle" },
   { name: "injury item type", where: "item.type === 'criticalInjury'", need: "embedded Item" },
   { name: "weapon automation", where: "item.system.automations[first].{rollBonus, baseDamage, minRange, maxRange}", need: "gear / power items that attack" },
+  { name: "item automations", where: "item.system.automations{}.{name,type,showAsSelection,attribute,rollBonus,stressCost,baseDamage,minRange,maxRange,bypassArmor}", need: "P6: what an item does; item.system.{level,power,boosts}" },
+  { name: "sheet bonuses", where: "actor.system.bonuses.<key>{}", need: "P6: numbers per source; keys = the six attributes, attack, block, dodge, charge, grapple, armorProtection" },
   { name: "injuries pack", where: INJURY_PACK, need: "Item compendium" },
   { name: "injuries table", where: INJURY_TABLE, need: "RollTable whose results (range) point at the pack's items" },
 ]);
@@ -131,7 +134,7 @@ export function sceneFacts(combat) {
       if (!a) continue;
       const d = a.system?.derived ?? {};
       out.push({ id: c.id, name: c.name, type: a.type, health: num(d.health?.value), maxHealth: num(d.health?.max), resolve: num(d.resolve?.value), maxResolve: num(d.resolve?.max),
-        strength: num(a.system?.attributes?.strength?.value), regeneration: a.flags?.[MOD]?.tactics?.regeneration === true });   // Regeneration [B1893]: no key in the system, the flag is set by the GM or P6
+        strength: num(a.system?.attributes?.strength?.value), regeneration: a.flags?.[MOD]?.tactics?.regeneration === true || kitOf(a).pass.regeneration === true });   // Regeneration [B1893]: no key in the system, the flag is set by the GM or P6
     }
   } catch { /* no facts */ }
   return out;
@@ -161,6 +164,56 @@ export function movementOf(actor) {
   const limits = [...extras].filter((x) => x === "gliding" || x === "brachiation");
   return out.map((m) => ({ ...m, boosts: [...extras].filter((x) => !limits.includes(x)), limits }));
 }
+/* ------------------------------------------------------------------ P6: what the character brings (kit-pure.mjs reads these plain items) */
+const listOf = (v) => (v == null ? [] : typeof v === "string" ? [v] : typeof v[Symbol.iterator] === "function" ? [...v] : []).filter((x) => typeof x === "string" && x);
+export function kitSource(actor) {
+  const items = [];
+  try {
+    for (const it of actor.items) {
+      const sy = it.system ?? {}, fl = it.flags?.[MOD]?.tactics ?? {};
+      items.push({ id: it.id, name: it.name, type: it.type, level: sy.level ?? null, power: typeof sy.power === "string" ? sy.power : null, boosts: listOf(sy.boosts),
+        autos: Object.entries(sy.automations ?? {}).map(([id, a]) => ({ id: a?._id ?? id, name: String(a?.name ?? ""), type: String(a?.type ?? ""), show: a?.showAsSelection !== false, attr: listOf(a?.attribute).filter((x) => ATTRS.includes(x)),
+          bonus: num(a?.rollBonus), stress: num(a?.stressCost), damage: num(a?.baseDamage), min: num(a?.minRange), max: num(a?.maxRange), bypass: a?.bypassArmor === true })),
+        fx: [...(it.effects ?? [])].map((e) => ({ id: e.id, name: e.name, on: e.disabled !== true })),
+        flags: { kit: typeof fl.kit === "string" ? fl.kit : null, off: fl.off === true, types: listOf(fl.types).slice(0, 12) }, wf: weaponFlags(it) });
+    }
+  } catch { /* an actor the adapter cannot read brings nothing */ }
+  return { items, attrs: Object.fromEntries(ATTRS.map((k) => [k, num(actor?.system?.attributes?.[k]?.value)])) };
+}
+/* built once per sheet and kept until any item or effect of the world changes (the kit is asked for on every render and every roll) */
+const KITS = new Map(); let kitHooks = false;
+export function kitOf(actor) {
+  try {
+    if (!actor) return Kit.EMPTY;
+    if (!kitHooks && globalThis.Hooks) { kitHooks = true; for (const k of ["createItem", "updateItem", "deleteItem", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "updateActor"]) Hooks.on(k, () => KITS.clear()); }
+    const key = actor.uuid ?? actor.id;
+    if (!KITS.has(key)) KITS.set(key, Kit.build(kitSource(actor)));
+    return KITS.get(key);
+  } catch (err) { console.warn(`${MOD} | tactics: kit`, err); return Kit.EMPTY; }
+}
+/** The dice the sheet's active effects add (the system's own roll buttons add the same): per attribute and per kind of roll. */
+export function sheetBonuses(actor) {
+  const b = actor?.system?.bonuses ?? {}, sum = (k) => Object.values(b[k] ?? {}).reduce((a, v) => a + num(v), 0), out = {};
+  for (const k of [...ATTRS, "attack", "block", "dodge", "charge", "grapple"]) { const v = sum(k); if (v) out[k] = v; }
+  const sl = num(actor?.system?.derived?.slugfest?.bonus) || sum("system.derived.slugfest.bonus") || sum("derived.slugfest.bonus");
+  if (sl) out.slugfest = sl;
+  return out;
+}
+/** Set one of the GM's item flags (kit: a book row, off: out of the fight, types: what an Immunity is about). GM client only; not journaled (a sheet edit). */
+export async function setKitFlag(actorUuid, itemId, key, value) {
+  const a = await fromUuid(actorUuid), it = a?.items?.get?.(itemId);
+  if (!it || !["kit", "off", "types"].includes(key)) return false;
+  await it.update({ [`flags.${MOD}.tactics.${key}`]: value ?? null }, { ipuTactics: true });
+  return true;
+}
+/** Switch an item's active effect (a form, a size, a stance). Returns the journal op `fx`. */
+export async function setItemEffect(actor, itemId, effectId, on) {
+  const fx = actor?.items?.get?.(itemId)?.effects?.get?.(effectId);
+  if (!fx) return null;
+  const from = fx.disabled !== true;
+  if (from !== !!on) await fx.update({ disabled: !on }, { ipuTactics: true });
+  return { t: "fx", actorUuid: actor.uuid, itemId, effectId, from, to: !!on };
+}
 export function actorFacts(actor) {
   if (!actor) return null;
   const s = actor.system ?? {};
@@ -168,6 +221,11 @@ export function actorFacts(actor) {
   const kind = actor.type === "superhero" ? "hero" : actor.type === "minions" ? "minions" : actor.type === "challenge" ? "challenge" : actor.type === "vehicle" ? "vehicle" : "npc";
   const flags = actor.flags?.[MOD]?.tactics ?? {};
   const armorMax = kind === "vehicle" ? num(s.armour) : Math.max(0, ...Object.values(s.bonuses?.armorProtection ?? {}).map((v) => num(v)));
+  const kit = ["hero", "npc", "minions"].includes(kind) ? kitOf(actor) : Kit.EMPTY, pass = kit.pass, bonus = kind === "vehicle" || kind === "challenge" ? {} : sheetBonuses(actor);
+  if (kind === "minions") delete bonus.attack;                                       // the group's own bonus: the rules library counts the members [B2827]
+  /* P6: each source of Armor on its own (Plasticity stops kinetic damage only [B1920]); Defiance is Armor against stress [B1865] */
+  const armors = kind === "vehicle" ? (armorMax > 0 ? [{ id: "armor", armor: armorMax }] : []) : Object.entries(s.bonuses?.armorProtection ?? {}).filter(([, v]) => num(v) > 0).map(([k, v]) => ({ id: String(k).slice(0, 40), armor: num(v), ...(pass.armorOnly && /plasticity/i.test(k) ? { only: pass.armorOnly } : {}) }));
+  if (pass.stressArmor > 0) armors.push({ id: "defiance", armor: pass.stressArmor, stress: true });
   /* P7: a challenge counts its time in the unit of the challenges HUD (missing = rounds); a vehicle carries its table row [B2936-2941] */
   const p7 = kind === "challenge" ? { timeUnit: actor.flags?.[MOD]?.timeUnit ?? "rounds" } : kind === "vehicle" ? { vehicle: { type: s.type ?? "ground", speed: Math.max(1, num(s.speed)), maneuver: num(s.maneuverability), passengers: num(s.passengers),
     weapons: actor.items.filter((i) => weaponFacts(actor, i.id)?.damage != null).length } } : { powers: actor.items.filter((i) => i.type === "power").map((i) => String(i.name ?? "").slice(0, 60)).slice(0, 40) };
@@ -176,19 +234,21 @@ export function actorFacts(actor) {
     health: num(s.derived?.health?.value), maxHealth: num(s.derived?.health?.max), resolve: num(s.derived?.resolve?.value), maxResolve: num(s.derived?.resolve?.max),
     crits: actor.items.filter((i) => i.type === "criticalInjury").map(injuryNumber).filter((n) => n != null),
     unknownInjuries: actor.items.filter((i) => i.type === "criticalInjury" && injuryNumber(i) == null).length,     // injuries added by hand that the table does not resolve: shown to the GM, never guessed
-    armor: armorMax > 0 ? [{ id: "armor", armor: armorMax }] : [],
+    armor: armors, kit, pass, bonus,
     slugfest: { damage: num(s.derived?.slugfest?.damage) },
     members: kind === "minions" ? num(s.derived?.health?.value) : undefined,           // the system keeps a group's size as its Health [B2827]
-    huge: flags.huge === true, grown: flags.grown === true, impervious: flags.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
-    regeneration: flags.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
+    huge: flags.huge === true, grown: flags.grown === true, impervious: flags.impervious === true || pass.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
+    regeneration: flags.regeneration === true || pass.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
     movement: kind === "vehicle" ? [{ mode: "vehicle", speed: p7.vehicle.speed, aerial: ["aerial", "space"].includes(p7.vehicle.type) }] : movementOf(actor),
-    vacuumSafe: flags.vacuumSafe === true || actor.items.some((i) => NAME_TYPES.includes(i.type) && /^(adaptation|lifesupport)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
-    major: flags.major === true, immunities: Array.isArray(flags.immunities) ? flags.immunities : [], vulnerabilities: Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : [],
+    vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true || actor.items.some((i) => NAME_TYPES.includes(i.type) && /^(adaptation|lifesupport)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
+    major: flags.major === true, immunities: [...(Array.isArray(flags.immunities) ? flags.immunities : []), ...pass.immune], vulnerabilities: [...(Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : []), ...pass.vulnerable],
   };
 }
 /** A weapon (or attacking power) of the actor as the attack flow needs it. `ref` = item id or uuid. Sharp damage has no system field: the item flag
     `flags.invincible-plus-ultra.tactics.sharp` (set by the GM) carries it [R9]; absent = not sharp. Returns null when the item is not the actor's. */
-export function weaponFacts(actor, ref) {
+export function weaponFacts(actor, ref, kit = null) {
+  const k = kit ?? kitOf(actor), prof = k.weapons.find((w) => w.id === ref) ?? k.weapons.find((w) => w.item === ref && !w.id.includes("+") && !w.id.startsWith("unarmed~"));     // P6: a profile of the kit (level, boosts, what a hit does)
+  if (prof) return prof;
   const item = actor?.items?.get?.(ref) ?? actor?.items?.find?.((i) => i.uuid === ref) ?? null;
   if (!item) return null;
   const autos = item.system?.automations ?? {}, a = autos[Object.keys(autos)[0]] ?? {};
@@ -204,7 +264,7 @@ function weaponFlags(item) {
   return { sharp: pick("sharp", row.sharp), fullAuto: pick("fullAuto", row.fullAuto), area: pick("area", row.areaEffect) };
 }
 /** The items of the actor an attack can be made with (an automation that carries damage or a range), as weaponFacts gives them. */
-export const weaponList = (actor) => { try { return [...(actor?.items ?? [])].map((it) => weaponFacts(actor, it.id)).filter((w) => w && (w.damage != null || w.range)).slice(0, 24); } catch { return []; } };
+export const weaponList = (actor) => { try { const k = kitOf(actor), have = new Set(k.weapons.map((w) => w.item)); return [...k.weapons, ...[...(actor?.items ?? [])].filter((it) => !have.has(it.id)).map((it) => weaponFacts(actor, it.id, k)).filter((w) => w && (w.damage != null || w.range))].slice(0, 40); } catch { return []; } };
 /** The value behind an engine field name (drift check of an undo, journal-pure.driftOf). */
 export const actorValue = (actor, field) => (FIELDS[field] ? num(foundry.utils.getProperty(actor, FIELDS[field]), null) : null);
 /** Write an engine field. Returns the journal op. The option `ipuTactics` lets the legacy heuristics of scripts/module.js skip or label it (spec 1.3). */

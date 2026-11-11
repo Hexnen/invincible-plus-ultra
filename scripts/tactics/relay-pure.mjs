@@ -40,7 +40,7 @@ function declOf(d) {
   if (typeof d.action === "string") out.action = d.action.slice(0, 40);
   for (const k of ["targets", "fullAuto", "tokens"]) { const v = ids(d[k]); if (v) out[k] = v; }
   for (const k of ["weapon", "power"]) if (typeof d[k] === "string") out[k] = d[k].slice(0, 120);
-  for (const k of ["zone", "special", "attr", "item"]) if (typeof d[k] === "string") out[k] = d[k].slice(0, 40);
+  for (const k of ["zone", "special", "attr", "item", "opt"]) if (typeof d[k] === "string") out[k] = d[k].slice(0, 40);
   if (Array.isArray(d.path)) out.path = d.path.filter((z) => typeof z === "string").slice(0, 24).map((z) => z.slice(0, 40));
   Object.assign(out, moveOf(d));
   for (const k of ["wreck", "area", "blind", "noPush"]) if (d[k] === true || d[k] === 1) out[k] = 1;

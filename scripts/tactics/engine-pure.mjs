@@ -58,7 +58,7 @@ function makeX(state, log, host, user) {
 /* P7 [B3412]: in a chase there is no map, the range between the sides is the chase distance (flows/chase.mjs reads the state of now) */
 const liveFacts = (X) => Chase.facts(X.host.facts(), () => X.state);
 const nextId = (X, p) => { X.state = { ...X.state, seq: (X.state.seq ?? 0) + 1 }; return `${p}${X.state.seq}`; };
-const view = (X) => ({ state: X.state, facts: X.facts, entry: (inst) => C.entryFor(X.state, inst.actor, inst.action) });
+const view = (X) => ({ state: X.state, facts: X.facts, entry: (inst) => C.entryFor(X.state, inst.actor, inst.action, X.facts) });
 const top = (X) => X.state.stack[X.state.stack.length - 1] ?? null;
 const instOf = (X, id) => X.state.stack.find((i) => i.id === id) ?? null;
 const setInst = (X, inst) => { X.state = { ...X.state, stack: X.state.stack.map((i) => (i.id === inst.id ? inst : i)) }; X.changed = true; };
@@ -142,6 +142,7 @@ async function applyEffect(X, I, e, step) {
     case "actor": if (c) await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: e.path, to: e.to, tx }, I, step); return false;
     case "status+": { const w = M.statusAdd(X.state, e.who, e.status); write(X, tx, w.path, w.to, I, step); return false; }
     case "status-": { const w = M.statusRemove(X.state, e.who, e.id); write(X, tx, w.path, w.to, I, step); return false; }
+    case "fx": if (c) await perform(X, tx, { t: "fx", uuid: c.actorUuid, item: e.item, fx: e.fx, on: e.on === true, tx }, I, step); return false;      // P6: an item's active effect (a form, a size)
     case "crit": if (c) await perform(X, tx, { t: "critAdd", uuid: c.actorUuid, n: e.n, id: e.id, tx }, I, step); return false;
     case "dice": { const faces = await perform(X, tx, { t: "dice", n: e.n, why: e.key, ...(e.sides > 0 ? { sides: Math.trunc(e.sides) } : {}) }, I, step); (I.data.res ??= {})[e.key] = Array.isArray(faces) ? faces : []; return true; }
     case "roll": {
@@ -184,7 +185,7 @@ const waitsOf = (X, I) => Object.values(X.state.prompts).filter((p) => p.inst ==
 
 /* ------------------------------------------------------------------ instances */
 function makeInst(X, { action, actor, decl, cause = "turn", parent = null, data = {}, part = false, initiator = null, flow = null }) {
-  const entry = C.entryFor(X.state, actor, action);
+  const entry = C.entryFor(X.state, actor, action, X.facts);
   const f = flow ?? entry?.flow ?? "other";
   const inst = { id: nextId(X, "a"), action, flow: FLOWS[f] ? f : "other", actor: actor ?? null, initiator: initiator ?? (actor ? { type: "combatant", id: actor } : { type: "gm", id: X.user.id }),
     by: X.user.id, parent, cause, step: FLOWS[FLOWS[f] ? f : "other"].STEPS[0], status: "open", decl, locked: false, waits: [], rolls: {}, data: { ...data }, overrides: [], tx: null };
@@ -195,7 +196,7 @@ function makeInst(X, { action, actor, decl, cause = "turn", parent = null, data 
 function pushInst(X, inst) { X.state = { ...X.state, stack: [...X.state.stack, inst] }; X.changed = true; }
 const JOURNAL_HAZARDS = ["fire", "blast", "area", "vacuum", "disease"];
 function label(X, inst, what) {
-  const a = inst.actor ? X.facts.c(inst.actor) : null, e = C.entryFor(X.state, inst.actor, inst.action);
+  const a = inst.actor ? X.facts.c(inst.actor) : null, e = C.entryFor(X.state, inst.actor, inst.action, X.facts);
   /* the engine has no language: an action and a result are written as `{key}` marks that the surfaces put into the reader's language (lang.mjs
      `marks`); an entry with a name of its own (a granted power) keeps that name */
   const act = e?.name || (typeof e?.label === "string" && !e.label.startsWith("ITAC.") ? e.label : inst.action === "fireSpread" ? "{ITAC.journal.fireSpread}" : `{ITAC.action.${inst.action}}`);      // the card of the spread is titled with a question; the journal states what it was
@@ -354,6 +355,7 @@ function sanitizeDecl(d, action, staff = false) {
   out.stressTotal = out.exploits.reduce((s, e) => s + e.stress, 0);
   if (Number.isFinite(d?.pulled)) out.pulled = Math.max(0, Math.trunc(d.pulled));
   if (typeof d?.attr === "string") out.attr = d.attr.slice(0, 12);
+  if (typeof d?.opt === "string") out.opt = d.opt.slice(0, 24);                               // P6: the choice an action of the kit asks for (a plan, good or bad luck, how much)
   if (Number.isFinite(d?.mod)) out.mod = Math.max(-12, Math.min(12, Math.trunc(d.mod)));
   if (typeof d?.text === "string") out.text = d.text.slice(0, 300);
   if (P1.isId(d?.item)) out.item = d.item;                                                  // P5: the ground item a "pick up" takes
@@ -376,7 +378,7 @@ async function opDeclare(X, a) {
   if (X.state.mode === "off") return bad("off");
   if (!P1.isId(actor) || !X.facts.c(actor) || (X.facts.c(actor).hidden && !X.user.staff)) return bad("unknown");
   if (!owns(X, actor)) return bad("notOwner");
-  const entry = C.entryFor(X.state, actor, a.decl?.action);
+  const entry = C.entryFor(X.state, actor, a.decl?.action, X.facts);
   if (!entry || entry.reaction?.effect === "defence") return bad("unknown", { action: String(a.decl?.action ?? "").slice(0, 32) });
   const decl = sanitizeDecl(a.decl, entry.id, X.user.staff === true);
   if (X.state.mode === "free" || X.state.free?.[actor]) {                                  // spec 14.5: nothing is validated, nobody is prompted; logged as declared
@@ -628,7 +630,7 @@ async function manual(X, I, res) {
   noteOverride(X, I, "manual", null, null);
   I.status = "manual"; I.data.manual = { note: String(res.note ?? "").slice(0, 300) };
   if (["full", "quick"].includes(res.cost) && I.actor && !I.entry) {
-    const r = P1.pay(X.state, I.actor, res.cost, { force: true }, { action: I.action, inst: I.id, tags: C.entryFor(X.state, I.actor, I.action)?.tags ?? [] });
+    const r = P1.pay(X.state, I.actor, res.cost, { force: true }, { action: I.action, inst: I.id, tags: C.entryFor(X.state, I.actor, I.action, X.facts)?.tags ?? [] });
     if (r.ok) { write(X, I.tx, ["ledger", I.actor], r.ledger, I, "manual"); I.entry = r.entryId; }
     else (I.data.notes ??= []).push({ note: "costNotCharged", cost: res.cost, reason: r.reason });      // no unit of that kind is left: nothing is invented, the GM sees the note
   }
@@ -703,6 +705,20 @@ async function gmEdit(X, op, a) {
       if (!["tactical", "free", "off"].includes(a.mode)) { err = "badInput"; break; }
       if (w(["mode"], a.mode)) emit(X, null, { type: "mode", mode: a.mode });
       if (a.mode !== "tactical") X.state = { ...X.state, stack: X.state.stack.map((i) => ({ ...i, status: "manual" })) };       // spec 14.5: nothing is discarded, open instances are parked as manual
+      break;
+    }
+    /* ---- P6: what the GM says about an item of a sheet (which book entry it is, whether it is out of the fight, what an Immunity is about) and who
+       summoned a combatant [I14]. Both are edits of documents outside the state: logged, not undone by the journal (set them back the same way). */
+    case "kitFlag": {
+      const cc = c(a.combatant), key = ["kit", "off", "types"].includes(a.key) ? a.key : null;
+      if (!cc || !key || typeof a.item !== "string") { err = "badInput"; break; }
+      const value = key === "off" ? a.value === true : key === "kit" ? (typeof a.value === "string" && a.value ? a.value.slice(0, 60) : null) : Array.isArray(a.value) ? a.value.filter((s) => typeof s === "string" && s).map((s) => s.slice(0, 24)).slice(0, 12) : null;
+      await perform(X, tx, { t: "kitFlag", uuid: cc.actorUuid, item: a.item.slice(0, 40), key, value });
+      break;
+    }
+    case "summonSet": {
+      if (!c(a.combatant) || (a.owner != null && !c(a.owner)) || a.owner === a.combatant) { err = "badInput"; break; }
+      await perform(X, tx, { t: "summonFlag", combatant: a.combatant, owner: a.owner ?? null });
       break;
     }
     case "zoneSet": case "levelSet": case "borderSet": case "zoneOp": {                    // one write of the zones API; the inverse it returns is journaled (zones-pure.mjs)
@@ -990,7 +1006,7 @@ export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer",
 export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget"]);
 export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
   "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp",
-  "challengeSetup", "vehicleSet", "chaseStart", "chaseSet", "chaseEnd"]);                                                                    // P7
+  "challengeSetup", "vehicleSet", "chaseStart", "chaseSet", "chaseEnd", "kitFlag", "summonSet"]);                                                                    // P7
 export const GM_OPS = Object.freeze([...GM_INST_OPS, ...GM_EDIT_OPS, "answerFor", "undo", "hazard", "forcedMove", "fall", "hazardRun", "chaseRound"]);       // the initiative and round operations of spec 14.2 are the director's (director-pure.mjs)
 
 async function request(X, req) {

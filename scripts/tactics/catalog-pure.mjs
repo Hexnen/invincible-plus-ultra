@@ -94,16 +94,18 @@ export function sanitizeEntry(e) {
   return out;
 }
 /** The entry `actionId` as `cid` may use it: a builtin, or one granted to that combatant (spec 6.5 `borrowedPower`, GM op powerGrant). */
-export function entryFor(state, cid, actionId) {
+export function entryFor(state, cid, actionId, facts = null) {
   if (typeof actionId !== "string") return null;
   const granted = cid ? M.grantedEntries(state, cid).find((e) => e.id === actionId) : null;
-  return granted ?? (Object.prototype.hasOwnProperty.call(BUILTIN, actionId) ? BUILTIN[actionId] : null);
+  return granted ?? (Object.prototype.hasOwnProperty.call(BUILTIN, actionId) ? BUILTIN[actionId] : null) ?? (actionId.startsWith("k-") ? kitEntries(facts, cid).find((e) => e.id === actionId) ?? null : null);
 }
+/** P6: the entries a combatant's own powers, talents and gear give (kit-pure.mjs builds them; they live in the facts, never in the state). */
+export const kitEntries = (facts, cid) => { try { return (cid && facts?.c?.(cid)?.kit?.actions) || []; } catch { return []; } };
 /** [B2497] While holding somebody the holder may only move (with the one held) and make a grapple attack, until it lets go. This is the
     one test of "is this entry one of the other actions": a full or quick action that is not a reaction. What costs nothing (talking,
     opening a door on the way, the GM's "something else") is not an action in that sense. Used by the declare gate (flows/kit.mjs) and by the bar. */
 export const HOLDER_FLOWS = Object.freeze(["move", "release", "other", "plain"]);
 export const holderBlocks = (e) => !!e && (e.cost === "full" || e.cost === "quick") && !e.reaction && e.id !== "grappleAttack" && !HOLDER_FLOWS.includes(e.flow);
-export const entriesFor = (state, cid) => [...Object.values(BUILTIN), ...M.grantedEntries(state, cid)];
+export const entriesFor = (state, cid, facts = null) => [...Object.values(BUILTIN), ...M.grantedEntries(state, cid), ...kitEntries(facts, cid).filter((e) => !e.reactionOnly)];
 /** Reaction entries `cid` holds for a window (the two built-in defences are handled by the attack flow through the rules library, not from here). */
-export const reactionsFor = (state, cid, when) => M.grantedEntries(state, cid).filter((e) => e.reaction && e.reaction.effect !== "defence" && e.reaction.when.includes(when));
+export const reactionsFor = (state, cid, when, facts = null) => [...M.grantedEntries(state, cid), ...kitEntries(facts, cid)].filter((e) => e.reaction && e.reaction.effect !== "defence" && e.reaction.when.includes(when));

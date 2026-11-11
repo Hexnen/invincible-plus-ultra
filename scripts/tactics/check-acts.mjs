@@ -22,7 +22,7 @@ const closed = (T) => T.evs("actionClosed").pop()?.summary?.result;
 
 /* ================================================================== the rows are data, and all of them are in the catalog */
 {
-  const ids = ["pickUp", "scan", "banter", "useItem", "usePower", "breakLift", "technology", "stabilize", "rally", "recoverResolve", "persuade", "saveBystanders", "breakFree", "escapeTrap", "escapeSnare", "escapeImmobilised", "extinguish"];
+  const ids = ["pickUp", "scan", "banter", "useItem", "usePower", "breakLift", "technology", "stabilize", "rally", "recoverResolve", "persuade", "saveBystanders", "breakFree", "escapeTrap", "escapeSnare", "escapeImmobilised", "extinguish", "shakeOff"];      // shakeOff: P6 (Affliction)
   eq(Object.keys(ACTIONS).sort(), ids.slice().sort(), "the rows this package brings");
   for (const id of ids) {
     const e = C.BUILTIN[id];
