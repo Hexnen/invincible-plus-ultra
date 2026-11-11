@@ -845,8 +845,11 @@ async function opUndo(X, a) {
     }
     if (drifts.length && !mode) return bad("drift", { list: drifts.slice(0, 20) });
   }
+  /* an inverse the host could not carry out (the map refused it, a document is gone): the undo goes on, since the writes before it
+     cannot be taken back as one, and the answer and the event NAME what stayed as it was, for the GM to put right by hand */
+  const failed = [], host = async (id, op, eff) => { const r = await X.host.perform({ ...eff, undo: 1 }); if (r && r.ok === false) failed.push({ tx: id, t: op.t, reason: String(r.reason ?? "error").slice(0, 40) }); };
   for (const id of list) {
-    const tx = X.log.list.find((t) => t.id === id);
+    const tx = X.log.list.find((t) => t.id === id), n0 = failed.length;
     for (const op0 of [...tx.ops].reverse()) {
       const op = liveOp(X, op0, tx.round);
       if (op.t === "state") {
@@ -854,14 +857,14 @@ async function opUndo(X, a) {
         X.state = J.applyStateOp(X.state, op, true);
       } else if (op.t === "actor" && a.force) {
         const cur = X.facts.actorValue?.(op.uuid, op.path), to = cur !== undefined && J.driftOf(op, cur) ? J.resolveDrift(op, cur, mode ?? "restore") : op.from;
-        if (to !== undefined) await X.host.perform({ t: "actor", uuid: op.uuid, path: op.path, to, undo: 1 });
-      } else { const eff = J.inverseEffect(op); if (eff) await X.host.perform({ ...eff, undo: 1 }); }
+        if (to !== undefined) await host(id, op, { t: "actor", uuid: op.uuid, path: op.path, to });
+      } else { const eff = J.inverseEffect(op); if (eff) await host(id, op, eff); }
     }
     X.log = J.markUndone(X.log, id, X.host.now());
-    emit(X, null, { type: "undo", tx: id });
+    emit(X, null, { type: "undo", tx: id, ...(failed.length > n0 ? { failed: failed.slice(n0).map((f) => ({ t: f.t, reason: f.reason })) } : {}) });
   }
   X.facts = liveFacts(X); X.changed = true;
-  return ok({ undone: list });
+  return ok({ undone: list, ...(failed.length ? { failed } : {}) });
 }
 async function opHazard(X, a) {
   const h = isObj(a.hazard) ? { kind: String(a.hazard.kind), intensity: Math.max(1, Math.min(12, Math.trunc(Number(a.hazard.intensity) || 1))), inZone: a.hazard.inZone !== false, amount: Math.max(0, Math.trunc(Number(a.hazard.amount) || 0)), armor: a.hazard.armor === true, source: typeof a.hazard.source === "string" ? a.hazard.source.slice(0, 24) : undefined, cause: a.hazard.cause, id: String(a.hazard.id ?? a.hazard.kind).slice(0, 40), zone: typeof a.hazard.zone === "string" ? a.hazard.zone.slice(0, 40) : undefined } : null;

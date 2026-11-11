@@ -596,6 +596,19 @@ const FLY = [{ mode: "flight", tier: "basic" }];
   lang("en");
   Mv.uninstall();
 }
+/* ---- an undo whose map inverse is refused: the rest is undone and the answer names what stayed */
+{
+  const T = base();
+  await T.req("p1", mv("H1", "z2"));
+  const apply0 = T.map.apply; T.map.apply = async () => ({ ok: false, reason: "noToken" });
+  const r = await T.gm({ op: "undo", tx: lastTx(T).id });
+  T.map.apply = apply0;
+  eq([code(r), r.undone?.length, r.failed, T.spot("H1"), entries(T, "H1").length, lastTx(T).state], ["ok", 1, [{ tx: lastTx(T).id, t: "zones", reason: "noToken" }], "z2", 0, "undone"], "undo: the map refused to put the token back: the action is given back all the same and the answer says which write stayed");
+  eq(T.events.filter((e) => e.type === "undo").at(-1)?.failed, [{ t: "zones", reason: "noToken" }], "undo: the event carries it for the GM's desk");
+  const U = base(); await U.req("p1", mv("H1", "z2"));
+  const u = await U.gm({ op: "undo", tx: lastTx(U).id });
+  eq([code(u), "failed" in u, U.spot("H1"), "failed" in U.events.filter((e) => e.type === "undo").at(-1)], ["ok", false, "z1", false], "undo: nothing is named when everything went back");
+}
 /* ---- R. [D21] a level change made with the map's token HUD is movement with a price [B2386-2388]: held, confirmed, sent as a `move` */
 {
   const T = base(); T.c.H1.movement = FLY; const sent = [], tick = () => new Promise((r) => setTimeout(r, 5));
