@@ -268,6 +268,13 @@ export function enterNeeds(states, md, place) {
   if ((md?.trig ?? []).some((z) => z === place?.zone || z === place?.spot)) return true;
   return !!md?.cond && (f.storm || f.highGravity);
 }
+/* U74: what the map holds when a token is dropped where there is no route (zones-api.md "What counts as another zone", M4): out of every
+   zone ("offMap"), or into a zone from outside them ("fromOff"). null: an ordinary drag. `ctx` is the map's confirm context. */
+export function offZones(ctx) {
+  if (!ctx || ctx.level === true || ctx.plan != null || ctx.reachable !== false) return null;
+  const none = (p) => !p || p.zone == null || p.id === -1;
+  return none(ctx.to) ? "offMap" : none(ctx.from) ? "fromOff" : null;
+}
 /** -> null (go on) | { stop: true, reason: "ipu.enter" | "ipu.dark" | "ipu.barrier" | "ipu.hit" | "ipu.slab", data } */
 export function stepVerdict(ctx) {
   const md = ctx?.data?.ipu;

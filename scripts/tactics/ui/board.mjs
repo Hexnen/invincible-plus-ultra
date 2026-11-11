@@ -83,7 +83,7 @@ function reach() {
     const key = `${who}|${dec.action}|${zones.join(",")}|${dec.submit?.req ? 1 : 0}`;
     if (areaPick?.key !== key && !menuBusy) {
       const mine = (areaPick = { key });
-      Zones.pickArea({ zones: zones.map((zone) => ({ zone, color: "target" })), radius: 0, token: tid(who), intent: { label: dec.title }, color: "target", title: t("ITAC.map.area.title", { name: d.who.name }), hint: t("ITAC.map.area.hint"),
+      Zones.pickArea({ zones: zones.map((zone) => ({ zone, color: "target" })), radius: 0, token: tid(who), intent: { label: BP.intentLabel(dec.title) }, color: "target", title: t("ITAC.map.area.title", { name: d.who.name }), hint: t("ITAC.map.area.hint"),
         tokens: (doc) => caught(doc, who, dec, staff) }).then((r) => {
         if (areaPick !== mine) return;
         areaPick = null;
@@ -135,7 +135,7 @@ function move() {
   if (movePick?.key === key || menuBusy) return;
   const mine = (movePick = { key });
   setTimeout(() => { if (movePick === mine) H.showToken(who); }, 350);                        // U5: the character is kept out from under the dock
-  Zones.pickMove({ token: tid(who), zones: p.zones.map(({ way, ask, menu, tip, ...z }) => z), intent: { label: p.title }, title: t("ITAC.ui.pick.title", { name: d.who.name }), hint: p.hint, color: "move" }).then((r) => {
+  Zones.pickMove({ token: tid(who), zones: p.zones.map(({ way, ask, menu, tip, ...z }) => z), intent: { label: BP.intentLabel(p.title) }, title: t("ITAC.ui.pick.title", { name: d.who.name }), hint: p.hint, color: "move" }).then((r) => {
     if (movePick !== mine) return;                                                            // given up or replaced by a newer one
     movePick = null;
     if (!r?.ok) {
@@ -161,7 +161,7 @@ function intent() {
   if (!last || last.staff) return;
   const d = last.data, p = d?.show && d.panel?.kind === "declare" && !areaMode(d.panel) ? d.panel : null, from = p ? tid(d.who.id) : null;
   const to = p && hover && p.targets?.some((x) => x.id === hover && x.map) ? hover : p?.aim?.[0]?.id ?? null;
-  const spec = from ? { token: from, ...(to && tid(to) ? { to: tid(to) } : {}), label: String(p.title ?? "").slice(0, 40), ttl: INTENT_TTL } : null;
+  const spec = from ? { token: from, ...(to && tid(to) ? { to: tid(to) } : {}), label: BP.intentLabel(p.title), ttl: INTENT_TTL } : null;
   const key = JSON.stringify(spec), now = Date.now();
   if (key === intentKey && (!spec || now - intentAt < INTENT_AGAIN)) return;
   say(spec, key);
@@ -180,6 +180,17 @@ function say(spec, key) {
 }
 
 /* ---------- U35 / U44: a right click on a thing ---------- */
+/* U80 (P8f-8): a correction that the executor refused left the refused number standing in the open menu (the map draws the stepper and
+   shows what was clicked). The menu is the map's, so it is opened again at the same token with the numbers as they are; a menu the
+   GM closed in the meantime stays closed (the warning was said). */
+function again(cid) {
+  try {
+    if (!last?.staff || !Zones.menuOpen()) return;
+    const doc = tokDoc(cid), acts = cid === last.data?.who?.id || last.data?.rest ? [] : Model.targetActs(H.bar(last.data.who.id), cid, last.facts, t);
+    if (!doc) return;
+    Promise.resolve(tokenMenu(cid, acts)).then((spec) => { if (spec && Zones.menuOpen()) Zones.menu({ token: doc.id, ...spec }); }).catch(() => {});
+  } catch (e) { console.warn(LOG, "menu again failed", e); }
+}
 function tokenMenu(cid, acts) {
   const { combat, facts, staff, data } = last, who = data.who.id, name = facts.c?.(cid)?.name ?? "";
   const fix = () => {
@@ -188,7 +199,7 @@ function tokenMenu(cid, acts) {
     /* a stepper sends ONE request once the clicking stops (450 ms): the STEP from the number the last request was counted from, which
        the executor adds to what the character has at that moment (so a hit that landed while the menu stood open is kept). One
        burst of clicks is one journal entry, one undo. A request that fails is said by main.mjs (`request` warns). */
-    return items.map((it) => { let from = it.stepper?.value; return (it.stepper ? { id: it.id, label: it.label, icon: it.icon, stepper: it.stepper, onStep: (v) => { const k = `${cid}|${it.id}`; clearTimeout(steps[k]); steps[k] = setTimeout(() => { steps[k] = 0; const was = from; from = v; if (v !== was) H.request(it.req(v, was)); }, 450); return v; } }
+    return items.map((it) => { let from = it.stepper?.value; return (it.stepper ? { id: it.id, label: it.label, icon: it.icon, stepper: it.stepper, onStep: (v) => { const k = `${cid}|${it.id}`; clearTimeout(steps[k]); steps[k] = setTimeout(() => { steps[k] = 0; const was = from; from = v; if (v !== was) Promise.resolve(H.request(it.req(v, was))).then((env) => { if (BP.stepFailed(env)) { from = was; again(cid); } }).catch(() => {}); }, 450); return v; } }
       : { id: it.id, label: it.label, icon: it.icon, ...(it.tip ? { tip: it.tip } : {}), toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return env?.ok === false ? !o : o; } }); });
   };
   const spec = (rows) => {

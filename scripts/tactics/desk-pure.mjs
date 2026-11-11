@@ -130,6 +130,11 @@ export function barModel(view, cid, ctx = {}) {
      ctx.special() -> [{ id, name, kind: "challenge" | "vehicle" }] the combatants without a card the viewer may see. */
   const ride = (view.statuses?.[cid] ?? []).find((s) => s.id === "inVehicle")?.data ?? null, special = typeof ctx.special === "function" ? ctx.special() : [];
   const fits = (e) => typeof e.when !== "string" || (e.when === "challenge" ? special.some((x) => x.kind === "challenge") : e.when === "onFoot" ? !ride && special.some((x) => x.kind === "vehicle") : e.when === "aboard" ? !!ride : e.when === "driver" ? ride?.role === "driver" : true);
+  /* U77 (D40 [R1] [B1953], [B2292]): the one thing that may be declared while an action stands open: with the unused extra unit of
+     Quickness a quick or full action answers an action SOMEBODY ELSE declared, before its dice (engine-pure.placement, the same test).
+     `answer` = that unit's id, or null (nothing open, the dice are thrown, the own action, the triggers' queue waits, no unit). */
+  const topI = (view.stack ?? []).at(-1) ?? null, queued = Object.values(view.prompts ?? {}).some((p) => p.kind === "triggerQueue" && !p.answered);
+  const answer = P1?.extraUnit && topI && !queued && !topI.locked && topI.data?.window === "beforeRoll" && topI.actor !== cid ? P1.extraUnit(view, cid) : null;
   const holding = (view.statuses?.[cid] ?? []).some((s) => s.id === "grappling");
   const heldNow = (view.statuses?.[cid] ?? []).some((s) => s.id === "grappled");            // [B2496]: the one held makes no attack until it breaks free (the attack flow refuses it with the same word)
   const out = outOf(view, cid, ctx.c?.(cid) ?? null);
@@ -140,10 +145,11 @@ export function barModel(view, cid, ctx = {}) {
   const tied = ["grappled", "snared", "immobilised"].some((st) => (view.statuses?.[cid] ?? []).some((s) => s.id === st));
   const left = (e) => !out || (out.reason === "broken" && (e.effect?.kind === "convert" || (out.canRally && e.effect?.kind === "rally" && (e.target?.n?.[0] ?? 0) === 0)));      // U9 [B2707], [B2773]
   const actions = C.entriesFor(view, cid, kitFacts(ctx)).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && fits(e) && left(e) && applies(e, cid, view.statuses ?? {}, broken) && (!e.gm || ctx.staff)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
-    const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", { ranged: P1.isRanged?.(e) }) : { ok: false, reason: "noLedger" };
+    const answers = !!answer && (e.cost === "full" || e.cost === "quick");                      // U77: this action can answer the open one, paid with the Quickness unit and nothing else
+    const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", { ranged: P1.isRanged?.(e), ...(answers ? { interrupt: true, grant: answer, resolve: ctx.c?.(cid)?.resolve } : {}) }) : { ok: false, reason: "noLedger" };
     const unit = pay.ok && pay.pay ? (view.ledger?.[cid]?.grants ?? []).find((g) => g.id === pay.pay) : null, granted = !onTurn && !!unit && unit.kind !== "base";      // a unit usable out of turn pays it (the crew's attack in a chase [B3438], a GM grant)
     const anytime = !!e.kit && e.cost === "none";                                               // P6: what costs no action is used when it applies (the flow checks the rest)
-    const reason = busy ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
+    const reason = busy && !answers ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
       attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders" || e.effect?.token === "orders",
       name: e.name || null, kit: e.kit ?? null, pick: Array.isArray(e.pick) ? e.pick.slice() : null, stress: e.stress?.fixed ?? 0, fxOn: e.fxOn === true, unarmed: e.unarmed === 1,      // P6

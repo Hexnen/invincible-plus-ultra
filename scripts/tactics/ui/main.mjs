@@ -25,18 +25,53 @@ import * as Desk from "./desk.mjs";
 import * as Pick from "./pick.mjs";
 import * as Board from "./board.mjs";
 import * as Feedback from "./feedback.mjs";
+import * as Lay from "./layout-pure.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
 const NARROW = 1180;                       // with less room than this between the window's left edge and the sidebar the desk starts folded
 const blankDock = () => ({ sel: null, armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, peek: false, weapon: null, opts: {}, picks: {}, texts: {}, quiet: false, to: null, ask: null, why: "", zone: {}, dragged: false, opt: null, attr: null, kopt: null });
-const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, sure: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {}, scene: {}, kit: {} });
+const blankDesk = () => ({ tab: "now", collapsed: false, touched: false, override: null, undo: null, sure: null, drift: null, vals: {}, manual: {}, picks: {}, texts: {}, always: {}, zone: {}, force: {}, hazard: {}, karma: {}, scene: {}, kit: {}, folds: {} });
 let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null;
-/* U28: Foundry's macro bar is folded away while the dock is up; the dock's keyboard button brings it back. The choice is this
-   browser's own (it is about the room on this screen), so it is kept in localStorage and outlives the turn and the fight. */
-const HOTBAR_KEY = `${MOD}.tactics.hotbar`;
+/* U28: Foundry's macro bar is folded away while the dock is up; the dock's keyboard button brings it back.
+   U64: that choice, the key marks, the desk open or folded and the folded parts of its Table tab are THE USER'S LAYOUT
+   (layout-pure.mjs): kept in a flag on the user's own document, so they come back in the next session and on another machine. What
+   this browser remembered before (localStorage) seeds a user who has no layout yet. Read once when the surfaces start; written a
+   moment after a change (one write for a burst of clicks). */
+const HOTBAR_KEY = `${MOD}.tactics.hotbar`, KEYS_ON = `${MOD}.tactics.keys`, LAYOUT_FLAG = "tacticsLayout";
 const hotbarWas = () => { try { return globalThis.localStorage?.getItem(HOTBAR_KEY) === "1"; } catch { return false; } };
 let st = { dock: { ...blankDock(), hotbar: hotbarWas() }, desk: blankDesk() };
+let layout = Lay.clean(null), saveTimer = 0;
+const foldsNow = () => Object.fromEntries(Object.keys(Lay.FOLDS).map((k) => [k, Lay.folded(layout, k)]));
+function layoutStart() {
+  try {
+    const raw = Store.userPref(LAYOUT_FLAG);
+    let keys = false; try { keys = globalThis.localStorage?.getItem(KEYS_ON) === "1"; } catch { keys = false; }
+    layout = Lay.clean(raw, { hotbar: hotbarWas(), keys });
+    st.dock.hotbar = layout.hotbar;
+    Object.assign(st.desk, Lay.deskStart(layout) ?? {}, { folds: foldsNow() });
+    if (layout.keys) document.body.classList.add("ita-keys");
+  } catch (e) { console.warn(LOG, "layout failed", e); }
+}
+function remember(change) {
+  try {
+    const next = Lay.merge(layout, change);
+    if (next === layout) return;
+    layout = next; st.desk.folds = foldsNow();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { Store.saveUserPref(LAYOUT_FLAG, Lay.stored(layout)); }, 600);
+  } catch (e) { console.warn(LOG, "layout failed", e); }
+}
+/* U62: THE SIZE of the dock, the desk and their cards: this browser's own setting (a slider, 80..140 %), separate from Foundry's
+   interface scale. The stylesheet does the scaling (--ita-scale on the body); the placement runs again so both stand where they fit.
+   `preview`: the slider being dragged in the settings window (shown at once, kept only when the settings are saved). */
+function applyScale(preview) {
+  try {
+    const v = Lay.scaleOf(preview ?? Store.setting("tacticsUiScale", Lay.SCALE.def));
+    if (v === Lay.SCALE.def) document.body.style.removeProperty("--ita-scale"); else document.body.style.setProperty("--ita-scale", Lay.factorOf(v));
+    relayout(); setTimeout(relayout, 60);
+  } catch (e) { console.warn(LOG, "scale failed", e); }
+}
 let hotbarShown = null;
 function hotbarSync(on) {
   try {
@@ -305,13 +340,13 @@ function patchDock(patch) {
 }
 function setDock(patch) {
   if (patch && "camera" in patch) { Board.setCamera(patch.camera); patch = Object.fromEntries(Object.entries(patch).filter(([k]) => k !== "camera")); }      // W1 (U42): the map keeps this user's choice
-  if (patch && "hotbar" in patch) { try { globalThis.localStorage?.setItem(HOTBAR_KEY, patch.hotbar ? "1" : "0"); } catch { /* private window */ } }
+  if (patch && "hotbar" in patch) { remember({ hotbar: !!patch.hotbar }); try { globalThis.localStorage?.setItem(HOTBAR_KEY, patch.hotbar ? "1" : "0"); } catch { /* private window */ } }
   patchDock(patch); refresh();
 }
 /* a tooltip for the keyboard: Foundry opens its tooltips for the pointer only; the surfaces ask for the same one on focus */
 const tipShow = (el) => { try { game.tooltip?.activate(el); } catch { /* a courtesy */ } };
 const tipHide = () => { try { game.tooltip?.deactivate(); } catch { /* a courtesy */ } };
-function setDesk(patch) { if (patch && "tab" in patch) st.desk.auto = false; Object.assign(st.desk, patch); refresh(); }
+function setDesk(patch) { if (patch && "tab" in patch) st.desk.auto = false; if (patch?.touched && "collapsed" in patch) remember({ desk: patch.collapsed ? "folded" : "open" }); Object.assign(st.desk, patch); refresh(); }
 /* U60: THE TOKEN THE GM CLICKED is the one the desk's character tab is about. The tab comes forward by itself only when the desk has
    nothing else to say (the Now tab is open and empty) and steps back when the token is let go; with cards waiting or an action in
    progress the GM's click changes nothing on screen (the map menu's "Show on the desk" brings the tab up at any time). Staff only. */
@@ -319,7 +354,7 @@ function unitOf(cid, force = false) {
   try {
     if (!cid || !Store.isStaff(game.user) || !combatNow()?.combatants.get(cid)) return;
     st.desk.kit = { ...st.desk.kit, who: cid, open: null };
-    if (force) Object.assign(st.desk, { collapsed: false, touched: true, tab: "kit", auto: false });
+    if (force) { Object.assign(st.desk, { collapsed: false, touched: true, tab: "kit", auto: false }); remember({ desk: "open" }); }
     else if (!st.desk.collapsed && st.desk.tab === "now" && deskIdle) Object.assign(st.desk, { tab: "kit", auto: true });
     refresh();
   } catch (e) { console.warn(LOG, "unit failed", e); }
@@ -337,7 +372,6 @@ function onControl(token, on) {
    sidebar): only with the focus on the page itself, the map, or one of the two surfaces. A focus that the POINTER left on a button
    of a surface does not make Enter or Space press that button again (it would un-arm the action just clicked, or veto twice): the
    keys keep their meaning; only a focus walked there by Tab leaves Tab, Enter and Space to the browser. */
-const KEYS_ON = `${MOD}.tactics.keys`;
 function onKey(ev) {
   try {
     if (!lastDock || ev.defaultPrevented || ev.repeat || ev.ctrlKey || ev.altKey || ev.metaKey || !Keys.KEYS.includes(ev.key)) return;
@@ -349,7 +383,7 @@ function onKey(ev) {
     if (!plan) return;
     ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
     if (inOurs && byPointer) { try { a.blur(); } catch { /* nothing focused */ } }
-    if (!document.body.classList.contains("ita-keys")) { document.body.classList.add("ita-keys"); try { globalThis.localStorage?.setItem(KEYS_ON, "1"); } catch { /* private window */ } }
+    if (!document.body.classList.contains("ita-keys")) { document.body.classList.add("ita-keys"); remember({ keys: true }); try { globalThis.localStorage?.setItem(KEYS_ON, "1"); } catch { /* private window */ } }
     if (plan.click) Dock.press(plan.click);
     else if (plan.target) { setDock({ targets: [plan.target] }); try { Pick.show(combatNow(), plan.target); } catch { /* a courtesy */ } }
     else if (plan.set) setDock(plan.set);
@@ -418,6 +452,7 @@ function configure() {
     force: (patch) => { st.desk.force = { ...st.desk.force, ...patch }; refresh(); },
     hazard: (patch) => { st.desk.hazard = { ...st.desk.hazard, ...patch }; refresh(); },
     karma: (patch) => { st.desk.karma = { ...st.desk.karma, ...patch }; refresh(); },
+    fold: (id) => { remember({ folds: { [id]: !Lay.folded(layout, id) } }); refresh(); },      // U64 / U80: a part of the Table tab folds; the choice is the user's layout
     kit: (patch) => { st.desk.kit = { ...st.desk.kit, ...patch }; refresh(); },                // P6: whose abilities the tab shows, which row is open
     scene: (patch) => { st.desk.scene = { ...st.desk.scene, ...patch, side: { ...(st.desk.scene.side ?? {}), ...(patch.side ?? {}) } }; refresh(); },      // P7: the draft of a chase
     roll: rollAct,
@@ -481,12 +516,19 @@ export function start() {
     document.addEventListener("keydown", onKey, true);
     document.addEventListener("pointerdown", () => { byPointer = true; }, true);
     document.addEventListener("keydown", (ev) => { if (ev.key === "Tab" && !ev.defaultPrevented) byPointer = false; });      // the browser walked the focus
-    try { if (globalThis.localStorage?.getItem(KEYS_ON) === "1") document.body.classList.add("ita-keys"); } catch { /* private window */ }
+    layoutStart();      // U64
+    applyScale();       // U62
+    /* U62: the slider in the settings window shows the size while it is dragged; closing the window without saving puts the kept size back */
+    /* U71: the card of a tactical roll is marked: while the dock is up its toast is not shown (the roll, its Push and Accept are on the
+       dock's own chip; the card itself stays in the chat log) */
+    Hooks.on("renderChatMessageHTML", (message, html) => { try { if (Sys.tacticsOf(message)) (html instanceof HTMLElement ? html : html?.[0])?.classList.add("ita-troll"); } catch { /* the toast shows */ } });
+    Hooks.on("renderSettingsConfig", (_app, el) => { try { const box = el instanceof HTMLElement ? el : el?.[0]; const input = box?.querySelector(`[name="${MOD}.tacticsUiScale"]`); for (const ev of ["input", "change"]) input?.addEventListener(ev, () => applyScale(input.value)); } catch { /* the saved value still applies */ } });
+    Hooks.on("closeSettingsConfig", () => setTimeout(() => applyScale(), 50));
     Board.start({ t, set: setDock, send: (req, after) => send("dock", req, after), press: (fk) => Dock.press(fk), notify, refresh, showToken, dock: () => st.dock, unit: (cid) => unitOf(cid, true),
       bar: (cid) => lastModel?.bars?.find((b) => b.combatant === cid) ?? null,
       request: async (req, combat) => { try { const env = await Api.request(req, combat ?? combatNow() ?? undefined); for (const text of Model.envNotes(env, t, Store.isStaff(game.user))) notify("warn", text); if (env?.ok === false && env.error?.code !== "gone") notify("warn", errText(env.error)); return env; } catch { return null; } } });
     Feedback.start({ t, refresh });
-    Api.ui = { active, refresh, state: () => st, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
+    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
     refresh();
     return true;
   } catch (e) { console.warn(LOG, "start failed", e); return false; }

@@ -46,6 +46,20 @@ export function validZonePatch(patch) {
 }
 /** GM edit `zoneSet` (spec 14.2): the zone's own marks. -> op | null */
 export const zoneOp = (zone, patch) => (isPlaceKey(zone) && validZonePatch(patch) ? { op: "zone", zone, patch: { ...patch } } : null);
+/* U72: A FIRE THAT WAS ONLY PAINTED on the map's fire layer (no mark of the GM under it) is put out by `{ op: "zone", patch: { fire: null } }`
+   like any other, but the inverse the map returns for it carries the OWN mark as it was, which is "none": giving that back repaints
+   nothing, so "undo" of a fire that went out left the zone dark. The level the layer showed before the write (`painted`, the map's own
+   state record with source "map") is put into that inverse: the zone burns again at the Intensity it had (the map paints one fire of
+   that level and keeps it as the zone's mark; the strokes themselves are the map's to give back: dev/combat-handoff.md U11).
+   An inverse that already restores a fire, a write that puts nothing out and a zone that showed no painted fire are left as they came. */
+export function repaintInverse(op, inverse, painted) {
+  const lvl = Number(painted);
+  if (!isObj(op) || op.op !== "zone" || !isObj(op.patch) || !("fire" in op.patch) || Number(op.patch.fire) > 0) return inverse ?? null;
+  if (!isObj(inverse) || inverse.op !== "zone" || !isObj(inverse.patch) || Number(inverse.patch.fire) > 0 || !(lvl >= 1)) return inverse ?? null;
+  return { ...inverse, patch: { ...inverse.patch, fire: Math.min(12, Math.trunc(lvl)) } };
+}
+/** the Intensity the map's layers show for a zone's fire (0: none): the state records of source "map" */
+export const paintedFire = (states) => Math.max(0, ...(Array.isArray(states) ? states : []).filter((s) => s?.kind === "fire" && s.source === "map").map((s) => Number(s.level) || 0));
 /** A border's state in play (breach a wall, open / lock / seal / breach a door, or back as built). -> op | null */
 export function borderOp(border, { wall, door, restore } = {}) {
   if (!isBorderKey(border)) return null;

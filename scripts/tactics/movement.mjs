@@ -118,6 +118,11 @@ function onDrag(h, ctx) {
   if (ctx?.level === true) return onLevel(h, ctx);
   try {
     const cid = h.cid(ctx.token?.document ?? ctx.token), to = ctx.to?.spot ?? null;
+    /* U74 (the map's D71): a drop out of every zone, or into a zone from outside them, is held by the map and has no route, so nothing
+       can be priced: the one who dragged is told why the token stayed (before: silence). The GM's own such drop is a placement and never
+       comes here. */
+    const off = MP.offZones(ctx);
+    if (cid && off) { ui.notifications?.warn(t(`ITAC.move.${off}`), { console: false }); return false; }
     if (cid && to && surface) { let took = false; try { took = surface(cid, to) === true; } catch { took = false; } if (took) return false; }      // the dock shows the price (ui/main.mjs)
     if (cid && to) ask(h, cid, optionsFor(h, cid, to), `${h.c(cid)?.name ?? ""}: ${t("ITAC.action.move")}`).catch((err) => console.warn(`${MOD} | tactics: drag`, err));
   } catch (err) { console.warn(`${MOD} | tactics: drag`, err); }
