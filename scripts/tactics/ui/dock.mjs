@@ -10,7 +10,7 @@
      SLOTS   the two slots of a turn (U31): the long one is the full action (or a second quick one), the short one the quick action; a
              further one only when the character has it; then bonus dice and statuses as small chips
      ACTIONS one picture per action, in the groups of the rules, each carrying THE MARK OF SPEED (dom.speed: long bar = full action,
-             short bar = quick action, none = no action) and its Resolve price; the name, the price in words and the reason of a greyed
+             short bar = quick action, an open ring = no action) and its Resolve price; the name, the price in words and the reason of a greyed
              one are the tooltip (hover and keyboard focus) and the aria-label; a click arms it and the panel's head says it again
      TAIL    Something else, Hold off, the macro bar, End turn
    When the row does not fit (data-tight, measured in place()), the actions take a row of their own over the unit; in the narrowest
@@ -18,7 +18,8 @@
    COST PREVIEW (U30): hovering or focusing anything that carries `pv` (an action, a row of a list, a way of moving, an answer on a
    card, Declare) lights the slot it would spend and shows the Resolve it would cost on the Resolve bar. Only for the character the
    dock drives; nothing is rebuilt for it (attributes on the unit block).
-   STRUCTURE (bottom up):  the bar  <  the status line (rolls owed, whose turn, who the table waits for, the last news)  <  the panel of
+   STRUCTURE (bottom up):  the bar  <  the status line (who else the table waits for, the last news; never whose turn it is: the
+   initiative bar says that)  <  the panel of
    the armed action  <  the questions asked of this user. The panel and the questions scroll inside what is left under the initiative bar.
      panel: declare (target chips + map pick, dice, chance band, Declare) | blocked (reason + ask the GM) | a list (More actions,
             Abilities: rows by kind) | something else | hold off | the own action in progress (what it waits for, change / cancel)
@@ -183,13 +184,15 @@ const slot = (p) => h("button.itd-slot", { fk: `slot:${p.key}`, tip: p.tip, disa
 const vital = (v) => h("div.itd-vital", { data: { id: v.id, v: v.v }, attrs: { role: "img", "aria-label": v.say, style: `--itd-v:${v.v};--itd-max:${v.max}` } },
   icon(v.id === "health" ? "fa-heart" : "fa-bolt"), h("span.itd-vbar", {}, h("i.itd-vfill"), h("i.itd-vpv")), h("b.itd-vnum", {}, h("span", { text: String(v.v) }), h("small", { text: `/${v.max}` })), h("b.itd-vdelta"));
 
+const nameParts = (name) => { const m = /^(.*\S)\s+(#\d+)$/.exec(String(name ?? "")); return m ? [h("span.itd-name", { text: m[1] }), h("b.itd-nameno", { text: m[2] })] : h("span.itd-name", { text: name }); };
 function unit(d) {
   const w = d.who;
   return [h("div.itd-unit", {},
     d.chars.length ? h("div.itd-chars", { attrs: { role: "group" } }, d.chars.map((c) => h(`button.itd-char${c.onTurn ? ".itd-char-turn" : ""}${c.asked ? ".itd-char-asked" : ""}`, { fk: `char:${c.id}`, tip: c.name, attrs: { "aria-pressed": String(c.sel) }, on: { click: () => set({ sel: c.id, armed: null, mode: null, targets: [], tokens: [], text: "" }) } }, face(c.img, c.name)))) : null,
     !d.chars.length ? face(w.img, w.name, "ita-face.itd-face") : null,
     h("div.itd-id", {},
-      h("span.itd-nameline", {}, h("span.itd-name", { text: w.name }), w.zone ? h("span.itd-zone", { tip: w.zone.tip, attrs: { tabindex: "0", "aria-label": w.zone.tip } }, icon("fa-location-dot"), h("span", { text: w.zone.label })) : null),
+      /* a namesake's number ("Turret #2") never falls to the ellipsis: it is what tells the two apart, and the bar is where the name stands */
+      h("span.itd-nameline", {}, nameParts(w.name), w.zone ? h("span.itd-zone", { tip: w.zone.tip, attrs: { tabindex: "0", "aria-label": `${w.zone.say}. ${w.zone.tip}` } }, icon("fa-location-dot"), h("span", { text: w.zone.label })) : null),
       d.vitals.length ? h("div.itd-vitals", {}, d.vitals.map(vital)) : null)),
   h("div.itd-slots", { attrs: { role: "group", "aria-label": handlers.label?.("slots") } }, d.slots.map(slot),
     d.extras.map((x) => h(`span.itd-extra`, { text: x.label, tip: x.tip || null, data: { kind: x.kind }, attrs: x.tip ? { tabindex: "0" } : {} })), w.free ? h("span.itd-extra", { text: w.freeLabel, data: { kind: "free" } }) : null)];
@@ -223,7 +226,7 @@ const OPT_ICON = { wreck: "fa-house-crack", area: "fa-burst", fullAuto: "fa-elli
 const KIT_STATE = { auto: "fa-gears", assist: "fa-user-check", hand: "fa-hand", off: "fa-ban" };
 const close = () => set({ armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} });
 const textBox = (value, placeholder, key = "text") => h("textarea.itd-text", { fk: `draft:${key}`, text: value, attrs: { rows: 2, maxlength: 300, placeholder, "aria-label": placeholder }, on: { input: (e, el) => set({ [key]: el.value }) } });
-const submit = (s, cls = "", pv = null) => h(`button.itd-go${cls}`, { fk: `go${cls}`, text: s.label, disabled: !!s.disabled, tip: s.disabled, pv: s.disabled ? null : pv, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} }) } });
+const submit = (s, cls = "", pv = null, said = false) => h(`button.itd-go${cls}`, { fk: `go${cls}`, text: s.label, disabled: !!s.disabled, tip: said ? null : s.disabled, pv: s.disabled ? null : pv, on: { click: () => s.req && send(s.req, { armed: null, mode: null, targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} }) } });
 const cancelBtn = () => h("button.itd-x", { fk: "x", tip: handlers.label?.("cancel"), on: { click: close } }, icon("fa-xmark"));
 const head = (p) => h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.cost ? h("span.itd-cost", {}, speed(p.unit), h("span", { text: p.cost })) : null, cancelBtn());
 
@@ -257,13 +260,19 @@ function doorPanel(p) {
     askRow(p.ask));
 }
 /* U23: a list behind one button (More actions; Abilities by kind). One line per entry: its picture, its name, the mark of its speed, its
-   Resolve price and, for an ability, how it is run; the words of all of them are the tooltip and the aria-label. */
+   Resolve price and, for an ability, how it is run. The tooltip says in words what the marks stand for and nothing the row already
+   says (U51); the aria-label says all of it.
+   U49: in the Abilities list the uses of one power stand under its name, said once (entries of the model, in its columns): a row
+   under a name carries only the use; a power with one use is one row, its name first and the use after it. */
 function listPanel(p) {
-  const row = (r) => h("button.itd-row", { fk: `menu:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, tip: r.tip, pv: r.pv, data: { state: r.state ?? null, key: r.key ?? null },
+  const row = (r, under = false) => h(`button.itd-row${under ? ".itd-row-sub" : ""}`, { fk: `menu:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, tip: r.tip, pv: r.pv, data: { state: r.state ?? null, key: r.key ?? null },
     attrs: { "aria-label": [r.label, ...r.notes, r.disabled].filter(Boolean).join(", "), ...keyAttrs(r.key) }, on: { click: () => set({ armed: r.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } },
-    actIcon(r.icon), h("span.itd-row-l", { text: r.label }), speed(r.cost), rs(r.stress), r.state ? icon(KIT_STATE[r.state] ?? "fa-circle") : null);
+    actIcon(r.icon), r.of === undefined ? h("span.itd-row-l", { text: r.label }) : under ? h("span.itd-row-l", { text: r.use ?? r.of }) : h("span.itd-row-l", {}, h("span", { text: r.of }), r.use ? h("small", { text: r.use }) : null),
+    speed(r.cost), rs(r.stress), r.state ? icon(KIT_STATE[r.state] ?? "fa-circle") : null);
+  const entry = (e) => (e.head ? h("div.itd-entry", { attrs: { role: "group", "aria-label": e.name } }, h("span.itd-entry-n", { text: e.name }), e.rows.map((r) => row(r, true))) : e.rows.map((r) => row(r)));
+  const rows = (g) => (g.cols ? h("div.itd-cols", {}, g.cols.map((c) => h("div.itd-colm", {}, c.map((i) => entry(g.entries[i]))))) : h("div.itd-rows", {}, g.rows.map((r) => row(r))));
   return h("section.itd-panel", { data: { kind: p.kind, list: p.list } }, h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), cancelBtn()),
-    h("div.itd-lists", {}, p.groups.map((g) => h("div.itd-list", { attrs: { role: "group", "aria-label": g.label ?? p.title } }, g.label ? h("span.itd-k", { text: g.label }) : null, h("div.itd-rows", {}, g.rows.map(row))))),
+    h("div.itd-lists", {}, p.groups.map((g) => h("div.itd-list", { attrs: { role: "group", "aria-label": g.label ?? p.title } }, g.label ? h("span.itd-k", { text: g.label }) : null, rows(g)))),
     (p.foot ?? []).map((x) => h("p.itd-hint.itd-foot", {}, icon("fa-hand"), h("span", { text: x }))));
 }
 /* P7: the ways of a challenge, one chip each, grouped by what they work on; the last chip is an idea of the player's own */
@@ -309,16 +318,18 @@ function panel(p) {
           p.pool ? h("div.itd-pool", {}, h("span.itd-k", { text: handlers.label?.("pool") }), h("b.itd-dice", { text: String(p.pool.total) }), h("span.itd-parts", { text: p.pool.parts.map((x) => `${x.label} ${x.dice > 0 && x !== p.pool.parts[0] ? "+" : ""}${x.dice}`).join(" · ") })) : null,
           p.tokens.length ? h("div.itd-chips", {}, p.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => toggle("tokens", k.id, 12) } }, icon("fa-dice-d6"), h("span", { text: `${k.label} ${k.source}` })))) : null,
           p.chance ? meter(p.chance) : null) : null,
-        h("div.itd-col.itd-submit", {}, p.submit.disabled ? h("span.itd-why", { text: p.submit.disabled }) : null, submit(p.submit, "", p.pv))));
+        h("div.itd-col.itd-submit", {}, p.submit.disabled ? h("span.itd-why", { text: p.submit.disabled }) : null, submit(p.submit, "", p.pv, true))));      // U51: why it cannot be declared is written beside the button, not said again in its tooltip
   }
   if (p.kind === "blocked") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("p.itd-reason", {}, icon("fa-ban"), h("span", { text: p.reason })), h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder)), h("div.itd-col.itd-submit", {}, submit(p.submit, ".itd-go-ask"))));
   if (p.kind === "other") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("div.itd-col.itd-grow", {}, textBox(p.text, p.placeholder), h("p.itd-hint", { text: p.hint })), h("div.itd-col.itd-submit", {}, submit(p.submit, ".itd-go-ask"))));
   if (p.kind === "holdOff") return h("section.itd-panel", { data: { kind: p.kind } }, head(p), h("div.itd-pbody", {}, h("p.itd-hint", { text: p.hint }),
     h("div.itd-chips", {}, p.targets.map((x) => h("button.itd-chip.itd-chip-card", { fk: `ho:${x.slot}`, on: { click: () => send(x.req, { mode: null }) } }, h("b", { text: String(x.card ?? "?") }), h("span", { text: x.names }))))));
-  /* the own action in progress */
+  /* the own action in progress. U52: the roll lives HERE (its dice or its sixes with Roll / Accept / Push; no chip in the line over
+     the bar, no sentence about it), and every target stands with its picture (those the viewer's view holds) */
   return h("section.itd-panel", { data: { kind: "mine", rolling: p.rolling ? "1" : null } },
-    h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.targets.length ? h("span.itd-arrow", {}, icon("fa-arrow-right"), h("b", { text: p.targets.join(", ") })) : null),
-    h("div.itd-pbody", {}, h("p.itd-status", {}, icon(p.rolling ? "fa-dice" : "fa-hourglass-half"), h("span", { text: p.status })), p.text ? h("blockquote.ita-quote", {}, h("span", { text: p.text })) : null,
+    h("header.itd-phead", {}, h("h3.ita-plate", { text: p.title }), p.targets.length ? h("span.itd-arrow", {}, icon("fa-arrow-right"), p.targets.map((x) => h("span.itd-tgt", {}, face(x.img, x.name), h("b", { text: x.name })))) : null),
+    h("div.itd-pbody", {}, p.rolls.length ? h("div.itd-myrolls", { attrs: { role: "status" } }, p.rolls.map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) }))) : null,
+      p.status ? h("p.itd-status", {}, icon(p.rolling ? "fa-dice" : "fa-hourglass-half"), h("span", { text: p.status })) : null, p.text ? h("blockquote.ita-quote", {}, h("span", { text: p.text })) : null,
       h("div.itd-col.itd-submit", {}, p.commands.map((c) => h("button.itd-ghost", { fk: `cmd:${c.id}`, text: c.label, on: { click: () => (c.amend ? handlers.amend?.(p) : c.req && send(c.req)) } })))));
 }
 
@@ -342,24 +353,25 @@ function draw(d, ui) {
   swap(stack, [
     d.prompts?.length ? h("div.itd-asks", {}, d.prompts.map((a) => askCard(a, askH))) : null,
     d.show ? panel(d.panel) : null,
-    /* the line on top of the bar: whose turn, who the table waits for; and, only while there is one, the roll this user owes or may push
-       (U1 / U2: its buttons are here, not on a chat toast) and the last thing the table was told (U10 / U3: one chip, the older lines in
+    /* the line on top of the bar, only while it has something the rest of the screen does not say (U51 / U52: model-pure.dockData):
+       a roll this user owes or may push that is not the roll of its own action (that one stands in the action's panel), who ELSE the
+       table waits for, and the last thing the table was told (U10 / U3: one chip, the older lines in
        its tooltip, put away with its x) */
-    d.show && (waitRest(d).length || d.turn || d.rolls?.length || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
+    d.show && (d.waiting?.length || d.turn || d.rolls?.length || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
       (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
-      d.turn ? h("span.itd-turnline", { text: d.turn }) : null, waitRest(d).length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(waitRest(d))] : null,
-      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: [d.news.text, ...d.news.older].join("<br>"), attrs: { tabindex: "0" } }, icon("fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
+      d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null,
+      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon("fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
         h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null,
     d.show ? bar(d) : null,
   ]);
   /* U41: the answer the keyboard chose on a card (Enter sends it) */
   try { const kp = d.keys?.chosen; if (kp) for (const el of stack.querySelectorAll(".ita-opt")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
+  /* U51: the news chip's tooltip holds the older lines; the last line joins them only when the chip had to cut it short */
+  try { const nt = stack.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = [d.news.text, ...d.news.older].join("<br>"); } catch { /* a courtesy */ }
   place();
   reveal();
   try { preview(stack.querySelector("[data-pv]:hover, [data-pv]:focus-visible")); } catch { /* a courtesy */ }      // the pointer may still rest on what it was previewing
 }
-/* who the table waits for, without this client's own roll while its chip (with the buttons) already says it */
-const waitRest = (d) => (d.rolls?.length ? (d.waiting ?? []).filter((w) => !w.mine || w.what.length > d.rolls.length) : d.waiting ?? []);
 function reveal() {
   clearTimeout(hideTimer);
   if (shown) return;

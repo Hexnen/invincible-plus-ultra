@@ -64,7 +64,7 @@ lang("en");
   eq([d.panel.picking, d.panel.submit.disabled, d.panel.submit.req], [false, null, { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } }], "declare panel: the request carries only targets of the list");
   eq((await T.req("p1", d.panel.submit.req)).ok, true, "declared through the panel's request");
   d = dock(T, "p1", ["H1"]);
-  eq([d.panel.kind, d.panel.title, d.panel.targets, d.panel.commands.map((c) => c.id), act(d, "slugfest").disabled != null], ["mine", "Slugfest", ["Mauler"], ["amend", "cancel"], true], "dock: my open action with amend / cancel; the bar is busy with a reason");
+  eq([d.panel.kind, d.panel.title, d.panel.targets.map((x) => x.name), d.panel.commands.map((c) => c.id), act(d, "slugfest").disabled != null], ["mine", "Slugfest", ["Mauler"], ["amend", "cancel"], true], "dock: my open action with amend / cancel; the bar is busy with a reason");
   eq(d.waiting.map((w) => [w.gm, w.mine]), [[true, false]], "dock: the table waits for the GM");
   // the GM desk sees it
   let g = desk(T);
@@ -127,7 +127,7 @@ lang("en");
   eq([d.rest, d.prompts.map((p) => [p.kind, p.about, p.options.map((x) => x.id)])], [true, [["reaction", "Rex", ["block", "dodge", "pass"].filter((x) => d.prompts[0].options.some((q) => q.id === x))]]], "out of turn: the reaction question shows above a resting bar");
   ok(d.prompts[0].options.every((x) => x.note == null || !/\d|%/.test(x.note)) && !JSON.stringify(d.prompts[0].lines).includes("9"), "a player's reaction question carries no attacker numbers");
   eq([d.prompts[0].options.find((x) => x.id === "pass").label, /attack lands: /.test(d.prompts[0].options.find((x) => x.id === "pass").note ?? ""), d.prompts[0].lines.some((l) => /Mauler attacks Rex/.test(String(l)))], ["No reaction", true, true], "U11: the card names the attacker, says in words how likely the attack is to land, and calls a pass what the GM's card calls it");
-  eq(d.waiting[0].mine, true, "the wait line says it is me");
+  eq([d.waiting.length, d.prompts[0].aboutHead, d.turn], [0, false, ""], "U51 / U52: the card above the bar is the question: the line does not say 'waiting for: you' again, the card's head does not repeat the name on the bar, and nothing says whose turn it is");
   eq(desk(T).cards.length, 0, "online addressee: no desk card");
   g = desk(T, {}, (u) => u !== "p2");
   eq([g.cards[0].proxy, /user-p2/.test(String(g.cards[0].lines[0]))], [true, true], "offline addressee: a proxy card naming the absent user");
@@ -274,7 +274,7 @@ for (const l of ["en", "pl"]) { // P5: the other actions (the list behind "More 
   const view = viewOf(T, "p1", ["H1"]);
   const hid = M.dockData(D.playerModel(view, { id: "p1", owns: ["H1"] }, ctx(T)), {}, { ...facts(T, view, "p1"), where: (id) => (id === "H1" ? "z5" : null) }, tw);
   eq([hid.turn, /Zzyxq/.test(JSON.stringify(hid))], ["Nie twoja tura", false], "U15: a concealed combatant's turn still says it is not the player's, and names nobody");
-  eq([/5/.test(hid.who?.zone?.label ?? ""), hid.who?.zone?.tip === `Jesteś w: ${hid.who?.zone?.label}. ${PL["ITAC.ui.legend"]}`], [true, true], "U8: the own zone stands beside the name with the legend in its tip");
+  eq([/5/.test(hid.who?.zone?.label ?? ""), hid.who?.zone?.tip === PL["ITAC.ui.legend"], hid.who?.zone?.say === `Jesteś w: ${hid.who?.zone?.label}`], [true, true, true], "U8 / U51: the own zone stands beside the name; its tip is the legend alone (the chip already names the zone), the whole sentence is for a screen reader");
   lang("en");
   eq(dock(T, "p1", ["H1"]).who?.zone ?? null, null, "U8: no zone fact, no chip");
   T.turn("H1");
@@ -310,7 +310,7 @@ for (const l of ["en", "pl"]) { // U28 - U31, U23, U4: the compact dock: slots, 
   eq(dk("p1", ["H1"]).slots.map((p) => p.state), ["open", "open"], `${l} both slots are free again`);
   /* U23: the list behind More actions: rows with a picture, the unit and a tooltip */
   d = dk("p1", ["H1"], { mode: "menu" });
-  eq([d.panel.list, d.panel.groups.length, d.panel.groups[0].rows.length === d.panel.rows.length, d.panel.rows.every((r) => r.icon && r.tip.title === r.label && (r.cost === "full" || r.cost === "quick") && r.pv)], ["menu", 1, true, true], `${l} U23: More actions is one list of rows, each with its picture, its unit, its tooltip and its preview`);
+  eq([d.panel.list, d.panel.groups.length, d.panel.groups[0].rows.length === d.panel.rows.length, d.panel.rows.every((r) => r.icon && !r.tip.title && r.tip.cost && !r.tip.cost.includes(r.label) && (r.cost === "full" || r.cost === "quick") && r.pv)], ["menu", 1, true, true], `${l} U23 / U51: More actions is one list of rows, each with its picture, its unit and its preview; the tooltip says the price in words and does not repeat the name the row shows`);
   /* U23: the stunt card */
   eq((await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })).ok, true, `${l} an attack is declared`);
   const g = desk(T, { override: T.top().id });
@@ -331,7 +331,7 @@ for (const l of ["en", "pl"]) { // U28 - U31, U23, U4: the compact dock: slots, 
   const o = (id, data, more = {}) => ({ id, label: `ITAC.stunt.${data.stunt}`, data, ...more });
   const T = mk(), view = viewOf(T, "p1", ["H1"]);
   const a = M.askData(mkP([o("s1", { stunt: "doubleDamage" }), o("s2", { stunt: "bangHeads", extra: "H2" }), o("s3", { stunt: "stun", onExtra: true, target: "H2" })]), { t, facts: facts(T, view, "p1"), own: {} });
-  eq(a.options.map((x) => [x.icon, x.group?.id, typeof x.tip?.lines?.[0]]), [["stunt:doubleDamage", "main", "string"], ["stunt:bangHeads", "more", "string"], ["stunt:stun", "on:H2", "string"]], "U23: a stunt has its picture, its group (the target, another opponent, on that opponent) and what it does");
+  eq(a.options.map((x) => [x.icon, x.group?.id, typeof x.tip?.lines?.[0], x.tip?.title ?? null]), [["stunt:doubleDamage", "main", "string", null], ["stunt:bangHeads", "more", "string", null], ["stunt:stun", "on:H2", "string", null]], "U23 / U51: a stunt has its picture, its group (the target, another opponent, on that opponent) and what it does; the tooltip does not repeat its name");
   eq([a.options[1].group.label.length > 0, /Rex/.test(a.options[2].group.label), a.pvFor], [true, true, null], "U23: the groups are captioned; no preview without the asked character's own bar");
 }
 /* ------------------------------------------------------------------ U5: the keyboard, and the rows closed with it */
@@ -373,7 +373,7 @@ for (const l of ["en", "pl"]) {
       const c2 = d.prompts[0], o1 = c2.options.filter((o) => !o.disabled)[0];
       eq([Keys.plan(d, {}, { key: "1" }), Keys.plan(d, {}, { key: "Enter" })], [{ click: `opt:${c2.id}:${o1.id}` }, { click: `submit:${c2.id}` }], `${l} U41: on a stunt card a digit ticks, Enter is its Confirm`);
       /* U46: the panel of the own action does not say "waiting for the others" to the one the table waits for */
-      eq([d.panel.kind, d.panel.status === t("ITAC.ui.mine.you"), d.panel.status === t("ITAC.ui.mine.open"), dock(T, "p2", ["H2"]).panel ?? null], ["mine", true, false, null], `${l} U46: with a question of their own open, the panel says the table waits for them`);
+      eq([d.panel.kind, d.panel.status === t("ITAC.ui.mine.declared"), d.panel.status === t("ITAC.ui.mine.open"), d.waiting.some((w) => w.mine), c2.aboutHead, dock(T, "p2", ["H2"]).panel ?? null], ["mine", true, false, false, false, null], `${l} U46 / U51: with a question of their own open (the card above), the panel says only that the action is declared, and the line does not list the question again`);
     } else ok(false, `${l} U41 / U46: the stunt card did not come up (${d.prompts[0]?.kind})`);
     noKeys(d, `${l} keys`);
   }
@@ -406,6 +406,62 @@ for (const l of ["en", "pl"]) {
     const r = M.askData({ id: "r", kind: "reaction", about: "N1", aboutName: "Mauler #2", always: ["block"], data: {}, options: [{ id: "pass", label: "ITAC.opt.pass", req: {} }], answerReq: (v) => ({ op: "answer", prompt: "r", value: v }) }, { t, facts: facts(T, T.state, "gm", true), own: {}, desk: true });
     eq([r.check, r.aboutId, /Mauler #2/.test(r.always.label), /Mauler #2/.test(r.always.tip), r.always.tip !== r.always.label], [false, "N1", true, true, true], `${l} U19: the card knows whom it is about (the map shows it) and the standing answer says it is ticked before answering`);
     void view;
+  }
+}
+/* ------------------------------------------------------------------ U6: each fact once (U49 - U52) */
+for (const l of ["en", "pl"]) {
+  lang(l);
+  { // U52: nobody is told whose turn it is in words (the initiative bar says it); the roll of the own action lives in its panel
+    const T = mk();
+    eq([dock(T, "p1", ["H1"]).turn, dock(T, "p2", ["H2"]).turn, staffDock(T, "H1").turn, desk(T).turn], ["", "", "", ""], `${l} U52: no surface says whose turn it is in words: not the player on turn, not the one waiting, not the GM's dock, not the desk`);
+    await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } });
+    for (const p of Object.values(T.state.prompts ?? {})) if (p.kind === "reaction") await T.gm({ op: "answer", prompt: p.id, value: "pass" });
+    let d = dock(T, "p1", ["H1"]);
+    const r0 = d.panel?.rolls?.[0];
+    eq([d.panel?.kind, d.panel?.rolls?.length, r0?.state, r0?.buttons.map((b) => b.id), d.rolls.length, d.panel?.status, d.waiting.some((w) => w.mine)], ["mine", 1, "owed", ["roll"], 0, null, false],
+      `${l} U52: the roll the own action owes stands in its panel with its button; no chip for it in the line, no sentence about it, no 'waiting for: you'`);
+    eq([d.panel.targets.map((x) => [x.id, x.name, "img" in x]), Keys.plan(d, {}, { key: "Enter" })], [[["N1", "Mauler", true]], { click: `rb:${r0.id}:roll` }], `${l} U52: the target stands with its picture slot; Enter still throws the roll`);
+    /* a result that may be pushed: Accept and Push in the panel, Enter accepts */
+    const view = viewOf(T, "p1", ["H1"]), pm = D.playerModel(view, { id: "p1", owns: ["H1"] }, ctx(T));
+    const pushed = { ...pm, rolls: pm.rolls.map((r) => ({ ...r, state: "push", sixes: 2, messageId: "m1" })), waiting: pm.waiting.map((w) => ({ ...w, what: "push" })) };
+    d = M.dockData(pushed, {}, facts(T, view, "p1"), t);
+    eq([d.panel.rolls.map((r) => [r.state, r.buttons.map((b) => b.id), /2/.test(r.text)]), d.rolls, d.panel.status, d.waiting.some((w) => w.mine), Keys.plan(d, {}, { key: "Enter" })], [[["push", ["accept", "push"], true]], [], null, false, { click: `rb:${d.panel.rolls[0].id}:accept` }],
+      `${l} U52: a result that may be pushed: the sixes with Accept and Push in the panel, said once; Enter accepts`);
+    /* with another action armed the panel is that action's: the roll then keeps its chip in the line (its only place) */
+    d = M.dockData(pushed, { mode: "other" }, facts(T, view, "p1"), t);
+    eq([d.panel.kind, d.rolls.length], ["other", 1], `${l} U52: while another panel is open the roll keeps its chip in the line`);
+    /* a defence rolled inside somebody else's action has no panel of its own: its chip stays */
+    const other = { ...pushed, mine: [] };
+    eq([M.dockData(other, {}, facts(T, view, "p1"), t).rolls.length, M.dockData(other, {}, facts(T, view, "p1"), t).panel ?? null], [1, null], `${l} U52: a roll in somebody else's action keeps its chip`);
+    /* the picture of a target: only of somebody the viewer's view holds */
+    const withImg = { ...facts(T, view, "p1"), c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: `${id}.png` } : null) };
+    eq(M.dockData(pm, {}, withImg, t).panel.targets[0].img, "N1.png", `${l} U52: the target's picture is the one of the roster`);
+    const blind = { ...withImg, view: { ...view, ledger: Object.fromEntries(Object.entries(view.ledger).filter(([id]) => id !== "N1")) } };
+    eq(M.dockData(pm, {}, blind, t).panel.targets[0].img, null, `${l} U52: a target the viewer's view does not hold gets no picture`);
+    await T.gm({ op: "abort", inst: T.top().id });
+  }
+  { // U49 / U50 / U51: the abilities list: one entry per power, a mark and a plain sentence for what takes no action, tooltips without the name
+    const T = mk(), view = viewOf(T, "p1", ["H1"]), pm = D.playerModel(view, { id: "p1", owns: ["H1"] }, ctx(T));
+    const base = pm.bars[0].actions.find((a) => a.id === "slugfest");
+    const k = (id, item, name, label, cost, stress, cat = "power", state = "auto") => ({ ...base, id, flow: "act", tags: ["kit"], kind: "kit", needsTarget: false, optTarget: false, attr: null, attrs: null, cost, stress, name, label: `ITAC.kit.act.${label}`, kit: { item, cat, state } });
+    const acts = [k("k1", "dup", "Duplication", "zzMake", "full", 1), k("k2", "sum", "Summoning", "zzCall", "full", 0), k("k3", "dup", "Duplication: Absorb the copies", "use", "quick", 0, "power", "assist"), k("k4", "life", "Life Support", "use", "none", 1, "power", "assist"),
+      k("k5", "dup", "Duplication", "zzActs", "none", 0), k("k6", "hh", "Hard Hitter", "zzWind", "quick", 0, "talent")];
+    const bar = { ...pm.bars[0], actions: [...pm.bars[0].actions, ...acts], kitRows: [{ item: "dup", name: "Duplication", state: "auto" }, { item: "sum", name: "Summoning", state: "auto" }, { item: "life", name: "Life Support", state: "assist" }, { item: "hh", name: "Hard Hitter", state: "auto" }] };
+    const d = M.dockData({ ...pm, bars: [bar] }, { mode: "kit" }, facts(T, view, "p1"), t), g = d.panel.groups.find((x) => x.id === "power"), dup = g.entries.find((e) => e.name === "Duplication");
+    eq([g.entries.map((e) => [e.name, e.head, e.rows.map((r) => r.id)]).slice(0, 3), g.rows.map((r) => r.id).slice(0, 5), g.entries.slice(3).every((e) => !e.head && e.rows.length === 1)], [[["Duplication", true, ["k1", "k3", "k5"]], ["Summoning", false, ["k2"]], ["Life Support", false, ["k4"]]], ["k1", "k3", "k5", "k2", "k4"], true],
+      `${l} U49: the uses of one power stand together under one entry (in the order the powers first appear); a power with one use has no head`);
+    eq([dup.rows.map((r) => [r.of, r.use]), dup.rows.every((r) => !r.use.includes("Duplication")), g.entries[2].rows[0].use, d.panel.groups.find((x) => x.id === "talent").entries[0].rows[0].use != null], [[["Duplication", "zzMake"], ["Duplication", "Absorb the copies"], ["Duplication", "zzActs"]], true, null, true],
+      `${l} U49: a row under a power carries only the use, never the power's name again; a plain use of an item is the item alone`);
+    eq([d.panel.rows.map((r) => r.id).filter((id) => id.length === 2 && id[0] === "k"), d.panel.rows.map((r) => r.key), dup.rows.map((r) => r.key), Keys.plan(d, { mode: "kit" }, { key: "2" }), d.panel.groups.flatMap((x) => x.entries.flatMap((e) => e.rows.map((r) => r.id))).join() === d.panel.rows.map((r) => r.id).join()], [["k1", "k3", "k5", "k2", "k4", "k6"], Keys.DIGITS.slice(0, d.panel.rows.length), ["1", "2", "3"], { click: "menu:k3" }, true],
+      `${l} U49 / U41: the digits run down the list as it is drawn, entry by entry, and the rows of an entry carry them`);
+    eq([M.kitCols([{ rows: [1, 2, 3] }, { rows: [1] }, { rows: [1] }, { rows: [1, 2] }, { rows: [1] }]), M.kitCols([{ rows: Array(9).fill(1) }, { rows: [1] }]), M.kitCols([])], [[[0, 1, 2], [3, 4]], [[0], [1]], []], `${l} U49: the columns never cut an entry in two (${M.KIT_LINES} lines a column; a longer entry stands alone)`);
+    const free1 = d.panel.rows.find((r) => r.id === "k4"), free0 = d.panel.rows.find((r) => r.id === "k5"), paid = d.panel.rows.find((r) => r.id === "k1");
+    eq([free1.tip.cost === t("ITAC.ui.free.costs", { n: 1 }), free0.tip.cost === t("ITAC.ui.free.only"), /1/.test(free1.tip.cost), free1.tip.cost !== free0.tip.cost, paid.tip.cost.includes(M.costText(t, "full"))], [true, true, true, true, true],
+      `${l} U50: what takes no action says so in a sentence, with what it still costs; a full action is named with its price`);
+    eq([d.panel.rows.every((r) => !r.tip.title), d.panel.rows.every((r) => !r.tip.cost.includes(r.stateText)), free1.tip.lines.length, free1.notes.includes(free1.stateText)], [true, true, 1, true], `${l} U51: a row's tooltip does not repeat its name, and says how it is run once (the sentence, not the sentence and the label); the aria-label keeps all of it`);
+    eq([M.priceWords(t, "none", 0), M.priceWords(t, "free", 2) === t("ITAC.ui.free.costs", { n: 2 }), M.priceWords(t, "quick", 0)], [t("ITAC.ui.free.only"), true, M.costText(t, "quick")], `${l} U50: the words of a price`);
+    const bd = M.dockData({ ...pm, bars: [{ ...bar, actions: [...pm.bars[0].actions, { ...base, id: "zf", flow: "act", situational: true, needsTarget: false, cost: "none", stress: 0, label: "ITAC.action.shakeOff" }] }] }, {}, facts(T, view, "p1"), t);
+    eq(act(bd, "zf")?.tip.cost, t("ITAC.ui.free.only"), `${l} U50: a button of the bar that takes no action says the same sentence`);
   }
 }
 { // U19: namesakes are numbered, the hidden ones last, so a player's numbers are the GM's and show no gap
