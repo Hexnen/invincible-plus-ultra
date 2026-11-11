@@ -80,6 +80,15 @@ export const plan = (a, b, p) => call("plan", a, b, p) ?? null;
 export const forcedChain = (who, opts) => call("forcedChain", who, opts) ?? null;
 export const planAlong = (from, keys, opts) => call("planAlong", from, keys, opts) ?? null;
 export const freeSpot = (where, opts) => call("freeSpot", where, opts) ?? null;
+/** the place of a point of the map (zones-api.md section 2 `placeAt`), null without the map */
+export const placeAt = (x, y, opts) => call("placeAt", x, y, opts) ?? null;
+/** The level of a token as the map stores it on the token (section 2: alt, floor, air; null = not set), for a token that is to stand
+    on the same level: as creation data ({ "moinen-maps": { alt, .. } } | {}) and as a row of a `tokens` op ({ alt, floor, air }). */
+export function levelOf(token) {
+  const f = (token?.document ?? token)?.flags?.[ZONES_MODULE] ?? {}, row = { alt: f.alt ?? null, floor: f.floor ?? null, air: f.air === true ? true : null };
+  const set = Object.fromEntries(Object.entries(row).filter(([, v]) => v != null));
+  return { row, flags: Object.keys(set).length ? { [ZONES_MODULE]: set } : {} };
+}
 /** The journal op of a finished move: the `tokens` inverse the map returned puts every mover back. null when nothing moved. */
 export const moveRecord = (res) => (res?.ok !== false && res?.inverse ? { t: "zones", op: { op: "move", id: res.op ?? null, done: res.done ?? null }, inverse: res.inverse } : null);
 /** Along a route or a plan, the step listeners asked before every step. -> the map's result plus `journal` (moveRecord) */

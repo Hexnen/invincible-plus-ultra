@@ -123,6 +123,26 @@ eq((await api.other("cbH1", "x")).ok, true, "api.other as the GM (owner of every
 eq((await api.stop(combat)).ok, true, "stop removes the state");
 eq([combat.flags[MOD].tactics.state, combat.flags[MOD].tactics.log, api.state()], ["", "", null], "no tactical state left");
 eq((await fromPlayer("p1", { op: "endTurn", actor: "cbH1", round: 1, slot: 0 }, "u5")).msg.env.error.code, "off", "requests after the stop: off");
+/* the copy tokens of a duplicator [B1907] stand where their owner stands: on its level of the map and in its zone */
+{
+  const Summons = await import("./summons.mjs"), made = [], applied = [];
+  const scene = { id: "s", grid: { size: 100 }, tokens: coll([]), createEmbeddedDocuments: async (k, list) => { made.push(...list); for (const d of list) scene.tokens.push(mkTok({ ...d, id: `cp${made.length}${scene.tokens.length}` })); return list; }, deleteEmbeddedDocuments: async (k, ids) => { for (const id of ids) scene.tokens.splice(scene.tokens.findIndex((x) => x.id === id), 1); } };
+  const mkTok = (d) => { const td = { width: 1, height: 1, elevation: 0, flags: {}, ...d, parent: scene, toObject: () => { const { parent, toObject, update, ...rest } = td; return JSON.parse(JSON.stringify(rest)); }, update: async (data) => { for (const [k, v] of Object.entries(data)) setPath(td, k, v); } }; return td; };
+  const ot = mkTok({ id: "tkcbH1", name: "hero1", x: 300, y: 100, elevation: 20, flags: { "moinen-maps": { alt: "elevated", air: true }, other: { secret: 1 } } });
+  scene.tokens.push(ot); const tok0 = combatants.get("cbH1").token; combatants.get("cbH1").token = ot;
+  /* a map: x < 400 is zone z1, the rest z2; the owner stands in the last column of z1 */
+  const zapi = { zoneOfToken: (t) => ({ zone: (t.x ?? t.document?.x) < 400 ? "z1" : "z2" }), range: () => null, placeAt: (x) => ({ zone: x < 400 ? "z1" : "z2" }), canWrite: () => true, apply: async (op) => { applied.push(op); for (const r of op.rows) { const td = scene.tokens.get(r.id); td.flags["moinen-maps"] = Object.fromEntries(Object.entries({ alt: r.alt, floor: r.floor, air: r.air }).filter(([, v]) => v != null)); } return { ok: true, changed: true, inverse: null }; } };
+  const get0 = game.modules.get; game.modules.get = (id) => (id === "moinen-maps" ? { active: true, api: { zones: zapi } } : get0(id));
+  await Summons.syncCopies(combat, { effects: [{ kind: "copies", holder: "cbH1", data: { n: 7 } }] });
+  eq([made.length, made.map((d) => JSON.stringify(d.flags["moinen-maps"])), made.every((d) => !d.flags.other && d.flags[MOD].tactics.copyOf.owner === "cbH1")], [3, Array(3).fill(JSON.stringify({ alt: "elevated", air: true })), true], "copies: three tokens on the owner's level of the map (the map's level flags, nothing else of the owner's flags)");
+  eq(made.map((d) => d.x < 400), [true, true, true], "copies: each stands in the owner's zone, not over the border beside it");
+  ot.flags["moinen-maps"] = {}; made.length = 0;
+  await Summons.syncCopies(combat, { effects: [{ kind: "copies", holder: "cbH1", data: { n: 7 } }] });
+  eq([made.length, applied.length, applied.every((op) => op.op === "tokens" && op.rows[0].alt === null && op.rows[0].air === null), scene.tokens.filter((td) => td.id !== ot.id).every((td) => !td.flags["moinen-maps"].alt)], [0, 3, true, true], "copies: the owner came down: its copies follow through the map's own write path");
+  await Summons.syncCopies(combat, { effects: [] });
+  eq(scene.tokens.length, 1, "copies: gone with the bonus");
+  game.modules.get = get0; combatants.get("cbH1").token = tok0;
+}
 console.warn = origWarn;
 eq(warns.filter((w) => !/roll dialog|stunts dialog|injuries table|system compatibility/.test(w)).length, 0, "no unexpected warnings");
 done("check-executor");

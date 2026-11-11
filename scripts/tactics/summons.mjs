@@ -18,13 +18,18 @@ import { t } from "./lang.mjs";
 const MOD = Store.MOD, OPT = { ipuTactics: true };
 const flagOf = (d) => d?.flags?.[MOD]?.tactics ?? {};
 const step = (scene) => scene?.grid?.size ?? 100;
-/* a free place beside a token: the squares around it, the first one no token stands on */
+/* a free place beside a token: the squares around it, the first one no token stands on; on a map with zones a square of the token's
+   OWN zone before any other (a copy or a summoned ally that stood over the border would be drawn in the neighbouring zone) */
 function beside(scene, td, i = 0) {
   const g = step(scene), ring = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1], [1, -1], [2, 0], [0, 2], [-2, 0], [0, -2]];
   const taken = (x, y) => scene.tokens.some((o) => Math.abs(o.x - x) < g / 2 && Math.abs(o.y - y) < g / 2);
-  const free = ring.map(([dx, dy]) => ({ x: td.x + dx * g * (td.width ?? 1), y: td.y + dy * g * (td.height ?? 1) })).filter((p) => !taken(p.x, p.y));
+  const w = g * (td.width ?? 1), h = g * (td.height ?? 1), zone = Zones.placeOf(td)?.zone ?? null;
+  const all = ring.map(([dx, dy]) => ({ x: td.x + dx * w, y: td.y + dy * h })).filter((p) => !taken(p.x, p.y));
+  const home = zone ? all.filter((p) => Zones.placeAt(p.x + w / 2, p.y + h / 2)?.zone === zone) : [], free = home.length ? home : all;
   return free[i % Math.max(1, free.length)] ?? { x: td.x + g, y: td.y };
 }
+/* is `a` on another level than `b` (the map's token flags)? */
+const otherLevel = (a, b) => JSON.stringify(Zones.levelOf(a).row) !== JSON.stringify(Zones.levelOf(b).row);
 
 export async function perform(combat, e, roster) {
   try {
@@ -88,10 +93,13 @@ export function syncCopies(combat, state) {
           if (!ot || ot.parent !== scene) continue;
           const mine = have.filter((td) => copyOf(td).owner === owner);
           gone.push(...mine.slice(n).map((td) => td.id));
-          const far = mine.slice(0, n).filter((td) => Math.hypot(td.x - ot.x, td.y - ot.y) > step(scene) * 2.5 * Math.max(1, ot.width ?? 1) || td.elevation !== ot.elevation);      // the owner moved on: its copies follow
-          for (const [i, td] of far.entries()) await td.update({ ...beside(scene, ot, i), elevation: ot.elevation }, { ...OPT, animate: false });
+          const far = mine.slice(0, n).filter((td) => Math.hypot(td.x - ot.x, td.y - ot.y) > step(scene) * 2.5 * Math.max(1, ot.width ?? 1) || td.elevation !== ot.elevation || otherLevel(td, ot));      // the owner moved on (or changed level): its copies follow
+          for (const [i, td] of far.entries()) {
+            await td.update({ ...beside(scene, ot, i), elevation: ot.elevation }, { ...OPT, animate: false });
+            if (otherLevel(td, ot)) await Zones.perform({ t: "zones", op: { op: "tokens", rows: [{ id: td.id, ...Zones.levelOf(ot).row }] } });      // the level is the map's to write (zones-api.md section 12)
+          }
           for (let i = mine.length; i < n; i++) make.push({ ...ot.toObject(), ...beside(scene, ot, i), _id: undefined, actorLink: false, name: t("ITAC.kit.copyName", { name: ot.name }), alpha: 0.7, locked: true,
-            bar1: { attribute: null }, bar2: { attribute: null }, displayBars: 0, flags: { [MOD]: { tactics: { copyOf: { combat: combat.id, owner } } } } });
+            bar1: { attribute: null }, bar2: { attribute: null }, displayBars: 0, flags: { ...Zones.levelOf(ot).flags, [MOD]: { tactics: { copyOf: { combat: combat.id, owner } } } } });      // on the owner's level of the map; no other flag of the owner's token is copied
         }
         gone.push(...have.filter((td) => !want.has(copyOf(td).owner)).map((td) => td.id));
         if (gone.length) await scene.deleteEmbeddedDocuments("Token", gone, OPT);
