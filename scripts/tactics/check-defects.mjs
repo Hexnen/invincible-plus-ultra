@@ -257,4 +257,21 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
   eq(20 - U.c.H1.health, 4, "D6: Armor that works only against blows does not");
 }
 
+/* ================================================================== D8: one holds off instead of one's turn, not after part of it [B2281-2283] */
+{
+  const sid = (T, m) => T.state.init.slots.find((s) => s.members.includes(m)).id;
+  const T = fight({ N1: { health: 6 } });
+  await T.req("p1", decl("H1", "slugfest", ["N1"])); await T.answer("gm", "reaction", "pass", "N1"); await T.roll("attack", 0);
+  const r = await T.req("p1", { op: "holdOff", actor: "H1", with: sid(T, "H2") });
+  eq([code(r), why(r)], ["illegal", "turnUsed"], "D8: no holding off after an action of the turn");
+  eq(T.state.init.curMember, "H1", "D8: the turn stays where it was");
+  eq(code(await T.gm({ op: "holdOff", actor: "H1", with: sid(T, "H2"), force: true })), "ok", "D8: the GM may still swap the cards by force");
+  /* [B2283]: interrupts spent earlier do not use the turn, not even both of them */
+  const U = fight({ N1: { health: 6 }, order: ["N1", "H1", "H2", "N2"] });
+  await U.req("p1", { op: "mark", actor: "H1", unit: "quick" }); await U.req("p1", { op: "mark", actor: "H1", unit: "quick" });
+  U.turn("H1");
+  eq(code(await U.req("p1", { op: "holdOff", actor: "H1", with: sid(U, "H2") })), "ok", "D8: with both quick actions spent as interrupts one still holds off");
+  eq(U.state.init.curMember, "H2", "D8: the partner has the turn");
+}
+
 done("check-defects");

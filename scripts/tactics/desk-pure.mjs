@@ -7,6 +7,7 @@
 import * as C from "./catalog-pure.mjs";
 import { REVALIDATE_OPTIONS, FLOWS } from "./engine-pure.mjs";
 import * as Init from "./initiative-pure.mjs";
+import * as Lg from "./ledger-pure.mjs";
 import { applies, attrChoices } from "./actions-pure.mjs";
 /* ADDED FOR THE SURFACES (scripts/tactics/ui/; all additive, checked in check-ui.mjs):
      instance lines carry `steps` (the flow's step ids, for "back to step"), `attr` / `defense` of the catalog entry and `outcomes`;
@@ -123,9 +124,10 @@ export function barModel(view, cid, ctx = {}) {
 /* spec 3.1 hold off: the slots the combatant's card can be swapped with now (none unless it is this combatant's own turn) */
 function holdOffOf(view, cid, onTurn, busy, ctx) {
   let targets = [];
-  try { if (onTurn && view.init?.curMember === cid) targets = Init.holdOffTargets(view.init, view.init.cur); } catch { targets = []; }
+  const used = Lg.turnUsed(view.ledger?.[cid]);                                              // [B2281-2282]
+  try { if (onTurn && !used && view.init?.curMember === cid) targets = Init.holdOffTargets(view.init, view.init.cur); } catch { targets = []; }
   const slot = (id) => (view.init?.slots ?? []).find((s) => s.id === id);
-  return { disabled: !onTurn ? "notYourTurn" : busy ? "busy" : targets.length ? null : "noTarget",
+  return { disabled: !onTurn ? "notYourTurn" : busy ? "busy" : used ? "turnUsed" : targets.length ? null : "noTarget",
     targets: targets.map((id) => ({ slot: id, card: slot(id)?.card ?? null, names: (slot(id)?.members ?? []).map((m) => nameOf(ctx, m)) })), req: (slotId) => ({ op: "holdOff", actor: cid, with: slotId }) };
 }
 /** Everything a player's surface shows. `view` MUST be viewFor(state, viewer, meta). */

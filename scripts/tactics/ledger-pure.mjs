@@ -251,6 +251,9 @@ export function turnEnd(L0) {
   L.grants = L.grants.filter((g) => !(g.expires === "turnEnd" && !g.window.startsWith("turnOf:") && (!g.slot || g.slot === extra) && !used(g)));
   return L;
 }
+/* Has the turn in progress been used? [B2281-2282]: one holds off AT one's turn, in place of it ("your turn doesn't happen until you use
+   it"); whoever has taken an action or moved on it has used it. Interrupts spent earlier in the round do not count [B2283]. */
+export const turnUsed = (L) => !!L && L.turnRound === L.round && L.turnNo > 0 && (L.entries ?? []).some((e) => !e.void && e.own && e.turnNo === L.turnNo);
 /* the turn is handed on (holding off, or the GM stepping back): it will start again later without counting as a new turn */
 export function turnSuspend(L0) { const L = copy(L0); delete L.open; delete L.extra; L.held = 1; return L; }
 /* a finished turn is opened again (GM stepping back) */

@@ -224,13 +224,14 @@ function table(parts = PARTS, seed = 5) {
   const T = table();
   T.gm("start", { mode: "tactical", groups: [["n1", "n2"]] });
   eq(T.state.init.slots.length, 3, "[I4] the NPC group shares a card");
+  const early = T.cur() !== "h1" && T.do("u1", "mark", { actor: "h1", unit: "quick" }).ok;      // [B2283]: a quick action spent as an interrupt, before h1's own turn (P8 D8: an action taken ON the turn uses the turn)
   while (T.cur() !== "h1") T.gm("nextTurn");
   const me = T.state.init.cur, targets = O.optionsOf(T.state, "h1").find((o) => o.id === "holdOff").targets ?? [];
   if (targets.length) {
     eq(T.code(T.do("u2", "holdOff", { actor: "h1", with: targets[0] })), "notOwner", "forged hold off");
     eq(T.code(T.do("u1", "holdOff", { actor: "h1", with: me })), "illegal", "not with oneself");
     const myCard = T.state.init.slots.find((s) => s.id === me).card;
-    T.do("u1", "mark", { actor: "h1", unit: "quick" });
+    ok(early, "[B2283] the quick action was spent as an interrupt earlier in the round");
     ok(T.do("u1", "holdOff", { actor: "h1", with: targets[0] }).ok, "[I8] hold off");
     ok(T.state.init.slots.find((s) => s.id === targets[0]).card === myCard && T.state.init.cur === targets[0], "[I9] the partner has the card and the turn");
     ok(T.state.ledger.h1.held === 1 && !T.state.ledger.h1.open && Lg.budget(T.state.ledger.h1).quick[0] === "used", "[B2283] what was spent stays spent");

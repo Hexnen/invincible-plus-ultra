@@ -63,8 +63,8 @@ export function optionsOf(state, id, { resolve } = {}) {
     { id: "quick", cost: "quick", ...tell(Lg.canPay(L, { cost: "quick", onTurn, interrupt: !onTurn, turnOf, resolve })) },
     { id: "endTurn", cost: "none", ...(mine ? (state.mode === "tactical" && !state.free[id] && openPromptsAbout(state, id).length ? { ok: false, reason: "busy" } : { ok: true }) : { ok: false, reason: "notYourTurn" }) }
   ];
-  const targets = mine ? I.holdOffTargets(state.init, state.init.cur) : [];
-  out.push({ id: "holdOff", cost: "none", ok: targets.length > 0, ...(targets.length ? { targets } : { reason: mine ? "noTarget" : "notYourTurn" }) });
+  const used = mine && Lg.turnUsed(L), targets = mine && !used ? I.holdOffTargets(state.init, state.init.cur) : [];      // [B2281-2282]: a turn that was used is not handed on
+  out.push({ id: "holdOff", cost: "none", ok: targets.length > 0, ...(targets.length ? { targets } : { reason: used ? "turnUsed" : mine ? "noTarget" : "notYourTurn" }) });
   return out;
 }
 
@@ -362,6 +362,7 @@ const OPS = {
     if (s.phase !== "turns" || s.init.curMember !== a.actor) return err("notYourTurn");
     if (!W.ctx.staff && !W.ctx.owns?.(a.actor)) return err("notOwner");
     const from = s.init.cur;
+    if (!a.force && Lg.turnUsed(s.ledger[a.actor])) return err("illegal", { reason: "turnUsed" });      // [B2281-2282]: holding off is instead of the turn, not after part of it (the GM may force it)
     const r = I.holdOff(s.init, from, a.with);
     if (!r.ok) return err("illegal", { reason: "holdOff" });
     s.ledger[a.actor] = Lg.turnSuspend(ledgerOf(W, a.actor));                       // the turn did not happen yet [B2282]; spent interrupts stay spent [B2283]
