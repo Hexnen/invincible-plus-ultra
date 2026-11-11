@@ -3,6 +3,8 @@ import { ok, eqc as eq, done, Table } from "./testkit.mjs";
 import * as P1 from "./economy-pure.mjs";
 import * as M from "./mods-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
+import * as View from "./view-pure.mjs";
+import * as Desk from "./desk-pure.mjs";
 /* the real end of a turn (ops-pure.mjs through the director): by the owner, or by the GM for an NPC */
 const endTurn = (T, user, actor) => T.req(user, { op: "endTurn", actor, round: T.state.round, slot: T.state.init.cur, ...(user === "gm" ? { force: true } : {}) });
 
@@ -576,6 +578,95 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   const G = new Table(); G.hero("H1", "p1").npc("N1", { grown: true }).npc("N2", { huge: true }).npc("N3", { immune: ["grapple"] }).npc("N4"); G.order(["H1", "N1", "N2", "N3", "N4"]).turn("H1");
   const grab = async (t) => { const r = await G.req("p1", { op: "declare", actor: "H1", decl: { action: "grapple", targets: [t] } }); if (r.ok) await G.gm({ op: "abort", inst: G.top().id }); return r.ok ? "ok" : r.error.params.reason; };
   eq([await grab("N1"), await grab("N2"), await grab("N3"), await grab("N4")], ["immune", "huge", "immune", "ok"], "P: a grown target, a huge one and one on the free list cannot be grappled; an ordinary one can");
+}
+
+/* ================================================================== U: the roll and exchange flow (usability U1, U2, U3, U4, U7, U10, U11) */
+{
+  const pv = (T, uid, owns) => View.viewFor(T.state, { id: uid, staff: false, owns }, { hidden: Object.values(T.c).filter((c) => c.hidden).map((c) => c.id), npc: Object.values(T.c).filter((c) => c.npc).map((c) => c.id) });
+  const ctx = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
+  const settle = async (T) => { for (let n = 0; n < 12 && T.prompts().length; n++) { const p = T.prompts()[0]; await T.gm({ op: "answerFor", prompt: p.id, value: p.multi ? [] : (p.options.find((o) => o.id === "pass" || o.id === "none") ?? p.options.find((o) => !o.disabled)).id }); } };
+  /* U1: a roll that may still be pushed is something the table waits for, on both surfaces, and the roller's model carries it */
+  const T = base();
+  await T.req("p1", slug("H1", "N1")); await T.answer("gm", "reaction", "pass", "N1");
+  let pm = Desk.playerModel(pv(T, "p1", ["H1"]), { id: "p1", owns: ["H1"] }, ctx(T));
+  eq([pm.rolls.map((r) => [r.key, r.state, r.dice, typeof r.rid]), pm.waiting.map((w) => [w.what, w.to])], [[["attack", "owed", 4, "string"]], [["roll", ["p1"]]]], "U2: the roll a player owes is in the player's model with what is needed to throw it again");
+  eq(Desk.playerModel(pv(T, "p2", ["H2"]), { id: "p2", owns: ["H2"] }, ctx(T)).rolls, [], "U2: nobody else is offered that roll");
+  await T.roll("attack", 2, { pushable: true });
+  pm = Desk.playerModel(pv(T, "p1", ["H1"]), { id: "p1", owns: ["H1"] }, ctx(T));
+  const dm = Desk.deskModel(T.state, T.log, ctx(T));
+  eq([T.state.stack.length, pm.rolls.map((r) => [r.key, r.state, r.sixes, typeof r.messageId]), pm.waiting.map((w) => [w.what, w.to]), dm.waiting.map((w) => [w.what, w.to])], [1, [["attack", "push", 2, "string"]], [["push", ["p1"]]], [["push", ["p1"]]]], "U1: a pushable result holds the exchange and both surfaces say who it waits for (never 'nobody')");
+  const row = dm.info[0].rolls[0];
+  eq([row.state, row.acceptReq, row.askReq], ["push", { op: "setSixes", inst: T.top().id, roll: "attack", sixes: 2 }, null], "U1: the GM's row can accept the result as it stands");
+  /* a second throw of the same request changes nothing; the roll's own message (accept) and a push do */
+  const mid = T.top().rolls.attack.messageId;
+  await T.roll("attack", 5, { pushable: false, fresh: true });
+  eq([T.top()?.rolls.attack.sixes, T.top()?.rolls.attack.messageId === mid], [2, true], "U2: a second throw of a roll that is already in is ignored");
+  await T.roll("attack", 3, { pushed: 1, pushable: false }); await settle(T);
+  eq([T.state.stack.length, T.state.news.at(-1).kind, T.state.news.at(-1).rows], [0, "action", [{ target: "N1", hit: true, taken: T.state.news.at(-1).rows[0].taken, ...(T.state.news.at(-1).rows[0].stunts ? { stunts: T.state.news.at(-1).rows[0].stunts } : {}) }]], "U1 / U10: the push comes in, the exchange closes and its result is news");
+  /* U10: what a player is told; U3 / U10 hidden information */
+  const n1 = pv(T, "p2", ["H2"]).news;
+  eq([n1.length, n1[0].actor, n1[0].rows[0].hit, "tx" in n1[0]], [1, "H1", true, false], "U10: the result of an exchange is in every player's view (no journal id with it)");
+  await T.gm({ op: "undo", tx: T.log.list.at(-1).id });
+  const n2 = pv(T, "p2", ["H2"]).news;
+  eq([n2.map((n) => n.kind), n2[0].undone, n2[1].actor, n2[1].action], [["action", "undo"], 1, "H1", "slugfest"], "U10: an undo marks the result taken back and says so on a line of its own");
+  { // a hidden NPC acts: nothing of it is news for a player; its roll is for the GM alone
+    const H = base(); H.c.N1.hidden = true; H.turn("N1");
+    await H.gm(slug("N1", "H2")); await H.answer("p2", "reaction", "pass", "H2");
+    eq([H.lastRequest().mode, H.top().rolls.attack.req.mode], ["gm", "gm"], "U7: the roll of a combatant hidden from the players is asked for the GM alone");
+    await H.roll("attack", 2);
+    await settle(H);
+    const v = pv(H, "p2", ["H2"]);
+    eq([H.state.stack.length, H.state.news.length, v.news, /N1/.test(JSON.stringify(v.news))], [0, 1, [], false], "U10: the news of a hidden attacker stays with the GM");
+    const O = base(); O.turn("N1"); await O.gm(slug("N1", "H2"));
+    eq([O.prompt("reaction", "H2").data.attacker, Object.keys(pv(O, "p2", ["H2"]).prompts[O.prompt("reaction", "H2").id].data.odds ?? {}).sort()], ["N1", ["block", "open"]], "U11: the defender's card carries the attacker and a band per answer");
+    await O.answer("p2", "reaction", "pass", "H2");
+    eq([O.lastRequest().mode ?? null, O.top().rolls.attack.req.mode ?? null], [null, null], "U7: an NPC the players see rolls in the open");
+    const C = base(); C.turn("N1"); C.state = { ...C.state, knowledge: { ...C.state.knowledge, H2: { ...(C.state.knowledge?.H2 ?? {}), N1: "unseen" } } };
+    await C.gm(slug("N1", "H2"));
+    const q = pv(C, "p2", ["H2"]).prompts[C.prompt("reaction", "H2").id];
+    eq([q.data.attacker ?? null, q.data.odds ?? null, q.data.unseen, /N1/.test(JSON.stringify(q))], [null, null, 1, false], "U11 / CU10: an attacker the defender cannot see is nobody on the card, and no chance is told");
+  }
+  /* U4: the GM's word on the outcome closes an exchange that stands on its dice */
+  const W = base();
+  await W.req("p1", slug("H1", "N1")); await W.answer("gm", "reaction", "block", "N1");
+  eq([W.top().step, Object.keys(W.top().rolls)], ["roll", ["attack"]], "U4: the exchange waits for the player's dice");
+  const hp0 = W.c.N1.health;
+  eq(code(await W.gm({ op: "setOutcome", inst: W.top().id, target: "N1", hit: false })), "ok", "U4: the GM says miss");
+  eq([W.state.stack.length, W.c.N1.health, W.state.news.at(-1).forced, W.state.news.at(-1).rows[0].hit, Desk.waitingOn(W.state).length], [0, hp0, 1, false, 0], "U4: the exchange closes as a miss, nothing is waited for, and the news says it was the GM's word");
+  const W2 = base();
+  await W2.req("p1", slug("H1", "N1")); await W2.answer("gm", "reaction", "pass", "N1"); await W2.roll("attack", 0, { pushable: true });
+  await W2.gm({ op: "setOutcome", inst: W2.top().id, target: "N1", hit: true });
+  eq([W2.state.stack.length, W2.c.N1.health < 5], [0, true], "U4: a hit set while the roll waits for its push closes the roll and lands");
+  /* U4: the dice are asked for again */
+  const A = base();
+  await A.req("p1", slug("H1", "N1")); await A.answer("gm", "reaction", "pass", "N1");
+  const rid0 = A.top().rolls.attack.req.rid;
+  eq([code(await A.req("p1", { op: "askRoll", inst: A.top().id, roll: "attack" })), code(await A.gm({ op: "askRoll", inst: A.top().id, roll: "attack" }))], ["noPermission", "ok"], "U4: only the GM asks for the dice again");
+  eq([A.top().rolls.attack.req.rid !== rid0, A.requests.length, A.lastRequest().rid === A.top().rolls.attack.req.rid, A.lastRequest().dice], [true, 2, true, 4], "U4: the request goes out again under a new id with the same pool");
+  await A.roll("attack", 1, { rid: rid0, fresh: true });
+  eq(A.top().rolls.attack.sixes ?? null, null, "U4: the old request id is void");
+  await A.roll("attack", 1);
+  eq(A.state.stack.length, 0, "U4: the new one is taken");
+  eq(code(await A.gm({ op: "askRoll", inst: "a999", roll: "attack" })), "gone", "U4: nothing to ask about");
+  /* U11: a bystander's standing answer */
+  const B = base();
+  await B.gm({ op: "powerGrant", combatant: "H1", entry: GUARD });
+  B.turn("N1");
+  await B.gm(slug("N1", "H2"));
+  const bp = B.prompt("reaction", "H1");
+  eq([bp.data.bystander, bp.data.attacker, bp.data.targets, bp.options.map((o) => o.id)], [1, "N1", ["H2"], ["r:guardian", "pass", "pass:round"]], "U11: the bystander's card says who attacks whom and offers a standing answer");
+  await B.req("p1", { op: "answer", prompt: bp.id, value: "pass:round" }); await B.answer("p2", "reaction", "pass", "H2"); await B.roll("attack", 0);
+  eq([B.state.stack.length, M.counterGet(B.state, "round:H1:passWindows")], [0, 1], "U11: the standing answer is noted for the round");
+  B.turn("N2"); await B.gm(slug("N2", "H2"));
+  eq([B.prompt("reaction", "H1"), !!B.prompt("reaction", "H2")], [null, true], "U11: the bystander is not asked again this round; the target still is");
+  /* the pool of a declaration comes from the roll's own builder, and only for one's own combatant */
+  const P = base();
+  eq([P.preview("p1", "H1", { action: "slugfest", targets: ["N1"] })?.dice, P.preview("p2", "H1", { action: "slugfest", targets: ["N1"] }), (await P.req("p2", { op: "preview", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } })).error?.code], [4, null, "notOwner"], "preview: the dice of one's own declaration, nobody else's");
+  const seq0 = P.state.seq, rev0 = P.state.rev;
+  const env = await P.req("p1", { op: "preview", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } });
+  eq([env.ok, env.changed, env.preview.dice, P.state.seq, P.state.rev, P.state.stack.length], [true, false, 4, seq0, rev0, 0], "preview: answers through the request path and writes nothing");
+  await P.req("p1", slug("H1", "N1")); await P.answer("gm", "reaction", "pass", "N1");
+  eq(P.lastRequest().dice, env.preview.dice, "preview: the number shown before the declaration is the number rolled");
 }
 
 done("check-engine");
