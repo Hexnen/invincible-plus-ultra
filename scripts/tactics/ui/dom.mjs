@@ -2,8 +2,8 @@
      h("button.ita-opt", { text, tip, fk, disabled, on: { click }, attrs, data }, ...children)   one element
      swap(host, nodes)        replace a host's children and keep the keyboard focus / caret on the element with the same `fk`
      askCard(a, handlers)     one question (model-pure.askData) as a caption card: the player's prompts and the desk's cards are the same thing
-     actIcon(key)             the picture of an action, a stunt or an answer (Font Awesome solid, shipped by Foundry); speed(cost): THE MARK OF
-                              SPEED, the shape of the slot the thing takes: a long bar = the full action, a short bar = a quick one, nothing = no action
+     actIcon(key)             the picture of an action, a stunt or an answer (Font Awesome solid, shipped by Foundry); speed(cost): the mark of a
+                              price, the kit's (scripts/kit.mjs, ledger U93): a long bar = the full action, a short one = a quick one, a diamond = no action
      tipHtml(tip)             a tooltip of the model ({ title, cost, lines, note }) as escaped HTML; every such tooltip is also the aria-label
      props.pv                 what the element would spend ({ slot, forfeits, stress }): the dock previews it on hover and on focus (U30)
    Every surface is rebuilt from its data on a change of the fight (never per frame); `fk` (focus key) is what survives the rebuild. */

@@ -101,7 +101,7 @@ const mapWidth = () => { try { const sb = document.getElementById("sidebar"), r 
 const combatNow = () => { try { const c = Store.currentCombat(); return c && Api.active(c) && Api.mode(c) !== "off" && (!c.scene || c.scene.id === globalThis.canvas?.scene?.id) ? c : null; } catch { return null; } };
 const isVideo = (s) => /\.(webm|mp4|m4v|ogv)(\?|$)/i.test(String(s ?? ""));
 const portrait = (cb) => [cb?.img, cb?.token?.texture?.src, Sys.actorOf(cb)?.img].filter(Boolean).find((s) => !isVideo(s)) ?? null;
-const notify = (kind, text) => { try { ui.notifications[kind](text, { console: false }); } catch { /* no ui */ } };
+const notify = (kind, text) => { try { ui.notifications[kind](plain(text), { console: false }); }      /* U93: a notification cannot draw a mark: it says its name */ catch { /* no ui */ } };
 
 /** what the pure model may ask about the world (model-pure.mjs header); numbers only of actors this user may read */
 function factsOf(combat) {
@@ -259,7 +259,7 @@ function refresh() {
     data.sum = fb.sum; data.hint = fb.hint;
     lastDock = data; lastModel = model;
     /* U59: the GM nudged this user: the line stands on the dock (news) and is said once as a notification, wherever the eyes are */
-    if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", plain(data.news.text)); }
+    if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", data.news.text); }
     Dock.render(data, st.dock);
     /* U21: this client's target marks follow what is still aimed at (the open panel, the actions in progress) */
     Pick.keep(combat, [...(data.show && data.panel?.kind === "declare" ? (data.panel.targets ?? []).filter((x) => x.picked).map((x) => x.id) : []), ...(staff ? desk?.info ?? [] : model.mine ?? []).flatMap((i) => (i.targets ?? []).map((x) => x.id))]);

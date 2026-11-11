@@ -15,8 +15,8 @@
      Scene    (P7) what stands in the fight without a card: the chase (who flees, who follows, the distance, the chase roll, its end),
               the vehicles (who sits where, the state of the machine) and the challenges (a book preset, what the GM runs by hand)
      Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), a hazard let loose by hand, the karma notes, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
-import { h, icon, swap, askCard, rollButtons, visibleRect, face } from "./dom.mjs";
-import { costMark, symMark, hasMarks } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
+import { h, icon, swap, askCard, legendCard, rollButtons, visibleRect, face } from "./dom.mjs";
+import { costMark, symMark, hasMarks, markName } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
 import * as Lay from "./layout-pure.mjs";
 
 const ID = "invincible-tactics-desk";
@@ -284,7 +284,9 @@ function draw(d, ui) {
   handleBtn.setAttribute("aria-label", d.collapsed ? d.labels.expand : d.labels.collapse);
   handleBtn.setAttribute("aria-expanded", String(!d.collapsed));
   swap(box, d.collapsed ? [] : [
-    h("header.igd-head", {}, h("h2.ita-plate.igd-title", { text: d.title }), h("span.igd-turn", { text: d.turn })),
+    h("header.igd-head", {}, h("h2.ita-plate.igd-title", { text: d.title }), h("span.igd-turn", { text: d.turn }),
+      h("button.ipu-ic.igd-legend-b", { fk: "legend", tip: markName("legend"), attrs: { "aria-pressed": String(!!ui?.legend), "aria-label": markName("legend") }, on: { click: () => set({ legend: !ui?.legend }) } }, icon("fa-shapes"))),      /* U93: where the GM looks a mark up */
+    ui?.legend ? legendCard({ legendClose: () => set({ legend: false }) }) : null,
     d.turnNote ? h("p.igd-tip", { attrs: { role: "note" } }, icon("fa-person-running"), h("span", { text: d.turnNote })) : null,
     h("nav.igd-tabs", { attrs: { role: "tablist" } }, d.tabs.map((t) => h("button", { fk: `tab:${t.id}`, attrs: { role: "tab", "aria-selected": String(d.tab === t.id) }, on: { click: () => set({ tab: t.id }) } }, h("span", { text: t.label }), t.n ? h("b.igd-badge", { text: String(t.n) }) : null))),
     h("div.igd-wait", { attrs: { role: "status" } }, h("span.igd-k", { text: d.waitingLabel }), d.waiting.length ? d.waiting.map((w) => waitRow(w, d.labels)) : h("span.igd-nobody", { text: d.nobody })),

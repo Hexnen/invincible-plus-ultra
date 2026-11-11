@@ -859,3 +859,7 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 /* THE LEGEND: every mark with its name, a card above the dock (the Marks button of the dock's tail) and on the GM desk */
 .ita-legend { width: max-content; max-width: 100%; }
 .ita-legend-b { padding: 8px 12px 10px; }
+
+.igd-legend-b { margin-left: auto; flex: none; }
+#invincible-tactics-desk .ita-legend { margin: 0 8px 6px; max-width: calc(100% - 16px); }
+#invincible-tactics-desk .ita-legend .ipu-legend { gap: 6px 14px; }

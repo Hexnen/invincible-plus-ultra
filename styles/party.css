@@ -285,24 +285,11 @@
 #invincible-party .ipt-pips { flex: none; display: inline-flex; align-items: center; gap: 6px; }
 #invincible-party .ipt-pg { display: inline-flex; align-items: center; gap: 3px; }
 #invincible-party .ipt-pn { margin-right: 1px; font: 700 .75rem/1 Comic, sans-serif; font-style: normal; font-variant-numeric: tabular-nums; color: var(--ipt-label); }
-#invincible-party .ipt-pip {
-  display: grid;
-  place-items: center;
-  width: 15px;
-  height: 12px;
-  border: 2px solid var(--ipt-yellow);
-  background: var(--ipt-yellow);
-  color: var(--ipt-ink);
-  transform: skewX(-15deg);
-  transition: background-color .2s linear, border-color .2s linear, color .2s linear;
-}
-#invincible-party .ipt-pip::before { display: block; transform: skewX(15deg); font: 900 .58rem/1 var(--ipt-fa); }
-#invincible-party .ipt-pip-fast::before { content: "\f0e7"; }    /* bolt */
-#invincible-party .ipt-pip-slow::before { content: "\f252"; }    /* hourglass-half */
-#invincible-party .ipt-pip-one::before { content: "\f111"; }     /* circle */
-#invincible-party .ipt-pip[data-state="used"] { background: transparent; border: 2px dashed var(--ipt-frame); color: var(--ipt-label); }
-#invincible-party .ipt-pip[data-state="past"] { background: var(--ipt-track); border: 1px solid var(--ipt-frame); }
-#invincible-party .ipt-pip[data-state="past"]::before { content: ""; }
+/* U93: a pip is the kit's mark of the action (styles/kit.css .ipu-cost: the long bar = full, the short bar = quick); used = the same
+   shape hollow (.ipu-off), not tracked = the shape dimmed. No picture of its own: a bolt here would read as stress. */
+#invincible-party .ipt-pip.ipu-cost { --ipu-cost-h: 15px; color: var(--ipt-yellow); vertical-align: 0; transition: color .2s linear; }
+#invincible-party .ipt-pip[data-state="used"] { color: var(--ipt-label); }
+#invincible-party .ipt-pip[data-state="past"] { color: var(--ipt-frame); }
 
 /* ---------- Health / Resolve: slim segmented bars with slanted ink dividers (the combat bar's look) ---------- */
 #invincible-party .ipt-bars { display: grid; gap: 3px; }
