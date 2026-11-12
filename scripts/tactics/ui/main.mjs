@@ -348,7 +348,7 @@ function refresh() {
     /* U59: the GM nudged this user: the line stands on the dock (news) and is said once as a notification, wherever the eyes are */
     if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", data.news.text); }
     Dock.render(data, st.dock);
-    ChaseUI.render(chaseD, chaseLook());      // CHASE: after the dock, whose line and cards it stands under
+    ChaseUI.render(chaseD, chaseLook(), { aside: !!(data.show && data.panel?.targets) });      // CHASE: after the dock, whose line and cards it stands under; folded while targets are picked on the map
     /* U21: this client's target marks follow what is still aimed at (the open panel, the actions in progress) */
     Pick.keep(combat, [...(data.show && data.panel?.kind === "declare" ? (data.panel.targets ?? []).filter((x) => x.picked).map((x) => x.id) : []), ...(staff ? desk?.info ?? [] : model.mine ?? []).flatMap((i) => (i.targets ?? []).map((x) => x.id))]);
     /* W1: on a map with the board the targets are chosen there (rings, the chance, the reason of one out of reach: ui/board.mjs); a

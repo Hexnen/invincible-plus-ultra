@@ -17,7 +17,7 @@ import { h, icon, face, markOf, swap, visibleRect } from "./dom.mjs";
 import { frameNow } from "./slots.mjs";
 
 const ID = "invincible-tactics-chase", GAP = 8;
-let root = null, panel = null, handlers = {}, last = null, lastLook = "A", folded = false, gmOpen = false, kept = null;
+let root = null, panel = null, handlers = {}, last = null, lastLook = "A", folded = false, gmOpen = false, kept = null, aside = false;
 
 export function configure(x) { handlers = x ?? {}; }
 export const el = () => root;
@@ -116,9 +116,9 @@ function drawA(d) {
   for (let z = 0; z <= max; z++) {
     const at = z === Math.min(D.value, max), was = D.from != null && z === Math.min(D.from, max) && D.from !== D.value;
     cells.push(h("li.itc-zone", { data: { between: z > 0 && z < D.value ? "1" : null, prey: at ? "1" : null, was: was ? "1" : null, end: z === max ? "1" : null, start: z === 0 ? "1" : null } },
-      z === 0 ? h("span.itc-mark", { data: { side: "pursuer" } }, face(pur.roller?.img, pur.roller?.name, "itc-face"), icon(sideIcon(pur))) : null,
-      at && z > 0 ? h("span.itc-mark", { data: { side: "prey" } }, face(prey.roller?.img, prey.roller?.name, "itc-face"), icon(sideIcon(prey))) : null,
-      at && z === 0 ? h("span.itc-mark", { data: { side: "prey", caught: "1" } }, face(prey.roller?.img, prey.roller?.name, "itc-face")) : null,
+      z === 0 ? h("span.itc-mark", { data: { side: "pursuer" } }, face(pur.lead?.img, pur.lead?.name, "itc-face"), icon(sideIcon(pur))) : null,
+      at && z > 0 ? h("span.itc-mark", { data: { side: "prey" } }, face(prey.lead?.img, prey.lead?.name, "itc-face"), icon(sideIcon(prey))) : null,
+      at && z === 0 ? h("span.itc-mark", { data: { side: "prey", caught: "1" } }, face(prey.lead?.img, prey.lead?.name, "itc-face")) : null,
       was ? h("span.itc-ghost", { attrs: { "aria-hidden": "true" } }) : null,
       h("span.itc-zn", { text: z === max ? "" : String(z) }, z === max ? icon("fa-flag-checkered") : null)));
   }
@@ -139,7 +139,7 @@ function drawB(d) {
   const D = d.distance;
   const corner = (s) => h("div.itc-corner", { data: { side: s.id, mine: s.mine ? "1" : null, winner: d.result?.winner === s.id ? "1" : null } },
     h("span.itc-sl", { text: s.label }),
-    h("div.itc-portrait", {}, s.roller?.img ? h("img", { attrs: { alt: "", src: s.roller.img, decoding: "async" } }) : h("b", { text: (s.roller?.name ?? "?").charAt(0) }), h("span.itc-pic-ic", {}, icon(sideIcon(s)))),
+    h("div.itc-portrait", {}, s.lead?.img ? h("img", { attrs: { alt: "", src: s.lead.img, decoding: "async" } }) : h("b", { text: (s.lead?.name ?? "?").charAt(0) }), h("span.itc-pic-ic", {}, icon(sideIcon(s)))),
     h("b.itc-uname", { text: s.units.map((u) => u.name).join(", ") }),
     people(s, true),
     h("div.itc-rollbox", {}, rollOf(s) ?? h("span.itc-roll", { data: { state: "none" }, text: "-" })));
@@ -207,21 +207,24 @@ function draw() {
   const d = last;
   d0 = d.on ? d : null;
   panel.dataset.look = lastLook;
-  panel.dataset.folded = folded && d.on ? "1" : "";
+  const fold = (folded || aside) && d.on;
+  panel.dataset.folded = fold ? "1" : "";
   if (!panel.dataset.folded) delete panel.dataset.folded;
   panel.dataset.seat = d.on ? d.seat : "end";
   panel.dataset.phase = d.on ? d.phase : "end";
-  const nodes = d.on ? (folded ? drawFolded(d) : lastLook === "B" ? drawB(d) : lastLook === "C" ? drawC(d) : drawA(d)) : drawEnd(d.ended, d.title);
+  const nodes = d.on ? (fold ? drawFolded(d) : lastLook === "B" ? drawB(d) : lastLook === "C" ? drawC(d) : drawA(d)) : drawEnd(d.ended, d.title);
   swap(panel, nodes);
   root.setAttribute("aria-label", d.title ?? "chase");
   place();
 }
-/** the data of chase-pure (null: no chase and no end card), the look (A, B or C) */
-export function render(data, look = "A") {
+/** the data of chase-pure (null: no chase and no end card), the look (A, B or C); o.aside: an action is armed whose targets are picked
+    on the map (a crew member's shot): the panel stands folded to its strip until the action is declared or let go, so the tokens under it can be picked */
+export function render(data, look = "A", o = {}) {
   try {
     if (!data) { hide(); return; }
     ensure();
-    const key = JSON.stringify([data, look, folded, gmOpen]);
+    aside = !!o.aside;
+    const key = JSON.stringify([data, look, folded, gmOpen, aside]);
     last = data; lastLook = look;
     root.classList.remove("itc-hidden");
     if (key === kept) { place(); return; }
@@ -242,7 +245,11 @@ export function place() {
     const cardsIn = dock?.querySelector('.its-slot[data-slot="cards"]:not([data-empty]) > .its-in');
     const cardsR = cardsIn ? [...cardsIn.children].map(visibleRect).filter(Boolean).reduce((a, r) => Math.max(a, r.bottom), 0) : 0;
     const panelR = visibleRect(dock?.querySelector(".itd-panel")), barR = visibleRect(dock?.querySelector(".its-bar .itd-stack") ?? dock?.querySelector(".its-bar"));
-    const x0 = f?.slots?.cards?.x0 ?? 12, x1 = f?.slots?.cards?.x1 ?? W - 12;
+    /* as wide as the top band, centred where the questions hang: the first-fight hint's column is the panel's too, unless a hint stands there */
+    let x0 = f?.slots?.cards?.x0 ?? 12, x1 = f?.slots?.cards?.x1 ?? W - 12;
+    const hintOn = !!dock?.querySelector('.its-slot[data-slot="hint"]:not([data-empty])'), R = hintOn ? (f?.slots?.hint?.x0 ?? x1 + GAP) - GAP : f?.slots?.notice?.x1 ?? x1;
+    const cx = (x0 + x1) / 2, half = Math.max(x1 - cx, Math.min(R - cx, cx - 12));
+    x0 = Math.max(12, cx - half); x1 = Math.min(W - 12, cx + half);
     const top = Math.max(f?.slots?.line ? f.slots.line.y1 + 6 : 110, cardsR ? cardsR + GAP : 0);
     const floor = Math.min(panelR ? panelR.top : H, barR && barR.height ? barR.top : H - 110, H - 40) - GAP;
     root.style.setProperty("--itc-x", `${Math.round((x0 + x1) / 2)}px`);

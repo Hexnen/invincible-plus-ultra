@@ -48,7 +48,9 @@ export function chaseData(view, own, facts, t) {
       people: people.map((p) => ({ ...p, name: name(p.id), img: img(p.id), mine: owns.has(p.id), crew: crewOf(p.id), roleText: t(`ITAC.chase.role.${p.role}`) })) };
   };
   const sides = ["pursuer", "prey"].map((s) => { const units = (ch.sides?.[s] ?? []).map((u) => unit(u, s));
-    return { id: s, label: t(`ITAC.ui.chase.${s}`), units, mine: units.some((u) => u.mine), roller: units.find((u) => u.roller) ?? units[0] ?? null }; });
+    const r = units.find((u) => u.roller) ?? null;
+    /* `roller`: who rolls (or rolled) for the side, when known; `lead`: whose picture stands for the side */
+    return { id: s, label: t(`ITAC.ui.chase.${s}`), units, mine: units.some((u) => u.mine), roller: r ?? (units.length === 1 ? units[0] : null), lead: r ?? units[0] ?? null }; });
   const mySide = sides.find((s) => s.mine)?.id ?? null;
   const seat = staff ? "gm" : sides.some((s) => s.units.some((u) => u.people.some((p) => p.mine && (p.role === "driver" || p.role === "self")))) ? "driver" : mySide ? "crew" : "aside";
 
@@ -93,7 +95,7 @@ export function chaseData(view, own, facts, t) {
     beat("prey", stateAt("prey"), sides[1].roll.text, { who: sides[1].roller?.name ?? "" }),
     beat("pursuer", stateAt("pursuer"), sides[0].roll.text, { who: sides[0].roller?.name ?? "" }),
     beat("result", stateAt("result"), result?.short ?? ""),
-    caughtNow || (phase === "rolling" && step === "catch") ? beat("catch", stateAt("catch"), t(sides[0].roller?.vehicle ? "ITAC.chase.catch.ram" : "ITAC.chase.catch.charge")) : null,
+    caughtNow || (phase === "rolling" && step === "catch") ? beat("catch", stateAt("catch"), t(sides[0].lead?.vehicle ? "ITAC.chase.catch.ram" : "ITAC.chase.catch.charge")) : null,
     crewList.length ? beat("crew", phase === "after" ? (crewOpen.length ? "now" : "done") : stateAt("crew"), crewOpen.length ? t("ITAC.chase.crew.left", { n: crewOpen.length }) : phase === "after" ? t("ITAC.chase.crew.none") : "") : null,
   ].filter(Boolean);
   if (purDone && preyDone && phase === "rolling" && step === "movement") beats.find((b) => b.id === "result").state = "now";
@@ -153,7 +155,7 @@ export function chaseData(view, own, facts, t) {
   const toEscape = escaped ? 0 : L + 1 - d, toCatch = d;
   return {
     on: true, seat, mySide, phase, round: ch.round ?? 0, title: t("ITAC.ui.chase"),
-    roundLabel: phase === "before" ? t("ITAC.chase.round.before", { n: (ch.round ?? 0) + 1 }) : t("ITAC.chase.round.n", { n: phase === "rolling" ? (ch.round ?? 0) + 1 : ch.round ?? 0 }),
+    roundLabel: phase === "before" ? t("ITAC.chase.round.before", { n: (ch.round ?? 0) + 1 }) : t("ITAC.chase.round.n", { n: phase === "rolling" && !rolled ? (ch.round ?? 0) + 1 : ch.round ?? 0 }),
     distance: { value: d, lostAt: L, max: L + 1, status, toEscape, toCatch, from: phase === "after" ? ch.last?.from ?? null : null,
       say: caught ? t("ITAC.chase.say.caught") : escaped ? t("ITAC.chase.say.escaped") : t("ITAC.chase.say.run", { catch: toCatch, escape: toEscape }),
       escapeText: t("ITAC.chase.escapeAt", { n: L + 1 }), catchText: t("ITAC.chase.catchAt"), unit: t("ITAC.chase.zones", { n: d }) },
