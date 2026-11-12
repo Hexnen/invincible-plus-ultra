@@ -126,4 +126,30 @@ const team = (extra = () => {}, order = ["N1", "H1", "H2", "H3", "N2"]) => { con
   ok(c > 0 && b > c, "U128: the menu's HUD entry controls its token (releasing the others) before it binds the HUD");
 }
 
+/* ---- U130: the summary card of a stopped fight. Stopping is the end of the fight: its card is shown then and its tally let go, so
+   deleting that combat later (before the next fight) brings no card back; and a new fight never has the old fight's card over it.
+   ui/feedback.mjs against a few stand-ins of Foundry (nothing else of the module runs). */
+{
+  const hooks = {}, coll = (list) => Object.assign(list, { get: (id) => list.find((x) => x.id === id) ?? null });
+  globalThis.Hooks ??= { on: (n, f) => (hooks[n] ??= []).push(f), once: () => {}, callAll: (n, ...a) => { for (const f of hooks[n] ?? []) f(...a); } };
+  const c1 = { id: "c1", flags: {} }, c2 = { id: "c2", flags: {} };
+  globalThis.game ??= { user: { id: "gm", isGM: true }, users: coll([]), combats: coll([c1, c2]), settings: { get: () => undefined, set: () => {} }, modules: { get: () => null } };
+  const FB = await import("./ui/feedback.mjs");
+  let redraws = 0;
+  ok(FB.start({ t: (k) => k, refresh: () => { redraws++; } }), "U130: feedback starts against the stand-ins");
+  const news = [{ id: "n1", kind: "action", round: 1, actor: "A", rows: [{ target: "B", hit: true, taken: 2 }] }];
+  const ctx = (combat) => ({ combat, facts: { view: { round: 1, ledger: { A: {}, B: {} }, news }, c: (id) => ({ name: id, npc: id === "B" }) }, model: { bars: [] }, data: {}, cards: null, staff: true, own: {} });
+  eq(FB.sync(ctx(c1)).sum, null, "U130: a fight runs: no card");
+  const stopped = FB.idle().sum;                                  // the GM stopped the fight: the state is gone, the combat stands (here: no state at all)
+  eq(stopped?.id ?? null, "f:c1", "U130: stopping the fight shows its summary at once");
+  FB.closeSum();
+  (hooks.deleteCombat ?? []).forEach((f) => f(c1));               // the GM deletes the old combat before the next fight
+  eq(FB.idle().sum, null, "U130: deleting the stopped fight's combat later brings no card back");
+  /* the card of the fight before still standing when the next one starts */
+  FB.sync(ctx(c1)); (hooks.deleteCombat ?? []).forEach((f) => f(c1));
+  eq(FB.idle().sum?.id ?? null, "f:c1", "U130: a fight deleted while it runs shows its card");
+  eq(FB.sync(ctx(c2)).sum, null, "U130: the next fight starts: the old fight's card goes");
+  eq([(await import("./ui/feedback-pure.mjs")).cardFight({ id: "r:abc:3" }), (await import("./ui/feedback-pure.mjs")).cardFight({ id: "f:abc" })], ["abc", "abc"], "U130: a card knows its fight");
+}
+
 done("check-fxi");
