@@ -60,9 +60,17 @@ export function markSigns(kind, { n = null, out = false, off = false, name = nul
   return c.map((cls, i) => { const kk = cls.match(/ipu-k-([a-z]+)/)[1], hollow = cls.includes("ipu-off"); return { name: i === 0 ? say : null, el: { tag: "i", cls }, ...picOf(hollow ? `${kk}-off` : kk), color: SIGN_INK.cost }; });
 }
 
-/* ---- U133: THE CHANCE OF A TARGET as a mark: the engine's four bands (flows/kit.mjs BANDS: unlikely, even, likely, near certain) as the
-   target's ring in four quarters, as many heavy as the band (odds-1 .. odds-4). On the map the ring around the token is the drawing
-   (board-pure oddsShow hands the map "n of 4", moinen-maps zones-api.md section 42); here the same drawing for the legend.
-   oddsKind(level) -> the mark's kind; level 0..3, the band's index. */
+/* ---- U133: THE CHANCE OF A TARGET as a mark: the engine's four bands (flows/kit.mjs BANDS: unlikely, even, likely, near certain) as
+   the way the chance points (odds-1 .. odds-4): a chevron down, a level dash, a chevron up, two up (the owner's choice, 2026-11-12).
+   On the map the sign stands on a dark plate in the token's corner (board-pure oddsShow hands the map a `badge`, moinen-maps
+   zones-api.md section 42); the legend draws the same sign on the same plate (kit.mjs oddsMarkHtml).
+   oddsKind(level) -> the mark's kind; oddsSign(level, { name, lang }) -> the sign the map draws (section 40); level 0..3, the band's
+   index; `name` as in markSigns (true: the band's own name in `lang`). */
 export const ODDS_LEVELS = Object.freeze(["unlikely", "even", "likely", "nearCertain"]);
 export const oddsKind = (level) => (Number.isInteger(level) && ODDS_LEVELS[level] ? `odds-${level + 1}` : null);
+export function oddsSign(level, { name = true, lang = "en" } = {}) {
+  const k = oddsKind(level);
+  if (!k) return null;
+  const say = name === true ? markName(ODDS_LEVELS[level], lang) : name ? String(name) : null;
+  return { name: say, el: { tag: "i", cls: `ipu-cost ipu-k-${k}` }, ...picOf(k), color: SIGN_INK.cost };
+}
