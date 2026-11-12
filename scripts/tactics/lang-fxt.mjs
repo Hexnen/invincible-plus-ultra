@@ -12,5 +12,5 @@ export const PL_FXT = {
   "ITAC.journal.regen": "Regeneracja: +1 Zdrowia",
   "ITAC.mod.envPhase": "Przenikanie otoczenia",
   "ITAC.roll.touch": "Dotyk",
-  "ITAC.reason.weaponDisabled": "broń pojazdu jest unieruchomiona",
+  "ITAC.reason.weaponDisabled": "broń pojazdu wyłączona",
 };
