@@ -1180,7 +1180,13 @@ async function gmEdit(X, op, a) {
       if (a.clear !== true) for (const t of plan.triggers) { const g = S.sanitizeTrigger({ ...t, id: nextId(X, "g"), source: M.source(t.source), runs: 0 }); if (g) w(["triggers", `#${g.id}`], g); }
       const zop = a.clear !== true && plan.zone ? ZP.zoneOp(plan.zone.key, plan.zone.patch) : null;
       if (zop) { const res = await perform(X, tx, { t: "zones", op: zop, tx }); if (!(res && res.ok === false)) emit(X, null, { type: "zoneChange", ...ZP.changeOf(zop), cause: "gm" }); }
-      emit(X, null, { type: "challenge", challenge: a.challenge, rating: cc.health, timeLeft: cc.resolve, state: "setup", preset });
+      /* D102: the HUD and the engine read the challenge's sheet, so a book preset writes its rating and time there (journaled with the
+         set-up, undone with it). `keep: true` keeps the sheet's numbers (the GM's own). Question C-D102 (combat-questions.md). */
+      const nums = preset && a.clear !== true && a.keep !== true ? Challenge.presetNumbers(preset) : { rating: null, time: null };
+      const put = async (path, to) => { if (to != null && Number(cc[path]) !== to) await perform(X, tx, { t: "actor", uuid: cc.actorUuid, path, to, tx }); };
+      await put("maxHealth", nums.rating); await put("health", nums.rating);
+      await put("maxResolve", nums.time); await put("resolve", nums.time);
+      emit(X, null, { type: "challenge", challenge: a.challenge, rating: nums.rating ?? cc.health, timeLeft: nums.time ?? cc.resolve, state: "setup", preset });
       break;
     }
     case "vehicleSet": {                                                                    // who sits where, and the state of the machine [B2936]

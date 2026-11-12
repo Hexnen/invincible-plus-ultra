@@ -23,7 +23,8 @@ const INJURY_PACK = "invincible.critical-injuries";
 const INJURY_TABLE = "Compendium.invincible.rolltables.RollTable.lRIHdMV6UBdDaeae";
 export const ATTRS = Object.freeze(["fighting", "agility", "strength", "reason", "intuition", "presence"]);
 /** Engine field name -> system data path. The journal stores the field name, never the path (journal-pure.mjs, op `actor`). */
-export const FIELDS = Object.freeze({ health: "system.derived.health.value", resolve: "system.derived.resolve.value" });
+export const FIELDS = Object.freeze({ health: "system.derived.health.value", resolve: "system.derived.resolve.value",
+  maxHealth: "system.derived.health.max", maxResolve: "system.derived.resolve.max" });          // D102: a challenge preset sets the rating and the time limit
 
 /** Every private name this file uses. `where` is checked by compat(). */
 export const PRIVATE_NAMES = Object.freeze([

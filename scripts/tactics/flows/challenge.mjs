@@ -21,6 +21,14 @@ const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 export const PRESETS = Object.freeze(Object.keys(challenge.BOOK_CHALLENGES));
 export const cfgOf = (state, cid) => (isObj(state?.challenges?.[cid]) ? state.challenges[cid] : null);
 
+/** D102: the numbers a book preset puts on the challenge's sheet: its rating, and its time limit when that is counted in rounds (a limit in
+    days or hours is no clock of a fight; the sheet's time stays). -> { rating: n|null, time: n|null } */
+export function presetNumbers(id) {
+  const p = challenge.BOOK_CHALLENGES[id];
+  if (!p) return { rating: null, time: null };
+  const n = (x) => (Number.isFinite(Number(x)) && Number(x) > 0 ? Math.trunc(Number(x)) : null);
+  return { rating: n(p.rating), time: (p.unit ?? "rounds") === "rounds" ? n(p.timeLimit) : null };
+}
 /** The set-up record of a book preset (numbers and structure only), or of a challenge without one. */
 export function presetConfig(id) {
   const p = challenge.BOOK_CHALLENGES[id];

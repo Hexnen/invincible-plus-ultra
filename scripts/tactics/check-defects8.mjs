@@ -30,4 +30,25 @@ const car = (o = {}) => ({ kind: "vehicle", npc: true, health: 8, vehicle: { typ
   eq([T.state.round, T.c.CH.resolve, T.top()?.flow], [round0 + 1, clock0 - 1, "chase"], "D101: the second roll of a round still opens the next round first");
 }
 
+/* ================================================================== D102: a book preset sets the numbers the table plays with */
+{
+  const T = new Table();
+  T.hero("H1", "p1").npc("N1");
+  T.add("CH", { kind: "challenge", npc: true, health: 2, resolve: 2, maxResolve: 2, name: "Spill" });
+  T.add("CB", { kind: "challenge", npc: true, health: 2, resolve: 2, maxResolve: 2, name: "Fire" });
+  T.add("CI", { kind: "challenge", npc: true, health: 2, resolve: 1, maxResolve: 1, name: "Case" });
+  T.order(["H1", "N1"]).turn("H1");
+  eq(code(await T.gm({ op: "challengeSetup", challenge: "CH", preset: "toxicAccident" })), "ok", "D102: the preset is set");
+  eq([T.c.CH.health, T.c.CH.maxHealth, T.c.CH.resolve, T.c.CH.maxResolve], [10, 10, 5, 5], "D102: the challenge's rating and time are the book's (Toxic Accident 10 / 5)");
+  eq(T.evs("challenge").pop() && [T.evs("challenge").pop().rating, T.evs("challenge").pop().timeLeft], [10, 5], "D102: the event carries the numbers now in play");
+  eq(code(await T.gm({ op: "undo", tx: T.log.list[T.log.list.length - 1].id })), "ok", "D102: the set-up can be undone");
+  eq([T.c.CH.health, T.c.CH.maxHealth, T.c.CH.resolve, T.c.CH.maxResolve], [2, 2, 2, 2], "D102: undo gives the sheet's numbers back");
+  await T.gm({ op: "challengeSetup", challenge: "CH", preset: "doomsdayDevice", keep: true });
+  eq([T.c.CH.health, T.c.CH.resolve], [2, 2], "D102: keep:true keeps the sheet's numbers");
+  await T.gm({ op: "challengeSetup", challenge: "CB", preset: "burningBuilding" });
+  eq([T.c.CB.health, T.c.CB.resolve, T.c.CB.maxResolve], [6, 2, 2], "D102: a preset with no time limit sets the rating only");
+  await T.gm({ op: "challengeSetup", challenge: "CI", preset: "complexInvestigation" });
+  eq([T.c.CI.health, T.c.CI.resolve, T.c.CI.maxResolve], [4, 1, 1], "D102: a limit counted in days does not become a clock of rounds (rating only)");
+}
+
 done("check-defects8");
