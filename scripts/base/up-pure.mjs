@@ -80,6 +80,30 @@ export function unionAdoptions(lists) {
   return [...m.values()];
 }
 
+/** Sweep S012: may this adoption be written? The same rules as one Pick (ops.addUpgrade), for the whole list at once: the row cap, each upgrade's stack limit
+    (a GM grant may go past it) and, for a non-staff editor adopting as starting upgrades, the starting allowance (B11/A5). miss = [{key,count,power}],
+    defs = key -> catalog entry, as = "start"|"gm". -> null when it may, else { code, params } of an IPB.Err.* message. */
+export function adoptBlock({ rank, owned = [], miss = [], defs = {}, as = "start", staff = false }) {
+  owned = Array.isArray(owned) ? owned : Object.values(owned || {});
+  const cap = P.LIMITS.upgrades;
+  if (owned.length + miss.length > cap) return { code: "full", params: { collection: "upgrades", cap } };
+  const added = [];
+  for (const u of miss) {
+    const def = u.key && u.key !== "custom" ? defs[u.key] : null;
+    if (def && as !== "gm") {
+      const st = P.checkStack(def, [...owned, ...added].filter((r) => r.key === def.key), { power: u.power || "" });
+      if (st.max !== null && st.count + Math.max(1, num(u.count, 1)) > st.max) return { code: "stackMax", params: { name: def.name, count: st.count, max: st.max } };
+    }
+    added.push({ key: u.key, power: u.power || "", count: Math.max(1, num(u.count, 1)), source: as });
+  }
+  if (as === "start" && !staff) {
+    const a = P.allowance(rank, owned);
+    const total = added.reduce((n, u) => n + u.count, 0);
+    if (total > a.left) return { code: "noAllowance", params: { total: a.total } };
+  }
+  return null;
+}
+
 /** "Tess 6, Rex 4" from a split [{actorId|id, amount, name?}]; names = Map/obj id -> name. Neutral across languages. */
 export function formatSplit(split, names = {}) {
   split = Array.isArray(split) ? split : [];

@@ -537,6 +537,10 @@ async function adoptRun(root, ctx) {
   if (as === "gm" && !ctx.isStaff) return;
   const fresh = ctx.api.get(ctx.team.id);
   if (!fresh) return;
+  // sweep S012: the rules of a Pick apply to the whole adoption (cap, stack limits, a non-staff editor's starting allowance), checked on the fresh card
+  const defs = Object.fromEntries(miss.filter((u) => u.key !== "custom").map((u) => [u.key, entryOf(u.key)]).filter(([, d]) => d));
+  const block = U.adoptBlock({ rank: fresh.rank, owned: P.sortedList(fresh.upgrades), miss, defs, as, staff: ctx.isStaff });
+  if (block) { await ctx.run(Promise.reject(new ctx.api.BaseError(block.code, block.params))); return; }
   const patch = { upgrades: {} };
   let sort = P.nextSort(fresh.upgrades);
   for (const u of miss) {

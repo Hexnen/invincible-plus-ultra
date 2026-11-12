@@ -227,9 +227,13 @@ function chatButtons(message, html) {
 
 /* ------------------------------------------------------------------ hooks + start */
 let refreshTimer = 0;
+let refreshScope = null;                       // sweep S001: the calls folded into one debounced repaint; two different scopes widen to "all" (null)
+export const mergeScope = (prev, teamId, actorId) => (prev ? { teamId: prev.teamId === teamId ? teamId : null, actorId: prev.actorId === actorId ? actorId : null } : { teamId, actorId });
 function refreshAll(teamId, actorId) {
   clearTimeout(refreshTimer);
+  refreshScope = mergeScope(refreshScope, teamId, actorId);
   refreshTimer = setTimeout(() => {
+    const { teamId, actorId } = refreshScope; refreshScope = null;
     import("./sheet.mjs").then((m) => m.BaseSheet?.refresh({ teamId })).catch(() => {});   // S7-02: the module-level BaseSheet stays null until entry.open() ran, so an already-open sheet missed live karma updates
     NewTeamApp?.refresh({ actorId });
     PickerApp?.refresh();
