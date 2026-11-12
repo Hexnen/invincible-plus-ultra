@@ -26,7 +26,8 @@ const pv = (T, u, owns) => V.viewFor(T.state, { id: u, staff: false, owns }, met
 const pf = (T, u, view) => ({ view, staff: false, me: u, c: (id) => (T.c[id] ? { name: T.c[id].name ?? id, npc: T.c[id].npc } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (x) => `user-${x}` });
 const line = (T, u, owns, own = {}, l = "en") => { const v = pv(T, u, owns); return M.newsData(v, own, pf(T, u, v), tr(l)); };
 const ctx = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
-const dock = (T, u, owns, own = {}, l = "en") => { const v = pv(T, u, owns); return M.dockData(D.playerModel(v, { id: u, owns }, ctx(T)), own, pf(T, u, v), tr(l)); };
+/* ANSA (UXC-1): these seams are about a turn that passes by itself, which it does only with the auto-skip tick on: this seat has it on */
+const dock = (T, u, owns, own = {}, l = "en", autoSkip = true) => { const v = pv(T, u, owns); return M.dockData(D.playerModel(v, { id: u, owns }, ctx(T)), own, { ...pf(T, u, v), autoSkip }, tr(l)); };
 const answerAll = async (T, pick = (p) => p.options?.find((o) => o.id === "pass")?.id ?? p.options?.[0]?.id) => { for (let i = 0; i < 8; i++) { const p = T.prompts()[0]; if (!p) break; await T.req("gm", { op: "answerFor", prompt: p.id, value: pick(p) }); } };
 /* (the helpers the fix added, looked up softly so that the unfixed tree FAILS these checks instead of stopping at a missing name) */
 const fightOfList = (l) => (typeof N.fightOfList === "function" ? N.fightOfList(l) : ""), markOf = (f, n) => (typeof N.markOf === "function" ? N.markOf(f, n) : n), seenNo = (m, f) => (typeof N.seenNo === "function" ? N.seenNo(m, f) : Number(m) || 0);

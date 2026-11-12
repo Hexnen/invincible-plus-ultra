@@ -32,6 +32,7 @@ import * as Board from "./board.mjs";
 import * as Feedback from "./feedback.mjs";
 import * as Camera from "./camera.mjs";
 import * as Lay from "./layout-pure.mjs";
+import * as AutoSkip from "./autoskip-pure.mjs";      // ANSA (UXC-1): the initiative bar's auto-skip tick
 import * as Tip from "./tip.mjs";
 import { visibleRect } from "./dom.mjs";
 import { setVar } from "./vars.mjs";
@@ -54,7 +55,7 @@ let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null
 const HOTBAR_KEY = `${MOD}.tactics.hotbar`, KEYS_ON = `${MOD}.tactics.keys`, LAYOUT_FLAG = "tacticsLayout";
 const hotbarWas = () => { try { return globalThis.localStorage?.getItem(HOTBAR_KEY) === "1"; } catch { return false; } };
 let st = { dock: { ...blankDock(), hotbar: false }, desk: blankDesk() };      // U152: folded at the start (layoutStart)
-let layout = Lay.clean(null), saveTimer = 0;
+let layout = Lay.clean(null), saveTimer = 0, autoSkipOff = null;
 const foldsNow = () => Object.fromEntries(Object.keys(Lay.FOLDS).map((k) => [k, Lay.folded(layout, k)]));
 function layoutStart() {
   try {
@@ -67,6 +68,10 @@ function layoutStart() {
     st.dock.hotbar = false;
     Object.assign(st.desk, Lay.deskStart(layout) ?? {}, { folds: foldsNow() });
     if (layout.keys) document.body.classList.add("ita-keys");
+    /* ANSA (UXC-1, FXP-6, FXN-1): the auto-skip tick comes from the user's layout; flipped on the initiative bar, it is written back and
+       the dock is drawn again (a turn already standing empty passes, or stops passing, at once) */
+    AutoSkip.set(layout.autoSkip, { quiet: true });
+    autoSkipOff?.(); autoSkipOff = AutoSkip.listen((on) => { remember({ autoSkip: on }); schedule(); });
   } catch (e) { console.warn(LOG, "layout failed", e); }
 }
 function remember(change) {
@@ -147,7 +152,7 @@ function wayOf(cb) { try { const a = Sys.actorOf(cb), f = a ? Sys.actorFacts(a) 
 function factsOf(combat) {
   const staff = Store.isStaff(game.user), view = Api.state(combat), ctx = Engine.context(combat);
   return {
-    view, me: game.user.id, staff,
+    view, me: game.user.id, staff, autoSkip: AutoSkip.get(),      // ANSA (UXC-1): the tick on the initiative bar
     c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, kind: base.kind ?? null, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null,
       way: view?.kind === "chase" ? wayOf(cb) : null } : null; },      // CHASE2: on foot or in the air, as the chase panel draws a unit (a power of flight is seen by all)
     /* CHASE2: the whole facts of a sheet as the executor reads them (staff only): who would roll for a side next, who cannot move */
@@ -729,7 +734,7 @@ export function start() {
     for (const hk of ["changeSidebarTab", "renderHotbar", "renderPlayers", "renderChatLog", "closeChatLog"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });      // U136: also the chat popped out or back in
     Hooks.on("collapseSidebar", () => { relayout(); setTimeout(() => (st.desk.touched ? relayout() : schedule()), 320); });      // the desk folds or opens with the room the sidebar leaves, until the GM chose
     window.addEventListener("resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
-    document.addEventListener("keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
+    document.addEventListener("keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode || st.dock.endArmed) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock(st.dock.endArmed ? { endArmed: false } : { armed: null, mode: null, amend: null }); }      /* ANSA (UXC-1): Esc answers No to the end question */ } catch { /* ignore */ } }, true);
     /* U41 */
     document.addEventListener("keydown", onKey, true);
     document.addEventListener("pointerdown", () => { byPointer = true; }, true);

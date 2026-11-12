@@ -157,14 +157,14 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
 
 /* ---- J. U64: the layout a user left */
 {
-  eq(Lay.clean(null), { hotbar: false, keys: false, desk: null, folds: {} }, "U64: nothing stored = the default layout");
-  eq(Lay.clean(null, { hotbar: true, keys: true }), { hotbar: true, keys: true, desk: null, folds: {} }, "U64: what the browser remembered before seeds a user without a layout");
+  eq(Lay.clean(null), { hotbar: false, keys: false, desk: null, folds: {}, autoSkip: false }, "U64: nothing stored = the default layout (ANSA UXC-1: the auto-skip tick, off)");
+  eq(Lay.clean(null, { hotbar: true, keys: true }), { hotbar: true, keys: true, desk: null, folds: {}, autoSkip: false }, "U64: what the browser remembered before seeds a user without a layout");
   eq(Lay.clean({ hotbar: false }, { hotbar: true }).hotbar, false, "U64: (a stored choice wins over the seed)");
-  eq(Lay.clean({ hotbar: "yes", desk: "left", folds: { force: false, bogus: true, npcs: "x", karma: true }, extra: 1 }), { hotbar: false, keys: false, desk: null, folds: { force: false } }, "U64: an unknown key, a wrong type and a default value are dropped");
+  eq(Lay.clean({ hotbar: "yes", desk: "left", folds: { force: false, bogus: true, npcs: "x", karma: true }, extra: 1 }), { hotbar: false, keys: false, desk: null, folds: { force: false }, autoSkip: false }, "U64: an unknown key, a wrong type and a default value are dropped");
   eq([Lay.folded(Lay.clean(null), "force"), Lay.folded(Lay.clean(null), "npcs"), Lay.folded(Lay.clean({ folds: { npcs: true } }), "npcs"), Lay.folded(Lay.clean(null), "nope")], [true, false, true, false], "U64 / U80: the three tools start folded, the NPC answers open");
   const a = Lay.clean(null), b = Lay.merge(a, { folds: { force: false } }), c = Lay.merge(b, { desk: "folded" });
   ok(b !== a && Lay.merge(b, { folds: { force: false } }) === b && Lay.merge(a, {}) === a, "U64: a change gives a new layout, no change gives the same object (nothing is written)");
-  eq(c, { hotbar: false, keys: false, desk: "folded", folds: { force: false } }, "U64: changes add up");
+  eq(c, { hotbar: false, keys: false, desk: "folded", folds: { force: false }, autoSkip: false }, "U64: changes add up");
   eq([Lay.stored(a), Lay.stored(c), Lay.stored(Lay.merge(c, { folds: { force: true } }))], [{}, { desk: "folded", folds: { force: false } }, { desk: "folded" }], "U64: only what differs from the default is stored");
   eq([Lay.deskStart(a), Lay.deskStart(c), Lay.deskStart(Lay.merge(c, { desk: "open" }))], [null, { collapsed: true, touched: true }, { collapsed: false, touched: true }], "U64: the desk starts as it was left, or by the room when never chosen");
   const store = readFileSync(new URL("./store.mjs", import.meta.url), "utf8"), ui = readFileSync(new URL("./ui/main.mjs", import.meta.url), "utf8"), desk = readFileSync(new URL("./ui/desk.mjs", import.meta.url), "utf8");

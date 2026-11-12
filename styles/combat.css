@@ -337,6 +337,70 @@
 #invincible-combat-bar .icbar-nav:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ipu-press); }
 #invincible-combat-bar .icbar-nav:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 #invincible-combat-bar .icbar-nav:disabled { color: var(--ipu-label); background: transparent; border: 2px dashed var(--ipu-line); box-shadow: none; cursor: default; }   /* unavailable = hollow and dashed, never opacity alone */
+/* ANSA (UXC-1, K1): the bar's right end mirrors the lead: the auto-skip tick on top, the GM's "next turn" button under it hugging the
+   strip; a player has no button and the tick sits alone, centred on the strip. The column is no taller than the strip (the bar keeps its
+   height). THE TICK: a small ink plate, a box (hollow = off; yellow with an ink check = on) and the skip glyph; its words are the tooltip. */
+#invincible-combat-bar .icbar-shell > .icbar-tail {
+  flex: none;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: .35em;
+  transform: none;
+}
+#invincible-combat-bar .icbar-tail > .icbar-nav { margin: 0 3px 3px 0; }
+#invincible-combat-bar .icbar-tail:not(:has(> :not([hidden]))) { display: none; }
+#invincible-combat-bar .icbar-skip {
+  flex: none;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: .32em;
+  height: 1.55em;
+  min-height: 0;
+  margin: 0;
+  padding: 0 .42em;
+  color: var(--icbar-label);
+  background: var(--icbar-tile);
+  border: 2px solid var(--icbar-ink);
+  border-radius: 0;
+  box-shadow: 0 .3em .7em rgba(0, 0, 0, .5);
+  cursor: var(--cursor-pointer, pointer);
+  transform: skewX(6deg) rotate(1.5deg);      /* stands upright, tilted against the round chip at the other end */
+  transition: color .12s var(--icbar-out), background-color .12s var(--icbar-out);
+}
+#invincible-combat-bar .icbar-skip[hidden] { display: none; }
+#invincible-combat-bar .icbar-skip-box {
+  position: relative;
+  flex: none;
+  width: .95em;
+  height: .95em;
+  background: var(--icbar-track);
+  border: 2px solid var(--icbar-frame);
+}
+#invincible-combat-bar .icbar-g-skip { display: block; font: 900 .78em/1 var(--icbar-fa); }
+#invincible-combat-bar .icbar-g-skip::before { content: "050"; }      /* forward-fast */
+#invincible-combat-bar .icbar-skip:is(:hover, :focus-visible) { color: #fff; background: var(--icbar-tile-hi); }
+#invincible-combat-bar .icbar-skip:hover .icbar-skip-box { border-color: #fff; }
+#invincible-combat-bar .icbar-skip:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+#invincible-combat-bar .icbar-skip[aria-checked="true"] { color: var(--icbar-yellow); }
+#invincible-combat-bar .icbar-skip[aria-checked="true"] .icbar-skip-box { background: var(--icbar-yellow); border-color: var(--icbar-yellow); }
+#invincible-combat-bar .icbar-skip[aria-checked="true"] .icbar-skip-box::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: .48em;
+  height: .24em;
+  border: solid var(--icbar-ink);
+  border-width: 0 0 .14em .14em;
+  translate: -50% -50%;
+  rotate: -45deg;
+}
+#invincible-combat-bar .icbar-skip:active .icbar-skip-box { scale: .88; }
+@media (prefers-reduced-motion: reduce) { #invincible-combat-bar .icbar-skip { transition: none; } }
 
 /* ---------- the strip: scrolls sideways when the tiles do not fit; thin bar, fades at the edges that have more ---------- */
 #invincible-combat-bar .icbar-scroller {

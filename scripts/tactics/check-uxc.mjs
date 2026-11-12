@@ -2,7 +2,7 @@
    a routine step costs. Rows of dev/combat-usability.md and dev/combat-defects.md ("UX review 1, 2026-11-12"):
      D127  a book villain at 0 Health: the injury it came to is told (journal, news, a float over the token), not a bare die
      U143  a reaction card: a digit sends the answer once the card has stood a moment (one key, not two)
-     U144  ending a turn: one rule (nothing left -> it passes by itself; a spare quick action -> one click; "Sure?" only for a whole full action)
+     U144  ending a turn (ANSA, answer UXC-1 of 2026-11-12: always asked; nothing left passes by itself only with the auto-skip tick)
      U145  a minion group hit by an area: ONE card (how many, starting at what the damage says, and their fate), plural words
      U149  Guardian is not offered for an enemy an ally attacks
      U153  a card of many stunts: groups of what they do, the greyed ones last
@@ -31,7 +31,7 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
 const meta = (T) => ({ hidden: Object.values(T.c).filter((c) => c.hidden).map((c) => c.id), npc: Object.values(T.c).filter((c) => c.npc).map((c) => c.id) });
 const facts = (T, view, me, staff = false) => ({ view, me, staff, c: (id) => (T.c[id] ? { name: T.c[id].name, npc: T.c[id].npc, img: null } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => `user-${u}`, preview: () => null });
 const ctx = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
-const dock = (T, uid, owns, own = {}) => { const view = V.viewFor(T.state, { id: uid, staff: false, owns }, meta(T)); return M.dockData(D.playerModel(view, { id: uid, owns }, ctx(T)), own, facts(T, view, uid), t); };
+const dock = (T, uid, owns, own = {}, more = {}) => { const view = V.viewFor(T.state, { id: uid, staff: false, owns }, meta(T)); return M.dockData(D.playerModel(view, { id: uid, owns }, ctx(T)), own, { ...facts(T, view, uid), ...more }, t); };      // more: ANSA (UXC-1) { autoSkip }
 const staffDock = (T, cid, own = {}) => { const d = D.deskModel(T.state, T.log, ctx(T)); const bar = D.barModel(T.state, cid, { ...ctx(T), staff: true }); return M.dockData({ bars: [bar], prompts: [], mine: [], stack: d.info, waiting: d.waiting, turn: d.turn }, own, facts(T, T.state, "gm", true), t); };
 const desk = (T, own = {}) => M.deskData(D.deskModel(T.state, T.log, ctx(T)), own, facts(T, T.state, "gm", true), t);
 const item = (id, name) => ({ id, name, type: "talent", level: null, power: null, boosts: [], autos: [], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} });
@@ -65,23 +65,26 @@ lang("pl");
 {
   const T = new Table(); T.hero("H1", "p1", { name: "Eve" }).npc("N1", { name: "Mauler", health: 9 }).npc("N2", { health: 9 }); T.order(["H1", "N1", "N2"]);
   let e = dock(T, "p1", ["H1"]).end;
-  eq([e.confirm, e.auto, /Kliknij ponownie/.test(e.tip)], [true, false, true], "U144: a whole full action unused: 'Sure?' is asked and the tip says so");
+  /* ANSA (UXC-1, K1 «pytanie czy koniec»): End turn always asks (the question over the button names what is unused), with or without the tick */
+  eq([e.confirm, e.auto, /Pełna|Akcja/i.test(e.ask.line)], [true, false, true], "U144 + ANSA: a whole full action unused: asked, and the question names it");
   await T.req("p1", decl("H1", "slugfest", ["N1"])); await pass(T); await T.roll("attack", 0);
   e = dock(T, "p1", ["H1"]).end;
-  eq([e.confirm, e.auto, /Kliknij ponownie/.test(e.tip), /Szybka/.test(e.tip)], [false, false, false, true], "U144: only the spare quick action left: one click, the tip names it and asks for no second click");
+  eq([e.confirm, e.auto, /Kliknij ponownie/.test(e.tip), /Szybka/.test(e.tip), /Szybka/.test(e.ask.line)], [true, false, false, true, true], "U144 + ANSA (UXC-1): only the spare quick action left: asked too; the tip and the question name it");
   await T.req("p1", { op: "mark", actor: "H1", unit: "quick", on: true });
   e = dock(T, "p1", ["H1"]).end;
-  eq([e.auto, e.label, e.confirm], [true, PL["ITAC.ui.end.auto"], false], "U144: nothing left: the turn passes by itself (the button says so)");
-  eq(dock(T, "p1", ["H1"], { quiet: true }).end.auto, false, "U144: a seat that only watches (the GM's quiet dock) never passes it");
+  eq([e.auto, e.ready, e.label, e.confirm], [false, true, PL["ITAC.ui.end"], true], "ANSA (UXC-1): nothing left, tick off: the turn waits for End turn and its question (ready)");
+  const ea = dock(T, "p1", ["H1"], {}, { autoSkip: true }).end;
+  eq([ea.auto, ea.ready, ea.label], [true, false, PL["ITAC.ui.end.auto"]], "U144 + ANSA (UXC-1): nothing left, tick on: the turn passes by itself (the button says so)");
+  eq(dock(T, "p1", ["H1"], { quiet: true }, { autoSkip: true }).end.auto, false, "U144: a seat that only watches (the GM's quiet dock) never passes it, tick or not");
   eq(code(await T.req("p1", e.req)), "ok", "U144: the same request a click sends");
   T.turn("N1");
   const g = staffDock(T, "N1").end;
-  eq([g.confirm, /Kliknij ponownie/.test(g.tip)], [false, false], "U144: the GM's NPC with actions left: one click and the tip does not say 'click again'");
+  eq([g.confirm, /Kliknij ponownie/.test(g.tip)], [true, false], "ANSA (UXC-1): the GM's NPC with actions left: asked too (always); the tip does not say 'click again' (the question does the asking)");
   /* something still owed: no pass by itself */
   const U = new Table(); U.hero("H1", "p1").npc("N1", { health: 9 }); U.order(["H1", "N1"]);
   await U.req("p1", { op: "mark", actor: "H1", unit: "full", on: true }); await U.req("p1", { op: "mark", actor: "H1", unit: "quick", on: true });
-  eq(dock(U, "p1", ["H1"]).end.auto, true, "U144: both slots marked by hand: nothing left");
-  eq(dock(U, "p1", ["H1"], { armed: "move" }).end.auto, false, "U144: an action armed: the turn waits");
+  eq([dock(U, "p1", ["H1"]).end.ready, dock(U, "p1", ["H1"], {}, { autoSkip: true }).end.auto], [true, true], "U144 + ANSA: both slots marked by hand: nothing left (passes only with the tick)");
+  eq(dock(U, "p1", ["H1"], { armed: "move" }, { autoSkip: true }).end.auto, false, "U144: an action armed: the turn waits, tick or not");
 }
 
 /* ---- U145: one card for a minion group hit by an area */

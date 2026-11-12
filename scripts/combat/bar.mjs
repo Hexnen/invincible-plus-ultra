@@ -32,6 +32,7 @@ import { unitOf, unitName } from "../challenges/lang.mjs";
 import { yzeOn, yzeWaiting, yzeMode, actorOf, toggleActionMark } from "../yze.mjs";
 import { groupsFor, waitingOf, waitKindOf, actionsOn } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
 import * as Tac from "../tactics/source.mjs";
+import * as AutoSkip from "../tactics/ui/autoskip-pure.mjs";      // ANSA (UXC-1, FXP-6, FXN-1): the auto-skip tick, each user's own (kept in the user's layout by tactics/ui/main.mjs)
 import { besideFloating } from "../tactics/ui/layout-pure.mjs";                       // FXR (U185, FXQ-3): the strip keeps beside a popped-out chat, as the dock does                                         // U118: who sits in a vehicle
 
 const MOD = "invincible-plus-ultra";
@@ -42,7 +43,7 @@ const SIZES = { small: 0.85, normal: 1, large: 1.2 };
 const EASE = "cubic-bezier(.16, 1, .3, 1)";
 const VIDEO = /\.(webm|mp4|m4v|ogv)(\?.*)?$/i;
 
-let root = null, shell = null, scroller = null, list = null, roundEl = null, roundNum = null, prevB = null, nextB = null, live = null;
+let root = null, shell = null, scroller = null, list = null, roundEl = null, roundNum = null, prevB = null, nextB = null, live = null, skipB = null, skipOff = null;
 let ready = false, down = false, timer = 0, again = false, goneId = null, size = "normal", wheelOn = false;
 let curCombat = null, curCombatId = null, lastKey = "", lastDensity = -1, fitKey = "", activeId = null, byeTimer = 0, liveTimer = 0, hovered = null;
 let ro = null, raf = 0, publishedBottom = -1, mounted = false;
@@ -393,6 +394,20 @@ function say(text) {
   liveTimer = setTimeout(() => { if (live) live.textContent = text; }, 80);
 }
 
+/* ANSA (UXC-1, FXP-6, FXN-1): the auto-skip tick's face: ticked or not (aria-checked and the drawn box), its words in the tooltip */
+export function skipView(on) {
+  return { checked: on ? "true" : "false", label: t("ICB.Bar.AutoSkip"), tip: `${t("ICB.Bar.AutoSkip")}: ${t(on ? "ICB.Bar.AutoSkip.on" : "ICB.Bar.AutoSkip.off")}` };
+}
+function paintSkip() {
+  if (!skipB) return;
+  const v = skipView(AutoSkip.get());
+  skipB.setAttribute("aria-checked", v.checked);
+  skipB.setAttribute("aria-label", v.tip);
+  if (skipB.dataset.tooltip !== v.tip) {
+    skipB.dataset.tooltip = v.tip;
+    try { if (game.tooltip?.element === skipB) game.tooltip.activate(skipB, { text: v.tip, direction: "DOWN" }); } catch { /* the tooltip follows on the next hover */ }
+  }
+}
 /* ---------- root ---------- */
 function ensureRoot() {
   if (root?.isConnected) {
@@ -448,7 +463,22 @@ function ensureRoot() {
   head.append(roundEl, waitEl);
   const lead = mk("div", "icbar-lead");
   lead.append(head, prevB);
-  shell.append(lead, scroller, nextB);
+  /* ANSA (UXC-1, K1: «w pasku inicjatywy na górze dodaj tick że auto skip jeśli brak akcji dostepnych»): the bar's right end is one
+     column too, mirroring the lead: the auto-skip tick on top, the GM's "next turn" button under it, hugging the strip. A player has no
+     button: the tick sits alone, centred on the strip. The tick shows only in a fight of tactical combat (paint: Tac.sourceOf). */
+  skipB = mk("button", "icbar-skip");
+  skipB.type = "button";
+  skipB.setAttribute("role", "checkbox");
+  skipB.dataset.tooltipDirection = "DOWN";
+  const box = mk("span", "icbar-skip-box"), glyph = mk("i", "icbar-g-skip");
+  box.setAttribute("aria-hidden", "true"); glyph.setAttribute("aria-hidden", "true");
+  skipB.append(box, glyph);
+  skipB.hidden = true;
+  paintSkip();
+  skipOff?.(); skipOff = AutoSkip.listen(() => paintSkip());
+  const tail = mk("div", "icbar-tail");
+  tail.append(skipB, nextB);
+  shell.append(lead, scroller, tail);
   root.append(live, shell);
   wire();
   document.body.appendChild(root);
@@ -541,6 +571,7 @@ function wire() {
   root.addEventListener("click", (ev) => {
     const gb = ev.target.closest?.(".icbar-gb");
     if (gb) { toggleAct(gb); return; }
+    if (ev.target.closest?.(".icbar-skip")) { AutoSkip.toggle(); return; }      // ANSA (UXC-1): the tick
     const nav = ev.target.closest?.(".icbar-nav");
     if (nav) { if (!nav.disabled) turnStep(nav.classList.contains("icbar-prev") ? -1 : 1); return; }
     const tile = ev.target.closest?.(".icbar-tile");
@@ -552,7 +583,7 @@ function wire() {
     const id = ev.target.closest?.(".icbar-tile")?.parentElement?.dataset.id;
     if (id) { ev.preventDefault(); doPan(id); }
   });
-  root.addEventListener("mousedown", (ev) => { if (ev.target.closest?.(".icbar-nav, .icbar-gb")) ev.preventDefault(); });   // keep the canvas selection as it is
+  root.addEventListener("mousedown", (ev) => { if (ev.target.closest?.(".icbar-nav, .icbar-gb, .icbar-skip")) ev.preventDefault(); });   // keep the canvas selection as it is
   root.addEventListener("keydown", (ev) => {
     const tile = ev.target.closest?.(".icbar-tile");
     if (!tile || ev.target !== tile) return;
@@ -896,7 +927,7 @@ function snap(o) {
     const r = c.li.getBoundingClientRect();
     s.lis.set(c, { x: r.left, y: r.top, w: r.width, h: r.height, aw: c.refs.art.offsetWidth, open: c.tile.hasAttribute("data-active") });
   }
-  for (const el of [prevB, roundEl, waitEl, nextB]) if (el && !el.hidden) s.chrome.set(el, el.getBoundingClientRect().left);
+  for (const el of [prevB, roundEl, waitEl, skipB, nextB]) if (el && !el.hidden) s.chrome.set(el, el.getBoundingClientRect().left);
   const t1 = performance.now();
   for (const id of o.ghostIds ?? []) {
     const c = tiles.get(id);
@@ -1128,6 +1159,8 @@ function paint(model, loud, keep) {
     for (const b of [prevB, nextB]) b.hidden = !gm;    prevB.disabled = !canUpdate || (model.round <= 1 && !(model.turn > 0));   // stepping back from the very first turn would un-start the combat
     nextB.disabled = !canUpdate;
     for (const [b, k] of [[prevB, "ICB.Bar.Prev"], [nextB, "ICB.Bar.Next"]]) { b.setAttribute("aria-label", t(k)); b.dataset.tooltip = t(k); }
+    let tactical = false; try { tactical = !!Tac.sourceOf(curCombat); } catch { tactical = false; }
+    skipB.hidden = !tactical; paintSkip();      // ANSA (UXC-1): the tick, in a fight of tactical combat only (every seat: FXP-6, the GM's too)
     let gmActs = false;   // the GM's action buttons need room under the strip (a fixed reservation, so the bar's height never changes with the turn)
     try { gmActs = gm && actionsOn(curCombat); } catch { gmActs = false; }
     root.classList.toggle("icbar-gm", gmActs);
@@ -1196,7 +1229,8 @@ function cleanup() {
   hudRo?.disconnect(); hudMo?.disconnect(); bodyMo?.disconnect();
   hudRo = hudMo = bodyMo = hudEl = null;
   root?.remove();
-  root = shell = scroller = list = roundEl = roundNum = prevB = nextB = live = waitEl = null; wasWaiting = false;
+  skipOff?.(); skipOff = null;
+  root = shell = scroller = list = roundEl = roundNum = prevB = nextB = live = waitEl = skipB = null; wasWaiting = false;
   layer = ring = rnPre = rnWin = rnPost = null; rnCur = null; ringOn = false; ringKey = ""; holdOn = false; lastRound = null; lastTurnAt = 0;
   tiles.clear();
   curCombat = null; curCombatId = null; lastKey = ""; paintedSig = null; activeId = null; lastDensity = -1; fitKey = ""; wheelOn = false; mounted = false;
