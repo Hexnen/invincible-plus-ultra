@@ -94,6 +94,11 @@ const pass = async (T, each = null) => { for (let n = 0; n < 24 && T.state.stack
   const n1 = lookOf(R, P1), rc = CP.cue(n0, n1);
   eq([rc?.why, rc?.focus, rc?.level], ["reveal", "N2", "all"], "A: the hidden one revealed: a cue for 'all' only");
   eq(CP.cues({ ...n0, known: [] }, n1), [], "A: a look that knew nobody (before the deal) reveals nobody");
+  /* U98: revealed while on turn (for this player the turn appears in the same look): both cues come, so the reveal can have its shot */
+  const both = CP.cues({ ...n0, cur: null }, { ...n1, cur: "N2" }).map((c) => c.why);
+  ok(both.includes("turn") && both.includes("reveal") && both[0] === "turn", "A: revealed while on turn: the turn cue is the most pressing and the reveal comes with it");
+  const rs = CP.cueShot(CP.cues({ ...n0, cur: null }, { ...n1, cur: "N2" }).find((c) => c.why === "reveal"), { ...n1, cur: "N2" });
+  eq([rs?.beat, rs?.focus, rs?.key], ["reveal", "N2", "reveal:N2"], "A: ... and it is a reveal shot");
   /* aiming: the map is under the user's hand */
   eq(whys(CP.cues({ ...a0, armed: "shoot" }, { ...a1, armed: "shoot" })), [], "A: while an action is armed a turn start does not move the view");
   /* several at once: the most pressing first */
