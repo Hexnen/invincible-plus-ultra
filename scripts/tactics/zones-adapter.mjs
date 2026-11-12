@@ -114,6 +114,8 @@ export const zoneName = (where) => call("zoneName", where) ?? null;
 export const zoneTitle = (where, opts) => call("zoneTitle", where, opts) ?? null;
 /** the scene's numerals or its zones changed ("params", "edited", "loaded"): texts that name a zone are said again. -> off() */
 export function onChange(fn) { const id = Hooks.on("moinenMapsZones", fn); return () => Hooks.off("moinenMapsZones", id); }
+/** perf4: the map's pick of a zone starts or ends on this client (said synchronously, right after its class on <body>, before its first look) */
+export function onPicking(fn) { const id = Hooks.on("moinenMapsPicking", fn); return () => Hooks.off("moinenMapsPicking", id); }
 /** a bar of ours that covers an edge of the window, so the map's pick keeps clear of it. -> off() */
 export const uiInset = (id, spec) => { const off = call("uiInset", id, spec); return typeof off === "function" ? off : () => {}; };
 /** U106 / U116 (zones-api.md section 41): a part of ours that is no bar along an edge (the desk, the party, a banner at the bottom centre):

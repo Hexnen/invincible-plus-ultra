@@ -5,6 +5,7 @@
    Zones are not picked here: that is the map module's own pick mode, reached through zones-adapter.pick.
    One document-level capture listener while a pick runs, nothing otherwise. NOT VERIFIED beyond the live check noted in the handoff. */
 import * as Store from "../store.mjs";
+import * as Aim from "./aim.mjs";      // perf4: the aim mark on the panels that step back (ui/aim-pure.mjs)
 
 let cur = null;      // { combat, ids:Set, onPick }
 let hookId = null;
@@ -71,7 +72,7 @@ export function start(combat, ids, onPick) {
     cur = { combat, ids: new Set(ids), onPick };
     if (!fresh) return;
     document.addEventListener("pointerdown", onDown, true);
-    document.body.classList.add("itd-picking");
+    document.body.classList.add("itd-picking"); Aim.sync();      // perf4: the aim mark with the class, before anything looks at the screen
     hookId = Hooks.on("targetToken", (user, token, targeted) => {
       try {
         if (!cur || !targeted || marking || user?.id !== game.user.id) return;
@@ -84,7 +85,7 @@ export function start(combat, ids, onPick) {
 export function stop() {
   if (!cur) return;
   cur = null;
-  try { document.removeEventListener("pointerdown", onDown, true); document.body.classList.remove("itd-picking"); if (hookId !== null) Hooks.off("targetToken", hookId); } catch { /* gone */ }
+  try { document.removeEventListener("pointerdown", onDown, true); document.body.classList.remove("itd-picking"); Aim.sync(); if (hookId !== null) Hooks.off("targetToken", hookId); } catch { /* gone */ }
   hookId = null;
 }
 export const picking = () => !!cur;
