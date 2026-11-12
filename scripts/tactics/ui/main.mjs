@@ -570,7 +570,7 @@ function chatButtons(root = document) {
     for (const el of root.querySelectorAll?.("[data-message-id] .dice-buttons") ?? []) {
       const id = el.closest("[data-message-id]")?.dataset.messageId, tag = Sys.tacticsOf(game.messages?.get(id));
       if (!tag) continue;
-      const combat = (tag.combat ? game.combats?.get(tag.combat) : null) ?? Store.currentCombat();
+      const combat = RW.cardCombat(tag, (id) => game.combats?.get(id), Store.currentCombat());      // U137: a card of a fight that is gone is settled
       const off = RW.cardState(combat ? Api.state(combat) : null, tag, id) === "settled";
       for (const b of el.querySelectorAll("button")) { b.disabled = off; if (off) b.dataset.tooltip = t("ITAC.ui.chat.settled"); else delete b.dataset.tooltip; }
     }
@@ -615,7 +615,7 @@ export function start() {
       refresh();
       return true;
     });
-    for (const hk of ["changeSidebarTab", "renderHotbar", "renderPlayers"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });
+    for (const hk of ["changeSidebarTab", "renderHotbar", "renderPlayers", "renderChatLog", "closeChatLog"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });      // U136: also the chat popped out or back in
     Hooks.on("collapseSidebar", () => { relayout(); setTimeout(() => (st.desk.touched ? relayout() : schedule()), 320); });      // the desk folds or opens with the room the sidebar leaves, until the GM chose
     window.addEventListener("resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
     document.addEventListener("keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.stopPropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);

@@ -125,8 +125,9 @@ function read(c, isActive, ctx) {
     if (td?.hidden && !owner) return null;
     if (td?.isSecret) return null;
   }
-  /* U118: a vehicle shows the side of who sits in it (tactics/source.mjs vehicleDisp), never the token's own default */
-  const disp = actor?.type === "vehicle" ? dispOf(Tac.vehicleDisp(Tac.aboard(c.parent, c.id).map((id) => c.parent?.combatants?.get(id)?.token?.disposition), !!actor.hasPlayerOwner, D()))
+  /* U118: a vehicle shows the side of who sits in it (tactics/source.mjs vehicleDisp), never the token's own default; of those aboard
+     only whom this user may know of (source.aboardSeen: a concealed driver gives nothing away) */
+  const disp = actor?.type === "vehicle" ? dispOf(Tac.vehicleDisp(Tac.aboardSeen(c.parent, c.id, gm).map((id) => c.parent?.combatants?.get(id)?.token?.disposition), !!actor.hasPlayerOwner, D()))
     : dispOf(td ? td.disposition : actor?.prototypeToken?.disposition);
   let observer = owner;
   if (!observer) { try { observer = !!actor?.testUserPermission?.(game.user, "OBSERVER"); } catch { observer = false; } }
@@ -427,7 +428,13 @@ function ensureRoot() {
   layer.append(ring.root);
   track.append(list, layer);
   scroller.append(track);
-  shell.append(prevB, roundEl, waitEl, scroller, nextB);
+  /* U135: the round chip and the phase plate ("R1 Początek rundy") are one label that sits ABOVE the left turn button, in a column of their
+     own at the bar's left end (.icbar-lead); the column is no taller than the strip, so the bar's height and bottom edge never change */
+  const head = mk("div", "icbar-head");
+  head.append(roundEl, waitEl);
+  const lead = mk("div", "icbar-lead");
+  lead.append(head, prevB);
+  shell.append(lead, scroller, nextB);
   root.append(live, shell);
   wire();
   document.body.appendChild(root);
@@ -1104,8 +1111,7 @@ function paint(model, loud, keep) {
     const gm = !!game.user.isGM;
     let canUpdate = false;
     try { canUpdate = gm && curCombat.canUserModify(game.user, "update"); } catch { canUpdate = gm; }
-    for (const b of [prevB, nextB]) b.hidden = !gm;
-    prevB.disabled = !canUpdate || (model.round <= 1 && !(model.turn > 0));   // stepping back from the very first turn would un-start the combat
+    for (const b of [prevB, nextB]) b.hidden = !gm;    prevB.disabled = !canUpdate || (model.round <= 1 && !(model.turn > 0));   // stepping back from the very first turn would un-start the combat
     nextB.disabled = !canUpdate;
     for (const [b, k] of [[prevB, "ICB.Bar.Prev"], [nextB, "ICB.Bar.Next"]]) { b.setAttribute("aria-label", t(k)); b.dataset.tooltip = t(k); }
     let gmActs = false;   // the GM's action buttons need room under the strip (a fixed reservation, so the bar's height never changes with the turn)

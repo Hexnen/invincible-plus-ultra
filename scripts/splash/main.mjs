@@ -4,7 +4,7 @@
    - FLAG = the OLD standalone module's id, kept ONLY as the flag namespace of message flags (flags['invincible-splash'].ev) and actor flags
             (flags['invincible-splash'].state), so rolls and heroes saved by the standalone module keep working. Do not rename it. */
 import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fmtOdds, oddsText, oddsLabel, LBL, setLabels, ACTIONS, FAIL, SOFTFAIL, PUSHFAIL, PUSHPRE, WRECK, SHAPE_RANGE } from './logic.mjs';
-import { readRoll, classify } from './reader.mjs';
+import { readRoll, classify, heroSpeaker, publicResolve } from './reader.mjs';
 import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
 import { EN, PL } from './lang.mjs';
@@ -178,9 +178,9 @@ hook('preCreateChatMessage', (message) => {
     if (!rd) return;
     const actor = message.speakerActor ?? null;
     let st = null;
-    const track = cs('state') && actor && actor.type === 'superhero' && actor.isOwner;
+    const track = cs('state') && actor && !rd.npc && actor.isOwner;      // H3-4: kamienie milowe tylko strony bohaterów
     if (track) st = sanitizeState(actor.flags?.[FLAG]?.state);
-    const res = actor?.type === 'superhero' ? actor.system?.derived?.resolve : null;   // Resolve przeciwników nie trafia do publicznej flagi
+    const res = publicResolve(message);   // H3-4: Resolve przeciwników (także złoczyńcy z podręcznika) nie trafia do publicznej flagi
     const ev = buildEvent(rd, { rng: Math.random, st, dryN: cs('dry'), k0Offset: cs('k0') });
     ev.rb = res?.value ?? null;           // Resolve w chwili rzutu (do odczytania, czy stres już odjęty)
     ev.rmax = res?.max ?? null;
@@ -240,7 +240,7 @@ function speakerTokens(message) {
 
 function resolveReader(message, ev) {
   const actor = message.speakerActor;
-  if (!actor || actor.type !== 'superhero') return null;   // pojemność Resolve przeciwników nie jest ujawniana
+  if (!actor || !heroSpeaker(message)) return null;   // H3-4: pojemność Resolve przeciwników (reguła stron) nie jest ujawniana
   return () => {
     const res = actor.system?.derived?.resolve;
     if (!res) return null;

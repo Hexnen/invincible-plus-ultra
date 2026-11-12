@@ -59,3 +59,10 @@ export function markSigns(kind, { n = null, out = false, off = false, name = nul
   const say = name === true ? (c.length > 1 ? markName(k === "full" ? "outFull" : "outQuick", lang) : markName(k, lang)) : name ? String(name) : null;
   return c.map((cls, i) => { const kk = cls.match(/ipu-k-([a-z]+)/)[1], hollow = cls.includes("ipu-off"); return { name: i === 0 ? say : null, el: { tag: "i", cls }, ...picOf(hollow ? `${kk}-off` : kk), color: SIGN_INK.cost }; });
 }
+
+/* ---- U133: THE CHANCE OF A TARGET as a mark: the engine's four bands (flows/kit.mjs BANDS: unlikely, even, likely, near certain) as the
+   target's ring in four quarters, as many heavy as the band (odds-1 .. odds-4). On the map the ring around the token is the drawing
+   (board-pure oddsShow hands the map "n of 4", moinen-maps zones-api.md section 42); here the same drawing for the legend.
+   oddsKind(level) -> the mark's kind; level 0..3, the band's index. */
+export const ODDS_LEVELS = Object.freeze(["unlikely", "even", "likely", "nearCertain"]);
+export const oddsKind = (level) => (Number.isInteger(level) && ODDS_LEVELS[level] ? `odds-${level + 1}` : null);

@@ -61,7 +61,8 @@ for (const op of E.GM_EDIT_OPS) need.add(`ITAC.edit.${op}`);
 for (const k of ["gm", "clock", "wardReset", "stress", "sceneEnd", "fireSpread"]) need.add(`ITAC.journal.${k}`);
 for (const f of files) for (const m of readFileSync(join(dir, f), "utf8").matchAll(/data\.result = ([^;\n]*)/g)) for (const w of m[1].matchAll(/"([A-Za-z]+)"/g)) need.add(`ITAC.result.${w[1]}`);
 for (const k of ["out", "stays", "spreads", "nowhere", "held", "healthy", "sick", "cured", "dead", "manual"]) need.add(`ITAC.result.${k}`);      // the words that come from the rules library (fire spread, disease) and from a resolution by hand
-for (const k of ["fire", "blast", "area", "vacuum", "disease"]) need.add(`ITAC.ui.hz.kind.${k}`);
+for (const k of ["fire", "blast", "area", "vacuum", "disease", "fixed"]) need.add(`ITAC.ui.hz.kind.${k}`);      // D123: "fixed", the engine's own damage
+for (const k of ["barrier", "fall", "vehicle", "chase"]) need.add(`ITAC.ui.hz.cause.${k}`);
 for (const k of ["forcedMove", "fall", "hazard", "challengeEffect", "chaseRound", "other"]) need.add(`ITAC.action.${k}`);
 for (const id of Object.keys(C.BUILTIN)) need.add(`ITAC.action.${id}`);
 for (const id of Object.keys(stunts.STUNTS)) need.add(`ITAC.stunt.${id}`);

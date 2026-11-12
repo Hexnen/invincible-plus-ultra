@@ -115,9 +115,9 @@ const J = JSON.stringify;
   const marks = BP.reachMarks(p, t), by = Object.fromEntries(marks.map((m) => [m.cid, m]));
   eq([by.N1?.state, by.N3?.state, "H2" in by, "N2" in by], ["in", "out", false, false], "C: in reach a ring, out of reach dimmed; no mark for one that is not on the map or not in the view");
   ok(/reach/i.test(by.N3.tip ?? ""), "C: the dimmed token says why, in the words of the reason table");
-  ok(typeof by.N1.label === "string" && by.N1.label.length <= 18 && !/%/.test(by.N1.label), "C: a player reads the chance as a word over the token");
+  ok(!("label" in by.N1) && by.N1.meter?.of === 4 && by.N1.meter.n >= 1 && by.N1.meter.name && by.N1.tip.includes(by.N1.meter.name) && !/%/.test(by.N1.tip), "C U133: a player reads the chance as the ring in quarters around the token (no words over it), in words in the tip");
   ok(by.N1.hover && /~\d/.test(by.N1.hover.label) && !/up to/i.test(by.N1.hover.tip) && !by.N1.hover.bar, "C: of an NPC that is not revealed the hover says the own Damage (no bound: D51) and draws no Health bar");
-  { const hs = by.N1.hover.signs?.label ?? [], b = hs.find((x) => typeof x === "object"); ok(hs[0] === by.N1.label && b?.el?.cls === "ipu-sym ipu-s-damage" && by.N1.hover.label.endsWith(b.n) && !!b.name && by.N1.hover.tip.includes(b.name.replace(/\.$/, "")) && !by.N1.signs, "C U100: on the pill over the token the hit is the burst with its number (the chance stays a word)"); }
+  { const hs = by.N1.hover.signs?.label ?? [], b = hs.find((x) => typeof x === "object"); ok(hs.length === 1 && b?.el?.cls === "ipu-sym ipu-s-damage" && by.N1.hover.label === b.n && !!b.name && by.N1.hover.tip.includes(b.name.replace(/\.$/, "")) && !by.N1.signs, "C U100 / U133: on the pill over the token under the pointer the hit is the burst with its number, alone (the chance is the ring)"); }
   eq(p.chance, null, "C: the chance is not said a second time in the panel");
   ok(p.targets.find((x) => x.id === "H2")?.map === false, "C: a candidate that is not on the map keeps its chip");
   /* choosing one out of reach: the reason at once, with the way to ask; nothing can be declared */
@@ -133,7 +133,7 @@ const J = JSON.stringify;
   { const d = D.deskModel(T.state, T.log, ctx(T)); await ask("gm", "H1", { action: "slugfest" }, ["N1", "N2", "N3", "H2"]);
     const gp = UI.dockData({ bars: [D.barModel(T.state, "H1", ctx(T))], prompts: [], mine: [], stack: d.info, waiting: d.waiting, turn: d.turn }, { armed: "slugfest" }, facts(T.state, "gm", true), t).panel;
     const g = Object.fromEntries(BP.reachMarks(gp, t).map((m) => [m.cid, m]));
-    ok(/%$/.test(g.N1.label) && /-\d/.test(g.N1.hover.label) && g.N1.hover.bar?.max === T.c.N1.maxHealth && g.N1.hover.bar.loss >= 0, "C: the GM reads a percentage, the Health that would go and the bar"); }
+    ok(!("label" in g.N1) && g.N1.meter?.of === 4 && /\d%/.test(g.N1.tip) && /-\d/.test(g.N1.hover.label) && g.N1.hover.bar?.max === T.c.N1.maxHealth && g.N1.hover.bar.loss >= 0, "C: the GM reads a percentage (in the tip, the ring is its band), the Health that would go and the bar"); }
   /* D. the keyboard walks the targets in reach */
   p = dock({ armed: "slugfest" });
   eq([Keys.plan(p, {}, { key: "Tab" })?.target, Keys.plan({ ...p, panel: { ...p.panel, targets: p.panel.targets.map((x) => ({ ...x, picked: x.id === "N1" })) } }, {}, { key: "Tab" })?.target], ["N1", "H2"], "D: Tab walks the targets in reach and skips the one out of reach");

@@ -42,7 +42,10 @@ function ruleOf(s, name) {
 /** set (value a string) or remove (value null / "") one number; -> true when something was written */
 export function setVar(name, value, doc = globalThis.document) {
   const v = value === null || value === undefined ? "" : String(value);
-  if (!doc || values.get(name) === v) return false;
+  if (!doc) return false;
+  /* bug hunt 3 (suspicion, proved): an unchanged value still puts our sheet back when another script replaced the document's list
+     (before, it came back only with the next CHANGED value; until then the elements fell back) */
+  if (values.get(name) === v) { if (sheet && USERS[name]) own(doc); return false; }
   values.set(name, v);
   const s = USERS[name] ? own(doc) : null;
   try {
