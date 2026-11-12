@@ -88,7 +88,7 @@ const R = (left, top, right, bottom) => ({ left, top, right, bottom, width: righ
   ok(/--igd-right", `\$\{Math\.max\(0, Math\.round\(W - rightWall\(\)\)\)\}px`/.test(desk), "FXX: the GM desk keeps left of a parked chat");
   ok(/side = ChatPark\.rightEdge\(sbL, chatR, W\)/.test(dock), "FXX: the dock's frame (line, questions, chase panel's stretch, desk) ends at a parked chat");
   ok(/hudSide = ChatPark\.rightEdge\(sbL, chatR, W, hudR \? \{ top: hudR\.top, bottom: hudR\.bottom \} : null\)/.test(dock) && /Lay\.hudSqueezed\(topL, hudSide - 12,/.test(dock), "FXX (live, GM 1366): a chat parked under the challenges does not fold them (the fold moved them left and the chat climbed to the top)");
-  ok(/Math\.min\(r && r\.width > 120[^\n]*parkedLeft\(\)\)/.test(tm) && /addEventListener\(CHAT_MOVED/.test(tm), "FXX: the map's room and the token pan keep left of a parked chat; tactical surfaces are placed again on a move");
+  ok(/Math\.min\(r && r\.width > 120[^\n]*parkedLeft\(\)\)/.test(tm) && /(?:addEventListener\(|listen\(window, )CHAT_MOVED/.test(tm), "FXX: the map's room and the token pan keep left of a parked chat; tactical surfaces are placed again on a move");
   ok(/hi = Math\.min\(hi, parkedLeft\(\) - 12\)/.test(tray), "FXX: the turn tray keeps left of a parked chat");
 }
 
