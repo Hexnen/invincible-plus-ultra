@@ -264,4 +264,83 @@ function T0() { return base(); }
   eq(cards(T).filter((c) => c[0] === "H1"), [], "H: nobody is asked to warn somebody they have not seen");
 }
 
+/* ---- I. Adversary 8 (live, 2026-11-12): D103, D104, D105. The turret shot at Omni-Man (H2), Kid Omni-Man (H1) and the Soldier group
+   (N2) both held Guardian in that zone: Omni-Man's card stayed answerable after the swap, and the Soldier's card, still naming Omni-Man,
+   moved the attack on from Kid. */
+const three = (extra = () => {}, order) => base((t) => { give(t, "N2", "Guardian"); extra(t); }, order);
+{
+  const T = three();
+  await T.gm(decl("N1", "shoot", ["H2"], { weapon: "gun" }));
+  eq(cards(T).map((c) => c[0]), ["H2", "H1", "N2"], "I: the target and both guardians are asked");
+  const old = card(T, "H2"), oldN2 = card(T, "N2"), u2 = units(T, "H2");
+  eq(oldN2.data.targets, ["H2"], "I: the second guardian's card is about the intended target");
+  await T.req("p1", { op: "answer", prompt: card(T, "H1").id, value: rid(T, "H1", "guardian") });
+  await T.roll("sw:H1", 1);
+  eq(T.top().decl.targets, ["H1"], "I: the first guardian took the hit");
+  /* D103 */
+  eq(T.prompts("reaction").some((p) => p.id === old.id), false, "D103: the card of the one who is no target any more is withdrawn");
+  eq(card(T, "H2"), null, "D103: and no other card asks it about this attack");
+  let env;
+  eq([code(env = await T.req("p2", { op: "answer", prompt: old.id, value: "dodge" })), units(T, "H2")], ["gone", u2], "D103: an answer to the old card is refused, nothing paid");
+  eq(card(T, "H1")?.options.some((o) => o.id === "block" || o.id === "dodge"), true, "D103: the new target has its own defence card");
+  /* D104 */
+  eq(T.prompts("reaction").some((p) => p.id === oldN2.id), false, "D104: the second guardian's card that named the intended target is withdrawn");
+  eq(card(T, "N2"), null, "D104: nobody dives in for the one who took the hit (ruling A8-R1: 'instead of the intended target')");
+  eq(code(env = await T.gm({ op: "answerFor", prompt: oldN2.id, value: rid(T, "N2", "guardian") })), "gone", "D104: the old 'yes' cannot move the attack any more");
+  eq(T.top().decl.targets, ["H1"], "D104: the attack stays on the first guardian");
+  const e2 = T.c.N2.kit.actions.find((a) => a.id.endsWith("-guardian"));
+  eq([Kit.reactionFor(view(T), T.top(), "N2", e2), Kit.reactionFit(view(T), T.top(), "N2", e2)], [[], { ok: false, reason: "hitTaken" }], "D104: the rule says why: somebody already took the hit");
+  await T.req("p1", { op: "answer", prompt: card(T, "H1").id, value: "pass" });
+  await T.roll("attack", 1);
+  for (const sp of T.prompts("stunts")) await T.gm({ op: "answerFor", prompt: sp.id, value: [] });
+  eq([T.top() ?? null, T.c.H2.health], [null, 6], "I: the attack ends on the first guardian; the intended target is untouched");
+}
+{
+  /* a card already answered stays answered: the second guardian said yes before the first one's dice: its roll goes on, the faster one wins (U91) */
+  const T = three();
+  await T.gm(decl("N1", "shoot", ["H2"], { weapon: "gun" }));
+  await T.req("p1", { op: "answer", prompt: card(T, "H1").id, value: rid(T, "H1", "guardian") });
+  await T.gm({ op: "answerFor", prompt: card(T, "N2").id, value: rid(T, "N2", "guardian") });
+  await T.roll("sw:H1", 1);
+  await T.roll("sw:N2", 2);
+  eq([T.top().decl.targets, notes(T).filter((n) => n[0] === "swapFailed")], [["H1"], [["swapFailed", "N2", "H2"]]], "D104: a second 'yes' given before the swap does not carry the attack on from the first guardian");
+}
+{
+  /* the cards of the others are made again for the attack as it is now: a warning names who is attacked now */
+  const T = three((t) => { t.c.N2.kit = null; t.hero("H3", "p3", { name: "Shouter" }); give(t, "H3", "Warning Call"); }, ["N1", "H1", "H2", "N2", "H3"]);
+  await T.gm(decl("N1", "shoot", ["H2"], { weapon: "gun" }));
+  const w0 = card(T, "H3");
+  eq(w0?.data?.targets, ["H2"], "D104: the warning card names the intended target");
+  await T.req("p1", { op: "answer", prompt: card(T, "H1").id, value: rid(T, "H1", "guardian") });
+  await T.roll("sw:H1", 1);
+  const w1 = card(T, "H3");
+  eq([w1 && w1.id !== w0.id, w1?.data?.targets, T.prompts("reaction").some((p) => p.id === w0.id)], [true, ["H1"], false], "D104: after the swap the warning card is made again and names the one attacked now");
+}
+{
+  /* the GM's hand: a target the GM set (retarget) is the GM's intent, a guardian may still cover it */
+  const T = three();
+  await T.gm(decl("N1", "shoot", ["H2"], { weapon: "gun" }));
+  const e2 = T.c.N2.kit.actions.find((a) => a.id.endsWith("-guardian")), I = T.top();
+  eq(Kit.reactionFor(view(T), { ...I, decl: { ...I.decl, targets: ["H1"] }, data: { ...I.data, retargets: [{ from: "H2", to: "H1", by: "gm" }] } }, "N2", e2), ["H1"], "A8-R1: a target set by the GM can be covered");
+  eq(Kit.reactionFor(view(T), { ...I, decl: { ...I.decl, targets: ["H1"] }, data: { ...I.data, retargets: [{ from: "H2", to: "H1", by: "x-guardian" }] } }, "N2", e2), [], "A8-R1: one who took the hit by a reaction cannot");
+}
+{
+  /* D105: the guardian's roll is named, never a raw key or a code */
+  const L = await import("./lang.mjs");
+  eq([L.t("ITAC.roll.sw"), L.rollTitle("sw:H1", "ITAC.kit.act.guardian"), L.rollTitle("zz:H1", "ITAC.kit.act.guardian"), L.rollTitle("attack", "Slugfest")], ["Guardian", "Guardian", "Take the hit", "Attack"], "D105: the Guardian's roll has a title; a kit label is read as a key");
+  const T = base();
+  await T.gm(decl("N1", "slugfest", ["H2"]));
+  await T.req("p1", { op: "answer", prompt: card(T, "H1").id, value: rid(T, "H1", "guardian") });
+  const rq = T.lastRequest();
+  eq([rq?.key, /ITAC\./.test(L.rollTitle(rq?.key, rq?.label))], ["sw:H1", false], "D105: the roll request the engine sends gets a readable title");
+}
+{
+  /* U104 (not a defect): the target's defence card and the bystander's card of one attack both carry their keys; the small marks are
+     drawn only for a user who has used the keyboard on the dock (U41), remembered PER USER (layout `keys`), so two seats may differ */
+  const Keys = await import("./ui/keys-pure.mjs"), Lay = await import("./ui/layout-pure.mjs");
+  const def = { id: "p28", options: [{ id: "dodge", note: "chance" }, { id: "dodge:free", note: "chance" }, { id: "pass", note: "chance" }] }, by = { id: "p29", options: [{ id: "r:x" }, { id: "pass" }, { id: "pass:round" }] };
+  eq([Keys.number({ prompts: [def] }).prompts[0].options.map((o) => o.key), Keys.number({ prompts: [by] }).prompts[0].options.map((o) => o.key)], [["1", "2", "3"], ["1", "2", "3"]], "U104: both cards of the attack are numbered alike");
+  eq([Lay.clean({ keys: true }).keys, Lay.clean(null).keys, Lay.clean(null, { keys: true }).keys], [true, false, true], "U104: the marks follow the user's own remembered keyboard use");
+}
+
 done("check-u19");

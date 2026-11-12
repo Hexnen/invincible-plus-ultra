@@ -12,7 +12,7 @@ import * as R from "./relay-pure.mjs";
 import * as Store from "./store.mjs";
 import * as Engine from "./engine.mjs";
 import * as Sys from "./system-adapter.mjs";
-import { t } from "./lang.mjs";
+import { t, rollTitle } from "./lang.mjs";
 
 const MOD = Store.MOD;
 const CHANNEL = `module.${MOD}`;
@@ -64,7 +64,8 @@ function onRoll(msg, senderId) {
   /* U2: several players own the character: the first of them at the table throws at once, the others keep the dock's "Roll" */
   if (msg.to.find((u) => game.users.get(u)?.active) !== game.user.id) return;
   // the engine's breakdown is only a display: the executor reads the dice from the chat message and checks its author against the request
-  Sys.rollNow(msg.req, (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s))).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
+  const req = { ...msg.req, label: rollTitle(msg.req.key, typeof msg.req.labelSrc === "string" ? msg.req.labelSrc.slice(0, 80) : msg.req.label) };      // D105: titled in the ROLLER's language
+  Sys.rollNow(req, (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s))).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
 }
 function onMessage(msg, senderId) {
   try {

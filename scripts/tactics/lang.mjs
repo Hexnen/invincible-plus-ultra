@@ -231,6 +231,7 @@ export const EN = {
   "ITAC.roll.def": "Defence",
   "ITAC.roll.gate": "Before the attack",
   "ITAC.roll.stun": "Shake off the stun",
+  "ITAC.roll.sw": "Guardian",
   "ITAC.roll.roll": "Action",
   "ITAC.dice.engine": "Dice (tactical combat)",
   "ITAC.dice.crit": "Injury die",
@@ -1247,6 +1248,7 @@ export const PL = {
   "ITAC.roll.def": "Obrona",
   "ITAC.roll.gate": "Przed atakiem",
   "ITAC.roll.stun": "Otrząśnięcie się z ogłuszenia",
+  "ITAC.roll.sw": "Strażnik",
   "ITAC.roll.roll": "Akcja",
   "ITAC.dice.engine": "Kości (walka taktyczna)",
   "ITAC.dice.crit": "Kość rany krytycznej",
@@ -2071,3 +2073,7 @@ export function errText(e) {
   return t(known, { msg: e.code ?? "", ...p, reason });
 }
 export const errorText = errText;
+/** D105: the title of an engine roll (the roll dialog, the system's chat card): the word of its kind (ITAC.roll.<kind>), else the label
+    the flow gave it, read as a key when it is one (a kit action's ITAC.kit.act.*), never shown as a raw key. */
+export const rollTitle = (key, label) => { const k = String(key ?? "").split(":")[0], l = typeof label === "string" && label ? label : String(key ?? "");
+  return t(`ITAC.roll.${k}`, {}, l.startsWith("ITAC.") ? t(l, {}, String(key ?? "")) : l); };

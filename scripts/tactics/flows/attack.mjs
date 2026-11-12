@@ -360,6 +360,19 @@ function settleSwaps(v, I) {
   }
   return waiting;
 }
+/* D103 / D104: the attack went to somebody else (a guardian took the hit): every card of the window nobody has answered yet asked about
+   the attack as it was. The defence card of one who is no target any more is withdrawn (its answer would be thrown away); the cards of
+   the others (a second guardian, a warning) are withdrawn and made again for the attack as it is now (the window runs once more for those
+   not answered yet), so no card names an attacked one who is not attacked and no "yes" moves the attack from somebody the card never named. */
+function staleCards(v, I, R) {
+  let again = false;
+  for (const k of Object.keys(I.data.pk ?? {})) {
+    if (I.data.done?.[k] || K.isAnswered(v, I, k)) continue;
+    if (k.startsWith("rb:") && !I.decl.targets.includes(k.slice(3))) R.drop.push(k);
+    else if (k.startsWith("w:beforeRoll:")) { R.drop.push(k); again = true; }
+  }
+  if (again && I.data.ph) { delete I.data.ph.rbOthers; K.setFlag(I, "rbAgain"); }
+}
 /** Drive a set of window prompts (keys). Returns "wait" or "done". */
 function runWindow(v, I, R, keys, when) {
   for (const key of keys) {
@@ -460,8 +473,8 @@ export const steps = {
       for (const t of I.decl.targets) if (!I.data.pk?.[`rb:${t}`] && !R.prompts.some((p) => p.key === `rb:${t}`)) R.prompts.push(defencePrompt(v, I, t));
       if (!K.flag(I, "rbOthers")) {
         K.setFlag(I, "rbOthers");
-        R.prompts.push(...K.windowPrompts(v, I, "beforeRoll", { skip: I.decl.targets, reactions: C.reactionsFor }));
-        R.events.push({ type: "reactionWindow", when: "beforeRoll", waiting: [...I.decl.targets] });
+        R.prompts.push(...K.windowPrompts(v, I, "beforeRoll", { skip: I.decl.targets, reactions: C.reactionsFor }).filter((p) => !I.data.pk?.[p.key]));      // D104: a card already answered is not asked again
+        if (!K.flag(I, "rbAgain")) R.events.push({ type: "reactionWindow", when: "beforeRoll", waiting: [...I.decl.targets] });
       }
     }
     if (R.prompts.length) { R.wait = true; return R; }
@@ -470,7 +483,7 @@ export const steps = {
     const st = runWindow(v, I, R, keys, "beforeRoll");
     if (R.push) return R;
     const rolling = settleSwaps(v, I);                                                // U91: a guardian's roll decides whether the target changes [B2115]
-    if (I.decl.targets.join() !== before) { R.goto = "reactBefore"; return R; }      // retargeted: the new target's own window opens
+    if (I.decl.targets.join() !== before) { staleCards(v, I, R); R.goto = "reactBefore"; return R; }      // retargeted: the new target's own window opens
     if (st === "wait" || rolling) { R.wait = true; return R; }
     I.data.window = null;
     R.goto = "roll";

@@ -68,7 +68,7 @@ for (const id of Object.keys(stunts.STUNTS)) need.add(`ITAC.stunt.${id}`);
 for (const k of D.CARD_KINDS) { need.add(`ITAC.card.${k}`); need.add(`ITAC.prompt.${k}`); }
 for (const s of M.STATUS_IDS) need.add(`ITAC.status.${s}`);
 for (const g of ["invisible", "lowGravity", "unseen"]) need.add(`ITAC.gate.${g}`);
-for (const k of ["attack", "def", "gate", "stun", "roll"]) need.add(`ITAC.roll.${k}`);
+for (const k of ["attack", "def", "gate", "stun", "roll", "sw"]) need.add(`ITAC.roll.${k}`);      // D105: sw = the Guardian's roll
 for (const k of ["base", "floor", "crit", "help", "minions", "restrained", "unaware", "cantSee", "gm", "gate"]) need.add(`ITAC.mod.${k}`);
 for (const k of ["tacticsEnabled", "tacticsInitiative", "tacticsRedraw", "tacticsPushOrder"]) for (const p of ["Name", "Hint"]) need.add(`ITAC.Settings.${k}.${p}`);
 for (const k of ["everyRound", "firstRoundOnly"]) need.add(`ITAC.Redraw.${k}`);

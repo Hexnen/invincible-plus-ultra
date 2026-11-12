@@ -20,7 +20,7 @@ import * as Sys from "./system-adapter.mjs";
 import * as Zones from "./zones-adapter.mjs";
 import * as Mv from "./movement.mjs";
 import * as Summons from "./summons.mjs";
-import { t } from "./lang.mjs";
+import { t, rollTitle } from "./lang.mjs";
 
 const MOD = Store.MOD;
 const CHANNEL = `module.${MOD}`;
@@ -80,7 +80,7 @@ const metaOf = (combat) => ({ hidden: combat.combatants.filter((cb) => cb.hidden
 const labelOf = (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s));
 function sendRoll(combat, e) {
   const mine = e.users.includes("gm") || e.users.includes(game.user.id) || !e.users.some((u) => game.users.get(u)?.active);
-  const req = { combat: combat.id, inst: e.inst, key: e.key, rid: e.rid, actorUuid: e.actorUuid, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, label: t(`ITAC.roll.${String(e.key).split(":")[0]}`, {}, e.label ?? e.key), ...(e.mode ? { mode: e.mode } : {}) };
+  const req = { combat: combat.id, inst: e.inst, key: e.key, rid: e.rid, actorUuid: e.actorUuid, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, label: rollTitle(e.key, e.label), ...(typeof e.label === "string" ? { labelSrc: e.label.slice(0, 80) } : {}), ...(e.mode ? { mode: e.mode } : {}) };
   if (mine) Sys.rollNow(req, labelOf).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
   else game.socket.emit(CHANNEL, { k: R.KIND.roll, to: e.users, req }, { recipients: e.users });
 }
