@@ -115,7 +115,7 @@ const base = () => { const T = new Table(); T.hero("H1", "p1", { name: "Omni" })
   const d = N.diceHold(b, { prompts: ["p1", "counter"], cards: ["c9"], news: { id: "n2" }, at: 3000 }, false);
   eq([d.held, d.prompts.length, d.cards.length, d.news.id], [false, 2, 1, "n2"], "D128: the dice landed: the card and the line come");
   const m = src("./ui/main.mjs");
-  ok(/NewsP\.diceHold\(diceWas, /.test(m) && /diceThen\(\)/.test(m) && /waitFor3DAnimationByMessageID/.test(m), "D128: the surfaces hold cards and the line while Dice So Nice rolls, then redraw");
+  ok(/NewsP\.diceHold\(NewsP\.diceClock\(diceWas, diceSince\(\)\), /.test(m) && /diceThen\(\)/.test(m) && /waitFor3DAnimationByMessageID/.test(m), "D128: the surfaces hold cards and the line while Dice So Nice rolls, then redraw");
 }
 
 /* ---- U146: the attacker's own roll shows the defence that answered it */

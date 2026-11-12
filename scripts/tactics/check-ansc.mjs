@@ -183,7 +183,7 @@ const H = W.HOLD_MS;
   const mn = src("./ui/main.mjs");
   ok(/const dr = Wait\.holdDeskResults\(ansc\.desk, deskD, diceNow\)/.test(mn) && mn.indexOf("Wait.holdDeskResults(") < mn.indexOf("if (deskD) Desk.render(deskD, st.desk);"), "F: main.mjs holds the desk before it draws");
   ok(/cardsWere = diceNow && fresh \? cardsWere : ids;/.test(mn) && /if \(fresh && !diceNow && st\.desk\.tab !== "now"/.test(mn), "F: a held card does not bring the Now tab forward; it does when it shows");
-  ok(mn.indexOf("const diceNow = Wait.diceHolds(diceBusy(), diceWas?.since, Date.now()).on;") < mn.indexOf("const ids = Model.deskDue(desk)"), "F: the gate is asked before the desk's tab is chosen");
+  ok(mn.indexOf("const diceNow = Wait.diceHolds(diceBusy(), diceSince(), Date.now()).on;") > 0 && mn.indexOf("const diceNow = Wait.diceHolds(diceBusy(), diceSince(), Date.now()).on;") < mn.indexOf("const ids = Model.deskDue(desk)"), "F: the gate is asked before the desk's tab is chosen");
 }
 
 /* ================================================================== G: the initiative bar and the challenges HUD */

@@ -121,7 +121,7 @@ function autoEnd(combat, d) {
   const e = d?.show ? d.end : null, key = e?.auto && e.req ? `${combat?.id}:${e.req.round}:${e.req.slot}:${e.req.actor}` : null;
   if (key === autoKey) return;
   clearTimeout(autoTimer); autoKey = key;
-  if (key) autoTimer = setTimeout(() => { try { if (diceBusy() && Date.now() - (diceWas?.since ?? Date.now()) <= NewsP.HOLD_MS) { autoKey = null; diceThen(); return; }      // SEAM (U144 x D128): dice rolled up in the 1.5 s: wait for them, then run again
+  if (key) autoTimer = setTimeout(() => { try { if (diceBusy() && Date.now() - (diceSince() ?? Date.now()) <= NewsP.HOLD_MS) { autoKey = null; diceThen(); return; }      // SEAM (U144 x D128): dice rolled up in the 1.5 s: wait for them, then run again; FXB2: timed by their own run (diceSince), not the last draw's clock
     const n = lastDock?.show ? lastDock.end : null; if (n?.auto && n.req && `${combatNow()?.id}:${n.req.round}:${n.req.slot}:${n.req.actor}` === key) send("dock", n.req, { endArmed: false }, { auto: true }); }      /* FXN (bh4 suspicion 1): the press the bar would make, sent as an auto press (a refusal because another seat of the same hero passed it first is not shown) */
     catch (err) { console.warn(LOG, "auto end failed", err); } }, NewsP.autoDelay(e, AUTO_END_MS));      // FXN (D133): a turn that started empty stands longer, with its reason on the bar
 }
@@ -327,7 +327,7 @@ function refresh() {
     newsWin = NewsP.newsWindow(newsWin, { combat: combat.id, fight: NewsP.fightNow(facts.view), round: facts.view?.round ?? null, member: NewsP.memberOf(facts.view), newest: NewsP.newest(facts.view?.news) });      // BH4-1 / BH4-2: the fight's tag, the round; FXN: a concealed turn counts
     st.dock.newsFrom = newsWin.from;
     const desk = staff ? Api.desk(combat) : null;
-    const diceNow = Wait.diceHolds(diceBusy(), diceWas?.since, Date.now()).on;      // ANSC: do the 3D dice of a roll hold this client's surfaces now
+    const diceNow = Wait.diceHolds(diceBusy(), diceSince(), Date.now()).on;      // ANSC: do the 3D dice of a roll hold this client's surfaces now; FXB2: timed by the run in the air
     let deskD = null;
     if (staff) {
       if (!st.desk.touched) st.desk.collapsed = mapWidth() < NARROW;
@@ -356,9 +356,8 @@ function refresh() {
     }
     fightStart(combat);
     /* D128: what a roll came to waits for its dice: a new card and the new line come when the 3D dice have landed */
-    const now = Date.now(), busy = diceBusy(), hold = NewsP.diceHold(diceWas, { prompts: (data.prompts ?? []).map((p) => p.id), cards: (deskD?.cards ?? []).map((c) => c.id), news: data.news ?? null, at: now }, busy);
+    const now = Date.now(), busy = diceBusy(), hold = NewsP.diceHold(NewsP.diceClock(diceWas, diceSince()), { prompts: (data.prompts ?? []).map((p) => p.id), cards: (deskD?.cards ?? []).map((c) => c.id), news: data.news ?? null, at: now }, busy);
     diceWas = { prompts: hold.prompts, cards: hold.cards, news: hold.news, since: hold.since };
-    diceSince();      // FXY (U178): the run of dice in the air is timed from the first draw that saw it
     /* FXR (U191): a card held while the dice rolled counts its waiting time from when it shows here */
     const allIds = [...(data.prompts ?? []).map((p) => p.id), ...(deskD?.cards ?? []).map((c) => c.id)], shownIds = [...hold.prompts, ...hold.cards];
     heldSeen = NewsP.heldShown(heldSeen, allIds.filter((id) => !shownIds.includes(id)), shownIds, now);
