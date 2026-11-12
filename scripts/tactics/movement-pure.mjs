@@ -305,3 +305,27 @@ export function canTalk(range, placeA, placeB, border = null, link = false) {
     opened for it (one stood over the GM desk until dismissed by hand); the client is told the token stays. */
 export const BY_HAND_MS = 1500;
 export const madeByScript = (now, lastInput, ms = BY_HAND_MS) => !(Number.isFinite(lastInput) && lastInput > 0 && now - lastInput <= ms);
+/** D112: the hand of this client, followed through a whole drag. The canvas handles a drop on ITS pointerup (a window listener that runs
+    before any document listener), so the last release seen was the one before the drag and a drag held over 1.5 s read as a script.
+    A pointer pressed ON THE MAP and not yet released is a hand however long it is held; its moves and its release renew the time; a key
+    renews it too (a token nudged with the keys). A press elsewhere (a macro's button) is not a drag and leaves the time alone.
+    -> { down(now, onBoard), move(now, buttons), up(now), key(now), cancel(now), held(), byScript(now) } */
+export function handTracker(ms = BY_HAND_MS) {
+  let held = false, last = 0;
+  return {
+    down(now, onBoard) { held = !!onBoard; if (held) last = now; },
+    move(now, buttons) { if (held && buttons) last = now; },
+    up(now) { if (held) last = now; held = false; },
+    key(now) { last = Math.max(last, now); },
+    cancel(now) { if (held && now) last = now; held = false; },
+    held: () => held,
+    byScript(now) { return !held && madeByScript(now, last, ms); },
+    /** follow the hand of `win` (a window): in the capture phase the press is seen before the canvas, the release after its drop. -> true */
+    listen(win, isBoard, clock) {
+      const o = { capture: true, passive: true }, add = (ev, fn) => win.addEventListener(ev, fn, o);
+      add("pointerdown", (e) => this.down(clock(), isBoard(e))); add("pointermove", (e) => this.move(clock(), e.buttons)); add("pointerup", () => this.up(clock()));
+      add("pointercancel", () => this.cancel(clock())); add("blur", () => this.cancel(clock())); add("keydown", () => this.key(clock()));
+      return true;
+    },
+  };
+}

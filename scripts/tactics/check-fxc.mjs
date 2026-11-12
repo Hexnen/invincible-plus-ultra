@@ -114,7 +114,7 @@ ok(/Hooks\.on\("updateToken", \(td, ch\) => \{[^\n]*"hidden" in ch[^\n]*moved\(\
   const dock = src("./ui/dock.mjs"), css = readFileSync(new URL("../../styles/tactics-ui.css", import.meta.url), "utf8");
   ok(/const PANEL_SHARE = 0\.\d+;/.test(dock) && /Math\.min\(panelRoom,/.test(dock), "U105: the panel's height is capped by a share of the window");
   ok(/function markMore\(el\)/.test(dock) && /addEventListener\("scroll", [^\n]*markMore/.test(dock), "U105: the panel says when more of it lies below");
-  ok(/\.itd-panel:not\(\[data-picking\]\) > \.itd-pfoot \{ position: sticky; bottom: 0;/.test(css), "U105: the foot (Declare, Ask the GM) stays in sight");
+  ok(/\.itd-panel:not\(\[data-picking\]\) > \.itd-pfoot \{ position: sticky; bottom: -9px;/.test(css), "U105: the foot (Declare, Ask the GM) stays in sight");
   ok(/\.itd-panel\[data-more\] > \.itd-pfoot::after \{ content: "\\f078"/.test(css) && /\.itd-panel\[data-more\] > \.itd-pfoot::before \{ opacity: 1; \}/.test(css), "U105: a fade and a chevron while there is more");
 }
 
@@ -127,7 +127,7 @@ ok(/Hooks\.on\("updateToken", \(td, ch\) => \{[^\n]*"hidden" in ch[^\n]*moved\(\
 /* ---- U107: a script's token update is no drag */
 {
   eq([MP.madeByScript(10000, 0), MP.madeByScript(10000, 9000), MP.madeByScript(10000, 8400), MP.madeByScript(10000, NaN)], [true, false, true, true], "U107: no hand within 1.5 s -> a script");
-  ok(/cid && inputOn && MP\.madeByScript\(Date\.now\(\), lastInput\)\) \{ ui\.notifications\?\.warn\(t\("ITAC\.move\.script"/.test(src("./movement.mjs")), "U107: the update is held and the client told, no menu opened");
+  ok(/cid && inputOn && hand\.byScript\(Date\.now\(\)\)\) \{ ui\.notifications\?\.warn\(t\("ITAC\.move\.script"/.test(src("./movement.mjs")), "U107: the update is held and the client told, no menu opened (D112: by the hand tracker)");
   ok(EN["ITAC.move.script"] && /żeton/.test(PL["ITAC.move.script"]), "U107: said in both languages");
 }
 

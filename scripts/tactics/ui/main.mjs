@@ -494,14 +494,14 @@ export const active = () => { try { return started && !!combatNow(); } catch { r
 
 /* U108: while Dice So Nice shows dice over the interface, the dock and the initiative bar stand one step above its canvas (layout-pure
    diceRaise); the canvas is made by Dice So Nice when it starts, so it is looked for until it exists, then watched */
-let diceSeen = null, diceHooked = false, diceOn = false, diceTimer = 0;
+let diceSeen = null, diceHooked = false, dice = { on: false, shown: false }, diceTimer = 0;
 function diceApply() {
   try {
-    const cv = diceSeen;
-    const z = diceOn && cv ? Lay.diceRaise({ display: cv.style.display, opacity: cv.style.opacity, zIndex: cv.style.zIndex || getComputedStyle(cv).zIndex }) : null;
+    const cv = diceSeen, style = cv ? { display: cv.style.display, opacity: cv.style.opacity, zIndex: cv.style.zIndex || getComputedStyle(cv).zIndex } : null;
+    dice = Lay.diceWatch(dice, style);      // U108 (LIVE ver8): the first roll after a pause starts on a hidden canvas: that is not "the dice are gone"
+    const z = dice.on ? Lay.diceRaise(style) : null;
     if (z) document.body.style.setProperty("--ita-dice-z", String(z)); else document.body.style.removeProperty("--ita-dice-z");
     document.body.classList.toggle("ita-dice-up", !!z);
-    if (diceOn && cv && (cv.style.display === "none" || cv.style.opacity === "0")) { diceOn = false; diceApply(); }      // the dice are gone: back under it
   } catch { /* the dice keep their place */ }
 }
 function watchDice() {
@@ -513,7 +513,8 @@ function watchDice() {
       try {
         const cv = document.getElementById("dice-box-canvas");
         if (cv && cv !== diceSeen) { diceSeen = cv; new MutationObserver(diceApply).observe(cv, { attributes: true, attributeFilter: ["style"] }); }
-        diceOn = true; clearTimeout(diceTimer); diceTimer = setTimeout(() => { diceOn = false; diceApply(); }, 20000);
+        const vis = cv && cv.style.display !== "none" && cv.style.opacity !== "0";
+        dice = { on: true, shown: !!vis }; clearTimeout(diceTimer); diceTimer = setTimeout(() => { dice = { on: false, shown: false }; diceApply(); }, 20000);
         requestAnimationFrame(diceApply);
       } catch { /* the dice keep their place */ }
     });

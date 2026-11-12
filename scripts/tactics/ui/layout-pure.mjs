@@ -64,6 +64,15 @@ export const deskStart = (layout) => (layout?.desk ? { collapsed: layout.desk ==
     the dice rolled across the dock and the initiative bar and hid them. While that canvas SHOWS dice (`display` not none, `opacity` not 0)
     the two bars stand one step above it; else (or a canvas under the interface: z below `base`) nothing changes.
     style = { display, opacity, zIndex } of the canvas (strings as the DOM gives them) | null -> the z-index to raise to, or null */
+/** U108 (LIVE ver8): one roll, followed. `on` from diceSoNiceRollStart until the dice are gone; the canvas is still hidden when the first
+    roll after a pause starts (Dice So Nice shows it a moment later), so a hidden canvas ends the roll only once it was SEEN showing dice.
+    state { on, shown }, style of the canvas | null -> the next state */
+export function diceWatch(state, style) {
+  if (!state?.on) return { on: false, shown: false };
+  const vis = !!style && style.display !== "none" && String(style.opacity ?? "") !== "0";
+  if (vis) return { on: true, shown: true };
+  return state.shown ? { on: false, shown: false } : { on: true, shown: false };
+}
 export function diceRaise(style, base = 29) {
   if (!style || style.display === "none" || String(style.opacity ?? "") === "0") return null;
   const z = Number.parseInt(style.zIndex, 10);
