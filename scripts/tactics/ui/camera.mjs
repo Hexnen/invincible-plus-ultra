@@ -8,6 +8,9 @@
    While a tactical fight runs here this module is the fight's camera (`camera({ driver })`): the map's director does not play its own
    turn, move, roll and damage beats of that fight on this client, so there is one camera and one policy. Without the map's `frame`
    (an older map) nothing here runs and main.mjs keeps its own least slide for the dock's unit.
+   U98 (spec section 26), THE ACTION CAMERA: what deserves a shot (camera-pure eventShot / cueShot) is asked of the map's `shot`
+   first, again on this client, for this client, with the tokens this canvas draws; when this user's switch is turned down the map
+   answers "level" and the quiet cue is played instead. An action armed or a question put to this user ends a shot on screen.
    Everything is in try / catch: the camera must never break the dock. */
 import * as Zones from "../zones-adapter.mjs";
 import * as Store from "../store.mjs";
@@ -40,6 +43,25 @@ function play(combat, c) {
   Promise.resolve(Zones.frame({ ...spec, ...(after ? { after } : {}) })).catch(() => {});
   return spec;
 }
+/* U98: a beat of the action camera. The map plays it, or says the user's switch is not on the action camera ("level"): then the
+   quiet cue of stage 1 (`fallback`) is played. A beat the map did play is remembered, so that the quiet cues of the same blow (the
+   damage, a forced step) do not slide the view again right after it came back. */
+const shown = new Map();              // "inst|target" -> when a beat about it played here
+const SHOWN_MS = 6000;
+const shownKey = (inst, target) => `${inst ?? ""}|${target ?? ""}`;
+function playShot(combat, s, fallback = null) {
+  if (!Zones.hasShot()) return fallback ? play(combat, fallback) : null;
+  if (s.beat === "close") { Promise.resolve(Zones.shot({ key: `${combat.id}:${s.key}`, beat: "close" })).catch(() => {}); return { beat: "close" }; }
+  const focus = tokenOf(combat, s.focus);
+  if (!focus) return null;                                                                    // not on this user's map: nothing plays
+  const spec = { key: `${combat.id}:${s.key}`, beat: s.beat, tokens: [focus, ...s.with.map((x) => tokenOf(combat, x)).filter(Boolean)], still: s.still === true, why: s.beat,
+    ...(s.zone ? { zones: [String(s.zone).split(":")[0]] } : {}) };
+  Promise.resolve(Zones.shot(spec)).then((r) => {
+    if (r?.ok) { if (shown.size > 200) shown.clear(); shown.set(shownKey(s.key, s.focus), Date.now()); }
+    else if (r?.reason === "level" && fallback) play(combat, fallback);
+  }).catch(() => {});
+  return spec;
+}
 /* the events of the fight (spec 16): a walk, an action aimed at somebody, a result. A player's client hears the public stream; the
    executor hears the full one too. Each is asked of this client's last look (the user's own view) before anything is framed. */
 const heard = new Set();
@@ -50,8 +72,10 @@ function onEvent(ev) {
     if (heard.has(k)) return;
     if (heard.size > 400) heard.clear();
     heard.add(k);
-    const c = CP.eventCue(ev, was), combat = c ? Store.combatOf?.(key) ?? game.combats?.get(key) : null;
-    if (!c || !combat) return;
+    const s = CP.eventShot(ev, was), c = CP.eventCue(ev, was), combat = s || c ? Store.combatOf?.(key) ?? game.combats?.get(key) : null;
+    if (!combat) return;
+    if (s) { const spec = playShot(combat, s, c); log.push({ at: Date.now(), why: s.beat, shot: true, focus: s.focus, sent: !!spec, ev: ev.type }); if (log.length > 40) log.shift(); return; }
+    if (!c || Date.now() - (shown.get(shownKey(ev.inst, c.focus)) ?? 0) < SHOWN_MS) return;      // the shot of this blow has just shown it
     const spec = play(combat, c);
     log.push({ at: Date.now(), why: c.why, level: c.level, focus: c.focus, sent: !!spec, ev: ev.type }); if (log.length > 40) log.shift();
   } catch (e) { console.warn(LOG, "event failed", e); }
@@ -66,9 +90,13 @@ export function sync(ctx) {
     const now = CP.look(view, { me: game.user.id, staff, mine: mineOf(combat, view, model, staff), who: data?.show ? data.who?.id ?? null : null, sel: dock?.sel ?? null, armed: dock?.armed ?? null, targets: dock?.targets ?? [] });
     const before = key === combat.id ? was : null;                                            // another fight: a first look
     was = now; key = combat.id;
-    const c = CP.cue(before, now);
+    if (CP.handTook(before, now) && Zones.hasShot()) Zones.shotEnd();                         // U98: the user's hand or a question: a shot on screen gives the view back
+    const all = CP.cues(before, now), c = all[0] ?? null;
     if (!c) return;
-    const spec = play(combat, c);
+    /* U98: somebody new in this user's view gets its shot even when a more pressing quiet cue came with it (the one revealed is
+       on turn): the shot shows where it is; a user who turned the camera down gets the quiet cue instead */
+    const s = CP.cueShot(all.find((x) => x.why === "reveal") ?? null, now);
+    const spec = s ? playShot(combat, s, c) : play(combat, c);
     log.push({ at: Date.now(), why: c.why, level: c.level, focus: c.focus, sent: !!spec }); if (log.length > 40) log.shift();
   } catch (e) { console.warn(LOG, "sync failed", e); }
 }

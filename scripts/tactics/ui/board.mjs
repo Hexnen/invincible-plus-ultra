@@ -267,14 +267,14 @@ export function sync(data, ctx) {
 }
 /** the scene goes away: what was shown went with it */
 export function reset() { shown = {}; movePick = areaPick = null; menuBusy = false; hover = null; fire = null; clearTimeout(intentTimer); intentTimer = 0; intentSpec = null; intentKey = "null"; }
-export const camera = () => { try { return Zones.hasBoard() ? Zones.camera() : null; } catch { return null; } };
+export const camera = () => { try { const c = Zones.hasBoard() ? Zones.camera() : null; return c ? { ...c, shots: Zones.hasShot() } : null; } catch { return null; } };
 export const setCamera = (follow) => { try { Zones.camera({ follow }); } catch { /* the map is optional */ } };
 export function start(h) {
   try {
     if (started) return true;
     H = h; started = true;
     if (!Zones.hasBoard()) return false;
-    Zones.camera({ default: "turn" });                                                        // U42: the view moves only for a turn that starts off this user's screen
+    Zones.camera({ default: Zones.hasShot() ? "action" : "turn" });                           // U98: the action camera is the fight's default; an older map keeps U42's "turn"
     Zones.onContext(onCtx);
     Zones.onTokenHover((doc) => { try { const cid = doc ? cidOf(doc) : null; if (cid !== hover) { hover = cid; intent(); } } catch { /* a courtesy */ } });
     return true;

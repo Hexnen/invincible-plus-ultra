@@ -22,8 +22,24 @@
             move     somebody else walks: where from, then where to
             result   somebody else got a result
             reveal   somebody came into this user's view of the fight   (XCOM: the pod reveal)
-   `level`: the least setting of the user's switch at which the cue plays ("turn" = the default; "all"; "off" plays nothing).
-   `hand`: the cue answers the user's own act, so the quiet time after the user's own camera move does not stop it. */
+   `level`: the least setting of the user's switch at which the cue plays ("turn"; "all"; "off" plays nothing).
+   `hand`: the cue answers the user's own act, so the quiet time after the user's own camera move does not stop it.
+
+   THE ACTION CAMERA (ledger row U98; spec section 26), the switch's default setting "action": the moments XCOM gives a shot get one
+   here too, out of the map director's shots (zones-api.md section 39). `eventShot` / `cueShot` name the BEAT; the map plays it on
+   this client (the view goes there, holds and comes back), or answers that this user's switch is turned down, and then the cue
+   above is played instead.
+     open     somebody acts on somebody, seen by this user as a watcher   (XCOM: the action camera on the one who fires)
+     hit      a blow landed            for every seat that holds the target, the attacker's own included
+     miss     it did not
+     kill     the target is out        (XCOM: the kill shot)
+     reveal   somebody came into this user's view of the fight            (XCOM: the pod reveal)
+     move     somebody else walks      (XCOM: the enemy's move is shown)
+     close    the exchange is over     (a camera still waiting for the result goes back)
+   Never a shot: while the user has an action armed (the map is under the user's hand); an opening for the one who acts (the target
+   was chosen on that user's own screen) or for the one whose unit is aimed at (the question is theirs: the quiet cue "attacked");
+   an opening whose attacker this view does not hold. A user with a question to answer gets the beats of a result `still`: in
+   place, nothing moves. A beat names only combatants this user's look holds, exactly as a cue does. */
 
 const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 const ids = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string" && x) : []);
@@ -102,8 +118,52 @@ export function eventCue(ev, now) {
   }
   return null;
 }
+/** U98: the shot an EVENT of the fight asks for on a client whose look is `now` -> { beat, key, focus, with, zone?, still } | null.
+    `key` is the exchange (the engine's instance): its beats are one piece of staging on the map's side. Asked of the user's own
+    look like a cue: a combatant this view does not hold is in no beat, and what somebody concealed does gives none. */
+export function eventShot(ev, now) {
+  if (!isObj(ev) || !now || now.armed) return null;                                                 // (while the user aims: the map is under the user's hand)
+  const key = typeof ev.inst === "string" && ev.inst ? ev.inst : null;
+  if (!key) return null;
+  const has = new Set(now.known), mine = new Set(now.mine), keep = (x) => { const id = cid(x); return id && has.has(id) ? id : null; };
+  const actor = keep(ev.actor);
+  if (ev.actor != null && !actor) return null;                                                      // done by somebody this view does not hold
+  if (ev.type === "actionClosed") return { beat: "close", key, focus: null, with: [], still: false };
+  const still = Object.keys(now.asks ?? {}).length > 0;                                             // a question waits for this user: nothing moves
+  if (ev.type === "actionDeclared") {
+    if (still || !actor || mine.has(actor) || ev.amended) return null;
+    const to = typeof ev.decl?.to === "string" && ev.decl.to ? ev.decl.to : null;
+    if (to && (ev.decl?.mode || ev.decl?.action === "move")) return { beat: "move", key, focus: actor, with: [], zone: to, still: false };
+    const targets = ids((ev.targets ?? []).map(cid)).filter((x) => has.has(x) && x !== actor).slice(0, 12);
+    if (!targets.length || targets.some((x) => mine.has(x))) return null;
+    return { beat: "open", key, focus: targets[0], with: [...targets.slice(1), actor], still: false };
+  }
+  if (ev.type === "outcome" && typeof ev.hit === "boolean") {
+    const target = keep(ev.target);
+    return target ? { beat: ev.hit ? "hit" : "miss", key, focus: target, with: actor && actor !== target ? [actor] : [], still } : null;
+  }
+  if (ev.type === "broken") {
+    const target = keep(ev.target);
+    return target ? { beat: "kill", key, focus: target, with: actor && actor !== target ? [actor] : [], still } : null;
+  }
+  return null;
+}
+/** U98: the shot a CUE of a look asks for (somebody new in this user's view of the fight) -> the same shape | null */
+export function cueShot(c, now) {
+  if (!c || c.why !== "reveal" || !now || now.armed || Object.keys(now.asks ?? {}).length) return null;
+  return { beat: "reveal", key: `reveal:${c.focus}`, focus: c.focus, with: [], still: false };
+}
+/** U98: did the user's own hand or a question take the screen between two looks (an action armed, a new question put to this
+    user)? Then a shot on screen gives the view back at once. */
+export function handTook(before, now) {
+  if (!before || !now) return false;
+  if (now.armed && now.armed !== before.armed) return true;
+  return Object.keys(now.asks ?? {}).some((id) => !before.asks?.[id]);
+}
 /** The one cue this client acts on now (the most pressing), or null. */
 export const cue = (before, now) => cues(before, now)[0] ?? null;
 
-/** The switch on the dock (U42, U94): turn -> off -> all. */
-export const SWITCH = Object.freeze(["turn", "off", "all"]);
+/** The switch on the dock (U42, U94, U98): the action camera -> turned down (the quiet cues of a turn) -> off. A map without
+    shots keeps the older round turn -> off -> all. */
+export const SWITCH = Object.freeze(["action", "turn", "off"]);
+export const SWITCH_OLD = Object.freeze(["turn", "off", "all"]);
