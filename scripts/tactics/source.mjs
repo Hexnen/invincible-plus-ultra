@@ -37,6 +37,18 @@ export function aboard(combat, vid) {
     token) says nothing about whose it is. It shows the side of the first one aboard who has one, else friendly when a player owns it,
     else neutral. `disps` = the dispositions of those aboard, in order; D = CONST.TOKEN_DISPOSITIONS */
 export const vehicleDisp = (disps, playerOwned, D) => (disps ?? []).map(Number).find((n) => n === D.FRIENDLY || n === D.HOSTILE || n === D.NEUTRAL) ?? (playerOwned ? D.FRIENDLY : D.NEUTRAL);
+/** H3-4: THE side of an actor for every surface that is not the engine (the splash, ...), by the one rule (state-pure.heroSide, D114):
+    a superhero actor a player owns (a non-GM user with Owner in its ownership table, as system-adapter.ownersOf reads it) or whose token
+    (the scene token it stands for, else its synthetic token, else its prototype) is friendly. A book villain is not. users = the
+    caller's game.users (this file reads no global) */
+export function heroActor(actor, token = null, users = []) {
+  try {
+    if (!actor) return false;
+    const list = Array.isArray(users) ? users : users?.contents ?? (users && typeof users[Symbol.iterator] === "function" ? [...users] : []);
+    const owned = list.some((u) => u && !u.isGM && O.ownsFrom(actor.ownership, u.id, 3));
+    return S.heroSide({ type: actor.type, owned, disposition: (token ?? actor.token ?? actor.prototypeToken)?.disposition });
+  } catch { return false; }
+}
 /** "tactics": the module's own card initiative and ledger run this combat. null: they do not (yze-combat or plain core). */
 export const sourceOf = (combat) => (tacticsState(combat) ? "tactics" : null);
 /** nobody has the turn: the cards of the round are being dealt, a blocking queue is open, the scene has ended, or the engine is switched off */

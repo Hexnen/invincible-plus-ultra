@@ -2,6 +2,16 @@
    Nie zakłada niczego poza strukturą wyników kości (results[].indexPush / indexResult / active / discarded). */
 
 import { isLabel, hasLabelWord } from '../i18n/sys-labels.mjs';
+import { heroActor } from '../tactics/source.mjs';
+
+/* H3-4: strona mówiącego według jednej reguły modułu (state-pure.heroSide przez tactics/source.heroActor, D114): bohater gracza albo
+   postać z przyjaznym żetonem; złoczyńca z podręcznika (aktor superhero bez gracza) jest przeciwnikiem. */
+export function speakerToken(message) {
+  try { const sp = message?.speaker ?? {}; return (sp.scene && sp.token ? globalThis.game?.scenes?.get?.(sp.scene)?.tokens?.get?.(sp.token) : null) ?? null; } catch { return null; }
+}
+export const heroSpeaker = (message) => heroActor(message?.speakerActor ?? null, speakerToken(message), globalThis.game?.users ?? []);
+/** Resolve, który splash może upublicznić (flaga wiadomości, wskaźnik): tylko strony bohaterów; Resolve przeciwników nie jest ujawniany */
+export const publicResolve = (message) => (heroSpeaker(message) ? message.speakerActor.system?.derived?.resolve ?? null : null);
 
 const ATTRS = ['fighting', 'agility', 'strength', 'reason', 'intuition', 'presence'];
 /* Nazwy w rzucie (flavor, breakdown) to tekst zapisany w języku klienta, który rzucał: dopasowanie w każdym znanym języku. */
@@ -74,7 +84,7 @@ export function readRoll(message) {
     stress, stressPending: pushable,
     action, attribute, wreck,
     actorId: actor?.id ?? null, actorType: actor?.type ?? null,
-    npc: actor ? actor.type !== 'superhero' : true,
+    npc: !heroSpeaker(message),          // H3-4: przeciwnik według reguły stron, nie typu aktora
     flavor: message.flavor ?? ''
   };
 }

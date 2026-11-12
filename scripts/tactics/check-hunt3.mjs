@@ -199,6 +199,38 @@ async function closeAll() {
   eq([st().stack[0]?.rolls.attack.sixes, st().stack[0]?.rolls.attack.pushed, st().stack[0]?.rolls.attack.pushable], [2, 1, false], "H3-3: the watch takes the pushed roll that is in the chat; the attack goes on");
   await closeAll();
 }
+/* ---- H3-4 (the fix, run): every reader of "which side / may a player see this" agrees with S.heroSide on the same actors: the engine's
+   facts (npc), its meta for the view (hidden numbers), the participants (heroes draw first), the adapter's own actorFacts, the splash
+   (opponent look, the Resolve in the public flag, the gauge) and the shared reader tactics/source.heroActor */
+{
+  const Sys = await import("./system-adapter.mjs"), Src = await import("./source.mjs"), Rd = await import("../splash/reader.mjs");
+  const tokens = coll([]);
+  game.scenes = coll([{ id: "s", tokens }]);
+  const cases = [
+    ["vil", mkActor("vil", "superhero", null, 8), -1, false, "a book villain (unowned superhero, hostile token)"],
+    ["vil0", mkActor("vil0", "superhero", null, 8), 0, false, "an unowned superhero with a neutral token"],
+    ["ally", mkActor("ally", "superhero", null, 8), 1, true, "a hero the GM runs (unowned superhero, friendly token)"],
+    ["mine", mkActor("mine", "superhero", "p2", 8), -1, true, "a player's hero whose token is hostile"],
+    ["goon", mkActor("goon", "npc", "p1", 8), 1, false, "an npc actor, even owned and friendly"],
+  ];
+  for (const [id, a, disp] of cases) {
+    actors.push(a);
+    const cb = mkCb(`cb_${id}`, a); cb.token.disposition = disp; a.prototypeToken = { disposition: disp === 1 ? -1 : 1 };      // the prototype says the opposite: the token on the map wins
+    combatants.push(cb); combat.turns = combatants.slice(); tokens.push(cb.token);
+  }
+  const ctx = Engine.context(combat), parts = Sys.participants(combat);
+  for (const [id, a, disp, hero, what] of cases) {
+    const cid = `cb_${id}`, msg = { speakerActor: a, speaker: { scene: "s", token: `tk${cid}`, actor: a.id } };
+    const got = { engine: !ctx.c(cid).npc, parts: parts.find((p) => p.id === cid)?.hero === true, source: Src.heroActor(a, combatants.get(cid).token, game.users), splash: Rd.heroSpeaker(msg), resolve: Rd.publicResolve(msg) != null };
+    eq(got, { engine: hero, parts: hero, source: hero, splash: hero, resolve: hero }, `H3-4: ${what}: every reader says ${hero ? "heroes' side (its Resolve may show)" : "GM's side (its Resolve stays hidden)"}`);
+  }
+  actors.get("vil").prototypeToken = { disposition: -1 };
+  const vilMsg = { speakerActor: actors.get("vil"), speaker: { scene: "s", token: "tkcb_vil" }, rolls: [] };
+  eq(Rd.publicResolve(vilMsg), null, "H3-4: the splash puts no Resolve of a book villain into the public message flag");
+  eq(Sys.actorFacts(actors.get("vil")).npc, true, "H3-4: the adapter's own facts of a villain actor say npc (prototype hostile)");
+  eq(Sys.actorFacts(actors.get("hero1")).npc, false, "H3-4: ... and of a player's hero, not");
+  eq(Rd.heroSpeaker({ speakerActor: actors.get("vil"), speaker: {} }), false, "H3-4: a villain's roll with no token on a scene: its prototype token decides (hostile)");
+}
 console.warn = origWarn;
 done("check-hunt3");
 setTimeout(() => process.exit(process.exitCode ?? 0), 50);
