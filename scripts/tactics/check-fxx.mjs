@@ -21,10 +21,17 @@ const R = (left, top, right, bottom) => ({ left, top, right, bottom, width: righ
   eq(P.sideLeft(null, 1366), 1366, "FXX: no sidebar: the window's edge");
   eq(P.sideLeft(R(0, 0, 1366, 768), 1366), 1366, "FXX: a 'sidebar' wider than half the window is no column");
 
-  /* where the chat parks: right edge PARK_GAP left of the column */
-  eq(P.parkSpot(1318, 300), { left: 1012 }, "FXX (1366): the chat parks against the tab strip");
-  eq(P.parkSpot(1872, 300), { left: 1566 }, "FXX (1920): ... and at full HD");
-  eq(P.parkSpot(200, 300), { left: 0 }, "FXX: never off the window");
+  /* where the chat parks: right edge PARK_GAP left of the column, under the challenges, down to the bottom margin (live numbers) */
+  eq(P.parkSpot(1318, 300, 768, 279), { left: 1012, top: 287, height: 473 }, "FXX (1366, player): against the tab strip, under the challenges (live: 1012,287..760)");
+  eq(P.parkSpot(1872, 300, 1080, 279), { left: 1566, top: 287, height: 785 }, "FXX (1920): ... and at full HD");
+  eq(P.parkSpot(1318, 300, 768, 39), { left: 1012, top: 47, height: 713 }, "FXX: challenges folded to their handle: the chat starts under the handle");
+  eq(P.parkSpot(1318, 300, 768, 0), { left: 1012, top: 0, height: 760 }, "FXX: no challenges: the whole height");
+  eq(P.parkSpot(1318, 300, 768, 420), { left: 1012, top: 0, height: 760 }, "FXX: challenges so tall the chat would show under PARK_MIN_H: it takes the whole height (they stand left of it)");
+  eq(P.parkSpot(200, 300, 768, 0).left, 0, "FXX: never off the window");
+  eq(P.ceilOver([R(998, 11, 1318, 279)], 768), 279, "FXX: the ceiling is the challenges' bottom");
+  eq(P.ceilOver([R(692, 11, 1012, 279)], 768), 279, "FXX: ... wherever they stand across (opened over the chat for a moment: the chat still makes room, they go back)");
+  eq(P.ceilOver([R(998, 400, 1318, 600)], 768), 0, "FXX: a box starting below the top third is no ceiling");
+  eq(P.ceilOver([null], 768), 0, "FXX: no challenges, no ceiling");
 
   /* where Foundry opens it (live: 533..833 at 1366) is the default; a parked one is parked */
   ok(P.isFoundryDefault(R(533, 0, 833, 768), 1366), "FXX: Foundry's centred popout is recognised (1366)");
@@ -37,18 +44,23 @@ const R = (left, top, right, bottom) => ({ left, top, right, bottom, width: righ
 
   /* when to park */
   const W = 1366, side = 1318;
-  eq(P.parkNow({ fight: false, rect: R(533, 0, 833, 768), W, side, last: null }), null, "FXX: outside a fight the chat stays where Foundry opened it");
-  eq(P.parkNow({ fight: true, rect: R(533, 0, 833, 768), W, side, last: null }), { left: 1012 }, "FXX: in a fight Foundry's centred chat parks in the right column");
-  eq(P.parkNow({ fight: true, rect: R(200, 40, 500, 700), W, side, last: { left: 1012, top: 0 } }), null, "FXX: a chat the user dragged elsewhere stays there");
-  eq(P.parkNow({ fight: true, rect: R(1012, 0, 1312, 768), W, side, last: { left: 1012, top: 0 } }), null, "FXX: a parked chat is not moved again");
-  eq(P.parkNow({ fight: true, rect: R(1012, 0, 1312, 1080), W: 1920, side: 1872, last: { left: 1012, top: 0 } }), { left: 1566 }, "FXX: the window grew: the chat we parked follows the column");
-  eq(P.parkNow({ fight: true, rect: R(1012, 0, 1312, 768), W, side: 1018, last: { left: 1012, top: 0 } }), { left: 712 }, "FXX: the sidebar opened: the chat we parked moves left of it");
-  eq(P.parkNow({ fight: true, rect: null, W, side, last: null }), null, "FXX: no chat, nothing to do");
+  const H = 768, ceil = 279, at = { left: 1012, top: 287 };
+  eq(P.parkNow({ fight: false, rect: R(533, 0, 833, 768), W, H, side, ceil, last: null }), null, "FXX: outside a fight the chat stays where Foundry opened it");
+  eq(P.parkNow({ fight: true, rect: R(533, 0, 833, 768), W, H, side, ceil, last: null }), { left: 1012, top: 287, height: 473 }, "FXX: in a fight Foundry's centred chat parks in the right column under the challenges");
+  eq(P.parkNow({ fight: true, rect: R(553, 40, 853, 513), W, H, side, ceil, last: at }), null, "FXX: a chat the user dragged elsewhere stays there (live: 553,40)");
+  eq(P.parkNow({ fight: true, rect: R(1012, 287, 1312, 760), W, H, side, ceil, last: at }), null, "FXX: a parked chat is not moved again");
+  eq(P.parkNow({ fight: true, rect: R(1012, 287, 1312, 760), W: 1920, H: 1080, side: 1872, ceil, last: at }), { left: 1566, top: 287, height: 785 }, "FXX: the window grew: the chat we parked follows the column");
+  eq(P.parkNow({ fight: true, rect: R(1012, 287, 1312, 760), W, H, side: 1018, ceil, last: at }), { left: 712, top: 287, height: 473 }, "FXX: the sidebar opened: the chat we parked moves left of it");
+  eq(P.parkNow({ fight: true, rect: R(1012, 287, 1312, 760), W, H, side, ceil: 39, last: at }), { left: 1012, top: 47, height: 713 }, "FXX: the challenges folded: the chat we parked climbs under the handle");
+  eq(P.parkNow({ fight: true, rect: null, W, H, side, ceil, last: null }), null, "FXX: no chat, nothing to do");
 
   /* the right column every fight surface keeps clear of */
   eq(P.rightEdge(1318, R(1012, 0, 1312, 768), 1366), 1012, "FXX: a parked chat is the right column's edge");
   eq(P.rightEdge(1318, R(533, 0, 833, 768), 1366), 1318, "FXX: a chat elsewhere is not (the surfaces' own 'beside' rules handle it)");
   eq(P.rightEdge(1318, null, 1366), 1318, "FXX: no chat: the sidebar");
+  eq(P.rightEdge(1318, R(1012, 287, 1312, 760), 1366, { top: 11, bottom: 279 }), 1318, "FXX: the challenges the chat parks under keep the sidebar's edge (they do not move)");
+  eq(P.rightEdge(1318, R(1012, 287, 1312, 760), 1366, { top: 311, bottom: 618 }), 1012, "FXX: the GM desk beside the chat's height keeps left of it (live: desk 654..1002)");
+  eq(P.rightEdge(1318, R(1012, 0, 1312, 760), 1366, { top: 11, bottom: 279 }), 1012, "FXX: a whole-height chat moves the challenges left of it");
 }
 
 /* ================================================================== the bar beside a chat the user put over the middle */
@@ -66,14 +78,16 @@ const R = (left, top, right, bottom) => ({ left, top, right, bottom, width: righ
   const ch = src("../challenges/main.mjs"), desk = src("./ui/desk.mjs"), dock = src("./ui/dock.mjs"), tm = src("./ui/main.mjs"), tray = src("../turn/tray.mjs");
   ok(/Hooks\.on\("renderChatLog", \(app\) => \{ if \(app\?\.isPopout\)/.test(cp) && /Hooks\.on\("closeChatLog"/.test(cp) && /Hooks\.on\("collapseSidebar"/.test(cp)
     && /addEventListener\("resize"/.test(cp) && /addEventListener\("ipu:fight-ui"/.test(cp), "FXX: the chat is parked when it pops out, the sidebar or the window changes, or the bar comes up");
-  ok(/app\.setPosition\(\{ left: spot\.left \}\)/.test(cp), "FXX: parking moves the window across only (Foundry keeps its top and height)");
+  ok(/app\.setPosition\(\{ left: spot\.left, top: spot\.top, height: spot\.height \}\)/.test(cp) && /P\.ceilOver\(\[rectOf\(part\)\], window\.innerHeight\)/.test(cp), "FXX: parking puts the window under the challenges (open box or folded handle), down to the bottom margin");
+  ok(/new ResizeObserver\(\(\) => \{ clearTimeout\(hudT\); hudT = setTimeout\(check, 120\); \}\)/.test(cp), "FXX: the challenges growing, shrinking or folding re-park the chat we parked");
   ok(/new MutationObserver\(tell\)/.test(cp) && /attributeFilter: \["style", "class"\]/.test(cp) && /new Event\(MOVED\)/.test(cp), "FXX: every move of the chat window (a drag too) is told as ipu:chat-moved once it settles");
   ok(/ChatPark\.start\(\{ fight: \(\) => Bar\.isShowing\(\) \}\)/.test(cm) && /addEventListener\(ChatPark\.MOVED, onResize\)/.test(cm), "FXX: combat/main.mjs starts the parking (a fight = the initiative bar showing) and places the bar and banner again on a move");
   ok((bar.match(/fightUi\(\)/g) ?? []).length >= 2 && /new Event\("ipu:fight-ui"\)/.test(bar), "FXX: the bar tells when it comes up (mounted or back from leaving)");
   ok(/const rr = W - rightWall\(\)/.test(ban), "FXX: the banner's and the bar's free area end at the right column (sidebar or parked chat)");
-  ok(/const rr = window\.innerWidth - rightWall\(\)/.test(ch) && /addEventListener\(CHAT_MOVED, scheduleMeasure\)/.test(ch), "FXX: the challenges keep left of a parked chat and move when it does");
+  ok(/const rr = window\.innerWidth - rightWall\(hb && hb\.height > 0 \? \{ top: hb\.top, bottom: hb\.bottom \} : null\)/.test(ch) && /addEventListener\(CHAT_MOVED, scheduleMeasure\)/.test(ch), "FXX: the challenges keep left of a parked chat beside them (not of one parked under them) and are measured again when it moves");
   ok(/--igd-right", `\$\{Math\.max\(0, Math\.round\(W - rightWall\(\)\)\)\}px`/.test(desk), "FXX: the GM desk keeps left of a parked chat");
-  ok(/side = ChatPark\.rightEdge\(/.test(dock), "FXX: the dock's frame (line, questions, chase panel's stretch, desk) ends at a parked chat");
+  ok(/side = ChatPark\.rightEdge\(sbL, chatR, W\)/.test(dock), "FXX: the dock's frame (line, questions, chase panel's stretch, desk) ends at a parked chat");
+  ok(/hudSide = ChatPark\.rightEdge\(sbL, chatR, W, hudR \? \{ top: hudR\.top, bottom: hudR\.bottom \} : null\)/.test(dock) && /Lay\.hudSqueezed\(topL, hudSide - 12,/.test(dock), "FXX (live, GM 1366): a chat parked under the challenges does not fold them (the fold moved them left and the chat climbed to the top)");
   ok(/Math\.min\(r && r\.width > 120[^\n]*parkedLeft\(\)\)/.test(tm) && /addEventListener\(CHAT_MOVED/.test(tm), "FXX: the map's room and the token pan keep left of a parked chat; tactical surfaces are placed again on a move");
   ok(/hi = Math\.min\(hi, parkedLeft\(\) - 12\)/.test(tray), "FXX: the turn tray keeps left of a parked chat");
 }

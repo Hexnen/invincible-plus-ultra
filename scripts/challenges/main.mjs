@@ -247,7 +247,8 @@ function measure() {
   let right = 0;
   try {
     /* FXX (U185): the sidebar, or the popped-out chat parked left of it in a fight (combat/chat-park.mjs: only a plausible right-hand column) */
-    const rr = window.innerWidth - rightWall();
+    const hb = HUD.box?.();   // the challenges hang over the chat parked under them: only a chat beside them moves them
+    const rr = window.innerWidth - rightWall(hb && hb.height > 0 ? { top: hb.top, bottom: hb.bottom } : null);
     if (rr > 0 && rr < window.innerWidth * 0.75) right = Math.round(rr);
   } catch { right = 0; }
   HUD.setRight(right);

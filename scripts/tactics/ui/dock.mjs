@@ -144,7 +144,7 @@ function placeSlots(rec) {
   let ceil = 8, tl = Infinity, tr = -Infinity;
   for (const el of rec.q(TOP_OBSTACLES)) { const r = rec.rect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) { ceil = Math.max(ceil, r.bottom + 8); tl = Math.min(tl, r.left); tr = Math.max(tr, r.right); } }
   const topCx = tr > tl ? (tl + tr) / 2 : null;
-  const sb = rec.rect(rec.one("#sidebar")), side = ChatPark.rightEdge(sb && sb.left > W * 0.5 ? sb.left : W, rec.rect(rec.one(FLOATING)), W);
+  const sb = rec.rect(rec.one("#sidebar")), sbL = sb && sb.left > W * 0.5 ? sb.left : W, chatR = rec.rect(rec.one(FLOATING)), side = ChatPark.rightEdge(sbL, chatR, W);
   let topL = 12, topR = null;
   for (const el of rec.q(LEFT_OBSTACLES)) { const r = rec.rect(el); if (r && r.width && r.top < H * 0.5 && r.right < W * 0.4) topL = Math.max(topL, r.right + 8); }
   /* U136: a window floating over the map (the popped-out chat) that reaches into the top band: the band keeps to its side of it */
@@ -230,7 +230,9 @@ function placeSlots(rec) {
      handle stands over the initiative bar's row, not in the band */
   const hudFolded = !!hudEl?.classList?.contains("ich-collapsed");
   if (hudOn && !hudFolded && hudR.width > 40) hudOpenW = hudR.width;
-  const squeeze = hudOn && Lay.hudSqueezed(topL, side - 12, hudOpenW, SP.SIZE.card * k);
+  /* FXX (U185): a chat parked UNDER the challenges does not narrow their row (else they fold, move left of it, and the chat climbs) */
+  const hudSide = ChatPark.rightEdge(sbL, chatR, W, hudR ? { top: hudR.top, bottom: hudR.bottom } : null);
+  const squeeze = hudOn && Lay.hudSqueezed(topL, hudSide - 12, hudOpenW, SP.SIZE.card * k);
   if (squeeze !== squeezed) { squeezed = squeeze; handlers.ichSqueeze?.(squeeze); }
   const fr = SP.frame({ W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, topCx, topL, topR, floats, side, chatTop: chat?.top ?? null,
     listEnd: list && list.left > W * 0.5 ? list.bottom : null, chatX: colOf ? [colOf.left, colOf.right] : null,
