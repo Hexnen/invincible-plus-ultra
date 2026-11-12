@@ -13,6 +13,7 @@ import { weapons } from "../rules/index.mjs";
 import * as Kit from "./kit-pure.mjs";
 import { labelVariants } from "../i18n/sys-labels.mjs";
 import { showKit } from "../i18n/kit-names.mjs";      // what the kit SHOWS takes the name this client displays; it is still built from the stored names
+import { cardTitle } from "./lang.mjs";
 
 export const SYSTEM_ID = "invincible";
 export const SYSTEM_VERIFIED = "2.1.8";
@@ -364,7 +365,7 @@ async function dialogFor(req, labelOf) {
   if (sum !== num(req.dice)) put(labelOf("floor"), num(req.dice) - sum);                 // the one-die floor of the rules library, shown as its own line
   const opts = { actor, breakdown, bonus: 0, rollOptions: { tactics: { inst: req.inst, key: req.key, rid: req.rid, ...(req.combat ? { combat: req.combat } : {}), ...(req.mode === "gm" ? { mode: "gm" } : {}) } }, attribute: req.attr ?? undefined };
   if (req.maxPush === 0) opts.maxPush = 0;                                               // passive and defender rolls are never pushed [B2227], [B2241]
-  return new Dlg(String(req.label ?? req.key), opts);
+  return new Dlg(cardTitle(String(req.label ?? req.key), req.pool, labelOf), opts);      // U125 (c): Warning Call's dice named on the card
 }
 /* U2 / U7: an engine roll is thrown AT ONCE on the roller's client: no dialog to read, to dismiss or to pick a chat mode in. The pool is
    the engine's and the dialog had nothing to decide about it; who may see the dice is the engine's word too (req.mode "gm": a hidden

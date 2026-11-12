@@ -103,4 +103,19 @@ const team = (extra = () => {}, order = ["N1", "H1", "H2", "H3", "N2"]) => { con
   eq((lastNews(U)?.reacts ?? []).map((r) => [r.who, r.result]), [["H1", "failed"]], "U125d: a guardian without a six: the news says it failed");
 }
 
+/* ---- U125 (c): the +2 of Warning Call is named on the roll's chat card (its title) */
+{
+  const { cardTitle } = await import("./lang.mjs");
+  const T = team((t) => give(t, "H1", "Warning Call"));
+  await T.gm(decl("N1", "slugfest", ["H2"]));
+  await T.req("p1", { op: "answer", prompt: T.prompt("reaction", "H1").id, value: rid(T, "H1", "warn") });
+  await T.req("p2", { op: "answer", prompt: T.prompt("reaction", "H2").id, value: "block:warned" });
+  await T.roll("attack", 1);
+  const rq = T.requests.find((x) => x.key === "def:H2");
+  const lab = (lang) => (s) => tIn(lang, `ITAC.mod.${String(s).split(":")[0]}`, {}, String(s));
+  eq([cardTitle(tIn("en", "ITAC.roll.def"), rq?.pool, lab("en")), cardTitle(tIn("pl", "ITAC.roll.def"), rq?.pool, lab("pl"))], ["Defence: Warning Call +2", "Obrona: Okrzyk ostrzegawczy +2"], "U125c: the warned block's card says where its two dice came from");
+  eq(cardTitle("Defence", { mods: [{ source: "aim", dice: 1 }] }, lab("en")), "Defence", "U125c: any other modifier leaves the title as it was");
+  ok(/new Dlg\(cardTitle\(/.test(src("system-adapter.mjs")), "U125c: the roll dialog (whose title is the card's) is titled through cardTitle");
+}
+
 done("check-fxi");
