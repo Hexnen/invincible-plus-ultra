@@ -68,8 +68,9 @@ export function frame(f) {
   const out = { mode, toast, band: null, desk: null, slots: {}, up: { lo: bar.lo, hi: bar.hi }, panelMax: r(H * PANEL_SHARE), reserved: [] };
   if (mode === "off") return out;
   const hudOn = !!f.hud?.present;
-  /* the challenges' band (U134): a fixed share of the column when the desk (GM) or the rail (b) stands under it; else down to the toasts */
-  const tight = deskOpen || mode === "b";
+  /* the challenges' band (U134): a fixed share of the column when the desk (GM: open, or folded to its tab, which keeps the desk's top)
+     or the rail (b) stands under it; else down to the toasts */
+  const tight = !!f.staff || mode === "b";
   const bandEnd = hudOn ? (tight ? 11 + clamp(H * BAND.share, BAND.min, BAND.max) : toast.top - GAP) : 11;
   out.band = { present: hudOn, y1: r(bandEnd) };
   /* the GM desk: under the band, over the toasts' strip, and over the bar where the bar takes the edge under it */

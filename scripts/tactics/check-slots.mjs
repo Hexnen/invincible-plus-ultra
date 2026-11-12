@@ -35,11 +35,12 @@ for (const mode of ["a", "b", "c"]) {
     for (const [name, b] of own) ok(b.x0 >= 0 && b.y0 >= 0 && b.x1 <= c.W && b.y1 <= c.H && b.x1 - b.x0 >= 120, `B3 ${tag}: ${name} inside the window and usable (${JSON.stringify(b)})`);
     /* the places hanging from the top stay under the initiative bar; the challenges' band and the desk never share the column */
     for (const [name, b] of own) if (b.anchor === "top") ok(b.y0 >= 70, `B4 ${tag}: ${name} under the initiative bar`);
-    if (c.hud && (c.desk || mode === "b")) ok(f.band.y1 <= 11 + SP.BAND.max && f.band.y1 >= 11 + SP.BAND.min, `B5 ${tag}: the challenges' band has a fixed height (${f.band.y1})`);
+    if (c.hud && (c.staff || mode === "b")) ok(f.band.y1 <= 11 + SP.BAND.max && f.band.y1 >= 11 + SP.BAND.min, `B5 ${tag}: the challenges' band has a fixed height (${f.band.y1})`);
     if (f.desk) {
       ok(f.desk.top >= (c.hud ? f.band.y1 : 11), `B6 ${tag}: the desk starts under the challenges' band`);
       ok(f.desk.floor <= f.toast.top - SP.GAP + 0.5, `B7 ${tag}: the desk ends over the toasts' strip`);
       ok(f.desk.floor - f.desk.top >= 160 || !c.desk, `B8 ${tag}: the open desk keeps room (${f.desk.floor - f.desk.top})`);
+      ok(f.desk.top + 40 <= seat(c).bar.top, `B8b ${tag}: the desk's top (and its folded tab) stands over the bar`);
       if (c.desk && mode === "b") ok(S.rail.x1 <= seat(c).desk.x0, `B9 ${tag}: the rail stands beside the desk`);
     }
     if (c.hud && mode !== "c") for (const [name, b] of own) if (b.x1 > (seat(c).hud.x0 ?? 1e9)) ok(b.y0 >= f.band.y1, `B10 ${tag}: ${name} keeps out of the challenges' band`);
