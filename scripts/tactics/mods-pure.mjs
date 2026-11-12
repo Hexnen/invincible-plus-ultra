@@ -17,7 +17,7 @@ export function source(src = {}) {
 
 /* ------------------------------------------------------------------ modifier tokens (spec 6.2) */
 export const ROLL_KINDS = Object.freeze(["attack", "block", "dodge", "other"]);
-export const TOKEN_EXPIRES = Object.freeze(["roundEnd", "turnEndOf", "nextTurnOf", "sceneEnd", "used"]);
+export const TOKEN_EXPIRES = Object.freeze(["roundEnd", "turnEndOf", "nextTurnOf", "sceneEnd", "used", "nextTurnEndOf"]);      // PWE: nextTurnEndOf = the end of the NEXT turn of `who` that starts (ops-pure turnMoment turns it into turnEndOf)
 export function makeToken(t) {
   const dice = Math.trunc(Number(t.dice) || 0);
   if (!isId(t.id) || !isId(t.holder) || !dice) return null;

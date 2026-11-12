@@ -116,6 +116,7 @@ function profileOf(item, row, a, lv, attrs, many = false) {
        keeps the switch. */
     toStress: h.toStress === 1, ignoreArmor: h.ignoreArmor === 1 || (!row?.atk && a.bypass === true), halveArmor: h.halveArmor === 1, noDamage: h.noDamage === 1, pierce: h.pierce === 1,
     stunts: h.stunts ?? undefined, immuneHuge: h.immuneHuge === 1, always: h.always ?? undefined, state: row && row.cat !== "gear" ? row.state : "auto" };
+  if (h.nonLiving) p.nonLiving = true;                                               // PWE (PW093) [B1984-1985]: only against the non-living, the GM has the last word
   if (h.onHit) p.onHit = h.onHit.status ? { status: h.onHit.status, data: h.onHit.lv ? { dice: at(h.onHit.lv, lv) } : h.onHit.data } : { ...h.onHit };
   if (h.onHit?.burn && p.damage > 0) p.onHit = { ...p.onHit, data: { intensity: p.damage } };      // PWC (PW022) [B1690-1694]: the fire's Intensity is the attack's base Damage
   if (h.throws) p.onHit = { throw: at(h.throws, lv), ...(h.zones ? { zones: at(h.zones, lv) } : {}) };      // Z11 [B1822], [B1826-1828]: damage at each impact, and how far
@@ -165,7 +166,8 @@ function actionOf(item, row, a, lv, extra = {}) {
   } else {
     e = { id, src: row?.src ?? [], kind: "kit", cost: a.cost ?? "full", flow: "act", tags: ["kit"], effect: { ...(a.effect ?? { kind: "narrative" }) } };
     for (const k of ["roll", "oppose", "target", "when", "pick"]) if (a[k]) e[k] = JSON.parse(JSON.stringify(a[k]));
-    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near", "stressPick", "stressExtra", "talk", "oneZone"]) if (a[k]) e[k] = 1;
+    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near", "stressPick", "stressExtra", "talk", "oneZone", "stressPer", "ownTurn", "needsCopies", "mind"]) if (a[k]) e[k] = 1;      // PWE: stressPer (1 per target), ownTurn, needsCopies, mind (Defiance resists it)
+    if (typeof a.needsStatus === "string") e.needsStatus = a.needsStatus;           // PWE (PW085): a status the actor must have (Controlled Phasing: intangible)
     if (a.combo && Array.isArray(a.pick)) e.pick = multisets(a.pick, Math.max(1, at(a.combo, lv))).map((c) => c.join("+"));          // Summoning [B1813-1815]: as many features as the level, repeats allowed
     if (a.once) e.once = a.once;
     if (a.interrupt) e.interrupt = { on: a.interrupt.slice() };                      // PWA (PW039): an action the book allows as an interrupt (Nullification [B1772])
@@ -242,15 +244,15 @@ export function build(src = {}) {
       const kin = (key) => known.some((k) => k !== x && live(k) && k.row?.key === key && (k.parent === it || (x.parent && (k.parent === x.parent || k.it === x.parent))));
       for (const a of barred ? [] : row?.acts ?? []) {
         let b = luck.length && a.pick ? { ...a, pick: a.pick.filter((p) => luck.includes(p)) } : a;
-        for (const [key, more] of Object.entries(a.with ?? {})) if (kin(key)) b = { ...b, effect: { ...b.effect, ...more } };      // PWD (PW035) [B1717]: Terrifying Illusions on the illusion's own roll
+        for (const [key, { mind, ...more }] of Object.entries(a.with ?? {})) if (kin(key)) b = { ...b, ...(mind ? { mind } : {}), effect: { ...b.effect, ...more } };      // PWD (PW035) [B1717]: Terrifying Illusions on the illusion's own roll; PWE-M: its `mind` mark goes on the action (Defiance resists the terror [B1865])
         const e = actionOf(it, row, b, lv);
         kit.actions.push(e);
         if (a.weapon === "parent" || a.weapon === "own") arms.push({ e, from: a.weapon === "own" ? it.id : x.parent?.id ?? null });      // PWB: the attack of an answer is made with the power's own profile
         else if (a.weapon) e.reaction.weapon = a.weapon;
       }
       if (barred) { /* nothing is offered in a fight */ }
-      else if (row && (!row.acts || row.keep) && row.state !== "hand" && !row.mv || !row) {      // PWD: `keep`, the sheet's uses beside the row's own actions
-        uses.slice(0, 6).forEach((a, i) => {
+      else if (row && (!row.acts || row.keep) && row.state !== "hand" && !row.mv && !(row.pass && row.state === "auto") || !row) {      // PWD: `keep`, the sheet's uses beside the row's own actions; PWE (PW115): a passive fact the engine applies by itself offers no use button
+        uses.filter((a) => { const k = Object.keys(row?.by ?? {}).find((q) => norm(q) === norm(baseName(a.name))); return !(k && row.by[k].skip); }).slice(0, 6).forEach((a, i) => {      // PWE (PW117): a use the row leaves out of a fight
           const set = (a.attr ?? []).filter(Boolean), byKey = Object.keys(row?.by ?? {}).find((k) => norm(k) === norm(baseName(a.name))), by = byKey ? row.by[byKey] : {};
           const roll = set.length === 1 ? { attr: set[0] } : set.length > 1 ? { attrs: set } : a.type === "rollAttribute" ? { attrs: "any" } : null;
           if (roll && a.bonus) roll.mods = [{ source: `kit:${row?.key ?? "item"}`, dice: Math.trunc(a.bonus) }];
@@ -278,8 +280,11 @@ export function build(src = {}) {
         const only = row.size ? known.filter((k) => k.parent === it && live(k) && k.row?.sizeOnly) : [], fixed = only.some((k) => k.it.flags?.alt === true);
         const lock = known.some((k) => k.parent === it && live(k) && k.row?.lockFx);         // Continual Emanation [B1603]: it can be switched on, never off
         const host = row.fx.ofParent ? x.parent : it, list = fixed ? [] : (host?.fx ?? []).filter((f) => !(lock && f.on === true) && (!row.fx.only || norm(f.name).includes(norm(row.fx.only))) && only.every((k) => norm(f.name).includes(k.row.sizeOnly)));
+        /* PWE (PW091) [B1974]: one size at a time: switching Grow on switches a Shrink that is on off, and the other way round */
+        const sizeOf = (f) => (row.size ? ["grow", "shrink"].find((n) => norm(f.name).includes(n)) ?? null : null);
+        const offOf = (f) => (sizeOf(f) ? (host?.fx ?? []).filter((g) => g.on === true && g.id !== f.id && sizeOf(g) && sizeOf(g) !== sizeOf(f)).map((g) => g.id) : []);
         list.slice(0, 4).forEach((f, i) => kit.actions.push(actionOf(it, row, { k: `fx${i}`, label: "toggle", name: String(f.name ?? host.name), cost: row.fx.cost ?? "quick", stress: row.fx.stress, gm: row.fx.gm, interrupt: row.fx.interrupt,      // PWB: switched on as an interrupt too (Emanation [B1601], Ice Armor [B1650], Protection [B1890])
-          effect: { kind: "toggle", item: host.id, fx: f.id } }, lv, { entry: { fxOn: f.on === true } })));
+          effect: { kind: "toggle", item: host.id, fx: f.id, ...(f.on !== true && offOf(f).length ? { off: offOf(f) } : {}) } }, lv, { entry: { fxOn: f.on === true } })));
         if (!list.length && !row.mv && !row.pass && !fixed && !lock) { rec.state = "hand"; rec.note = "toggle"; rec.why = "noEffect"; }
       }
       /* passive facts and dice */
@@ -305,6 +310,8 @@ export function build(src = {}) {
   /* PWC (PW008) [B1618-1621]: the boosts of STRIKE are independent: a blow made with one of the bare attack's variants (Piercing Strike)
      still carries what the bare attack does (Deadly Strike's sharp, Toxic Strike's poison); the variant's own words win */
   kit.weapons = kit.weapons.map((w) => (String(w.id).startsWith("unarmed~") ? { ...kit.unarmed, ...w } : w));
+  /* PWE (PW075) [B1937] a limit that takes an action of its power away (Life Leech: the power heals only its user, through the leech) */
+  for (const x of known) if (x.parent && x.row?.drops && live(x)) kit.actions = kit.actions.filter((e) => !(e.kit?.item === x.parent.id && x.row.drops.includes(e.kit?.k)));
   kit.pass.immune = [...new Set(kit.pass.immune)].slice(0, 24); kit.pass.vulnerable = [...new Set(kit.pass.vulnerable)].slice(0, 24);
   kit.actions = kit.actions.slice(0, 60); kit.weapons = kit.weapons.slice(0, 40);
   return kit;

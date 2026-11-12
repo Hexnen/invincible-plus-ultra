@@ -1710,7 +1710,7 @@ async function request(X, req) {
     case "exception": return opAsk(X, req, "exception");
     case "preview": return opPreview(X, req);
     case "other": return opAsk(X, req, "other");
-    case "move": return opDeclare(X, { actor: req.actor, gm: req.gm, decl: { ...(isObj(req.decl) ? req.decl : {}), action: typeof req.action === "string" ? req.action : "move", to: req.to, mode: req.mode, stress: req.stress, pay: req.pay, force: req.force, carry: req.carry, airborne: req.airborne } });   // P3: a move is a declaration like any other
+    case "move": return opDeclare(X, { actor: req.actor, gm: req.gm, decl: { ...(isObj(req.decl) ? req.decl : {}), action: typeof req.action === "string" ? req.action : "move", to: req.to, mode: req.mode, stress: req.stress, pay: req.pay, force: req.force, carry: req.carry, airborne: req.airborne, wreck: req.wreck } });      // PWE (PW095): a burrower wrecks the zones it passes under [B1995]   // P3: a move is a declaration like any other
     case "forcedMove": case "fall": return opForced(X, op, req);
     case "undo": return opUndo(X, req);
     case "hazard": return opHazard(X, req);

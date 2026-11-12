@@ -12,12 +12,18 @@
      mv      a way of moving: the Move panel has it (movement-pure / system adapter), the sheet's "N zones" buttons are not repeated
      atk     hints for the item's attack automations: { source, toStress, noDamage, pierce, stunts, area, halveArmor, immuneHuge, noCounter,
              onHit: { status, data?, lv?: [dice per level] } | { stun: 1, resist?: n } | { burn: 1 },
-             by: { "<automation name, lower case>": { skip } | hints } }
+             by: { "<automation name, lower case>": { skip } | hints }, nonLiving (PWE: only against the non-living) }
+             (a row's own `by: { "<use name>": { skip } }` also leaves a sheet use out of the dock: PWE)
      acts    actions of the row: [{ k, cost, stress?, roll?, oppose?, target?, pick?, effect, when?, once?, auto?: "<automation name part>" }]
              (when a row has `acts`, the sheet's use / roll automations are not offered a second time unless `keep: 1`)
+             PWE: an action may also carry stressPer (1 stress per target), ownTurn (only on the own turn), needsCopies (only with copies
+             out), mind (the target resists with Defiance's dice [B1865]), needsStatus: "<status>" (the actor must have it);
+             effect.ends ("sceneEnd": a barrier or a status that lasts the scene), effect.window ("ownTurn": a granted action)
      fx      the item's active effects are switched from the dock: { cost, stress?, only?: "<effect name part>" }
      pass    passive facts: { regeneration, vacuumSafe, reach, freeHold, deflection, duckWeave, merciless, overconfident, supportive,
-             medicalGear, stressArmor: [per level], resist: [per level], immune: "flag" | "nonKinetic", vulnerable: "flag", shrunkDice: [per level], grown }
+             medicalGear, stressArmor: [per level], resist: [per level], immune: "flag" | "nonKinetic", vulnerable: "flag", shrunkDice: [per level], grown,
+             PWE: camouflage, limbHold / stretchHold: [per level] (dice to keep a hold), lifeSupport, blockShots, phaseMove, leapCharge: [per level]; PWE-M: adaptation (safe in a vacuum once adapted) }
+     drops   PWE: a limit that takes actions of its power away: [k] (Life Leech: "heal")
      mods    dice the sheet does not carry: [{ dice, action?: [ids], attack?: [kinds], attr?, vsHuge?, lv?: [per level] }]
      opt     a boost or limit that changes the attacks of its power: { patch, stress?, optional?, on?: "slug" }
              (PWA: patch.rangeLv = [range per level]; atk.grip = the status a grapple made with the attack leaves [B1779]; atk.pull = a hit
@@ -103,7 +109,7 @@ export const ROWS = Object.freeze([
   B("Cold Control", "Ice Armor", [1650], "auto", "toggle", { fx: { cost: "quick", interrupt: ["beforeRoll"] } }),      // PWB (PW015)
   B("Cold Control", "Ice Slide", [1651], "auto", "move", { mv: 1 }),
   P("Darkness Control", [1654, 1655, 1656, 1657], "assist", "zone", { cost: "full" }),
-  B("Darkness Control", "Dreadful Darkness", [1658], "assist", "resist", { acts: [{ k: "dread", cost: "none", target: { who: "any", n: [1, 1] }, effect: { kind: "resist", attr: "intuition", stress: 2 } }] }),
+  B("Darkness Control", "Dreadful Darkness", [1658], "assist", "resist", { acts: [{ k: "dread", cost: "none", target: { who: "any", n: [1, 1] }, effect: { kind: "resist", attr: "intuition", stress: 2 }, mind: 1 }] }),
   P("Dimensional Travel", [1661], "assist", "outcome", { cost: "quick" }),
   B("Dimensional Travel", "Additional Travelers", [1662], "hand", "story", { why: "partOfPower" }),      // PWC (PW027): part of a travel, ruled when the power is used
   B("Dimensional Travel", "Quick Travel", [1663, 1664], "assist", "reaction", { acts: [narr("travel", "quick", { stress: 1, interrupt: ["beforeRoll"] }), { k: "travelAway", cost: "quick", stress: 1, effect: { kind: "narrative" }, reaction: "autoMiss" }] }),      // PWB (PW026, PW111)
@@ -127,11 +133,11 @@ export const ROWS = Object.freeze([
     { k: "guideDefence", cost: "quick", roll: { attr: "presence" }, effect: { kind: "narrative" }, reaction: "guide" }] }),      // PWB (PW034, PW121) [B1709]
   /* PWD (PW035, PW036, PW107, PW032): the target sees through the illusion with a passive INTUITION roll, -1/-2/-3 dice at Major/Massive/Monstrous; no effect
      on huge creatures; your zone or an adjacent one [B1712-1715]. With Terrifying Illusions the same roll costs the target 3 stress minus its sixes [B1717]. */
-  P("Illusion", [1712, 1713, 1714, 1715], "assist", "resist", { cost: "full", acts: [{ k: "cast", cost: "full", target: { who: "any", n: [1, 1] }, near: 1, immuneHuge: 1, text: 1, with: { terrifyingillusions: { stress: 3, loseTurn: 1 } },
+  P("Illusion", [1712, 1713, 1714, 1715], "assist", "resist", { cost: "full", acts: [{ k: "cast", cost: "full", target: { who: "any", n: [1, 1] }, near: 1, immuneHuge: 1, text: 1, with: { terrifyingillusions: { stress: 3, loseTurn: 1, mind: 1 } },
     effect: { kind: "resist", attr: "intuition", dice: [0, -1, -2, -3], illusion: 1 } }] }),
-  B("Illusion", "Area Projection", [1716], "assist", "resist", { acts: [{ k: "area", cost: "full", stress: 1, target: { who: "any", n: [1, 12] }, near: 1, immuneHuge: 1, text: 1, with: { terrifyingillusions: { stress: 3, loseTurn: 1 } },
+  B("Illusion", "Area Projection", [1716], "assist", "resist", { acts: [{ k: "area", cost: "full", stress: 1, target: { who: "any", n: [1, 12] }, near: 1, immuneHuge: 1, text: 1, with: { terrifyingillusions: { stress: 3, loseTurn: 1, mind: 1 } },
     effect: { kind: "resist", attr: "intuition", dice: [0, -1, -2, -3], illusion: 1 } }] }),
-  B("Illusion", "Terrifying Illusions", [1717], "assist", "resist", { acts: [{ k: "terrify", cost: "none", target: { who: "any", n: [1, 1] }, near: 1, immuneHuge: 1, effect: { kind: "resist", attr: "intuition", stress: 3, loseTurn: 1, dice: [0, -1, -2, -3], illusion: 1 } }] }),
+  B("Illusion", "Terrifying Illusions", [1717], "assist", "resist", { acts: [{ k: "terrify", cost: "none", target: { who: "any", n: [1, 1] }, near: 1, immuneHuge: 1, effect: { kind: "resist", attr: "intuition", stress: 3, loseTurn: 1, dice: [0, -1, -2, -3], illusion: 1 }, mind: 1 }] }),      // PWE (PW063): Defiance's dice resist the terror [B1865]
   B("Illusion", "Remote Projection", [1718], "assist", "outcome", { acts: [narr("remote", "full", { stress: 1 })] }),
   B("Illusion", "Dream Projection", [1719], "hand", "story", { why: "outOfFight" }),
   P("Light Control", [1722, 1723], "assist", "zone", { atk: { noDamage: 1, ignoreArmor: 1, stunts: "noDamage", immuneHuge: 1, onHit: { stun: 1 } }, acts: [narr("zone", "full")] }),
@@ -150,8 +156,8 @@ export const ROWS = Object.freeze([
   B("Mimicry", "Power Leech", [1758], "assist", "attack", { opt: { patch: { noDamage: 1 }, optional: 1, on: "slug" } }),
   /* PWD (PW040-PW043) [B1761-1763]: a sentient creature in your zone or an adjacent one, never a huge one; a win gives it a full turn at once on your
      command, then it loses its next ordinary turn (the GM's word on the card first); Area Control: 1 stress per target beyond the first, each rolls */
-  P("Mind Control", [1761, 1762], "assist", "gmCard", { acts: [{ k: "control", label: "mind", cost: "full", roll: { attr: "presence" }, oppose: { attr: "presence", who: "target" }, target: { who: "enemy", n: [1, 1] }, effect: { kind: "narrative", then: "mindControl" }, immuneHuge: 1, near: 1, text: 1 }] }),
-  B("Mind Control", "Area Control", [1763], "assist", "gmCard", { acts: [{ k: "many", label: "minds", cost: "full", roll: { attr: "presence" }, oppose: { attr: "presence", who: "targets" }, target: { who: "enemy", n: [1, 12] }, stressExtra: 1, immuneHuge: 1, near: 1, text: 1, effect: { kind: "narrative", then: "mindControl" } }] }),
+  P("Mind Control", [1761, 1762], "assist", "gmCard", { acts: [{ k: "control", label: "mind", cost: "full", roll: { attr: "presence" }, oppose: { attr: "presence", who: "target" }, target: { who: "enemy", n: [1, 1] }, effect: { kind: "narrative", then: "mindControl" }, immuneHuge: 1, near: 1, text: 1, mind: 1 }] }),      // PWE (PW063): Defiance's dice resist it [B1865]
+  B("Mind Control", "Area Control", [1763], "assist", "gmCard", { acts: [{ k: "many", label: "minds", cost: "full", roll: { attr: "presence" }, oppose: { attr: "presence", who: "targets" }, target: { who: "enemy", n: [1, 12] }, stressExtra: 1, immuneHuge: 1, near: 1, text: 1, effect: { kind: "narrative", then: "mindControl" }, mind: 1 }] }),
   L("Mind Control", "Hypnosis", [1764, 1765], "auto", "barred", { bars: 1 }),
   L("Mind Control", "Requires Touch", [1766, 1767, 1768], "assist", "attack", { opt: { patch: { noDamage: 1 }, optional: 1, on: "slug" } }),
   P("Nullification", [1772, 1773, 1774, 1775], "assist", "gmCard", { acts: [{ k: "nullify", cost: "quick", roll: { attr: "presence" }, oppose: { attr: "presence", who: "target", optional: true }, target: { who: "any", n: [0, 1] }, near: 1, interrupt: ["beforeRoll"], effect: { kind: "nullify" } }] }),      // PWA (PW039): also as an interrupt of a power about to be used
@@ -186,8 +192,8 @@ export const ROWS = Object.freeze([
   L("Weather Control", "Air Control Only", [1847], "hand", "story", { why: "gmJudges" }),
 
   /* ================================================================ DEFENSE POWERS [B1850-1893] */
-  P("Adaptation", [1854, 1855, 1856], "assist", "outcome", { cost: "full", pass: { vacuumSafe: 1 } }),
-  P("Barrier", [1859, 1860, 1861, 1862], "auto", "effect", { acts: [{ k: "barrier", cost: "quick", interrupt: ["beforeRoll"], target: { who: "ally", n: [0, 1] }, sameZone: 1, effect: { kind: "barrier", armor: [3, 4, 5, 6], max: 3 } }] }),      // PWB: also as an interrupt; PWC (PW106) [B1859]: a target in your zone
+  P("Adaptation", [1854, 1855, 1856], "assist", "outcome", { cost: "full", pass: { adaptation: 1 }, acts: [{ k: "adapt", cost: "full", stress: 1, text: 1, effect: { kind: "mark", id: "adapted", scene: 1 } }] }),      // PWE-M [B1854]: 1 stress and a full action adapt the body (the vacuum among others [B2929]); no free safety (question PWE-M-1)
+  P("Barrier", [1859, 1860, 1861, 1862], "auto", "effect", { acts: [{ k: "barrier", cost: "quick", interrupt: ["beforeRoll"], target: { who: "ally", n: [0, 1] }, sameZone: 1, effect: { kind: "barrier", armor: [3, 4, 5, 6], max: 3, ends: "sceneEnd" } }, { k: "dropBarrier", cost: "none", target: { who: "any", n: [0, 1] }, effect: { kind: "dropBarrier" } }] }),      // PWB: also as an interrupt; PWC (PW106) [B1859]: a target in your zone; PWE (PW061, PW062): a few minutes (the scene), until breached or dismissed [B1859]
   P("Defiance", [1865, 1866, 1867, 1868], "auto", "passive", { pass: { stressArmor: [3, 4, 5, 6], resist: [3, 4, 5, 6] }, acts: [] }),
   L("Defiance", "Requires Activation (Defiance)", [1869], "auto", "effect", { pass: { defianceOff: 1 }, acts: [{ k: "activate", cost: "quick", interrupt: ["beforeRoll"], effect: { kind: "mark", id: "defiance", scene: 1 } }] }),      // PWB (PW065)
   P("Immortality", [1872, 1873, 1874, 1875, 1876], "hand", "story", { why: "story" }),
@@ -202,31 +208,31 @@ export const ROWS = Object.freeze([
 
   /* ================================================================ MODIFICATION POWERS [B1896-1989] */
   moveRow("Adhesion", [1900]),
-  P("Camouflage", [1903], "assist", "gmCard", { cost: "quick" }),
-  B("Camouflage", "Shared Camouflage", [1904], "assist", "gmCard", { acts: [narr("share", "quick", { pick: ["1", "2", "3"], stressPick: 1 })] }),
+  P("Camouflage", [1903], "auto", "passive", { pass: { camouflage: 1 }, acts: [] }),      // PWE (PW076): always on; an attacker's passive INTUITION at -3 (flows/attack.mjs camouflageGate)
+  B("Camouflage", "Shared Camouflage", [1904], "auto", "effect", { acts: [{ k: "share", cost: "quick", target: { who: "ally", n: [1, 3] }, sameZone: 1, stressPer: 1, effect: { kind: "camouflage", mass: 1 } }] }),      // PWE (PW076): up to three allies in your zone, 1 stress each [B1904]
   P("Duplication", [1907, 1908, 1909, 1910, 1911, 1912, 1913], "auto", "copies", { acts: [{ k: "copies", cost: "full", stress: 1, effect: { kind: "copies", lv: [3, 5, 7, 9] } },
-    { k: "copyAct", cost: "none", stress: 1, effect: { kind: "grant", template: "gm", unit: "full", expires: "turnEnd" }, once: "round" }, { k: "reabsorb", cost: "full", effect: { kind: "reabsorb" } }] }),
+    { k: "copyAct", cost: "none", stress: 1, ownTurn: 1, needsCopies: 1, effect: { kind: "grant", template: "gm", unit: "full", expires: "turnEnd", window: "ownTurn" }, once: "round" }, { k: "reabsorb", cost: "full", effect: { kind: "reabsorb" } }] }),
   B("Duplication", "Restorative Duplication", [1914], "auto", "copies", { acts: [{ k: "restore", cost: "full", stress: 1, effect: { kind: "reabsorb", heal: 1 } }] }),
   B("Duplication", "Sequestered Original", [1915], "auto", "passive", { pass: { noCrit: 1, noRally: 1 } }),      // [B1915]: the broken primary copy is killed: no injury, no rallying
   L("Duplication", "Traumatic Duplication", [1916], "auto", "copies", { pass: { traumatic: 1 } }),
   P("Elongation", [1919], "auto", "passive", { pass: { reach: 1 }, acts: [] }),
   B("Elongation", "Plasticity", [1920], "auto", "sheet", { pass: { armorOnly: ["kinetic"] } }),
-  B("Elongation", "Stretch Grapple", [1921], "auto", "sheet"),
+  B("Elongation", "Stretch Grapple", [1921], "auto", "sheet", { pass: { stretchHold: [3] } }),      // PWE (PW073): +3 to resist the target breaking free
   B("Elongation", "Elongated Stride", [1922], "auto", "move", { mv: 1 }),
-  P("Extra Limb(s)", [1925, 1926, 1927, 1928], "auto", "sheet", { pass: { freeHold: 1 }, names: ["Extra Limbs"], acts: [] }),
+  P("Extra Limb(s)", [1925, 1926, 1927, 1928], "auto", "sheet", { pass: { freeHold: 1, limbHold: [2, 3, 4, 5] }, names: ["Extra Limbs"], acts: [] }),      // PWE (PW073): dice to resist the target breaking free
   B("Extra Limb(s)", "Multiple Limbs", [1929], "assist", "gmCard", { acts: [narr("hold", "full", { roll: { attr: "fighting" } })] }),
   P("Healing", [1932], "auto", "effect", { acts: [{ k: "heal", cost: "full", roll: { attr: "presence" }, target: { who: "ally", n: [0, 1] }, effect: { kind: "heal", per: 3 }, touch: 1 }] }),
   B("Healing", "Distant Healing", [1933], "auto", "effect", { pass: { healReach: 1 } }),
-  B("Healing", "Mass Healing", [1934], "auto", "effect", { acts: [{ k: "massHeal", cost: "full", roll: { attr: "presence" }, target: { who: "ally", n: [1, 4] }, stressExtra: 1, sameZone: 1, effect: { kind: "heal", per: 3, mass: 1 } }] }),
+  B("Healing", "Mass Healing", [1934], "auto", "effect", { acts: [{ k: "massHeal", cost: "full", roll: { attr: "presence" }, target: { who: "ally", n: [1, 12] }, stressExtra: 1, sameZone: 1, effect: { kind: "heal", per: 3, mass: 1 } }] }),      // PWE (PW080): no cap but the stress [B1934] (12: the most targets a declaration carries)
   B("Healing", "Cleansing Healing", [1935], "auto", "effect", { acts: [{ k: "cleanse", cost: "full", roll: { attr: "presence" }, target: { who: "ally", n: [0, 1] }, touch: 1, effect: { kind: "cleanse" } }] }),
   B("Healing", "Miraculous Recovery", [1936], "assist", "crit", { acts: [narr("recover", "full", { roll: { attr: "presence" }, target: { who: "ally", n: [0, 1] }, touch: 1 })] }),
-  L("Healing", "Life Leech", [1937], "assist", "effect", { acts: [{ k: "leech", cost: "full", roll: { attr: "presence" }, target: { who: "any", n: [1, 1] }, touch: 1, effect: { kind: "leech", per: 3 } }] }),
-  P("Intangibility", [1940], "assist", "reaction", { acts: [{ k: "phase", cost: "quick", stress: 1, effect: { kind: "narrative" }, reaction: "autoMiss" }] }),
+  L("Healing", "Life Leech", [1937], "assist", "effect", { drops: ["heal"], acts: [{ k: "leech", cost: "full", roll: { attr: "presence" }, target: { who: "any", n: [1, 1] }, touch: 1, effect: { kind: "leech", per: 3 } }] }),
+  P("Intangibility", [1940], "assist", "reaction", { pass: { phaseMove: 1 }, acts: [{ k: "phase", cost: "quick", stress: 1, effect: { kind: "narrative" }, reaction: "autoMiss" }] }),
   B("Intangibility", "Prolonged Phasing", [1941], "auto", "effect", { acts: [{ k: "phased", cost: "quick", effect: { kind: "status", id: "intangible", on: "self", toggle: 1 } }] }),
-  B("Intangibility", "Controlled Phasing", [1942], "auto", "effect", { acts: [{ k: "solid", cost: "none", stress: 1, effect: { kind: "mark", id: "solid" } }] }),
+  B("Intangibility", "Controlled Phasing", [1942], "auto", "effect", { acts: [{ k: "solid", cost: "none", stress: 1, needsStatus: "intangible", effect: { kind: "mark", id: "solid" } }] }),      // PWE (PW085): only while intangible [B1942]
   B("Intangibility", "Shared Intangibility", [1943], "assist", "gmCard", { acts: [narr("share", "none", { pick: ["1", "2", "3", "4"], stressPick: 1 })] }),
   B("Intangibility", "Environment Phasing", [1944], "auto", "effect", { acts: [{ k: "envPhase", cost: "full", target: { who: "enemy", n: [1, 1] }, effect: { kind: "status", id: "trapped", on: "target", data: { dice: -2, attr: "strength" } }, sameZone: 1 }] }),      // Z11: STRENGTH with -2 to break free
-  P("Life Support", [1947], "assist", "outcome", { cost: "none", pass: { vacuumSafe: 1 } }),
+  P("Life Support", [1947], "auto", "passive", { pass: { lifeSupport: 1 }, acts: [] }),      // PWE (PW087): 1 stress the first time the vacuum would need its roll, then safe for the scene [B1947] (flows/hazards.mjs)
   B("Life Support", "Effective Support", [1948], "hand", "story", { why: "outOfFight" }),
   L("Life Support", "Breathing Only", [1949, 1950], "hand", "story", { why: "outOfFight" }),
   P("Quickness", [1953], "auto", "effect", { acts: [{ k: "quickness", cost: "none", effect: { kind: "grant", template: "quickness" }, once: "round", anytime: 1 }] }),
@@ -234,19 +240,19 @@ export const ROWS = Object.freeze([
   B("Shapeshifting", "Potent Form", [1957], "auto", "toggle", { fx: { cost: "none" } }),
   L("Shapeshifting", "Specific Form", [1958], "hand", "story", { why: "gmJudges" }),
   P("Signature Item", [1961, 1965, 1966, 1967, 1968], "auto", "sheet", { acts: [] }),
-  B("Signature Item", "Blocking Item", [1969], "auto", "sheet"),
+  B("Signature Item", "Blocking Item", [1969], "auto", "passive", { pass: { blockShots: 1 } }),      // PWE (PW082): blocks shooting too
   B("Signature Item", "Throwable Item", [1970], "auto", "attack", { throwOf: 1 }),
   L("Signature Item", "Item Dependent", [1971], "hand", "source", { why: "sheetNumbers" }),
   P("Size Alteration", [1974, 1975, 1976, 1977, 1978, 1979], "auto", "size", { fx: { cost: "full" }, size: [2, 3, 4, 5] }),
   L("Size Alteration", "Grow Only", [1980], "auto", "size", { sizeOnly: "grow", alt: "huge" }),
   L("Size Alteration", "Shrink Only", [1981], "auto", "size", { sizeOnly: "shrink", alt: "tiny" }),
-  P("Transformation", [1984, 1985, 1986, 1987, 1988], "assist", "outcome", { atk: { ignoreArmor: 1, range: [0, 0] }, acts: [narr("matter", "full")] }),
+  P("Transformation", [1984, 1985, 1986, 1987, 1988], "assist", "outcome", { atk: { ignoreArmor: 1, range: [0, 0], nonLiving: 1 }, acts: [narr("matter", "full", { pick: ["0", "1", "2"], stressPick: 1 })] }),      // PWE (PW092, PW093): up to 2 weight steps for equal stress; the attack only against the non-living, the GM's say [B1984-1985]
   L("Transformation", "Temporary Transformation", [1989], "hand", "story", { why: "outOfFight" }),
 
   /* ================================================================ MOVEMENT POWERS [B1992-2042] */
   moveRow("Burrowing", [1995]), B("Burrowing", "Tunneling", [1996], "auto", "move", { mv: 1 }),
   moveRow("Flight", [1999, 2000, 2001, 2002]), B("Flight", "Interstellar Flight", [2003], "hand", "story", { why: "outOfFight" }), L("Flight", "Gliding", [2004], "auto", "move", { mv: 1 }),
-  P("Leaping", [2007, 2008, 2009, 2010], "auto", "move", { mv: 1, fx: { cost: "none", only: "leaping" } }),
+  P("Leaping", [2007, 2008, 2009, 2010], "auto", "move", { mv: 1, own: 1, pass: { leapCharge: [2] } }),      // PWE (PW096): +2 dice only on a charge made by leaping [B2007]; the sheet's effect is left out
   moveRow("Super-Speed", [2013, 2014, 2015, 2016]), B("Super-Speed", "Fast Tasks", [2017], "hand", "story", { why: "gmJudges" }), B("Super-Speed", "Untouchable Speed", [2018], "assist", "reaction", { mv: 1, acts: [{ k: "dash", cost: "quick", stress: 1, effect: { kind: "narrative" }, reaction: "moveAway", mode: "superSpeed" }] }),      // PWB (PW090)
   moveRow("Swimming", [2021]), B("Swimming", "Fast Swimmer", [2022], "auto", "move", { pass: { fastSwim: 1 } }), L("Swimming", "Surface Breather", [2023], "hand", "story", { why: "outOfFight" }),
   P("Swinging", [2027, 2028, 2029], "auto", "move", { mv: 1, atk: { noDamage: 1, stunts: "none", pull: 1 } }),
@@ -259,16 +265,16 @@ export const ROWS = Object.freeze([
   L("Clairvoyance", "Specific Location (CLAIRVOYANCE)", [2053], "hand", "story", { why: "gmJudges" }),
   P("Danger Sense", [2058], "hand", "initiative", { why: "beforeFight" }),
   P("Detection", [2061], "assist", "outcome", { cost: "quick" }),
-  P("Empathy", [2064], "assist", "effect", { acts: [{ k: "sense", cost: "full", effect: { kind: "narrative" }, text: 1 },
+  P("Empathy", [2064], "assist", "effect", { acts: [{ k: "sense", cost: "full", effect: { kind: "narrative" }, text: 1 }, narr("lie", "none", { roll: { attr: "intuition", mods: [{ source: "kit:empathy", dice: 3 }] } }),      // PWE (PW099): +3 dice to tell whether an NPC lies
     { k: "sap", cost: "full", roll: { attr: "presence" }, target: { who: "enemy", n: [1, 1] }, effect: { kind: "sap", per: 1 }, sameZone: 1 },
     { k: "soothe", cost: "full", roll: { attr: "presence" }, target: { who: "ally", n: [1, 1] }, effect: { kind: "gainResolve", per: 3 }, sameZone: 1 }] }),
-  B("Empathy", "Mass Empathy", [2065], "assist", "outcome", { acts: [narr("mass", "full", { stress: 1, roll: { attr: "presence" } })] }),
+  B("Empathy", "Mass Empathy", [2065], "auto", "effect", { acts: [{ k: "mass", cost: "full", stress: 1, roll: { attr: "presence" }, effect: { kind: "massEmpathy", sap: 1, restore: 3 } }] }),      // PWE (PW100): everyone else in the zone, one roll [B2065]
   P("Enhanced Senses", [2068], "assist", "outcome", { cost: "none" }),
   B("Enhanced Senses", "Detect Lies", [2069], "hand", "story", { why: "senses" }), B("Enhanced Senses", "Penetrating Sense", [2070], "hand", "story", { why: "senses" }),
   L("Enhanced Senses", "Specific Sense", [2071], "hand", "story", { why: "gmJudges" }), L("Enhanced Senses", "Reduced Sense", [2072], "hand", "story", { why: "gmJudges" }),
-  P("Invisibility", [2075], "auto", "effect", { acts: [{ k: "vanish", cost: "quick", effect: { kind: "status", id: "invisible", on: "self", toggle: 1 } }] }),
+  P("Invisibility", [2075], "auto", "effect", { acts: [{ k: "vanish", cost: "quick", effect: { kind: "status", id: "invisible", on: "self", toggle: 1, ends: "sceneEnd" } }] }),      // PWE (PW108): a few minutes [B2075]: the scene
   P("Postcognition", [2078], "hand", "story", { why: "senses" }),
-  P("Precognition", [2081, 2082], "assist", "outcome", { cost: "full" }),
+  P("Precognition", [2081, 2082], "assist", "outcome", { cost: "full", by: { "visions of the future": { skip: 1 } } }),      // PWE (PW117): the visions take a few minutes [B2082], not a combat action
   P("Telepathy", [2085, 2086, 2087], "assist", "outcome", { cost: "quick", keep: 1, by: { "read deeper thoughts": { cost: "full", target: { who: "any", n: [0, 1] }, oppose: { attr: "presence", who: "target", optional: true } } },      // PWD (PW118) [B2086]: opposed by PRESENCE if resisted
     acts: [narr("sense", "quick", { roll: { attr: "intuition" } })] }),      // [B2087]: lifeforms within 3 zones
   B("Telepathy", "Distant Telepathy", [2088], "assist", "outcome", { acts: [narr("distant", "quick", { stress: 1 })] }), B("Telepathy", "Telepathic Link", [2089], "assist", "outcome", { acts: [narr("link", "full", { stress: 1 })] }), B("Telepathy", "Memory Alteration", [2090], "assist", "outcome", { cost: "full" }),

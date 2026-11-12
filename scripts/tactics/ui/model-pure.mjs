@@ -866,10 +866,10 @@ function movePanel(bar, a, own, facts, t) {
   const row = (o) => {
     const mine = ref && ref.key === o.id, disabled = mine ? whyText(t, ref.reason, ref.params) : o.disabled ? whyText(t, o.disabled) : null;
     const where = o.area ? zoneText(facts, t, `@${o.area}`) : o.elevated === "roof" ? t("ITAC.ui.way.roof") : o.elevated === "air" ? t("ITAC.ui.way.air") : o.here ? t("ITAC.ui.way.down") : null;
-    const decl = { to: o.to, mode: o.mode, ...(o.stress ? { stress: 1 } : {}), ...(o.force ? { force: true } : {}) };
+    const decl = { to: o.to, mode: o.mode, ...(o.stress ? { stress: 1 } : {}), ...(o.force ? { force: true } : {}), ...(o.wreck ? { wreck: 1 } : {}) };      // PWE (PW095): the wrecking burrow
     /* U93: what a way costs is drawn on its row (the mark of speed, the bolt of stress); `notes` keep what has no mark, `say` is the
        price in words (a screen reader, the map's menu, which draws text only) */
-    const more = [o.barriers?.length ? t("ITAC.move.force", { n: o.barriers.length }) : null, o.gm ? t("ITAC.ui.needsGm") : null].filter(Boolean);
+    const more = [o.barriers?.length ? t("ITAC.move.force", { n: o.barriers.length }) : null, o.wreck ? t("ITAC.move.wreck") : null, o.gm ? t("ITAC.ui.needsGm") : null].filter(Boolean);
     return { id: o.id, label: [t(`ITAC.mode.${o.mode}`, {}, cap(o.mode)), where].filter(Boolean).join(", "), cost: o.cost ?? null, stress: Number(o.stress) || 0,
       notes: more, say: [priceOf(t, o.cost, o.stress)?.say ?? null, ...more].filter(Boolean),
       warn: !!(o.stress || o.barriers?.length), disabled, why: disabled ? (mine ? wayWhy(t, facts, ref.reason, ref.params) : wayWhy(t, facts, o.disabled)) : null, asking: own.ask === o.id, req: disabled ? null : a.req(decl), o, decl, pv: disabled ? null : pvCost(bar, o.cost, o.stress) };

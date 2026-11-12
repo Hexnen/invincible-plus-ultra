@@ -16,6 +16,7 @@ import { EN_FXT, PL_FXT } from "./lang-fxt.mjs";      // FXT: the code brought t
 import { EN_PWA, PL_PWA } from "./lang-pwa.mjs";      // PWA: the powers review's confirmed findings
 import { EN_PWB, PL_PWB } from "./lang-pwb.mjs";      // PWB: powers used out of turn
 import { EN_PWC, PL_PWC } from "./lang-pwc.mjs";      // PWC: attack powers and element controls (powers review)
+import { EN_PWE, PL_PWE } from "./lang-pwe.mjs";      // PWE: the powers review (defence, body, movement, senses)
 export const EN = {
   "ITAC.Settings.tacticsEnabled.Name": "Tactical combat",
   "ITAC.Settings.tacticsEnabled.Hint": "Off (the default): nothing of tactical combat runs and the combat tracker works as it did before. On: the module deals initiative cards, tracks the action budget and resolves declared actions; new fights start with the rules enforced, and the GM can switch a running fight to free mode at any time. Needs a reload.",
@@ -2102,6 +2103,7 @@ Object.assign(EN, EN_FXT); Object.assign(PL, PL_FXT);      // FXT: lang-fxt.mjs
 Object.assign(EN, EN_PWA); Object.assign(PL, PL_PWA);      // PWA: lang-pwa.mjs
 Object.assign(EN, EN_PWB); Object.assign(PL, PL_PWB);      // PWB: lang-pwb.mjs
 Object.assign(EN, EN_PWC); Object.assign(PL, PL_PWC);      // PWC: lang-pwc.mjs
+Object.assign(EN, EN_PWE); Object.assign(PL, PL_PWE);      // PWE: lang-pwe.mjs
 const table = () => { try { return String(globalThis.game?.i18n?.lang ?? "en").toLowerCase().startsWith("pl") ? PL : EN; } catch { return EN; } };
 /** The form of a counted word (U26). English: [one, other]. Polish: [one, few, many]: 1 kość, 2-4 kości, 5+ kości, with 12-14 and
     every number ending in 0, 1, 5-9 taking the last form (1 strefę, 3 strefy, 5 stref, 12 stref, 22 strefy). Not a whole number: the last form. */

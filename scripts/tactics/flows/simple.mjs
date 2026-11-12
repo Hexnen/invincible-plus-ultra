@@ -138,6 +138,7 @@ export const hazard = {
           const hd = damage.hitDamage({ base: h.amount ?? 0, armor, source: tags.source, immunities: immune ? [tags.source] : [], vulnerabilities: vulnerable ? [tags.source] : [] });
           rec = { base: h.amount ?? 0, raw: hd.raw, armor: hd.armor, taken: Number.isFinite(forced?.amount) ? forced.amount : hd.taken, tags };
         }
+        if (!immune && !Number.isFinite(forced?.amount)) for (const e of K.absorbTokens(tf, t, `ea${I.id}x${t}`, Math.min(rec.raw ?? 0, rec.armor ?? 0))) R.effects.push(e);      // PWE (PW067) [B1887]: whatever the Protection stops
         /* A1 + INT-4 (the user, 2026-11-12: «Grupa jako jedna postać»): a hazard (fire, a fixed damage of a hazard) counts a minion group once,
            as an area attack does: as many fall as the damage after Armor, the number stands on the GM's card and the GM corrects it. A fall,
            a barrier, a crash or a slam is no hazard of the book [B2895-2931]: one member per point stays automatic there [B2828]. */

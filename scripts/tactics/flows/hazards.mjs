@@ -106,6 +106,7 @@ export const blast = {
           if (ml.wait) { waiting = true; continue; }
           taken = ml.taken;
         }
+        if (!row.immune && !row.barrier && !row.vulnerable && !Number.isFinite(forced?.amount)) for (const e of K.absorbTokens(tf, o.id, `ea${I.id}x${o.id}`, Math.min(o.raw ?? 0, row.armor ?? 0))) R.effects.push(e);      // PWE (PW067) [B1887]: a blast stopped by the Protection feeds it too
         const ab = K.copiesAbsorb(v, R, o.id, taken);                                             // [B1910]: any damage goes to the copy bonus first
         taken = ab.taken;
         const ad = damage.applyDamage({ health: tf.health, taken });                              // [B2707]
@@ -237,6 +238,11 @@ export const vacuum = {
     roll(v, inst) {
       const I = K.draft(inst), R = K.result(I), t = I.decl.targets[0];
       if (M.hasStatus(v.state, t, "suffocating")) { R.goto = "effect"; return R; }               // failed last turn: no more roll, the GM's word
+      if (!K.rollOf(I, "roll") && adapted(v.state, v.facts.c(t), t)) { I.data.result = "held"; I.data.adapted = 1; R.goto = "close"; return R; }      // PWE-M [B1854]: adapted, no roll
+      if (!K.rollOf(I, "roll") && lifeSupported(v.state, v.facts.c(t), t)) {                    // PWE (PW087) [B1947]: Life Support, 1 stress for the scene, no roll
+        if (!K.flag(I, "life")) { K.setFlag(I, "life"); if (!K.marked(v.state, t, "lifeSupport", true)) { R.effects.push({ t: "stress", who: t, n: 1, cost: 1 }); R.effects.push({ t: "state", ...M.counterBump(v.state, M.counterKey.scene(t, "lifeSupport")) }); R.events.push({ type: "stress", target: t, n: 1, source: "power" }); } }
+        I.data.result = "held"; I.data.lifeSupport = 1; R.goto = "close"; return R;
+      }
       if (!K.rollOf(I, "roll")) {
         const n = exposure(v.state, t) + 1, pen = hazards.vacuumDice(n);                        // unmodified in the first round, one die less each further round
         I.data.exposure = n;
@@ -273,6 +279,10 @@ export const vacuum = {
     close(v, inst) { const I = K.draft(inst), R = K.result(I); R.done = true; return R; },
   },
 };
+/** PWE (PW087) [B1947]: Life Support keeps the vacuum away for the scene once its 1 stress is paid (or can still be paid) */
+const lifeSupported = (state, c, cid) => !!c?.pass?.lifeSupport && (K.marked(state, cid, "lifeSupport", true) || damage.canTakeVoluntaryStress(c.resolve));
+/** PWE-M [B1854]: adapted with Adaptation's own action (1 stress, full) this scene: the vacuum is an environment it is suited to [B2929] */
+const adapted = (state, c, cid) => !!c?.pass?.adaptation && K.marked(state, cid, "adapted", true);
 /** needs the vacuum roll now? in orbit or in a zone marked `vacuum`, without protection ([B2929]: a suit, a hull, Adaptation, Life Support: the facts say `vacuumSafe`) */
 export function inVacuum(facts, cid) {
   const c = facts.c(cid), Z = facts.zones, p = Z?.place?.(cid);
@@ -287,7 +297,17 @@ export const disease = {
   STEPS: Object.freeze(["check", "roll", "effect", "close"]),
   legality(v, inst) { return hzOf(inst).kind === "disease" ? targetsNeeded(inst) : bad("unknownHazard"); },
   steps: {
-    check(v, inst) { const [I, R] = lockTargets(v, inst); R.goto = I.decl.targets.length ? "roll" : "close"; return R; },
+    check(v, inst) {
+      const [I, R] = lockTargets(v, inst), t = I.decl.targets[0], h = hzOf(I);
+      /* PWE (PW070) [B1879]: immune to the damage of this disease or poison (the GM's types on the Immunity, or Full Immunity): no roll, no
+         damage, not sick. A poison: a Toxic Strike's, or one the GM's order names so; the GM still has the last word by hand. */
+      const toxic = /toxi|poison|venom/i.test(String(h.name ?? "")) || M.statusesOf(v.state, t).some((x) => x.id === "sick" && x.data?.toxic);
+      if (t && K.immuneToSickness(v.facts.c(t), toxic)) {
+        if (M.hasStatus(v.state, t, "sick")) { R.effects.push({ t: "status-", who: t, id: "sick" }); R.events.push({ type: "status", target: t, status: { id: "sick", on: false } }); }
+        I.data.result = "immune"; R.goto = "close"; return R;
+      }
+      R.goto = I.decl.targets.length ? "roll" : "close"; return R;
+    },
     roll(v, inst) {
       const I = K.draft(inst), R = K.result(I), h = hzOf(I), t = I.decl.targets[0];
       if (!K.rollOf(I, "roll")) {
@@ -371,7 +391,7 @@ export function derived(state, facts, point) {
       if (!own) for (const b of burn) out.push(trig(`dfs.${slug(b.zone)}.${slug(b.at ?? "")}`, "roundStart", { zone: b.zone }, { type: "fireSpread", zone: b.zone, intensity: b.intensity, refs: b.refs, ...(b.at ? { at: b.at } : {}) }));     // [B2927]
     } else if (point.at === "turnStart" && point.combatant) {
       const cid = point.combatant;
-      if (M.hasStatus(state, cid, "suffocating") || inVacuum(facts, cid)) out.push(trig(`dvac.${cid}`, "turnStart", { combatant: cid }, { type: "vacuum" }));       // [B2929]
+      if (M.hasStatus(state, cid, "suffocating") || (inVacuum(facts, cid) && !(facts.c(cid)?.pass?.lifeSupport && K.marked(state, cid, "lifeSupport", true)) && !adapted(state, facts.c(cid), cid))) out.push(trig(`dvac.${cid}`, "turnStart", { combatant: cid }, { type: "vacuum" }));       // [B2929]
       if (M.statusesOf(state, cid).some((x) => x.id === "sick" && x.data?.toxic) && facts.c(cid)?.health > 0) out.push(trig(`dtox.${cid}`, "turnStart", { combatant: cid }, { type: "disease", virulence: 0, name: "Toxic Strike" }));      // P6 [B1621]: STRENGTH each turn or 1 damage
     }
   } catch { /* a map that cannot be read makes nothing due: the GM runs the hazard by hand */ }

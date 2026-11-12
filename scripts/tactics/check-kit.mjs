@@ -147,7 +147,7 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
 /* ================================================================== Barrier [B1859-1862]: Armor until breached */
 {
   const T = base([item("ba", "Barrier", "power", { autos: [auto("a", "Barrier", "usePower")] })]);
-  eq(T.c.H1.kit.actions.map((a) => a.id.split("-").pop()), ["barrier"], "Barrier: its own action, the sheet's use button is not offered twice");
+  eq(T.c.H1.kit.actions.map((a) => a.id.split("-").pop()), ["barrier", "dropBarrier"], "Barrier: its own action, the sheet's use button is not offered twice");      // PWE (PW098) [B1859-1862]: plus dropping it at will
   eq(code(await T.req("p1", decl("H1", act(T, "H1", "barrier").id, { targets: ["H2"] }))), "ok", "Barrier: raised on an ally");
   eq([T.state.effects.filter((e) => e.kind === "barrier").map((e) => [e.holder, e.data.armor]), P1.budget(T.state, "H1").quick.filter((q) => q === "used").length], [[["H2", 3]], 1], "Barrier: Armor 3 on the ally, a quick action");
   T.turn("N1");

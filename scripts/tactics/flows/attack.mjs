@@ -33,6 +33,9 @@ const NOT_ON_EXTRA = [...EXTRA_STUNTS, "special", "own", "disarm", "slam"];     
 export const MINION_LOSS_MAX = K.MINION_LOSS_MAX;
 const WRECK_REASON = { terrainUnset: "wreckUnset", terrain: "wreckTerrain", strength: "wreckStrength", alreadyWrecked: "wreckDone" };
 export const INVISIBLE_GATE_DICE = -3;          // [B2075]
+export const CAMOUFLAGE_GATE_DICE = -3;         // [B1903]
+/** PWE (PW076): Camouflage [B1903], or an ally's camouflage shared with this one [B1904] */
+export const camouflaged = (v, cid) => v.facts.c(cid)?.pass?.camouflage === true || (v.state.effects ?? []).some((e) => e.kind === "camouflage" && e.holder === cid);
 const kindOf = (inst) => inst.data.kind ?? "slugfest";
 /** [B2541]: a single use weapon that was used in this scene (per item) */
 const usedKey = (cid, w) => M.counterKey.scene(cid, `used:${String(w.item ?? w.id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)}`);
@@ -177,6 +180,7 @@ export function legality(v, inst) {
     if (!tf || tf.present === false || t === inst.actor) return bad(t === inst.actor ? "self" : "gone");
     if (K.notArrived(state, t)) return bad("notArrived", { gmMayAllow: 1 });                                 // Z12 [B1816]: delayed allies arrive at the start of the summoner's next turn
     if (w?.immuneHuge && tf.huge) { if (d.area) continue; return bad("hugeTarget"); }                         // P6 [B1606], [B1625]; PWC (PW028) [B1723], [B1800]: an area attack passes a huge creature by
+    if (w?.nonLiving && !counter && tf.kind !== "vehicle" && tf.nonLiving !== true) return bad("livingTarget", { gmMayAllow: 1 });      // PWE (PW093) [B1984-1985]: robots and drones; the GM has the final say
     const unseen = state.knowledge?.[inst.actor]?.[t] === "unseen";
     if (unseen && !d.blind && !d.area) return bad("unseen");                                                 // spec 10: needs the stated intent to attack "where it should be"
     const r = facts.range(inst.actor, t);
@@ -190,7 +194,9 @@ export function legality(v, inst) {
     if (kind === "grapple") { const g = attack.grappleCheck({ target: K.immunityFlags(tf), usesWeapon: !!d.weapon && d.weapon !== "unarmed" && !w?.grip }); if (!g.ok) return bad(g.reason); }   // [B2496], [B2502]; PWA (PW048): the plants of Plant Control grapple [B1779]
     if (w?.onHit?.pull && tf.huge) return bad("tooHeavy", { gmMayAllow: 1 });                              // PWA (PW088) [B2029]: weight rating at most STRENGTH; the engine knows no weights, a huge one is refused (question PWA-4)
     if (!counter && !d.area) {
-      if (M.hasStatus(state, t, "invisible")) gates.push({ kind: "invisible", target: t, attr: "intuition", dice: INVISIBLE_GATE_DICE, src: 2075 });   // [B2075]
+      const cg = camouflaged(v, t);
+      if (M.hasStatus(state, t, "invisible")) gates.push({ kind: "invisible", target: t, attr: "intuition", dice: INVISIBLE_GATE_DICE + (cg ? CAMOUFLAGE_GATE_DICE : 0), src: 2075 });   // [B2075]; PWE: Camouflage's -3 on every roll to spot [B1903]
+      else if (cg && !!tf.npc !== !!a.npc && !["moved", "movedWithinZone", "attacked"].some((x) => P1.history(state, t, P1.isOnTurn(state, t) ? "prevTurn" : "thisTurn", x))) gates.push({ kind: "camouflage", target: t, attr: "intuition", dice: CAMOUFLAGE_GATE_DICE, src: 1903 });   // PWE (PW076) [B1903]: still on its previous turn (the last own turn: "thisTurn" off turn), an enemy rolls first
       else if (unseen) gates.push({ kind: "unseen", target: t, gm: 1 });                                     // concealed by the GM: no cited number, so the GM sets the gate
     }
   }
@@ -333,7 +339,7 @@ function defencePrompt(v, I, t) {
   const warned = !!I.data?.warned?.[t] && !Veh.isMachine(v, t);                                  // D113 [B2170]: warned: a block or dodge without an action, two more dice
   const allowed = (set, id) => {
     let op = set[id];
-    if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && (tf?.pass?.deflection || tf?.pass?.metalBlock > 0) && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]; PWD (PW045) [B1737]: Magnetism Control blocks an attack that uses metal, even a shot
+    if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && (tf?.pass?.deflection || tf?.pass?.blockShots || tf?.pass?.metalBlock > 0) && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]; PWE (PW082): a Blocking Item blocks shots; PWD (PW045) [B1737]: Magnetism Control blocks an attack that uses metal, even a shot
       const other = set[id === "block" ? "dodge" : "block"]; op = other.reason === "notAllowed" ? { ok: true, reason: null } : other;
     }
     return op;
@@ -955,10 +961,7 @@ export const steps = {
       if (!tags.toStress && !pierce && ar.source && !ar.source.barrier && !ar.source.stress && Math.min(hd.raw, hd.armor) > 0) rec.absorbed = Math.min(hd.raw, hd.armor);      // PWB: what the character's own Armor stopped (Redirecting Blast [B1889]; question PWB-4)
       const through = taken;                                                                                    // what got past the Armor (a Barrier is breached by this, whoever takes it then)
       if (!tags.toStress && !pierce) { const ab = K.copiesAbsorb(v, R, t, taken); if (ab.copies) { taken = rec.taken = ab.taken; rec.copies = ab.copies; } }      // P6 [B1910], [B1916]: the copies take it first
-      if (tf.pass?.absorb && !tags.toStress && !ar.source?.barrier && Math.min(hd.raw, hd.armor) > 0) {         // P6 [B1887]: a die per point the Protection stopped, for the next turn
-        const tk = M.makeToken({ id: `ea${I.id}x${t}`.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40), holder: t, dice: Math.min(hd.raw, hd.armor), scope: { attrs: ["fighting", "strength", "agility"] }, uses: 1, stacks: true, source: { kind: "power", owner: t, name: "Energy Absorption" }, expires: { at: "turnEndOf", who: t } });
-        if (tk) R.effects.push({ t: "state", path: ["tokens", `#${tk.id}`], to: tk });
-      }
+      if (!tags.toStress && !ar.source?.barrier) for (const e of K.absorbTokens(tf, t, `ea${I.id}x${t}`, Math.min(hd.raw, hd.armor))) R.effects.push(e);      // P6 [B1887]: a die per point the Protection stopped, for the next turn (PWE: one token per die)
       if (tags.toStress) {
         const s = damage.applyStress({ resolve: tf.resolve, stress: taken });                                   // [B1591], [B2816]
         rec.resolveBefore = tf.resolve; rec.resolveAfter = s.resolve;
@@ -1028,9 +1031,10 @@ export const steps = {
         if (oh && (!w.pierce || dm?.pierced) && (!oh.ifDamage || dm?.taken > 0)) {
           const src = { kind: "power", owner: I.actor, name: w.of ?? w.name ?? "" };
           const st = oh.status ?? (oh.burn ? "burning" : null);
-          if (st && once(`oh:${t}`)) { R.effects.push({ t: "status+", who: t, status: { id: st, source: src, ...(oh.data ? { data: oh.data } : {}) } }); R.events.push({ type: "status", target: t, status: { id: st, on: true } }); }
+          if (st && st === "sick" && oh.data?.toxic && K.immuneToSickness(tf, true)) { if (once(`oh:${t}`)) (I.data.notes ??= []).push({ note: "immune", target: t }); }      // PWE (PW070) [B1879]: immune to toxins
+          else if (st && once(`oh:${t}`)) { R.effects.push({ t: "status+", who: t, status: { id: st, source: src, ...(oh.data ? { data: oh.data } : {}) } }); R.events.push({ type: "status", target: t, status: { id: st, on: true } }); }
           if (oh.stun && !M.outOfAction(v.state, t, tf)) {                                         // [B1625-1627], [B1865]: PRESENCE (no action) or the next turn is lost; [B2707] not asked of one who is out of action
-            const key = `ohs:${t}`, rs = (oh.resist ?? 0) + (tf.pass?.resist ?? 0);
+            const key = `ohs:${t}`, rs = (oh.resist ?? 0) + K.defianceDice(v, t);      // PWE (PW064): not while a Defiance that needs activating is off [B1869]
             if (!K.rollOf(I, key)) { const { pool } = K.buildPool(v, I, key, t, "presence", rs ? [{ source: "resist", dice: rs }] : []); R.effects.push(K.rollEffect(key, t, "presence", pool, { passive: true, label: "ITAC.stunt.stun" })); R.wait = true; return R; }
             if (!K.rollFinal(I, key)) { R.wait = true; return R; }
             if (once(key) && K.sixesOf(I, key) < 1) {

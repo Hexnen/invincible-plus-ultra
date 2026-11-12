@@ -213,6 +213,7 @@ export const move = {
         }
       }
       if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [mv.who, ...(mv.group ?? [])])) if (!R.effects.some((x) => x.t === e.t && x.who === e.who && x.id === e.id && String(x.path) === String(e.path))) R.effects.push(e); }   // [B2497], [B2392]: who left its pair behind is no longer of it
+      if (I.decl.wreck && mv.mode === "burrowing" && !K.flag(I, "wreck")) { K.setFlag(I, "wreck"); burrowWreck(v, I, R, here); }      // PWE (PW095) [B1995]
       R.events.push(moveEvent(I));
       I.data.result = mv.stop ? "stopped" : "done"; R.goto = "close"; return R;
     },
@@ -220,6 +221,20 @@ export const move = {
   },
 };
 
+/* PWE (PW095) [B1995]: a burrower may wreck the zones it passes under (their buildings come down): the declaration's `wreck` on a
+   burrowing move wrecks every zone the move went under (not the one it started from), each one once; no STRENGTH is asked (the attack's
+   wreck [B2451-2457] is a blow, this is the power). Who stood on a levelled rooftop is the GM's word, as after a wrecking blow. */
+function burrowWreck(v, I, R, here) {
+  const Z = v.facts.zones, keys = (I.data.mv.zones ?? []).slice(1), upto = here?.zone ? keys.indexOf(here.zone) : -1;
+  for (const key of upto >= 0 ? keys.slice(0, upto + 1) : []) {
+    if (Z?.zone?.(key)?.states?.wrecked || M.counterGet(v.state, M.counterKey.zone(key, "wrecked")) > 0) continue;
+    const op = ZP.zoneOp(key, { wrecked: true }), cw = M.counterBump(v.state, M.counterKey.zone(key, "wrecked"));
+    if (op) { R.effects.push({ t: "zones", op }); R.events.push({ type: "zoneChange", ...ZP.changeOf(op), cause: "wreck", by: I.actor }); }
+    R.effects.push({ t: "state", path: cw.path, to: cw.to });
+    if (!v.facts.c(I.actor)?.npc) R.effects.push({ t: "karma", note: { who: I.actor, kind: "wreckedZone", zone: key } });     // spec 9.11
+    if (Z?.zone?.(key)?.rooftop) (I.data.notes ??= []).push({ note: "rooftopLevelled", zone: key });
+  }
+}
 /* ------------------------------------------------------------------ Fastball Special [B2389-2390] */
 function fastballPlan(v, inst) {
   const Z = v.facts.zones, a = v.facts.c(inst.actor), t = inst.decl?.targets?.[0], tf = t ? v.facts.c(t) : null;

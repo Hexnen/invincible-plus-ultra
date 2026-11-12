@@ -80,7 +80,7 @@ export function talk(Z, a, b, link = false) {
 let offStep = null, on = false, H = null, surface = null, inputOn = false; const hand = MP.handTracker(), onBoard = (e) => { try { const v = e.target; return !!v && (v.id === "board" || v === globalThis.canvas?.app?.view); } catch { return false; } };
 /** The action dock takes over the confirmation of a dragged token: fn(cid, spot) -> true when it showed the options itself. */
 export function setDragSurface(fn) { surface = typeof fn === "function" ? fn : null; }
-const costText = (o) => `${t(`ITAC.cost.${o.cost ?? "none"}`)}${o.stress ? ` + ${t("ITAC.move.stress", { n: o.stress })}` : ""}${o.barriers?.length ? ` + ${t("ITAC.move.force", { n: o.barriers.length })}` : ""}`;
+const costText = (o) => `${t(`ITAC.cost.${o.cost ?? "none"}`)}${o.stress ? ` + ${t("ITAC.move.stress", { n: o.stress })}` : ""}${o.barriers?.length ? ` + ${t("ITAC.move.force", { n: o.barriers.length })}` : ""}${o.wreck ? ` + ${t("ITAC.move.wreck")}` : ""}`;
 const modeText = (id) => t(`ITAC.mode.${id}`, {}, id);
 /** the options of one combatant for one destination, or all of them */
 export function optionsFor(h, cid, to = null) {
@@ -95,7 +95,7 @@ async function ask(h, cid, opts, title) {
   const pick = await foundry.applications.api.DialogV2.wait({ window: { title }, content: `<p>${t("ITAC.move.confirm")}</p>`, buttons: [...buttons, { action: "no", label: t("ITAC.opt.cancel") }], rejectClose: false });
   const o = typeof pick === "string" && pick.startsWith("o") ? usable[Number(pick.slice(1))] : null;
   if (!o) return null;
-  const env = await h.request({ op: "move", actor: cid, to: o.to, mode: o.mode, ...(o.stress ? { stress: 1 } : {}), ...(o.force ? { force: true } : {}) });
+  const env = await h.request({ op: "move", actor: cid, to: o.to, mode: o.mode, ...(o.stress ? { stress: 1 } : {}), ...(o.force ? { force: true } : {}), ...(o.wreck ? { wreck: true } : {}) });
   if (env && env.ok === false) ui.notifications?.warn(errText(env.error));
   return env;
 }

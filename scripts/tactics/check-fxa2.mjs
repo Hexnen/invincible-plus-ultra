@@ -73,7 +73,7 @@ const kact = (T, cid, k) => T.c[cid].kit.actions.find((a) => a.id.endsWith(`-${k
   const bar = dock(T, "p1", ["H1"]);
   ok(!!bar.show, "D194: the dock stands for Kid's player");
   const one = dock(T, "p1", ["H1"], { armed: a.id, targets: ["H2"] }).panel;
-  eq([one.kind, one.maxTargets, one.targets.filter((x) => x.picked).map((x) => x.id), one.stress], ["declare", 4, ["H2"], 0], "D194: the panel takes up to four allies (the entry's 1-4); one picked costs no stress");
+  eq([one.kind, one.maxTargets, one.targets.filter((x) => x.picked).map((x) => x.id), one.stress], ["declare", 12, ["H2"], 0], "D194: the panel takes as many allies as the entry allows (1-12 since PWE, PW080); one picked costs no stress");      // merge with PWE: the entry's bound went from 4 to 12
   const two = dock(T, "p1", ["H1"], { armed: a.id, targets: ["H2", "H3"] }).panel;
   eq([two.targets.filter((x) => x.picked).map((x) => x.id), two.stress, two.submit.req?.decl?.targets], [["H2", "H3"], 1, ["H2", "H3"]], "D194: a second ally is ADDED, not swapped; the price shows 1 stress for it; Declare sends both");
   ok(/1/.test(two.cost) && two.cost !== one.cost, `D194: the price in words names the stress of the further target (${two.cost})`);
