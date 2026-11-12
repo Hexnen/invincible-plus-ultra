@@ -491,6 +491,7 @@ export function start() {
     Tip.start(game.tooltip);      // U88 / U97: the tooltips of the dock, the cards and the desk open outside the block of their owner (ui/tip-pure.mjs)
     Store.subscribe(schedule);
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);
+    Hooks.on("updateToken", (_d, ch) => { if (ch && "hidden" in ch) schedule(); });      // CAM-14: a token hidden or shown changes every view of the fight (and is a cue of the camera)
     Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) moved(); });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
     Hooks.on("controlToken", onControl);      // U60

@@ -732,12 +732,14 @@ function minePanel(i, facts, t, rolls = [], asked = false) {
 }
 /* W1 (U42): the camera is the player's. The map moves the view at the start of a turn only when the active character is off this
    user's screen ("turn", what this module asks for); the switch goes round turn -> off -> all. Null where the map has no such stage. */
-export const CAMERA = Object.freeze(["turn", "off", "all"]);
+export const CAMERA = Object.freeze(["action", "turn", "off"]);      // U98: the action camera (the default) -> turned down -> off
+export const CAMERA_OLD = Object.freeze(["turn", "off", "all"]);     // a map without shots (before U98)
 export function cameraOf(facts, t) {
-  const c = facts.camera?.() ?? null, now = CAMERA.includes(c?.follow) ? c.follow : null;
+  const c = facts.camera?.() ?? null, round = c?.shots ? CAMERA : CAMERA_OLD, now = ["action", "turn", "off", "all"].includes(c?.follow) ? c.follow : null;
   if (!now) return null;
-  const next = CAMERA[(CAMERA.indexOf(now) + 1) % CAMERA.length];
-  return { follow: now, next, label: t(`ITAC.map.cam.${now}`), tip: `${t(`ITAC.map.cam.${now}`)}. ${t("ITAC.map.cam.next", { next: t(`ITAC.map.cam.${next}`) })}` };
+  const next = round[(round.indexOf(now) + 1) % round.length];      // (a setting outside the round, the older "all": a click gives the round's first)
+  const skip = now === "action" ? ` ${t("ITAC.map.cam.skip")}.` : "";
+  return { follow: now, next, label: t(`ITAC.map.cam.${now}`), tip: `${t(`ITAC.map.cam.${now}`)}.${skip} ${t("ITAC.map.cam.next", { next: t(`ITAC.map.cam.${next}`) })}` };
 }
 /** Everything the dock draws. -> { show: false } | { show, rest, chars, who, slots, vitals, extras, groups, other, holdOff, hotbar, end, panel, prompts, waiting, turn } */
 export function dockData(model, own, facts, t) {

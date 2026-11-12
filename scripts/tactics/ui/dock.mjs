@@ -218,7 +218,7 @@ function actionBtn(a) {
   return h(`button.itd-ic${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null, key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.tip, pv: a.pv, attrs: { "aria-pressed": String(!!a.armed), "aria-label": tipText(a.tip), ...keyAttrs(a.key) },
     on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, actIcon(a.icon), speed(a.cost), rs(a.stress));
 }
-const CAM_ICON = { turn: "fa-video", off: "fa-video-slash", all: "fa-film" };
+const CAM_ICON = { action: "fa-clapperboard", turn: "fa-video", off: "fa-video-slash", all: "fa-film" };
 /* W1 (U42): how much the map's camera follows the fight, this user's own switch (turn -> off -> all) */
 const cameraBtn = (d) => (d.camera ? h("button.itd-mini", { fk: "camera", tip: d.camera.tip, data: { cam: d.camera.follow }, attrs: { "aria-label": d.camera.tip }, on: { click: () => set({ camera: d.camera.next }) } }, icon(CAM_ICON[d.camera.follow] ?? "fa-video")) : null);
 const hotbarBtn = (d) => h("button.itd-mini", { fk: "hotbar", tip: d.hotbar.tip ?? d.hotbar.label, attrs: { "aria-pressed": String(d.hotbar.open), "aria-label": d.hotbar.label }, on: { click: () => set({ hotbar: !d.hotbar.open }) } }, icon("fa-keyboard"));

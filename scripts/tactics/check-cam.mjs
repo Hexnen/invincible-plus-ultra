@@ -6,6 +6,9 @@
 //      client names, or exists because of, somebody that player's view does not hold; fed the GM's full stream on purpose, the
 //      player's look still gives nothing about them; the GM gets them
 //   D. the switch on the dock and its words
+//   E. U98, THE ACTION CAMERA: which event gives which beat to which seat, what never gets a shot (C runs the hidden-information
+//      proof for the beats too: no beat of a player names somebody concealed, and the GM's full stream gives a player's client no
+//      beat the public stream does not give)
 import { Table, ok, eq, done } from "./testkit.mjs";
 import * as V from "./view-pure.mjs";
 import * as CP from "./ui/camera-pure.mjs";
@@ -132,7 +135,7 @@ const pass = async (T, each = null) => { for (let n = 0; n < 24 && T.state.stack
   T.state.knowledge = { ...(T.state.knowledge ?? {}), H1: { ...(T.state.knowledge?.H1 ?? {}), N3: "unseen" } };      // H1 has not seen N3; H2 has
   eq([concealed(T, P1).sort(), concealed(T, P2).sort()], [["N2", "N3"], ["N2"]], "C: who is concealed from whom");
   let before = { p1: lookOf(T, P1), p2: lookOf(T, P2), gm: lookOf(T, GM) }, seen = 0, gmSaw = new Set(), evAt = 0;
-  const all = [];
+  const all = [], beats = [], gmBeats = [], sig = (s) => `${s.beat}:${s.focus ?? ""}:${s.with.join(",")}:${s.key}`;
   const step = (label) => {
     for (const who of [P1, P2]) {
       const hide = concealed(T, who), now = lookOf(T, who), key = who.me;
@@ -147,11 +150,22 @@ const pass = async (T, each = null) => { for (let n = 0; n < 24 && T.state.stack
         if (leak) list.push(leak);
       }
       for (const c of list) { seen++; all.push(`${key}:${c.why}:${c.focus}`); ok(!names(c).some((id) => hide.includes(id)), `C: ${label}: a cue of ${key} (${c.why}) names nobody concealed`); }
+      /* U98, the beats of the action camera: from the public stream, from the GM's full stream on purpose, and from the cues */
+      const pubBeats = evs.map((full) => V.publicEvent(T.state, full, meta(T))).filter(Boolean).map((pub) => CP.eventShot(pub, now)).filter(Boolean);
+      const fullBeats = evs.map((full) => CP.eventShot(full, now)).filter(Boolean);
+      const cueBeats = CP.cues(before[key], now).map((c) => CP.cueShot(c, now)).filter(Boolean);
+      for (const s of [...pubBeats, ...fullBeats, ...cueBeats]) { beats.push(`${key}:${s.beat}:${s.focus ?? ""}`); ok(![s.focus, ...s.with].some((id) => hide.includes(id)), `C: ${label}: a beat of ${key} (${s.beat}) names nobody concealed`); }
+      const pubSig = new Set(pubBeats.map(sig));
+      /* (an exchange in which nobody is concealed from this player may give more in the full stream: the public one leaves out what is concealed from ANY player) */
+      const dark = (inst) => T.events.some((e) => e.inst === inst && [e.actor, typeof e.target === "string" ? e.target : e.target?.combatant, ...(e.targets ?? [])].some((id) => hide.includes(id)));
+      ok(fullBeats.filter((s) => dark(s.key)).every((s) => pubSig.has(sig(s))), `C: ${label}: of an exchange with somebody concealed from ${key}, the GM's full stream gives ${key} no beat the public stream does not give`);
+      ok(![...pubBeats, ...fullBeats].some((s) => s.beat === "open" && evs.some((e) => e.inst === s.key && hide.includes(e.actor))), `C: ${label}: no opening shot of ${key} for an attack by somebody concealed from ${key}`);
       before[key] = now;
     }
     const g = lookOf(T, GM), gl = CP.cues(before.gm, g);
     for (const full of T.events.slice(evAt)) { const c = CP.eventCue(full, g); if (c) gl.push(c); }
     for (const c of gl) for (const id of names(c)) gmSaw.add(id);
+    for (const full of T.events.slice(evAt)) { const s = CP.eventShot(full, g); if (s) gmBeats.push(`${s.beat}:${s.focus ?? ""}:${s.with.join(",")}`); }
     before.gm = g; evAt = T.events.length;
   };
   /* H1 hits the Thug */
@@ -179,6 +193,16 @@ const pass = async (T, each = null) => { for (let n = 0; n < 24 && T.state.stack
   ok(all.includes("p1:asked:H1") || all.some((x) => x.startsWith("p1:attacked:H1") || x.startsWith("p1:hurt:H1")), "C: the player whose hero was attacked out of the dark still gets the hero framed (the question is in the view)");
   ok(all.includes("p1:reveal:N2") && all.includes("p2:reveal:N2"), "C: once revealed the Ghost is a cue");
   ok(gmSaw.has("N2") && gmSaw.has("N3"), "C: the GM's camera does go to the hidden and the unseen one");
+  /* U98: what the beats of that same fight came to */
+  ok(!beats.includes("p1:open:N1"), "C: the player who attacks gets no opening shot");
+  ok(beats.includes("p2:open:N1"), "C: ... the watching player does");
+  ok(beats.some((b) => /^p2:(hit|miss):N1$/.test(b)) && beats.some((b) => /^p1:(hit|miss):N1$/.test(b)), "C: the result of H1's blow is a beat for the one who struck and for the watcher");
+  ok(beats.includes("p1:open:H2"), "C: the Thug's attack on H2 opens a shot for the watching p1");
+  ok(!beats.includes("p2:open:H2"), "C: ... and none for p2, whose hero is aimed at (the quiet cue is theirs)");
+  ok(beats.some((b) => /^p[12]:(hit|miss):H1$/.test(b)), "C: the blow out of the dark still lands as a beat on the hero everybody sees");
+  ok(!beats.includes("p1:open:H1"), "C: ... but the player from whom both attackers are concealed never gets an opening shot of their attacks");
+  ok(beats.includes("p1:reveal:N2") && beats.includes("p2:reveal:N2"), "C: the revealed Ghost is a reveal beat for both players");
+  ok(gmBeats.some((b) => /^(hit|miss):H1:N2$/.test(b)) && gmBeats.some((b) => /^(hit|miss):H1:N3$/.test(b)), "C: the GM's beats do hold the hidden and the unseen attacker");
   /* the turn of somebody concealed and the turn of nobody look the same to a player's camera */
   const X = mk(); X.turn("H2"); const x0 = lookOf(X, P1); X.turn("N2"); const x1 = lookOf(X, P1);
   eq([x1.cur, CP.cues(x0, x1), CP.cues(x0, { ...x0, cur: null })], [null, [], []], "C: a concealed turn = no turn, for the camera");
@@ -187,10 +211,51 @@ const pass = async (T, each = null) => { for (let n = 0; n < 24 && T.state.stack
 /* ------------------------------------------------------------------ D. the switch */
 {
   const t = (key, params, fallback) => T0(key, params, fallback);
-  eq(UI.CAMERA, CP.SWITCH, "D: the dock's switch goes round turn -> off -> all");
-  for (const lang of [EN, PL]) for (const k of ["turn", "off", "all", "next"]) ok(typeof lang[`ITAC.map.cam.${k}`] === "string" && lang[`ITAC.map.cam.${k}`].length > 3, `D: ITAC.map.cam.${k} is said`);
+  eq([UI.CAMERA, UI.CAMERA_OLD], [CP.SWITCH, CP.SWITCH_OLD], "D: the dock's switch goes round action -> turn -> off (a map without shots: turn -> off -> all)");
+  for (const lang of [EN, PL]) for (const k of ["action", "skip", "turn", "off", "all", "next"]) ok(typeof lang[`ITAC.map.cam.${k}`] === "string" && lang[`ITAC.map.cam.${k}`].length > 3, `D: ITAC.map.cam.${k} is said`);
   const c = UI.cameraOf({ camera: () => ({ follow: "turn" }) }, t);
   eq([c.follow, c.next], ["turn", "off"], "D: the button says the state and what a click gives");
+  const round = (follow) => UI.cameraOf({ camera: () => ({ follow, shots: true }) }, t);
+  eq([round("action").next, round("turn").next, round("off").next, round("all").next], ["turn", "off", "action", "action"], "D: with the action camera: action -> turn -> off -> action; the older 'all' steps into the round");
+  ok(round("action").tip.includes(t("ITAC.map.cam.skip")) && !round("turn").tip.includes(t("ITAC.map.cam.skip")), "D: how to skip a shot is said where shots play, and only there");
+  eq(UI.cameraOf({ camera: () => ({ follow: "action" }) }, t)?.follow, "action", "D: the state is shown whatever the map can do");
   eq(UI.cameraOf({ camera: () => null }, t), null, "D: no map camera: no button");
+}
+
+/* ------------------------------------------------------------------ E. U98: the action camera */
+{
+  const T = mk(), a = lookOf(T, P1), b = lookOf(T, P2), g = lookOf(T, GM);
+  const ev = (o) => ({ combat: "c", seq: 1, inst: "i1", ...o });
+  const S = (e, look) => CP.eventShot(e, look), brief = (s) => (s ? [s.beat, s.focus, s.with, s.still] : null);
+  const atk = ev({ type: "actionDeclared", actor: "N1", targets: ["H1"], decl: { action: "slugfest" } });
+  eq([brief(S(atk, b)), S(atk, b)?.key], [["open", "H1", ["N1"], false], "i1"], "E: somebody acts on somebody: the watcher's shot opens on the target with the attacker");
+  eq([S(atk, a), S(atk, g)], [null, null], "E: no opening for the one aimed at (the question is theirs) nor for the one who acts");
+  const fellow = ev({ type: "actionDeclared", actor: "H2", targets: ["N1"], decl: { action: "slugfest" } });
+  eq([brief(S(fellow, a)), S(fellow, b), S(fellow, g)], [["open", "N1", ["H2"], false], null, null], "E: a fellow player's attack opens a shot for the watching player only (the GM's NPC is aimed at: the quiet cue)");
+  eq(S({ ...atk, amended: true }, b), null, "E: a changed declaration opens nothing again");
+  eq(S({ ...atk, inst: undefined }, b), null, "E: an event of no exchange gives no beat");
+  eq(brief(S(ev({ type: "actionDeclared", actor: "N1", targets: ["H1", "H2"], decl: { action: "slugfest" } }), { ...a, mine: [] })), ["open", "H1", ["H2", "N1"], false], "E: several targets: the first is the focus, the others and the attacker with it");
+  const walk = (actor) => ev({ type: "actionDeclared", actor, targets: [], decl: { action: "move", mode: "walk", to: "z3:a" } });
+  eq([brief(S(walk("N1"), a)), S(walk("N1"), a)?.zone, S(walk("H1"), a), S(walk("N1"), g)], [["move", "N1", [], false], "z3:a", null, null], "E: somebody else's walk is a shot; the user's own is the hand's cue");
+  for (const [type, more, beat] of [["outcome", { hit: true }, "hit"], ["outcome", { hit: false }, "miss"], ["broken", {}, "kill"]]) {
+    const r = ev({ type, actor: "N1", target: "H1", ...more });
+    eq([brief(S(r, a)), brief(S(r, b)), brief(S(r, g))], [[beat, "H1", ["N1"], false], [beat, "H1", ["N1"], false], [beat, "H1", ["N1"], false]], `E: ${beat}: a beat for the one hit, the watcher and the one who struck`);
+    eq(brief(S({ ...r, actor: undefined }, a)), [beat, "H1", [], false], `E: ${beat} by nobody this stream names: the target alone`);
+    eq([S({ ...r, actor: "N2" }, a), brief(S({ ...r, actor: "N2" }, g))], [null, [beat, "H1", ["N2"], false]], `E: ${beat} by the hidden one, told to a player's look on purpose: nothing; the GM's holds both`);
+    eq(S({ ...r, target: "N2" }, a), null, `E: ${beat} on the hidden one: nothing for a player`);
+  }
+  eq(S(ev({ type: "outcome", actor: "N1", target: "H1" }), a), null, "E: an outcome that says neither hit nor miss (a plain roll's) is no beat");
+  for (const type of ["damage", "forcedMove", "roll", "roundStart", "turnStart", "status", "zzz"]) eq(S(ev({ type, actor: "N1", target: "H1", hit: true }), a), null, `E: ${type} is no beat`);
+  eq(brief(S(ev({ type: "actionClosed" }), a)), ["close", null, [], false], "E: the exchange is over: the camera waiting for it goes back");
+  eq(S(ev({ type: "actionClosed", actor: "N2" }), a), null, "E: ... the end of a concealed one's exchange is nothing to a player");
+  /* the user's hand and a question */
+  eq([S(atk, { ...b, armed: "shoot" }), S(ev({ type: "outcome", actor: "N1", target: "H1", hit: true }), { ...b, armed: "shoot" }), S(ev({ type: "actionClosed" }), { ...b, armed: "shoot" })], [null, null, null], "E: while the user aims: no beat at all");
+  const asked = { ...b, asks: { q1: { about: "H2", attacker: null } } };
+  eq([S(atk, asked), S(walk("N1"), asked), brief(S(ev({ type: "outcome", actor: "N1", target: "H1", hit: true }), asked))], [null, null, ["hit", "H1", ["N1"], true]], "E: a user with a question to answer: no opening, no walk; a result plays still");
+  eq([CP.handTook(b, { ...b, armed: "shoot" }), CP.handTook(b, asked), CP.handTook(asked, asked), CP.handTook({ ...b, armed: "shoot" }, { ...b, armed: "shoot" }), CP.handTook(null, b), CP.handTook(asked, b)], [true, true, false, false, false, false], "E: an action armed or a new question takes the screen from a shot; what stands does not again");
+  /* a reveal */
+  const rev = { why: "reveal", level: "all", hand: false, focus: "N3", with: [] };
+  eq([brief(CP.cueShot(rev, a)), CP.cueShot(rev, a)?.key, CP.cueShot({ ...rev, why: "turn" }, a), CP.cueShot(rev, { ...a, armed: "shoot" }), CP.cueShot(rev, asked)], [["reveal", "N3", [], false], "reveal:N3", null, null, null], "E: somebody new in the view is a reveal shot; no other cue is; not under the user's hand or a question");
+  eq([S(null, a), S(atk, null), CP.cueShot(null, a)], [null, null, null], "E: nothing to read: null");
 }
 done("check-cam");

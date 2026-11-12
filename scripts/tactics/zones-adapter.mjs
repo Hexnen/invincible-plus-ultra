@@ -151,6 +151,10 @@ export const camera = (o) => call("camera", o) ?? null;
 export const hasFrame = () => typeof api()?.frame === "function";
 export const frame = (spec) => (hasFrame() ? callAsync("frame", spec) : Promise.resolve({ ok: false, reason: "noZonesApi" }));
 export const frameBack = () => call("frameBack");
+/** U98: the map's action camera plays a beat of an exchange on THIS client (zones-api.md section 39); always resolves */
+export const hasShot = () => typeof api()?.shot === "function";
+export const shot = (spec) => (hasShot() ? callAsync("shot", spec) : Promise.resolve({ ok: false, reason: "noZonesApi" }));
+export const shotEnd = () => call("shotEnd") === true;
 export const present = (o) => call("present", o) ?? null;
 export const intent = (spec) => call("intent", spec) === true;
 export const reveal = (where) => call("reveal", where);
