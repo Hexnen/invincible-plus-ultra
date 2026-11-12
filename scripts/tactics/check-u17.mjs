@@ -42,8 +42,8 @@ const meta = (T) => ({ hidden: Object.values(T.c).filter((c) => c.hidden).map((c
   const hp = T.c.H2.health;
   eq(code(await answer(T, "p1", c.sp, ["bangHeads@N1|H2"])), "badInput", "A: an answer that names the ally is no answer of this card");
   eq(code(await answer(T, "p1", c.sp, ["bangHeads@N1|N2", "stun@H2"])), "badInput", "A: no stunt on the ally by the back door");
-  eq(code(await answer(T, "gm", c.sp, ["bangHeads@N1|H2"])), "badInput", "A: the GM's hand on the card follows the same rule");
-  eq([Attack.validate(view(T), T.top(), c.sp, ["bangHeads@N1|H2"]).reason, Attack.validate(view(T), T.top(), c.sp, ["bangHeads@N1|H2"], true).reason, Attack.validate(view(T), T.top(), c.sp, ["bangHeads@N1|N2"]).ok], ["noOtherTarget", "noOtherTarget", true], "A: the flow's own rule says why: the ally is no other opponent (for the GM too)");
+  /* U17-2 (the user, 2026-11-12, K6: «MG może wskazać każdego»): the GM may name anybody, the ally too; the player stays held to the list (the GM's answer itself is pinned in check-ansb.mjs) */
+  eq([Attack.validate(view(T), T.top(), c.sp, ["bangHeads@N1|H2"]).reason, Attack.validate(view(T), T.top(), c.sp, ["bangHeads@N1|H2"], true).ok, Attack.validate(view(T), T.top(), c.sp, ["bangHeads@N1|N2"]).ok], ["noOtherTarget", true, true], "A: the flow's own rule: the ally is no other opponent for a player; the GM may name him (U17-2)");
   eq(code(await answer(T, "p1", c.sp, ["bangHeads@N1|N2"])), "ok", "A: the other enemy is taken");
   eq([T.c.H2.health, T.c.N2.health < 6], [hp, true], "A: the ally is unhurt, the other enemy took the blow");
 }
@@ -65,7 +65,7 @@ const meta = (T) => ({ hidden: Object.values(T.c).filter((c) => c.hidden).map((c
   const T = base(() => {}, ["N1", "H1", "H2", "N2"]);
   const c = await card(T, "gm", "N1", "slugfest", "H1");
   eq([c.sp?.to, c.extras("bangHeads"), c.onExtra], ["gm", ["H2"], ["H2"]], "B: an enemy's Bang Heads names the other hero, never the enemy's own ally");
-  eq([code(await answer(T, "gm", c.sp, ["bangHeads@H1|N2"])), Attack.validate(view(T), T.top(), c.sp, ["bangHeads@H1|N2"], true).reason], ["badInput", "noOtherTarget"], "B: the enemy's ally cannot be named");
+  eq([Attack.validate(view(T), T.top(), c.sp, ["bangHeads@H1|N2"], true).ok, Attack.validate(view(T), T.top(), c.sp, ["bangHeads@H1|N2"]).reason], [true, "noOtherTarget"], "B: the enemy's ally is not on the list, yet the GM may name him (U17-2, the user 2026-11-12); without the GM's hand he is no opponent");
   const hp = T.c.N2.health;
   eq(code(await answer(T, "gm", c.sp, ["bangHeads@H1|H2"])), "ok", "B: the other hero is taken");
   eq(T.c.N2.health, hp, "B: the enemy's ally is unhurt");

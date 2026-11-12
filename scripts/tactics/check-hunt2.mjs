@@ -151,7 +151,7 @@ const pjournal = (T, owns = ["H1"]) => V.journalFor(T.log, { id: "p1", staff: fa
   const g = T.c.H1.kit.actions.find((a) => a.id.endsWith("-guardian")).id;
   await T.req("p1", { op: "answer", prompt: T.prompt("reaction", "H1").id, value: `r:${g}` });
   await T.roll("sw:H1", 1);
-  eq([T.top()?.decl.targets, live("H2"), T.top()?.data.def?.H2 ?? null], [["H1"], 1, null], "H2-S1: the guardian took the hit: the dropped block's quick action stays spent (U19-5, provisional)");
+  eq([T.top()?.decl.targets, live("H2"), T.top()?.data.def?.H2 ?? null], [["H1"], 0, null], "H2-S1: the guardian took the hit: the dropped block's quick action goes back to its owner (A20, the user 2026-11-12: «obrona wraca»)");
 }
 {     // control: the guardian's roll fails, the target's block stands and stays paid
   const KP = await import("./kit-pure.mjs");

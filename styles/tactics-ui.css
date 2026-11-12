@@ -989,3 +989,7 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 
 /* U108: while Dice So Nice shows a roll over the interface, the dock stands one step above its canvas (ui/main.mjs watchDice) */
 body.ita-dice-up #invincible-tactics-dock { z-index: var(--ita-dice-z); }
+/* ANSB U17-2 (K6): the GM's own extra opponent on the stunt card: a select per stunt, under the answers, dashed like a GM-only control */
+.ita-gmx { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+#invincible-tactics-desk .ita-gmx select { flex: 1 1 180px; width: auto; min-width: 0; font: 400 13px/1.2 Titles, Comic, sans-serif; letter-spacing: .03em; color: var(--ita-yellow); border: 1px dashed var(--ita-yellow); }
+#invincible-tactics-desk .ita-gmx select:hover { background: var(--ita-tile); }

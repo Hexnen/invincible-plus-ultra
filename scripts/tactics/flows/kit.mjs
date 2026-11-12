@@ -384,7 +384,8 @@ export function carryRelease(state, cid) {
   if (typeof o === "string") for (const id of ["carried", "airborne"]) if (M.hasStatus(state, o, id)) out.push({ t: "status-", who: o, id });
   return out;
 }
-/** How many of a minion group fall to a hit that takes several at once (an area attack, full auto, a blast, a stunt that hits more than one) [OQ-1]:
+/** How many of a minion group fall to a hit that takes several at once (an area attack, full auto, a blast, a hazard, a stunt that hits more than one) [OQ-1];
+    decided by the user 2026-11-12 (A1 + P4-4 + INT-4 + INT-R4, «Grupa jako jedna postać»): the group is counted once, the number starts at the damage after Armor:
     the GM's number, the damage taken is the suggestion. One card for the attack flow and for the hazards. -> { wait: true } | { taken } */
 export const MINION_LOSS_MAX = 12;
 /** U61 QUICK RESOLUTION, the GM's switch for one minion group (NpcPolicy.quick, set by the op npcPolicy; never by itself). Such a group
@@ -443,6 +444,8 @@ function fateOf(v, R, t, dm, id, by) {
     ({ taken, healthBefore, tags }). Returns true when the step has to wait (an injury die, or the GM's word on an NPC).
     NPCs [B2771]: an ordinary NPC that is broken needs no injury, the GM states knocked out or killed, or has it rolled like a hero's; a major NPC
     always rolls. Minions never do [B2828]. Whoever is broken lets go of a grapple and is let go of. */
+/** the lang key of an injury entry id ("crushed-arm" -> "crushedArm"), as the heroDead card names it */
+const critKey = (id) => String(id ?? "").replace(/-(\w)/g, (m, c) => c.toUpperCase());
 export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } = {}) {
   if (!dm || dm.tags?.toStress || !(dm.taken > 0)) return false;
   const tf = v.facts.c(t);
@@ -482,9 +485,28 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
   if (cf.crit) {
     const key = `crit:${t}`, killer = !!(by && v.facts.c(by)?.pass?.killer), lucky = tf.pass?.luckyBreak === true, two = killer !== lucky;      // P6 [B2121], [B2149]: two dice, one kept
     if (I.data.res?.[key] == null) { if (once(`${key}:asked`)) R.effects.push({ t: "dice", key, n: two ? 2 : 1 }); R.wait = true; return true; }
-    if (once(`${key}:kept`)) {
-      const faces = I.data.res[key], kept = two && faces.length > 1 ? (killer ? Math.max(faces[0], faces[1]) : Math.min(faces[0], faces[1])) : faces[0];
-      I.data.res[key] = [kept, ...faces.filter((_, i) => i !== faces.indexOf(kept))];
+    /* P6b-6 (the user, 2026-11-12, K8: «Gracz wybiera kość, MG zatwierdza»): of the two dice of Killer [B2121] or Lucky Break [B2149] the one
+       who holds the talent picks on a card (the attacker for Killer, the injured for Lucky Break; each option names the injury it gives),
+       and the GM confirms the pick of a player or takes the other die. A pick made by the GM (an NPC's, or for a player) needs no second
+       card. Two equal dice ask nothing; Killer against Lucky Break still cancel out to one die (unchanged: the book does not say). */
+    if (!flag(I, `${key}:kept`)) {
+      const faces = I.data.res[key];
+      let pick = 0;
+      if (two && faces.length > 1 && faces[0] !== faces[1]) {
+        const chooser = killer ? by : t, pk = `critPick:${t}`, cap = v.state.opts?.critCap9 ? crits.FAMILY_CAP : crits.MAX_CRIT;
+        const opt = (i) => { const rc = crits.resolveCrit({ d6: faces[i], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap }); return { id: `d:${i}`, label: "ITAC.opt.critDie", data: { d6: faces[i], n: rc.n, id: critKey(rc.entry?.id) } }; };
+        if (!I.data.pk?.[pk]) { R.prompts.push({ key: pk, kind: "critPick", to: addressee(v, chooser), about: chooser, options: [opt(0), opt(1)], data: { talent: killer ? "killer" : "luckyBreak", target: t, bonus: cf.crit.bonus } }); R.wait = true; return true; }
+        if (!isAnswered(v, I, pk)) { R.wait = true; return true; }
+        pick = answerId(v, I, pk) === "d:1" ? 1 : 0;
+        if (!answeredByStaff(v, I, pk)) {
+          const ok = `critOk:${t}`;
+          if (!I.data.pk?.[ok]) { const o = opt(pick), x = opt(1 - pick); R.prompts.push({ key: ok, kind: "critConfirm", to: "gm", about: chooser, options: [{ id: "approve", label: "ITAC.opt.approve", data: o.data }, { id: "other", label: "ITAC.opt.critOther", data: x.data }], data: { talent: killer ? "killer" : "luckyBreak", target: t, pick: o.data, other: x.data } }); R.wait = true; return true; }
+          if (!isAnswered(v, I, ok)) { R.wait = true; return true; }
+          if (answerId(v, I, ok) === "other") pick = 1 - pick;
+        }
+      }
+      setFlag(I, `${key}:kept`);
+      I.data.res[key] = [faces[pick], ...faces.filter((_, i) => i !== pick)];
     }
     /* FXP (D163): a HERO's injury that kills (12 and worse, [B2761], [B2765]) is the biggest moment of a fight [B2787]: the GM gets a card
        before it is written. "Dies" writes it as the table rolled it; "Injury 9" takes the book's own softer table for this one injury
