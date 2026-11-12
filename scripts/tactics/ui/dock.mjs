@@ -19,9 +19,11 @@
    COST PREVIEW (U30): hovering or focusing anything that carries `pv` (an action, a row of a list, a way of moving, an answer on a
    card, Declare) lights the slot it would spend and shows the Resolve it would cost on the Resolve bar. Only for the character the
    dock drives; nothing is rebuilt for it (attributes on the unit block).
-   STRUCTURE (bottom up):  the bar  <  the status line (who else the table waits for, the last news; never whose turn it is: the
-   initiative bar says that)  <  the panel of
-   the armed action  <  the questions asked of this user. The panel and the questions scroll inside what is left under the initiative bar.
+   STRUCTURE (bottom up):  the bar  <  the panel of the armed action (U97: right on the bar, nothing between the two)  <  the
+   first-fight hint  <  the status line (who else the table waits for, the last news; never whose turn it is: the initiative bar says
+   that)  <  the questions asked of this user. The panel and the questions scroll inside what is left under the initiative bar.
+   TOOLTIPS (U88 / U97, ui/tip-pure.mjs): one rule: a tooltip opens outside the block its owner stands in (a card, the panel, the bar),
+   never on the answers the person is choosing among nor on the head they belong to.
      panel: declare (target chips + map pick, dice, chance band, Declare) | blocked (reason + ask the GM) | a list (More actions,
             Abilities: rows by kind) | something else | hold off | the own action in progress (what it waits for, change / cancel)
    RESTING (not the user's turn, nothing armed, nothing asked): the unit and its slots; the chevron opens the bar to look or to ask for
@@ -182,8 +184,9 @@ export function place() {
   if (root.dataset.tight !== "2" || !deskOpen) break;
   }
   /* U53: the hint's tick points at what the hint is about (the slots, the actions) */
-  try { const hint = stack.querySelector(".itd-hint1"), at = hint?.dataset.at ? stack.querySelector(hint.dataset.at === "slots" ? ".itd-slots" : ".itd-acts") : null;
-    if (hint && at) { const a = at.getBoundingClientRect(), b = hint.getBoundingClientRect(); hint.style.setProperty("--itd-hint-x", `${Math.round(Math.max(14, Math.min(b.width - 14, a.left + Math.min(a.width / 2, 60 * k) - b.left)) / k)}px`); hint.dataset.tick = "1"; } } catch { /* a courtesy */ }
+  /* U97: with the armed action's panel between the hint and the bar the tick would point at the panel: the hint keeps its words and drops the tick */
+  try { const hint = stack.querySelector(".itd-hint1"), at = hint?.dataset.at && !stack.querySelector(":scope > .itd-panel") ? stack.querySelector(hint.dataset.at === "slots" ? ".itd-slots" : ".itd-acts") : null;
+    if (hint && at) { const a = at.getBoundingClientRect(), b = hint.getBoundingClientRect(); hint.style.setProperty("--itd-hint-x", `${Math.round(Math.max(14, Math.min(b.width - 14, a.left + Math.min(a.width / 2, 60 * k) - b.left)) / k)}px`); hint.dataset.tick = "1"; } else if (hint) delete hint.dataset.tick; } catch { /* a courtesy */ }
   const under = deskOff && deskOpen, top = under ? Math.round(barEl?.getBoundingClientRect().top ?? 0) : null;
   if (under) root.dataset.under = "1"; else delete root.dataset.under;
   if (top !== underTop) { underTop = top; handlers.deskRelayout?.(); }
@@ -286,10 +289,10 @@ function meter(c) {
     c.defended ? h("span.itd-def", {}, h("span", { text: `${c.defended.label}: ` }), h("b", { text: c.defended.text })) : null);
 }
 /* one way to make a move / one door: the name, what it costs, and when it cannot be done the reason (a click then opens the way to ask) */
-const wayRow = (r) => h(`button.itd-way${r.asking ? ".itd-armed" : ""}`, { fk: `way:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, pv: r.pv, data: { warn: r.warn ? "1" : null }, tip: r.disabled ? { why: { text: r.disabled } } : null,
-  attrs: { "aria-label": [r.label, ...(r.say ?? r.notes), r.disabled].filter(Boolean).join(", "), "aria-pressed": r.disabled ? String(!!r.asking) : null },
+const wayRow = (r) => h(`button.itd-way${r.asking ? ".itd-armed" : ""}`, { fk: `way:${r.id}`, disabled: !!r.disabled, clickWhenDisabled: true, pv: r.pv, data: { warn: r.warn ? "1" : null }, tip: r.disabled ? { why: r.why ?? { text: r.disabled } } : null,
+  attrs: { "aria-label": [r.label, ...(r.say ?? r.notes), r.disabled, r.why?.fix].filter(Boolean).join(", "), "aria-pressed": r.disabled ? String(!!r.asking) : null },
   on: { click: () => (r.disabled ? set({ ask: r.asking ? null : r.id, why: "" }) : r.req && send(r.req, { armed: null, mode: null, to: null, ask: null, why: "" })) } },
-  h("span.itd-way-l", {}, r.disabled ? icon("fa-ban") : r.warn ? icon("fa-triangle-exclamation") : null, h("span", { text: r.label }), speed(r.cost), stressChip(r.stress)), wayNotes(r));      // U83: why a way cannot be taken is its tooltip (and the line of the question to the GM a click opens): the row keeps its size
+  h("span.itd-way-l", {}, r.disabled ? icon("fa-ban") : r.warn ? icon("fa-triangle-exclamation") : null, h("span", { text: r.label }), speed(r.cost), stressChip(r.stress)), wayNotes(r));      // U83 / U89: why a way cannot be taken and what to do about it are its tooltip and its aria-label (and the line of the question to the GM a click opens): the row keeps its size
 const askRow = (a) => (a ? [a.reason || a.text !== null ? refusal({ reason: a.reason ?? "", text: a.text, placeholder: a.placeholder }) : null, h("footer.itd-pfoot", {}, h("span.itd-how"), submit(a.submit, ".itd-go-ask"))] : null);
 function movePanel(p) {
   if (p.bare && !p.empty) return null;      // W1 (U32): the map shows where, how and for what price; nothing to say here
@@ -411,8 +414,7 @@ function draw(d, ui) {
     /* U57: the summary of the round (or of the fight) that just ended stands where the questions stand, after them */
     d.prompts?.length || d.sum || (ui.legend && d.show) ? h("div.itd-asks", {}, (d.prompts ?? []).map((a) => askCard(a, askH)), d.sum ? sumCard(d.sum, { sumClose: handlers.sumClose }) : null,
       ui.legend && d.show ? legendCard({ legendClose: () => set({ legend: false }) }) : null) : null,
-    d.show ? panel(d.panel) : null,
-    /* the line on top of the bar, only while it has something the rest of the screen does not say (U51 / U52: model-pure.dockData):
+    /* the line of the table, only while it has something the rest of the screen does not say (U51 / U52: model-pure.dockData):
        a roll this user owes or may push that is not the roll of its own action (that one stands in the action's panel), who ELSE the
        table waits for, and the last thing the table was told (U10 / U3: one chip, the older lines in
        its tooltip, put away with its x) */
@@ -421,9 +423,12 @@ function draw(d, ui) {
       d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null,
       d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon(d.news.icon ?? "fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
         h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null,
-    /* U53: one first-fight hint, right over the bar, its tick on the thing it is about (place() sets --itd-hint-x) */
+    /* U53: one first-fight hint, its tick on the thing it is about (place() sets --itd-hint-x) while that thing is right under it */
     d.show && d.hint ? h("div.itd-hint1", { attrs: { role: "note" }, data: { at: d.hint.at } }, icon("fa-lightbulb"), h("span", { text: d.hint.text }),
       h("button.itd-hint1-x", { fk: "hint:x", text: d.hint.close, on: { click: () => handlers.hintClose?.(d.hint.id) } })) : null,
+    /* U97: THE PANEL OF THE ARMED ACTION STANDS ON THE BAR: it is the armed button said in full, and nothing comes between the two.
+       What the table says (the hint, the line, the questions) stands over both. */
+    d.show ? panel(d.panel) : null,
     d.show ? bar(d) : null,
   ]);
   /* U41: the answer the keyboard chose on a card (Enter sends it) */
