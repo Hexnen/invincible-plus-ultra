@@ -115,16 +115,21 @@ function controlledIds() {
 }
 const fmtInit = (n) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100));
 
+/** May this client see the combatant at all (a GM sees all; a player not a hidden combatant, a hidden token it does not own, a secret token)?
+    One rule for the bar's tiles and the start banner's count (sweep S034). */
+export function seen(c) {
+  if (game.user.isGM) return true;
+  const td = c?.token ?? null;
+  const actor = c?.actor ?? td?.actor ?? null;
+  const owner = !!(actor?.isOwner || c?.isOwner);
+  return !!c?.visible && !(td?.hidden && !owner) && !td?.isSecret;
+}
 function read(c, isActive, ctx) {
   const gm = !!game.user.isGM;
   const td = c.token ?? null;
   const actor = c.actor ?? td?.actor ?? null;
   const owner = gm || !!(actor?.isOwner || c.isOwner);
-  if (!gm) {
-    if (!c.visible) return null;
-    if (td?.hidden && !owner) return null;
-    if (td?.isSecret) return null;
-  }
+  if (!seen(c)) return null;
   /* U118: a vehicle shows the side of who sits in it (tactics/source.mjs vehicleDisp), never the token's own default; of those aboard
      only whom this user may know of (source.aboardSeen: a concealed driver gives nothing away) */
   const disp = actor?.type === "vehicle" ? dispOf(Tac.vehicleDisp(Tac.aboardSeen(c.parent, c.id, gm).map((id) => c.parent?.combatants?.get(id)?.token?.disposition), !!actor.hasPlayerOwner, D()))
