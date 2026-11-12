@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const dir = dirname(fileURLToPath(import.meta.url));
-const SUITES = ["pure", "state", "ledger", "initiative", "scheduler", "ops", "source", "journal", "engine", "view", "relay", "desk", "ui", "zones", "move", "p7", "defects", "defects4", "defects5", "defects6", "defects7", "defects8", "fight", "attacks", "acts", "hazards", "kit", "int", "lang", "glossary", "names", "u4", "u8", "u10", "u11", "u13", "u14", "u17", "u19", "u20", "board", "facing", "executor", "cam", "fxc", "fxd", "hunt2", "fxf", "fxg", "perf", "fxh", "fxi", "fxj", "hunt3", "rlabel", "fxl", "odds", "fxm", "slots",
+const SUITES = ["pure", "state", "ledger", "initiative", "scheduler", "ops", "source", "journal", "engine", "view", "relay", "desk", "ui", "zones", "move", "p7", "defects", "defects4", "defects5", "defects6", "defects7", "defects8", "fight", "attacks", "acts", "hazards", "kit", "int", "lang", "glossary", "names", "u4", "u8", "u10", "u11", "u13", "u14", "u17", "u19", "u20", "board", "facing", "executor", "cam", "fxc", "fxd", "hunt2", "fxf", "fxg", "perf", "fxh", "fxi", "fxj", "hunt3", "rlabel", "fxl", "odds", "fxm", "slots", "uxc",
   "../check-kit", "../check-marks"];      // U79: the shared kit's own checks (scripts/check-kit.mjs) run with the suite: a kit change that breaks a surface fails here too
 let checks = 0, failed = 0, broken = 0;
 for (const s of SUITES) {

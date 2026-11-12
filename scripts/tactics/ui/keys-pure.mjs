@@ -2,8 +2,9 @@
    The keys act on what the dock already shows: every key is a click on a control of the render data (its focus key `fk`, dom.mjs) or
    a patch of the dock's own state; nothing here builds a request, so the keyboard can do nothing the pointer could not.
      1 .. 9, 0   the n-th thing of THE TOP LAYER:  the answers of the first question card  >  the rows of an open list (More actions,
-                 Abilities)  >  the action buttons of the bar (the lists keep the last digits: Abilities 0). On a card a digit only CHOOSES the answer (Enter sends it): a key meant
-                 for the bar a moment before the card came up must not spend a reaction. A stunt card (several answers) ticks with it.
+                 Abilities)  >  the action buttons of the bar (the lists keep the last digits: Abilities 0). U143: on a card of ONE answer a digit SENDS that answer once the card
+                 has stood for CARD_SETTLE_MS (or when the same digit is pressed again); in the first moment it only CHOOSES it (Enter sends
+                 it): a key meant for the bar a moment before the card came up must not spend a reaction. A stunt card (several answers) ticks with it.
                  While Foundry's macro bar is shown (the dock's keyboard button) the digits are its own again.
      Tab         the next target IN REACH of the armed action (Shift: the one before; W1: the map marks who is in reach); on a card the next answer
      Enter       confirms: the chosen answer (a ticked stunt card: its Confirm), Declare, the one way of a chosen move, "Sure?" of End
@@ -17,9 +18,10 @@
      number(d, own)  -> d with `key` on what a digit reaches (the surfaces show it as a small mark and say it in the tooltip)
      layer(d)        -> { id: "card" | "list" | "bar" | null, ask?, multi?, keys: [{ key, id, fk }] }
      plan(d, own, ev) -> null | { click: fk } | { set: patch } | { target: combatantId }
-       ev = { key, shift, walking }      walking: the focus is being walked through the surface's buttons by Tab (Tab, Enter and Space stay the browser's) */
+       ev = { key, shift, walking, age }  age: ms the top card has stood on this screen (main.mjs; unknown = new);  walking: the focus is being walked through the surface's buttons by Tab (Tab, Enter and Space stay the browser's) */
 export const DIGITS = Object.freeze(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]);
 export const KEYS = Object.freeze([...DIGITS, "Tab", "Enter", " ", "Escape"]);
+export const CARD_SETTLE_MS = 700;      // U143: a card younger than this takes a digit as a choice only (the guard against a key meant for the bar)
 const numbered = (list, fk) => list.slice(0, DIGITS.length).map((x, i) => ({ key: DIGITS[i], id: x.id, fk: fk(x) }));
 const actFk = (a) => (a.more ? `more:${a.mode ?? "menu"}` : `act:${a.id}`);
 
@@ -57,7 +59,8 @@ export function plan(d, own = {}, ev = {}) {
   if (DIGITS.includes(key)) {
     const hit = own.hotbar ? null : L.keys.find((k) => k.key === key);
     if (!hit) return null;
-    return L.id === "card" && !L.multi ? { set: { kopt: hit.fk } } : { click: hit.fk };
+    if (L.id !== "card" || L.multi) return { click: hit.fk };
+    return (Number(ev.age) || 0) >= CARD_SETTLE_MS || own.kopt === hit.fk ? { click: hit.fk } : { set: { kopt: hit.fk } };
   }
   /* U109: Esc with the legend open closes the legend and goes no further (it fell through to Foundry, whose Esc opened the main menu) */
   if (key === "Escape") return chosen ? { set: { kopt: null } } : d.show && (own.armed || own.mode) ? { set: { armed: null, mode: null, amend: null } } : own.legend && d.show ? { set: { legend: false } } : null;

@@ -39,8 +39,17 @@ function chaseData(state, own, facts, t, machines) {
   const pick = (s) => units.filter((u) => u.side === s).map((u) => u.id), prey = pick("prey"), pursuer = pick("pursuer");
   const distance = int(own.distance, 0, 99, 1), obstacles = !!own.obstacles;
   const why = busy || state.phase !== "turns" ? t("ITAC.reason.busy") : !prey.length || !pursuer.length ? t("ITAC.ui.chase.needSides") : null;
+  /* U158: a chase is nearly always one side fleeing the other. ONE click sets every row by side (the heroes' side, the GM's side; a vehicle
+     goes with its driver); the rows of three buttons each are for the exceptions and stay folded until the GM opens them. */
+  const npcOf = (u) => { const d = machines.some((m) => m.id === u.id) ? vehOf(state, u.id).driver : null; return !!facts.c?.(d ?? u.id)?.npc; };
+  const bySide = (heroes) => Object.fromEntries(units.map((u) => [u.id, npcOf(u) === (heroes === "prey") ? "pursuer" : "prey"]));
+  const same = (map) => units.length > 0 && units.every((u) => u.side === map[u.id]);
+  const presets = units.some((u) => npcOf(u)) && units.some((u) => !npcOf(u)) ? SIDES.map((s) => ({ id: s, label: t(`ITAC.ui.chase.heroes.${s}`), side: bySide(s), on: same(bySide(s)) })) : [];
+  const listOf = (s) => units.filter((u) => u.side === s).map((u) => u.name).join(", ");
   return {
-    on: false, title: t("ITAC.ui.chase"), hint: t("ITAC.ui.chase.hint"),
+    on: false, title: t("ITAC.ui.chase"), hint: t("ITAC.ui.chase.hint"), who: t("ITAC.ui.chase.who"),
+    presets, picked: SIDES.map((s) => ({ id: s, label: t(`ITAC.ui.chase.${s}`), names: listOf(s) || t("ITAC.ui.chase.nobodyYet") })),
+    rows: { open: !presets.length || !!own.rows, label: t("ITAC.ui.chase.rows", { n: units.length }) },
     units: units.map((u) => ({ id: u.id, name: u.name, choices: [{ id: "none", label: t("ITAC.ui.chase.stays"), on: !u.side, side: null }, ...SIDES.map((s) => ({ id: s, label: t(`ITAC.ui.chase.${s}.one`), on: u.side === s, side: s }))] })),
     none: units.length ? null : t("ITAC.ui.chase.nobody"),
     distance: { label: t("ITAC.ui.chase.distance"), value: distance, min: 0, max: 99 },

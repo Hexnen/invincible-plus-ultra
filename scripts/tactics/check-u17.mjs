@@ -131,7 +131,7 @@ const meta = (T) => ({ hidden: Object.values(T.c).filter((c) => c.hidden).map((c
   const c = await card(T, "p1", "H1", "slugfest", "N1");
   eq(c.extras("bangHeads"), ["M1", "N2"], "F: an enemy minion group is an opponent; the hero's summoned allies are not");
   eq(code(await answer(T, "p1", c.sp, ["bangHeads@N1|M1"])), "ok", "F: the group is taken");
-  eq([T.prompt("minionLoss")?.to, T.prompt("minionLoss")?.about], ["gm", "M1"], "F: how many of the group fall is the GM's number [OQ-1]");
+  eq([T.prompt("minionsQuick")?.to, T.prompt("minionsQuick")?.about], ["gm", "M1"], "F: how many of the group fall is the GM's number [OQ-1] (U145: with their fate on the same card)");
 }
 {
   const T = base((t) => { t.npc("M1", { kind: "minions", health: 5, maxHealth: 5, members: 5 }); t.add("S1", { kind: "minions", owners: ["p1"], npc: false, summonOf: "H1", health: 3, maxHealth: 3, members: 3 }); }, ["M1", "H1", "N1", "H2", "N2"]);

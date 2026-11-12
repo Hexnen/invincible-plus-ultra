@@ -251,7 +251,7 @@ function pushNews(X, n) {
 const HZ_CAUSES = ["barrier", "fall", "vehicle", "chase"];
 function newsOf(I) {
   const rows = (I.decl?.targets ?? []).map((t) => { const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
-    return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.tags?.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}) }; });
+    return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.tags?.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}), ...(Number.isFinite(dm?.crit?.n) ? { crit: { n: Math.trunc(dm.crit.n), id: critKey(dm.crit.id) } } : {}) }; });      // D127: the injury it came to
   const fx = isObj(I.data?.challengeFx) ? I.data.challengeFx : null, note = fx && typeof I.data?.manual?.note === "string" && I.data.manual.note.trim() ? I.data.manual.note.trim().slice(0, 300) : null;
   return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
     ...(I.data?.hazard?.kind === "fixed" && HZ_CAUSES.includes(I.data.hazard.id) ? { hzCause: I.data.hazard.id } : {}),      // D123: what dealt the engine's own damage
@@ -305,7 +305,19 @@ function label(X, inst, what) {
   const rx = (reactsOf(inst).reacts ?? []).map((r) => ({ r, w: reactWhat(r) })), rxText = (nm, list) => list.map(({ r, w }) => ` [${nm(r.who)}: ${w}${w ? " " : ""}({ITAC.journal.react.${r.result}})]`).join("");
   const rxPub = rx.filter(({ r }) => !X.facts.c(r.who)?.hidden);
   /* (the reactors are not put into `who`: a reader who does not know one of them would lose the whole line of the attack, view-pure.journalFor) */
-  return { who: whoOf(X, [inst.actor, ...(inst.decl?.targets ?? [])]), pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? (pub ? pub + rxText(cMark, rxPub) : pub) : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}${rxText((id) => X.facts.c(id)?.name ?? "", rx)}` };
+  return { who: whoOf(X, [inst.actor, ...(inst.decl?.targets ?? [])]), pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? (pub ? pub + rxText(cMark, rxPub) + hurtText(X, inst, cMark, true) : pub) : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}${rxText((id) => X.facts.c(id)?.name ?? "", rx)}${hurtText(X, inst, (id) => X.facts.c(id)?.name ?? "")}` };
+}
+/* D127: what an action did to whoever it broke, after its result, so nobody (the GM least of all) is left with a bare injury die: the
+   critical injury with its number and name ("[Doc Seismic: critical injury 5 (Concussed!)]"), else knocked out, killed or broken.
+   `pub`: only about somebody the table may see. */
+const CRIT_IDS = ["torn-suit", "bruised", "bloodied", "beaten-up", "concussed", "battered", "crushed-arm", "crushed-leg", "cracked-skull", "crushed", "skewered", "head-crushed", "torn-apart"];
+export const critKey = (id) => String(id ?? "").replace(/-(\w)/g, (m, c) => c.toUpperCase());      // "torn-suit" -> "tornSuit" (a mark is letters and dots)
+function hurtText(X, inst, nm, pub = false) {
+  return Object.entries(isObj(inst.data?.dmg) ? inst.data.dmg : {}).filter(([t, dm]) => isObj(dm) && P1.isId(t) && !(pub && X.facts.c(t)?.hidden)).slice(0, 8).map(([t, dm]) => {
+    const what = Number.isFinite(dm.crit?.n) ? `{ITAC.journal.crit} ${Math.trunc(dm.crit.n)}${CRIT_IDS.includes(dm.crit.id) ? ` ({ITAC.crit.${critKey(dm.crit.id)}})` : ""}`
+      : dm.npcOutcome === "kill" ? "{ITAC.status.dead}" : dm.npcOutcome === "ko" ? "{ITAC.status.unconscious}" : dm.broke ? "{ITAC.status.broken}" : "";
+    return what ? ` [${nm(t)}: ${what}]` : "";
+  }).join("");
 }
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {
@@ -1374,6 +1386,26 @@ async function challengeClock(X) {
     for (const kind of r.effects) pushManual(X, p.id, kind, { at: "roundEnd" });
   }
 }
+/* U157: a challenge whose clock counted in rounds already ran (time left below its limit) when this fight starts was counted down in an
+   earlier fight: its countdown would mean nothing here (at 0 it never ticks again). The GM gets ONE card per such challenge: start its
+   clock again (the time back to its limit), or leave it as it is. Nothing changes without that word. */
+function challengeStale(X) {
+  if (X.host.setting?.("challengesCombatTime") === false) return;
+  for (const p of (X.host.parts?.() ?? []).filter((x) => x.challenge && !x.defeated)) {
+    const c = X.facts.c(p.id);
+    if (!c || (c.timeUnit ?? "rounds") !== "rounds" || !(c.maxResolve > 0) || !(c.resolve < c.maxResolve) || !(c.health > 0)) continue;
+    if (Object.values(X.state.prompts).some((q) => q.kind === "challengeStale" && q.about === p.id && !q.answered)) continue;
+    openPrompt(X, null, { key: "cs", kind: "challengeStale", to: "gm", about: p.id, options: [{ id: "reset", label: "ITAC.opt.clockReset" }, { id: "keep", label: "ITAC.opt.clockKeep" }], data: { left: Math.max(0, c.resolve), max: c.maxResolve } }, "start");
+  }
+}
+async function challengeReset(X, cid) {
+  const c = P1.isId(cid) ? X.facts.c(cid) : null;
+  if (!c || !(c.maxResolve > 0) || c.resolve === c.maxResolve) return;
+  const tx = openTx(X, {}), from = c.resolve, max = c.maxResolve;
+  await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: max, tx });
+  closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.clockReset} ${max}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.clockReset} ${from} -> ${max}` });
+  emit(X, null, { type: "challenge", challenge: cid, rating: c.health, timeLeft: max, state: "active", clock: 1 });
+}
 /* "Run the consequence" of a challenge whose time ran out [B2841]: the ward resets by itself [B2876]; what the engine has no flow for
    becomes a GM-run instance that names it. */
 async function challengeFailRun(X, cid) {
@@ -1516,6 +1548,8 @@ async function systemOne(X, fx, triggers) {
       dropPrompts(X, (p) => p.about === fx.actor);
       targetGone(X, fx.actor);
     } else if (fx?.type === "roundEnd") await challengeClock(X);                          // P7
+    else if (fx?.type === "combatStart") challengeStale(X);                                  // U157
+    else if (fx?.type === "challengeReset") await challengeReset(X, fx.challenge);
     else if (fx?.type === "challengeFail") await challengeFailRun(X, fx.challenge);
     else if (fx?.type === "trigger" && isObj(fx.trigger)) triggers.push(fx.trigger);
   }

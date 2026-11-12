@@ -68,6 +68,10 @@ export function floats(events, t) {
       const n = Math.max(0, Math.trunc(e.taken));
       out.push(n > 0 ? { target, tone: e.toStress ? "resolve" : "health", text: t(e.toStress ? "ITAC.float.resolve" : "ITAC.float.health", { n }), num: `-${n}`, mark: e.toStress ? "stress" : "health", loss: true }      /* U93: the number with the mark of what was lost (`num`, `mark`); `text` is the same in words, for a canvas that cannot draw the mark */ : { target, tone: "none", text: t("ITAC.float.none"), loss: true });
     } else if (e.type === "broken") out.push({ target, tone: "state", text: t("ITAC.float.broken") });
+    else if (e.type === "crit" && Number.isFinite(e.crit?.total)) {      // D127: what the injury die came to, over the token, on every seat that sees it
+      const k = String(e.crit.id ?? "").replace(/-(\w)/g, (m, c) => c.toUpperCase()), name = k ? t(`ITAC.crit.${k}`, {}, "") : "";
+      out.push({ target, tone: "state", text: name ? t("ITAC.float.crit", { n: Math.trunc(e.crit.total), name }) : t("ITAC.journal.crit") });
+    }
   }
   return out.slice(0, 40);
 }
@@ -132,6 +136,22 @@ export const roundCard = (tally, round, who, statuses, t) => card(tally, round, 
 /** U130: the fight a summary card belongs to (its id: "f:<combat>" or "r:<combat>:<round>"), or null */
 export const cardFight = (card) => { const m = /^[fr]:([^:]+)/.exec(String(card?.id ?? "")); return m ? m[1] : null; };
 export const fightCard = (tally, who, statuses, t) => card(tally, null, who, statuses, t, { id: `f:${tally?.combat ?? ""}`, kind: "fight", title: t("ITAC.sum.fight"), sub: t("ITAC.sum.round.sub") });
+
+/* D131: a fight's summary is shown ONCE per device. The fights already summed up are kept (ids, newest last, at most DONE_MAX); a fight
+   that is over (its scene ended, the GM stopped it, its combat was deleted) gives its card the first time one of these is seen and never
+   again: not when the stopped fight's combat is deleted later, not after a reload, not when its news is still in a state that stays. */
+export const DONE_MAX = 20;
+export const doneOf = (raw) => (Array.isArray(raw) ? raw.filter((x) => typeof x === "string" && x).slice(-DONE_MAX) : []);
+export const isDone = (done, combatId) => doneOf(done).includes(String(combatId ?? ""));
+/** a fight that runs again (the GM restarted the same combat, or took the end of the scene back) is no longer summed up */
+export const doneLive = (done, combatId, view) => (view && !viewOver(view) && isDone(done, combatId) ? doneOf(done).filter((x) => x !== String(combatId)) : doneOf(done));
+export const doneAdd = (done, combatId) => (combatId ? doneOf([...doneOf(done).filter((x) => x !== combatId), String(combatId)]) : doneOf(done));
+/** is the fight of this view over (the rest after the scene: phase "sceneEnd")? */
+export const viewOver = (view) => view?.phase === "sceneEnd";
+/** the tally to keep for this fight now: none for a fight already summed up */
+export const tallyFor = (tally, combatId, news, done) => (isDone(done, combatId) ? null : tallyAdd(tally, combatId, news));
+/** the fight is over now: -> { card: whether its card is due (once), done: the new list } */
+export const fightOver = (tally, combatId, done) => ({ card: !!tally && tally.combat === combatId && !isDone(done, combatId), done: doneAdd(done, combatId) });
 
 /* ------------------------------------------------------------------ U58: the two sounds */
 /** `now` = { turn: [ids of this user's characters whose turn it is], asks: [ids of what the table waits for from this user] }.

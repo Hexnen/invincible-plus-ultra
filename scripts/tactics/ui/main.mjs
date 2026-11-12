@@ -97,6 +97,17 @@ let rev = 0, moveMemo = null;             // the move options are counted once p
 let lastModel = null, reachLast = null;      // W1: the bars the dock was built from (the board's menus read them); the last answer about who is in reach
 const reaches = new Map();
 let deskIdle = false;                     // U60: the desk's Now tab has nothing on it (no card, no action in progress)
+/* U144: nothing is left of the turn on this seat's bar (model-pure `end.auto`): the turn is passed a moment later, by the same button a
+   click would press (one press per turn: the key is the round, the card and the combatant; a refused press is not tried again) */
+const AUTO_END_MS = 1500;
+let autoKey = null, autoTimer = 0;
+function autoEnd(combat, d) {
+  const e = d?.show ? d.end : null, key = e?.auto && e.req ? `${combat?.id}:${e.req.round}:${e.req.slot}:${e.req.actor}` : null;
+  if (key === autoKey) return;
+  clearTimeout(autoTimer); autoKey = key;
+  if (key) autoTimer = setTimeout(() => { try { const n = lastDock?.show ? lastDock.end : null; if (n?.auto && n.req && `${combatNow()?.id}:${n.req.round}:${n.req.slot}:${n.req.actor}` === key) Dock.press("end"); } catch (err) { console.warn(LOG, "auto end failed", err); } }, AUTO_END_MS);
+}
+let cardTop = { id: null, at: 0 };      // U143: the question card on top of the dock and since when it stands there (the keys' guard)
 let lastDock = null, byPointer = true;      // U41: what the dock shows now (the keys act on it); was the focus put where it is by the pointer?
 let zonePick = null, shownDock = "", shownDesk = "";      // what this client has on the map for the surfaces: a running pick, two highlights
 let nudgeSaid = null;                     // U59: the nudge this client already said aloud
@@ -279,6 +290,8 @@ function refresh() {
     const fb = Feedback.sync({ combat, facts, model, data, cards: desk?.cards ?? null, staff, own: st.dock });
     data.sum = fb.sum; data.hint = fb.hint;
     lastDock = data; lastModel = model;
+    { const top = data?.prompts?.[0]?.id ?? null; if (top !== cardTop.id) cardTop = { id: top, at: Date.now() }; }
+    autoEnd(combat, data);
     /* U59: the GM nudged this user: the line stands on the dock (news) and is said once as a notification, wherever the eyes are */
     if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", data.news.text); }
     Dock.render(data, st.dock);
@@ -403,7 +416,7 @@ function onKey(ev) {
     if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
     if (a && a !== document.body && a !== document.documentElement && a.tagName !== "CANVAS" && !inOurs) return;
     if (document.querySelector("dialog[open], .application.dialog, #context-menu")) return;      // a dialog or a menu of Foundry is up: its keys
-    const plan = Keys.plan(lastDock, st.dock, { key: ev.key, shift: ev.shiftKey, walking: inOurs && !byPointer });
+    const plan = Keys.plan(lastDock, st.dock, { key: ev.key, shift: ev.shiftKey, walking: inOurs && !byPointer, age: cardTop.id ? Date.now() - cardTop.at : 0 });
     if (!plan) return;
     ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
     if (inOurs && byPointer) { try { a.blur(); } catch { /* nothing focused */ } }

@@ -84,7 +84,7 @@ const notes = (T) => (T.top()?.data?.notes ?? []).map((n) => [n.note, n.who, n.r
 {
   const T = base(() => {}, ["H2", "H1", "N1", "N2"]);
   eq(code(await T.req("p2", decl("H2", "slugfest", ["N1"]))), "ok", "A: the guardian's friend attacks an enemy");
-  eq(cards(T).filter((c) => c[0] === "H1"), [["H1", "r:guardian,pass,pass:round"]], "A: 'another character' is anybody else attacked in the zone, an enemy too (question U17-5 stands as it was)");
+  eq(cards(T).filter((c) => c[0] === "H1"), [], "A: U149 (provisional, question UXC-3 over U17-5): nobody is asked to take an ally's blow for the enemy");
 }
 {
   const T = base(() => {}, ["H1", "H2", "N1", "N2"]);
@@ -267,13 +267,15 @@ function T0() { return base(); }
 /* ---- I. Adversary 8 (live, 2026-11-12): D103, D104, D105. The turret shot at Omni-Man (H2), Kid Omni-Man (H1) and the Soldier group
    (N2) both held Guardian in that zone: Omni-Man's card stayed answerable after the swap, and the Soldier's card, still naming Omni-Man,
    moved the attack on from Kid. */
-const three = (extra = () => {}, order) => base((t) => { give(t, "N2", "Guardian"); extra(t); }, order);
+/* U149 (provisional, question UXC-3): a guardian is asked only about somebody of its own side, so the second guardian here is a hero (H3)
+   where the live case had the Soldier group; the rules of D103 / D104 are the same for both sides */
+const three = (extra = () => {}, order = ["N1", "H1", "H2", "N2", "H3"]) => base((t) => { t.hero("H3", "p3", { name: "Second" }); give(t, "H3", "Guardian"); extra(t); }, order);
 {
   const T = three();
   await T.gm(decl("N1", "shoot", ["H2"], { weapon: "gun" }));
-  eq(cards(T).map((c) => c[0]), ["H2", "H1", "N2"], "I: the target and both guardians are asked");
-  const old = card(T, "H2"), oldN2 = card(T, "N2"), u2 = units(T, "H2");
-  eq(oldN2.data.targets, ["H2"], "I: the second guardian's card is about the intended target");
+  eq(cards(T).map((c) => c[0]), ["H2", "H1", "H3"], "I: the target and both guardians are asked");
+  const old = card(T, "H2"), oldH3 = card(T, "H3"), u2 = units(T, "H2");
+  eq(oldH3.data.targets, ["H2"], "I: the second guardian's card is about the intended target");
   await T.req("p1", { op: "answer", prompt: card(T, "H1").id, value: rid(T, "H1", "guardian") });
   await T.roll("sw:H1", 1);
   eq(T.top().decl.targets, ["H1"], "I: the first guardian took the hit");
@@ -284,12 +286,12 @@ const three = (extra = () => {}, order) => base((t) => { give(t, "N2", "Guardian
   eq([code(env = await T.req("p2", { op: "answer", prompt: old.id, value: "dodge" })), units(T, "H2")], ["gone", u2], "D103: an answer to the old card is refused, nothing paid");
   eq(card(T, "H1")?.options.some((o) => o.id === "block" || o.id === "dodge"), true, "D103: the new target has its own defence card");
   /* D104 */
-  eq(T.prompts("reaction").some((p) => p.id === oldN2.id), false, "D104: the second guardian's card that named the intended target is withdrawn");
-  eq(card(T, "N2"), null, "D104: nobody dives in for the one who took the hit (ruling A8-R1: 'instead of the intended target')");
-  eq(code(env = await T.gm({ op: "answerFor", prompt: oldN2.id, value: rid(T, "N2", "guardian") })), "gone", "D104: the old 'yes' cannot move the attack any more");
+  eq(T.prompts("reaction").some((p) => p.id === oldH3.id), false, "D104: the second guardian's card that named the intended target is withdrawn");
+  eq(card(T, "H3"), null, "D104: nobody dives in for the one who took the hit (ruling A8-R1: 'instead of the intended target')");
+  eq(code(env = await T.gm({ op: "answerFor", prompt: oldH3.id, value: rid(T, "H3", "guardian") })), "gone", "D104: the old 'yes' cannot move the attack any more");
   eq(T.top().decl.targets, ["H1"], "D104: the attack stays on the first guardian");
-  const e2 = T.c.N2.kit.actions.find((a) => a.id.endsWith("-guardian"));
-  eq([Kit.reactionFor(view(T), T.top(), "N2", e2), Kit.reactionFit(view(T), T.top(), "N2", e2)], [[], { ok: false, reason: "hitTaken" }], "D104: the rule says why: somebody already took the hit");
+  const e2 = T.c.H3.kit.actions.find((a) => a.id.endsWith("-guardian"));
+  eq([Kit.reactionFor(view(T), T.top(), "H3", e2), Kit.reactionFit(view(T), T.top(), "H3", e2)], [[], { ok: false, reason: "hitTaken" }], "D104: the rule says why: somebody already took the hit");
   await T.req("p1", { op: "answer", prompt: card(T, "H1").id, value: "pass" });
   await T.roll("attack", 1);
   for (const sp of T.prompts("stunts")) await T.gm({ op: "answerFor", prompt: sp.id, value: [] });
@@ -300,29 +302,29 @@ const three = (extra = () => {}, order) => base((t) => { give(t, "N2", "Guardian
   const T = three();
   await T.gm(decl("N1", "shoot", ["H2"], { weapon: "gun" }));
   await T.req("p1", { op: "answer", prompt: card(T, "H1").id, value: rid(T, "H1", "guardian") });
-  await T.gm({ op: "answerFor", prompt: card(T, "N2").id, value: rid(T, "N2", "guardian") });
+  await T.gm({ op: "answerFor", prompt: card(T, "H3").id, value: rid(T, "H3", "guardian") });
   await T.roll("sw:H1", 1);
-  await T.roll("sw:N2", 2);
-  eq([T.top().decl.targets, notes(T).filter((n) => n[0] === "swapFailed")], [["H1"], [["swapFailed", "N2", "H2"]]], "D104: a second 'yes' given before the swap does not carry the attack on from the first guardian");
+  await T.roll("sw:H3", 2);
+  eq([T.top().decl.targets, notes(T).filter((n) => n[0] === "swapFailed")], [["H1"], [["swapFailed", "H3", "H2"]]], "D104: a second 'yes' given before the swap does not carry the attack on from the first guardian");
 }
 {
   /* the cards of the others are made again for the attack as it is now: a warning names who is attacked now */
-  const T = three((t) => { t.c.N2.kit = null; t.hero("H3", "p3", { name: "Shouter" }); give(t, "H3", "Warning Call"); }, ["N1", "H1", "H2", "N2", "H3"]);
+  const T = three((t) => { t.c.H3.kit = null; t.hero("H4", "p4", { name: "Shouter" }); give(t, "H4", "Warning Call"); }, ["N1", "H1", "H2", "N2", "H3", "H4"]);
   await T.gm(decl("N1", "shoot", ["H2"], { weapon: "gun" }));
-  const w0 = card(T, "H3");
+  const w0 = card(T, "H4");
   eq(w0?.data?.targets, ["H2"], "D104: the warning card names the intended target");
   await T.req("p1", { op: "answer", prompt: card(T, "H1").id, value: rid(T, "H1", "guardian") });
   await T.roll("sw:H1", 1);
-  const w1 = card(T, "H3");
+  const w1 = card(T, "H4");
   eq([w1 && w1.id !== w0.id, w1?.data?.targets, T.prompts("reaction").some((p) => p.id === w0.id)], [true, ["H1"], false], "D104: after the swap the warning card is made again and names the one attacked now");
 }
 {
   /* the GM's hand: a target the GM set (retarget) is the GM's intent, a guardian may still cover it */
   const T = three();
   await T.gm(decl("N1", "shoot", ["H2"], { weapon: "gun" }));
-  const e2 = T.c.N2.kit.actions.find((a) => a.id.endsWith("-guardian")), I = T.top();
-  eq(Kit.reactionFor(view(T), { ...I, decl: { ...I.decl, targets: ["H1"] }, data: { ...I.data, retargets: [{ from: "H2", to: "H1", by: "gm" }] } }, "N2", e2), ["H1"], "A8-R1: a target set by the GM can be covered");
-  eq(Kit.reactionFor(view(T), { ...I, decl: { ...I.decl, targets: ["H1"] }, data: { ...I.data, retargets: [{ from: "H2", to: "H1", by: "x-guardian" }] } }, "N2", e2), [], "A8-R1: one who took the hit by a reaction cannot");
+  const e2 = T.c.H3.kit.actions.find((a) => a.id.endsWith("-guardian")), I = T.top();
+  eq(Kit.reactionFor(view(T), { ...I, decl: { ...I.decl, targets: ["H1"] }, data: { ...I.data, retargets: [{ from: "H2", to: "H1", by: "gm" }] } }, "H3", e2), ["H1"], "A8-R1: a target set by the GM can be covered");
+  eq(Kit.reactionFor(view(T), { ...I, decl: { ...I.decl, targets: ["H1"] }, data: { ...I.data, retargets: [{ from: "H2", to: "H1", by: "x-guardian" }] } }, "H3", e2), [], "A8-R1: one who took the hit by a reaction cannot");
 }
 {
   /* D105: the guardian's roll is named, never a raw key or a code */

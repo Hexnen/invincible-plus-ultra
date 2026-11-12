@@ -224,7 +224,11 @@ function scene(s) {
     h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: c.obstacles.label }), segSend(c.obstacles, "chase:obs")),
     h("div.igd-cmds", {}, go(c.roll, "chase:roll", ".igd-primary"), c.end.map((b) => go(b, `chase:end:${b.id}`))))
     : h("article.igd-npc", {}, note(c.hint),
-      c.none ? note(c.none) : c.units.map((u) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: u.name }),
+      /* U158: one click sets both sides; the rows (three buttons each) are folded under a toggle for the exceptions */
+      c.presets?.length ? h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: c.who }), h("span.igd-seg", {}, c.presets.map((x) => h("button", { fk: `chase:all:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => put({ side: x.side }) } })))) : null,
+      c.presets?.length ? c.picked.map((x) => h("div.igd-ctl", {}, h("span.igd-cl", { text: x.label }), h("b.igd-names", { text: x.names }))) : null,
+      c.none ? note(c.none) : c.presets?.length ? h("button.igd-btn.igd-chase-rows", { fk: "chase:rows", text: c.rows.label, attrs: { "aria-expanded": String(c.rows.open) }, on: { click: () => put({ rows: !c.rows.open }) } }) : null,
+      c.none || !c.rows.open ? null : c.units.map((u) => h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: u.name }),
         h("span.igd-seg", {}, u.choices.map((x) => h("button", { fk: `side:${u.id}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => put({ side: { [u.id]: x.side } }) } }))))),
       h("div.igd-ctl", { data: { type: "number" } }, h("span.igd-cl", { text: c.distance.label }), h("span.igd-step", {}, h("input", { fk: "chase:d0", attrs: { type: "number", min: c.distance.min, max: c.distance.max, value: c.distance.value, "aria-label": c.distance.label }, on: { change: (e, el) => put({ distance: el.value }) } }))),
       h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: c.obstacles.label }), h("span.igd-seg", {}, c.obstacles.choices.map((x) => h("button", { fk: `obs0:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => put({ obstacles: x.value }) } })))),

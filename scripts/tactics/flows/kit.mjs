@@ -243,10 +243,11 @@ const NO_ALLY = ["challenge", "vehicle"];
 /** The attacked characters a reaction of somebody else may be about: other than the reactor, known to it, and in its zone where the entry asks for that. */
 export function reactionFor(v, inst, cid, e) {
   const moved = e?.reaction?.effect === "swapTarget" ? coveredBy(inst) : [];
-  const warn = e?.reaction?.effect === "warn", me = warn ? !!v.facts.c(cid)?.npc : null;
+  const side = e?.reaction?.effect === "warn" || e?.reaction?.effect === "swapTarget", me = side ? !!v.facts.c(cid)?.npc : null;
   /* U131: Warning Call [B2170] says "another character"; read as one of the warner's own side (provisional, question FXI-1): nobody shouts
-     a warning to the opponent an ally of theirs is shooting at. The GM's own answer may still name anybody (attack.mjs aboutOf). */
-  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t) && (!warn || !!v.facts.c(t)?.npc === me));
+     a warning to the opponent an ally of theirs is shooting at. U149: Guardian [B2115] ("another character in your zone is attacked") is read
+     the same way (provisional, question UXC-3): nobody dives in to take an ally's blow for the enemy. The GM's own answer may still name anybody. */
+  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t) && (!side || !!v.facts.c(t)?.npc === me));
   return e?.reaction?.place === "targetZone" ? list.filter((t) => sameSpot(v, cid, t) !== false) : list;
 }
 /* D104 (ruling A8-R1): who took the hit for somebody by a reaction (Guardian [B2115]: "you take the hit instead of the INTENDED target").
@@ -377,7 +378,10 @@ export const quickGroup = (v, cid) => v.facts.c(cid)?.kind === "minions" && v.st
 export const quickCard = (v, t) => quickGroup(v, t) && !["ko", "kill"].includes(v.state.npc?.[t]?.onBroken);
 export function minionLoss(v, I, R, t, taken, { by = null } = {}) {
   const tf = v.facts.c(t), key = `ml:${t}`, members = Math.max(0, tf?.members ?? tf?.health ?? 0), top = Math.min(members, MINION_LOSS_MAX);
-  if (quickCard(v, t)) {                                                                    // U61: the number and the fate on one card
+  /* U61 / U145: the number and the fate on ONE card (the number starts at what the damage says). Since U145 this is every group's card, not
+     only a quickly settled one's: the GM answered two questions in a row for each group hit. The old number-only card is left for a group
+     whose fate the GM already gave as a standing answer (NpcPolicy.onBroken), where the fate needs no asking. */
+  if (!["ko", "kill"].includes(v.state.npc?.[t]?.onBroken)) {
     const qk = `mq:${t}`;
     if (!I.data.pk?.[qk]) { R.prompts.push({ key: qk, kind: "minionsQuick", to: "gm", about: t, options: [{ id: "none", label: "ITAC.opt.minionsNone", data: { n: 0 } }, ...["ko", "kill"].flatMap((f) => Array.from({ length: top }, (_, i) => ({ id: `${f}:${i + 1}`, label: `ITAC.opt.${f}`, data: { n: i + 1, fate: f } })))], data: { suggested: Math.min(top, taken), members, by } }); return { wait: true }; }
     if (!isAnswered(v, I, qk)) return { wait: true };
@@ -428,6 +432,7 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
   const flags = { ...immunityFlags(tf), kind: isMajor(v, t) ? "majorNpc" : tf.kind };
   let cf = crits.critForHit({ taken: dm.taken, healthBefore: dm.healthBefore, deadlyHit, target: flags });   // [B2707], [B2708], [R9], [B2771], [B2828]
   if (cf.newlyBroken && once(`broken:${t}`)) {
+    dm.broke = 1;                                                                              // D127: the journal and the news say who was broken
     R.effects.push({ t: "status+", who: t, status: { id: "broken", source: { kind: "crit", owner: by ?? undefined, name: "broken" } } });
     for (const e of [...grappleRelease(v.state, t), ...carryRelease(v.state, t)]) R.effects.push(e);      // [B2707]: a broken character holds nobody and carries nobody
     R.events.push({ type: "broken", target: t });

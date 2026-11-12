@@ -14,7 +14,7 @@ import { tacticsApi as Api } from "../api.mjs";
 import * as FP from "./feedback-pure.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics feedback) |`;
-const SUM_KEY = `${MOD}.tactics.sum`;
+const SUM_KEY = `${MOD}.tactics.sum`, DONE_KEY = `${MOD}.tactics.sumDone`;
 const ROUND_MS = 20000, FIGHT_MS = 45000, HOLD_MS = 4000, FLOAT_GAP = 420, CUE_GAP = 1200, HIT_AFTER = 8000;
 let H = null;                       // main.mjs: { t, refresh() }
 let started = false;
@@ -31,6 +31,10 @@ const setting = (key, fallback) => Store.setting(key, fallback);
 function loadTally(combatId) {
   try { const raw = JSON.parse(globalThis.localStorage?.getItem(SUM_KEY) ?? "null"); return raw && raw.combat === combatId && raw.entries && typeof raw.entries === "object" ? { combat: raw.combat, entries: raw.entries } : null; } catch { return null; }
 }
+/* D131: the fights whose summary this device already showed (feedback-pure.fightOver) */
+let doneMem = null;      // read once per page, written through
+function loadDone() { if (doneMem) return doneMem; try { doneMem = FP.doneOf(JSON.parse(globalThis.localStorage?.getItem(DONE_KEY) ?? "[]")); } catch { doneMem = []; } return doneMem; }
+function saveDone(list) { doneMem = FP.doneOf(list); try { globalThis.localStorage?.setItem(DONE_KEY, JSON.stringify(doneMem)); } catch { /* private window */ } }
 function saveTally() { try { if (tally) globalThis.localStorage?.setItem(SUM_KEY, JSON.stringify(tally)); else globalThis.localStorage?.removeItem(SUM_KEY); } catch { /* private window */ } }
 function showCard(card, ms) {
   clearTimeout(sumTimer);
@@ -109,7 +113,7 @@ function flush(combatId) {
 }
 function onEvent(ev) {
   try {
-    if (!ev || typeof ev !== "object" || !["outcome", "damage", "broken"].includes(ev.type) || !ev.combat) return;
+    if (!ev || typeof ev !== "object" || !["outcome", "damage", "broken", "crit"].includes(ev.type) || !ev.combat) return;
     const key = FP.eventKey(ev);
     if (heard.has(key)) return;
     if (heard.size > 600) heard.clear();
@@ -133,8 +137,10 @@ export function sync(ctx) {
     const mine = new Set((model?.bars ?? []).map((b) => b.combatant));
     for (const id of Object.keys(view?.ledger ?? {})) { const c = facts.c?.(id); if (c) snap[id] = { name: c.name, img: c.img ?? null, mine: staff ? !c.npc : mine.has(id) }; }
     statusesWere = view?.statuses ?? {};
-    const next = FP.tallyAdd(tally, combat.id, view?.news);
+    let done = loadDone(); { const live = FP.doneLive(done, combat.id, view); if (live.length !== done.length) { done = live; saveDone(live); } }
+    const next = FP.tallyFor(tally, combat.id, view?.news, done);      // D131: a fight already summed up keeps no tally
     if (next !== tally) { tally = next; saveTally(); }
+    if (FP.viewOver(view) && endFight(combat)) return { sum: sum?.card ?? null, hint: null };      // D131: the scene ended: the fight's card now, once
     const round = Number.isFinite(view?.round) ? view.round : null;
     if (round !== null && roundWas !== null && round > roundWas && roundWas >= 1 && setting("tacticsSummary", true) !== false) showCard(FP.roundCard(tally, roundWas, who, statusesWere, t), ROUND_MS);
     if (round !== null) roundWas = round;
@@ -163,9 +169,12 @@ export function idle() {
 }
 
 function endFight(combat) {
-  if (!tally || tally.combat !== combat?.id) return false;
+  if (!combat?.id) return false;
+  const over = FP.fightOver(tally, combat.id, loadDone());
+  if (!over.card) { if (tally?.combat === combat.id) { tally = null; saveTally(); } return false; }
+  saveDone(over.done);
   const card = setting("tacticsSummary", true) !== false ? FP.fightCard(tally, who, statusesWere, t) : null;
-  tally = null; saveTally(); combatWas = null; roundWas = null;
+  tally = null; saveTally(); roundWas = null;
   showCard(card, FIGHT_MS);
   return true;
 }
