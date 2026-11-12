@@ -18,7 +18,8 @@
      doorItems(bar, door, t)            U35: the menu at a door -> [{ id, label, icon, hint, disabled, req }]
      gmItems(cid, vitals, statuses, t)  U44: the GM's quick corrections at a token -> [{ id, label, icon, stepper | toggle, req(value, from?) }];
                                         a stepper's request is a step (`delta`), a switch's the state as the rules mean it (D53, D59) */
-import { labelOf, oddsFor, isFree } from "./model-pure.mjs";
+import { labelOf, oddsFor, isFree, priceOf } from "./model-pure.mjs";
+import * as Sg from "./signs-pure.mjs";
 import { whyOf, whyLine } from "./feedback-pure.mjs";
 import * as HZ from "../flows/hazards.mjs";
 import { stateFlags } from "../movement-pure.mjs";
@@ -49,6 +50,8 @@ export function hitWords(hit, t) {
   const bar = life ? { value: now, max: hit.max, ...(known ? { loss: Math.min(now, n), lossMax: Math.min(now, Math.max(n, fin(hit.most) ? hit.most : n)) } : {}) } : null;
   return { short: known ? (n > 0 ? `-${n}` : "0") : `~${n}`, tip: lines.join(" "), bar };
 }
+/* U100: what a hit does as the kit's damage mark with its number (the map's pill over the token); the chance stays a word */
+const hitSigns = (say, hit, t) => { const p = Sg.joined([say, Sg.damageSign(hit.short, hit.tip)]); return p ? { signs: { label: p } } : {}; };
 const oddsTip = (o, t) => (o ? join([`${t("ITAC.ui.chance")}: ${o.say}`, o.defended ? `${o.defended.label}: ${o.defended.say}` : null]) : null);
 
 /* ------------------------------------------------------------------ U33: who can be chosen */
@@ -64,7 +67,7 @@ export function reachMarks(p, t) {
     if (x.reach !== "in" && !x.picked) continue;
     const hit = x.reach === "in" ? hitWords(x.hit, t) : null, say = x.odds?.say ?? null, tip = oddsTip(x.odds, t);
     out.push({ cid: x.id, state: x.picked ? "chosen" : "in", ...(say ? { label: cut(say) } : {}), ...(tip ? { tip } : {}),
-      ...(hit ? { hover: { label: cut(say ? `${say} · ${hit.short}` : hit.short), tip: join([tip, hit.tip]), ...(hit.bar ? { bar: hit.bar } : {}) } } : {}) });
+      ...(hit ? { hover: { label: cut(say ? `${say} · ${hit.short}` : hit.short), tip: join([tip, hit.tip]), ...(hit.bar ? { bar: hit.bar } : {}), ...hitSigns(say, hit, t) } } : {}) });
   }
   return out;
 }
@@ -153,21 +156,30 @@ export function zoneHazards(fm, zones, to, c, Z, t) {
 
 /* ------------------------------------------------------------------ U35: the menu at a thing */
 const priceShort = (t, a) => [isFree(a.cost) ? null : t(`ITAC.ui.costShort.${a.cost}`, {}, String(a.cost ?? "")), a.stress ? t("ITAC.ui.stress", { n: a.stress }) : null].filter(Boolean);
+/* U100: the same hint as the dock's marks for the map's menu (moinen-maps zones-api.md section 40); the words above stay its text */
+const priceMarks = (t, a) => Sg.priceSigns(priceOf(t, a.cost, a.stress));
+const hintSigns = (groups) => { const p = Sg.joined(groups); return p ? { signs: { hint: p } } : {}; };
 /** `acts` = model-pure.targetActs, `rows` = the engine's answer per action id ({ ok, reason, params, dice, hit }) or null while none came.
     An action the bar refuses (not your turn, nothing to pay with) or the engine refuses against this target is listed greyed with the reason. */
 export function actItems(acts, rows, tid, facts, t) {
   return (acts ?? []).map((a) => {
     const r = rows?.[a.id] ?? null, odds = r?.ok ? oddsFor(a, r.dice, tid, facts, t, r.def) : null, hit = r?.ok ? hitWords(r.hit, t) : null;
     const why = a.disabled ?? (r && !r.ok ? whyLine(whyOf(t, r.reason, r.params, { staff: facts?.staff })) : null);      // U54: a whole sentence and what to do about it
-    return { id: a.id, label: a.label, icon: a.icon, hint: [...priceShort(t, a), odds?.say ?? null, hit?.short ?? null].filter(Boolean).join(" · "), tip: join([oddsTip(odds, t), hit?.tip]) || null, disabled: why || null };
+    return { id: a.id, label: a.label, icon: a.icon, hint: [...priceShort(t, a), odds?.say ?? null, hit?.short ?? null].filter(Boolean).join(" · "), tip: join([oddsTip(odds, t), hit?.tip]) || null, disabled: why || null,
+      ...hintSigns([priceMarks(t, a), odds?.say ?? null, hit ? [Sg.damageSign(hit.short, hit.tip)] : null]) };
   });
 }
 /** `door` = a row of flows/move.doorOptions for the border clicked; the door actions of the bar that fit its state */
 export function doorItems(bar, door, t) {
   return (bar?.actions ?? []).filter((a) => a.flow === "barrier" && door?.actions && a.id in door.actions && door.actions[a.id] !== "doorState").map((a) => {
     const why = whyLine(whyOf(t, a.disabled || door.actions[a.id] || null));
-    return { id: a.id, label: labelOf(t, a.label), icon: a.id, hint: priceShort(t, a).join(" · "), disabled: why, req: why ? null : a.req({ to: door.to }) };
+    return { id: a.id, label: labelOf(t, a.label), icon: a.id, hint: priceShort(t, a).join(" · "), disabled: why, req: why ? null : a.req({ to: door.to }), ...hintSigns([priceMarks(t, a)]) };
   });
+}
+/** U100: the title (a wall) or the sub line (a door) of the menu at a border with Armor as its mark; the words stay the text */
+export function borderSigns(door, br, t) {
+  const armor = (n) => Sg.armorSign(n ?? 0, t("ITAC.ui.fact.armor"));
+  return door ? { sub: [`${t(`ITAC.ui.door.${door.state}`, {}, String(door.state))}, `, armor(door.armor)] } : { title: [`${t("ITAC.map.haz.wall.do")} `, armor(br?.armor)] };
 }
 /* ------------------------------------------------------------------ U44: the GM's quick corrections */
 export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobilised", "trapped"]);

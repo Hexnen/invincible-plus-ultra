@@ -41,33 +41,17 @@ export function tipClassFor(el) {
    (markName) with the number after it.
    INLINE. A sentence may hold a mark as a token: "[[dice:6]]", "[[stress:1]]", "[[full]]". rich(text) gives the nodes, richHtml(text) the
    escaped HTML (a tooltip), plain(text) the words (an aria-label, a notification, anything that cannot draw). */
-import { MARK_EN, MARK_PL } from "./kit-lang.mjs";
-export const COST_KINDS = Object.freeze(["full", "quick", "turn", "long", "none", "gm", "out", "stress"]);
-export const SYM_KINDS = Object.freeze(["health", "damage", "armor", "pierce", "rmin", "rmax", "dice", "six", "push", "crit", "cond"]);
-const KIND = (k) => (k === "free" ? "none" : COST_KINDS.includes(k) ? k : null);
+import * as P from "./kit-signs-pure.mjs";      // U100: the pure core (kinds, classes, names, the map's signs), shared with the tactics models
+export const { COST_KINDS, SYM_KINDS, costClasses } = P;
+const { KIND, SYM_FA, numOf } = P;
+const LANG = () => globalThis.game?.i18n?.lang ?? "en";
 /** the name of a mark in the reader's language (kit-lang.mjs) */
-export function markName(kind, lang = globalThis.game?.i18n?.lang ?? "en") {
-  const k = kind === "free" ? "none" : kind, T = String(lang).startsWith("pl") ? MARK_PL : MARK_EN;
-  return T[k] ?? MARK_EN[k] ?? String(kind ?? "");
-}
+export const markName = (kind, lang = LANG()) => P.markName(kind, lang);
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
-const numOf = (n) => (n === null || n === undefined || n === "" ? "" : String(n).replace(/[<>&"']/g, ""));
 /** what a mark with a number says: "Stress: 1", "Extra damage: +2", "Dice: 6" ("extra" damage is the damage mark with a number that starts with "+") */
-export function markSay(kind, n = null, lang) {
-  const num = numOf(n), k = kind === "damage" && num.startsWith("+") ? "extra" : kind;
-  return num ? `${markName(k, lang)}: ${num}` : markName(k, lang);
-}
+export const markSay = (kind, n = null, lang = LANG()) => P.markSay(kind, n, lang);
 const named = (name, kind, n) => { const say = name === true ? markSay(kind, n) : name ? String(name) : null; return say ? ` role="img" aria-label="${esc(say)}" data-tooltip="${esc(say)}"` : ' aria-hidden="true"'; };
-/* pure: the class names of the mark(s) of one cost, first to last (out of turn: the hook, then the action's bar) */
-export function costClasses(kind, { out = false, off = false } = {}) {
-  const k = KIND(kind);
-  if (!k) return [];
-  const one = (x, more = "") => `ipu-cost ipu-k-${x}${more}`;
-  if (off && (k === "full" || k === "quick")) return [one(k, " ipu-off")];
-  if (!out || !(k === "full" || k === "quick")) return [one(k)];
-  return [one("out"), one(k)];
-}
 export function costMarkHtml(kind, o = {}) {
   const c = costClasses(kind, o), k = KIND(kind);
   if (!c.length) return "";
@@ -78,8 +62,7 @@ export function stressMarkHtml(n = null, o = {}) {
   const num = Number.isFinite(Number(n)) && n !== null && n !== "" ? String(Math.abs(Number(n))) : "";
   return `<b class="ipu-stress"${named(o.name, "stress", num)}><i class="ipu-cost ipu-k-stress"></i>${num}</b>`;
 }
-/* Font Awesome draws these (the pictures the interface already had); kit.css draws the rest as masks (range, Armor) */
-const SYM_FA = { health: "fa-heart", damage: "fa-burst", dice: "fa-dice-d6", six: "fa-dice-six", push: "fa-arrows-rotate", crit: "fa-bone" };
+/* Font Awesome draws some (the pictures the interface already had: kit-signs-pure.mjs SYM_FA); kit.css draws the rest as masks (range, Armor) */
 export function symMarkHtml(kind, { n = null, glyph = null, name = null } = {}) {
   if (!SYM_KINDS.includes(kind)) return "";
   const fa = kind === "cond" ? glyph : SYM_FA[kind], k = kind === "pierce" ? "armor" : kind;
@@ -87,6 +70,8 @@ export function symMarkHtml(kind, { n = null, glyph = null, name = null } = {}) 
   const num = numOf(n);
   return `<span class="ipu-sym ipu-s-${kind}"${named(name, kind, num)}>${kind === "pierce" ? `<span class="ipu-cut">${pic}</span>` : pic}${num ? `<b>${num}</b>` : ""}</span>`;
 }
+/* U100: a mark as the PIECES the map module draws (moinen-maps zones-api.md section 40), in the reader's language: kit-signs-pure.mjs */
+export const markSigns = (kind, o = {}) => P.markSigns(kind, { lang: LANG(), ...o });
 const toEl = (html) => { if (!html || typeof document === "undefined") return null; const t = document.createElement("template"); t.innerHTML = html; return t.content.firstElementChild; };
 export const costMark = (kind, o = {}) => toEl(costMarkHtml(kind, o));
 export const stressMark = (n = null, o = {}) => toEl(stressMarkHtml(n, o));

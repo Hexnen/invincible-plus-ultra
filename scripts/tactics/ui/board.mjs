@@ -111,7 +111,7 @@ function waysMenu(p, zone, drag = false) {
   const rows = p.ways?.[zone] ?? [];
   if (!rows.length) { if (drag) { H.notify("warn", t("ITAC.move.cannot", { reason: Model.reasonText(t, "noRoute") })); H.set({ armed: null, mode: null }); } return; }
   const blocked = rows.filter((r) => r.disabled);
-  const items = rows.map((r) => ({ id: r.id, label: r.label, icon: faOf("move"), hint: r.hint, ...(r.disabled ? { disabled: r.disabled } : {}) }));
+  const items = rows.map((r) => ({ id: r.id, label: r.label, icon: faOf("move"), hint: r.hint, ...(r.signs ? { signs: r.signs } : {}), ...(r.disabled ? { disabled: r.disabled } : {}) }));      // U100: `signs` the price as marks
   if (blocked.length === rows.length) items.push({ separator: true }, { id: "@ask", label: t(last.staff ? "ITAC.map.menu.gm" : "ITAC.map.menu.ask"), icon: last.staff ? "fa-solid fa-gavel" : "fa-solid fa-comment" });
   menuBusy = true;
   Zones.menu({ zone, title: Model.zoneText(last.facts, t, zone), sub: p.title, items }).then((r) => {
@@ -203,7 +203,7 @@ function tokenMenu(cid, acts) {
       : { id: it.id, label: it.label, icon: it.icon, ...(it.tip ? { tip: it.tip } : {}), toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return env?.ok === false ? !o : o; } }); });
   };
   const spec = (rows) => {
-    const list = BP.actItems(acts, rows, cid, facts, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.tip ? { tip: a.tip } : {}), ...(a.disabled ? { disabled: a.disabled } : {}),
+    const list = BP.actItems(acts, rows, cid, facts, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.signs ? { signs: a.signs } : {}), ...(a.tip ? { tip: a.tip } : {}), ...(a.disabled ? { disabled: a.disabled } : {}),
       run: () => H.set({ ...ARM, sel: who, armed: a.id, targets: [cid] }) })), gm = fix();
     /* the GM's menu stands where Foundry's token HUD would open: one entry brings that HUD up (Shift + right click opens it directly) */
     const hud = staff ? [{ separator: true }, { id: "@unit", label: t("ITAC.map.menu.unit"), icon: "fa-solid fa-address-card", run: () => H.unit?.(cid) }, { id: "@hud", label: t("ITAC.map.menu.hud"), icon: "fa-solid fa-id-badge", run: () => { try { const tok = tokDoc(cid)?.object; (canvas.hud?.token ?? tok?.layer?.hud)?.bind(tok); } catch { /* a courtesy */ } } }] : [];
@@ -217,13 +217,13 @@ function tokenMenu(cid, acts) {
 function borderMenu(br, bar) {
   const { facts, staff, data } = last, who = data.who.id, key = norm(br?.key);
   const door = (facts.doors?.(who) ?? []).find((d) => norm(d.to) === key) ?? null;
-  const items = door ? BP.doorItems(bar, door, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.disabled ? { disabled: a.disabled } : {}), run: () => a.req && H.send(a.req, DONE) })) : [];
+  const items = door ? BP.doorItems(bar, door, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.signs ? { signs: a.signs } : {}), ...(a.disabled ? { disabled: a.disabled } : {}), run: () => a.req && H.send(a.req, DONE) })) : [];
   /* a wall (or a door that stays shut) can be gone through by force: the ways of moving that break this very border */
   const through = [...new Set((facts.move?.(who)?.options ?? []).filter((o) => o.zone && (o.barriers ?? []).some((b) => norm(b.border) === key)).map((o) => o.zone))];
   for (const z of through.slice(0, 4)) items.push({ id: `@go:${z}`, label: t("ITAC.map.menu.breach", { zone: Model.zoneText(facts, t, z) }), icon: "fa-solid fa-hammer", run: () => { H.dock().menuAt = z; H.dock().dragMenu = true; H.set({ ...ARM, sel: who, armed: "move" }); } });
   if (!items.length || (staff && !items.some((x) => !x.disabled))) return null;              // nothing of ours here (the GM keeps the map's own door menu)
   const title = door ? t("ITAC.ui.door.to", { zone: Model.zoneText(facts, t, door.zone) }) : t("ITAC.map.haz.wall", { n: br?.armor ?? 0 });
-  return { title, ...(door ? { sub: `${t(`ITAC.ui.door.${door.state}`, {}, String(door.state))}, ${t("ITAC.ui.armor", { n: door.armor ?? 0 })}` } : {}), items };
+  return { title, ...(door ? { sub: `${t(`ITAC.ui.door.${door.state}`, {}, String(door.state))}, ${t("ITAC.ui.armor", { n: door.armor ?? 0 })}` } : {}), items, signs: BP.borderSigns(door, br, t) };      // U100: Armor as its mark
 }
 function onCtx(ctx) {
   try {

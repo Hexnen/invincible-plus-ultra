@@ -7,6 +7,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import * as Kit from "./kit.mjs";
+import { MARK_SVG } from "./kit-marks.mjs";
 import { MARK_EN, MARK_PL } from "./kit-lang.mjs";
 import { EN, PL, t } from "./tactics/lang.mjs";
 import { EN_U10, PL_U10 } from "./tactics/lang-u10.mjs";
@@ -126,7 +127,29 @@ const read = (f) => readFileSync(join(root, f), "utf8");
   ok(files.length > 100, "D2 the tree was read");
   for (const f of files) { const m = BANNED.exec(read(f)); ok(!m, `D3 ${f}: "${m?.[0]}" belongs to the comparison of stage 1`); }
   ok(!/u86/i.test(read("scripts/module.js")) && !/u86/i.test(read("styles/sheet-plus.css")), "D4 nothing loads a scaffold");
-  ok(!/\bv\s*=\s*costVersion|\{ v\b|, v\b[,} ]/.test(read("scripts/kit.mjs").split("/* ---- a mark inside a sentence")[0].split("import { MARK_EN")[1] ?? ""), "D5 the kit takes no version");
+  ok(!/\bv\s*=\s*costVersion|\{ v\b|, v\b[,} ]/.test([read("scripts/kit.mjs").split("/* ---- a mark inside a sentence")[0].split('import * as P from "./kit-signs-pure.mjs"')[1] ?? "x = { v }", read("scripts/kit-signs-pure.mjs").split("import { MARK_EN")[1] ?? "x = { v }"].join(" ")), "D5 the kit takes no version (kit.mjs and its pure core)");
+}
+
+/* ---------- E. U100: the marks where the map draws (signs, moinen-maps zones-api.md section 40) ---------- */
+{
+  /* the map's own renderer of a sign's drawing (signs-core.mjs nodeHtml / signHtml with `el`), copied: what the map puts in the page */
+  const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const node = (o, at = "") => `<${o.tag}${o.cls ? ` class="${o.cls}"` : ""}${at}>${(o.kids ?? []).map((k) => node(k)).join("")}${o.text ? esc(o.text) : ""}</${o.tag}>`;
+  const draw = (s) => node(s.el, s.name ? ` role="img" aria-label="${esc(s.name)}" data-tooltip="${esc(s.name)}"` : ` aria-hidden="true"`);
+  const one = (sg) => (sg.length === 1 ? draw(sg[0]) : null);
+  for (const k of ["full", "quick", "turn", "long", "none", "gm", "out"]) for (const name of [null, true, "A price"]) eq(one(Kit.markSigns(k, { name })), Kit.costMarkHtml(k, { name }), `E1 ${k} (name ${name}): the map draws the kit's very mark`);
+  for (const k of ["full", "quick"]) eq(one(Kit.markSigns(k, { off: true, name: true })), Kit.costMarkHtml(k, { off: true, name: true }), `E2 ${k} spent`);
+  for (const nn of [null, 1, 3]) for (const name of [null, true]) eq(one(Kit.markSigns("stress", { n: nn, name })), Kit.stressMarkHtml(nn, { name }), `E3 stress ${nn} (name ${name})`);
+  for (const k of Kit.SYM_KINDS) for (const nn of [null, 2, "+2"]) eq(one(Kit.markSigns(k, { n: nn, name: true, glyph: "fa-face-dizzy" })), Kit.symMarkHtml(k, { n: nn, name: true, glyph: "fa-face-dizzy" }), `E4 ${k} ${nn}`);
+  const o = Kit.markSigns("quick", { out: true, name: true });
+  ok(o.length === 2 && /ipu-k-out/.test(o[0].el.cls) && /ipu-k-quick/.test(o[1].el.cls) && o[0].name === Kit.markName("outQuick") && o[1].name === null, "E5 out of turn: two signs, the hook first, the pair named once");
+  /* the canvas: the same picture as kit.css, its colour the kit's */
+  const css = read("styles/kit.css");
+  for (const [k, g] of Object.entries(MARK_SVG)) ok(css.includes(`--ipu-m-${k}: url("${g.uri}")`), `E6 ${k}: the map's picture is kit.css's drawing (run tools/build-cost-marks.mjs)`);
+  const all = [...["full", "quick", "turn", "long", "none", "gm"].flatMap((k) => Kit.markSigns(k)), ...Kit.markSigns("stress", { n: 1 }), ...Kit.SYM_KINDS.flatMap((k) => Kit.markSigns(k, { n: 1, glyph: "fa-face-dizzy" }))];
+  ok(all.every((s) => s.img || s.icon), "E7 every sign has a picture for the canvas (a mask, or the Font Awesome glyph of the kit)");
+  const tokv = (name) => css.match(new RegExp(`${name}:\\s*(#[0-9a-f]{6})`, "i"))?.[1].toLowerCase();
+  ok(Kit.markSigns("full")[0].color === parseInt(tokv("--ipu-yellow").slice(1), 16) && Kit.markSigns("stress", { n: 1 })[0].color === parseInt(tokv("--ipu-cyan-lt").slice(1), 16), "E8 on the canvas: the bars in --ipu-yellow, the bolt in --ipu-cyan-lt");
 }
 
 console.log(bad ? `FAIL check-marks: ${bad} of ${n} checks failed` : `OK ${n} checks (check-marks)`);
