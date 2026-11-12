@@ -69,4 +69,60 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
   ok((src.match(/paintedSig = null/g) ?? []).length >= 2, "C: the mark is forgotten when the bar is torn down or shows another combat");
 }
 
+/* ---- D (P2-1). the dock's placement is skipped only when the last one changed nothing and everything it read reads the same */
+{
+  const S = await import("./ui/settle.mjs");
+  /* a fake page: elements with boxes, a document answering selectors from a table */
+  const kids = {}, el = (name, r) => ({ name, r, isConnected: true, nodeType: 1, querySelectorAll: (sel) => kids[name + sel] ?? [] });
+  const table = {}, doc = { nodeType: 9, querySelectorAll: (sel) => table[sel] ?? [] };
+  const rectOf = (e) => (e.r ? { left: e.r[0], top: e.r[1], right: e.r[2], bottom: e.r[3] } : null);
+  const a = el("a", [0, 0, 10, 10]), b = el("b", [20, 0, 30, 10]), party = el("party", [0, 100, 50, 200]), kid = el("kid", [0, 120, 40, 140]);
+  table["#x, #y"] = [a, b]; table["#party"] = [party]; kids["party.kid"] = [kid];
+  const run = () => { const rec = S.recorder(doc, rectOf); for (const e of rec.q("#x, #y")) rec.rect(e); rec.q("#x, #y"); const p = rec.one("#party"); rec.rect(p); for (const k of rec.q(".kid", p)) rec.rect(k); rec.rect(null); return rec.take(); };
+  const kept = run();
+  eq(kept.lists.length, 3, "D: each question is kept once (the same selector asked twice in one run)");
+  eq(kept.rects.length, 4, "D: each element's box is kept once");
+  eq(S.unchanged(kept, rectOf), true, "D: nothing moved: the placement may be skipped");
+  b.r = [21, 0, 30, 10];
+  eq(S.unchanged(kept, rectOf), false, "D: a box moved by one pixel: the placement runs");
+  b.r = [20, 0, 30, 10]; eq(S.unchanged(kept, rectOf), true, "D: back where it was: skipped again");
+  b.r = null; eq(S.unchanged(kept, rectOf), false, "D: an element that hid itself: runs");
+  b.r = [20, 0, 30, 10];
+  const c = el("c", [40, 0, 50, 10]); table["#x, #y"] = [a, b, c];
+  eq(S.unchanged(kept, rectOf), false, "D: a new element matching a selector (a chat toast came in): runs");
+  table["#x, #y"] = [a, b]; kids["party.kid"] = [];
+  eq(S.unchanged(kept, rectOf), false, "D: an element under another one went away: runs");
+  kids["party.kid"] = [kid]; party.isConnected = false;
+  eq(S.unchanged(kept, rectOf), false, "D: an element asked from left the page: runs");
+  party.isConnected = true; kid.isConnected = false;
+  eq(S.unchanged(kept, rectOf), false, "D: a measured element left the page: runs");
+  kid.isConnected = true;
+  eq(S.unchanged(kept, rectOf), true, "D: all back: skipped");
+  eq([S.unchanged({ lists: [], rects: [[a, null]] }, () => { throw new Error("x"); }), S.unchanged({ lists: [[{ nodeType: 9, querySelectorAll: () => { throw new Error("x"); } }, "#boom", []]], rects: [] }, rectOf)], [false, false], "D: a read that throws: runs");
+  eq([S.sameFacts([1, "a", null, NaN], [1, "a", null, NaN]), S.sameFacts([1, 2], [1, 2, 3]), S.sameFacts(null, []), S.sameFacts([1, 2], [1, 3])], [true, false, false, false], "D: flat facts compare entry by entry");
+  /* the dock's own sizes: the stack, its blocks and the parts of the bar */
+  const box = (className, w, ch = []) => ({ className, offsetWidth: w, offsetHeight: 10, scrollWidth: w, scrollHeight: 10, clientHeight: 10, children: ch, classList: { contains: (x) => className.split(" ").includes(x) } });
+  const stack = box("itd-stack", 300, [box("itd-panel", 280), box("itd-bar", 300, [box("itd-unit", 100), box("itd-slots", 60)])]);
+  eq(S.sizesOf(stack).length, 5 * 6, "D: sizes of the stack, the panel, the bar and the bar's parts");
+  const before = S.sizesOf(stack); stack.children[1].children[0].offsetWidth = 104;
+  eq(S.sameFacts(before, S.sizesOf(stack)), false, "D: a part of the bar that grew without a draw (the Resolve preview): runs");
+  eq(S.sizesOf(null), [], "D: no stack, no sizes");
+  /* the dock: the rule as wired */
+  const dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8");
+  const head = dock.slice(dock.indexOf("export function place()"), dock.indexOf("function placeNow(rec)")), body = dock.slice(dock.indexOf("function placeNow(rec)"), dock.indexOf("function markMore(el)"));
+  ok(/if \(kept && Settle\.sameFacts\(kept\.facts, facts\(\)\) && Settle\.unchanged\(kept\.read, visibleRect\) && Settle\.sameFacts\(kept\.sizes, Settle\.sizesOf\(stack\)\)\) return;/.test(head), "D: place() returns early only with kept facts, reads and sizes all the same");
+  ok(/kept = null;\s*placeNow\(rec\);\s*if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept = /.test(head), "D: what a run read is kept only when the run changed nothing");
+  ok(/const facts = \(\) => \[drawn, window\.innerWidth, window\.innerHeight, Lay\.factor\(document\.body\)\]/.test(head), "D: the draw count, the window and the size are facts of a placement");
+  const out = dock.slice(dock.indexOf("function outcome()"), dock.indexOf("function placeNow(rec)"));
+  for (const w of ["root.style.cssText", "root.dataset.tight", "root.dataset.under", "underTop", "hint?.style.cssText", "hint?.dataset.tick", 'varOf("--itd-clear")', 'varOf("--itd-over")', '"ita-notice-wait"']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
+  ok(!/document\.(querySelector|querySelectorAll|getElementById)\(|visibleRect\(/.test(body), "D: placeNow asks the page only through the recorder (no read escapes the list)");
+  /* every write of placeNow is one the outcome covers: take the known writes away, nothing that writes may be left */
+  const rest = body.replace(/root\.style\.setProperty\("--itd-(room|bottom|maxw|up-maxw|panel-maxh|maxh|cx|up-dx)"/g, "").replace(/(delete )?root\.dataset\.(tight|under)( = )?/g, "").replace(/document\.body\.classList\.toggle\("ita-notice-wait"/g, "")
+    .replace(/setVar\("--itd-(clear|over)"/g, "").replace(/hint\.style\.setProperty\("--itd-hint-x"/g, "").replace(/(delete )?hint\.dataset\.tick( = )?/g, "").replace(/underTop = top/g, "");
+  ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute|\bunderTop =/.test(rest), "D: placeNow writes nothing outside what the outcome compares");
+  ok(/drawn\+\+;[^\n]*\n\s*place\(\);\s*\n\s*reveal\(\);/.test(dock), "D: a draw counts before it places (new content always places in full)");
+  ok(/addEventListener\("load", \(\) => \{ drawn\+\+; \}, true\)/.test(dock) && /"loadingdone", \(\) => \{ drawn\+\+; \}/.test(dock), "D: a picture or a font that finished loading counts as new content");
+  ok(/last = null; kept = null; \}/.test(dock), "D: a destroyed dock forgets what it read");
+}
+
 done("check-perf");
