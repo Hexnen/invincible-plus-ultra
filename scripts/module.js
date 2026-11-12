@@ -718,6 +718,11 @@ function dmgPlay(message, hp, toEl, from, to) {
   } catch (err) { console.warn(`${MODULE_ID} | damage card animation`, err); }
 }
 
+function dmgMayRead(actor, user = game.user) {
+  if (user?.isGM) return true;
+  if (!actor) return false;
+  try { return actor.type === "challenge" || !!actor.testUserPermission?.(user, "OBSERVER"); } catch { return false; }
+}
 function damageCard(message, html) {
   if (!message?.flavor || !isLabel(message.flavor, DMG_FLAVOR_KEY)) return;
   const li = html.matches?.(".chat-message") ? html : html.querySelector?.(".chat-message");
@@ -744,6 +749,9 @@ function damageCard(message, html) {
   if (to === null && Date.now() - (message.timestamp ?? 0) < DMG_FRESH) { from = null; to = dmgNum(actor?.system?.derived?.health?.value); }
   if (to !== null && (max === null || max <= 0)) max = dmgNum(actor?.system?.derived?.health?.max);
   if (max !== null && max <= 0) max = null;
+  // sweep S048: Health numbers (and the bar / BROKEN stamp built from them) only for a viewer who may read that character, the combat bar's rule
+  // (GM, owner or observer; a challenge's Health is public through the Challenges HUD). Everyone else keeps the system's own "took N damage".
+  if (!dmgMayRead(actor)) { from = null; to = null; max = null; }
   const attName = typeof flag.attacker?.name === "string" ? flag.attacker.name.trim() : "";
   const broken = to === 0;
   const healthKey = "INVINCIBLE.Actor.base.FIELDS.derived.health.value.label";

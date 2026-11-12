@@ -184,7 +184,8 @@ export function update(token, want) {
 function leave(h, token) {
   restoreCore(token);
   if (h.leaving) return;
-  if (h.motion && tickerOn) { h.leaving = true; h.leaveAt = nowMs(); startTicker(); }
+  if (h.motion) startTicker();   // sweep S090: the ticker stops when nothing moves, so a calm ring's fade-out must start it, not need it already running
+  if (h.motion && tickerOn) { h.leaving = true; h.leaveAt = nowMs(); }
   else destroyRecord(h);
 }
 

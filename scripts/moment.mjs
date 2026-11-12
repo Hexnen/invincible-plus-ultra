@@ -61,22 +61,33 @@ export const listens = () => hears;
 export function told(inst, target, hit) {
   if (!inst || typeof hit !== "boolean") return;
   const k = String(inst), v = verdicts.get(k) ?? { at: now(), rows: {} };
-  v.rows[target ? String(target) : "*"] = hit; verdicts.set(k, v);
+  v.rows[target ? String(target) : "*"] = hit; v.last = now(); verdicts.set(k, v);
   if (verdicts.size > 200) for (const key of [...verdicts.keys()].slice(0, 100)) verdicts.delete(key);
   /* the outcomes of one exchange come in one burst (one per target): the askers hear them all together */
   setTimeout(() => { for (const a of [...askers]) a(); }, 0);
 }
+/* sweep S049: on a player's client each target's outcome is its own socket message, so a burst can arrive split over several tasks. Without a
+   target a hit answers at once; "nobody was hit" only after QUIET_MS without another outcome of that exchange (a later hit still counts). */
+export const QUIET_MS = 250;
 const read = (inst, target) => { const v = verdicts.get(String(inst)); if (!v) return null; const rows = v.rows;
   if (target) return typeof rows[String(target)] === "boolean" ? rows[String(target)] : null;
-  return Object.values(rows).some((h) => h === true); };
+  if (Object.values(rows).some((h) => h === true)) return true;
+  return now() - (v.last ?? 0) >= QUIET_MS ? false : null; };
 export function verdict(inst, { target = null, cap = 20000 } = {}) {
   const got = read(inst, target);
   if (got !== null || !inst) return Promise.resolve(got);
   return new Promise((resolve) => {
     const done = (v) => { askers.delete(ask); clearTimeout(tc); resolve(v); };
-    const ask = () => { const v = read(inst, target); if (v !== null) done(v); };
-    const tc = setTimeout(() => done(null), Math.max(0, cap));
+    let tq = 0;
+    const ask = () => {
+      const v = read(inst, target);
+      if (v !== null) { clearTimeout(tq); return done(v); }
+      const last = verdicts.get(String(inst))?.last;   // misses so far: look again when the exchange has been quiet long enough
+      if (!target && last != null) { clearTimeout(tq); tq = setTimeout(ask, Math.max(0, QUIET_MS - (now() - last)) + 1); }
+    };
+    const tc = setTimeout(() => { clearTimeout(tq); done(null); }, Math.max(0, cap));
     askers.add(ask);
+    ask();
   });
 }
 /* the checks: what is pending now */
