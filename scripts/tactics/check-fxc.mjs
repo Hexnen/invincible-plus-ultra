@@ -112,7 +112,8 @@ ok(/Hooks\.on\("updateToken", \(td, ch\) => \{[^\n]*"hidden" in ch[^\n]*moved\(\
 /* ---- U105: the panel takes a share of the window at most; its foot stays in sight; a sign while more lies below */
 {
   const dock = src("./ui/dock.mjs"), css = readFileSync(new URL("../../styles/tactics-ui.css", import.meta.url), "utf8");
-  ok(/const PANEL_SHARE = 0\.\d+;/.test(dock) && /Math\.min\(panelRoom,/.test(dock), "U105: the panel's height is capped by a share of the window");
+  const sp = src("./ui/slots-pure.mjs");
+  ok(/export const PANEL_SHARE = 0\.\d+;/.test(sp) && /out\.panelMax = r\(Math\.max\(110, Math\.min\(out\.panelMax, bar\.top/.test(sp) && /setProperty\("--itd-panel-maxh", `\$\{fr\.panelMax\}px`\)/.test(dock), "U105 (U132): the panel's height is capped by a share of the window (the frame's panelMax)");
   ok(/function markMore\(el\)/.test(dock) && /addEventListener\("scroll", [^\n]*markMore/.test(dock), "U105: the panel says when more of it lies below");
   ok(/\.itd-panel:not\(\[data-picking\]\) > \.itd-pfoot \{ position: sticky; bottom: -9px;/.test(css), "U105: the foot (Declare, Ask the GM) stays in sight");
   ok(/\.itd-panel\[data-more\] > \.itd-pfoot::after \{ content: "\\f078"/.test(css) && /\.itd-panel\[data-more\] > \.itd-pfoot::before \{ opacity: 1; \}/.test(css), "U105: a fade and a chevron while there is more");

@@ -159,7 +159,7 @@ ok(typeof UI.tipHtml !== "function", "A15 the model draws nothing");
   eq(FP.hintOf({ show: true, panel: { kind: "mine", rolls: push.rolls } }, [], t)?.id, "push", "F8 also from the open panel");
   eq(FP.hintOf({ ...base, rolls: [{ state: "push", buttons: [] }] }, ["slots", "speed"], t), null, "F9 not for a roll that cannot be pushed");
   const h = FP.hintOf(base, [], t);
-  ok(h.text.length > 20 && h.close.length > 1 && h.at === "slots" && FP.hintOf(base, ["slots"], t).at === "acts", "F10 the line, its button, the thing it points at");
+  ok(h.text.length > 20 && h.close.length > 1 && !("at" in h) && !("at" in FP.hintOf(base, ["slots"], t)), "F10 the line and its button; no pointer at the bar (U132: the hint hangs at the top, its words carry the marks)");
   eq(FP.hintsUsed("slots", base), [], "F11 not used yet");
   eq(FP.hintsUsed("slots", { ...base, slots: [{ state: "used" }, { state: "free" }] }), ["slots"], "F12 a slot spent");
   eq(FP.hintsUsed("speed", base, { armed: "attack" }), ["speed"], "F13 an action armed");

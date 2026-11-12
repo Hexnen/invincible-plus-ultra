@@ -129,28 +129,21 @@
    THE MARK OF A PRICE is the kit's (styles/kit.css .ipu-cost, ledger U93): a LONG bar = the full action, a SHORT bar = a quick action,
    an open diamond = no action (U50). The same two shapes are the slots themselves, so the bar teaches its own legend. Stress is the
    kit's chip (.ipu-stress). This file only PLACES the marks on its surfaces (the section "THE MARKS ON THE SURFACES" at the end). */
-#invincible-tactics-dock {
-  left: var(--itd-cx, 50%);
-  bottom: var(--itd-bottom, 8px);
-  width: max-content;
-  max-width: var(--itd-maxw, 92vw);
-  transform: translateX(-50%);
-  transition: translate .26s var(--ita-out), opacity .2s ease-out;
-}
-#invincible-tactics-dock.itd-hidden { translate: 0 calc(100% + 16px); opacity: 0; }
+/* WHERE (U132): the root covers the window; the bar's stack stands at the bottom edge and what the table says hangs from the top, each
+   kind in its own place (styles/tactics-slots.css, ui/slots-pure.mjs) */
 /* U62 THE SIZE: --ita-scale (on the body, set from the user's slider; absent = 1) scales the dock's stack, the desk's column and its
    handle with CSS zoom, so type, pictures, hairlines and hit areas grow together. The roots themselves stay unscaled: their place and
    their room (--itd-cx, --itd-bottom, --itd-maxw, --igd-top, --igd-right) are window pixels counted by dock.mjs / desk.mjs, and every
    length handed down INTO a scaled box is divided by the scale again here, so the placement code never needs to know the size. */
-.itd-stack { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; zoom: var(--ita-scale, 1); max-height: calc(var(--itd-room, 100vh) / var(--ita-scale, 1)); }
-.itd-stack > :is(.itd-bar, .itd-wait) { flex: none; }
+.itd-stack { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; zoom: var(--ita-scale, 1); }
+.itd-stack > .itd-bar { flex: none; }
 .itd-stack > * { pointer-events: auto; max-width: 100%; }
-/* what opens above the bar keeps clear of things the bar itself stands below (dock.mjs place()): the panel, the hint, the status line and
-   the questions (U123: the first-fight hint lay over the GM desk when the bar took the edge under it) */
-.itd-stack > :is(.itd-panel, .itd-hint1, .itd-wait, .itd-asks) { position: relative; left: calc(var(--itd-up-dx, 0px) / var(--ita-scale, 1)); max-width: min(100%, calc(var(--itd-up-maxw, 100%) / var(--ita-scale, 1))); }
+/* the panel keeps clear of what the bar itself stands below (dock.mjs placeSlots; U123: the open GM desk when the bar took the edge under it) */
+.itd-stack > .itd-panel { position: relative; left: calc(var(--itd-up-dx, 0px) / var(--ita-scale, 1)); max-width: min(100%, calc(var(--itd-up-maxw, 100%) / var(--ita-scale, 1))); }
 
-/* the questions asked of this user sit on top, whoever's turn it is */
-.itd-asks { flex: 0 1 auto; min-height: 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 8px; max-height: calc(var(--itd-maxh, 60vh) / var(--ita-scale, 1)); overflow-y: auto; overscroll-behavior: contain; padding: 4px 6px 2px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
+/* the questions asked of this user hang in their place under the initiative bar, whoever's turn it is; they line up from the top and
+   scroll inside the place (--its-h: down to the bar, or to the armed panel when it stands) */
+.itd-asks { flex: 0 1 auto; min-height: 0; display: flex; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; justify-content: center; gap: 8px; max-height: calc(var(--its-h, 60vh) / var(--ita-scale, 1)); overflow-y: auto; overscroll-behavior: contain; padding: 4px 6px 2px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
 
 
 /* the bar: the slanted plate is drawn behind (::before), everything stands straight on it */
@@ -665,23 +658,20 @@ body.itd-picking #board { cursor: crosshair; }
 .igd-kit-sum { padding-top: 2px; }
 
 /* ============================ U1: LIVING WITH THE OTHER SURFACES ============================
-   body.ita-tactics     the dock is up (ui/main.mjs)        body.ita-desk-open     the GM desk is open (ui/desk.mjs) */
+   body.ita-tactics     the dock is up (ui/main.mjs) */
 /* U27 / CU2: the GM marks an action on the dock's own pips, so the initiative bar gives up its second set of big buttons under the
    active tile (they also hung over the head of the dock's panel); the tile keeps its small passive pip tab like every other tile. */
 body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-gma { display: none !important; }
 body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-scroller { padding-bottom: 1.5em; }
 body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-tile[data-active] .icbar-acts:not([hidden]) { display: flex; }
-/* U6: chat toasts keep to the strip under the open desk (ui/desk.mjs measures it); the newest stays, older ones scroll out of it */
+/* U6 / U134: the chat toasts keep to a strip of their own over the chat box (styles/tactics-slots.css) */
 /* U71: the toast of a tactical roll's own card is not shown while the dock is up (ui/main.mjs marks the card) */
 body.ita-tactics #chat-notifications .chat-message.ita-troll { display: none; }
 /* U70 / U116: the map's "My view" chip is placed by the map alone (moinen-maps zones-api.md 23 and 41): above the declared dock (its
    whole stack: the panel and the questions are inside #invincible-tactics-dock), clear of the boxes ui/main.mjs and session/main.mjs
    ask it to keep clear of (the dock, the desk, the party, the challenges, the session notice) and of the labels on the map. The old
    rule here pinned it over the stack, where the session notice also stands, and over the targets' pills. */
-body.ita-desk-open #chat-notifications .overflow { height: auto; max-height: var(--igd-toast-maxh, 40vh); }
-/* U6: the module's own end-of-session notice stands above the dock instead of on it */
-body.ita-tactics .ips-notice { bottom: var(--itd-clear, 124px); }
-body.ita-tactics.ita-notice-wait .ips-notice { visibility: hidden; }
+/* U6 / U132: the module's own end-of-session notice has its own place at the top (styles/tactics-slots.css) */
 
 /* ---------- U1 / U2 / U10 / U3 (roll and exchange flow): the roll a user owes or may push, and the last news of the table.
    Both live on the dock's waiting line (and the roll buttons on the desk's roll rows) and exist only while there is one. ---------- */
@@ -837,10 +827,9 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 #invincible-tactics-dock .ita-sum-more { margin: 0; font: 400 11px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); }
 
 /* U53 */
-#invincible-tactics-dock .itd-hint1 { position: relative; flex: none; display: flex; align-items: center; gap: 9px; max-width: min(100%, 640px, calc(var(--itd-up-maxw, 100%) / var(--ita-scale, 1))); margin-bottom: 4px; padding: 5px 6px 6px 10px; font: 400 12.5px/1.3 Comic, sans-serif; color: var(--ita-ink); background: #fff; border: 2px solid var(--ita-ink); box-shadow: 0 4px 12px rgba(0, 0, 0, .45); animation: ita-pop .28s var(--ita-out); }
+#invincible-tactics-dock .itd-hint1 { position: relative; flex: none; display: flex; align-items: center; gap: 9px; max-width: min(100%, 640px); padding: 5px 6px 6px 10px; font: 400 12.5px/1.3 Comic, sans-serif; color: var(--ita-ink); background: #fff; border: 2px solid var(--ita-ink); box-shadow: 0 4px 12px rgba(0, 0, 0, .45); animation: ita-pop .28s var(--ita-out); }
 #invincible-tactics-dock .itd-hint1 > i { flex: none; font-size: 14px; color: var(--ita-blue); }
 #invincible-tactics-dock .itd-hint1 > span { min-width: 0; text-wrap: pretty; }
-#invincible-tactics-dock .itd-hint1[data-tick]::after { content: ""; position: absolute; left: calc(var(--itd-hint-x, 40px) - 6px); bottom: -8px; width: 11px; height: 11px; background: #fff; border: solid var(--ita-ink); border-width: 0 2px 2px 0; rotate: 45deg; }
 #invincible-tactics-dock .itd-hint1-x { all: unset; box-sizing: border-box; flex: none; padding: 3px 9px 2px; font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-ink); border: 2px solid var(--ita-ink); cursor: pointer; }
 #invincible-tactics-dock .itd-hint1-x:hover { background: var(--ita-yellow); }
 #invincible-tactics-dock .itd-hint1-x:focus-visible { outline: 3px solid var(--ita-blue); outline-offset: 2px; }

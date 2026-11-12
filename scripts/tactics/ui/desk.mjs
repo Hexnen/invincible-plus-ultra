@@ -1,12 +1,10 @@
 /* Tactical combat, the surfaces: THE GM DESK. DOM + placement only: main.mjs hands over the render data of model-pure.deskData and
    receives clicks through configure({ ... }). No Foundry documents here. Staff clients only (main.mjs never builds it for a player).
-   WHERE: a column at the right edge of the map, ending at the sidebar's left edge, BELOW the challenges HUD (which keeps the top right
-   corner) and above the bottom edge; its handle folds it to a yellow tab that carries the number of things waiting. The action dock
-   treats the open desk as an obstacle, so the two never overlap; in a narrow window the desk starts folded.
-   CHAT TOASTS (U6): the messages Foundry floats above the chat box share this column while the sidebar is folded. They never lie on
-   the desk: while one shows, the desk ends above it and scrolls inside, but never above the end of the FIRST thing that waits for the
-   GM (its buttons stay on screen whatever floats in), nor shorter than minH(); the toasts are held to the strip that is left under
-   that (body.ita-desk-open + --igd-toast-maxh, styles/tactics-ui.css; the newest end of a toast shows, the strip scrolls).
+   WHERE (U132, U134: ui/slots-pure.mjs, the frame the dock works out): a column at the right edge of the map, ending at the sidebar's
+   left edge, UNDER the challenges' band (whose height does not depend on how many challenges there are) and over the chat toasts'
+   strip, or over the dock's bar where the bar takes the bottom edge under it; open or folded to its tab, its top stays the same. Its
+   handle folds it to a yellow tab that carries the number of things waiting. Nothing in it is measured from what comes and goes (a
+   toast, a card): the dock treats the open desk as an obstacle, so the two never overlap; in a narrow window the desk starts folded.
    STRUCTURE: head (title, round and whose turn, three tabs) / "waiting for" strip (always visible) / body:
      Now      what is being settled by hand, then the queue of cards that wait for the GM (reactions of NPCs, exception requests,
               confirmations, round-point triggers, absent players): what needs an answer stands first (U12); then the action(s) in
@@ -17,11 +15,9 @@
      Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), a hazard let loose by hand, the karma notes, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
 import { h, icon, swap, askCard, legendCard, rollButtons, visibleRect, face } from "./dom.mjs";
 import { costMark, symMark, hasMarks, markName } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
-import * as Lay from "./layout-pure.mjs";
-import { setVar } from "./vars.mjs";
+import * as Slots from "./slots.mjs";      // U132: the fixed places; the desk's part of the frame (slots-pure.mjs)
 
 const ID = "invincible-tactics-desk";
-const minH = (H) => Math.round(Math.max(240, Math.min(320, H * 0.36)));      // px the open desk keeps whatever floats under it (276 in a 768 px window)
 let root = null, handleBtn = null, box = null, handlers = {}, last = null, tick = 0;
 /* U59: SINCE WHEN THE TABLE WAITS. Each row of the "waiting for" strip carries the moment the oldest thing asked of that addressee was
    asked (the executor's clock); the strip counts up from it once a second by rewriting the text of its own <time> elements (no redraw
@@ -54,36 +50,15 @@ function ensure(label) {
 /* ---------- placement ---------- */
 export function place() {
   if (!root) return;
-  const W = window.innerWidth, H = window.innerHeight;
+  const W = window.innerWidth;
   const sb = visibleRect(document.getElementById("sidebar"));
-  const right = sb && sb.left > W * 0.5 ? W - sb.left : 0;
-  const hud = document.getElementById("invincible-challenges");
-  let top = 11;
-  for (const el of hud ? hud.querySelectorAll("#ich-dock, #ich-list > li") : []) { const r = visibleRect(el); if (r && r.right > W * 0.5 && r.left < W - right) top = Math.max(top, r.bottom + 8); }
-  const maxTop = Math.max(11, H - 300);
-  root.style.setProperty("--igd-right", `${Math.round(right)}px`);
-  root.style.setProperty("--igd-top", `${Math.round(Math.min(top, maxTop))}px`);
-  /* the chat box that floats at the bottom right while the sidebar is collapsed stays free: the desk ends above it and scrolls inside */
-  let floor = H - 14;
-  for (const el of document.querySelectorAll("#chat-notifications #chat-message, #chat-notifications textarea, #chat-notifications .chat-form")) { const r = visibleRect(el); if (r && r.top > H * 0.6 && r.right > W - right - 380) floor = Math.min(floor, r.top - 10); }
-  /* U48: the dock's bar took the bottom edge under this column (dock.mjs place(), data-under): the desk ends above it */
-  /* U123: the top where the bar stands once shown (--itd-under-top, dock.mjs), not its box now: the dock may still be sliding in */
-  try { const dk = document.getElementById("invincible-tactics-dock"), r = dk?.dataset.under === "1" ? visibleRect(dk.querySelector(".itd-bar")) : null, ut = parseFloat(dk?.style.getPropertyValue("--itd-under-top"));
-    const at = r ? (Number.isFinite(ut) ? ut : r.top) : null; if (at != null && at > H * 0.4) floor = Math.min(floor, at - 10); } catch { /* no dock */ }
-  /* a chat toast in this column: the desk ends above the highest of them, down to MIN_H; the toasts keep to what is left under that */
-  const t0 = Math.min(top, maxTop);
-  let need = t0 + minH(H);
-  try { const body = box?.querySelector(".igd-body"), first = body?.querySelector(".ita-ask, .igd-manual"); if (first) need = Math.max(need, first.getBoundingClientRect().bottom + body.scrollTop * Lay.factor(document.body) + 14); } catch { /* not drawn */ }
-  const least = Math.min(floor, need);
-  let end = floor;
-  if (!last?.d?.collapsed) for (const m of document.querySelectorAll("#chat-notifications .chat-log > .chat-message")) { const r = visibleRect(m); if (r && r.right > W - right - 380 && r.left < W - right && r.bottom > t0) end = Math.min(end, r.top - 8); }
-  end = Math.max(least, end);
-  root.style.setProperty("--igd-maxh", `${Math.round(Math.max(220, end - t0))}px`);
-  /* the toasts' own box ends where Foundry ends it (above the chat box and its controls); under 44 px of strip no toast shows at all
-     (the chat tab keeps its unread mark) */
-  let strip = floor - least - 8;
-  try { const ov = document.querySelector("#chat-notifications .overflow")?.getBoundingClientRect(); if (ov && ov.width > 0 && ov.bottom > H * 0.4) strip = ov.bottom - least - 8; } catch { /* no chat box */ }
-  try { setVar("--igd-toast-maxh", `${strip >= 44 ? Math.round(strip) : 0}px`); } catch { /* no body */ }      // perf P2 (ui/vars.mjs): on the toasts' box alone
+  root.style.setProperty("--igd-right", `${Math.round(sb && sb.left > W * 0.5 ? W - sb.left : 0)}px`);
+  /* U132 / U134: under the challenges' band, over the toasts' strip (and over the bar where the bar takes the edge under it). Until the
+     dock has worked the frame out the desk keeps its stylesheet's place; the dock places it again once it has (handlers.deskRelayout). */
+  const fr = Slots.frameNow();
+  if (!fr?.desk) { handlers.needFrame?.(); return; }
+  root.style.setProperty("--igd-top", `${fr.desk.top}px`);
+  root.style.setProperty("--igd-maxh", `${Math.round(Math.max(160, fr.desk.floor - fr.desk.top))}px`);
 }
 
 /* ---------- pieces ---------- */
@@ -279,7 +254,6 @@ function draw(d, ui) {
   last = { d, ui };
   if (!d?.show) return destroy();
   ensure(d.title);
-  try { document.body.classList.toggle("ita-desk-open", !d.collapsed); } catch { /* no body */ }
   root.classList.toggle("igd-collapsed", !!d.collapsed);
   root.classList.toggle("igd-busy", d.count > 0);
   swap(handleBtn, [icon(d.collapsed ? "fa-inbox" : "fa-chevron-right"), d.collapsed ? h("span.igd-hl", { text: d.title }) : null, d.count ? h("b.igd-badge", { text: String(d.count) }) : null]);
@@ -300,4 +274,4 @@ function draw(d, ui) {
 }
 export const relayout = () => { if (root) place(); };
 export const el = () => root;
-export function destroy() { if (tick) { clearInterval(tick); tick = 0; } root?.remove(); root = handleBtn = box = null; try { document.body.classList.remove("ita-desk-open"); } catch { /* no body */ } }
+export function destroy() { if (tick) { clearInterval(tick); tick = 0; } root?.remove(); root = handleBtn = box = null; }

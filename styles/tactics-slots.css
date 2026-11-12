@@ -1,0 +1,41 @@
+/* Invincible - Plus Ultra: TACTICAL COMBAT, THE FIXED PLACES (U132, U134; scripts/tactics/ui/slots-pure.mjs, dock.mjs placeSlots).
+   No new look: every piece keeps its own drawing from tactics-ui.css; this file only puts them in their places.
+   THE ROOT covers the window and takes no pointer. Its children are absolute boxes in window px (dock.mjs writes them from the frame):
+     .its-bar               the bar's stack (the bar, and on it the armed action's panel), at the bottom edge
+     .its-slot[data-slot]   line | cards | hint: hanging from the initiative bar
+   A place is anchored at its top (data-anchor) and its content grows down, away from the anchor, held to the place's box (--its-w,
+   --its-h, divided by the size of the surfaces as everything handed into a scaled box is: U62). An empty place is hidden (data-empty)
+   but keeps its box: nothing else moves into it. */
+
+#invincible-tactics-dock { inset: 0; transition: opacity .2s ease-out; }
+#invincible-tactics-dock.itd-hidden { opacity: 0; }
+#invincible-tactics-dock .its-bar { position: absolute; left: var(--itd-cx, 50%); bottom: var(--itd-bottom, 8px); width: max-content; max-width: var(--itd-maxw, 92vw); transform: translateX(-50%); transition: translate .26s var(--ita-out); }
+#invincible-tactics-dock.itd-hidden .its-bar { translate: 0 calc(100% + 16px); }
+
+.its-slot { position: absolute; display: flex; flex-direction: column; pointer-events: none; }
+.its-slot[data-align="center"] { align-items: center; }
+.its-slot[data-align="end"] { align-items: flex-end; }
+.its-slot[data-empty] { visibility: hidden; }
+.its-in { zoom: var(--ita-scale, 1); display: flex; flex-direction: column; align-items: inherit; gap: 6px; min-height: 0; max-width: calc(var(--its-w, 100vw) / var(--ita-scale, 1)); max-height: calc(var(--its-h, 100vh) / var(--ita-scale, 1)); }
+.its-in > * { pointer-events: auto; max-width: 100%; }
+
+/* the line: one row under the initiative bar; it never wraps over the questions (the news chip cuts its text, its tooltip has it all).
+   It spans its place: who the table waits for (owed rolls, the turn line) holds the left end, the news the right end; each has its own
+   strip, so neither slides when the other comes or goes */
+.its-slot[data-slot="line"] .its-in { width: calc(var(--its-w, 100vw) / var(--ita-scale, 1)); }
+.its-slot[data-slot="line"] .itd-wait { flex-wrap: nowrap; overflow: hidden; max-width: 100%; align-self: stretch; justify-content: space-between; gap: 8px; padding: 0; background: none; pointer-events: none; }
+.its-slot[data-slot="line"] .itd-wait > * { pointer-events: auto; }
+.its-slot[data-slot="line"] .itd-who { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: 4px 7px; padding: 2px 9px 3px; overflow: hidden; background: rgba(12, 26, 46, .92); }
+.its-slot[data-slot="line"] .itd-news { min-width: 0; margin-left: auto; background: rgba(12, 26, 46, .92); }
+
+/* the first-fight hint in its own place: no tick (nothing under it to point at) */
+#invincible-tactics-dock .its-slot[data-slot="hint"] .itd-hint1 { max-width: 100%; }
+
+/* what floats elsewhere: the end-of-session notice in its own place at the right end of the top band, and the chat toasts held to their
+   strip over the chat box (the newest end of a toast shows, the strip scrolls; U6, U134) */
+body.ita-tactics .ips-notice { top: var(--its-nt, 120px); bottom: auto; left: var(--its-nx, 50%); }
+body.ita-tactics #chat-notifications .overflow { height: auto; max-height: var(--igd-toast-maxh, 132px); overflow-y: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  #invincible-tactics-dock, #invincible-tactics-dock .its-bar { transition: none; }
+}

@@ -9,9 +9,10 @@
 
 /** which elements read each number (the selectors of the rules in styles/*.css that use it) */
 export const USERS = Object.freeze({
-  "--itd-clear": ".ips-notice",                                           // tactics-ui.css: the end-of-session notice above the dock
-  "--igd-toast-maxh": "#chat-notifications .overflow",                    // tactics-ui.css (U6): the chat toasts' strip under the open desk
+  "--igd-toast-maxh": "#chat-notifications .overflow",                    // tactics-slots.css (U6, U134): the chat toasts' own strip
   "--ita-dice-z": "#invincible-combat-bar, #invincible-tactics-dock",      // combat.css / tactics-ui.css (U108): above Dice So Nice's canvas
+  "--its-nt": ".ips-notice",                                              // tactics-slots.css (U132): the end-of-session notice's own place, its top
+  "--its-nx": ".ips-notice",                                              // ... and its middle
 });
 
 let sheet = null, failed = false;

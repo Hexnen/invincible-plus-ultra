@@ -30,7 +30,9 @@ import * as Feedback from "./feedback.mjs";
 import * as Camera from "./camera.mjs";
 import * as Lay from "./layout-pure.mjs";
 import * as Tip from "./tip.mjs";
+import { visibleRect } from "./dom.mjs";
 import { setVar } from "./vars.mjs";
+import * as Slots from "./slots.mjs";        // U132: the fixed places (the frame the dock works out)
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
@@ -466,10 +468,14 @@ function configure() {
     target: (cid) => { try { Pick.show(combatNow(), cid); } catch { /* a courtesy */ } },
     locate: (cid, on) => Pick.locate(combatNow(), cid, on), deskRelayout: () => { try { Desk.relayout(); } catch { /* not built */ } },
     roll: rollAct, sumClose: () => Feedback.closeSum(), hintClose: (id) => Feedback.closeHint(id),
+    /* U132: what the frame of the fixed places asks: the seat, the hints, where the challenges' band ends (challenges/main.mjs) */
+    staff: () => Store.isStaff(game.user), hintsOn: () => Store.setting("tacticsHints", true) !== false,
+    ichFloor: (y) => { try { window.dispatchEvent(new CustomEvent("ipu:ich-floor", { detail: y })); } catch { /* the challenges keep their room */ } },
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });
   Desk.configure({
     set: setDesk, send: (req, after) => send("desk", req, after), label, tipShow, tipHide, locate: (cid, on) => Pick.locate(combatNow(), cid, on),
+    needFrame: () => { try { Dock.relayout(); } catch { /* not built */ } },      // U132: the desk stands in the dock's frame
     pick: multi("desk"), text: text("desk"), always: (id, on) => { st.desk.always[id] = !!on; refresh(); }, zone: (o, a) => zone("desk", o, a), again: (a) => { delete st.desk.zone[a.id]; refresh(); },
     force: (patch) => { st.desk.force = { ...st.desk.force, ...patch }; refresh(); },
     hazard: (patch) => { st.desk.hazard = { ...st.desk.hazard, ...patch }; refresh(); },
@@ -495,6 +501,27 @@ function watch() {
     if (el && el.dataset.itdWatched !== "1") { el.dataset.itdWatched = "1"; ro.observe(el); }
   }
 }
+/* What the map keeps clear of (zones-api.md sections 23, 38 and 41). U132: the dock's root covers the window, so it is not declared
+   itself.
+     the insets (the free stretch between our bars: the pick's banner, a zone brought into view, THE CAMERA's frame): at the bottom the
+       bar's stack (the bar and the armed panel on it); at the top the initiative bar and, under it, the line and the questions while
+       they show (Dock.topReach). So a card that hangs over the top of the map never hides what the camera frames for it: a reaction
+       card's attacker, the unit whose turn it is, a target are framed under the card, by the least slide (the map's own rule: nothing
+       moves when the subject already stands in the free stretch).
+     the boxes the map's menus and its "My view" chip keep clear of: the bar's stack, what stands in the top places, the places reserved
+       for the panel and the line (slots-pure.frame `reserved`: a place that empties stays that surface's place, the chip does not move
+       into it), the desk, the party, the challenges. The session notice is the session part's own declaration (session/main.mjs). */
+function declareRoom() {
+  Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock:not(.itd-hidden) .its-bar", top: () => Math.max(reachTop("#invincible-combat-bar"), Dock.topReach()) });
+  Zones.uiAvoid(`${MOD}.panels`, () => {
+    const shown = Dock.isShown();
+    return [...(shown ? ["#invincible-tactics-dock .its-bar", "#invincible-tactics-dock .its-slot:not([data-empty]) > .its-in > *", ...(Slots.frameNow()?.reserved ?? [])] : []),
+      "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges"];
+  });
+}
+/* how far down from the top an element reaches (0: not shown) */
+function reachTop(sel) { try { const r = visibleRect(document.querySelector(sel)); return r ? Math.round(r.bottom) : 0; } catch { return 0; } }
+
 /** does the dock stand in for the turn tray right now? (scripts/turn/main.mjs) */
 export const active = () => { try { return started && !!combatNow(); } catch { return false; } };
 
@@ -564,11 +591,7 @@ export function start() {
     Store.subscribe(() => setTimeout(chatButtons, 50));
     Zones.onEvent(moved);                    // a token entered a zone, a door changed: the options of a move are counted again
     Zones.onChange(() => moved());           // the scene's numerals or its zones changed: every text that names a zone is said again
-    Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock", top: "#invincible-combat-bar" });      // the pick's banner and its "more" chips keep clear of our two bars (zones-api.md section 23)
-    /* U106 / U116 (zones-api.md section 41): the map's menus (a drag's "which way" menu) and its "My view" chip keep clear of our panels that
-       are no bar along an edge, and of the dock itself where the declared bar is given up (a short window); the session notice is the
-       session part's own declaration (session/main.mjs) */
-    Zones.uiAvoid(`${MOD}.panels`, ["#invincible-tactics-dock", "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges"]);
+    declareRoom();
     /* a token dragged into another zone (movement.mjs asks here first): the dock opens Move for that combatant with the zone chosen */
     Mv.setDragSurface((cid, spot) => {
       const combat = combatNow();
@@ -604,7 +627,7 @@ export function start() {
     Feedback.start({ t, refresh });
     Camera.start();
     Api.camera = { state: () => Camera.state() };      // for a look from the console
-    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
+    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), frame: () => Slots.frameNow(), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
     refresh();
     return true;
   } catch (e) { console.warn(LOG, "start failed", e); return false; }

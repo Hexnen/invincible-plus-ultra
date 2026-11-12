@@ -4,7 +4,7 @@ import { ok, eq, done } from "./testkit.mjs";
 import * as V from "./ui/vars.mjs";
 
 const src = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
-const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
+const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css") + src("../../styles/tactics-slots.css");      // U132 (trial): the fixed places' sheet
 
 /* ---- A. the numbers for other parts of the page go to the elements that read them, never to <body> */
 {
@@ -31,17 +31,17 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
   globalThis.CSSStyleSheet = Sheet;
   const doc = { body, adoptedStyleSheets: [] };
   V._reset();
-  eq(V.setVar("--itd-clear", "120px", doc), true, "B: a new value is written");
-  eq(V.setVar("--itd-clear", "120px", doc), false, "B: the same value again writes nothing");
-  V.setVar("--itd-clear", "130px", doc); V.setVar("--ita-dice-z", "101", doc); V.setVar("--ita-dice-z", null, doc);
+  eq(V.setVar("--its-nt", "120px", doc), true, "B: a new value is written");
+  eq(V.setVar("--its-nt", "120px", doc), false, "B: the same value again writes nothing");
+  V.setVar("--its-nt", "130px", doc); V.setVar("--ita-dice-z", "101", doc); V.setVar("--ita-dice-z", null, doc);
   eq(doc.adoptedStyleSheets.length, 1, "B: one sheet, adopted once");
   eq(doc.adoptedStyleSheets[0].cssRules.map((r) => r.selectorText), [".ips-notice", "#invincible-combat-bar, #invincible-tactics-dock"], "B: one rule per number, on its readers");
-  eq(writes, [[".ips-notice", "--itd-clear", "120px"], [".ips-notice", "--itd-clear", "130px"], ["#invincible-combat-bar, #invincible-tactics-dock", "--ita-dice-z", "101"], ["#invincible-combat-bar, #invincible-tactics-dock", "--ita-dice-z", null]], "B: what was written, in order");
+  eq(writes, [[".ips-notice", "--its-nt", "120px"], [".ips-notice", "--its-nt", "130px"], ["#invincible-combat-bar, #invincible-tactics-dock", "--ita-dice-z", "101"], ["#invincible-combat-bar, #invincible-tactics-dock", "--ita-dice-z", null]], "B: what was written, in order");
   eq(bodyWrites, [], "B: nothing on the body");
   doc.adoptedStyleSheets = [];                                      // another script replaced the list
-  V.setVar("--itd-clear", "140px", doc);
+  V.setVar("--its-nt", "140px", doc);
   eq(doc.adoptedStyleSheets.length, 1, "B: the sheet goes back when somebody dropped it");
-  eq(V.varOf("--itd-clear"), "140px", "B: varOf tells the value written last");
+  eq(V.varOf("--its-nt"), "140px", "B: varOf tells the value written last");
   /* an old browser: no constructed sheets -> the body, as before */
   V._reset(); delete globalThis.CSSStyleSheet;
   const old = { body, adoptedStyleSheets: undefined };
@@ -109,21 +109,22 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
   eq(S.sizesOf(null), [], "D: no stack, no sizes");
   /* the dock: the rule as wired */
   const dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8");
-  const head = dock.slice(dock.indexOf("export function place()"), dock.indexOf("function placeNow(rec)")), body = dock.slice(dock.indexOf("function placeNow(rec)"), dock.indexOf("function markMore(el)"));
-  ok(/if \(kept && Settle\.sameFacts\(kept\.facts, facts\(\)\) && Settle\.unchanged\(kept\.read, visibleRect\) && Settle\.sameFacts\(kept\.sizes, Settle\.sizesOf\(stack\)\)\) return;/.test(head), "D: place() returns early only with kept facts, reads and sizes all the same");
-  ok(/kept = null;\s*placeNow\(rec\);\s*if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept = /.test(head), "D: what a run read is kept only when the run changed nothing");
+  const head = dock.slice(dock.indexOf("export function place()"), dock.indexOf("function placeSlots(rec)")), body = dock.slice(dock.indexOf("function placeSlots(rec)"), dock.indexOf("export function topReach()"));
+  ok(/if \(kept && Settle\.sameFacts\(kept\.facts, facts\(\)\) && Settle\.unchanged\(kept\.read, visibleRect\) && Settle\.sameFacts\(kept\.sizes, sizesNow\(\)\)\) return;/.test(head) && /const sizesNow = \(\) => \[\.\.\.Settle\.sizesOf\(stack\), \.\.\.Object\.values\(slotEls\)/.test(dock), "D: place() returns early only with kept facts, reads and sizes (the stack's and every place's) all the same");
+  ok(/kept = null;\s*placeSlots\(rec\);\s*if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept = /.test(head), "D: what a run read is kept only when the run changed nothing");
   ok(/const facts = \(\) => \[drawn, window\.innerWidth, window\.innerHeight, Lay\.factor\(document\.body\)\]/.test(head), "D: the draw count, the window and the size are facts of a placement");
-  const out = dock.slice(dock.indexOf("function outcome()"), dock.indexOf("function placeNow(rec)"));
-  for (const w of ["root.style.cssText", "root.dataset.tight", "root.dataset.under", "underTop", "hint?.style.cssText", "hint?.dataset.tick", 'varOf("--itd-clear")', '"ita-notice-wait"']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
-  ok(!/document\.(querySelector|querySelectorAll|getElementById)\(|visibleRect\(/.test(body), "D: placeNow asks the page only through the recorder (no read escapes the list)");
-  /* every write of placeNow is one the outcome covers: take the known writes away, nothing that writes may be left */
-  const rest = body.replace(/root\.style\.(setProperty|removeProperty)\("--itd-under-top"/g, "").replace(/root\.style\.setProperty\("--itd-(room|bottom|maxw|up-maxw|panel-maxh|maxh|cx|up-dx)"/g, "")      // U123 (fixer H): --itd-under-top is a root property too (root.style.cssText in the outcome)
-    .replace(/(delete )?root\.dataset\.(tight|under)( = )?/g, "").replace(/document\.body\.classList\.toggle\("ita-notice-wait"/g, "")
-    .replace(/setVar\("--itd-(clear|over)"/g, "").replace(/hint\.style\.setProperty\("--itd-hint-x"/g, "").replace(/(delete )?hint\.dataset\.tick( = )?/g, "").replace(/underTop = top/g, "");
-  ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute|\bunderTop =/.test(rest), "D: placeNow writes nothing outside what the outcome compares");
+  const out = dock.slice(dock.indexOf("function outcome()"), dock.indexOf("function placeSlots(rec)"));
+  for (const w of ["root.style.cssText", "root.dataset.tight", "el.parentElement?.style.cssText", "el.parentElement?.dataset.anchor", "el.parentElement?.dataset.align", "frameKey", 'varOf("--its-nt")', 'varOf("--its-nx")', 'varOf("--igd-toast-maxh")']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
+  ok(!/document\.(querySelector|querySelectorAll|getElementById)\(|visibleRect\(/.test(body), "D: placeSlots asks the page only through the recorder (no read escapes the list)");
+  /* every write of placeSlots is one the outcome covers: take the known writes away, nothing that writes may be left */
+  const rest = body.replace(/root\.style\.setProperty\("--itd-(bottom|maxw|cx|panel-maxh|up-maxw|up-dx)"/g, "").replace(/(delete )?root\.dataset\.tight( = )?/g, "")
+    .replace(/st\.(display|left|width|top) =/g, "").replace(/st\.setProperty\("--its-[hw]"/g, "").replace(/slotEls\.cards\.parentElement\.style\.setProperty\("--its-h"/g, "")
+    .replace(/el\.dataset\.(anchor|align) =/g, "").replace(/setVar\("--(its-n[tx]|igd-toast-maxh)"/g, "").replace(/frameKey = key/g, "");
+  ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute/.test(rest), "D: placeSlots writes nothing outside what the outcome compares");
+  ok(!/function placeNow|underTop|--itd-under-top|ita-notice-wait|--itd-clear/.test(dock), "D (U132): the column's placement is gone with everything only it wrote");
   ok(/drawn\+\+;[^\n]*\n\s*place\(\);\s*\n\s*reveal\(\);/.test(dock), "D: a draw counts before it places (new content always places in full)");
   ok(/addEventListener\("load", \(\) => \{ drawn\+\+; \}, true\)/.test(dock) && /"loadingdone", \(\) => \{ drawn\+\+; \}/.test(dock), "D: a picture or a font that finished loading counts as new content");
-  ok(/last = null; kept = null; \}/.test(dock), "D: a destroyed dock forgets what it read");
+  ok(/last = null; kept = null; slotEls = \{\}; frameKey = ""; shareWas = false; Slots\.setFrame\(null\); \}/.test(dock), "D: a destroyed dock forgets what it read (and its frame)");
 }
 
 done("check-perf");

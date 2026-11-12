@@ -1,10 +1,12 @@
 /* Tactical combat, the surfaces: THE ACTION DOCK (the player's surface; the same dock serves the GM driving an NPC). DOM + placement only:
    main.mjs hands over the render data of model-pure.dockData and receives clicks through configure({ ... }). No Foundry documents here.
-   WHERE (U28): at the bottom edge, centred in the free part of the window. Foundry's macro bar is folded away while the dock is up
-   (body.ita-tactics, styles/tactics-ui.css; the keyboard button on the dock brings it back, and then the dock stands above it as
-   before). Pushed clear of the party column and the map's panels (left), of the sidebar, the chat notifications and the GM desk
-   (right). The map's director bar and the chat box of a folded sidebar keep the bottom edge: the dock stands between them when its
-   bar fits there (in one row or in two), else above them (place()).
+   WHERE (U28, U132): THE FIXED PLACES (ui/slots-pure.mjs). The bar stands at the bottom edge, centred in the free part of the window
+   that stays put during a turn: clear of the party column and the map's panels (left), of the sidebar and the open GM desk (right),
+   beside a popped-out chat (U136). Foundry's macro bar is folded away while the dock is up (body.ita-tactics, styles/tactics-ui.css;
+   the keyboard button on the dock brings it back, and then the bar stands above it). The map's director bar and the chat box of a
+   folded sidebar keep the bottom edge: the bar stands between them when it fits there (in one row or in two), else above them. A chat
+   toast never moves it (the toasts have a strip of their own). What the table says hangs from the top, under the initiative bar, each
+   kind in its own place: the line, under it the questions, the first-fight hint at the right end (placeSlots).
    ONE ROW (U29), read like the unit bar of a tactics game, left to right:
      UNIT    face, name, zone; Health and Resolve as two bars with their numbers
      SLOTS   the two slots of a turn (U31): the long one is the full action (or a second quick one), the short one the quick action; a
@@ -19,9 +21,10 @@
    COST PREVIEW (U30): hovering or focusing anything that carries `pv` (an action, a row of a list, a way of moving, an answer on a
    card, Declare) lights the slot it would spend and shows the Resolve it would cost on the Resolve bar. Only for the character the
    dock drives; nothing is rebuilt for it (attributes on the unit block).
-   STRUCTURE (bottom up):  the bar  <  the panel of the armed action (U97: right on the bar, nothing between the two)  <  the
-   first-fight hint  <  the status line (who else the table waits for, the last news; never whose turn it is: the initiative bar says
-   that)  <  the questions asked of this user. The panel and the questions scroll inside what is left under the initiative bar.
+   STRUCTURE: at the bottom the bar and the panel of the armed action (U97: right on the bar, nothing between the two); at the top,
+   hanging from the initiative bar, the status line (owed rolls, who else the table waits for, the last news; never whose turn it is:
+   the initiative bar says that), under it the questions asked of this user (and the round's summary, the legend), the first-fight
+   hint at the band's right end. The panel and the questions scroll inside their own places.
    TOOLTIPS (U88 / U97, ui/tip-pure.mjs): one rule: a tooltip opens outside the block its owner stands in (a card, the panel, the bar),
    never on the answers the person is choosing among nor on the head they belong to.
      panel: declare (target chips + map pick, dice, chance band, Declare) | blocked (reason + ask the GM) | a list (More actions,
@@ -33,25 +36,31 @@ import { symMark, costMark, markName, hasMarks, plain } from "../../kit.mjs";   
 import * as Lay from "./layout-pure.mjs";
 import { setVar, varOf } from "./vars.mjs";
 import * as Settle from "./settle.mjs";
+import * as SP from "./slots-pure.mjs";        // U132: the fixed place of each kind of surface
+import * as Slots from "./slots.mjs";
 
 const ID = "invincible-tactics-dock";
 const GAP = 6;
-const EDGE = 6;          // px between the dock and the bottom edge of the window
-const BAR_BAND = 126;    // px of height the bar itself may take (two rows and the status line): the band its own room is measured in
-const PANEL_SHARE = 0.38;      // U105: the most of the window's height the armed action's panel takes (provisional: dev/combat-questions.md)
-const TWO_ROWS = 500;    // px the two-row dock needs between what lies on the bottom edge; with less it stands above those things
+const EDGE = 6;          // px between the bar and the bottom edge of the window
+const BAR_BAND = 126;    // px of height the bar itself may take (two rows and a margin): the band its own room is measured in
+const TWO_ROWS = 500;    // px the two-row bar needs between what lies on the bottom edge; with less it stands above those things
 /* what lies on the bottom edge besides the dock: the map's director bar (GM), the chat box Foundry floats there while the sidebar is folded */
 const LOW_OBSTACLES = "#mm-dir-bar, #chat-notifications #chat-message, #chat-notifications .chat-form";
-/* what hangs from the top of the window and must stay readable above the dock: the initiative bar's tiles and their pip tabs, the map's orbit strip */
-const TOP_OBSTACLES = "#invincible-combat-bar .icbar-tile, #invincible-combat-bar .icbar-acts:not([hidden]), #invincible-combat-bar .icbar-gma:not([hidden]), #mm-orbit-strip";
+/* what hangs from the top of the window over the middle: the initiative bar (its round label and turn buttons, its tiles and their pip
+   tabs), the map's orbit strip. The places of what the table says hang under the lowest of them. */
+const TOP_OBSTACLES = "#invincible-combat-bar .icbar-lead, #invincible-combat-bar .icbar-tile, #invincible-combat-bar .icbar-acts:not([hidden]), #invincible-combat-bar .icbar-gma:not([hidden]), #invincible-combat-bar .icbar-shell > .icbar-nav, #mm-orbit-strip";
 /* panels of other modules at the left edge that reach down into the dock's band (the map's pins / filter panel, its VRAM meter) */
 const LEFT_OBSTACLES = ".mm-filter, #mm-vram";
 /* windows that float over the map and reach its bottom edge: Foundry's popped-out chat (U136) */
 const FLOATING = "#chat-popout";
-let root = null, stack = null, handlers = {}, shown = false, hideTimer = 0, last = null, panelKey = null, underTop = null;
+let root = null, stack = null, handlers = {}, shown = false, hideTimer = 0, last = null, panelKey = null;
 /* perf P2-1 (ui/settle.mjs): `drawn` counts the draws (and what may resize the dock's content without one: a picture or a font that
    finished loading); `kept` is what the last placement read, kept only when that placement changed nothing */
 let drawn = 0, kept = null;
+/* U132 (slots-pure.mjs): the places outside the bar's stack (name -> the inner box the content goes in); the part of the frame the desk
+   and the challenges read, as last told; whether the hint takes the questions' place (a narrow band) */
+let slotEls = {}, frameKey = "", shareWas = false;
+const SLOT_NAMES = Object.freeze(["line", "cards", "hint"]);
 
 export function configure(x) { handlers = x ?? {}; }
 const set = (patch) => handlers.set?.(patch);
@@ -61,7 +70,10 @@ function ensure(label) {
   if (root?.isConnected) return;
   root = h(`div.itd-hidden`, { attrs: { id: ID, role: "region", "aria-label": label }, data: { tooltipDirection: "UP", tooltipClass: "ita-tip" } });
   stack = h("div.itd-stack");
-  root.append(stack);
+  /* U132: the root covers the window (it takes no pointer); the bar's stack and each place are boxes of their own in it */
+  slotEls = {};
+  root.append(h("div.its-slot.its-bar", {}, stack));
+  for (const name of SLOT_NAMES) { const inner = h("div.its-in"); root.append(h("div.its-slot", { data: { slot: name, empty: "1" } }, inner)); slotEls[name] = inner; }
   /* U30: the cost preview follows the pointer and the keyboard focus; a tooltip opens for the keyboard as it does for the pointer */
   root.addEventListener("pointerover", (e) => preview(e.target));
   root.addEventListener("pointerout", (e) => { if (!root.contains(e.relatedTarget) || !e.relatedTarget?.closest?.("[data-pv]")) preview(null); });
@@ -93,142 +105,153 @@ function preview(from) {
   } catch { /* a courtesy */ }
 }
 
-/* ---------- placement ---------- */
-/* perf P2-1 (ui/settle.mjs): a placement whose last run changed nothing, with everything it read reading the same, is skipped; the
-   placement itself (placeNow) asks the page through `rec` so that what it read is known */
+/* ---------- placement: THE FIXED PLACES (U132, slots-pure.mjs) ----------
+   perf P2-1 (ui/settle.mjs): a placement whose last run changed nothing, with everything it read reading the same, is skipped; the
+   placement itself (placeSlots) asks the page through `rec` so that what it read is known. It also runs while the dock is hidden (the
+   GM desk and the challenges read the frame on every seat, whether the bar shows or not). */
 export function place() {
   if (!root) return;
   const facts = () => [drawn, window.innerWidth, window.innerHeight, Lay.factor(document.body)];
-  if (kept && Settle.sameFacts(kept.facts, facts()) && Settle.unchanged(kept.read, visibleRect) && Settle.sameFacts(kept.sizes, Settle.sizesOf(stack))) return;
+  if (kept && Settle.sameFacts(kept.facts, facts()) && Settle.unchanged(kept.read, visibleRect) && Settle.sameFacts(kept.sizes, sizesNow())) return;
   const f = facts(), before = outcome(), rec = Settle.recorder(document, visibleRect);
   kept = null;
-  placeNow(rec);
-  if (Settle.sameFacts(before, outcome())) kept = { facts: f, read: rec.take(), sizes: Settle.sizesOf(stack) };
+  placeSlots(rec);
+  if (Settle.sameFacts(before, outcome())) kept = { facts: f, read: rec.take(), sizes: sizesNow() };
 }
-/* everything a placement writes: the dock's attributes and numbers, the hint's tick, the numbers for the page, the notice's wait */
+/* the dock's own sizes: its stack and the content of each place */
+const sizesNow = () => [...Settle.sizesOf(stack), ...Object.values(slotEls).flatMap((el) => Settle.sizesOf(el))];
+/* everything a placement writes: the dock's attributes and numbers, each place's box, the frame told to the desk and the challenges,
+   the notice's place */
 function outcome() {
-  const hint = stack?.querySelector(".itd-hint1");
-  return [root.style.cssText, root.dataset.tight ?? "", root.dataset.under ?? "", underTop, hint?.style.cssText ?? "", hint?.dataset.tick ?? "", varOf("--itd-clear"), document.body?.classList.contains("ita-notice-wait") ?? false];
+  return [root.style.cssText, root.dataset.tight ?? "", Object.values(slotEls).map((el) => `${el.parentElement?.style.cssText ?? ""}/${el.parentElement?.dataset.anchor ?? ""}/${el.parentElement?.dataset.align ?? ""}`).join("|"),
+    frameKey, varOf("--its-nt"), varOf("--its-nx"), varOf("--igd-toast-maxh")];
 }
-function placeNow(rec) {
-  const W = window.innerWidth, H = window.innerHeight;
+/* The bar stands at the bottom edge; its room is worked out from what stays put during a turn only: the sidebar, the party column, the
+   players list, the map's panels at the left, a popped-out chat, the director bar and the chat box on the edge, the open GM desk. A
+   chat toast never moves it (the toasts have their own strip). Every other place follows from that frame and from nothing that comes
+   and goes. */
+function placeSlots(rec) {
+  const W = window.innerWidth, H = window.innerHeight, k = Lay.factor(document.body);
   const hot = rec.rect(rec.one("#hotbar"));
   const ground = hot && hot.top > H * 0.4 ? hot.top : H - EDGE + GAP;
-  /* the room above the dock: down from the lowest thing that hangs from the top over the middle of the window */
-  let ceil = 8;
-  for (const el of rec.q(TOP_OBSTACLES)) { const r = rec.rect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) ceil = Math.max(ceil, r.bottom + 8); }
-  /* the free band between what stands at the sides, for a dock whose bottom is at `floor` */
-  let deskOff = false;
-  const sides = (floor, tall = (stack.offsetHeight || 60) * k, bar = false) => {
-    let lo = 12, hi = W - 12;
-    const yBot = floor - GAP, yTop = yBot - Math.min(tall, Math.max(150, yBot - ceil)) - 4, inBand = (r) => r && r.top < yBot && r.bottom > yTop;
-    const sb = rec.rect(rec.one("#sidebar"));
-    if (sb && sb.left > W * 0.5) hi = Math.min(hi, sb.left - 12);
-    for (const m of rec.q("#chat-notifications .chat-message")) { const r = rec.rect(m); if (inBand(r) && r.left > W * 0.3) hi = Math.min(hi, r.left - 10); }
-    /* the open GM desk and a panel at the left edge that hangs lower than the top obstacles are kept clear of WHATEVER the dock's height
-       is now: a dock that changed its width with every panel that opened made the buttons jump under the pointer (U6) */
-    const low = (r) => r && r.bottom > ceil + 60 && r.top < floor;
-    if (!(bar && deskOff)) for (const el of rec.q("#invincible-tactics-desk .igd, #invincible-tactics-desk .igd-handle")) { const r = rec.rect(el); if ((el.classList.contains("igd") ? low(r) : inBand(r)) && r.left > W * 0.4) hi = Math.min(hi, r.left - 10); }
+  /* the initiative bar (and the map's orbit strip): the places hang under its lowest piece, centred under the whole of it (its middle
+     does not follow the active tile) */
+  let ceil = 8, tl = Infinity, tr = -Infinity;
+  for (const el of rec.q(TOP_OBSTACLES)) { const r = rec.rect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) { ceil = Math.max(ceil, r.bottom + 8); tl = Math.min(tl, r.left); tr = Math.max(tr, r.right); } }
+  const topCx = tr > tl ? (tl + tr) / 2 : null;
+  const sb = rec.rect(rec.one("#sidebar")), side = sb && sb.left > W * 0.5 ? sb.left : W;
+  let topL = 12, topR = null;
+  for (const el of rec.q(LEFT_OBSTACLES)) { const r = rec.rect(el); if (r && r.width && r.top < H * 0.5 && r.right < W * 0.4) topL = Math.max(topL, r.right + 8); }
+  /* U136: a window floating over the map (the popped-out chat) that reaches into the top band: the band keeps to its side of it */
+  for (const el of rec.q(FLOATING)) { const r = rec.rect(el); if (r && r.top < ceil + 200 && r.bottom > ceil) { if ((r.left + r.right) / 2 > W / 2) topR = Math.min(topR ?? Infinity, r.left); else topL = Math.max(topL, r.right + 8); } }
+  const deskR = rec.rect(rec.one("#invincible-tactics-desk .igd"));
+  const band = BAR_BAND * k;
+  /* the free band at the bottom between what stands at the sides */
+  const sides = (floor) => {
+    let lo = 12, hi = Math.min(W - 12, side - 12);
+    const yBot = floor - GAP, yTop = yBot - band - 4, inBand = (r) => r && r.top < yBot && r.bottom > yTop;
     const partyEl = rec.one("#invincible-party"), party = rec.rect(partyEl);
     if (party && party.right < W * 0.5) {
       const kids = rec.q(".ipt-item", partyEl).map((el) => rec.rect(el)).filter(inBand);
-      if (kids.length || inBand(party)) lo = Math.max(lo, Math.max(party.right, ...kids.map((k) => k.right)) + 10);
+      if (kids.length || inBand(party)) lo = Math.max(lo, Math.max(party.right, ...kids.map((x) => x.right)) + 10);
     }
     /* Foundry's players list: its box is narrower than the lists inside it */
     for (const el of rec.q("#players, #players > *")) { const r = rec.rect(el); if (inBand(r) && r.right < W * 0.3) lo = Math.max(lo, r.right + 8); }
-    /* a panel of the map at the left edge counts once it reaches the lower half of the window, or the dock's stack has grown up to it:
-       the bar itself lies on the bottom edge now, far under the pins panel, and must not give up its one row for it */
+    /* a panel of the map at the left edge counts once it reaches the lower half of the window or the bar's band */
     for (const el of rec.q(LEFT_OBSTACLES)) { const r = rec.rect(el); if (r && r.right < W * 0.4 && r.top < floor && (r.bottom > H * 0.5 || inBand(r))) lo = Math.max(lo, r.right + 8); }
-    /* U136: a window that floats over the map, as tall as the window (the popped-out chat): the dock keeps to the wider side of it; it
-       stays under it only when neither side has room for a dock */
+    /* U136: a window that floats over the map, as tall as the window (the popped-out chat): the bar keeps to the wider side of it; it
+       stays under it only when neither side has room for a bar */
     for (const el of rec.q(FLOATING)) { const r = rec.rect(el); if (inBand(r)) ({ lo, hi } = Lay.besideFloating(lo, hi, r)); }
-    return { lo, hi, floor };
+    return { lo, hi };
   };
-  /* WHAT LIES ON THE BOTTOM EDGE besides the dock: the map's director bar (GM, left) and the chat box of a folded sidebar (right). The
-     dock stands BETWEEN them, in one row when that fits and in two when not (two rows on the edge take no more of the map than one
-     row lifted over those things, and less of its width); only when even two rows have no room there does it stand ABOVE them. */
   const barEl = stack.querySelector(".itd-bar");
   delete root.dataset.tight;
-  /* U62: the stack is drawn at the user's size (CSS zoom). Its own lengths (offsetWidth, scrollWidth) are in its unscaled pixels,
-     the room is in window pixels: every length read from inside the stack is multiplied by k before it meets the room. */
-  const k = Lay.factor(document.body);
+  /* U62: the stack is drawn at the user's size (CSS zoom). Its own lengths (offsetWidth, scrollWidth) are in its unscaled pixels, the
+     room is in window pixels: every length read from inside the stack is multiplied by k before it meets the room. */
   const natural = barEl ? barEl.scrollWidth * k + 2 : 0;
-  /* U48: THE BOTTOM EDGE IS THE BAR'S. Where the open GM desk would squeeze the bar into three rows (a 1366 px window with the sidebar
-     open too), the bar takes the edge under the desk instead and the desk ends above it (desk.mjs reads data-under); the panel and the
-     questions above the bar still keep clear of the desk. Tried only when the first pass ends in three rows. */
-  const deskOpen = !!rec.rect(rec.one("#invincible-tactics-desk .igd"));
-  for (const off of [false, true]) {
-  deskOff = off; delete root.dataset.tight;
-  const lows = [], wide = sides(ground, BAR_BAND * k, true);
-  for (const el of rec.q(LOW_OBSTACLES)) { const r = rec.rect(el); if (r && r.height < 90 && r.bottom > ground - 70 && r.top < ground && r.right > wide.lo && r.left < wide.hi) lows.push(r); }
-  const between = (A) => {
-    const mid = (A.lo + A.hi) / 2, B = { ...A };
-    for (const r of lows) { if ((r.left + r.right) / 2 < mid) B.lo = Math.max(B.lo, r.right + 10); else B.hi = Math.min(B.hi, r.left - 10); }
-    return B;
-  };
-  /* THE BAR keeps the room of its own height: a panel that opens above it reaches up beside other things (the party, the players
-     list), and a bar that folded into two rows for that made its buttons jump under the pointer. The panel and the questions get
-     the narrower room of the whole stack and are shifted into it (--itd-up-dx). */
-  let pick = wide, up = sides(ground);
+  let pick = sides(ground), floor = ground;
+  /* U48 as a rule of the frame, not of the content: beside the open desk the bar keeps its row when the room there is wide enough;
+     else it takes the whole bottom edge and the desk ends above it */
+  const deskSide = !!deskR && deskR.left > W * 0.4;
+  const under = deskSide && deskR.left - pick.lo < SP.SIZE.beside * k;
+  if (deskSide && !under) pick.hi = Math.min(pick.hi, deskR.left - 10);
+  /* WHAT LIES ON THE BOTTOM EDGE besides the bar: the map's director bar (GM, left) and the chat box of a folded sidebar (right). The
+     bar stands BETWEEN them, in one row when that fits and in two when not; only when even two rows have no room there does it stand
+     ABOVE them, and then left of the chat box's column (the toasts float there) */
+  const lows = [];
+  for (const el of rec.q(LOW_OBSTACLES)) { const r = rec.rect(el); if (r && r.height < 90 && r.bottom > ground - 70 && r.top < ground && r.right > pick.lo && r.left < pick.hi) lows.push(r); }
   if (lows.length) {
-    const B = between(wide);
-    if (B.hi - B.lo >= Math.min(natural, TWO_ROWS * k)) { pick = B; up = between(up); }
-    else { const f = Math.min(ground, ...lows.map((r) => r.top)); pick = sides(f, BAR_BAND * k, true); up = sides(f); }
+    const mid = (pick.lo + pick.hi) / 2, B = { ...pick };
+    for (const r of lows) { if ((r.left + r.right) / 2 < mid) B.lo = Math.max(B.lo, r.right + 10); else B.hi = Math.min(B.hi, r.left - 10); }
+    if (B.hi - B.lo >= Math.min(natural, TWO_ROWS * k)) pick = B;
+    else {
+      floor = Math.min(ground, ...lows.map((r) => r.top));
+      const keep = pick.hi, right = lows.filter((r) => (r.left + r.right) / 2 > W / 2);
+      pick = sides(floor); pick.hi = Math.min(pick.hi, keep, ...right.map((r) => r.left - 10));
+    }
   }
-  up = { lo: Math.max(up.lo, pick.lo), hi: Math.min(up.hi, pick.hi) };
-  const { lo, hi, floor } = pick;
-  const bottom = H - floor + GAP;
-  const room = Math.max(150, H - bottom - ceil);
-  root.style.setProperty("--itd-room", `${Math.round(room)}px`);
-  const avail = Math.max(280, hi - lo);
+  const { lo, hi } = pick, bottom = H - floor + GAP, avail = Math.max(280, hi - lo);
   root.style.setProperty("--itd-bottom", `${Math.round(bottom)}px`);
   root.style.setProperty("--itd-maxw", `${Math.round(avail)}px`);
-  root.style.setProperty("--itd-up-maxw", `${Math.round(Math.max(280, Math.min(avail, up.hi - up.lo)))}px`);
-  /* one row when it fits; else the actions go under the unit (measured above, with the row laid out unbroken) */
-  if (natural > avail) { root.dataset.tight = "1"; if ([".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) * k > avail) root.dataset.tight = "2"; }      // "2": even the unit and the tail do not share a row (a 1366 px window with the sidebar and the desk open)
-  /* the panel and the questions share what is left above the bar: the panel takes what it needs first (it is what the user is doing),
-     the questions the rest; each scrolls inside its share */
-  const part = (sel) => (stack.querySelector(sel)?.offsetHeight ?? 0) * k;
-  const fixed = part(".itd-bar") + part(".itd-wait") + part(".itd-hint1") + 2 * GAP, asks = stack.querySelector(".itd-asks"), panelEl = stack.querySelector(".itd-panel");
-  const above = Math.max(120, room - fixed);
-  /* U105: the panel never takes more than PANEL_SHARE of the window's height (a 1366x768 window at 140 % gave it the middle of the map, where
-     the targets it lists stand); what it does not show scrolls, its foot (Declare, Ask the GM) stays in sight */
-  const panelRoom = Math.max(110, Math.round(H * PANEL_SHARE));
-  const panelMax = Math.min(panelRoom, asks && panelEl ? Math.max(110, Math.round(above * 0.6)) : above);
-  root.style.setProperty("--itd-panel-maxh", `${Math.round(panelMax)}px`);
-  root.style.setProperty("--itd-maxh", `${Math.max(110, Math.round(above - (panelEl ? Math.min(panelEl.scrollHeight * k + 4, panelMax) + GAP : 0)))}px`);
-  /* what floats at the bottom centre besides the dock (the module's end-of-session notice) stands above it: styles/tactics-ui.css */
-  try {
-    const clear = Math.round(bottom + Math.min(fixed - GAP, room) + 10);
-    setVar("--itd-clear", `${clear}px`);      // perf P2 (ui/vars.mjs): on the notice alone; a property on the body restyled the whole page
-    /* U70 / U116: the map's "My view" chip is no longer pinned from here: the map places it above the declared dock and clear of
-       the boxes ui/main.mjs names (moinen-maps zones-api.md section 41) */
-    /* U47: the notice stands right above the bar; while a panel or a question is open over the bar it waits (it would float over the
-       middle of the map, above what the user is doing) */
-    document.body.classList.toggle("ita-notice-wait", !!(panelEl || asks) || H - clear - 64 < ceil);
-  } catch { /* no body */ }
-  const w = Math.min(stack.offsetWidth * k, avail);
-  let cx = hot ? (hot.left + hot.right) / 2 : (lo + hi) / 2;
-  if (cx + w / 2 > hi) cx = hi - w / 2;
-  if (cx - w / 2 < lo) cx = lo + w / 2;
-  root.style.setProperty("--itd-cx", `${Math.round(cx)}px`);
-  let dx = 0;
-  for (const el of stack.querySelectorAll(":scope > :is(.itd-panel, .itd-hint1, .itd-wait, .itd-asks)")) { const pw = el.offsetWidth * k; dx = Math.max(dx, up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > up.hi) dx = Math.min(dx, up.hi - pw / 2 - cx); }      // U123: the hint and the status line too
-  root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
-  if (root.dataset.tight !== "2" || !deskOpen) break;
+  /* one row when it fits; else the actions go over the unit; "2": even the unit and the tail do not share a row */
+  if (natural > avail) { root.dataset.tight = "1"; if ([".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) * k > avail) root.dataset.tight = "2"; }
+  /* the bar is centred in its room (over the macro bar when that is open), whatever its width now: its middle stays put */
+  const cx = Math.round(hot && hot.top > H * 0.4 ? Math.max(lo + 140, Math.min(hi - 140, (hot.left + hot.right) / 2)) : (lo + hi) / 2);
+  root.style.setProperty("--itd-cx", `${cx}px`);
+  const barH = (barEl?.offsetHeight ?? 60) * k, barTop = H - bottom - barH;
+  /* the frame */
+  const chat = rec.q("#chat-notifications #chat-message, #chat-notifications .chat-form").map((el) => rec.rect(el)).find((r) => r && r.top > H * 0.4 && r.left > W * 0.5) ?? null;
+  const hudR = rec.rect(rec.one("#invincible-challenges"));
+  const hudOn = !!hudR && rec.q("#invincible-challenges .ich-item").length > 0;
+  const fr = SP.frame({ W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, topCx, topL, topR, side, chatTop: chat?.top ?? null,
+    hud: { present: hudOn, x0: hudR?.left ?? null }, desk: deskSide ? { open: true, x0: deskR.left } : null,
+    bar: { lo, hi, top: barTop, bottom: H - bottom } });
+  Slots.setFrame(fr);
+  root.style.setProperty("--itd-panel-maxh", `${fr.panelMax}px`);
+  root.style.setProperty("--itd-up-maxw", `${Math.round(Math.max(280, fr.up.hi - fr.up.lo))}px`);
+  /* each place: its box (anchored at its top; what it holds grows down and scrolls at the far end) */
+  for (const [name, inner] of Object.entries(slotEls)) {
+    const s = fr.slots[name], el = inner.parentElement, st = el.style;
+    if (!s) { st.display = "none"; continue; }
+    st.display = ""; st.left = `${s.x0}px`; st.width = `${s.x1 - s.x0}px`; st.top = `${s.y0}px`;
+    st.setProperty("--its-h", `${s.y1 - s.y0}px`); st.setProperty("--its-w", `${s.x1 - s.x0}px`);
+    el.dataset.anchor = s.anchor; el.dataset.align = s.align;
   }
-  /* U53: the hint's tick points at what the hint is about (the slots, the actions) */
-  /* U97: with the armed action's panel between the hint and the bar the tick would point at the panel: the hint keeps its words and drops the tick */
-  try { const hint = stack.querySelector(".itd-hint1"), at = hint?.dataset.at && !stack.querySelector(":scope > .itd-panel") ? stack.querySelector(hint.dataset.at === "slots" ? ".itd-slots" : ".itd-acts") : null;
-    if (hint && at) { const a = at.getBoundingClientRect(), b = hint.getBoundingClientRect(); hint.style.setProperty("--itd-hint-x", `${Math.round(Math.max(14, Math.min(b.width - 14, a.left + Math.min(a.width / 2, 60 * k) - b.left)) / k)}px`); hint.dataset.tick = "1"; } else if (hint) delete hint.dataset.tick; } catch { /* a courtesy */ }
-  { const pe = stack.querySelector(":scope > .itd-panel"); if (pe) requestAnimationFrame(() => markMore(pe)); }
-  /* U123: the bar's top where it STANDS, not where it is now: the first placement after a load runs while the dock still slides in
-     (.itd-hidden translates it below the window), and the desk ended above that place (off screen) until the next relayout, its foot
-     under the bar. Both boxes carry the same translate, so the bar's distance from the root's bottom is taken from the root's own place. */
-  const under = deskOff && deskOpen, top = under && barEl ? Math.round(H - (parseFloat(root.style.getPropertyValue("--itd-bottom")) || 0) - (root.getBoundingClientRect().bottom - barEl.getBoundingClientRect().top)) : null;
-  if (under) root.dataset.under = "1"; else delete root.dataset.under;
-  if (top != null) root.style.setProperty("--itd-under-top", `${top}px`); else root.style.removeProperty("--itd-under-top");
-  if (top !== underTop) { underTop = top; handlers.deskRelayout?.(); }
+  /* the questions reach down to the bar; with the user's armed panel open they stop over it (the panel's height from its layout box,
+     not its rect: it may still be rising) */
+  const pe = stack.querySelector(":scope > .itd-panel");
+  if (slotEls.cards && fr.slots.cards) {
+    const s = fr.slots.cards, ptop = pe ? barTop - (pe.offsetHeight + GAP) * k : Infinity;
+    const end = ptop > s.y0 + 60 ? Math.min(s.y1, ptop - GAP) : s.y1;
+    slotEls.cards.parentElement.style.setProperty("--its-h", `${Math.round(end - s.y0)}px`);
+  }
+  /* the end-of-session notice in its own place, never hidden for a panel; the chat toasts held to their strip (U6, U134) */
+  try {
+    const n = fr.slots.notice;
+    setVar("--igd-toast-maxh", `${fr.toast.h}px`);
+    setVar("--its-nt", n ? `${n.y0}px` : null);
+    setVar("--its-nx", n ? `${Math.round(Math.max(n.x0 + 230, n.x1 - 230))}px` : null);
+  } catch { /* no body */ }
+  /* the panel on the bar keeps to the room over it */
+  let dx = 0;
+  if (pe) { const pw = pe.offsetWidth * k; dx = Math.max(0, fr.up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > fr.up.hi) dx = Math.min(dx, fr.up.hi - pw / 2 - cx); requestAnimationFrame(() => markMore(pe)); }
+  root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
+  /* the desk and the challenges read their part of the frame: told only when it changed */
+  const key = JSON.stringify([fr.desk, fr.band, fr.toast]);
+  if (key !== frameKey) { frameKey = key; handlers.ichFloor?.(fr.band?.present ? fr.band.y1 : null); handlers.deskRelayout?.(); }
+  /* whether the hint takes the questions' place is the frame's; when that flips, the pieces are put again (once) */
+  const share = !!fr.slots.hint?.share;
+  if (share !== shareWas) { shareWas = share; if (last) requestAnimationFrame(() => { if (last) render(last.d, last.ui); }); }
+}
+/** how far down the places of what the table says reach now (the line and the questions; 0: nothing shows): the map's camera frames
+    under them (ui/main.mjs declares it as the top inset, zones-api.md sections 23 and 38) */
+export function topReach() {
+  try {
+    if (!root || !shown) return 0;
+    let y = 0;
+    for (const name of ["line", "cards"]) { const el = slotEls[name]?.parentElement; if (el && !el.dataset.empty) { const r = visibleRect(el); if (r) y = Math.max(y, r.bottom); } }
+    return Math.round(y);
+  } catch { return 0; }
 }
 
 /* U105: is there more of the panel below what shows? (the foot then carries the sign; the last pixel of rounding counts as the end) */
@@ -446,9 +469,9 @@ export function render(d, ui = {}) {
 }
 function draw(d, ui) {
   last = { d, ui };
-  const any = d?.show || d?.prompts?.length || d?.sum;
-  if (!any) return hide();
   ensure(handlers.label?.("dock") ?? "");
+  /* nothing to show: the dock hides, but its frame is still worked out (the desk and the challenges stand in it on every seat) */
+  if (!(d?.show || d?.prompts?.length || d?.sum)) { place(); return hide(); }
   root.classList.toggle("itd-turn", !!d.onTurn);
   root.classList.toggle("itd-rest", !!d.rest);
   /* the panel rises once, when it opens: a rebuild of the same panel (a key typed in its text box, a target picked) must not play the
@@ -457,35 +480,42 @@ function draw(d, ui) {
   root.classList.toggle("itd-same", pk !== null && pk === panelKey);
   panelKey = pk;
   const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
-  swap(stack, [
-    /* U57: the summary of the round (or of the fight) that just ended stands where the questions stand, after them */
-    d.prompts?.length || d.sum || (ui.legend && d.show) ? h("div.itd-asks", {}, (d.prompts ?? []).map((a) => askCard(a, askH)), d.sum ? sumCard(d.sum, { sumClose: handlers.sumClose }) : null,
-      ui.legend && d.show ? legendCard({ legendClose: () => set({ legend: false }) }) : null) : null,
-    /* the line of the table, only while it has something the rest of the screen does not say (U51 / U52: model-pure.dockData):
-       a roll this user owes or may push that is not the roll of its own action (that one stands in the action's panel), who ELSE the
-       table waits for, and the last thing the table was told (U10 / U3: one chip, the older lines in
-       its tooltip, put away with its x) */
-    d.show && (d.waiting?.length || d.turn || d.rolls?.length || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
-      (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
-      d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null,
-      d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon(d.news.icon ?? "fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
-        h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null,
-    /* U53: one first-fight hint, its tick on the thing it is about (place() sets --itd-hint-x) while that thing is right under it */
-    d.show && d.hint ? h("div.itd-hint1", { attrs: { role: "note" }, data: { at: d.hint.at } }, icon("fa-lightbulb"), h("span", { text: d.hint.text }),
-      h("button.itd-hint1-x", { fk: "hint:x", text: d.hint.close, on: { click: () => handlers.hintClose?.(d.hint.id) } })) : null,
-    /* U97: THE PANEL OF THE ARMED ACTION STANDS ON THE BAR: it is the armed button said in full, and nothing comes between the two.
-       What the table says (the hint, the line, the questions) stands over both. */
-    d.show ? panel(d.panel) : null,
-    d.show ? bar(d) : null,
-  ]);
+  /* U57: the summary of the round (or of the fight) that just ended stands where the questions stand, after them */
+  const asksOf = (prompts, sum, legend) => (prompts.length || sum || legend ? h("div.itd-asks", {}, prompts.map((a) => askCard(a, askH)), sum ? sumCard(d.sum, { sumClose: handlers.sumClose }) : null,
+    legend ? legendCard({ legendClose: () => set({ legend: false }) }) : null) : null);
+  const legendOn = !!(ui.legend && d.show), prompts = d.prompts ?? [];
+  /* the line of the table, only while it has something the rest of the screen does not say (U51 / U52: model-pure.dockData):
+     a roll this user owes or may push that is not the roll of its own action (that one stands in the action's panel), who ELSE the
+     table waits for, and the last thing the table was told (U10 / U3: one chip, the older lines in
+     its tooltip, put away with its x) */
+  /* two ends, each anchored: what the table waits for grows from the left end of the line, the news from the right end, so neither
+     slides when the other comes, goes or changes its length */
+  const whoOn = !!(d.waiting?.length || d.turn || d.rolls?.length);
+  const wait = d.show && (whoOn || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
+    whoOn ? h("span.itd-who", (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
+      d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null) : null,
+    d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon(d.news.icon ?? "fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
+      h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null;
+  /* U53: one first-fight hint, in its own place at the right end of the top band (or in the questions' place on a narrow band) */
+  const hint = d.show && d.hint ? h("div.itd-hint1", { attrs: { role: "note" } }, icon("fa-lightbulb"), h("span", { text: d.hint.text }),
+    h("button.itd-hint1-x", { fk: "hint:x", text: d.hint.close, on: { click: () => handlers.hintClose?.(d.hint.id) } })) : null;
+  /* U97: THE PANEL OF THE ARMED ACTION STANDS ON THE BAR: it is the armed button said in full, and nothing comes between the two.
+     U132: what the table says hangs from the top, each kind in its own place (slots-pure.mjs frame) */
+  swap(stack, [d.show ? panel(d.panel) : null, d.show ? bar(d) : null]);
+  const put = (name, node) => { const el = slotEls[name]; swap(el, [node]); if (node) delete el.parentElement.dataset.empty; else el.parentElement.dataset.empty = "1"; };
+  const asks = asksOf(prompts, !!d.sum, legendOn);
+  put("cards", asks);
+  put("line", wait);
+  /* a narrow band: the hint takes the questions' place, the questions first (the hint waits while a question stands) */
+  put("hint", Slots.frameNow()?.slots?.hint?.share && asks ? null : hint);
   /* U41: the answer the keyboard chose on a card (Enter sends it) */
-  try { const kp = d.keys?.chosen; if (kp) for (const el of stack.querySelectorAll(".ita-opt, .ita-submit")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
+  try { const kp = d.keys?.chosen; if (kp) for (const el of root.querySelectorAll(".ita-opt, .ita-submit")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
   /* U51: the news chip's tooltip holds the older lines; the last line joins them only when the chip had to cut it short */
-  try { const nt = stack.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = plain([d.news.text, ...d.news.older].join("<br>")); } catch { /* a courtesy */ }
+  try { const nt = root.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = plain([d.news.text, ...d.news.older].join("<br>")); } catch { /* a courtesy */ }
   drawn++;      // perf P2-1: new content: the placement is done in full
   place();
   reveal();
-  try { preview(stack.querySelector("[data-pv]:hover, [data-pv]:focus-visible")); } catch { /* a courtesy */ }      // the pointer may still rest on what it was previewing
+  try { preview(root.querySelector("[data-pv]:hover, [data-pv]:focus-visible")); } catch { /* a courtesy */ }      // the pointer may still rest on what it was previewing
 }
 function reveal() {
   clearTimeout(hideTimer);
@@ -501,9 +531,9 @@ export function hide() {
   clearTimeout(hideTimer);
   hideTimer = setTimeout(() => { if (root && !shown) root.style.visibility = "hidden"; }, 320);
 }
-export const relayout = () => { if (root && shown) place(); };
+export const relayout = () => { if (root) place(); };      // hidden too: the frame is the desk's and the challenges' as well
 /** U41: a key of the keyboard is a click on the control with that focus key (keys-pure.plan) -> was there one? */
 export function press(fk) { try { const el = root && shown ? [...root.querySelectorAll("[data-fk]")].find((e) => e.dataset.fk === fk) : null; if (!el) return false; el.click(); return true; } catch { return false; } }
 export const el = () => root;
 export const isShown = () => shown;
-export function destroy() { clearTimeout(hideTimer); root?.remove(); root = stack = null; shown = false; last = null; kept = null; }
+export function destroy() { clearTimeout(hideTimer); root?.remove(); root = stack = null; shown = false; last = null; kept = null; slotEls = {}; frameKey = ""; shareWas = false; Slots.setFrame(null); }
