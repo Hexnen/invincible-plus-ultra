@@ -380,6 +380,12 @@ async function stepOnce(X, inst, at) {
   if (!I.hist?.[I.step]) (I.hist ??= {})[I.step] = JSON.stringify({ data: inst.data, rolls: inst.rolls, locked: inst.locked, decl: inst.decl });   // for goToStep / amend
   let progress = false;
   for (const e of R.effects) progress = (await applyEffect(X, I, e, inst.step)) || progress;
+  /* D103 / D104: a card the step withdraws (its question is no longer true: the attack went to somebody else). Only one nobody has
+     answered yet; its key is forgotten, so the step may ask that seat again later with a card that says what is true then. */
+  for (const k of Array.isArray(R.drop) ? R.drop : []) {
+    const pid = I.data.pk?.[k], p = pid ? X.state.prompts[pid] : null;
+    if (p && !p.answered) { dropPrompts(X, (q) => q.id === pid); delete I.data.pk[k]; X.changed = true; progress = true; }
+  }
   for (const p of R.prompts) progress = openPrompt(X, I, p, inst.step) || progress;
   for (const ev of R.events) emit(X, I, ev);
   at.post = { state: X.state, log: X.log, events: X.events.length };                         // the step's effects are through; what follows only moves the stack

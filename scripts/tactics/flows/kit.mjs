@@ -23,7 +23,7 @@ export const passKey = (cid) => M.counterKey.round(cid, "passWindows");
 export const BANDS = Object.freeze([{ id: "unlikely", below: 0.35 }, { id: "even", below: 0.6 }, { id: "likely", below: 0.8 }, { id: "nearCertain", below: 2 }]);
 export const bandOf = (p) => BANDS.findIndex((b) => p < b.below);
 export const draft = (inst) => JSON.parse(JSON.stringify(inst));
-export const result = (inst) => ({ inst, effects: [], prompts: [], events: [], push: null, goto: null, wait: false, done: false });
+export const result = (inst) => ({ inst, effects: [], prompts: [], events: [], drop: [], push: null, goto: null, wait: false, done: false });      // drop: keys of cards to withdraw (engine-pure stepOnce)
 export const flag = (I, k) => !!I.data.ph?.[k];
 export const setFlag = (I, k) => { (I.data.ph ??= {})[k] = 1; };
 
@@ -242,9 +242,13 @@ export const sameSpot = (v, a, b) => { const x = spotOf(v, a), y = spotOf(v, b);
 const NO_ALLY = ["challenge", "vehicle"];
 /** The attacked characters a reaction of somebody else may be about: other than the reactor, known to it, and in its zone where the entry asks for that. */
 export function reactionFor(v, inst, cid, e) {
-  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t));
+  const moved = e?.reaction?.effect === "swapTarget" ? coveredBy(inst) : [];
+  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t));
   return e?.reaction?.place === "targetZone" ? list.filter((t) => sameSpot(v, cid, t) !== false) : list;
 }
+/* D104 (ruling A8-R1): who took the hit for somebody by a reaction (Guardian [B2115]: "you take the hit instead of the INTENDED target").
+   Such a one is no intended target, so nobody dives in for them in turn; a target the GM set by hand (retarget) is the GM's intent and is. */
+export const coveredBy = (inst) => (inst?.data?.retargets ?? []).filter((r) => r.by !== "gm" && (inst.decl?.targets ?? []).includes(r.to)).map((r) => r.to);
 /** The allies a target could put in its place [B2108]: of its side, in its zone, known to it, not the attacker and not attacked already. */
 export function alliesNear(v, inst, cid) {
   const me = v.facts.c(cid);
@@ -259,6 +263,8 @@ export function reactionFit(v, inst, cid, e) {
   if (r.place === "allyZone") return alliesNear(v, inst, cid).length ? { ok: true, reason: null } : { ok: false, reason: "noAllyNear" };
   if (r.who !== "any") return { ok: true, reason: null };
   if (reactionFor(v, inst, cid, e).length) return { ok: true, reason: null };
+  const moved = r.effect === "swapTarget" ? coveredBy(inst) : [];
+  if (moved.some((t) => t !== cid && knownTo(v, cid, t))) return { ok: false, reason: "hitTaken" };      // D104: the one it could cover is no target any more; somebody already took the hit
   return { ok: false, reason: r.place === "targetZone" && (inst.decl?.targets ?? []).some((t) => t !== cid && knownTo(v, cid, t)) ? "notInYourZone" : "unseen" };
 }
 export function reactionOption(v, cid, e, inst = null) {

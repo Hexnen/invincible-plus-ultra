@@ -17,7 +17,7 @@ import * as Engine from "../engine.mjs";
 import * as Zones from "../zones-adapter.mjs";
 import * as Mv from "../movement.mjs";
 import { tacticsApi as Api } from "../api.mjs";
-import { t as langT, errText } from "../lang.mjs";
+import { t as langT, errText, rollTitle } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
 import { plain } from "../../kit.mjs";      // U93: a notification cannot draw a mark: it says its name
 import * as Keys from "./keys-pure.mjs";
@@ -207,7 +207,7 @@ async function rollAct(act) {
     if (act.do === "roll") {
       if (!r.req?.rid || r.sixes != null) return;
       const actor = Sys.actorOf(combat.combatants.get(r.who));
-      await Sys.rollNow({ combat: combat.id, inst: act.inst, key: act.key, rid: r.req.rid, actorUuid: actor?.uuid ?? null, attr: r.attr, pool: r.pool, dice: r.req.dice, maxPush: r.req.maxPush, label: t(`ITAC.roll.${String(act.key).split(":")[0]}`, {}, r.req.label ?? act.key), ...(r.req.mode ? { mode: r.req.mode } : {}) },
+      await Sys.rollNow({ combat: combat.id, inst: act.inst, key: act.key, rid: r.req.rid, actorUuid: actor?.uuid ?? null, attr: r.attr, pool: r.pool, dice: r.req.dice, maxPush: r.req.maxPush, label: rollTitle(act.key, r.req.label), ...(r.req.mode ? { mode: r.req.mode } : {}) },
         (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s)), { force: true });
       setTimeout(refresh, Sys.ROLL_RETRY_MS + 100);
     } else if (r.messageId) await (act.do === "push" ? Sys.pushRoll(r.messageId) : Sys.acceptRoll(r.messageId));
