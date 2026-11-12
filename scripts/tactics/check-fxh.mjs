@@ -73,4 +73,16 @@ eq([tIn("en", "ITAC.roll.ds"), tIn("pl", "ITAC.roll.ds")], ["Discretion", "Rozwa
   ok(/root\.style\.setProperty\("--itd-up-dx"/.test(dock) && /function outcome\(\) \{[^}]*root\.style\.cssText/.test(dock), "U123: the shift is a root property, so outcome() (perf P2-1) already compares it");
 }
 
+/* ---- U123 (second cause, seen live): after a load the desk ended under the bar. The dock's first placement runs while it slides in
+   (translated below the window); the bar's top it gave the desk was that off-screen place, and nothing placed again once it stood. */
+{
+  const dock = src("ui/dock.mjs"), desk = src("ui/desk.mjs");
+  ok(/top = under && barEl \? Math\.round\(H - \(parseFloat\(root\.style\.getPropertyValue\("--itd-bottom"\)\) \|\| 0\) - \(root\.getBoundingClientRect\(\)\.bottom - barEl\.getBoundingClientRect\(\)\.top\)\) : null/.test(dock), "U123: the bar's top is where it stands (the root's place minus the bar's distance from its bottom), free of the slide-in");
+  ok(/root\.style\.setProperty\("--itd-under-top", `\$\{top\}px`\)/.test(dock) && /root\.style\.removeProperty\("--itd-under-top"\)/.test(dock), "U123: the dock hands that top to the desk on its own root (in outcome() through root.style.cssText)");
+  ok(/getPropertyValue\("--itd-under-top"\)/.test(desk) && /Number\.isFinite\(ut\) \? ut : r\.top/.test(desk), "U123: the desk ends above the bar's standing top, its live box only as the fallback");
+  // the arithmetic: a root standing 80 px over the bottom of a 768 px window, slid 400 px down; the bar's top 139 px above the root's bottom
+  const H = 768, bottom = 80, slide = 400, barFromBottom = 139, rootBottom = H - bottom + slide, barTop = rootBottom - barFromBottom;
+  eq(Math.round(H - bottom - (rootBottom - barTop)), 549, "U123: the same top whether the dock is sliding in or standing");
+}
+
 done("check-fxh");

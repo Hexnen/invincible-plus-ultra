@@ -67,7 +67,9 @@ export function place() {
   let floor = H - 14;
   for (const el of document.querySelectorAll("#chat-notifications #chat-message, #chat-notifications textarea, #chat-notifications .chat-form")) { const r = visibleRect(el); if (r && r.top > H * 0.6 && r.right > W - right - 380) floor = Math.min(floor, r.top - 10); }
   /* U48: the dock's bar took the bottom edge under this column (dock.mjs place(), data-under): the desk ends above it */
-  try { const dk = document.getElementById("invincible-tactics-dock"), r = dk?.dataset.under === "1" ? visibleRect(dk.querySelector(".itd-bar")) : null; if (r && r.top > H * 0.4) floor = Math.min(floor, r.top - 10); } catch { /* no dock */ }
+  /* U123: the top where the bar stands once shown (--itd-under-top, dock.mjs), not its box now: the dock may still be sliding in */
+  try { const dk = document.getElementById("invincible-tactics-dock"), r = dk?.dataset.under === "1" ? visibleRect(dk.querySelector(".itd-bar")) : null, ut = parseFloat(dk?.style.getPropertyValue("--itd-under-top"));
+    const at = r ? (Number.isFinite(ut) ? ut : r.top) : null; if (at != null && at > H * 0.4) floor = Math.min(floor, at - 10); } catch { /* no dock */ }
   /* a chat toast in this column: the desk ends above the highest of them, down to MIN_H; the toasts keep to what is left under that */
   const t0 = Math.min(top, maxTop);
   let need = t0 + minH(H);
