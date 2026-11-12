@@ -20,6 +20,9 @@
              medicalGear, stressArmor: [per level], resist: [per level], immune: "flag" | "nonKinetic", vulnerable: "flag", shrunkDice: [per level], grown }
      mods    dice the sheet does not carry: [{ dice, action?: [ids], attack?: [kinds], attr?, vsHuge?, lv?: [per level] }]
      opt     a boost or limit that changes the attacks of its power: { patch, stress?, optional?, on?: "slug" }
+             (PWB: an act's `interrupt: [windows]` = it may also be declared out of turn while somebody else's action waits for its dice
+             [B2292]; `fx.interrupt` the same for a switch; `reaction` + `vs` / `mode` / `window` / `weapon` = the answer to an attack
+             (kit-pure reactionOf); `atk.reactOnly` = a profile used only by such an answer)
              (`combo: [n per level]` on an action: that many of its `pick` are chosen together, the same one more than once if wished)
      cost    the cost of the row's generic use ("full" unless stated)
      size    [dice per level]: the item's effects "Grow" and "Shrink" are the size the engine reads (grown: reach, stride, immunities [B1975];
@@ -54,7 +57,7 @@ export const ROWS = Object.freeze([
   L("Affliction", "Requires Touch (Affliction)", [1577], "auto", "attack", { opt: { patch: { fam: "slug" } } }),
   P("Blast", [1580, 1581, 1582, 1583], "auto", "attack", { atk: {} }),
   burst("Blast", "Burst Effect (Blast)", [1584]),
-  B("Blast", "Quick Blast", [1585], "assist", "interrupt"),
+  B("Blast", "Quick Blast", [1585], "assist", "reaction", { acts: [{ k: "quickBlast", as: "shoot", cost: "quick", stress: 1, reaction: "action", vs: "shooting", weapon: "parent" }] }),      // PWB (PW002, PW112)
   B("Blast", "Deadly Blast", [1586], "auto", "attack", { opt: { patch: { sharp: 1 } } }),
   L("Blast", "Exhausting Blast", [1587], "auto", "attack", { opt: { patch: { stress: 1 } } }),
   L("Blast", "Reduced Range (Blast)", [1588], "auto", "attack", { opt: { patch: { range: [0, 1] } } }),
@@ -63,7 +66,7 @@ export const ROWS = Object.freeze([
   B("Distress", "Mental Distress", [1596], "auto", "attack", { opt: { patch: { attrs: MENTAL, ignoreArmor: 1 } } }),
   L("Distress", "Exhausting Distress", [1597], "auto", "attack", { opt: { patch: { stress: 1 } } }),
   L("Distress", "Reduced Range (Distress)", [1598], "auto", "attack", { opt: { patch: { range: [0, 1] } } }),
-  P("Emanation", [1601], "auto", "toggle", { fx: { cost: "quick" } }),
+  P("Emanation", [1601], "auto", "toggle", { fx: { cost: "quick", interrupt: ["beforeRoll"] } }),      // PWB (PW003): "even as an interrupt"
   B("Emanation", "Potent Emanation", [1602], "assist", "toggle", { fx: { cost: "quick" } }),
   L("Emanation", "Continual Emanation", [1603], "auto", "toggle", { lockFx: 1 }),
   P("Snare", [1606, 1607, 1608, 1609], "auto", "attack", { atk: { noDamage: 1, stunts: "none", immuneHuge: 1, onHit: { status: "snared", lv: [-2, -3, -4, -5] } } }),
@@ -71,7 +74,7 @@ export const ROWS = Object.freeze([
   L("Snare", "Immobilize Only", [1611], "auto", "attack", { opt: { patch: { onHitStatus: "trapped" } } }),
   P("Strike", [1614, 1615, 1616, 1617], "auto", "sheet", { acts: [], pass: { strike: [1, 2, 3, 4] } }),      // Z14: the bonus the sheet's slugfest damage holds, taken off without the wind-up [B1622]
   B("Strike", "Piercing Strike", [1618], "auto", "attack", { opt: { patch: { ignoreArmor: 1 }, stress: 1, optional: 1, on: "slug" } }),
-  B("Strike", "Sudden Strike", [1619], "assist", "interrupt"),
+  B("Strike", "Sudden Strike", [1619], "assist", "reaction", { acts: [{ k: "suddenStrike", as: "slugfest", cost: "quick", stress: 1, reaction: "action", vs: "slugfest", weapon: "unarmed" }] }),      // PWB (PW112)
   B("Strike", "Deadly Strike", [1620], "auto", "attack", { opt: { patch: { sharp: 1 }, on: "slug" } }),
   B("Strike", "Toxic Strike", [1621], "auto", "poison", { opt: { patch: { onHit: { status: "sick", data: { toxic: 1, virulence: 0 }, ifDamage: 1 } }, on: "slug" } }),
   L("Strike", "Windup Strike", [1622], "assist", "effect", { pass: { windup: 1 }, acts: [{ k: "ready", cost: "quick", effect: { kind: "mark", id: "windup" } }] }),
@@ -87,15 +90,15 @@ export const ROWS = Object.freeze([
   B("Animal Control", "Animal Mindlink", [1638], "hand", "story", { why: "talk" }),
   L("Animal Control", "Specific Animal Only", [1639, 1640, 1641], "hand", "story", { why: "gmJudges" }),
   P("Cold Control", [1644, 1645, 1646, 1647, 1648, 1649], "assist", "zone", { atk: { source: "cold", by: { "immobilize target": { skip: 1 } } },
-    acts: [narr("zone", "full"), { k: "barrier", cost: "quick", target: { who: "ally", n: [0, 1] }, effect: { kind: "barrier", armor: [3, 3, 3, 3], max: 3 } }],
+    acts: [narr("zone", "full"), { k: "barrier", cost: "quick", interrupt: ["beforeRoll"], target: { who: "ally", n: [0, 1] }, effect: { kind: "barrier", armor: [3, 3, 3, 3], max: 3 } }],      // PWB (PW015): on your turn or as an interrupt [B1646]
     opts: [{ k: "immobilise", patch: { noDamage: 1, onHit: { status: "immobilised" } } }] }),
-  B("Cold Control", "Ice Armor", [1650], "auto", "toggle", { fx: { cost: "quick" } }),
+  B("Cold Control", "Ice Armor", [1650], "auto", "toggle", { fx: { cost: "quick", interrupt: ["beforeRoll"] } }),      // PWB (PW015)
   B("Cold Control", "Ice Slide", [1651], "auto", "move", { mv: 1 }),
   P("Darkness Control", [1654, 1655, 1656, 1657], "assist", "zone", { cost: "full" }),
   B("Darkness Control", "Dreadful Darkness", [1658], "assist", "resist", { acts: [{ k: "dread", cost: "none", target: { who: "any", n: [1, 1] }, effect: { kind: "resist", attr: "intuition", stress: 2 } }] }),
   P("Dimensional Travel", [1661], "assist", "outcome", { cost: "quick" }),
   B("Dimensional Travel", "Additional Travelers", [1662], "hand", "story", { why: "outOfFight" }),
-  B("Dimensional Travel", "Quick Travel", [1663, 1664], "assist", "interrupt"),
+  B("Dimensional Travel", "Quick Travel", [1663, 1664], "assist", "reaction", { acts: [narr("travel", "quick", { stress: 1, interrupt: ["beforeRoll"] }), { k: "travelAway", cost: "quick", stress: 1, effect: { kind: "narrative" }, reaction: "autoMiss" }] }),      // PWB (PW026, PW111)
   B("Dimensional Travel", "Create Portals", [1665, 1666], "assist", "outcome", { cost: "full" }),
   L("Dimensional Travel", "Parallel Dimensions Only", [1667], "hand", "story", { why: "gmJudges" }),
   L("Dimensional Travel", "Specific Dimension", [1668], "hand", "story", { why: "gmJudges" }),
@@ -111,7 +114,8 @@ export const ROWS = Object.freeze([
   L("Fire Control", "Destructive Flames", [1698, 1699], "hand", "story", { why: "gmJudges" }),
   P("Gravity Control", [1702, 1703, 1704], "assist", "zone", { cost: "full" }),
   B("Gravity Control", "Precise Control", [1705], "hand", "story", { why: "partOfPower" }),
-  P("Guidance", [1708, 1709], "assist", "gmCard", { acts: [{ k: "guide", cost: "full", roll: { attr: "presence" }, effect: { kind: "narrative" } }] }),
+  P("Guidance", [1708, 1709], "assist", "gmCard", { acts: [{ k: "guide", cost: "full", roll: { attr: "presence" }, effect: { kind: "narrative" } },
+    { k: "guideDefence", cost: "quick", roll: { attr: "presence" }, effect: { kind: "narrative" }, reaction: "guide" }] }),      // PWB (PW034, PW121) [B1709]
   P("Illusion", [1712, 1713, 1714, 1715], "assist", "outcome", { cost: "full" }),
   B("Illusion", "Area Projection", [1716], "assist", "outcome", { acts: [narr("area", "full", { stress: 1 })] }),
   B("Illusion", "Terrifying Illusions", [1717], "assist", "resist", { acts: [{ k: "terrify", cost: "none", target: { who: "any", n: [1, 1] }, effect: { kind: "resist", attr: "intuition", stress: 3, loseTurn: 1 } }] }),
@@ -158,17 +162,17 @@ export const ROWS = Object.freeze([
 
   /* ================================================================ DEFENSE POWERS [B1850-1893] */
   P("Adaptation", [1854, 1855, 1856], "assist", "outcome", { cost: "full", pass: { vacuumSafe: 1 } }),
-  P("Barrier", [1859, 1860, 1861, 1862], "auto", "effect", { acts: [{ k: "barrier", cost: "quick", target: { who: "ally", n: [0, 1] }, effect: { kind: "barrier", armor: [3, 4, 5, 6], max: 3 } }] }),
+  P("Barrier", [1859, 1860, 1861, 1862], "auto", "effect", { acts: [{ k: "barrier", cost: "quick", interrupt: ["beforeRoll"], target: { who: "ally", n: [0, 1] }, effect: { kind: "barrier", armor: [3, 4, 5, 6], max: 3 } }] }),
   P("Defiance", [1865, 1866, 1867, 1868], "auto", "passive", { pass: { stressArmor: [3, 4, 5, 6], resist: [3, 4, 5, 6] }, acts: [] }),
-  L("Defiance", "Requires Activation (Defiance)", [1869], "auto", "effect", { pass: { defianceOff: 1 }, acts: [{ k: "activate", cost: "quick", effect: { kind: "mark", id: "defiance", scene: 1 } }] }),
+  L("Defiance", "Requires Activation (Defiance)", [1869], "auto", "effect", { pass: { defianceOff: 1 }, acts: [{ k: "activate", cost: "quick", interrupt: ["beforeRoll"], effect: { kind: "mark", id: "defiance", scene: 1 } }] }),      // PWB (PW065)
   P("Immortality", [1872, 1873, 1874, 1875, 1876], "hand", "story", { why: "story" }),
   P("Immunity", [1879], "assist", "flag", { pass: { immune: "flag" }, acts: [] }),
   B("Immunity", "Full Immunity", [1880], "auto", "passive", { pass: { immune: ["nonKinetic"] } }),
   P("Protection", [1883, 1884, 1885, 1886], "auto", "sheet", { acts: [] }),
   B("Protection", "Energy Absorption", [1887], "auto", "token", { pass: { absorb: 1 } }),
   B("Protection", "Impervious", [1888], "auto", "passive", { pass: { impervious: 1 } }),
-  B("Protection", "Redirecting Blast", [1889], "assist", "interrupt"),
-  L("Protection", "Requires Activation (Protection)", [1890], "assist", "toggle", { fx: { cost: "quick", ofParent: 1 } }),
+  B("Protection", "Redirecting Blast", [1889], "assist", "reaction", { atk: { reactOnly: 1, range: [0, 3] }, acts: [{ k: "redirect", as: "shoot", cost: "quick", reaction: "action", window: "afterDamage", vs: "absorbed", weapon: "own" }] }),      // PWB (PW112)
+  L("Protection", "Requires Activation (Protection)", [1890], "assist", "toggle", { fx: { cost: "quick", ofParent: 1, interrupt: ["beforeRoll"] } }),      // PWB (PW065)
   P("Regeneration", [1893], "auto", "turn", { pass: { regeneration: 1 } }),      // Z8: heals by itself on each turn (engine-pure, effect "regen"); the button is gone
 
   /* ================================================================ MODIFICATION POWERS [B1896-1989] */
@@ -218,11 +222,11 @@ export const ROWS = Object.freeze([
   moveRow("Burrowing", [1995]), B("Burrowing", "Tunneling", [1996], "auto", "move", { mv: 1 }),
   moveRow("Flight", [1999, 2000, 2001, 2002]), B("Flight", "Interstellar Flight", [2003], "hand", "story", { why: "outOfFight" }), L("Flight", "Gliding", [2004], "auto", "move", { mv: 1 }),
   P("Leaping", [2007, 2008, 2009, 2010], "auto", "move", { mv: 1, fx: { cost: "none", only: "leaping" } }),
-  moveRow("Super-Speed", [2013, 2014, 2015, 2016]), B("Super-Speed", "Fast Tasks", [2017], "hand", "story", { why: "gmJudges" }), B("Super-Speed", "Untouchable Speed", [2018], "assist", "interrupt", { mv: 1 }),
+  moveRow("Super-Speed", [2013, 2014, 2015, 2016]), B("Super-Speed", "Fast Tasks", [2017], "hand", "story", { why: "gmJudges" }), B("Super-Speed", "Untouchable Speed", [2018], "assist", "reaction", { mv: 1, acts: [{ k: "dash", cost: "quick", stress: 1, effect: { kind: "narrative" }, reaction: "moveAway", mode: "superSpeed" }] }),      // PWB (PW090)
   moveRow("Swimming", [2021]), B("Swimming", "Fast Swimmer", [2022], "auto", "move", { pass: { fastSwim: 1 } }), L("Swimming", "Surface Breather", [2023], "hand", "story", { why: "outOfFight" }),
   P("Swinging", [2027, 2028, 2029], "auto", "move", { mv: 1, atk: { noDamage: 1, stunts: "none", pull: 1 } }),
   B("Swinging", "Fast Swinging", [2030], "auto", "move", { pass: { fastSwing: 1 } }), L("Swinging", "Brachiation", [2031], "auto", "move", { mv: 1 }),
-  moveRow("Teleportation", [2034, 2035, 2036, 2037]), B("Teleportation", "Teleport Allies", [2038], "assist", "move", { mv: 1 }), B("Teleportation", "Quick Teleport", [2039], "assist", "interrupt", { mv: 1 }),
+  moveRow("Teleportation", [2034, 2035, 2036, 2037]), B("Teleportation", "Teleport Allies", [2038], "assist", "move", { mv: 1 }), B("Teleportation", "Quick Teleport", [2039], "assist", "reaction", { mv: 1, acts: [{ k: "blink", cost: "quick", stress: 1, effect: { kind: "narrative" }, reaction: "moveAway", mode: "teleportation" }] }),      // PWB (PW090)
   B("Teleportation", "Portal", [2040], "assist", "outcome", { cost: "full" }), B("Teleportation", "Distant Travel", [2041], "hand", "story", { why: "outOfFight" }), L("Teleportation", "Specific Location (Teleport)", [2042], "hand", "story", { why: "gmJudges" }),
 
   /* ================================================================ SENSORY POWERS [B2045-2091] */

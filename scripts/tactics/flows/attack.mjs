@@ -102,6 +102,7 @@ export function legality(v, inst) {
   if (d.targets.length > 1 && !multi) return bad("oneTarget");
   const w = weaponOf(v, inst);
   if (!counter && d.weapon && d.weapon !== "unarmed" && !w) return bad("noWeapon");
+  if (w?.reactOnly && !Number.isFinite(inst.data?.fixedDamage)) return bad("answerOnly", { gmMayAllow: 1 });      // PWB: Redirecting Blast is fired only as the answer to damage absorbed [B1889]
   if (entry?.unarmed && d.weapon && d.weapon !== "unarmed") return bad("noWeapon", { gmMayAllow: 1 });       // P6 [B2151]: Martial Arts is unarmed
   if (w?.fam === "shoot" && kind === "slugfest") return bad("noWeapon");                                      // P6: a power thrown from afar is a shooting attack
   if (!counter && !inst.locked) {                                                                            // the features of the book's weapon table (kit-pure.mjs profileOf); once the dice are out the attack stands
@@ -136,15 +137,7 @@ export function legality(v, inst) {
     if (r === undefined) notes.push("noScene");                                                              // spec 7: positional steps fall back to the GM
     else if (r === null) return bad("noRange");                                                              // [Z4]
     else if (kind === "charge" && !approached) { if (r.total === 0) return bad("chargeSameZone"); }          // [B2490]
-    else if (SLUG.includes(kind) || kind === "charge") {                                                     // [Z2], [B2425]; huge and grown attackers reach elevated targets [B2500], [B1975]; wrecking reaches one zone [B2453]
-      const reach = zones.slugfestReachAt(r, facts.zone(inst.actor) ?? {}, facts.zone(t) ?? {}, { range: Math.max(d.wreck ? 1 : 0, w?.reach ?? 0, a.pass?.reach ? 1 : 0, K.copiesOf(state, inst.actor) > 0 ? 1 : 0), huge: stunts.reachesElevated(a) });      // P6: Elongation [B1919], copies [B1908]
-      if (!reach.ok) return bad("outOfReach", { distance: r.total });
-    }
-    else {
-      if (!w || !Array.isArray(w.range)) return bad("noWeapon");                                             // [B2510]
-      const sr = zones.shootingRange(r.total, w.range);                                                      // [B2511]
-      if (!sr.ok) return bad(sr.reason, { distance: r.total });
-    }
+    else { const why = reachFault(v, inst, t, r); if (why) return bad(why, why === "noWeapon" ? {} : { distance: r.total }); }
     if (kind === "grapple") { const g = attack.grappleCheck({ target: K.immunityFlags(tf), usesWeapon: !!d.weapon && d.weapon !== "unarmed" }); if (!g.ok) return bad(g.reason); }   // [B2496], [B2502]
     if (!counter && !d.area) {
       if (M.hasStatus(state, t, "invisible")) gates.push({ kind: "invisible", target: t, attr: "intuition", dice: INVISIBLE_GATE_DICE, src: 2075 });   // [B2075]
@@ -160,6 +153,18 @@ export function legality(v, inst) {
   return { ok: true, reason: null, params: {}, gates, notes };
 }
 
+/** Whether the attack reaches `t` at range `r` (facts.range): null, or the reason it does not. ONE reading for the declaration and for
+    an answer that moves the target away (PWB: Untouchable Speed [B2018], Quick Teleport [B2039]: "out of range ... misses automatically"). */
+function reachFault(v, inst, t, r) {
+  const { state, facts } = v, d = inst.decl, kind = kindOf(inst), w = weaponOf(v, inst), a = facts.c(inst.actor) ?? {};
+  if (SLUG.includes(kind) || kind === "charge") {                                                            // [Z2], [B2425]; huge and grown attackers reach elevated targets [B2500], [B1975]; wrecking reaches one zone [B2453]
+    const reach = zones.slugfestReachAt(r, facts.zone(inst.actor) ?? {}, facts.zone(t) ?? {}, { range: Math.max(d.wreck ? 1 : 0, w?.reach ?? 0, a.pass?.reach ? 1 : 0, K.copiesOf(state, inst.actor) > 0 ? 1 : 0), huge: stunts.reachesElevated(a) });      // P6: Elongation [B1919], copies [B1908]
+    return reach.ok ? null : "outOfReach";
+  }
+  if (!w || !Array.isArray(w.range)) return "noWeapon";                                                      // [B2510]
+  const sr = zones.shootingRange(r.total, w.range);                                                          // [B2511]
+  return sr.ok ? null : sr.reason;
+}
 /** Does the instance still hold after an interrupt finished on top of it (spec 5.1)? Returns { ok, reasons }. The engine never decides: a failure opens the
     GM card `revalidate` [OQ-3]. */
 export function revalidate(v, inst) {
@@ -250,7 +255,8 @@ function oddsBands(g) {
 }
 /* D113: Warning Call [B2170]: the one warned rolls two more dice on its block or dodge */
 export const WARN_DICE = 2;
-const defencePool = (v, I, t, how, tokens) => K.buildPool(v, I, `def:${t}`, t, attack.DEFENCES[how].attr, I.data?.warned?.[t] ? [{ source: "warned", dice: WARN_DICE }] : [], { rollKind: how, tokens });
+/* PWB: a defence given by Guidance [B1709] costs no action but brings no dice (warned.dice 0) */
+const defencePool = (v, I, t, how, tokens) => { const w = I.data?.warned?.[t], n = w ? w.dice ?? WARN_DICE : 0; return K.buildPool(v, I, `def:${t}`, t, attack.DEFENCES[how].attr, n ? [{ source: "warned", dice: n }] : [], { rollKind: how, tokens }); };
 function defencePrompt(v, I, t) {
   const kind = kindOf(I), tf = v.facts.c(t);
   const dq = Veh.defenceOf(v, I, kind);                                                          // P7 [B3434]: the charge or ram that ends a chase
@@ -272,7 +278,7 @@ function defencePrompt(v, I, t) {
     /* the bonus dice the defender may choose to put on this defence (spec 6.2); the answer names them: { id, tokens } */
     const spare = M.tokensFor(v.state, t, { kind: id, attr: attack.DEFENCES[id].attr }).filter((k) => !M.standing(k)).map((k) => ({ id: k.id, dice: k.dice, source: k.source?.name ?? "", ...(k.needsGm ? { needsGm: 1 } : {}) }));
     if (warned) {                                                                                // the paid and the Defensive answers would only cost more
-      const w = allowed(df.free, id), wo = { id: `${id}:warned`, label: `ITAC.opt.${id}Warned`, cost: "none", ...(spare.length ? { data: { tokens: spare } } : {}) };
+      const w = allowed(df.free, id), wo = { id: `${id}:warned`, label: `ITAC.opt.${id}${I.data.warned[t].guide ? "Guided" : "Warned"}`,      /* PWB: given by Guidance [B1709], no dice */ cost: "none", ...(spare.length ? { data: { tokens: spare } } : {}) };
       if (!w.ok) wo.disabled = w.reason;
       options.push(wo);
       continue;
@@ -286,10 +292,10 @@ function defencePrompt(v, I, t) {
       options.push(fo);
     }
   }
-  if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget" && e.reaction.effect !== "warn" && K.reactionFit(v, I, t, e).ok)) options.push(...K.reactionOptions(v, t, e, I).filter((o) => o.disabled !== "reactionUsed"));      // [B2707]: out of action, no power answers; D113: a reaction once per attack
+  if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => !["swapTarget", "warn", "guide"].includes(e.reaction.effect) && K.reactionFit(v, I, t, e).ok)) options.push(...K.reactionOptions(v, t, e, I).filter((o) => o.disabled !== "reactionUsed"));      // [B2707]: out of action, no power answers; D113: a reaction once per attack
   const live = options.filter((o) => !o.disabled);
   const ways = [...new Set(live.map((o) => String(o.id).split(":")[0]).filter((id) => id === "block" || id === "dodge"))];
-  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, action: I.action, targets: I.decl.targets.slice(0, 12), ...(warned ? { warned: I.data.warned[t].by } : {}) } };
+  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, action: I.action, targets: I.decl.targets.slice(0, 12), ...(warned ? { warned: I.data.warned[t].by, ...(I.data.warned[t].guide ? { guided: 1 } : {}) } : {}) } };
   p.data.gm = oddsFacts(v, I, t, ways);
   const bands = oddsBands(p.data.gm);
   if (bands) p.data.odds = bands;
@@ -335,7 +341,7 @@ function applyReaction(v, I, R, cid, key, value, when) {
   if (e.stress?.fixed) R.effects.push({ t: "stress", who: cid, n: e.stress.fixed });
   R.events.push({ type: "reaction", who: cid, kind: e.id, cost: e.cost, stress: e.stress?.fixed ?? 0, for: I.decl.targets[0] });
   const fx = e.reaction.effect, name = String(e.name || "").slice(0, 80) || null;
-  if (["allySwap", "warn", "note"].includes(fx)) {
+  if (["allySwap", "warn", "note", "guide"].includes(fx)) {
     /* D113: the reactions that used to be a note nobody was shown. Each now does what the book says, or (an entry the engine has no rule for)
        puts a card on the GM's desk; what it came to is told to the table with the result of the attack (news, journal) */
     const about = aboutOf(v, I, cid, e, rid.about, staff);
@@ -360,12 +366,27 @@ function applyReaction(v, I, R, cid, key, value, when) {
       } else { rec.result = "card"; reopenDefence(v, I, R, about); }      // its card is made again with the free answers (or for the first time after a pass)
       return false;
     }
+    if (fx === "guide") {                          // PWB Guidance [B1709]: a PRESENCE roll; on a success the one guided blocks or dodges without an action
+      if (!about || !I.decl.targets.includes(about)) { rec.result = "noTarget"; return false; }
+      const rk = `gd:${cid}`, attr = e.roll?.attr ?? "presence";
+      const bp = K.buildPool(v, I, rk, cid, attr, [], { rollKind: "other" });
+      for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
+      R.effects.push(K.rollEffect(rk, cid, attr, bp.pool, { label: e.label, noPush: !K.mayPush(v, cid) }));
+      (I.data.guides ??= []).push({ key: rk, by: cid, to: about, entry: e.id });
+      return false;
+    }
     rec.result = "byHand";                         // an entry the engine has no rule for: the GM settles it, the attack waits for that
     (I.data.byHand ??= []).push({ key: `rh:${(I.data.byHand ?? []).length}`, who: cid, entry: e.id, when, ...(name ? { name } : {}), ...(e.label ? { label: e.label } : {}) });
     return false;
   }
   if (e.reaction.effect === "action") {            // an interrupt that is itself an action: pushed on top, runs to its end, then this one is revalidated (spec 5.1)
-    R.push = { action: e.id, actor: cid, decl: { action: e.id, targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "interrupt", prepaid: 1 };
+    /* PWB: an answering attack is made with what the entry names (Quick Blast: the Blast [B1585]; Sudden Strike: the bare, Strike-boosted
+       blow [B1619]) at the one who attacks; Redirecting Blast deals the damage the Armor absorbed [B1889] */
+    const absorbed = e.reaction.vs === "absorbed" ? Math.max(0, Math.trunc(Number(I.data.dmg?.[cid]?.absorbed) || 0)) : null;
+    R.push = { action: e.id, actor: cid, decl: { action: e.id, targets: [I.actor], helpers: [], exploits: [], stressTotal: 0, ...(e.reaction.weapon ? { weapon: e.reaction.weapon } : {}) }, cause: "interrupt", prepaid: 1, ...(absorbed != null ? { data: { fixedDamage: absorbed } } : {}) };
+    /* PWB: the answer does not stand in for a defence (each is a quick action of its own [B2292]): once it is through, the attacked one is
+       asked again, with block or dodge if an action is left for it, and without this answer (taken once per attack) */
+    if (e.kit) { (I.data.reacted ??= []).push({ who: cid, entry: e.id, effect: "action" }); if (when === "beforeRoll" && I.decl.targets.includes(cid)) reopenDefence(v, I, R, cid); }
     return true;
   }
   if (e.reaction.effect === "swapTarget") {        // retargeting (spec 9.1 step 4 "target swap"): the reactor becomes the target; its own window opens next
@@ -385,6 +406,12 @@ function applyReaction(v, I, R, cid, key, value, when) {
     }
     rec.result = "took";
     swapTarget(I, from, cid, e.id);
+    return false;
+  }
+  if (e.reaction.effect === "moveAway") {          // PWB Untouchable Speed [B2018], Quick Teleport [B2039]: paid now; where to is asked before the dice (awayMoves)
+    const rec = { who: cid, entry: e.id, effect: "moveAway", ...(name ? { name } : {}), ...(e.label ? { label: e.label } : {}) };
+    (I.data.reacted ??= []).push(rec);
+    (I.data.away ??= []).push({ who: cid, entry: e.id, mode: e.reaction.mode ?? null });
     return false;
   }
   if (e.reaction.effect === "autoMiss") { ((I.data.forced ??= {}).autoMiss ??= {})[cid] = e.id; return false; }
@@ -407,6 +434,58 @@ function reopenDefence(v, I, R, t) {
   if (K.isAnswered(v, I, k)) delete I.data.pk[k]; else R.drop.push(k);      // an answered card stays answered; the step asks with a new one
   if (I.data.done) delete I.data.done[k];
   K.setFlag(I, "reopen");
+}
+/** PWB Guidance [B1709]: the guide's PRESENCE rolls. With a six the one guided blocks or dodges without an action of its own (its card is
+    made again with those answers, as after a warning, but without the two dice of Warning Call); without one the quick action is spent
+    all the same. -> true while a roll is still out */
+function settleGuides(v, I, R) {
+  let waiting = false;
+  for (const g of I.data.guides ?? []) {
+    if (g.done) continue;
+    if (!K.rollFinal(I, g.key)) { waiting = true; continue; }
+    g.done = 1;
+    const won = K.sixesOf(I, g.key) >= 1 && I.decl.targets.includes(g.to);
+    const rec = (I.data.reacted ?? []).find((x) => x.who === g.by && x.entry === g.entry && !x.result);
+    if (rec) rec.result = won ? "guided" : "failed";
+    if (!won) continue;
+    (I.data.warned ??= {})[g.to] = { by: g.by, entry: g.entry, dice: 0, guide: 1 };
+    if (!I.data.def?.[g.to]?.defence) reopenDefence(v, I, R, g.to);      // a defence already paid for stays as it was
+  }
+  return waiting;
+}
+/** PWB Untouchable Speed [B2018], Quick Teleport [B2039]: the target that answered with a move is asked where to (the zones its way of
+    moving reaches with one move, already paid with the answer: the card of a dodge move), moves at once in the attack's transaction, and
+    the attack misses it when it no longer reaches ("out of range ... misses automatically"). "By hand" leaves the place and the miss to
+    the GM (setOutcome). -> true while it waits */
+function awayMoves(v, I, R) {
+  let waiting = false;
+  for (const a of I.data.away ?? []) {
+    if (a.done) continue;
+    const key = `away:${a.who}`;
+    if (!I.data.pk?.[key]) {
+      if (!R.prompts.some((p) => p.key === key)) {
+        const Z = v.facts.zones, c = v.facts.c(a.who);
+        const zs = Z && c ? MP.moveOptions(Z, v.state, a.who, c, () => ({ ok: true }), { prepaid: true, ...(a.mode ? { mode: a.mode } : {}) }).filter((x) => !x.disabled && !x.area && !x.here).slice(0, 50) : [];
+        R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, a.who), about: a.who, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated, ...(x.stress ? { stress: x.stress } : {}) } })),
+          { id: "move", label: "ITAC.opt.dodgeMove", data: {} }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { away: 1, ...(a.mode ? { mode: a.mode } : {}) } });
+      }
+      waiting = true; continue;
+    }
+    if (!K.isAnswered(v, I, key)) { waiting = true; continue; }
+    if (!a.moved) {
+      a.moved = 1;
+      const id = K.answerId(v, I, key), pick = K.promptOf(v, I, key)?.options?.find((x) => x.id === id)?.data;
+      if (pick?.to) { R.push = { action: "move", actor: a.who, decl: { ...blank, action: "move", targets: [], to: pick.to, ...(pick.mode ? { mode: pick.mode } : {}), ...(pick.stress ? { stress: 1 } : {}) }, data: { prepaid: true }, cause: "interrupt", part: 1 }; return true; }
+      if (id === "move") (I.data.notes ??= []).push({ note: "awayByHand", who: a.who });
+    }
+    a.done = 1;
+    const rec = (I.data.reacted ?? []).find((x) => x.who === a.who && x.entry === a.entry && !x.result);
+    const r = v.facts.range(I.actor, a.who), gone = r === null || (r !== undefined && !!reachFault(v, I, a.who, r));
+    if (rec) rec.result = gone ? "away" : "inReach";
+    if (gone && I.decl.targets.includes(a.who)) ((I.data.forced ??= {}).autoMiss ??= {})[a.who] = a.entry;
+    else if (I.decl.targets.includes(a.who)) reopenDefence(v, I, R, a.who);          // still in reach: it may still block or dodge with an action it has left
+  }
+  return waiting;
 }
 const swapTarget = (I, from, to, by) => {
   I.decl.targets = I.decl.targets.map((t) => (t === from ? to : t));
@@ -485,7 +564,7 @@ const blank = { helpers: [], exploits: [], stressTotal: 0 };
 /* Knockback straight up or down (a vertical zone is a zone [B2258]): up unless the target is already as high as the map goes, down only for a
    target off the ground (reading, combat-rulings INT-R3). Asked only where the map says on which level the target is. */
 const vertOf = (v, t) => { const z = v.facts.zone(t); return !z || z.area || z.level == null ? [] : [...(z.level === "elevated" ? [] : ["up"]), ...(z.level !== "ground" && z.level !== "underground" ? ["down"] : [])]; };
-const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); return Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : slugBase(v, I, a)); };
+const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); return Number.isFinite(I.data?.fixedDamage) ? I.data.fixedDamage : Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : slugBase(v, I, a)); };      // PWB: Redirecting Blast deals what was absorbed [B1889]
 /* Z14 [B1622], [B1614-1617]: the slugfest damage of the sheet without STRIKE's bonus when the wind-up is missing (never under half the STRENGTH, the base the system starts from) */
 const slugBase = (v, I, a) => { const d = a?.slugfest?.damage ?? 0, s = Number(a?.pass?.strike) || 0; return s > 0 && unwound(v, I) ? Math.max(Math.ceil((Number(a?.attrs?.strength) || 0) / 2), d - s) : d; };   // [B2426], [B2428], [B2512]; P7 [B3148]: a ram deals the vehicle's damage
 export const steps = {
@@ -579,10 +658,13 @@ export const steps = {
     const st = runWindow(v, I, R, keys, "beforeRoll");
     if (R.push) return R;
     const rolling = settleSwaps(v, I);                                                // U91: a guardian's roll decides whether the target changes [B2115]
+    const guiding = settleGuides(v, I, R);                                            // PWB: a guide's PRESENCE roll [B1709]
+    const moving = awayMoves(v, I, R);                                                // PWB: the target moves away at once [B2018], [B2039]
+    if (R.push) return R;
     for (const t of (I.data.redefend ?? []).splice(0)) reopenDefence(v, I, R, t);     // D113: Discretion failed: the target answers the attack again
     if (I.decl.targets.join() !== before) { staleCards(v, I, R); R.goto = "reactBefore"; return R; }      // retargeted: the new target's own window opens
     if (K.flag(I, "reopen")) { delete I.data.ph.reopen; R.goto = "reactBefore"; return R; }              // D113: a defence card is asked again
-    if (st === "wait" || rolling) { R.wait = true; return R; }
+    if (st === "wait" || rolling || guiding || moving) { R.wait = true; return R; }
     I.data.window = null;
     R.goto = "roll";
     return R;
@@ -768,6 +850,7 @@ export const steps = {
         taken = ml.taken;
       }
       const rec = { base, raw: hd.raw, doubled, armor: hd.armor, armorSource: ar.source?.id ?? null, taken, tags, forced: forced ? 1 : undefined, ...(o.extra ? { extra: o.extra } : {}), ...(pierce ?? {}) };
+      if (!tags.toStress && !pierce && ar.source && !ar.source.barrier && !ar.source.stress && Math.min(hd.raw, hd.armor) > 0) rec.absorbed = Math.min(hd.raw, hd.armor);      // PWB: what the character's own Armor stopped (Redirecting Blast [B1889]; question PWB-4)
       const through = taken;                                                                                    // what got past the Armor (a Barrier is breached by this, whoever takes it then)
       if (!tags.toStress && !pierce) { const ab = K.copiesAbsorb(v, R, t, taken); if (ab.copies) { taken = rec.taken = ab.taken; rec.copies = ab.copies; } }      // P6 [B1910], [B1916]: the copies take it first
       if (tf.pass?.absorb && !tags.toStress && !ar.source?.barrier && Math.min(hd.raw, hd.armor) > 0) {         // P6 [B1887]: a die per point the Protection stopped, for the next turn
