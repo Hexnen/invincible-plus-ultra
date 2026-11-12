@@ -2,6 +2,10 @@
 // (adversary 8, played live on four seats). Scripted table, no Foundry.
 import { ok, eqc as eq, done, Table } from "./testkit.mjs";
 import * as Hz from "./flows/hazards.mjs";
+import * as V from "./view-pure.mjs";
+import * as UI from "./ui/model-pure.mjs";
+import * as Desk from "./desk-pure.mjs";
+import { t as say, EN } from "./lang.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -91,6 +95,78 @@ const car = (o = {}) => ({ kind: "vehicle", npc: true, health: 8, vehicle: { typ
     states: (k) => (k === "z1" ? [{ id: "mark:fire", kind: "fire", level: 5, source: "mark", zone: "z1" }] : []), graph: () => ({ zones: [{ id: "z1", tags: [] }], borders: [] }) } };
   const zoneHit = Hz.derived(T.state, F, { at: "roundStart" }).find((t) => t.run.type === "fireAttack" && t.subject.zone === "z1");
   eq(zoneHit?.run.targets, ["H1"], "D110: an emptied group standing in a burning zone is not a target of the zone's fire");
+}
+
+/* ================================================================== D111 / U110: what a failed challenge does, and what the table is told */
+{
+  const tEN = (k, p = {}, fb) => say(k, p, fb);
+  const playerFacts = (T) => ({ staff: false, me: "p1", c: (id) => (T.c[id] ? { name: T.c[id].name } : null) });
+  const pview = (T) => V.viewFor(T.state, { id: "p1", staff: false, owns: ["H1"] }, { hidden: [], npc: Object.keys(T.c).filter((id) => T.c[id].npc) });
+  const pjournal = (T) => V.journalFor(T.log, { id: "p1", staff: false, owns: ["H1"] }, { concealed: [], name: (id) => T.c[id]?.name }).map((j) => UI.marks(tEN, j.text));
+  const timeUp = async (T) => { T.c.CH.resolve = 1; await T.gm({ op: "nextRound", force: true }); const p = T.prompt("challengeFail"); return p; };
+
+  /* the Doomsday Device: "run" sets off the book's Blast 10 explosion on everybody in its zone */
+  {
+    const T = new Table();
+    T.hero("H1", "p1", { zone: "z1" }).hero("H2", "p2", { zone: "z2" }).npc("N1", { zone: "z1" });
+    T.add("CH", { kind: "challenge", npc: true, health: 6, resolve: 3, maxResolve: 3, name: "Device", zone: "z1" });
+    T.order(["H1", "N1", "H2"]).turn("H1");
+    await T.gm({ op: "challengeSetup", challenge: "CH", preset: "doomsdayDevice" });
+    const p = await timeUp(T);
+    eq(!!p, true, "D111: time is up: the GM's card");
+    await T.gm({ op: "answer", prompt: p.id, value: "run" });
+    const I = T.top();
+    eq([I?.flow, I?.data?.hz?.kind, I?.data?.hz?.rating, I?.decl.targets, I?.status === "manual"], ["blast", "blast", 10, ["H1", "N1"], false], "D111: 'apply' sets off a Blast 10 explosion on everybody in the challenge's zone (not the device, not the one elsewhere)");
+    for (let n = 0; n < 6 && T.prompts("hazardDodge").length; n++) { const d = T.prompts("hazardDodge")[0]; await T.gm({ op: "answerFor", prompt: d.id, value: "pass" }); }
+    eq(T.state.stack.length, 0, "D111: the explosion resolves by itself");
+    eq(pjournal(T).some((l) => l.includes("Device") && l.includes(EN["ITAC.ui.effect.blast"])), true, "U110: the players' journal names what the failed challenge did");
+    const nd = UI.newsData(pview(T), {}, playerFacts(T), tEN);
+    eq([nd?.text.includes("Device"), nd?.text.includes(EN["ITAC.ui.effect.blast"])], [true, true], "U110: the news names the challenge and its consequence");
+  }
+  /* the device off the map (no zone): the explosion cannot find its targets; the GM's item says so */
+  {
+    const T = new Table();
+    T.hero("H1", "p1").npc("N1");
+    T.add("CH", { kind: "challenge", npc: true, health: 6, resolve: 3, maxResolve: 3, name: "Device" });
+    T.c.CH.zone = null;
+    T.order(["H1", "N1"]).turn("H1");
+    await T.gm({ op: "challengeSetup", challenge: "CH", preset: "doomsdayDevice" });
+    await T.gm({ op: "answer", prompt: (await timeUp(T)).id, value: "run" });
+    eq([T.top()?.status, T.top()?.data?.challengeFx], ["manual", { challenge: "CH", kind: "blast" }], "D111: off the map the blast waits in the GM's hand");
+  }
+  /* Toxic Accident: the bystanders die. Nothing for the engine to do; the GM's item says what is left, and the table is told */
+  {
+    const T = new Table();
+    T.hero("H1", "p1").npc("N1");
+    T.add("CH", { kind: "challenge", npc: true, health: 10, resolve: 5, maxResolve: 5, name: "Spill" });
+    T.order(["H1", "N1"]).turn("H1");
+    await T.gm({ op: "challengeSetup", challenge: "CH", preset: "toxicAccident" });
+    for (const q of T.prompts("triggerQueue")) await T.gm({ op: "answerFor", prompt: q.id, value: [] });
+    await T.gm({ op: "answer", prompt: (await timeUp(T)).id, value: "run" });
+    for (const q of T.prompts("triggerQueue")) await T.gm({ op: "answerFor", prompt: q.id, value: [] });
+    const I = T.top();
+    eq([I?.status, I?.data?.challengeFx?.kind], ["manual", "bystandersDie"], "D111: the bystanders' death is the GM's to settle");
+    const desk = Desk.deskModel(T.state, T.log, { c: (id) => T.c[id], facts: T.facts() });
+    const m = desk.manual.find((x) => x.inst === I.id);
+    const md = UI.manualData ? UI.manualData(m, {}, { staff: true }, tEN) : null;
+    eq([md?.costs ?? null, typeof md?.why === "string" && md.why.includes(EN["ITAC.ui.effect.bystandersDie"])], [null, true], "D111: no cost picker for nobody's action; the item says what the failure does");
+    await T.gm({ op: "manual", inst: I.id, result: { cost: "none", note: "", damage: [] } });
+    eq(pjournal(T).some((l) => l.includes("Spill") && l.includes(EN["ITAC.ui.effect.bystandersDie"])), true, "U110: an empty note still leaves a line the players read, naming what happened");
+    const nd = UI.newsData(pview(T), {}, playerFacts(T), tEN);
+    eq([nd?.text.includes("Spill"), nd?.text.includes(EN["ITAC.ui.effect.bystandersDie"])], [true, true], "U110: and the news says it");
+  }
+  /* the GM's words go with it */
+  {
+    const T = new Table();
+    T.hero("H1", "p1").npc("N1");
+    T.add("CH", { kind: "challenge", npc: true, health: 3, resolve: 3, maxResolve: 3, name: "Standoff" });
+    T.order(["H1", "N1"]).turn("H1");
+    await T.gm({ op: "challengeSetup", challenge: "CH", preset: "hostageNegotiation" });
+    await T.gm({ op: "answer", prompt: (await timeUp(T)).id, value: "run" });
+    await T.gm({ op: "manual", inst: T.top().id, result: { note: "two got out" } });
+    const nd = UI.newsData(pview(T), {}, playerFacts(T), tEN);
+    eq([nd?.text.includes(EN["ITAC.ui.effect.hostagesDie"]), nd?.text.includes("two got out")], [true, true], "U110: the GM's note is read by the players with it");
+  }
 }
 
 done("check-defects8");

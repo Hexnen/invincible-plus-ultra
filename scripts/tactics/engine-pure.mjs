@@ -249,8 +249,10 @@ function pushNews(X, n) {
 function newsOf(I) {
   const rows = (I.decl?.targets ?? []).map((t) => { const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
     return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.tags?.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}) }; });
+  const fx = isObj(I.data?.challengeFx) ? I.data.challengeFx : null, note = fx && typeof I.data?.manual?.note === "string" && I.data.manual.note.trim() ? I.data.manual.note.trim().slice(0, 300) : null;
   return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
-    result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret ? { secret: 1 } : {}), rows };
+    ...(fx ? { fx: { challenge: fx.challenge, kind: fx.kind }, ...(note ? { note } : {}) } : {}),        // U110: what a failed challenge did, and the GM's words about it
+    result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows };
 }
 /* D32 / D33: a public journal line does not carry a name. It carries the mark `{c:<id>}` and the list `who` of the combatants it is about
    (the doer, and the targets, whom it does not name), so each reader gets the name as THAT reader knows it (namesake numbers never count
@@ -269,6 +271,15 @@ function label(X, inst, what) {
   /* nobody's action (a hazard, a forced move, a consequence of a challenge, a waiting trigger): the doer is the GM's hand or nobody, never an id;
      what it is comes from the hazard's kind or from the trigger's own name; `{zone:key}` is the place, named by the surface as the map names it */
   const hk = inst.data?.hazard?.kind, own = !inst.actor && typeof inst.decl?.text === "string" && inst.decl.text.trim() ? inst.decl.text.trim().slice(0, 80) : null;
+  /* U110: what a challenge does is named as a mark (each reader's language), with the challenge as `{c:id}`, and the GM's note after it */
+  const fx = isObj(inst.data?.challengeFx) && P1.isId(inst.data.challengeFx.challenge) ? inst.data.challengeFx : null;
+  if (fx) {
+    const cc = X.facts.c(fx.challenge), note = typeof inst.data?.manual?.note === "string" && inst.data.manual.note.trim() ? ` "${inst.data.manual.note.trim().slice(0, 120).replace(/[{}]/g, "")}"` : "";
+    const head = `{ITAC.ui.effect.${fx.kind}}`, res = what ? ` ({ITAC.result.${what}})` : "", spot = inst.decl?.zone ?? inst.data?.hz?.zone ?? null;
+    const names = (inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name).filter(Boolean).join(", ");
+    return { keep: true, who: whoOf(X, [fx.challenge, ...(inst.decl?.targets ?? [])]), pub: cc?.hidden || fx.hidden ? "" : `${cMark(fx.challenge)}: ${head}${res}${note}`,
+      gm: `${cc?.name ?? ""}: ${head}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}${note}` };
+  }
   const what0 = own ?? (inst.action === "hazard" && JOURNAL_HAZARDS.includes(hk) ? `{ITAC.ui.hz.kind.${hk}}` : act);
   const who = a?.name ?? (inst.cause === "gm" || inst.initiator?.type === "gm" ? "{ITAC.journal.gm}" : "");
   const spot = inst.decl?.zone ?? inst.data?.hz?.zone ?? inst.data?.hazard?.zone ?? (["move", "drive", "fastball"].includes(inst.flow) ? inst.data?.mv?.at ?? inst.data?.mv?.to ?? null : null);
@@ -1357,13 +1368,33 @@ async function challengeFailRun(X, cid) {
     closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.challengeFailed}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.challengeFailed}` });
     emit(X, null, { type: "challenge", challenge: cid, rating: c.health, timeLeft: c.resolve, state: "failed", done: 1 });
   }
-  for (const kind of r.manual) pushManual(X, cid, kind, { at: "onFail" });
+  for (const kind of r.manual) if (!(kind === "blast" && failBlast(X, cid, c, cfg))) pushManual(X, cid, kind, { at: "onFail" });
 }
+/* D111 (spec 9.10: "the Blast 10 explosion of the Doomsday Device as a hazard instance"): the explosion of a failed challenge is the
+   engine's blast hazard [B2856], [B2921]: the rating of the challenge's effect, everybody in the challenge's zone. Without a zone on the
+   map (or nobody in it) it stays the GM's item. -> true when the instance stands */
+function failBlast(X, cid, c, cfg) {
+  const e = (cfg?.effects ?? []).find((x) => x.when === "onFail" && x.kind === "blast"), zone = X.facts.zone?.(cid)?.key;
+  if (!e || typeof zone !== "string" || !zone) return false;
+  const targets = (X.facts.inZoneKey?.(zone) ?? []).filter((id) => { const f = X.facts.c(id); return id !== cid && !!f && f.kind !== "challenge" && f.present !== false; });
+  if (!targets.length) return false;
+  const spec = Hz.specOf({ type: "blast", rating: e.rating, targets }, { zone }, view(X));
+  if (!spec) return false;
+  const inst = makeInst(X, { action: spec.action, actor: null, decl: spec.decl, cause: "trigger", flow: spec.flow, data: { ...spec.data, challengeFx: fxOf(cid, "blast", c) }, initiator: { type: "trigger", id: "blast" }, parent: top(X)?.id ?? null });
+  if (!FLOWS[inst.flow].legality(view(X), inst).ok) return false;
+  inst.tx = openTx(X, { inst: inst.id });
+  if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); }
+  pushInst(X, inst);
+  emit(X, inst, { type: "trigger", at: "onFail", subject: { zone }, run: { type: "blast" } });
+  return true;
+}
+/* U110: what a challenge does, kept on the instance, so the journal and the news name it in each reader's language */
+const fxOf = (cid, kind, c) => ({ challenge: cid, kind: String(kind).slice(0, 40), ...(c?.hidden ? { hidden: 1 } : {}) });
 /** A side effect the GM runs by hand (spec 5.3): an instance that names it, with the challenge as its source. */
 function pushManual(X, cid, kind, o = {}) {
   const name = X.facts.c(cid)?.name ?? cid;
   const inst = makeInst(X, { action: "other", actor: null, decl: { action: "other", targets: [], helpers: [], exploits: [], stressTotal: 0, text: `${name}: ${kind}`.slice(0, 300) }, cause: "trigger", flow: "other",
-    data: { trigger: { at: o.at ?? null, run: { type: "challenge", kind, challenge: cid }, source: { kind: "challenge", owner: cid, name } } }, initiator: { type: "trigger", id: String(kind).slice(0, 40) }, parent: top(X)?.id ?? null });
+    data: { trigger: { at: o.at ?? null, run: { type: "challenge", kind, challenge: cid }, source: { kind: "challenge", owner: cid, name } }, challengeFx: fxOf(cid, kind, X.facts.c(cid)) }, initiator: { type: "trigger", id: String(kind).slice(0, 40) }, parent: top(X)?.id ?? null });
   inst.tx = openTx(X, { inst: inst.id }); inst.status = "manual";
   if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); }
   pushInst(X, inst);

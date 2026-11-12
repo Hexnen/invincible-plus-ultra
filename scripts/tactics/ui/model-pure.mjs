@@ -394,7 +394,9 @@ const newsNo = (n) => Number(String(n?.id ?? "").replace(/\D/g, "")) || 0;
 function newsText(n, facts, t) {
   const who = n.actor ? nameOf(facts, n.actor, t) : "";
   const act = n.name ? String(n.name) : n.hazard ? t(`ITAC.ui.hz.kind.${n.hazard}`, {}, String(n.hazard)) : n.action ? t(`ITAC.action.${n.action}`, {}, String(n.action)) : "";
-  const head = [who, act].filter(Boolean).join(": ");
+  /* U110: what a challenge did is said as that ("Device: a blast"), and the GM's words about it follow the result */
+  const fx = n.fx?.challenge ? `${nameOf(facts, n.fx.challenge, t)}: ${t(`ITAC.ui.effect.${n.fx.kind}`, {}, String(n.fx.kind))}` : null;
+  const head = fx ?? [who, act].filter(Boolean).join(": ");
   if (n.kind === "nudge") return t(n.roll ? "ITAC.ui.news.nudge.roll" : "ITAC.ui.news.nudge");      // U59: the GM asks for the answer the table waits for
   if (n.kind === "undo") return head ? t("ITAC.ui.news.undo", { what: head }) : t("ITAC.ui.news.undoAny");
   if (n.kind === "exception") {
@@ -407,7 +409,7 @@ function newsText(n, facts, t) {
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
   const res = rows.length ? rows.join("; ") : n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "";
-  return [head, res].filter(Boolean).join(rows.length ? " > " : ": ") + (n.forced ? ` (${t("ITAC.ui.news.forced")})` : "") + (n.undone ? ` (${t("ITAC.ui.news.undone")})` : "");
+  return [head, res].filter(Boolean).join(rows.length ? " > " : ": ") + (n.kind === "action" && fx && n.note ? ` ("${String(n.note)}")` : "") + (n.forced ? ` (${t("ITAC.ui.news.forced")})` : "") + (n.undone ? ` (${t("ITAC.ui.news.undone")})` : "");
 }
 /** What the table was told lately, for a player (view.news; nothing for staff: the journal is theirs). own.newsSeen = the number of the
     last line this user put away. A plain move is on the map already and is left out. -> null | { id, text, tone, older: [text], seen } */
@@ -957,13 +959,15 @@ function instData(i, model, own, facts, t) {
     retarget: open && from && others.length ? { label: t("ITAC.ui.ovr.retarget"), choices: others.map((r) => ({ id: r.id, label: r.name, req: amend ? amend.req({ action: i.action, targets: [r.id] }) : ovr.req("retarget", { from, to: r.id }) })) } : null,
   };
 }
-function manualData(m, own, facts, t) {
+export function manualData(m, own, facts, t) {
   const f = own.manual?.[m.inst] ?? {}, resolve = m.commands.find((c) => c.id === "resolve"), abort = m.commands.find((c) => c.id === "abort");
-  const cost = ["none", "quick", "full"].includes(f.cost) ? f.cost : "none";
+  const cost = m.actor && ["none", "quick", "full"].includes(f.cost) ? f.cost : "none";      // D111: nobody's action (a hazard, a challenge's consequence) has no price to pick
+  /* D111 (spec 12: a parked step says what is left to do): what a failed challenge does, that the engine has no rule for */
+  const fxWhy = m.fx ? t(m.fx.kind === "blast" ? "ITAC.ui.manual.challengeFx.blast" : "ITAC.ui.manual.challengeFx", { name: m.fx.name ?? t("ITAC.Someone"), effect: t(`ITAC.ui.effect.${m.fx.kind}`, {}, String(m.fx.kind)) }) : null;
   const damage = (m.targets ?? []).map((x) => ({ target: x.id, name: x.name, amount: Math.max(0, Math.trunc(Number(f.damage?.[x.id]) || 0)) }));
   const result = { cost, note: String(f.note ?? "").slice(0, 300), damage: damage.filter((d) => d.amount > 0).map((d) => ({ target: d.target, amount: d.amount })) };
-  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: m.text ?? null, why: m.failed ? t("ITAC.ui.manual.failed", { step: stepText(t, m.failed.step) }) : m.byHand === "seat" ? t("ITAC.ui.manual.seat") : null, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null, causeMark: m.cause === "interrupt" ? "out" : null,
-    costs: ["none", "quick", "full"].map((id) => ({ id, unit: id, label: costText(t, id), on: id === cost })), note: { value: f.note ?? "", placeholder: t("ITAC.ui.manual.note") }, damage,
+  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: m.text ?? null, why: m.failed ? t("ITAC.ui.manual.failed", { step: stepText(t, m.failed.step) }) : m.byHand === "seat" ? t("ITAC.ui.manual.seat") : fxWhy, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null, causeMark: m.cause === "interrupt" ? "out" : null,
+    costs: m.actor ? ["none", "quick", "full"].map((id) => ({ id, unit: id, label: costText(t, id), on: id === cost })) : null, note: { value: f.note ?? "", placeholder: t("ITAC.ui.manual.note") }, damage,
     resolve: { label: t("ITAC.ui.manual.resolve"), req: resolve.req(result) }, abort: { label: labelOf(t, abort.label), req: abort.req } };
 }
 /* U60: ONE COMBATANT AT A GLANCE, for the GM (the head of the desk's character tab; the token clicked on the map is the one shown):
