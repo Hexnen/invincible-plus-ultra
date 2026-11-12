@@ -20,6 +20,7 @@
                                         a stepper's request is a step (`delta`), a switch's the state as the rules mean it (D53, D59) */
 import { labelOf, oddsFor, isFree, priceOf } from "./model-pure.mjs";
 import * as Sg from "./signs-pure.mjs";
+import { ODDS_LOOKS, oddsSign } from "../../kit-signs-pure.mjs";      // U133: the chance as the kit's mark (pure core, no Foundry)
 import { whyOf, whyLine } from "./feedback-pure.mjs";
 import * as HZ from "../flows/hazards.mjs";
 import { stateFlags } from "../movement-pure.mjs";
@@ -58,18 +59,36 @@ const oddsTip = (o, t) => (o ? join([`${t("ITAC.ui.chance")}: ${o.say}`, o.defen
 /** The targets of the declare panel that stand on this user's map. In reach: a ring and the chance over the token, the effect of a hit
     while the pointer is on it. Out of reach: dimmed, with the engine's reason. Chosen: the heavy ring (an out-of-reach one that was
     chosen all the same stays dimmed: the panel says why and offers the way to ask). Before the engine answered only the chosen ring. */
-export function reachMarks(p, t) {
+export function reachMarks(p, t, look = null) {
   if (p?.kind !== "declare" || !p.targets) return [];
-  const out = [];
+  const out = [], drawn = ODDS_LOOKS.includes(look);
   for (const x of p.targets) {
     if (!x.map) continue;
     if (x.reach === "out") { out.push({ cid: x.id, state: "out", tip: x.why ?? null }); continue; }
     if (x.reach !== "in" && !x.picked) continue;
     const hit = x.reach === "in" ? hitWords(x.hit, t) : null, say = x.odds?.say ?? null, tip = oddsTip(x.odds, t);
-    out.push({ cid: x.id, state: x.picked ? "chosen" : "in", ...(say ? { label: cut(say) } : {}), ...(tip ? { tip } : {}),
-      ...(hit ? { hover: { label: cut(say ? `${say} · ${hit.short}` : hit.short), tip: join([tip, hit.tip]), ...(hit.bar ? { bar: hit.bar } : {}), ...hitSigns(say, hit, t) } } : {}) });
+    /* U133: with a drawn chance the pill is gone; under the pointer it says what a hit does, alone */
+    const hl = drawn ? null : say;
+    out.push({ cid: x.id, state: x.picked ? "chosen" : "in", ...oddsShow(x.odds, look), ...(tip ? { tip } : {}),
+      ...(hit ? { hover: { label: cut(hl ? `${hl} · ${hit.short}` : hit.short), tip: join([tip, hit.tip]), ...(hit.bar ? { bar: hit.bar } : {}), ...hitSigns(hl, hit, t) } } : {}) });
   }
   return out;
+}
+/* U133: THE CHANCE ON THE TOKEN. `odds` = model-pure.oddsFor's answer ({ level, text, say }); `look` = the client switch (tacticsOddsLook):
+   off (anything but a look) -> the words in the pill over the token, as before; a look -> the kit's mark of the band ON the token, named
+   by the band's words (the pointer's tip says "Chance: ..." whole, the GM's tip the per cent), no pill:
+     bars  -> a chip on the top right corner of the token (the map's `badge`, on a plate)
+     ring  -> the ring around the token in four quarters, as many heavy as the band (the map's `meter`)
+     arrow -> the chevrons on the bottom right corner (a `badge` with no plate: a dark rim around the drawing)
+   The map draws what it is handed and knows no band (moinen-maps zones-api.md section 42). */
+export function oddsShow(odds, look = null) {
+  const say = odds?.say ?? null;
+  if (!say) return {};
+  if (!ODDS_LOOKS.includes(look) || !Number.isInteger(odds.level)) return { label: cut(say) };
+  const name = odds.text ?? say;
+  if (look === "ring") return { meter: { n: odds.level + 1, of: 4, name } };
+  const sign = oddsSign(odds.level, look, { name });
+  return sign ? { badge: { signs: [sign], name, ...(look === "bars" ? { at: "ne", plate: true, size: 13 } : { at: "se", plate: false, size: 17 }) } } : { label: cut(say) };
 }
 
 /* ------------------------------------------------------------------ U38 / U39: the state of the table */

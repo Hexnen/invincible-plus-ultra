@@ -105,9 +105,23 @@ export const LEGEND = Object.freeze([
   { group: "roll", rows: [["dice", () => symMarkHtml("dice", { n: 6 })], ["six", () => symMarkHtml("six", { n: 2 })], ["push", () => symMarkHtml("push")], ["crit", () => symMarkHtml("crit")],
     ["cond", () => symMarkHtml("cond", { glyph: "fa-face-dizzy" }) + symMarkHtml("cond", { glyph: "fa-hands-holding" })]] },
 ]);
-export function legendHtml(lang = globalThis.game?.i18n?.lang ?? "en") {
+/* U133: the chance of a target as a mark (kit-signs-pure.mjs ODDS_*). While the owner chooses among three drawings, a client switch
+   (tactics setting tacticsOddsLook) names the one this client shows; the legend shows that one's four levels ("off": no such column,
+   the legend as before). */
+export const { ODDS_LEVELS, ODDS_LOOKS, oddsKind } = P;
+let oddsLook = null;
+export const setOddsLook = (look) => { oddsLook = ODDS_LOOKS.includes(look) ? look : null; };
+export const getOddsLook = () => oddsLook;
+export function oddsMarkHtml(level, look = oddsLook, { name = null } = {}) {
+  const k = oddsKind(level, look);
+  if (!k) return "";
+  const say = name === true ? markName(ODDS_LEVELS[level]) : name ? String(name) : null;
+  return `<i class="ipu-cost ipu-k-${k}"${say ? ` role="img" aria-label="${esc(say)}" data-tooltip="${esc(say)}"` : ' aria-hidden="true"'}></i>`;
+}
+const oddsGroup = (look) => ({ group: "chance", rows: ODDS_LEVELS.map((id, i) => [id, () => oddsMarkHtml(i, look)]) });
+export function legendHtml(lang = globalThis.game?.i18n?.lang ?? "en", look = oddsLook) {
   const col = (g) => `<div class="ipu-legend-col"><h4 class="ipu-legend-h">${esc(markName(`legend.${g.group}`, lang))}</h4><dl>${g.rows.map(([id, draw]) => `<div class="ipu-legend-row"><dt>${draw()}</dt><dd>${esc(markName(id, lang))}</dd></div>`).join("")}</dl></div>`;
-  return `<div class="ipu-legend">${LEGEND.map(col).join("")}</div>`;
+  return `<div class="ipu-legend">${[...LEGEND, ...(ODDS_LOOKS.includes(look) ? [oddsGroup(look)] : [])].map(col).join("")}</div>`;
 }
 
 function onEnter(ev) {

@@ -16,6 +16,7 @@ import * as BP from "./board-pure.mjs";
 import { faOf } from "./dom.mjs";
 import { policyReq } from "../desk-pure.mjs";
 import { tIn } from "../lang.mjs";
+import { getOddsLook } from "../../kit.mjs";      // U133 trial: which look of the chance this client shows
 
 const LOG = "invincible-plus-ultra (tactics board) |";
 const DONE = { armed: null, mode: null, to: null, ask: null, why: "", targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} };
@@ -53,7 +54,9 @@ function caught(doc, who, dec, staff) {
     if (doc?.hidden === true || doc?.document?.hidden === true || (doc?.object ?? doc)?.visible === false) return false;
     if (cid && (!x || x.note)) return false;
   }
-  return x?.reach === "in" && x.odds?.say ? { label: x.odds.say } : true;
+  // (U133: the chance as the trial's look names it: the words, or the mark on the token)
+  const o = x?.reach === "in" ? BP.oddsShow(x.odds, getOddsLook()) : {};
+  return Object.keys(o).length ? o : true;
 }
 function put(id, set, clear, spec) {
   const key = spec ? JSON.stringify(spec) : "";
@@ -81,7 +84,7 @@ function table() {
 /* ---------- U33 / U34 / U36: whom the armed action can be aimed at ---------- */
 function reach() {
   const d = last.data, p = d?.show ? d.panel : null, dec = p?.kind === "declare" ? p : null, who = d?.who?.id;
-  const tokens = (dec ? BP.reachMarks(dec, t) : []).map(({ cid, ...r }) => ({ token: tid(cid), ...r })).filter((x) => x.token);
+  const tokens = (dec ? BP.reachMarks(dec, t, getOddsLook()) : []).map(({ cid, ...r }) => ({ token: tid(cid), ...r })).filter((x) => x.token);
   put(BP.IDS.reach, Zones.markTokens, Zones.clearTokenMarks, tokens.length ? { order: 2, color: "target", tokens } : null);
   const aim = dec?.aim?.length && tid(who) ? dec.aim.map((x) => ({ from: tid(who), to: tid(x.id) })).filter((l) => l.to) : [];
   put(BP.IDS.aim, Zones.link, Zones.clearLinks, aim.length ? { color: "target", style: "dashed", links: aim } : null);      // dashed: chosen, not declared yet

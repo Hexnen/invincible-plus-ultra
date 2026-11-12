@@ -18,6 +18,7 @@ import * as Sys from "./system-adapter.mjs";
 import * as Summons from "./summons.mjs";
 import { setLive } from "./source.mjs";
 import { attach, setRunning, isRunning, tacticsApi } from "./api.mjs";
+import { setOddsLook, ODDS_LOOKS } from "../kit.mjs";      // U133 trial: the client switch of the chance's look
 import * as Mv from "./movement.mjs";
 import { t } from "./lang.mjs";
 import * as V from "./view-pure.mjs";
@@ -44,6 +45,13 @@ function registerSettings() {
   reg("tacticsSoundVolume", { ...name("tacticsSoundVolume"), scope: "client", config: true, type: Number, range: { min: 0, max: 1, step: 0.05 }, default: 0.5 });
   /* U62: the size of the dock, the desk and their cards on this browser (a slider; separate from Foundry's interface scale) */
   reg("tacticsUiScale", { ...name("tacticsUiScale"), scope: "client", config: true, type: Number, range: { min: 80, max: 140, step: 5 }, default: 100, onChange: (v) => { try { tacticsApi.ui?.rescale?.(v); } catch { /* the surfaces are not up */ } } });
+  /* U133 TRIAL (temporary, removed with the losing looks once the owner chose): how this client draws the chance of each target on the
+     map. "off" = the words in the pill over the token, exactly as before; bars / ring / arrow = the kit's mark on the token (ui/board-pure
+     oddsShow). Read by the board and the legend (kit.mjs setOddsLook). */
+  reg("tacticsOddsLook", { ...name("tacticsOddsLook"), scope: "client", config: true, type: String, default: "off",
+    choices: Object.fromEntries(["off", ...ODDS_LOOKS].map((k) => [k, t(`ITAC.OddsLook.${k}`)])),
+    onChange: (v) => { setOddsLook(v); try { tacticsApi.ui?.refresh?.(); } catch { /* the surfaces are not up */ } } });
+  try { setOddsLook(game.settings.get(MOD, "tacticsOddsLook")); } catch { /* not readable yet: off */ }
 }
 /** what stands in the way of tactical combat on this world: null (it runs) | "off" | "yze" | "noInitiative" */
 export function blocker() {
