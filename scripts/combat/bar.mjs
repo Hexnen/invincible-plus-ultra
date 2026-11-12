@@ -32,6 +32,8 @@ import { unitOf, unitName } from "../challenges/lang.mjs";
 import { yzeOn, yzeWaiting, yzeMode, actorOf, toggleActionMark } from "../yze.mjs";
 import { groupsFor, waitingOf, waitKindOf, actionsOn } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
 import * as Tac from "../tactics/source.mjs";
+import * as Gate from "../tactics/ui/dicegate.mjs";                                           // ANSC: Health and Resolve wait for the 3D dice of a tactical roll
+import { holdById, BAR_HELD } from "../tactics/ui/wait-pure.mjs";
 import { besideFloating } from "../tactics/ui/layout-pure.mjs";                       // FXR (U185, FXQ-3): the strip keeps beside a popped-out chat, as the dock does                                         // U118: who sits in a vehicle
 
 const MOD = "invincible-plus-ultra";
@@ -177,6 +179,7 @@ function read(c, isActive, ctx) {
   };
 }
 
+let barHeld = null, barWait = false;      // ANSC: what the tiles showed while the dice rolled (wait-pure holdById), and a redraw promised for their landing
 function build(combat) {
   const ctx = { mode: get(KEY.players) ?? "friendly", res: get(KEY.res) ?? "both", sel: controlledIds(), combat };
   const items = [];
@@ -186,6 +189,14 @@ function build(combat) {
   try { waiting = waitingOf(combat); } catch { waiting = false; }
   if (waiting) { try { waitKind = waitKindOf(combat) ?? "draw"; } catch { waitKind = "draw"; } }      // D107: the plate says WHY nobody has the turn (a chase is no draw)
   turns.forEach((c, i) => { const it = read(c, !waiting && i === combat.turn, ctx); if (it) items.push(it); });
+  /* ANSC (U10-9 + UXB-7, the user 2026-11-12: everything waits for the dice): in a tactical fight the engine writes what a roll came to
+     into the sheets the moment its chat message is made; while the 3D dice of that roll still roll on this client a tile keeps the
+     Health, Resolve and "defeated" it showed (tactics/ui/wait-pure holdById), and the bar is drawn again once they have landed. Outside
+     a tactical fight a person writes the numbers, after the dice: nothing is held. */
+  let tac = false; try { tac = !!Tac.tacticsState(combat); } catch { tac = false; }
+  const heldNow = holdById(barHeld?.combat === combat.id ? barHeld.memo : null, items, BAR_HELD, tac && Gate.on());
+  barHeld = { combat: combat.id, memo: heldNow.memo };
+  if (heldNow.held) { items.splice(0, items.length, ...heldNow.items); if (!barWait) { barWait = true; Gate.landed().then(() => { barWait = false; schedule(); }); } }
   /* DUPLICATES (several combatants of one token, Year Zero speed): `dup` = { k: its place among the token's entries in turn order, n, first }.
      Only the FIRST shown entry carries Health / Resolve (the numbers are the same for all); a later one is the compact variant, unless it is the
      active tile, which always stays the full one. */

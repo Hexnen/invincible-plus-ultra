@@ -40,6 +40,7 @@ import * as Slots from "./slots.mjs";        // U132: the fixed places (the fram
 import * as ChaseP from "./chase-pure.mjs";   // CHASE: the chase panel in the middle (its data)
 import * as ChaseUI from "./chase.mjs";       // CHASE: the chase panel (the face-off)
 import { parkedLeft, MOVED as CHAT_MOVED } from "../../combat/chat-park.mjs";   // FXX (U185): the popped-out chat parked in the right column
+import * as Wait from "./wait-pure.mjs";       // ANSC: everything else that shows a result waits for the 3D dice too
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
@@ -122,6 +123,9 @@ function autoEnd(combat, d) {
 let cardTop = { id: null, at: 0 };      // U143: the question card on top of the dock and since when it stands there (the keys' guard)
 /* UXB (U141 / D128): the turns this client saw (a news line stands through its turn and the next: news-pure newsWindow) and what was
    shown while 3D dice rolled (cards and the line wait for the dice: news-pure diceHold) */
+/* ANSC (U10-9 + UXB-7 + FXJ-3 + SEAM-1, the user 2026-11-12: «Wszystko czeka, także liczby nad żetonem»): what else this client showed
+   while the dice rolled (ui/wait-pure.mjs): the desk's rows, the "waiting for" pieces, the roll rows, the map's state marks, the chase panel */
+let ansc = { desk: null, waitDock: null, waitDesk: null, rolls: null, statuses: null, prompts: null, chase: null };
 let newsWin = null, diceWas = null, diceWait = null, rollsWas = { rows: {}, opp: {}, held: false }, heldSeen = {};      // heldSeen: FXR (U191)
 const diceBusy = () => { try { return typeof game.dice3d?.waitFor3DAnimationByMessageID === "function" && (game.messages?.contents ?? []).slice(-12).some((m) => m?._dice3danimating); } catch { return false; } };
 const diceLanded = () => { const d = game.dice3d, busy = (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating);
@@ -315,14 +319,16 @@ function refresh() {
     newsWin = NewsP.newsWindow(newsWin, { combat: combat.id, fight: NewsP.fightNow(facts.view), round: facts.view?.round ?? null, member: NewsP.memberOf(facts.view), newest: NewsP.newest(facts.view?.news) });      // BH4-1 / BH4-2: the fight's tag, the round; FXN: a concealed turn counts
     st.dock.newsFrom = newsWin.from;
     const desk = staff ? Api.desk(combat) : null;
+    const diceNow = Wait.diceHolds(diceBusy(), diceWas?.since, Date.now()).on;      // ANSC: do the 3D dice of a roll hold this client's surfaces now
     let deskD = null;
     if (staff) {
       if (!st.desk.touched) st.desk.collapsed = mapWidth() < NARROW;
       /* U12: a card that was not waiting a moment ago brings the Now tab forward, unless the GM is typing in the desk */
       const ids = Model.deskDue(desk), fresh = Model.freshCards(cardsWere, ids);      // FXU (U195): a roll asked of the GM too      // FXP (D161): also at the first look at a fight (a restart opened on the Table tab over two cards)
-      cardsWere = ids; deskIdle = !ids.length && !(desk?.info ?? []).length && !(desk?.manual ?? []).length;
-      if (fresh && st.desk.auto) st.desk.auto = false;
-      if (fresh && st.desk.tab !== "now" && !/^(INPUT|TEXTAREA|SELECT)$/.test(Desk.el()?.contains(document.activeElement) ? document.activeElement.tagName : "")) st.desk.tab = "now";
+      cardsWere = diceNow && fresh ? cardsWere : ids; deskIdle = !ids.length && !(desk?.info ?? []).length && !(desk?.manual ?? []).length;
+      if (fresh && diceNow) diceThen();      // ANSC: a card that waits for the dice does not bring the Now tab forward before it shows
+      if (fresh && !diceNow && st.desk.auto) st.desk.auto = false;
+      if (fresh && !diceNow && st.desk.tab !== "now" && !/^(INPUT|TEXTAREA|SELECT)$/.test(Desk.el()?.contains(document.activeElement) ? document.activeElement.tagName : "")) st.desk.tab = "now";
       st.desk.picks = Model.carryPicks(st.desk.picks, deskCardsWere, desk?.cards ?? []); deskCardsWere = desk?.cards ?? [];      // FXV (FXF-11): a card made again keeps its ticks
       deskD = Model.deskData(desk, st.desk, facts, t);
     } else { cardsWere = null; Desk.render({ show: false }); }
@@ -330,7 +336,7 @@ function refresh() {
     st.dock.picks = Model.carryPicks(st.dock.picks, dockCardsWere, model?.prompts ?? []); dockCardsWere = model?.prompts ?? [];      // FXV (FXF-11)
     const data = Model.dockData(model, st.dock, facts, t);
     /* CHASE (U169 / U170): while the chase panel stands, the dock's line and cards do not say the chase again */
-    const chaseD = ChaseP.chaseData(facts.view, chaseOwnFor(combat), facts, t);
+    let chaseD = ChaseP.chaseData(facts.view, chaseOwnFor(combat), facts, t);
     if (chaseD?.on && data.show) Object.assign(data, ChaseP.lineTrim(data, facts.view));
     if (chaseD?.on && chaseOwn.obstacle && facts.view?.stack?.some((i) => i.flow === "chase")) chaseOwn = { ...chaseOwn, obstacle: null };      // the named obstacle went with the roll
     /* U160 (UX review 1): with the board the map's picks of a zone show no banner at the top (ui/board.mjs `banner: false`): what is
@@ -358,13 +364,26 @@ function refresh() {
     /* FXN (U162): the result of a roll of this user's own waits for its dice as the cards do: while they roll the row still says "rolling" (news-pure holdRolls) */
     rollsWas = NewsP.holdRollsIn(data, rollsWas, busy && !(Number.isFinite(hold.since) && now - hold.since > NewsP.HOLD_MS));
     if (rollsWas.held) diceThen();
+    /* ANSC: a roll row this client has not shown yet, asked while the dice roll (the injury of the one put down), waits for them; so do
+       the "waiting for" pieces that are new (the dock's and the desk's), the desk's rows of what the dice came to, the chase panel */
+    const newRolls = Wait.holdNewRolls(ansc.rolls, data, diceNow); ansc.rolls = newRolls.memo;
+    const wDock = Wait.holdWaitNew(ansc.waitDock, data.waiting, diceNow); ansc.waitDock = wDock.memo; if (wDock.held) data.waiting = wDock.rows;
+    let anscHeld = newRolls.held || wDock.held;
+    if (deskD) {
+      const wDesk = Wait.holdWaitNew(ansc.waitDesk, deskD.waiting, diceNow); ansc.waitDesk = wDesk.memo; if (wDesk.held) deskD = { ...deskD, waiting: wDesk.rows };
+      const dr = Wait.holdDeskResults(ansc.desk, deskD, diceNow); ansc.desk = dr.memo; if (dr.held) deskD = dr.desk;
+      anscHeld = anscHeld || wDesk.held || dr.held;
+    }
+    { const ch = Wait.holdWhole(ansc.chase, chaseD, diceNow); ansc.chase = ch.memo; if (ch.held) { chaseD = ch.value; anscHeld = true; } }
+    if (anscHeld) diceThen();
     /* SEAM (U144 x D128): the turn that passes by itself waits for the dice in the air (news-pure endWhileDice) */
     if (data.show && data.end) { data.end = NewsP.endWhileDice(data.end, { busy, since: hold.since, at: now }, { label: t("ITAC.ui.end"), tip: `${t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]` }); if (data.end.dice) diceThen(); }
     if (deskD) Desk.render(deskD, st.desk);
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
     /* U53 / U57 / U58: the first-fight hint over the bar, the summary card of the round that just ended, the two sounds (ui/feedback.mjs) */
-    const fb = Feedback.sync({ combat, facts, model, data, cards: desk?.cards ?? null, staff, own: st.dock });
+    const asks = Wait.heldAsks(model, desk?.cards ?? null, allIds.filter((id) => !shownIds.includes(id)), newRolls.hidden);      // ANSC: the sound of a question comes when its card does
+    const fb = Feedback.sync({ combat, facts, model: asks.model, data, cards: asks.cards, staff, own: st.dock });
     data.sum = chaseD?.on ? null : fb.sum; data.hint = fb.hint;      // CHASE (U170): no summary of a chase round over the map: the panel says it
     lastDock = data; lastModel = model;
     { const top = data?.prompts?.[0]?.id ?? null; if (top !== cardTop.id) cardTop = { id: top, at: Date.now() }; }
@@ -378,7 +397,12 @@ function refresh() {
     /* W1: on a map with the board the targets are chosen there (rings, the chance, the reason of one out of reach: ui/board.mjs); a
        second click on the one chosen target declares, like Enter. An area attack is put on a zone instead (the board's own pick). */
     const hzAt = deskD?.show && !deskD.collapsed ? String(deskD.hazard?.where?.value ?? "") : "";      // U36: the zone chosen in the GM's hazard tool is shown on the GM's map before the hazard runs
-    const board = Board.sync(data, { combat, facts, view: facts.view, staff, rev, hz: hzAt.startsWith("z:") ? hzAt.slice(2) : null });
+    /* ANSC: the state marks on the map (broken, down, held; asked to react) wait for the dice as the rest does */
+    const bS = Wait.holdKeys(ansc.statuses, facts.view?.statuses, diceNow), bP = Wait.holdKeys(ansc.prompts, facts.view?.prompts, diceNow);
+    ansc.statuses = bS.memo; ansc.prompts = bP.memo;
+    if (bS.held || bP.held) diceThen();
+    const boardView = bS.held || bP.held ? { ...facts.view, statuses: bS.obj, prompts: bP.obj } : facts.view;
+    const board = Board.sync(data, { combat, facts, view: boardView, staff, rev, hz: hzAt.startsWith("z:") ? hzAt.slice(2) : null });
     Pick.setPlain(board);
     if (data.show && data.panel?.kind === "declare" && data.panel.targets && !(board && Board.areaMode(data.panel))) Pick.start(combat, data.panel.targets.map((x) => x.id), (cid) => { const max = data.panel.maxTargets ?? 1, cur = (st.dock.targets ?? []).filter((x) => x !== cid);
       if (board && max === 1 && (st.dock.targets ?? []).length === 1 && st.dock.targets[0] === cid && lastDock?.panel?.submit?.req) { Dock.press("go"); return; }

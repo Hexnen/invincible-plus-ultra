@@ -11,6 +11,9 @@ import * as Drag from "./drag.mjs";
 import * as CombatTime from "./combat.mjs";
 import { registerCombatSettings } from "./combat.mjs";
 import { t, UNITS, DEFAULT_UNIT, unitOf, unitLabel } from "./lang.mjs";
+import * as Gate from "../tactics/ui/dicegate.mjs";      // ANSC: the rating and the time wait for the 3D dice of a tactical roll
+import { holdById, HUD_HELD } from "../tactics/ui/wait-pure.mjs";
+import { tacticsState } from "../tactics/source.mjs";
 
 const MOD = "invincible-plus-ultra";
 const SYSTEM = "invincible";
@@ -126,6 +129,9 @@ function read(td) {
   };
 }
 
+let hudHeld = null, hudWait = false;      // ANSC: what the cards showed while the dice rolled, and a redraw promised for their landing
+/** a tactical fight runs on this scene (its engine writes results at once) */
+function fightHere(scene) { try { return (game.combats?.contents ?? []).some((c) => c.started && (!c.scene || c.scene.id === scene.id) && !!tacticsState(c)); } catch { return false; } }
 function sync() {
   timer = 0;
   const quiet = quietNext;
@@ -133,8 +139,14 @@ function sync() {
   try {
     const scene = canvas?.scene;
     if (!ready || down || !scene || !enabled() || game.system.id !== SYSTEM) return HUD.render([], { quiet: true });
-    const items = [];
+    let items = [];
     for (const td of scene.tokens) { const it = read(td); if (it) items.push(it); }   // document order
+    /* ANSC (UXB-7 / U10-9, the user 2026-11-12: everything waits for the dice): in a tactical fight on this scene the engine writes an
+       objective roll's result into the challenge at once; while the 3D dice of that roll still roll on this client a card keeps the
+       rating and time it showed (tactics/ui/wait-pure holdById) and is drawn again once they have landed */
+    const h = holdById(hudHeld?.scene === scene.id ? hudHeld.memo : null, items, HUD_HELD, fightHere(scene) && Gate.on());
+    hudHeld = { scene: scene.id, memo: h.memo };
+    if (h.held) { items = h.items; if (!hudWait) { hudWait = true; Gate.landed().then(() => { hudWait = false; schedule(); }); } }
     HUD.render(items, { quiet });
   } catch (e) { console.warn(LOG, "update failed", e); }
 }
@@ -335,7 +347,10 @@ function registerHooks() {
   // actor data: linked tokens read the world actor, unlinked ones a synthetic actor whose changes arrive via updateToken (delta) as well
   /* a plain tick of the tactics clock (time left changes, still above 0, the rating untouched) stays out of the cinematic camera, as the turn clock does */
   const plainTick = (changes, o) => !!o?.ipuTactics && Number(changes?.system?.derived?.resolve?.value) > 0 && changes?.system?.derived?.health === undefined;
-  Hooks.on("updateActor", (actor, changes, o, userId) => { if (actor?.type === "challenge") { schedule(); const quiet = plainTick(changes, o); if (quiet) cam(Camera.hush, 2500); cam(Camera.onUpdateActor, actor, changes, userId); if (quiet) cam(Camera.hush, 0); } });
+  Hooks.on("updateActor", (actor, changes, o, userId) => { if (actor?.type === "challenge") { schedule(); const quiet = plainTick(changes, o);
+    /* ANSC: the camera's beat of a rating that moved (or of "overcome") waits for the 3D dice of the roll too (tactics/ui/dicegate.mjs) */
+    const beat = () => { if (quiet) cam(Camera.hush, 2500); cam(Camera.onUpdateActor, actor, changes, userId); if (quiet) cam(Camera.hush, 0); };
+    if (o?.ipuTactics && canvas?.scene && fightHere(canvas.scene)) Gate.after(beat); else beat(); } });
   Hooks.on("renderApplicationV2", (app, el) => { try { injectUnitSelect(app, el); } catch (e) { console.warn(LOG, "sheet time unit", e); } });
   Hooks.on("deleteActor", (actor) => { if (actor?.type === "challenge") schedule(); });
   Hooks.on("createActor", (actor) => { if (actor?.type === "challenge") schedule(); });

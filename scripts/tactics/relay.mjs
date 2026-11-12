@@ -13,6 +13,7 @@ import * as Store from "./store.mjs";
 import * as Engine from "./engine.mjs";
 import * as Sys from "./system-adapter.mjs";
 import * as RW from "./rollwatch-pure.mjs";
+import * as Gate from "./ui/dicegate.mjs";
 import { t, rollTitle } from "./lang.mjs";
 
 const MOD = Store.MOD;
@@ -74,7 +75,9 @@ function onRoll(msg, senderId) {
   if (again && RW.answered((game.messages?.contents ?? []).slice(-200), msg.req, msg.to, Sys.tacticsOf)) return;
   // the engine's breakdown is only a display: the executor reads the dice from the chat message and checks its author against the request
   const req = { ...msg.req, label: rollTitle(msg.req.key, typeof msg.req.labelSrc === "string" ? msg.req.labelSrc.slice(0, 80) : msg.req.label) };      // D105: titled in the ROLLER's language
-  Sys.rollNow(req, (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s)), { force: again }).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
+  /* ANSC (UXB-7 / U10-9): a roll asked while the 3D dice of another roll still roll on this client (the injury of the one that roll
+     put down) is thrown when they have landed: its own dice and card would tell the result first (ui/dicegate.mjs; at once without 3D dice) */
+  Gate.after(() => Sys.rollNow(req, (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s)), { force: again }).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); }));
 }
 function onMessage(msg, senderId) {
   try {
