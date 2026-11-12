@@ -157,7 +157,7 @@ const settle = async (T) => { if (T.prompt("stunts")) await T.answer("p1", "stun
   eq(N.holdDesk(d, ["a"]), { show: true, count: 2, cards: [{ id: "a" }], title: "x" }, "G: a held card is not counted (badge, igd-busy)");
   eq(N.holdDesk(d, ["a", "b"]), d, "G: nothing held: the same desk");
   eq(N.holdDesk({ show: true, count: 1, cards: [{ id: "a" }] }, []).count, 0, "G: the only card held: an idle desk (it may step back while the user aims)");
-  ok(/deskD = NewsP\.holdDesk\(deskD, hold\.cards\)/.test(src("./ui/main.mjs")) && /root\.classList\.toggle\("igd-busy", d\.count > 0\)/.test(src("./ui/desk.mjs")), "G: main.mjs hands the desk that count; desk.mjs reads busy from it");
+  ok(/deskD = NewsP\.holdDesk\(deskD, hold\.cards[,)]/.test(src("./ui/main.mjs")) && /root\.classList\.toggle\("igd-busy", d\.count > 0\)/.test(src("./ui/desk.mjs")), "G: main.mjs hands the desk that count; desk.mjs reads busy from it");
 }
 
 /* ---- H: U145 x U154 */
