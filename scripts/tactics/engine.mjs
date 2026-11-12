@@ -44,8 +44,9 @@ export const startMode = () => "tactical";
 
 /* ------------------------------------------------------------------ live facts (engine-pure.mjs "Facts") */
 const tokenOf = (cb) => cb?.token ?? null;
-/* a hero's summoned allies are run by the hero's player: they stand on the heroes' side [B1808] */
-const isNpc = (cb) => Sys.actorOf(cb)?.type !== "superhero" && Sys.actorOf(cb?.parent?.combatants.get(cb.flags?.[MOD]?.tactics?.summonOf))?.type !== "superhero";
+/* a hero's summoned allies are run by the hero's player: they stand on the heroes' side [B1808]. D114: the side is not the actor type
+   alone (a book villain is a superhero actor too): S.heroSide reads the player owner and the token's disposition */
+const isNpc = (cb) => ![cb, cb?.parent?.combatants.get(cb.flags?.[MOD]?.tactics?.summonOf)].some((x) => { const a = Sys.actorOf(x); return !!a && S.heroSide({ type: a.type, owned: Sys.ownersOf(a).length > 0, disposition: tokenOf(x)?.disposition ?? a.prototypeToken?.disposition }); });
 function combatantFacts(cb) {
   const actor = Sys.actorOf(cb), f = Sys.actorFacts(actor);
   if (!f) return null;

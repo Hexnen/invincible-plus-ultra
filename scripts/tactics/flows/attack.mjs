@@ -684,8 +684,15 @@ export const steps = {
     const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = budgetOf(I, hit);
     const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => (ws === "none" ? [] : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
     if (!hit.length || budget < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
-    if (!I.data.pk?.stunts) { R.prompts.push({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: budget, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } }); R.wait = true; return R; }
-    if (!K.isAnswered(v, I, "stunts")) { R.wait = true; return R; }
+    const stuntCard = () => ({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: budget, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } });
+    if (!I.data.pk?.stunts) { R.prompts.push(stuntCard()); R.wait = true; return R; }
+    if (!K.isAnswered(v, I, "stunts")) {
+      /* U121: the card says what is true NOW: somebody came into reach (a combatant added, moved, revealed) or left it since it was made:
+         the card is made again (what the answer is checked against has changed anyway, `validate`) */
+      const sig = (list) => JSON.stringify((list ?? []).map((o) => [o.id, o.disabled ?? null])), now = stuntCard();
+      if (sig(now.options) !== sig(K.promptOf(v, I, "stunts")?.options)) { R.drop.push("stunts"); R.prompts.push(now); }
+      R.wait = true; return R;
+    }
     const picks = picksOf(K.answerOf(v, I, "stunts"));
     let waiting = false;
     const approved = [];
@@ -924,12 +931,15 @@ const stuntKind = (I) => { const k = kindOf(I); return k === "ram" ? "slugfest" 
     the attacker does not know of: one the attacker has as "unseen", or, for an attacker of the heroes' side (whose player reads the card), one the
     GM keeps hidden (spec 10: the list must not give such a figure away). Before, everybody else in the zone was offered: the attacker's allies too. */
 const NO_OPPONENT = ["challenge", "vehicle"];
+/* D116: a minion group with no member left is nobody to bang heads with: its Health is its members [B2827] (a lone character at 0 stays
+   an opponent until marked defeated, ruling U17-4) */
+const wiped = (f) => f.kind === "minions" && (!(Number(f.health) > 0) || f.members === 0);
 function othersNear(v, I, t) {
   const tf = v.facts.c(t), a = v.facts.c(I.actor), known = v.state.knowledge?.[I.actor] ?? {};
   if (!tf) return [];
   return (v.facts.inZone(t) ?? []).filter((c) => {
     const f = v.facts.c(c);
-    return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !!f.npc === !!tf.npc && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
+    return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !wiped(f) && !!f.npc === !!tf.npc && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
   });
 }
 function ctxFor(v, I, t) {

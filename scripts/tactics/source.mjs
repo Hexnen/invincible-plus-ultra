@@ -28,6 +28,15 @@ export function tacticsState(combat) {
   cache.set(combat, { raw, state });
   return state;
 }
+/** U118: who sits in a vehicle of this fight, the driver first ([] when nobody, or the combat is not ours) */
+export function aboard(combat, vid) {
+  const r = tacticsState(combat)?.vehicles?.[vid];
+  return r && typeof r === "object" ? [r.driver, ...(Array.isArray(r.crew) ? r.crew : [])].filter((x) => typeof x === "string" && x) : [];
+}
+/** U118: the side a vehicle shows on the initiative bar. A vehicle is a thing: the token's own disposition (hostile by default for a new
+    token) says nothing about whose it is. It shows the side of the first one aboard who has one, else friendly when a player owns it,
+    else neutral. `disps` = the dispositions of those aboard, in order; D = CONST.TOKEN_DISPOSITIONS */
+export const vehicleDisp = (disps, playerOwned, D) => (disps ?? []).map(Number).find((n) => n === D.FRIENDLY || n === D.HOSTILE || n === D.NEUTRAL) ?? (playerOwned ? D.FRIENDLY : D.NEUTRAL);
 /** "tactics": the module's own card initiative and ledger run this combat. null: they do not (yze-combat or plain core). */
 export const sourceOf = (combat) => (tacticsState(combat) ? "tactics" : null);
 /** nobody has the turn: the cards of the round are being dealt, a blocking queue is open, the scene has ended, or the engine is switched off */

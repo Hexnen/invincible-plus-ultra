@@ -16,6 +16,10 @@ import * as Kit from "./flows/kit.mjs";
 import * as MP from "./ui/model-pure.mjs";
 import * as DP from "./desk-pure.mjs";
 import { t as tEn } from "./lang.mjs";
+import * as S from "./state-pure.mjs";
+import * as V from "./view-pure.mjs";
+import * as P1 from "./economy-pure.mjs";
+import * as Src from "./source.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const decl = (actor, action, targets, extra = {}) => ({ op: "declare", actor, decl: { action, targets, ...extra } });
@@ -175,6 +179,77 @@ const facts = (T) => ({ c: (id) => T.c[id] ?? null, staff: false });
   eq(all.filter((a) => a.reaction.effect === "note").map((a) => a.id), [], "D113: no talent or power of the kit is left as a note");
   ok(C.REACTION_EFFECTS.includes("allySwap") && C.REACTION_EFFECTS.includes("warn"), "D113: the catalog knows the two effects");
   eq(Kit.reactionId("r:k-x-discretion@H1"), { id: "r:k-x-discretion", about: "H1" }, "D113: an answer about one character");
+}
+
+/* ---- D114: a book villain is a superhero actor too: the side is not the type alone */
+{
+  eq([S.heroSide({ type: "superhero", owned: true, disposition: -1 }), S.heroSide({ type: "superhero", owned: false, disposition: 1 }), S.heroSide({ type: "superhero", owned: false, disposition: -1 }), S.heroSide({ type: "superhero", owned: false, disposition: 0 }), S.heroSide({ type: "npc", owned: true, disposition: 1 }), S.heroSide(null)],
+    [true, true, false, false, false, false], "D114: a superhero a player owns or the GM put down as friendly is a hero; one with no owner and a hostile or neutral token (Doc Seismic from the book) is the GM's");
+  const eng = readFileSync(new URL("./engine.mjs", import.meta.url), "utf8"), sys = readFileSync(new URL("./system-adapter.mjs", import.meta.url), "utf8");
+  const isNpc = eng.split(String.fromCharCode(10)).find((l) => l.startsWith("const isNpc = ")) ?? "";
+  ok(isNpc.includes("S.heroSide(") && !/type !== "superhero"/.test(isNpc) && isNpc.includes("summonOf"), "D114: the live facts read the side through heroSide (the summoner's side too) [B1808]");
+  ok(/hero: S\.heroSide\(/.test(sys), "D114: the initiative's heroes are the same heroes [B2112]");
+  /* the engine sees the villain as an NPC: an opponent beside the hit one is offered as Bang Heads' extra opponent */
+  const T = new Table(); T.hero("H1", "p1", { name: "Omni" }).npc("N1", { health: 6 }).npc("V1", { name: "Doc Seismic", health: 6 }); T.order(["H1", "N1", "V1"]);
+  await T.req("p1", decl("H1", "slugfest", ["N1"])); for (const p of T.prompts("reaction")) await T.gm({ op: "answerFor", prompt: p.id, value: "pass" });
+  await T.roll("attack", 4);
+  ok((T.prompt("stunts")?.options ?? []).some((o) => o.id === "bangHeads@N1|V1"), "D114: an enemy of the NPC side beside the target is an extra opponent");
+}
+
+/* ---- D116: a wiped minion group is nobody to bang heads with */
+{
+  const T = new Table(); T.hero("H1", "p1", { name: "Eve" }).npc("N1", { health: 6 }).npc("G1", { name: "Soldier", kind: "minions", health: 0, members: 0, maxHealth: 6 }); T.order(["H1", "N1", "G1"]);
+  await T.req("p1", decl("H1", "slugfest", ["N1"])); for (const p of T.prompts("reaction")) await T.gm({ op: "answerFor", prompt: p.id, value: "pass" });
+  await T.roll("attack", 4);
+  const sp = T.prompt("stunts");
+  eq([sp?.options.some((o) => String(o.id).includes("G1")), sp?.options.find((o) => o.id === "bangHeads@N1")?.disabled ?? null], [false, "noOtherTarget"], "D116: the group with no member left is not offered; Bang Heads says why");
+  eq(code(await T.req("p1", { op: "answer", prompt: sp.id, value: ["bangHeads@N1|G1"] })), "badInput", "D116: naming it is refused (no such answer on the card)");
+  eq(T.prompt("minionLoss"), null, "D116: the GM is not asked how many of nobody fall");
+  const T2 = new Table(); T2.hero("H1", "p1").npc("N1", { health: 6 }).npc("G1", { kind: "minions", health: 3, members: 3, maxHealth: 6 }); T2.order(["H1", "N1", "G1"]);
+  await T2.req("p1", decl("H1", "slugfest", ["N1"])); for (const p of T2.prompts("reaction")) await T2.gm({ op: "answerFor", prompt: p.id, value: "pass" });
+  await T2.roll("attack", 4);
+  ok(T2.prompt("stunts")?.options.some((o) => o.id === "bangHeads@N1|G1"), "D116: a group with members left still is");
+}
+
+/* ---- U121: an open stunt card is made again when somebody comes into reach */
+{
+  const T = new Table(); T.hero("H1", "p1").npc("N1", { health: 6 }); T.order(["H1", "N1"]);
+  await T.req("p1", decl("H1", "slugfest", ["N1"])); for (const p of T.prompts("reaction")) await T.gm({ op: "answerFor", prompt: p.id, value: "pass" });
+  await T.roll("attack", 4);
+  const before = T.prompt("stunts");
+  eq(before?.options.find((o) => o.id === "bangHeads@N1")?.disabled, "noOtherTarget", "U121: nobody beside the target: Bang Heads cannot be taken");
+  T.npc("N9", { name: "Scientists", health: 6 });                                           // the GM drops a group next to the target
+  eq(code(await T.gm({ op: "roster" })), "ok", "U121: the roster takes the newcomer");
+  const after = T.prompt("stunts");
+  eq([after?.id !== before.id, after?.options.some((o) => o.id === "bangHeads@N1|N9")], [true, true], "U121: the card is made again and offers the newcomer");
+  eq(code(await T.req("p1", { op: "answer", prompt: before.id, value: [] })), "gone", "U121: the old card is withdrawn");
+  const r2 = await T.gm({ op: "roster" });
+  eq([code(r2), T.prompt("stunts")?.id], ["ok", after.id], "U121: nothing changed: the card stays as it is");
+}
+
+/* ---- U117: "Start the vehicle" is not offered for an engine that runs */
+{
+  const T = new Table(); T.hero("H1", "p1").npc("N1", { health: 6 }); T.add("V1", { kind: "vehicle", npc: true, health: 8, name: "Van", vehicle: { type: "ground", speed: 3, maneuver: 1, passengers: 3, weapons: 0 } });
+  T.order(["H1", "N1"]).turn("H1");
+  await T.req("p1", { op: "declare", actor: "H1", decl: { action: "vehicleEnter", targets: ["V1"] } });
+  const ctx = { c: (id) => T.c[id], P1, special: () => [{ id: "V1", kind: "vehicle" }] };
+  const bar = () => DP.barModel(V.viewFor(T.state, { id: "p1", staff: false, owns: ["H1"] }, { hidden: [], npc: ["N1", "V1"] }), "H1", ctx).actions.find((a) => a.id === "vehicleStart");
+  eq(bar()?.disabled, null, "U117: a cold engine can be started");
+  await T.req("p1", { op: "declare", actor: "H1", decl: { action: "vehicleStart" } });
+  eq(bar()?.disabled, "alreadyStarted", "U117: a running engine is not offered again (greyed with the flow's own reason)");
+  ok(/already running/.test(tEn("ITAC.reason.alreadyStarted")) && tEn("ITAC.reason.engineDisabled") !== "ITAC.reason.engineDisabled", "U117: both reasons have words");
+}
+
+/* ---- U118: the initiative bar shows a vehicle's side by who sits in it, not by the token's default disposition */
+{
+  const D = { SECRET: -2, HOSTILE: -1, NEUTRAL: 0, FRIENDLY: 1 };
+  eq([Src.vehicleDisp([1], false, D), Src.vehicleDisp([-1, 1], false, D), Src.vehicleDisp([], true, D), Src.vehicleDisp([], false, D), Src.vehicleDisp([undefined, 1], false, D)], [1, -1, 1, 0, 1], "U118: the driver's side, else a player's vehicle is friendly, else neutral (a thing)");
+  const T = new Table(); T.hero("H1", "p1").npc("N1"); T.add("V1", { kind: "vehicle", npc: true, health: 8, vehicle: { type: "ground", speed: 3, maneuver: 1, passengers: 3, weapons: 0 } }); T.order(["H1", "N1"]).turn("H1");
+  await T.req("p1", { op: "declare", actor: "H1", decl: { action: "vehicleEnter", targets: ["V1"] } });
+  const combat = { flags: { [S.MOD_ID]: { tactics: { state: S.serialize(T.state) } } } };
+  eq(Src.aboard(combat, "V1"), ["H1"], "U118: who sits in it, read from the fight's state");
+  const bar = readFileSync(new URL("../combat/bar.mjs", import.meta.url), "utf8");
+  ok(/actor\?\.type === "vehicle" \? dispOf\(Tac\.vehicleDisp\(Tac\.aboard\(/.test(bar), "U118: the bar reads a vehicle's side that way");
 }
 
 done("check-fxf");

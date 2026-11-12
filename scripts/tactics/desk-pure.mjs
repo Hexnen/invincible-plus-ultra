@@ -152,7 +152,8 @@ export function barModel(view, cid, ctx = {}) {
     const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", { ranged: P1.isRanged?.(e), ...(answers ? { interrupt: true, grant: answer, resolve: ctx.c?.(cid)?.resolve } : {}) }) : { ok: false, reason: "noLedger" };
     const unit = pay.ok && pay.pay ? (view.ledger?.[cid]?.grants ?? []).find((g) => g.id === pay.pay) : null, granted = !onTurn && !!unit && unit.kind !== "base";      // a unit usable out of turn pays it (the crew's attack in a chase [B3438], a GM grant)
     const anytime = !!e.kit && e.cost === "none";                                               // P6: what costs no action is used when it applies (the flow checks the rest)
-    const reason = busy && !answers ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
+    const machine = e.id === "vehicleStart" && ride ? startState(view, ride.vehicle) : null;     // U117: an engine that runs (or cannot) is not offered to be started
+    const reason = busy && !answers ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : machine ? machine : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
       attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders" || e.effect?.token === "orders",
       name: e.name || null, kit: e.kit ?? null, pick: Array.isArray(e.pick) ? e.pick.slice() : null, stress: e.stress?.fixed ?? 0, fxOn: e.fxOn === true, unarmed: e.unarmed === 1,      // P6
@@ -172,6 +173,8 @@ export function barModel(view, cid, ctx = {}) {
     holdOff: out ? { disabled: out.reason, targets: [], req: (slotId) => ({ op: "holdOff", actor: cid, with: slotId }) } : holdOffOf(view, cid, onTurn, busy, ctx), markReq: (unit, on = true) => ({ op: "mark", actor: cid, unit, on }),
     other: { req: (text) => ({ op: "other", actor: cid, text }) }, exception: { req: (text, inst, more = {}) => ({ op: "exception", actor: cid, text, ...(inst ? { inst } : {}), ...(more.reason ? { reason: more.reason } : {}), ...(more.decl ? { decl: more.decl } : {}) }) } };
 }
+/* U117: why the driver cannot start the vehicle now, in the words of the seat flow's own refusal (flows/vehicle.mjs legality) */
+const startState = (view, vid) => { const r = isObj(view?.vehicles?.[vid]) ? view.vehicles[vid] : {}; return r.wrecked ? "vehicleWrecked" : r.off?.engine ? "engineDisabled" : r.started ? "alreadyStarted" : null; };
 /* spec 3.1 hold off: the slots the combatant's card can be swapped with now (none unless it is this combatant's own turn) */
 function holdOffOf(view, cid, onTurn, busy, ctx) {
   let targets = [];
