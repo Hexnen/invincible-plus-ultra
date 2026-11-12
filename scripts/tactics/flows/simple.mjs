@@ -189,7 +189,7 @@ export const composite = {
       if (I.data.i >= parts.length) { I.data.result = "done"; R.goto = "close"; return R; }
       const p = parts[I.data.i];
       I.locked = true;
-      R.push = { action: p.action, actor: p.actor ?? I.actor, decl: { helpers: [], exploits: [], stressTotal: 0, ...(p.decl ?? {}), action: p.action, targets: p.decl?.targets ?? I.decl.targets ?? [] }, cause: I.cause, part: 1, prepaid: 1 };
+      R.push = { action: p.action, actor: p.actor ?? I.actor, decl: { helpers: [], exploits: [], stressTotal: 0, ...(p.decl ?? {}), action: p.action, targets: p.decl?.targets ?? I.decl.targets ?? [] }, cause: I.cause, part: 1, data: { prepaid: true } };
       return R;
     },
     close(v, inst) { const I = K.draft(inst), R = K.result(I); R.done = true; return R; },

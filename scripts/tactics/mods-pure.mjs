@@ -145,7 +145,10 @@ export function effectEndWrites(state, effectId) {
   const w = [{ path: ["effects", `#${e.id}`], to: null }];
   for (const id of e.tokenIds ?? []) w.push({ path: ["tokens", `#${id}`], to: null });
   for (const id of e.triggerIds ?? []) w.push({ path: ["triggers", `#${id}`], to: null });
-  if (e.holder) for (const id of e.statusIds ?? []) w.push(statusRemove(state, e.holder, id));
+  if (e.holder && (e.statusIds ?? []).length) {
+    const next = statusesOf(state, e.holder).filter((s) => !e.statusIds.includes(s.id));
+    w.push({ path: ["statuses", e.holder], to: next.length ? next : null });
+  }
   return w;
 }
 /** Effects that end at a point: { at: "sceneEnd"|"ownerBroken"|"nextTurnOf"|"dismissed"|"breached", who? }. */

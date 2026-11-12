@@ -46,6 +46,7 @@ PICK.zip = "zipRandom"; PICK.triple = "tripleRandom";
 const styleOf = (id) => (id.startsWith("zip") ? 1 : id.startsWith("triple") ? 2 : 0);
 const msOf = (id) => STYLES[id.replace(/(Top|Bottom|Right|Random)$/, "")] ?? DURATION;
 
+let runDuration = 0;   // duration (ms) the transition being played was started with (canvas.transition.run), 0 when unknown
 let started = false, previewMode = false, frozenTimer = 0, restoreScene = null, lastRun = -1e9;
 const hookIds = [];
 const get = (key) => { try { return game.settings.get(MOD, key); } catch { return undefined; } };
@@ -329,7 +330,7 @@ function makeFilterClass() {
       this.uniforms.preview = previewMode ? 1 : 0;
       Object.assign(this.uniforms, liveFrame());
       // a scene asking for more than WATCHDOG_MS gets the same effect played faster (no hard cut at the cap)
-      let d = Number(canvas?.scene?.transition?.duration);
+      let d = runDuration > 0 ? runDuration : Number(canvas?.scene?.transition?.duration);   // the run's own duration first (Play preview passes an unsaved one)
       if (previewMode || !(d > 0)) d = 0;
       this.uniforms.speed = d > WATCHDOG_MS ? d / WATCHDOG_MS : 1;
       // flash safety: comic flashes closer together than 1 s (a GM flipping scenes) play without the white flash
@@ -406,6 +407,29 @@ function makeFilterClass() {
   };
 }
 const previewFrozen = () => !!frozenTimer;
+
+/* canvas.transition.run({duration}) may differ from the saved scene duration: remember the duration of the run in progress (wrapped once on the prototype). */
+const RUN_WRAPPED = Symbol.for(`${MOD}.slashRun`);
+function wrapRun() {
+  try {
+    const proto = Object.getPrototypeOf(canvas?.transition);
+    const orig = proto?.run;
+    if (typeof orig !== "function" || orig[RUN_WRAPPED]) return;
+    const wrapped = async function (opts, ...rest) {
+      const prev = runDuration;
+      runDuration = Number(opts?.duration) > 0 ? Number(opts.duration) : 0;
+      try { return await orig.call(this, opts, ...rest); } finally { runDuration = prev; }
+    };
+    wrapped[RUN_WRAPPED] = orig;
+    proto.run = wrapped;
+  } catch (e) { console.warn(LOG, "wrap run", e); }
+}
+function unwrapRun() {
+  try {
+    const proto = Object.getPrototypeOf(canvas?.transition);
+    if (proto?.run?.[RUN_WRAPPED]) proto.run = proto.run[RUN_WRAPPED];
+  } catch { /* ignore */ }
+}
 
 /* ---------- registry ---------- */
 function register() {
@@ -495,11 +519,13 @@ export function start(phases = {}) {
       registerSettings();
       on("canvasInit", lend);
       on("canvasReady", giveBack);
+      on("canvasReady", wrapRun);
       try { register(); } catch { /* retried at ready */ }
       run("ready", () => {
         const mod = game.modules.get(MOD);
         if (mod) mod.api = { ...(mod.api ?? {}), slash: { preview, clear, stop } };
         try { register(); } catch (e) { console.warn(LOG, "register", e); }   // idempotent
+        wrapRun();
         console.log(`${LOG} ready`);
       });
     } catch (e) { console.warn(LOG, "start failed", e); }
@@ -509,6 +535,7 @@ export function start(phases = {}) {
 export function stop() {
   for (const [name, id] of hookIds.splice(0)) { try { Hooks.off(name, id); } catch { /* gone */ } }
   clear();
+  unwrapRun();
   unregister();
   started = false;
 }

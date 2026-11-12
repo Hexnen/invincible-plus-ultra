@@ -24,7 +24,7 @@ export function invalidate() { upgradesCache = null; promptsCache = null; tableC
 export function plain(html) {
   const s = String(html ?? "")
     .replace(/@UUID\[[^\]]*\]\{([^}]*)\}/g, "$1").replace(/@UUID\[[^\]]*\]/g, "")
-    .replace(/\[\[\/?(?:r|roll)?\s*([^\]]*?)\]\](?:\{([^}]*)\})?/gi, (_m, a, b) => b || a);
+    .replace(/\[\[\/?(?:(?:roll|r)\b)?\s*([^\]]*?)\]\](?:\{([^}]*)\})?/gi, (_m, a, b) => b || a);
   const doc = new DOMParser().parseFromString(`<div>${s}</div>`, "text/html");
   return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
 }

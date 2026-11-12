@@ -149,6 +149,10 @@ function adoptCandidates(ctx) {
     const p = P.parseTeamBase(text, []);
     if (!p.kind && !p.where) continue;
     if (p.kind === ctx.B.base.kind && p.where === ctx.B.base.where) continue;
+    const norm = (x) => String(x).replace(/\s+/g, " ").trim();
+    const um = /(?:^|;)\s*upgrades\s*:/i.exec(norm(text));
+    const heroHead = um ? norm(text).slice(0, um.index).trim() : norm(text);
+    if (heroHead === norm(P.formatTeamBase({ base: ctx.B.base }))) continue;   // the card's own text (kind/where may hold commas or be empty)
     out.push({ actor: a, text, kind: p.kind, where: p.where });
   }
   return out;

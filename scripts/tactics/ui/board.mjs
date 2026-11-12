@@ -93,18 +93,18 @@ function reach() {
   if (area && zones.length && tid(who)) {
     const key = `${who}|${dec.action}|${zones.join(",")}|${dec.submit?.req ? 1 : 0}`;
     if (areaPick?.key !== key && !menuBusy) {
-      const mine = (areaPick = { key });
+      const mine = (areaPick = { key, dec, staff });
       Zones.pickArea({ zones: zones.map((zone) => ({ zone, color: "target" })), radius: 0, token: tid(who), intent: { label: intentWords(dec) }, color: "target", title: t("ITAC.map.area.title", { name: d.who.name }), hint: t("ITAC.map.area.hint"), banner: false,      // U160: the armed panel says it (ui/main.mjs pickHint)
-        tokens: (doc) => caught(doc, who, dec, staff) }).then((r) => {
+        tokens: (doc) => caught(doc, who, mine.dec, mine.staff) }).then((r) => {
         if (areaPick !== mine) return;
         areaPick = null;
         if (!r?.ok) { if (r?.reason !== "replaced") H.set({ armed: null, mode: null }); return; }
-        const first = inReach.find((x) => zoneOfCid(x.id) === r.zone);
+        const cur = mine.dec, first = cur.targets.filter((x) => x.map && x.reach === "in").find((x) => zoneOfCid(x.id) === r.zone);
         if (!first) return H.refresh();
-        if (dec.targets.some((x) => x.picked && zoneOfCid(x.id) === r.zone) && dec.submit?.req) H.press("go");      // the same zone again: declare
+        if (cur.targets.some((x) => x.picked && zoneOfCid(x.id) === r.zone) && cur.submit?.req) H.press("go");      // the same zone again: declare
         else H.set({ targets: [first.id] });
       });
-    }
+    } else if (areaPick?.key === key) { areaPick.dec = dec; areaPick.staff = staff; }      // same pick, newer declaration (weapon, options)
   } else if (areaPick) { areaPick = null; Zones.cancelPick(); }
   const chosen = area ? dec.targets.find((x) => x.picked && x.map) : null, z = chosen ? zoneOfCid(chosen.id) : null;
   /* D79: `level` is the SPOT the chosen target stands on (the zone and its level). A token id is not one of the forms the map reads
@@ -211,7 +211,7 @@ function tokenMenu(cid, acts) {
        the executor adds to what the character has at that moment (so a hit that landed while the menu stood open is kept). One
        burst of clicks is one journal entry, one undo. A request that fails is said by main.mjs (`request` warns). */
     return items.map((it) => { let from = it.stepper?.value; return (it.stepper ? { id: it.id, label: it.label, icon: it.icon, stepper: it.stepper, onStep: (v) => { const k = `${cid}|${it.id}`; clearTimeout(steps[k]); steps[k] = setTimeout(() => { steps[k] = 0; const was = from; from = v; if (v !== was) Promise.resolve(H.request(it.req(v, was))).then((env) => { if (BP.stepFailed(env)) { from = was; again(cid); } }).catch(() => {}); }, 450); return v; } }
-      : { id: it.id, label: it.label, icon: it.icon, ...(it.tip ? { tip: it.tip } : {}), toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return env?.ok === false ? !o : o; } }); });
+      : { id: it.id, label: it.label, icon: it.icon, ...(it.tip ? { tip: it.tip } : {}), toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return BP.stepFailed(env) ? !o : o; } }); });
   };
   const spec = (rows) => {
     const list = BP.actItems(acts, rows, cid, facts, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.signs ? { signs: a.signs } : {}), ...(a.tip ? { tip: a.tip } : {}), ...(a.disabled ? { disabled: a.disabled } : {}),
@@ -277,7 +277,7 @@ export function sync(data, ctx) {
   } catch (e) { console.warn(LOG, "sync failed", e); return false; }
 }
 /** the scene goes away: what was shown went with it */
-export function reset() { shown = {}; movePick = areaPick = null; menuBusy = false; hover = null; fire = null; clearTimeout(intentTimer); intentTimer = 0; intentSpec = null; intentKey = "null"; }
+export function reset() { shown = {}; movePick = areaPick = null; menuBusy = false; hover = null; fire = null; clearTimeout(intentTimer); intentTimer = 0; intentSpec = null; if (intentKey !== "null") { try { Zones.intent(null); } catch { /* the map is optional */ } } intentKey = "null"; }
 export const camera = () => { try { const c = Zones.hasBoard() ? Zones.camera() : null; return c ? { ...c, shots: Zones.hasShot() } : null; } catch { return null; } };
 export const setCamera = (follow) => { try { Zones.camera({ follow }); } catch { /* the map is optional */ } };
 export function start(h) {

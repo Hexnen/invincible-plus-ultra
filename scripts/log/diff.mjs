@@ -188,7 +188,8 @@ export function draftsFromDiff(changes, opts = {}) {
       out.push({ k: "team.sync", path: "sync", d: { fields: ["team", "teamBase"] }, merge: "team.sync" });
       continue;
     }
-    if (d.from !== undefined && d.to !== undefined && deepEqual(d.from, d.to) && cl.k !== "actor.img" && cl.k !== "card.img") continue;
+    const clamped = cl.k === "stat.text" || cl.k === "actor.rename" || cl.k === "card.rename" || cl.k === "card.edit";   // T026: equal only after the clamp is still an edit
+    if (d.from !== undefined && d.to !== undefined && deepEqual(clamped ? (c.from ?? "") : d.from, clamped ? (c.to ?? "") : d.to) && cl.k !== "actor.img" && cl.k !== "card.img") continue;
     out.push({ k: cl.k, path: c.p, d });
   }
   if (linkChange) {
@@ -232,6 +233,7 @@ function familyDrafts(f, before, after) {
     return out;
   }
   const dismissed = f.family === "events" && f.list.some((x) => x.rest === "effect.dismissed" && x.c.to);        // a dismissal also flips `resolved`: one row (event.dismissed), not two
+  if (f.family === "events" && (removedAll || (f.whole && f.whole.kind === "remove"))) return out;   // T027: a pruned event is not an undo or a note edit
   for (const { rest, c } of f.list) {
     let k = fam.fields[rest];
     if (!k) continue;
@@ -239,7 +241,7 @@ function familyDrafts(f, before, after) {
     const d = { [idKey]: f.id, name: nm };
     if (k === "upgrade.status" || k === "upgrade.count") { d.from = c.from; d.to = c.to; }
     else if (k === "crate.qty") { d.qty = c.to; d.from = c.from; d.type = after[`${base}.type`] ?? ""; }
-    else if (k === "tracker.edit") { d.from = c.from; d.to = c.to; }
+    else if (k === "tracker.edit") { if (c.kind === "add" || c.kind === "remove") continue; d.from = c.from; d.to = c.to; }   // T028: creation/removal is not an edit (validation would refuse from=undefined)
     else if (k === "vehicle.primary") { if (!c.to) continue; }
     else if (k === "event.applied") {
       if (!c.to) { if (!c.from) continue; k = "event.undone"; }                                  // L3b: applied true -> false = an undo

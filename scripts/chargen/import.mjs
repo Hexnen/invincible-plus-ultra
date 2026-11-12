@@ -51,7 +51,7 @@ export function stateFromActor(actor, { seed = "000000", rank } = {}) {
     else { const n = m[2].match(/^(.*?)\s*(?:\(([^)]*)\))?$/); s.npcRel = { name: (n?.[1] ?? m[2]).trim(), type: (n?.[2] ?? "").trim() }; }
   }
   s.team = { name: txt("team"), base: "", where: "", upgrades: [], mode: "text", baseId: null };
-  const [base, ups] = txt("teamBase").split(/;\s*upgrades:\s*/i);
+  const [base, ups] = txt("teamBase").split(/(?:^|;)\s*upgrades:\s*/i);
   const head = (base ?? "").trim(), comma = head.indexOf(",");              // "kind, where" (the base card's own mirror format)
   s.team.base = (comma < 0 ? head : head.slice(0, comma)).trim();
   s.team.where = comma < 0 ? "" : head.slice(comma + 1).trim();
@@ -69,7 +69,7 @@ export function stateFromActor(actor, { seed = "000000", rank } = {}) {
   ofType("power").forEach((it, n) => {
     const key = `p${n + 1}`;
     powerKey.set(it.id, key);
-    const pm = it.name.match(/^(.*?)\s*\(([^)]*)\)\s*$/);   // apply writes a power note as "Name (note)": split it back
+    const pm = it.name.match(/^(.*?)\s+\(([^)]*)\)\s*$/);   // T011: apply writes "Name (note)" WITH a space, so "Extra Limb(s)" stays one name; apply writes a power note as "Name (note)": split it back
     s.powers.push({ key, name: pm ? pm[1] : it.name, packUuid: null, level: Math.max(0, LEVELS.indexOf(it.system?.level)), sourceKey: sourceKey.get(it.system?.powerSource) ?? s.sources[0]?.key ?? null, boosts: [], limits: [], ...(pm && pm[2].trim() ? { note: pm[2] } : {}) });
   });
   const powerOf = (it) => s.powers.find((p) => p.key === powerKey.get(it.system?.power));

@@ -144,7 +144,7 @@ export function queueInfo() {
 }
 function announceQueue() { try { Hooks.callAll(`${MOD}.logQueue`, queueInfo()); } catch { /* listener */ } }
 let flushing = false, flushTimer = 0;
-const RETRY_CODES = new Set(["noGM", "relay", "notFound"]);   // the scribe may still be starting (notFound = it has not baselined this actor yet): keep the item and try again
+const RETRY_CODES = new Set(["noGM", "relay", "notFound", "rate"]);   // the scribe may still be starting (notFound = it has not baselined this actor yet): keep the item and try again
 const MAX_TRIES = 6;
 /** Send every queued entry to the scribe once. Returns how many were recorded. Items refused for good (permission, bad input) are dropped; transient failures stay (up to 6 tries). */
 export async function flushQueue() {
@@ -156,7 +156,7 @@ export async function flushQueue() {
     for (const item of q) {
       try { await request("record", item); n++; }
       catch (e) {
-        const tries = (item.tries || 0) + 1;
+        const tries = e?.code === "rate" ? (item.tries || 0) : (item.tries || 0) + 1;   // a rate limit clears by itself within its window: waiting does not use up tries
         if (RETRY_CODES.has(e?.code) && tries < MAX_TRIES) left.push({ ...item, tries });
         else console.warn(`${MOD} | log queue: dropped a queued entry (${e?.code ?? "error"})`, item.k);
       }

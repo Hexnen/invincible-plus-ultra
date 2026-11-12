@@ -199,7 +199,7 @@ function rollPanel(ctx, list) {
   const ph = mode === "week" ? t("IPB.Ev.LabelPh.week", { n: week }) : t("IPB.Ev.LabelPh.any");
   const blocked = noBook || !!pend;
   const why = noBook ? t("IPB.Ev.NoBook") : pend ? t("IPB.Ev.PendingBlock", { roll: pend.roll }) : "";
-  const seg = ["week", "any"].map((m) => `<label class="ipb-ev-seg"><input type="radio" name="ipb-ev-mode-${esc(id)}" value="${m}" data-ev-mode${mode === m ? " checked" : ""}><span>${esc(t(m === "week" ? "IPB.Ev.ModeWeek" : "IPB.Ev.ModeAny"))}</span></label>`).join("");
+  const seg = ["week", "any"].map((m) => `<label class="ipb-ev-seg"><input type="radio" name="ipb-ev-mode-${esc(id)}" value="${m}" data-fk="ev-mode-${m}" data-ev-mode${mode === m ? " checked" : ""}><span>${esc(t(m === "week" ? "IPB.Ev.ModeWeek" : "IPB.Ev.ModeAny"))}</span></label>`).join("");
   const chatOff = ctx.B.policy.chat === "off";
   const chatBox = ctx.isStaff ? `<label class="ipb-ev-check"><input type="checkbox" data-ev-chat${chatOn.get(id) !== false && !chatOff ? " checked" : ""}${chatOff ? " disabled" : ""}><span>${esc(t("IPB.Ev.Chat"))}</span></label>${chatOff ? `<p class="ipb-bt-hint">${esc(t("IPB.Ev.ChatOff"))}</p>` : ""}` : "";
   const again = pend && ctx.isStaff

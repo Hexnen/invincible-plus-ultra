@@ -230,8 +230,8 @@ async function baselineActor(actor, scope, startAt = null) {
   const diffs = D.diffSnapshots(snap, cur);
   if (diffs.length) {
     const g = D.gapChildren(diffs, 30, scope);
-    const t = actor._stats?.modifiedTime ?? Date.now();
-    const e = M.normalizeEntry({ t, u: actor._stats?.lastModifiedBy ?? "", k: "log.gap", a: 1, d: { from: snap.at ?? 0, to: Date.now(), changes: g.kids, more: g.more, total: g.total } }, { actorId: actor.id, path: "gap" });
+    // actor stats do not move on item edits: stamp the gap now, author unknown
+    const e = M.normalizeEntry({ t: Date.now(), u: "", k: "log.gap", a: 1, d: { from: snap.at ?? 0, to: Date.now(), changes: g.kids, more: g.more, total: g.total } }, { actorId: actor.id, path: "gap" });
     S.counts.gaps++;
     await Store.commit(actor, scope, { pub: [e] });
     const ops = C.snapOps(snap, cur);
@@ -281,6 +281,14 @@ const guard = (name, fn) => (...args) => { if (!S.on) return; S.counts.hooks++; 
 const actorOfDoc = (doc) => { const p = doc?.parent; if (p?.documentName === "Actor") return p; return null; };
 // sweep S042: an unlinked token's synthetic actor shares its base actor's id; it is never logged (scopeOf and combatActor refuse it too)
 const elig = (actor) => (actor && !actor.isToken && S.states.has(actor.id) ? S.states.get(actor.id) : null);
+
+/** An actor log journal deleted by another client (a second GM's maintenance window): forget its state and snapshot and start a fresh log. Our own remove() forgets first, so it finds no state here. */
+const onDeleteLogJournal = guard("deleteJournal", (j) => {
+  const lg = j?.flags?.[MOD]?.log;
+  if (lg?.kind !== "actor" || !S.states.has(lg.actorId)) return;
+  forget(lg.actorId);
+  if (game.actors.get(lg.actorId)) rebaseline(lg.actorId).catch((err) => console.warn(`${LOG} rebaseline after log delete failed`, err));
+});
 
 const onUpdateActor = guard("updateActor", (actor, changes, options, userId) => {
   const scope = scopeOf(actor);
@@ -586,6 +594,7 @@ function registerHooks() {
   Hooks.on("createChatMessage", onCreateMessage); Hooks.on("deleteChatMessage", onDeleteMessage);
   Hooks.on("createCombatant", onCreateCombatant); Hooks.on("deleteCombatant", onDeleteCombatant); Hooks.on("updateCombatant", onUpdateCombatant);
   Hooks.on("updateCombat", onUpdateCombat); Hooks.on("deleteCombat", onDeleteCombat);
+  Hooks.on("deleteJournalEntry", onDeleteLogJournal);
   Hooks.on("createActor", onCreateActor); Hooks.on("deleteActor", onDeleteActor);
   Hooks.on("invincible-plus-ultra.tacticsGm", onTactics);
   window.addEventListener("pagehide", () => { if (S.on) tick(true); });

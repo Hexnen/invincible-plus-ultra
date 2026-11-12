@@ -371,7 +371,7 @@ async function closeInst(X, I, result = null) {
   const P = J.clone(parent);
   (P.data.children ??= {})[I.id] = { action: I.action, status: I.status, result: I.data.result ?? null };
   const mv = I.flow === "forced" ? I.data?.mv : null;      // FXP (U181): where a knockback / slam of this action landed (its own line has none: it is a part)
-  if (mv && P1.isId(mv.who) && typeof mv.at === "string" && mv.at !== mv.from && I.data.result !== "none") (P.data.landed ??= {})[mv.who] = { at: mv.at.slice(0, 40), ...(P1.isId(mv.outOf) ? { outOf: mv.outOf } : {}) };
+  if (mv && P1.isId(mv.who) && typeof mv.at === "string" && mv.at !== mv.from && I.data.result !== "none" && I.data.result !== "aborted" && I.status !== "aborted") (P.data.landed ??= {})[mv.who] = { at: mv.at.slice(0, 40), ...(P1.isId(mv.outOf) ? { outOf: mv.outOf } : {}) };
   if (I.part) (P.data.results ??= []).push({ action: I.action, status: I.status, result: I.data.result ?? null });
   else {                                                                                    // spec 5.1: the instance beneath is revalidated before it continues
     const rv = FLOWS[P.flow].revalidate(view(X), P);
@@ -720,13 +720,14 @@ async function opAmend(X, a) {
     if (!cp.ok && !X.user.staff) return bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason });
     waived = !cp.ok;
   }
+  dropPrompts(X, (p) => p.inst === inst.id && p.step === "declare" && p.kind === "exception");        // the GM's card of the held request: the hold is lifted below, an answer to it would do nothing
   await rewind(X, inst.id, FLOWS[inst.flow].STEPS[0]);
   if (reprice) {
     const tx = X.state.txOpen[inst.tx], paid = (tx?.ops ?? []).filter(ownCost);
     if (paid.length) { await undoOps(X, paid, tx.round); X.state = { ...X.state, txOpen: { ...X.state.txOpen, [inst.tx]: { ...X.state.txOpen[inst.tx], ops: X.state.txOpen[inst.tx].ops.filter((o) => !paid.includes(o)) } } }; }
   }
   const I = J.clone(instOf(X, inst.id));
-  I.decl = decl; delete I.data.hold; delete I.data.holdKey; I.locked = false; I.hist = {};
+  I.decl = decl; delete I.data.hold; delete I.data.holdKey; if (I.data.pk) delete I.data.pk.exception; I.locked = false; I.hist = {};
   if (reprice) {
     if (I.data.paid) delete I.data.paid.own; I.entry = null;
     if (cost === "full" || cost === "quick" || (cost === "free" && price?.tags)) {

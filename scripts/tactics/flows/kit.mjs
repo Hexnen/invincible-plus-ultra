@@ -451,7 +451,8 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
     for (const e of [...grappleRelease(v.state, t), ...carryRelease(v.state, t)]) R.effects.push(e);      // [B2707]: a broken character holds nobody and carries nobody
     R.events.push({ type: "broken", target: t });
     const bf = by ? v.facts.c(by) : null;                                                      // P6 [B2154] Merciless: 1 Resolve for breaking an enemy
-    if (bf?.pass?.merciless && bf.resolve < bf.maxResolve && !!bf.npc !== !!tf.npc) R.effects.push({ t: "actor", who: by, path: "resolve", to: bf.resolve + 1 });
+    const resNow = bf ? R.effects.filter((e) => e.t === "actor" && e.who === by && e.path === "resolve").at(-1)?.to ?? bf.resolve : 0;      // several enemies broken in one step: count the gains already queued
+    if (bf?.pass?.merciless && resNow < bf.maxResolve && !!bf.npc !== !!tf.npc) R.effects.push({ t: "actor", who: by, path: "resolve", to: resNow + 1 });
   }
   if (cf.gmChoice) {                                                                           // [B2771]: an ordinary NPC needs no injury, the GM states the outcome
     const key = `npcBroken:${t}`;

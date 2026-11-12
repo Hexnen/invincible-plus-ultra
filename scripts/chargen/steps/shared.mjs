@@ -21,7 +21,7 @@ export function plain(html) {
   if (short.length > 190) short = `${short.slice(0, 187).trim()}...`;
   return { short, full: paras.join("\n").slice(0, 1500) };
 }
-export const paras = (full) => String(full || "").split("\n").map((p) => `<p>${esc(p)}</p>`).join("");
+export const paras = (full) => !full ? "" : String(full).split("\n").map((p) => `<p>${esc(p)}</p>`).join("");
 
 /** load one description (and the effect bonuses of the same document); safe to call many times */
 export function need(d, uuid) {

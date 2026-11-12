@@ -95,11 +95,13 @@ export async function rerollRow(state, step, P, { force = false, opts = null, ca
     // a new archetype changes every pool that depends on it: re-roll those rows too, unless they are kept; rank and team stay
     const hold = { ...state.locks };
     for (const k of [...fieldsOf("team"), "rank"]) hold[k] = true;
-    const res = await rollAll(patch(state, { locks: hold }), P, o);
+    const free = { ...state.touched }; delete free.concept;   // a forced reroll of a hand-edited concept must really roll it (rollAll skips touched steps)
+    const res = await rollAll(patch(state, { locks: hold, touched: free }), P, o);
     next = patch(res.state, { locks: state.locks });
   } else if ((step === "powers" || step === "talents") && !state.locks.attrs && state.touched.attributes) {
     // attributes edited by hand are kept: plan the new powers / talents around their sum instead of re-balancing them
-    next = patch(await rollStep(patch(state, { locks: { ...state.locks, attrs: true } }), step, P, o), { locks: state.locks });
+    const held = patch(state, { locks: { ...state.locks, attrs: true } }), rolled = await rollStep(held, step, P, o);
+    next = rolled === held ? state : patch(rolled, { locks: state.locks });   // nothing rolled (no plan fits the kept sum): report "no change"
   } else next = await rollStep(state, step, P, o);   // powers / talents re-balance the unlocked attributes inside rollStep
   return next === state ? state : dropTouched(next, step);
 }

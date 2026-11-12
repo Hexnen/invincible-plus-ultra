@@ -164,6 +164,11 @@ function legality(v, inst) {
   if (Array.isArray(e?.pick) && e.pick.length && !e.pick.includes(d.opt)) return bad("noChoice");
   if (other && (e?.sameZone || (e?.touch && !a.pass?.healReach)) && sameZone(v, inst.actor, subject) === false) return bad("notSameZone", GM);
   if (other && e?.immuneHuge && sf?.huge) return bad("hugeTarget");
+  if (e?.effect?.mass && Array.isArray(d.targets)) {                                                           // Mass Healing [B1934]: every chosen ally must pass, not only the first, and no more than the entry's upper bound
+    const ts = [...new Set(d.targets)], mx = e.target?.n?.[1];
+    if (Number.isFinite(mx) && ts.length > mx) return bad("noTarget");
+    for (const t of ts.slice(1)) { const tf = v.facts.c(t); if (!tf || tf.present === false) return bad("noTarget"); if (e.sameZone && sameZone(v, inst.actor, t) === false) return bad("notSameZone", GM); }
+  }
   if (kind === "reabsorb" && !(K.copiesOf(v.state, inst.actor) > 0)) return bad("noCopies");
   if (kind === "summon" && K.summonsOf(v, inst.actor).length) return bad("summonsOut", GM);                       // [B1812]: not while the earlier allies are still there
   if (kind === "summon" && String(d.opt ?? "").includes("powered") && !damage.canTakeVoluntaryStress(a.resolve)) return bad("stressedOut");
@@ -231,7 +236,7 @@ export const act = {
         if (stressOf(v, I) > 0) { K.setFlag(I, "stress"); R.effects.push({ t: "stress", who: I.actor, n: stressOf(v, I), cost: 1 }); }
         const bp = actPool(v, I, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
-        R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { passive: d.noPush === true, noPush: !K.mayPush(v, I.actor), label: e?.label }));
+        R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { passive: d.noPush === true || d.noPush === 1, noPush: !K.mayPush(v, I.actor), label: e?.label }));
         R.wait = true; return R;
       }
       if (!K.rollRolled(I, "roll")) { R.wait = true; return R; }

@@ -391,12 +391,39 @@ async function doRemove(root, uid) {
     CTX.get(root)?.rerender();
   } finally { busy.delete(op); }
 }
+/** The remove-undo patch against the card as it is NOW: a row that is back already stays as it is, a count-only patch for a row that is gone is dropped (no nameless
+    ghost row), a restored row refuses when it would break the stack limit, the full list or the starting allowance. -> { patch } | { error, params } */
+export function fixUndo(B, patch, defOf = () => null, staff = false) {
+  const rows = {};
+  for (const [uid, row] of Object.entries(patch?.upgrades ?? {})) {
+    if (B?.upgrades?.[uid]) { rows[uid] = row; continue; }
+    if (!row || typeof row !== "object" || !row.key) continue;
+    const n = Math.max(1, Number(row.count) || 1);
+    const def = row.key !== "custom" ? defOf(row.key) : null;
+    if (def && def.max !== null) {
+      const same = P.sortedList(B?.upgrades).filter((u) => u.key === row.key && (!def.perPower || (u.power || "").trim().toLowerCase() === (row.power || "").trim().toLowerCase()));
+      const count = same.reduce((a, u) => a + Math.max(1, Number(u.count) || 1), 0);
+      const max = def.max === undefined ? 1 : def.max;
+      if (count + n > max) return { error: "stackMax", params: { name: def.name ?? row.name, count, max } };
+    }
+    const guard = P.canAdd(B, "upgrades");
+    if (!guard.ok) return { error: "full", params: { collection: "upgrades", cap: guard.cap } };
+    if (row.source === "start" && !staff) {
+      const a = P.allowance(B?.rank, B?.upgrades);
+      if (a.left < n) return { error: "noAllowance", params: { total: a.total } };
+    }
+    rows[uid] = row;
+  }
+  return { patch: Object.keys(rows).length ? { upgrades: rows } : {} };
+}
 async function doUndo(root) {
   const ctx = CTX.get(root);
   const rec = ctx && undoRec.get(ctx.team.id);
   if (!rec) return;
   clearTimeout(rec.timer); undoRec.delete(ctx.team.id);
-  const res = await ctx.update(rec.patch);
+  const fixed = fixUndo(ctx.api.get(ctx.team.id) ?? ctx.B, rec.patch, entryOf, ctx.isStaff);     // sweep T008: re-checked against the card as it is now
+  if (fixed.error) { const m = ctx.t(`IPB.Err.${fixed.error}`, fixed.params); ui.notifications?.info(m, { console: false }); ctx.announce(m); CTX.get(root)?.rerender(); return; }
+  const res = Object.keys(fixed.patch.upgrades ?? {}).length ? await ctx.update(fixed.patch) : true;
   if (res) ctx.announce(ctx.t("IPB.Up.UndoDone"));
   CTX.get(root)?.rerender();
 }

@@ -434,7 +434,16 @@ export default {
     });
     root.addEventListener("change", (ev) => {
       const el = ev.target;
-      if (el instanceof HTMLInputElement && el.name?.startsWith("dbnote-")) { ctx.rerender(); return; }   // the "still to choose" marker follows the field once it is left
+      if (el instanceof HTMLInputElement && el.name?.startsWith("dbnote-")) {   // the "still to choose" marker follows the field once it is left; patched in place, a body repaint here would swallow the click that blurred the field
+        const label = el.closest(".ipc-tl-choose");
+        if (!label) return;
+        const missing = !el.value.trim(), head = label.querySelector(":scope > span"), mark = head?.querySelector(".ipc-need");
+        label.classList.toggle("is-missing", missing);
+        if (missing) el.setAttribute("aria-invalid", "true"); else el.removeAttribute("aria-invalid");
+        if (head && missing && !mark) { const b = document.createElement("b"); b.className = "ipc-need"; b.textContent = t("IPC.Talents.Dr.ChooseMissing"); head.append(" ", b); }
+        else if (mark && !missing) mark.remove();
+        return;
+      }
       if (!(el instanceof HTMLInputElement) || el.type !== "radio") return;
       if (el.name === "tl-target") { d.target = el.value; ctx.rerender(); }
       else if (el.name === "tl-src") { d.tsrc = el.value; d.tlimit = PAGE; ctx.rerender(); }

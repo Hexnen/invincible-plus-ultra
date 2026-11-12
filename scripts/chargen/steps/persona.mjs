@@ -183,6 +183,8 @@ function rollWords(ctx) {
   ctx.update((st) => ({ ...st, personality: w, rerolls: { ...st.rerolls, persWords: n + 1 } }), { body: true });
   ctx.announce(t("IPC.Persona.Pers.RolledPlain", { x: w[0], y: w[1] }));
 }
+/** keep word slots ("" placeholders), drop only trailing empties */
+const trimWords = (w) => { const a = w.slice(0, 2).map((x) => x ?? ""); while (a.length && !a[a.length - 1]) a.pop(); return a; };
 function rollWord(ctx, i) {
   const s = ctx.state, d = ctx.data, list = persList(d, s), words = [...(s.personality ?? [])];
   const other = nm(words[1 - i] ?? "");
@@ -191,9 +193,9 @@ function rollWord(ctx, i) {
   const n = s.rerolls?.persWord ?? 0;
   const idx = substream(s.seed, `persWord:${n}`).int(pool.length);
   const e = nextFree(pool, idx, (x) => nm(x.name) !== nm(words[i] ?? "")) ?? pool[idx];
-  if (words.length < i) words.length = i;
+  while (words.length < i) words.push("");
   words[i] = e.name;
-  const next = words.filter(Boolean).slice(0, 2);
+  const next = trimWords(words);
   said(ctx, "pers", t("IPC.Persona.Pers.RolledOne", { name: e.name }));
   ctx.update((st) => ({ ...st, personality: next, rerolls: { ...st.rerolls, persWord: n + 1 } }), { body: true });
   ctx.announce(t("IPC.Persona.Pers.RolledOne", { name: e.name }));
@@ -202,7 +204,7 @@ function toggleWord(ctx, word) {
   const s = ctx.state, words = [...(s.personality ?? [])];
   const at = words.findIndex((w) => nm(w) === nm(word));
   if (at >= 0) words.splice(at, 1);
-  else if (words.length < 2) words.push(word);
+  else if (words.filter(Boolean).length < 2) { const hole = words.findIndex((w) => !w); if (hole >= 0) words[hole] = word; else words.push(word); }
   else { said(ctx, "pers", t("IPC.Persona.Pers.Full")); ctx.rerender(); return; }
   ctx.data.msgFor = ""; ctx.data.msg = "";
   ctx.update((st) => ({ ...st, personality: words }), { body: true });
@@ -261,8 +263,8 @@ export default {
       apply(key) {
         const val = (name) => root.querySelector(`[name="${name}"]`)?.value ?? "";
         if (key === "pw") {
-          const words = [val("pw-0"), val("pw-1")].map(clean).filter(Boolean).slice(0, 2);
-          ctx.update((st) => ({ ...st, personality: words }), { coalesce: "pw" });
+          const words = [val("pw-0"), val("pw-1")].map(clean);
+          ctx.update((st) => ({ ...st, personality: trimWords(words) }), { coalesce: "pw" });
           const dup = words.length === 2 && nm(words[0]) === nm(words[1]);
           const note = root.querySelector("[data-dup]"); if (note) note.hidden = !dup;
           root.querySelectorAll('[data-save="pw"]').forEach((el) => (dup ? el.setAttribute("aria-invalid", "true") : el.removeAttribute("aria-invalid")));

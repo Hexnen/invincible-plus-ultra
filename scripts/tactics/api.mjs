@@ -119,7 +119,7 @@ export const tacticsApi = {
   setMode: (mode, combat) => send(combat, { op: "setMode", mode }),
   /** the lines the end-of-scene procedure would apply now (spec 6.8), for the GM's confirmation */
   scenePlan: (combat) => { const c = pick(combat); return running && c && Store.isStaff(game.user) ? Sch.sceneEndPlan(Sys.sceneFacts(c), Store.stateOf(c)).map((l) => ({ ...l, name: c.combatants.get(l.id)?.name ?? l.id })) : []; },
-  endScene: (opts = {}, combat) => send(combat, { op: "endScene", ...opts }),
+  endScene: (...a) => { const combat = popCombat(a), opts = a[0]; return send(combat, { ...(opts && typeof opts === "object" && !isCombat(opts) ? opts : {}), op: "endScene" }); },
   gm,
   /* ---- the surroundings */
   compat: () => Sys.compat(),

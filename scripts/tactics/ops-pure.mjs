@@ -137,7 +137,7 @@ export function normalize(req, { staff = false } = {}) {
 
 /* ------------------------------------------------------------------ the work context of one reduction */
 const mkId = (W) => (prefix) => S.nextId(W.s, prefix);
-const ev = (W, type, data = {}) => { W.events.push({ type, ...data }); };
+const ev = (W, type, data = {}) => { W.events.push({ type, ...(W.s ? { round: W.s.round } : {}), ...data }); };
 const partOf = (W, id) => (W.ctx.parts ?? []).find((p) => p.id === id) ?? null;
 const ledgerOf = (W, id) => (W.s.ledger[id] ??= Lg.newLedger(W.s.round));
 const summonsOf = (W, owner) => (W.s.summons ?? []).filter((su) => su?.owner === owner).flatMap((su) => (Array.isArray(su.combatants) ? su.combatants : [])).filter(S.isId);
@@ -774,7 +774,7 @@ export function reduce(state0, action, ctx = {}) {
     if (!W.s) return { ok: true, changed: true, state: null, events: W.events, effects: W.effects };
     S.stamp(W.s, action.rid);
     const state = S.sanitize(W.s);
-    return { ok: true, changed: true, state, events: W.events.map((e) => ({ ...e, round: state.round })), effects: W.effects };
+    return { ok: true, changed: true, state, events: W.events.map((e) => ({ ...e, round: e.round ?? state.round })), effects: W.effects };
   } catch (e) {
     return err("internal", { msg: String(e?.message ?? e).slice(0, 80) });
   }

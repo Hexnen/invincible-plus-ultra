@@ -309,7 +309,7 @@ function childrenOf(e, ctx, fullKids) {
     const cap = fullKids ? kids.length : 12;
     const ul = h("ul.ipl-kids");
     for (const k of kids.slice(0, cap)) {
-      const ke = { id: `${e.id}~k`, t: e.t, u: e.u, k: typeof k.k === "string" ? k.k : "", d: k.d && typeof k.d === "object" && !Array.isArray(k.d) ? k.d : {}, n: k.n };
+      const ke = { id: `${e.id}~k`, t: e.t, u: e.u, aid: e.aid, sc: e.sc, k: typeof k.k === "string" ? k.k : "", d: k.d && typeof k.d === "object" && !Array.isArray(k.d) ? k.d : {}, n: k.n };
       ul.append(h("li", icon(iconClass(ke), "ipl-kid-ico"), h("span", sentenceNodes(ke, ctx, { kid: true }))));
     }
     const rest = kids.length - cap + (d.more || 0);

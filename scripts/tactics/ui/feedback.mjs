@@ -85,6 +85,9 @@ function floatGlyph(mark) {
   } catch { return null; }
 }
 const TONE = { health: 0xff8178, resolve: 0x3bb8e8, miss: 0xffffff, none: 0xd5dff0, state: 0xffe72a };
+/* the action instance an event belongs to (the engine stamps `inst`): the number and the "Hit" of one blow share it */
+const blowOf = (list, target, type) => { const e = list.find((x) => x && x.type === type && (x.target === target || x.target?.combatant === target)); return e?.inst ?? null; };
+const sameBlow = (prev, blow, at) => !!prev && at - prev.at < HIT_AFTER && (prev.blow == null || blow == null || prev.blow === blow);
 function flush(combatId) {
   try {
     const list = pending[combatId] ?? []; pending[combatId] = null;
@@ -100,8 +103,9 @@ function flush(combatId) {
       /* only over a token this user's canvas draws: a token Foundry hides from a player, or one out of that player's sight, gets no number */
       if (!tok || tok.visible === false || (!staff && doc.hidden === true)) continue;
       const at = Date.now();
-      if (f.loss) lossAt[f.target] = at;
-      if (f.hit && at - (lossAt[f.target] ?? 0) < HIT_AFTER) continue;      // the number of this blow already stood there
+      const blow = blowOf(list, f.target, f.loss ? "damage" : "outcome");
+      if (f.hit && sameBlow(lossAt[f.target], blow, at)) continue;      // the number of THIS blow already stood there (a later, separate blow still gets its "Hit")
+      if (f.loss) lossAt[f.target] = { at, blow };
       const k = n.get(f.target) ?? 0; n.set(f.target, k + 1);
       setTimeout(() => {
         try {

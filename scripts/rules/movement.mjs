@@ -148,7 +148,7 @@ export function moveReach(profile, opts = {}) {
 export function altitudeAccess(profile, to) {
   const hovers = profile.medium === "air" && (profile.mode === "vehicle" || (profile.ends ?? []).includes("air"));
   if (to === "sky" || to === "orbit") return hovers ? { ok: true, reason: null } : { ok: false, reason: "needsFlight", gmMayAllow: true };
-  if (to === "elevated") return profile.way === "air" || profile.way === "swing" || profile.way === "through" || profile.vertical ? { ok: true, reason: null } : { ok: false, reason: "needsAerial", gmMayAllow: true };
+  if (to === "elevated") return profile.way === "air" || profile.way === "swing" || (profile.way === "through" && profile.medium === "none") || profile.vertical ? { ok: true, reason: null } : { ok: false, reason: "needsAerial", gmMayAllow: true };
   return { ok: true, reason: null };
 }
 /* book 2004 Gliding (a limit of Flight): no zone at a higher altitude than where the move started. Heights as numbers

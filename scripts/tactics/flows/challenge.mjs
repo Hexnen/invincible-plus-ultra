@@ -146,7 +146,7 @@ export const effect = {
     check(v, inst) { const I = K.draft(inst), R = K.result(I); I.locked = true; R.goto = "roll"; return R; },
     roll(v, inst) {
       const I = K.draft(inst), R = K.result(I), t = I.decl.targets[0], fx = I.data.fx;
-      if (!K.rollOf(I, "save")) { R.effects.push(K.rollEffect("save", t, fx.attr, K.buildPool(v, I, "save", t, fx.attr, [], {}).pool, { passive: true, label: `ITAC.roll.${fx.kind === "toxin" ? "toxin" : "save"}` })); R.wait = true; return R; }   // [A-2]: no action, no push
+      if (!K.rollOf(I, "save")) { const bp = K.buildPool(v, I, "save", t, fx.attr, [], {}); for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to }); R.effects.push(K.rollEffect("save", t, fx.attr, bp.pool, { passive: true, label: `ITAC.roll.${fx.kind === "toxin" ? "toxin" : "save"}` })); R.wait = true; return R; }   // [A-2]: no action, no push
       if (!K.rollFinal(I, "save")) { R.wait = true; return R; }
       R.goto = "effect"; return R;
     },

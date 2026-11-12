@@ -1,0 +1,26 @@
+// node scripts/sweep-checks/t25.mjs  (T044 Mass Healing validates every target; T045 act-flow honours declared noPush 1)
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { act } from "../tactics/flows/acts.mjs";
+let n = 0, f = 0;
+const ck = (name, c) => { n++; if (!c) { f++; console.log("FAIL", name); } };
+const e = { id: "massHeal", target: { who: "ally", n: [1, 4] }, sameZone: 1, stressExtra: 1, roll: { attr: "presence" }, effect: { kind: "heal", per: 3, mass: 1 } };
+const cs = { A: { attrs: { presence: 2 }, health: 5, maxHealth: 6, resolve: 5 }, B: { health: 2, maxHealth: 6 }, C: { health: 2, maxHealth: 6 }, D: { health: 2, maxHealth: 6 }, E: { health: 2, maxHealth: 6 }, G: { health: 0, maxHealth: 6, present: false }, F: { health: 2, maxHealth: 6 } };
+const v = { state: { statuses: {}, effects: [], counters: {} }, entry: () => e, facts: { c: (id) => cs[id], range: (a, b) => ({ total: b === "F" ? 2 : 0 }) } };
+const run = (targets) => act.legality(v, { actor: "A", decl: { targets } });
+ck("two same-zone allies ok", run(["B", "C"]).ok === true);
+ck("four allies ok", run(["B", "C", "D", "E"]).ok === true);
+ck("five targets refused (cap n[1])", run(["B", "C", "D", "E", "A"]).ok === false);
+ck("second target in another zone refused", run(["B", "F"]).reason === "notSameZone");
+ck("second target not present refused", run(["B", "G"]).ok === false);
+ck("unknown second target refused", run(["B", "ZZ"]).ok === false);
+const src = readFileSync(fileURLToPath(new URL("../tactics/flows/acts.mjs", import.meta.url)), "utf8");
+const line = src.split("\n").find((l) => l.includes('K.rollEffect("roll", I.actor, attr, bp.pool'));
+const pm = line.match(/passive: (.*?), noPush:/);
+ck("passive expr extracted", !!pm);
+const passive = new Function("d", `return ${pm[1]};`);
+ck("noPush 1 -> passive", passive({ noPush: 1 }) === true);
+ck("noPush true -> passive", passive({ noPush: true }) === true);
+ck("absent -> not passive", passive({}) === false);
+console.log(`sweep t25: ${n} checks, ${f} failed`);
+process.exit(f ? 1 : 0);

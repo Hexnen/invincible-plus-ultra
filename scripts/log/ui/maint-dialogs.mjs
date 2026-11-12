@@ -12,6 +12,15 @@ const DV2 = () => foundry.applications.api.DialogV2;
 async function ask(cfg) {
   try { return await DV2().wait({ rejectClose: false, modal: true, classes: ["ipl-dialog"], position: { width: 500 }, ...cfg }); } catch { return null; }
 }
+/** Enter inside a field must not run the first (destructive) submit button by implicit form submission: it presses the SAFE cancel button instead. A focused button keeps its own Enter. */
+const safeEnter = (dialog) => {
+  const el = dialog?.element;
+  el?.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" || ev.target?.closest?.("button")) return;
+    ev.preventDefault(); ev.stopPropagation();
+    el.querySelector('[data-action="cancel"]')?.click();
+  }, true);
+};
 const cancelBtn = () => ({ action: "cancel", label: t("IPL.Dlg.Cancel"), icon: "fa-solid fa-xmark", default: true, callback: () => ({ go: false }) });
 
 /** Trim prompt. Resolves {go: true, keep, backup} or null. */
@@ -46,6 +55,7 @@ export async function trimDialog(row, saveFile) {
         goBtn.disabled = false; goBtn.removeAttribute("aria-disabled");
         goBtn.lastChild.textContent = t("IPL.Trim.Go", { entries: tn("IPL.Plural.Entries", p.entries) });
       };
+      safeEnter(dialog);
       input.addEventListener("input", upd); upd();
     }
   });
@@ -65,7 +75,8 @@ export async function deleteDialog(row, saveFile) {
     buttons: [
       { action: "delete", label: t("IPL.Del.Go", { name: row.name }), icon: "fa-solid fa-trash", class: "ipl-danger", callback: (_ev, button) => ({ go: true, backup: !!button.form.elements.backup.checked }) },
       cancelBtn()
-    ]
+    ],
+    render: (_ev, dialog) => safeEnter(dialog)
   });
   if (out?.go !== true) return null;
   if (out.backup) { try { saveFile(Maint.exportLog(row.actorId, "json")); } catch (e) { console.warn("invincible-plus-ultra | log backup failed, delete cancelled", e); ui.notifications?.error(t("IPL.UI.ExportFailed")); return null; } }

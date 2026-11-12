@@ -706,7 +706,7 @@ export function start() {
     for (const hk of ["changeSidebarTab", "renderHotbar", "renderPlayers", "renderChatLog", "closeChatLog"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });      // U136: also the chat popped out or back in
     Hooks.on("collapseSidebar", () => { relayout(); setTimeout(() => (st.desk.touched ? relayout() : schedule()), 320); });      // the desk folds or opens with the room the sidebar leaves, until the GM chose
     window.addEventListener("resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
-    document.addEventListener("keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.stopPropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
+    document.addEventListener("keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
     /* U41 */
     document.addEventListener("keydown", onKey, true);
     document.addEventListener("pointerdown", () => { byPointer = true; }, true);

@@ -90,7 +90,7 @@ export function parseImport(input) {
 export function planImport(doc, ctx = {}) {
   const report = { linked: [], other: [], missing: [], vehiclesKept: 0, vehiclesRemapped: 0, vehiclesDropped: [], vehiclesDuplicate: [], buysRemapped: 0 };
   const data = portable(doc?.data);
-  const idMap = {};
+  const idMap = Object.create(null);   // no inherited keys: a hostile split id like "constructor" must not count as remapped
   const link = [];
   for (const m of doc?.members ?? []) {
     const r = ctx.hero ? ctx.hero(m) : "skip";

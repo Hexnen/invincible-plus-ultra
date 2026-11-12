@@ -44,7 +44,8 @@ export async function open(ref, opts = {}) {
 }
 /** openFor(actor, {tab}) -> the base sheet of the hero's team, or the create / join / ask window when it has none (a base actor opens itself) */
 export async function openFor(actorRef, opts = {}) {
-  const actor = asActor(actorRef);
+  let actor = asActor(actorRef);
+  if (actor?.isToken) actor = actor.baseActor ?? game.actors.get(actor.id) ?? actor;   // T002: an unlinked token's synthetic actor must resolve to the world hero, or link() writes only the token delta
   if (S.isCard(actor)) return open(actor, opts);
   if (!actor || actor.type !== "superhero") { ui.notifications?.warn(t("IPB.Entry.NotHero")); return null; }
   const team = S.find(actor);
@@ -236,7 +237,7 @@ function refreshAll(teamId, actorId) {
     const { teamId, actorId } = refreshScope; refreshScope = null;
     import("./sheet.mjs").then((m) => m.BaseSheet?.refresh({ teamId })).catch(() => {});   // S7-02: the module-level BaseSheet stays null until entry.open() ran, so an already-open sheet missed live karma updates
     NewTeamApp?.refresh({ actorId });
-    PickerApp?.refresh();
+    import("./picker.mjs").then((m) => m.PickerApp?.refresh()).catch(() => {});   // T001: the settings-menu picker never went through pick(), so the module-level PickerApp stayed null
     syncSheets();
   }, 60);
 }

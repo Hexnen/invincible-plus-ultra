@@ -68,10 +68,11 @@ export function place() {
   root.style.setProperty("--itt-bottom", `${Math.round(bottom)}px`);
   root.style.setProperty("--itt-maxw", `${Math.round(avail)}px`);
   root.classList.remove("itt-compact");
+  { const nm = who?.querySelector(".itt-name"); if (nm) nm.style.display = ""; }   // the name is back until the panel proves too wide
   root.style.setProperty("--itt-fit", "1");
   panel.style.width = "";
   let w = panel.offsetWidth;
-  if (w > avail) { root.classList.add("itt-compact"); w = panel.offsetWidth; }
+  if (w > avail) { root.classList.add("itt-compact"); const nm = who?.querySelector(".itt-name"); if (nm) nm.style.display = "none"; w = panel.offsetWidth; }   // no stylesheet rule for itt-compact: drop the name here
   if (w > avail) { root.style.setProperty("--itt-fit", String(Math.max(0.7, (avail / w) * 0.98).toFixed(3))); w = panel.offsetWidth; }
   let cx = cx0;
   if (cx + w / 2 > hi) cx = hi - w / 2;

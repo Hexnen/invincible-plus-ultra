@@ -76,7 +76,7 @@ export const blast = {
       for (const t of I.decl.targets) {
         if (I.data.def?.[t] !== "dodge") continue;
         const key = `def:${t}`;
-        if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, t, "agility", [], { rollKind: "dodge" }); R.effects.push(K.rollEffect(key, t, "agility", bp.pool, { defender: true, label: "ITAC.action.dodge" })); waiting = true; }
+        if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, t, "agility", [], { rollKind: "dodge" }); for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to }); R.effects.push(K.rollEffect(key, t, "agility", bp.pool, { defender: true, label: "ITAC.action.dodge" })); waiting = true; }
         else if (!K.rollFinal(I, key)) waiting = true;
       }
       if (waiting) { R.wait = true; return R; }
@@ -98,7 +98,7 @@ export const blast = {
         if (I.data.dmg[o.id]) continue;                                                           // the step comes back after a card of the GM
         const tf = v.facts.c(o.id), forced = I.data.forced?.damage?.[o.id], row = rows.find((r) => r.id === o.id);
         let taken = Number.isFinite(forced?.amount) ? forced.amount : o.taken;
-        if (damage.barrierBreached(row.barrier, taken) && !K.flag(I, `breach:${o.id}`)) { K.setFlag(I, `breach:${o.id}`); for (const x of M.effectEndWrites(v.state, row.barrier.id)) R.effects.push({ t: "state", path: x.path, to: x.to }); }      // S067 [B1859], [R13]: a breached Barrier is gone
+        if (damage.barrierBreached(row.barrier, taken) && !row.vulnerable && !K.flag(I, `breach:${o.id}`)) { K.setFlag(I, `breach:${o.id}`); for (const x of M.effectEndWrites(v.state, row.barrier.id)) R.effects.push({ t: "state", path: x.path, to: x.to }); }      // S067 [B1859], [R13]: a breached Barrier is gone
         if (tf.kind === "minions" && !Number.isFinite(forced?.amount) && taken > 0) {             // [OQ-1]: a blast takes several at once, as an area attack does: the GM's number
           const ml = K.minionLoss(v, I, R, o.id, taken);
           if (ml.wait) { waiting = true; continue; }
@@ -219,6 +219,7 @@ export const vacuum = {
         const n = exposure(v.state, t) + 1, pen = hazards.vacuumDice(n);                        // unmodified in the first round, one die less each further round
         I.data.exposure = n;
         const bp = K.buildPool(v, I, "roll", t, "strength", pen ? [{ source: "vacuum", dice: pen }] : [], { rollKind: "other" });
+        for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
         R.effects.push(K.rollEffect("roll", t, "strength", bp.pool, { passive: true, label: "ITAC.roll.vacuum" }));       // no action, so passive: not pushed [A-2], [B2227]
         R.wait = true; return R;
       }
@@ -271,6 +272,7 @@ export const disease = {
         const carer = P1.isId(h.carer) && alive(v, h.carer) && h.carer !== t ? h.carer : null, pen = hazards.diseaseDice(int(h.virulence, 0, 12, 0));
         const who = carer ?? t, attr = carer ? hazards.DISEASE.carerAttr : hazards.DISEASE.attr;       // a carer rolls REASON in the patient's place
         const bp = K.buildPool(v, I, "roll", who, attr, pen ? [{ source: "virulence", dice: pen }] : [], { rollKind: "other" });
+        for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
         R.effects.push(K.rollEffect("roll", who, attr, bp.pool, { passive: true, secret: h.secret === true, label: "ITAC.roll.disease" }));      // passive, never pushed; the GM may keep it secret [B2899]
         R.wait = true; return R;
       }
@@ -308,7 +310,7 @@ export const disease = {
 export function specOf(run, subject, v) {
   if (!run || !TYPES.includes(run.type)) return null;
   const sub = subject ?? {}, zone = typeof (run.zone ?? sub.zone) === "string" ? String(run.zone ?? sub.zone).slice(0, 40) : undefined;
-  const targets = (Array.isArray(run.targets) ? run.targets : P1.isId(sub.combatant) ? [sub.combatant] : zone ? v.facts.inZoneKey?.(zone) ?? [] : []).filter((id, i, all) => P1.isId(id) && all.indexOf(id) === i).slice(0, 40);      // D92: each target once
+  const targets = (Array.isArray(run.targets) ? run.targets : P1.isId(sub.combatant) ? [sub.combatant] : zone ? (v.facts.inZoneKey?.(zone) ?? []).filter((id) => { const f = v.facts.c(id); return !!f && f.kind !== "challenge" && f.present !== false && !(f.kind === "minions" && !(Number(f.health) > 0)); }) : []).filter((id, i, all) => P1.isId(id) && all.indexOf(id) === i).slice(0, 40);      // D92: each target once
   const mk = (flow, hz, tg = targets) => ({ action: run.type, flow, actor: null, decl: { ...blank, action: run.type, targets: tg, ...(zone ? { zone } : {}) }, data: { hz: { ...hz, ...(zone ? { zone } : {}), ...(typeof run.name === "string" ? { name: run.name.slice(0, 80) } : {}) } }, initiator: { type: "hazard", id: run.type } });
   switch (run.type) {
     case "blast": return mk("blast", { kind: "blast", rating: int(run.rating, 1, 20, 4), ...(typeof run.source === "string" ? { source: run.source.slice(0, 24) } : {}) });
@@ -323,7 +325,7 @@ export function specOf(run, subject, v) {
 
 /* ------------------------------------------------------------------ what is due without having been registered (spec 6.1) */
 const trig = (id, at, subject, run) => ({ id, at, subject, run, source: { kind: "hazard", name: run.type }, derived: 1 });
-const slug = (s) => String(s).replace(/[^A-Za-z0-9]/g, "");
+const slug = (s) => String(s).replace(/[^A-Za-z0-9_@-]/g, "");
 /** point = { at, combatant? }. -> [Trigger] (each `derived`: it lives in the queue card only, nothing is stored) */
 export function derived(state, facts, point) {
   const out = [], Z = facts.zones ?? null;

@@ -230,8 +230,15 @@ async function ensureOcc(ctx, name) {
 
 async function syncArchetype(ctx) {
   const d = ctx.data, name = ctx.state.archetype ?? null;
-  if (d.archFor === name) return false;
+  if (d.archFor === name) return d.archPending ?? false;
   d.archFor = name; d.archOcc = [];
+  const run = loadArchetype(ctx, name);
+  d.archPending = run;
+  try { return await run; } finally { if (d.archPending === run) d.archPending = null; }
+}
+
+async function loadArchetype(ctx, name) {
+  const d = ctx.data;
   if (name) {
     try {
       const l = await ctx.provider().list("occupations", { archetype: name });

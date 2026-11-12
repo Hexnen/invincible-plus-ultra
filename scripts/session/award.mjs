@@ -167,7 +167,7 @@ export async function undo(user, { mode = "strict" } = {}) {
         if (mk && OP.markerConsistent(mk, row) && karmaOf(actor) === Math.trunc(Number(mk.after))) {
           const ok = await withActorLock(actor.id, () => restore(actor, Math.max(0, Math.trunc(Number(mk.before))), mk));
           results.push({ h: row.h, status: ok ? "ok" : "failed", orphan: true });
-        }
+        } else if (mk && OP.markerConsistent(mk, row)) results.push({ h: row.h, status: "drift", expected: Math.trunc(Number(mk.after)), current: karmaOf(actor), orphan: true });      // karma changed since the interrupted write: report it, never skip silently
         continue;
       }
       if (row.st !== 1) continue;

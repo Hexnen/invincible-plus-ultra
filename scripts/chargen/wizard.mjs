@@ -436,11 +436,12 @@ export class ChargenApp extends ApplicationV2 {
     if (visitAll && next.mode === "random") this.#visited.delete("board");     // the board is visited by landing on it
     this.#revalidate();
     this.#afterChange({ external: true });
-    if (go) this.go(go);
+    if (go && go !== this.#stepId) this.go(go);   // T024: go() on the step already shown only refocuses, so the stale body is repainted instead
     else this.#paintBody({ restoreFocus: false });
   }
 
   #afterChange({ body = false, external = false } = {}) {
+    this.#applied = false;   // T025: an edit after Apply is a touched, not applied wizard again (dirty prompt + draft); Undo/Roll another/Review re-apply set it themselves
     this.#revalidate();
     this.#paintStepper(); this.#paintPreview(); this.#paintFooter();
     this.#scheduleDraft();

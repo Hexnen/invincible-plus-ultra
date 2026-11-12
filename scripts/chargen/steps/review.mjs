@@ -222,6 +222,7 @@ function resultBlock(ctx) {
   return `<section class="ipc-result ipc-result-bad" aria-labelledby="ipc-res-h"><h3 id="ipc-res-h" tabindex="-1">${icon("fa-solid fa-circle-xmark")} ${esc(t(r.rolledBack === false || r.unknown ? "IPC.Result.FailPartialTitle" : "IPC.Result.FailTitle"))}</h3>
     <ul class="ipc-issues">${errs.map((e) => `<li class="ipc-iss-err">${icon("fa-solid fa-circle-exclamation")}<span class="ipc-iss-text">${esc(msgText(e))}</span></li>`).join("")}</ul>
     ${note}
+    ${d.undoError ? `<p class="ipc-error" role="alert">${icon("fa-solid fa-triangle-exclamation")} ${esc(d.undoError)}</p>` : ""}
     <div class="ipc-actions"><button type="button" class="ipc-btn ipc-btn-primary" data-act="retry" data-fk="retry">${icon("fa-solid fa-rotate")} ${esc(t("IPC.Result.Retry"))}</button>
       <button type="button" class="ipc-btn" data-act="back-review">${esc(t("IPC.Result.BackToReview"))}</button>
       ${r.rolledBack === false && ctx.apply.hasUndo(ctx.actor) ? `<button type="button" class="ipc-btn" data-act="undo" data-fk="undo">${icon("fa-solid fa-rotate-left")} ${esc(t("IPC.Result.Undo"))}</button>` : ""}</div></section>`;
@@ -236,6 +237,7 @@ async function doApply(ctx) {
   ctx.app.setApplying(true);
   ctx.rerender();
   ctx.announce(t("IPC.Review.Applying"));
+  let writing = false;   // true once apply() has started: only then is the outcome unknown
   try {
     const fresh = await ctx.apply.plan(ctx.actor, ctx.state);
     if (planSig(fresh) !== planSig(d.plan)) {
@@ -247,6 +249,7 @@ async function doApply(ctx) {
     }
     // B6 (phase 9): the word only counts for the plan the user was SHOWN; apply() re-plans and refuses (planChanged) when it would delete / overwrite more than that
     const shown = d.plan;
+    writing = true;
     const res = await ctx.busy(ctx.apply.apply(ctx.actor, ctx.state, {
       confirmed: !!shown.destructive && typedOk(d),
       expect: { deletes: (shown.deletes ?? []).map((x) => x.id), overwrites: (shown.overwrites ?? []).map((f) => f.path) },
@@ -263,7 +266,7 @@ async function doApply(ctx) {
     if (res.ok) { ctx.app.markApplied(); d.share = shareData(ctx.state, ctx.actor); }
   } catch (err) {
     console.error("invincible-plus-ultra | chargen apply failed", err);
-    d.result = { ok: false, unknown: true, errors: [{ key: "x", message: err?.message ?? String(err) }], warnings: [] };
+    d.result = { ok: false, unknown: writing, errors: [{ key: "x", message: err?.message ?? String(err) }], warnings: [] };
   }
   d.busy = false;
   ctx.app.setApplying(false);
@@ -356,7 +359,7 @@ export default {
     const d = ctx.data;
     d.confirm = ""; d.changed = false; d.result = null; d.undone = null;
     await refreshPlan(ctx);
-    ctx.rerender();
+    if (ctx.app.stepId === "review") ctx.rerender();   // a "go" issued meanwhile (Roll another -> board) must not be repainted from here
   },
 
   render(ctx) {

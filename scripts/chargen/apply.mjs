@@ -440,6 +440,7 @@ async function applyLocked(actor, state, { confirmed = false, onStage: onStageRa
     const backup = { runId, at: snap.at, fields: snap.fields, unset: snap.unset, items: snap.items, wiped: snap.wiped, prevChargen: snap.prevChargen ?? null };
     if (JSON.stringify(backup).length < BACKUP_LIMIT) update[backupPath] = backup;
     else warnings.push(msg("Warn", "NoBackupFlag"));
+    if (getp(actor._source, backupPath)) { const [dk, dv] = dropKey(`flags.${MODULE_ID}`, "chargenBackup"); await actor.update({ [dk]: dv }); }   // T012: update() merges objects: an older run's .base / .fields must not survive into the new backup
     await actor.update(update);
     // 7. current Health / Resolve = derived max (after the items' effects exist)
     stage = "health"; onStage?.(stage);

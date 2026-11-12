@@ -55,7 +55,7 @@ function bake(key, token, variant, color, ring, cell, sizePx) {
   for (const d of dots) if (d.k !== "disc") S.beginFill(INK, 0.9).drawCircle(d.x + ink.x, d.y + ink.y, d.r).endFill();
   for (const d of dots) {
     if (d.k === "disc") continue;
-    (d.g ? B : S).beginFill(col, 1).drawCircle(d.x, d.y, d.r).endFill();
+    (d.g ? B : S).beginFill(col, a).drawCircle(d.x, d.y, d.r).endFill();
   }
   const region = new PIXI.Rectangle(-ext, -ext, 2 * ext, 2 * ext);
   const opts = { region, resolution: resolution(), scaleMode: PIXI.SCALE_MODES.LINEAR, multisample: PIXI.MSAA_QUALITY?.HIGH ?? 4 };

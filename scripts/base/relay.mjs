@@ -17,6 +17,7 @@ const CHANNEL = `module.${MOD}`;
 const TIMEOUT = 8000;
 export const PROTO = 3;                 // relay protocol number: bump when a handler's meaning changes; older GM tabs then answer "stale" (B11: 3, requestJoin + trust)
 let sock = null, started = false, seq = 0;
+const TAB = Math.random().toString(36).slice(2, 8);   // per-tab nonce: two tabs of one user must not share request ids
 const pending = new Map();
 
 /** Per sender and op: [allowed calls, window in ms]. Change here only. Staff are exempt. */
@@ -167,7 +168,7 @@ const modVersion = () => String(game.modules.get(MOD)?.version ?? "");
 function send(op, args) {
   if (sock) return sock.executeAsGM("ipbRelay", op, args, PROTO, modVersion()).catch(() => ({ ok: false, code: "relay" }));
   return new Promise((resolve) => {
-    const id = `${game.user.id}:${++seq}`;
+    const id = `${game.user.id}:${TAB}:${++seq}`;
     let staleTimer = 0;
     const done = (env) => { clearTimeout(timer); clearTimeout(staleTimer); pending.delete(id); resolve(env); };
     const timer = setTimeout(() => done({ ok: false, code: "relay" }), TIMEOUT);

@@ -28,6 +28,7 @@ import { tacticsState } from "../tactics/source.mjs";
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (challenges combat) |`;
 export const COMBAT_KEY = "challengesCombatTime";
+const KEYS_FLAG = "challengeCharges";   // combat flag: the charged keys survive a reload / GM handover (the Map below is rebuilt from it)
 const HUSH_MS = 2500;
 const MAX_ROUNDS_JUMP = 100;
 
@@ -73,6 +74,31 @@ function tick(actor, delta, rec) {
 
 const posCmp = (r1, t1, r2, t2) => (r1 - r2) || (t1 - t2);
 
+/* an empty Map for this combat (reload, new active GM) is refilled from the flag written alongside the charges */
+function hydrate(combat) {
+  for (const rec of counted.values()) if (rec.combatId === combat.id) return;
+  let saved = null;
+  try { saved = combat.getFlag?.(MOD, KEYS_FLAG); } catch { /* no flag */ }
+  for (const r of Array.isArray(saved) ? saved : []) {
+    if (!r || !Number.isFinite(Number(r.round)) || r.tid === undefined || r.tid === null) continue;
+    counted.set(`${combat.id}:${r.round}:${r.tid}`, { combatId: combat.id, round: Number(r.round), tid: r.tid, applied: true });
+  }
+}
+
+/* queued after the ticks (so applied is known): write the keys whose charge really happened */
+function persist(combat) {
+  chain = chain.then(async () => {
+    try {
+      if (!game.user.isActiveGM) return;
+      const now = [...counted.values()].filter((r) => r.combatId === combat.id && r.applied === true).map((r) => ({ round: r.round, tid: r.tid }));
+      let old = null;
+      try { old = combat.getFlag?.(MOD, KEYS_FLAG); } catch { /* none */ }
+      if (JSON.stringify(old ?? []) === JSON.stringify(now)) return;
+      await combat.setFlag(MOD, KEYS_FLAG, now);
+    } catch (e) { console.warn(LOG, "persist failed", e); }
+  }).catch((e) => console.warn(LOG, e));
+}
+
 function onUpdateCombat(combat, changes, options) {
   if (!combat || !game.user.isActiveGM || !enabled()) return;
   if (tacticsState(combat)) return;                                                  // the tactics engine runs the clock itself, journaled (scripts/tactics/engine-pure.mjs challengeClock)
@@ -84,6 +110,7 @@ function onUpdateCombat(combat, changes, options) {
   const turns = combat.turns ?? [];
   if (yzeWaiting(combat)) return;                                                    // the draw has not landed: no order, no turn, nothing to charge or refund
 
+  hydrate(combat);
   // 1. back: every counted key that now lies after the current position is undone (a round reset to 0 undoes all of them)
   for (const [key, rec] of counted) {
     if (rec.combatId !== combat.id) continue;
@@ -94,6 +121,7 @@ function onUpdateCombat(combat, changes, options) {
     const actor = (turns[idx] ?? combat.combatants.find((c) => tokenOf(c) === rec.tid))?.token?.actor;
     if (actor?.type === "challenge" && unitOf(actor) === DEFAULT_UNIT) tick(actor, +1, rec);
   }
+  persist(combat);
 
   // 2. forward: every position in (previous, current] is passed through
   if (R < 1 || options?.turnEvents === false) return;
@@ -111,6 +139,7 @@ function onUpdateCombat(combat, changes, options) {
       tick(actor, -1, rec);
     }
   }
+  persist(combat);
 }
 
 export function start() {
