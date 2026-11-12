@@ -229,6 +229,7 @@ export const EN = {
   "ITAC.mod.orders": "Orders",
   "ITAC.roll.attack": "Attack",
   "ITAC.roll.def": "Defence",
+  "ITAC.ui.chat.settled": "Already settled in the fight",
   "ITAC.roll.gate": "Before the attack",
   "ITAC.roll.stun": "Shake off the stun",
   "ITAC.roll.sw": "Guardian",
@@ -1255,6 +1256,7 @@ export const PL = {
   "ITAC.mod.orders": "Rozkaz",
   "ITAC.roll.attack": "Atak",
   "ITAC.roll.def": "Obrona",
+  "ITAC.ui.chat.settled": "Już rozstrzygnięte w walce",
   "ITAC.roll.gate": "Przed atakiem",
   "ITAC.roll.stun": "Otrząśnięcie się z ogłuszenia",
   "ITAC.roll.sw": "Strażnik",
@@ -2096,5 +2098,12 @@ export function errText(e) {
 export const errorText = errText;
 /** D105: the title of an engine roll (the roll dialog, the system's chat card): the word of its kind (ITAC.roll.<kind>), else the label
     the flow gave it, read as a key when it is one (a kit action's ITAC.kit.act.*), never shown as a raw key. */
+/* U125 (c): the roll's chat card names the dice another character gave it (Warning Call's +2, [B2170]); the title is all the card shows
+   at a glance (the system keeps the breakdown in the folded tooltip). labelOf(source) -> the modifier's name (ITAC.mod.*). */
+export const CARD_MODS = Object.freeze(["warned"]);
+export const cardTitle = (title, pool, labelOf) => {
+  const named = (Array.isArray(pool?.mods) ? pool.mods : []).filter((m) => CARD_MODS.includes(String(m?.source ?? "").split(":")[0]) && Number(m.dice) > 0);
+  return named.length ? `${title}: ${named.map((m) => `${labelOf(m.source)} +${Math.trunc(Number(m.dice))}`).join(", ")}` : String(title ?? "");
+};
 export const rollTitle = (key, label) => { const k = String(key ?? "").split(":")[0], l = typeof label === "string" && label ? label : String(key ?? "");
   return t(`ITAC.roll.${k}`, {}, l.startsWith("ITAC.") ? t(l, {}, String(key ?? "")) : l); };

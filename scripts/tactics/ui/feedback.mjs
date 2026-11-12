@@ -126,7 +126,10 @@ export function sync(ctx) {
     if (!started) return { sum: null, hint: null };
     const { combat, facts, model, data, staff, own } = ctx, view = facts.view;
     /* who this user's view holds, kept for the card that is shown when the fight (and the view with it) is gone */
-    if (combatWas !== combat.id) { combatWas = combat.id; tally = loadTally(combat.id); snap = {}; roundWas = null; cueWas = null; }
+    if (combatWas !== combat.id) {
+      combatWas = combat.id; tally = loadTally(combat.id); snap = {}; roundWas = null; cueWas = null;
+      if (sum && FP.cardFight(sum.card) !== combat.id) { clearTimeout(sumTimer); sum = null; }      // U130: a new fight: the summary of the one before does not stand over it
+    }
     const mine = new Set((model?.bars ?? []).map((b) => b.combatant));
     for (const id of Object.keys(view?.ledger ?? {})) { const c = facts.c?.(id); if (c) snap[id] = { name: c.name, img: c.img ?? null, mine: staff ? !c.npc : mine.has(id) }; }
     statusesWere = view?.statuses ?? {};
@@ -151,16 +154,23 @@ export function sync(ctx) {
   } catch (e) { console.warn(LOG, "sync failed", e); return { sum: null, hint: null }; }
 }
 /** no fight on this scene: the card of the fight that just ended may still stand */
-export function idle() { cueWas = null; hintShown = null; return { sum: sum?.card ?? null, hint: null }; }
+export function idle() {
+  cueWas = null; hintShown = null;
+  /* U130: a fight the GM stopped (its tactical state is gone, the combat still stands) is over NOW: its summary is shown now and its
+     tally let go, so deleting that combat later (as the GM does before starting the next fight) brings no old card back */
+  try { const c = combatWas ? game.combats?.get(combatWas) : null; if (c && tally?.combat === c.id && !Store.stateOf(c)) endFight(c); } catch (e) { console.warn(LOG, "fight stop failed", e); }
+  return { sum: sum?.card ?? null, hint: null };
+}
 
+function endFight(combat) {
+  if (!tally || tally.combat !== combat?.id) return false;
+  const card = setting("tacticsSummary", true) !== false ? FP.fightCard(tally, who, statusesWere, t) : null;
+  tally = null; saveTally(); combatWas = null; roundWas = null;
+  showCard(card, FIGHT_MS);
+  return true;
+}
 function onDelete(combat) {
-  try {
-    if (!tally || tally.combat !== combat?.id) return;
-    const card = setting("tacticsSummary", true) !== false ? FP.fightCard(tally, who, statusesWere, t) : null;
-    tally = null; saveTally(); combatWas = null; roundWas = null;
-    showCard(card, FIGHT_MS);
-    H.refresh();
-  } catch (e) { console.warn(LOG, "fight end failed", e); }
+  try { if (endFight(combat)) H.refresh(); } catch (e) { console.warn(LOG, "fight end failed", e); }
 }
 
 export function start(h) {

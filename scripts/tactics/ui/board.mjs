@@ -215,7 +215,7 @@ function tokenMenu(cid, acts) {
     const list = BP.actItems(acts, rows, cid, facts, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.signs ? { signs: a.signs } : {}), ...(a.tip ? { tip: a.tip } : {}), ...(a.disabled ? { disabled: a.disabled } : {}),
       run: () => H.set({ ...ARM, sel: who, armed: a.id, targets: [cid] }) })), gm = fix();
     /* the GM's menu stands where Foundry's token HUD would open: one entry brings that HUD up (Shift + right click opens it directly) */
-    const hud = staff ? [{ separator: true }, { id: "@unit", label: t("ITAC.map.menu.unit"), icon: "fa-solid fa-address-card", run: () => H.unit?.(cid) }, { id: "@hud", label: t("ITAC.map.menu.hud"), icon: "fa-solid fa-id-badge", run: () => { try { const tok = tokDoc(cid)?.object; (canvas.hud?.token ?? tok?.layer?.hud)?.bind(tok); } catch { /* a courtesy */ } } }] : [];
+    const hud = staff ? [{ separator: true }, { id: "@unit", label: t("ITAC.map.menu.unit"), icon: "fa-solid fa-address-card", run: () => H.unit?.(cid) }, { id: "@hud", label: t("ITAC.map.menu.hud"), icon: "fa-solid fa-id-badge", run: () => { try { const tok = tokDoc(cid)?.object; if (tok && !tok.controlled) tok.control({ releaseOthers: true }); (canvas.hud?.token ?? tok?.layer?.hud)?.bind(tok); } catch { /* a courtesy */ } } }] : [];      // U128: Foundry's HUD toggles (the eye, the lock) act on the CONTROLLED tokens: the token is taken in hand first, as Foundry's own right-click does
     const items = [...list, ...(list.length && gm.length ? [{ separator: true }] : []), ...gm, ...hud];
     return items.length ? { title: name, ...(gm.length && !list.length ? { sub: t("ITAC.map.menu.fix") } : {}), items } : null;
   };

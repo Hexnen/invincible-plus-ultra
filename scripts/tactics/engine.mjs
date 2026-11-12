@@ -20,6 +20,7 @@ import * as Sys from "./system-adapter.mjs";
 import * as Zones from "./zones-adapter.mjs";
 import * as Mv from "./movement.mjs";
 import * as Summons from "./summons.mjs";
+import * as RW from "./rollwatch-pure.mjs";
 import { t, rollTitle } from "./lang.mjs";
 
 const MOD = Store.MOD;
@@ -79,11 +80,11 @@ const metaOf = (combat) => ({ hidden: combat.combatants.filter((cb) => cb.hidden
 
 /* ------------------------------------------------------------------ effects on documents (engine-pure.mjs "Host effects") */
 const labelOf = (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s));
-function sendRoll(combat, e) {
+function sendRoll(combat, e, again = 0) {
   const mine = e.users.includes("gm") || e.users.includes(game.user.id) || !e.users.some((u) => game.users.get(u)?.active);
   const req = { combat: combat.id, inst: e.inst, key: e.key, rid: e.rid, actorUuid: e.actorUuid, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, label: rollTitle(e.key, e.label), ...(typeof e.label === "string" ? { labelSrc: e.label.slice(0, 80) } : {}), ...(e.mode ? { mode: e.mode } : {}) };
-  if (mine) Sys.rollNow(req, labelOf).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
-  else game.socket.emit(CHANNEL, { k: R.KIND.roll, to: e.users, req }, { recipients: e.users });
+  if (mine) Sys.rollNow(req, labelOf, { force: again > 0 }).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
+  else game.socket.emit(CHANNEL, { k: R.KIND.roll, to: e.users, req, ...(again > 0 ? { again } : {}) }, { recipients: e.users });      // D120: `again` = the same request once more (rollwatch-pure)
 }
 async function perform(combat, e) {
   switch (e.t) {
@@ -187,19 +188,52 @@ export async function exec(user, combatRef, req, meta = {}) {
 }
 /* the combat an engine roll belongs to: named in the roll's tag, else the fight on the table */
 const combatOfRoll = (r) => { const c = r.combat ? Store.combatOf(r.combat) : Store.currentCombat(); return c && Store.stateOf(c) ? c : null; };
-function onRollMessage(message) {
+function onRollMessage(message, { again = false, late = false } = {}) {
   try {
     if (!Store.iAmExecutor()) return;
     const r = Sys.readRollMessage(message);
     if (!r || !r.author) return;
     const combat = combatOfRoll(r);
-    if (!combat || !(Store.stateOf(combat)?.stack ?? []).some((i) => i.id === r.inst)) return;      // (an edit of an old roll card, its action long over, costs no claim write)
+    if (!combat) return;
+    if (!(Store.stateOf(combat)?.stack ?? []).some((i) => i.id === r.inst)) {
+      /* D120: the roller can be faster than this client's own write of the state that asked for the roll (the request leaves during the
+         run, the state is written at its end): the action is not in the stored state YET. Looked at once more when the queue is through. */
+      if (!late) Store.queue(async () => null).then(() => onRollMessage(message, { again, late: true })).catch(() => {});
+      return;                                                                                   // (an edit of an old roll card, its action long over, costs no claim write)
+    }
     const key = `r:${r.messageId}:${r.pushed}:${r.pushable ? 1 : 0}:${r.sixes}`;
-    if (doneRolls.has(key)) return;
+    if (doneRolls.has(key) && !again) return;
     doneRolls.add(key); if (doneRolls.size > 400) doneRolls.delete(doneRolls.values().next().value);
     run(combat.id, { t: "roll", ...r }, { claimKey: key });
   } catch (err) { console.warn(`${MOD} | tactics: roll message`, err); }
 }
+/* D120: THE ROLL WATCH (rollwatch-pure.mjs): a roll still owed whose answer is in the chat is fed in again; one with no answer is asked
+   for again with the same request id. Nobody has to notice "Waiting for ..." for a roll lost on the wire. Executor only. */
+const watchMemo = { fed: new Map(), sent: new Map() };
+export function watchRolls(now = Date.now()) {
+  try {
+    if (!Store.iAmExecutor()) return [];
+    const byRid = new Map();
+    for (const m of (game.messages?.contents ?? []).slice(-120)) { const tg = Sys.tacticsOf(m); if (tg) byRid.set(tg.rid, m); }
+    const done = [];
+    for (const combat of game.combats ?? []) {
+      const state = Store.stateOf(combat);
+      if (!state?.stack?.length) continue;
+      for (const a of RW.plan(state, now, { messageFor: (rid) => byRid.get(rid)?.id ?? null, memo: watchMemo })) {
+        if (a.do === "feed") onRollMessage(byRid.get(a.rid), { again: true });
+        else {
+          const inst = state.stack.find((i) => i.id === a.inst), rec = inst?.rolls?.[a.key];
+          if (!rec?.req) continue;
+          const who = rec.who && rec.who !== "hazard" ? makeFacts(combat).c(rec.who) : null;
+          sendRoll(combat, { inst: a.inst, key: a.key, rid: rec.req.rid, users: rec.req.users ?? ["gm"], actorUuid: who?.actorUuid ?? null, attr: rec.attr, pool: rec.pool, dice: rec.req.dice, maxPush: rec.req.maxPush, label: rec.req.label, ...(rec.req.mode ? { mode: rec.req.mode } : {}) }, a.n);
+        }
+        done.push(a);
+      }
+    }
+    return done;
+  } catch (err) { console.warn(`${MOD} | tactics: roll watch`, err); return []; }
+}
+let watchTimer = 0;
 
 /* ------------------------------------------------------------------ joining and leaving (spec 3.3) */
 const rosterTimers = new Map();
@@ -245,6 +279,7 @@ export function start() {
   started = true;
   Hooks.on("createChatMessage", (m) => onRollMessage(m));
   Hooks.on("updateChatMessage", (m) => onRollMessage(m));                                  // a push re-writes the message's roll
+  clearInterval(watchTimer); watchTimer = setInterval(() => watchRolls(), 2000); watchTimer?.unref?.();           // D120 (unref: a node check ends)
   Sys.warmUp().catch(() => {});
 }
 export const isStarted = () => started;

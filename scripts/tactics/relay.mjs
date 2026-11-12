@@ -59,13 +59,16 @@ async function onRequest(msg, senderId) {
 }
 function onRoll(msg, senderId) {
   if (!game.users.get(senderId)?.isGM || !Array.isArray(msg.to) || !msg.to.includes(game.user.id) || !msg.req || typeof msg.req.rid !== "string") return;
-  if (opened.has(msg.req.rid)) return;                                                     // one throw per request, even if it is sent twice
+  /* one throw per request, even if it is sent twice; D120: the executor's roll watch sends the same request again (`again`) when no answer
+     reached it: then this client throws once more (Sys.rollNow force: not within ROLL_RETRY_MS of its last throw), its first throw lost */
+  const again = Number.isInteger(msg.again) && msg.again > 0;
+  if (opened.has(msg.req.rid) && !again) return;
   opened.add(msg.req.rid); if (opened.size > 200) opened.delete(opened.values().next().value);
   /* U2: several players own the character: the first of them at the table throws at once, the others keep the dock's "Roll" */
   if (msg.to.find((u) => game.users.get(u)?.active) !== game.user.id) return;
   // the engine's breakdown is only a display: the executor reads the dice from the chat message and checks its author against the request
   const req = { ...msg.req, label: rollTitle(msg.req.key, typeof msg.req.labelSrc === "string" ? msg.req.labelSrc.slice(0, 80) : msg.req.label) };      // D105: titled in the ROLLER's language
-  Sys.rollNow(req, (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s))).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
+  Sys.rollNow(req, (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s)), { force: again }).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
 }
 function onMessage(msg, senderId) {
   try {

@@ -120,6 +120,33 @@ eq([Object.keys(hu.data), typeof hu.opts.ipuTactics], [["system.derived.health.v
 eq(api.journal().length, 1, "journal row");
 eq((await fromPlayer("p1", { op: "undo", tx: api.desk().journal[0].id }, "u4")).msg.env.error.code, "noPermission", "a player cannot undo");
 eq([(await api.gm.undo({ tx: api.desk().journal[0].id })).ok, actors[2].system.derived.health.value, Store.read(combat).log.list[0].state], [true, 5, "undone"], "GM undo restores the actor");
+/* D120: a roll lost on the wire never waits for somebody to notice it (engine.mjs watchRolls, rollwatch-pure) */
+{
+  const Engine = await import("./engine.mjs");
+  for (let i = 0; i < 4 && st().init.curMember !== "cbH1"; i++) await api.gm.nextTurn();
+  const dz = await api.request({ op: "declare", actor: "cbH1", decl: { action: "slugfest", targets: ["cbN1"] } }); await settle();
+  eq([dz?.ok, dz?.error?.code], [true, undefined], "D120: a new attack (p1's hero)");
+  const before = outbox.length;
+  await api.request(api.desk().cards.find((c) => c.kind === "reaction").options.find((o) => o.id === "pass").req); await settle();
+  const sent = outbox.slice(before).filter((o) => o.msg.k === "tcroll");
+  eq(sent.length, 1, "D120: the roll is asked for once");
+  const rq = sent[0].msg.req, at = st().stack[0].rolls.attack.req.at;
+  /* the request never arrived (nothing comes back): the watch asks again with the same id */
+  eq(Engine.watchRolls(at + 3000).length, 0, "D120: a few seconds: nothing yet");
+  const b2 = outbox.length;
+  eq(Engine.watchRolls(at + 8000).map((a) => a.do), ["resend"], "D120: no answer after 8 s: the request goes again");
+  const again = outbox.slice(b2).find((o) => o.msg.k === "tcroll");
+  eq([again?.to, again?.msg.req.rid, again?.msg.req.key, again?.msg.again], [["p1"], rq.rid, "attack", 1], "D120: the same request id, to the same player, marked `again`");
+  /* the answer was made but its createChatMessage never reached the executor: it is in the chat, so the watch feeds it in */
+  const lost = rollMsg("p1", { inst: rq.inst, key: "attack", rid: rq.rid }, 2);
+  game.messages.push(lost);
+  Engine.watchRolls(at + 9000); await settle();
+  eq(st().stack[0]?.rolls.attack.sixes, 2, "D120: the roll whose message the executor never heard is taken from the chat");
+  game.messages.length = 0;
+  for (const p of Object.values(st().prompts ?? {}).filter((p) => !p.answered)) await api.request({ op: "answerFor", prompt: p.id, value: p.kind === "stunts" ? [] : "pass" });
+  await settle();
+  eq(st().stack.length, 0, "D120: the attack ran to its end");
+}
 eq((await api._runAs("p2", { op: "declare", actor: "cbH1", decl: { action: "slugfest", targets: ["cbN1"] } })).error.code, "notOwner", "_runAs runs a request exactly as that user");
 eq((await api.other("cbH1", "x")).ok, true, "api.other as the GM (owner of everything)");
 eq((await api.stop(combat)).ok, true, "stop removes the state");

@@ -243,7 +243,10 @@ const NO_ALLY = ["challenge", "vehicle"];
 /** The attacked characters a reaction of somebody else may be about: other than the reactor, known to it, and in its zone where the entry asks for that. */
 export function reactionFor(v, inst, cid, e) {
   const moved = e?.reaction?.effect === "swapTarget" ? coveredBy(inst) : [];
-  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t));
+  const warn = e?.reaction?.effect === "warn", me = warn ? !!v.facts.c(cid)?.npc : null;
+  /* U131: Warning Call [B2170] says "another character"; read as one of the warner's own side (provisional, question FXI-1): nobody shouts
+     a warning to the opponent an ally of theirs is shooting at. The GM's own answer may still name anybody (attack.mjs aboutOf). */
+  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t) && (!warn || !!v.facts.c(t)?.npc === me));
   return e?.reaction?.place === "targetZone" ? list.filter((t) => sameSpot(v, cid, t) !== false) : list;
 }
 /* D104 (ruling A8-R1): who took the hit for somebody by a reaction (Guardian [B2115]: "you take the hit instead of the INTENDED target").

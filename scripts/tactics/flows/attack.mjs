@@ -365,6 +365,10 @@ function applyReaction(v, I, R, cid, key, value, when) {
   if (e.reaction.effect === "swapTarget") {        // retargeting (spec 9.1 step 4 "target swap"): the reactor becomes the target; its own window opens next
     const mine = K.reactionFor(v, I, cid, e);                                                    // U91: only somebody attacked in the reactor's own zone [B2115]
     const from = mine.includes(value?.for) ? value.for : mine[0] ?? (I.decl.targets.includes(value?.for) ? value.for : I.decl.targets[0]);      // (the GM's own answer, where nobody fits)
+    /* U125 (d): the old target is told in words that somebody took the hit for it (news, journal): "took" on the guardian's six (or at once
+       for a swap without a roll), "failed" without one */
+    const rec = { who: cid, entry: e.id, effect: "swapTarget", ...(name ? { name } : {}), ...(e.label ? { label: e.label } : {}), ...(from ? { about: from } : {}) };
+    (I.data.reacted ??= []).push(rec);
     if (e.reaction.roll === "attack") {            // [B2115]: FIGHTING against a slugfest attack, AGILITY against shooting; the hit is taken only on a success
       const rk = `sw:${cid}`, attr = attack.ATTACKS[kindOf(I)]?.family === "shooting" ? "agility" : "fighting";
       const bp = K.buildPool(v, I, rk, cid, attr, [], { rollKind: "other" });
@@ -373,6 +377,7 @@ function applyReaction(v, I, R, cid, key, value, when) {
       (I.data.swaps ??= []).push({ key: rk, by: cid, from, entry: e.id });
       return false;
     }
+    rec.result = "took";
     swapTarget(I, from, cid, e.id);
     return false;
   }
@@ -413,8 +418,8 @@ function settleSwaps(v, I) {
     s.done = 1;
     const to = s.to ?? s.by, sixes = K.sixesOf(I, s.key);
     const won = sixes >= 1 && I.decl.targets.includes(s.from) && !I.decl.targets.includes(to) && (!s.ally || K.alliesNear(v, I, s.by).includes(to));      // D113: Discretion's ally must still stand beside
-    const rec = s.ally ? (I.data.reacted ?? []).find((x) => x.who === s.by && x.entry === s.entry && !x.result) : null;
-    if (rec) rec.result = won ? "moved" : "failed";
+    const rec = (I.data.reacted ?? []).find((x) => x.who === s.by && x.entry === s.entry && !x.result);
+    if (rec) rec.result = won ? (s.ally ? "moved" : "took") : "failed";
     if (won) swapTarget(I, s.from, to, s.entry);
     else {
       (I.data.notes ??= []).push({ note: "swapFailed", who: s.by, entry: s.entry, for: s.from, sixes });
@@ -682,9 +687,10 @@ export const steps = {
   stunts(v, inst) {
     const I = withOut(inst), R = K.result(I), kind = kindOf(I);
     const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = budgetOf(I, hit);
-    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => (ws === "none" ? [] : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
-    if (!hit.length || budget < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
-    const stuntCard = () => ({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: budget, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } });
+    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => capped(II, ws === "none" ? [] : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
+    const most = Math.min(budget, roomOf(I, hit));                                              // D119: an area shot pays each target's stunts from its own sixes
+    if (!hit.length || most < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
+    const stuntCard = () => ({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: most, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } });
     if (!I.data.pk?.stunts) { R.prompts.push(stuntCard()); R.wait = true; return R; }
     if (!K.isAnswered(v, I, "stunts")) {
       /* U121: the card says what is true NOW: somebody came into reach (a combatant added, moved, revealed) or left it since it was made:
@@ -948,6 +954,13 @@ function ctxFor(v, I, t) {
 }
 /* the shared pool: an ordinary attack has the sixes of its one target; an area attack or full auto the attack's own sixes beyond the first [R14] */
 const budgetOf = (I, hit) => (I.data.multi ? Math.max(0, I.data.budget ?? 0) : Math.max(0, ...hit.map((t) => I.data.out[t].stunts)));
+/* D119 [A-3], [R14]: an area or full-auto attack shares the attacker's spare sixes, but a target takes no more stunts than the sixes left
+   after its own dodge (minus the one that hits: out[t].stunts). The card offers nothing validate() would refuse: the stunts of a target
+   with none left (or of somebody who is not one of the attack's targets, an extra opponent) are greyed, and the card asks for no more
+   picks than all the targets together can take. A single-target attack is untouched (its budget is its only target's). */
+const capOf = (I, t) => (I.decl.targets.includes(t) && I.data.out[t]?.hit ? Math.max(0, I.data.out[t].stunts ?? 0) : 0);
+const roomOf = (I, hit) => (I.data.multi ? hit.reduce((n, t) => n + capOf(I, t), 0) : Infinity);
+const capped = (I, list) => (!I.data.multi ? list : list.map((o) => (o.disabled || capOf(I, o.data?.target) >= 1 ? o : { ...o, disabled: I.decl.targets.includes(o.data?.target) ? "noSixLeft" : "notHit" })));
 /** Options of the stunt prompt. Ids: "<stunt>@<target>" for a target that was hit; "<stunt>@<target>|<extra>" for Bang Heads / Trick Shot naming the extra
     opponent; "<stunt>@<extra>" for a further stunt on an extra opponent (legal only together with the pick that brings that opponent in). */
 function optionsAll(v, I, hit) {

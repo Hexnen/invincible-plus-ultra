@@ -254,9 +254,9 @@ function newsOf(I) {
     ...(fx ? { fx: { challenge: fx.challenge, kind: fx.kind }, ...(note ? { note } : {}) } : {}),        // U110: what a failed challenge did, and the GM's words about it
     result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows, ...reactsOf(I) };
 }
-/* D113: what the reactions of the table's eyes came to (Discretion, Warning Call, one the GM settled by hand): told with the result, so a
+/* D113: what the reactions of the table's eyes came to (Discretion, Warning Call, Guardian, one the GM settled by hand): told with the result, so a
    price paid is never paid in silence. { reacts: [{ who, effect, result, about?, name?, label?, note? }] } | {} */
-const REACT_RESULTS = ["moved", "failed", "card", "dice", "byHand", "noAlly", "noTarget"];
+const REACT_RESULTS = ["moved", "failed", "card", "dice", "byHand", "noAlly", "noTarget", "took"];      // U125 (d): "took" = a guardian took the hit for `about`
 function reactsOf(I) {
   const list = (I.data?.reacted ?? []).filter((r) => isObj(r) && P1.isId(r.who) && REACT_RESULTS.includes(r.result)).slice(0, 8);
   return list.length ? { reacts: list.map((r) => ({ who: r.who, effect: r.effect, result: r.result, ...(P1.isId(r.about) ? { about: r.about } : {}), ...(r.name ? { name: String(r.name).slice(0, 80) } : {}), ...(typeof r.label === "string" && r.label.startsWith("ITAC.") ? { label: r.label.slice(0, 80) } : {}), ...(r.note ? { note: String(r.note).slice(0, 200) } : {}) })) } : {};

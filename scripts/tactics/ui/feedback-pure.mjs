@@ -129,6 +129,8 @@ function card(tally, round, who, statuses, t, head) {
 }
 export const roundCard = (tally, round, who, statuses, t) => card(tally, round, who, statuses, t, { id: `r:${tally?.combat ?? ""}:${round}`, kind: "round", title: t("ITAC.sum.round", { n: round }), sub: t("ITAC.sum.round.sub") });
 /* the fight s card says neither "the fight is over" nor after how many rounds: the banner over the map says both (U52) */
+/** U130: the fight a summary card belongs to (its id: "f:<combat>" or "r:<combat>:<round>"), or null */
+export const cardFight = (card) => { const m = /^[fr]:([^:]+)/.exec(String(card?.id ?? "")); return m ? m[1] : null; };
 export const fightCard = (tally, who, statuses, t) => card(tally, null, who, statuses, t, { id: `f:${tally?.combat ?? ""}`, kind: "fight", title: t("ITAC.sum.fight"), sub: t("ITAC.sum.round.sub") });
 
 /* ------------------------------------------------------------------ U58: the two sounds */
