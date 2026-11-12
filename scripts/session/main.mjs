@@ -55,6 +55,9 @@ export function start(phases = {}) {
         if (lastId === undefined) lastId = null;
         Store.subscribe(announce);
         cueOnLoad();
+        /* U116: the notice stands at the bottom centre, where the map's "My view" chip stands too: the map keeps its floating things clear
+           of it (moinen-maps zones-api.md section 41; nothing without the map or on an older one) */
+        try { game.modules.get("moinen-maps")?.api?.zones?.uiAvoid?.(`${MOD}.sessionNotice`, ".ips-notice"); } catch { /* the map is not there */ }
         const status = (extra = {}) => Store.notify("status", extra);
         // GM connects / disconnects: the banner state (api.session.status().gmOnline) changes
         Hooks.on("userConnected", () => status());

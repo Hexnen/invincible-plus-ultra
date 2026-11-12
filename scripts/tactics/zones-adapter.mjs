@@ -116,6 +116,9 @@ export const zoneTitle = (where, opts) => call("zoneTitle", where, opts) ?? null
 export function onChange(fn) { const id = Hooks.on("moinenMapsZones", fn); return () => Hooks.off("moinenMapsZones", id); }
 /** a bar of ours that covers an edge of the window, so the map's pick keeps clear of it. -> off() */
 export const uiInset = (id, spec) => { const off = call("uiInset", id, spec); return typeof off === "function" ? off : () => {}; };
+/** U106 / U116 (zones-api.md section 41): a part of ours that is no bar along an edge (the desk, the party, a banner at the bottom centre):
+    the map's menus and its "My view" chip keep clear of it. A map without the call: nothing. -> off() */
+export const uiAvoid = (id, what) => { const off = call("uiAvoid", id, what); return typeof off === "function" ? off : () => {}; };
 export const highlight = (spec) => call("highlight", spec) ?? null;
 export const clearHighlights = (what) => call("clearHighlights", what) ?? 0;
 export const showReach = (token, p, opts) => call("showReach", token, p, opts) ?? null;

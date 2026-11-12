@@ -105,7 +105,8 @@ async function ask(h, cid, opts, title) {
 function onLevel(h, ctx) {
   try {
     const cid = h.cid(ctx.token?.document ?? ctx.token), to = ctx.to?.spot ?? null;
-    if (!cid || !to) return false;
+    /* U107 (zones-api.md 41): a level a script wrote (setLevel from a macro) opens no window of ways either; only the map's word counts here */
+    if (!cid || !to) return false; if (ctx.byHand === false) { ui.notifications?.warn(t("ITAC.move.script", { name: h.c(cid)?.name ?? "" }), { console: false }); return false; }
     const st = h.state(), Z = h.facts().zones, c = h.c(cid);
     const listed = st && Z && c ? MP.moveOptions(Z, st, cid, c).filter((o) => o.to === to) : [];
     if (listed.length && surface) { let took = false; try { took = surface(cid, to) === true; } catch { took = false; } if (took) return false; }
@@ -122,7 +123,8 @@ function onDrag(h, ctx) {
     /* U74 (the map's D71): a drop out of every zone, or into a zone from outside them, is held by the map and has no route, so nothing
        can be priced: the one who dragged is told why the token stayed (before: silence). The GM's own such drop is a placement and never
        comes here. */
-    if (cid && inputOn && hand.byScript(Date.now())) { ui.notifications?.warn(t("ITAC.move.script", { name: h.c(cid)?.name ?? "" }), { console: false }); return false; }
+    /* U107: the map says whether a hand moved it (ctx.byHand, zones-api.md 41); the hand tracker (D112) only guesses for an older map */
+    if (cid && MP.scriptMove(ctx, () => inputOn && hand.byScript(Date.now()))) { ui.notifications?.warn(t("ITAC.move.script", { name: h.c(cid)?.name ?? "" }), { console: false }); return false; }
     const off = MP.offZones(ctx);
     if (cid && off) { ui.notifications?.warn(t(`ITAC.move.${off}`), { console: false }); return false; }
     if (cid && to && surface) { let took = false; try { took = surface(cid, to) === true; } catch { took = false; } if (took) return false; }      // the dock shows the price (ui/main.mjs)

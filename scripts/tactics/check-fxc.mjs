@@ -127,7 +127,12 @@ ok(/Hooks\.on\("updateToken", \(td, ch\) => \{[^\n]*"hidden" in ch[^\n]*moved\(\
 /* ---- U107: a script's token update is no drag */
 {
   eq([MP.madeByScript(10000, 0), MP.madeByScript(10000, 9000), MP.madeByScript(10000, 8400), MP.madeByScript(10000, NaN)], [true, false, true, true], "U107: no hand within 1.5 s -> a script");
-  ok(/cid && inputOn && hand\.byScript\(Date\.now\(\)\)\) \{ ui\.notifications\?\.warn\(t\("ITAC\.move\.script"/.test(src("./movement.mjs")), "U107: the update is held and the client told, no menu opened (D112: by the hand tracker)");
+  ok(/cid && MP\.scriptMove\(ctx, \(\) => inputOn && hand\.byScript\(Date\.now\(\)\)\)\) \{ ui\.notifications\?\.warn\(t\("ITAC\.move\.script"/.test(src("./movement.mjs")), "U107: the update is held and the client told, no menu opened (the map's word; D112: the hand tracker only for an older map)");
+  /* U107, the proper fix (moinen-maps zones-api.md 41): the map says how the token moved; its word beats the guess both ways */
+  const yes = () => true, no = () => false;
+  eq([MP.scriptMove({ method: "dragging", byHand: true }, yes), MP.scriptMove({ method: "keyboard", byHand: true }, yes), MP.scriptMove({ method: "api", byHand: false }, no), MP.scriptMove({ method: "undo", byHand: false }, no)], [false, false, true, true], "U107: the map's byHand decides: a slow drag (the tracker would say script) is a drag, a script's update right after a click is a script");
+  eq([MP.scriptMove({}, yes), MP.scriptMove({}, no), MP.scriptMove(null, yes), MP.scriptMove({ byHand: "yes" }, no)], [true, false, true, false], "U107: a map that does not say it: the hand tracker's guess, as before");
+  ok(/if \(ctx\.byHand === false\) \{ ui\.notifications\?\.warn\(t\("ITAC\.move\.script"/.test(src("./movement.mjs")), "U107: a level a script wrote opens no window of ways either (only on the map's word)");
   ok(EN["ITAC.move.script"] && /żeton/.test(PL["ITAC.move.script"]), "U107: said in both languages");
 }
 

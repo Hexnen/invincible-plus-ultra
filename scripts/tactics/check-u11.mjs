@@ -189,7 +189,11 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
 /* ---- L. U70, U71: what stands over the dock */
 {
   const css = readFileSync(new URL("../../styles/tactics-ui.css", import.meta.url), "utf8"), dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8"), ui = readFileSync(new URL("./ui/main.mjs", import.meta.url), "utf8");
-  ok(/body\.ita-tactics \.mm-dst-chip \{ top: auto !important; bottom: var\(--itd-over, 120px\); \}/.test(css) && /setVar\("--itd-over"/.test(dock), "U70: the map's 'My view' chip stands above the dock's whole stack");
+  /* U116 (moinen-maps zones-api.md 41): the map places the chip itself - above the declared dock (its whole stack is inside the dock's
+     element) and clear of the boxes we name; no rule of ours pins it any more (it pinned it onto the session notice and the targets' pills) */
+  ok(!/\.mm-dst-chip\s*\{/.test(css) && !/--itd-over/.test(dock) && /Zones\.uiInset\(`\$\{MOD\}\.bars`, \{ bottom: "#invincible-tactics-dock"/.test(ui) && /Zones\.uiAvoid\(`\$\{MOD\}\.panels`, \[[^\]]*"#invincible-tactics-dock"[^\]]*"#invincible-tactics-desk"/.test(ui), "U70 / U116: the map's 'My view' chip stands above the dock's whole stack, placed by the map (declared bar + boxes to keep clear of), not pinned by our CSS");
+  const sess = readFileSync(new URL("../session/main.mjs", import.meta.url), "utf8"), zad = readFileSync(new URL("./zones-adapter.mjs", import.meta.url), "utf8");
+  ok(/zones\?\.uiAvoid\?\.\(`\$\{MOD\}\.sessionNotice`, "\.ips-notice"\)/.test(sess) && /export const uiAvoid = \(id, what\) => \{ const off = call\("uiAvoid", id, what\); return typeof off === "function" \? off : \(\) => \{\}; \};/.test(zad), "U116: the session notice at the bottom centre is a box the map's chip keeps clear of; the adapter's uiAvoid is guarded (no map: nothing)");
   ok(/Hooks\.on\("renderChatMessageHTML",[^\n]*Sys\.tacticsOf\(message\)[^\n]*classList\.add\("ita-troll"\)/.test(ui) && /body\.ita-tactics #chat-notifications \.chat-message\.ita-troll \{ display: none; \}/.test(css), "U71: the toast of a tactical roll's card is not shown while the dock is up");
 }
 
