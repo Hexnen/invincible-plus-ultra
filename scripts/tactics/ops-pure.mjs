@@ -554,6 +554,16 @@ const OPS = {
     s.ledger[a.combatant] = Lg.addTurnPair(ledgerOf(W, a.combatant), r.slot, a.kind ?? "gm", a.by ?? null);
     run(W);
   },
+  /* D106 (spec 13: an undo takes back what the step opened). The director's own step, never a request: a chase is back (the undo of its end)
+     while the cards the end had dealt still lie. The turn that deal opened is taken back as a hold-off takes it back (momentBack: what
+     ended at its opening returns, its turn-start card nobody answered is withdrawn and will be made anew), then the cards are gathered. */
+  undeal(W) {
+    const s = W.s;
+    if (s.kind !== "chase" || !s.init.slots.length) return { changed: false };
+    const m = s.init.curMember;
+    if (m && s.ledger[m] && !Lg.turnUsed(s.ledger[m])) { momentBack(W, m); s.ledger[m] = Lg.turnSuspend(ledgerOf(W, m)); }      // (moved[m].back stays: the moment comes again when m's turn does)
+    s.init = { ...S.newInit(), deck: s.init.deck };
+  },
   /* joining and leaving (spec 3.3): bring the state in line with the combatants that exist now */
   roster(W, a) {
     const s = W.s, parts = W.ctx.parts ?? [];

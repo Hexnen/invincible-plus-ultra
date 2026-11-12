@@ -324,17 +324,19 @@ const slug = (s) => String(s).replace(/[^A-Za-z0-9]/g, "");
 /** point = { at, combatant? }. -> [Trigger] (each `derived`: it lives in the queue card only, nothing is stored) */
 export function derived(state, facts, point) {
   const out = [], Z = facts.zones ?? null;
+  /* D110 (spec, minions: a group with no members is out): a fire burns somebody who is there, never an emptied group */
+  const there = (cid) => { const c = facts.c(cid); return !!c && c.present !== false && !(c.kind === "minions" && !(Number(c.health) > 0)); };
   try {
     if (point.at === "roundStart") {
       const burn = Z ? burningZones(Z) : [], hit = new Set();
       for (const b of burn) {                                                                    // [B2925]: everybody who starts the round in a burning zone
-        const who = occupants(state, Z, b).filter((cid) => facts.c(cid) && facts.c(cid).present !== false && !hit.has(cid));
+        const who = occupants(state, Z, b).filter((cid) => there(cid) && !hit.has(cid));
         who.forEach((cid) => hit.add(cid));
         if (who.length) out.push(trig(`dfa.${slug(b.zone)}.${slug(b.at ?? "")}`, "roundStart", { zone: b.zone }, { type: "fireAttack", intensity: b.intensity, targets: who, zone: b.zone }));
       }
       for (const cid of Object.keys(state.ledger ?? {})) {                                       // [B2926]: and everybody who is on fire, wherever they are (one attack per character and round)
         const s = M.statusesOf(state, cid).find((x) => x.id === "burning");
-        if (s && !hit.has(cid) && facts.c(cid) && facts.c(cid).present !== false) out.push(trig(`dfb.${cid}`, "roundStart", { combatant: cid }, { type: "fireAttack", intensity: int(s.data?.intensity, 1, 12, BURNING_DEFAULT), inZone: false, targets: [cid] }));
+        if (s && !hit.has(cid) && there(cid)) out.push(trig(`dfb.${cid}`, "roundStart", { combatant: cid }, { type: "fireAttack", intensity: int(s.data?.intensity, 1, 12, BURNING_DEFAULT), inZone: false, targets: [cid] }));
       }
       /* [B2927] is the rule of a TYPICAL fire. While a challenge whose fire spreads by itself is on (Burning Building [B2845]: one adjacent
          zone a round, burning until the challenge is overcome) no zone rolls the D6 that could put it out or spread it a second time. */

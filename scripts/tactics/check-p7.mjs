@@ -110,7 +110,7 @@ const base = () => {
   const p = T.prompt("challengeFail");
   eq([T.c.CH.resolve, p?.about, p?.to], [0, "CH", "gm"], "C: time is up: the GM's card");
   await T.gm({ op: "answer", prompt: p.id, value: "run" });
-  eq([T.state.stack.length, T.top()?.status, T.top()?.decl.text, T.top()?.data.trigger.run.kind], [1, "manual", "Device: blast", "blast"], "C: the consequence the engine has no flow for waits as a GM-run instance");
+  eq([T.state.stack.length, T.top()?.flow, T.top()?.data.hz.rating, T.top()?.data.challengeFx], [1, "blast", 10, { challenge: "CH", kind: "blast" }], "C: the consequence is the book's Blast 10 explosion in the device's zone (D111)");
   await T.gm({ op: "manual", inst: T.top().id, result: { note: "boom" } });
   eq(T.state.stack.length, 0, "C: resolved by hand");
   await T.gm({ op: "nextRound", force: true });

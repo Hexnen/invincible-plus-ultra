@@ -93,7 +93,13 @@ async function cards(box, events, host, sweep = true) {
   }
   const state = box.state;
   if (state.stack.length || state.phase !== "turns") return;
-  if (state.kind === "chase") { if (state.init.slots.length) box.state = { ...state, init: { ...S.newInit(), deck: state.init.deck } }; return; }
+  if (state.kind === "chase") {
+    if (!state.init.slots.length) return;
+    const r = await round(state, box.log, { type: "undeal" }, { id: "engine", staff: true }, host);      // D106: the turn the dealt cards opened goes with them
+    if (r.ok && !r.same && r.state) { events.push(...r.events); box.state = r.state; box.log = r.log; }
+    else box.state = { ...state, init: { ...S.newInit(), deck: state.init.deck } };
+    return;
+  }
   if (state.init.slots.length || !(state.round >= 1)) return;
   const r = await round(state, box.log, { type: "roster", deal: true }, { id: "engine", staff: true }, host);      // D43 [B3436]: the fight after a chase draws initiative
   if (!r.ok || r.same) return;
@@ -173,6 +179,10 @@ async function handle0({ state, log }, input, host) {
       let st0 = state, lg0 = lg;
       const pre = [];
       if (input?.t === "req" && input.req?.op === "chaseRound" && input.user?.staff && state.kind === "chase" && state.chase?.rolled === state.round && !state.stack.length && state.phase === "turns") {
+        /* D101 (spec 14: a refusal changes nothing): the roll is judged BEFORE the next round is opened; opening it runs the clocks of the
+           challenges on the sheets and opens the round's cards, which a refusal afterwards could not take back */
+        const probe = E.chaseRoundProbe(state, host);
+        if (!probe.ok) return out(state, lg, probe);
         const nr = await round(state, lg, { type: "nextRound", force: true }, input.user, host);     // P7 [B3432]: one chase roll a round; the next one opens the next round
         if (nr.ok && !nr.same && nr.state) { st0 = nr.state; lg0 = nr.log; pre.push(...nr.events); }
       }
