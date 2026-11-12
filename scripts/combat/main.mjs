@@ -20,6 +20,7 @@
    (kind + round + direction) that ignores an identical event within 1.5 s. MERGE: start carries "Round 1" in the same banner; a round event
    while a round banner is up updates that banner in place; anything else waits in one pending slot (banner.mjs). */
 import * as Banner from "./banner.mjs";
+import * as ChatPark from "./chat-park.mjs";   // FXX (U185): the popped-out chat parks in the right column while a fight is shown
 import * as Bar from "./bar.mjs";   // the initiative bar (bar.mjs): hooks and settings are registered below, next to the banners'
 import { t } from "./lang.mjs";
 import { KEY as YZE_KEY } from "../yze.mjs";
@@ -193,6 +194,8 @@ function onReady() {
     Bar.schedule();
     onResize = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; Banner.relayout(); Bar.relayout(false); }); };
     window.addEventListener("resize", onResize);
+    window.addEventListener(ChatPark.MOVED, onResize);   // FXX (U185): the popped-out chat parked, was dragged or closed
+    ChatPark.start({ fight: () => Bar.isShowing() });
     const mod = game.modules.get(MOD);
     if (mod) mod.api = { ...(mod.api ?? {}), combatBanner: { preview, clear: () => Banner.clear(true), stop } };
     console.log(`${LOG} ready`);
@@ -225,7 +228,7 @@ export function start(phases = {}) {
 
 export function stop() {
   for (const [name, id] of hookIds.splice(0)) { try { Hooks.off(name, id); } catch { /* gone */ } }
-  if (onResize) { window.removeEventListener("resize", onResize); onResize = null; }
+  if (onResize) { window.removeEventListener("resize", onResize); window.removeEventListener(ChatPark.MOVED, onResize); onResize = null; }
   cancelAnimationFrame(raf); raf = 0;
   Banner.destroy();
   Bar.destroy();

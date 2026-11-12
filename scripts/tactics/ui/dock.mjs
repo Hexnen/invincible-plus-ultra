@@ -34,6 +34,7 @@
 import { h, icon, swap, face, tipLines, speed, stressChip, markOf, actIcon, tipText, askCard, sumCard, legendCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
 import { symMark, costMark, markName, hasMarks, plain } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
 import * as Lay from "./layout-pure.mjs";
+import * as ChatPark from "../../combat/chat-park-pure.mjs";   // FXX (U185): a popped-out chat parked in the right column counts as that column
 import { setVar, varOf } from "./vars.mjs";
 import * as Settle from "./settle.mjs";
 import * as SP from "./slots-pure.mjs";        // U132: the fixed place of each kind of surface
@@ -143,7 +144,7 @@ function placeSlots(rec) {
   let ceil = 8, tl = Infinity, tr = -Infinity;
   for (const el of rec.q(TOP_OBSTACLES)) { const r = rec.rect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) { ceil = Math.max(ceil, r.bottom + 8); tl = Math.min(tl, r.left); tr = Math.max(tr, r.right); } }
   const topCx = tr > tl ? (tl + tr) / 2 : null;
-  const sb = rec.rect(rec.one("#sidebar")), side = sb && sb.left > W * 0.5 ? sb.left : W;
+  const sb = rec.rect(rec.one("#sidebar")), side = ChatPark.rightEdge(sb && sb.left > W * 0.5 ? sb.left : W, rec.rect(rec.one(FLOATING)), W);
   let topL = 12, topR = null;
   for (const el of rec.q(LEFT_OBSTACLES)) { const r = rec.rect(el); if (r && r.width && r.top < H * 0.5 && r.right < W * 0.4) topL = Math.max(topL, r.right + 8); }
   /* U136: a window floating over the map (the popped-out chat) that reaches into the top band: the band keeps to its side of it */

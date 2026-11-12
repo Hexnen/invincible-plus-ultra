@@ -5,6 +5,7 @@
    system.derived.health) and a Time Limit (TL, system.derived.resolve). Each success lowers CR by 1; CR 0 before TL runs out = overcome,
    TL 0 with CR above 0 = failed. So progress = 1 - CR / max CR and the time bar is TL / max TL. The DOM layer is hud.mjs. */
 import * as HUD from "./hud.mjs";
+import { rightWall, MOVED as CHAT_MOVED } from "../combat/chat-park.mjs";   // FXX (U185): a popped-out chat parked in the right column
 import * as Camera from "./camera.mjs";
 import * as Drag from "./drag.mjs";
 import * as CombatTime from "./combat.mjs";
@@ -245,9 +246,9 @@ function measure() {
   raf = 0;
   let right = 0;
   try {
-    const r = document.getElementById("sidebar")?.getBoundingClientRect();
-    const rr = r ? window.innerWidth - r.left : 0;
-    if (r && r.width > 0 && rr > 0 && rr < window.innerWidth * 0.5) right = Math.round(rr);   // only a plausible right-hand column
+    /* FXX (U185): the sidebar, or the popped-out chat parked left of it in a fight (combat/chat-park.mjs: only a plausible right-hand column) */
+    const rr = window.innerWidth - rightWall();
+    if (rr > 0 && rr < window.innerWidth * 0.75) right = Math.round(rr);
   } catch { right = 0; }
   HUD.setRight(right);
   HUD.setBottom(lowerLimit(right));
@@ -363,6 +364,7 @@ function onReady() {
   HUD.setView(readView());
   HUD.setCollapsed(!!get(KEY.collapsed), true);
   window.addEventListener("resize", scheduleMeasure);
+  window.addEventListener(CHAT_MOVED, scheduleMeasure);   // FXX (U185): the popped-out chat parked, was dragged or closed
   watchSidebar();
   const mod = game.modules.get(MOD);
   if (mod) mod.api = { ...(mod.api ?? {}), challenges: { refresh: () => schedule(true), clear: () => HUD.destroy(), focus: Camera.focus } };

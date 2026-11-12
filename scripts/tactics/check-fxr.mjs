@@ -176,7 +176,7 @@ class HT extends Table {      // as check-hazards: a table with a map whose zone
   const bar = src("../combat/bar.mjs"), cm = src("../combat/main.mjs");
   ok(/chat-popout[\s\S]{0,400}besideFloating\(/.test(bar) && (bar.match(/= beside\(/g) ?? []).length >= 2, "U185: combat/bar.mjs place() takes the side of a popped-out chat, on the top row and on the low row");
   const L = await import("./ui/layout-pure.mjs"), min = Number(/const BESIDE_MIN = (\d+)/.exec(bar)?.[1] ?? 200);
-  eq(L.besideFloating(330, 984, { left: 533, right: 833 }, min, 10), { lo: 330, hi: 523 }, "U185 (live, player 1366, chat popped out in the middle): the strip takes the wider side, though under 200 px");
+  eq(L.besideFloating(330, 984, { left: 533, right: 833 }, min, 10), { lo: 330, hi: 984 }, "U185, superseded by FXX: a chat over the middle at 1366 leaves no side a bar reads in (193 px): the strip keeps its room (in a fight the chat parks in the right column, check-fxx.mjs)");
   ok(/\["changeSidebarTab", "renderChatLog", "closeChatLog"\]/.test(cm), "U185: the bar is placed again when the chat pops out or comes back");
 }
 
