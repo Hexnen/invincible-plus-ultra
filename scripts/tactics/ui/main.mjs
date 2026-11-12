@@ -32,6 +32,7 @@ import * as Board from "./board.mjs";
 import * as Feedback from "./feedback.mjs";
 import * as Camera from "./camera.mjs";
 import * as Lay from "./layout-pure.mjs";
+import * as AutoSkip from "./autoskip-pure.mjs";      // ANSA (UXC-1): the initiative bar's auto-skip tick
 import * as Tip from "./tip.mjs";
 import { visibleRect } from "./dom.mjs";
 import { setVar } from "./vars.mjs";
@@ -56,7 +57,7 @@ let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null
 const HOTBAR_KEY = `${MOD}.tactics.hotbar`, KEYS_ON = `${MOD}.tactics.keys`, LAYOUT_FLAG = "tacticsLayout";
 const hotbarWas = () => { try { return globalThis.localStorage?.getItem(HOTBAR_KEY) === "1"; } catch { return false; } };
 let st = { dock: { ...blankDock(), hotbar: false }, desk: blankDesk() };      // U152: folded at the start (layoutStart)
-let layout = Lay.clean(null), saveTimer = 0;
+let layout = Lay.clean(null), saveTimer = 0, autoSkipOff = null;
 const foldsNow = () => Object.fromEntries(Object.keys(Lay.FOLDS).map((k) => [k, Lay.folded(layout, k)]));
 function layoutStart() {
   try {
@@ -69,6 +70,10 @@ function layoutStart() {
     st.dock.hotbar = false;
     Object.assign(st.desk, Lay.deskStart(layout) ?? {}, { folds: foldsNow() });
     if (layout.keys) document.body.classList.add("ita-keys");
+    /* ANSA (UXC-1, FXP-6, FXN-1): the auto-skip tick comes from the user's layout; flipped on the initiative bar, it is written back and
+       the dock is drawn again (a turn already standing empty passes, or stops passing, at once) */
+    AutoSkip.set(layout.autoSkip, { quiet: true });
+    autoSkipOff?.(); autoSkipOff = AutoSkip.listen((on) => { remember({ autoSkip: on }); schedule(); });
   } catch (e) { console.warn(LOG, "layout failed", e); }
 }
 function remember(change) {
@@ -130,6 +135,9 @@ let newsWin = null, diceWas = null, diceWait = null, rollsWas = { rows: {}, opp:
 const diceBusy = () => { try { return typeof game.dice3d?.waitFor3DAnimationByMessageID === "function" && (game.messages?.contents ?? []).slice(-12).some((m) => m?._dice3danimating); } catch { return false; } };
 const diceLanded = () => { const d = game.dice3d, busy = (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating);
   return Promise.race([Promise.all(busy.map((m) => Promise.resolve(d.waitFor3DAnimationByMessageID(m.id)).catch(() => {}))), new Promise((r) => setTimeout(r, NewsP.HOLD_MS + 100))]); };
+/* FXY (U178): when this client first saw the dice now in the air (news-pure diceRun): the End press's clock, not the last draw's */
+let diceRunWas = null;
+const diceSince = () => { try { diceRunWas = NewsP.diceRun(diceRunWas, (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating).map((m) => m.id), Date.now()); } catch { diceRunWas = null; } return diceRunWas?.since; };
 function diceThen() {
   if (diceWait) return;
   diceWait = diceLanded().finally(() => { diceWait = null; setTimeout(schedule, 60); });
@@ -153,7 +161,7 @@ function wayOf(cb) { try { const a = Sys.actorOf(cb), f = a ? Sys.actorFacts(a) 
 function factsOf(combat) {
   const staff = Store.isStaff(game.user), view = Api.state(combat), ctx = Engine.context(combat);
   return {
-    view, me: game.user.id, staff,
+    view, me: game.user.id, staff, autoSkip: AutoSkip.get(),      // ANSA (UXC-1): the tick on the initiative bar
     c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, kind: base.kind ?? null, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null,
       way: view?.kind === "chase" ? wayOf(cb) : null } : null; },      // CHASE2: on foot or in the air, as the chase panel draws a unit (a power of flight is seen by all)
     /* CHASE2: the whole facts of a sheet as the executor reads them (staff only): who would roll for a side next, who cannot move */
@@ -350,6 +358,7 @@ function refresh() {
     /* D128: what a roll came to waits for its dice: a new card and the new line come when the 3D dice have landed */
     const now = Date.now(), busy = diceBusy(), hold = NewsP.diceHold(diceWas, { prompts: (data.prompts ?? []).map((p) => p.id), cards: (deskD?.cards ?? []).map((c) => c.id), news: data.news ?? null, at: now }, busy);
     diceWas = { prompts: hold.prompts, cards: hold.cards, news: hold.news, since: hold.since };
+    diceSince();      // FXY (U178): the run of dice in the air is timed from the first draw that saw it
     /* FXR (U191): a card held while the dice rolled counts its waiting time from when it shows here */
     const allIds = [...(data.prompts ?? []).map((p) => p.id), ...(deskD?.cards ?? []).map((c) => c.id)], shownIds = [...hold.prompts, ...hold.cards];
     heldSeen = NewsP.heldShown(heldSeen, allIds.filter((id) => !shownIds.includes(id)), shownIds, now);
@@ -544,7 +553,7 @@ function onKey(ev) {
 async function send(which, req, after, how = {}) {
   try {
     if (!req) return null;
-    if (NewsP.endAfterDice(req, { busy: diceBusy(), since: diceWas?.since, at: Date.now() })) await diceLanded();      // FXP (U178): End turn pressed while the dice fly passes when they land
+    if (NewsP.endAfterDice(req, { busy: diceBusy(), since: diceSince(), at: Date.now() })) await diceLanded();      // FXP (U178): End turn pressed while the dice fly passes when they land; FXY: timed by its own run of dice
     const combat = combatNow();
     const env = await Api.request(req, combat ?? undefined);
     for (const text of Model.envNotes(env, t, Store.isStaff(game.user))) notify("warn", text);      // D99: carried out only in part, an inverse that failed, an action handed to the GM
@@ -765,7 +774,7 @@ export function start() {
     Hooks.on("collapseSidebar", () => { relayout(); setTimeout(() => (st.desk.touched ? relayout() : schedule()), 320); });      // the desk folds or opens with the room the sidebar leaves, until the GM chose
     listen(window, "resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
     listen(window, CHAT_MOVED, () => { if (!st.desk.touched) schedule(); else relayout(); });      // FXX (U185): the popped-out chat parked, was dragged or closed
-    listen(document, "keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
+    listen(document, "keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode || st.dock.endArmed) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock(st.dock.endArmed ? { endArmed: false } : { armed: null, mode: null, amend: null }); }      /* ANSA (UXC-1): Esc answers No to the end question */ } catch { /* ignore */ } }, true);
     /* U41 */
     listen(document, "keydown", onKey, true);
     listen(document, "pointerdown", () => { byPointer = true; }, true);

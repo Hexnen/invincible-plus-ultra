@@ -88,8 +88,8 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
 /* ---- E. U76: the words of an intention fit what the map carries */
 {
   eq(BP.intentLabel("Slugfest"), "Slugfest", "U76: a short name whole");
-  eq(BP.intentLabel("Odzyskaj Determinację"), "Odzyskaj Determin…", "U76: a long one is cut with an ellipsis, not mid-word without a sign");
-  ok(BP.intentLabel("Odzyskaj Determinację").length === 18 && BP.intentLabel("x".repeat(18)).length === 18 && !BP.intentLabel("x".repeat(18)).endsWith("…"), "U76: never more than the map's 18 characters; exactly 18 fit whole");
+  eq(BP.intentLabel("Odzyskaj Determinację w pełni teraz"), "Odzyskaj Determinację w peł…", "U76: a long one is cut with an ellipsis, not mid-word without a sign");
+  ok(BP.intentLabel("y".repeat(40)).length === 28 && BP.intentLabel("x".repeat(28)).length === 28 && !BP.intentLabel("x".repeat(28)).endsWith("…"), "U76 + FXY (FXW-3): never more than the map's 28 characters; exactly 28 fit whole");
   eq(BP.intentLabel(null), "", "U76: no title, no words");
   const src = readFileSync(new URL("./ui/board.mjs", import.meta.url), "utf8");
   eq((src.match(/label: intentWords\(/g) ?? []).length, 3, "U76: the three places an intention is said (declare, move, area) use it (D109: through intentWords, in the GMs' language)");
@@ -127,7 +127,7 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
 {
   ok(BP.stepFailed({ ok: false, error: { code: "busy" } }) && BP.stepFailed(null) && !BP.stepFailed({ ok: true }), "U80: refused or unanswered = failed");
   const src = readFileSync(new URL("./ui/board.mjs", import.meta.url), "utf8");
-  ok(/if \(BP\.stepFailed\(env\)\) \{ from = was; again\(cid\); \}/.test(src), "U80: the stepper counts from the old number again and the menu is opened anew");
+  ok(/if \(BP\.stepFailed\(env\)\) \{ from = was; stepUndo\(cid, it\.id, was\); \}/.test(src), "U80 + FXY (FXW-4): the stepper counts from the old number again and the map puts it back (menuSet; opened anew only on a map without it)");
   ok(/function again\(cid\)[\s\S]{0,400}Zones\.menuOpen\(\)[\s\S]{0,500}Zones\.menu\(\{ token: doc\.id, \.\.\.spec \}\)/.test(src), "U80: only a menu that still stands is opened again, at the same token, with the numbers as they are");
 }
 
@@ -157,14 +157,14 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
 
 /* ---- J. U64: the layout a user left */
 {
-  eq(Lay.clean(null), { hotbar: false, keys: false, desk: null, folds: {} }, "U64: nothing stored = the default layout");
-  eq(Lay.clean(null, { hotbar: true, keys: true }), { hotbar: true, keys: true, desk: null, folds: {} }, "U64: what the browser remembered before seeds a user without a layout");
+  eq(Lay.clean(null), { hotbar: false, keys: false, desk: null, folds: {}, autoSkip: false }, "U64: nothing stored = the default layout (ANSA UXC-1: the auto-skip tick, off)");
+  eq(Lay.clean(null, { hotbar: true, keys: true }), { hotbar: true, keys: true, desk: null, folds: {}, autoSkip: false }, "U64: what the browser remembered before seeds a user without a layout");
   eq(Lay.clean({ hotbar: false }, { hotbar: true }).hotbar, false, "U64: (a stored choice wins over the seed)");
-  eq(Lay.clean({ hotbar: "yes", desk: "left", folds: { force: false, bogus: true, npcs: "x", karma: true }, extra: 1 }), { hotbar: false, keys: false, desk: null, folds: { force: false } }, "U64: an unknown key, a wrong type and a default value are dropped");
+  eq(Lay.clean({ hotbar: "yes", desk: "left", folds: { force: false, bogus: true, npcs: "x", karma: true }, extra: 1 }), { hotbar: false, keys: false, desk: null, folds: { force: false }, autoSkip: false }, "U64: an unknown key, a wrong type and a default value are dropped");
   eq([Lay.folded(Lay.clean(null), "force"), Lay.folded(Lay.clean(null), "npcs"), Lay.folded(Lay.clean({ folds: { npcs: true } }), "npcs"), Lay.folded(Lay.clean(null), "nope")], [true, false, true, false], "U64 / U80: the three tools start folded, the NPC answers open");
   const a = Lay.clean(null), b = Lay.merge(a, { folds: { force: false } }), c = Lay.merge(b, { desk: "folded" });
   ok(b !== a && Lay.merge(b, { folds: { force: false } }) === b && Lay.merge(a, {}) === a, "U64: a change gives a new layout, no change gives the same object (nothing is written)");
-  eq(c, { hotbar: false, keys: false, desk: "folded", folds: { force: false } }, "U64: changes add up");
+  eq(c, { hotbar: false, keys: false, desk: "folded", folds: { force: false }, autoSkip: false }, "U64: changes add up");
   eq([Lay.stored(a), Lay.stored(c), Lay.stored(Lay.merge(c, { folds: { force: true } }))], [{}, { desk: "folded", folds: { force: false } }, { desk: "folded" }], "U64: only what differs from the default is stored");
   eq([Lay.deskStart(a), Lay.deskStart(c), Lay.deskStart(Lay.merge(c, { desk: "open" }))], [null, { collapsed: true, touched: true }, { collapsed: false, touched: true }], "U64: the desk starts as it was left, or by the room when never chosen");
   const store = readFileSync(new URL("./store.mjs", import.meta.url), "utf8"), ui = readFileSync(new URL("./ui/main.mjs", import.meta.url), "utf8"), desk = readFileSync(new URL("./ui/desk.mjs", import.meta.url), "utf8");

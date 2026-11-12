@@ -27,7 +27,7 @@ const optReq = (p, o, op) => ({ op, prompt: p.id, value: o.data && isObj(o.data)
 /** GM desk card kinds this engine raises (spec 13.1 + the ones the spec has no row for; reported as holes): */
 export const CARD_KINDS = Object.freeze(["reaction", "exception", "other", "direction", "stunt", "helpOverride", "revalidate", "npcBroken", "proxy",
   "gate", "tokenConfirm", "counter", "dodgeMove", "stunts", "moveStop", "moveApprove", "minionLoss", "minionsFate", "knockDir", "disarm",
-  "outcome", "hazardDodge", "hazardStunts", "fireSpread", "vacuumDeath", "objective", "chaseCatch", "chaseOption", "minionsQuick", "reactionByHand", "challengeStale", "heroDead"]);      // D113: a reaction the engine has no rule for                    // P5: the GM's word on a narrative action, a dodge against a blast, the hazards' cards
+  "outcome", "hazardDodge", "hazardStunts", "fireSpread", "vacuumDeath", "objective", "chaseCatch", "chaseOption", "minionsQuick", "reactionByHand", "challengeStale", "heroDead", "critPick", "critConfirm"]);      // P6b-6 (K8): the injury die a talent picks, the GM's confirmation      // D113: a reaction the engine has no rule for                    // P5: the GM's word on a narrative action, a dodge against a blast, the hazards' cards
 
 function card(p, ctx, proxy = false) {
   return {
@@ -146,8 +146,8 @@ export function barModel(view, cid, ctx = {}) {
   const broken = [...new Set([...Object.keys(view.statuses ?? {}).filter((id) => (view.statuses[id] ?? []).some((s) => s.id === "broken")), ...(out?.reason === "broken" ? [cid] : [])])];
   /* U22 [B2496] [R20] [R21]: one who is held, snared or trapped does not move, nor does anything that needs the body: the bar greys it with
      the engine's own word (movement-pure.cannotMove, flows/acts.mjs) instead of offering it and refusing the declaration */
-  const cond = condsOf(view, cid), stuck = cond.held ? "held" : cond.snared ? "snared" : cond.trapped ? "trapped" : null;
-  const tied = ["grappled", "snared", "immobilised"].some((st) => (view.statuses?.[cid] ?? []).some((s) => s.id === st));
+  const cond = condsOf(view, cid), stuck = cond.held ? "held" : cond.snared || cond.rooted ? "snared" : cond.trapped ? "trapped" : null;
+  const tied = ["grappled", "snared", "immobilised"].some((st) => (view.statuses?.[cid] ?? []).some((s) => s.id === st && s.data?.moveOnly !== 1));      // PWC (PW005) [B1611]: Immobilize Only leaves the body free
   const left = (e) => !out || (out.reason === "broken" && (e.effect?.kind === "convert" || (out.canRally && e.effect?.kind === "rally" && (e.target?.n?.[0] ?? 0) === 0)));      // U9 [B2707], [B2773]
   const actions = C.entriesFor(view, cid, kitFacts(ctx)).filter((e) => e.reaction?.effect !== "defence" && e.id !== "gmRoll" && fits(e) && left(e) && applies(e, cid, view.statuses ?? {}, broken) && (!e.gm || ctx.staff)).map((e) => {       // P5: an escape, a rally ... only when there is something to escape from or somebody to rally
     const byEntry = !!window && !!e.interrupt?.on?.includes(window);                           // PWA (PW039)
@@ -159,7 +159,7 @@ export function barModel(view, cid, ctx = {}) {
     const charge = e.attack === "charge" && !e.kit && typeof P1?.pay === "function", both = !charge || !pay.ok || chargeBoth(P1, view, cid, { resolve: ctx.c?.(cid)?.resolve });      // FXP (U183)
     const reason = busy && !answers ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime && !byEntry ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : machine ? machine : !both ? "chargeActions" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
-      attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders" || e.effect?.token === "orders",
+      attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, targetMax: e.target?.n?.[1] ?? 1, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders" || e.effect?.token === "orders",
       name: e.name || null, kit: e.kit ?? null, pick: Array.isArray(e.pick) ? e.pick.slice() : null, stress: e.stress?.fixed ?? 0, fxOn: e.fxOn === true, unarmed: e.unarmed === 1,      // P6
       when: typeof e.when === "string" ? e.when : null, disabled: reason, ...(charge ? { also: "quick" } : {}),      // FXP (U183): what it takes besides its own unit, shown before the click
       pay: pay.ok && !reason ? { grant: pay.pay ?? null, stress: pay.stress ?? 0, forfeitsFull: !!pay.forfeitsFull } : null,      // U30: the unit the ledger would take for it now (the surfaces preview the cost on that slot)

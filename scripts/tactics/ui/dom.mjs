@@ -54,6 +54,7 @@ const ICONS = {
   "stunt:doubleDamage": "fa-burst", "stunt:knockback": "fa-arrow-right-from-bracket", "stunt:stun": "fa-face-dizzy", "stunt:bangHeads": "fa-people-arrows", "stunt:trap": "fa-dungeon", "stunt:disarm": "fa-hand-holding",
   "stunt:deadlyHit": "fa-skull", "stunt:slam": "fa-angles-right", "stunt:suppressed": "fa-arrows-down-to-line", "stunt:trickShot": "fa-bullseye", "stunt:special": "fa-star", "stunt:own": "fa-pen",
   "fate:ko": "fa-bed", "fate:kill": "fa-skull",
+  "die:1": "fa-dice-one", "die:2": "fa-dice-two", "die:3": "fa-dice-three", "die:4": "fa-dice-four", "die:5": "fa-dice-five", "die:6": "fa-dice-six",      // P6b-6: the injury die a talent lets pick
   "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark", "react:r": "fa-reply",
 };
 export const actIcon = (key) => icon(ICONS[key] ?? "fa-circle-dot");
@@ -160,6 +161,9 @@ export function askCard(a, handlers = {}) {
       h("span.ita-count-of", { text: a.count.of })) : null,
     groups.length > 1 ? groups.map((g) => h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(opt))))
       : h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(opt))),
+    /* U17-2: the GM's own pick of an extra opponent (stunt card on the desk): a select per stunt and target, its first line says what it is */
+    a.gmExtra ? h("div.ita-gmx", { tip: a.gmExtra.tip }, a.gmExtra.rows.map((r) => h("select", { fk: r.id, attrs: { "aria-label": r.label }, on: { change: (e, el) => { if (el.value) handlers.gmExtra?.(a.id, el.value, a.multi?.max ?? 24); } } },
+      h("option", { text: `${r.label}…`, attrs: { value: "", selected: true } }), r.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id } }))))) : null,
     a.free ? h("input.ita-text", { fk: `text:${a.id}`, attrs: { type: "text", maxlength: 300, placeholder: a.free.placeholder, "aria-label": a.free.placeholder, value: a.free.text }, on: { input: (e, el) => handlers.text?.(a.id, el.value) } }) : null,
     a.always ? h("label.ita-check", { tip: a.always.tip }, h("input", { fk: `always:${a.id}`, attrs: { type: "checkbox", checked: a.always.on }, on: { change: (e, el) => handlers.always?.(a.id, el.checked) } }), h("span", { text: a.always.label })) : null,
     a.submit ? h("button.ita-submit", { fk: `submit:${a.id}`, text: a.submit.label, disabled: !!a.submit.disabled, tip: a.submit.disabled, data: { key: a.keyEnter ?? null }, on: { click: () => a.submit.req && handlers.send?.(a.submit.req) } }) : null);

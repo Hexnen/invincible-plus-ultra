@@ -80,7 +80,8 @@ export const counterReset = (state, scope) => Object.keys(state.counters ?? {}).
 
 /* ------------------------------------------------------------------ statuses (spec 6.3) */
 export const STATUS_IDS = Object.freeze(["broken", "unconscious", "dying", "dead", "stressedOut", "grappled", "grappling", "snared", "immobilised", "trapped", "unaware",
-  "stunned", "burning", "airborne", "carrying", "carried", "afflicted", "invisible", "huge", "noLegs", "sick", "itemLost", "inVehicle", "suffocating", "intangible"]);
+  "stunned", "burning", "airborne", "carrying", "carried", "afflicted", "invisible", "huge", "noLegs", "sick", "itemLost", "inVehicle", "suffocating", "intangible",
+  "conductive"]);      // PWC (PW019) [B1680]: made of a conductive material (metal), the GM's mark
 export const statusesOf = (state, cid) => state.statuses?.[cid] ?? [];
 export const hasStatus = (state, cid, id) => statusesOf(state, cid).some((s) => s.id === id);
 export function statusAdd(state, cid, st) {
@@ -98,12 +99,17 @@ export function statusRemove(state, cid, id) {
 /** The target conditions the rules library asks for (attack.defenceOptions / attackModifiers), from statuses and the ledger.
     grappled -> held [R6]; snared [R21]; immobilised -> snared under [OQ-2]; trapped [R20]; unaware [B2430]; stunned or a lost turn -> noInterrupts [R10];
     a carried pair that stayed in the air -> carriedAloft [B2392]. */
+/** PWC (PW005) [B1611]: a Snare whose limit is Immobilize Only: the snared character performs actions normally and only cannot move until
+    it breaks free (the break-free is SNARE's own, with the status' level penalty) */
+export const snaredMoveOnly = (state, cid) => statusesOf(state, cid).some((s) => s.id === "snared" && s.data?.moveOnly === 1);
 export function conditions(state, cid) {
   const has = (id) => hasStatus(state, cid, id);
   const l = state.ledger?.[cid];
+  const moveOnly = snaredMoveOnly(state, cid);
   return {
     held: has("grappled"),
-    snared: has("snared") || (OQ2_IMMOBILISED_AS_SNARED && has("immobilised")),
+    snared: (has("snared") && !moveOnly) || (OQ2_IMMOBILISED_AS_SNARED && has("immobilised")),
+    rooted: moveOnly,                                                              // PWC (PW005): moves nowhere, does everything else
     trapped: has("trapped"),
     unaware: has("unaware"),
     noInterrupts: has("stunned") || !!l?.noInterrupts || !!l?.lostTurn,

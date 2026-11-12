@@ -39,7 +39,8 @@ lang("en");
   eq([d.groups[0].id, !!act(d, "slugfest"), act(d, "slugfest").disabled, act(d, "slugfest").costText, act(d, "other") ?? null, act(d, "block") ?? null], ["attack", true, null, "Full action", null, null], "dock: attacks first; 'something else' and defences are not buttons of the groups");
   ok(d.groups.every((g) => g.label && g.items.length), "dock: no empty group is drawn");
   eq([d.end.disabled, d.end.confirm, d.end.label, d.panel], [null, true, "End turn", null], "dock: end turn asks once more while actions are unused");
-  eq(dock(T, "p1", ["H1"], { endArmed: true }).end.label === d.end.label, false, "dock: the armed End turn reads differently");
+  /* ANSA (UXC-1): the armed End turn keeps its name; the question stands over it (end.ask, dock.mjs endBtn) */
+  { const a = dock(T, "p1", ["H1"], { endArmed: true }).end; eq([a.armed, a.label === d.end.label, !!a.ask?.title], [true, true, true], "dock: the armed End turn asks its question (ANSA UXC-1)"); }
   d = dock(T, "p1", ["H1"], { armed: "slugfest" });
   eq([d.panel.kind, d.panel.picking, d.panel.submit.req, d.panel.submit.disabled != null, d.panel.targets.map((x) => [x.id, x.likely])], ["declare", true, null, true, [["N1", true], ["H2", false]]], "declare panel: needs a target first; the other side leads the list");
   eq([d.panel.pool.total, d.panel.pool.parts.map((p) => [p.label, p.dice]), d.panel.chance.text, d.panel.chance.defended], [4, [["Fighting", 4]], "Even odds", null], "declare panel: own pool and a band; nothing about the defender");
@@ -321,7 +322,7 @@ for (const l of ["en", "pl"]) { // U28 - U31, U23, U4: the compact dock: slots, 
   { // U9: the bar of one who is out says why, and End turn does not ask twice
     const W = mk(); W.state.statuses = { ...(W.state.statuses ?? {}), H1: [{ id: "unconscious" }] };
     const o = dock(W, "p1", ["H1"]);
-    eq([o.out?.reason, typeof o.out?.text, o.groups.flatMap((g) => g.items).filter((a) => !a.more).length, o.end.confirm, dock(W, "p1", ["H1"], { endArmed: true }).end.armed, dock(mk(), "p1", ["H1"]).out], ["unconscious", "string", 0, false, false, null], `${l} U9: out of action: the reason stands where the actions were, End turn is one click`);
+    eq([o.out?.reason, typeof o.out?.text, o.groups.flatMap((g) => g.items).filter((a) => !a.more).length, o.end.confirm, dock(W, "p1", ["H1"], { endArmed: true }).end.armed, dock(mk(), "p1", ["H1"]).out], ["unconscious", "string", 0, true, true, null], `${l} U9: out of action: the reason stands where the actions were, End turn asks (ANSA UXC-1: always)`);
   }
   eq((await T.gm(end[0].req)).ok, true, `${l} aborted with a refund through the override's request`);
 }
@@ -384,7 +385,7 @@ for (const l of ["en", "pl"]) {
   { // U45: Health 0 with no mark yet is out of action on the bar, as it is for the engine
     const W = mk(); W.c.H1.health = 0;
     const o = dock(W, "p1", ["H1"]), ids = o.groups.flatMap((g) => g.items).filter((a) => !a.more).map((a) => a.id);
-    eq([o.out?.reason, typeof o.out?.text, ids, o.end.confirm], ["broken", "string", ["rally"], false], `${l} U45: at 0 Health without the status the bar says broken and offers only getting up`);
+    eq([o.out?.reason, typeof o.out?.text, ids, o.end.confirm], ["broken", "string", ["rally"], true], `${l} U45: at 0 Health without the status the bar says broken and offers only getting up (End turn asks: ANSA UXC-1)`);
     const N = mk().turn("N1"); N.c.N1.health = 0;
     const s = staffDock(N, "N1");
     eq([s.out?.reason, s.groups.flatMap((g) => g.items).filter((a) => !a.more).map((a) => a.id)], ["broken", ["rally"]], `${l} U45: the same for an NPC in the GM's hands`);

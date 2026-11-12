@@ -350,10 +350,15 @@ const endMark = (on) => {
   if (on) { b.setAttribute("aria-busy", "true"); if (sp && endLabel) { endWas = sp.textContent; sp.textContent = endLabel; } }
   else { b.removeAttribute("aria-busy"); if (sp && endWas !== null && sp.textContent === endLabel) sp.textContent = endWas; endWas = null; }
 };
+/* FXY (U178): a press while the last one is still out (held for the dice, or not yet answered) is the same press: it is not sent again
+   (each extra press used to wait too and go after the first, refused as stale with a warning) */
+let endOut = null;
 function endPress(req) {
+  if (endOut) return endOut;
   clearTimeout(endHeldT);
   endHeldT = setTimeout(() => endMark(true), 150);
-  return Promise.resolve(send(req, { endArmed: false })).finally(() => { clearTimeout(endHeldT); endMark(false); });
+  endOut = Promise.resolve(send(req, { endArmed: false })).finally(() => { endOut = null; clearTimeout(endHeldT); endMark(false); });
+  return endOut;
 }
 const CAM_ICON = { action: "fa-clapperboard", turn: "fa-video", off: "fa-video-slash", all: "fa-film" };
 /* W1 (U42): how much the map's camera follows the fight, this user's own switch (turn -> off -> all) */
@@ -361,6 +366,32 @@ const cameraBtn = (d) => (d.camera ? h("button.itd-mini", { fk: "camera", tip: d
 /* U93: where a player looks a mark up: the legend of the marks, a card over the bar (the kit draws it) */
 const legendBtn = () => h("button.itd-mini", { fk: "legend", tip: markName("legend"), attrs: { "aria-pressed": String(!!last?.ui?.legend), "aria-label": markName("legend") }, on: { click: () => set({ legend: !last?.ui?.legend }) } }, icon("fa-shapes"));
 const hotbarBtn = (d) => h("button.itd-mini", { fk: "hotbar", tip: d.hotbar.tip ?? d.hotbar.label, attrs: { "aria-pressed": String(d.hotbar.open), "aria-label": d.hotbar.label }, on: { click: () => set({ hotbar: !d.hotbar.open }) } }, icon("fa-keyboard"));
+/* ANSA (UXC-1, K1: «pytanie czy koniec»): END TURN ALWAYS ASKS. The first press opens a speech balloon over the button: "End the turn?",
+   what is still unused (or that nothing is left), Yes [Space] / No [Esc]; the button stays pressed in while it stands and a second press
+   is the Yes. A press within ENDQ_GUARD_MS of the one that opened the question is not taken (a double click never ends a turn by
+   itself). `ready`: nothing is left and the auto-skip tick is off, so End turn is all there is to do: its shadow turns yellow. */
+const ENDQ_GUARD_MS = 350;
+let endAskedAt = 0;
+function endBtn(e, d) {
+  const press = () => {
+    if (!e.req) return;
+    if (e.confirm && !e.armed) { endAskedAt = Date.now(); set({ endArmed: true }); return; }
+    if (Date.now() - endAskedAt < ENDQ_GUARD_MS) return;
+    endPress(e.req);
+  };
+  const btn = h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}${e.auto ? ".itd-end-auto" : ""}${e.ready ? ".itd-end-ready" : ""}${endHeld ? ".itd-end-held" : ""}`, { fk: "end", disabled: !!e.disabled || !!d.rest, tip: e.armed ? null : e.tip, /* U148: resting, End turn keeps its place and ends nothing */
+    attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space", "aria-busy": endHeld ? "true" : null, "aria-expanded": e.confirm && !e.auto ? String(!!e.armed) : null, "aria-controls": e.armed ? "itd-endq" : null, style: e.auto ? `--itd-end-ms: ${autoDelay(e)}ms` : null },
+    on: { click: press } }, actIcon("@end"), h("span", { text: endHeld && endLabel ? endLabel : e.label }));
+  if (!e.armed || !e.ask || d.rest) return btn;
+  const k = (key) => h("kbd.itd-endq-k", { text: key });
+  const q = h("div.itd-endq", { attrs: { id: "itd-endq", role: "group", "aria-labelledby": "itd-endq-t", "aria-describedby": "itd-endq-l" } },
+    h("p.itd-endq-t", { text: e.ask.title, attrs: { id: "itd-endq-t" } }),
+    h("p.itd-endq-l", { text: e.ask.line, attrs: { id: "itd-endq-l" } }),
+    h("div.itd-endq-b", {},
+      h("button.itd-endq-yes", { fk: "endq:yes", attrs: { "aria-keyshortcuts": "Space Enter" }, on: { click: () => { if (Date.now() - endAskedAt >= ENDQ_GUARD_MS && e.req) endPress(e.req); } } }, h("span", { text: e.ask.yes }), k(e.ask.yesKey)),
+      h("button.itd-endq-no", { fk: "endq:no", attrs: { "aria-keyshortcuts": "Escape" }, on: { click: () => set({ endArmed: false }) } }, h("span", { text: e.ask.no }), k(e.ask.noKey))));
+  return h("span.itd-endwrap", {}, btn, q);
+}
 function bar(d) {
   const e = d.end;
   if (e && !e.armed && e.label) endLabel = e.label;      // FXS (U178): the name a held press shows
@@ -375,7 +406,7 @@ function bar(d) {
       h("div.itd-tail", {},
         h(`button.itd-ic.itd-ic-ghost${d.other.armed ? ".itd-armed" : ""}`, { fk: "other", tip: d.other.tip, attrs: { "aria-pressed": String(d.other.armed), "aria-label": d.other.label }, on: { click: () => set(d.other.armed ? { mode: null } : { mode: "other", armed: null, text: "", endArmed: false }) } }, actIcon("@other")),
         h(`button.itd-ic.itd-ic-ghost${d.holdOff.armed ? ".itd-armed" : ""}`, { fk: "hold", disabled: !!d.holdOff.disabled, tip: d.holdOff.tip, attrs: { "aria-pressed": String(d.holdOff.armed), "aria-label": d.holdOff.label }, on: { click: () => set(d.holdOff.armed ? { mode: null } : { mode: "holdOff", armed: null, endArmed: false }) } }, actIcon("@hold")),
-        h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}${e.auto ? ".itd-end-auto" : ""}${endHeld ? ".itd-end-held" : ""}`, { fk: "end", disabled: !!e.disabled || !!d.rest, tip: e.tip, /* U148: resting, End turn keeps its place and ends nothing */ attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space", "aria-busy": endHeld ? "true" : null, style: e.auto ? `--itd-end-ms: ${autoDelay(e)}ms` : null }, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && endPress(e.req)) } }, actIcon("@end"), h("span", { text: endHeld && endLabel ? endLabel : e.label })),
+        endBtn(e, d),
         legendBtn(), cameraBtn(d), hotbarBtn(d),
         d.rest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up"))
           : d.canRest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("cancel"), on: { click: () => set({ peek: false, armed: null, mode: null }) } }, icon("fa-chevron-down")) : null),

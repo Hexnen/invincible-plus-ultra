@@ -20,11 +20,12 @@ import * as C from "../catalog-pure.mjs";
 import * as K from "./kit.mjs";
 import * as MP from "../movement-pure.mjs";
 import * as ZP from "../zones-pure.mjs";
-import { freeMoveChild, forcedChild } from "./move.mjs";
+import { freeMoveChild, forcedChild, hazardChild } from "./move.mjs";
 import * as Veh from "./vehicle.mjs";                                                          // P7: the ram, hits on vehicles, the attack that ends a chase
 
 export const STEPS = Object.freeze(["check", "gate", "approach", "reactBefore", "roll", "outcome", "stunts", "damage", "reactAfterDamage", "effects", "close"]);
 const SLUG = ["slugfest", "grapple", "grappleAttack", "counterattack", "ram"];
+const TOUCH = ["slugfest", "grapple", "grappleAttack", "counterattack", "charge"];          // PWC (PW004): what touches the one it lands on
 const GM_STUNTS = { special: "stunt", own: "stunt", disarm: "stunt" };                 // the GM's word: [B2441-2442]; Disarm: which item it is
 const NO_MAP_STUNTS = { knockback: "direction", slam: "direction" };                    // without zones the forced move is the GM's, by hand
 const EXTRA_STUNTS = ["bangHeads", "trickShot"];                                         // [B2437], [B2518]: an extra opponent in the same zone
@@ -46,19 +47,58 @@ export const unwound = (v, inst) => { const a = v.facts.c(inst.actor); return !!
 const weaponOf = (v, inst) => { const w = v.facts.weapon(inst.actor, inst.decl.weapon ?? "unarmed"); return w && unwound(v, inst) && (w.id === "unarmed" || w.strike) ? { ...STRIKE_FREE } : w; };
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 
-const multiOf = (d) => (d?.area ? "area" : d?.fullAuto ? "fullAuto" : null);
+/* PWC (PW006) [B1610]: a weapon that takes several targets with one roll (Multiple Snares) is an attack on many like an area one: one roll,
+   each target dodges on its own; the targets need not stand in one zone */
+const multiOf = (d, w = null) => (d?.area ? "area" : d?.fullAuto ? "fullAuto" : w?.several && (d?.targets?.length ?? 0) > 1 ? "several" : null);
+const multiFor = (v, I) => multiOf(I.decl, weaponOf(v, I));
+/* PWC (PW025) [B1654]: is `cid` inside a darkness that affects it (its maker never is)? The map's state records of the spot name the maker. */
+export function inDark(v, cid) {
+  const Z = v.facts.zones, sp = v.facts.zone?.(cid)?.spot;
+  if (Z?.states && sp) return MP.stateFlags(Z.states(ZP.levelRef(sp)) ?? [], cid).dark;
+  return !!v.facts.zone?.(cid)?.states?.dark;
+}
+const DARK_DICE = -2;                                                                       // [B1654]
+const sameZoneOf = (r) => !!r && (r.borders ?? r.total) === 0;
+/* PWC (PW017, PW018) [B1671-1674]: the zones an Earthquake covers (the zones of its targets): as many as the level allows, joined to each
+   other, one of them the quaker's own zone or (from Major on) the next one; none already wrecked, none whose terrain cannot be wrecked
+   (open air: an off-map area or a terrain the wreck table refuses). A zone whose terrain was never set on the map is the GM's to judge:
+   it is let through (PWC-2). -> { ok, zones: [key] } | { ok:false, reason, params } */
+export function quakeOf(v, inst, w) {
+  const f = v.facts, d = inst.decl, by = new Map();
+  for (const t of d.targets ?? []) { const z = f.zone(t); const key = z ? String(z.key ?? z.spot ?? "").split(":")[0] : ""; if (key && !by.has(key)) by.set(key, t); }
+  if (!by.size) return { ok: true, zones: [] };
+  const n = Math.max(1, Math.trunc(Number(w.quake) || 1)), reps = [...by.values()];
+  if (by.size > n) return { ok: false, reason: "quakeZones", params: { max: n } };
+  const dist = reps.map((t) => f.range(inst.actor, t)?.total);
+  if (dist.every((x) => Number.isFinite(x)) && Math.min(...dist) > (n > 1 ? 1 : 0)) return { ok: false, reason: "tooFar", params: { distance: Math.min(...dist) } };
+  if (reps.length > 1) {                                                                    // joined: every zone reaches the first through zones next to each other
+    const seen = new Set([0]), todo = [0];
+    while (todo.length) { const i = todo.pop(); reps.forEach((t, j) => { if (!seen.has(j) && f.range(reps[i], t)?.total === 1) { seen.add(j); todo.push(j); } }); }
+    if (seen.size < reps.length) return { ok: false, reason: "quakeApart", params: {} };
+  }
+  for (const [key, t] of by) {
+    const z = f.zone(t) ?? {};
+    if (z.area || String(z.spot ?? "").startsWith("@")) return { ok: false, reason: "wreckTerrain", params: {} };      // open air [B1671]
+    if (z.states?.wrecked || M.counterGet(v.state, M.counterKey.zone(key, "wrecked")) > 0) return { ok: false, reason: "wreckDone", params: {} };
+    if (z.terrain && z.terrain !== "none") { const wc = zones.wreckCheck({ terrain: z.terrain, wrecked: false, rooftop: !!z.rooftop }, 99); if (!wc.ok) return { ok: false, reason: "wreckTerrain", params: {} }; }
+  }
+  return { ok: true, zones: [...by.keys()] };
+}
 const allTargets = (I) => [...I.decl.targets, ...(I.data.extras ?? []).map((x) => x.id)];
 /** May the attacker wreck the zone it stands in [B2451-2457]? -> { ok, zone, bonus, levelsRooftop } | { ok:false, reason, params } */
-export function wreckOf(v, cid) {
+export function wreckOf(v, cid, weight = null) {
   const z = v.facts.zone(cid), a = v.facts.c(cid);
   if (!z || !(z.key ?? z.spot)) return { ok: false, reason: "noScene", params: { gmMayAllow: 1 } };
   const key = String(z.key ?? z.spot).split(":")[0];
   if (z.states?.wrecked || M.counterGet(v.state, M.counterKey.zone(key, "wrecked")) > 0) return { ok: false, reason: "wreckDone", params: {}, zone: key };      // once per scene, also when the mark was cleared by hand
-  const wc = zones.wreckCheck({ terrain: z.terrain && z.terrain !== "none" ? z.terrain : undefined, terrainUnset: !z.terrain, wrecked: false, rooftop: !!z.rooftop }, a?.attrs?.strength ?? 0);
+  const wc = zones.wreckCheck({ terrain: z.terrain && z.terrain !== "none" ? z.terrain : undefined, terrainUnset: !z.terrain, wrecked: false, rooftop: !!z.rooftop }, weight ?? a?.attrs?.strength ?? 0);      // PWD (PW044) [B1745]: the weight a power controls
   if (!wc.ok) return { ok: false, reason: WRECK_REASON[wc.reason] ?? "wreckTerrain", params: { ...(wc.gmMayAllow ? { gmMayAllow: 1 } : {}), ...(wc.minStrength ? { min: wc.minStrength } : {}) }, zone: key };   // [A17]
   return { ok: true, zone: key, bonus: wc.bonus, levelsRooftop: wc.levelsRooftop };
 }
 /** The approach of a charge [B2490]: the route to the target's spot, one move's worth, paid with the quick action. */
+/* PWD (PW044) [B1745]: Matter Control's shot may wreck the zone the matter comes from (the attacker's own; another one is the GM's), its weight limit for STRENGTH */
+const wreckWeightOf = (v, I) => (kindOf(I) === "shooting" ? weaponOf(v, I)?.wreckWeight ?? null : null);
+const wreckFor = (v, I) => wreckOf(v, I.actor, wreckWeightOf(v, I));
 export function chargeOf(v, inst) {
   const Z = v.facts.zones, t = inst.decl?.targets?.[0], spot = t ? v.facts.zone(t)?.spot : null;
   if (!Z) return { ok: false, reason: "noZones", params: { gmMayAllow: 1 } };
@@ -80,7 +120,8 @@ function chargeActions(v, inst) {
 
 /** Legality of the declaration (spec 9.1 step 2). Returns { ok, reason, params, gates, notes }. Costs are checked by the engine (ledger, P1). */
 export function legality(v, inst) {
-  const { state, facts } = v, d = inst.decl, kind = kindOf(inst), entry = v.entry(inst), multi = multiOf(d);
+  const { state, facts } = v, w0 = weaponOf(v, inst), d = w0?.always?.includes("area") && !inst.decl.area ? { ...inst.decl, area: 1 } : inst.decl;      // PWC (PW018): a power that always takes the zone (Earthquake [B1671]) is judged as the area attack it is, also on declaring
+  const kind = kindOf(inst), entry = v.entry(inst), multi = multiOf(d, w0);
   if (!attack.ATTACKS[kind]) return bad("unknownAttack");
   const a = facts.c(inst.actor);
   if (!a || a.present === false) return bad("gone");
@@ -92,6 +133,7 @@ export function legality(v, inst) {
     const ac = M.conditions(state, inst.actor);
     if (ac.held) return bad("held");                                                                         // [B2496]
     if (ac.snared) return bad("snared");                                                                     // [R21]
+    if (ac.rooted && kind === "charge") return bad("snared");                                                // PWC (PW005) [B1611]: Immobilize Only: every attack, but no moving to it
     if (ac.carriedAloft) return bad("carriedAloft");                                                         // [B2392]
     if (ac.trapped && (SLUG.includes(kind) || kind === "charge")) return bad("trapped");                     // [R20], [B2438]: no slugfest, no movement
     if (M.hasStatus(state, inst.actor, "grappling") && kind !== "grappleAttack" && (kind === "grapple" || K.holdsTied(v, inst.actor))) return bad("grappling");    // [B2497]; PWA (PW072) Extra Limb(s) [B1926]: other actions while the hold lasts, one hold at a time
@@ -103,21 +145,25 @@ export function legality(v, inst) {
   if (d.targets.length > 1 && !multi) return bad("oneTarget");
   const w = weaponOf(v, inst);
   if (!counter && d.weapon && d.weapon !== "unarmed" && !w) return bad("noWeapon");
+  if (w?.reactOnly && !Number.isFinite(inst.data?.fixedDamage)) return bad("answerOnly", { gmMayAllow: 1 });      // PWB: Redirecting Blast is fired only as the answer to damage absorbed [B1889]
   if (entry?.unarmed && d.weapon && d.weapon !== "unarmed") return bad("noWeapon", { gmMayAllow: 1 });       // P6 [B2151]: Martial Arts is unarmed
   if (w?.fam === "shoot" && kind === "slugfest") return bad("noWeapon");                                      // P6: a power thrown from afar is a shooting attack
   if (!counter && !inst.locked) {                                                                            // the features of the book's weapon table (kit-pure.mjs profileOf); once the dice are out the attack stands
     if (w?.singleUse && M.counterGet(state, usedKey(inst.actor, w)) > 0) return bad("weaponUsed", { gmMayAllow: 1 });      // [B2541]: used once, then discarded (the GM allows a second one from the pack)
     if (w?.noMove && (P1.history(state, inst.actor, "round", "moved") || P1.history(state, inst.actor, "round", "movedWithinZone"))) return bad("weaponNoMove", { gmMayAllow: 1 });      // [B2545]
   }
-  if (multi) {                                                                                               // [B2542], [B2543]
+  if (multi === "several") { if (d.targets.length > w.several) return bad("tooManyTargets", { max: w.several }); }      // PWC (PW006) [B1610]: up to three, anywhere in range
+  else if (multi) {                                                                                          // [B2542], [B2543]
     if (!(entry?.[multi] || w?.[multi])) return bad(multi === "area" ? "noArea" : "noFullAuto", { gmMayAllow: 1 });
     if (multi === "fullAuto" && attack.ATTACKS[kind].family !== "shooting") return bad("noFullAuto");
     const spots = d.targets.map((t) => facts.zone(t)?.spot).filter((x) => x != null);
-    if (new Set(spots).size > 1) return bad("notSameZone", { series: 1 });                                  // the targets stand in one zone; FXV (P8f-6): said as the rule of a series, not "in another zone"
+    if (new Set(spots).size > 1 && !(multi === "area" && w?.quake > 1)) return bad("notSameZone", { series: 1 });      // the targets stand in one zone; FXV (P8f-6): said as the rule of a series, not "in another zone"; PWC (PW018): a quake from Major on covers more
   }
+  if (w?.quake && !counter && !inst.locked) { const q = quakeOf(v, inst, w); if (!q.ok) return bad(q.reason, q.params); }      // PWC (PW017, PW018) [B1671-1674]
+  if (w?.immuneHuge && d.area && d.targets.every((t) => facts.c(t)?.huge)) return bad("hugeTarget");        // PWC (PW028): an area attack skips the huge (below), it needs somebody else to hit
   if (d.wreck && !inst.data?.wreck) {                                                                        // [B2451]: an option of a slugfest attack
-    if (kind !== "slugfest") return bad("wreckNotSlugfest");
-    const wz = wreckOf(v, inst.actor);
+    if (kind !== "slugfest" && !wreckWeightOf(v, inst)) return bad("wreckNotSlugfest");
+    const wz = wreckFor(v, inst);
     if (!wz.ok) return bad(wz.reason, wz.params);
   }
   if (kind === "grappleAttack" && !counter) {
@@ -130,22 +176,17 @@ export function legality(v, inst) {
     const tf = facts.c(t);
     if (!tf || tf.present === false || t === inst.actor) return bad(t === inst.actor ? "self" : "gone");
     if (K.notArrived(state, t)) return bad("notArrived", { gmMayAllow: 1 });                                 // Z12 [B1816]: delayed allies arrive at the start of the summoner's next turn
-    if (w?.immuneHuge && tf.huge) return bad("hugeTarget");                                                  // P6 [B1606], [B1625]
+    if (w?.immuneHuge && tf.huge) { if (d.area) continue; return bad("hugeTarget"); }                         // P6 [B1606], [B1625]; PWC (PW028) [B1723], [B1800]: an area attack passes a huge creature by
     const unseen = state.knowledge?.[inst.actor]?.[t] === "unseen";
     if (unseen && !d.blind && !d.area) return bad("unseen");                                                 // spec 10: needs the stated intent to attack "where it should be"
     const r = facts.range(inst.actor, t);
     if (r === undefined) notes.push("noScene");                                                              // spec 7: positional steps fall back to the GM
     else if (r === null) return bad("noRange");                                                              // [Z4]
     else if (kind === "charge" && !approached) { if (r.total === 0) return bad("chargeSameZone"); }          // [B2490]
-    else if (SLUG.includes(kind) || kind === "charge") {                                                     // [Z2], [B2425]; huge and grown attackers reach elevated targets [B2500], [B1975]; wrecking reaches one zone [B2453]
-      const reach = zones.slugfestReachAt(r, facts.zone(inst.actor) ?? {}, facts.zone(t) ?? {}, { range: Math.max(d.wreck ? 1 : 0, w?.reach ?? 0, a.pass?.reach ? 1 : 0, K.copiesOf(state, inst.actor) > 0 ? 1 : 0), huge: stunts.reachesElevated(a) });      // P6: Elongation [B1919], copies [B1908]
-      if (!reach.ok) return bad("outOfReach", { distance: r.total });
-    }
-    else {
-      if (!w || !Array.isArray(w.range)) return bad("noWeapon");                                             // [B2510]
-      const sr = zones.shootingRange(r.total, w.range);                                                      // [B2511]
-      if (!sr.ok) return bad(sr.reason, { distance: r.total });
-    }
+    if (r && !counter && kind !== "ram" && !sameZoneOf(r) && !(kind === "charge" && !approached) && inDark(v, inst.actor)) return bad("inDarkness", { gmMayAllow: 1 });      // PWC (PW025) [B1654]: from inside darkness nothing is attacked in another zone
+    if (r === undefined || r === null || (kind === "charge" && !approached)) { /* settled above */ }
+    else if (w?.quake > 1 && d.area && !counter) { if (r.total > w.quake) return bad("tooFar", { distance: r.total }); }      // PWC (PW018): the covered zones were checked as a whole (quakeOf)
+    else { const why = reachFault(v, inst, t, r); if (why) return bad(why, why === "noWeapon" ? {} : { distance: r.total }); }
     if (kind === "grapple") { const g = attack.grappleCheck({ target: K.immunityFlags(tf), usesWeapon: !!d.weapon && d.weapon !== "unarmed" && !w?.grip }); if (!g.ok) return bad(g.reason); }   // [B2496], [B2502]; PWA (PW048): the plants of Plant Control grapple [B1779]
     if (w?.onHit?.pull && tf.huge) return bad("tooHeavy", { gmMayAllow: 1 });                              // PWA (PW088) [B2029]: weight rating at most STRENGTH; the engine knows no weights, a huge one is refused (question PWA-4)
     if (!counter && !d.area) {
@@ -162,6 +203,18 @@ export function legality(v, inst) {
   return { ok: true, reason: null, params: {}, gates, notes };
 }
 
+/** Whether the attack reaches `t` at range `r` (facts.range): null, or the reason it does not. ONE reading for the declaration and for
+    an answer that moves the target away (PWB: Untouchable Speed [B2018], Quick Teleport [B2039]: "out of range ... misses automatically"). */
+function reachFault(v, inst, t, r) {
+  const { state, facts } = v, d = inst.decl, kind = kindOf(inst), w = weaponOf(v, inst), a = facts.c(inst.actor) ?? {};
+  if (SLUG.includes(kind) || kind === "charge") {                                                            // [Z2], [B2425]; huge and grown attackers reach elevated targets [B2500], [B1975]; wrecking reaches one zone [B2453]
+    const reach = zones.slugfestReachAt(r, facts.zone(inst.actor) ?? {}, facts.zone(t) ?? {}, { range: Math.max(d.wreck ? 1 : 0, w?.reach ?? 0, a.pass?.reach ? 1 : 0, K.copiesOf(state, inst.actor) > 0 ? 1 : 0), huge: stunts.reachesElevated(a) });      // P6: Elongation [B1919], copies [B1908]
+    return reach.ok ? null : "outOfReach";
+  }
+  if (!w || !Array.isArray(w.range)) return "noWeapon";                                                      // [B2510]
+  const sr = zones.shootingRange(r.total, w.range);                                                          // [B2511]
+  return sr.ok ? null : sr.reason;
+}
 /** Does the instance still hold after an interrupt finished on top of it (spec 5.1)? Returns { ok, reasons }. The engine never decides: a failure opens the
     GM card `revalidate` [OQ-3]. */
 export function revalidate(v, inst) {
@@ -178,13 +231,28 @@ export function revalidate(v, inst) {
    GM's card counted the bare attribute while the roll carried the sheet's dice, the weapon, the bonus dice ... on top of it).
    [B2536], [B2430], [R6], [B2511], [B2238], [B2452], [B2543]; P6: a power may be thrown with another attribute; P7 [B3148]: Maneuverability
    on a ram; [B2827], [R24]: a group of minions. Before the declaration locks the wreck bonus is the one the zone would give now. */
+/* PWD (PW058) [B1841]: every shooting attack in the zone of a storm gets -3 dice; its maker is unaffected (movement-pure stateFlags). "In the zone":
+   the shooter's zone or the target's (a shot into the storm), counted once. */
+export const STORM_DICE = -3;
+/* PWD (PW038) [B1723], [B1800]: a beam that deals no damage names no stunt limit: the stunts that need no damage stay (not Double Damage, Suppressed, Deadly Hit, Trick Shot) */
+const EFFECT_ONLY = Object.freeze(["disarm", "special", "own"]);
+function stormed(v, I) {
+  const Z = v.facts.zones;
+  if (!Z?.states || attack.ATTACKS[kindOf(I)]?.family !== "shooting") return false;
+  const spots = [v.facts.zone(I.actor)?.spot, ...(I.decl.targets ?? []).map((t) => v.facts.zone(t)?.spot)].filter((x) => typeof x === "string" && x);
+  return [...new Set(spots)].some((sp) => { try { return MP.stateFlags(Z.states(sp), I.actor).storm; } catch { return false; } });
+}
 function attackPool(v, I, tokens) {
   const kind = kindOf(I), d = I.decl, w = weaponOf(v, I), attr = w?.attr ?? attack.ATTACKS[kind].attr;
   const t0 = d.targets[0], a = v.facts.c(I.actor), r = v.facts.range(I.actor, t0);
-  const wz = !I.data.wreck && d.wreck ? wreckOf(v, I.actor) : null, wreckBonus = I.data.wreck ? I.data.wreck.bonus ?? 0 : wz?.ok ? wz.bonus : 0;
+  const wz = !I.data.wreck && d.wreck ? wreckFor(v, I) : null, wreckBonus = I.data.wreck ? I.data.wreck.bonus ?? 0 : wz?.ok ? wz.bonus : 0;
   const mods = attack.attackModifiers({ attack: kind, target: I.data.multi ? {} : M.conditions(v.state, t0), weaponBonus: w?.bonus ?? 0, wreckBonus, distance: r?.total ?? null, range: w?.range ?? null,
     targets: I.data.multi === "fullAuto" ? d.targets.length : 1, helpers: K.helpDiceOf(v, d) });
   mods.push(...Veh.attackMods(v, I));
+  if (wreckBonus && wreckWeightOf(v, I)) mods.push({ source: "wreck", dice: wreckBonus });      // PWD (PW044) [B1745]: the wrecked zone's dice on Matter Control's shot (rules/attack adds them to a slugfest only)
+  if (stormed(v, I)) mods.push({ source: "storm", dice: STORM_DICE });                      // PWD (PW058) [B1841]
+  if (sameZoneOf(r) && kind !== "counterattack" && kind !== "ram" && inDark(v, I.actor)) mods.push({ source: "dark", dice: DARK_DICE });      // PWC (PW025) [B1654]: -2 on attacks in the same zone
+  if (w?.vsConductive && d.targets.length && d.targets.every((t) => M.hasStatus(v.state, t, "conductive"))) mods.push({ source: "conductive", dice: w.vsConductive });      // PWC (PW019) [B1680]: the GM marks who is made of metal
   if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });
   return { attr, ...K.buildPool(v, I, "attack", I.actor, attr, mods, { rollKind: "attack", tokens, base: Veh.attackRollBase(v, I) }) };      // Z16 [B3144]: a ram on a mount rolls the mount's AGILITY
 }
@@ -198,7 +266,8 @@ function hitMath(v, I, t, o = {}, forced = null, doubled = false) {
   const sources = [...(tf.armor ?? []).filter((x) => !(x.id === "defiance" && tf.pass?.defianceOff && !K.marked(v.state, t, "defiance", true))), ...K.barriersOf(v.state, t)];                                      // P6: Barriers [B1859]; Defiance stops stress only [B1865]
   const ar0 = damage.selectArmor(sources, { toStress: tags.toStress, source: tags.source });   // [B2682], [R13]; PWA (PW001): against stress every Armor counts, Defiance too, the best one [B1591], [B1865]
   const ar = w?.halveArmor && !o.extra ? { ...ar0, armor: damage.halvedArmor(ar0.armor) } : ar0;             // P6 [B1679]
-  const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
+  const plus = o.extra ? 0 : Math.max(0, Math.trunc(Number(I.data?.discharge) || 0));          // PWC (PW021) [B1685]: Discharge, after Double Damage
+  const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, plus, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
   return { tags, base, ar, hd };
 }
 /** What a plain hit of this declaration would do to `t`, before anything is declared (engine-pure.opPreview, the map's preview on the
@@ -221,7 +290,7 @@ export function hitPreview(v, inst, t) {
 export function defPreview(v, inst, t) {
   const I = K.draft(inst), out = {};
   if (!v.facts.c(t) || kindOf(I) === "counterattack") return out;
-  I.data.multi = multiOf(I.decl);
+  I.data.multi = multiFor(v, I);
   for (const id of ["block", "dodge"]) { try { const n = defencePool(v, I, t, id, []).pool.dice; if (Number.isFinite(n)) out[id] = n; } catch { /* no number rather than a wrong one */ } }
   return out;
 }
@@ -230,7 +299,7 @@ export function preview(v, inst) {
   const I = K.draft(inst);
   if (kindOf(I) === "counterattack") return null;      // (no target yet: the pool without what the target would add or take)
   if (weaponOf(v, I)?.always?.includes("area")) I.decl.area = 1;
-  I.data.multi = multiOf(I.decl);
+  I.data.multi = multiFor(v, I);
   return attackPool(v, I, I.decl.tokens ?? []);
 }
 /* What the dice of an exchange look like before any is rolled, for the GM only (`data.gm` never reaches a player: view-pure.promptView):
@@ -252,7 +321,8 @@ function oddsBands(g) {
 }
 /* D113: Warning Call [B2170]: the one warned rolls two more dice on its block or dodge */
 export const WARN_DICE = 2;
-const defencePool = (v, I, t, how, tokens) => K.buildPool(v, I, `def:${t}`, t, attack.DEFENCES[how].attr, I.data?.warned?.[t] ? [{ source: "warned", dice: WARN_DICE }] : [], { rollKind: how, tokens });
+/* PWB: a defence given by Guidance [B1709] costs no action but brings no dice (warned.dice 0) */
+const defencePool = (v, I, t, how, tokens) => { const w = I.data?.warned?.[t], n = w ? w.dice ?? WARN_DICE : 0; return K.buildPool(v, I, `def:${t}`, t, attack.DEFENCES[how].attr, n ? [{ source: "warned", dice: n }] : [], { rollKind: how, tokens }); };
 function defencePrompt(v, I, t) {
   const kind = kindOf(I), tf = v.facts.c(t);
   const dq = Veh.defenceOf(v, I, kind);                                                          // P7 [B3434]: the charge or ram that ends a chase
@@ -263,7 +333,7 @@ function defencePrompt(v, I, t) {
   const warned = !!I.data?.warned?.[t] && !Veh.isMachine(v, t);                                  // D113 [B2170]: warned: a block or dodge without an action, two more dice
   const allowed = (set, id) => {
     let op = set[id];
-    if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && tf?.pass?.deflection && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]
+    if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && (tf?.pass?.deflection || tf?.pass?.metalBlock > 0) && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]; PWD (PW045) [B1737]: Magnetism Control blocks an attack that uses metal, even a shot
       const other = set[id === "block" ? "dodge" : "block"]; op = other.reason === "notAllowed" ? { ok: true, reason: null } : other;
     }
     return op;
@@ -274,7 +344,7 @@ function defencePrompt(v, I, t) {
     /* the bonus dice the defender may choose to put on this defence (spec 6.2); the answer names them: { id, tokens } */
     const spare = M.tokensFor(v.state, t, { kind: id, attr: attack.DEFENCES[id].attr }).filter((k) => !M.standing(k)).map((k) => ({ id: k.id, dice: k.dice, source: k.source?.name ?? "", ...(k.needsGm ? { needsGm: 1 } : {}) }));
     if (warned) {                                                                                // the paid and the Defensive answers would only cost more
-      const w = allowed(df.free, id), wo = { id: `${id}:warned`, label: `ITAC.opt.${id}Warned`, cost: "none", ...(spare.length ? { data: { tokens: spare } } : {}) };
+      const w = allowed(df.free, id), wo = { id: `${id}:warned`, label: `ITAC.opt.${id}${I.data.warned[t].guide ? "Guided" : "Warned"}`,      /* PWB: given by Guidance [B1709], no dice */ cost: "none", ...(spare.length ? { data: { tokens: spare } } : {}) };
       if (!w.ok) wo.disabled = w.reason;
       options.push(wo);
       continue;
@@ -288,10 +358,10 @@ function defencePrompt(v, I, t) {
       options.push(fo);
     }
   }
-  if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget" && e.reaction.effect !== "warn" && K.reactionFit(v, I, t, e).ok)) options.push(...K.reactionOptions(v, t, e, I).filter((o) => o.disabled !== "reactionUsed"));      // [B2707]: out of action, no power answers; D113: a reaction once per attack
+  if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => !["swapTarget", "warn", "guide"].includes(e.reaction.effect) && K.reactionFit(v, I, t, e).ok)) options.push(...K.reactionOptions(v, t, e, I).filter((o) => o.disabled !== "reactionUsed"));      // [B2707]: out of action, no power answers; D113: a reaction once per attack
   const live = options.filter((o) => !o.disabled);
   const ways = [...new Set(live.map((o) => String(o.id).split(":")[0]).filter((id) => id === "block" || id === "dodge"))];
-  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, action: I.action, targets: I.decl.targets.slice(0, 12), ...(warned ? { warned: I.data.warned[t].by } : {}) } };
+  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, action: I.action, targets: I.decl.targets.slice(0, 12), ...(warned ? { warned: I.data.warned[t].by, ...(I.data.warned[t].guide ? { guided: 1 } : {}) } : {}) } };
   p.data.gm = oddsFacts(v, I, t, ways);
   const bands = oddsBands(p.data.gm);
   if (bands) p.data.odds = bands;
@@ -337,7 +407,7 @@ function applyReaction(v, I, R, cid, key, value, when) {
   if (e.stress?.fixed) R.effects.push({ t: "stress", who: cid, n: e.stress.fixed });
   R.events.push({ type: "reaction", who: cid, kind: e.id, cost: e.cost, stress: e.stress?.fixed ?? 0, for: I.decl.targets[0] });
   const fx = e.reaction.effect, name = String(e.name || "").slice(0, 80) || null;
-  if (["allySwap", "warn", "note"].includes(fx)) {
+  if (["allySwap", "warn", "note", "guide"].includes(fx)) {
     /* D113: the reactions that used to be a note nobody was shown. Each now does what the book says, or (an entry the engine has no rule for)
        puts a card on the GM's desk; what it came to is told to the table with the result of the attack (news, journal) */
     const about = aboutOf(v, I, cid, e, rid.about, staff);
@@ -362,12 +432,27 @@ function applyReaction(v, I, R, cid, key, value, when) {
       } else { rec.result = "card"; reopenDefence(v, I, R, about); }      // its card is made again with the free answers (or for the first time after a pass)
       return false;
     }
+    if (fx === "guide") {                          // PWB Guidance [B1709]: a PRESENCE roll; on a success the one guided blocks or dodges without an action
+      if (!about || !I.decl.targets.includes(about)) { rec.result = "noTarget"; return false; }
+      const rk = `gd:${cid}`, attr = e.roll?.attr ?? "presence";
+      const bp = K.buildPool(v, I, rk, cid, attr, [], { rollKind: "other" });
+      for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
+      R.effects.push(K.rollEffect(rk, cid, attr, bp.pool, { label: e.label, noPush: !K.mayPush(v, cid) }));
+      (I.data.guides ??= []).push({ key: rk, by: cid, to: about, entry: e.id });
+      return false;
+    }
     rec.result = "byHand";                         // an entry the engine has no rule for: the GM settles it, the attack waits for that
     (I.data.byHand ??= []).push({ key: `rh:${(I.data.byHand ?? []).length}`, who: cid, entry: e.id, when, ...(name ? { name } : {}), ...(e.label ? { label: e.label } : {}) });
     return false;
   }
   if (e.reaction.effect === "action") {            // an interrupt that is itself an action: pushed on top, runs to its end, then this one is revalidated (spec 5.1)
-    R.push = { action: e.id, actor: cid, decl: { action: e.id, targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "interrupt", prepaid: 1 };
+    /* PWB: an answering attack is made with what the entry names (Quick Blast: the Blast [B1585]; Sudden Strike: the bare, Strike-boosted
+       blow [B1619]) at the one who attacks; Redirecting Blast deals the damage the Armor absorbed [B1889] */
+    const absorbed = e.reaction.vs === "absorbed" ? Math.max(0, Math.trunc(Number(I.data.dmg?.[cid]?.absorbed) || 0)) : null;
+    R.push = { action: e.id, actor: cid, decl: { action: e.id, targets: [I.actor], helpers: [], exploits: [], stressTotal: 0, ...(e.reaction.weapon ? { weapon: e.reaction.weapon } : {}) }, cause: "interrupt", prepaid: 1, ...(absorbed != null ? { data: { fixedDamage: absorbed } } : {}) };
+    /* PWB: the answer does not stand in for a defence (each is a quick action of its own [B2292]): once it is through, the attacked one is
+       asked again, with block or dodge if an action is left for it, and without this answer (taken once per attack) */
+    if (e.kit) { (I.data.reacted ??= []).push({ who: cid, entry: e.id, effect: "action" }); if (when === "beforeRoll" && I.decl.targets.includes(cid)) reopenDefence(v, I, R, cid); }
     return true;
   }
   if (e.reaction.effect === "swapTarget") {        // retargeting (spec 9.1 step 4 "target swap"): the reactor becomes the target; its own window opens next
@@ -386,7 +471,13 @@ function applyReaction(v, I, R, cid, key, value, when) {
       return false;
     }
     rec.result = "took";
-    swapTarget(I, from, cid, e.id);
+    swapTarget(I, from, cid, e.id, R);
+    return false;
+  }
+  if (e.reaction.effect === "moveAway") {          // PWB Untouchable Speed [B2018], Quick Teleport [B2039]: paid now; where to is asked before the dice (awayMoves)
+    const rec = { who: cid, entry: e.id, effect: "moveAway", ...(name ? { name } : {}), ...(e.label ? { label: e.label } : {}) };
+    (I.data.reacted ??= []).push(rec);
+    (I.data.away ??= []).push({ who: cid, entry: e.id, mode: e.reaction.mode ?? null });
     return false;
   }
   if (e.reaction.effect === "autoMiss") { ((I.data.forced ??= {}).autoMiss ??= {})[cid] = e.id; return false; }
@@ -410,15 +501,72 @@ function reopenDefence(v, I, R, t) {
   if (I.data.done) delete I.data.done[k];
   K.setFlag(I, "reopen");
 }
-const swapTarget = (I, from, to, by) => {
+/** PWB Guidance [B1709]: the guide's PRESENCE rolls. With a six the one guided blocks or dodges without an action of its own (its card is
+    made again with those answers, as after a warning, but without the two dice of Warning Call); without one the quick action is spent
+    all the same. -> true while a roll is still out */
+function settleGuides(v, I, R) {
+  let waiting = false;
+  for (const g of I.data.guides ?? []) {
+    if (g.done) continue;
+    if (!K.rollFinal(I, g.key)) { waiting = true; continue; }
+    g.done = 1;
+    const won = K.sixesOf(I, g.key) >= 1 && I.decl.targets.includes(g.to);
+    const rec = (I.data.reacted ?? []).find((x) => x.who === g.by && x.entry === g.entry && !x.result);
+    if (rec) rec.result = won ? "guided" : "failed";
+    if (!won) continue;
+    (I.data.warned ??= {})[g.to] = { by: g.by, entry: g.entry, dice: 0, guide: 1 };
+    if (!I.data.def?.[g.to]?.defence) reopenDefence(v, I, R, g.to);      // a defence already paid for stays as it was
+  }
+  return waiting;
+}
+/** PWB Untouchable Speed [B2018], Quick Teleport [B2039]: the target that answered with a move is asked where to (the zones its way of
+    moving reaches with one move, already paid with the answer: the card of a dodge move), moves at once in the attack's transaction, and
+    the attack misses it when it no longer reaches ("out of range ... misses automatically"). "By hand" leaves the place and the miss to
+    the GM (setOutcome). -> true while it waits */
+function awayMoves(v, I, R) {
+  let waiting = false;
+  for (const a of I.data.away ?? []) {
+    if (a.done) continue;
+    const key = `away:${a.who}`;
+    if (!I.data.pk?.[key]) {
+      if (!R.prompts.some((p) => p.key === key)) {
+        const Z = v.facts.zones, c = v.facts.c(a.who);
+        const zs = Z && c ? MP.moveOptions(Z, v.state, a.who, c, () => ({ ok: true }), { prepaid: true, ...(a.mode ? { mode: a.mode } : {}) }).filter((x) => !x.disabled && !x.area && !x.here).slice(0, 50) : [];
+        R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, a.who), about: a.who, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated, ...(x.stress ? { stress: x.stress } : {}) } })),
+          { id: "move", label: "ITAC.opt.dodgeMove", data: {} }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { away: 1, ...(a.mode ? { mode: a.mode } : {}) } });
+      }
+      waiting = true; continue;
+    }
+    if (!K.isAnswered(v, I, key)) { waiting = true; continue; }
+    if (!a.moved) {
+      a.moved = 1;
+      const id = K.answerId(v, I, key), pick = K.promptOf(v, I, key)?.options?.find((x) => x.id === id)?.data;
+      if (pick?.to) { R.push = { action: "move", actor: a.who, decl: { ...blank, action: "move", targets: [], to: pick.to, ...(pick.mode ? { mode: pick.mode } : {}), ...(pick.stress ? { stress: 1 } : {}) }, data: { prepaid: true }, cause: "interrupt", part: 1 }; return true; }
+      if (id === "move") (I.data.notes ??= []).push({ note: "awayByHand", who: a.who });
+    }
+    a.done = 1;
+    const rec = (I.data.reacted ?? []).find((x) => x.who === a.who && x.entry === a.entry && !x.result);
+    const r = v.facts.range(I.actor, a.who), gone = r === null || (r !== undefined && !!reachFault(v, I, a.who, r));
+    if (rec) rec.result = gone ? "away" : "inReach";
+    if (gone && I.decl.targets.includes(a.who)) ((I.data.forced ??= {}).autoMiss ??= {})[a.who] = a.entry;
+    else if (I.decl.targets.includes(a.who)) reopenDefence(v, I, R, a.who);          // still in reach: it may still block or dodge with an action it has left
+  }
+  return waiting;
+}
+/* A20 (the user, 2026-11-12: «Płatność i stres jak dziś, obrona wraca»): a block or a dodge the old target paid for never reaches its roll:
+   its unit goes back to its owner (the engine's "unpay" voids the entry; a pay still queued in this step is applied first, then voided).
+   The 1 stress of a Defensive answer stays (stress paid stays, A20); a warned answer cost nothing. */
+const swapTarget = (I, from, to, by, R = null) => {
   I.decl.targets = I.decl.targets.map((t) => (t === from ? to : t));
   (I.data.retargets ??= []).push({ from, to, by });
+  const df = I.data.def?.[from];
+  if (df?.defence && !df.free && R) { R.effects.push({ t: "unpay", who: from, key: `def:${from}` }); (I.data.notes ??= []).push({ note: "defenceBack", who: from, defence: df.defence }); }
   if (I.data.def) delete I.data.def[from];
 };
 /** U91: the rolls of those who dive in [B2115]. Each waits for its dice (the roller may push, as on any roll of its own); with a six the
     reactor is the target now, without one the attack goes on against the intended target and the quick action is spent all the same.
     Somebody who is no target any more (another guardian was faster) is not replaced. -> true while a roll is still out */
-function settleSwaps(v, I) {
+function settleSwaps(v, I, R) {
   let waiting = false;
   for (const s of I.data.swaps ?? []) {
     if (s.done) continue;
@@ -428,7 +576,7 @@ function settleSwaps(v, I) {
     const won = sixes >= 1 && I.decl.targets.includes(s.from) && !I.decl.targets.includes(to) && (!s.ally || K.alliesNear(v, I, s.by).includes(to));      // D113: Discretion's ally must still stand beside
     const rec = (I.data.reacted ?? []).find((x) => x.who === s.by && x.entry === s.entry && !x.result);
     if (rec) rec.result = won ? (s.ally ? "moved" : "took") : "failed";
-    if (won) swapTarget(I, s.from, to, s.entry);
+    if (won) swapTarget(I, s.from, to, s.entry, R);
     else {
       (I.data.notes ??= []).push({ note: "swapFailed", who: s.by, entry: s.entry, for: s.from, sixes });
       if (s.ally && I.decl.targets.includes(s.by)) (I.data.redefend ??= []).push(s.by);      // D113: Discretion took no action: the target still may defend
@@ -487,7 +635,7 @@ const blank = { helpers: [], exploits: [], stressTotal: 0 };
 /* Knockback straight up or down (a vertical zone is a zone [B2258]): up unless the target is already as high as the map goes, down only for a
    target off the ground (reading, combat-rulings INT-R3). Asked only where the map says on which level the target is. */
 const vertOf = (v, t) => { const z = v.facts.zone(t); return !z || z.area || z.level == null ? [] : [...(z.level === "elevated" ? [] : ["up"]), ...(z.level !== "ground" && z.level !== "underground" ? ["down"] : [])]; };
-const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); return Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : slugBase(v, I, a)); };
+const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); if (kindOf(I) === "counterattack" && I.data?.counterDamage > 0) return Math.trunc(I.data.counterDamage); return Number.isFinite(I.data?.fixedDamage) ? I.data.fixedDamage : Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : slugBase(v, I, a)); };      // PWB: Redirecting Blast deals what was absorbed [B1889]; PWD (PW045) [B1737]: a metal counter
 /* Z14 [B1622], [B1614-1617]: the slugfest damage of the sheet without STRIKE's bonus when the wind-up is missing (never under half the STRENGTH, the base the system starts from) */
 const slugBase = (v, I, a) => { const d = a?.slugfest?.damage ?? 0, s = Number(a?.pass?.strike) || 0; return s > 0 && unwound(v, I) ? Math.max(Math.ceil((Number(a?.attrs?.strength) || 0) / 2), d - s) : d; };   // [B2426], [B2428], [B2512]; P7 [B3148]: a ram deals the vehicle's damage
 export const steps = {
@@ -496,11 +644,15 @@ export const steps = {
   check(v, inst) {
     const I = K.draft(inst), R = K.result(I), kind = kindOf(I);
     if (weaponOf(v, I)?.always?.includes("area")) I.decl.area = 1;                              // P6: a power that always takes the whole zone [B1671]
-    I.data.multi = multiOf(I.decl);
+    I.data.multi = multiFor(v, I);
     if (I.decl.area && !K.flag(I, "area")) {                                                    // [A40]: the attacker's own area attack does not include the attacker
       K.setFlag(I, "area");
-      const t0 = I.decl.targets[0], all = [t0, ...(v.facts.inZone(t0) ?? [])].filter((c, i, l) => c !== I.actor && l.indexOf(c) === i && v.facts.c(c) && v.facts.c(c).present !== false);
-      I.decl.targets = all.slice(0, 24);
+      /* PWC (PW018): a quake from Major on takes everybody in each zone it covers (one target named per zone); PWC (PW028) [B1723], [B1800]:
+         a power that does not work on huge creatures passes them by (the others in the zone are still hit) */
+      const w = weaponOf(v, I), named = I.decl.targets.slice(0, w?.quake > 1 ? w.quake : 1);
+      const all = named.flatMap((t0) => [t0, ...(v.facts.inZone(t0) ?? [])]).filter((c, i, l) => c !== I.actor && l.indexOf(c) === i && v.facts.c(c) && v.facts.c(c).present !== false);
+      const fit = w?.immuneHuge ? all.filter((c) => !v.facts.c(c)?.huge) : all;
+      I.decl.targets = (fit.length ? fit : all).slice(0, 24);
     }
     const l = legality(v, I);
     if (!l.ok && !I.data.exception) { R.goto = "close"; I.data.result = "illegal"; I.data.reason = l.reason; return R; }
@@ -580,11 +732,14 @@ export const steps = {
     const before = I.decl.targets.join();
     const st = runWindow(v, I, R, keys, "beforeRoll");
     if (R.push) return R;
-    const rolling = settleSwaps(v, I);                                                // U91: a guardian's roll decides whether the target changes [B2115]
+    const rolling = settleSwaps(v, I, R);                                                // U91: a guardian's roll decides whether the target changes [B2115]
+    const guiding = settleGuides(v, I, R);                                            // PWB: a guide's PRESENCE roll [B1709]
+    const moving = awayMoves(v, I, R);                                                // PWB: the target moves away at once [B2018], [B2039]
+    if (R.push) return R;
     for (const t of (I.data.redefend ?? []).splice(0)) reopenDefence(v, I, R, t);     // D113: Discretion failed: the target answers the attack again
     if (I.decl.targets.join() !== before) { staleCards(v, I, R); R.goto = "reactBefore"; return R; }      // retargeted: the new target's own window opens
     if (K.flag(I, "reopen")) { delete I.data.ph.reopen; R.goto = "reactBefore"; return R; }              // D113: a defence card is asked again
-    if (st === "wait" || rolling) { R.wait = true; return R; }
+    if (st === "wait" || rolling || guiding || moving) { R.wait = true; return R; }
     I.data.window = null;
     R.goto = "roll";
     return R;
@@ -597,15 +752,29 @@ export const steps = {
     if (!K.flag(I, "lock")) {
       K.setFlag(I, "lock");
       if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }             // spec 5.5
-      const st = (d.stressTotal ?? 0) + (kind === "counterattack" ? 0 : weaponOf(v, I)?.stress ?? 0);
+      const ws = kind === "counterattack" ? null : weaponOf(v, I), st = (d.stressTotal ?? 0) + (ws?.stressOn === "hit" ? 0 : ws?.stress ?? 0);      // PWC (PW009) [B1618]: a price "when you hit" waits for the hit (damage step)
       if (st > 0) R.effects.push({ t: "stress", who: I.actor, n: st, cost: 1 });                 // spec 4.3: charged when the declaration locks; P6: with the stress of the power used
       if (kind !== "counterattack" && M.hasStatus(v.state, I.actor, "invisible")) R.effects.push({ t: "status-", who: I.actor, id: "invisible" });      // P6 [B2075]: attacking ends it
       if (kind !== "counterattack" && K.phased(v.state, I.actor) && !K.mentalAttack(weaponOf(v, I), v.entry(I)) && K.marked(v.state, I.actor, "solid")) R.effects.push(K.solidSpent(I.actor));      // PWA (PW109) [B1942]: solid for this one action
       const w0 = kind === "counterattack" ? null : weaponOf(v, I);
       if (w0?.singleUse) R.effects.push({ t: "state", ...M.counterBump(v.state, usedKey(I.actor, w0)) });      // [B2541]: gone, hit or miss
       if (w0?.noMove) R.effects.push({ t: "state", ...M.counterBump(v.state, FIRED_NO_MOVE(I.actor)) });       // [B2545]: no moving for the rest of the round
+      if (w0?.quake) {                                                                          // PWC (PW017) [B1671]: the quake wrecks the zones it covers, hit or miss
+        const q = quakeOf(v, I, w0);
+        for (const key of q.ok ? q.zones : []) {
+          const op = ZP.zoneOp(key, { wrecked: true }), cw = M.counterBump(v.state, M.counterKey.zone(key, "wrecked"));
+          if (op) { R.effects.push({ t: "zones", op }); R.events.push({ type: "zoneChange", ...ZP.changeOf(op), cause: "quake", by: I.actor }); }
+          R.effects.push({ t: "state", path: cw.path, to: cw.to });
+          if (!v.facts.c(I.actor)?.npc) R.effects.push({ t: "karma", note: { who: I.actor, kind: "wreckedZone", zone: key } });     // spec 9.11, as a wrecking blow
+        }
+      }
+      if (w0?.zoneFire && d.targets[0]) {                                                       // PWC (PW024) [B1692]: for its stress the target's zone is set ablaze at Intensity 6 (a fire already hotter stays)
+        const z = v.facts.zone(d.targets[0]), key = z ? String(z.key ?? z.spot ?? "").split(":")[0] : "", now = Number(z?.states?.fire) || 0;
+        const op = key && now < w0.zoneFire ? ZP.zoneOp(key, { fire: w0.zoneFire }) : null;
+        if (op) { R.effects.push({ t: "zones", op }); R.events.push({ type: "zoneChange", ...ZP.changeOf(op), cause: "blaze", by: I.actor }); }
+      }
       if (d.wreck) {                                                                            // [B2451-2457]: the zone is wrecked whether or not the blow lands
-        const wz = wreckOf(v, I.actor), key = wz.zone ?? null;
+        const wz = wreckFor(v, I), key = wz.zone ?? null;
         I.data.wreck = { zone: key, bonus: wz.ok ? wz.bonus : 0, roof: wz.ok && wz.levelsRooftop ? 1 : 0 };
         if (key) {
           const op = ZP.zoneOp(key, { wrecked: true }), cw = M.counterBump(v.state, M.counterKey.zone(key, "wrecked"));
@@ -698,7 +867,7 @@ export const steps = {
   stunts(v, inst) {
     const I = withOut(inst), R = K.result(I), kind = kindOf(I);
     const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = budgetOf(I, hit);
-    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => capped(II, ws === "none" ? [] : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
+    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => capped(II, ws === "none" ? [] : ws === "noDamage" ? optionsAll(vv, II, hh).filter((o) => EFFECT_ONLY.includes(o.data?.stunt)) : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
     const most = Math.min(budget, roomOf(I, hit));                                              // D119: an area shot pays each target's stunts from its own sixes
     if (!hit.length || most < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
     const stuntCard = () => ({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: most, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } });
@@ -753,6 +922,18 @@ export const steps = {
     const I = withOut(inst), R = K.result(I), kind = kindOf(I), entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor);
     I.data.dmg = I.data.dmg ?? {};
     let waiting = false;
+    const landed = I.decl.targets.some((t) => I.data.out[t]?.hit && !I.data.out[t].extra);
+    if (landed && kind !== "counterattack" && w?.stressOn === "hit" && w.stress > 0 && !K.flag(I, "hitStress")) { K.setFlag(I, "hitStress"); R.effects.push({ t: "stress", who: I.actor, n: w.stress, cost: 1 }); }      // PWC (PW009) [B1618]: taken when the blow hits
+    /* PWC (PW021) [B1685] Discharge: after an electric hit that does damage the attacker may take up to 10 stress (no more than its Resolve)
+       for as much more damage, added after Double Damage; asked once per attack, for every target it hit */
+    const dmax = Math.min(Math.trunc(Number(a?.pass?.discharge) || 0), Math.max(0, Math.trunc(Number(a?.resolve) || 0)));
+    if (landed && kind !== "counterattack" && dmax > 0 && w?.source === "electricity" && !w.noDamage && !entry?.damage?.none && I.data.discharge == null) {
+      if (!I.data.pk?.discharge) { R.prompts.push({ key: "discharge", kind: "discharge", to: K.addressee(v, I.actor), about: I.actor, options: Array.from({ length: dmax + 1 }, (_, n) => ({ id: `n:${n}`, label: n ? "ITAC.opt.discharge" : "ITAC.opt.dischargeNone", data: { n } })), data: { max: dmax } }); R.wait = true; return R; }
+      if (!K.isAnswered(v, I, "discharge")) { R.wait = true; return R; }
+      const n = Math.max(0, Math.min(dmax, Math.trunc(Number(String(K.answerId(v, I, "discharge") ?? "").replace(/^n:/, "")) || 0)));
+      I.data.discharge = n;
+      if (n > 0) { R.effects.push({ t: "stress", who: I.actor, n, cost: 1 }); R.events.push({ type: "stress", target: I.actor, n, source: "power" }); }
+    }
     for (const t of allTargets(I)) {
       const o = I.data.out[t];
       if (!o?.hit || I.data.dmg[t] || kind === "grapple" || entry?.damage?.none || (w?.noDamage && !w.pierce && !o.extra)) continue;      // [R5]: the grapple that takes hold does no damage; P6: nor does a Snare
@@ -765,12 +946,13 @@ export const steps = {
       const pierce = w?.noDamage && w.pierce && !o.extra ? { pierced: taken > 0 } : null;                       // P6 [B1574], [B1625]: no damage, but it has to get through the Armor
       if (pierce) taken = 0;
       if (!tags.toStress && M.hasStatus(v.state, t, "intangible") && !Number.isFinite(forced?.amount)) taken = 0;   // P6 [B1941]
-      if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && (I.data.multi || o.extra || K.quickCard(v, t)) && taken > 0) {     // [OQ-1]; U61: a quickly settled group is always asked on its one card
+      if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && (I.data.multi || o.extra || K.quickCard(v, t)) && taken > 0) {     // [OQ-1], decided A1 (2026-11-12): the group counted once, the damage after Armor on the GM's card; U61: a quickly settled group is always asked on its one card
         const ml = K.minionLoss(v, I, R, t, taken, { by: I.actor });
         if (ml.wait) { waiting = true; continue; }
         taken = ml.taken;
       }
       const rec = { base, raw: hd.raw, doubled, armor: hd.armor, armorSource: ar.source?.id ?? null, taken, tags, forced: forced ? 1 : undefined, ...(o.extra ? { extra: o.extra } : {}), ...(pierce ?? {}) };
+      if (!tags.toStress && !pierce && ar.source && !ar.source.barrier && !ar.source.stress && Math.min(hd.raw, hd.armor) > 0) rec.absorbed = Math.min(hd.raw, hd.armor);      // PWB: what the character's own Armor stopped (Redirecting Blast [B1889]; question PWB-4)
       const through = taken;                                                                                    // what got past the Armor (a Barrier is breached by this, whoever takes it then)
       if (!tags.toStress && !pierce) { const ab = K.copiesAbsorb(v, R, t, taken); if (ab.copies) { taken = rec.taken = ab.taken; rec.copies = ab.copies; } }      // P6 [B1910], [B1916]: the copies take it first
       if (tf.pass?.absorb && !tags.toStress && !ar.source?.barrier && Math.min(hd.raw, hd.armor) > 0) {         // P6 [B1887]: a die per point the Protection stopped, for the next turn
@@ -862,8 +1044,9 @@ export const steps = {
             if (!Z) (I.data.notes ??= []).push({ note: "pullByHand", target: t });
             else if (r?.total > 0 && !M.outOfAction(v.state, t, tf)) { R.push = forcedChild(t, { toward: I.actor, distance: r.total, damage: 0, decay: 0, armor: false, by: I.actor, kind: "pull", ...(v.facts.c(I.actor)?.npc ? { gmDir: 1 } : {}) }); return R; }
           }
-          if (oh.throw && !Z && once(`oht:${t}`)) (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: oh.throw });      // [B1826]: without a map the GM moves the one thrown
-          if (oh.throw && Z && !K.flag(I, `tk:${t}`) && !M.outOfAction(v.state, t, tf)) {       // Z11 [B1823], [B1826-1828]: thrown like Knockback [B2435], the thrower names the way, the damage of the level at EVERY impact minus Armor
+          const thrown = !!oh.throw || !!oh.sweep;                                               // PWD (PW056) [B1832]: the sweep moves the target one zone, no damage
+          if (thrown && !Z && once(`oht:${t}`)) (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: Math.max(0, Math.trunc(Number(oh.throw) || 0)) });      // [B1826]: without a map the GM moves the one thrown
+          if (thrown && Z && !K.flag(I, `tk:${t}`) && !M.outOfAction(v.state, t, tf)) {       // Z11 [B1823], [B1826-1828]: thrown like Knockback [B2435], the thrower names the way, the damage of the level at EVERY impact minus Armor
             const key = `tkdir:${t}`, zk = v.facts.zone(t)?.key, near = zk ? (Z.borders(zk) ?? []).map((b) => String(b?.key ?? "").split("|").find((z) => z && z !== zk)).filter(Boolean).slice(0, 12) : [], n = Math.max(1, Math.trunc(Number(oh.zones) || 2));
             if (!I.data.pk?.[key]) {
               const pr = { key, kind: "knockDir", to: K.addressee(v, I.actor), about: I.actor, options: [{ id: "away", label: "ITAC.opt.kbAway" }, ...near.map((z) => ({ id: `to:${z}`, label: "ITAC.opt.kbToward", data: { zone: z } })), ...vertOf(v, t).map((w) => ({ id: w, label: w === "up" ? "ITAC.opt.kbUp" : "ITAC.opt.kbDown" }))], data: { target: t, distance: n } };
@@ -876,6 +1059,12 @@ export const steps = {
             R.push = forcedChild(t, { ...(dir === "up" || dir === "down" ? { direction: dir } : dir.startsWith("to:") ? { toward: dir.slice(3) } : { awayFrom: I.actor }), distance: n, damage: Math.max(0, Math.trunc(Number(oh.throw) || 0)), decay: 0, armor: true, by: I.actor, kind: "throw", ...(v.facts.c(I.actor)?.npc ? { gmDir: 1 } : {}) });
             return R;
           }
+        }
+        /* PWC (PW004) [B1602]: a blow that lands on the holder of a Potent Emanation that is on hurts the one who struck: 4 damage, the
+           striker's Armor counts (provisional, PWC-1) */
+        const harm = Math.trunc(Number(tf.pass?.touchHarm) || 0), striker = v.facts.c(I.actor);
+        if (harm > 0 && TOUCH.includes(kind) && !o.extra && striker && striker.present !== false && !M.outOfAction(v.state, I.actor, striker) && once(`touch:${t}`)) {
+          R.push = hazardChild([I.actor], { kind: "fixed", amount: harm, armor: true, cause: "hazard", id: "emanation" }); return R;
         }
         const stun = picked(t, "stun") ? "stun" : picked(t, "suppressed") ? "suppressed" : null;
         if (stun && dm && stunts.stunOutcome({ taken: dm.taken }).rollNeeded && !M.outOfAction(v.state, t, tf)) {      // [B2707]: a target the blow broke rolls for nothing; it is out of action anyway                 // [B2436], [B2517]
@@ -891,19 +1080,23 @@ export const steps = {
         if (dm && Veh.afterHit(v, I, R, t, dm)) return R;                                                  // P7 [B3221-3248]: component damage, the wreck, the people aboard
         if (dm && K.minionsFate(v, I, R, t, dm, { by: I.actor })) return R;                     // [B2828]: knocked out or killed, the GM's word
         if (dm && !Veh.isMachine(v, t) && K.brokenAndCrit(v, I, R, t, dm, { deadlyHit: picked(t, "deadlyHit"), by: I.actor })) return R;       // spec 9.5 steps 7-9
-      } else if (o.counterattack && I.data.def?.[t]?.defence === "block" && !M.outOfAction(v.state, t, tf)) {      // [B2448], [R4]; [B2707]
+      } else if (o.counterattack && I.data.def?.[t]?.defence === "block" && !M.outOfAction(v.state, t, tf) && !(kind !== "counterattack" && weaponOf(v, I)?.noCounter)) {      // [B2448], [R4]; [B2707]; PWD (PW047) [B1779]: Plant Control's attack never brings a counterattack
         const key = `counter:${t}`;
         if (!I.data.pk?.[key]) {
           const r = v.facts.range(t, I.actor), opt = { id: "counter", label: "ITAC.opt.counter", data: { sixes: o.counterattack.sixes } };
           if (r && r.total !== 0) opt.disabled = "outOfReach";                                  // [OQ-10] provisional: only within the blocker's slugfest reach unless the GM allows
-          const p = { key, kind: "counter", to: K.addressee(v, t), about: t, options: [opt, { id: K.PASS, label: "ITAC.opt.pass" }] };
+          const metal = Number(tf?.pass?.metalBlock) || 0, mo = metal > 0 ? { id: "counter:metal", label: "ITAC.opt.counterMetal", data: { sixes: o.counterattack.sixes, damage: metal, n: metal } } : null;      // PWD (PW045) [B1737]: blocked with Magnetism Control, the counter has Damage 3 (4-6 by level)
+          if (mo && opt.disabled) mo.disabled = opt.disabled;
+          const p = { key, kind: "counter", to: K.addressee(v, t), about: t, options: [opt, ...(mo ? [mo] : []), { id: K.PASS, label: "ITAC.opt.pass" }] };
           if (opt.disabled) p.auto = { option: K.PASS, reason: "noOption" };
           R.prompts.push(p); R.wait = true; return R;
         }
         if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
-        if (once(key) && K.answerId(v, I, key) === "counter") {
+        const ans = K.answerId(v, I, key);
+        if (once(key) && (ans === "counter" || ans === "counter:metal")) {
           R.events.push({ type: "counter", by: t, against: I.actor, sixes: o.counterattack.sixes });
-          R.push = { action: "slugfest", actor: t, decl: { action: "slugfest", weapon: "unarmed", targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "counter", data: { kind: "counterattack", counterSixes: o.counterattack.sixes }, prepaid: 1 };
+          const metal = ans === "counter:metal" ? Number(tf?.pass?.metalBlock) || 0 : 0;
+          R.push = { action: "slugfest", actor: t, decl: { action: "slugfest", weapon: "unarmed", targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "counter", data: { kind: "counterattack", counterSixes: o.counterattack.sixes, ...(metal > 0 ? { counterDamage: metal } : {}) }, prepaid: 1 };
           return R;
         }
       } else if (o.dodgeMove > 0 && I.data.def?.[t]?.defence === "dodge" && !M.outOfAction(v.state, t, tf)) {      // [B2526]; [B2707]
@@ -981,6 +1174,13 @@ function othersNear(v, I, t) {
     return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !wiped(f) && !!f.npc === !!tf.npc && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
   });
 }
+/** U17-2 (the user, 2026-11-12, K6: «MG może wskazać każdego»): whom the GM may name as the extra opponent beyond the list above: any
+    character of the fight who is there, on either side, seen or not; never a challenge or a vehicle (things, ruling U17-R4), an emptied
+    minion group, the attacker, or one who is a target of this attack already. A player's card stays held to `othersNear`. */
+export function gmExtraOk(v, I, t, x) {
+  const f = v.facts.c(x);
+  return !!f && x !== I.actor && x !== t && !I.decl.targets.includes(x) && f.present !== false && !NO_OPPONENT.includes(f.kind) && !wiped(f);
+}
 function ctxFor(v, I, t) {
   const tf = v.facts.c(t), w = weaponOf(v, I);
   return { attack: stuntKind(I), target: K.immunityFlags(tf), sharp: !!(v.entry(I)?.damage?.sharp ?? w?.sharp), zoneEmpty: !!v.facts.zone(t)?.empty, movementLeft: I.data.charge?.left ?? 0, otherOpponents: othersNear(v, I, t).length };   // [G-L7]: `huge` only for real huge creatures
@@ -1029,9 +1229,12 @@ export function validate(v, inst, prompt, value, staff = false) {
   const prim = picks.filter((p) => hit.includes(p.target)), sec = picks.filter((p) => !hit.includes(p.target));
   const extras = prim.filter((p) => p.extra).map((p) => p.extra);
   if (new Set(extras).size !== extras.length) return { ok: false, reason: "chosen" };
-  for (const p of prim) if (EXTRA_STUNTS.includes(p.stunt) && !(p.extra && othersNear(v, inst, p.target).includes(p.extra))) return { ok: false, reason: "noOtherTarget" };
+  const listed = (p) => othersNear(v, inst, p.target).includes(p.extra);
+  for (const p of prim) if (EXTRA_STUNTS.includes(p.stunt) && !(p.extra && (listed(p) || (staff && gmExtraOk(v, inst, p.target, p.extra))))) return { ok: false, reason: "noOtherTarget" };
+  const named = staff ? prim.filter((p) => EXTRA_STUNTS.includes(p.stunt) && p.extra && !listed(p)) : [];      // U17-2: the GM's own extra opponents count as opponents there
+  const ctxOf = (t) => { const c = ctxFor(v, inst, t), k = named.filter((p) => p.target === t).length; return k ? { ...c, otherOpponents: c.otherOpponents + k } : c; };
   const sixes = multi ? K.sixesOf(inst, "attack") : Math.max(0, ...hit.map((t) => out[t].net));
-  const r = stunts.validateStunts({ picks: prim.map((p) => ({ stunt: p.stunt, target: p.target })), sixes, ctxFor: (t) => ctxFor(v, inst, t), targets: multi ? inst.decl.targets.map((t) => ({ id: t, hit: !!out[t]?.hit, stuntsMax: out[t]?.stunts ?? 0 })) : null });
+  const r = stunts.validateStunts({ picks: prim.map((p) => ({ stunt: p.stunt, target: p.target })), sixes, ctxFor: ctxOf, targets: multi ? inst.decl.targets.map((t) => ({ id: t, hit: !!out[t]?.hit, stuntsMax: out[t]?.stunts ?? 0 })) : null });
   if (!r.ok) return { ok: false, reason: r.errors[0].reason };
   if (picks.length > budgetOf(inst, hit)) return { ok: false, reason: "budget" };
   if (!multi) for (const t of new Set(prim.map((p) => p.target))) if (prim.filter((p) => p.target === t).length > (out[t]?.stunts ?? 0)) return { ok: false, reason: "budget" };

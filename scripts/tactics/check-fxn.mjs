@@ -29,7 +29,7 @@ const meta = (T) => ({ hidden: Object.keys(T.c).filter((id) => T.c[id].hidden), 
 const pv = (T, u, owns) => V.viewFor(T.state, { id: u, staff: false, owns }, meta(T));
 const facts = (T, view, me, staff = false) => ({ view, me, staff, c: (id) => (T.c[id] ? { name: T.c[id].name ?? id, npc: T.c[id].npc, img: null } : null), attrs: (id) => T.c[id]?.attrs ?? null, userName: (u) => `user-${u}`, preview: () => null });
 const ctx = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
-const dock = (T, u, owns, own = {}) => { const v = pv(T, u, owns); return M.dockData(D.playerModel(v, { id: u, owns }, ctx(T)), own, facts(T, v, u), t); };
+const dock = (T, u, owns, own = {}, more = {}) => { const v = pv(T, u, owns); return M.dockData(D.playerModel(v, { id: u, owns }, ctx(T)), own, { ...facts(T, v, u), ...more }, t); };      // more: ANSA (FXN-1) { autoSkip }
 const desk = (T, own = {}) => M.deskData(D.deskModel(T.state, T.log, ctx(T)), own, facts(T, T.state, "gm", true), t);
 /* (the helpers the fix added, looked up softly so that the unfixed tree FAILS these checks instead of stopping at a missing name) */
 const F = (n, ...a) => (typeof N[n] === "function" ? N[n](...a) : undefined);
@@ -97,9 +97,12 @@ const F = (n, ...a) => (typeof N[n] === "function" ? N[n](...a) : undefined);
   T.turn("H1");
   const b = P1.budget(T.state, "H1");
   eq([b.full, b.quick], ["lost", ["used", "used"]], "D133: two blocks took the round's actions before Kid's turn");
-  const d = dock(T, "p1", ["H1"]);
-  eq([d.onTurn, d.end.auto, d.end.spent], [true, true, true], "D133: the turn has nothing left from its start: it passes by itself, marked as started empty");
+  /* ANSA (FXN-1 «Tick działa też u MG, 3,5 s zostaje»): with the auto-skip tick on it passes by itself after 3.5 s with the hourglass line;
+     without it, it waits for End turn and its question, and the line does not promise that it passes */
+  const d = dock(T, "p1", ["H1"], {}, { autoSkip: true }), d0 = dock(T, "p1", ["H1"]);
+  eq([d.onTurn, d.end.auto, d.end.spent], [true, true, true], "D133 + ANSA (FXN-1): tick on: the turn has nothing left from its start: it passes by itself, marked as started empty");
   eq([d.out?.reason, d.out?.text], ["spent", PL["ITAC.ui.out.spent"]], "D133: the bar says why, where the actions stand (the U9 line)");
+  eq([d0.end.auto, d0.end.ready, d0.end.confirm, !!d0.end.spent, d0.out?.reason, d0.out?.text], [false, true, true, true, "spent", PL["ITAC.ui.out.spentAsk"]], "ANSA (FXN-1): tick off: it waits for End turn and its question; the line says why without 'passes by itself'");
   eq(FP.hintOf(d, [], t), null, "D133: no first-turn hint promising a full and a quick action");
   eq(F("autoDelay", d.end, 1500), N.AUTO_SPENT_MS, "D133: it stands long enough to read before it goes");
   ok(N.AUTO_SPENT_MS >= 3000, "D133: (at least 3 s)");
@@ -109,11 +112,11 @@ const F = (n, ...a) => (typeof N[n] === "function" ? N[n](...a) : undefined);
   /* a turn spent IN the turn passes as before (U144) */
   const U = new Table(); U.hero("H1", "p1").npc("N1", { health: 9 }); U.order(["H1", "N1"]);
   await U.req("p1", { op: "mark", actor: "H1", unit: "full", on: true }); await U.req("p1", { op: "mark", actor: "H1", unit: "quick", on: true });
-  const e = dock(U, "p1", ["H1"]);
-  eq([e.end.auto, !!e.end.spent, e.out, F("autoDelay", e.end, 1500)], [true, false, null, 1500], "D133: a turn used up in itself: 1.5 s, no 'spent' line (U144 unchanged)");
+  const e = dock(U, "p1", ["H1"], {}, { autoSkip: true });
+  eq([e.end.auto, !!e.end.spent, e.out, F("autoDelay", e.end, 1500)], [true, false, null, 1500], "D133: a turn used up in itself: 1.5 s with the tick, no 'spent' line (U144 + ANSA)");
   ok(/NewsP\.autoDelay\(e, AUTO_END_MS\)/.test(src("./ui/main.mjs")), "D133: main.mjs times the pass by it");
   ok(/d\.out\.reason === "spent"/.test(src("./ui/dock.mjs")) && /fk: `more:\$\{m\}`[^\n]*disabled: !!a\.disabled/.test(src("./ui/dock.mjs")), "D133: dock.mjs draws the line and greys a list button");
-  for (const k of ["ITAC.ui.out.spent", "ITAC.reason.spent"]) ok(k in EN && k in PL, `D133: the key ${k} is in English and Polish`);
+  for (const k of ["ITAC.ui.out.spent", "ITAC.ui.out.spentAsk", "ITAC.reason.spent"]) ok(k in EN && k in PL, `D133: the key ${k} is in English and Polish`);
 }
 
 /* ---- bug hunt 4, suspicion 1: the second seat's auto press */

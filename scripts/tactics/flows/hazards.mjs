@@ -101,7 +101,7 @@ export const blast = {
         const tf = v.facts.c(o.id), forced = I.data.forced?.damage?.[o.id], row = rows.find((r) => r.id === o.id);
         let taken = Number.isFinite(forced?.amount) ? forced.amount : o.taken;
         if (damage.barrierBreached(row.barrier, taken) && !row.vulnerable && !K.flag(I, `breach:${o.id}`)) { K.setFlag(I, `breach:${o.id}`); for (const x of M.effectEndWrites(v.state, row.barrier.id)) R.effects.push({ t: "state", path: x.path, to: x.to }); }      // S067 [B1859], [R13]: a breached Barrier is gone
-        if (tf.kind === "minions" && !Number.isFinite(forced?.amount) && taken > 0) {             // [OQ-1]: a blast takes several at once, as an area attack does: the GM's number
+        if (tf.kind === "minions" && !Number.isFinite(forced?.amount) && taken > 0) {             // [OQ-1], decided A1 / INT-4 (2026-11-12): a blast counts the group once, as an area attack does: the GM's number
           const ml = K.minionLoss(v, I, R, o.id, taken);
           if (ml.wait) { waiting = true; continue; }
           taken = ml.taken;

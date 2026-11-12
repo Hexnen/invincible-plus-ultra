@@ -255,14 +255,14 @@ const NO_ALLY = ["challenge", "vehicle"];
 /** The attacked characters a reaction of somebody else may be about: other than the reactor, known to it, and in its zone where the entry asks for that. */
 export function reactionFor(v, inst, cid, e) {
   const moved = e?.reaction?.effect === "swapTarget" ? coveredBy(inst) : [];
-  const side = e?.reaction?.effect === "warn" || e?.reaction?.effect === "swapTarget", me = side ? !!v.facts.c(cid)?.npc : null;
+  const side = e?.reaction?.effect === "warn" || e?.reaction?.effect === "guide" || e?.reaction?.effect === "swapTarget", me = side ? !!v.facts.c(cid)?.npc : null;      // PWB: Guidance helps "another hero" [B1709], read as Warning Call
   /* U131: Warning Call [B2170] says "another character"; read as one of the warner's own side (provisional, question FXI-1): nobody shouts
      a warning to the opponent an ally of theirs is shooting at. U149: Guardian [B2115] ("another character in your zone is attacked") is read
      the same way (provisional, question UXC-3): nobody dives in to take an ally's blow for the enemy. The GM's own answer may still name anybody. */
   const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t) && (!side || !!v.facts.c(t)?.npc === me));
   /* FXP (U182, ruling FXP-R2): a warning is shouted about an attack the warner sees coming [B2170]: an attacker it does not know of (one
      the GM hides from the heroes, one it has as unseen) gives it nothing to warn about, as no card is made about somebody unknown (U19-R4) */
-  if (e?.reaction?.effect === "warn" && inst.actor && !knownTo(v, cid, inst.actor)) return [];
+  if ((e?.reaction?.effect === "warn" || e?.reaction?.effect === "guide") && inst.actor && !knownTo(v, cid, inst.actor)) return [];
   return e?.reaction?.place === "targetZone" ? list.filter((t) => sameSpot(v, cid, t) !== false) : list;
 }
 /* D104 (ruling A8-R1): who took the hit for somebody by a reaction (Guardian [B2115]: "you take the hit instead of the INTENDED target").
@@ -283,6 +283,10 @@ export function alliesNear(v, inst, cid) {
 export function reactionFit(v, inst, cid, e) {
   const r = e?.reaction;
   if (!r || !inst) return { ok: true, reason: null };
+  /* PWB: what an answer to an attack is about. Quick Blast answers a shooting attack [B1585], Sudden Strike one in slugfest [B1619]
+     (of the attack family of the rules library); Redirecting Blast answers damage the character's Armor stopped [B1889] */
+  if (r.vs === "absorbed" && !(Number(inst.data?.dmg?.[cid]?.absorbed) > 0)) return { ok: false, reason: "nothingAbsorbed" };
+  if ((r.vs === "shooting" || r.vs === "slugfest") && attack.ATTACKS[inst.data?.kind ?? "slugfest"]?.family !== r.vs) return { ok: false, reason: r.vs === "shooting" ? "notShot" : "notSlugfest" };
   if (r.place === "allyZone") return alliesNear(v, inst, cid).length ? { ok: true, reason: null } : { ok: false, reason: "noAllyNear" };
   if (r.who !== "any") return { ok: true, reason: null };
   if (reactionFor(v, inst, cid, e).length) return { ok: true, reason: null };
@@ -303,7 +307,7 @@ export function reactionOption(v, cid, e, inst = null) {
 /* D113: the answers of one reaction entry. Discretion [B2108] names the ally who is put in the way and Warning Call [B2170] the one who is
    warned: with one such character the entry is one answer (that one is meant), with several there is one answer per character, its id
    `r:<entry>@<cid>` and `data.about` the character (the surfaces name it beside the entry's name). A reaction is taken once per attack. */
-export const REACT_ABOUT = Object.freeze(["allySwap", "warn"]);
+export const REACT_ABOUT = Object.freeze(["allySwap", "warn", "guide"]);
 export function aboutOf(v, inst, cid, e) {
   if (!inst || !REACT_ABOUT.includes(e?.reaction?.effect)) return [];
   return e.reaction.effect === "allySwap" ? alliesNear(v, inst, cid) : reactionFor(v, inst, cid, e).filter((t) => !inst.data?.warned?.[t]);
@@ -311,7 +315,7 @@ export function aboutOf(v, inst, cid, e) {
 export function reactionOptions(v, cid, e, inst = null) {
   const o = reactionOption(v, cid, e, inst), who = aboutOf(v, inst, cid, e);
   if (inst && inst.data?.reacted?.some((x) => x.who === cid && x.entry === e.id)) o.disabled = "reactionUsed";
-  else if (inst && !o.disabled && e.reaction.effect === "warn" && !who.length && reactionFor(v, inst, cid, e).length) o.disabled = "alreadyWarned";
+  else if (inst && !o.disabled && (e.reaction.effect === "warn" || e.reaction.effect === "guide") && !who.length && reactionFor(v, inst, cid, e).length) o.disabled = "alreadyWarned";
   if (who.length < 2) return [who.length ? { ...o, data: { ...o.data, about: who[0] } } : o];
   return who.slice(0, 8).map((x) => ({ ...o, id: `${o.id}@${x}`, data: { ...o.data, about: x } }));
 }
@@ -379,6 +383,14 @@ export function separated(v, ids) {
     out.push({ t: "state", path: ["vehicles", vid], to: { ...r, driver: r.driver === cid ? null : r.driver ?? null, crew: (Array.isArray(r.crew) ? r.crew : []).filter((x) => x !== cid) } });
     drop(cid, "inVehicle");
   }
+  /* PWC (PW013) [B1646]: an ice barrier of Cold Control lasts until its maker or the one it stands on moves out of the zone it was made in */
+  const zoneOf = (id) => { const p = Z ? Z.place?.(id) : null; const k = p ? p.zone ?? String(p.spot ?? "").split(":")[0] : String(v.facts.zone?.(id)?.key ?? v.facts.zone?.(id)?.spot ?? "").split(":")[0]; return k || null; };
+  for (const e of v.state.effects ?? []) {
+    if (e?.kind !== "barrier" || typeof e.data?.zone !== "string") continue;
+    const pair = [e.holder, e.data.by].filter((x) => typeof x === "string");
+    if (!pair.some((x) => ids.includes(x)) || !pair.some((x) => { const z = zoneOf(x); return !!z && z !== e.data.zone; })) continue;
+    for (const w of M.effectEndWrites(v.state, e.id)) out.push({ t: "state", path: w.path, to: w.to });
+  }
   return out;
 }
 /** The carry marks of a character that is broken: nobody broken carries anybody [B2707]. -> effects */
@@ -391,7 +403,8 @@ export function carryRelease(state, cid) {
   if (typeof o === "string") for (const id of ["carried", "airborne"]) if (M.hasStatus(state, o, id)) out.push({ t: "status-", who: o, id });
   return out;
 }
-/** How many of a minion group fall to a hit that takes several at once (an area attack, full auto, a blast, a stunt that hits more than one) [OQ-1]:
+/** How many of a minion group fall to a hit that takes several at once (an area attack, full auto, a blast, a hazard, a stunt that hits more than one) [OQ-1];
+    decided by the user 2026-11-12 (A1 + P4-4 + INT-4 + INT-R4, «Grupa jako jedna postać»): the group is counted once, the number starts at the damage after Armor:
     the GM's number, the damage taken is the suggestion. One card for the attack flow and for the hazards. -> { wait: true } | { taken } */
 export const MINION_LOSS_MAX = 12;
 /** U61 QUICK RESOLUTION, the GM's switch for one minion group (NpcPolicy.quick, set by the op npcPolicy; never by itself). Such a group
@@ -450,6 +463,8 @@ function fateOf(v, R, t, dm, id, by) {
     ({ taken, healthBefore, tags }). Returns true when the step has to wait (an injury die, or the GM's word on an NPC).
     NPCs [B2771]: an ordinary NPC that is broken needs no injury, the GM states knocked out or killed, or has it rolled like a hero's; a major NPC
     always rolls. Minions never do [B2828]. Whoever is broken lets go of a grapple and is let go of. */
+/** the lang key of an injury entry id ("crushed-arm" -> "crushedArm"), as the heroDead card names it */
+const critKey = (id) => String(id ?? "").replace(/-(\w)/g, (m, c) => c.toUpperCase());
 export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } = {}) {
   if (!dm || dm.tags?.toStress || !(dm.taken > 0)) return false;
   const tf = v.facts.c(t);
@@ -489,9 +504,28 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
   if (cf.crit) {
     const key = `crit:${t}`, killer = !!(by && v.facts.c(by)?.pass?.killer), lucky = tf.pass?.luckyBreak === true, two = killer !== lucky;      // P6 [B2121], [B2149]: two dice, one kept
     if (I.data.res?.[key] == null) { if (once(`${key}:asked`)) R.effects.push({ t: "dice", key, n: two ? 2 : 1 }); R.wait = true; return true; }
-    if (once(`${key}:kept`)) {
-      const faces = I.data.res[key], kept = two && faces.length > 1 ? (killer ? Math.max(faces[0], faces[1]) : Math.min(faces[0], faces[1])) : faces[0];
-      I.data.res[key] = [kept, ...faces.filter((_, i) => i !== faces.indexOf(kept))];
+    /* P6b-6 (the user, 2026-11-12, K8: «Gracz wybiera kość, MG zatwierdza»): of the two dice of Killer [B2121] or Lucky Break [B2149] the one
+       who holds the talent picks on a card (the attacker for Killer, the injured for Lucky Break; each option names the injury it gives),
+       and the GM confirms the pick of a player or takes the other die. A pick made by the GM (an NPC's, or for a player) needs no second
+       card. Two equal dice ask nothing; Killer against Lucky Break still cancel out to one die (unchanged: the book does not say). */
+    if (!flag(I, `${key}:kept`)) {
+      const faces = I.data.res[key];
+      let pick = 0;
+      if (two && faces.length > 1 && faces[0] !== faces[1]) {
+        const chooser = killer ? by : t, pk = `critPick:${t}`, cap = v.state.opts?.critCap9 ? crits.FAMILY_CAP : crits.MAX_CRIT;
+        const opt = (i) => { const rc = crits.resolveCrit({ d6: faces[i], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap }); return { id: `d:${i}`, label: "ITAC.opt.critDie", data: { d6: faces[i], n: rc.n, id: critKey(rc.entry?.id) } }; };
+        if (!I.data.pk?.[pk]) { R.prompts.push({ key: pk, kind: "critPick", to: addressee(v, chooser), about: chooser, options: [opt(0), opt(1)], data: { talent: killer ? "killer" : "luckyBreak", target: t, bonus: cf.crit.bonus } }); R.wait = true; return true; }
+        if (!isAnswered(v, I, pk)) { R.wait = true; return true; }
+        pick = answerId(v, I, pk) === "d:1" ? 1 : 0;
+        if (!answeredByStaff(v, I, pk)) {
+          const ok = `critOk:${t}`;
+          if (!I.data.pk?.[ok]) { const o = opt(pick), x = opt(1 - pick); R.prompts.push({ key: ok, kind: "critConfirm", to: "gm", about: chooser, options: [{ id: "approve", label: "ITAC.opt.approve", data: o.data }, { id: "other", label: "ITAC.opt.critOther", data: x.data }], data: { talent: killer ? "killer" : "luckyBreak", target: t, pick: o.data, other: x.data } }); R.wait = true; return true; }
+          if (!isAnswered(v, I, ok)) { R.wait = true; return true; }
+          if (answerId(v, I, ok) === "other") pick = 1 - pick;
+        }
+      }
+      setFlag(I, `${key}:kept`);
+      I.data.res[key] = [faces[pick], ...faces.filter((_, i) => i !== pick)];
     }
     /* FXP (D163): a HERO's injury that kills (12 and worse, [B2761], [B2765]) is the biggest moment of a fight [B2787]: the GM gets a card
        before it is written. "Dies" writes it as the table rolled it; "Injury 9" takes the book's own softer table for this one injury
@@ -533,4 +567,20 @@ export function tokenGate(v, I, R, cid, roll, ids, tag) {
   }
   if (!isAnswered(v, I, key)) return { wait: true, tokens: ids };
   return { wait: false, tokens: answerId(v, I, key) === "approve" ? ids : ids.filter((id) => !need.some((t) => t.id === id)) };
+}
+/* PWD (PW037) [B1703]: in a zone of low gravity every further action needs an AGILITY roll first (no action), or it is forfeit. The attack and the move
+   flows have their own; this one is for the other flows (the act and roll rows). -> "wait" | "failed" | null */
+export function lowGravityGate(v, I, R) {
+  const e = v.entry(I);
+  if (!["full", "quick"].includes(e?.cost) || e?.reactionOnly || I.cause === "counter" || !v.facts.zone?.(I.actor)?.states?.lowgrav) return null;
+  const key = "gate:lowGravity";
+  if (!rollOf(I, key)) {
+    const { pool } = buildPool(v, I, key, I.actor, "agility", []);
+    if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }
+    R.effects.push(rollEffect(key, I.actor, "agility", pool, { passive: true, label: "ITAC.gate.lowGravity" }));
+    return "wait";
+  }
+  if (!rollFinal(I, key)) return "wait";
+  if (!flag(I, key)) { setFlag(I, key); R.events.push({ type: "gate", gate: "lowGravity", roll: key, passed: sixesOf(I, key) > 0 }); }
+  return sixesOf(I, key) > 0 ? null : "failed";
 }

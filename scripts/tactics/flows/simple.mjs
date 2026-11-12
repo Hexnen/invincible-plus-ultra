@@ -42,7 +42,12 @@ export const roll = {
   },
   revalidate(v, inst) { const b = K.actorBlocked(v, inst); return { ok: !b, reasons: b ? [b] : [] }; },
   steps: {
-    check(v, inst) { const I = K.draft(inst), R = K.result(I); R.goto = "roll"; return R; },
+    check(v, inst) {
+      const I = K.draft(inst), R = K.result(I), g = K.lowGravityGate(v, I, R);                  // PWD (PW037) [B1703]: AGILITY first in low gravity, or the action is forfeit
+      if (g === "wait") { R.wait = true; return R; }
+      if (g === "failed") { I.data.result = "gateFailed"; R.goto = "close"; return R; }
+      R.goto = "roll"; return R;
+    },
     roll(v, inst) {
       const I = K.draft(inst), R = K.result(I), d = I.decl, e = v.entry(I), attr = attrOf(v, I);
       if (!K.rollOf(I, "roll")) {
@@ -115,6 +120,7 @@ export const hazard = {
     damage(v, inst) {
       const I = K.draft(inst), R = K.result(I), h = I.data.hazard;
       I.data.dmg = I.data.dmg ?? {};
+      let waiting = false;
       for (const t of I.decl.targets) {
         if (I.data.dmg[t]) continue;
         const tf = v.facts.c(t), forced = I.data.forced?.damage?.[t];
@@ -132,6 +138,14 @@ export const hazard = {
           const hd = damage.hitDamage({ base: h.amount ?? 0, armor, source: tags.source, immunities: immune ? [tags.source] : [], vulnerabilities: vulnerable ? [tags.source] : [] });
           rec = { base: h.amount ?? 0, raw: hd.raw, armor: hd.armor, taken: Number.isFinite(forced?.amount) ? forced.amount : hd.taken, tags };
         }
+        /* A1 + INT-4 (the user, 2026-11-12: «Grupa jako jedna postać»): a hazard (fire, a fixed damage of a hazard) counts a minion group once,
+           as an area attack does: as many fall as the damage after Armor, the number stands on the GM's card and the GM corrects it. A fall,
+           a barrier, a crash or a slam is no hazard of the book [B2895-2931]: one member per point stays automatic there [B2828]. */
+        if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && rec.taken > 0 && (h.kind === "fire" || (h.cause ?? "hazard") === "hazard")) {
+          const ml = K.minionLoss(v, I, R, t, rec.taken);
+          if (ml.wait) { waiting = true; continue; }
+          rec.taken = ml.taken;
+        }
         const ab = K.copiesAbsorb(v, R, t, rec.taken);                                                                                               // [B1910]: fire, a fall, a barrier, a slam, a wreck: any damage goes to the copy bonus first
         if (ab.copies) { rec.taken = ab.taken; rec.copies = ab.copies; }
         const ad = damage.applyDamage({ health: tf.health, taken: rec.taken });                                                                     // [B2707]
@@ -141,6 +155,7 @@ export const hazard = {
         I.data.dmg[t] = rec;
         R.events.push({ type: "damage", target: t, base: rec.base, armor: rec.armor, taken: rec.taken, dtype: tags.source, source: tags.cause });
       }
+      if (waiting) { R.wait = true; return R; }
       R.goto = "effects"; return R;
     },
     effects(v, inst) {
