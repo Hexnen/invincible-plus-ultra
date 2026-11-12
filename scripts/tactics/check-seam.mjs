@@ -124,7 +124,7 @@ const settle = async (T) => { if (T.prompt("stunts")) await T.answer("p1", "stun
   const iWait = main.indexOf("NewsP.endWhileDice(data.end"), iAuto = main.indexOf("autoEnd(combat, data)"), iHold = main.indexOf("if (hold.held)");
   ok(iHold > 0 && iWait > iHold && iAuto > iWait, "D: main.mjs: the dice hold, then the auto end's wait, then the timer is armed from what is shown");
   ok(/if \(data\.end\.dice\) diceThen\(\)/.test(main), "D: main.mjs: when the dice land the dock is drawn again (the 1.5 s start then)");
-  ok(/autoTimer = setTimeout\(\(\) => \{ try \{ if \(diceBusy\(\) && Date\.now\(\) - \(diceWas\?\.since \?\? Date\.now\(\)\) <= NewsP\.HOLD_MS\) \{ autoKey = null; diceThen\(\); return; \}/.test(main), "D: main.mjs: dice thrown within the 1.5 s stop the press; it is armed again after them (bounded by HOLD_MS)");
+  ok(/autoTimer = setTimeout\(\(\) => \{ try \{ if \(diceBusy\(\) && Date\.now\(\) - \(diceSince\(\) \?\? Date\.now\(\)\) <= NewsP\.HOLD_MS\) \{ autoKey = null; diceThen\(\); return; \}/.test(main), "D: main.mjs: dice thrown within the 1.5 s stop the press; it is armed again after them (bounded by HOLD_MS)");
 }
 
 /* ---- E: U144 x U148 */

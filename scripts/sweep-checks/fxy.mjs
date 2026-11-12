@@ -29,7 +29,7 @@ const NewsP = await import("../tactics/ui/news-pure.mjs");
   const main = rd("../tactics/ui/main.mjs"), dock = rd("../tactics/ui/dock.mjs");
   ck("U178: send() times the End press with diceSince(), not the last draw's diceWas.since", /if \(NewsP\.endAfterDice\(req, \{ busy: diceBusy\(\), since: diceSince\(\), at: Date\.now\(\) \}\)\) await diceLanded\(\);/.test(main) && !/endAfterDice\(req, \{[^}]*diceWas/.test(main));
   ck("U178: diceSince follows the messages whose dice are in the air (news-pure diceRun)", /const diceSince = \(\) => \{[^\n]*NewsP\.diceRun\(diceRunWas, \(game\.messages\?\.contents \?\? \[\]\)\.slice\(-12\)\.filter\(\(m\) => m\?\._dice3danimating\)\.map\(\(m\) => m\.id\)/.test(main));
-  ck("U178: each draw notes the run (the clock starts at the first sight)", /diceWas = \{ prompts: hold\.prompts[^\n]*\n\s*diceSince\(\);/.test(main));
+  ck("U178: each draw notes the run (the clock starts at the first sight; FXB2: the draw reads it, diceClock)", /const diceNow = Wait\.diceHolds\(diceBusy\(\), diceSince\(\), Date\.now\(\)\)\.on;/.test(main) && /NewsP\.diceHold\(NewsP\.diceClock\(diceWas, diceSince\(\)\), /.test(main));
   ck("U178: a press while the last End press is out is the same press (not sent again)", /function endPress\(req\) \{\s*if \(endOut\) return endOut;/.test(dock) && /endOut = Promise\.resolve\(send\(req, \{ endArmed: false \}\)\)\.finally\(\(\) => \{ endOut = null;/.test(dock));
 }
 

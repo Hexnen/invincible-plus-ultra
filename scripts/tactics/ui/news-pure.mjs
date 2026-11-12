@@ -171,6 +171,13 @@ export function diceRun(prev, ids, at) {
   const same = Array.isArray(prev?.ids) && Number.isFinite(prev?.since) && now.some((id) => prev.ids.includes(id));
   return { ids: now, since: same ? prev.since : Number(at) || 0 };
 }
+/* FXB2 (U178, the rest of FXY's finding): the draw's diceHold, the turn that passes by itself and ANSC's gate read the same run clock as
+   the End press. `prev` = what was shown last ({ prompts, cards, news, since }) with its `since` replaced by the run's (diceRun; null:
+   nothing in the air), so a roll after a run that left no clean draw starts its own HOLD_MS. prev null stays null (nothing shown yet). */
+export function diceClock(prev, since) {
+  if (!prev) return prev ?? null;
+  return { ...prev, since: Number.isFinite(since) ? since : null };
+}
 /* FXN (U162): THE OWN ROLL'S RESULT WAITS FOR ITS DICE. The line, the cards and the auto end already wait while 3D dice roll (D128,
    SEAM); the roll rows of this user (the dock's chips and the armed panel of the own action) did not: the attacker read the sixes and
    got Push / Accept while the dice were in the air. While `on` (dice roll on this client, within HOLD_MS), a row that turned into a
