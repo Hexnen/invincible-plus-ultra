@@ -93,7 +93,13 @@ async function cards(box, events, host, sweep = true) {
   }
   const state = box.state;
   if (state.stack.length || state.phase !== "turns") return;
-  if (state.kind === "chase") { if (state.init.slots.length) box.state = { ...state, init: { ...S.newInit(), deck: state.init.deck } }; return; }
+  if (state.kind === "chase") {
+    if (!state.init.slots.length) return;
+    const r = await round(state, box.log, { type: "undeal" }, { id: "engine", staff: true }, host);      // D106: the turn the dealt cards opened goes with them
+    if (r.ok && !r.same && r.state) { events.push(...r.events); box.state = r.state; box.log = r.log; }
+    else box.state = { ...state, init: { ...S.newInit(), deck: state.init.deck } };
+    return;
+  }
   if (state.init.slots.length || !(state.round >= 1)) return;
   const r = await round(state, box.log, { type: "roster", deal: true }, { id: "engine", staff: true }, host);      // D43 [B3436]: the fight after a chase draws initiative
   if (!r.ok || r.same) return;

@@ -51,4 +51,27 @@ const car = (o = {}) => ({ kind: "vehicle", npc: true, health: 8, vehicle: { typ
   eq([T.c.CI.health, T.c.CI.resolve, T.c.CI.maxResolve], [4, 1, 1], "D102: a limit counted in days does not become a clock of rounds (rating only)");
 }
 
+/* ================================================================== D106: undoing the end of a chase takes back the turn it opened */
+{
+  const T = new Table();
+  T.hero("H1", "p1").hero("H2", "p2").npc("N1").npc("N2");
+  T.add("V1", car({ name: "Van" })).add("V2", car({ name: "Bike" }));
+  T.order(["H1", "N1", "H2", "N2"]).turn("H1");
+  for (const id of ["H1", "H2", "N1", "N2"]) await T.gm({ op: "triggerAdd", trigger: { at: "turnStart", subject: { combatant: id }, run: { type: "hazard", hazard: { kind: "fixed", amount: 1 } }, source: { kind: "gm", name: `poison ${id}` } } });
+  await T.gm({ op: "vehicleSet", vehicle: "V1", seat: { who: "H1", role: "driver" }, started: true });
+  await T.gm({ op: "vehicleSet", vehicle: "V2", seat: { who: "N1", role: "driver" }, started: true });
+  for (const p of T.prompts("triggerQueue")) await T.gm({ op: "answerFor", prompt: p.id, value: [] });
+  eq(code(await T.gm({ op: "chaseStart", prey: ["V2"], pursuer: ["V1"], distance: 2 })), "ok", "D106: the chase starts");
+  const q0 = T.prompts("triggerQueue").length, trig0 = T.state.triggers.map((t) => t.id).sort();
+  eq(code(await T.gm({ op: "chaseEnd", outcome: "combat" })), "ok", "D106: the GM ends the chase");
+  const first = T.state.init.curMember;
+  eq([T.state.kind, typeof first, T.prompts("triggerQueue").filter((p) => p.about === first).length], ["combat", "string", 1], "D106: the fight's first turn opens with its turn-start card");
+  eq(code(await T.gm({ op: "undo", tx: T.log.list[T.log.list.length - 1].id })), "ok", "D106: the end of the chase is undone");
+  eq([T.state.kind, T.state.init.slots.length, T.prompts("triggerQueue").length], ["chase", 0, q0], "D106: the chase is back and the turn-start card that step opened is gone");
+  eq(T.state.triggers.map((t) => t.id).sort(), trig0, "D106: the triggers are as they were");
+  eq(code(await T.gm({ op: "chaseEnd", outcome: "combat" })), "ok", "D106: the chase is ended again");
+  const second = T.state.init.curMember;
+  eq(T.prompts("triggerQueue").map((p) => p.about), [second], "D106: one turn-start card, of the one whose turn it is now");
+}
+
 done("check-defects8");
