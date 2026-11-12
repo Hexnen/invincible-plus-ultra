@@ -118,4 +118,12 @@ const team = (extra = () => {}, order = ["N1", "H1", "H2", "H3", "N2"]) => { con
   ok(/new Dlg\(cardTitle\(/.test(src("system-adapter.mjs")), "U125c: the roll dialog (whose title is the card's) is titled through cardTitle");
 }
 
+/* ---- U128: "Token HUD" from the GM's map menu: Foundry's HUD toggles act on canvas.tokens.controlled (placeable-hud #onToggleVisibility),
+   so the token the menu was opened for is taken in hand (alone) before the HUD is bound to it */
+{
+  const line = src("ui/board.mjs").split("\n").find((l) => l.includes('id: "@hud"')) ?? "";
+  const c = line.indexOf(".control({ releaseOthers: true })"), b = line.indexOf(".bind(tok)");
+  ok(c > 0 && b > c, "U128: the menu's HUD entry controls its token (releasing the others) before it binds the HUD");
+}
+
 done("check-fxi");
