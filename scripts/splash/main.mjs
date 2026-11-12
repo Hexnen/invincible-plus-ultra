@@ -9,6 +9,7 @@ import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
 import { EN, PL } from './lang.mjs';
 import { registerMigrationSettings, migrateSettings } from './migrate.mjs';
+import * as Moment from '../moment.mjs';
 
 const MOD = 'invincible-plus-ultra';
 const FLAG = 'invincible-splash';
@@ -228,6 +229,15 @@ function resolveToken(message) {
   } catch (e) { return null; }
 }
 
+/* U125 (e): tokeny mówiącego (bez względu na miejsce splasha): po nich kamera akcji i splash poznają ten sam cios */
+function speakerTokens(message) {
+  try {
+    const sp = message.speaker ?? {};
+    const ids = [sp.token, ...(message.speakerActor?.getActiveTokens?.() ?? []).map(t => t.id)];
+    return [...new Set(ids.filter(Boolean))];
+  } catch (e) { return []; }
+}
+
 function resolveReader(message, ev) {
   const actor = message.speakerActor;
   if (!actor || actor.type !== 'superhero') return null;   // pojemność Resolve przeciwników nie jest ujawniana
@@ -311,6 +321,11 @@ hook('createChatMessage', async (message, options, userId) => {
 
     const ev = eventFor(message, readRoll(message) ?? rd);
     await sleep(ev.stress && !ev.pushed ? 350 : 0);   // dajmy systemowi odjąć Resolve przed odczytem
+    /* U125 (e): jedna chwila z kamerą akcji. Gdy ujęcie wyniku (trafienie, pudło, nokaut) dla tokenów tego rzutu jest w drodze,
+       splash wyskakuje, gdy cios ląduje na ekranie (błysk i wstrząs), nie wcześniej; najwyżej 1,6 s czekania. Poza walką taktyczną: od razu. */
+    const waited = await Moment.landing(speakerTokens(message), { wait: Moment.isActive() ? 250 : 0, cap: 1600 });
+    if (waited) dbg('czekał na ujęcie kamery:', waited + ' ms');
+    if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
     const token = resolveToken(message);
     dbg('odtwarzam:', ev.word, 'P=' + (ev.power ?? 'fail'), 'miejsce:', token ? 'token ' + token.name : 'ekran');
     const resolve = ev.stress ? resolveReader(message, ev) : null;
