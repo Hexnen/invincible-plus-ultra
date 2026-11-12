@@ -256,9 +256,12 @@ function publishBottom(px) {
    navigation's right edge, the sidebar, the dock's resting edge) and a FIXED band height, never the bar's own height; BACK_GAP adds hysteresis
    (an island that has dropped returns only with 50 px to spare), so a pure turn change can never flip the row. */
 const MIN_GAP = 430, BACK_GAP = 480;
-/* FXR (U185, live at 1366): a chat popped out in the middle leaves ~190 px on either side; the strip takes the wider side down to its own
-   floor (160 px, then it scrolls) rather than staying under the window */
-const BESIDE_MIN = 160;
+/* FXR (U185, live at 1366): a chat popped out in the middle leaves ~190 px on either side; the strip took the wider side down to 160 px.
+   FXX: a 160-190 px strip showed one squashed tile and did not read as an initiative bar. In a fight the popped-out chat now parks in the
+   right column (combat/chat-park.mjs), so the bar has its room; a chat the user drags back over the middle is kept clear of only where a
+   side leaves a readable bar (the round chip, both buttons and one full tile: 280 px, the dock's own floor); else the bar keeps its whole
+   room and the window, which the user placed there, stands over it */
+const BESIDE_MIN = 280;
 function place() {
   if (!root || !shell) return;
   const h = shell.offsetHeight;
@@ -394,9 +397,11 @@ function say(text) {
 }
 
 /* ---------- root ---------- */
+/* FXX (U185): the bar came up: a popped-out chat standing where Foundry opened it parks in the right column (combat/chat-park.mjs) */
+const fightUi = () => { try { setTimeout(() => window.dispatchEvent(new Event("ipu:fight-ui")), 0); } catch { /* nobody listens */ } };
 function ensureRoot() {
   if (root?.isConnected) {
-    if (root.classList.contains("icbar-bye")) { clearTimeout(byeTimer); root.classList.remove("icbar-bye"); mounted = true; }
+    if (root.classList.contains("icbar-bye")) { clearTimeout(byeTimer); root.classList.remove("icbar-bye"); mounted = true; fightUi(); }
     return false;
   }
   root = mk("div");
@@ -458,6 +463,7 @@ function ensureRoot() {
   }
   lastDensity = -1; fitKey = ""; wheelOn = false; mounted = true; mode = -1; backSince = 0; lowRow = false;
   watchHud();
+  fightUi();
   if (window.MutationObserver) {   // the Challenges HUD is created / removed by another script: look at the body's children (not its subtree)
     bodyMo ??= new MutationObserver(() => { if (document.getElementById("invincible-challenges") !== hudEl) { watchHud(); hudChanged(); } });
     bodyMo.observe(document.body, { childList: true });

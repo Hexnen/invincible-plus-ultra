@@ -162,7 +162,7 @@ const answerAll = async (T) => { for (const p of T.prompts()) await T.gm({ op: "
   eq(sq(12, 1858, 310, 340), false, "U194: 1920 px: it stays open");
   eq(sq(328, 668, 0, 340), false, "U194: no column, nothing to fold");
   const dk = src("./ui/dock.mjs"), mn = src("./ui/main.mjs"), hud = src("../challenges/hud.mjs"), chm = src("../challenges/main.mjs");
-  ok(/Lay\.hudSqueezed\(topL, side - 12, hudOpenW, SP\.SIZE\.card \* k\)/.test(dk) && /handlers\.ichSqueeze\?\.\(squeeze\)/.test(dk), "U194: the dock decides it from the band's stretch and tells the challenges");
+  ok(/Lay\.hudSqueezed\(topL, (?:side|hudSide) - 12, hudOpenW, SP\.SIZE\.card \* k\)/.test(dk) && /handlers\.ichSqueeze\?\.\(squeeze\)/.test(dk), "U194: the dock decides it from the band's stretch and tells the challenges (FXX: the stretch beside the challenges' own height, check-fxx.mjs)");
   const he = soft(Lay, "hudEdge");
   eq([he(true, false, 700), he(false, false, 700), he(false, true, 425), he(false, false, null)], [null, 700, null, null], "U194: a folded column keeps nothing of the band; an open one keeps its edge");
   ok(/x0: Lay\.hudEdge\(hudFolded, squeezed, hudR\?\.left \?\? null\)/.test(dk), "U194: the dock takes the column's edge from hudEdge");

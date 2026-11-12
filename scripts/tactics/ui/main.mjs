@@ -39,6 +39,7 @@ import * as Aim from "./aim.mjs";          // perf4 (U140's cost): the aim mark 
 import * as Slots from "./slots.mjs";        // U132: the fixed places (the frame the dock works out)
 import * as ChaseP from "./chase-pure.mjs";   // CHASE: the chase panel in the middle (its data)
 import * as ChaseUI from "./chase.mjs";       // CHASE: the chase panel (the face-off)
+import { parkedLeft, MOVED as CHAT_MOVED } from "../../combat/chat-park.mjs";   // FXX (U185): the popped-out chat parked in the right column
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
@@ -134,7 +135,8 @@ let zonePick = null, shownDock = "", shownDesk = "";      // what this client ha
 let nudgeSaid = null;                     // U59: the nudge this client already said aloud
 let cardsWere = null;                     // the ids of the desk's waiting cards at the last draw: a new one brings the Now tab forward (U12)
 /* the room the map has: the window less an open sidebar (U6: with the sidebar open at 1366 px the desk, the dock and the map's own panels do not fit side by side) */
-const mapWidth = () => { try { const sb = document.getElementById("sidebar"), r = sb?.getBoundingClientRect(); return r && r.width > 120 && r.left > window.innerWidth * 0.5 ? r.left : window.innerWidth; } catch { return window.innerWidth; } };
+/* FXX (U185): less a popped-out chat parked in the right column too (combat/chat-park.mjs) */
+const mapWidth = () => { try { const sb = document.getElementById("sidebar"), r = sb?.getBoundingClientRect(); return Math.min(r && r.width > 120 && r.left > window.innerWidth * 0.5 ? r.left : window.innerWidth, parkedLeft()); } catch { return window.innerWidth; } };
 
 const combatNow = () => { try { const c = Store.currentCombat(); return c && Api.active(c) && Api.mode(c) !== "off" && (!c.scene || c.scene.id === globalThis.canvas?.scene?.id) ? c : null; } catch { return null; } };
 const isVideo = (s) => /\.(webm|mp4|m4v|ogv)(\?|$)/i.test(String(s ?? ""));
@@ -446,7 +448,7 @@ function showToken(cid) {
     const c = canvas.clientCoordinatesFromCanvas(tok.center), half = Math.min(90, ((tok.h ?? 100) * s) / 2) + 16;
     const dk = Dock.el()?.querySelector(".itd-stack")?.getBoundingClientRect(), sb = document.getElementById("sidebar")?.getBoundingClientRect();
     const top = (Number(document.documentElement.dataset.icbarBottom) || 96) + half, bottom = (dk && dk.height ? dk.top : H - 150) - half;
-    const left = Math.min(W * 0.22, 300) + half, right = Math.min(W * 0.72, (sb && sb.width > 120 ? sb.left : W) - 60) - half;
+    const left = Math.min(W * 0.22, 300) + half, right = Math.min(W * 0.72, Math.min(sb && sb.width > 120 ? sb.left : W, parkedLeft()) - 60) - half;
     if (bottom - top < 40 || right - left < 40) return;      // no room to show it in: leave the view alone
     const dx = c.x < left ? c.x - left : c.x > right ? c.x - right : 0, dy = c.y < top ? c.y - top : c.y > bottom ? c.y - bottom : 0;
     if (!dx && !dy) return;
@@ -738,6 +740,7 @@ export function start() {
     for (const hk of ["changeSidebarTab", "renderHotbar", "renderPlayers", "renderChatLog", "closeChatLog"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });      // U136: also the chat popped out or back in
     Hooks.on("collapseSidebar", () => { relayout(); setTimeout(() => (st.desk.touched ? relayout() : schedule()), 320); });      // the desk folds or opens with the room the sidebar leaves, until the GM chose
     listen(window, "resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
+    listen(window, CHAT_MOVED, () => { if (!st.desk.touched) schedule(); else relayout(); });      // FXX (U185): the popped-out chat parked, was dragged or closed
     listen(document, "keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
     /* U41 */
     listen(document, "keydown", onKey, true);

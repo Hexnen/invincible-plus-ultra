@@ -12,6 +12,7 @@
    (the words, for screen readers; created once so the live region exists before its text changes). Motion: transform / opacity via
    Web Animations on the individual `translate` / `scale` properties (they compose with the banner's skew). */
 import { t, tn } from "./lang.mjs";
+import { rightWall } from "./chat-park.mjs";   // FXX (U185): the right column is the sidebar or a parked popped-out chat
 
 const ID = "invincible-combat-banner";
 const IN_MS = 380, OUT_MS = 300;
@@ -55,9 +56,8 @@ export function freeArea() {
   const W = window.innerWidth;
   let left = 0, right = 0;
   try {
-    const r = document.getElementById("sidebar")?.getBoundingClientRect();
-    const rr = r ? W - r.left : 0;
-    if (r && r.width > 0 && rr > 0 && rr < W * 0.5) right = Math.round(rr);
+    const rr = W - rightWall();   // FXX (U185): the sidebar, or the popped-out chat parked left of it (combat/chat-park.mjs)
+    if (rr > 0 && rr < W * 0.75) right = Math.round(rr);
   } catch { right = 0; }
   try {
     const c = document.getElementById("scene-controls")?.getBoundingClientRect();

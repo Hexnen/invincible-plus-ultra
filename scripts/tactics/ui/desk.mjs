@@ -13,7 +13,8 @@
      Scene    (P7) what stands in the fight without a card: the chase (who flees, who follows, the distance, the chase roll, its end),
               the vehicles (who sits where, the state of the machine) and the challenges (a book preset, what the GM runs by hand)
      Table    rules enforced / free, a forced move or a fall ordered by hand (who, away from whom, how far, how hard), a hazard let loose by hand, the karma notes, and per NPC: the standing answers (block, dodge, at 0 Health) and what the players are shown */
-import { h, icon, swap, askCard, legendCard, rollButtons, visibleRect, face } from "./dom.mjs";
+import { h, icon, swap, askCard, legendCard, rollButtons, face } from "./dom.mjs";
+import { rightWall } from "../../combat/chat-park.mjs";
 import { costMark, symMark, hasMarks, markName } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
 import * as Slots from "./slots.mjs";      // U132: the fixed places; the desk's part of the frame (slots-pure.mjs)
 
@@ -51,8 +52,8 @@ function ensure(label) {
 export function place() {
   if (!root) return;
   const W = window.innerWidth;
-  const sb = visibleRect(document.getElementById("sidebar"));
-  root.style.setProperty("--igd-right", `${Math.round(sb && sb.left > W * 0.5 ? W - sb.left : 0)}px`);
+  /* FXX (U185): the right column is the sidebar, or the popped-out chat parked left of it in a fight (combat/chat-park.mjs) */
+  root.style.setProperty("--igd-right", `${Math.max(0, Math.round(W - rightWall()))}px`);
   /* U132 / U134: under the challenges' band, over the toasts' strip (and over the bar where the bar takes the edge under it). Until the
      dock has worked the frame out the desk keeps its stylesheet's place; the dock places it again once it has (handlers.deskRelayout). */
   const fr = Slots.frameNow();

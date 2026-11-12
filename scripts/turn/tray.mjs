@@ -8,6 +8,7 @@
    centred on #hotbar, sitting 8 px above it, pushed clear of the party column (left) and the sidebar / chat notifications (right); a window
    too narrow for the full panel drops the name, then the panel's font-size shrinks. The panel slides down out of sight when hidden. */
 import { t } from "./lang.mjs";
+import { parkedLeft } from "../combat/chat-park.mjs";   // FXX (U185): a popped-out chat parked in the right column
 import { costClasses } from "../kit.mjs";      // U93: an action of the turn is the kit's mark, here as on every surface
 
 const ID = "invincible-turn-tray";
@@ -51,6 +52,7 @@ export function place() {
      column: only its message children count) */
   const sb = visibleRect(document.getElementById("sidebar"));
   if (sb && sb.left > W * 0.5) hi = Math.min(hi, sb.left - 12);
+  hi = Math.min(hi, parkedLeft() - 12);   // FXX (U185): and a popped-out chat parked left of it (as tall as the window)
   for (const m of document.querySelectorAll("#chat-notifications .chat-message")) {
     const r = visibleRect(m);
     if (inBand(r) && r.left > W * 0.3) hi = Math.min(hi, r.left - 10);
