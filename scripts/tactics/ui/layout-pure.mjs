@@ -25,7 +25,7 @@ export function factor(body) {
 /* the parts of the desk's Table tab that fold, and how they stand for a GM who never touched them: the three tools used now and then
    start folded (their headings stay, with their counts), so the per-NPC answers are on screen without scrolling (U80) */
 export const FOLDS = Object.freeze({ force: true, hazard: true, karma: true, npcs: false });
-export const DEFAULT = Object.freeze({ hotbar: false, keys: false, desk: null, folds: Object.freeze({}) });
+export const DEFAULT = Object.freeze({ hotbar: false, keys: false, desk: null, folds: Object.freeze({}), autoSkip: false });      // ANSA (UXC-1): autoSkip = the initiative bar's tick, off by default
 const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 
 /** what was stored -> a layout. `seed`: what this browser remembered before layouts were kept per user ({ hotbar, keys }). */
@@ -38,6 +38,7 @@ export function clean(raw, seed = null) {
     keys: typeof r?.keys === "boolean" ? r.keys : s.keys === true,
     desk: r?.desk === "open" || r?.desk === "folded" ? r.desk : null,      // null: the desk opens or folds by the room the window has, until the GM chooses
     folds,
+    autoSkip: r?.autoSkip === true,      // ANSA (UXC-1, FXP-6, FXN-1): the auto-skip tick (ui/autoskip-pure.mjs); anything but true is off
   };
 }
 /** is part `id` of the Table tab folded? */
@@ -55,6 +56,7 @@ export function stored(layout) {
   if (l.keys) out.keys = true;
   if (l.desk) out.desk = l.desk;
   if (Object.keys(l.folds).length) out.folds = l.folds;
+  if (l.autoSkip) out.autoSkip = true;
   return out;
 }
 /** U64: how the desk stands when the surfaces start: { collapsed, touched } from the layout, or null (by the room) */

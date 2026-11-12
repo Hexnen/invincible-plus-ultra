@@ -1011,17 +1011,23 @@ export function dockData(model, own, facts, t) {
      itself a moment later (`auto`, main.mjs); a click on the button passes it at once. Something left -> one click; "Sure?" is asked only
      where a WHOLE full action would be lost by a slip on a player's seat (a spare quick action is left over on most turns). The tip says
      "click again" only where a second click is really asked for. */
-  const fullLeft = slots.some((p) => p.state === "open" && p.unit === "full" && !p.extra), confirm = fullLeft && !bar.endTurn?.noConfirm;
-  const auto = !!bar.endTurn && !bar.endTurn.disabled && !bar.free && !unused.length && !prompts.length && !allRolls.some((r) => r.state !== "done") && bars.filter((b) => b.onTurn).length === 1 && !armed && !own.mode && !own.quiet && !bar.out;
+  /* ANSA (UXC-1, K1: «pytanie czy koniec»): ending a turn ALWAYS asks "End the turn?", on every seat (also the GM's NPCs, also with both
+     actions spent: `noConfirm` no longer spares the second step). Only the auto-skip tick on the initiative bar (facts.autoSkip, the
+     user's own) lets a turn with nothing left pass without the question. */
+  /* (a turn that passes by itself with the tick has nothing to ask: a click on it passes it at once, as the countdown would) */
+  const auto =!!bar.endTurn && !bar.endTurn.disabled && !bar.free && !unused.length && !prompts.length && !allRolls.some((r) => r.state !== "done") && bars.filter((b) => b.onTurn).length === 1 && !armed && !own.mode && !own.quiet && !bar.out;
   /* FXN (D133): a turn that STARTS with nothing left (the round's actions went on reactions before it) passes by itself as well, but it
      says why where the actions stand (the U9 line of the bar, `out`), longer (news-pure AUTO_SPENT_MS), and offers no first-turn hint */
   const spent = auto && !!bar.endTurn?.fresh;
-  /* FXP (U179): on the GM's seat such a turn waits for the GM's click (one click: nothing is lost). Passing by itself there, it moved the
-     dock to the next NPC under a GM's hand already on its way to the spent NPC's button, and that click armed the next NPC's action */
-  const autoEnd = auto && !(spent && facts.staff);
-  const end = bar.endTurn ? { label: autoEnd ? t("ITAC.ui.end.auto") : own.endArmed && confirm ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"),
-    tip: bar.endTurn.disabled ? whyLine(whyOf(t, bar.endTurn.disabled, {}, { ask: false })) : `${auto ? t(spent ? "ITAC.ui.out.spent" : "ITAC.ui.end.autoTip") : unused.length ? t(confirm ? "ITAC.ui.end.unused" : "ITAC.ui.end.left", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]`,
-    disabled: bar.endTurn.disabled ? whyText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm, armed: !!own.endArmed && confirm, auto: autoEnd, ...(spent ? { spent: true } : {}) }
+  /* ANSA (FXP-6, FXN-1: «Tick działa też u MG, 3,5 s zostaje»): a turn with nothing left passes by itself ONLY with the auto-skip tick
+     on, and then on every seat, the GM's NPCs included (FXP U179's "GM always clicks" is gone); a turn that started spent still stands
+     3.5 s with its hourglass line (news-pure autoDelay). Without the tick it waits for End turn and its question. */
+  const tick = !!facts.autoSkip, autoEnd = auto && tick, confirm = !autoEnd;
+  /* the question over the button (dock.mjs endAsk): what is still unused, or that nothing is left */
+  const ask = { title: t("ITAC.ui.endq.title"), line: unused.length ? t("ITAC.ui.endq.left", { list: unused.join(", ") }) : t("ITAC.ui.endq.none"), yes: t("ITAC.ui.endq.yes"), no: t("ITAC.ui.endq.no"), yesKey: t("ITAC.ui.key.space"), noKey: "Esc" };
+  const end = bar.endTurn ? { label: autoEnd ? t("ITAC.ui.end.auto") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"),
+    tip: bar.endTurn.disabled ? whyLine(whyOf(t, bar.endTurn.disabled, {}, { ask: false })) : `${autoEnd ? t(spent ? "ITAC.ui.out.spent" : "ITAC.ui.end.autoTip") : auto ? t("ITAC.ui.end.readyTip") : unused.length ? t("ITAC.ui.end.left", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]`,
+    disabled: bar.endTurn.disabled ? whyText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm, armed: !!own.endArmed && confirm && !bar.endTurn.disabled, auto: autoEnd, ready: auto && !autoEnd, ask, ...(spent ? { spent: true } : {}) }
     : { label: t("ITAC.ui.end"), tip: whyLine(whyOf(t, "notYourTurn", {}, { ask: false })), disabled: whyText(t, "notYourTurn"), req: null, confirm: false, armed: false, auto: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn
   const chase = facts.view?.chase ? t("ITAC.ui.chase.line", { n: facts.view.chase.distance }) : null;
@@ -1037,7 +1043,7 @@ export function dockData(model, own, facts, t) {
     who: { id: bar.combatant, name: bar.name ?? c?.name ?? "", img: c?.img ?? null, onTurn: !!bar.onTurn, free: !!bar.free, freeLabel: t("ITAC.ui.freeMode"),
       zone: zoneNow ? { label: zoneNow, say: facts.staff ? t("ITAC.ui.here.of", { name: bar.name ?? c?.name ?? "", zone: zoneNow }) : t("ITAC.ui.here", { zone: zoneNow }), tip: t("ITAC.ui.legend") } : null },      // U51: the chip says the zone; its tooltip only what the chip does not (the legend of the map's badges); `say` is for a screen reader
     slots, vitals: vitalsOf(facts, bar.combatant, t), group: membersOf(facts, bar.combatant, t), extras: extrasOf(bar, t, facts), groups,
-    out: bar.out ? { reason: bar.out.reason, text: t(bar.out.label) } : spent ? { reason: "spent", text: t("ITAC.ui.out.spent") } : null,      // U9: why nothing (or only getting up) is offered: said where the actions were; FXN (D133): also a turn that started with everything spent
+    out: bar.out ? { reason: bar.out.reason, text: t(bar.out.label) } : spent ? { reason: "spent", text: t(tick ? "ITAC.ui.out.spent" : "ITAC.ui.out.spentAsk") } : null,      /* ANSA (FXN-1): "passes by itself" only with the tick */      // U9: why nothing (or only getting up) is offered: said where the actions were; FXN (D133): also a turn that started with everything spent
     camera: cameraOf(facts, t),      // W1 (U42): how much the map's camera follows the fight, this user's own switch
     hotbar: { open: !!own.hotbar, label: t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show"), tip: `${t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show")}. ${t(own.hotbar ? "ITAC.ui.keys.macros" : "ITAC.ui.keys")}` },      // U28: Foundry's macro bar is folded away while the dock is up; this brings it back
     other: { label: t("ITAC.action.other"), armed: own.mode === "other", tip: tipOf(t("ITAC.action.other"), null, null, [t("ITAC.ui.other.hint")]) },

@@ -292,6 +292,42 @@ body.ita-keys #invincible-tactics-dock.itd-rest .itd-ic[data-key]::before { cont
 #invincible-tactics-dock .itd-end.itd-end-held[aria-busy="true"] { color: #fff; background: var(--ita-red); position: relative; overflow: hidden; isolation: isolate; translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); cursor: progress; }
 #invincible-tactics-dock .itd-end.itd-end-held[aria-busy="true"]::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--ita-ink); opacity: .35; animation: none; transform: none; }
 #invincible-tactics-dock .itd-end[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; }
+/* ANSA (UXC-1, K1: «pytanie czy koniec»): END TURN ALWAYS ASKS. Nothing left and the auto-skip tick off: End turn is all there is to do,
+   its hard shadow turns yellow (the shape of a button that waits, not a glow). Pressed once: the button stays pressed in (white) and a
+   speech balloon rises over it, its tail on the button: "End the turn?", what is still unused, Yes [Space] / No [Esc] (dock.mjs endBtn). */
+#invincible-tactics-dock .itd-end.itd-end-ready:not(.itd-end-sure) { box-shadow: 3px 3px 0 var(--ita-yellow); }
+#invincible-tactics-dock .itd-end.itd-end-ready:not(.itd-end-sure):hover { box-shadow: 4px 4px 0 var(--ita-yellow); }
+#invincible-tactics-dock :is(.itd-end.itd-end-sure, .itd-end.itd-end-sure:hover:not([aria-disabled="true"])) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
+.itd-endwrap { position: relative; display: inline-flex; }
+.itd-endq {
+  --q-ink: var(--ita-ink);
+  position: absolute; right: -6px; bottom: calc(100% + 14px); z-index: 2;
+  display: grid; gap: 4px; width: max-content; min-width: 200px; max-width: 280px; padding: 9px 12px 11px;
+  color: var(--q-ink); background: #fff; border: 2px solid var(--q-ink); box-shadow: 4px 4px 0 var(--ita-blue);
+  transform-origin: calc(100% - 40px) 100%; rotate: -1deg;
+  animation: itd-endq-in .18s var(--ita-out) both;
+}
+/* the balloon's tail: an ink triangle with a white one inside, pointing down at the button */
+.itd-endq::before, .itd-endq::after { content: ""; position: absolute; right: 34px; width: 0; height: 0; border-style: solid; border-color: transparent; }
+.itd-endq::before { bottom: -14px; border-width: 14px 12px 0 0; border-top-color: var(--q-ink); }
+.itd-endq::after { bottom: -9px; right: 36.5px; border-width: 9px 7.5px 0 0; border-top-color: #fff; }
+#invincible-tactics-dock .itd-endq-t { margin: 0; font: 400 18px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--q-ink); }
+#invincible-tactics-dock .itd-endq-l { margin: 0 0 4px; font: 400 12.5px/1.3 Comic, sans-serif; color: #3a4a63; overflow-wrap: anywhere; }      /* #3a4a63 on white 9.6 */
+.itd-endq-b { display: flex; gap: 8px; }
+#invincible-tactics-dock :is(.itd-endq-yes, .itd-endq-no) {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px;
+  font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+  border: 2px solid var(--ita-ink); transition: translate .12s ease-out, box-shadow .12s ease-out;
+}
+#invincible-tactics-dock .itd-endq-yes { color: #fff; background: var(--ita-red); box-shadow: 3px 3px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-endq-yes:hover { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-endq-yes:active { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
+#invincible-tactics-dock .itd-endq-no { color: var(--ita-ink); background: #fff; }
+#invincible-tactics-dock .itd-endq-no:hover { background: #eef2f8; }
+#invincible-tactics-dock :is(.itd-endq-yes, .itd-endq-no):focus-visible { outline: 3px solid var(--ita-yellow); outline-offset: 2px; }
+#invincible-tactics-dock .itd-endq-k { padding: 2px 4px 1px; font: 400 10px/1 Comic, sans-serif; letter-spacing: 0; text-transform: none; border: 1px solid currentColor; opacity: .85; }
+@keyframes itd-endq-in { from { opacity: 0; scale: .9; translate: 0 6px; } }
+@media (prefers-reduced-motion: reduce) { .itd-endq { animation: none; } }
 #invincible-tactics-dock :is(.itd-mini, .itd-x) { display: inline-grid; place-items: center; width: 26px; height: 26px; color: var(--ita-label); border: 1px solid var(--ita-line); }
 #invincible-tactics-dock :is(.itd-mini, .itd-x):hover { color: #fff; border-color: #fff; }
 #invincible-tactics-dock .itd-mini[aria-pressed="true"] { color: var(--ita-ink); background: var(--ita-cyan); border-color: var(--ita-cyan); }

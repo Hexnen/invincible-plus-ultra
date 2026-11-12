@@ -203,13 +203,17 @@ async function slain(answer, o = {}) {
   await blocked("H1", "p1"); await blocked("H2", "p2");
   T.turn("N1");
   const b = P1.budget(T.state, "N1");
-  const staffDock = (cid) => { const d = D.deskModel(T.state, T.log, ctx(T)); const bar = D.barModel(T.state, cid, { ...ctx(T), staff: true }); return M.dockData({ bars: [bar], prompts: [], mine: [], stack: d.info, waiting: d.waiting, turn: d.turn }, {}, facts(T, T.state, "gm", true), t); };
+  const staffDock = (cid, more = {}) => { const d = D.deskModel(T.state, T.log, ctx(T)); const bar = D.barModel(T.state, cid, { ...ctx(T), staff: true }); return M.dockData({ bars: [bar], prompts: [], mine: [], stack: d.info, waiting: d.waiting, turn: d.turn }, {}, { ...facts(T, T.state, "gm", true), ...more }, t); };
+  /* ANSA (FXP-6 «Tick działa też u MG»): without the GM's auto-skip tick the spent NPC turn waits for End turn and its question; with
+     the tick it passes by itself on the GM seat too (3.5 s, the hourglass line) */
   const g = staffDock("N1");
-  eq([b.full !== "open", g.onTurn, !!g.end.spent, g.end.auto, g.out?.reason, !!g.end.disabled, g.end.confirm], [true, true, true, false, "spent", false, false],
-    "U179: an NPC turn that starts spent stands on the GM seat: marked spent, the bar says why, one click ends it, nothing passes by itself");
+  eq([b.full !== "open", g.onTurn, !!g.end.spent, g.end.auto, g.out?.reason, !!g.end.disabled, g.end.confirm], [true, true, true, false, "spent", false, true],
+    "U179 + ANSA (FXP-6): tick off: an NPC turn that starts spent stands on the GM seat: marked spent, the bar says why, End turn asks, nothing passes by itself");
+  const gt = staffDock("N1", { autoSkip: true });
+  eq([gt.end.auto, !!gt.end.spent, gt.out?.reason, N.autoDelay(gt.end, 1500)], [true, true, "spent", 3500], "ANSA (FXP-6, FXN-1): the GM's tick on: the spent NPC turn passes by itself after 3.5 s");
   ok(!!g.end.req, "U179: the GM's End turn carries its request");
   /* a player's own spent turn still passes by itself (D133 unchanged) */
-  ok(/const autoEnd = auto && !\(spent && facts\.staff\)/.test(src("./ui/model-pure.mjs")), "U179: the rule is the seat's: staff only");
+  ok(/const tick = !!facts\.autoSkip, autoEnd = auto && tick, confirm = !autoEnd;/.test(src("./ui/model-pure.mjs")), "ANSA (FXP-6): the rule is the tick's, the same on every seat (no staff exception)");
 }
 
 /* ================================================================== D162: the bar's spoken line during a turn this client may not see */
