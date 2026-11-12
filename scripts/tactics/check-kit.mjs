@@ -132,12 +132,17 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   await T.roll("roll", 0);
   eq([st(T, "N1"), code(await T.gm(decl("N1", "shakeOff"))), why(T.last)], [["afflicted"], "illegal", "usedAlready"], "one attempt a round");
 }
-/* ================================================================== Distress [B1591], Defiance [B1865]: stress, stopped by Armor against stress only */
+/* ================================================================== Distress [B1591], Defiance [B1865]: stress, stopped by the best Armor
+   (PWA, PW001: "the attack pierces ANY armor" [B1591], one Armor at a time [B2682]: the vest counts too; before PWA this block said the
+   vest does not count, which the book does not say) */
 {
   const ds = item("ds", "Distress", "power", { autos: [auto("a", "Distress", "rollAttack", { attr: ["agility"], damage: 4, max: 2 })] });
-  const T = base([ds], [item("df", "Defiance", "power")], { n1: { armor: [{ id: "vest", armor: 5 }] } });
+  const T = base([ds], [item("df", "Defiance", "power")], { n1: { armor: [{ id: "vest", armor: 2 }] } });
   await T.req("p1", decl("H1", "shoot", { targets: ["N1"], weapon: "ds~a" })); await pass(T); await T.roll("attack", 1);
-  eq([T.c.N1.health, T.c.N1.resolve], [6, 4], "Distress 4 against Defiance 3: 1 stress, the vest does not count");
+  eq([T.c.N1.health, T.c.N1.resolve], [6, 4], "Distress 4 against Defiance 3 and a vest 2: the better Armor (Defiance) counts, 1 stress");
+  const U = base([ds], [item("df", "Defiance", "power")], { n1: { armor: [{ id: "vest", armor: 5 }] } });
+  await U.req("p1", decl("H1", "shoot", { targets: ["N1"], weapon: "ds~a" })); await pass(U); await U.roll("attack", 1);
+  eq([U.c.N1.health, U.c.N1.resolve], [6, 5], "Distress 4 against a vest 5 [B1591], [B2682]: the vest stops it (PWA)");
 }
 /* ================================================================== Barrier [B1859-1862]: Armor until breached */
 {
@@ -394,14 +399,22 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "activate").id } });
   eq([marked(Y.state, "H1", "defiance", true), code(await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "activate").id } })), why(Y.last)], [true, "illegal", "usedAlready"], "activated for the scene, once");
   const r0 = Y.c.H1.resolve;
-  await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "many").id, opt: "2" } });
+  /* PWD (PW042) [B1763]: Area Control names its targets (each rolls to resist); the stress is 1 per target beyond the first, no longer a number picked */
+  Y.npc("N3", { health: 4 }); Y.npc("N4", { health: 4 }); await Y.gm({ op: "roster" });
+  await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "many").id, targets: ["N1", "N3", "N4"] } });
+  await Y.roll("roll", 1);
   eq(Y.c.H1.resolve, r0 - 2, "Area Control: two targets beyond the first, 2 stress");
   /* Killer [B2121], Lucky Break [B2149], Sequestered Original [B1915]: the injury roll */
-  const crit = async (nItems, hItems) => { const Z = base(hItems, nItems, { h1: { health: 1, maxHealth: 6 } }); Z.turn("N1"); Z.dice = [[2, 5]]; await Z.gm(decl("N1", "slugfest", { targets: ["H1"] })); await pass(Z); await Z.roll("attack", 1); const p = Z.prompt("stunts"); if (p) await Z.gm({ op: "answerFor", prompt: p.id, value: [] });
+  /* P6b-6 (the user, 2026-11-12, K8: «Gracz wybiera kość, MG zatwierdza»): the two dice are picked on a card (`pick`), a player's pick confirmed by the GM (`gmOk`) */
+  const crit = async (nItems, hItems, pick = "d:0", gmOk = "approve") => { const Z = base(hItems, nItems, { h1: { health: 1, maxHealth: 6 } }); Z.turn("N1"); Z.dice = [[2, 5]]; await Z.gm(decl("N1", "slugfest", { targets: ["H1"] })); await pass(Z); await Z.roll("attack", 1); const p = Z.prompt("stunts"); if (p) await Z.gm({ op: "answerFor", prompt: p.id, value: [] });
+    const cp = Z.prompt("critPick"); if (cp) await Z.req(cp.to === "gm" ? "gm" : cp.to.users[0], { op: cp.to === "gm" ? "answerFor" : "answer", prompt: cp.id, value: pick });
+    const ck = Z.prompt("critConfirm"); if (ck) await Z.gm({ op: "answerFor", prompt: ck.id, value: gmOk });
     return [Z.performed.filter((e) => e.t === "dice" && String(e.why).startsWith("crit")).map((e) => e.n), Z.evs("crit").map((e) => e.crit.roll)]; };
   eq(await crit([], []), [[1], [3]], "an ordinary injury: one die (2, and 1 for the hit)");
-  eq(await crit([item("ki", "Killer", "talent")], []), [[2], [6]], "Killer: two dice, the higher is kept");
-  eq(await crit([], [item("lb", "Lucky Break", "talent")]), [[2], [3]], "Lucky Break: two dice, the lower is kept");
+  eq(await crit([item("ki", "Killer", "talent")], [], "d:1"), [[2], [6]], "Killer: two dice, the NPC's pick (the GM's) is kept: the 5 (P6b-6)");
+  eq(await crit([item("ki", "Killer", "talent")], [], "d:0"), [[2], [3]], "Killer: the GM may as well keep the 2 (P6b-6: picked, not the higher by itself)");
+  eq(await crit([], [item("lb", "Lucky Break", "talent")], "d:1", "approve"), [[2], [6]], "Lucky Break: the player picked the 5, the GM approved (P6b-6: not the lower by itself)");
+  eq(await crit([], [item("lb", "Lucky Break", "talent")], "d:1", "other"), [[2], [3]], "Lucky Break: the GM takes the other die instead of the player's pick (P6b-6)");
   eq(await crit([], [item("du", "Duplication", "power", { boosts: ["so"] }), item("so", "Sequestered Original", "boost", { power: "du" })]), [[], []], "Sequestered Original: broken, no injury is rolled");
   /* an attack of the book on an item with no attack data of its own (a hand-made item the GM mapped to the entry) */
   const bare = K.build({ items: [item("db", "Blast", "power")], attrs: { agility: 4 } });

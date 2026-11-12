@@ -317,6 +317,8 @@ export async function deleteLog(actorId) {
   const j = actorJournal(actorId);
   const gm = gmJournal();
   const out = { entries: j ? M.totalCount(pagesOf(j)) : 0, secret: gm ? M.totalCount(pagesOf(gm, actorId)) : 0, chunks: j ? j.pages.size : 0 };
+  /* FXY (T030 / T034): first the mark, so the scribe (another GM's client) holds the actor's log before any page goes (scribe.mjs holdLog) */
+  if (j) { stats.journalUpdates++; await j.update({ [`flags.${MOD}.log.deleting`]: Date.now() }, O()); }
   if (gm) {
     const ids = Object.values(pageDocs(gm, actorId)).map((p) => p.id);
     if (ids.length) { stats.journalUpdates++; await gm.deleteEmbeddedDocuments("JournalEntryPage", ids, O()); }

@@ -149,6 +149,9 @@ export const warnOn = (spec) => call("warn", spec) ?? null;
 export const menu = (spec) => callAsync("menu", spec);
 export const closeMenu = () => call("closeMenu");
 export const menuOpen = () => call("menuOpen") === true;
+/** FXY (FXW-4, zones-api.md 29): put a stepper's number ({ value }) or a toggle's state ({ on }) of the open menu back, the menu left open.
+    true when done; false with no menu open, no such entry, or a map without menuSet; null when the map has no menuSet at all */
+export const menuSet = (id, patch) => { const a = typeof api()?.menuSet === "function"; return a ? call("menuSet", id, patch) === true : null; };
 /** fn(ctx) is asked about every right click on a token, a wall or door, a zone. -> off() */
 export const onContext = (fn) => { const off = call("onContext", fn); return typeof off === "function" ? off : () => {}; };
 export const camera = (o) => call("camera", o) ?? null;

@@ -9,6 +9,9 @@ import { ATTRS, attrChoices } from "../actions-pure.mjs";
 import * as K from "./kit.mjs";
 import * as Lg from "../ledger-pure.mjs";
 import * as P1 from "../economy-pure.mjs";
+import * as In from "../initiative-pure.mjs";
+import * as ZP from "../zones-pure.mjs";
+import { forcedChild } from "./move.mjs";
 
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 const fine = { ok: true, reason: null, params: {}, gates: [], notes: [] };
@@ -39,6 +42,44 @@ export function opponentOf(v, inst) {
   if (o.who === "holder") { const by = statusOf(v, inst.actor, "grappled")?.data?.by; return by && v.facts.c(by) && v.facts.c(by).present !== false ? { who: by, attr: o.attr } : null; }
   const t = inst.decl?.targets?.[0];
   return t && t !== inst.actor ? { who: t, attr: o.attr } : null;
+}
+/** PWD (PW042) [B1763]: everyone who rolls against the actor: each target of an entry whose opposition is `who: "targets"`, else the one above */
+export function opponentsOf(v, inst) {
+  const o = v.entry(inst)?.oppose;
+  if (o?.who !== "targets") { const one = opponentOf(v, inst); return one ? [one] : []; }
+  return [...new Set(inst.decl?.targets ?? [])].filter((t) => t && t !== inst.actor && v.facts.c(t)).map((t) => ({ who: t, attr: o.attr }));
+}
+/* PWD (PW050) [B1790]: a failed spell may not be tried again for the same power for hours (the scene): the power is named in the text */
+const spellKey = (cid, text) => { const s = String(text ?? "").toLowerCase().replace(/[^a-z0-9ąćęłńóśźż]/g, ""); if (!s) return null; let h = 5381; for (const ch of s) h = ((h * 33) ^ ch.codePointAt(0)) >>> 0; return M.counterKey.scene(cid, `spellx${h.toString(36)}`); };
+const spellReady = (cid) => M.counterKey.scene(cid, "spellReady");
+/* PWD (PW035): one roll of an illusion per target, whichever click asks it (the cast or Terrifying Illusions [B1717]) */
+const illusionKey = (cid, t) => M.counterKey.round(cid, `ill${String(t).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)}`);
+/* PWD (PW059) [B1846]: the zone of a storm made with Cyclone is wrecked (once a scene, as any wrecking [B2451]) */
+function wreckZoneOf(v, I, R, cid) {
+  const z = v.facts.zone?.(cid), key = z ? String(z.key ?? z.spot ?? "").split(":")[0] : "";
+  if (!key || z.states?.wrecked || M.counterGet(v.state, M.counterKey.zone(key, "wrecked")) > 0) return;
+  const op = ZP.zoneOp(key, { wrecked: true }), cw = M.counterBump(v.state, M.counterKey.zone(key, "wrecked"));
+  if (op) { R.effects.push({ t: "zones", op }); R.events.push({ type: "zoneChange", ...ZP.changeOf(op), cause: "wreck", by: I.actor }); }
+  R.effects.push({ t: "state", path: cw.path, to: cw.to });
+  if (!v.facts.c(I.actor)?.npc) R.effects.push({ t: "karma", note: { who: I.actor, kind: "wreckedZone", zone: key } });      // spec 9.11, as a wreck by an attack
+}
+/* PWD (PW059) [B1846], (PW056): the one thrown out goes into an adjacent zone the actor names (no damage); without a map the GM moves it */
+function throwOut(v, I, R, t, src) {
+  const Z = v.facts.zones, tf = v.facts.c(t);
+  if (!tf || M.outOfAction(v.state, t, tf)) return null;
+  if (!Z) { if (!K.flag(I, `thn:${t}`)) { K.setFlag(I, `thn:${t}`); (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: 0 }); } return null; }
+  if (K.flag(I, `th:${t}`)) return null;
+  const key = `thdir:${t}`, zk = v.facts.zone(t)?.key, near = zk ? (Z.borders(zk) ?? []).map((b) => String(b?.key ?? "").split("|").find((z) => z && z !== zk)).filter(Boolean).slice(0, 12) : [];
+  if (!I.data.pk?.[key]) {
+    const pr = { key, kind: "knockDir", to: K.addressee(v, I.actor), about: I.actor, options: [...near.map((z) => ({ id: `to:${z}`, label: "ITAC.opt.kbToward", data: { zone: z } })), { id: "away", label: "ITAC.opt.kbAway" }], data: { target: t, distance: 1 } };
+    if (!near.length) pr.auto = { option: "away", reason: "noOption" };
+    R.prompts.push(pr); return "wait";
+  }
+  if (!K.isAnswered(v, I, key)) return "wait";
+  K.setFlag(I, `th:${t}`);
+  const dir = K.answerId(v, I, key) ?? "away";
+  R.push = forcedChild(t, { ...(dir.startsWith("to:") ? { toward: dir.slice(3) } : { awayFrom: I.actor }), distance: 1, damage: 0, decay: 0, armor: true, by: I.actor, kind: "throw", ...(v.facts.c(I.actor)?.npc ? { gmDir: 1 } : {}) });
+  return "wait";
 }
 /** dice penalty of breaking out of a Snare: what the status carries, else the basic level [B1606-1609] */
 export function snarePenalty(st) {
@@ -73,7 +114,8 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
     case "barrier": {                                                                        // [B1859-1862]: Armor by level, as many at once as the level allows, gone when breached
       const mine = (v.state.effects ?? []).filter((x) => x.kind === "barrier" && x.data?.by === I.actor), max = fx.max > 0 && fx.armor > 3 ? fx.armor : fx.max ?? 3;
       for (const old of mine.slice(0, Math.max(0, mine.length - max + 1))) for (const w of M.effectEndWrites(v.state, old.id)) R.effects.push({ t: "state", path: w.path, to: w.to });
-      const ef = M.makeEffect({ id: sid(`b${I.id}`), kind: "barrier", holder: subject, source: src, data: { armor: fx.armor ?? 3, by: I.actor }, ends: { at: fx.ends ?? "breached" } });      // PWE (PW062): Barrier lasts a few minutes, the scene [B1859]; a breach ends it in the damage step
+      const zk = fx.leaveEnds ? zoneKeyOf(v, subject) : null;                                // PWC (PW013) [B1646]: the ice barrier stays only while both stay in this zone
+      const ef = M.makeEffect({ id: sid(`b${I.id}`), kind: "barrier", holder: subject, source: src, data: { armor: fx.armor ?? 3, by: I.actor, ...(zk ? { zone: zk } : {}) }, ends: { at: fx.ends ?? "breached" } });      // PWE (PW062): Barrier lasts a few minutes, the scene [B1859]; a breach ends it in the damage step
       if (ef) R.effects.push({ t: "state", path: ["effects", `#${ef.id}`], to: ef });
       I.data.gain = fx.armor ?? 3; break;
     }
@@ -106,20 +148,40 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
     } break;
     case "mark": R.effects.push({ t: "state", ...M.counterBump(v.state, markKey(I.actor, fx)) }); break;      // a thing that is on for the turn or the scene (a wind-up, an activation)
     case "resist": {                                                                           // the one it is about rolls (no action, never pushed); each six takes 1 stress off
-      const key = `res:${subject}`;
-      if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, subject, fx.attr, oppMods(v, I, subject), { rollKind: "other" }); R.effects.push(K.rollEffect(key, subject, fx.attr, bp.pool, { passive: true, label: e?.label })); return "wait"; }
-      if (!K.rollFinal(I, key)) return "wait";
-      const six = K.sixesOf(I, key), n = Math.max(0, (fx.stress ?? 0) - six);
-      I.data.result = six > 0 ? "success" : "fail"; I.data.net = six; I.data.stress = n;
-      if (K.flag(I, "resisted")) break;
-      K.setFlag(I, "resisted");
-      if (n > 0) { R.effects.push({ t: "stress", who: subject, n }); R.events.push({ type: "stress", target: subject, n, source: "power" }); }
-      if (six < 1 && fx.loseTurn) { R.effects.push({ t: "state", path: ["ledger", subject], to: Lg.loseNextTurn(P1L(v, subject), src) }); R.effects.push({ t: "status+", who: subject, status: { id: "stunned", source: src } }); status(subject, "stunned", true); }
-      if (six < 1 && fx.forfeit) for (const cost of ["full", "quick"]) R.effects.push({ t: "pay", who: subject, cost, force: 1, key: `ff:${cost}`, action: I.action });      // this very turn is lost
+      /* PWD: every target rolls (Area Projection [B1716]), with the dice of the power's level (Illusion [B1713-1715]); Cyclone wrecks the zone and throws
+         out who fails [B1846] */
+      const who = I.decl.targets?.length ? [...new Set(I.decl.targets)].filter((t) => v.facts.c(t)) : [subject];
+      if (fx.wreck && !K.flag(I, "wreck")) { K.setFlag(I, "wreck"); wreckZoneOf(v, I, R, subject); }
+      const ask = who.filter((t) => !K.rollOf(I, `res:${t}`));
+      for (const t of ask) { const bp = K.buildPool(v, I, `res:${t}`, t, fx.attr, [...(fx.dice ? [{ source: `kit:${e?.kit?.key ?? "power"}`, dice: Math.trunc(fx.dice) }] : []), ...oppMods(v, I, t)], { rollKind: "other" }); R.effects.push(K.rollEffect(`res:${t}`, t, fx.attr, bp.pool, { passive: true, label: e?.label })); }      // PWE (PW063): Defiance against a mind power
+      if (ask.length || who.some((t) => !K.rollFinal(I, `res:${t}`))) return "wait";
+      for (const [i, t] of who.entries()) {
+        const six = K.sixesOf(I, `res:${t}`), n = Math.max(0, (fx.stress ?? 0) - six);
+        if (i === 0) { I.data.result = six > 0 ? "success" : "fail"; I.data.net = six; I.data.stress = n; }
+        if (who.length > 1) (I.data.resisted ??= {})[t] = six;
+        if (!K.flag(I, i === 0 ? "resisted" : `resisted:${t}`)) {
+          K.setFlag(I, i === 0 ? "resisted" : `resisted:${t}`);
+          if (fx.illusion && fx.stress && e?.cost !== "none") R.effects.push({ t: "state", ...M.counterBump(v.state, illusionKey(I.actor, t)) });      // the cast carried the terror: no second click for it
+          if (n > 0) { R.effects.push({ t: "stress", who: t, n }); R.events.push({ type: "stress", target: t, n, source: "power" }); }
+          if (six < 1 && fx.loseTurn) { R.effects.push({ t: "state", path: ["ledger", t], to: Lg.loseNextTurn(P1L(v, t), src) }); R.effects.push({ t: "status+", who: t, status: { id: "stunned", source: src } }); status(t, "stunned", true); }
+          if (six < 1 && fx.forfeit) for (const cost of ["full", "quick"]) R.effects.push({ t: "pay", who: t, cost, force: 1, key: `ff:${cost}`, action: I.action });      // this very turn is lost
+        }
+        if (six < 1 && fx.thrown && throwOut(v, I, R, t, src) === "wait") return "wait";
+      }
       break;
     }
     case "gainResolve": if (success && sf) { const raw = sf.resolve + (fx.per ?? 1) * sixes, to = fx.over ? raw : Math.min(sf.maxResolve, raw); if (to > sf.resolve) R.effects.push({ t: "actor", who: subject, path: "resolve", to }); I.data.gain = Math.max(0, to - sf.resolve); } break;   // [B1686], [B2064]
     case "sap": if (success && sixes > 0) { R.effects.push({ t: "stress", who: subject, n: sixes * (fx.per ?? 1) }); R.events.push({ type: "stress", target: subject, n: sixes * (fx.per ?? 1), source: "power" }); I.data.stress = sixes; } break;   // [B2064]
+    case "guidance": if (success) {                                                         // PWD (PW033) [B1708]: one other hero per six acts at once on the guide's turn (full or quick); not taking it is the refusal
+      const who = [...new Set(I.decl.targets ?? [])].filter((t) => t !== I.actor && v.facts.c(t)).slice(0, sixes);
+      for (const t of who) { const r = Lg.addGrant(P1L(v, t), { kind: "guidance", unit: "any", from: I.actor, window: `turnOf:${I.actor}`, expires: "turnEnd", needsConsent: 1, consent: "yes", source: src }, t); if (r.ok) R.effects.push({ t: "state", path: ["ledger", t], to: r.ledger }); }
+      I.data.gain = who.length;
+    } break;
+    case "spell": {                                                                         // PWD (PW050) [B1790]: a success readies the spell (1 stress to use it); a failure bars that power for the scene
+      const k = success ? spellReady(I.actor) : spellKey(I.actor, I.decl.text);
+      if (k && !K.flag(I, "spell")) { K.setFlag(I, "spell"); R.effects.push({ t: "state", ...M.counterBump(v.state, k) }); }
+    } break;
+    case "spellOn": if (!K.flag(I, "spellOn")) { K.setFlag(I, "spellOn"); R.effects.push({ t: "state", path: ["counters", spellReady(I.actor)], to: null }); } break;
     case "luck": token(R, { id: sid(`l${I.id}`), holder: subject, dice: (opt === "bad" ? -1 : 1) * (fx.lv ?? 1), scope: { next: 1 }, uses: 1, source: src, from: I.actor, forced: 1, expires: { at: "roundEnd" } }); break;       // [B1727-1730]
     case "aim": token(R, { id: sid(`m${I.id}`), holder: I.actor, dice: fx.dice ?? 2, scope: { rolls: fx.rolls, attrs: fx.attrs }, uses: 1, source: src, expires: fx.until === "roundEnd" ? { at: "roundEnd" } : { at: "turnEndOf", who: I.actor } }); break;   // [B2163], [B2116]
     case "inspire": if (sf) {                                                                // [B2119]: stress taken = Resolve given back
@@ -154,6 +216,7 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
       if (n("versatile") + n("powered") > 0) R.effects.push({ t: "message", gmOnly: 1, key: "ITAC.msg.summonFinish", params: { name: a?.name ?? "", versatile: n("versatile"), powered: n("powered"), text: String(I.decl.text ?? "").slice(0, 200) || "-" } });
       I.data.gain = 3 + 2 * n("more"); break;
     }
+    case "nullify": if (success && I.cause === "interrupt" && I.parent) { I.data.forfeitParent = I.parent; I.data.result = "success"; } break;      // PWA (PW039) [B1774]: the target's action is forfeit (engine-pure closeInst)
     case "dismiss": R.effects.push({ t: "summonLeave", combatants: K.summonsOf(v, I.actor) }); break;      // [B1812]
     case "regen": if (a && a.health < a.maxHealth) { R.effects.push({ t: "actor", who: I.actor, path: "health", to: a.health + 1 }); I.data.gain = 1; } break;      // [B1893]
     case "toggle": for (const off of e.fxOn ? [] : fx.off ?? []) R.effects.push({ t: "fx", who: I.actor, item: fx.item, fx: off, on: false });      // PWE (PW091) [B1974]: one size at a time
@@ -179,7 +242,20 @@ const zoneMates = (v, cid) => Object.keys(v.state.ledger ?? {}).filter((id) => {
 /* Z15 [B1937] Life Leech: an unwilling target has to be touched first, with a FIGHTING roll made in the same action as the PRESENCE roll.
    [FXT-4] Who is unwilling: a character of the other side (hero against NPC); the book gives the touch no defence, so the roll needs one six. */
 export const touchNeeded = (v, inst) => { const e = v.entry(inst), t = subjectOf(inst); if (e?.effect?.kind !== "leech" || !t || t === inst.actor) return false; const a = v.facts.c(inst.actor), f = v.facts.c(t); return !!a && !!f && !!a.npc !== !!f.npc; };
-export const KIT_KINDS = Object.freeze(["dropBarrier", "camouflage", "massEmpathy", "shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist"]);
+const solidNow = (v, I, e) => !!e?.tags?.includes("physical") && K.phased(v.state, I.actor) && K.marked(v.state, I.actor, "solid");
+/* PWA (PW039) [B1772-1775] Nullification as an interrupt: it answers somebody else's action before its dice, aimed at the one who acts;
+   only a power can be negated, of the Nullification's own level or lower. -> { lv, item } of the power that action uses, or null */
+export function powerUsed(v, P) {
+  if (!P) return null;
+  const item = P.flow === "attack" ? v.facts.weapon?.(P.actor, P.decl?.weapon ?? "unarmed")?.item ?? null : v.entry(P)?.kit?.item ?? null;
+  const rec = item ? (v.facts.c(P.actor)?.kit?.rows ?? []).find((r) => r.item === item) : null;
+  return rec && ["power", "boost", "limit"].includes(rec.cat) ? { lv: Number(rec.lv) || 0, item } : null;
+}
+const parentOf = (v, inst) => (inst.parent ? (v.state.stack ?? []).find((i) => i.id === inst.parent) ?? null : null);
+export const KIT_KINDS = Object.freeze(["nullify", "dropBarrier", "camouflage", "massEmpathy", "shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist",
+  "guidance", "spell", "spellOn"]);
+/** the zone key `cid` stands in (a spot's level cut off), or null without a map */
+export const zoneKeyOf = (v, cid) => { const z = v.facts.zone?.(cid); const k = z ? String(z.key ?? z.spot ?? "").split(":")[0] : ""; return k || null; };
 const sameZone = (v, a, b) => { const r = v.facts.range?.(a, b); return r === undefined ? undefined : !!r && r.total === 0; };   // undefined: no map, the GM judges
 
 function legality(v, inst) {
@@ -189,8 +265,9 @@ function legality(v, inst) {
   if (other && (!sf || sf.present === false)) return bad("noTarget");
   if ((e?.target?.n?.[0] ?? 0) > 0 && !other) return bad("noTarget");
   if (a.health <= 0 && !(kind === "rally" && !other) && kind !== "convert") return bad("broken");                                  // [B2707]: a broken character may only try to rally [B2773]
-  if (M.hasStatus(v.state, inst.actor, "grappling")) return bad("grappling", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else
-  if (e?.tags?.includes("physical")) { const r = RESTRAINTS.find((s) => M.hasStatus(v.state, inst.actor, s)); if (r) return bad("restrained", { ...GM, status: r }); }
+  if (K.holdsTied(v, inst.actor)) return bad("grappling", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else; PWA (PW072): not with Extra Limb(s) [B1926]
+  if (e?.tags?.includes("physical")) { const r = RESTRAINTS.find((s) => M.statusesOf(v.state, inst.actor).some((x) => x.id === s && x.data?.moveOnly !== 1)); if (r) return bad("restrained", { ...GM, status: r }); }      // PWC (PW005) [B1611]: Immobilize Only bars no action
+  if (e?.tags?.includes("physical") && K.phased(v.state, inst.actor) && !K.marked(v.state, inst.actor, "solid")) return bad("intangible", GM);      // PWA (PW083) [B1941], [B1942]
   if (e?.roll && !e.roll.optional && !attrOf(v, inst)) return bad("noAttribute");
   if (d.attr && e?.roll && !e.roll.attr && !attrChoices(e).includes(d.attr)) return bad("noAttribute");
   /* P6: what an entry of the kit asks for */
@@ -204,12 +281,42 @@ function legality(v, inst) {
   if (e?.needsCopies && !(K.copiesOf(v.state, inst.actor) > 0)) return bad("noCopies");      // PWE (PW077) [B1909]: the copies act instead of giving their bonus
   if (kind === "dropBarrier" && !ownBarriers(v, inst.actor, subject).length) return bad("noBarrier");
   if (other && e?.immuneHuge && sf?.huge) return bad("hugeTarget");
-  if (e?.effect?.mass && Array.isArray(d.targets)) {                                                           // Mass Healing [B1934]: every chosen ally must pass, not only the first, and no more than the entry's upper bound
+  /* PWC (PW012) [B1637]: an action of the kit that takes several targets (all the animals of one zone): no more than the entry's bound, and
+     each of them passes what the first does (present, not huge, near); with `oneZone` they stand in one zone */
+  if (!e?.effect?.mass && Array.isArray(d.targets) && d.targets.length > 1) {
+    const ts = [...new Set(d.targets)], mx = e?.target?.n?.[1] ?? 1;
+    if (ts.length > mx) return bad("tooManyTargets", { max: mx });
+    for (const t of ts.slice(1)) {
+      const tf = v.facts.c(t);
+      if (!tf || tf.present === false || t === inst.actor) return bad("noTarget");
+      if (e?.immuneHuge && tf.huge) return bad("hugeTarget");
+      if (e?.near && (v.facts.range?.(inst.actor, t)?.total ?? 0) > 1) return bad("tooFar", GM);
+      if (e?.oneZone && sameZone(v, subject, t) === false) return bad("notSameZone", { series: 1 });
+    }
+  }
+  if ((e?.effect?.mass || (e?.target?.n?.[1] ?? 1) > 1) && Array.isArray(d.targets)) {                       // Mass Healing [B1934]: every chosen ally must pass, not only the first, and no more than the entry's upper bound; PWD: any entry of several targets
     const ts = [...new Set(d.targets)], mx = e.target?.n?.[1];
     if (Number.isFinite(mx) && ts.length > mx) return bad("noTarget");
-    for (const t of ts.slice(1)) { const tf = v.facts.c(t); if (!tf || tf.present === false) return bad("noTarget"); if (e.sameZone && sameZone(v, inst.actor, t) === false) return bad("notSameZone", GM); }
+    for (const t of ts.slice(1)) {
+      const tf = v.facts.c(t); if (!tf || tf.present === false || t === inst.actor) return bad("noTarget");
+      if (e.sameZone && sameZone(v, inst.actor, t) === false) return bad("notSameZone", GM);
+      if (e.immuneHuge && tf.huge) return bad("hugeTarget");                                                    // PWD (PW042) [B1762]
+      if (e.near && (v.facts.range?.(inst.actor, t)?.total ?? 0) > 1) return bad("tooFar", GM);              // PWD (PW041) [B1763]
+      if (e.talk && v.facts.canTalk?.(inst.actor, t) === false) return bad("cannotHear", GM);
+    }
   }
+  if (other && e?.talk && v.facts.canTalk?.(inst.actor, subject) === false) return bad("cannotHear", GM);       // PWD (PW033) [B1708]: a hero you can communicate with
+  if (other && e?.effect?.illusion && e.cost === "none" && M.counterGet(v.state, illusionKey(inst.actor, subject)) > 0) return bad("usedAlready", GM);      // PWD (PW035): this round's cast on the target already carried Terrifying Illusions [B1717]
+  if (kind === "spell" && spellKey(inst.actor, d.text) && M.counterGet(v.state, spellKey(inst.actor, d.text)) > 0) return bad("spellLocked", GM);      // PWD (PW050) [B1790]
+  if (kind === "spellOn" && !(M.counterGet(v.state, spellReady(inst.actor)) > 0)) return bad("noSpell", GM);
   if (kind === "reabsorb" && !(K.copiesOf(v.state, inst.actor) > 0)) return bad("noCopies");
+  if (kind === "nullify" && inst.cause === "interrupt") {                                                       // PWA (PW039) [B1772-1775]
+    const P = parentOf(v, inst);
+    if (!P || subject !== P.actor) return bad("nullifyWho");
+    const pw = powerUsed(v, P);
+    if (!pw) return bad("noPower", GM);
+    if (pw.lv > (Number(e?.kit?.lv) || 0)) return bad("powerTooHigh");
+  }
   if (kind === "summon" && K.summonsOf(v, inst.actor).length) return bad("summonsOut", GM);                       // [B1812]: not while the earlier allies are still there
   if (kind === "summon" && String(d.opt ?? "").includes("powered") && !damage.canTakeVoluntaryStress(a.resolve)) return bad("stressedOut");
   if (kind === "dismiss" && !K.summonsOf(v, inst.actor).length) return bad("noSummons");
@@ -276,7 +383,13 @@ export const act = {
   whenBroken(v, inst) { const kind = kindOf(v, inst); return (kind === "rally" && subjectOf(inst) === inst.actor) || kind === "convert"; },
   revalidate(v, inst) { const a = v.facts.c(inst.actor); const b = !a || a.present === false ? "gone" : null; return { ok: !b, reasons: b ? [b] : [] }; },
   steps: {
-    check(v, inst) { const I = K.draft(inst), R = K.result(I); I.data.attr = attrOf(v, I); R.goto = I.data.attr ? "roll" : "effect"; return R; },
+    check(v, inst) {
+      const I = K.draft(inst), R = K.result(I); I.data.attr = attrOf(v, I);
+      const g = K.lowGravityGate(v, I, R);                                                       // PWD (PW037) [B1703]
+      if (g === "wait") { R.wait = true; return R; }
+      if (g === "failed") { I.data.result = "gateFailed"; R.goto = "close"; return R; }
+      R.goto = I.data.attr ? "roll" : "effect"; return R;
+    },
     roll(v, inst) {
       const I = K.draft(inst), R = K.result(I), d = I.decl, e = v.entry(I), attr = I.data.attr, opp = opponentOf(v, I);
       const order = dice.OPPOSED_PUSH_ORDERS.includes(v.state.opts?.pushOrder) ? v.state.opts.pushOrder : "afterDefence";      // [R3]
@@ -284,6 +397,7 @@ export const act = {
         const tg = K.tokenGate(v, I, R, I.actor, { kind: "other", attr }, d.tokens ?? [], "roll");
         if (tg.wait) { R.wait = true; return R; }
         I.locked = true; R.events.push({ type: "actionLocked" });                               // spec 5.5: locks at the first die
+        if (solidNow(v, I, e)) R.effects.push(K.solidSpent(I.actor));                           // PWA (PW109) [B1942]: solid for this one action
         if (stressOf(v, I) > 0) { K.setFlag(I, "stress"); R.effects.push({ t: "stress", who: I.actor, n: stressOf(v, I), cost: 1 }); }
         const bp = actPool(v, I, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
@@ -293,13 +407,12 @@ export const act = {
       if (!K.rollRolled(I, "roll")) { R.wait = true; return R; }
       if (opp) {
         if (order === "beforeDefence" && !K.rollFinal(I, "roll")) { R.wait = true; return R; }
-        const key = `def:${opp.who}`;
-        if (!K.rollOf(I, key)) {
-          const bp = K.buildPool(v, I, key, opp.who, opp.attr, oppMods(v, I, opp.who), { rollKind: "other" });
-          R.effects.push(K.rollEffect(key, opp.who, opp.attr, bp.pool, { defender: true, label: e?.label }));      // [B2241]: the passive party never pushes
-          R.wait = true; return R;
+        const opps = opponentsOf(v, I), ask = opps.filter((o) => !K.rollOf(I, `def:${o.who}`));      // PWD (PW042) [B1763]: each target of Area Control rolls separately
+        for (const o of ask) {
+          const key = `def:${o.who}`, bp = K.buildPool(v, I, key, o.who, o.attr, oppMods(v, I, o.who), { rollKind: "other" });      // PWE: Defiance, holding dice
+          R.effects.push(K.rollEffect(key, o.who, o.attr, bp.pool, { defender: true, label: e?.label }));      // [B2241]: the passive party never pushes
         }
-        if (!K.rollFinal(I, key)) { R.wait = true; return R; }
+        if (ask.length || opps.some((o) => !K.rollFinal(I, `def:${o.who}`))) { R.wait = true; return R; }
       }
       if (!K.rollFinal(I, "roll")) { R.wait = true; return R; }
       if (touchNeeded(v, I)) {                                                                  // Z15 [B1937]: the FIGHTING roll that touches an unwilling target, in the same action
@@ -314,13 +427,18 @@ export const act = {
       const I = K.draft(inst), R = K.result(I), e = v.entry(I), kind = kindOf(v, I), subject = subjectOf(I), sf = v.facts.c(subject);
       const rolled = !!I.data.attr, sixes = rolled ? K.sixesOf(I, "roll") : 0, opp = opponentOf(v, I), against = opp ? K.sixesOf(I, `def:${opp.who}`) : 0;
       const net = opp ? dice.opposed(sixes, against) : { win: sixes > 0, net: sixes };          // [B2243]: a tie fails for the active party
+      const opps = opponentsOf(v, I);
+      if (rolled && opps.length > 1) {                                                          // PWD (PW042) [B1763]: one PRESENCE roll against each target's own; the GM's card says who was won
+        I.data.won = opps.filter((o) => dice.opposed(sixes, K.sixesOf(I, `def:${o.who}`)).win).map((o) => o.who);
+        net.win = I.data.won.length > 0;
+      }
       const touched = !touchNeeded(v, I) || K.sixesOf(I, "touch") > 0;                         // Z15 [B1937]: no touch, nothing drained
       const success = (rolled ? net.win : true) && touched;
       I.data.result = success ? "success" : "fail"; I.data.net = rolled ? (opp ? net.net : sixes) : null;
       if (!touched) I.data.untouched = 1;
       const status = (who, id, on) => R.events.push({ type: "status", target: who, status: { id, on } });
       if (!rolled && !K.flag(I, "stress")) {                                                   // P6: an action without a roll locks here, with the stress it costs
-        K.setFlag(I, "stress"); if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }
+        K.setFlag(I, "stress"); if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); if (solidNow(v, I, e)) R.effects.push(K.solidSpent(I.actor)); }
         if (stressOf(v, I) > 0) R.effects.push({ t: "stress", who: I.actor, n: stressOf(v, I), cost: 1 });
       }
       if (e?.once && !K.flag(I, "once")) { K.setFlag(I, "once"); R.effects.push({ t: "state", ...M.counterBump(v.state, onceKey(I, e, v)) }); }
@@ -362,7 +480,7 @@ export const act = {
        also leaves a karma note [B2374], spec 9.11. Surplus sixes are shown: stunts of such rolls are the GM's last word [B2210-2218]. */
     outcome(v, inst) {
       const I = K.draft(inst), R = K.result(I), kind = kindOf(v, I);
-      if (!["narrative", "bystanders"].includes(kind)) { R.goto = "close"; return R; }
+      if (!["narrative", "bystanders"].includes(kind) && !(kind === "nullify" && I.cause !== "interrupt")) { R.goto = "close"; return R; }      // PWA: Nullification on its own turn (an ongoing effect, a passive power) stays the GM's word
       if (!I.data.pk?.outcome) {
         R.prompts.push({ key: "outcome", kind: "outcome", to: "gm", about: I.actor, free: 1, options: [{ id: "success", label: "ITAC.opt.success" }, { id: "fail", label: "ITAC.opt.fail" }],
           data: { action: I.action, rolled: I.data.attr ? 1 : 0, sixes: I.data.attr ? K.sixesOf(I, "roll") : null, net: I.data.net, suggests: I.data.result, text: I.decl.text ?? "", attr: I.data.attr ?? null, ...(v.entry(I)?.name ? { name: v.entry(I).name } : {}), ...(I.decl.opt ? { opt: I.decl.opt } : {}) } });
@@ -372,7 +490,22 @@ export const act = {
       const a = K.answerOf(v, I, "outcome"), id = K.answerId(v, I, "outcome") ?? I.data.result;
       I.data.result = id === "fail" ? "fail" : "success";
       if (a && typeof a === "object" && a.text) I.data.said = String(a.text).slice(0, 300);
-      if (v.entry(I)?.effect?.then === "control" && I.data.result === "success" && !K.flag(I, "control")) { K.setFlag(I, "control"); R.effects.push({ t: "summonFlag", who: subjectOf(I), owner: I.actor }); }      // [B1637]: the animal acts on its controller's turn from now on
+      if (v.entry(I)?.effect?.then === "control" && I.data.result === "success" && !K.flag(I, "control")) { K.setFlag(I, "control"); for (const who of [...new Set(I.decl.targets?.length ? I.decl.targets : [subjectOf(I)])]) R.effects.push({ t: "summonFlag", who, owner: I.actor }); }      // [B1637]: the animal acts on its controller's turn from now on; PWC (PW012): every animal named (PWC-4)
+      /* PWD (PW043) [B1761]: the one controlled takes a full turn at once on the controller's command (full and quick, or two quick), then loses its next
+         ordinary turn and has no interrupt actions until then. The turn is put right after the current point of the order, as the GM's insertTurn does
+         (SWEEP-R8: it counts to the round; P8e-8: the card's turn is the one lost). Of several (Area Control) only those the roll beat. */
+      if (v.entry(I)?.effect?.then === "mindControl" && I.data.result === "success" && !K.flag(I, "mind") && v.state.phase === "turns") {
+        K.setFlag(I, "mind");
+        const won = Array.isArray(I.data.won) ? I.data.won : [subjectOf(I)];
+        let init = v.state.init;
+        for (const t of won.filter((c) => c !== I.actor && v.facts.c(c) && P1L(v, c))) {
+          const r = In.insertTurn(init, { combatant: t, kind: "mindControl", by: I.actor }, (p) => sid(`${p}${I.id}${t}`).slice(0, 24));
+          if (!r?.ok) continue;
+          init = r.init;
+          R.effects.push({ t: "state", path: ["ledger", t], to: Lg.loseNextTurn(Lg.addTurnPair(P1L(v, t), r.slot, "mindControl", I.actor), { kind: "power", owner: I.actor, name: v.entry(I)?.name ?? "" }) });
+        }
+        if (init !== v.state.init) R.effects.push({ t: "state", path: ["init"], to: init });
+      }
       if (kind === "bystanders" && !K.flag(I, "karma")) { K.setFlag(I, "karma"); R.effects.push({ t: "karma", note: { who: I.actor, kind: I.data.result === "success" ? "savedBystanders" : "failedBystanders", zone: v.facts.zone?.(I.actor)?.spot ?? undefined, note: I.data.said } }); }
       R.events.push({ type: "outcome", result: I.data.result, text: I.data.said ?? "" });
       R.goto = "close"; return R;

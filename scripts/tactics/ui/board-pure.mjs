@@ -27,10 +27,13 @@ import { stateFlags } from "../movement-pure.mjs";
 
 export const IDS = Object.freeze({ reach: "ipu.reach", table: "ipu.table", links: "ipu.x", aim: "ipu.aim", warn: "ipu.warn", area: "ipu.area" });
 const LABEL = 18;
+/* FXY (FXW-3): an intention carries up to 28 characters on the map (zones-api.md 32, BOARD_LIMITS.intentPill; pill, tip and line say
+   them whole); a token's pill and a link's label stay at the token marks' 18 */
+export const INTENT_LABEL = 28;
 const cut = (s, n = LABEL) => { const x = String(s ?? ""); return x.length > n ? `${x.slice(0, n - 1)}…` : x; };
-/** U76: the words of an armed intention as the map can carry them: the action's name, whole when it fits the map's 18 characters, else
-    cut with an ellipsis (the map cut it mid-word without one). The user's name in front of it is the map's own addition. */
-export const intentLabel = (title) => cut(String(title ?? "").trim());
+/** U76: the words of an armed intention as the map can carry them: the action's name, whole when it fits the map's 28 characters
+    (FXY, FXW-3; it was 18 until the map's W1-14), else cut with an ellipsis. Who armed it is the map's own addition (the pill's tip). */
+export const intentLabel = (title) => cut(String(title ?? "").trim(), INTENT_LABEL);
 const fin = Number.isFinite;
 const join = (parts) => parts.filter(Boolean).map((x) => String(x).replace(/\.$/, "")).join(". ");
 
@@ -227,7 +230,7 @@ export function borderSigns(door, br, t) {
   return door ? { sub: [`${t(`ITAC.ui.door.${door.state}`, {}, String(door.state))}, `, armor(door.armor)] } : { title: [`${t("ITAC.map.haz.wall.do")} `, armor(br?.armor)] };
 }
 /* ------------------------------------------------------------------ U44: the GM's quick corrections */
-export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobilised", "trapped"]);
+export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobilised", "trapped", "conductive"]);      // PWC (PW019): conductive [B1680], a fact only the table knows
 /** Health, Resolve and the common states of one combatant as steppers and switches; each change is a GM edit of the engine
     (setHealth, setResolve, statusAdd, statusRemove: journaled, undoable like any other). `vitals` = { health, maxHealth, resolve, maxResolve } | null.
     A stepper's request is a STEP (`delta` = the number chosen minus `from`, the number it was counted from; by default the one the
@@ -236,6 +239,10 @@ export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobil
     is the lost next turn and its mark together (D53). */
 /** U80: did a correction sent from the map menu fail (refused by the executor, or never answered)? Then the menu shows a number nobody has. */
 export const stepFailed = (env) => !env || env.ok === false;
+/** FXY (FXW-4): what a failed step does to the map's menu. shownFor = the token the open menu was built for (null: another kind of
+    menu), cid = the step's token, open = a menu stands -> "set" (put the number back with menuSet, the menu stays open) | "none"
+    (the menu was closed or is another one now: the warning was said, nothing is opened again) */
+export const stepBack = (shownFor, cid, open) => (open && shownFor != null && shownFor === cid ? "set" : "none");
 export function gmItems(cid, vitals, statuses, t, group = null) {
   const out = [], v = vitals ?? {};
   /* U99: a group's Health is its count; the system's top of ten is no fact of it, so a larger group is never stepped down to it */

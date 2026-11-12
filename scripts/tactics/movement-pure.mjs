@@ -104,7 +104,7 @@ export function cannotMove(state, cid, c) {
   if (!c || c.present === false) return "gone";
   if (c.health <= 0) return "broken";
   const k = M.conditions(state, cid);
-  return k.held ? "held" : k.snared ? "snared" : k.trapped ? "trapped" : null;
+  return k.held ? "held" : k.snared || k.rooted ? "snared" : k.trapped ? "trapped" : null;      // PWC (PW005): Immobilize Only bars the moving too [B1611]
 }
 const altOf = (p) => p?.area ?? p?.level ?? "ground";
 const heightOf = (p) => (p?.level === "floor" ? p.floor : movement.ALTITUDE_HEIGHT[altOf(p)] ?? 0);

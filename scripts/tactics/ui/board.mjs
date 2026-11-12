@@ -124,7 +124,7 @@ function waysMenu(p, zone, drag = false) {
   const blocked = rows.filter((r) => r.disabled);
   const items = rows.map((r) => ({ id: r.id, label: r.label, icon: faOf("move"), hint: r.hint, ...(r.signs ? { signs: r.signs } : {}), ...(r.disabled ? { disabled: r.disabled } : {}) }));      // U100: `signs` the price as marks
   if (blocked.length === rows.length) items.push({ separator: true }, { id: "@ask", label: t(last.staff ? "ITAC.map.menu.gm" : "ITAC.map.menu.ask"), icon: last.staff ? "fa-solid fa-gavel" : "fa-solid fa-comment" });
-  menuBusy = true;
+  menuBusy = true; menuFor = null;
   Zones.menu({ zone, title: Model.zoneText(last.facts, t, zone), sub: p.title, items }).then((r) => {
     menuBusy = false;
     if (!r?.ok) return drag ? H.set({ armed: null, mode: null }) : H.refresh();
@@ -193,7 +193,14 @@ function say(spec, key) {
 /* ---------- U35 / U44: a right click on a thing ---------- */
 /* U80 (P8f-8): a correction that the executor refused left the refused number standing in the open menu (the map draws the stepper and
    shows what was clicked). The menu is the map's, so it is opened again at the same token with the numbers as they are; a menu the
-   GM closed in the meantime stays closed (the warning was said). */
+   GM closed in the meantime stays closed (the warning was said).
+   FXY (FXW-4): the map now puts the number back itself (`menuSet`, zones-api.md 29), the menu left open as it stands: only when the
+   open menu is still this token's (`menuFor`, BP.stepBack); a map without menuSet still gets the menu opened again. */
+let menuFor = null;
+function stepUndo(cid, id, was) {
+  const how = BP.stepBack(menuFor, cid, Zones.menuOpen());
+  if (how === "set" && Zones.menuSet(id, { value: was }) === null) again(cid);
+}
 function again(cid) {
   try {
     if (!last?.staff || !Zones.menuOpen()) return;
@@ -203,6 +210,7 @@ function again(cid) {
   } catch (e) { console.warn(LOG, "menu again failed", e); }
 }
 function tokenMenu(cid, acts) {
+  menuFor = cid;      // FXY (FXW-4): whose menu stands (a failed step puts its number back only there)
   const { combat, facts, staff, data } = last, who = data.who.id, name = facts.c?.(cid)?.name ?? "";
   const fix = () => {
     if (!staff) return [];
@@ -210,7 +218,7 @@ function tokenMenu(cid, acts) {
     /* a stepper sends ONE request once the clicking stops (450 ms): the STEP from the number the last request was counted from, which
        the executor adds to what the character has at that moment (so a hit that landed while the menu stood open is kept). One
        burst of clicks is one journal entry, one undo. A request that fails is said by main.mjs (`request` warns). */
-    return items.map((it) => { let from = it.stepper?.value; return (it.stepper ? { id: it.id, label: it.label, icon: it.icon, stepper: it.stepper, onStep: (v) => { const k = `${cid}|${it.id}`; clearTimeout(steps[k]); steps[k] = setTimeout(() => { steps[k] = 0; const was = from; from = v; if (v !== was) Promise.resolve(H.request(it.req(v, was))).then((env) => { if (BP.stepFailed(env)) { from = was; again(cid); } }).catch(() => {}); }, 450); return v; } }
+    return items.map((it) => { let from = it.stepper?.value; return (it.stepper ? { id: it.id, label: it.label, icon: it.icon, stepper: it.stepper, onStep: (v) => { const k = `${cid}|${it.id}`; clearTimeout(steps[k]); steps[k] = setTimeout(() => { steps[k] = 0; const was = from; from = v; if (v !== was) Promise.resolve(H.request(it.req(v, was))).then((env) => { if (BP.stepFailed(env)) { from = was; stepUndo(cid, it.id, was); } }).catch(() => {}); }, 450); return v; } }
       : { id: it.id, label: it.label, icon: it.icon, ...(it.tip ? { tip: it.tip } : {}), toggle: true, on: it.on, onToggle: async (o) => { const env = await H.request(it.req(o)); return BP.stepFailed(env) ? !o : o; } }); });
   };
   const spec = (rows) => {
@@ -226,6 +234,7 @@ function tokenMenu(cid, acts) {
   return H.request({ op: "preview", actor: who, decl: acts[0].decl, acts: acts.map((a) => a.decl), at: cid }, combat).then((env) => spec(env?.ok ? env.preview?.acts ?? null : null)).catch(() => spec(null));
 }
 function borderMenu(br, bar) {
+  menuFor = null;
   const { facts, staff, data } = last, who = data.who.id, key = norm(br?.key);
   const door = (facts.doors?.(who) ?? []).find((d) => norm(d.to) === key) ?? null;
   const items = door ? BP.doorItems(bar, door, t).map((a) => ({ id: a.id, label: a.label, icon: faOf(a.icon), hint: a.hint, ...(a.signs ? { signs: a.signs } : {}), ...(a.disabled ? { disabled: a.disabled } : {}), run: () => a.req && H.send(a.req, DONE) })) : [];

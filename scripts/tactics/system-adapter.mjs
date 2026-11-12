@@ -4,9 +4,10 @@
    Foundry globals are used only inside functions: importing this file in node is harmless. NOTHING HERE IS VERIFIED LIVE YET (see the handoff).
    Three groups: who takes part in a round (participants, talents, ownership, the end-of-scene facts: the round driver's readers),
    what a combatant is for an action (actorFacts, weaponFacts: the action engine's readers), and the writes and rolls of the engine.
-   FRAGILE, reported: the system gives talents no key, only a name. Combat Veteran and Fast Reflexes are recognised by item name (the
-   English names below, case-insensitive) or by an explicit actor flag, flags.<module>.tactics.talents = { combatVeteran, fastReflexes },
-   which wins when present. A renamed or translated talent item needs the flag. */
+   Talents: the system gives them no key, only a name. C8 (the user, 2026-11-12, K5: «Po identyfikatorze z kompendium»): Combat Veteran and
+   Fast Reflexes are recognised FIRST by the compendium identifier the item came from (its compendium source, or its own id on an imported
+   pregenerated character: scripts/i18n/item-ids.mjs), so a renamed or translated talent still counts; then by the explicit actor flag
+   flags.<module>.tactics.talents = { combatVeteran, fastReflexes }; then by the English item name (case-insensitive) as the last fallback. */
 import * as S from "./state-pure.mjs";
 import * as O from "./ops-pure.mjs";
 import { weapons, vehicles } from "../rules/index.mjs";
@@ -14,7 +15,7 @@ import * as Kit from "./kit-pure.mjs";
 import * as Moves from "./moves-pure.mjs";
 import { note as trace } from "./trace-pure.mjs";
 export { trace };      // D125: the engine's facts reader notes a combatant it cannot read through the same trace
-import { labelVariants } from "../i18n/sys-labels.mjs";
+import { labelVariants } from "../i18n/sys-labels.mjs"; import { PACK_IDS, EMBEDDED_IDS } from "../i18n/item-ids.mjs";      // C8: the talents' compendium ids
 import { showKit } from "../i18n/kit-names.mjs";      // what the kit SHOWS takes the name this client displays; it is still built from the stored names
 import { cardTitle } from "./lang.mjs";
 
@@ -106,13 +107,18 @@ export async function compat() {
 /* ------------------------------------------------------------------ facts about a combatant's actor (what engine-pure's facts.c(cid) carries) */
 /* ------------------------------------------------------------------ who takes part in a round (the round driver's readers) */
 export const TALENT_NAMES = { combatVeteran: ["combat veteran"], fastReflexes: ["fast reflexes"] };
+/* C8 (K5): the compendium identifiers of the two talents (the generated table: 16 characters each, glued together) */
+export const TALENT_IDS = Object.freeze(Object.fromEntries([["combatVeteran", "Combat Veteran"], ["fastReflexes", "Fast Reflexes"]].map(([k, en]) => [k, new Set(`${PACK_IDS.talent?.[en] ?? ""}${EMBEDDED_IDS.talent?.[en] ?? ""}`.match(/.{16}/g) ?? [])])));
+/** C8: does this talent item come from the compendium entry of `key` (its compendium source, else its own id: an imported pregenerated character)? */
+export const talentById = (item, key) => { const ids = TALENT_IDS[key], src = String(item?._stats?.compendiumSource ?? item?._source?._stats?.compendiumSource ?? item?.flags?.core?.sourceId ?? "").split(".").pop(); return !!ids && item?.type === "talent" && (ids.has(src) || ids.has(String(item.id ?? item._id ?? ""))); };
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
 export const actorOf = (c) => c?.token?.actor ?? c?.actor ?? null;
 export function hasTalent(actor, key) {
   try {
+    if (actor?.items?.some?.((i) => talentById(i, key))) return true;                // C8 (K5): the compendium identifier first
     const flag = actor?.flags?.[MOD]?.tactics?.talents?.[key];
-    if (typeof flag === "boolean") return flag;
+    if (typeof flag === "boolean") return flag;                                       // then the flag, then the English name
     const names = TALENT_NAMES[key] ?? [];
     return !!actor?.items?.some?.((i) => i.type === "talent" && names.includes(norm(i.name)));
   } catch { return false; }
@@ -259,7 +265,7 @@ export function actorFacts(actor) {
     huge: flags.huge === true || pass.huge === true, grown: flags.grown === true || pass.grown === true, impervious: flags.impervious === true || pass.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
     regeneration: flags.regeneration === true || pass.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
     movement: kind === "vehicle" ? [{ mode: "vehicle", speed: p7.vehicle.speed, aerial: ["aerial", "space"].includes(p7.vehicle.type) }] : movementOf(actor).map((m) => ((m.mode === "swimming" && pass.fastSwim) || (m.mode === "swinging" && pass.fastSwing) ? { ...m, tier: "fast" } : ["swimming", "swinging"].includes(m.mode) ? { ...m, tier: "basic" } : m)),      // [B2022], [B2030]
-    vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true || actor.items.some((i) => Moves.NAME_TYPES.includes(i.type) && /^(adaptation)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
+    vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true,   // [B2929]: a suit or a hull is the GM's flag; PWE-M: Adaptation is no free safety, it is adapted with its action [B1854] (flows/hazards.mjs)
     major: flags.major === true, immunities: [...(Array.isArray(flags.immunities) ? flags.immunities : []), ...pass.immune], vulnerabilities: [...(Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : []), ...pass.vulnerable],
   };
 }

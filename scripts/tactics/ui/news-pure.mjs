@@ -3,8 +3,8 @@
    (view-pure viewFor). This file decides which of them still stand and which belong together:
      newsWindow(prev, { combat, member, newest })   the turns this client has seen. A line stands through the turn it was written in
                                                     and the turn after it; then it goes (into nothing: the journal keeps the fight).
-                                                    `member` = whose turn this user's view shows (null between turns, or while somebody
-                                                    concealed from the user acts: that is no new turn for this user). -> { combat,
+                                                    `member` = whose turn this user's view shows (memberOf: null between turns; a turn of
+                                                    somebody concealed from the user counts as a turn too, FXN-7). -> { combat,
                                                     member, from, mark } : lines numbered above `from` stand
      groups(list)                                   the lines that are told as ONE: an action with the counterattack that answered it
                                                     (the counter closes first, so its line came first and was buried under the attack's
@@ -159,6 +159,17 @@ export function endAfterDice(req, dice) {
   if (req?.op !== "endTurn" || !dice?.busy) return false;
   const since = Number.isFinite(dice.since) ? dice.since : Number(dice.at) || 0;
   return (Number(dice.at) || 0) - since <= HOLD_MS;
+}
+/* FXY (U178): THE RUN OF DICE A PRESS WAITS FOR, told by the messages whose 3D dice are in the air (ids). `since` = when this client
+   first saw one of them; a run whose messages share none with the last one is new and starts its own clock. Before, a press read the
+   `since` of the last draw's diceHold, which is cleared only by a draw while no dice roll: a roll with nothing held left no such draw,
+   so the next roll's press found the old roll's clock past HOLD_MS and the turn passed at once. prev = { ids, since } | null,
+   ids = the ids of the messages rolling now, at = now -> { ids, since } | null (nothing rolls) */
+export function diceRun(prev, ids, at) {
+  const now = (Array.isArray(ids) ? ids : []).filter(Boolean).map(String);
+  if (!now.length) return null;
+  const same = Array.isArray(prev?.ids) && Number.isFinite(prev?.since) && now.some((id) => prev.ids.includes(id));
+  return { ids: now, since: same ? prev.since : Number(at) || 0 };
 }
 /* FXN (U162): THE OWN ROLL'S RESULT WAITS FOR ITS DICE. The line, the cards and the auto end already wait while 3D dice roll (D128,
    SEAM); the roll rows of this user (the dock's chips and the armed panel of the own action) did not: the attacker read the sixes and

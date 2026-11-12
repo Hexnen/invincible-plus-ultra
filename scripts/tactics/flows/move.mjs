@@ -212,7 +212,7 @@ export const move = {
           if (!aloft && M.hasStatus(v.state, cid, id)) R.effects.push({ t: "status-", who: cid, id });
         }
       }
-      if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [mv.who, ...(mv.group ?? [])])) if (!R.effects.some((x) => x.t === e.t && x.who === e.who && x.id === e.id)) R.effects.push(e); }   // [B2497], [B2392]: who left its pair behind is no longer of it
+      if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [mv.who, ...(mv.group ?? [])])) if (!R.effects.some((x) => x.t === e.t && x.who === e.who && x.id === e.id && String(x.path) === String(e.path))) R.effects.push(e); }   // [B2497], [B2392]: who left its pair behind is no longer of it
       if (I.decl.wreck && mv.mode === "burrowing" && !K.flag(I, "wreck")) { K.setFlag(I, "wreck"); burrowWreck(v, I, R, here); }      // PWE (PW095) [B1995]
       R.events.push(moveEvent(I));
       I.data.result = mv.stop ? "stopped" : "done"; R.goto = "close"; return R;

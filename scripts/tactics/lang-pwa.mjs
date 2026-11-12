@@ -1,0 +1,36 @@
+/* Tactical combat: the strings of fixer PWA (the powers review: findings PW001-PW114 that were confirmed against the book), English and Polish.
+   A table of its own so that the fixers working side by side do not edit the same lines; lang.mjs merges it. Our own wording only. */
+export const EN_PWA = {
+  "ITAC.reason.intangible": "intangible: no physical effect",
+  "ITAC.why.intangible": "You are intangible and cannot affect the physical world.",
+  "ITAC.fix.intangible": "Become solid first, or use a mental power.",
+  "ITAC.reason.tooHeavy": "the target is too heavy",
+  "ITAC.why.tooHeavy": "The target is too heavy to pull.",
+  "ITAC.fix.tooHeavy": "Pick a lighter target, or ask the GM.",
+  "ITAC.reason.nullifyWho": "only the one using the power",
+  "ITAC.why.nullifyWho": "Nullification is aimed at the one using the power.",
+  "ITAC.fix.nullifyWho": "Pick the character who is acting.",
+  "ITAC.reason.noPower": "no power is being used",
+  "ITAC.why.noPower": "That action uses no power.",
+  "ITAC.fix.noPower": "Wait for a power, or ask the GM.",
+  "ITAC.reason.powerTooHigh": "that power's level is too high",
+  "ITAC.why.powerTooHigh": "That power is above the level you can negate.",
+  "ITAC.fix.powerTooHigh": "Choose another action.",
+};
+export const PL_PWA = {
+  "ITAC.reason.intangible": "niematerialny: bez wpływu fizycznego",
+  "ITAC.why.intangible": "Jesteś niematerialny i nie wpływasz na świat fizyczny.",
+  "ITAC.fix.intangible": "Najpierw się zmaterializuj albo użyj mocy mentalnej.",
+  "ITAC.reason.tooHeavy": "cel jest za ciężki",
+  "ITAC.why.tooHeavy": "Cel jest za ciężki, by go przyciągnąć.",
+  "ITAC.fix.tooHeavy": "Wybierz lżejszy cel albo zapytaj MG.",
+  "ITAC.reason.nullifyWho": "tylko ten, kto używa mocy",
+  "ITAC.why.nullifyWho": "Neutralizacja celuje w tego, kto używa mocy.",
+  "ITAC.fix.nullifyWho": "Wybierz działającą postać.",
+  "ITAC.reason.noPower": "nie używa mocy",
+  "ITAC.why.noPower": "Ta akcja nie używa mocy.",
+  "ITAC.fix.noPower": "Poczekaj na moc albo zapytaj MG.",
+  "ITAC.reason.powerTooHigh": "za wysoki poziom mocy",
+  "ITAC.why.powerTooHigh": "Ta moc ma wyższy poziom, niż możesz zneutralizować.",
+  "ITAC.fix.powerTooHigh": "Wybierz inną akcję.",
+};

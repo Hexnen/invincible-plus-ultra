@@ -10,6 +10,9 @@ import * as Mv from "./movement-pure.mjs";
 import * as D from "./director-pure.mjs";
 import { EN, PL } from "./lang.mjs";
 import { MTable } from "./check-kit-map.mjs";
+import * as Hz from "./flows/hazards.mjs";
+import { readFileSync } from "node:fs";
+const SA = readFileSync(new URL("./system-adapter.mjs", import.meta.url), "utf8");
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -78,6 +81,14 @@ const barriers = (T) => (T.state.effects ?? []).filter((e) => e.kind === "barrie
   await V.req("p1", decl("H1", act(V, "H1", "control").id, { targets: ["N1"] })); await V.roll("roll", 2);
   eq(V.lastRequest()?.dice, V.c.N1.attrs.presence, "PW063: no Defiance, no extra dice");
   ok(both("ITAC.mod.defiance"), "PW063: the dice are named in both languages");
+  /* PWE-M: after PWD the terror also rides on the illusion's own cast (Terrifying Illusions on the same roll [B1717]): that cast is the
+     mind power then, a plain illusion is not (question PWE-1); and Area Control is marked as Mind Control is */
+  const mindOf = (items, k) => K.build({ items, attrs: {} }).actions.find((a) => a.id.endsWith(`-${k}`))?.mind ?? 0;
+  eq([mindOf(withB("il", "Illusion", [["ti", "Terrifying Illusions"]]), "cast"), mindOf(withB("il", "Illusion", [["ti", "Terrifying Illusions"], ["ap", "Area Projection"]]), "area"), mindOf(withB("il", "Illusion"), "cast"), mindOf(withB("mc", "Mind Control", [["ac", "Area Control"]]), "many")], [1, 1, 0, 1],
+    "PW063 [B1865]: Defiance resists the terrifying cast, the terrifying area cast and Area Control, not a plain illusion");
+  const W = base(withB("il", "Illusion", [["ti", "Terrifying Illusions"]]), [item("df", "Defiance", "power", { level: "major" })]);
+  eq(code(await W.req("p1", decl("H1", act(W, "H1", "cast").id, { targets: ["N1"] }))), "ok", "PW063: a terrifying illusion cast");
+  eq([W.lastRequest()?.attr, W.lastRequest()?.dice], ["intuition", W.c.N1.attrs.intuition + 4], "PW063 [B1865]: Defiance Major adds 4 dice against the terrifying cast (basic level: no minus)");
 }
 {
   const off = () => withB("df", "Defiance", [["ra", "Requires Activation (Defiance)", "limit"]], { level: "basic" });
@@ -277,6 +288,22 @@ const barriers = (T) => (T.state.effects ?? []).filter((e) => e.kind === "barrie
   eq(Mv.apiProfile({ way: "air", mode: "flight", zones: 2 }, { phase: true }).way, "flight", "PW086: a flier flies as before");
 }
 
+/* PWE-M: PW085 together with PWA's counter change (PW109): Controlled Phasing's 'solid' is a mark of the round that covers a single
+   physical action [B1942]; the next physical action in the same round is refused again until the 1 stress is paid once more */
+{
+  const T = base(withB("in", "Intangibility", [["pp", "Prolonged Phasing"], ["cp", "Controlled Phasing"]])), r0 = T.c.H1.resolve, mark = () => M.counterGet(T.state, M.counterKey.round("H1", "solid"));
+  await T.req("p1", decl("H1", act(T, "H1", "phased").id));
+  T.turn("N1"); T.turn("H2"); T.turn("N2"); await T.gm({ op: "nextRound" }); T.turn("H1");      // a fresh turn, still intangible (Prolonged Phasing lasts minutes)
+  const outcome = async () => { const p = T.prompt("outcome"); if (p) await T.gm({ op: "answerFor", prompt: p.id, value: { id: "success", text: "" } }); };
+  eq([st(T, "H1"), code(await T.req("p1", decl("H1", act(T, "H1", "solid").id))), mark(), r0 - T.c.H1.resolve], [["intangible"], "ok", 1, 1], "PW085 [B1942]: intangible, 'solid' for 1 stress marks the round");
+  eq([code(await T.req("p1", decl("H1", "useItem", {}))), mark()], ["ok", 0], "PW085 + PW109: a physical quick action is allowed and spends the mark when it locks");
+  await outcome();
+  const r = await T.req("p1", decl("H1", "useItem", {}));
+  eq([code(r), why(r)], ["illegal", "intangible"], "PW085 [B1942]: a single action: the next physical action of the same round is refused");
+  eq([code(await T.req("p1", decl("H1", act(T, "H1", "solid").id))), mark(), r0 - T.c.H1.resolve], ["ok", 1, 2], "PW085: paying the stress again marks it again");
+  eq(code(await T.req("p1", decl("H1", "useItem", {}))), "ok", "PW085: and the next physical action is allowed");
+}
+
 /* ============================================================ PW087: Life Support [B1947] */
 {
   const T = base([item("ls", "Life Support", "power")]), r0 = T.c.H1.resolve;
@@ -288,6 +315,25 @@ const barriers = (T) => (T.state.effects ?? []).filter((e) => e.kind === "barrie
   const U = base([]);
   await U.gm({ op: "hazardRun", run: { type: "vacuum" }, subject: { combatant: "H1" } });
   ok(U.requests.some((r) => r.key === "roll"), "PW087: without it the vacuum roll as before");
+}
+
+/* PWE-M: Adaptation [B1854] is no free vacuum safety either (the defect of PW087): 1 stress and a full action adapt the body, for the
+   scene (question PWE-M-1); before that the vacuum [B2929] asks its roll */
+{
+  const T = base([item("ad", "Adaptation", "power")]), r0 = T.c.H1.resolve, orbit = () => ({ ...T.facts(), zones: { place: () => ({ area: "orbit" }) } });
+  const due = () => Hz.derived(T.state, orbit(), { at: "turnStart", combatant: "H1" }).map((g) => g.run.type);
+  eq([T.c.H1.kit.pass.vacuumSafe ?? null, T.c.H1.kit.pass.adaptation], [null, true], "PWE-M [B1854]: Adaptation is not free safety");
+  ok(!/adaptation/i.test(SA.split("vacuumSafe:")[1]?.split(/\r?\n/)[0].split("//")[0] ?? "x"), "PWE-M: the system adapter no longer counts an Adaptation item as vacuum safety");
+  eq(due(), ["vacuum"], "PWE-M [B2929]: not adapted, the vacuum roll is due at the turn's start");
+  await T.gm({ op: "hazardRun", run: { type: "vacuum" }, subject: { combatant: "H1" } });
+  ok(T.requests.some((r) => r.key === "roll"), "PWE-M: not adapted, the vacuum asks its STRENGTH roll");
+  const U = base([item("ad", "Adaptation", "power")]), a = act(U, "H1", "adapt");
+  eq([a?.cost, a?.stress?.fixed, EN[a?.label] != null && PL[a?.label] != null], ["full", 1, true], "PWE-M [B1854]: adapting is a full action for 1 stress, named in both languages");
+  eq(code(await U.req("p1", decl("H1", a.id))), "ok", "PWE-M: adapted");
+  eq([U.c.H1.resolve, M.counterGet(U.state, M.counterKey.scene("H1", "adapted"))], [r0 - 1, 1], "PWE-M: the stress is paid, the mark lasts the scene");
+  eq(Hz.derived(U.state, { ...U.facts(), zones: { place: () => ({ area: "orbit" }) } }, { at: "turnStart", combatant: "H1" }).map((g) => g.run.type), [], "PWE-M [B1854], [B2929]: adapted, no vacuum roll is due");
+  await U.gm({ op: "hazardRun", run: { type: "vacuum" }, subject: { combatant: "H1" } });
+  eq([U.requests.some((r) => r.key === "roll"), U.c.H1.resolve], [false, r0 - 1], "PWE-M: adapted, the vacuum asks no roll and costs nothing more");
 }
 
 /* ============================================================ PW091: one size at a time [B1974] */

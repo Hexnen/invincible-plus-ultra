@@ -150,6 +150,7 @@ function titleOf(p, t, facts, round) {
   if (P1_KINDS.includes(p.kind)) return t(`ITAC.Prompt.${p.kind}.Title`);
   const k = p.kind === "proxy" && p.of ? p.of : p.kind;
   if (k === "direction" && Array.isArray(p.data?.zones)) return t("ITAC.ui.card.forced");
+  if (k === "dodgeMove" && p.data?.away) return t("ITAC.prompt.awayMove");      // PWB: the move of Untouchable Speed / Quick Teleport, not one after a dodge [B2018], [B2039]
   return t(`ITAC.${p.to === "desk" ? "card" : "prompt"}.${k}`, {}, null) ?? t(`ITAC.card.${k}`, {}, null) ?? t(`ITAC.Prompt.${k}.Title`, {}, cap(k));
 }
 /* a choice of several features at once ("more+more+powered"): each named once, with how many times */
@@ -161,6 +162,7 @@ function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
   const kind = p.of ?? p.kind;
   if (kind === "reaction" && o.id === "pass") return t("ITAC.ui.noReaction");      // U11: one word for it on both seats
   if (kind === "triggerQueue" && o.data?.type) { const own = dueLabel(o, t, facts); if (own) return own; }
+  if ((kind === "critPick" || kind === "critConfirm") && Number.isInteger(o.data?.d6)) return t(kind === "critPick" ? "ITAC.opt.critDie" : o.id === "approve" ? "ITAC.opt.critKeep" : "ITAC.opt.critOther", { d6: o.data.d6, n: o.data.n ?? "?", crit: t(`ITAC.crit.${o.data.id}`, {}, "") });      // P6b-6
   if (kind === "fireSpread" && o.data?.zone) return o.data.rolled ? t("ITAC.ui.spread.rolled", { zone: zoneText(facts, t, o.data.zone) }) : zoneText(facts, t, o.data.zone);
   /* D113: an answer about one of several characters (the ally Discretion puts in the way, the one a warning is for) names that character */
   if (kind === "reaction" && o.data?.about && String(o.id).includes("@")) return t("ITAC.ui.react.about", { what: o.name ? String(o.name) : labelOf(t, o.label), name: nameOf(facts, o.data.about, t) });
@@ -206,7 +208,7 @@ function linesOf(p, t, facts, x) {
       if (d.bystander) out.push(t(d.attacker ? "ITAC.ui.line.attackBy" : "ITAC.ui.line.attackUnseenBy", { attacker: n(d.attacker), targets, action, name: about }));
       else if (d.attacker) out.push(t("ITAC.ui.line.attack", { attacker: n(d.attacker), target: about, action }));
       else out.push(t(d.unseen ? "ITAC.ui.line.attackUnseen" : "ITAC.ui.line.window", { name: about }));
-      if (d.warned) out.push(t("ITAC.ui.line.warned", { by: n(d.warned) }));      // D113 [B2170]
+      if (d.warned) out.push(t(d.guided ? "ITAC.ui.line.guided" : "ITAC.ui.line.warned", { by: n(d.warned) }));      // D113 [B2170]; PWB: Guidance [B1709]
       break;
     }
     case "reactionByHand": {      // D113: a reaction the engine has no rule for: the GM settles it, the attack waits
@@ -215,7 +217,7 @@ function linesOf(p, t, facts, x) {
       break;
     }
     case "counter": out.push(t("ITAC.ui.line.counter", { name: about })); break;
-    case "dodgeMove": out.push(t("ITAC.ui.line.dodgeMove", { name: about })); break;
+    case "dodgeMove": out.push(t(d.away ? "ITAC.ui.line.awayMove" : "ITAC.ui.line.dodgeMove", { name: about })); break;      // PWB: the move of Untouchable Speed / Quick Teleport [B2018], [B2039]
     case "moveStop": if (d.slab) { out.push(t("ITAC.ui.line.slabStop", { name: about, slab: t(`ITAC.ui.slab.${d.slab}`, {}, String(d.slab)), zone: zoneText(facts, t, d.spot) })); break; }
       out.push(t("ITAC.ui.line.moveStop", { name: about, zone: zoneText(facts, t, d.spot), why: (d.why ?? []).map((w) => t(`ITAC.ui.why.${w}`, {}, String(w))).join(", ") })); break;
     case "moveApprove": out.push(t("ITAC.ui.line.moveApprove", { name: about, from: zoneText(facts, t, d.from), to: zoneText(facts, t, d.to) })); if (d.cost && d.cost !== "none") out.push(t("ITAC.ui.line.moveCost", { cost: costText(t, d.cost) })); break;
@@ -284,6 +286,8 @@ function linesOf(p, t, facts, x) {
     case "hazardStunts": out.push(t("ITAC.ui.line.hazardStunts", { n: d.surplus ?? 0, names: (d.targets ?? []).map(n).join(", ") })); break;
     case "fireSpread": out.push(t("ITAC.ui.line.fireSpread", { zone: zoneText(facts, t, d.from), n: d.intensity ?? "?" })); break;
     case "vacuumDeath": out.push(t("ITAC.ui.line.vacuumDeath", { name: about })); break;
+    case "critPick": out.push(t(`ITAC.ui.line.critPick.${d.talent === "killer" ? "killer" : "lucky"}`, { name: about, target: n(d.target) })); break;      // P6b-6 (K8)
+    case "critConfirm": out.push(t(`ITAC.ui.line.critConfirm.${d.talent === "killer" ? "killer" : "lucky"}`, { name: about, target: n(d.target), d6: d.pick?.d6 ?? "?", n: d.pick?.n ?? "?", crit: t(`ITAC.crit.${d.pick?.id}`, {}, "") })); break;
     case "heroDead": out.push(t("ITAC.ui.line.heroDead", { name: about, n: d.n ?? "?", crit: t(`ITAC.crit.${d.id}`, {}, "") })); break;      // FXP (D163)
     default: break;
   }
@@ -310,6 +314,29 @@ export function carryPicks(picks, prev, now) {
     delete out[p.id]; delete out[`tk:${p.id}`];
   }
   return out;
+}
+/* U17-2 (the user, 2026-11-12, K6: «MG może wskazać każdego»): on the GM's stunt card, Bang Heads and Trick Shot may go into ANY character,
+   also one the card does not list (the engine checks it: flows/attack.mjs gmExtraOk). Per stunt and target a select of the others of the
+   fight (not the attacker, not a target, not one listed already, never a challenge or a vehicle); a name chosen there becomes one more
+   answer of the card ("<stunt>@<target>|<who>", kept in the desk's own values `gx:<card>`) and is ticked at once. A player's card has none. */
+const GM_EXTRA = ["bangHeads", "trickShot"];
+function gmExtraOf(p, facts, own, t) {
+  const opts = p.options ?? [], chosen = Array.isArray(own.vals?.[`gx:${p.id}`]) ? own.vals[`gx:${p.id}`].filter((x) => typeof x === "string") : [];
+  const pairs = [];
+  for (const o of opts) { const d = o.data ?? {}; if (GM_EXTRA.includes(d.stunt) && !d.onExtra && d.target && !pairs.some((q) => q.stunt === d.stunt && q.target === d.target)) pairs.push({ stunt: d.stunt, target: d.target }); }
+  if (!pairs.length) return null;
+  const hitT = new Set(opts.filter((o) => o.data?.target && !o.data.onExtra).map((o) => o.data.target));
+  const members = [...new Set((facts.view?.init?.slots ?? []).flatMap((s) => (Array.isArray(s?.members) ? s.members : [])))];
+  const added = [], rows = [];
+  for (const q of pairs) {
+    const pre = `${q.stunt}@${q.target}|`, listed = new Set(opts.filter((o) => String(o.id).startsWith(pre)).map((o) => o.data?.extra));
+    const mine = chosen.filter((id) => id.startsWith(pre) && !listed.has(id.slice(pre.length)));
+    for (const id of mine) added.push({ id, label: `ITAC.stunt.${q.stunt}`, data: { stunt: q.stunt, target: q.target, extra: id.slice(pre.length), gm: 1 } });
+    const choices = members.filter((x) => x !== p.about && !hitT.has(x) && !listed.has(x) && !mine.includes(pre + x) && ((c) => !!c && !["challenge", "vehicle"].includes(c.kind))(facts.c?.(x)))
+      .map((x) => ({ id: pre + x, label: nameOf(facts, x, t) }));
+    if (choices.length) rows.push({ id: `gx:${p.id}:${q.stunt}:${q.target}`, label: t(pairs.length > 1 ? "ITAC.ui.stunt.gmAnyOf" : "ITAC.ui.stunt.gmAny", { stunt: t(`ITAC.stunt.${q.stunt}`), name: nameOf(facts, q.target, t) }), choices });
+  }
+  return { added, ctl: rows.length ? { key: `gx:${p.id}`, chosen, tip: t("ITAC.ui.stunt.gmAnyTip"), rows } : null };
 }
 /** One question as both surfaces draw it.
     o = { t, facts, own, desk: bool, info: [instance lines] (to name the action a reaction answers), round }
@@ -359,7 +386,8 @@ export function askData(p, o) {
   const spare = new Map(); for (const x of p.options ?? []) for (const k of Array.isArray(x.data?.tokens) ? x.data.tokens : []) if (!spare.has(k.id)) spare.set(k.id, k);
   const tkPicked = (own.picks?.[`tk:${p.id}`] ?? []).filter((id) => spare.has(id));
   const tokens = [...spare.values()].map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source}`, {}, String(k.source ?? "")), needsGm: !!k.needsGm, picked: tkPicked.includes(k.id) }));
-  const options = [...placeOpts, ...(p.options ?? []).filter((x) => !places.includes(x)).map((x) => {
+  const gx = desk && kind === "stunts" ? gmExtraOf(p, facts, own, t) : null;      // U17-2: the GM names anybody as the extra opponent
+  const options = [...placeOpts, ...[...(p.options ?? []), ...(gx?.added ?? [])].filter((x) => !places.includes(x)).map((x) => {
     const mine = tkPicked.filter((id) => (x.data?.tokens ?? []).some((k) => k.id === id));
     const value = text && p.free ? { id: x.id, text } : always ? { id: x.id, always: true } : mine.length ? { id: x.id, tokens: mine } : null;
     const zones = Array.isArray(x.data?.zones) ? x.data.zones : null;
@@ -407,6 +435,8 @@ export function askData(p, o) {
     return { map: null, id: p.id, kind, proxy: false, pvFor: null, aboutId: p.about ?? null, aboutHead: true, check: false, title: titleOf({ ...p, to: "desk" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options: shown.filter(Boolean), multi: null, tokens: [], free: null, always: null, submit: null,
       count: { id: `mq:${p.id}`, value: v, min: 0, max: top, label: t("ITAC.ui.minions.fall"), of: t("ITAC.ui.minions.of", { n: p.data?.members ?? top }) } };
   }
+  /* P6b-6: the two injury dice of Killer / Lucky Break: each answer is its die (the face as the picture) and the injury it gives */
+  if (kind === "critPick" || kind === "critConfirm") for (const x of options) { const d = (p.options ?? []).find((o) => o.id === x.id)?.data; if (Number.isInteger(d?.d6)) x.icon = `die:${Math.max(1, Math.min(6, d.d6))}`; }
   if (oneTarget) lines.push(t("ITAC.ui.line.against", { name: nameOf(facts, stuntTargets[0], t) }));
   if (attPool != null) lines.push(t("ITAC.ui.line.attPool", { dice: attPool, attr: attrText(t, gmOdds.att.attr ?? inst?.attr) }));
   const max = p.max ?? options.length, min = p.min ?? 0;
@@ -416,6 +446,7 @@ export function askData(p, o) {
     map: desk && kind === "direction" && Array.isArray(p.data?.zones) && p.data.zones.length > 1 ? { zones: p.data.zones.map((z, i) => ({ zone: bare(z), label: i ? String(i) : "" })), borders: (p.data.walls ?? []).map((w) => w.border).filter(Boolean) } : null,
     id: p.id, kind, proxy: p.kind === "proxy", pvFor: pb ? p.about : null, aboutId: p.about ?? null, aboutHead: true, check: queue, title: titleOf({ ...p, to: desk ? "desk" : "player" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options, multi, tokens,
     free: p.free ? { text: own.texts?.[p.id] ?? "", placeholder: t(desk ? "ITAC.ui.note.gm" : "ITAC.ui.note.player") } : null,
+    gmExtra: gx?.ctl ?? null,
     always: desk && Array.isArray(p.always) && p.always.length ? { on: always, label: t("ITAC.ui.always", { name: p.aboutName ?? "" }), tip: t("ITAC.ui.always.tip", { name: p.aboutName ?? "" }) } : null,
     submit: multi ? { label: queue ? t("ITAC.Prompt.triggerQueue.Go") : t("ITAC.ui.confirm", { n: picks.length, max }), disabled: canSubmit ? null : t("ITAC.ui.pickMore"),
       req: canSubmit ? p.answerReq(queue ? { order: [], skip: allIds.filter((id) => !picks.includes(id)) } : picks.slice()) : null } : null,
@@ -675,12 +706,12 @@ function extrasOf(bar, t, facts = {}) {
    -> { weapons: { label, empty, items } | null, opts: [{ id, label, tip, on }], maxTargets, decl, dice: [{ label, dice }], why, notes: [text] } */
 const FULL_AUTO_MAX = 12;
 function armsOf(bar, a, own, facts, t) {
-  const none = { weapons: null, opts: [], maxTargets: 1, decl: {}, dice: [], why: null, notes: [] };
+  const none = { weapons: null, opts: [], maxTargets: a.flow === "act" && a.targetMax > 1 ? Math.min(12, a.targetMax) : 1, decl: {}, dice: [], why: null, notes: [] };      // PWC (PW012): an action that takes several (all the animals of a zone)
   if (a.flow !== "attack") return none;
-  const shooting = a.attack === "shooting", melee = a.attack === "slugfest";
-  const list = a.unarmed ? [] : shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : [];
-  const ids = [...(melee ? ["unarmed"] : []), ...list.map((w) => w.id)];
-  const wname = (x) => (x.opt ? `${x.name} (${t(`ITAC.kit.opt.${x.opt}`, {}, x.opt)})` : x.tag ? `${x.name} + ${x.tag}` : x.name);      // P6: a power's attack and its variants
+  const shooting = a.attack === "shooting", melee = a.attack === "slugfest", grapple = a.attack === "grapple";      // PWA (PW048): a grapple may be made with the plants of Plant Control [B1779]
+  const list = a.unarmed ? [] : shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && !w.reactOnly && (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : grapple ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && !w.reactOnly && w.grip) : [];
+  const ids = [...(melee || grapple ? ["unarmed"] : []), ...list.map((w) => w.id)];
+  const wname = (x) => `${x.name}${x.tag ? ` + ${x.tag}` : ""}${x.opt ? ` (${t(`ITAC.kit.opt.${x.opt}`, {}, x.opt)})` : ""}${x.alt ? ` (${t("ITAC.kit.opt.alt", { attr: attrText(t, x.alt) })})` : ""}`;      // P6: a power's attack and its variants; PWC (PW007): rolled with the attack's own attribute
   const sel = ids.includes(own.weapon) ? own.weapon : ids[0] ?? null, w = list.find((x) => x.id === sel) ?? null;
   const rangeText = (x) => (Array.isArray(x.range) ? t(x.range[0] === x.range[1] ? "ITAC.ui.weapon.rangeOne" : "ITAC.ui.weapon.range", { min: x.range[0], max: x.range[1] }) : null);
   const tipOf = (x) => [x.bonus ? t("ITAC.ui.weapon.bonus", { n: x.bonus }) : null, x.damage != null ? t("ITAC.ui.weapon.damage", { n: x.damage }) : null, rangeText(x), x.sharp ? t("ITAC.ui.weapon.sharp") : null, x.stunEffect ? t("ITAC.ui.weapon.stunEffect") : null, x.singleUse ? t("ITAC.ui.weapon.singleUse") : null, x.noMove ? t("ITAC.ui.weapon.noMove") : null,
@@ -702,7 +733,7 @@ function armsOf(bar, a, own, facts, t) {
   const on = { wreck: can.wreck && !!own.opts?.wreck, area: can.area && !!own.opts?.area, fullAuto: can.fullAuto && !!own.opts?.fullAuto && !own.opts?.area };
   /* U85: an option is a picture; its name and what it does are its tooltip (the line that used to appear under a switched-on option says nothing the tooltip does not, except for full auto, whose line is carried there) */
   const opts = ["wreck", "area", "fullAuto"].filter((k) => can[k]).map((k) => ({ id: k, label: t(`ITAC.ui.arm.${k}`), tip: { title: t(`ITAC.ui.arm.${k}`), lines: [t(`ITAC.ui.arm.${k}.tip`), ...(k === "fullAuto" ? [t("ITAC.ui.arm.fullAuto.note")] : [])] }, on: on[k] }));
-  return { weapons, opts, maxTargets: on.fullAuto ? FULL_AUTO_MAX : 1,
+  return { weapons, opts, maxTargets: on.fullAuto ? FULL_AUTO_MAX : w?.several > 1 ? w.several : w?.quake > 1 ? w.quake : 1,      // PWC: Multiple Snares (PW006), a quake over several zones, one target named per zone (PW018)
     decl: { ...(w ? { weapon: w.id } : {}), ...(on.wreck ? { wreck: true } : {}), ...(on.area ? { area: true } : {}), ...(on.fullAuto ? { fullAuto: true } : {}) },
     attr: w?.attr ?? null, dice: w?.bonus ? [{ label: w.name, dice: w.bonus }] : [], why: shooting && !w ? t("ITAC.ui.weapon.none") : null,
     notes: [on.wreck ? t("ITAC.ui.arm.wreck.note") : null, on.area ? t("ITAC.ui.arm.area.note") : null, on.fullAuto ? t("ITAC.ui.arm.fullAuto.note") : null].filter(Boolean) };
@@ -1147,7 +1178,7 @@ export function manualData(m, own, facts, t) {
    lines). Staff only: the desk is never built for a player. Nothing here is new knowledge: the sheet, the map and the journal hold it.
    -> { id, name, img, zone, group, hidden, vitals, slots, states: [{ id, icon, label, tip }], last: [{ id, round, text, undone }], lastLabel, lastNone } */
 const STATE_ICON = { broken: "fa-heart-crack", unconscious: "fa-bed", dying: "fa-skull-crossbones", dead: "fa-skull", stressedOut: "fa-battery-empty", grappled: "fa-hands-holding", grappling: "fa-hand-back-fist", snared: "fa-link", immobilised: "fa-lock", trapped: "fa-dungeon",
-  unaware: "fa-eye-slash", stunned: "fa-face-dizzy", burning: "fa-fire", airborne: "fa-dove", carrying: "fa-people-carry-box", carried: "fa-people-carry-box", invisible: "fa-ghost", huge: "fa-up-right-and-down-left-from-center", suffocating: "fa-lungs", inVehicle: "fa-car-side", intangible: "fa-ghost" };
+  unaware: "fa-eye-slash", stunned: "fa-face-dizzy", burning: "fa-fire", airborne: "fa-dove", carrying: "fa-people-carry-box", carried: "fa-people-carry-box", invisible: "fa-ghost", huge: "fa-up-right-and-down-left-from-center", suffocating: "fa-lungs", inVehicle: "fa-car-side", intangible: "fa-ghost", conductive: "fa-magnet" };
 export const UNIT_LAST = 3;
 export function unitData(cid, model, facts, t) {
   const c = facts.c?.(cid);
