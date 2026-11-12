@@ -91,9 +91,11 @@ export function sync(ctx) {
     const before = key === combat.id ? was : null;                                            // another fight: a first look
     was = now; key = combat.id;
     if (CP.handTook(before, now) && Zones.hasShot()) Zones.shotEnd();                         // U98: the user's hand or a question: a shot on screen gives the view back
-    const c = CP.cue(before, now);
+    const all = CP.cues(before, now), c = all[0] ?? null;
     if (!c) return;
-    const s = CP.cueShot(c, now);
+    /* U98: somebody new in this user's view gets its shot even when a more pressing quiet cue came with it (the one revealed is
+       on turn): the shot shows where it is; a user who turned the camera down gets the quiet cue instead */
+    const s = CP.cueShot(all.find((x) => x.why === "reveal") ?? null, now);
     const spec = s ? playShot(combat, s, c) : play(combat, c);
     log.push({ at: Date.now(), why: c.why, level: c.level, focus: c.focus, sent: !!spec }); if (log.length > 40) log.shift();
   } catch (e) { console.warn(LOG, "sync failed", e); }
