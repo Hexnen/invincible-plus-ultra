@@ -76,7 +76,8 @@ export function talk(Z, a, b, link = false) {
 }
 
 /* ------------------------------------------------------------------ per client */
-let offStep = null, on = false, H = null, surface = null;
+/* U107: lastInput = when this client last had a hand on it (a pointer released, a key pressed): MP.madeByScript tells a script's token update from a drag */
+let offStep = null, on = false, H = null, surface = null, lastInput = 0, inputOn = false;
 /** The action dock takes over the confirmation of a dragged token: fn(cid, spot) -> true when it showed the options itself. */
 export function setDragSurface(fn) { surface = typeof fn === "function" ? fn : null; }
 const costText = (o) => `${t(`ITAC.cost.${o.cost ?? "none"}`)}${o.stress ? ` + ${t("ITAC.move.stress", { n: o.stress })}` : ""}${o.barriers?.length ? ` + ${t("ITAC.move.force", { n: o.barriers.length })}` : ""}`;
@@ -121,6 +122,7 @@ function onDrag(h, ctx) {
     /* U74 (the map's D71): a drop out of every zone, or into a zone from outside them, is held by the map and has no route, so nothing
        can be priced: the one who dragged is told why the token stayed (before: silence). The GM's own such drop is a placement and never
        comes here. */
+    if (cid && inputOn && MP.madeByScript(Date.now(), lastInput)) { ui.notifications?.warn(t("ITAC.move.script", { name: h.c(cid)?.name ?? "" }), { console: false }); return false; }
     const off = MP.offZones(ctx);
     if (cid && off) { ui.notifications?.warn(t(`ITAC.move.${off}`), { console: false }); return false; }
     if (cid && to && surface) { let took = false; try { took = surface(cid, to) === true; } catch { took = false; } if (took) return false; }      // the dock shows the price (ui/main.mjs)
@@ -139,7 +141,7 @@ export async function pickMove(h, cid) {
 }
 export function install(h) {
   try {
-    H = h;
+    H = h; if (!inputOn && typeof document !== "undefined") { inputOn = true; for (const ev of ["pointerup", "keydown"]) document.addEventListener(ev, () => { lastInput = Date.now(); }, { capture: true, passive: true }); }
     if (on || !Zones.available()) return on;
     offStep = Zones.beforeStep((ctx) => MP.stepVerdict(ctx));                                    // only the engine's own moves carry `data.ipu`; every other move passes
     Zones.rulesDriver({ id: MOD, title: "Invincible Plus Ultra", fireRound: async () => { ui.notifications?.info(t("ITAC.move.fireByTactics")); }, wreck: () => "" });   // the map stops rolling fire and showing wrecking numbers [G-Z9]

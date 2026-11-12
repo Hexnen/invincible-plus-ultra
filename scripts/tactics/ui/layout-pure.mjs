@@ -59,3 +59,13 @@ export function stored(layout) {
 }
 /** U64: how the desk stands when the surfaces start: { collapsed, touched } from the layout, or null (by the room) */
 export const deskStart = (layout) => (layout?.desk ? { collapsed: layout.desk === "folded", touched: true } : null);
+
+/** U108: Dice So Nice rolls its dice on a canvas laid over the whole window (z-index 1000, or above every window in its "auto" mode), and
+    the dice rolled across the dock and the initiative bar and hid them. While that canvas SHOWS dice (`display` not none, `opacity` not 0)
+    the two bars stand one step above it; else (or a canvas under the interface: z below `base`) nothing changes.
+    style = { display, opacity, zIndex } of the canvas (strings as the DOM gives them) | null -> the z-index to raise to, or null */
+export function diceRaise(style, base = 29) {
+  if (!style || style.display === "none" || String(style.opacity ?? "") === "0") return null;
+  const z = Number.parseInt(style.zIndex, 10);
+  return Number.isFinite(z) && z >= base ? z + 1 : null;
+}

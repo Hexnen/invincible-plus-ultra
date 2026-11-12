@@ -9,7 +9,9 @@ import { placeTip, shown, orderFor } from "./tip-pure.mjs";
 const DOCK = "#invincible-tactics-dock", DESK = "#invincible-tactics-desk";
 /* the blocks of the dock (dock.mjs draw()) and what a tooltip keeps off besides its own block: the other cards, the panel, the bar, the desk */
 const DOCK_BLOCKS = ".ita-ask, .itd-panel, .itd-bar, .itd-wait, .itd-hint1";
-const KEEP_OFF = `${DOCK} .ita-ask, ${DOCK} .itd-panel, ${DOCK} .itd-bar, ${DESK} .igd`;
+/* U103: the line over the bar (who the table waits for, the news) and the first-fight hint are kept off too: a bar button's tooltip opened
+   on the news line and hid it; now it takes the place over them ("over" in tip-pure.mjs) */
+const KEEP_OFF = `${DOCK} .ita-ask, ${DOCK} .itd-panel, ${DOCK} .itd-bar, ${DOCK} .itd-wait, ${DOCK} .itd-hint1, ${DESK} .igd`;
 const rectOf = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
 
 /** the block of `el` and the order of places for it -> null: not ours, Foundry places it */

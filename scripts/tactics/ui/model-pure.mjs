@@ -153,6 +153,13 @@ function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
   const own = t(`ITAC.Prompt.${kind}.${o.id}`, { card: p.data?.card ?? o.data?.card ?? "" }, null) ?? t(`ITAC.ui.opt.${o.id}`, {}, null);
   return own ?? String(o.label ?? o.id);
 }
+/* D108: "<challenge>: <what it does>" with the effect said in the reader's words; the challenge named as this reader may see it */
+function effectText(t, facts, kind, challenge, fallbackName = "") {
+  const name = challenge && facts?.c?.(challenge) ? nameOf(facts, challenge, t) : String(fallbackName || "").split(":")[0].trim() || t("ITAC.Someone");
+  return t("ITAC.ui.due.challenge", { name, effect: t(`ITAC.ui.effect.${kind}`, {}, String(kind)) });
+}
+/** the words of a by-hand item: a challenge's side effect in the reader's language, else what was written */
+const instText = (t, facts, i) => (i.effect?.kind ? effectText(t, facts, i.effect.kind, i.effect.challenge, i.effect.name) : i.text ?? null);
 /* P5: one line of a round-point queue that a hazard put there, in words (who burns, where, how hard) */
 function dueLabel(o, t, facts) {
   const d = o.data, names = (d.targets ?? []).map((id) => nameOf(facts, id, t)).join(", "), who = d.combatant ? nameOf(facts, d.combatant, t) : names;
@@ -162,6 +169,7 @@ function dueLabel(o, t, facts) {
     case "vacuum": return t("ITAC.ui.due.vacuum", { name: who });
     case "disease": return t("ITAC.ui.due.disease", { name: who });
     case "blast": case "area": return d.zone ? t("ITAC.ui.due.blastZone", { zone: zoneText(facts, t, d.zone), names }) : t("ITAC.ui.due.blastOn", { names: who });
+    case "challenge": case "challengeRoll": return d.effect ? effectText(t, facts, d.effect, d.challenge) : null;      // D108: a challenge's side effect in the reader's words (was "Challenge B: toxin")
     default: return null;
   }
 }
@@ -353,7 +361,8 @@ export function waitingData(waiting, facts, t) {
     const mine = gm ? !!facts.staff : users.includes(facts.me);
     const who = mine ? t("ITAC.ui.who.you") : gm ? t("ITAC.ui.who.gm") : users.map((u) => facts.userName?.(u) ?? t("ITAC.Someone")).join(", ") || t("ITAC.Someone");
     const what = w.what === "roll" || w.what === "push" ? t(w.what === "push" ? "ITAC.ui.wait.push" : "ITAC.ui.wait.roll", { roll: rollLabel(t, w.key, { c: () => null }) }) : titleOf({ ...w, to: "player", aboutName: w.aboutName }, t, facts);
-    const text = w.aboutName ? t("ITAC.ui.wait.about", { what, name: w.aboutName }) : what;
+    const named = w.kind === "triggerQueue" && /^turn/.test(String(w.data?.at ?? ""));      // D108: "Start of turn: Atom Eve" names the character itself
+    const text = w.aboutName && !named ? t("ITAC.ui.wait.about", { what, name: w.aboutName }) : what;
     const key = gm ? "gm" : users.join(",");
     if (!rows.has(key)) rows.set(key, { who, mine, gm, what: [], since: null, nudge: null });
     const row = rows.get(key);
@@ -508,8 +517,15 @@ export function pvCost(bar, cost, stress = 0) {
 function vitalsOf(facts, cid, t) {
   const v = facts.vitals?.(cid) ?? null;
   if (!v) return [];
-  return [["health", v.health, v.maxHealth], ["resolve", v.resolve, v.maxResolve]].filter(([, n, max]) => Number.isFinite(n) && Number.isFinite(max) && max > 0)
+  const group = facts.c?.(cid)?.kind === "minions";      // U99: a group's Health is its count, said apart (membersOf); the system's top of ten is no fact of it
+  return [["health", v.health, v.maxHealth], ["resolve", v.resolve, v.maxResolve]].filter(([id, n, max]) => !(group && id === "health") && Number.isFinite(n) && Number.isFinite(max) && max > 0)
     .map(([id, n, max]) => ({ id, v: Math.max(0, n), max, label: t(`ITAC.ui.vital.${id}`), say: t("ITAC.ui.vital.of", { label: t(`ITAC.ui.vital.${id}`), v: Math.max(0, n), max }) }));
+}
+/* U99: how many of a minion group stand (its Health [B2827]), for a group this user drives -> { n, label } | null */
+function membersOf(facts, cid, t) {
+  if (facts.c?.(cid)?.kind !== "minions") return null;
+  const v = facts.vitals?.(cid) ?? null;
+  return v && Number.isFinite(v.health) ? { n: Math.max(0, v.health), label: t("ITAC.ui.unit.members", { n: Math.max(0, v.health) }) } : null;
 }
 /* the picture of an action: its own id, or for something of the sheet its category (dom.mjs has the glyphs) */
 /* U63: the tone of the news line is told by its PICTURE too, never by its colour alone */
@@ -563,7 +579,8 @@ function armsOf(bar, a, own, facts, t) {
   const wtip = (x) => { const facts = factsOf(x), rest = restOf(x); return facts.length || rest ? { say: tipOf(x), ...(facts.length ? { facts } : {}), lines: rest ? [rest] : [] } : null; };
   const weapons = ids.length > 1 || shooting ? { label: t("ITAC.ui.weapon"), empty: ids.length ? null : t("ITAC.ui.weapon.none"),
     items: ids.map((id) => { const x = list.find((y) => y.id === id); return { id, name: x ? wname(x) : t("ITAC.ui.weapon.unarmed"), tip: x ? wtip(x) : null, picked: id === sel }; }) } : null;
-  const can = { wreck: a.id === "slugfest" && !w?.always, area: a.area || !!w?.area, fullAuto: shooting && (a.fullAuto || !!w?.fullAuto) };
+  const can = { wreck: a.id === "slugfest" && !w?.always && !facts.wrecked?.(bar.combatant),      /* U102: not for a zone wrecked already (the refusal came only after the click) */
+    area: a.area || !!w?.area, fullAuto: shooting && (a.fullAuto || !!w?.fullAuto) };
   const on = { wreck: can.wreck && !!own.opts?.wreck, area: can.area && !!own.opts?.area, fullAuto: can.fullAuto && !!own.opts?.fullAuto && !own.opts?.area };
   /* U85: an option is a picture; its name and what it does are its tooltip (the line that used to appear under a switched-on option says nothing the tooltip does not, except for full auto, whose line is carried there) */
   const opts = ["wreck", "area", "fullAuto"].filter((k) => can[k]).map((k) => ({ id: k, label: t(`ITAC.ui.arm.${k}`), tip: { title: t(`ITAC.ui.arm.${k}`), lines: [t(`ITAC.ui.arm.${k}.tip`), ...(k === "fullAuto" ? [t("ITAC.ui.arm.fullAuto.note")] : [])] }, on: on[k] }));
@@ -718,7 +735,9 @@ function movePanel(bar, a, own, facts, t) {
   });
   if (board) {
     const all = opts.map(row), asked = all.find((r) => r.asking && r.disabled) ?? null, here = opts.filter((o) => o.here || o.area), spot = facts.where?.(bar.combatant) ?? null;
-    const item = (r) => ({ id: r.id, label: r.label, cost: r.cost, hint: r.say.join(" · "), disabled: r.disabled, req: r.req, pv: r.pv });
+    /* U106: on the GM's own client a refused way carries the GM's "move anyway" itself: the map's menu sends it at once, to the zone the
+       token was dragged to (it opened the panel to ask "where to?" again) */
+    const item = (r) => ({ id: r.id, label: r.label, cost: r.cost, hint: r.say.join(" · "), disabled: r.disabled, req: r.req, pv: r.pv, ...(facts.staff && r.disabled ? { gm: askBox(a, bar, r.decl, r.o, null, own, facts, t, "").submit.req } : {}) });
     const ways = {}; for (const [zone, list] of byZone) ways[zone] = list.map((o) => item(all.find((r) => r.id === o.id)));
     /* up, down and off the map have no zone of their own to click: they hang on the zone the character stands in */
     if (here.length && spot) { const z = bare(spot), rows = here.map((o) => item(all.find((r) => r.id === o.id))), can = rows.filter((r) => !r.disabled);
@@ -760,7 +779,7 @@ function doorPanel(bar, a, own, facts, t) {
 const seenImg = (facts, id) => (facts.view?.ledger?.[id] ? facts.c?.(id)?.img ?? null : (facts.special?.() ?? []).find((x) => x.id === id)?.img ?? null);
 function minePanel(i, facts, t, rolls = [], asked = false) {
   const roll = i.rolls?.[0];
-  return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => ({ id: x.id, name: x.name ?? nameOf(facts, x.id, t), img: seenImg(facts, x.id) })), text: i.text ?? null, rolls,
+  return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => ({ id: x.id, name: x.name ?? nameOf(facts, x.id, t), img: seenImg(facts, x.id) })), text: instText(t, facts, i), rolls,
     status: rolls.length ? null : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t(asked ? "ITAC.ui.mine.declared" : "ITAC.ui.mine.open"),      // `asked`: the card above or the line below already says who the table waits for
     rolling: !!roll || rolls.length > 0, commands: (i.commands ?? []).map((c) => ({ id: c.id, label: labelOf(t, c.label), req: c.needs ? null : c.req, amend: c.id === "amend" })) };      // U85: drawn as small picture buttons (dock.mjs CMD_ICON), the label is the tooltip
 }
@@ -868,7 +887,7 @@ export function dockData(model, own, facts, t) {
     chars: bars.length > 1 ? bars.map((b) => ({ id: b.combatant, name: b.name, img: facts.c?.(b.combatant)?.img ?? null, onTurn: !!b.onTurn, sel: b.combatant === bar.combatant, asked: asked.has(b.combatant) })) : [],
     who: { id: bar.combatant, name: bar.name ?? c?.name ?? "", img: c?.img ?? null, onTurn: !!bar.onTurn, free: !!bar.free, freeLabel: t("ITAC.ui.freeMode"),
       zone: zoneNow ? { label: zoneNow, say: facts.staff ? t("ITAC.ui.here.of", { name: bar.name ?? c?.name ?? "", zone: zoneNow }) : t("ITAC.ui.here", { zone: zoneNow }), tip: t("ITAC.ui.legend") } : null },      // U51: the chip says the zone; its tooltip only what the chip does not (the legend of the map's badges); `say` is for a screen reader
-    slots, vitals: vitalsOf(facts, bar.combatant, t), extras: extrasOf(bar, t, facts), groups,
+    slots, vitals: vitalsOf(facts, bar.combatant, t), group: membersOf(facts, bar.combatant, t), extras: extrasOf(bar, t, facts), groups,
     out: bar.out ? { reason: bar.out.reason, text: t(bar.out.label) } : null,      // U9: why nothing (or only getting up) is offered: said where the actions were
     camera: cameraOf(facts, t),      // W1 (U42): how much the map's camera follows the fight, this user's own switch
     hotbar: { open: !!own.hotbar, label: t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show"), tip: `${t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show")}. ${t(own.hotbar ? "ITAC.ui.keys.macros" : "ITAC.ui.keys")}` },      // U28: Foundry's macro bar is folded away while the dock is up; this brings it back
@@ -948,7 +967,7 @@ function instData(i, model, own, facts, t) {
   const others = rosterOf({ ...facts, view: facts.view }, i.actor).filter((r) => !(i.targets ?? []).some((x) => x.id === r.id));
   const from = i.targets?.[0]?.id;
   return {
-    id: i.inst, actor: i.actorName ?? t("ITAC.ui.who.gm"), action: instTitle(t, i), targets: (i.targets ?? []).map((x) => x.name), text: i.text ?? null,
+    id: i.inst, actor: i.actorName ?? t("ITAC.ui.who.gm"), action: instTitle(t, i), targets: (i.targets ?? []).map((x) => x.name), text: instText(t, facts, i),
     step: stepText(t, i.step), cause: i.cause && i.cause !== "turn" ? t(`ITAC.ui.cause.${i.cause}`, {}, String(i.cause)) : null, causeMark: i.cause === "interrupt" ? "out" : null,      /* U93: taken out of turn: the desk draws the hook, the word is its name */ locked: !!i.locked, child: !!i.parent,
     rolls, outcomes: (i.outcomes ?? []).map((o) => ({ name: o.name, text: o.hit ? t("ITAC.ui.ovr.hit") : t("ITAC.ui.ovr.miss"), hit: o.hit })),
     commands: [veto ? { id: "veto", label: own.sure === `${i.inst}:veto` ? t("ITAC.ui.sure.veto") : labelOf(t, veto.label), req: veto.req, danger: true, confirm: true, armed: own.sure === `${i.inst}:veto` } : null, ovr ? { id: "override", label: labelOf(t, ovr.label), toggle: true, on: open } : null].filter(Boolean),
@@ -962,7 +981,7 @@ function manualData(m, own, facts, t) {
   const cost = ["none", "quick", "full"].includes(f.cost) ? f.cost : "none";
   const damage = (m.targets ?? []).map((x) => ({ target: x.id, name: x.name, amount: Math.max(0, Math.trunc(Number(f.damage?.[x.id]) || 0)) }));
   const result = { cost, note: String(f.note ?? "").slice(0, 300), damage: damage.filter((d) => d.amount > 0).map((d) => ({ target: d.target, amount: d.amount })) };
-  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: m.text ?? null, why: m.failed ? t("ITAC.ui.manual.failed", { step: stepText(t, m.failed.step) }) : m.byHand === "seat" ? t("ITAC.ui.manual.seat") : null, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null, causeMark: m.cause === "interrupt" ? "out" : null,
+  return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: instText(t, facts, m), why: m.failed ? t("ITAC.ui.manual.failed", { step: stepText(t, m.failed.step) }) : m.byHand === "seat" ? t("ITAC.ui.manual.seat") : null, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null, causeMark: m.cause === "interrupt" ? "out" : null,
     costs: ["none", "quick", "full"].map((id) => ({ id, unit: id, label: costText(t, id), on: id === cost })), note: { value: f.note ?? "", placeholder: t("ITAC.ui.manual.note") }, damage,
     resolve: { label: t("ITAC.ui.manual.resolve"), req: resolve.req(result) }, abort: { label: labelOf(t, abort.label), req: abort.req } };
 }
@@ -985,8 +1004,8 @@ export function unitData(cid, model, facts, t) {
   const last = (model?.journal ?? []).filter((j) => (j.who ?? []).includes(cid) && j.state !== "open").slice(0, UNIT_LAST).map((j) => ({ id: j.id, round: j.round ?? null, roundTip: j.round != null ? t("ITAC.ui.round", { n: j.round }) : null, text: marks(t, j.text || j.pub, facts) || t("ITAC.ui.journal.noText"), undone: j.state === "undone" }));
   return { id: cid, name: c.name ?? "", img: c.img ?? null, zone: spot ? zoneText(facts, t, spot) : null, hidden: facts.hidden?.(cid) ? t("ITAC.map.mark.hidden") : null,
     /* a minion group: its Health is how many stand [B2827] (the system keeps a fixed top of ten for it, which is no fact of the group) */
-    group: group && v && Number.isFinite(v.health) ? { n: Math.max(0, v.health), label: t("ITAC.ui.unit.members", { n: Math.max(0, v.health) }) } : null,
-    vitals: vitalsOf(facts, cid, t).filter((x) => !(group && x.id === "health")), slots: budget ? slotsOf({ budget }, t).map(({ req, ...s }) => s) : [], states,
+    group: group ? membersOf(facts, cid, t) : null,
+    vitals: vitalsOf(facts, cid, t), slots: budget ? slotsOf({ budget }, t).map(({ req, ...s }) => s) : [], states,
     last, lastLabel: t("ITAC.ui.unit.last"), lastNone: t("ITAC.ui.unit.last.none"), statesNone: t("ITAC.ui.unit.fine") };
 }
 /** Everything the desk draws. -> { show, count, tab, waiting, turn, stack, manual, cards, journal, npcs, mode } */

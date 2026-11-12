@@ -108,7 +108,7 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   const blocks = /const DOCK_BLOCKS = "([^"]+)"/.exec(tip)?.[1].split(", ") ?? [];
   eq(blocks, [".ita-ask", ".itd-panel", ".itd-bar", ".itd-wait", ".itd-hint1"], "B: the blocks of the dock");
   ok(/h\(`article\.ita-ask/.test(dom) && /h\("section\.itd-panel"/.test(dock) && /h\("div\.itd-bar"/.test(dock) && /h\("div\.itd-wait"/.test(dock) && /h\("div\.itd-hint1"/.test(dock), "B: ... are the ones the dock draws");
-  ok(/KEEP_OFF = `\$\{DOCK\} \.ita-ask, \$\{DOCK\} \.itd-panel, \$\{DOCK\} \.itd-bar, \$\{DESK\} \.igd`/.test(tip) && /order: orderFor\("dock"\)/.test(tip), "B: a tooltip keeps off the other cards, the panel, the bar and the desk");
+  ok(/KEEP_OFF = `\$\{DOCK\} \.ita-ask, \$\{DOCK\} \.itd-panel, \$\{DOCK\} \.itd-bar, \$\{DOCK\} \.itd-wait, \$\{DOCK\} \.itd-hint1, \$\{DESK\} \.igd`/.test(tip) && /order: orderFor\("dock"\)/.test(tip), "B: a tooltip keeps off the other cards, the panel, the bar, the line over the bar (U103), the hint and the desk");
   ok(/el\.closest\("\.igd"\)/.test(tip) && /order: orderFor\("desk"\)/.test(tip), "B: the desk is one block: its tooltips open beside the column");
   /* U97: the stack, bottom up: bar, panel, hint, the table's line, the questions */
   const draw = dock.slice(dock.indexOf("swap(stack, ["), dock.indexOf("/* U41: the answer the keyboard chose"));

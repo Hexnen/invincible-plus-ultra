@@ -36,6 +36,7 @@ const ID = "invincible-tactics-dock";
 const GAP = 6;
 const EDGE = 6;          // px between the dock and the bottom edge of the window
 const BAR_BAND = 126;    // px of height the bar itself may take (two rows and the status line): the band its own room is measured in
+const PANEL_SHARE = 0.38;      // U105: the most of the window's height the armed action's panel takes (provisional: dev/combat-questions.md)
 const TWO_ROWS = 500;    // px the two-row dock needs between what lies on the bottom edge; with less it stands above those things
 /* what lies on the bottom edge besides the dock: the map's director bar (GM), the chat box Foundry floats there while the sidebar is folded */
 const LOW_OBSTACLES = "#mm-dir-bar, #chat-notifications #chat-message, #chat-notifications .chat-form";
@@ -61,6 +62,8 @@ function ensure(label) {
   root.addEventListener("focusout", () => { preview(null); try { handlers.tipHide?.(); } catch { /* a courtesy */ } });
   /* Tab walks the buttons of the surface: Foundry's own key handler (on the window) would take it for "next token" */
   root.addEventListener("keydown", (e) => { if (e.key === "Tab") e.stopPropagation(); });
+  /* U105: a panel taller than its room scrolls; while more of it lies below, its foot says so (data-more). Scroll does not bubble: caught here */
+  root.addEventListener("scroll", (e) => { if (e.target?.classList?.contains("itd-panel")) markMore(e.target); }, true);
   document.body.appendChild(root);
 }
 
@@ -160,7 +163,10 @@ export function place() {
   const part = (sel) => (stack.querySelector(sel)?.offsetHeight ?? 0) * k;
   const fixed = part(".itd-bar") + part(".itd-wait") + part(".itd-hint1") + 2 * GAP, asks = stack.querySelector(".itd-asks"), panelEl = stack.querySelector(".itd-panel");
   const above = Math.max(120, room - fixed);
-  const panelMax = asks && panelEl ? Math.max(110, Math.round(above * 0.6)) : above;
+  /* U105: the panel never takes more than PANEL_SHARE of the window's height (a 1366x768 window at 140 % gave it the middle of the map, where
+     the targets it lists stand); what it does not show scrolls, its foot (Declare, Ask the GM) stays in sight */
+  const panelRoom = Math.max(110, Math.round(H * PANEL_SHARE));
+  const panelMax = Math.min(panelRoom, asks && panelEl ? Math.max(110, Math.round(above * 0.6)) : above);
   root.style.setProperty("--itd-panel-maxh", `${Math.round(panelMax)}px`);
   root.style.setProperty("--itd-maxh", `${Math.max(110, Math.round(above - (panelEl ? Math.min(panelEl.scrollHeight * k + 4, panelMax) + GAP : 0)))}px`);
   /* what floats at the bottom centre besides the dock (the module's end-of-session notice) stands above it: styles/tactics-ui.css */
@@ -187,9 +193,15 @@ export function place() {
   /* U97: with the armed action's panel between the hint and the bar the tick would point at the panel: the hint keeps its words and drops the tick */
   try { const hint = stack.querySelector(".itd-hint1"), at = hint?.dataset.at && !stack.querySelector(":scope > .itd-panel") ? stack.querySelector(hint.dataset.at === "slots" ? ".itd-slots" : ".itd-acts") : null;
     if (hint && at) { const a = at.getBoundingClientRect(), b = hint.getBoundingClientRect(); hint.style.setProperty("--itd-hint-x", `${Math.round(Math.max(14, Math.min(b.width - 14, a.left + Math.min(a.width / 2, 60 * k) - b.left)) / k)}px`); hint.dataset.tick = "1"; } else if (hint) delete hint.dataset.tick; } catch { /* a courtesy */ }
+  { const pe = stack.querySelector(":scope > .itd-panel"); if (pe) requestAnimationFrame(() => markMore(pe)); }
   const under = deskOff && deskOpen, top = under ? Math.round(barEl?.getBoundingClientRect().top ?? 0) : null;
   if (under) root.dataset.under = "1"; else delete root.dataset.under;
   if (top !== underTop) { underTop = top; handlers.deskRelayout?.(); }
+}
+
+/* U105: is there more of the panel below what shows? (the foot then carries the sign; the last pixel of rounding counts as the end) */
+function markMore(el) {
+  try { if (el.scrollHeight - el.clientHeight - el.scrollTop > 2) el.dataset.more = "1"; else delete el.dataset.more; } catch { /* a courtesy */ }
 }
 
 /* ---------- pieces ---------- */
@@ -202,6 +214,9 @@ const wayNotes = (r) => (r.notes.length || r.marks?.length ? h("span.itd-way-n",
 /* U93: Health is the heart, Resolve the bolt (the same bolt a price in stress carries: stress is taken from this bar) */
 const vital = (v) => h("div.itd-vital", { data: { id: v.id, v: v.v }, attrs: { role: "img", "aria-label": v.say, style: `--itd-v:${v.v};--itd-max:${v.max}` } },
   v.id === "health" ? symMark("health") : costMark("stress"), h("span.itd-vbar", {}, h("i.itd-vfill"), h("i.itd-vpv")), h("b.itd-vnum", {}, h("span", { text: String(v.v) }), h("small", { text: `/${v.max}` })), h("b.itd-vdelta"));
+/* U99: a minion group counts who of it stands (its Health): the number and the group's picture, the words in the tooltip; no bar (the
+   system's top of ten is no fact of the group) */
+const members = (g) => h("div.itd-vital", { data: { id: "members" }, tip: g.label, attrs: { role: "img", tabindex: "0", "aria-label": g.label } }, icon("fa-people-group"), h("b.itd-vnum", {}, h("span", { text: String(g.n) })));
 /* U93: what the character has besides its two slots. A granted unit that is no slot keeps its name (it is no price), its price in
    stress is the chip beside it; bonus dice: the die with their number (the model's text carries the mark); a condition: its picture in the
    kit's frame. Each names itself in its tooltip and to a screen reader. */
@@ -221,7 +236,7 @@ function unit(d) {
     h("div.itd-id", {},
       /* a namesake's number ("Turret #2") never falls to the ellipsis: it is what tells the two apart, and the bar is where the name stands */
       h("span.itd-nameline", {}, nameParts(w.name), w.zone ? h("span.itd-zone", { tip: w.zone.tip, attrs: { tabindex: "0", "aria-label": `${w.zone.say}. ${w.zone.tip}` } }, icon("fa-location-dot"), h("span", { text: w.zone.label })) : null),
-      d.vitals.length ? h("div.itd-vitals", {}, d.vitals.map(vital)) : null)),
+      d.vitals.length || d.group ? h("div.itd-vitals", {}, d.group ? members(d.group) : null, d.vitals.map(vital)) : null)),
   h("div.itd-slots", { attrs: { role: "group", "aria-label": handlers.label?.("slots") } }, d.slots.map(slot),
     d.extras.map(extra), w.free ? h("span.itd-extra", { text: w.freeLabel, data: { kind: "free" } }) : null)];
 }

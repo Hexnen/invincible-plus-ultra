@@ -299,3 +299,9 @@ export function canTalk(range, placeA, placeB, border = null, link = false) {
   const impeded = !!border && border.kind !== "open" && !(border.doorway && ["open", "breached"].includes(border.doorway.state));
   return zones.canCommunicateAt(range ?? null, placeA ?? {}, placeB ?? {}, { link, impeded });
 }
+
+/** U107: a token update the map held for a price that no hand made: no pointer released and no key pressed on this client within `ms`
+    before it (a macro or another module's script moving a token in a tactical fight). Such an update is not a drag: no menu of ways is
+    opened for it (one stood over the GM desk until dismissed by hand); the client is told the token stays. */
+export const BY_HAND_MS = 1500;
+export const madeByScript = (now, lastInput, ms = BY_HAND_MS) => !(Number.isFinite(lastInput) && lastInput > 0 && now - lastInput <= ms);

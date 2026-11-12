@@ -46,7 +46,7 @@ export function concealedFor(state, viewer, meta = {}) {
 const addressed = (p, viewer) => (isObj(p.to) && Array.isArray(p.to.users) && p.to.users.includes(viewer.id)) || (p.about && viewer.owns.includes(p.about) && p.to !== "gm");
 function promptView(p, viewer, concealed = new Set()) {
   if (p.gmOnlyData) return null;
-  if (!addressed(p, viewer)) return { id: p.id, inst: p.inst, step: p.step, kind: p.kind, to: p.to === "gm" ? "gm" : { users: p.to?.users ?? [] }, about: p.about, answered: p.answered ? 1 : undefined };   // "waiting for X": nothing else
+  if (!addressed(p, viewer)) return { id: p.id, inst: p.inst, step: p.step, kind: p.kind, to: p.to === "gm" ? "gm" : { users: p.to?.users ?? [] }, about: p.about, answered: p.answered ? 1 : undefined, ...(p.kind === "triggerQueue" && typeof p.data?.at === "string" ? { data: { at: p.data.at } } : {}) };   // "waiting for X": nothing else (D108: but the moment of a queue, start of the round or of a turn)
   const q = { ...p, options: (p.options ?? []).filter((o) => !o.gmOnly).map((o) => { const { gm, ...rest } = o; return rest; }) };
   if (isObj(q.data)) {
     const { gm, ...rest } = q.data; q.data = rest;

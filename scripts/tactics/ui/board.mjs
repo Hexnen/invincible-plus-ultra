@@ -15,10 +15,12 @@ import * as Model from "./model-pure.mjs";
 import * as BP from "./board-pure.mjs";
 import { faOf } from "./dom.mjs";
 import { policyReq } from "../desk-pure.mjs";
+import { tIn } from "../lang.mjs";
 
 const LOG = "invincible-plus-ultra (tactics board) |";
 const DONE = { armed: null, mode: null, to: null, ask: null, why: "", targets: [], tokens: [], text: "", amend: null, weapon: null, opts: {} };
 const HZ_ID = "ipu.hz";
+const MOD_ID = "invincible-plus-ultra";
 const ARM = { mode: null, tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, peek: true };
 let H = null;                 // main.mjs: { t, set(patch), send(req, after), press(fk), notify(kind, text), refresh(), request(req), bar(cid), dock(), showToken(cid) }
 let started = false, on = false, last = null, shown = {};
@@ -26,6 +28,13 @@ let movePick = null, areaPick = null, menuBusy = false, hover = null, intentKey 
 const steps = {};             // the GM's steppers: one request once the clicking stops
 
 const t = (...a) => H.t(...a);
+/* D109: an intention is read on the GMs' maps, so its words are the GMs' language (each GM's client writes it on its own user, ui/main.mjs):
+   one language for all GMs at the table -> that one; none known, or the GMs read different ones -> this client's own words, as before */
+const gmLang = () => { try { const l = [...new Set(game.users.filter((u) => u.isGM && u.active).map((u) => u.getFlag?.(MOD_ID, "lang")).filter((x) => typeof x === "string" && x))]; return l.length === 1 ? l[0] : null; } catch { return null; } };
+const intentWords = (p) => {
+  const l = p ? gmLang() : null, a = l ? H.bar?.(last?.data?.who?.id)?.actions?.find((x) => x.id === p.action) : null;      // the bar's entry: its name as a key of the lang table (a sheet's own ability keeps its name)
+  return BP.intentLabel(a && !a.kit && typeof a.label === "string" && a.label.startsWith("ITAC.") ? tIn(l, a.label, {}, p.title) : p?.title);
+};
 const tokDoc = (cid) => { try { const td = last?.combat?.combatants.get(cid)?.token ?? null; return td?.object?.visible ? td : null; } catch { return null; } };
 const tid = (cid) => tokDoc(cid)?.id ?? null;
 const cidOf = (td) => { try { const id = td?.document?.id ?? td?.id ?? null; return id ? last?.combat?.combatants.find((c) => c.tokenId === id)?.id ?? null : null; } catch { return null; } };
@@ -83,7 +92,7 @@ function reach() {
     const key = `${who}|${dec.action}|${zones.join(",")}|${dec.submit?.req ? 1 : 0}`;
     if (areaPick?.key !== key && !menuBusy) {
       const mine = (areaPick = { key });
-      Zones.pickArea({ zones: zones.map((zone) => ({ zone, color: "target" })), radius: 0, token: tid(who), intent: { label: BP.intentLabel(dec.title) }, color: "target", title: t("ITAC.map.area.title", { name: d.who.name }), hint: t("ITAC.map.area.hint"),
+      Zones.pickArea({ zones: zones.map((zone) => ({ zone, color: "target" })), radius: 0, token: tid(who), intent: { label: intentWords(dec) }, color: "target", title: t("ITAC.map.area.title", { name: d.who.name }), hint: t("ITAC.map.area.hint"),
         tokens: (doc) => caught(doc, who, dec, staff) }).then((r) => {
         if (areaPick !== mine) return;
         areaPick = null;
@@ -117,7 +126,7 @@ function waysMenu(p, zone, drag = false) {
   Zones.menu({ zone, title: Model.zoneText(last.facts, t, zone), sub: p.title, items }).then((r) => {
     menuBusy = false;
     if (!r?.ok) return drag ? H.set({ armed: null, mode: null }) : H.refresh();
-    if (r.id === "@ask") return H.set({ ask: blocked[0].id, why: "" });
+    if (r.id === "@ask") return last.staff && blocked[0].gm ? H.send(blocked[0].gm, DONE) : H.set({ ask: blocked[0].id, why: "" });      // U106: the GM's word goes at once; a player writes why first
     const w = rows.find((x) => x.id === r.id);
     return w?.req ? H.send(w.req, DONE) : H.refresh();
   }).catch(() => { menuBusy = false; });
@@ -135,7 +144,7 @@ function move() {
   if (movePick?.key === key || menuBusy) return;
   const mine = (movePick = { key });
   setTimeout(() => { if (movePick === mine) H.showToken(who); }, 350);                        // U5: the character is kept out from under the dock
-  Zones.pickMove({ token: tid(who), zones: p.zones.map(({ way, ask, menu, tip, ...z }) => z), intent: { label: BP.intentLabel(p.title) }, title: t("ITAC.ui.pick.title", { name: d.who.name }), hint: p.hint, color: "move" }).then((r) => {
+  Zones.pickMove({ token: tid(who), zones: p.zones.map(({ way, ask, menu, tip, ...z }) => z), intent: { label: intentWords(p) }, title: t("ITAC.ui.pick.title", { name: d.who.name }), hint: p.hint, color: "move" }).then((r) => {
     if (movePick !== mine) return;                                                            // given up or replaced by a newer one
     movePick = null;
     if (!r?.ok) {
@@ -161,7 +170,7 @@ function intent() {
   if (!last || last.staff) return;
   const d = last.data, p = d?.show && d.panel?.kind === "declare" && !areaMode(d.panel) ? d.panel : null, from = p ? tid(d.who.id) : null;
   const to = p && hover && p.targets?.some((x) => x.id === hover && x.map) ? hover : p?.aim?.[0]?.id ?? null;
-  const spec = from ? { token: from, ...(to && tid(to) ? { to: tid(to) } : {}), label: BP.intentLabel(p.title), ttl: INTENT_TTL } : null;
+  const spec = from ? { token: from, ...(to && tid(to) ? { to: tid(to) } : {}), label: intentWords(p), ttl: INTENT_TTL } : null;
   const key = JSON.stringify(spec), now = Date.now();
   if (key === intentKey && (!spec || now - intentAt < INTENT_AGAIN)) return;
   say(spec, key);

@@ -833,3 +833,6 @@
   #invincible-combat-bar .icbar-fill { background: Highlight; }
   #invincible-combat-bar .icbar-tile[data-active] { outline-color: Highlight; }
 }
+
+/* U108: while Dice So Nice shows a roll over the interface, the initiative bar stands one step above its canvas (tactics ui/main.mjs watchDice) */
+body.ita-dice-up #invincible-combat-bar { z-index: var(--ita-dice-z); }

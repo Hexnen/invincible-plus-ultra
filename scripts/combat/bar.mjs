@@ -30,7 +30,7 @@ import { t } from "./lang.mjs";
 import { freeArea, hudLimit, relayout as relayoutBanner } from "./banner.mjs";
 import { unitOf, unitName } from "../challenges/lang.mjs";
 import { yzeOn, yzeWaiting, yzeMode, actorOf, toggleActionMark } from "../yze.mjs";
-import { groupsFor, waitingOf, actionsOn } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
+import { groupsFor, waitingOf, waitKindOf, actionsOn } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
 
 const MOD = "invincible-plus-ultra";
 const ID = "invincible-combat-bar";
@@ -156,7 +156,7 @@ function read(c, isActive, ctx) {
     name: nameOf(c, actor), img: pictureOf(c, td, actor),
     init, initText: init === null ? "–" : fmtInit(init),
     disp, own: !gm && owner, hidden: !!(c.hidden || td?.hidden), defeated: !!c.isDefeated, active: isActive,
-    kind, unit: challenge ? unitOf(actor) : "", nums, hp, rs, showHp, showRs,
+    kind, group: actor?.type === "minions", unit: challenge ? unitOf(actor) : "", nums, hp, rs, showHp, showRs,
     canSelect: onScene && (gm || !!td?.isOwner), canPan: onScene && (gm || !td?.hidden || owner), canSheet: sheet,
     selected: onScene && ctx.sel.has(td.id)
   };
@@ -167,8 +167,9 @@ function build(combat) {
   const items = [];
   const turns = combat.turns ?? [];
   /* Year Zero Engine: Combat, waiting for the draw: every living initiative is null, so the order means nothing and nobody has the turn */
-  let waiting = false;
+  let waiting = false, waitKind = null;
   try { waiting = waitingOf(combat); } catch { waiting = false; }
+  if (waiting) { try { waitKind = waitKindOf(combat) ?? "draw"; } catch { waitKind = "draw"; } }      // D107: the plate says WHY nobody has the turn (a chase is no draw)
   turns.forEach((c, i) => { const it = read(c, !waiting && i === combat.turn, ctx); if (it) items.push(it); });
   /* DUPLICATES (several combatants of one token, Year Zero speed): `dup` = { k: its place among the token's entries in turn order, n, first }.
      Only the FIRST shown entry carries Health / Resolve (the numbers are the same for all); a later one is the compact variant, unless it is the
@@ -183,8 +184,13 @@ function build(combat) {
     it.dup = { k: ids.indexOf(it.id) + 1, n: ids.length, first };
     if (!first && !it.active) { it.showHp = false; it.showRs = false; }
   }
-  return { round: Number(combat.round) || 0, turn: combat.turn ?? null, items, waiting };
+  return { round: Number(combat.round) || 0, turn: combat.turn ?? null, items, waiting, waitKind };
 }
+
+/* D107: the plate while nobody has the turn names the moment: the draw, a chase, the start or the end of a round, the end of the scene */
+const WAIT_KINDS = ["draw", "chase", "roundStart", "roundEnd", "sceneEnd"];
+const waitShort = (k) => t(WAIT_KINDS.includes(k) && k !== "draw" ? `ICB.Bar.Wait.${k}` : k && k !== "draw" ? "ICB.Bar.Wait.other" : "ICB.Bar.WaitingShort");
+const waitLong = (k) => t(WAIT_KINDS.includes(k) && k !== "draw" ? `ICB.Bar.Wait.${k}.Say` : k && k !== "draw" ? "ICB.Bar.Wait.other.Say" : "ICB.Bar.Waiting");
 
 /* ---------- what a viewer's bars say (numbers only when `nums`) ---------- */
 function rowSpec(it, key) {   // key: "hp" | "rs"  ->  { show, frac, label, count, max, suffix, unit, say, good }
@@ -195,6 +201,12 @@ function rowSpec(it, key) {   // key: "hp" | "rs"  ->  { show, frac, label, coun
   if (challenge && key === "hp") {
     const pct = Math.round(clamp01(1 - r.v / r.max) * 100);
     return { show, frac: pct / 100, label, count: pct, max: "", pct: true, unit: "", say: t("ICB.Bar.Pct", { label, pct }), low: false };
+  }
+  /* U99: a minion group's Health is how many of it stand [B2827]; the system holds its top at ten whatever the group's size ("97/10"),
+     so the bar says the count alone and stays full while one stands (no top of the group is known to compare with) */
+  if (it.group && key === "hp") {
+    const n = Math.max(0, Math.round(r.v));
+    return { show, frac: n > 0 ? 1 : 0, label: t("ICB.Bar.Members"), count: n, max: "", pct: false, unit: "", say: t("ICB.Bar.MembersSay", { n }), low: false };
   }
   const unit = challenge && key === "rs" ? unitName(it.unit, r.max, true) : "";
   const frac = clamp01(r.v / r.max);
@@ -689,7 +701,7 @@ function paintRow(card, key, spec, first) {
   row.shown = true;
   const segs = (m) => (m > 0 && m <= 12 ? Math.round(m) : 10);
   /* a viewer without numbers gets ten plain segments: the count of segments would give the maximum away */
-  const max = !card.item.nums || (key === "hp" && card.item.kind === "challenge") ? 10 : card.item[key].max;
+  const max = !card.item.nums || (key === "hp" && card.item.kind === "challenge") ? 10 : key === "hp" && card.item.group ? Math.max(1, spec.count) : card.item[key].max;      // U99: a group's bar has one segment a member standing
   row.bar.style.setProperty("--tick", `${(100 / segs(max)).toFixed(3)}%`);
   row.bar.dataset.dense = segs(max) > 8 ? "1" : "";
   row.el.classList.toggle("icbar-low", !!spec.low);
@@ -1097,11 +1109,11 @@ function paint(model, loud, keep) {
     if (waitEl) {
       const showing = !waitEl.hidden;
       waitEl.hidden = !model.waiting;
-      setText(waitEl, t("ICB.Bar.WaitingShort"));
+      setText(waitEl, waitShort(model.waitKind));
       if (model.waiting && !showing && !reduced()) anim(waitEl, [{ opacity: 0, scale: ".9" }, { opacity: 1, scale: "1" }], { duration: 220, fill: "backwards" });
     }
-    if (model.waiting && !wasWaiting) say(t("ICB.Bar.Waiting"));
-    wasWaiting = !!model.waiting;
+    if (model.waiting && (!wasWaiting || wasWaiting !== (model.waitKind ?? "draw"))) say(waitLong(model.waitKind));
+    wasWaiting = model.waiting ? (model.waitKind ?? "draw") : false;
     keepHeight();
 
     // active turn: announce, glide (the glide itself is morph's: tiles, ring and the camera set below share one FLIP)

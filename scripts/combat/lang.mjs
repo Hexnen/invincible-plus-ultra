@@ -83,7 +83,19 @@ export const EN = {
   "ICB.Bar.Dup": "Entry {k} of {n}: the same character",
   "ICB.Bar.DupBars": "Health and Resolve are shown on its first entry",
   "ICB.Bar.Waiting": "Initiative is being drawn",
-  "ICB.Bar.WaitingShort": "Drawing…"
+  "ICB.Bar.WaitingShort": "Drawing…",
+  "ICB.Bar.Members": "Standing",
+  "ICB.Bar.MembersSay": "{n} standing",
+  "ICB.Bar.Wait.chase": "Chase",
+  "ICB.Bar.Wait.chase.Say": "A chase: nobody has a turn, the GM moves the rounds on",
+  "ICB.Bar.Wait.roundStart": "Round start",
+  "ICB.Bar.Wait.roundStart.Say": "Start of the round: what is due now comes first",
+  "ICB.Bar.Wait.roundEnd": "Round end",
+  "ICB.Bar.Wait.roundEnd.Say": "End of the round",
+  "ICB.Bar.Wait.sceneEnd": "Scene over",
+  "ICB.Bar.Wait.sceneEnd.Say": "The scene is over",
+  "ICB.Bar.Wait.other": "Waiting",
+  "ICB.Bar.Wait.other.Say": "Nobody has the turn"
 };
 
 export const PL = {
@@ -164,7 +176,19 @@ export const PL = {
   "ICB.Bar.Dup": "Wpis {k} z {n}: ta sama postać",
   "ICB.Bar.DupBars": "Zdrowie i Determinacja są przy jej pierwszym wpisie",
   "ICB.Bar.Waiting": "Trwa dobieranie inicjatywy",
-  "ICB.Bar.WaitingShort": "Dobieranie…"
+  "ICB.Bar.WaitingShort": "Dobieranie…",
+  "ICB.Bar.Members": "Stoi",
+  "ICB.Bar.MembersSay": "Stoi: {n}",
+  "ICB.Bar.Wait.chase": "Pościg",
+  "ICB.Bar.Wait.chase.Say": "Pościg: nikt nie ma tury, rundy przesuwa MG",
+  "ICB.Bar.Wait.roundStart": "Początek rundy",
+  "ICB.Bar.Wait.roundStart.Say": "Początek rundy: najpierw to, co przypada teraz",
+  "ICB.Bar.Wait.roundEnd": "Koniec rundy",
+  "ICB.Bar.Wait.roundEnd.Say": "Koniec rundy",
+  "ICB.Bar.Wait.sceneEnd": "Koniec sceny",
+  "ICB.Bar.Wait.sceneEnd.Say": "Scena się skończyła",
+  "ICB.Bar.Wait.other": "Czekamy",
+  "ICB.Bar.Wait.other.Say": "Nikt nie ma tury"
 };
 
 /* Local resolver. Language: game.i18n.lang, PL on top of EN. A missing key shows the key (never throws). */
