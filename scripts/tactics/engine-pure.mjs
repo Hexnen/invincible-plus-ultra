@@ -1273,7 +1273,7 @@ async function gmEdit(X, op, a) {
       if (X.state.stack.length || X.state.phase !== "turns") { err = "busy"; break; }
       const plan = Chase.startPlan(X.state, X.facts, a, Number(X.host.setting?.("tacticsChaseLostAt")) || undefined);
       if (!plan.ok) { err = "illegal"; errParams = { reason: plan.reason }; break; }
-      w(["chase"], plan.chase); w(["kind"], "chase"); w(["init"], { ...S.newInit(), deck: X.state.init?.deck ?? 10 });
+      w(["chase"], plan.chase); w(["kind"], "chase"); if (X.state.chaseEnded) w(["chaseEnded"], null); w(["init"], { ...S.newInit(), deck: X.state.init?.deck ?? 10 });      // CHASE (U168): the card of the last chase goes
       X.state = { ...X.state, init: { ...X.state.init, cur: X.state.init.cur ?? null, curMember: X.state.init.curMember ?? null } };       // the journal writes "nobody" by removing the key; the state keeps it as null
       for (const p of plan.puts) await perform(X, tx, { t: "zput", who: p.who, to: "@chase", group: p.group, tx });
       emit(X, null, { type: "chase", state: "start", distance: plan.chase.distance, sides: plan.chase.sides });
@@ -1298,6 +1298,9 @@ async function gmEdit(X, op, a) {
       if (X.state.stack.length) { err = "busy"; break; }
       for (const p of Chase.endPlan(X.state).puts) await perform(X, tx, { t: "zput", who: p.who, to: p.to, group: p.group, tx });
       w(["kind"], "combat"); w(["chase"], null);
+      /* CHASE (U168): how the chase ended stands in the state until the next chase starts, so every seat shows the same end card (each
+         seat puts it away on its own, by its number `n`) */
+      w(["chaseEnded"], { n: (Number(X.state.chaseEnded?.n) || 0) + 1, outcome: Chase.OUTCOMES.includes(a.outcome) ? a.outcome : "combat", distance: ch.distance, lostAt: ch.lostAt, rounds: ch.round ?? 0, round: X.state.round, sides: { prey: (ch.sides?.prey ?? []).slice(), pursuer: (ch.sides?.pursuer ?? []).slice() } });
       emit(X, null, { type: "chase", state: "end", outcome: Chase.OUTCOMES.includes(a.outcome) ? a.outcome : "combat", distance: ch.distance });
       break;
     }
@@ -1362,9 +1365,10 @@ async function opHazard(X, a) {
 }
 
 /** P7, GM op: one round of the chase [B3432] as an instance (flows/chase.mjs). */
-async function opChaseRound(X) {
+async function opChaseRound(X, a = {}) {
   if (X.state.stack.length) return bad("busy");
-  const spec = Chase.roundSpec();
+  if (a.obstacle != null && !Chase.OBSTACLES.includes(a.obstacle)) return bad("badInput", { field: "obstacle" });      // CHASE (U176)
+  const spec = Chase.roundSpec(a.obstacle ?? null);
   const inst = makeInst(X, { action: spec.action, actor: null, decl: spec.decl, cause: "gm", flow: spec.flow });
   const l = FLOWS[inst.flow].legality(view(X), inst);
   if (!l.ok) return bad("illegal", { reason: l.reason, ...l.params });
@@ -1625,7 +1629,7 @@ async function request(X, req) {
     case "undo": return opUndo(X, req);
     case "hazard": return opHazard(X, req);
     case "hazardRun": return opHazardRun(X, req);
-    case "chaseRound": return opChaseRound(X);
+    case "chaseRound": return opChaseRound(X, req);
     case "nudge": return opNudge(X, req);
     default:
       if (GM_INST_OPS.includes(op)) return gmInstOp(X, op, req);

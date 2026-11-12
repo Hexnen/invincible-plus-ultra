@@ -84,6 +84,9 @@ function instView(state, inst, viewer, meta, concealed) {
   /* U77: `window` = which moment of the action stands open ("beforeRoll": declared, its dice not thrown yet). The table knows that much of
      every action it was told about; a player's bar needs it to offer what may still answer the action (the Quickness interrupt, D40). */
   for (const k of ["kind", "retargets", "hold", "result", "label", "window"]) if (d[k] !== undefined) out.data[k] = clone(d[k]);
+  /* CHASE (U167): the round's obstacle, its D66 and who rolls for each side are said aloud at the table [B3441]; the rollers' numbers are not */
+  if (inst.flow === "chase" && isObj(d.ch)) out.data.chase = { obstacle: d.ch.obstacle ?? null, d66: d.ch.d66 ?? null, chosen: d.ch.chosen ? 1 : 0, from: d.ch.distance ?? null, results: clone(d.ch.results ?? {}), over: d.ch.over ?? null,
+    ...Object.fromEntries(["prey", "pursuer"].map((s) => [s, isObj(d.ch[s]) ? { id: d.ch[s].id, roller: d.ch[s].roller, vehicle: d.ch[s].vehicle ? 1 : 0 } : null])) };
   if (isObj(d.def)) out.data.def = Object.fromEntries(Object.entries(d.def).map(([t, x]) => [t, { defence: x?.defence }]));
   if (isObj(d.out)) out.data.out = Object.fromEntries(Object.entries(d.out).map(([t, o]) => [t, numbersHidden(state, t, meta, "health") ? Object.fromEntries(OUT_KEEP.filter((k) => o?.[k] !== undefined).map((k) => [k, o[k]])) : clone(o)]));
   out.waits = (inst.waits ?? []).slice();
@@ -136,6 +139,7 @@ export function viewFor(state, viewer, meta = {}) {
   out.news = clone((state.news ?? []).map((n) => (isObj(n) && n.hid && !ownLine(n) ? unseen(n) ?? n : n)).filter((n) => isObj(n) && !n.secret && (!n.hid || ownLine(n) || n.unseen) && (n.kind !== "exception" || V.owns.includes(n.actor)) && (n.kind !== "nudge" || (Array.isArray(n.to) && n.to.includes(V.id)))))      /* U59: a nudge is read by the ones nudged */.map(({ tx, hidA, hidT, ...n }) => n);
   if (isObj(state.vehicles)) out.vehicles = clone(keepKey(state.vehicles));
   if (isObj(state.chase)) { const { back, ...pub } = state.chase; out.chase = clone(pub); }
+  if (isObj(state.chaseEnded)) out.chaseEnded = clone(state.chaseEnded);      // CHASE (U168): every seat sees how the chase ended
   if (isObj(state.challenges)) out.challenges = Object.fromEntries(Object.entries(keepKey(state.challenges)).map(([cid, c]) => [cid, clone({ preset: c.preset ?? null, name: c.name, objectives: c.objectives ?? [], dice: c.dice ?? 0, started: c.started ?? {}, done: c.done })]));
   // statuses carry GM-only notes on NPCs that are not revealed
   for (const [cid, list] of Object.entries(out.statuses)) if (Array.isArray(list)) out.statuses[cid] = list.map((s) => { const { gmNote, ...rest } = s; return rest; });

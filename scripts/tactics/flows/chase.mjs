@@ -100,7 +100,9 @@ export function endPlan(state) {
 }
 
 /* ------------------------------------------------------------------ one chase round */
-export const roundSpec = () => ({ action: "chaseRound", flow: "chase", actor: null, decl: { ...blank, action: "chaseRound", targets: [] }, cause: "gm" });
+/* CHASE (U176): the GM may name the obstacle of the round instead of rolling the table [B3441]: the book leaves the pick to the GM. */
+export const OBSTACLES = Object.freeze(Object.keys(chase.CHASE_OBSTACLES));
+export const roundSpec = (obstacle = null) => ({ action: "chaseRound", flow: "chase", actor: null, decl: { ...blank, action: "chaseRound", targets: [], ...(OBSTACLES.includes(obstacle) ? { obstacle } : {}) }, cause: "gm" });
 const obstacleOf = (I) => (I.data.ch?.obstacle ? chase.CHASE_OBSTACLES[I.data.ch.obstacle] ?? null : null);
 function sideRoll(v, I, R, key, u, attr, { passive = false, mods = [] } = {}) {
   if (!K.rollOf(I, key)) { R.effects.push(K.rollEffect(key, u.roller, attr, K.buildPool(v, I, key, u.roller, attr, mods, {}).pool, { passive, label: `ITAC.roll.${key.split(":")[0]}` })); return "wait"; }
@@ -121,8 +123,10 @@ export const round = {
       const I = K.draft(inst), R = K.result(I), ch = chaseOf(v.state);
       if (!ch) { I.data.result = "illegal"; R.goto = "close"; return R; }
       I.locked = true;
-      I.data.ch = { prey: rollerOf(v, "prey"), pursuer: rollerOf(v, "pursuer"), distance: ch.distance, lostAt: ch.lostAt, obstacle: null, results: {} };
-      R.goto = ch.obstacles ? "obstacle" : "movement"; return R;
+      const chosen = OBSTACLES.includes(I.decl?.obstacle) ? I.decl.obstacle : null;      // CHASE (U176) [B3441]: the obstacle the GM named
+      I.data.ch = { prey: rollerOf(v, "prey"), pursuer: rollerOf(v, "pursuer"), distance: ch.distance, lostAt: ch.lostAt, obstacle: chosen, ...(chosen ? { chosen: 1 } : {}), results: {} };
+      if (chosen) R.events.push({ type: "chase", distance: ch.distance, obstacle: chosen, chosen: 1 });
+      R.goto = ch.obstacles || chosen ? "obstacle" : "movement"; return R;
     },
     /* [B3448-3476]: the obstacle of the round and its rolls, the prey first [B3442]; they are no actions, so nobody pushes them [A-2] */
     obstacle(v, inst) {

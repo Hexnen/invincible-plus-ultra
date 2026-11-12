@@ -16,6 +16,7 @@
 @import url("session.css");   /* the end-of-session review panel and its Actors directory button (scripts/session/ui/) */
 @import url("tactics-ui.css");   /* tactical combat: the action dock and the GM desk (scripts/tactics/ui/) */
 @import url("tactics-slots.css");   /* tactical combat: the fixed places of the dock's surfaces (U132) */
+@import url("tactics-chase.css");   /* tactical combat: the chase panel in the middle (scripts/tactics/ui/chase.mjs; CHASE) */
 @import url("tactics.css");   /* tactical combat: the third pip state and the minimal prompt dialogs (scripts/tactics/) */
 @import url("rolldialog.css");   /* the system's roll dialog (and its stunts sibling) as a caption card of the dock's family (scripts/rolldialog.mjs; ledger U69) */
 @import url("pl.css");   /* Polish for the texts written by CSS (content strings), under html[lang="pl"] */

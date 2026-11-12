@@ -11,6 +11,7 @@ import { EN_MAP, PL_MAP } from "./lang-map.mjs";
 import { EN_U10, PL_U10 } from "./lang-u10.mjs";
 import { EN_FLOW, PL_FLOW } from "./lang-flow.mjs";
 import { EN_UXB, PL_UXB } from "./lang-uxb.mjs";
+import { EN_CHASE, PL_CHASE } from "./lang-chase.mjs";      // CHASE: the chase panel
 export const EN = {
   "ITAC.Settings.tacticsEnabled.Name": "Tactical combat",
   "ITAC.Settings.tacticsEnabled.Hint": "Off (the default): nothing of tactical combat runs and the combat tracker works as it did before. On: the module deals initiative cards, tracks the action budget and resolves declared actions; new fights start with the rules enforced, and the GM can switch a running fight to free mode at any time. Needs a reload.",
@@ -2077,7 +2078,7 @@ export const PL = {
   "ITAC.failed.sys": "krok rundy",
   "ITAC.failed.other": "zmiana",
 };
-Object.assign(EN, EN_ATTACKS, EN_INT, EN_KIT, EN_FX, EN_MAP, EN_U10, EN_UXB); Object.assign(PL, PL_ATTACKS, PL_INT, PL_KIT, PL_FX, PL_MAP, PL_U10, PL_UXB);      // package P4 keeps its strings in lang-attacks.mjs
+Object.assign(EN, EN_ATTACKS, EN_INT, EN_KIT, EN_FX, EN_MAP, EN_U10, EN_UXB, EN_CHASE); Object.assign(PL, PL_ATTACKS, PL_INT, PL_KIT, PL_FX, PL_MAP, PL_U10, PL_UXB, PL_CHASE);      // package P4 keeps its strings in lang-attacks.mjs
 Object.assign(EN, EN_FLOW); Object.assign(PL, PL_FLOW);      // UX wave "uxc" (the flow): lang-flow.mjs
 const table = () => { try { return String(globalThis.game?.i18n?.lang ?? "en").toLowerCase().startsWith("pl") ? PL : EN; } catch { return EN; } };
 /** The form of a counted word (U26). English: [one, other]. Polish: [one, few, many]: 1 kość, 2-4 kości, 5+ kości, with 12-14 and

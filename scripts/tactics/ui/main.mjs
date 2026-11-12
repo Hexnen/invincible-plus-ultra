@@ -34,6 +34,8 @@ import * as Tip from "./tip.mjs";
 import { visibleRect } from "./dom.mjs";
 import { setVar } from "./vars.mjs";
 import * as Slots from "./slots.mjs";        // U132: the fixed places (the frame the dock works out)
+import * as ChaseP from "./chase-pure.mjs";   // CHASE: the chase panel in the middle (its data)
+import * as ChaseUI from "./chase.mjs";       // CHASE: the chase panel (three trial looks)
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
@@ -240,6 +242,18 @@ let busyTimer = 0, busyAt = 0;
 function busyRedraw(left) { const at = Date.now() + left + 120; if (busyTimer && busyAt <= at) return; clearTimeout(busyTimer); busyAt = at; busyTimer = setTimeout(() => { busyTimer = 0; schedule(); }, left + 120); }
 /* U1 / U2: a roll button of the surfaces (model-pure.rollButtons `act`): the system's own roll, accept or push, on this client */
 const acting = new Map();
+/* CHASE: the chase panel's own state on this client: the obstacle the GM names for the next roll, the end card put away (kept per fight
+   in the browser so a reload does not bring it back); the look is the client setting, or a quick switch from the console (api.tactics.ui.chaseLook) */
+const CHASE_SEEN = "ipu.tactics.chaseEndSeen";
+let chaseOwn = { obstacle: null }, chaseLookDev = null;
+const chaseLook = () => ChaseP.lookOf(chaseLookDev ?? Store.setting("tacticsChaseLook", "A"));
+function chaseOwnFor(combat) { let seen = null; try { const v = String(globalThis.localStorage?.getItem(CHASE_SEEN) ?? ""); if (v.startsWith(`${combat.id}:`)) seen = Number(v.slice(combat.id.length + 1)); } catch { /* private window */ } return { ...chaseOwn, endSeen: seen }; }
+function chaseSet(patch) {
+  if (!patch) return;
+  if ("endSeen" in patch) { try { const c = combatNow(); if (c) globalThis.localStorage?.setItem(CHASE_SEEN, `${c.id}:${patch.endSeen}`); } catch { /* private window */ } }
+  if ("obstacle" in patch) chaseOwn = { ...chaseOwn, obstacle: patch.obstacle ?? null };
+  refresh();
+}
 async function rollAct(act) {
   try {
     const combat = combatNow(), state = combat ? Api.state(combat) : null;
@@ -281,7 +295,7 @@ function refresh() {
     const combat = down ? null : combatNow();
     try { document.body.classList.toggle("ita-tactics", !!combat); } catch { /* no body */ }      // styles/tactics-ui.css: what the other surfaces of the module give up while the dock shows
     hotbarSync(!!combat);
-    if (!combat) { cardsWere = null; lastDock = lastModel = null; Pick.stop(); Pick.keep(null, []); Board.sync(null, null); Camera.sync(null); mapSync(null, null); Dock.render({ show: false, prompts: [], sum: Feedback.idle().sum }); Desk.render({ show: false }); pokeTray(); return; }      // U57: the card of the fight that just ended may still stand
+    if (!combat) { cardsWere = null; lastDock = lastModel = null; Pick.stop(); Pick.keep(null, []); Board.sync(null, null); Camera.sync(null); mapSync(null, null); Dock.render({ show: false, prompts: [], sum: Feedback.idle().sum }); Desk.render({ show: false }); ChaseUI.hide(); pokeTray(); return; }      // U57: the card of the fight that just ended may still stand
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
     if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen, hotbar: st.dock.hotbar }; }        // a new turn: nothing stays armed
@@ -300,6 +314,10 @@ function refresh() {
     } else { cardsWere = null; Desk.render({ show: false }); }
     const model = staff ? staffModel(combat, desk) : Api.player(combat);
     const data = Model.dockData(model, st.dock, facts, t);
+    /* CHASE (U169 / U170): while the chase panel stands, the dock's line and cards do not say the chase again */
+    const chaseD = ChaseP.chaseData(facts.view, chaseOwnFor(combat), facts, t);
+    if (chaseD?.on && data.show) Object.assign(data, ChaseP.lineTrim(data, facts.view));
+    if (chaseD?.on && chaseOwn.obstacle && facts.view?.stack?.some((i) => i.flow === "chase")) chaseOwn = { ...chaseOwn, obstacle: null };      // the named obstacle went with the roll
     /* U160 (UX review 1): with the board the map's picks of a zone show no banner at the top (ui/board.mjs `banner: false`): what is
        asked stands in the armed panel on the bar, where the hand is. A move pick gets its panel back (the instruction in its head),
        an area attack says it in its body */
@@ -323,13 +341,14 @@ function refresh() {
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
     /* U53 / U57 / U58: the first-fight hint over the bar, the summary card of the round that just ended, the two sounds (ui/feedback.mjs) */
     const fb = Feedback.sync({ combat, facts, model, data, cards: desk?.cards ?? null, staff, own: st.dock });
-    data.sum = fb.sum; data.hint = fb.hint;
+    data.sum = chaseD?.on ? null : fb.sum; data.hint = fb.hint;      // CHASE (U170): no summary of a chase round over the map: the panel says it
     lastDock = data; lastModel = model;
     { const top = data?.prompts?.[0]?.id ?? null; if (top !== cardTop.id) cardTop = { id: top, at: Date.now() }; }
     autoEnd(combat, data);
     /* U59: the GM nudged this user: the line stands on the dock (news) and is said once as a notification, wherever the eyes are */
     if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", data.news.text); }
     Dock.render(data, st.dock);
+    ChaseUI.render(chaseD, chaseLook());      // CHASE: after the dock, whose line and cards it stands under
     /* U21: this client's target marks follow what is still aimed at (the open panel, the actions in progress) */
     Pick.keep(combat, [...(data.show && data.panel?.kind === "declare" ? (data.panel.targets ?? []).filter((x) => x.picked).map((x) => x.id) : []), ...(staff ? desk?.info ?? [] : model.mine ?? []).flatMap((i) => (i.targets ?? []).map((x) => x.id))]);
     /* W1: on a map with the board the targets are chosen there (rings, the chance, the reason of one out of reach: ui/board.mjs); a
@@ -533,6 +552,9 @@ function configure() {
     ichFloor: (y) => { try { window.dispatchEvent(new CustomEvent("ipu:ich-floor", { detail: y })); } catch { /* the challenges keep their room */ } },
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });
+  /* CHASE: the chase panel sends what the dock and the desk send (the GM's corrections go as the desk's) */
+  ChaseUI.configure({ send: (req) => send(Store.isStaff(game.user) ? "desk" : "dock", req), roll: rollAct, own: chaseSet, tipShow, tipHide,
+    arm: (a) => { patchDock({ sel: a.sel, armed: a.action, mode: null, peek: true }); refresh(); } });
   Desk.configure({
     set: setDesk, send: (req, after) => send("desk", req, after), label, tipShow, tipHide, locate: (cid, on) => Pick.locate(combatNow(), cid, on),
     needFrame: () => { try { Dock.relayout(); } catch { /* not built */ } },      // U132: the desk stands in the dock's frame
@@ -552,7 +574,7 @@ function configure() {
 }
 
 /* keep both placed when the layout around them moves */
-function relayout() { try { Desk.relayout(); Dock.relayout(); } catch { /* not built */ } }
+function relayout() { try { Desk.relayout(); Dock.relayout(); ChaseUI.place(); } catch { /* not built */ } }
 function watch() {
   if (!window.ResizeObserver) return;
   ro ??= new ResizeObserver(() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; relayout(); }); });
@@ -576,7 +598,7 @@ function declareRoom() {
   Zones.uiAvoid(`${MOD}.panels`, () => {
     const shown = Dock.isShown();
     return [...(shown ? ["#invincible-tactics-dock .its-bar", "#invincible-tactics-dock .its-slot:not([data-empty]) > .its-in > *", ...(Slots.frameNow()?.reserved ?? [])] : []),
-      "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges", ...(Slots.frameNow()?.toast?.box ? [Slots.frameNow().toast.box] : [])];      // D126 / U150: the toasts' strip too
+      "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges", "#invincible-tactics-chase:not(.itc-hidden) .itc-panel", ...(Slots.frameNow()?.toast?.box ? [Slots.frameNow().toast.box] : [])];      // D126 / U150: the toasts' strip too
   });
 }
 /* how far down from the top an element reaches (0: not shown) */
@@ -687,7 +709,8 @@ export function start() {
     Feedback.start({ t, refresh });
     Camera.start();
     Api.camera = { state: () => Camera.state() };      // for a look from the console
-    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), frame: () => Slots.frameNow(), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
+    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), frame: () => Slots.frameNow(), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on),
+      chaseLook: (x) => { chaseLookDev = x == null ? null : ChaseP.lookOf(x); refresh(); return chaseLook(); } };      // CHASE: a quick switch of the panel's look (this client, until reload)
     refresh();
     return true;
   } catch (e) { console.warn(LOG, "start failed", e); return false; }
