@@ -127,7 +127,7 @@ export function participant(c) {
   const summonOf = c?.flags?.[MOD]?.tactics?.summonOf;
   return {
     id: c.id,
-    hero: a?.type === "superhero",                                   // heroes draw before NPCs [B2112] [OQ-13]
+    hero: S.heroSide(a ? { type: a.type, owned: ownersOf(a).length > 0, disposition: c.token?.disposition ?? a.prototypeToken?.disposition } : null),      // heroes draw before NPCs [B2112] [OQ-13]; D114: a book villain (a superhero actor) is no hero
     owners: ownersOf(a),
     defeated: !!c.isDefeated,
     challenge: a?.type === "challenge",                              // no card [I12] [R22]

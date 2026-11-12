@@ -4,16 +4,19 @@
      requires  Cond | [Cond...] of rules/conditions.mjs: what must hold to declare the action (evaluated in flows/kit.mjs `requirements`)
      roll.mods [ModRule...] of rules/conditions.mjs: conditional dice modifiers of the actor's roll (flows/kit.mjs `entryMods`)
      attack    id of rules/attack.mjs ATTACKS for flow "attack"
-     reaction  for entries usable in a reaction window: { when: [window...], who: "target"|"any", effect: "defence"|"action"|"swapTarget"|"autoMiss"|"note" }
+     reaction  for entries usable in a reaction window: { when: [window...], who: "target"|"any", effect: "defence"|"action"|"swapTarget"|"autoMiss"|"allySwap"|"warn"|"note" }
                "action" pushes the entry as an interrupting action on the stack; "swapTarget" makes the reactor the target instead; "autoMiss" makes the
-               attack miss that target; "note" only records the reaction for the GM. Which powers and talents give which of these is P6 data. */
+               attack miss that target; "allySwap" (Discretion [B2108]): the target rolls the entry's attribute and on a success an ally of its zone
+               is attacked instead; "warn" (Warning Call [B2170]): the warned one blocks or dodges without an action of its own, with two more dice;
+               "note": what the engine cannot do; the GM gets a card to settle it by hand and the attack waits for it (D113: it used to be a note
+               nobody was shown). Which powers and talents give which of these is P6 data. */
 import * as M from "./mods-pure.mjs";
 import { conditions } from "../rules/index.mjs";
 import { ACTIONS } from "./actions-pure.mjs";
 
 export const WINDOWS = Object.freeze(["beforeRoll", "afterRoll", "afterDamage"]);
 export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other", "barrier", "fastball", "release", "act"]);
-export const REACTION_EFFECTS = Object.freeze(["defence", "action", "swapTarget", "autoMiss", "note"]);
+export const REACTION_EFFECTS = Object.freeze(["defence", "action", "swapTarget", "autoMiss", "allySwap", "warn", "note"]);
 /** U91: where the book lets a reaction be taken. "targetZone": the reactor stands in the zone of the attacked character (Guardian [B2115]);
     "allyZone": an ally stands in the reactor's own zone (Discretion [B2108]). `reaction.roll: "attack"`: the reactor first rolls FIGHTING
     against a slugfest attack, AGILITY against shooting, and the reaction works only on a success [B2115]. Read by flows/kit.reactionFit. */

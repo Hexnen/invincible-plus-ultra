@@ -143,6 +143,8 @@ function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
   if (kind === "reaction" && o.id === "pass") return t("ITAC.ui.noReaction");      // U11: one word for it on both seats
   if (kind === "triggerQueue" && o.data?.type) { const own = dueLabel(o, t, facts); if (own) return own; }
   if (kind === "fireSpread" && o.data?.zone) return o.data.rolled ? t("ITAC.ui.spread.rolled", { zone: zoneText(facts, t, o.data.zone) }) : zoneText(facts, t, o.data.zone);
+  /* D113: an answer about one of several characters (the ally Discretion puts in the way, the one a warning is for) names that character */
+  if (kind === "reaction" && o.data?.about && String(o.id).includes("@")) return t("ITAC.ui.react.about", { what: o.name ? String(o.name) : labelOf(t, o.label), name: nameOf(facts, o.data.about, t) });
   if (o.name) return String(o.name);
   if (isKey(o.label)) {
     const d = o.data ?? {};
@@ -185,6 +187,12 @@ function linesOf(p, t, facts, x) {
       if (d.bystander) out.push(t(d.attacker ? "ITAC.ui.line.attackBy" : "ITAC.ui.line.attackUnseenBy", { attacker: n(d.attacker), targets, action, name: about }));
       else if (d.attacker) out.push(t("ITAC.ui.line.attack", { attacker: n(d.attacker), target: about, action }));
       else out.push(t(d.unseen ? "ITAC.ui.line.attackUnseen" : "ITAC.ui.line.window", { name: about }));
+      if (d.warned) out.push(t("ITAC.ui.line.warned", { by: n(d.warned) }));      // D113 [B2170]
+      break;
+    }
+    case "reactionByHand": {      // D113: a reaction the engine has no rule for: the GM settles it, the attack waits
+      const what = d.name ? String(d.name) : d.label ? labelOf(t, d.label) : t("ITAC.ui.aReaction");
+      out.push(t("ITAC.ui.line.reactionByHand", { name: about, what, attacker: d.attacker ? n(d.attacker) : t("ITAC.Someone"), targets: (d.targets ?? []).map(n).join(", ") || t("ITAC.Someone") }));
       break;
     }
     case "counter": out.push(t("ITAC.ui.line.counter", { name: about })); break;
@@ -419,7 +427,9 @@ function newsText(n, facts, t) {
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
   const res = rows.length ? rows.join("; ") : n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "";
-  return [head, res].filter(Boolean).join(rows.length ? " > " : ": ") + (n.kind === "action" && fx && n.note ? ` ("${String(n.note)}")` : "") + (n.forced ? ` (${t("ITAC.ui.news.forced")})` : "") + (n.undone ? ` (${t("ITAC.ui.news.undone")})` : "");
+  /* D113: what a reaction came to (Discretion, Warning Call, one the GM settled by hand) is said after the result */
+  const rx = (Array.isArray(n.reacts) ? n.reacts : []).map((r) => t(`ITAC.ui.news.react.${r.result}`, { who: nameOf(facts, r.who, t), what: r.name ? String(r.name) : r.label ? t(r.label, {}, "") : "", about: r.about ? nameOf(facts, r.about, t) : "" }, "")).filter(Boolean);
+  return [head, res].filter(Boolean).join(rows.length ? " > " : ": ") + (n.kind === "action" && fx && n.note ? ` ("${String(n.note)}")` : "") + (rx.length ? ` (${rx.join("; ")})` : "") + (n.forced ? ` (${t("ITAC.ui.news.forced")})` : "") + (n.undone ? ` (${t("ITAC.ui.news.undone")})` : "");
 }
 /** What the table was told lately, for a player (view.news; nothing for staff: the journal is theirs). own.newsSeen = the number of the
     last line this user put away. A plain move is on the map already and is left out. -> null | { id, text, tone, older: [text], seen } */

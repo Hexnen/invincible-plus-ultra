@@ -175,6 +175,16 @@ function veil(input, host, state = null) {
   const back = (o, depth = 0) => (o === nobody && only ? only : Array.isArray(o) ? o.map((x) => back(x, depth + 1)) : o && typeof o === "object" && depth < 6 ? Object.fromEntries(Object.entries(o).map(([k, x]) => [k, back(x, depth + 1)])) : o);
   return { req, back };
 }
+/* U121: somebody joined or left while an action stands open (a group dropped onto the map in the middle of an attack): the action on top is
+   driven once, so a card that names who is in reach (the stunts' extra opponent) is made again with what is true now */
+async function rosterTick(state, lg, r, host) {
+  let base = { state, log: lg, events: [], env: { ok: true, changed: false } };
+  if (!r.same) { const done = await settle(r.state, r.log, r.events, host); base = { state: done.state, log: done.log, events: r.events, env: withFailed({ ...r.env, rev: done.state.rev }, done) }; }
+  const e = await E.handle({ state: base.state, log: base.log }, { t: "tick" }, host);
+  const said = { ...(e.env?.partial ? { partial: true } : {}), ...(e.env?.failed?.length ? { failed: [...(base.env.failed ?? []), ...e.env.failed].slice(0, E.FAILED_MAX) } : {}), ...(e.env?.parked ? { parked: e.env.parked } : {}) };      // D90: what the drive could not do is said
+  if (!e.changed) return r.same && !Object.keys(said).length ? out(state, lg, r.env) : { ...base, env: { ...base.env, ...said }, changed: !r.same };
+  return { state: e.state, log: e.log, env: { ...base.env, ok: true, changed: true, rev: e.state?.rev ?? base.env.rev, ...said }, events: [...base.events, ...(e.events ?? [])], changed: true };
+}
 export async function handle(io, input, host) {
   const v = veil(input, host, io?.state ?? null);
   if (!v) return handle0(io, input, host);
@@ -213,6 +223,7 @@ async function handle0({ state, log }, input, host) {
       if (refused) { const probe = O.reduce(state, { ...action, rid: undefined }, ctxFor(host, user, state)); return out(state, lg, probe.ok ? bad("busy", { reason: "openAction" }) : probe); }
     }
     const r = await round(state, lg, action, user, host);
+    if (op === "roster" && r.ok && r.state && state?.stack?.length) return rosterTick(state, lg, r, host);
     if (!r.ok || r.same) return out(state, lg, r.env);
     if (r.state === null) return { state: null, log: r.log, env: r.env, events: r.events, changed: true };
     const done = await settle(r.state, r.log, r.events, host);

@@ -27,6 +27,11 @@ export const LIMITS = { slots: 200, members: 60, entries: 200, grants: 40, trigg
 const ID_RE = /^[A-Za-z0-9_.:@|-]{1,64}$/;
 const BAD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 export const isId = (s) => typeof s === "string" && ID_RE.test(s) && !BAD_KEYS.has(s);
+/** D114: on the heroes' side? A superhero actor a player owns, or one the GM put on the map as friendly (a hero the GM runs). A superhero
+    actor with no player owner and no friendly token is the GM's: every character of the core book's heroes and villains is a superhero
+    actor, villains too, so the type alone put an imported villain on the heroes' side. Any other actor type is the GM's.
+    a = { type, owned: a player owns the actor, disposition: the token's (CONST.TOKEN_DISPOSITIONS: 1 friendly) } */
+export const heroSide = (a) => !!a && a.type === "superhero" && (a.owned === true || Number(a.disposition) === 1);
 const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 const int = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.trunc(n))) : d; };
 const str = (v, max = LIMITS.text) => (typeof v === "string" ? v.slice(0, max) : "");

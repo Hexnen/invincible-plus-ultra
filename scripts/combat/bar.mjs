@@ -31,6 +31,7 @@ import { freeArea, hudLimit, relayout as relayoutBanner } from "./banner.mjs";
 import { unitOf, unitName } from "../challenges/lang.mjs";
 import { yzeOn, yzeWaiting, yzeMode, actorOf, toggleActionMark } from "../yze.mjs";
 import { groupsFor, waitingOf, waitKindOf, actionsOn } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
+import * as Tac from "../tactics/source.mjs";                                         // U118: who sits in a vehicle
 
 const MOD = "invincible-plus-ultra";
 const ID = "invincible-combat-bar";
@@ -119,7 +120,9 @@ function read(c, isActive, ctx) {
     if (td?.hidden && !owner) return null;
     if (td?.isSecret) return null;
   }
-  const disp = dispOf(td ? td.disposition : actor?.prototypeToken?.disposition);
+  /* U118: a vehicle shows the side of who sits in it (tactics/source.mjs vehicleDisp), never the token's own default */
+  const disp = actor?.type === "vehicle" ? dispOf(Tac.vehicleDisp(Tac.aboard(c.parent, c.id).map((id) => c.parent?.combatants?.get(id)?.token?.disposition), !!actor.hasPlayerOwner, D()))
+    : dispOf(td ? td.disposition : actor?.prototypeToken?.disposition);
   let observer = owner;
   if (!observer) { try { observer = !!actor?.testUserPermission?.(game.user, "OBSERVER"); } catch { observer = false; } }
   const challenge = actor?.type === "challenge";

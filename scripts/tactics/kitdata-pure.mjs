@@ -254,7 +254,7 @@ export const ROWS = Object.freeze([
   T("Defensive", [2105], "auto", "reaction", { pass: { defensive: 1 }, acts: [] }),
   T("Deflection", [2106], "auto", "passive", { pass: { deflection: 1 } }),
   T("Determined", [2107], "auto", "sheet"),
-  T("Discretion", [2108], "assist", "reaction", { acts: [{ k: "discretion", cost: "none", stress: 1, roll: { attr: "presence" }, effect: { kind: "narrative" }, reaction: "note", place: "allyZone" }] }),
+  T("Discretion", [2108], "assist", "reaction", { acts: [{ k: "discretion", cost: "none", stress: 1, roll: { attr: "presence" }, effect: { kind: "narrative" }, reaction: "allySwap", place: "allyZone" }] }),
   T("Duck & Weave", [2109], "auto", "passive", { pass: { duckWeave: 1 } }),
   T("Durable", [2110], "auto", "sheet"),
   T("Evasive", [2111], "auto", "sheet"),
@@ -292,7 +292,7 @@ export const ROWS = Object.freeze([
   T("Supportive", [2167], "auto", "passive", { pass: { supportive: 1 } }),
   T("Tactical Support", [2168], "assist", "token", { acts: [{ k: "support", cost: "none", target: { who: "ally", n: [1, 1] }, pick: ["1", "2", "3"], effect: { kind: "support", per: 2 } }] }),
   T("Unconventional Wisdom", [2169], "assist", "outcome", { acts: [narr("wisdom", "none", { roll: { attr: "intuition" } })] }),
-  T("Warning Call", [2170], "assist", "reaction", { acts: [{ k: "warn", cost: "quick", effect: { kind: "narrative" }, reaction: "note" }] }),
+  T("Warning Call", [2170], "assist", "reaction", { acts: [{ k: "warn", cost: "quick", effect: { kind: "narrative" }, reaction: "warn" }] }),
   T("Windfall", [2171], "hand", "story", { why: "sheetNumbers" }),
 
   /* ================================================================ DRAWBACKS [B2174-2193] */

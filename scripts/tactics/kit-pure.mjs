@@ -131,7 +131,7 @@ function actionOf(item, row, a, lv, extra = {}) {
     if (a.once) e.once = a.once;
     for (const k of ["lv", "armor"]) if (Array.isArray(e.effect[k])) e.effect[k] = at(e.effect[k], lv);
     if (a.reaction) {
-      const who = ["autoMiss", "note"].includes(a.reaction) && a.k !== "warn" ? "target" : "any";
+      const who = ["autoMiss", "allySwap", "note"].includes(a.reaction) ? "target" : "any";      // D113: Discretion moves the attack off its own holder; a warning is shouted for somebody else
       Object.assign(e, { flow: "plain", reaction: { when: ["beforeRoll"], who, effect: a.reaction, ...(a.place ? { place: a.place } : {}), ...(a.check ? { roll: a.check } : {}) }, interrupt: { on: ["beforeRoll"] }, reactionOnly: 1 });
     }
   }

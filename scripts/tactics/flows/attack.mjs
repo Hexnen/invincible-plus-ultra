@@ -242,7 +242,9 @@ function oddsBands(g) {
   for (const [id, n] of Object.entries(g.def ?? {})) if (Number.isFinite(n)) out[id] = K.bandOf(dice.pHit(a, Math.max(1, n)));
   return out;
 }
-const defencePool = (v, I, t, how, tokens) => K.buildPool(v, I, `def:${t}`, t, attack.DEFENCES[how].attr, [], { rollKind: how, tokens });
+/* D113: Warning Call [B2170]: the one warned rolls two more dice on its block or dodge */
+export const WARN_DICE = 2;
+const defencePool = (v, I, t, how, tokens) => K.buildPool(v, I, `def:${t}`, t, attack.DEFENCES[how].attr, I.data?.warned?.[t] ? [{ source: "warned", dice: WARN_DICE }] : [], { rollKind: how, tokens });
 function defencePrompt(v, I, t) {
   const kind = kindOf(I), tf = v.facts.c(t);
   const dq = Veh.defenceOf(v, I, kind);                                                          // P7 [B3434]: the charge or ram that ends a chase
@@ -250,6 +252,7 @@ function defencePrompt(v, I, t) {
   const opts = df.paid, options = [];
   /* P6 [B2105] Defensive: 1 stress instead of an action, as often as there is Resolve; asked for when the attack comes, never ahead of it */
   const free = tf?.pass?.defensive === true && !Veh.isMachine(v, t) ? df.free : null;
+  const warned = !!I.data?.warned?.[t] && !Veh.isMachine(v, t);                                  // D113 [B2170]: warned: a block or dodge without an action, two more dice
   const allowed = (set, id) => {
     let op = set[id];
     if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && tf?.pass?.deflection && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]
@@ -262,6 +265,12 @@ function defencePrompt(v, I, t) {
     if (op.reason === "notAllowed") continue;                                                    // this attack cannot be answered that way at all
     /* the bonus dice the defender may choose to put on this defence (spec 6.2); the answer names them: { id, tokens } */
     const spare = M.tokensFor(v.state, t, { kind: id, attr: attack.DEFENCES[id].attr }).filter((k) => !M.standing(k)).map((k) => ({ id: k.id, dice: k.dice, source: k.source?.name ?? "", ...(k.needsGm ? { needsGm: 1 } : {}) }));
+    if (warned) {                                                                                // the paid and the Defensive answers would only cost more
+      const w = allowed(df.free, id), wo = { id: `${id}:warned`, label: `ITAC.opt.${id}Warned`, cost: "none", ...(spare.length ? { data: { tokens: spare } } : {}) };
+      if (!w.ok) wo.disabled = w.reason;
+      options.push(wo);
+      continue;
+    }
     const o = { id, label: `ITAC.action.${id}`, cost: "quick", ...(spare.length ? { data: { tokens: spare } } : {}) };
     if (!op.ok) o.disabled = op.reason;
     options.push(o);
@@ -271,17 +280,17 @@ function defencePrompt(v, I, t) {
       options.push(fo);
     }
   }
-  if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget" && K.reactionFit(v, I, t, e).ok)) options.push(K.reactionOption(v, t, e, I));      // [B2707]: out of action, no power answers
+  if (!df.out) for (const e of C.reactionsFor(v.state, t, "beforeRoll", v.facts).filter((e) => e.reaction.effect !== "swapTarget" && e.reaction.effect !== "warn" && K.reactionFit(v, I, t, e).ok)) options.push(...K.reactionOptions(v, t, e, I).filter((o) => o.disabled !== "reactionUsed"));      // [B2707]: out of action, no power answers; D113: a reaction once per attack
   const live = options.filter((o) => !o.disabled);
   const ways = [...new Set(live.map((o) => String(o.id).split(":")[0]).filter((id) => id === "block" || id === "dodge"))];
-  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, action: I.action, targets: I.decl.targets.slice(0, 12) } };
+  const p = { key: `rb:${t}`, kind: "reaction", to: K.addressee(v, t), about: t, options: [...options, { id: K.PASS, label: "ITAC.opt.pass" }], data: { when: "beforeRoll", attacker: I.actor, attack: kind, action: I.action, targets: I.decl.targets.slice(0, 12), ...(warned ? { warned: I.data.warned[t].by } : {}) } };
   p.data.gm = oddsFacts(v, I, t, ways);
   const bands = oddsBands(p.data.gm);
   if (bands) p.data.odds = bands;
   if (!live.length) p.auto = { option: K.PASS, reason: df.out ?? (conds.unaware ? "unaware" : "noOption") };                 // plan 5.2 step 4
   else if (tf?.npc) {                                                                                             // spec 13.3 NpcPolicy
-    const pol = v.state.npc?.[t] ?? {}, def = live.find((o) => o.id === "block" || o.id === "dodge");
-    if (def && pol[def.id] === "always") p.auto = { option: def.id, reason: "npcDefault" };
+    const pol = v.state.npc?.[t] ?? {}, def = live.find((o) => ["block", "dodge", "block:warned", "dodge:warned"].includes(o.id));
+    if (def && pol[String(def.id).split(":")[0]] === "always") p.auto = { option: def.id, reason: "npcDefault" };
     else if (K.quickGroup(v, t)) p.auto = { option: K.PASS, reason: "quick" };                                    // U61: a group settled quickly takes the hit
     else if (live.every((o) => pol[String(o.id).split(":")[0]] === "never")) p.auto = { option: K.PASS, reason: "npcDefault" };
   }
@@ -293,23 +302,24 @@ function applyReaction(v, I, R, cid, key, value, when) {
   (I.data.done ??= {})[key] = 1;
   if (id === K.PASS_ROUND && !M.counterGet(v.state, K.passKey(cid))) R.effects.push({ t: "state", ...M.counterBump(v.state, K.passKey(cid)) });      // U11: not asked again this round as a bystander
   if (!id || id === K.PASS || id === K.PASS_ROUND) return false;
-  if (["block", "dodge", "block:free", "dodge:free"].includes(id)) {
-    const [how, free] = id.split(":");
+  if (["block", "dodge", "block:free", "dodge:free", "block:warned", "dodge:warned"].includes(id)) {
+    const [how, free] = id.split(":"), warned = free === "warned";
     /* [B2447], [B2525]: no action left, no defence. Asked again when the answer is acted on: the unit may have gone since the window opened
        (another defence, a mark). Only the GM's own answer stands against it (spec 14). */
     if (!K.answeredByStaff(v, I, key)) {
       const dq = Veh.defenceOf(v, I, kindOf(I)), now = K.defenceOf(v, cid, dq.attack, { inChase: dq.inChase, machine: Veh.isMachine(v, cid) })[free ? "free" : "paid"][how];
       if (now && !now.ok && now.reason !== "notAllowed") { (I.data.notes ??= []).push({ note: "defenceRefused", who: cid, reason: now.reason }); return false; }
     }
-    if (free) R.effects.push({ t: "stress", who: cid, n: 1 });                                  // P6 [B2105] Defensive: 1 stress, no action
+    if (warned) { /* D113 [B2170]: the warning pays for it: no action, no stress */ }
+    else if (free) R.effects.push({ t: "stress", who: cid, n: 1 });                             // P6 [B2105] Defensive: 1 stress, no action
     else R.effects.push({ t: "pay", who: cid, cost: "quick", action: how, interrupt: 1, defense: 1, key: `def:${cid}`, target: [I.actor] });     // [B2447], [B2525]
     const dTokens = Array.isArray(value?.tokens) ? value.tokens.slice(0, 12) : [];
     let dDice = null; try { dDice = defencePool(v, K.draft(I), cid, how, dTokens).pool.dice; } catch { dDice = null; }      // what the defender will roll, as far as it is known now (the desk's chance, D28)
-    (I.data.def ??= {})[cid] = { defence: how, tokens: dTokens, ...(free ? { free: "defensive" } : {}), ...(Number.isFinite(dDice) ? { dice: dDice } : {}) };
-    R.events.push({ type: "reaction", who: cid, kind: how, cost: free ? "none" : "quick", stress: free ? 1 : 0 });
+    (I.data.def ??= {})[cid] = { defence: how, tokens: dTokens, ...(free ? { free: warned ? "warned" : "defensive" } : {}), ...(Number.isFinite(dDice) ? { dice: dDice } : {}) };
+    R.events.push({ type: "reaction", who: cid, kind: how, cost: free ? "none" : "quick", stress: free && !warned ? 1 : 0 });
     return false;
   }
-  const e = C.reactionsFor(v.state, cid, when, v.facts).find((x) => `r:${x.id}` === id);
+  const rid = K.reactionId(id), e = C.reactionsFor(v.state, cid, when, v.facts).find((x) => `r:${x.id}` === rid.id);
   if (!e) return false;
   /* U91: the place is asked again when the answer is acted on, as the action of a defence is: the guardian may stand elsewhere by now
      [B2115]. Nothing is paid then. Only the GM's own answer stands against it (spec 14). */
@@ -318,6 +328,36 @@ function applyReaction(v, I, R, cid, key, value, when) {
   R.effects.push({ t: "pay", who: cid, cost: e.cost, action: e.id, interrupt: 1, key: `re:${when}:${cid}`, target: [I.actor] });
   if (e.stress?.fixed) R.effects.push({ t: "stress", who: cid, n: e.stress.fixed });
   R.events.push({ type: "reaction", who: cid, kind: e.id, cost: e.cost, stress: e.stress?.fixed ?? 0, for: I.decl.targets[0] });
+  const fx = e.reaction.effect, name = String(e.name || "").slice(0, 80) || null;
+  if (["allySwap", "warn", "note"].includes(fx)) {
+    /* D113: the reactions that used to be a note nobody was shown. Each now does what the book says, or (an entry the engine has no rule for)
+       puts a card on the GM's desk; what it came to is told to the table with the result of the attack (news, journal) */
+    const about = aboutOf(v, I, cid, e, rid.about, staff);
+    const rec = { who: cid, entry: e.id, effect: fx, ...(name ? { name } : {}), ...(e.label ? { label: e.label } : {}), ...(about ? { about } : {}) };
+    (I.data.reacted ??= []).push(rec);
+    if (fx === "allySwap") {                       // Discretion [B2108]: a roll of the entry's attribute, no action; on a success the ally is attacked instead
+      if (!about) { rec.result = "noAlly"; (I.data.notes ??= []).push({ note: "reactionRefused", who: cid, entry: e.id, reason: "noAllyNear" }); reopenDefence(v, I, R, cid); return false; }
+      const rk = `ds:${cid}`, attr = e.roll?.attr ?? "presence";
+      const bp = K.buildPool(v, I, rk, cid, attr, [], { rollKind: "other" });
+      for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
+      R.effects.push(K.rollEffect(rk, cid, attr, bp.pool, { label: e.label, noPush: !K.mayPush(v, cid) }));
+      (I.data.swaps ??= []).push({ key: rk, by: cid, from: cid, to: about, entry: e.id, ally: 1 });
+      return false;
+    }
+    if (fx === "warn") {                           // Warning Call [B2170]: the warned one blocks or dodges without its own action, with two more dice
+      if (!about || !I.decl.targets.includes(about)) { rec.result = "noTarget"; return false; }
+      (I.data.warned ??= {})[about] = { by: cid, entry: e.id };
+      const df = I.data.def?.[about];
+      if (df?.defence) {                           // it had already answered with a defence: that defence gets the dice (the action it paid stays paid, WC-2)
+        rec.result = "dice";
+        try { const n = defencePool(v, K.draft(I), about, df.defence, df.tokens ?? []).pool.dice; if (Number.isFinite(n)) df.dice = n; } catch { /* the number comes with the roll */ }
+      } else { rec.result = "card"; reopenDefence(v, I, R, about); }      // its card is made again with the free answers (or for the first time after a pass)
+      return false;
+    }
+    rec.result = "byHand";                         // an entry the engine has no rule for: the GM settles it, the attack waits for that
+    (I.data.byHand ??= []).push({ key: `rh:${(I.data.byHand ?? []).length}`, who: cid, entry: e.id, when, ...(name ? { name } : {}), ...(e.label ? { label: e.label } : {}) });
+    return false;
+  }
   if (e.reaction.effect === "action") {            // an interrupt that is itself an action: pushed on top, runs to its end, then this one is revalidated (spec 5.1)
     R.push = { action: e.id, actor: cid, decl: { action: e.id, targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "interrupt", prepaid: 1 };
     return true;
@@ -340,6 +380,23 @@ function applyReaction(v, I, R, cid, key, value, when) {
   (I.data.notes ??= []).push({ who: cid, entry: e.id, when });
   return false;
 }
+/* D113: whom the answer is about: the character the answer names (`r:<entry>@<cid>`), else the only one there is; the GM's own answer
+   may name somebody the rule would not offer */
+function aboutOf(v, I, cid, e, named, staff) {
+  const list = K.aboutOf(v, I, cid, e);
+  if (named && (list.includes(named) || (staff && v.facts.c(named)))) return named;
+  if (list.length) return list[0];
+  return staff && e.reaction.effect === "warn" ? I.decl.targets.find((t) => t !== cid) ?? null : null;
+}
+/* D113: the defence card of `t` is asked again (the window runs once more for it): withdrawn when nobody answered it yet, else forgotten,
+   so the step makes a new one that says what is true now (warned: the free answers; Discretion failed: block and dodge as before) */
+function reopenDefence(v, I, R, t) {
+  const k = `rb:${t}`;
+  if (!I.data.pk?.[k]) return;
+  if (K.isAnswered(v, I, k)) delete I.data.pk[k]; else R.drop.push(k);      // an answered card stays answered; the step asks with a new one
+  if (I.data.done) delete I.data.done[k];
+  K.setFlag(I, "reopen");
+}
 const swapTarget = (I, from, to, by) => {
   I.decl.targets = I.decl.targets.map((t) => (t === from ? to : t));
   (I.data.retargets ??= []).push({ from, to, by });
@@ -354,9 +411,15 @@ function settleSwaps(v, I) {
     if (s.done) continue;
     if (!K.rollFinal(I, s.key)) { waiting = true; continue; }
     s.done = 1;
-    const won = K.sixesOf(I, s.key) >= 1 && I.decl.targets.includes(s.from) && !I.decl.targets.includes(s.by);
-    if (won) swapTarget(I, s.from, s.by, s.entry);
-    else (I.data.notes ??= []).push({ note: "swapFailed", who: s.by, entry: s.entry, for: s.from, sixes: K.sixesOf(I, s.key) });
+    const to = s.to ?? s.by, sixes = K.sixesOf(I, s.key);
+    const won = sixes >= 1 && I.decl.targets.includes(s.from) && !I.decl.targets.includes(to) && (!s.ally || K.alliesNear(v, I, s.by).includes(to));      // D113: Discretion's ally must still stand beside
+    const rec = s.ally ? (I.data.reacted ?? []).find((x) => x.who === s.by && x.entry === s.entry && !x.result) : null;
+    if (rec) rec.result = won ? "moved" : "failed";
+    if (won) swapTarget(I, s.from, to, s.entry);
+    else {
+      (I.data.notes ??= []).push({ note: "swapFailed", who: s.by, entry: s.entry, for: s.from, sixes });
+      if (s.ally && I.decl.targets.includes(s.by)) (I.data.redefend ??= []).push(s.by);      // D113: Discretion took no action: the target still may defend
+    }
   }
   return waiting;
 }
@@ -381,7 +444,27 @@ function runWindow(v, I, R, keys, when) {
     const cid = K.promptOf(v, I, key).about;
     if (applyReaction(v, I, R, cid, key, K.answerOf(v, I, key), when)) return "wait";
   }
-  return keys.every((k) => I.data.done?.[k]) ? "done" : "wait";
+  const hand = byHand(v, I, R);
+  return !hand && keys.every((k) => I.data.done?.[k]) ? "done" : "wait";
+}
+/* D113: a reaction the engine has no rule for (catalog effect "note", e.g. a power the GM granted) is the GM's to settle: a card on the
+   desk says who used what against which attack, and the attack waits until the GM says it is done. -> true while a card is open */
+function byHand(v, I, R) {
+  let waiting = false;
+  for (const h of I.data.byHand ?? []) {
+    if (h.done) continue;
+    if (!I.data.pk?.[h.key]) {
+      if (!R.prompts.some((p) => p.key === h.key)) R.prompts.push({ key: h.key, kind: "reactionByHand", to: "gm", about: h.who, free: 1, options: [{ id: "done", label: "ITAC.opt.done" }],
+        data: { entry: h.entry, ...(h.name ? { name: h.name } : {}), ...(h.label ? { label: h.label } : {}), when: h.when, attacker: I.actor, action: I.action, targets: I.decl.targets.slice(0, 12) } });
+      waiting = true; continue;
+    }
+    if (!K.isAnswered(v, I, h.key)) { waiting = true; continue; }
+    h.done = 1;
+    const a = K.answerOf(v, I, h.key), text = typeof a?.text === "string" ? a.text.trim().slice(0, 200) : "";
+    const rec = (I.data.reacted ?? []).find((x) => x.who === h.who && x.entry === h.entry && x.result === "byHand");
+    if (rec && text) rec.note = text;
+  }
+  return waiting;
 }
 const windowKeys = (I, prefix) => Object.keys(I.data.pk ?? {}).filter((k) => k.startsWith(prefix));
 
@@ -483,7 +566,9 @@ export const steps = {
     const st = runWindow(v, I, R, keys, "beforeRoll");
     if (R.push) return R;
     const rolling = settleSwaps(v, I);                                                // U91: a guardian's roll decides whether the target changes [B2115]
+    for (const t of (I.data.redefend ?? []).splice(0)) reopenDefence(v, I, R, t);     // D113: Discretion failed: the target answers the attack again
     if (I.decl.targets.join() !== before) { staleCards(v, I, R); R.goto = "reactBefore"; return R; }      // retargeted: the new target's own window opens
+    if (K.flag(I, "reopen")) { delete I.data.ph.reopen; R.goto = "reactBefore"; return R; }              // D113: a defence card is asked again
     if (st === "wait" || rolling) { R.wait = true; return R; }
     I.data.window = null;
     R.goto = "roll";
@@ -599,8 +684,15 @@ export const steps = {
     const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = budgetOf(I, hit);
     const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => (ws === "none" ? [] : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
     if (!hit.length || budget < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
-    if (!I.data.pk?.stunts) { R.prompts.push({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: budget, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } }); R.wait = true; return R; }
-    if (!K.isAnswered(v, I, "stunts")) { R.wait = true; return R; }
+    const stuntCard = () => ({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: budget, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } });
+    if (!I.data.pk?.stunts) { R.prompts.push(stuntCard()); R.wait = true; return R; }
+    if (!K.isAnswered(v, I, "stunts")) {
+      /* U121: the card says what is true NOW: somebody came into reach (a combatant added, moved, revealed) or left it since it was made:
+         the card is made again (what the answer is checked against has changed anyway, `validate`) */
+      const sig = (list) => JSON.stringify((list ?? []).map((o) => [o.id, o.disabled ?? null])), now = stuntCard();
+      if (sig(now.options) !== sig(K.promptOf(v, I, "stunts")?.options)) { R.drop.push("stunts"); R.prompts.push(now); }
+      R.wait = true; return R;
+    }
     const picks = picksOf(K.answerOf(v, I, "stunts"));
     let waiting = false;
     const approved = [];
@@ -839,12 +931,15 @@ const stuntKind = (I) => { const k = kindOf(I); return k === "ram" ? "slugfest" 
     the attacker does not know of: one the attacker has as "unseen", or, for an attacker of the heroes' side (whose player reads the card), one the
     GM keeps hidden (spec 10: the list must not give such a figure away). Before, everybody else in the zone was offered: the attacker's allies too. */
 const NO_OPPONENT = ["challenge", "vehicle"];
+/* D116: a minion group with no member left is nobody to bang heads with: its Health is its members [B2827] (a lone character at 0 stays
+   an opponent until marked defeated, ruling U17-4) */
+const wiped = (f) => f.kind === "minions" && (!(Number(f.health) > 0) || f.members === 0);
 function othersNear(v, I, t) {
   const tf = v.facts.c(t), a = v.facts.c(I.actor), known = v.state.knowledge?.[I.actor] ?? {};
   if (!tf) return [];
   return (v.facts.inZone(t) ?? []).filter((c) => {
     const f = v.facts.c(c);
-    return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !!f.npc === !!tf.npc && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
+    return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !wiped(f) && !!f.npc === !!tf.npc && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
   });
 }
 function ctxFor(v, I, t) {
@@ -878,8 +973,8 @@ export function validate(v, inst, prompt, value, staff = false) {
   if (prompt.kind === "reaction" && !staff) {                                                    // what was offered when the window opened is asked again when it is taken: the action may be gone [B2447], [B2525]
     const id = typeof value === "string" ? value : value?.id, cid = prompt.about;
     if (!id || id === K.PASS || !cid) return { ok: true };
-    const e = id.startsWith("r:") ? C.reactionsFor(v.state, cid, prompt.data?.when, v.facts).find((x) => `r:${x.id}` === id) : null;
-    const now = e ? K.reactionOption(v, cid, e, inst) : inst.decl.targets.includes(cid) ? defencePrompt(v, inst, cid).options.find((o) => o.id === id) : null;
+    const rid = K.reactionId(id), e = id.startsWith("r:") ? C.reactionsFor(v.state, cid, prompt.data?.when, v.facts).find((x) => `r:${x.id}` === rid.id) : null;
+    const now = e ? K.reactionOptions(v, cid, e, inst).find((o) => o.id === id) ?? (rid.about ? { disabled: e.reaction.effect === "allySwap" ? "noAllyNear" : "unseen" } : K.reactionOption(v, cid, e, inst)) : inst.decl.targets.includes(cid) ? defencePrompt(v, inst, cid).options.find((o) => o.id === id) : null;
     return now?.disabled ? { ok: false, reason: now.disabled } : { ok: true };
   }
   if (prompt.kind !== "stunts") return { ok: true };
