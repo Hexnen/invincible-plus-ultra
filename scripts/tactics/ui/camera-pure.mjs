@@ -15,6 +15,7 @@
             ownMove  the user's unit has walked                         (XCOM: the camera follows the soldier)
      turn   asked    a question is put to this user about somebody      (XCOM: the cut to the one who reacts)
             ownTurn  the turn of a unit this user drives starts         (XCOM: the camera centres on the soldier)
+            join     a player's first look at a fight (joined, reloaded) (XCOM: a loaded save opens on the squad; U152)
             turn     somebody else's turn starts                        (XCOM: the cut to the alien that acts, when it is seen)
             attacked a unit this user drives is the target of an action
             hurt     a unit this user drives got a result (hit, miss)
@@ -43,8 +44,8 @@
 
 const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 const ids = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string" && x) : []);
-export const ORDER = Object.freeze(["select", "aim", "arm", "asked", "ownTurn", "ownMove", "attacked", "hurt", "turn", "attack", "result", "move", "reveal"]);
-export const LEVEL = Object.freeze({ select: "turn", aim: "turn", arm: "turn", asked: "turn", ownTurn: "turn", ownMove: "turn", attacked: "turn", hurt: "turn", turn: "turn", attack: "all", result: "all", move: "all", reveal: "all" });
+export const ORDER = Object.freeze(["select", "aim", "arm", "asked", "ownTurn", "ownMove", "attacked", "hurt", "turn", "attack", "result", "move", "reveal", "join"]);
+export const LEVEL = Object.freeze({ join: "turn", select: "turn", aim: "turn", arm: "turn", asked: "turn", ownTurn: "turn", ownMove: "turn", attacked: "turn", hurt: "turn", turn: "turn", attack: "all", result: "all", move: "all", reveal: "all" });
 export const HAND = Object.freeze(["select", "aim", "arm", "ownMove"]);
 
 /** Is this prompt put to this user (and not answered)? Staff: the GM's cards. */
@@ -74,7 +75,10 @@ export function look(view, own = {}) {
 /** What happened between two looks that the camera may answer, the most pressing first.
     -> [{ why, level, hand, focus: combatant, with: [combatants], zone?: key, after?: combatant (wait until it has walked) }] */
 export function cues(before, now) {
-  if (!now || !before) return [];                                                                   // the first look (joined, reloaded, the fight began): the view stays
+  /* the first look (joined, reloaded, the fight began). U152 (UX review 1): a player's view goes to the own unit (the dock's), by the
+     least slide and only when it is off the free part of the screen; the GM's view stays (the GM placed it) */
+  if (!now) return [];
+  if (!before) { const own = now.staff ? null : now.who ?? now.mine[0] ?? null; return own && now.mine.includes(own) ? [{ why: "join", level: LEVEL.join, hand: false, focus: own, with: [] }] : []; }
   const out = [], mine = new Set(now.mine), add = (why, focus, more = {}) => { if (focus) out.push({ why, level: LEVEL[why], hand: HAND.includes(why), focus, with: [], ...more }); };
   const turned = now.cur !== before.cur || now.round !== before.round;
   /* the user's own hand */

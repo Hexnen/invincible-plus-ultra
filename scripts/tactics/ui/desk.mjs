@@ -59,7 +59,12 @@ export function place() {
   if (!fr?.desk) { handlers.needFrame?.(); return; }
   root.style.setProperty("--igd-top", `${fr.desk.top}px`);
   root.style.setProperty("--igd-maxh", `${Math.round(Math.max(160, fr.desk.floor - fr.desk.top))}px`);
+  /* U155 (UX review 1): a short desk (1366x768 at 140 %: its waiting strip took a third of it and pushed a card's answers under the
+     fold) lays the waiting strip on one line that scrolls sideways */
+  const k = Number(document.body.style.getPropertyValue("--ita-scale")) || 1, short = (fr.desk.floor - fr.desk.top) / k < SHORT ? "1" : "";
+  if ((root.dataset.short ?? "") !== short) { if (short) root.dataset.short = short; else delete root.dataset.short; }
 }
+const SHORT = 300;   // css px of desk (before the interface size) under which it counts as short
 
 /* ---------- pieces ---------- */
 const val = (id, fallback) => { const v = last?.ui?.vals?.[id]; return v === undefined ? fallback : v; };

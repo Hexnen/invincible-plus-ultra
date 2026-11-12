@@ -1,6 +1,6 @@
 // node scripts/tactics/check-cam.mjs -- U94, the camera of a tactical fight (ui/camera-pure.mjs; spec section 25).
 //   A. the moments: what a look at this user's view and hand gives the camera (turns, the hand's own acts, a question, somebody new),
-//      what the first look gives (nothing), what aiming holds back, the order when several happen at once
+//      what the first look gives (a player: the own unit, U152; the GM: nothing), what aiming holds back, the order when several happen at once
 //   B. the events of the fight (a walk, an action aimed at somebody, a result) asked of the user's own look
 //   C. HIDDEN INFORMATION: through a whole scripted fight with a hidden NPC and an NPC unseen by one hero, no cue on a player's
 //      client names, or exists because of, somebody that player's view does not hold; fed the GM's full stream on purpose, the
@@ -36,7 +36,8 @@ const pass = async (T, each = null) => { for (let n = 0; n < 24 && T.state.stack
   const T = mk();
   const a0 = lookOf(T, P1), b0 = lookOf(T, P2), g0 = lookOf(T, GM);
   eq([a0.cur, a0.known.includes("N2"), g0.known.includes("N2")], ["H1", false, true], "A: a player's look does not hold the hidden one, the GM's does");
-  eq([CP.cues(null, a0), CP.cue(null, a0)], [[], null], "A: the first look (joined, reloaded, the fight began) moves nothing");
+  /* U152 (UX review 1): a player's first look (joined, reloaded, the fight began) goes to the own unit; the GM's view stays */
+  eq([CP.cues(null, a0).map((c) => [c.why, c.focus, c.level, c.hand]), CP.cues(null, g0)], [[["join", "H1", "turn", false]], []], "A: the first look: a player's view goes to the own unit (U152), the GM's stays");
   eq(CP.cues(a0, lookOf(T, P1)), [], "A: nothing changed: no cue");
   T.turn("N1");
   const a1 = lookOf(T, P1), g1 = lookOf(T, GM);

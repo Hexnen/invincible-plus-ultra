@@ -47,7 +47,7 @@ let started = false, down = false, timer = 0, raf = 0, ro = null, turnKey = null
    moment after a change (one write for a burst of clicks). */
 const HOTBAR_KEY = `${MOD}.tactics.hotbar`, KEYS_ON = `${MOD}.tactics.keys`, LAYOUT_FLAG = "tacticsLayout";
 const hotbarWas = () => { try { return globalThis.localStorage?.getItem(HOTBAR_KEY) === "1"; } catch { return false; } };
-let st = { dock: { ...blankDock(), hotbar: hotbarWas() }, desk: blankDesk() };
+let st = { dock: { ...blankDock(), hotbar: false }, desk: blankDesk() };      // U152: folded at the start (layoutStart)
 let layout = Lay.clean(null), saveTimer = 0;
 const foldsNow = () => Object.fromEntries(Object.keys(Lay.FOLDS).map((k) => [k, Lay.folded(layout, k)]));
 function layoutStart() {
@@ -55,7 +55,10 @@ function layoutStart() {
     const raw = Store.userPref(LAYOUT_FLAG);
     let keys = false; try { keys = globalThis.localStorage?.getItem(KEYS_ON) === "1"; } catch { keys = false; }
     layout = Lay.clean(raw, { hotbar: hotbarWas(), keys });
-    st.dock.hotbar = layout.hotbar;
+    /* U152 (UX review 1): the macro bar starts folded under the dock in every session (a player who joins a fight saw Foundry's 1-0 row
+       under the dock's own numbered actions, left open in some earlier session); opened with the dock's keyboard button it stays open
+       for this session. The choice is still written to the layout, only no longer read back at the start. */
+    st.dock.hotbar = false;
     Object.assign(st.desk, Lay.deskStart(layout) ?? {}, { folds: foldsNow() });
     if (layout.keys) document.body.classList.add("ita-keys");
   } catch (e) { console.warn(LOG, "layout failed", e); }
@@ -273,6 +276,14 @@ function refresh() {
     } else { cardsWere = null; Desk.render({ show: false }); }
     const model = staff ? staffModel(combat, desk) : Api.player(combat);
     const data = Model.dockData(model, st.dock, facts, t);
+    /* U160 (UX review 1): with the board the map's picks of a zone show no banner at the top (ui/board.mjs `banner: false`): what is
+       asked stands in the armed panel on the bar, where the hand is. A move pick gets its panel back (the instruction in its head),
+       an area attack says it in its body */
+    if (data.show && data.panel && Zones.hasBoard()) {
+      if (data.panel.kind === "move" && data.panel.picking && data.panel.ways && data.panel.bare) data.panel = { ...data.panel, bare: false };
+      else if (Board.areaMode(data.panel)) data.panel = { ...data.panel, pickHint: t("ITAC.map.area.pick") };
+    }
+    fightStart(combat);
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
     /* U53 / U57 / U58: the first-fight hint over the bar, the summary card of the round that just ended, the two sounds (ui/feedback.mjs) */
@@ -297,6 +308,18 @@ function refresh() {
     Camera.sync({ combat, view: facts.view, staff, model, dock: st.dock, data });      // U94: what this user's own view and hand give the map's camera (ui/camera.mjs)
     watch(); pokeTray();
   } catch (e) { console.warn(LOG, "refresh failed", e); }
+}
+/* U150 (UX review 1): THE SCREEN AT THE FIGHT'S START. The initiative bar, the dock and the desk stand in for Foundry's combat tracker,
+   which stayed open in the sidebar after "Begin combat" and took 300 px of the map on the seat that moves the most tokens. When this
+   client first sees a fight of ours begun (the start itself, or a join while it runs) the sidebar folds, once per fight; opened again
+   by hand it stays open. */
+let foldedFor = null;
+function fightStart(combat) {
+  try {
+    if (!combat?.started || foldedFor === combat.id) return;
+    foldedFor = combat.id;
+    if (ui.sidebar?.expanded) ui.sidebar.collapse();
+  } catch { /* the sidebar stays as it is */ }
 }
 const schedule = () => { rev++; clearTimeout(timer); timer = setTimeout(refresh, 40); };
 let factsRev = 0;                         // W1: what can change who is in reach besides the fight itself: a token entered a zone, a door, an actor's numbers
@@ -516,7 +539,7 @@ function declareRoom() {
   Zones.uiAvoid(`${MOD}.panels`, () => {
     const shown = Dock.isShown();
     return [...(shown ? ["#invincible-tactics-dock .its-bar", "#invincible-tactics-dock .its-slot:not([data-empty]) > .its-in > *", ...(Slots.frameNow()?.reserved ?? [])] : []),
-      "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges"];
+      "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges", ...(Slots.frameNow()?.toast?.box ? [Slots.frameNow().toast.box] : [])];      // D126 / U150: the toasts' strip too
   });
 }
 /* how far down from the top an element reaches (0: not shown) */

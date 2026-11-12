@@ -64,6 +64,7 @@ export const EN_MAP = {
   "ITAC.map.menu.hud": "Token panel (Shift + right click)",
   "ITAC.map.area.title": "{name}: where does it land?",
   "ITAC.map.area.hint": "Everyone in the zone is caught, friends too.",
+  "ITAC.map.area.pick": "Click a zone on the map. Everyone in it is caught, friends too.",
 };
 export const PL_MAP = {
   "ITAC.ui.wait.since": "Czeka od",
@@ -127,4 +128,5 @@ export const PL_MAP = {
   "ITAC.map.menu.hud": "Panel żetonu (Shift + prawy przycisk)",
   "ITAC.map.area.title": "{name}: gdzie uderza?",
   "ITAC.map.area.hint": "Trafia każdego w strefie, także swoich.",
+  "ITAC.map.area.pick": "Kliknij strefę na mapie. Trafia każdego w strefie, także swoich.",
 };
