@@ -37,25 +37,35 @@ const MARKS = {
   range: { w: 16, d: poly([[0, 6], [5.5, 2.4], [5.5, 5], [10.5, 5], [10.5, 2.4], [16, 6], [10.5, 9.6], [10.5, 7], [5.5, 7], [5.5, 9.6]]) },
   /* Armor. U93: a breastplate, not a shield: the shield is Block's picture (the half shield of the answer on a reaction card) */
   armor: { w: 12, d: "M2.3,1H4.5C4.8,2.5 7.2,2.5 7.5,1H9.7L11.5,4.3L9.7,5.6V11H2.3V5.6L0.5,4.3Z" + poly([[5.4, 4.6], [5.4, 8.4], [6.6, 8.4], [6.6, 4.6]]) },
-  /* U133: THE CHANCE of a target (the four bands of the engine: unlikely, even, likely, near certain): the target's ring in four
-     quarters, as many heavy as the band. On the map the ring around the token IS this drawing (moinen-maps zones-api.md section 42) */
+  /* U133: THE CHANCE of a target (the four bands of the engine: unlikely, even, likely, near certain) as the way it points: a chevron
+     down, a level dash, a chevron up, two up. On the map it stands on a dark plate in the token's corner (moinen-maps zones-api.md
+     section 42, `badge`); the legend draws the same plate (kit.css .ipu-odds-plate) */
   ...oddsMarks(),
 };
-/* U133: the ring in four quarters from the top, clockwise (the gaps at the top, right, bottom and left, as on the map, where the rings of
-   two tokens side by side would meet); the quarters the chance has are heavy, the rest a hairline. Never a colour alone: one ink, the
-   level is how much of the ring is heavy (a quarter, a half, three quarters, all of it) */
-function oddsRing(lit) {
-  const cx = 6, cy = 6, r = 4.55, gap = 26, pt = (deg) => [cx + r * Math.cos((deg * Math.PI) / 180), cy + r * Math.sin((deg * Math.PI) / 180)];
-  let raw = "";
-  for (let i = 0; i < 4; i++) {
-    const [x0, y0] = pt(-90 + i * 90 + gap / 2), [x1, y1] = pt(-90 + (i + 1) * 90 - gap / 2), sw = i < lit ? 2.7 : 0.8;
-    raw += `<path fill='none' stroke='#000' stroke-width='${f(sw)}' d='M${f(x0)},${f(y0)}A${f(r)},${f(r)} 0 0 1 ${f(x1)},${f(y1)}'/>`;
-  }
-  return { w: 12, raw };
+/* U133: one family of strokes, all of one thickness and one span (0.6 .. 11.4), centred in the box; never a colour alone: each level is
+   its own shape. A chevron of arms at 45 degrees, its point at (6, y) opening down (up = +1: points up) or up (up = -1: points down).
+   The level dash is NOT the quick action's bar (a leaning slab with flat ends, half the box high): it lies level, as thin as a
+   chevron's arm, and ends in the chevrons' points, so it reads as one of the four and not as a slot or a piece of a bar */
+/* (the arm's thickness across it, the half span of a chevron; functions, not constants: MARKS above is built before this line runs) */
+function arrowSizes() { return { ARM: 2.4, SPAN: 5.4, R2: Math.SQRT2 }; }
+function chevron(y, up, s = 1) {
+  const { ARM, SPAN, R2 } = arrowSizes(), a = SPAN * s, o = ARM / R2, d = (v) => y + up * v;
+  // (up = +1: the point at the top, the arms going down; up = -1: mirrored)
+  return poly([[6, y], [6 + a, d(a)], [6 + a - o, d(a + o)], [6, d(ARM * R2)], [6 - a + o, d(a + o)], [6 - a, d(a)]]);
+}
+function chevronH(s = 1) { const { ARM, SPAN, R2 } = arrowSizes(); return SPAN * s + ARM / R2; }
+function oddsArrow(level) {
+  const { ARM, R2 } = arrowSizes();
+  if (level === 2) { const t = ARM * 1.25, e = t / 2 + 0.2; return { w: 12, d: poly([[0.6, 6], [0.6 + e, 6 - t / 2], [11.4 - e, 6 - t / 2], [11.4, 6], [11.4 - e, 6 + t / 2], [0.6 + e, 6 + t / 2]]) }; }
+  if (level === 1) { const h = chevronH(); return { w: 12, d: chevron(6 + h / 2, -1) }; }
+  if (level === 3) { const h = chevronH(); return { w: 12, d: chevron(6 - h / 2, 1) }; }
+  // two up: the same chevron a little smaller, twice, the second a clear step under the first
+  const s = 0.86, step = ARM * R2 + 1.25, h = chevronH(s) + step;
+  return { w: 12, d: chevron(6 - h / 2, 1, s) + chevron(6 - h / 2 + step, 1, s) };
 }
 function oddsMarks() {
   const out = {};
-  for (let i = 1; i <= 4; i++) out[`odds-${i}`] = oddsRing(i);
+  for (let i = 1; i <= 4; i++) out[`odds-${i}`] = oddsArrow(i);
   return out;
 }
 

@@ -105,14 +105,14 @@ export const LEGEND = Object.freeze([
   { group: "roll", rows: [["dice", () => symMarkHtml("dice", { n: 6 })], ["six", () => symMarkHtml("six", { n: 2 })], ["push", () => symMarkHtml("push")], ["crit", () => symMarkHtml("crit")],
     ["cond", () => symMarkHtml("cond", { glyph: "fa-face-dizzy" }) + symMarkHtml("cond", { glyph: "fa-hands-holding" })]] },
 ]);
-/* U133: the chance of a target as a mark (kit-signs-pure.mjs ODDS_LEVELS, oddsKind): the ring in quarters the map draws around a target,
-   here as a picture with its name (the legend's own column, drawn larger than a price mark: kit.css .ipu-k-odds-*) */
-export const { ODDS_LEVELS, oddsKind } = P;
+/* U133: the chance of a target as a mark (kit-signs-pure.mjs ODDS_LEVELS, oddsKind, oddsSign): the sign the map puts in a target's corner,
+   here on the same dark plate rimmed in the target's colour (kit.css .ipu-odds-plate), with its name (the legend's own column) */
+export const { ODDS_LEVELS, oddsKind, oddsSign } = P;
 export function oddsMarkHtml(level, { name = null } = {}) {
   const k = oddsKind(level);
   if (!k) return "";
   const say = name === true ? markName(ODDS_LEVELS[level]) : name ? String(name) : null;
-  return `<i class="ipu-cost ipu-k-${k}"${say ? ` role="img" aria-label="${esc(say)}" data-tooltip="${esc(say)}"` : ' aria-hidden="true"'}></i>`;
+  return `<span class="ipu-odds-plate"${say ? ` role="img" aria-label="${esc(say)}" data-tooltip="${esc(say)}"` : ' aria-hidden="true"'}><i class="ipu-cost ipu-k-${k}"></i></span>`;
 }
 const CHANCE = Object.freeze({ group: "chance", rows: ODDS_LEVELS.map((id, i) => [id, () => oddsMarkHtml(i)]) });
 export function legendHtml(lang = globalThis.game?.i18n?.lang ?? "en") {

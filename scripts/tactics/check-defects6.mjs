@@ -95,7 +95,7 @@ const ctxOf = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
     const marks = BP.reachMarks(p, T0);
     await T.gm(p.submit.req); await settle(T);
     const rolled = T.lastRequest()?.dice, pct = `${Math.round(dice.pSuccess(rolled) * 100)}%`;
-    eq([p.pool.total, marks.map((m) => m.tip?.match(/\d+%/)?.[0]), new Set(marks.map((m) => m.meter?.n)).size], [rolled, [pct, pct, pct], 1], "D52: the chance at each chosen token is the chance of the roll that is made (U133: the per cent in the tip, the same quarters on each)");
+    eq([p.pool.total, marks.map((m) => m.tip?.match(/\d+%/)?.[0]), new Set(marks.map((m) => m.badge?.sign?.el?.cls ?? "none")).size, marks.every((m) => !!m.badge)], [rolled, [pct, pct, pct], 1, true], "D52: the chance at each chosen token is the chance of the roll that is made (U133: the per cent in the tip, the same sign on each)");
     const one = (await pv(mk("z1"), "gm", "H1", fa, { of: ["N1"] })).preview.per.N1.dice, two = (await pv(mk("z1"), "gm", "H1", { ...fa, targets: ["N2"] }, { of: ["N1", "N2"] })).preview.per;
     eq([one, two.N1.dice, two.N2.dice], [4, 3, 4], "D52: one target: the full pool; a second one would cost a die (said over the candidate that would be the second)");
     eq((await pv(mk("z1"), "gm", "H1", { action: "shoot", weapon: "smg", targets: ["N2"] }, { of: ["N1"] })).preview.per.N1.dice, 4, "D52: a declaration of one target is asked about each candidate alone");

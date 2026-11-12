@@ -53,7 +53,7 @@ function caught(doc, who, dec, staff) {
     if (doc?.hidden === true || doc?.document?.hidden === true || (doc?.object ?? doc)?.visible === false) return false;
     if (cid && (!x || x.note)) return false;
   }
-  // (U133: the chance as the ring in quarters around the token)
+  // (U133: the chance as its sign in the token's corner)
   const o = x?.reach === "in" ? BP.oddsShow(x.odds) : {};
   return Object.keys(o).length ? o : true;
 }
