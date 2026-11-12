@@ -12,5 +12,6 @@ export const MARK_SVG = Object.freeze({
   "quick-off": Object.freeze({ w: 12, uri: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.2' stroke-linejoin='miter' d='M2.4,4.1L11.2,4.1L9.6,7.9L0.8,7.9Z'/%3E%3C/svg%3E" }),
   "rmin": Object.freeze({ w: 16, uri: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 12'%3E%3Cpath d='M0,1L2,1L2,11L0,11ZM3,5L10.5,5L10.5,2.4L16,6L10.5,9.6L10.5,7L3,7Z'/%3E%3C/svg%3E" }),
   "rmax": Object.freeze({ w: 16, uri: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 12'%3E%3Cpath d='M0,5L7.5,5L7.5,2.4L13,6L7.5,9.6L7.5,7L0,7ZM14,1L16,1L16,11L14,11Z'/%3E%3C/svg%3E" }),
+  "range": Object.freeze({ w: 16, uri: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 12'%3E%3Cpath d='M0,6L5.5,2.4L5.5,5L10.5,5L10.5,2.4L16,6L10.5,9.6L10.5,7L5.5,7L5.5,9.6Z'/%3E%3C/svg%3E" }),
   "armor": Object.freeze({ w: 12, uri: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.3,1H4.5C4.8,2.5 7.2,2.5 7.5,1H9.7L11.5,4.3L9.7,5.6V11H2.3V5.6L0.5,4.3ZM5.4,4.6L5.4,8.4L6.6,8.4L6.6,4.6Z'/%3E%3C/svg%3E" }),
 });

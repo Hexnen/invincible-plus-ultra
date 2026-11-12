@@ -101,7 +101,7 @@ export const LEGEND = Object.freeze([
   { group: "time", rows: [["full", () => costMarkHtml("full")], ["quick", () => costMarkHtml("quick")], ["turn", () => costMarkHtml("turn")], ["long", () => costMarkHtml("long")], ["none", () => costMarkHtml("none")],
     ["gm", () => costMarkHtml("gm")], ["out", () => costMarkHtml("out")], ["outQuick", () => costMarkHtml("quick", { out: true })], ["outFull", () => costMarkHtml("full", { out: true })], ["spent", () => `<span class="ipu-costs" aria-hidden="true">${costMarkHtml("full", { off: true })}${costMarkHtml("quick", { off: true })}</span>`]] },
   { group: "things", rows: [["stress", () => stressMarkHtml(1)], ["health", () => symMarkHtml("health", { n: 9 })], ["damage", () => symMarkHtml("damage", { n: 3 })], ["extra", () => symMarkHtml("damage", { n: "+2" })],
-    ["armor", () => symMarkHtml("armor", { n: 2 })], ["pierce", () => symMarkHtml("pierce")], ["rmin", () => symMarkHtml("rmin", { n: 1 })], ["rmax", () => symMarkHtml("rmax", { n: 3 })]] },
+    ["armor", () => symMarkHtml("armor", { n: 2 })], ["pierce", () => symMarkHtml("pierce")], ["range", () => symMarkHtml("range", { n: 0 })], ["rmin", () => symMarkHtml("rmin", { n: 1 })], ["rmax", () => symMarkHtml("rmax", { n: 3 })]] },
   { group: "roll", rows: [["dice", () => symMarkHtml("dice", { n: 6 })], ["six", () => symMarkHtml("six", { n: 2 })], ["push", () => symMarkHtml("push")], ["crit", () => symMarkHtml("crit")],
     ["cond", () => symMarkHtml("cond", { glyph: "fa-face-dizzy" }) + symMarkHtml("cond", { glyph: "fa-hands-holding" })]] },
 ]);

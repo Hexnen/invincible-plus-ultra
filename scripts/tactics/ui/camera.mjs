@@ -15,6 +15,7 @@
 import * as Zones from "../zones-adapter.mjs";
 import * as Store from "../store.mjs";
 import * as CP from "./camera-pure.mjs";
+import * as Moment from "../../moment.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics camera) |`;
 let started = false, on = false, was = null, key = null;
@@ -49,18 +50,56 @@ function play(combat, c) {
 const shown = new Map();              // "inst|target" -> when a beat about it played here
 const SHOWN_MS = 6000;
 const shownKey = (inst, target) => `${inst ?? ""}|${target ?? ""}`;
-function playShot(combat, s, fallback = null) {
-  if (!Zones.hasShot()) return fallback ? play(combat, fallback) : null;
+function playShot(combat, s, fallback = null, exp = null) {
+  if (!Zones.hasShot()) { exp?.drop(); return fallback ? play(combat, fallback) : null; }
   if (s.beat === "close") { Promise.resolve(Zones.shot({ key: `${combat.id}:${s.key}`, beat: "close" })).catch(() => {}); return { beat: "close" }; }
   const focus = tokenOf(combat, s.focus);
-  if (!focus) return null;                                                                    // not on this user's map: nothing plays
+  if (!focus) { exp?.drop(); return null; }                                                    // not on this user's map: nothing plays
   const spec = { key: `${combat.id}:${s.key}`, beat: s.beat, tokens: [focus, ...s.with.map((x) => tokenOf(combat, x)).filter(Boolean)], still: s.still === true, why: s.beat,
     ...(s.zone ? { zones: [String(s.zone).split(":")[0]] } : {}) };
   Promise.resolve(Zones.shot(spec)).then((r) => {
-    if (r?.ok) { if (shown.size > 200) shown.clear(); shown.set(shownKey(s.key, s.focus), Date.now()); }
-    else if (r?.reason === "level" && fallback) play(combat, fallback);
-  }).catch(() => {});
+    /* U125 (e): the map says when the blow lands (`lands`, ms); the splash of the same roll pops then (scripts/moment.mjs) */
+    if (r?.ok) { exp?.land(Number.isFinite(r.lands) ? r.lands : 0); if (shown.size > 200) shown.clear(); shown.set(shownKey(s.key, s.focus), Date.now()); }
+    else { exp?.drop(); if (r?.reason === "level" && fallback) play(combat, fallback); }
+  }).catch(() => exp?.drop());
   return spec;
+}
+/* U125 (e) ONE MOMENT. A result (hit, miss, kill) is known to the engine while the 3D dice of its roll still roll on the screen; the
+   comic splash has always waited for the dice, the camera did not, so the hit beat had come and gone home before the "POW!". A
+   result beat now waits for the dice of the rolls in flight on this client (Dice So Nice's own wait, the one the splash uses; at most
+   DICE_MS), and is then asked of the user's look of THAT moment (an action armed or a card opened meanwhile changes it). The beats of
+   one exchange keep their order (the close never overtakes the result it closes). While a result waits, the quiet cues of the same
+   blow (its damage) do not move the view first. */
+const RESULT = Object.freeze(["hit", "miss", "kill"]);
+const DICE_MS = 9000;
+const chain = new Map();              // "combat:inst" -> the last beat of that exchange on its way
+const waiting = new Map();            // shownKey -> how many result beats about it wait for dice
+const tick = () => new Promise((r) => setTimeout(r, 0));
+async function diceSettled() {
+  await tick();                                                                               // (Dice So Nice marks a roll in its own createChatMessage hook)
+  const d = game.dice3d;
+  if (typeof d?.waitFor3DAnimationByMessageID !== "function") return;
+  const busy = (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating);
+  if (!busy.length) return;
+  await Promise.race([Promise.all(busy.map((m) => Promise.resolve(d.waitFor3DAnimationByMessageID(m.id)).catch(() => {}))), new Promise((r) => setTimeout(r, DICE_MS))]);
+}
+function queueShot(ev, s, c, combat) {
+  const k = `${combat.id}:${s.key}`, result = RESULT.includes(s.beat), wk = shownKey(s.key, s.focus);
+  const exp = result ? Moment.expect([s.focus, ...s.with].map((x) => tokenOf(combat, x)).filter(Boolean)) : null;
+  if (result) waiting.set(wk, (waiting.get(wk) ?? 0) + 1);
+  const run = (chain.get(k) ?? Promise.resolve()).then(async () => {
+    try {
+      if (result) await diceSettled();
+      const look = result ? (on && key === combat.id ? was : null) : was;
+      const s2 = result ? (look ? CP.eventShot(ev, look) : null) : s;
+      if (!s2) { exp?.drop(); return; }
+      const spec = playShot(combat, s2, result ? CP.eventCue(ev, look) : c, exp);
+      log.push({ at: Date.now(), why: s2.beat, shot: true, focus: s2.focus, sent: !!spec, ev: ev.type }); if (log.length > 40) log.shift();
+    } finally { if (result) { const n = (waiting.get(wk) ?? 1) - 1; waiting.set(wk, Math.max(0, n)); } }
+  }).catch((e) => { exp?.drop(); console.warn(LOG, "shot failed", e); });
+  chain.set(k, run);
+  run.finally(() => { if (chain.get(k) === run) chain.set(k, null); if (chain.size > 200) chain.clear(); if (waiting.size > 200 && ![...waiting.values()].some(Boolean)) waiting.clear(); });
+  return k;
 }
 /* the events of the fight (spec 16): a walk, an action aimed at somebody, a result. A player's client hears the public stream; the
    executor hears the full one too. Each is asked of this client's last look (the user's own view) before anything is framed. */
@@ -74,8 +113,10 @@ function onEvent(ev) {
     heard.add(k);
     const s = CP.eventShot(ev, was), c = CP.eventCue(ev, was), combat = s || c ? Store.combatOf?.(key) ?? game.combats?.get(key) : null;
     if (!combat) return;
+    if (s && Zones.hasShot()) { queueShot(ev, s, c, combat); return; }                           // U125 (e): in order, a result after its dice
     if (s) { const spec = playShot(combat, s, c); log.push({ at: Date.now(), why: s.beat, shot: true, focus: s.focus, sent: !!spec, ev: ev.type }); if (log.length > 40) log.shift(); return; }
     if (!c || Date.now() - (shown.get(shownKey(ev.inst, c.focus)) ?? 0) < SHOWN_MS) return;      // the shot of this blow has just shown it
+    if ((waiting.get(shownKey(ev.inst, c.focus)) ?? 0) > 0) return;                                         // U125 (e): its shot waits for the dice: the view does not go first
     if (Zones.hasShot() && CP.heldByCard(c, was)) return;                                       // H2-3: a card is open for this user: nothing moves (spec 26)
     const spec = play(combat, c);
     log.push({ at: Date.now(), why: c.why, level: c.level, focus: c.focus, sent: !!spec, ev: ev.type }); if (log.length > 40) log.shift();
@@ -85,8 +126,9 @@ function onEvent(ev) {
 export function sync(ctx) {
   try {
     if (!started || !ready()) return;
-    if (!ctx?.combat || !ctx.view) { if (on) { on = false; Zones.camera({ driver: null }); } was = null; key = null; return; }
+    if (!ctx?.combat || !ctx.view) { if (on) { on = false; Moment.active(false); Zones.camera({ driver: null }); } was = null; key = null; return; }
     if (!on) { on = true; Zones.camera({ driver: MOD }); }
+    Moment.active(Zones.hasShot());                                                           // U125 (e): the splash waits for a result beat only while shots can play
     const { combat, view, staff, model, dock, data } = ctx;
     const now = CP.look(view, { me: game.user.id, staff, mine: mineOf(combat, view, model, staff), who: data?.show ? data.who?.id ?? null : null, sel: dock?.sel ?? null, armed: dock?.armed ?? null, targets: dock?.targets ?? [] });
     const before = key === combat.id ? was : null;                                            // another fight: a first look
@@ -111,7 +153,7 @@ export function show(cid, combat, after = false) {
   } catch { return false; }
 }
 export function reset() { was = null; key = null; }
-export const state = () => ({ on, was, log: log.slice() });
+export const state = () => ({ on, was, log: log.slice(), waiting: [...waiting].filter(([, n]) => n > 0).map(([w]) => w), moment: Moment.state() });
 export function start() {
   try {
     if (started) return ready();
