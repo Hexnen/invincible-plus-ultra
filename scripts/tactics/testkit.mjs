@@ -130,6 +130,7 @@ export class Table {
       case "dice": return { result: this.dice.length ? this.dice.shift() : Array.from({ length: e.n }, () => 3) };
       case "rollRequest": this.requests.push(e); return {};
       case "kitFlag": { const c = byUuid(e.uuid), fl = ((c.itemFlags ??= {})[e.item] ??= {}), from = fl[e.key] ?? null; fl[e.key] = e.value ?? null; return e.undo || JSON.stringify(from) === JSON.stringify(e.value ?? null) ? {} : { op: { t: "itemFlag", actorUuid: e.uuid, itemId: e.item, key: e.key, from, to: e.value ?? null } }; }
+      case "defeated": { const c = this.c[e.combatant]; if (!c) return e.undo ? { ok: false, reason: "gone" } : {}; const from = !!c.defeated; c.defeated = e.on === true; return e.undo || from === c.defeated ? {} : { op: { t: "defeated", combatant: e.combatant, from, to: c.defeated } }; }
       case "summonFlag": { const c = this.c[e.combatant], from = c.summonOf ?? null; c.summonOf = e.owner ?? null; return e.undo || from === c.summonOf ? {} : { op: { t: "summonFlag", combatant: e.combatant, from, to: c.summonOf } }; }
       case "summonCreate": {                                           // a group of minions beside its owner, run by the owner's player
         const o = this.c[e.owner], id = `S${++this.n}`;

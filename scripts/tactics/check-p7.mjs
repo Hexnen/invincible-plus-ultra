@@ -382,7 +382,8 @@ const base = () => {
   eq(dock({ armed: "objective", targets: [], opt: "own", attr: "presence" }).panel.submit.req, null, "I: an own idea needs its words when the challenge lists ways");
   const pr = dock({ armed: "ram", targets: [] }).panel;
   eq(pr.targets.map((x) => x.id), ["N1", "H2"], "I: the own vehicle is not a target of the ram");
-  eq(dock({ armed: "vehicleHandle" }).panel.submit.disabled, EN["ITAC.ui.need.zone"], "I: driving asks for the zone first");
+  { const vs = view.vehicles; view.vehicles = { ...(vs ?? {}), V1: { ...(vs?.V1 ?? {}), started: true } };      // FXP (D164): a vehicle not started is not driven at all; the zone rule is for a running one
+  eq(dock({ armed: "vehicleHandle" }).panel.submit.disabled, EN["ITAC.ui.need.zone"], "I: driving asks for the zone first"); view.vehicles = vs; }
   const sc = sceneData(T.state, { side: { V1: "prey", N1: "pursuer" }, distance: 2, obstacles: true }, facts(T.state, true), t);
   eq([sc.chase.on, sc.chase.units.map((u) => u.id), sc.chase.start.req], [false, ["V1", "H2", "N1"], { op: "chaseStart", prey: ["V1"], pursuer: ["N1"], distance: 2, obstacles: true }], "I: the desk drafts a chase: a rider is listed as the vehicle");
   eq(sceneData(T.state, {}, facts(T.state, true), t).chase.start.req, null, "I: no sides, no start");

@@ -248,6 +248,9 @@ export function reactionFor(v, inst, cid, e) {
      a warning to the opponent an ally of theirs is shooting at. U149: Guardian [B2115] ("another character in your zone is attacked") is read
      the same way (provisional, question UXC-3): nobody dives in to take an ally's blow for the enemy. The GM's own answer may still name anybody. */
   const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t) && (!side || !!v.facts.c(t)?.npc === me));
+  /* FXP (U182, ruling FXP-R2): a warning is shouted about an attack the warner sees coming [B2170]: an attacker it does not know of (one
+     the GM hides from the heroes, one it has as unseen) gives it nothing to warn about, as no card is made about somebody unknown (U19-R4) */
+  if (e?.reaction?.effect === "warn" && inst.actor && !knownTo(v, cid, inst.actor)) return [];
   return e?.reaction?.place === "targetZone" ? list.filter((t) => sameSpot(v, cid, t) !== false) : list;
 }
 /* D104 (ruling A8-R1): who took the hit for somebody by a reaction (Guardian [B2115]: "you take the hit instead of the INTENDED target").
@@ -352,6 +355,17 @@ export function separated(v, ids) {
     if (a && b && a === b && M.hasStatus(v.state, other, link[1])) continue;
     drop(cid, s.id); drop(other, link[1]);
     if (s.id === "carrying" || s.id === "carried") { drop(cid, "airborne"); drop(other, "airborne"); }      // the mark of the pair that stayed in the air [B2392]
+  }
+  /* FXP (D165): one knocked, thrown or fallen out of a vehicle (it ends in another place than the vehicle) has left its seat: off the crew
+     list and without the mark, as getting out does (flows/vehicle.mjs seatEffects). The vehicle moving with everybody aboard parts nobody. */
+  for (const cid of new Set(ids)) {
+    const vid = M.statusesOf(v.state, cid).find((s) => s.id === "inVehicle")?.data?.vehicle;
+    if (typeof vid !== "string" || seen.has(`${cid}:inVehicle`)) continue;
+    const a = spot(cid), b = spot(vid);
+    if (!a || !b || a === b) continue;
+    const r = v.state.vehicles?.[vid] && typeof v.state.vehicles[vid] === "object" ? v.state.vehicles[vid] : {};
+    out.push({ t: "state", path: ["vehicles", vid], to: { ...r, driver: r.driver === cid ? null : r.driver ?? null, crew: (Array.isArray(r.crew) ? r.crew : []).filter((x) => x !== cid) } });
+    drop(cid, "inVehicle");
   }
   return out;
 }
@@ -462,10 +476,24 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
   if (cf.crit) {
     const key = `crit:${t}`, killer = !!(by && v.facts.c(by)?.pass?.killer), lucky = tf.pass?.luckyBreak === true, two = killer !== lucky;      // P6 [B2121], [B2149]: two dice, one kept
     if (I.data.res?.[key] == null) { if (once(`${key}:asked`)) R.effects.push({ t: "dice", key, n: two ? 2 : 1 }); R.wait = true; return true; }
-    if (once(key)) {
+    if (once(`${key}:kept`)) {
       const faces = I.data.res[key], kept = two && faces.length > 1 ? (killer ? Math.max(faces[0], faces[1]) : Math.min(faces[0], faces[1])) : faces[0];
       I.data.res[key] = [kept, ...faces.filter((_, i) => i !== faces.indexOf(kept))];
-      const rc = crits.resolveCrit({ d6: I.data.res[key][0], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap: v.state.opts?.critCap9 ? crits.FAMILY_CAP : crits.MAX_CRIT });   // [B2707], [B2709], [B2769]
+    }
+    /* FXP (D163): a HERO's injury that kills (12 and worse, [B2761], [B2765]) is the biggest moment of a fight [B2787]: the GM gets a card
+       before it is written. "Dies" writes it as the table rolled it; "Injury 9" takes the book's own softer table for this one injury
+       (the family cap, every result of 9 or more is the 9 [B2767-2769]): knocked out, not dead. A fight already played with that cap, a
+       non-hero (the GM states an NPC's end [B2771]) and an injury that does not kill ask nothing. */
+    const dk = `heroDead:${t}`, capped = v.state.opts?.critCap9 || (I.data.pk?.[dk] && answerId(v, I, dk) === "cap9");
+    if (!flag(I, key) && !tf.npc && tf.kind === "hero" && !v.state.opts?.critCap9) {
+      const pre = crits.resolveCrit({ d6: I.data.res[key][0], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap: crits.MAX_CRIT });
+      if (crits.critState([...(tf.crits ?? []), pre.n]).dead) {
+        if (!I.data.pk?.[dk]) { R.prompts.push({ key: dk, kind: "heroDead", to: "gm", about: t, options: [{ id: "dead", label: "ITAC.opt.dead" }, { id: "cap9", label: "ITAC.opt.cap9" }], data: { n: pre.n, id: String(pre.entry?.id ?? "").replace(/-(\w)/g, (m, c) => c.toUpperCase()) } }); R.wait = true; return true; }
+        if (!isAnswered(v, I, dk)) { R.wait = true; return true; }
+      }
+    }
+    if (once(key)) {
+      const rc = crits.resolveCrit({ d6: I.data.res[key][0], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap: capped ? crits.FAMILY_CAP : crits.MAX_CRIT });   // [B2707], [B2709], [B2769]
       dm.crit = { d6: I.data.res[key][0], bonus: cf.crit.bonus, cause: cf.crit.cause, n: rc.n, id: rc.entry?.id, shifted: rc.shifted };
       R.effects.push({ t: "crit", who: t, n: rc.n, id: rc.entry?.id });
       const cs = crits.critState([...(tf.crits ?? []), rc.n]);                                 // [B2749-2765]

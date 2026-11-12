@@ -41,6 +41,9 @@ const whyText = (t, reason, params = {}, o = {}) => whyOf(t, reason, params, o)?
 /* U89: why a way of moving or a door cannot be taken AND what to do about it, for the row's tooltip and its aria-label (the row itself
    keeps its size). A click on such a row opens the question to the GM, so a reason with no remedy of its own gets that one. */
 const wayWhy = (t, facts, reason, params = {}) => { const w = whyOf(t, reason, params, { staff: facts.staff }); return w ? { text: w.text, fix: w.fix ?? t(facts.staff ? "ITAC.fix.gm" : "ITAC.fix.ask") } : null; };
+/** FXP (D161): the desk's cards that were not waiting a moment ago. At the first look at a fight (`was` null: a fight just started or
+    started again, the page just loaded) every waiting card is new: the Now tab comes forward over whatever tab the GM left open. */
+export const freshCards = (was, ids) => (Array.isArray(ids) ? ids : []).some((id) => !(Array.isArray(was) ? was : []).includes(id));
 export const costText = (t, cost) => (cost ? t(`ITAC.ui.cost.${cost}`, {}, String(cost)) : null);
 export const attrText = (t, attr) => (attr ? t(`ITAC.ui.attr.${attr}`, {}, cap(attr)) : "");
 const nameOf = (facts, id, t) => (id ? facts.c?.(id)?.name ?? t("ITAC.Someone") : "");
@@ -269,6 +272,7 @@ function linesOf(p, t, facts, x) {
     case "hazardStunts": out.push(t("ITAC.ui.line.hazardStunts", { n: d.surplus ?? 0, names: (d.targets ?? []).map(n).join(", ") })); break;
     case "fireSpread": out.push(t("ITAC.ui.line.fireSpread", { zone: zoneText(facts, t, d.from), n: d.intensity ?? "?" })); break;
     case "vacuumDeath": out.push(t("ITAC.ui.line.vacuumDeath", { name: about })); break;
+    case "heroDead": out.push(t("ITAC.ui.line.heroDead", { name: about, n: d.n ?? "?", crit: t(`ITAC.crit.${d.id}`, {}, "") })); break;      // FXP (D163)
     default: break;
   }
   if (p.kind === "proxy") out.unshift(t("ITAC.ui.line.proxy", { users: (p.absent ?? []).map((u) => facts.userName?.(u) ?? u).join(", ") }));
@@ -464,12 +468,15 @@ function newsText(n, facts, t) {
   }
   /* UXB (U141 / U146): a row says what the dice did to that character: the miss with the defence that made it, the damage (a hazard has
      no hit or miss, only what it dealt, "no damage" too), the minions that fell, a character put out of the fight */
-  const rows = (n.rows ?? []).filter((r) => typeof r.hit === "boolean" || Number.isFinite(r.taken)).map((r) => {
+  const rows = (n.rows ?? []).filter((r) => typeof r.hit === "boolean" || Number.isFinite(r.taken) || r.land).map((r) => {
+    if (r.land && !Number.isFinite(r.taken) && typeof r.hit !== "boolean") return `${nameOf(facts, r.target, t)}: ${[t("ITAC.ui.news.land", { zone: zoneText(facts, t, r.land) }), r.seat ? t("ITAC.ui.news.thrownOut", { vehicle: nameOf(facts, r.seat, t) }) : null].filter(Boolean).join(", ")}`;      // FXP (U181)
     const verdict = typeof r.hit !== "boolean" ? null : r.hit ? t("ITAC.result.hit") : r.def ? t("ITAC.ui.news.missBy", { how: t(`ITAC.action.${r.def}`).toLowerCase() }) : t("ITAC.result.miss");
     const dealt = !Number.isFinite(r.taken) ? null : r.taken === 0 && typeof r.hit !== "boolean" ? t("ITAC.ui.news.noDamage") : t(r.stress ? "ITAC.ui.news.stress" : "ITAC.ui.news.taken", { n: r.taken });
     /* U192 (UX review 2): what the hit did to the character (minions down, broken, the injury) comes before the stunts that made it: a
        line cut at its place's end loses the stunts' names (they stand in the tooltip), never "broken" or the injury */
-    const bits = [verdict, dealt, r.out > 0 ? t("ITAC.ui.news.out", { n: r.out }) : null, r.down ? t("ITAC.status.broken").toLowerCase() : null, r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null, ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s)))].filter(Boolean);      // D127
+    const bits = [verdict, dealt, r.out > 0 ? t("ITAC.ui.news.out", { n: r.out }) : null, r.down ? t("ITAC.status.broken").toLowerCase() : null, r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null,
+      r.land ? t("ITAC.ui.news.land", { zone: zoneText(facts, t, r.land) }) : null, r.seat ? t("ITAC.ui.news.thrownOut", { vehicle: nameOf(facts, r.seat, t) }) : null,      // FXP (U181) where a knockback landed
+      ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s)))].filter(Boolean);      // D127
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
   /* a hazard that hurt nobody says so once, with the names after it (four "no damage" in a row is one fact) */
@@ -488,7 +495,7 @@ export function newsData(view, own, facts, t) {
   /* BH4-1: what this user put away counts only for the lines of the same fight (own.newsSeen = news-pure markOf) */
   const fight = NewsP.fightOfList(view?.news), kept = NewsP.seenNo(own?.newsSeen, fight);
   const round = view?.round ?? 0, seen = Math.max(kept, Number(own?.newsFrom) || 0);
-  const list = (view?.news ?? []).filter((n) => newsNo(n) > seen && (n.round == null || n.round >= round - 1) && !(n.kind === "action" && ["move", "forced", "fall", "release", "seat"].includes(n.flow) && !(n.rows ?? []).some((r) => typeof r.hit === "boolean")));
+  const list = (view?.news ?? []).filter((n) => newsNo(n) > seen && (n.round == null || n.round >= round - 1) && !(n.kind === "action" && ["move", "forced", "fall", "release", "seat"].includes(n.flow) && !(n.rows ?? []).some((r) => typeof r.hit === "boolean" || r.land)));      // FXP (U181): a knockback's landing is told
   /* a line that stands brings the lines it set off along (the counter closes first, so its number may be under the window) */
   const insts = new Set(list.map((n) => n.inst).filter(Boolean));
   for (let more = true; more;) { more = false; for (const n of view?.news ?? []) if (typeof n?.parent === "string" && insts.has(n.parent) && newsNo(n) > kept && !list.includes(n)) { list.push(n); if (n.inst) insts.add(n.inst); more = true; } }
@@ -517,21 +524,24 @@ export function kitParts(t, a, of = null) {
 /* U50: what a thing costs, in words. What takes no action says so in a whole sentence, with what it still costs (the user asked: "what
    does 'No action' mean, is it free?"); a full or a quick action is named with its price beside it. */
 export const isFree = (cost) => cost === "none" || cost === "free";
-export function priceWords(t, cost, stress = 0) {
+/* FXP (U183): `also` = a second unit the action takes besides its own (a charge: a full AND a quick action [B2490]), said with it */
+const alsoOf = (also) => (also === "full" || also === "quick" ? also : null);
+export function priceWords(t, cost, stress = 0, also = null) {
   const n = Number(stress) || 0;
   if (isFree(cost)) return n > 0 ? t("ITAC.ui.free.costs", { n }) : t("ITAC.ui.free.only");
-  return [costText(t, cost), n > 0 ? t("ITAC.ui.stress", { n }) : null].filter(Boolean).join(", ");
+  return [[costText(t, cost), alsoOf(also) ? costText(t, also) : null].filter(Boolean).join(" + "), n > 0 ? t("ITAC.ui.stress", { n }) : null].filter(Boolean).join(", ");
 }
 /* U93: THE PRICE AS MARKS (scripts/kit.mjs: one language of cost for every surface). A surface draws `unit` (full | quick | none | gm),
    `out` (taken out of turn: the hook before the bar) and `stress` as marks and never writes the words beside them; the words are the
    NAMES of the marks: `parts` (each mark with its name, the price line of a tooltip) and `say` (one string, for a screen reader).
    -> null (nothing known to draw) | { unit, out, stress, parts: [{ mark, out?, n?, name }], say } */
 export const PRICE_UNITS = Object.freeze(["full", "quick", "none", "gm"]);
-export function priceOf(t, cost, stress = 0, { out = false } = {}) {
+export function priceOf(t, cost, stress = 0, { out = false, also = null } = {}) {
   const unit = cost === "free" ? "none" : PRICE_UNITS.includes(cost) ? cost : null, n = Number(stress) || 0;
   if (!unit && !n) return null;
   const outOf = !!out && (unit === "full" || unit === "quick"), parts = [];
   if (unit) parts.push({ mark: unit, out: outOf, name: outOf ? `${t("ITAC.ui.cost.out")}: ${costText(t, unit)}` : costText(t, unit) });
+  if (unit && alsoOf(also)) parts.push({ mark: also, out: outOf, name: costText(t, also) });      // FXP (U183): the second unit, its own mark
   if (n > 0) parts.push({ mark: "stress", n, name: t("ITAC.ui.cost.stress") });
   return { unit, out: outOf, stress: n, parts, say: parts.map((p) => (p.n ? `${p.name}: ${p.n}` : p.name)).join(", ") };
 }
@@ -607,7 +617,7 @@ const iconOf = (a) => (a.kit ? `kit:${a.kit.cat}` : a.id);
 /* U54 / U68: `why` = feedback-pure.whyOf ({ text, fix }): the tooltip then draws the reason and what to do about it apart from the price */
 const tipOf = (title, cost, why = null, lines = [], price = null) => ({ title, cost: cost || null, ...(price ? { price } : {}), lines: lines.filter(Boolean), note: null, ...(why && typeof why === "object" ? { why } : why ? { why: { text: String(why), fix: null } } : {}) });
 /* the price line of a tooltip: under a reason it says that it is the price ("Costs: full action"), so the two cannot be read as one */
-const tipCost = (t, cost, stress, why) => { const p = priceWords(t, cost, stress); return why && p && !isFree(cost) ? t("ITAC.ui.tip.cost", { cost: p }) : p; };
+const tipCost = (t, cost, stress, why, also = null) => { const p = priceWords(t, cost, stress, also); return why && p && !isFree(cost) ? t("ITAC.ui.tip.cost", { cost: p }) : p; };
 /* U93: the same price line as marks, each with its name (dom.mjs tipHtml draws the pairs; `cost` above stays the words a screen reader
    is told). `lead`: under a reason the line says that it is the price; `tail`: words that close the line (the attribute rolled);
    `later`: what takes no action may still cost Resolve by what it leads to (U50). */
@@ -666,7 +676,7 @@ const poolOf = (pool, t) => ({ ...pool, tip: poolTip(pool, t) });
 /* the panel above the bar: what the selected action needs before it can be declared (or why it cannot be, and the way to ask) */
 function declarePanel(bar, a, own, facts, t) {
   /* U93: the price beside the name is its marks (`price`: priceOf); `cost` is the same price in words, for a screen reader */
-  const title = actLabel(t, a), price = priceOf(t, a.cost, a.stress), cost = price?.say ?? "";
+  const title = actLabel(t, a), price = priceOf(t, a.cost, a.stress, { also: a.also }), cost = price?.say ?? "";
   if (a.disabled && (facts.staff || a.flow === "move" || a.flow === "barrier")) {      // (a move names its place on the map, a door on its row: their panels cannot be drawn for an action the bar refuses)
     /* the bar's reasons (not your turn, busy, nothing left to pay with) are refused by "declare" outright, so the way round them is the
        free-standing request to the GM; the action and the targets meant ride in its words */
@@ -730,7 +740,7 @@ function declarePanel(bar, a, own, facts, t) {
   const why = arm.why ?? (choice && !pickId ? t("ITAC.ui.need.choice") : a.needsTarget && !picked.length ? t("ITAC.ui.need.target") : chooser && !attr && !a.attrOptional ? t("ITAC.ui.need.attr") : needsZone && !own.to ? t("ITAC.ui.need.zone") : a.needsText && !text ? t("ITAC.ui.need.text") : ap?.why ?? null);
   /* the executor refused this very declaration as against the rules (out of reach, no line of sight...): the reason stays in the panel
      with the way round it, a declaration that carries a request for an exception (a card on the GM desk; the GM's own goes there too) */
-  const ref = own.refused && own.refused.action === a.id && own.refused.key === picked.join(",") ? own.refused : early ? { early: 1 } : null;
+  const ref = own.refused && own.refused.action === a.id && own.refused.key === (needsZone ? own.to ?? "" : picked.join(",")) ? own.refused : early ? { early: 1 } : null;      // FXP (D164): a declaration of a zone (drive, fastball) is refused for that zone (main.mjs keys it so)
   const refused = ref ? { reason: ref.early ? early.whyText : whyText(t, ref.reason, ref.params), text: facts.staff ? null : own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
     submit: { label: facts.staff ? t("ITAC.ui.exception.anyway") : t("ITAC.ui.exception.ask"), disabled: why ?? (facts.staff || (own.why ?? "").trim() ? null : t("ITAC.ui.exception.needText")),
       req: !why && (facts.staff || (own.why ?? "").trim()) ? a.exceptionReq(decl, facts.staff ? t("ITAC.ui.who.gm") : own.why.trim()) : null } }
@@ -905,14 +915,14 @@ export function dockData(model, own, facts, t) {
   const stateText = (s) => t(`ITAC.kit.state.${s}`, {}, String(s));
   /* U29: a button of the bar is a picture with the mark of its speed; its name, its price and (greyed) the reason are its tooltip and its aria-label */
   const item = (a) => { const label = actLabel(t, a), w = a.disabled ? whyOf(t, a.disabled, {}, { staff: facts.staff }) : null, why = w?.text ?? null;
-    return { id: a.id, label, cost: a.cost, costText: costText(t, a.cost), stress: Number(a.stress) || 0, disabled: why, armed: own.armed === a.id, urgent: !!a.situational, icon: iconOf(a), pv: pvOf(a),
-      tip: tipOf(label, tipCost(t, a.cost, a.stress, w), w, [a.pay?.forfeitsFull ? t("ITAC.ui.pv.forfeits") : null, a.situational ? t("ITAC.ui.urgent") : null], tipPrice(t, a.cost, a.stress, w)) }; };
+    return { id: a.id, label, cost: a.cost, costText: a.also ? priceWords(t, a.cost, 0, a.also) : costText(t, a.cost), ...(a.also ? { also: a.also } : {}), stress: Number(a.stress) || 0, disabled: why, armed: own.armed === a.id, urgent: !!a.situational, icon: iconOf(a), pv: pvOf(a),
+      tip: tipOf(label, tipCost(t, a.cost, a.stress, w, a.also), w, [a.pay?.forfeitsFull ? t("ITAC.ui.pv.forfeits") : null, a.situational ? t("ITAC.ui.urgent") : null], tipPrice(t, a.cost, a.stress, w, { also: a.also })) }; };
   /* the rows of a list behind one button (More actions, Abilities): the same facts, with the name written out */
   /* U51: the row shows its name; its tooltip says only what is not on it: the price in words (the marks of the row spelled out), the
      attribute, how it is run, and the reason of a greyed one. `notes` (all of it, for a screen reader) go to the aria-label. */
   const row = (a, notes, more = {}) => { const label = a.kit ? kitLabel(t, a) : labelOf(t, a.label), w = a.disabled ? whyOf(t, a.disabled, {}, { staff: facts.staff }) : null, why = w?.text ?? null;
     const attr = a.attr ? attrText(t, a.attr) : a.attrs?.length && !a.kit ? t(a.attrOptional ? "ITAC.ui.attr.maybe" : "ITAC.ui.attr.yours") : null;
-    return { id: a.id, label, cost: a.cost, stress: Number(a.stress) || 0, icon: iconOf(a), notes, disabled: why, pv: pvOf(a), tip: tipOf(null, isFree(a.cost) ? [attr, priceWords(t, a.cost, a.stress)].filter(Boolean).join(". ") : [tipCost(t, a.cost, a.stress, w), attr].filter(Boolean).join(", "), w, more.fx ?? [], tipPrice(t, a.cost, a.stress, w, { tail: attr })), ...more }; };
+    return { id: a.id, label, cost: a.cost, stress: Number(a.stress) || 0, icon: iconOf(a), notes, disabled: why, pv: pvOf(a), tip: tipOf(null, isFree(a.cost) ? [attr, priceWords(t, a.cost, a.stress)].filter(Boolean).join(". ") : [tipCost(t, a.cost, a.stress, w, a.also), attr].filter(Boolean).join(", "), w, more.fx ?? [], tipPrice(t, a.cost, a.stress, w, { tail: attr, also: a.also })), ...more }; };
   /* FXN (D133): a list button whose every row is greyed is greyed too, with the reason of its rows (it still opens: the rows say theirs) */
   const allOff = (list) => (list.length && list.every((a) => a.disabled) ? whyOf(t, list[0].disabled, {}, { staff: facts.staff }) : null);
   const moreOff = allOff(menu), kitOff = allOff([...kitActs, ...loose]);
@@ -967,9 +977,12 @@ export function dockData(model, own, facts, t) {
   /* FXN (D133): a turn that STARTS with nothing left (the round's actions went on reactions before it) passes by itself as well, but it
      says why where the actions stand (the U9 line of the bar, `out`), longer (news-pure AUTO_SPENT_MS), and offers no first-turn hint */
   const spent = auto && !!bar.endTurn?.fresh;
-  const end = bar.endTurn ? { label: auto ? t("ITAC.ui.end.auto") : own.endArmed && confirm ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"),
+  /* FXP (U179): on the GM's seat such a turn waits for the GM's click (one click: nothing is lost). Passing by itself there, it moved the
+     dock to the next NPC under a GM's hand already on its way to the spent NPC's button, and that click armed the next NPC's action */
+  const autoEnd = auto && !(spent && facts.staff);
+  const end = bar.endTurn ? { label: autoEnd ? t("ITAC.ui.end.auto") : own.endArmed && confirm ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"),
     tip: bar.endTurn.disabled ? whyLine(whyOf(t, bar.endTurn.disabled, {}, { ask: false })) : `${auto ? t(spent ? "ITAC.ui.out.spent" : "ITAC.ui.end.autoTip") : unused.length ? t(confirm ? "ITAC.ui.end.unused" : "ITAC.ui.end.left", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]`,
-    disabled: bar.endTurn.disabled ? whyText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm, armed: !!own.endArmed && confirm, auto, ...(spent ? { spent: true } : {}) }
+    disabled: bar.endTurn.disabled ? whyText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm, armed: !!own.endArmed && confirm, auto: autoEnd, ...(spent ? { spent: true } : {}) }
     : { label: t("ITAC.ui.end"), tip: whyLine(whyOf(t, "notYourTurn", {}, { ask: false })), disabled: whyText(t, "notYourTurn"), req: null, confirm: false, armed: false, auto: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn
   const chase = facts.view?.chase ? t("ITAC.ui.chase.line", { n: facts.view.chase.distance }) : null;
@@ -1109,6 +1122,12 @@ export function unitData(cid, model, facts, t) {
 }
 /** Everything the desk draws. -> { show, count, tab, waiting, turn, stack, manual, cards, journal, npcs, mode } */
 const kitNames = (type) => allRows().filter((r) => r.cat === (CAT_OF[type] ?? type)).map((r) => ({ id: r.name, label: r.of ? `${r.name} (${r.of})` : r.name })).sort((x, y) => x.label.localeCompare(y.label));
+/* FXP (U180): the GM stops the fight or starts it again (round 1, new cards; the crew stays seated: state-pure.crewOf) from the desk's
+   Table tab; each asks "Sure?" first (the desk's `sure`, as a step's commands do). A stopped fight starts again with the tracker's begin. */
+function fightCmds(own, t) {
+  const cmd = (id, req) => ({ id, label: t(own.sure === `fight:${id}` ? "ITAC.ui.end.sure" : `ITAC.ui.fight.${id}`), confirm: true, danger: true, armed: own.sure === `fight:${id}`, req });
+  return { title: t("ITAC.ui.fight.title"), hint: t("ITAC.ui.fight.hint"), cmds: [cmd("restart", { op: "start", restart: true }), cmd("stop", { op: "stop" })] };
+}
 export function deskData(model, own, facts, t) {
   if (!model) return { show: false };
   const cards = model.cards.map((c) => askData(c, { t, facts, own, desk: true, info: [...model.info, ...model.manual], round: model.turn?.round }));
@@ -1177,6 +1196,7 @@ export function deskData(model, own, facts, t) {
     stack: model.info.map((i) => instData(i, model, own, facts, t)).reverse(), manual: model.manual.map((m) => manualData(m, own, facts, t)),
     cards, force, hazard, karma, empty: t("ITAC.ui.desk.empty"), journal: rounds, journalEmpty: t("ITAC.ui.journal.empty"), npcs, npcsEmpty: t("ITAC.ui.table.empty"), npcsTitle: t("ITAC.ui.table.npcs"),
     mode: { label: t("ITAC.ui.mode"), choices: ["tactical", "free"].map((m) => ({ id: m, label: t(`ITAC.ui.mode.${m}`), on: model.mode === m, req: model.modeReq(m) })) },
+    fight: fightCmds(own, t),
     labels: { override: t("ITAC.cmd.override"), set: t("ITAC.ui.set"), step: t("ITAC.ui.stepLabel"), queue: t("ITAC.ui.queue"), action: t("ITAC.ui.inProgress"), manual: t("ITAC.ui.manual"), collapse: t("ITAC.ui.desk.collapse"), expand: t("ITAC.ui.desk.expand", { n: count }),
       reveal: t("ITAC.ui.reveal"), since: t("ITAC.ui.wait.since"), groups: { dice: t("ITAC.ui.ovr.g.dice"), result: t("ITAC.ui.ovr.g.result"), step: t("ITAC.ui.ovr.g.step"), end: t("ITAC.ui.ovr.g.end") }, cost: t("ITAC.ui.manual.cost"), damage: t("ITAC.ui.manual.damage") },
   };

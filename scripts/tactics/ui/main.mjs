@@ -121,11 +121,11 @@ let cardTop = { id: null, at: 0 };      // U143: the question card on top of the
    shown while 3D dice rolled (cards and the line wait for the dice: news-pure diceHold) */
 let newsWin = null, diceWas = null, diceWait = null, rollsWas = { rows: {}, opp: {}, held: false };
 const diceBusy = () => { try { return typeof game.dice3d?.waitFor3DAnimationByMessageID === "function" && (game.messages?.contents ?? []).slice(-12).some((m) => m?._dice3danimating); } catch { return false; } };
+const diceLanded = () => { const d = game.dice3d, busy = (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating);
+  return Promise.race([Promise.all(busy.map((m) => Promise.resolve(d.waitFor3DAnimationByMessageID(m.id)).catch(() => {}))), new Promise((r) => setTimeout(r, NewsP.HOLD_MS + 100))]); };
 function diceThen() {
   if (diceWait) return;
-  const d = game.dice3d, busy = (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating);
-  diceWait = Promise.race([Promise.all(busy.map((m) => Promise.resolve(d.waitFor3DAnimationByMessageID(m.id)).catch(() => {}))), new Promise((r) => setTimeout(r, NewsP.HOLD_MS + 100))])
-    .finally(() => { diceWait = null; setTimeout(schedule, 60); });
+  diceWait = diceLanded().finally(() => { diceWait = null; setTimeout(schedule, 60); });
 }
 let lastDock = null, byPointer = true;      // U41: what the dock shows now (the keys act on it); was the focus put where it is by the pointer?
 let zonePick = null, shownDock = "", shownDesk = "";      // what this client has on the map for the surfaces: a running pick, two highlights
@@ -313,7 +313,7 @@ function refresh() {
     if (staff) {
       if (!st.desk.touched) st.desk.collapsed = mapWidth() < NARROW;
       /* U12: a card that was not waiting a moment ago brings the Now tab forward, unless the GM is typing in the desk */
-      const ids = (desk?.cards ?? []).map((c) => c.id), fresh = cardsWere !== null && ids.some((id) => !cardsWere.includes(id));
+      const ids = (desk?.cards ?? []).map((c) => c.id), fresh = Model.freshCards(cardsWere, ids);      // FXP (D161): also at the first look at a fight (a restart opened on the Table tab over two cards)
       cardsWere = ids; deskIdle = !ids.length && !(desk?.info ?? []).length && !(desk?.manual ?? []).length;
       if (fresh && st.desk.auto) st.desk.auto = false;
       if (fresh && st.desk.tab !== "now" && !/^(INPUT|TEXTAREA|SELECT)$/.test(Desk.el()?.contains(document.activeElement) ? document.activeElement.tagName : "")) st.desk.tab = "now";
@@ -508,6 +508,7 @@ function onKey(ev) {
 async function send(which, req, after, how = {}) {
   try {
     if (!req) return null;
+    if (NewsP.endAfterDice(req, { busy: diceBusy(), since: diceWas?.since, at: Date.now() })) await diceLanded();      // FXP (U178): End turn pressed while the dice fly passes when they land
     const combat = combatNow();
     const env = await Api.request(req, combat ?? undefined);
     for (const text of Model.envNotes(env, t, Store.isStaff(game.user))) notify("warn", text);      // D99: carried out only in part, an inverse that failed, an action handed to the GM
@@ -656,8 +657,9 @@ function chatButtons(root = document) {
       const id = el.closest("[data-message-id]")?.dataset.messageId, tag = Sys.tacticsOf(game.messages?.get(id));
       if (!tag) continue;
       const combat = RW.cardCombat(tag, (id) => game.combats?.get(id), Store.currentCombat());      // U137: a card of a fight that is gone is settled
-      const off = RW.cardState(combat ? Api.state(combat) : null, tag, id) === "settled";
-      for (const b of el.querySelectorAll("button")) { b.disabled = off; if (off) b.dataset.tooltip = t("ITAC.ui.chat.settled"); else delete b.dataset.tooltip; }
+      const msg = game.messages?.get(id), off = RW.cardState(combat ? Api.state(combat) : null, tag, id) === "settled";
+      const other = !off && RW.cardOther(msg?.author?.id, game.user.id, Store.isStaff(game.user));      // FXP (D160): only the roll's author may push or accept it (Foundry refuses another's update)
+      for (const b of el.querySelectorAll("button")) { b.disabled = off || other; if (off || other) b.dataset.tooltip = off ? t("ITAC.ui.chat.settled") : t("ITAC.ui.chat.notYours", { name: msg?.author?.name ?? "" }); else delete b.dataset.tooltip; }
     }
   } catch { /* the card as the system drew it */ }
 }

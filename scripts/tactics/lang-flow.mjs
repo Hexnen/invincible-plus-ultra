@@ -40,6 +40,20 @@ export const EN_FLOW = {
   "ITAC.crit.skewered": "Skewered!",
   "ITAC.crit.headCrushed": "Head crushed!",
   "ITAC.crit.tornApart": "Torn apart!",
+  /* FXP (D163): a hero's injury that kills: the GM's card before it is written */
+  "ITAC.card.heroDead": "Death",
+  "ITAC.prompt.heroDead": "Death",
+  "ITAC.ui.line.heroDead": "{name}: injury {n} ({crit}) kills. Write the death, or use the book's softer table for this injury (9 and above count as 9: knocked out)?",
+  "ITAC.opt.cap9": "Injury 9 instead",
+  "ITAC.ui.wait.k.heroDead": "death",
+  /* FXP (U181): where a knockback landed */
+  "ITAC.ui.news.land": "lands: {zone}",
+  "ITAC.ui.news.thrownOut": "thrown out of the vehicle ({vehicle})",
+  "ITAC.ui.fight.title": "Fight",
+  "ITAC.ui.chat.notYours": "Rolled by {name}. Only the roller can push or accept.",
+  "ITAC.ui.fight.restart": "Start again",
+  "ITAC.ui.fight.stop": "Stop the fight",
+  "ITAC.ui.fight.hint": "Start again: round 1, new cards; who sits in a vehicle stays seated. A stopped fight starts again with Begin Combat in the combat tracker.",
 };
 export const PL_FLOW = {
   "ITAC.ui.end.auto": "Tura się kończy",
@@ -76,4 +90,17 @@ export const PL_FLOW = {
   "ITAC.crit.skewered": "Przebity!",
   "ITAC.crit.headCrushed": "Zmiażdżona głowa!",
   "ITAC.crit.tornApart": "Rozerwany!",
+  /* FXP (D163) */
+  "ITAC.card.heroDead": "Śmierć",
+  "ITAC.prompt.heroDead": "Śmierć",
+  "ITAC.ui.line.heroDead": "{name}: rana {n} ({crit}) zabija. Zapisać śmierć czy wziąć łagodniejszą tabelę z podręcznika dla tej rany (9 i więcej liczy się jako 9: nieprzytomność)?",
+  "ITAC.opt.cap9": "Rana 9 zamiast",
+  "ITAC.ui.wait.k.heroDead": "śmierć",
+  "ITAC.ui.news.land": "ląduje: {zone}",
+  "ITAC.ui.news.thrownOut": "wypada z pojazdu ({vehicle})",
+  "ITAC.ui.fight.title": "Walka",
+  "ITAC.ui.chat.notYours": "Autor rzutu: {name}. Tylko autor forsuje lub przyjmuje.",
+  "ITAC.ui.fight.restart": "Zacznij od nowa",
+  "ITAC.ui.fight.stop": "Zatrzymaj walkę",
+  "ITAC.ui.fight.hint": "Od nowa: runda 1, nowe karty; kto siedzi w pojeździe, siedzi dalej. Zatrzymaną walkę zaczyna znowu „Rozpocznij walkę” w panelu śledzenia walki.",
 };

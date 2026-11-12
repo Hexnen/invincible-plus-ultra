@@ -145,10 +145,16 @@ async function inverse(X, op, eff, tx = null) {
 }
 const warn = (X, what, e, more = {}) => { try { X.host.warn?.(what, e, more); } catch { /* a courtesy */ } };
 
-/* who rolls: the players who own the character and are at the table; NPC rolls and rolls of absent players are made at the GM desk */
-function rollUsers(X, who) {
+/* who rolls: the players who own the character and are at the table; NPC rolls and rolls of absent players are made at the GM desk.
+   FXP (D160): ONE of them, the acting seat. The roll's chat card is that client's (its author), and only the author may push or accept it
+   (Foundry refuses another user's update / delete of the card), so a request to several owners let the first owner online throw it and
+   locked out the player who was playing the hero. The acting seat: on the character's own action the owner who declared it (I.by), else
+   the owner whose assigned character it is (`player`, Foundry's user.character), else the owner who declared, else the first online. */
+export function rollUsers(X, who, I = null) {
   const players = (who?.owners ?? []).filter((u) => !X.facts.user(u)?.staff && X.facts.user(u)?.active !== false);
-  return who && !who.npc && players.length ? players : ["gm"];
+  if (!who || who.npc || !players.length) return ["gm"];
+  const own = I && I.actor === who.id ? [I.by, who.player] : [who.player, I?.by];
+  return [own.find((u) => players.includes(u)) ?? players[0]];
 }
 /* U7: who may see the dice. A secret roll and the roll of a combatant Foundry hides from the players go to the GM alone ("gm"), whatever
    the roller's own chat mode is; every other roll of a fight is public (undefined). The roller's client applies it (system-adapter). */
@@ -176,7 +182,11 @@ async function applyEffect(X, I, e, step) {
       return false;
     }
     case "actor": if (c) await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: e.path, to: e.to, tx }, I, step); return false;
-    case "status+": { const w = M.statusAdd(X.state, e.who, e.status); write(X, tx, w.path, w.to, I, step); return false; }
+    case "status+": {
+      const w = M.statusAdd(X.state, e.who, e.status); write(X, tx, w.path, w.to, I, step);
+      if (e.status?.id === "dead" && c && !c.defeated) await perform(X, tx, { t: "defeated", combatant: e.who, on: true, tx }, I, step);      // FXP (D163): the dead are marked defeated in the tracker (undone with the step)
+      return false;
+    }
     case "status-": { const w = M.statusRemove(X.state, e.who, e.id); write(X, tx, w.path, w.to, I, step); return false; }
     case "fx": if (c) await perform(X, tx, { t: "fx", uuid: c.actorUuid, item: e.item, fx: e.fx, on: e.on === true, tx }, I, step); return false;      // P6: an item's active effect (a form, a size)
     case "crit": if (c) await perform(X, tx, { t: "critAdd", uuid: c.actorUuid, n: e.n, id: e.id, tx }, I, step); return false;
@@ -184,7 +194,7 @@ async function applyEffect(X, I, e, step) {
     case "roll": {
       const rid = nextId(X, "r");
       const who = e.who === "hazard" ? null : X.facts.c(e.who);
-      const users = rollUsers(X, who), mode = rollMode(e, who);
+      const users = rollUsers(X, who, I), mode = rollMode(e, who);
       I.rolls[e.key] = { key: e.key, who: e.who, attr: e.attr, pool: e.pool, pushed: 0, pushable: false, ...(e.secret ? { secret: 1 } : {}), req: { rid, users, at: X.host.now(), dice: e.dice, maxPush: e.maxPush, label: e.label ?? null, ...(mode ? { mode } : {}) } };
       const res = await perform(X, tx, { t: "rollRequest", inst: I.id, key: e.key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: e.who, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, secret: e.secret, label: e.label, ...(mode ? { mode } : {}) }, I, step);
       if (isObj(res) && Number.isFinite(res.sixes)) { Object.assign(I.rolls[e.key], { sixes: res.sixes, ones: res.ones ?? 0, pushed: res.pushed ?? 0, pushable: !!res.pushable, messageId: res.messageId }); return true; }
@@ -258,7 +268,10 @@ function newsRow(I, t) {
   return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.tags?.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}),
     ...(dm?.minions?.removed > 0 ? { out: dm.minions.removed } : (dm?.newlyBroken || dm?.broke) && !dm.minions ? { down: 1 }      /* BH4-3: a hazard's record (fire, blast, fall) has no newlyBroken, only kit.brokenAndCrit's `broke` */ : {}),
     ...(o && !o.hit && !o.forced && six > 0 && (df === "block" || df === "dodge") ? { def: df } : {}),
-    ...(Number.isFinite(dm?.crit?.n) ? { crit: { n: Math.trunc(dm.crit.n), id: critKey(dm.crit.id) } } : {}) };      // D127: the critical injury of a key character
+    ...(Number.isFinite(dm?.crit?.n) ? { crit: { n: Math.trunc(dm.crit.n), id: critKey(dm.crit.id) } } : {}),      // D127: the critical injury of a key character
+    /* FXP (U181): where a knockback or a throw landed, and the vehicle it threw the character out of */
+    ...(I.data?.landed?.[t]?.at ? { land: I.data.landed[t].at, ...(I.data.landed[t].outOf ? { seat: I.data.landed[t].outOf } : {}) }
+      : I.flow === "forced" && t === I.data?.mv?.who && typeof I.data.mv.at === "string" && I.data.mv.at !== I.data.mv.from && I.data.result !== "none" ? { land: I.data.mv.at.slice(0, 40), ...(P1.isId(I.data.mv.outOf) ? { seat: I.data.mv.outOf } : {}) } : {}) };
 }
 function newsOf(I) {
   const rows = (I.decl?.targets ?? []).map((t) => newsRow(I, t));
@@ -357,6 +370,8 @@ async function closeInst(X, I, result = null) {
   if (!parent) return;
   const P = J.clone(parent);
   (P.data.children ??= {})[I.id] = { action: I.action, status: I.status, result: I.data.result ?? null };
+  const mv = I.flow === "forced" ? I.data?.mv : null;      // FXP (U181): where a knockback / slam of this action landed (its own line has none: it is a part)
+  if (mv && P1.isId(mv.who) && typeof mv.at === "string" && mv.at !== mv.from && I.data.result !== "none") (P.data.landed ??= {})[mv.who] = { at: mv.at.slice(0, 40), ...(P1.isId(mv.outOf) ? { outOf: mv.outOf } : {}) };
   if (I.part) (P.data.results ??= []).push({ action: I.action, status: I.status, result: I.data.result ?? null });
   else {                                                                                    // spec 5.1: the instance beneath is revalidated before it continues
     const rv = FLOWS[P.flow].revalidate(view(X), P);
@@ -1046,7 +1061,7 @@ async function gmInstOp(X, op, a) {
     case "askRoll": {                                                                       // U4: the dice somebody owes are asked for again (a new request id: the old one is void)
       const key = String(a.roll ?? "").slice(0, 40), rec = I.rolls[key];
       if (!rec?.req || rec.forced != null || rec.sixes != null) return bad("locked");
-      const who = rec.who === "hazard" ? null : X.facts.c(rec.who), rid = nextId(X, "r"), users = rollUsers(X, who);
+      const who = rec.who === "hazard" ? null : X.facts.c(rec.who), rid = nextId(X, "r"), users = rollUsers(X, who, I);
       noteOverride(X, I, op, rec.req.rid, rid);
       I.rolls[key] = { ...rec, req: { ...rec.req, rid, users, at: X.host.now() } };
       setInst(X, I);

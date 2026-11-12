@@ -166,6 +166,8 @@ function table(d) {
   const go = (b, key) => h("button.igd-btn", { fk: `force:${key}`, text: b.label, disabled: !!b.disabled, tip: b.disabled, on: { click: () => b.req && send(b.req, { tab: "now" }) } });
   return [
     h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: d.mode.label }), seg(d.mode, "mode")),
+    d.fight ? foldSec("fight", d.fight.title, 0, h("article.igd-npc", {}, h("p.igd-hint", { text: d.fight.hint }), h("div.igd-cmds", {}, d.fight.cmds.map((c) =>      // FXP (U180): stop / start again
+      h(`button.igd-btn.igd-danger${c.armed ? ".igd-sure" : ""}`, { fk: `fight:${c.id}`, text: c.label, on: { click: () => (c.confirm && !c.armed ? set({ sure: `fight:${c.id}` }) : send(c.req, { sure: null, tab: "now" })) } }))))) : null,
     foldSec("force", f.title, 0, h("article.igd-npc", {}, pickOf(f.who, "who"), pickOf(f.from, "from"), numOf(f.distance, "distance"), numOf(f.damage, "damage"), h("div.igd-cmds", {}, go(f.push, "push"), go(f.fall, "fall")))),
     foldSec("hazard", z.title, 0, h("article.igd-npc", {}, sel(z.kind, "kind", hput, "hz", false), h("p.igd-hint", { text: z.hint }), sel(z.where, "where", hput, "hz"), z.nums.map((n) => numIn(n, n.id, hput, "hz")), h("div.igd-cmds", {}, go(z.run, "hzrun")))),
     foldSec("karma", k.title, k.rows.length, h("article.igd-npc", {}, k.rows.length ? h("ul.igd-karma", {}, k.rows.map((r) => h("li", {}, h("b", { text: r.kind }), h("span", { text: [r.who, r.round].filter(Boolean).join(", ") }), r.note ? h("q", { text: r.note }) : null))) : h("p.igd-hint", { text: k.empty }),

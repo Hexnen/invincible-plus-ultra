@@ -63,10 +63,11 @@ export const dropSubject = (triggers, combatant) => triggers.filter((t) => t.sub
    Left to the GM (holes, reported): minion groups (their Health is their head count [B2828] and the book does not say that members come
    back), vehicles (Durability is repaired, not recovered [B3250]) and challenges get no line. */
 export const SCENE_RECOVERY_TYPES = ["superhero", "npc"];
-export function sceneEndPlan(facts) {
+export function sceneEndPlan(facts, state = null) {
   const lines = [];
   for (const f of facts ?? []) {
     if (!SCENE_RECOVERY_TYPES.includes(f.type)) continue;
+    if (state && M.hasStatus(state, f.id, "dead")) continue;                                  // FXP (D163): the dead recover nothing [B2761], [B2765]
     const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
     const health = n(f.health), maxHealth = n(f.maxHealth), resolve = n(f.resolve), maxResolve = n(f.maxResolve);
     const r = damage.recoverAfterScene({ health, maxHealth, resolve, maxResolve, strength: n(f.strength), presence: 0, span: "minutes", socialScene: false });

@@ -378,6 +378,7 @@ function centerOn(id) {
 
 /* ---------- live region ---------- */
 function say(text) {
+  if (live && text === null) { clearTimeout(liveTimer); live.textContent = ""; return; }      // FXP (D162): nothing to say now (not the last thing said)
   if (!live || !text) return;
   live.textContent = "";
   clearTimeout(liveTimer);
@@ -1143,6 +1144,7 @@ function paint(model, loud, keep) {
       const sameCombat = lastKey.startsWith(`${curCombatId}:`);
       lastKey = key;
       if (act && (loud || sameCombat)) say(t("ICB.Bar.Turn", { name: act.name }));
+      else if (!act && !model.waiting) say(null);      // FXP (D162): a turn this client may not see (a hidden combatant's): the bar's line names nobody, it does not keep the last turn's name or the round-start words
     }
     place();
     fit(true);

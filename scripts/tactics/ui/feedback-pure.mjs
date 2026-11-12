@@ -146,6 +146,9 @@ export const roundCard = (tally, round, who, statuses, t) => card(tally, round, 
 /* the fight s card says neither "the fight is over" nor after how many rounds: the banner over the map says both (U52) */
 /** U130: the fight a summary card belongs to (its id: "f:<combat>" or "r:<combat>:<round>"), or null */
 export const cardFight = (card) => { const m = /^[fr]:([^:]+)/.exec(String(card?.id ?? "")); return m ? m[1] : null; };
+/** FXP (D161): a fight started again on the same Combat (a stop and a start, a restart): the summary of the fight before (its fight card,
+    shown when it stopped) does not stand over the new one. -> whether that card goes now */
+export const sumStale = (card, combatId, view) => /^f:/.test(String(card?.id ?? "")) && cardFight(card) === String(combatId ?? "") && !!view && !viewOver(view) && Number(view.round) >= 1;
 export const fightCard = (tally, who, statuses, t) => card(tally, null, who, statuses, t, { id: `f:${tally?.combat ?? ""}`, kind: "fight", title: t("ITAC.sum.fight"), sub: t("ITAC.sum.round.sub") });
 
 /* D131: a fight's summary is shown ONCE per device. The fights already summed up are kept (ids, newest last, at most DONE_MAX); a fight

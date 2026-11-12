@@ -136,6 +136,7 @@ export function sync(ctx) {
       combatWas = combat.id; tally = loadTally(combat.id); snap = {}; roundWas = null; cueWas = null;
       if (sum && FP.cardFight(sum.card) !== combat.id) { clearTimeout(sumTimer); sum = null; }      // U130: a new fight: the summary of the one before does not stand over it
     }
+    if (sum && FP.sumStale(sum.card, combat.id, view)) { clearTimeout(sumTimer); sum = null; }      // FXP (D161): the same Combat fights again: the stopped fight's summary goes
     const mine = new Set((model?.bars ?? []).map((b) => b.combatant));
     for (const id of Object.keys(view?.ledger ?? {})) { const c = facts.c?.(id); if (c) snap[id] = { name: c.name, img: c.img ?? null, mine: staff ? !c.npc : mine.has(id) }; }
     statusesWere = view?.statuses ?? {};

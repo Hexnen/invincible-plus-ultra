@@ -105,7 +105,7 @@ export function normalize(req, { staff = false } = {}) {
         break;
       }
       case "start": a.mode = S.MODES.includes(req.mode) ? req.mode : undefined; a.kind = S.KINDS.includes(req.kind) ? req.kind : undefined; a.surprised = idList(req.surprised, 400) ?? [];
-        a.groups = Array.isArray(req.groups) ? req.groups.slice(0, 100).map((g) => idList(g) ?? []).filter((g) => g.length > 1) : []; a.opts = isObj(req.opts) ? S.plain(req.opts) : {}; a.restart = req.restart === true; if (S.isFight(req.fight)) a.fight = req.fight; break;
+        a.groups = Array.isArray(req.groups) ? req.groups.slice(0, 100).map((g) => idList(g) ?? []).filter((g) => g.length > 1) : []; a.opts = isObj(req.opts) ? S.plain(req.opts) : {}; a.restart = req.restart === true; if (S.isFight(req.fight)) a.fight = req.fight; if (isObj(req.crew)) a.crew = S.plain(req.crew); break;
       case "stop": case "roster": case "resume": break;
       case "nextTurn": case "nextRound": case "prevTurn": if (staff && req.force === true) a.force = true; break;
       case "setCard": need("slot", id(req.slot)); need("card", Number.isInteger(req.card) ? req.card : undefined); a.swap = req.swap === true; break;
@@ -378,11 +378,29 @@ const dealing = (W) => W.s.phase === "draw";
 
 const reasonCode = (reason) => (reason === "notYourTurn" || reason === "fullOnTurn" ? "notYourTurn" : "noAction");
 
+/* FXP (D161): the seats kept over a stop / restart (state-pure.crewOf), for the vehicles and characters still in the fight */
+function seatCrew(W, crew) {
+  if (!isObj(crew?.vehicles)) return;
+  const here = (id) => !!partOf(W, id), vehicles = {};
+  for (const [vid, r] of Object.entries(crew.vehicles)) {
+    if (!here(vid) || !isObj(r)) continue;
+    vehicles[vid] = { ...S.plain(r), driver: r.driver && here(r.driver) ? r.driver : null, crew: (Array.isArray(r.crew) ? r.crew : []).filter(here) };
+  }
+  if (!Object.keys(vehicles).length) return;
+  W.s.vehicles = vehicles;
+  for (const [cid, st] of Object.entries(isObj(crew.seats) ? crew.seats : {})) {
+    const vid = st?.data?.vehicle, r = vehicles[vid];
+    if (st?.id !== "inVehicle" || !r || !(r.driver === cid || r.crew.includes(cid))) continue;
+    W.s.statuses = { ...(W.s.statuses ?? {}), [cid]: [...(W.s.statuses?.[cid] ?? []).filter((x) => x.id !== "inVehicle"), S.plain(st)] };
+  }
+}
 /* ------------------------------------------------------------------ operations */
 const OPS = {
   start(W, a) {
     if (W.s && W.s.round > 0 && W.s.phase !== "sceneEnd" && !a.restart) return err("busy");
+    const was = W.s;
     W.s = S.newState({ mode: a.mode ?? "free", kind: a.kind ?? "combat", opts: { ...(a.opts ?? {}) }, fight: a.fight ?? null });
+    seatCrew(W, (a.restart && S.crewOf(was)) || a.crew);      // FXP (D161): the crew sits where it sat (a restart: the running fight's; after a stop: kept by the executor)
     W.surprised = a.surprised ?? []; W.groups = a.groups ?? [];
     ev(W, "combatStart", { mode: W.s.mode, kind: W.s.kind });
     startRound(W, 1);
@@ -633,7 +651,7 @@ const OPS = {
   endScene(W, a) {
     const s = W.s;
     const skip = new Set(a.skip ?? []);
-    const lines = Sch.sceneEndPlan(W.ctx.sceneFacts ?? []).filter((l) => !skip.has(l.id));
+    const lines = Sch.sceneEndPlan(W.ctx.sceneFacts ?? [], s).filter((l) => !skip.has(l.id));
     const dueList = Sch.due(s.triggers, { at: "sceneEnd" });
     const ids = dueList.map((t) => t.id), skipT = new Set(a.skipTriggers ?? []);
     for (const id of [...(a.order ?? []).filter((x) => ids.includes(x)), ...ids.filter((x) => !(a.order ?? []).includes(x))]) {

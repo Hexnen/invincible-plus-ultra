@@ -132,6 +132,14 @@ export function endWhileDice(end, dice, plain) {
   if ((Number(dice.at) || 0) - since > HOLD_MS) return end;
   return { ...end, auto: false, label: plain?.label ?? end.label, tip: plain?.tip ?? end.tip, dice: 1 };
 }
+/* FXP (U178): End turn PRESSED while the 3D dice of a roll still roll on this client (a push thrown a moment before) is sent when they
+   land: the turn passing at once brought the next turn's banner, the camera pan and the news line over the flying dice (the auto end
+   already waits: endWhileDice). At most HOLD_MS (a stuck dice flag never keeps the turn). req = the request, dice = { busy, since, at } */
+export function endAfterDice(req, dice) {
+  if (req?.op !== "endTurn" || !dice?.busy) return false;
+  const since = Number.isFinite(dice.since) ? dice.since : Number(dice.at) || 0;
+  return (Number(dice.at) || 0) - since <= HOLD_MS;
+}
 /* FXN (U162): THE OWN ROLL'S RESULT WAITS FOR ITS DICE. The line, the cards and the auto end already wait while 3D dice roll (D128,
    SEAM); the roll rows of this user (the dock's chips and the armed panel of the own action) did not: the attacker read the sixes and
    got Push / Accept while the dice were in the air. While `on` (dice roll on this client, within HOLD_MS), a row that turned into a

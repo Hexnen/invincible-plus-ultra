@@ -27,7 +27,7 @@ const optReq = (p, o, op) => ({ op, prompt: p.id, value: o.data && isObj(o.data)
 /** GM desk card kinds this engine raises (spec 13.1 + the ones the spec has no row for; reported as holes): */
 export const CARD_KINDS = Object.freeze(["reaction", "exception", "other", "direction", "stunt", "helpOverride", "revalidate", "npcBroken", "proxy",
   "gate", "tokenConfirm", "counter", "dodgeMove", "stunts", "moveStop", "moveApprove", "minionLoss", "minionsFate", "knockDir", "disarm",
-  "outcome", "hazardDodge", "hazardStunts", "fireSpread", "vacuumDeath", "objective", "chaseCatch", "chaseOption", "minionsQuick", "reactionByHand", "challengeStale"]);      // D113: a reaction the engine has no rule for                    // P5: the GM's word on a narrative action, a dodge against a blast, the hazards' cards
+  "outcome", "hazardDodge", "hazardStunts", "fireSpread", "vacuumDeath", "objective", "chaseCatch", "chaseOption", "minionsQuick", "reactionByHand", "challengeStale", "heroDead"]);      // D113: a reaction the engine has no rule for                    // P5: the GM's word on a narrative action, a dodge against a blast, the hazards' cards
 
 function card(p, ctx, proxy = false) {
   return {
@@ -152,12 +152,13 @@ export function barModel(view, cid, ctx = {}) {
     const pay = P1 ? P1.canPay(view, cid, e.cost ?? "full", { ranged: P1.isRanged?.(e), ...(answers ? { interrupt: true, grant: answer, resolve: ctx.c?.(cid)?.resolve } : {}) }) : { ok: false, reason: "noLedger" };
     const unit = pay.ok && pay.pay ? (view.ledger?.[cid]?.grants ?? []).find((g) => g.id === pay.pay) : null, granted = !onTurn && !!unit && unit.kind !== "base";      // a unit usable out of turn pays it (the crew's attack in a chase [B3438], a GM grant)
     const anytime = !!e.kit && e.cost === "none";                                               // P6: what costs no action is used when it applies (the flow checks the rest)
-    const machine = e.id === "vehicleStart" && ride ? startState(view, ride.vehicle) : null;     // U117: an engine that runs (or cannot) is not offered to be started
-    const reason = busy && !answers ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : machine ? machine : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
+    const machine = e.id === "vehicleStart" && ride ? startState(view, ride.vehicle) : e.flow === "drive" && ride ? driveState(view, ride.vehicle) : null;     // U117: an engine that runs (or cannot) is not offered to be started; FXP (D164): nor driven before it runs
+    const charge = e.attack === "charge" && !e.kit && typeof P1?.pay === "function", both = !charge || !pay.ok || chargeBoth(P1, view, cid, { resolve: ctx.c?.(cid)?.resolve });      // FXP (U183)
+    const reason = busy && !answers ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : machine ? machine : !both ? "chargeActions" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
       attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders" || e.effect?.token === "orders",
       name: e.name || null, kit: e.kit ?? null, pick: Array.isArray(e.pick) ? e.pick.slice() : null, stress: e.stress?.fixed ?? 0, fxOn: e.fxOn === true, unarmed: e.unarmed === 1,      // P6
-      when: typeof e.when === "string" ? e.when : null, disabled: reason,
+      when: typeof e.when === "string" ? e.when : null, disabled: reason, ...(charge ? { also: "quick" } : {}),      // FXP (U183): what it takes besides its own unit, shown before the click
       pay: pay.ok && !reason ? { grant: pay.pay ?? null, stress: pay.stress ?? 0, forfeitsFull: !!pay.forfeitsFull } : null,      // U30: the unit the ledger would take for it now (the surfaces preview the cost on that slot)
       attrs: attrChoices(e), attrOptional: e.roll?.optional === true, optTarget: (e.target?.n?.[0] ?? 0) === 0 && (e.target?.n?.[1] ?? 0) > 0, wantsText: e.text === 1, opposeAttr: e.oppose?.who === "target" ? e.oppose.attr : null, about: e.when?.anyone ?? null, situational: !!e.when && typeof e.when === "object",   // P5 (flow "act")
       req: (decl = {}) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id } }), exceptionReq: (decl, text) => ({ op: "declare", actor: cid, decl: { ...decl, action: e.id, exception: { text } } }) };
@@ -179,6 +180,13 @@ export function barModel(view, cid, ctx = {}) {
 }
 /* U117: why the driver cannot start the vehicle now, in the words of the seat flow's own refusal (flows/vehicle.mjs legality) */
 const startState = (view, vid) => { const r = isObj(view?.vehicles?.[vid]) ? view.vehicles[vid] : {}; return r.wrecked ? "vehicleWrecked" : r.off?.engine ? "engineDisabled" : r.started ? "alreadyStarted" : null; };
+/* FXP (D164): why the driver cannot drive now, in the words of the drive flow's own refusal (flows/vehicle.mjs plan: wrecked, engine out, not started) */
+/* FXP (U183): a charge takes a full AND a quick action [B2490]; the bar asks it as the flow does (flows/attack.mjs chargeActions: the
+   ledger as it will be once the full action is paid), so a charge that cannot be paid is greyed with its reason before the click */
+function chargeBoth(P1, view, cid, o) {
+  try { const p = P1.pay(view, cid, "full", o, { action: "charge" }); return !!p.ok && P1.canPay({ ...view, ledger: { ...(view.ledger ?? {}), [cid]: p.ledger } }, cid, "quick", o).ok; } catch { return true; }
+}
+const driveState = (view, vid) => { const r = isObj(view?.vehicles?.[vid]) ? view.vehicles[vid] : {}; return r.wrecked ? "vehicleWrecked" : r.off?.engine ? "engineDisabled" : r.started ? null : "notStarted"; };
 /* spec 3.1 hold off: the slots the combatant's card can be swapped with now (none unless it is this combatant's own turn) */
 function holdOffOf(view, cid, onTurn, busy, ctx) {
   let targets = [];

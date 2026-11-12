@@ -78,6 +78,14 @@ export const FIGHT_RE = /^[a-z0-9]{4,16}$/;
 export const isFight = (f) => typeof f === "string" && FIGHT_RE.test(f);
 /** a tag no other fight of any Combat has: the time (ms, base 36) and a little chance (rand in [0, 1)) */
 export const makeFight = (now, rand) => `${Math.max(0, Math.trunc(Number(now) || 0)).toString(36)}${Math.trunc((Number(rand) || 0) * 46656).toString(36).padStart(3, "0")}`.slice(-16);
+/* FXP (D161): who sits in which vehicle outlives a stop and a restart of the fight on the same Combat (the seats are where the characters
+   are, not a matter of one fight): the vehicles' records and the inVehicle marks. -> null | { vehicles, seats: { cid: status } } */
+export function crewOf(s) {
+  if (!isObj(s?.vehicles) || !Object.keys(s.vehicles).length) return null;
+  const seats = {};
+  for (const [cid, list] of Object.entries(isObj(s.statuses) ? s.statuses : {})) { const st = Array.isArray(list) ? list.find((x) => x?.id === "inVehicle") : null; if (st) seats[cid] = plain(st); }
+  return { vehicles: plain(s.vehicles), seats };
+}
 export function newState({ mode = "free", kind = "combat", opts = {}, fight = null } = {}) {
   return {
     v: V, rev: 0, seen: [], seq: 0, ...(isFight(fight) ? { fight } : {}),

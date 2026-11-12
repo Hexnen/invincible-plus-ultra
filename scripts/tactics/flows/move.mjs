@@ -328,6 +328,11 @@ export const forced = {
     /* spec 9.5 step 6: the GM confirms where a thrown character goes. [A7]: whether it then falls is the GM's word on the same card. */
     confirm(v, inst) {
       const I = K.draft(inst), R = K.result(I), mv = I.data.mv, can = mv.vertical ? mv.total > 0 : mv.zones.length > 1;
+      /* FXP (U181): the GM named the direction of an NPC's knockback on its card already; a path with nothing more to decide (the whole
+         distance on the map, no wall on it, ending on the ground: no fall to weigh [A7]) then goes without a second card. The edge of the
+         map, a wall, a drop, a vertical throw, and a hero's knockback (the GM's confirmation of the player's word, spec 9.5 step 6) still ask. */
+      const plain = can && I.data.forced?.gmDir === 1 && !mv.vertical && !mv.edge && !(mv.walls ?? []).length && !!mv.end && !mv.end.airborne && (mv.end.level == null || mv.end.level === "ground");
+      if (plain && !I.data.pk?.dir) { mv.fall = 0; R.goto = "travel"; return R; }
       if (!I.data.pk?.dir) {
         R.prompts.push({ key: "dir", kind: "direction", to: "gm", about: mv.who, options: [{ id: "go", label: "ITAC.opt.forcedGo", ...(can ? {} : { disabled: "noRoute" }) }, { id: "goFall", label: "ITAC.opt.forcedGoFall", ...(can ? {} : { disabled: "noRoute" }) }, { id: "none", label: "ITAC.opt.forcedNone" }],
           data: { who: mv.who, by: I.data.forced.by ?? null, kind: mv.mode, zones: mv.zones, to: mv.to, walls: mv.walls, edge: mv.edge, distance: I.data.forced.distance, ...(mv.vertical ? { vertical: mv.vertical, levels: mv.total, slabs: mv.slabs ?? [] } : {}) } });
@@ -343,7 +348,11 @@ export const forced = {
       const I = K.draft(inst), R = K.result(I), mv = I.data.mv, here = v.facts.zones.place(mv.who);
       mv.at = here?.spot ?? mv.at ?? mv.from;
       if (here && !here.area && !mv.cleared?.[`enter:${here.spot}`]) { const g = enterGate(v, I, R, here.spot); if (g === "wait") { R.wait = true; return R; } }
-      if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [mv.who])) R.effects.push(e); }      // [B2497], [B2392]: knocked or thrown away from the one it held, was held by, carried or was carried by
+      if (!K.flag(I, "links")) {
+        K.setFlag(I, "links");
+        const vid = M.statusesOf(v.state, mv.who).find((s) => s.id === "inVehicle")?.data?.vehicle ?? null;
+        for (const e of K.separated(v, [mv.who])) { R.effects.push(e); if (e.t === "status-" && e.id === "inVehicle" && e.who === mv.who && vid) mv.outOf = vid; }      // FXP (D165, U181): thrown out of a vehicle, told on the news line
+      }      // [B2497], [B2392]: knocked or thrown away from the one it held, was held by, carried or was carried by
       if (mv.fall && !K.flag(I, "fall")) { K.setFlag(I, "fall"); R.push = fallChild(mv.who, {}); return R; }
       R.events.push(moveEvent(I, "forcedMove")); I.data.result = mv.stop === "barrier" ? "barrier" : "done"; R.goto = "close"; return R;
     },
