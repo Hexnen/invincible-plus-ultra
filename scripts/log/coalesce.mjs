@@ -27,9 +27,11 @@ export const MERGE_TYPES = new Set([
   "stat.attr", "stat.vital", "stat.track", "stat.text", "actor.rename", "card.edit", "card.rename", "upgrade.count", "upgrade.status",
   "crate.qty", "tracker.edit", "combat.init", "policy.change", "access.owner", "access.default"
 ]);
-export const isMergeable = (ev) => MERGE_TYPES.has(ev.k) && ev.d && ev.d.from !== undefined && ev.d.to !== undefined;
-export const keyOf = (ev) => `${ev.actorId}|${ev.k}|${ev.path || ""}|${ev.u || ""}`;
+// sweep S038: a biography draft carries len:[a,b] and to, never from (spec 1, check-log "no from"), and still merges (spec 2.3: one entry per 30 s per user)
 const isBio = (ev) => ev.k === "stat.text" && ev.d && ev.d.key === "biography";
+const bioDraft = (ev) => isBio(ev) && Array.isArray(ev.d.len) && ev.d.to !== undefined;
+export const isMergeable = (ev) => MERGE_TYPES.has(ev.k) && !!ev.d && ((ev.d.from !== undefined && ev.d.to !== undefined) || bioDraft(ev));
+export const keyOf = (ev) => `${ev.actorId}|${ev.k}|${ev.path || ""}|${ev.u || ""}`;
 const slidingFor = (ev, T) => (isBio(ev) ? T.bioSlidingMs : T.slidingMs);
 const maxFor = (ev, T) => (isBio(ev) ? T.bioMaxMs : T.maxMs);
 
@@ -50,7 +52,9 @@ function mergeChain(chain) {
   const evs = chain.events;
   const first = evs[0], last = evs[evs.length - 1];
   if (evs.length === 1) return { ...clone(first), n: first.n || 1 };
-  const d = { ...clone(first.d), ...clone(last.d), from: clone(first.d.from), to: clone(last.d.to) };
+  const d = { ...clone(first.d), ...clone(last.d), to: clone(last.d.to) };
+  if (first.d.from !== undefined) d.from = clone(first.d.from);
+  if (Array.isArray(first.d.len) && Array.isArray(last.d.len)) d.len = [first.d.len[0], last.d.len[1]];   // biography: the old length of the first, the new of the last
   let n = 0; for (const e of evs) n += e.n || 1;
   const out = { ...clone(first), d, n, t: first.t, t2: chain.last };
   if (last.c) out.c = clone(last.c);

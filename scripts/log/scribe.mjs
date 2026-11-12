@@ -229,7 +229,7 @@ async function baselineActor(actor, scope, startAt = null) {
   S.snaps.set(actor.id, snap);
   const diffs = D.diffSnapshots(snap, cur);
   if (diffs.length) {
-    const g = D.gapChildren(diffs, 30);
+    const g = D.gapChildren(diffs, 30, scope);
     const t = actor._stats?.modifiedTime ?? Date.now();
     const e = M.normalizeEntry({ t, u: actor._stats?.lastModifiedBy ?? "", k: "log.gap", a: 1, d: { from: snap.at ?? 0, to: Date.now(), changes: g.kids, more: g.more, total: g.total } }, { actorId: actor.id, path: "gap" });
     S.counts.gaps++;
@@ -279,7 +279,8 @@ export async function rebaseline(actorId) {
 /* ------------------------------------------------------------------ hooks */
 const guard = (name, fn) => (...args) => { if (!S.on) return; S.counts.hooks++; try { return fn(...args); } catch (err) { console.warn(`${LOG} ${name} capture failed`, err); } };
 const actorOfDoc = (doc) => { const p = doc?.parent; if (p?.documentName === "Actor") return p; return null; };
-const elig = (actor) => (actor && S.states.has(actor.id) ? S.states.get(actor.id) : null);
+// sweep S042: an unlinked token's synthetic actor shares its base actor's id; it is never logged (scopeOf and combatActor refuse it too)
+const elig = (actor) => (actor && !actor.isToken && S.states.has(actor.id) ? S.states.get(actor.id) : null);
 
 const onUpdateActor = guard("updateActor", (actor, changes, options, userId) => {
   const scope = scopeOf(actor);
@@ -494,8 +495,9 @@ const onDeleteMessage = guard("deleteChatMessage", (message, options, userId) =>
 
 /* ---- combat */
 const combatActor = (cm) => { const a = cm?.actor ?? game.actors.get(cm?.actorId); return a && !a.isToken ? a : null; };
-const onCreateCombatant = guard("createCombatant", (cm, options, userId) => { const a = combatActor(cm); if (!elig(a)) return; emit(a, { k: "combat.join", path: `c:${cm.combat?.id}`, u: userId ?? "", t: timeOf(options, cm), d: { combatId: cm.combat?.id ?? "", ...(cm.combat?.round ? { round: cm.combat.round } : {}) }, c: undefined }); });
-const onDeleteCombatant = guard("deleteCombatant", (cm, options, userId) => { const a = combatActor(cm); if (!elig(a)) return; emit(a, { k: "combat.leave", path: `c:${cm.combat?.id}`, u: userId ?? "", t: timeOf(options, cm), d: { combatId: cm.combat?.id ?? "", ...(cm.combat?.round ? { round: cm.combat.round } : {}) } }); });
+// sweep S043: S.init (the "from" of the next combat.init) is filled when a combatant is created and emptied when it or its combat is deleted
+const onCreateCombatant = guard("createCombatant", (cm, options, userId) => { S.init.set(cm.id, cm.initiative ?? null); const a = combatActor(cm); if (!elig(a)) return; emit(a, { k: "combat.join", path: `c:${cm.combat?.id}`, u: userId ?? "", t: timeOf(options, cm), d: { combatId: cm.combat?.id ?? "", ...(cm.combat?.round ? { round: cm.combat.round } : {}) }, c: undefined }); });
+const onDeleteCombatant = guard("deleteCombatant", (cm, options, userId) => { S.init.delete(cm.id); const a = combatActor(cm); if (!elig(a)) return; emit(a, { k: "combat.leave", path: `c:${cm.combat?.id}`, u: userId ?? "", t: timeOf(options, cm), d: { combatId: cm.combat?.id ?? "", ...(cm.combat?.round ? { round: cm.combat.round } : {}) } }); });
 const onUpdateCombat = guard("updateCombat", (combat, changes, options, userId) => {
   if (!("turn" in changes) && !("round" in changes)) return;
   if (!combat.started) return;
@@ -518,6 +520,7 @@ const onUpdateCombatant = guard("updateCombatant", (cm, changes, options, userId
   emit(a, { k: "combat.init", path: `init:${cm.id}`, u: userId ?? "", t: timeOf(options, cm), d: { from, to: changes.initiative } });
 });
 const onDeleteCombat = guard("deleteCombat", (combat, options, userId) => {
+  for (const cm of combat.combatants) S.init.delete(cm.id);
   const seen = new Set();
   for (const cm of combat.combatants) { const a = combatActor(cm); if (!a || seen.has(a.id) || !elig(a)) continue; seen.add(a.id); emit(a, { k: "combat.end", path: `c:${combat.id}`, u: userId ?? "", t: timeOf(options, combat), d: { combatId: combat.id, rounds: combat.round ?? 0 } }); }
 });

@@ -83,7 +83,7 @@ function collect() {
     if (!actor || actor.type !== "superhero" || !actor.hasPlayerOwner) continue;
     if (!gm && (td.hidden || td.isSecret)) continue;
     const e = by.get(actor.id) ?? { actor, tds: [] };
-    if (td.actorLink) e.tds.unshift(td); else e.tds.push(td);
+    if (td.actorLink) { e.tds.unshift(td); e.actor = actor; } else e.tds.push(td);   // sweep S052: the card reads the linked token's (world) actor, not an earlier unlinked copy
     by.set(actor.id, e);
   }
   return [...by.values()].sort((a, b) => a.actor.name.localeCompare(b.actor.name, game.i18n?.lang || undefined) || a.actor.id.localeCompare(b.actor.id));   // stable and predictable: by character name

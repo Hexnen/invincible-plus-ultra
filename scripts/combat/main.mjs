@@ -34,6 +34,7 @@ let started = false, ready = false;
 const hookIds = [];          // [name, id] of every Hooks.on made here, so stop() can remove them
 const known = new Map();     // combat id -> the round this client last saw
 const lastEvent = new Map(); // combat id -> { key, at }
+const heard = new Set();     // sweep S035: scene-less combats this client last found relevant (deleteCombat runs after game.combat moved on)
 let onResize = null, raf = 0;
 
 const get = (key) => { try { return game.settings.get(MOD, key); } catch { return undefined; } };
@@ -116,10 +117,11 @@ function onUpdateCombat(combat, changes) {
     const to = Number(combat.round) || 0;
     const from = known.has(combat.id) ? known.get(combat.id) : (to === 1 ? 0 : to);   // an unseen combat: only a jump to round 1 is a start
     known.set(combat.id, to);
+    if (!combat.scene) { if (relevant(combat)) heard.add(combat.id); else heard.delete(combat.id); }
     // the bar mounts first (same tick), so the start banner already finds its bottom edge (--icbar-bottom) and lands under it
     if (from === 0 && to >= 1) Bar.syncNow({ loud: true, prefer: combat });
     if (from === to || !ready || !enabled() || !relevant(combat)) return;
-    if (from === 0 && to >= 1) return emit(combat, { kind: "start", round: to, count: combat.combatants?.size ?? 0 });
+    if (from === 0 && to >= 1) return emit(combat, { kind: "start", round: to, count: combat.combatants?.filter?.((c) => Bar.seen(c)).length ?? 0 });   // sweep S034: only the ones this client may see
     if (to === 0 && from > 0) return emit(combat, { kind: "end", rounds: from });
     if (edgesOnly()) return;
     emit(combat, { kind: "round", round: to, back: to < from });
@@ -132,7 +134,8 @@ function onDeleteCombat(combat) {
     known.delete(combat.id);
     Bar.removed(combat.id);
     const rounds = Number(combat.round) || 0;
-    const show = ready && enabled() && rounds > 0 && relevant(combat);
+    const was = !combat.scene && heard.delete(combat.id);   // a scene-less combat: relevant when its last round change was (game.combat may already be another one)
+    const show = ready && enabled() && rounds > 0 && (relevant(combat) || was);
     if (show) emit(combat, { kind: "end", rounds });
     setTimeout(() => lastEvent.delete(combat.id), DEDUPE_MS * 2);
   } catch (e) { console.warn(LOG, "deleteCombat failed", e); }
@@ -182,6 +185,7 @@ function onReady() {
     ready = true;
     known.clear();
     for (const c of game.combats ?? []) known.set(c.id, Number(c.round) || 0);
+    heard.clear(); for (const c of game.combats ?? []) if (!c.scene && relevant(c)) heard.add(c.id);
     Banner.setSize(get(KEY.size));
     Bar.setSize(get(Bar.KEY.size));
     Bar.setReady(true);
@@ -225,6 +229,6 @@ export function stop() {
   cancelAnimationFrame(raf); raf = 0;
   Banner.destroy();
   Bar.destroy();
-  known.clear(); lastEvent.clear();
+  known.clear(); lastEvent.clear(); heard.clear();
   ready = false; started = false;
 }

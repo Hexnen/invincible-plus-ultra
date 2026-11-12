@@ -1,0 +1,22 @@
+// node scripts/sweep-checks/m040.mjs  (S040: a base card's catch-up (log.gap) uses the base types: card.rename, card.occupied - not the hero's actor.rename)
+import { readFileSync } from "node:fs";
+import * as D from "../log/diff.mjs";
+import * as M from "../log/model.mjs";
+import * as EV from "../log/events.mjs";
+let n = 0, f = 0;
+const ck = (name, c) => { n++; if (!c) { f++; console.log("FAIL", name); } };
+const before = D.makeSnapshot({ name: "Base A", card: { where: "City", occupied: false } }, 100);
+const after = D.makeSnapshot({ name: "Base B", card: { where: "Port", occupied: true } }, 200);
+const dfs = D.diffSnapshots(before, after);
+const g = D.gapChildren(dfs, 30, "base");
+const by = (k) => g.kids.find((x) => x.k === k);
+ck("rename is card.rename", !!by("card.rename") && !by("actor.rename") && by("card.rename").d.to === "Base B");
+ck("occupied is card.occupied {on}", by("card.occupied")?.d?.on === true && !g.kids.some((x) => x.k === "card.edit" && x.d.field === "occupied"));
+ck("other card fields stay card.edit", by("card.edit")?.d?.field === "where");
+for (const kid of g.kids) ck(`${kid.k} is a base type and validates`, EV.typeDef(kid.k)?.scope !== "hero" && M.buildEntry({ t: 1e12, u: "u", k: kid.k, d: kid.d }, { scope: "base", actorId: "A" }).errors.length === 0);
+const hero = D.gapChildren(D.diffSnapshots(D.makeSnapshot({ name: "H1" }, 1), D.makeSnapshot({ name: "H2" }, 2)));
+ck("hero default unchanged", hero.kids[0]?.k === "actor.rename");
+const scribe = readFileSync(new URL("../log/scribe.mjs", import.meta.url), "utf8");
+ck("scribe passes the scope", /D\.gapChildren\(diffs, 30, scope\)/.test(scribe));
+console.log(`sweep m040: ${n} checks, ${f} failed`);
+process.exit(f ? 1 : 0);

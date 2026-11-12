@@ -36,7 +36,7 @@ const BOOK_ARCHETYPES = { journal: "Compendium.invincible-core.core-book.Journal
 const LEVEL_WORDS = ["basic", "major", "massive", "monstrous"];
 const TTL = 60_000;
 
-export const norm = (s) => String(s ?? "").toLowerCase().replace(/[\s ]+/g, " ").trim();
+export const norm = (s) => String(s ?? "").replace(/\u00AD/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 /** "Burst Effect (Blast)" -> "burst effect" */
 export const normBase = (s) => norm(String(s ?? "").replace(/\s*\([^)]*\)\s*$/, ""));
 
@@ -162,7 +162,7 @@ export async function resolveDoc(type, ref, { level = null, power = null } = {})
 }
 
 /* ------------------------------------------------------------------ archetype data from the book page */
-const clean = (s) => String(s ?? "").replace(/[ ­]/g, " ").replace(/\s+/g, " ").trim();
+const clean = (s) => String(s ?? "").replace(/\u00AD/g, "").replace(/\s+/g, " ").trim();   // sweep S019: a soft hyphen (the book has them: "super\u00ADhero") is a break hint, not a space
 async function bookArchetypePage() {
   const j = await fromUuid(BOOK_ARCHETYPES.journal);
   if (!j) return null;

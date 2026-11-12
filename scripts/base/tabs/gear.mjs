@@ -381,7 +381,9 @@ async function doUndo(root) {
   const rec = ctx && undoRec.get(ctx.team.id);
   if (!rec) return;
   clearTimeout(rec.timer); undoRec.delete(ctx.team.id);
-  const res = await ctx.update(rec.patch);
+  const fixed = P.undoPatch(ctx.api.get(ctx.team.id) ?? ctx.B, rec.patch);                               // sweep S009/S010: re-checked against the team as it is now
+  if (fixed.error) { warn(ctx, ctx.t(`IPB.Err.${fixed.error}`, { cap: fixed.cap })); CTX.get(root)?.rerender(); return; }
+  const res = Object.keys(fixed.patch).length ? await ctx.update(fixed.patch) : true;
   if (res) ctx.announce(ctx.t("IPB.Gr.UndoDone"));
   CTX.get(root)?.rerender();
 }

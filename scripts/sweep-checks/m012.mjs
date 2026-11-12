@@ -1,0 +1,24 @@
+// node scripts/sweep-checks/m012.mjs  (S012: Adopt from hero text obeys the rules of a Pick: allowance for non-staff, stack limits, row cap)
+import { readFileSync } from "node:fs";
+import * as U from "../base/up-pure.mjs";
+import * as P from "../base/pure.mjs";
+let n = 0, f = 0;
+const ck = (name, c) => { n++; if (!c) { f++; console.log("FAIL", name); } };
+ck("adoptBlock exists", typeof U.adoptBlock === "function");
+const B = U.adoptBlock ?? (() => null);
+const defs = { gym: { key: "gym", name: "Gym", max: 1 }, lab: { key: "lab", name: "Lab", max: null } };
+const left = P.allowance("street", []).left;
+const many = Array.from({ length: left + 1 }, (_x, i) => ({ key: "custom", name: `c${i}`, count: 1, power: "" }));
+ck("player over the allowance is refused", B({ rank: "street", owned: [], miss: many, defs, as: "start", staff: false })?.code === "noAllowance");
+ck("staff over the allowance may (A5)", B({ rank: "street", owned: [], miss: many, defs, as: "start", staff: true }) === null);
+ck("player within the allowance may", B({ rank: "street", owned: [], miss: many.slice(0, left), defs, as: "start", staff: false }) === null);
+ck("limit-1 upgrade twice is refused", B({ rank: "global", owned: [], miss: [{ key: "gym", name: "Gym", count: 2, power: "" }], defs, as: "start", staff: true })?.code === "stackMax");
+ck("limit-1 already owned is refused", B({ rank: "global", owned: [{ key: "gym", count: 1, source: "start" }], miss: [{ key: "gym", name: "Gym", count: 1, power: "" }], defs, as: "start", staff: true })?.code === "stackMax");
+ck("GM grant may pass a stack limit", B({ rank: "global", owned: [], miss: [{ key: "gym", name: "Gym", count: 2, power: "" }], defs, as: "gm", staff: true }) === null);
+ck("unlimited upgrade x3 may", B({ rank: "global", owned: [], miss: [{ key: "lab", name: "Lab", count: 3, power: "" }], defs, as: "gm", staff: true }) === null);
+const owned = Array.from({ length: P.LIMITS.upgrades }, (_x, i) => ({ key: "custom", name: `o${i}`, count: 1, source: "gm" }));
+ck("row cap", B({ rank: "global", owned, miss: [{ key: "custom", name: "x", count: 1 }], defs, as: "gm", staff: true })?.code === "full");
+const src = readFileSync(new URL("../base/tabs/upgrades.mjs", import.meta.url), "utf8");
+ck("adoptRun checks before writing", /U\.adoptBlock\(/.test(src) && src.indexOf("U.adoptBlock(") < src.indexOf("const res = await ctx.run(ctx.update(patch));"));
+console.log(`sweep m012: ${n} checks, ${f} failed`);
+process.exit(f ? 1 : 0);

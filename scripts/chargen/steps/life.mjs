@@ -12,7 +12,7 @@
    undo + roll again gives the same result. The tables are D3 / D22; a roll is a uniform seeded pick over the table's rows (the same distribution as
    RollTable.roll(), which cannot be seeded). */
 import { t } from "../lang.mjs";
-import { validateStep, normName, REPEATABLE_TALENTS } from "../rules.mjs";
+import { validateStep, normName, talentKey, REPEATABLE_TALENTS } from "../rules.mjs";
 import { substream } from "../rng.mjs";
 import { FX_FIELDS, fxOf, itemRefs, bonusSum, warmBonuses } from "../bonuses.mjs";
 import { esc, icon, msgText, delegate, pl } from "./util.mjs";
@@ -45,9 +45,10 @@ async function readOccupationTexts() {
 }
 
 /* ---------------------------------------------------------------- what is taken */
-const takenElsewhere = (s) => [s.heroTalent?.name, ...s.extraTalents.map((x) => x.name)].filter(Boolean).map(nm);
-function talentTaken(s, name) {
-  const k = nm(name);
+// sweep S021: a talent's identity is its talentKey (one Knowledgeable per hero, whatever the subject), the same as rules.validate
+const takenElsewhere = (s) => [s.heroTalent?.name, ...s.extraTalents.map((x) => x.name)].filter(Boolean).map(talentKey);
+export function talentTaken(s, name) {
+  const k = talentKey(name);
   return !REPEATABLE_TALENTS.includes(k) && takenElsewhere(s).includes(k);
 }
 const isBook = (d, name) => !!name && d.allMap.has(nm(name));
@@ -419,7 +420,7 @@ export default {
           const name = clean(root.querySelector('[name="occ-own"]')?.value);
           const res = Math.min(RES_MAX, Math.max(RES_MIN, parseInt(root.querySelector('[name="occ-own-res"]')?.value, 10) || ctx.state.resources || RES_MIN));
           if (!name) return;
-          if (isBook(d, name)) return;   // a book name is picked from the list, not typed
+          if (isBook(d, name)) { chooseOccupation(ctx, d.allMap.get(nm(name))); return; }   // sweep S024: typing a book name picks it, as the list does (never leaves a partial name behind)
           ctx.update((st) => ({ ...st, occupation: name, resources: res, occTalent: isBook(d, st.occupation) ? null : st.occTalent }), { coalesce: "occOwn" });
           patchBelow();   // the typing field keeps its focus: only the panels that depend on the occupation are swapped
         }

@@ -303,7 +303,7 @@ async function rollHero(ctx) {
   const die = arch && list.length === 6 ? rng.d6() : null;
   const start = die ? die - 1 : rng.int(list.length);
   const e = nextFree(list, start, (x) => canTakeTalent(s, x.name, { exceptHero: true }) && nm(x.name) !== nm(s.heroTalent?.name ?? ""));
-  if (!e) return;
+  if (!e) { said(ctx, t("IPC.Talents.AllTaken")); return ctx.rerender(); }   // sweep S033: never a silent dice button
   const x = await expandKnowledgeable(ctx, e, { heroTalent: n + 1 });
   if (!x) return;
   const note = x.note || (die ? t("IPC.Talents.Hero.Rolled", { die, name: e.name }) : "");
@@ -316,7 +316,7 @@ async function rollExtra(ctx) {
   const n = s.rerolls?.talentAdd ?? 0;
   const rng = substream(s.seed, `talentAdd:${n}`);
   const pool = d.talents.filter((x) => canTakeTalent(s, x.name) && !REPEATABLE_TALENTS.includes(nm(x.name)));
-  if (!pool.length) return;
+  if (!pool.length) { said(ctx, t("IPC.Talents.AllTaken")); return ctx.rerender(); }
   const e = rng.pick(pool);
   const x = await expandKnowledgeable(ctx, e, { talentAdd: n + 1 });
   if (!x) return;
@@ -331,7 +331,7 @@ function rollDrawback(ctx) {
   const rng = substream(s.seed, `drawbackAdd:${n}`);
   const die = arch && list.length === 6 ? rng.d6() : null;
   const e = nextFree(list, die ? die - 1 : rng.int(list.length), (x) => canTakeDrawback(s, x.name) && !REPEATABLE_DRAWBACKS.includes(nm(x.name)));
-  if (!e) return;
+  if (!e) { said(ctx, t("IPC.Talents.Dr.AllTaken")); return ctx.rerender(); }
   d.msg = die ? t("IPC.Talents.Hero.Rolled", { die, name: e.name }) : "";
   d.landed = `d${s.drawbacks.length}`;
   ctx.update((st) => ({ ...addDrawback(st, { name: e.name, packUuid: e.packUuid ?? null, note: "", needs: needsOf(d, e) }), rerolls: { ...st.rerolls, drawbackAdd: n + 1 } }), { body: true });

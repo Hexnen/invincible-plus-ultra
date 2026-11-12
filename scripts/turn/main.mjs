@@ -39,7 +39,8 @@ let started = false, ready = false, down = false;
 const hookIds = [];
 const lastKey = new Map();      // combat id -> the (round:combatant) key last seen as the turn, or null (nobody / waiting)
 const quiet = new Set();        // combat ids where the user ticked "don't ask again" (session only)
-let pinned = null;              // { key, turnKey }: the character tab the user picked, valid while the turn stays where it was
+let pinned = null;              // { key, turnKey, at }: the character tab the user picked, valid while the turn stays where it was
+const pinAt = (c) => (c ? `${c.id}|${c.round}` : "");   // sweep S092: a pin is for THIS turn only (same combat and round), never for the character's next turn
 let model = null, askCtx = null, ending = false, busy = false, sock = null;
 let timer = 0, evalTimer = 0, raf = 0, waitAt = 0, ro = null;
 
@@ -127,7 +128,8 @@ function buildModel() {
   if (!rows.size) return { show: false };
   const turnKey = turnC ? keyOf(turnC) : null;
   const keys = [...rows.keys()];
-  const selKey = pinned && pinned.turnKey === turnKey && rows.has(pinned.key) ? pinned.key : (turnKey && rows.has(turnKey) ? turnKey : keys[0]);
+  if (pinned && (pinned.turnKey !== turnKey || pinned.at !== pinAt(combat))) pinned = null;
+  const selKey = pinned && rows.has(pinned.key) ? pinned.key : (turnKey && rows.has(turnKey) ? turnKey : keys[0]);
   const c0 = rows.get(selKey);
   const isTurn = selKey === turnKey;
   const shown = isTurn ? turnC : c0;
@@ -345,7 +347,12 @@ function registerHooks() {
   });
   on("createCombat", () => schedule());
   on("deleteCombat", (combat) => { lastKey.delete(combat.id); quiet.delete(combat.id); schedule(); });
-  for (const h of ["createCombatant", "updateCombatant", "deleteCombatant"]) on(h, () => { schedule(); });
+  for (const h of ["createCombatant", "updateCombatant", "deleteCombatant"]) on(h, (cm, changes) => {
+    schedule();
+    // sweep S094: the draw ending the waiting state is a combatant update (no turn / round change when the opener keeps index 0): look again
+    const id = cm?.combat?.id;
+    if (id && lastKey.has(id) && lastKey.get(id) === null && (h !== "updateCombatant" || (changes && "initiative" in changes))) scheduleTurn();
+  });
   const fx = (e) => { try { if (e?.parent?.documentName === "Actor") schedule(); } catch { /* ignore */ } };
   on("createActiveEffect", fx); on("updateActiveEffect", fx); on("deleteActiveEffect", fx);
   on("updateActor", (_a, changes) => { if (changes && ("ownership" in changes || "name" in changes || "img" in changes)) schedule(); });
@@ -374,7 +381,7 @@ function onReady() {
     Tray.configure({
       onPip: togglePip,
       onEnd: () => endTurn(),
-      onPick: (key) => { pinned = { key, turnKey: model?.rows?.find((r) => r.isTurn)?.key ?? null }; refresh(); }
+      onPick: (key) => { pinned = { key, turnKey: model?.rows?.find((r) => r.isTurn)?.key ?? null, at: pinAt(pickCombat()) }; refresh(); }
     });
     setupSocket();
     window.addEventListener("resize", onResize);
@@ -413,6 +420,6 @@ export function stop() {
   try { askCtx?.dlg?.close(); } catch { /* ignore */ }
   askCtx = null;
   Msg.destroy(); Tray.destroy();
-  lastKey.clear(); quiet.clear();
+  lastKey.clear(); quiet.clear(); pinned = null;
   ready = false; started = false;
 }

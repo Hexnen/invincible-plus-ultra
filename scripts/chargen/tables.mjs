@@ -52,7 +52,7 @@ const EXPECT = { archetypes: 16, roles: 8, occupations: 22, "occupation talent":
 class StructureError extends Error {
   constructor(issues) { super(issues.join(" | ")); this.name = "StructureError"; this.issues = issues; }
 }
-const clean = (s) => String(s ?? "").replace(/[ ­]/g, " ").replace(/\s+/g, " ").trim();
+const clean = (s) => String(s ?? "").replace(/\u00AD/g, "").replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();   // sweep S019: soft hyphen dropped, not a space
 const slug = (s) => clean(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const UUID_RE = /@UUID\[([^\]]+)\]\{([^}]+)\}/;
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

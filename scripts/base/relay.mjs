@@ -95,7 +95,7 @@ const HANDLERS = {
     const a = game.actors.get(String(args.actorId ?? ""));
     if (!a || a.type !== "superhero") throw new S.BaseError("notFound", { id: String(args.actorId ?? "") });
     if (!S.isStaff(sender) && !a.testUserPermission(sender, "OWNER")) throw new S.BaseError("noPermission");
-    notice(sender, "", `team card for ${a.name}`, () => Hooks.callAll(`${MOD}.baseRequest`, { team: "", actor: a.id, from: sender.id, what: "create" }));
+    notice(sender, "", t("IPB.Empty.AskNotice", { actor: a.name }), () => Hooks.callAll(`${MOD}.baseRequest`, { team: "", actor: a.id, from: sender.id, what: "create" }));
     return { delivered: true };
   },
   /** args { teamId, what }. A member / editor asks the GM for something (e.g. buying an upgrade); the GM client gets a notification + a hook. B11 (A9): not for

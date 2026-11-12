@@ -11,6 +11,10 @@ import * as GM from "./gm.mjs";
 const MOD = Store.MOD;
 const CHANNEL = `module.${MOD}`;
 const TIMEOUT = 8000;
+/* sweep S057: an award (or its undo) runs one serial write per hero on the GM side (actor update + session commit + 150 ms settle each, up to
+   LIMITS.heroes heroes): far longer than 8 s on a remote server. Those two wait for their real answer; a request that truly got lost still ends. */
+const LONG = new Set(["award", "undo"]);
+export const timeoutFor = (req) => (req && LONG.has(req.cmd) ? 60000 : TIMEOUT);
 let started = false, seq = 0;
 const pending = new Map(), seen = new Map();
 const bad = (code, params = {}) => ({ ok: false, changed: false, error: { key: `IPL.Session.err.${code}`, code, params } });
@@ -29,7 +33,7 @@ function send(req) {
     const gmId = game.users.activeGM?.id;
     let staleTimer = 0;
     const done = (env) => { clearTimeout(timer); clearTimeout(staleTimer); pending.delete(id); resolve(env); };
-    const timer = setTimeout(() => done(bad("relay")), TIMEOUT);
+    const timer = setTimeout(() => done(bad("relay")), timeoutFor(req));
     // a "stale" answer (older GM tab) is only final when no better one arrives within a moment: a newer GM tab may answer as well
     pending.set(id, { nonce, fn: (env) => { if (env?.error?.code === "stale") staleTimer ||= setTimeout(() => done(env), 900); else done(env); } });
     const msg = { k: "ssreq", id, n: nonce, req: { ...req, id }, userId: game.user.id, proto: OP.PROTO, mod: modVersion() };

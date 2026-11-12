@@ -556,6 +556,34 @@ export const canAdd = (B, collection) => {
   const cap = LIMITS[collection];
   return n < cap ? { ok: true, count: n, cap } : { ok: false, count: n, cap, key: `IPB.Err.${collection}Full` };
 };
+/** The gear tab's undo of a removed vehicle / crate row, re-checked against the team AS IT IS NOW (sweep S009/S010): the stored patch re-inserts a snapshot
+    taken at removal time, and the team may have changed during the undo time. A row whose source is back already is not written twice (a crate row adds its
+    quantity to the row that is back, like adding the same item again; a vehicle stays as it is), a full list refuses like the add path, and a restored star
+    demotes every vehicle that is the star now. -> { patch } (possibly with nothing to write) or { error: "full", cap }. */
+export function undoPatch(B, patch) {
+  const out = {};
+  const restoring = (col) => Object.entries(isObj(patch?.[col]) ? patch[col] : {}).filter(([id, row]) => !isObj(B?.[col]?.[id]) && isObj(row));
+  for (const col of ["vehicles", "crate"]) {
+    if (!isObj(patch?.[col])) continue;
+    const rows = { ...patch[col] };
+    for (const [id, row] of restoring(col)) {
+      const key = col === "vehicles" ? "uuid" : "src";
+      const dup = row[key] ? sortedList(B?.[col]).find((x) => x[key] === row[key]) : null;
+      if (dup) {
+        delete rows[id];
+        if (col === "crate") rows[dup.id] = { qty: Math.min(9999, num(dup.qty) + Math.max(1, num(row.qty))) };
+        else for (const [vid, v] of Object.entries(rows)) if (isObj(B?.vehicles?.[vid]) && v?.primary === false && Object.keys(v).length === 1) delete rows[vid];   // the old star is back: keep today's star
+        continue;
+      }
+      const guard = canAdd(B, col);
+      if (!guard.ok) return { error: "full", cap: guard.cap };
+      if (col === "vehicles" && row.primary) for (const v of sortedList(B?.vehicles)) if (v.primary) rows[v.id] = { primary: false };
+    }
+    if (Object.keys(rows).length) out[col] = rows;
+  }
+  for (const [k, v] of Object.entries(isObj(patch) ? patch : {})) if (!(k in out) && k !== "vehicles" && k !== "crate") out[k] = v;
+  return { patch: out };
+}
 
 /* ------------------------------------------------------------------ validation (message KEYS only) */
 /** Returns [{level:"error"|"warn", key, params, path}]. Does not throw. */

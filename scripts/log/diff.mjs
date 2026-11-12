@@ -322,7 +322,7 @@ export function diffSnapshots(a, b) {
   return out;
 }
 /** Convert snapshot diffs to catch-up children [{k, d}] (at most `max`, rest counted). */
-export function gapChildren(diffs, max = 30) {
+export function gapChildren(diffs, max = 30, scope = "hero") {   // sweep S040: a base card catches up with its own types (card.rename / card.occupied)
   const kids = [];
   for (const df of diffs) {
     const [pre, ...rest] = df.k.split("."); const key = rest.join(".");
@@ -331,7 +331,7 @@ export function gapChildren(diffs, max = 30) {
     else if (pre === "v") { k = "stat.vital"; d = { key, from: df.from, to: df.to }; }
     else if (pre === "t") { k = "stat.track"; d = { key, from: df.from, to: df.to }; }
     else if (pre === "s") { k = "stat.text"; d = { key, from: df.from === undefined ? "" : textPart(df.from), to: df.to === undefined ? "" : textPart(df.to) }; }
-    else if (pre === "n") { k = "actor.rename"; d = { from: df.from, to: df.to }; }
+    else if (pre === "n") { k = scope === "base" ? "card.rename" : "actor.rename"; d = { from: df.from, to: df.to }; }
     else if (pre === "o") {
       k = key === "default" ? "access.default" : "access.owner";
       d = key === "default" ? { from: df.from ?? "NONE", to: df.to ?? "NONE" } : { user: key, from: df.from ?? "NONE", to: df.to ?? "NONE" };
@@ -344,7 +344,8 @@ export function gapChildren(diffs, max = 30) {
         if (activeFlipped(df.from, df.to)) { k = "item.toggle"; d = { id: key, name: p.name, type: p.type, on: p.active }; }
         else { k = "item.edit"; d = { id: key, name: p.name, type: p.type, changes: ch }; }
       }
-    } else if (pre === "b") { k = "card.edit"; d = { field: key, from: typeof df.from === "string" ? textPart(df.from) : df.from, to: typeof df.to === "string" ? textPart(df.to) : df.to }; }
+    } else if (pre === "b" && key === "occupied") { k = "card.occupied"; d = { on: !!df.to }; }
+    else if (pre === "b") { k = "card.edit"; d = { field: key, from: typeof df.from === "string" ? textPart(df.from) : df.from, to: typeof df.to === "string" ? textPart(df.to) : df.to }; }
     else continue;
     kids.push({ k, d });
   }

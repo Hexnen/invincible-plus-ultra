@@ -68,7 +68,9 @@ export function heroRank(actor) {
     allowance must not differ between clients). Falls back to the card's stored rank (creation default) only while no member has a known rank. */
 export function rankOf(ref) {
   const e = resolve(ref);
-  const list = members(e, { all: true }).map(heroRank);
+  const seen = new Set(members(e).map((a) => a.id));
+  // the rank counts every member, but a hero this user may not see keeps no name or id here (the sheet shows only a count of those, sweep S005)
+  const list = members(e, { all: true }).map((a) => (seen.has(a.id) ? heroRank(a) : { ...heroRank(a), id: "", name: "", hidden: true }));
   return { ...P.deriveRank(list, { stored: rawData(e).rank }), members: list };
 }
 /** Normalized B, name and picture mirrored from the actor (the actor's own name / img are the source). B.rank is the DERIVED rank (B4c; never written
