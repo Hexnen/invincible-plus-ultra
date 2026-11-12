@@ -29,6 +29,8 @@ const viewOf = (T, uid, owns) => V.viewFor(T.state, { id: uid, staff: false, own
 const ctx = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
 const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p.to === "gm" ? "gm" : p.to.users[0], { op: p.to === "gm" ? "answerFor" : "answer", prompt: p.id, value: "pass" }); };
 
+const signKinds = (pieces) => (pieces ?? []).map((x) => (typeof x === "string" ? `'${x}'` : (x.el?.cls ?? "").match(/ipu-k-([a-z]+)|ipu-s-([a-z]+)|ipu-(stress)/)?.slice(1).find(Boolean) ?? "?"));      // U100: what a row of pieces draws, in order
+const J = JSON.stringify;
 /* ------------------------------------------------------------------ A. the engine's answer per target */
 {
   const mk = () => { const T = new Table(); T.hero("H1", "p1", { name: "Ada" }).hero("H2", "p2", { name: "Rex" }).npc("N1", { name: "Thug", health: 6, armor: [{ value: 1 }] }).npc("N2", { name: "Ghost", health: 6, hidden: true }).npc("N3", { name: "Far", health: 6 });
@@ -115,6 +117,7 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   ok(/reach/i.test(by.N3.tip ?? ""), "C: the dimmed token says why, in the words of the reason table");
   ok(typeof by.N1.label === "string" && by.N1.label.length <= 18 && !/%/.test(by.N1.label), "C: a player reads the chance as a word over the token");
   ok(by.N1.hover && /~\d/.test(by.N1.hover.label) && !/up to/i.test(by.N1.hover.tip) && !by.N1.hover.bar, "C: of an NPC that is not revealed the hover says the own Damage (no bound: D51) and draws no Health bar");
+  { const hs = by.N1.hover.signs?.label ?? [], b = hs.find((x) => typeof x === "object"); ok(hs[0] === by.N1.label && b?.el?.cls === "ipu-sym ipu-s-damage" && by.N1.hover.label.endsWith(b.n) && !!b.name && by.N1.hover.tip.includes(b.name.replace(/\.$/, "")) && !by.N1.signs, "C U100: on the pill over the token the hit is the burst with its number (the chance stays a word)"); }
   eq(p.chance, null, "C: the chance is not said a second time in the panel");
   ok(p.targets.find((x) => x.id === "H2")?.map === false, "C: a candidate that is not on the map keeps its chip");
   /* choosing one out of reach: the reason at once, with the way to ask; nothing can be declared */
@@ -166,6 +169,14 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   ok(BP.actItems(ta, null, "N3", fx, t).every((x) => /turn/i.test(x.disabled ?? "")), "C: what the bar itself refuses (not this character's turn) is greyed with the bar's reason");
   const items = BP.actItems(ta.map((a) => ({ ...a, disabled: null })), { slugfest: { ok: false, reason: "outOfReach", params: {} }, shoot: { ok: true, dice: 4, hit: { base: 2, toStress: false } } }, "N3", fx, t), it = Object.fromEntries(items.map((x) => [x.id, x]));
   ok(/reach/i.test(it.slugfest.disabled ?? "") && (!it.shoot || !it.shoot.disabled), "C: an action the engine refuses against this target is greyed with the reason");
+  /* U100: the hint as the dock's marks for the map (zones-api 40); its words stay the text */
+  if (it.shoot) {
+    const k = signKinds(it.shoot.signs?.hint), cost = ta.find((a) => a.id === "shoot").cost;
+    ok(k[0] === (cost === "free" ? "none" : cost) && k.includes("damage") && k.filter((x) => x === "' · '").length === it.shoot.hint.split(" · ").length - 1, `C U100: the menu row's hint is the price's mark, the chance in words, the hit's burst (${k.join(" ")})`);
+    const dmg = it.shoot.signs.hint.find((x) => x.el?.cls?.includes("ipu-s-damage"));
+    ok(dmg.n === "~2" && dmg.name === BP.hitWords({ base: 2, toStress: false }, t).tip, "C U100: the burst carries what a hit does, named by the sentence of the tooltip");
+  }
+  ok(!items.find((x) => x.id === "slugfest").signs || signKinds(items.find((x) => x.id === "slugfest").signs.hint).every((x) => x !== "damage"), "C U100: a refused action shows no effect of a hit");
   const gi = BP.gmItems("N1", { health: 4, maxHealth: 6, resolve: 2, maxResolve: 5 }, [{ id: "stunned" }], t);
   eq([gi[0].stepper, gi[0].req(3), gi[1].req(0), gi.find((x) => x.id === "st:stunned").on, gi.find((x) => x.id === "st:stunned").req(false), gi.find((x) => x.id === "st:trapped").req(true)],
     [{ value: 4, min: 0, max: 6 }, { op: "setHealth", combatant: "N1", delta: -1 }, { op: "setResolve", combatant: "N1", delta: -2 }, true, { op: "statusRemove", combatant: "N1", id: "stunned" }, { op: "statusAdd", combatant: "N1", status: { id: "trapped" } }], "C: the GM's corrections are the engine's own journaled edits");
@@ -191,6 +202,11 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   const z2 = p.zones.find((z) => z.zone === "z2"), w = p.ways.z2.find((r) => r.id === z2.way);
   ok(z2 && w?.req?.op === "declare" && w.req.decl.to === "z2" && !w.disabled, "C2: every reachable zone carries its default way with the request one click sends");
   ok(typeof z2.cost === "string" && z2.cost.length > 3 && Array.isArray(z2.route), "C2: the entry carries the price in words and the route");
+  /* U100: the same price as marks: the zone's label, its tip and the price in the pick's tooltip (zones-api 40) */
+  const mode = z2.cost.split(":")[0];
+  ok(signKinds(z2.signs?.label).length >= 1 && signKinds(z2.signs.label).every((x) => ["full", "quick", "none", "gm", "stress"].includes(x)) && z2.signs.cost[0] === `${mode}: ` && z2.signs.tip[0] === `${mode}: ` && J(z2.signs.cost.slice(1)) === J(z2.signs.label), `C2 U100: the zone's price as marks on its label, its tip and in the tooltip (${signKinds(z2.signs?.label)})`);
+  for (const z of p.zones.filter((x) => !x.way && x.ask)) ok(!z.signs?.label, "C2 U100: a zone nobody can pay for keeps its reason in words");
+  for (const [zone, rows] of Object.entries(p.ways)) for (const r of rows) ok(r.signs?.hint && r.signs.hint.some((x) => typeof x === "object") && r.hint.length > 0, `C2 U100: the way ${r.id} to ${zone}: its price as marks in the map's menu, its words kept`);
   ok(z2.hazards.some((h) => h.zone === "z2" && /Fire 3/.test(h.text)), "C2: the destination warns of what ending the turn there means");
   const sorted = (zone) => p.ways[zone].filter((r) => !r.disabled);
   ok(p.zones.every((z) => !z.way || sorted(z.zone).some((r) => r.id === z.way)), "C2: the default way is always one that can be paid");
@@ -210,6 +226,10 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   const door = { to: "z3|z4", zone: "z4", state: "locked", armor: 1, actions: { openDoor: "doorState", breachDoor: null, unseal: "notAtDoor" } };
   const bar = D.playerModel(view, { id: "p1", owns: ["H1"] }, ctx(T)).bars[0], di = BP.doorItems(bar, door, t);
   ok(!di.some((x) => x.id === "openDoor") && di.find((x) => x.id === "breachDoor")?.req?.decl?.to === "z3|z4" && !!di.find((x) => x.id === "unseal")?.disabled, "C2: a door offers what fits its state; what cannot be done says why");
+  const bd = di.find((x) => x.id === "breachDoor");
+  ok(!bd.hint || signKinds(bd.signs?.hint).length >= 1, "C2 U100: a door's action: its price as marks");
+  const bs = BP.borderSigns(door, null, t), ws = BP.borderSigns(null, { armor: 3 }, t);
+  ok(bs.sub[0] === `${T0("ITAC.ui.door.locked")}, ` && bs.sub[1].n === "1" && bs.sub[1].name === "Armor: 1" && ws.title[0] === "Break a wall, " && ws.title[1].n === "3" && signKinds(ws.title)[1] === "armor", "C2 U100: the menu at a door or a wall: Armor as its mark with its number");
 }
 
 /* ------------------------------------------------------------------ E. the surface: what really goes to the map (ui/board.mjs over a recording map) */
@@ -260,6 +280,7 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   Board.sync(data({ armed: "move" }), { ...cx, rev: 2 });
   const pm = calls.filter((c) => c[0] === "pickMove").at(-1)?.[1];
   ok(pm && pm.token === "H1" && pm.zones.length > 0 && pm.zones.every((z) => !("way" in z) && !("ask" in z) && typeof z.cost === "string") && pm.intent?.label, "E: Move starts the map's move preview with priced entries and the intention for the GM");
+  ok(pm.zones.filter((z) => z.color !== "blocked").every((z) => z.signs?.cost?.length > 1 && z.signs?.label?.length >= 1), "E U100: every zone that can be paid hands the map its price as marks (label and tooltip)");
   pickAnswer({ ok: true, zone: "z2", spot: "z2" }); await new Promise((r) => setTimeout(r, 5));
   eq([sent.at(-1)?.op, sent.at(-1)?.decl?.action, sent.at(-1)?.decl?.to], ["declare", "move", "z2"], "E: ONE CLICK on a zone sends the default way");
   /* a right click on the zone (another way): the ways as a menu */
@@ -267,6 +288,7 @@ const pass = async (T) => { for (const p of T.prompts("reaction")) await T.req(p
   pickAnswer({ ok: true, zone: "z2", spot: "z2", alt: true }); await new Promise((r) => setTimeout(r, 5));
   const mn = calls.filter((c) => c[0] === "menu").at(-1)?.[1];
   ok(mn && mn.zone === "z2" && mn.items.length >= 1 && mn.items.every((x) => x.label && "hint" in x), "E: a right click on a zone lists its ways with their prices");
+  ok(mn.items.filter((x) => !x.separator && x.id !== "@ask").every((x) => x.signs?.hint?.some((p) => typeof p === "object")), "E U100: the menu of ways hands the map each price as marks");
   menuAnswer({ ok: false, reason: "cancelled" }); await new Promise((r) => setTimeout(r, 5));
   /* the fight is over: everything goes */
   Board.sync(data({ armed: "slugfest", targets: ["N1"] }), { ...cx, rev: 4 });

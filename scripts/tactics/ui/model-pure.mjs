@@ -19,7 +19,8 @@ import * as Lg from "../ledger-pure.mjs";
 import { outOf } from "../desk-pure.mjs";
 import * as Keys from "./keys-pure.mjs";
 import { whyOf, whyLine, poolTip, rollPool } from "./feedback-pure.mjs";
-import { BANDS, bandOf } from "../flows/kit.mjs";      // the bands of a chance: one definition for the dock and for the engine's reaction cards (U11)
+import { BANDS, bandOf } from "../flows/kit.mjs";
+import * as Sg from "./signs-pure.mjs";      // U100: the marks where the map draws (moinen-maps zones-api.md section 40)      // the bands of a chance: one definition for the dock and for the engine's reaction cards (U11)
 export { BANDS, bandOf };
 
 
@@ -722,24 +723,30 @@ function movePanel(bar, a, own, facts, t) {
       warn: !!(o.stress || o.barriers?.length), disabled, why: disabled ? (mine ? wayWhy(t, facts, ref.reason, ref.params) : wayWhy(t, facts, o.disabled)) : null, asking: own.ask === o.id, req: disabled ? null : a.req(decl), o, decl, pv: disabled ? null : pvCost(bar, o.cost, o.stress) };
   };
   const board = !!facts.board;
-  const hazardsOf = (o) => [...(o.barriers ?? []).map((b) => ({ border: b.border, text: t(b.element === "door" ? "ITAC.map.haz.door" : "ITAC.map.haz.wall", { n: b.armor ?? 0 }), color: "danger" })), ...(facts.hazards?.(bar.combatant, o.enters ?? o.route ?? [o.zone], o.to) ?? [])];      // D57: the spots the way enters (each with its level), else its zones
+  const hazardsOf = (o) => [...(o.barriers ?? []).map((b) => ({ border: b.border, text: t(b.element === "door" ? "ITAC.map.haz.door" : "ITAC.map.haz.wall", { n: b.armor ?? 0 }), color: "danger",
+    signs: { text: [`${t(b.element === "door" ? "ITAC.map.haz.door.do" : "ITAC.map.haz.wall.do")} `, Sg.armorSign(b.armor ?? 0, t("ITAC.ui.fact.armor"))] } })), ...(facts.hazards?.(bar.combatant, o.enters ?? o.route ?? [o.zone], o.to) ?? [])];      // D57: the spots the way enters (each with its level), else its zones
   const far = opts.filter((o) => !o.here && !o.area && o.zone), byZone = new Map();
   for (const o of far) { if (!byZone.has(o.zone)) byZone.set(o.zone, []); byZone.get(o.zone).push(o); }
   /* what the map offers: every zone one action reaches, in the colour of its cheapest way (blocked ones are shown too, so the reason can be read and the GM asked) */
   const zones = [...byZone].map(([zone, list]) => {
     const can = list.filter((o) => !o.disabled).sort((x, y) => (COST_RANK[x.cost] ?? 9) - (COST_RANK[y.cost] ?? 9) || (x.stress ?? 0) - (y.stress ?? 0) || (x.barriers?.length ?? 0) - (y.barriers?.length ?? 0));
     const best = can[0] ?? list[0], mode = t(`ITAC.mode.${best.mode}`, {}, cap(best.mode));
-    const e = can.length ? { zone, label: shortCost(t, best), tip: `${mode}: ${shortCost(t, best)}`, color: best.barriers?.length ? "danger" : best.stress ? "stress" : "move" }
+    /* U100: the label on the zone, its tip and (on the board) the price in the pick's tooltip as the dock's marks too */
+    const ps = can.length ? Sg.priceSigns(priceOf(t, best.cost, best.stress), { free: true }) : [];
+    const e = can.length ? { zone, label: shortCost(t, best), tip: `${mode}: ${shortCost(t, best)}`, color: best.barriers?.length ? "danger" : best.stress ? "stress" : "move", ...(ps.length ? { signs: { label: ps, tip: [`${mode}: `, ...ps] } } : {}) }
       : { zone, label: "", tip: `${mode}. ${whyLine(whyOf(t, best.disabled, {}, { staff: facts.staff }))}`, color: "blocked", style: "dashed" };
     /* W1 (U32 / U14): the same zone as an entry of the map's move preview: the default way (the cheapest that can be paid) goes with
        one click, its price in words, the zones it enters, what waits on it; `more`: there is another way (a right click lists them) */
-    return board ? { ...e, cost: can.length ? `${mode}: ${priceWords(t, best.cost, best.stress)}` : `${mode}. ${whyText(t, best.disabled)}`, ...(best.route?.length ? { route: best.route } : {}), hazards: can.length ? hazardsOf(best) : [], more: list.length > 1, way: can.length ? best.id : null, ask: can.length ? null : best.id } : e;
+    return board ? { ...e, cost: can.length ? `${mode}: ${priceWords(t, best.cost, best.stress)}` : `${mode}. ${whyText(t, best.disabled)}`, ...(ps.length ? { signs: { ...e.signs, cost: [`${mode}: `, ...ps] } } : {}), ...(best.route?.length ? { route: best.route } : {}), hazards: can.length ? hazardsOf(best) : [], more: list.length > 1, way: can.length ? best.id : null, ask: can.length ? null : best.id } : e;
   });
   if (board) {
     const all = opts.map(row), asked = all.find((r) => r.asking && r.disabled) ?? null, here = opts.filter((o) => o.here || o.area), spot = facts.where?.(bar.combatant) ?? null;
     /* U106: on the GM's own client a refused way carries the GM's "move anyway" itself: the map's menu sends it at once, to the zone the
        token was dragged to (it opened the panel to ask "where to?" again) */
-    const item = (r) => ({ id: r.id, label: r.label, cost: r.cost, hint: r.say.join(" · "), disabled: r.disabled, req: r.req, pv: r.pv, ...(facts.staff && r.disabled ? { gm: askBox(a, bar, r.decl, r.o, null, own, facts, t, "").submit.req } : {}) });
+    const item = (r) => ({ id: r.id, label: r.label, cost: r.cost, hint: r.say.join(" · "), disabled: r.disabled, req: r.req, pv: r.pv,
+      /* U100: the price of a way as the dock's marks in the map's menu, what has no mark in words after it */
+      ...((h) => (h ? { signs: { hint: h } } : {}))(Sg.joined([Sg.priceSigns(priceOf(t, r.cost, r.stress), { free: true }), ...r.notes])),
+      ...(facts.staff && r.disabled ? { gm: askBox(a, bar, r.decl, r.o, null, own, facts, t, "").submit.req } : {}) });
     const ways = {}; for (const [zone, list] of byZone) ways[zone] = list.map((o) => item(all.find((r) => r.id === o.id)));
     /* up, down and off the map have no zone of their own to click: they hang on the zone the character stands in */
     if (here.length && spot) { const z = bare(spot), rows = here.map((o) => item(all.find((r) => r.id === o.id))), can = rows.filter((r) => !r.disabled);
