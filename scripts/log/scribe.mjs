@@ -22,7 +22,7 @@ const S = {
   on: false, hooked: false, states: new Map(), snaps: new Map(),
   co: new CO.Coalescer(), ab: new CO.AbsorbBuffer(), thr: new CO.Throttle(), edits: new C.EditBuffer(),
   direct: [], rollsById: new Map(), delRolls: new Map(), lost: new Set(), runHold: new Map(), recent: new Map(), init: new Map(),
-  dirty: new Set(), gen: new Map(), timer: 0, chain: Promise.resolve(), skew: 0, lease: true, reconcileTimers: new Map(), cid: Math.random().toString(36).slice(2, 10),
+  dirty: new Set(), gen: new Map(), held: new Map(), timer: 0, chain: Promise.resolve(), skew: 0, lease: true, reconcileTimers: new Map(), cid: Math.random().toString(36).slice(2, 10),
   counts: { hooks: 0, drafts: 0, entries: 0, batches: 0, dropped: 0, failures: 0, gaps: 0, starts: 0, refused: 0 }
 };
 export const state = S;
@@ -178,6 +178,7 @@ function undoPatches(all) {
 const RETRY = [2000, 5000, 15000];
 async function write(actorId, g, attempt, gen = S.gen.get(actorId) ?? 0) {
   if ((S.gen.get(actorId) ?? 0) !== gen) return;                // T030 / T034: the log this batch belonged to was deleted meanwhile: it must not open the fresh one
+  if (heldOff(actorId)) return;                                   // FXY (T030 / T034): the log is being deleted right now: nothing is written into it
   const actor = game.actors.get(actorId);
   const st = S.states.get(actorId);
   if (!actor || !st) return;
@@ -198,7 +199,8 @@ async function write(actorId, g, attempt, gen = S.gen.get(actorId) ?? 0) {
   }
 }
 async function persistSnapshot(actor, scope) {
-  if (S.lost.has(actor.id)) return;                               // entries were dropped by the throttle: keep the old snapshot so the next catch-up writes a log.gap
+  if (heldOff(actor.id)) return;                                  // FXY: no snapshot into a log being deleted
+  if (S.lost.has(actor.id)) return;                              // entries were dropped by the throttle: keep the old snapshot so the next catch-up writes a log.gap
   if (pendingFor(actor.id)) { S.dirty.add(actor.id); arm(); return; }
   const cur = snapNow(actor, scope);
   const prev = S.snaps.get(actor.id) ?? {};
@@ -215,6 +217,7 @@ async function baselineActor(actor, scope, startAt = null) {
   const had = Store.actorJournal(actor.id);
   S.lost.delete(actor.id);
   if (had?.flags?.[MOD]?.log?.deletedAt) { try { await Store.flagJournal(actor.id, { "-=deletedAt": null }); } catch (e) { console.warn(`${LOG} could not clear deletedAt`, e); } }
+  if (had?.flags?.[MOD]?.log?.deleting) { try { await Store.flagJournal(actor.id, { "-=deleting": null }); } catch (e) { console.warn(`${LOG} could not clear deleting`, e); } }      // FXY: a deletion that died half way
   const snap = Store.loadSnapshot(actor.id);
   const cur = snapNow(actor, scope);
   if (!had || !snap) {
@@ -274,9 +277,24 @@ export function forget(actorId) {
   S.direct = S.direct.filter((e) => e.actorId !== actorId);
   S.runHold.delete(actorId); S.dirty.delete(actorId); S.recent.delete(actorId);
 }
+/* FXY (T030 / T034 residue): deleteLog marks the public journal `deleting` BEFORE it deletes the pages (store.mjs). From that mark until the
+   journal's deleteJournalEntry the scribe writes nothing for the actor: forget() drops what it held, and a batch or snapshot made in
+   the window (a capture that came meanwhile) is dropped too, so no write lands between the page delete and the journal delete. The
+   mark is let go by the fresh log (rebaseline) or the journal's delete, and by itself after HELD_MS (a deletion that died half way
+   never stops the log for good). */
+export const HELD_MS = 30000;
+function heldOff(actorId) {
+  const at = S.held.get(actorId);
+  if (at === undefined) return false;
+  if (Date.now() - at < HELD_MS) return true;
+  S.held.delete(actorId); return false;
+}
+/** The log of the actor is about to be deleted (this client's remove(), or another GM's deleteLog seen by its `deleting` mark). */
+export function holdLog(actorId) { forget(actorId); S.held.set(actorId, Date.now()); }
 /** After the log of a LIVE actor was deleted from the maintenance window: forget its snapshot and start a fresh log (journal, `log.start` stamped now, snapshot). */
 export async function rebaseline(actorId) {
   if (!S.on) return false;
+  S.held.delete(actorId);                                         // FXY: the deletion is over, the fresh log may be written
   const a = game.actors.get(actorId);
   S.snaps.delete(actorId); S.states.delete(actorId);
   const scope = a ? scopeOf(a) : null;
@@ -293,11 +311,20 @@ const actorOfDoc = (doc) => { const p = doc?.parent; if (p?.documentName === "Ac
 const elig = (actor) => (actor && !actor.isToken && S.states.has(actor.id) ? S.states.get(actor.id) : null);
 
 /** An actor log journal deleted by another client (a second GM's maintenance window): forget its state and snapshot and start a fresh log. Our own remove() forgets first, so it finds no state here. */
-const onDeleteLogJournal = guard("deleteJournal", (j) => {
+const onDeleteLogJournal = guard("deleteJournal", (j, options, userId) => {
   const lg = j?.flags?.[MOD]?.log;
-  if (lg?.kind !== "actor" || !S.states.has(lg.actorId)) return;
+  if (lg?.kind !== "actor") return;
+  const held = S.held.delete(lg.actorId);                         // FXY: the deletion this client held the log for is over
+  if (userId && userId === game.user?.id) return;                 // FXY: our own remove() (maint.mjs) starts the fresh log itself
+  if (!held && !S.states.has(lg.actorId)) return;
   forget(lg.actorId);
   if (game.actors.get(lg.actorId)) rebaseline(lg.actorId).catch((err) => console.warn(`${LOG} rebaseline after log delete failed`, err));
+});
+/** FXY (T030 / T034): another GM's deleteLog marked the journal `deleting`: hold the actor's log from now on (holdLog) */
+const onFlagLogJournal = guard("updateJournal", (j, changes, options, userId) => {
+  const lg = j?.flags?.[MOD]?.log;
+  if (lg?.kind !== "actor" || !changes?.flags?.[MOD]?.log?.deleting || (userId && userId === game.user?.id)) return;
+  holdLog(lg.actorId);
 });
 
 const onUpdateActor = guard("updateActor", (actor, changes, options, userId) => {
@@ -604,7 +631,7 @@ function registerHooks() {
   Hooks.on("createChatMessage", onCreateMessage); Hooks.on("deleteChatMessage", onDeleteMessage);
   Hooks.on("createCombatant", onCreateCombatant); Hooks.on("deleteCombatant", onDeleteCombatant); Hooks.on("updateCombatant", onUpdateCombatant);
   Hooks.on("updateCombat", onUpdateCombat); Hooks.on("deleteCombat", onDeleteCombat);
-  Hooks.on("deleteJournalEntry", onDeleteLogJournal);
+  Hooks.on("deleteJournalEntry", onDeleteLogJournal); Hooks.on("updateJournalEntry", onFlagLogJournal);
   Hooks.on("createActor", onCreateActor); Hooks.on("deleteActor", onDeleteActor);
   Hooks.on("invincible-plus-ultra.tacticsGm", onTactics);
   window.addEventListener("pagehide", () => { if (S.on) tick(true); });

@@ -350,10 +350,15 @@ const endMark = (on) => {
   if (on) { b.setAttribute("aria-busy", "true"); if (sp && endLabel) { endWas = sp.textContent; sp.textContent = endLabel; } }
   else { b.removeAttribute("aria-busy"); if (sp && endWas !== null && sp.textContent === endLabel) sp.textContent = endWas; endWas = null; }
 };
+/* FXY (U178): a press while the last one is still out (held for the dice, or not yet answered) is the same press: it is not sent again
+   (each extra press used to wait too and go after the first, refused as stale with a warning) */
+let endOut = null;
 function endPress(req) {
+  if (endOut) return endOut;
   clearTimeout(endHeldT);
   endHeldT = setTimeout(() => endMark(true), 150);
-  return Promise.resolve(send(req, { endArmed: false })).finally(() => { clearTimeout(endHeldT); endMark(false); });
+  endOut = Promise.resolve(send(req, { endArmed: false })).finally(() => { endOut = null; clearTimeout(endHeldT); endMark(false); });
+  return endOut;
 }
 const CAM_ICON = { action: "fa-clapperboard", turn: "fa-video", off: "fa-video-slash", all: "fa-film" };
 /* W1 (U42): how much the map's camera follows the fight, this user's own switch (turn -> off -> all) */

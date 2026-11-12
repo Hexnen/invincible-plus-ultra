@@ -99,7 +99,7 @@ export async function trim(id, { keep } = {}) {
 export async function remove(id) {
   assertStaff();
   const l = find(id);
-  if (Scribe.isScribe()) { await Scribe.drain(); Scribe.forget(l.actorId); }       // L7-20: from here no in-flight flush may re-create the journal
+  if (Scribe.isScribe()) { await Scribe.drain(); Scribe.holdLog(l.actorId); }       // L7-20: from here no in-flight flush may re-create the journal; FXY: nor a capture made during the deletion
   const gone = await Store.deleteLog(l.actorId);
   let fresh = false;
   if (l.actor && Scribe.isScribe()) fresh = await Scribe.rebaseline(l.actorId).catch(() => false);
