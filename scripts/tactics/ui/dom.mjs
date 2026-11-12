@@ -20,8 +20,11 @@ export function h(sel, props = {}, ...kids) {
   if (cls.length) el.className = cls.join(" ");
   const p = props ?? {};
   if (p.text !== undefined && p.text !== null) { if (hasMarks(p.text) && !RAW.has(tag)) el.append(...rich(p.text)); else el.textContent = String(p.text); }
-  if (p.tip && typeof p.tip === "object") { el.dataset.tooltipHtml = tipHtml(p.tip); if (!p.attrs?.["aria-label"]) el.setAttribute("aria-label", tipText(p.tip)); }
-  else if (p.tip) { el.dataset.tooltip = plain(String(p.tip)); if (!p.text && !p.attrs?.["aria-label"]) el.setAttribute("aria-label", plain(String(p.tip))); }
+  /* S087: Foundry reads data-tooltip as HTML (cleaned, but markup all the same): a word tooltip is escaped, so a name with "<" or "&" reads
+     as it is written; a list of lines (the older news) is one escaped line each, under the other */
+  if (Array.isArray(p.tip)) { if (p.tip.length) el.dataset.tooltip = tipLines(p.tip); }
+  else if (p.tip && typeof p.tip === "object") { el.dataset.tooltipHtml = tipHtml(p.tip); if (!p.attrs?.["aria-label"]) el.setAttribute("aria-label", tipText(p.tip)); }
+  else if (p.tip) { el.dataset.tooltip = esc(plain(String(p.tip))); if (!p.text && !p.attrs?.["aria-label"]) el.setAttribute("aria-label", plain(String(p.tip))); }
   if (p.pv) { el.dataset.pv = "1"; if (p.pv.slot) el.dataset.pvSlot = p.pv.slot; if (p.pv.forfeits) el.dataset.pvForfeits = "1"; if (p.pv.stress) el.dataset.pvStress = String(p.pv.stress); if (p.pvFor) el.dataset.pvFor = String(p.pvFor); }
   if (p.fk) el.dataset.fk = String(p.fk);
   for (const [k, v] of Object.entries(p.attrs ?? {})) if (v !== null && v !== undefined && v !== false) el.setAttribute(k, v === true ? "" : k === "aria-label" || k === "placeholder" ? plain(String(v)) : String(v));
@@ -72,6 +75,8 @@ export function markOf(m, silent = false) {
 }
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
+/** S087: words for a data-tooltip (read as HTML by Foundry): each line escaped, one under the other */
+export const tipLines = (lines) => lines.map((l) => esc(plain(String(l ?? "")))).join("<br>");
 /** a tooltip of the model as HTML (Foundry cleans it again); names of items and characters are escaped here */
 /* U51: a tooltip without a title belongs to something that shows its own name (a row of a list, an answer on a card): it starts with what is not on screen */
 /* U54 / U68: the reason of a greyed thing and what to do about it stand apart from the price, under a dashed line (the look of

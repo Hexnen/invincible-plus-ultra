@@ -37,9 +37,10 @@ function send(req, combat) {
     const nonce = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8);
     let staleTimer = 0;
     const done = (env) => { clearTimeout(timer); clearTimeout(staleTimer); pending.delete(id); resolve(env); };
-    const timer = setTimeout(() => done(R.bad("noGM", { reason: "timeout" })), R.LIMITS.timeout);
+    let timer = setTimeout(() => done(R.bad("noGM", { reason: "timeout" })), R.LIMITS.timeout);
     // a "stale" answer (an older GM tab) is final only when no better one arrives within a moment
-    pending.set(id, { nonce, fn: (env, stale) => { if (stale) staleTimer ||= setTimeout(() => done(env), R.LIMITS.staleWait); else done(env); } });
+    pending.set(id, { nonce, fn: (env, stale) => { if (stale) staleTimer ||= setTimeout(() => done(env), R.LIMITS.staleWait); else done(env); },
+      working: () => { clearTimeout(timer); timer = setTimeout(() => done(R.bad("noGM", { reason: "timeout" })), R.LIMITS.working); } });      // S081: the executor took it: wait for the work, not for a GM
     const msg = R.makeRequest({ id, nonce, mod: modVersion(), combat: combat.id, rev: Store.stateOf(combat)?.rev, req });
     try { game.socket.emit(CHANNEL, msg, { recipients: [game.users.activeGM.id] }); } catch { done(R.bad("relay")); }
   });
@@ -51,6 +52,7 @@ async function onRequest(msg, senderId) {
   const a = R.admit(msg, { senderId: typeof senderId === "string" && game.users.has(senderId) ? senderId : null, user: userOf, hasCombat: (id) => id.length <= 64 && !!Store.combatOf(id), gate, now: Date.now(), seen });
   let env = a.env;
   if (a.ok) {
+    if (a.to) try { game.socket.emit(CHANNEL, R.makeWorking({ id: msg.id, n: msg.n, to: a.to }), { recipients: [a.to] }); } catch { /* the requester waits the short time */ }      // S081
     try { env = await Engine.exec(game.users.get(a.user.id), msg.combat, a.req, { rid: a.rid, via: "relay" }); } catch { env = R.bad("internal"); } finally { gate.release(a.user.id, a.user.staff, R.isRead(a.req)); }
   }
   if (!a.to || !env) return env ?? null;
@@ -79,6 +81,7 @@ function onMessage(msg, senderId) {
     if (!msg || typeof msg !== "object") return;
     if (msg.k === R.KIND.req) onRequest(msg, senderId).catch((err) => console.warn(`${MOD} | tactics relay`, err));
     else if (msg.k === R.KIND.res) { const r = R.acceptReply(msg, { me: game.user.id, pending, senderIsGM: game.users.get(senderId)?.isGM === true }); if (r) pending.get(r.id)?.fn(r.env, r.stale); }
+    else if (msg.k === R.KIND.wip) { const id = R.acceptWorking(msg, { me: game.user.id, pending, senderIsGM: game.users.get(senderId)?.isGM === true }); if (id) pending.get(id)?.working?.(); }
     else if (msg.k === R.KIND.ev) { if (game.users.get(senderId)?.isGM === true && msg.ev && typeof msg.ev === "object") Hooks.callAll(Store.HOOK, msg.ev); }
     else if (msg.k === R.KIND.roll) onRoll(msg, senderId);
   } catch (err) { console.warn(`${MOD} | tactics relay listener`, err); }

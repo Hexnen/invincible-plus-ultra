@@ -6,8 +6,10 @@ import { PLAYER_OPS, GM_OPS, ROUND_PLAYER_OPS } from "./director-pure.mjs";
 import * as O from "./ops-pure.mjs";
 
 export const PROTO = 1;
-export const KIND = Object.freeze({ req: "tcreq", res: "tcres", ev: "tcev", roll: "tcroll" });
-export const LIMITS = Object.freeze({ bytes: 4096, perMin: 90, inFlight: 3, readsPerMin: 180, text: 300, timeout: 8000, staleWait: 900 });   // spec 12.1
+export const KIND = Object.freeze({ req: "tcreq", res: "tcres", ev: "tcev", roll: "tcroll", wip: "tcwip" });
+/* S081: `timeout` is how long a requester waits for the executor to take the request at all (no GM: fail fast, spec 12.1); `working`
+   how long it waits once the executor said it is carrying it out (tcwip): a long animated move or a busy queue is not "no GM". */
+export const LIMITS = Object.freeze({ bytes: 4096, perMin: 90, inFlight: 3, readsPerMin: 180, text: 300, timeout: 8000, staleWait: 900, working: 120000 });   // spec 12.1
 export const RELAY_CODES = Object.freeze([...new Set([...ERROR_CODES, "relay", "noPrev"])]);          // every code either machine or the transport can answer
 const ID_RE = /^[A-Za-z0-9_.-]{1,40}$/;
 const BAD = new Set(["__proto__", "prototype", "constructor"]);
@@ -173,5 +175,13 @@ export function acceptReply(msg, { me, pending, senderIsGM }) {
   const p = pending.get(msg.id);
   if (!p || p.nonce !== msg.n) return null;
   return { id: msg.id, env: wireEnv(msg.env), stale: msg.env?.error?.code === "stale" };
+}
+/** S081: the executor's word that it took the request and is carrying it out (sent before the work, the envelope follows). */
+export const makeWorking = ({ id, n, to }) => ({ k: KIND.wip, id, n, to });
+/** Requester side: is this tcwip about one of my pending requests? The same trust as a reply: a GM sender, the matching nonce. -> the id or null */
+export function acceptWorking(msg, { me, pending, senderIsGM }) {
+  if (!isObj(msg) || msg.k !== KIND.wip || msg.to !== me || !senderIsGM) return null;
+  const p = pending.get(msg.id);
+  return p && p.nonce === msg.n ? msg.id : null;
 }
 export const makeRequest = ({ id, nonce, mod, combat, rev, req }) => ({ k: KIND.req, id, n: nonce, proto: PROTO, mod, combat, rev, req });

@@ -196,7 +196,10 @@ function legality(v, inst) {
       if (!M.hasStatus(v.state, subject, "burning")) return bad("notBurning");
       return other && sameZone(v, inst.actor, subject) === false ? bad("notSameZone") : fine;
     case "escape": return M.hasStatus(v.state, inst.actor, e.effect.from) ? fine : bad("notHeld");
-    case "pickUp": { const it = d.item ? (v.state.items ?? []).find((x) => x.id === d.item) : null; return d.item && (!it || it.state !== "ground") ? bad("noItem") : fine; }
+    case "pickUp": { const it = d.item ? (v.state.items ?? []).find((x) => x.id === d.item) : null;
+      if (d.item && (!it || it.state !== "ground")) return bad("noItem");
+      const at = it?.zone ? v.facts.zone?.(inst.actor)?.spot ?? null : null;                   // S066 [B2316]: an item is picked up where it lies (no map, or an item with no place: the GM judges)
+      return at && at !== it.zone ? bad("noItem", GM) : fine; }      // "nothing to pick up here"
     default: return fine;
   }
 }

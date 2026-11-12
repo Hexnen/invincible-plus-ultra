@@ -37,7 +37,11 @@ function onDown(ev) {
     cur.onPick(b.cid);
   } catch (e) { console.warn(`${Store.MOD} | tactics pick`, e); }
 }
-function mark(tok) { if (plain) return; try { tok.setTarget(true, { releaseOthers: true }); mine.clear(); mine.add(tok); } catch { /* the mark is a courtesy */ } }
+/* S089: Foundry calls the targetToken hook inside setTarget, at once. A mark this surface sets is not a pick of the user's: the click
+   that set it picks by itself (onDown), a mark shown for the dock's own choice (show) was picked there. Counted twice, a pick of
+   several targets put the token in and took it out again. */
+let marking = false;
+function mark(tok) { if (plain) return; marking = true; try { tok.setTarget(true, { releaseOthers: true }); mine.clear(); mine.add(tok); } catch { /* the mark is a courtesy */ } finally { marking = false; } }
 /** U21: the marks this surface set stay only on what is still aimed at: the targets picked in the open panel and those of this user's
     actions in progress. A mark on anybody else (the action was withdrawn, vetoed, undone, or is over) is taken off. `ids` = combatant ids. */
 export function keep(combat, ids = []) {
@@ -70,7 +74,7 @@ export function start(combat, ids, onPick) {
     document.body.classList.add("itd-picking");
     hookId = Hooks.on("targetToken", (user, token, targeted) => {
       try {
-        if (!cur || !targeted || user?.id !== game.user.id) return;
+        if (!cur || !targeted || marking || user?.id !== game.user.id) return;
         const cid = [...cur.ids].find((id) => tokenOf(cur.combat, id) === token);
         if (cid) { mine.add(token); cur.onPick(cid); }
       } catch { /* ignore */ }

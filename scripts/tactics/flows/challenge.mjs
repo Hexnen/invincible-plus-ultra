@@ -9,7 +9,7 @@
                a failure takes the full action of the round [L8]). Side effects the engine has no flow for are GM-run instances.
    The clock [R22] and the "time is up" consequence live in `clock` and `failRun` below; engine-pure.mjs performs what they return.
    state.challenges[cid] = { preset, name, objectives: [{ id, options: [{ attr, minAttr?, power? }] }], effects: [...], ward?, dice, resets, started: { [objective]: 1 }, done? } */
-import { challenge, dice } from "../../rules/index.mjs";
+import { challenge } from "../../rules/index.mjs";
 import * as P1 from "../economy-pure.mjs";
 import * as K from "./kit.mjs";
 
@@ -50,8 +50,8 @@ const attrOf = (v, inst) => optionOf(cfgOf(v.state, inst.decl.targets?.[0]), ins
 /* The pool of an attempt: ONE builder for the roll and for what the dock shows before the declaration (preview). */
 function objectivePool(v, I, tokens) {
   const d = I.decl, attr = attrOf(v, I), cfg = cfgOf(v.state, d.targets?.[0]);
-  const mods = [], hd = (d.helpers ?? []).filter((h) => h.consent === "yes").length;
-  if (hd) mods.push({ source: "help", dice: dice.helpDice(hd) });                          // [B2238]
+  const mods = [], hd = K.helpDiceOf(v, d);
+  if (hd) mods.push({ source: "help", dice: hd });                                         // [B2238], [B2167]: a Supportive helper gives two (S070)
   if (cfg?.dice) mods.push({ source: "ward", dice: Math.trunc(cfg.dice) });                // [B2876]: the ward's cumulative penalty after a reset
   return { attr, ...K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens }) };
 }
@@ -96,7 +96,7 @@ export const objective = {
         I.locked = true; R.events.push({ type: "actionLocked" });                                // spec 5.5
         const bp = objectivePool(v, I, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
-        R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { label: "ITAC.action.objective" }));
+        R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { label: "ITAC.action.objective", noPush: !K.mayPush(v, I.actor) }));      // S068 [B2186], [B2231]
         R.wait = true; return R;
       }
       if (!K.rollFinal(I, "roll")) { R.wait = true; return R; }

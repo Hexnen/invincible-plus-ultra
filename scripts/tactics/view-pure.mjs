@@ -206,6 +206,9 @@ export function journalFor(log, viewer, ctx = {}) {
     (the number would give the hidden one away), and a player's number may change when somebody is revealed. Every text a player reads
     is numbered from the player's own list (the surfaces' context, the journal); the engine's facts hold the GM's numbers and go into
     the GM's texts only. list = [{ id, name, hidden }] -> { id: name } */
+/** S065: a combatant is concealed from the players when its own flag says so OR its token is hidden (the two can differ: the token's
+    sheet or a script hides only the token). Every list a player reads uses this one reading. */
+export const concealed = (cb, token) => cb?.hidden === true || token?.hidden === true;
 export function distinctNames(list) {
   const by = new Map(), out = {};
   for (const x of list ?? []) { const k = String(x.name ?? ""); if (!by.has(k)) by.set(k, []); by.get(k).push(x); }

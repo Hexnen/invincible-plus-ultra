@@ -144,6 +144,7 @@ export const drive = {
     arrive(v, inst) {
       const I = K.draft(inst), R = K.result(I), mv = I.data.mv, here = v.facts.zones?.place(mv.who);
       mv.at = here?.spot ?? mv.at ?? mv.from;
+      if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [mv.who, ...(mv.group ?? [])])) R.effects.push(e); }   // S071 [B2497], [B2392]: who rode off from its pair is no longer of it
       R.events.push(moveEvent(I));
       I.data.result = mv.stop ? "stopped" : "done"; R.goto = "close"; return R;
     },

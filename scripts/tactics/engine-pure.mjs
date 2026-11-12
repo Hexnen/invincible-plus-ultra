@@ -674,10 +674,14 @@ function refusalsOf(X, actor, d) {
   X.state = before;                                                                         // the probe took an id from the counter: given back
   return { reasons: [...new Set(reasons.map((r) => String(r).slice(0, 40)))], waive };
 }
+/* S063: an instance a trigger put on the stack (a start-of-turn effect, a toxin: pushTrigger's "other" item names the character it is
+   about as its actor) is the GM's to run, not the owner's own declaration: the owner may not take it back or reword it. */
+const gmRun = (X, inst) => inst.cause === "trigger" && X.user.staff !== true;
 async function opAmend(X, a) {
   const inst = instOf(X, a.inst);
   if (!inst) return bad("gone");
   if (!inst.actor || !owns(X, inst.actor)) return bad("notOwner");
+  if (gmRun(X, inst)) return bad("notOwner");                                               // S063: what a trigger brought is the GM's to run
   if (inst.locked && !X.user.staff) return bad("locked");                                  // spec 5.5: after the lock only the GM changes it
   const decl = sanitizeDecl({ ...a.decl, action: inst.action }, inst.action, X.user.staff === true);
   /* who helps, helps the action, whatever it is changed into before its dice [B2238]: their full action is spent and stays theirs to
@@ -724,8 +728,10 @@ async function opCancel(X, a) {
   const inst = instOf(X, a.inst);
   if (!inst) return bad("gone");
   if (!inst.actor || !owns(X, inst.actor)) return bad("notOwner");
+  if (gmRun(X, inst)) return bad("notOwner");                                               // S063
   if (!inst.locked || X.user.staff) { await abortInst(X, inst.id, true); return ok(); }     // not locked: removed and refunded
-  if (inst.data.pk?.cancelAsk) return ok({ changed: false });
+  const asked = inst.data.pk?.cancelAsk ? X.state.prompts[inst.data.pk.cancelAsk] : null;
+  if (asked && !asked.answered) return ok({ changed: false });                              // S064: one card at a time; after the GM's "deny" the player may ask again (spec 12.2)
   const I = J.clone(inst);                                                                  // locked: a desk card for the GM (spec 12.2)
   openPrompt(X, I, { key: "cancelAsk", kind: "exception", to: "gm", about: inst.actor, options: [{ id: "cancel", label: "ITAC.opt.cancel" }, { id: "forfeit", label: "ITAC.opt.forfeit" }, { id: "deny", label: "ITAC.opt.deny" }], data: { reason: "cancelLocked" } }, inst.step);
   setInst(X, I);

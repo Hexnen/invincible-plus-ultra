@@ -21,8 +21,8 @@ const attrOf = (v, inst) => v.entry(inst)?.roll?.attr ?? inst.decl.attr ?? null;
 function rollPool(v, I, tokens) {
   const d = I.decl, attr = attrOf(v, I), mods = [];
   if (I.action === "gmRoll" && Number.isFinite(d.mod) && d.mod) mods.push({ source: "gm", dice: Math.trunc(d.mod) });
-  const hd = (d.helpers ?? []).filter((h) => h.consent === "yes").length;
-  if (hd) mods.push({ source: "help", dice: Math.min(3, hd) });                           // [B2238]
+  const hd = K.helpDiceOf(v, d);
+  if (hd) mods.push({ source: "help", dice: hd });                                         // [B2238], [B2167]: a Supportive helper gives two (S070)
   return { attr, ...K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens }) };
 }
 export const roll = {
@@ -52,7 +52,7 @@ export const roll = {
         if ((d.stressTotal ?? 0) > 0) R.effects.push({ t: "stress", who: I.actor, n: d.stressTotal, cost: 1 });
         const bp = rollPool(v, I, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
-        R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { passive: e?.roll?.passive === true || (d.noPush === true || d.noPush === 1), secret: d.secret === true || d.secret === 1, label: e?.label }));   // [B2227]
+        R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { passive: e?.roll?.passive === true || (d.noPush === true || d.noPush === 1), secret: d.secret === true || d.secret === 1, label: e?.label, noPush: !K.mayPush(v, I.actor) }));      // S068 [B2186], [B2231]   // [B2227]
         R.wait = true; return R;
       }
       if (!K.rollFinal(I, "roll")) { R.wait = true; return R; }

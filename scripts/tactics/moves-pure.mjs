@@ -16,6 +16,9 @@ const MOVE_NAMES = { adhesion: "adhesion", burrowing: "burrowing", flight: "flig
   tunneling: "tunneling", untouchablespeed: "untouchableSpeed", teleportallies: "teleportAllies", quickteleport: "quickTeleport", portal: "portal", gliding: "gliding", brachiation: "brachiation" };
 export const NAME_TYPES = Object.freeze(["power", "boost", "limit"]);
 const ALL = { ...MOVE_POWERS, ...MOVE_EXTRAS };
+/** the way of moving each boost or limit belongs to: [B1996] Tunneling, [B2004] Gliding, [B2018] Untouchable Speed, [B2031] Brachiation, [B2038-2040] Teleport Allies, Quick Teleport, Portal */
+export const EXTRA_OF = Object.freeze({ tunneling: "burrowing", gliding: "flight", untouchableSpeed: "superSpeed", brachiation: "swinging", teleportAllies: "teleportation", quickTeleport: "teleportation", portal: "teleportation" });
+const LIMIT_IDS = ["gliding", "brachiation"];
 
 /** the id a movement item is known by: its compendium entry's, else (a power, boost or limit) the entry its English name names */
 export function srcId(it) {
@@ -42,6 +45,8 @@ export function movementOf(items, flagMoves = [], who = "") {
     } catch (err) { note("dropped", "movement", who, it?.name, "", err); }
   }
   for (const m of Array.isArray(flagMoves) ? flagMoves : []) if (typeof m?.mode === "string" && !out.some((x) => x.mode === m.mode)) out.push({ mode: m.mode, tier: m.tier ?? "basic" });
-  const limits = [...extras].filter((x) => x === "gliding" || x === "brachiation");
-  return out.map((m) => ({ ...m, boosts: [...extras].filter((x) => !limits.includes(x)), limits }));
+  /* S078: each boost and limit belongs to ONE way of moving in the book, and changes that one only (Gliding: "only glide with your
+     FLIGHT" [B2004]; Brachiation: SWINGING [B2031]); a hero who also leaps is not held to the glider's ceiling. */
+  const own = (m, x) => EXTRA_OF[x] === m.mode;
+  return out.map((m) => ({ ...m, boosts: [...extras].filter((x) => own(m, x) && !LIMIT_IDS.includes(x)), limits: [...extras].filter((x) => own(m, x) && LIMIT_IDS.includes(x)) }));
 }

@@ -59,7 +59,10 @@ function gate(v, I, R, g) {
   if (g.reason === "ipu.enter") return enterGate(v, I, R, d.spot);
   if (g.reason === "ipu.dark") {                                                                 // [B1654]: an AGILITY roll, no action, to find the way out
     const key = `dark:${d.spot}`;
-    if (!K.rollOf(I, key)) { R.effects.push(K.rollEffect(key, mv.who, "agility", K.buildPool(v, I, key, mv.who, "agility", [], {}).pool, { passive: true, label: "ITAC.roll.dark" })); return "wait"; }
+    /* S073: a driven vehicle is steered out by its driver: the driver's AGILITY with the vehicle's Maneuverability [B2940], as for a spin */
+    const roller = mv.driver ?? mv.who, man = mv.driver ? Number(v.facts.c(mv.who)?.vehicle?.maneuver) || 0 : 0, mods = man ? [{ source: "maneuverability", dice: man }] : [];
+    if (mv.driver && Z?.states && !MP.stateFlags(Z.states(d.spot), mv.driver).dark) { (mv.cleared ??= {})[key] = 1; return "go"; }      // the driver made it: "never affected by your own darkness"
+    if (!K.rollOf(I, key)) { R.effects.push(K.rollEffect(key, roller, "agility", K.buildPool(v, I, key, roller, "agility", mods, {}).pool, { passive: true, label: "ITAC.roll.dark" })); return "wait"; }
     if (!K.rollFinal(I, key)) return "wait";
     if (K.sixesOf(I, key) > 0) { (mv.cleared ??= {})[key] = 1; return "go"; }
     mv.stop = "dark"; return "stop";                                                             // provisional: the move ends in the dark, the action is spent

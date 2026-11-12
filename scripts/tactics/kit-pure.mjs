@@ -166,10 +166,10 @@ export function build(src = {}) {
       if (!row?.mounted) for (const a of attacks) {
         let p = profileOf(it, row, a, lv, attrs, attacks.length > 1);
         if (!p) continue;
-        for (const o of optsOf(it).filter((o) => !o.row.opt.optional && !o.row.opt.on && o.row.opt.patch)) p = patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress }, attrs);
+        for (const o of optsOf(it).filter((o) => !o.row.opt.optional && !o.row.opt.on && o.row.opt.patch)) p = patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch.stress }, attrs);      // S074: a limit that names its price in the patch (Exhausting Blast [B1587]) keeps it
         kit.weapons.push(p);
         let n = 0;
-        for (const o of optsOf(it).filter((o) => o.row.opt.optional && !o.row.opt.on)) kit.weapons.push({ ...patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress }, attrs), id: `${p.id}+${n++}`, tag: String(o.it.name).slice(0, 40) });
+        for (const o of optsOf(it).filter((o) => o.row.opt.optional && !o.row.opt.on)) kit.weapons.push({ ...patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch?.stress }, attrs), id: `${p.id}+${n++}`, tag: String(o.it.name).slice(0, 40) });
         for (const o of row?.opts ?? []) kit.weapons.push({ ...patchProfile(p, { ...o.patch, stress: o.stress }, attrs), id: `${p.id}+${n++}`, opt: o.k });
       }
       if (!row && attacks.length) { rec.state = "auto"; rec.note = "weapon"; }

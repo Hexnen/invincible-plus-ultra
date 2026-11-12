@@ -104,6 +104,12 @@ export function tallyAdd(tally, combatId, news) {
   if (changed) { const keys = Object.keys(out.entries); if (keys.length > TALLY_MAX) for (const k of keys.sort((a, b) => a - b).slice(0, keys.length - TALLY_MAX)) delete out.entries[k]; }
   return out;
 }
+/** S085: a tally read back from this device's storage, or null. It keeps its fight's tag: a tally without one would be taken for the
+    fight that starts next on the same Combat (tallyAdd), and its round and fight cards would count the actions of the fight before. */
+export function tallyOf(raw, combatId) {
+  if (!raw || typeof raw !== "object" || raw.combat !== combatId || !raw.entries || typeof raw.entries !== "object" || Array.isArray(raw.entries)) return null;
+  return { combat: raw.combat, ...(typeof raw.fight === "string" && raw.fight ? { fight: raw.fight } : {}), entries: raw.entries };
+}
 /** per combatant what it did and what was done to it, in `round` (null: the whole fight) -> [{ id, dealt, taken, stress, attacks, hits }] */
 export function totals(tally, round = null) {
   const by = new Map(), row = (id) => { if (!by.has(id)) by.set(id, { id, dealt: 0, taken: 0, stress: 0, attacks: 0, hits: 0 }); return by.get(id); };

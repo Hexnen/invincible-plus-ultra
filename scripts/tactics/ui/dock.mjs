@@ -31,7 +31,7 @@
             Abilities: rows by kind) | something else | hold off | the own action in progress (what it waits for, change / cancel)
    RESTING (not the user's turn, nothing armed, nothing asked): the unit and its slots; the chevron opens the bar to look or to ask for
    an exception. A question addressed to the user always shows, whoever's turn it is. */
-import { h, icon, swap, face, speed, stressChip, markOf, actIcon, tipText, askCard, sumCard, legendCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
+import { h, icon, swap, face, tipLines, speed, stressChip, markOf, actIcon, tipText, askCard, sumCard, legendCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
 import { symMark, costMark, markName, hasMarks, plain } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
 import * as Lay from "./layout-pure.mjs";
 import { setVar, varOf } from "./vars.mjs";
@@ -521,7 +521,7 @@ function draw(d, ui) {
   const wait = d.show && (whoOn || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
     whoOn ? h("span.itd-who", (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
       d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null) : null,
-    d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon(d.news.icon ?? "fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
+    d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon(d.news.icon ?? "fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
       h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null;
   /* U53: one first-fight hint, in its own place at the right end of the top band (or in the questions' place on a narrow band) */
   const hint = d.show && d.hint ? h("div.itd-hint1", { attrs: { role: "note" } }, icon("fa-lightbulb"), h("span", { text: d.hint.text }),
@@ -538,7 +538,7 @@ function draw(d, ui) {
   /* U41: the answer the keyboard chose on a card (Enter sends it) */
   try { const kp = d.keys?.chosen; if (kp) for (const el of root.querySelectorAll(".ita-opt, .ita-submit")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
   /* U51: the news chip's tooltip holds the older lines; the last line joins them only when the chip had to cut it short */
-  try { const nt = root.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = plain([d.news.text, ...d.news.older].join("<br>")); } catch { /* a courtesy */ }
+  try { const nt = root.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = tipLines([d.news.text, ...d.news.older]); } catch { /* a courtesy */ }
   drawn++;      // perf P2-1: new content: the placement is done in full
   place();
   reveal();

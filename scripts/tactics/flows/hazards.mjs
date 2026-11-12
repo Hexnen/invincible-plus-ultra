@@ -85,7 +85,9 @@ export const blast = {
     damage(v, inst) {
       const I = K.draft(inst), R = K.result(I), h = hzOf(I), faces = I.data.res.blast, sixes = Number.isFinite(I.data.forced?.sixes) ? I.data.forced.sixes : sixesIn(faces);
       const src = typeof h.source === "string" ? h.source : "kinetic", tags = M.damageTags({ source: src, cause: "hazard" });
-      const rows = I.decl.targets.map((t) => { const tf = v.facts.c(t); return { id: t, dodgeSixes: I.data.def?.[t] === "dodge" ? K.sixesOf(I, `def:${t}`) : 0, armor: I.data.forced?.damage?.[t]?.armor ?? damage.selectArmor(tf.armor ?? [], { source: src }).armor,
+      /* S067: a Barrier is an Armor of the character like any other [B1859], [B2682], [R13]: the best one counts, and one that damage gets
+         through is gone (as after a hit of the attack flow). The GM's own Armor number leaves the Barrier out of it. */
+      const rows = I.decl.targets.map((t) => { const tf = v.facts.c(t), forcedArmor = I.data.forced?.damage?.[t]?.armor, ar = forcedArmor == null ? damage.selectArmor([...(tf.armor ?? []), ...K.barriersOf(v.state, t)], { source: src }) : null; return { id: t, dodgeSixes: I.data.def?.[t] === "dodge" ? K.sixesOf(I, `def:${t}`) : 0, armor: forcedArmor ?? ar.armor, barrier: ar?.source?.barrier ? ar.source : null,
         vulnerable: (tf.vulnerabilities ?? []).includes(src), immune: immuneTo(tf, src) }; });                 // [B2193], [B1877-1880]: one reading with damage.hitDamage
       let out;
       if (h.kind === "blast") out = hazards.blastOutcome({ rating: h.rating, sixes, targets: rows }, dice.seededRng(faces.reduce((a, f) => a * 7 + f, 1 + v.state.round)));       // [B2921-2923]: the dice themselves decide who gets the extra sixes
@@ -96,6 +98,7 @@ export const blast = {
         if (I.data.dmg[o.id]) continue;                                                           // the step comes back after a card of the GM
         const tf = v.facts.c(o.id), forced = I.data.forced?.damage?.[o.id], row = rows.find((r) => r.id === o.id);
         let taken = Number.isFinite(forced?.amount) ? forced.amount : o.taken;
+        if (damage.barrierBreached(row.barrier, taken) && !K.flag(I, `breach:${o.id}`)) { K.setFlag(I, `breach:${o.id}`); for (const x of M.effectEndWrites(v.state, row.barrier.id)) R.effects.push({ t: "state", path: x.path, to: x.to }); }      // S067 [B1859], [R13]: a breached Barrier is gone
         if (tf.kind === "minions" && !Number.isFinite(forced?.amount) && taken > 0) {             // [OQ-1]: a blast takes several at once, as an area attack does: the GM's number
           const ml = K.minionLoss(v, I, R, o.id, taken);
           if (ml.wait) { waiting = true; continue; }

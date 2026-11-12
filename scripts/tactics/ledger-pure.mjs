@@ -155,7 +155,7 @@ export function pay(L0, req, data = {}) {
   if (data.slot) e.slot = data.slot;
   if (req.turnOf ?? data.onTurnOf) e.onTurnOf = req.turnOf ?? data.onTurnOf;
   if (!req.onTurn && req.cost === "quick" && req.interrupt) e.interrupt = 1;
-  if (req.onTurn) { e.own = 1; e.turnNo = L.turnNo; }
+  if (req.onTurn && !L.extra) { e.own = 1; e.turnNo = L.turnNo; }                      // S076: a commanded or inserted turn is not "your turn" (turnStart): its entries count for the round only
   if (req.force) e.forced = 1;
   const stress = (chk.pay.stress ?? 0) + (Number(data.stress) > 0 ? Number(data.stress) : 0);
   if (stress > 0) e.stress = stress;

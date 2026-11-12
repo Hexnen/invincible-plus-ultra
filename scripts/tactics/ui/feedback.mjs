@@ -29,7 +29,7 @@ const setting = (key, fallback) => Store.setting(key, fallback);
 
 /* ---------- U57: the summary ---------- */
 function loadTally(combatId) {
-  try { const raw = JSON.parse(globalThis.localStorage?.getItem(SUM_KEY) ?? "null"); return raw && raw.combat === combatId && raw.entries && typeof raw.entries === "object" ? { combat: raw.combat, entries: raw.entries } : null; } catch { return null; }
+  try { return FP.tallyOf(JSON.parse(globalThis.localStorage?.getItem(SUM_KEY) ?? "null"), combatId); } catch { return null; }      // S085: with its fight's tag
 }
 /* D131: the fights whose summary this device already showed (feedback-pure.fightOver) */
 let doneMem = null;      // read once per page, written through
