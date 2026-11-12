@@ -460,6 +460,8 @@ function panel(p) {
     h("footer.itd-pfoot", {},
       h("div.itd-how", {}, p.commands.map((c) => h("button.itd-mini", { fk: `cmd:${c.id}`, tip: c.label, attrs: { "aria-label": c.label }, on: { click: () => (c.amend ? handlers.amend?.(p) : c.req && send(c.req)) } }, icon(CMD_ICON[c.id] ?? "fa-circle")))),
       p.status ? h("p.itd-status", {}, hasMarks(p.status) ? null : icon(p.rolling ? "fa-dice" : "fa-hourglass-half"), h("span", { text: p.status })) : null,
+      /* UXB (U146): what the defence threw stands before the attacker's own roll, so a miss explains itself */
+      p.opp?.length ? h("div.itd-opp", { attrs: { role: "status" } }, p.opp.map((o) => h("span.ita-roll", { data: { state: "opp" } }, icon("fa-shield-halved"), h("span.ita-roll-t", { text: o.text })))) : null,
       p.rolls.length ? h("div.itd-myrolls", { attrs: { role: "status" } }, p.rolls.map((r) => rollChip({ ...r, buttons: [...(r.buttons ?? [])].sort((x, y) => (y.id === "push") - (x.id === "push")) }, { roll: handlers.roll, send: (req) => send(req) }))) : null));      // Accept (or Roll) last, where Declare stood; Push before it
 }
 

@@ -79,10 +79,13 @@ export const symMark = (kind, o = {}) => toEl(symMarkHtml(kind, o));
 
 /* ---- a mark inside a sentence: [[kind]] or [[kind:n]] ---- */
 const TOKEN = /\[\[([a-z]+)(?::([^\]\[]{0,12}))?\]\]/g;
-const tokenHtml = (kind, n, name) => (kind === "stress" ? stressMarkHtml(n, { name }) : SYM_KINDS.includes(kind) ? symMarkHtml(kind, { n, name }) : KIND(kind) ? costMarkHtml(kind, { name }) : "");
+/* UXB (U156): "[[odds:3]]" is the chance's sign (the one on a target's token, kit-signs-pure.mjs oddsKind) set before the band's word, so
+   the GM's card, a player's card and the token show the same sign; the word beside it says it, so the sign itself is silent */
+const oddsHtml = (n) => { const k = P.oddsKind(Number(n) - 1); return k ? `<i class="ipu-cost ipu-k-${k} ipu-odds-in" aria-hidden="true"></i>` : ""; };
+const tokenHtml = (kind, n, name) => (kind === "odds" ? oddsHtml(n) : kind === "stress" ? stressMarkHtml(n, { name }) : SYM_KINDS.includes(kind) ? symMarkHtml(kind, { n, name }) : KIND(kind) ? costMarkHtml(kind, { name }) : "");
 export const hasMarks = (text) => typeof text === "string" && text.includes("[[");
-/** the sentence as words: every token says its name ("Dice: 6") */
-export const plain = (text, lang) => String(text ?? "").replace(TOKEN, (m, k, n) => (tokenHtml(k, n, null) ? markSay(k, n ?? null, lang) : m));
+/** the sentence as words: every token says its name ("Dice: 6"); the chance's sign says nothing (its word follows it) */
+export const plain = (text, lang) => String(text ?? "").replace(/\[\[odds:[^\]\[]{0,12}\]\] ?/g, "").replace(TOKEN, (m, k, n) => (tokenHtml(k, n, null) ? markSay(k, n ?? null, lang) : m));
 /** the sentence as escaped HTML, its tokens drawn; each mark names itself (tooltip, screen reader) unless `silent` */
 export function richHtml(text, { silent = false } = {}) {
   const s = String(text ?? ""); let out = "", at = 0;

@@ -26,7 +26,7 @@
 .its-slot[data-slot="line"] .itd-wait { flex-wrap: nowrap; overflow: hidden; max-width: 100%; align-self: stretch; justify-content: space-between; gap: 8px; padding: 0; background: none; pointer-events: none; }
 .its-slot[data-slot="line"] .itd-wait > * { pointer-events: auto; }
 .its-slot[data-slot="line"] .itd-who { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: 4px 7px; padding: 2px 9px 3px; overflow: hidden; background: rgba(12, 26, 46, .92); }
-.its-slot[data-slot="line"] .itd-news { min-width: 0; margin-left: auto; background: rgba(12, 26, 46, .92); }
+.its-slot[data-slot="line"] .itd-news { min-width: 0; max-width: 100%; margin-left: auto; background: rgba(12, 26, 46, .92); }      /* UXB (U141): the news may take the whole free end of the row (was cut at 560 px) */
 
 /* the first-fight hint in its own place: no tick (nothing under it to point at) */
 #invincible-tactics-dock .its-slot[data-slot="hint"] .itd-hint1 { max-width: 100%; }

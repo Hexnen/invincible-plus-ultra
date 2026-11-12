@@ -107,7 +107,25 @@ export const PUSHFAIL = ['NOPE!', 'CRACK!', 'SO CLOSE!', 'NOT TODAY!', 'ALMOST!'
 export const WRECK = ['WRECK!', 'RUIN!', 'KRAKOOM!', 'DEMOLISH!'];
 export const ODDS = [[0.10, 'NOT BAD!'], [0.22, 'LUCKY BREAK!'], [0.34, 'AGAINST THE ODDS!'], [0.46, 'UNLIKELY HERO!'],
   [0.58, 'NO WAY!'], [0.70, 'IMPOSSIBLE!'], [0.82, 'ONCE IN A LIFETIME!'], [0.92, 'THE ODDS ARE SHATTERED!']];
-export function oddsText(P) { let t = null; for (const o of ODDS) if (P >= o[0]) t = o[1]; return t; }
+export function oddsText(P) { let t = null; for (const o of ODDS) if (P >= o[0]) t = o[1]; return say(t); }
+/* UXB (D129): zdania wstęgi (szansa, pudło) i notki stresu mówią coś o wyniku, więc NIE są słowami-SFX: idą w języku stołu
+   (INSPLASH.Say.*, main.mjs applyLabels). Słowa dźwiękowe (WHAM!, ZOOM!, YIKES!, STRAIN!...) i napis SIXES zostają angielskie. */
+export const SAYS = Object.freeze({ 'NOT BAD!': 'NotBad', 'LUCKY BREAK!': 'LuckyBreak', 'AGAINST THE ODDS!': 'AgainstOdds', 'UNLIKELY HERO!': 'UnlikelyHero',
+  'NO WAY!': 'NoWay', 'IMPOSSIBLE!': 'Impossible', 'ONCE IN A LIFETIME!': 'OnceInLifetime', 'THE ODDS ARE SHATTERED!': 'OddsShattered',
+  'UNLUCKY!': 'Unlucky', 'WHAT A FLOP!': 'Flop', 'BREAKING POINT!': 'BreakingPoint', 'ON THE EDGE!': 'OnEdge', 'FEELING THE STRAIN': 'Strain',
+  'SHAKEN': 'Shaken', 'SHRUGS IT OFF': 'ShrugsOff' });
+/* UXB (U151): w walce taktycznej słowo sukcesu rzutu ataku czeka na werdykt wymiany (trafił czy obrona go zatrzymała), a słowo
+   obrony gra tylko, gdy obrona utrzymała. tag = message.rolls[0].options.tactics ({ inst, key }); pudło (0 szóstek) gra od razu.
+   -> null (gra jak zawsze) | { inst, target, want } : gra, gdy werdykt === want */
+export function holdFor(tag, ev) {
+  if (!tag || typeof tag !== 'object' || typeof tag.inst !== 'string' || !tag.inst || !ev || ev.fail) return null;
+  const key = String(tag.key ?? '');
+  if (key === 'attack') return { inst: tag.inst, target: null, want: true };
+  const m = /^def:(.+)$/.exec(key);
+  return m ? { inst: tag.inst, target: m[1], want: false } : null;
+}
+export const playsAfter = (hold, verdict) => !hold || verdict === hold.want;
+export function say(w) { const k = w ? SAYS[w] : null; return (k && LBL.words?.[k]) || w; }
 
 export function fmtOdds(n) {
   if (!Number.isFinite(n) || n >= 999.5e9) return '1T+';   // ogromne pule: bez zapisu wykładniczego ("1e+79")
@@ -123,7 +141,8 @@ export const LBL = {
   miss: n => '1 IN ' + n + ' TO MISS',
   push: 'PUSH',
   stress: n => 'STRESS +' + n,
-  resolve: (now, max) => 'RESOLVE ' + now + ' / ' + max
+  resolve: (now, max) => 'RESOLVE ' + now + ' / ' + max,
+  words: {}                                   // UXB (D129): SAYS -> słowo w języku stołu
 };
 export function setLabels(o) { for (const k of Object.keys(o || {})) if (k in LBL && o[k] != null) LBL[k] = o[k]; }
 

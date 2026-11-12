@@ -616,7 +616,9 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
     await H.roll("attack", 2);
     await settle(H);
     const v = pv(H, "p2", ["H2"]);
-    eq([H.state.stack.length, H.state.news.length, v.news, /N1/.test(JSON.stringify(v.news))], [0, 1, [], false], "U10: the news of a hidden attacker stays with the GM");
+    /* UXB (U141): the player whose character was hit is told THAT it was hit, by someone unseen (never who, never the action) */
+    eq([H.state.stack.length, H.state.news.length, v.news.length, v.news[0]?.unseen, v.news[0]?.actor, v.news[0]?.action, /N1|hidA|hidT/.test(JSON.stringify(v.news))], [0, 1, 1, 1, undefined, undefined, false], "U10 / U141: the news of a hidden attacker names no attacker; the hit character's player is told it was hit");
+    eq(pv(H, "p1", ["H1"]).news, [], "U10: a player whose character was not hit is told nothing of a hidden attacker");
     const O = base(); O.turn("N1"); await O.gm(slug("N1", "H2"));
     eq([O.prompt("reaction", "H2").data.attacker, Object.keys(pv(O, "p2", ["H2"]).prompts[O.prompt("reaction", "H2").id].data.odds ?? {}).sort()], ["N1", ["block", "open"]], "U11: the defender's card carries the attacker and a band per answer");
     await O.answer("p2", "reaction", "pass", "H2");

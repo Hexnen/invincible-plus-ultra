@@ -249,11 +249,21 @@ function pushNews(X, n) {
 /* D123: the engine's own damage (kind "fixed") is named by what dealt it: a barrier or a wall, a fall, a vehicle, a chase; a GM trigger
    of that kind has none and reads "Damage" */
 const HZ_CAUSES = ["barrier", "fall", "vehicle", "chase"];
+/* UXB (U141 / U146): a line says what an action came to in full: minions that fell (`out`), a character it put out of action (`down`), the
+   defence that turned it into a miss (`def`); a counterattack is named as one (`counter`), and `inst` / `parent` let the surface tell
+   the counter that answered an attack together with that attack (ui/news-pure.mjs) */
+function newsRow(I, t) {
+  const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
+  const atk = I.rolls?.attack, six = Number(atk?.forced?.sixes ?? atk?.sixes) || 0, df = I.data?.def?.[t]?.defence;
+  return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.tags?.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}),
+    ...(dm?.minions?.removed > 0 ? { out: dm.minions.removed } : dm?.newlyBroken && !dm.minions ? { down: 1 } : {}),
+    ...(o && !o.hit && !o.forced && six > 0 && (df === "block" || df === "dodge") ? { def: df } : {}) };
+}
 function newsOf(I) {
-  const rows = (I.decl?.targets ?? []).map((t) => { const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
-    return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.tags?.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}) }; });
+  const rows = (I.decl?.targets ?? []).map((t) => newsRow(I, t));
   const fx = isObj(I.data?.challengeFx) ? I.data.challengeFx : null, note = fx && typeof I.data?.manual?.note === "string" && I.data.manual.note.trim() ? I.data.manual.note.trim().slice(0, 300) : null;
-  return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
+  return { kind: "action", tx: I.tx ?? null, inst: I.id, ...(I.parent ? { parent: I.parent } : {}), ...(I.data?.kind === "counterattack" ? { counter: 1 } : {}),
+    actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
     ...(I.data?.hazard?.kind === "fixed" && HZ_CAUSES.includes(I.data.hazard.id) ? { hzCause: I.data.hazard.id } : {}),      // D123: what dealt the engine's own damage
     ...(fx ? { fx: { challenge: fx.challenge, kind: fx.kind }, ...(note ? { note } : {}) } : {}),        // U110: what a failed challenge did, and the GM's words about it
     result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows, ...reactsOf(I) };
@@ -270,6 +280,9 @@ const reactWhat = (r) => (r.name ? String(r.name).replace(/[{}]/g, "") : typeof 
    is marked `hid` when it is written: view-pure keeps it from the players for good, also after the GM reveals that combatant (the
    reveal shows who is there now, not what was done unseen; question A9F-2). Its own player still reads it. */
 const hiddenNow = (X, I) => { try { return [I.actor, ...(I.decl?.targets ?? [])].some((c) => typeof c === "string" && X.facts.c(c)?.hidden === true); } catch { return false; } };
+/* UXB (U141): who was hidden when it was written: `hidA` the doer, `hidT` the targets. A target's own player is then told what was done to
+   that character by "somebody unseen" (view-pure: no doer, no action, no power name), as the attack's own card told it */
+const hiddenWho = (X, I) => { try { const hs = (I.decl?.targets ?? []).filter((c) => typeof c === "string" && X.facts.c(c)?.hidden === true); return { ...(I.actor && X.facts.c(I.actor)?.hidden === true ? { hidA: 1 } : {}), ...(hs.length ? { hidT: hs.slice(0, 12) } : {}) }; } catch { return {}; } };
 /* D32 / D33: a public journal line does not carry a name. It carries the mark `{c:<id>}` and the list `who` of the combatants it is about
    (the doer, and the targets, whom it does not name), so each reader gets the name as THAT reader knows it (namesake numbers never count
    somebody hidden from a player, ruling U5-7) and no line about somebody concealed from that reader (view-pure.journalFor).
@@ -325,7 +338,7 @@ async function closeInst(X, I, result = null) {
   dropPrompts(X, (p) => p.inst === I.id);
   X.state = { ...X.state, stack: X.state.stack.filter((i) => i.id !== I.id) };
   if (!I.part) closeTx(X, I.tx, label(X, I, I.data.result));
-  if (!I.part && I.status !== "aborted" && !I.data?.free) pushNews(X, { ...newsOf(I), ...(hiddenNow(X, I) ? { hid: 1 } : {}) });
+  if (!I.part && I.status !== "aborted" && !I.data?.free) pushNews(X, { ...newsOf(I), ...(hiddenNow(X, I) ? { hid: 1, ...hiddenWho(X, I) } : {}) });
   emit(X, I, { type: "actionClosed", summary: { result: I.data.result ?? null, status: I.status }, tx: I.part ? null : I.tx });
   const parent = I.parent ? instOf(X, I.parent) : null;
   if (!parent) return;

@@ -135,6 +135,8 @@
 :where(.ipu-odds-plate) { flex: none; box-sizing: border-box; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1.5px solid var(--ipu-target); border-radius: 6px; background: var(--ipu-plate); color: var(--ipu-yellow); vertical-align: middle; }
 :where(.ipu-odds-plate) > :where(.ipu-cost) { height: 16px; vertical-align: 0; }
 :where(.ipu-odds-plate[role="img"]) { cursor: help; }
+/* UXB (U156): the same sign inside a sentence, before the band's word ("attack lands: ^ likely"): the text's colour, a touch taller than a cost mark */
+:where(.ipu-odds-in) { height: calc(var(--ipu-cost-h) * 1.2); margin-inline-end: 1px; vertical-align: -1px; }
 @media (forced-colors: active) { :where(.ipu-odds-plate) { border-color: CanvasText; background: Canvas; } }
 /* stress: the mark and its number on the colour of Resolve (the bar it is taken from), framed like every chip that states a price */
 :where(.ipu-stress) { flex: none; display: inline-flex; align-items: center; gap: 2px; height: 15px; padding: 0 3px 0 2px; font: 400 11px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; color: var(--ipu-ink); background: var(--ipu-cyan-lt); border: 1px solid var(--ipu-ink); }

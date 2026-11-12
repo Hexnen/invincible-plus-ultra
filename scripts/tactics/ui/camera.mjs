@@ -106,6 +106,8 @@ function queueShot(ev, s, c, combat) {
 const heard = new Set();
 function onEvent(ev) {
   try {
+    /* UXB (U151): what an exchange came to goes to the splash's moment whatever this camera does (on, off, another fight's view) */
+    if (ev && ev.type === "outcome" && typeof ev.hit === "boolean" && ev.inst) Moment.told(ev.inst, typeof ev.target === "string" ? ev.target : null, ev.hit);
     if (!started || !on || !was || !ev || typeof ev !== "object" || ev.combat !== key) return;
     const k = `${ev.combat}|${ev.fight ?? ""}|${ev.seq ?? ""}|${ev.type ?? ""}|${typeof ev.target === "string" ? ev.target : ev.target?.combatant ?? ""}`;
     if (heard.has(k)) return;
@@ -158,6 +160,7 @@ export function start() {
   try {
     if (started) return ready();
     started = true;
+    Moment.listen();
     Hooks.on(Store.HOOK, onEvent);
     Hooks.on(Store.HOOK_GM, onEvent);
     return ready();

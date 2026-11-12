@@ -3,7 +3,7 @@
    - MOD  = this module's id: settings live here (keys prefixed "splash", e.g. splashEnabled) and so does the module api.
    - FLAG = the OLD standalone module's id, kept ONLY as the flag namespace of message flags (flags['invincible-splash'].ev) and actor flags
             (flags['invincible-splash'].state), so rolls and heroes saved by the standalone module keep working. Do not rename it. */
-import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fmtOdds, oddsText, oddsLabel, LBL, setLabels, ACTIONS, FAIL, SOFTFAIL, PUSHFAIL, PUSHPRE, WRECK, SHAPE_RANGE } from './logic.mjs';
+import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fmtOdds, oddsText, oddsLabel, LBL, setLabels, SAYS, holdFor, playsAfter, ACTIONS, FAIL, SOFTFAIL, PUSHFAIL, PUSHPRE, WRECK, SHAPE_RANGE } from './logic.mjs';
 import { readRoll, classify, heroSpeaker, publicResolve } from './reader.mjs';
 import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
@@ -78,7 +78,8 @@ function registerSettings() {
 }
 
 /* Etykiety informacyjne plakietek (szansa, stres, Resolve) z INSPLASH.Badge.*; brak klucza = angielski domyślnik z logic.mjs.
-   Słowa-SFX (HAYMAKER!, UNLIKELY HERO!, SHAKEN...) i napis SIXES zostają angielskie (decyzja projektu). */
+   Słowa-SFX (HAYMAKER!, WHAM!...) i napis SIXES zostają angielskie (decyzja projektu); zdania wstęgi i notki stresu (UNLIKELY HERO!,
+   SHAKEN...) idą w języku stołu z INSPLASH.Say.* (UXB, D129: to nie dźwięki, mówią coś o wyniku). */
 function applyLabels() {
   try {
     const has = k => game.i18n.has(k), F = (k, d) => game.i18n.format(k, d), o = {};
@@ -87,6 +88,7 @@ function applyLabels() {
     if (has('INSPLASH.Badge.Push')) o.push = game.i18n.localize('INSPLASH.Badge.Push');
     if (has('INSPLASH.Badge.Stress')) o.stress = n => F('INSPLASH.Badge.Stress', { n });
     if (has('INSPLASH.Badge.Resolve')) o.resolve = (now, max) => F('INSPLASH.Badge.Resolve', { now, max });
+    o.words = Object.fromEntries(Object.values(SAYS).filter(k => has('INSPLASH.Say.' + k)).map(k => [k, game.i18n.localize('INSPLASH.Say.' + k)]));      // UXB (D129)
     setLabels(o);
   } catch (e) { /* zostają domyślne angielskie etykiety */ }
 }
@@ -321,6 +323,13 @@ hook('createChatMessage', async (message, options, userId) => {
 
     const ev = eventFor(message, readRoll(message) ?? rd);
     await sleep(ev.stress && !ev.pushed ? 350 : 0);   // dajmy systemowi odjąć Resolve przed odczytem
+    /* UXB (U151): "WHAM!" ataku dopiero, gdy wiadomo, że trafił (obrona mogła go zatrzymać); słowo obrony tylko, gdy utrzymała */
+    const hold = Moment.listens() ? holdFor(message.rolls?.[0]?.options?.tactics, ev) : null;
+    if (hold) {
+      const v = await Moment.verdict(hold.inst, { target: hold.target, cap: 20000 });
+      if (!playsAfter(hold, v)) return dbg('skip: werdykt wymiany', hold.inst, v);
+      if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
+    }
     /* U125 (e): jedna chwila z kamerą akcji. Gdy ujęcie wyniku (trafienie, pudło, nokaut) dla tokenów tego rzutu jest w drodze,
        splash wyskakuje, gdy cios ląduje na ekranie (błysk i wstrząs), nie wcześniej; najwyżej 1,6 s czekania. Poza walką taktyczną: od razu. */
     const waited = await Moment.landing(speakerTokens(message), { wait: Moment.isActive() ? 250 : 0, cap: 1600 });
@@ -370,7 +379,7 @@ hook('renderChatMessageHTML', (message, html) => {
     let word, odds, tag = ev.tag, P;
     if (ev.fail) {
       if (ev.softFail || ev.pushed || ev.failP == null || ev.failP > 0.2) return;
-      word = 'WHAT A FLOP!'; odds = LBL.miss(fmtOdds(Math.round(1 / ev.failP))); P = 0;
+      word = LBL.words?.Flop || 'WHAT A FLOP!'; odds = LBL.miss(fmtOdds(Math.round(1 / ev.failP))); P = 0;
     } else {
       P = ev.power;
       const label = oddsText(P);

@@ -192,6 +192,8 @@ export function playerModel(view, viewer, ctx = {}) {
   const stack = (view.stack ?? []).map((i) => (i.masked ? { inst: i.id, masked: true, status: i.status } : instLine(i, ctx, view)));
   const mine = (view.stack ?? []).filter((i) => !i.masked && owns.includes(i.actor)).map((i) => ({ ...instLine(i, ctx, view),
     rolls: Object.values(i.rolls ?? {}).filter((r) => r.req?.users?.includes(viewer.id) && r.sixes == null && !r.forced).map((r) => ({ key: r.key, rid: r.req.rid, dice: r.req.dice, attr: r.attr, maxPush: r.req.maxPush })),
+    /* UXB (U146): what each defence against this user's own attack threw (its sixes, public as its dice were; never the defender's pool) */
+    opp: Object.values(i.rolls ?? {}).filter((r) => /^def:/.test(String(r.key)) && (r.sixes != null || r.forced) && ctx.c?.(r.who)).map((r) => ({ who: r.who, name: nameOf(ctx, r.who), sixes: r.forced?.sixes ?? r.sixes, defence: i.data?.def?.[r.who]?.defence ?? null, ...(typeof i.data?.out?.[r.who]?.hit === "boolean" ? { hit: i.data.out[r.who].hit } : {}) })),
     commands: [...(i.locked ? [] : [{ id: "amend", label: "ITAC.cmd.amend", needs: "decl", req: (decl) => ({ op: "amend", inst: i.id, decl }) }]), { id: "cancel", label: i.locked ? "ITAC.cmd.cancelAsk" : "ITAC.cmd.cancel", req: { op: "cancel", inst: i.id } }] }));
   const helpable = (view.stack ?? []).filter((i) => !i.masked && !i.locked && i.actor && !owns.includes(i.actor)).flatMap((i) => owns.map((h) => ({ inst: i.id, helper: h, req: { op: "help", inst: i.id, helper: h } })));
   /* U1 / U2: every roll this user owes or may still push, in anybody's action (a defence is rolled inside the attacker's) */
