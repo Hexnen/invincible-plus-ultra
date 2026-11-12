@@ -9,14 +9,18 @@
                attack miss that target; "allySwap" (Discretion [B2108]): the target rolls the entry's attribute and on a success an ally of its zone
                is attacked instead; "warn" (Warning Call [B2170]): the warned one blocks or dodges without an action of its own, with two more dice;
                "note": what the engine cannot do; the GM gets a card to settle it by hand and the attack waits for it (D113: it used to be a note
-               nobody was shown). Which powers and talents give which of these is P6 data. */
+               nobody was shown). Which powers and talents give which of these is P6 data.
+               PWB: "moveAway" (Untouchable Speed [B2018], Quick Teleport [B2039]): the target moves away at once with that way of moving,
+               and the attack misses it if it no longer reaches; "guide" (Guidance [B1709]): a PRESENCE roll, and on a success the one it is
+               given for blocks or dodges without an action. An "action" answer may name what it is made with (`weapon`) and the kind of
+               attack it answers (`vs`), kit-pure reactionOf. */
 import * as M from "./mods-pure.mjs";
 import { conditions } from "../rules/index.mjs";
 import { ACTIONS } from "./actions-pure.mjs";
 
 export const WINDOWS = Object.freeze(["beforeRoll", "afterRoll", "afterDamage"]);
 export const FLOWS = Object.freeze(["attack", "move", "roll", "opposed", "composite", "hazard", "challenge", "chase", "plain", "other", "barrier", "fastball", "release", "act"]);
-export const REACTION_EFFECTS = Object.freeze(["defence", "action", "swapTarget", "autoMiss", "allySwap", "warn", "note"]);
+export const REACTION_EFFECTS = Object.freeze(["defence", "action", "swapTarget", "autoMiss", "allySwap", "warn", "note", "moveAway", "guide"]);
 /** U91: where the book lets a reaction be taken. "targetZone": the reactor stands in the zone of the attacked character (Guardian [B2115]);
     "allyZone": an ally stands in the reactor's own zone (Discretion [B2108]). `reaction.roll: "attack"`: the reactor first rolls FIGHTING
     against a slugfest attack, AGILITY against shooting, and the reaction works only on a success [B2115]. Read by flows/kit.reactionFit. */

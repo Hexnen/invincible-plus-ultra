@@ -298,7 +298,7 @@ function newsOf(I) {
 }
 /* D113: what the reactions of the table's eyes came to (Discretion, Warning Call, Guardian, one the GM settled by hand): told with the result, so a
    price paid is never paid in silence. { reacts: [{ who, effect, result, about?, name?, label?, note? }] } | {} */
-const REACT_RESULTS = ["moved", "failed", "card", "dice", "byHand", "noAlly", "noTarget", "took"];      // U125 (d): "took" = a guardian took the hit for `about`
+const REACT_RESULTS = ["moved", "failed", "card", "dice", "byHand", "noAlly", "noTarget", "took", "guided", "away", "inReach"];      // PWB: Guidance [B1709], an interrupt move [B2018], [B2039]      // U125 (d): "took" = a guardian took the hit for `about`
 function reactsOf(I) {
   const list = (I.data?.reacted ?? []).filter((r) => isObj(r) && P1.isId(r.who) && REACT_RESULTS.includes(r.result)).slice(0, 8);
   return list.length ? { reacts: list.map((r) => ({ who: r.who, effect: r.effect, result: r.result, ...(P1.isId(r.about) ? { about: r.about } : {}), ...(r.name ? { name: String(r.name).slice(0, 80) } : {}), ...(typeof r.label === "string" && r.label.startsWith("ITAC.") ? { label: r.label.slice(0, 80) } : {}), ...(r.note ? { note: String(r.note).slice(0, 200) } : {}) })) } : {};

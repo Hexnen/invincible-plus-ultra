@@ -95,6 +95,7 @@ function profileOf(item, row, a, lv, attrs, many = false) {
   const dflt = fam === "shoot" ? "agility" : "fighting", set = (a.attr ?? []).filter(Boolean);
   const p = { id: `${item.id}~${a.id}`, item: item.id, name: String(many && useName(item, a) ? `${item.name}: ${useName(item, a)}` : item.name).slice(0, 60), of: String(item.name ?? "").slice(0, 60), fam,
     attr: !set.length || set.includes(dflt) ? null : set.slice().sort((x, y) => (Number(attrs[y]) || 0) - (Number(attrs[x]) || 0))[0],
+    ...(h.reactOnly === 1 ? { reactOnly: true } : {}),      // PWB: an attack made only as an answer (Redirecting Blast [B1889]): never picked for a plain Shoot
     bonus: Math.trunc(Number(a.bonus) || 0), damage: pos(a.damage) || null, range: fam === "shoot" ? range ?? [0, 1] : null, stress: pos(a.stress),
     sharp: item.wf?.sharp === true, fullAuto: item.wf?.fullAuto === true, area: item.wf?.area === true || h.area === 1, source: h.source ?? undefined,
     toStress: h.toStress === 1, ignoreArmor: h.ignoreArmor === 1 || a.bypass === true, halveArmor: h.halveArmor === 1, noDamage: h.noDamage === 1, pierce: h.pierce === 1,
@@ -111,6 +112,16 @@ function profileOf(item, row, a, lv, attrs, many = false) {
 /* ------------------------------------------------------------------ actions */
 const AS = { orders: "orders", slugfest: "slugfest", shoot: "shoot", rally: "rally", persuade: "persuade" };
 const multisets = (list, n, from = 0) => (n <= 0 ? [[]] : list.slice(from).flatMap((x, i) => multisets(list, n - 1, from + i).map((r) => [x, ...r])));
+/* PWB: the window an act of the kit answers in (catalog-pure `reaction`), ONE reading for every power the book lets a character use out of
+   turn as the answer to an attack. `window` = "afterDamage" for an answer to damage taken (Redirecting Blast [B1889]), else before the
+   dice [B2292]; `vs` = the family of attack it answers ("shooting": Quick Blast [B1585], "slugfest": Sudden Strike [B1619], "absorbed":
+   damage the character's Armor stopped [B1889]); `mode` = the way of moving of an interrupt move (Untouchable Speed [B2018], Quick
+   Teleport [B2039]). Who may give the answer: the attacked one, except a warning, a guide and a guardian, given for somebody else. */
+const FOR_OTHERS = ["warn", "guide", "swapTarget"];
+function reactionOf(a) {
+  const w = a.window ?? "beforeRoll", who = FOR_OTHERS.includes(a.reaction) ? "any" : "target";      // D113: Discretion moves the attack off its own holder; a warning is shouted for somebody else
+  return { reaction: { when: [w], who, effect: a.reaction, ...(a.place ? { place: a.place } : {}), ...(a.check ? { roll: a.check } : {}), ...(a.vs ? { vs: a.vs } : {}), ...(a.mode ? { mode: a.mode } : {}) }, interrupt: { on: [w] } };
+}
 function actionOf(item, row, a, lv, extra = {}) {
   const id = kid(item, a.k), meta = { item: item.id, key: row?.key ?? null, k: a.k };
   let e;
@@ -122,17 +133,16 @@ function actionOf(item, row, a, lv, extra = {}) {
     if (a.self) delete e.target;
     if (a.unarmed) e.unarmed = 1;
     delete e.when;
+    if (a.reaction) Object.assign(e, reactionOf(a), { reactionOnly: 1 });             // PWB: an attack made as the answer to one (Quick Blast [B1585], Sudden Strike [B1619], Redirecting Blast [B1889])
   } else {
     e = { id, src: row?.src ?? [], kind: "kit", cost: a.cost ?? "full", flow: "act", tags: ["kit"], effect: { ...(a.effect ?? { kind: "narrative" }) } };
     for (const k of ["roll", "oppose", "target", "when", "pick"]) if (a[k]) e[k] = JSON.parse(JSON.stringify(a[k]));
     for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near", "stressPick", "stressExtra"]) if (a[k]) e[k] = 1;
     if (a.combo && Array.isArray(a.pick)) e.pick = multisets(a.pick, Math.max(1, at(a.combo, lv))).map((c) => c.join("+"));          // Summoning [B1813-1815]: as many features as the level, repeats allowed
     if (a.once) e.once = a.once;
+    if (a.interrupt) e.interrupt = { on: a.interrupt.slice() };                      // PWA (PW039): an action the book allows as an interrupt (Nullification [B1772])
     for (const k of ["lv", "armor"]) if (Array.isArray(e.effect[k])) e.effect[k] = at(e.effect[k], lv);
-    if (a.reaction) {
-      const who = ["autoMiss", "allySwap", "note"].includes(a.reaction) ? "target" : "any";      // D113: Discretion moves the attack off its own holder; a warning is shouted for somebody else
-      Object.assign(e, { flow: "plain", reaction: { when: ["beforeRoll"], who, effect: a.reaction, ...(a.place ? { place: a.place } : {}), ...(a.check ? { roll: a.check } : {}) }, interrupt: { on: ["beforeRoll"] }, reactionOnly: 1 });
-    }
+    if (a.reaction) Object.assign(e, { flow: "plain" }, reactionOf(a), { reactionOnly: 1 });
   }
   if (a.stress) e.stress = { fixed: a.stress };
   return { ...e, label: `ITAC.kit.act.${a.label ?? a.k}`, name: String(a.name ?? item.name ?? "").slice(0, 80), kit: { ...meta, state: extra.state ?? row?.state ?? "assist", cat: row?.cat ?? CAT_OF[item.type] ?? "gear", lv }, ...(extra.entry ?? {}) };
@@ -147,6 +157,7 @@ export function build(src = {}) {
   for (const x of known) { const p = ["boost", "limit"].includes(x.it.type) ? parentOf(x.it) : x.it; x.lv = levelOf(p ?? x.it); x.parent = p !== x.it ? p : null; }
   const live = (x) => x.it.flags?.off !== true && !(x.parent && x.parent.flags?.off === true);
   const optsOf = (power) => known.filter((x) => x.parent === power && live(x) && x.row?.opt);
+  const arms = [];
 
   for (const x of known) {
     const { it, row, lv } = x, cat = row?.cat ?? CAT_OF[it.type] ?? null;
@@ -190,7 +201,10 @@ export function build(src = {}) {
         kit.weapons.push({ id: `${it.id}~throw`, item: it.id, name: rec.name, of: rec.of, fam: "shoot", attr: null, bonus: 0, damage: n, range: [0, n], stress: 0, sharp: x.parent.wf?.sharp === true, state: row.state }); }
       for (const a of barred ? [] : row?.acts ?? []) {
         const b = luck.length && a.pick ? { ...a, pick: a.pick.filter((p) => luck.includes(p)) } : a;
-        kit.actions.push(actionOf(it, row, b, lv));
+        const e = actionOf(it, row, b, lv);
+        kit.actions.push(e);
+        if (a.weapon === "parent" || a.weapon === "own") arms.push({ e, from: a.weapon === "own" ? it.id : x.parent?.id ?? null });      // PWB: the attack of an answer is made with the power's own profile
+        else if (a.weapon) e.reaction.weapon = a.weapon;
       }
       if (barred) { /* nothing is offered in a fight */ }
       else if (row && !row.acts && row.state !== "hand" && !row.mv || !row) {
@@ -221,7 +235,7 @@ export function build(src = {}) {
         const only = row.size ? known.filter((k) => k.parent === it && live(k) && k.row?.sizeOnly) : [], fixed = only.some((k) => k.it.flags?.alt === true);
         const lock = known.some((k) => k.parent === it && live(k) && k.row?.lockFx);         // Continual Emanation [B1603]: it can be switched on, never off
         const host = row.fx.ofParent ? x.parent : it, list = fixed ? [] : (host?.fx ?? []).filter((f) => !(lock && f.on === true) && (!row.fx.only || norm(f.name).includes(norm(row.fx.only))) && only.every((k) => norm(f.name).includes(k.row.sizeOnly)));
-        list.slice(0, 4).forEach((f, i) => kit.actions.push(actionOf(it, row, { k: `fx${i}`, label: "toggle", name: String(f.name ?? host.name), cost: row.fx.cost ?? "quick", stress: row.fx.stress, gm: row.fx.gm,
+        list.slice(0, 4).forEach((f, i) => kit.actions.push(actionOf(it, row, { k: `fx${i}`, label: "toggle", name: String(f.name ?? host.name), cost: row.fx.cost ?? "quick", stress: row.fx.stress, gm: row.fx.gm, interrupt: row.fx.interrupt,      // PWB: switched on as an interrupt too (Emanation [B1601], Ice Armor [B1650], Protection [B1890])
           effect: { kind: "toggle", item: host.id, fx: f.id } }, lv, { entry: { fxOn: f.on === true } })));
         if (!list.length && !row.mv && !row.pass && !fixed && !lock) { rec.state = "hand"; rec.note = "toggle"; rec.why = "noEffect"; }
       }
@@ -234,6 +248,13 @@ export function build(src = {}) {
       if (["immune", "vulnerable"].some((k) => row?.pass?.[k] === "flag") && !(it.flags?.types ?? []).length) rec.needs = "types";
       for (const m of row?.mods ?? []) kit.mods.push({ dice: at(m.lv ?? m.dice, lv), ...(m.action ? { action: m.action.slice() } : {}), ...(m.attack ? { attack: m.attack.slice() } : {}), ...(m.attr ? { attr: m.attr } : {}), ...(m.vsHuge ? { vsHuge: 1 } : {}), ...(m.gm ? { gm: m.gm } : {}), source: `kit:${row.key}`, name: rec.name });
     } catch (err) { rec.state = "hand"; rec.note = "unknown"; note("dropped", "kit", src.who, rec.name, "", err); }      // D125: listed by hand, and the trace says why
+  }
+  /* PWB: an answer that is an attack (Quick Blast with Blast's profile [B1585], Redirecting Blast with its own [B1889]) needs that profile;
+     without one (an item that carries no numbers) it is not offered and the row stays the GM's */
+  for (const { e, from } of arms) {
+    const w = kit.weapons.find((p) => p.item === from && !p.tag && !p.opt && !String(p.id).includes("+"));
+    if (w) e.reaction.weapon = w.id;
+    else { kit.actions = kit.actions.filter((x) => x !== e); const rec = kit.rows.find((r) => r.item === e.kit.item); if (rec) { rec.note = "noAttack"; rec.state = "assist"; } }
   }
   kit.pass.immune = [...new Set(kit.pass.immune)].slice(0, 24); kit.pass.vulnerable = [...new Set(kit.pass.vulnerable)].slice(0, 24);
   kit.actions = kit.actions.slice(0, 60); kit.weapons = kit.weapons.slice(0, 40);

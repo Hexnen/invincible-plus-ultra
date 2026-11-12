@@ -248,14 +248,14 @@ const NO_ALLY = ["challenge", "vehicle"];
 /** The attacked characters a reaction of somebody else may be about: other than the reactor, known to it, and in its zone where the entry asks for that. */
 export function reactionFor(v, inst, cid, e) {
   const moved = e?.reaction?.effect === "swapTarget" ? coveredBy(inst) : [];
-  const side = e?.reaction?.effect === "warn" || e?.reaction?.effect === "swapTarget", me = side ? !!v.facts.c(cid)?.npc : null;
+  const side = e?.reaction?.effect === "warn" || e?.reaction?.effect === "guide" || e?.reaction?.effect === "swapTarget", me = side ? !!v.facts.c(cid)?.npc : null;      // PWB: Guidance helps "another hero" [B1709], read as Warning Call
   /* U131: Warning Call [B2170] says "another character"; read as one of the warner's own side (provisional, question FXI-1): nobody shouts
      a warning to the opponent an ally of theirs is shooting at. U149: Guardian [B2115] ("another character in your zone is attacked") is read
      the same way (provisional, question UXC-3): nobody dives in to take an ally's blow for the enemy. The GM's own answer may still name anybody. */
   const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t) && (!side || !!v.facts.c(t)?.npc === me));
   /* FXP (U182, ruling FXP-R2): a warning is shouted about an attack the warner sees coming [B2170]: an attacker it does not know of (one
      the GM hides from the heroes, one it has as unseen) gives it nothing to warn about, as no card is made about somebody unknown (U19-R4) */
-  if (e?.reaction?.effect === "warn" && inst.actor && !knownTo(v, cid, inst.actor)) return [];
+  if ((e?.reaction?.effect === "warn" || e?.reaction?.effect === "guide") && inst.actor && !knownTo(v, cid, inst.actor)) return [];
   return e?.reaction?.place === "targetZone" ? list.filter((t) => sameSpot(v, cid, t) !== false) : list;
 }
 /* D104 (ruling A8-R1): who took the hit for somebody by a reaction (Guardian [B2115]: "you take the hit instead of the INTENDED target").
@@ -276,6 +276,10 @@ export function alliesNear(v, inst, cid) {
 export function reactionFit(v, inst, cid, e) {
   const r = e?.reaction;
   if (!r || !inst) return { ok: true, reason: null };
+  /* PWB: what an answer to an attack is about. Quick Blast answers a shooting attack [B1585], Sudden Strike one in slugfest [B1619]
+     (of the attack family of the rules library); Redirecting Blast answers damage the character's Armor stopped [B1889] */
+  if (r.vs === "absorbed" && !(Number(inst.data?.dmg?.[cid]?.absorbed) > 0)) return { ok: false, reason: "nothingAbsorbed" };
+  if ((r.vs === "shooting" || r.vs === "slugfest") && attack.ATTACKS[inst.data?.kind ?? "slugfest"]?.family !== r.vs) return { ok: false, reason: r.vs === "shooting" ? "notShot" : "notSlugfest" };
   if (r.place === "allyZone") return alliesNear(v, inst, cid).length ? { ok: true, reason: null } : { ok: false, reason: "noAllyNear" };
   if (r.who !== "any") return { ok: true, reason: null };
   if (reactionFor(v, inst, cid, e).length) return { ok: true, reason: null };
@@ -296,7 +300,7 @@ export function reactionOption(v, cid, e, inst = null) {
 /* D113: the answers of one reaction entry. Discretion [B2108] names the ally who is put in the way and Warning Call [B2170] the one who is
    warned: with one such character the entry is one answer (that one is meant), with several there is one answer per character, its id
    `r:<entry>@<cid>` and `data.about` the character (the surfaces name it beside the entry's name). A reaction is taken once per attack. */
-export const REACT_ABOUT = Object.freeze(["allySwap", "warn"]);
+export const REACT_ABOUT = Object.freeze(["allySwap", "warn", "guide"]);
 export function aboutOf(v, inst, cid, e) {
   if (!inst || !REACT_ABOUT.includes(e?.reaction?.effect)) return [];
   return e.reaction.effect === "allySwap" ? alliesNear(v, inst, cid) : reactionFor(v, inst, cid, e).filter((t) => !inst.data?.warned?.[t]);
@@ -304,7 +308,7 @@ export function aboutOf(v, inst, cid, e) {
 export function reactionOptions(v, cid, e, inst = null) {
   const o = reactionOption(v, cid, e, inst), who = aboutOf(v, inst, cid, e);
   if (inst && inst.data?.reacted?.some((x) => x.who === cid && x.entry === e.id)) o.disabled = "reactionUsed";
-  else if (inst && !o.disabled && e.reaction.effect === "warn" && !who.length && reactionFor(v, inst, cid, e).length) o.disabled = "alreadyWarned";
+  else if (inst && !o.disabled && (e.reaction.effect === "warn" || e.reaction.effect === "guide") && !who.length && reactionFor(v, inst, cid, e).length) o.disabled = "alreadyWarned";
   if (who.length < 2) return [who.length ? { ...o, data: { ...o.data, about: who[0] } } : o];
   return who.slice(0, 8).map((x) => ({ ...o, id: `${o.id}@${x}`, data: { ...o.data, about: x } }));
 }

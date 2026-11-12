@@ -150,6 +150,7 @@ function titleOf(p, t, facts, round) {
   if (P1_KINDS.includes(p.kind)) return t(`ITAC.Prompt.${p.kind}.Title`);
   const k = p.kind === "proxy" && p.of ? p.of : p.kind;
   if (k === "direction" && Array.isArray(p.data?.zones)) return t("ITAC.ui.card.forced");
+  if (k === "dodgeMove" && p.data?.away) return t("ITAC.prompt.awayMove");      // PWB: the move of Untouchable Speed / Quick Teleport, not one after a dodge [B2018], [B2039]
   return t(`ITAC.${p.to === "desk" ? "card" : "prompt"}.${k}`, {}, null) ?? t(`ITAC.card.${k}`, {}, null) ?? t(`ITAC.Prompt.${k}.Title`, {}, cap(k));
 }
 /* a choice of several features at once ("more+more+powered"): each named once, with how many times */
@@ -207,7 +208,7 @@ function linesOf(p, t, facts, x) {
       if (d.bystander) out.push(t(d.attacker ? "ITAC.ui.line.attackBy" : "ITAC.ui.line.attackUnseenBy", { attacker: n(d.attacker), targets, action, name: about }));
       else if (d.attacker) out.push(t("ITAC.ui.line.attack", { attacker: n(d.attacker), target: about, action }));
       else out.push(t(d.unseen ? "ITAC.ui.line.attackUnseen" : "ITAC.ui.line.window", { name: about }));
-      if (d.warned) out.push(t("ITAC.ui.line.warned", { by: n(d.warned) }));      // D113 [B2170]
+      if (d.warned) out.push(t(d.guided ? "ITAC.ui.line.guided" : "ITAC.ui.line.warned", { by: n(d.warned) }));      // D113 [B2170]; PWB: Guidance [B1709]
       break;
     }
     case "reactionByHand": {      // D113: a reaction the engine has no rule for: the GM settles it, the attack waits
@@ -216,7 +217,7 @@ function linesOf(p, t, facts, x) {
       break;
     }
     case "counter": out.push(t("ITAC.ui.line.counter", { name: about })); break;
-    case "dodgeMove": out.push(t("ITAC.ui.line.dodgeMove", { name: about })); break;
+    case "dodgeMove": out.push(t(d.away ? "ITAC.ui.line.awayMove" : "ITAC.ui.line.dodgeMove", { name: about })); break;      // PWB: the move of Untouchable Speed / Quick Teleport [B2018], [B2039]
     case "moveStop": if (d.slab) { out.push(t("ITAC.ui.line.slabStop", { name: about, slab: t(`ITAC.ui.slab.${d.slab}`, {}, String(d.slab)), zone: zoneText(facts, t, d.spot) })); break; }
       out.push(t("ITAC.ui.line.moveStop", { name: about, zone: zoneText(facts, t, d.spot), why: (d.why ?? []).map((w) => t(`ITAC.ui.why.${w}`, {}, String(w))).join(", ") })); break;
     case "moveApprove": out.push(t("ITAC.ui.line.moveApprove", { name: about, from: zoneText(facts, t, d.from), to: zoneText(facts, t, d.to) })); if (d.cost && d.cost !== "none") out.push(t("ITAC.ui.line.moveCost", { cost: costText(t, d.cost) })); break;
@@ -708,7 +709,7 @@ function armsOf(bar, a, own, facts, t) {
   const none = { weapons: null, opts: [], maxTargets: 1, decl: {}, dice: [], why: null, notes: [] };
   if (a.flow !== "attack") return none;
   const shooting = a.attack === "shooting", melee = a.attack === "slugfest";
-  const list = a.unarmed ? [] : shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : [];
+  const list = a.unarmed ? [] : shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && !w.reactOnly && (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : [];
   const ids = [...(melee ? ["unarmed"] : []), ...list.map((w) => w.id)];
   const wname = (x) => (x.opt ? `${x.name} (${t(`ITAC.kit.opt.${x.opt}`, {}, x.opt)})` : x.tag ? `${x.name} + ${x.tag}` : x.name);      // P6: a power's attack and its variants
   const sel = ids.includes(own.weapon) ? own.weapon : ids[0] ?? null, w = list.find((x) => x.id === sel) ?? null;
