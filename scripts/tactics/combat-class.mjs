@@ -107,10 +107,28 @@ export function makeClass(Base) {
   };
 }
 
+/* D117: Foundry records every move of a token in a started combat (TokenDocument#_shouldRecordMovementHistory) and draws that trail,
+   with the map's price label ("1 zone · 1 quick action") and a ghost of where it started, whenever the pointer rests on the token
+   (base-ruler: `token.hover`). Core clears it at ITS turn start, which our card initiative never runs, so after a move or a drive the
+   trail stood under the pointer for the rest of the round, reading like the price of a move still to make. In a fight that has the
+   module's state the engine's ledger is the record of what was spent: Foundry keeps no trail. Pure (node: check-fxg). */
+export const recordsTrail = (base, combat) => (tacticsState(combat) ? false : base);
+let trailPatched = false;
+function patchTrail() {
+  try {
+    const P = foundry.documents?.TokenDocument?.prototype ?? CONFIG.Token?.documentClass?.prototype;      // core's own: every token class inherits it (the system adds none)
+    if (trailPatched || !P || typeof P._shouldRecordMovementHistory !== "function") return;
+    const orig = P._shouldRecordMovementHistory;
+    P._shouldRecordMovementHistory = function () { const base = orig.call(this); try { return recordsTrail(base, this.combatant?.parent ?? null); } catch { return base; } };
+    trailPatched = true;
+  } catch (e) { console.warn(`${MOD} | tactics movement trail`, e); }
+}
+
 /** Install the class (init). late = documents already exist (the dynamic import resolved after setup): existing combats are re-pointed
     at the new class and re-sorted; that path is a fallback and is not verified live. -> true when the class is in place */
 export function install({ late = false } = {}) {
   try {
+    patchTrail();
     if (Own && CONFIG.Combat.documentClass === Own) return true;
     Wrapped = CONFIG.Combat.documentClass;
     Own = makeClass(Wrapped);

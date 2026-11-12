@@ -63,4 +63,17 @@ const src = (f) => readFileSync(new URL(f, import.meta.url), "utf8");
   ok(/pushNews\(X, \{ \.\.\.newsOf\(I\), \.\.\.\(hiddenNow\(X, I\) \? \{ hid: 1 \} : \{\}\) \}\)/.test(e), "U120: the engine marks the line when it is written");
 }
 
+/* ---- D117: Foundry keeps no movement trail of a token in a fight that has the module's state */
+{
+  const S = await import("./state-pure.mjs"), O = await import("./ops-pure.mjs"), { dice } = await import("../rules/index.mjs");
+  const { recordsTrail } = await import("./combat-class.mjs");
+  const part = (id, o = {}) => ({ id, hero: false, owners: [], defeated: false, challenge: false, summonOf: null, veteran: false, reflexes: false, resolve: 3, ...o });
+  const ctx = { user: "gm", staff: true, owns: () => true, parts: [part("ca", { hero: true, owners: ["u1"] }), part("cb")], ...(dice?.seededRng ? { rng: dice.seededRng(4) } : {}) };
+  const st = O.reduce(null, { type: "start", mode: "tactical" }, ctx).state;
+  const ours = { id: "c1", flags: { [S.MOD_ID]: { tactics: { state: S.serialize(st) } } } }, plain = { id: "c2", flags: {} };
+  eq([recordsTrail(true, ours), recordsTrail(true, plain), recordsTrail(false, plain), recordsTrail(true, null)], [false, true, false, true], "D117: no trail in our fight; any other combat (or none) keeps core's answer");
+  const cc = src("./combat-class.mjs");
+  ok(/P\._shouldRecordMovementHistory = function \(\) \{ const base = orig\.call\(this\);/.test(cc) && /install\(\{ late = false \} = \{\}\) \{\s*try \{\s*patchTrail\(\);/.test(cc), "D117: core's method is wrapped once, at install, and still asked");
+}
+
 done("check-fxg");
