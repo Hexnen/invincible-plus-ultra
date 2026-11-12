@@ -66,7 +66,11 @@ export const EN = {
   "INSPLASH.Say.OnEdge": "ON THE EDGE!",
   "INSPLASH.Say.Strain": "FEELING THE STRAIN",
   "INSPLASH.Say.Shaken": "SHAKEN",
-  "INSPLASH.Say.ShrugsOff": "SHRUGS IT OFF"
+  "INSPLASH.Say.ShrugsOff": "SHRUGS IT OFF",
+  "INSPLASH.Say.FirstSuccess": "FIRST SUCCESS!",
+  "INSPLASH.Say.PushPaysOff": "PUSH PAYS OFF!",
+  "INSPLASH.Say.FirstDouble": "FIRST DOUBLE!",
+  "INSPLASH.Say.PersonalBest": "NEW PERSONAL BEST!"
 };
 
 export const PL = {
@@ -136,5 +140,9 @@ export const PL = {
   "INSPLASH.Say.OnEdge": "NA KRAWĘDZI!",
   "INSPLASH.Say.Strain": "ODCZUWA NAPIĘCIE",
   "INSPLASH.Say.Shaken": "WSTRZĄS",
-  "INSPLASH.Say.ShrugsOff": "OTRZĄSA SIĘ"
+  "INSPLASH.Say.ShrugsOff": "OTRZĄSA SIĘ",
+  "INSPLASH.Say.FirstSuccess": "PIERWSZY SUKCES!",
+  "INSPLASH.Say.PushPaysOff": "FORSOWANIE SIĘ OPŁACA!",
+  "INSPLASH.Say.FirstDouble": "PIERWSZY DUBLET!",
+  "INSPLASH.Say.PersonalBest": "NOWY REKORD OSOBISTY!"
 };

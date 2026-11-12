@@ -122,6 +122,26 @@ export function holdWaiting(rows, held) {
   }
   return out;
 }
+/** FXR (U191): a card held back while the dice rolled starts its "waiting since" clock when it SHOWS on this client, not when it was asked
+    (the clock counted the held seconds). map = { id: null (held now) | ms (shown at) }, only of cards this client held; held / shown = ids
+    of now -> the map of now (a card that is gone is forgotten). */
+export function heldShown(prev, held, shown, now) {
+  const p = prev ?? {}, out = {};
+  for (const id of held ?? []) out[id] = Number.isFinite(p[id]) ? p[id] : null;
+  for (const id of shown ?? []) if (id in p && !(id in out)) out[id] = Number.isFinite(p[id]) ? p[id] : now;
+  return out;
+}
+/** ... and the "waiting for" rows read it: a row whose every piece was held starts at the earliest time one of them showed. */
+export function shownSince(rows, map) {
+  if (!Array.isArray(rows) || !map) return rows;
+  return rows.map((r) => {
+    if (!Number.isFinite(r?.since) || !Array.isArray(r.ids) || !r.ids.length) return r;
+    const at = r.ids.map((id) => map[id]);
+    if (!at.every(Number.isFinite)) return r;
+    const s = Math.max(r.since, Math.min(...at));
+    return s === r.since ? r : { ...r, since: s };
+  });
+}
 /* SEAM (uxc U144 x uxb D128): a turn with nothing left passes by itself 1.5 s later; while the 3D dice of a roll still roll on this
    client (the result held back) it waits for them, as the cards and the line do: the button is the plain End turn until they land (one
    click still ends it), then the 1.5 s run from there. At most HOLD_MS (a stuck dice flag never keeps the turn). dice = { busy, since,

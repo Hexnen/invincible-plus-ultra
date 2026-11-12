@@ -159,6 +159,12 @@ function queueOnce(W, point, key, blocks) {
     let extra = [];                                               // what the map and the statuses make due by themselves (P5: burning zones and characters, vacuum; flows/hazards.mjs `derived`)
     try { extra = (W.ctx.derived?.(point, s) ?? []).filter((t) => t && S.isId(t.id) && t.at === point.at && typeof t.run?.type === "string"); } catch { extra = []; }
     const list = Sch.due([...s.triggers, ...extra], point);
+    /* T052 [B2929]: the rounds of exposure count from being caught in the vacuum; a turn that starts out of it (no vacuum roll due:
+       protected, back at pressure, not suffocating) ends that exposure, so the next time out starts unmodified again */
+    if (point.at === "turnStart" && point.combatant && !list.some((t) => t.run?.type === "vacuum" && (t.subject?.combatant ?? null) === point.combatant)) {
+      const vk = `scene:${point.combatant}:vacuum`;
+      if (s.counters?.[vk] != null) delete s.counters[vk];
+    }
     const info = (t) => ({ type: t.run.type, ...(t.subject?.zone ? { zone: t.subject.zone } : {}), ...(t.subject?.combatant ? { combatant: t.subject.combatant } : {}), ...(Number.isFinite(t.run.intensity) ? { intensity: t.run.intensity } : {}),
       ...(Array.isArray(t.run.targets) ? { targets: t.run.targets.slice(0, 24) } : {}), ...(typeof t.run.kind === "string" ? { effect: t.run.kind.slice(0, 40) } : {}), ...(typeof t.run.challenge === "string" ? { challenge: t.run.challenge } : {}), ...(t.derived ? { trigger: S.clone(t) } : {}) });
     if (list.length) addPrompt(W, { kind: "triggerQueue", step: point.at, to: "gm", about: point.combatant, multi: 1, options: list.map((t) => ({ id: t.id, label: String(t.source?.name || t.run.type).slice(0, 120), data: info(t) })), data: { at: point.at, key: k, blocks: blocks ? 1 : 0 } });

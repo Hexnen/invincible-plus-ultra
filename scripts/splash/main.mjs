@@ -3,7 +3,7 @@
    - MOD  = this module's id: settings live here (keys prefixed "splash", e.g. splashEnabled) and so does the module api.
    - FLAG = the OLD standalone module's id, kept ONLY as the flag namespace of message flags (flags['invincible-splash'].ev) and actor flags
             (flags['invincible-splash'].state), so rolls and heroes saved by the standalone module keep working. Do not rename it. */
-import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fmtOdds, oddsText, oddsLabel, LBL, setLabels, SAYS, holdFor, playsAfter, ACTIONS, FAIL, SOFTFAIL, PUSHFAIL, PUSHPRE, WRECK, SHAPE_RANGE } from './logic.mjs';
+import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fmtOdds, oddsText, oddsLabel, LBL, setLabels, SAYS, say, holdFor, playsAfter, ACTIONS, FAIL, SOFTFAIL, PUSHFAIL, PUSHPRE, WRECK, SHAPE_RANGE } from './logic.mjs';
 import { readRoll, classify, heroSpeaker, publicResolve } from './reader.mjs';
 import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
@@ -282,7 +282,7 @@ function announce(ev, message, resolve) {
       if (ev.fail) parts.push(L('INSPLASH.Live.NoSixes') + '.');
       else {
         parts.push(sixesText(ev.sixes) + '.');
-        const label = ev.tag || oddsText(ev.power);
+        const label = ev.tag ? say(ev.tag) : oddsText(ev.power);      // T039
         if (label) parts.push(cap(label));
         if (ev.p) parts.push(F('INSPLASH.Live.Odds', { n: fmtOdds(Math.round(1 / ev.p)) }) + '.');
       }
@@ -384,7 +384,7 @@ hook('renderChatMessageHTML', (message, html) => {
       P = ev.power;
       const label = oddsText(P);
       if (!label && !tag) return;
-      word = tag || label; odds = oddsLabel(ev.p) + (ev.pushed ? ' · ' + LBL.push : '');
+      word = (tag && say(tag)) || label; odds = oddsLabel(ev.p) + (ev.pushed ? ' · ' + LBL.push : '');
     }
     const el = document.createElement('div');
     el.className = 'ins-chat' + (ev.fail ? ' dim' : '');

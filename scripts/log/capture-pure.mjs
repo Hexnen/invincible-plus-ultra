@@ -76,6 +76,9 @@ export function diffItemMirror(a, b) {
 }
 
 /** Merges bursts of item edits (typing a name) per key; emits when idle > slidingMs or older than maxMs. */
+/** T030 / T034: drop the open item edits of one actor (keys "<actorId>|<itemId>|<userId>"). */
+export function dropActorEdits(buf, actorId) { for (const k of [...buf.open.keys()]) if (k.split("|")[0] === actorId) buf.open.delete(k); }
+
 export class EditBuffer {
   constructor(slidingMs = 2000, maxMs = 20000) { this.s = slidingMs; this.m = maxMs; this.open = new Map(); }
   add(key, base, changes, t) {

@@ -304,7 +304,7 @@ export function fxFor(stage, P, later, level = 1, noRays = false) {
 
 /* ---------- nakładki ---------- */
 export function oddsRibbon(stage, P, p, pushed, tag, shifted, labelOverride) {
-  const txt = labelOverride?.text ?? tag ?? oddsText(P);
+  const txt = labelOverride?.text ?? (tag ? say(tag) : oddsText(P));      // T039: a milestone tag in the table's language
   if (!txt) return null;
   const r = document.createElement('div'); r.className = 'ins-odds';
   r.style.setProperty('--oc', labelOverride?.color ?? inkAccent(hueOf(P)));   // czarny napis na tle: kontrast >= 4.6:1

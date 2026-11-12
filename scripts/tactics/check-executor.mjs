@@ -222,6 +222,8 @@ eq((await fromPlayer("p1", { op: "endTurn", actor: "cbH1", round: 1, slot: 0 }, 
   const mod = src("../module.js");
   eq([(mod.match(/Hooks\.on\("preUpdateActor", \(actor, changes, options\) => \{\s*try \{\s*if \([^\n]*options\?\.ipuTactics !== undefined\) return;/g) ?? []).length, /Hooks\.on\("createItem", \(item, options\) => \{\s*try \{\s*if \([^\n]*options\?\.ipuTactics !== undefined\) return;/.test(mod), /Hooks\.on\("preUpdateActor", \(actor, changes\)/.test(mod)], [2, true, false], "D96: both preUpdateActor heuristics and the createItem one return early on an ipuTactics write");
 }
+/* FXR T040: the desk context carries Resolve of a sheet this user may read (the bar greys a stress-paid answer at 0 Resolve) */
+{ const E = await import("./engine.mjs"); eq(E.context(combat).c("cbH1")?.resolve ?? null, 5, "T040: Engine.context().c gives the readable sheet's Resolve"); }
 console.warn = origWarn;
 eq(warns.filter((w) => !/roll dialog|stunts dialog|injuries table|system compatibility/.test(w)).length, 0, "no unexpected warnings");
 done("check-executor");

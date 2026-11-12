@@ -31,7 +31,8 @@ import { freeArea, hudLimit, relayout as relayoutBanner } from "./banner.mjs";
 import { unitOf, unitName } from "../challenges/lang.mjs";
 import { yzeOn, yzeWaiting, yzeMode, actorOf, toggleActionMark } from "../yze.mjs";
 import { groupsFor, waitingOf, waitKindOf, actionsOn } from "../party/actions.mjs";   // Year Zero Engine Combat action usage (shared with the party cards; scripts/yze.mjs documents the data)
-import * as Tac from "../tactics/source.mjs";                                         // U118: who sits in a vehicle
+import * as Tac from "../tactics/source.mjs";
+import { besideFloating } from "../tactics/ui/layout-pure.mjs";                       // FXR (U185, FXQ-3): the strip keeps beside a popped-out chat, as the dock does                                         // U118: who sits in a vehicle
 
 const MOD = "invincible-plus-ultra";
 const ID = "invincible-combat-bar";
@@ -268,13 +269,17 @@ function place() {
   /* the map module's pins / filter panel floats at the left under the navigation: the bar starts right of it where its band would run under it
      (with the sidebar open at 1366 px the first tiles and the round chip were under that panel) */
   const pins = (t0) => { try { const r = document.querySelector(".mm-filter")?.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 && r.right < window.innerWidth * 0.45 && r.top < t0 + band + 30 && r.bottom > t0 ? r.right + 10 : 0; } catch { return 0; } };
+  /* FXR (U185, FXQ-3): a popped-out chat (a window as tall as the map) crossing the band: the strip takes the wider side of it */
+  const beside = (t0, lo0, hi0) => { try { const r = document.getElementById("chat-popout")?.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 && r.top < t0 + band && r.bottom > t0 ? besideFloating(lo0, hi0, r, 200, 10) : { lo: lo0, hi: hi0 }; } catch { return { lo: lo0, hi: hi0 }; } };
   let top = 0, lo = Math.max(left, navR ? navR + 14 : left, pins(0)), hi = Math.min(right, hudLimit(0, band));
+  ({ lo, hi } = beside(0, lo, hi));
   const low = lowRow ? hi - lo < BACK_GAP : hi - lo < MIN_GAP;
   lowRow = low;
   if (low) {
     top = Math.round(Math.min(150, Math.max(navBottom(), 36)) + 6);
     lo = Math.max(left, pins(top));
     hi = Math.min(right, hudLimit(top, band));
+    ({ lo, hi } = beside(top, lo, hi));
   }
   const avail = Math.max(160, hi - lo);
   root.classList.toggle("icbar-low", low);

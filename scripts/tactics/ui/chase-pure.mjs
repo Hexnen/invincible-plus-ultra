@@ -206,7 +206,8 @@ export function chaseData(view, own, facts, t) {
   else if (myRolls.length) {
     const r = myRolls[0], obs = r.key.startsWith("obs:");
     decision = { kind: r.catch ? "catchRoll" : obs ? "obstacleRoll" : "roll", mine: true, title: t(r.catch ? "ITAC.chase.do.catchRoll" : obs ? "ITAC.chase.do.obstacleRoll" : r.state === "push" ? "ITAC.chase.do.push" : "ITAC.chase.do.roll", { name: r.whoName }),
-      text: r.state === "push" ? t("ITAC.chase.do.pushText", { n: r.sixes ?? 0 }) : obs ? t("ITAC.chase.do.obstacleText", { attr: attrText(t, r.attr), dice: r.dice ?? "?" }) : t(`ITAC.chase.do.rollText.${r.key === "prey" ? "prey" : "pursuer"}`, { dice: r.dice ?? "?" }),
+      text: r.state === "push" ? t("ITAC.chase.do.pushText", { n: r.sixes ?? 0 }) : obs ? t("ITAC.chase.do.obstacleText", { attr: attrText(t, r.attr), dice: r.dice ?? "?" })
+        : r.catch ? t(r.attr ? "ITAC.chase.do.catchText" : "ITAC.chase.do.catchDice", { attr: attrText(t, r.attr), dice: r.dice ?? "?" }) : t(`ITAC.chase.do.rollText.${r.key === "prey" ? "prey" : "pursuer"}`, { dice: r.dice ?? "?" }),
       buttons: rollButtons(r, facts, t).map((b) => ({ ...b, primary: b.id === "roll" || b.id === "accept" })), sixes: r.sixes, dice: r.dice, state: r.state };
   } else if (!inst && crewOpen.some((p) => p.mine)) {
     const p = crewOpen.find((x) => x.mine);
@@ -289,6 +290,14 @@ export function resultOf(ch, t) {
   const head = l.escaped ? t("ITAC.chase.res.escaped") : l.caught ? t("ITAC.chase.res.caught") : l.winner ? t(`ITAC.chase.res.win.${l.winner}`, { n: Math.abs(moved) }) : t("ITAC.chase.res.tie");
   return { winner: l.winner ?? null, from, to, moved, caught: !!l.caught, escaped: !!l.escaped, head, short: from == null ? head : `${head} (${from} > ${to})`,
     rolls: l.prey == null && l.pursuer == null ? null : { prey: l.prey ?? 0, pursuer: l.pursuer ?? 0 } };
+}
+
+/** T064: which end card this seat put away, from the browser's record ("<combatId>:<n>") and the page's own one (a private window
+    cannot store it; the card must still close). The later number wins. */
+export function endSeenOf(combatId, stored, mem) {
+  const one = (v) => { const s = String(v ?? ""); if (!combatId || !s.startsWith(`${combatId}:`)) return null; const n = Number(s.slice(String(combatId).length + 1)); return Number.isFinite(n) ? n : null; };
+  const a = one(stored), b = one(mem);
+  return a == null ? b : b == null ? a : Math.max(a, b);
 }
 
 /** the card every seat sees once the chase is over (engine-pure chaseEnd writes state.chaseEnded) */

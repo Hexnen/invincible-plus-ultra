@@ -119,7 +119,7 @@ function autoEnd(combat, d) {
 let cardTop = { id: null, at: 0 };      // U143: the question card on top of the dock and since when it stands there (the keys' guard)
 /* UXB (U141 / D128): the turns this client saw (a news line stands through its turn and the next: news-pure newsWindow) and what was
    shown while 3D dice rolled (cards and the line wait for the dice: news-pure diceHold) */
-let newsWin = null, diceWas = null, diceWait = null, rollsWas = { rows: {}, opp: {}, held: false };
+let newsWin = null, diceWas = null, diceWait = null, rollsWas = { rows: {}, opp: {}, held: false }, heldSeen = {};      // heldSeen: FXR (U191)
 const diceBusy = () => { try { return typeof game.dice3d?.waitFor3DAnimationByMessageID === "function" && (game.messages?.contents ?? []).slice(-12).some((m) => m?._dice3danimating); } catch { return false; } };
 const diceLanded = () => { const d = game.dice3d, busy = (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating);
   return Promise.race([Promise.all(busy.map((m) => Promise.resolve(d.waitFor3DAnimationByMessageID(m.id)).catch(() => {}))), new Promise((r) => setTimeout(r, NewsP.HOLD_MS + 100))]); };
@@ -252,11 +252,11 @@ const acting = new Map();
 /* CHASE: the chase panel's own state on this client: the obstacle the GM names for the next roll, the unit the GM is about to add
    (CHASE2), the end card put away (kept per fight in the browser so a reload does not bring it back) */
 const CHASE_SEEN = "ipu.tactics.chaseEndSeen";
-let chaseOwn = { obstacle: null, join: null };
-function chaseOwnFor(combat) { let seen = null; try { const v = String(globalThis.localStorage?.getItem(CHASE_SEEN) ?? ""); if (v.startsWith(`${combat.id}:`)) seen = Number(v.slice(combat.id.length + 1)); } catch { /* private window */ } return { ...chaseOwn, endSeen: seen }; }
+let chaseOwn = { obstacle: null, join: null }, chaseSeenMem = null;      // T064: the put-away card also kept in the page (a private window stores nothing)
+function chaseOwnFor(combat) { let stored = null; try { stored = globalThis.localStorage?.getItem(CHASE_SEEN) ?? null; } catch { /* private window */ } return { ...chaseOwn, endSeen: ChaseP.endSeenOf(combat.id, stored, chaseSeenMem) }; }
 function chaseSet(patch) {
   if (!patch) return;
-  if ("endSeen" in patch) { try { const c = combatNow(); if (c) globalThis.localStorage?.setItem(CHASE_SEEN, `${c.id}:${patch.endSeen}`); } catch { /* private window */ } }
+  if ("endSeen" in patch) { const c = combatNow(); if (c) { chaseSeenMem = `${c.id}:${patch.endSeen}`; try { globalThis.localStorage?.setItem(CHASE_SEEN, chaseSeenMem); } catch { /* private window */ } } }
   if ("obstacle" in patch) chaseOwn = { ...chaseOwn, obstacle: patch.obstacle ?? null };
   if ("join" in patch) chaseOwn = { ...chaseOwn, join: patch.join ?? null };
   refresh();
@@ -336,6 +336,10 @@ function refresh() {
     /* D128: what a roll came to waits for its dice: a new card and the new line come when the 3D dice have landed */
     const now = Date.now(), busy = diceBusy(), hold = NewsP.diceHold(diceWas, { prompts: (data.prompts ?? []).map((p) => p.id), cards: (deskD?.cards ?? []).map((c) => c.id), news: data.news ?? null, at: now }, busy);
     diceWas = { prompts: hold.prompts, cards: hold.cards, news: hold.news, since: hold.since };
+    /* FXR (U191): a card held while the dice rolled counts its waiting time from when it shows here */
+    const allIds = [...(data.prompts ?? []).map((p) => p.id), ...(deskD?.cards ?? []).map((c) => c.id)], shownIds = [...hold.prompts, ...hold.cards];
+    heldSeen = NewsP.heldShown(heldSeen, allIds.filter((id) => !shownIds.includes(id)), shownIds, now);
+    if (Array.isArray(deskD?.waiting)) deskD = { ...deskD, waiting: NewsP.shownSince(deskD.waiting, heldSeen) };
     if (hold.held) {
       const heldIds = [...(data.prompts ?? []).map((p) => p.id).filter((id) => !hold.prompts.includes(id)), ...(deskD?.cards ?? []).map((c) => c.id).filter((id) => !hold.cards.includes(id))];
       data.prompts = (data.prompts ?? []).filter((p) => hold.prompts.includes(p.id)); data.news = hold.news;

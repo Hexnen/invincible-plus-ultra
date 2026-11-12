@@ -177,7 +177,7 @@ function registerBarHooks() {
   on("deleteActiveEffect", effect);
   on("controlToken", () => Bar.paintSelection());
   on("hoverToken", (token, hovered) => Bar.echo(token, hovered));
-  on("changeSidebarTab", () => { Bar.relayout(false); setTimeout(() => Bar.relayout(false), 300); });
+  for (const hk of ["changeSidebarTab", "renderChatLog", "closeChatLog"]) on(hk, () => { Bar.relayout(false); setTimeout(() => Bar.relayout(false), 300); });      // FXR (U185): also the chat popped out or back in
 }
 
 function onReady() {
