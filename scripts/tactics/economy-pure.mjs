@@ -32,18 +32,35 @@ function request(state, cid, cost, o = {}) {
 /* The unit that pays: the base pair when it can [L1] [L3]; otherwise the first usable grant (Quickness [R1], a defence grant [B2105],
    a GM grant ...). [D] the base pair goes first because it costs no stress; choosing between several ways to pay is a UI matter
    (ledger-pure.payOptions lists them, `o.grant` names one). */
+/* ANSD (CHASE2-9, the user 2026-11-12) [B3438]: after the chase roll the crews of the pursuers shoot first, then the crews of the fleeing;
+   among the pursuers (also between their groups) the order is free. The shot of a fleeing crew member waits while a shot the chase gave a
+   pursuer this round is still open (not taken and not given up: engine-pure crewPass). The GM lifts the order for the round (chaseSet
+   crewFree) or grants a request for an exception. The order is the chase's (state.chase.crew, written by flows/chase.mjs crew). */
+export function crewOrderHold(state, cid) {
+  const cr = state?.kind === "chase" ? state.chase?.crew : null;
+  if (!cr || cr.round !== state.round || cr.free || !Array.isArray(cr.pursuers) || !(cr.ids ?? []).includes(cid) || cr.pursuers.includes(cid)) return false;
+  return cr.pursuers.some((p) => (state.ledger?.[p]?.grants ?? []).some((g) => g.kind === "chaseCrew" && !g.usedBy));
+}
+const heldCrew = (state, cid, L, gid, req) => !req.force && L.grants.find((g) => g.id === gid)?.kind === "chaseCrew" && crewOrderHold(state, cid);
 export function canPay(state, cid, cost, o = {}) {
   if (cost === "none" || cost === "free" || cost == null) return { ok: true, reason: null, pay: null, stress: 0 };
   if (o.gm === true) return { ok: true, reason: null, pay: null, stress: 0, waived: true };      // spec 14: the GM acting through an override waives the cost
   const L = ledgerOf(state, cid), req = request(state, cid, cost, o);
-  if (o.grant) { const r = Lg.canPay(L, { ...req, grant: o.grant }); return r.ok ? { ok: true, reason: null, pay: r.pay.grant, stress: r.pay.stress ?? 0 } : { ok: false, reason: r.reason, pay: null, gmMayAllow: !!r.gmMayAllow }; }
+  if (o.grant) {
+    const r = Lg.canPay(L, { ...req, grant: o.grant });
+    if (r.ok && heldCrew(state, cid, L, o.grant, req)) return { ok: false, reason: "crewOrder", pay: null, gmMayAllow: true };
+    return r.ok ? { ok: true, reason: null, pay: r.pay.grant, stress: r.pay.stress ?? 0 } : { ok: false, reason: r.reason, pay: null, gmMayAllow: !!r.gmMayAllow };
+  }
   const base = Lg.canPay(L, req);
   if (base.ok) return { ok: true, reason: null, pay: base.pay.grant, stress: 0, forfeitsFull: !!base.forfeitsFull };
+  let held = false;
   for (const g of L.grants) {
     if (g.kind === "base" || g.slot) continue;
     const r = Lg.canPay(L, { ...req, grant: g.id });
+    if (r.ok && heldCrew(state, cid, L, g.id, req)) { held = true; continue; }
     if (r.ok) return { ok: true, reason: null, pay: r.pay.grant, stress: r.pay.stress ?? 0 };
   }
+  if (held) return { ok: false, reason: "crewOrder", pay: null, gmMayAllow: true };
   return { ok: false, reason: base.reason === "fullOnTurn" ? "notYourTurn" : base.reason, pay: null, gmMayAllow: !!base.gmMayAllow };
 }
 /** Write the ledger entry of a paid action. `grant` = the unit canPay named (null: the base pair). -> { ok, ledger, entryId, stress } */

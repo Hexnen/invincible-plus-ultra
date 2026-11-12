@@ -173,6 +173,9 @@ export function chaseData(view, own, facts, t) {
   const caughtNow = phase === "after" ? fresh && !!ch.last?.caught : ["catch", "crew", "close"].includes(step) && (ch.distance ?? 1) <= 0;
   const crewList = sides.flatMap((s) => s.units.flatMap((u) => u.people.filter((p) => p.crew).map((p) => ({ ...p, side: s.id }))));
   const crewOpen = crewList.filter((p) => p.crew === "open");
+  /* ANSD (CHASE2-9) [B3438]: the pursuers' crews shoot first; the fleeing crews' shots wait until every pursuer took or gave up theirs
+     (the engine holds it: economy-pure crewOrderHold), unless the GM lifted the order for this round (state.chase.crew.free) */
+  const crewHeld = phase === "after" && ch.crew?.round === view.round && Array.isArray(ch.crew?.pursuers) && !ch.crew?.free && crewOpen.some((p) => p.side === "pursuer");
   const beat = (id, state, text = "", extra = {}) => ({ id, label: t(`ITAC.chase.beat.${id}`), state, text, ...extra });
   const order = ["obstacle", "prey", "pursuer", "result", "catch", "crew"];
   const nowAt = phase === "before" ? -1 : phase === "after" ? (crewOpen.length ? order.indexOf("crew") : order.length)
@@ -184,7 +187,10 @@ export function chaseData(view, own, facts, t) {
   const catchQ = Object.values(view.prompts ?? {}).find((p) => p.kind === "chaseCatch" && !p.answered) ?? null;
   const catcher = catchQ?.about ? name(catchQ.about) : sides[0].who?.name ?? sides[0].lead?.name ?? "", caughtOne = catchQ?.data?.target ? name(catchQ.data.target) : sides[1].roller?.name ?? sides[1].lead?.name ?? "";
   const ram = catchQ ? !!catchQ.data?.ram : !!sides[0].roller?.vehicle;
-  const catchInfo = caughtNow || (phase === "rolling" && step === "catch") ? { by: catcher, at: caughtOne, ram, text: t(ram ? "ITAC.chase.catch.whoRam" : "ITAC.chase.catch.whoCharge", { name: catcher, target: caughtOne }) } : null;
+  /* ANSD (CHASE2-1): every unit that reached them may strike, one after another, each picking its target among the fleeing */
+  const pick = (catchQ?.data?.targets ?? []).length > 1;
+  const catchInfo = caughtNow || (phase === "rolling" && step === "catch") ? { by: catcher, at: pick ? null : caughtOne, ram, pick,
+    text: t(pick ? (ram ? "ITAC.chase.catch.whoRamPick" : "ITAC.chase.catch.whoChargePick") : ram ? "ITAC.chase.catch.whoRam" : "ITAC.chase.catch.whoCharge", { name: catcher, target: caughtOne }) } : null;
   const beats = [
     obsOn ? beat("obstacle", stateAt("obstacle"), obstacle ? obstacle.name : phase === "before" ? t("ITAC.chase.obstacle.next") : "") : null,
     beat("prey", stateAt("prey"), sides[1].roll.text, { who: sides[1].who?.name ?? "" }),
@@ -192,15 +198,21 @@ export function chaseData(view, own, facts, t) {
       { who: sides[0].groups ? sides[0].groups.map((g) => g.who?.name).filter(Boolean).join(", ") : sides[0].who?.name ?? "" }),
     beat("result", stateAt("result"), told ? (fresh ? told.short : told.head) : ""),
     catchInfo ? beat("catch", stateAt("catch"), catchInfo.text) : null,
-    crewList.length ? beat("crew", phase === "after" ? (crewOpen.length ? "now" : "done") : stateAt("crew"), crewOpen.length ? t("ITAC.chase.crew.left", { n: crewOpen.length }) : phase === "after" ? t("ITAC.chase.crew.none") : t("ITAC.chase.crew.order")) : null,
+    crewList.length ? beat("crew", phase === "after" ? (crewOpen.length ? "now" : "done") : stateAt("crew"), crewOpen.length ? `${t("ITAC.chase.crew.left", { n: crewOpen.length })}${crewHeld ? `; ${t("ITAC.chase.crew.order")}` : ""}` : phase === "after" ? t("ITAC.chase.crew.none") : t("ITAC.chase.crew.order")) : null,
   ].filter(Boolean);
   if (purDone && preyDone && phase === "rolling" && step === "movement") beats.find((b) => b.id === "result").state = "now";
 
   /* THE DECISION: what this seat has to do now, with its buttons; else who the table waits for */
   const prompts = Object.values(view.prompts ?? {}).filter((p) => isChasePrompt(p) && !p.answered);
-  const lineOf = (p) => p.kind === "chaseCatch" ? t(p.data?.ram ? "ITAC.ui.line.chaseRam" : "ITAC.ui.line.chaseCharge", { name: name(p.about), target: name(p.data?.target) })
+  const lineOf = (p) => p.kind === "chaseCatch" ? ((p.data?.targets ?? []).length > 1 ? t(p.data?.ram ? "ITAC.chase.catch.whoRamPick" : "ITAC.chase.catch.whoChargePick", { name: name(p.about) })
+    : t(p.data?.ram ? "ITAC.ui.line.chaseRam" : "ITAC.ui.line.chaseCharge", { name: name(p.about), target: name(p.data?.target) }))
     : t("ITAC.ui.line.chaseOption", { name: name(p.about), obstacle: t(`ITAC.ui.chase.obstacle.${p.data?.obstacle}`, {}, String(p.data?.obstacle ?? "")), attr: attrText(t, p.data?.attr) });
-  const optLabel = (p, o) => (p.kind === "chaseCatch" && o.id === "attack" ? t(p.data?.ram ? "ITAC.action.ram" : "ITAC.opt.charge") : t(o.label ?? `ITAC.opt.${o.id}`, {}, String(o.id)));
+  /* ANSD (CHASE2-1): with several to pick from, each strike names its target ("Ram: Getaway truck") */
+  const optLabel = (p, o) => {
+    if (p.kind !== "chaseCatch" || !(o.id === "attack" || String(o.id).startsWith("attack:"))) return t(o.label ?? `ITAC.opt.${o.id}`, {}, String(o.id));
+    const verb = t(p.data?.ram ? "ITAC.action.ram" : "ITAC.opt.charge");
+    return (p.data?.targets ?? []).length > 1 ? t("ITAC.chase.catch.at", { what: verb, name: name(o.id === "attack" ? p.data?.target : String(o.id).slice(7)) }) : verb;
+  };
   const forMe = (p) => (staff ? p.to === "gm" : usersOf(p).includes(me));
   const answer = (p, proxy) => (p.options ?? []).map((o, k) => ({ id: `ans:${p.id}:${o.id}`, label: optLabel(p, o), primary: k === 0, req: { op: proxy || (staff && p.to === "gm") ? "answerFor" : "answer", prompt: p.id, value: o.id } }));
   const who = (users, about) => { const u = (users ?? []).filter((x) => x !== "gm").map((x) => facts.userName?.(x)).filter(Boolean); return u.length ? t("ITAC.chase.wait.player", { name: name(about), user: u.join(", ") }) : t("ITAC.chase.wait.gm", { name: name(about) }); };
@@ -217,9 +229,13 @@ export function chaseData(view, own, facts, t) {
   } else if (!inst && crewOpen.some((p) => p.mine)) {
     const p = crewOpen.find((x) => x.mine);
     /* [B3438]: the pursuers' crews shoot first, then the fleeing ones' (the order is the table's; the engine does not hold it, P8e-R6) */
-    const first = p.side === "prey" && crewOpen.some((x) => x.side === "pursuer");
-    decision = { kind: "crew", mine: true, title: t("ITAC.chase.do.crew", { name: p.name }), text: t(first ? "ITAC.chase.do.crewAfter" : "ITAC.chase.do.crewText"),
-      buttons: crewOpen.filter((x) => x.mine).map((x, k) => ({ id: `shoot:${x.id}`, label: crewOpen.filter((y) => y.mine).length > 1 ? t("ITAC.chase.shootAs", { name: x.name }) : t("ITAC.action.shoot"), primary: k === 0, arm: { sel: x.id, action: "shoot" } })) };
+    /* ANSD (CHASE2-9): now held by the engine: a fleeing crew member's shot waits (greyed, with why) while a pursuer may still shoot; a
+       crew member may give the shot up (that lets the fleeing shoot sooner) */
+    const held = (x) => crewHeld && x.side === "prey";
+    const mine = crewOpen.filter((x) => x.mine), wait = held(p);
+    decision = { kind: "crew", mine: true, title: t("ITAC.chase.do.crew", { name: p.name }), text: t(wait ? "ITAC.chase.do.crewWait" : p.side === "prey" ? "ITAC.chase.do.crewAfter" : "ITAC.chase.do.crewText"),
+      buttons: [...mine.map((x, k) => ({ id: `shoot:${x.id}`, label: mine.length > 1 ? t("ITAC.chase.shootAs", { name: x.name }) : t("ITAC.action.shoot"), primary: k === 0 && !held(x), arm: held(x) ? null : { sel: x.id, action: "shoot" }, disabled: held(x) ? t("ITAC.reason.crewOrder") : null })),
+        ...mine.map((x) => ({ id: `pass:${x.id}`, label: mine.length > 1 ? t("ITAC.chase.passAs", { name: x.name }) : t("ITAC.chase.pass"), req: { op: "crewPass", actor: x.id } }))] };
   }
   /* who else the table waits for (a GM may settle it) */
   const waits = [...prompts.filter((p) => !forMe(p)).map((p) => ({ id: p.id, text: `${who(p.to === "gm" ? ["gm"] : usersOf(p), p.about)}: ${t(`ITAC.prompt.${p.kind}`)}`,
@@ -229,8 +245,11 @@ export function chaseData(view, own, facts, t) {
   /* the crews still to shoot, side by side, the pursuers first [B3438]; the GM may arm the shot of anyone of them (an NPC, or a player away) */
   const crewText = (list) => SIDES.slice().reverse().map((s) => { const n = list.filter((p) => p.side === s).map((p) => p.name); return n.length ? t("ITAC.chase.wait.crewSide", { side: t(`ITAC.ui.chase.${s}`), names: n.join(", ") }) : null; }).filter(Boolean).join("; ");
   const others = crewOpen.filter((p) => !p.mine);
+  /* ANSD (CHASE2-9): the GM's shot buttons follow the order too (a fleeing one greyed while a pursuer may still shoot); the GM's exception
+     lifts the order for this round */
   if (!inst && others.length) waits.push({ id: "crew", text: t("ITAC.chase.wait.crew", { names: crewText(others) }), optional: true,
-    buttons: staff ? others.map((p) => ({ id: `arm:${p.id}`, label: t("ITAC.chase.gm.shootFor", { name: p.name }), arm: { sel: p.id, action: "shoot" } })) : [] });
+    buttons: staff ? [...others.map((p) => { const hd = crewHeld && p.side === "prey"; return { id: `arm:${p.id}`, label: t("ITAC.chase.gm.shootFor", { name: p.name }), arm: hd ? null : { sel: p.id, action: "shoot" }, disabled: hd ? t("ITAC.reason.crewOrder") : null }; }),
+      ...(crewHeld && crewOpen.some((p) => p.side === "prey") ? [{ id: "crewFree", label: t("ITAC.chase.gm.crewFree"), tip: t("ITAC.chase.gm.crewFreeTip"), req: { op: "chaseSet", crewFree: true } }] : [])] : [] });
 
   /* the GM's controls: the next roll (with the obstacle the GM may name), the distance, the table, who joins or drops out, the ends */
   const escaped = !!ch.over || ch.distance > ch.lostAt, caught = ch.distance <= 0;
@@ -310,12 +329,15 @@ export function endSeenOf(combatId, stored, mem) {
 function endedData(view, own, facts, t) {
   const e = isObj(view?.chaseEnded) ? view.chaseEnded : null;
   if (!e || Number(own?.endSeen) === Number(e.n)) return null;
-  const name = (id) => facts.c?.(id)?.name ?? t("ITAC.Someone"), out = OUTCOMES.includes(e.outcome) ? e.outcome : "combat";
+  /* ANSD (CHASE-4): who left the fight with the end is no longer in the Combat: the record carries their names */
+  const goneName = (id) => (Array.isArray(e.gone) ? e.gone.find((x) => x?.id === id)?.name : null) || null;
+  const name = (id) => facts.c?.(id)?.name ?? goneName(id) ?? t("ITAC.Someone"), out = OUTCOMES.includes(e.outcome) ? e.outcome : "combat";
   /* a vehicle is named with whoever drives it, as the GM's desk names it */
   const unitName = (id) => { const r = isObj(view.vehicles?.[id]) ? vehOf(view, id) : null; return r?.driver ? t("ITAC.ui.chase.driven", { vehicle: name(id), name: name(r.driver) }) : name(id); };
   return { on: false, ended: { n: e.n, outcome: out, title: t(`ITAC.chase.end.${out}`), text: t(`ITAC.chase.end.text.${out}`, { n: e.rounds ?? 0, d: e.distance ?? 0 }),
     sides: ["pursuer", "prey"].map((s) => ({ id: s, label: t(`ITAC.ui.chase.${s}`), names: (e.sides?.[s] ?? []).map(unitName).join(", "), units: (e.sides?.[s] ?? []).map(unitName) })),
-    rounds: t("ITAC.chase.end.rounds", { n: e.rounds ?? 0 }), close: { label: t("ITAC.chase.end.close"), endSeen: e.n } }, title: t("ITAC.ui.chase") };
+    rounds: t("ITAC.chase.end.rounds", { n: e.rounds ?? 0 }),
+    gone: Array.isArray(e.gone) && e.gone.length ? t("ITAC.chase.end.gone", { names: e.gone.map((x) => x?.name || t("ITAC.Someone")).join(", ") }) : null, close: { label: t("ITAC.chase.end.close"), endSeen: e.n } }, title: t("ITAC.ui.chase") };
 }
 
 /** CHASE (U169 / U170): while the panel shows, the dock's line does not say the chase again (its turn line, the news of a chase round)

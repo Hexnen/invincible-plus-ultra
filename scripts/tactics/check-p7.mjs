@@ -260,7 +260,7 @@ const base = () => {
   eq(T.requests.slice(-1).map((r) => [r.key, r.combatant, r.dice, r.users]), [["pursuer", "H1", 4, ["p1"]]], "F: then the pursuer's driver");
   await T.roll("pursuer", 2);
   eq([T.state.stack.length, T.state.chase.distance, T.state.chase.rolled, T.state.chase.round, T.state.chase.last.winner], [0, 1, T.state.round, 1, "pursuer"], "F: the winner moves the distance by the difference");
-  eq(T.state.chase.crew, { round: T.state.round, ids: ["H2", "N2"] }, "F: those who do not drive get one attack, the pursuing side named first");
+  eq(T.state.chase.crew, { round: T.state.round, ids: ["H2", "N2"], pursuers: ["H2"] }, "F: those who do not drive get one attack, the pursuing side named first (ANSD CHASE2-9: and shooting first)");
   const fr = T.facts();
   eq(T.evs("chase").filter((e) => e.roll).pop().roll, { prey: 1, pursuer: 2 }, "F: the roll is an event");
   eq(code(await T.gm({ op: "chaseRound" })), "ok", "F: a second roll opens the next round first");
@@ -324,7 +324,7 @@ const base = () => {
   eq([T.state.chase.distance, T.state.chase.last.escaped, T.state.chase.last.obstacle, T.top()], [5, 1, "cantSee", null], "G: beyond the limit the prey is lost");
   eq(T.evs("chase").filter((e) => e.escaped).length, 1, "G: the escape is an event");
   await T.gm({ op: "chaseEnd", outcome: "escaped" });
-  eq([T.state.kind, T.state.init.slots.length], ["combat", 2], "G: the chase ends");
+  eq([T.state.kind, T.state.init.slots.length, !!T.c.N1], ["combat", 1, false], "G: the chase ends; the NPC who escaped leaves the fight (ANSD CHASE-4)");
   /* the start undone gives the cards back */
   const T2 = new Table();
   T2.hero("H1", "p1").npc("N1");
