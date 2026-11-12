@@ -78,7 +78,8 @@ const base = () => { const T = new Table(); T.hero("H1", "p1", { name: "Omni" })
   await T.req("p1", { op: "declare", actor: "H1", decl: { action: "shoot", targets: ["M1"], weapon: "nade", area: true } });
   for (const p of T.prompts("reaction")) await T.req("gm", { op: "answerFor", prompt: p.id, value: "pass" });
   await T.roll("attack", 1);
-  await T.answer("gm", "minionLoss", "n:3", "M1"); await T.answer("gm", "minionsFate", "ko", "M1");
+  /* SEAM (with uxc U145): the GM's ONE card for the group says how many fall and their fate together (it was two cards when this was written) */
+  eq((await T.answer("gm", "minionsQuick", "ko:3", "M1"))?.ok, true, "U141 / U145: the GM answers the group's one card (3, knocked out)");
   if (T.prompt("stunts")) await T.answer("p1", "stunts", []);
   const n = line(T, "p1", ["H1"]);
   ok(/Soldier: hit, \[\[damage:3\]\], 3 down/.test(n?.text ?? ""), `U141: the fallen minions are counted on the line (${n?.text})`);

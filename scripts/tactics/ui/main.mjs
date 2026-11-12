@@ -109,7 +109,8 @@ function autoEnd(combat, d) {
   const e = d?.show ? d.end : null, key = e?.auto && e.req ? `${combat?.id}:${e.req.round}:${e.req.slot}:${e.req.actor}` : null;
   if (key === autoKey) return;
   clearTimeout(autoTimer); autoKey = key;
-  if (key) autoTimer = setTimeout(() => { try { const n = lastDock?.show ? lastDock.end : null; if (n?.auto && n.req && `${combatNow()?.id}:${n.req.round}:${n.req.slot}:${n.req.actor}` === key) Dock.press("end"); } catch (err) { console.warn(LOG, "auto end failed", err); } }, AUTO_END_MS);
+  if (key) autoTimer = setTimeout(() => { try { if (diceBusy() && Date.now() - (diceWas?.since ?? Date.now()) <= NewsP.HOLD_MS) { autoKey = null; diceThen(); return; }      // SEAM (U144 x D128): dice rolled up in the 1.5 s: wait for them, then run again
+    const n = lastDock?.show ? lastDock.end : null; if (n?.auto && n.req && `${combatNow()?.id}:${n.req.round}:${n.req.slot}:${n.req.actor}` === key) Dock.press("end"); } catch (err) { console.warn(LOG, "auto end failed", err); } }, AUTO_END_MS);
 }
 let cardTop = { id: null, at: 0 };      // U143: the question card on top of the dock and since when it stands there (the keys' guard)
 /* UXB (U141 / D128): the turns this client saw (a news line stands through its turn and the next: news-pure newsWindow) and what was
@@ -308,13 +309,15 @@ function refresh() {
     }
     fightStart(combat);
     /* D128: what a roll came to waits for its dice: a new card and the new line come when the 3D dice have landed */
-    const busy = diceBusy(), hold = NewsP.diceHold(diceWas, { prompts: (data.prompts ?? []).map((p) => p.id), cards: (deskD?.cards ?? []).map((c) => c.id), news: data.news ?? null, at: Date.now() }, busy);
+    const now = Date.now(), busy = diceBusy(), hold = NewsP.diceHold(diceWas, { prompts: (data.prompts ?? []).map((p) => p.id), cards: (deskD?.cards ?? []).map((c) => c.id), news: data.news ?? null, at: now }, busy);
     diceWas = { prompts: hold.prompts, cards: hold.cards, news: hold.news, since: hold.since };
     if (hold.held) {
       data.prompts = (data.prompts ?? []).filter((p) => hold.prompts.includes(p.id)); data.news = hold.news;
-      if (deskD?.cards) deskD.cards = deskD.cards.filter((c) => hold.cards.includes(c.id));
+      deskD = NewsP.holdDesk(deskD, hold.cards);      // SEAM: the held cards are not counted either (badge, igd-busy)
       diceThen();
     }
+    /* SEAM (U144 x D128): the turn that passes by itself waits for the dice in the air (news-pure endWhileDice) */
+    if (data.show && data.end) { data.end = NewsP.endWhileDice(data.end, { busy, since: hold.since, at: now }, { label: t("ITAC.ui.end"), tip: `${t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]` }); if (data.end.dice) diceThen(); }
     if (deskD) Desk.render(deskD, st.desk);
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows

@@ -511,6 +511,10 @@ body.itd-picking #board { cursor: crosshair; }
    (a short row: a reaction, the absent player's answer) or its one button (Next of the round's queue) hold to the bottom of the desk,
    on a band of the card's own colour; the card's text scrolls behind them. A long list of answers (more than four: stunts) scrolls as before. */
 #invincible-tactics-desk .ita-ask:not([data-wide]):not(:has(> .ita-submit)) > .ita-opts { position: sticky; bottom: -12px; z-index: 1; margin: 0 -10px; padding: 6px 10px 10px; background: var(--ita-tile); box-shadow: 0 -1px 0 var(--ita-line); }
+/* SEAM (uxc U145 x uxa U154): a card with a counter (the minion card, now the GM's usual one) holds the counter AND its answers to the
+   edge as one band, so the number the buttons say back never scrolls away from them. Elsewhere the band is no box at all. */
+.ita-band { display: contents; }
+#invincible-tactics-desk .ita-ask:not([data-wide]):not(:has(> .ita-submit)) > .ita-band { display: flex; flex-direction: column; gap: 6px; position: sticky; bottom: -12px; z-index: 1; margin: 0 -10px; padding: 6px 10px 10px; background: var(--ita-tile); box-shadow: 0 -1px 0 var(--ita-line); }
 /* the one button stands on a band the width of the card (the card's ::after, held to the same edge under the button);
    the edge is the desk's own, under its 12 px bottom padding (.igd-body), which a sticky box otherwise keeps clear of */
 #invincible-tactics-desk .ita-ask > .ita-submit { position: sticky; bottom: -6px; z-index: 2; }

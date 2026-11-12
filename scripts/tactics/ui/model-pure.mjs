@@ -469,7 +469,7 @@ function newsText(n, facts, t) {
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
   /* a hazard that hurt nobody says so once, with the names after it (four "no damage" in a row is one fact) */
-  const none = (n.rows ?? []).filter((r) => typeof r?.hit !== "boolean" && r?.taken === 0 && !r.out && !r.down && !(r.stunts ?? []).length);
+  const none = (n.rows ?? []).filter((r) => typeof r?.hit !== "boolean" && r?.taken === 0 && !r.out && !r.down && !r.crit && !(r.stunts ?? []).length);      // SEAM: uxc's injury (D127) is a fact of its own too
   if (rows.length > 1 && none.length === rows.length) rows.splice(0, rows.length, `${t("ITAC.ui.news.noDamage")}: ${none.map((r) => nameOf(facts, r.target, t)).join(", ")}`);
   const res = rows.length ? rows.join("; ") : n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "";
   /* D113: what a reaction came to (Discretion, Warning Call, one the GM settled by hand) is said after the result */

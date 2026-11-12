@@ -58,6 +58,23 @@ export function diceHold(prev, now, busy) {
   const held = prompts.length < ids(now?.prompts).length || cards.length < ids(now?.cards).length || news !== (now?.news ?? null);
   return { prompts, cards, news, since, held };
 }
+/* SEAM (uxb D128 x uxa U140): the desk without the cards held back while the dice roll is counted without them too (its badge, and
+   `igd-busy`, which keeps an idle desk from stepping back while the user aims at the map). deskD = model-pure deskData, keep = card ids */
+export function holdDesk(deskD, keep) {
+  if (!deskD || !Array.isArray(deskD.cards)) return deskD;
+  const cards = deskD.cards.filter((c) => (keep ?? []).includes(c.id)), gone = deskD.cards.length - cards.length;
+  return gone ? { ...deskD, cards, count: Math.max(0, (Number(deskD.count) || 0) - gone) } : deskD;
+}
+/* SEAM (uxc U144 x uxb D128): a turn with nothing left passes by itself 1.5 s later; while the 3D dice of a roll still roll on this
+   client (the result held back) it waits for them, as the cards and the line do: the button is the plain End turn until they land (one
+   click still ends it), then the 1.5 s run from there. At most HOLD_MS (a stuck dice flag never keeps the turn). dice = { busy, since,
+   at }, plain = { label, tip } -> end, with `dice: 1` while it waits */
+export function endWhileDice(end, dice, plain) {
+  if (!end?.auto || !dice?.busy) return end;
+  const since = Number.isFinite(dice.since) ? dice.since : Number(dice.at) || 0;
+  if ((Number(dice.at) || 0) - since > HOLD_MS) return end;
+  return { ...end, auto: false, label: plain?.label ?? end.label, tip: plain?.tip ?? end.tip, dice: 1 };
+}
 /** a group of one hazard as ONE line: the head with every character's row (one fire on three people: one line, three rows) */
 export function merged(group) {
   if (!group?.length) return [];

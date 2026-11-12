@@ -113,6 +113,8 @@ export function face(img, name, cls = "ita-face") {
 const seen = new Set();          // questions already shown once: only a new one plays the entrance
 /** One question. handlers = { send(req), pick(promptId, optionId, max), text(promptId, value), always(promptId, on), zone(option, ask),
     again(ask): forget the zone picked on the map for this question } */
+/* SEAM: a card's counter and the answers it changes, as one band (only when the card has a counter) */
+const countBand = (a, count, opts) => (count ? h("div.ita-band", {}, count, opts) : opts);
 export function askCard(a, handlers = {}) {
   const fresh = !seen.has(a.id);
   seen.add(a.id);
@@ -143,14 +145,16 @@ export function askCard(a, handlers = {}) {
     h("header.ita-head", {}, h("h3.ita-plate", { text: a.title }), a.about && a.aboutHead !== false ? h("span.ita-about", { text: a.about }) : null),
     a.lines.map((l) => (typeof l === "string" ? h("p.ita-line", { text: l }) : h("blockquote.ita-quote", {}, h("span", { text: l.quote }), l.by ? h("cite", { text: l.by }) : null))),
     a.tokens?.length ? h("div.itd-chips", {}, a.tokens.map((k) => h("button.itd-chip.itd-chip-token", { fk: `tk:${a.id}:${k.id}`, tip: k.source, attrs: { "aria-pressed": String(k.picked) }, on: { click: () => handlers.pick?.(`tk:${a.id}`, k.id, 12) } }, h("span", { text: `${k.label} ${k.source}` })))) : null,
-    /* U61: a number the answers carry (how many of a minion group fall): minus, the number, plus; the answers under it say it back */
-    a.count ? h("div.ita-count", { attrs: { role: "group", "aria-label": a.count.label } }, h("span.ita-count-l", { text: a.count.label }),
+    /* U61: a number the answers carry (how many of a minion group fall): minus, the number, plus; the answers under it say it back.
+       SEAM (uxc U145 x uxa U154): the number and its answers are ONE band (`.ita-band`, display: contents elsewhere), so on the desk the
+       counter holds to the bottom edge with the answers it changes (U145 made this card the GM's usual one) */
+    countBand(a, a.count ? h("div.ita-count", { attrs: { role: "group", "aria-label": a.count.label } }, h("span.ita-count-l", { text: a.count.label }),
       h("span.ita-step", {}, h("button", { fk: `cm:${a.id}`, disabled: a.count.value <= a.count.min, attrs: { "aria-label": "-1" }, on: { click: () => handlers.count?.(a.count.id, a.count.value - 1) } }, icon("fa-minus")),
         h("b", { text: String(a.count.value), attrs: { "aria-live": "polite" } }),
         h("button", { fk: `cp:${a.id}`, disabled: a.count.value >= a.count.max, attrs: { "aria-label": "+1" }, on: { click: () => handlers.count?.(a.count.id, a.count.value + 1) } }, icon("fa-plus"))),
       h("span.ita-count-of", { text: a.count.of })) : null,
     groups.length > 1 ? groups.map((g) => h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(opt))))
-      : h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(opt)),
+      : h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(opt))),
     a.free ? h("input.ita-text", { fk: `text:${a.id}`, attrs: { type: "text", maxlength: 300, placeholder: a.free.placeholder, "aria-label": a.free.placeholder, value: a.free.text }, on: { input: (e, el) => handlers.text?.(a.id, el.value) } }) : null,
     a.always ? h("label.ita-check", { tip: a.always.tip }, h("input", { fk: `always:${a.id}`, attrs: { type: "checkbox", checked: a.always.on }, on: { change: (e, el) => handlers.always?.(a.id, el.checked) } }), h("span", { text: a.always.label })) : null,
     a.submit ? h("button.ita-submit", { fk: `submit:${a.id}`, text: a.submit.label, disabled: !!a.submit.disabled, tip: a.submit.disabled, data: { key: a.keyEnter ?? null }, on: { click: () => a.submit.req && handlers.send?.(a.submit.req) } }) : null);
