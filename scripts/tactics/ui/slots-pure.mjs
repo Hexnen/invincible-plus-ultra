@@ -105,7 +105,9 @@ export function frame(f) {
     out.slots.line = { ...box(lx0, y, lx1, y + lineH), anchor: "top", align: "center" };
     const hy = side2 ? y : y + lineH + 6;
     if (f.hints) out.slots.hint = { ...box(R - hintW, hy, R, hy + hintH), anchor: "top", align: side2 ? "end" : "center" };
-    const cardsTop = (f.hints && !side2 ? hy + hintH + GAP : y + lineH + 6), cardsEnd = Math.max(cardsTop + 140, bar.top - out.panelMax - 2 * GAP);
+    /* the questions may reach down to the bar: a question and the user's own armed panel rarely stand together (a question comes on
+       another's turn); when they do, the dock holds the questions over the panel (dock.mjs placeSlots), the panel never moves */
+    const cardsTop = (f.hints && !side2 ? hy + hintH + GAP : y + lineH + 6), cardsEnd = Math.max(cardsTop + 140, bar.top - GAP);
     out.slots.cards = { ...box(lx0, cardsTop, lx1, cardsEnd), anchor: "top", align: "center" };
     out.slots.notice = { ...box(R - Math.min(460, R - L), (f.hints && side2 ? y + hintH + GAP : y + lineH + 6), R, H), anchor: "top", align: "end" };
   } else if (mode === "b") {

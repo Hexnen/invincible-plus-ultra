@@ -322,6 +322,12 @@ function placeSlots(rec) {
     st.setProperty("--its-h", `${s.y1 - s.y0}px`); st.setProperty("--its-w", `${s.x1 - s.x0}px`);
     el.dataset.anchor = s.anchor; el.dataset.align = s.align;
   }
+  /* a: the questions reach down to the bar; with the user's armed panel open they stop over it */
+  if (m === "a" && slotEls.cards && fr.slots.cards) {
+    const pe = stack.querySelector(":scope > .itd-panel"), pr = pe ? rec.rect(pe) : null, s = fr.slots.cards;
+    const end = pr && pr.top > s.y0 + 60 ? Math.min(s.y1, pr.top - GAP) : s.y1;
+    const st = slotEls.cards.parentElement.style; st.setProperty("--its-h", `${Math.round(end - s.y0)}px`);
+  }
   /* what floats elsewhere: the end-of-session notice in its own place, never hidden for a panel */
   try {
     const n = fr.slots.notice;
