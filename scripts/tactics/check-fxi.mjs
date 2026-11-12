@@ -151,6 +151,19 @@ const team = (extra = () => {}, order = ["N1", "H1", "H2", "H3", "N2"]) => { con
   ok(/busyRedraw\(left\)/.test(src("ui/main.mjs")), "D120: the chip that says the dice are flying is drawn again when that time is up");
 }
 
+/* ---- U129 (b): an old roll card of the fight keeps no live-looking Push / Accept */
+{
+  const RW = await import("./rollwatch-pure.mjs");
+  const v = (r) => ({ stack: [{ id: "a1", rolls: { attack: r } }] }), tag = { inst: "a1", key: "attack", rid: "r1" };
+  eq(RW.cardState(v({ sixes: 2, pushable: true, messageId: "m1", req: { rid: "r1" } }), tag, "m1"), "open", "U129: the roll waits for push or accept: its card's buttons stay");
+  eq(RW.cardState(v({ sixes: null, req: { rid: "r1" } }), tag, "m1"), "open", "U129: the card came before the fight took it: nothing switched off");
+  eq(RW.cardState(v({ sixes: 2, pushable: false, messageId: "m1", req: { rid: "r1" } }), tag, "m1"), "settled", "U129: accepted (by anybody): settled");
+  eq(RW.cardState(v({ sixes: 3, pushable: true, messageId: "m2", req: { rid: "r1" } }), tag, "m1"), "settled", "U129: an older card of a roll pushed since: settled");
+  eq(RW.cardState(v({ forced: { sixes: 1 }, req: { rid: "r1" } }), tag, "m1"), "settled", "U129: the GM set the result: settled");
+  eq(RW.cardState({ stack: [] }, tag, "m1"), "settled", "U129: the action is over: settled");
+  ok(/renderChatMessageHTML/.test(src("ui/main.mjs")) && /RW\.cardState\(/.test(src("ui/main.mjs")), "U129: the chat cards are switched when drawn and after every change of the fight");
+}
+
 /* ---- U130: the summary card of a stopped fight. Stopping is the end of the fight: its card is shown then and its tally let go, so
    deleting that combat later (before the next fight) brings no card back; and a new fight never has the old fight's card over it.
    ui/feedback.mjs against a few stand-ins of Foundry (nothing else of the module runs). */

@@ -19,6 +19,7 @@ import * as Mv from "../movement.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import { t as langT, errText, rollTitle } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
+import * as RW from "../rollwatch-pure.mjs";
 import { plain } from "../../kit.mjs";      // U93: a notification cannot draw a mark: it says its name
 import * as Keys from "./keys-pure.mjs";
 import * as Dock from "./dock.mjs";
@@ -525,6 +526,19 @@ function watchDice() {
     });
   } catch { /* the dice keep their place */ }
 }
+/* U129: Push / Accept on an old roll card of the fight (rollwatch-pure.cardState) are switched off, with a word why, once the fight settled
+   that roll; drawn on Foundry's own disabled button. Every chat surface (log, pop-out, notifications) after each change of the fight. */
+function chatButtons(root = document) {
+  try {
+    for (const el of root.querySelectorAll?.("[data-message-id] .dice-buttons") ?? []) {
+      const id = el.closest("[data-message-id]")?.dataset.messageId, tag = Sys.tacticsOf(game.messages?.get(id));
+      if (!tag) continue;
+      const combat = (tag.combat ? game.combats?.get(tag.combat) : null) ?? Store.currentCombat();
+      const off = RW.cardState(combat ? Api.state(combat) : null, tag, id) === "settled";
+      for (const b of el.querySelectorAll("button")) { b.disabled = off; if (off) b.dataset.tooltip = t("ITAC.ui.chat.settled"); else delete b.dataset.tooltip; }
+    }
+  } catch { /* the card as the system drew it */ }
+}
 /** -> true when the surfaces run on this client */
 export function start() {
   if (started) return true;
@@ -546,6 +560,8 @@ export function start() {
     Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Board.reset(); Camera.reset(); Dock.hide(); });
     Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size
     Hooks.on("deleteChatMessage", () => setTimeout(relayout, 60));
+    Hooks.on("renderChatMessageHTML", (_m, html) => chatButtons(html?.parentElement ?? html));      // U129
+    Store.subscribe(() => setTimeout(chatButtons, 50));
     Zones.onEvent(moved);                    // a token entered a zone, a door changed: the options of a move are counted again
     Zones.onChange(() => moved());           // the scene's numerals or its zones changed: every text that names a zone is said again
     Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock", top: "#invincible-combat-bar" });      // the pick's banner and its "more" chips keep clear of our two bars (zones-api.md section 23)
