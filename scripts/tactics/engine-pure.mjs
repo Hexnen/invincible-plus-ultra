@@ -296,7 +296,8 @@ function label(X, inst, what) {
   /* D113: the reactions it met, after the result: "[Omni-Man: Warning Call (warned)]"; a reactor hidden from the table is in the GM's line only */
   const rx = (reactsOf(inst).reacts ?? []).map((r) => ({ r, w: reactWhat(r) })), rxText = (nm, list) => list.map(({ r, w }) => ` [${nm(r.who)}: ${w}${w ? " " : ""}({ITAC.journal.react.${r.result}})]`).join("");
   const rxPub = rx.filter(({ r }) => !X.facts.c(r.who)?.hidden);
-  return { who: whoOf(X, [inst.actor, ...(inst.decl?.targets ?? []), ...rx.map(({ r }) => r.who)]), pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? (pub ? pub + rxText(cMark, rxPub) : pub) : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}${rxText((id) => X.facts.c(id)?.name ?? "", rx)}` };
+  /* (the reactors are not put into `who`: a reader who does not know one of them would lose the whole line of the attack, view-pure.journalFor) */
+  return { who: whoOf(X, [inst.actor, ...(inst.decl?.targets ?? [])]), pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? (pub ? pub + rxText(cMark, rxPub) : pub) : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}${rxText((id) => X.facts.c(id)?.name ?? "", rx)}` };
 }
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {
