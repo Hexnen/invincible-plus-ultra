@@ -32,6 +32,9 @@ const MARKS = {
   /* the marks of things that Font Awesome does not draw (kit.mjs SYM_FA has the rest) */
   rmin: { w: 16, d: stop(0) + arrow(3, 13) },
   rmax: { w: 16, d: arrow(0, 13) + stop(14) },
+  /* U125 (b) / U119: range as ONE number (both ends the same: a melee weapon's 0, a thrown 2/2): the arrow of the two above, with a head
+     at each end and no stop, so it names neither end. Same stem, same heads, same box as rmin / rmax */
+  range: { w: 16, d: poly([[0, 6], [5.5, 2.4], [5.5, 5], [10.5, 5], [10.5, 2.4], [16, 6], [10.5, 9.6], [10.5, 7], [5.5, 7], [5.5, 9.6]]) },
   /* Armor. U93: a breastplate, not a shield: the shield is Block's picture (the half shield of the answer on a reaction card) */
   armor: { w: 12, d: "M2.3,1H4.5C4.8,2.5 7.2,2.5 7.5,1H9.7L11.5,4.3L9.7,5.6V11H2.3V5.6L0.5,4.3Z" + poly([[5.4, 4.6], [5.4, 8.4], [6.6, 8.4], [6.6, 4.6]]) },
 };

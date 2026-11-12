@@ -9,7 +9,7 @@ import { MARK_EN, MARK_PL } from "./kit-lang.mjs";
 import { MARK_SVG } from "./kit-marks.mjs";
 
 export const COST_KINDS = Object.freeze(["full", "quick", "turn", "long", "none", "gm", "out", "stress"]);
-export const SYM_KINDS = Object.freeze(["health", "damage", "armor", "pierce", "rmin", "rmax", "dice", "six", "push", "crit", "cond"]);
+export const SYM_KINDS = Object.freeze(["health", "damage", "armor", "pierce", "rmin", "rmax", "range", "dice", "six", "push", "crit", "cond"]);
 export const KIND = (k) => (k === "free" ? "none" : COST_KINDS.includes(k) ? k : null);
 /* Font Awesome draws these (the pictures the interface already had); kit.css draws the rest as masks (range, Armor) */
 export const SYM_FA = Object.freeze({ health: "fa-heart", damage: "fa-burst", dice: "fa-dice-d6", six: "fa-dice-six", push: "fa-arrows-rotate", crit: "fa-bone" });
