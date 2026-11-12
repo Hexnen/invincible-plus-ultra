@@ -37,42 +37,25 @@ const MARKS = {
   range: { w: 16, d: poly([[0, 6], [5.5, 2.4], [5.5, 5], [10.5, 5], [10.5, 2.4], [16, 6], [10.5, 9.6], [10.5, 7], [5.5, 7], [5.5, 9.6]]) },
   /* Armor. U93: a breastplate, not a shield: the shield is Block's picture (the half shield of the answer on a reaction card) */
   armor: { w: 12, d: "M2.3,1H4.5C4.8,2.5 7.2,2.5 7.5,1H9.7L11.5,4.3L9.7,5.6V11H2.3V5.6L0.5,4.3Z" + poly([[5.4, 4.6], [5.4, 8.4], [6.6, 8.4], [6.6, 4.6]]) },
-  /* U133: THE CHANCE of a target (the four bands of the engine: unlikely, even, likely, near certain), drawn three ways while the owner
-     chooses one (a temporary client switch, tactics setting tacticsOddsLook). Each level is its own shape, never a colour alone. */
+  /* U133: THE CHANCE of a target (the four bands of the engine: unlikely, even, likely, near certain): the target's ring in four
+     quarters, as many heavy as the band. On the map the ring around the token IS this drawing (moinen-maps zones-api.md section 42) */
   ...oddsMarks(),
 };
-/* U133 bars: four upright bars rising like a meter, leaning like the action bars; the bars the chance has are full, the rest hollow (the
-   rule of a spent slot: the same shape, hollow) */
-function oddsBars(lit) {
-  let d = "", raw = "";
-  for (let i = 0; i < 4; i++) {
-    const x = 0.6 + i * 4.3, h = [4.6, 6.8, 9, 11.2][i], y1 = 11.6, k = 1, w = 3.2;
-    if (i < lit) d += poly([[x, y1], [x + w, y1], [x + w + k, y1 - h], [x + k, y1 - h]]);
-    else raw += hollow([[x + 0.55, y1 - 0.55], [x + w - 0.55, y1 - 0.55], [x + w + k - 0.55, y1 - h + 0.55], [x + k + 0.55, y1 - h + 0.55]], 1.1);
-  }
-  return { w: 18, d, raw };
-}
-/* U133 ring: the target's ring in four quarters from the top, clockwise; the quarters the chance has are heavy, the rest a hairline
-   (on the map the ring around the token IS this drawing) */
+/* U133: the ring in four quarters from the top, clockwise (the gaps at the top, right, bottom and left, as on the map, where the rings of
+   two tokens side by side would meet); the quarters the chance has are heavy, the rest a hairline. Never a colour alone: one ink, the
+   level is how much of the ring is heavy (a quarter, a half, three quarters, all of it) */
 function oddsRing(lit) {
-  const cx = 6, cy = 6, r = 4.5, gap = 20, pt = (deg) => [cx + r * Math.cos((deg * Math.PI) / 180), cy + r * Math.sin((deg * Math.PI) / 180)];
+  const cx = 6, cy = 6, r = 4.55, gap = 26, pt = (deg) => [cx + r * Math.cos((deg * Math.PI) / 180), cy + r * Math.sin((deg * Math.PI) / 180)];
   let raw = "";
   for (let i = 0; i < 4; i++) {
-    const [x0, y0] = pt(-90 + i * 90 + gap / 2), [x1, y1] = pt(-90 + (i + 1) * 90 - gap / 2), sw = i < lit ? 2.6 : 0.9;
+    const [x0, y0] = pt(-90 + i * 90 + gap / 2), [x1, y1] = pt(-90 + (i + 1) * 90 - gap / 2), sw = i < lit ? 2.7 : 0.8;
     raw += `<path fill='none' stroke='#000' stroke-width='${f(sw)}' d='M${f(x0)},${f(y0)}A${f(r)},${f(r)} 0 0 1 ${f(x1)},${f(y1)}'/>`;
   }
   return { w: 12, raw };
 }
-/* U133 arrow: which way the chance points: one chevron down (unlikely), level (even), one chevron up (likely), two up (near certain) */
-function oddsArrow(level) {
-  const up = (y, t = 2.5, s = 1) => poly([[6, y], [6 + 5.4 * s, y + 5.4 * s], [6 + 5.4 * s - t * 0.75, y + 5.4 * s + t * 0.75], [6, y + t * 1.06], [6 - 5.4 * s + t * 0.75, y + 5.4 * s + t * 0.75], [6 - 5.4 * s, y + 5.4 * s]]);
-  const down = (y, t = 2.5) => poly([[6, y], [11.4, y - 5.4], [11.4 - t * 0.75, y - 5.4 - t * 0.75], [6, y - t * 1.06], [0.6 + t * 0.75, y - 5.4 - t * 0.75], [0.6, y - 5.4]]);
-  const d = level === 1 ? down(9.4) : level === 2 ? poly([[1.2, 4.6], [10.8, 4.6], [12, 6], [10.8, 7.4], [1.2, 7.4], [0, 6]]) : level === 3 ? up(2.6) : up(0.3, 2.3, 0.95) + up(4.9, 2.3, 0.95);
-  return { w: 12, d };
-}
 function oddsMarks() {
   const out = {};
-  for (let i = 1; i <= 4; i++) { out[`odds-bars-${i}`] = oddsBars(i); out[`odds-ring-${i}`] = oddsRing(i); out[`odds-arrow-${i}`] = oddsArrow(i); }
+  for (let i = 1; i <= 4; i++) out[`odds-${i}`] = oddsRing(i);
   return out;
 }
 

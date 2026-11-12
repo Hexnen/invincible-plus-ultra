@@ -60,19 +60,9 @@ export function markSigns(kind, { n = null, out = false, off = false, name = nul
   return c.map((cls, i) => { const kk = cls.match(/ipu-k-([a-z]+)/)[1], hollow = cls.includes("ipu-off"); return { name: i === 0 ? say : null, el: { tag: "i", cls }, ...picOf(hollow ? `${kk}-off` : kk), color: SIGN_INK.cost }; });
 }
 
-/* ---- U133: THE CHANCE OF A TARGET as a mark. The engine's four bands (flows/kit.mjs BANDS: unlikely, even, likely, near certain) are
-   drawn instead of written. While the owner chooses, three drawings stand side by side behind a temporary client switch (tactics setting
-   tacticsOddsLook; "off" = the words, as before):
-     bars    four upright bars, as many full as the band (the rest hollow)        on the map: a chip on the token's top right corner
-     ring    the target's ring in quarters, as many heavy as the band              on the map: the ring around the token itself
-     arrow   which way it points: down, level, up, two up                          on the map: on the token's bottom right corner
-   oddsSign(level, look, { name, lang }) -> one sign (section 40 of the map's API); level 0..3, the band's index. */
+/* ---- U133: THE CHANCE OF A TARGET as a mark: the engine's four bands (flows/kit.mjs BANDS: unlikely, even, likely, near certain) as the
+   target's ring in four quarters, as many heavy as the band (odds-1 .. odds-4). On the map the ring around the token is the drawing
+   (board-pure oddsShow hands the map "n of 4", moinen-maps zones-api.md section 42); here the same drawing for the legend.
+   oddsKind(level) -> the mark's kind; level 0..3, the band's index. */
 export const ODDS_LEVELS = Object.freeze(["unlikely", "even", "likely", "nearCertain"]);
-export const ODDS_LOOKS = Object.freeze(["bars", "ring", "arrow"]);
-export const oddsKind = (level, look) => (ODDS_LOOKS.includes(look) && Number.isInteger(level) && ODDS_LEVELS[level] ? `odds-${look}-${level + 1}` : null);
-export function oddsSign(level, look, { name = true, lang = "en" } = {}) {
-  const k = oddsKind(level, look);
-  if (!k) return null;
-  const say = name === true ? markName(ODDS_LEVELS[level], lang) : name ? String(name) : null;
-  return { name: say, el: { tag: "i", cls: `ipu-cost ipu-k-${k}` }, ...picOf(k), color: SIGN_INK.cost };
-}
+export const oddsKind = (level) => (Number.isInteger(level) && ODDS_LEVELS[level] ? `odds-${level + 1}` : null);
