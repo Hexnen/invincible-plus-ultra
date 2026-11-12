@@ -384,7 +384,7 @@ function applyReaction(v, I, R, cid, key, value, when) {
       return false;
     }
     rec.result = "took";
-    swapTarget(I, from, cid, e.id);
+    swapTarget(I, from, cid, e.id, R);
     return false;
   }
   if (e.reaction.effect === "autoMiss") { ((I.data.forced ??= {}).autoMiss ??= {})[cid] = e.id; return false; }
@@ -408,15 +408,20 @@ function reopenDefence(v, I, R, t) {
   if (I.data.done) delete I.data.done[k];
   K.setFlag(I, "reopen");
 }
-const swapTarget = (I, from, to, by) => {
+/* A20 (the user, 2026-11-12: «Płatność i stres jak dziś, obrona wraca»): a block or a dodge the old target paid for never reaches its roll:
+   its unit goes back to its owner (the engine's "unpay" voids the entry; a pay still queued in this step is applied first, then voided).
+   The 1 stress of a Defensive answer stays (stress paid stays, A20); a warned answer cost nothing. */
+const swapTarget = (I, from, to, by, R = null) => {
   I.decl.targets = I.decl.targets.map((t) => (t === from ? to : t));
   (I.data.retargets ??= []).push({ from, to, by });
+  const df = I.data.def?.[from];
+  if (df?.defence && !df.free && R) { R.effects.push({ t: "unpay", who: from, key: `def:${from}` }); (I.data.notes ??= []).push({ note: "defenceBack", who: from, defence: df.defence }); }
   if (I.data.def) delete I.data.def[from];
 };
 /** U91: the rolls of those who dive in [B2115]. Each waits for its dice (the roller may push, as on any roll of its own); with a six the
     reactor is the target now, without one the attack goes on against the intended target and the quick action is spent all the same.
     Somebody who is no target any more (another guardian was faster) is not replaced. -> true while a roll is still out */
-function settleSwaps(v, I) {
+function settleSwaps(v, I, R) {
   let waiting = false;
   for (const s of I.data.swaps ?? []) {
     if (s.done) continue;
@@ -426,7 +431,7 @@ function settleSwaps(v, I) {
     const won = sixes >= 1 && I.decl.targets.includes(s.from) && !I.decl.targets.includes(to) && (!s.ally || K.alliesNear(v, I, s.by).includes(to));      // D113: Discretion's ally must still stand beside
     const rec = (I.data.reacted ?? []).find((x) => x.who === s.by && x.entry === s.entry && !x.result);
     if (rec) rec.result = won ? (s.ally ? "moved" : "took") : "failed";
-    if (won) swapTarget(I, s.from, to, s.entry);
+    if (won) swapTarget(I, s.from, to, s.entry, R);
     else {
       (I.data.notes ??= []).push({ note: "swapFailed", who: s.by, entry: s.entry, for: s.from, sixes });
       if (s.ally && I.decl.targets.includes(s.by)) (I.data.redefend ??= []).push(s.by);      // D113: Discretion took no action: the target still may defend
@@ -578,7 +583,7 @@ export const steps = {
     const before = I.decl.targets.join();
     const st = runWindow(v, I, R, keys, "beforeRoll");
     if (R.push) return R;
-    const rolling = settleSwaps(v, I);                                                // U91: a guardian's roll decides whether the target changes [B2115]
+    const rolling = settleSwaps(v, I, R);                                                // U91: a guardian's roll decides whether the target changes [B2115]
     for (const t of (I.data.redefend ?? []).splice(0)) reopenDefence(v, I, R, t);     // D113: Discretion failed: the target answers the attack again
     if (I.decl.targets.join() !== before) { staleCards(v, I, R); R.goto = "reactBefore"; return R; }      // retargeted: the new target's own window opens
     if (K.flag(I, "reopen")) { delete I.data.ph.reopen; R.goto = "reactBefore"; return R; }              // D113: a defence card is asked again
@@ -762,7 +767,7 @@ export const steps = {
       const pierce = w?.noDamage && w.pierce && !o.extra ? { pierced: taken > 0 } : null;                       // P6 [B1574], [B1625]: no damage, but it has to get through the Armor
       if (pierce) taken = 0;
       if (!tags.toStress && M.hasStatus(v.state, t, "intangible") && !Number.isFinite(forced?.amount)) taken = 0;   // P6 [B1941]
-      if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && (I.data.multi || o.extra || K.quickCard(v, t)) && taken > 0) {     // [OQ-1]; U61: a quickly settled group is always asked on its one card
+      if (tf.kind === "minions" && !tags.toStress && !Number.isFinite(forced?.amount) && (I.data.multi || o.extra || K.quickCard(v, t)) && taken > 0) {     // [OQ-1], decided A1 (2026-11-12): the group counted once, the damage after Armor on the GM's card; U61: a quickly settled group is always asked on its one card
         const ml = K.minionLoss(v, I, R, t, taken, { by: I.actor });
         if (ml.wait) { waiting = true; continue; }
         taken = ml.taken;
@@ -967,6 +972,13 @@ function othersNear(v, I, t) {
     return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !wiped(f) && !!f.npc === !!tf.npc && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
   });
 }
+/** U17-2 (the user, 2026-11-12, K6: «MG może wskazać każdego»): whom the GM may name as the extra opponent beyond the list above: any
+    character of the fight who is there, on either side, seen or not; never a challenge or a vehicle (things, ruling U17-R4), an emptied
+    minion group, the attacker, or one who is a target of this attack already. A player's card stays held to `othersNear`. */
+export function gmExtraOk(v, I, t, x) {
+  const f = v.facts.c(x);
+  return !!f && x !== I.actor && x !== t && !I.decl.targets.includes(x) && f.present !== false && !NO_OPPONENT.includes(f.kind) && !wiped(f);
+}
 function ctxFor(v, I, t) {
   const tf = v.facts.c(t), w = weaponOf(v, I);
   return { attack: stuntKind(I), target: K.immunityFlags(tf), sharp: !!(v.entry(I)?.damage?.sharp ?? w?.sharp), zoneEmpty: !!v.facts.zone(t)?.empty, movementLeft: I.data.charge?.left ?? 0, otherOpponents: othersNear(v, I, t).length };   // [G-L7]: `huge` only for real huge creatures
@@ -1015,9 +1027,12 @@ export function validate(v, inst, prompt, value, staff = false) {
   const prim = picks.filter((p) => hit.includes(p.target)), sec = picks.filter((p) => !hit.includes(p.target));
   const extras = prim.filter((p) => p.extra).map((p) => p.extra);
   if (new Set(extras).size !== extras.length) return { ok: false, reason: "chosen" };
-  for (const p of prim) if (EXTRA_STUNTS.includes(p.stunt) && !(p.extra && othersNear(v, inst, p.target).includes(p.extra))) return { ok: false, reason: "noOtherTarget" };
+  const listed = (p) => othersNear(v, inst, p.target).includes(p.extra);
+  for (const p of prim) if (EXTRA_STUNTS.includes(p.stunt) && !(p.extra && (listed(p) || (staff && gmExtraOk(v, inst, p.target, p.extra))))) return { ok: false, reason: "noOtherTarget" };
+  const named = staff ? prim.filter((p) => EXTRA_STUNTS.includes(p.stunt) && p.extra && !listed(p)) : [];      // U17-2: the GM's own extra opponents count as opponents there
+  const ctxOf = (t) => { const c = ctxFor(v, inst, t), k = named.filter((p) => p.target === t).length; return k ? { ...c, otherOpponents: c.otherOpponents + k } : c; };
   const sixes = multi ? K.sixesOf(inst, "attack") : Math.max(0, ...hit.map((t) => out[t].net));
-  const r = stunts.validateStunts({ picks: prim.map((p) => ({ stunt: p.stunt, target: p.target })), sixes, ctxFor: (t) => ctxFor(v, inst, t), targets: multi ? inst.decl.targets.map((t) => ({ id: t, hit: !!out[t]?.hit, stuntsMax: out[t]?.stunts ?? 0 })) : null });
+  const r = stunts.validateStunts({ picks: prim.map((p) => ({ stunt: p.stunt, target: p.target })), sixes, ctxFor: ctxOf, targets: multi ? inst.decl.targets.map((t) => ({ id: t, hit: !!out[t]?.hit, stuntsMax: out[t]?.stunts ?? 0 })) : null });
   if (!r.ok) return { ok: false, reason: r.errors[0].reason };
   if (picks.length > budgetOf(inst, hit)) return { ok: false, reason: "budget" };
   if (!multi) for (const t of new Set(prim.map((p) => p.target))) if (prim.filter((p) => p.target === t).length > (out[t]?.stunts ?? 0)) return { ok: false, reason: "budget" };

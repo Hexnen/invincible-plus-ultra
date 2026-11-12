@@ -14,6 +14,7 @@
 
    EFFECTS a flow may return (performed in order; each one that changes something is journaled with its inverse in the instance's transaction):
      { t:"state", path, to }            reversible state write          { t:"pay", who, cost, action, key, interrupt?, defense?, target? }  ledger entry (P1)
+     { t:"unpay", who, key }            A20: the entry an earlier "pay" of this instance wrote under `key` is voided (the unit is free again)
      { t:"stress", who, n }             Resolve loss [B2816]            { t:"actor", who, path:"health"|"resolve", to }
      { t:"status+", who, status } / { t:"status-", who, id }            { t:"crit", who, n, id }      embeds the injury item (system adapter)
      { t:"dice", key, n }               dice rolled by the executor (hazards, injury D6); the faces come back in inst.data.res[key]
@@ -173,6 +174,19 @@ async function applyEffect(X, I, e, step) {
       (I.data.paid ??= {})[e.key] = r.entryId;
       if (e.cost === "full" || e.cost === "quick") emit(X, I, { type: "ledger", combatant: e.who, unit: e.cost, on: true, entry: r.entryId });      // as the manual mark of the round driver: the action log listens
       if (r.stress > 0) await applyEffect(X, I, { t: "stress", who: e.who, n: r.stress, cost: e.own ? 1 : 0 }, step);     // the price of the unit that paid (spec 4.3; Quickness [R1], a defence grant [B2105])
+      return false;
+    }
+    /* A20 (the user, 2026-11-12: «obrona wraca»): a block or a dodge that never reached its roll because the attack went to somebody else
+       goes back to its owner. The entry the "pay" of this instance wrote under the key is voided, undone with the step like any write. */
+    case "unpay": {
+      const id = I.data.paid?.[e.key];
+      if (!id) return false;
+      const L = P1.ledgerOf(X.state, e.who), back = P1.voidEntry(L, id);
+      if (back === L) return false;
+      write(X, tx, ["ledger", e.who], back, I, step);
+      delete I.data.paid[e.key];
+      (I.data.refunded ??= {})[e.key] = id;
+      emit(X, I, { type: "ledger", combatant: e.who, unit: e.cost ?? "quick", on: false, entry: id });
       return false;
     }
     case "stress": {
@@ -755,9 +769,14 @@ async function opCancel(X, a) {
 }
 function checkValue(X, p, value) {
   const optOk = (id) => { const o = p.options.find((x) => x.id === id); return !!o && (!o.disabled || X.user.staff); };       // the GM may pick a greyed option [U]
+  /* U17-2 (the user, 2026-11-12, K6: «MG może wskazać każdego»): on the stunt card the GM may name ANY character as the extra opponent of Bang
+     Heads / Trick Shot (and stunts on that one), also somebody the card does not list: a pick "<stunt>@<target>|<extra>" or "<stunt>@<extra>"
+     of a stunt the card offers passes here for the GM; whether it is legal is the flow's `validate` (flows/attack.mjs). A player is held to
+     the card's own options. */
+  const gmPick = (id) => X.user.staff && p.kind === "stunts" && typeof id === "string" && id.length <= 120 && ((m) => !!m && p.options.some((x) => x.data?.stunt === m[1]))(/^([A-Za-z]+)@[A-Za-z0-9_-]+(?:\|[A-Za-z0-9_-]+)?$/.exec(id));
   if (p.multi) {
     if (!Array.isArray(value) || value.length > 24 || value.length < (p.min ?? 0) || value.length > (p.max ?? 24)) return null;
-    return value.every((id) => typeof id === "string" && optOk(id)) ? value.slice() : null;
+    return value.every((id) => typeof id === "string" && (optOk(id) || gmPick(id))) ? value.slice() : null;
   }
   if (typeof value === "string") return optOk(value) ? value : (p.free && value.length <= 300 ? { id: null, text: value } : null);
   if (!isObj(value)) return null;

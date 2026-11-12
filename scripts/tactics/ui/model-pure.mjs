@@ -159,6 +159,7 @@ function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
   const kind = p.of ?? p.kind;
   if (kind === "reaction" && o.id === "pass") return t("ITAC.ui.noReaction");      // U11: one word for it on both seats
   if (kind === "triggerQueue" && o.data?.type) { const own = dueLabel(o, t, facts); if (own) return own; }
+  if ((kind === "critPick" || kind === "critConfirm") && Number.isInteger(o.data?.d6)) return t(kind === "critPick" ? "ITAC.opt.critDie" : o.id === "approve" ? "ITAC.opt.critKeep" : "ITAC.opt.critOther", { d6: o.data.d6, n: o.data.n ?? "?", crit: t(`ITAC.crit.${o.data.id}`, {}, "") });      // P6b-6
   if (kind === "fireSpread" && o.data?.zone) return o.data.rolled ? t("ITAC.ui.spread.rolled", { zone: zoneText(facts, t, o.data.zone) }) : zoneText(facts, t, o.data.zone);
   /* D113: an answer about one of several characters (the ally Discretion puts in the way, the one a warning is for) names that character */
   if (kind === "reaction" && o.data?.about && String(o.id).includes("@")) return t("ITAC.ui.react.about", { what: o.name ? String(o.name) : labelOf(t, o.label), name: nameOf(facts, o.data.about, t) });
@@ -282,11 +283,36 @@ function linesOf(p, t, facts, x) {
     case "hazardStunts": out.push(t("ITAC.ui.line.hazardStunts", { n: d.surplus ?? 0, names: (d.targets ?? []).map(n).join(", ") })); break;
     case "fireSpread": out.push(t("ITAC.ui.line.fireSpread", { zone: zoneText(facts, t, d.from), n: d.intensity ?? "?" })); break;
     case "vacuumDeath": out.push(t("ITAC.ui.line.vacuumDeath", { name: about })); break;
+    case "critPick": out.push(t(`ITAC.ui.line.critPick.${d.talent === "killer" ? "killer" : "lucky"}`, { name: about, target: n(d.target) })); break;      // P6b-6 (K8)
+    case "critConfirm": out.push(t(`ITAC.ui.line.critConfirm.${d.talent === "killer" ? "killer" : "lucky"}`, { name: about, target: n(d.target), d6: d.pick?.d6 ?? "?", n: d.pick?.n ?? "?", crit: t(`ITAC.crit.${d.pick?.id}`, {}, "") })); break;
     case "heroDead": out.push(t("ITAC.ui.line.heroDead", { name: about, n: d.n ?? "?", crit: t(`ITAC.crit.${d.id}`, {}, "") })); break;      // FXP (D163)
     default: break;
   }
   if (p.kind === "proxy") out.unshift(t("ITAC.ui.line.proxy", { users: (p.absent ?? []).map((u) => facts.userName?.(u) ?? u).join(", ") }));
   return out;
+}
+/* U17-2 (the user, 2026-11-12, K6: «MG może wskazać każdego»): on the GM's stunt card, Bang Heads and Trick Shot may go into ANY character,
+   also one the card does not list (the engine checks it: flows/attack.mjs gmExtraOk). Per stunt and target a select of the others of the
+   fight (not the attacker, not a target, not one listed already, never a challenge or a vehicle); a name chosen there becomes one more
+   answer of the card ("<stunt>@<target>|<who>", kept in the desk's own values `gx:<card>`) and is ticked at once. A player's card has none. */
+const GM_EXTRA = ["bangHeads", "trickShot"];
+function gmExtraOf(p, facts, own, t) {
+  const opts = p.options ?? [], chosen = Array.isArray(own.vals?.[`gx:${p.id}`]) ? own.vals[`gx:${p.id}`].filter((x) => typeof x === "string") : [];
+  const pairs = [];
+  for (const o of opts) { const d = o.data ?? {}; if (GM_EXTRA.includes(d.stunt) && !d.onExtra && d.target && !pairs.some((q) => q.stunt === d.stunt && q.target === d.target)) pairs.push({ stunt: d.stunt, target: d.target }); }
+  if (!pairs.length) return null;
+  const hitT = new Set(opts.filter((o) => o.data?.target && !o.data.onExtra).map((o) => o.data.target));
+  const members = [...new Set((facts.view?.init?.slots ?? []).flatMap((s) => (Array.isArray(s?.members) ? s.members : [])))];
+  const added = [], rows = [];
+  for (const q of pairs) {
+    const pre = `${q.stunt}@${q.target}|`, listed = new Set(opts.filter((o) => String(o.id).startsWith(pre)).map((o) => o.data?.extra));
+    const mine = chosen.filter((id) => id.startsWith(pre) && !listed.has(id.slice(pre.length)));
+    for (const id of mine) added.push({ id, label: `ITAC.stunt.${q.stunt}`, data: { stunt: q.stunt, target: q.target, extra: id.slice(pre.length), gm: 1 } });
+    const choices = members.filter((x) => x !== p.about && !hitT.has(x) && !listed.has(x) && !mine.includes(pre + x) && ((c) => !!c && !["challenge", "vehicle"].includes(c.kind))(facts.c?.(x)))
+      .map((x) => ({ id: pre + x, label: nameOf(facts, x, t) }));
+    if (choices.length) rows.push({ id: `gx:${p.id}:${q.stunt}:${q.target}`, label: t(pairs.length > 1 ? "ITAC.ui.stunt.gmAnyOf" : "ITAC.ui.stunt.gmAny", { stunt: t(`ITAC.stunt.${q.stunt}`), name: nameOf(facts, q.target, t) }), choices });
+  }
+  return { added, ctl: rows.length ? { key: `gx:${p.id}`, chosen, tip: t("ITAC.ui.stunt.gmAnyTip"), rows } : null };
 }
 /** One question as both surfaces draw it.
     o = { t, facts, own, desk: bool, info: [instance lines] (to name the action a reaction answers), round }
@@ -336,7 +362,8 @@ export function askData(p, o) {
   const spare = new Map(); for (const x of p.options ?? []) for (const k of Array.isArray(x.data?.tokens) ? x.data.tokens : []) if (!spare.has(k.id)) spare.set(k.id, k);
   const tkPicked = (own.picks?.[`tk:${p.id}`] ?? []).filter((id) => spare.has(id));
   const tokens = [...spare.values()].map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source}`, {}, String(k.source ?? "")), needsGm: !!k.needsGm, picked: tkPicked.includes(k.id) }));
-  const options = [...placeOpts, ...(p.options ?? []).filter((x) => !places.includes(x)).map((x) => {
+  const gx = desk && kind === "stunts" ? gmExtraOf(p, facts, own, t) : null;      // U17-2: the GM names anybody as the extra opponent
+  const options = [...placeOpts, ...[...(p.options ?? []), ...(gx?.added ?? [])].filter((x) => !places.includes(x)).map((x) => {
     const mine = tkPicked.filter((id) => (x.data?.tokens ?? []).some((k) => k.id === id));
     const value = text && p.free ? { id: x.id, text } : always ? { id: x.id, always: true } : mine.length ? { id: x.id, tokens: mine } : null;
     const zones = Array.isArray(x.data?.zones) ? x.data.zones : null;
@@ -384,6 +411,8 @@ export function askData(p, o) {
     return { map: null, id: p.id, kind, proxy: false, pvFor: null, aboutId: p.about ?? null, aboutHead: true, check: false, title: titleOf({ ...p, to: "desk" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options: shown.filter(Boolean), multi: null, tokens: [], free: null, always: null, submit: null,
       count: { id: `mq:${p.id}`, value: v, min: 0, max: top, label: t("ITAC.ui.minions.fall"), of: t("ITAC.ui.minions.of", { n: p.data?.members ?? top }) } };
   }
+  /* P6b-6: the two injury dice of Killer / Lucky Break: each answer is its die (the face as the picture) and the injury it gives */
+  if (kind === "critPick" || kind === "critConfirm") for (const x of options) { const d = (p.options ?? []).find((o) => o.id === x.id)?.data; if (Number.isInteger(d?.d6)) x.icon = `die:${Math.max(1, Math.min(6, d.d6))}`; }
   if (oneTarget) lines.push(t("ITAC.ui.line.against", { name: nameOf(facts, stuntTargets[0], t) }));
   if (attPool != null) lines.push(t("ITAC.ui.line.attPool", { dice: attPool, attr: attrText(t, gmOdds.att.attr ?? inst?.attr) }));
   const max = p.max ?? options.length, min = p.min ?? 0;
@@ -393,6 +422,7 @@ export function askData(p, o) {
     map: desk && kind === "direction" && Array.isArray(p.data?.zones) && p.data.zones.length > 1 ? { zones: p.data.zones.map((z, i) => ({ zone: bare(z), label: i ? String(i) : "" })), borders: (p.data.walls ?? []).map((w) => w.border).filter(Boolean) } : null,
     id: p.id, kind, proxy: p.kind === "proxy", pvFor: pb ? p.about : null, aboutId: p.about ?? null, aboutHead: true, check: queue, title: titleOf({ ...p, to: desk ? "desk" : "player" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options, multi, tokens,
     free: p.free ? { text: own.texts?.[p.id] ?? "", placeholder: t(desk ? "ITAC.ui.note.gm" : "ITAC.ui.note.player") } : null,
+    gmExtra: gx?.ctl ?? null,
     always: desk && Array.isArray(p.always) && p.always.length ? { on: always, label: t("ITAC.ui.always", { name: p.aboutName ?? "" }), tip: t("ITAC.ui.always.tip", { name: p.aboutName ?? "" }) } : null,
     submit: multi ? { label: queue ? t("ITAC.Prompt.triggerQueue.Go") : t("ITAC.ui.confirm", { n: picks.length, max }), disabled: canSubmit ? null : t("ITAC.ui.pickMore"),
       req: canSubmit ? p.answerReq(queue ? { order: [], skip: allIds.filter((id) => !picks.includes(id)) } : picks.slice()) : null } : null,
