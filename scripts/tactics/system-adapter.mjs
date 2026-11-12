@@ -305,7 +305,7 @@ async function injuries() {
   if (INJ) return INJ;
   const byNumber = new Map(), byName = new Map();
   try {
-    const table = await fromUuid(INJURY_TABLE);
+    const table = (await fromUuid(INJURY_TABLE).catch(() => null)) ?? game.tables?.get(INJURY_TABLE.split(".").pop()) ?? game.tables?.getName?.("Critical Injuries");   // D127: the world's imported copy when the system pack is not loaded
     for (const r of table?.results ?? []) {
       const [lo, hi] = r.range ?? [];
       const uuid = r.documentUuid ?? (r.documentCollection && r.documentId ? `Compendium.${r.documentCollection}.Item.${r.documentId}` : null);
