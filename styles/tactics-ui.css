@@ -145,8 +145,9 @@
 .itd-stack { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 100%; zoom: var(--ita-scale, 1); max-height: calc(var(--itd-room, 100vh) / var(--ita-scale, 1)); }
 .itd-stack > :is(.itd-bar, .itd-wait) { flex: none; }
 .itd-stack > * { pointer-events: auto; max-width: 100%; }
-/* what opens above the bar keeps clear of things the bar itself stands below (dock.mjs place()) */
-.itd-stack > :is(.itd-panel, .itd-asks) { position: relative; left: calc(var(--itd-up-dx, 0px) / var(--ita-scale, 1)); max-width: min(100%, calc(var(--itd-up-maxw, 100%) / var(--ita-scale, 1))); }
+/* what opens above the bar keeps clear of things the bar itself stands below (dock.mjs place()): the panel, the hint, the status line and
+   the questions (U123: the first-fight hint lay over the GM desk when the bar took the edge under it) */
+.itd-stack > :is(.itd-panel, .itd-hint1, .itd-wait, .itd-asks) { position: relative; left: calc(var(--itd-up-dx, 0px) / var(--ita-scale, 1)); max-width: min(100%, calc(var(--itd-up-maxw, 100%) / var(--ita-scale, 1))); }
 
 /* the questions asked of this user sit on top, whoever's turn it is */
 .itd-asks { flex: 0 1 auto; min-height: 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 8px; max-height: calc(var(--itd-maxh, 60vh) / var(--ita-scale, 1)); overflow-y: auto; overscroll-behavior: contain; padding: 4px 6px 2px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
@@ -835,7 +836,7 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 #invincible-tactics-dock .ita-sum-more { margin: 0; font: 400 11px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); }
 
 /* U53 */
-#invincible-tactics-dock .itd-hint1 { position: relative; flex: none; display: flex; align-items: center; gap: 9px; max-width: min(100%, 640px); margin-bottom: 4px; padding: 5px 6px 6px 10px; font: 400 12.5px/1.3 Comic, sans-serif; color: var(--ita-ink); background: #fff; border: 2px solid var(--ita-ink); box-shadow: 0 4px 12px rgba(0, 0, 0, .45); animation: ita-pop .28s var(--ita-out); }
+#invincible-tactics-dock .itd-hint1 { position: relative; flex: none; display: flex; align-items: center; gap: 9px; max-width: min(100%, 640px, calc(var(--itd-up-maxw, 100%) / var(--ita-scale, 1))); margin-bottom: 4px; padding: 5px 6px 6px 10px; font: 400 12.5px/1.3 Comic, sans-serif; color: var(--ita-ink); background: #fff; border: 2px solid var(--ita-ink); box-shadow: 0 4px 12px rgba(0, 0, 0, .45); animation: ita-pop .28s var(--ita-out); }
 #invincible-tactics-dock .itd-hint1 > i { flex: none; font-size: 14px; color: var(--ita-blue); }
 #invincible-tactics-dock .itd-hint1 > span { min-width: 0; text-wrap: pretty; }
 #invincible-tactics-dock .itd-hint1[data-tick]::after { content: ""; position: absolute; left: calc(var(--itd-hint-x, 40px) - 6px); bottom: -8px; width: 11px; height: 11px; background: #fff; border: solid var(--ita-ink); border-width: 0 2px 2px 0; rotate: 45deg; }

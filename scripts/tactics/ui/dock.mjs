@@ -208,7 +208,7 @@ function placeNow(rec) {
   if (cx - w / 2 < lo) cx = lo + w / 2;
   root.style.setProperty("--itd-cx", `${Math.round(cx)}px`);
   let dx = 0;
-  for (const el of stack.querySelectorAll(":scope > :is(.itd-panel, .itd-asks)")) { const pw = el.offsetWidth * k; dx = Math.max(dx, up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > up.hi) dx = Math.min(dx, up.hi - pw / 2 - cx); }
+  for (const el of stack.querySelectorAll(":scope > :is(.itd-panel, .itd-hint1, .itd-wait, .itd-asks)")) { const pw = el.offsetWidth * k; dx = Math.max(dx, up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > up.hi) dx = Math.min(dx, up.hi - pw / 2 - cx); }      // U123: the hint and the status line too
   root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
   if (root.dataset.tight !== "2" || !deskOpen) break;
   }

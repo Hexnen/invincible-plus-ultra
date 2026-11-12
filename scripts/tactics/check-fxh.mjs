@@ -61,4 +61,16 @@ eq([tIn("en", "ITAC.roll.ds"), tIn("pl", "ITAC.roll.ds")], ["Discretion", "Rozwa
   ok(/const base = t\(`ITAC\.roll\.\$\{k\}`, \{\}, k\);/.test(m), "U124: the strip titles a roll by ITAC.roll.<kind> (the texts above are what it shows)");
 }
 
+/* ---- U123: the first-fight hint and the status line keep clear of the GM desk (and of whatever the bar stands below), as the panel
+   and the questions do: narrowed to --itd-up-maxw and shifted by --itd-up-dx, which place() counts over all four */
+{
+  const css = readFileSync(new URL("../../styles/tactics-ui.css", here), "utf8"), dock = src("ui/dock.mjs");
+  const rule = /\.itd-stack > :is\(([^)]*)\) \{ position: relative; left: calc\(var\(--itd-up-dx/.exec(css);
+  eq(rule?.[1].split(",").map((x) => x.trim()).sort(), [".itd-asks", ".itd-hint1", ".itd-panel", ".itd-wait"], "U123: the shift and the narrowing hold for the panel, the hint, the status line and the questions");
+  ok(/#invincible-tactics-dock \.itd-hint1 \{[^}]*max-width: min\(100%, 640px, calc\(var\(--itd-up-maxw, 100%\) \/ var\(--ita-scale, 1\)\)\)/.test(css), "U123: the hint's own (stronger) max-width carries the room above the bar too");
+  const loop = /querySelectorAll\(":scope > :is\(([^)]*)\)"\)\) \{ const pw = el\.offsetWidth \* k; dx = /.exec(dock);
+  eq(loop?.[1].split(",").map((x) => x.trim()).sort(), [".itd-asks", ".itd-hint1", ".itd-panel", ".itd-wait"], "U123: place() shifts by the widest of the four");
+  ok(/root\.style\.setProperty\("--itd-up-dx"/.test(dock) && /function outcome\(\) \{[^}]*root\.style\.cssText/.test(dock), "U123: the shift is a root property, so outcome() (perf P2-1) already compares it");
+}
+
 done("check-fxh");
