@@ -163,7 +163,13 @@ const answerAll = async (T) => { for (const p of T.prompts()) await T.gm({ op: "
   eq(sq(328, 668, 0, 340), false, "U194: no column, nothing to fold");
   const dk = src("./ui/dock.mjs"), mn = src("./ui/main.mjs"), hud = src("../challenges/hud.mjs"), chm = src("../challenges/main.mjs");
   ok(/Lay\.hudSqueezed\(topL, side - 12, hudOpenW, SP\.SIZE\.card \* k\)/.test(dk) && /handlers\.ichSqueeze\?\.\(squeeze\)/.test(dk), "U194: the dock decides it from the band's stretch and tells the challenges");
-  ok(/x0: hudFolded \? null/.test(dk), "U194: a folded column keeps nothing of the band (the line gets the middle back)");
+  const he = soft(Lay, "hudEdge");
+  eq([he(true, false, 700), he(false, false, 700), he(false, true, 425), he(false, false, null)], [null, 700, null, null], "U194: a folded column keeps nothing of the band; an open one keeps its edge");
+  ok(/x0: Lay\.hudEdge\(hudFolded, squeezed, hudR\?\.left \?\? null\)/.test(dk), "U194: the dock takes the column's edge from hudEdge");
+  /* live 1024 px, Pinezki open, the squeezed column peeked open: the hint card kept a ~80 px column (one word per line) */
+  const peekBase = { W: 1024, H: 768, k: 1, staff: false, hints: true, top0: 118, topCx: 512, side: 728, topL: 328, desk: null, bar: { lo: 240, hi: 660, top: 625, bottom: 760 } };
+  const fp = SP.frame({ ...peekBase, hud: { present: true, x0: he(false, true, 425) } }), hw = fp.slots.hint ? fp.slots.hint.x1 - fp.slots.hint.x0 : 0;
+  ok(hw >= 300, `U194: a column peeked open while squeezed leaves the hint card its width (got ${hw})`);
   ok(/ipu:ich-squeeze/.test(mn) && /ipu:ich-squeeze/.test(chm) && /HUD\.setSqueezed/.test(chm), "U194: the word goes to the challenges HUD");
   ok(/export function setSqueezed/.test(hud) && /const folded = \(\) => \(squeezed \? !peek : collapsed\)/.test(hud) && /if \(squeezed\) \{ peek = !peek; drawFold\(\); return; \}/.test(hud), "U194: the HUD folds while squeezed without touching the user's own setting; its handle still opens it");
 }

@@ -171,3 +171,6 @@ export function hudSqueezed(lo, hi, w, need) {
   const room = (Number(hi) || 0) - (Number(lo) || 0), col = Math.max(0, Number(w) || 0);
   return col > 0 && room - col - 10 < (Number(need) || 0);
 }
+/* FXU (U194): the challenges column's left edge for the band. A folded column keeps nothing; a column the player peeks open while it is
+   squeezed is a passing overlay: the band keeps the middle (else the hint card is squeezed into a one-word column under it). */
+export function hudEdge(folded, squeezed, left) { return folded || squeezed || !Number.isFinite(Number(left)) || left === null ? null : Number(left); }

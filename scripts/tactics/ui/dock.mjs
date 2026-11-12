@@ -233,7 +233,7 @@ function placeSlots(rec) {
   if (squeeze !== squeezed) { squeezed = squeeze; handlers.ichSqueeze?.(squeeze); }
   const fr = SP.frame({ W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, topCx, topL, topR, floats, side, chatTop: chat?.top ?? null,
     listEnd: list && list.left > W * 0.5 ? list.bottom : null, chatX: colOf ? [colOf.left, colOf.right] : null,
-    hud: { present: hudOn, x0: hudFolded ? null : hudR?.left ?? null }, desk: deskSide ? { open: true, x0: deskR.left } : null,
+    hud: { present: hudOn, x0: Lay.hudEdge(hudFolded, squeezed, hudR?.left ?? null) }, desk: deskSide ? { open: true, x0: deskR.left } : null,
     bar: { lo, hi, top: barTop, bottom: H - bottom } });
   Slots.setFrame(fr);
   root.style.setProperty("--itd-panel-maxh", `${fr.panelMax}px`);
