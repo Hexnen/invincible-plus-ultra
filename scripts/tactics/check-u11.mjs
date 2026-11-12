@@ -88,8 +88,8 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
 /* ---- E. U76: the words of an intention fit what the map carries */
 {
   eq(BP.intentLabel("Slugfest"), "Slugfest", "U76: a short name whole");
-  eq(BP.intentLabel("Odzyskaj Determinację"), "Odzyskaj Determin…", "U76: a long one is cut with an ellipsis, not mid-word without a sign");
-  ok(BP.intentLabel("Odzyskaj Determinację").length === 18 && BP.intentLabel("x".repeat(18)).length === 18 && !BP.intentLabel("x".repeat(18)).endsWith("…"), "U76: never more than the map's 18 characters; exactly 18 fit whole");
+  eq(BP.intentLabel("Odzyskaj Determinację w pełni teraz"), "Odzyskaj Determinację w peł…", "U76: a long one is cut with an ellipsis, not mid-word without a sign");
+  ok(BP.intentLabel("y".repeat(40)).length === 28 && BP.intentLabel("x".repeat(28)).length === 28 && !BP.intentLabel("x".repeat(28)).endsWith("…"), "U76 + FXY (FXW-3): never more than the map's 28 characters; exactly 28 fit whole");
   eq(BP.intentLabel(null), "", "U76: no title, no words");
   const src = readFileSync(new URL("./ui/board.mjs", import.meta.url), "utf8");
   eq((src.match(/label: intentWords\(/g) ?? []).length, 3, "U76: the three places an intention is said (declare, move, area) use it (D109: through intentWords, in the GMs' language)");
@@ -127,7 +127,7 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
 {
   ok(BP.stepFailed({ ok: false, error: { code: "busy" } }) && BP.stepFailed(null) && !BP.stepFailed({ ok: true }), "U80: refused or unanswered = failed");
   const src = readFileSync(new URL("./ui/board.mjs", import.meta.url), "utf8");
-  ok(/if \(BP\.stepFailed\(env\)\) \{ from = was; again\(cid\); \}/.test(src), "U80: the stepper counts from the old number again and the menu is opened anew");
+  ok(/if \(BP\.stepFailed\(env\)\) \{ from = was; stepUndo\(cid, it\.id, was\); \}/.test(src), "U80 + FXY (FXW-4): the stepper counts from the old number again and the map puts it back (menuSet; opened anew only on a map without it)");
   ok(/function again\(cid\)[\s\S]{0,400}Zones\.menuOpen\(\)[\s\S]{0,500}Zones\.menu\(\{ token: doc\.id, \.\.\.spec \}\)/.test(src), "U80: only a menu that still stands is opened again, at the same token, with the numbers as they are");
 }
 

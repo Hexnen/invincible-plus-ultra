@@ -135,6 +135,9 @@ let newsWin = null, diceWas = null, diceWait = null, rollsWas = { rows: {}, opp:
 const diceBusy = () => { try { return typeof game.dice3d?.waitFor3DAnimationByMessageID === "function" && (game.messages?.contents ?? []).slice(-12).some((m) => m?._dice3danimating); } catch { return false; } };
 const diceLanded = () => { const d = game.dice3d, busy = (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating);
   return Promise.race([Promise.all(busy.map((m) => Promise.resolve(d.waitFor3DAnimationByMessageID(m.id)).catch(() => {}))), new Promise((r) => setTimeout(r, NewsP.HOLD_MS + 100))]); };
+/* FXY (U178): when this client first saw the dice now in the air (news-pure diceRun): the End press's clock, not the last draw's */
+let diceRunWas = null;
+const diceSince = () => { try { diceRunWas = NewsP.diceRun(diceRunWas, (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating).map((m) => m.id), Date.now()); } catch { diceRunWas = null; } return diceRunWas?.since; };
 function diceThen() {
   if (diceWait) return;
   diceWait = diceLanded().finally(() => { diceWait = null; setTimeout(schedule, 60); });
@@ -355,6 +358,7 @@ function refresh() {
     /* D128: what a roll came to waits for its dice: a new card and the new line come when the 3D dice have landed */
     const now = Date.now(), busy = diceBusy(), hold = NewsP.diceHold(diceWas, { prompts: (data.prompts ?? []).map((p) => p.id), cards: (deskD?.cards ?? []).map((c) => c.id), news: data.news ?? null, at: now }, busy);
     diceWas = { prompts: hold.prompts, cards: hold.cards, news: hold.news, since: hold.since };
+    diceSince();      // FXY (U178): the run of dice in the air is timed from the first draw that saw it
     /* FXR (U191): a card held while the dice rolled counts its waiting time from when it shows here */
     const allIds = [...(data.prompts ?? []).map((p) => p.id), ...(deskD?.cards ?? []).map((c) => c.id)], shownIds = [...hold.prompts, ...hold.cards];
     heldSeen = NewsP.heldShown(heldSeen, allIds.filter((id) => !shownIds.includes(id)), shownIds, now);
@@ -549,7 +553,7 @@ function onKey(ev) {
 async function send(which, req, after, how = {}) {
   try {
     if (!req) return null;
-    if (NewsP.endAfterDice(req, { busy: diceBusy(), since: diceWas?.since, at: Date.now() })) await diceLanded();      // FXP (U178): End turn pressed while the dice fly passes when they land
+    if (NewsP.endAfterDice(req, { busy: diceBusy(), since: diceSince(), at: Date.now() })) await diceLanded();      // FXP (U178): End turn pressed while the dice fly passes when they land; FXY: timed by its own run of dice
     const combat = combatNow();
     const env = await Api.request(req, combat ?? undefined);
     for (const text of Model.envNotes(env, t, Store.isStaff(game.user))) notify("warn", text);      // D99: carried out only in part, an inverse that failed, an action handed to the GM
