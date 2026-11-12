@@ -598,9 +598,11 @@ const OPS = {
   /* joining and leaving (spec 3.3): bring the state in line with the combatants that exist now */
   roster(W, a) {
     const s = W.s, parts = W.ctx.parts ?? [];
-    const before = JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? []]);
+    const before = JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? [], s.vehicles ?? null]);      // FXU (D189): a vehicle that left changes the fight too
     const ids = new Set(parts.map((p) => p.id));
-    const known = new Set([...Object.keys(s.ledger), ...s.init.slots.flatMap((x) => x.members)]);
+    /* FXU (D189): a vehicle has no card and no ledger (P7-R4), so it was never "known" here: its combatant deleted, its record and the
+       crew's "in a vehicle" marks stayed. Its record makes it known */
+    const known = new Set([...Object.keys(s.ledger), ...s.init.slots.flatMap((x) => x.members), ...Object.keys(isObj(s.vehicles) ? s.vehicles : {})]);
     for (const id of known) if (!ids.has(id)) removeOne(W, id);
     const fresh = syncSummons(W, parts);
     /* D43 [B3436] (spec 9.10; ruling P7-R8): a chase that turns into a fight draws initiative. The fight stands without a single card
@@ -625,7 +627,7 @@ const OPS = {
         if (r.changed && r.card !== null) ev(W, "draw", { slot: r.slot, card: r.card, members: [p.id], reason: "join" });
       }
     }
-    if (before === JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? []])) return { changed: false };
+    if (before === JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? [], s.vehicles ?? null])) return { changed: false };
     run(W);
   },
   ledgerEdit(W, a) {
@@ -756,6 +758,26 @@ function removeOne(W, id) {
     if (keep.length) s.statuses[who] = keep; else delete s.statuses[who];
   }
   if (s.moved) { delete s.moved[id]; if (!Object.keys(s.moved).length) delete s.moved; }
+  /* FXU (D189): a vehicle that leaves the fight takes its record along, and the people aboard are in no vehicle any more (they stay where
+     they are; the GM moves them on); somebody aboard who leaves frees the seat */
+  if (isObj(s.vehicles)) {
+    const r = isObj(s.vehicles[id]) ? s.vehicles[id] : null;
+    if (r) {
+      for (const who of [r.driver, ...(Array.isArray(r.crew) ? r.crew : [])].filter((x) => typeof x === "string" && x !== id)) {
+        const list = Array.isArray(s.statuses?.[who]) ? s.statuses[who] : [];
+        if (!list.some((st) => st?.id === "inVehicle" && st.data?.vehicle === id)) continue;
+        const keep = list.filter((st) => !(st?.id === "inVehicle" && st.data?.vehicle === id));
+        if (keep.length) s.statuses[who] = keep; else delete s.statuses[who];
+        ev(W, "status", { target: who, status: { id: "inVehicle", on: false }, cause: "left" });
+      }
+      delete s.vehicles[id];
+    }
+    for (const [vid, v] of Object.entries(s.vehicles)) {
+      if (!isObj(v) || !(v.driver === id || (Array.isArray(v.crew) && v.crew.includes(id)))) continue;
+      s.vehicles[vid] = { ...v, driver: v.driver === id ? null : v.driver, crew: (Array.isArray(v.crew) ? v.crew : []).filter((x) => x !== id) };
+    }
+    if (!Object.keys(s.vehicles).length) delete s.vehicles;
+  }
   s.summons = (s.summons ?? []).filter((su) => su?.owner !== id).map((su) => (Array.isArray(su?.combatants) ? { ...su, combatants: su.combatants.filter((x) => x !== id) } : su));
   W.effects.push({ type: "abortInstances", actor: id });          // spec 3.3: its open action instances end through the engine's abort path (P2)
   ev(W, "combatantRemoved", { combatant: id });

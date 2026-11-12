@@ -15,6 +15,7 @@
 
 import { h, icon, face, markOf, swap, visibleRect } from "./dom.mjs";
 import { frameNow } from "./slots.mjs";
+import * as Lay from "./layout-pure.mjs";
 
 const ID = "invincible-tactics-chase", GAP = 8;
 let root = null, panel = null, handlers = {}, last = null, folded = false, gmOpen = false, kept = null, aside = false;
@@ -238,21 +239,17 @@ export function place() {
     const cardsR = cardsIn ? [...cardsIn.children].map(visibleRect).filter(Boolean).reduce((a, r) => Math.max(a, r.bottom), 0) : 0;
     const panelR = visibleRect(dock?.querySelector(".itd-panel")), barR = visibleRect(dock?.querySelector(".its-bar .itd-stack") ?? dock?.querySelector(".its-bar"));
     /* centred where the questions hang, as wide as the panel wants (CHASE2: the questions' column alone is too narrow for two sides
-       facing each other), inside the window and left of the GM's desk; a first-fight hint standing beside the line pushes the panel
-       under it instead of squeezing it */
-    let x0 = f?.slots?.cards?.x0 ?? 12, x1 = f?.slots?.cards?.x1 ?? W - 12;
+       facing each other), inside the top band's free stretch (FXU D188: right of the map's panels at the left, left of the challenges,
+       the open desk and a window floating at the right: slots-pure frame `across`), and clear of a window standing at the left
+       (layout-pure.chaseSpan). Before, only a desk standing close made the panel look at the left, so on a player's seat at 1366 px
+       it stood centred under the "Pinezki" aside and the challenges. */
+    const c0 = f?.slots?.cards?.x0 ?? 12, c1 = f?.slots?.cards?.x1 ?? W - 12, cx = (c0 + c1) / 2;
     const scale = Number(getComputedStyle(root).getPropertyValue("--ita-scale")) || Number(getComputedStyle(document.documentElement).getPropertyValue("--ita-scale")) || 1;
-    const deskR = visibleRect(document.getElementById("invincible-tactics-desk")), want = 760 * scale;
-    const cx = (x0 + x1) / 2, right = deskR && deskR.left > cx ? deskR.left - GAP : W - 12;
-    const half = Math.max(x1 - cx, Math.min(want / 2, cx - 12, right - cx));
-    x0 = Math.max(12, cx - half); x1 = Math.min(W - 12, cx + half);
-    /* a desk standing close (1366 px windows) would squeeze the two sides until names are cut to a few letters: the panel then
-       grows to the left instead, as far as the left tool column and the party's tray let it */
-    if (x1 - x0 < want - 1) {
-      const wins = [...document.querySelectorAll(".window-app, .application:has(> .window-header), body > aside[id]:not(#tooltip)")].map(visibleRect).filter((r) => r && r.right < cx && r.bottom > top0(f) && r.top < H - 40);
-      const lim = Math.max(180 * scale, ...wins.map((r) => r.right + GAP));
-      x0 = Math.max(Math.min(x0, lim), x1 - want);
-    }
+    const deskR = visibleRect(document.getElementById("invincible-tactics-desk")), want = Math.max(760 * scale, c1 - c0);
+    const wins = [...document.querySelectorAll(".window-app, .application:has(> .window-header), body > aside[id]:not(#tooltip)")].map(visibleRect).filter((r) => r && r.right < cx && r.bottom > top0(f) && r.top < H - 40);
+    const lo = Math.max(f?.across?.lo ?? 12, 180 * scale, ...wins.map((r) => r.right + GAP));
+    const hi = Math.min(f?.across?.hi ?? W - 12, W - 12, deskR && deskR.left > cx ? deskR.left - GAP : Infinity);
+    const { x0, x1 } = Lay.chaseSpan(cx, want, lo, hi);
     let top = Math.max(f?.slots?.line ? f.slots.line.y1 + 6 : 110, cardsR ? cardsR + GAP : 0);
     const hint = dock?.querySelector('.its-slot[data-slot="hint"]:not([data-empty])') ? f?.slots?.hint : null;
     if (hint && x1 > hint.x0 - GAP && hint.y1 > top) top = hint.y1 + GAP;

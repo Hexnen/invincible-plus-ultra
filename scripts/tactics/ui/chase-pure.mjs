@@ -54,6 +54,10 @@ export function chaseData(view, own, facts, t) {
   const inst = (view.stack ?? []).find((i) => !i.masked && i.flow === "chase") ?? null, kids = inst ? (view.stack ?? []).filter((i) => !i.masked && i.parent === inst.id) : [];
   const info = inst?.data?.chase ?? fromCh(inst?.data?.ch), rolled = ch.rolled === view.round;
   const phase = inst ? "rolling" : rolled ? "after" : "before";
+  /* FXU (D191): after the round its record (state.chase.last) tells the chase as the round left it, until the GM changed who is in it or
+     how far apart they are (flows/chase.setPatch `edited`): then the record is history (the result beat) and everything that speaks of
+     the chase of now (the distance's heading, the catch, who rolls and why, what each group moved) reads the chase as it stands */
+  const fresh = phase === "after" && isObj(ch.last) && !ch.last.edited;
   const busy = (view.stack ?? []).length > 0;
   /* the grants of the crew: one ranged attack each after the roll [B3438]; a used one is gone from the list (U172) */
   /* CHASE2: only the grants this chase gave this round (a shot left from an earlier chase of the same round is not this chase's) */
@@ -72,7 +76,7 @@ export function chaseData(view, own, facts, t) {
   /* CHASE2 groups (ours): the pursuers in groups, each at its own distance; each group has its own roller */
   const gs = groupsOf(ch);
   const rollerFor = (side, gid = null) => {
-    const by = phase === "after" ? (gid ? ch.last?.by?.groups?.[gid] : ch.last?.by?.[side]) : null;
+    const by = fresh ? (gid ? ch.last?.by?.groups?.[gid] : ch.last?.by?.[side]) : null;
     const r = (gid ? (info?.groups ?? []).find((g) => g.id === gid)?.roller : info?.[side]) ?? (by ? { id: by.unit, roller: by.roller, why: by.why } : null);
     if (r?.id) return { id: r.id, roller: r.roller ?? r.id, why: WHY.includes(r.why) ? r.why : null };
     if (gid && phase === "rolling") return null;
@@ -111,7 +115,7 @@ export function chaseData(view, own, facts, t) {
       const groups = order.map((g) => {
         const r = g.lost ? null : rollerFor(s, g.id), units = g.units.map((u) => unit(u, s, r, list.length === 1, g));
         const ru = units.find((u) => u.rolls) ?? null, rp = ru ? ru.people.find((p) => p.rolls) ?? ru.people[0] ?? null : null;
-        const res = phase === "after" ? ch.last?.groups?.[g.id] ?? null : null;
+        const res = fresh ? ch.last?.groups?.[g.id] ?? null : null;
         return { id: g.id, letter: letterOf(g.id), label: t("ITAC.chase.group", { x: letterOf(g.id) }), distance: g.distance, lost: g.lost ?? null, lostText: g.lost ? t(`ITAC.chase.lost.${g.lost === "hiddenPath" ? "hiddenPath" : "far"}`) : null,
           units, roller: ru, who: rp, mine: units.some((u) => u.mine), able: units.filter((u) => !u.stuck).length,
           rolls: { text: rp ? t(r?.next && phase !== "rolling" ? "ITAC.chase.rollsNext" : "ITAC.chase.rollsBy", { name: rp.name }) : g.lost ? "" : units.length > 1 ? t("ITAC.chase.why.unknown") : "", why: ru && units.length > 1 && r?.why ? t(`ITAC.chase.why.${r.why}`) : null },
@@ -144,6 +148,7 @@ export function chaseData(view, own, facts, t) {
   const sideRoll = (side, gid = null) => {
     const r = rolls.find((x) => x.key === (gid ? `${side}:${gid}` : side));
     const auto = side === "prey" && (info?.obstacle ?? (phase === "after" ? ch.last?.obstacle : null)) === "deadEnd";
+    if (phase === "after" && !fresh && !r) return { state: "none", sixes: null, text: "" };
     if (phase === "after" && !r) { const n = gid ? ch.last?.groups?.[gid]?.sixes : ch.last?.[side]; return { state: auto ? "auto" : n == null ? "none" : "done", sixes: n ?? null, text: auto ? t("ITAC.chase.roll.auto") : n == null ? "" : t("ITAC.chase.roll.sixes", { n }) }; }
     if (!r) return { state: auto && phase === "rolling" ? "auto" : "none", sixes: null, text: auto && phase === "rolling" ? t("ITAC.chase.roll.auto") : "" };
     const buttons = rollButtons(r, facts, t);
@@ -165,7 +170,7 @@ export function chaseData(view, own, facts, t) {
   /* where the round stands: the beats in the book's order [B3432-3442] */
   const liveGroups = (sides[0].groups ?? []).filter((g) => !g.lost && g.roller);
   const step = inst?.step ?? null, preyDone = ["done", "auto"].includes(sides[1].roll.state), purDone = sides[0].groups ? liveGroups.every((g) => g.roll.state === "done") : sides[0].roll.state === "done";
-  const caughtNow = phase === "after" ? !!ch.last?.caught : ["catch", "crew", "close"].includes(step) && (ch.distance ?? 1) <= 0;
+  const caughtNow = phase === "after" ? fresh && !!ch.last?.caught : ["catch", "crew", "close"].includes(step) && (ch.distance ?? 1) <= 0;
   const crewList = sides.flatMap((s) => s.units.flatMap((u) => u.people.filter((p) => p.crew).map((p) => ({ ...p, side: s.id }))));
   const crewOpen = crewList.filter((p) => p.crew === "open");
   const beat = (id, state, text = "", extra = {}) => ({ id, label: t(`ITAC.chase.beat.${id}`), state, text, ...extra });
@@ -173,7 +178,7 @@ export function chaseData(view, own, facts, t) {
   const nowAt = phase === "before" ? -1 : phase === "after" ? (crewOpen.length ? order.indexOf("crew") : order.length)
     : ["check", "obstacle"].includes(step) ? 0 : step === "movement" ? (preyDone ? 2 : 1) : step === "result" ? 3 : step === "catch" ? 4 : 5;
   const stateAt = (id) => { const k = order.indexOf(id); return nowAt < 0 ? "next" : k < nowAt ? "done" : k === nowAt ? "now" : "next"; };
-  const result = phase === "after" && ch.last ? resultOf(ch, t) : null;
+  const told = phase === "after" && ch.last ? resultOf(ch, t) : null, result = fresh ? told : null;
   /* CHASE2: the catch names who strikes and whom: the one who rolled for the pursuers, at the one who rolled for the fleeing (the
      engine's catch [B3434]; with several units on a side the others arrive with them and do not strike: question CHASE2-1) */
   const catchQ = Object.values(view.prompts ?? {}).find((p) => p.kind === "chaseCatch" && !p.answered) ?? null;
@@ -185,7 +190,7 @@ export function chaseData(view, own, facts, t) {
     beat("prey", stateAt("prey"), sides[1].roll.text, { who: sides[1].who?.name ?? "" }),
     beat("pursuer", stateAt("pursuer"), sides[0].groups ? sides[0].groups.filter((g) => g.roll.text).map((g) => `${g.letter}: ${g.roll.text}`).join(", ") : sides[0].roll.text,
       { who: sides[0].groups ? sides[0].groups.map((g) => g.who?.name).filter(Boolean).join(", ") : sides[0].who?.name ?? "" }),
-    beat("result", stateAt("result"), result?.short ?? ""),
+    beat("result", stateAt("result"), told ? (fresh ? told.short : told.head) : ""),
     catchInfo ? beat("catch", stateAt("catch"), catchInfo.text) : null,
     crewList.length ? beat("crew", phase === "after" ? (crewOpen.length ? "now" : "done") : stateAt("crew"), crewOpen.length ? t("ITAC.chase.crew.left", { n: crewOpen.length }) : phase === "after" ? t("ITAC.chase.crew.none") : t("ITAC.chase.crew.order")) : null,
   ].filter(Boolean);
@@ -262,7 +267,8 @@ export function chaseData(view, own, facts, t) {
     };
     if (!decision && !inst) decision = { kind: "gmRoll", mine: true, title: escaped ? t("ITAC.chase.gm.overTitle") : t(rolled ? "ITAC.chase.gm.nextTitle" : "ITAC.chase.gm.rollTitle", { n: (ch.round ?? 0) + 1 }),
       /* the crews still open stand on the waiting line under it, with the GM's shot buttons: not said twice */
-      text: escaped ? t("ITAC.chase.gm.overText") : t("ITAC.chase.gm.rollText"),
+      /* FXU (D190): the obstacle is named only when there will be one: the table is on, or the GM picked one for the next roll */
+      text: escaped ? t("ITAC.chase.gm.overText") : t(ch.obstacles || pick !== "auto" ? "ITAC.chase.gm.rollText" : "ITAC.chase.gm.rollTextPlain"),
       buttons: escaped ? gm.ends.filter((b) => b.id === "escaped").map((b) => ({ ...b, primary: true })) : [{ id: "gm:roll", label: gm.roll.label, primary: true, disabled: gm.roll.disabled, req: gm.roll.req }] };
   }
 
@@ -273,7 +279,7 @@ export function chaseData(view, own, facts, t) {
   return {
     on: true, seat, mySide, phase, round: ch.round ?? 0, title: t("ITAC.ui.chase"),
     roundLabel: phase === "before" ? t("ITAC.chase.round.before", { n: (ch.round ?? 0) + 1 }) : t("ITAC.chase.round.n", { n: phase === "rolling" && !rolled ? (ch.round ?? 0) + 1 : ch.round ?? 0 }),
-    distance: { value: d, lostAt: L, max: L + 1, status, toEscape, toCatch, from: phase === "after" ? ch.last?.from ?? null : null,
+    distance: { value: d, lostAt: L, max: L + 1, status, toEscape, toCatch, from: fresh ? ch.last?.from ?? null : null,
       say: caught ? t("ITAC.chase.say.caught") : escaped ? t("ITAC.chase.say.escaped") : t("ITAC.chase.say.run", { catch: toCatch, escape: toEscape }),
       escapeText: t("ITAC.chase.escapeAt", { n: L + 1 }), catchText: t("ITAC.chase.catchAt"), unit: t("ITAC.chase.zones", { n: d }),
       /* CHASE2 groups (ours): where each pursuing group stands on the track (a lost one beyond its end) */

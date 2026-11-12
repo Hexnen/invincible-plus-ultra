@@ -61,6 +61,7 @@ let drawn = 0, kept = null;
 /* U132 (slots-pure.mjs): the places outside the bar's stack (name -> the inner box the content goes in); the part of the frame the desk
    and the challenges read, as last told; whether the hint takes the questions' place (a narrow band) */
 let slotEls = {}, frameKey = "", shareWas = false;
+let hudOpenW = 250, squeezed = false;      // FXU (U194): the challenges' open width (window px), and whether they were told to fold
 /* U148: the widest bar each width of room has held (layout-pure.steadyShape), and the growth of one turn the shape allows for */
 const shapes = new Map(), SLACK = 32;
 const SLOT_NAMES = Object.freeze(["line", "cards", "hint"]);
@@ -146,7 +147,9 @@ function placeSlots(rec) {
   let topL = 12, topR = null;
   for (const el of rec.q(LEFT_OBSTACLES)) { const r = rec.rect(el); if (r && r.width && r.top < H * 0.5 && r.right < W * 0.4) topL = Math.max(topL, r.right + 8); }
   /* U136: a window floating over the map (the popped-out chat) that reaches into the top band: the band keeps to its side of it */
-  for (const el of rec.q(FLOATING)) { const r = rec.rect(el); if (r && r.top < ceil + 200 && r.bottom > ceil) { if ((r.left + r.right) / 2 > W / 2) topR = Math.min(topR ?? Infinity, r.left); else topL = Math.max(topL, r.right + 8); } }
+  /* FXU (U193): the band keeps to the WIDER side of it (slots-pure.frame with layout-pure.bandBeside), not to the side its middle is on */
+  const floats = [];
+  for (const el of rec.q(FLOATING)) { const r = rec.rect(el); if (r && r.width && r.top < ceil + 200 && r.bottom > ceil) floats.push({ left: r.left, right: r.right }); }
   const deskR = rec.rect(rec.one("#invincible-tactics-desk .igd"));
   const band = BAR_BAND * k;
   /* the free band at the bottom between what stands at the sides */
@@ -219,11 +222,18 @@ function placeSlots(rec) {
   /* D126: where Foundry's toast list really ends (it shows only while a toast stands) and the chat box's column */
   const list = rec.rect(rec.one("#chat-notifications .overflow")), notes = rec.rect(rec.one("#chat-notifications"));
   const colOf = chat ?? (notes && notes.left > W * 0.5 ? notes : null);
-  const hudR = rec.rect(rec.one("#invincible-challenges"));
+  const hudEl = rec.one("#invincible-challenges"), hudR = rec.rect(hudEl);
   const hudOn = !!hudR && rec.q("#invincible-challenges .ich-item").length > 0;
-  const fr = SP.frame({ W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, topCx, topL, topR, side, chatTop: chat?.top ?? null,
+  /* FXU (U194): the challenges' column folds to its handle where the middle has no room for it beside the line (layout-pure.hudSqueezed);
+     its open width is remembered while it is folded. A folded column (by the user or by the squeeze) keeps nothing of the band: its
+     handle stands over the initiative bar's row, not in the band */
+  const hudFolded = !!hudEl?.classList?.contains("ich-collapsed");
+  if (hudOn && !hudFolded && hudR.width > 40) hudOpenW = hudR.width;
+  const squeeze = hudOn && Lay.hudSqueezed(topL, side - 12, hudOpenW, SP.SIZE.card * k);
+  if (squeeze !== squeezed) { squeezed = squeeze; handlers.ichSqueeze?.(squeeze); }
+  const fr = SP.frame({ W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, topCx, topL, topR, floats, side, chatTop: chat?.top ?? null,
     listEnd: list && list.left > W * 0.5 ? list.bottom : null, chatX: colOf ? [colOf.left, colOf.right] : null,
-    hud: { present: hudOn, x0: hudR?.left ?? null }, desk: deskSide ? { open: true, x0: deskR.left } : null,
+    hud: { present: hudOn, x0: hudFolded ? null : hudR?.left ?? null }, desk: deskSide ? { open: true, x0: deskR.left } : null,
     bar: { lo, hi, top: barTop, bottom: H - bottom } });
   Slots.setFrame(fr);
   root.style.setProperty("--itd-panel-maxh", `${fr.panelMax}px`);
@@ -584,4 +594,4 @@ export const relayout = () => { if (root) place(); };      // hidden too: the fr
 export function press(fk) { try { const el = root && shown ? [...root.querySelectorAll("[data-fk]")].find((e) => e.dataset.fk === fk) : null; if (!el) return false; el.click(); return true; } catch { return false; } }
 export const el = () => root;
 export const isShown = () => shown;
-export function destroy() { clearTimeout(hideTimer); root?.remove(); root = stack = null; shown = false; last = null; kept = null; slotEls = {}; frameKey = ""; shareWas = false; Slots.setFrame(null); }
+export function destroy() { if (squeezed) { squeezed = false; handlers.ichSqueeze?.(false); } clearTimeout(hideTimer); root?.remove(); root = stack = null; shown = false; last = null; kept = null; slotEls = {}; frameKey = ""; shareWas = false; Slots.setFrame(null); }
