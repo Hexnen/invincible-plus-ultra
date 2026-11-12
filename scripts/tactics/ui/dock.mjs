@@ -174,8 +174,8 @@ export function place() {
   try {
     const clear = Math.round(bottom + Math.min(fixed - GAP, room) + 10);
     setVar("--itd-clear", `${clear}px`);      // perf P2 (ui/vars.mjs): on the notice alone; a property on the body restyled the whole page
-    /* U70: where the whole stack ends (the bar, the panel and the questions over it), for what must stand above ALL of it */
-    setVar("--itd-over", `${Math.round(bottom + Math.min((stack.offsetHeight || 0) * k, room) + 12)}px`);
+    /* U70 / U116: the map's "My view" chip is no longer pinned from here: the map places it above the declared dock and clear of
+       the boxes ui/main.mjs names (moinen-maps zones-api.md section 41) */
     /* U47: the notice stands right above the bar; while a panel or a question is open over the bar it waits (it would float over the
        middle of the map, above what the user is doing) */
     document.body.classList.toggle("ita-notice-wait", !!(panelEl || asks) || H - clear - 64 < ceil);

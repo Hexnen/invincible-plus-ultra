@@ -33,10 +33,10 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
   V._reset();
   eq(V.setVar("--itd-clear", "120px", doc), true, "B: a new value is written");
   eq(V.setVar("--itd-clear", "120px", doc), false, "B: the same value again writes nothing");
-  V.setVar("--itd-clear", "130px", doc); V.setVar("--itd-over", "200px", doc); V.setVar("--ita-dice-z", "101", doc); V.setVar("--ita-dice-z", null, doc);
+  V.setVar("--itd-clear", "130px", doc); V.setVar("--ita-dice-z", "101", doc); V.setVar("--ita-dice-z", null, doc);
   eq(doc.adoptedStyleSheets.length, 1, "B: one sheet, adopted once");
-  eq(doc.adoptedStyleSheets[0].cssRules.map((r) => r.selectorText), [".ips-notice", ".mm-dst-chip", "#invincible-combat-bar, #invincible-tactics-dock"], "B: one rule per number, on its readers");
-  eq(writes, [[".ips-notice", "--itd-clear", "120px"], [".ips-notice", "--itd-clear", "130px"], [".mm-dst-chip", "--itd-over", "200px"], ["#invincible-combat-bar, #invincible-tactics-dock", "--ita-dice-z", "101"], ["#invincible-combat-bar, #invincible-tactics-dock", "--ita-dice-z", null]], "B: what was written, in order");
+  eq(doc.adoptedStyleSheets[0].cssRules.map((r) => r.selectorText), [".ips-notice", "#invincible-combat-bar, #invincible-tactics-dock"], "B: one rule per number, on its readers");
+  eq(writes, [[".ips-notice", "--itd-clear", "120px"], [".ips-notice", "--itd-clear", "130px"], ["#invincible-combat-bar, #invincible-tactics-dock", "--ita-dice-z", "101"], ["#invincible-combat-bar, #invincible-tactics-dock", "--ita-dice-z", null]], "B: what was written, in order");
   eq(bodyWrites, [], "B: nothing on the body");
   doc.adoptedStyleSheets = [];                                      // another script replaced the list
   V.setVar("--itd-clear", "140px", doc);

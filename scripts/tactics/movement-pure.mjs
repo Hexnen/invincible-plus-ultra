@@ -304,6 +304,12 @@ export function canTalk(range, placeA, placeB, border = null, link = false) {
     before it (a macro or another module's script moving a token in a tactical fight). Such an update is not a drag: no menu of ways is
     opened for it (one stood over the GM desk until dismissed by hand); the client is told the token stays. */
 export const BY_HAND_MS = 1500;
+/** U107, the proper fix (moinen-maps zones-api.md section 41): the map tells confirm(ctx) how the token was moved - `ctx.method`, Foundry's
+    word ("dragging", "keyboard", "hud", "config" by a hand; "api", "paste", "undo" not), and `ctx.byHand`. When it says so that answer
+    stands (a slow drag is a drag however long it was held; a script's update is a script's however close to a click). Only a map that
+    does not say it (an older moinen-maps) leaves the guess to the hand tracker below: `guess()` -> true when it reads as a script.
+    -> true: no hand made this update (no menu of ways; the client is told the token stays) */
+export const scriptMove = (ctx, guess = () => false) => (typeof ctx?.byHand === "boolean" ? !ctx.byHand : !!guess());
 export const madeByScript = (now, lastInput, ms = BY_HAND_MS) => !(Number.isFinite(lastInput) && lastInput > 0 && now - lastInput <= ms);
 /** D112: the hand of this client, followed through a whole drag. The canvas handles a drop on ITS pointerup (a window listener that runs
     before any document listener), so the last release seen was the one before the drag and a drag held over 1.5 s read as a script.

@@ -673,9 +673,10 @@ body.ita-tactics #invincible-combat-bar.icbar-gm .icbar-tile[data-active] .icbar
 /* U6: chat toasts keep to the strip under the open desk (ui/desk.mjs measures it); the newest stays, older ones scroll out of it */
 /* U71: the toast of a tactical roll's own card is not shown while the dock is up (ui/main.mjs marks the card) */
 body.ita-tactics #chat-notifications .chat-message.ita-troll { display: none; }
-/* U70: the map's "My view" chip stands above the dock's WHOLE stack. The map puts it above the declared dock only while the dock is
-   lower than 60 % of the window; with a panel and a question open the stack is taller and the chip (drawn over the dock) landed on it. */
-body.ita-tactics .mm-dst-chip { top: auto !important; bottom: var(--itd-over, 120px); }
+/* U70 / U116: the map's "My view" chip is placed by the map alone (moinen-maps zones-api.md 23 and 41): above the declared dock (its
+   whole stack: the panel and the questions are inside #invincible-tactics-dock), clear of the boxes ui/main.mjs and session/main.mjs
+   ask it to keep clear of (the dock, the desk, the party, the challenges, the session notice) and of the labels on the map. The old
+   rule here pinned it over the stack, where the session notice also stands, and over the targets' pills. */
 body.ita-desk-open #chat-notifications .overflow { height: auto; max-height: var(--igd-toast-maxh, 40vh); }
 /* U6: the module's own end-of-session notice stands above the dock instead of on it */
 body.ita-tactics .ips-notice { bottom: var(--itd-clear, 124px); }

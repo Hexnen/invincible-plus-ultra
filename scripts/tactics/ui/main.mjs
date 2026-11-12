@@ -545,6 +545,10 @@ export function start() {
     Zones.onEvent(moved);                    // a token entered a zone, a door changed: the options of a move are counted again
     Zones.onChange(() => moved());           // the scene's numerals or its zones changed: every text that names a zone is said again
     Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock", top: "#invincible-combat-bar" });      // the pick's banner and its "more" chips keep clear of our two bars (zones-api.md section 23)
+    /* U106 / U116 (zones-api.md section 41): the map's menus (a drag's "which way" menu) and its "My view" chip keep clear of our panels that
+       are no bar along an edge, and of the dock itself where the declared bar is given up (a short window); the session notice is the
+       session part's own declaration (session/main.mjs) */
+    Zones.uiAvoid(`${MOD}.panels`, ["#invincible-tactics-dock", "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges"]);
     /* a token dragged into another zone (movement.mjs asks here first): the dock opens Move for that combatant with the zone chosen */
     Mv.setDragSurface((cid, spot) => {
       const combat = combatNow();

@@ -1,5 +1,5 @@
 /* Tactical combat, the surfaces: NUMBERS FOR OTHER PARTS OF THE PAGE (perf P2). The dock and the desk measure themselves and tell a few
-   elements elsewhere on the page where to stand (the end-of-session notice, the map's "My view" chip, the chat toasts, the bar and the
+   elements elsewhere on the page where to stand (the end-of-session notice, the chat toasts, the bar and the
    dock above Dice So Nice). Those numbers used to be custom properties on <body>: a custom property is inherited, so every new value
    restyled ALL the page's elements (about 7 000 - 10 000 with the sidebar and the chat log), 90-190 ms per value on a seat, two or
    three times per redraw of the dock: the redraw hitch of a turn change. Here each number is a declaration in ONE constructed style
@@ -10,7 +10,6 @@
 /** which elements read each number (the selectors of the rules in styles/*.css that use it) */
 export const USERS = Object.freeze({
   "--itd-clear": ".ips-notice",                                           // tactics-ui.css: the end-of-session notice above the dock
-  "--itd-over": ".mm-dst-chip",                                           // tactics-ui.css (U70): the map's "My view" chip above the whole stack
   "--igd-toast-maxh": "#chat-notifications .overflow",                    // tactics-ui.css (U6): the chat toasts' strip under the open desk
   "--ita-dice-z": "#invincible-combat-bar, #invincible-tactics-dock",      // combat.css / tactics-ui.css (U108): above Dice So Nice's canvas
 });
