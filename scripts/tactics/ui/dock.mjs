@@ -31,7 +31,8 @@
 import { h, icon, swap, face, speed, stressChip, markOf, actIcon, tipText, askCard, sumCard, legendCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
 import { symMark, costMark, markName, hasMarks, plain } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
 import * as Lay from "./layout-pure.mjs";
-import { setVar } from "./vars.mjs";
+import { setVar, varOf } from "./vars.mjs";
+import * as Settle from "./settle.mjs";
 
 const ID = "invincible-tactics-dock";
 const GAP = 6;
@@ -46,6 +47,9 @@ const TOP_OBSTACLES = "#invincible-combat-bar .icbar-tile, #invincible-combat-ba
 /* panels of other modules at the left edge that reach down into the dock's band (the map's pins / filter panel, its VRAM meter) */
 const LEFT_OBSTACLES = ".mm-filter, #mm-vram";
 let root = null, stack = null, handlers = {}, shown = false, hideTimer = 0, last = null, panelKey = null, underTop = null;
+/* perf P2-1 (ui/settle.mjs): `drawn` counts the draws (and what may resize the dock's content without one: a picture or a font that
+   finished loading); `kept` is what the last placement read, kept only when that placement changed nothing */
+let drawn = 0, kept = null;
 
 export function configure(x) { handlers = x ?? {}; }
 const set = (patch) => handlers.set?.(patch);
@@ -65,6 +69,9 @@ function ensure(label) {
   root.addEventListener("keydown", (e) => { if (e.key === "Tab") e.stopPropagation(); });
   /* U105: a panel taller than its room scrolls; while more of it lies below, its foot says so (data-more). Scroll does not bubble: caught here */
   root.addEventListener("scroll", (e) => { if (e.target?.classList?.contains("itd-panel")) markMore(e.target); }, true);
+  /* perf P2-1: a picture of the dock that finished loading may have changed its size: the next placement is done in full */
+  root.addEventListener("load", () => { drawn++; }, true);
+  try { document.fonts?.addEventListener?.("loadingdone", () => { drawn++; }); } catch { /* no font events */ }
   document.body.appendChild(root);
 }
 
@@ -85,36 +92,51 @@ function preview(from) {
 }
 
 /* ---------- placement ---------- */
+/* perf P2-1 (ui/settle.mjs): a placement whose last run changed nothing, with everything it read reading the same, is skipped; the
+   placement itself (placeNow) asks the page through `rec` so that what it read is known */
 export function place() {
   if (!root) return;
+  const facts = () => [drawn, window.innerWidth, window.innerHeight, Lay.factor(document.body)];
+  if (kept && Settle.sameFacts(kept.facts, facts()) && Settle.unchanged(kept.read, visibleRect) && Settle.sameFacts(kept.sizes, Settle.sizesOf(stack))) return;
+  const f = facts(), before = outcome(), rec = Settle.recorder(document, visibleRect);
+  kept = null;
+  placeNow(rec);
+  if (Settle.sameFacts(before, outcome())) kept = { facts: f, read: rec.take(), sizes: Settle.sizesOf(stack) };
+}
+/* everything a placement writes: the dock's attributes and numbers, the hint's tick, the numbers for the page, the notice's wait */
+function outcome() {
+  const hint = stack?.querySelector(".itd-hint1");
+  return [root.style.cssText, root.dataset.tight ?? "", root.dataset.under ?? "", underTop, hint?.style.cssText ?? "", hint?.dataset.tick ?? "", varOf("--itd-clear"), varOf("--itd-over"), document.body?.classList.contains("ita-notice-wait") ?? false];
+}
+function placeNow(rec) {
   const W = window.innerWidth, H = window.innerHeight;
-  const hot = visibleRect(document.getElementById("hotbar"));
+  const hot = rec.rect(rec.one("#hotbar"));
   const ground = hot && hot.top > H * 0.4 ? hot.top : H - EDGE + GAP;
   /* the room above the dock: down from the lowest thing that hangs from the top over the middle of the window */
   let ceil = 8;
-  for (const el of document.querySelectorAll(TOP_OBSTACLES)) { const r = visibleRect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) ceil = Math.max(ceil, r.bottom + 8); }
+  for (const el of rec.q(TOP_OBSTACLES)) { const r = rec.rect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) ceil = Math.max(ceil, r.bottom + 8); }
   /* the free band between what stands at the sides, for a dock whose bottom is at `floor` */
   let deskOff = false;
   const sides = (floor, tall = (stack.offsetHeight || 60) * k, bar = false) => {
     let lo = 12, hi = W - 12;
     const yBot = floor - GAP, yTop = yBot - Math.min(tall, Math.max(150, yBot - ceil)) - 4, inBand = (r) => r && r.top < yBot && r.bottom > yTop;
-    const sb = visibleRect(document.getElementById("sidebar"));
+    const sb = rec.rect(rec.one("#sidebar"));
     if (sb && sb.left > W * 0.5) hi = Math.min(hi, sb.left - 12);
-    for (const m of document.querySelectorAll("#chat-notifications .chat-message")) { const r = visibleRect(m); if (inBand(r) && r.left > W * 0.3) hi = Math.min(hi, r.left - 10); }
+    for (const m of rec.q("#chat-notifications .chat-message")) { const r = rec.rect(m); if (inBand(r) && r.left > W * 0.3) hi = Math.min(hi, r.left - 10); }
     /* the open GM desk and a panel at the left edge that hangs lower than the top obstacles are kept clear of WHATEVER the dock's height
        is now: a dock that changed its width with every panel that opened made the buttons jump under the pointer (U6) */
     const low = (r) => r && r.bottom > ceil + 60 && r.top < floor;
-    if (!(bar && deskOff)) for (const el of document.querySelectorAll("#invincible-tactics-desk .igd, #invincible-tactics-desk .igd-handle")) { const r = visibleRect(el); if ((el.classList.contains("igd") ? low(r) : inBand(r)) && r.left > W * 0.4) hi = Math.min(hi, r.left - 10); }
-    const partyEl = document.getElementById("invincible-party"), party = visibleRect(partyEl);
+    if (!(bar && deskOff)) for (const el of rec.q("#invincible-tactics-desk .igd, #invincible-tactics-desk .igd-handle")) { const r = rec.rect(el); if ((el.classList.contains("igd") ? low(r) : inBand(r)) && r.left > W * 0.4) hi = Math.min(hi, r.left - 10); }
+    const partyEl = rec.one("#invincible-party"), party = rec.rect(partyEl);
     if (party && party.right < W * 0.5) {
-      const kids = [...partyEl.querySelectorAll(".ipt-item")].map(visibleRect).filter(inBand);
+      const kids = rec.q(".ipt-item", partyEl).map((el) => rec.rect(el)).filter(inBand);
       if (kids.length || inBand(party)) lo = Math.max(lo, Math.max(party.right, ...kids.map((k) => k.right)) + 10);
     }
     /* Foundry's players list: its box is narrower than the lists inside it */
-    for (const el of document.querySelectorAll("#players, #players > *")) { const r = visibleRect(el); if (inBand(r) && r.right < W * 0.3) lo = Math.max(lo, r.right + 8); }
+    for (const el of rec.q("#players, #players > *")) { const r = rec.rect(el); if (inBand(r) && r.right < W * 0.3) lo = Math.max(lo, r.right + 8); }
     /* a panel of the map at the left edge counts once it reaches the lower half of the window, or the dock's stack has grown up to it:
        the bar itself lies on the bottom edge now, far under the pins panel, and must not give up its one row for it */
-    for (const el of document.querySelectorAll(LEFT_OBSTACLES)) { const r = visibleRect(el); if (r && r.right < W * 0.4 && r.top < floor && (r.bottom > H * 0.5 || inBand(r))) lo = Math.max(lo, r.right + 8); }
+    for (const el of rec.q(LEFT_OBSTACLES)) { const r = rec.rect(el); if (r && r.right < W * 0.4 && r.top < floor && (r.bottom > H * 0.5 || inBand(r))) lo = Math.max(lo, r.right + 8); }
     return { lo, hi, floor };
   };
   /* WHAT LIES ON THE BOTTOM EDGE besides the dock: the map's director bar (GM, left) and the chat box of a folded sidebar (right). The
@@ -129,11 +151,11 @@ export function place() {
   /* U48: THE BOTTOM EDGE IS THE BAR'S. Where the open GM desk would squeeze the bar into three rows (a 1366 px window with the sidebar
      open too), the bar takes the edge under the desk instead and the desk ends above it (desk.mjs reads data-under); the panel and the
      questions above the bar still keep clear of the desk. Tried only when the first pass ends in three rows. */
-  const deskOpen = !!visibleRect(document.querySelector("#invincible-tactics-desk .igd"));
+  const deskOpen = !!rec.rect(rec.one("#invincible-tactics-desk .igd"));
   for (const off of [false, true]) {
   deskOff = off; delete root.dataset.tight;
   const lows = [], wide = sides(ground, BAR_BAND * k, true);
-  for (const el of document.querySelectorAll(LOW_OBSTACLES)) { const r = visibleRect(el); if (r && r.height < 90 && r.bottom > ground - 70 && r.top < ground && r.right > wide.lo && r.left < wide.hi) lows.push(r); }
+  for (const el of rec.q(LOW_OBSTACLES)) { const r = rec.rect(el); if (r && r.height < 90 && r.bottom > ground - 70 && r.top < ground && r.right > wide.lo && r.left < wide.hi) lows.push(r); }
   const between = (A) => {
     const mid = (A.lo + A.hi) / 2, B = { ...A };
     for (const r of lows) { if ((r.left + r.right) / 2 < mid) B.lo = Math.max(B.lo, r.right + 10); else B.hi = Math.min(B.hi, r.left - 10); }
@@ -451,6 +473,7 @@ function draw(d, ui) {
   try { const kp = d.keys?.chosen; if (kp) for (const el of stack.querySelectorAll(".ita-opt, .ita-submit")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
   /* U51: the news chip's tooltip holds the older lines; the last line joins them only when the chip had to cut it short */
   try { const nt = stack.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = plain([d.news.text, ...d.news.older].join("<br>")); } catch { /* a courtesy */ }
+  drawn++;      // perf P2-1: new content: the placement is done in full
   place();
   reveal();
   try { preview(stack.querySelector("[data-pv]:hover, [data-pv]:focus-visible")); } catch { /* a courtesy */ }      // the pointer may still rest on what it was previewing
@@ -474,4 +497,4 @@ export const relayout = () => { if (root && shown) place(); };
 export function press(fk) { try { const el = root && shown ? [...root.querySelectorAll("[data-fk]")].find((e) => e.dataset.fk === fk) : null; if (!el) return false; el.click(); return true; } catch { return false; } }
 export const el = () => root;
 export const isShown = () => shown;
-export function destroy() { clearTimeout(hideTimer); root?.remove(); root = stack = null; shown = false; last = null; }
+export function destroy() { clearTimeout(hideTimer); root?.remove(); root = stack = null; shown = false; last = null; kept = null; }
