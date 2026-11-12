@@ -259,7 +259,7 @@ export function actorFacts(actor) {
     huge: flags.huge === true || pass.huge === true, grown: flags.grown === true || pass.grown === true, impervious: flags.impervious === true || pass.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
     regeneration: flags.regeneration === true || pass.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
     movement: kind === "vehicle" ? [{ mode: "vehicle", speed: p7.vehicle.speed, aerial: ["aerial", "space"].includes(p7.vehicle.type) }] : movementOf(actor).map((m) => ((m.mode === "swimming" && pass.fastSwim) || (m.mode === "swinging" && pass.fastSwing) ? { ...m, tier: "fast" } : ["swimming", "swinging"].includes(m.mode) ? { ...m, tier: "basic" } : m)),      // [B2022], [B2030]
-    vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true || actor.items.some((i) => Moves.NAME_TYPES.includes(i.type) && /^(adaptation|lifesupport)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
+    vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true || actor.items.some((i) => Moves.NAME_TYPES.includes(i.type) && /^(adaptation)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
     major: flags.major === true, immunities: [...(Array.isArray(flags.immunities) ? flags.immunities : []), ...pass.immune], vulnerabilities: [...(Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : []), ...pass.vulnerable],
   };
 }

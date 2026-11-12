@@ -282,6 +282,7 @@ function turnMoment(W, member) {
   const s = W.s, moment = { at: "nextTurnOf", who: member };
   s.triggers = Sch.expire(s.triggers, moment).keep;
   s.tokens = Sch.expire(s.tokens, moment).keep;
+  s.tokens = s.tokens.map((t) => (t?.expires?.at === "nextTurnEndOf" && t.expires.who === member ? { ...t, expires: { at: "turnEndOf", who: member } } : t));      // PWE (PW067) [B1887]: "on your next turn": this is that turn, its end ends them
   endEffects(W, moment);
   endStatuses(W, moment);
   queueOnce(W, { at: "turnStart", combatant: member }, `ts:${member}`, false);
@@ -675,6 +676,7 @@ const OPS = {
       ev(W, "trigger", { at: t.at, subject: t.subject, run: t.run, source: t.source });
       W.effects.push({ type: "trigger", trigger: S.clone(t) });
     }
+    endStatuses(W, { at: "sceneEnd" });      // PWE (PW108): a status that lasts the scene (Invisibility [B2075])
     const c = Sch.sceneEndCleanup(s);
     s.triggers = c.triggers; s.tokens = c.tokens; s.effects = c.effects; s.counters = c.counters; s.statuses = c.statuses;
     delete s.sched.hold;
@@ -754,7 +756,7 @@ function removeOne(W, id) {
   /* D46 [B1634] (spec 3.3): what lasts "until the next turn of" or "to the end of the turn of" somebody who has left the fight has nothing
      left to wait for: that turn never comes, so the bonus dice (an Action Plan), effects and statuses hung on it stayed for the rest of
      the fight. They end with the leaving, as the triggers about a leaver do (scheduler-pure.dropSubject). */
-  const keyed = (x) => !!x && x.who === id && (x.at === "nextTurnOf" || x.at === "turnEndOf");
+  const keyed = (x) => !!x && x.who === id && (x.at === "nextTurnOf" || x.at === "turnEndOf" || x.at === "nextTurnEndOf");      // PWE: and Energy Absorption's dice
   s.tokens = (s.tokens ?? []).filter((t) => !keyed(t?.expires));
   for (const at of ["nextTurnOf", "turnEndOf"]) endEffects(W, { at, who: id });
   for (const [who, list] of Object.entries(s.statuses ?? {})) {

@@ -55,9 +55,9 @@ export function modesOf(c) {
 }
 export const modeOf = (c, id) => { const list = modesOf(c); return (id ? list.find((m) => m.id === id) : null) ?? null; };
 /** the profile the zones API takes (zones-api.md section 14). `zones`: how far ONE action goes (the stress option's reach when taken). */
-export function apiProfile(profile, { zones: z = null, stress = false, force = false, hover = undefined, big = false } = {}) {
+export function apiProfile(profile, { zones: z = null, stress = false, force = false, hover = undefined, big = false, phase = false } = {}) {
   const speed = Math.max(1, z ?? (stress && profile.stressZones ? profile.stressZones : profile.zones));
-  const p = { way: API_WAY[profile.mode] ?? (profile.way === "air" ? "flight" : profile.way), speed, actions: 1, force: !!force };
+  const p = { way: phase && profile.way === "walk" ? "phase" : API_WAY[profile.mode] ?? (profile.way === "air" ? "flight" : profile.way), speed, actions: 1, force: !!force && !(phase && profile.way === "walk") };      // PWE (PW086): a phaser walks through walls
   p.hover = hover !== undefined ? hover : canHover(profile);                           // [ZR-3]: only a way of moving that may end in the air hovers
   if (big) p.edges = NOT_PORTAL;                                                       // Z3 [B2040]: a portal lets human-sized characters through
   return p;
@@ -66,6 +66,9 @@ export function apiProfile(profile, { zones: z = null, stress = false, force = f
     The map's temporary edges a big mover may still take (zones-api.md section 11: a tunnel can be followed by anybody [B1996]). */
 const NOT_PORTAL = Object.freeze(["tunnel"]);
 export const bigFor = (c) => !!(c?.huge || c?.grown || c?.pass?.huge || c?.pass?.grown);
+/** PWE (PW086) [B1939], [B1941]: Intangibility phases through a wall or a door as part of a move on foot (no action, no stress); the map's way
+    "phase" (a route that walls do not stop, as burrowing's). Prolonged Phasing (the status) passes through solid objects as well. */
+export const phaseFor = (state, cid, c) => c?.pass?.phaseMove === true || (!!state && M.hasStatus(state, cid, "intangible"));
 
 /* ------------------------------------------------------------------ zone states as the rules read them */
 const ownerOf = (s) => (typeof s?.owner === "string" ? s.owner : s?.owner?.owner ?? s?.owner?.combatant ?? s?.owner?.id ?? null);
@@ -148,11 +151,12 @@ export function priceMove(Z, state, cid, c, decl, o = {}) {
   const conds = conditionsOf(state, cid, c, Z.states(from.spot));
   const reach = movement.moveReach(P, { conditions: conds, resolve: o.resolve ?? c.resolve });
   const cap = Number.isFinite(o.free) ? Math.max(0, o.free) : Math.max(reach.plain, reach.stressed, 1);
-  const force = !!decl.force && P.way !== "through";
-  const prof = apiProfile(P, { zones: Math.max(1, cap), force, big: bigFor(c) });
+  const phase = phaseFor(state, cid, c) && P.way === "walk";
+  const force = !!decl.force && P.way !== "through" && !phase;
+  const prof = apiProfile(P, { zones: Math.max(1, cap), force, big: bigFor(c), phase });
   let plan = Z.plan(cid, to, prof);
   if (!plan) {
-    const forced = P.way !== "through" && !force ? Z.plan(cid, to, { ...prof, force: true }) : null;
+    const forced = P.way !== "through" && !force && !phase ? Z.plan(cid, to, { ...prof, force: true }) : null;
     return forced ? no("barrier", { barriers: (forced.steps ?? []).filter((s) => s.border?.blocked).map((s) => barrierOf(s.border).border) }, true) : no("noRoute", {}, true);
   }
   let cost = "none", stress = 0;
@@ -230,7 +234,7 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
   const push = (m, to, d, zone, extra = {}) => {
     const pr = priceMove(Z, state, cid, c, { to, mode: m.id, stress: 1, force: extra.force }, o);
     const cost = pr.ok ? (pr.later ?? pr.cost) : null, pay = pr.ok && (cost === "quick" || cost === "full") ? canPay(cost) : { ok: true };
-    out.push({ id: `${m.id}|${to}`, to, zone, mode: m.id, d, cost, stress: pr.ok ? pr.stress : 0, disabled: !pr.ok ? pr.reason : pay.ok ? null : pay.reason ?? "noAction",
+    out.push({ id: `${m.id}|${to}${extra.wreck ? "|wreck" : ""}`, to, zone, ...(extra.wreck ? { wreck: 1 } : {}), mode: m.id, d, cost, stress: pr.ok ? pr.stress : 0, disabled: !pr.ok ? pr.reason : pay.ok ? null : pay.reason ?? "noAction",
       ...(pr.ok ? (pay.ok ? {} : { unpaid: 1 }) : pr.gmMayAllow ? { gmMayAllow: true } : {}), barriers: pr.ok ? pr.barriers : pr.params?.barriers ?? [], ...(pr.ok && pr.gm ? { gm: 1 } : {}), ...(pr.ok && pr.zones?.length ? { route: pr.zones.slice() } : {}), ...(pr.ok && pr.steps?.length ? { enters: [...new Set(pr.steps.map((s) => s.to).filter((x) => typeof x === "string"))] } : {}), ...extra });      // W1 (U32): `route` = the zones this way enters, for the preview on the map
   };
   for (const m of modes) {
@@ -238,11 +242,13 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
     const conds = conditionsOf(state, cid, c, Z.states(from.spot)), r = movement.moveReach(m.profile, { conditions: conds, resolve: c.resolve });
     const max = Number.isFinite(o.free) ? o.free : Math.max(r.plain, r.stressed);
     const seen = new Set();
-    for (const force of m.profile.way === "through" ? [false] : [false, true]) {
-      for (const row of Z.reach(cid, apiProfile(m.profile, { zones: Math.max(1, max), force, big: bigFor(c) }), o.max ?? max)) {
+    const phase = phaseFor(state, cid, c) && m.profile.way === "walk";      // PWE (PW086)
+    for (const force of m.profile.way === "through" || phase ? [false] : [false, true]) {
+      for (const row of Z.reach(cid, apiProfile(m.profile, { zones: Math.max(1, max), force, big: bigFor(c), phase }), o.max ?? max)) {
         if (row.d === 0 || seen.has(row.zone)) continue;
         seen.add(row.zone);
         push(m, row.zone, row.d, row.zone, force ? { force: true } : {});
+        if (m.mode === "burrowing" && !force) push(m, row.zone, row.d, row.zone, { wreck: 1 });      // PWE (PW095) [B1995]: the same way, wrecking the zones passed under
         const z = m.profile.way === "air" || m.profile.way === "swing" || m.profile.vertical ? Z.zone(row.zone) : null;
         if (z && (z.rooftop || (m.profile.ends ?? []).includes("air"))) push(m, `${row.zone}:elevated`, row.d, row.zone, { elevated: z.rooftop ? "roof" : "air", ...(force ? { force: true } : {}) });   // [B2385-2386], [B2396]
       }

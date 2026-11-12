@@ -8,6 +8,7 @@ import * as M from "../mods-pure.mjs";
 import { ATTRS, attrChoices } from "../actions-pure.mjs";
 import * as K from "./kit.mjs";
 import * as Lg from "../ledger-pure.mjs";
+import * as P1 from "../economy-pure.mjs";
 
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 const fine = { ok: true, reason: null, params: {}, gates: [], notes: [] };
@@ -46,7 +47,7 @@ export function snarePenalty(st) {
 }
 /* P6: the actions a character's own powers, talents and gear give (kit-pure.mjs). The stress an entry costs is charged when it locks. */
 export const stressOf = (v, inst) => { const e = v.entry(inst);      // a fixed price, 1 per extra target chosen as a number, 1 per target beyond the first
-  return (inst.decl?.stressTotal ?? 0) + (e?.stress?.fixed ?? 0) + (e?.stressPick ? Math.max(0, Math.trunc(Number(inst.decl?.opt) || 0)) : 0) + (e?.stressExtra ? Math.max(0, (inst.decl?.targets?.length ?? 0) - 1) : 0); };
+  return (inst.decl?.stressTotal ?? 0) + (e?.stress?.fixed ?? 0) + (e?.stressPick ? Math.max(0, Math.trunc(Number(inst.decl?.opt) || 0)) : 0) + (e?.stressExtra ? Math.max(0, (inst.decl?.targets?.length ?? 0) - 1) : 0) + (e?.stressPer ? new Set(inst.decl?.targets ?? []).size : 0); };      // PWE: stressPer, 1 per target (Shared Camouflage [B1904])
 const markKey = (cid, fx) => (fx.scene ? M.counterKey.scene(cid, fx.id) : M.counterKey.round(cid, fx.id));
 /* Z7 [B1686]: "once per action scene in the same zone" (`once: "sceneZone"`, Body Battery) counts per zone the actor stands in; with no map to
    name the zone it counts as once per scene (the GM may allow) */
@@ -66,16 +67,26 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
     case "status": if (success) {
       const who = fx.on === "self" ? I.actor : subject, has = M.hasStatus(v.state, who, fx.id);
       if (has && fx.toggle) { R.effects.push({ t: "status-", who, id: fx.id }); status(who, fx.id, false); }
-      else if (!has) { R.effects.push({ t: "status+", who, status: { id: fx.id, source: src, ...(fx.data ? { data: fx.data } : {}) } }); status(who, fx.id, true); }
+      else if (!has) { R.effects.push({ t: "status+", who, status: { id: fx.id, source: src, ...(fx.data ? { data: fx.data } : {}), ...(fx.ends ? { ends: { at: fx.ends } } : {}) } }); status(who, fx.id, true); }      // PWE (PW108): a status with an end of its own
     } break;
     case "plan": if (success) for (const id of teamOf(v, I.actor)) token(R, { id: sid(`p${I.id}${id}`), holder: id, dice: sixes, scope: { rolls: PLAN_ROLLS[opt] ?? PLAN_ROLLS.attack }, uses: "all", source: src, from: I.actor, expires: { at: "nextTurnOf", who: I.actor } }); break;   // [B1634]
     case "barrier": {                                                                        // [B1859-1862]: Armor by level, as many at once as the level allows, gone when breached
       const mine = (v.state.effects ?? []).filter((x) => x.kind === "barrier" && x.data?.by === I.actor), max = fx.max > 0 && fx.armor > 3 ? fx.armor : fx.max ?? 3;
       for (const old of mine.slice(0, Math.max(0, mine.length - max + 1))) for (const w of M.effectEndWrites(v.state, old.id)) R.effects.push({ t: "state", path: w.path, to: w.to });
-      const ef = M.makeEffect({ id: sid(`b${I.id}`), kind: "barrier", holder: subject, source: src, data: { armor: fx.armor ?? 3, by: I.actor }, ends: { at: "breached" } });
+      const ef = M.makeEffect({ id: sid(`b${I.id}`), kind: "barrier", holder: subject, source: src, data: { armor: fx.armor ?? 3, by: I.actor }, ends: { at: fx.ends ?? "breached" } });      // PWE (PW062): Barrier lasts a few minutes, the scene [B1859]; a breach ends it in the damage step
       if (ef) R.effects.push({ t: "state", path: ["effects", `#${ef.id}`], to: ef });
       I.data.gain = fx.armor ?? 3; break;
     }
+    case "dropBarrier": for (const b of ownBarriers(v, I.actor, subject)) for (const w of M.effectEndWrites(v.state, b.id)) R.effects.push({ t: "state", path: w.path, to: w.to }); break;      // PWE (PW062): "until you dismiss it" [B1859], [B1646]
+    case "camouflage": if (success) for (const who of [...new Set(I.decl.targets ?? [])]) {      // PWE (PW076) [B1904]: the allies share the camouflage for a few minutes (the scene)
+      const ef = M.makeEffect({ id: sid(`cf${I.id}${who}`), kind: "camouflage", holder: who, source: src, data: { by: I.actor }, ends: { at: "sceneEnd" } });
+      if (ef) R.effects.push({ t: "state", path: ["effects", `#${ef.id}`], to: ef });
+    } break;
+    case "massEmpathy": if (success && sixes > 0) for (const id of zoneMates(v, I.actor)) {      // PWE (PW100) [B2065], [B2064]: one roll for everyone else in the zone: an enemy loses 1 Resolve per six, an ally gets 3 back
+      const c = v.facts.c(id);
+      if (!!c.npc !== !!a?.npc) { const n = sixes * (fx.sap ?? 1); R.effects.push({ t: "stress", who: id, n }); R.events.push({ type: "stress", target: id, n, source: "power" }); }
+      else { const to = Math.min(c.maxResolve, c.resolve + sixes * (fx.restore ?? 3)); if (to > c.resolve) R.effects.push({ t: "actor", who: id, path: "resolve", to }); }
+    } break;
     case "heal": if (success) for (const who of fx.mass && I.decl.targets?.length ? [...new Set(I.decl.targets)] : [subject]) {      // [B1932]; Mass Healing [B1934]: one roll for all of them
       const hf = v.facts.c(who); if (!hf) continue;
       const to = Math.min(hf.maxHealth, hf.health + (fx.per ?? 3) * sixes); if (to > hf.health) R.effects.push({ t: "actor", who, path: "health", to }); I.data.gain = (I.data.gain ?? 0) + to - hf.health;
@@ -96,7 +107,7 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
     case "mark": R.effects.push({ t: "state", ...M.counterBump(v.state, markKey(I.actor, fx)) }); break;      // a thing that is on for the turn or the scene (a wind-up, an activation)
     case "resist": {                                                                           // the one it is about rolls (no action, never pushed); each six takes 1 stress off
       const key = `res:${subject}`;
-      if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, subject, fx.attr, [], { rollKind: "other" }); R.effects.push(K.rollEffect(key, subject, fx.attr, bp.pool, { passive: true, label: e?.label })); return "wait"; }
+      if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, subject, fx.attr, oppMods(v, I, subject), { rollKind: "other" }); R.effects.push(K.rollEffect(key, subject, fx.attr, bp.pool, { passive: true, label: e?.label })); return "wait"; }
       if (!K.rollFinal(I, key)) return "wait";
       const six = K.sixesOf(I, key), n = Math.max(0, (fx.stress ?? 0) - six);
       I.data.result = six > 0 ? "success" : "fail"; I.data.net = six; I.data.stress = n;
@@ -119,7 +130,8 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
     case "resolveAll": if (success) for (const id of teamOf(v, I.actor)) { const c = v.facts.c(id); if (c.resolve < c.maxResolve) R.effects.push({ t: "actor", who: id, path: "resolve", to: Math.min(c.maxResolve, c.resolve + sixes) }); } break;   // [B2147]
     case "support": token(R, { id: sid(`s${I.id}`), holder: subject, dice: (fx.per ?? 2) * Math.max(1, Number(opt) || 1), scope: { next: 1 }, uses: 1, source: src, from: I.actor, expires: { at: "sceneEnd" } }); break;   // [B2168]
     case "grant": {                                                                          // [B1953], [B2105], [B1909]: an extra unit of the ledger
-      const g = Lg.grantTemplate(fx.template, { unit: fx.unit, expires: fx.expires }), r = g ? Lg.addGrant(P1L(v, I.actor), { ...g, source: src }, I.actor) : null;
+      const g = Lg.grantTemplate(fx.template, { unit: fx.unit, expires: fx.expires, ...(fx.window ? { window: fx.window } : {}) }),      // PWE (PW077): the copy's extra action is taken on the own turn [B1909]
+        r = g ? Lg.addGrant(P1L(v, I.actor), { ...g, source: src }, I.actor) : null;
       if (r?.ok) R.effects.push({ t: "state", path: ["ledger", I.actor], to: r.ledger }); else I.data.result = "fail";
       break;
     }
@@ -144,15 +156,30 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
     }
     case "dismiss": R.effects.push({ t: "summonLeave", combatants: K.summonsOf(v, I.actor) }); break;      // [B1812]
     case "regen": if (a && a.health < a.maxHealth) { R.effects.push({ t: "actor", who: I.actor, path: "health", to: a.health + 1 }); I.data.gain = 1; } break;      // [B1893]
-    case "toggle": R.effects.push({ t: "fx", who: I.actor, item: fx.item, fx: fx.fx, on: !e.fxOn }); I.data.on = e.fxOn ? 0 : 1; break;      // a form, a size, a stance: the sheet's own active effect
+    case "toggle": for (const off of e.fxOn ? [] : fx.off ?? []) R.effects.push({ t: "fx", who: I.actor, item: fx.item, fx: off, on: false });      // PWE (PW091) [B1974]: one size at a time
+      R.effects.push({ t: "fx", who: I.actor, item: fx.item, fx: fx.fx, on: !e.fxOn }); I.data.on = e.fxOn ? 0 : 1; break;      // a form, a size, a stance: the sheet's own active effect
     default: break;
   }
 }
 const P1L = (v, cid) => v.state.ledger?.[cid];
+/** PWE: the dice the other side of an action rolls with beside its attribute: Defiance against a power that afflicts the mind (`mind`,
+    [B1865]); the holder's dice to keep a grapple (Extra Limb(s), Stretch Grapple [B1925-1928], [B1921]) */
+function oppMods(v, I, who) {
+  const e = v.entry(I), out = [];
+  if (e?.mind) { const n = K.defianceDice(v, who); if (n) out.push({ source: "defiance", dice: n }); }
+  if (e?.oppose?.who === "holder") { const n = K.holdDice(v, who); if (n) out.push({ source: "hold", dice: n }); }
+  return out;
+}
+/** PWE (PW079): is zone `b` within one zone of `a` on the map (Z.within) */
+const adjacentZone = (v, a, b) => { try { return (v.facts.zones?.within?.(a, 1) ?? []).some((r) => r?.zone === b); } catch { return false; } };
+/** PWE: the Barriers `by` keeps on `holder` */
+const ownBarriers = (v, by, holder) => (v.state.effects ?? []).filter((x) => x.kind === "barrier" && x.data?.by === by && x.holder === holder);
+/** PWE (PW100): everyone else in the actor's zone (a character, not a challenge or a vehicle); with no map to say it, nobody (the GM) */
+const zoneMates = (v, cid) => Object.keys(v.state.ledger ?? {}).filter((id) => { const c = v.facts.c(id); return id !== cid && c && c.present !== false && c.kind !== "challenge" && c.kind !== "vehicle" && !M.outOfAction(v.state, id, c) && sameZone(v, cid, id) === true; });
 /* Z15 [B1937] Life Leech: an unwilling target has to be touched first, with a FIGHTING roll made in the same action as the PRESENCE roll.
    [FXT-4] Who is unwilling: a character of the other side (hero against NPC); the book gives the touch no defence, so the roll needs one six. */
 export const touchNeeded = (v, inst) => { const e = v.entry(inst), t = subjectOf(inst); if (e?.effect?.kind !== "leech" || !t || t === inst.actor) return false; const a = v.facts.c(inst.actor), f = v.facts.c(t); return !!a && !!f && !!a.npc !== !!f.npc; };
-export const KIT_KINDS = Object.freeze(["shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist"]);
+export const KIT_KINDS = Object.freeze(["dropBarrier", "camouflage", "massEmpathy", "shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist"]);
 const sameZone = (v, a, b) => { const r = v.facts.range?.(a, b); return r === undefined ? undefined : !!r && r.total === 0; };   // undefined: no map, the GM judges
 
 function legality(v, inst) {
@@ -171,6 +198,11 @@ function legality(v, inst) {
   if (e?.once && M.counterGet(v.state, onceKey(inst, e, v)) > 0) return bad("usedAlready", GM);
   if (Array.isArray(e?.pick) && e.pick.length && !e.pick.includes(d.opt)) return bad("noChoice");
   if (other && (e?.sameZone || (e?.touch && !a.pass?.healReach)) && sameZone(v, inst.actor, subject) === false) return bad("notSameZone", GM);
+  if (other && e?.touch && a.pass?.healReach && (v.facts.range?.(inst.actor, subject)?.total ?? 0) > 1) return bad("tooFar", GM);      // PWE (PW074) [B1933]: Distant Healing reaches this zone or the next
+  if (e?.needsStatus && !M.hasStatus(v.state, inst.actor, e.needsStatus)) return bad("needsStatus", { status: e.needsStatus });      // PWE (PW085) [B1942]: Controlled Phasing only while intangible
+  if (e?.ownTurn && !P1.isOnTurn(v.state, inst.actor)) return bad("notYourTurn");      // PWE (PW077) [B1909]: "on your turn"
+  if (e?.needsCopies && !(K.copiesOf(v.state, inst.actor) > 0)) return bad("noCopies");      // PWE (PW077) [B1909]: the copies act instead of giving their bonus
+  if (kind === "dropBarrier" && !ownBarriers(v, inst.actor, subject).length) return bad("noBarrier");
   if (other && e?.immuneHuge && sf?.huge) return bad("hugeTarget");
   if (e?.effect?.mass && Array.isArray(d.targets)) {                                                           // Mass Healing [B1934]: every chosen ally must pass, not only the first, and no more than the entry's upper bound
     const ts = [...new Set(d.targets)], mx = e.target?.n?.[1];
@@ -212,6 +244,7 @@ function legality(v, inst) {
     case "pickUp": { const it = d.item ? (v.state.items ?? []).find((x) => x.id === d.item) : null;
       if (d.item && (!it || it.state !== "ground")) return bad("noItem");
       const at = it?.zone ? v.facts.zone?.(inst.actor)?.spot ?? null : null;                   // S066 [B2316]: an item is picked up where it lies (no map, or an item with no place: the GM judges)
+      if (at && at !== it.zone && a.pass?.reach && adjacentZone(v, at, it.zone)) return fine;      // PWE (PW079) [B1919]: Elongation reaches items in an adjacent zone
       return at && at !== it.zone ? bad("noItem", GM) : fine; }      // "nothing to pick up here"
     default: return fine;
   }
@@ -235,7 +268,7 @@ export const act = {
     if (!(I.decl?.targets ?? []).includes(t)) I.decl = { ...I.decl, targets: [t] };
     const opp = opponentOf(v, I);
     if (!opp || opp.who !== t || !v.facts.c(t)) return {};
-    try { const n = K.buildPool(v, I, `def:${t}`, t, opp.attr, [], { rollKind: "other" }).pool.dice; return Number.isFinite(n) ? { resist: n } : {}; } catch { return {}; }
+    try { const n = K.buildPool(v, I, `def:${t}`, t, opp.attr, oppMods(v, I, t), { rollKind: "other" }).pool.dice; return Number.isFinite(n) ? { resist: n } : {}; } catch { return {}; }
   },
   STEPS: Object.freeze(["check", "roll", "effect", "outcome", "close"]),
   legality,
@@ -262,7 +295,7 @@ export const act = {
         if (order === "beforeDefence" && !K.rollFinal(I, "roll")) { R.wait = true; return R; }
         const key = `def:${opp.who}`;
         if (!K.rollOf(I, key)) {
-          const bp = K.buildPool(v, I, key, opp.who, opp.attr, [], { rollKind: "other" });
+          const bp = K.buildPool(v, I, key, opp.who, opp.attr, oppMods(v, I, opp.who), { rollKind: "other" });
           R.effects.push(K.rollEffect(key, opp.who, opp.attr, bp.pool, { defender: true, label: e?.label }));      // [B2241]: the passive party never pushes
           R.wait = true; return R;
         }

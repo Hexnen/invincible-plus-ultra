@@ -242,6 +242,7 @@ async function handle0({ state, log }, input, host) {
       const refused = (op === "endTurn" && !state.free?.[action.actor]) || BLOCKED_BY_ACTION.includes(op);
       if (refused) { const probe = O.reduce(state, { ...action, rid: undefined }, ctxFor(host, user, state)); return out(state, lg, probe.ok ? bad("busy", { reason: "openAction" }) : probe); }
     }
+    if (op === "endTurn" && state && !(user.staff && action.force === true) && glideStall(state, host, action.actor)) return out(state, lg, bad("mustGlide", { gmMayAllow: 1 }));      // PWE (PW094) [B2004]
     const r = await round(state, lg, action, user, host);
     if (op === "roster" && r.ok && r.state && state?.stack?.length) return rosterTick(state, lg, r, host);
     if (!r.ok || r.same) return out(state, lg, r.env);
@@ -251,6 +252,18 @@ async function handle0({ state, log }, input, host) {
   } catch (e) {
     return out(state, lg, bad("internal", { msg: String(e?.message ?? e).slice(0, 120) }));
   }
+}
+/** PWE (PW094) [B2004] Gliding: no hovering; at least one quick action a turn goes to moving until the glider lands. A
+    glider who is in the air (the map says so) and has not moved this turn (a move, or a move within the zone such as landing) may not end
+    the turn; the GM may (op endTurn with force, or nextTurn). Without a map nobody can tell: no check. */
+export function glideStall(state, host, cid) {
+  let f; try { f = host.facts(); } catch { return false; }
+  const c = f?.c?.(cid);
+  if (!c || !(c.movement ?? []).some((m) => m?.mode === "flight" && (m.limits ?? []).includes("gliding"))) return false;
+  const p = f.zones?.place?.(cid);
+  if (!p || p.airborne !== true) return false;
+  const h = state.ledger?.[cid]?.history?.thisTurn;
+  return !(Number(h?.moved) > 0 || (h?.tags ?? []).includes("moveInZone") || (h?.tags ?? []).includes("move"));
 }
 /** Whitelist a request for the machine that owns it (the relay and the executor call this once). -> { ok, req } | { ok:false, code } */
 export const owner = (op) => (ROUND_OPS.includes(op) ? "round" : PLAYER_OPS.includes(op) || GM_OPS.includes(op) ? "engine" : null);

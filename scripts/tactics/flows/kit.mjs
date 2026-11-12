@@ -153,6 +153,7 @@ export function kitDice(v, inst, cid, attr, rollKind) {
   if (own && rollKind === "attack" && kind) {
     add("sheet:attack", b.attack);
     if (kind === "charge") add("sheet:charge", b.charge);
+    if (kind === "charge" && c.pass?.leapCharge > 0 && (inst.data?.charge?.mode ?? inst.decl?.mode) === "leaping") add("kit:leaping", c.pass.leapCharge);      // PWE (PW096) [B2007]: only a charge made by leaping
     if (kind === "grapple") add("sheet:grapple", b.grapple);
     if (["slugfest", "grappleAttack"].includes(kind)) add("sheet:slugfest", b.slugfest);
     const n = copiesOf(v.state, cid);
@@ -167,6 +168,32 @@ export function kitDice(v, inst, cid, attr, rollKind) {
   if (!own && rollKind === "other" && inst.flow === "attack" && String(v.entry(inst)?.id ?? "")) { /* a resisting roll inside an attack: see `resist` in the attack flow */ }
   const aff = M.statusesOf(v.state, cid).find((s) => s.id === "afflicted");
   if (aff && attr) add("afflicted", Number.isFinite(aff.data?.dice) ? aff.data.dice : -3);     // [B1574]: every attribute roll
+  return out;
+}
+/** PWE (PW063, PW064) [B1865-1869]: Defiance's dice to resist a power that would afflict the mind (Stun, an entry marked `mind`); none
+    while a Defiance that Requires Activation is not activated (the whole power is off until then [B1869]; the Armor reads the same mark, P6b-R12). */
+export function defianceDice(v, cid) {
+  const c = v.facts.c(cid), n = Math.trunc(Number(c?.pass?.resist) || 0);
+  if (!(n > 0)) return 0;
+  return c.pass?.defianceOff && !marked(v.state, cid, "defiance", true) ? 0 : n;
+}
+/** PWE (PW073) [B1925-1928], [B1921]: the holder's dice to resist the held one breaking free (Extra Limb(s) by level, Stretch Grapple +3) */
+export const holdDice = (v, cid) => { const p = v.facts.c(cid)?.pass ?? {}; return Math.max(0, Math.trunc(Number(p.limbHold) || 0)) + Math.max(0, Math.trunc(Number(p.stretchHold) || 0)); };
+/** PWE (PW070) [B1879]: immune to the damage of a disease or a poison: the Immunity names it (the GM's types), or Full Immunity (non-kinetic) */
+const SICK_TYPES = Object.freeze({ disease: ["disease", "diseases", "contagion", "infection", "sickness"], toxin: ["toxin", "toxins", "poison", "poisons", "venom", "toxic"] });
+export const immuneToSickness = (tf, toxic = false) => { const list = (tf?.immunities ?? []).map((x) => String(x).toLowerCase().trim()); return list.includes("nonkinetic") || SICK_TYPES[toxic ? "toxin" : "disease"].some((x) => list.includes(x)); };
+/** PWE (PW108) [B2075]: what ends when a character is broken: Invisibility. -> effects (pushed with the broken status) */
+export const brokenEnds = (state, cid) => (M.hasStatus(state, cid, "invisible") ? [{ t: "status-", who: cid, id: "invisible" }] : []);
+/** P6 [B1887] Energy Absorption: a die per point of damage the Protection stopped, whatever made the damage (an attack, a hazard, a fall);
+    PWE (PW067, PW068): one token per die, so the dice are spent one at a time, and they last to the end of the holder's NEXT turn (a hit taken
+    on the own turn keeps them through the turn after: expiry "nextTurnEndOf", ops-pure turnMoment). -> effects */
+export function absorbTokens(tf, t, base, n) {
+  const out = [], k0 = String(base).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 34);
+  if (!tf?.pass?.absorb || !(n > 0)) return out;
+  for (let k = 0; k < Math.min(12, Math.trunc(n)); k++) {
+    const tk = M.makeToken({ id: `${k0}d${k}`, holder: t, dice: 1, scope: { attrs: ["fighting", "strength", "agility"] }, uses: 1, stacks: true, source: { kind: "power", owner: t, name: "Energy Absorption" }, expires: { at: "nextTurnEndOf", who: t } });
+    if (tk) out.push({ t: "state", path: ["tokens", `#${tk.id}`], to: tk });
+  }
   return out;
 }
 /** [B2238], [B2167]: the dice of those who help; a Supportive helper gives two */
@@ -335,6 +362,8 @@ export function mayPush(v, cid) {
   if (pol.push === "never" || quickGroup(v, cid)) return false;                              // U61: a group settled quickly rolls once
   return c.kind === "minions" || isMajor(v, cid) || pol.push === "ask";
 }
+/** [B1888]: an injury of 12 or more on the table (one that kills outright) still counts for an Impervious character */
+export const IMPERVIOUS_FATAL = 12;
 /** The effects that end a grapple `cid` is part of, as the holder or as the one held [B2496-2497]. */
 export function grappleRelease(state, cid) {
   const out = [], st = M.statusesOf(state, cid);
@@ -453,7 +482,7 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
   if (cf.newlyBroken && once(`broken:${t}`)) {
     dm.broke = 1;                                                                              // D127: the journal and the news say who was broken
     R.effects.push({ t: "status+", who: t, status: { id: "broken", source: { kind: "crit", owner: by ?? undefined, name: "broken" } } });
-    for (const e of [...grappleRelease(v.state, t), ...carryRelease(v.state, t)]) R.effects.push(e);      // [B2707]: a broken character holds nobody and carries nobody
+    for (const e of [...grappleRelease(v.state, t), ...carryRelease(v.state, t), ...brokenEnds(v.state, t)]) R.effects.push(e);      // [B2707]: a broken character holds nobody and carries nobody; PWE (PW108) [B2075]: nor stays invisible
     R.events.push({ type: "broken", target: t });
     const bf = by ? v.facts.c(by) : null;                                                      // P6 [B2154] Merciless: 1 Resolve for breaking an enemy
     const resNow = bf ? R.effects.filter((e) => e.t === "actor" && e.who === by && e.path === "resolve").at(-1)?.to ?? bf.resolve : 0;      // several enemies broken in one step: count the gains already queued
@@ -499,6 +528,11 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
       }
     }
     if (once(key)) {
+      const rc0 = crits.resolveCrit({ d6: I.data.res[key][0], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap: capped ? crits.FAMILY_CAP : crits.MAX_CRIT });
+      if ((tf.impervious || tf.pass?.impervious) && rc0.n < IMPERVIOUS_FATAL) {          // PWE (PW066) [B1888] Impervious: an injury that does not kill outright has no effect
+        dm.crit = { d6: I.data.res[key][0], bonus: cf.crit.bonus, cause: cf.crit.cause, n: rc0.n, id: rc0.entry?.id, shifted: rc0.shifted, ignored: 1 };
+        return false;
+      }
       const rc = crits.resolveCrit({ d6: I.data.res[key][0], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap: capped ? crits.FAMILY_CAP : crits.MAX_CRIT });   // [B2707], [B2709], [B2769]
       dm.crit = { d6: I.data.res[key][0], bonus: cf.crit.bonus, cause: cf.crit.cause, n: rc.n, id: rc.entry?.id, shifted: rc.shifted };
       R.effects.push({ t: "crit", who: t, n: rc.n, id: rc.entry?.id });
