@@ -46,6 +46,8 @@ const LOW_OBSTACLES = "#mm-dir-bar, #chat-notifications #chat-message, #chat-not
 const TOP_OBSTACLES = "#invincible-combat-bar .icbar-tile, #invincible-combat-bar .icbar-acts:not([hidden]), #invincible-combat-bar .icbar-gma:not([hidden]), #mm-orbit-strip";
 /* panels of other modules at the left edge that reach down into the dock's band (the map's pins / filter panel, its VRAM meter) */
 const LEFT_OBSTACLES = ".mm-filter, #mm-vram";
+/* windows that float over the map and reach its bottom edge: Foundry's popped-out chat (U136) */
+const FLOATING = "#chat-popout";
 let root = null, stack = null, handlers = {}, shown = false, hideTimer = 0, last = null, panelKey = null, underTop = null;
 /* perf P2-1 (ui/settle.mjs): `drawn` counts the draws (and what may resize the dock's content without one: a picture or a font that
    finished loading); `kept` is what the last placement read, kept only when that placement changed nothing */
@@ -137,6 +139,9 @@ function placeNow(rec) {
     /* a panel of the map at the left edge counts once it reaches the lower half of the window, or the dock's stack has grown up to it:
        the bar itself lies on the bottom edge now, far under the pins panel, and must not give up its one row for it */
     for (const el of rec.q(LEFT_OBSTACLES)) { const r = rec.rect(el); if (r && r.right < W * 0.4 && r.top < floor && (r.bottom > H * 0.5 || inBand(r))) lo = Math.max(lo, r.right + 8); }
+    /* U136: a window that floats over the map, as tall as the window (the popped-out chat): the dock keeps to the wider side of it; it
+       stays under it only when neither side has room for a dock */
+    for (const el of rec.q(FLOATING)) { const r = rec.rect(el); if (inBand(r)) ({ lo, hi } = Lay.besideFloating(lo, hi, r)); }
     return { lo, hi, floor };
   };
   /* WHAT LIES ON THE BOTTOM EDGE besides the dock: the map's director bar (GM, left) and the chat box of a folded sidebar (right). The

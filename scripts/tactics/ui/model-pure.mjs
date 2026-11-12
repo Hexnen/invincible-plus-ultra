@@ -409,9 +409,10 @@ export function rollsData(rows, facts, t) {
   });
 }
 const newsNo = (n) => Number(String(n?.id ?? "").replace(/\D/g, "")) || 0;
+/* D123: a hazard is named by its kind or, for the engine's own damage, by what dealt it; never by the raw kind word */
 function newsText(n, facts, t) {
   const who = n.actor ? nameOf(facts, n.actor, t) : "";
-  const act = n.name ? String(n.name) : n.hazard ? t(`ITAC.ui.hz.kind.${n.hazard}`, {}, String(n.hazard)) : n.action ? t(`ITAC.action.${n.action}`, {}, String(n.action)) : "";
+  const act = n.name ? String(n.name) : n.hazard ? t(n.hzCause ? `ITAC.ui.hz.cause.${n.hzCause}` : `ITAC.ui.hz.kind.${n.hazard}`, {}, t("ITAC.ui.hz.kind.fixed")) : n.action ? t(`ITAC.action.${n.action}`, {}, String(n.action)) : "";
   /* U110: what a challenge did is said as that ("Device: a blast"), and the GM's words about it follow the result */
   const fx = n.fx?.challenge ? `${nameOf(facts, n.fx.challenge, t)}: ${t(`ITAC.ui.effect.${n.fx.kind}`, {}, String(n.fx.kind))}` : null;
   const head = fx ?? [who, act].filter(Boolean).join(": ");

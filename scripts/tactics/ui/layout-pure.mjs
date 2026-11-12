@@ -78,3 +78,12 @@ export function diceRaise(style, base = 29) {
   const z = Number.parseInt(style.zIndex, 10);
   return Number.isFinite(z) && z >= base ? z + 1 : null;
 }
+/** U136: the free stretch [lo, hi] beside a window that floats over the map (the popped-out chat, as tall as the map): the dock keeps to
+    the WIDER side of it, `gap` px clear; a window outside the stretch, or one that leaves neither side `min` px, changes nothing (then
+    the dock stays where it was, under it). r = { left, right } -> { lo, hi } */
+export function besideFloating(lo, hi, r, min = 280, gap = 10) {
+  if (!r || !(r.right > lo) || !(r.left < hi)) return { lo, hi };
+  const left = r.left - gap - lo, right = hi - r.right - gap;
+  if (Math.max(left, right) < min) return { lo, hi };
+  return left >= right ? { lo, hi: r.left - gap } : { lo: r.right + gap, hi };
+}

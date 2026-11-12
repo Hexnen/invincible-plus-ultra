@@ -246,11 +246,15 @@ function pushNews(X, n) {
   const id = nextId(X, "n");
   X.state = { ...X.state, news: [...(X.state.news ?? []), { id, round: X.state.round ?? null, at: X.host.now(), ...n }].slice(-NEWS_MAX) }; X.changed = true;
 }
+/* D123: the engine's own damage (kind "fixed") is named by what dealt it: a barrier or a wall, a fall, a vehicle, a chase; a GM trigger
+   of that kind has none and reads "Damage" */
+const HZ_CAUSES = ["barrier", "fall", "vehicle", "chase"];
 function newsOf(I) {
   const rows = (I.decl?.targets ?? []).map((t) => { const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
     return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.tags?.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}) }; });
   const fx = isObj(I.data?.challengeFx) ? I.data.challengeFx : null, note = fx && typeof I.data?.manual?.note === "string" && I.data.manual.note.trim() ? I.data.manual.note.trim().slice(0, 300) : null;
   return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
+    ...(I.data?.hazard?.kind === "fixed" && HZ_CAUSES.includes(I.data.hazard.id) ? { hzCause: I.data.hazard.id } : {}),      // D123: what dealt the engine's own damage
     ...(fx ? { fx: { challenge: fx.challenge, kind: fx.kind }, ...(note ? { note } : {}) } : {}),        // U110: what a failed challenge did, and the GM's words about it
     result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows, ...reactsOf(I) };
 }
