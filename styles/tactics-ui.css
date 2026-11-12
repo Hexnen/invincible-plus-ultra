@@ -358,7 +358,9 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 .itd-pfoot .itd-status { flex: 0 1 auto; margin: 0; }
 /* U105: a panel taller than its room scrolls under its head AND its foot: the foot (Declare, Ask the GM) stays in sight. While more of the
    panel lies below (data-more, dock.mjs), the rows fade into the foot and a chevron on the foot's edge says there is more to scroll to. */
-.itd-panel:not([data-picking]) > .itd-pfoot { position: sticky; bottom: 0; z-index: 1; margin: 0 -12px -9px; padding: 0 12px 9px; background: var(--ita-ink); }
+/* U111: a sticky box stops at the panel's padding, not its edge: `bottom: -9px` (the panel's bottom padding) lays the foot on the edge, so
+   no strip of the scrolled rows shows under it and, at the end of the scroll, it stands under the last row instead of 9 px over it */
+.itd-panel:not([data-picking]) > .itd-pfoot { position: sticky; bottom: -9px; z-index: 1; margin: 0 -12px -9px; padding: 0 12px 9px; background: var(--ita-ink); }
 .itd-panel > .itd-pfoot::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 24px; background: linear-gradient(to bottom, transparent, var(--ita-ink)); opacity: 0; transition: opacity .15s var(--ita-out); pointer-events: none; }
 .itd-panel[data-more] > .itd-pfoot { box-shadow: inset 0 1px 0 rgba(125, 147, 185, .55); }
 .itd-panel[data-more] > .itd-pfoot::before { opacity: 1; }

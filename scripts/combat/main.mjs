@@ -162,7 +162,8 @@ function registerBarHooks() {
   on("renderCombatTracker", () => Bar.schedule());   // the tracker may have switched the viewed combat
   on("updateScene", (scene) => { if (scene === canvas?.scene) Bar.schedule(); });
   on("updateToken", (td, changes) => {
-    if (!Bar.touchesToken(td)) return;
+    /* U101: a token shown again has no tile to be touched (hiding took it off the bar): a change of `hidden` always counts */
+    if (!Bar.touchesToken(td) && !(changes && "hidden" in changes)) return;
     if (Object.keys(changes ?? {}).every((k) => MOVE_ONLY.has(k))) return;   // dragging a token must not cost a pass per step
     Bar.schedule();
   });
