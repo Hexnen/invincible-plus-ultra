@@ -313,7 +313,7 @@ function refresh() {
     if (staff) {
       if (!st.desk.touched) st.desk.collapsed = mapWidth() < NARROW;
       /* U12: a card that was not waiting a moment ago brings the Now tab forward, unless the GM is typing in the desk */
-      const ids = (desk?.cards ?? []).map((c) => c.id), fresh = Model.freshCards(cardsWere, ids);      // FXP (D161): also at the first look at a fight (a restart opened on the Table tab over two cards)
+      const ids = Model.deskDue(desk), fresh = Model.freshCards(cardsWere, ids);      // FXU (U195): a roll asked of the GM too      // FXP (D161): also at the first look at a fight (a restart opened on the Table tab over two cards)
       cardsWere = ids; deskIdle = !ids.length && !(desk?.info ?? []).length && !(desk?.manual ?? []).length;
       if (fresh && st.desk.auto) st.desk.auto = false;
       if (fresh && st.desk.tab !== "now" && !/^(INPUT|TEXTAREA|SELECT)$/.test(Desk.el()?.contains(document.activeElement) ? document.activeElement.tagName : "")) st.desk.tab = "now";
@@ -564,6 +564,7 @@ function configure() {
     /* U132: what the frame of the fixed places asks: the seat, the hints, where the challenges' band ends (challenges/main.mjs) */
     staff: () => Store.isStaff(game.user), hintsOn: () => Store.setting("tacticsHints", true) !== false && Feedback.hintsLeft(Store.isStaff(game.user)),      // U186 / U192: a GM seat, or one that has seen every hint, keeps no place for one
     ichFloor: (y) => { try { window.dispatchEvent(new CustomEvent("ipu:ich-floor", { detail: y })); } catch { /* the challenges keep their room */ } },
+    ichSqueeze: (on) => { try { window.dispatchEvent(new CustomEvent("ipu:ich-squeeze", { detail: !!on })); } catch { /* the challenges stay as they are */ } },      // FXU (U194)
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });
   /* CHASE: the chase panel sends what the dock and the desk send (the GM's corrections go as the desk's) */

@@ -44,6 +44,16 @@ const wayWhy = (t, facts, reason, params = {}) => { const w = whyOf(t, reason, p
 /** FXP (D161): the desk's cards that were not waiting a moment ago. At the first look at a fight (`was` null: a fight just started or
     started again, the page just loaded) every waiting card is new: the Now tab comes forward over whatever tab the GM left open. */
 export const freshCards = (was, ids) => (Array.isArray(ids) ? ids : []).some((id) => !(Array.isArray(was) ? was : []).includes(id));
+/** FXU (U195, ver12): WHAT WAITS ON THE GM'S OWN HAND on the desk's Now tab: its cards, and the rolls asked of the GM (an NPC's dice to
+    throw, or its result to accept or push: "You: accept or push"). Only the cards brought the Now tab forward, so a roll of the GM's
+    waited there while the desk stayed on the Scene tab and nothing on screen could be clicked. A chase round's rolls are left out: the
+    chase panel offers them. -> ids for freshCards (a roll counts again when its state moves from "owed" to "push") */
+export function deskDue(desk) {
+  const info = Array.isArray(desk?.info) ? desk.info : [], chase = new Set(info.filter((i) => i?.flow === "chase").map((i) => i.inst));
+  const rolls = info.filter((i) => i && !chase.has(i.inst) && !chase.has(i.parent)).flatMap((i) => (Array.isArray(i.rolls) ? i.rolls : [])
+    .filter((r) => (r?.state === "owed" || r?.state === "push") && Array.isArray(r.users) && r.users.includes("gm")).map((r) => `roll:${i.inst}:${r.key}:${r.state}`));
+  return [...(Array.isArray(desk?.cards) ? desk.cards : []).map((c) => c.id), ...rolls];
+}
 export const costText = (t, cost) => (cost ? t(`ITAC.ui.cost.${cost}`, {}, String(cost)) : null);
 export const attrText = (t, attr) => (attr ? t(`ITAC.ui.attr.${attr}`, {}, cap(attr)) : "");
 const nameOf = (facts, id, t) => (id ? facts.c?.(id)?.name ?? t("ITAC.Someone") : "");
@@ -495,7 +505,7 @@ export function newsData(view, own, facts, t) {
   /* BH4-1: what this user put away counts only for the lines of the same fight (own.newsSeen = news-pure markOf) */
   const fight = NewsP.fightOfList(view?.news), kept = NewsP.seenNo(own?.newsSeen, fight);
   const round = view?.round ?? 0, seen = Math.max(kept, Number(own?.newsFrom) || 0);
-  const list = (view?.news ?? []).filter((n) => newsNo(n) > seen && (n.round == null || n.round >= round - 1) && !(n.kind === "action" && ["move", "forced", "fall", "release", "seat"].includes(n.flow) && !(n.rows ?? []).some((r) => typeof r.hit === "boolean" || r.land)));      // FXP (U181): a knockback's landing is told
+  const list = (view?.news ?? []).filter((n) => newsNo(n) > seen && (n.round == null || n.round >= round - 1) && !NewsP.chaseGone(n, view) && !(n.kind === "action" && ["move", "forced", "fall", "release", "seat"].includes(n.flow) && !(n.rows ?? []).some((r) => typeof r.hit === "boolean" || r.land)));      // FXP (U181): a knockback's landing is told
   /* a line that stands brings the lines it set off along (the counter closes first, so its number may be under the window) */
   const insts = new Set(list.map((n) => n.inst).filter(Boolean));
   for (let more = true; more;) { more = false; for (const n of view?.news ?? []) if (typeof n?.parent === "string" && insts.has(n.parent) && newsNo(n) > kept && !list.includes(n)) { list.push(n); if (n.inst) insts.add(n.inst); more = true; } }

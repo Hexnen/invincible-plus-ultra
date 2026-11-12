@@ -137,3 +137,37 @@ export function besideFloating(lo, hi, r, min = 280, gap = 10) {
   if (Math.max(left, right) < min) return { lo, hi };
   return left >= right ? { lo, hi: r.left - gap } : { lo: r.right + gap, hi };
 }
+
+/** FXU (D188, ver12): THE CHASE PANEL'S SPAN ACROSS. The panel hangs centred under the initiative bar (cx), `want` px wide (the two sides
+    facing each other), inside the free stretch [lo, hi] of the top band: right of the map's panels at the left (the "Pinezki" aside), left
+    of the challenges, the open desk or a window floating at the right. Before, only the GM seat (where the desk stood close) ever looked
+    at what stood at the left, so on a player's seat at 1366 px the panel was centred under the Pinezki aside and the challenges. A room
+    narrower than `want` gives the panel the whole room; a wider one keeps it centred under the bar, slid only as far as it must to stay
+    inside; a room under `min` keeps `min` from its left end. -> { x0, x1 } (window px) */
+export function chaseSpan(cx, want, lo, hi, min = 280) {
+  const L = Number(lo) || 0, R = Math.max(L, Number(hi) || 0), w = Math.max(0, Number(want) || 0);
+  if (R - L <= w) return R - L >= min ? { x0: Math.round(L), x1: Math.round(R) } : { x0: Math.round(L), x1: Math.round(L + min) };
+  const c = Number.isFinite(Number(cx)) && cx !== null ? Number(cx) : (L + R) / 2;
+  const x0 = Math.max(L, Math.min(R - w, c - w / 2));
+  return { x0: Math.round(x0), x1: Math.round(x0 + w) };
+}
+
+/** FXU (U193, ver12): A WINDOW FLOATING OVER THE TOP BAND (the popped-out chat) splits the band [lo, hi] into what lies left and right of it;
+    the band keeps to the WIDER side (`gap` px clear of the window). Before, the side was chosen by the window's middle against the
+    window's middle, so a chat popped out just left of the middle put the band (the line, the questions, the first-fight hint) into the
+    sliver between the chat and the challenges, and the hint stood as a one-word column. r = { left, right } -> { lo, hi } */
+export function bandBeside(lo, hi, r, gap = 10) {
+  if (!r || !(r.right > lo) || !(r.left < hi)) return { lo, hi };
+  const left = r.left - gap - lo, right = hi - (r.right + gap);
+  return left >= right ? { lo, hi: Math.max(lo, r.left - gap) } : { lo: Math.min(hi, r.right + gap), hi };
+}
+
+/** FXU (U194, ver12): THE CHALLENGES GIVE WAY WHERE THE MIDDLE HAS NO ROOM. At 1024 px with the sidebar open the free middle of the top
+    band (from what stands at the left to the sidebar) is about 350 px: the challenges' column (about 250 px) stood over the initiative bar
+    and left the line some 80 px ("THE..."). While the room left beside the open column is under `need` (a question card: the line and the
+    questions need that much), the column folds to its handle, which opens it again on request; a wider room brings it back as the user
+    left it. lo, hi: the band's free stretch without the challenges (window px), w: the open column's width -> true (fold) | false */
+export function hudSqueezed(lo, hi, w, need) {
+  const room = (Number(hi) || 0) - (Number(lo) || 0), col = Math.max(0, Number(w) || 0);
+  return col > 0 && room - col - 10 < (Number(need) || 0);
+}

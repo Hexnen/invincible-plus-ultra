@@ -166,6 +166,11 @@ export function setPatch(state, a) {
     if (groups.length <= 1) { if (groups[0]) next.distance = groups[0].distance; delete next.groups; }
     else { next.groups = groups; next.distance = nearestOf(next); }
   }
+  /* FXU (D191): the record of the round just played (`last`: who rolled for each side and why, what the round came to, the catch) told
+     the chase as that round left it. Once the GM changes who is in it or how far apart they are, the record is history only: `edited`
+     tells the surfaces not to read it as the chase of now (ui/chase-pure.mjs: the distance's heading, the catch, who rolls and why) */
+  const shape = (c) => JSON.stringify([c.distance, c.sides, groupsOf(c)?.map((g) => [g.id, g.units, g.distance, g.lost ?? null]) ?? null]);
+  if (isObj(ch.last) && !ch.last.edited && shape(next) !== shape(ch)) next.last = { ...ch.last, edited: 1 };
   return next;
 }
 export const OUTCOMES = Object.freeze(["escaped", "caught", "gaveUp", "combat"]);

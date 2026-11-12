@@ -18,6 +18,11 @@ let root = null, dock = null, list = null, handle = null, countEl = null, chip =
 let byeTimer = 0;
 const cards = new Map();   // token id -> { el, li, refs, prev, item }
 let collapsed = false, right = 0, scale = 1;
+/* FXU (U194): `squeezed` = tactical combat found no room for the open column beside the initiative bar's line (layout-pure.hudSqueezed):
+   the column is drawn folded without touching the user's own setting; `peek` = the user opened it with the handle while squeezed (it then
+   stands open over the middle until the handle folds it, or the room comes back). folded() is what is drawn. */
+let squeezed = false, peek = false;
+const folded = () => (squeezed ? !peek : collapsed);
 /* View model. What shows and how comes from two client settings (main.mjs -> setView) plus measured numbers: the card heights are read
    from the real cards (full and compact, by a synchronous class swap that is never painted), the room from the viewport minus whatever
    sits under the dock (main.mjs -> setBottom). All layout numbers are in layout px (before the root's scale()). */
@@ -55,20 +60,31 @@ export function setScale(s) {
 }
 export function setCollapsed(on, silent) {
   collapsed = !!on;
-  if (!root) return;
-  root.classList.toggle("ich-collapsed", collapsed);
-  dock.inert = collapsed;   // not focusable and not readable while it is off screen (the live region still speaks)
-  handle.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  paintHandle();
+  drawFold();
   if (!silent && collapsed) pingHandle(false);
+}
+function drawFold() {
+  if (!root) return;
+  const f = folded();
+  root.classList.toggle("ich-collapsed", f);
+  dock.inert = f;   // not focusable and not readable while it is off screen (the live region still speaks)
+  handle.setAttribute("aria-expanded", f ? "false" : "true");
+  paintHandle();
+}
+/** FXU (U194): tactical combat says whether the middle has room for the open column (false: as the user left it) */
+export function setSqueezed(on) {
+  const v = !!on;
+  if (v === squeezed) return;
+  squeezed = v; peek = false;
+  drawFold();
 }
 
 function paintHandle() {
   if (!handle) return;
   const n = lastItems.length || cards.size;
   countEl.textContent = String(n);
-  handle.setAttribute("aria-label", `${L(collapsed ? "INCH.Handle.Show" : "INCH.Handle.Hide")} (${n})`);
-  handle.dataset.tooltip = L(collapsed ? "INCH.Handle.Show" : "INCH.Handle.Hide");
+  handle.setAttribute("aria-label", `${L(folded() ? "INCH.Handle.Show" : "INCH.Handle.Hide")} (${n})`);
+  handle.dataset.tooltip = L(folded() ? "INCH.Handle.Show" : "INCH.Handle.Hide");
 }
 function pingHandle() {
   if (reduced() || !handle) return;
@@ -379,7 +395,8 @@ function ensureRoot() {
   handle.dataset.tooltipDirection = "LEFT";
   handle.append(mk("i", "ich-chev"), mk("span", "ich-hl", L("INCH.Region")), countEl = mk("b", "ich-count", "0"));
   handle.firstChild.setAttribute("aria-hidden", "true");
-  handle.addEventListener("click", () => { setCollapsed(!collapsed, true); cb.toggle(collapsed); });
+  /* FXU (U194): while squeezed the handle opens and folds the column for now only (the user's own setting is about a window with room) */
+  handle.addEventListener("click", () => { if (squeezed) { peek = !peek; drawFold(); return; } setCollapsed(!collapsed, true); cb.toggle(collapsed); });
 
   dock = mk("div", "ich-dock");
   dock.id = "ich-dock";
@@ -712,7 +729,7 @@ export function setSelection(ids) {
   }
   for (const id of ids) if (!cards.has(id) && cb.known?.(id)) complete = false;
   // a single newly selected card inside a scrolling list is brought into view
-  if (fresh && list?.classList.contains("ich-scrolls") && !collapsed) fresh.li.scrollIntoView?.({ block: "nearest", behavior: reduced() ? "auto" : "smooth" });
+  if (fresh && list?.classList.contains("ich-scrolls") && !folded()) fresh.li.scrollIntoView?.({ block: "nearest", behavior: reduced() ? "auto" : "smooth" });
   paintSelectionFlag();
   return complete;
 }
@@ -763,7 +780,7 @@ export function render(items, { quiet = false } = {}) {
   syncScroll();
   clearTimeout(scrollTimer);
   scrollTimer = setTimeout(syncScroll, 420);   // after the leaving cards are gone
-  if (added && collapsed && !quiet) pingHandle();
+  if (added && folded() && !quiet) pingHandle();
 }
 
 /* A row's label word ("Time left" / "Pozostały czas") and its value ("TL 6 / 6 rounds") share one line. When they do not fit (a narrow card, a long

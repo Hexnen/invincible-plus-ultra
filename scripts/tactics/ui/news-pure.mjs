@@ -199,3 +199,8 @@ export function merged(group) {
   }
   return group;
 }
+
+/** FXU (D192, ver12): the line a chase round left ("Chase round: the chase goes on") speaks of a chase; once the chase is over (the GM ended
+    it: "To combat", "Escaped", ...) the end card says how it ended and the line no longer stands (it stood on the players' line after the
+    end). While the chase runs the panel tells its rounds (chase-pure.lineTrim). -> true: leave this line out */
+export const chaseGone = (n, view) => n?.kind === "action" && n.action === "chaseRound" && !(view?.kind === "chase" && view?.chase && typeof view.chase === "object");

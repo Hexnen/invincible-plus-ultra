@@ -14,6 +14,7 @@
    HUD scrolls in it); the GM desk starts under the band, open or folded to its tab, and ends over the toasts' strip, or over the bar
    where the bar takes the edge under it; the chat toasts keep a strip of their own over the chat box (they scroll in it).
    Lengths are window px; a box is { x0, y0, x1, y1 }; k = the surfaces' own size (U62, 0.8..1.4). */
+import { bandBeside } from "./layout-pure.mjs";
 
 /* base sizes (unscaled px, the stylesheet's own numbers: styles/tactics-ui.css) */
 export const SIZE = Object.freeze({
@@ -54,9 +55,12 @@ export function toastStrip({ H, chatTop = null, listEnd = null }) {
           topL (the right edge of what stands at the left under it: the map's panels), topR (the left edge of a window floating at the
           right over the band: the popped-out chat; or null), side (the sidebar's left edge or W), chatTop (the floating chat box's top or null),
           listEnd (D126: where Foundry's toast list ends, or null), chatX ([x0, x1] of the chat box's column, or null),
+          floats (FXU U193: [{ left, right }] of the windows floating over the top band, the popped-out chat: the band keeps to the
+          wider side of each; layout-pure.bandBeside),
           hud: { present, x0 } (the challenges HUD: its left edge), desk: { open, x0 } | null (the open GM desk),
           bar: { lo, hi, top, bottom } (the bar's room and where it stands: dock.mjs works that out without the toasts) }
-    -> { toast, band, desk, slots: { line, cards, hint, notice }, up: { lo, hi }, panelMax, reserved: [boxes] } */
+    -> { toast, band, desk, slots: { line, cards, hint, notice }, up: { lo, hi }, panelMax, reserved: [boxes], across: { lo, hi } (FXU D188: the
+       top band's free stretch, what the chase panel keeps inside) } */
 export function frame(f) {
   const W = f.W, H = f.H, k = f.k || 1, bar = f.bar, side = Math.min(W, f.side ?? W);
   const toast = toastStrip({ H, chatTop: f.chatTop, listEnd: f.listEnd });
@@ -88,8 +92,10 @@ export function frame(f) {
 
   /* THE TOP BAND under the initiative bar, between what stands at the left (the map's panels) and the challenges / the open desk / a
      window floating at the right */
-  const L = Math.max(12, Number(f.topL) || 12);
-  const R = Math.min(hudOn && Number.isFinite(f.hud.x0) ? f.hud.x0 - 10 : side - 12, deskOpen ? deskX0 - 10 : Infinity, Number.isFinite(f.topR) ? f.topR - 10 : Infinity);
+  let L = Math.max(12, Number(f.topL) || 12);
+  let R = Math.min(hudOn && Number.isFinite(f.hud.x0) ? f.hud.x0 - 10 : side - 12, deskOpen ? deskX0 - 10 : Infinity, Number.isFinite(f.topR) ? f.topR - 10 : Infinity);
+  for (const fl of Array.isArray(f.floats) ? f.floats : []) ({ lo: L, hi: R } = bandBeside(L, R, fl));
+  out.across = { lo: r(L), hi: r(R) };
   const lineH = SIZE.line * k, y = top0 + 4;
   /* the hint: the right end of the band beside the questions when both fit side by side; on a narrow band it takes the questions'
      place (its top, as wide as it): a question comes first and the hint waits while one stands (dock.mjs draw) */
