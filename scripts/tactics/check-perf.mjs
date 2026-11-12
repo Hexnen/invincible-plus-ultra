@@ -54,4 +54,19 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
   delete globalThis.CSSStyleSheet; V._reset();
 }
 
+/* ---- C. the initiative bar paints a pass only when what it would draw differs from the last paint */
+{
+  const Bar = await import("../combat/bar.mjs");
+  const m = (active) => ({ round: 2, turn: 1, items: [{ id: "a", active: active === "a", hp: { v: 3, max: 6 } }, { id: "b", active: active === "b", hp: { v: 5, max: 6 } }], waiting: false, waitKind: null });
+  const x = ["normal", true, true, "pl", false];
+  eq(Bar.paintSig(m("a"), x) === Bar.paintSig(m("a"), x), true, "C: the same model and surroundings give the same mark (the trailing pass is skipped)");
+  ok(Bar.paintSig(m("a"), x) !== Bar.paintSig(m("b"), x), "C: another turn paints");
+  ok(Bar.paintSig({ ...m("a"), items: [{ ...m("a").items[0], hp: { v: 2, max: 6 } }, m("a").items[1]] }, x) !== Bar.paintSig(m("a"), x), "C: a changed number paints");
+  ok(Bar.paintSig(m("a"), ["small", true, true, "pl", false]) !== Bar.paintSig(m("a"), x), "C: another size paints");
+  ok(Bar.paintSig(m("a"), ["normal", false, true, "pl", false]) !== Bar.paintSig(m("a"), x), "C: the GM's action buttons switched paints");
+  const src = readFileSync(new URL("../combat/bar.mjs", import.meta.url), "utf8");
+  ok(/keep\.size \|\| loud \|\| created \|\| !wasMounted \|\| holdOn \? null : paintSig\(/.test(src), "C: a pass that keeps a missing tile, a loud one, the first one, a comeback and a rapid-click hold always paint");
+  ok((src.match(/paintedSig = null/g) ?? []).length >= 2, "C: the mark is forgotten when the bar is torn down or shows another combat");
+}
+
 done("check-perf");
