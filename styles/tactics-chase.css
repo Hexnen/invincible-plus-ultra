@@ -319,6 +319,9 @@
 #invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-strip { display: none; }
 #invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-obs-t { display: none; }
 #invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-pips { display: none; }
+/* CHASE2: with the GM's buttons on every line, a low window keeps the names and drops the role words (the face and the box say it) */
+#invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-role { display: none; }
+#invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-obs { display: none; }
 @media (prefers-reduced-motion: reduce) {
   #invincible-tactics-chase .itc-panel { animation: none; }
   #invincible-tactics-chase .itc-btn { transition: none; }

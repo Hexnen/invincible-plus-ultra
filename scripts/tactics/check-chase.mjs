@@ -238,6 +238,7 @@ const panel = (T, me, owns = [], own = {}) => CP.chaseData(view(T, me, owns), ow
   await T.roll("prey", 1);
   eq(Object.keys(T.top().rolls ?? {}).filter((k) => k.startsWith("pursuer")), ["pursuer:g1"], "F: then the nearest group's roller");
   eq([panel(T, "p1", ["H1"]).decision?.kind, panel(T, "p3", ["H3"]).decision, panel(T, "gm").beats.find((b) => b.id === "pursuer")?.state], ["roll", null, "now"], "F panel: the van's driver rolls for group A; the flier waits her turn");
+  eq([panel(T, "gm").sides[0].groups.map((x) => x.roller?.id), panel(T, "p9", []).sides[0].groups.map((x) => x.roller?.id)], [["V1", "H3"], ["V1", "H3"]], "F panel: in the round the GM (full state) and an outsider (view) both see each group's roller");
   await T.roll("pursuer:g1", 3);
   eq(panel(T, "p3", ["H3"]).decision?.kind, "roll", "F panel: then the flier rolls for group B");
   await T.roll("pursuer:g2", 0);

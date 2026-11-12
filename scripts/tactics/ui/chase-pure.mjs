@@ -41,7 +41,8 @@ export const OBSTACLE_FX = Object.freeze(Object.fromEntries(OBSTACLES.map((id) =
 
 /* the GM reads the full state: the round's record as the view gives it to a player (view-pure instView) */
 const fromCh = (c) => (isObj(c) ? { obstacle: c.obstacle ?? null, d66: c.d66 ?? null, chosen: c.chosen ? 1 : 0, from: c.distance ?? null, results: c.results ?? {}, over: c.over ?? null,
-  ...Object.fromEntries(SIDES.map((s) => [s, isObj(c[s]) ? { id: c[s].id, roller: c[s].roller, vehicle: c[s].vehicle ? 1 : 0, why: c[s].why ?? null } : null])) } : null);
+  ...Object.fromEntries(SIDES.map((s) => [s, isObj(c[s]) ? { id: c[s].id, roller: c[s].roller, vehicle: c[s].vehicle ? 1 : 0, why: c[s].why ?? null } : null])),
+  ...(Array.isArray(c.groups) ? { groups: c.groups.map((g) => ({ id: g.id, distance: g.distance, lost: g.lost ?? null, roller: isObj(g.roller) ? { id: g.roller.id, roller: g.roller.roller, vehicle: g.roller.vehicle ? 1 : 0, why: g.roller.why ?? null } : null })) } : {}) } : null);
 export const WHY = Object.freeze(["only", "slowest", "agility", "tie"]);
 export const STUCK = Object.freeze(["gone", "down", "wrecked", "engine", "noDriver"]);
 /** The whole panel. */
@@ -55,7 +56,9 @@ export function chaseData(view, own, facts, t) {
   const phase = inst ? "rolling" : rolled ? "after" : "before";
   const busy = (view.stack ?? []).length > 0;
   /* the grants of the crew: one ranged attack each after the roll [B3438]; a used one is gone from the list (U172) */
-  const crewOf = (pid) => { const g = (view.ledger?.[pid]?.grants ?? []).find((x) => x.kind === "chaseCrew"); return g ? (g.usedBy ? "used" : "open") : null; };
+  /* CHASE2: only the grants this chase gave this round (a shot left from an earlier chase of the same round is not this chase's) */
+  const crewNow = ch.crew?.round === view.round ? new Set(ch.crew.ids ?? []) : new Set();
+  const crewOf = (pid) => { if (!crewNow.has(pid)) return null; const g = (view.ledger?.[pid]?.grants ?? []).find((x) => x.kind === "chaseCrew"); return g ? (g.usedBy ? "used" : "open") : null; };
   /* CHASE2: the full facts (the GM's) answer who would roll next and who cannot move; a player reads the vehicles (table knowledge) */
   const full = staff && typeof facts.whole === "function" ? { state: view, facts: { c: (id) => facts.whole(id) } } : null;
   const stuck = (id) => {
