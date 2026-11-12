@@ -11,7 +11,12 @@
    cannot be blocked [B3434] -> one ranged attack for everyone aboard who does not drive (a grant in the ledger; the pursuing side is
    named first), the driver too when the vehicle carries a weapon.
    With several on a side the slowest rolls, the lowest AGILITY on a tie [B3479]. Starting, changing and ending a chase are GM edits
-   (engine-pure.mjs: chaseStart, chaseSet, chaseEnd): `startPlan` / `endPlan` say what they write. */
+   (engine-pure.mjs: chaseStart, chaseSet, chaseEnd): `startPlan` / `endPlan` say what they write.
+   CHASE2 GROUPS (OURS, not the book's; rulings CHASE2-G1..G9 in dev/combat-rulings.md): the pursuers may run in several groups, each at
+   its own distance from the prey, after the book's "more complex way" [B3480] (each 6 moves a participant 1 zone forward relative to
+   everyone) read for groups: the prey's one roll counts against every group, each group's slowest rolls for it [B3479].
+     state.chase.groups = [{ id: "g1", units: [unit], distance, lost?: "far" | "hiddenPath" }]   (pursuers only; absent = one group, the
+                          plain chase, which plays exactly as before); state.chase.distance = the nearest group's distance */
 import { chase } from "../../rules/index.mjs";
 import * as Lg from "../ledger-pure.mjs";
 import * as P1 from "../economy-pure.mjs";
@@ -28,6 +33,18 @@ export const SIDES = Object.freeze(["prey", "pursuer"]);
 export const chaseOf = (state) => (state?.kind === "chase" && isObj(state.chase) ? state.chase : null);
 const other = (side) => (side === "prey" ? "pursuer" : "prey");
 
+/** CHASE2 groups (ours): the pursuers' groups, or null in the plain chase; a group still in the chase is one that has not lost the prey */
+export const groupsOf = (ch) => (Array.isArray(ch?.groups) && ch.groups.length ? ch.groups : null);
+export const activeGroups = (ch) => (groupsOf(ch) ?? []).filter((g) => !g.lost);
+/** the group of a combatant (its own entry or the vehicle it rides), or null */
+export function groupOf(state, cid) {
+  const gs = groupsOf(chaseOf(state));
+  if (!gs) return null;
+  const unit = rideOf(state, cid)?.vehicle ?? cid;
+  return gs.find((g) => g.units.includes(unit) || g.units.includes(cid)) ?? null;
+}
+/** the nearest distance of the groups still in the chase (the plain chase: its distance) */
+export const nearestOf = (ch) => { const a = activeGroups(ch); return a.length ? Math.min(...a.map((g) => g.distance)) : Math.max(0, Number(ch?.distance) || 0); };
 /** the side a combatant is on: its own entry, or the vehicle it rides */
 export function sideOf(state, cid) {
   const ch = chaseOf(state);
@@ -49,21 +66,51 @@ function unitFacts(v, id) {
   const speed = Math.max(1, ...MP.modesOf(c).map((m) => Number(m.profile?.zones) || 1));
   return { id, roller: id, speed, agility: c.attrs?.agility ?? 0, maneuver: 0 };
 }
-/** the unit that rolls for a side: the slowest, the lowest AGILITY on a tie [B3479] */
-export function rollerOf(v, side) {
-  const list = (chaseOf(v.state)?.sides?.[side] ?? []).map((id) => unitFacts(v, id)).filter(Boolean);
+/** the unit that rolls for a side: the slowest, the lowest AGILITY on a tie [B3479]. CHASE2: it also says WHY it is the one (the table
+    is told who rolls and why, never the numbers): `why` "only" (nobody else on the side can move), "slowest" (the lowest speed),
+    "agility" (a tie on speed, the lowest AGILITY), "tie" (both tie: the first of them, as the rules library sorts); `of` = how many of
+    the side can move */
+export function rollerOf(v, side, gid = null) {
+  const ch = chaseOf(v.state), g = side === "pursuer" && gid ? (groupsOf(ch) ?? []).find((x) => x.id === gid) : null;
+  const list = (g ? g.units : side === "pursuer" && groupsOf(ch) && !gid ? activeGroups(ch).flatMap((x) => x.units) : ch?.sides?.[side] ?? []).map((id) => unitFacts(v, id)).filter(Boolean);
   const pick = chase.chaseRoller(list.map((u) => ({ id: u.id, speed: u.speed, agility: u.agility })));
-  return pick ? list.find((u) => u.id === pick.id) : null;
+  if (!pick) return null;
+  const u = list.find((x) => x.id === pick.id), same = list.filter((x) => x.speed === u.speed);
+  const why = list.length === 1 ? "only" : same.length === 1 ? "slowest" : same.filter((x) => x.agility === u.agility).length === 1 ? "agility" : "tie";
+  return { ...u, why, of: list.length };
+}
+/** CHASE2: why a unit of the chase cannot move (it then never rolls for its side), or null: "gone" (not on the scene), "down" (out of the
+    fight), "wrecked", "engine" (the engine is out), "noDriver" (nobody at the wheel). Read from the full facts (the GM's). */
+export function stuckOf(v, id) {
+  const c = v.facts.c(id);
+  if (!c || c.present === false) return "gone";
+  if (c.kind === "vehicle") { const rec = vehOf(v.state, id); return rec.wrecked ? "wrecked" : rec.off?.engine ? "engine" : !rec.driver ? "noDriver" : null; }
+  return c.health <= 0 ? "down" : null;
 }
 
 /* ------------------------------------------------------------------ the facts of a chase: distance instead of the map [B3412] */
 /** Wrap the live facts: between the two sides the range is the chase distance, inside a side it is 0. `get` returns the state of now. */
 export function facts(f, get) {
   const d = () => Math.max(0, Math.trunc(Number(chaseOf(get())?.distance) || 0));
+  /* CHASE2 groups (ours, G6): everyone stands on one line; the prey at 0, a pursuing group at its distance behind it; the range between
+     two is the difference (a group to the prey: its distance; two groups: the gap between them; inside a group or the prey: 0) */
+  const at = (st, cid) => { const s = sideOf(st, cid); if (!s) return null; if (s === "prey") return 0; const g = groupOf(st, cid); return g ? g.distance : d(); };
+  const r0 = (n) => ({ total: n, borders: n, levels: 0 });
   return {
     ...f,
-    range: (a, b) => { const st = get(), sa = sideOf(st, a), sb = sideOf(st, b); return sa && sb ? (sa === sb ? { total: 0, borders: 0, levels: 0 } : { total: d(), borders: d(), levels: 0 }) : f.range(a, b); },
-    inZone: (cid) => { const st = get(), s = sideOf(st, cid); return s ? [...membersOf(st, s), ...(d() === 0 ? membersOf(st, other(s)) : [])].filter((x) => x !== cid) : f.inZone(cid); },
+    range: (a, b) => {
+      const st = get(), sa = sideOf(st, a), sb = sideOf(st, b);
+      if (!sa || !sb) return f.range(a, b);
+      if (!groupsOf(chaseOf(st))) return sa === sb ? r0(0) : r0(d());
+      return r0(Math.abs(at(st, a) - at(st, b)));
+    },
+    inZone: (cid) => {
+      const st = get(), s = sideOf(st, cid);
+      if (!s) return f.inZone(cid);
+      if (!groupsOf(chaseOf(st))) return [...membersOf(st, s), ...(d() === 0 ? membersOf(st, other(s)) : [])].filter((x) => x !== cid);
+      const me = at(st, cid);
+      return [...membersOf(st, "prey"), ...membersOf(st, "pursuer")].filter((x) => x !== cid && at(st, x) === me);
+    },
   };
 }
 
@@ -81,15 +128,44 @@ export function startPlan(state, f, a, lostAtDefault = chase.CHASE_END_DISTANCE)
   return { ok: true, chase: { sides: { prey, pursuer }, mode: "sides", distance: num(a.distance, 0, 99, 1), lostAt: num(a.lostAt, 1, 99, lostAtDefault), round: 0, rolled: null, obstacles: a.obstacles ? 1 : 0, back },
     puts: [...prey, ...pursuer].map((u) => ({ who: u, group: occupants(state, u) })) };
 }
-/** -> the patch of state.chase a `chaseSet` writes, or null */
+/** -> the patch of state.chase a `chaseSet` writes, or null.
+    CHASE2 groups (ours, G7): `group` names a pursuing group: with `unit` the unit goes into it ("new": a group of its own, at `distance`
+    or at the nearest distance), without `unit` the `distance` is that group's. A plain `distance` in a chase of groups is the nearest
+    group's. A group left empty goes; one group left is the plain chase again (its distance is the chase's). Setting a lost group's
+    distance back within reach puts it back in the chase (the GM's correction). */
 export function setPatch(state, a) {
   const ch = chaseOf(state);
   if (!ch) return null;
   const next = { ...ch, sides: { prey: ch.sides.prey.slice(), pursuer: ch.sides.pursuer.slice() } };
-  if (a.distance !== undefined) next.distance = num(a.distance, 0, 99, ch.distance);
+  let groups = groupsOf(ch) ? ch.groups.map((g) => ({ ...g, units: g.units.slice() })) : null;
+  const gid = typeof a.group === "string" ? a.group.slice(0, 12) : null;
   if (a.lostAt !== undefined) next.lostAt = num(a.lostAt, 1, 99, ch.lostAt);
   if (a.obstacles !== undefined) next.obstacles = a.obstacles ? 1 : 0;
-  if (P1.isId(a.unit) && [...SIDES, null].includes(a.side ?? null)) { for (const s of SIDES) next.sides[s] = next.sides[s].filter((u) => u !== a.unit); if (a.side) next.sides[a.side].push(a.unit); }
+  const nearest = () => (groups ? [...groups].filter((g) => !g.lost && g.units.length).sort((x, y) => x.distance - y.distance)[0] ?? groups[0] : null);
+  if (P1.isId(a.unit) && [...SIDES, null].includes(a.side ?? null)) {
+    for (const s of SIDES) next.sides[s] = next.sides[s].filter((u) => u !== a.unit);
+    if (groups) for (const g of groups) g.units = g.units.filter((u) => u !== a.unit);
+    if (a.side) next.sides[a.side].push(a.unit);
+    if (a.side === "pursuer" && gid) {
+      if (!groups) groups = [{ id: "g1", units: next.sides.pursuer.filter((u) => u !== a.unit), distance: ch.distance }];
+      const known = groups.find((g) => g.id === gid);
+      if (known) known.units.push(a.unit);
+      else { const n = Math.max(0, ...groups.map((g) => Number(String(g.id).slice(1)) || 0)) + 1; groups.push({ id: `g${n}`, units: [a.unit], distance: num(a.distance, 0, 99, nearest()?.distance ?? ch.distance) }); }
+    } else if (a.side === "pursuer" && groups) nearest().units.push(a.unit);
+  } else if (gid && a.distance !== undefined) {
+    const g = (groups ?? []).find((x) => x.id === gid);
+    if (!g) return null;
+    g.distance = num(a.distance, 0, 99, g.distance);
+    if (g.lost && g.distance <= next.lostAt) delete g.lost;
+  } else if (a.distance !== undefined) {
+    if (groups) { const g = nearest(); g.distance = num(a.distance, 0, 99, g.distance); if (g.lost && g.distance <= next.lostAt) delete g.lost; }
+    else next.distance = num(a.distance, 0, 99, ch.distance);
+  }
+  if (groups) {
+    groups = groups.filter((g) => g.units.length);
+    if (groups.length <= 1) { if (groups[0]) next.distance = groups[0].distance; delete next.groups; }
+    else { next.groups = groups; next.distance = nearestOf(next); }
+  }
   return next;
 }
 export const OUTCOMES = Object.freeze(["escaped", "caught", "gaveUp", "combat"]);
@@ -108,13 +184,42 @@ function sideRoll(v, I, R, key, u, attr, { passive = false, mods = [] } = {}) {
   if (!K.rollOf(I, key)) { R.effects.push(K.rollEffect(key, u.roller, attr, K.buildPool(v, I, key, u.roller, attr, mods, {}).pool, { passive, label: `ITAC.roll.${key.split(":")[0]}` })); return "wait"; }
   return K.rollFinal(I, key) ? "done" : "wait";
 }
+/* CHASE2 groups (ours, G4, G5): the result of a round of groups. Each group against the prey's one roll, as the opposed roll of the plain
+   chase [B3434] (the book's complex way [B3480] moves each forward by its sixes: the same difference); a group that reaches 0 has caught
+   the prey, one beyond the end distance has lost it [B3436] (it stays listed, dashed, until the GM takes it out or brings it back). The
+   chase is escaped when every group lost the prey. state.chase.last.groups = { [gid]: { from, to, sixes, caught, lost } } */
+function groupResult(v, I, R, c, ch, def) {
+  const preyN = K.sixesOf(I, "prey"), res = {}, by = {};
+  for (const g of c.groups) {
+    if (g.lost) { res[g.id] = { from: g.distance, to: g.distance, sixes: null, caught: 0, lost: g.lost }; continue; }
+    const n = g.roller ? K.sixesOf(I, `pursuer:${g.id}`) : 0;
+    const out = c.over ? { distance: g.distance, winner: "prey", caught: false, escaped: false } : chase.chaseRoll({ distance: g.distance, preySixes: preyN, pursuerSixes: n, endDistance: c.lostAt, preyAutoFail: !!def?.preyAutoFail });
+    const was = (groupsOf(ch) ?? []).find((x) => x.id === g.id)?.distance ?? g.distance;
+    res[g.id] = { from: was, to: out.distance, sixes: g.roller ? n : null, winner: out.winner, caught: out.caught ? 1 : 0, ...(out.escaped ? { lost: "far" } : {}) };
+    if (g.roller) by[g.id] = { unit: g.roller.id, roller: g.roller.roller, why: g.roller.why ?? null };
+  }
+  const groups = (groupsOf(ch) ?? []).map((g) => { const r = res[g.id]; if (!r) return g; const { lost: _l, ...rest } = g; return { ...rest, distance: r.to, ...(r.lost ? { lost: r.lost } : {}) }; });
+  const live = groups.filter((g) => !g.lost), escaped = !live.length;
+  const distance = live.length ? Math.min(...live.map((g) => g.distance)) : Math.min(...groups.map((g) => g.distance));
+  c.catches = c.groups.filter((g) => res[g.id]?.caught).map((g) => g.id);
+  const near = c.groups.find((g) => !g.lost && g.roller) ?? null, nr = near ? res[near.id] : null;
+  const caught = c.catches.length > 0;
+  c.out = { distance, winner: nr?.winner ?? null, caught, escaped }; c.distance = distance;
+  const last = { prey: c.over ? null : (def?.preyAutoFail ? 0 : preyN), pursuer: c.over ? null : nr?.sixes ?? null, winner: nr?.winner ?? null, obstacle: c.obstacle, caught: caught ? 1 : 0, escaped: escaped ? 1 : 0, from: ch.distance,
+    by: { prey: { unit: c.prey.id, roller: c.prey.roller, why: c.prey.why ?? null }, pursuer: near ? by[near.id] : null, groups: by }, groups: res };
+  R.effects.push({ t: "state", path: ["chase"], to: { ...ch, groups, distance, rolled: v.state.round, round: (ch.round ?? 0) + 1, last, ...(c.over ? { over: c.over } : {}) } });
+  R.events.push({ type: "chase", distance, roll: { prey: last.prey, pursuer: last.pursuer }, obstacle: c.obstacle, winner: last.winner, caught, escaped, groups: res });
+  I.data.result = escaped ? "escaped" : caught ? "caught" : "run";
+  R.goto = caught ? "catch" : escaped ? "close" : "crew"; return R;
+}
 export const round = {
   STEPS: Object.freeze(["check", "obstacle", "movement", "result", "catch", "crew", "close"]),
   legality(v) {
     const ch = chaseOf(v.state);
     if (!ch) return bad("noChase");
     if (ch.rolled === v.state.round) return bad("chaseRolled");
-    if (!rollerOf(v, "prey") || !rollerOf(v, "pursuer")) return bad("chaseSides", { gmMayAllow: 1 });
+    const gs = groupsOf(ch);       // CHASE2 groups (ours): a round needs the prey and at least one group still in the chase that can move
+    if (!rollerOf(v, "prey") || (gs ? !activeGroups(ch).some((g) => rollerOf(v, "pursuer", g.id)) : !rollerOf(v, "pursuer"))) return bad("chaseSides", { gmMayAllow: 1 });
     return fine;
   },
   revalidate(v) { return { ok: !!chaseOf(v.state), reasons: chaseOf(v.state) ? [] : ["noChase"] }; },
@@ -125,6 +230,11 @@ export const round = {
       I.locked = true;
       const chosen = OBSTACLES.includes(I.decl?.obstacle) ? I.decl.obstacle : null;      // CHASE (U176) [B3441]: the obstacle the GM named
       I.data.ch = { prey: rollerOf(v, "prey"), pursuer: rollerOf(v, "pursuer"), distance: ch.distance, lostAt: ch.lostAt, obstacle: chosen, ...(chosen ? { chosen: 1 } : {}), results: {} };
+      /* CHASE2 groups (ours, G2): each group still in the chase, the nearest first, with the one who rolls for it [B3479] */
+      if (groupsOf(ch)) {
+        I.data.ch.groups = activeGroups(ch).map((g, k) => ({ g, k })).sort((a, b) => a.g.distance - b.g.distance || a.k - b.k).map(({ g }) => ({ id: g.id, distance: g.distance, roller: rollerOf(v, "pursuer", g.id) }));
+        I.data.ch.pursuer = I.data.ch.groups.find((g) => g.roller)?.roller ?? null;
+      }
       if (chosen) R.events.push({ type: "chase", distance: ch.distance, obstacle: chosen, chosen: 1 });
       R.goto = ch.obstacles || chosen ? "obstacle" : "movement"; return R;
     },
@@ -143,26 +253,52 @@ export const round = {
          (in this pass, right after the prey's roll, or in a later one) */
       const follow = () => { if (def?.hiddenPath && c.results.prey > 0 && !list.some((x) => x.who === "pursuer")) list.push({ who: "pursuer", attr: "intuition" }); };
       follow();
-      for (const r of list) {
-        const u = c[r.who], key = `obs:${r.who}`;
-        if (c.results[r.who] !== undefined) continue;
+      /* CHASE2 groups (ours, G3): the one obstacle of the round meets every group; what the pursuer rolls, each group rolls (its roller),
+         the nearest first, after the prey */
+      const slots = (who) => (who === "prey" ? [{ key: "prey", u: c.prey }] : c.groups ? c.groups.filter((g) => g.roller).map((g) => ({ key: `pursuer:${g.id}`, u: g.roller })) : [{ key: "pursuer", u: c.pursuer }]);
+      for (const r of list) for (const sl of slots(r.who)) {
+        const u = sl.u, key = `obs:${sl.key}`;
+        if (c.results[sl.key] !== undefined) continue;
         if (r.optional) {
-          const pk = `opt:${r.who}`;
+          const pk = `opt:${sl.key}`;
           if (!I.data.pk?.[pk]) { R.prompts.push({ key: pk, kind: "chaseOption", to: K.addressee(v, u.roller), about: u.roller, options: [{ id: "try", label: "ITAC.opt.try" }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { obstacle: c.obstacle, attr: r.attr } }); R.wait = true; return R; }
           if (!K.isAnswered(v, I, pk)) { R.wait = true; return R; }
-          if (K.answerId(v, I, pk) !== "try") { c.results[r.who] = null; continue; }
+          if (K.answerId(v, I, pk) !== "try") { c.results[sl.key] = null; continue; }
         }
         const mods = r.attr === "agility" && u.maneuver ? [{ source: "maneuverability", dice: u.maneuver }] : [];     // [B2940]
         if (sideRoll(v, I, R, key, u, r.attr, { passive: true, mods }) === "wait") { R.wait = true; return R; }
-        c.results[r.who] = K.sixesOf(I, key);
+        c.results[sl.key] = K.sixesOf(I, key);
         follow();
-        R.events.push({ type: "roll", key, who: u.roller, attr: r.attr, dice: K.rollOf(I, key)?.pool?.total, sixes: c.results[r.who], ones: 0, pushed: 0, messageId: K.rollOf(I, key)?.messageId });
+        R.events.push({ type: "roll", key, who: u.roller, attr: r.attr, dice: K.rollOf(I, key)?.pool?.total, sixes: c.results[sl.key], ones: 0, pushed: 0, messageId: K.rollOf(I, key)?.messageId });
       }
-      const res = Object.fromEntries(Object.entries(c.results).filter(([, n]) => n != null));
-      const out = chase.applyObstacle({ obstacle: c.obstacle, distance: c.distance, results: res });
-      if (!K.flag(I, "obsApplied")) { K.setFlag(I, "obsApplied"); c.distance = out.distance; if (out.chaseOver) c.over = "hiddenPath"; c.damage = out.damage; }
+      if (!K.flag(I, "obsApplied")) {
+        K.setFlag(I, "obsApplied");
+        if (c.groups) {
+          /* each group meets it at its own distance: the prey's result counts for every group, a group's own result for that group; a group
+             that fails the hidden path loses the prey (the chase is over for it); the chase is over when every group lost it */
+          c.damage = [];
+          for (const g of c.groups) {
+            const res = {}, gk = `pursuer:${g.id}`;
+            if (c.results.prey != null) res.prey = c.results.prey;
+            if (c.results[gk] != null) res.pursuer = c.results[gk];
+            const out = chase.applyObstacle({ obstacle: c.obstacle, distance: g.distance, results: res });
+            g.distance = out.distance;
+            if (out.chaseOver) g.lost = "hiddenPath";
+            for (const dm of out.damage) { const who = dm.who === "prey" ? "prey" : gk; if (!c.damage.some((x) => x.who === who)) c.damage.push({ who, amount: dm.amount }); }
+          }
+          const live = c.groups.filter((g) => !g.lost);
+          if (!live.length) c.over = "hiddenPath";
+          c.distance = live.length ? Math.min(...live.map((g) => g.distance)) : c.distance;
+        } else {
+          const res = Object.fromEntries(Object.entries(c.results).filter(([, n]) => n != null));
+          const out = chase.applyObstacle({ obstacle: c.obstacle, distance: c.distance, results: res });
+          c.distance = out.distance; if (out.chaseOver) c.over = "hiddenPath"; c.damage = out.damage;
+        }
+      }
+      const unitOfKey = (who) => (who === "prey" || who === "pursuer" ? c[who] : c.groups?.find((g) => `pursuer:${g.id}` === who)?.roller ?? null);
       for (const dmg of c.damage ?? []) {                                                           // [B3464], [B3470]: the one who failed, or their vehicle
-        const u = c[dmg.who], key = `obsd:${dmg.who}`;
+        const u = unitOfKey(dmg.who), key = `obsd:${dmg.who}`;
+        if (!u) continue;
         let amount = dmg.amount;
         if (amount === "d6") { const f = I.data.res?.[key]; if (!f) { if (!K.flag(I, key)) { K.setFlag(I, key); R.effects.push({ t: "dice", key, n: 1 }); } R.wait = true; return R; } amount = f[0] ?? 1; }
         if (!K.flag(I, `hurt:${dmg.who}`)) { K.setFlag(I, `hurt:${dmg.who}`); R.push = hazardChild([u.id], { kind: "fixed", amount, armor: false, source: "kinetic", cause: "hazard", id: "chase" }); return R; }
@@ -173,6 +309,19 @@ export const round = {
     movement(v, inst) {
       const I = K.draft(inst), R = K.result(I), c = I.data.ch, def = obstacleOf(I);
       const mods = (side) => chase.chaseModifiers({ speed: c[side].speed, otherSpeed: c[other(side)].speed, maneuver: c[side].maneuver, obstacle: c.obstacle });
+      if (c.groups) {
+        /* CHASE2 groups (ours, G4): the prey rolls once, against every group (its speed bonus is reckoned against the nearest group that
+           moves); then each group's roller, the nearest first, with its own bonus against the prey; all are active and may push [R25] */
+        const pm = chase.chaseModifiers({ speed: c.prey.speed, otherSpeed: c.pursuer?.speed ?? c.prey.speed, maneuver: c.prey.maneuver, obstacle: c.obstacle });
+        if (!def?.preyAutoFail && sideRoll(v, I, R, "prey", c.prey, "agility", { mods: pm }) === "wait") { R.wait = true; return R; }
+        for (const g of c.groups) {
+          if (g.lost || !g.roller) continue;
+          const gm = chase.chaseModifiers({ speed: g.roller.speed, otherSpeed: c.prey.speed, maneuver: g.roller.maneuver, obstacle: c.obstacle });
+          if (sideRoll(v, I, R, `pursuer:${g.id}`, g.roller, "agility", { mods: gm }) === "wait") { R.wait = true; return R; }
+        }
+        for (const [key, who] of [["prey", c.prey.roller], ...c.groups.filter((g) => g.roller).map((g) => [`pursuer:${g.id}`, g.roller.roller])]) { const r = K.rollOf(I, key); if (r) R.events.push({ type: "roll", key, who, attr: "agility", dice: r.pool?.total, sixes: K.sixesOf(I, key), ones: r.ones ?? 0, pushed: r.pushed ?? 0, messageId: r.messageId }); }
+        R.goto = "result"; return R;
+      }
       if (!def?.preyAutoFail && sideRoll(v, I, R, "prey", c.prey, "agility", { mods: mods("prey") }) === "wait") { R.wait = true; return R; }      // [B3452]: a dead end, the prey fails without a roll
       if (sideRoll(v, I, R, "pursuer", c.pursuer, "agility", { mods: mods("pursuer") }) === "wait") { R.wait = true; return R; }
       for (const side of SIDES) { const r = K.rollOf(I, side); if (r) R.events.push({ type: "roll", key: side, who: c[side].roller, attr: "agility", dice: r.pool?.total, sixes: K.sixesOf(I, side), ones: r.ones ?? 0, pushed: r.pushed ?? 0, messageId: r.messageId }); }
@@ -181,10 +330,13 @@ export const round = {
     result(v, inst) {
       const I = K.draft(inst), R = K.result(I), c = I.data.ch, ch = chaseOf(v.state), def = obstacleOf(I);
       if (!ch) { R.goto = "close"; return R; }
+      if (c.groups) return groupResult(v, I, R, c, ch, def);
       const prey = K.sixesOf(I, "prey"), pursuer = K.sixesOf(I, "pursuer");
       const out = c.over ? { distance: c.distance, winner: "prey", caught: false, escaped: true } : chase.chaseRoll({ distance: c.distance, preySixes: prey, pursuerSixes: pursuer, endDistance: c.lostAt, preyAutoFail: !!def?.preyAutoFail });   // [B3434], [B3436], [I4]
       c.out = out; c.distance = out.distance;
-      const last = { prey: c.over ? null : prey, pursuer: c.over ? null : pursuer, winner: out.winner, obstacle: c.obstacle, caught: out.caught ? 1 : 0, escaped: out.escaped ? 1 : 0, from: ch.distance };
+      /* CHASE2: `by` = who rolled for each side and why (the table hears it; no numbers), so every seat can say it after the round */
+      const by = Object.fromEntries(SIDES.map((s) => [s, isObj(c[s]) ? { unit: c[s].id, roller: c[s].roller, why: c[s].why ?? null } : null]));
+      const last = { prey: c.over ? null : prey, pursuer: c.over ? null : pursuer, winner: out.winner, obstacle: c.obstacle, caught: out.caught ? 1 : 0, escaped: out.escaped ? 1 : 0, from: ch.distance, by };
       R.effects.push({ t: "state", path: ["chase"], to: { ...ch, distance: out.distance, rolled: v.state.round, round: (ch.round ?? 0) + 1, last, ...(c.over ? { over: c.over } : {}) } });
       R.events.push({ type: "chase", distance: out.distance, roll: { prey: last.prey, pursuer: last.pursuer }, obstacle: c.obstacle, winner: out.winner, caught: out.caught, escaped: out.escaped });
       I.data.result = out.escaped ? "escaped" : out.caught ? "caught" : "run";
@@ -192,17 +344,21 @@ export const round = {
     },
     /* [B3434]: at distance 0 the pursuer may at once charge, or ram with a vehicle; it cannot be blocked */
     catch(v, inst) {
-      const I = K.draft(inst), R = K.result(I), c = I.data.ch, u = c.pursuer;
-      if (!I.data.pk?.catch) { R.prompts.push({ key: "catch", kind: "chaseCatch", to: K.addressee(v, u.roller), about: u.roller, options: [{ id: "attack", label: u.vehicle ? "ITAC.action.ram" : "ITAC.opt.charge" }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { target: c.prey.id, ram: u.vehicle ? 1 : 0 } }); R.wait = true; return R; }
-      if (!K.isAnswered(v, I, "catch")) { R.wait = true; return R; }
-      if (K.answerId(v, I, "catch") === "attack" && !K.flag(I, "catch")) {
-        K.setFlag(I, "catch");
+      const I = K.draft(inst), R = K.result(I), c = I.data.ch;
+      /* CHASE2 groups (ours, G5): every group that reached the prey this round may strike, each in turn, the nearest-before-the-roll first */
+      const list = c.groups ? (c.catches ?? []).map((id) => c.groups.find((g) => g.id === id)).filter((g) => g?.roller).map((g) => ({ key: `catch:${g.id}`, u: g.roller })) : [{ key: "catch", u: c.pursuer }];
+      for (const { key, u } of list) {
+      if (!I.data.pk?.[key]) { R.prompts.push({ key, kind: "chaseCatch", to: K.addressee(v, u.roller), about: u.roller, options: [{ id: "attack", label: u.vehicle ? "ITAC.action.ram" : "ITAC.opt.charge" }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { target: c.prey.id, ram: u.vehicle ? 1 : 0 } }); R.wait = true; return R; }
+      if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
+      if (K.answerId(v, I, key) === "attack" && !K.flag(I, key)) {
+        K.setFlag(I, key);
         /* on foot it is the charge of the attack flow [B2490]: STRENGTH, its own stunts. The chase brought the pursuer there, so the charge has no
            approach of its own and no movement left over (no Slam) */
         const action = u.vehicle ? "ram" : "charge";
         R.push = { action, actor: u.roller, decl: { ...blank, action, targets: [c.prey.id], ...(u.vehicle ? {} : { weapon: "unarmed" }) }, cause: "reaction",
           data: { kind: action, chaseCatch: 1, ...(u.vehicle ? {} : { charge: { done: 1, left: 0, total: 0, zones: [] } }) }, part: 1, prepaid: 1 };
         return R;
+      }
       }
       R.goto = "crew"; return R;
     },
@@ -212,7 +368,9 @@ export const round = {
       if (ch && !K.flag(I, "crew")) {
         K.setFlag(I, "crew");
         const got = [];
+        const lost = new Set((groupsOf(ch) ?? []).filter((g) => g.lost).flatMap((g) => g.units));       // CHASE2 groups (ours, G6): a group that lost the prey has nobody to shoot at
         for (const side of ["pursuer", "prey"]) for (const u of ch.sides[side] ?? []) {
+          if (lost.has(u)) continue;
           const vf = v.facts.c(u), rec = vehOf(v.state, u);
           if (vf?.kind !== "vehicle") continue;
           for (const cid of [...rec.crew, ...(rec.driver && (vf.vehicle?.weapons ?? 0) > 0 && !rec.off?.weapon ? [rec.driver] : [])]) {

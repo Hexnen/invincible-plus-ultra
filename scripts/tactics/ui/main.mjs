@@ -35,7 +35,7 @@ import { visibleRect } from "./dom.mjs";
 import { setVar } from "./vars.mjs";
 import * as Slots from "./slots.mjs";        // U132: the fixed places (the frame the dock works out)
 import * as ChaseP from "./chase-pure.mjs";   // CHASE: the chase panel in the middle (its data)
-import * as ChaseUI from "./chase.mjs";       // CHASE: the chase panel (three trial looks)
+import * as ChaseUI from "./chase.mjs";       // CHASE: the chase panel (the face-off)
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
@@ -138,12 +138,17 @@ const isVideo = (s) => /\.(webm|mp4|m4v|ogv)(\?|$)/i.test(String(s ?? ""));
 const portrait = (cb) => [cb?.img, cb?.token?.texture?.src, Sys.actorOf(cb)?.img].filter(Boolean).find((s) => !isVideo(s)) ?? null;
 const notify = (kind, text) => { try { ui.notifications[kind](plain(text), { console: false }); }      /* U93: a notification cannot draw a mark: it says its name */ catch { /* no ui */ } };
 
+/** CHASE2: how a combatant moves fastest, for the chase panel (a vehicle is drawn as a vehicle) */
+function wayOf(cb) { try { const a = Sys.actorOf(cb), f = a ? Sys.actorFacts(a) : null; return f && f.kind !== "vehicle" ? ChaseP.wayOf(f) : null; } catch { return null; } }
 /** what the pure model may ask about the world (model-pure.mjs header); numbers only of actors this user may read */
 function factsOf(combat) {
   const staff = Store.isStaff(game.user), view = Api.state(combat), ctx = Engine.context(combat);
   return {
     view, me: game.user.id, staff,
-    c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, kind: base.kind ?? null, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null } : null; },
+    c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, kind: base.kind ?? null, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null,
+      way: view?.kind === "chase" ? wayOf(cb) : null } : null; },      // CHASE2: on foot or in the air, as the chase panel draws a unit (a power of flight is seen by all)
+    /* CHASE2: the whole facts of a sheet as the executor reads them (staff only): who would roll for a side next, who cannot move */
+    whole: (id) => { if (!staff) return null; try { const cb = combat.combatants.get(id), a = cb ? Sys.actorOf(cb) : null; return a ? Sys.actorFacts(a) : null; } catch { return null; } },
     kit: (id) => ctx.kit(id), bonus: (id) => ctx.bonus?.(id) ?? null,                                                                  // P6: the abilities of a sheet this user may read (engine.context)
     attrs: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner || view?.revealed?.[id]?.stats) ? Sys.actorFacts(a)?.attrs ?? null : null; } catch { return null; } },
     userName: (u) => game.users.get(u)?.name ?? null, online: (u) => game.users.get(u)?.active === true,
@@ -243,16 +248,16 @@ let busyTimer = 0, busyAt = 0;
 function busyRedraw(left) { const at = Date.now() + left + 120; if (busyTimer && busyAt <= at) return; clearTimeout(busyTimer); busyAt = at; busyTimer = setTimeout(() => { busyTimer = 0; schedule(); }, left + 120); }
 /* U1 / U2: a roll button of the surfaces (model-pure.rollButtons `act`): the system's own roll, accept or push, on this client */
 const acting = new Map();
-/* CHASE: the chase panel's own state on this client: the obstacle the GM names for the next roll, the end card put away (kept per fight
-   in the browser so a reload does not bring it back); the look is the client setting, or a quick switch from the console (api.tactics.ui.chaseLook) */
+/* CHASE: the chase panel's own state on this client: the obstacle the GM names for the next roll, the unit the GM is about to add
+   (CHASE2), the end card put away (kept per fight in the browser so a reload does not bring it back) */
 const CHASE_SEEN = "ipu.tactics.chaseEndSeen";
-let chaseOwn = { obstacle: null }, chaseLookDev = null;
-const chaseLook = () => ChaseP.lookOf(chaseLookDev ?? Store.setting("tacticsChaseLook", "A"));
+let chaseOwn = { obstacle: null, join: null };
 function chaseOwnFor(combat) { let seen = null; try { const v = String(globalThis.localStorage?.getItem(CHASE_SEEN) ?? ""); if (v.startsWith(`${combat.id}:`)) seen = Number(v.slice(combat.id.length + 1)); } catch { /* private window */ } return { ...chaseOwn, endSeen: seen }; }
 function chaseSet(patch) {
   if (!patch) return;
   if ("endSeen" in patch) { try { const c = combatNow(); if (c) globalThis.localStorage?.setItem(CHASE_SEEN, `${c.id}:${patch.endSeen}`); } catch { /* private window */ } }
   if ("obstacle" in patch) chaseOwn = { ...chaseOwn, obstacle: patch.obstacle ?? null };
+  if ("join" in patch) chaseOwn = { ...chaseOwn, join: patch.join ?? null };
   refresh();
 }
 async function rollAct(act) {
@@ -354,7 +359,7 @@ function refresh() {
     /* U59: the GM nudged this user: the line stands on the dock (news) and is said once as a notification, wherever the eyes are */
     if (data.news?.kind === "nudge" && data.news.id !== nudgeSaid) { nudgeSaid = data.news.id; notify("info", data.news.text); }
     Dock.render(data, st.dock);
-    ChaseUI.render(chaseD, chaseLook(), { aside: !!(data.show && data.panel?.targets) });      // CHASE: after the dock, whose line and cards it stands under; folded while targets are picked on the map
+    ChaseUI.render(chaseD, { aside: !!(data.show && data.panel?.targets) });      // CHASE: after the dock, whose line and cards it stands under; folded while targets are picked on the map
     /* U21: this client's target marks follow what is still aimed at (the open panel, the actions in progress) */
     Pick.keep(combat, [...(data.show && data.panel?.kind === "declare" ? (data.panel.targets ?? []).filter((x) => x.picked).map((x) => x.id) : []), ...(staff ? desk?.info ?? [] : model.mine ?? []).flatMap((i) => (i.targets ?? []).map((x) => x.id))]);
     /* W1: on a map with the board the targets are chosen there (rings, the chance, the reason of one out of reach: ui/board.mjs); a
@@ -716,8 +721,7 @@ export function start() {
     Feedback.start({ t, refresh });
     Camera.start();
     Api.camera = { state: () => Camera.state() };      // for a look from the console
-    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), frame: () => Slots.frameNow(), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on),
-      chaseLook: (x) => { chaseLookDev = x == null ? null : ChaseP.lookOf(x); refresh(); return chaseLook(); } };      // CHASE: a quick switch of the panel's look (this client, until reload)
+    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), frame: () => Slots.frameNow(), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
     refresh();
     return true;
   } catch (e) { console.warn(LOG, "start failed", e); return false; }

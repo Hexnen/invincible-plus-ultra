@@ -45,8 +45,6 @@ function registerSettings() {
   reg("tacticsSoundVolume", { ...name("tacticsSoundVolume"), scope: "client", config: true, type: Number, range: { min: 0, max: 1, step: 0.05 }, default: 0.5 });
   /* U62: the size of the dock, the desk and their cards on this browser (a slider; separate from Foundry's interface scale) */
   reg("tacticsUiScale", { ...name("tacticsUiScale"), scope: "client", config: true, type: Number, range: { min: 80, max: 140, step: 5 }, default: 100, onChange: (v) => { try { tacticsApi.ui?.rescale?.(v); } catch { /* the surfaces are not up */ } } });
-  /* CHASE (USER 2026-11-12): three trial looks of the chase panel in the middle (scripts/tactics/ui/chase.mjs); a client choice */
-  reg("tacticsChaseLook", { ...name("tacticsChaseLook"), scope: "client", config: true, type: String, choices: { A: t("ITAC.chase.look.A"), B: t("ITAC.chase.look.B"), C: t("ITAC.chase.look.C") }, default: "A", onChange: () => { try { tacticsApi.ui?.refresh?.(); } catch { /* the surfaces are not up */ } } });
 }
 /** what stands in the way of tactical combat on this world: null (it runs) | "off" | "yze" | "noInitiative" */
 export function blocker() {

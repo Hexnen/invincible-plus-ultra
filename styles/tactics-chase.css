@@ -1,9 +1,9 @@
-/* Invincible - Plus Ultra: THE CHASE PANEL (scripts/tactics/ui/chase.mjs; CHASE, USER 2026-11-12: "its own beautiful, clear panel, one,
+/* Invincible - Plus Ultra: THE CHASE PANEL (scripts/tactics/ui/chase.mjs; CHASE, CHASE2, USER 2026-11-12: "its own beautiful, clear panel, one,
    in the middle"). Mode: Operate, in the fight surfaces' comic kit (styles/tactics-ui.css): INK panels over the busy map, names of
    things on skewed YELLOW plates, Titles caps for labels and buttons, Komika for sentences; the hard blue offset shadow only on a button
    you can press now; unavailable = dashed, never faded alone. The two sides keep one colour each everywhere: the pursuers red, the
-   fleeing cyan (and always their word beside it). Three looks of the same data: [data-look="A"] the road, [data-look="B"] the
-   face-off, [data-look="C"] the storyboard. The root covers nothing; the panel is placed by chase.mjs (--itc-x, --itc-top, --itc-w,
+   fleeing cyan (and always their word beside it). One look: the face-off (CHASE2: the user kept B of three trial looks). The root
+   covers nothing; the panel is placed by chase.mjs (--itc-x, --itc-top, --itc-w,
    --itc-h: window px) and its content grows with the surfaces' size (U62, --ita-scale). */
 
 #invincible-tactics-chase {
@@ -45,7 +45,7 @@
 
 /* ---------- the panel ---------- */
 #invincible-tactics-chase .itc-panel {
-  --itc-want: 780px;
+  --itc-want: 760px;
   position: fixed; left: var(--itc-x, 50vw); top: var(--itc-top, 120px); translate: -50% 0;
   width: min(calc(var(--itc-want) * var(--ita-scale, 1)), var(--itc-w, 90vw)); max-height: var(--itc-h, 60vh);
   display: flex; flex-direction: column; gap: 8px; padding: 9px 12px 12px; overflow: hidden auto; overscroll-behavior: contain;
@@ -55,8 +55,6 @@
   animation: itc-in .32s var(--ita-out) both;
 }
 #invincible-tactics-chase .itc-panel > * { zoom: var(--ita-scale, 1); flex: none; }
-#invincible-tactics-chase .itc-panel[data-look="B"] { --itc-want: 760px; }
-#invincible-tactics-chase .itc-panel[data-look="C"] { --itc-want: 500px; }
 #invincible-tactics-chase .itc-panel[data-folded] { --itc-want: 560px; gap: 6px; padding-bottom: 9px; }
 #invincible-tactics-chase .itc-panel[data-seat="end"] { --itc-want: 460px; }
 @keyframes itc-in { from { opacity: 0; translate: -50% -8px; } to { opacity: 1; translate: -50% 0; } }
@@ -102,7 +100,7 @@
 /* ---------- the decision of this seat, who the table waits for ---------- */
 #invincible-tactics-chase .itc-dec { display: flex; flex-direction: column; gap: 7px; padding: 9px 11px 11px; background: var(--ita-tile); }
 #invincible-tactics-chase .itc-dec[data-mine] { box-shadow: inset 0 0 0 2px var(--ita-yellow); }
-#invincible-tactics-chase .itc-dec-h { display: flex; align-items: center; gap: 8px; }
+#invincible-tactics-chase .itc-dec-h { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 12px; }
 #invincible-tactics-chase .itc-dec-p { font-size: 15px; }
 #invincible-tactics-chase .itc-dec-t { font-size: 14px; line-height: 1.35; color: #fff; max-width: 62ch; }
 #invincible-tactics-chase .itc-dec-k { font: 400 11px/1.2 Titles, Comic, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ita-label); }
@@ -156,123 +154,134 @@
 #invincible-tactics-chase .itc-step > button[aria-disabled="true"] { color: var(--ita-line); }
 #invincible-tactics-chase .itc-step > b { min-width: 34px; text-align: center; font: 400 16px/1 Titles, Comic, sans-serif; color: #fff; font-variant-numeric: tabular-nums; }
 
-/* ---------- A: THE ROAD ---------- */
-#invincible-tactics-chase [data-look="A"] .itc-road { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
-#invincible-tactics-chase [data-look="A"] .itc-end-l, #invincible-tactics-chase [data-look="A"] .itc-end-r { font: 400 11px/1.15 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; max-width: 64px; text-align: center; }
-#invincible-tactics-chase [data-look="A"] .itc-end-l { color: var(--itc-pur); }
-#invincible-tactics-chase [data-look="A"] .itc-end-r { color: var(--itc-prey); }
-#invincible-tactics-chase [data-look="A"] .itc-zones { display: grid; grid-template-columns: repeat(var(--n, 7), minmax(0, 1fr)); height: 74px; transform: skewX(-8deg); }
-#invincible-tactics-chase [data-look="A"] .itc-zone { position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 3px; background: var(--ita-track); border-right: 2px solid var(--ita-ink); }
-#invincible-tactics-chase [data-look="A"] .itc-zone:last-child { border-right: 0; }
-#invincible-tactics-chase [data-look="A"] .itc-zone::after { content: ""; position: absolute; left: 8%; right: 8%; top: 46%; height: 3px; background: linear-gradient(90deg, rgba(169, 188, 220, .35) 50%, transparent 50%) 0 0 / 14px 3px; }
-#invincible-tactics-chase [data-look="A"] .itc-zone[data-between] { background: var(--ita-tile-hi); }
-#invincible-tactics-chase [data-look="A"] .itc-zone[data-between]::after { background: linear-gradient(90deg, var(--ita-yellow) 50%, transparent 50%) 0 0 / 14px 3px; }
-#invincible-tactics-chase [data-look="A"] .itc-zone[data-end] { background: #0f2f46; }
-#invincible-tactics-chase [data-look="A"] .itc-zone[data-end] .itc-zn { color: var(--itc-prey); font-size: 16px; }
-#invincible-tactics-chase [data-look="A"] .itc-zn { position: relative; z-index: 1; transform: skewX(8deg); font: 400 11px/1 Titles, Comic, sans-serif; color: var(--ita-label); font-variant-numeric: tabular-nums; }
-#invincible-tactics-chase [data-look="A"] .itc-mark { position: absolute; z-index: 2; top: 9px; left: 50%; translate: -50% 0; transform: skewX(8deg); display: flex; flex-direction: column; align-items: center; gap: 2px; }
-#invincible-tactics-chase [data-look="A"] .itc-mark .itc-face { width: 38px; height: 38px; border-width: 3px; border-radius: 50%; }
-#invincible-tactics-chase [data-look="A"] .itc-mark[data-side="pursuer"] .itc-face { border-color: var(--itc-pur); }
-#invincible-tactics-chase [data-look="A"] .itc-mark[data-side="prey"] .itc-face { border-color: var(--itc-prey); }
-#invincible-tactics-chase [data-look="A"] .itc-mark[data-side="pursuer"] > i { color: var(--itc-pur); }
-#invincible-tactics-chase [data-look="A"] .itc-mark[data-side="prey"] > i { color: var(--itc-prey); }
-#invincible-tactics-chase [data-look="A"] .itc-mark[data-caught] { left: 72%; top: 18px; }
-#invincible-tactics-chase [data-look="A"] .itc-mark[data-caught] .itc-face { width: 30px; height: 30px; }
-#invincible-tactics-chase [data-look="A"] .itc-ghost { position: absolute; top: 9px; left: 50%; translate: -50% 0; width: 38px; height: 38px; border: 2px dashed var(--itc-prey); border-radius: 50%; opacity: .7; }
-#invincible-tactics-chase [data-look="A"] .itc-names { display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 12px; }
-#invincible-tactics-chase [data-look="A"] .itc-side { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-#invincible-tactics-chase [data-look="A"] .itc-side[data-side="prey"] { align-items: flex-end; text-align: right; }
-#invincible-tactics-chase [data-look="A"] .itc-side > b { font: 400 15px/1.15 Titles, Comic, sans-serif; letter-spacing: .03em; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-#invincible-tactics-chase [data-look="A"] .itc-side[data-mine] > b { color: var(--ita-yellow); }
-#invincible-tactics-chase [data-look="A"] .itc-status { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1px; max-width: 280px; }
-#invincible-tactics-chase [data-look="A"] .itc-big { font: 400 30px/1 Titles, Comic, sans-serif; color: var(--ita-yellow); font-variant-numeric: tabular-nums; }
-#invincible-tactics-chase [data-look="A"] .itc-status[data-tone="hit"] .itc-big { color: var(--itc-pur); }
-#invincible-tactics-chase [data-look="A"] .itc-status[data-tone="miss"] .itc-big { color: var(--itc-prey); }
-#invincible-tactics-chase [data-look="A"] .itc-beats { display: flex; flex-wrap: wrap; gap: 5px; }
-#invincible-tactics-chase [data-look="A"] .itc-beat { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 2px 9px; border: 1px solid var(--ita-line); color: var(--ita-text); }
-#invincible-tactics-chase [data-look="A"] .itc-bl { font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
-#invincible-tactics-chase [data-look="A"] .itc-beat[data-state="done"] > i { color: var(--ita-cyan); }
-#invincible-tactics-chase [data-look="A"] .itc-beat[data-state="now"] { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
-#invincible-tactics-chase [data-look="A"] .itc-beat[data-state="next"] { color: var(--ita-label); border-style: dashed; }
+/* ---------- THE FACE-OFF (CHASE2): two corners and the distance between them; every unit of a side on its own line ---------- */
+#invincible-tactics-chase .itc-ring { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, auto) minmax(0, 1fr); gap: 12px; align-items: start; }
+#invincible-tactics-chase .itc-corner { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+#invincible-tactics-chase .itc-ch { display: flex; align-items: center; gap: 10px; min-width: 0; }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-ch { flex-direction: row-reverse; text-align: right; }
+#invincible-tactics-chase .itc-cw { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-cw { align-items: flex-end; }
+#invincible-tactics-chase .itc-corner[data-side="pursuer"] .itc-cw { align-items: flex-start; }
+#invincible-tactics-chase .itc-portrait { position: relative; flex: none; width: 66px; height: 66px; display: grid; place-items: center; background: var(--ita-track); border: 3px solid var(--ita-frame); box-shadow: 0 3px 8px rgba(0, 0, 0, .45); overflow: hidden; }
+#invincible-tactics-chase .itc-corner[data-side="pursuer"] .itc-portrait { border-color: var(--itc-pur); transform: rotate(-2deg); }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-portrait { border-color: var(--itc-prey); transform: rotate(2deg); }
+#invincible-tactics-chase .itc-corner[data-winner] .itc-portrait { border-color: var(--ita-yellow); }
+#invincible-tactics-chase .itc-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; border: 0; }
+#invincible-tactics-chase .itc-portrait > b { font: 400 30px/1 Titles, Comic, sans-serif; color: var(--ita-yellow); }
+#invincible-tactics-chase .itc-pic-ic { position: absolute; right: 0; bottom: 0; display: grid; place-items: center; width: 20px; height: 18px; font-size: 11px; color: var(--ita-ink); background: var(--ita-yellow); }
+#invincible-tactics-chase .itc-corner[data-side="pursuer"] .itc-pic-ic { right: auto; left: 0; }
+#invincible-tactics-chase .itc-corner[data-side="pursuer"] .itc-pic-ic > i { transform: scaleX(-1); }
+#invincible-tactics-chase .itc-ch .itc-sl { font-size: 12px; }
+#invincible-tactics-chase .itc-rolls { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; min-width: 0; max-width: 100%; }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-rolls { flex-direction: row-reverse; }
+#invincible-tactics-chase .itc-rt { max-width: 100%; font: 400 15px/1.15 Titles, Comic, sans-serif; letter-spacing: .03em; text-transform: uppercase; color: #fff; }
+#invincible-tactics-chase .itc-corner[data-mine] .itc-rt { color: var(--ita-yellow); }
+#invincible-tactics-chase .itc-why { font: 400 11px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-label); }
+#invincible-tactics-chase .itc-rollbox { min-height: 22px; padding: 2px 9px; background: var(--ita-track); }
 
-/* ---------- B: THE FACE-OFF ---------- */
-#invincible-tactics-chase [data-look="B"] .itc-ring { display: grid; grid-template-columns: 1fr minmax(200px, 1.1fr) 1fr; gap: 12px; align-items: start; }
-#invincible-tactics-chase [data-look="B"] .itc-corner { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; text-align: center; }
-#invincible-tactics-chase [data-look="B"] .itc-portrait { position: relative; width: 132px; height: 132px; display: grid; place-items: center; background: var(--ita-track); border: 3px solid var(--ita-frame); box-shadow: 0 4px 10px rgba(0, 0, 0, .45); overflow: hidden; }
-#invincible-tactics-chase [data-look="B"] .itc-corner[data-side="pursuer"] .itc-portrait { border-color: var(--itc-pur); transform: rotate(-2deg); }
-#invincible-tactics-chase [data-look="B"] .itc-corner[data-side="prey"] .itc-portrait { border-color: var(--itc-prey); transform: rotate(2deg); }
-#invincible-tactics-chase [data-look="B"] .itc-corner[data-winner] .itc-portrait { border-color: var(--ita-yellow); }
-#invincible-tactics-chase [data-look="B"] .itc-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; border: 0; }
-#invincible-tactics-chase [data-look="B"] .itc-portrait > b { font: 400 48px/1 Titles, Comic, sans-serif; color: var(--ita-yellow); }
-#invincible-tactics-chase [data-look="B"] .itc-pic-ic { position: absolute; right: 0; bottom: 0; display: grid; place-items: center; width: 28px; height: 26px; color: var(--ita-ink); background: var(--ita-yellow); }
-#invincible-tactics-chase [data-look="B"] .itc-corner[data-side="pursuer"] .itc-pic-ic { right: auto; left: 0; }
-#invincible-tactics-chase [data-look="B"] .itc-corner[data-side="pursuer"] .itc-pic-ic > i { transform: scaleX(-1); }
-#invincible-tactics-chase [data-look="B"] .itc-uname { font: 400 16px/1.15 Titles, Comic, sans-serif; letter-spacing: .03em; color: #fff; max-width: 100%; overflow-wrap: anywhere; }
-#invincible-tactics-chase [data-look="B"] .itc-corner[data-mine] .itc-uname { color: var(--ita-yellow); }
-#invincible-tactics-chase [data-look="B"] .itc-people { justify-content: center; }
-#invincible-tactics-chase [data-look="B"] .itc-rollbox { min-height: 22px; padding: 2px 10px; background: var(--ita-track); }
-#invincible-tactics-chase [data-look="B"] .itc-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; padding-top: 4px; }
-#invincible-tactics-chase [data-look="B"] .itc-vs { font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ita-label); }
-#invincible-tactics-chase [data-look="B"] .itc-huge { font: 400 72px/.95 Titles, Comic, sans-serif; color: var(--ita-yellow); font-variant-numeric: tabular-nums; transform: rotate(-3deg); text-shadow: 0 3px 10px rgba(0, 0, 0, .6); }
-#invincible-tactics-chase [data-look="B"] .itc-huge[data-tone="hit"] { color: var(--itc-pur); }
-#invincible-tactics-chase [data-look="B"] .itc-huge[data-tone="miss"] { color: var(--itc-prey); }
-#invincible-tactics-chase [data-look="B"] .itc-unit { font: 400 13px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fff; }
-#invincible-tactics-chase [data-look="B"] .itc-say { color: var(--ita-text); }
-#invincible-tactics-chase [data-look="B"] .itc-pips { display: flex; gap: 3px; margin: 2px 0; }
-#invincible-tactics-chase [data-look="B"] .itc-pips > li { width: 14px; height: 10px; border: 1px solid var(--ita-line); transform: skewX(-12deg); }
-#invincible-tactics-chase [data-look="B"] .itc-pips > li[data-on] { background: var(--ita-yellow); border-color: var(--ita-yellow); }
-#invincible-tactics-chase [data-look="B"] .itc-pips > li[data-zero] { border-color: var(--itc-pur); }
-#invincible-tactics-chase [data-look="B"] .itc-pips > li[data-end] { border-color: var(--itc-prey); border-style: dashed; }
-#invincible-tactics-chase [data-look="B"] .itc-obs-mid { align-self: stretch; text-align: left; margin-top: 4px; }
-#invincible-tactics-chase [data-look="B"] .itc-strip { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; }
-#invincible-tactics-chase [data-look="B"] .itc-strip > li { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 24px; padding: 2px 6px; font: 400 11px/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-label); background: var(--ita-track); clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%, 8px 50%); }
-#invincible-tactics-chase [data-look="B"] .itc-strip > li[data-state="done"] { color: #fff; background: var(--ita-tile-hi); }
-#invincible-tactics-chase [data-look="B"] .itc-strip > li[data-state="now"] { color: var(--ita-ink); background: var(--ita-yellow); }
-#invincible-tactics-chase [data-look="B"] .itc-caption { background: var(--itc-paper); color: var(--ita-ink); box-shadow: inset 0 0 0 2px var(--ita-ink); }
-#invincible-tactics-chase [data-look="B"] .itc-caption .ita-plate { color: var(--ita-yellow); background: var(--ita-ink); }
-#invincible-tactics-chase [data-look="B"] .itc-caption .itc-dec-t { color: var(--ita-ink); }
-#invincible-tactics-chase [data-look="B"] .itc-caption .itc-dec-k, #invincible-tactics-chase [data-look="B"] .itc-caption .itc-wait-t { color: #33445f; }
-#invincible-tactics-chase [data-look="B"] .itc-caption .itc-wait { border-top-color: rgba(12, 26, 46, .25); }
-#invincible-tactics-chase [data-look="B"] .itc-caption .itc-btn:not([data-kind="main"]) { color: var(--ita-ink); border-color: var(--ita-ink); }
-#invincible-tactics-chase [data-look="B"] .itc-caption .itc-btn:not([data-kind="main"]):hover:not([aria-disabled="true"]) { color: #fff; background: var(--ita-ink); }
-#invincible-tactics-chase [data-look="B"] .itc-caption .itc-btn[aria-disabled="true"] { color: #4a5a74; border-color: #6b7a93; }
-#invincible-tactics-chase [data-look="B"] .itc-caption .itc-roll { color: var(--ita-ink); }
+/* a name in a box of its own width: cut where the box ends, the whole name in the tooltip (CHASE2: long names) */
+#invincible-tactics-chase [data-cut] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---------- C: THE STORYBOARD ---------- */
-#invincible-tactics-chase [data-look="C"] .itc-meter { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 8px; }
-#invincible-tactics-chase [data-look="C"] .itc-ml { font: 400 11px/1.1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
-#invincible-tactics-chase [data-look="C"] .itc-ml:first-child { color: var(--itc-pur); }
-#invincible-tactics-chase [data-look="C"] .itc-ml:nth-child(3) { color: var(--itc-prey); }
-#invincible-tactics-chase [data-look="C"] .itc-mbar { position: relative; height: 12px; background: var(--ita-track); border: 1px solid var(--ita-line); }
-#invincible-tactics-chase [data-look="C"] .itc-mfill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--itc-pur), var(--ita-yellow) 55%, var(--itc-prey)); }
-#invincible-tactics-chase [data-look="C"] .itc-mdot { position: absolute; top: 50%; width: 16px; height: 16px; translate: -50% -50%; background: var(--itc-prey); border: 3px solid var(--ita-ink); border-radius: 50%; }
-#invincible-tactics-chase [data-look="C"] .itc-mwas { position: absolute; top: 50%; width: 14px; height: 14px; translate: -50% -50%; border: 2px dashed var(--itc-prey); border-radius: 50%; }
-#invincible-tactics-chase [data-look="C"] .itc-mn { min-width: 38px; text-align: center; font: 400 28px/1 Titles, Comic, sans-serif; color: var(--ita-yellow); font-variant-numeric: tabular-nums; }
-#invincible-tactics-chase [data-look="C"] .itc-mn[data-tone="hit"] { color: var(--itc-pur); }
-#invincible-tactics-chase [data-look="C"] .itc-mn[data-tone="miss"] { color: var(--itc-prey); }
-#invincible-tactics-chase [data-look="C"] .itc-who { display: flex; flex-direction: column; gap: 2px; }
-#invincible-tactics-chase [data-look="C"] .itc-whos { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
-#invincible-tactics-chase [data-look="C"] .itc-whos > i { width: 14px; }
-#invincible-tactics-chase [data-look="C"] .itc-whos[data-side="pursuer"] > i { color: var(--itc-pur); transform: scaleX(-1); }
-#invincible-tactics-chase [data-look="C"] .itc-whos[data-side="prey"] > i { color: var(--itc-prey); }
-#invincible-tactics-chase [data-look="C"] .itc-whos > b { font: 400 14px/1.2 Titles, Comic, sans-serif; letter-spacing: .03em; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#invincible-tactics-chase [data-look="C"] .itc-whos[data-mine] > b { color: var(--ita-yellow); }
-#invincible-tactics-chase [data-look="C"] .itc-board { display: flex; flex-direction: column; gap: 5px; }
-#invincible-tactics-chase [data-look="C"] .itc-frame { display: flex; flex-direction: column; gap: 7px; padding: 6px 9px; background: var(--ita-tile); border: 2px solid var(--ita-ink); box-shadow: inset 0 0 0 1px rgba(125, 147, 185, .35); }
-#invincible-tactics-chase [data-look="C"] .itc-frame[data-state="next"] { background: transparent; box-shadow: none; border: 1px dashed var(--ita-line); color: var(--ita-label); }
-#invincible-tactics-chase [data-look="C"] .itc-frame[data-open] { padding: 8px 10px 10px; box-shadow: inset 0 0 0 2px var(--ita-yellow); }
-#invincible-tactics-chase [data-look="C"] .itc-fh { display: flex; align-items: center; gap: 8px; min-width: 0; }
-#invincible-tactics-chase [data-look="C"] .itc-fh > b { flex: none; font: 400 13px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fff; }
-#invincible-tactics-chase [data-look="C"] .itc-frame[data-state="next"] .itc-fh > b { color: var(--ita-label); }
-#invincible-tactics-chase [data-look="C"] .itc-fic { display: grid; place-items: center; width: 24px; height: 22px; color: var(--ita-ink); background: var(--ita-frame); }
-#invincible-tactics-chase [data-look="C"] .itc-frame[data-open] .itc-fic { background: var(--ita-yellow); }
-#invincible-tactics-chase [data-look="C"] .itc-frame[data-state="next"] .itc-fic { color: var(--ita-label); background: transparent; border: 1px dashed var(--ita-line); }
-#invincible-tactics-chase [data-look="C"] .itc-fwho { color: var(--ita-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-#invincible-tactics-chase [data-look="C"] .itc-ft { margin-left: auto; color: #fff; white-space: nowrap; }
-#invincible-tactics-chase [data-look="C"] .itc-fh > i:last-child { color: var(--ita-cyan); }
-#invincible-tactics-chase [data-look="C"] .itc-frame[data-state="next"] .itc-fh > i:last-child { color: var(--ita-line); }
-#invincible-tactics-chase [data-look="C"] .itc-frame .itc-dec { padding: 0; background: transparent; box-shadow: none; }
+/* the roster: one line per unit */
+#invincible-tactics-chase .itc-units { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+#invincible-tactics-chase .itc-unit { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 3px 8px; min-width: 0; min-height: 26px; padding: 2px 6px; background: rgba(27, 45, 74, .55); }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-unit { flex-direction: row-reverse; }
+#invincible-tactics-chase .itc-unit[data-rolls] { box-shadow: inset 0 0 0 1px var(--ita-frame); }
+#invincible-tactics-chase .itc-unit[data-stuck] { background: transparent; box-shadow: none; outline: 1px dashed var(--ita-line); outline-offset: -1px; }
+#invincible-tactics-chase .itc-unit[data-stuck] .itc-pn, #invincible-tactics-chase .itc-unit[data-stuck] .itc-un { color: var(--ita-label); }
+#invincible-tactics-chase .itc-uhead { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
+#invincible-tactics-chase .itc-uhead > i { color: var(--ita-label); }
+#invincible-tactics-chase .itc-unit[data-vehicle] > .itc-uhead { flex: 1 1 100%; }
+#invincible-tactics-chase .itc-uhead > .itc-die { margin-left: auto; }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-uhead { flex-direction: row-reverse; }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-uhead > .itc-die { margin-left: 0; margin-right: auto; }
+#invincible-tactics-chase .itc-corner[data-side="pursuer"] .itc-uhead > i { transform: scaleX(-1); }
+#invincible-tactics-chase .itc-un { font: 400 13px/1.2 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #fff; }
+#invincible-tactics-chase .itc-unit[data-mine] .itc-un { color: var(--ita-yellow); }
+#invincible-tactics-chase .itc-people { display: flex; flex-wrap: wrap; gap: 3px 10px; min-width: 0; max-width: 100%; }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-people { justify-content: flex-end; }
+#invincible-tactics-chase .itc-unit:not([data-vehicle]) > .itc-people { flex: 1 1 0; }
+#invincible-tactics-chase .itc-join { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; }
+#invincible-tactics-chase .itc-join > :first-child { grid-column: 1 / -1; }
+#invincible-tactics-chase .itc-join > .itc-btn { min-width: 0; padding-inline: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#invincible-tactics-chase .itc-person { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-person { flex-direction: row-reverse; }
+#invincible-tactics-chase .itc-person .itc-face { width: 20px; height: 20px; font-size: 11px; border-width: 1px; }
+#invincible-tactics-chase .itc-pn { color: #fff; }
+#invincible-tactics-chase .itc-person[data-mine] .itc-pn { color: var(--ita-yellow); }
+#invincible-tactics-chase .itc-role { flex: none; font: 400 10.5px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-label); }
+#invincible-tactics-chase .itc-shot { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; font-size: 10px; color: var(--ita-yellow); border: 1px solid var(--ita-yellow); }
+#invincible-tactics-chase .itc-shot[data-crew="used"] { color: var(--ita-label); border: 1px dashed var(--ita-line); }
+#invincible-tactics-chase .itc-die { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; font-size: 11px; color: var(--ita-ink); background: var(--ita-yellow); }
+#invincible-tactics-chase .itc-stuck { flex: none; padding: 0 5px 1px; font: 400 10.5px/1.3 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-red-lt); border: 1px dashed var(--ita-red-lt); }
+#invincible-tactics-chase .itc-drop { flex: none; display: grid; place-items: center; width: 24px; height: 22px; font-size: 11px; color: var(--ita-label); border: 1px solid var(--ita-line); }
+#invincible-tactics-chase .itc-corner[data-side="pursuer"] .itc-drop { margin-left: auto; }
+#invincible-tactics-chase .itc-corner[data-side="prey"] .itc-drop { margin-right: auto; }
+#invincible-tactics-chase .itc-drop:hover:not([aria-disabled="true"]) { color: #fff; background: var(--ita-red); border-color: var(--ita-red); }
+#invincible-tactics-chase .itc-drop[aria-disabled="true"] { color: var(--ita-line); border-style: dashed; }
+#invincible-tactics-chase .itc-uhead > .itc-die ~ .itc-drop, #invincible-tactics-chase .itc-gmove + .itc-drop { margin: 0; }
 
+/* the distance between the corners */
+#invincible-tactics-chase .itc-mid { display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; min-width: 0; max-width: 220px; }
+#invincible-tactics-chase .itc-vs { font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ita-label); }
+#invincible-tactics-chase .itc-huge { font: 400 56px/.95 Titles, Comic, sans-serif; color: var(--ita-yellow); font-variant-numeric: tabular-nums; transform: rotate(-3deg); text-shadow: 0 3px 8px rgba(0, 0, 0, .6); }
+#invincible-tactics-chase .itc-huge[data-tone="hit"] { color: var(--itc-pur); }
+#invincible-tactics-chase .itc-huge[data-tone="miss"] { color: var(--itc-prey); }
+#invincible-tactics-chase .itc-mid > .itc-unit-t { font: 400 13px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fff; }
+#invincible-tactics-chase .itc-say { color: var(--ita-text); text-wrap: balance; }
+#invincible-tactics-chase .itc-catch { padding: 1px 7px 2px; font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-ink); background: var(--itc-pur); }
+#invincible-tactics-chase .itc-pips { display: flex; gap: 3px; margin: 1px 0; }
+#invincible-tactics-chase .itc-pips > li { width: 14px; height: 10px; border: 1px solid var(--ita-line); transform: skewX(-12deg); }
+#invincible-tactics-chase .itc-pips > li[data-on] { background: var(--ita-yellow); border-color: var(--ita-yellow); }
+#invincible-tactics-chase .itc-pips > li[data-zero] { border-color: var(--itc-pur); }
+#invincible-tactics-chase .itc-pips > li[data-end] { border-color: var(--itc-prey); border-style: dashed; }
+/* CHASE2 groups (ours): the pursuers in groups at their own distances; the letters under the track */
+#invincible-tactics-chase .itc-marks { display: flex; gap: 3px; margin: -1px 0 1px; }
+#invincible-tactics-chase .itc-marks > li { width: 14px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+#invincible-tactics-chase .itc-marks b { display: grid; place-items: center; width: 13px; height: 13px; font: 400 10px/1 Titles, Comic, sans-serif; color: var(--ita-ink); background: var(--itc-pur); }
+#invincible-tactics-chase .itc-marks b[data-mine] { background: var(--ita-yellow); }
+#invincible-tactics-chase .itc-marks b[data-lost] { color: var(--ita-label); background: transparent; outline: 1px dashed var(--ita-line); outline-offset: -1px; }
+#invincible-tactics-chase .itc-groups { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+#invincible-tactics-chase .itc-grp { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-left: 6px; border-left: 3px solid var(--itc-pur); }
+#invincible-tactics-chase .itc-grp[data-mine] { border-left-color: var(--ita-yellow); }
+#invincible-tactics-chase .itc-grp[data-lost] { border-left-style: dashed; border-left-color: var(--ita-line); }
+#invincible-tactics-chase .itc-grp[data-lost] .itc-unit { opacity: .6; }
+#invincible-tactics-chase .itc-gh { display: flex; align-items: center; gap: 6px; min-height: 22px; min-width: 0; }
+#invincible-tactics-chase .itc-gl { display: grid; place-items: center; width: 20px; height: 20px; font: 400 13px/1 Titles, Comic, sans-serif; color: var(--ita-ink); background: var(--itc-pur); }
+#invincible-tactics-chase .itc-grp[data-mine] .itc-gl { background: var(--ita-yellow); }
+#invincible-tactics-chase .itc-grp[data-lost] .itc-gl { color: var(--ita-label); background: transparent; outline: 1px dashed var(--ita-line); outline-offset: -1px; }
+#invincible-tactics-chase .itc-gd { font: 400 20px/1 Titles, Comic, sans-serif; color: #fff; min-width: 14px; text-align: center; }
+#invincible-tactics-chase .itc-grp[data-lost] .itc-gd { color: var(--ita-label); }
+#invincible-tactics-chase .itc-gmv, #invincible-tactics-chase .itc-glost { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--ita-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#invincible-tactics-chase .itc-gr { margin-left: auto; flex: none; }
+#invincible-tactics-chase .itc-gstep { display: grid; place-items: center; width: 20px; height: 20px; font-size: 10px; color: var(--ita-label); border: 1px solid var(--ita-line); }
+#invincible-tactics-chase .itc-gstep:hover:not([aria-disabled="true"]) { color: #fff; border-color: #fff; }
+#invincible-tactics-chase .itc-gstep[aria-disabled="true"] { color: var(--ita-line); border-style: dashed; }
+#invincible-tactics-chase .itc-gmove:hover:not([aria-disabled="true"]) { background: var(--itc-pur); border-color: var(--itc-pur); color: var(--ita-ink); }
+
+/* the obstacle: one band across */
+#invincible-tactics-chase .itc-obs { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; padding: 6px 10px; background: var(--ita-track); }
+#invincible-tactics-chase .itc-obs-t { min-width: 0; }
+#invincible-tactics-chase .itc-obs-r { justify-content: flex-end; }
+
+/* the beats of the round */
+#invincible-tactics-chase .itc-strip { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; }
+#invincible-tactics-chase .itc-strip > li { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; min-height: 24px; padding: 2px 10px; font: 400 11px/1.1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: var(--ita-label); background: var(--ita-track); clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%, 8px 50%); }
+#invincible-tactics-chase .itc-strip > li > span { overflow: hidden; text-overflow: ellipsis; }
+#invincible-tactics-chase .itc-strip > li[data-state="done"] { color: #fff; background: var(--ita-tile-hi); }
+#invincible-tactics-chase .itc-strip > li[data-state="now"] { color: var(--ita-ink); background: var(--ita-yellow); }
+
+/* the caption: paper only when this seat has something to do; waiting stays quiet ink */
+#invincible-tactics-chase .itc-dec[data-mine] { background: var(--itc-paper); color: var(--ita-ink); box-shadow: inset 0 0 0 2px var(--ita-ink); }
+#invincible-tactics-chase .itc-dec[data-mine] .ita-plate { color: var(--ita-yellow); background: var(--ita-ink); }
+#invincible-tactics-chase .itc-dec[data-mine] .itc-dec-t { color: var(--ita-ink); }
+#invincible-tactics-chase .itc-dec[data-mine] .itc-dec-k, #invincible-tactics-chase .itc-dec[data-mine] .itc-wait-t { color: #33445f; }
+#invincible-tactics-chase .itc-dec[data-mine] .itc-wait { border-top-color: rgba(12, 26, 46, .25); }
+#invincible-tactics-chase .itc-dec[data-mine] .itc-btn:not([data-kind="main"]) { color: var(--ita-ink); border-color: var(--ita-ink); }
+#invincible-tactics-chase .itc-dec[data-mine] .itc-btn:not([data-kind="main"]):hover:not([aria-disabled="true"]) { color: #fff; background: var(--ita-ink); }
+#invincible-tactics-chase .itc-dec[data-mine] .itc-btn[aria-disabled="true"] { color: #4a5a74; border-color: #6b7a93; }
+#invincible-tactics-chase .itc-dec[data-mine] .itc-roll { color: var(--ita-ink); }
+#invincible-tactics-chase .itc-dec[data-kind="wait"] { padding: 6px 10px 7px; background: transparent; box-shadow: inset 0 0 0 1px rgba(107, 130, 166, .55); }
 /* ---------- folded: one strip ---------- */
 #invincible-tactics-chase .itc-fd { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
 #invincible-tactics-chase .itc-fd > b { font: 400 20px/1 Titles, Comic, sans-serif; color: var(--ita-yellow); }
@@ -293,19 +302,23 @@
 #invincible-tactics-chase .itc-ends-s b { color: #fff; }
 #invincible-tactics-chase .itc-panel[data-seat="end"] > .itc-dec-b { justify-content: center; }
 
-/* ---------- a low window: everything a size smaller ---------- */
-#invincible-tactics-chase[data-tight] .itc-panel { gap: 6px; padding: 7px 10px 9px; }
-#invincible-tactics-chase[data-tight] [data-look="A"] .itc-zones { height: 58px; }
-#invincible-tactics-chase[data-tight] [data-look="A"] .itc-mark { top: 5px; }
-#invincible-tactics-chase[data-tight] [data-look="A"] .itc-mark .itc-face, #invincible-tactics-chase[data-tight] [data-look="A"] .itc-ghost { width: 30px; height: 30px; }
-#invincible-tactics-chase[data-tight] [data-look="A"] .itc-ghost { top: 5px; }
-#invincible-tactics-chase[data-tight] [data-look="A"] .itc-big { font-size: 24px; }
-#invincible-tactics-chase[data-tight] [data-look="B"] .itc-portrait { width: 84px; height: 84px; }
-#invincible-tactics-chase[data-tight] [data-look="B"] .itc-huge { font-size: 52px; }
-#invincible-tactics-chase[data-tight] [data-look="B"] .itc-people { display: none; }
-#invincible-tactics-chase[data-tight] .itc-dec { padding: 7px 9px 9px; gap: 5px; }
+/* ---------- a low window (1366x768 and the like): everything a size smaller, so the GM's tools fit without scrolling ---------- */
+#invincible-tactics-chase[data-tight] .itc-panel { gap: 5px; padding: 6px 10px 8px; }
+#invincible-tactics-chase[data-tight] .itc-portrait { width: 46px; height: 46px; border-width: 2px; }
+#invincible-tactics-chase[data-tight] .itc-pic-ic { width: 16px; height: 14px; font-size: 9px; }
+#invincible-tactics-chase[data-tight] .itc-huge { font-size: 42px; }
+#invincible-tactics-chase[data-tight] .itc-say { display: none; }
+#invincible-tactics-chase[data-tight] .itc-unit { min-height: 22px; padding: 1px 5px; }
+#invincible-tactics-chase[data-tight] .itc-person .itc-face { width: 18px; height: 18px; }
+#invincible-tactics-chase[data-tight] .itc-obs { padding: 4px 9px; }
+#invincible-tactics-chase[data-tight] .itc-dec { padding: 6px 9px 8px; gap: 5px; }
 #invincible-tactics-chase[data-tight] .itc-dec-t { font-size: 13px; }
-
+#invincible-tactics-chase[data-tight] .itc-btn[data-kind="main"] { min-height: 32px; }
+/* with the GM's tools open in a low window the round's arrows, the obstacle's sentence and the pips step aside (the arrows' and the
+   obstacle's words stay in the tooltips and the big number) */
+#invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-strip { display: none; }
+#invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-obs-t { display: none; }
+#invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-pips { display: none; }
 @media (prefers-reduced-motion: reduce) {
   #invincible-tactics-chase .itc-panel { animation: none; }
   #invincible-tactics-chase .itc-btn { transition: none; }

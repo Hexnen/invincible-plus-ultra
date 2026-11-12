@@ -1,15 +1,15 @@
-/* Tactical combat, the surfaces: THE CHASE PANEL (CHASE; DOM only, the data is ui/chase-pure.mjs chaseData).
-   USER 2026-11-12: the chase needs its own beautiful, clear panel, one, in the middle. While a chase runs this panel is where every seat
-   reads it and plays it: who flees and who pursues, the distance and how near escape or capture is, the round's beats, the decision
-   this seat has to make (its buttons are the very requests and roll actions the dock and the desk send), who the table waits for, the
-   GM's corrections and, once over, how it ended. THREE LOOKS of the same data, picked by the client setting `tacticsChaseLook` (or
-   `game.modules.get(...).api.tactics.ui.chaseLook("B")` for a quick switch):
-     A: the road        a wide strip: the zones between the pursuers and the point where the trail is lost, both sides as markers on
-                        it, the beats of the round in a row under it, the decision as a caption under that
-     B: the face-off    the two sides as big portraits facing each other, the distance as a big number between them, the obstacle
-                        under the number, the decision as a caption box across the foot
-     C: the storyboard  a narrow column: a small strip of the distance on top, then the round as a list of panels, one per beat, the
-                        beat being played open with its decision in it, the ones played say what they came to
+/* Tactical combat, the surfaces: THE CHASE PANEL (CHASE, CHASE2; DOM only, the data is ui/chase-pure.mjs chaseData).
+   USER 2026-11-12: the chase needs its own beautiful, clear panel, one, in the middle; of three trial looks the user kept "the face-off"
+   and asked how it holds up in more complex chases. While a chase runs this panel is where every seat reads it and plays it:
+     the face-off   the two sides facing each other, the pursuers left (red), the fleeing right (cyan): the face of whoever rolls for the
+                    side with why it is them, the side's roll, and under it every unit of the side in one line each (a vehicle with its
+                    driver and passengers and their shots, somebody on foot or in the air, who cannot move and why); between the sides the
+                    distance as a big number with the zones to capture and to escape
+     the obstacle   one band across, with what it does and its rolls
+     the beats      the round in the book's order, one arrow each
+     the caption    this seat's decision (a paper caption box, only when this seat has something to do) or who the table waits for (quiet)
+     the GM's tools folded under it: the next obstacle, the table, the distance, who joins, the ends; a unit drops out from its own line
+   (its buttons are the very requests and roll actions the dock and the desk send). Once over, every seat gets the end card.
    PLACE: the middle of the window, under the line that hangs from the initiative bar (and under a question card standing there), over
    the bar and its armed panel; what does not fit scrolls inside the panel. It folds to one strip with the decision's main button. */
 
@@ -17,7 +17,7 @@ import { h, icon, face, markOf, swap, visibleRect } from "./dom.mjs";
 import { frameNow } from "./slots.mjs";
 
 const ID = "invincible-tactics-chase", GAP = 8;
-let root = null, panel = null, handlers = {}, last = null, lastLook = "A", folded = false, gmOpen = false, kept = null, aside = false;
+let root = null, panel = null, handlers = {}, last = null, folded = false, gmOpen = false, kept = null, aside = false;
 
 export function configure(x) { handlers = x ?? {}; }
 export const el = () => root;
@@ -47,36 +47,40 @@ function btn(b, fk, cls = "") {
 }
 const btns = (list, pre) => (list ?? []).map((b) => btn(b, `${pre}:${b.id}`));
 const plate = (text, cls = "") => h(`h3.ita-plate${cls}`, { text });
+/** a name that may be long: cut with an ellipsis where its box ends, the whole name in its tooltip */
+const nm = (sel, text) => h(sel, { text, tip: text, data: { cut: "1" } });
 const BEAT_ICON = { obstacle: "fa-road-barrier", prey: "fa-person-running", pursuer: "fa-person-running", result: "fa-arrows-left-right", catch: "fa-hand-back-fist", crew: "fa-crosshairs" };
-const STATE_ICON = { done: "fa-check", now: "fa-play", next: null };
-const sideIcon = (s) => (s.units.some((u) => u.vehicle) ? "fa-car-side" : "fa-person-running");
+const WAY_ICON = { driver: "fa-car-side", passenger: "fa-car-side", self: "fa-person-running", fly: "fa-plane-up" };
+const unitIcon = (u) => (u.vehicle ? "fa-car-side" : WAY_ICON[u.people[0]?.role] ?? "fa-person-running");
 
-/** the decision of this seat, or who the table waits for (with the GM's settle buttons) */
-function decisionBox(d, cls = "itc-dec") {
+/** the decision of this seat (a paper caption: something to do), or who the table waits for (quiet), with the GM's settle buttons */
+function decisionBox(d) {
   const dec = d.decision;
   const waits = d.waits?.length ? h("ul.itc-waits", { attrs: { "aria-label": d.labels.waiting } }, d.waits.map((w) => h("li.itc-wait", { data: { optional: w.optional ? "1" : null } },
     h("span.itc-wait-t", { text: w.text }), w.buttons?.length ? h("span.itc-wait-b", {}, btns(w.buttons, `w:${w.id}`)) : null))) : null;
-  if (!dec) return waits ? h(`div.${cls}`, { data: { kind: "wait" } }, h("p.itc-dec-k", { text: d.labels.waiting }), waits) : null;
-  return h(`div.${cls}`, { data: { kind: dec.kind, mine: dec.mine ? "1" : null }, attrs: { role: "group", "aria-label": dec.title } },
-    h("div.itc-dec-h", {}, plate(dec.title, ".itc-dec-p")),
-    dec.text ? h("p.itc-dec-t", { text: dec.text }) : null,
+  if (!dec) return waits ? h("div.itc-dec", { data: { kind: "wait" } }, h("p.itc-dec-k", { text: d.labels.waiting }), waits) : null;
+  return h("div.itc-dec", { data: { kind: dec.kind, mine: dec.mine ? "1" : null }, attrs: { role: "group", "aria-label": dec.title } },
+    h("div.itc-dec-h", {}, plate(dec.title, ".itc-dec-p"), dec.text ? h("p.itc-dec-t", { text: dec.text }) : null),
     dec.buttons?.length ? h("div.itc-dec-b", {}, btns(dec.buttons, "dec")) : null,
     waits);
 }
-/** the GM's corrections: the obstacle of the next roll, the table on or off, the distance by hand, the ends of the chase */
+/** the GM's corrections: the obstacle of the next roll, the table on or off, the distance by hand, who joins, the ends of the chase */
 function gmBox(d) {
   const g = d.gm;
   if (!g) return null;
-  const sel = h("select.itc-sel", { fk: "gm:obs", attrs: { "aria-label": g.obstacle.label }, on: { change: (e, el) => handlers.own?.({ obstacle: el.value === "auto" ? null : el.value }) } },
-    g.obstacle.choices.map((c) => h("option", { text: c.label, attrs: { value: c.id, selected: c.id === g.obstacle.value } })));
+  const sel = (fk, label, value, choices, fn) => h("select.itc-sel", { fk, attrs: { "aria-label": label }, on: { change: (e, el) => fn(el.value) } },
+    choices.map((c) => h("option", { text: c.label, attrs: { value: c.id, selected: c.id === value } })));
   const body = gmOpen ? h("div.itc-gm-b", {},
-    h("label.itc-ctl", {}, h("span.itc-k", { text: g.obstacle.label }), sel),
-    h("div.itc-ctl", {}, h("span.itc-k", { text: g.table.label }), h("button.itc-tog", { fk: "gm:table", attrs: { "aria-pressed": String(g.table.on) }, on: { click: () => handlers.send?.(g.table.req) } }, icon(g.table.on ? "fa-square-check" : "fa-square"), h("span", { text: g.table.label }))),
-    h("div.itc-ctl", { tip: g.distance.tip }, h("span.itc-k", { text: g.distance.label }), h("span.itc-step", {},
+    h("label.itc-ctl.itc-c-obs", {}, h("span.itc-k", { text: g.obstacle.label }), sel("gm:obs", g.obstacle.label, g.obstacle.value, g.obstacle.choices, (v) => handlers.own?.({ obstacle: v === "auto" ? null : v }))),
+    h("div.itc-ctl.itc-c-tab", {}, h("span.itc-k", { text: g.table.label }), h("button.itc-tog", { fk: "gm:table", attrs: { "aria-pressed": String(g.table.on) }, on: { click: () => handlers.send?.(g.table.req) } }, icon(g.table.on ? "fa-square-check" : "fa-square"), h("span", { text: g.table.label }))),
+    h("div.itc-ctl.itc-c-dist", { tip: g.distance.tip }, h("span.itc-k", { text: g.distance.label }), h("span.itc-step", {},
       h("button", { fk: "gm:d-", disabled: !g.distance.minus, attrs: { "aria-label": `${g.distance.label} -1` }, on: { click: () => handlers.send?.(g.distance.minus) } }, icon("fa-minus")),
       h("b", { text: String(g.distance.value), attrs: { "aria-live": "polite" } }),
       h("button", { fk: "gm:d+", disabled: !g.distance.plus, attrs: { "aria-label": `${g.distance.label} +1` }, on: { click: () => handlers.send?.(g.distance.plus) } }, icon("fa-plus")))),
-    h("div.itc-ctl.itc-ends", {}, h("span.itc-k", { text: d.labels.ends }), h("span.itc-ends-b", {}, g.ends.map((b) => btn({ ...b, primary: false }, `gm:end:${b.id}`, ".itc-end"))))) : null;
+    h("div.itc-ctl.itc-c-join", {}, h("span.itc-k", { text: g.join.label }),
+      h("span.itc-join", {}, g.join.choices.length ? sel("gm:join", g.join.label, g.join.value, g.join.choices, (v) => handlers.own?.({ join: v })) : h("span.itc-none", { text: g.join.none }),
+        g.join.to.map((b) => btn(b, `gm:${b.id}`, ".itc-small")))),
+    h("div.itc-ctl.itc-c-ends", {}, h("span.itc-k", { text: d.labels.ends }), h("span.itc-ends-b", {}, g.ends.map((b) => btn({ ...b, primary: false }, `gm:end:${b.id}`, ".itc-small"))))) : null;
   return h("div.itc-gm", { data: { open: gmOpen ? "1" : null } },
     h("button.itc-gm-h", { fk: "gm:open", attrs: { "aria-expanded": String(gmOpen) }, on: { click: () => { gmOpen = !gmOpen; draw(); } } }, icon("fa-sliders"), h("span", { text: d.labels.gm }), icon(gmOpen ? "fa-chevron-up" : "fa-chevron-down")),
     body);
@@ -89,99 +93,83 @@ function head(d, extra = null) {
     extra,
     h("button.itc-fold", { fk: "fold", tip: folded ? d.labels.unfold : d.labels.fold, attrs: { "aria-expanded": String(!folded) }, on: { click: () => { folded = !folded; draw(); } } }, icon(folded ? "fa-chevron-down" : "fa-chevron-up")));
 }
-/** the people of one side: faces with their role, the crew's shot (open / used) */
-function people(s, small = false) {
-  return h("ul.itc-people", { data: { small: small ? "1" : null } }, s.units.flatMap((u) => u.people.map((p) => h("li.itc-person", { data: { mine: p.mine ? "1" : null, crew: p.crew } },
-    face(p.img, p.name, "itc-face"), h("span.itc-pn", { text: p.name }), h("span.itc-role", { text: p.roleText }),
-    p.crew ? h("span.itc-shot", { tip: `${d0.labels.crew}: ${p.crew === "open" ? "+" : "-"}`, data: { crew: p.crew } }, icon("fa-crosshairs")) : null))));
-}
-let d0 = null;      // the data being drawn (for the small helpers above)
 function rollOf(s) {
   const r = s.roll;
   if (!r || r.state === "none") return null;
   return h("span.itc-roll", { data: { state: r.state } }, r.state === "owed" ? icon("fa-dice") : null, r.text ? h("span", { text: r.text }) : null);
 }
-function obstacleCard(o, cls = "itc-obs") {
+/** one person of a unit: face, name (cut at its box), role, the crew's shot (open / used) */
+const person = (p) => h("li.itc-person", { data: { mine: p.mine ? "1" : null, crew: p.crew, rolls: p.rolls ? "1" : null } },
+  face(p.img, p.name, "itc-face"), nm("span.itc-pn", p.name), h("span.itc-role", { text: p.roleText }),
+  p.crew ? h("span.itc-shot", { tip: `${d0.labels.crew}: ${p.crew === "open" ? d0.labels.shotOpen : d0.labels.shotUsed}`, data: { crew: p.crew } }, icon("fa-crosshairs")) : null);
+/** the die on the unit that rolls for its side (a vehicle carries it on its name line) */
+const die = (s) => h("span.itc-die", { tip: s.rolls.why ? `${s.rolls.text} (${s.rolls.why})` : s.rolls.text }, icon("fa-dice"));
+/** the GM's way out of the chase for one unit (tools open only) */
+const drop = (u) => gmOpen && u.drop ? h("button.itc-drop", { fk: `gm:drop:${u.id}`, tip: u.drop.disabled ?? u.drop.label, disabled: !u.drop.req, attrs: { "aria-label": u.drop.label }, on: { click: () => handlers.send?.(u.drop.req) } }, icon("fa-right-from-bracket")) : null;
+/** THE ROSTER of a side: one line per unit. A vehicle: its name, then the people aboard; somebody on their own: the person itself.
+    The unit that rolls carries the die; one that cannot move says why (dashed); the GM's tools add the way out of the chase. */
+/** CHASE2 groups (ours): the GM splits a pursuer off into a group of its own, or puts one that is alone into another group (tools open) */
+const gmove = (u) => gmOpen && u.group ? h("button.itc-drop.itc-gmove", { fk: `gm:group:${u.id}`, data: { kind: u.group.kind }, tip: u.group.disabled ?? u.group.label, disabled: !u.group.req, attrs: { "aria-label": u.group.label }, on: { click: () => handlers.send?.(u.group.req) } }, icon(u.group.kind === "merge" ? "fa-object-group" : "fa-object-ungroup")) : null;
+const unitLine = (u, s) => h("li.itc-unit", { data: { mine: u.mine ? "1" : null, rolls: u.rolls ? "1" : null, stuck: u.stuck ?? null, vehicle: u.vehicle ? "1" : null } },
+  u.vehicle ? h("span.itc-uhead", {}, icon("fa-car-side"), nm("b.itc-un", u.name), u.rolls ? die(s) : null, gmove(u), drop(u)) : null,
+  h("ul.itc-people", {}, (u.vehicle ? u.people : u.people.map((p) => ({ ...p, name: u.name }))).map(person)),
+  u.vehicle && !u.people.length ? h("span.itc-role", { text: "-" }) : null,
+  u.rolls && !u.vehicle ? die(s) : null,
+  u.stuckText ? h("span.itc-stuck", { text: u.stuckText }) : null,
+  u.vehicle ? null : gmove(u), u.vehicle ? null : drop(u));
+/** CHASE2 groups (ours): one pursuing group: its letter, its own distance to the fleeing (the GM may step it), its roll or how far it moved
+    in the round just played, or why it is out (lost them); then its units */
+function groupBlock(g) {
+  const step = (dir, req) => h("button.itc-gstep", { fk: `gm:gdist:${g.id}:${dir}`, tip: g.gm.tip, disabled: !req, attrs: { "aria-label": `${g.gm.tip} ${dir === "minus" ? "-1" : "+1"}` }, on: { click: () => handlers.send?.(req) } }, icon(dir === "minus" ? "fa-minus" : "fa-plus"));
+  const r = rollOf(g);
+  return h("li.itc-grp", { data: { lost: g.lost ? "1" : null, mine: g.mine ? "1" : null } },
+    h("div.itc-gh", {},
+      h("b.itc-gl", { text: g.letter, attrs: { "aria-label": g.label } }),
+      gmOpen && g.gm ? step("minus", g.gm.minus) : null,
+      h("b.itc-gd", { text: String(g.distance), tip: g.label }),
+      gmOpen && g.gm ? step("plus", g.gm.plus) : null,
+      g.lost ? h("span.itc-glost", { text: g.lostText }) : g.moved ? h("span.itc-gmv", { text: g.moved.text }) : null,
+      r && !g.lost ? h("span.itc-gr", {}, r) : null),
+    h("ul.itc-units", { attrs: { "aria-label": g.label } }, g.units.map((u) => unitLine(u, g))));
+}
+function roster(s) {
+  if (s.groups) return h("ol.itc-groups", { attrs: { "aria-label": s.label } }, s.groups.map(groupBlock));
+  return h("ul.itc-units", { attrs: { "aria-label": s.label } }, s.units.map((u) => unitLine(u, s)));
+}
+function obstacleBand(o) {
   if (!o) return null;
-  return h(`div.${cls}`, { data: { clear: o.clear ? "1" : null } },
+  return h("div.itc-obs", { data: { clear: o.clear ? "1" : null } },
     h("div.itc-obs-h", {}, icon(o.clear ? "fa-road" : "fa-road-barrier"), h("b", { text: o.name }), o.tag ? h("span.itc-tag", { text: o.tag }) : null),
     h("p.itc-obs-t", { text: o.fx }),
-    o.rolls?.length ? h("div.itc-obs-r", {}, o.rolls.map((r) => h("span.itc-roll", { data: { state: r.state } }, h("span", { text: `${r.whoName}: ${r.attr}` }), r.state === "done" || r.state === "push" ? h("span", { text: `[[six:${r.sixes ?? 0}]]` }) : null))) : null);
+    o.rolls?.length ? h("div.itc-obs-r", {}, o.rolls.map((r) => h("span.itc-roll", { data: { state: r.state } }, nm("span.itc-on", `${r.whoName}: ${r.attr}`), r.state === "done" || r.state === "push" ? h("span", { text: `[[six:${r.sixes ?? 0}]]` }) : null))) : null);
 }
 
-/* ---------- A: THE ROAD ---------- */
-function drawA(d) {
-  const D = d.distance, max = D.max, prey = d.sides[1], pur = d.sides[0];
-  const cells = [];
-  for (let z = 0; z <= max; z++) {
-    const at = z === Math.min(D.value, max), was = D.from != null && z === Math.min(D.from, max) && D.from !== D.value;
-    cells.push(h("li.itc-zone", { data: { between: z > 0 && z < D.value ? "1" : null, prey: at ? "1" : null, was: was ? "1" : null, end: z === max ? "1" : null, start: z === 0 ? "1" : null } },
-      z === 0 ? h("span.itc-mark", { data: { side: "pursuer" } }, face(pur.lead?.img, pur.lead?.name, "itc-face"), icon(sideIcon(pur))) : null,
-      at && z > 0 ? h("span.itc-mark", { data: { side: "prey" } }, face(prey.lead?.img, prey.lead?.name, "itc-face"), icon(sideIcon(prey))) : null,
-      at && z === 0 ? h("span.itc-mark", { data: { side: "prey", caught: "1" } }, face(prey.lead?.img, prey.lead?.name, "itc-face")) : null,
-      was ? h("span.itc-ghost", { attrs: { "aria-hidden": "true" } }) : null,
-      h("span.itc-zn", { text: z === max ? "" : String(z) }, z === max ? icon("fa-flag-checkered") : null)));
-  }
-  const road = h("div.itc-road", { attrs: { role: "img", "aria-label": `${D.unit}. ${D.say}` } },
-    h("span.itc-end-l", { text: D.catchText }), h("ol.itc-zones", {}, cells), h("span.itc-end-r", { text: D.escapeText }));
-  road.querySelector(".itc-zones").style.setProperty("--n", String(max + 1));
-  const names = h("div.itc-names", {},
-    h("div.itc-side", { data: { side: "pursuer", mine: pur.mine ? "1" : null } }, h("span.itc-sl", { text: pur.label }), h("b", { text: pur.units.map((u) => u.name).join(", ") }), rollOf(pur)),
-    h("div.itc-status", { data: { tone: D.status.tone } }, h("b.itc-big", { text: String(D.value) }), h("span", { text: D.say })),
-    h("div.itc-side", { data: { side: "prey", mine: prey.mine ? "1" : null } }, h("span.itc-sl", { text: prey.label }), h("b", { text: prey.units.map((u) => u.name).join(", ") }), rollOf(prey)));
-  const beats = h("ol.itc-beats", { attrs: { "aria-label": d.labels.round } }, d.beats.map((b) => h("li.itc-beat", { data: { state: b.state, id: b.id } },
-    icon(STATE_ICON[b.state] ?? BEAT_ICON[b.id]), h("span.itc-bl", { text: b.label }), b.text ? h("span.itc-bt", { text: b.text }) : null)));
-  return [head(d), road, names, d.obstacle ? obstacleCard(d.obstacle) : null, beats, decisionBox(d), gmBox(d)];
+/* ---------- THE FACE-OFF ---------- */
+function corner(d, s) {
+  const pic = s.who?.img ?? s.lead?.img ?? null, who = s.who?.name ?? s.lead?.name ?? "?";
+  return h("div.itc-corner", { data: { side: s.id, mine: s.mine ? "1" : null, winner: d.result?.winner === s.id ? "1" : null } },
+    h("div.itc-ch", {},
+      h("div.itc-portrait", { attrs: { "aria-hidden": "true" } }, pic ? h("img", { attrs: { alt: "", src: pic, decoding: "async" } }) : h("b", { text: who.charAt(0) }), h("span.itc-pic-ic", {}, icon(s.lead ? unitIcon(s.lead) : "fa-person-running"))),
+      h("div.itc-cw", {},
+        h("span.itc-sl", { text: s.label }),
+        s.rolls.text ? h("span.itc-rolls", {}, nm("span.itc-rt", s.rolls.text), s.rolls.why ? h("span.itc-why", { text: s.rolls.why }) : null) : null,
+        h("div.itc-rollbox", {}, rollOf(s) ?? h("span.itc-roll", { data: { state: "none" }, text: "-" })))),
+    roster(s));
 }
-
-/* ---------- B: THE FACE-OFF ---------- */
-function drawB(d) {
+function drawFaceoff(d) {
   const D = d.distance;
-  const corner = (s) => h("div.itc-corner", { data: { side: s.id, mine: s.mine ? "1" : null, winner: d.result?.winner === s.id ? "1" : null } },
-    h("span.itc-sl", { text: s.label }),
-    h("div.itc-portrait", {}, s.lead?.img ? h("img", { attrs: { alt: "", src: s.lead.img, decoding: "async" } }) : h("b", { text: (s.lead?.name ?? "?").charAt(0) }), h("span.itc-pic-ic", {}, icon(sideIcon(s)))),
-    h("b.itc-uname", { text: s.units.map((u) => u.name).join(", ") }),
-    people(s, true),
-    h("div.itc-rollbox", {}, rollOf(s) ?? h("span.itc-roll", { data: { state: "none" }, text: "-" })));
   const pips = h("ol.itc-pips", { attrs: { "aria-hidden": "true" } }, Array.from({ length: D.max + 1 }, (_, z) => h("li", { data: { on: z <= D.value && z > 0 ? "1" : null, end: z === D.max ? "1" : null, zero: z === 0 ? "1" : null } })));
+  /* CHASE2 groups (ours): under the track, where each pursuing group stands (its letter at its distance) */
+  const marks = D.marks ? h("ol.itc-marks", { attrs: { "aria-hidden": "true" } }, Array.from({ length: D.max + 1 }, (_, z) => h("li", {}, D.marks.filter((m) => m.at === z).map((m) => h("b", { text: m.letter, data: { lost: m.lost ? "1" : null, mine: m.mine ? "1" : null } }))))) : null;
   const mid = h("div.itc-mid", { attrs: { role: "img", "aria-label": `${D.unit}. ${D.say}` } },
-    h("span.itc-vs", { text: d.result ? d.result.head : d.roundLabel }),
+    h("span.itc-vs", { text: d.result ? d.result.head : D.label ?? d.labels.distance }),
     h("b.itc-huge", { data: { tone: D.status.tone }, text: String(D.value) }),
-    h("span.itc-unit", { text: D.status.text }),
-    pips,
+    D.status.id !== "run" ? h("span.itc-unit-t", { data: { tone: D.status.tone }, text: D.status.text }) : null,
+    pips, marks,
     h("span.itc-say", { text: D.say }),
-    d.obstacle ? obstacleCard(d.obstacle, "itc-obs.itc-obs-mid") : null);
-  const strip = h("ol.itc-strip", { attrs: { "aria-label": d.labels.round } }, d.beats.map((b) => h("li", { data: { state: b.state }, tip: `${b.label}${b.text ? `: ${b.text}` : ""}` }, icon(BEAT_ICON[b.id]), h("span", { text: b.label }))));
-  return [head(d), h("div.itc-ring", {}, corner(d.sides[0]), mid, corner(d.sides[1])), strip, decisionBox(d, "itc-dec.itc-caption"), gmBox(d)];
-}
-
-/* ---------- C: THE STORYBOARD ---------- */
-function drawC(d) {
-  const D = d.distance;
-  const meter = h("div.itc-meter", { attrs: { role: "img", "aria-label": `${D.unit}. ${D.say}` } },
-    h("span.itc-ml", { text: D.catchText }),
-    h("span.itc-mbar", {}, h("span.itc-mfill"), h("span.itc-mdot", {}), D.from != null && D.from !== D.value ? h("span.itc-mwas", {}) : null),
-    h("span.itc-ml", { text: D.escapeText }),
-    h("b.itc-mn", { data: { tone: D.status.tone }, text: String(D.value) }));
-  const pct = (n) => `${Math.max(0, Math.min(100, (n / D.max) * 100))}%`;
-  meter.querySelector(".itc-mfill").style.width = pct(D.value);
-  meter.querySelector(".itc-mdot").style.left = pct(D.value);
-  meter.querySelector(".itc-mwas")?.style.setProperty("left", pct(D.from));
-  const who = h("p.itc-who", {}, ...d.sides.map((s) => h("span.itc-whos", { data: { side: s.id, mine: s.mine ? "1" : null } }, icon(sideIcon(s)), h("span.itc-sl", { text: s.label }), h("b", { text: s.units.map((u) => u.name).join(", ") }))));
-  const decHere = (b) => b.state === "now" || (b.id === "result" && d.phase === "after" && !d.beats.some((x) => x.state === "now"));
-  let placed = false;
-  const frames = d.beats.map((b) => {
-    const open = !placed && decHere(b);
-    if (open) placed = true;
-    const side = b.id === "prey" ? d.sides[1] : b.id === "pursuer" ? d.sides[0] : null;
-    return h("li.itc-frame", { data: { state: b.state, id: b.id, open: open ? "1" : null } },
-      h("div.itc-fh", {}, h("span.itc-fic", {}, icon(BEAT_ICON[b.id])), h("b", { text: b.label }), b.who ? h("span.itc-fwho", { text: b.who }) : null, h("span.itc-ft", { text: b.text || "" }), icon(STATE_ICON[b.state] ?? "fa-ellipsis")),
-      open && b.id === "obstacle" && d.obstacle ? obstacleCard(d.obstacle) : null,
-      open && side ? people(side, true) : null,
-      open ? decisionBox(d) : null);
-  });
-  const rest = placed ? null : decisionBox(d);
-  return [head(d), meter, who, h("ol.itc-board", { attrs: { "aria-label": d.labels.round } }, frames), rest, d.phase !== "rolling" && d.obstacle && !placed ? obstacleCard(d.obstacle) : null, gmBox(d)];
+    d.catch ? h("span.itc-catch", { text: d.catch.text }) : null);
+  const strip = h("ol.itc-strip", { attrs: { "aria-label": d.labels.round } }, d.beats.map((b) => h("li", { data: { state: b.state }, tip: `${b.label}${b.who ? ` (${b.who})` : ""}${b.text ? `: ${b.text}` : ""}` }, icon(BEAT_ICON[b.id]), h("span", { text: b.label }))));
+  return [head(d), h("div.itc-ring", { data: { crowd: d.crowd > 2 ? "1" : null } }, corner(d, d.sides[0]), mid, corner(d, d.sides[1])), obstacleBand(d.obstacle), strip, decisionBox(d), gmBox(d)];
 }
 
 /* ---------- folded: one strip ---------- */
@@ -196,36 +184,38 @@ function drawEnd(e, title) {
   return [h("header.itc-head", {}, plate(title, ".itc-title")),
     h("div.itc-endc", { data: { outcome: e.outcome }, attrs: { role: "status" } },
       h("b.itc-endt", { text: e.title }), h("p", { text: e.text }),
-      h("ul.itc-ends-s", {}, e.sides.map((s) => h("li", {}, h("span.itc-sl", { text: s.label }), h("b", { text: s.names || "-" })))),
+      h("ul.itc-ends-s", {}, e.sides.map((s) => h("li", { data: { side: s.id } }, h("span.itc-sl", { text: s.label }), h("b", { text: s.names || "-" })))),
       h("span.itc-k", { text: e.rounds })),
     h("div.itc-dec-b", {}, btn({ id: "close", label: e.close.label, primary: true, fn: () => handlers.own?.({ endSeen: e.close.endSeen }) }, "end:close"))];
 }
 
 /* ---------- drawing and placing ---------- */
+let d0 = null;      // the data being drawn (for the small helpers above)
 function draw() {
   if (!root || !last) return;
   const d = last;
   d0 = d.on ? d : null;
-  panel.dataset.look = lastLook;
   const fold = (folded || aside) && d.on;
   panel.dataset.folded = fold ? "1" : "";
   if (!panel.dataset.folded) delete panel.dataset.folded;
   panel.dataset.seat = d.on ? d.seat : "end";
   panel.dataset.phase = d.on ? d.phase : "end";
-  const nodes = d.on ? (fold ? drawFolded(d) : lastLook === "B" ? drawB(d) : lastLook === "C" ? drawC(d) : drawA(d)) : drawEnd(d.ended, d.title);
+  panel.dataset.gm = d.on && gmOpen && d.gm ? "1" : "";
+  if (!panel.dataset.gm) delete panel.dataset.gm;
+  const nodes = d.on ? (fold ? drawFolded(d) : drawFaceoff(d)) : drawEnd(d.ended, d.title);
   swap(panel, nodes);
   root.setAttribute("aria-label", d.title ?? "chase");
   place();
 }
-/** the data of chase-pure (null: no chase and no end card), the look (A, B or C); o.aside: an action is armed whose targets are picked
-    on the map (a crew member's shot): the panel stands folded to its strip until the action is declared or let go, so the tokens under it can be picked */
-export function render(data, look = "A", o = {}) {
+/** the data of chase-pure (null: no chase and no end card); o.aside: an action is armed whose targets are picked on the map (a crew
+    member's shot): the panel stands folded to its strip until the action is declared or let go, so the tokens under it can be picked */
+export function render(data, o = {}) {
   try {
     if (!data) { hide(); return; }
     ensure();
     aside = !!o.aside;
-    const key = JSON.stringify([data, look, folded, gmOpen, aside]);
-    last = data; lastLook = look;
+    const key = JSON.stringify([data, folded, gmOpen, aside]);
+    last = data;
     root.classList.remove("itc-hidden");
     if (key === kept) { place(); return; }
     kept = key;
@@ -236,7 +226,9 @@ export function hide() { last = null; kept = null; if (root) { root.classList.ad
 export function destroy() { root?.remove(); root = panel = null; last = null; kept = null; }
 
 /* THE PLACE: the middle of the window. Across: centred under the initiative bar, as wide as the top band lets (the questions' place).
-   Down: from under the line (and under a question card standing in the questions' place) to over the bar and its armed panel. */
+   Down: from under the line (and under a question card standing in the questions' place) to over the bar and its armed panel.
+   `tight`: a low window (under 470 px of room) draws everything a size smaller, so the GM's tools still fit at 1366x768. */
+const top0 = (f) => f?.slots?.line ? f.slots.line.y1 : 110;
 export function place() {
   try {
     if (!root || root.classList.contains("itc-hidden")) return;
@@ -245,18 +237,31 @@ export function place() {
     const cardsIn = dock?.querySelector('.its-slot[data-slot="cards"]:not([data-empty]) > .its-in');
     const cardsR = cardsIn ? [...cardsIn.children].map(visibleRect).filter(Boolean).reduce((a, r) => Math.max(a, r.bottom), 0) : 0;
     const panelR = visibleRect(dock?.querySelector(".itd-panel")), barR = visibleRect(dock?.querySelector(".its-bar .itd-stack") ?? dock?.querySelector(".its-bar"));
-    /* as wide as the top band, centred where the questions hang: the first-fight hint's column is the panel's too, unless a hint stands there */
+    /* centred where the questions hang, as wide as the panel wants (CHASE2: the questions' column alone is too narrow for two sides
+       facing each other), inside the window and left of the GM's desk; a first-fight hint standing beside the line pushes the panel
+       under it instead of squeezing it */
     let x0 = f?.slots?.cards?.x0 ?? 12, x1 = f?.slots?.cards?.x1 ?? W - 12;
-    const hintOn = !!dock?.querySelector('.its-slot[data-slot="hint"]:not([data-empty])'), R = hintOn ? (f?.slots?.hint?.x0 ?? x1 + GAP) - GAP : f?.slots?.notice?.x1 ?? x1;
-    const cx = (x0 + x1) / 2, half = Math.max(x1 - cx, Math.min(R - cx, cx - 12));
+    const scale = Number(getComputedStyle(root).getPropertyValue("--ita-scale")) || Number(getComputedStyle(document.documentElement).getPropertyValue("--ita-scale")) || 1;
+    const deskR = visibleRect(document.getElementById("invincible-tactics-desk")), want = 760 * scale;
+    const cx = (x0 + x1) / 2, right = deskR && deskR.left > cx ? deskR.left - GAP : W - 12;
+    const half = Math.max(x1 - cx, Math.min(want / 2, cx - 12, right - cx));
     x0 = Math.max(12, cx - half); x1 = Math.min(W - 12, cx + half);
-    const top = Math.max(f?.slots?.line ? f.slots.line.y1 + 6 : 110, cardsR ? cardsR + GAP : 0);
+    /* a desk standing close (1366 px windows) would squeeze the two sides until names are cut to a few letters: the panel then
+       grows to the left instead, as far as the left tool column and the party's tray let it */
+    if (x1 - x0 < want - 1) {
+      const wins = [...document.querySelectorAll(".window-app, .application:has(> .window-header), body > aside[id]:not(#tooltip)")].map(visibleRect).filter((r) => r && r.right < cx && r.bottom > top0(f) && r.top < H - 40);
+      const lim = Math.max(180 * scale, ...wins.map((r) => r.right + GAP));
+      x0 = Math.max(Math.min(x0, lim), x1 - want);
+    }
+    let top = Math.max(f?.slots?.line ? f.slots.line.y1 + 6 : 110, cardsR ? cardsR + GAP : 0);
+    const hint = dock?.querySelector('.its-slot[data-slot="hint"]:not([data-empty])') ? f?.slots?.hint : null;
+    if (hint && x1 > hint.x0 - GAP && hint.y1 > top) top = hint.y1 + GAP;
     const floor = Math.min(panelR ? panelR.top : H, barR && barR.height ? barR.top : H - 110, H - 40) - GAP;
     root.style.setProperty("--itc-x", `${Math.round((x0 + x1) / 2)}px`);
     root.style.setProperty("--itc-w", `${Math.max(280, Math.round(x1 - x0))}px`);
     root.style.setProperty("--itc-top", `${Math.round(top)}px`);
     root.style.setProperty("--itc-h", `${Math.max(120, Math.round(floor - top))}px`);
-    root.dataset.tight = floor - top < 420 ? "1" : "";
+    root.dataset.tight = floor - top < 470 ? "1" : "";
     if (!root.dataset.tight) delete root.dataset.tight;
   } catch { /* stays where it was */ }
 }
