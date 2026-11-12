@@ -12,6 +12,7 @@
 import * as Store from "../store.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import * as FP from "./feedback-pure.mjs";
+import * as Gate from "./dicegate.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics feedback) |`;
 const SUM_KEY = `${MOD}.tactics.sum`, DONE_KEY = `${MOD}.tactics.sumDone`;
@@ -90,6 +91,10 @@ const blowOf = (list, target, type) => { const e = list.find((x) => x && x.type 
 const sameBlow = (prev, blow, at) => !!prev && at - prev.at < HIT_AFTER && (prev.blow == null || blow == null || prev.blow === blow);
 function flush(combatId) {
   try {
+    /* ANSC (U10-9, the user 2026-11-12: «Wszystko czeka, także liczby nad żetonem»): the numbers wait until the 3D dice of the roll in
+       flight on this client have landed, as the card, the line and the camera's result shot do (ui/dicegate.mjs; at most HOLD_MS). The
+       events heard meanwhile join the same batch. No 3D dice on this client: at once. */
+    if (Gate.on()) { Gate.after(() => flush(combatId)); return; }
     const list = pending[combatId] ?? []; pending[combatId] = null;
     const combat = game.combats?.get(combatId), scene = globalThis.canvas?.scene;
     if (!combat || !scene || !canvas.ready || (combat.scene && combat.scene.id !== scene.id)) return;

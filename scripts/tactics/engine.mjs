@@ -21,6 +21,7 @@ import * as Zones from "./zones-adapter.mjs";
 import * as Mv from "./movement.mjs";
 import * as Summons from "./summons.mjs";
 import * as RW from "./rollwatch-pure.mjs";
+import * as Gate from "./ui/dicegate.mjs";
 import { t, rollTitle } from "./lang.mjs";
 
 const MOD = Store.MOD;
@@ -83,7 +84,7 @@ const labelOf = (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s));
 function sendRoll(combat, e, again = 0) {
   const mine = e.users.includes("gm") || e.users.includes(game.user.id) || !e.users.some((u) => game.users.get(u)?.active);
   const req = { combat: combat.id, inst: e.inst, key: e.key, rid: e.rid, actorUuid: e.actorUuid, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, label: rollTitle(e.key, e.label), ...(typeof e.label === "string" ? { labelSrc: e.label.slice(0, 80) } : {}), ...(e.mode ? { mode: e.mode } : {}) };
-  if (mine) Sys.rollNow(req, labelOf, { force: again > 0 }).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); });
+  if (mine) Gate.after(() => Sys.rollNow(req, labelOf, { force: again > 0 }).catch((err) => { console.warn(`${MOD} | tactics: roll dialog`, err); ui.notifications?.warn(t("ITAC.warn.rollDialog")); }));      // ANSC: thrown once the dice in the air on this client have landed (relay.mjs onRoll)
   else game.socket.emit(CHANNEL, { k: R.KIND.roll, to: e.users, req, ...(again > 0 ? { again } : {}) }, { recipients: e.users });      // D120: `again` = the same request once more (rollwatch-pure)
 }
 async function perform(combat, e) {

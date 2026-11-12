@@ -15,6 +15,8 @@
 import * as Zones from "../zones-adapter.mjs";
 import * as Store from "../store.mjs";
 import * as CP from "./camera-pure.mjs";
+import * as Gate from "./dicegate.mjs";
+import { isResultEvent } from "./wait-pure.mjs";
 import * as Moment from "../../moment.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics camera) |`;
@@ -116,6 +118,14 @@ function onEvent(ev) {
     const s = CP.eventShot(ev, was), c = CP.eventCue(ev, was), combat = s || c ? Store.combatOf?.(key) ?? game.combats?.get(key) : null;
     if (!combat) return;
     if (s && Zones.hasShot()) { queueShot(ev, s, c, combat); return; }                           // U125 (e): in order, a result after its dice
+    /* ANSC (U10-9 + FXJ-3): the quiet cue of a result (no staged shot: the map has none, or the user turned shots down) waits for the 3D
+       dice of the roll on this client too, so the view does not swing to the one hit before the dice say it (ui/dicegate.mjs) */
+    if (isResultEvent(ev) && Gate.on()) { Gate.after(() => { try { cueNow(ev, s, c, combat); } catch (e) { console.warn(LOG, "event failed", e); } }); return; }
+    cueNow(ev, s, c, combat);
+  } catch (e) { console.warn(LOG, "event failed", e); }
+}
+function cueNow(ev, s, c, combat) {
+  try {
     if (s) { const spec = playShot(combat, s, c); log.push({ at: Date.now(), why: s.beat, shot: true, focus: s.focus, sent: !!spec, ev: ev.type }); if (log.length > 40) log.shift(); return; }
     if (!c || Date.now() - (shown.get(shownKey(ev.inst, c.focus)) ?? 0) < SHOWN_MS) return;      // the shot of this blow has just shown it
     if ((waiting.get(shownKey(ev.inst, c.focus)) ?? 0) > 0) return;                                         // U125 (e): its shot waits for the dice: the view does not go first
