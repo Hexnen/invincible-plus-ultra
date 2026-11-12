@@ -21,10 +21,36 @@ export function owedRolls(state) {
   }
   return out;
 }
+/** H3-3: the rolls that are in but still pushable: [{ inst, key, rid, rec }]. They wait for the roller's push or accept, which reach the
+    executor only as the system's re-write of the chat card (or its new card): if that is lost, the state keeps the pushable result for
+    good. The watch compares them with the card in the chat (`readFor`). */
+export function openRolls(state) {
+  const out = [];
+  for (const i of state?.stack ?? []) for (const [key, r] of Object.entries(i?.rolls ?? {})) {
+    if (!r?.req?.rid || r.sixes == null || r.forced != null || r.pushable !== true) continue;
+    out.push({ inst: i.id, key, rid: r.req.rid, rec: r });
+  }
+  return out;
+}
+/* the card in the chat says more than the state: a push the state has not (more pushes), or the roll accepted (no longer pushable) */
+const ahead = (m, rec) => !!m && Number.isFinite(m.sixes) && ((Number(m.pushed) || 0) > (rec.pushed ?? 0) || (m.pushable !== true && m.messageId === rec.messageId));
 /** What to do now. memo = { fed: Map(messageId -> n), sent: Map(rid -> { n, at }) } (kept by the caller between calls, changed here);
     messageFor(rid) -> the id of a chat message carrying that request id, or null. -> [{ do: "feed", messageId, rid } | { do: "resend", inst, key, rid, n }] */
-export function plan(state, now, { messageFor, memo }) {
+export function plan(state, now, { messageFor, readFor = null, memo }) {
   const acts = [];
+  /* H3-3: a pushable roll whose card in the chat is ahead of the state for FEED_AFTER (the hook's own way had its time) is fed in again,
+     at most FEED_MAX times per state of that card. memo.ahead: "<messageId>:<pushed>:<pushable>" -> when first seen ahead */
+  memo.ahead ??= new Map();
+  for (const o of readFor ? openRolls(state) : []) {
+    const m = readFor(o.rid);
+    if (!ahead(m, o.rec)) continue;
+    const k = `${m.messageId}:${Number(m.pushed) || 0}:${m.pushable === true ? 1 : 0}`, first = memo.ahead.get(k);
+    if (first == null) { memo.ahead.set(k, now); continue; }
+    if (now - first < FEED_AFTER) continue;
+    const n = memo.fed.get(k) ?? 0;
+    if (n < FEED_MAX) { memo.fed.set(k, n + 1); acts.push({ do: "feed", messageId: m.messageId, rid: o.rid }); }
+  }
+  if (memo.ahead.size > 300) memo.ahead.clear();
   for (const o of owedRolls(state)) {
     const age = now - o.at;
     if (!(age >= FEED_AFTER)) continue;

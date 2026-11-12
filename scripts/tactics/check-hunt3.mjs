@@ -58,6 +58,20 @@ const give = (T, cid, ...names) => { const c = T.c[cid]; c.kit = KP.build({ item
   eq([at(71999), at(72000), at(91999), at(92000), at(500000)], [[], [2], [], [3], []], "H3-5: ... then on the schedule's own gaps after that send (12 s, 20 s), then the GM's \"Ask again\"");
 }
 
+/* ---- H3-3 (the fix, pure): a pushable roll whose card in the chat is ahead of the state (accepted / pushed) is fed after FEED_AFTER, at most twice */
+{
+  const rec = { who: "H1", sixes: 1, pushed: 0, pushable: true, messageId: "m1", req: { rid: "r1", at: 0, users: ["p1"] } };
+  const st = { stack: [{ id: "a1", rolls: { attack: rec } }] }, memo = { fed: new Map(), sent: new Map() };
+  let card = { messageId: "m1", sixes: 1, pushed: 0, pushable: true };
+  const at = (ms) => RW.plan(st, ms, { messageFor: () => "m1", readFor: () => card, memo }).map((a) => a.do);
+  eq([at(10000), at(20000)], [[], []], "H3-3: a pushable roll whose card says the same waits for the roller (nothing fed, nothing asked)");
+  card = { ...card, pushable: false };
+  eq([at(21000), at(23000), at(23500), at(30000), at(40000)], [[], [], ["feed"], ["feed"], []], "H3-3: the card accepted, the state not: fed once the hook had its time (2.5 s), at most twice");
+  card = { messageId: "m2", sixes: 2, pushed: 1, pushable: false };
+  eq([at(41000), at(44000)], [[], ["feed"]], "H3-3: the card pushed (the system's new card), the state not: fed too");
+  eq(RW.openRolls({ stack: [{ id: "a1", rolls: { x: { ...rec, pushable: false }, y: { ...rec, forced: 1 }, z: rec } }] }).map((o) => o.key), ["z"], "H3-3: only a roll that is in, pushable and not set by the GM is watched this way");
+}
+
 /* ---- H3-4: the splash and a book villain's Resolve */
 {
   const sp = src("../splash/main.mjs");

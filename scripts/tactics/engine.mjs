@@ -209,7 +209,7 @@ function onRollMessage(message, { again = false, late = false } = {}) {
 }
 /* D120: THE ROLL WATCH (rollwatch-pure.mjs): a roll still owed whose answer is in the chat is fed in again; one with no answer is asked
    for again with the same request id. Nobody has to notice "Waiting for ..." for a roll lost on the wire. Executor only. */
-const watchMemo = { fed: new Map(), sent: new Map() };
+const watchMemo = { fed: new Map(), sent: new Map(), ahead: new Map() };
 export function watchRolls(now = Date.now()) {
   try {
     if (!Store.iAmExecutor()) return [];
@@ -219,7 +219,7 @@ export function watchRolls(now = Date.now()) {
     for (const combat of game.combats ?? []) {
       const state = Store.stateOf(combat), msgOf = (rid) => byRid.get(`${combat.id}|${rid}`) ?? null;
       if (!state?.stack?.length) continue;
-      for (const a of RW.plan(state, now, { messageFor: (rid) => msgOf(rid)?.id ?? null, memo: watchMemo })) {
+      for (const a of RW.plan(state, now, { messageFor: (rid) => msgOf(rid)?.id ?? null, readFor: (rid) => (msgOf(rid) ? Sys.readRollMessage(msgOf(rid)) : null), memo: watchMemo })) {
         if (a.do === "feed") onRollMessage(msgOf(a.rid), { again: true });
         else {
           const inst = state.stack.find((i) => i.id === a.inst), rec = inst?.rolls?.[a.key];
