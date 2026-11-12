@@ -9,7 +9,22 @@ import { heroActor } from '../tactics/source.mjs';
 export function speakerToken(message) {
   try { const sp = message?.speaker ?? {}; return (sp.scene && sp.token ? globalThis.game?.scenes?.get?.(sp.scene)?.tokens?.get?.(sp.token) : null) ?? null; } catch { return null; }
 }
-export const heroSpeaker = (message) => heroActor(message?.speakerActor ?? null, speakerToken(message), globalThis.game?.users ?? []);
+/* przywołani sojusznicy bohatera stoją po stronie bohaterów [B1808]: jak w silniku (engine.isNpc), strona przywołującego z flagi uczestnika walki */
+function summoner(message) {
+  try {
+    const tid = message?.speaker?.token;
+    if (!tid) return null;
+    for (const c of globalThis.game?.combats ?? []) {
+      const of = c.combatants?.find?.((x) => x.tokenId === tid)?.flags?.['invincible-plus-ultra']?.tactics?.summonOf, s = of ? c.combatants.get(of) : null;
+      if (s) return { actor: s.actor ?? null, token: s.token ?? null };
+    }
+  } catch { /* brak walki */ }
+  return null;
+}
+export function heroSpeaker(message) {
+  const users = globalThis.game?.users ?? [], sm = summoner(message);
+  return heroActor(message?.speakerActor ?? null, speakerToken(message), users) || (!!sm && heroActor(sm.actor, sm.token, users));
+}
 /** Resolve, który splash może upublicznić (flaga wiadomości, wskaźnik): tylko strony bohaterów; Resolve przeciwników nie jest ujawniany */
 export const publicResolve = (message) => (heroSpeaker(message) ? message.speakerActor.system?.derived?.resolve ?? null : null);
 

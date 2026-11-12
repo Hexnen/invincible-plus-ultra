@@ -224,6 +224,11 @@ async function closeAll() {
     const got = { engine: !ctx.c(cid).npc, parts: parts.find((p) => p.id === cid)?.hero === true, source: Src.heroActor(a, combatants.get(cid).token, game.users), splash: Rd.heroSpeaker(msg), resolve: Rd.publicResolve(msg) != null };
     eq(got, { engine: hero, parts: hero, source: hero, splash: hero, resolve: hero }, `H3-4: ${what}: every reader says ${hero ? "heroes' side (its Resolve may show)" : "GM's side (its Resolve stays hidden)"}`);
   }
+  /* a hero's summoned group (a minions actor): the engine puts it on the summoner's side [B1808]; the splash too */
+  { const g = mkActor("gang", "minions", null, 4); actors.push(g); const cb = mkCb("cb_gang", g); cb.token.disposition = -1; cb.flags = { [MOD]: { tactics: { summonOf: "cbH1" } } }; cb.parent = combat; combatants.push(cb); tokens.push(cb.token);
+    const msg = { speakerActor: g, speaker: { scene: "s", token: "tkcb_gang" } };
+    eq([!Engine.context(combat).c("cb_gang").npc, Rd.heroSpeaker(msg)], [true, true], "H3-4: a hero's summoned group: the engine and the splash both say heroes' side");
+    combatants.splice(combatants.indexOf(cb), 1); }
   actors.get("vil").prototypeToken = { disposition: -1 };
   const vilMsg = { speakerActor: actors.get("vil"), speaker: { scene: "s", token: "tkcb_vil" }, rolls: [] };
   eq(Rd.publicResolve(vilMsg), null, "H3-4: the splash puts no Resolve of a book villain into the public message flag");
