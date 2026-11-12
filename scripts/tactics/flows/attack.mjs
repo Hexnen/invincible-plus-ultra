@@ -682,9 +682,10 @@ export const steps = {
   stunts(v, inst) {
     const I = withOut(inst), R = K.result(I), kind = kindOf(I);
     const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = budgetOf(I, hit);
-    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => (ws === "none" ? [] : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
-    if (!hit.length || budget < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
-    const stuntCard = () => ({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: budget, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } });
+    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => capped(II, ws === "none" ? [] : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
+    const most = Math.min(budget, roomOf(I, hit));                                              // D119: an area shot pays each target's stunts from its own sixes
+    if (!hit.length || most < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
+    const stuntCard = () => ({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: most, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } });
     if (!I.data.pk?.stunts) { R.prompts.push(stuntCard()); R.wait = true; return R; }
     if (!K.isAnswered(v, I, "stunts")) {
       /* U121: the card says what is true NOW: somebody came into reach (a combatant added, moved, revealed) or left it since it was made:
@@ -948,6 +949,13 @@ function ctxFor(v, I, t) {
 }
 /* the shared pool: an ordinary attack has the sixes of its one target; an area attack or full auto the attack's own sixes beyond the first [R14] */
 const budgetOf = (I, hit) => (I.data.multi ? Math.max(0, I.data.budget ?? 0) : Math.max(0, ...hit.map((t) => I.data.out[t].stunts)));
+/* D119 [A-3], [R14]: an area or full-auto attack shares the attacker's spare sixes, but a target takes no more stunts than the sixes left
+   after its own dodge (minus the one that hits: out[t].stunts). The card offers nothing validate() would refuse: the stunts of a target
+   with none left (or of somebody who is not one of the attack's targets, an extra opponent) are greyed, and the card asks for no more
+   picks than all the targets together can take. A single-target attack is untouched (its budget is its only target's). */
+const capOf = (I, t) => (I.decl.targets.includes(t) && I.data.out[t]?.hit ? Math.max(0, I.data.out[t].stunts ?? 0) : 0);
+const roomOf = (I, hit) => (I.data.multi ? hit.reduce((n, t) => n + capOf(I, t), 0) : Infinity);
+const capped = (I, list) => (!I.data.multi ? list : list.map((o) => (o.disabled || capOf(I, o.data?.target) >= 1 ? o : { ...o, disabled: I.decl.targets.includes(o.data?.target) ? "noSixLeft" : "notHit" })));
 /** Options of the stunt prompt. Ids: "<stunt>@<target>" for a target that was hit; "<stunt>@<target>|<extra>" for Bang Heads / Trick Shot naming the extra
     opponent; "<stunt>@<extra>" for a further stunt on an extra opponent (legal only together with the pick that brings that opponent in). */
 function optionsAll(v, I, hit) {

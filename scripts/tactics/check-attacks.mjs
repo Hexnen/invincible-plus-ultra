@@ -63,7 +63,7 @@ const base = (extra = () => {}, more = []) => { const T = new Table(); T.hero("H
   await T.roll("attack", 3); await T.roll("def:N1", 2);
   const sp = T.prompt("stunts");
   eq([sp.max, sp.data.multi], [2, "fullAuto"], "B: one pool of spare sixes for all targets [R14]");
-  eq(code(await T.req("p1", { op: "answer", prompt: sp.id, value: ["doubleDamage@N1"] })), "illegal", "B: a target that dodged down to one six takes no stunt [A-3]");
+  eq(code(await T.req("p1", { op: "answer", prompt: sp.id, value: ["doubleDamage@N1"] })), "badInput", "B: a target that dodged down to one six takes no stunt [A-3] (D119: its stunts are greyed on the card)");
   eq(code(await T.req("p1", { op: "answer", prompt: sp.id, value: ["doubleDamage@N2", "suppressed@N2", "doubleDamage@H2"] })), "badInput", "B: no more stunts than spare sixes");
   const hp = [T.c.N1.health, T.c.N2.health, T.c.H2.health];
   eq(code(await T.req("p1", { op: "answer", prompt: sp.id, value: ["doubleDamage@N2", "doubleDamage@H2"] })), "ok", "B: the stunts are shared out");

@@ -77,6 +77,7 @@ export const EN_ATTACKS = {
   "ITAC.reason.sharp": "needs a sharp weapon",
   "ITAC.reason.emptyZone": "nothing in this zone to trap them with",
   "ITAC.reason.targetBudget": "too many stunts on a target that dodged",
+  "ITAC.reason.noSixLeft": "its dodge left no six for a stunt",
 
   "ITAC.mod.weapon": "Weapon",
   "ITAC.mod.wreck": "Wrecking the zone",
@@ -211,6 +212,7 @@ export const PL_ATTACKS = {
   "ITAC.reason.sharp": "potrzebna ostra broń",
   "ITAC.reason.emptyZone": "w tej strefie nie ma czym unieruchomić celu",
   "ITAC.reason.targetBudget": "za dużo wyczynów na celu, który zrobił unik",
+  "ITAC.reason.noSixLeft": "unik nie zostawił szóstki na wyczyn",
 
   "ITAC.mod.weapon": "Broń",
   "ITAC.mod.wreck": "Demolowanie strefy",
