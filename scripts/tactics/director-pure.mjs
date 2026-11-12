@@ -173,6 +173,10 @@ async function handle0({ state, log }, input, host) {
       let st0 = state, lg0 = lg;
       const pre = [];
       if (input?.t === "req" && input.req?.op === "chaseRound" && input.user?.staff && state.kind === "chase" && state.chase?.rolled === state.round && !state.stack.length && state.phase === "turns") {
+        /* D101 (spec 14: a refusal changes nothing): the roll is judged BEFORE the next round is opened; opening it runs the clocks of the
+           challenges on the sheets and opens the round's cards, which a refusal afterwards could not take back */
+        const probe = E.chaseRoundProbe(state, host);
+        if (!probe.ok) return out(state, lg, probe);
         const nr = await round(state, lg, { type: "nextRound", force: true }, input.user, host);     // P7 [B3432]: one chase roll a round; the next one opens the next round
         if (nr.ok && !nr.same && nr.state) { st0 = nr.state; lg0 = nr.log; pre.push(...nr.events); }
       }

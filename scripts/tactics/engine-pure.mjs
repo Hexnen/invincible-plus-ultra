@@ -1304,6 +1304,14 @@ async function opChaseRound(X) {
   emit(X, inst, { type: "actionDeclared", decl: { action: spec.action }, cost: "none", stress: 0, targets: [] });
   return ok({ inst: inst.id });
 }
+/** D101: would the chase roll be legal in the NEXT round (the one the director opens for a second roll in a round)? Pure: nothing is
+    written, no round is opened. -> { ok:true } | the refusal opChaseRound would answer */
+export function chaseRoundProbe(state, host) {
+  const ch = state?.chase;
+  const X = makeX(ch ? { ...state, chase: { ...ch, rolled: null } } : state, null, host, null);
+  const l = FLOWS[Chase.roundSpec().flow].legality(view(X));
+  return l.ok ? { ok: true } : bad("illegal", { reason: l.reason, ...l.params });
+}
 /* P7 [R22] [I12] [B2841]: the end of a round runs the clock of every challenge down by one. One transaction per challenge, so the GM can
    take a tick back; at 0 the "time is up" card of the round driver opens (its answer `run` comes back as the effect `challengeFail`).
    The end-of-round side effects that are due are GM-run instances. Off with the world setting `challengesCombatTime`. */
