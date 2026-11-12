@@ -16,6 +16,8 @@ import * as M from "../mods-pure.mjs";
 import * as ZP from "../zones-pure.mjs";
 import * as K from "./kit.mjs";
 import * as Veh from "./vehicle.mjs";                                                          // P7: a blast that hits a vehicle
+import * as MP from "../movement-pure.mjs";
+import { freeMoveChild } from "./move.mjs";                                                    // Z6: the dodge move [B2526-2527]
 
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 const fine = { ok: true, reason: null, params: {}, gates: [], notes: [] };
@@ -56,7 +58,7 @@ export const blast = {
         const key = `dodge:${t}`, tf = v.facts.c(t);
         if (I.data.def[t] !== undefined) continue;
         if (!I.data.pk?.[key]) {
-          if (!dodgeOf(v, t).ok) { I.data.def[t] = null; continue; }                              // cannot dodge, or nothing to pay with: not asked (plan 5.2 step 4)
+          if (!dodgeOf(v, t).ok || K.phased(v.state, t)) { I.data.def[t] = null; continue; }      // cannot dodge, or nothing to pay with: not asked (plan 5.2 step 4); Z2 [B1941]: nothing to dodge for one who is phased
           const pol = v.state.npc?.[t]?.dodge, p = { key, kind: "hazardDodge", to: K.addressee(v, t), about: t, options: [{ id: "dodge", label: "ITAC.action.dodge", cost: "quick" }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { hazard: hzOf(I).kind, dice: poolOf(hzOf(I)) } };
           if (tf.npc && pol === "always") p.auto = { option: "dodge", reason: "npcDefault" }; else if (tf.npc && (pol === "never" || K.quickGroup(v, t))) p.auto = { option: K.PASS, reason: K.quickGroup(v, t) ? "quick" : "npcDefault" };      // U61
           R.prompts.push(p); waiting = true; continue;
@@ -88,7 +90,7 @@ export const blast = {
       /* S067: a Barrier is an Armor of the character like any other [B1859], [B2682], [R13]: the best one counts, and one that damage gets
          through is gone (as after a hit of the attack flow). The GM's own Armor number leaves the Barrier out of it. */
       const rows = I.decl.targets.map((t) => { const tf = v.facts.c(t), forcedArmor = I.data.forced?.damage?.[t]?.armor, ar = forcedArmor == null ? damage.selectArmor([...(tf.armor ?? []), ...K.barriersOf(v.state, t)], { source: src }) : null; return { id: t, dodgeSixes: I.data.def?.[t] === "dodge" ? K.sixesOf(I, `def:${t}`) : 0, armor: forcedArmor ?? ar.armor, barrier: ar?.source?.barrier ? ar.source : null,
-        vulnerable: (tf.vulnerabilities ?? []).includes(src), immune: immuneTo(tf, src) }; });                 // [B2193], [B1877-1880]: one reading with damage.hitDamage
+        vulnerable: (tf.vulnerabilities ?? []).includes(src) && !K.phased(v.state, t), immune: immuneTo(tf, src) || K.phased(v.state, t) }; });      // [B2193], [B1877-1880]: one reading with damage.hitDamage; Z2 [B1941]: Prolonged Phasing, immune to physical damage
       let out;
       if (h.kind === "blast") out = hazards.blastOutcome({ rating: h.rating, sixes, targets: rows }, dice.seededRng(faces.reduce((a, f) => a * 7 + f, 1 + v.state.round)));       // [B2921-2923]: the dice themselves decide who gets the extra sixes
       else out = { exploded: sixes > 0, base: h.damage, targets: rows.map((r) => { const hit = dice.opposed(sixes, r.dodgeSixes).win; const hd = damage.hitDamage({ base: hit ? h.damage : 0, armor: r.armor, source: src, immunities: r.immune ? [src] : [], vulnerabilities: r.vulnerable ? [src] : [] }); return { id: r.id, hit, doubled: false, raw: hd.raw, taken: hd.taken }; }) };   // [B2876]: a fixed Damage, the surplus is the GM's
@@ -122,6 +124,26 @@ export const blast = {
         if (dm && Veh.afterHit(v, I, R, t, dm)) return R;                                         // [B3221-3248]: component damage, the wreck, the people aboard
         if (dm && K.minionsFate(v, I, R, t, dm, {})) return R;                                    // [B2828]
         if (dm && !Veh.isMachine(v, t) && K.brokenAndCrit(v, I, R, t, dm, {})) return R;
+      }
+      /* Z6 [B2526-2527], [B2922]: a blast is dodged like a shot, so a dodge with more sixes than the blast rolled earns the dodge move:
+         one zone (or within the zone) per six more. The same card and the same free move as after a shot (flows/attack.mjs). */
+      const Z = v.facts.zones;
+      for (const t of I.decl.targets) {
+        const n = I.data.def?.[t] === "dodge" ? K.sixesOf(I, `def:${t}`) - (I.data.sixes ?? 0) : 0, tf = v.facts.c(t), key = `dodgeMove:${t}`;
+        if (!(n > 0) || !tf || M.outOfAction(v.state, t, tf)) continue;
+        if (!I.data.pk?.[key]) {
+          const zs = Z ? MP.moveOptions(Z, v.state, t, tf, undefined, { free: n }).filter((x) => !x.disabled && !x.area).slice(0, 50) : [];
+          R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, t), about: t, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated } })),
+            { id: "move", label: "ITAC.opt.dodgeMove", data: { zones: n } }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { zones: n } });
+          R.wait = true; return R;
+        }
+        if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
+        if (!K.flag(I, key)) {
+          K.setFlag(I, key);
+          const a = K.answerId(v, I, key), pick = K.promptOf(v, I, key)?.options?.find((x) => x.id === a)?.data;
+          if (a === "move") (I.data.notes ??= []).push({ note: "dodgeMoveByHand", target: t, zones: n });      // no map, or a place the options do not name: by hand
+          else if (pick?.to) { R.push = freeMoveChild(t, pick.to, pick.mode, n); return R; }
+        }
       }
       const surplus = h.kind === "area" && I.data.exploded ? I.data.sixes - 1 : 0;              // [B2876]: resolved as an area attack, the GM distributes the stunts
       if (surplus > 0) {
@@ -310,7 +332,7 @@ export const disease = {
 export function specOf(run, subject, v) {
   if (!run || !TYPES.includes(run.type)) return null;
   const sub = subject ?? {}, zone = typeof (run.zone ?? sub.zone) === "string" ? String(run.zone ?? sub.zone).slice(0, 40) : undefined;
-  const targets = (Array.isArray(run.targets) ? run.targets : P1.isId(sub.combatant) ? [sub.combatant] : zone ? (v.facts.inZoneKey?.(zone) ?? []).filter((id) => { const f = v.facts.c(id); return !!f && f.kind !== "challenge" && f.present !== false && !(f.kind === "minions" && !(Number(f.health) > 0)); }) : []).filter((id, i, all) => P1.isId(id) && all.indexOf(id) === i).slice(0, 40);      // D92: each target once
+  const targets = (Array.isArray(run.targets) ? run.targets : P1.isId(sub.combatant) ? [sub.combatant] : zone ? (v.facts.inZoneKey?.(zone) ?? []).filter((id) => { const f = v.facts.c(id); return !!f && f.kind !== "challenge" && f.present !== false && !(f.kind === "minions" && !(Number(f.health) > 0)) && !K.notArrived(v.state, id); }) : []).filter((id, i, all) => P1.isId(id) && all.indexOf(id) === i).slice(0, 40);      // D92: each target once
   const mk = (flow, hz, tg = targets) => ({ action: run.type, flow, actor: null, decl: { ...blank, action: run.type, targets: tg, ...(zone ? { zone } : {}) }, data: { hz: { ...hz, ...(zone ? { zone } : {}), ...(typeof run.name === "string" ? { name: run.name.slice(0, 80) } : {}) } }, initiator: { type: "hazard", id: run.type } });
   switch (run.type) {
     case "blast": return mk("blast", { kind: "blast", rating: int(run.rating, 1, 20, 4), ...(typeof run.source === "string" ? { source: run.source.slice(0, 24) } : {}) });
@@ -330,7 +352,7 @@ const slug = (s) => String(s).replace(/[^A-Za-z0-9_@-]/g, "");
 export function derived(state, facts, point) {
   const out = [], Z = facts.zones ?? null;
   /* D110 (spec, minions: a group with no members is out): a fire burns somebody who is there, never an emptied group */
-  const there = (cid) => { const c = facts.c(cid); return !!c && c.present !== false && !(c.kind === "minions" && !(Number(c.health) > 0)); };
+  const there = (cid) => { const c = facts.c(cid); return !!c && c.present !== false && !(c.kind === "minions" && !(Number(c.health) > 0)) && !K.notArrived(state, cid); };      // Z12 [B1816]: not before they arrive
   try {
     if (point.at === "roundStart") {
       const burn = Z ? burningZones(Z) : [], hit = new Set();

@@ -100,7 +100,7 @@ function profileOf(item, row, a, lv, attrs, many = false) {
     toStress: h.toStress === 1, ignoreArmor: h.ignoreArmor === 1 || a.bypass === true, halveArmor: h.halveArmor === 1, noDamage: h.noDamage === 1, pierce: h.pierce === 1,
     stunts: h.stunts ?? undefined, immuneHuge: h.immuneHuge === 1, always: h.always ?? undefined, state: row && row.cat !== "gear" ? row.state : "auto" };
   if (h.onHit) p.onHit = h.onHit.status ? { status: h.onHit.status, data: h.onHit.lv ? { dice: at(h.onHit.lv, lv) } : h.onHit.data } : { ...h.onHit };
-  if (h.throws) p.onHit = { throw: at(h.throws, lv) };
+  if (h.throws) p.onHit = { throw: at(h.throws, lv), ...(h.zones ? { zones: at(h.zones, lv) } : {}) };      // Z11 [B1822], [B1826-1828]: damage at each impact, and how far
   if (fam === "slug" && range && range[1] > 0) p.reach = range[1];
   if (book?.stunEffect) p.stunEffect = true;                                         // [B2576], [B2583]; a mark, the book gives it no mechanics [A25]
   if (book?.singleUse) p.singleUse = true;                                           // [B2541]
@@ -178,7 +178,8 @@ export function build(src = {}) {
       if (row?.mounted && !attacks.length) { /* a vehicle's weapon: fired through the vehicle's own actions (P7) */ }
       /* a boost of the bare slugfest attack (Strike) */
       if (row?.opt?.on === "slug" && x.parent) {
-        if (row.opt.optional) kit.weapons.push({ id: `unarmed~${it.id}`, item: it.id, name: rec.name, of: rec.of, fam: "slug", attr: null, bonus: 0, damage: null, range: null, stress: row.opt.stress ?? 0, state: row.state, ...Object.fromEntries(Object.entries(row.opt.patch).map(([k, v]) => [k, v === 1 ? true : v])) });
+        const strike = known.find((k) => k.it === x.parent)?.row?.key === "strike";                // Z14 [B1622]: a boost of STRIKE, gone without the wind-up
+        if (row.opt.optional) kit.weapons.push({ id: `unarmed~${it.id}`, item: it.id, name: rec.name, of: rec.of, fam: "slug", attr: null, bonus: 0, damage: null, range: null, stress: row.opt.stress ?? 0, state: row.state, ...(strike ? { strike: true } : {}), ...Object.fromEntries(Object.entries(row.opt.patch).map(([k, v]) => [k, v === 1 ? true : v])) });
         else Object.assign(kit.unarmed, Object.fromEntries(Object.entries(row.opt.patch).map(([k, v]) => [k, v === 1 ? true : v])));
       }
       /* the row's own actions; else what the sheet's use / roll buttons say, as an action whose effect the GM confirms */

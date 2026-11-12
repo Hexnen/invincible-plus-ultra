@@ -64,7 +64,7 @@ function makeFacts(combat) {
   const byToken = (token) => combat.combatants.find((x) => x.tokenId === (token?.id ?? token?.document?.id))?.id ?? null;
   return {
     c,
-    weapon: (cid, ref) => (ref == null || ref === "unarmed" ? { id: "unarmed", name: "unarmed", bonus: 0, damage: null, range: null, sharp: false, ...(c(cid)?.kit?.unarmed ?? {}) } : Sys.weaponFacts(Sys.actorOf(combat.combatants.get(cid)), ref, c(cid)?.kit ?? null)),
+    weapon: (cid, ref) => (ref == null || ref === "unarmed" ? { id: "unarmed", name: "unarmed", bonus: 0, damage: null, range: null, sharp: false, ...(c(cid)?.kit?.unarmed ?? {}) } : Sys.weaponFacts(Sys.actorOf(combat.combatants.get(cid)), ref, c(cid)?.kit ?? null, combat)),      // Z17: a weapon of the vehicle aboard too
     range: (a, b) => { const ta = tok(a), tb = tok(b); return ta && tb ? Zones.range(ta, tb) : undefined; },
     /* the combatant's 3-D zone: its spot string, and the zone's states and emptiness as the map reports them */
     zone: (cid) => { const p = tok(cid) ? Zones.placeOf(tok(cid)) : null; const z = p?.zone ? Zones.zoneOf(p.zone) : null; return p ? { spot: p.spot ?? null, key: p.zone ?? null, level: p.level ?? null, area: p.area ?? null, airborne: p.airborne === true, states: Mv.levelStates(tok(cid), z), empty: z?.empty === true, terrain: typeof z?.terrain === "string" ? z.terrain : "", rooftop: z?.rooftop === true } : null; },   // terrain and rooftop: what wrecking the zone reads [P4]

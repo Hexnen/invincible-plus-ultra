@@ -152,11 +152,33 @@ export const drive = {
   },
 };
 
+/* ------------------------------------------------------------------ the vehicle's own weapons (Z17) */
+/* Z17 [B3147], [B3149-3150], [B3439]: a vehicle's weapons (the system's `vehicleWeapon` items on the vehicle) are fired by its crew,
+   driver or pilot. An attacker names one as the weapon `veh~<vehicle>~<item>`; the facts read it off the vehicle (engine.mjs). */
+export const vehRef = (vid, item) => `veh~${vid}~${item}`;
+export const parseVehRef = (ref) => { const m = /^veh~([A-Za-z0-9_-]{1,40})~([A-Za-z0-9_.-]{1,80})$/.exec(typeof ref === "string" ? ref : ""); return m ? { vehicle: m[1], item: m[2] } : null; };
+/** -> a refusal for firing the vehicle weapon of the declaration, or null (not one, or fine) */
+export function weaponLegality(v, inst) {
+  const r = parseVehRef(inst.decl?.weapon);
+  if (!r) return null;
+  if (rideOf(v.state, inst.actor)?.vehicle !== r.vehicle) return bad("notAboard");                  // [B3147]: the crew, driver or pilot of that vehicle
+  const rec = vehOf(v.state, r.vehicle);
+  if (rec.wrecked) return bad("vehicleWrecked");
+  if (rec.off?.weapon) return bad("weaponDisabled");                                                  // [B3240-3248]: the component damage "weapon disabled"
+  return null;
+}
 /* ------------------------------------------------------------------ what flows/attack.mjs asks */
+/** Z16 [B3144]: a mount is handled with the creature's AGILITY, not the rider's: the vehicle's `mountAgility` (the facts: the GM's flag,
+    else the book's table row of that name, a typical horse 4). -> number | null (no mount) */
+export const mountAgility = (v, vehicleId) => { const n = v.facts.c(vehicleId)?.vehicle?.mountAgility; return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null; };
+/** the AGILITY a roll of handling `cid`'s ride starts from: the mount's when it rides one, else null (its own) */
+export const handlingBase = (v, cid) => { const ride = rideOf(v.state, cid); return ride && ride.vehicle ? mountAgility(v, ride.vehicle) : null; };
 const profileOf = (v, cid) => {
-  const ride = rideOf(v.state, cid), vf = ride ? v.facts.c(ride.vehicle) : null;
-  return vf ? vehicles.ramProfile({ agility: v.facts.c(cid)?.attrs?.agility ?? 0, vehicle: { maneuver: vf.vehicle?.maneuver ?? 0, durability: vf.maxHealth ?? 0 } }) : null;      // [I7]: from the Durability rating, not the points left
+  const ride = rideOf(v.state, cid), vf = ride ? v.facts.c(ride.vehicle) : null, mount = vf ? mountAgility(v, ride.vehicle) : null;
+  return vf ? vehicles.ramProfile({ agility: v.facts.c(cid)?.attrs?.agility ?? 0, vehicle: { maneuver: vf.vehicle?.maneuver ?? 0, durability: vf.maxHealth ?? 0, ...(mount != null ? { mount: true, mountAgility: mount } : {}) } }) : null;      // [I7]: from the Durability rating, not the points left
 };
+/** Z16 [B3144]: the base of the attack roll of a ram made on a mount (the creature's AGILITY), else null */
+export const attackRollBase = (v, inst) => (inst.data?.kind === "ram" ? handlingBase(v, inst.actor) : null);
 /** a vehicle has no actions of its own: it does not block or dodge, and it is wrecked, not Broken [B3221-3222] */
 export const isMachine = (v, cid) => v.facts.c(cid)?.kind === "vehicle";
 /** -> a refusal, or null (nothing to say) */
@@ -219,7 +241,7 @@ export function afterHit(v, I, R, t, dm) {
     case "severeSpin": {                                                                         // the operator's AGILITY roll, no action; a failure wrecks the vehicle
       if (!rec.driver || !people.includes(rec.driver)) { if (once(`spin:${t}:none`)) st.wrecked = true; break; }
       const key = `spin:${t}`;
-      if (!K.rollOf(I, key)) { const m = tf.vehicle?.maneuver ? [{ source: "maneuverability", dice: tf.vehicle.maneuver }] : []; R.effects.push(K.rollEffect(key, rec.driver, "agility", K.buildPool(v, I, key, rec.driver, "agility", m, {}).pool, { passive: true, label: "ITAC.roll.spin" })); R.wait = true; return true; }   // [B2940], [A-2]
+      if (!K.rollOf(I, key)) { const m = tf.vehicle?.maneuver ? [{ source: "maneuverability", dice: tf.vehicle.maneuver }] : []; R.effects.push(K.rollEffect(key, rec.driver, "agility", K.buildPool(v, I, key, rec.driver, "agility", m, { base: mountAgility(v, t) }).pool, { passive: true, label: "ITAC.roll.spin" })); R.wait = true; return true; }   // [B2940], [A-2]
       if (!K.rollFinal(I, key)) { R.wait = true; return true; }
       if (once(`${key}:read`) && !(K.sixesOf(I, key) > 0)) st.wrecked = true;
       break;

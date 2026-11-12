@@ -149,7 +149,7 @@ export function install(h) {
     Zones.rulesDriver({ id: MOD, title: "Invincible Plus Ultra", fireRound: async () => { ui.notifications?.info(t("ITAC.move.fireByTactics")); }, wreck: () => "" });   // the map stops rolling fire and showing wrecking numbers [G-Z9]
     /* `levels`: the map also holds a level change made with its token HUD (zones-api.md section 14); a map that does not know the option ignores it */
     Zones.tactical({ gm: true, levels: true, when: (td) => !!h.cid(td) && h.state()?.mode === "tactical" && !h.state()?.free?.[h.cid(td)],
-      profile: (td) => { const m = MP.modesOf(h.c(h.cid(td)) ?? {}); const best = m.reduce((a, b) => ((b.profile.stressZones ?? b.profile.zones) > (a.profile.stressZones ?? a.profile.zones) ? b : a), m[0]); return best ? MP.apiProfile(best.profile, { stress: true, force: true }) : { way: "walk", speed: 1 }; },
+      profile: (td) => { const m = MP.modesOf(h.c(h.cid(td)) ?? {}); const best = m.reduce((a, b) => ((b.profile.stressZones ?? b.profile.zones) > (a.profile.stressZones ?? a.profile.zones) ? b : a), m[0]); return best ? MP.apiProfile(best.profile, { stress: true, force: true, big: MP.bigFor(h.c(h.cid(td))) }) : { way: "walk", speed: 1 }; },
       confirm: (ctx) => onDrag(h, ctx), place: (ctx) => { const cid = h.cid(ctx?.token?.document ?? ctx?.token); if (cid && ctx?.inverse) h.request({ op: "placed", combatant: cid, inverse: ctx.inverse, zone: ctx.to?.zone ?? null }); } });      // W1 (U44): the GM's Alt-drop is journaled, so "undo" takes it back
     on = true;
   } catch (err) { console.warn(`${MOD} | tactics: movement`, err); }

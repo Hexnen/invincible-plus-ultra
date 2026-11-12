@@ -23,7 +23,7 @@ import * as P1 from "../economy-pure.mjs";
 import * as MP from "../movement-pure.mjs";
 import * as K from "./kit.mjs";
 import { hazardChild } from "./move.mjs";
-import { rideOf, vehOf, occupants } from "./vehicle.mjs";
+import { rideOf, vehOf, occupants, mountAgility } from "./vehicle.mjs";
 
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 const fine = { ok: true, reason: null, params: {}, gates: [], notes: [] };
@@ -60,7 +60,8 @@ function unitFacts(v, id) {
   if (!c || c.present === false) return null;
   if (c.kind === "vehicle") {
     const rec = vehOf(v.state, id), d = rec.driver ? v.facts.c(rec.driver) : null;
-    return d && !rec.wrecked && !rec.off?.engine ? { id, vehicle: 1, roller: rec.driver, speed: Number(c.vehicle?.speed) || 1, agility: d.attrs?.agility ?? 0, maneuver: Number(c.vehicle?.maneuver) || 0 } : null;
+    const mount = mountAgility(v, id);                                                           // Z16 [B3144]: a mount runs on the creature's AGILITY
+    return d && !rec.wrecked && !rec.off?.engine ? { id, vehicle: 1, roller: rec.driver, speed: Number(c.vehicle?.speed) || 1, agility: mount ?? d.attrs?.agility ?? 0, maneuver: Number(c.vehicle?.maneuver) || 0, ...(mount != null ? { mount } : {}) } : null;
   }
   if (c.health <= 0) return null;
   const speed = Math.max(1, ...MP.modesOf(c).map((m) => Number(m.profile?.zones) || 1));
@@ -181,7 +182,7 @@ export const OBSTACLES = Object.freeze(Object.keys(chase.CHASE_OBSTACLES));
 export const roundSpec = (obstacle = null) => ({ action: "chaseRound", flow: "chase", actor: null, decl: { ...blank, action: "chaseRound", targets: [], ...(OBSTACLES.includes(obstacle) ? { obstacle } : {}) }, cause: "gm" });
 const obstacleOf = (I) => (I.data.ch?.obstacle ? chase.CHASE_OBSTACLES[I.data.ch.obstacle] ?? null : null);
 function sideRoll(v, I, R, key, u, attr, { passive = false, mods = [] } = {}) {
-  if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, u.roller, attr, mods, {}); for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to }); R.effects.push(K.rollEffect(key, u.roller, attr, bp.pool, { passive, label: `ITAC.roll.${key.split(":")[0]}`, noPush: !K.mayPush(v, u.roller) })); return "wait"; }      // T046: both sides are active [B3433], each roller under its own push rule [B2231], [B2186] (SWEEP-R3)
+  if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, u.roller, attr, mods, { base: attr === "agility" && Number.isFinite(u.mount) ? u.mount : null }); /* Z16 [B3144] */ for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to }); R.effects.push(K.rollEffect(key, u.roller, attr, bp.pool, { passive, label: `ITAC.roll.${key.split(":")[0]}`, noPush: !K.mayPush(v, u.roller) })); return "wait"; }      // T046: both sides are active [B3433], each roller under its own push rule [B2231], [B2186] (SWEEP-R3)
   return K.rollFinal(I, key) ? "done" : "wait";
 }
 /* CHASE2 groups (ours, G4, G5): the result of a round of groups. Each group against the prey's one roll, as the opposed roll of the plain

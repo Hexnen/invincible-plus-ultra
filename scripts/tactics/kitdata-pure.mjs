@@ -69,7 +69,7 @@ export const ROWS = Object.freeze([
   P("Snare", [1606, 1607, 1608, 1609], "auto", "attack", { atk: { noDamage: 1, stunts: "none", immuneHuge: 1, onHit: { status: "snared", lv: [-2, -3, -4, -5] } } }),
   B("Snare", "Multiple Snares", [1610], "assist", "gmCard"),
   L("Snare", "Immobilize Only", [1611], "auto", "attack", { opt: { patch: { onHitStatus: "trapped" } } }),
-  P("Strike", [1614, 1615, 1616, 1617], "auto", "sheet", { acts: [] }),
+  P("Strike", [1614, 1615, 1616, 1617], "auto", "sheet", { acts: [], pass: { strike: [1, 2, 3, 4] } }),      // Z14: the bonus the sheet's slugfest damage holds, taken off without the wind-up [B1622]
   B("Strike", "Piercing Strike", [1618], "auto", "attack", { opt: { patch: { ignoreArmor: 1 }, stress: 1, optional: 1, on: "slug" } }),
   B("Strike", "Sudden Strike", [1619], "assist", "interrupt"),
   B("Strike", "Deadly Strike", [1620], "auto", "attack", { opt: { patch: { sharp: 1 }, on: "slug" } }),
@@ -104,7 +104,7 @@ export const ROWS = Object.freeze([
   B("Earthquake", "Earth Drift", [1676], "auto", "move", { mv: 1 }),
   P("Electricity Control", [1679, 1680, 1681, 1682, 1683, 1684], "auto", "attack", { atk: { source: "electricity", halveArmor: 1, by: { stun: { noDamage: 1, pierce: 1, halveArmor: 1, onHit: { stun: 1 } } } }, acts: [narr("zone", "full")] }),
   B("Electricity Control", "Discharge", [1685], "assist", "gmCard"),
-  B("Electricity Control", "Body Battery", [1686], "auto", "effect", { acts: [{ k: "battery", cost: "full", roll: { attrs: MENTAL }, effect: { kind: "gainResolve", per: 3, over: 1 }, once: "scene" }] }),
+  B("Electricity Control", "Body Battery", [1686], "auto", "effect", { acts: [{ k: "battery", cost: "full", roll: { attrs: MENTAL }, effect: { kind: "gainResolve", per: 3, over: 1 }, once: "sceneZone" }] }),      // Z7: once per scene in the same zone
   P("Fire Control", [1689, 1690, 1691, 1692, 1693, 1694], "assist", "zone", { atk: { source: "fire", onHit: { burn: 1 } }, pass: { immune: ["fire"] }, acts: [narr("zone", "full")] }),
   burst("Fire Control", "Conflagration", [1695, 1696]),
   B("Fire Control", "Firestarter", [1697], "assist", "zone", { acts: [narr("blaze", "full")] }),
@@ -169,7 +169,7 @@ export const ROWS = Object.freeze([
   B("Protection", "Impervious", [1888], "auto", "passive", { pass: { impervious: 1 } }),
   B("Protection", "Redirecting Blast", [1889], "assist", "interrupt"),
   L("Protection", "Requires Activation (Protection)", [1890], "assist", "toggle", { fx: { cost: "quick", ofParent: 1 } }),
-  P("Regeneration", [1893], "assist", "turn", { pass: { regeneration: 1 }, acts: [{ k: "regen", cost: "none", effect: { kind: "regen" }, once: "round" }] }),
+  P("Regeneration", [1893], "auto", "turn", { pass: { regeneration: 1 } }),      // Z8: heals by itself on each turn (engine-pure, effect "regen"); the button is gone
 
   /* ================================================================ MODIFICATION POWERS [B1896-1989] */
   moveRow("Adhesion", [1900]),
@@ -196,7 +196,7 @@ export const ROWS = Object.freeze([
   B("Intangibility", "Prolonged Phasing", [1941], "auto", "effect", { acts: [{ k: "phased", cost: "quick", effect: { kind: "status", id: "intangible", on: "self", toggle: 1 } }] }),
   B("Intangibility", "Controlled Phasing", [1942], "auto", "effect", { acts: [{ k: "solid", cost: "none", stress: 1, effect: { kind: "mark", id: "solid" } }] }),
   B("Intangibility", "Shared Intangibility", [1943], "assist", "gmCard", { acts: [narr("share", "none", { pick: ["1", "2", "3", "4"], stressPick: 1 })] }),
-  B("Intangibility", "Environment Phasing", [1944], "auto", "effect", { acts: [{ k: "envPhase", cost: "full", target: { who: "enemy", n: [1, 1] }, effect: { kind: "status", id: "trapped", on: "target", data: { dice: -2 } }, sameZone: 1 }] }),
+  B("Intangibility", "Environment Phasing", [1944], "auto", "effect", { acts: [{ k: "envPhase", cost: "full", target: { who: "enemy", n: [1, 1] }, effect: { kind: "status", id: "trapped", on: "target", data: { dice: -2, attr: "strength" } }, sameZone: 1 }] }),      // Z11: STRENGTH with -2 to break free
   P("Life Support", [1947], "assist", "outcome", { cost: "none", pass: { vacuumSafe: 1 } }),
   B("Life Support", "Effective Support", [1948], "hand", "story", { why: "outOfFight" }),
   L("Life Support", "Breathing Only", [1949, 1950], "hand", "story", { why: "outOfFight" }),

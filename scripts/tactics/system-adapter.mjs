@@ -9,7 +9,7 @@
    which wins when present. A renamed or translated talent item needs the flag. */
 import * as S from "./state-pure.mjs";
 import * as O from "./ops-pure.mjs";
-import { weapons } from "../rules/index.mjs";
+import { weapons, vehicles } from "../rules/index.mjs";
 import * as Kit from "./kit-pure.mjs";
 import * as Moves from "./moves-pure.mjs";
 import { note as trace } from "./trace-pure.mjs";
@@ -246,7 +246,7 @@ export function actorFacts(actor) {
   const armors = kind === "vehicle" ? (armorMax > 0 ? [{ id: "armor", armor: armorMax }] : []) : Object.entries(s.bonuses?.armorProtection ?? {}).filter(([, v]) => num(v) > 0).map(([k, v]) => ({ id: String(k).slice(0, 40), armor: num(v), ...(pass.armorOnly && /plasticity/i.test(k) ? { only: pass.armorOnly } : {}) }));
   if (pass.stressArmor > 0) armors.push({ id: "defiance", armor: pass.stressArmor, stress: true });
   /* P7: a challenge counts its time in the unit of the challenges HUD (missing = rounds); a vehicle carries its table row [B2936-2941] */
-  const p7 = kind === "challenge" ? { timeUnit: actor.flags?.[MOD]?.timeUnit ?? "rounds" } : kind === "vehicle" ? { vehicle: { type: s.type ?? "ground", speed: Math.max(1, num(s.speed)), maneuver: num(s.maneuverability), passengers: num(s.passengers),
+  const p7 = kind === "challenge" ? { timeUnit: actor.flags?.[MOD]?.timeUnit ?? "rounds" } : kind === "vehicle" ? { vehicle: { type: s.type ?? "ground", speed: Math.max(1, num(s.speed)), maneuver: num(s.maneuverability), passengers: num(s.passengers), ...mountOf(actor),
     weapons: actor.items.filter((i) => weaponFacts(actor, i.id)?.damage != null).length } } : { powers: actor.items.filter((i) => i.type === "power").map((i) => String(i.name ?? "").slice(0, 60)).slice(0, 40) };
   return {
     kind, npc: !S.heroSide({ type: actor.type, owned: ownersOf(actor).length > 0, disposition: (actor.token ?? actor.prototypeToken)?.disposition }), attrs, ...p7,      // H3-4: the one side rule (the engine's facts set it per token)
@@ -263,9 +263,19 @@ export function actorFacts(actor) {
     major: flags.major === true, immunities: [...(Array.isArray(flags.immunities) ? flags.immunities : []), ...pass.immune], vulnerabilities: [...(Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : []), ...pass.vulnerable],
   };
 }
+/** Z17 [B3147]: one weapon of a vehicle (its `vehicleWeapon` items) as the attack flow needs it; `ref` = "veh~<vehicle>~<item>" */
+const vehicleWeapon = (vehicleActor, ref) => { const item = String(ref ?? "").split("~")[2], w = vehicleActor && item ? weaponFacts(vehicleActor, item, Kit.EMPTY) : null; return w ? { ...w, id: ref, name: String(w.name ?? "").slice(0, 60) } : null; };
+/** Z17: the weapons of the vehicle `vid` for one of its crew (the dock's weapon chips) */
+export const vehicleWeapons = (vehicleActor, vid) => { try { return [...(vehicleActor?.items ?? [])].filter((it) => it.type === "vehicleWeapon").map((it) => vehicleWeapon(vehicleActor, `veh~${vid}~${it.id}`)).filter((w) => w && (w.damage != null || w.range)).slice(0, 12); } catch { return []; } };
+/** Z16 [B3144]: a vehicle that is a mount: the GM's flag `flags.invincible-plus-ultra.tactics.mountAgility` (a number), else the row of the
+    book's vehicle table with that name (Horse: AGILITY 4). -> { mountAgility } | {} */
+function mountOf(actor) {
+  const f = Number(actor?.flags?.[MOD]?.tactics?.mountAgility), row = Object.entries(vehicles.VEHICLES).find(([k]) => k.toLowerCase() === String(actor?.name ?? "").trim().toLowerCase())?.[1];
+  return Number.isFinite(f) && f >= 0 ? { mountAgility: Math.trunc(f) } : row?.mount && Number.isFinite(row.mountAgility) ? { mountAgility: row.mountAgility } : {}; }
 /** A weapon (or attacking power) of the actor as the attack flow needs it. `ref` = item id or uuid. Sharp damage has no system field: the item flag
     `flags.invincible-plus-ultra.tactics.sharp` (set by the GM) carries it [R9]; absent = not sharp. Returns null when the item is not the actor's. */
-export function weaponFacts(actor, ref, kit = null) {
+export function weaponFacts(actor, ref, kit = null, combat = null) {
+  if (combat && /^veh~[^~]+~[^~]+$/.test(String(ref))) return vehicleWeapon(actorOf(combat.combatants.get(String(ref).split("~")[1])), ref);      // Z17 [B3147]: a weapon of the vehicle aboard (flows/vehicle.mjs vehRef)
   const k = kit ?? kitOf(actor), prof = k.weapons.find((w) => w.id === ref) ?? k.weapons.find((w) => w.item === ref && !w.id.includes("+") && !w.id.startsWith("unarmed~"));     // P6: a profile of the kit (level, boosts, what a hit does)
   if (prof) return prof;
   const item = actor?.items?.get?.(ref) ?? actor?.items?.find?.((i) => i.uuid === ref) ?? null;

@@ -37,7 +37,13 @@ const kindOf = (inst) => inst.data.kind ?? "slugfest";
 const usedKey = (cid, w) => M.counterKey.scene(cid, `used:${String(w.item ?? w.id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)}`);
 /** [B2545]: the shooter fired a "no movement" weapon in this round (flows/move.mjs refuses the move) */
 export const FIRED_NO_MOVE = (cid) => M.counterKey.round(cid, "firedNoMove");
-const weaponOf = (v, inst) => v.facts.weapon(inst.actor, inst.decl.weapon ?? "unarmed");
+/* Z14 [B1622] Windup Strike: without the quick action right before, a bare-handed slugfest attack still goes ahead, only without what
+   STRIKE gives it: its damage bonus (the sheet's slugfest damage holds it: kit pass `strike`) and the boosts of the bare attack
+   (Deadly, Toxic, Piercing Strike: the kit marks them). */
+const STRIKE_FREE = Object.freeze({ id: "unarmed", name: "unarmed", bonus: 0, damage: null, range: null, sharp: false });
+const bare = (d) => !d?.weapon || String(d.weapon).startsWith("unarmed");
+export const unwound = (v, inst) => { const a = v.facts.c(inst.actor); return !!a?.pass?.windup && SLUG.includes(kindOf(inst)) && kindOf(inst) !== "ram" && bare(inst.decl) && !K.marked(v.state, inst.actor, "windup"); };
+const weaponOf = (v, inst) => { const w = v.facts.weapon(inst.actor, inst.decl.weapon ?? "unarmed"); return w && unwound(v, inst) && (w.id === "unarmed" || w.strike) ? { ...STRIKE_FREE } : w; };
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 
 const multiOf = (d) => (d?.area ? "area" : d?.fullAuto ? "fullAuto" : null);
@@ -79,7 +85,7 @@ export function legality(v, inst) {
   const a = facts.c(inst.actor);
   if (!a || a.present === false) return bad("gone");
   const counter = kind === "counterattack";
-  const vx = Veh.attackLegality(v, inst);                                                                    // P7 [B3148], [B3223]
+  const vx = Veh.attackLegality(v, inst) ?? (counter ? null : Veh.weaponLegality(v, inst));                // P7 [B3148], [B3223]; Z17 [B3147]: a vehicle's weapon, from aboard it
   if (vx) return vx;
   if (!counter) {
     if (a.health <= 0) return bad("broken");                                                                 // [B2707]
@@ -97,7 +103,6 @@ export function legality(v, inst) {
   const w = weaponOf(v, inst);
   if (!counter && d.weapon && d.weapon !== "unarmed" && !w) return bad("noWeapon");
   if (entry?.unarmed && d.weapon && d.weapon !== "unarmed") return bad("noWeapon", { gmMayAllow: 1 });       // P6 [B2151]: Martial Arts is unarmed
-  if (!counter && a.pass?.windup && SLUG.includes(kind) && (!d.weapon || String(d.weapon).startsWith("unarmed")) && !K.marked(state, inst.actor, "windup")) return bad("noWindup", { gmMayAllow: 1 });      // P6 [B1622]: the quick action first
   if (w?.fam === "shoot" && kind === "slugfest") return bad("noWeapon");                                      // P6: a power thrown from afar is a shooting attack
   if (!counter && !inst.locked) {                                                                            // the features of the book's weapon table (kit-pure.mjs profileOf); once the dice are out the attack stands
     if (w?.singleUse && M.counterGet(state, usedKey(inst.actor, w)) > 0) return bad("weaponUsed", { gmMayAllow: 1 });      // [B2541]: used once, then discarded (the GM allows a second one from the pack)
@@ -123,6 +128,7 @@ export function legality(v, inst) {
   for (const t of d.targets) {
     const tf = facts.c(t);
     if (!tf || tf.present === false || t === inst.actor) return bad(t === inst.actor ? "self" : "gone");
+    if (K.notArrived(state, t)) return bad("notArrived", { gmMayAllow: 1 });                                 // Z12 [B1816]: delayed allies arrive at the start of the summoner's next turn
     if (w?.immuneHuge && tf.huge) return bad("hugeTarget");                                                  // P6 [B1606], [B1625]
     const unseen = state.knowledge?.[inst.actor]?.[t] === "unseen";
     if (unseen && !d.blind && !d.area) return bad("unseen");                                                 // spec 10: needs the stated intent to attack "where it should be"
@@ -178,7 +184,7 @@ function attackPool(v, I, tokens) {
     targets: I.data.multi === "fullAuto" ? d.targets.length : 1, helpers: K.helpDiceOf(v, d) });
   mods.push(...Veh.attackMods(v, I));
   if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });
-  return { attr, ...K.buildPool(v, I, "attack", I.actor, attr, mods, { rollKind: "attack", tokens }) };
+  return { attr, ...K.buildPool(v, I, "attack", I.actor, attr, mods, { rollKind: "attack", tokens, base: Veh.attackRollBase(v, I) }) };      // Z16 [B3144]: a ram on a mount rolls the mount's AGILITY
 }
 /* THE DAMAGE OF ONE HIT, built in ONE place: for the damage step and for what the map shows on a target before the declaration
    (hitPreview). Spec 9.5 steps 1-4: the base, a pulled punch, Double Damage before Armor, the single best Armor. `o` = the outcome
@@ -479,7 +485,9 @@ const blank = { helpers: [], exploits: [], stressTotal: 0 };
 /* Knockback straight up or down (a vertical zone is a zone [B2258]): up unless the target is already as high as the map goes, down only for a
    target off the ground (reading, combat-rulings INT-R3). Asked only where the map says on which level the target is. */
 const vertOf = (v, t) => { const z = v.facts.zone(t); return !z || z.area || z.level == null ? [] : [...(z.level === "elevated" ? [] : ["up"]), ...(z.level !== "ground" && z.level !== "underground" ? ["down"] : [])]; };
-const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); return Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : a?.slugfest?.damage ?? 0); };   // [B2426], [B2428], [B2512]; P7 [B3148]: a ram deals the vehicle's damage
+const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); return Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : slugBase(v, I, a)); };
+/* Z14 [B1622], [B1614-1617]: the slugfest damage of the sheet without STRIKE's bonus when the wind-up is missing (never under half the STRENGTH, the base the system starts from) */
+const slugBase = (v, I, a) => { const d = a?.slugfest?.damage ?? 0, s = Number(a?.pass?.strike) || 0; return s > 0 && unwound(v, I) ? Math.max(Math.ceil((Number(a?.attrs?.strength) || 0) / 2), d - s) : d; };   // [B2426], [B2428], [B2512]; P7 [B3148]: a ram deals the vehicle's damage
 export const steps = {
   /* step 2: legality was checked when the declaration came in; here the gates it found are fixed on the instance, an area attack takes everyone in the
      target zone [B2542], a charge pays its quick action and fixes its route [B2490] */
@@ -840,7 +848,20 @@ export const steps = {
               R.events.push({ type: "status", target: t, status: { id: "stunned", on: true } });
             }
           }
-          if (oh.throw && once(`oht:${t}`)) (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: oh.throw });      // [B1826]: the GM moves the one thrown
+          if (oh.throw && !Z && once(`oht:${t}`)) (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: oh.throw });      // [B1826]: without a map the GM moves the one thrown
+          if (oh.throw && Z && !K.flag(I, `tk:${t}`) && !M.outOfAction(v.state, t, tf)) {       // Z11 [B1823], [B1826-1828]: thrown like Knockback [B2435], the thrower names the way, the damage of the level at EVERY impact minus Armor
+            const key = `tkdir:${t}`, zk = v.facts.zone(t)?.key, near = zk ? (Z.borders(zk) ?? []).map((b) => String(b?.key ?? "").split("|").find((z) => z && z !== zk)).filter(Boolean).slice(0, 12) : [], n = Math.max(1, Math.trunc(Number(oh.zones) || 2));
+            if (!I.data.pk?.[key]) {
+              const pr = { key, kind: "knockDir", to: K.addressee(v, I.actor), about: I.actor, options: [{ id: "away", label: "ITAC.opt.kbAway" }, ...near.map((z) => ({ id: `to:${z}`, label: "ITAC.opt.kbToward", data: { zone: z } })), ...vertOf(v, t).map((w) => ({ id: w, label: w === "up" ? "ITAC.opt.kbUp" : "ITAC.opt.kbDown" }))], data: { target: t, distance: n } };
+              if (!near.length) pr.auto = { option: "away", reason: "noOption" };
+              R.prompts.push(pr); R.wait = true; return R;
+            }
+            if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
+            K.setFlag(I, `tk:${t}`);
+            const dir = K.answerId(v, I, key) ?? "away";
+            R.push = forcedChild(t, { ...(dir === "up" || dir === "down" ? { direction: dir } : dir.startsWith("to:") ? { toward: dir.slice(3) } : { awayFrom: I.actor }), distance: n, damage: Math.max(0, Math.trunc(Number(oh.throw) || 0)), decay: 0, armor: true, by: I.actor, kind: "throw", ...(v.facts.c(I.actor)?.npc ? { gmDir: 1 } : {}) });
+            return R;
+          }
         }
         const stun = picked(t, "stun") ? "stun" : picked(t, "suppressed") ? "suppressed" : null;
         if (stun && dm && stunts.stunOutcome({ taken: dm.taken }).rollNeeded && !M.outOfAction(v.state, t, tf)) {      // [B2707]: a target the blow broke rolls for nothing; it is out of action anyway                 // [B2436], [B2517]
