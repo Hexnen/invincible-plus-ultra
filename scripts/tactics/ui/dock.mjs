@@ -317,7 +317,7 @@ const rs = (n) => stressChip(n);
 function actionBtn(a) {
   /* P5 / P6: the other rows of the action tables, and the character's own abilities: one button each, a list behind it */
   if (a.more) { const m = a.mode ?? "menu";
-    return h(`button.itd-ic.itd-ic-more${a.armed ? ".itd-armed" : ""}`, { fk: `more:${m}`, tip: a.tip, data: { key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true,      // FXN (D133): greyed as its rows are; it still opens attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true", "aria-label": a.label, ...keyAttrs(a.key) },
+    return h(`button.itd-ic.itd-ic-more${a.armed ? ".itd-armed" : ""}`, { fk: `more:${m}`, tip: a.tip, data: { key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true", "aria-label": a.label, ...keyAttrs(a.key) },      // FXN (D133): greyed as its rows are; it still opens
       on: { click: () => set(last?.ui?.mode === m ? { mode: null } : { mode: m, armed: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } }, actIcon(a.icon), icon("fa-caret-up")); }
   return h(`button.itd-ic${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null, key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.tip, pv: a.pv, attrs: { "aria-pressed": String(!!a.armed), "aria-label": tipText(a.tip), ...keyAttrs(a.key) },
     on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, actIcon(a.icon), speed(a.cost), rs(a.stress));

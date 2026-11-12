@@ -173,6 +173,7 @@ function measureCoverage(found) {
       return { missing };
     } catch (err) {
       console.warn(`${LOG} could not read ${found.file}`, err);
+      coverageCache.delete(found.url);   // a failed read is not cached: the next apply() retries
       return null;
     } finally {
       try { document.fonts.delete(face); } catch { /* nothing to delete */ }
@@ -277,7 +278,7 @@ function registerSettings() {
     game.settings.register(MOD, KEY, {
       name: tr("name"), hint: tr("hint"), scope: "client", config: true, type: String, default: "komikah",
       choices: Object.fromEntries(MODES.map((m) => [m, tr(m)])),
-      onChange: () => { probeCache = null; apply(); }   // choosing it again is the retry after the user dropped the file in
+      onChange: () => { probeCache = null; coverageCache.clear(); apply(); }   // choosing it again is the retry after the user dropped the file in
     });
     game.settings.register(MOD, CAPKEY, {
       name: tr("capName"), hint: tr("capHint"), scope: "client", config: true, type: String, default: "default",

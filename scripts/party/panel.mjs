@@ -368,7 +368,7 @@ function paintRow(card, key, spec, label, first) {
 function paintPips(card, item) {
   const box = card.refs.pips, groups = showPips ? item.groups : null;
   box.hidden = !groups?.length;
-  if (!groups?.length) { box.replaceChildren(); return ""; }
+  if (!groups?.length) { box.replaceChildren(); delete box.dataset.key; return ""; }
   const key = JSON.stringify(groups);
   const sayParts = [];
   groups.forEach((g) => {

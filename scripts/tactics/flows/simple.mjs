@@ -52,7 +52,7 @@ export const roll = {
         if ((d.stressTotal ?? 0) > 0) R.effects.push({ t: "stress", who: I.actor, n: d.stressTotal, cost: 1 });
         const bp = rollPool(v, I, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
-        R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { passive: e?.roll?.passive === true || d.noPush === true, secret: d.secret === true, label: e?.label }));   // [B2227]
+        R.effects.push(K.rollEffect("roll", I.actor, attr, bp.pool, { passive: e?.roll?.passive === true || (d.noPush === true || d.noPush === 1), secret: d.secret === true || d.secret === 1, label: e?.label }));   // [B2227]
         R.wait = true; return R;
       }
       if (!K.rollFinal(I, "roll")) { R.wait = true; return R; }

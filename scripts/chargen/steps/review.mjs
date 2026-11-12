@@ -276,10 +276,10 @@ async function doUndo(ctx) {
   const d = ctx.data;
   if (d.busy) return;
   let res;
+  d.busy = true; ctx.app.setApplying(true);   // the lock covers the dialog AND the write (confirmUndo runs api.undo inside), so a second Undo / Close / Roll another cannot race it
   try { res = await confirmUndo(ctx.actor); } catch (err) { res = { ok: false, message: err?.message ?? String(err) }; }   // phase 9: age + drift list, explicit confirm
+  finally { d.busy = false; ctx.app.setApplying(false); }
   if (res.declined) return;
-  d.busy = true; ctx.app.setApplying(true); ctx.rerender();
-  d.busy = false; ctx.app.setApplying(false);
   if (res.ok) { d.undone = res; ctx.app.markApplied(false); } else d.undoError = res.message ?? "";
   d.plan = null; d.confirm = "";
   ctx.rerender();

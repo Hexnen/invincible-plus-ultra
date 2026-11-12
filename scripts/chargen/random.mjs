@@ -241,7 +241,9 @@ async function stepPowers({ state, P, opts, rng, frozen, plan, internal }) {
       const e = await draw(P, "powerSources", rng, ctx, (z) => names.includes(normName(z.name)));
       if (!e) continue;
       names.push(normName(e.name));
-      sources.push({ key: keys[i] ?? `s${sources.length + 1}`, ...ref(e) });
+      let key = keys[i];
+      if (!key) { let k = sources.length + 1; while (keys.includes(`s${k}`) || sources.some((x) => x.key === `s${k}`)) k++; key = `s${k}`; }   // never reuse a key the locked powers already point at
+      sources.push({ key, ...ref(e) });
     }
   }
   if (!frozen("powers") && sources.length) powers = powers.map((p, i) => ({ ...p, sourceKey: sources[i % sources.length].key }));

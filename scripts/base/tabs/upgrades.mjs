@@ -509,6 +509,11 @@ async function poolDialog(ctx, spec) {
 async function doAdopt(root) {
   const ctx = CTX.get(root);
   if (!ctx || !ctx.canEdit) return;
+  const op = `adopt:${ctx.team.id}`;
+  if (!startOp(op)) return;                                           // a dialog is already open (or its write is running): a second click must not add the same rows again
+  try { await adoptRun(root, ctx); } finally { busy.delete(op); }
+}
+async function adoptRun(root, ctx) {
   const miss = adoptCandidates(ctx);
   if (!miss.length) return;
   const { esc, t, tn } = ctx;

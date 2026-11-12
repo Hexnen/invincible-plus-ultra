@@ -219,7 +219,7 @@ export const events = {
     const patch = { events: { [id]: entry } };
     const merged = { ...B.events, [id]: entry };
     for (const old of P.pruneEvents(merged)) if (old !== id) patch.events[`-=${old}`] = null;
-    if (rerollOf && B.events[rerollOf]) patch.events[rerollOf] = { rerolled: true };
+    if (rerollOf && B.events[rerollOf] && !(`-=${rerollOf}` in patch.events)) patch.events[rerollOf] = { rerolled: true };
     await S.update(e, patch, { user });
     if (chat === true) await events.postChat(e, id, { user });
     return { id, ...entry };

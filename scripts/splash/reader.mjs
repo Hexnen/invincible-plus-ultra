@@ -26,7 +26,7 @@ export function heroSpeaker(message) {
   return heroActor(message?.speakerActor ?? null, speakerToken(message), users) || (!!sm && heroActor(sm.actor, sm.token, users));
 }
 /** Resolve, który splash może upublicznić (flaga wiadomości, wskaźnik): tylko strony bohaterów; Resolve przeciwników nie jest ujawniany */
-export const publicResolve = (message) => (heroSpeaker(message) ? message.speakerActor.system?.derived?.resolve ?? null : null);
+export const publicResolve = (message) => (heroSpeaker(message) ? message.speakerActor?.system?.derived?.resolve ?? null : null);
 
 const ATTRS = ['fighting', 'agility', 'strength', 'reason', 'intuition', 'presence'];
 /* Nazwy w rzucie (flavor, breakdown) to tekst zapisany w języku klienta, który rzucał: dopasowanie w każdym znanym języku. */

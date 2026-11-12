@@ -608,7 +608,9 @@ function paintCard(card, item, first) {
   refs.stamp.querySelector(".ich-stamp-t").textContent = state === "overcome" ? L("INCH.Overcome") : state === "failed" ? L("INCH.TimeUp") : "";
 
   // values: a new card starts at 0 and lands after its entrance; a changed value transitions and flashes
+  const tok = card.paintTok = (card.paintTok || 0) + 1;   // a newer paint supersedes a deferred first-paint apply
   const apply = () => {
+    if (card.paintTok !== tok) return;
     refs.cr.fill.style.setProperty("--ich-v", prog.toFixed(4));
     refs.tl.fill.style.setProperty("--ich-v", time.toFixed(4));
     refs.cr.n.style.setProperty("--ich-n", String(pct ?? 0));

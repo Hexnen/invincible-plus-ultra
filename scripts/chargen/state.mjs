@@ -187,7 +187,7 @@ export function deserialize(text) {
     personality: list(raw.personality, (w) => String(w ?? "")), drive: textPair(raw.drive), flaw: textPair(raw.flaw),
     heroName: str(raw.heroName), civilianName: str(raw.civilianName), appearance: str(raw.appearance),
     team, heroRel: isObj(raw.heroRel) ? { name: str(raw.heroRel.name), actorUuid: typeof raw.heroRel.actorUuid === "string" ? raw.heroRel.actorUuid : null } : base.heroRel,
-    locks: flagMap(raw.locks, (k, v) => v === true && own(FIELD_STEP, k)),
+    locks: flagMap(raw.locks, (k, v) => v === true && (own(FIELD_STEP, k) || ATTRS.some((a) => k === `attrs.${a}`))),
     touched: flagMap(raw.touched, (k, v) => v === true && own(STEP_FIELDS, k)),
     rerolls: flagMap(raw.rerolls, (k, v) => Number.isInteger(v) && v >= 0 && stepOk(k)),
     rollOpts: isObj(raw.rollOpts) ? JSON.parse(JSON.stringify(raw.rollOpts)) : null

@@ -12,7 +12,7 @@
 import { t } from "../lang.mjs";
 import { RANK_ORDER, RANKS, ATTRS, attributeBudget, slots } from "../rules.mjs";
 import * as RR from "../reroll.mjs";
-import { STEP_FIELDS } from "../state.mjs";
+import { STEP_FIELDS, rebase } from "../state.mjs";
 import { summaryRows } from "./summary.mjs";
 import { esc, dl, delegate, icon, attrShort, rankName } from "./util.mjs";
 
@@ -132,8 +132,9 @@ function render(ctx) {
 /* ---------- actions ---------- */
 const changedRows = (a, b) => new Set(["rank", ...RR.ROLLABLE].filter((r) => fieldsJson(a, r) !== fieldsJson(b, r)));
 
-function show(ctx, next, { landed, say, msg = "" } = {}) {
+function show(ctx, next, { landed, say, msg = "", base = null } = {}) {
   const d = ctx.data;
+  if (base) next = rebase(ctx.state, base, next);   // edits made while the dice rolled are kept
   d.landed = landed ?? new Set();
   d.code = null; d.codeBad = false; d.msg = msg;
   ctx.commit(next, { touch: false, body: true });
@@ -145,18 +146,18 @@ async function reroll(ctx, row) {
   if (RR.lockMode(s, row) === "locked") { d.msg = t("IPC.Board.LockedWhy"); ctx.announce(t("IPC.Board.LockedWhy")); return; }
   const next = await ctx.busy(RR.rerollRow(s, row, ctx.provider(), { force: true }));
   if (next === s) { ctx.announce(t("IPC.Board.NoChange", { row: label(row) })); return; }
-  show(ctx, next, { landed: changedRows(s, next), say: t("IPC.Board.Rerolled", { row: label(row), what: oneLine(next, row) }) });
+  show(ctx, next, { base: s, landed: changedRows(s, next), say: t("IPC.Board.Rerolled", { row: label(row), what: oneLine(next, row) }) });
 }
 async function rerollAll(ctx) {
   const s = ctx.state, n = RR.unlockedRows(s).length;
   if (!n) { ctx.announce(t("IPC.Board.AllKept")); return; }
   const res = await ctx.busy(RR.rerollUnlocked(s, ctx.provider()));
-  show(ctx, res.state, { landed: changedRows(s, res.state), say: t("IPC.Board.RerolledAll", { n, kept: RR.ROLLABLE.length - n }) });
+  show(ctx, res.state, { base: s, landed: changedRows(s, res.state), say: t("IPC.Board.RerolledAll", { n, kept: RR.ROLLABLE.length - n }) });
 }
 async function reseedTo(ctx, seed, base = null) {
-  const s = base ?? ctx.state, n = RR.unlockedRows(s).length;
+  const start = ctx.state, s = base ?? start, n = RR.unlockedRows(s).length;
   const res = await ctx.busy(RR.reseed(s, seed, ctx.provider()));
-  show(ctx, res.state, { landed: changedRows(ctx.state, res.state), say: t("IPC.Board.Seeded", { seed, n, kept: RR.ROLLABLE.length - n }) });
+  show(ctx, res.state, { base: start, landed: changedRows(ctx.state, res.state), say: t("IPC.Board.Seeded", { seed, n, kept: RR.ROLLABLE.length - n }) });
 }
 async function useCode(ctx, root) {
   const d = ctx.data, text = root.querySelector('[name="bd-code"]')?.value ?? "";
@@ -223,7 +224,7 @@ export default {
       if (!(el instanceof HTMLElement)) return;
       if (el.name === "bd-rank") {
         const res = await ctx.busy(RR.changeRank(s, el.value, ctx.provider())), n = RR.unlockedRows(s).length;
-        show(ctx, res.state, { landed: changedRows(s, res.state), say: t("IPC.Board.RankChanged", { rank: rankName(el.value), n, kept: RR.ROLLABLE.length - n }) });
+        show(ctx, res.state, { base: s, landed: changedRows(s, res.state), say: t("IPC.Board.RankChanged", { rank: rankName(el.value), n, kept: RR.ROLLABLE.length - n }) });
       } else if (el.name === "bd-spice") {
         ctx.commit(RR.withSpice(s, el.value), { touch: false, body: true });
         ctx.announce(t("IPC.Board.SpiceSet", { spice: t(`IPC.Board.Spice.${el.value}`) }));

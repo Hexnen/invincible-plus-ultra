@@ -81,6 +81,7 @@ export class BaseSheet extends ActorSheetV2 {
   async _onRender(context, options) {
     await super._onRender(context, options);
     if (!this.#bound) { this.#bound = true; this.#bind(); }
+    this.#watchSize();
     this.#watchDrags();
     if (!this.#painted) { this.#painted = true; this.#paintAll(); } else this.refresh();       // later renders (a document update) go through the careful, focus-safe repaint
   }
@@ -99,7 +100,18 @@ export class BaseSheet extends ActorSheetV2 {
     );
     return controls;
   }
-  _onClose(options) { clearTimeout(this.#timer); this.#painted = false; this.#dragOff?.(); this.#dragOff = null; super._onClose(options); }
+  #sizeObs = null; #sizeEl = null;
+  // short windows (min size 640x480): hide the picture and tighten the header (data-compact, styles/base.css); re-attached per render because a reopened window has a new content element
+  #watchSize() {
+    const root = this.#root;
+    const host = root?.parentElement ?? root;
+    if (!root || this.#sizeEl === host) return;
+    this.#sizeObs?.disconnect();
+    this.#sizeEl = host;
+    this.#sizeObs = new ResizeObserver(() => { const h = root.parentElement?.clientHeight ?? 999; root.dataset.compact = h < 580 ? "1" : "0"; });
+    this.#sizeObs.observe(host);
+  }
+  _onClose(options) { this.#sizeObs?.disconnect(); this.#sizeObs = null; this.#sizeEl = null; clearTimeout(this.#timer); this.#painted = false; this.#dragOff?.(); this.#dragOff = null; super._onClose(options); }
 
   // ---------- drops: Items and non-hero Actors go to the active tab's onDrop(event, {type, document}, ctx) (B8: Gear & vehicles); nothing may land on the actor itself ----------
   async _onDropItem(event, item) { return this.#tabDrop(event, { type: "Item", document: item }); }
@@ -188,7 +200,6 @@ export class BaseSheet extends ActorSheetV2 {
       if (ev.key === "Escape" && el?._ipbEsc) { ev.stopPropagation(); el._ipbEsc = false; el.blur(); }
     });
     // short windows (min size 640x480): hide the picture and tighten the header so the tab panel keeps room (data-compact, styles/base.css)
-    new ResizeObserver(() => { const h = root.parentElement?.clientHeight ?? 999; root.dataset.compact = h < 580 ? "1" : "0"; }).observe(root.parentElement ?? root);
     this.#bindDrop(root);
     root.addEventListener("focusin", (ev) => { const el = ev.target; if (el?.matches?.("[data-ipb-field]")) el.dataset.orig = el.value; });
     root.addEventListener("focusout", () => { setTimeout(() => this.#flushPending(), 0); });

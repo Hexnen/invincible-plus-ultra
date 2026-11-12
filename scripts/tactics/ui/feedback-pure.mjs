@@ -97,7 +97,7 @@ export function tallyAdd(tally, combatId, news) {
     if (!no || !rows.length) continue;
     const was = out.entries[no], undone = n.undone ? 1 : 0;
     if (was && was.undone === undone) continue;
-    if (!changed) { out = { combat: out.combat, entries: { ...out.entries } }; changed = true; }
+    if (!changed) { out = { combat: out.combat, ...(out.fight ? { fight: out.fight } : {}), entries: { ...out.entries } }; changed = true; }
     out.entries[no] = { round: Number.isFinite(n.round) ? n.round : null, actor: typeof n.actor === "string" ? n.actor : null, undone,
       rows: rows.map((r) => ({ target: r.target, ...(typeof r.hit === "boolean" ? { hit: r.hit } : {}), ...(Number.isFinite(r.taken) ? { taken: Math.max(0, r.taken) } : {}), ...(r.stress ? { stress: 1 } : {}) })) };
   }

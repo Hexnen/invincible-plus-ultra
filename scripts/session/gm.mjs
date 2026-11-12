@@ -27,8 +27,10 @@ async function cmdStart(sender, a, ctx, rid) {
   let heroes;
   if (Array.isArray(a.heroes)) heroes = a.heroes.map((id) => game.actors.get(id)).filter((x) => x && x.type === "superhero" && !isCard(x)).map(heroView);
   else heroes = defaultHeroes({ includeGm: a.includeGm === true });
-  const id = `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  // S056: the id comes from the request id, so two GM tabs of one user handling one relayed start write the SAME session and the loser can tell it is a duplicate
+  const id = rid ? `sr${String(rid).replace(/[^\w-]/g, "")}`.slice(0, 40) : `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const r = await Store.commit({ type: "start", id, heroes, askBad: a.askBad === true, rid }, ctx);
+  if (!r.ok && r.error?.code === "exists" && Store.current()?.id === id) return { ok: true, changed: false, dup: true, session: Store.current() };
   if (r.ok && r.changed) Award.logStart(r.session);
   return r;
 }
@@ -40,6 +42,7 @@ async function cmdAddHero(sender, a, ctx, rid) {
 
 /** Run one request on this (GM) client. */
 export async function exec(sender, req, meta = {}) {
+  let slot = null;
   try {
     if (Number(meta.proto) > OP.PROTO) return bad("stale", { theirs: Number(meta.proto), mine: OP.PROTO });
     if (!sender || meta.trusted !== true) return bad("untrusted");
@@ -50,6 +53,8 @@ export async function exec(sender, req, meta = {}) {
       if (Store.setting(Store.SETTING_ALLOW, true) === false) return bad("playersOff");
       // S4-09: a player can neither queue a pile of work for the GM client nor change more than a few answers per minute (excess is dropped before it costs anything)
       if ((inflight.get(sender.id) ?? 0) >= OP.MAX_INFLIGHT || OP.rateCount(changes, sender.id, Date.now(), OP.CHANGE_RATE[1]) >= OP.CHANGE_RATE[0]) return bad("rate");
+      // S055: take the in-flight slot now, in the same tick as the check (the relay jitter below is an await); released in the finally at the end
+      inflight.set(sender.id, (inflight.get(sender.id) ?? 0) + 1); slot = sender.id;
     }
     const n = OP.normalizeRequest(req, { staff });
     if (!n.ok) return n;
@@ -59,12 +64,9 @@ export async function exec(sender, req, meta = {}) {
     if (n.kind === "act") {
       const act = { ...n.act, rid };
       if (staff) return await Store.commit(act, ctx);
-      inflight.set(sender.id, (inflight.get(sender.id) ?? 0) + 1);
-      try {
-        const r = await Store.commit(act, ctx);
-        if (r.ok && r.changed) OP.rateHit(changes, sender.id, Date.now(), OP.CHANGE_RATE[0] + 1, OP.CHANGE_RATE[1]);
-        return r;
-      } finally { inflight.set(sender.id, Math.max(0, (inflight.get(sender.id) ?? 1) - 1)); }
+      const r = await Store.commit(act, ctx);
+      if (r.ok && r.changed) OP.rateHit(changes, sender.id, Date.now(), OP.CHANGE_RATE[0] + 1, OP.CHANGE_RATE[1]);
+      return r;
     }
     switch (n.cmd) {
       case "start": return await cmdStart(sender, n.args, ctx, rid);
@@ -79,7 +81,7 @@ export async function exec(sender, req, meta = {}) {
   } catch (e) {
     console.warn(`${MOD} | session request failed`, e);
     return bad("internal", { msg: String(e?.message ?? e).slice(0, 80) });
-  }
+  } finally { if (slot) inflight.set(slot, Math.max(0, (inflight.get(slot) ?? 1) - 1)); }
 }
 /** Test helper: forget the rate counters. */
 export const _resetLimits = () => { hits.clear(); changes.clear(); inflight.clear(); };

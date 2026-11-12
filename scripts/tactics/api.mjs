@@ -57,7 +57,9 @@ function prompts(combat) {
 const player = (combat) => { const c = pick(combat); return Desk.playerModel(state(c), Engine.viewer(game.user, c), { ...Engine.context(c), P1: Eco }); };
 const desk = (combat) => { const c = pick(combat); if (!running || !c || !Store.isStaff(game.user)) return null; const r = Store.read(c); return Desk.deskModel(r.state, r.log, Engine.context(c)); };
 
-const popCombat = (a) => (a.length && (isCombat(a[a.length - 1]) || a[a.length - 1] === undefined) ? a.pop() : undefined);
+/* the trailing combat: a Combat document, undefined, or (after at least one other argument) a string that is the id of a world Combat */
+const isCombatId = (x) => typeof x === "string" && !!game.combats?.get?.(x);
+const popCombat = (a) => (a.length && (isCombat(a[a.length - 1]) || a[a.length - 1] === undefined || (a.length > 1 && isCombatId(a[a.length - 1]))) ? a.pop() : undefined);
 const act = (op, shape) => (...a) => { const combat = popCombat(a); return send(combat, { op, ...shape(...a) }); };
 /* gm.<op>(payload, combat?) for every GM operation (spec 18). The round driver's operations also take their plain arguments
    (gm.setCard(slot, card), gm.challengeFail(challengeId) ...), as the module's widgets call them. */
@@ -116,7 +118,7 @@ export const tacticsApi = {
   stop: (combat) => send(combat, { op: "stop" }),
   setMode: (mode, combat) => send(combat, { op: "setMode", mode }),
   /** the lines the end-of-scene procedure would apply now (spec 6.8), for the GM's confirmation */
-  scenePlan: (combat) => { const c = pick(combat); return running && c ? Sch.sceneEndPlan(Sys.sceneFacts(c)).map((l) => ({ ...l, name: c.combatants.get(l.id)?.name ?? l.id })) : []; },
+  scenePlan: (combat) => { const c = pick(combat); return running && c && Store.isStaff(game.user) ? Sch.sceneEndPlan(Sys.sceneFacts(c)).map((l) => ({ ...l, name: c.combatants.get(l.id)?.name ?? l.id })) : []; },
   endScene: (opts = {}, combat) => send(combat, { op: "endScene", ...opts }),
   gm,
   /* ---- the surroundings */

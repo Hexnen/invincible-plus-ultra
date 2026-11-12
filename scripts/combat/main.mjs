@@ -167,7 +167,8 @@ function registerBarHooks() {
     if (Object.keys(changes ?? {}).every((k) => MOVE_ONLY.has(k))) return;   // dragging a token must not cost a pass per step
     Bar.schedule();
   });
-  on("updateActor", (actor) => { if (Bar.touchesActor(actor)) Bar.schedule(); });
+  on("updateToken", (td, changes) => { if (changes && "disposition" in changes) Bar.schedule(); });   // S036: a Secret token turned visible has no tile to be touched
+  on("updateActor", (actor, changes) => { if (Bar.touchesActor(actor) || (changes && "ownership" in changes)) Bar.schedule(); });   // S036: raised ownership can unhide a secret tile
   const effect = (e) => { try { if (e?.parent?.documentName === "Actor" && Bar.touchesActor(e.parent)) Bar.schedule(); } catch { /* ignore */ } };
   on("createActiveEffect", effect);   // the defeated status lives on an effect
   on("deleteActiveEffect", effect);

@@ -712,7 +712,7 @@ function dmgPlay(message, hp, toEl, from, to) {
       timer = setTimeout(finish, END);
     };
     if (win?.IntersectionObserver) {
-      obs = new win.IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) start(); }, { threshold: 0.6 });
+      obs = new win.IntersectionObserver((entries) => { if (!started && !hp.isConnected) return finish(); if (entries.some((e) => e.isIntersecting)) start(); }, { threshold: 0.6 });   // a card detached before it was ever seen: release the observer and the DMG_STOP entry
       obs.observe(hp);
     } else start();
   } catch (err) { console.warn(`${MODULE_ID} | damage card animation`, err); }

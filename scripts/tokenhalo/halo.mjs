@@ -63,15 +63,15 @@ function bake(key, token, variant, color, ring, cell, sizePx) {
   const rec = { texS: r.generateTexture(S, opts), texB: r.generateTexture(B, opts), ext, refs: 0, alpha: a };
   S.destroy(true); B.destroy(true);
   cache.set(key, rec);
-  evict();
+  evict(key);
   return rec;
 }
 
-function evict() {
+function evict(keep) {
   if (cache.size <= MAX_KEYS) return;
   for (const [k, rec] of cache) {
     if (cache.size <= MAX_KEYS) break;
-    if (rec.refs > 0) continue;
+    if (rec.refs > 0 || k === keep) continue;   // never drop the record bake() is about to hand back
     dropTextures(rec);
     cache.delete(k);
   }

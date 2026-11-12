@@ -132,10 +132,13 @@ export class NewTeamApp extends ApplicationV2 {
       ? `<section class="ipb-opt"><h3>${esc(t("IPB.Empty.Join"))}</h3><label class="ipb-field"><span>${esc(t("IPB.Empty.JoinSelect"))}</span>`
         + `<select class="ipb-input" name="ipb-join">${cards.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")}</select></label>`
         + `<button type="button" class="ipb-btn" data-ipb="join" data-fk="join">${icon("fa-solid fa-right-to-bracket")} ${esc(t("IPB.Empty.JoinButton"))}</button></section>` : "";
+    const picked = panel.querySelector('[name="ipb-join"]')?.value;     // a repaint must not reset the base the player picked
     this.#keepFocus(panel, () => {
       panel.setAttribute("aria-label", t("IPB.Empty.Title", { actor: name }));
       panel.innerHTML = `<div class="ipb-empty"><h2 class="ipb-plate"><span>${esc(t("IPB.Empty.Title", { actor: name }))}</span></h2>`
         + `<p class="ipb-lede">${esc(t("IPB.Empty.Lede"))}</p><div class="ipb-opts">${create}${join}</div></div>`;
+      const sel = picked ? panel.querySelector('[name="ipb-join"]') : null;
+      if (sel && [...sel.options].some((o) => o.value === picked)) sel.value = picked;
     });
     const el = this.window?.title;
     if (el && el.textContent !== this.title) el.textContent = this.title;

@@ -46,7 +46,7 @@ export class SessionPanel extends ApplicationV2 {
 
   #root = null; #bound = false; #unsub = null; #raf = 0; #timers = new Set();
   #vm = null; #viewKey = ""; #view = null; #start = null; #bar = null; #dots = null; #dotKey = "";
-  #pending = new Map(); #inflight = new Map(); #own = new Map(); #busy = 0; #prev = null; #announceT = 0; #flashT = 0; #booked = false;
+  #pending = new Map(); #inflight = new Map(); #own = new Map(); #busy = 0; #asking = false; #prev = null; #announceT = 0; #flashT = 0; #booked = false;
 
   constructor(options = {}) {
     options.position = { ...(options.position ?? {}) };
@@ -424,11 +424,13 @@ export class SessionPanel extends ApplicationV2 {
     try { const r = await api.start({ heroes: ids, askBad: sv.askBad() }); if (!r.ok) this.#fail(r); } finally { this.#working(false); }
   }
   async #award() {
-    if (this.#busy) return;
+    if (this.#busy || this.#asking) return;
     const vm = this.#vm, sum = vm.sum;
     if (!sum) return;
     const live = sum.rows.filter((r) => !r.missing);
-    const res = await D.confirmAward({ rows: live.map((r) => ({ name: r.name, before: r.before ?? 0, after: r.after ?? r.before ?? 0 })), skipped: sum.rows.filter((r) => r.missing).map((r) => r.name), chat: Store.setting(Store.SETTING_CHAT, false) === true });
+    this.#asking = true;
+    let res;
+    try { res = await D.confirmAward({ rows: live.map((r) => ({ name: r.name, before: r.before ?? 0, after: r.after ?? r.before ?? 0 })), skipped: sum.rows.filter((r) => r.missing).map((r) => r.name), chat: Store.setting(Store.SETTING_CHAT, false) === true }); } finally { this.#asking = false; }
     if (!res.go) return;
     this.#working(true);
     try {
@@ -441,12 +443,15 @@ export class SessionPanel extends ApplicationV2 {
     } finally { this.#working(false); }
   }
   async #undo() {
-    if (this.#busy) return;
+    if (this.#busy || this.#asking) return;
     const vm = this.#vm, s = Store.current();
     if (!s?.award) return;
     const name = (id) => api.heroInfo(id).name;
     const rows = s.award.rows.filter((r) => r.st === 1).map((r) => ({ name: name(r.h), before: r.before, after: r.after }));
-    if (!(await D.confirmUndo(rows))) return;
+    this.#asking = true;
+    let go;
+    try { go = await D.confirmUndo(rows); } finally { this.#asking = false; }
+    if (!go) return;
     this.#working(true);
     try {
       const r = await api.undo({ mode: "strict" });

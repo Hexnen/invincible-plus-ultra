@@ -108,7 +108,7 @@ export async function findPower(ref) {
   const name = typeof ref === "string" ? ref : ref?.name;
   const uuid = typeof ref === "string" ? null : ref?.packUuid;
   if (uuid) { const hit = all.find((p) => p.packUuid === uuid || Object.values(p.levels).includes(uuid)); if (hit) return hit; }
-  return all.find((p) => norm(p.name) === norm(name)) ?? null;
+  return all.find((p) => norm(p.name) === norm(name)) ?? all.find((p) => normBase(p.name) === normBase(name)) ?? null;
 }
 
 /* ------------------------------------------------------------------ simple item packs */

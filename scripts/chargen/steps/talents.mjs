@@ -453,8 +453,8 @@ export default {
         case "go-life": ctx.go("life"); break;
         case "more": { const u = el.dataset.uuid; if (d.open.has(u)) d.open.delete(u); else d.open.add(u); ctx.rerender(); break; }
         case "book": openBook(el.dataset.uuid); break;
-        case "tal-more": { const first = d.tlimit; d.tlimit += PAGE; ctx.rerender(); const e = talentList(ctx).filter((x) => !nm(d.tq) || nm(x.name).includes(nm(d.tq)))[first]; if (e) refocus(`[data-fk="tl-${slug(e.name)}"]`); break; }
-        case "dr-more": { const first = d.dlimit; d.dlimit += PAGE; ctx.rerender(); const e = drawbackList(ctx).filter((x) => !nm(d.dq) || nm(x.name).includes(nm(d.dq)))[first]; if (e) refocus(`[data-fk="dr-${slug(e.name)}"]`); break; }
+        case "tal-more": { const first = d.tlimit; d.tlimit += PAGE; ctx.rerender(); const e = talentList(ctx).filter((x) => hit(nm(d.tq), x.name, nm, "talent"))[first]; if (e) refocus(`[data-fk="tl-${slug(e.name)}"]`); break; }
+        case "dr-more": { const first = d.dlimit; d.dlimit += PAGE; ctx.rerender(); const e = drawbackList(ctx).filter((x) => hit(nm(d.dq), x.name, nm, "drawback"))[first]; if (e) refocus(`[data-fk="dr-${slug(e.name)}"]`); break; }
         case "pick-talent": {
           const name = el.dataset.name, uuid = el.dataset.uuid;
           const x = await expandKnowledgeable(ctx, { name, packUuid: uuid || null });

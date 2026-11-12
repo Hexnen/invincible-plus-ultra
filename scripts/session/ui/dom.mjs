@@ -38,12 +38,12 @@ export function updatePortrait(box, src, alt = "") {
   if (isVideo(want)) {
     const v = el("video", "", { muted: true, loop: true, autoplay: true, playsinline: true, preload: "metadata", tabindex: "-1" });
     v.muted = true; v.src = want;
-    v.addEventListener("error", () => { box.classList.add("is-empty"); box.replaceChildren(icon("fa-solid fa-user")); }, { once: true });
+    v.addEventListener("error", () => { if (box.dataset.src !== want) return; box.classList.add("is-empty"); box.replaceChildren(icon("fa-solid fa-user")); }, { once: true });
     box.append(v);
   } else {
     const i = el("img", "", { alt: "", loading: "lazy", decoding: "async", draggable: "false" });
     i.src = want;
-    i.addEventListener("error", () => { box.classList.add("is-empty"); box.replaceChildren(icon("fa-solid fa-user")); }, { once: true });
+    i.addEventListener("error", () => { if (box.dataset.src !== want) return; box.classList.add("is-empty"); box.replaceChildren(icon("fa-solid fa-user")); }, { once: true });
     box.append(i);
   }
 }

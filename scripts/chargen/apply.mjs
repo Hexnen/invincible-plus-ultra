@@ -508,7 +508,12 @@ async function restore(actor, snap, createdIds = null) {
   await actor.update(upd, member ? {} : { ipbSync: true });   // not a member: our own legitimate writer for the team texts (a no-op option otherwise)
 }
 
-const snapOf = (actor) => (actor ? memory.get(actor.uuid) ?? getp(actor._source, `flags.${MODULE_ID}.chargenBackup`) ?? null : null);
+const snapOf = (actor) => {
+  if (!actor) return null;
+  const mem = memory.get(actor.uuid) ?? null, flag = getp(actor._source, `flags.${MODULE_ID}.chargenBackup`) ?? null;
+  if (mem && flag && (Number(flag.at) || 0) > (Number(mem.at) || 0)) return flag;   // another client applied later: the shared flag is newer than this client's memory
+  return mem ?? flag;
+};
 
 /** A2 (phase 9): is there something to undo, how old is it, and what changed on the hero since the run? Sync, reads only the actor. The offer expires after UNDO_TTL.
     drift = { fields:[{path, expected, now}], itemsEdited:[names], itemsMissing:[names], itemsAdded:[names] }; clean = nothing drifted; unknown = a backup from before this check existed. */

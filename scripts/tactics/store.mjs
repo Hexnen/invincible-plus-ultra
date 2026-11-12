@@ -116,14 +116,24 @@ export async function write(combat, state, log = undefined) {
 /** Single execution when several tabs of the executor receive the same request or see the same roll message: the flag `tactics.claim`
     holds "<key>|<tabId>". A tab writes its claim only when no claim for that key is visible, waits SETTLE_MS and goes on only if the
     claim it reads back is its own. A tab that comes later sees the earlier claim and yields. -> true: this tab runs it */
+export const CLAIM_STALE_MS = 10000;
+/** -> true: the flag holds a live claim for `key`. A claim of another tab older than CLAIM_STALE_MS is a dead page's leftover (it died between the claim and the state write): it does not block. */
+export function claimHeld(flag, key, tab, now = Date.now()) {
+  const v = String(flag ?? "");
+  if (!v.startsWith(`${key}|`)) return false;
+  const rest = v.slice(key.length + 1), [who, at] = rest.split("|");
+  if (who === tab) return true;
+  return !(at !== undefined && Number.isFinite(Number(at)) && now - Number(at) > CLAIM_STALE_MS);
+}
 export async function claim(combat, key) {
   try {
     const seen = () => String(flagsOf(combat)?.claim ?? "");
-    if (seen().startsWith(`${key}|`)) return seen() === `${key}|${TAB}`;
+    const mine = `${key}|${TAB}|${Date.now()}`, own = () => seen().startsWith(`${key}|${TAB}|`) || seen() === `${key}|${TAB}`;
+    if (claimHeld(seen(), key, TAB)) return own();
     await wait(Math.floor(Math.random() * Math.min(40, settleMs)));
-    if (seen().startsWith(`${key}|`)) return seen() === `${key}|${TAB}`;
-    await combat.update({ [`flags.${MOD}.tactics.claim`]: `${key}|${TAB}` }, { ...UPDATE_OPT });
+    if (claimHeld(seen(), key, TAB)) return own();
+    await combat.update({ [`flags.${MOD}.tactics.claim`]: mine }, { ...UPDATE_OPT });
     await wait(settleMs);
-    return seen() === `${key}|${TAB}`;
+    return seen() === mine;
   } catch (e) { console.warn(`${MOD} | tactics claim failed`, e); return false; }
 }

@@ -157,7 +157,9 @@ export function paramsOf(e, ctx, dom = false, opts = {}) {
 }
 /** The sentence as a DocumentFragment (who bold, names as links). opts.kid: a child line without the author. */
 export function sentenceNodes(e, ctx, opts = {}) { return buildNodes(t(sumKey(e)), paramsOf(e, ctx, true, opts), opts); }
-const textCache = new WeakMap();
+let textCache = new WeakMap();
+/** Drop the cached plain texts (they embed user / actor names that can be renamed without a log write). */
+export function resetSentenceCache() { textCache = new WeakMap(); }
 /** The sentence as plain text (search, export, aria). Cached per entry and language. */
 export function sentenceText(e, ctx, opts = {}) {
   if (!opts.kid) { const hit = textCache.get(e); if (hit && hit.lang === langKey()) return hit.text; }

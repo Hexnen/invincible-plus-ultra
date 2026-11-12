@@ -11,6 +11,9 @@ import { t, tn } from "../lang.mjs";
 import { h, icon, sr, uid, append } from "./dom.mjs";
 import * as R from "./rows.mjs";
 
+/** Person-select value of the System (empty user id) entries; "" stays "Everyone". */
+const SYSTEM_OPT = "__system__";
+
 const MOD = E.MOD_ID;
 const PAGE = 80;
 const reduced = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
@@ -89,7 +92,7 @@ export class LogView {
     };
     this.#build();
     this.#unsub = source.subscribe((info) => this.#onChange(info));
-    for (const hk of ["userConnected", "updateUser", `${MOD}.logQueue`]) { const fn = () => this.#renderBanner(); Hooks.on(hk, fn); this.#hooks.push([hk, fn]); }
+    for (const hk of ["userConnected", "updateUser", "updateActor", `${MOD}.logQueue`]) { const fn = () => { if (hk === "updateUser" || hk === "updateActor") R.resetSentenceCache(); this.#renderBanner(); }; Hooks.on(hk, fn); this.#hooks.push([hk, fn]); }
     { const fn = (setting) => { if (String(setting?.key ?? "").startsWith(`${MOD}.log`)) setTimeout(() => this.#load(false), 400); }; Hooks.on("updateSetting", fn); this.#hooks.push(["updateSetting", fn]); }   // switched off / read access changed
     this.#renderAll();
     setTimeout(() => { if (!this.destroyed) this.#load(true); }, 30);   // not rAF: a hidden browser tab never fires it
@@ -256,7 +259,7 @@ export class LogView {
     const users = F.usersOf(this.data.entries);
     const sel = h("select.ipl-input", { id: `${id}-u`, "data-ipl-f": "user" },
       h("option", { value: "" }, t("IPL.UI.Everyone")),
-      users.map((u) => h("option", { value: u.id, selected: s.users[0] === u.id }, `${u.id ? this.ctx.userName(u.id) : t("IPL.UI.System")} (${u.n})`)));
+      users.map((u) => h("option", { value: u.id || SYSTEM_OPT, selected: s.users.length > 0 && s.users[0] === u.id }, `${u.id ? this.ctx.userName(u.id) : t("IPL.UI.System")} (${u.n})`)));
     // when
     const presets = [["all", "IPL.UI.AnyTime"], ["today", "IPL.UI.Today"], ["lastSession", "IPL.UI.LastSession"], ["7days", "IPL.UI.Days7"]];
     const when = h("div.ipl-seg", { role: "group", "aria-label": t("IPL.UI.When") }, presets.map(([k, key]) => h("button.ipl-btn.ipl-seg-b", { type: "button", "data-ipl-act": "preset", "data-ipl-id": k, "aria-pressed": String(s.preset === k) }, t(key))));
@@ -284,7 +287,7 @@ export class LogView {
   #onFilterInput(ev) {
     const el = ev.target, k = el.dataset?.iplF, s = this.s;
     if (!k) return;
-    if (k === "user") s.users = el.value ? [el.value] : [];
+    if (k === "user") s.users = el.value === SYSTEM_OPT ? [""] : el.value ? [el.value] : [];
     else if (k === "from") { s.fromStr = el.value; s.preset = el.value || s.toStr ? "custom" : "all"; }
     else if (k === "to") { s.toStr = el.value; s.preset = el.value || s.fromStr ? "custom" : "all"; }
     else if (k === "rfrom") s.roundFrom = el.value === "" ? null : Number(el.value);

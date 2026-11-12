@@ -153,7 +153,7 @@ export function migrate(raw) {
 /* ------------------------------------------------------------------ id-keyed map helpers */
 export function sortedList(map) {
   return Object.entries(isObj(map) ? map : {})
-    .map(([id, e]) => ({ id, ...e }))
+    .map(([id, e]) => ({ ...e, id }))
     .sort((a, b) => num(a.sort) - num(b.sort) || num(a.at) - num(b.at) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 export function nextSort(map) {

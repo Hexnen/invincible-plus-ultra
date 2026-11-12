@@ -294,6 +294,13 @@ function ensureLists(ctx, power) {
   return Promise.all([ctx.catalog.boostsFor(power), ctx.catalog.limitsFor(power)]).then(([b, l]) => { d.boostCache.set(key, b); d.limitCache.set(key, l); });
 }
 
+/** a list load failed: show the "none available" state instead of a spinner that never ends (the next open retries) */
+function failLists(d, key) {
+  if (!d.boostCache.has(key)) d.boostCache.set(key, []);
+  if (!d.limitCache.has(key)) d.limitCache.set(key, []);
+  (d.listFailed ??= new Set()).add(key);
+}
+
 function addPowerEntry(ctx, e, how = "added") {
   const s = ctx.state, d = ctx.data;
   if (s.powers.some((p) => norm(p.name) === norm(e.name))) return false;
@@ -369,10 +376,18 @@ function useSource(ctx, name, uuid) {
 }
 
 /* ---------------------------------------------------------------- the step */
+/** a mount that arrives while the fetch is still running gets the SAME promise, so its own (live) section is repainted when the data lands */
 async function syncArchetype(ctx) {
   const d = ctx.data, name = ctx.state.archetype ?? null;
-  if (d.archFor === name) return false;
+  if (d.archFor === name) return d.archPending ?? false;
   d.archFor = name;
+  const run = loadArchetype(ctx, name);
+  d.archPending = run;
+  try { return await run; } finally { if (d.archPending === run) d.archPending = null; }
+}
+
+async function loadArchetype(ctx, name) {
+  const d = ctx.data;
   d.archNames = new Set(); d.suggest = []; d.suggestNames = new Set();
   if (!name) return true;
   try {
@@ -499,14 +514,16 @@ export default {
         case "rand-power": await randomPower(ctx); break;
         case "more": { const u = el.dataset.uuid; if (d.open.has(u)) d.open.delete(u); else d.open.add(u); ctx.rerender(); break; }
         case "book": openBook(el.dataset.uuid); break;
-        case "cat-more": { const first = d.limit; d.limit += PAGE; ctx.rerender(); const e = d.powers.filter((p) => (d.type === "all" || p.type === d.type) && (!norm(d.q) || norm(p.name).includes(norm(d.q))))[first]; if (e) refocus(`[data-fk="pw-${slug(e.name)}"]`); break; }
-        case "src-more": { const first = d.slimit; d.slimit += PAGE; ctx.rerender(); const e = d.sources.filter((x) => !norm(d.sq) || norm(x.name).includes(norm(d.sq)))[first]; if (e) refocus(`[data-fk="srcuse-${slug(e.name)}"]`); break; }
+        case "cat-more": { const first = d.limit; d.limit += PAGE; ctx.rerender(); const e = d.powers.filter((p) => (d.type === "all" || p.type === d.type) && hit(norm(d.q), p.name, norm, "power"))[first]; if (e) refocus(`[data-fk="pw-${slug(e.name)}"]`); break; }
+        case "src-more": { const first = d.slimit; d.slimit += PAGE; ctx.rerender(); const e = d.sources.filter((x) => hit(norm(d.sq), x.name, norm, "powerSource"))[first]; if (e) refocus(`[data-fk="srcuse-${slug(e.name)}"]`); break; }
         case "pick": {
           const key = el.dataset.key, kind = el.dataset.kind, p = s.powers.find((x) => x.key === key);
           if (!p) break;
           if (d.pick?.key === key && d.pick.kind === kind) { d.pick = null; ctx.rerender(); break; }
           const room = limitRoom(p);
-          try { await ensureLists(ctx, p.name); } catch (err) { console.warn("invincible-plus-ultra | chargen: boost / limit lists failed", err); }
+          const lk = norm(p.name);
+          if (d.listFailed?.has(lk)) { d.listFailed.delete(lk); d.boostCache.delete(lk); d.limitCache.delete(lk); }   // a failed load is retried on the next open
+          try { await ensureLists(ctx, p.name); } catch (err) { console.warn("invincible-plus-ultra | chargen: boost / limit lists failed", err); failLists(d, lk); }
           d.pick = { key, name: p.name, kind, grants: room.level ? "level" : room.boost ? "boost" : null };
           ctx.rerender();
           break;
@@ -526,7 +543,10 @@ export default {
           refocus(`[data-fk="pick-b-${key}"]`);
           break;
         }
-        case "rand-boost": await randomBoost(ctx, el.dataset.key); break;
+        case "rand-boost": {
+          try { await randomBoost(ctx, el.dataset.key); } catch (err) { console.warn("invincible-plus-ultra | chargen: boost lists failed", err); const p = s.powers.find((x) => x.key === el.dataset.key); if (p) failLists(d, norm(p.name)); said(ctx, t("IPC.Powers.BoostEmpty")); ctx.rerender(); }
+          break;
+        }
         case "add-limit": {
           const key = el.dataset.key, grants = d.pick?.grants;
           if (!grants) break;

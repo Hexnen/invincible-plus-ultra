@@ -193,7 +193,7 @@ export async function undo(user, { mode = "strict" } = {}) {
     const end = await Store.commit({ type: "undoEnd", rid: `un${n}e${undone}` }, ctx);
     if (!end.ok) return { ...end, results };
     const failed = results.filter((r) => r.status === "failed");
-    return { ok: true, changed: true, partial: end.partial === true, results, session: Store.current(), mode: m, ...(failed.length ? { failed: failed.map((f) => nameOf(f.h)) } : {}) };
+    return { ok: true, changed: true, partial: end.partial === true || (end.dup === true && Store.current()?.award != null), results, session: Store.current(), mode: m, ...(failed.length ? { failed: failed.map((f) => nameOf(f.h)) } : {}) };
   } catch (e) {
     console.warn(`${MOD} | session undo interrupted (run it again to continue)`, e);
     return { ...err("internal", { msg: String(e?.message ?? e).slice(0, 80) }), resumable: true };

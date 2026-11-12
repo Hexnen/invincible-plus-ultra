@@ -123,10 +123,18 @@ function namesSection(ctx) {
 }
 
 /* ---------------------------------------------------------------- data + dice */
+/** a mount that arrives while the fetch is still running gets the SAME promise, so its own (live) section is repainted when the lists land */
 async function syncArchetype(ctx) {
   const d = ctx.data, name = ctx.state.archetype ?? null;
-  if (d.archFor === name) return false;
+  if (d.archFor === name) return d.archPending ?? false;
   d.archFor = name;
+  const run = loadArchetype(ctx, name);
+  d.archPending = run;
+  try { return await run; } finally { if (d.archPending === run) d.archPending = null; }
+}
+
+async function loadArchetype(ctx, name) {
+  const d = ctx.data;
   d.persArch = []; d.drvArch = []; d.flwArch = []; d.hnArch = [];
   if (name) {
     try {

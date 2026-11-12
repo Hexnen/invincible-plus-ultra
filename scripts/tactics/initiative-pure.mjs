@@ -162,11 +162,19 @@ export function continueDraw(init0, parts, rng) {
     /* a kept card must be a card of this round's deck, and only one slot keeps it; a card from a longer deck of an earlier round is kept
        beside the deck (nobody else can draw it) */
     const keepOf = (s) => { const c = d.keeps[s.id]; if (!Number.isFinite(c) || seen.has(c)) return null; seen.add(c); return c; };
-    const draws = [], beside = [];
-    for (const s of open) {
-      const keep = keepOf(s);
-      if (keep != null && keep > size) { beside.push({ id: s.id, card: keep, kept: true }); continue; }
-      draws.push(drawOf(s, { ...(keep != null ? { keep } : {}), surprised: keep == null && d.surprised.includes(s.id) }));
+    let draws = [], beside = [];
+    const kept = open.map((s) => ({ s, keep: keepOf(s) }));
+    /* dealStart builds its deck from the draws it is given, so a card set aside shrinks it: set aside again until every kept card is in it */
+    let cap = size;
+    for (;;) {
+      draws = []; beside = [];
+      for (const { s, keep } of kept) {
+        if (keep != null && keep > cap) { beside.push({ id: s.id, card: keep, kept: true }); continue; }
+        draws.push(drawOf(s, { ...(keep != null ? { keep } : {}), surprised: keep == null && d.surprised.includes(s.id) }));
+      }
+      const next = initiative.deckSize(draws.length);
+      if (next >= cap) break;
+      cap = next;
     }
     d.size = Math.max(size, ...Object.values(d.keeps), 1);
     take(beside);
@@ -233,7 +241,7 @@ export function memberDone(init0, member, { lost = false } = {}) {
 /* the GM ends the round early: whatever has not acted does not act (a pending lost turn is not consumed by this) */
 export function closeRound(init0) {
   const init = copy(init0);
-  for (const s of init.slots) if (s.state === "waiting" || s.state === "active") s.state = "done";
+  for (const s of init.slots) if (s.state === "waiting" || s.state === "active") { s.state = "done"; s.done = s.members.slice(); }   // settle() re-derives state from done: skipped members count as having acted, or a later edit would make the slot wait again
   init.cur = null; init.curMember = null;
   return init;
 }

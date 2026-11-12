@@ -85,6 +85,7 @@ export function syncCopies(combat, state) {
       if (!Store.iAmExecutor() || !combat) return;
       const want = new Map((state?.effects ?? []).filter((x) => x.kind === "copies" && Number(x.data?.n) > 0).map((x) => [x.holder, Math.min(3, Math.ceil(x.data.n / 3))]));      // the exact number does not matter [B1907]: one to three tokens, fewer as the bonus shrinks
       const scenes = new Set([...combat.combatants].map((cb) => cb.token?.parent).filter(Boolean));
+      for (const sc of game.scenes ?? []) if (!scenes.has(sc) && sc.tokens.some((td) => copyOf(td)?.combat === combat.id)) scenes.add(sc);      // a scene the fight has left: its copies still go
       for (const scene of scenes) {
         const have = scene.tokens.filter((td) => copyOf(td)?.combat === combat.id);
         const gone = [], make = [];

@@ -93,7 +93,12 @@ function fit(entry) {
     let shrunk = false;
     const halve = (o) => {
       for (const key of Object.keys(o)) {
-        if (Array.isArray(o[key]) && o[key].length > 1) { o[key] = o[key].slice(0, Math.ceil(o[key].length / 2)); shrunk = true; o.more = (o.more || 0) + 1; }
+        if (Array.isArray(o[key]) && o[key].length > 1) {
+          const cut = o[key].length - Math.ceil(o[key].length / 2);
+          o[key] = o[key].slice(0, Math.ceil(o[key].length / 2)); shrunk = true;
+          if (o.more && typeof o.more === "object") o.more[key] = (Number(o.more[key]) || 0) + cut;   // keep a producer's {add,del} counts true instead of turning them into a string
+          else o.more = (o.more || 0) + 1;
+        }
         else if (o[key] && typeof o[key] === "object" && !Array.isArray(o[key])) halve(o[key]);
       }
     };

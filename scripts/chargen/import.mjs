@@ -69,7 +69,8 @@ export function stateFromActor(actor, { seed = "000000", rank } = {}) {
   ofType("power").forEach((it, n) => {
     const key = `p${n + 1}`;
     powerKey.set(it.id, key);
-    s.powers.push({ key, name: it.name, packUuid: null, level: Math.max(0, LEVELS.indexOf(it.system?.level)), sourceKey: sourceKey.get(it.system?.powerSource) ?? s.sources[0]?.key ?? null, boosts: [], limits: [] });
+    const pm = it.name.match(/^(.*?)\s*\(([^)]*)\)\s*$/);   // apply writes a power note as "Name (note)": split it back
+    s.powers.push({ key, name: pm ? pm[1] : it.name, packUuid: null, level: Math.max(0, LEVELS.indexOf(it.system?.level)), sourceKey: sourceKey.get(it.system?.powerSource) ?? s.sources[0]?.key ?? null, boosts: [], limits: [], ...(pm && pm[2].trim() ? { note: pm[2] } : {}) });
   });
   const powerOf = (it) => s.powers.find((p) => p.key === powerKey.get(it.system?.power));
   for (const it of ofType("boost")) powerOf(it)?.boosts.push({ name: it.name, packUuid: null });

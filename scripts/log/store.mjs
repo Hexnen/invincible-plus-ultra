@@ -217,7 +217,9 @@ async function writeSet(journal, secretFor, entries, forced) {
       for (const c of creates) {
         const no = M.parseChunkName(c.name).no;
         if (!again[no]) throw e;
-        const u = { _id: again[no].id, [`flags.${MOD}.log.n`]: c.flags[MOD].log.n };
+        let merged = pageObj(again[no]);       // fold the entries into the page the other tab made, so n/first/last/bytes stay true
+        for (const en of Object.values(c.flags[MOD].log.e)) merged = M.pageWith(merged, en);
+        const u = { _id: again[no].id, [`flags.${MOD}.log.n`]: merged.n, [`flags.${MOD}.log.first`]: merged.first, [`flags.${MOD}.log.last`]: merged.last, [`flags.${MOD}.log.bytes`]: merged.bytes };
         for (const [id, en] of Object.entries(c.flags[MOD].log.e)) u[`flags.${MOD}.log.e.${id}`] = en;
         stats.pageUpdates++;
         await journal.updateEmbeddedDocuments("JournalEntryPage", [u], O());
