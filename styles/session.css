@@ -35,6 +35,10 @@
 .ips-app [hidden] { display: none !important; }
 .ips-app .window-content.ips-content { padding: 0; overflow: hidden; background: transparent; container: ips / inline-size; }
 .ips-app :is(h1, h2, h3, h4, p, dd, dt, li, label, legend) { color: inherit; }
+/* S100: the rule above is (0,1,1) and beat the one-class colours of these headings, legends, hints and counts (all ink): their colours,
+   as the header describes them, written as specific as it (the rest of each rule stays where it is) */
+.ips-app :is(.ips-q-label, .ips-rlegend, .ips-count, .ips-start-h) { color: var(--ips-blue); }
+.ips-app :is(.ips-q-hint, .ips-rhead, .ips-s-note, .ips-yc-none, .ips-start-hint) { color: var(--ips-text-2); }
 .ips-app *, .ips-app *::before, .ips-app *::after { box-sizing: border-box; }
 .ips-app :focus-visible { outline: 3px solid var(--ips-cyan); outline-offset: 2px; }
 .ips-app ::selection { background: var(--ips-yellow); color: var(--ips-ink); }
@@ -404,10 +408,10 @@
   .ips-bar-l { flex: none; gap: 6px; }
   .ips-bar-r { flex: 1; margin-left: 0; }
   .ips-bar-r .ips-btn { flex: 1; }
-  .ips-bar-l .ips-btn { min-width: 44px; padding: 0 10px; }
+  .ips-bar-l button.ips-btn { min-width: 44px; padding: 0 10px; }
   .ips-bar-l .ips-btn .ips-btn-t { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .ips-bar-l .ips-btn { min-height: 40px; }
-  .ips-toast { left: 8px; right: 8px; }
+  .ips-bar-l button.ips-btn { min-height: 40px; }   /* S102: (0,2,1) as the base rule and after it (the coarse-pointer 44px below still wins) */
+  .ips-app p.ips-toast { left: 8px; right: 8px; }
 }
 @media (pointer: coarse) {
   .ips-app button.ips-btn, .ips-app .ips-menu-i, .ips-app button.ips-over, .ips-check { min-height: 44px; }

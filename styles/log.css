@@ -36,6 +36,8 @@
 }
 .ipl, .ipl *, .ipl *::before, .ipl *::after { box-sizing: border-box; }
 .ipl :is(h2, h3, h4, p, ul, ol, dl, dd, dt, li, label, summary, small, table, th, td, blockquote, button, input, select, textarea) { color: inherit; text-shadow: none; }
+/* S101: the rule above is (0,1,1) and turned these <p> lines (count, hint, when, history, state body, end) ink: their secondary colour as specific */
+.ipl :is(.ipl-count, .ipl-hint, .ipl-whenline, .ipl-hist, .ipl-state-b, .ipl-end) { color: var(--ipl-text-2); }
 .ipl :is(h2, h3, h4, p, ul, ol, dl, dd, blockquote) { margin: 0; }
 .ipl h4 { font: 700 .85rem/1.3 Roboto, sans-serif; letter-spacing: 0; text-transform: none; border: 0; padding: 0; }
 .ipl :is(ul, ol) { padding: 0; list-style: none; }

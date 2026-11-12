@@ -68,6 +68,8 @@ function markSeen(ids) {
 }
 let seenLocal = null;               // what this session already marked (the setting is written async)
 export function closeHint(id) { seenLocal = [...new Set([...(seenLocal ?? seenNow()), id])]; markSeen([id]); hintShown = null; H?.refresh(); }
+/** U186 / U192: may a hint still come on this seat (feedback-pure hintsLeft)? The frame keeps the hint's place only then */
+export function hintsLeft(staff) { try { return FP.hintsLeft(seenLocal ?? seenNow(), staff); } catch { return false; } }
 /** the switch was turned (main.mjs registers the setting): on again = every hint once more */
 export function hintsSwitched(on) { try { if (on) { seenLocal = []; game.settings.set(MOD, "tacticsHintsSeen", "[]"); } H?.refresh(); } catch { /* not started */ } }
 
@@ -153,7 +155,7 @@ export function sync(ctx) {
       let seen = seenLocal ?? seenNow();
       const used = FP.hintsUsed(hintShown, data, own);
       if (used.length) { seenLocal = seen = [...new Set([...seen, ...used])]; markSeen(used); }
-      hint = FP.hintOf(data, seen, t);
+      hint = FP.hintOf(data, seen, t, !!staff);      // U186: no player hints on a GM seat
     }
     hintShown = hint?.id ?? null;
     return { sum: sum?.card ?? null, hint };

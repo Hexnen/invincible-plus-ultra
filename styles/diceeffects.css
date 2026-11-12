@@ -65,7 +65,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .isp-dfx-six, .isp-dfx-one { animation: ispdfx-fade 160ms linear forwards; }
-  .isp-dfx-one svg, .isp-dfx-six .rays { animation: none; }
+  .isp-dfx-one svg, .isp-dfx-six .rays, .isp-dfx-six.is-bold .rays { animation: none; }   /* S099: the bold rays rule is (0,3,0): named here too, or its scale-in runs */
   .isp-dfx.is-out, .isp-dfx.is-out-fast { animation: ispdfx-out 160ms linear forwards; }
 }
 @keyframes ispdfx-fade { from { opacity: 0; } to { opacity: 1; } }

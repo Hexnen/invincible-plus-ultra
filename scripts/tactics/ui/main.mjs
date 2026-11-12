@@ -561,7 +561,7 @@ function configure() {
     locate: (cid, on) => Pick.locate(combatNow(), cid, on), deskRelayout: () => { try { Desk.relayout(); } catch { /* not built */ } },
     roll: rollAct, sumClose: () => Feedback.closeSum(), hintClose: (id) => Feedback.closeHint(id),
     /* U132: what the frame of the fixed places asks: the seat, the hints, where the challenges' band ends (challenges/main.mjs) */
-    staff: () => Store.isStaff(game.user), hintsOn: () => Store.setting("tacticsHints", true) !== false,
+    staff: () => Store.isStaff(game.user), hintsOn: () => Store.setting("tacticsHints", true) !== false && Feedback.hintsLeft(Store.isStaff(game.user)),      // U186 / U192: a GM seat, or one that has seen every hint, keeps no place for one
     ichFloor: (y) => { try { window.dispatchEvent(new CustomEvent("ipu:ich-floor", { detail: y })); } catch { /* the challenges keep their room */ } },
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });

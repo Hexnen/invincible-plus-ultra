@@ -251,7 +251,7 @@ function linesOf(p, t, facts, x) {
     case "reflexes": out.push(t("ITAC.Prompt.reflexes.Body", { name: about })); break;
     case "grantConsent": out.push(t("ITAC.Prompt.grantConsent.Body", { name: about, from: d.from ? n(d.from) : t("ITAC.Someone") })); break;
     case "challengeStale": out.push(t("ITAC.ui.line.challengeStale", { name: about, left: d.left ?? 0, max: d.max ?? 0 })); break;      // U157
-    case "challengeFail": out.push(t("ITAC.Prompt.challengeFail.Body", { name: about })); if ((d.effects ?? []).length) out.push(t("ITAC.ui.line.failEffects", { list: d.effects.map((k) => t(`ITAC.ui.effect.${k}`, {}, String(k))).join(", ") })); break;
+    case "challengeFail": out.push(t("ITAC.Prompt.challengeFail.Body", { name: about })); if ((d.effects ?? []).length) out.push(t("ITAC.ui.line.failEffects", { list: d.effects.map((k) => t(`ITAC.ui.effect.${k}`, {}, String(k))).join(", ") })); else out.push(t("ITAC.ui.line.failNone")); break;      // U187: what Apply does when the challenge names no effect
     /* P7 */
     case "objective": out.push(t(d.why === "power" ? "ITAC.ui.line.objectivePower" : "ITAC.ui.line.objective", { name: about, challenge: n(d.challenge), attr: attrText(t, d.attr), power: String(d.power ?? "") })); if (d.text) out.push({ quote: String(d.text), by: about }); break;
     case "chaseCatch": out.push(t(d.ram ? "ITAC.ui.line.chaseRam" : "ITAC.ui.line.chaseCharge", { name: about, target: n(d.target) })); break;
@@ -392,7 +392,7 @@ export function askData(p, o) {
 /* what a card waits for, said as a thing (a noun), not as the card's question: the word of the wait if it has one, else the title of the
    GM's card of that kind without its question mark ("Counterattack?" -> "Counterattack") */
 function waitWord(w, t, facts) {
-  if (w.kind === "triggerQueue") return titleOf({ ...w, to: "player" }, t, facts);
+  if (w.kind === "triggerQueue") return String(titleOf({ ...w, to: "player" }, t, facts)).trim();      // U188: no round number here, so no stray space before the comma ("Początek rundy , stary czas")
   const own = t(`ITAC.ui.wait.k.${w.kind}`, {}, null);
   if (own) return own;
   const card = t(`ITAC.card.${w.kind}`, {}, null) ?? titleOf({ ...w, to: "desk" }, t, facts);
@@ -467,7 +467,9 @@ function newsText(n, facts, t) {
   const rows = (n.rows ?? []).filter((r) => typeof r.hit === "boolean" || Number.isFinite(r.taken)).map((r) => {
     const verdict = typeof r.hit !== "boolean" ? null : r.hit ? t("ITAC.result.hit") : r.def ? t("ITAC.ui.news.missBy", { how: t(`ITAC.action.${r.def}`).toLowerCase() }) : t("ITAC.result.miss");
     const dealt = !Number.isFinite(r.taken) ? null : r.taken === 0 && typeof r.hit !== "boolean" ? t("ITAC.ui.news.noDamage") : t(r.stress ? "ITAC.ui.news.stress" : "ITAC.ui.news.taken", { n: r.taken });
-    const bits = [verdict, dealt, ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s))), r.out > 0 ? t("ITAC.ui.news.out", { n: r.out }) : null, r.down ? t("ITAC.status.broken").toLowerCase() : null, r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null].filter(Boolean);      // D127
+    /* U192 (UX review 2): what the hit did to the character (minions down, broken, the injury) comes before the stunts that made it: a
+       line cut at its place's end loses the stunts' names (they stand in the tooltip), never "broken" or the injury */
+    const bits = [verdict, dealt, r.out > 0 ? t("ITAC.ui.news.out", { n: r.out }) : null, r.down ? t("ITAC.status.broken").toLowerCase() : null, r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null, ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s)))].filter(Boolean);      // D127
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
   /* a hazard that hurt nobody says so once, with the names after it (four "no damage" in a row is one fact) */

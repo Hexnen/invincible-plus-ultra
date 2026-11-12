@@ -227,7 +227,7 @@ li.chat-message.message {
   }
   /* beats the system's blue text rule; keeps the Splash badge (.ins-chat) and the dice tiles (.roll) on their own colours */
   & .message-content *:not(a, .roll, .ins-chat *) { color: inherit; }
-  & .message-content :is(h1, h2, h3, h4, h5, h6, strong, b) { color: var(--isp-ink); }
+  /* S096: no heading/strong ink rule here: it lost to the line above at (0,1,1) and never drew; bold text keeps the ink-2 of its paragraph */
   & .message-content p { margin: 0 0 .5em; max-width: 68ch; text-wrap: pretty; }
   & .message-content p:last-child { margin-bottom: 0; }
   & .message-content img { max-width: 100%; height: auto; }
@@ -732,7 +732,8 @@ li.chat-message.message {
   & .message-content .roll-energy  { --sl-glyph: "\f0e7"; }       /* bolt */
 
   /* ======================================================================
-     Item / injury / power cards (plain prose in a div): the type word becomes a skewed yellow banner like the sheet titles.
+     Item / injury / power cards (plain prose in a div): the type word becomes a yellow banner like the sheet titles. A banner is a
+     FRAME (see "BUTTON vs FRAME" below): flat, no tilt and no hard shadow (S097: the tilt and shadow it once had here never rendered).
      The :has(+ p) guard keeps ordinary bold text (a name inside a sentence) out of it.
      ====================================================================== */
   & .message-content > div > strong:first-child:has(+ p) {
@@ -745,9 +746,6 @@ li.chat-message.message {
     color: var(--isp-ink);
     background: var(--isp-yellow);
     border: 2px solid var(--isp-ink);
-    box-shadow: 3px 3px 0 var(--isp-ink);
-    transform: rotate(-1.5deg) skew(-6deg);
-    transform-origin: left center;
   }
   & .message-content > div > p > strong:first-child { color: var(--isp-label); }   /* 'Healing Time:' style labels */
 
@@ -784,20 +782,18 @@ li.chat-message.message {
   li.chat-message.message *::after { animation: none !important; transition: none !important; }
 }
 
-/* "4db" is jargon (and the expanded row repeated it). On Year Zero rolls, which have a success / failure total, the pill becomes a compact
-   "Dice" toggle on the right and the raw formula is hidden; the dice themselves and the breakdown chips carry the information.
-   A plain roll (1d20 + 2) keeps its formula: there it is the information. */
+/* "4db" is jargon (and the expanded row repeated it). On Year Zero rolls, which have a success / failure total, the pill becomes the
+   full-width "Dice" toggle (the dice summary left, the label and chevron right: "Dice toggle" below) and the raw formula is hidden; the
+   dice themselves and the breakdown chips carry the information. A plain roll (1d20 + 2) keeps its formula: there it is the information.
+   S098: the compact right-hand pill once declared here (fit-content, auto margin, 2px shadow) was always overridden by the toggle below. */
 li.chat-message.message .message-content .dice-roll:has(.dice-total:is(.success, .failure)) .dice-formula {
-  width: fit-content;
   min-height: 30px;
-  margin-left: auto;
   padding: 2px 10px;
   gap: 6px;
   font-size: 0;               /* hides the formula text; the ::before label and ::after chevron set their own sizes */
   color: transparent;
-  box-shadow: 2px 2px 0 var(--isp-ink);
 }
-li.chat-message.message .message-content .dice-roll:has(.dice-total:is(.success, .failure)) .dice-formula::before { margin-left: 0; font-size: .75rem; }
+li.chat-message.message .message-content .dice-roll:has(.dice-total:is(.success, .failure)) .dice-formula::before { font-size: .75rem; }
 li.chat-message.message .message-content .dice-roll:has(.dice-total:is(.success, .failure)) .dice-tooltip .part-header .part-formula { display: none; }
 
 /* =====================================================================================================================
@@ -910,7 +906,7 @@ li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-c
   mask-image: radial-gradient(circle 32px at 100% 100%, #000, transparent);
 }
 /* only two tiles (hero + one row): the single shared row would otherwise be stretched tall by a big number, so the number steps down */
-li.chat-message.message .message-content .dice-infos:has(> :nth-child(2)):not(:has(> :nth-child(3))) { --sl-k: 1.05; }
+li.chat-message.message .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2)):not(:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(3))) { --sl-k: 1.05; }
 li.chat-message.message .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(3)) > :first-child { grid-row: span 2; }
 li.chat-message.message .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(4)) > :first-child { grid-row: span 3; }
 li.chat-message.message .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(5)) > :first-child { grid-row: span 4; }
@@ -1015,7 +1011,7 @@ li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-c
   text-align: center;
   animation: isp-stat-pop .3s var(--isp-out) both;
 }
-li.chat-message.message .message-content .dice-infos:not(:has(> :nth-child(2))) > :first-child .result { flex: none; display: block; padding: 0; text-align: right; font-size: 1.9rem; align-self: center; }
+li.chat-message.message .message-content .dice-infos:not(:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2))) > :first-child .result { flex: none; display: block; padding: 0; text-align: right; font-size: 1.9rem; align-self: center; }
 /* TEXT RESULTS (module.js sets data-long when the result has letters or is longer than 6 characters: Range "1 - Movement", "Self"): they are
    words, not a numeral, and are NEVER cut off (no clamp, no ellipsis). A row stacks: label (tile + word) on the first line, the value on its own
    full-width line below it, left-aligned, Comic bold, wrapping at word breaks onto as many lines as it needs; the row simply grows taller. */
@@ -1064,12 +1060,12 @@ li.chat-message.message .message-content .dice-infos:not(:has(> :is(.roll-damage
 /* 250px card: the 5rem column cannot hold glyph + "DAMAGE"; the word stays, the glyph steps aside (not a colour-only cue either way).
    Other languages have longer words ("OBRAŻENIA"): the glyph also steps aside below 420px, where the column grows to 7rem. */
 @container isp-chat (max-width: 250px) {
-  li.chat-message.message .message-content .dice-infos:has(> :nth-child(2)) > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::before { display: none; }
+  li.chat-message.message .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2)) > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::before { display: none; }
   li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::after { font-size: .62rem; letter-spacing: .03em; }
   li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy) .label[data-short]::before { width: 1.15rem; height: 1.15rem; margin-right: 6px; }
 }
 @container isp-chat (max-width: 419px) {
-  li.chat-message.message:not(:lang(en)) .message-content .dice-infos:has(> :nth-child(2)) > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::before { display: none; }
+  li.chat-message.message:not(:lang(en)) .message-content .dice-infos:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2)) > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):first-child .label[data-short]::before { display: none; }
 }
 
 /* ---- other info frames: flat ---- */
