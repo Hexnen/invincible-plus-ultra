@@ -252,8 +252,20 @@ function looseTitle(el) {
     const text = n.nodeValue.trim(), at = text.lastIndexOf(" - ");
     if (at < 0) { const whole = node.matches("label.title") ? shownLoose(text, levelWord) : text; if (whole !== text) n.nodeValue = n.nodeValue.replace(text, whole); continue; }
     const tail = text.slice(at + 3), shown = shownLoose(tail, levelWord);
-    if (shown !== tail) n.nodeValue = n.nodeValue.replace(text, text.slice(0, at + 3) + shown);
+    if (shown !== tail) { n.nodeValue = n.nodeValue.replace(text, text.slice(0, at + 3) + shown); continue; }
+    const next = looseHead(text);      // U112
+    if (next !== text) n.nodeValue = n.nodeValue.replace(text, next);
   }
+}
+/* U112: the window that asks the way to roll a power's use is titled "Invincilble: <flavor>" (sic, the system's chat-message.mjs), and
+   the flavor is "<power> - <its use>" ("Strike - Normal"): the power's name stands before the last " - ", so the tail alone names
+   no power. Then the whole text after the prefix ("Invincible: ", any word before the first ": ") is read as one automation's name.
+   Pure: "Invincilble: Strike - Normal" -> "Invincilble: Cios - zwykłe użycie"; a text that names no power stays as written. */
+export function looseHead(text, level = levelWord) {
+  const s = String(text ?? ""), at = s.indexOf(": ");
+  if (at < 0 || s.indexOf(" - ") < at) return s;
+  const body = s.slice(at + 2), shown = shownLoose(body, level);
+  return shown === body ? s : s.slice(0, at + 2) + shown;
 }
 function looseDialog(el) {
   looseTitle(el);

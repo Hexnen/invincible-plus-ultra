@@ -262,6 +262,10 @@ function reactsOf(I) {
   return list.length ? { reacts: list.map((r) => ({ who: r.who, effect: r.effect, result: r.result, ...(P1.isId(r.about) ? { about: r.about } : {}), ...(r.name ? { name: String(r.name).slice(0, 80) } : {}), ...(typeof r.label === "string" && r.label.startsWith("ITAC.") ? { label: r.label.slice(0, 80) } : {}), ...(r.note ? { note: String(r.note).slice(0, 200) } : {}) })) } : {};
 }
 const reactWhat = (r) => (r.name ? String(r.name).replace(/[{}]/g, "") : typeof r.label === "string" && /^ITAC\.[\w.]+$/.test(r.label) ? `{${r.label}}` : "");
+/* U120: an action of somebody Foundry hides (or aimed at somebody hidden) has no public journal line (label: `pub` ""), and its news line
+   is marked `hid` when it is written: view-pure keeps it from the players for good, also after the GM reveals that combatant (the
+   reveal shows who is there now, not what was done unseen; question A9F-2). Its own player still reads it. */
+const hiddenNow = (X, I) => { try { return [I.actor, ...(I.decl?.targets ?? [])].some((c) => typeof c === "string" && X.facts.c(c)?.hidden === true); } catch { return false; } };
 /* D32 / D33: a public journal line does not carry a name. It carries the mark `{c:<id>}` and the list `who` of the combatants it is about
    (the doer, and the targets, whom it does not name), so each reader gets the name as THAT reader knows it (namesake numbers never count
    somebody hidden from a player, ruling U5-7) and no line about somebody concealed from that reader (view-pure.journalFor).
@@ -317,7 +321,7 @@ async function closeInst(X, I, result = null) {
   dropPrompts(X, (p) => p.inst === I.id);
   X.state = { ...X.state, stack: X.state.stack.filter((i) => i.id !== I.id) };
   if (!I.part) closeTx(X, I.tx, label(X, I, I.data.result));
-  if (!I.part && I.status !== "aborted" && !I.data?.free) pushNews(X, newsOf(I));
+  if (!I.part && I.status !== "aborted" && !I.data?.free) pushNews(X, { ...newsOf(I), ...(hiddenNow(X, I) ? { hid: 1 } : {}) });
   emit(X, I, { type: "actionClosed", summary: { result: I.data.result ?? null, status: I.status }, tx: I.part ? null : I.tx });
   const parent = I.parent ? instOf(X, I.parent) : null;
   if (!parent) return;

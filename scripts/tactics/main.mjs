@@ -20,6 +20,7 @@ import { setLive } from "./source.mjs";
 import { attach, setRunning, isRunning, tacticsApi } from "./api.mjs";
 import * as Mv from "./movement.mjs";
 import { t } from "./lang.mjs";
+import * as V from "./view-pure.mjs";
 
 const MOD = Store.MOD;
 let started = false;
@@ -86,6 +87,22 @@ async function startRunning() {
   Hooks.on("deleteCombatant", (c) => Engine.scheduleRoster(c.parent));
   Hooks.on("updateCombatant", (c, changes) => { if (changes && ("defeated" in changes || "actorId" in changes || "tokenId" in changes || changes.flags?.[MOD]?.tactics !== undefined)) Engine.scheduleRoster(c.parent); });
   Hooks.on("userConnected", () => Prompts.sync());                          // a prompt of a player who left falls to the executor
+  /* U113 (view-pure.hideFollows): in a running fight the token's and the combatant's "hidden" are one switch. Carried on the client of
+     the GM who flipped one (the token HUD, the tracker's eye), never by anybody else: no echo, no second writer. */
+  const fighting = (c) => { try { return !!c && !!Store.stateOf(c); } catch { return false; } };
+  Hooks.on("updateToken", (td, ch, _o, userId) => {
+    try {
+      if (userId !== game.user.id || !Store.isStaff(game.user) || !ch || !("hidden" in ch)) return;
+      for (const c of game.combats ?? []) if (fighting(c)) for (const cb of c.combatants) if (cb.tokenId === td.id && cb.sceneId === td.parent?.id && V.hideFollows(ch.hidden, cb.hidden)) cb.update({ hidden: ch.hidden }).catch(() => {});
+    } catch (e) { console.warn(`${MOD} | tactics: token hidden`, e); }
+  });
+  Hooks.on("updateCombatant", (cb, ch, _o, userId) => {
+    try {
+      if (userId !== game.user.id || !Store.isStaff(game.user) || !ch || !("hidden" in ch) || !fighting(cb.parent)) return;
+      const td = cb.token;
+      if (td && V.hideFollows(ch.hidden, td.hidden)) td.update({ hidden: ch.hidden }).catch(() => {});
+    } catch (e) { console.warn(`${MOD} | tactics: combatant hidden`, e); }
+  });
   for (const c of game.combats ?? []) last.set(c.id, rawOf(c));
   Prompts.sync();
   const moveHost = { ...Engine.moveHost(), request: (req) => tacticsApi.request(req) };

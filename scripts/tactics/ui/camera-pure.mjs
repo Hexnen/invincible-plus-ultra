@@ -97,6 +97,10 @@ export function cues(before, now) {
     (nothing in it about anybody concealed from anybody); whatever it names is asked of this user's own look again: a combatant this
     view does not hold gives no cue and is in none. -> cue | null */
 const cid = (x) => (typeof x === "string" ? x : isObj(x) && typeof x.combatant === "string" ? x.combatant : null);
+/** D115: is a declaration a walk to a place? A move (`mode` or the action "move") and a drive (the driver takes the vehicle with
+    everybody aboard to `to`: the public declaration carries no mode, catalog vehicleHandle, flow "drive"). */
+export const WALKS = Object.freeze(["move", "vehicleHandle"]);
+export const walkTo = (decl) => { const to = typeof decl?.to === "string" && decl.to ? decl.to : null; return to && (decl.mode || WALKS.includes(decl.action)) ? to : null; };
 export function eventCue(ev, now) {
   if (!isObj(ev) || !now) return null;
   const has = new Set(now.known), mine = new Set(now.mine), keep = (x) => { const id = cid(x); return id && has.has(id) ? id : null; };
@@ -104,8 +108,8 @@ export function eventCue(ev, now) {
   const actor = keep(ev.actor);
   if (ev.actor != null && !actor) return null;                                                      // done by somebody this view does not hold
   if (ev.type === "actionDeclared") {
-    const to = typeof ev.decl?.to === "string" && ev.decl.to ? ev.decl.to : null;
-    if (actor && to && (ev.decl?.mode || ev.decl?.action === "move")) return mk(mine.has(actor) ? "ownMove" : "move", actor, { zone: to, after: actor });
+    const to = walkTo(ev.decl);
+    if (actor && to) return mk(mine.has(actor) ? "ownMove" : "move", actor, { zone: to, after: actor });
     const targets = ids((ev.targets ?? []).map(cid)).filter((x) => has.has(x) && x !== actor).slice(0, 12);
     if (!targets.length || (actor && mine.has(actor))) return null;                                 // the user's own action: the target was chosen on the user's own screen
     const hit = targets.find((x) => mine.has(x)) ?? null, focus = hit ?? targets[0];
@@ -132,8 +136,8 @@ export function eventShot(ev, now) {
   const still = Object.keys(now.asks ?? {}).length > 0;                                             // a question waits for this user: nothing moves
   if (ev.type === "actionDeclared") {
     if (still || !actor || mine.has(actor) || ev.amended) return null;
-    const to = typeof ev.decl?.to === "string" && ev.decl.to ? ev.decl.to : null;
-    if (to && (ev.decl?.mode || ev.decl?.action === "move")) return { beat: "move", key, focus: actor, with: [], zone: to, still: false };
+    const to = walkTo(ev.decl);
+    if (to) return { beat: "move", key, focus: actor, with: [], zone: to, still: false };
     const targets = ids((ev.targets ?? []).map(cid)).filter((x) => has.has(x) && x !== actor).slice(0, 12);
     if (!targets.length || targets.some((x) => mine.has(x))) return null;
     return { beat: "open", key, focus: targets[0], with: [...targets.slice(1), actor], still: false };
