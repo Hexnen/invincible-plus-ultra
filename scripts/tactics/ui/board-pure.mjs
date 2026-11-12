@@ -88,7 +88,7 @@ export function oddsShow(odds, look = null) {
   const name = odds.text ?? say;
   if (look === "ring") return { meter: { n: odds.level + 1, of: 4, name } };
   const sign = oddsSign(odds.level, look, { name });
-  return sign ? { badge: { signs: [sign], name, ...(look === "bars" ? { at: "ne", plate: true, size: 13 } : { at: "se", plate: false, size: 17 }) } } : { label: cut(say) };
+  return sign ? { badge: { signs: [sign], name, ...(look === "bars" ? { at: "ne", plate: true, size: 18 } : { at: "se", plate: false, size: 28 }) } } : { label: cut(say) };
 }
 
 /* ------------------------------------------------------------------ U38 / U39: the state of the table */
