@@ -311,8 +311,8 @@ body.ita-keys #invincible-tactics-dock.itd-rest .itd-ic[data-key]::before { cont
 .itd-endq::before, .itd-endq::after { content: ""; position: absolute; right: 34px; width: 0; height: 0; border-style: solid; border-color: transparent; }
 .itd-endq::before { bottom: -14px; border-width: 14px 12px 0 0; border-top-color: var(--q-ink); }
 .itd-endq::after { bottom: -9px; right: 36.5px; border-width: 9px 7.5px 0 0; border-top-color: #fff; }
-.itd-endq-t { margin: 0; font: 400 17px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--q-ink); }
-.itd-endq-l { margin: 0 0 4px; font: 400 12.5px/1.3 Comic, sans-serif; color: #3a4a63; overflow-wrap: anywhere; }      /* #3a4a63 on white 9.6 */
+#invincible-tactics-dock .itd-endq-t { margin: 0; font: 400 18px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--q-ink); }
+#invincible-tactics-dock .itd-endq-l { margin: 0 0 4px; font: 400 12.5px/1.3 Comic, sans-serif; color: #3a4a63; overflow-wrap: anywhere; }      /* #3a4a63 on white 9.6 */
 .itd-endq-b { display: flex; gap: 8px; }
 #invincible-tactics-dock :is(.itd-endq-yes, .itd-endq-no) {
   display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px;
@@ -325,7 +325,7 @@ body.ita-keys #invincible-tactics-dock.itd-rest .itd-ic[data-key]::before { cont
 #invincible-tactics-dock .itd-endq-no { color: var(--ita-ink); background: #fff; }
 #invincible-tactics-dock .itd-endq-no:hover { background: #eef2f8; }
 #invincible-tactics-dock :is(.itd-endq-yes, .itd-endq-no):focus-visible { outline: 3px solid var(--ita-yellow); outline-offset: 2px; }
-.itd-endq-k { padding: 2px 4px 1px; font: 400 10px/1 Comic, sans-serif; letter-spacing: 0; text-transform: none; border: 1px solid currentColor; opacity: .85; }
+#invincible-tactics-dock .itd-endq-k { padding: 2px 4px 1px; font: 400 10px/1 Comic, sans-serif; letter-spacing: 0; text-transform: none; border: 1px solid currentColor; opacity: .85; }
 @keyframes itd-endq-in { from { opacity: 0; scale: .9; translate: 0 6px; } }
 @media (prefers-reduced-motion: reduce) { .itd-endq { animation: none; } }
 #invincible-tactics-dock :is(.itd-mini, .itd-x) { display: inline-grid; place-items: center; width: 26px; height: 26px; color: var(--ita-label); border: 1px solid var(--ita-line); }

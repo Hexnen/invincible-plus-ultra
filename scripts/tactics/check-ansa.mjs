@@ -157,4 +157,7 @@ const markAll = async (T, u, cid) => { await T.req(u, { op: "mark", actor: cid, 
   ok(/\.itd-endq \{/.test(css) && /\.itd-endq::before/.test(css) && /@media \(prefers-reduced-motion: reduce\) \{ \.itd-endq \{ animation: none; \} \}/.test(css), "dock: the stylesheet draws the balloon with its tail, still under reduced motion");
   for (const k of ["ITAC.ui.endq.title", "ITAC.ui.endq.left", "ITAC.ui.endq.none", "ITAC.ui.endq.yes", "ITAC.ui.endq.no", "ITAC.ui.end.readyTip", "ITAC.ui.out.spentAsk"]) ok(k in EN && k in PL, `dock: the key ${k} is in English and Polish`);
 }
+/* live finding (2026-11-12): the glyph escape of the tick, written through a tool that unescaped it, became a form feed and the initiative bar lost its sheet: no control characters */
+for (const f of ["../../styles/combat.css", "../../styles/tactics-ui.css"]) ok(!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(src(f)), `${f}: no control characters`);
+ok(src("../../styles/combat.css").includes(".icbar-g-skip::before { content: \"\\f050\"; }"), "bar: the tick's glyph is Font Awesome's forward-fast (the escape, not a form feed)");
 done("check-ansa");

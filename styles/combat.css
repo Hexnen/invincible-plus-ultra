@@ -381,7 +381,7 @@
   border: 2px solid var(--icbar-frame);
 }
 #invincible-combat-bar .icbar-g-skip { display: block; font: 900 .78em/1 var(--icbar-fa); }
-#invincible-combat-bar .icbar-g-skip::before { content: "050"; }      /* forward-fast */
+#invincible-combat-bar .icbar-g-skip::before { content: "\f050"; }      /* forward-fast */
 #invincible-combat-bar .icbar-skip:is(:hover, :focus-visible) { color: #fff; background: var(--icbar-tile-hi); }
 #invincible-combat-bar .icbar-skip:hover .icbar-skip-box { border-color: #fff; }
 #invincible-combat-bar .icbar-skip:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
