@@ -1,6 +1,6 @@
 /* Scena splasha: warstwa ekranowa (fixed) albo przy tokenie (wewnątrz #hud rdzenia, zsynchronizowanego z canvasem).
    Jeden splash na klucz ('screen' albo id tokena); nowy wypiera poprzedni. */
-import { FS, LBL, oddsText, hueOf, hsl, fmtOdds } from './logic.mjs';
+import { FS, LBL, oddsText, hueOf, hsl, fmtOdds, say } from './logic.mjs';
 import * as S from './splash.mjs';
 
 const active = new Map();   // key -> ctl
@@ -245,7 +245,7 @@ export function play(ev, o) {
       if (dF > 0.3 && !ev.pushed && ev.failP) {
         later(() => {
           S.oddsRibbon(stage, 0, ev.failP, false, null, !!ev.stress && !ctl.token, {
-            text: dF > 0.6 ? 'WHAT A FLOP!' : 'UNLUCKY!', color: '#8fa3d9',
+            text: say(dF > 0.6 ? 'WHAT A FLOP!' : 'UNLUCKY!'), color: '#8fa3d9',
             pill: LBL.miss(fmtOdds(Math.round(1 / ev.failP)))
           });
           if (!S.isReduced() && o.fx) S.shake(stage, 4 + Math.round(8 * dF));

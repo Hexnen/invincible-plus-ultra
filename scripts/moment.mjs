@@ -48,5 +48,36 @@ export function landing(tokens, { wait = 0, cap = 1600 } = {}) {
     tWait = setTimeout(finish, wait);
   });
 }
+/* UXB (U151): A SPLASH THAT WAITS FOR THE VERDICT. The success word of an attack roll ("WHAM!") promised a hit before the defence was
+   rolled. The tactics side tells here what an exchange came to (told: one exchange `inst`, one target, hit or not); the splash asks
+   (verdict) and plays the word only when the attack landed (a defence's word: only when it held). No rule here either: ids and booleans.
+     listen()                                     the tactics side feeds verdicts on this client (only then does the splash wait for one)
+     told(inst, target, hit)                      what the exchange came to for that target
+     verdict(inst, { target, cap }) -> Promise<true | false | null>   any target hit (or that target's), null = no verdict within cap ms */
+const verdicts = new Map(), askers = new Set();
+let hears = false;
+export function listen() { hears = true; }
+export const listens = () => hears;
+export function told(inst, target, hit) {
+  if (!inst || typeof hit !== "boolean") return;
+  const k = String(inst), v = verdicts.get(k) ?? { at: now(), rows: {} };
+  v.rows[target ? String(target) : "*"] = hit; verdicts.set(k, v);
+  if (verdicts.size > 200) for (const key of [...verdicts.keys()].slice(0, 100)) verdicts.delete(key);
+  /* the outcomes of one exchange come in one burst (one per target): the askers hear them all together */
+  setTimeout(() => { for (const a of [...askers]) a(); }, 0);
+}
+const read = (inst, target) => { const v = verdicts.get(String(inst)); if (!v) return null; const rows = v.rows;
+  if (target) return typeof rows[String(target)] === "boolean" ? rows[String(target)] : null;
+  return Object.values(rows).some((h) => h === true); };
+export function verdict(inst, { target = null, cap = 20000 } = {}) {
+  const got = read(inst, target);
+  if (got !== null || !inst) return Promise.resolve(got);
+  return new Promise((resolve) => {
+    const done = (v) => { askers.delete(ask); clearTimeout(tc); resolve(v); };
+    const ask = () => { const v = read(inst, target); if (v !== null) done(v); };
+    const tc = setTimeout(() => done(null), Math.max(0, cap));
+    askers.add(ask);
+  });
+}
 /* the checks: what is pending now */
 export const state = () => ({ on, pending: [...pending].map((p) => ({ tokens: [...p.tokens], age: Math.round(now() - p.at) })) });

@@ -21,6 +21,7 @@ import * as Keys from "./keys-pure.mjs";
 import { whyOf, whyLine, poolTip, rollPool } from "./feedback-pure.mjs";
 import { BANDS, bandOf } from "../flows/kit.mjs";      // the bands of a chance: one definition for the dock and for the engine's reaction cards (U11)
 import * as Sg from "./signs-pure.mjs";      // U100: the marks where the map draws (moinen-maps zones-api.md section 40)
+import * as NewsP from "./news-pure.mjs";      // UXB (U141): which lines of the news still stand, which are told together
 export { BANDS, bandOf };
 
 
@@ -294,11 +295,16 @@ export function askData(p, o) {
      flows/attack.mjs oddsBands; absent for an attacker the viewer cannot see) */
   const bands = !desk && kind === "reaction" && p.data?.odds ? p.data.odds : null;
   const odds = (optId) => {
-    if (bands) { const how = String(optId).split(":")[0], lv = DEF_ATTR[how] ? bands[how] : optId === "pass" ? bands.open : null; return Number.isInteger(lv) && BANDS[lv] ? t("ITAC.ui.odds.band", { band: t(`ITAC.ui.band.${BANDS[lv].id}`).toLowerCase() }) : null; }
+    /* UXB (U156): every seat says the chance the same way, the sign of the target's token and the band's word ("atak trafi: ^ spora
+       szansa"); the GM's card adds the per cent after them, so the GM and a player name the same odds alike */
+    const word = (lv) => ({ lv: lv + 1, band: t(`ITAC.ui.band.${BANDS[lv].id}`).toLowerCase() });
+    if (bands) { const how = String(optId).split(":")[0], lv = DEF_ATTR[how] ? bands[how] : optId === "pass" ? bands.open : null; return Number.isInteger(lv) && BANDS[lv] ? t("ITAC.ui.odds.band", word(lv)) : null; }
     if (attPool == null) return null;
     const how = String(optId).split(":")[0], dPool = DEF_ATTR[how] ? gmOdds.def?.[how] : null;
-    if (Number.isFinite(dPool)) return t("ITAC.ui.odds.defended", { dice: Math.max(1, dPool), p: pct(dice.pHit(attPool, Math.max(1, dPool))) });
-    return optId === "pass" ? t("ITAC.ui.odds.open", { p: pct(dice.pSuccess(attPool)) }) : null;
+    if (Number.isFinite(dPool)) { const p = dice.pHit(attPool, Math.max(1, dPool)); return t("ITAC.ui.odds.defended", { dice: Math.max(1, dPool), p: pct(p), ...word(bandOf(p)) }); }
+    if (optId !== "pass") return null;
+    const p = dice.pSuccess(attPool);
+    return t("ITAC.ui.odds.open", { p: pct(p), ...word(bandOf(p)) });
   };
   /* stunts against one target only: the name goes into the sentence once instead of onto every button */
   const stuntTargets = [...new Set((p.options ?? []).map((x) => x.data?.stunt && !x.data?.onExtra && x.data?.target).filter(Boolean))], oneTarget = stuntTargets.length === 1;
@@ -383,13 +389,24 @@ export function askData(p, o) {
 /** -> [{ who, mine, gm, what: [text] }] grouped by addressee; `mine` = this client is asked.
     U59, staff only: `since` = when the oldest thing asked of that addressee was asked (ms of the executor's clock; null when not kept),
     `nudge` = { label, tip, req } for others who are at the table (the engine sends them one line; no limit of time comes with it). */
+/* what a card waits for, said as a thing (a noun), not as the card's question: the word of the wait if it has one, else the title of the
+   GM's card of that kind without its question mark ("Counterattack?" -> "Counterattack") */
+function waitWord(w, t, facts) {
+  if (w.kind === "triggerQueue") return titleOf({ ...w, to: "player" }, t, facts);
+  const own = t(`ITAC.ui.wait.k.${w.kind}`, {}, null);
+  if (own) return own;
+  const card = t(`ITAC.card.${w.kind}`, {}, null) ?? titleOf({ ...w, to: "desk" }, t, facts);
+  return String(card).replace(/\s*\?+\s*$/, "").toLowerCase();
+}
 export function waitingData(waiting, facts, t) {
   const rows = new Map();
   for (const w of waiting ?? []) {
     const list = Array.isArray(w.to) ? w.to : [], gm = w.to === "gm" || (list.length > 0 && list.every((u) => u === "gm")), users = gm ? [] : list;      // a roll of an NPC waits for "gm" as a user
     const mine = gm ? !!facts.staff : users.includes(facts.me);
-    const who = mine ? t("ITAC.ui.who.you") : gm ? t("ITAC.ui.who.gm") : users.map((u) => facts.userName?.(u) ?? t("ITAC.Someone")).join(", ") || t("ITAC.Someone");
-    const what = w.what === "roll" || w.what === "push" ? t(w.what === "push" ? "ITAC.ui.wait.push" : "ITAC.ui.wait.roll", { roll: rollLabel(t, w.key, { c: () => null }) }) : titleOf({ ...w, to: "player", aboutName: w.aboutName }, t, facts);
+    /* UXB (U159): the line speaks ABOUT whoever is waited for, never TO them: "Waiting for the GM: reaction (Doc Seismic)", "Waiting for
+       you: ..." (the question a card asks its own addressee, "Will you react?", stays on that card) */
+    const who = mine ? t("ITAC.ui.wait.you") : gm ? t("ITAC.ui.who.gm") : users.map((u) => facts.userName?.(u) ?? t("ITAC.Someone")).join(", ") || t("ITAC.Someone");
+    const what = w.what === "roll" || w.what === "push" ? t(w.what === "push" ? "ITAC.ui.wait.push" : "ITAC.ui.wait.roll", { roll: rollLabel(t, w.key, { c: () => null }) }) : waitWord(w, t, facts);
     const named = w.kind === "triggerQueue" && /^turn/.test(String(w.data?.at ?? ""));      // D108: "Start of turn: Atom Eve" names the character itself
     const text = w.aboutName && !named ? t("ITAC.ui.wait.about", { what, name: w.aboutName }) : what;
     const key = gm ? "gm" : users.join(",");
@@ -431,8 +448,8 @@ export function rollsData(rows, facts, t) {
 const newsNo = (n) => Number(String(n?.id ?? "").replace(/\D/g, "")) || 0;
 /* D123: a hazard is named by its kind or, for the engine's own damage, by what dealt it; never by the raw kind word */
 function newsText(n, facts, t) {
-  const who = n.actor ? nameOf(facts, n.actor, t) : "";
-  const act = n.name ? String(n.name) : n.hazard ? t(n.hzCause ? `ITAC.ui.hz.cause.${n.hzCause}` : `ITAC.ui.hz.kind.${n.hazard}`, {}, t("ITAC.ui.hz.kind.fixed")) : n.action ? t(`ITAC.action.${n.action}`, {}, String(n.action)) : "";
+  const who = n.unseen ? t("ITAC.ui.news.unseen") : n.actor ? nameOf(facts, n.actor, t) : "";
+  const act = n.unseen ? "" : n.counter ? t("ITAC.action.counterattack") : n.name ? String(n.name) : n.hazard ? t(n.hzCause ? `ITAC.ui.hz.cause.${n.hzCause}` : `ITAC.ui.hz.kind.${n.hazard}`, {}, t("ITAC.ui.hz.kind.fixed")) : n.action ? t(`ITAC.action.${n.action}`, {}, String(n.action)) : "";
   /* U110: what a challenge did is said as that ("Device: a blast"), and the GM's words about it follow the result */
   const fx = n.fx?.challenge ? `${nameOf(facts, n.fx.challenge, t)}: ${t(`ITAC.ui.effect.${n.fx.kind}`, {}, String(n.fx.kind))}` : null;
   const head = fx ?? [who, act].filter(Boolean).join(": ");
@@ -443,10 +460,17 @@ function newsText(n, facts, t) {
     if (!n.granted) return t("ITAC.ui.news.denied", { action: act || t("ITAC.card.exception") }) + note;
     return (n.ran === 1 ? t(n.held ? "ITAC.ui.news.granted.goes" : "ITAC.ui.news.granted.ran", { action: act }) : n.ran === 2 ? t("ITAC.ui.news.granted.hand") : t("ITAC.ui.news.granted.wait", { reason: reasonText(t, n.why ?? "busy") })) + note;
   }
-  const rows = (n.rows ?? []).filter((r) => typeof r.hit === "boolean").map((r) => {
-    const bits = [t(r.hit ? "ITAC.result.hit" : "ITAC.result.miss"), Number.isFinite(r.taken) ? t(r.stress ? "ITAC.ui.news.stress" : "ITAC.ui.news.taken", { n: r.taken }) : null, ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s))), r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null].filter(Boolean);      // D127
+  /* UXB (U141 / U146): a row says what the dice did to that character: the miss with the defence that made it, the damage (a hazard has
+     no hit or miss, only what it dealt, "no damage" too), the minions that fell, a character put out of the fight */
+  const rows = (n.rows ?? []).filter((r) => typeof r.hit === "boolean" || Number.isFinite(r.taken)).map((r) => {
+    const verdict = typeof r.hit !== "boolean" ? null : r.hit ? t("ITAC.result.hit") : r.def ? t("ITAC.ui.news.missBy", { how: t(`ITAC.action.${r.def}`).toLowerCase() }) : t("ITAC.result.miss");
+    const dealt = !Number.isFinite(r.taken) ? null : r.taken === 0 && typeof r.hit !== "boolean" ? t("ITAC.ui.news.noDamage") : t(r.stress ? "ITAC.ui.news.stress" : "ITAC.ui.news.taken", { n: r.taken });
+    const bits = [verdict, dealt, ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s))), r.out > 0 ? t("ITAC.ui.news.out", { n: r.out }) : null, r.down ? t("ITAC.status.broken").toLowerCase() : null, r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null].filter(Boolean);      // D127
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
+  /* a hazard that hurt nobody says so once, with the names after it (four "no damage" in a row is one fact) */
+  const none = (n.rows ?? []).filter((r) => typeof r?.hit !== "boolean" && r?.taken === 0 && !r.out && !r.down && !(r.stunts ?? []).length);
+  if (rows.length > 1 && none.length === rows.length) rows.splice(0, rows.length, `${t("ITAC.ui.news.noDamage")}: ${none.map((r) => nameOf(facts, r.target, t)).join(", ")}`);
   const res = rows.length ? rows.join("; ") : n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "";
   /* D113: what a reaction came to (Discretion, Warning Call, one the GM settled by hand) is said after the result */
   const rx = (Array.isArray(n.reacts) ? n.reacts : []).map((r) => t(`ITAC.ui.news.react.${r.result}`, { who: nameOf(facts, r.who, t), what: r.name ? String(r.name) : r.label ? t(r.label, {}, "") : "", about: r.about ? nameOf(facts, r.about, t) : "" }, "")).filter(Boolean);
@@ -456,12 +480,20 @@ function newsText(n, facts, t) {
     last line this user put away. A plain move is on the map already and is left out. -> null | { id, text, tone, older: [text], seen } */
 export function newsData(view, own, facts, t) {
   if (facts.staff) return null;
-  const round = view?.round ?? 0, seen = Number(own?.newsSeen) || 0;
+  /* UXB (U141): a line stands through its own turn and the next (own.newsFrom: ui/news-pure.mjs newsWindow), not for the rest of the round */
+  const round = view?.round ?? 0, seen = Math.max(Number(own?.newsSeen) || 0, Number(own?.newsFrom) || 0);
   const list = (view?.news ?? []).filter((n) => newsNo(n) > seen && (n.round == null || n.round >= round - 1) && !(n.kind === "action" && ["move", "forced", "fall", "release", "seat"].includes(n.flow) && !(n.rows ?? []).some((r) => typeof r.hit === "boolean")));
+  /* a line that stands brings the lines it set off along (the counter closes first, so its number may be under the window) */
+  const insts = new Set(list.map((n) => n.inst).filter(Boolean)), kept = Number(own?.newsSeen) || 0;
+  for (let more = true; more;) { more = false; for (const n of view?.news ?? []) if (typeof n?.parent === "string" && insts.has(n.parent) && newsNo(n) > kept && !list.includes(n)) { list.push(n); if (n.inst) insts.add(n.inst); more = true; } }
+  list.sort((a, b) => newsNo(a) - newsNo(b));
   if (!list.length) return null;
-  const last = list[list.length - 1], mine = (id) => !!id && Object.keys(view?.knowledge ?? {}).includes(id);
-  const tone = last.kind === "nudge" ? "nudge" : last.kind === "exception" ? (last.granted ? "good" : "bad") : last.kind === "undo" || last.undone ? "warn" : (last.rows ?? []).some((r) => r.hit && mine(r.target)) ? "bad" : mine(last.actor) && (last.rows ?? []).some((r) => r.hit) ? "good" : "info";
-  return { id: last.id, kind: last.kind, text: newsText(last, facts, t), tone, icon: NEWS_ICON[tone] ?? NEWS_ICON.info, older: list.slice(-4, -1).reverse().map((n) => newsText(n, facts, t)), seen: newsNo(last), label: t("ITAC.ui.news.dismiss") };
+  /* an attack and the counterattack that answered it are told together; one hazard on several characters is one line (news-pure groups) */
+  const told = NewsP.groups(list).map(NewsP.merged), lastG = told[told.length - 1], head = lastG[0], mine = (id) => !!id && Object.keys(view?.knowledge ?? {}).includes(id);
+  const hurt = lastG.some((x) => (x.rows ?? []).some((r) => (r.hit || (typeof r.hit !== "boolean" && r.taken > 0)) && mine(r.target))), scored = lastG.some((x) => mine(x.actor) && (x.rows ?? []).some((r) => r.hit));
+  const tone = head.kind === "nudge" ? "nudge" : head.kind === "exception" ? (head.granted ? "good" : "bad") : head.kind === "undo" || head.undone ? "warn" : hurt ? "bad" : scored ? "good" : "info";
+  const say = (g) => g.map((n) => newsText(n, facts, t)).join(" · ");
+  return { id: lastG.reduce((a, b) => (newsNo(b) > newsNo(a) ? b : a)).id, kind: head.kind, text: say(lastG), tone, icon: NEWS_ICON[tone] ?? NEWS_ICON.info, older: told.slice(-4, -1).reverse().map(say), seen: Math.max(...lastG.map(newsNo)), label: t("ITAC.ui.news.dismiss") };
 }
 
 /* ------------------------------------------------------------------ the player's dock */
@@ -819,7 +851,10 @@ function doorPanel(bar, a, own, facts, t) {
 const seenImg = (facts, id) => (facts.view?.ledger?.[id] ? facts.c?.(id)?.img ?? null : (facts.special?.() ?? []).find((x) => x.id === id)?.img ?? null);
 function minePanel(i, facts, t, rolls = [], asked = false) {
   const roll = i.rolls?.[0];
-  return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => ({ id: x.id, name: x.name ?? nameOf(facts, x.id, t), img: seenImg(facts, x.id) })), text: instText(t, facts, i), rolls,
+  /* UXB (U146): the defence beside the attack: "Doc Seismic, Dodge: [six] 0", and once the dice are compared, hit or miss */
+  const opp = (i.opp ?? []).map((o) => ({ id: o.who, text: [t("ITAC.ui.mine.vs", { name: nameOf(facts, o.who, t), how: o.defence ? t(`ITAC.action.${o.defence}`) : t("ITAC.ui.mine.defence"), sixes: o.sixes ?? 0 }),
+    typeof o.hit === "boolean" ? t(o.hit ? "ITAC.result.hit" : "ITAC.result.miss") : null].filter(Boolean).join(" · ") }));
+  return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => ({ id: x.id, name: x.name ?? nameOf(facts, x.id, t), img: seenImg(facts, x.id) })), text: instText(t, facts, i), rolls, opp,
     status: rolls.length ? null : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t(asked ? "ITAC.ui.mine.declared" : "ITAC.ui.mine.open"),      // `asked`: the card above or the line below already says who the table waits for
     rolling: !!roll || rolls.length > 0, commands: (i.commands ?? []).map((c) => ({ id: c.id, label: labelOf(t, c.label), req: c.needs ? null : c.req, amend: c.id === "amend" })) };      // U85: drawn as small picture buttons (dock.mjs CMD_ICON), the label is the tooltip
 }
@@ -911,7 +946,8 @@ export function dockData(model, own, facts, t) {
      the table waits for FROM THIS USER is not listed again when every piece of it is already in front of them (a card above, a roll
      with its buttons): the line then names only the others. */
   const rolls = panel?.kind === "mine" ? allRolls.filter((r) => !panel.rolls.includes(r)) : allRolls;
-  const waiting = waitAll.filter((w) => !w.mine || w.what.length > prompts.length + allRolls.length);
+  /* UXB (U159): while the table also waits for somebody else, the line names this user too, so it never reads as if only the others hold it up */
+  const others = waitAll.some((w) => !w.mine), waiting = waitAll.filter((w) => !w.mine || others || w.what.length > prompts.length + allRolls.length);
   const slots = slotsOf(bar, t), unused = slots.filter((p) => p.state === "open").map((p) => p.label);
   /* U144: ONE rule for ending a turn. Nothing left (every slot spent, nothing owed: no card, no roll, no open action) -> the turn passes by
      itself a moment later (`auto`, main.mjs); a click on the button passes it at once. Something left -> one click; "Sure?" is asked only

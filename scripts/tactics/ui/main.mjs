@@ -19,6 +19,7 @@ import * as Mv from "../movement.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import { t as langT, errText, rollTitle } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
+import * as NewsP from "./news-pure.mjs";
 import * as RW from "../rollwatch-pure.mjs";
 import { plain } from "../../kit.mjs";      // U93: a notification cannot draw a mark: it says its name
 import * as Keys from "./keys-pure.mjs";
@@ -111,6 +112,16 @@ function autoEnd(combat, d) {
   if (key) autoTimer = setTimeout(() => { try { const n = lastDock?.show ? lastDock.end : null; if (n?.auto && n.req && `${combatNow()?.id}:${n.req.round}:${n.req.slot}:${n.req.actor}` === key) Dock.press("end"); } catch (err) { console.warn(LOG, "auto end failed", err); } }, AUTO_END_MS);
 }
 let cardTop = { id: null, at: 0 };      // U143: the question card on top of the dock and since when it stands there (the keys' guard)
+/* UXB (U141 / D128): the turns this client saw (a news line stands through its turn and the next: news-pure newsWindow) and what was
+   shown while 3D dice rolled (cards and the line wait for the dice: news-pure diceHold) */
+let newsWin = null, diceWas = null, diceWait = null;
+const diceBusy = () => { try { return typeof game.dice3d?.waitFor3DAnimationByMessageID === "function" && (game.messages?.contents ?? []).slice(-12).some((m) => m?._dice3danimating); } catch { return false; } };
+function diceThen() {
+  if (diceWait) return;
+  const d = game.dice3d, busy = (game.messages?.contents ?? []).slice(-12).filter((m) => m?._dice3danimating);
+  diceWait = Promise.race([Promise.all(busy.map((m) => Promise.resolve(d.waitFor3DAnimationByMessageID(m.id)).catch(() => {}))), new Promise((r) => setTimeout(r, NewsP.HOLD_MS + 100))])
+    .finally(() => { diceWait = null; setTimeout(schedule, 60); });
+}
 let lastDock = null, byPointer = true;      // U41: what the dock shows now (the keys act on it); was the focus put where it is by the pointer?
 let zonePick = null, shownDock = "", shownDesk = "";      // what this client has on the map for the surfaces: a running pick, two highlights
 let nudgeSaid = null;                     // U59: the nudge this client already said aloud
@@ -273,6 +284,8 @@ function refresh() {
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
     if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen, hotbar: st.dock.hotbar }; }        // a new turn: nothing stays armed
+    newsWin = NewsP.newsWindow(newsWin, { combat: combat.id, member: facts.view?.init?.curMember ?? null, newest: NewsP.newest(facts.view?.news) });
+    st.dock.newsFrom = newsWin.from;
     const desk = staff ? Api.desk(combat) : null;
     let deskD = null;
     if (staff) {
@@ -283,7 +296,6 @@ function refresh() {
       if (fresh && st.desk.auto) st.desk.auto = false;
       if (fresh && st.desk.tab !== "now" && !/^(INPUT|TEXTAREA|SELECT)$/.test(Desk.el()?.contains(document.activeElement) ? document.activeElement.tagName : "")) st.desk.tab = "now";
       deskD = Model.deskData(desk, st.desk, facts, t);
-      Desk.render(deskD, st.desk);
     } else { cardsWere = null; Desk.render({ show: false }); }
     const model = staff ? staffModel(combat, desk) : Api.player(combat);
     const data = Model.dockData(model, st.dock, facts, t);
@@ -295,6 +307,15 @@ function refresh() {
       else if (Board.areaMode(data.panel)) data.panel = { ...data.panel, pickHint: t("ITAC.map.area.pick") };
     }
     fightStart(combat);
+    /* D128: what a roll came to waits for its dice: a new card and the new line come when the 3D dice have landed */
+    const busy = diceBusy(), hold = NewsP.diceHold(diceWas, { prompts: (data.prompts ?? []).map((p) => p.id), cards: (deskD?.cards ?? []).map((c) => c.id), news: data.news ?? null, at: Date.now() }, busy);
+    diceWas = { prompts: hold.prompts, cards: hold.cards, news: hold.news, since: hold.since };
+    if (hold.held) {
+      data.prompts = (data.prompts ?? []).filter((p) => hold.prompts.includes(p.id)); data.news = hold.news;
+      if (deskD?.cards) deskD.cards = deskD.cards.filter((c) => hold.cards.includes(c.id));
+      diceThen();
+    }
+    if (deskD) Desk.render(deskD, st.desk);
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
     /* U53 / U57 / U58: the first-fight hint over the bar, the summary card of the round that just ended, the two sounds (ui/feedback.mjs) */

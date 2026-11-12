@@ -89,6 +89,8 @@ const read = (f) => readFileSync(join(root, f), "utf8");
     for (const k of kinds) {
       ok(s.includes(`[[${k}`), `C2 ${lang} ${key}: ${k} is its mark`);
       if (key === "ITAC.hint.push" && k === "stress") continue;
+      if (key === "ITAC.hint.slots") continue;      // UXB (U147): the first-turn hint teaches the two marks, so it names each beside its mark
+
       ok(!WORD[lang][k].test(s.replace(/\[\[[^\]]*\]\]/g, "")), `C3 ${lang} ${key}: the word for ${k} is not written beside its mark ("${s}")`);
     }
   }

@@ -47,11 +47,11 @@ const src = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
   const facts = { c: (id) => T.c[id] ?? null, staff: false };
   const text = (l) => MP.newsData({ news: T.state.news, round: T.state.round }, {}, facts, (k, p = {}, f) => tIn(l, k, p, f))?.text ?? "";
   eq((await T.gm({ op: "hazard", hazard: { kind: "fixed", amount: 1 }, targets: ["H1"] }))?.ok, true, "D123: a GM's fixed damage (the shape of a poison trigger)");
-  eq([text("en"), text("pl")], ["Damage: done", "Obrażenia: wykonano"], "D123: the news line names it Damage / Obrażenia (was \"fixed: ...\")");
+  eq([text("en"), text("pl")], ["Damage > H1: [[damage:1]]", "Obrażenia > H1: [[damage:1]]"], "D123: the news line names it Damage / Obrażenia (was \"fixed: ...\"); UXB (U141): and says what it dealt");
   const names = { barrier: ["Barrier", "Bariera"], fall: ["Fall", "Upadek"], vehicle: ["Vehicle", "Pojazd"], chase: ["Chase", "Pościg"] };
   for (const [id, [en, pl]] of Object.entries(names)) {
     await T.gm({ op: "hazard", hazard: { kind: "fixed", amount: 1, id }, targets: ["H1"] });
-    eq([T.state.news.at(-1)?.hzCause, text("en"), text("pl")], [id, `${en}: done`, `${pl}: wykonano`], `D123: the engine's ${id} damage is named by what dealt it`);
+    eq([T.state.news.at(-1)?.hzCause, text("en"), text("pl")], [id, `${en} > H1: [[damage:1]]`, `${pl} > H1: [[damage:1]]`], `D123: the engine's ${id} damage is named by what dealt it`);
   }
   for (const l of ["en", "pl"]) ok(!/fixed/i.test(MP.newsData({ news: [{ id: "n1", round: 1, kind: "action", actor: null, action: "hazard", hazard: "weird", result: "done", rows: [] }], round: 1 }, {}, facts, (k, p = {}, f) => tIn(l, k, p, f))?.text ?? ""), `D123: an unknown kind word is never shown raw (${l})`);
   /* every engine child of kind "fixed" carries an id the news names */

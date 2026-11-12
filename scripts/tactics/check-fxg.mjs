@@ -60,7 +60,11 @@ const src = (f) => readFileSync(new URL(f, import.meta.url), "utf8");
   eq(ids({ id: "px", owns: ["tur"] }), ["n1", "n2"], "U120: the actor's own player keeps it");
   eq(V.viewFor(state, { staff: true }, {}).news.length, 2, "U120: the GM keeps it");
   const e = src("./engine-pure.mjs");
-  ok(/pushNews\(X, \{ \.\.\.newsOf\(I\), \.\.\.\(hiddenNow\(X, I\) \? \{ hid: 1 \} : \{\}\) \}\)/.test(e), "U120: the engine marks the line when it is written");
+  ok(/pushNews\(X, \{ \.\.\.newsOf\(I\), \.\.\.\(hiddenNow\(X, I\) \? \{ hid: 1, \.\.\.hiddenWho\(X, I\) \} : \{\}\) \}\)/.test(e), "U120: the engine marks the line when it is written (UXB: and who of it was unseen)");
+  /* UXB (U141): a line whose ATTACKER was unseen reaches the target's player as "someone unseen" (rows only); everybody else as before */
+  const s2 = { ...state, news: [{ ...news[0], hidA: 1 }, news[1]] }, v2 = (viewer) => V.viewFor(s2, viewer, { hidden: [] }).news ?? [];
+  eq(v2({ id: "p2", owns: ["kid"] }).map((n) => [n.id, n.unseen ?? 0, n.actor ?? null, n.action ?? null]), [["n1", 1, null, null], ["n2", 0, "tur", "shoot"]], "U141: the target's player is told an unseen attacker hit; who and with what stay hidden");
+  eq(v2({ id: "p1", owns: ["omni"] }).map((n) => n.id), ["n2"], "U141: a player whose character was not the target is told nothing of it");
 }
 
 /* ---- D117: Foundry keeps no movement trail of a token in a fight that has the module's state */

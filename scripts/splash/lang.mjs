@@ -50,7 +50,23 @@ export const EN = {
   "INSPLASH.Live.Pushed": "Pushed roll",
   "INSPLASH.Live.Odds": "Chance 1 in {n}",
   "INSPLASH.Live.Stress": "Stress {n}",
-  "INSPLASH.Live.Resolve": "Resolve {now} of {max}"
+  "INSPLASH.Live.Resolve": "Resolve {now} of {max}",
+  /* UXB (D129): the ribbon and stress-note sentences (not sound words) */
+  "INSPLASH.Say.NotBad": "NOT BAD!",
+  "INSPLASH.Say.LuckyBreak": "LUCKY BREAK!",
+  "INSPLASH.Say.AgainstOdds": "AGAINST THE ODDS!",
+  "INSPLASH.Say.UnlikelyHero": "UNLIKELY HERO!",
+  "INSPLASH.Say.NoWay": "NO WAY!",
+  "INSPLASH.Say.Impossible": "IMPOSSIBLE!",
+  "INSPLASH.Say.OnceInLifetime": "ONCE IN A LIFETIME!",
+  "INSPLASH.Say.OddsShattered": "THE ODDS ARE SHATTERED!",
+  "INSPLASH.Say.Unlucky": "UNLUCKY!",
+  "INSPLASH.Say.Flop": "WHAT A FLOP!",
+  "INSPLASH.Say.BreakingPoint": "BREAKING POINT!",
+  "INSPLASH.Say.OnEdge": "ON THE EDGE!",
+  "INSPLASH.Say.Strain": "FEELING THE STRAIN",
+  "INSPLASH.Say.Shaken": "SHAKEN",
+  "INSPLASH.Say.ShrugsOff": "SHRUGS IT OFF"
 };
 
 export const PL = {
@@ -79,7 +95,7 @@ export const PL = {
   "INSPLASH.Settings.Fullscreen.Name": "Splash: Splash na cały ekran przy rzadkich sukcesach",
   "INSPLASH.Settings.Fullscreen.Hint": "Rzadkie wyniki dostają poświatę i promienie na cały ekran oraz wielkie słowo zamiast splasha wielkości żetonu.",
   "INSPLASH.Settings.FullFrom.Name": "Splash: Próg pełnego ekranu",
-  "INSPLASH.Settings.FullFrom.Hint": "Minimalna moc efektu (od 0,4 do 1) dla wersji pełnoekranowej. 0,7 to mniej więcej „IMPOSSIBLE!” i wyżej.",
+  "INSPLASH.Settings.FullFrom.Hint": "Minimalna moc efektu (od 0,4 do 1) dla wersji pełnoekranowej. 0,7 to mniej więcej „NIEMOŻLIWE!” i wyżej.",
   "INSPLASH.Settings.Debug.Name": "Splash: Dziennik diagnostyczny",
   "INSPLASH.Settings.Debug.Hint": "Wypisuje w konsoli przeglądarki przebieg splasha i powód, dla którego został pominięty.",
   "INSPLASH.Settings.Chat.Name": "Splash: Znacznik na czacie",
@@ -104,5 +120,21 @@ export const PL = {
   "INSPLASH.Live.Pushed": "Rzut forsowany",
   "INSPLASH.Live.Odds": "Szansa 1 do {n}",
   "INSPLASH.Live.Stress": "Stres {n}",
-  "INSPLASH.Live.Resolve": "Determinacja {now} z {max}"
+  "INSPLASH.Live.Resolve": "Determinacja {now} z {max}",
+  /* UXB (D129): zdania wstęgi i notki stresu (nie słowa dźwiękowe) */
+  "INSPLASH.Say.NotBad": "NIEŹLE!",
+  "INSPLASH.Say.LuckyBreak": "SZCZĘŚCIE!",
+  "INSPLASH.Say.AgainstOdds": "WBREW SZANSOM!",
+  "INSPLASH.Say.UnlikelyHero": "NIEOCZEKIWANY BOHATER!",
+  "INSPLASH.Say.NoWay": "NIE MA MOWY!",
+  "INSPLASH.Say.Impossible": "NIEMOŻLIWE!",
+  "INSPLASH.Say.OnceInLifetime": "RAZ W ŻYCIU!",
+  "INSPLASH.Say.OddsShattered": "SZANSE ROZBITE!",
+  "INSPLASH.Say.Unlucky": "PECH!",
+  "INSPLASH.Say.Flop": "ALE KLAPA!",
+  "INSPLASH.Say.BreakingPoint": "PUNKT ZAŁAMANIA!",
+  "INSPLASH.Say.OnEdge": "NA KRAWĘDZI!",
+  "INSPLASH.Say.Strain": "ODCZUWA NAPIĘCIE",
+  "INSPLASH.Say.Shaken": "WSTRZĄS",
+  "INSPLASH.Say.ShrugsOff": "OTRZĄSA SIĘ"
 };

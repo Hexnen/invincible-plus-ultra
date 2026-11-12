@@ -73,6 +73,7 @@
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-quote cite { display: block; font: 400 11px/1.2 Titles, Comic, sans-serif; font-style: normal; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-label); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait { display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; padding: 1px 7px 2px; color: var(--ita-text); border: 1px solid var(--ita-line); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait b { flex: none; font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #fff; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait b:has(+ span:not(:empty))::after { content: ":"; }      /* UXB (U159): "GM: reaction (Rex)", who, then what for */
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait-me { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-wait-me b { color: var(--ita-ink); }
@@ -703,6 +704,10 @@ body.ita-tactics #chat-notifications .chat-message.ita-troll { display: none; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll[data-state="rolling"] { background: transparent; color: var(--ita-text); border-color: var(--ita-line); font-weight: 400; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll[data-state="rolling"] i { animation: fa-spin 1.2s linear infinite; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* UXB (U146): the defence that answered the user's own attack, under the attack roll ("Mauler, block: 2 sixes · miss") */
+#invincible-tactics-dock .itd-opp { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
+#invincible-tactics-dock .itd-opp .ita-roll[data-state="opp"] { color: var(--ita-text); }
+#invincible-tactics-dock .itd-opp .ita-roll[data-state="opp"] > i { color: var(--ita-label); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn { flex: none; width: auto; min-height: 24px; height: auto; margin: 0; padding: 1px 9px 2px; font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #fff; background: var(--ita-ink, #0c1a2e); border: 1px solid var(--ita-ink, #0c1a2e); border-radius: 0; cursor: pointer; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn:is(:hover, :focus-visible) { color: var(--ita-ink); background: #fff; outline: none; box-shadow: none; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn[data-id="push"] { background: var(--ita-red, #b3261e); border-color: var(--ita-red, #b3261e); }
@@ -841,7 +846,8 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 #invincible-tactics-dock .ita-sum-row + .ita-sum-row { border-top: 1px solid rgba(107, 130, 166, .35); }
 #invincible-tactics-dock .ita-sum-row[data-mine] { color: #fff; }
 #invincible-tactics-dock .ita-sum-row[data-mine] .ita-face { outline: 1px solid var(--ita-yellow); }
-#invincible-tactics-dock .ita-sum-n { flex: 1 1 60px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* UXB (U161): a name is never cut short (the twins "THE MAULER" and "THE MAULER 2" must read apart): a long one takes a second line */
+#invincible-tactics-dock .ita-sum-n { flex: 1 1 60px; min-width: 0; overflow: hidden; overflow-wrap: anywhere; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 #invincible-tactics-dock .ita-sum-chips { flex: none; margin-left: auto; display: grid; grid-template-columns: 36px 44px 36px 36px 16px; align-items: center; column-gap: 4px; }
 #invincible-tactics-dock .ita-sum-chip { display: inline-flex; align-items: center; gap: 4px; font: 400 13.5px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
 #invincible-tactics-dock .ita-sum-chip i { font-size: 11px; color: var(--ita-label); }

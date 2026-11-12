@@ -10,6 +10,7 @@ import { EN_FX, PL_FX } from "./lang-fx.mjs";
 import { EN_MAP, PL_MAP } from "./lang-map.mjs";
 import { EN_U10, PL_U10 } from "./lang-u10.mjs";
 import { EN_FLOW, PL_FLOW } from "./lang-flow.mjs";
+import { EN_UXB, PL_UXB } from "./lang-uxb.mjs";
 export const EN = {
   "ITAC.Settings.tacticsEnabled.Name": "Tactical combat",
   "ITAC.Settings.tacticsEnabled.Hint": "Off (the default): nothing of tactical combat runs and the combat tracker works as it did before. On: the module deals initiative cards, tracks the action budget and resolves declared actions; new fights start with the rules enforced, and the GM can switch a running fight to free mode at any time. Needs a reload.",
@@ -392,8 +393,8 @@ export const EN = {
   "ITAC.ui.line.token": "[[dice:+{dice}]] from {source} for {name}.",
   "ITAC.ui.line.proxy": "Away: {users}. Answer for them.",
   "ITAC.ui.line.attPool": "The attacker rolls [[dice:{dice}]] ({attr}).",
-  "ITAC.ui.odds.defended": "[[dice:{dice}]], hit {p}",
-  "ITAC.ui.odds.open": "hit {p}",
+  "ITAC.ui.odds.defended": "[[dice:{dice}]] · attack lands: [[odds:{lv}]] {band}, {p}",
+  "ITAC.ui.odds.open": "attack lands: [[odds:{lv}]] {band}, {p}",
   "ITAC.ui.note.gm": "A word for the player (optional)",
   "ITAC.ui.note.player": "A word for the GM (optional)",
   "ITAC.ui.always": "Remember the next answer for {name}",
@@ -922,7 +923,7 @@ export const EN = {
   "ITAC.ui.line.attackBy": "{attacker} attacks {targets}: {action}. {name} may step in.",
   "ITAC.ui.line.attackUnseen": "Somebody unseen attacks {name}.",
   "ITAC.ui.line.attackUnseenBy": "Somebody unseen attacks {targets}. {name} may step in.",
-  "ITAC.ui.odds.band": "attack lands: {band}",
+  "ITAC.ui.odds.band": "attack lands: [[odds:{lv}]] {band}",
   "ITAC.ui.line.grantRuns": "If you grant it: {name} declares {action} at once, at no cost.",
   "ITAC.ui.line.grantRunsPaid": "If you grant it: {name} declares {action} at once, at its usual cost.",
   "ITAC.ui.line.grantHand": "If you grant it: an action by hand opens on this desk for you to settle.",
@@ -1426,8 +1427,8 @@ export const PL = {
   "ITAC.ui.line.token": "[[dice:+{dice}]] ({source}) dla postaci {name}.",
   "ITAC.ui.line.proxy": "Nieobecni: {users}. Odpowiedz za nich.",
   "ITAC.ui.line.attPool": "Atakujący rzuca: [[dice:{dice}]] ({attr}).",
-  "ITAC.ui.odds.defended": "[[dice:{dice}]], trafienie {p}",
-  "ITAC.ui.odds.open": "trafienie {p}",
+  "ITAC.ui.odds.defended": "[[dice:{dice}]] · atak trafi: [[odds:{lv}]] {band}, {p}",
+  "ITAC.ui.odds.open": "atak trafi: [[odds:{lv}]] {band}, {p}",
   "ITAC.ui.note.gm": "Słowo dla gracza (opcjonalnie)",
   "ITAC.ui.note.player": "Słowo dla MG (opcjonalnie)",
   "ITAC.ui.always": "Zapamiętaj następną odpowiedź za: {name}",
@@ -1956,7 +1957,7 @@ export const PL = {
   "ITAC.ui.line.attackBy": "{attacker} atakuje: {targets}. Akcja: {action}. {name} może się wtrącić.",
   "ITAC.ui.line.attackUnseen": "Ktoś niewidoczny atakuje: {name}.",
   "ITAC.ui.line.attackUnseenBy": "Ktoś niewidoczny atakuje: {targets}. {name} może się wtrącić.",
-  "ITAC.ui.odds.band": "atak trafi: {band}",
+  "ITAC.ui.odds.band": "atak trafi: [[odds:{lv}]] {band}",
   "ITAC.ui.line.grantRuns": "Jeśli się zgodzisz: {name} od razu deklaruje: {action}, bez kosztu akcji.",
   "ITAC.ui.line.grantRunsPaid": "Jeśli się zgodzisz: {name} od razu deklaruje: {action}, za zwykły koszt akcji.",
   "ITAC.ui.line.grantHand": "Jeśli się zgodzisz: na biurku MG otworzy się akcja do rozstrzygnięcia ręcznie.",
@@ -2076,7 +2077,7 @@ export const PL = {
   "ITAC.failed.sys": "krok rundy",
   "ITAC.failed.other": "zmiana",
 };
-Object.assign(EN, EN_ATTACKS, EN_INT, EN_KIT, EN_FX, EN_MAP, EN_U10); Object.assign(PL, PL_ATTACKS, PL_INT, PL_KIT, PL_FX, PL_MAP, PL_U10);      // package P4 keeps its strings in lang-attacks.mjs
+Object.assign(EN, EN_ATTACKS, EN_INT, EN_KIT, EN_FX, EN_MAP, EN_U10, EN_UXB); Object.assign(PL, PL_ATTACKS, PL_INT, PL_KIT, PL_FX, PL_MAP, PL_U10, PL_UXB);      // package P4 keeps its strings in lang-attacks.mjs
 Object.assign(EN, EN_FLOW); Object.assign(PL, PL_FLOW);      // UX wave "uxc" (the flow): lang-flow.mjs
 const table = () => { try { return String(globalThis.game?.i18n?.lang ?? "en").toLowerCase().startsWith("pl") ? PL : EN; } catch { return EN; } };
 /** The form of a counted word (U26). English: [one, other]. Polish: [one, few, many]: 1 kość, 2-4 kości, 5+ kości, with 12-14 and

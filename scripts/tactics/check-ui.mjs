@@ -125,7 +125,7 @@ lang("en");
   eq((await T.gm(s.panel.submit.req)).ok, true, "the GM declares for the NPC through the same panel");
   d = dock(T, "p2", ["H2"]);
   eq([d.rest, d.prompts.map((p) => [p.kind, p.about, p.options.map((x) => x.id)])], [true, [["reaction", "Rex", ["block", "dodge", "pass"].filter((x) => d.prompts[0].options.some((q) => q.id === x))]]], "out of turn: the reaction question shows above a resting bar");
-  ok(d.prompts[0].options.every((x) => x.note == null || !/\d|%/.test(x.note)) && !JSON.stringify(d.prompts[0].lines).includes("9"), "a player's reaction question carries no attacker numbers");
+  ok(d.prompts[0].options.every((x) => x.note == null || !/\d|%/.test(String(x.note).replace(/\[\[odds:\d\]\]/g, ""))) &&!JSON.stringify(d.prompts[0].lines).includes("9"), "a player's reaction question carries no attacker numbers");
   eq([d.prompts[0].options.find((x) => x.id === "pass").label, /attack lands: /.test(d.prompts[0].options.find((x) => x.id === "pass").note ?? ""), d.prompts[0].lines.some((l) => /Mauler attacks Rex/.test(String(l)))], ["No reaction", true, true], "U11: the card names the attacker, says in words how likely the attack is to land, and calls a pass what the GM's card calls it");
   eq([d.waiting.length, d.prompts[0].aboutHead, d.turn], [0, false, ""], "U51 / U52: the card above the bar is the question: the line does not say 'waiting for: you' again, the card's head does not repeat the name on the bar, and nothing says whose turn it is");
   eq(desk(T).cards.length, 0, "online addressee: no desk card");

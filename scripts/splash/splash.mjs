@@ -1,5 +1,5 @@
 /* Renderer splasha (styl poszarpany): SVG + WAAPI. Zero zależności od Foundry poza przeglądarką. */
-import { FS, LBL, hueOf, hsl, inkAccent, oddsText, oddsLabel } from './logic.mjs';
+import { FS, LBL, hueOf, hsl, inkAccent, oddsText, oddsLabel, say } from './logic.mjs';
 
 const NS = 'http://www.w3.org/2000/svg';
 const BASE = 'translate(-50%,-50%)';
@@ -333,12 +333,12 @@ export function sixBadge(stage, n) {
 
 /* Plakietka stresu. Resolve w systemie maleje: now = pozostało, max = pojemność. */
 export function stressNote(lost, max) {
-  if (lost >= max) return 'BREAKING POINT!';
+  if (lost >= max) return say('BREAKING POINT!');
   const r = lost / max;
-  if (r >= 0.75) return 'ON THE EDGE!';
-  if (r >= 0.5) return 'FEELING THE STRAIN';
-  if (r >= 0.25) return 'SHAKEN';
-  return 'SHRUGS IT OFF';
+  if (r >= 0.75) return say('ON THE EDGE!');
+  if (r >= 0.5) return say('FEELING THE STRAIN');
+  if (r >= 0.25) return say('SHAKEN');
+  return say('SHRUGS IT OFF');
 }
 export function stressBadge(stage, stress, resolve, later) {
   /* resolve = null: bez pojemności (np. przeciwnik) — sama informacja o napięciu */
@@ -362,7 +362,7 @@ export function stressBadge(stage, stress, resolve, later) {
     b.appendChild(pips);
   }
   const c = document.createElement('div'); c.className = 'bc';
-  c.textContent = resolve ? LBL.resolve(max - lostTotal, max) + ' · ' + stressNote(lostTotal, max) : 'FEELING THE STRAIN';
+  c.textContent = resolve ? LBL.resolve(max - lostTotal, max) + ' · ' + stressNote(lostTotal, max) : say('FEELING THE STRAIN');
   b.appendChild(c);
   stage.appendChild(b);
   if (reduce) return b;

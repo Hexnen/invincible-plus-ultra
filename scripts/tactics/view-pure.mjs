@@ -129,7 +129,11 @@ export function viewFor(state, viewer, meta = {}) {
   /* U120: a line written while its actor or a target was hidden (`hid`) stays the GM's and the actor's own players' after a reveal (the
      target's player was told "somebody unseen"; who it was is not handed over afterwards) */
   const ownLine = (n) => V.owns.includes(n.actor);
-  out.news = clone((state.news ?? []).filter((n) => isObj(n) && !n.secret && (!n.hid || ownLine(n)) && (n.kind !== "exception" || V.owns.includes(n.actor)) && (n.kind !== "nudge" || (Array.isArray(n.to) && n.to.includes(V.id)))))      /* U59: a nudge is read by the ones nudged */.map(({ tx, ...n }) => n);
+  /* UXB (U141): a line of a doer hidden from this player that hit one of the player's own characters is handed over as "somebody unseen"
+     did it (no doer, no action, no power, no reactions; only the targets this player may see): the attack's own card said as much */
+  const unseen = (n) => (n.hid && n.hidA && !n.secret && !ownLine(n) && (n.rows ?? []).some((r) => V.owns.includes(r?.target) && !concealed.has(r.target))
+    ? { id: n.id, round: n.round, at: n.at, kind: n.kind, flow: n.flow, unseen: 1, status: n.status, rows: (n.rows ?? []).filter((r) => isObj(r) && !concealed.has(r.target)), ...(n.undone ? { undone: 1 } : {}) } : null);
+  out.news = clone((state.news ?? []).map((n) => (isObj(n) && n.hid && !ownLine(n) ? unseen(n) ?? n : n)).filter((n) => isObj(n) && !n.secret && (!n.hid || ownLine(n) || n.unseen) && (n.kind !== "exception" || V.owns.includes(n.actor)) && (n.kind !== "nudge" || (Array.isArray(n.to) && n.to.includes(V.id)))))      /* U59: a nudge is read by the ones nudged */.map(({ tx, hidA, hidT, ...n }) => n);
   if (isObj(state.vehicles)) out.vehicles = clone(keepKey(state.vehicles));
   if (isObj(state.chase)) { const { back, ...pub } = state.chase; out.chase = clone(pub); }
   if (isObj(state.challenges)) out.challenges = Object.fromEntries(Object.entries(keepKey(state.challenges)).map(([cid, c]) => [cid, clone({ preset: c.preset ?? null, name: c.name, objectives: c.objectives ?? [], dice: c.dice ?? 0, started: c.started ?? {}, done: c.done })]));
