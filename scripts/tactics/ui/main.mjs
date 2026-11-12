@@ -31,6 +31,7 @@ import * as Camera from "./camera.mjs";
 import * as Lay from "./layout-pure.mjs";
 import * as Tip from "./tip.mjs";
 import { setVar } from "./vars.mjs";
+import * as Slots from "./slots.mjs";        // U132 (trial): fixed places, behind the client switch tacticsSlots
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
@@ -454,7 +455,7 @@ async function zone(which, option, ask) {
     else if (r?.reason && !["cancelled", "replaced"].includes(r.reason)) notify("warn", t("ITAC.warn.zones", { reason: t(`ITAC.reason.${r.reason}`, {}, String(r.reason)) }));
   } catch (e) { console.warn(LOG, "zone pick failed", e); }
 }
-const LABELS = { peek: "ITAC.ui.peek", cancel: "ITAC.ui.cancel", chance: "ITAC.ui.chance", target: "ITAC.ui.target", pool: "ITAC.ui.pool", dock: "ITAC.ui.dock", waitingFor: "ITAC.ui.waitingFor", "pick.hint": "ITAC.ui.pick.hint", "undo.sure": "ITAC.ui.undo.sure", slots: "ITAC.ui.slots" };
+const LABELS = { "slots.tabs": "ITAC.ui.slots.tabs", "slots.ask": "ITAC.ui.slots.ask", "slots.panel": "ITAC.ui.slots.panel", "slots.sum": "ITAC.ui.slots.sum", "slots.hint": "ITAC.ui.slots.hint", "slots.legend": "ITAC.ui.slots.legend", peek: "ITAC.ui.peek", cancel: "ITAC.ui.cancel", chance: "ITAC.ui.chance", target: "ITAC.ui.target", pool: "ITAC.ui.pool", dock: "ITAC.ui.dock", waitingFor: "ITAC.ui.waitingFor", "pick.hint": "ITAC.ui.pick.hint", "undo.sure": "ITAC.ui.undo.sure", slots: "ITAC.ui.slots" };
 const label = (k) => t(LABELS[k] ?? k);
 
 function configure() {
@@ -466,6 +467,9 @@ function configure() {
     target: (cid) => { try { Pick.show(combatNow(), cid); } catch { /* a courtesy */ } },
     locate: (cid, on) => Pick.locate(combatNow(), cid, on), deskRelayout: () => { try { Desk.relayout(); } catch { /* not built */ } },
     roll: rollAct, sumClose: () => Feedback.closeSum(), hintClose: (id) => Feedback.closeHint(id),
+    /* U132 (trial): what the frame of the fixed places asks: the seat, the hints, where the challenges' band ends (challenges/main.mjs) */
+    staff: () => Store.isStaff(game.user), hintsOn: () => Store.setting("tacticsHints", true) !== false,
+    ichFloor: (y) => { try { window.dispatchEvent(new CustomEvent("ipu:ich-floor", { detail: y })); } catch { /* the challenges keep their room */ } },
     amend: (p) => { const combat = combatNow(), i = combat ? Api.player(combat).mine.find((x) => x.inst === p.inst) : null; if (i) setDock({ armed: i.action, mode: null, amend: i.inst, targets: i.targets.map((x) => x.id), text: i.text ?? "" }); },
   });
   Desk.configure({
@@ -495,6 +499,39 @@ function watch() {
     if (el && el.dataset.itdWatched !== "1") { el.dataset.itdWatched = "1"; ro.observe(el); }
   }
 }
+/* What the map keeps clear of (zones-api.md sections 23 and 41). The column of today: the pick's banner and its "more" chips keep clear
+   of our two bars; the map's menus (a drag's "which way" menu) and its "My view" chip keep clear of our panels that are no bar along an
+   edge, and of the dock itself where the declared bar is given up (a short window); the session notice is the session part's own
+   declaration (session/main.mjs).
+   U132 (trial, fixed places): the dock's root covers the window, so it is not declared itself. The bottom inset is the bar alone (its
+   place does not change with what opens over it); every place of the frame is declared as a box, filled or not (slots-pure.frame
+   `reserved`: a place that empties stays that surface's place, the "My view" chip does not move into it), and what stands in them. */
+function declareRoom() {
+  if (Slots.getMode() === "off") {
+    Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock", top: "#invincible-combat-bar" });
+    Zones.uiAvoid(`${MOD}.panels`, ["#invincible-tactics-dock", "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges"]);
+    return;
+  }
+  Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock .its-bar .itd-bar", top: "#invincible-combat-bar" });
+  Zones.uiAvoid(`${MOD}.panels`, () => {
+    const fr = Slots.frameNow(), shown = Dock.isShown();
+    return [...(shown ? ["#invincible-tactics-dock .its-bar", "#invincible-tactics-dock .its-slot:not([data-empty]) > .its-in > *"] : []), ...(shown ? fr?.reserved ?? [] : []),
+      "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges"];
+  });
+}
+/** U132 (trial): switch the fixed places ("off" | "a" | "b" | "c"); the dock is built again, the map told, the desk and the challenges placed again */
+function slotsMode(v, first = false) {
+  try {
+    const changed = Dock.setMode(v);
+    if (!changed && !first) return;
+    const m = Slots.getMode();
+    if (m === "off") { delete document.body.dataset.itaSlots; setVar("--its-nt", null); setVar("--its-nx", null); try { window.dispatchEvent(new CustomEvent("ipu:ich-floor", { detail: null })); } catch { /* ignore */ } }
+    else document.body.dataset.itaSlots = m;
+    declareRoom();
+    if (!first) { refresh(); setTimeout(relayout, 60); }
+  } catch (e) { console.warn(LOG, "slots failed", e); }
+}
+
 /** does the dock stand in for the turn tray right now? (scripts/turn/main.mjs) */
 export const active = () => { try { return started && !!combatNow(); } catch { return false; } };
 
@@ -564,11 +601,7 @@ export function start() {
     Store.subscribe(() => setTimeout(chatButtons, 50));
     Zones.onEvent(moved);                    // a token entered a zone, a door changed: the options of a move are counted again
     Zones.onChange(() => moved());           // the scene's numerals or its zones changed: every text that names a zone is said again
-    Zones.uiInset(`${MOD}.bars`, { bottom: "#invincible-tactics-dock", top: "#invincible-combat-bar" });      // the pick's banner and its "more" chips keep clear of our two bars (zones-api.md section 23)
-    /* U106 / U116 (zones-api.md section 41): the map's menus (a drag's "which way" menu) and its "My view" chip keep clear of our panels that
-       are no bar along an edge, and of the dock itself where the declared bar is given up (a short window); the session notice is the
-       session part's own declaration (session/main.mjs) */
-    Zones.uiAvoid(`${MOD}.panels`, ["#invincible-tactics-dock", "#invincible-tactics-desk", "#invincible-party", "#invincible-challenges"]);
+    slotsMode(Store.setting("tacticsSlots", "off"), true);      // U132 (trial); declares the map's room (declareRoom) in either case
     /* a token dragged into another zone (movement.mjs asks here first): the dock opens Move for that combatant with the zone chosen */
     Mv.setDragSurface((cid, spot) => {
       const combat = combatNow();
@@ -604,7 +637,7 @@ export function start() {
     Feedback.start({ t, refresh });
     Camera.start();
     Api.camera = { state: () => Camera.state() };      // for a look from the console
-    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
+    Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), slots: (v) => slotsMode(v), frame: () => Slots.frameNow(), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
     refresh();
     return true;
   } catch (e) { console.warn(LOG, "start failed", e); return false; }

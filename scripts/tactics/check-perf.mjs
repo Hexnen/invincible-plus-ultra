@@ -4,7 +4,7 @@ import { ok, eq, done } from "./testkit.mjs";
 import * as V from "./ui/vars.mjs";
 
 const src = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
-const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
+const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css") + src("../../styles/tactics-slots.css");      // U132 (trial): the fixed places' sheet
 
 /* ---- A. the numbers for other parts of the page go to the elements that read them, never to <body> */
 {
@@ -109,9 +109,11 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
   eq(S.sizesOf(null), [], "D: no stack, no sizes");
   /* the dock: the rule as wired */
   const dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8");
-  const head = dock.slice(dock.indexOf("export function place()"), dock.indexOf("function placeNow(rec)")), body = dock.slice(dock.indexOf("function placeNow(rec)"), dock.indexOf("function markMore(el)"));
-  ok(/if \(kept && Settle\.sameFacts\(kept\.facts, facts\(\)\) && Settle\.unchanged\(kept\.read, visibleRect\) && Settle\.sameFacts\(kept\.sizes, Settle\.sizesOf\(stack\)\)\) return;/.test(head), "D: place() returns early only with kept facts, reads and sizes all the same");
-  ok(/kept = null;\s*placeNow\(rec\);\s*if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept = /.test(head), "D: what a run read is kept only when the run changed nothing");
+  const head = dock.slice(dock.indexOf("export function place()"), dock.indexOf("function placeNow(rec)")), body = dock.slice(dock.indexOf("function placeNow(rec)"), dock.indexOf("function placeSlots(rec)"));
+  /* U132 (trial): the placement of the fixed places keeps the same rule (what it writes is in the outcome too) */
+  const slotsBody = dock.slice(dock.indexOf("function placeSlots(rec)"), dock.indexOf("function markMore(el)"));
+  ok(/if \(kept && Settle\.sameFacts\(kept\.facts, facts\(\)\) && Settle\.unchanged\(kept\.read, visibleRect\) && Settle\.sameFacts\(kept\.sizes, sizesNow\(\)\)\) return;/.test(head) && /const sizesNow = \(\) => \[\.\.\.Settle\.sizesOf\(stack\)/.test(dock), "D: place() returns early only with kept facts, reads and sizes all the same");
+  ok(/kept = null;\s*if \(Slots\.getMode\(\) === "off"\) placeNow\(rec\); else placeSlots\(rec\);\s*if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept = /.test(head), "D: what a run read is kept only when the run changed nothing");
   ok(/const facts = \(\) => \[drawn, window\.innerWidth, window\.innerHeight, Lay\.factor\(document\.body\)\]/.test(head), "D: the draw count, the window and the size are facts of a placement");
   const out = dock.slice(dock.indexOf("function outcome()"), dock.indexOf("function placeNow(rec)"));
   for (const w of ["root.style.cssText", "root.dataset.tight", "root.dataset.under", "underTop", "hint?.style.cssText", "hint?.dataset.tick", 'varOf("--itd-clear")', '"ita-notice-wait"']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
@@ -121,9 +123,14 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
     .replace(/(delete )?root\.dataset\.(tight|under)( = )?/g, "").replace(/document\.body\.classList\.toggle\("ita-notice-wait"/g, "")
     .replace(/setVar\("--itd-(clear|over)"/g, "").replace(/hint\.style\.setProperty\("--itd-hint-x"/g, "").replace(/(delete )?hint\.dataset\.tick( = )?/g, "").replace(/underTop = top/g, "");
   ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute|\bunderTop =/.test(rest), "D: placeNow writes nothing outside what the outcome compares");
+  ok(!/document\.(querySelector|querySelectorAll|getElementById)\(|visibleRect\(/.test(slotsBody), "D (U132): placeSlots asks the page only through the recorder");
+  for (const w of ["el.parentElement?.style.cssText", "el.parentElement?.dataset.anchor", "frameKey", 'varOf("--its-nt")', 'varOf("--its-nx")']) ok(out.includes(w), `D (U132): the outcome of a placement includes ${w}`);
+  const restS = slotsBody.replace(/root\.style\.(setProperty|removeProperty)\("--(itd|its)-[\w-]+"/g, "").replace(/(delete )?root\.dataset\.(tight|under)( = )?/g, "").replace(/(delete )?hint\.dataset\.tick( = )?/g, "")
+    .replace(/st\.(display|left|width|top|bottom) =/g, "").replace(/st\.setProperty\("--its-[hw]"/g, "").replace(/el\.dataset\.(anchor|align) =/g, "").replace(/setVar\("--its-n[tx]"/g, "").replace(/document\.body\.classList\.remove\("ita-notice-wait"\)/g, "").replace(/frameKey = key/g, "");
+  ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute/.test(restS), "D (U132): placeSlots writes nothing outside what the outcome compares");
   ok(/drawn\+\+;[^\n]*\n\s*place\(\);\s*\n\s*reveal\(\);/.test(dock), "D: a draw counts before it places (new content always places in full)");
   ok(/addEventListener\("load", \(\) => \{ drawn\+\+; \}, true\)/.test(dock) && /"loadingdone", \(\) => \{ drawn\+\+; \}/.test(dock), "D: a picture or a font that finished loading counts as new content");
-  ok(/last = null; kept = null; \}/.test(dock), "D: a destroyed dock forgets what it read");
+  ok(/last = null; kept = null;( slotEls = \{\}; tabWas = tabPicked = null; asksWere = ""; frameKey = "";)? \}/.test(dock), "D: a destroyed dock forgets what it read");
 }
 
 done("check-perf");

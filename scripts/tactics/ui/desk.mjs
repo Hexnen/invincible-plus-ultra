@@ -19,6 +19,7 @@ import { h, icon, swap, askCard, legendCard, rollButtons, visibleRect, face } fr
 import { costMark, symMark, hasMarks, markName } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
 import * as Lay from "./layout-pure.mjs";
 import { setVar } from "./vars.mjs";
+import * as Slots from "./slots.mjs";      // U132 (trial): the fixed places; the desk's part of the frame (slots-pure.mjs)
 
 const ID = "invincible-tactics-desk";
 const minH = (H) => Math.round(Math.max(240, Math.min(320, H * 0.36)));      // px the open desk keeps whatever floats under it (276 in a 768 px window)
@@ -62,6 +63,15 @@ export function place() {
   for (const el of hud ? hud.querySelectorAll("#ich-dock, #ich-list > li") : []) { const r = visibleRect(el); if (r && r.right > W * 0.5 && r.left < W - right) top = Math.max(top, r.bottom + 8); }
   const maxTop = Math.max(11, H - 300);
   root.style.setProperty("--igd-right", `${Math.round(right)}px`);
+  /* U132 / U134 (trial): with fixed places the desk stands under the challenges' band, over the toasts' strip (and over the bar where
+     the bar takes the edge under it), whatever floats in or how many challenges there are: nothing here is measured from content */
+  const fr = Slots.frameNow();
+  if (fr?.desk) {
+    root.style.setProperty("--igd-top", `${fr.desk.top}px`);
+    root.style.setProperty("--igd-maxh", `${Math.round(Math.max(160, fr.desk.floor - fr.desk.top))}px`);
+    try { setVar("--igd-toast-maxh", `${fr.desk.toastH}px`); } catch { /* no body */ }
+    return;
+  }
   root.style.setProperty("--igd-top", `${Math.round(Math.min(top, maxTop))}px`);
   /* the chat box that floats at the bottom right while the sidebar is collapsed stays free: the desk ends above it and scrolls inside */
   let floor = H - 14;

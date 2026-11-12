@@ -274,9 +274,13 @@ function lowerLimit(right) {
       y = Math.min(y, Math.round(r.top) - 12);
     }
   } catch { /* the window margin is enough */ }
-  return y;
+  return Number.isFinite(capY) && capY > 80 ? Math.min(y, capY) : y;
 }
 const scheduleMeasure = () => { if (!raf) raf = requestAnimationFrame(measure); };
+/* U132 / U134 (the trial of fixed places, scripts/tactics/ui/slots-pure.mjs): the tactical surfaces may keep the challenges to a band of the
+   right column (the GM desk or the rail stands under it); they say where the band ends with this event (null: no limit, as before) */
+let capY = null;
+window.addEventListener("ipu:ich-floor", (e) => { const y = Number(e?.detail); const v = Number.isFinite(y) && y > 0 ? Math.round(y) : null; if (v !== capY) { capY = v; scheduleMeasure(); } });
 /* PERF: the observed subtrees also hold things that change all the time without moving a box: core's FPS counter (class + text, ~4 per second) and the chat
    timestamps (text nodes, every few seconds). Only a class / hidden change outside the FPS counter, or an ELEMENT added / removed, can move a measured box. */
 const layoutRelevant = (recs) => recs.some((r) => {

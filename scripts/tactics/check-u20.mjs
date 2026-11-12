@@ -111,9 +111,10 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   ok(/KEEP_OFF = `\$\{DOCK\} \.ita-ask, \$\{DOCK\} \.itd-panel, \$\{DOCK\} \.itd-bar, \$\{DOCK\} \.itd-wait, \$\{DOCK\} \.itd-hint1, \$\{DESK\} \.igd`/.test(tip) && /order: orderFor\("dock"\)/.test(tip), "B: a tooltip keeps off the other cards, the panel, the bar, the line over the bar (U103), the hint and the desk");
   ok(/el\.closest\("\.igd"\)/.test(tip) && /order: orderFor\("desk"\)/.test(tip), "B: the desk is one block: its tooltips open beside the column");
   /* U97: the stack, bottom up: bar, panel, hint, the table's line, the questions */
-  const draw = dock.slice(dock.indexOf("swap(stack, ["), dock.indexOf("/* U41: the answer the keyboard chose"));
+  const draw = dock.slice(dock.indexOf("const asksOf = "), dock.indexOf("/* U41: the answer the keyboard chose"));      // U132 (trial): the pieces are built once, then placed
   const at = (re) => draw.search(re), order = [at(/h\("div\.itd-asks"/), at(/h\("div\.itd-wait"/), at(/h\("div\.itd-hint1"/), at(/d\.show \? panel\(d\.panel\) : null/), at(/d\.show \? bar\(d\) : null/)];
   ok(order.every((x) => x >= 0) && order.every((x, i) => i === 0 || x > order[i - 1]), "B (U97): the armed action's panel stands right on the bar; the hint, the table's line and the questions stand over it");
+  ok(/if \(m === "off"\) swap\(stack, \[asksOf\(prompts, !!d\.sum, legendOn\), wait, hint, pnl, barEl\]\);/.test(draw), "B (U97, U132): with the trial off the column is the questions, the line, the hint, the panel, the bar");
   ok(/hint\?\.dataset\.at && !stack\.querySelector\(":scope > \.itd-panel"\)/.test(dock) && /else if \(hint\) delete hint\.dataset\.tick/.test(dock), "B (U97): a hint that no longer stands on the bar drops its tick (it would point at the panel)");
 }
 

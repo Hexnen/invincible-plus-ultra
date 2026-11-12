@@ -44,6 +44,9 @@ function registerSettings() {
   reg("tacticsSoundVolume", { ...name("tacticsSoundVolume"), scope: "client", config: true, type: Number, range: { min: 0, max: 1, step: 0.05 }, default: 0.5 });
   /* U62: the size of the dock, the desk and their cards on this browser (a slider; separate from Foundry's interface scale) */
   reg("tacticsUiScale", { ...name("tacticsUiScale"), scope: "client", config: true, type: Number, range: { min: 80, max: 140, step: 5 }, default: 100, onChange: (v) => { try { tacticsApi.ui?.rescale?.(v); } catch { /* the surfaces are not up */ } } });
+  /* U132 (TRIAL, to be removed with the rollout): the fixed places of the surfaces, three variants side by side; "off" = the column of today */
+  reg("tacticsSlots", { ...name("tacticsSlots"), scope: "client", config: true, type: String, default: "off",
+    choices: { off: t("ITAC.Slots.off"), a: t("ITAC.Slots.a"), b: t("ITAC.Slots.b"), c: t("ITAC.Slots.c") }, onChange: (v) => { try { tacticsApi.ui?.slots?.(v); } catch { /* the surfaces are not up */ } } });
 }
 /** what stands in the way of tactical combat on this world: null (it runs) | "off" | "yze" | "noInitiative" */
 export function blocker() {

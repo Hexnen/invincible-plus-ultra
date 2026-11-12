@@ -12,6 +12,8 @@ export const USERS = Object.freeze({
   "--itd-clear": ".ips-notice",                                           // tactics-ui.css: the end-of-session notice above the dock
   "--igd-toast-maxh": "#chat-notifications .overflow",                    // tactics-ui.css (U6): the chat toasts' strip under the open desk
   "--ita-dice-z": "#invincible-combat-bar, #invincible-tactics-dock",      // combat.css / tactics-ui.css (U108): above Dice So Nice's canvas
+  "--its-nt": ".ips-notice",                                              // tactics-slots.css (U132 trial): the notice's own place, its top
+  "--its-nx": ".ips-notice",                                              // ... and its middle
 });
 
 let sheet = null, failed = false;
