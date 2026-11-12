@@ -486,7 +486,7 @@ for (const choice of ["forfeit", "cancel", "continue", "amend"]) {
   await R.req("p1", { op: "declare", actor: "H1", decl: { action: "mindBlast", weapon: "mind", targets: ["N1"] } });
   await R.answer("gm", "reaction", "pass", "N1");
   await R.roll("attack", 1);
-  eq([R.c.N1.health, R.c.N1.resolve], [5, 3], "N: damage turned into stress lowers Resolve, Armor not used");
+  eq([R.c.N1.health, R.c.N1.resolve], [5, 4], "N: damage turned into stress lowers Resolve; the vest (Armor 1) counts against it as against any attack (PWA, PW001: [B1591] the attack has to pierce any Armor, [B2682]; before PWA this said Armor is not used)");
   // minions attack together
   const Mn = base(); Mn.npc("G1", { kind: "minions", members: 5, health: 5 }); Mn.order(["G1", "H1", "N1", "H2", "N2"]);
   await Mn.gm(slug("G1", "H1"));

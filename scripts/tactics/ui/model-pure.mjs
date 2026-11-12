@@ -677,9 +677,9 @@ const FULL_AUTO_MAX = 12;
 function armsOf(bar, a, own, facts, t) {
   const none = { weapons: null, opts: [], maxTargets: 1, decl: {}, dice: [], why: null, notes: [] };
   if (a.flow !== "attack") return none;
-  const shooting = a.attack === "shooting", melee = a.attack === "slugfest";
-  const list = a.unarmed ? [] : shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : [];
-  const ids = [...(melee ? ["unarmed"] : []), ...list.map((w) => w.id)];
+  const shooting = a.attack === "shooting", melee = a.attack === "slugfest", grapple = a.attack === "grapple";      // PWA (PW048): a grapple may be made with the plants of Plant Control [B1779]
+  const list = a.unarmed ? [] : shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : grapple ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && w.grip) : [];
+  const ids = [...(melee || grapple ? ["unarmed"] : []), ...list.map((w) => w.id)];
   const wname = (x) => (x.opt ? `${x.name} (${t(`ITAC.kit.opt.${x.opt}`, {}, x.opt)})` : x.tag ? `${x.name} + ${x.tag}` : x.name);      // P6: a power's attack and its variants
   const sel = ids.includes(own.weapon) ? own.weapon : ids[0] ?? null, w = list.find((x) => x.id === sel) ?? null;
   const rangeText = (x) => (Array.isArray(x.range) ? t(x.range[0] === x.range[1] ? "ITAC.ui.weapon.rangeOne" : "ITAC.ui.weapon.range", { min: x.range[0], max: x.range[1] }) : null);

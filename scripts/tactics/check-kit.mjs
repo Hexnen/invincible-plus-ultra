@@ -132,12 +132,17 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   await T.roll("roll", 0);
   eq([st(T, "N1"), code(await T.gm(decl("N1", "shakeOff"))), why(T.last)], [["afflicted"], "illegal", "usedAlready"], "one attempt a round");
 }
-/* ================================================================== Distress [B1591], Defiance [B1865]: stress, stopped by Armor against stress only */
+/* ================================================================== Distress [B1591], Defiance [B1865]: stress, stopped by the best Armor
+   (PWA, PW001: "the attack pierces ANY armor" [B1591], one Armor at a time [B2682]: the vest counts too; before PWA this block said the
+   vest does not count, which the book does not say) */
 {
   const ds = item("ds", "Distress", "power", { autos: [auto("a", "Distress", "rollAttack", { attr: ["agility"], damage: 4, max: 2 })] });
-  const T = base([ds], [item("df", "Defiance", "power")], { n1: { armor: [{ id: "vest", armor: 5 }] } });
+  const T = base([ds], [item("df", "Defiance", "power")], { n1: { armor: [{ id: "vest", armor: 2 }] } });
   await T.req("p1", decl("H1", "shoot", { targets: ["N1"], weapon: "ds~a" })); await pass(T); await T.roll("attack", 1);
-  eq([T.c.N1.health, T.c.N1.resolve], [6, 4], "Distress 4 against Defiance 3: 1 stress, the vest does not count");
+  eq([T.c.N1.health, T.c.N1.resolve], [6, 4], "Distress 4 against Defiance 3 and a vest 2: the better Armor (Defiance) counts, 1 stress");
+  const U = base([ds], [item("df", "Defiance", "power")], { n1: { armor: [{ id: "vest", armor: 5 }] } });
+  await U.req("p1", decl("H1", "shoot", { targets: ["N1"], weapon: "ds~a" })); await pass(U); await U.roll("attack", 1);
+  eq([U.c.N1.health, U.c.N1.resolve], [6, 5], "Distress 4 against a vest 5 [B1591], [B2682]: the vest stops it (PWA)");
 }
 /* ================================================================== Barrier [B1859-1862]: Armor until breached */
 {

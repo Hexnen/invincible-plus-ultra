@@ -374,6 +374,12 @@ async function closeInst(X, I, result = null) {
   const mv = I.flow === "forced" ? I.data?.mv : null;      // FXP (U181): where a knockback / slam of this action landed (its own line has none: it is a part)
   if (mv && P1.isId(mv.who) && typeof mv.at === "string" && mv.at !== mv.from && I.data.result !== "none" && I.data.result !== "aborted" && I.status !== "aborted") (P.data.landed ??= {})[mv.who] = { at: mv.at.slice(0, 40), ...(P1.isId(mv.outOf) ? { outOf: mv.outOf } : {}) };
   if (I.part) (P.data.results ??= []).push({ action: I.action, status: I.status, result: I.data.result ?? null });
+  else if (I.status !== "aborted" && I.data?.forfeitParent === P.id) {                      // PWA (PW039) [B1774]: a power negated as it is about to be used: the action is forfeit (its cost stays spent)
+    P.data.forfeitBy = { inst: I.id, actor: I.actor ?? null, action: I.action };
+    P.status = "open"; setInst(X, P);
+    await abortInst(X, P.id, false);
+    return;
+  }
   else {                                                                                    // spec 5.1: the instance beneath is revalidated before it continues
     const rv = FLOWS[P.flow].revalidate(view(X), P);
     if (!rv.ok) {

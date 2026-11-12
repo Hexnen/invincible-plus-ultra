@@ -20,6 +20,9 @@
              medicalGear, stressArmor: [per level], resist: [per level], immune: "flag" | "nonKinetic", vulnerable: "flag", shrunkDice: [per level], grown }
      mods    dice the sheet does not carry: [{ dice, action?: [ids], attack?: [kinds], attr?, vsHuge?, lv?: [per level] }]
      opt     a boost or limit that changes the attacks of its power: { patch, stress?, optional?, on?: "slug" }
+             (PWA: patch.rangeLv = [range per level]; atk.grip = the status a grapple made with the attack leaves [B1779]; atk.pull = a hit
+             pulls the target into the attacker's zone [B2029]; atk.by.<name>.attack = a plain roll of the item made an attack; a limit's
+             noPull takes the pulling attack away [B2031]; an act's interrupt = the windows it may answer)
              (`combo: [n per level]` on an action: that many of its `pick` are chosen together, the same one more than once if wished)
      cost    the cost of the row's generic use ("full" unless stated)
      size    [dice per level]: the item's effects "Grow" and "Shrink" are the size the engine reads (grown: reach, stride, immunities [B1975];
@@ -100,12 +103,12 @@ export const ROWS = Object.freeze([
   L("Dimensional Travel", "Parallel Dimensions Only", [1667], "hand", "story", { why: "gmJudges" }),
   L("Dimensional Travel", "Specific Dimension", [1668], "hand", "story", { why: "gmJudges" }),
   P("Earthquake", [1671, 1672, 1673, 1674], "assist", "map", { atk: { area: 1, always: ["area"], range: [0, 0] } }),
-  B("Earthquake", "Shockwave", [1675], "assist", "attack", { opt: { patch: { area: 0, damagePlus: 1 }, optional: 1 } }),
+  B("Earthquake", "Shockwave", [1675], "assist", "attack", { opt: { patch: { area: 0, damagePlus: 1, rangeLv: [[0, 0], [0, 2], [0, 3], [0, 4]] }, optional: 1 } }),      // PWA (PW016): one target as far as the quake reaches at the level [B1671-1674] (question PWA-1)
   B("Earthquake", "Earth Drift", [1676], "auto", "move", { mv: 1 }),
   P("Electricity Control", [1679, 1680, 1681, 1682, 1683, 1684], "auto", "attack", { atk: { source: "electricity", halveArmor: 1, by: { stun: { noDamage: 1, pierce: 1, halveArmor: 1, onHit: { stun: 1 } } } }, acts: [narr("zone", "full")] }),
   B("Electricity Control", "Discharge", [1685], "assist", "gmCard"),
   B("Electricity Control", "Body Battery", [1686], "auto", "effect", { acts: [{ k: "battery", cost: "full", roll: { attrs: MENTAL }, effect: { kind: "gainResolve", per: 3, over: 1 }, once: "sceneZone" }] }),      // Z7: once per scene in the same zone
-  P("Fire Control", [1689, 1690, 1691, 1692, 1693, 1694], "assist", "zone", { atk: { source: "fire", onHit: { burn: 1 } }, pass: { immune: ["fire"] }, acts: [narr("zone", "full")] }),
+  P("Fire Control", [1689, 1690, 1691, 1692, 1693, 1694], "assist", "zone", { atk: { source: "fire", onHit: { burn: 1, ifDamage: 1 } }, pass: { immune: ["fire"] }, acts: [narr("zone", "full")] }),
   burst("Fire Control", "Conflagration", [1695, 1696]),
   B("Fire Control", "Firestarter", [1697], "assist", "zone", { acts: [narr("blaze", "full")] }),
   L("Fire Control", "Destructive Flames", [1698, 1699], "hand", "story", { why: "gmJudges" }),
@@ -132,8 +135,8 @@ export const ROWS = Object.freeze([
   B("Mind Control", "Area Control", [1763], "assist", "gmCard", { acts: [narr("many", "full", { roll: { attr: "presence" }, pick: ["1", "2", "3"], stressPick: 1 })] }),
   L("Mind Control", "Hypnosis", [1764, 1765], "auto", "barred", { bars: 1 }),
   L("Mind Control", "Requires Touch", [1766, 1767, 1768], "assist", "attack", { opt: { patch: { noDamage: 1 }, optional: 1, on: "slug" } }),
-  P("Nullification", [1772, 1773, 1774, 1775], "assist", "gmCard", { acts: [{ k: "nullify", cost: "quick", roll: { attr: "presence" }, oppose: { attr: "presence", who: "target", optional: true }, target: { who: "any", n: [0, 1] }, effect: { kind: "narrative" } }] }),
-  P("Plant Control", [1778, 1779, 1780, 1781, 1782, 1783, 1784], "assist", "zone", { atk: { noCounter: 1 }, acts: [narr("zone", "full")] }),
+  P("Nullification", [1772, 1773, 1774, 1775], "assist", "gmCard", { acts: [{ k: "nullify", cost: "quick", roll: { attr: "presence" }, oppose: { attr: "presence", who: "target", optional: true }, target: { who: "any", n: [0, 1] }, near: 1, interrupt: ["beforeRoll"], effect: { kind: "nullify" } }] }),      // PWA (PW039): also as an interrupt of a power about to be used
+  P("Plant Control", [1778, 1779, 1780, 1781, 1782, 1783, 1784], "assist", "zone", { atk: { noCounter: 1, grip: "immobilised" }, acts: [narr("zone", "full")] }),
   burst("Plant Control", "Massive Growth", [1785, 1786]),
   B("Plant Control", "Lifeseed", [1787], "assist", "zone", { acts: [narr("seed", "quick", { stress: 1 })] }),
   P("Sorcery", [1790], "assist", "gmCard", { cost: "full" }),
@@ -146,7 +149,7 @@ export const ROWS = Object.freeze([
     { k: "dismiss", cost: "full", effect: { kind: "dismiss" } }] }),
   L("Summoning", "Delayed Summoning", [1816], "auto", "turn", { pass: { summonDelay: 1 } }),
   P("Technology Control", [1819], "assist", "outcome", { cost: "full" }),
-  P("Telekinesis", [1822, 1823, 1824, 1825, 1826, 1827, 1828], "assist", "gmCard", { atk: { by: { "throw target": { noDamage: 1, stunts: "none", throws: [3, 4, 5, 6], zones: [2, 3, 4, 5] } } } }),
+  P("Telekinesis", [1822, 1823, 1824, 1825, 1826, 1827, 1828], "assist", "gmCard", { atk: { by: { "throw target": { attack: 1, range: [0, 1], noDamage: 1, stunts: "none", throws: [3, 4, 5, 6], zones: [2, 3, 4, 5] } } } }),      // PWA (PW053): the compendium's Throw Target is a plain AGILITY roll: made an attack, this zone or the next [B1822]
   B("Telekinesis", "Multiple Targets", [1829], "assist", "gmCard", { acts: [narr("many", "full", { pick: ["1", "2", "3"], stressPick: 1 })] }),
   P("Water Control", [1832, 1833, 1834, 1835], "assist", "zone", { atk: {}, acts: [narr("zone", "full")], opts: [{ k: "area", patch: { area: 1 }, stress: 1 }, { k: "sweep", patch: { noDamage: 1, sweep: 1 } }] }),
   B("Water Control", "Wellspring", [1836], "assist", "outcome", { acts: [narr("water", "none", { stress: 1 })] }),
@@ -221,7 +224,7 @@ export const ROWS = Object.freeze([
   moveRow("Super-Speed", [2013, 2014, 2015, 2016]), B("Super-Speed", "Fast Tasks", [2017], "hand", "story", { why: "gmJudges" }), B("Super-Speed", "Untouchable Speed", [2018], "assist", "interrupt", { mv: 1 }),
   moveRow("Swimming", [2021]), B("Swimming", "Fast Swimmer", [2022], "auto", "move", { pass: { fastSwim: 1 } }), L("Swimming", "Surface Breather", [2023], "hand", "story", { why: "outOfFight" }),
   P("Swinging", [2027, 2028, 2029], "auto", "move", { mv: 1, atk: { noDamage: 1, stunts: "none", pull: 1 } }),
-  B("Swinging", "Fast Swinging", [2030], "auto", "move", { pass: { fastSwing: 1 } }), L("Swinging", "Brachiation", [2031], "auto", "move", { mv: 1 }),
+  B("Swinging", "Fast Swinging", [2030], "auto", "move", { pass: { fastSwing: 1 } }), L("Swinging", "Brachiation", [2031], "auto", "move", { mv: 1, noPull: 1 }),      // PWA (PW114) [B2031]: no pulling targets
   moveRow("Teleportation", [2034, 2035, 2036, 2037]), B("Teleportation", "Teleport Allies", [2038], "assist", "move", { mv: 1 }), B("Teleportation", "Quick Teleport", [2039], "assist", "interrupt", { mv: 1 }),
   B("Teleportation", "Portal", [2040], "assist", "outcome", { cost: "full" }), B("Teleportation", "Distant Travel", [2041], "hand", "story", { why: "outOfFight" }), L("Teleportation", "Specific Location (Teleport)", [2042], "hand", "story", { why: "gmJudges" }),
 

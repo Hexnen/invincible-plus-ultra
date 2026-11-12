@@ -68,11 +68,13 @@ const pos = (n) => (Number.isFinite(Number(n)) && Number(n) > 0 ? Math.trunc(Num
 /* ------------------------------------------------------------------ attack profiles */
 /** the row of the book's weapon table behind a gear row of the kit (null for powers and for gear that is no weapon) */
 const bookRow = (row) => (row?.cat === "gear" && row.weapon ? bookWeapons.WEAPONS[row.name] ?? null : null);
-function patchProfile(p, patch = {}, attrs = {}) {
+function patchProfile(p, patch = {}, attrs = {}, lv = 0) {
   const o = { ...p };
   if (patch.attrs) o.attr = patch.attrs.slice().sort((x, y) => (Number(attrs[y]) || 0) - (Number(attrs[x]) || 0))[0];
   for (const k of ["ignoreArmor", "sharp", "noDamage", "sweep"]) if (patch[k]) o[k] = true;
-  if (patch.area === 1) o.area = true; else if (patch.area === 0) o.area = false;
+  if (patch.area === 1) o.area = true;
+  else if (patch.area === 0) { o.area = false; if (o.always?.includes("area")) { const al = o.always.filter((x) => x !== "area"); if (al.length) o.always = al; else delete o.always; } }      // PWA (PW016) [B1675]: Shockwave aims at one target: the area the power always has is gone too
+  if (patch.rangeLv) o.range = at(patch.rangeLv, lv).slice();                         // PWA: a range that grows with the power's level
   if (patch.stress) o.stress = (o.stress ?? 0) + patch.stress;
   if (patch.range) o.range = patch.range.slice();
   if (patch.fam) { o.fam = patch.fam; if (patch.fam === "slug") { o.range = null; if (!patch.attrs) o.attr = null; } }
@@ -97,16 +99,24 @@ function profileOf(item, row, a, lv, attrs, many = false) {
     attr: !set.length || set.includes(dflt) ? null : set.slice().sort((x, y) => (Number(attrs[y]) || 0) - (Number(attrs[x]) || 0))[0],
     bonus: Math.trunc(Number(a.bonus) || 0), damage: pos(a.damage) || null, range: fam === "shoot" ? range ?? [0, 1] : null, stress: pos(a.stress),
     sharp: item.wf?.sharp === true, fullAuto: item.wf?.fullAuto === true, area: item.wf?.area === true || h.area === 1, source: h.source ?? undefined,
-    toStress: h.toStress === 1, ignoreArmor: h.ignoreArmor === 1 || a.bypass === true, halveArmor: h.halveArmor === 1, noDamage: h.noDamage === 1, pierce: h.pierce === 1,
+    /* PWA (PW101, PW102): the system's "bypass armor" switch is set on items whose book text says the opposite (Distress [B1591], Stun
+       [B1625]: they have to get through Armor); where the book has a row, the row says whether Armor counts. Only an item without a row
+       keeps the switch. */
+    toStress: h.toStress === 1, ignoreArmor: h.ignoreArmor === 1 || (!row?.atk && a.bypass === true), halveArmor: h.halveArmor === 1, noDamage: h.noDamage === 1, pierce: h.pierce === 1,
     stunts: h.stunts ?? undefined, immuneHuge: h.immuneHuge === 1, always: h.always ?? undefined, state: row && row.cat !== "gear" ? row.state : "auto" };
   if (h.onHit) p.onHit = h.onHit.status ? { status: h.onHit.status, data: h.onHit.lv ? { dice: at(h.onHit.lv, lv) } : h.onHit.data } : { ...h.onHit };
   if (h.throws) p.onHit = { throw: at(h.throws, lv), ...(h.zones ? { zones: at(h.zones, lv) } : {}) };      // Z11 [B1822], [B1826-1828]: damage at each impact, and how far
+  if (h.pull) p.onHit = { pull: 1 };                                                  // PWA (PW088) [B2029]: the target is pulled into the attacker's zone
+  if (h.grip) p.grip = h.grip;                                                       // PWA (PW048) [B1779]: a grapple made with this attack leaves the target in this status, no hold kept
   if (fam === "slug" && range && range[1] > 0) p.reach = range[1];
   if (book?.stunEffect) p.stunEffect = true;                                         // [B2576], [B2583]; a mark, the book gives it no mechanics [A25]
   if (book?.singleUse) p.singleUse = true;                                           // [B2541]
   if (book?.noMovement) p.noMove = true;                                             // [B2545]
   return p;
 }
+
+const USES = ["usePower", "rollAttribute", "useGear"];
+const hintOf = (row, a) => { const k = Object.keys(row?.atk?.by ?? {}).find((x) => norm(x) === norm(baseName(a.name))); return k ? row.atk.by[k] : null; };
 
 /* ------------------------------------------------------------------ actions */
 const AS = { orders: "orders", slugfest: "slugfest", shoot: "shoot", rally: "rally", persuade: "persuade" };
@@ -128,6 +138,7 @@ function actionOf(item, row, a, lv, extra = {}) {
     for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near", "stressPick", "stressExtra"]) if (a[k]) e[k] = 1;
     if (a.combo && Array.isArray(a.pick)) e.pick = multisets(a.pick, Math.max(1, at(a.combo, lv))).map((c) => c.join("+"));          // Summoning [B1813-1815]: as many features as the level, repeats allowed
     if (a.once) e.once = a.once;
+    if (a.interrupt) e.interrupt = { on: a.interrupt.slice() };                      // PWA (PW039): an action the book allows as an interrupt (Nullification [B1772])
     for (const k of ["lv", "armor"]) if (Array.isArray(e.effect[k])) e.effect[k] = at(e.effect[k], lv);
     if (a.reaction) {
       const who = ["autoMiss", "allySwap", "note"].includes(a.reaction) ? "target" : "any";      // D113: Discretion moves the attack off its own holder; a warning is shouted for somebody else
@@ -161,16 +172,20 @@ export function build(src = {}) {
        without it: no fact, no dice, no action. The GM still decides at the table (the stabilize card has the gear as a tick). */
     if (row?.needs && !known.some((k) => k !== x && live(k) && k.row?.key === norm(row.needs))) { rec.state = "hand"; rec.note = "lacks"; rec.lacks = String(row.needs).slice(0, 60); continue; }
     try {
-      const autos = autosAt(it, lv), attacks = autos.filter((a) => a.type === "rollAttack"), uses = autos.filter((a) => ["usePower", "rollAttribute", "useGear"].includes(a.type));
+      /* PWA (PW053, PW113): an attack of the book that the compendium item carries as a plain roll (Telekinesis "Throw Target" is a
+         rollAttribute [B1823]): the row's hint `attack: 1` makes it an attack profile, and it is not offered a second time as a use */
+      const asAttack = (a) => a.type === "rollAttack" || (USES.includes(a.type) && hintOf(row, a)?.attack === 1);
+      const autos = autosAt(it, lv), attacks = autos.filter(asAttack), uses = autos.filter((a) => USES.includes(a.type) && !asAttack(a));
       /* attack profiles: the item's own attack automations, each with the boosts of the power */
       if (!row?.mounted) for (const a of attacks) {
         let p = profileOf(it, row, a, lv, attrs, attacks.length > 1);
         if (!p) continue;
-        for (const o of optsOf(it).filter((o) => !o.row.opt.optional && !o.row.opt.on && o.row.opt.patch)) p = patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch.stress }, attrs);      // S074: a limit that names its price in the patch (Exhausting Blast [B1587]) keeps it
+        if (p.onHit?.pull && known.some((k) => k.parent === it && live(k) && k.row?.noPull)) continue;      // PWA (PW114) Brachiation [B2031]: no pulling targets
+        for (const o of optsOf(it).filter((o) => !o.row.opt.optional && !o.row.opt.on && o.row.opt.patch)) p = patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch.stress }, attrs, lv);      // S074: a limit that names its price in the patch (Exhausting Blast [B1587]) keeps it
         kit.weapons.push(p);
         let n = 0;
-        for (const o of optsOf(it).filter((o) => o.row.opt.optional && !o.row.opt.on)) kit.weapons.push({ ...patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch?.stress }, attrs), id: `${p.id}+${n++}`, tag: String(o.it.name).slice(0, 40) });
-        for (const o of row?.opts ?? []) kit.weapons.push({ ...patchProfile(p, { ...o.patch, stress: o.stress }, attrs), id: `${p.id}+${n++}`, opt: o.k });
+        for (const o of optsOf(it).filter((o) => o.row.opt.optional && !o.row.opt.on)) kit.weapons.push({ ...patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch?.stress }, attrs, lv), id: `${p.id}+${n++}`, tag: String(o.it.name).slice(0, 40) });
+        for (const o of row?.opts ?? []) kit.weapons.push({ ...patchProfile(p, { ...o.patch, stress: o.stress }, attrs, lv), id: `${p.id}+${n++}`, opt: o.k });
       }
       if (!row && attacks.length) { rec.state = "auto"; rec.note = "weapon"; }
       if (attacks.length && bookRow(row)?.miles && !kit.weapons.some((w) => w.item === it.id)) { rec.state = "hand"; rec.note = "story"; rec.why = "gmJudges"; }      // [A26]: a missile that flies for miles is the GM's own entry

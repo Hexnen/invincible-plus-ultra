@@ -107,7 +107,7 @@ export const legality = (v, inst, flow) => {
   if (!r.ok) return r;
   /* [B2497] the holder's own actions, whatever the flow (the attack flow and the action tables say it in their own words; a reaction, a part of
      another action and a child are not the holder's own declaration) */
-  if (inst.actor && !inst.parent && !inst.part && !["attack", "act"].includes(inst.flow) && holderBlocks(v.entry(inst)) && M.hasStatus(v.state, inst.actor, "grappling")) return { ok: false, reason: "grappling", params: { gmMayAllow: 1 } };
+  if (inst.actor && !inst.parent && !inst.part && !["attack", "act"].includes(inst.flow) && holderBlocks(v.entry(inst)) && holdsTied(v, inst.actor)) return { ok: false, reason: "grappling", params: { gmMayAllow: 1 } };
   return flow.legality(v, inst);
 };
 /** Conditional modifiers of the entry's roll (`roll.mods`) for the actor's own roll. -> { mods: [{ source, dice }], pending: [...] } */
@@ -177,6 +177,13 @@ export const barriersOf = (state, cid) => (state.effects ?? []).filter((e) => e.
 /** Z2 [B1941]: Prolonged Phasing (the status `intangible`) makes the character immune to physical damage: one reading for the attack flow and
     the hazards (fire, a blast, an area, a fall, a barrier). Damage to stress and what is not damage (a poison, the vacuum) still reach it. */
 export const phased = (state, cid) => M.hasStatus(state, cid, "intangible");
+/** PWA (PW083, PW109) [B1941]: what an intangible character may still do: a mental attack (one that inflicts stress, or is rolled with a
+    mental attribute: Mental Distress, Mental Stun ...); reading of question PWA-5. Everything else needs Controlled Phasing's mark. */
+export const mentalAttack = (w, entry = null) => entry?.damage?.toStress === true || (!!w && (w.toStress === true || ["reason", "intuition", "presence"].includes(w.attr)));
+/** the write that spends the mark of Controlled Phasing [B1942]: solid for a single action */
+export const solidSpent = (cid) => ({ t: "state", path: ["counters", M.counterKey.round(cid, "solid")], to: null });
+/** PWA (PW072): a holder who can do nothing else while holding [B2497]; Extra Limb(s) holds and acts [B1926] */
+export const holdsTied = (v, cid) => M.hasStatus(v.state, cid, "grappling") && v.facts.c(cid)?.pass?.freeHold !== true;
 /** Z12 [B1816]: an ally of Delayed Summoning is not there before the start of its summoner's next turn (state.summons[].wait) */
 export const notArrived = (state, cid) => (state?.summons ?? []).some((su) => Array.isArray(su?.wait) && su.wait.includes(cid));
 export const copiesOf = (state, cid) => Math.max(0, Number((state.effects ?? []).find((e) => e.kind === "copies" && e.holder === cid)?.data?.n) || 0);
@@ -317,7 +324,7 @@ export const reactionId = (id) => { const s = String(id ?? ""), at = s.lastIndex
     -> { conds, hasQuick, out, paid: { block, dodge }, free: { block, dodge } }, each { ok, reason } (rules/attack.defenceOptions). */
 export function defenceOf(v, t, kind, { inChase = false, machine = false } = {}) {
   const conds = M.conditions(v.state, t), hasQuick = !machine && P1.canPay(v.state, t, "quick", { interrupt: true, defense: true, resolve: v.facts.c(t)?.resolve }).ok;
-  const defender = { ...conds, out: M.outOfAction(v.state, t, v.facts.c(t)), holding: M.hasStatus(v.state, t, "grappling") };
+  const defender = { ...conds, out: M.outOfAction(v.state, t, v.facts.c(t)), holding: holdsTied(v, t) };      // PWA (PW072): Extra Limb(s) defends while holding [B1926]
   return { conds, hasQuick, out: defender.out, paid: attack.defenceOptions({ attack: kind, defender: { ...defender, hasQuick }, inChase }), free: attack.defenceOptions({ attack: kind, defender: { ...defender, hasQuick: true }, inChase }) };
 }
 /** Who answered a prompt of the instance: the GM's own answer may stand where the rules would refuse it (spec 14: the GM picks a greyed option). */

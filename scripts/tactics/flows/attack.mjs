@@ -94,7 +94,8 @@ export function legality(v, inst) {
     if (ac.snared) return bad("snared");                                                                     // [R21]
     if (ac.carriedAloft) return bad("carriedAloft");                                                         // [B2392]
     if (ac.trapped && (SLUG.includes(kind) || kind === "charge")) return bad("trapped");                     // [R20], [B2438]: no slugfest, no movement
-    if (M.hasStatus(state, inst.actor, "grappling") && kind !== "grappleAttack") return bad("grappling");    // [B2497]
+    if (M.hasStatus(state, inst.actor, "grappling") && kind !== "grappleAttack" && (kind === "grapple" || K.holdsTied(v, inst.actor))) return bad("grappling");    // [B2497]; PWA (PW072) Extra Limb(s) [B1926]: other actions while the hold lasts, one hold at a time
+    if (K.phased(state, inst.actor) && !K.mentalAttack(weaponOf(v, inst), entry) && !K.marked(state, inst.actor, "solid")) return bad("intangible", { gmMayAllow: 1 });      // PWA (PW083, PW109) [B1941]: no physical effect while intangible; Controlled Phasing [B1942] solidifies for one action
     if (kind === "grappleAttack" && !M.hasStatus(state, inst.actor, "grappling")) return bad("notHolding");  // [B2497]
     if ((d.stressTotal ?? 0) + (weaponOf(v, inst)?.stress ?? 0) > 0 && !damage.canTakeVoluntaryStress(a.resolve)) return bad("stressedOut");    // [B2816], [B2228]; P6: the stress a power's attack costs
   }
@@ -145,7 +146,8 @@ export function legality(v, inst) {
       const sr = zones.shootingRange(r.total, w.range);                                                      // [B2511]
       if (!sr.ok) return bad(sr.reason, { distance: r.total });
     }
-    if (kind === "grapple") { const g = attack.grappleCheck({ target: K.immunityFlags(tf), usesWeapon: !!d.weapon && d.weapon !== "unarmed" }); if (!g.ok) return bad(g.reason); }   // [B2496], [B2502]
+    if (kind === "grapple") { const g = attack.grappleCheck({ target: K.immunityFlags(tf), usesWeapon: !!d.weapon && d.weapon !== "unarmed" && !w?.grip }); if (!g.ok) return bad(g.reason); }   // [B2496], [B2502]; PWA (PW048): the plants of Plant Control grapple [B1779]
+    if (w?.onHit?.pull && tf.huge) return bad("tooHeavy", { gmMayAllow: 1 });                              // PWA (PW088) [B2029]: weight rating at most STRENGTH; the engine knows no weights, a huge one is refused (question PWA-4)
     if (!counter && !d.area) {
       if (M.hasStatus(state, t, "invisible")) gates.push({ kind: "invisible", target: t, attr: "intuition", dice: INVISIBLE_GATE_DICE, src: 2075 });   // [B2075]
       else if (unseen) gates.push({ kind: "unseen", target: t, gm: 1 });                                     // concealed by the GM: no cited number, so the GM sets the gate
@@ -194,7 +196,7 @@ function hitMath(v, I, t, o = {}, forced = null, doubled = false) {
   const tags = M.damageTags({ source: entry?.damage?.source ?? w?.source, sharp: entry?.damage?.sharp ?? w?.sharp, toStress: entry?.damage?.toStress ?? w?.toStress, ignoreArmor: entry?.damage?.ignoreArmor ?? w?.ignoreArmor, cause: kind === "counterattack" ? "counter" : o.extra ? "stunt" : "attack" });
   const base = o.extra === "bangHeads" ? stunts.bangHeadsDamage(a?.attrs?.strength ?? 0) : o.extra === "trickShot" ? stunts.trickShotDamage(baseDamageOf(v, I)) : baseDamageOf(v, I);
   const sources = [...(tf.armor ?? []).filter((x) => !(x.id === "defiance" && tf.pass?.defianceOff && !K.marked(v.state, t, "defiance", true))), ...K.barriersOf(v.state, t)];                                      // P6: Barriers [B1859]; Defiance stops stress only [B1865]
-  const ar0 = damage.selectArmor(tags.toStress ? sources.filter((s) => s.stress) : sources, { toStress: tags.toStress, source: tags.source });   // [B2682], [R13]
+  const ar0 = damage.selectArmor(sources, { toStress: tags.toStress, source: tags.source });   // [B2682], [R13]; PWA (PW001): against stress every Armor counts, Defiance too, the best one [B1591], [B1865]
   const ar = w?.halveArmor && !o.extra ? { ...ar0, armor: damage.halvedArmor(ar0.armor) } : ar0;             // P6 [B1679]
   const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
   return { tags, base, ar, hd };
@@ -598,6 +600,7 @@ export const steps = {
       const st = (d.stressTotal ?? 0) + (kind === "counterattack" ? 0 : weaponOf(v, I)?.stress ?? 0);
       if (st > 0) R.effects.push({ t: "stress", who: I.actor, n: st, cost: 1 });                 // spec 4.3: charged when the declaration locks; P6: with the stress of the power used
       if (kind !== "counterattack" && M.hasStatus(v.state, I.actor, "invisible")) R.effects.push({ t: "status-", who: I.actor, id: "invisible" });      // P6 [B2075]: attacking ends it
+      if (kind !== "counterattack" && K.phased(v.state, I.actor) && !K.mentalAttack(weaponOf(v, I), v.entry(I)) && K.marked(v.state, I.actor, "solid")) R.effects.push(K.solidSpent(I.actor));      // PWA (PW109) [B1942]: solid for this one action
       const w0 = kind === "counterattack" ? null : weaponOf(v, I);
       if (w0?.singleUse) R.effects.push({ t: "state", ...M.counterBump(v.state, usedKey(I.actor, w0)) });      // [B2541]: gone, hit or miss
       if (w0?.noMove) R.effects.push({ t: "state", ...M.counterBump(v.state, FIRED_NO_MOVE(I.actor)) });       // [B2545]: no moving for the rest of the round
@@ -778,6 +781,7 @@ export const steps = {
         const s = damage.applyStress({ resolve: tf.resolve, stress: taken });                                   // [B1591], [B2816]
         rec.resolveBefore = tf.resolve; rec.resolveAfter = s.resolve;
         if (s.lost) R.effects.push({ t: "actor", who: t, path: "resolve", to: s.resolve });
+        if (damage.barrierBreached(ar.source, through)) { rec.barrierBreached = ar.source.id; for (const x of M.effectEndWrites(v.state, ar.source.id)) R.effects.push({ t: "state", path: x.path, to: x.to }); }      // PWA (PW001): a Barrier pierced by stress is breached as well [B1859], [B1591]
       } else {
         const ad = damage.applyDamage({ health: tf.health, taken });                                            // [B2707], [B2708]
         Object.assign(rec, { healthBefore: tf.health, healthAfter: ad.health, broken: ad.broken, newlyBroken: ad.newlyBroken });
@@ -816,7 +820,12 @@ export const steps = {
       const o = I.data.out[t], dm = I.data.dmg?.[t], tf = v.facts.c(t);
       if (!o || !tf) continue;
       if (o.hit) {
-        if (kind === "grapple" && once(`grap:${t}`)) {                                          // [B2496], [R5]
+        const grip = kind === "grapple" ? weaponOf(v, I)?.grip : null;
+        if (grip && once(`grap:${t}`)) {                                                        // PWA (PW048) [B1779]: the plants hold it: no hold to keep, the target is immobilised until it breaks free (STRENGTH)
+          R.effects.push({ t: "status+", who: t, status: { id: grip, source: { kind: "power", owner: I.actor, name: weaponOf(v, I)?.of ?? "" }, data: { by: I.actor } } });
+          R.events.push({ type: "status", target: t, status: { id: grip, on: true } });
+        }
+        if (kind === "grapple" && !grip && once(`grap:${t}`)) {                                          // [B2496], [R5]
           R.effects.push({ t: "status+", who: t, status: { id: "grappled", source: { kind: "stunt", owner: I.actor, name: "grapple" }, data: { by: I.actor } } });
           R.effects.push({ t: "status+", who: I.actor, status: { id: "grappling", source: { kind: "stunt", owner: I.actor, name: "grapple" }, data: { held: t } } });
           R.events.push({ type: "status", target: t, status: { id: "grappled", on: true } });
@@ -847,6 +856,11 @@ export const steps = {
               R.effects.push({ t: "status+", who: t, status: { id: "stunned", source: src } });
               R.events.push({ type: "status", target: t, status: { id: "stunned", on: true } });
             }
+          }
+          if (oh.pull && once(`ohp:${t}`)) {                                                     // PWA (PW088) [B2029]: pulled into the attacker's zone
+            const r = v.facts.range(I.actor, t);
+            if (!Z) (I.data.notes ??= []).push({ note: "pullByHand", target: t });
+            else if (r?.total > 0 && !M.outOfAction(v.state, t, tf)) { R.push = forcedChild(t, { toward: I.actor, distance: r.total, damage: 0, decay: 0, armor: false, by: I.actor, kind: "pull", ...(v.facts.c(I.actor)?.npc ? { gmDir: 1 } : {}) }); return R; }
           }
           if (oh.throw && !Z && once(`oht:${t}`)) (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: oh.throw });      // [B1826]: without a map the GM moves the one thrown
           if (oh.throw && Z && !K.flag(I, `tk:${t}`) && !M.outOfAction(v.state, t, tf)) {       // Z11 [B1823], [B1826-1828]: thrown like Knockback [B2435], the thrower names the way, the damage of the level at EVERY impact minus Armor

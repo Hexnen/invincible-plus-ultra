@@ -142,6 +142,7 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
       if (n("versatile") + n("powered") > 0) R.effects.push({ t: "message", gmOnly: 1, key: "ITAC.msg.summonFinish", params: { name: a?.name ?? "", versatile: n("versatile"), powered: n("powered"), text: String(I.decl.text ?? "").slice(0, 200) || "-" } });
       I.data.gain = 3 + 2 * n("more"); break;
     }
+    case "nullify": if (success && I.cause === "interrupt" && I.parent) { I.data.forfeitParent = I.parent; I.data.result = "success"; } break;      // PWA (PW039) [B1774]: the target's action is forfeit (engine-pure closeInst)
     case "dismiss": R.effects.push({ t: "summonLeave", combatants: K.summonsOf(v, I.actor) }); break;      // [B1812]
     case "regen": if (a && a.health < a.maxHealth) { R.effects.push({ t: "actor", who: I.actor, path: "health", to: a.health + 1 }); I.data.gain = 1; } break;      // [B1893]
     case "toggle": R.effects.push({ t: "fx", who: I.actor, item: fx.item, fx: fx.fx, on: !e.fxOn }); I.data.on = e.fxOn ? 0 : 1; break;      // a form, a size, a stance: the sheet's own active effect
@@ -152,7 +153,17 @@ const P1L = (v, cid) => v.state.ledger?.[cid];
 /* Z15 [B1937] Life Leech: an unwilling target has to be touched first, with a FIGHTING roll made in the same action as the PRESENCE roll.
    [FXT-4] Who is unwilling: a character of the other side (hero against NPC); the book gives the touch no defence, so the roll needs one six. */
 export const touchNeeded = (v, inst) => { const e = v.entry(inst), t = subjectOf(inst); if (e?.effect?.kind !== "leech" || !t || t === inst.actor) return false; const a = v.facts.c(inst.actor), f = v.facts.c(t); return !!a && !!f && !!a.npc !== !!f.npc; };
-export const KIT_KINDS = Object.freeze(["shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist"]);
+const solidNow = (v, I, e) => !!e?.tags?.includes("physical") && K.phased(v.state, I.actor) && K.marked(v.state, I.actor, "solid");
+/* PWA (PW039) [B1772-1775] Nullification as an interrupt: it answers somebody else's action before its dice, aimed at the one who acts;
+   only a power can be negated, of the Nullification's own level or lower. -> { lv, item } of the power that action uses, or null */
+export function powerUsed(v, P) {
+  if (!P) return null;
+  const item = P.flow === "attack" ? v.facts.weapon?.(P.actor, P.decl?.weapon ?? "unarmed")?.item ?? null : v.entry(P)?.kit?.item ?? null;
+  const rec = item ? (v.facts.c(P.actor)?.kit?.rows ?? []).find((r) => r.item === item) : null;
+  return rec && ["power", "boost", "limit"].includes(rec.cat) ? { lv: Number(rec.lv) || 0, item } : null;
+}
+const parentOf = (v, inst) => (inst.parent ? (v.state.stack ?? []).find((i) => i.id === inst.parent) ?? null : null);
+export const KIT_KINDS = Object.freeze(["nullify", "shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist"]);
 const sameZone = (v, a, b) => { const r = v.facts.range?.(a, b); return r === undefined ? undefined : !!r && r.total === 0; };   // undefined: no map, the GM judges
 
 function legality(v, inst) {
@@ -162,8 +173,9 @@ function legality(v, inst) {
   if (other && (!sf || sf.present === false)) return bad("noTarget");
   if ((e?.target?.n?.[0] ?? 0) > 0 && !other) return bad("noTarget");
   if (a.health <= 0 && !(kind === "rally" && !other) && kind !== "convert") return bad("broken");                                  // [B2707]: a broken character may only try to rally [B2773]
-  if (M.hasStatus(v.state, inst.actor, "grappling")) return bad("grappling", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else
+  if (K.holdsTied(v, inst.actor)) return bad("grappling", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else; PWA (PW072): not with Extra Limb(s) [B1926]
   if (e?.tags?.includes("physical")) { const r = RESTRAINTS.find((s) => M.hasStatus(v.state, inst.actor, s)); if (r) return bad("restrained", { ...GM, status: r }); }
+  if (e?.tags?.includes("physical") && K.phased(v.state, inst.actor) && !K.marked(v.state, inst.actor, "solid")) return bad("intangible", GM);      // PWA (PW083) [B1941], [B1942]
   if (e?.roll && !e.roll.optional && !attrOf(v, inst)) return bad("noAttribute");
   if (d.attr && e?.roll && !e.roll.attr && !attrChoices(e).includes(d.attr)) return bad("noAttribute");
   /* P6: what an entry of the kit asks for */
@@ -178,6 +190,13 @@ function legality(v, inst) {
     for (const t of ts.slice(1)) { const tf = v.facts.c(t); if (!tf || tf.present === false) return bad("noTarget"); if (e.sameZone && sameZone(v, inst.actor, t) === false) return bad("notSameZone", GM); }
   }
   if (kind === "reabsorb" && !(K.copiesOf(v.state, inst.actor) > 0)) return bad("noCopies");
+  if (kind === "nullify" && inst.cause === "interrupt") {                                                       // PWA (PW039) [B1772-1775]
+    const P = parentOf(v, inst);
+    if (!P || subject !== P.actor) return bad("nullifyWho");
+    const pw = powerUsed(v, P);
+    if (!pw) return bad("noPower", GM);
+    if (pw.lv > (Number(e?.kit?.lv) || 0)) return bad("powerTooHigh");
+  }
   if (kind === "summon" && K.summonsOf(v, inst.actor).length) return bad("summonsOut", GM);                       // [B1812]: not while the earlier allies are still there
   if (kind === "summon" && String(d.opt ?? "").includes("powered") && !damage.canTakeVoluntaryStress(a.resolve)) return bad("stressedOut");
   if (kind === "dismiss" && !K.summonsOf(v, inst.actor).length) return bad("noSummons");
@@ -251,6 +270,7 @@ export const act = {
         const tg = K.tokenGate(v, I, R, I.actor, { kind: "other", attr }, d.tokens ?? [], "roll");
         if (tg.wait) { R.wait = true; return R; }
         I.locked = true; R.events.push({ type: "actionLocked" });                               // spec 5.5: locks at the first die
+        if (solidNow(v, I, e)) R.effects.push(K.solidSpent(I.actor));                           // PWA (PW109) [B1942]: solid for this one action
         if (stressOf(v, I) > 0) { K.setFlag(I, "stress"); R.effects.push({ t: "stress", who: I.actor, n: stressOf(v, I), cost: 1 }); }
         const bp = actPool(v, I, tg.tokens);
         for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to });
@@ -287,7 +307,7 @@ export const act = {
       if (!touched) I.data.untouched = 1;
       const status = (who, id, on) => R.events.push({ type: "status", target: who, status: { id, on } });
       if (!rolled && !K.flag(I, "stress")) {                                                   // P6: an action without a roll locks here, with the stress it costs
-        K.setFlag(I, "stress"); if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }
+        K.setFlag(I, "stress"); if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); if (solidNow(v, I, e)) R.effects.push(K.solidSpent(I.actor)); }
         if (stressOf(v, I) > 0) R.effects.push({ t: "stress", who: I.actor, n: stressOf(v, I), cost: 1 });
       }
       if (e?.once && !K.flag(I, "once")) { K.setFlag(I, "once"); R.effects.push({ t: "state", ...M.counterBump(v.state, onceKey(I, e, v)) }); }
@@ -329,7 +349,7 @@ export const act = {
        also leaves a karma note [B2374], spec 9.11. Surplus sixes are shown: stunts of such rolls are the GM's last word [B2210-2218]. */
     outcome(v, inst) {
       const I = K.draft(inst), R = K.result(I), kind = kindOf(v, I);
-      if (!["narrative", "bystanders"].includes(kind)) { R.goto = "close"; return R; }
+      if (!["narrative", "bystanders"].includes(kind) && !(kind === "nullify" && I.cause !== "interrupt")) { R.goto = "close"; return R; }      // PWA: Nullification on its own turn (an ongoing effect, a passive power) stays the GM's word
       if (!I.data.pk?.outcome) {
         R.prompts.push({ key: "outcome", kind: "outcome", to: "gm", about: I.actor, free: 1, options: [{ id: "success", label: "ITAC.opt.success" }, { id: "fail", label: "ITAC.opt.fail" }],
           data: { action: I.action, rolled: I.data.attr ? 1 : 0, sixes: I.data.attr ? K.sixesOf(I, "roll") : null, net: I.data.net, suggests: I.data.result, text: I.decl.text ?? "", attr: I.data.attr ?? null, ...(v.entry(I)?.name ? { name: v.entry(I).name } : {}), ...(I.decl.opt ? { opt: I.decl.opt } : {}) } });
