@@ -85,7 +85,7 @@ export function shown(rect, clip) {
   const r = { left: Math.max(rect.left, clip.left), top: Math.max(rect.top, clip.top), right: Math.min(rect.right, clip.right), bottom: Math.min(rect.bottom, clip.bottom) };
   return r.right > r.left && r.bottom > r.top ? r : rect;
 }
-/** the places a block may take. The dock is a stack that stands on the bottom edge: under one of its blocks there is always more of
-    the stack (the line, the panel, the bar), so its tooltips never open downward. The desk is a
-    column at the window's side: beside it first. */
-export const orderFor = (kind) => (kind === "desk" ? ["side", "up", "down"] : ["up", "side"]);
+/** the places a block may take. The bar's stack stands on the bottom edge: under one of its blocks there is always more of the stack
+    (the panel, the bar), so its tooltips never open downward. What hangs from the top (U132: the line, the questions, the hint) has the
+    initiative bar over it: its tooltips open under it first, then beside it. The desk is a column at the window's side: beside it first. */
+export const orderFor = (kind) => (kind === "desk" ? ["side", "up", "down"] : kind === "top" ? ["down", "side"] : ["up", "side"]);

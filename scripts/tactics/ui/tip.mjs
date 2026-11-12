@@ -21,7 +21,7 @@ export function blockOf(el) {
     const b = el.closest(DOCK_BLOCKS);
     if (!b) return null;
     const box = b.closest(".itd-asks");      // a card scrolled half out of the questions' box counts by what shows of it
-    return { el: b, rect: shown(rectOf(b), box ? rectOf(box) : null), order: orderFor("dock") };
+    return { el: b, rect: shown(rectOf(b), box ? rectOf(box) : null), order: orderFor(b.closest(".its-slot[data-slot]") ? "top" : "dock") };      // U132: a block hanging from the top opens its tooltips under it
   }
   const col = el.closest?.(DESK) ? el.closest(".igd") : null;      // the desk is one column of cards: its tooltips open beside the column
   return col ? { el: col, rect: rectOf(col), order: orderFor("desk") } : null;

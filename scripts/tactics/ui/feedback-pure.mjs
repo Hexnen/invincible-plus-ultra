@@ -159,14 +159,14 @@ export const SOUNDS = Object.freeze({ turn: "sounds/combat/epic-turn-1hit.ogg", 
 export const HINTS = Object.freeze(["push", "slots", "speed"]);      // in the order they are tried: what is in front of the user now comes first
 /** the hint to show over the dock now: the first one not seen yet whose thing is on screen.
     slots: the user's own turn, the bar open; speed: the same, once the slots were explained; push: a roll of the user that may be pushed.
-    -> null | { id, text, close, at: "slots" | "acts" | null } */
+    -> null | { id, text, close } (U132: the hint hangs at the top, far from the bar: its words carry the marks they are about) */
 export function hintOf(data, seen = [], t) {
   if (!data?.show) return null;
   const been = new Set(seen), mine = !!data.onTurn && !data.rest && !data.out;
   const pushable = [...(data.rolls ?? []), ...(data.panel?.kind === "mine" ? data.panel.rolls ?? [] : [])].some((r) => r.state === "push" && (r.buttons ?? []).some((b) => b.id === "push"));
   const on = { push: pushable, slots: mine && (data.slots ?? []).length > 0, speed: mine && been.has("slots") && (data.groups ?? []).length > 0 };
   const id = HINTS.find((h) => on[h] && !been.has(h));
-  return id ? { id, text: t(`ITAC.hint.${id}`), close: t("ITAC.hint.close"), at: id === "slots" ? "slots" : id === "speed" ? "acts" : null } : null;
+  return id ? { id, text: t(`ITAC.hint.${id}`), close: t("ITAC.hint.close") } : null;
 }
 /** A hint is gone once the user has used the thing: `shown` = the hint on screen at the last draw, `data` / `own` = the dock now.
     slots: a slot is spent; speed: an action is armed or a list is open; push: the roll that could be pushed is settled. -> [ids] */

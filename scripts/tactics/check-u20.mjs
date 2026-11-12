@@ -108,14 +108,14 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   const blocks = /const DOCK_BLOCKS = "([^"]+)"/.exec(tip)?.[1].split(", ") ?? [];
   eq(blocks, [".ita-ask", ".itd-panel", ".itd-bar", ".itd-wait", ".itd-hint1"], "B: the blocks of the dock");
   ok(/h\(`article\.ita-ask/.test(dom) && /h\("section\.itd-panel"/.test(dock) && /h\("div\.itd-bar"/.test(dock) && /h\("div\.itd-wait"/.test(dock) && /h\("div\.itd-hint1"/.test(dock), "B: ... are the ones the dock draws");
-  ok(/KEEP_OFF = `\$\{DOCK\} \.ita-ask, \$\{DOCK\} \.itd-panel, \$\{DOCK\} \.itd-bar, \$\{DOCK\} \.itd-wait, \$\{DOCK\} \.itd-hint1, \$\{DESK\} \.igd`/.test(tip) && /order: orderFor\("dock"\)/.test(tip), "B: a tooltip keeps off the other cards, the panel, the bar, the line over the bar (U103), the hint and the desk");
+  ok(/KEEP_OFF = `\$\{DOCK\} \.ita-ask, \$\{DOCK\} \.itd-panel, \$\{DOCK\} \.itd-bar, \$\{DOCK\} \.itd-wait, \$\{DOCK\} \.itd-hint1, \$\{DESK\} \.igd`/.test(tip) && /order: orderFor\(b\.closest\("\.its-slot\[data-slot\]"\) \? "top" : "dock"\)/.test(tip), "B: a tooltip keeps off the other cards, the panel, the bar, the line over the bar (U103), the hint and the desk");
   ok(/el\.closest\("\.igd"\)/.test(tip) && /order: orderFor\("desk"\)/.test(tip), "B: the desk is one block: its tooltips open beside the column");
   /* U97: the stack, bottom up: bar, panel, hint, the table's line, the questions */
   const draw = dock.slice(dock.indexOf("const asksOf = "), dock.indexOf("/* U41: the answer the keyboard chose"));      // U132 (trial): the pieces are built once, then placed
   const at = (re) => draw.search(re), order = [at(/h\("div\.itd-asks"/), at(/h\("div\.itd-wait"/), at(/h\("div\.itd-hint1"/), at(/d\.show \? panel\(d\.panel\) : null/), at(/d\.show \? bar\(d\) : null/)];
   ok(order.every((x) => x >= 0) && order.every((x, i) => i === 0 || x > order[i - 1]), "B (U97): the armed action's panel stands right on the bar; the hint, the table's line and the questions stand over it");
-  ok(/if \(m === "off"\) swap\(stack, \[asksOf\(prompts, !!d\.sum, legendOn\), wait, hint, pnl, barEl\]\);/.test(draw), "B (U97, U132): with the trial off the column is the questions, the line, the hint, the panel, the bar");
-  ok(/hint\?\.dataset\.at && !stack\.querySelector\(":scope > \.itd-panel"\)/.test(dock) && /else if \(hint\) delete hint\.dataset\.tick/.test(dock), "B (U97): a hint that no longer stands on the bar drops its tick (it would point at the panel)");
+  ok(/swap\(stack, \[d\.show \? panel\(d\.panel\) : null, d\.show \? bar\(d\) : null\]\);/.test(draw) && /put\("cards", asks\);\s*put\("line", wait\);/.test(draw) && /put\("hint", /.test(draw), "B (U97, U132): the bar's stack is the panel on the bar and nothing else; the questions, the line and the hint each go to their own place at the top");
+  ok(!/dataset\.tick|--itd-hint-x|dataset\.at\b/.test(dock), "B (U97, U132): the hint has no tick (it hangs at the top, nothing under it to point at)");
 }
 
 /* ------------------------------------------------------------------ C. U89: the rows of the move / door panel */

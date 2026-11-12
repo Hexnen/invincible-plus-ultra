@@ -1,57 +1,36 @@
-/* Invincible - Plus Ultra: TACTICAL COMBAT, FIXED PLACES (U132 TRIAL; scripts/tactics/ui/slots-pure.mjs, dock.mjs placeSlots).
-   Only while the client switch `tacticsSlots` is a, b or c (#invincible-tactics-dock[data-slots], body[data-ita-slots]); with it off
-   nothing here applies and the dock is the column of today. No new look: every piece keeps its own drawing from tactics-ui.css; this file
-   only puts them in their places.
+/* Invincible - Plus Ultra: TACTICAL COMBAT, THE FIXED PLACES (U132, U134; scripts/tactics/ui/slots-pure.mjs, dock.mjs placeSlots).
+   No new look: every piece keeps its own drawing from tactics-ui.css; this file only puts them in their places.
    THE ROOT covers the window and takes no pointer. Its children are absolute boxes in window px (dock.mjs writes them from the frame):
-     .its-bar          the bar's stack (the bar, and on it the armed action's panel; in c the window and the strip): at the bottom edge
-     .its-slot[data-slot]   line | cards | hint (a: under the initiative bar; b: the rail at the right edge)
-   A place is anchored at its top or at its foot (data-anchor) and its content grows away from the anchor, held to the place's box
-   (--its-w, --its-h, divided by the size of the surfaces as everything handed into a scaled box is: U62). An empty place is hidden
-   (data-empty) but keeps its box: nothing else moves into it. */
+     .its-bar               the bar's stack (the bar, and on it the armed action's panel), at the bottom edge
+     .its-slot[data-slot]   line | cards | hint: hanging from the initiative bar
+   A place is anchored at its top (data-anchor) and its content grows down, away from the anchor, held to the place's box (--its-w,
+   --its-h, divided by the size of the surfaces as everything handed into a scaled box is: U62). An empty place is hidden (data-empty)
+   but keeps its box: nothing else moves into it. */
 
-#invincible-tactics-dock[data-slots] { left: 0; top: 0; right: 0; bottom: 0; width: auto; max-width: none; transform: none; translate: none; transition: opacity .2s ease-out; }
-#invincible-tactics-dock[data-slots].itd-hidden { translate: none; opacity: 0; }
-#invincible-tactics-dock[data-slots] .its-bar { position: absolute; left: var(--itd-cx, 50%); bottom: var(--itd-bottom, 8px); width: max-content; max-width: var(--itd-maxw, 92vw); transform: translateX(-50%); transition: translate .26s var(--ita-out); }
-#invincible-tactics-dock[data-slots].itd-hidden .its-bar { translate: 0 calc(100% + 16px); }
-#invincible-tactics-dock[data-slots] .itd-stack > .its-window { position: relative; left: calc(var(--itd-up-dx, 0px) / var(--ita-scale, 1)); }
+#invincible-tactics-dock { inset: 0; transition: opacity .2s ease-out; }
+#invincible-tactics-dock.itd-hidden { opacity: 0; }
+#invincible-tactics-dock .its-bar { position: absolute; left: var(--itd-cx, 50%); bottom: var(--itd-bottom, 8px); width: max-content; max-width: var(--itd-maxw, 92vw); transform: translateX(-50%); transition: translate .26s var(--ita-out); }
+#invincible-tactics-dock.itd-hidden .its-bar { translate: 0 calc(100% + 16px); }
 
 .its-slot { position: absolute; display: flex; flex-direction: column; pointer-events: none; }
-.its-slot[data-anchor="bottom"] { justify-content: flex-end; }
 .its-slot[data-align="center"] { align-items: center; }
 .its-slot[data-align="end"] { align-items: flex-end; }
 .its-slot[data-empty] { visibility: hidden; }
 .its-in { zoom: var(--ita-scale, 1); display: flex; flex-direction: column; align-items: inherit; gap: 6px; min-height: 0; max-width: calc(var(--its-w, 100vw) / var(--ita-scale, 1)); max-height: calc(var(--its-h, 100vh) / var(--ita-scale, 1)); }
 .its-in > * { pointer-events: auto; max-width: 100%; }
 
-/* the questions: held to their place, scrolled inside it; at the top they line up from the top, in the rail from its right edge */
-.its-slot[data-slot="cards"] .itd-asks { max-height: calc(var(--its-h, 60vh) / var(--ita-scale, 1)); align-items: flex-start; align-content: flex-start; }
-.its-slot[data-slot="cards"][data-align="end"] .itd-asks { justify-content: flex-end; }
+/* the line: one row under the initiative bar; it never wraps over the questions (the news chip cuts its text, its tooltip has it all) */
+.its-slot[data-slot="line"] .itd-wait { flex-wrap: nowrap; overflow: hidden; max-width: 100%; }
+.its-slot[data-slot="line"] .itd-news { min-width: 0; }
 
-/* the line: one row under the initiative bar (a), the foot of the rail (b) or the strip on the bar (c); it never wraps over the cards */
-.its-slot[data-slot="line"] .itd-wait, .its-ticker .itd-wait { flex-wrap: nowrap; overflow: hidden; max-width: 100%; }
-.its-slot[data-slot="line"][data-anchor="bottom"] .itd-wait { flex-wrap: wrap; justify-content: flex-end; max-height: calc(var(--its-h, 60px) / var(--ita-scale, 1)); }
-.its-slot[data-slot="line"] .itd-news, .its-ticker .itd-news { min-width: 0; }
+/* the first-fight hint in its own place: no tick (nothing under it to point at) */
+#invincible-tactics-dock .its-slot[data-slot="hint"] .itd-hint1 { max-width: 100%; }
 
-/* the first-fight hint in its own place: no tick (it stands away from the bar) */
-#invincible-tactics-dock .its-slot[data-slot="hint"] .itd-hint1 { max-width: 100%; margin-bottom: 0; }
-
-/* c: THE WINDOW over the bar (one thing at a time) and the strip glued to the bar's top edge. The window's width is the frame's, so its
-   tabs stand still whatever it shows; the strip keeps its height when it has nothing to say, so the window never moves for it. */
-.its-window { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; width: calc(var(--its-win-w, 620px) / var(--ita-scale, 1)); max-width: 100%; }
-.its-window > * { max-width: 100%; }
-.its-window > .itd-asks { max-height: calc(var(--itd-panel-maxh, 50vh) / var(--ita-scale, 1)); }
-.its-tabs { flex: none; align-self: flex-start; display: flex; gap: 4px; padding: 2px; background: var(--ita-ink); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); }
-#invincible-tactics-dock .its-tab { position: relative; }
-#invincible-tactics-dock .its-tab.its-tab-on { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-yellow); }
-#invincible-tactics-dock .its-tab[data-urgent] { color: var(--ita-red-lt); border-color: var(--ita-red-lt); }
-.its-n { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; min-width: 14px; height: 14px; padding: 0 2px; font: 400 10px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; background: var(--ita-red); border: 1px solid var(--ita-ink); }
-.its-ticker { flex: none; display: flex; align-items: flex-end; justify-content: center; height: 30px; width: calc(var(--its-win-w, 620px) / var(--ita-scale, 1)); max-width: 100%; }
-.its-ticker[data-empty] { visibility: hidden; }
-
-/* what floats elsewhere: the end-of-session notice in its own place, and the chat toasts held to their strip over the chat box */
-body.ita-tactics[data-ita-slots] .ips-notice { top: var(--its-nt, 120px); bottom: auto; left: var(--its-nx, 50%); visibility: visible; }
-body[data-ita-slots] #chat-notifications .overflow { height: auto; max-height: var(--igd-toast-maxh, 132px); overflow-y: auto; }
+/* what floats elsewhere: the end-of-session notice in its own place at the right end of the top band, and the chat toasts held to their
+   strip over the chat box (the newest end of a toast shows, the strip scrolls; U6, U134) */
+body.ita-tactics .ips-notice { top: var(--its-nt, 120px); bottom: auto; left: var(--its-nx, 50%); }
+body.ita-tactics #chat-notifications .overflow { height: auto; max-height: var(--igd-toast-maxh, 132px); overflow-y: auto; }
 
 @media (prefers-reduced-motion: reduce) {
-  #invincible-tactics-dock[data-slots], #invincible-tactics-dock[data-slots] .its-bar { transition: none; }
+  #invincible-tactics-dock, #invincible-tactics-dock .its-bar { transition: none; }
 }

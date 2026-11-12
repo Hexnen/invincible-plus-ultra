@@ -78,9 +78,9 @@ const give = (T, cid, ...names) => { const c = T.c[cid]; c.kit = KP.build({ item
   class Sheet { constructor() { this.cssRules = []; } insertRule(text, i) { this.cssRules.splice(i, 0, { selectorText: text.slice(0, text.indexOf("{")).trim(), style: { setProperty() {}, removeProperty() {} } }); return i; } }
   const had = globalThis.CSSStyleSheet; globalThis.CSSStyleSheet = Sheet;
   const doc = { body: { style: { setProperty() {}, removeProperty() {} } }, adoptedStyleSheets: [] };
-  V._reset(); V.setVar("--itd-clear", "120px", doc);
+  V._reset(); V.setVar("--its-nt", "120px", doc);
   doc.adoptedStyleSheets = [];                                         // another script replaced the list
-  eq(V.setVar("--itd-clear", "120px", doc), false, "vars: the same value again writes no value ...");
+  eq(V.setVar("--its-nt", "120px", doc), false, "vars: the same value again writes no value ...");
   eq(doc.adoptedStyleSheets.length, 1, "vars: ... but our sheet is back in the document's list (the notice, the toasts, the dice z-index keep their numbers)");
   V._reset(); if (had) globalThis.CSSStyleSheet = had; else delete globalThis.CSSStyleSheet;
 }
