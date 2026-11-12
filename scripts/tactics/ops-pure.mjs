@@ -241,12 +241,12 @@ function momentKept(W, member, st0) {
   const gone = (key) => { const ids = idsOf(s[key]); return before[key].filter((x) => !ids.has(x?.id)); };
   const card = had ? null : Object.keys(s.prompts).find((pid) => s.prompts[pid].kind === "triggerQueue" && s.prompts[pid].data?.key === k) ?? null;
   (s.moved ??= {})[member] = S.clone({ tokens: gone("tokens"), triggers: gone("triggers"), effects: gone("effects"),
-    statuses: before.statuses.filter(({ who, status }) => !(s.statuses?.[who] ?? []).some((y) => y?.id === status?.id)), ...(card ? { card } : {}), ...(had ? {} : { queued: 1 }) });
+    statuses: before.statuses.filter(({ who, status }) => !(s.statuses?.[who] ?? []).some((y) => y?.id === status?.id)), ...(card ? { card } : {}), ...(had ? {} : { queued: 1 }), ...(W.dealAt ? { logAt: W.dealAt.at } : {}) });
 }
 /* D44 [I9] [B2282]: the one whose turn it was holds off. Everything "on your turn" moves with the card: what ended at the opening of the
    turn is there again (unless something else has taken its place since), a turn-start queue card nobody answered yet is withdrawn and
    will be made anew when the turn really comes. Triggers the GM already ran from that card have happened and are not run twice. */
-function momentBack(W, member) {
+function momentBack(W, member, { undone = false } = {}) {
   const s = W.s, m = s.moved?.[member];
   if (!m || m.back) return;
   for (const key of ["tokens", "triggers", "effects"]) { const ids = idsOf(s[key]), back = (m[key] ?? []).filter((x) => x && !ids.has(x.id)); if (back.length) s[key] = [...(s[key] ?? []), ...back]; }
@@ -256,8 +256,10 @@ function momentBack(W, member) {
     ev(W, "status", { target: who, status: { id: status.id, on: true }, cause: "holdOff" });
   }
   const k = `${s.round}:ts:${member}`, open = m.card && s.prompts[m.card] && !s.prompts[m.card].answered;
-  if (open) delete s.prompts[m.card];
-  if (m.queued && (open || !m.card)) s.sched.done = s.sched.done.filter((x) => x !== k);
+  /* H2-4: `undone` (D106, the undo of the step that dealt the turn): what the card ran was undone with it, so an answered card is as
+     good as none: it goes and the moment comes again */
+  if (open || (undone && m.card && s.prompts[m.card])) delete s.prompts[m.card];
+  if (m.queued && (open || !m.card || undone)) s.sched.done = s.sched.done.filter((x) => x !== k);
   s.moved[member] = { back: 1 };
 }
 const queueOpen = (s) => Object.values(s.prompts ?? {}).some((p) => p.kind === "triggerQueue" && !p.answered);
@@ -557,11 +559,12 @@ const OPS = {
   /* D106 (spec 13: an undo takes back what the step opened). The director's own step, never a request: a chase is back (the undo of its end)
      while the cards the end had dealt still lie. The turn that deal opened is taken back as a hold-off takes it back (momentBack: what
      ended at its opening returns, its turn-start card nobody answered is withdrawn and will be made anew), then the cards are gathered. */
-  undeal(W) {
+  undeal(W, a) {
     const s = W.s;
     if (s.kind !== "chase" || !s.init.slots.length) return { changed: false };
     const m = s.init.curMember;
-    if (m && s.ledger[m] && !Lg.turnUsed(s.ledger[m])) { momentBack(W, m); s.ledger[m] = Lg.turnSuspend(ledgerOf(W, m)); }      // (moved[m].back stays: the moment comes again when m's turn does)
+    /* H2-4: `a.undone` (the director read the journal): nothing done since the deal stands any more, so what the turn-start card ran is undone too */
+    if (m && s.ledger[m] && !Lg.turnUsed(s.ledger[m])) { momentBack(W, m, { undone: a?.undone === true }); s.ledger[m] = Lg.turnSuspend(ledgerOf(W, m)); }      // (moved[m].back stays: the moment comes again when m's turn does)
     s.init = { ...S.newInit(), deck: s.init.deck };
   },
   /* joining and leaving (spec 3.3): bring the state in line with the combatants that exist now */
@@ -578,6 +581,7 @@ const OPS = {
     if (a?.deal === true && s.kind !== "chase" && s.round >= 1 && s.phase === "turns" && !s.init.slots.length && parts.some((p) => I.eligible(p))) {
       for (const p of parts) if (!p.challenge && !p.vehicle && !s.ledger[p.id]) s.ledger[p.id] = Lg.newLedger(s.round);
       W.surprised = []; W.groups = [];
+      W.dealAt = { at: typeof a.logAt === "string" ? a.logAt.slice(0, 80) : "" };      // H2-4: the journal's last transaction at this deal (kept with the moment the deal opens)
       drawCards(W, s.round, "everyRound");
       run(W);
       return;

@@ -1382,7 +1382,7 @@ async function challengeFailRun(X, cid) {
 function failBlast(X, cid, c, cfg) {
   const e = (cfg?.effects ?? []).find((x) => x.when === "onFail" && x.kind === "blast"), zone = X.facts.zone?.(cid)?.key;
   if (!e || typeof zone !== "string" || !zone) return false;
-  const targets = (X.facts.inZoneKey?.(zone) ?? []).filter((id) => { const f = X.facts.c(id); return id !== cid && !!f && f.kind !== "challenge" && f.present !== false; });
+  const targets = (X.facts.inZoneKey?.(zone) ?? []).filter((id) => { const f = X.facts.c(id); return id !== cid && !!f && f.kind !== "challenge" && f.present !== false && !(f.kind === "minions" && !(Number(f.health) > 0)); });      // H2-2: D110's rule, an emptied group is out
   if (!targets.length) return false;
   const spec = Hz.specOf({ type: "blast", rating: e.rating, targets }, { zone }, view(X));
   if (!spec) return false;
@@ -1522,8 +1522,11 @@ async function pushTrigger(X, t) {
     }
   }
   const actor = P1.isId(sub.combatant) && X.facts.c(sub.combatant) ? sub.combatant : null;
+  /* H2-1 (U110): a challenge's own side effect at a round point (the ward's blast) names the challenge and the effect like a failed one
+     (pushManual): the journal and the news name it, and a challenge hidden from the players keeps it secret */
+  const cfx = run.type === "challenge" && P1.isId(run.challenge) && X.facts.c(run.challenge) ? fxOf(run.challenge, run.kind ?? "challenge", X.facts.c(run.challenge)) : null;
   const inst = makeInst(X, { action: "other", actor, decl: { action: "other", targets: [], helpers: [], exploits: [], stressTotal: 0, text: String(t.source?.name || run.type || "").slice(0, 300) }, cause: "trigger", flow: "other",
-    data: { trigger: { id: t.id, at: t.at, run: J.clone(run), source: J.clone(t.source ?? null) } }, initiator: { type: "trigger", id: String(t.id ?? "trigger").slice(0, 40) }, parent: top(X)?.id ?? null });
+    data: { trigger: { id: t.id, at: t.at, run: J.clone(run), source: J.clone(t.source ?? null) }, ...(cfx ? { challengeFx: cfx } : {}) }, initiator: { type: "trigger", id: String(t.id ?? "trigger").slice(0, 40) }, parent: top(X)?.id ?? null });
   inst.tx = openTx(X, { inst: inst.id }); inst.status = "manual";
   if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); }
   pushInst(X, inst);

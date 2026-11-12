@@ -82,6 +82,16 @@ function leaving(state, host) {
   const f = host.facts();
   return parts.filter((p) => { const c = f.c(p.id), o = f.c(p.summonOf); return c?.summon?.auto && (state.phase === "sceneEnd" || !o || o.present === false || !(o.health > 0) || !(c.health > 0)); }).map((p) => p.id);
 }
+/* H2-4 (D106): the turn the deal after a chase opened is taken back. Has every transaction written since that deal been undone (an undo in
+   LIFO order of the chase's end takes all of them)? Then whatever its turn-start card ran is gone too, and the moment must come again.
+   A transaction still standing (a forced single undo of the end) keeps the old rule: an answered card has happened. */
+function undoneSince(state, log) {
+  const m = state?.init?.curMember, at = m ? state.moved?.[m]?.logAt : undefined;
+  if (typeof at !== "string") return false;
+  const list = log?.list ?? [], i = at ? list.findIndex((t) => t.id === at) : -1;
+  if (at && i < 0) return false;                                                         // the journal no longer reaches back to the deal: not known, the old rule
+  return list.slice(i + 1).every((t) => t.state === "undone");
+}
 /* `box` = { state, log }: kept up to date after every stage, so a stage that fails leaves what the stages before it did (D90) */
 async function cards(box, events, host, sweep = true) {
   if (!box.state) return;
@@ -95,13 +105,13 @@ async function cards(box, events, host, sweep = true) {
   if (state.stack.length || state.phase !== "turns") return;
   if (state.kind === "chase") {
     if (!state.init.slots.length) return;
-    const r = await round(state, box.log, { type: "undeal" }, { id: "engine", staff: true }, host);      // D106: the turn the dealt cards opened goes with them
+    const r = await round(state, box.log, { type: "undeal", undone: undoneSince(state, box.log) }, { id: "engine", staff: true }, host);      // D106: the turn the dealt cards opened goes with them
     if (r.ok && !r.same && r.state) { events.push(...r.events); box.state = r.state; box.log = r.log; }
     else box.state = { ...state, init: { ...S.newInit(), deck: state.init.deck } };
     return;
   }
   if (state.init.slots.length || !(state.round >= 1)) return;
-  const r = await round(state, box.log, { type: "roster", deal: true }, { id: "engine", staff: true }, host);      // D43 [B3436]: the fight after a chase draws initiative
+  const r = await round(state, box.log, { type: "roster", deal: true, logAt: box.log?.list?.at(-1)?.id ?? "" }, { id: "engine", staff: true }, host);      // D43 [B3436]: the fight after a chase draws initiative (H2-4: where the journal stood)
   if (!r.ok || r.same) return;
   events.push(...r.events);
   box.state = r.state; box.log = r.log;

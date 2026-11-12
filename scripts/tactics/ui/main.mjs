@@ -531,10 +531,9 @@ export function start() {
     Tip.start(game.tooltip);      // U88 / U97: the tooltips of the dock, the cards and the desk open outside the block of their owner (ui/tip-pure.mjs)
     Store.subscribe(schedule);
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);
-    Hooks.on("updateToken", (_d, ch) => { if (ch && "hidden" in ch) schedule(); });      // CAM-14: a token hidden or shown changes every view of the fight (and is a cue of the camera)
     Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) moved(); });
-    /* U101: hiding or revealing a token alone (no combatant changes) changes who sees whom: every surface is drawn again, once now and once
-       after the canvas has redrawn the token (onMap reads its visibility) */
+    /* U101 / CAM-14: hiding or revealing a token of the fight alone (no combatant changes) changes who sees whom and is a cue of the camera:
+       every surface is drawn again, once now and once after the canvas has redrawn the token (onMap reads its visibility). H2-6: the one handler */
     Hooks.on("updateToken", (td, ch) => { try { if (ch && "hidden" in ch && combatNow()?.combatants.some((c) => c.tokenId === td.id)) { moved(); setTimeout(moved, 120); } } catch { /* a courtesy */ } });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
     watchDice();      // U108
