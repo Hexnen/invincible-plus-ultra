@@ -42,7 +42,12 @@ export const roll = {
   },
   revalidate(v, inst) { const b = K.actorBlocked(v, inst); return { ok: !b, reasons: b ? [b] : [] }; },
   steps: {
-    check(v, inst) { const I = K.draft(inst), R = K.result(I); R.goto = "roll"; return R; },
+    check(v, inst) {
+      const I = K.draft(inst), R = K.result(I), g = K.lowGravityGate(v, I, R);                  // PWD (PW037) [B1703]: AGILITY first in low gravity, or the action is forfeit
+      if (g === "wait") { R.wait = true; return R; }
+      if (g === "failed") { I.data.result = "gateFailed"; R.goto = "close"; return R; }
+      R.goto = "roll"; return R;
+    },
     roll(v, inst) {
       const I = K.draft(inst), R = K.result(I), d = I.decl, e = v.entry(I), attr = attrOf(v, I);
       if (!K.rollOf(I, "roll")) {

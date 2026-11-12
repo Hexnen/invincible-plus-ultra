@@ -49,16 +49,19 @@ const bad = (reason, params = {}) => ({ ok: false, reason, params });
 const multiOf = (d) => (d?.area ? "area" : d?.fullAuto ? "fullAuto" : null);
 const allTargets = (I) => [...I.decl.targets, ...(I.data.extras ?? []).map((x) => x.id)];
 /** May the attacker wreck the zone it stands in [B2451-2457]? -> { ok, zone, bonus, levelsRooftop } | { ok:false, reason, params } */
-export function wreckOf(v, cid) {
+export function wreckOf(v, cid, weight = null) {
   const z = v.facts.zone(cid), a = v.facts.c(cid);
   if (!z || !(z.key ?? z.spot)) return { ok: false, reason: "noScene", params: { gmMayAllow: 1 } };
   const key = String(z.key ?? z.spot).split(":")[0];
   if (z.states?.wrecked || M.counterGet(v.state, M.counterKey.zone(key, "wrecked")) > 0) return { ok: false, reason: "wreckDone", params: {}, zone: key };      // once per scene, also when the mark was cleared by hand
-  const wc = zones.wreckCheck({ terrain: z.terrain && z.terrain !== "none" ? z.terrain : undefined, terrainUnset: !z.terrain, wrecked: false, rooftop: !!z.rooftop }, a?.attrs?.strength ?? 0);
+  const wc = zones.wreckCheck({ terrain: z.terrain && z.terrain !== "none" ? z.terrain : undefined, terrainUnset: !z.terrain, wrecked: false, rooftop: !!z.rooftop }, weight ?? a?.attrs?.strength ?? 0);      // PWD (PW044) [B1745]: the weight a power controls
   if (!wc.ok) return { ok: false, reason: WRECK_REASON[wc.reason] ?? "wreckTerrain", params: { ...(wc.gmMayAllow ? { gmMayAllow: 1 } : {}), ...(wc.minStrength ? { min: wc.minStrength } : {}) }, zone: key };   // [A17]
   return { ok: true, zone: key, bonus: wc.bonus, levelsRooftop: wc.levelsRooftop };
 }
 /** The approach of a charge [B2490]: the route to the target's spot, one move's worth, paid with the quick action. */
+/* PWD (PW044) [B1745]: Matter Control's shot may wreck the zone the matter comes from (the attacker's own; another one is the GM's), its weight limit for STRENGTH */
+const wreckWeightOf = (v, I) => (kindOf(I) === "shooting" ? weaponOf(v, I)?.wreckWeight ?? null : null);
+const wreckFor = (v, I) => wreckOf(v, I.actor, wreckWeightOf(v, I));
 export function chargeOf(v, inst) {
   const Z = v.facts.zones, t = inst.decl?.targets?.[0], spot = t ? v.facts.zone(t)?.spot : null;
   if (!Z) return { ok: false, reason: "noZones", params: { gmMayAllow: 1 } };
@@ -115,8 +118,8 @@ export function legality(v, inst) {
     if (new Set(spots).size > 1) return bad("notSameZone", { series: 1 });                                  // the targets stand in one zone; FXV (P8f-6): said as the rule of a series, not "in another zone"
   }
   if (d.wreck && !inst.data?.wreck) {                                                                        // [B2451]: an option of a slugfest attack
-    if (kind !== "slugfest") return bad("wreckNotSlugfest");
-    const wz = wreckOf(v, inst.actor);
+    if (kind !== "slugfest" && !wreckWeightOf(v, inst)) return bad("wreckNotSlugfest");
+    const wz = wreckFor(v, inst);
     if (!wz.ok) return bad(wz.reason, wz.params);
   }
   if (kind === "grappleAttack" && !counter) {
@@ -176,13 +179,26 @@ export function revalidate(v, inst) {
    GM's card counted the bare attribute while the roll carried the sheet's dice, the weapon, the bonus dice ... on top of it).
    [B2536], [B2430], [R6], [B2511], [B2238], [B2452], [B2543]; P6: a power may be thrown with another attribute; P7 [B3148]: Maneuverability
    on a ram; [B2827], [R24]: a group of minions. Before the declaration locks the wreck bonus is the one the zone would give now. */
+/* PWD (PW058) [B1841]: every shooting attack in the zone of a storm gets -3 dice; its maker is unaffected (movement-pure stateFlags). "In the zone":
+   the shooter's zone or the target's (a shot into the storm), counted once. */
+export const STORM_DICE = -3;
+/* PWD (PW038) [B1723], [B1800]: a beam that deals no damage names no stunt limit: the stunts that need no damage stay (not Double Damage, Suppressed, Deadly Hit, Trick Shot) */
+const EFFECT_ONLY = Object.freeze(["disarm", "special", "own"]);
+function stormed(v, I) {
+  const Z = v.facts.zones;
+  if (!Z?.states || attack.ATTACKS[kindOf(I)]?.family !== "shooting") return false;
+  const spots = [v.facts.zone(I.actor)?.spot, ...(I.decl.targets ?? []).map((t) => v.facts.zone(t)?.spot)].filter((x) => typeof x === "string" && x);
+  return [...new Set(spots)].some((sp) => { try { return MP.stateFlags(Z.states(sp), I.actor).storm; } catch { return false; } });
+}
 function attackPool(v, I, tokens) {
   const kind = kindOf(I), d = I.decl, w = weaponOf(v, I), attr = w?.attr ?? attack.ATTACKS[kind].attr;
   const t0 = d.targets[0], a = v.facts.c(I.actor), r = v.facts.range(I.actor, t0);
-  const wz = !I.data.wreck && d.wreck ? wreckOf(v, I.actor) : null, wreckBonus = I.data.wreck ? I.data.wreck.bonus ?? 0 : wz?.ok ? wz.bonus : 0;
+  const wz = !I.data.wreck && d.wreck ? wreckFor(v, I) : null, wreckBonus = I.data.wreck ? I.data.wreck.bonus ?? 0 : wz?.ok ? wz.bonus : 0;
   const mods = attack.attackModifiers({ attack: kind, target: I.data.multi ? {} : M.conditions(v.state, t0), weaponBonus: w?.bonus ?? 0, wreckBonus, distance: r?.total ?? null, range: w?.range ?? null,
     targets: I.data.multi === "fullAuto" ? d.targets.length : 1, helpers: K.helpDiceOf(v, d) });
   mods.push(...Veh.attackMods(v, I));
+  if (wreckBonus && wreckWeightOf(v, I)) mods.push({ source: "wreck", dice: wreckBonus });      // PWD (PW044) [B1745]: the wrecked zone's dice on Matter Control's shot (rules/attack adds them to a slugfest only)
+  if (stormed(v, I)) mods.push({ source: "storm", dice: STORM_DICE });                      // PWD (PW058) [B1841]
   if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });
   return { attr, ...K.buildPool(v, I, "attack", I.actor, attr, mods, { rollKind: "attack", tokens, base: Veh.attackRollBase(v, I) }) };      // Z16 [B3144]: a ram on a mount rolls the mount's AGILITY
 }
@@ -261,7 +277,7 @@ function defencePrompt(v, I, t) {
   const warned = !!I.data?.warned?.[t] && !Veh.isMachine(v, t);                                  // D113 [B2170]: warned: a block or dodge without an action, two more dice
   const allowed = (set, id) => {
     let op = set[id];
-    if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && tf?.pass?.deflection && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]
+    if (op.reason === "notAllowed" && !dq.inChase && ((id === "block" && (tf?.pass?.deflection || tf?.pass?.metalBlock > 0) && dq.attack === "shooting") || (id === "dodge" && tf?.pass?.duckWeave && dq.attack === "slugfest"))) {      // P6 [B2106], [B2109]; PWD (PW045) [B1737]: Magnetism Control blocks an attack that uses metal, even a shot
       const other = set[id === "block" ? "dodge" : "block"]; op = other.reason === "notAllowed" ? { ok: true, reason: null } : other;
     }
     return op;
@@ -485,7 +501,7 @@ const blank = { helpers: [], exploits: [], stressTotal: 0 };
 /* Knockback straight up or down (a vertical zone is a zone [B2258]): up unless the target is already as high as the map goes, down only for a
    target off the ground (reading, combat-rulings INT-R3). Asked only where the map says on which level the target is. */
 const vertOf = (v, t) => { const z = v.facts.zone(t); return !z || z.area || z.level == null ? [] : [...(z.level === "elevated" ? [] : ["up"]), ...(z.level !== "ground" && z.level !== "underground" ? ["down"] : [])]; };
-const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); return Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : slugBase(v, I, a)); };
+const baseDamageOf = (v, I) => { const entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor); if (kindOf(I) === "counterattack" && I.data?.counterDamage > 0) return Math.trunc(I.data.counterDamage); return Veh.attackBase(v, I) ?? entry?.damage?.base ?? (w && w.damage != null ? w.damage : slugBase(v, I, a)); };      // PWD (PW045) [B1737]: a metal counter
 /* Z14 [B1622], [B1614-1617]: the slugfest damage of the sheet without STRIKE's bonus when the wind-up is missing (never under half the STRENGTH, the base the system starts from) */
 const slugBase = (v, I, a) => { const d = a?.slugfest?.damage ?? 0, s = Number(a?.pass?.strike) || 0; return s > 0 && unwound(v, I) ? Math.max(Math.ceil((Number(a?.attrs?.strength) || 0) / 2), d - s) : d; };   // [B2426], [B2428], [B2512]; P7 [B3148]: a ram deals the vehicle's damage
 export const steps = {
@@ -602,7 +618,7 @@ export const steps = {
       if (w0?.singleUse) R.effects.push({ t: "state", ...M.counterBump(v.state, usedKey(I.actor, w0)) });      // [B2541]: gone, hit or miss
       if (w0?.noMove) R.effects.push({ t: "state", ...M.counterBump(v.state, FIRED_NO_MOVE(I.actor)) });       // [B2545]: no moving for the rest of the round
       if (d.wreck) {                                                                            // [B2451-2457]: the zone is wrecked whether or not the blow lands
-        const wz = wreckOf(v, I.actor), key = wz.zone ?? null;
+        const wz = wreckFor(v, I), key = wz.zone ?? null;
         I.data.wreck = { zone: key, bonus: wz.ok ? wz.bonus : 0, roof: wz.ok && wz.levelsRooftop ? 1 : 0 };
         if (key) {
           const op = ZP.zoneOp(key, { wrecked: true }), cw = M.counterBump(v.state, M.counterKey.zone(key, "wrecked"));
@@ -695,7 +711,7 @@ export const steps = {
   stunts(v, inst) {
     const I = withOut(inst), R = K.result(I), kind = kindOf(I);
     const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = budgetOf(I, hit);
-    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => capped(II, ws === "none" ? [] : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
+    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => capped(II, ws === "none" ? [] : ws === "noDamage" ? optionsAll(vv, II, hh).filter((o) => EFFECT_ONLY.includes(o.data?.stunt)) : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
     const most = Math.min(budget, roomOf(I, hit));                                              // D119: an area shot pays each target's stunts from its own sixes
     if (!hit.length || most < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
     const stuntCard = () => ({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: most, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } });
@@ -848,8 +864,9 @@ export const steps = {
               R.events.push({ type: "status", target: t, status: { id: "stunned", on: true } });
             }
           }
-          if (oh.throw && !Z && once(`oht:${t}`)) (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: oh.throw });      // [B1826]: without a map the GM moves the one thrown
-          if (oh.throw && Z && !K.flag(I, `tk:${t}`) && !M.outOfAction(v.state, t, tf)) {       // Z11 [B1823], [B1826-1828]: thrown like Knockback [B2435], the thrower names the way, the damage of the level at EVERY impact minus Armor
+          const thrown = !!oh.throw || !!oh.sweep;                                               // PWD (PW056) [B1832]: the sweep moves the target one zone, no damage
+          if (thrown && !Z && once(`oht:${t}`)) (I.data.notes ??= []).push({ note: "throwByHand", target: t, damage: Math.max(0, Math.trunc(Number(oh.throw) || 0)) });      // [B1826]: without a map the GM moves the one thrown
+          if (thrown && Z && !K.flag(I, `tk:${t}`) && !M.outOfAction(v.state, t, tf)) {       // Z11 [B1823], [B1826-1828]: thrown like Knockback [B2435], the thrower names the way, the damage of the level at EVERY impact minus Armor
             const key = `tkdir:${t}`, zk = v.facts.zone(t)?.key, near = zk ? (Z.borders(zk) ?? []).map((b) => String(b?.key ?? "").split("|").find((z) => z && z !== zk)).filter(Boolean).slice(0, 12) : [], n = Math.max(1, Math.trunc(Number(oh.zones) || 2));
             if (!I.data.pk?.[key]) {
               const pr = { key, kind: "knockDir", to: K.addressee(v, I.actor), about: I.actor, options: [{ id: "away", label: "ITAC.opt.kbAway" }, ...near.map((z) => ({ id: `to:${z}`, label: "ITAC.opt.kbToward", data: { zone: z } })), ...vertOf(v, t).map((w) => ({ id: w, label: w === "up" ? "ITAC.opt.kbUp" : "ITAC.opt.kbDown" }))], data: { target: t, distance: n } };
@@ -877,19 +894,23 @@ export const steps = {
         if (dm && Veh.afterHit(v, I, R, t, dm)) return R;                                                  // P7 [B3221-3248]: component damage, the wreck, the people aboard
         if (dm && K.minionsFate(v, I, R, t, dm, { by: I.actor })) return R;                     // [B2828]: knocked out or killed, the GM's word
         if (dm && !Veh.isMachine(v, t) && K.brokenAndCrit(v, I, R, t, dm, { deadlyHit: picked(t, "deadlyHit"), by: I.actor })) return R;       // spec 9.5 steps 7-9
-      } else if (o.counterattack && I.data.def?.[t]?.defence === "block" && !M.outOfAction(v.state, t, tf)) {      // [B2448], [R4]; [B2707]
+      } else if (o.counterattack && I.data.def?.[t]?.defence === "block" && !M.outOfAction(v.state, t, tf) && !(kind !== "counterattack" && weaponOf(v, I)?.noCounter)) {      // [B2448], [R4]; [B2707]; PWD (PW047) [B1779]: Plant Control's attack never brings a counterattack
         const key = `counter:${t}`;
         if (!I.data.pk?.[key]) {
           const r = v.facts.range(t, I.actor), opt = { id: "counter", label: "ITAC.opt.counter", data: { sixes: o.counterattack.sixes } };
           if (r && r.total !== 0) opt.disabled = "outOfReach";                                  // [OQ-10] provisional: only within the blocker's slugfest reach unless the GM allows
-          const p = { key, kind: "counter", to: K.addressee(v, t), about: t, options: [opt, { id: K.PASS, label: "ITAC.opt.pass" }] };
+          const metal = Number(tf?.pass?.metalBlock) || 0, mo = metal > 0 ? { id: "counter:metal", label: "ITAC.opt.counterMetal", data: { sixes: o.counterattack.sixes, damage: metal, n: metal } } : null;      // PWD (PW045) [B1737]: blocked with Magnetism Control, the counter has Damage 3 (4-6 by level)
+          if (mo && opt.disabled) mo.disabled = opt.disabled;
+          const p = { key, kind: "counter", to: K.addressee(v, t), about: t, options: [opt, ...(mo ? [mo] : []), { id: K.PASS, label: "ITAC.opt.pass" }] };
           if (opt.disabled) p.auto = { option: K.PASS, reason: "noOption" };
           R.prompts.push(p); R.wait = true; return R;
         }
         if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
-        if (once(key) && K.answerId(v, I, key) === "counter") {
+        const ans = K.answerId(v, I, key);
+        if (once(key) && (ans === "counter" || ans === "counter:metal")) {
           R.events.push({ type: "counter", by: t, against: I.actor, sixes: o.counterattack.sixes });
-          R.push = { action: "slugfest", actor: t, decl: { action: "slugfest", weapon: "unarmed", targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "counter", data: { kind: "counterattack", counterSixes: o.counterattack.sixes }, prepaid: 1 };
+          const metal = ans === "counter:metal" ? Number(tf?.pass?.metalBlock) || 0 : 0;
+          R.push = { action: "slugfest", actor: t, decl: { action: "slugfest", weapon: "unarmed", targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "counter", data: { kind: "counterattack", counterSixes: o.counterattack.sixes, ...(metal > 0 ? { counterDamage: metal } : {}) }, prepaid: 1 };
           return R;
         }
       } else if (o.dodgeMove > 0 && I.data.def?.[t]?.defence === "dodge" && !M.outOfAction(v.state, t, tf)) {      // [B2526]; [B2707]

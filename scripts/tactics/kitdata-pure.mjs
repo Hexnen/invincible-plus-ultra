@@ -111,49 +111,65 @@ export const ROWS = Object.freeze([
   L("Fire Control", "Destructive Flames", [1698, 1699], "hand", "story", { why: "gmJudges" }),
   P("Gravity Control", [1702, 1703, 1704], "assist", "zone", { cost: "full" }),
   B("Gravity Control", "Precise Control", [1705], "hand", "story", { why: "partOfPower" }),
-  P("Guidance", [1708, 1709], "assist", "gmCard", { acts: [{ k: "guide", cost: "full", roll: { attr: "presence" }, effect: { kind: "narrative" } }] }),
-  P("Illusion", [1712, 1713, 1714, 1715], "assist", "outcome", { cost: "full" }),
-  B("Illusion", "Area Projection", [1716], "assist", "outcome", { acts: [narr("area", "full", { stress: 1 })] }),
-  B("Illusion", "Terrifying Illusions", [1717], "assist", "resist", { acts: [{ k: "terrify", cost: "none", target: { who: "any", n: [1, 1] }, effect: { kind: "resist", attr: "intuition", stress: 3, loseTurn: 1 } }] }),
+  P("Guidance", [1708, 1709], "assist", "gmCard", { acts: [{ k: "guide", cost: "full", roll: { attr: "presence" }, target: { who: "ally", n: [1, 6] }, talk: 1, effect: { kind: "guidance" } }] }),      // PWD (PW033) [B1708]: one ally per six takes a bonus action on the guide's turn
+  /* PWD (PW035, PW036, PW107, PW032): the target sees through the illusion with a passive INTUITION roll, -1/-2/-3 dice at Major/Massive/Monstrous; no effect
+     on huge creatures; your zone or an adjacent one [B1712-1715]. With Terrifying Illusions the same roll costs the target 3 stress minus its sixes [B1717]. */
+  P("Illusion", [1712, 1713, 1714, 1715], "assist", "resist", { cost: "full", acts: [{ k: "cast", cost: "full", target: { who: "any", n: [1, 1] }, near: 1, immuneHuge: 1, text: 1, with: { terrifyingillusions: { stress: 3, loseTurn: 1 } },
+    effect: { kind: "resist", attr: "intuition", dice: [0, -1, -2, -3], illusion: 1 } }] }),
+  B("Illusion", "Area Projection", [1716], "assist", "resist", { acts: [{ k: "area", cost: "full", stress: 1, target: { who: "any", n: [1, 12] }, near: 1, immuneHuge: 1, text: 1, with: { terrifyingillusions: { stress: 3, loseTurn: 1 } },
+    effect: { kind: "resist", attr: "intuition", dice: [0, -1, -2, -3], illusion: 1 } }] }),
+  B("Illusion", "Terrifying Illusions", [1717], "assist", "resist", { acts: [{ k: "terrify", cost: "none", target: { who: "any", n: [1, 1] }, near: 1, immuneHuge: 1, effect: { kind: "resist", attr: "intuition", stress: 3, loseTurn: 1, dice: [0, -1, -2, -3], illusion: 1 } }] }),
   B("Illusion", "Remote Projection", [1718], "assist", "outcome", { acts: [narr("remote", "full", { stress: 1 })] }),
   B("Illusion", "Dream Projection", [1719], "hand", "story", { why: "outOfFight" }),
-  P("Light Control", [1722, 1723], "assist", "zone", { atk: { noDamage: 1, ignoreArmor: 1, stunts: "none", immuneHuge: 1, onHit: { stun: 1 } }, acts: [narr("zone", "full")] }),
+  P("Light Control", [1722, 1723], "assist", "zone", { atk: { noDamage: 1, ignoreArmor: 1, stunts: "noDamage", immuneHuge: 1, onHit: { stun: 1 } }, acts: [narr("zone", "full")] }),
   burst("Light Control", "Burst Effect (Light Control)", [1724]),
-  P("Luck Control", [1727, 1728, 1729, 1730], "assist", "token", { acts: [{ k: "luck", cost: "quick", stress: 1, target: { who: "any", n: [1, 1] }, pick: ["good", "bad"], effect: { kind: "luck", lv: [1, 2, 3, 4] } }] }),
+  P("Luck Control", [1727, 1728, 1729, 1730], "assist", "token", { acts: [{ k: "luck", cost: "quick", stress: 1, target: { who: "any", n: [0, 1] }, near: 1, pick: ["good", "bad"], effect: { kind: "luck", lv: [1, 2, 3, 4] } }] }),      // PWD (PW031, PW032): yourself too; your zone or an adjacent one [B1727]
   L("Luck Control", "Good Luck Only", [1731], "auto", "token", { opt: { luck: "good" } }),
   L("Luck Control", "Bad Luck Only", [1732], "auto", "token", { opt: { luck: "bad" } }),
-  P("Magnetism Control", [1735, 1736, 1737, 1738, 1739, 1740, 1741], "assist", "zone", { atk: {}, acts: [narr("zone", "full")], opts: [{ k: "immobilise", patch: { noDamage: 1, onHit: { status: "immobilised" } } }] }),
-  P("Matter Control", [1744, 1745, 1746, 1747, 1748, 1749], "assist", "zone", { atk: {}, acts: [narr("zone", "full")], opts: [{ k: "area", patch: { area: 1 }, stress: 1 }] }),
+  /* PWD (PW046) [B1735], [B1744]: the weight limit up to 2 steps higher for as much stress; (PW045) [B1737] a block of an attack that uses metal, even a shot,
+     the GM confirms the metal; (PW044) [B1745] the zone the matter comes from wrecked for bonus dice, the weight limit of the level standing in for STRENGTH */
+  P("Magnetism Control", [1735, 1736, 1737, 1738, 1739, 1740, 1741], "assist", "zone", { atk: {}, acts: [narr("zone", "full", { label: "weigh", pick: ["0", "1", "2"], stressPick: 1 })], opts: [{ k: "immobilise", patch: { noDamage: 1, onHit: { status: "immobilised" } } }],
+    pass: { metalBlock: [3, 4, 5, 6] } }),
+  P("Matter Control", [1744, 1745, 1746, 1747, 1748, 1749], "assist", "zone", { atk: { wreckWeight: [4, 6, 8, 10] }, acts: [narr("zone", "full", { label: "weigh", pick: ["0", "1", "2"], stressPick: 1 })], opts: [{ k: "area", patch: { area: 1 }, stress: 1 }] }),
   L("Matter Control", "Specific Matter", [1750], "hand", "story", { why: "gmJudges" }),
-  P("Mimicry", [1753, 1754, 1755, 1756], "assist", "gmCard", { cost: "full" }),
+  P("Mimicry", [1753, 1754, 1755, 1756], "assist", "gmCard", { cost: "full", acts: [narr("mimic", "full", { target: { who: "any", n: [1, 1] }, sameZone: 1 })] }),      // PWD (PW041) [B1753]: a target in your zone
   B("Mimicry", "Multiple Mimicry", [1757], "hand", "story", { why: "partOfPower" }),
   B("Mimicry", "Power Leech", [1758], "assist", "attack", { opt: { patch: { noDamage: 1 }, optional: 1, on: "slug" } }),
-  P("Mind Control", [1761, 1762], "assist", "gmCard", { acts: [{ k: "control", cost: "full", roll: { attr: "presence" }, oppose: { attr: "presence", who: "target" }, target: { who: "enemy", n: [1, 1] }, effect: { kind: "narrative" }, immuneHuge: 1 }] }),
-  B("Mind Control", "Area Control", [1763], "assist", "gmCard", { acts: [narr("many", "full", { roll: { attr: "presence" }, pick: ["1", "2", "3"], stressPick: 1 })] }),
+  /* PWD (PW040-PW043) [B1761-1763]: a sentient creature in your zone or an adjacent one, never a huge one; a win gives it a full turn at once on your
+     command, then it loses its next ordinary turn (the GM's word on the card first); Area Control: 1 stress per target beyond the first, each rolls */
+  P("Mind Control", [1761, 1762], "assist", "gmCard", { acts: [{ k: "control", label: "mind", cost: "full", roll: { attr: "presence" }, oppose: { attr: "presence", who: "target" }, target: { who: "enemy", n: [1, 1] }, effect: { kind: "narrative", then: "mindControl" }, immuneHuge: 1, near: 1, text: 1 }] }),
+  B("Mind Control", "Area Control", [1763], "assist", "gmCard", { acts: [{ k: "many", label: "minds", cost: "full", roll: { attr: "presence" }, oppose: { attr: "presence", who: "targets" }, target: { who: "enemy", n: [1, 12] }, stressExtra: 1, immuneHuge: 1, near: 1, text: 1, effect: { kind: "narrative", then: "mindControl" } }] }),
   L("Mind Control", "Hypnosis", [1764, 1765], "auto", "barred", { bars: 1 }),
   L("Mind Control", "Requires Touch", [1766, 1767, 1768], "assist", "attack", { opt: { patch: { noDamage: 1 }, optional: 1, on: "slug" } }),
   P("Nullification", [1772, 1773, 1774, 1775], "assist", "gmCard", { acts: [{ k: "nullify", cost: "quick", roll: { attr: "presence" }, oppose: { attr: "presence", who: "target", optional: true }, target: { who: "any", n: [0, 1] }, effect: { kind: "narrative" } }] }),
-  P("Plant Control", [1778, 1779, 1780, 1781, 1782, 1783, 1784], "assist", "zone", { atk: { noCounter: 1 }, acts: [narr("zone", "full")] }),
+  P("Plant Control", [1778, 1779, 1780, 1781, 1782, 1783, 1784], "assist", "zone", { atk: { noCounter: 1, reach: [1, 2, 3, 4] }, acts: [narr("zone", "full")] }),      // PWD (PW047, PW049): no counterattack [B1779]; a target in the plants' zones, 1-4 adjacent zones from your own or the next [B1778-1784]
   burst("Plant Control", "Massive Growth", [1785, 1786]),
   B("Plant Control", "Lifeseed", [1787], "assist", "zone", { acts: [narr("seed", "quick", { stress: 1 })] }),
-  P("Sorcery", [1790], "assist", "gmCard", { cost: "full" }),
+  P("Sorcery", [1790], "assist", "gmCard", { cost: "full", acts: [{ k: "spell", cost: "full", roll: { attr: "presence" }, effect: { kind: "spell" }, text: 1 }, { k: "spellOn", cost: "none", stress: 1, effect: { kind: "spellOn" }, text: 1 }] }),      // PWD (PW050) [B1790]
   B("Sorcery", "Signature Spell", [1791], "hand", "story", { why: "partOfPower" }),
   L("Sorcery", "Ritual Casting", [1792], "auto", "barred", { bars: 1 }),
-  P("Sound Control", [1799, 1800], "assist", "zone", { atk: { noDamage: 1, ignoreArmor: 1, stunts: "none", immuneHuge: 1, onHit: { stun: 1 } } }),
+  P("Sound Control", [1799, 1800], "assist", "zone", { atk: { noDamage: 1, ignoreArmor: 1, stunts: "noDamage", immuneHuge: 1, onHit: { stun: 1 } } }),
   burst("Sound Control", "Sonic Boom", [1801]),
   B("Sound Control", "Sonar", [1802, 1803, 1804, 1805], "hand", "passive", { why: "senses" }),
   P("Summoning", [1808, 1809, 1810, 1811, 1812, 1813, 1814, 1815], "assist", "summon", { acts: [{ k: "summon", cost: "full", pick: ["versatile", "powered", "more"], combo: [1, 2, 3, 4], effect: { kind: "summon" }, text: 1 },
     { k: "dismiss", cost: "full", effect: { kind: "dismiss" } }] }),
   L("Summoning", "Delayed Summoning", [1816], "auto", "turn", { pass: { summonDelay: 1 } }),
-  P("Technology Control", [1819], "assist", "outcome", { cost: "full" }),
-  P("Telekinesis", [1822, 1823, 1824, 1825, 1826, 1827, 1828], "assist", "gmCard", { atk: { by: { "throw target": { noDamage: 1, stunts: "none", throws: [3, 4, 5, 6], zones: [2, 3, 4, 5] } } } }),
-  B("Telekinesis", "Multiple Targets", [1829], "assist", "gmCard", { acts: [narr("many", "full", { pick: ["1", "2", "3"], stressPick: 1 })] }),
-  P("Water Control", [1832, 1833, 1834, 1835], "assist", "zone", { atk: {}, acts: [narr("zone", "full")], opts: [{ k: "area", patch: { area: 1 }, stress: 1 }, { k: "sweep", patch: { noDamage: 1, sweep: 1 } }] }),
+  P("Technology Control", [1819], "assist", "outcome", { cost: "full", keep: 1, acts: [narr("seize", "full", { roll: { attr: "agility" } })] }),      // PWD (PW051) [B1819]: a weapon taken over fires in the same action, on AGILITY
+  /* PWD (PW054) [B1828]: the compendium's Monstrous attack says Damage 5, Range 0/6; the book Damage 6, Range 0/5. `errata`: the numbers of the level are
+     put right when the item still carries exactly the compendium's wrong ones (a GM's own numbers stay). (PW055) [B1822], [B1829]: the weight limit
+     up to 2 steps higher for as much stress; up to 9 targets, 1 stress each beyond the first */
+  P("Telekinesis", [1822, 1823, 1824, 1825, 1826, 1827, 1828], "assist", "gmCard", { atk: { by: { "throw target": { noDamage: 1, stunts: "none", throws: [3, 4, 5, 6], zones: [2, 3, 4, 5] } },
+    errata: [null, null, null, { from: { damage: 5, range: [0, 6] }, to: { damage: 6, range: [0, 5] } }] }, by: { telekinesis: { pick: ["0", "1", "2"], stressPick: 1, label: "weigh" } } }),
+  B("Telekinesis", "Multiple Targets", [1829], "assist", "gmCard", { acts: [narr("many", "full", { pick: ["1", "2", "3", "4", "5", "6", "7", "8"], stressPick: 1 })] }),
+  /* PWD (PW056) [B1832]: the sweep moves the target (never a huge one) into an adjacent zone of the attacker's choice instead of damage; (PW057) the
+     compendium's Range 0/2, 0/3, 0/4 at Major-Monstrous is put right to the book's 0/1 (higher levels widen the zones, not the range) */
+  P("Water Control", [1832, 1833, 1834, 1835], "assist", "zone", { atk: { errata: [null, { from: { range: [0, 2] }, to: { range: [0, 1] } }, { from: { range: [0, 3] }, to: { range: [0, 1] } }, { from: { range: [0, 4] }, to: { range: [0, 1] } }] },
+    acts: [narr("zone", "full")], opts: [{ k: "area", patch: { area: 1 }, stress: 1 }, { k: "sweep", patch: { noDamage: 1, sweep: 1, immuneHuge: 1 } }] }),
   B("Water Control", "Wellspring", [1836], "assist", "outcome", { acts: [narr("water", "none", { stress: 1 })] }),
   L("Water Control", "Submersion", [1837], "hand", "story", { why: "gmJudges" }),
   P("Weather Control", [1840, 1841, 1842, 1843, 1844], "assist", "zone", { atk: {}, acts: [narr("zone", "full")] }),
   burst("Weather Control", "Hurricane", [1845]),
-  B("Weather Control", "Cyclone", [1846], "assist", "resist", { acts: [{ k: "cyclone", cost: "none", target: { who: "any", n: [1, 1] }, effect: { kind: "resist", attr: "strength" } }] }),
+  B("Weather Control", "Cyclone", [1846], "assist", "resist", { acts: [{ k: "cyclone", cost: "none", target: { who: "any", n: [1, 1] }, effect: { kind: "resist", attr: "strength", thrown: 1, wreck: 1 } }] }),      // PWD (PW059) [B1846]: the zone is wrecked; who fails is thrown into an adjacent zone of your choice
   L("Weather Control", "Air Control Only", [1847], "hand", "story", { why: "gmJudges" }),
 
   /* ================================================================ DEFENSE POWERS [B1850-1893] */
@@ -240,7 +256,8 @@ export const ROWS = Object.freeze([
   P("Invisibility", [2075], "auto", "effect", { acts: [{ k: "vanish", cost: "quick", effect: { kind: "status", id: "invisible", on: "self", toggle: 1 } }] }),
   P("Postcognition", [2078], "hand", "story", { why: "senses" }),
   P("Precognition", [2081, 2082], "assist", "outcome", { cost: "full" }),
-  P("Telepathy", [2085, 2086, 2087], "assist", "outcome", { cost: "quick", by: { "read deeper thoughts": { cost: "full" } } }),
+  P("Telepathy", [2085, 2086, 2087], "assist", "outcome", { cost: "quick", keep: 1, by: { "read deeper thoughts": { cost: "full", target: { who: "any", n: [0, 1] }, oppose: { attr: "presence", who: "target", optional: true } } },      // PWD (PW118) [B2086]: opposed by PRESENCE if resisted
+    acts: [narr("sense", "quick", { roll: { attr: "intuition" } })] }),      // [B2087]: lifeforms within 3 zones
   B("Telepathy", "Distant Telepathy", [2088], "assist", "outcome", { acts: [narr("distant", "quick", { stress: 1 })] }), B("Telepathy", "Telepathic Link", [2089], "assist", "outcome", { acts: [narr("link", "full", { stress: 1 })] }), B("Telepathy", "Memory Alteration", [2090], "assist", "outcome", { cost: "full" }),
   L("Telepathy", "Read Only", [2091], "hand", "story", { why: "gmJudges" }),
 
