@@ -1048,7 +1048,7 @@ li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-c
 }
 li.chat-message.message .message-content .dice-infos:not(:has(> :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy):nth-child(2))) > [data-long]:first-child .result { flex: 1 1 0; min-width: 0; margin: 0; padding: 0; text-align: right; align-self: center; font-size: 1.05rem; }
 @container isp-chat (max-width: 250px) {
-  li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long] { column-gap: 6px; padding-inline: 8px 8px; }
+  li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long]:not(:first-child) { column-gap: 6px; padding-inline: 8px 8px; }      /* T072: not the hero, whose caption band bleeds through its own 4px */
   li.chat-message.message .message-content .dice-infos > :is(.roll-damage, .roll-critical, .roll-despair, .roll-blight, .roll-trauma, .roll-gear-damage, .roll-energy)[data-long]:first-child .result { font-size: .82rem; }
 }
 

@@ -143,9 +143,7 @@
 #invincible-tactics-chase .itc-gm-h:hover { color: #fff; border-color: #fff; }
 #invincible-tactics-chase .itc-gm-b { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 14px; align-items: end; }
 #invincible-tactics-chase .itc-ctl { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-#invincible-tactics-chase .itc-ends { grid-column: 1 / -1; }
 #invincible-tactics-chase .itc-ends-b { display: flex; flex-wrap: wrap; gap: 6px; }
-#invincible-tactics-chase .itc-end { min-height: 28px; font-size: 12px; padding: 0 10px; }
 #invincible-tactics-chase .itc-tog { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-text); border: 1px solid var(--ita-line); }
 #invincible-tactics-chase .itc-tog[aria-pressed="true"] { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
 #invincible-tactics-chase .itc-step { display: inline-flex; align-items: center; gap: 0; width: fit-content; border: 1px solid var(--ita-line); }

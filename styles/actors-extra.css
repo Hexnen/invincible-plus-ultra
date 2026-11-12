@@ -290,6 +290,12 @@
   text-overflow: ellipsis;
 }
 .invincible.sheet.actor.vehicle header.sheet-header .header-fields > div.form-group:not(:first-child) select { padding-right: 18px; }
+/* T070: the focus tint again, after the field rules above (name, subtitle, bar numbers, vehicle specs) and as specific as the strongest
+   of them (0,8,3), whose `background` reset it: a focused field is tinted like a hovered one, as on the hero and item sheets */
+.invincible.sheet.actor:is(.challenge, .vehicle) header.sheet-header .header-fields div :is(input, select, textarea):not(:disabled):focus {
+  background: #fffbd0;
+  box-shadow: inset 0 -3px 0 var(--isp-yellow);
+}
 /* the last row hands its rule over to the double rule above the bar */
 .invincible.sheet.actor.vehicle header.sheet-header .header-fields > div.form-group:is(:nth-last-child(3), :nth-last-child(4)) { border-bottom: 0; }
 

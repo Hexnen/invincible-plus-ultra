@@ -693,7 +693,8 @@
   #invincible-challenges .ich-item.ich-leaving { animation: none; opacity: 0; transition: opacity .15s linear; }
   #invincible-challenges .ich-item.ich-leaving > .ich-card { animation: none; }
   #invincible-challenges.ich-bye .ich-handle { animation: ich-fade-out .15s linear forwards; }
-  #invincible-challenges .ich-dock, #invincible-challenges.ich-collapsed .ich-dock { transition: opacity .15s linear, visibility 0s .15s; }
+  #invincible-challenges .ich-dock { transition: opacity .15s linear, visibility 0s 0s; }      /* T071: visible at once, so the fade in is seen */
+  #invincible-challenges.ich-collapsed .ich-dock { transition: opacity .15s linear, visibility 0s .15s; }      /* hidden only once faded out */
   #invincible-challenges.ich-collapsed .ich-dock { transform: none; opacity: 0; }
   #invincible-challenges .ich-fill, #invincible-challenges .ich-num { transition: none; }
   #invincible-challenges .ich-chev::before, #invincible-challenges .ich-more-i::before { transition: none; }

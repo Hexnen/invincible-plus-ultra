@@ -50,4 +50,4 @@ html[lang="pl"] .invincible.sheet.actor section.tab.effects [data-effect-type="p
 html[lang="pl"] .invincible.sheet.actor section.tab.effects [data-effect-type="inactive"] + ol.effect-list:not(:has(> li))::after { content: "Nic nie jest wyłączone."; }                                    /* en: Nothing switched off. */
 html[lang="pl"] .invincible.sheet.actor section.tab.effects .effect-list > li.effect > .effect-source::before { content: "Źródło: "; }                       /* en: Source:  */
 html[lang="pl"] .invincible.sheet.actor section.tab.effects .effect-list > li.effect > .effect-duration::before { content: "Czas trwania: "; }               /* en: Duration:  */
-html[lang="pl"] .invincible.sheet.actor.isp-dropping::after { content: "+  Upuść, żeby dodać"; }                                                         /* en: +  Drop to add */
+html[lang="pl"] .invincible.sheet.actor.isp-dropping:not(.challenge)::after { content: "+  Upuść, żeby dodać"; }                                                         /* en: +  Drop to add */

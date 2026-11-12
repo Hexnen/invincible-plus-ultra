@@ -315,13 +315,32 @@ function unit(d) {
     d.extras.map(extra), w.free ? h("span.itd-extra", { text: w.freeLabel, data: { kind: "free" } }) : null)];
 }
 const rs = (n) => stressChip(n);
+/* FXS (U183 look): an action that takes a second unit as well (Szarża: the full action and the quick one) shows both marks, side by side
+   as the kit sets a pair (.ipu-costs); the button's tooltip and aria-label already say both */
+const speeds = (cost, also) => { const a = speed(cost), b = also === "full" || also === "quick" ? speed(also) : null; return a && b ? h("span.ipu-costs.itd-also", { attrs: { "aria-hidden": "true" } }, a, b) : a; };
 function actionBtn(a) {
   /* P5 / P6: the other rows of the action tables, and the character's own abilities: one button each, a list behind it */
   if (a.more) { const m = a.mode ?? "menu";
     return h(`button.itd-ic.itd-ic-more${a.armed ? ".itd-armed" : ""}`, { fk: `more:${m}`, tip: a.tip, data: { key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true", "aria-label": a.label, ...keyAttrs(a.key) },      // FXN (D133): greyed as its rows are; it still opens
       on: { click: () => set(last?.ui?.mode === m ? { mode: null } : { mode: m, armed: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } }, actIcon(a.icon), icon("fa-caret-up")); }
   return h(`button.itd-ic${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null, key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.tip, pv: a.pv, attrs: { "aria-pressed": String(!!a.armed), "aria-label": tipText(a.tip), ...keyAttrs(a.key) },
-    on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, actIcon(a.icon), speed(a.cost), rs(a.stress));
+    on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, actIcon(a.icon), speeds(a.cost, a.also), rs(a.stress));
+}
+/* FXS (U178 look): End turn pressed while the dice still roll is held until they land (main.mjs send); a press that has not gone through
+   after a moment shows as taken: the button stays pressed in and filled (.itd-end-held, aria-busy) until the request is answered. A press
+   answered at once (no dice) never shows it. It reads End turn again, not the "Sure?" of a confirmed press (endLabel: the button's
+   own name, kept from its last unconfirmed draw). */
+let endHeld = false, endHeldT = 0, endLabel = null, endWas = null;
+const endMark = (on) => {
+  endHeld = on; const b = root?.querySelector(".itd-end"), sp = b?.querySelector(":scope > span"); if (!b) return;
+  b.classList.toggle("itd-end-held", on);
+  if (on) { b.setAttribute("aria-busy", "true"); if (sp && endLabel) { endWas = sp.textContent; sp.textContent = endLabel; } }
+  else { b.removeAttribute("aria-busy"); if (sp && endWas !== null && sp.textContent === endLabel) sp.textContent = endWas; endWas = null; }
+};
+function endPress(req) {
+  clearTimeout(endHeldT);
+  endHeldT = setTimeout(() => endMark(true), 150);
+  return Promise.resolve(send(req, { endArmed: false })).finally(() => { clearTimeout(endHeldT); endMark(false); });
 }
 const CAM_ICON = { action: "fa-clapperboard", turn: "fa-video", off: "fa-video-slash", all: "fa-film" };
 /* W1 (U42): how much the map's camera follows the fight, this user's own switch (turn -> off -> all) */
@@ -331,6 +350,7 @@ const legendBtn = () => h("button.itd-mini", { fk: "legend", tip: markName("lege
 const hotbarBtn = (d) => h("button.itd-mini", { fk: "hotbar", tip: d.hotbar.tip ?? d.hotbar.label, attrs: { "aria-pressed": String(d.hotbar.open), "aria-label": d.hotbar.label }, on: { click: () => set({ hotbar: !d.hotbar.open }) } }, icon("fa-keyboard"));
 function bar(d) {
   const e = d.end;
+  if (e && !e.armed && e.label) endLabel = e.label;      // FXS (U178): the name a held press shows
   /* U148 (UX review 1): the resting bar (another's turn) keeps every button where the bar of a turn has it: the actions stand dimmed
      (a click on one still arms it, as the chevron did, and its panel says why not now), the tail keeps its order; only the last small
      button turns from "fold" to "open". Before, the resting bar was the unit and four small buttons, so every button moved on each turn
@@ -342,7 +362,7 @@ function bar(d) {
       h("div.itd-tail", {},
         h(`button.itd-ic.itd-ic-ghost${d.other.armed ? ".itd-armed" : ""}`, { fk: "other", tip: d.other.tip, attrs: { "aria-pressed": String(d.other.armed), "aria-label": d.other.label }, on: { click: () => set(d.other.armed ? { mode: null } : { mode: "other", armed: null, text: "", endArmed: false }) } }, actIcon("@other")),
         h(`button.itd-ic.itd-ic-ghost${d.holdOff.armed ? ".itd-armed" : ""}`, { fk: "hold", disabled: !!d.holdOff.disabled, tip: d.holdOff.tip, attrs: { "aria-pressed": String(d.holdOff.armed), "aria-label": d.holdOff.label }, on: { click: () => set(d.holdOff.armed ? { mode: null } : { mode: "holdOff", armed: null, endArmed: false }) } }, actIcon("@hold")),
-        h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}${e.auto ? ".itd-end-auto" : ""}`, { fk: "end", disabled: !!e.disabled || !!d.rest, tip: e.tip, /* U148: resting, End turn keeps its place and ends nothing */ attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space", style: e.auto ? `--itd-end-ms: ${autoDelay(e)}ms` : null }, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && send(e.req, { endArmed: false })) } }, actIcon("@end"), h("span", { text: e.label })),
+        h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}${e.auto ? ".itd-end-auto" : ""}${endHeld ? ".itd-end-held" : ""}`, { fk: "end", disabled: !!e.disabled || !!d.rest, tip: e.tip, /* U148: resting, End turn keeps its place and ends nothing */ attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space", "aria-busy": endHeld ? "true" : null, style: e.auto ? `--itd-end-ms: ${autoDelay(e)}ms` : null }, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && endPress(e.req)) } }, actIcon("@end"), h("span", { text: endHeld && endLabel ? endLabel : e.label })),
         legendBtn(), cameraBtn(d), hotbarBtn(d),
         d.rest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up"))
           : d.canRest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("cancel"), on: { click: () => set({ peek: false, armed: null, mode: null }) } }, icon("fa-chevron-down")) : null),
