@@ -35,7 +35,21 @@
    strip over the chat box (the newest end of a toast shows, the strip scrolls; U6, U134) */
 body.ita-tactics .ips-notice { top: var(--its-nt, 120px); bottom: auto; left: var(--its-nx, 50%); }
 body.ita-tactics #chat-notifications .overflow { height: auto; max-height: var(--igd-toast-maxh, 132px); overflow-y: auto; }
+/* D126 (UX review 1): Foundry's toast grid gives its lower row the height of an open chat box (input and menu) though a closed one is
+   much lower, so the toasts ended about 80 px over the chat box, in the GM desk's column, over its answers. The lower row takes the
+   chat box's own height: the toasts end right over it, inside the strip the desk ends above (slots-pure.toastStrip) */
+body.ita-tactics #chat-notifications { grid-template-rows: 1fr auto; }
+
+/* U140 (UX review 1): WHILE THIS USER AIMS (the map's pick of a zone, the dock's pick of a token) the panels that are not the hand's own
+   step back: dimmed and click-through, so a click on a zone or a token under them reaches the map (the map's pick also counts the zones
+   under them as reachable then: no "2 more" chip for them). The questions put to this user and a desk with something waiting stay as
+   they are; the bar, its armed panel and the initiative bar are the hand's own. They come back the moment the pick ends. */
+body.ita-tactics:is(.mm-z-picking, .itd-picking) #invincible-challenges,
+body.ita-tactics:is(.mm-z-picking, .itd-picking) #invincible-tactics-desk:not(.igd-busy) .igd,
+body.ita-tactics:is(.mm-z-picking, .itd-picking) #invincible-tactics-dock .its-slot[data-slot="line"] .its-in { opacity: .26; transition: opacity .18s ease-out; }
+body.ita-tactics:is(.mm-z-picking, .itd-picking) :is(#invincible-challenges, #invincible-tactics-desk:not(.igd-busy) .igd, #invincible-tactics-dock .its-slot[data-slot="line"] .its-in),
+body.ita-tactics:is(.mm-z-picking, .itd-picking) :is(#invincible-challenges, #invincible-tactics-desk:not(.igd-busy) .igd, #invincible-tactics-dock .its-slot[data-slot="line"] .its-in) * { pointer-events: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  #invincible-tactics-dock, #invincible-tactics-dock .its-bar { transition: none; }
+  #invincible-tactics-dock, #invincible-tactics-dock .its-bar, #invincible-challenges, #invincible-tactics-desk .igd, .its-slot .its-in { transition: none; }
 }

@@ -60,6 +60,8 @@ let drawn = 0, kept = null;
 /* U132 (slots-pure.mjs): the places outside the bar's stack (name -> the inner box the content goes in); the part of the frame the desk
    and the challenges read, as last told; whether the hint takes the questions' place (a narrow band) */
 let slotEls = {}, frameKey = "", shareWas = false;
+/* U148: the widest bar each width of room has held (layout-pure.steadyShape), and the growth of one turn the shape allows for */
+const shapes = new Map(), SLACK = 32;
 const SLOT_NAMES = Object.freeze(["line", "cards", "hint"]);
 
 export function configure(x) { handlers = x ?? {}; }
@@ -193,17 +195,26 @@ function placeSlots(rec) {
   const { lo, hi } = pick, bottom = H - floor + GAP, avail = Math.max(280, hi - lo);
   root.style.setProperty("--itd-bottom", `${Math.round(bottom)}px`);
   root.style.setProperty("--itd-maxw", `${Math.round(avail)}px`);
-  /* one row when it fits; else the actions go over the unit; "2": even the unit and the tail do not share a row */
-  if (natural > avail) { root.dataset.tight = "1"; if ([".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) * k > avail) root.dataset.tight = "2"; }
+  /* one row when it fits; else the actions go over the unit; "2": even the unit and the tail do not share a row. U148: decided by the
+     widest bar this room has held (layout-pure.steadyShape), so the shape does not change under the pointer within a turn or a fight */
+  if (barEl) {
+    const inner = [".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) * k;
+    const shape = Lay.steadyShape(shapes, avail, natural, inner, SLACK * k);
+    if (shape.tight) root.dataset.tight = String(shape.tight);
+  }
   /* the bar is centred in its room (over the macro bar when that is open), whatever its width now: its middle stays put */
   const cx = Math.round(hot && hot.top > H * 0.4 ? Math.max(lo + 140, Math.min(hi - 140, (hot.left + hot.right) / 2)) : (lo + hi) / 2);
   root.style.setProperty("--itd-cx", `${cx}px`);
   const barH = (barEl?.offsetHeight ?? 60) * k, barTop = H - bottom - barH;
   /* the frame */
   const chat = rec.q("#chat-notifications #chat-message, #chat-notifications .chat-form").map((el) => rec.rect(el)).find((r) => r && r.top > H * 0.4 && r.left > W * 0.5) ?? null;
+  /* D126: where Foundry's toast list really ends (it shows only while a toast stands) and the chat box's column */
+  const list = rec.rect(rec.one("#chat-notifications .overflow")), notes = rec.rect(rec.one("#chat-notifications"));
+  const colOf = chat ?? (notes && notes.left > W * 0.5 ? notes : null);
   const hudR = rec.rect(rec.one("#invincible-challenges"));
   const hudOn = !!hudR && rec.q("#invincible-challenges .ich-item").length > 0;
   const fr = SP.frame({ W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, topCx, topL, topR, side, chatTop: chat?.top ?? null,
+    listEnd: list && list.left > W * 0.5 ? list.bottom : null, chatX: colOf ? [colOf.left, colOf.right] : null,
     hud: { present: hudOn, x0: hudR?.left ?? null }, desk: deskSide ? { open: true, x0: deskR.left } : null,
     bar: { lo, hi, top: barTop, bottom: H - bottom } });
   Slots.setFrame(fr);
@@ -312,16 +323,21 @@ const legendBtn = () => h("button.itd-mini", { fk: "legend", tip: markName("lege
 const hotbarBtn = (d) => h("button.itd-mini", { fk: "hotbar", tip: d.hotbar.tip ?? d.hotbar.label, attrs: { "aria-pressed": String(d.hotbar.open), "aria-label": d.hotbar.label }, on: { click: () => set({ hotbar: !d.hotbar.open }) } }, icon("fa-keyboard"));
 function bar(d) {
   const e = d.end;
+  /* U148 (UX review 1): the resting bar (another's turn) keeps every button where the bar of a turn has it: the actions stand dimmed
+     (a click on one still arms it, as the chevron did, and its panel says why not now), the tail keeps its order; only the last small
+     button turns from "fold" to "open". Before, the resting bar was the unit and four small buttons, so every button moved on each turn
+     change and a click meant for "Move" switched the camera off. */
   return h("div.itd-bar", {},
     unit(d),
-    d.rest ? h("div.itd-tail", {}, legendBtn(), cameraBtn(d), hotbarBtn(d), h("button.itd-mini", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up"))) : [
-      h("div.itd-acts", {}, d.out ? h("p.itd-out", { data: { reason: d.out.reason } }, icon(d.out.reason === "dead" ? "fa-skull" : d.out.reason === "unconscious" ? "fa-bed" : "fa-heart-crack"), h("span", { text: d.out.text })) : null, d.groups.map((g) => h("div.itd-group", { attrs: { role: "group", "aria-label": g.label } }, g.items.map(actionBtn)))),
+    [
+      h("div.itd-acts", { attrs: d.rest ? { "aria-disabled": "true" } : {} }, d.out ? h("p.itd-out", { data: { reason: d.out.reason } }, icon(d.out.reason === "dead" ? "fa-skull" : d.out.reason === "unconscious" ? "fa-bed" : "fa-heart-crack"), h("span", { text: d.out.text })) : null, d.groups.map((g) => h("div.itd-group", { attrs: { role: "group", "aria-label": g.label } }, g.items.map(actionBtn)))),
       h("div.itd-tail", {},
         h(`button.itd-ic.itd-ic-ghost${d.other.armed ? ".itd-armed" : ""}`, { fk: "other", tip: d.other.tip, attrs: { "aria-pressed": String(d.other.armed), "aria-label": d.other.label }, on: { click: () => set(d.other.armed ? { mode: null } : { mode: "other", armed: null, text: "", endArmed: false }) } }, actIcon("@other")),
         h(`button.itd-ic.itd-ic-ghost${d.holdOff.armed ? ".itd-armed" : ""}`, { fk: "hold", disabled: !!d.holdOff.disabled, tip: d.holdOff.tip, attrs: { "aria-pressed": String(d.holdOff.armed), "aria-label": d.holdOff.label }, on: { click: () => set(d.holdOff.armed ? { mode: null } : { mode: "holdOff", armed: null, endArmed: false }) } }, actIcon("@hold")),
-        h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}`, { fk: "end", disabled: !!e.disabled, tip: e.tip, attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space" }, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && send(e.req, { endArmed: false })) } }, actIcon("@end"), h("span", { text: e.label })),
+        h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}`, { fk: "end", disabled: !!e.disabled || !!d.rest, tip: e.tip, /* U148: resting, End turn keeps its place and ends nothing */ attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space" }, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && send(e.req, { endArmed: false })) } }, actIcon("@end"), h("span", { text: e.label })),
         legendBtn(), cameraBtn(d), hotbarBtn(d),
-        d.canRest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("cancel"), on: { click: () => set({ peek: false, armed: null, mode: null }) } }, icon("fa-chevron-down")) : null),
+        d.rest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up"))
+          : d.canRest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("cancel"), on: { click: () => set({ peek: false, armed: null, mode: null }) } }, icon("fa-chevron-down")) : null),
     ]);
 }
 
@@ -415,6 +431,8 @@ function panel(p) {
     const toggle = (key, id, max = 1) => { const cur = (last.ui?.[key] ?? []).slice(); const i = cur.indexOf(id); if (i >= 0) cur.splice(i, 1); else { cur.push(id); while (cur.length > max) cur.shift(); } set({ [key]: cur }); };
     const offMap = p.targets && (!p.onMap || p.targets.some((x) => !x.map) || p.self);
     const body = [
+      /* U160: an area put on the map: the one instruction stands here, by the hand (the map's pick shows no banner of its own then) */
+      p.pickHint ? h("p.itd-hint.itd-pickhint", { attrs: { role: "status" } }, icon("fa-map-location-dot"), h("span", { text: p.pickHint })) : null,
       p.choice ? h("div.itd-col.itd-attrs", {}, cap(p, "choice", p.choice.label),
         h("div.itd-chips", { attrs: { role: "group", "aria-label": p.choice.label } }, p.choice.items.map((x) => h("button.itd-chip.itd-chip-plain", { fk: `ch:${x.id}`, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => set({ choice: x.id }) } }, h("span", { text: x.label })))),
         p.choice.hint ? h("p.itd-hint", {}, icon("fa-user-shield"), h("span", { text: p.choice.hint })) : null) : null,

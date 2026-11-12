@@ -37,11 +37,15 @@ const r = Math.round;
 export const box = (x0, y0, x1, y1) => ({ x0: r(x0), y0: r(y0), x1: r(Math.max(x0, x1)), y1: r(Math.max(y0, y1)) });
 export const meets = (a, b) => !!a && !!b && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
-/** where the toasts' strip stands: over the chat box Foundry floats at the bottom right (sidebar folded), else at the bottom edge */
-export function toastStrip({ H, chatTop = null }) {
-  const bottom = (Number.isFinite(chatTop) && chatTop > H * 0.4 ? chatTop : H) - 6;
+/** where the toasts' strip stands: over the chat box Foundry floats at the bottom right (sidebar folded), else at the bottom edge.
+    D126 (UX review 1): Foundry lays its toasts out in a grid whose lower row is taller than the chat box drawn in it, so the toasts
+    ended some 80 px higher than the chat box's top and stood over the GM desk's answers. `listEnd` is where Foundry's toast list
+    really ends (measured: the bottom of `#chat-notifications .overflow`); the strip never reaches below it. */
+export function toastStrip({ H, chatTop = null, listEnd = null }) {
+  let bottom = (Number.isFinite(chatTop) && chatTop > H * 0.4 ? chatTop : H) - 6;
+  if (Number.isFinite(listEnd) && listEnd > H * 0.4) bottom = Math.min(bottom, listEnd);
   const h = r(clamp(H * TOAST.share, TOAST.min, TOAST.h));
-  return { top: bottom - h, bottom, h };
+  return { top: r(bottom - h), bottom: r(bottom), h };
 }
 
 /** THE FRAME: every place, from what does not change during a turn.
@@ -49,12 +53,15 @@ export function toastStrip({ H, chatTop = null }) {
           top0 (the lowest thing hanging from the top over the middle: the initiative bar), topCx (the middle of the initiative bar),
           topL (the right edge of what stands at the left under it: the map's panels), topR (the left edge of a window floating at the
           right over the band: the popped-out chat; or null), side (the sidebar's left edge or W), chatTop (the floating chat box's top or null),
+          listEnd (D126: where Foundry's toast list ends, or null), chatX ([x0, x1] of the chat box's column, or null),
           hud: { present, x0 } (the challenges HUD: its left edge), desk: { open, x0 } | null (the open GM desk),
           bar: { lo, hi, top, bottom } (the bar's room and where it stands: dock.mjs works that out without the toasts) }
     -> { toast, band, desk, slots: { line, cards, hint, notice }, up: { lo, hi }, panelMax, reserved: [boxes] } */
 export function frame(f) {
   const W = f.W, H = f.H, k = f.k || 1, bar = f.bar, side = Math.min(W, f.side ?? W);
-  const toast = toastStrip({ H, chatTop: f.chatTop });
+  const toast = toastStrip({ H, chatTop: f.chatTop, listEnd: f.listEnd });
+  /* D126 / U150: the strip's box (the column of the chat box over it): the map's "My view" chip and menus keep clear of it */
+  if (Array.isArray(f.chatX) && f.chatX[1] > f.chatX[0]) toast.box = box(f.chatX[0], toast.top, f.chatX[1], toast.bottom);
   const deskOpen = !!(f.staff && f.desk?.open);
   const top0 = Math.max(8, f.top0 ?? 8);
   const hudOn = !!f.hud?.present;

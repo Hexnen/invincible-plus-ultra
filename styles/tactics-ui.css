@@ -160,6 +160,11 @@
 #invincible-tactics-dock[data-tight] .itd-acts { grid-area: acts; flex-wrap: wrap; row-gap: 7px; }
 #invincible-tactics-dock[data-tight="2"] .itd-bar { grid-template-columns: 1fr auto; grid-template-areas: "acts acts" "unit slots" "tail tail"; }
 #invincible-tactics-dock[data-tight="2"] .itd-tail { justify-self: stretch; justify-content: flex-end; margin-left: 0; }
+/* U148: resting (another's turn), the bar keeps every button in its place; the actions and the turn's own buttons stand back (dimmed,
+   no key marks: the digits then answer the cards), so the bar reads "not now" without changing its shape */
+#invincible-tactics-dock.itd-rest .itd-acts, #invincible-tactics-dock.itd-rest .itd-tail > .itd-ic-ghost, #invincible-tactics-dock.itd-rest .itd-tail > .itd-end { opacity: .42; filter: saturate(.35); transition: opacity .16s ease-out; }
+#invincible-tactics-dock.itd-rest .itd-acts:hover, #invincible-tactics-dock.itd-rest .itd-acts:focus-within { opacity: .8; filter: none; }
+body.ita-keys #invincible-tactics-dock.itd-rest .itd-ic[data-key]::before { content: none; }
 
 /* the unit */
 .itd-unit { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -490,6 +495,12 @@ body.itd-picking #board { cursor: crosshair; }
 .igd-sec[data-fold="shut"] + .igd-sec[data-fold] > .igd-h { margin-top: 6px !important; }
 .igd-empty { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px !important; padding: 22px 10px !important; color: var(--ita-label); background: var(--ita-dots); border: 1px dashed var(--ita-line) !important; }
 #invincible-tactics-desk .ita-ask { width: auto; background: var(--ita-tile); border: 0; box-shadow: none; }
+/* U154 / U155 (UX review 1): the answer of a card on the desk never lies under the desk's fold. While any of the card shows, its answers
+   (a short row: a reaction, the absent player's answer) or its one button (Next of the round's queue) hold to the bottom of the desk,
+   on a band of the card's own colour; the card's text scrolls behind them. A long list of answers (more than four: stunts) scrolls as before. */
+#invincible-tactics-desk .ita-ask > .ita-submit, #invincible-tactics-desk .ita-ask:not([data-wide]):not(:has(> .ita-submit)) > .ita-opts { position: sticky; bottom: 0; z-index: 1; }
+#invincible-tactics-desk .ita-ask:not([data-wide]):not(:has(> .ita-submit)) > .ita-opts { margin: 0 -10px; padding: 6px 10px 4px; background: var(--ita-tile); box-shadow: 0 -1px 0 var(--ita-line); }
+#invincible-tactics-desk .ita-ask > .ita-submit { box-shadow: 3px 3px 0 var(--ita-blue), 0 0 0 6px var(--ita-tile); }
 #invincible-tactics-desk .ita-ask[data-proxy] { box-shadow: inset 0 0 0 1px var(--ita-cyan); }
 .igd-inst, .igd-npc { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 9px; background: var(--ita-tile); }
 .igd-inst.igd-child { margin-left: 14px; }

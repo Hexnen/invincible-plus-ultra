@@ -78,6 +78,21 @@ export function diceRaise(style, base = 29) {
   const z = Number.parseInt(style.zIndex, 10);
   return Number.isFinite(z) && z >= base ? z + 1 : null;
 }
+/** U148 (UX review 1): THE BAR KEEPS ITS SHAPE. One row or the actions over the unit (data-tight) was decided by the width of what the
+    bar held at that moment, so a few pixels more after an action resolved (a chip, a longer number) folded the row into two and the
+    buttons moved under the pointer; on the GM seat a hero's resting bar was shorter than an NPC's and the camera button took the place
+    of "Move". Now the shape is decided by the WIDEST bar this room has held (per width of the room, `memo` : Map), plus `slack` for
+    the small growth of one turn: within one room the bar can only go from one row to two once and never back, and the resting bar
+    is drawn with every button (dock.mjs), so it is as wide as the bar of a turn. -> { tight: 0 | 1 | 2, width } */
+export function steadyShape(memo, avail, natural, inner, slack = 0) {
+  const key = String(Math.round(Number(avail) || 0));
+  const was = memo?.get?.(key) ?? { natural: 0, inner: 0 };
+  const now = { natural: Math.max(was.natural, Number(natural) || 0), inner: Math.max(was.inner, Number(inner) || 0) };
+  try { memo?.set?.(key, now); } catch { /* no memory: decided by now alone */ }
+  const tight = now.natural + slack > avail ? (now.inner + slack > avail ? 2 : 1) : 0;
+  return { tight, width: now.natural };
+}
+
 /** U136: the free stretch [lo, hi] beside a window that floats over the map (the popped-out chat, as tall as the map): the dock keeps to
     the WIDER side of it, `gap` px clear; a window outside the stretch, or one that leaves neither side `min` px, changes nothing (then
     the dock stays where it was, under it). r = { left, right } -> { lo, hi } */

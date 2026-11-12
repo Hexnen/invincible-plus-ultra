@@ -94,7 +94,7 @@ function reach() {
     const key = `${who}|${dec.action}|${zones.join(",")}|${dec.submit?.req ? 1 : 0}`;
     if (areaPick?.key !== key && !menuBusy) {
       const mine = (areaPick = { key });
-      Zones.pickArea({ zones: zones.map((zone) => ({ zone, color: "target" })), radius: 0, token: tid(who), intent: { label: intentWords(dec) }, color: "target", title: t("ITAC.map.area.title", { name: d.who.name }), hint: t("ITAC.map.area.hint"),
+      Zones.pickArea({ zones: zones.map((zone) => ({ zone, color: "target" })), radius: 0, token: tid(who), intent: { label: intentWords(dec) }, color: "target", title: t("ITAC.map.area.title", { name: d.who.name }), hint: t("ITAC.map.area.hint"), banner: false,      // U160: the armed panel says it (ui/main.mjs pickHint)
         tokens: (doc) => caught(doc, who, dec, staff) }).then((r) => {
         if (areaPick !== mine) return;
         areaPick = null;
@@ -146,7 +146,7 @@ function move() {
   if (movePick?.key === key || menuBusy) return;
   const mine = (movePick = { key });
   setTimeout(() => { if (movePick === mine) H.showToken(who); }, 350);                        // U5: the character is kept out from under the dock
-  Zones.pickMove({ token: tid(who), zones: p.zones.map(({ way, ask, menu, tip, ...z }) => z), intent: { label: intentWords(p) }, title: t("ITAC.ui.pick.title", { name: d.who.name }), hint: p.hint, color: "move" }).then((r) => {
+  Zones.pickMove({ token: tid(who), zones: p.zones.map(({ way, ask, menu, tip, ...z }) => z), intent: { label: intentWords(p) }, title: t("ITAC.ui.pick.title", { name: d.who.name }), hint: p.hint, color: "move", banner: false }).then((r) => {      // U160: the move panel's head says it
     if (movePick !== mine) return;                                                            // given up or replaced by a newer one
     movePick = null;
     if (!r?.ok) {
