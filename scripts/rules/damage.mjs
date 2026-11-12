@@ -46,11 +46,13 @@ export const barrierBreached = (source, taken) => !!source?.barrier && taken > 0
      source       the nature of the damage, e.g. "kinetic", "fire", "electricity", "toxin" (book 1877-1880)
      immunities   sources the target is immune to (book 1877: one non-kinetic source; Full Immunity: "nonKinetic" = every source but "kinetic")
      vulnerabilities  book 2193: damage from that source is doubled and Armor has no effect
-   Order: pulled -> doubled -> vulnerability doubling -> immunity -> Armor (book 2682: reduced by the Armor rating, never below 0).
+   plus         book 1685 (Discharge): damage added after Double Damage
+   Order: pulled -> doubled -> plus -> vulnerability doubling -> immunity -> Armor (book 2682: reduced by the Armor rating, never below 0).
    Returns { raw, armor, taken, immune, vulnerable }. */
-export function hitDamage({ base, pulled = null, doubled = false, armor = 0, ignoreArmor = false, source = "kinetic", immunities = [], vulnerabilities = [] }) {
+export function hitDamage({ base, pulled = null, doubled = false, plus = 0, armor = 0, ignoreArmor = false, source = "kinetic", immunities = [], vulnerabilities = [] }) {
   let raw = Math.max(0, pulled == null ? base : Math.min(base, pulled));
   if (doubled) raw *= 2;
+  if (plus > 0) raw += Math.trunc(plus);                                  // book 1685 (Discharge): extra damage applied after Double Damage
   const vulnerable = vulnerabilities.includes(source);
   if (vulnerable) raw *= 2;
   const immune = !vulnerable && (immunities.includes(source) || (source !== "kinetic" && immunities.includes("nonKinetic")));

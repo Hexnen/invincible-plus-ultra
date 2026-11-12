@@ -113,7 +113,8 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
     case "barrier": {                                                                        // [B1859-1862]: Armor by level, as many at once as the level allows, gone when breached
       const mine = (v.state.effects ?? []).filter((x) => x.kind === "barrier" && x.data?.by === I.actor), max = fx.max > 0 && fx.armor > 3 ? fx.armor : fx.max ?? 3;
       for (const old of mine.slice(0, Math.max(0, mine.length - max + 1))) for (const w of M.effectEndWrites(v.state, old.id)) R.effects.push({ t: "state", path: w.path, to: w.to });
-      const ef = M.makeEffect({ id: sid(`b${I.id}`), kind: "barrier", holder: subject, source: src, data: { armor: fx.armor ?? 3, by: I.actor }, ends: { at: "breached" } });
+      const zk = fx.leaveEnds ? zoneKeyOf(v, subject) : null;                                // PWC (PW013) [B1646]: the ice barrier stays only while both stay in this zone
+      const ef = M.makeEffect({ id: sid(`b${I.id}`), kind: "barrier", holder: subject, source: src, data: { armor: fx.armor ?? 3, by: I.actor, ...(zk ? { zone: zk } : {}) }, ends: { at: "breached" } });
       if (ef) R.effects.push({ t: "state", path: ["effects", `#${ef.id}`], to: ef });
       I.data.gain = fx.armor ?? 3; break;
     }
@@ -215,6 +216,8 @@ const P1L = (v, cid) => v.state.ledger?.[cid];
 export const touchNeeded = (v, inst) => { const e = v.entry(inst), t = subjectOf(inst); if (e?.effect?.kind !== "leech" || !t || t === inst.actor) return false; const a = v.facts.c(inst.actor), f = v.facts.c(t); return !!a && !!f && !!a.npc !== !!f.npc; };
 export const KIT_KINDS = Object.freeze(["shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist",
   "guidance", "spell", "spellOn"]);
+/** the zone key `cid` stands in (a spot's level cut off), or null without a map */
+export const zoneKeyOf = (v, cid) => { const z = v.facts.zone?.(cid); const k = z ? String(z.key ?? z.spot ?? "").split(":")[0] : ""; return k || null; };
 const sameZone = (v, a, b) => { const r = v.facts.range?.(a, b); return r === undefined ? undefined : !!r && r.total === 0; };   // undefined: no map, the GM judges
 
 function legality(v, inst) {
@@ -225,7 +228,7 @@ function legality(v, inst) {
   if ((e?.target?.n?.[0] ?? 0) > 0 && !other) return bad("noTarget");
   if (a.health <= 0 && !(kind === "rally" && !other) && kind !== "convert") return bad("broken");                                  // [B2707]: a broken character may only try to rally [B2773]
   if (M.hasStatus(v.state, inst.actor, "grappling")) return bad("grappling", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else
-  if (e?.tags?.includes("physical")) { const r = RESTRAINTS.find((s) => M.hasStatus(v.state, inst.actor, s)); if (r) return bad("restrained", { ...GM, status: r }); }
+  if (e?.tags?.includes("physical")) { const r = RESTRAINTS.find((s) => M.statusesOf(v.state, inst.actor).some((x) => x.id === s && x.data?.moveOnly !== 1)); if (r) return bad("restrained", { ...GM, status: r }); }      // PWC (PW005) [B1611]: Immobilize Only bars no action
   if (e?.roll && !e.roll.optional && !attrOf(v, inst)) return bad("noAttribute");
   if (d.attr && e?.roll && !e.roll.attr && !attrChoices(e).includes(d.attr)) return bad("noAttribute");
   /* P6: what an entry of the kit asks for */
@@ -234,6 +237,19 @@ function legality(v, inst) {
   if (Array.isArray(e?.pick) && e.pick.length && !e.pick.includes(d.opt)) return bad("noChoice");
   if (other && (e?.sameZone || (e?.touch && !a.pass?.healReach)) && sameZone(v, inst.actor, subject) === false) return bad("notSameZone", GM);
   if (other && e?.immuneHuge && sf?.huge) return bad("hugeTarget");
+  /* PWC (PW012) [B1637]: an action of the kit that takes several targets (all the animals of one zone): no more than the entry's bound, and
+     each of them passes what the first does (present, not huge, near); with `oneZone` they stand in one zone */
+  if (!e?.effect?.mass && Array.isArray(d.targets) && d.targets.length > 1) {
+    const ts = [...new Set(d.targets)], mx = e?.target?.n?.[1] ?? 1;
+    if (ts.length > mx) return bad("tooManyTargets", { max: mx });
+    for (const t of ts.slice(1)) {
+      const tf = v.facts.c(t);
+      if (!tf || tf.present === false || t === inst.actor) return bad("noTarget");
+      if (e?.immuneHuge && tf.huge) return bad("hugeTarget");
+      if (e?.near && (v.facts.range?.(inst.actor, t)?.total ?? 0) > 1) return bad("tooFar", GM);
+      if (e?.oneZone && sameZone(v, subject, t) === false) return bad("notSameZone", { series: 1 });
+    }
+  }
   if ((e?.effect?.mass || (e?.target?.n?.[1] ?? 1) > 1) && Array.isArray(d.targets)) {                       // Mass Healing [B1934]: every chosen ally must pass, not only the first, and no more than the entry's upper bound; PWD: any entry of several targets
     const ts = [...new Set(d.targets)], mx = e.target?.n?.[1];
     if (Number.isFinite(mx) && ts.length > mx) return bad("noTarget");
@@ -421,7 +437,7 @@ export const act = {
       const a = K.answerOf(v, I, "outcome"), id = K.answerId(v, I, "outcome") ?? I.data.result;
       I.data.result = id === "fail" ? "fail" : "success";
       if (a && typeof a === "object" && a.text) I.data.said = String(a.text).slice(0, 300);
-      if (v.entry(I)?.effect?.then === "control" && I.data.result === "success" && !K.flag(I, "control")) { K.setFlag(I, "control"); R.effects.push({ t: "summonFlag", who: subjectOf(I), owner: I.actor }); }      // [B1637]: the animal acts on its controller's turn from now on
+      if (v.entry(I)?.effect?.then === "control" && I.data.result === "success" && !K.flag(I, "control")) { K.setFlag(I, "control"); for (const who of [...new Set(I.decl.targets?.length ? I.decl.targets : [subjectOf(I)])]) R.effects.push({ t: "summonFlag", who, owner: I.actor }); }      // [B1637]: the animal acts on its controller's turn from now on; PWC (PW012): every animal named (PWC-4)
       /* PWD (PW043) [B1761]: the one controlled takes a full turn at once on the controller's command (full and quick, or two quick), then loses its next
          ordinary turn and has no interrupt actions until then. The turn is put right after the current point of the order, as the GM's insertTurn does
          (SWEEP-R8: it counts to the round; P8e-8: the card's turn is the one lost). Of several (Area Control) only those the roll beat. */

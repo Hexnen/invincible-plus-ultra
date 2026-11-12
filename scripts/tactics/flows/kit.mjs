@@ -376,6 +376,14 @@ export function separated(v, ids) {
     out.push({ t: "state", path: ["vehicles", vid], to: { ...r, driver: r.driver === cid ? null : r.driver ?? null, crew: (Array.isArray(r.crew) ? r.crew : []).filter((x) => x !== cid) } });
     drop(cid, "inVehicle");
   }
+  /* PWC (PW013) [B1646]: an ice barrier of Cold Control lasts until its maker or the one it stands on moves out of the zone it was made in */
+  const zoneOf = (id) => { const p = Z ? Z.place?.(id) : null; const k = p ? p.zone ?? String(p.spot ?? "").split(":")[0] : String(v.facts.zone?.(id)?.key ?? v.facts.zone?.(id)?.spot ?? "").split(":")[0]; return k || null; };
+  for (const e of v.state.effects ?? []) {
+    if (e?.kind !== "barrier" || typeof e.data?.zone !== "string") continue;
+    const pair = [e.holder, e.data.by].filter((x) => typeof x === "string");
+    if (!pair.some((x) => ids.includes(x)) || !pair.some((x) => { const z = zoneOf(x); return !!z && z !== e.data.zone; })) continue;
+    for (const w of M.effectEndWrites(v.state, e.id)) out.push({ t: "state", path: w.path, to: w.to });
+  }
   return out;
 }
 /** The carry marks of a character that is broken: nobody broken carries anybody [B2707]. -> effects */

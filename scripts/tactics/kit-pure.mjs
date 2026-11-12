@@ -82,8 +82,16 @@ function patchProfile(p, patch = {}, attrs = {}) {
   if (patch.onHitData && o.onHit) o.onHit = { ...o.onHit, data: { ...(o.onHit.data ?? {}), ...patch.onHitData } };
   if (patch.onHitStatus && o.onHit) o.onHit = { ...o.onHit, status: patch.onHitStatus, data: undefined };
   if (patch.resist && o.onHit?.stun) o.onHit = { ...o.onHit, resist: (o.onHit.resist ?? 0) + patch.resist };
+  if (patch.several) o.several = patch.several;                                     // PWC (PW006) [B1610]
+  if (patch.quake === 0) delete o.quake;                                            // PWC: Shockwave wrecks no zone [B1675]
+  if (patch.zoneFire) o.zoneFire = patch.zoneFire;                                  // PWC (PW024) [B1692]
+  if (patch.stressOn) o.stressOn = patch.stressOn;                                  // PWC (PW009)
   return o;
 }
+/* PWC (PW007, PW011) [B1575], [B1596], [B1626]: "you CAN roll for any mental attribute instead of AGILITY": the player's choice. The
+   power's attack rolls the best mental attribute; when the attack's own attribute (AGILITY for a shot, FIGHTING for a blow made by touch)
+   rolls more dice, a variant with it is offered as well (the boost's "armor has no effect" stays on both: the book says "also"). */
+const ownAttrOf = (p) => (p.fam === "shoot" ? "agility" : "fighting");
 function profileOf(item, row, a, lv, attrs, many = false) {
   const key = norm(baseName(a.name)), byKey = Object.keys(row?.atk?.by ?? {}).find((k) => norm(k) === key), h = { ...(row?.atk ?? {}), ...(byKey ? row.atk.by[byKey] : {}) };
   if (h.skip) return null;
@@ -94,7 +102,7 @@ function profileOf(item, row, a, lv, attrs, many = false) {
   if (book && !own && !book.range && book.miles) return null;                        // a range in miles is not a range in zones [A26]: nothing the engine can aim
   /* PWD (PW054, PW057): a number of the compendium that the book contradicts is put right only while the item still carries exactly that number */
   const fix = Array.isArray(h.errata) ? h.errata[Math.max(0, Math.min(h.errata.length - 1, lv))] : null, wrong = !!fix && lvWord(a.name) === lv && (fix.from.damage == null || pos(a.damage) === fix.from.damage) && (!fix.from.range || (min === fix.from.range[0] && max === fix.from.range[1]));
-  const range = h.range ? h.range.slice() : wrong && fix.to.range ? fix.to.range.slice() : own ? [min, max] : book?.range ? book.range.slice() : null, fam = h.fam ?? (range && (range[1] > 0 || h.range || (!own && book?.range)) ? "shoot" : "slug");
+  const range = h.rangeLv ? at(h.rangeLv, lv).slice() : h.range ? h.range.slice() : wrong && fix.to.range ? fix.to.range.slice() : own ? [min, max] : book?.range ? book.range.slice() : null, fam = h.fam ?? (range && (range[1] > 0 || h.range || (!own && book?.range)) ? "shoot" : "slug");
   const dflt = fam === "shoot" ? "agility" : "fighting", set = (a.attr ?? []).filter(Boolean);
   const p = { id: `${item.id}~${a.id}`, item: item.id, name: String(many && useName(item, a) ? `${item.name}: ${useName(item, a)}` : item.name).slice(0, 60), of: String(item.name ?? "").slice(0, 60), fam,
     attr: !set.length || set.includes(dflt) ? null : set.slice().sort((x, y) => (Number(attrs[y]) || 0) - (Number(attrs[x]) || 0))[0],
@@ -104,7 +112,10 @@ function profileOf(item, row, a, lv, attrs, many = false) {
     toStress: h.toStress === 1, ignoreArmor: h.ignoreArmor === 1 || a.bypass === true, halveArmor: h.halveArmor === 1, noDamage: h.noDamage === 1, pierce: h.pierce === 1,
     stunts: h.stunts ?? undefined, immuneHuge: h.immuneHuge === 1, always: h.always ?? undefined, state: row && row.cat !== "gear" ? row.state : "auto" };
   if (h.onHit) p.onHit = h.onHit.status ? { status: h.onHit.status, data: h.onHit.lv ? { dice: at(h.onHit.lv, lv) } : h.onHit.data } : { ...h.onHit };
+  if (h.onHit?.burn && p.damage > 0) p.onHit = { ...p.onHit, data: { intensity: p.damage } };      // PWC (PW022) [B1690-1694]: the fire's Intensity is the attack's base Damage
   if (h.throws) p.onHit = { throw: at(h.throws, lv), ...(h.zones ? { zones: at(h.zones, lv) } : {}) };      // Z11 [B1822], [B1826-1828]: damage at each impact, and how far
+  if (h.vsConductive) p.vsConductive = h.vsConductive;                              // PWC (PW019) [B1680]
+  if (h.quake) p.quake = at(h.quake, lv);                                           // PWC (PW017, PW018) [B1671-1674]: how many adjacent zones the quake covers
   if (fam === "slug" && range && range[1] > 0) p.reach = range[1];
   if (fam === "slug" && h.reach) p.reach = Math.max(p.reach ?? 0, at(h.reach, lv));      // PWD (PW049) [B1778-1784]: Plant Control reaches the zones its plants cover
   if (h.noCounter === 1) p.noCounter = true;                                          // PWD (PW047) [B1779]: blocked, but no counterattack against the user
@@ -144,7 +155,7 @@ function actionOf(item, row, a, lv, extra = {}) {
   } else {
     e = { id, src: row?.src ?? [], kind: "kit", cost: a.cost ?? "full", flow: "act", tags: ["kit"], effect: { ...(a.effect ?? { kind: "narrative" }) } };
     for (const k of ["roll", "oppose", "target", "when", "pick"]) if (a[k]) e[k] = JSON.parse(JSON.stringify(a[k]));
-    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near", "stressPick", "stressExtra", "talk"]) if (a[k]) e[k] = 1;
+    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near", "stressPick", "stressExtra", "talk", "oneZone"]) if (a[k]) e[k] = 1;
     if (a.combo && Array.isArray(a.pick)) e.pick = multisets(a.pick, Math.max(1, at(a.combo, lv))).map((c) => c.join("+"));          // Summoning [B1813-1815]: as many features as the level, repeats allowed
     if (a.once) e.once = a.once;
     if (a.interrupt) e.interrupt = { on: a.interrupt.slice() };                      // PWA (PW039): an action the book allows as an interrupt (Nullification [B1772])
@@ -186,11 +197,18 @@ export function build(src = {}) {
       if (!row?.mounted) for (const a of attacks) {
         let p = profileOf(it, row, a, lv, attrs, attacks.length > 1);
         if (!p) continue;
-        for (const o of optsOf(it).filter((o) => !o.row.opt.optional && !o.row.opt.on && o.row.opt.patch)) p = patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch.stress }, attrs);      // S074: a limit that names its price in the patch (Exhausting Blast [B1587]) keeps it
+        /* PWC (PW011): the way of attacking first (Requires Touch: a blow), then the attribute (Mental Stun): the same items give the same
+           attack whatever their order on the sheet */
+        const fixed = optsOf(it).filter((o) => !o.row.opt.optional && !o.row.opt.on && o.row.opt.patch).sort((a, b) => (b.row.opt.patch.fam ? 1 : 0) - (a.row.opt.patch.fam ? 1 : 0));
+        for (const o of fixed) p = patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch.stress }, attrs);      // S074: a limit that names its price in the patch (Exhausting Blast [B1587]) keeps it
         kit.weapons.push(p);
+        const made = [p];
         let n = 0;
-        for (const o of optsOf(it).filter((o) => o.row.opt.optional && !o.row.opt.on)) kit.weapons.push({ ...patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch?.stress }, attrs), id: `${p.id}+${n++}`, tag: String(o.it.name).slice(0, 40) });
-        for (const o of row?.opts ?? []) kit.weapons.push({ ...patchProfile(p, { ...o.patch, stress: o.stress }, attrs), id: `${p.id}+${n++}`, opt: o.k });
+        for (const o of optsOf(it).filter((o) => o.row.opt.optional && !o.row.opt.on)) { const q = { ...patchProfile(p, { ...o.row.opt.patch, stress: o.row.opt.stress ?? o.row.opt.patch?.stress }, attrs), id: `${p.id}+${n++}`, tag: String(o.it.name).slice(0, 40) }; kit.weapons.push(q); made.push(q); }
+        for (const o of row?.opts ?? []) { const q = { ...patchProfile(p, { ...o.patch, stress: o.stress }, attrs), id: `${p.id}+${n++}`, opt: o.k }; kit.weapons.push(q); made.push(q); }
+        const own = ownAttrOf(p);                                                                    // PWC (PW007): the attack's own attribute, when it rolls more dice
+        if (fixed.some((o) => o.row.opt.patch.attrs) && p.attr && (Number(attrs[own]) || 0) > (Number(attrs[p.attr]) || 0))
+          for (const q of made) kit.weapons.push({ ...q, attr: null, id: `${p.id}+${n++}`, alt: own });
       }
       if (!row && attacks.length) { rec.state = "auto"; rec.note = "weapon"; }
       if (attacks.length && bookRow(row)?.miles && !kit.weapons.some((w) => w.item === it.id)) { rec.state = "hand"; rec.note = "story"; rec.why = "gmJudges"; }      // [A26]: a missile that flies for miles is the GM's own entry
@@ -251,7 +269,10 @@ export function build(src = {}) {
         if (!list.length && !row.mv && !row.pass && !fixed && !lock) { rec.state = "hand"; rec.note = "toggle"; rec.why = "noEffect"; }
       }
       /* passive facts and dice */
-      for (const [k, v] of Object.entries(row?.pass ?? {})) {
+      /* PWC (PW004) [B1601-1603]: what an aura does counts while it is on (the power's or the boost's own effect switched on, or a limit
+         that keeps it always on) */
+      const auraOn = () => { const p = x.parent ?? it; return [p, it].some((i) => (i?.fx ?? []).some((f) => f.on === true)) || known.some((k) => k.parent === p && live(k) && k.row?.lockFx); };
+      for (const [k, v] of row?.passOn === "fx" && !auraOn() ? [] : Object.entries(row?.pass ?? {})) {
         if (k === "immune" || k === "vulnerable") kit.pass[k].push(...(v === "flag" ? (it.flags?.types ?? []) : v).map((s) => String(s).slice(0, 24)));
         else if (Array.isArray(v) && typeof v[0] === "number") kit.pass[k] = Math.max(kit.pass[k] ?? 0, at(v, lv));
         else kit.pass[k] = Array.isArray(v) ? v.slice() : v === 1 ? true : v;
@@ -267,6 +288,9 @@ export function build(src = {}) {
     if (w) e.reaction.weapon = w.id;
     else { kit.actions = kit.actions.filter((x) => x !== e); const rec = kit.rows.find((r) => r.item === e.kit.item); if (rec) { rec.note = "noAttack"; rec.state = "assist"; } }
   }
+  /* PWC (PW008) [B1618-1621]: the boosts of STRIKE are independent: a blow made with one of the bare attack's variants (Piercing Strike)
+     still carries what the bare attack does (Deadly Strike's sharp, Toxic Strike's poison); the variant's own words win */
+  kit.weapons = kit.weapons.map((w) => (String(w.id).startsWith("unarmed~") ? { ...kit.unarmed, ...w } : w));
   kit.pass.immune = [...new Set(kit.pass.immune)].slice(0, 24); kit.pass.vulnerable = [...new Set(kit.pass.vulnerable)].slice(0, 24);
   kit.actions = kit.actions.slice(0, 60); kit.weapons = kit.weapons.slice(0, 40);
   return kit;
