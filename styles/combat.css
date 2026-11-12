@@ -275,6 +275,21 @@
 #invincible-combat-bar .icbar-shell > * { transform: skewX(6deg); }   /* the content stands upright inside the lean */
 
 /* ---------- round chip + GM turn buttons ---------- */
+/* U135: the bar's left end is one column: the label (round chip + phase plate) on top, the GM's "previous turn" button under it. The column
+   leans with the band (no counter-skew of its own: the chip, the plate and the button keep the transforms they had as the band's children)
+   and is never taller than the strip, so the bar keeps its height. A player has no button: the label sits alone, centred on the strip. */
+#invincible-combat-bar .icbar-shell > .icbar-lead {
+  flex: none;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: .35em;
+  transform: none;
+}
+#invincible-combat-bar .icbar-head { display: flex; align-items: center; gap: .4em; white-space: nowrap; }
+#invincible-combat-bar .icbar-lead > .icbar-nav { margin-left: .15em; }   /* under the chip, not under its leaning corner */
 #invincible-combat-bar .icbar-round {
   flex: none;
   display: grid;
@@ -295,7 +310,7 @@
 #invincible-combat-bar .icbar-rn { display: inline-flex; align-items: baseline; }
 #invincible-combat-bar .icbar-rw { display: inline-grid; overflow: hidden; padding-block: .12em; margin-block: -.12em; }   /* the digit window: a new number slides through it */
 #invincible-combat-bar .icbar-rd { grid-area: 1 / 1; display: block; text-align: center; }
-#invincible-combat-bar .icbar-shell > .icbar-nav {
+#invincible-combat-bar .icbar-shell .icbar-nav {
   flex: none;
   pointer-events: auto;
   display: grid;
@@ -788,7 +803,7 @@
 #invincible-combat-bar.icbar-d1 .icbar-init { top: .12em; left: .02em; font-size: .62em; min-width: 1.2em; }
 #invincible-combat-bar.icbar-d1 .icbar-disp { left: calc(.55em + var(--art) - .45em); width: 1.05em; height: 1.05em; top: calc(var(--padt) + var(--art) - .8em); }
 #invincible-combat-bar.icbar-d1 .icbar-hid { left: calc(.55em + var(--art) - .6em); width: .95em; height: .95em; }
-#invincible-combat-bar.icbar-d1 .icbar-shell > .icbar-nav { width: 1.8em; height: 1.8em; }
+#invincible-combat-bar.icbar-d1 .icbar-shell .icbar-nav { width: 1.8em; height: 1.8em; }
 #invincible-combat-bar.icbar-d1 .icbar-round { font-size: 1.1em; }
 
 /* ---------- narrow windows / touch ---------- */
@@ -796,7 +811,7 @@
   #invincible-combat-bar .icbar-tile[data-active] { grid-template-columns: auto minmax(7.5em, 9em); }
 }
 @media (pointer: coarse) {
-  #invincible-combat-bar .icbar-shell > .icbar-nav { width: 44px; height: 44px; font-size: 1rem; }
+  #invincible-combat-bar .icbar-shell .icbar-nav { width: 44px; height: 44px; font-size: 1rem; }
   #invincible-combat-bar .icbar-tile { min-height: 44px; }
 }
 
