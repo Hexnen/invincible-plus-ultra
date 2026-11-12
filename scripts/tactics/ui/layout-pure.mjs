@@ -118,6 +118,16 @@ export function barFit(memo, avail, k, w, slack = 0) {
   return { tight, scale, width: Math.round(Math.min(A, Math.max(row, tight === 1 ? now.inner : 0) * scale)) };
 }
 
+/** U185 (UX review 2): the middle of the bar in its room [lo, hi]: centred in the room, or over the macro bar (hotCx) when that is open, and
+    in both cases kept so that the whole bar (w window px) stays inside the room. Before, only 140 px were kept from each end, so a bar over
+    the macro bar beside a popped-out chat slid half under the chat. A bar wider than its room stays centred in it. -> px */
+export function barCentre(lo, hi, w, hotCx = null) {
+  const L = Number(lo) || 0, H = Number(hi) || 0, half = Math.max(0, Number(w) || 0) / 2, mid = (L + H) / 2;
+  const want = Number.isFinite(hotCx) && hotCx !== null ? Number(hotCx) : mid;
+  if (half * 2 >= H - L) return Math.round(mid);
+  return Math.round(Math.max(L + half, Math.min(H - half, want)));
+}
+
 /** U136: the free stretch [lo, hi] beside a window that floats over the map (the popped-out chat, as tall as the map): the dock keeps to
     the WIDER side of it, `gap` px clear; a window outside the stretch, or one that leaves neither side `min` px, changes nothing (then
     the dock stays where it was, under it). r = { left, right } -> { lo, hi } */

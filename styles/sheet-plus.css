@@ -626,6 +626,7 @@
 @media (prefers-reduced-motion: reduce) {
   .invincible.sheet.actor .isp-landed, .invincible.sheet.actor .isp-landed::after,
   .invincible.sheet.actor nav.sheet-tabs a.isp-ping, .invincible.sheet.actor.isp-dropping::after { animation: none !important; }
+  .invincible.sheet.actor .isp-landed::after { display: none; }   /* S106: its fade-out is gone, it would stand solid until the class goes */
 }
 
 /* =====================================================================

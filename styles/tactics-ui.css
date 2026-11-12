@@ -280,9 +280,10 @@ body.ita-keys #invincible-tactics-dock.itd-rest .itd-ic[data-key]::before { cont
 #invincible-tactics-dock .itd-end:hover:not([aria-disabled="true"]) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-end:active:not([aria-disabled="true"]) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-end.itd-end-sure { color: var(--ita-ink); background: #fff; }
-/* U144: nothing is left of the turn: the button fills as the moment runs out (main.mjs AUTO_END_MS), then the turn passes by itself */
+/* U144: nothing is left of the turn: the button fills as the moment runs out, then the turn passes by itself. S105: the time is the one the
+   turn really stands (news-pure autoDelay: 1.5 s, 3.5 s for a turn that started spent), set by the dock as --itd-end-ms */
 #invincible-tactics-dock .itd-end.itd-end-auto { position: relative; overflow: hidden; isolation: isolate; }
-#invincible-tactics-dock .itd-end.itd-end-auto::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--ita-ink); opacity: 0.35; transform-origin: left; transform: scaleX(0); animation: itd-end-fill 1.5s linear forwards; }
+#invincible-tactics-dock .itd-end.itd-end-auto::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--ita-ink); opacity: 0.35; transform-origin: left; transform: scaleX(0); animation: itd-end-fill var(--itd-end-ms, 1.5s) linear forwards; }
 @keyframes itd-end-fill { to { transform: scaleX(1); } }
 @media (prefers-reduced-motion: reduce) { #invincible-tactics-dock .itd-end.itd-end-auto::before { animation: none; transform: scaleX(1); opacity: 0.2; } }
 #invincible-tactics-dock .itd-end[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; }
@@ -804,8 +805,8 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 .ita-count-of { color: var(--ita-label); font-variant-numeric: tabular-nums; }
 .ita-step { display: inline-flex; align-items: center; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button { display: inline-grid; place-items: center; width: 28px; height: 28px; font-size: 11px; color: var(--ita-text); border: 1px solid var(--ita-frame); }
-:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button:hover:not(:disabled) { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
-:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button:disabled { color: var(--ita-label); border: 1px dashed var(--ita-line); cursor: not-allowed; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button:hover:not([aria-disabled="true"]) { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button[aria-disabled="true"] { color: var(--ita-label); border: 1px dashed var(--ita-line); cursor: not-allowed; }
 .ita-step > b { min-width: 34px; text-align: center; font: 400 18px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
 @media (pointer: coarse) { #invincible-tactics-desk .igd-nudge { width: 34px; height: 34px; } :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-step button { width: 36px; height: 36px; } }
 @media (prefers-reduced-motion: reduce) { #invincible-tactics-desk .igd-nudge { transition: none; } #invincible-tactics-desk .igd-nudge:is(:hover, :active) { translate: none; } }

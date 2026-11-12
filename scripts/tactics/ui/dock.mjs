@@ -38,6 +38,7 @@ import { setVar, varOf } from "./vars.mjs";
 import * as Settle from "./settle.mjs";
 import * as SP from "./slots-pure.mjs";        // U132: the fixed place of each kind of surface
 import * as Slots from "./slots.mjs";
+import { autoDelay } from "./news-pure.mjs";      // S105: the end button fills over the time the turn really stands
 
 const ID = "invincible-tactics-dock";
 const GAP = 6;
@@ -209,7 +210,7 @@ function placeSlots(rec) {
   const barSlot = stack.parentElement;
   if (Math.abs(kb - k) > 1e-3) barSlot.style.setProperty("--ita-scale", String(kb)); else barSlot.style.removeProperty("--ita-scale");
   /* the bar is centred in its room (over the macro bar when that is open), whatever its width now: its middle stays put */
-  const cx = Math.round(hot && hot.top > H * 0.4 ? Math.max(lo + 140, Math.min(hi - 140, (hot.left + hot.right) / 2)) : (lo + hi) / 2);
+  const cx = Lay.barCentre(lo, hi, barEl ? barEl.offsetWidth * kb : 280, hot && hot.top > H * 0.4 ? (hot.left + hot.right) / 2 : null);      // U185: the whole bar stays in its room
   root.style.setProperty("--itd-cx", `${cx}px`);
   /* U164: with no bar at all (the fight is over, its summary stands) no bar's height is kept free under the questions' place */
   const barH = barEl ? barEl.offsetHeight * kb : (last?.d?.who ? 60 * k : 0), barTop = H - bottom - barH;
@@ -341,7 +342,7 @@ function bar(d) {
       h("div.itd-tail", {},
         h(`button.itd-ic.itd-ic-ghost${d.other.armed ? ".itd-armed" : ""}`, { fk: "other", tip: d.other.tip, attrs: { "aria-pressed": String(d.other.armed), "aria-label": d.other.label }, on: { click: () => set(d.other.armed ? { mode: null } : { mode: "other", armed: null, text: "", endArmed: false }) } }, actIcon("@other")),
         h(`button.itd-ic.itd-ic-ghost${d.holdOff.armed ? ".itd-armed" : ""}`, { fk: "hold", disabled: !!d.holdOff.disabled, tip: d.holdOff.tip, attrs: { "aria-pressed": String(d.holdOff.armed), "aria-label": d.holdOff.label }, on: { click: () => set(d.holdOff.armed ? { mode: null } : { mode: "holdOff", armed: null, endArmed: false }) } }, actIcon("@hold")),
-        h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}${e.auto ? ".itd-end-auto" : ""}`, { fk: "end", disabled: !!e.disabled || !!d.rest, tip: e.tip, /* U148: resting, End turn keeps its place and ends nothing */ attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space" }, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && send(e.req, { endArmed: false })) } }, actIcon("@end"), h("span", { text: e.label })),
+        h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}${e.auto ? ".itd-end-auto" : ""}`, { fk: "end", disabled: !!e.disabled || !!d.rest, tip: e.tip, /* U148: resting, End turn keeps its place and ends nothing */ attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space", style: e.auto ? `--itd-end-ms: ${autoDelay(e)}ms` : null }, on: { click: () => (e.confirm && !e.armed ? set({ endArmed: true }) : e.req && send(e.req, { endArmed: false })) } }, actIcon("@end"), h("span", { text: e.label })),
         legendBtn(), cameraBtn(d), hotbarBtn(d),
         d.rest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("peek"), on: { click: () => set({ peek: true }) } }, icon("fa-chevron-up"))
           : d.canRest ? h("button.itd-mini", { fk: "peek", tip: handlers.label?.("cancel"), on: { click: () => set({ peek: false, armed: null, mode: null }) } }, icon("fa-chevron-down")) : null),
