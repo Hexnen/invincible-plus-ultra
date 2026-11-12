@@ -5,6 +5,7 @@
 // What can be held without Foundry; the live look is in dev/combat-handoff.md.
 import { readFileSync } from "node:fs";
 import { Table, ok, eq, done } from "./testkit.mjs";
+import * as KP from "./kit-pure.mjs";
 
 const here = new URL(".", import.meta.url);
 const src = (f) => readFileSync(new URL(f, here), "utf8");
@@ -47,5 +48,28 @@ const base = (extra = () => {}, more = []) => { const T = new Table(); T.hero("H
   eq([sp?.max, sp?.options.some((o) => o.disabled === "noSixLeft")], [2, false], "D119: one target, two spare sixes: the card as before");
 }
 eq([typeof (await import("./lang.mjs")).EN["ITAC.reason.noSixLeft"], typeof (await import("./lang.mjs")).PL["ITAC.reason.noSixLeft"]], ["string", "string"], "D119: the greyed reason has its text in both languages");
+
+/* ---- U131: Warning Call [B2170] is offered for one's own side only (provisional, FXI-1) */
+const item = (id, name, type) => ({ id, name, type, level: null, power: null, boosts: [], autos: [], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} });
+const give = (T, cid, ...names) => { const c = T.c[cid]; c.kit = KP.build({ items: names.map((n, i) => item(`i${i}${cid}`, n, "talent")), attrs: c.attrs }); c.pass = c.kit.pass; return T; };
+const rid = (T, cid, k) => `r:${T.c[cid].kit.actions.find((a) => a.id.endsWith(`-${k}`)).id}`;
+const ids = (p) => (p?.options ?? []).map((o) => (o.id.startsWith("r:") ? `r:${o.id.split("-").pop()}` : o.id));
+const team = (extra = () => {}, order = ["N1", "H1", "H2", "H3", "N2"]) => { const T = new Table(); T.hero("H1", "p1", { name: "Omni" }).hero("H2", "p2", { name: "Kid" }).hero("H3", "p3", { name: "Eve" }).npc("N1", { name: "Turret", health: 6 }).npc("N2", { name: "Soldier", health: 6 }); T.c.H3.zone = "z2"; extra(T); T.order(order); return T; };
+{
+  const T = team((t) => give(t, "H1", "Warning Call"), ["H2", "N1", "H1", "H3", "N2"]);
+  eq(code(await T.req("p2", decl("H2", "slugfest", ["N1"]))), "ok", "U131: Kid attacks the turret");
+  ok(!ids(T.prompt("reaction", "H1")).includes("r:warn"), "U131: Omni is not offered to warn the turret his ally attacks");
+}
+{
+  const T = team((t) => give(t, "H1", "Warning Call"));
+  eq(code(await T.gm(decl("N1", "slugfest", ["H2"]))), "ok", "U131: the turret attacks Kid");
+  eq(ids(T.prompt("reaction", "H1")), ["r:warn", "pass", "pass:round"], "U131: Omni may still warn Kid");
+}
+{ // an area attack on a zone with an ally and an opponent: the warning names the ally only
+  const T = team((t) => { give(t, "H1", "Warning Call"); t.c.N2.zone = "z1"; t.weapons.nade = { id: "nade", bonus: 0, damage: 3, range: [0, 1], area: true }; t.c.H1.zone = "z3"; }, ["N1", "H1", "H2", "H3", "N2"]);
+  eq(code(await T.gm(decl("N1", "shoot", ["H2"], { weapon: "nade", area: true }))), "ok", "U131: the turret throws at the zone of Kid and the Soldier");
+  const w = (T.prompt("reaction", "H1")?.options ?? []).filter((o) => o.id.startsWith("r:"));
+  eq(w.map((o) => o.data.about ?? null), ["H2"], "U131: only Kid can be warned, not the Soldier beside him");
+}
 
 done("check-fxi");
