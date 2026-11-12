@@ -117,7 +117,8 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
   for (const w of ["root.style.cssText", "root.dataset.tight", "root.dataset.under", "underTop", "hint?.style.cssText", "hint?.dataset.tick", 'varOf("--itd-clear")', 'varOf("--itd-over")', '"ita-notice-wait"']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
   ok(!/document\.(querySelector|querySelectorAll|getElementById)\(|visibleRect\(/.test(body), "D: placeNow asks the page only through the recorder (no read escapes the list)");
   /* every write of placeNow is one the outcome covers: take the known writes away, nothing that writes may be left */
-  const rest = body.replace(/root\.style\.setProperty\("--itd-(room|bottom|maxw|up-maxw|panel-maxh|maxh|cx|up-dx)"/g, "").replace(/(delete )?root\.dataset\.(tight|under)( = )?/g, "").replace(/document\.body\.classList\.toggle\("ita-notice-wait"/g, "")
+  const rest = body.replace(/root\.style\.(setProperty|removeProperty)\("--itd-under-top"/g, "").replace(/root\.style\.setProperty\("--itd-(room|bottom|maxw|up-maxw|panel-maxh|maxh|cx|up-dx)"/g, "")      // U123 (fixer H): --itd-under-top is a root property too (root.style.cssText in the outcome)
+    .replace(/(delete )?root\.dataset\.(tight|under)( = )?/g, "").replace(/document\.body\.classList\.toggle\("ita-notice-wait"/g, "")
     .replace(/setVar\("--itd-(clear|over)"/g, "").replace(/hint\.style\.setProperty\("--itd-hint-x"/g, "").replace(/(delete )?hint\.dataset\.tick( = )?/g, "").replace(/underTop = top/g, "");
   ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute|\bunderTop =/.test(rest), "D: placeNow writes nothing outside what the outcome compares");
   ok(/drawn\+\+;[^\n]*\n\s*place\(\);\s*\n\s*reveal\(\);/.test(dock), "D: a draw counts before it places (new content always places in full)");

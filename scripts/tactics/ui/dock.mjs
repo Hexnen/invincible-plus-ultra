@@ -208,7 +208,7 @@ function placeNow(rec) {
   if (cx - w / 2 < lo) cx = lo + w / 2;
   root.style.setProperty("--itd-cx", `${Math.round(cx)}px`);
   let dx = 0;
-  for (const el of stack.querySelectorAll(":scope > :is(.itd-panel, .itd-asks)")) { const pw = el.offsetWidth * k; dx = Math.max(dx, up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > up.hi) dx = Math.min(dx, up.hi - pw / 2 - cx); }
+  for (const el of stack.querySelectorAll(":scope > :is(.itd-panel, .itd-hint1, .itd-wait, .itd-asks)")) { const pw = el.offsetWidth * k; dx = Math.max(dx, up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > up.hi) dx = Math.min(dx, up.hi - pw / 2 - cx); }      // U123: the hint and the status line too
   root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
   if (root.dataset.tight !== "2" || !deskOpen) break;
   }
@@ -217,8 +217,12 @@ function placeNow(rec) {
   try { const hint = stack.querySelector(".itd-hint1"), at = hint?.dataset.at && !stack.querySelector(":scope > .itd-panel") ? stack.querySelector(hint.dataset.at === "slots" ? ".itd-slots" : ".itd-acts") : null;
     if (hint && at) { const a = at.getBoundingClientRect(), b = hint.getBoundingClientRect(); hint.style.setProperty("--itd-hint-x", `${Math.round(Math.max(14, Math.min(b.width - 14, a.left + Math.min(a.width / 2, 60 * k) - b.left)) / k)}px`); hint.dataset.tick = "1"; } else if (hint) delete hint.dataset.tick; } catch { /* a courtesy */ }
   { const pe = stack.querySelector(":scope > .itd-panel"); if (pe) requestAnimationFrame(() => markMore(pe)); }
-  const under = deskOff && deskOpen, top = under ? Math.round(barEl?.getBoundingClientRect().top ?? 0) : null;
+  /* U123: the bar's top where it STANDS, not where it is now: the first placement after a load runs while the dock still slides in
+     (.itd-hidden translates it below the window), and the desk ended above that place (off screen) until the next relayout, its foot
+     under the bar. Both boxes carry the same translate, so the bar's distance from the root's bottom is taken from the root's own place. */
+  const under = deskOff && deskOpen, top = under && barEl ? Math.round(H - (parseFloat(root.style.getPropertyValue("--itd-bottom")) || 0) - (root.getBoundingClientRect().bottom - barEl.getBoundingClientRect().top)) : null;
   if (under) root.dataset.under = "1"; else delete root.dataset.under;
+  if (top != null) root.style.setProperty("--itd-under-top", `${top}px`); else root.style.removeProperty("--itd-under-top");
   if (top !== underTop) { underTop = top; handlers.deskRelayout?.(); }
 }
 
