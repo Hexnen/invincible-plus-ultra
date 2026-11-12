@@ -543,6 +543,8 @@ body.itd-picking #board { cursor: crosshair; }
 .igd-sec { display: flex; flex-direction: column; gap: 7px; }
 .igd-h { display: flex; align-items: center; gap: 6px; margin-top: 12px !important; font: 400 11.5px/1 Titles, Comic, sans-serif !important; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label) !important; }
 .igd-n { font: inherit; color: var(--ita-yellow); }
+/* FXA2 (U197): the first heading of the body sits close under the tabs (the room goes to the card's answers) */
+#invincible-tactics-desk .igd-body > .igd-sec:first-child > .igd-h { margin-top: 6px !important; }
 /* U64 / U80: a part of the Table tab that folds: the heading is the switch (the chevron turns, the heading keeps its count) */
 #invincible-tactics-desk .igd-foldb { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; margin: -4px 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; }
 #invincible-tactics-desk .igd-foldb > i { width: 10px; font-size: 9px; text-align: center; color: var(--ita-frame); }
@@ -768,7 +770,10 @@ body.ita-tactics #chat-notifications .chat-message.ita-troll { display: none; }
 .itd-news[data-tone="good"] > i { color: #5fd08a; }
 .itd-news[data-tone="bad"] > i { color: var(--ita-red-lt); }
 .itd-news[data-tone="warn"] > i { color: var(--ita-yellow); }
-.itd-news-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itd-news-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-kerning: none; }
+/* FXA2 (U198): the comic face's own kerning tucks a comma under a digit before it ("Strefa 11," -134/1000 em, "7," -338: the comma
+   vanished into the number) and the line reads as if a comma were missing; the news line is facts joined by commas, so it is set
+   without kerning. A mark ends flush with the comma after it (its own left margin keeps it off the word before: THE MARKS ON THE SURFACES). */
 .itd-news > i { flex: none; }
 .itd-news:not([data-tone="good"], [data-tone="bad"], [data-tone="warn"]) > i { color: var(--ita-label); }
 /* T076: behind the dock's id, or the dock's `button { all: unset }` (1,0,1) wins and the x is a bare glyph without its box; the focus ring
@@ -927,6 +932,7 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
    ground they stand on. No rule here draws a mark of its own. */
 /* a mark inside a sentence (a line of a card, a roll chip, a status): on the line, in the colour of what is worth reading */
 :is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-status, .itd-news-t, .igd-rollmarks, .ita-opt-n, .itd-hint1) .ipu-sym { margin-inline: 1px; }
+#invincible-tactics-dock .itd-news .itd-news-t .ipu-sym { margin-inline-end: 0; }      /* FXA2 (U198): flush with the comma after it */
 :is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-status, .igd-rollmarks, .itd-hint1) .ipu-sym > .ipu-sym-g { color: var(--ita-yellow); }      /* (on an answer the mark keeps the ink of the button it stands on) */
 :is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-hint1) > :is(.ipu-cost, .ipu-costs) { color: var(--ita-yellow); margin-inline: 2px; }
 /* a way of a move, a door: its price after the name, what it meets after that */

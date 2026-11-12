@@ -280,7 +280,7 @@ function draw(d, ui) {
     ui?.legend ? legendCard({ legendClose: () => set({ legend: false }) }) : null,
     d.turnNote ? h("p.igd-tip", { attrs: { role: "note" } }, icon("fa-person-running"), h("span", { text: d.turnNote })) : null,
     h("nav.igd-tabs", { attrs: { role: "tablist" } }, d.tabs.map((t) => h("button", { fk: `tab:${t.id}`, attrs: { role: "tab", "aria-selected": String(d.tab === t.id) }, on: { click: () => set({ tab: t.id }) } }, h("span", { text: t.label }), t.n ? h("b.igd-badge", { text: String(t.n) }) : null))),
-    h("div.igd-wait", { attrs: { role: "status" } }, h("span.igd-k", { text: d.waitingLabel }), d.waiting.length ? d.waiting.map((w) => waitRow(w, d.labels)) : h("span.igd-nobody", { text: d.nobody })),
+    d.waitHide ? null : h("div.igd-wait", { attrs: { role: "status" } }, h("span.igd-k", { text: d.waitingLabel }), d.waiting.length ? d.waiting.map((w) => waitRow(w, d.labels)) : h("span.igd-nobody", { text: d.nobody })),
     h("div.igd-body", { data: { keepScroll: d.tab }, attrs: { role: "tabpanel" } }, d.tab === "journal" ? journal(d) : d.tab === "table" ? table(d) : d.tab === "scene" && d.scene ? scene(d.scene) : d.tab === "kit" && d.kit ? kitTab(d.kit) : now(d)),
   ]);
   if (!tick) tick = setInterval(count, 1000);

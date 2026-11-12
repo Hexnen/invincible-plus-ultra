@@ -536,6 +536,9 @@ li.ipb-dir-base .ipb-dir-mark { margin-inline-start: 6px; color: #0096cb; font-s
 .ipb-up-note-ro { margin: 0; font-size: .9rem; color: var(--ipb-text-2); overflow-wrap: anywhere; }
 .ipb-up-undo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; padding: 6px 10px; font-size: .9rem; background: #fff; border: 2px solid var(--ipb-ink); animation: ipb-bt-land .22s cubic-bezier(.16, 1, .3, 1); }
 .ipb-up-undo > i { color: var(--ipb-blue); }
+/* FXA2 (U199): the undo bar of a removed row (upgrades, gear and vehicles) holds to the top of the scrolled tab body (.ipb-panel), so a
+   removal far down the tab still shows its 10 s Undo in view; it floats over the rows with a soft drop */
+.ipb-panel .ipb-up-undo { position: sticky; top: 0; z-index: 3; box-shadow: 0 6px 14px -6px rgba(12, 26, 46, .45); }
 .ipb-up-empty { margin: 0; max-width: 56ch; }
 .ipb-up-adopt { display: grid; gap: 8px; padding: 8px 10px; background: #fff; border: 2px solid var(--ipb-amber); }
 .ipb-up-hist-list { display: grid; gap: 3px; margin: 6px 0 0; padding: 0; list-style: none; font-size: .9rem; }

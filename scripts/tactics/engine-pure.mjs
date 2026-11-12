@@ -283,6 +283,7 @@ function newsRow(I, t) {
     ...(dm?.minions?.removed > 0 ? { out: dm.minions.removed } : (dm?.newlyBroken || dm?.broke) && !dm.minions ? { down: 1 }      /* BH4-3: a hazard's record (fire, blast, fall) has no newlyBroken, only kit.brokenAndCrit's `broke` */ : {}),
     ...(o && !o.hit && !o.forced && six > 0 && (df === "block" || df === "dodge") ? { def: df } : {}),
     ...(Number.isFinite(dm?.crit?.n) ? { crit: { n: Math.trunc(dm.crit.n), id: critKey(dm.crit.id) } } : {}),      // D127: the critical injury of a key character
+    ...(["dead", "dying", "unconscious"].includes(dm?.fate) ? { fate: dm.fate } : {}),      // FXA2 (U198): what the hit did to the character in the end (an injury that kills, an NPC the GM killed or knocked out)
     /* FXP (U181): where a knockback or a throw landed, and the vehicle it threw the character out of */
     ...(I.data?.landed?.[t]?.at ? { land: I.data.landed[t].at, ...(I.data.landed[t].outOf ? { seat: I.data.landed[t].outOf } : {}) }
       : I.flow === "forced" && t === I.data?.mv?.who && typeof I.data.mv.at === "string" && I.data.mv.at !== I.data.mv.from && I.data.result !== "none" ? { land: I.data.mv.at.slice(0, 40), ...(P1.isId(I.data.mv.outOf) ? { seat: I.data.mv.outOf } : {}) } : {}) };
