@@ -410,9 +410,9 @@ export function waitingData(waiting, facts, t) {
     const named = w.kind === "triggerQueue" && /^turn/.test(String(w.data?.at ?? ""));      // D108: "Start of turn: Atom Eve" names the character itself
     const text = w.aboutName && !named ? t("ITAC.ui.wait.about", { what, name: w.aboutName }) : what;
     const key = gm ? "gm" : users.join(",");
-    if (!rows.has(key)) rows.set(key, { who, mine, gm, what: [], since: null, nudge: null });
+    if (!rows.has(key)) rows.set(key, { who, mine, gm, what: [], ids: [], since: null, nudge: null });
     const row = rows.get(key);
-    row.what.push(text);
+    row.what.push(text); row.ids.push(w.prompt ?? (w.inst ? `${w.inst}:${w.key}` : null));      // FXN (D132): what each piece is about, so a card held back while the dice roll leaves the strip too (news-pure holdWaiting)
     if (facts.staff && Number.isFinite(w.at) && (row.since === null || w.at <= row.since)) {
       row.since = w.at;
       row.nudge = !gm && !mine && w.nudgeReq && users.some((u) => facts.online?.(u)) ? { label: t("ITAC.ui.nudge", { name: who }), tip: t("ITAC.ui.nudge.tip"), req: w.nudgeReq } : null;
@@ -442,7 +442,9 @@ export function rollsData(rows, facts, t) {
   return (rows ?? []).filter((r) => r.state !== "done" && rollMine(r, facts)).map((r) => {
     const roll = rollLabel(t, r.key, facts), busy = r.state === "owed" && !!facts.rollBusy?.(r.rid);
     const pool = rollPool(r, t, r.attr ? attrText(t, r.attr) : null);      // U55: where the dice of a roll this user owes come from
-    return { id: `${r.inst}:${r.key}`, inst: r.inst, state: busy ? "rolling" : r.state, tip: pool ? poolTip(pool, t) : null, text: r.state === "push" ? t("ITAC.ui.rollbar.sixes", { roll, sixes: r.sixes ?? 0 }) : t(busy ? "ITAC.ui.rollbar.rolling" : "ITAC.ui.rollbar.owed", { roll, dice: r.dice ?? "?" }), buttons: rollButtons(r, facts, t) };
+    return { id: `${r.inst}:${r.key}`, inst: r.inst, state: busy ? "rolling" : r.state, tip: pool ? poolTip(pool, t) : null, text: r.state === "push" ? t("ITAC.ui.rollbar.sixes", { roll, sixes: r.sixes ?? 0 }) : t(busy ? "ITAC.ui.rollbar.rolling" : "ITAC.ui.rollbar.owed", { roll, dice: r.dice ?? "?" }), buttons: rollButtons(r, facts, t),
+      /* FXN (U162): how the row reads while its 3D dice are still in the air (news-pure holdRollsIn): the result and Push / Accept wait */
+      ...(r.state === "push" ? { wait: { state: "rolling", text: t("ITAC.ui.rollbar.rolling", { roll, dice: r.dice ?? "?" }), buttons: [] } } : {}) };
   });
 }
 const newsNo = NewsP.newsNo;      // BH4-1: the seq of "n<seq>_<fight>", not every digit of the id
@@ -909,9 +911,12 @@ export function dockData(model, own, facts, t) {
   const row = (a, notes, more = {}) => { const label = a.kit ? kitLabel(t, a) : labelOf(t, a.label), w = a.disabled ? whyOf(t, a.disabled, {}, { staff: facts.staff }) : null, why = w?.text ?? null;
     const attr = a.attr ? attrText(t, a.attr) : a.attrs?.length && !a.kit ? t(a.attrOptional ? "ITAC.ui.attr.maybe" : "ITAC.ui.attr.yours") : null;
     return { id: a.id, label, cost: a.cost, stress: Number(a.stress) || 0, icon: iconOf(a), notes, disabled: why, pv: pvOf(a), tip: tipOf(null, isFree(a.cost) ? [attr, priceWords(t, a.cost, a.stress)].filter(Boolean).join(". ") : [tipCost(t, a.cost, a.stress, w), attr].filter(Boolean).join(", "), w, more.fx ?? [], tipPrice(t, a.cost, a.stress, w, { tail: attr })), ...more }; };
+  /* FXN (D133): a list button whose every row is greyed is greyed too, with the reason of its rows (it still opens: the rows say theirs) */
+  const allOff = (list) => (list.length && list.every((a) => a.disabled) ? whyOf(t, list[0].disabled, {}, { staff: facts.staff }) : null);
+  const moreOff = allOff(menu), kitOff = allOff([...kitActs, ...loose]);
   const groups = GROUPS.map((g) => ({ id: g, label: t(`ITAC.ui.group.${g}`), items: [...acts.filter((a) => !a.kit && groupOf(a) === g && !inMenu(a) && !loose.includes(a)).sort((x, y) => Number(!!y.situational) - Number(!!x.situational)).map(item),
-    ...(g === "act" && menu.length ? [{ id: "@more", more: true, icon: "@more", label: t("ITAC.ui.more"), tip: tipOf(t("ITAC.ui.more"), null, null, [t("ITAC.ui.more.tip")]), armed: own.mode === "menu" || menu.some((a) => a.id === own.armed) }] : []),
-    ...(g === "power" && hasKit ? [{ id: "@kit", more: true, mode: "kit", icon: "@kit", label: t("ITAC.ui.kit"), tip: tipOf(t("ITAC.ui.kit"), null, null, [t("ITAC.ui.kit.tip")]), armed: own.mode === "kit" || kitActs.some((a) => a.id === own.armed) || loose.some((a) => a.id === own.armed) }] : [])] })).filter((g) => g.items.length);
+    ...(g === "act" && menu.length ? [{ id: "@more", more: true, icon: "@more", label: t("ITAC.ui.more"), tip: tipOf(t("ITAC.ui.more"), null, moreOff, [t("ITAC.ui.more.tip")]), disabled: moreOff?.text ?? null, armed: own.mode === "menu" || menu.some((a) => a.id === own.armed) }] : []),
+    ...(g === "power" && hasKit ? [{ id: "@kit", more: true, mode: "kit", icon: "@kit", label: t("ITAC.ui.kit"), tip: tipOf(t("ITAC.ui.kit"), null, kitOff, [t("ITAC.ui.kit.tip")]), disabled: kitOff?.text ?? null, armed: own.mode === "kit" || kitActs.some((a) => a.id === own.armed) || loose.some((a) => a.id === own.armed) }] : [])] })).filter((g) => g.items.length);
   const mine = (model?.mine ?? []).filter((i) => i.actor === bar.combatant);
   const armed = own.armed ? bar.actions.find((a) => a.id === own.armed) : null;
   let panel = null;
@@ -957,9 +962,12 @@ export function dockData(model, own, facts, t) {
      "click again" only where a second click is really asked for. */
   const fullLeft = slots.some((p) => p.state === "open" && p.unit === "full" && !p.extra), confirm = fullLeft && !bar.endTurn?.noConfirm;
   const auto = !!bar.endTurn && !bar.endTurn.disabled && !bar.free && !unused.length && !prompts.length && !allRolls.some((r) => r.state !== "done") && bars.filter((b) => b.onTurn).length === 1 && !armed && !own.mode && !own.quiet && !bar.out;
+  /* FXN (D133): a turn that STARTS with nothing left (the round's actions went on reactions before it) passes by itself as well, but it
+     says why where the actions stand (the U9 line of the bar, `out`), longer (news-pure AUTO_SPENT_MS), and offers no first-turn hint */
+  const spent = auto && !!bar.endTurn?.fresh;
   const end = bar.endTurn ? { label: auto ? t("ITAC.ui.end.auto") : own.endArmed && confirm ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"),
-    tip: bar.endTurn.disabled ? whyLine(whyOf(t, bar.endTurn.disabled, {}, { ask: false })) : `${auto ? t("ITAC.ui.end.autoTip") : unused.length ? t(confirm ? "ITAC.ui.end.unused" : "ITAC.ui.end.left", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]`,
-    disabled: bar.endTurn.disabled ? whyText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm, armed: !!own.endArmed && confirm, auto }
+    tip: bar.endTurn.disabled ? whyLine(whyOf(t, bar.endTurn.disabled, {}, { ask: false })) : `${auto ? t(spent ? "ITAC.ui.out.spent" : "ITAC.ui.end.autoTip") : unused.length ? t(confirm ? "ITAC.ui.end.unused" : "ITAC.ui.end.left", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]`,
+    disabled: bar.endTurn.disabled ? whyText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm, armed: !!own.endArmed && confirm, auto, ...(spent ? { spent: true } : {}) }
     : { label: t("ITAC.ui.end"), tip: whyLine(whyOf(t, "notYourTurn", {}, { ask: false })), disabled: whyText(t, "notYourTurn"), req: null, confirm: false, armed: false, auto: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn
   const chase = facts.view?.chase ? t("ITAC.ui.chase.line", { n: facts.view.chase.distance }) : null;
@@ -975,7 +983,7 @@ export function dockData(model, own, facts, t) {
     who: { id: bar.combatant, name: bar.name ?? c?.name ?? "", img: c?.img ?? null, onTurn: !!bar.onTurn, free: !!bar.free, freeLabel: t("ITAC.ui.freeMode"),
       zone: zoneNow ? { label: zoneNow, say: facts.staff ? t("ITAC.ui.here.of", { name: bar.name ?? c?.name ?? "", zone: zoneNow }) : t("ITAC.ui.here", { zone: zoneNow }), tip: t("ITAC.ui.legend") } : null },      // U51: the chip says the zone; its tooltip only what the chip does not (the legend of the map's badges); `say` is for a screen reader
     slots, vitals: vitalsOf(facts, bar.combatant, t), group: membersOf(facts, bar.combatant, t), extras: extrasOf(bar, t, facts), groups,
-    out: bar.out ? { reason: bar.out.reason, text: t(bar.out.label) } : null,      // U9: why nothing (or only getting up) is offered: said where the actions were
+    out: bar.out ? { reason: bar.out.reason, text: t(bar.out.label) } : spent ? { reason: "spent", text: t("ITAC.ui.out.spent") } : null,      // U9: why nothing (or only getting up) is offered: said where the actions were; FXN (D133): also a turn that started with everything spent
     camera: cameraOf(facts, t),      // W1 (U42): how much the map's camera follows the fight, this user's own switch
     hotbar: { open: !!own.hotbar, label: t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show"), tip: `${t(own.hotbar ? "ITAC.ui.hotbar.hide" : "ITAC.ui.hotbar.show")}. ${t(own.hotbar ? "ITAC.ui.keys.macros" : "ITAC.ui.keys")}` },      // U28: Foundry's macro bar is folded away while the dock is up; this brings it back
     other: { label: t("ITAC.action.other"), armed: own.mode === "other", tip: tipOf(t("ITAC.action.other"), null, null, [t("ITAC.ui.other.hint")]) },

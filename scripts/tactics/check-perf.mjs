@@ -114,12 +114,12 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css") 
   ok(/kept = null;\s*placeSlots\(rec\);\s*if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept = /.test(head), "D: what a run read is kept only when the run changed nothing");
   ok(/const facts = \(\) => \[drawn, window\.innerWidth, window\.innerHeight, Lay\.factor\(document\.body\)\]/.test(head), "D: the draw count, the window and the size are facts of a placement");
   const out = dock.slice(dock.indexOf("function outcome()"), dock.indexOf("function placeSlots(rec)"));
-  for (const w of ["root.style.cssText", "root.dataset.tight", "el.parentElement?.style.cssText", "el.parentElement?.dataset.anchor", "el.parentElement?.dataset.align", "frameKey", 'varOf("--its-nt")', 'varOf("--its-nx")', 'varOf("--igd-toast-maxh")']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
+  for (const w of ["root.style.cssText", "root.dataset.tight", "stack?.parentElement?.style.cssText", "el.parentElement?.style.cssText", "el.parentElement?.dataset.anchor", "el.parentElement?.dataset.align", "frameKey", 'varOf("--its-nt")', 'varOf("--its-nx")', 'varOf("--igd-toast-maxh")']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
   ok(!/document\.(querySelector|querySelectorAll|getElementById)\(|visibleRect\(/.test(body), "D: placeSlots asks the page only through the recorder (no read escapes the list)");
   /* every write of placeSlots is one the outcome covers: take the known writes away, nothing that writes may be left */
   const rest = body.replace(/root\.style\.setProperty\("--itd-(bottom|maxw|cx|panel-maxh|up-maxw|up-dx)"/g, "").replace(/(delete )?root\.dataset\.tight( = )?/g, "")
     .replace(/st\.(display|left|width|top) =/g, "").replace(/st\.setProperty\("--its-[hw]"/g, "").replace(/slotEls\.cards\.parentElement\.style\.setProperty\("--its-h"/g, "")
-    .replace(/el\.dataset\.(anchor|align) =/g, "").replace(/setVar\("--(its-n[tx]|igd-toast-maxh)"/g, "").replace(/frameKey = key/g, "");
+    .replace(/el\.dataset\.(anchor|align) =/g, "").replace(/barSlot\.style\.(setProperty|removeProperty)\("--ita-scale"/g, "").replace(/setVar\("--(its-n[tx]|igd-toast-maxh)"/g, "").replace(/frameKey = key/g, "");
   ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute/.test(rest), "D: placeSlots writes nothing outside what the outcome compares");
   ok(!/function placeNow|underTop|--itd-under-top|ita-notice-wait|--itd-clear/.test(dock), "D (U132): the column's placement is gone with everything only it wrote");
   ok(/drawn\+\+;[^\n]*\n\s*place\(\);\s*\n\s*reveal\(\);/.test(dock), "D: a draw counts before it places (new content always places in full)");

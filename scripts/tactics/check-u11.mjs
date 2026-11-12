@@ -149,7 +149,7 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
   ok(/width: 348px; zoom: var\(--ita-scale, 1\)/.test(css) && /\.igd-handle \{\s*zoom: var\(--ita-scale, 1\)/.test(css), "U62: the desk and its handle are zoomed");
   ok(/calc\(\(var\(--igd-maxh, 80vh\) - 4px\) \/ var\(--ita-scale, 1\)\)/.test(css) && /calc\(var\(--itd-panel-maxh, 60vh\) \/ var\(--ita-scale, 1\)\)/.test(css), "U62: every window length handed into a zoomed box is divided by the size");
   const dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8");
-  ok(/k = Lay\.factor\(document\.body\)/.test(dock) && /barEl\.scrollWidth \* k/.test(dock) && /pe\.offsetWidth \* k/.test(dock) && /offsetHeight \?\? 60\) \* k/.test(dock) && /\(pe\.offsetHeight \+ GAP\) \* k/.test(dock), "U62: the placement multiplies the stack's own lengths by the size before they meet the window");
+  ok(/k = Lay\.factor\(document\.body\)/.test(dock) && /natural = natU \* k/.test(dock) && /pe\.offsetWidth \* kb/.test(dock) && /barEl\.offsetHeight \* kb/.test(dock) && /pe\.offsetHeight \* kb - GAP \* k/.test(dock), "U62 (U163: at the bar's own size kb): the placement multiplies the stack's own lengths by the size before they meet the window");
   const main = readFileSync(new URL("./main.mjs", import.meta.url), "utf8");
   ok(/reg\("tacticsUiScale", \{[^}]*scope: "client"[^}]*range: \{ min: 80, max: 140, step: 5 \}[^}]*default: 100/.test(main), "U62: a client setting with a slider, separate from Foundry's scale");
   ok(EN["ITAC.Settings.tacticsUiScale.Name"] && PL["ITAC.Settings.tacticsUiScale.Name"] && PL["ITAC.Settings.tacticsUiScale.Hint"], "U62: named in both languages");

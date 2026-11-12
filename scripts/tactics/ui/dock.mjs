@@ -125,7 +125,7 @@ const sizesNow = () => [...Settle.sizesOf(stack), ...Object.values(slotEls).flat
 /* everything a placement writes: the dock's attributes and numbers, each place's box, the frame told to the desk and the challenges,
    the notice's place */
 function outcome() {
-  return [root.style.cssText, root.dataset.tight ?? "", Object.values(slotEls).map((el) => `${el.parentElement?.style.cssText ?? ""}/${el.parentElement?.dataset.anchor ?? ""}/${el.parentElement?.dataset.align ?? ""}`).join("|"),
+  return [root.style.cssText, root.dataset.tight ?? "", stack?.parentElement?.style.cssText ?? "", Object.values(slotEls).map((el) => `${el.parentElement?.style.cssText ?? ""}/${el.parentElement?.dataset.anchor ?? ""}/${el.parentElement?.dataset.align ?? ""}`).join("|"),
     frameKey, varOf("--its-nt"), varOf("--its-nx"), varOf("--igd-toast-maxh")];
 }
 /* The bar stands at the bottom edge; its room is worked out from what stays put during a turn only: the sidebar, the party column, the
@@ -170,7 +170,9 @@ function placeSlots(rec) {
   delete root.dataset.tight;
   /* U62: the stack is drawn at the user's size (CSS zoom). Its own lengths (offsetWidth, scrollWidth) are in its unscaled pixels, the
      room is in window pixels: every length read from inside the stack is multiplied by k before it meets the room. */
-  const natural = barEl ? barEl.scrollWidth * k + 2 : 0;
+  const natU = barEl ? barEl.scrollWidth + 2 / k : 0, natural = natU * k;
+  /* U163: the size the bar itself is drawn at (layout-pure.barFit): the user's size, or less where its two rows would not fit */
+  let kb = k;
   let pick = sides(ground), floor = ground;
   /* U48 as a rule of the frame, not of the content: beside the open desk the bar keeps its row when the room there is wide enough;
      else it takes the whole bottom edge and the desk ends above it */
@@ -198,14 +200,19 @@ function placeSlots(rec) {
   /* one row when it fits; else the actions go over the unit; "2": even the unit and the tail do not share a row. U148: decided by the
      widest bar this room has held (layout-pure.steadyShape), so the shape does not change under the pointer within a turn or a fight */
   if (barEl) {
-    const inner = [".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) * k;
-    const shape = Lay.steadyShape(shapes, avail, natural, inner, SLACK * k);
+    const inner = [".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44);
+    const acts = barEl.querySelector(".itd-acts")?.offsetWidth ?? 0;
+    const shape = Lay.barFit(shapes, avail, k, { natural: natU, inner, acts }, SLACK);
     if (shape.tight) root.dataset.tight = String(shape.tight);
+    kb = shape.scale;
   }
+  const barSlot = stack.parentElement;
+  if (Math.abs(kb - k) > 1e-3) barSlot.style.setProperty("--ita-scale", String(kb)); else barSlot.style.removeProperty("--ita-scale");
   /* the bar is centred in its room (over the macro bar when that is open), whatever its width now: its middle stays put */
   const cx = Math.round(hot && hot.top > H * 0.4 ? Math.max(lo + 140, Math.min(hi - 140, (hot.left + hot.right) / 2)) : (lo + hi) / 2);
   root.style.setProperty("--itd-cx", `${cx}px`);
-  const barH = (barEl?.offsetHeight ?? 60) * k, barTop = H - bottom - barH;
+  /* U164: with no bar at all (the fight is over, its summary stands) no bar's height is kept free under the questions' place */
+  const barH = barEl ? barEl.offsetHeight * kb : (last?.d?.who ? 60 * k : 0), barTop = H - bottom - barH;
   /* the frame */
   const chat = rec.q("#chat-notifications #chat-message, #chat-notifications .chat-form").map((el) => rec.rect(el)).find((r) => r && r.top > H * 0.4 && r.left > W * 0.5) ?? null;
   /* D126: where Foundry's toast list really ends (it shows only while a toast stands) and the chat box's column */
@@ -232,7 +239,7 @@ function placeSlots(rec) {
      not its rect: it may still be rising) */
   const pe = stack.querySelector(":scope > .itd-panel");
   if (slotEls.cards && fr.slots.cards) {
-    const s = fr.slots.cards, ptop = pe ? barTop - (pe.offsetHeight + GAP) * k : Infinity;
+    const s = fr.slots.cards, ptop = pe ? barTop - pe.offsetHeight * kb - GAP * k : Infinity;
     const end = ptop > s.y0 + 60 ? Math.min(s.y1, ptop - GAP) : s.y1;
     slotEls.cards.parentElement.style.setProperty("--its-h", `${Math.round(end - s.y0)}px`);
   }
@@ -245,7 +252,7 @@ function placeSlots(rec) {
   } catch { /* no body */ }
   /* the panel on the bar keeps to the room over it */
   let dx = 0;
-  if (pe) { const pw = pe.offsetWidth * k; dx = Math.max(0, fr.up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > fr.up.hi) dx = Math.min(dx, fr.up.hi - pw / 2 - cx); requestAnimationFrame(() => markMore(pe)); }
+  if (pe) { const pw = pe.offsetWidth * kb; dx = Math.max(0, fr.up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > fr.up.hi) dx = Math.min(dx, fr.up.hi - pw / 2 - cx); requestAnimationFrame(() => markMore(pe)); }
   root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
   /* the desk and the challenges read their part of the frame: told only when it changed */
   const key = JSON.stringify([fr.desk, fr.band, fr.toast]);
@@ -310,7 +317,7 @@ const rs = (n) => stressChip(n);
 function actionBtn(a) {
   /* P5 / P6: the other rows of the action tables, and the character's own abilities: one button each, a list behind it */
   if (a.more) { const m = a.mode ?? "menu";
-    return h(`button.itd-ic.itd-ic-more${a.armed ? ".itd-armed" : ""}`, { fk: `more:${m}`, tip: a.tip, data: { key: a.key ?? null }, attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true", "aria-label": a.label, ...keyAttrs(a.key) },
+    return h(`button.itd-ic.itd-ic-more${a.armed ? ".itd-armed" : ""}`, { fk: `more:${m}`, tip: a.tip, data: { key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true,      // FXN (D133): greyed as its rows are; it still opens attrs: { "aria-pressed": String(!!a.armed), "aria-haspopup": "true", "aria-label": a.label, ...keyAttrs(a.key) },
       on: { click: () => set(last?.ui?.mode === m ? { mode: null } : { mode: m, armed: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {}, choice: null }) } }, actIcon(a.icon), icon("fa-caret-up")); }
   return h(`button.itd-ic${a.armed ? ".itd-armed" : ""}`, { fk: `act:${a.id}`, data: { urgent: a.urgent ? "1" : null, key: a.key ?? null }, disabled: !!a.disabled, clickWhenDisabled: true, tip: a.tip, pv: a.pv, attrs: { "aria-pressed": String(!!a.armed), "aria-label": tipText(a.tip), ...keyAttrs(a.key) },
     on: { click: () => set(a.armed ? { armed: null, mode: null } : { armed: a.id, mode: null, targets: [], tokens: [], text: "", amend: null, endArmed: false, weapon: null, opts: {} }) } }, actIcon(a.icon), speed(a.cost), rs(a.stress));
@@ -330,7 +337,7 @@ function bar(d) {
   return h("div.itd-bar", {},
     unit(d),
     [
-      h("div.itd-acts", { attrs: d.rest ? { "aria-disabled": "true" } : {} }, d.out ? h("p.itd-out", { data: { reason: d.out.reason } }, icon(d.out.reason === "dead" ? "fa-skull" : d.out.reason === "unconscious" ? "fa-bed" : "fa-heart-crack"), h("span", { text: d.out.text })) : null, d.groups.map((g) => h("div.itd-group", { attrs: { role: "group", "aria-label": g.label } }, g.items.map(actionBtn)))),
+      h("div.itd-acts", { attrs: d.rest ? { "aria-disabled": "true" } : {} }, d.out ? h("p.itd-out", { data: { reason: d.out.reason } }, icon(d.out.reason === "dead" ? "fa-skull" : d.out.reason === "unconscious" ? "fa-bed" : d.out.reason === "spent" ? "fa-hourglass-end" : "fa-heart-crack"), h("span", { text: d.out.text })) : null, d.groups.map((g) => h("div.itd-group", { attrs: { role: "group", "aria-label": g.label } }, g.items.map(actionBtn)))),
       h("div.itd-tail", {},
         h(`button.itd-ic.itd-ic-ghost${d.other.armed ? ".itd-armed" : ""}`, { fk: "other", tip: d.other.tip, attrs: { "aria-pressed": String(d.other.armed), "aria-label": d.other.label }, on: { click: () => set(d.other.armed ? { mode: null } : { mode: "other", armed: null, text: "", endArmed: false }) } }, actIcon("@other")),
         h(`button.itd-ic.itd-ic-ghost${d.holdOff.armed ? ".itd-armed" : ""}`, { fk: "hold", disabled: !!d.holdOff.disabled, tip: d.holdOff.tip, attrs: { "aria-pressed": String(d.holdOff.armed), "aria-label": d.holdOff.label }, on: { click: () => set(d.holdOff.armed ? { mode: null } : { mode: "holdOff", armed: null, endArmed: false }) } }, actIcon("@hold")),
