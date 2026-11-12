@@ -445,7 +445,7 @@ export function rollsData(rows, facts, t) {
     return { id: `${r.inst}:${r.key}`, inst: r.inst, state: busy ? "rolling" : r.state, tip: pool ? poolTip(pool, t) : null, text: r.state === "push" ? t("ITAC.ui.rollbar.sixes", { roll, sixes: r.sixes ?? 0 }) : t(busy ? "ITAC.ui.rollbar.rolling" : "ITAC.ui.rollbar.owed", { roll, dice: r.dice ?? "?" }), buttons: rollButtons(r, facts, t) };
   });
 }
-const newsNo = (n) => Number(String(n?.id ?? "").replace(/\D/g, "")) || 0;
+const newsNo = NewsP.newsNo;      // BH4-1: the seq of "n<seq>_<fight>", not every digit of the id
 /* D123: a hazard is named by its kind or, for the engine's own damage, by what dealt it; never by the raw kind word */
 function newsText(n, facts, t) {
   const who = n.unseen ? t("ITAC.ui.news.unseen") : n.actor ? nameOf(facts, n.actor, t) : "";
@@ -481,10 +481,12 @@ function newsText(n, facts, t) {
 export function newsData(view, own, facts, t) {
   if (facts.staff) return null;
   /* UXB (U141): a line stands through its own turn and the next (own.newsFrom: ui/news-pure.mjs newsWindow), not for the rest of the round */
-  const round = view?.round ?? 0, seen = Math.max(Number(own?.newsSeen) || 0, Number(own?.newsFrom) || 0);
+  /* BH4-1: what this user put away counts only for the lines of the same fight (own.newsSeen = news-pure markOf) */
+  const fight = NewsP.fightOfList(view?.news), kept = NewsP.seenNo(own?.newsSeen, fight);
+  const round = view?.round ?? 0, seen = Math.max(kept, Number(own?.newsFrom) || 0);
   const list = (view?.news ?? []).filter((n) => newsNo(n) > seen && (n.round == null || n.round >= round - 1) && !(n.kind === "action" && ["move", "forced", "fall", "release", "seat"].includes(n.flow) && !(n.rows ?? []).some((r) => typeof r.hit === "boolean")));
   /* a line that stands brings the lines it set off along (the counter closes first, so its number may be under the window) */
-  const insts = new Set(list.map((n) => n.inst).filter(Boolean)), kept = Number(own?.newsSeen) || 0;
+  const insts = new Set(list.map((n) => n.inst).filter(Boolean));
   for (let more = true; more;) { more = false; for (const n of view?.news ?? []) if (typeof n?.parent === "string" && insts.has(n.parent) && newsNo(n) > kept && !list.includes(n)) { list.push(n); if (n.inst) insts.add(n.inst); more = true; } }
   list.sort((a, b) => newsNo(a) - newsNo(b));
   if (!list.length) return null;
@@ -493,7 +495,7 @@ export function newsData(view, own, facts, t) {
   const hurt = lastG.some((x) => (x.rows ?? []).some((r) => (r.hit || (typeof r.hit !== "boolean" && r.taken > 0)) && mine(r.target))), scored = lastG.some((x) => mine(x.actor) && (x.rows ?? []).some((r) => r.hit));
   const tone = head.kind === "nudge" ? "nudge" : head.kind === "exception" ? (head.granted ? "good" : "bad") : head.kind === "undo" || head.undone ? "warn" : hurt ? "bad" : scored ? "good" : "info";
   const say = (g) => g.map((n) => newsText(n, facts, t)).join(" · ");
-  return { id: lastG.reduce((a, b) => (newsNo(b) > newsNo(a) ? b : a)).id, kind: head.kind, text: say(lastG), tone, icon: NEWS_ICON[tone] ?? NEWS_ICON.info, older: told.slice(-4, -1).reverse().map(say), seen: Math.max(...lastG.map(newsNo)), label: t("ITAC.ui.news.dismiss") };
+  return { id: lastG.reduce((a, b) => (newsNo(b) > newsNo(a) ? b : a)).id, kind: head.kind, text: say(lastG), tone, icon: NEWS_ICON[tone] ?? NEWS_ICON.info, older: told.slice(-4, -1).reverse().map(say), seen: NewsP.markOf(fight, Math.max(...lastG.map(newsNo))), label: t("ITAC.ui.news.dismiss") };
 }
 
 /* ------------------------------------------------------------------ the player's dock */

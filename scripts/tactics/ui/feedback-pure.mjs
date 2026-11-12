@@ -10,6 +10,7 @@
      hintOf(data, seen) / hintsUsed  U53: the one first-fight hint to show now, and the ones the user has just made use of */
 
 /* ------------------------------------------------------------------ U54 / U68: why not, and what to do */
+import * as NewsP from "./news-pure.mjs";      // BH4-1: what a news id says (its seq, its fight)
 const has = (t, key) => t(key, {}, null) !== null;
 /** `reason` = the engine's own word (desk-pure.barModel `disabled`, a legality answer, a prompt option's `disabled`).
     o.ctx: where it is asked ("holdOff": the same word means another thing there); o.staff: the GM's own way round a refusal.
@@ -79,13 +80,17 @@ export function floats(events, t) {
 export const eventKey = (e) => `${e?.combat ?? ""}|${e?.fight ?? ""}|${e?.seq ?? ""}|${e?.type ?? ""}|${idOf(e?.target) ?? ""}`;
 
 /* ------------------------------------------------------------------ U57: the summary of a round and of a fight */
-const newsNo = (n) => Number(String(n?.id ?? "").replace(/\D/g, "")) || 0;
+const newsNo = NewsP.newsNo;      // BH4-1: the seq of "n<seq>_<fight>" (news-pure), not every digit of the id
 export const TALLY_MAX = 400;
 /** Keep what the news of the user's view says about actions that came to something (view.news: at most the last twelve lines, so the
     client adds them as they come). `tally` = { combat, entries: { <news no>: { round, actor, rows: [{ target, hit?, taken?, stress? }], undone } } }.
     An undone action is marked, not removed (the news marks it too). -> the tally (the same object when nothing changed) */
 export function tallyAdd(tally, combatId, news) {
-  let out = tally && tally.combat === combatId ? tally : { combat: combatId, entries: {} }, changed = out !== tally;
+  /* BH4-1: the tally is of ONE fight: a fight started again on the same Combat (its lines count from 1 again, under another tag) starts
+     its own, so its round cards never count the actions of the fight before it */
+  const fight = NewsP.fightOfList((news ?? []).filter((n) => n?.kind === "action"));
+  let out = tally && tally.combat === combatId && (!fight || !tally.fight || tally.fight === fight) ? tally : { combat: combatId, entries: {} }, changed = out !== tally;
+  if (fight && out.fight !== fight) { out = { ...out, fight, entries: { ...out.entries } }; changed = true; }
   for (const n of news ?? []) {
     if (!n || n.kind !== "action") continue;
     const no = newsNo(n), rows = (n.rows ?? []).filter((r) => r && typeof r.target === "string" && (typeof r.hit === "boolean" || Number.isFinite(r.taken)));

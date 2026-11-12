@@ -256,7 +256,7 @@ function newsRow(I, t) {
   const o = I.data?.out?.[t], dm = I.data?.dmg?.[t], st = (I.data?.stunts ?? []).filter((p) => p.target === t).map((p) => p.stunt);
   const atk = I.rolls?.attack, six = Number(atk?.forced?.sixes ?? atk?.sixes) || 0, df = I.data?.def?.[t]?.defence;
   return { target: t, ...(o ? { hit: o.hit === true } : {}), ...(dm && Number.isFinite(dm.taken) ? { taken: dm.taken, ...(dm.tags?.toStress ? { stress: 1 } : {}) } : {}), ...(st.length ? { stunts: st } : {}),
-    ...(dm?.minions?.removed > 0 ? { out: dm.minions.removed } : dm?.newlyBroken && !dm.minions ? { down: 1 } : {}),
+    ...(dm?.minions?.removed > 0 ? { out: dm.minions.removed } : (dm?.newlyBroken || dm?.broke) && !dm.minions ? { down: 1 }      /* BH4-3: a hazard's record (fire, blast, fall) has no newlyBroken, only kit.brokenAndCrit's `broke` */ : {}),
     ...(o && !o.hit && !o.forced && six > 0 && (df === "block" || df === "dodge") ? { def: df } : {}),
     ...(Number.isFinite(dm?.crit?.n) ? { crit: { n: Math.trunc(dm.crit.n), id: critKey(dm.crit.id) } } : {}) };      // D127: the critical injury of a key character
 }

@@ -169,7 +169,9 @@ export function barModel(view, cid, ctx = {}) {
     out,                                                                                          // U9: null, or why nothing (or only getting up) is offered
     /* U9 / P9-5: `noConfirm` = ending this turn leaves nothing behind that needs a second look: the combatant is out of action, or it is
        an NPC in the GM's own hands (the surface asks "sure?" only where a player would lose actions by a slip) */
-    endTurn: onTurn ? { disabled: busy ? "busy" : null, noConfirm: !!out || (!!ctx.staff && ctx.c?.(cid)?.npc === true), req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,
+    /* BH4-4: the engine refuses End turn while anything about this character waits unanswered (ops-pure endTurn, openPromptsAbout: spec
+       4.4), e.g. its request for an exception the GM has not answered yet; the bar says so instead of offering a button the engine refuses */
+    endTurn: onTurn ? { disabled: busy || (view.mode === "tactical" && !view.free?.[cid] && Object.values(view.prompts ?? {}).some((p) => p && !p.answered && p.about === cid)) ? "busy" : null, noConfirm: !!out || (!!ctx.staff && ctx.c?.(cid)?.npc === true), req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,
     holdOff: out ? { disabled: out.reason, targets: [], req: (slotId) => ({ op: "holdOff", actor: cid, with: slotId }) } : holdOffOf(view, cid, onTurn, busy, ctx), markReq: (unit, on = true) => ({ op: "mark", actor: cid, unit, on }),
     other: { req: (text) => ({ op: "other", actor: cid, text }) }, exception: { req: (text, inst, more = {}) => ({ op: "exception", actor: cid, text, ...(inst ? { inst } : {}), ...(more.reason ? { reason: more.reason } : {}), ...(more.decl ? { decl: more.decl } : {}) }) } };
 }
