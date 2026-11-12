@@ -360,20 +360,6 @@ function settleSwaps(v, I) {
   }
   return waiting;
 }
-/* Bug hunt 2 suspicion (fixer fxe, provisional, question H2-Q1): the attack went to somebody else (a guardian took the hit) after the
-   intended target had already answered with a defence. That defence is never rolled (swapTarget drops it), so its quick action is not
-   spent: a payment still waiting in this step is dropped, one already made is voided. The stress of a free defence (Defensive [B2105])
-   stays: it was taken when the answer was given. */
-function refundDropped(v, I, R) {
-  for (const r of I.data.retargets ?? []) {
-    if (I.decl.targets.includes(r.from)) continue;
-    const key = `def:${r.from}`, n0 = R.effects.length;
-    R.effects = R.effects.filter((e) => !(e.t === "pay" && e.key === key));
-    const entry = I.data.paid?.[key];
-    if (R.effects.length === n0 && entry) { R.effects.push({ t: "state", path: ["ledger", r.from], to: P1.voidEntry(P1.ledgerOf(v.state, r.from), entry) }); delete I.data.paid[key]; }
-    if (R.effects.length !== n0 || entry) (I.data.notes ??= []).push({ note: "defenceRefunded", who: r.from });
-  }
-}
 /* D103 / D104: the attack went to somebody else (a guardian took the hit): every card of the window nobody has answered yet asked about
    the attack as it was. The defence card of one who is no target any more is withdrawn (its answer would be thrown away); the cards of
    the others (a second guardian, a warning) are withdrawn and made again for the attack as it is now (the window runs once more for those
@@ -497,7 +483,7 @@ export const steps = {
     const st = runWindow(v, I, R, keys, "beforeRoll");
     if (R.push) return R;
     const rolling = settleSwaps(v, I);                                                // U91: a guardian's roll decides whether the target changes [B2115]
-    if (I.decl.targets.join() !== before) { refundDropped(v, I, R); staleCards(v, I, R); R.goto = "reactBefore"; return R; }      // retargeted: the new target's own window opens
+    if (I.decl.targets.join() !== before) { staleCards(v, I, R); R.goto = "reactBefore"; return R; }      // retargeted: the new target's own window opens
     if (st === "wait" || rolling) { R.wait = true; return R; }
     I.data.window = null;
     R.goto = "roll";

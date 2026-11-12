@@ -133,9 +133,10 @@ const pjournal = (T, owns = ["H1"]) => V.journalFor(T.log, { id: "p1", staff: fa
   eq(/signs-pure\.mjs";[^\n]*\/\/[^\n]*\/\/ the bands of a chance/.test(model), false, "H2-6: the comment of the bands import stands on its own line (the merge glued it after the U100 import's)");
 }
 
-/* ================================================================== H2-S1 (a suspicion of the hunt, proved and fixed by fixer fxe; provisional, question H2-Q1):
-   the intended target answered with a block (a quick action paid), then a guardian dived in and took the hit [B2115]: the block is never
-   rolled (swapTarget drops it) and its quick action is given back */
+/* ================================================================== H2-S1 (a suspicion of the hunt; fixer fxe): the intended target answered with a block (a quick
+   action paid), then a guardian dived in and took the hit [B2115]: the block is never rolled (swapTarget drops it) and its quick action
+   stays spent. That is the PROVISIONAL behaviour of the open question U19-5 ("Nie oddaje"), so it is pinned here, not changed: when the
+   user decides U19-5 the other way, this check is the one to turn round (void the entry `I.data.paid["def:<from>"]` at the swap). */
 {
   const KP = await import("./kit-pure.mjs");
   const item = (id, name) => ({ id, name, type: "talent", level: null, power: null, boosts: [], autos: [], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} });
@@ -150,7 +151,7 @@ const pjournal = (T, owns = ["H1"]) => V.journalFor(T.log, { id: "p1", staff: fa
   const g = T.c.H1.kit.actions.find((a) => a.id.endsWith("-guardian")).id;
   await T.req("p1", { op: "answer", prompt: T.prompt("reaction", "H1").id, value: `r:${g}` });
   await T.roll("sw:H1", 1);
-  eq([T.top()?.decl.targets, live("H2"), T.state.ledger.H2.grants.some((x) => x.usedBy)], [["H1"], 0, false], "H2-S1: the guardian took the hit: the block that will never be rolled gives its quick action back");
+  eq([T.top()?.decl.targets, live("H2"), T.top()?.data.def?.H2 ?? null], [["H1"], 1, null], "H2-S1: the guardian took the hit: the dropped block's quick action stays spent (U19-5, provisional)");
 }
 {     // control: the guardian's roll fails, the target's block stands and stays paid
   const KP = await import("./kit-pure.mjs");
