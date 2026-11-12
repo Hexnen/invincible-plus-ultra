@@ -185,6 +185,15 @@ function matchesAbsorb(parent, draft) {
 }
 /** Holds hook-derived drafts for the absorb window so an explicit parent record (arriving before or after) can swallow them.
  *  Time is the arrival time `now` given to push / parent / drain. */
+/** T030 / T034: drop every draft of one actor still open in a Coalescer and an AbsorbBuffer (its log was deleted). */
+export function dropActor(co, ab, actorId) {
+  const mine = (d) => d?.actorId === actorId;
+  for (const [k, list] of [...co.pending]) { const keep = list.filter((d) => !mine(d)); if (keep.length) co.pending.set(k, keep); else co.pending.delete(k); }
+  co.passthrough = co.passthrough.filter((d) => !mine(d));
+  co.size = co.passthrough.length + [...co.pending.values()].reduce((n, l) => n + l.length, 0);
+  ab.held = ab.held.filter((h) => !mine(h.draft)); ab.ready = ab.ready.filter((d) => !mine(d)); ab.parents = ab.parents.filter((p) => !mine(p.draft));
+}
+
 export class AbsorbBuffer {
   constructor(ms = TIMING.absorbMs) { this.ms = ms; this.held = []; this.parents = []; this.ready = []; this.absorbed = 0; }
   push(draft, now) {

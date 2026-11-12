@@ -113,7 +113,9 @@ export function oddsText(P) { let t = null; for (const o of ODDS) if (P >= o[0])
 export const SAYS = Object.freeze({ 'NOT BAD!': 'NotBad', 'LUCKY BREAK!': 'LuckyBreak', 'AGAINST THE ODDS!': 'AgainstOdds', 'UNLIKELY HERO!': 'UnlikelyHero',
   'NO WAY!': 'NoWay', 'IMPOSSIBLE!': 'Impossible', 'ONCE IN A LIFETIME!': 'OnceInLifetime', 'THE ODDS ARE SHATTERED!': 'OddsShattered',
   'UNLUCKY!': 'Unlucky', 'WHAT A FLOP!': 'Flop', 'BREAKING POINT!': 'BreakingPoint', 'ON THE EDGE!': 'OnEdge', 'FEELING THE STRAIN': 'Strain',
-  'SHAKEN': 'Shaken', 'SHRUGS IT OFF': 'ShrugsOff' });
+  'SHAKEN': 'Shaken', 'SHRUGS IT OFF': 'ShrugsOff',
+  /* T039: the milestone tags say something about the result too (the ribbon slot of the odds sentences): table language */
+  'FIRST SUCCESS!': 'FirstSuccess', 'PUSH PAYS OFF!': 'PushPaysOff', 'FIRST DOUBLE!': 'FirstDouble', 'NEW PERSONAL BEST!': 'PersonalBest' });
 /* UXB (U151): w walce taktycznej słowo sukcesu rzutu ataku czeka na werdykt wymiany (trafił czy obrona go zatrzymała), a słowo
    obrony gra tylko, gdy obrona utrzymała. tag = message.rolls[0].options.tactics ({ inst, key }); pudło (0 szóstek) gra od razu.
    -> null (gra jak zawsze) | { inst, target, want } : gra, gdy werdykt === want */

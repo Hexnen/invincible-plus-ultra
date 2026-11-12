@@ -22,7 +22,7 @@ const S = {
   on: false, hooked: false, states: new Map(), snaps: new Map(),
   co: new CO.Coalescer(), ab: new CO.AbsorbBuffer(), thr: new CO.Throttle(), edits: new C.EditBuffer(),
   direct: [], rollsById: new Map(), delRolls: new Map(), lost: new Set(), runHold: new Map(), recent: new Map(), init: new Map(),
-  dirty: new Set(), timer: 0, chain: Promise.resolve(), skew: 0, lease: true, reconcileTimers: new Map(), cid: Math.random().toString(36).slice(2, 10),
+  dirty: new Set(), gen: new Map(), timer: 0, chain: Promise.resolve(), skew: 0, lease: true, reconcileTimers: new Map(), cid: Math.random().toString(36).slice(2, 10),
   counts: { hooks: 0, drafts: 0, entries: 0, batches: 0, dropped: 0, failures: 0, gaps: 0, starts: 0, refused: 0 }
 };
 export const state = S;
@@ -130,7 +130,8 @@ export function tick(force = false) {
     explain(actorId, g);
     S.counts.entries += g.pub.length + g.sec.length;
     for (const e of [...g.pub, ...g.sec]) delete e.actorId;
-    S.chain = S.chain.then(() => write(actorId, g, 0));
+    const gen = S.gen.get(actorId) ?? 0;
+    S.chain = S.chain.then(() => write(actorId, g, 0, gen));
   }
   for (const id of [...S.dirty]) {
     if (pendingFor(id)) continue;
@@ -175,7 +176,8 @@ function undoPatches(all) {
 }
 
 const RETRY = [2000, 5000, 15000];
-async function write(actorId, g, attempt) {
+async function write(actorId, g, attempt, gen = S.gen.get(actorId) ?? 0) {
+  if ((S.gen.get(actorId) ?? 0) !== gen) return;                // T030 / T034: the log this batch belonged to was deleted meanwhile: it must not open the fresh one
   const actor = game.actors.get(actorId);
   const st = S.states.get(actorId);
   if (!actor || !st) return;
@@ -190,7 +192,7 @@ async function write(actorId, g, attempt) {
     if (attempt < RETRY.length) {
       console.warn(`${LOG} write failed, retry ${attempt + 1}`, err);
       await new Promise((r) => setTimeout(r, RETRY[attempt]));
-      return write(actorId, g, attempt + 1);
+      return write(actorId, g, attempt + 1, gen);
     }
     console.warn(`${LOG} write dropped after ${RETRY.length} retries (a log.gap is written on the next scribe start)`, err);
   }
@@ -222,7 +224,7 @@ async function baselineActor(actor, scope, startAt = null) {
       if (r.created) { S.counts.starts++; e.push(M.normalizeEntry({ t: startAt ?? actor._stats?.createdTime ?? Date.now(), u: startAt ? game.user.id : actor._stats?.lastModifiedBy ?? "", k: "log.start", d: { baseline: true } }, { actorId: actor.id, path: "start" })); }
       await Store.commit(actor, scope, { pub: e.filter(Boolean) });
     }
-    await Store.writeSnapshot(actor.id, C.snapOps({}, cur));
+    await Store.writeSnapshot(actor.id, C.snapOps(snap ?? {}, cur));      // T034: a part-snapshot written while another client deleted the log loses its stale keys
     S.snaps.set(actor.id, cur);
     return;
   }
@@ -263,7 +265,15 @@ export async function rescan() {
 }
 async function flushActor(id) { void id; tick(true); await S.chain; }
 /** Stop capturing an actor right now (the maintenance window is about to delete its log): in-flight flushes find no state and write nothing, so they cannot re-create the journal. */
-export function forget(actorId) { S.states.delete(actorId); S.snaps.delete(actorId); S.lost.delete(actorId); }
+export function forget(actorId) {
+  S.states.delete(actorId); S.snaps.delete(actorId); S.lost.delete(actorId);
+  /* T030 / T034: when another GM client deleted the log, nothing was drained first: what this client still holds for the actor (drafts not
+     yet written, batches queued for the store) belongs to the deleted log and is dropped, so the fresh log starts with its own log.start */
+  S.gen.set(actorId, (S.gen.get(actorId) ?? 0) + 1);
+  CO.dropActor(S.co, S.ab, actorId); C.dropActorEdits(S.edits, actorId);
+  S.direct = S.direct.filter((e) => e.actorId !== actorId);
+  S.runHold.delete(actorId); S.dirty.delete(actorId); S.recent.delete(actorId);
+}
 /** After the log of a LIVE actor was deleted from the maintenance window: forget its snapshot and start a fresh log (journal, `log.start` stamped now, snapshot). */
 export async function rebaseline(actorId) {
   if (!S.on) return false;

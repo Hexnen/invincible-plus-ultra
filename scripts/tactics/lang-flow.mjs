@@ -49,6 +49,9 @@ export const EN_FLOW = {
   /* FXP (U181): where a knockback landed */
   "ITAC.ui.news.land": "lands: {zone}",
   "ITAC.ui.news.thrownOut": "thrown out of the vehicle ({vehicle})",
+  /* FXR (U188): where a drive ended */
+  "ITAC.ui.news.reach": "reaches {zone}",
+  "ITAC.ui.news.stopAt": "stops in {zone}",
   "ITAC.ui.fight.title": "Fight",
   "ITAC.ui.chat.notYours": "Rolled by {name}. Only the roller can push or accept.",
   "ITAC.ui.fight.restart": "Start again",
@@ -98,6 +101,8 @@ export const PL_FLOW = {
   "ITAC.ui.wait.k.heroDead": "śmierć",
   "ITAC.ui.news.land": "ląduje: {zone}",
   "ITAC.ui.news.thrownOut": "wypada z pojazdu ({vehicle})",
+  "ITAC.ui.news.reach": "dociera: {zone}",
+  "ITAC.ui.news.stopAt": "staje: {zone}",
   "ITAC.ui.fight.title": "Walka",
   "ITAC.ui.chat.notYours": "Autor rzutu: {name}. Tylko autor forsuje lub przyjmuje.",
   "ITAC.ui.fight.restart": "Zacznij od nowa",

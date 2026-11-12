@@ -471,18 +471,21 @@ function newsText(n, facts, t) {
   const rows = (n.rows ?? []).filter((r) => typeof r.hit === "boolean" || Number.isFinite(r.taken) || r.land).map((r) => {
     if (r.land && !Number.isFinite(r.taken) && typeof r.hit !== "boolean") return `${nameOf(facts, r.target, t)}: ${[t("ITAC.ui.news.land", { zone: zoneText(facts, t, r.land) }), r.seat ? t("ITAC.ui.news.thrownOut", { vehicle: nameOf(facts, r.seat, t) }) : null].filter(Boolean).join(", ")}`;      // FXP (U181)
     const verdict = typeof r.hit !== "boolean" ? null : r.hit ? t("ITAC.result.hit") : r.def ? t("ITAC.ui.news.missBy", { how: t(`ITAC.action.${r.def}`).toLowerCase() }) : t("ITAC.result.miss");
-    const dealt = !Number.isFinite(r.taken) ? null : r.taken === 0 && typeof r.hit !== "boolean" ? t("ITAC.ui.news.noDamage") : t(r.stress ? "ITAC.ui.news.stress" : "ITAC.ui.news.taken", { n: r.taken });
+    /* FXR (U188): a hit that dealt nothing (armour took it all) says "no damage", and the Double Damage that doubled nothing is not told */
+    const dealt = !Number.isFinite(r.taken) ? null : r.taken === 0 ? (r.hit === false ? null : t("ITAC.ui.news.noDamage")) : t(r.stress ? "ITAC.ui.news.stress" : "ITAC.ui.news.taken", { n: r.taken });
     /* U192 (UX review 2): what the hit did to the character (minions down, broken, the injury) comes before the stunts that made it: a
        line cut at its place's end loses the stunts' names (they stand in the tooltip), never "broken" or the injury */
     const bits = [verdict, dealt, r.out > 0 ? t("ITAC.ui.news.out", { n: r.out }) : null, r.down ? t("ITAC.status.broken").toLowerCase() : null, r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null,
       r.land ? t("ITAC.ui.news.land", { zone: zoneText(facts, t, r.land) }) : null, r.seat ? t("ITAC.ui.news.thrownOut", { vehicle: nameOf(facts, r.seat, t) }) : null,      // FXP (U181) where a knockback landed
-      ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s)))].filter(Boolean);      // D127
+      ...(r.stunts ?? []).filter((s) => !(s === "doubleDamage" && r.taken === 0)).map((s) => t(`ITAC.stunt.${s}`, {}, String(s)))].filter(Boolean);      // D127
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
   /* a hazard that hurt nobody says so once, with the names after it (four "no damage" in a row is one fact) */
   const none = (n.rows ?? []).filter((r) => typeof r?.hit !== "boolean" && r?.taken === 0 && !r.out && !r.down && !r.crit && !(r.stunts ?? []).length);      // SEAM: uxc's injury (D127) is a fact of its own too
   if (rows.length > 1 && none.length === rows.length) rows.splice(0, rows.length, `${t("ITAC.ui.news.noDamage")}: ${none.map((r) => nameOf(facts, r.target, t)).join(", ")}`);
-  const res = rows.length ? rows.join("; ") : n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "";
+  /* FXR (U188): a drive says where it went ("Drive: reaches Zone 7"), not only that it was done */
+  const went = !rows.length && typeof n.to === "string" && n.to && ["done", "stopped"].includes(n.result) ? t(n.result === "stopped" ? "ITAC.ui.news.stopAt" : "ITAC.ui.news.reach", { zone: zoneText(facts, t, n.to) }) : null;
+  const res = rows.length ? rows.join("; ") : went ?? (n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "");
   /* D113: what a reaction came to (Discretion, Warning Call, one the GM settled by hand) is said after the result */
   const rx = (Array.isArray(n.reacts) ? n.reacts : []).map((r) => t(`ITAC.ui.news.react.${r.result}`, { who: nameOf(facts, r.who, t), what: r.name ? String(r.name) : r.label ? t(r.label, {}, "") : "", about: r.about ? nameOf(facts, r.about, t) : "" }, "")).filter(Boolean);
   return [head, res].filter(Boolean).join(rows.length ? " > " : ": ") + (n.kind === "action" && fx && n.note ? ` ("${String(n.note)}")` : "") + (rx.length ? ` (${rx.join("; ")})` : "") + (n.forced ? ` (${t("ITAC.ui.news.forced")})` : "") + (n.undone ? ` (${t("ITAC.ui.news.undone")})` : "");
@@ -1128,6 +1131,12 @@ function fightCmds(own, t) {
   const cmd = (id, req) => ({ id, label: t(own.sure === `fight:${id}` ? "ITAC.ui.end.sure" : `ITAC.ui.fight.${id}`), confirm: true, danger: true, armed: own.sure === `fight:${id}`, req });
   return { title: t("ITAC.ui.fight.title"), hint: t("ITAC.ui.fight.hint"), cmds: [cmd("restart", { op: "start", restart: true }), cmd("stop", { op: "stop" })] };
 }
+/** FXR (U190): who a hazard on a zone can still matter to. The dead are out; an NPC out of action too (its fate is the GM's word [B2771]);
+    a broken or unconscious hero stays: damage while broken is another critical injury [B2708]. */
+export function hazardFit(view, id, c = null, npc = false) {
+  const o = outOf(view, id, c);
+  return !o || (o.reason !== "dead" && !npc);
+}
 export function deskData(model, own, facts, t) {
   if (!model) return { show: false };
   const cards = model.cards.map((c) => askData(c, { t, facts, own, desk: true, info: [...model.info, ...model.manual], round: model.turn?.round }));
@@ -1160,7 +1169,8 @@ export function deskData(model, own, facts, t) {
     fall: { label: t("ITAC.ui.force.fall"), disabled: fWho ? null : t("ITAC.ui.force.needWho"), req: fWho ? { op: "fall", combatant: fWho } : null } };
   /* P5: a hazard the GM lets loose by hand (an explosion, an area attack, fire, vacuum, a disease), on a zone with people in it or on one character */
   const HZ = { blast: [["rating", 1, 20, 4]], area: [["pool", 1, 40, 8], ["damage", 0, 40, 5]], fire: [["intensity", 1, 12, 6]], vacuum: [], disease: [["virulence", 0, 12, 0]] };
-  const ho = own.hazard ?? {}, hKind = HZ[ho.kind] ? ho.kind : "blast", zonal = ["blast", "area", "fire"].includes(hKind), spots = zonal ? facts.places?.() ?? [] : [];
+  const ho = own.hazard ?? {}, hKind = HZ[ho.kind] ? ho.kind : "blast", zonal = ["blast", "area", "fire"].includes(hKind);
+  const spots = zonal ? (facts.places?.() ?? []).map((p) => ({ ...p, ids: (p.ids ?? []).filter((id) => hazardFit(facts.view, id, facts.sheet?.(id) ?? null, !!(facts.sheet?.(id)?.npc ?? facts.c?.(id)?.npc))) })).filter((p) => p.ids.length) : [];      // FXR (U190)
   const hWhere = [...spots.map((p) => ({ id: `z:${p.zone}`, label: t("ITAC.ui.hz.zoneOf", { zone: zoneText(facts, t, p.zone), names: p.ids.map((id) => nameOf(facts, id, t)).join(", ") }) })), ...everyone.map((x) => ({ id: `c:${x.id}`, label: x.label }))];
   const hAt = hWhere.some((x) => x.id === ho.where) ? ho.where : null, hNums = HZ[hKind].map(([id, min, max, dflt]) => ({ id, label: t(`ITAC.ui.hz.${id}`), min, max, value: Math.max(min, Math.min(max, Math.trunc(Number(ho[id] ?? dflt)) || 0)) }));
   const hN = Object.fromEntries(hNums.map((x) => [x.id, x.value])), hZone = hAt?.startsWith("z:") ? hAt.slice(2) : null, hWho = hAt?.startsWith("c:") ? hAt.slice(2) : null;

@@ -253,9 +253,9 @@ const base = () => {
   eq([Chase.sideOf(T.state, "H2"), Chase.sideOf(T.state, "N2"), Chase.sideOf(T.state, "CH")], ["pursuer", "prey", null], "F: the people aboard are on their vehicle's side");
   eq(code(await T.gm({ op: "chaseStart", prey: ["V2"], pursuer: ["V1"], distance: 2 })), "illegal", "F: one chase at a time");
 
-  /* a round: prey first, both may push */
+  /* a round: prey first, both sides active [B3433]; each roller pushes under its own rule: N1 is an ordinary NPC, which does not push [B2231] (T046, SWEEP-R3) */
   eq(code(await T.gm({ op: "chaseRound" })), "ok", "F: the chase roll of the round");
-  eq([T.top().flow, T.top().step, T.requests.slice(-1).map((r) => [r.key, r.combatant, r.attr, r.dice, r.users, r.maxPush])], ["chase", "movement", [["prey", "N1", "agility", 6, ["gm"], null]]], "F: the prey's driver rolls first: AGILITY plus Maneuverability, may push");
+  eq([T.top().flow, T.top().step, T.requests.slice(-1).map((r) => [r.key, r.combatant, r.attr, r.dice, r.users, r.maxPush])], ["chase", "movement", [["prey", "N1", "agility", 6, ["gm"], 0]]], "F: the prey's driver rolls first: AGILITY plus Maneuverability; an ordinary NPC driver does not push");
   await T.roll("prey", 1);
   eq(T.requests.slice(-1).map((r) => [r.key, r.combatant, r.dice, r.users]), [["pursuer", "H1", 4, ["p1"]]], "F: then the pursuer's driver");
   await T.roll("pursuer", 2);

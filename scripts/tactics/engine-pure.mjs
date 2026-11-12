@@ -280,7 +280,7 @@ function newsOf(I) {
     actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
     ...(I.data?.hazard?.kind === "fixed" && HZ_CAUSES.includes(I.data.hazard.id) ? { hzCause: I.data.hazard.id } : {}),      // D123: what dealt the engine's own damage
     ...(fx ? { fx: { challenge: fx.challenge, kind: fx.kind }, ...(note ? { note } : {}) } : {}),        // U110: what a failed challenge did, and the GM's words about it
-    result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows, ...reactsOf(I) };
+    result: I.data?.result ?? null, ...(typeof I.data?.mv?.at === "string" && I.data.mv.at ? { to: I.data.mv.at.slice(0, 80) } : {}), status: I.status,      /* FXR (U188): where a drive (a move) ended */ ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows, ...reactsOf(I) };
 }
 /* D113: what the reactions of the table's eyes came to (Discretion, Warning Call, Guardian, one the GM settled by hand): told with the result, so a
    price paid is never paid in silence. { reacts: [{ who, effect, result, about?, name?, label?, note? }] } | {} */
@@ -1295,7 +1295,7 @@ async function gmEdit(X, op, a) {
       if (X.state.stack.length || X.state.phase !== "turns") { err = "busy"; break; }
       const plan = Chase.startPlan(X.state, X.facts, a, Number(X.host.setting?.("tacticsChaseLostAt")) || undefined);
       if (!plan.ok) { err = "illegal"; errParams = { reason: plan.reason }; break; }
-      w(["chase"], plan.chase); w(["kind"], "chase"); if (X.state.chaseEnded) w(["chaseEnded"], null); w(["init"], { ...S.newInit(), deck: X.state.init?.deck ?? 10 });      // CHASE (U168): the card of the last chase goes
+      w(["chase"], { ...plan.chase, no: (Number(X.state.chaseEnded?.n) || Number(X.state.chase?.no) || 0) + 1 }); w(["kind"], "chase"); if (X.state.chaseEnded) w(["chaseEnded"], null); w(["init"], { ...S.newInit(), deck: X.state.init?.deck ?? 10 });      // CHASE (U168): the card of the last chase goes; T064: `no` numbers the chases of this fight (each end card is put away by it)
       X.state = { ...X.state, init: { ...X.state.init, cur: X.state.init.cur ?? null, curMember: X.state.init.curMember ?? null } };       // the journal writes "nobody" by removing the key; the state keeps it as null
       for (const p of plan.puts) await perform(X, tx, { t: "zput", who: p.who, to: "@chase", group: p.group, tx });
       emit(X, null, { type: "chase", state: "start", distance: plan.chase.distance, sides: plan.chase.sides });
@@ -1322,7 +1322,7 @@ async function gmEdit(X, op, a) {
       w(["kind"], "combat"); w(["chase"], null);
       /* CHASE (U168): how the chase ended stands in the state until the next chase starts, so every seat shows the same end card (each
          seat puts it away on its own, by its number `n`) */
-      w(["chaseEnded"], { n: (Number(X.state.chaseEnded?.n) || 0) + 1, outcome: Chase.OUTCOMES.includes(a.outcome) ? a.outcome : "combat", distance: ch.distance, lostAt: ch.lostAt, rounds: ch.round ?? 0, round: X.state.round, sides: { prey: (ch.sides?.prey ?? []).slice(), pursuer: (ch.sides?.pursuer ?? []).slice() } });
+      w(["chaseEnded"], { n: Number(ch.no) || (Number(X.state.chaseEnded?.n) || 0) + 1, outcome: Chase.OUTCOMES.includes(a.outcome) ? a.outcome : "combat", distance: ch.distance, lostAt: ch.lostAt, rounds: ch.round ?? 0, round: X.state.round, sides: { prey: (ch.sides?.prey ?? []).slice(), pursuer: (ch.sides?.pursuer ?? []).slice() } });
       emit(X, null, { type: "chase", state: "end", outcome: Chase.OUTCOMES.includes(a.outcome) ? a.outcome : "combat", distance: ch.distance });
       break;
     }
@@ -1462,12 +1462,14 @@ async function challengeFailRun(X, cid) {
     await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "resolve", to: r.ward.time, tx });
     write(X, tx, ["challenges", cid, "dice"], r.ward.dice); write(X, tx, ["challenges", cid, "resets"], r.ward.resets); write(X, tx, ["challenges", cid, "started"], {});
     closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.wardReset}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.wardReset} (${r.ward.dice})` });
+    if (!c.hidden) pushNews(X, { kind: "action", tx, actor: cid, action: null, result: "wardReset", rows: [] });      // FXR (U187): the players are told what the GM's Apply did
     emit(X, null, { type: "challenge", challenge: cid, rating: r.ward.rating, timeLeft: r.ward.time, state: "reset", dice: r.ward.dice });
   }
   else if (cfg && Object.keys(cfg).length && !cfg.done && X.state.challenges?.[cid]) {      // D47 [B2841]: failed for good, its clock stops (journaled, so an undo gives the challenge back); what it had set going stays with the GM
     const tx = openTx(X, {});
     write(X, tx, ["challenges", cid, "done"], "failed");
     closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(cid)}: {ITAC.journal.challengeFailed}`, who: whoOf(X, [cid]), gm: `${c.name ?? ""}: {ITAC.journal.challengeFailed}` });
+    if (!c.hidden) pushNews(X, { kind: "action", tx, actor: cid, action: null, result: "challengeFailed", rows: [] });      // FXR (U187)
     emit(X, null, { type: "challenge", challenge: cid, rating: c.health, timeLeft: c.resolve, state: "failed", done: 1 });
   }
   for (const kind of r.manual) if (!(kind === "blast" && failBlast(X, cid, c, cfg))) pushManual(X, cid, kind, { at: "onFail" });

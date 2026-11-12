@@ -181,7 +181,7 @@ export const OBSTACLES = Object.freeze(Object.keys(chase.CHASE_OBSTACLES));
 export const roundSpec = (obstacle = null) => ({ action: "chaseRound", flow: "chase", actor: null, decl: { ...blank, action: "chaseRound", targets: [], ...(OBSTACLES.includes(obstacle) ? { obstacle } : {}) }, cause: "gm" });
 const obstacleOf = (I) => (I.data.ch?.obstacle ? chase.CHASE_OBSTACLES[I.data.ch.obstacle] ?? null : null);
 function sideRoll(v, I, R, key, u, attr, { passive = false, mods = [] } = {}) {
-  if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, u.roller, attr, mods, {}); for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to }); R.effects.push(K.rollEffect(key, u.roller, attr, bp.pool, { passive, label: `ITAC.roll.${key.split(":")[0]}` })); return "wait"; }
+  if (!K.rollOf(I, key)) { const bp = K.buildPool(v, I, key, u.roller, attr, mods, {}); for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to }); R.effects.push(K.rollEffect(key, u.roller, attr, bp.pool, { passive, label: `ITAC.roll.${key.split(":")[0]}`, noPush: !K.mayPush(v, u.roller) })); return "wait"; }      // T046: both sides are active [B3433], each roller under its own push rule [B2231], [B2186] (SWEEP-R3)
   return K.rollFinal(I, key) ? "done" : "wait";
 }
 /* CHASE2 groups (ours, G4, G5): the result of a round of groups. Each group against the prey's one roll, as the opposed roll of the plain
