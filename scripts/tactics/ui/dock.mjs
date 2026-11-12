@@ -253,9 +253,11 @@ function placeSlots(rec) {
   const m = Slots.getMode(), W = window.innerWidth, H = window.innerHeight, k = Lay.factor(document.body);
   const hot = rec.rect(rec.one("#hotbar"));
   const ground = hot && hot.top > H * 0.4 ? hot.top : H - EDGE + GAP;
-  let ceil = 8;
-  for (const el of rec.q(TOP_OBSTACLES)) { const r = rec.rect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) ceil = Math.max(ceil, r.bottom + 8); }
+  let ceil = 8, topCx = null;
+  for (const el of rec.q(TOP_OBSTACLES)) { const r = rec.rect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75 && r.bottom + 8 >= ceil) { ceil = r.bottom + 8; topCx = (r.left + r.right) / 2; } }
   const sb = rec.rect(rec.one("#sidebar")), side = sb && sb.left > W * 0.5 ? sb.left : W;
+  let topL = 12;
+  for (const el of rec.q(LEFT_OBSTACLES)) { const r = rec.rect(el); if (r && r.width && r.top < H * 0.5 && r.right < W * 0.4) topL = Math.max(topL, r.right + 8); }
   const deskR = rec.rect(rec.one("#invincible-tactics-desk .igd"));
   const band = BAR_BAND * k;
   /* the free band at the bottom between what stands at the sides (the same things as placeNow, without the toasts and the desk) */
@@ -300,7 +302,7 @@ function placeSlots(rec) {
   const chat = rec.q("#chat-notifications #chat-message, #chat-notifications .chat-form").map((el) => rec.rect(el)).find((r) => r && r.top > H * 0.4 && r.left > W * 0.5) ?? null;
   const hudR = rec.rect(rec.one("#invincible-challenges"));
   const hudOn = !!hudR && rec.q("#invincible-challenges .ich-item").length > 0;
-  const fr = SP.frame({ mode: m, W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, side, chatTop: chat?.top ?? null,
+  const fr = SP.frame({ mode: m, W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, topCx, topL, side, chatTop: chat?.top ?? null,
     hud: { present: hudOn, x0: hudR?.left ?? null, y1: hudR?.bottom ?? null }, desk: deskSide ? { open: true, x0: deskR.left, x1: deskR.right, w: deskR.width } : null,
     bar: { lo, hi, top: barTop, bottom: H - bottom, cx } });
   fr.bar = { lo, hi, top: Math.round(barTop), bottom: Math.round(H - bottom), cx, under };

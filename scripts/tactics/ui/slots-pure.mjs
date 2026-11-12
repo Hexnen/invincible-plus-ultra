@@ -29,6 +29,7 @@ export const SIZE = Object.freeze({
   line: 30,         // one row of the line (.itd-wait)
   hint: 340,        // the first-fight hint's column in variant a
   hintH: 150,       // the most the hint may take
+  hintRow: 96,      // a: the hint's row across a narrow band
   rail: 360,        // the rail of variant b
   win: 620,         // the window of variant c
   tick: 30,         // the strip on the bar in variant c
@@ -37,7 +38,7 @@ export const SIZE = Object.freeze({
 });
 export const GAP = 8;
 export const TOAST = Object.freeze({ h: 132, min: 64, share: 0.2 });     // the chat toasts' strip (window px; Foundry's toasts are not scaled by U62)
-export const BAND = Object.freeze({ share: 0.34, min: 150, max: 330 });  // the challenges' band when the desk or the rail stands under it
+export const BAND = Object.freeze({ share: 0.38, min: 150, max: 350 });  // the challenges' band when the desk or the rail stands under it
 export const PANEL_SHARE = 0.38;                                         // dock.mjs PANEL_SHARE (U105)
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -53,7 +54,7 @@ export function toastStrip({ H, chatTop = null }) {
 }
 
 /** THE FRAME: every place, from what does not change during a turn.
-    f = { mode, W, H, k, staff, hints (the first-fight hints are on for this user), top0 (the lowest thing hanging from the top over the
+    f = { mode, W, H, k, staff, hints (the first-fight hints are on for this user), topCx (the middle of that thing), topL (the right edge of what stands at the left under it), top0 (the lowest thing hanging from the top over the
           middle: the initiative bar), side (the sidebar's left edge or W), chatTop (the floating chat box's top or null),
           hud: { present, x0, y1 } (the challenges HUD: its left edge, the end of its cards now), desk: { open, x0, x1, w } | null,
           bar: { lo, hi, top, bottom, cx } (the bar's room and where it stands: dock.mjs works that out as before, without the toasts) }
@@ -88,16 +89,24 @@ export function frame(f) {
   out.panelMax = r(Math.max(110, Math.min(panelMax, bar.top - GAP - upTop)));
 
   if (mode === "a") {
-    /* the band under the initiative bar, between the left edge and the challenges / the open desk */
-    const L = 12, R = Math.min(hudOn && f.hud.x0 ? f.hud.x0 - 10 : side - 12, deskOpen ? deskX0 - 10 : Infinity);
-    const hintW = f.hints ? Math.min(SIZE.hint * k, (R - L) * 0.42) : 0;
-    const cardsR = f.hints ? R - hintW - GAP : R;
+    /* the band under the initiative bar, between what stands at the left (the map's panels) and the challenges / the open desk */
+    const L = Math.max(12, Number(f.topL) || 12), R = Math.min(hudOn && f.hud.x0 ? f.hud.x0 - 10 : side - 12, deskOpen ? deskX0 - 10 : Infinity);
     const lineH = SIZE.line * k, y = top0 + 4;
-    out.slots.line = { ...box(L, y, cardsR, y + lineH), anchor: "top", align: "center" };
-    const cardsTop = y + lineH + 6, cardsEnd = Math.max(cardsTop + 140, bar.top - out.panelMax - 2 * GAP);
-    out.slots.cards = { ...box(L, cardsTop, cardsR, cardsEnd), anchor: "top", align: "center" };
-    if (f.hints) out.slots.hint = { ...box(R - hintW, y, R, y + SIZE.hintH * k), anchor: "top", align: "end" };
-    out.slots.notice = { ...box(R - Math.min(460, R - L), (f.hints ? y + SIZE.hintH * k + GAP : y), R, H), anchor: "top", align: "end" };
+    /* the hint: the right end of the band beside the questions when both fit side by side; on a narrow band it takes a fixed row under
+       the line across the band and the questions start under it (the row is kept while the hints are on, whether a hint shows or not) */
+    const side2 = f.hints && R - L >= (SIZE.card + SIZE.hint) * k + GAP;
+    const hintW = !f.hints ? 0 : side2 ? SIZE.hint * k : R - L, hintH = !f.hints ? 0 : side2 ? SIZE.hintH * k : SIZE.hintRow * k;
+    const cardsR = side2 ? R - hintW - GAP : R;
+    /* the line and the questions hang centred under the initiative bar (what hangs above them), as wide as stays free on both sides */
+    let lx0 = L, lx1 = cardsR;
+    const cx = Number(f.topCx), half = Math.min(cx - L, cardsR - cx);
+    if (Number.isFinite(cx) && half * 2 >= SIZE.card * k) { lx0 = cx - half; lx1 = cx + half; }
+    out.slots.line = { ...box(lx0, y, lx1, y + lineH), anchor: "top", align: "center" };
+    const hy = side2 ? y : y + lineH + 6;
+    if (f.hints) out.slots.hint = { ...box(R - hintW, hy, R, hy + hintH), anchor: "top", align: side2 ? "end" : "center" };
+    const cardsTop = (f.hints && !side2 ? hy + hintH + GAP : y + lineH + 6), cardsEnd = Math.max(cardsTop + 140, bar.top - out.panelMax - 2 * GAP);
+    out.slots.cards = { ...box(lx0, cardsTop, lx1, cardsEnd), anchor: "top", align: "center" };
+    out.slots.notice = { ...box(R - Math.min(460, R - L), (f.hints && side2 ? y + hintH + GAP : y + lineH + 6), R, H), anchor: "top", align: "end" };
   } else if (mode === "b") {
     /* the rail: the right edge of the map, under the challenges' band, over the toasts' strip; on the GM seat with the desk open it stands
        beside the desk (the desk keeps the column: on that seat the questions are the desk's own cards) */
