@@ -86,9 +86,9 @@ export function cues(before, now) {
   for (const [id, a] of Object.entries(now.asks)) if (!before.asks?.[id]) add("asked", a.about, { with: a.attacker && a.attacker !== a.about ? [a.attacker] : [] });
   /* the turn */
   if (turned && now.cur) add(mine.has(now.cur) ? "ownTurn" : "turn", now.cur);
-  /* somebody new in this user's view of the fight */
+  /* somebody new in this user's view of the fight (H2-5, spec 26 per seat: the GM gets no reveal, nothing is new to the GM) */
   const knew = new Set(before.known);
-  if (before.known.length) for (const x of now.known) if (!knew.has(x) && !mine.has(x)) add("reveal", x);
+  if (before.known.length && !now.staff) for (const x of now.known) if (!knew.has(x) && !mine.has(x)) add("reveal", x);
   /* while the user aims (an action armed on the dock) the map is under the user's hand: only the hand's own cues */
   const list = now.armed ? out.filter((c) => c.hand) : out;
   return list.sort((a, b) => ORDER.indexOf(a.why) - ORDER.indexOf(b.why));
@@ -160,6 +160,10 @@ export function handTook(before, now) {
   if (now.armed && now.armed !== before.armed) return true;
   return Object.keys(now.asks ?? {}).some((id) => !before.asks?.[id]);
 }
+/** H2-3 (U98, spec 26): with the action camera (a map with shots) a question waiting for this user holds the view: a watcher's quiet
+    cue (level "all": somebody else's attack, walk, result, a reveal) is not played in place of the shot that was refused for it, since
+    the map's action setting plays level "all" frames. The cues about the user's own units (level "turn") still play. */
+export const heldByCard = (c, now) => !!c && c.level === "all" && Object.keys(now?.asks ?? {}).length > 0;
 /** The one cue this client acts on now (the most pressing), or null. */
 export const cue = (before, now) => cues(before, now)[0] ?? null;
 

@@ -1,5 +1,5 @@
 // node scripts/tactics/check-hunt2.mjs -- PROOFS of the open defects of "Bug hunt 2, 2026-11-12" (dev/combat-defects.md, rows H2-n).
-// NOT in check-all.mjs: every check here fails until its defect is fixed. Scripted table, no Foundry (the camera part fakes the globals).
+// In check-all.mjs since the fixes of tactics-fxe (all six fixed). Scripted table, no Foundry (the camera part fakes the globals).
 import { ok, eqc as eq, done, Table } from "./testkit.mjs";
 import * as V from "./view-pure.mjs";
 import * as UI from "./ui/model-pure.mjs";
@@ -23,6 +23,11 @@ const pjournal = (T, owns = ["H1"]) => V.journalFor(T.log, { id: "p1", staff: fa
     await T.gm({ op: "answerFor", prompt: q.id, value: { order: q.options.filter((o) => o.data?.effect === "wardBlast").map((o) => o.id) } });
     const I = T.state.stack.find((i) => i.data?.trigger?.run?.kind === "wardBlast");
     ok(!!I, "H2-1: (setup) the side effect is the GM's item");
+    if (I) {      // fixer fxe: the desk says what it is, not "Time is up" (the ward's blast comes at a round point, not when its time runs out)
+      const D = await import("./desk-pure.mjs"), m = D.deskModel(T.state, T.log, { c: (id) => T.c[id] }).manual.find((x) => x.inst === I.id);
+      const d = m && UI.manualData(m, {}, null, tEN);
+      eq([m?.fx?.round ?? 0, typeof d?.why === "string" && d.why.startsWith("Secret Ward: the ward strikes.")], [1, true], "H2-1: the GM's item names the challenge and its effect without 'Time is up'");
+    }
     if (I) await T.gm({ op: "manual", inst: I.id, result: { cost: "none", note: "", damage: [] } });
     const news = V.viewFor(T.state, { id: "p1", staff: false, owns: ["H1"] }, { hidden: ["CH"], npc: ["N1", "CH"] }).news ?? [];
     eq(news.filter((n) => n.tx === undefined && n.kind === "action" && n.action === "other" && !n.actor).length, 0, "H2-1: a side effect of a challenge hidden from the players leaves no news line for them (it is marked secret as U110 marks a failed one)");
@@ -76,6 +81,28 @@ const pjournal = (T, owns = ["H1"]) => V.journalFor(T.log, { id: "p1", staff: fa
     eq([now, T.prompts("triggerQueue").filter((p) => p.about === now).length, T.c[now].health], [first, 1, hp0], "H2-4: the same turn opens again and its turn-start card comes again (its first run was undone); before, its round:ts:member key stayed in sched.done and the poison never ran");
   }
 }
+/* H2-4, control (fixer fxe): a FORCED single undo of the chase's end leaves the poison's transaction standing: the answered card has
+   happened, the moment does not come again (no second poison) */
+{
+  const car = (o = {}) => ({ kind: "vehicle", npc: true, health: 8, vehicle: { type: "ground", speed: 3, maneuver: 1, passengers: 3, weapons: 0 }, ...o });
+  const T = new Table();
+  T.hero("H1", "p1").hero("H2", "p2").npc("N1").npc("N2");
+  T.add("V1", car({ name: "Van" })).add("V2", car({ name: "Bike" }));
+  T.order(["H1", "N1", "H2", "N2"]).turn("H1");
+  for (const id of ["H1", "H2", "N1", "N2"]) await T.gm({ op: "triggerAdd", trigger: { at: "turnStart", subject: { combatant: id }, run: { type: "hazard", hazard: { kind: "fixed", amount: 1 } }, source: { kind: "gm", name: `poison ${id}` } } });
+  await T.gm({ op: "vehicleSet", vehicle: "V1", seat: { who: "H1", role: "driver" }, started: true });
+  await T.gm({ op: "vehicleSet", vehicle: "V2", seat: { who: "N1", role: "driver" }, started: true });
+  for (const p of T.prompts("triggerQueue")) await T.gm({ op: "answerFor", prompt: p.id, value: { skip: p.options.map((o) => o.id) } });
+  await T.gm({ op: "chaseStart", prey: ["V2"], pursuer: ["V1"], distance: 2 });
+  await T.gm({ op: "chaseEnd", outcome: "combat" });
+  const tx = T.log.list[T.log.list.length - 1].id, first = T.state.init.curMember, hp0 = T.c[first].health;
+  const q = T.prompts("triggerQueue").find((p) => p.about === first);
+  if (q) await T.gm({ op: "answerFor", prompt: q.id, value: { order: q.options.map((o) => o.id) } });
+  const env = await T.gm({ op: "undo", tx, force: true, drift: "leave" });
+  await T.gm({ op: "chaseEnd", outcome: "combat" });
+  const now = T.state.init.curMember;
+  eq([env.ok, now, T.prompts("triggerQueue").filter((p) => p.about === now).length, T.c[now].health], [true, first, 0, hp0 - 1], "H2-4 (control): a forced single undo of the chase's end keeps the answered card's poison, and the moment does not come a second time");
+}
 
 /* ================================================================== H2-5: the GM's client gets a reveal shot for every player-side newcomer
    Spec 26, per seat: the GM gets no reveal ("nothing is new to the GM"). camera-pure cues() counts as new whatever enters the GM's ledger
@@ -87,6 +114,11 @@ const pjournal = (T, owns = ["H1"]) => V.journalFor(T.log, { id: "p1", staff: fa
   const own = { me: "gm", staff: true, mine: ["N1"] };
   const now = CP.look(v1, own), all = CP.cues(CP.look(v0, own), now);
   eq([all.filter((c) => c.why === "reveal").length, CP.cueShot(all.find((c) => c.why === "reveal") ?? null, now)], [0, null], "H2-5: a newcomer is no reveal (and no reveal shot) on the GM's client");
+  const pown = { me: "p1", staff: false, mine: ["H1"] }, pall = CP.cues(CP.look(v0, pown), CP.look(v1, pown));
+  eq(pall.filter((c) => c.why === "reveal").map((c) => c.focus), ["S1"], "H2-5 (control): a player still gets the reveal of a newcomer");
+  /* H2-3 (fixer fxe): the rule the camera applies, pure: a card open holds the watcher's cues (level all), not the ones about the user's own units */
+  const asked = { asks: { p9: { about: "H1" } } };
+  eq([CP.heldByCard({ level: "all" }, asked), CP.heldByCard({ level: "turn" }, asked), CP.heldByCard({ level: "all" }, { asks: {} })], [true, false, false], "H2-3: a card open holds the quiet watcher cues only");
 }
 
 /* ================================================================== H2-6: merge leftovers (tactics-cam2 x tactics-fxc in ui/main.mjs, tactics-u21 in model-pure)

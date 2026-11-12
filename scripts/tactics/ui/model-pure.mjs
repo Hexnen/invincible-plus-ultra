@@ -19,8 +19,8 @@ import * as Lg from "../ledger-pure.mjs";
 import { outOf } from "../desk-pure.mjs";
 import * as Keys from "./keys-pure.mjs";
 import { whyOf, whyLine, poolTip, rollPool } from "./feedback-pure.mjs";
-import { BANDS, bandOf } from "../flows/kit.mjs";
-import * as Sg from "./signs-pure.mjs";      // U100: the marks where the map draws (moinen-maps zones-api.md section 40)      // the bands of a chance: one definition for the dock and for the engine's reaction cards (U11)
+import { BANDS, bandOf } from "../flows/kit.mjs";      // the bands of a chance: one definition for the dock and for the engine's reaction cards (U11)
+import * as Sg from "./signs-pure.mjs";      // U100: the marks where the map draws (moinen-maps zones-api.md section 40)
 export { BANDS, bandOf };
 
 
@@ -991,7 +991,7 @@ export function manualData(m, own, facts, t) {
   const f = own.manual?.[m.inst] ?? {}, resolve = m.commands.find((c) => c.id === "resolve"), abort = m.commands.find((c) => c.id === "abort");
   const cost = m.actor && ["none", "quick", "full"].includes(f.cost) ? f.cost : "none";      // D111: nobody's action (a hazard, a challenge's consequence) has no price to pick
   /* D111 (spec 12: a parked step says what is left to do): what a failed challenge does, that the engine has no rule for */
-  const fxWhy = m.fx ? t(m.fx.kind === "blast" ? "ITAC.ui.manual.challengeFx.blast" : "ITAC.ui.manual.challengeFx", { name: m.fx.name ?? t("ITAC.Someone"), effect: t(`ITAC.ui.effect.${m.fx.kind}`, {}, String(m.fx.kind)) }) : null;
+  const fxWhy = m.fx ? t(m.fx.kind === "blast" ? "ITAC.ui.manual.challengeFx.blast" : m.fx.round ? "ITAC.ui.manual.challengeFx.round" : "ITAC.ui.manual.challengeFx", { name: m.fx.name ?? t("ITAC.Someone"), effect: t(`ITAC.ui.effect.${m.fx.kind}`, {}, String(m.fx.kind)) }) : null;
   const damage = (m.targets ?? []).map((x) => ({ target: x.id, name: x.name, amount: Math.max(0, Math.trunc(Number(f.damage?.[x.id]) || 0)) }));
   const result = { cost, note: String(f.note ?? "").slice(0, 300), damage: damage.filter((d) => d.amount > 0).map((d) => ({ target: d.target, amount: d.amount })) };
   return { id: m.inst, actor: m.actorName ?? t("ITAC.ui.who.gm"), title: instTitle(t, m), text: instText(t, facts, m), why: m.failed ? t("ITAC.ui.manual.failed", { step: stepText(t, m.failed.step) }) : m.byHand === "seat" ? t("ITAC.ui.manual.seat") : fxWhy, cause: m.cause && m.cause !== "turn" ? t(`ITAC.ui.cause.${m.cause}`, {}, String(m.cause)) : null, causeMark: m.cause === "interrupt" ? "out" : null,
