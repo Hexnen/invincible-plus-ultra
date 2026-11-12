@@ -126,8 +126,9 @@
 /* ============================ THE ACTION DOCK ============================
    U28 / U29: ONE ROW AT THE BOTTOM EDGE, read left to right like the unit bar of a tactics game:
      the unit (face, name, zone, Health and Resolve bars) | the slots of the turn | the actions as pictures | the tail (End turn).
-   THE MARK OF SPEED (.ita-spd) is the shape of the slot a thing takes: a LONG bar = the full action, a SHORT bar = a quick action,
-   an open diamond = no action (U50). The same two shapes are the slots themselves, so the bar teaches its own legend. Resolve prices are a cyan chip. */
+   THE MARK OF A PRICE is the kit's (styles/kit.css .ipu-cost, ledger U93): a LONG bar = the full action, a SHORT bar = a quick action,
+   an open diamond = no action (U50). The same two shapes are the slots themselves, so the bar teaches its own legend. Stress is the
+   kit's chip (.ipu-stress). This file only PLACES the marks on its surfaces (the section "THE MARKS ON THE SURFACES" at the end). */
 #invincible-tactics-dock {
   left: var(--itd-cx, 50%);
   bottom: var(--itd-bottom, 8px);
@@ -150,13 +151,6 @@
 /* the questions asked of this user sit on top, whoever's turn it is */
 .itd-asks { flex: 0 1 auto; min-height: 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 8px; max-height: calc(var(--itd-maxh, 60vh) / var(--ita-scale, 1)); overflow-y: auto; overscroll-behavior: contain; padding: 4px 6px 2px; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
 
-/* the marks shared by the bar, the lists and the cards */
-.ita-spd { flex: none; display: inline-block; width: 22px; height: 5px; background: currentColor; transform: skewX(-14deg); }
-.ita-spd[data-unit="quick"] { width: 10px; }
-/* U50: what takes NO action has a mark too, unlike either slot: an open diamond (nothing of the turn is filled by it). Its tooltip
-   says in a sentence that it takes no action and what it still costs. */
-.ita-spd[data-unit="free"] { width: 8px; height: 8px; margin-inline: 2px; background: transparent; border: 2px solid currentColor; transform: rotate(45deg); box-sizing: border-box; }
-.ita-rs { flex: none; display: inline-grid; place-items: center; min-width: 17px; height: 15px; padding: 0 3px; font: 400 11px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; color: var(--ita-ink, #0c1a2e); background: var(--ita-cyan, #3bb8e8); border: 1px solid var(--ita-ink, #0c1a2e); }
 
 /* the bar: the slanted plate is drawn behind (::before), everything stands straight on it */
 .itd-bar { position: relative; isolation: isolate; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px 10px; min-width: 0; padding: 6px 11px 7px 9px; }
@@ -244,10 +238,9 @@
   transition: translate .12s ease-out, box-shadow .12s ease-out;
 }
 #invincible-tactics-dock .itd-ic > i { font-size: 15px; }
-#invincible-tactics-dock .itd-ic > .ita-spd { position: absolute; left: 50%; bottom: 3px; height: 4px; margin-left: -11px; }
-#invincible-tactics-dock .itd-ic > .ita-spd[data-unit="quick"] { margin-left: -5px; }
-#invincible-tactics-dock .itd-ic > .ita-spd[data-unit="free"] { bottom: 1px; width: 7px; height: 7px; margin: 0 0 0 -3.5px; }
-#invincible-tactics-dock .itd-ic > .ita-rs { position: absolute; top: -7px; right: -7px; }
+#invincible-tactics-dock .itd-ic > :is(.ipu-cost, .ipu-costs) { position: absolute; left: 50%; bottom: 0; translate: -50% 0; }
+#invincible-tactics-dock .itd-ic > .ipu-costs { bottom: 1px; }
+#invincible-tactics-dock .itd-ic > .ipu-stress { position: absolute; top: -7px; right: -7px; }
 #invincible-tactics-dock .itd-ic:hover:not([aria-disabled="true"], .itd-armed) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-ic:active:not([aria-disabled="true"]), #invincible-tactics-dock .itd-ic.itd-armed { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-ic.itd-armed { background: #fff; }
@@ -581,12 +574,13 @@ body.itd-picking #board { cursor: crosshair; }
 #invincible-tactics-dock[data-tight] .itd-panel[data-list="menu"] .itd-rows { grid-template-columns: repeat(2, minmax(150px, 230px)); }
 #invincible-tactics-dock .itd-row { display: flex; align-items: center; gap: 7px; min-width: 0; height: 28px; padding: 0 8px 0 7px; font: 400 12.5px/1 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #fff; background: var(--ita-tile); border: 1px solid var(--ita-line); }
 #invincible-tactics-dock .itd-row > i:first-child { width: 16px; text-align: center; font-size: 12.5px; color: var(--ita-yellow); }
-#invincible-tactics-dock .itd-row > .ita-spd { color: var(--ita-yellow); }
+#invincible-tactics-dock .itd-row > :is(.ipu-cost, .ipu-costs) { color: var(--ita-yellow); }
+#invincible-tactics-dock .itd-row > .ipu-stress { margin-left: 2px; }
 #invincible-tactics-dock .itd-row > i:last-child:not(:first-child) { font-size: 10.5px; color: var(--ita-label); }
 .itd-row-l { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 #invincible-tactics-dock .itd-row:hover { background: var(--ita-tile-hi); border-color: #fff; }
 #invincible-tactics-dock .itd-row[aria-disabled="true"] { color: var(--ita-label); background: transparent; border-style: dashed; cursor: help; }
-#invincible-tactics-dock .itd-row[aria-disabled="true"] > :is(i:first-child, .ita-spd) { color: var(--ita-label); }
+#invincible-tactics-dock .itd-row[aria-disabled="true"] > :is(i:first-child, .ipu-cost, .ipu-costs) { color: var(--ita-label); }
 #invincible-tactics-dock .itd-chip-attr { padding-left: 4px; }
 #invincible-tactics-dock .itd-chip-attr b { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 3px; font: 400 13px/1 Titles, Comic, sans-serif; color: var(--ita-ink); background: var(--ita-cyan); }
 #invincible-tactics-dock .itd-chip-attr[aria-pressed="true"] b { color: var(--ita-yellow); background: var(--ita-ink); }
@@ -837,3 +831,63 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 #invincible-tactics-dock .itd-hint1-x:hover { background: var(--ita-yellow); }
 #invincible-tactics-dock .itd-hint1-x:focus-visible { outline: 3px solid var(--ita-blue); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { #invincible-tactics-dock .itd-hint1 { animation: none; } }
+
+/* ============================ THE MARKS ON THE SURFACES (ledger U93) ============================
+   The drawings and their names are the kit's (styles/kit.css, scripts/kit.mjs); here they are only placed and given the colour of the
+   ground they stand on. No rule here draws a mark of its own. */
+/* a mark inside a sentence (a line of a card, a roll chip, a status): on the line, in the colour of what is worth reading */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-status, .itd-news-t, .igd-rollmarks, .ita-opt-n, .itd-hint1) .ipu-sym { margin-inline: 1px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-status, .igd-rollmarks, .itd-hint1) .ipu-sym > .ipu-sym-g { color: var(--ita-yellow); }      /* (on an answer the mark keeps the ink of the button it stands on) */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) :is(.ita-line, .itd-hint1) > :is(.ipu-cost, .ipu-costs) { color: var(--ita-yellow); margin-inline: 2px; }
+/* a way of a move, a door: its price after the name, what it meets after that */
+#invincible-tactics-dock .itd-way .itd-way-l > :is(.ipu-cost, .ipu-costs) { color: inherit; }
+.itd-way-marks { display: inline-flex; align-items: center; gap: 8px; }
+/* the name plate of the armed action (U85): the mark of the price rides on the plate, the chip of stress beside it; their names are the tooltip */
+#invincible-tactics-dock .itd-what .ita-plate > .ipu-cost, #invincible-tactics-dock .itd-what .ita-plate > .ipu-costs > .ipu-cost { --ipu-cost-h: 12px; }
+/* the dice of the armed action: the mark in place of the words "Your dice" */
+#invincible-tactics-dock .itd-pool > .ipu-sym { color: var(--ita-label); }
+#invincible-tactics-dock .itd-pool > .ipu-sym .ipu-sym-g.fa-solid { font-size: 15px; }
+/* a chip of bonus dice, something extra the unit has */
+.itd-chip-token .ipu-sym, .itd-extra .ipu-sym { color: inherit; }
+.itd-extra { gap: 4px; }
+.itd-extra[data-mark] { padding: 0; border: 0; height: auto; cursor: help; }
+.itd-extra[data-kind="status"]:is([data-id="broken"], [data-id="dying"], [data-id="dead"], [data-id="unconscious"], [data-id="stressedOut"]) { color: var(--ita-red-lt); }
+/* the roll chip (yellow ground) and its buttons */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-roll-t:has(.ipu-sym) { display: inline-flex; align-items: center; gap: 6px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn:has(> .ipu-sym) { display: inline-flex; align-items: center; gap: 5px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-rollbtn > .ipu-stress { height: 14px; }
+/* an answer on a card, the summary of a fight */
+.ita-opt .ipu-stress { margin-left: 1px; }
+.ita-sum-chip > .ipu-cost { height: 11px; color: var(--ita-cyan); }
+.ita-sum-chip > .ipu-sym { color: var(--ita-red-lt); }
+/* the unit: Health and stress before their bars */
+#invincible-tactics-dock .itd-vital > .ipu-sym { width: 11px; justify-content: center; color: var(--c); }
+#invincible-tactics-dock .itd-vital > .ipu-sym .ipu-sym-g.fa-solid { all: unset; display: inline-block; font: 900 9.5px/1 var(--ipu-fa); }
+#invincible-tactics-dock .itd-vital > .ipu-cost { height: 10px; color: var(--c); }
+.igd-uv > .ipu-sym { color: var(--ita-red-lt); }
+.igd-uv > .ipu-sym .ipu-sym-g.fa-solid { all: unset; display: inline-block; font: 900 10px/1 var(--ipu-fa); }
+.igd-uv > .ipu-cost { height: 11px; color: var(--ita-cyan); }
+:is(#invincible-tactics-dock .itd-vital, .igd-uv) > .ipu-sym .ipu-sym-g.fa-solid::before { color: inherit; }
+/* the GM desk */
+.igd-rollmarks { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px 6px; color: var(--ita-text); }
+#invincible-tactics-desk .igd-seg button > :is(.ipu-cost, .ipu-costs) { --ipu-cost-h: 11px; }
+.igd-tag-mark { display: inline-flex; align-items: center; color: var(--ita-yellow); cursor: help; }
+.igd-ustate-mark { display: inline-flex; padding: 0; border: 0; color: var(--ita-text); cursor: help; }
+.igd-ustate-mark:is([data-id="broken"], [data-id="dying"], [data-id="dead"], [data-id="unconscious"], [data-id="stressedOut"]) { color: var(--ita-red-lt); border: 0; }
+/* tooltips: the price line and a weapon's numbers are pairs, the mark and then its name */
+#tooltip.ita-tip .ita-tt small.ita-tt-price { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; }
+#tooltip.ita-tip .ita-tt-pp { display: inline-flex; align-items: center; gap: 5px; }
+#tooltip.ita-tip .ita-tt-pp > :is(.ipu-cost, .ipu-costs) { color: #ffe72a; }
+#tooltip.ita-tip .ita-tt-price .ipu-stress { font-size: 11px; }
+#tooltip.ita-tip .ita-tt-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: #fff; }
+#tooltip.ita-tip .ita-tt .ita-tt-marks b { font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: 0; text-transform: none; color: #fff; }
+#tooltip.ita-tip .ita-tt-marks .ipu-sym > .ipu-sym-g { color: #ffe72a; }
+/* THE LEGEND: every mark with its name, a card above the dock (the Marks button of the dock's tail) and on the GM desk */
+.ita-legend { width: max-content; max-width: 100%; }
+.ita-legend-b { padding: 8px 12px 10px; }
+
+.igd-legend-b { margin-left: auto; flex: none; }
+#invincible-tactics-desk .ita-legend { margin: 0 8px 6px; max-width: calc(100% - 16px); }
+#invincible-tactics-desk .ita-legend .ipu-legend { gap: 6px 14px; }
+/* U93: a way's notes are words and marks in one line: each part keeps its distance from the next */
+.itd-way-n { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }

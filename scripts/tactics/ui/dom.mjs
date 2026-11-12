@@ -2,23 +2,29 @@
      h("button.ita-opt", { text, tip, fk, disabled, on: { click }, attrs, data }, ...children)   one element
      swap(host, nodes)        replace a host's children and keep the keyboard focus / caret on the element with the same `fk`
      askCard(a, handlers)     one question (model-pure.askData) as a caption card: the player's prompts and the desk's cards are the same thing
-     actIcon(key)             the picture of an action, a stunt or an answer (Font Awesome solid, shipped by Foundry); speed(cost): THE MARK OF
-                              SPEED, the shape of the slot the thing takes: a long bar = the full action, a short bar = a quick one, nothing = no action
+     actIcon(key)             the picture of an action, a stunt or an answer (Font Awesome solid, shipped by Foundry); speed(cost): the mark of a
+                              price, the kit's (scripts/kit.mjs, ledger U93): a long bar = the full action, a short one = a quick one, a diamond = no action
      tipHtml(tip)             a tooltip of the model ({ title, cost, lines, note }) as escaped HTML; every such tooltip is also the aria-label
      props.pv                 what the element would spend ({ slot, forfeits, stress }): the dock previews it on hover and on focus (U30)
    Every surface is rebuilt from its data on a change of the fight (never per frame); `fk` (focus key) is what survives the rebuild. */
 
+import { costMark, costMarkHtml, stressMark, stressMarkHtml, symMark, symMarkHtml, SYM_KINDS, legendHtml, markName, hasMarks, rich, plain } from "../../kit.mjs";
+
+/* U93: THE MARKS IN A SENTENCE. A text of the model may hold a mark as a token ("[[dice:6]]", "[[stress:1]]": kit.mjs). `text` draws
+   it (each mark names itself: its tooltip, role="img"); a tooltip written as a plain string and every aria-label say it in words. So
+   whatever is built with h() can never show a raw token. (What a user typed is never parsed: fields and options are left as they are.) */
+const RAW = new Set(["textarea", "option", "input", "select"]);
 export function h(sel, props = {}, ...kids) {
   const [tag, ...cls] = String(sel).split(".");
   const el = document.createElement(tag || "div");
   if (cls.length) el.className = cls.join(" ");
   const p = props ?? {};
-  if (p.text !== undefined && p.text !== null) el.textContent = String(p.text);
+  if (p.text !== undefined && p.text !== null) { if (hasMarks(p.text) && !RAW.has(tag)) el.append(...rich(p.text)); else el.textContent = String(p.text); }
   if (p.tip && typeof p.tip === "object") { el.dataset.tooltipHtml = tipHtml(p.tip); if (!p.attrs?.["aria-label"]) el.setAttribute("aria-label", tipText(p.tip)); }
-  else if (p.tip) { el.dataset.tooltip = String(p.tip); if (!p.text && !p.attrs?.["aria-label"]) el.setAttribute("aria-label", String(p.tip)); }
+  else if (p.tip) { el.dataset.tooltip = plain(String(p.tip)); if (!p.text && !p.attrs?.["aria-label"]) el.setAttribute("aria-label", plain(String(p.tip))); }
   if (p.pv) { el.dataset.pv = "1"; if (p.pv.slot) el.dataset.pvSlot = p.pv.slot; if (p.pv.forfeits) el.dataset.pvForfeits = "1"; if (p.pv.stress) el.dataset.pvStress = String(p.pv.stress); if (p.pvFor) el.dataset.pvFor = String(p.pvFor); }
   if (p.fk) el.dataset.fk = String(p.fk);
-  for (const [k, v] of Object.entries(p.attrs ?? {})) if (v !== null && v !== undefined && v !== false) el.setAttribute(k, v === true ? "" : String(v));
+  for (const [k, v] of Object.entries(p.attrs ?? {})) if (v !== null && v !== undefined && v !== false) el.setAttribute(k, v === true ? "" : k === "aria-label" || k === "placeholder" ? plain(String(v)) : String(v));
   for (const [k, v] of Object.entries(p.data ?? {})) if (v !== null && v !== undefined) el.dataset[k] = String(v);
   if (p.disabled) el.setAttribute("aria-disabled", "true");
   if (tag === "button") el.type = "button";
@@ -37,23 +43,33 @@ const ICONS = {
   slugfest: "fa-hand-fist", shoot: "fa-crosshairs", grapple: "fa-people-pulling", charge: "fa-meteor", grappleAttack: "fa-hand-back-fist", release: "fa-hand", ram: "fa-car-burst",
   move: "fa-person-running", openDoor: "fa-door-open", breachDoor: "fa-hammer", unseal: "fa-unlock-keyhole", fastball: "fa-baseball",
   orders: "fa-bullhorn", objective: "fa-puzzle-piece", vehicleEnter: "fa-car-side", vehicleExit: "fa-person-walking-arrow-right", vehicleStart: "fa-key", vehicleHandle: "fa-road",
-  pickUp: "fa-hand-holding", scan: "fa-binoculars", banter: "fa-comment", useItem: "fa-toolbox", usePower: "fa-bolt", breakLift: "fa-dumbbell", technology: "fa-microchip",
+  pickUp: "fa-hand-holding", scan: "fa-binoculars", banter: "fa-comment", useItem: "fa-toolbox", usePower: "fa-hand-sparkles", breakLift: "fa-dumbbell", technology: "fa-microchip",
   stabilize: "fa-kit-medical", rally: "fa-flag", recoverResolve: "fa-battery-half", persuade: "fa-handshake", saveBystanders: "fa-people-group", shakeOff: "fa-rotate",
   breakFree: "fa-link-slash", escapeTrap: "fa-dungeon", escapeSnare: "fa-scissors", escapeImmobilised: "fa-unlock", extinguish: "fa-fire-extinguisher",
   "@more": "fa-ellipsis", "@kit": "fa-star", "@other": "fa-pen", "@hold": "fa-hourglass-half", "@end": "fa-forward-step",
-  "kit:power": "fa-bolt", "kit:boost": "fa-angles-up", "kit:limit": "fa-triangle-exclamation", "kit:talent": "fa-medal", "kit:drawback": "fa-heart-crack", "kit:gear": "fa-toolbox",
+  "kit:power": "fa-hand-sparkles", "kit:boost": "fa-angles-up", "kit:limit": "fa-triangle-exclamation", "kit:talent": "fa-medal", "kit:drawback": "fa-heart-crack", "kit:gear": "fa-toolbox",
   "stunt:doubleDamage": "fa-burst", "stunt:knockback": "fa-arrow-right-from-bracket", "stunt:stun": "fa-face-dizzy", "stunt:bangHeads": "fa-people-arrows", "stunt:trap": "fa-dungeon", "stunt:disarm": "fa-hand-holding",
   "stunt:deadlyHit": "fa-skull", "stunt:slam": "fa-angles-right", "stunt:suppressed": "fa-arrows-down-to-line", "stunt:trickShot": "fa-bullseye", "stunt:special": "fa-star", "stunt:own": "fa-pen",
   "fate:ko": "fa-bed", "fate:kill": "fa-skull",
-  "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark", "react:r": "fa-bolt",
+  "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark", "react:r": "fa-reply",
 };
 export const actIcon = (key) => icon(ICONS[key] ?? "fa-circle-dot");
 /** the same picture as a Font Awesome class, for a menu the map draws at a token or a door (W1) */
 export const faOf = (key) => `fa-solid ${ICONS[key] ?? "fa-circle-dot"}`;
-/** the mark of speed: the shape of the slot the thing takes (long = full action, short = quick action); what takes NO action carries a
-    mark of its own, an open ring (U50: with no mark at all it read as a mark gone missing); a price the GM decides carries none */
-export const speed = (cost) => (cost === "full" || cost === "quick" ? h("span.ita-spd", { data: { unit: cost }, attrs: { "aria-hidden": "true" } })
-  : cost === "none" || cost === "free" ? h("span.ita-spd", { data: { unit: "free" }, attrs: { "aria-hidden": "true" } }) : null);
+/** THE MARK OF SPEED (U93: the shared kit's, kit.mjs costMark): a long bar = the full action, a short bar = a quick one, an open
+    diamond = no action (U50), a question mark = the GM names the price; `o.out`: taken out of turn, the hooked arrow before the bar.
+    Silent: whatever carries it says the name in its tooltip and its aria-label. */
+export const speed = (cost, o = {}) => costMark(cost, { out: !!o.out });
+/** the price in stress beside a mark of speed: the bolt with its number (kit.mjs stressMark) */
+export const stressChip = (n) => (n ? stressMark(n) : null);
+/** a mark of the model ({ mark, n, glyph, out, name }) that stands by itself and names itself (its tooltip, a screen reader);
+    `silent`: what carries it says the name */
+const markHtml = (m, name) => (m.mark === "stress" ? stressMarkHtml(m.n ?? null, { name }) : SYM_KINDS.includes(m.mark) ? symMarkHtml(m.mark, { n: m.n ?? null, glyph: m.glyph ?? null, name }) : costMarkHtml(m.mark, { out: !!m.out, name }));
+export function markOf(m, silent = false) {
+  if (!m) return null;
+  const t = document.createElement("template"); t.innerHTML = markHtml(m, silent ? null : m.name ?? true);
+  return t.content.firstElementChild;
+}
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
 /** a tooltip of the model as HTML (Foundry cleans it again); names of items and characters are escaped here */
@@ -64,8 +80,15 @@ const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
 const whyHtml = (w) => (w ? `<div class="ita-tt-why">${w.text ? `<p class="ita-tt-no">${esc(w.text)}</p>` : ""}${w.fix ? `<p class="ita-tt-fix">${esc(w.fix)}</p>` : ""}</div>` : "");
 const rowHtml = (r, cls = "") => `<span class="ita-tt-row${cls}"><span>${esc(r.label)}</span><b>${esc(r.value)}</b></span>`;
 const sumHtml = (tip) => (tip.rows ? `<div class="ita-tt-sum">${tip.rows.map((r) => rowHtml(r)).join("")}${tip.total ? rowHtml(tip.total, " ita-tt-total") : ""}${tip.wait ? `<small>${esc(tip.wait.label)}</small>${tip.wait.rows.map((r) => rowHtml(r, " ita-tt-wait")).join("")}` : ""}</div>` : "");
-export const tipHtml = (tip) => `<div class="ita-tt">${tip.title ? `<b>${esc(tip.title)}${tip.key ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</b>` : ""}${tip.cost || (tip.key && !tip.title) ? `<small>${esc(tip.cost ?? "")}${tip.key && !tip.title ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</small>` : ""}${(tip.lines ?? []).map((l) => `<p>${esc(l)}</p>`).join("")}${tip.note ? `<em>${esc(tip.note)}</em>` : ""}${sumHtml(tip)}${whyHtml(tip.why)}</div>`;
-export const tipText = (tip) => [tip.title, tip.cost, ...(tip.lines ?? []), tip.note, tip.say, tip.why?.text, tip.why?.fix].filter(Boolean).join(", ");
+/* U93: A TOOLTIP IS WHERE A MARK GETS ITS NAME. The price line (`tip.price` = model-pure.priceOf: { lead, parts }) and a line of facts
+   (`tip.facts`: what a weapon brings) are pairs: the mark, then its name. Every other sentence of a tooltip is words: a token in it
+   is said by its name (a mark inside a tooltip could not be asked what it is). `tip.cost` stays the price in words: it is what a
+   screen reader is told (tipText), and what shows when the model handed over no parts. */
+const pairHtml = (m) => `<span class="ita-tt-pp">${markHtml(m, null)}<span>${esc(m.name ?? "")}</span></span>`;
+const priceHtml = (tip) => (tip.price?.parts?.length ? `${tip.price.lead ? `<span>${esc(tip.price.lead)}</span>` : ""}${tip.price.parts.map(pairHtml).join("")}${tip.price.tail ? `<span>${say(tip.price.tail)}</span>` : ""}` : null);
+const say = (x) => esc(plain(x));
+export const tipHtml = (tip) => `<div class="ita-tt">${tip.title ? `<b>${say(tip.title)}${tip.key ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</b>` : ""}${tip.cost || tip.price || (tip.key && !tip.title) ? `<small${priceHtml(tip) ? ' class="ita-tt-price"' : ""}>${priceHtml(tip) ?? say(tip.cost ?? "")}${tip.key && !tip.title ? ` <kbd>${esc(tip.key)}</kbd>` : ""}</small>` : ""}${tip.price?.later ? `<p>${say(tip.price.later)}</p>` : ""}${tip.facts?.length ? `<div class="ita-tt-marks">${tip.facts.map(pairHtml).join("")}</div>` : ""}${(tip.lines ?? []).map((l) => `<p>${say(l)}</p>`).join("")}${tip.note ? `<em>${say(tip.note)}</em>` : ""}${sumHtml(tip)}${whyHtml(tip.why)}</div>`;
+export const tipText = (tip) => plain([tip.title, tip.cost, ...(tip.facts ?? []).map((m) => m.say ?? m.name), ...(tip.lines ?? []), tip.note, tip.say, tip.why?.text, tip.why?.fix].filter(Boolean).join(", "));
 
 /** Replace the children of `host`; whoever had the focus (by `fk`) keeps it, with the caret where it was. */
 export function swap(host, nodes) {
@@ -96,6 +119,8 @@ export function askCard(a, handlers = {}) {
   if (seen.size > 400) seen.clear();
   /* an answer: its picture (a reaction, a stunt), its name, the mark of its speed and its Resolve price, then the chance; what the
      marks stand for is said in words in the aria-label and, for a stunt, in its tooltip */
+  /* U93: the price of an answer is its marks (the model's `o.unit`, `o.out`: an answer to something done by somebody else is taken out
+     of turn, `o.stress`); their names are the price line of the answer's tooltip and the words of its aria-label (`o.cost`). */
   const opt = (o) => h("button.ita-opt", {
     /* U83: a greyed answer is as large as the others: the dashed frame and the no-entry mark after its name say "not now", the reason
        and what to do about it are its tooltip (pointer and keyboard focus) and its aria-label; it stays in the Tab order */
@@ -104,8 +129,9 @@ export function askCard(a, handlers = {}) {
     data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null },
     on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
   }, a.check ? icon(o.picked ? "fa-square-check" : "fa-square") : o.icon ? actIcon(o.icon) : null,      // U18: a line of a round-point queue is a tick box: ticked = it happens
-  h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(o.unit), o.stress ? h("b.ita-rs", { text: `-${o.stress}` }) : null, o.disabled ? h("i.fa-solid.fa-ban.ita-opt-no", { attrs: { "aria-hidden": "true" } }) : null),
+  h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(o.unit, { out: !!o.out }), stressChip(o.stress), o.disabled ? h("i.fa-solid.fa-ban.ita-opt-no", { attrs: { "aria-hidden": "true" } }) : null),
     !o.unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null));
+
   /* U23: the stunts stand in their groups (on the target; another opponent; on that opponent), each group after its caption */
   const groups = [];
   for (const o of a.options) { const id = o.group?.id ?? ""; let g = groups.find((x) => x.id === id); if (!g) groups.push((g = { id, label: o.group?.label ?? null, items: [] })); g.items.push(o); }
@@ -134,21 +160,40 @@ export function askCard(a, handlers = {}) {
    One line per combatant: face, name, then what it dealt and what it lost as small counts, each with its picture; the words of a
    count are its tooltip and the line's aria-label. It goes away by itself; the x puts it away at once. */
 const SUM_COLS = ["dealt", "hits", "taken", "stress"];
-const SUM_ICON = { dealt: "fa-burst", hits: "fa-crosshairs", taken: "fa-heart-crack", stress: "fa-bolt", broken: "fa-heart-crack", unconscious: "fa-bed", dead: "fa-skull" };
+/* U93: a count is headed by the kit's mark of what it counts (damage dealt, Health lost, stress); attacks that hit keep their own picture */
+const SUM_MARK = { dealt: () => symMark("damage"), taken: () => symMark("health"), stress: () => costMark("stress") };
+const SUM_ICON = { hits: "fa-crosshairs", broken: "fa-heart-crack", unconscious: "fa-bed", dead: "fa-skull" };
 export const sumCard = (c, handlers = {}) => h("article.ita-ask.ita-sum", { data: { kind: c.kind }, attrs: { role: "status" } },
   h("header.ita-head", {}, h("h3.ita-plate", { text: c.title }), c.sub ? h("span.ita-about", { text: c.sub }) : null,
     h("button.ita-sum-x", { fk: "sum:x", tip: c.close, attrs: { "aria-label": c.close }, on: { click: () => handlers.sumClose?.() } }, icon("fa-xmark"))),
   c.quiet ? h("p.ita-line", { text: c.quiet }) : null,
   h("ul.ita-sum-rows", {}, c.rows.map((r) => h("li.ita-sum-row", { data: { mine: r.mine ? "1" : null }, attrs: { "aria-label": r.say } }, face(r.img, r.name), h("span.ita-sum-n", { text: r.name }),
     /* the counts stand in fixed columns (dealt, hits, Health lost, Resolve lost), so a column reads down the card; an empty place stays empty */
-    h("span.ita-sum-chips", {}, SUM_COLS.map((id) => { const k = r.chips.find((x) => x.id === id); return k ? h("span.ita-sum-chip", { tip: k.tip, data: { id: k.id } }, icon(SUM_ICON[k.id]), h("b", { text: k.n })) : h("span.ita-sum-chip", { data: { id, empty: "1" } }); }),
+    h("span.ita-sum-chips", {}, SUM_COLS.map((id) => { const k = r.chips.find((x) => x.id === id); return k ? h("span.ita-sum-chip", { tip: k.tip, data: { id: k.id } }, SUM_MARK[k.id]?.() ?? icon(SUM_ICON[k.id]), h("b", { text: k.n })) : h("span.ita-sum-chip", { data: { id, empty: "1" } }); }),
       r.out ? h("span.ita-sum-chip", { tip: r.out.tip, data: { id: "out" } }, icon(SUM_ICON[r.out.id])) : null)))),
   c.more ? h("p.ita-sum-more", { text: c.more }) : null);
 
 /** U1 / U2: the buttons of one roll (model-pure.rollButtons): `act` is done on this client (handlers.roll), `req` is sent. One element, re-skinnable. */
-export const rollButtons = (id, buttons, handlers = {}) => (buttons ?? []).map((b) => h("button.ita-rollbtn", { fk: `rb:${id}:${b.id}`, text: b.label, tip: b.tip, data: { id: b.id }, on: { click: () => (b.act ? handlers.roll?.(b.act) : b.req ? handlers.send?.(b.req) : null) } }));
+/* U93: Push is named by its word (a button says what it does) and carries the mark of pushing before it and the bolt of stress after
+   it: what a push may cost (the model's `b.marks`) */
+export const rollButtons = (id, buttons, handlers = {}) => (buttons ?? []).map((b) => h("button.ita-rollbtn", { fk: `rb:${id}:${b.id}`, text: b.marks ? null : b.label, tip: b.tip, data: { id: b.id }, attrs: b.marks ? { "aria-label": b.label } : {}, on: { click: () => (b.act ? handlers.roll?.(b.act) : b.req ? handlers.send?.(b.req) : null) } },
+  b.marks ? [markOf(b.marks[0], true), h("span", { text: b.label }), b.marks.slice(1).map((m) => markOf(m, true))] : null));
 /** U1 / U2: a roll this client owes or may push, as one chip: what it is, and its buttons (model-pure.rollsData) */
-export const rollChip = (r, handlers = {}) => h("span.ita-roll", { data: { state: r.state } }, icon(r.state === "rolling" ? "fa-spinner" : "fa-dice"), h("span.ita-roll-t", { text: r.text, tip: r.tip ?? null, data: { sum: r.tip ? "1" : null }, attrs: r.tip ? { tabindex: "0" } : {} }), rollButtons(r.id, r.buttons, handlers));
+/* U93: the chip is the roll's name and the mark of what stands now: the die with the number of dice (owed), the six with the number of
+   sixes (thrown, may be pushed). The model's text carries the mark; a throw on its way keeps the spinner. */
+function rollText(r) {
+  const tip = r.tip ?? null;
+  return h("span.ita-roll-t", { text: r.text, tip, data: { sum: tip ? "1" : null }, attrs: { ...(tip ? { tabindex: "0" } : {}), "aria-label": tip ? null : r.text } });
+}
+export const rollChip = (r, handlers = {}) => h("span.ita-roll", { data: { state: r.state } }, r.state === "rolling" ? icon("fa-spinner") : hasMarks(r.text) ? null : icon("fa-dice"), rollText(r), rollButtons(r.id, r.buttons, handlers));
+
+/* U93: THE LEGEND. Every mark with its name, as a caption card of the dock (opened from the bar's own button): where a player looks
+   a mark up. Drawn by the kit (kit.mjs legendHtml), so it can never show a mark the surfaces do not use. */
+export function legendCard(handlers = {}) {
+  const body = h("div.ita-legend-b"); body.innerHTML = legendHtml();
+  return h("article.ita-ask.ita-legend", { attrs: { role: "region", "aria-label": markName("legend") } },
+    h("header.ita-head", {}, h("h3.ita-plate", { text: markName("legend") }), h("button.ita-sum-x", { fk: "legend:x", tip: markName("legend.close"), attrs: { "aria-label": markName("legend.close") }, on: { click: () => handlers.legendClose?.() } }, icon("fa-xmark"))), body);
+}
 /** the "who are we waiting for" chips (model-pure.waitingData) */
 export const waitChips = (rows) => rows.map((w) => h(`span.ita-wait${w.mine ? ".ita-wait-me" : ""}`, {}, h("b", { text: w.who }), h("span", { text: w.what.join(", ") })));
 

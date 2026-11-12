@@ -3,7 +3,6 @@
    1) the third pip state "lost" (an action that can no longer be taken this round because the other kind was used) on the existing
       widgets, drawn like their existing dimmed states;
    2) spacing for the check-list rows of the minimal prompt dialogs, which otherwise reuse the turn dialogs' look (.itn-dialog). */
-#invincible-party .ipt-pip[data-state="lost"] { background: var(--ipt-track); border: 1px solid var(--ipt-frame); }
-#invincible-party .ipt-pip[data-state="lost"]::before { opacity: .35; }
+#invincible-party .ipt-pip[data-state="lost"] { color: var(--ipt-frame); }
 #invincible-turn-tray .itt-act[data-state="lost"] { opacity: .55; }
 .itac-dialog .itn-never { margin: .15rem 0; }

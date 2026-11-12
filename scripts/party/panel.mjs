@@ -14,6 +14,8 @@
    Item shape (main.mjs): { id, name, player, color, img, tokenIds, count, hp:{v,max}|null, rs:{v,max}|null, effects, defeated, active, selected,
    groups:[{slot,slots,active,pips:[{k,state}]}]|null, canSelect, canPan, canSheet } */
 import { t } from "./lang.mjs";
+import { costClasses } from "../kit.mjs";      // U93: an action of the turn is the kit's mark, here as on every surface
+const PIP_MARK = { full: "full", quick: "quick", fast: "quick", slow: "full", one: "full" };
 
 const ID = "invincible-party";
 const EASE = "cubic-bezier(.16, 1, .3, 1)";
@@ -380,7 +382,7 @@ function paintPips(card, item) {
       const grp = mk("span", "ipt-pg");
       if (g.active) grp.dataset.active = "1";
       if (g.slots > 1) grp.append(mk("i", "ipt-pn", `${g.slot}/${g.slots}`));
-      for (const p of g.pips) { const b = mk("b", `ipt-pip ipt-pip-${p.k}`); b.dataset.state = p.state; grp.append(b); }
+      for (const p of g.pips) { const b = mk("b", `ipt-pip ${costClasses(PIP_MARK[p.lk ?? p.k] ?? "full", { off: p.state === "used" || p.state === "lost" })[0]}`); b.dataset.state = p.state; grp.append(b); }      // U93: the kit's mark; spent = the same shape hollow
       box.append(grp);
     }
   }

@@ -5,7 +5,9 @@
    NOT VERIFIED LIVE. */
 import * as Store from "../store.mjs";
 import { tacticsApi as Api } from "../api.mjs";
-import { t, errText } from "../lang.mjs";
+import { t as tr, errText } from "../lang.mjs";
+import { plain } from "../../kit.mjs";
+const t = (...a) => plain(tr(...a));      // U93: a dialog of Foundry cannot draw the marks of the kit: a mark in a sentence is said by its name
 
 const open = new Map();          // prompt id -> dialog
 let surfaces = false;

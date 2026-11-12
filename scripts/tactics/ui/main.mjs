@@ -19,6 +19,7 @@ import * as Mv from "../movement.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import { t as langT, errText } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
+import { plain } from "../../kit.mjs";      // U93: a notification cannot draw a mark: it says its name
 import * as Keys from "./keys-pure.mjs";
 import * as Dock from "./dock.mjs";
 import * as Desk from "./desk.mjs";
@@ -102,7 +103,7 @@ const mapWidth = () => { try { const sb = document.getElementById("sidebar"), r 
 const combatNow = () => { try { const c = Store.currentCombat(); return c && Api.active(c) && Api.mode(c) !== "off" && (!c.scene || c.scene.id === globalThis.canvas?.scene?.id) ? c : null; } catch { return null; } };
 const isVideo = (s) => /\.(webm|mp4|m4v|ogv)(\?|$)/i.test(String(s ?? ""));
 const portrait = (cb) => [cb?.img, cb?.token?.texture?.src, Sys.actorOf(cb)?.img].filter(Boolean).find((s) => !isVideo(s)) ?? null;
-const notify = (kind, text) => { try { ui.notifications[kind](text, { console: false }); } catch { /* no ui */ } };
+const notify = (kind, text) => { try { ui.notifications[kind](plain(text), { console: false }); }      /* U93: a notification cannot draw a mark: it says its name */ catch { /* no ui */ } };
 
 /** what the pure model may ask about the world (model-pure.mjs header); numbers only of actors this user may read */
 function factsOf(combat) {

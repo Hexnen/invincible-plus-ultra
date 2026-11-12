@@ -143,8 +143,8 @@
 }
 #invincible-turn-tray.itt-rest .itt-pill { display: inline-flex; }
 #invincible-turn-tray.itt-rest:hover .itt-pill, #invincible-turn-tray.itt-rest:focus-within .itt-pill, #invincible-turn-tray.itt-rest.itt-peek .itt-pill { opacity: 0; }
-#invincible-turn-tray .itt-pip { font-size: 9px; color: var(--itt-label); }
-#invincible-turn-tray .itt-pip-used { color: #7f93b3; opacity: .45; }
+#invincible-turn-tray .itt-pip.ipu-cost { --ipu-cost-h: 11px; color: var(--itt-label); vertical-align: 0; }      /* U93: the kit's marks; spent = hollow */
+#invincible-turn-tray .itt-pip-used { color: #7f93b3; }
 #invincible-turn-tray .itt-pill-end { font-size: 9px; color: var(--itt-label); }
 
 /* who: only when several characters share the tray */
@@ -176,7 +176,7 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-width: 64px;
+  min-width: 48px;
   height: 32px;
   margin: 0;
   padding: 0 9px;
@@ -193,8 +193,7 @@
 #invincible-turn-tray .itt-act { color: var(--itt-yellow); background: transparent; border-color: var(--itt-yellow); box-shadow: none; }
 #invincible-turn-tray .itt-act.itt-armed { color: var(--itt-ink); background: var(--itt-yellow); border-color: var(--itt-ink); box-shadow: 3px 3px 0 var(--itt-blue); }
 #invincible-turn-tray .itt-act[aria-pressed="true"] { color: var(--itt-label); background: transparent; border-color: var(--itt-line); box-shadow: none; }
-#invincible-turn-tray .itt-act[aria-pressed="true"] .itt-act-i { opacity: .5; }
-#invincible-turn-tray .itt-act[aria-pressed="true"] .itt-act-t { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+#invincible-turn-tray .itt-act .itt-act-i.ipu-cost { --ipu-cost-h: 20px; vertical-align: 0; }      /* U93: the button is the action's mark (kit); its name is the tooltip */
 #invincible-turn-tray .itt-act[aria-disabled="true"] { cursor: not-allowed; }
 #invincible-turn-tray .itt-act:hover:not([aria-disabled="true"]) { translate: -1px -1px; }
 #invincible-turn-tray .itt-act.itt-armed:hover { box-shadow: 4px 4px 0 var(--itt-blue); }

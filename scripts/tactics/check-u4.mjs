@@ -173,9 +173,9 @@ const pview = (T, u, owns) => V.viewFor(T.state, { id: u, staff: false, owns }, 
   const was = globalThis.game;
   try {
     globalThis.game = { i18n: { lang: "pl" } };
-    eq([1, 2, 5].map((n) => t("ITAC.ui.bonusDice", { n })), ["+1 kość", "+2 kości", "+5 kości"], "PL: +1 kość, not '+1 kości'");
+    eq([1, 2, 5].map((n) => t("ITAC.ui.bonusDice", { n })), ["[[dice:+1]]", "[[dice:+2]]", "[[dice:+5]]"], "PL: bonus dice are the mark of dice with their number (U93): no noun to decline");
     eq([1, 3, 5].map((n) => t("ITAC.ui.line.knockDir", { target: "X", n }).split(".")[0]), ["X leci o 1 strefę", "X leci o 3 strefy", "X leci o 5 stref"], "PL: no 'stref(y)'");
-    eq(t("ITAC.ui.line.attPool", { dice: 1, attr: "Walka" }), "Atakujący rzuca 1 kością (Walka).", "PL: the instrumental too");
+    eq(t("ITAC.ui.line.attPool", { dice: 1, attr: "Walka" }), "Atakujący rzuca: [[dice:1]] (Walka).", "PL: the attacker's dice are the mark (U93): no instrumental left to get wrong");
     eq(t("ITAC.ui.line.forcedShort", { n: 1, of: 3 }), "Na mapie jest miejsce na 1 z 3 stref.", "PL: the noun follows the second number");
     eq(t("ITAC.ui.stress", { n: 1 }), "stres: 1", "PL: no '1 stresu'");
     /* the waiting line: no word twice, no two brackets in a row */
@@ -183,7 +183,7 @@ const pview = (T, u, owns) => V.viewFor(T.state, { id: u, staff: false, owns }, 
     eq([about("attack"), about("roll")], ["rzut: Atak (Omni-Man)", "rzut: Akcja (Omni-Man)"], "PL: 'rzut (Atak) (Omni-Man)' and 'rzut (Rzut)' are gone");
     eq(t("ITAC.Scene.Line", { name: "X", from: 0, to: 2 }), "X: Zdrowie z 0 na 2", "PL: the recovery line");
     globalThis.game = { i18n: { lang: "en" } };
-    eq([1, 2].map((n) => t("ITAC.ui.bonusDice", { n })), ["+1 die", "+2 dice"], "EN: +1 die");
+    eq([1, 2].map((n) => t("ITAC.ui.bonusDice", { n })), ["[[dice:+1]]", "[[dice:+2]]"], "EN: bonus dice are the mark of dice (U93)");
     eq(t("ITAC.ui.wait.about", { what: t("ITAC.ui.wait.roll", { roll: t("ITAC.roll.roll") }), name: "Omni-Man" }), "roll: Action (Omni-Man)", "EN: no 'roll (Roll)'");
   } finally { globalThis.game = was; }
 }

@@ -66,7 +66,7 @@ export function floats(events, t) {
       else if (!hurt.has(target)) out.push({ target, tone: "none", text: t("ITAC.float.hit"), hit: true });
     } else if (e.type === "damage" && Number.isFinite(e.taken)) {
       const n = Math.max(0, Math.trunc(e.taken));
-      out.push(n > 0 ? { target, tone: e.toStress ? "resolve" : "health", text: t(e.toStress ? "ITAC.float.resolve" : "ITAC.float.health", { n }), loss: true } : { target, tone: "none", text: t("ITAC.float.none"), loss: true });
+      out.push(n > 0 ? { target, tone: e.toStress ? "resolve" : "health", text: t(e.toStress ? "ITAC.float.resolve" : "ITAC.float.health", { n }), num: `-${n}`, mark: e.toStress ? "stress" : "health", loss: true }      /* U93: the number with the mark of what was lost (`num`, `mark`); `text` is the same in words, for a canvas that cannot draw the mark */ : { target, tone: "none", text: t("ITAC.float.none"), loss: true });
     } else if (e.type === "broken") out.push({ target, tone: "state", text: t("ITAC.float.broken") });
   }
   return out.slice(0, 40);
