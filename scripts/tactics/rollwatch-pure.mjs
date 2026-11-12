@@ -100,6 +100,9 @@ export function cardCombat(tag, get, current) {
 /* U129: the system's roll card keeps its Push / Accept buttons until the system itself redraws it, so a card whose roll the fight has
    settled otherwise (the GM accepted it for the player, a later push made a new card, the action ended) kept live-looking buttons.
    cardState(view, tag, messageId) -> "open" (the buttons still mean something, or the roll is not taken yet) | "settled". */
+/** FXP (D160): a roll card of the fight that another user threw: its Push / Accept are not this user's (only the author may change the
+    card; a co-owner's buttons failed without a word). The GM's seat keeps them. -> true when they are switched off here */
+export const cardOther = (authorId, userId, staff = false) => !staff && !!authorId && !!userId && authorId !== userId;
 export function cardState(view, tag, messageId) {
   const inst = (view?.stack ?? []).find((i) => i?.id === tag?.inst), r = inst?.rolls?.[tag?.key];
   if (!r || r.forced != null) return "settled";

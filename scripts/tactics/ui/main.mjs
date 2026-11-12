@@ -656,8 +656,9 @@ function chatButtons(root = document) {
       const id = el.closest("[data-message-id]")?.dataset.messageId, tag = Sys.tacticsOf(game.messages?.get(id));
       if (!tag) continue;
       const combat = RW.cardCombat(tag, (id) => game.combats?.get(id), Store.currentCombat());      // U137: a card of a fight that is gone is settled
-      const off = RW.cardState(combat ? Api.state(combat) : null, tag, id) === "settled";
-      for (const b of el.querySelectorAll("button")) { b.disabled = off; if (off) b.dataset.tooltip = t("ITAC.ui.chat.settled"); else delete b.dataset.tooltip; }
+      const msg = game.messages?.get(id), off = RW.cardState(combat ? Api.state(combat) : null, tag, id) === "settled";
+      const other = !off && RW.cardOther(msg?.author?.id, game.user.id, Store.isStaff(game.user));      // FXP (D160): only the roll's author may push or accept it (Foundry refuses another's update)
+      for (const b of el.querySelectorAll("button")) { b.disabled = off || other; if (off || other) b.dataset.tooltip = off ? t("ITAC.ui.chat.settled") : t("ITAC.ui.chat.notYours", { name: msg?.author?.name ?? "" }); else delete b.dataset.tooltip; }
     }
   } catch { /* the card as the system drew it */ }
 }

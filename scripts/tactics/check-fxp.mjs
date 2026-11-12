@@ -228,6 +228,14 @@ async function slain(answer, o = {}) {
   ok(at > 0 && /if \(NewsP\.endAfterDice\(req, \{ busy: diceBusy\(\)[^\n]*\)\) await diceLanded\(\);/.test(m.slice(at, at + 400)), "U178: main.mjs send() holds the End turn request until the dice land, before it reaches the executor");
 }
 
+/* ================================================================== D160 (live): the co-owner's Push / Accept on another's roll card */
+{
+  const RW = await import("./rollwatch-pure.mjs"), { EN, PL } = await import("./lang.mjs"), f = soft(RW, "cardOther");
+  eq([f("u1", "u2", false), f("u1", "u1", false), f("u1", "gm", true), f(null, "u2", false)], [true, false, false, false], "D160: another player's roll card: its buttons are not this seat's (the GM keeps them)");
+  ok(/const other = !off && RW\.cardOther\(msg\?\.author\?\.id, game\.user\.id, Store\.isStaff\(game\.user\)\);/.test(src("./ui/main.mjs")) && /b\.disabled = off \|\| other;/.test(src("./ui/main.mjs")), "D160: main.mjs greys them with a word why");
+  ok("ITAC.ui.chat.notYours" in EN && "ITAC.ui.chat.notYours" in PL, "D160: the word why in English and Polish");
+}
+
 /* ================================================================== D161: the vehicle crew outlives a stop and a restart */
 {
   const O = await import("./ops-pure.mjs"), S = await import("./state-pure.mjs");
