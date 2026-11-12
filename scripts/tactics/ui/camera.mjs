@@ -96,7 +96,7 @@ export function sync(ctx) {
     if (!c || (Zones.hasShot() && CP.heldByCard(c, now))) return;                              // H2-3: a card is open for this user: nothing moves (spec 26)
     /* U98: somebody new in this user's view gets its shot even when a more pressing quiet cue came with it (the one revealed is
        on turn): the shot shows where it is; a user who turned the camera down gets the quiet cue instead */
-    const s = CP.cueShot(all.find((x) => x.why === "reveal") ?? null, now);
+    const s = c.hand ? null : CP.cueShot(all.find((x) => x.why === "reveal") ?? null, now);    // H2-S2: the user's own hand (a unit chosen) wins: its frame takes over (spec 26)
     const spec = s ? playShot(combat, s, c) : play(combat, c);
     log.push({ at: Date.now(), why: c.why, level: c.level, focus: c.focus, sent: !!spec }); if (log.length > 40) log.shift();
   } catch (e) { console.warn(LOG, "sync failed", e); }

@@ -133,6 +133,54 @@ const pjournal = (T, owns = ["H1"]) => V.journalFor(T.log, { id: "p1", staff: fa
   eq(/signs-pure\.mjs";[^\n]*\/\/[^\n]*\/\/ the bands of a chance/.test(model), false, "H2-6: the comment of the bands import stands on its own line (the merge glued it after the U100 import's)");
 }
 
+/* ================================================================== H2-S1 (a suspicion of the hunt, proved and fixed by fixer fxe; provisional, question H2-Q1):
+   the intended target answered with a block (a quick action paid), then a guardian dived in and took the hit [B2115]: the block is never
+   rolled (swapTarget drops it) and its quick action is given back */
+{
+  const KP = await import("./kit-pure.mjs");
+  const item = (id, name) => ({ id, name, type: "talent", level: null, power: null, boosts: [], autos: [], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} });
+  const T = new Table();
+  T.hero("H1", "p1", { name: "Guardian" }).hero("H2", "p2", { name: "Friend" }).npc("N1", { health: 6 }).npc("N2", { health: 6 });
+  T.c.H1.kit = KP.build({ items: [item("i0H1", "Guardian")], attrs: T.c.H1.attrs }); T.c.H1.pass = T.c.H1.kit.pass;
+  T.order(["N1", "H1", "H2", "N2"]);
+  await T.gm({ op: "declare", actor: "N1", decl: { action: "slugfest", targets: ["H2"] } });
+  const live = (cid) => (T.state.ledger[cid]?.entries ?? []).filter((e) => !e.void && e.action === "block").length;
+  await T.req("p2", { op: "answer", prompt: T.prompt("reaction", "H2").id, value: "block" });
+  ok(live("H2") === 1, "H2-S1: (setup) the target's block is paid with a quick action");
+  const g = T.c.H1.kit.actions.find((a) => a.id.endsWith("-guardian")).id;
+  await T.req("p1", { op: "answer", prompt: T.prompt("reaction", "H1").id, value: `r:${g}` });
+  await T.roll("sw:H1", 1);
+  eq([T.top()?.decl.targets, live("H2"), T.state.ledger.H2.grants.some((x) => x.usedBy)], [["H1"], 0, false], "H2-S1: the guardian took the hit: the block that will never be rolled gives its quick action back");
+}
+{     // control: the guardian's roll fails, the target's block stands and stays paid
+  const KP = await import("./kit-pure.mjs");
+  const item = (id, name) => ({ id, name, type: "talent", level: null, power: null, boosts: [], autos: [], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} });
+  const T = new Table();
+  T.hero("H1", "p1", { name: "Guardian" }).hero("H2", "p2", { name: "Friend" }).npc("N1", { health: 6 }).npc("N2", { health: 6 });
+  T.c.H1.kit = KP.build({ items: [item("i0H1", "Guardian")], attrs: T.c.H1.attrs }); T.c.H1.pass = T.c.H1.kit.pass;
+  T.order(["N1", "H1", "H2", "N2"]);
+  await T.gm({ op: "declare", actor: "N1", decl: { action: "slugfest", targets: ["H2"] } });
+  await T.req("p2", { op: "answer", prompt: T.prompt("reaction", "H2").id, value: "block" });
+  const g = T.c.H1.kit.actions.find((a) => a.id.endsWith("-guardian")).id;
+  await T.req("p1", { op: "answer", prompt: T.prompt("reaction", "H1").id, value: `r:${g}` });
+  await T.roll("sw:H1", 0);
+  eq([T.top()?.decl.targets, (T.state.ledger.H2.entries ?? []).filter((e) => !e.void && e.action === "block").length, T.top()?.data.def?.H2?.defence ?? null], [["H2"], 1, "block"], "H2-S1 (control): the guardian failed: the block stands, paid");
+}
+
+/* ================================================================== H2-S3 (a suspicion of the hunt, proved in the pure tracker and fixed by fixer fxe): a second
+   pointer pressed (or released) off the map during a real drag ended the hold; the drag then held still over 1.5 s read as a script */
+{
+  const MP = await import("./movement-pure.mjs");
+  const run = (steps, at) => { const h = MP.handTracker(); for (const [f, ...a] of steps) h[f](...a); return h.byScript(at); };
+  eq([run([["down", 0, true, 1], ["down", 100, false, 2], ["up", 150, 2]], 4000), run([["down", 0, true, 1], ["down", 100, false, 2]], 4000)], [false, false], "H2-S3: a pen or a second finger off the map does not end a drag still held on the map");
+  eq([run([["down", 0, true, 1], ["down", 100, false, 2], ["up", 200, 1]], 4000), run([["down", 0, true, 1], ["cancel", 100]], 4000)], [true, true], "H2-S3 (control): the drag's own release (or a blur) still ends the hold");
+  /* through `listen` with events that carry pointer ids */
+  const fns = {}, win = { addEventListener: (n, f) => { fns[n] = f; } }; let now = 0;
+  const h = MP.handTracker(); h.listen(win, (e) => e.target === "board", () => now);
+  fns.pointerdown({ target: "board", pointerId: 1 }); now = 100; fns.pointerdown({ target: "btn", pointerId: 2 }); now = 150; fns.pointerup({ pointerId: 2 }); now = 4000;
+  eq(h.byScript(now), false, "H2-S3: the window listener keeps the map's pointer held");
+}
+
 /* ================================================================== H2-3: the action camera moves a player's view while a card waits for that player
    Spec 26: "while a card is open, results play in place only (`still`)"; no opening and no walk shot for a user with a card open. camera.mjs
    onEvent: eventShot gives null then (camera-pure, by design), and the QUIET cue of the same event (eventCue: "attack", "move", level "all")
@@ -168,6 +216,16 @@ const pjournal = (T, owns = ["H1"]) => V.journalFor(T.log, { id: "p1", staff: fa
   fire({ seq: 13, type: "outcome", inst: "a1", actor: "N1", target: "H1", hit: true });
   await tick();
   eq(shots.slice(s0).map((s) => [s.beat, s.still]), [["hit", true]], "H2-3: (control) the result plays as a still beat");
+
+  /* H2-S2 (a suspicion of the hunt, proved and fixed by fixer fxe): a reveal in the same redraw as the user's own choice of a unit on the
+     dock played the reveal shot over the hand's own cue (spec 26: the user's hand ends a shot, the hand's frame takes over) */
+  ids.push("S1");
+  const quiet = { ...view0, init: { curMember: "N1" } };
+  Camera.sync(ctx(quiet)); await tick();
+  const f1 = frames.length, s1 = shots.length;
+  Camera.sync({ ...ctx({ ...quiet, ledger: { ...ledger, S1: {} } }), dock: { sel: "H2" } });
+  await tick(); await tick();
+  eq([frames.slice(f1).map((f) => f.why), shots.slice(s1).map((s) => s.beat)], [["select"], []], "H2-S2: the user's own choice of a unit wins over a reveal in the same redraw (the hand's frame, no reveal shot)");
 }
 
 done("check-hunt2");

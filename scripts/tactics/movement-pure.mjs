@@ -311,20 +311,25 @@ export const madeByScript = (now, lastInput, ms = BY_HAND_MS) => !(Number.isFini
     renews it too (a token nudged with the keys). A press elsewhere (a macro's button) is not a drag and leaves the time alone.
     -> { down(now, onBoard), move(now, buttons), up(now), key(now), cancel(now), held(), byScript(now) } */
 export function handTracker(ms = BY_HAND_MS) {
-  let held = false, last = 0;
+  /* bug hunt 2 suspicion (fixer fxe): the presses on the map are kept per pointer, so a second pointer (a pen beside the mouse, a second
+     finger) pressed or released off the map does not end a drag still held on the map. `id`: the pointer's id (one pointer when omitted).
+     A press on the map by the same pointer again (the mouse is always one id) starts its hold anew; a blur ends every hold. */
+  const on = new Set();
+  let last = 0;
+  const held = () => on.size > 0;
   return {
-    down(now, onBoard) { held = !!onBoard; if (held) last = now; },
-    move(now, buttons) { if (held && buttons) last = now; },
-    up(now) { if (held) last = now; held = false; },
+    down(now, onBoard, id = 0) { if (onBoard) { on.add(id); last = now; } },
+    move(now, buttons) { if (held() && buttons) last = now; },
+    up(now, id = 0) { if (on.has(id)) { last = now; on.delete(id); } },
     key(now) { last = Math.max(last, now); },
-    cancel(now) { if (held && now) last = now; held = false; },
-    held: () => held,
-    byScript(now) { return !held && madeByScript(now, last, ms); },
+    cancel(now, id = null) { if (held() && now) last = now; if (id == null) on.clear(); else on.delete(id); },
+    held,
+    byScript(now) { return !held() && madeByScript(now, last, ms); },
     /** follow the hand of `win` (a window): in the capture phase the press is seen before the canvas, the release after its drop. -> true */
     listen(win, isBoard, clock) {
-      const o = { capture: true, passive: true }, add = (ev, fn) => win.addEventListener(ev, fn, o);
-      add("pointerdown", (e) => this.down(clock(), isBoard(e))); add("pointermove", (e) => this.move(clock(), e.buttons)); add("pointerup", () => this.up(clock()));
-      add("pointercancel", () => this.cancel(clock())); add("blur", () => this.cancel(clock())); add("keydown", () => this.key(clock()));
+      const o = { capture: true, passive: true }, add = (ev, fn) => win.addEventListener(ev, fn, o), pid = (e) => (e && e.pointerId != null ? e.pointerId : 0);
+      add("pointerdown", (e) => this.down(clock(), isBoard(e), pid(e))); add("pointermove", (e) => this.move(clock(), e.buttons)); add("pointerup", (e) => this.up(clock(), pid(e)));
+      add("pointercancel", (e) => this.cancel(clock(), pid(e))); add("blur", () => this.cancel(clock())); add("keydown", () => this.key(clock()));
       return true;
     },
   };
