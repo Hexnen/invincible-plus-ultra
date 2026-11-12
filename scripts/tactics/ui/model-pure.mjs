@@ -988,7 +988,7 @@ export function dockData(model, own, facts, t) {
   /* ANSA (UXC-1, K1: «pytanie czy koniec»): ending a turn ALWAYS asks "End the turn?", on every seat (also the GM's NPCs, also with both
      actions spent: `noConfirm` no longer spares the second step). Only the auto-skip tick on the initiative bar (facts.autoSkip, the
      user's own) lets a turn with nothing left pass without the question. */
-  const confirm = true;
+  /* (a turn that passes by itself with the tick has nothing to ask: a click on it passes it at once, as the countdown would) */
   const auto =!!bar.endTurn && !bar.endTurn.disabled && !bar.free && !unused.length && !prompts.length && !allRolls.some((r) => r.state !== "done") && bars.filter((b) => b.onTurn).length === 1 && !armed && !own.mode && !own.quiet && !bar.out;
   /* FXN (D133): a turn that STARTS with nothing left (the round's actions went on reactions before it) passes by itself as well, but it
      says why where the actions stand (the U9 line of the bar, `out`), longer (news-pure AUTO_SPENT_MS), and offers no first-turn hint */
@@ -996,7 +996,7 @@ export function dockData(model, own, facts, t) {
   /* ANSA (FXP-6, FXN-1: «Tick działa też u MG, 3,5 s zostaje»): a turn with nothing left passes by itself ONLY with the auto-skip tick
      on, and then on every seat, the GM's NPCs included (FXP U179's "GM always clicks" is gone); a turn that started spent still stands
      3.5 s with its hourglass line (news-pure autoDelay). Without the tick it waits for End turn and its question. */
-  const tick = !!facts.autoSkip, autoEnd = auto && tick;
+  const tick = !!facts.autoSkip, autoEnd = auto && tick, confirm = !autoEnd;
   /* the question over the button (dock.mjs endAsk): what is still unused, or that nothing is left */
   const ask = { title: t("ITAC.ui.endq.title"), line: unused.length ? t("ITAC.ui.endq.left", { list: unused.join(", ") }) : t("ITAC.ui.endq.none"), yes: t("ITAC.ui.endq.yes"), no: t("ITAC.ui.endq.no"), yesKey: t("ITAC.ui.key.space"), noKey: "Esc" };
   const end = bar.endTurn ? { label: autoEnd ? t("ITAC.ui.end.auto") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"),

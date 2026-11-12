@@ -54,7 +54,8 @@ const markAll = async (T, u, cid) => { await T.req(u, { op: "mark", actor: cid, 
   const off = dock(T, "p1", ["H1"]).end, on = dock(T, "p1", ["H1"], {}, true).end;
   eq([off.auto, off.ready, off.confirm, off.label, /zapyta/.test(off.tip)], [false, true, true, PL["ITAC.ui.end"], true], "UXC-1: nothing left, tick off: the turn waits; End turn is ready and asks (also after both actions are spent)");
   eq(dock(T, "p1", ["H1"], { endArmed: true }).end.ask.line, PL["ITAC.ui.endq.none"], "UXC-1: the question says nothing is left");
-  eq([on.auto, on.ready, on.label, N.autoDelay(on, 1500)], [true, false, PL["ITAC.ui.end.auto"], 1500], "UXC-1: nothing left, tick on: it passes by itself after 1.5 s, without the question");
+  eq([on.auto, on.ready, on.confirm, on.label, N.autoDelay(on, 1500)], [true, false, false, PL["ITAC.ui.end.auto"], 1500], "UXC-1: nothing left, tick on: it passes by itself after 1.5 s, without the question (a click passes it at once)");
+  eq(dock(T, "p1", ["H1"], { endArmed: true }, true).end.armed, false, "UXC-1: with the tick no question opens over a turn that passes by itself");
   eq(dock(T, "p1", ["H1"], { quiet: true }, true).end.auto, false, "UXC-1: a watching seat never passes a turn, tick or not");
   eq(code(await T.req("p1", off.req)), "ok", "UXC-1: the Yes of the question sends the same request End turn always sent");
   /* the GM's NPC with actions left: asked too */

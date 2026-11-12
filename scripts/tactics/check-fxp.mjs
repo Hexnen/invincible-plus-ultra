@@ -213,7 +213,7 @@ async function slain(answer, o = {}) {
   eq([gt.end.auto, !!gt.end.spent, gt.out?.reason, N.autoDelay(gt.end, 1500)], [true, true, "spent", 3500], "ANSA (FXP-6, FXN-1): the GM's tick on: the spent NPC turn passes by itself after 3.5 s");
   ok(!!g.end.req, "U179: the GM's End turn carries its request");
   /* a player's own spent turn still passes by itself (D133 unchanged) */
-  ok(/const tick = !!facts\.autoSkip, autoEnd = auto && tick;/.test(src("./ui/model-pure.mjs")), "ANSA (FXP-6): the rule is the tick's, the same on every seat (no staff exception)");
+  ok(/const tick = !!facts\.autoSkip, autoEnd = auto && tick, confirm = !autoEnd;/.test(src("./ui/model-pure.mjs")), "ANSA (FXP-6): the rule is the tick's, the same on every seat (no staff exception)");
 }
 
 /* ================================================================== D162: the bar's spoken line during a turn this client may not see */
