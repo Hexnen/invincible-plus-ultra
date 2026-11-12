@@ -675,12 +675,12 @@ function extrasOf(bar, t, facts = {}) {
    -> { weapons: { label, empty, items } | null, opts: [{ id, label, tip, on }], maxTargets, decl, dice: [{ label, dice }], why, notes: [text] } */
 const FULL_AUTO_MAX = 12;
 function armsOf(bar, a, own, facts, t) {
-  const none = { weapons: null, opts: [], maxTargets: 1, decl: {}, dice: [], why: null, notes: [] };
+  const none = { weapons: null, opts: [], maxTargets: a.flow === "act" && a.targetMax > 1 ? Math.min(12, a.targetMax) : 1, decl: {}, dice: [], why: null, notes: [] };      // PWC (PW012): an action that takes several (all the animals of a zone)
   if (a.flow !== "attack") return none;
   const shooting = a.attack === "shooting", melee = a.attack === "slugfest";
   const list = a.unarmed ? [] : shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : [];
   const ids = [...(melee ? ["unarmed"] : []), ...list.map((w) => w.id)];
-  const wname = (x) => (x.opt ? `${x.name} (${t(`ITAC.kit.opt.${x.opt}`, {}, x.opt)})` : x.tag ? `${x.name} + ${x.tag}` : x.name);      // P6: a power's attack and its variants
+  const wname = (x) => `${x.name}${x.tag ? ` + ${x.tag}` : ""}${x.opt ? ` (${t(`ITAC.kit.opt.${x.opt}`, {}, x.opt)})` : ""}${x.alt ? ` (${t("ITAC.kit.opt.alt", { attr: attrText(t, x.alt) })})` : ""}`;      // P6: a power's attack and its variants; PWC (PW007): rolled with the attack's own attribute
   const sel = ids.includes(own.weapon) ? own.weapon : ids[0] ?? null, w = list.find((x) => x.id === sel) ?? null;
   const rangeText = (x) => (Array.isArray(x.range) ? t(x.range[0] === x.range[1] ? "ITAC.ui.weapon.rangeOne" : "ITAC.ui.weapon.range", { min: x.range[0], max: x.range[1] }) : null);
   const tipOf = (x) => [x.bonus ? t("ITAC.ui.weapon.bonus", { n: x.bonus }) : null, x.damage != null ? t("ITAC.ui.weapon.damage", { n: x.damage }) : null, rangeText(x), x.sharp ? t("ITAC.ui.weapon.sharp") : null, x.stunEffect ? t("ITAC.ui.weapon.stunEffect") : null, x.singleUse ? t("ITAC.ui.weapon.singleUse") : null, x.noMove ? t("ITAC.ui.weapon.noMove") : null,
@@ -702,7 +702,7 @@ function armsOf(bar, a, own, facts, t) {
   const on = { wreck: can.wreck && !!own.opts?.wreck, area: can.area && !!own.opts?.area, fullAuto: can.fullAuto && !!own.opts?.fullAuto && !own.opts?.area };
   /* U85: an option is a picture; its name and what it does are its tooltip (the line that used to appear under a switched-on option says nothing the tooltip does not, except for full auto, whose line is carried there) */
   const opts = ["wreck", "area", "fullAuto"].filter((k) => can[k]).map((k) => ({ id: k, label: t(`ITAC.ui.arm.${k}`), tip: { title: t(`ITAC.ui.arm.${k}`), lines: [t(`ITAC.ui.arm.${k}.tip`), ...(k === "fullAuto" ? [t("ITAC.ui.arm.fullAuto.note")] : [])] }, on: on[k] }));
-  return { weapons, opts, maxTargets: on.fullAuto ? FULL_AUTO_MAX : 1,
+  return { weapons, opts, maxTargets: on.fullAuto ? FULL_AUTO_MAX : w?.several > 1 ? w.several : w?.quake > 1 ? w.quake : 1,      // PWC: Multiple Snares (PW006), a quake over several zones, one target named per zone (PW018)
     decl: { ...(w ? { weapon: w.id } : {}), ...(on.wreck ? { wreck: true } : {}), ...(on.area ? { area: true } : {}), ...(on.fullAuto ? { fullAuto: true } : {}) },
     attr: w?.attr ?? null, dice: w?.bonus ? [{ label: w.name, dice: w.bonus }] : [], why: shooting && !w ? t("ITAC.ui.weapon.none") : null,
     notes: [on.wreck ? t("ITAC.ui.arm.wreck.note") : null, on.area ? t("ITAC.ui.arm.area.note") : null, on.fullAuto ? t("ITAC.ui.arm.fullAuto.note") : null].filter(Boolean) };
@@ -1147,7 +1147,7 @@ export function manualData(m, own, facts, t) {
    lines). Staff only: the desk is never built for a player. Nothing here is new knowledge: the sheet, the map and the journal hold it.
    -> { id, name, img, zone, group, hidden, vitals, slots, states: [{ id, icon, label, tip }], last: [{ id, round, text, undone }], lastLabel, lastNone } */
 const STATE_ICON = { broken: "fa-heart-crack", unconscious: "fa-bed", dying: "fa-skull-crossbones", dead: "fa-skull", stressedOut: "fa-battery-empty", grappled: "fa-hands-holding", grappling: "fa-hand-back-fist", snared: "fa-link", immobilised: "fa-lock", trapped: "fa-dungeon",
-  unaware: "fa-eye-slash", stunned: "fa-face-dizzy", burning: "fa-fire", airborne: "fa-dove", carrying: "fa-people-carry-box", carried: "fa-people-carry-box", invisible: "fa-ghost", huge: "fa-up-right-and-down-left-from-center", suffocating: "fa-lungs", inVehicle: "fa-car-side", intangible: "fa-ghost" };
+  unaware: "fa-eye-slash", stunned: "fa-face-dizzy", burning: "fa-fire", airborne: "fa-dove", carrying: "fa-people-carry-box", carried: "fa-people-carry-box", invisible: "fa-ghost", huge: "fa-up-right-and-down-left-from-center", suffocating: "fa-lungs", inVehicle: "fa-car-side", intangible: "fa-ghost", conductive: "fa-magnet" };
 export const UNIT_LAST = 3;
 export function unitData(cid, model, facts, t) {
   const c = facts.c?.(cid);

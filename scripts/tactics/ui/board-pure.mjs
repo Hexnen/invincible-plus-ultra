@@ -227,7 +227,7 @@ export function borderSigns(door, br, t) {
   return door ? { sub: [`${t(`ITAC.ui.door.${door.state}`, {}, String(door.state))}, `, armor(door.armor)] } : { title: [`${t("ITAC.map.haz.wall.do")} `, armor(br?.armor)] };
 }
 /* ------------------------------------------------------------------ U44: the GM's quick corrections */
-export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobilised", "trapped"]);
+export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobilised", "trapped", "conductive"]);      // PWC (PW019): conductive [B1680], a fact only the table knows
 /** Health, Resolve and the common states of one combatant as steppers and switches; each change is a GM edit of the engine
     (setHealth, setResolve, statusAdd, statusRemove: journaled, undoable like any other). `vitals` = { health, maxHealth, resolve, maxResolve } | null.
     A stepper's request is a STEP (`delta` = the number chosen minus `from`, the number it was counted from; by default the one the

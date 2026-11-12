@@ -20,11 +20,12 @@ import * as C from "../catalog-pure.mjs";
 import * as K from "./kit.mjs";
 import * as MP from "../movement-pure.mjs";
 import * as ZP from "../zones-pure.mjs";
-import { freeMoveChild, forcedChild } from "./move.mjs";
+import { freeMoveChild, forcedChild, hazardChild } from "./move.mjs";
 import * as Veh from "./vehicle.mjs";                                                          // P7: the ram, hits on vehicles, the attack that ends a chase
 
 export const STEPS = Object.freeze(["check", "gate", "approach", "reactBefore", "roll", "outcome", "stunts", "damage", "reactAfterDamage", "effects", "close"]);
 const SLUG = ["slugfest", "grapple", "grappleAttack", "counterattack", "ram"];
+const TOUCH = ["slugfest", "grapple", "grappleAttack", "counterattack", "charge"];          // PWC (PW004): what touches the one it lands on
 const GM_STUNTS = { special: "stunt", own: "stunt", disarm: "stunt" };                 // the GM's word: [B2441-2442]; Disarm: which item it is
 const NO_MAP_STUNTS = { knockback: "direction", slam: "direction" };                    // without zones the forced move is the GM's, by hand
 const EXTRA_STUNTS = ["bangHeads", "trickShot"];                                         // [B2437], [B2518]: an extra opponent in the same zone
@@ -46,7 +47,43 @@ export const unwound = (v, inst) => { const a = v.facts.c(inst.actor); return !!
 const weaponOf = (v, inst) => { const w = v.facts.weapon(inst.actor, inst.decl.weapon ?? "unarmed"); return w && unwound(v, inst) && (w.id === "unarmed" || w.strike) ? { ...STRIKE_FREE } : w; };
 const bad = (reason, params = {}) => ({ ok: false, reason, params });
 
-const multiOf = (d) => (d?.area ? "area" : d?.fullAuto ? "fullAuto" : null);
+/* PWC (PW006) [B1610]: a weapon that takes several targets with one roll (Multiple Snares) is an attack on many like an area one: one roll,
+   each target dodges on its own; the targets need not stand in one zone */
+const multiOf = (d, w = null) => (d?.area ? "area" : d?.fullAuto ? "fullAuto" : w?.several && (d?.targets?.length ?? 0) > 1 ? "several" : null);
+const multiFor = (v, I) => multiOf(I.decl, weaponOf(v, I));
+/* PWC (PW025) [B1654]: is `cid` inside a darkness that affects it (its maker never is)? The map's state records of the spot name the maker. */
+export function inDark(v, cid) {
+  const Z = v.facts.zones, sp = v.facts.zone?.(cid)?.spot;
+  if (Z?.states && sp) return MP.stateFlags(Z.states(ZP.levelRef(sp)) ?? [], cid).dark;
+  return !!v.facts.zone?.(cid)?.states?.dark;
+}
+const DARK_DICE = -2;                                                                       // [B1654]
+const sameZoneOf = (r) => !!r && (r.borders ?? r.total) === 0;
+/* PWC (PW017, PW018) [B1671-1674]: the zones an Earthquake covers (the zones of its targets): as many as the level allows, joined to each
+   other, one of them the quaker's own zone or (from Major on) the next one; none already wrecked, none whose terrain cannot be wrecked
+   (open air: an off-map area or a terrain the wreck table refuses). A zone whose terrain was never set on the map is the GM's to judge:
+   it is let through (PWC-2). -> { ok, zones: [key] } | { ok:false, reason, params } */
+export function quakeOf(v, inst, w) {
+  const f = v.facts, d = inst.decl, by = new Map();
+  for (const t of d.targets ?? []) { const z = f.zone(t); const key = z ? String(z.key ?? z.spot ?? "").split(":")[0] : ""; if (key && !by.has(key)) by.set(key, t); }
+  if (!by.size) return { ok: true, zones: [] };
+  const n = Math.max(1, Math.trunc(Number(w.quake) || 1)), reps = [...by.values()];
+  if (by.size > n) return { ok: false, reason: "quakeZones", params: { max: n } };
+  const dist = reps.map((t) => f.range(inst.actor, t)?.total);
+  if (dist.every((x) => Number.isFinite(x)) && Math.min(...dist) > (n > 1 ? 1 : 0)) return { ok: false, reason: "tooFar", params: { distance: Math.min(...dist) } };
+  if (reps.length > 1) {                                                                    // joined: every zone reaches the first through zones next to each other
+    const seen = new Set([0]), todo = [0];
+    while (todo.length) { const i = todo.pop(); reps.forEach((t, j) => { if (!seen.has(j) && f.range(reps[i], t)?.total === 1) { seen.add(j); todo.push(j); } }); }
+    if (seen.size < reps.length) return { ok: false, reason: "quakeApart", params: {} };
+  }
+  for (const [key, t] of by) {
+    const z = f.zone(t) ?? {};
+    if (z.area || String(z.spot ?? "").startsWith("@")) return { ok: false, reason: "wreckTerrain", params: {} };      // open air [B1671]
+    if (z.states?.wrecked || M.counterGet(v.state, M.counterKey.zone(key, "wrecked")) > 0) return { ok: false, reason: "wreckDone", params: {} };
+    if (z.terrain && z.terrain !== "none") { const wc = zones.wreckCheck({ terrain: z.terrain, wrecked: false, rooftop: !!z.rooftop }, 99); if (!wc.ok) return { ok: false, reason: "wreckTerrain", params: {} }; }
+  }
+  return { ok: true, zones: [...by.keys()] };
+}
 const allTargets = (I) => [...I.decl.targets, ...(I.data.extras ?? []).map((x) => x.id)];
 /** May the attacker wreck the zone it stands in [B2451-2457]? -> { ok, zone, bonus, levelsRooftop } | { ok:false, reason, params } */
 export function wreckOf(v, cid) {
@@ -80,7 +117,8 @@ function chargeActions(v, inst) {
 
 /** Legality of the declaration (spec 9.1 step 2). Returns { ok, reason, params, gates, notes }. Costs are checked by the engine (ledger, P1). */
 export function legality(v, inst) {
-  const { state, facts } = v, d = inst.decl, kind = kindOf(inst), entry = v.entry(inst), multi = multiOf(d);
+  const { state, facts } = v, w0 = weaponOf(v, inst), d = w0?.always?.includes("area") && !inst.decl.area ? { ...inst.decl, area: 1 } : inst.decl;      // PWC (PW018): a power that always takes the zone (Earthquake [B1671]) is judged as the area attack it is, also on declaring
+  const kind = kindOf(inst), entry = v.entry(inst), multi = multiOf(d, w0);
   if (!attack.ATTACKS[kind]) return bad("unknownAttack");
   const a = facts.c(inst.actor);
   if (!a || a.present === false) return bad("gone");
@@ -92,6 +130,7 @@ export function legality(v, inst) {
     const ac = M.conditions(state, inst.actor);
     if (ac.held) return bad("held");                                                                         // [B2496]
     if (ac.snared) return bad("snared");                                                                     // [R21]
+    if (ac.rooted && kind === "charge") return bad("snared");                                                // PWC (PW005) [B1611]: Immobilize Only: every attack, but no moving to it
     if (ac.carriedAloft) return bad("carriedAloft");                                                         // [B2392]
     if (ac.trapped && (SLUG.includes(kind) || kind === "charge")) return bad("trapped");                     // [R20], [B2438]: no slugfest, no movement
     if (M.hasStatus(state, inst.actor, "grappling") && kind !== "grappleAttack") return bad("grappling");    // [B2497]
@@ -108,12 +147,15 @@ export function legality(v, inst) {
     if (w?.singleUse && M.counterGet(state, usedKey(inst.actor, w)) > 0) return bad("weaponUsed", { gmMayAllow: 1 });      // [B2541]: used once, then discarded (the GM allows a second one from the pack)
     if (w?.noMove && (P1.history(state, inst.actor, "round", "moved") || P1.history(state, inst.actor, "round", "movedWithinZone"))) return bad("weaponNoMove", { gmMayAllow: 1 });      // [B2545]
   }
-  if (multi) {                                                                                               // [B2542], [B2543]
+  if (multi === "several") { if (d.targets.length > w.several) return bad("tooManyTargets", { max: w.several }); }      // PWC (PW006) [B1610]: up to three, anywhere in range
+  else if (multi) {                                                                                          // [B2542], [B2543]
     if (!(entry?.[multi] || w?.[multi])) return bad(multi === "area" ? "noArea" : "noFullAuto", { gmMayAllow: 1 });
     if (multi === "fullAuto" && attack.ATTACKS[kind].family !== "shooting") return bad("noFullAuto");
     const spots = d.targets.map((t) => facts.zone(t)?.spot).filter((x) => x != null);
-    if (new Set(spots).size > 1) return bad("notSameZone", { series: 1 });                                  // the targets stand in one zone; FXV (P8f-6): said as the rule of a series, not "in another zone"
+    if (new Set(spots).size > 1 && !(multi === "area" && w?.quake > 1)) return bad("notSameZone", { series: 1 });      // the targets stand in one zone; FXV (P8f-6): said as the rule of a series, not "in another zone"; PWC (PW018): a quake from Major on covers more
   }
+  if (w?.quake && !counter && !inst.locked) { const q = quakeOf(v, inst, w); if (!q.ok) return bad(q.reason, q.params); }      // PWC (PW017, PW018) [B1671-1674]
+  if (w?.immuneHuge && d.area && d.targets.every((t) => facts.c(t)?.huge)) return bad("hugeTarget");        // PWC (PW028): an area attack skips the huge (below), it needs somebody else to hit
   if (d.wreck && !inst.data?.wreck) {                                                                        // [B2451]: an option of a slugfest attack
     if (kind !== "slugfest") return bad("wreckNotSlugfest");
     const wz = wreckOf(v, inst.actor);
@@ -129,13 +171,16 @@ export function legality(v, inst) {
     const tf = facts.c(t);
     if (!tf || tf.present === false || t === inst.actor) return bad(t === inst.actor ? "self" : "gone");
     if (K.notArrived(state, t)) return bad("notArrived", { gmMayAllow: 1 });                                 // Z12 [B1816]: delayed allies arrive at the start of the summoner's next turn
-    if (w?.immuneHuge && tf.huge) return bad("hugeTarget");                                                  // P6 [B1606], [B1625]
+    if (w?.immuneHuge && tf.huge) { if (d.area) continue; return bad("hugeTarget"); }                         // P6 [B1606], [B1625]; PWC (PW028) [B1723], [B1800]: an area attack passes a huge creature by
     const unseen = state.knowledge?.[inst.actor]?.[t] === "unseen";
     if (unseen && !d.blind && !d.area) return bad("unseen");                                                 // spec 10: needs the stated intent to attack "where it should be"
     const r = facts.range(inst.actor, t);
     if (r === undefined) notes.push("noScene");                                                              // spec 7: positional steps fall back to the GM
     else if (r === null) return bad("noRange");                                                              // [Z4]
     else if (kind === "charge" && !approached) { if (r.total === 0) return bad("chargeSameZone"); }          // [B2490]
+    if (r && !counter && kind !== "ram" && !sameZoneOf(r) && !(kind === "charge" && !approached) && inDark(v, inst.actor)) return bad("inDarkness", { gmMayAllow: 1 });      // PWC (PW025) [B1654]: from inside darkness nothing is attacked in another zone
+    if (r === undefined || r === null || (kind === "charge" && !approached)) { /* settled above */ }
+    else if (w?.quake > 1 && d.area && !counter) { if (r.total > w.quake) return bad("tooFar", { distance: r.total }); }      // PWC (PW018): the covered zones were checked as a whole (quakeOf)
     else if (SLUG.includes(kind) || kind === "charge") {                                                     // [Z2], [B2425]; huge and grown attackers reach elevated targets [B2500], [B1975]; wrecking reaches one zone [B2453]
       const reach = zones.slugfestReachAt(r, facts.zone(inst.actor) ?? {}, facts.zone(t) ?? {}, { range: Math.max(d.wreck ? 1 : 0, w?.reach ?? 0, a.pass?.reach ? 1 : 0, K.copiesOf(state, inst.actor) > 0 ? 1 : 0), huge: stunts.reachesElevated(a) });      // P6: Elongation [B1919], copies [B1908]
       if (!reach.ok) return bad("outOfReach", { distance: r.total });
@@ -183,6 +228,8 @@ function attackPool(v, I, tokens) {
   const mods = attack.attackModifiers({ attack: kind, target: I.data.multi ? {} : M.conditions(v.state, t0), weaponBonus: w?.bonus ?? 0, wreckBonus, distance: r?.total ?? null, range: w?.range ?? null,
     targets: I.data.multi === "fullAuto" ? d.targets.length : 1, helpers: K.helpDiceOf(v, d) });
   mods.push(...Veh.attackMods(v, I));
+  if (sameZoneOf(r) && kind !== "counterattack" && kind !== "ram" && inDark(v, I.actor)) mods.push({ source: "dark", dice: DARK_DICE });      // PWC (PW025) [B1654]: -2 on attacks in the same zone
+  if (w?.vsConductive && d.targets.length && d.targets.every((t) => M.hasStatus(v.state, t, "conductive"))) mods.push({ source: "conductive", dice: w.vsConductive });      // PWC (PW019) [B1680]: the GM marks who is made of metal
   if (a?.kind === "minions" && a.members > 1) mods.push({ source: "minions", dice: dice.helpDice(a.members - 1, { minions: true }) });
   return { attr, ...K.buildPool(v, I, "attack", I.actor, attr, mods, { rollKind: "attack", tokens, base: Veh.attackRollBase(v, I) }) };      // Z16 [B3144]: a ram on a mount rolls the mount's AGILITY
 }
@@ -196,7 +243,8 @@ function hitMath(v, I, t, o = {}, forced = null, doubled = false) {
   const sources = [...(tf.armor ?? []).filter((x) => !(x.id === "defiance" && tf.pass?.defianceOff && !K.marked(v.state, t, "defiance", true))), ...K.barriersOf(v.state, t)];                                      // P6: Barriers [B1859]; Defiance stops stress only [B1865]
   const ar0 = damage.selectArmor(tags.toStress ? sources.filter((s) => s.stress) : sources, { toStress: tags.toStress, source: tags.source });   // [B2682], [R13]
   const ar = w?.halveArmor && !o.extra ? { ...ar0, armor: damage.halvedArmor(ar0.armor) } : ar0;             // P6 [B1679]
-  const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
+  const plus = o.extra ? 0 : Math.max(0, Math.trunc(Number(I.data?.discharge) || 0));          // PWC (PW021) [B1685]: Discharge, after Double Damage
+  const hd = damage.hitDamage({ base, pulled: o.extra ? null : I.decl.pulled ?? null, doubled, plus, armor: forced?.armor ?? ar.armor, ignoreArmor: tags.ignoreArmor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });   // [B2427], [B2434], [B2193], [B1879]
   return { tags, base, ar, hd };
 }
 /** What a plain hit of this declaration would do to `t`, before anything is declared (engine-pure.opPreview, the map's preview on the
@@ -219,7 +267,7 @@ export function hitPreview(v, inst, t) {
 export function defPreview(v, inst, t) {
   const I = K.draft(inst), out = {};
   if (!v.facts.c(t) || kindOf(I) === "counterattack") return out;
-  I.data.multi = multiOf(I.decl);
+  I.data.multi = multiFor(v, I);
   for (const id of ["block", "dodge"]) { try { const n = defencePool(v, I, t, id, []).pool.dice; if (Number.isFinite(n)) out[id] = n; } catch { /* no number rather than a wrong one */ } }
   return out;
 }
@@ -228,7 +276,7 @@ export function preview(v, inst) {
   const I = K.draft(inst);
   if (kindOf(I) === "counterattack") return null;      // (no target yet: the pool without what the target would add or take)
   if (weaponOf(v, I)?.always?.includes("area")) I.decl.area = 1;
-  I.data.multi = multiOf(I.decl);
+  I.data.multi = multiFor(v, I);
   return attackPool(v, I, I.decl.tokens ?? []);
 }
 /* What the dice of an exchange look like before any is rolled, for the GM only (`data.gm` never reaches a player: view-pure.promptView):
@@ -494,11 +542,15 @@ export const steps = {
   check(v, inst) {
     const I = K.draft(inst), R = K.result(I), kind = kindOf(I);
     if (weaponOf(v, I)?.always?.includes("area")) I.decl.area = 1;                              // P6: a power that always takes the whole zone [B1671]
-    I.data.multi = multiOf(I.decl);
+    I.data.multi = multiFor(v, I);
     if (I.decl.area && !K.flag(I, "area")) {                                                    // [A40]: the attacker's own area attack does not include the attacker
       K.setFlag(I, "area");
-      const t0 = I.decl.targets[0], all = [t0, ...(v.facts.inZone(t0) ?? [])].filter((c, i, l) => c !== I.actor && l.indexOf(c) === i && v.facts.c(c) && v.facts.c(c).present !== false);
-      I.decl.targets = all.slice(0, 24);
+      /* PWC (PW018): a quake from Major on takes everybody in each zone it covers (one target named per zone); PWC (PW028) [B1723], [B1800]:
+         a power that does not work on huge creatures passes them by (the others in the zone are still hit) */
+      const w = weaponOf(v, I), named = I.decl.targets.slice(0, w?.quake > 1 ? w.quake : 1);
+      const all = named.flatMap((t0) => [t0, ...(v.facts.inZone(t0) ?? [])]).filter((c, i, l) => c !== I.actor && l.indexOf(c) === i && v.facts.c(c) && v.facts.c(c).present !== false);
+      const fit = w?.immuneHuge ? all.filter((c) => !v.facts.c(c)?.huge) : all;
+      I.decl.targets = (fit.length ? fit : all).slice(0, 24);
     }
     const l = legality(v, I);
     if (!l.ok && !I.data.exception) { R.goto = "close"; I.data.result = "illegal"; I.data.reason = l.reason; return R; }
@@ -595,12 +647,26 @@ export const steps = {
     if (!K.flag(I, "lock")) {
       K.setFlag(I, "lock");
       if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }             // spec 5.5
-      const st = (d.stressTotal ?? 0) + (kind === "counterattack" ? 0 : weaponOf(v, I)?.stress ?? 0);
+      const ws = kind === "counterattack" ? null : weaponOf(v, I), st = (d.stressTotal ?? 0) + (ws?.stressOn === "hit" ? 0 : ws?.stress ?? 0);      // PWC (PW009) [B1618]: a price "when you hit" waits for the hit (damage step)
       if (st > 0) R.effects.push({ t: "stress", who: I.actor, n: st, cost: 1 });                 // spec 4.3: charged when the declaration locks; P6: with the stress of the power used
       if (kind !== "counterattack" && M.hasStatus(v.state, I.actor, "invisible")) R.effects.push({ t: "status-", who: I.actor, id: "invisible" });      // P6 [B2075]: attacking ends it
       const w0 = kind === "counterattack" ? null : weaponOf(v, I);
       if (w0?.singleUse) R.effects.push({ t: "state", ...M.counterBump(v.state, usedKey(I.actor, w0)) });      // [B2541]: gone, hit or miss
       if (w0?.noMove) R.effects.push({ t: "state", ...M.counterBump(v.state, FIRED_NO_MOVE(I.actor)) });       // [B2545]: no moving for the rest of the round
+      if (w0?.quake) {                                                                          // PWC (PW017) [B1671]: the quake wrecks the zones it covers, hit or miss
+        const q = quakeOf(v, I, w0);
+        for (const key of q.ok ? q.zones : []) {
+          const op = ZP.zoneOp(key, { wrecked: true }), cw = M.counterBump(v.state, M.counterKey.zone(key, "wrecked"));
+          if (op) { R.effects.push({ t: "zones", op }); R.events.push({ type: "zoneChange", ...ZP.changeOf(op), cause: "quake", by: I.actor }); }
+          R.effects.push({ t: "state", path: cw.path, to: cw.to });
+          if (!v.facts.c(I.actor)?.npc) R.effects.push({ t: "karma", note: { who: I.actor, kind: "wreckedZone", zone: key } });     // spec 9.11, as a wrecking blow
+        }
+      }
+      if (w0?.zoneFire && d.targets[0]) {                                                       // PWC (PW024) [B1692]: for its stress the target's zone is set ablaze at Intensity 6 (a fire already hotter stays)
+        const z = v.facts.zone(d.targets[0]), key = z ? String(z.key ?? z.spot ?? "").split(":")[0] : "", now = Number(z?.states?.fire) || 0;
+        const op = key && now < w0.zoneFire ? ZP.zoneOp(key, { fire: w0.zoneFire }) : null;
+        if (op) { R.effects.push({ t: "zones", op }); R.events.push({ type: "zoneChange", ...ZP.changeOf(op), cause: "blaze", by: I.actor }); }
+      }
       if (d.wreck) {                                                                            // [B2451-2457]: the zone is wrecked whether or not the blow lands
         const wz = wreckOf(v, I.actor), key = wz.zone ?? null;
         I.data.wreck = { zone: key, bonus: wz.ok ? wz.bonus : 0, roof: wz.ok && wz.levelsRooftop ? 1 : 0 };
@@ -750,6 +816,18 @@ export const steps = {
     const I = withOut(inst), R = K.result(I), kind = kindOf(I), entry = v.entry(I), w = weaponOf(v, I), a = v.facts.c(I.actor);
     I.data.dmg = I.data.dmg ?? {};
     let waiting = false;
+    const landed = I.decl.targets.some((t) => I.data.out[t]?.hit && !I.data.out[t].extra);
+    if (landed && kind !== "counterattack" && w?.stressOn === "hit" && w.stress > 0 && !K.flag(I, "hitStress")) { K.setFlag(I, "hitStress"); R.effects.push({ t: "stress", who: I.actor, n: w.stress, cost: 1 }); }      // PWC (PW009) [B1618]: taken when the blow hits
+    /* PWC (PW021) [B1685] Discharge: after an electric hit that does damage the attacker may take up to 10 stress (no more than its Resolve)
+       for as much more damage, added after Double Damage; asked once per attack, for every target it hit */
+    const dmax = Math.min(Math.trunc(Number(a?.pass?.discharge) || 0), Math.max(0, Math.trunc(Number(a?.resolve) || 0)));
+    if (landed && kind !== "counterattack" && dmax > 0 && w?.source === "electricity" && !w.noDamage && !entry?.damage?.none && I.data.discharge == null) {
+      if (!I.data.pk?.discharge) { R.prompts.push({ key: "discharge", kind: "discharge", to: K.addressee(v, I.actor), about: I.actor, options: Array.from({ length: dmax + 1 }, (_, n) => ({ id: `n:${n}`, label: n ? "ITAC.opt.discharge" : "ITAC.opt.dischargeNone", data: { n } })), data: { max: dmax } }); R.wait = true; return R; }
+      if (!K.isAnswered(v, I, "discharge")) { R.wait = true; return R; }
+      const n = Math.max(0, Math.min(dmax, Math.trunc(Number(String(K.answerId(v, I, "discharge") ?? "").replace(/^n:/, "")) || 0)));
+      I.data.discharge = n;
+      if (n > 0) { R.effects.push({ t: "stress", who: I.actor, n, cost: 1 }); R.events.push({ type: "stress", target: I.actor, n, source: "power" }); }
+    }
     for (const t of allTargets(I)) {
       const o = I.data.out[t];
       if (!o?.hit || I.data.dmg[t] || kind === "grapple" || entry?.damage?.none || (w?.noDamage && !w.pierce && !o.extra)) continue;      // [R5]: the grapple that takes hold does no damage; P6: nor does a Snare
@@ -862,6 +940,12 @@ export const steps = {
             R.push = forcedChild(t, { ...(dir === "up" || dir === "down" ? { direction: dir } : dir.startsWith("to:") ? { toward: dir.slice(3) } : { awayFrom: I.actor }), distance: n, damage: Math.max(0, Math.trunc(Number(oh.throw) || 0)), decay: 0, armor: true, by: I.actor, kind: "throw", ...(v.facts.c(I.actor)?.npc ? { gmDir: 1 } : {}) });
             return R;
           }
+        }
+        /* PWC (PW004) [B1602]: a blow that lands on the holder of a Potent Emanation that is on hurts the one who struck: 4 damage, the
+           striker's Armor counts (provisional, PWC-1) */
+        const harm = Math.trunc(Number(tf.pass?.touchHarm) || 0), striker = v.facts.c(I.actor);
+        if (harm > 0 && TOUCH.includes(kind) && !o.extra && striker && striker.present !== false && !M.outOfAction(v.state, I.actor, striker) && once(`touch:${t}`)) {
+          R.push = hazardChild([I.actor], { kind: "fixed", amount: harm, armor: true, cause: "hazard", id: "emanation" }); return R;
         }
         const stun = picked(t, "stun") ? "stun" : picked(t, "suppressed") ? "suppressed" : null;
         if (stun && dm && stunts.stunOutcome({ taken: dm.taken }).rollNeeded && !M.outOfAction(v.state, t, tf)) {      // [B2707]: a target the blow broke rolls for nothing; it is out of action anyway                 // [B2436], [B2517]

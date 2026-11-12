@@ -27,7 +27,12 @@
              setting `alt` on (ITAC.kit.alt.<id>) the character is always that size (a huge creature [B2499], or tiny) [B1980], [B1981]
      own     the engine applies the entry's dice itself (a dock variant, a rule of its own): what the item's sheet toggle adds is left out of the pools,
              so the two never add up
-     why     for a row "by hand": why the book leaves it to the table (ITAC.kit.why.<id>, WHYS below) */
+     why     for a row "by hand": why the book leaves it to the table (ITAC.kit.why.<id>, WHYS below)
+   PWC: atk.quake [zones per level] (an Earthquake: wrecks what it covers), atk.vsConductive (dice against a target marked conductive),
+     a `by` hint's rangeLv [[min, max] per level]; patch.several (that many targets, one roll), patch.stressOn "hit" (the stress is taken
+     when the blow lands), patch.zoneFire (the target's zone set ablaze at that Intensity); an act's oneZone (all its targets in one zone),
+     effect.leaveEnds (a barrier gone when its maker or its holder leaves the zone); passOn "fx" (the passive facts count only while the
+     power's effect is on, or always on) */
 
 export const LEVELS = Object.freeze(["basic", "major", "massive", "monstrous"]);
 export const NOTES = Object.freeze(["attack", "noAttack", "sheet", "move", "toggle", "effect", "token", "outcome", "zone", "map", "gmCard", "flag", "passive", "story", "system", "interrupt",
@@ -64,13 +69,13 @@ export const ROWS = Object.freeze([
   L("Distress", "Exhausting Distress", [1597], "auto", "attack", { opt: { patch: { stress: 1 } } }),
   L("Distress", "Reduced Range (Distress)", [1598], "auto", "attack", { opt: { patch: { range: [0, 1] } } }),
   P("Emanation", [1601], "auto", "toggle", { fx: { cost: "quick" } }),
-  B("Emanation", "Potent Emanation", [1602], "assist", "toggle", { fx: { cost: "quick" } }),
+  B("Emanation", "Potent Emanation", [1602], "auto", "toggle", { fx: { cost: "quick" }, pass: { touchHarm: 4 }, passOn: "fx" }),      // PWC (PW004) [B1602]: a slugfest blow that lands on the holder of the aura costs its striker 4 damage
   L("Emanation", "Continual Emanation", [1603], "auto", "toggle", { lockFx: 1 }),
   P("Snare", [1606, 1607, 1608, 1609], "auto", "attack", { atk: { noDamage: 1, stunts: "none", immuneHuge: 1, onHit: { status: "snared", lv: [-2, -3, -4, -5] } } }),
-  B("Snare", "Multiple Snares", [1610], "assist", "gmCard"),
-  L("Snare", "Immobilize Only", [1611], "auto", "attack", { opt: { patch: { onHitStatus: "trapped" } } }),
+  B("Snare", "Multiple Snares", [1610], "auto", "attack", { opt: { patch: { several: 3 } } }),      // PWC (PW006) [B1610]: up to three targets in range, one roll, each dodges on its own
+  L("Snare", "Immobilize Only", [1611], "auto", "attack", { opt: { patch: { onHitData: { moveOnly: 1 } } } }),      // PWC (PW005) [B1611]: snared, only moving is barred; breaking free stays SNARE's (full action, the level's penalty: FXT-4)
   P("Strike", [1614, 1615, 1616, 1617], "auto", "sheet", { acts: [], pass: { strike: [1, 2, 3, 4] } }),      // Z14: the bonus the sheet's slugfest damage holds, taken off without the wind-up [B1622]
-  B("Strike", "Piercing Strike", [1618], "auto", "attack", { opt: { patch: { ignoreArmor: 1 }, stress: 1, optional: 1, on: "slug" } }),
+  B("Strike", "Piercing Strike", [1618], "auto", "attack", { opt: { patch: { ignoreArmor: 1, stressOn: "hit" }, stress: 1, optional: 1, on: "slug" } }),      // PWC (PW009) [B1618]: the stress is taken when the blow hits
   B("Strike", "Sudden Strike", [1619], "assist", "interrupt"),
   B("Strike", "Deadly Strike", [1620], "auto", "attack", { opt: { patch: { sharp: 1 }, on: "slug" } }),
   B("Strike", "Toxic Strike", [1621], "auto", "poison", { opt: { patch: { onHit: { status: "sick", data: { toxic: 1, virulence: 0 }, ifDamage: 1 } }, on: "slug" } }),
@@ -82,30 +87,31 @@ export const ROWS = Object.freeze([
 
   /* ================================================================ CONTROL POWERS [B1631-1847] */
   P("Action Plan", [1634], "auto", "token", { acts: [{ k: "plan", cost: "full", roll: { attr: "reason" }, pick: ["attack", "defend", "misdirect"], effect: { kind: "plan" } }] }),
-  P("Animal Control", [1637], "assist", "control", { acts: [{ k: "control", cost: "full", target: { who: "any", n: [1, 1] }, immuneHuge: 1, near: 1, effect: { kind: "narrative", then: "control" }, text: 1 },
+  P("Animal Control", [1637], "assist", "control", { acts: [{ k: "control", cost: "full", target: { who: "any", n: [1, 12] }, oneZone: 1, immuneHuge: 1, near: 1, effect: { kind: "narrative", then: "control" }, text: 1 },      // PWC (PW012) [B1637]: all the animals of the target zone
     narr("command", "quick", { roll: { attr: "presence" } })] }),
   B("Animal Control", "Animal Mindlink", [1638], "hand", "story", { why: "talk" }),
   L("Animal Control", "Specific Animal Only", [1639, 1640, 1641], "hand", "story", { why: "gmJudges" }),
   P("Cold Control", [1644, 1645, 1646, 1647, 1648, 1649], "assist", "zone", { atk: { source: "cold", by: { "immobilize target": { skip: 1 } } },
-    acts: [narr("zone", "full"), { k: "barrier", cost: "quick", target: { who: "ally", n: [0, 1] }, effect: { kind: "barrier", armor: [3, 3, 3, 3], max: 3 } }],
+    acts: [narr("zone", "full"), { k: "barrier", cost: "quick", target: { who: "ally", n: [0, 1] }, sameZone: 1, effect: { kind: "barrier", armor: [3, 3, 3, 3], max: 3, leaveEnds: 1 } }],      // PWC (PW013, PW014) [B1646]: in your zone; gone when you or the target leave it
     opts: [{ k: "immobilise", patch: { noDamage: 1, onHit: { status: "immobilised" } } }] }),
   B("Cold Control", "Ice Armor", [1650], "auto", "toggle", { fx: { cost: "quick" } }),
   B("Cold Control", "Ice Slide", [1651], "auto", "move", { mv: 1 }),
   P("Darkness Control", [1654, 1655, 1656, 1657], "assist", "zone", { cost: "full" }),
   B("Darkness Control", "Dreadful Darkness", [1658], "assist", "resist", { acts: [{ k: "dread", cost: "none", target: { who: "any", n: [1, 1] }, effect: { kind: "resist", attr: "intuition", stress: 2 } }] }),
   P("Dimensional Travel", [1661], "assist", "outcome", { cost: "quick" }),
-  B("Dimensional Travel", "Additional Travelers", [1662], "hand", "story", { why: "outOfFight" }),
+  B("Dimensional Travel", "Additional Travelers", [1662], "hand", "story", { why: "partOfPower" }),      // PWC (PW027): part of a travel, ruled when the power is used
   B("Dimensional Travel", "Quick Travel", [1663, 1664], "assist", "interrupt"),
   B("Dimensional Travel", "Create Portals", [1665, 1666], "assist", "outcome", { cost: "full" }),
   L("Dimensional Travel", "Parallel Dimensions Only", [1667], "hand", "story", { why: "gmJudges" }),
   L("Dimensional Travel", "Specific Dimension", [1668], "hand", "story", { why: "gmJudges" }),
-  P("Earthquake", [1671, 1672, 1673, 1674], "assist", "map", { atk: { area: 1, always: ["area"], range: [0, 0] } }),
-  B("Earthquake", "Shockwave", [1675], "assist", "attack", { opt: { patch: { area: 0, damagePlus: 1 }, optional: 1 } }),
+  P("Earthquake", [1671, 1672, 1673, 1674], "auto", "attack", { atk: { area: 1, always: ["area"], range: [0, 0], quake: [1, 2, 3, 4] } }),      // PWC (PW017, PW018) [B1671-1674]: wrecks the 1-4 adjacent zones it covers; never a zone wrecked or unwreckable
+  B("Earthquake", "Shockwave", [1675], "assist", "attack", { opt: { patch: { area: 0, damagePlus: 1, quake: 0 }, optional: 1 } }),
   B("Earthquake", "Earth Drift", [1676], "auto", "move", { mv: 1 }),
-  P("Electricity Control", [1679, 1680, 1681, 1682, 1683, 1684], "auto", "attack", { atk: { source: "electricity", halveArmor: 1, by: { stun: { noDamage: 1, pierce: 1, halveArmor: 1, onHit: { stun: 1 } } } }, acts: [narr("zone", "full")] }),
-  B("Electricity Control", "Discharge", [1685], "assist", "gmCard"),
+  P("Electricity Control", [1679, 1680, 1681, 1682, 1683, 1684], "auto", "attack", { atk: { source: "electricity", halveArmor: 1, vsConductive: 2, by: { stun: { noDamage: 1, pierce: 1, halveArmor: 1, onHit: { stun: 1 }, rangeLv: [[0, 1], [0, 2], [0, 3], [0, 4]] } } }, acts: [narr("zone", "full")] }),      // PWC (PW019, PW020) [B1680-1684]: +2 against a conductive target; the stun reaches as far as the attack
+  B("Electricity Control", "Discharge", [1685], "auto", "attack", { pass: { discharge: 10 } }),      // PWC (PW021) [B1685]: no action of its own, asked after an electric hit
   B("Electricity Control", "Body Battery", [1686], "auto", "effect", { acts: [{ k: "battery", cost: "full", roll: { attrs: MENTAL }, effect: { kind: "gainResolve", per: 3, over: 1 }, once: "sceneZone" }] }),      // Z7: once per scene in the same zone
-  P("Fire Control", [1689, 1690, 1691, 1692, 1693, 1694], "assist", "zone", { atk: { source: "fire", onHit: { burn: 1 } }, pass: { immune: ["fire"] }, acts: [narr("zone", "full")] }),
+  P("Fire Control", [1689, 1690, 1691, 1692, 1693, 1694], "assist", "zone", { atk: { source: "fire", onHit: { burn: 1, ifDamage: 1 } }, pass: { immune: ["fire"] }, acts: [narr("zone", "full")],      // PWC (PW022, PW023) [B1690-1691]: only a target that takes damage burns, at the base Damage
+    opts: [{ k: "blaze", patch: { zoneFire: 6 }, stress: 1 }] }),      // PWC (PW024) [B1692]: for 1 stress the target's zone is set ablaze at Intensity 6
   burst("Fire Control", "Conflagration", [1695, 1696]),
   B("Fire Control", "Firestarter", [1697], "assist", "zone", { acts: [narr("blaze", "full")] }),
   L("Fire Control", "Destructive Flames", [1698, 1699], "hand", "story", { why: "gmJudges" }),
@@ -158,7 +164,7 @@ export const ROWS = Object.freeze([
 
   /* ================================================================ DEFENSE POWERS [B1850-1893] */
   P("Adaptation", [1854, 1855, 1856], "assist", "outcome", { cost: "full", pass: { vacuumSafe: 1 } }),
-  P("Barrier", [1859, 1860, 1861, 1862], "auto", "effect", { acts: [{ k: "barrier", cost: "quick", target: { who: "ally", n: [0, 1] }, effect: { kind: "barrier", armor: [3, 4, 5, 6], max: 3 } }] }),
+  P("Barrier", [1859, 1860, 1861, 1862], "auto", "effect", { acts: [{ k: "barrier", cost: "quick", target: { who: "ally", n: [0, 1] }, sameZone: 1, effect: { kind: "barrier", armor: [3, 4, 5, 6], max: 3 } }] }),      // PWC (PW106) [B1859]: a target in your zone
   P("Defiance", [1865, 1866, 1867, 1868], "auto", "passive", { pass: { stressArmor: [3, 4, 5, 6], resist: [3, 4, 5, 6] }, acts: [] }),
   L("Defiance", "Requires Activation (Defiance)", [1869], "auto", "effect", { pass: { defianceOff: 1 }, acts: [{ k: "activate", cost: "quick", effect: { kind: "mark", id: "defiance", scene: 1 } }] }),
   P("Immortality", [1872, 1873, 1874, 1875, 1876], "hand", "story", { why: "story" }),
