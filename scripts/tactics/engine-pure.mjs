@@ -59,7 +59,7 @@ function makeX(state, log, host, user) {
 }
 /* P7 [B3412]: in a chase there is no map, the range between the sides is the chase distance (flows/chase.mjs reads the state of now) */
 const liveFacts = (X) => Chase.facts(X.host.facts(), () => X.state);
-const nextId = (X, p) => { X.state = { ...X.state, seq: (X.state.seq ?? 0) + 1 }; return `${p}${X.state.seq}`; };
+const nextId = (X, p) => { X.state = { ...X.state, seq: (X.state.seq ?? 0) + 1 }; return S.idOf(X.state, p, X.state.seq); };      // H3-1: the fight's tag on every id
 const view = (X) => ({ state: X.state, facts: X.facts, entry: (inst) => C.entryFor(X.state, inst.actor, inst.action, X.facts) });
 const top = (X) => X.state.stack[X.state.stack.length - 1] ?? null;
 const instOf = (X, id) => X.state.stack.find((i) => i.id === id) ?? null;

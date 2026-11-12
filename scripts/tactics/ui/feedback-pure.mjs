@@ -72,7 +72,7 @@ export function floats(events, t) {
   return out.slice(0, 40);
 }
 /** the key an event is known by on a client that hears it twice (the executor hears the full stream and the public one) */
-export const eventKey = (e) => `${e?.combat ?? ""}|${e?.seq ?? ""}|${e?.type ?? ""}|${idOf(e?.target) ?? ""}`;
+export const eventKey = (e) => `${e?.combat ?? ""}|${e?.fight ?? ""}|${e?.seq ?? ""}|${e?.type ?? ""}|${idOf(e?.target) ?? ""}`;
 
 /* ------------------------------------------------------------------ U57: the summary of a round and of a fight */
 const newsNo = (n) => Number(String(n?.id ?? "").replace(/\D/g, "")) || 0;

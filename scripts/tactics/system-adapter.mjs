@@ -258,7 +258,7 @@ export function actorFacts(actor) {
   const p7 = kind === "challenge" ? { timeUnit: actor.flags?.[MOD]?.timeUnit ?? "rounds" } : kind === "vehicle" ? { vehicle: { type: s.type ?? "ground", speed: Math.max(1, num(s.speed)), maneuver: num(s.maneuverability), passengers: num(s.passengers),
     weapons: actor.items.filter((i) => weaponFacts(actor, i.id)?.damage != null).length } } : { powers: actor.items.filter((i) => i.type === "power").map((i) => String(i.name ?? "").slice(0, 60)).slice(0, 40) };
   return {
-    kind, npc: kind !== "hero", attrs, ...p7,
+    kind, npc: !S.heroSide({ type: actor.type, owned: ownersOf(actor).length > 0, disposition: (actor.token ?? actor.prototypeToken)?.disposition }), attrs, ...p7,      // H3-4: the one side rule (the engine's facts set it per token)
     health: num(s.derived?.health?.value), maxHealth: num(s.derived?.health?.max), resolve: num(s.derived?.resolve?.value), maxResolve: num(s.derived?.resolve?.max),
     crits: actor.items.filter((i) => i.type === "criticalInjury").map(injuryNumber).filter((n) => n != null),
     unknownInjuries: actor.items.filter((i) => i.type === "criticalInjury" && injuryNumber(i) == null).length,     // injuries added by hand that the table does not resolve: shown to the GM, never guessed
@@ -371,19 +371,19 @@ async function dialogFor(req, labelOf) {
    the engine's and the dialog had nothing to decide about it; who may see the dice is the engine's word too (req.mode "gm": a hidden
    combatant, a secret roll), everything else of a fight is rolled in the open. The dice are still the system's own roll and chat card.
    One throw per request id on this client; `force` (the dock's "Roll" after a throw that never arrived) throws again. */
-const thrown = new Map();
-export const rollStarted = (rid) => thrown.get(rid) ?? 0;
+const thrown = new Map();                                                                 // H3-1: "<combat>|<rid>" (the rid carries the fight's tag)
+export const rollStarted = (rid, combat = null) => thrown.get(`${combat ?? ""}|${rid}`) ?? [...thrown].find(([k]) => k.endsWith(`|${rid}`))?.[1] ?? 0;
 export const ROLL_RETRY_MS = 4000;
 export async function rollNow(req, labelOf = (s) => s, { force = false } = {}) {
-  const at = thrown.get(req.rid) ?? 0;
+  const tk = `${req?.combat ?? ""}|${req?.rid ?? ""}`, at = thrown.get(tk) ?? 0;
   if (at && !(force && Date.now() - at >= ROLL_RETRY_MS)) return null;
-  thrown.set(req.rid, Date.now()); if (thrown.size > 200) thrown.delete(thrown.keys().next().value);
+  thrown.set(tk, Date.now()); if (thrown.size > 200) thrown.delete(thrown.keys().next().value);
   try {
     const dlg = await dialogFor(req, labelOf);
     if (typeof dlg._prepareContext !== "function" || typeof dlg._roll !== "function") return typeof dlg.wait === "function" ? dlg.wait() : dlg.render({ force: true });      // the system changed: its dialog, as before
     await dlg._prepareContext();
     return await dlg._roll({ submitter: { dataset: { action: req.mode === "gm" ? "gm" : "public" } } }, undefined, undefined);
-  } catch (err) { thrown.delete(req.rid); throw err; }
+  } catch (err) { thrown.delete(tk); throw err; }
 }
 /* U1: the system's own "push" and "accept" of a roll, pressed from the tactical surfaces. They are the chat log's click handlers and read
    nothing but the message id from the event, so they are called with a stand-in event; the system's rules (stress, max pushes) stay its own. */

@@ -105,7 +105,7 @@ export function normalize(req, { staff = false } = {}) {
         break;
       }
       case "start": a.mode = S.MODES.includes(req.mode) ? req.mode : undefined; a.kind = S.KINDS.includes(req.kind) ? req.kind : undefined; a.surprised = idList(req.surprised, 400) ?? [];
-        a.groups = Array.isArray(req.groups) ? req.groups.slice(0, 100).map((g) => idList(g) ?? []).filter((g) => g.length > 1) : []; a.opts = isObj(req.opts) ? S.plain(req.opts) : {}; a.restart = req.restart === true; break;
+        a.groups = Array.isArray(req.groups) ? req.groups.slice(0, 100).map((g) => idList(g) ?? []).filter((g) => g.length > 1) : []; a.opts = isObj(req.opts) ? S.plain(req.opts) : {}; a.restart = req.restart === true; if (S.isFight(req.fight)) a.fight = req.fight; break;
       case "stop": case "roster": case "resume": break;
       case "nextTurn": case "nextRound": case "prevTurn": if (staff && req.force === true) a.force = true; break;
       case "setCard": need("slot", id(req.slot)); need("card", Number.isInteger(req.card) ? req.card : undefined); a.swap = req.swap === true; break;
@@ -382,7 +382,7 @@ const reasonCode = (reason) => (reason === "notYourTurn" || reason === "fullOnTu
 const OPS = {
   start(W, a) {
     if (W.s && W.s.round > 0 && W.s.phase !== "sceneEnd" && !a.restart) return err("busy");
-    W.s = S.newState({ mode: a.mode ?? "free", kind: a.kind ?? "combat", opts: { ...(a.opts ?? {}) } });
+    W.s = S.newState({ mode: a.mode ?? "free", kind: a.kind ?? "combat", opts: { ...(a.opts ?? {}) }, fight: a.fight ?? null });
     W.surprised = a.surprised ?? []; W.groups = a.groups ?? [];
     ev(W, "combatStart", { mode: W.s.mode, kind: W.s.kind });
     startRound(W, 1);

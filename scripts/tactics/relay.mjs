@@ -17,7 +17,7 @@ import { t, rollTitle } from "./lang.mjs";
 const MOD = Store.MOD;
 const CHANNEL = `module.${MOD}`;
 let started = false, seq = 0;
-const pending = new Map(), seen = new Map(), gate = new R.Gate(), opened = new Set();
+const pending = new Map(), seen = new Map(), gate = new R.Gate();
 const modVersion = () => String(game.modules.get(MOD)?.version ?? "");
 
 /** Run `req` ({ op, ... }) for a combat: here when this client is the executor, otherwise through the socket. Resolves to an envelope, never rejects. */
@@ -59,11 +59,12 @@ async function onRequest(msg, senderId) {
 }
 function onRoll(msg, senderId) {
   if (!game.users.get(senderId)?.isGM || !Array.isArray(msg.to) || !msg.to.includes(game.user.id) || !msg.req || typeof msg.req.rid !== "string") return;
-  /* one throw per request, even if it is sent twice; D120: the executor's roll watch sends the same request again (`again`) when no answer
-     reached it: then this client throws once more (Sys.rollNow force: not within ROLL_RETRY_MS of its last throw), its first throw lost */
+  /* one throw per request, even if it is sent twice (Sys.rollNow keeps the ids this client threw); D120: the executor's roll watch sends
+     the same request again (`again`) when no answer reached it: then this client throws once more (Sys.rollNow force: not within
+     ROLL_RETRY_MS of its last throw), its first throw lost. H3-1: the relay keeps no memo of its own any more (it dropped a request whose
+     bare id it had seen in an earlier fight; a throw that failed to open was never tried again): rollNow's is the one, and its key is
+     the combat and the request id, which carries the fight's tag. */
   const again = Number.isInteger(msg.again) && msg.again > 0;
-  if (opened.has(msg.req.rid) && !again) return;
-  opened.add(msg.req.rid); if (opened.size > 200) opened.delete(opened.values().next().value);
   /* U2: several players own the character: the first of them at the table throws at once, the others keep the dock's "Roll" */
   if (msg.to.find((u) => game.users.get(u)?.active) !== game.user.id) return;
   // the engine's breakdown is only a display: the executor reads the dice from the chat message and checks its author against the request

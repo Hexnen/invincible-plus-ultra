@@ -937,9 +937,7 @@ const stuntKind = (I) => { const k = kindOf(I); return k === "ram" ? "slugfest" 
     the attacker does not know of: one the attacker has as "unseen", or, for an attacker of the heroes' side (whose player reads the card), one the
     GM keeps hidden (spec 10: the list must not give such a figure away). Before, everybody else in the zone was offered: the attacker's allies too. */
 const NO_OPPONENT = ["challenge", "vehicle"];
-/* D116: a minion group with no member left is nobody to bang heads with: its Health is its members [B2827] (a lone character at 0 stays
-   an opponent until marked defeated, ruling U17-4) */
-const wiped = (f) => f.kind === "minions" && (!(Number(f.health) > 0) || f.members === 0);
+const wiped = K.wiped;                                                                     // D116 (kit.mjs: shared with Discretion's allies, H3-2)
 function othersNear(v, I, t) {
   const tf = v.facts.c(t), a = v.facts.c(I.actor), known = v.state.knowledge?.[I.actor] ?? {};
   if (!tf) return [];

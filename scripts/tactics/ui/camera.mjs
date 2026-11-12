@@ -107,7 +107,7 @@ const heard = new Set();
 function onEvent(ev) {
   try {
     if (!started || !on || !was || !ev || typeof ev !== "object" || ev.combat !== key) return;
-    const k = `${ev.seq ?? ""}|${ev.type ?? ""}|${typeof ev.target === "string" ? ev.target : ev.target?.combatant ?? ""}`;
+    const k = `${ev.combat}|${ev.fight ?? ""}|${ev.seq ?? ""}|${ev.type ?? ""}|${typeof ev.target === "string" ? ev.target : ev.target?.combatant ?? ""}`;
     if (heard.has(k)) return;
     if (heard.size > 400) heard.clear();
     heard.add(k);
