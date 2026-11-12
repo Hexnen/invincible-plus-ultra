@@ -1,6 +1,7 @@
 // node scripts/tactics/check-defects8.mjs -- the defects D101, D102, D106, D110, D111 and the usability row U110 of dev/combat-defects.md
 // (adversary 8, played live on four seats). Scripted table, no Foundry.
 import { ok, eqc as eq, done, Table } from "./testkit.mjs";
+import * as Hz from "./flows/hazards.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -72,6 +73,24 @@ const car = (o = {}) => ({ kind: "vehicle", npc: true, health: 8, vehicle: { typ
   eq(code(await T.gm({ op: "chaseEnd", outcome: "combat" })), "ok", "D106: the chase is ended again");
   const second = T.state.init.curMember;
   eq(T.prompts("triggerQueue").map((p) => p.about), [second], "D106: one turn-start card, of the one whose turn it is now");
+}
+
+/* ================================================================== D110: a minion group with nobody standing does not burn */
+{
+  const T = new Table();
+  T.hero("H1", "p1").add("G", { npc: true, kind: "minions", health: 2, maxHealth: 10, members: 2, name: "Soldier" });
+  T.order(["H1", "G"]).turn("H1");
+  await T.gm({ op: "statusAdd", combatant: "G", status: { id: "burning", data: { intensity: 9 } } });
+  await T.gm({ op: "statusAdd", combatant: "H1", status: { id: "burning" } });
+  const dfb = () => Hz.derived(T.state, T.facts(), { at: "roundStart" }).filter((t) => t.run.type === "fireAttack").map((t) => t.subject.combatant).sort();
+  eq(dfb(), ["G", "H1"], "D110: a burning group with members burns at the start of a round");
+  T.c.G.health = 0; T.c.G.members = 0;
+  eq(dfb(), ["H1"], "D110: a group whose last members are out is not offered a fire attack");
+  /* the same in a burning zone: the group is not among the targets of the zone's attack */
+  const F = { ...T.facts(), zones: { place: (cid) => (T.c[cid] ? { zone: T.c[cid].zone, level: "ground", spot: T.c[cid].zone, area: null } : null), zone: (k) => ({ key: k, tags: [] }),
+    states: (k) => (k === "z1" ? [{ id: "mark:fire", kind: "fire", level: 5, source: "mark", zone: "z1" }] : []), graph: () => ({ zones: [{ id: "z1", tags: [] }], borders: [] }) } };
+  const zoneHit = Hz.derived(T.state, F, { at: "roundStart" }).find((t) => t.run.type === "fireAttack" && t.subject.zone === "z1");
+  eq(zoneHit?.run.targets, ["H1"], "D110: an emptied group standing in a burning zone is not a target of the zone's fire");
 }
 
 done("check-defects8");
