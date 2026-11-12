@@ -252,11 +252,15 @@ export function reactionFor(v, inst, cid, e) {
 /* D104 (ruling A8-R1): who took the hit for somebody by a reaction (Guardian [B2115]: "you take the hit instead of the INTENDED target").
    Such a one is no intended target, so nobody dives in for them in turn; a target the GM set by hand (retarget) is the GM's intent and is. */
 export const coveredBy = (inst) => (inst?.data?.retargets ?? []).filter((r) => r.by !== "gm" && (inst.decl?.targets ?? []).includes(r.to)).map((r) => r.to);
-/** The allies a target could put in its place [B2108]: of its side, in its zone, known to it, not the attacker and not attacked already. */
+/* D116: a minion group with no member left is nobody (its Health is its members [B2827]); a lone character at 0 stays somebody until
+   marked defeated (ruling U17-4). Shared by Bang Heads (attack.mjs othersNear) and Discretion (alliesNear, H3-2). */
+export const wiped = (f) => f?.kind === "minions" && (!(Number(f.health) > 0) || f.members === 0);
+/** The allies a target could put in its place [B2108]: of its side, in its zone, known to it, not the attacker and not attacked already;
+    H3-2: never a wiped minion group (nobody to take the hit). */
 export function alliesNear(v, inst, cid) {
   const me = v.facts.c(cid);
   return Object.keys(v.state.ledger ?? {}).filter((id) => { const f = v.facts.c(id);
-    return id !== cid && id !== inst.actor && !(inst.decl?.targets ?? []).includes(id) && !!f && !NO_ALLY.includes(f.kind) && !!f.npc === !!me?.npc && knownTo(v, cid, id) && sameSpot(v, cid, id) !== false; });
+    return id !== cid && id !== inst.actor && !(inst.decl?.targets ?? []).includes(id) && !!f && !NO_ALLY.includes(f.kind) && !wiped(f) && !!f.npc === !!me?.npc && knownTo(v, cid, id) && sameSpot(v, cid, id) !== false; });
 }
 /** May `cid` take this reaction to this action now, from where it stands? Asked when the card is made AND when it is answered (the
     guardian may have been moved away in between) AND when the answer is acted on. -> { ok, reason } */

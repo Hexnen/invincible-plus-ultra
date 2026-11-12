@@ -55,6 +55,7 @@ const give = (T, cid, ...names) => { const c = T.c[cid]; c.kit = KP.build({ item
   const memo = { fed: new Map(), sent: new Map() }, none = () => null;
   const at = (ms) => RW.plan(st, ms, { messageFor: none, memo }).map((a) => a.n);
   eq([at(60000), at(62000), at(64000)], [[1], [], []], "H3-5: a roll owed for a minute when the memo was lost is asked again once, not three times in 4 s");
+  eq([at(71999), at(72000), at(91999), at(92000), at(500000)], [[], [2], [], [3], []], "H3-5: ... then on the schedule's own gaps after that send (12 s, 20 s), then the GM's \"Ask again\"");
 }
 
 /* ---- H3-4: the splash and a book villain's Resolve */

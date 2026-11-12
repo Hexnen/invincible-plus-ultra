@@ -21,7 +21,7 @@ export function owedRolls(state) {
   }
   return out;
 }
-/** What to do now. memo = { fed: Map(messageId -> n), sent: Map(rid -> n) } (kept by the caller between calls, changed here);
+/** What to do now. memo = { fed: Map(messageId -> n), sent: Map(rid -> { n, at }) } (kept by the caller between calls, changed here);
     messageFor(rid) -> the id of a chat message carrying that request id, or null. -> [{ do: "feed", messageId, rid } | { do: "resend", inst, key, rid, n }] */
 export function plan(state, now, { messageFor, memo }) {
   const acts = [];
@@ -34,8 +34,12 @@ export function plan(state, now, { messageFor, memo }) {
       if (n < FEED_MAX) { memo.fed.set(mid, n + 1); acts.push({ do: "feed", messageId: mid, rid: o.rid }); }
       continue;
     }
-    const sent = memo.sent.get(o.rid) ?? 0;
-    if (sent < RESEND_AT.length && age >= RESEND_AT[sent]) { memo.sent.set(o.rid, sent + 1); acts.push({ do: "resend", inst: o.inst, key: o.key, rid: o.rid, n: sent + 1 }); }
+    /* H3-5: the memo is the executor's own (lost with a reload, or when another GM becomes the executor). The step after a send waits
+       for the schedule's own gap since THAT send too, so a roll owed for long is asked again once, then on the schedule's later steps,
+       never on every look. memo.sent: rid -> { n, at } (the count and the time of the last send) */
+    const sent = memo.sent.get(o.rid) ?? { n: 0, at: null }, n = sent.n;
+    const gapOk = sent.at == null || now - sent.at >= RESEND_AT[n] - (RESEND_AT[n - 1] ?? 0);
+    if (n < RESEND_AT.length && age >= RESEND_AT[n] && gapOk) { memo.sent.set(o.rid, { n: n + 1, at: now }); acts.push({ do: "resend", inst: o.inst, key: o.key, rid: o.rid, n: n + 1 }); }
   }
   if (memo.fed.size > 300) memo.fed.clear();
   if (memo.sent.size > 300) memo.sent.clear();
