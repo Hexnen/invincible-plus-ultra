@@ -33,6 +33,7 @@ import * as Lay from "./layout-pure.mjs";
 import * as Tip from "./tip.mjs";
 import { visibleRect } from "./dom.mjs";
 import { setVar } from "./vars.mjs";
+import * as Aim from "./aim.mjs";          // perf4 (U140's cost): the aim mark on the panels that step back
 import * as Slots from "./slots.mjs";        // U132: the fixed places (the frame the dock works out)
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
@@ -280,7 +281,7 @@ function staffModel(combat, desk) {
 function refresh() {
   try {
     const combat = down ? null : combatNow();
-    try { document.body.classList.toggle("ita-tactics", !!combat); } catch { /* no body */ }      // styles/tactics-ui.css: what the other surfaces of the module give up while the dock shows
+    try { document.body.classList.toggle("ita-tactics", !!combat); Aim.sync(); } catch { /* no body */ }      // styles/tactics-ui.css: what the other surfaces of the module give up while the dock shows
     hotbarSync(!!combat);
     if (!combat) { cardsWere = null; lastDock = lastModel = null; Pick.stop(); Pick.keep(null, []); Board.sync(null, null); Camera.sync(null); mapSync(null, null); Dock.render({ show: false, prompts: [], sum: Feedback.idle().sum }); Desk.render({ show: false }); pokeTray(); return; }      // U57: the card of the fight that just ended may still stand
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
@@ -650,6 +651,7 @@ export function start() {
     Hooks.on("updateToken", (td, ch) => { try { if (ch && "hidden" in ch && combatNow()?.combatants.some((c) => c.tokenId === td.id)) { moved(); setTimeout(moved, 120); } } catch { /* a courtesy */ } });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
     watchDice();      // U108
+    Aim.watch();      // perf4: the aim mark of U140 on the panels' roots (ui/aim.mjs)
     Hooks.on("controlToken", onControl);      // U60
     Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Board.reset(); Camera.reset(); Dock.hide(); });
     Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size

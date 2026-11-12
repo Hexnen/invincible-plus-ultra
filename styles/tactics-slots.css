@@ -47,8 +47,11 @@ body.ita-tactics #chat-notifications { grid-template-rows: 1fr auto; }
 body.ita-tactics:is(.mm-z-picking, .itd-picking) #invincible-challenges,
 body.ita-tactics:is(.mm-z-picking, .itd-picking) #invincible-tactics-desk:not(.igd-busy) .igd,
 body.ita-tactics:is(.mm-z-picking, .itd-picking) #invincible-tactics-dock .its-slot[data-slot="line"] .its-in { opacity: .26; transition: opacity .18s ease-out; }
-body.ita-tactics:is(.mm-z-picking, .itd-picking) :is(#invincible-challenges, #invincible-tactics-desk:not(.igd-busy) .igd, #invincible-tactics-dock .its-slot[data-slot="line"] .its-in),
-body.ita-tactics:is(.mm-z-picking, .itd-picking) :is(#invincible-challenges, #invincible-tactics-desk:not(.igd-busy) .igd, #invincible-tactics-dock .its-slot[data-slot="line"] .its-in) * { pointer-events: none !important; }
+/* perf4: the click-through half reads the same answer from the panels' own roots (data-ita-aim = body.ita-tactics with .mm-z-picking or
+   .itd-picking, written in the same task as those classes: ui/aim.mjs): a `*` rule behind a class of <body> restyled the whole page
+   (~6000 elements, 85-140 ms) on every arm, pick and cancel; on the roots it restyles only the three panels */
+:is(#invincible-challenges[data-ita-aim], #invincible-tactics-desk[data-ita-aim]:not(.igd-busy) .igd, #invincible-tactics-dock[data-ita-aim] .its-slot[data-slot="line"] .its-in),
+:is(#invincible-challenges[data-ita-aim], #invincible-tactics-desk[data-ita-aim]:not(.igd-busy) .igd, #invincible-tactics-dock[data-ita-aim] .its-slot[data-slot="line"] .its-in) * { pointer-events: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
   #invincible-tactics-dock, #invincible-tactics-dock .its-bar, #invincible-challenges, #invincible-tactics-desk .igd, .its-slot .its-in { transition: none; }

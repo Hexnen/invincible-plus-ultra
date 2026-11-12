@@ -59,10 +59,10 @@ const slotsCss = read("../../styles/tactics-slots.css"), uiCss = read("../../sty
 
 /* ---- U140: aiming */
 {
-  const sel = /body\.ita-tactics:is\(\.mm-z-picking, \.itd-picking\) :is\(#invincible-challenges, #invincible-tactics-desk:not\(\.igd-busy\) \.igd, #invincible-tactics-dock \.its-slot\[data-slot="line"\] \.its-in\)( \*)? \{ pointer-events: none !important; \}|body\.ita-tactics:is\(\.mm-z-picking, \.itd-picking\) :is\(#invincible-challenges, #invincible-tactics-desk:not\(\.igd-busy\) \.igd, #invincible-tactics-dock \.its-slot\[data-slot="line"\] \.its-in\),/;
+  const sel = /body\.ita-tactics:is\(\.mm-z-picking, \.itd-picking\) :is\(#invincible-challenges, #invincible-tactics-desk:not\(\.igd-busy\) \.igd, #invincible-tactics-dock \.its-slot\[data-slot="line"\] \.its-in\)( \*)? \{ pointer-events: none !important; \}|body\.ita-tactics:is\(\.mm-z-picking, \.itd-picking\) :is\(#invincible-challenges, #invincible-tactics-desk:not\(\.igd-busy\) \.igd, #invincible-tactics-dock \.its-slot\[data-slot="line"\] \.its-in\),|:is\(#invincible-challenges\[data-ita-aim\], #invincible-tactics-desk\[data-ita-aim\]:not\(\.igd-busy\) \.igd, #invincible-tactics-dock\[data-ita-aim\] \.its-slot\[data-slot="line"\] \.its-in\) \* \{ pointer-events: none !important; \}/;      // perf4: the same elements, read from the roots' mark (check-perf4)
   ok(sel.test(slotsCss), "U140: while aiming, the challenges, a desk with nothing waiting and the line take no pointer");
   ok(/\.its-slot\[data-slot="line"\] \.its-in \{ opacity: \.26;/.test(slotsCss), "U140: ... and stand back (dimmed)");
-  ok(!/:is\(\.mm-z-picking, \.itd-picking\)[^{]*data-slot="cards"/.test(slotsCss), "U140: the questions put to this user are never made click-through");
+  ok(!/(:is\(\.mm-z-picking, \.itd-picking\)|data-ita-aim)[^{]*data-slot="cards"/.test(slotsCss), "U140: the questions put to this user are never made click-through");
 }
 
 /* ---- U150: the sidebar at the fight's start */
