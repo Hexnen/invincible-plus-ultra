@@ -6,6 +6,8 @@
 import { readFileSync } from "node:fs";
 import { Table, ok, eq, done } from "./testkit.mjs";
 import * as KP from "./kit-pure.mjs";
+import * as MP from "./ui/model-pure.mjs";
+import { tIn } from "./lang.mjs";
 
 const here = new URL(".", import.meta.url);
 const src = (f) => readFileSync(new URL(f, here), "utf8");
@@ -70,6 +72,35 @@ const team = (extra = () => {}, order = ["N1", "H1", "H2", "H3", "N2"]) => { con
   eq(code(await T.gm(decl("N1", "shoot", ["H2"], { weapon: "nade", area: true }))), "ok", "U131: the turret throws at the zone of Kid and the Soldier");
   const w = (T.prompt("reaction", "H1")?.options ?? []).filter((o) => o.id.startsWith("r:"));
   eq(w.map((o) => o.data.about ?? null), ["H2"], "U131: only Kid can be warned, not the Soldier beside him");
+}
+
+/* ---- U125 (d): the old target reads in words that a guardian took the hit (the news line of the player, the journal) */
+{
+  const guard = () => { const T = new Table(); T.hero("H1", "p1", { name: "Kid" }).hero("H2", "p2", { name: "Omni" }).npc("N1", { name: "Soldier", health: 6 }).npc("N2", { health: 6 }); give(T, "H1", "Guardian"); T.order(["N1", "H1", "H2", "N2"]); return T; };
+  const lastNews = (T) => (T.state.news ?? []).filter((n) => n.kind === "action").at(-1) ?? null;
+  const facts = (T) => ({ c: (id) => T.c[id] ?? null, staff: false });
+  const T = guard();
+  eq(code(await T.gm(decl("N1", "slugfest", ["H2"]))), "ok", "U125d: the Soldier attacks Omni");
+  await T.req("p1", { op: "answer", prompt: T.prompt("reaction", "H1").id, value: rid(T, "H1", "guardian") });
+  await T.roll("sw:H1", 1);
+  for (const p of T.prompts("reaction")) await T.req(p.to === "gm" ? "gm" : p.to.users[0], { op: p.to === "gm" ? "answerFor" : "answer", prompt: p.id, value: "pass" });
+  await T.roll("attack", 1);
+  for (const sp of T.prompts("stunts")) await T.gm({ op: "answerFor", prompt: sp.id, value: [] });
+  const n = lastNews(T);
+  eq((n?.reacts ?? []).map((r) => [r.who, r.result, r.about]), [["H1", "took", "H2"]], "U125d: the news says Kid took the hit meant for Omni");
+  const text = MP.newsData({ news: T.state.news, round: T.state.round, knowledge: { H2: {} } }, {}, facts(T), (k, p = {}, f) => tIn("en", k, p, f))?.text ?? "";
+  ok(/Kid: .*takes the hit for Omni/.test(text), `U125d: Omni's player reads it in words (${text})`);
+  const pl = MP.newsData({ news: T.state.news, round: T.state.round, knowledge: { H2: {} } }, {}, facts(T), (k, p = {}, f) => tIn("pl", k, p, f))?.text ?? "";
+  ok(/przyjmuje cios za: Omni/.test(pl), `U125d: ... and in Polish (${pl})`);
+  ok(T.log.list.some((tx) => /ITAC\.journal\.react\.took/.test(JSON.stringify(tx.label))), "U125d: the journal line carries it too");
+  const U = guard();
+  await U.gm(decl("N1", "slugfest", ["H2"]));
+  await U.req("p1", { op: "answer", prompt: U.prompt("reaction", "H1").id, value: rid(U, "H1", "guardian") });
+  await U.roll("sw:H1", 0);
+  for (const p of U.prompts("reaction")) await U.req(p.to === "gm" ? "gm" : p.to.users[0], { op: p.to === "gm" ? "answerFor" : "answer", prompt: p.id, value: "pass" });
+  await U.roll("attack", 1);
+  for (const sp of U.prompts("stunts")) await U.gm({ op: "answerFor", prompt: sp.id, value: [] });
+  eq((lastNews(U)?.reacts ?? []).map((r) => [r.who, r.result]), [["H1", "failed"]], "U125d: a guardian without a six: the news says it failed");
 }
 
 done("check-fxi");

@@ -365,6 +365,10 @@ function applyReaction(v, I, R, cid, key, value, when) {
   if (e.reaction.effect === "swapTarget") {        // retargeting (spec 9.1 step 4 "target swap"): the reactor becomes the target; its own window opens next
     const mine = K.reactionFor(v, I, cid, e);                                                    // U91: only somebody attacked in the reactor's own zone [B2115]
     const from = mine.includes(value?.for) ? value.for : mine[0] ?? (I.decl.targets.includes(value?.for) ? value.for : I.decl.targets[0]);      // (the GM's own answer, where nobody fits)
+    /* U125 (d): the old target is told in words that somebody took the hit for it (news, journal): "took" on the guardian's six (or at once
+       for a swap without a roll), "failed" without one */
+    const rec = { who: cid, entry: e.id, effect: "swapTarget", ...(name ? { name } : {}), ...(e.label ? { label: e.label } : {}), ...(from ? { about: from } : {}) };
+    (I.data.reacted ??= []).push(rec);
     if (e.reaction.roll === "attack") {            // [B2115]: FIGHTING against a slugfest attack, AGILITY against shooting; the hit is taken only on a success
       const rk = `sw:${cid}`, attr = attack.ATTACKS[kindOf(I)]?.family === "shooting" ? "agility" : "fighting";
       const bp = K.buildPool(v, I, rk, cid, attr, [], { rollKind: "other" });
@@ -373,6 +377,7 @@ function applyReaction(v, I, R, cid, key, value, when) {
       (I.data.swaps ??= []).push({ key: rk, by: cid, from, entry: e.id });
       return false;
     }
+    rec.result = "took";
     swapTarget(I, from, cid, e.id);
     return false;
   }
@@ -413,8 +418,8 @@ function settleSwaps(v, I) {
     s.done = 1;
     const to = s.to ?? s.by, sixes = K.sixesOf(I, s.key);
     const won = sixes >= 1 && I.decl.targets.includes(s.from) && !I.decl.targets.includes(to) && (!s.ally || K.alliesNear(v, I, s.by).includes(to));      // D113: Discretion's ally must still stand beside
-    const rec = s.ally ? (I.data.reacted ?? []).find((x) => x.who === s.by && x.entry === s.entry && !x.result) : null;
-    if (rec) rec.result = won ? "moved" : "failed";
+    const rec = (I.data.reacted ?? []).find((x) => x.who === s.by && x.entry === s.entry && !x.result);
+    if (rec) rec.result = won ? (s.ally ? "moved" : "took") : "failed";
     if (won) swapTarget(I, s.from, to, s.entry);
     else {
       (I.data.notes ??= []).push({ note: "swapFailed", who: s.by, entry: s.entry, for: s.from, sixes });
