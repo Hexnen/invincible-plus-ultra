@@ -308,8 +308,9 @@ const JOURNAL_HAZARDS = ["fire", "blast", "area", "vacuum", "disease"];
 function label(X, inst, what) {
   const a = inst.actor ? X.facts.c(inst.actor) : null, e = C.entryFor(X.state, inst.actor, inst.action, X.facts);
   /* the engine has no language: an action and a result are written as `{key}` marks that the surfaces put into the reader's language (lang.mjs
-     `marks`); an entry with a name of its own (a granted power) keeps that name */
-  const act = e?.name || (typeof e?.label === "string" && !e.label.startsWith("ITAC.") ? e.label : inst.action === "fireSpread" ? "{ITAC.journal.fireSpread}" : `{ITAC.action.${inst.action}}`);      // the card of the spread is titled with a question; the journal states what it was
+     `marks`); an entry with a name of its own (a granted power) keeps that name; FXV (P6b-14): sending the allies away is named as what
+     it is, not by the power's name ("Summoning") the entry carries */
+  const act = e?.effect?.kind === "dismiss" ? "{ITAC.journal.dismiss}" : e?.name || (typeof e?.label === "string" && !e.label.startsWith("ITAC.") ? e.label : inst.action === "fireSpread" ? "{ITAC.journal.fireSpread}" : `{ITAC.action.${inst.action}}`);      // the card of the spread is titled with a question; the journal states what it was
   const res = what ? ` ({ITAC.result.${what}})` : "";
   /* nobody's action (a hazard, a forced move, a consequence of a challenge, a waiting trigger): the doer is the GM's hand or nobody, never an id;
      what it is comes from the hazard's kind or from the trigger's own name; `{zone:key}` is the place, named by the surface as the map names it */
@@ -652,7 +653,7 @@ async function opDeclare(X, a) {
     await applyEffect(X, I, { t: "pay", who: actor, cost: gm ? "none" : cost, action: entry.id, key: "own", own: 1, interrupt: pl.cause === "interrupt", grant: pl.grant, ranged: P1.isRanged(entry), tags: price?.tags ?? entry.tags, target: decl.targets, zoneFrom: price?.zoneFrom, zoneTo: price?.zoneTo, borders: price?.borders }, "declare");   // waived by the GM: the entry is recorded (the facts of the turn), no unit is spent
     I.entry = I.data.paid?.own ?? null;
   }
-  if (a.granted === true && X.user.staff) { I.data.exception = { reason: l.ok ? null : l.reason, params: l.ok ? {} : l.params, by: "gm" }; I.decl.exception = { ...I.decl.exception, state: "granted" }; }      // U3: the GM already said yes on the card of the request: no second card
+  if (X.user.staff && (a.granted === true || !!decl.exception)) { I.data.exception = { reason: l.ok ? null : l.reason, params: l.ok ? {} : l.params, by: "gm" }; I.decl.exception = { ...I.decl.exception, state: "granted" }; }      // U3: the GM already said yes on the card of the request: no second card; FXV (CU6): nor when the GM's own "declare anyway" carries the request
   else if (!l.ok) {                                                                         // an illegal option with a request for an exception (spec 9.12): a desk card
     I.data.exception = { reason: l.reason, params: l.params }; I.data.hold = "exception"; I.status = "waiting";
     openPrompt(X, I, { key: "exception", kind: "exception", to: "gm", about: actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { reason: l.reason, text: decl.exception.text } }, "declare");
@@ -956,9 +957,13 @@ async function opHelp(X, a) {
     I.decl.helpers = [...(I.decl.helpers ?? []), { id: a.helper, consent: "pending" }];
     openPrompt(X, I, { key: `help:${a.helper}`, kind: "helpOverride", to: "gm", about: a.helper, options: [{ id: "accept", label: "ITAC.opt.accept" }, { id: "refuse", label: "ITAC.opt.refuse" }], data: { reason: "noFullAction", for: I.actor } }, "declare");
   }
+  noteHelp(X, I);
   setInst(X, I);
   return ok({ inst: I.id });
 }
+/* FXV (P8e-7): the dice the accepted helpers add, kept on the instance for the panel of the declared action (a helper who joined after
+   the declaration was in the roll but not on the panel); the roll itself counts them as before (flows: K.helpDiceOf) */
+function noteHelp(X, I) { const n = K.helpDiceOf(view(X), I.decl); if (n > 0) I.data.help = n; else delete I.data.help; }
 function applyHelpAnswers(X) {
   for (const inst of X.state.stack) for (const h of inst.decl?.helpers ?? []) {
     if (h.consent !== "pending") continue;
@@ -966,6 +971,7 @@ function applyHelpAnswers(X) {
     if (!p?.answered) continue;
     const I = J.clone(inst), yes = (typeof p.answered.value === "string" ? p.answered.value : p.answered.value?.id) === "accept";
     I.decl.helpers = yes ? I.decl.helpers.map((x) => (x.id === h.id ? { ...x, consent: "yes" } : x)) : I.decl.helpers.filter((x) => x.id !== h.id);
+    noteHelp(X, I);
     setInst(X, I);
   }
 }
@@ -1364,13 +1370,16 @@ async function opUndo(X, a) {
         if (to !== undefined) await host(id, op, { t: "actor", uuid: op.uuid, path: op.path, to });
       } else { const eff = J.inverseEffect(op); if (eff) await host(id, op, eff); }
     }
-    X.log = J.markUndone(X.log, id, X.host.now());
+    X.log = J.markUndone(X.log, id, X.host.now(), X.failed.slice(n0));
     /* U10: the players are told what the GM took back: the result they read is marked, and a line of its own says so */
     const was = (X.state.news ?? []).find((n) => n.tx === id && n.kind === "action" && !n.undone);
     if (was) X.state = { ...X.state, news: X.state.news.map((n) => (n.tx === id ? { ...n, undone: 1 } : n)) };
     pushNews(X, { kind: "undo", ...(was ? { actor: was.actor, action: was.action, ...(was.name ? { name: was.name } : {}), ...(was.secret ? { secret: 1 } : {}) } : {}) });
     emit(X, null, { type: "undo", tx: id, ...(X.failed.length > n0 ? { failed: X.failed.slice(n0).map((f) => ({ t: f.t, reason: f.reason })) } : {}) });
   }
+  /* FXV (P8e-9): a grant taken back by the undo takes its card of consent with it (an answer to it changed nothing and only then the card went) */
+  const pendingGrant = (p) => (X.state.ledger?.[p.data?.combatant]?.grants ?? []).some((g) => g.id === p.data?.grant && g.consent === "pending");
+  dropPrompts(X, (p) => p.kind === "grantConsent" && !p.answered && !pendingGrant(p));
   X.facts = liveFacts(X); X.changed = true;
   return ok({ undone: list });                                                              // what an inverse could not do is in the answer's `failed` (handle)
 }
@@ -1694,6 +1703,10 @@ function takeRoll(X, r) {
   const author = X.facts.user(r.author);
   if (!author || !(author.staff || rec.req.users.includes(r.author))) return false;         // spec 11: identity = the message author, checked against the user the roll was asked from
   if (!Number.isFinite(r.sixes) || r.sixes < 0) return false;
+  /* FXV (P8d-6, P8-3): a roll of another number of dice than the engine asked for (a client that built its own message) is not this
+     roll's result, and no roll has more sixes than dice. A message that does not say how many dice it threw is read as before. */
+  const want = Number(rec.req.dice), n = Number(r.dice);
+  if (Number.isFinite(n) && n > 0 && ((Number.isFinite(want) && want > 0 && n !== want) || r.sixes > n)) return false;
   /* a result that is in stays: only its own message (accepted) or a push of it (one push more) replaces it. A second roll of the same
      request (two owners of one hero, a click on "Roll" after the dice were already thrown) changes nothing. */
   if (rec.sixes != null && !(rec.pushable && ((typeof r.messageId === "string" && r.messageId === rec.messageId) || (Math.trunc(Number(r.pushed) || 0) > (rec.pushed ?? 0))))) return false;

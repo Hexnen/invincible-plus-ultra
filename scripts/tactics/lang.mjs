@@ -41,6 +41,7 @@ export const EN = {
   "ITAC.err.playersOff": "Only the GM ends turns at this table.",
   "ITAC.err.internal": "Something went wrong ({msg}).",
   "ITAC.err.noPrev": "There is no earlier turn in this round.",
+  "ITAC.err.nobodyActs": "Nobody in the fight can take a turn: the round stays as it is. Add a combatant or bring one back first.",
   "ITAC.Note.Cards": "Initiative is dealt as cards at the start of each round. There is nothing to roll.",
   "ITAC.Note.NoPrev": "There is no earlier turn in this round.",
   "ITAC.Note.NoPrevRound": "A finished round cannot be reopened: its cards are gone.",
@@ -347,6 +348,8 @@ export const EN = {
   "ITAC.opt.stopHere": "Stop here",
   "ITAC.opt.forcedGo": "Thrown as shown",
   "ITAC.opt.forcedGoFall": "Thrown as shown, then falls",
+  "ITAC.opt.forcedTo": "Thrown there instead",
+  "ITAC.ui.forced.correct": "Correct the route: pick a zone",
   "ITAC.opt.forcedNone": "Stays in place",
   "ITAC.roll.dark": "Finding the way out of the dark",
   "ITAC.roll.bar": "Crashing through",
@@ -440,6 +443,7 @@ export const EN = {
   "ITAC.ui.mine.roll": "Your roll: [[dice:{dice}]] ({roll}).",
   "ITAC.ui.mine.manual": "The GM is settling this.",
   "ITAC.ui.mine.open": "Declared. Waiting for the others.",
+  "ITAC.ui.mine.help": "Help: {names}, +[[dice:{dice}]] to the roll.",
   "ITAC.ui.group.attack": "Attack",
   "ITAC.ui.group.move": "Move",
   "ITAC.ui.group.act": "Act",
@@ -455,9 +459,6 @@ export const EN = {
   "ITAC.ui.end.sure": "Really end?",
   "ITAC.ui.end.unused": "Still unused: {list}. Click again to end anyway.",
   "ITAC.ui.end.tip": "Pass the turn on",
-  "ITAC.ui.turn.yours": "{name}: your turn",
-  "ITAC.ui.turn.of": "Turn: {name}",
-  "ITAC.ui.turn.round": "Round {n}: {name}",
   "ITAC.ui.freeMode": "free mode",
   "ITAC.ui.step.check": "Check",
   "ITAC.ui.step.gate": "Roll before",
@@ -1028,6 +1029,7 @@ export const EN = {
   "ITAC.warn.partial": "Carried out only in part. Look at the journal and the character sheets and put the rest right by hand.",
   "ITAC.warn.partialPlayer": "Not everything went through. Tell the GM.",
   "ITAC.warn.failed": "Could not be changed: {list}. Put it right by hand.",
+  "ITAC.ui.journal.undoFailed": "The undo could not take back: {list}. Put it right by hand.",
   "ITAC.warn.parked": "The action could not go on by itself. It waits on the desk: settle it by hand or abort it.",
   "ITAC.ui.manual.failed": "Could not go on by itself at the step \"{step}\". Settle it by hand or abort it.",
   "ITAC.ui.manual.seat": "No vehicle of the fight was named. Settle it by hand.",
@@ -1080,6 +1082,7 @@ export const PL = {
   "ITAC.err.playersOff": "Przy tym stole tury kończy tylko MG.",
   "ITAC.err.internal": "Coś poszło nie tak ({msg}).",
   "ITAC.err.noPrev": "W tej rundzie nie ma wcześniejszej tury.",
+  "ITAC.err.nobodyActs": "Nikt w walce nie może wykonać tury: runda zostaje bez zmian. Najpierw dodaj uczestnika albo przywróć któregoś do walki.",
   "ITAC.Note.Cards": "Inicjatywa jest rozdawana na kartach na początku każdej rundy. Nie ma czego rzucać.",
   "ITAC.Note.NoPrev": "W tej rundzie nie ma wcześniejszej tury.",
   "ITAC.Note.NoPrevRound": "Zakończonej rundy nie da się otworzyć ponownie: jej kart już nie ma.",
@@ -1386,6 +1389,8 @@ export const PL = {
   "ITAC.opt.stopHere": "Zatrzymaj tutaj",
   "ITAC.opt.forcedGo": "Odrzut jak pokazano",
   "ITAC.opt.forcedGoFall": "Odrzut jak pokazano, potem upadek",
+  "ITAC.opt.forcedTo": "Odrzut tam zamiast tego",
+  "ITAC.ui.forced.correct": "Popraw trasę: wskaż strefę",
   "ITAC.opt.forcedNone": "Zostaje na miejscu",
   "ITAC.roll.dark": "Wyjście z ciemności",
   "ITAC.roll.bar": "Przebicie bariery",
@@ -1479,6 +1484,7 @@ export const PL = {
   "ITAC.ui.mine.roll": "Twój rzut: [[dice:{dice}]] ({roll}).",
   "ITAC.ui.mine.manual": "MG to rozstrzyga.",
   "ITAC.ui.mine.open": "Zadeklarowane. Czekamy na pozostałych.",
+  "ITAC.ui.mine.help": "Pomoc: {names}, +[[dice:{dice}]] do rzutu.",
   "ITAC.ui.group.attack": "Atak",
   "ITAC.ui.group.move": "Ruch",
   "ITAC.ui.group.act": "Działanie",
@@ -1494,9 +1500,6 @@ export const PL = {
   "ITAC.ui.end.sure": "Na pewno?",
   "ITAC.ui.end.unused": "Jeszcze nieużyte: {list}. Kliknij ponownie, żeby mimo to zakończyć.",
   "ITAC.ui.end.tip": "Przekaż turę dalej",
-  "ITAC.ui.turn.yours": "{name}: twoja tura",
-  "ITAC.ui.turn.of": "Tura: {name}",
-  "ITAC.ui.turn.round": "Runda {n}: {name}",
   "ITAC.ui.freeMode": "tryb swobodny",
   "ITAC.ui.step.check": "Sprawdzenie",
   "ITAC.ui.step.gate": "Rzut wstępny",
@@ -2073,6 +2076,7 @@ export const PL = {
   "ITAC.warn.partial": "Wykonane tylko częściowo. Zajrzyj do dziennika i na karty postaci, a resztę popraw ręcznie.",
   "ITAC.warn.partialPlayer": "Nie wszystko się udało. Daj znać MG.",
   "ITAC.warn.failed": "Nie udało się zmienić: {list}. Popraw to ręcznie.",
+  "ITAC.ui.journal.undoFailed": "Cofnięcie nie odwróciło: {list}. Popraw to ręcznie.",
   "ITAC.warn.parked": "Akcja nie mogła potoczyć się dalej sama. Czeka na biurku MG: rozstrzygnij ją ręcznie albo przerwij.",
   "ITAC.ui.manual.failed": "Nie mogła potoczyć się dalej sama na kroku „{step}”. Rozstrzygnij ją ręcznie albo przerwij.",
   "ITAC.ui.manual.seat": "Nie wskazano pojazdu biorącego udział w walce. Rozstrzygnij ręcznie.",
@@ -2122,7 +2126,7 @@ export function errText(e) {
   if (!e) return "";
   const known = typeof e.key === "string" && e.key in EN ? e.key : `ITAC.err.${`ITAC.err.${e.code}` in EN ? e.code : "internal"}`;
   const p = e.params ?? {};
-  const reason = p.reason ? t(`ITAC.reason.${p.reason}`, p, String(p.reason)) : t("ITAC.reason.rules");
+  const reason = p.reason ? t(p.series && `ITAC.reason.series.${p.reason}` in EN ? `ITAC.reason.series.${p.reason}` : `ITAC.reason.${p.reason}`, p, String(p.reason)) : t("ITAC.reason.rules");      // FXV (P8f-6)
   return t(known, { msg: e.code ?? "", ...p, reason });
 }
 export const errorText = errText;

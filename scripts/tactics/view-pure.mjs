@@ -83,7 +83,7 @@ function instView(state, inst, viewer, meta, concealed) {
   const d = inst.data ?? {};
   /* U77: `window` = which moment of the action stands open ("beforeRoll": declared, its dice not thrown yet). The table knows that much of
      every action it was told about; a player's bar needs it to offer what may still answer the action (the Quickness interrupt, D40). */
-  for (const k of ["kind", "retargets", "hold", "result", "label", "window"]) if (d[k] !== undefined) out.data[k] = clone(d[k]);
+  for (const k of ["kind", "retargets", "hold", "result", "label", "window", "help"]) if (d[k] !== undefined) out.data[k] = clone(d[k]);
   /* CHASE (U167): the round's obstacle, its D66 and who rolls for each side are said aloud at the table [B3441]; the rollers' numbers are not */
   if (inst.flow === "chase" && isObj(d.ch)) out.data.chase = { obstacle: d.ch.obstacle ?? null, d66: d.ch.d66 ?? null, chosen: d.ch.chosen ? 1 : 0, from: d.ch.distance ?? null, results: clone(d.ch.results ?? {}), over: d.ch.over ?? null,
     ...Object.fromEntries(["prey", "pursuer"].map((s) => [s, isObj(d.ch[s]) ? { id: d.ch[s].id, roller: d.ch[s].roller, vehicle: d.ch[s].vehicle ? 1 : 0, why: d.ch[s].why ?? null } : null])),

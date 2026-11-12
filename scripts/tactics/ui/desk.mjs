@@ -148,7 +148,8 @@ function journal(d) {
         j.undo.drift ? j.undo.drift.map((m) => h("button.igd-btn", { fk: `dr:${j.id}:${m.id}`, text: m.label, on: { click: () => send(m.req, { drift: null, undo: null }) } }))
           : [h(`button.igd-btn${j.undo.armed ? ".igd-danger" : ""}`, { fk: `un:${j.id}`, tip: j.undo.also, on: { click: () => (j.undo.armed ? send(j.undo.req, { undo: null }) : set({ undo: j.id })) } }, icon("fa-rotate-left"), h("span", { text: j.undo.armed ? handlers.label?.("undo.sure") : j.undo.label })),
             j.undo.armed && j.undo.also ? h("span.igd-also", { text: j.undo.also }) : null,
-            j.undo.armed && j.undo.force ? h("button.igd-link", { fk: `uo:${j.id}`, text: j.undo.force.label, on: { click: () => handlers.forceUndo?.(j) } }) : null]) : null)))));
+            j.undo.armed && j.undo.force ? h("button.igd-link", { fk: `uo:${j.id}`, text: j.undo.force.label, on: { click: () => handlers.forceUndo?.(j) } }) : null]) : null,
+      j.failed ? h("span.igd-jf", { attrs: { role: "note" } }, icon("fa-triangle-exclamation"), h("span", { text: j.failed })) : null)))));      // FXV (P8b-7): what the undo could not take back
 }
 function table(d) {
   const seg = (c, key) => h("span.igd-seg", {}, c.choices.map((x) => h("button", { fk: `${key}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => !x.on && send(x.req) } })));

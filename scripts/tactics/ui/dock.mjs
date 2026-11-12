@@ -476,7 +476,7 @@ function panel(p) {
         p.choice.hint ? h("p.itd-hint", {}, icon("fa-user-shield"), h("span", { text: p.choice.hint })) : null) : null,
       /* W1 (U33): a target that stands on the map is chosen there; a chip is left only for one that does not (another scene, out of sight) */
       offMap ? h("div.itd-col.itd-targets", {}, p.targets.some((x) => !x.map) ? cap(p, p.slot ? "" : "target", handlers.label?.("target")) : null,
-        h("div.itd-chips", { attrs: { role: "group" } }, p.targets.filter((x) => !x.map).map((x) => h(`button.itd-chip${x.likely ? "" : ".itd-chip-dim"}`, { fk: `tg:${x.id}`, tip: x.note, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => { toggle("targets", x.id, p.maxTargets ?? 1); handlers.target?.(x.id); } } }, face(x.img, x.name), h("span", { text: x.name })))),
+        h("div.itd-chips", { attrs: { role: "group" } }, p.targets.filter((x) => !x.map).map((x) => h(`button.itd-chip${x.likely ? "" : ".itd-chip-dim"}${x.reach === "out" ? ".itd-chip-out" : ""}`, { fk: `tg:${x.id}`, tip: x.reach === "out" ? x.why ?? x.note : x.note, attrs: { "aria-pressed": String(x.picked) }, on: { click: () => { toggle("targets", x.id, p.maxTargets ?? 1); handlers.target?.(x.id); } } }, face(x.img, x.name), h("span", { text: x.name })))),
         p.picking && !p.onMap ? h("p.itd-hint", {}, icon("fa-crosshairs"), h("span", { text: handlers.label?.("pick.hint") })) : null,
         p.self ? h("p.itd-hint", {}, icon("fa-user"), h("span", { text: p.self })) : null) : null,
       p.attrs ? h("div.itd-col.itd-attrs", {}, cap(p, "attr", p.attrs.label),

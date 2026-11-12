@@ -70,7 +70,7 @@ function fireNow() {
   return fire.map;
 }
 /** U32: what waits on a way of `cid` beyond its walls (model-pure.movePanel asks through facts.hazards) */
-export function hazards(cid, zones, to) { try { return last ? BP.zoneHazards(fireNow(), zones, to, { ...(Mv.api.c(cid) ?? {}), id: cid }, Mv.api.zoneFacts(), t) : []; } catch { return []; } }
+export function hazards(cid, zones, to) { try { return last ? BP.zoneHazards(fireNow(), zones, to, { ...(Mv.api.c(cid) ?? {}), id: cid }, Mv.api.zoneFacts(), t, BP.forecast(last.view, last.facts, cid, to, Mv.api.zoneFacts())) : []; } catch { return []; } }
 
 /* ---------- U38 / U39: the state of the table, from this user's view ---------- */
 function table() {
@@ -164,7 +164,7 @@ function move() {
 /* ---------- U40: the zone where the turn would end ---------- */
 function warn() {
   const d = last.data, who = d?.show && d.onTurn ? d.who?.id : null, spot = who ? last.facts.where?.(who) : null;
-  const w = spot ? BP.endWarnings(fireNow(), spot, Mv.api.c(who), Mv.api.zoneFacts(), t) : [];
+  const w = spot ? BP.endWarnings(fireNow(), spot, Mv.api.c(who), Mv.api.zoneFacts(), t, BP.forecast(last.view, last.facts, who, spot, Mv.api.zoneFacts())) : [];      // FXV (W1-9)
   put(BP.IDS.warn, Zones.warnOn, Zones.clearHighlights, w.length ? { zones: w } : null);
 }
 /* ---------- U43: what this user has armed, for the GMs (a player's client; the map sends it to the GMs alone) ---------- */
