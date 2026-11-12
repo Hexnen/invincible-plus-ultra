@@ -219,7 +219,7 @@ export function windowPrompts(v, inst, when, { skip = [], reactions }) {
     if (!c || c.present === false || M.outOfAction(v.state, cid, c)) continue;                              // [B2707]
     const list = reactions(v.state, cid, when, v.facts).filter((e) => (e.reaction.who === "any" || inst.decl.targets.includes(cid)) && reactionFit(v, inst, cid, e).ok);      // U91: only what the book lets this one do from where it stands
     if (!list.length) continue;
-    const options = list.map((e) => reactionOption(v, cid, e, inst));
+    const options = list.flatMap((e) => reactionOptions(v, cid, e, inst));
     if (!options.some((o) => !o.disabled)) continue;                 // no legal option: skipped automatically (plan 5.2 step 4)
     const target = inst.decl.targets.includes(cid);
     if (!target && M.counterGet(v.state, passKey(cid))) continue;    // U11: said "no reaction this round" already
@@ -277,6 +277,23 @@ export function reactionOption(v, cid, e, inst = null) {
   else if (e.stress?.fixed && !(v.facts.c(cid)?.resolve > 0)) o.disabled = "stressedOut";                   // [B2816]
   return o;
 }
+/* D113: the answers of one reaction entry. Discretion [B2108] names the ally who is put in the way and Warning Call [B2170] the one who is
+   warned: with one such character the entry is one answer (that one is meant), with several there is one answer per character, its id
+   `r:<entry>@<cid>` and `data.about` the character (the surfaces name it beside the entry's name). A reaction is taken once per attack. */
+export const REACT_ABOUT = Object.freeze(["allySwap", "warn"]);
+export function aboutOf(v, inst, cid, e) {
+  if (!inst || !REACT_ABOUT.includes(e?.reaction?.effect)) return [];
+  return e.reaction.effect === "allySwap" ? alliesNear(v, inst, cid) : reactionFor(v, inst, cid, e).filter((t) => !inst.data?.warned?.[t]);
+}
+export function reactionOptions(v, cid, e, inst = null) {
+  const o = reactionOption(v, cid, e, inst), who = aboutOf(v, inst, cid, e);
+  if (inst && inst.data?.reacted?.some((x) => x.who === cid && x.entry === e.id)) o.disabled = "reactionUsed";
+  else if (inst && !o.disabled && e.reaction.effect === "warn" && !who.length && reactionFor(v, inst, cid, e).length) o.disabled = "alreadyWarned";
+  if (who.length < 2) return [who.length ? { ...o, data: { ...o.data, about: who[0] } } : o];
+  return who.slice(0, 8).map((x) => ({ ...o, id: `${o.id}@${x}`, data: { ...o.data, about: x } }));
+}
+/** `r:<entry>` or `r:<entry>@<cid>` -> { id: "r:<entry>", about } */
+export const reactionId = (id) => { const s = String(id ?? ""), at = s.lastIndexOf("@"); return s.startsWith("r:") && at > 2 ? { id: s.slice(0, at), about: s.slice(at + 1) } : { id: s, about: null }; };
 
 /** May `t` answer an attack of this kind with a block or a dodge now? ONE reading for the attack flow and for every hazard that can be
     dodged [B2922]: the conditions of the state [R6], [R20], [R21], [R10], [B2392], out of action [B2707], holding somebody [B2497], and a

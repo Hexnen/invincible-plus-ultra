@@ -252,8 +252,16 @@ function newsOf(I) {
   const fx = isObj(I.data?.challengeFx) ? I.data.challengeFx : null, note = fx && typeof I.data?.manual?.note === "string" && I.data.manual.note.trim() ? I.data.manual.note.trim().slice(0, 300) : null;
   return { kind: "action", tx: I.tx ?? null, actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
     ...(fx ? { fx: { challenge: fx.challenge, kind: fx.kind }, ...(note ? { note } : {}) } : {}),        // U110: what a failed challenge did, and the GM's words about it
-    result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows };
+    result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows, ...reactsOf(I) };
 }
+/* D113: what the reactions of the table's eyes came to (Discretion, Warning Call, one the GM settled by hand): told with the result, so a
+   price paid is never paid in silence. { reacts: [{ who, effect, result, about?, name?, label?, note? }] } | {} */
+const REACT_RESULTS = ["moved", "failed", "card", "dice", "byHand", "noAlly", "noTarget"];
+function reactsOf(I) {
+  const list = (I.data?.reacted ?? []).filter((r) => isObj(r) && P1.isId(r.who) && REACT_RESULTS.includes(r.result)).slice(0, 8);
+  return list.length ? { reacts: list.map((r) => ({ who: r.who, effect: r.effect, result: r.result, ...(P1.isId(r.about) ? { about: r.about } : {}), ...(r.name ? { name: String(r.name).slice(0, 80) } : {}), ...(typeof r.label === "string" && r.label.startsWith("ITAC.") ? { label: r.label.slice(0, 80) } : {}), ...(r.note ? { note: String(r.note).slice(0, 200) } : {}) })) } : {};
+}
+const reactWhat = (r) => (r.name ? String(r.name).replace(/[{}]/g, "") : typeof r.label === "string" && /^ITAC\.[\w.]+$/.test(r.label) ? `{${r.label}}` : "");
 /* D32 / D33: a public journal line does not carry a name. It carries the mark `{c:<id>}` and the list `who` of the combatants it is about
    (the doer, and the targets, whom it does not name), so each reader gets the name as THAT reader knows it (namesake numbers never count
    somebody hidden from a player, ruling U5-7) and no line about somebody concealed from that reader (view-pure.journalFor).
@@ -285,7 +293,10 @@ function label(X, inst, what) {
   const spot = inst.decl?.zone ?? inst.data?.hz?.zone ?? inst.data?.hazard?.zone ?? (["move", "drive", "fastball"].includes(inst.flow) ? inst.data?.mv?.at ?? inst.data?.mv?.to ?? null : null);
   const names = (inst.decl?.targets ?? []).map((t) => X.facts.c(t)?.name).filter(Boolean).join(", ");
   const pub = a?.hidden ? "" : `${a?.name ? `${cMark(inst.actor)}: ` : ""}${a ? act : what0}${res}`;       // spec 10: two texts; a hidden actor has no public line, and no public line names a target or a place
-  return { who: whoOf(X, [inst.actor, ...(inst.decl?.targets ?? [])]), pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? pub : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}` };
+  /* D113: the reactions it met, after the result: "[Omni-Man: Warning Call (warned)]"; a reactor hidden from the table is in the GM's line only */
+  const rx = (reactsOf(inst).reacts ?? []).map((r) => ({ r, w: reactWhat(r) })), rxText = (nm, list) => list.map(({ r, w }) => ` [${nm(r.who)}: ${w}${w ? " " : ""}({ITAC.journal.react.${r.result}})]`).join("");
+  const rxPub = rx.filter(({ r }) => !X.facts.c(r.who)?.hidden);
+  return { who: whoOf(X, [inst.actor, ...(inst.decl?.targets ?? []), ...rx.map(({ r }) => r.who)]), pub: a || (inst.decl?.targets ?? []).every((t) => !X.facts.c(t)?.hidden) ? (pub ? pub + rxText(cMark, rxPub) : pub) : "", gm: `${who ? `${who}: ` : ""}${what0}${names ? ` -> ${names}` : ""}${typeof spot === "string" && spot ? ` @ {zone:${spot.slice(0, 60)}}` : ""}${res}${rxText((id) => X.facts.c(id)?.name ?? "", rx)}` };
 }
 /** Start a child of `parent` (interrupt, counterattack, part of a composite). Costs are prepaid by the parent's reaction or by the composite. */
 function pushChild(X, parent, spec) {

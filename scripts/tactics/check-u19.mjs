@@ -213,7 +213,7 @@ const notes = (T) => (T.top()?.data?.notes ?? []).map((n) => [n.note, n.who, n.r
   eq([g.reaction.place, g.reaction.roll, C.sanitizeEntry({ id: "g", flow: "plain", cost: "quick", reaction: { when: ["beforeRoll"], who: "any", effect: "swapTarget", place: "moon", roll: "x" } }).reaction], ["targetZone", "attack", { when: ["beforeRoll"], who: "any", effect: "swapTarget" }], "F: the catalog keeps a known place and roll, drops an unknown one");
   const ge = T0().c.H1.kit.actions.find((a) => a.id.endsWith("-guardian")), de = give(T0(), "H2", "Discretion").c.H2.kit.actions.find((a) => a.id.endsWith("-discretion")), we = give(T0(), "H2", "Warning Call").c.H2.kit.actions.find((a) => a.id.endsWith("-warn"));
   eq([ge.reaction, ge.cost, ge.kit?.key != null], [{ when: ["beforeRoll"], who: "any", effect: "swapTarget", place: "targetZone", roll: "attack" }, "quick", true], "F: Guardian [B2115]: anybody's attack, in the guardian's zone, a quick action, a roll by the attack");
-  eq([de.reaction, we.reaction], [{ when: ["beforeRoll"], who: "target", effect: "note", place: "allyZone" }, { when: ["beforeRoll"], who: "any", effect: "note" }], "F: Discretion [B2108] asks for an ally in the zone; Warning Call [B2170] asks for no zone");
+  eq([de.reaction, we.reaction], [{ when: ["beforeRoll"], who: "target", effect: "allySwap", place: "allyZone" }, { when: ["beforeRoll"], who: "any", effect: "warn" }], "F: Discretion [B2108] asks for an ally in the zone; Warning Call [B2170] asks for no zone (D113: each with its own effect, no note)");
   ok(C.REACTION_PLACES.includes("targetZone") && C.REACTION_PLACES.includes("allyZone"), "F: the places a reaction can ask for are a closed list");
 }
 function T0() { return base(); }
