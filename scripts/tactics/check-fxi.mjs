@@ -146,7 +146,7 @@ const team = (extra = () => {}, order = ["N1", "H1", "H2", "H3", "N2"]) => { con
   const e = src("engine.mjs"), rl = src("relay.mjs");
   ok(/setInterval\(\(\) => watchRolls\(\)/.test(e) && /RW\.plan\(/.test(e), "D120: the executor runs the watch every few seconds");
   ok(/again > 0 \? \{ again \}/.test(e) && /force: again > 0/.test(e), "D120: a request sent again carries `again`; the GM's own roll is thrown again (force)");
-  ok(/opened\.has\(msg\.req\.rid\) && !again/.test(rl) && /\{ force: again \}/.test(rl), "D120: the roller's client throws again for `again` (not within ROLL_RETRY_MS of its last throw)");
+  ok(!/opened\./.test(rl) && /\{ force: again \}/.test(rl), "D120: the roller's client throws again for `again` (not within ROLL_RETRY_MS of its last throw); H3-1: no relay memo of bare ids, rollNow's (combat | rid) is the one");
   ok(/if \(!late\) Store\.queue\(/.test(e), "D120: a roll message that comes before the executor's own state write is looked at again when the queue is through");
   ok(/busyRedraw\(left\)/.test(src("ui/main.mjs")), "D120: the chip that says the dice are flying is drawn again when that time is up");
 }

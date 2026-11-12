@@ -249,7 +249,7 @@ const facts = (T) => ({ c: (id) => T.c[id] ?? null, staff: false });
   const combat = { flags: { [S.MOD_ID]: { tactics: { state: S.serialize(T.state) } } } };
   eq(Src.aboard(combat, "V1"), ["H1"], "U118: who sits in it, read from the fight's state");
   const bar = readFileSync(new URL("../combat/bar.mjs", import.meta.url), "utf8");
-  ok(/actor\?\.type === "vehicle" \? dispOf\(Tac\.vehicleDisp\(Tac\.aboard\(/.test(bar), "U118: the bar reads a vehicle's side that way");
+  ok(/actor\?\.type === "vehicle" \? dispOf\(Tac\.vehicleDisp\(Tac\.aboardSeen\(c\.parent, c\.id, gm\)/.test(bar), "U118: the bar reads a vehicle's side that way (bug hunt 3: only of those aboard the user may know of)");
 }
 
 done("check-fxf");
