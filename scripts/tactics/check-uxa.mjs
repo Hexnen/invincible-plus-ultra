@@ -67,7 +67,7 @@ const slotsCss = read("../../styles/tactics-slots.css"), uiCss = read("../../sty
 
 /* ---- U150: the sidebar at the fight's start */
 {
-  ok(/function fightStart\(combat\) \{[\s\S]{0,260}if \(!combat\?\.started \|\| foldedFor === combat\.id\) return;[\s\S]{0,80}foldedFor = combat\.id;[\s\S]{0,80}if \(ui\.sidebar\?\.expanded\) ui\.sidebar\.collapse\(\);/.test(main), "U150: the sidebar folds once per fight, when a begun fight is first seen");
+  ok(/function fightStart\(combat\) \{[\s\S]{0,260}const key = NewsP\.foldKey\(combat\.id, Api\.state\(combat\)\);[\s\S]{0,160}if \(!combat\?\.started \|\| foldedFor === key\) return;[\s\S]{0,40}foldedFor = key;[\s\S]{0,80}if \(ui\.sidebar\?\.expanded\) ui\.sidebar\.collapse\(\);/.test(main), "U150: the sidebar folds once per fight, when a begun fight is first seen");
   ok(/fightStart\(combat\);/.test(main), "U150: ... looked at on every redraw of a fight");
 }
 

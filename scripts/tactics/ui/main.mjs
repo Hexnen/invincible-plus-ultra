@@ -110,12 +110,13 @@ function autoEnd(combat, d) {
   if (key === autoKey) return;
   clearTimeout(autoTimer); autoKey = key;
   if (key) autoTimer = setTimeout(() => { try { if (diceBusy() && Date.now() - (diceWas?.since ?? Date.now()) <= NewsP.HOLD_MS) { autoKey = null; diceThen(); return; }      // SEAM (U144 x D128): dice rolled up in the 1.5 s: wait for them, then run again
-    const n = lastDock?.show ? lastDock.end : null; if (n?.auto && n.req && `${combatNow()?.id}:${n.req.round}:${n.req.slot}:${n.req.actor}` === key) Dock.press("end"); } catch (err) { console.warn(LOG, "auto end failed", err); } }, AUTO_END_MS);
+    const n = lastDock?.show ? lastDock.end : null; if (n?.auto && n.req && `${combatNow()?.id}:${n.req.round}:${n.req.slot}:${n.req.actor}` === key) send("dock", n.req, { endArmed: false }, { auto: true }); }      /* FXN (bh4 suspicion 1): the press the bar would make, sent as an auto press (a refusal because another seat of the same hero passed it first is not shown) */
+    catch (err) { console.warn(LOG, "auto end failed", err); } }, NewsP.autoDelay(e, AUTO_END_MS));      // FXN (D133): a turn that started empty stands longer, with its reason on the bar
 }
 let cardTop = { id: null, at: 0 };      // U143: the question card on top of the dock and since when it stands there (the keys' guard)
 /* UXB (U141 / D128): the turns this client saw (a news line stands through its turn and the next: news-pure newsWindow) and what was
    shown while 3D dice rolled (cards and the line wait for the dice: news-pure diceHold) */
-let newsWin = null, diceWas = null, diceWait = null;
+let newsWin = null, diceWas = null, diceWait = null, rollsWas = { rows: {}, opp: {}, held: false };
 const diceBusy = () => { try { return typeof game.dice3d?.waitFor3DAnimationByMessageID === "function" && (game.messages?.contents ?? []).slice(-12).some((m) => m?._dice3danimating); } catch { return false; } };
 function diceThen() {
   if (diceWait) return;
@@ -285,7 +286,7 @@ function refresh() {
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
     if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen, hotbar: st.dock.hotbar }; }        // a new turn: nothing stays armed
-    newsWin = NewsP.newsWindow(newsWin, { combat: combat.id, fight: NewsP.fightOfList(facts.view?.news), round: facts.view?.round ?? null, member: facts.view?.init?.curMember ?? null, newest: NewsP.newest(facts.view?.news) });      // BH4-1 / BH4-2: the fight's tag, the round
+    newsWin = NewsP.newsWindow(newsWin, { combat: combat.id, fight: NewsP.fightNow(facts.view), round: facts.view?.round ?? null, member: facts.view?.init?.curMember ?? null, newest: NewsP.newest(facts.view?.news) });      // BH4-1 / BH4-2: the fight's tag, the round
     st.dock.newsFrom = newsWin.from;
     const desk = staff ? Api.desk(combat) : null;
     let deskD = null;
@@ -312,10 +313,15 @@ function refresh() {
     const now = Date.now(), busy = diceBusy(), hold = NewsP.diceHold(diceWas, { prompts: (data.prompts ?? []).map((p) => p.id), cards: (deskD?.cards ?? []).map((c) => c.id), news: data.news ?? null, at: now }, busy);
     diceWas = { prompts: hold.prompts, cards: hold.cards, news: hold.news, since: hold.since };
     if (hold.held) {
+      const heldIds = [...(data.prompts ?? []).map((p) => p.id).filter((id) => !hold.prompts.includes(id)), ...(deskD?.cards ?? []).map((c) => c.id).filter((id) => !hold.cards.includes(id))];
       data.prompts = (data.prompts ?? []).filter((p) => hold.prompts.includes(p.id)); data.news = hold.news;
-      deskD = NewsP.holdDesk(deskD, hold.cards);      // SEAM: the held cards are not counted either (badge, igd-busy)
+      if (Array.isArray(data.waiting)) data.waiting = NewsP.holdWaiting(data.waiting, heldIds);      // FXN (D132): the line does not name a held card either
+      deskD = NewsP.holdDesk(deskD, hold.cards, (n) => t("ITAC.ui.desk.expand", { n }));      // SEAM: the held cards are not counted either (badge, igd-busy); FXN (D132): nor on the Now tab, nor in the strip
       diceThen();
     }
+    /* FXN (U162): the result of a roll of this user's own waits for its dice as the cards do: while they roll the row still says "rolling" (news-pure holdRolls) */
+    rollsWas = NewsP.holdRollsIn(data, rollsWas, busy && !(Number.isFinite(hold.since) && now - hold.since > NewsP.HOLD_MS));
+    if (rollsWas.held) diceThen();
     /* SEAM (U144 x D128): the turn that passes by itself waits for the dice in the air (news-pure endWhileDice) */
     if (data.show && data.end) { data.end = NewsP.endWhileDice(data.end, { busy, since: hold.since, at: now }, { label: t("ITAC.ui.end"), tip: `${t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]` }); if (data.end.dice) diceThen(); }
     if (deskD) Desk.render(deskD, st.desk);
@@ -353,8 +359,9 @@ function refresh() {
 let foldedFor = null;
 function fightStart(combat) {
   try {
-    if (!combat?.started || foldedFor === combat.id) return;
-    foldedFor = combat.id;
+    const key = NewsP.foldKey(combat.id, Api.state(combat));      // FXN (bh4 suspicion 2): once per FIGHT, also one started again on the same Combat
+    if (!combat?.started || foldedFor === key) return;
+    foldedFor = key;
     if (ui.sidebar?.expanded) ui.sidebar.collapse();
   } catch { /* the sidebar stays as it is */ }
 }
@@ -473,7 +480,7 @@ function onKey(ev) {
     else if (plan.set) setDock(plan.set);
   } catch (e) { console.warn(LOG, "key failed", e); }
 }
-async function send(which, req, after) {
+async function send(which, req, after, how = {}) {
   try {
     if (!req) return null;
     const combat = combatNow();
@@ -486,7 +493,7 @@ async function send(which, req, after) {
         st.dock.refused = { action: d.action, key: place ? (d.mode ? `${d.mode}|${d.to}` : d.to) : (d.targets ?? []).join(","), reason: env.error.params?.reason ?? "rules", params: env.error.params ?? {} };
         if (place) st.dock.ask = st.dock.refused.key;
       }
-      else if (env.error?.code !== "gone") notify("warn", errText(env.error));
+      else if (env.error?.code !== "gone" && !(how.auto && NewsP.autoQuiet(env.error))) notify("warn", errText(env.error));      // FXN: an auto press that came too late says nothing
       refresh(); return env;
     }
     if (which === "dock") { st.dock.refused = null; st.dock.why = ""; }

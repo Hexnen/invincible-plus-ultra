@@ -108,7 +108,7 @@ export function viewFor(state, viewer, meta = {}) {
   const slotsSeen = new Set((base.init?.slots ?? []).map((x) => x.id));
   for (const [cid, l] of Object.entries(keepKey(state.ledger))) ledger[cid] = (l.entries ?? []).some((e) => e.slot && !slotsSeen.has(e.slot)) ? { ...l, entries: l.entries.map((e) => { if (!e.slot || slotsSeen.has(e.slot)) return e; const { slot, ...rest } = e; return rest; }) } : l;
   const out = {
-    v: state.v, rev: state.rev, mode: state.mode, kind: state.kind, round: state.round, phase: state.phase,
+    v: state.v, rev: state.rev, ...(typeof state.fight === "string" && state.fight ? { fight: state.fight } : {}), mode: state.mode, kind: state.kind, round: state.round, phase: state.phase,      // FXN: the fight's tag (H3-1; it is in every id already): a fight started again on the same Combat is a new one on every seat
     init: base.init, sched: base.sched, ledger: clone(ledger), statuses: clone(keepKey(state.statuses)), free: clone(keepKey(state.free)),
     stack: (state.stack ?? []).map((i) => instView(state, i, V, meta, concealed)),
     prompts,

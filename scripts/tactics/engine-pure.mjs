@@ -1387,6 +1387,10 @@ export function chaseRoundProbe(state, host) {
 async function challengeClock(X) {
   if (X.host.setting?.("challengesCombatTime") === false) return;
   for (const p of (X.host.parts?.() ?? []).filter((x) => x.challenge && !x.defeated)) {
+    /* FXN (bug hunt 4, suspicion 4): while the GM's "old clock" card about this challenge (U157 challengeStale) waits unanswered, its
+       clock does not run: nothing changes without that word, so "time is up" cannot open beside it and "Reset" never puts back a
+       clock whose failure card already stands */
+    if (Object.values(X.state.prompts ?? {}).some((q) => q.kind === "challengeStale" && q.about === p.id && !q.answered)) continue;
     const c = X.facts.c(p.id), r = Challenge.clock(c, Challenge.cfgOf(X.state, p.id));
     if (!r) continue;
     if (r.to != null && r.to !== c.resolve) {

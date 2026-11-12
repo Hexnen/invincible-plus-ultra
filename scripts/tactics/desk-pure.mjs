@@ -171,7 +171,9 @@ export function barModel(view, cid, ctx = {}) {
        an NPC in the GM's own hands (the surface asks "sure?" only where a player would lose actions by a slip) */
     /* BH4-4: the engine refuses End turn while anything about this character waits unanswered (ops-pure endTurn, openPromptsAbout: spec
        4.4), e.g. its request for an exception the GM has not answered yet; the bar says so instead of offering a button the engine refuses */
-    endTurn: onTurn ? { disabled: busy || (view.mode === "tactical" && !view.free?.[cid] && Object.values(view.prompts ?? {}).some((p) => p && !p.answered && p.about === cid)) ? "busy" : null, noConfirm: !!out || (!!ctx.staff && ctx.c?.(cid)?.npc === true), req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur } } : null,
+    endTurn: onTurn ? { disabled: busy || (view.mode === "tactical" && !view.free?.[cid] && Object.values(view.prompts ?? {}).some((p) => p && !p.answered && p.about === cid)) ? "busy" : null, noConfirm: !!out || (!!ctx.staff && ctx.c?.(cid)?.npc === true), req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur },
+      /* FXN (D133): nothing was done in this turn yet (no own entry of it in the ledger): a turn that has nothing left now STARTED empty (the round's actions went on reactions) */
+      fresh: !Lg.turnUsed(view.ledger?.[cid]) } : null,
     holdOff: out ? { disabled: out.reason, targets: [], req: (slotId) => ({ op: "holdOff", actor: cid, with: slotId }) } : holdOffOf(view, cid, onTurn, busy, ctx), markReq: (unit, on = true) => ({ op: "mark", actor: cid, unit, on }),
     other: { req: (text) => ({ op: "other", actor: cid, text }) }, exception: { req: (text, inst, more = {}) => ({ op: "exception", actor: cid, text, ...(inst ? { inst } : {}), ...(more.reason ? { reason: more.reason } : {}), ...(more.decl ? { decl: more.decl } : {}) }) } };
 }
