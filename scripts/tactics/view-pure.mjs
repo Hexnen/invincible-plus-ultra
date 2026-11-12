@@ -126,7 +126,10 @@ export function viewFor(state, viewer, meta = {}) {
      effects of a challenge and the numbers of its ward are the GM's until they happen */
   /* U10 / U3: what the table was told happened. An action's result is table knowledge like its chat card (a concealed actor or target
      leaves with scrub; a secret action is absent); the GM's word on an exception is for the one who asked. */
-  out.news = clone((state.news ?? []).filter((n) => isObj(n) && !n.secret && (n.kind !== "exception" || V.owns.includes(n.actor)) && (n.kind !== "nudge" || (Array.isArray(n.to) && n.to.includes(V.id)))))      /* U59: a nudge is read by the ones nudged */.map(({ tx, ...n }) => n);
+  /* U120: a line written while its actor or a target was hidden (`hid`) stays the GM's and the actor's own players' after a reveal (the
+     target's player was told "somebody unseen"; who it was is not handed over afterwards) */
+  const ownLine = (n) => V.owns.includes(n.actor);
+  out.news = clone((state.news ?? []).filter((n) => isObj(n) && !n.secret && (!n.hid || ownLine(n)) && (n.kind !== "exception" || V.owns.includes(n.actor)) && (n.kind !== "nudge" || (Array.isArray(n.to) && n.to.includes(V.id)))))      /* U59: a nudge is read by the ones nudged */.map(({ tx, ...n }) => n);
   if (isObj(state.vehicles)) out.vehicles = clone(keepKey(state.vehicles));
   if (isObj(state.chase)) { const { back, ...pub } = state.chase; out.chase = clone(pub); }
   if (isObj(state.challenges)) out.challenges = Object.fromEntries(Object.entries(keepKey(state.challenges)).map(([cid, c]) => [cid, clone({ preset: c.preset ?? null, name: c.name, objectives: c.objectives ?? [], dice: c.dice ?? 0, started: c.started ?? {}, done: c.done })]));
@@ -134,6 +137,12 @@ export function viewFor(state, viewer, meta = {}) {
   for (const [cid, list] of Object.entries(out.statuses)) if (Array.isArray(list)) out.statuses[cid] = list.map((s) => { const { gmNote, ...rest } = s; return rest; });
   return scrub(out, concealed);
 }
+
+/** U113: Foundry keeps two switches of "hidden" (the token's and the combatant's) and the fight conceals a combatant while EITHER is on,
+    so the token HUD alone could show a token on the players' maps that the fight still hid (no tile, no reveal shot). In a running
+    fight the GM's change of one is carried to the other (tactics/main.mjs): either switch hides or reveals the whole combatant.
+    -> does the other switch (now `other`) have to follow the one set to `now`? */
+export const hideFollows = (now, other) => typeof now === "boolean" && (other === true) !== now;
 
 /** Event types that only the GM stream carries (spec 16). */
 export const GM_ONLY_EVENTS = Object.freeze(["override", "gm", "trigger"]);

@@ -254,6 +254,10 @@ function newsOf(I) {
     ...(fx ? { fx: { challenge: fx.challenge, kind: fx.kind }, ...(note ? { note } : {}) } : {}),        // U110: what a failed challenge did, and the GM's words about it
     result: I.data?.result ?? null, status: I.status, ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows };
 }
+/* U120: an action of somebody Foundry hides (or aimed at somebody hidden) has no public journal line (label: `pub` ""), and its news line
+   is marked `hid` when it is written: view-pure keeps it from the players for good, also after the GM reveals that combatant (the
+   reveal shows who is there now, not what was done unseen; question A9F-2). Its own player still reads it. */
+const hiddenNow = (X, I) => { try { return [I.actor, ...(I.decl?.targets ?? [])].some((c) => typeof c === "string" && X.facts.c(c)?.hidden === true); } catch { return false; } };
 /* D32 / D33: a public journal line does not carry a name. It carries the mark `{c:<id>}` and the list `who` of the combatants it is about
    (the doer, and the targets, whom it does not name), so each reader gets the name as THAT reader knows it (namesake numbers never count
    somebody hidden from a player, ruling U5-7) and no line about somebody concealed from that reader (view-pure.journalFor).
@@ -305,7 +309,7 @@ async function closeInst(X, I, result = null) {
   dropPrompts(X, (p) => p.inst === I.id);
   X.state = { ...X.state, stack: X.state.stack.filter((i) => i.id !== I.id) };
   if (!I.part) closeTx(X, I.tx, label(X, I, I.data.result));
-  if (!I.part && I.status !== "aborted" && !I.data?.free) pushNews(X, newsOf(I));
+  if (!I.part && I.status !== "aborted" && !I.data?.free) pushNews(X, { ...newsOf(I), ...(hiddenNow(X, I) ? { hid: 1 } : {}) });
   emit(X, I, { type: "actionClosed", summary: { result: I.data.result ?? null, status: I.status }, tx: I.part ? null : I.tx });
   const parent = I.parent ? instOf(X, I.parent) : null;
   if (!parent) return;
