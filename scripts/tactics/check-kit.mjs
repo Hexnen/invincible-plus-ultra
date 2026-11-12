@@ -394,7 +394,10 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "activate").id } });
   eq([marked(Y.state, "H1", "defiance", true), code(await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "activate").id } })), why(Y.last)], [true, "illegal", "usedAlready"], "activated for the scene, once");
   const r0 = Y.c.H1.resolve;
-  await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "many").id, opt: "2" } });
+  /* PWD (PW042) [B1763]: Area Control names its targets (each rolls to resist); the stress is 1 per target beyond the first, no longer a number picked */
+  Y.npc("N3", { health: 4 }); Y.npc("N4", { health: 4 }); await Y.gm({ op: "roster" });
+  await Y.gm({ op: "declare", actor: "H1", gm: true, decl: { action: act(Y, "H1", "many").id, targets: ["N1", "N3", "N4"] } });
+  await Y.roll("roll", 1);
   eq(Y.c.H1.resolve, r0 - 2, "Area Control: two targets beyond the first, 2 stress");
   /* Killer [B2121], Lucky Break [B2149], Sequestered Original [B1915]: the injury roll */
   /* P6b-6 (the user, 2026-11-12, K8: «Gracz wybiera kość, MG zatwierdza»): the two dice are picked on a card (`pick`), a player's pick confirmed by the GM (`gmOk`) */

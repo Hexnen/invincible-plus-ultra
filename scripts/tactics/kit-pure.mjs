@@ -71,7 +71,8 @@ const bookRow = (row) => (row?.cat === "gear" && row.weapon ? bookWeapons.WEAPON
 function patchProfile(p, patch = {}, attrs = {}) {
   const o = { ...p };
   if (patch.attrs) o.attr = patch.attrs.slice().sort((x, y) => (Number(attrs[y]) || 0) - (Number(attrs[x]) || 0))[0];
-  for (const k of ["ignoreArmor", "sharp", "noDamage", "sweep"]) if (patch[k]) o[k] = true;
+  for (const k of ["ignoreArmor", "sharp", "noDamage", "sweep", "immuneHuge"]) if (patch[k]) o[k] = true;
+  if (patch.sweep) o.onHit = { throw: 0, zones: 1, sweep: 1 };                       // PWD (PW056) [B1832]: the target goes into an adjacent zone of the attacker's choice, no damage
   if (patch.area === 1) o.area = true; else if (patch.area === 0) o.area = false;
   if (patch.stress) o.stress = (o.stress ?? 0) + patch.stress;
   if (patch.range) o.range = patch.range.slice();
@@ -91,18 +92,24 @@ function profileOf(item, row, a, lv, attrs, many = false) {
      STUN effect, Single Use and No Movement have no field on the item at all. The item's own range wins when it carries one. */
   const book = bookRow(row), min = pos(a.min), max = pos(a.max), own = max > 0 || min > 0;
   if (book && !own && !book.range && book.miles) return null;                        // a range in miles is not a range in zones [A26]: nothing the engine can aim
-  const range = h.range ? h.range.slice() : own ? [min, max] : book?.range ? book.range.slice() : null, fam = h.fam ?? (range && (range[1] > 0 || h.range || (!own && book?.range)) ? "shoot" : "slug");
+  /* PWD (PW054, PW057): a number of the compendium that the book contradicts is put right only while the item still carries exactly that number */
+  const fix = Array.isArray(h.errata) ? h.errata[Math.max(0, Math.min(h.errata.length - 1, lv))] : null, wrong = !!fix && lvWord(a.name) === lv && (fix.from.damage == null || pos(a.damage) === fix.from.damage) && (!fix.from.range || (min === fix.from.range[0] && max === fix.from.range[1]));
+  const range = h.range ? h.range.slice() : wrong && fix.to.range ? fix.to.range.slice() : own ? [min, max] : book?.range ? book.range.slice() : null, fam = h.fam ?? (range && (range[1] > 0 || h.range || (!own && book?.range)) ? "shoot" : "slug");
   const dflt = fam === "shoot" ? "agility" : "fighting", set = (a.attr ?? []).filter(Boolean);
   const p = { id: `${item.id}~${a.id}`, item: item.id, name: String(many && useName(item, a) ? `${item.name}: ${useName(item, a)}` : item.name).slice(0, 60), of: String(item.name ?? "").slice(0, 60), fam,
     attr: !set.length || set.includes(dflt) ? null : set.slice().sort((x, y) => (Number(attrs[y]) || 0) - (Number(attrs[x]) || 0))[0],
     ...(h.reactOnly === 1 ? { reactOnly: true } : {}),      // PWB: an attack made only as an answer (Redirecting Blast [B1889]): never picked for a plain Shoot
-    bonus: Math.trunc(Number(a.bonus) || 0), damage: pos(a.damage) || null, range: fam === "shoot" ? range ?? [0, 1] : null, stress: pos(a.stress),
+    bonus: Math.trunc(Number(a.bonus) || 0), damage: (wrong && fix.to.damage) || pos(a.damage) || null, range: fam === "shoot" ? range ?? [0, 1] : null, stress: pos(a.stress),
     sharp: item.wf?.sharp === true, fullAuto: item.wf?.fullAuto === true, area: item.wf?.area === true || h.area === 1, source: h.source ?? undefined,
     toStress: h.toStress === 1, ignoreArmor: h.ignoreArmor === 1 || a.bypass === true, halveArmor: h.halveArmor === 1, noDamage: h.noDamage === 1, pierce: h.pierce === 1,
     stunts: h.stunts ?? undefined, immuneHuge: h.immuneHuge === 1, always: h.always ?? undefined, state: row && row.cat !== "gear" ? row.state : "auto" };
   if (h.onHit) p.onHit = h.onHit.status ? { status: h.onHit.status, data: h.onHit.lv ? { dice: at(h.onHit.lv, lv) } : h.onHit.data } : { ...h.onHit };
   if (h.throws) p.onHit = { throw: at(h.throws, lv), ...(h.zones ? { zones: at(h.zones, lv) } : {}) };      // Z11 [B1822], [B1826-1828]: damage at each impact, and how far
   if (fam === "slug" && range && range[1] > 0) p.reach = range[1];
+  if (fam === "slug" && h.reach) p.reach = Math.max(p.reach ?? 0, at(h.reach, lv));      // PWD (PW049) [B1778-1784]: Plant Control reaches the zones its plants cover
+  if (h.noCounter === 1) p.noCounter = true;                                          // PWD (PW047) [B1779]: blocked, but no counterattack against the user
+  if (h.wreckWeight && fam === "shoot") p.wreckWeight = at(h.wreckWeight, lv);        // PWD (PW044) [B1745]: Matter Control wrecks the zone the matter comes from
+  if (wrong) p.errata = 1;
   if (book?.stunEffect) p.stunEffect = true;                                         // [B2576], [B2583]; a mark, the book gives it no mechanics [A25]
   if (book?.singleUse) p.singleUse = true;                                           // [B2541]
   if (book?.noMovement) p.noMove = true;                                             // [B2545]
@@ -137,11 +144,11 @@ function actionOf(item, row, a, lv, extra = {}) {
   } else {
     e = { id, src: row?.src ?? [], kind: "kit", cost: a.cost ?? "full", flow: "act", tags: ["kit"], effect: { ...(a.effect ?? { kind: "narrative" }) } };
     for (const k of ["roll", "oppose", "target", "when", "pick"]) if (a[k]) e[k] = JSON.parse(JSON.stringify(a[k]));
-    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near", "stressPick", "stressExtra"]) if (a[k]) e[k] = 1;
+    for (const k of ["text", "sameZone", "touch", "gm", "anytime", "immuneHuge", "near", "stressPick", "stressExtra", "talk"]) if (a[k]) e[k] = 1;
     if (a.combo && Array.isArray(a.pick)) e.pick = multisets(a.pick, Math.max(1, at(a.combo, lv))).map((c) => c.join("+"));          // Summoning [B1813-1815]: as many features as the level, repeats allowed
     if (a.once) e.once = a.once;
     if (a.interrupt) e.interrupt = { on: a.interrupt.slice() };                      // PWA (PW039): an action the book allows as an interrupt (Nullification [B1772])
-    for (const k of ["lv", "armor"]) if (Array.isArray(e.effect[k])) e.effect[k] = at(e.effect[k], lv);
+    for (const k of ["lv", "armor", "dice"]) if (Array.isArray(e.effect[k])) e.effect[k] = at(e.effect[k], lv);      // PWD (PW036): dice by the power's level
     if (a.reaction) Object.assign(e, { flow: "plain" }, reactionOf(a), { reactionOnly: 1 });
   }
   if (a.stress) e.stress = { fixed: a.stress };
@@ -173,6 +180,8 @@ export function build(src = {}) {
     if (row?.needs && !known.some((k) => k !== x && live(k) && k.row?.key === norm(row.needs))) { rec.state = "hand"; rec.note = "lacks"; rec.lacks = String(row.needs).slice(0, 60); continue; }
     try {
       const autos = autosAt(it, lv), attacks = autos.filter((a) => a.type === "rollAttack"), uses = autos.filter((a) => ["usePower", "rollAttribute", "useGear"].includes(a.type));
+      const bars = (p) => !!p && known.some((k) => k.parent === p && live(k) && k.row?.bars);
+      const barred = bars(it) || bars(x.parent);             // a limit that keeps the power out of a fight (Hypnosis, Ritual Casting); PWD (PW116) [B1764]: its boosts with it
       /* attack profiles: the item's own attack automations, each with the boosts of the power */
       if (!row?.mounted) for (const a of attacks) {
         let p = profileOf(it, row, a, lv, attrs, attacks.length > 1);
@@ -188,32 +197,34 @@ export function build(src = {}) {
       if (row?.atk && !row.mounted && !attacks.length) { rec.state = "assist"; rec.note = "noAttack"; }      // an attack of the book on an item that carries no numbers (a hand-made item mapped to an entry)
       if (row?.mounted && !attacks.length) { /* a vehicle's weapon: fired through the vehicle's own actions (P7) */ }
       /* a boost of the bare slugfest attack (Strike) */
-      if (row?.opt?.on === "slug" && x.parent) {
+      if (row?.opt?.on === "slug" && x.parent && !barred) {
         const strike = known.find((k) => k.it === x.parent)?.row?.key === "strike";                // Z14 [B1622]: a boost of STRIKE, gone without the wind-up
         if (row.opt.optional) kit.weapons.push({ id: `unarmed~${it.id}`, item: it.id, name: rec.name, of: rec.of, fam: "slug", attr: null, bonus: 0, damage: null, range: null, stress: row.opt.stress ?? 0, state: row.state, ...(strike ? { strike: true } : {}), ...Object.fromEntries(Object.entries(row.opt.patch).map(([k, v]) => [k, v === 1 ? true : v])) });
         else Object.assign(kit.unarmed, Object.fromEntries(Object.entries(row.opt.patch).map(([k, v]) => [k, v === 1 ? true : v])));
       }
       /* the row's own actions; else what the sheet's use / roll buttons say, as an action whose effect the GM confirms */
       const luck = row?.key === "luckcontrol" ? optsOf(it).map((o) => o.row.opt.luck).filter(Boolean) : [];
-      const barred = known.some((k) => k.parent === it && live(k) && k.row?.bars);             // a limit that keeps the power out of a fight (Hypnosis, Ritual Casting)
       if (barred) rec.barred = 1;
       if (row?.throwOf && x.parent && Number(attrs.strength) > 0) { const n = Math.ceil(Number(attrs.strength) / 2);      // [B1970]: thrown, damage and range from half the STRENGTH
         kit.weapons.push({ id: `${it.id}~throw`, item: it.id, name: rec.name, of: rec.of, fam: "shoot", attr: null, bonus: 0, damage: n, range: [0, n], stress: 0, sharp: x.parent.wf?.sharp === true, state: row.state }); }
+      const kin = (key) => known.some((k) => k !== x && live(k) && k.row?.key === key && (k.parent === it || (x.parent && (k.parent === x.parent || k.it === x.parent))));
       for (const a of barred ? [] : row?.acts ?? []) {
-        const b = luck.length && a.pick ? { ...a, pick: a.pick.filter((p) => luck.includes(p)) } : a;
+        let b = luck.length && a.pick ? { ...a, pick: a.pick.filter((p) => luck.includes(p)) } : a;
+        for (const [key, more] of Object.entries(a.with ?? {})) if (kin(key)) b = { ...b, effect: { ...b.effect, ...more } };      // PWD (PW035) [B1717]: Terrifying Illusions on the illusion's own roll
         const e = actionOf(it, row, b, lv);
         kit.actions.push(e);
         if (a.weapon === "parent" || a.weapon === "own") arms.push({ e, from: a.weapon === "own" ? it.id : x.parent?.id ?? null });      // PWB: the attack of an answer is made with the power's own profile
         else if (a.weapon) e.reaction.weapon = a.weapon;
       }
       if (barred) { /* nothing is offered in a fight */ }
-      else if (row && !row.acts && row.state !== "hand" && !row.mv || !row) {
+      else if (row && (!row.acts || row.keep) && row.state !== "hand" && !row.mv || !row) {      // PWD: `keep`, the sheet's uses beside the row's own actions
         uses.slice(0, 6).forEach((a, i) => {
-          const set = (a.attr ?? []).filter(Boolean), byKey = Object.keys(row?.by ?? {}).find((k) => norm(k) === norm(baseName(a.name)));
+          const set = (a.attr ?? []).filter(Boolean), byKey = Object.keys(row?.by ?? {}).find((k) => norm(k) === norm(baseName(a.name))), by = byKey ? row.by[byKey] : {};
           const roll = set.length === 1 ? { attr: set[0] } : set.length > 1 ? { attrs: set } : a.type === "rollAttribute" ? { attrs: "any" } : null;
           if (roll && a.bonus) roll.mods = [{ source: `kit:${row?.key ?? "item"}`, dice: Math.trunc(a.bonus) }];
-          kit.actions.push(actionOf(it, row, { k: `u${i}`, label: "use", name: useName(it, a) ? `${it.name}: ${useName(it, a)}` : it.name, cost: row?.by?.[byKey]?.cost ?? row?.cost ?? (cat === "gear" ? "quick" : "full"),
-            stress: pos(a.stress) || undefined, roll, effect: { kind: "narrative" }, text: 1 }, lv, { state: "assist" }));
+          const more = Object.fromEntries(["target", "oppose", "pick", "stressPick"].filter((k) => by[k] != null).map((k) => [k, by[k]]));      // PWD (PW055, PW118): what the book adds to a use of the sheet
+          kit.actions.push(actionOf(it, row, { k: `u${i}`, label: by.label ?? "use", name: useName(it, a) ? `${it.name}: ${useName(it, a)}` : it.name, cost: by.cost ?? row?.cost ?? (cat === "gear" ? "quick" : "full"),
+            stress: pos(a.stress) || undefined, roll, effect: { kind: "narrative" }, text: 1, ...more }, lv, { state: "assist" }));
         });
         if (row && !row.acts && !uses.length && !attacks.length && !row.fx && !row.pass && !row.mods && !row.opt && ["zone", "outcome", "gmCard", "roll"].includes(row.note) && row.state === "assist")
           kit.actions.push(actionOf(it, row, { k: "u0", label: "use", cost: row.cost ?? "full", effect: { kind: "narrative" }, text: 1, roll: { attrs: "any", optional: true } }, lv));

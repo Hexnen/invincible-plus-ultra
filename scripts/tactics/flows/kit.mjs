@@ -553,3 +553,19 @@ export function tokenGate(v, I, R, cid, roll, ids, tag) {
   if (!isAnswered(v, I, key)) return { wait: true, tokens: ids };
   return { wait: false, tokens: answerId(v, I, key) === "approve" ? ids : ids.filter((id) => !need.some((t) => t.id === id)) };
 }
+/* PWD (PW037) [B1703]: in a zone of low gravity every further action needs an AGILITY roll first (no action), or it is forfeit. The attack and the move
+   flows have their own; this one is for the other flows (the act and roll rows). -> "wait" | "failed" | null */
+export function lowGravityGate(v, I, R) {
+  const e = v.entry(I);
+  if (!["full", "quick"].includes(e?.cost) || e?.reactionOnly || I.cause === "counter" || !v.facts.zone?.(I.actor)?.states?.lowgrav) return null;
+  const key = "gate:lowGravity";
+  if (!rollOf(I, key)) {
+    const { pool } = buildPool(v, I, key, I.actor, "agility", []);
+    if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }
+    R.effects.push(rollEffect(key, I.actor, "agility", pool, { passive: true, label: "ITAC.gate.lowGravity" }));
+    return "wait";
+  }
+  if (!rollFinal(I, key)) return "wait";
+  if (!flag(I, key)) { setFlag(I, key); R.events.push({ type: "gate", gate: "lowGravity", roll: key, passed: sixesOf(I, key) > 0 }); }
+  return sixesOf(I, key) > 0 ? null : "failed";
+}
