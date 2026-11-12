@@ -186,7 +186,7 @@ function drawEnd(e, title) {
     h("div.itc-endc", { data: { outcome: e.outcome }, attrs: { role: "status" } },
       h("b.itc-endt", { text: e.title }), h("p", { text: e.text }),
       h("ul.itc-ends-s", {}, e.sides.map((s) => h("li", { data: { side: s.id } }, h("span.itc-sl", { text: s.label }), h("b", { text: s.names || "-" })))),
-      h("span.itc-k", { text: e.rounds })),
+      h("span.itc-k", { text: e.rounds }), e.gone ? h("p.itc-k.itc-gone", { text: e.gone }) : null),
     h("div.itc-dec-b", {}, btn({ id: "close", label: e.close.label, primary: true, fn: () => handlers.own?.({ endSeen: e.close.endSeen }) }, "end:close"))];
 }
 

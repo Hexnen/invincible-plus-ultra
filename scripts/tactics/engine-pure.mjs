@@ -1350,12 +1350,27 @@ async function gmEdit(X, op, a) {
       const ch = Chase.chaseOf(X.state);
       if (!ch) { err = "gone"; break; }
       if (X.state.stack.length) { err = "busy"; break; }
-      for (const p of Chase.endPlan(X.state).puts) await perform(X, tx, { t: "zput", who: p.who, to: p.to, group: p.group, tx });
+      /* ANSD (CHASE-4, the user 2026-11-12): on "escaped" the fleeing NPCs leave the fight: a fleeing unit whose people are all NPCs (somebody
+         on foot, or a vehicle with everybody aboard) is taken off the map and out of the Combat, as a summon leaves (one journal entry with
+         the end: the undo brings them back with their ids). A unit with a player's character aboard stays, everybody in it. */
+      const outcome = Chase.OUTCOMES.includes(a.outcome) ? a.outcome : "combat";
+      const gone = outcome === "escaped" ? Chase.escapedNpcs(X.state, X.facts) : [];
+      const goneIds = new Set(gone.flatMap((u) => [u.id, ...u.people]));
+      for (const p of Chase.endPlan(X.state).puts) if (!goneIds.has(p.who)) await perform(X, tx, { t: "zput", who: p.who, to: p.to, group: p.group, tx });
+      const names = [...goneIds].map((id) => ({ id, name: String(X.facts.c(id)?.name ?? "").slice(0, 80) }));
+      /* what the roster would prune once they are gone (ops-pure removeOne: the vehicle's record, the seats, the ledger ...) is written
+         here, in this transaction, so the undo puts it back with the documents (live 2026-11-13: the truck came back without its crew) */
+      for (const u of gone) {
+        if (isObj(X.state.vehicles?.[u.id])) w(["vehicles", u.id], null);
+        for (const id of [...u.people, u.id]) for (const k of ["statuses", "ledger", "free", "npc", "revealed", "knowledge"]) if (isObj(X.state[k]) && X.state[k][id] !== undefined) w([k, id], null);
+      }
+      for (const u of gone) for (const id of [...u.people, u.id]) await perform(X, tx, { t: "summonRemove", combatant: id, tx });
       w(["kind"], "combat"); w(["chase"], null);
       /* CHASE (U168): how the chase ended stands in the state until the next chase starts, so every seat shows the same end card (each
          seat puts it away on its own, by its number `n`) */
-      w(["chaseEnded"], { n: Number(ch.no) || (Number(X.state.chaseEnded?.n) || 0) + 1, outcome: Chase.OUTCOMES.includes(a.outcome) ? a.outcome : "combat", distance: ch.distance, lostAt: ch.lostAt, rounds: ch.round ?? 0, round: X.state.round, sides: { prey: (ch.sides?.prey ?? []).slice(), pursuer: (ch.sides?.pursuer ?? []).slice() } });
-      emit(X, null, { type: "chase", state: "end", outcome: Chase.OUTCOMES.includes(a.outcome) ? a.outcome : "combat", distance: ch.distance });
+      w(["chaseEnded"], { n: Number(ch.no) || (Number(X.state.chaseEnded?.n) || 0) + 1, outcome, distance: ch.distance, lostAt: ch.lostAt, rounds: ch.round ?? 0, round: X.state.round, sides: { prey: (ch.sides?.prey ?? []).slice(), pursuer: (ch.sides?.pursuer ?? []).slice() },
+        ...(names.length ? { gone: names } : {}) });      // ANSD (CHASE-4): who left the fight with the end (their names: the Combat no longer knows them)
+      emit(X, null, { type: "chase", state: "end", outcome, distance: ch.distance, ...(names.length ? { gone: names.map((x) => x.id) } : {}) });
       break;
     }
     default: err = "unknown";
@@ -1675,7 +1690,7 @@ async function pushTrigger(X, t) {
   pushInst(X, inst);
 }
 
-export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer", "help", "move", "exception", "other", "preview"]);       // endTurn, holdOff, mark: director-pure.mjs
+export const PLAYER_OPS = Object.freeze(["declare", "amend", "cancel", "answer", "help", "move", "exception", "other", "preview", "crewPass"]);       // endTurn, holdOff, mark: director-pure.mjs
 export const GM_INST_OPS = Object.freeze(["setPool", "setSixes", "setOutcome", "setDamage", "skipStep", "goToStep", "abort", "manual", "retarget", "askRoll"]);
 export const GM_EDIT_OPS = Object.freeze(["ledgerEdit", "statusAdd", "statusRemove", "setHealth", "setResolve", "tokenAdd", "tokenRemove", "triggerAdd", "triggerRemove", "counterSet", "effectAdd", "effectEnd",
   "powerGrant", "powerRevoke", "itemState", "reveal", "knowledgeSet", "karmaNote", "npcPolicy", "setFree", "setMode", "zoneSet", "levelSet", "borderSet", "zoneOp",
@@ -1702,11 +1717,29 @@ async function request(X, req) {
     case "hazardRun": return opHazardRun(X, req);
     case "chaseRound": return opChaseRound(X, req);
     case "nudge": return opNudge(X, req);
+    case "crewPass": return opCrewPass(X, req);
     default:
       if (GM_INST_OPS.includes(op)) return gmInstOp(X, op, req);
       if (GM_EDIT_OPS.includes(op)) return gmEdit(X, op, req);
       return bad("badInput", { op: String(op ?? "").slice(0, 24) });
   }
+}
+/* ANSD (CHASE2-9) [B3438]: a crew member of a chase gives up the one ranged attack the chase roll gave this round (the pursuers shoot
+   first: the fleeing crews' shots wait until every pursuer took or gave up theirs, economy-pure crewOrderHold). The owner or the GM; one
+   journal entry (the GM's undo gives the shot back). */
+function opCrewPass(X, a) {
+  const cid = a.actor, ch = Chase.chaseOf(X.state), cr = ch?.crew;
+  if (!P1.isId(cid) || !X.facts.c(cid)) return bad("gone");
+  if (!owns(X, cid)) return bad("notOwner");
+  if (!isObj(cr) || cr.round !== X.state.round || !(cr.ids ?? []).includes(cid)) return bad("gone");
+  const L = X.state.ledger?.[cid], g = (L?.grants ?? []).find((x) => x.kind === "chaseCrew" && !x.usedBy);
+  if (!g) return bad("gone");
+  const label = { pub: `${X.facts.c(cid)?.name ?? ""}: {ITAC.journal.crewPass}`, gm: `${X.facts.c(cid)?.name ?? ""}: {ITAC.journal.crewPass}` };
+  const tx = openTx(X, { label });
+  write(X, tx, ["ledger", cid], { ...L, grants: L.grants.map((x) => (x.id === g.id ? { ...x, usedBy: "pass" } : x)) });
+  closeTx(X, tx, label);
+  emit(X, null, { type: "chase", state: "crewPass", who: cid });
+  return ok();
 }
 /* U59: THE GM'S NUDGE. The table waits for somebody's answer or dice; the GM asks them to hurry. Nothing of the fight changes and nothing is
    journaled: the ones waited for get one line of news (state.news, kind "nudge", read only by them: view-pure.viewFor), which their own

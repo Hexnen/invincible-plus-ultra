@@ -142,6 +142,8 @@ export function setPatch(state, a) {
   const gid = typeof a.group === "string" ? a.group.slice(0, 12) : null;
   if (a.lostAt !== undefined) next.lostAt = num(a.lostAt, 1, 99, ch.lostAt);
   if (a.obstacles !== undefined) next.obstacles = a.obstacles ? 1 : 0;
+  /* ANSD (CHASE2-9): the GM's exception to the crews' order of this round: the fleeing may shoot before every pursuer has */
+  if (a.crewFree !== undefined) { if (!isObj(ch.crew) || ch.crew.round !== state.round) return null; next.crew = { ...ch.crew }; if (a.crewFree) next.crew.free = 1; else delete next.crew.free; }
   const nearest = () => (groups ? [...groups].filter((g) => !g.lost && g.units.length).sort((x, y) => x.distance - y.distance)[0] ?? groups[0] : null);
   if (P1.isId(a.unit) && [...SIDES, null].includes(a.side ?? null)) {
     for (const s of SIDES) next.sides[s] = next.sides[s].filter((u) => u !== a.unit);
@@ -175,6 +177,13 @@ export function setPatch(state, a) {
   return next;
 }
 export const OUTCOMES = Object.freeze(["escaped", "caught", "gaveUp", "combat"]);
+/** ANSD (CHASE-4): the fleeing units that leave the fight when the chase ends with "escaped": each one whose people are all NPCs (somebody
+    on foot, or a vehicle and everybody aboard it). -> [{ id, people: [ids aboard] }] */
+export function escapedNpcs(state, f) {
+  const ch = chaseOf(state);
+  return (ch?.sides?.prey ?? []).map((u) => ({ id: u, people: occupants(state, u).filter((x) => x !== u) }))
+    .filter((u) => [u.id, ...u.people].every((id) => { const c = f.c(id); return !!c && c.npc === true; }));
+}
 /** -> { puts: [{ who, to, group }] }: everyone back where the chase began (the GM moves them on from there) [D] */
 export function endPlan(state) {
   const ch = chaseOf(state);
@@ -217,6 +226,21 @@ function groupResult(v, I, R, c, ch, def) {
   R.events.push({ type: "chase", distance, roll: { prey: last.prey, pursuer: last.pursuer }, obstacle: c.obstacle, winner: last.winner, caught, escaped, groups: res });
   I.data.result = escaped ? "escaped" : caught ? "caught" : "run";
   R.goto = caught ? "catch" : escaped ? "close" : "crew"; return R;
+}
+/* ANSD (CHASE2-1): who strikes on a catch [B3434]: every unit that reached the prey and can still move (unitFacts: a vehicle with a driver
+   and an engine, somebody on foot not out of the fight), the one who rolled for its group (or side) first. -> [{ key, u }] */
+function catchersOf(v, c) {
+  const ch = chaseOf(v.state), out = [];
+  const add = (units, first) => { for (const id of [...(first ? [first] : []), ...units.filter((x) => x !== first)]) { const u = unitFacts(v, id); if (u && !out.some((o) => o.u.id === id)) out.push({ key: `catch:${id}`, u }); } };
+  if (c.groups) for (const gid of c.catches ?? []) { const g = c.groups.find((x) => x.id === gid); add((groupsOf(ch) ?? []).find((x) => x.id === gid)?.units ?? [], g?.roller?.id ?? null); }
+  else add(ch?.sides?.pursuer ?? [], c.pursuer?.id ?? null);
+  return out;
+}
+/* ANSD (CHASE2-1): whom a striker may pick: the fleeing units still on the scene (somebody on foot not out of the fight), the one who
+   rolled for them first (the default the card offers first) */
+function catchTargets(v, c) {
+  const list = chaseOf(v.state)?.sides?.prey ?? [], first = c.prey?.id ?? null;
+  return [...(first && list.includes(first) ? [first] : []), ...list.filter((x) => x !== first)].filter((id) => { const f = v.facts.c(id); return !!f && f.present !== false && (f.kind === "vehicle" || f.health > 0); });
 }
 export const round = {
   STEPS: Object.freeze(["check", "obstacle", "movement", "result", "catch", "crew", "close"]),
@@ -351,20 +375,31 @@ export const round = {
     /* [B3434]: at distance 0 the pursuer may at once charge, or ram with a vehicle; it cannot be blocked */
     catch(v, inst) {
       const I = K.draft(inst), R = K.result(I), c = I.data.ch;
-      /* CHASE2 groups (ours, G5): every group that reached the prey this round may strike, each in turn, the nearest-before-the-roll first */
-      const list = c.groups ? (c.catches ?? []).map((id) => c.groups.find((g) => g.id === id)).filter((g) => g?.roller).map((g) => ({ key: `catch:${g.id}`, u: g.roller })) : [{ key: "catch", u: c.pursuer }];
-      for (const { key, u } of list) {
-      if (!I.data.pk?.[key]) { R.prompts.push({ key, kind: "chaseCatch", to: K.addressee(v, u.roller), about: u.roller, options: [{ id: "attack", label: u.vehicle ? "ITAC.action.ram" : "ITAC.opt.charge" }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { target: c.prey.id, ram: u.vehicle ? 1 : 0 } }); R.wait = true; return R; }
-      if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
-      if (K.answerId(v, I, key) === "attack" && !K.flag(I, key)) {
-        K.setFlag(I, key);
-        /* on foot it is the charge of the attack flow [B2490]: STRENGTH, its own stunts. The chase brought the pursuer there, so the charge has no
-           approach of its own and no movement left over (no Slam) */
-        const action = u.vehicle ? "ram" : "charge";
-        R.push = { action, actor: u.roller, decl: { ...blank, action, targets: [c.prey.id], ...(u.vehicle ? {} : { weapon: "unarmed" }) }, cause: "reaction",
-          data: { kind: action, chaseCatch: 1, ...(u.vehicle ? {} : { charge: { done: 1, left: 0, total: 0, zones: [] } }) }, part: 1, prepaid: 1 };
-        return R;
-      }
+      /* CHASE2 groups (ours, G5): every group that reached the prey this round may strike, each in turn, the nearest-before-the-roll first.
+         ANSD (CHASE2-1, the user 2026-11-12): EVERY unit of a group that reached 0 may strike [B3434], not only the one who rolled for it
+         (on foot a charge, in a vehicle its driver rams), each in turn, the group's roller first; the target is the striker's pick among the
+         fleeing units still there, the one who rolled for them offered first. The plain chase: every pursuing unit (all of them are at 0). */
+      const strikers = catchersOf(v, c), targets = catchTargets(v, c);
+      for (const { key, u } of strikers) {
+        if (!I.data.pk?.[key]) {
+          if (!targets.length) continue;
+          const verb = u.vehicle ? "ITAC.action.ram" : "ITAC.opt.charge";
+          R.prompts.push({ key, kind: "chaseCatch", to: K.addressee(v, u.roller), about: u.roller,
+            options: [...targets.map((tid, k) => ({ id: k ? `attack:${tid}` : "attack", label: verb, data: { target: tid } })), { id: K.PASS, label: "ITAC.opt.pass" }],
+            data: { target: targets[0], targets, ram: u.vehicle ? 1 : 0, unit: u.id } });
+          R.wait = true; return R;
+        }
+        if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
+        const ans = K.answerId(v, I, key) ?? "", tid = ans === "attack" ? K.promptOf(v, I, key)?.data?.target : ans.startsWith("attack:") ? ans.slice(7) : null;
+        if (tid && !K.flag(I, key)) {
+          K.setFlag(I, key);
+          /* on foot it is the charge of the attack flow [B2490]: STRENGTH, its own stunts. The chase brought the pursuer there, so the charge has no
+             approach of its own and no movement left over (no Slam) */
+          const action = u.vehicle ? "ram" : "charge";
+          R.push = { action, actor: u.roller, decl: { ...blank, action, targets: [tid], ...(u.vehicle ? {} : { weapon: "unarmed" }) }, cause: "reaction",
+            data: { kind: action, chaseCatch: 1, ...(u.vehicle ? {} : { charge: { done: 1, left: 0, total: 0, zones: [] } }) }, part: 1, prepaid: 1 };
+          return R;
+        }
       }
       R.goto = "crew"; return R;
     },
@@ -373,7 +408,7 @@ export const round = {
       const I = K.draft(inst), R = K.result(I), ch = chaseOf(v.state);
       if (ch && !K.flag(I, "crew")) {
         K.setFlag(I, "crew");
-        const got = [];
+        const got = [], first = [];
         const lost = new Set((groupsOf(ch) ?? []).filter((g) => g.lost).flatMap((g) => g.units));       // CHASE2 groups (ours, G6): a group that lost the prey has nobody to shoot at
         for (const side of ["pursuer", "prey"]) for (const u of ch.sides[side] ?? []) {
           if (lost.has(u)) continue;
@@ -383,10 +418,11 @@ export const round = {
             const f = v.facts.c(cid);
             if (!f || f.present === false || f.health <= 0 || !v.state.ledger?.[cid]) continue;
             const g = Lg.addGrant(P1.ledgerOf(v.state, cid), { ...Lg.grantTemplate("gm", { unit: "full", window: "anytime", expires: "roundEnd" }), kind: "chaseCrew" });
-            if (g.ok) { R.effects.push({ t: "state", path: ["ledger", cid], to: g.ledger }); got.push(cid); }
+            if (g.ok) { R.effects.push({ t: "state", path: ["ledger", cid], to: g.ledger }); got.push(cid); if (side === "pursuer") first.push(cid); }
           }
         }
-        if (got.length) { R.effects.push({ t: "state", path: ["chase", "crew"], to: { round: v.state.round, ids: got } }); R.events.push({ type: "chase", distance: ch.distance, crew: got }); }
+        /* ANSD (CHASE2-9) [B3438]: `pursuers` = the crew who shoot first; a fleeing crew member's shot waits for them (economy-pure crewOrderHold) */
+        if (got.length) { R.effects.push({ t: "state", path: ["chase", "crew"], to: { round: v.state.round, ids: got, pursuers: first } }); R.events.push({ type: "chase", distance: ch.distance, crew: got }); }
       }
       R.goto = "close"; return R;
     },

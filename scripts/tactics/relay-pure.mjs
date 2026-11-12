@@ -75,6 +75,7 @@ const SHAPES = {
     reason: isId(r.reason) ? r.reason : undefined, decl: isObj(r.decl) ? declOf(r.decl) : undefined } : null),
   preview: (r) => (isId(r.actor) && isObj(r.decl) ? { actor: r.actor, decl: declOf(r.decl), of: ids(r.of, 40), at: isId(r.at) ? r.at : undefined, acts: Array.isArray(r.acts) ? r.acts.filter(isObj).slice(0, 12).map(declOf) : undefined } : null),   // reads only: the dice a declaration would roll; W1: and whom it could be aimed at (`of`: the candidates)
   other: (r) => (isId(r.actor) && typeof r.text === "string" && r.text ? { actor: r.actor, text: clamp(r.text) } : null),
+  crewPass: (r) => (isId(r.actor) ? { actor: r.actor } : null),      // ANSD (CHASE2-9): a chase crew member gives up the shot of this round
 };
 /** Normalise a request. Players: whitelist + size cap. Staff: any known operation, payload as sent (the executor still validates every field).
     Returns { ok:true, req } or { ok:false, code }. */

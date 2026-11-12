@@ -161,13 +161,16 @@ const panel = (T, me, owns = [], own = {}) => CP.chaseData(view(T, me, owns), ow
   eq([c1.catch?.by, c1.catch?.at, c1.catch?.text], ["Atom Eve", LT, say("ITAC.chase.catch.whoCharge", { name: "Atom Eve", target: LT })], "D: the catch names who strikes (the one who rolled) and whom (the one who rolled for the fleeing)");
   eq(panel(T, "p3", ["H3"]).decision?.kind, "chaseCatch", "D: and asks the flier");
   await T.answer("p3", "chaseCatch", "pass");
+  /* ANSD (CHASE2-1): every pursuing unit that reached them may strike: the van's driver is asked next */
+  eq(T.prompt("chaseCatch")?.about, "H1", "D (ANSD): then the van's driver is asked");
+  await T.answer("p1", "chaseCatch", "pass");
   /* the crews: the pursuers' first [B3438]; the GM may arm any crew's shot */
   const a1 = panel(T, "p2", ["H2"]), g1 = panel(T, "gm");
-  eq([a1.decision?.kind, a1.decision?.buttons.map((b) => b.arm)], ["crew", [{ sel: "H2", action: "shoot" }]], "D: the pursuers' passenger may shoot");
+  eq([a1.decision?.kind, a1.decision?.buttons.map((b) => b.arm ?? b.req)], ["crew", [{ sel: "H2", action: "shoot" }, { op: "crewPass", actor: "H2" }]], "D: the pursuers' passenger may shoot, or give the shot up (ANSD CHASE2-9)");
   const cw = g1.waits.find((w) => w.id === "crew");
-  eq([cw?.text, cw?.buttons.map((b) => b.arm.sel)], [say("ITAC.chase.wait.crew", { names: `${say("ITAC.chase.wait.crewSide", { side: EN["ITAC.ui.chase.pursuer"], names: "Omni-Man" })}; ${say("ITAC.chase.wait.crewSide", { side: EN["ITAC.ui.chase.prey"], names: "The Mauler Twins A" })}` }), ["H2", "N2"]],
+  eq([cw?.text, cw?.buttons.filter((b) => b.id.startsWith("arm:")).map((b) => b.id.slice(4))], [say("ITAC.chase.wait.crew", { names: `${say("ITAC.chase.wait.crewSide", { side: EN["ITAC.ui.chase.pursuer"], names: "Omni-Man" })}; ${say("ITAC.chase.wait.crewSide", { side: EN["ITAC.ui.chase.prey"], names: "The Mauler Twins A" })}` }), ["H2", "N2"]],
     "D: the GM sees the crews side by side, the pursuers first, and may arm each shot");
-  eq(g1.beats.find((b) => b.id === "crew")?.text, say("ITAC.chase.crew.left", { n: 2 }), "D: two shots left");
+  eq(g1.beats.find((b) => b.id === "crew")?.text, `${say("ITAC.chase.crew.left", { n: 2 })}; ${EN["ITAC.chase.crew.order"]}`, "D: two shots left, the pursuers first (ANSD CHASE2-9)");
   /* dropping out and joining (P8e-R8) */
   eq(code(await T.gm(g1.sides[0].units.find((u) => u.id === "H3").drop.req)), "ok", "D: the flier drops out");
   const g2 = panel(T, "gm");
