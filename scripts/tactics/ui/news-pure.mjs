@@ -35,6 +35,17 @@ export function seenNo(mark, fight) {
   return m[1] === (fight ?? "") ? Number(m[2]) || 0 : 0;
 }
 
+/** FXN (ver11): whose turn a view shows, for the window. The turn of somebody concealed from this user (the view is in its turns, no
+    current member: view-pure hides the card, the slot before it already reads "done") IS a turn here too: a line made two turns ago no
+    longer stands through it (ver11: Eve's line still stood on Kid's seat after Immortal's move and through the unseen turret's turn).
+    It names nobody: "@unseen:<n>", n = the slots done so far (two concealed turns in a row are two turns). null between turns. */
+export function memberOf(view) {
+  const m = view?.init?.curMember;
+  if (typeof m === "string" && m) return m;
+  if (view?.phase !== "turns") return null;
+  const done = (Array.isArray(view?.init?.slots) ? view.init.slots : []).filter((s) => s?.state === "done").length;
+  return `@unseen:${done}`;
+}
 /** prev = the last window (or null); now = { combat, member, newest }. A first look (a reload in the middle of a fight) keeps only the
     newest line: what came before it is not known to belong to this turn or the last. */
 export function newsWindow(prev, now) {

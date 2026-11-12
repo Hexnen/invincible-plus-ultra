@@ -286,7 +286,7 @@ function refresh() {
     const staff = Store.isStaff(game.user), facts = factsOf(combat);
     const key = `${combat.id}:${facts.view?.round}:${facts.view?.init?.curMember}`;
     if (key !== turnKey) { turnKey = key; st.dock = { ...blankDock(), picks: st.dock.picks, texts: st.dock.texts, zone: st.dock.zone, newsSeen: st.dock.newsSeen, hotbar: st.dock.hotbar }; }        // a new turn: nothing stays armed
-    newsWin = NewsP.newsWindow(newsWin, { combat: combat.id, fight: NewsP.fightNow(facts.view), round: facts.view?.round ?? null, member: facts.view?.init?.curMember ?? null, newest: NewsP.newest(facts.view?.news) });      // BH4-1 / BH4-2: the fight's tag, the round
+    newsWin = NewsP.newsWindow(newsWin, { combat: combat.id, fight: NewsP.fightNow(facts.view), round: facts.view?.round ?? null, member: NewsP.memberOf(facts.view), newest: NewsP.newest(facts.view?.news) });      // BH4-1 / BH4-2: the fight's tag, the round; FXN: a concealed turn counts
     st.dock.newsFrom = newsWin.from;
     const desk = staff ? Api.desk(combat) : null;
     let deskD = null;

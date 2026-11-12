@@ -159,4 +159,26 @@ const F = (n, ...a) => (typeof N[n] === "function" ? N[n](...a) : undefined);
   eq([W.c.C1.resolve, !!W.prompt("challengeFail")], [0, true], "BH4 s4: 'leave it' and the round's end: the clock runs out and 'time is up' opens (as before)");
 }
 
+/* ---- ver11: a news line two turns old (a move-only turn, then the turn of somebody concealed from this player) */
+{
+  const T = new Table(); T.hero("H1", "p1", { name: "Kid" }).hero("H2", "p2", { name: "Eve" }).npc("N1", { name: "Immortal", health: 9 }).npc("N2", { name: "Turret", health: 9, hidden: true }); T.order(["H2", "N1", "N2", "H1"]);
+  const memberOf = (v) => (typeof N.memberOf === "function" ? N.memberOf(v) : v?.init?.curMember ?? null);
+  const step = (win) => { const v = pv(T, "p1", ["H1"]); return N.newsWindow(win, { combat: "c1", fight: N.fightNow?.(v) ?? "", round: v.round, member: memberOf(v), newest: N.newest(v.news) }); };
+  const shown = (win) => { const v = pv(T, "p1", ["H1"]); return M.newsData(v, { newsFrom: win.from }, facts(T, v, "p1"), t); };
+  let win = step(null);
+  await T.req("p2", decl("H2", "slugfest", ["N1"]));
+  for (const p of T.prompts("reaction")) await T.gm({ op: "answerFor", prompt: p.id, value: "pass" });
+  await T.roll("attack", 1);
+  eq([T.state.stack.length, T.prompts().length], [0, 0], "ver11: Eve's blow is closed (one six, no stunts)");
+  win = step(win);
+  ok(!!shown(win), "ver11: Eve's attack line stands in her own turn on Kid's seat");
+  T.turn("N1"); win = step(win);
+  ok(!!shown(win), "ver11: and through the next turn (Immortal only moves)");
+  T.turn("N2"); win = step(win);
+  eq(pv(T, "p1", ["H1"]).init.curMember, null, "ver11: the turret's turn is concealed from Kid's player");
+  eq(shown(win), null, "ver11: the line no longer stands two turns after it was made (the concealed turn is a turn too)");
+  eq([N.memberOf?.({ phase: "turns", init: { curMember: null, slots: [{ state: "done" }, { state: "done" }] } }), N.memberOf?.({ phase: "round", init: { curMember: null } })], ["@unseen:2", null], "ver11: a concealed turn is named by nobody; between turns there is none");
+  ok(/member: NewsP\.memberOf\(facts\.view\)/.test(src("./ui/main.mjs")), "ver11: main.mjs feeds the window the turn as the view shows it");
+}
+
 done("check-fxn");
