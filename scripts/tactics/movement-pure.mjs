@@ -18,6 +18,8 @@
 import { movement, zones, crits, maneuvers } from "../rules/index.mjs";
 import * as M from "./mods-pure.mjs";
 import * as P1 from "./economy-pure.mjs";
+import { tierFor } from "./levels-pure.mjs";
+import { note } from "./trace-pure.mjs";
 
 /* the name the zones API's profile takes for each way of moving (zones-api.md section 14 `way`; spec 7.4 mapping [D]).
    [ZR-3]: leaping and super-speed are the map's "leap" / "superspeed" (over exterior walls, must land). Elongated Stride climbs walls
@@ -38,9 +40,13 @@ const no = (reason, params = {}, gmMayAllow = false) => ({ ok: false, reason, pa
 export function modesOf(c) {
   const out = [], add = (m) => {
     try {
-      const profile = m.mode === "vehicle" ? movement.moveProfile("vehicle", { speed: m.speed, aerial: m.aerial === true }) : movement.moveProfile(m.mode, { tier: m.tier ?? "basic" });
-      if (!out.some((x) => x.id === m.mode)) out.push({ id: m.mode, mode: m.mode, tier: m.tier ?? "basic", boosts: Array.isArray(m.boosts) ? m.boosts : [], limits: Array.isArray(m.limits) ? m.limits : [], name: m.name ?? null, profile });
-    } catch { /* a way the rules library does not know is not offered */ }
+      /* [D] D125: any level the sheet holds becomes a tier the way has (a blank or an unknown one: basic [B298], [B1214]); what still
+         cannot be read is left out WITH a trace (the GM is told), never in silence */
+      const t = m.mode === "vehicle" ? { tier: "basic", odd: false } : tierFor(m.mode, m.tier);
+      if (t.odd) note("guessed", "level", c?.name ?? c?.id, m.name ?? m.mode, m.tier);
+      const profile = m.mode === "vehicle" ? movement.moveProfile("vehicle", { speed: m.speed, aerial: m.aerial === true }) : movement.moveProfile(m.mode, { tier: t.tier });
+      if (!out.some((x) => x.id === m.mode)) out.push({ id: m.mode, mode: m.mode, tier: t.tier, boosts: Array.isArray(m.boosts) ? m.boosts : [], limits: Array.isArray(m.limits) ? m.limits : [], name: m.name ?? null, profile });
+    } catch (err) { note("dropped", "move", c?.name ?? c?.id, m?.name ?? m?.mode, m?.tier ?? "", err); }
   };
   if (c?.kind !== "vehicle") add({ mode: "walk" });
   if (c?.grown) add({ mode: "grown" });

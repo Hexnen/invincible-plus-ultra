@@ -59,7 +59,7 @@ function makeFacts(combat) {
   const memo = new Map(); let names = null;
   /* U19: namesakes are numbered, the hidden ones last (view-pure.distinctNames). These are the GM's numbers: they go into the GM's texts only;
      `bare` is the name without a number, for a public journal line about somebody who has left the fight (D33) */
-  const c = (cid) => { if (!memo.has(cid)) { const cb = combat.combatants.get(cid); let f = null; try { f = cb ? combatantFacts(cb) : null; if (f) f.bare = f.name; if (f) f.name = (names ??= V.distinctNames(combat.combatants.map((x) => ({ id: x.id, name: x.name ?? Sys.actorOf(x)?.name ?? "", hidden: x.hidden === true || tokenOf(x)?.hidden === true }))))[cb.id] ?? f.name; } catch (err) { console.warn(`${MOD} | tactics facts`, err); } memo.set(cid, f); } return memo.get(cid); };
+  const c = (cid) => { if (!memo.has(cid)) { const cb = combat.combatants.get(cid); let f = null; try { f = cb ? combatantFacts(cb) : null; if (f) f.bare = f.name; if (f) f.name = (names ??= V.distinctNames(combat.combatants.map((x) => ({ id: x.id, name: x.name ?? Sys.actorOf(x)?.name ?? "", hidden: x.hidden === true || tokenOf(x)?.hidden === true }))))[cb.id] ?? f.name; } catch (err) { Sys.trace("dropped", "facts", combat.combatants.get(cid)?.name ?? cid, "", "", err); } memo.set(cid, f); } return memo.get(cid); };
   const tok = (cid) => tokenOf(combat.combatants.get(cid));
   const byToken = (token) => combat.combatants.find((x) => x.tokenId === (token?.id ?? token?.document?.id))?.id ?? null;
   return {

@@ -22,6 +22,7 @@ import * as Mv from "./movement.mjs";
 import * as Relay from "./relay.mjs";
 import * as Engine from "./engine.mjs";
 import * as Sys from "./system-adapter.mjs";
+import * as Trace from "./trace-pure.mjs";
 import * as Zones from "./zones-adapter.mjs";
 import { t, errText } from "./lang.mjs";
 
@@ -120,6 +121,7 @@ export const tacticsApi = {
   gm,
   /* ---- the surroundings */
   compat: () => Sys.compat(),
+  dropped: () => Trace.recent(),      // D125: what a combatant's facts could not carry on this client (trace-pure.mjs)
   zonesAvailable: () => Zones.available(),
   movement: Mv.api,                                    // P3: options(cid, to?), pick(cid), move(cid, to, opts), canTalk(a, b)
   zones: Zones,
