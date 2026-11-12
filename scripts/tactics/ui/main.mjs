@@ -117,7 +117,7 @@ function factsOf(combat) {
     userName: (u) => game.users.get(u)?.name ?? null, online: (u) => game.users.get(u)?.active === true,
     /* U60 (the desk's character tab, staff only): the sheet's Health and injuries as the engine reads them, and the slots of the turn */
     sheet: (id) => (staff ? ctx.c(id) : null), budget: (id) => { try { return staff && view?.ledger?.[id] ? Api.pure.economy.budget(view, id) : null; } catch { return null; } },
-    rollBusy: (rid) => { const at = Sys.rollStarted(rid); return !!at && Date.now() - at < Sys.ROLL_RETRY_MS; },      // U2: the throw is on its way: no "Roll" button yet
+    rollBusy: (rid) => { const at = Sys.rollStarted(rid), left = at ? at + Sys.ROLL_RETRY_MS - Date.now() : 0; if (left > 0) busyRedraw(left); return left > 0; },      // U2: the throw is on its way: no "Roll" button yet; D120: drawn again when that time is up (the "Roll" button comes back)
     preview: (cid, decl) => previewOf(combat, view, cid, decl),
     /* W1: the play on the map (ui/board.mjs). `reach`: the engine's answer about every candidate of a declaration; `onMap`: does that
        combatant stand on this user's map (a token this user sees); `hazards`: what waits on a way of moving; `camera`: the map's switch */
@@ -205,6 +205,10 @@ function reachOf(combat, view, cid, decl, ids) {
     return old();
   } catch { return null; }
 }
+/* D120: a chip that says the dice are on their way is drawn again when ROLL_RETRY_MS is up, also after a throw nobody clicked for (the
+   relay's tcroll): it then offers "Roll" instead of saying "flying" for as long as nothing else redraws the dock */
+let busyTimer = 0, busyAt = 0;
+function busyRedraw(left) { const at = Date.now() + left + 120; if (busyTimer && busyAt <= at) return; clearTimeout(busyTimer); busyAt = at; busyTimer = setTimeout(() => { busyTimer = 0; schedule(); }, left + 120); }
 /* U1 / U2: a roll button of the surfaces (model-pure.rollButtons `act`): the system's own roll, accept or push, on this client */
 const acting = new Map();
 async function rollAct(act) {

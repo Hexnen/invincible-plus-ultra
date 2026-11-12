@@ -126,6 +126,31 @@ const team = (extra = () => {}, order = ["N1", "H1", "H2", "H3", "N2"]) => { con
   ok(c > 0 && b > c, "U128: the menu's HUD entry controls its token (releasing the others) before it binds the HUD");
 }
 
+/* ---- D120: the roll watch (rollwatch-pure). An owed roll whose answer is in the chat but was not taken is fed in again; one with no
+   answer is asked for again with the same request id, three times; a result in, or set by the GM, is not owed */
+{
+  const RW = await import("./rollwatch-pure.mjs");
+  const st = { stack: [{ id: "a1", rolls: { attack: { who: "H1", req: { rid: "r1", at: 1000, users: ["p1"] } }, "def:N1": { who: "N1", sixes: 2, req: { rid: "r2", at: 1000 } }, "sw:H2": { who: "H2", forced: 1, req: { rid: "r3", at: 1000 } } } }, { id: "a2", rolls: { roll: { who: "H2", req: { rid: "r4", at: 5000, users: ["p2"] } } } }] };
+  eq(RW.owedRolls(st).map((o) => o.rid), ["r1", "r4"], "D120: the owed rolls (no result, not set by the GM)");
+  const memo = { fed: new Map(), sent: new Map() }, none = () => null;
+  eq(RW.plan(st, 1000 + RW.FEED_AFTER - 1, { messageFor: none, memo }), [], "D120: right after the request nothing is done");
+  eq(RW.plan(st, 1000 + RW.RESEND_AT[0], { messageFor: none, memo }), [{ do: "resend", inst: "a1", key: "attack", rid: "r1", n: 1 }], "D120: no answer after the first wait: the same request again");
+  eq(RW.plan(st, 1000 + RW.RESEND_AT[0] + 500, { messageFor: none, memo }), [], "D120: ... once, not on every look");
+  eq(RW.plan(st, 1000 + RW.RESEND_AT[1], { messageFor: none, memo }).map((a) => [a.rid, a.n]), [["r1", 2], ["r4", 1]], "D120: the second time later, and the other roll's first");
+  RW.plan(st, 1000 + RW.RESEND_AT[2], { messageFor: none, memo });
+  eq(RW.plan(st, 1000 + 999999, { messageFor: none, memo }).filter((a) => a.rid === "r1"), [], "D120: after the third time the GM's \"Ask again\" remains");
+  const m2 = { fed: new Map(), sent: new Map() }, msg = (rid) => (rid === "r1" ? "m9" : null);
+  eq(RW.plan(st, 1000 + RW.FEED_AFTER, { messageFor: msg, memo: m2 }), [{ do: "feed", messageId: "m9", rid: "r1" }], "D120: the answer is in the chat but not taken: fed in again");
+  RW.plan(st, 1000 + RW.FEED_AFTER + 2000, { messageFor: msg, memo: m2 });
+  eq(RW.plan(st, 1000 + RW.FEED_AFTER + 4000, { messageFor: msg, memo: m2 }).filter((a) => a.rid === "r1"), [], "D120: a message the engine keeps refusing is not fed for ever (twice)");
+  const e = src("engine.mjs"), rl = src("relay.mjs");
+  ok(/setInterval\(\(\) => watchRolls\(\)/.test(e) && /RW\.plan\(/.test(e), "D120: the executor runs the watch every few seconds");
+  ok(/again > 0 \? \{ again \}/.test(e) && /force: again > 0/.test(e), "D120: a request sent again carries `again`; the GM's own roll is thrown again (force)");
+  ok(/opened\.has\(msg\.req\.rid\) && !again/.test(rl) && /\{ force: again \}/.test(rl), "D120: the roller's client throws again for `again` (not within ROLL_RETRY_MS of its last throw)");
+  ok(/if \(!late\) Store\.queue\(/.test(e), "D120: a roll message that comes before the executor's own state write is looked at again when the queue is through");
+  ok(/busyRedraw\(left\)/.test(src("ui/main.mjs")), "D120: the chip that says the dice are flying is drawn again when that time is up");
+}
+
 /* ---- U130: the summary card of a stopped fight. Stopping is the end of the fight: its card is shown then and its tally let go, so
    deleting that combat later (before the next fight) brings no card back; and a new fight never has the old fight's card over it.
    ui/feedback.mjs against a few stand-ins of Foundry (nothing else of the module runs). */
