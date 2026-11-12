@@ -256,6 +256,9 @@ function publishBottom(px) {
    navigation's right edge, the sidebar, the dock's resting edge) and a FIXED band height, never the bar's own height; BACK_GAP adds hysteresis
    (an island that has dropped returns only with 50 px to spare), so a pure turn change can never flip the row. */
 const MIN_GAP = 430, BACK_GAP = 480;
+/* FXR (U185, live at 1366): a chat popped out in the middle leaves ~190 px on either side; the strip takes the wider side down to its own
+   floor (160 px, then it scrolls) rather than staying under the window */
+const BESIDE_MIN = 160;
 function place() {
   if (!root || !shell) return;
   const h = shell.offsetHeight;
@@ -270,7 +273,7 @@ function place() {
      (with the sidebar open at 1366 px the first tiles and the round chip were under that panel) */
   const pins = (t0) => { try { const r = document.querySelector(".mm-filter")?.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 && r.right < window.innerWidth * 0.45 && r.top < t0 + band + 30 && r.bottom > t0 ? r.right + 10 : 0; } catch { return 0; } };
   /* FXR (U185, FXQ-3): a popped-out chat (a window as tall as the map) crossing the band: the strip takes the wider side of it */
-  const beside = (t0, lo0, hi0) => { try { const r = document.getElementById("chat-popout")?.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 && r.top < t0 + band && r.bottom > t0 ? besideFloating(lo0, hi0, r, 200, 10) : { lo: lo0, hi: hi0 }; } catch { return { lo: lo0, hi: hi0 }; } };
+  const beside = (t0, lo0, hi0) => { try { const r = document.getElementById("chat-popout")?.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 && r.top < t0 + band && r.bottom > t0 ? besideFloating(lo0, hi0, r, BESIDE_MIN, 10) : { lo: lo0, hi: hi0 }; } catch { return { lo: lo0, hi: hi0 }; } };
   let top = 0, lo = Math.max(left, navR ? navR + 14 : left, pins(0)), hi = Math.min(right, hudLimit(0, band));
   ({ lo, hi } = beside(0, lo, hi));
   const low = lowRow ? hi - lo < BACK_GAP : hi - lo < MIN_GAP;
