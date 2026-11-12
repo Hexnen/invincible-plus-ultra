@@ -232,7 +232,12 @@ function upgradesSection(ctx, T, mode) {
     ? `<ul class="ipc-chips" aria-label="${esc(t("IPC.Team.Up.ChosenAria"))}">${T.upgrades.map((u, i) => chip(esc(u), t("IPC.Team.Up.RemoveAria", { name: u }), "rm-up", `data-i="${i}" data-fk="rmu-${i}"`)).join("")}</ul>`
     : `<p class="ipc-muted ipc-pw-none">${esc(t("IPC.Team.Up.None"))}</p>`;
   const rec = d.rec.map((n) => catEntry(d, n)).filter(Boolean);
-  const recHtml = rec.length ? `<div class="ipc-tm-rec"><span class="ipc-muted">${esc(t("IPC.Team.Up.Recommended"))}</span> ${rec.map((e, i) => tog(e.name, T.upgrades.some((u) => nm(splitUp(u).name) === nm(e.name)), `data-act="add-up" data-key="${esc(e.key)}" data-fk="rec-${i}"`, t("IPC.Team.Up.AddAria", { name: e.name }))).join("")}</div>` : "";
+  const recHtml = rec.length ? `<div class="ipc-tm-rec"><span class="ipc-muted">${esc(t("IPC.Team.Up.Recommended"))}</span> ${rec.map((e, i) => {
+    // sweep S031: a pressed (picked) chip un-picks its last copy, through the chosen-list's own remove action; an unpressed one adds
+    const at = T.upgrades.findLastIndex((u) => nm(splitUp(u).name) === nm(e.name));
+    return at >= 0 ? tog(e.name, true, `data-act="rm-up" data-i="${at}" data-fk="rec-${i}"`, t("IPC.Team.Up.RemoveAria", { name: T.upgrades[at] }))
+      : tog(e.name, false, `data-act="add-up" data-key="${esc(e.key)}" data-fk="rec-${i}"`, t("IPC.Team.Up.AddAria", { name: e.name }));
+  }).join("")}</div>` : "";
   const rows = d.cat.length
     ? `<ul class="ipc-pw-rows" data-list="ups">${upgradeRows(ctx, T, mode)}</ul>`
     : `<p class="ipc-note-box">${icon("fa-solid fa-circle-info")} ${esc(t("IPC.Team.Up.NoCatalog"))}</p>`;
