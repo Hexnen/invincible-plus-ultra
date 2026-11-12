@@ -189,7 +189,7 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
 /* ---- L. U70, U71: what stands over the dock */
 {
   const css = readFileSync(new URL("../../styles/tactics-ui.css", import.meta.url), "utf8"), dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8"), ui = readFileSync(new URL("./ui/main.mjs", import.meta.url), "utf8");
-  ok(/body\.ita-tactics \.mm-dst-chip \{ top: auto !important; bottom: var\(--itd-over, 120px\); \}/.test(css) && /setProperty\("--itd-over"/.test(dock), "U70: the map's 'My view' chip stands above the dock's whole stack");
+  ok(/body\.ita-tactics \.mm-dst-chip \{ top: auto !important; bottom: var\(--itd-over, 120px\); \}/.test(css) && /setVar\("--itd-over"/.test(dock), "U70: the map's 'My view' chip stands above the dock's whole stack");
   ok(/Hooks\.on\("renderChatMessageHTML",[^\n]*Sys\.tacticsOf\(message\)[^\n]*classList\.add\("ita-troll"\)/.test(ui) && /body\.ita-tactics #chat-notifications \.chat-message\.ita-troll \{ display: none; \}/.test(css), "U71: the toast of a tactical roll's card is not shown while the dock is up");
 }
 

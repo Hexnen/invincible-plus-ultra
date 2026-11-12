@@ -29,6 +29,7 @@ import * as Feedback from "./feedback.mjs";
 import * as Camera from "./camera.mjs";
 import * as Lay from "./layout-pure.mjs";
 import * as Tip from "./tip.mjs";
+import { setVar } from "./vars.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics ui) |`;
 const t = langT;
@@ -500,7 +501,7 @@ function diceApply() {
     const cv = diceSeen, style = cv ? { display: cv.style.display, opacity: cv.style.opacity, zIndex: cv.style.zIndex || getComputedStyle(cv).zIndex } : null;
     dice = Lay.diceWatch(dice, style);      // U108 (LIVE ver8): the first roll after a pause starts on a hidden canvas: that is not "the dice are gone"
     const z = dice.on ? Lay.diceRaise(style) : null;
-    if (z) document.body.style.setProperty("--ita-dice-z", String(z)); else document.body.style.removeProperty("--ita-dice-z");
+    setVar("--ita-dice-z", z ? String(z) : null);      // perf P2 (ui/vars.mjs): on the bar and the dock alone; a property on the body restyled the whole page at every roll
     document.body.classList.toggle("ita-dice-up", !!z);
   } catch { /* the dice keep their place */ }
 }

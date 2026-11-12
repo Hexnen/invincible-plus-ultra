@@ -31,6 +31,7 @@
 import { h, icon, swap, face, speed, stressChip, markOf, actIcon, tipText, askCard, sumCard, legendCard, waitChips, rollChip, visibleRect } from "./dom.mjs";
 import { symMark, costMark, markName, hasMarks, plain } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
 import * as Lay from "./layout-pure.mjs";
+import { setVar } from "./vars.mjs";
 
 const ID = "invincible-tactics-dock";
 const GAP = 6;
@@ -172,9 +173,9 @@ export function place() {
   /* what floats at the bottom centre besides the dock (the module's end-of-session notice) stands above it: styles/tactics-ui.css */
   try {
     const clear = Math.round(bottom + Math.min(fixed - GAP, room) + 10);
-    document.body.style.setProperty("--itd-clear", `${clear}px`);
+    setVar("--itd-clear", `${clear}px`);      // perf P2 (ui/vars.mjs): on the notice alone; a property on the body restyled the whole page
     /* U70: where the whole stack ends (the bar, the panel and the questions over it), for what must stand above ALL of it */
-    document.body.style.setProperty("--itd-over", `${Math.round(bottom + Math.min((stack.offsetHeight || 0) * k, room) + 12)}px`);
+    setVar("--itd-over", `${Math.round(bottom + Math.min((stack.offsetHeight || 0) * k, room) + 12)}px`);
     /* U47: the notice stands right above the bar; while a panel or a question is open over the bar it waits (it would float over the
        middle of the map, above what the user is doing) */
     document.body.classList.toggle("ita-notice-wait", !!(panelEl || asks) || H - clear - 64 < ceil);
