@@ -114,7 +114,7 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css");
   ok(/kept = null;\s*placeNow\(rec\);\s*if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept = /.test(head), "D: what a run read is kept only when the run changed nothing");
   ok(/const facts = \(\) => \[drawn, window\.innerWidth, window\.innerHeight, Lay\.factor\(document\.body\)\]/.test(head), "D: the draw count, the window and the size are facts of a placement");
   const out = dock.slice(dock.indexOf("function outcome()"), dock.indexOf("function placeNow(rec)"));
-  for (const w of ["root.style.cssText", "root.dataset.tight", "root.dataset.under", "underTop", "hint?.style.cssText", "hint?.dataset.tick", 'varOf("--itd-clear")', 'varOf("--itd-over")', '"ita-notice-wait"']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
+  for (const w of ["root.style.cssText", "root.dataset.tight", "root.dataset.under", "underTop", "hint?.style.cssText", "hint?.dataset.tick", 'varOf("--itd-clear")', '"ita-notice-wait"']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
   ok(!/document\.(querySelector|querySelectorAll|getElementById)\(|visibleRect\(/.test(body), "D: placeNow asks the page only through the recorder (no read escapes the list)");
   /* every write of placeNow is one the outcome covers: take the known writes away, nothing that writes may be left */
   const rest = body.replace(/root\.style\.(setProperty|removeProperty)\("--itd-under-top"/g, "").replace(/root\.style\.setProperty\("--itd-(room|bottom|maxw|up-maxw|panel-maxh|maxh|cx|up-dx)"/g, "")      // U123 (fixer H): --itd-under-top is a root property too (root.style.cssText in the outcome)

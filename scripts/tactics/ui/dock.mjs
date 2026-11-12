@@ -106,7 +106,7 @@ export function place() {
 /* everything a placement writes: the dock's attributes and numbers, the hint's tick, the numbers for the page, the notice's wait */
 function outcome() {
   const hint = stack?.querySelector(".itd-hint1");
-  return [root.style.cssText, root.dataset.tight ?? "", root.dataset.under ?? "", underTop, hint?.style.cssText ?? "", hint?.dataset.tick ?? "", varOf("--itd-clear"), varOf("--itd-over"), document.body?.classList.contains("ita-notice-wait") ?? false];
+  return [root.style.cssText, root.dataset.tight ?? "", root.dataset.under ?? "", underTop, hint?.style.cssText ?? "", hint?.dataset.tick ?? "", varOf("--itd-clear"), document.body?.classList.contains("ita-notice-wait") ?? false];
 }
 function placeNow(rec) {
   const W = window.innerWidth, H = window.innerHeight;
