@@ -11,6 +11,9 @@ import * as S from "./state-pure.mjs";
 import * as O from "./ops-pure.mjs";
 import { weapons } from "../rules/index.mjs";
 import * as Kit from "./kit-pure.mjs";
+import * as Moves from "./moves-pure.mjs";
+import { note as trace } from "./trace-pure.mjs";
+export { trace };      // D125: the engine's facts reader notes a combatant it cannot read through the same trace
 import { labelVariants } from "../i18n/sys-labels.mjs";
 import { showKit } from "../i18n/kit-names.mjs";      // what the kit SHOWS takes the name this client displays; it is still built from the stored names
 import { cardTitle } from "./lang.mjs";
@@ -155,34 +158,20 @@ export function sceneFacts(combat) {
       out.push({ id: c.id, name: c.name, type: a.type, health: num(d.health?.value), maxHealth: num(d.health?.max), resolve: num(d.resolve?.value), maxResolve: num(d.resolve?.max),
         strength: num(a.system?.attributes?.strength?.value), regeneration: a.flags?.[MOD]?.tactics?.regeneration === true || kitOf(a).pass.regeneration === true });   // Regeneration [B1893]: no key in the system, the flag is set by the GM or P6
     }
-  } catch { /* no facts */ }
+  } catch (err) { trace("dropped", "facts", combat?.name ?? "", "", "", err); }      // D125: the end-of-scene facts stop there, and the GM is told
   return out;
 }
 
 /* ------------------------------------------------------------------ what a combatant is for an action (the action engine's readers) */
 /* D100: when the table was not read yet (or the first read failed) it is asked for again, at most every 5 s: the next reading of the facts has it */
 let injAsked = 0; const injuryNumber = (item) => { const f = item.flags?.[MOD]?.tactics?.crit; if (Number.isFinite(f)) return f; if (!INJ && Date.now() - injAsked > 5000) { injAsked = Date.now(); injuries().catch(() => {}); } const n = INJ?.byName?.get(item.name); return Number.isFinite(n) ? n : null; };
-/* P3: the ways of moving an actor has. A power, boost or limit is known by the id of its compendium entry (the same in every language);
-   the GM may add ways by hand: flags.<module>.tactics.movement = [{ mode, tier }]. Speeds and rules: scripts/rules/movement.mjs. */
-const MOVE_POWERS = { adhesion: "adhesion", "8wJ7WiatmSsAJYsJ": "burrowing", E6B4T5jbhoxFOqRC: "flight", XH6BNrsuvt6H7BvT: "leaping", QeM9FgUR0U3iCd5m: "superSpeed", "6IWySeMnq5uwhZ3u": "swimming", "60xT0tfR9306RCtA": "swinging", JeaiOHbh5MSrPakm: "teleportation",
-  muyhi7UPoPdDlrpI: "earthDrift", AQramXS4Ilmqe01y: "elongatedStride", jyqBPo53xFKMdXnT: "iceSlide" };
-const MOVE_EXTRAS = { nG8DLZMigiBg256a: "tunneling", iLlwnWwRa82gbpT3: "untouchableSpeed", dntiWPrtTegqNRAi: "teleportAllies", sPl5SC16bIT3AFxB: "quickTeleport", ZIKmnZgnR7qz4eSw: "portal", qXCQsdc6tlqalEcX: "gliding", g1FnuD4L5jDMvqC7: "brachiation" };
-/* an item made by hand or by a pregenerated actor carries no compendium id: then its English name decides (as for the talents) */
-const MOVE_NAMES = { adhesion: "adhesion", burrowing: "burrowing", flight: "flight", leaping: "leaping", superspeed: "superSpeed", swimming: "swimming", swinging: "swinging", teleportation: "teleportation", earthdrift: "earthDrift", elongatedstride: "elongatedStride", iceslide: "iceSlide",
-  tunneling: "tunneling", untouchablespeed: "untouchableSpeed", teleportallies: "teleportAllies", quickteleport: "quickTeleport", portal: "portal", gliding: "gliding", brachiation: "brachiation" };
-const NAME_TYPES = ["power", "boost", "limit"];
-const srcId = (it) => { const id = String(it?._stats?.compendiumSource ?? "").split(".").pop(); if (MOVE_POWERS[id] || MOVE_EXTRAS[id] || !it || !NAME_TYPES.includes(it.type)) return id; const n = MOVE_NAMES[String(it.name ?? "").toLowerCase().replace(/[^a-z]/g, "")]; return n ? Object.keys({ ...MOVE_POWERS, ...MOVE_EXTRAS }).find((k) => MOVE_POWERS[k] === n || MOVE_EXTRAS[k] === n) ?? id : id; };
+/* P3: the ways of moving an actor has: moves-pure.mjs reads the plain items made here (D125: the level as the system reads it, one bad item
+   costs that item only); the GM may add ways by hand: flags.<module>.tactics.movement = [{ mode, tier }]. Speeds and rules: scripts/rules/movement.mjs. */
 export function movementOf(actor) {
-  const out = [], extras = new Set();
   try {
-    for (const it of actor.items) {
-      const ids = [srcId(it), ...(Array.isArray(it.system?.boosts) ? it.system.boosts.map((b) => srcId(actor.items.get(b)) || String(b)) : [])];
-      for (const id of ids) { if (MOVE_EXTRAS[id]) extras.add(MOVE_EXTRAS[id]); const mode = MOVE_POWERS[id]; if (mode && !out.some((m) => m.mode === mode)) out.push({ mode, tier: it.system?.level ?? "basic", name: it.name }); }
-    }
-    for (const m of actor.flags?.[MOD]?.tactics?.movement ?? []) if (typeof m?.mode === "string" && !out.some((x) => x.mode === m.mode)) out.push({ mode: m.mode, tier: m.tier ?? "basic" });
-  } catch { /* an actor the adapter cannot read moves on foot */ }
-  const limits = [...extras].filter((x) => x === "gliding" || x === "brachiation");
-  return out.map((m) => ({ ...m, boosts: [...extras].filter((x) => !limits.includes(x)), limits }));
+    const plain = (it) => { try { return { id: it.id, name: it.name, type: it.type, src: it._stats?.compendiumSource ?? null, level: it.system?.level ?? null, autos: it.system?.automations ?? null, boosts: it.system?.boosts }; } catch (err) { trace("dropped", "movement", actor.name, it?.name, "", err); return null; } };
+    return Moves.movementOf([...actor.items].map(plain).filter(Boolean), actor.flags?.[MOD]?.tactics?.movement, actor.name);      // one item that cannot be read costs that item only
+  } catch (err) { trace("dropped", "movement", actor?.name, "", "", err); return []; }      // an actor the adapter cannot read moves on foot, and the GM is told
 }
 /* ------------------------------------------------------------------ P6: what the character brings (kit-pure.mjs reads these plain items) */
 const listOf = (v) => (v == null ? [] : typeof v === "string" ? [v] : typeof v[Symbol.iterator] === "function" ? [...v] : []).filter((x) => typeof x === "string" && x);
@@ -192,13 +181,13 @@ export function kitSource(actor) {
     for (const it of actor.items) {
       const sy = it.system ?? {}, fl = it.flags?.[MOD]?.tactics ?? {};
       items.push({ id: it.id, name: it.name, type: it.type, level: sy.level ?? null, power: typeof sy.power === "string" ? sy.power : null, boosts: listOf(sy.boosts),
-        autos: Object.entries(sy.automations ?? {}).map(([id, a]) => ({ id: a?._id ?? id, name: String(a?.name ?? ""), type: String(a?.type ?? ""), show: a?.showAsSelection !== false, attr: listOf(a?.attribute).filter((x) => ATTRS.includes(x)),
+        autos: Object.entries(sy.automations ?? {}).map(([id, a]) => ({ id: a?._id ?? id, name: String(a?.name ?? ""), type: String(a?.type ?? ""), show: a?.showAsSelection !== false, sel: a?.showAsSelection === true, attr: listOf(a?.attribute).filter((x) => ATTRS.includes(x)),
           bonus: num(a?.rollBonus), stress: num(a?.stressCost), damage: num(a?.baseDamage), min: num(a?.minRange), max: num(a?.maxRange), bypass: a?.bypassArmor === true })),
         fx: [...(it.effects ?? [])].map((e) => ({ id: e.id, name: e.name, on: e.disabled !== true })),
         flags: { kit: typeof fl.kit === "string" ? fl.kit : null, off: fl.off === true, types: listOf(fl.types).slice(0, 12), alt: fl.alt === true }, wf: weaponFlags(it) });
     }
-  } catch { /* an actor the adapter cannot read brings nothing */ }
-  return { items, attrs: Object.fromEntries(ATTRS.map((k) => [k, num(actor?.system?.attributes?.[k]?.value)])) };
+  } catch (err) { trace("dropped", "kit", actor?.name, "", "", err); }      // an actor the adapter cannot read brings nothing (D125: and the GM is told)
+  return { who: actor?.name ?? "", items, attrs: Object.fromEntries(ATTRS.map((k) => [k, num(actor?.system?.attributes?.[k]?.value)])) };
 }
 /* built once per sheet and kept until any item or effect of the world changes (the kit is asked for on every render and every roll) */
 const KITS = new Map(); let kitHooks = false;
@@ -209,7 +198,7 @@ export function kitOf(actor) {
     const key = actor.uuid ?? actor.id;
     if (!KITS.has(key)) KITS.set(key, showKit(Kit.build(kitSource(actor)), actor));
     return KITS.get(key);
-  } catch (err) { console.warn(`${MOD} | tactics: kit`, err); return Kit.EMPTY; }
+  } catch (err) { trace("dropped", "kit", actor?.name, "", "", err); return Kit.EMPTY; }
 }
 /** The dice the sheet's active effects add (the system's own roll buttons add the same): per attribute and per kind of roll. */
 export function sheetBonuses(actor, kit = null) {
@@ -268,7 +257,7 @@ export function actorFacts(actor) {
     huge: flags.huge === true || pass.huge === true, grown: flags.grown === true || pass.grown === true, impervious: flags.impervious === true || pass.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
     regeneration: flags.regeneration === true || pass.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
     movement: kind === "vehicle" ? [{ mode: "vehicle", speed: p7.vehicle.speed, aerial: ["aerial", "space"].includes(p7.vehicle.type) }] : movementOf(actor).map((m) => ((m.mode === "swimming" && pass.fastSwim) || (m.mode === "swinging" && pass.fastSwing) ? { ...m, tier: "fast" } : ["swimming", "swinging"].includes(m.mode) ? { ...m, tier: "basic" } : m)),      // [B2022], [B2030]
-    vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true || actor.items.some((i) => NAME_TYPES.includes(i.type) && /^(adaptation|lifesupport)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
+    vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true || actor.items.some((i) => Moves.NAME_TYPES.includes(i.type) && /^(adaptation|lifesupport)$/.test(String(i.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))),   // [B2929]: a suit or a hull is the GM's flag
     major: flags.major === true, immunities: [...(Array.isArray(flags.immunities) ? flags.immunities : []), ...pass.immune], vulnerabilities: [...(Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : []), ...pass.vulnerable],
   };
 }
@@ -292,7 +281,7 @@ function weaponFlags(item) {
   return { sharp: pick("sharp", row.sharp), fullAuto: pick("fullAuto", row.fullAuto), area: pick("area", row.areaEffect) };
 }
 /** The items of the actor an attack can be made with (an automation that carries damage or a range), as weaponFacts gives them. */
-export const weaponList = (actor) => { try { const k = kitOf(actor), have = new Set(k.weapons.map((w) => w.item)); return [...k.weapons, ...[...(actor?.items ?? [])].filter((it) => !have.has(it.id)).map((it) => weaponFacts(actor, it.id, k)).filter((w) => w && (w.damage != null || w.range))].slice(0, 40); } catch { return []; } };
+export const weaponList = (actor) => { try { const k = kitOf(actor), have = new Set(k.weapons.map((w) => w.item)); return [...k.weapons, ...[...(actor?.items ?? [])].filter((it) => !have.has(it.id)).map((it) => weaponFacts(actor, it.id, k)).filter((w) => w && (w.damage != null || w.range))].slice(0, 40); } catch (err) { trace("dropped", "weapons", actor?.name, "", "", err); return []; } };
 /** P6 [B1808]: a summoned group is a token of one "minions" actor kept for the purpose (the GM may give it a portrait); the numbers of the book
     and the summoner's ownership sit on the token's own delta. -> { actor, delta } */
 export async function summonGroup(e, owner) {

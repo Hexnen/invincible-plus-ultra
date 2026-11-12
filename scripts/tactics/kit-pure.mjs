@@ -12,6 +12,8 @@
    src = { items: [{ id, name, type, level, power, boosts: [id], autos: [{ id, name, type, show, attr: [..], bonus, stress, damage, min, max, bypass }],
                      fx: [{ id, name, on }], flags: { kit, off, types, alt }, wf: { sharp, fullAuto, area } }], attrs: { fighting: n, ... } } */
 import { ROWS, LEVELS } from "./kitdata-pure.mjs";
+import { powerLevel } from "./levels-pure.mjs";
+import { note } from "./trace-pure.mjs";
 import { BUILTIN } from "./catalog-pure.mjs";
 import { weapons as bookWeapons } from "../rules/index.mjs";
 
@@ -43,12 +45,9 @@ export function rowFor(item, parentName = "") {
 const lvWord = (s) => { const m = LEVEL_RX.exec(String(s ?? "")); return m ? LEVELS.indexOf(m[1].toLowerCase()) : -1; };
 const baseName = (s) => String(s ?? "").replace(LEVEL_RX, "").trim();
 const useName = (it, a) => { const b = baseName(a.name), n = String(it.name ?? ""); return b.toLowerCase().startsWith(n.toLowerCase()) ? b.slice(n.length).replace(/^[\s\-–:]+/, "").trim() : b; };   // "Strike - Reduce Armor" on Strike -> "Reduce Armor"
-/** The level of a power: its own field, else the highest level its visible automations name. -> 0..3 */
-export function levelOf(item) {
-  const own = LEVELS.indexOf(String(item?.level ?? "").toLowerCase());
-  if (own >= 0) return own;
-  return Math.max(0, ...(item?.autos ?? []).filter((a) => a.show !== false).map((a) => lvWord(a.name)));
-}
+/** The level of a power: its own field, else the highest level its visible automations name, else basic (the system's reading,
+    levels-pure.powerLevel: D125). -> 0..3 */
+export const levelOf = (item) => powerLevel(item?.level, item?.autos).lv;
 /** The automations that count at the item's level: of several that differ only by a level word, the one of that level (else the highest below it). */
 export function autosAt(item, lv) {
   const groups = new Map();
@@ -144,7 +143,7 @@ export function build(src = {}) {
   const items = Array.isArray(src.items) ? src.items : [], attrs = src.attrs ?? {}, byId = new Map(items.map((i) => [i.id, i]));
   const kit = { rows: [], actions: [], weapons: [], unarmed: {}, pass: { immune: [], vulnerable: [] }, mods: [], sheetSkip: [] };
   const parentOf = (it) => byId.get(it.power) ?? items.find((p) => p.type === "power" && (p.boosts ?? []).includes(it.id)) ?? null;
-  const known = items.map((it) => { let row = null; try { row = rowFor(it, parentOf(it)?.name); } catch { row = null; } return { it, row, lv: 0 }; });
+  const known = items.map((it) => { let row = null; try { row = rowFor(it, parentOf(it)?.name); } catch (err) { row = null; note("dropped", "kit", src.who, it?.name, "", err); } return { it, row, lv: 0 }; });
   for (const x of known) { const p = ["boost", "limit"].includes(x.it.type) ? parentOf(x.it) : x.it; x.lv = levelOf(p ?? x.it); x.parent = p !== x.it ? p : null; }
   const live = (x) => x.it.flags?.off !== true && !(x.parent && x.parent.flags?.off === true);
   const optsOf = (power) => known.filter((x) => x.parent === power && live(x) && x.row?.opt);
@@ -233,7 +232,7 @@ export function build(src = {}) {
       }
       if (["immune", "vulnerable"].some((k) => row?.pass?.[k] === "flag") && !(it.flags?.types ?? []).length) rec.needs = "types";
       for (const m of row?.mods ?? []) kit.mods.push({ dice: at(m.lv ?? m.dice, lv), ...(m.action ? { action: m.action.slice() } : {}), ...(m.attack ? { attack: m.attack.slice() } : {}), ...(m.attr ? { attr: m.attr } : {}), ...(m.vsHuge ? { vsHuge: 1 } : {}), ...(m.gm ? { gm: m.gm } : {}), source: `kit:${row.key}`, name: rec.name });
-    } catch { rec.state = "hand"; rec.note = "unknown"; }
+    } catch (err) { rec.state = "hand"; rec.note = "unknown"; note("dropped", "kit", src.who, rec.name, "", err); }      // D125: listed by hand, and the trace says why
   }
   kit.pass.immune = [...new Set(kit.pass.immune)].slice(0, 24); kit.pass.vulnerable = [...new Set(kit.pass.vulnerable)].slice(0, 24);
   kit.actions = kit.actions.slice(0, 60); kit.weapons = kit.weapons.slice(0, 40);

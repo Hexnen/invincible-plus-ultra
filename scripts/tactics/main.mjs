@@ -21,6 +21,7 @@ import { attach, setRunning, isRunning, tacticsApi } from "./api.mjs";
 import * as Mv from "./movement.mjs";
 import { t } from "./lang.mjs";
 import * as V from "./view-pure.mjs";
+import * as Trace from "./trace-pure.mjs";
 
 const MOD = Store.MOD;
 let started = false;
@@ -68,6 +69,8 @@ function announce(combat) {
 
 /** ready: everything that listens. Only called when tactical combat runs on this world. */
 async function startRunning() {
+  /* D125: what a combatant's facts could not carry is never dropped in silence: the console on every client, a notification for the GM (trace-pure.mjs) */
+  Trace.setSink((n) => { console.warn(`${MOD} | tactics: ${n.kind} (${n.area})`, n); if (Store.isStaff(game.user)) ui.notifications?.warn(t(`ITAC.warn.${n.kind}`, { who: n.who || "?", what: n.what || n.area, raw: n.raw }), { permanent: false }); });
   Relay.start();
   Engine.start();
   const Prompts = await import("./ui/prompts.mjs");
