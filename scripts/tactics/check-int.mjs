@@ -159,13 +159,12 @@ const IDS = /\b(H1|H2|N1|N2|M1|V1|z\d|hz\w*|gm)\b/;
   T.dice.push([6, 3, 3, 2, 1, 4, 2, 2]);
   eq(code(await T.gm({ op: "hazardRun", run: { type: "blast", rating: 8, targets: ["M1", "V1"] } })), "ok", "F: a blast on a mob and a van");
   for (const p of T.prompts("hazardDodge")) await T.gm({ op: "answerFor", prompt: p.id, value: p.options.find((o) => o.id === "pass" || o.id === "none")?.id ?? p.options.at(-1).id });
-  const ml = T.prompt("minionLoss");
-  eq([ml?.to, ml?.about, ml?.data.suggested, ml?.options.length], ["gm", "M1", 4, 6], "F: how many of the mob fall is the GM's number, as in an area attack [OQ-1]");
+  const ml = T.prompt("minionsQuick");      /* U145: the number and the fate on one card */
+  eq([ml?.to, ml?.about, ml?.data.suggested, ml?.options.length], ["gm", "M1", 4, 11], "F: how many of the mob fall is the GM's number, as in an area attack [OQ-1]");
   eq(T.c.M1.health, 5, "F: the mob is untouched while the GM decides");
-  await T.answer("gm", "minionLoss", "n:2", "M1");
+  await T.answer("gm", "minionsQuick", "ko:2", "M1");
   for (let g = 0; g < 10 && T.state.stack.length && !T.prompt("minionsFate"); g++) { const p = T.prompts()[0]; if (!p) break; await T.gm({ op: "answerFor", prompt: p.id, value: p.options[0].id }); }
-  eq(T.prompt("minionsFate")?.data.removed, 2, "F: knocked out or killed is the GM's word");
-  await T.answer("gm", "minionsFate", "ko", "M1");
+  eq(T.prompt("minionsFate"), null, "F: knocked out or killed was said on the same card (U145)");
   for (let g = 0; g < 10 && T.state.stack.length; g++) { const p = T.prompts()[0]; if (!p) break; await T.gm({ op: "answerFor", prompt: p.id, value: p.options[0].id }); }
   eq([T.state.stack.length, T.c.M1.health, T.c.V1.health, T.c.M1.crits.length, has(T, "V1", "broken")], [0, 3, 4, 0, false], "F: two of the mob are down, the van lost Durability; no injury roll for a mob, no Broken for a machine");
   ok((T.state.vehicles?.V1?.hits ?? 0) >= 1 || T.evs("component").length >= 1 || JSON.stringify(T.state).includes("component"), "F: half the Durability in one hit damages a component of the van [B3221]");

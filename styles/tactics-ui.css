@@ -279,6 +279,11 @@ body.ita-keys #invincible-tactics-dock.itd-rest .itd-ic[data-key]::before { cont
 #invincible-tactics-dock .itd-end:hover:not([aria-disabled="true"]) { translate: -1px -1px; box-shadow: 4px 4px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-end:active:not([aria-disabled="true"]) { translate: 2px 2px; box-shadow: 1px 1px 0 var(--ita-blue); }
 #invincible-tactics-dock .itd-end.itd-end-sure { color: var(--ita-ink); background: #fff; }
+/* U144: nothing is left of the turn: the button fills as the moment runs out (main.mjs AUTO_END_MS), then the turn passes by itself */
+#invincible-tactics-dock .itd-end.itd-end-auto { position: relative; overflow: hidden; isolation: isolate; }
+#invincible-tactics-dock .itd-end.itd-end-auto::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--ita-ink); opacity: 0.35; transform-origin: left; transform: scaleX(0); animation: itd-end-fill 1.5s linear forwards; }
+@keyframes itd-end-fill { to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { #invincible-tactics-dock .itd-end.itd-end-auto::before { animation: none; transform: scaleX(1); opacity: 0.2; } }
 #invincible-tactics-dock .itd-end[aria-disabled="true"] { color: var(--ita-label); background: transparent; border: 2px dashed var(--ita-line); box-shadow: none; }
 #invincible-tactics-dock :is(.itd-mini, .itd-x) { display: inline-grid; place-items: center; width: 26px; height: 26px; color: var(--ita-label); border: 1px solid var(--ita-line); }
 #invincible-tactics-dock :is(.itd-mini, .itd-x):hover { color: #fff; border-color: #fff; }

@@ -23,7 +23,7 @@ export const PROTO = 1;
    toggle until the action engine declares actions [D] */
 export const PLAYER_OPS = new Set(["endTurn", "holdOff", "answer", "mark"]);
 /* prompt kinds answered by this package; any other kind belongs to the action engine (P2) */
-export const P1_PROMPTS = new Set(["veteran", "reflexes", "triggerQueue", "grantConsent", "challengeFail"]);
+export const P1_PROMPTS = new Set(["veteran", "reflexes", "triggerQueue", "grantConsent", "challengeFail", "challengeStale"]);      // U157: challengeStale
 export const RATE = [90, 60000], MAX_INFLIGHT = 3, MAX_BYTES = 4096, TEXT_MAX = 300;            // spec 12.1 limits for non-staff
 
 const err = S.err;
@@ -395,6 +395,7 @@ const OPS = {
       W.s.statuses = { ...(W.s.statuses ?? {}), [id]: statusAdd(W.s, id, { id: "unaware", source: { kind: "gm", name: "surprise" } }).to };
       ev(W, "status", { target: id, status: { id: "unaware", on: true }, cause: "surprise" });
     }
+    W.effects.push({ type: "combatStart" });      // U157: the engine looks at the challenges' clocks the fight starts with
     run(W);
   },
   stop(W) { ev(W, "combatEnd", { mode: W.s.mode, kind: W.s.kind }); W.s = null; },
@@ -522,6 +523,8 @@ const OPS = {
         drop(); break;
       }
       case "challengeFail": ev(W, "challenge", { challenge: p.about, state: "failed", choice: String(a.value ?? "") }); if (a.value === "run") W.effects.push({ type: "challengeFail", challenge: p.about }); drop(); break;      // P7: the consequence is the engine's (flows/challenge.mjs)
+      /* U157: a challenge came into this fight with its clock already run down (an earlier fight): the GM's one word */
+      case "challengeStale": if (a.value === "reset") W.effects.push({ type: "challengeReset", challenge: p.about }); drop(); break;
       default: return err("unknown");
     }
     run(W);

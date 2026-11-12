@@ -120,6 +120,9 @@ function approachOf(facts, ch, own, bar, t) {
 }
 
 /* ------------------------------------------------------------------ one question (player prompt / desk card) */
+/* U153: what each stunt of the book does, as the groups of a long stunt card */
+const STUNT_THEMES = ["harm", "control", "reach", "own"];
+const STUNT_THEME = { doubleDamage: "harm", deadlyHit: "harm", knockback: "control", slam: "control", stun: "control", trap: "control", disarm: "control", suppressed: "control", bangHeads: "reach", trickShot: "reach", special: "own", own: "own" };
 const P1_KINDS = ["veteran", "reflexes", "triggerQueue", "grantConsent", "challengeFail"];
 const rollLabel = (t, key, facts) => {
   const [k, who] = String(key).split(":");
@@ -246,6 +249,7 @@ function linesOf(p, t, facts, x) {
     case "veteran": out.push(t("ITAC.Prompt.veteran.Body", { name: about, card: d.card ?? "?" })); break;
     case "reflexes": out.push(t("ITAC.Prompt.reflexes.Body", { name: about })); break;
     case "grantConsent": out.push(t("ITAC.Prompt.grantConsent.Body", { name: about, from: d.from ? n(d.from) : t("ITAC.Someone") })); break;
+    case "challengeStale": out.push(t("ITAC.ui.line.challengeStale", { name: about, left: d.left ?? 0, max: d.max ?? 0 })); break;      // U157
     case "challengeFail": out.push(t("ITAC.Prompt.challengeFail.Body", { name: about })); if ((d.effects ?? []).length) out.push(t("ITAC.ui.line.failEffects", { list: d.effects.map((k) => t(`ITAC.ui.effect.${k}`, {}, String(k))).join(", ") })); break;
     /* P7 */
     case "objective": out.push(t(d.why === "power" ? "ITAC.ui.line.objectivePower" : "ITAC.ui.line.objective", { name: about, challenge: n(d.challenge), attr: attrText(t, d.attr), power: String(d.power ?? "") })); if (d.text) out.push({ quote: String(d.text), by: about }); break;
@@ -335,12 +339,28 @@ export function askData(p, o) {
       ...(places.length && kind === "dodgeMove" && x.id === "move" ? { label: t("ITAC.ui.move.byHand") } : {}) };
   })];
   const lines = linesOf(p, t, facts, { inst, desk });
+  /* U153: a card of many stunts (three sixes) is a wall of equal buttons: the stunts on the target stand in small groups of what they do
+     (damage, control, another opponent, the own idea), each under its caption, the ones that cannot be taken now last in their group.
+     The keys follow the order shown. A card of a few stunts stays as it was. */
+  const mainSt = options.filter((x) => x.icon?.startsWith("stunt:") && x.group?.id === "main");
+  if (mainSt.length >= 5) {
+    const theme = (x) => STUNT_THEME[String(x.icon).slice(6)] ?? "own";
+    for (const x of mainSt) x.group = theme(x) === "reach" ? { id: "more", label: t("ITAC.ui.stunt.g.more") } : { id: `th:${theme(x)}`, label: t(`ITAC.ui.stunt.th.${theme(x)}`) };      // one caption for "another opponent"
+    const rank = (x) => { const g = x.group?.id ?? ""; const i = g.startsWith("th:") ? STUNT_THEMES.indexOf(g.slice(3)) : g === "more" ? STUNT_THEMES.indexOf("reach") : g.startsWith("on:") ? STUNT_THEMES.length : -1; return i * 2 + (x.disabled ? 1 : 0); };
+    const moved = options.map((x, i) => ({ x, i, r: x.icon?.startsWith("stunt:") ? rank(x) : null }));
+    const st = moved.filter((m) => m.r !== null).sort((a, b) => a.r - b.r || a.i - b.i).map((m) => m.x);
+    let k = 0; for (let i = 0; i < options.length; i++) if (moved[i].r !== null) options[i] = st[k++];
+  }
   /* U61: the one card of a quickly settled minion group: how many fall is a number on the card (it starts at what the damage says), and
      the two answers (knocked out, killed) send that number with them; at zero the one answer is "nobody falls" */
-  if (kind === "minionsQuick") {
+  /* U145: the number-only card of a group whose fate is a standing answer is the same counter with ONE answer ("3 fall"), not a row of
+     equal buttons; the fate card after a single hit names the group's members in the plural with their number */
+  if (kind === "minionsFate") for (const x of options) if (x.id === "ko" || x.id === "kill") x.label = t(`ITAC.opt.${x.id}.n`, { n: p.data?.removed ?? 0 });
+  if (kind === "minionsQuick" || kind === "minionLoss") {
     const top = Math.max(0, ...(p.options ?? []).map((x) => Number(x.data?.n) || 0)), raw = own.vals?.[`mq:${p.id}`], v = Math.max(0, Math.min(top, Math.trunc(Number(raw ?? p.data?.suggested) || 0)));
     const pickOpt = (id) => options.find((x) => x.id === id) ?? null, mk = (x, label, icon) => (x ? { ...x, label, icon, group: null } : null);
-    const shown = v > 0 ? [mk(pickOpt(`ko:${v}`), t("ITAC.opt.ko.n", { n: v }), "fate:ko"), mk(pickOpt(`kill:${v}`), t("ITAC.opt.kill.n", { n: v }), "fate:kill")] : [mk(pickOpt("none"), t("ITAC.opt.minionsNone"), "react:pass")];
+    const shown = kind === "minionLoss" ? [v > 0 ? mk(pickOpt(`n:${v}`), t("ITAC.opt.minionsFall", { n: v }), "fate:ko") : mk(pickOpt("n:0"), t("ITAC.opt.minionsNone"), "react:pass")]
+      : v > 0 ? [mk(pickOpt(`ko:${v}`), t("ITAC.opt.ko.n", { n: v }), "fate:ko"), mk(pickOpt(`kill:${v}`), t("ITAC.opt.kill.n", { n: v }), "fate:kill")] : [mk(pickOpt("none"), t("ITAC.opt.minionsNone"), "react:pass")];
     return { map: null, id: p.id, kind, proxy: false, pvFor: null, aboutId: p.about ?? null, aboutHead: true, check: false, title: titleOf({ ...p, to: "desk" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options: shown.filter(Boolean), multi: null, tokens: [], free: null, always: null, submit: null,
       count: { id: `mq:${p.id}`, value: v, min: 0, max: top, label: t("ITAC.ui.minions.fall"), of: t("ITAC.ui.minions.of", { n: p.data?.members ?? top }) } };
   }
@@ -424,7 +444,7 @@ function newsText(n, facts, t) {
     return (n.ran === 1 ? t(n.held ? "ITAC.ui.news.granted.goes" : "ITAC.ui.news.granted.ran", { action: act }) : n.ran === 2 ? t("ITAC.ui.news.granted.hand") : t("ITAC.ui.news.granted.wait", { reason: reasonText(t, n.why ?? "busy") })) + note;
   }
   const rows = (n.rows ?? []).filter((r) => typeof r.hit === "boolean").map((r) => {
-    const bits = [t(r.hit ? "ITAC.result.hit" : "ITAC.result.miss"), Number.isFinite(r.taken) ? t(r.stress ? "ITAC.ui.news.stress" : "ITAC.ui.news.taken", { n: r.taken }) : null, ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s)))].filter(Boolean);
+    const bits = [t(r.hit ? "ITAC.result.hit" : "ITAC.result.miss"), Number.isFinite(r.taken) ? t(r.stress ? "ITAC.ui.news.stress" : "ITAC.ui.news.taken", { n: r.taken }) : null, ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s))), r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null].filter(Boolean);      // D127
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
   const res = rows.length ? rows.join("; ") : n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "";
@@ -893,9 +913,16 @@ export function dockData(model, own, facts, t) {
   const rolls = panel?.kind === "mine" ? allRolls.filter((r) => !panel.rolls.includes(r)) : allRolls;
   const waiting = waitAll.filter((w) => !w.mine || w.what.length > prompts.length + allRolls.length);
   const slots = slotsOf(bar, t), unused = slots.filter((p) => p.state === "open").map((p) => p.label);
-  const end = bar.endTurn ? { label: own.endArmed ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"), tip: bar.endTurn.disabled ? whyLine(whyOf(t, bar.endTurn.disabled, {}, { ask: false })) : `${unused.length ? t("ITAC.ui.end.unused", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]`,
-    disabled: bar.endTurn.disabled ? whyText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm: unused.length > 0 && !bar.endTurn.noConfirm, armed: !!own.endArmed && !bar.endTurn.noConfirm }
-    : { label: t("ITAC.ui.end"), tip: whyLine(whyOf(t, "notYourTurn", {}, { ask: false })), disabled: whyText(t, "notYourTurn"), req: null, confirm: false, armed: false };
+  /* U144: ONE rule for ending a turn. Nothing left (every slot spent, nothing owed: no card, no roll, no open action) -> the turn passes by
+     itself a moment later (`auto`, main.mjs); a click on the button passes it at once. Something left -> one click; "Sure?" is asked only
+     where a WHOLE full action would be lost by a slip on a player's seat (a spare quick action is left over on most turns). The tip says
+     "click again" only where a second click is really asked for. */
+  const fullLeft = slots.some((p) => p.state === "open" && p.unit === "full" && !p.extra), confirm = fullLeft && !bar.endTurn?.noConfirm;
+  const auto = !!bar.endTurn && !bar.endTurn.disabled && !bar.free && !unused.length && !prompts.length && !allRolls.some((r) => r.state !== "done") && bars.filter((b) => b.onTurn).length === 1 && !armed && !own.mode && !own.quiet && !bar.out;
+  const end = bar.endTurn ? { label: auto ? t("ITAC.ui.end.auto") : own.endArmed && confirm ? t("ITAC.ui.end.sure") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"),
+    tip: bar.endTurn.disabled ? whyLine(whyOf(t, bar.endTurn.disabled, {}, { ask: false })) : `${auto ? t("ITAC.ui.end.autoTip") : unused.length ? t(confirm ? "ITAC.ui.end.unused" : "ITAC.ui.end.left", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]`,
+    disabled: bar.endTurn.disabled ? whyText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm, armed: !!own.endArmed && confirm, auto }
+    : { label: t("ITAC.ui.end"), tip: whyLine(whyOf(t, "notYourTurn", {}, { ask: false })), disabled: whyText(t, "notYourTurn"), req: null, confirm: false, armed: false, auto: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn
   const chase = facts.view?.chase ? t("ITAC.ui.chase.line", { n: facts.view.chase.distance }) : null;
   /* U52: whose turn it is stands on the initiative bar, so the line does not say it again. It keeps what that bar cannot say: the

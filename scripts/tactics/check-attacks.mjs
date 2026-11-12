@@ -83,11 +83,10 @@ const base = (extra = () => {}, more = []) => { const T = new Table(); T.hero("H
   eq(code(await T.req("p2", decl("H2", "shoot", ["N2"], { weapon: "nade", area: true }))), "ok", "C: again");
   await pass(T);
   await T.roll("attack", 1);
-  const ml = T.prompt("minionLoss");
-  eq([ml?.to, ml?.about, ml?.data.suggested, ml?.options.length], ["gm", "M1", 3, 6], "C: how many minions fall to an area attack is the GM's number [OQ-1]");
-  eq(code(await T.answer("gm", "minionLoss", "n:2", "M1")), "ok", "C: the GM says two");
-  eq(T.prompt("minionsFate")?.data.removed, 2, "C: knocked out or killed is the GM's word");
-  eq(code(await T.answer("gm", "minionsFate", "kill", "M1")), "ok", "C: killed");
+  const ml = T.prompt("minionsQuick");      /* U145: how many fall and their fate on ONE card */
+  eq([ml?.to, ml?.about, ml?.data.suggested, ml?.options.length, T.prompt("minionLoss")], ["gm", "M1", 3, 11, null], "C: how many minions fall to an area attack is the GM's number [OQ-1], with their fate on the same card (U145)");
+  eq(code(await T.answer("gm", "minionsQuick", "kill:2", "M1")), "ok", "C: the GM says two, killed");
+  eq(T.prompt("minionsFate"), null, "C: knocked out or killed was said on that card: no second question (U145)");
   eq([T.c.M1.health, T.c.N1.health, T.c.N2.health, T.state.karma.at(-1)?.kind, T.c.M1.crits.length], [3, 3, 3, "killed", 0], "C: two members gone, the others took the base Damage, a karma note, no injury roll for minions");
 }
 
