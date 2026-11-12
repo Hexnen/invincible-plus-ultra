@@ -448,6 +448,9 @@ function newsText(n, facts, t) {
     const bits = [verdict, dealt, ...(r.stunts ?? []).map((s) => t(`ITAC.stunt.${s}`, {}, String(s))), r.out > 0 ? t("ITAC.ui.news.out", { n: r.out }) : null, r.down ? t("ITAC.status.broken").toLowerCase() : null].filter(Boolean);
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
+  /* a hazard that hurt nobody says so once, with the names after it (four "no damage" in a row is one fact) */
+  const none = (n.rows ?? []).filter((r) => typeof r?.hit !== "boolean" && r?.taken === 0 && !r.out && !r.down && !(r.stunts ?? []).length);
+  if (rows.length > 1 && none.length === rows.length) rows.splice(0, rows.length, `${t("ITAC.ui.news.noDamage")}: ${none.map((r) => nameOf(facts, r.target, t)).join(", ")}`);
   const res = rows.length ? rows.join("; ") : n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "";
   /* D113: what a reaction came to (Discretion, Warning Call, one the GM settled by hand) is said after the result */
   const rx = (Array.isArray(n.reacts) ? n.reacts : []).map((r) => t(`ITAC.ui.news.react.${r.result}`, { who: nameOf(facts, r.who, t), what: r.name ? String(r.name) : r.label ? t(r.label, {}, "") : "", about: r.about ? nameOf(facts, r.about, t) : "" }, "")).filter(Boolean);
@@ -460,6 +463,10 @@ export function newsData(view, own, facts, t) {
   /* UXB (U141): a line stands through its own turn and the next (own.newsFrom: ui/news-pure.mjs newsWindow), not for the rest of the round */
   const round = view?.round ?? 0, seen = Math.max(Number(own?.newsSeen) || 0, Number(own?.newsFrom) || 0);
   const list = (view?.news ?? []).filter((n) => newsNo(n) > seen && (n.round == null || n.round >= round - 1) && !(n.kind === "action" && ["move", "forced", "fall", "release", "seat"].includes(n.flow) && !(n.rows ?? []).some((r) => typeof r.hit === "boolean")));
+  /* a line that stands brings the lines it set off along (the counter closes first, so its number may be under the window) */
+  const insts = new Set(list.map((n) => n.inst).filter(Boolean)), kept = Number(own?.newsSeen) || 0;
+  for (let more = true; more;) { more = false; for (const n of view?.news ?? []) if (typeof n?.parent === "string" && insts.has(n.parent) && newsNo(n) > kept && !list.includes(n)) { list.push(n); if (n.inst) insts.add(n.inst); more = true; } }
+  list.sort((a, b) => newsNo(a) - newsNo(b));
   if (!list.length) return null;
   /* an attack and the counterattack that answered it are told together; one hazard on several characters is one line (news-pure groups) */
   const told = NewsP.groups(list).map(NewsP.merged), lastG = told[told.length - 1], head = lastG[0], mine = (id) => !!id && Object.keys(view?.knowledge ?? {}).includes(id);

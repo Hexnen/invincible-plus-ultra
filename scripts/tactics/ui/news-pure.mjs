@@ -18,7 +18,7 @@ export const newest = (list) => (list ?? []).reduce((m, n) => Math.max(m, newsNo
     newest line: what came before it is not known to belong to this turn or the last. */
 export function newsWindow(prev, now) {
   const combat = now?.combat ?? null, member = typeof now?.member === "string" && now.member ? now.member : null, top = Number(now?.newest) || 0;
-  if (!prev || prev.combat !== combat) return { combat, member, from: Math.max(0, top - 1), mark: top };
+  if (!prev || prev.combat !== combat) return { combat, member, from: Math.max(0, top - 1), mark: Math.max(0, top - 1) };      // (it counts as of this turn: it stands through the next one too)
   if (!member || member === prev.member) return prev;
   /* a new turn: the lines of the turn that just ended (and of the time between, a round's start) stand on; the ones before it go */
   return { combat, member, from: prev.mark, mark: top };
@@ -31,7 +31,9 @@ export function groups(list) {
   const lines = (list ?? []).filter((n) => n && typeof n === "object");
   const kids = new Map(), heads = [];
   const parentOf = (n) => (n.kind === "action" && typeof n.parent === "string" ? lines.find((p) => p !== n && p.kind === "action" && p.inst === n.parent && newsNo(p) > newsNo(n)) : null);
-  for (const n of lines) { const p = parentOf(n); if (p) { if (!kids.has(p)) kids.set(p, []); kids.get(p).push(n); } else heads.push(n); }
+  /* the line that names the whole chain (a fire's spread set off a fire that burnt two people: three lines, one chain, one root) */
+  const rootOf = (n) => { let r = parentOf(n), seen = 0; while (r && seen++ < 12) { const up = parentOf(r); if (!up) break; r = up; } return r; };
+  for (const n of lines) { const p = rootOf(n); if (p) { if (!kids.has(p)) kids.set(p, []); kids.get(p).push(n); } else heads.push(n); }
   const out = [];
   for (const n of heads) {
     const prev = out[out.length - 1], last = prev?.[prev.length - 1];
@@ -60,5 +62,15 @@ export function diceHold(prev, now, busy) {
 export function merged(group) {
   if (!group?.length) return [];
   if (group.length > 1 && group.every((x) => x.flow === "hazard")) return [{ ...group[0], id: group[group.length - 1].id, rows: group.flatMap((x) => x.rows ?? []) }];
+  /* a head that only carried what it set off (a fire that spread, then burnt somebody): what it did is the news, the head is on the map */
+  const told = (x) => (x.rows ?? []).some((r) => typeof r?.hit === "boolean" || Number.isFinite(r?.taken));
+  if (group.length > 1 && group[0].kind === "action" && !group[0].actor && !told(group[0]) && group.slice(1).some(told)) {
+    const top = group.reduce((a, b) => (newsNo(b) > newsNo(a) ? b : a)).id, out = [];
+    for (const x of group.filter((y) => y.actor || told(y))) {
+      const same = x.flow === "hazard" && !x.actor ? out.find((o) => o.flow === "hazard" && !o.actor && o.hazard === x.hazard) : null;
+      if (same) same.rows = [...(same.rows ?? []), ...(x.rows ?? [])]; else out.push({ ...x, id: top, rows: [...(x.rows ?? [])] });
+    }
+    return out;
+  }
   return group;
 }

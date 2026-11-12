@@ -65,6 +65,10 @@ const base = () => { const T = new Table(); T.hero("H1", "p1", { name: "Omni" })
   eq([g.length, g[0].length, g[0][0].rows.length, g[0][0].id], [1, 1, 2, "n2"], "U141: one fire at round start on two characters is one line with both rows");
   const t = M.newsData({ news: g[0], round: 2 }, {}, { staff: false, me: "p", c: (id) => ({ name: id.toUpperCase() }) }, tr("en"))?.text;
   eq(t, "Fire > A: no damage; B: [[damage:4]]", "U141: a hazard that dealt nothing says so");
+  const z = M.newsData({ news: [{ id: "n7", kind: "action", flow: "hazard", hazard: "fire", round: 2, rows: [{ target: "a", taken: 0 }, { target: "b", taken: 0 }] }], round: 2 }, {}, { staff: false, me: "p", c: (id) => ({ name: id.toUpperCase() }) }, tr("en"))?.text;
+  eq(z, "Fire > no damage: A, B", "U141: a hazard that hurt nobody says it once");
+  const chain = N.groups([{ id: "n64", kind: "action", inst: "a62", parent: "a60", flow: "hazard", hazard: "fire", round: 2, rows: [{ target: "k", taken: 2 }] }, { id: "n65", kind: "action", inst: "a60", parent: "a58", flow: "hazard", hazard: "fire", round: 2, rows: [{ target: "s", taken: 0 }] }, { id: "n66", kind: "action", inst: "a58", parent: "a56", flow: "fireSpread", rows: [] }]).map(N.merged);
+  eq([chain.length, chain[0].length, chain[0][0].rows.length, chain[0][0].id], [1, 1, 2, "n66"], "U141 (live): a spread that set off two fires is one fire line with both rows, never lost under its head");
 }
 
 /* ---- U141: an area shot says how many minions fell */
@@ -84,13 +88,13 @@ const base = () => { const T = new Table(); T.hero("H1", "p1", { name: "Omni" })
 /* ---- U141: a line stands through its own turn and the next, never longer (news-pure newsWindow) */
 {
   let w = N.newsWindow(null, { combat: "c", member: "A", newest: 4 });
-  eq([w.from, w.mark], [3, 4], "U141: a first look (a reload) keeps only the newest line");
+  eq([w.from, w.mark], [3, 3], "U141: a first look (a reload) keeps only the newest line, as a line of this turn");
   w = N.newsWindow(w, { combat: "c", member: "A", newest: 6 });
   eq(w.from, 3, "U141: the same turn: the lines of it stand");
   w = N.newsWindow(w, { combat: "c", member: null, newest: 6 });
   eq(w.from, 3, "U141: between turns (or a turn hidden from this user) nothing changes");
   w = N.newsWindow(w, { combat: "c", member: "B", newest: 7 });
-  eq([w.from, w.mark], [4, 7], "U141: the next turn: the lines of A's turn stand on, the ones before go");
+  eq([w.from, w.mark], [3, 7], "U141: the next turn: the lines of A's turn stand on, the ones before go");
   w = N.newsWindow(w, { combat: "c", member: "C", newest: 7 });
   eq(w.from, 7, "U141: the turn after: A's result has gone (it no longer looks like the latest)");
   eq(N.newsWindow(w, { combat: "d", member: "C", newest: 2 }).from, 1, "U141: another fight starts its own window");
