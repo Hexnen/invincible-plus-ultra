@@ -7,7 +7,9 @@
      BH4-2  the news window took the same combatant's turn in the next round for the same turn (a line stood a turn too long)
      BH4-3  a character broken by a hazard (fire, blast, fall ...) is not called broken on the news line (the attack's line says it)
      BH4-4  the bar offers End turn (and passes the turn by itself) while the engine refuses it: a request of this character waits for
-            the GM (an exception asked with no action left) */
+            the GM (an exception asked with no action left)
+     BH4-6  the journal line a player reads tells of somebody that player's hero has as unseen: "[: unconscious]" (the extra opponent of
+            Bang Heads knocked out, D127's injury text; the same for a reactor) */
 import { Table, ok, eq, done } from "./testkit.mjs";
 import * as V from "./view-pure.mjs";
 import * as D from "./desk-pure.mjs";
@@ -130,6 +132,22 @@ const spent = async () => {
   const e2 = dock(T, "p1", ["H1"]).end;
   eq([e2.auto, e2.disabled], [true, null], "BH4-4: then nothing is left again: the turn passes by itself");
   eq(code(await T.req("p1", e2.req)), "ok", "BH4-4: and the engine takes it");
+}
+
+/* ---- BH4-6: Bang Heads knocks out an opponent Omni has as unseen: Omni's player reads the attack's line without it */
+{
+  const T = new Table(); T.hero("H1", "p1", { name: "Kid", attrs: { strength: 8 } }).hero("H2", "p2", { name: "Omni" }).npc("N1", { name: "Boss", health: 9 }).npc("N2", { name: "Spy", health: 2 }); T.order(["H1", "H2", "N1", "N2"]);
+  await T.gm({ op: "knowledgeSet", observer: "H2", subject: "N2", value: "unseen" });
+  await T.req("p1", { op: "declare", actor: "H1", decl: { action: "slugfest", targets: ["N1"] } });
+  for (const p of T.prompts("reaction")) await T.req("gm", { op: "answerFor", prompt: p.id, value: "pass" });
+  await T.roll("attack", 4);
+  eq(code(await T.req("p1", { op: "answer", prompt: T.prompt("stunts")?.id, value: ["bangHeads@N1|N2"] })), "ok", "BH4-6: Kid slams the Boss into the Spy (premise)");
+  await answerAll(T, (p) => p.options?.find((o) => o.id === "ko")?.id ?? p.options?.[0]?.id);
+  ok((T.state.statuses?.N2 ?? []).some((s) => s.id === "unconscious"), "BH4-6: the Spy is knocked out (premise)");
+  const m = meta(T), list = Object.values(T.c).map((x) => ({ id: x.id, name: x.name, hidden: x.hidden }));
+  const jr = (u, owns) => { const v = { id: u, staff: false, owns }, n = V.readerNames(T.state, v, m, list); return V.journalFor(T.log, v, { concealed: n.concealed, name: (id) => n.names[id] ?? null }).map((x) => x.text).at(-1) ?? ""; };
+  ok(/\[Spy: /.test(jr("p1", ["H1"])), `BH4-6: Kid's player reads who was knocked out (${jr("p1", ["H1"])})`);
+  ok(/^Kid: /.test(jr("p2", ["H2"])) && !/\[: /.test(jr("p2", ["H2"])) && !/Spy|N2|unconscious/.test(jr("p2", ["H2"])), `BH4-6: Omni's player reads the attack, nothing of the unseen Spy (${jr("p2", ["H2"])})`);
 }
 
 done("check-bh4");

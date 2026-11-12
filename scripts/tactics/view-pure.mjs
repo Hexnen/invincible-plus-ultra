@@ -177,7 +177,11 @@ export function publicEvent(state, ev, meta = {}) {
     that combatant; one that has left the fight keeps the plain name the line was written with. */
 export function pubLine(label, name = null) {
   const pub = typeof label?.pub === "string" ? label.pub : "";
-  return pub.includes("{c:") ? pub.replace(/\{c:([^{}]{1,64})\}/g, (_, id) => String((typeof name === "function" ? name(id) : null) ?? label.who?.[id] ?? "")).replace(/^: /, "") : pub;
+  if (!pub.includes("{c:")) return pub;
+  const nm = (id) => (typeof name === "function" ? name(id) : null) ?? label.who?.[id] ?? null;
+  /* BH4-6: a bracket about somebody besides the doer and the targets (a reactor, the extra opponent of Bang Heads knocked out: engine-pure
+     rxText / hurtText) whom THIS reader does not know is left out of that reader's line ("[: unconscious]" told of somebody unseen) */
+  return pub.replace(/ \[\{c:([^{}]{1,64})\}: [^\[\]]*\]/g, (all, id) => (nm(id) ? all : "")).replace(/\{c:([^{}]{1,64})\}/g, (_, id) => String(nm(id) ?? "")).replace(/^: /, "");
 }
 /** Journal rows for a viewer: the public text only (spec 10: two texts), no operations.
     ctx = { concealed: ids the viewer must not learn about (concealedFor), name: (id) -> the viewer's name for a combatant }
