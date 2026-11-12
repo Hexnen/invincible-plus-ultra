@@ -31,7 +31,7 @@ for (const mode of ["a", "b", "c"]) {
     const own = Object.entries(S).filter(([k]) => k !== "notice" && k !== "rail");
     /* nothing covers the bar; no two places share a pixel (the rail is the frame of b's three places) */
     for (const [name, b] of own) ok(!SP.meets(b, bar), `B1 ${tag}: ${name} stays off the bar`);
-    for (let i = 0; i < own.length; i++) for (let j = i + 1; j < own.length; j++) ok(!SP.meets(own[i][1], own[j][1]), `B2 ${tag}: ${own[i][0]} and ${own[j][0]} do not overlap`);
+    for (let i = 0; i < own.length; i++) for (let j = i + 1; j < own.length; j++) if (own[i][1].share !== own[j][0] && own[j][1].share !== own[i][0]) ok(!SP.meets(own[i][1], own[j][1]), `B2 ${tag}: ${own[i][0]} and ${own[j][0]} do not overlap`);
     for (const [name, b] of own) ok(b.x0 >= 0 && b.y0 >= 0 && b.x1 <= c.W && b.y1 <= c.H && b.x1 - b.x0 >= 120, `B3 ${tag}: ${name} inside the window and usable (${JSON.stringify(b)})`);
     /* the places hanging from the top stay under the initiative bar; the challenges' band and the desk never share the column */
     for (const [name, b] of own) if (b.anchor === "top") ok(b.y0 >= 70, `B4 ${tag}: ${name} under the initiative bar`);

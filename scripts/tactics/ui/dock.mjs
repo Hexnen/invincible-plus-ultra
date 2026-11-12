@@ -54,7 +54,7 @@ let root = null, stack = null, handlers = {}, shown = false, hideTimer = 0, last
 let drawn = 0, kept = null;
 /* U132 (trial, slots-pure.mjs): the places outside the bar's stack (name -> the inner box the content goes in), what the window of variant c
    showed last and the tab the user chose there, the questions seen at the last draw (a new one comes forward) */
-let slotEls = {}, tabWas = null, tabPicked = null, asksWere = "", frameKey = "";
+let slotEls = {}, tabWas = null, tabPicked = null, asksWere = "", frameKey = "", shareWas = false;
 const SLOT_NAMES = Object.freeze({ a: ["line", "cards", "hint"], b: ["cards", "hint", "line"], c: [] });
 
 export function configure(x) { handlers = x ?? {}; }
@@ -344,6 +344,9 @@ function placeSlots(rec) {
   /* the desk and the challenges read their part of the frame: told only when it changed */
   const key = JSON.stringify([fr.desk, fr.band, fr.toast]);
   if (key !== frameKey) { frameKey = key; handlers.ichFloor?.(fr.band?.present ? fr.band.y1 : null); handlers.deskRelayout?.(); }
+  /* a: whether the hint shares the questions' place is the frame's; when that flips, the pieces are put again (once) */
+  const share = !!fr.slots.hint?.share;
+  if (share !== shareWas) { shareWas = share; if (last) requestAnimationFrame(() => { if (last) render(last.d, last.ui); }); }
   delete root.dataset.under;
   root.style.removeProperty("--itd-under-top");
 }
@@ -623,9 +626,11 @@ function draw(d, ui) {
     /* U132 a / b: each kind in its own place (slots-pure.mjs frame) */
     swap(stack, [pnl, barEl]);
     const put = (name, node) => { const el = slotEls[name]; if (!el) return; swap(el, [node]); if (node) delete el.parentElement.dataset.empty; else el.parentElement.dataset.empty = "1"; };
-    put("cards", asksOf(prompts, !!d.sum, legendOn));
+    const asks = asksOf(prompts, !!d.sum, legendOn);
+    put("cards", asks);
     put("line", wait);
-    put("hint", hint);
+    /* a, narrow band: the hint and the questions share one place, the questions first (the hint waits while a question stands) */
+    put("hint", Slots.frameNow()?.slots?.hint?.share && asks ? null : hint);
   }
   /* U41: the answer the keyboard chose on a card (Enter sends it) */
   try { const kp = d.keys?.chosen; if (kp) for (const el of root.querySelectorAll(".ita-opt, .ita-submit")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
@@ -655,6 +660,6 @@ export const relayout = () => { if (root && shown) place(); };
 export function press(fk) { try { const el = root && shown ? [...root.querySelectorAll("[data-fk]")].find((e) => e.dataset.fk === fk) : null; if (!el) return false; el.click(); return true; } catch { return false; } }
 export const el = () => root;
 export const isShown = () => shown;
-export function destroy() { clearTimeout(hideTimer); root?.remove(); root = stack = null; shown = false; last = null; kept = null; slotEls = {}; tabWas = tabPicked = null; asksWere = ""; frameKey = ""; }
+export function destroy() { clearTimeout(hideTimer); root?.remove(); root = stack = null; shown = false; last = null; kept = null; slotEls = {}; tabWas = tabPicked = null; asksWere = ""; frameKey = ""; shareWas = false; }
 /** U132 (trial): the variant of the fixed places ("off" = the column of today); the dock is built again in it on the next draw */
 export function setMode(m) { if (!Slots.setMode(m)) return false; const was = last; destroy(); if (was) render(was.d, was.ui); return true; }

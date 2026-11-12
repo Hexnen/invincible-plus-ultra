@@ -93,23 +93,23 @@ export function frame(f) {
     /* the band under the initiative bar, between what stands at the left (the map's panels) and the challenges / the open desk */
     const L = Math.max(12, Number(f.topL) || 12), R = Math.min(hudOn && f.hud.x0 ? f.hud.x0 - 10 : side - 12, deskOpen ? deskX0 - 10 : Infinity);
     const lineH = SIZE.line * k, y = top0 + 4;
-    /* the hint: the right end of the band beside the questions when both fit side by side; on a narrow band it takes a fixed row under
-       the line across the band and the questions start under it (the row is kept while the hints are on, whether a hint shows or not) */
+    /* the hint: the right end of the band beside the questions when both fit side by side; on a narrow band it shares the questions'
+       place (its top, as wide as the band): the questions come first and the hint waits while one stands (dock.mjs draw) */
     const side2 = f.hints && R - L >= (SIZE.card + SIZE.hint) * k + GAP;
-    const hintW = !f.hints ? 0 : side2 ? SIZE.hint * k : R - L, hintH = !f.hints ? 0 : side2 ? SIZE.hintH * k : SIZE.hintRow * k;
+    const hintW = side2 ? SIZE.hint * k : 0;
     const cardsR = side2 ? R - hintW - GAP : R;
     /* the line and the questions hang centred under the initiative bar (what hangs above them), as wide as stays free on both sides */
     let lx0 = L, lx1 = cardsR;
     const cx = Number(f.topCx), half = Math.min(cx - L, cardsR - cx);
     if (Number.isFinite(cx) && half * 2 >= SIZE.card * k) { lx0 = cx - half; lx1 = cx + half; }
     out.slots.line = { ...box(lx0, y, lx1, y + lineH), anchor: "top", align: "center" };
-    const hy = side2 ? y : y + lineH + 6;
-    if (f.hints) out.slots.hint = { ...box(R - hintW, hy, R, hy + hintH), anchor: "top", align: side2 ? "end" : "center" };
     /* the questions may reach down to the bar: a question and the user's own armed panel rarely stand together (a question comes on
        another's turn); when they do, the dock holds the questions over the panel (dock.mjs placeSlots), the panel never moves */
-    const cardsTop = (f.hints && !side2 ? hy + hintH + GAP : y + lineH + 6), cardsEnd = Math.max(cardsTop + 140, bar.top - GAP);
+    const cardsTop = y + lineH + 6, cardsEnd = Math.max(cardsTop + 140, bar.top - GAP);
     out.slots.cards = { ...box(lx0, cardsTop, lx1, cardsEnd), anchor: "top", align: "center" };
-    out.slots.notice = { ...box(R - Math.min(460, R - L), (f.hints && side2 ? y + hintH + GAP : y + lineH + 6), R, H), anchor: "top", align: "end" };
+    if (f.hints) out.slots.hint = side2 ? { ...box(R - hintW, y, R, y + SIZE.hintH * k), anchor: "top", align: "end" }
+      : { ...box(lx0, cardsTop, lx1, cardsTop + SIZE.hintRow * k), anchor: "top", align: "center", share: "cards" };
+    out.slots.notice = { ...box(R - Math.min(460, R - L), (side2 ? y + SIZE.hintH * k + GAP : y + lineH + 6), R, H), anchor: "top", align: "end" };
   } else if (mode === "b") {
     /* the rail: the right edge of the map, under the challenges' band, over the toasts' strip; on the GM seat with the desk open it stands
        beside the desk (the desk keeps the column: on that seat the questions are the desk's own cards) */

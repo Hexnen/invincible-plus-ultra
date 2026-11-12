@@ -130,7 +130,7 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css") 
   ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute/.test(restS), "D (U132): placeSlots writes nothing outside what the outcome compares");
   ok(/drawn\+\+;[^\n]*\n\s*place\(\);\s*\n\s*reveal\(\);/.test(dock), "D: a draw counts before it places (new content always places in full)");
   ok(/addEventListener\("load", \(\) => \{ drawn\+\+; \}, true\)/.test(dock) && /"loadingdone", \(\) => \{ drawn\+\+; \}/.test(dock), "D: a picture or a font that finished loading counts as new content");
-  ok(/last = null; kept = null;( slotEls = \{\}; tabWas = tabPicked = null; asksWere = ""; frameKey = "";)? \}/.test(dock), "D: a destroyed dock forgets what it read");
+  ok(/last = null; kept = null;( slotEls = \{\}; tabWas = tabPicked = null; asksWere = ""; frameKey = ""; shareWas = false;)? \}/.test(dock), "D: a destroyed dock forgets what it read");
 }
 
 done("check-perf");
