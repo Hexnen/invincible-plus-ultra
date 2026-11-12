@@ -843,7 +843,7 @@ function paintTile(card, it, first) {
   const actsSay = (it.acts ?? []).map((p) => t("ICB.Bar.Act.Line", { name: t(`ICB.Bar.Act.${p.lk}`), state: t(p.used ? "ICB.Bar.Act.used" : "ICB.Bar.Act.open") }));
   const hint = it.canSelect ? t(it.canSheet ? "ICB.Bar.Hint.Select" : "ICB.Bar.Hint.Pan") : it.canSheet ? t("ICB.Bar.Hint.Sheet") : it.canPan ? t("ICB.Bar.Hint.Pan") : "";
   tile.setAttribute("aria-label", [it.name, initSay, disp, ...flags, ...dupSay, ...numbers, ...actsSay, hint].filter(Boolean).join(". ") + ".");
-  tile.dataset.tooltip = it.name;   // hover: the name only (escaped by Foundry as plain text); everything else is in the aria-label
+  tile.dataset.tooltip = esc(it.name);   // hover: the name only; everything else is in the aria-label. FXA2 (D195, S087): Foundry reads data-tooltip as HTML, so the name is escaped here (`Doc <b>X</b>` reads as written)
   tile.removeAttribute("data-tooltip-html");
   tile.dataset.tooltipDirection = "DOWN";
 

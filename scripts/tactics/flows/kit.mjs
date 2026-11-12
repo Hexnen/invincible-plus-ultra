@@ -470,6 +470,7 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
     const id = answerId(v, I, key);
     if (once(key)) {
       dm.npcOutcome = id;
+      if (id === "kill" || id === "ko") dm.fate = id === "kill" ? "dead" : "unconscious";      // FXA2 (U198)
       if (id === "kill") {
         R.effects.push({ t: "status+", who: t, status: { id: "dead", source: { kind: "gm", name: "npcBroken" } } });
         if (by && v.facts.c(by) && !v.facts.c(by).npc) R.effects.push({ t: "karma", note: { who: by, kind: "killed", target: t } });     // [B815], spec 9.11
@@ -503,6 +504,7 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
       dm.crit = { d6: I.data.res[key][0], bonus: cf.crit.bonus, cause: cf.crit.cause, n: rc.n, id: rc.entry?.id, shifted: rc.shifted };
       R.effects.push({ t: "crit", who: t, n: rc.n, id: rc.entry?.id });
       const cs = crits.critState([...(tf.crits ?? []), rc.n]);                                 // [B2749-2765]
+      if (cs.dead || cs.dying || cs.unconscious) dm.fate = cs.dead ? "dead" : cs.dying ? "dying" : "unconscious";      // FXA2 (U198): the news says what the injury did ("nie żyje")
       for (const sid of [cs.dead ? "dead" : null, cs.dying ? "dying" : null, cs.unconscious ? "unconscious" : null].filter(Boolean)) {
         const st = { id: sid, source: { kind: "crit", name: rc.entry?.id ?? "" } };
         if (sid === "dying") st.data = { within: cs.dying };                                   // the deadline is shown, nothing is counted (spec 6.1)

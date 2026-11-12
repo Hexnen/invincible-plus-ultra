@@ -26,7 +26,7 @@ export const SIZE = Object.freeze({
   notice: 460,      // the end-of-session notice's column
   bar2: 104,        // a bar in two rows (what the desk keeps clear of when the bar takes the edge under it)
   beside: 820,      // the least room the bar needs beside the open desk; with less it takes the whole bottom edge (U48)
-  desk: 230,        // the least the open desk keeps over the bar (its head and a few rows); the GM's band gives way for it
+  desk: 300,        // the least the GM desk keeps (its head, its tabs and a whole card of answers); the challenges' band gives way for it (FXA2 U197: was 230, over the bar only)
 });
 export const GAP = 8;
 export const TOAST = Object.freeze({ h: 132, min: 64, share: 0.2 });     // the chat toasts' strip (window px; Foundry's toasts are not scaled by U62)
@@ -80,7 +80,12 @@ export function frame(f) {
     const dx0 = f.desk?.x0 ?? side - 380 * k;
     const wouldUnder = dx0 - bar.lo < SIZE.beside * k, under = deskOpen && wouldUnder;
     const floorUnder = Math.min(toast.top - GAP, bar.bottom - Math.max(bar.bottom - bar.top, SIZE.bar2 * k) - 10);
-    if (hudOn && wouldUnder) bandEnd = Math.max(11 + BAND.min, Math.min(bandEnd, floorUnder - SIZE.desk * k - GAP));
+    /* FXA2 (U197): the band gives way wherever the desk would be shorter than its least, not only over the bar: at 1366x768 (and
+       wherever the toasts' strip stands high) the desk was some 240 px and a card's answers, a forced move's third button, the line of
+       an undo that could not take everything back lay under its fold. Worked out from the window alone (open or folded alike), so
+       nothing moves during a turn; the challenges HUD scrolls in its band as it does when there are many. */
+    const floorFor = wouldUnder ? floorUnder : toast.top - GAP;
+    if (hudOn) bandEnd = Math.max(11 + BAND.min, Math.min(bandEnd, floorFor - SIZE.desk * k - GAP));
     out.desk = { top: hudOn ? r(bandEnd + GAP) : 11, floor: r(under ? floorUnder : toast.top - GAP), toastH: toast.h, under };
   }
   out.band = { present: hudOn, y1: r(bandEnd) };

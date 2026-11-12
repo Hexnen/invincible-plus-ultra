@@ -57,6 +57,9 @@ export const EN_FLOW = {
   /* FXP (U181): where a knockback landed */
   "ITAC.ui.news.land": "lands: {zone}",
   "ITAC.ui.news.thrownOut": "thrown out of the vehicle ({vehicle})",
+  "ITAC.ui.news.fate.dead": "dead",
+  "ITAC.ui.news.fate.dying": "dying",
+  "ITAC.ui.news.fate.unconscious": "knocked out",
   /* FXR (U188): where a drive ended */
   "ITAC.ui.news.reach": "reaches {zone}",
   "ITAC.ui.news.stopAt": "stops in {zone}",
@@ -117,6 +120,9 @@ export const PL_FLOW = {
   "ITAC.ui.wait.k.heroDead": "śmierć",
   "ITAC.ui.news.land": "ląduje: {zone}",
   "ITAC.ui.news.thrownOut": "wypada z pojazdu ({vehicle})",
+  "ITAC.ui.news.fate.dead": "nie żyje",
+  "ITAC.ui.news.fate.dying": "umiera",
+  "ITAC.ui.news.fate.unconscious": "nieprzytomny",
   "ITAC.ui.news.reach": "dociera: {zone}",
   "ITAC.ui.news.stopAt": "staje: {zone}",
   "ITAC.ui.fight.title": "Walka",

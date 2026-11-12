@@ -508,13 +508,13 @@ function newsText(n, facts, t) {
     const dealt = !Number.isFinite(r.taken) ? null : r.taken === 0 ? (r.hit === false ? null : t("ITAC.ui.news.noDamage")) : t(r.stress ? "ITAC.ui.news.stress" : "ITAC.ui.news.taken", { n: r.taken });
     /* U192 (UX review 2): what the hit did to the character (minions down, broken, the injury) comes before the stunts that made it: a
        line cut at its place's end loses the stunts' names (they stand in the tooltip), never "broken" or the injury */
-    const bits = [verdict, dealt, r.out > 0 ? t("ITAC.ui.news.out", { n: r.out }) : null, r.down ? t("ITAC.status.broken").toLowerCase() : null, r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null,
+    const bits = [verdict, dealt, r.out > 0 ? t("ITAC.ui.news.out", { n: r.out }) : null, r.down ? t("ITAC.status.broken").toLowerCase() : null, r.crit && Number.isFinite(r.crit.n) ? t("ITAC.float.crit", { n: r.crit.n, name: t(`ITAC.crit.${r.crit.id}`, {}, "") }) : null, r.fate ? t(`ITAC.ui.news.fate.${r.fate}`, {}, "") : null,      /* FXA2 (U198): an injury that kills says so */
       r.land ? t("ITAC.ui.news.land", { zone: zoneText(facts, t, r.land) }) : null, r.seat ? t("ITAC.ui.news.thrownOut", { vehicle: nameOf(facts, r.seat, t) }) : null,      // FXP (U181) where a knockback landed
       ...(r.stunts ?? []).filter((s) => !(s === "doubleDamage" && r.taken === 0)).map((s) => t(`ITAC.stunt.${s}`, {}, String(s)))].filter(Boolean);      // D127
     return `${nameOf(facts, r.target, t)}: ${bits.join(", ")}`;
   });
   /* a hazard that hurt nobody says so once, with the names after it (four "no damage" in a row is one fact) */
-  const none = (n.rows ?? []).filter((r) => typeof r?.hit !== "boolean" && r?.taken === 0 && !r.out && !r.down && !r.crit && !(r.stunts ?? []).length);      // SEAM: uxc's injury (D127) is a fact of its own too
+  const none = (n.rows ?? []).filter((r) => typeof r?.hit !== "boolean" && r?.taken === 0 && !r.out && !r.down && !r.crit && !r.fate && !(r.stunts ?? []).length);      // SEAM: uxc's injury (D127) is a fact of its own too
   if (rows.length > 1 && none.length === rows.length) rows.splice(0, rows.length, `${t("ITAC.ui.news.noDamage")}: ${none.map((r) => nameOf(facts, r.target, t)).join(", ")}`);
   /* FXR (U188): a drive says where it went ("Drive: reaches Zone 7"), not only that it was done */
   const went = !rows.length && typeof n.to === "string" && n.to && ["done", "stopped"].includes(n.result) ? t(n.result === "stopped" ? "ITAC.ui.news.stopAt" : "ITAC.ui.news.reach", { zone: zoneText(facts, t, n.to) }) : null;
@@ -675,7 +675,9 @@ function extrasOf(bar, t, facts = {}) {
    -> { weapons: { label, empty, items } | null, opts: [{ id, label, tip, on }], maxTargets, decl, dice: [{ label, dice }], why, notes: [text] } */
 const FULL_AUTO_MAX = 12;
 function armsOf(bar, a, own, facts, t) {
-  const none = { weapons: null, opts: [], maxTargets: 1, decl: {}, dice: [], why: null, notes: [] };
+  /* FXA2 (D194): an action of the sheet that takes several targets (Mass Healing: 1-4 allies [B1934]) keeps as many as its entry allows;
+     every other non-attack keeps one (a second pick replaces the first) */
+  const none = { weapons: null, opts: [], maxTargets: a.flow !== "attack" && Number(a.targetMax) > 1 ? Math.trunc(Number(a.targetMax)) : 1, decl: {}, dice: [], why: null, notes: [] };
   if (a.flow !== "attack") return none;
   const shooting = a.attack === "shooting", melee = a.attack === "slugfest";
   const list = a.unarmed ? [] : shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : [];
@@ -787,7 +789,9 @@ function declarePanel(bar, a, own, facts, t) {
     : a.disabled ? { reason: whyText(t, a.disabled), text: own.why ?? "", placeholder: t("ITAC.ui.exception.placeholder"),
       submit: { label: t("ITAC.ui.exception.ask"), disabled: why ?? ((own.why ?? "").trim() ? null : t("ITAC.ui.exception.needText")),
         req: !why && (own.why ?? "").trim() ? bar.exception.req(`${title}${picked.length ? ` (${picked.map((id) => nameOf(facts, id, t)).join(", ")})` : ""}: ${own.why.trim()}`.slice(0, 400), null, { reason: a.disabled, decl: { ...decl, action: a.id } }) : null } } : null;
-  return { kind: "declare", action: a.id, title, cost, price, unit: a.cost, stress: Number(a.stress) || 0, need, pv: pvOf(a), choice, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, onMap, reached: !!reach, area: !!arm.decl.area,
+  /* FXA2 (D194): each target beyond the first costs its stress (Mass Healing [B1934]; flows/acts.mjs charges it), shown in the price as it is picked */
+  const extra = a.stressExtra ? Math.max(0, picked.length - 1) : 0, stress = (Number(a.stress) || 0) + extra, price2 = extra ? priceOf(t, a.cost, stress, { also: a.also }) : price;
+  return { kind: "declare", action: a.id, title, cost: extra ? price2?.say ?? cost : cost, price: price2, unit: a.cost, stress, need, pv: pvOf(a), choice, targets, picking: !!a.needsTarget && !picked.length, tokens, refused, onMap, reached: !!reach, area: !!arm.decl.area,
     slot: a.needsTarget && !picked.length && onMap ? { label: t(arm.maxTargets > 1 ? "ITAC.ui.slot.picks" : "ITAC.ui.slot.pick"), tip: t("ITAC.ui.slot.tip") } : null,
     aim: onMap ? picked.map((id) => (targets ?? []).find((x) => x.id === id)).filter(Boolean).map((x) => ({ id: x.id, name: x.name, img: x.img })) : null, attrs, approach: ap, maxTargets: arm.maxTargets, weapons: arm.weapons, opts: arm.opts, notes: arm.notes,
     self: a.optTarget && !picked.length ? t("ITAC.ui.target.self", { name: bar.name ?? "" }) : null,
@@ -969,7 +973,12 @@ export function dockData(model, own, facts, t) {
     ...(g === "act" && menu.length ? [{ id: "@more", more: true, icon: "@more", label: t("ITAC.ui.more"), tip: tipOf(t("ITAC.ui.more"), null, moreOff, [t("ITAC.ui.more.tip")]), disabled: moreOff?.text ?? null, armed: own.mode === "menu" || menu.some((a) => a.id === own.armed) }] : []),
     ...(g === "power" && hasKit ? [{ id: "@kit", more: true, mode: "kit", icon: "@kit", label: t("ITAC.ui.kit"), tip: tipOf(t("ITAC.ui.kit"), null, kitOff, [t("ITAC.ui.kit.tip")]), disabled: kitOff?.text ?? null, armed: own.mode === "kit" || kitActs.some((a) => a.id === own.armed) || loose.some((a) => a.id === own.armed) }] : [])] })).filter((g) => g.items.length);
   const mine = (model?.mine ?? []).filter((i) => i.actor === bar.combatant);
-  const armed = own.armed ? bar.actions.find((a) => a.id === own.armed) : null;
+  /* FXA2 (D196): CHANGING ONE'S OWN OPEN ACTION ("Zmień", op "amend": the same action, other targets or words) is not a new action: the
+     bar's reasons against declaring one (the table busy with this very action, its unit already paid, not one's turn any more) do not
+     hold against it. The engine judges the amend itself (legality, a move's price: engine-pure opAmend) and its refusal shows as any other. */
+  const amending = own.amend ? mine.find((i) => i.inst === own.amend) ?? null : null;
+  const armed0 = own.armed ? bar.actions.find((a) => a.id === own.armed) : null;
+  const armed = armed0 && amending && amending.action === armed0.id && armed0.disabled ? { ...armed0, disabled: null } : armed0;
   let panel = null;
   if (own.mode === "other") panel = { kind: "other", title: t("ITAC.action.other"), text: own.text ?? "", placeholder: t("ITAC.ui.other.placeholder"), hint: t("ITAC.ui.other.hint"),
     submit: { label: t("ITAC.ui.other.send"), disabled: (own.text ?? "").trim() ? null : t("ITAC.ui.need.text"), req: (own.text ?? "").trim() ? bar.other.req(own.text.trim()) : null } };
@@ -1245,6 +1254,9 @@ export function deskData(model, own, facts, t) {
     show: true, count, tab: ["now", "journal", "scene", "table", "kit"].includes(own.tab) ? own.tab : "now", collapsed: !!own.collapsed, kit,
     tabs: [{ id: "now", label: t("ITAC.ui.tab.now"), n: count }, { id: "journal", label: t("ITAC.ui.tab.journal"), n: 0 }, { id: "scene", label: t("ITAC.ui.tab.scene"), n: 0 }, { id: "table", label: t("ITAC.ui.tab.table"), n: 0 }, { id: "kit", label: t("ITAC.ui.tab.kit"), n: 0 }],
     scene: own.tab === "scene" ? sceneData(facts.view, own.scene ?? {}, facts, t) : null,      // P7: the chase, the vehicles, the challenges (scene-pure.mjs)
+    /* FXA2 (U197): on the Now tab the strip "waiting for: you (...)" only repeats the cards under it when the table waits for the GM
+       alone: it is left out there (one home per fact, U51), so the cards keep its room; another tab, or anybody else waited for, keeps it */
+    waitHide: (["now", "journal", "scene", "table", "kit"].includes(own.tab) ? own.tab : "now") === "now" && waiting.length > 0 && waiting.every((w) => w.mine) && (cards.length + model.info.length + model.manual.length) > 0,
     title: t("ITAC.ui.desk"), waiting, waitingLabel: t("ITAC.ui.waitingFor"), nobody: model.turn?.combatant ? t("ITAC.ui.wait.nobody", { name: model.turn.name ?? "" }) : t("ITAC.ui.wait.idle"),
     turn: "",      // U52: the round and whose turn it is stand on the initiative bar (and the name, numbered, on the bar of the dock)
     turnNote: model.turn?.combatant && facts.c?.(model.turn.combatant)?.npc ? spent(model.turn.combatant) : null,
