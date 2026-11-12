@@ -70,9 +70,17 @@ export const err = (code, params = {}) => ({ ok: false, changed: false, error: {
 /* ------------------------------------------------------------------ shapes */
 export const newInit = () => ({ deck: 10, slots: [], cur: null, curMember: null, prev: {}, trail: [] });
 
-export function newState({ mode = "free", kind = "combat", opts = {} } = {}) {
+/* H3-1: the fight's own tag. Every id the engine hands out (actions, prompts, roll requests, triggers ...) carries it, so no key built of
+   an id (the roll watch, the roller's throw memo, the chat card's tag, a client's open card, the camera's beat) can meet the same id of
+   an earlier fight on this Combat or of a fight on another Combat. The executor makes it at start (engine.mjs); a state without one
+   (the node tables) keeps the bare ids. */
+export const FIGHT_RE = /^[a-z0-9]{4,16}$/;
+export const isFight = (f) => typeof f === "string" && FIGHT_RE.test(f);
+/** a tag no other fight of any Combat has: the time (ms, base 36) and a little chance (rand in [0, 1)) */
+export const makeFight = (now, rand) => `${Math.max(0, Math.trunc(Number(now) || 0)).toString(36)}${Math.trunc((Number(rand) || 0) * 46656).toString(36).padStart(3, "0")}`.slice(-16);
+export function newState({ mode = "free", kind = "combat", opts = {}, fight = null } = {}) {
   return {
-    v: V, rev: 0, seen: [], seq: 0,
+    v: V, rev: 0, seen: [], seq: 0, ...(isFight(fight) ? { fight } : {}),
     mode: MODES.includes(mode) ? mode : "free", kind: KINDS.includes(kind) ? kind : "combat",
     round: 0, phase: "idle",
     init: newInit(), ledger: {}, stack: [], prompts: {}, triggers: [], tokens: [], statuses: {}, counters: {}, effects: [], items: [], summons: [],
@@ -221,7 +229,7 @@ export function sanitizePrompt(r) {
 export function sanitize(raw) {
   try {
     if (!isObj(raw) || raw.v !== V) return null;
-    const s = newState({ mode: raw.mode, kind: raw.kind, opts: raw.opts });
+    const s = newState({ mode: raw.mode, kind: raw.kind, opts: raw.opts, fight: raw.fight });
     s.rev = int(raw.rev, 0, 1e12, 0);
     s.seq = int(raw.seq, 0, 1e12, 0);
     s.seen = Array.isArray(raw.seen) ? raw.seen.filter((x) => typeof x === "string" && x.length <= 120).slice(-SEEN_MAX) : [];
@@ -255,7 +263,8 @@ export function parse(text) {
 }
 
 /* ------------------------------------------------------------------ ids, request dedupe */
-export const nextId = (state, prefix) => `${prefix}${++state.seq}`;
+export const idOf = (state, prefix, n) => `${prefix}${n}${isFight(state?.fight) ? `_${state.fight}` : ""}`;      // H3-1: "a4_<fight>"
+export const nextId = (state, prefix) => idOf(state, prefix, ++state.seq);
 export const hasSeen = (state, rid) => !!rid && Array.isArray(state?.seen) && state.seen.includes(rid);
 /** rev + 1 and the request id remembered (last 80) [spec 1.3]. Mutates the given (already cloned) state. */
 export function stamp(state, rid) {
@@ -309,7 +318,7 @@ export function viewFor(state, viewer = {}) {
   init.trail = init.trail.filter((m) => !hidden.has(m));
   if (init.surprised) init.surprised = init.surprised.filter((m) => !hidden.has(m));
   s.triggers = s.triggers.filter((t) => !hidden.has(t.subject.combatant) && !hidden.has(t.expires?.who));       // a trigger about a hidden combatant goes as a whole
-  const keep = { v: s.v, rev: s.rev, seq: s.seq, mode: s.mode, kind: s.kind, round: s.round, phase: s.phase, seen: [] };
+  const keep = { v: s.v, rev: s.rev, seq: s.seq, ...(s.fight ? { fight: s.fight } : {}), mode: s.mode, kind: s.kind, round: s.round, phase: s.phase, seen: [] };
   const out = { ...keep };
   for (const [k, val] of Object.entries(s)) {
     if (k in keep) continue;

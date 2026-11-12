@@ -36,6 +36,19 @@ const give = (T, cid, ...names) => { const c = T.c[cid]; c.kit = KP.build({ item
   }
 }
 
+/* ---- H3-1 (the fix, pure): the fight's tag on every id, kept through the store's read and the player's view; two fights never share one */
+{
+  const f1 = S.makeFight(1762905600000, 0.5), f2 = S.makeFight(1762905600001, 0.5), f3 = S.makeFight(1762905600000, 0.51);
+  ok(S.isFight(f1) && f1 !== f2 && f1 !== f3, `H3-1: fight tags differ by the time and by chance (${f1} ${f2} ${f3})`);
+  const s = S.newState({ fight: f1 });
+  eq([S.nextId(s, "a"), S.nextId(s, "p"), S.nextId(S.newState({}), "a")], [`a1_${f1}`, `p2_${f1}`, "a1"], "H3-1: every id carries the fight's tag (a state with none keeps the bare ids)");
+  ok(S.isId(`r123_${f1}`), "H3-1: a tagged id is still an id");
+  eq([S.sanitize(s)?.fight, S.newState({ fight: "Bad.Tag" }).fight], [f1, undefined], "H3-1: the tag survives the store's read; a malformed one is none");
+  const FP = await import("./ui/feedback-pure.mjs");
+  ok(FP.eventKey({ combat: "c", fight: f1, seq: 3, type: "outcome" }) !== FP.eventKey({ combat: "c", fight: f2, seq: 3, type: "outcome" }), "H3-1: the floaters' event key tells the 3rd event of two fights apart");
+  ok(/\$\{ev\.combat\}\|\$\{ev\.fight \?\? ""\}\|\$\{ev\.seq/.test(src("./ui/camera.mjs")), "H3-1: the camera's heard key has the combat and the fight");
+}
+
 /* ---- H3-5: the roll watch after the executor's memo is gone (a GM reload, another GM becoming the executor) */
 {
   const st = { stack: [{ id: "a1", rolls: { attack: { key: "attack", who: "H1", req: { rid: "r1", at: 0, users: ["p1"] } } } }] };
@@ -133,7 +146,8 @@ async function closeAll() {
   eq((await api.stop(combat)).ok, true, "H3-1: fight 1 stopped (its roll card stays in the chat)");
   eq((await api.start(combat)).ok, true, "H3-1: fight 2 on the same Combat");
   const r2 = await attack(), at = st().stack[0].rolls.attack.req.at;
-  eq([r2.rid === r1.rid, r2.inst === r1.inst], [true, true], `H3-1 (premise): fight 2 asks for its first roll with fight 1's request id and action id again (${r1.inst}/${r1.rid})`);
+  /* (was the premise "fight 2 asks with fight 1's ids again"; since the fix every id carries the fight's tag, state-pure.idOf) */
+  eq([r2.rid === r1.rid, r2.inst === r1.inst, r2.rid.replace(/_.*/, "") === r1.rid.replace(/_.*/, "")], [false, false, true], `H3-1: fight 2's first roll has the same count as fight 1's but not its request id or action id (${r1.inst}/${r1.rid} vs ${r2.inst}/${r2.rid})`);
   /* p1's client never got the request (or its throw was lost): the watch should ask again; it finds fight 1's message instead */
   const acts = Engine.watchRolls(at + RW.RESEND_AT[0]); await settle();
   eq(acts.map((a) => a.do), ["resend"], "H3-1: the roll of fight 2 nobody answered is asked for again (not fed from fight 1's chat card)");

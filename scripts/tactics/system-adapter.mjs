@@ -371,19 +371,19 @@ async function dialogFor(req, labelOf) {
    the engine's and the dialog had nothing to decide about it; who may see the dice is the engine's word too (req.mode "gm": a hidden
    combatant, a secret roll), everything else of a fight is rolled in the open. The dice are still the system's own roll and chat card.
    One throw per request id on this client; `force` (the dock's "Roll" after a throw that never arrived) throws again. */
-const thrown = new Map();
-export const rollStarted = (rid) => thrown.get(rid) ?? 0;
+const thrown = new Map();                                                                 // H3-1: "<combat>|<rid>" (the rid carries the fight's tag)
+export const rollStarted = (rid, combat = null) => thrown.get(`${combat ?? ""}|${rid}`) ?? [...thrown].find(([k]) => k.endsWith(`|${rid}`))?.[1] ?? 0;
 export const ROLL_RETRY_MS = 4000;
 export async function rollNow(req, labelOf = (s) => s, { force = false } = {}) {
-  const at = thrown.get(req.rid) ?? 0;
+  const tk = `${req?.combat ?? ""}|${req?.rid ?? ""}`, at = thrown.get(tk) ?? 0;
   if (at && !(force && Date.now() - at >= ROLL_RETRY_MS)) return null;
-  thrown.set(req.rid, Date.now()); if (thrown.size > 200) thrown.delete(thrown.keys().next().value);
+  thrown.set(tk, Date.now()); if (thrown.size > 200) thrown.delete(thrown.keys().next().value);
   try {
     const dlg = await dialogFor(req, labelOf);
     if (typeof dlg._prepareContext !== "function" || typeof dlg._roll !== "function") return typeof dlg.wait === "function" ? dlg.wait() : dlg.render({ force: true });      // the system changed: its dialog, as before
     await dlg._prepareContext();
     return await dlg._roll({ submitter: { dataset: { action: req.mode === "gm" ? "gm" : "public" } } }, undefined, undefined);
-  } catch (err) { thrown.delete(req.rid); throw err; }
+  } catch (err) { thrown.delete(tk); throw err; }
 }
 /* U1: the system's own "push" and "accept" of a roll, pressed from the tactical surfaces. They are the chat log's click handlers and read
    nothing but the message id from the event, so they are called with a stand-in event; the system's rules (stress, max pushes) stay its own. */

@@ -136,7 +136,7 @@ function publish(combat, state, events) {
   if (!events?.length) return;
   const meta = metaOf(combat);
   for (const ev of events) {
-    const full = { ...ev, combat: combat.id };
+    const full = { ...ev, combat: combat.id, ...(state?.fight ? { fight: state.fight } : {}) };      // H3-1: an event's seq counts from 1 in every fight: the fight's tag tells them apart
     try { Hooks.callAll(HOOK_GM, full); } catch (err) { console.warn(`${MOD} | tacticsGm listener`, err); }
     let pub = null;
     try { pub = V.publicEvent(state, full, meta); } catch { pub = null; }
@@ -178,7 +178,7 @@ export async function exec(user, combatRef, req, meta = {}) {
     if (meta.via !== "relay") { const n = R.normalize(req, { staff }); if (!n.ok) return bad(n.code); r = n.req; }
     const combat = Store.combatOf(combatRef);
     if (!combat) return bad("gone");
-    if (r.op === "start") r = { ...r, mode: S.MODES.includes(r.mode) ? r.mode : startMode(), opts: { ...startOpts(), ...(r.opts && typeof r.opts === "object" ? r.opts : {}) } };
+    if (r.op === "start") r = { ...r, mode: S.MODES.includes(r.mode) ? r.mode : startMode(), opts: { ...startOpts(), ...(r.opts && typeof r.opts === "object" ? r.opts : {}) }, fight: S.makeFight(Date.now(), Math.random()) };      // H3-1: the fight's tag is the executor's, never the asker's
     const rid = meta.rid ?? R.makeRid(user.id, `l${++ctr}${Math.random().toString(36).slice(2, 6)}`);
     return await run(combat.id, { t: "req", user: { id: user.id, staff }, rid, req: r }, { claimKey: meta.via === "relay" && r.op !== "preview" ? `q:${rid}` : null, low: !staff });      // a preview only reads: no claim, no write of the combat per question
   } catch (err) {
@@ -213,14 +213,14 @@ const watchMemo = { fed: new Map(), sent: new Map() };
 export function watchRolls(now = Date.now()) {
   try {
     if (!Store.iAmExecutor()) return [];
-    const byRid = new Map();
-    for (const m of (game.messages?.contents ?? []).slice(-120)) { const tg = Sys.tacticsOf(m); if (tg) byRid.set(tg.rid, m); }
+    const byRid = new Map();                                                                   // H3-1: "<combat>|<rid>" (a tag with no combat: the fight on the table)
+    for (const m of (game.messages?.contents ?? []).slice(-120)) { const tg = Sys.tacticsOf(m); if (tg) byRid.set(`${tg.combat ?? Store.currentCombat()?.id ?? ""}|${tg.rid}`, m); }
     const done = [];
     for (const combat of game.combats ?? []) {
-      const state = Store.stateOf(combat);
+      const state = Store.stateOf(combat), msgOf = (rid) => byRid.get(`${combat.id}|${rid}`) ?? null;
       if (!state?.stack?.length) continue;
-      for (const a of RW.plan(state, now, { messageFor: (rid) => byRid.get(rid)?.id ?? null, memo: watchMemo })) {
-        if (a.do === "feed") onRollMessage(byRid.get(a.rid), { again: true });
+      for (const a of RW.plan(state, now, { messageFor: (rid) => msgOf(rid)?.id ?? null, memo: watchMemo })) {
+        if (a.do === "feed") onRollMessage(msgOf(a.rid), { again: true });
         else {
           const inst = state.stack.find((i) => i.id === a.inst), rec = inst?.rolls?.[a.key];
           if (!rec?.req) continue;
