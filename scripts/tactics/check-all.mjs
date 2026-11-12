@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const SUITES = ["pure", "state", "ledger", "initiative", "scheduler", "ops", "source", "journal", "engine", "view", "relay", "desk", "ui", "zones", "move", "p7", "defects", "defects4", "fight", "attacks", "acts", "hazards", "kit", "int", "lang", "glossary", "names", "u4", "u8", "u10", "u11", "u13", "u14", "u17", "u19", "u20", "board", "facing", "executor", "cam",
-  "../check-kit"];      // U79: the shared kit's own checks (scripts/check-kit.mjs) run with the suite: a kit change that breaks a surface fails here too
+  "../check-kit", "../check-marks"];      // U79: the shared kit's own checks (scripts/check-kit.mjs) run with the suite: a kit change that breaks a surface fails here too
 let checks = 0, failed = 0, broken = 0;
 for (const s of SUITES) {
   const r = spawnSync(process.execPath, [s.startsWith("../") ? join(dir, "..", `${s.slice(3)}.mjs`) : join(dir, `check-${s}.mjs`)], { encoding: "utf8" });

@@ -8,6 +8,7 @@
    centred on #hotbar, sitting 8 px above it, pushed clear of the party column (left) and the sidebar / chat notifications (right); a window
    too narrow for the full panel drops the name, then the panel's font-size shrinks. The panel slides down out of sight when hidden. */
 import { t } from "./lang.mjs";
+import { costClasses } from "../kit.mjs";      // U93: an action of the turn is the kit's mark, here as on every surface
 
 const ID = "invincible-turn-tray";
 const GAP = 6;
@@ -17,7 +18,9 @@ const mk = (tag, cls, text) => {
   if (text !== undefined) el.textContent = text;
   return el;
 };
-const ICON = { fast: "fa-forward", slow: "fa-play", one: "fa-play" };
+/* which mark an action is: Invincible's full / quick; Year Zero's slow / fast and a single action take the same two shapes */
+const MARK = { full: "full", quick: "quick", fast: "quick", slow: "full", one: "full" };
+const markCls = (p, off = false) => costClasses(MARK[p.unit] ?? MARK[p.k] ?? "full", { off })[0];
 
 let root = null, panel = null, tabs = null, who = null, acts = null, pill = null, endBtn = null, handlers = {};
 let shown = false, hideTimer = 0, last = null;
@@ -133,7 +136,7 @@ function makeAct(it) {
   const b = mk("button", "itt-act");
   b.type = "button";
   b.dataset.key = it.key;
-  b.append(mk("i", `fa-solid ${ICON[it.k] ?? "fa-play"} itt-act-i`), mk("span", "itt-act-t"));
+  b.append(mk("i", "itt-act-i"));      // U93: the mark alone; its name and state are the tooltip and the label
   b.addEventListener("click", (ev) => { ev.preventDefault(); if (b.getAttribute("aria-disabled") === "true") return; handlers.onPip?.(b.dataset.key); });
   return b;
 }
@@ -143,9 +146,10 @@ function updateAct(b, it) {
   b.setAttribute("aria-pressed", it.state !== "open" ? "true" : "false");   // "used", or "lost" (tactical combat: spent by the other kind of action)
   b.setAttribute("aria-disabled", it.disabled ? "true" : "false");
   const state = t(`ITN.Act.${it.state}`);
-  b.setAttribute("aria-label", t("ITN.Act.Line", { name: it.label, state }));
-  b.dataset.tooltip = it.tip;
-  b.querySelector(".itt-act-t").textContent = it.label;
+  const line = t("ITN.Act.Line", { name: it.label, state });
+  b.setAttribute("aria-label", line);
+  b.dataset.tooltip = [line, it.tip].filter(Boolean).join(". ");
+  b.querySelector(".itt-act-i").className = `itt-act-i ${markCls(it, it.state !== "open")}`;      // spent or lost: the same shape, hollow
 }
 
 function makeChar(it) {
@@ -197,7 +201,7 @@ function renderPill(model) {
   if (pill.dataset.k === key) return;
   pill.dataset.k = key;
   pill.replaceChildren();
-  for (const p of model.pips ?? []) pill.append(mk("i", `fa-solid itt-pip ${ICON[p.k] ?? "fa-play"}${p.state !== "open" ? " itt-pip-used" : ""}`));
+  for (const p of model.pips ?? []) pill.append(mk("i", `itt-pip ${markCls(p, p.state !== "open")}${p.state !== "open" ? " itt-pip-used" : ""}`));
   pill.append(mk("i", "fa-solid fa-forward-step itt-pill-end"));
   pill.setAttribute("aria-label", `${t("ITN.Tray.Label")}: ${model.who?.name ?? ""}`);
   pill.dataset.tooltip = t("ITN.Tray.Label");

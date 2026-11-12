@@ -153,7 +153,7 @@ const boxOf = (p) => R(p.left, p.top, p.w, p.h);
   p = panel({ armed: "openDoor", ask: "z1|z3", why: "I have the key" });
   ok(!!p.ask.submit.req && p.ask.submit.disabled === null, "C: with words the question can be sent");
   const dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8"), css = readFileSync(new URL("../../styles/tactics-ui.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-  ok(/tip: r\.disabled \? \{ why: r\.why \?\? \{ text: r\.disabled \} \} : null/.test(dock) && /\[r\.label, \.\.\.r\.notes, r\.disabled, r\.why\?\.fix\]/.test(dock), "C: the row's tooltip is why + what to do; its aria-label says both");
+  ok(/tip: r\.disabled \? \{ why: r\.why \?\? \{ text: r\.disabled \} \} : null/.test(dock) && /\[r\.label, \.\.\.\(r\.say \?\? r\.notes\), r\.disabled, r\.why\?\.fix\]/.test(dock), "C: the row's tooltip is why + what to do; its aria-label says both");
   ok(/r\.disabled \? set\(\{ ask: r\.asking \? null : r\.id, why: "" \}\)/.test(dock) && /clickWhenDisabled: true, pv: r\.pv/.test(dock), "C: a click on a refused row opens (and closes) the question, as before");
   ok(!/itd-way-why/.test(dock) && !/itd-way-why/.test(css) && /\.itd-way\[aria-disabled="true"\] \{[^}]*border: 2px dashed/.test(css) && /r\.disabled \? icon\("fa-ban"\)/.test(dock), "C: no reason inside the row; a refused row is told apart by its dashed frame and the no-entry sign");
   for (const s of ["open", "breached", "closed", "locked", "sealed"]) for (const k of [`ITAC.why.doorState.${s}`, `ITAC.fix.doorState.${s}`]) ok(typeof EN[k] === "string" && typeof PL[k] === "string" && EN[k] !== PL[k] && /[.]$/.test(EN[k]) && /[.]$/.test(PL[k]), `C: ${k} is a sentence in both languages`);

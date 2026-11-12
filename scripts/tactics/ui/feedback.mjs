@@ -68,6 +68,16 @@ export function closeHint(id) { seenLocal = [...new Set([...(seenLocal ?? seenNo
 export function hintsSwitched(on) { try { if (on) { seenLocal = []; game.settings.set(MOD, "tacticsHintsSeen", "[]"); } H?.refresh(); } catch { /* not started */ } }
 
 /* ---------- U56: numbers over tokens ---------- */
+/* U93: what was lost is the mark of the language (the heart of Health, the bolt of stress), drawn by the picture font Foundry already
+   loaded: the canvas takes it as a fallback family of the same text. No such font in this browser: null, the words stand. */
+const FLOAT_GLYPH = { health: "\uf004", stress: "\uf0e7" };
+function floatGlyph(mark) {
+  try {
+    const fams = [getComputedStyle(document.documentElement).getPropertyValue("--font-awesome").trim().replace(/^["']|["']$/g, ""), "Font Awesome 7 Pro", "Font Awesome 7 Free", "Font Awesome 6 Pro", "Font Awesome 6 Free"].filter(Boolean);
+    const font = fams.find((f) => document.fonts.check(`900 16px "${f}"`, FLOAT_GLYPH[mark]));
+    return font && FLOAT_GLYPH[mark] ? { ch: FLOAT_GLYPH[mark], font } : null;
+  } catch { return null; }
+}
 const TONE = { health: 0xff8178, resolve: 0x3bb8e8, miss: 0xffffff, none: 0xd5dff0, state: 0xffe72a };
 function flush(combatId) {
   try {
@@ -89,8 +99,9 @@ function flush(combatId) {
       const k = n.get(f.target) ?? 0; n.set(f.target, k + 1);
       setTimeout(() => {
         try {
-          canvas.interface.createScrollingText(tok.center, f.text, { anchor: CONST.TEXT_ANCHOR_POINTS.CENTER, direction: CONST.TEXT_ANCHOR_POINTS.TOP, distance: Math.max(far(64), (tok.h ?? 100) * 0.9), duration: 2600, jitter: 0.1,
-            fontSize: px(30), fontFamily: "Titles, Comic, Signika, sans-serif", fill: TONE[f.tone] ?? 0xffffff, stroke: 0x0c1a2e, strokeThickness: Math.max(4, px(5)) });
+          const glyph = f.mark ? floatGlyph(f.mark) : null;      // U93: "-3" and the heart / the bolt; the words when the picture font is not there
+          canvas.interface.createScrollingText(tok.center, glyph ? `${f.num} ${glyph.ch}` : f.text, { anchor: CONST.TEXT_ANCHOR_POINTS.CENTER, direction: CONST.TEXT_ANCHOR_POINTS.TOP, distance: Math.max(far(64), (tok.h ?? 100) * 0.9), duration: 2600, jitter: 0.1,
+            fontSize: px(30), fontFamily: glyph ? `Titles, Comic, "${glyph.font}", Signika, sans-serif` : "Titles, Comic, Signika, sans-serif", fill: TONE[f.tone] ?? 0xffffff, stroke: 0x0c1a2e, strokeThickness: Math.max(4, px(5)) });
         } catch (e) { console.warn(LOG, "float failed", e); }
       }, k * FLOAT_GAP);
     }
