@@ -72,6 +72,31 @@ export function plan(state, now, { messageFor, readFor = null, memo }) {
   return acts;
 }
 
+/* D122: a request that came LATE (not lost) is followed by the watch's `again` copies of it, which the roller's client also gets late.
+   Each copy then threw once more (ROLL_RETRY_MS after the last throw): three cards, three sets of dice, only the first counts. A copy
+   is thrown only when no answer to that request is in this client's chat: a message whose tag carries the same request id (and the same
+   combat when both say one), written by one of the users asked. The answer the executor has not taken yet is the watch's to feed.
+   answered(messages, req, users, tagOf) -> true when the throw is in already. */
+export function answered(messages, req, users, tagOf) {
+  if (typeof req?.rid !== "string" || !req.rid) return false;
+  const asked = new Set(Array.isArray(users) ? users : []);
+  for (const m of messages ?? []) {
+    const tg = tagOf(m);
+    if (!tg || tg.rid !== req.rid || (tg.combat && req.combat && tg.combat !== req.combat)) continue;
+    const by = m?.author?.id ?? m?.author ?? null;
+    if (asked.has(by)) return true;
+  }
+  return false;
+}
+
+/* U137: the fight a roll card belongs to. A card whose tag names a combat that is gone (deleted, an earlier fight) belongs to no fight
+   on the table: its buttons are settled, never read against the fight there now. A card with no combat in its tag (older cards) reads
+   the fight on the table, as before. cardCombat(tag, get, current) -> the combat or null */
+export function cardCombat(tag, get, current) {
+  if (typeof tag?.combat === "string" && tag.combat) return get(tag.combat) ?? null;
+  return current ?? null;
+}
+
 /* U129: the system's roll card keeps its Push / Accept buttons until the system itself redraws it, so a card whose roll the fight has
    settled otherwise (the GM accepted it for the player, a later push made a new card, the action ended) kept live-looking buttons.
    cardState(view, tag, messageId) -> "open" (the buttons still mean something, or the roll is not taken yet) | "settled". */
