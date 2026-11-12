@@ -67,7 +67,7 @@ eq([tIn("en", "ITAC.roll.ds"), tIn("pl", "ITAC.roll.ds")], ["Discretion", "Rozwa
   const css = readFileSync(new URL("../../styles/tactics-ui.css", here), "utf8"), dock = src("ui/dock.mjs");
   /* U132: only the panel stands over the bar now; the hint and the line have their own places at the top */
   ok(/\.itd-stack > \.itd-panel \{ position: relative; left: calc\(var\(--itd-up-dx, 0px\) \/ var\(--ita-scale, 1\)\); max-width: min\(100%, calc\(var\(--itd-up-maxw, 100%\)/.test(css) && !/\.itd-stack > :is\(/.test(css), "U123 (U132): the shift and the narrowing hold for the panel, the one thing over the bar");
-  ok(/if \(pe\) \{ const pw = pe\.offsetWidth \* k; dx = /.test(dock), "U123 (U132): place() shifts by the panel's width");
+  ok(/if \(pe\) \{ const pw = pe\.offsetWidth \* kb?; dx = /.test(dock), "U123 (U132): place() shifts by the panel's width");
   ok(/root\.style\.setProperty\("--itd-up-dx"/.test(dock) && /function outcome\(\) \{[^}]*root\.style\.cssText/.test(dock), "U123: the shift is a root property, so outcome() (perf P2-1) already compares it");
 }
 
@@ -76,7 +76,7 @@ eq([tIn("en", "ITAC.roll.ds"), tIn("pl", "ITAC.roll.ds")], ["Discretion", "Rozwa
    from its layout box), never from its box on screen, and the desk ends above that top through the frame. */
 {
   const dock = src("ui/dock.mjs"), desk = src("ui/desk.mjs"), sp = src("ui/slots-pure.mjs");
-  ok(/const barH = \(barEl\?\.offsetHeight \?\? 60\) \* k, barTop = H - bottom - barH;/.test(dock) && !/barEl\.getBoundingClientRect|rec\.rect\(barEl\)/.test(dock), "U123 (U132): the bar's top is where it stands, free of the slide-in");
+  ok(/const barH = (\(barEl\?\.offsetHeight \?\? 60\) \* k|barEl \? barEl\.offsetHeight \* kb : \(last\?\.d\?\.who \? 60 \* k : 0\)), barTop = H - bottom - barH;/.test(dock) && !/barEl\.getBoundingClientRect|rec\.rect\(barEl\)/.test(dock), "U123 (U132): the bar's top is where it stands, free of the slide-in");
   ok(/const floorUnder = Math\.min\(toast\.top - GAP, bar\.bottom - Math\.max\(bar\.bottom - bar\.top, SIZE\.bar2 \* k\) - 10\);/.test(sp) && /floor: r\(under \? floorUnder : toast\.top - GAP\)/.test(sp) && /fr\.desk\.floor - fr\.desk\.top/.test(desk), "U123 (U132): the desk ends above the bar's standing top (the frame's floor)");
 }
 

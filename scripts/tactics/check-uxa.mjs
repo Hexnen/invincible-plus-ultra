@@ -48,7 +48,7 @@ const slotsCss = read("../../styles/tactics-slots.css"), uiCss = read("../../sty
   eq(Lay.steadyShape(memo, 1400, 900, 500, 32).tight, 0, "U148: another room (a wider window) is decided afresh");
   eq(Lay.steadyShape(memo, 600, 700, 590, 32).tight, 2, "U148: even the unit and the tail do not share a row: the third form");
   eq(Lay.steadyShape(null, 1000, 900, 500, 0).tight, 0, "U148: no memory: decided by the bar alone");
-  ok(/Lay\.steadyShape\(shapes, avail, natural, inner, SLACK \* k\)/.test(dock) && !/if \(natural > avail\) \{ root\.dataset\.tight/.test(dock), "U148: the dock decides its shape through steadyShape");
+  ok(/Lay\.(steadyShape\(shapes, avail, natural, inner, SLACK \* k\)|barFit\(shapes, avail, k, \{ natural: natU, inner, acts \}, SLACK\))/.test(dock) && !/if \(natural > avail\) \{ root\.dataset\.tight/.test(dock), "U148: the dock decides its shape through steadyShape");
   /* the resting bar: the same pieces as the bar of a turn, the actions dimmed, End turn inert */
   ok(!/d\.rest \? h\("div\.itd-tail", \{\}, legendBtn\(\)/.test(dock), "U148: the resting bar is no longer the short form (unit + four small buttons)");
   ok(/h\("div\.itd-acts", \{ attrs: d\.rest \? \{ "aria-disabled": "true" \} : \{\} \}/.test(dock), "U148: the resting bar keeps the actions (marked as standing back)");

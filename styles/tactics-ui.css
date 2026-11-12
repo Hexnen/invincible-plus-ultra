@@ -840,18 +840,21 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 :is(#invincible-tactics-dock, #invincible-tactics-desk) [data-sum]:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
 /* U57 */
-#invincible-tactics-dock .ita-sum { width: 330px; max-width: 100%; gap: 5px; }      /* narrower when the dock has less room (a large interface scale beside the open desk): the counts then go under the name */
+#invincible-tactics-dock .ita-sum { width: 352px; max-width: 100%; gap: 5px; }      /* U164: 352 (was 330) so a name's longest word ("CONCUSSION") stands beside the counts; narrower when the dock has less room (a large interface scale beside the open desk): the counts then go under the name */
 #invincible-tactics-dock .ita-sum .ita-about { font-weight: 400; color: var(--ita-label); }
 #invincible-tactics-dock .ita-sum-x { all: unset; box-sizing: border-box; flex: none; display: grid; place-items: center; width: 24px; height: 24px; margin-left: auto; font-size: 12px; color: var(--ita-label); border: 1px solid var(--ita-line); cursor: pointer; }
 #invincible-tactics-dock .ita-sum-x:hover { color: #fff; border-color: #fff; }
 #invincible-tactics-dock .ita-sum-x:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-#invincible-tactics-dock .ita-sum-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; max-height: 236px; margin: 0; padding: 0; overflow-y: auto; list-style: none; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
+#invincible-tactics-dock .ita-sum-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; max-height: min(340px, calc(var(--its-h, 400px) / var(--ita-scale, 1) - 72px)); margin: 0; padding: 0; overflow-y: auto; list-style: none; scrollbar-width: thin; scrollbar-color: var(--ita-line) transparent; }
 #invincible-tactics-dock .ita-sum-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 7px; min-height: 28px; margin: 0; padding: 2px 2px; color: var(--ita-text); }
 #invincible-tactics-dock .ita-sum-row + .ita-sum-row { border-top: 1px solid rgba(107, 130, 166, .35); }
 #invincible-tactics-dock .ita-sum-row[data-mine] { color: #fff; }
 #invincible-tactics-dock .ita-sum-row[data-mine] .ita-face { outline: 1px solid var(--ita-yellow); }
 /* UXB (U161): a name is never cut short (the twins "THE MAULER" and "THE MAULER 2" must read apart): a long one takes a second line */
-#invincible-tactics-dock .ita-sum-n { flex: 1 1 60px; min-width: 0; overflow: hidden; overflow-wrap: anywhere; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+/* U164 (ver11): ...and it breaks only between words ("CONCUSSIO / N TURRET" was cut mid-word): the name is never narrower than its longest
+   word; where the row has no room for that the counts go under the name (the row wraps). The list shows as many rows as its place
+   has room for (a fight's eight did not fit the old 236 px), at most about eleven, then it scrolls. */
+#invincible-tactics-dock .ita-sum-n { flex: 1 1 60px; min-width: min-content; overflow: hidden; overflow-wrap: normal; word-break: normal; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 #invincible-tactics-dock .ita-sum-chips { flex: none; margin-left: auto; display: grid; grid-template-columns: 36px 44px 36px 36px 16px; align-items: center; column-gap: 4px; }
 #invincible-tactics-dock .ita-sum-chip { display: inline-flex; align-items: center; gap: 4px; font: 400 13.5px/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
 #invincible-tactics-dock .ita-sum-chip i { font-size: 11px; color: var(--ita-label); }

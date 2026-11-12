@@ -93,6 +93,31 @@ export function steadyShape(memo, avail, natural, inner, slack = 0) {
   return { tight, width: now.natural };
 }
 
+/** U163 (ver11): THE ACTIONS STAY ON ONE ROW. USER 2026-11-12, on the GM's bar at 1366 x 768 with the surfaces at 140 %: "the dock
+    wrapped its buttons into a line more again; the star dropped a line lower". The same wrap had come back: in P5 the door button left
+    the bar to stop a third row at 1366, and the bar has gained actions since (the star, a group of the scene's actions), so the actions'
+    row grew past the room and its last button fell to a line of its own. The narrow forms keep their lines (as before the regression,
+    slots2 sheets at 1366): data-tight="1" the actions over the unit, the tail beside the unit; data-tight="2" the tail on a third line.
+    What is new is that THE ACTIONS' ROW ALWAYS FITS, whatever number of buttons it gets: where it does not at the user's size (U62),
+    the bar alone is drawn smaller, just as much as that row needs, never below `FIT.min` (the slider's floor); everything else of the
+    bar keeps the user's size where it fits. `w` = the bar's own (unscaled) px, measured in one row: `natural` the whole row, `acts` the
+    actions, `inner` unit + slots + tail with their gaps; `avail` the room in window px; `k` the user's size; `slack` (unscaled px) the
+    growth of one turn (a chip by the slots; the actions' row is drawn with every button whether it is the turn or not). The widest bar
+    each room has held decides (as U148), so neither the shape nor the size changes under the pointer within a room.
+    -> { tight: 0 | 1 | 2, scale (the bar is drawn at), width (window px the bar needs) } */
+export const FIT = Object.freeze({ min: 0.8, pad: 26 });
+export function barFit(memo, avail, k, w, slack = 0) {
+  const A = Number(avail) || 0, K = Number(k) > 0 ? Number(k) : 1, min = Math.min(FIT.min, K);
+  const key = `fit:${Math.round(A)}`;
+  const was = memo?.get?.(key) ?? { natural: 0, inner: 0, acts: 0 };
+  const now = { natural: Math.max(was.natural, Number(w?.natural) || 0), inner: Math.max(was.inner, Number(w?.inner) || 0), acts: Math.max(was.acts, Number(w?.acts) || 0) };
+  try { memo?.set?.(key, now); } catch { /* no memory: decided by now alone */ }
+  if ((now.natural + slack) * K <= A) return { tight: 0, scale: K, width: Math.round(now.natural * K) };
+  const row = now.acts + FIT.pad, scale = Math.max(min, Math.floor(Math.min(K, A / Math.max(1, row)) * 1000) / 1000);
+  const tight = (now.inner + slack) * scale <= A ? 1 : 2;
+  return { tight, scale, width: Math.round(Math.min(A, Math.max(row, tight === 1 ? now.inner : 0) * scale)) };
+}
+
 /** U136: the free stretch [lo, hi] beside a window that floats over the map (the popped-out chat, as tall as the map): the dock keeps to
     the WIDER side of it, `gap` px clear; a window outside the stretch, or one that leaves neither side `min` px, changes nothing (then
     the dock stays where it was, under it). r = { left, right } -> { lo, hi } */

@@ -125,7 +125,7 @@ const sizesNow = () => [...Settle.sizesOf(stack), ...Object.values(slotEls).flat
 /* everything a placement writes: the dock's attributes and numbers, each place's box, the frame told to the desk and the challenges,
    the notice's place */
 function outcome() {
-  return [root.style.cssText, root.dataset.tight ?? "", Object.values(slotEls).map((el) => `${el.parentElement?.style.cssText ?? ""}/${el.parentElement?.dataset.anchor ?? ""}/${el.parentElement?.dataset.align ?? ""}`).join("|"),
+  return [root.style.cssText, root.dataset.tight ?? "", stack?.parentElement?.style.cssText ?? "", Object.values(slotEls).map((el) => `${el.parentElement?.style.cssText ?? ""}/${el.parentElement?.dataset.anchor ?? ""}/${el.parentElement?.dataset.align ?? ""}`).join("|"),
     frameKey, varOf("--its-nt"), varOf("--its-nx"), varOf("--igd-toast-maxh")];
 }
 /* The bar stands at the bottom edge; its room is worked out from what stays put during a turn only: the sidebar, the party column, the
@@ -170,7 +170,9 @@ function placeSlots(rec) {
   delete root.dataset.tight;
   /* U62: the stack is drawn at the user's size (CSS zoom). Its own lengths (offsetWidth, scrollWidth) are in its unscaled pixels, the
      room is in window pixels: every length read from inside the stack is multiplied by k before it meets the room. */
-  const natural = barEl ? barEl.scrollWidth * k + 2 : 0;
+  const natU = barEl ? barEl.scrollWidth + 2 / k : 0, natural = natU * k;
+  /* U163: the size the bar itself is drawn at (layout-pure.barFit): the user's size, or less where its two rows would not fit */
+  let kb = k;
   let pick = sides(ground), floor = ground;
   /* U48 as a rule of the frame, not of the content: beside the open desk the bar keeps its row when the room there is wide enough;
      else it takes the whole bottom edge and the desk ends above it */
@@ -198,14 +200,19 @@ function placeSlots(rec) {
   /* one row when it fits; else the actions go over the unit; "2": even the unit and the tail do not share a row. U148: decided by the
      widest bar this room has held (layout-pure.steadyShape), so the shape does not change under the pointer within a turn or a fight */
   if (barEl) {
-    const inner = [".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44) * k;
-    const shape = Lay.steadyShape(shapes, avail, natural, inner, SLACK * k);
+    const inner = [".itd-unit", ".itd-slots", ".itd-tail"].reduce((n, q) => n + (barEl.querySelector(q)?.offsetWidth ?? 0), 44);
+    const acts = barEl.querySelector(".itd-acts")?.offsetWidth ?? 0;
+    const shape = Lay.barFit(shapes, avail, k, { natural: natU, inner, acts }, SLACK);
     if (shape.tight) root.dataset.tight = String(shape.tight);
+    kb = shape.scale;
   }
+  const barSlot = stack.parentElement;
+  if (Math.abs(kb - k) > 1e-3) barSlot.style.setProperty("--ita-scale", String(kb)); else barSlot.style.removeProperty("--ita-scale");
   /* the bar is centred in its room (over the macro bar when that is open), whatever its width now: its middle stays put */
   const cx = Math.round(hot && hot.top > H * 0.4 ? Math.max(lo + 140, Math.min(hi - 140, (hot.left + hot.right) / 2)) : (lo + hi) / 2);
   root.style.setProperty("--itd-cx", `${cx}px`);
-  const barH = (barEl?.offsetHeight ?? 60) * k, barTop = H - bottom - barH;
+  /* U164: with no bar at all (the fight is over, its summary stands) no bar's height is kept free under the questions' place */
+  const barH = barEl ? barEl.offsetHeight * kb : (last?.d?.who ? 60 * k : 0), barTop = H - bottom - barH;
   /* the frame */
   const chat = rec.q("#chat-notifications #chat-message, #chat-notifications .chat-form").map((el) => rec.rect(el)).find((r) => r && r.top > H * 0.4 && r.left > W * 0.5) ?? null;
   /* D126: where Foundry's toast list really ends (it shows only while a toast stands) and the chat box's column */
@@ -232,7 +239,7 @@ function placeSlots(rec) {
      not its rect: it may still be rising) */
   const pe = stack.querySelector(":scope > .itd-panel");
   if (slotEls.cards && fr.slots.cards) {
-    const s = fr.slots.cards, ptop = pe ? barTop - (pe.offsetHeight + GAP) * k : Infinity;
+    const s = fr.slots.cards, ptop = pe ? barTop - pe.offsetHeight * kb - GAP * k : Infinity;
     const end = ptop > s.y0 + 60 ? Math.min(s.y1, ptop - GAP) : s.y1;
     slotEls.cards.parentElement.style.setProperty("--its-h", `${Math.round(end - s.y0)}px`);
   }
@@ -245,7 +252,7 @@ function placeSlots(rec) {
   } catch { /* no body */ }
   /* the panel on the bar keeps to the room over it */
   let dx = 0;
-  if (pe) { const pw = pe.offsetWidth * k; dx = Math.max(0, fr.up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > fr.up.hi) dx = Math.min(dx, fr.up.hi - pw / 2 - cx); requestAnimationFrame(() => markMore(pe)); }
+  if (pe) { const pw = pe.offsetWidth * kb; dx = Math.max(0, fr.up.lo - (cx - pw / 2)); if (cx + dx + pw / 2 > fr.up.hi) dx = Math.min(dx, fr.up.hi - pw / 2 - cx); requestAnimationFrame(() => markMore(pe)); }
   root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
   /* the desk and the challenges read their part of the frame: told only when it changed */
   const key = JSON.stringify([fr.desk, fr.band, fr.toast]);
