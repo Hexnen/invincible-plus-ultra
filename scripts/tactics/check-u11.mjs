@@ -92,7 +92,8 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
   ok(BP.intentLabel("Odzyskaj Determinację").length === 18 && BP.intentLabel("x".repeat(18)).length === 18 && !BP.intentLabel("x".repeat(18)).endsWith("…"), "U76: never more than the map's 18 characters; exactly 18 fit whole");
   eq(BP.intentLabel(null), "", "U76: no title, no words");
   const src = readFileSync(new URL("./ui/board.mjs", import.meta.url), "utf8");
-  eq((src.match(/BP\.intentLabel\(/g) ?? []).length, 3, "U76: the three places an intention is said (declare, move, area) use it");
+  eq((src.match(/label: intentWords\(/g) ?? []).length, 3, "U76: the three places an intention is said (declare, move, area) use it (D109: through intentWords, in the GMs' language)");
+  ok(/const intentWords = [\s\S]{0,600}?BP\.intentLabel\(/.test(src), "U76 / D109: intentWords cuts its words with intentLabel");
 }
 
 /* ---- F. U77: the bar offers the Quickness interrupt the engine accepts (D40) */

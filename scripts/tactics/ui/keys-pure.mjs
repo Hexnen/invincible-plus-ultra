@@ -12,7 +12,7 @@
                  not throw the stunts away (the same guard as the digits).
      Space       End turn (the first press arms "Sure?" where the pointer would). Not while a card stands: the card is the top layer,
                  and a key never reaches past it to the bar.
-     Escape      puts away the chosen answer, else the armed action or the open list
+     Escape      puts away the chosen answer, else the armed action or the open list, else the open legend (U109)
    main.mjs calls plan() from one keydown listener and never while the user types (a text field, the chat box, another window).
      number(d, own)  -> d with `key` on what a digit reaches (the surfaces show it as a small mark and say it in the tooltip)
      layer(d)        -> { id: "card" | "list" | "bar" | null, ask?, multi?, keys: [{ key, id, fk }] }
@@ -59,7 +59,8 @@ export function plan(d, own = {}, ev = {}) {
     if (!hit) return null;
     return L.id === "card" && !L.multi ? { set: { kopt: hit.fk } } : { click: hit.fk };
   }
-  if (key === "Escape") return chosen ? { set: { kopt: null } } : d.show && (own.armed || own.mode) ? { set: { armed: null, mode: null, amend: null } } : null;
+  /* U109: Esc with the legend open closes the legend and goes no further (it fell through to Foundry, whose Esc opened the main menu) */
+  if (key === "Escape") return chosen ? { set: { kopt: null } } : d.show && (own.armed || own.mode) ? { set: { armed: null, mode: null, amend: null } } : own.legend && d.show ? { set: { legend: false } } : null;
   if (ev.walking) return null;
   if (key === "Tab") {
     if (L.id === "card") { const fk = around(L.keys.map((k) => k.fk), chosen, !!ev.shift); return fk ? { set: { kopt: fk } } : null; }

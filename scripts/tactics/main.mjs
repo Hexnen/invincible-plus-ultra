@@ -116,6 +116,8 @@ export function start(phases = {}) {
       run("ready", async () => {
         try {
           attach();
+          /* D109: a GM's client writes the language it reads on its own user: a player's client says an intention (only the GMs see it, ui/board.mjs) in it */
+          try { const u = game.user, lang = game.i18n?.lang; if (!why && u?.isGM && lang && typeof u.setFlag === "function" && u.getFlag(MOD, "lang") !== lang) u.setFlag(MOD, "lang", lang).catch(() => {}); } catch { /* the intention keeps the player's words */ }
           if (!why) await startRunning();
           else if (why !== "off" && game.user.isGM) ui.notifications.warn(t(why === "yze" ? "ITAC.Note.Yze" : "ITAC.Note.NoInitiative"), { permanent: false, console: false });
         } catch (e) { console.warn(`${MOD} | tactical combat failed to start (ready)`, e); }

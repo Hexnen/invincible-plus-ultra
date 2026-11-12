@@ -15,6 +15,10 @@ import * as Tac from "../tactics/source.mjs";
 export function waitingOf(combat) {
   try { return Tac.tacticsState(combat) ? Tac.waiting(combat) : (yzeOn() && yzeWaiting(combat)); } catch { return false; }
 }
+/* D107: why it waits (tactics/source.mjs waitKind; Year Zero only ever waits for its draw) -> "draw" | "chase" | ... | null */
+export function waitKindOf(combat) {
+  try { return Tac.tacticsState(combat) ? Tac.waitKind(combat) : (yzeOn() && yzeWaiting(combat) ? "draw" : null); } catch { return null; }
+}
 /* are action pips tracked for this combat at all? */
 export function actionsOn(combat) {
   try { const s = Tac.tacticsState(combat); return s ? s.mode !== "off" : (yzeOn() && yzeMode() !== "none"); } catch { return false; }

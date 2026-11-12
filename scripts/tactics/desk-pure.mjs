@@ -42,11 +42,13 @@ function card(p, ctx, proxy = false) {
 const turnOf = (state, ctx) => ({ round: state.round ?? null, phase: state.phase ?? null, combatant: state.init?.curMember ?? null, name: nameOf(ctx, state.init?.curMember ?? null) });
 const entryOf = (state, i) => { try { return state ? C.entryFor(state, i.actor, i.action) : null; } catch { return null; } };
 const kitFacts = (ctx) => (typeof ctx.kit === "function" ? { c: (id) => ({ kit: ctx.kit(id) }) } : null);      // P6: the entries of a character's own sheet (only where this user may read it)
+/* D108: a side effect of a challenge the GM runs by hand names its kind; the surfaces say it in the reader's words, not the raw "Challenge: blast" */
+const effectOf = (i) => { const r = i.data?.trigger?.run; return r?.type === "challenge" && typeof r.kind === "string" ? { kind: r.kind.slice(0, 40), challenge: typeof r.challenge === "string" ? r.challenge : null, name: String(i.data.trigger.source?.name ?? "").slice(0, 80) } : null; };
 const instLine = (i, ctx, state = null) => ({ steps: (FLOWS[i.flow]?.STEPS ?? []).slice(), attr: entryOf(state, i)?.roll?.attr ?? null, defense: entryOf(state, i)?.defense ?? null,
   outcomes: Object.entries(i.data?.out ?? {}).map(([t, o]) => ({ target: t, name: nameOf(ctx, t), hit: o?.hit === true, net: o?.net ?? null })),
   defs: Object.entries(isObj(i.data?.def) ? i.data.def : {}).filter(([, x]) => isObj(x) && x.defence).map(([t, x]) => ({ target: t, defence: x.defence, dice: Number.isFinite(x.dice) ? x.dice : null })),      // the defences declared so far; `dice` only in the full state (a player's view carries the kind alone)
   failed: isObj(i.data?.failed) ? { step: String(i.data.failed.step ?? "").slice(0, 40) } : null, byHand: (i.data?.notes ?? []).some((n) => n?.note === "seatByHand") ? "seat" : null,      // D90 / D91: why it lies in the GM's hand (only in the full state: a player's view carries no such data)
-  inst: i.id, action: i.action, label: i.data?.label ?? null, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text,
+  inst: i.id, action: i.action, label: i.data?.label ?? null, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text, effect: effectOf(i),
   fx: isObj(i.data?.challengeFx) ? { challenge: i.data.challengeFx.challenge, kind: i.data.challengeFx.kind, name: nameOf(ctx, i.data.challengeFx.challenge) } : null });      // D111: what a failed challenge does
 
 /* U1 / U2: one roll of an action as a surface needs it to offer "roll", "accept" and "push" itself. `state`: "owed" (no dice yet),
@@ -99,7 +101,7 @@ export const policyReq = (state, cid, patch) => { const { quick, ...pol } = { ..
     state written before it was kept), `nudgeReq` = the GM's nudge of the ones waited for (only in the desk's model; the engine refuses it when none is at the table). */
 export function waitingOn(state, ctx = {}) {
   const out = [];
-  for (const p of Object.values(state?.prompts ?? {})) if (!p.answered) out.push({ what: "prompt", kind: p.kind, prompt: p.id, to: p.to === "gm" ? "gm" : usersOf(p), about: p.about ?? null, aboutName: nameOf(ctx, p.about), at: Number.isFinite(p.at) ? p.at : null, nudgeReq: ctx.nudge && p.to !== "gm" ? { op: "nudge", prompt: p.id } : null });
+  for (const p of Object.values(state?.prompts ?? {})) if (!p.answered) out.push({ what: "prompt", kind: p.kind, prompt: p.id, to: p.to === "gm" ? "gm" : usersOf(p), about: p.about ?? null, aboutName: nameOf(ctx, p.about), at: Number.isFinite(p.at) ? p.at : null, nudgeReq: ctx.nudge && p.to !== "gm" ? { op: "nudge", prompt: p.id } : null, ...(p.kind === "triggerQueue" && typeof p.data?.at === "string" ? { data: { at: p.data.at } } : {}) });      // D108: a queue names its moment (start of the round or of a turn)
   /* U1: a roll that may still be pushed holds the exchange exactly like dice that were never thrown: the table waits for the roller */
   for (const i of state?.stack ?? []) for (const r of Object.values(i.rolls ?? {})) { const s = rollState(r); if (s !== "done" && r.req) out.push({ what: s === "push" ? "push" : "roll", key: r.key, inst: i.id, to: r.req.users ?? [], about: r.who, aboutName: nameOf(ctx, r.who), at: Number.isFinite(r.req.at) ? r.req.at : null, nudgeReq: ctx.nudge ? { op: "nudge", inst: i.id, roll: r.key } : null }); }
   return out;

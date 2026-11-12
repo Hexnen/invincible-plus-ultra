@@ -181,7 +181,8 @@ export const GM_STATES = Object.freeze(["stunned", "unaware", "snared", "immobil
 export const stepFailed = (env) => !env || env.ok === false;
 export function gmItems(cid, vitals, statuses, t, group = null) {
   const out = [], v = vitals ?? {};
-  if (fin(v.health) && fin(v.maxHealth) && v.maxHealth > 0) out.push({ id: "health", label: t("ITAC.ui.vital.health"), icon: "fa-solid fa-heart", stepper: { value: Math.max(0, v.health), min: 0, max: v.maxHealth }, req: (n, from = Math.max(0, v.health)) => ({ op: "setHealth", combatant: cid, delta: n - from }) });
+  /* U99: a group's Health is its count; the system's top of ten is no fact of it, so a larger group is never stepped down to it */
+  if (fin(v.health) && fin(v.maxHealth) && v.maxHealth > 0) out.push({ id: "health", label: t("ITAC.ui.vital.health"), icon: "fa-solid fa-heart", stepper: { value: Math.max(0, v.health), min: 0, max: group ? Math.max(v.maxHealth, v.health) : v.maxHealth }, req: (n, from = Math.max(0, v.health)) => ({ op: "setHealth", combatant: cid, delta: n - from }) });
   if (fin(v.resolve) && fin(v.maxResolve) && v.maxResolve > 0) out.push({ id: "resolve", label: t("ITAC.ui.vital.resolve"), icon: "fa-solid fa-bolt", stepper: { value: Math.max(0, v.resolve), min: 0, max: v.maxResolve }, req: (n, from = Math.max(0, v.resolve)) => ({ op: "setResolve", combatant: cid, delta: n - from }) });
   /* U61: a minion group: settle it quickly (one card per hit), the GM's switch. `group` = { quick, req(on) } | null */
   const quick = group ? { id: "quick", label: t("ITAC.ui.policy.quick"), tip: t("ITAC.ui.policy.quick.tip"), icon: "fa-solid fa-forward-fast", toggle: true, on: !!group.quick, req: (on) => group.req(on) } : null;

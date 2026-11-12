@@ -189,6 +189,7 @@
 .itd-vitals { display: flex; flex-direction: column; gap: 2px; }
 .itd-vital { --c: var(--ita-red-lt); display: flex; align-items: center; gap: 5px; height: 12px; }
 .itd-vital[data-id="resolve"] { --c: var(--ita-cyan); }
+.itd-vital[data-id="members"] { --c: var(--ita-red-lt); }      /* U99: a group's count stands where its Health would (the same colour), with no bar */
 #invincible-tactics-dock .itd-vital > i { width: 11px; text-align: center; font-size: 9.5px; color: var(--c); }
 .itd-vbar { position: relative; flex: none; width: 68px; height: 9px; overflow: hidden; background: var(--ita-track); border: 1px solid var(--ita-line); transform: skewX(-14deg); }
 .itd-vbar > i { position: absolute; top: 0; bottom: 0; }
@@ -355,6 +356,14 @@ body.ita-hotbar-fold #hotbar { display: none !important; }
 #invincible-tactics-dock .itd-how .itd-mini { width: 30px; height: 30px; color: var(--ita-text); border: 2px solid var(--ita-frame); }
 #invincible-tactics-dock .itd-pfoot .itd-go { align-self: center; }
 .itd-pfoot .itd-status { flex: 0 1 auto; margin: 0; }
+/* U105: a panel taller than its room scrolls under its head AND its foot: the foot (Declare, Ask the GM) stays in sight. While more of the
+   panel lies below (data-more, dock.mjs), the rows fade into the foot and a chevron on the foot's edge says there is more to scroll to. */
+.itd-panel:not([data-picking]) > .itd-pfoot { position: sticky; bottom: 0; z-index: 1; margin: 0 -12px -9px; padding: 0 12px 9px; background: var(--ita-ink); }
+.itd-panel > .itd-pfoot::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 24px; background: linear-gradient(to bottom, transparent, var(--ita-ink)); opacity: 0; transition: opacity .15s var(--ita-out); pointer-events: none; }
+.itd-panel[data-more] > .itd-pfoot { box-shadow: inset 0 1px 0 rgba(125, 147, 185, .55); }
+.itd-panel[data-more] > .itd-pfoot::before { opacity: 1; }
+.itd-panel[data-more] > .itd-pfoot::after { content: "\f078"; position: absolute; left: 50%; top: 0; translate: -50% -50%; display: grid; place-items: center; width: 24px; height: 15px; font: 900 10px/1 var(--ipu-fa); color: var(--ita-ink); background: var(--ita-yellow); border: 2px solid var(--ita-ink); pointer-events: none; }
+.itd-panel[data-more]:not(:has(> .itd-pfoot))::after { content: ""; position: sticky; bottom: -9px; flex: none; display: block; height: 26px; margin: -26px -12px -9px; background: linear-gradient(to bottom, transparent, var(--ita-ink)); pointer-events: none; }
 .itd-k-need { display: inline-flex; align-items: center; gap: 5px; color: var(--ita-yellow); }
 /* a refusal: the reason and the words for the GM in one line under the head; what stands under it does not move when it appears */
 .itd-refusal { display: flex; flex-direction: column; gap: 6px; width: 0; min-width: 100%; padding-bottom: 8px; border-bottom: 1px dashed var(--ita-line); }      /* width 0 + min 100 %: the reason and the field take the width the panel already has and never widen it */
@@ -606,6 +615,7 @@ body.itd-picking #board { cursor: crosshair; }
   #invincible-tactics-dock { transition: opacity .2s linear; }
   #invincible-tactics-dock.itd-hidden { translate: none; }
   .itd-slot[data-pv] > i, .itd-vital[data-pv] .itd-vpv { animation: none; }
+  .itd-panel > .itd-pfoot::before { transition: none; }
   .ita-ask.ita-new, .itd-panel, .igd-ovr, #invincible-tactics-desk.igd-collapsed.igd-busy .igd-handle { animation: none; }
   #invincible-tactics-dock button, #invincible-tactics-desk button { transition: none !important; }
   #invincible-tactics-dock button:hover, #invincible-tactics-desk button:hover { translate: none !important; }
@@ -891,3 +901,6 @@ body.ita-keys #invincible-tactics-dock .ita-opt[data-kpick]::after { content: "\
 #invincible-tactics-desk .ita-legend .ipu-legend { gap: 6px 14px; }
 /* U93: a way's notes are words and marks in one line: each part keeps its distance from the next */
 .itd-way-n { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+
+/* U108: while Dice So Nice shows a roll over the interface, the dock stands one step above its canvas (ui/main.mjs watchDice) */
+body.ita-dice-up #invincible-tactics-dock { z-index: var(--ita-dice-z); }

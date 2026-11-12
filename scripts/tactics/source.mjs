@@ -35,6 +35,16 @@ export function waiting(combat) {
   const s = tacticsState(combat);
   return !!s && (O.isWaiting(s) || s.phase === "sceneEnd" || s.phase === "idle" || !s.init.curMember);
 }
+/** D107: WHY nobody has the turn, for the bar's plate (it said "drawing" for a whole chase): "chase" (a chase holds no cards, its
+    rounds turn at the GM's word), "draw", "roundStart", "roundEnd", "sceneEnd", "idle", "nobody" (turns, but no member now), or null
+    when somebody has the turn (or the combat is not ours) */
+export function waitKind(combat) {
+  const s = tacticsState(combat);
+  if (!s || !waiting(combat)) return null;
+  if (s.kind === "chase") return "chase";
+  if (["draw", "roundStart", "roundEnd", "sceneEnd", "idle"].includes(s.phase)) return s.phase;
+  return "nobody";
+}
 /** ids of the combatants that have the turn (the member whose turn it is and what acts on its turn [I14]) */
 export const onTurn = (combat) => { const s = tacticsState(combat); return s ? O.onTurnIds(s) : []; };
 

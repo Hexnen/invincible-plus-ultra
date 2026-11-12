@@ -138,6 +138,17 @@ function factsOf(combat) {
         return moveMemo.value;
       } catch { return null; }
     },
+    /* U102: the zone this user's own combatant stands in was wrecked already (the mark of the zone or the scene's counter, the two the
+       attack flow reads [B2451]): the "wreck the zone" switch is not offered for it */
+    wrecked: (id) => {
+      try {
+        const cb = combat.combatants.get(id), a = Sys.actorOf(cb), td = cb?.token;
+        if (!a || !(staff || a.isOwner) || !td || !Zones.available()) return false;
+        const p = Zones.placeOf(td), key = p?.zone ? String(p.zone).split(":")[0] : null;
+        if (!key) return false;
+        return !!Mv.levelStates(td, Zones.zoneOf(p.zone))?.wrecked || (Number(view?.counters?.[`zone:${key}:wrecked`]) || 0) > 0;
+      } catch { return false; }
+    },
     /* U29 / U30: Health and Resolve of a combatant this user drives (the bars of the dock's unit block); nobody else's numbers */
     vitals: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); if (!a || !(staff || a.isOwner)) return null; const f = Sys.actorFacts(a); return f ? { health: f.health, maxHealth: f.maxHealth, resolve: f.resolve, maxResolve: f.maxResolve } : null; } catch { return null; } },
     resolve: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && staff ? Sys.actorFacts(a)?.resolve ?? null : null; } catch { return null; } },      // the desk's hint for an NPC out of Resolve
@@ -481,6 +492,33 @@ function watch() {
 /** does the dock stand in for the turn tray right now? (scripts/turn/main.mjs) */
 export const active = () => { try { return started && !!combatNow(); } catch { return false; } };
 
+/* U108: while Dice So Nice shows dice over the interface, the dock and the initiative bar stand one step above its canvas (layout-pure
+   diceRaise); the canvas is made by Dice So Nice when it starts, so it is looked for until it exists, then watched */
+let diceSeen = null, diceHooked = false, diceOn = false, diceTimer = 0;
+function diceApply() {
+  try {
+    const cv = diceSeen;
+    const z = diceOn && cv ? Lay.diceRaise({ display: cv.style.display, opacity: cv.style.opacity, zIndex: cv.style.zIndex || getComputedStyle(cv).zIndex }) : null;
+    if (z) document.body.style.setProperty("--ita-dice-z", String(z)); else document.body.style.removeProperty("--ita-dice-z");
+    document.body.classList.toggle("ita-dice-up", !!z);
+    if (diceOn && cv && (cv.style.display === "none" || cv.style.opacity === "0")) { diceOn = false; diceApply(); }      // the dice are gone: back under it
+  } catch { /* the dice keep their place */ }
+}
+function watchDice() {
+  try {
+    if (diceHooked || !game.modules?.get?.("dice-so-nice")?.active) return;
+    diceHooked = true;
+    /* only while a roll is shown (the canvas may stand visible and empty between rolls); 20 s at most, should the hiding never be seen */
+    Hooks.on("diceSoNiceRollStart", () => {
+      try {
+        const cv = document.getElementById("dice-box-canvas");
+        if (cv && cv !== diceSeen) { diceSeen = cv; new MutationObserver(diceApply).observe(cv, { attributes: true, attributeFilter: ["style"] }); }
+        diceOn = true; clearTimeout(diceTimer); diceTimer = setTimeout(() => { diceOn = false; diceApply(); }, 20000);
+        requestAnimationFrame(diceApply);
+      } catch { /* the dice keep their place */ }
+    });
+  } catch { /* the dice keep their place */ }
+}
 /** -> true when the surfaces run on this client */
 export function start() {
   if (started) return true;
@@ -494,7 +532,11 @@ export function start() {
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);
     Hooks.on("updateToken", (_d, ch) => { if (ch && "hidden" in ch) schedule(); });      // CAM-14: a token hidden or shown changes every view of the fight (and is a cue of the camera)
     Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) moved(); });
+    /* U101: hiding or revealing a token alone (no combatant changes) changes who sees whom: every surface is drawn again, once now and once
+       after the canvas has redrawn the token (onMap reads its visibility) */
+    Hooks.on("updateToken", (td, ch) => { try { if (ch && "hidden" in ch && combatNow()?.combatants.some((c) => c.tokenId === td.id)) { moved(); setTimeout(moved, 120); } } catch { /* a courtesy */ } });
     Hooks.on("canvasReady", () => { down = false; schedule(); });
+    watchDice();      // U108
     Hooks.on("controlToken", onControl);      // U60
     Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Board.reset(); Camera.reset(); Dock.hide(); });
     Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size

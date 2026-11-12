@@ -264,6 +264,7 @@ export const EN = {
   "ITAC.status.sick": "Sick",
   "ITAC.status.itemLost": "Disarmed",
   "ITAC.status.inVehicle": "In a vehicle",
+  "ITAC.status.prone": "Prone",
   "ITAC.Note.NoInitiative": "Tactical combat is on, but its card initiative is switched off, so nothing of it runs.",
   "ITAC.reason.rules": "the rules do not allow it",
   "ITAC.reason.requirement": "a requirement of this action is not met ({why})",
@@ -288,6 +289,7 @@ export const EN = {
   "ITAC.move.fromOff": "This character stands in no zone, so no route can be counted. Ask the GM to place it.",
   "ITAC.move.confirm": "Choose how to make this move.",
   "ITAC.move.pickHint": "Click a lit zone to move there.",
+  "ITAC.move.script": "{name} stays where it stood: in a tactical fight a token is moved by dragging it or with Move (the GM: Alt-drop places it).",
   "ITAC.move.fireByTactics": "Fire is rolled by tactical combat: on entering a burning zone and at the points of the round.",
   "ITAC.cost.quick": "quick action",
   "ITAC.cost.full": "full action",
@@ -406,7 +408,7 @@ export const EN = {
   "ITAC.ui.needsGm": "the GM has to agree",
   "ITAC.ui.bonus": "Bonus",
   "ITAC.ui.blocked": "Not possible right now: {reason}.",
-  "ITAC.ui.exception.placeholder": "Why should it work anyway?",
+  "ITAC.ui.exception.placeholder": "Why should it work anyway? (required)",
   "ITAC.ui.exception.anyway": "Declare anyway",
   "ITAC.ui.exception.ask": "Ask the GM",
   "ITAC.ui.exception.needText": "Say why first",
@@ -682,6 +684,7 @@ export const EN = {
   "ITAC.ui.due.disease": "{name}: the disease",
   "ITAC.ui.due.blastZone": "Explosion in {zone}: {names}",
   "ITAC.ui.due.blastOn": "Explosion: {names}",
+  "ITAC.ui.due.challenge": "{name}: {effect}",
   "ITAC.ui.more": "More actions",
   "ITAC.ui.more.tip": "The other actions of the rules",
   "ITAC.ui.attrPick": "Attribute",
@@ -1283,6 +1286,7 @@ export const PL = {
   "ITAC.status.sick": "Chory",
   "ITAC.status.itemLost": "Rozbrojony",
   "ITAC.status.inVehicle": "W pojeździe",
+  "ITAC.status.prone": "Leżący",
   "ITAC.Note.NoInitiative": "Walka taktyczna jest włączona, ale jej inicjatywa na kartach jest wyłączona, więc nic z niej nie działa.",
   "ITAC.reason.rules": "zasady na to nie pozwalają",
   "ITAC.reason.requirement": "warunek tej akcji nie jest spełniony ({why})",
@@ -1307,6 +1311,7 @@ export const PL = {
   "ITAC.move.fromOff": "Ta postać nie stoi w żadnej strefie, więc nie da się policzyć drogi. Poproś MG o ustawienie jej.",
   "ITAC.move.confirm": "Wybierz sposób wykonania tego ruchu.",
   "ITAC.move.pickHint": "Kliknij podświetloną strefę, żeby się tam przenieść.",
+  "ITAC.move.script": "{name} zostaje na miejscu: w walce taktycznej żeton przesuwa się przeciągnięciem albo Ruchem (MG: upuszczenie z Alt go stawia).",
   "ITAC.move.fireByTactics": "Ogień rozstrzyga walka taktyczna: przy wejściu do płonącej strefy i w punktach rundy.",
   "ITAC.cost.quick": "szybka akcja",
   "ITAC.cost.full": "pełna akcja",
@@ -1425,7 +1430,7 @@ export const PL = {
   "ITAC.ui.needsGm": "MG musi się zgodzić",
   "ITAC.ui.bonus": "Premia",
   "ITAC.ui.blocked": "Teraz niemożliwe: {reason}.",
-  "ITAC.ui.exception.placeholder": "Dlaczego to mimo wszystko powinno się udać?",
+  "ITAC.ui.exception.placeholder": "Dlaczego to mimo wszystko powinno się udać? (wymagane)",
   "ITAC.ui.exception.anyway": "Zadeklaruj mimo to",
   "ITAC.ui.exception.ask": "Zapytaj MG",
   "ITAC.ui.exception.needText": "Najpierw napisz dlaczego",
@@ -1701,6 +1706,7 @@ export const PL = {
   "ITAC.ui.due.disease": "{name}: choroba",
   "ITAC.ui.due.blastZone": "Eksplozja w: {zone}: {names}",
   "ITAC.ui.due.blastOn": "Eksplozja: {names}",
+  "ITAC.ui.due.challenge": "{name}: {effect}",
   "ITAC.ui.more": "Więcej akcji",
   "ITAC.ui.more.tip": "Pozostałe akcje z zasad",
   "ITAC.ui.attrPick": "Atrybut",
@@ -2060,8 +2066,11 @@ export function plural(lang, n, forms) {
 /** t(key, params, fallback): the string in the client's language, {placeholders} filled (one without a value stays as written);
     falls back to English, then to `fallback` (default: the key). A counted word is written `{n|one|few|many}` (Polish) or
     `{n|one|other}` (English) beside its `{n}` and takes the form the number asks for. */
-export function t(key, params = {}, fallback = key) {
-  const own = table(), s = own[key] ?? EN[key];
+export function t(key, params = {}, fallback = key) { return say(table(), key, params, fallback); }
+/** D109: the same in a GIVEN language ("pl" / "en"), for a text built on this client for another reader (the GMs' map) */
+export function tIn(lang, key, params = {}, fallback = key) { return say(String(lang ?? "").toLowerCase().startsWith("pl") ? PL : EN, key, params, fallback); }
+function say(own, key, params = {}, fallback = key) {
+  const s = own[key] ?? EN[key];
   if (typeof s !== "string") return fallback;
   const lang = own === PL && key in PL ? "pl" : "en";
   return s.replace(/\{(\w+)\|([^{}]*)\}/g, (m, k, forms) => plural(lang, params?.[k], forms.split("|")))

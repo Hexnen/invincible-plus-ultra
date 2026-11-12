@@ -160,7 +160,7 @@ function queueOnce(W, point, key, blocks) {
     try { extra = (W.ctx.derived?.(point, s) ?? []).filter((t) => t && S.isId(t.id) && t.at === point.at && typeof t.run?.type === "string"); } catch { extra = []; }
     const list = Sch.due([...s.triggers, ...extra], point);
     const info = (t) => ({ type: t.run.type, ...(t.subject?.zone ? { zone: t.subject.zone } : {}), ...(t.subject?.combatant ? { combatant: t.subject.combatant } : {}), ...(Number.isFinite(t.run.intensity) ? { intensity: t.run.intensity } : {}),
-      ...(Array.isArray(t.run.targets) ? { targets: t.run.targets.slice(0, 24) } : {}), ...(t.derived ? { trigger: S.clone(t) } : {}) });
+      ...(Array.isArray(t.run.targets) ? { targets: t.run.targets.slice(0, 24) } : {}), ...(typeof t.run.kind === "string" ? { effect: t.run.kind.slice(0, 40) } : {}), ...(typeof t.run.challenge === "string" ? { challenge: t.run.challenge } : {}), ...(t.derived ? { trigger: S.clone(t) } : {}) });
     if (list.length) addPrompt(W, { kind: "triggerQueue", step: point.at, to: "gm", about: point.combatant, multi: 1, options: list.map((t) => ({ id: t.id, label: String(t.source?.name || t.run.type).slice(0, 120), data: info(t) })), data: { at: point.at, key: k, blocks: blocks ? 1 : 0 } });
   }
   return !blocks || !Object.values(s.prompts).some((p) => p.kind === "triggerQueue" && !p.answered && p.data?.key === k);
