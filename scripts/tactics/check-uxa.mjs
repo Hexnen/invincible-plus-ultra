@@ -14,7 +14,7 @@ import * as CP from "./ui/camera-pure.mjs";
 import { EN, PL } from "./lang.mjs";
 
 const read = (f) => readFileSync(new URL(f, import.meta.url), "utf8");
-const dock = read("./ui/dock.mjs"), main = read("./ui/main.mjs"), board = read("./ui/board.mjs"), cam = read("./ui/camera-pure.mjs");
+const dock = read("./ui/dock.mjs"), desk = read("./ui/desk.mjs"), main = read("./ui/main.mjs"), board = read("./ui/board.mjs"), cam = read("./ui/camera-pure.mjs");
 const slotsCss = read("../../styles/tactics-slots.css"), uiCss = read("../../styles/tactics-ui.css");
 
 /* ---- D126: the toasts' strip */
@@ -84,8 +84,9 @@ const slotsCss = read("../../styles/tactics-slots.css"), uiCss = read("../../sty
 
 /* ---- U154 / U155: the desk's answers */
 {
-  ok(/#invincible-tactics-desk \.ita-ask > \.ita-submit, #invincible-tactics-desk \.ita-ask:not\(\[data-wide\]\):not\(:has\(> \.ita-submit\)\) > \.ita-opts \{ position: sticky; bottom: 0;/.test(uiCss), "U154 / U155: a card's one button or its short row of answers holds to the desk's bottom edge");
-  ok(/\.ita-ask:not\(\[data-wide\]\):not\(:has\(> \.ita-submit\)\) > \.ita-opts \{[^}]*background: var\(--ita-tile\)/.test(uiCss), "U155: ... on a band of the card's own colour");
+  ok(/#invincible-tactics-desk \.ita-ask:not\(\[data-wide\]\):not\(:has\(> \.ita-submit\)\) > \.ita-opts \{ position: sticky; bottom: -12px;[^}]*background: var\(--ita-tile\)/.test(uiCss), "U155: a card's short row of answers holds to the desk's bottom edge, on a band of the card's own colour");
+  ok(/const SHORT = 300;/.test(desk) && /short = \(fr\.desk\.floor - fr\.desk\.top\) \/ k < SHORT/.test(desk) && /#invincible-tactics-desk\[data-short\] \.igd-wait \{ flex-wrap: nowrap; overflow-x: auto;/.test(uiCss), "U155: a short desk (under 300 css px) lays its waiting strip on one line, so the answers keep room (1366x768 at 140 %)");
+  ok(/#invincible-tactics-desk \.ita-ask > \.ita-submit \{ position: sticky; bottom: -6px;/.test(uiCss) && /\.ita-ask:has\(> \.ita-submit\)::after \{ content: ""; position: sticky; bottom: -12px;[^}]*background: var\(--ita-tile\)[^}]*pointer-events: none;/.test(uiCss), "U154: a card's one button holds to the desk's bottom edge on a band the card's width (no text shows beside it)");
 }
 
 /* ---- U160: one instruction, by the hand */
@@ -93,6 +94,7 @@ const slotsCss = read("../../styles/tactics-slots.css"), uiCss = read("../../sty
   ok(/Zones\.pickArea\(\{[^\n]*banner: false/.test(board) && /Zones\.pickMove\(\{[^\n]*banner: false/.test(board), "U160: the board's picks of a zone ask the map for no banner");
   ok(/data\.panel\.kind === "move" && data\.panel\.picking && data\.panel\.ways && data\.panel\.bare\) data\.panel = \{ \.\.\.data\.panel, bare: false \}/.test(main), "U160: a move pick gets its panel with the instruction in its head");
   ok(/Board\.areaMode\(data\.panel\)\) data\.panel = \{ \.\.\.data\.panel, pickHint: t\("ITAC\.map\.area\.pick"\) \}/.test(main) && /p\.pickHint \? h\("p\.itd-hint\.itd-pickhint"/.test(dock), "U160: an area attack says what to click in its armed panel");
+  ok(/\.itd-panel\[data-picking\] > \.itd-phead \{ flex: 1 1 100%; min-width: 0; \}/.test(uiCss) && /\.itd-panel\[data-picking\] \.itd-hint-head span \{ white-space: normal; \}/.test(uiCss), "U160: the instruction in the panel's head wraps (1366x768 at 140 % cut it)");
   ok(EN["ITAC.map.area.pick"] && PL["ITAC.map.area.pick"] && PL["ITAC.map.area.pick"] !== EN["ITAC.map.area.pick"], "U160: the instruction in both languages");
 }
 done("check-uxa");
