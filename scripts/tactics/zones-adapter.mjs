@@ -147,6 +147,10 @@ export const menuOpen = () => call("menuOpen") === true;
 /** fn(ctx) is asked about every right click on a token, a wall or door, a zone. -> off() */
 export const onContext = (fn) => { const off = call("onContext", fn); return typeof off === "function" ? off : () => {}; };
 export const camera = (o) => call("camera", o) ?? null;
+/** U94: the map brings what is named into the free part of THIS client's screen (zones-api.md section 38); always resolves */
+export const hasFrame = () => typeof api()?.frame === "function";
+export const frame = (spec) => (hasFrame() ? callAsync("frame", spec) : Promise.resolve({ ok: false, reason: "noZonesApi" }));
+export const frameBack = () => call("frameBack");
 export const present = (o) => call("present", o) ?? null;
 export const intent = (spec) => call("intent", spec) === true;
 export const reveal = (where) => call("reveal", where);
