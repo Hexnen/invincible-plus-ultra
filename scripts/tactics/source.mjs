@@ -33,6 +33,15 @@ export function aboard(combat, vid) {
   const r = tacticsState(combat)?.vehicles?.[vid];
   return r && typeof r === "object" ? [r.driver, ...(Array.isArray(r.crew) ? r.crew : [])].filter((x) => typeof x === "string" && x) : [];
 }
+/** U118 / bug hunt 3 (suspicion, proved): those aboard whose presence THIS user may know: for staff all of them; for a player nobody whose
+    own tile the bar would not show (a hidden combatant or token the player does not own, a token whose disposition is secret). The raw
+    flag holds hidden ids, and a hidden driver's disposition coloured the vehicle's tile on a player's bar (a concealed figure readable
+    from a colour, spec 10). Plain properties only: combatant.hidden, token.hidden / isSecret, actor.isOwner. */
+export function aboardSeen(combat, vid, staff) {
+  const list = aboard(combat, vid);
+  if (staff) return list;
+  return list.filter((id) => { try { const cb = combat?.combatants?.get?.(id); if (!cb) return false; const own = cb.actor?.isOwner === true || cb.isOwner === true; return !((cb.hidden === true || cb.token?.hidden === true) && !own) && cb.token?.isSecret !== true; } catch { return false; } });
+}
 /** U118: the side a vehicle shows on the initiative bar. A vehicle is a thing: the token's own disposition (hostile by default for a new
     token) says nothing about whose it is. It shows the side of the first one aboard who has one, else friendly when a player owns it,
     else neutral. `disps` = the dispositions of those aboard, in order; D = CONST.TOKEN_DISPOSITIONS */

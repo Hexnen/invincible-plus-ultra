@@ -72,6 +72,35 @@ const give = (T, cid, ...names) => { const c = T.c[cid]; c.kit = KP.build({ item
   eq(RW.openRolls({ stack: [{ id: "a1", rolls: { x: { ...rec, pushable: false }, y: { ...rec, forced: 1 }, z: rec } }] }).map((o) => o.key), ["z"], "H3-3: only a roll that is in, pushable and not set by the GM is watched this way");
 }
 
+/* ---- suspicion (ui/vars.mjs), proved and fixed: an unchanged value put the sheet back only with the next CHANGED value */
+{
+  const V = await import("./ui/vars.mjs");
+  class Sheet { constructor() { this.cssRules = []; } insertRule(text, i) { this.cssRules.splice(i, 0, { selectorText: text.slice(0, text.indexOf("{")).trim(), style: { setProperty() {}, removeProperty() {} } }); return i; } }
+  const had = globalThis.CSSStyleSheet; globalThis.CSSStyleSheet = Sheet;
+  const doc = { body: { style: { setProperty() {}, removeProperty() {} } }, adoptedStyleSheets: [] };
+  V._reset(); V.setVar("--itd-clear", "120px", doc);
+  doc.adoptedStyleSheets = [];                                         // another script replaced the list
+  eq(V.setVar("--itd-clear", "120px", doc), false, "vars: the same value again writes no value ...");
+  eq(doc.adoptedStyleSheets.length, 1, "vars: ... but our sheet is back in the document's list (the notice, the toasts, the dice z-index keep their numbers)");
+  V._reset(); if (had) globalThis.CSSStyleSheet = had; else delete globalThis.CSSStyleSheet;
+}
+
+/* ---- suspicion (combat/bar.mjs U118), proved and fixed: a hidden NPC driving a vehicle coloured the vehicle's tile on a player's bar */
+{
+  const Src = await import("./source.mjs");
+  const state = S.newState({}); state.vehicles = { V1: { driver: "N9", crew: ["H1"] } };
+  const cbs = { V1: { id: "V1" }, N9: { id: "N9", hidden: true, token: { hidden: true, disposition: -1 }, actor: { isOwner: false } }, H1: { id: "H1", token: { disposition: 1 }, actor: { isOwner: true } } };
+  const combat = { flags: { [S.MOD_ID]: { tactics: { state: JSON.stringify(state) } } }, combatants: { get: (id) => cbs[id] ?? null } };
+  eq(Src.aboard(combat, "V1"), ["N9", "H1"], "bar (premise): the raw flag names the hidden driver first");
+  eq([Src.aboardSeen(combat, "V1", true), Src.aboardSeen(combat, "V1", false)], [["N9", "H1"], ["H1"]], "bar: the GM's bar reads everybody aboard, a player's nobody concealed from them");
+  const D = { FRIENDLY: 1, NEUTRAL: 0, HOSTILE: -1, SECRET: -2 }, disp = (staff) => Src.vehicleDisp(Src.aboardSeen(combat, "V1", staff).map((id) => cbs[id].token?.disposition), false, D);
+  eq([disp(true), disp(false)], [-1, 1], "bar: the vehicle is hostile on the GM's bar (its driver), and the player's bar does not give the hidden driver away");
+  cbs.N9.actor.isOwner = true;
+  eq(Src.aboardSeen(combat, "V1", false), ["N9", "H1"], "bar: a hidden one the player owns is known to that player");
+  cbs.N9 = { id: "N9", token: { isSecret: true, disposition: -1 }, actor: {} };
+  eq(Src.aboardSeen(combat, "V1", false), ["H1"], "bar: a token with a secret disposition says nothing either");
+}
+
 /* ---- H3-4: the splash and a book villain's Resolve */
 {
   const sp = src("../splash/main.mjs");

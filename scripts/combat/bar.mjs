@@ -125,8 +125,9 @@ function read(c, isActive, ctx) {
     if (td?.hidden && !owner) return null;
     if (td?.isSecret) return null;
   }
-  /* U118: a vehicle shows the side of who sits in it (tactics/source.mjs vehicleDisp), never the token's own default */
-  const disp = actor?.type === "vehicle" ? dispOf(Tac.vehicleDisp(Tac.aboard(c.parent, c.id).map((id) => c.parent?.combatants?.get(id)?.token?.disposition), !!actor.hasPlayerOwner, D()))
+  /* U118: a vehicle shows the side of who sits in it (tactics/source.mjs vehicleDisp), never the token's own default; of those aboard
+     only whom this user may know of (source.aboardSeen: a concealed driver gives nothing away) */
+  const disp = actor?.type === "vehicle" ? dispOf(Tac.vehicleDisp(Tac.aboardSeen(c.parent, c.id, gm).map((id) => c.parent?.combatants?.get(id)?.token?.disposition), !!actor.hasPlayerOwner, D()))
     : dispOf(td ? td.disposition : actor?.prototypeToken?.disposition);
   let observer = owner;
   if (!observer) { try { observer = !!actor?.testUserPermission?.(game.user, "OBSERVER"); } catch { observer = false; } }
