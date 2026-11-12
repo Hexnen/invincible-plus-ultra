@@ -133,11 +133,44 @@ export function fireAt(fm, spot) {
   if (Array.isArray(fm?.list)) return fm.list.find((b) => b.zone === z && (!b.at || b.at === lv))?.intensity ?? 0;
   return fm?.burning?.[z] ?? 0;
 }
+/* FXV (W1-9, U40): the two warnings the engine had no forecast for. Provisional readings (questions FXV-2, FXV-3):
+     "the zone will collapse": a challenge in the fight whose time runs out at the end of THIS round and whose failure wrecks zones or
+       blasts (the book's presets: Extreme Weather, Doomsday Device) stands in this zone, or next to it when its area is the zone and
+       the adjacent ones. Only where this user knows the time left (the numbers of a challenge are the GM's unless shown).
+     "in reach of someone holding": an opponent who held off its turn this round [B2281-2283] and has still to act stands in this zone:
+       it may act before the character's next turn, in reach of a slugfest.
+   -> { collapse: [{ name, what }], held: [name] } for the spot `spot` (where `cid` would end the turn) */
+const COLLAPSE_KINDS = ["wreckZones", "blast"];
+export function forecast(view, facts, cid, spot, Z) {
+  const out = { collapse: [], held: [] }, z = bareKey(spot);
+  if (!view || !z || z.startsWith("@")) return out;
+  const zoneOf = (id) => { try { return bareKey(facts?.where?.(id) ?? Z?.place?.(id)?.spot ?? ""); } catch { return ""; } };
+  try {
+    for (const x of facts?.special?.() ?? []) {
+      const cfg = view.challenges?.[x.id], kinds = (cfg?.effects ?? []).filter((e) => e.when === "onFail" && COLLAPSE_KINDS.includes(e.kind)).map((e) => e.kind);
+      if (x.kind !== "challenge" || !kinds.length || cfg.done || !(Number(x.resolve) === 1) || !(Number(x.health) > 0) || (x.timeUnit ?? "rounds") !== "rounds") continue;
+      const at = zoneOf(x.id); if (!at) continue;
+      let near = at === z;
+      if (!near && cfg.area === "zoneAndAdjacent") { try { near = (Z?.within?.(at, 1) ?? []).some((r) => r?.zone === z); } catch { near = false; } }
+      if (near) out.collapse.push({ name: String(x.name ?? ""), what: kinds[0] });
+    }
+  } catch { /* nothing is forecast rather than a wrong thing */ }
+  try {
+    const me = facts?.c?.(cid), mine = !!me?.npc;
+    for (const s of view.init?.slots ?? []) {
+      if (!s?.heldOff || s.state !== "waiting") continue;
+      for (const m of s.members ?? []) { const o = facts?.c?.(m); if (m !== cid && o && !!o.npc !== mine && zoneOf(m) === z) out.held.push(String(o.name ?? "")); }
+    }
+  } catch { /* idem */ }
+  return out;
+}
 /** what ending the turn on `zone` (a spot: the zone and the level) means: the fire attack of the next round [B2925], a fire next
-    door [B2927], no air [B2929] */
-export function endWarnings(fm, zone, c, Z, t) {
+    door [B2927], no air [B2929]; FXV (W1-9): `fc` = forecast(...): a challenge's end that hits the zone, an opponent who holds its turn here */
+export function endWarnings(fm, zone, c, Z, t, fc = null) {
   const z = bareKey(zone), out = [], n = fireAt(fm, zone);
   if (!z || z.startsWith("@")) return out;
+  for (const x of fc?.collapse ?? []) out.push({ zone: z, text: t("ITAC.map.warn.collapse"), tip: t("ITAC.map.warn.collapse.tip", { name: x.name, what: t(`ITAC.ui.effect.${x.what}`, {}, x.what) }), icon: "warn" });
+  if (fc?.held?.length) out.push({ zone: z, text: t("ITAC.map.warn.held"), tip: t("ITAC.map.warn.held.tip", { names: fc.held.join(", ") }), icon: "warn" });
   if (n) out.push({ zone: z, text: t("ITAC.map.warn.fire", { n }), tip: t("ITAC.map.warn.fire.tip", { n }), icon: "burning" });
   else if (fm?.spread?.[z]) out.push({ zone: z, text: t("ITAC.map.warn.spread"), tip: t("ITAC.map.warn.spread.tip"), icon: "warn" });
   let vac = false;
@@ -151,7 +184,7 @@ export function endWarnings(fm, zone, c, Z, t) {
     one too, says "fire on entering" with the intensity the move will meet (the states of that spot's level, the mover's own
     exemptions: the same reading as flows/move.enterGate); the zone the mover LEAVES says nothing, nothing attacks on the way out.
     The destination also carries what ending the turn there means (the standing warning of U40). */
-export function zoneHazards(fm, zones, to, c, Z, t) {
+export function zoneHazards(fm, zones, to, c, Z, t, fc = null) {
   const end = String(to ?? ""), out = [], cid = c?.id ?? null;
   let here = null;
   try { here = cid != null ? Z?.place?.(cid)?.spot ?? null : null; } catch { here = null; }
@@ -162,7 +195,7 @@ export function zoneHazards(fm, zones, to, c, Z, t) {
     const n = fireOn(s);
     if (n > 0) out.push({ zone: bareKey(s), text: t("ITAC.map.haz.fire", { n }), tip: t("ITAC.map.haz.fire.tip", { n }), color: "danger", icon: "burning" });
   }
-  for (const w of endWarnings(fm, end, c, Z, t)) out.push({ zone: w.zone, text: w.text, tip: w.tip, color: "danger", icon: w.icon });
+  for (const w of endWarnings(fm, end, c, Z, t, fc)) out.push({ zone: w.zone, text: w.text, tip: w.tip, color: "danger", icon: w.icon });
   return out;
 }
 

@@ -228,6 +228,15 @@ function actPool(v, I, tokens) {
 }
 export const act = {
   preview(v, inst) { const I = K.draft(inst); I.data.attr = attrOf(v, I); return I.data.attr ? actPool(v, I, I.decl.tokens ?? []) : null; },
+  /* FXV (P8f-5): the dice `t` would roll against this action (banter, a resisted persuasion), built as the roll builds them (the sheet's
+     bonus, a crippling injury, tokens); the chance "if they resist" was counted on the client from the bare attribute. -> { resist? } */
+  defPreview(v, inst, t) {
+    const I = K.draft(inst);
+    if (!(I.decl?.targets ?? []).includes(t)) I.decl = { ...I.decl, targets: [t] };
+    const opp = opponentOf(v, I);
+    if (!opp || opp.who !== t || !v.facts.c(t)) return {};
+    try { const n = K.buildPool(v, I, `def:${t}`, t, opp.attr, [], { rollKind: "other" }).pool.dice; return Number.isFinite(n) ? { resist: n } : {}; } catch { return {}; }
+  },
   STEPS: Object.freeze(["check", "roll", "effect", "outcome", "close"]),
   legality,
   /* [B2773] a broken character may try to get up on its own turn; Resilience turns the damage that broke it into stress [B2160] */

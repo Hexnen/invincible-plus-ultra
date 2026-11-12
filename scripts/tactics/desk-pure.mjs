@@ -49,6 +49,7 @@ const instLine = (i, ctx, state = null) => ({ steps: (FLOWS[i.flow]?.STEPS ?? []
   defs: Object.entries(isObj(i.data?.def) ? i.data.def : {}).filter(([, x]) => isObj(x) && x.defence).map(([t, x]) => ({ target: t, defence: x.defence, dice: Number.isFinite(x.dice) ? x.dice : null })),      // the defences declared so far; `dice` only in the full state (a player's view carries the kind alone)
   failed: isObj(i.data?.failed) ? { step: String(i.data.failed.step ?? "").slice(0, 40) } : null, byHand: (i.data?.notes ?? []).some((n) => n?.note === "seatByHand") ? "seat" : null,      // D90 / D91: why it lies in the GM's hand (only in the full state: a player's view carries no such data)
   inst: i.id, action: i.action, label: i.data?.label ?? null, flow: i.flow, actor: i.actor, actorName: nameOf(ctx, i.actor), targets: (i.decl?.targets ?? []).map((t) => ({ id: t, name: nameOf(ctx, t) })), cause: i.cause, step: i.step, status: i.status, locked: !!i.locked, parent: i.parent, text: i.decl?.text, effect: effectOf(i),
+  help: Number(i.data?.help) > 0 ? { dice: Number(i.data.help), who: (i.decl?.helpers ?? []).filter((h) => h?.consent === "yes").map((h) => nameOf(ctx, h.id)) } : null,      // FXV (P8e-7)
   fx: isObj(i.data?.challengeFx) ? { challenge: i.data.challengeFx.challenge, kind: i.data.challengeFx.kind, name: nameOf(ctx, i.data.challengeFx.challenge), ...(i.data?.trigger?.at && i.data.trigger.at !== "onFail" ? { round: 1 } : {}) } : null });      // D111: what a failed challenge does (H2-1: `round`, a side effect at a round point, not of time running out)
 
 /* U1 / U2: one roll of an action as a surface needs it to offer "roll", "accept" and "push" itself. `state`: "owed" (no dice yet),
@@ -80,7 +81,7 @@ export function deskModel(state, log, ctx = {}) {
       return { ...row, askReq: row.state === "owed" && r.req ? { op: "askRoll", inst: i.id, roll: r.key } : null, acceptReq: row.state === "push" ? { op: "setSixes", inst: i.id, roll: r.key, sixes: r.sixes, accept: true, pushed: r.pushed ?? 0 } : null      /* D48: tied to the result the button shows */ }; }), commands: cmds });
   }
   const list = log?.list ?? [];
-  const journal = list.map((t, at) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, who: Object.keys(isObj(t.label?.who) ? t.label.who : {}), text: t.label?.gm ?? "", pub: pubLine(t.label, (cid) => ctx.c?.(cid)?.name),
+  const journal = list.map((t, at) => ({ id: t.id, inst: t.inst, round: t.round, at: t.at, state: t.state, ...(Array.isArray(t.undoFailed) && t.undoFailed.length ? { failed: t.undoFailed } : {}), who: Object.keys(isObj(t.label?.who) ? t.label.who : {}), text: t.label?.gm ?? "", pub: pubLine(t.label, (cid) => ctx.c?.(cid)?.name),
     undo: t.state === "closed" && Array.isArray(t.ops) ? { req: { op: "undo", tx: t.id }, alsoUndoes: list.slice(at + 1).filter((x) => x.state === "closed").length,       // spec 15: LIFO
       force: { req: (drift) => ({ op: "undo", tx: t.id, force: true, ...(drift ? { drift } : {}) }), modes: ["restore", "difference", "leave"] } } : null })).reverse();
   /* spec 13.3 (standing reactions of an NPC) and spec 10 (what of an opponent the players have been shown) */

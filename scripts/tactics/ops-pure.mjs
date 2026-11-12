@@ -367,7 +367,7 @@ function run(W) {
       endStatuses(W, { at: "roundEnd" });
       ev(W, "roundEnd", { order: publicOrder(s) });
       W.effects.push({ type: "roundEnd", round: s.round });      // the challenge clock runs down here [R22] (executor)
-      if (++rounds > 2) { s.phase = "turns"; return; }           // a round in which nobody could act, twice in a row: stop instead of spinning
+      if (++rounds > 2) { s.phase = "turns"; W.spun = true; return; }           // a round in which nobody could act, twice in a row: stop instead of spinning
       W.surprised = []; W.groups = [];
       startRound(W, s.round + 1);
     } else return;
@@ -380,6 +380,10 @@ function afterEdit(W, before) {
   if (before && s.init.curMember !== before && s.ledger[before]?.open) s.ledger[before] = Lg.turnSuspend(s.ledger[before]);
   run(W);
 }
+/* FXV (P8g-4, U4-4): "next turn" / "next round" when nobody in the fight can act ran up to three empty rounds (their round-end
+   triggers, statuses and challenge clocks with them), or with nobody left in the order did nothing, and then said "done". Now such a
+   step is refused (nothing changes) and the GM is told why. A step that did open a new round (a chase's round at the GM's word) goes. */
+const spunOut = (W, r0) => (W.s.phase === "turns" && !W.s.init.curMember && (W.spun || (!W.s.init.slots.length && W.s.round === r0)) ? err("nobodyActs") : undefined);
 /* the cards cannot be edited while they are being dealt */
 const dealing = (W) => W.s.phase === "draw";
 
@@ -438,18 +442,20 @@ const OPS = {
     run(W);
   },
   nextTurn(W) {
-    const s = W.s;
+    const s = W.s, r0 = s.round;
     if (s.phase !== "turns") return err("busy");
     if (s.init.curMember) closeTurn(W, s.init.curMember);
     run(W);
+    return spunOut(W, r0);
   },
   nextRound(W) {
-    const s = W.s;
+    const s = W.s, r0 = s.round;
     if (s.phase !== "turns") return err("busy");
     if (s.init.curMember) closeTurn(W, s.init.curMember);
     s.init = I.closeRound(s.init);
     if (s.kind === "chase" && !s.init.slots.length) s.phase = "roundEnd";      // P7 [B3432]: a chase holds no cards; its rounds turn at the GM's word
     run(W);
+    return spunOut(W, r0);
   },
   prevTurn(W) {
     const s = W.s;

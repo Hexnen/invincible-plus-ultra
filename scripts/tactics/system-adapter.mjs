@@ -418,7 +418,8 @@ export function readRollMessage(message) {
   if (!tag || !roll) return null;
   const sixes = Number(roll.successCount), ones = Number(roll.baneCount);
   if (!Number.isFinite(sixes)) return null;
-  return { ...tag, author: message.author?.id ?? null, sixes, ones: Number.isFinite(ones) ? ones : 0, pushed: num(roll.pushCount), pushable: roll.pushable === true, messageId: message.id };
+  const dice = Number(roll.size);                                                          // FXV (P8d-6): how many dice were thrown (yzur: a push keeps the number)
+  return { ...tag, author: message.author?.id ?? null, sixes, ones: Number.isFinite(ones) ? ones : 0, pushed: num(roll.pushCount), pushable: roll.pushable === true, messageId: message.id, ...(Number.isFinite(dice) && dice > 0 ? { dice } : {}) };
 }
 /** Journal op `message` inverse: struck through, never deleted (spec 15). */
 export async function strikeMessage(id) {

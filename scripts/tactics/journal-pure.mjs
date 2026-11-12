@@ -162,7 +162,9 @@ export function resolveDrift(op, current, mode) {
   if (mode === "difference" && typeof op.from === "number" && typeof op.to === "number" && typeof current === "number") return current + (op.from - op.to);
   return op.from;      // "restore"
 }
-export const markUndone = (log, txId, at) => ({ v: LOG_V, list: (log?.list ?? []).map((t) => (t.id === txId ? { ...t, state: "undone", undoneAt: at } : t)) });
+/* FXV (P8b-7, R14): `failed` = what the host could not take back in this undo ({ t, reason }); kept on the entry for the GM's journal */
+export const markUndone = (log, txId, at, failed = null) => ({ v: LOG_V, list: (log?.list ?? []).map((t) => (t.id === txId ? { ...t, state: "undone", undoneAt: at,
+  ...(Array.isArray(failed) && failed.length ? { undoFailed: failed.slice(0, 20).map((f) => ({ t: String(f?.t ?? ""), reason: String(f?.reason ?? "") })) } : {}) } : t)) });
 
 /* ------------------------------------------------------------------ fine-grained writes
    The smallest list of [path, to] leaf writes that turns `before` into `after` below `base`. Objects are compared key by key and lists of records with

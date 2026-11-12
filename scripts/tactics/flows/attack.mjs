@@ -112,7 +112,7 @@ export function legality(v, inst) {
     if (!(entry?.[multi] || w?.[multi])) return bad(multi === "area" ? "noArea" : "noFullAuto", { gmMayAllow: 1 });
     if (multi === "fullAuto" && attack.ATTACKS[kind].family !== "shooting") return bad("noFullAuto");
     const spots = d.targets.map((t) => facts.zone(t)?.spot).filter((x) => x != null);
-    if (new Set(spots).size > 1) return bad("notSameZone");                                                 // the targets stand in one zone
+    if (new Set(spots).size > 1) return bad("notSameZone", { series: 1 });                                  // the targets stand in one zone; FXV (P8f-6): said as the rule of a series, not "in another zone"
   }
   if (d.wreck && !inst.data?.wreck) {                                                                        // [B2451]: an option of a slugfest attack
     if (kind !== "slugfest") return bad("wreckNotSlugfest");

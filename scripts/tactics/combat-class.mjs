@@ -21,7 +21,7 @@ const MOD = Store.MOD;
 let Wrapped = null, Own = null;
 const warn = (text) => { try { ui.notifications.warn(text, { console: false }); } catch { /* no ui */ } };
 const info = (text) => { try { ui.notifications.info(text, { console: false }); } catch { /* no ui */ } };
-const tell = (env) => { if (env && env.ok === false && env.error?.code !== "noPrev") warn(errText(env.error)); else if (env?.error?.code === "noPrev") info(t("ITAC.Note.NoPrev")); return env; };
+const tell = (env) => { const c = env?.error?.code; if (env && env.ok === false && c !== "noPrev" && c !== "nobodyActs") warn(errText(env.error)); else if (c === "noPrev") info(t("ITAC.Note.NoPrev")); else if (c === "nobodyActs") info(errText(env.error)); return env; };      // FXV (P8g-4): nobody can act: a note, not an error
 
 /** card order. No `this`: core calls it unbound. */
 export function compareCombatants(a, b, base) {

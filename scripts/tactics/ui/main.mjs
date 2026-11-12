@@ -300,6 +300,7 @@ function staffModel(combat, desk) {
   return { bars, prompts: [], mine, rolls, stack: desk?.info ?? [], waiting: desk?.waiting ?? [], turn: desk?.turn ?? null };
 }
 
+let dockCardsWere = [], deskCardsWere = [];      // FXV (FXF-11): the cards of the last drawing, for carryPicks
 function refresh() {
   try {
     const combat = down ? null : combatNow();
@@ -320,9 +321,11 @@ function refresh() {
       cardsWere = ids; deskIdle = !ids.length && !(desk?.info ?? []).length && !(desk?.manual ?? []).length;
       if (fresh && st.desk.auto) st.desk.auto = false;
       if (fresh && st.desk.tab !== "now" && !/^(INPUT|TEXTAREA|SELECT)$/.test(Desk.el()?.contains(document.activeElement) ? document.activeElement.tagName : "")) st.desk.tab = "now";
+      st.desk.picks = Model.carryPicks(st.desk.picks, deskCardsWere, desk?.cards ?? []); deskCardsWere = desk?.cards ?? [];      // FXV (FXF-11): a card made again keeps its ticks
       deskD = Model.deskData(desk, st.desk, facts, t);
     } else { cardsWere = null; Desk.render({ show: false }); }
     const model = staff ? staffModel(combat, desk) : Api.player(combat);
+    st.dock.picks = Model.carryPicks(st.dock.picks, dockCardsWere, model?.prompts ?? []); dockCardsWere = model?.prompts ?? [];      // FXV (FXF-11)
     const data = Model.dockData(model, st.dock, facts, t);
     /* CHASE (U169 / U170): while the chase panel stands, the dock's line and cards do not say the chase again */
     const chaseD = ChaseP.chaseData(facts.view, chaseOwnFor(combat), facts, t);
@@ -689,12 +692,17 @@ function holdInZone(doc, changed, options, userId) {
 export function start() {
   if (started) return true;
   if (typeof document === "undefined") return false;      // no page (the node checks load main.mjs): no surfaces
+  /* FXV (P8g-6): what start() hooks up is kept, and taken off again when it fails half way: before, `started` stayed true with half the
+     listeners on, so a second start() did nothing and the half that was on kept firing into surfaces that never came up */
+  const offs = [], keep = (off) => { if (typeof off === "function") offs.push(off); };
+  const Hooks = { on: (hk, fn) => { const id = globalThis.Hooks.on(hk, fn); offs.push(() => globalThis.Hooks.off(hk, id)); return id; } };      // start()'s own: every hook it adds is kept
+  const listen = (el, ev, fn, o) => { el.addEventListener(ev, fn, o); offs.push(() => el.removeEventListener(ev, fn, o)); };
   try {
     started = true;
     down = !globalThis.canvas?.scene;        // this can run before Foundry made the canvas: canvasReady lifts it
     configure();
     Tip.start(game.tooltip);      // U88 / U97: the tooltips of the dock, the cards and the desk open outside the block of their owner (ui/tip-pure.mjs)
-    Store.subscribe(schedule);
+    keep(Store.subscribe(schedule));
     for (const hk of ["updateCombat", "createCombat", "deleteCombat", "createCombatant", "updateCombatant", "deleteCombatant", "userConnected", "combatStart"]) Hooks.on(hk, schedule);
     Hooks.on("updateActor", (_a, ch) => { if (ch && ("system" in ch || "name" in ch || "img" in ch || "ownership" in ch)) moved(); });
     /* U101 / CAM-14: hiding or revealing a token of the fight alone (no combatant changes) changes who sees whom and is a cue of the camera:
@@ -709,11 +717,12 @@ export function start() {
     Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size
     Hooks.on("deleteChatMessage", () => setTimeout(relayout, 60));
     Hooks.on("renderChatMessageHTML", (_m, html) => chatButtons(html?.parentElement ?? html));      // U129
-    Store.subscribe(() => setTimeout(chatButtons, 50));
-    Zones.onEvent(moved);                    // a token entered a zone, a door changed: the options of a move are counted again
-    Zones.onChange(() => moved());           // the scene's numerals or its zones changed: every text that names a zone is said again
+    keep(Store.subscribe(() => setTimeout(chatButtons, 50)));
+    keep(Zones.onEvent(moved));                    // a token entered a zone, a door changed: the options of a move are counted again
+    keep(Zones.onChange(() => moved()));           // the scene's numerals or its zones changed: every text that names a zone is said again
     declareRoom();
     /* a token dragged into another zone (movement.mjs asks here first): the dock opens Move for that combatant with the zone chosen */
+    keep(() => Mv.setDragSurface(null));
     Mv.setDragSurface((cid, spot) => {
       const combat = combatNow();
       if (!combat || !st.dock) return false;
@@ -728,12 +737,12 @@ export function start() {
     });
     for (const hk of ["changeSidebarTab", "renderHotbar", "renderPlayers", "renderChatLog", "closeChatLog"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });      // U136: also the chat popped out or back in
     Hooks.on("collapseSidebar", () => { relayout(); setTimeout(() => (st.desk.touched ? relayout() : schedule()), 320); });      // the desk folds or opens with the room the sidebar leaves, until the GM chose
-    window.addEventListener("resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
-    document.addEventListener("keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
+    listen(window, "resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
+    listen(document, "keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock({ armed: null, mode: null, amend: null }); } } catch { /* ignore */ } }, true);
     /* U41 */
-    document.addEventListener("keydown", onKey, true);
-    document.addEventListener("pointerdown", () => { byPointer = true; }, true);
-    document.addEventListener("keydown", (ev) => { if (ev.key === "Tab" && !ev.defaultPrevented) byPointer = false; });      // the browser walked the focus
+    listen(document, "keydown", onKey, true);
+    listen(document, "pointerdown", () => { byPointer = true; }, true);
+    listen(document, "keydown", (ev) => { if (ev.key === "Tab" && !ev.defaultPrevented) byPointer = false; });      // the browser walked the focus
     layoutStart();      // U64
     applyScale();       // U62
     /* U62: the slider in the settings window shows the size while it is dragged; closing the window without saving puts the kept size back */
@@ -751,5 +760,11 @@ export function start() {
     Api.ui = { active, refresh, state: () => st, rescale: (v) => applyScale(v), frame: () => Slots.frameNow(), layout: () => layout, hintsSwitched: (on) => Feedback.hintsSwitched(on) };
     refresh();
     return true;
-  } catch (e) { console.warn(LOG, "start failed", e); return false; }
+  } catch (e) {
+    console.warn(LOG, "start failed", e);
+    for (const off of offs.reverse()) { try { off(); } catch { /* the rest still goes */ } }
+    for (const gone of [() => Dock.destroy(), () => Desk.destroy(), () => Board.reset()]) { try { gone(); } catch { /* the rest still goes */ } }      // no half-built surface left in the page
+    started = false;
+    return false;
+  }
 }

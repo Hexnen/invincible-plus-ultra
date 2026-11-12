@@ -18,7 +18,7 @@ const has = (t, key) => t(key, {}, null) !== null;
     The text is ALWAYS a whole sentence (U68: "no action" under "full action" read as a second price). */
 export function whyOf(t, reason, params = {}, o = {}) {
   if (!reason) return null;
-  const id = String(reason), keys = o.ctx ? [`${o.ctx}.${id}`, id] : [id];
+  const id = String(reason), keys = [...(params?.series ? [`series.${id}`] : []), ...(o.ctx ? [`${o.ctx}.${id}`, id] : [id])];      // FXV (P8f-6): a series (full auto) has its own words
   const wk = keys.find((k) => has(t, `ITAC.why.${k}`)), fk = keys.find((k) => has(t, `ITAC.fix.${k}`));
   const text = wk ? t(`ITAC.why.${wk}`, params) : t("ITAC.why.other", { reason: t(`ITAC.reason.${id}`, params, id) });
   /* a sentence of its own with no remedy (dead, Resolve already full) gets none; an unknown reason gets the way to ask */

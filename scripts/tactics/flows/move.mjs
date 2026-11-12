@@ -310,6 +310,31 @@ export const barrier = {
 };
 
 /* ------------------------------------------------------------------ forced movement [B2435], [B2494] */
+/* FXV (CI4; decision: the attacker picks, the GM confirms OR CORRECTS). The GM's card of a forced move also offers every other zone within
+   the distance (not straight up or down): picked on the map, the character is thrown along the map's own way there, as far as the throw
+   goes. A corrected route does not fall by itself (see the questions, FXV-1); the GM's card of the drop stays the "and falls" of the chain. */
+const OTHER_WAYS_MAX = 30;
+function otherWays(v, mv, F) {
+  const Z = v.facts.zones;
+  if (mv.vertical || !mv.from || typeof Z?.within !== "function") return [];
+  const start = String(mv.from).split(":")[0], end = mv.to ? String(mv.to).split(":")[0] : null, n = Math.max(1, Math.trunc(F?.distance) || 1);
+  let near = []; try { near = Z.within(mv.from, n) ?? []; } catch { near = []; }
+  return near.filter((r) => r?.zone && r.zone !== start && r.zone !== end && r.d >= 1 && r.d <= n).slice(0, OTHER_WAYS_MAX)
+    .map((r) => ({ id: `to:${r.zone}`, label: "ITAC.opt.forcedTo", data: { to: r.zone, zone: r.zone, d: r.d } }));
+}
+/** the route of a forced move to `zone`, the GM's correction: the map's way there (walls crossed only where no other way is), as a throw.
+    -> the fields of `mv` it changes | null */
+function routeTo(v, mv, zone) {
+  const Z = v.facts.zones, from = Z.place(mv.who);
+  if (!from || from.area || !zone) return null;
+  const way = Z.plan(mv.who, zone, { way: "walk", force: true, hover: false });
+  if (!way?.zones?.length || way.zones[0] !== from.zone || way.zones.length < 2) return null;
+  const end = { level: from.level === "elevated" ? "elevated" : from.level ?? "ground", floor: from.floor ?? null, airborne: from.level === "elevated" ? !!from.airborne : false };
+  const p = (typeof Z.along === "function" ? Z.along(mv.who, way.zones, { forced: true, end }) : null) ?? way;
+  const last = p.steps?.length ? p.steps[p.steps.length - 1] : null, at = last?.to ? Z.place(last.to) : p.end ?? null;
+  return { zones: p.zones.slice(), to: at?.spot ?? zone, end: at ? { level: at.level, floor: at.floor, airborne: at.airborne } : null, total: p.total ?? p.zones.length - 1,
+    walls: (p.steps ?? []).filter((s) => s.border?.blocked).map((s) => MP.barrierOf(s.border, "wall")) };
+}
 export const forced = {
   STEPS: Object.freeze(["check", "confirm", "travel", "land", "close"]),
   legality(v, inst) { const F = inst.data?.forced; return !F || !v.facts.c(F.who) ? bad("noTarget") : !v.facts.zones ? bad("noZones", { gmMayAllow: 1 }) : fine; },
@@ -334,12 +359,17 @@ export const forced = {
       const plain = can && I.data.forced?.gmDir === 1 && !mv.vertical && !mv.edge && !(mv.walls ?? []).length && !!mv.end && !mv.end.airborne && (mv.end.level == null || mv.end.level === "ground");
       if (plain && !I.data.pk?.dir) { mv.fall = 0; R.goto = "travel"; return R; }
       if (!I.data.pk?.dir) {
-        R.prompts.push({ key: "dir", kind: "direction", to: "gm", about: mv.who, options: [{ id: "go", label: "ITAC.opt.forcedGo", ...(can ? {} : { disabled: "noRoute" }) }, { id: "goFall", label: "ITAC.opt.forcedGoFall", ...(can ? {} : { disabled: "noRoute" }) }, { id: "none", label: "ITAC.opt.forcedNone" }],
+        R.prompts.push({ key: "dir", kind: "direction", to: "gm", about: mv.who, options: [...otherWays(v, mv, I.data.forced), { id: "go", label: "ITAC.opt.forcedGo", ...(can ? {} : { disabled: "noRoute" }) }, { id: "goFall", label: "ITAC.opt.forcedGoFall", ...(can ? {} : { disabled: "noRoute" }) }, { id: "none", label: "ITAC.opt.forcedNone" }],
           data: { who: mv.who, by: I.data.forced.by ?? null, kind: mv.mode, zones: mv.zones, to: mv.to, walls: mv.walls, edge: mv.edge, distance: I.data.forced.distance, ...(mv.vertical ? { vertical: mv.vertical, levels: mv.total, slabs: mv.slabs ?? [] } : {}) } });
         R.wait = true; return R;
       }
       if (!K.isAnswered(v, I, "dir")) { R.wait = true; return R; }
       const a = K.answerId(v, I, "dir");
+      if (typeof a === "string" && a.startsWith("to:")) {                                       // FXV (CI4): the GM put the route right: the way to the zone picked on the map
+        const r = routeTo(v, mv, a.slice(3));
+        if (r) { Object.assign(mv, r, { fall: 0, edge: 0, corrected: 1 }); R.goto = "travel"; return R; }
+        mv.stop = "gm"; R.goto = "close"; I.data.result = "none"; return R;                    // the map has no way there any more: nothing moves (the GM moves it by hand)
+      }
       if (a === "none" || !can) { mv.stop = "gm"; R.goto = "close"; I.data.result = "none"; return R; }
       mv.fall = a === "goFall" ? 1 : 0; R.goto = "travel"; return R;
     },

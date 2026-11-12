@@ -93,9 +93,11 @@ const DEF_ATTR = { block: "fighting", dodge: "agility" };
     D60: against a DEFENCE (block, dodge) the defender's dice are the engine's (`def` = the `def` of its answer: the pool the roll
     will have, sheet dice and injuries in it), never a count of this client's; without that answer nothing is said of a defence.
     Against a resisting attribute the number is still the attribute this user may see (attrsFor). */
+/* FXV (P8f-5): an opposed roll's "if they resist" is the engine's number (def.resist, the defender's pool as the roll builds it), never
+   the bare attribute the client may read: without the engine's number there is no "if they resist" chance */
 export function oddsFor(a, n, tgt, facts, t, def = null) {
   if (!Number.isFinite(n)) return null;
-  const dAttr = a?.opposeAttr ?? DEF_ATTR[a?.defense], dp = !tgt || !dAttr ? NaN : a?.opposeAttr ? Number(attrsFor(facts, tgt)?.[dAttr]) : Number(def?.[a.defense] ?? NaN), c = chanceOf(n, Number.isFinite(dp) ? dp : null), say = (x) => (facts.staff ? pct(x.p) : t(`ITAC.ui.band.${x.band}`));
+  const dAttr = a?.opposeAttr ?? DEF_ATTR[a?.defense], dp = !tgt || !dAttr ? NaN : a?.opposeAttr ? Number(def?.resist ?? NaN) : Number(def?.[a.defense] ?? NaN), c = chanceOf(n, Number.isFinite(dp) ? dp : null), say = (x) => (facts.staff ? pct(x.p) : t(`ITAC.ui.band.${x.band}`));
   return { level: c.level, text: t(`ITAC.ui.band.${c.band}`), say: say(c), defended: c.defended ? { level: c.defended.level, text: t(`ITAC.ui.band.${c.defended.band}`), say: say(c.defended), label: a.opposeAttr ? t("ITAC.ui.ifResists", { attr: attrText(t, a.opposeAttr) }) : t("ITAC.ui.ifDefends", { how: t(`ITAC.action.${a.defense}`) }) } : null };
 }
 
@@ -288,6 +290,27 @@ function linesOf(p, t, facts, x) {
   if (p.kind === "proxy") out.unshift(t("ITAC.ui.line.proxy", { users: (p.absent ?? []).map((u) => facts.userName?.(u) ?? u).join(", ") }));
   return out;
 }
+/* FXV (FXF-11): a card made again with what is true now (U121: a stunt card when somebody joins or leaves the fight) has a new id, and
+   the choices ticked on the old one (not sent yet) were lost. A vanished card's picks go over to the new card of the same kind, action,
+   step and character, as far as the new card still offers them (an option gone or now disabled drops out).
+   `picks` = own.picks ({ [promptId | "tk:"+promptId]: [ids] }); `prev` / `now` = the cards before and now. -> picks (the same object when nothing moved) */
+export function carryPicks(picks, prev, now) {
+  if (!picks || !Array.isArray(prev) || !Array.isArray(now) || !prev.length) return picks;
+  const ids = new Set(now.map((q) => q?.id)), taken = new Set();
+  let out = picks;
+  for (const p of prev) {
+    if (!p?.id || ids.has(p.id) || (!picks[p.id] && !picks[`tk:${p.id}`])) continue;
+    const q = now.find((x) => x && !taken.has(x.id) && !picks[x.id] && (x.of ?? x.kind) === (p.of ?? p.kind) && (x.inst ?? null) === (p.inst ?? null) && (x.step ?? null) === (p.step ?? null) && (x.about ?? null) === (p.about ?? null));
+    if (!q) continue;
+    taken.add(q.id);
+    const open = new Set((q.options ?? []).filter((x) => !x.disabled).map((x) => x.id));
+    out = { ...out };
+    if (Array.isArray(picks[p.id])) { const keep = picks[p.id].filter((id) => open.has(id)); if (keep.length) out[q.id] = keep; }
+    if (Array.isArray(picks[`tk:${p.id}`])) out[`tk:${q.id}`] = picks[`tk:${p.id}`].slice();
+    delete out[p.id]; delete out[`tk:${p.id}`];
+  }
+  return out;
+}
 /** One question as both surfaces draw it.
     o = { t, facts, own, desk: bool, info: [instance lines] (to name the action a reaction answers), round }
     -> { id, kind, title, about, lines, options: [{ id, label, cost, note, disabled, picked, req, zones }], multi: { min, max, n } | null,
@@ -324,11 +347,11 @@ export function askData(p, o) {
   const stuntTargets = [...new Set((p.options ?? []).map((x) => x.data?.stunt && !x.data?.onExtra && x.data?.target).filter(Boolean))], oneTarget = stuntTargets.length === 1;
   const places = (p.options ?? []).filter((x) => typeof x.data?.to === "string" && !x.disabled);       // P3 (the move a dodge earns): one option per place and way of moving
   const chosen = places.length ? own.zone?.[p.id] ?? null : null, here = places.filter((x) => bare(x.data.zone ?? x.data.to) === chosen);
-  const wayLabel = (x) => [t(`ITAC.mode.${x.data.mode}`, {}, cap(x.data.mode ?? "")), x.data.elevated === "roof" ? t("ITAC.ui.way.roof") : x.data.elevated === "air" ? t("ITAC.ui.way.air") : null].filter(Boolean).join(", ");
+  const wayLabel = (x) => [x.data.mode ? t(`ITAC.mode.${x.data.mode}`, {}, cap(x.data.mode)) : labelOf(t, x.label), x.data.elevated === "roof" ? t("ITAC.ui.way.roof") : x.data.elevated === "air" ? t("ITAC.ui.way.air") : null].filter(Boolean).join(", ");
   const placeOpts = !places.length ? [] : here.length
     ? [...here.map((x) => ({ id: x.id, label: wayLabel(x), cost: zoneText(facts, t, x.data.to), note: null, disabled: null, picked: false, pass: false, zones: null, req: x.req, zoneReq: null })),
       { id: "@again", label: t("ITAC.ui.move.again"), cost: null, note: null, disabled: null, picked: false, pass: true, zones: null, req: null, zoneReq: null, again: true }]
-    : [{ id: "@zone", label: t("ITAC.ui.pick.zone"), cost: null, note: null, disabled: null, picked: false, pass: false, pickZone: true,
+    : [{ id: "@zone", label: t(kind === "direction" ? "ITAC.ui.forced.correct" : "ITAC.ui.pick.zone"), cost: null, note: null, disabled: null, picked: false, pass: false, pickZone: true,
       zones: [...new Set(places.map((x) => bare(x.data.zone ?? x.data.to)))].map((z) => ({ zone: z, tip: [...new Set(places.filter((x) => bare(x.data.zone ?? x.data.to) === z).map(wayLabel))].join(" / ") })),
       /* the zone clicked on the map: one way to get there answers at once, several are shown as buttons (main.mjs keeps the zone) */
       zoneReq: (zone) => { const hit = places.filter((x) => bare(x.data.zone ?? x.data.to) === bare(zone)); return hit.length === 1 ? hit[0].req : null; }, req: null }];
@@ -728,11 +751,13 @@ function declarePanel(bar, a, own, facts, t) {
      of this very declaration: the answer of the legality the declaration will meet, the dice of the roll, what a hit would do. One
      question per change of the declaration or of the fight (never per mouse move; the words typed for the GM are not part of it).
      A target that stands on this user's map (`map`) is marked there and has no chip in the panel; a chosen one the engine refuses
-     shows the reason at once, with the way to ask, before anything is declared. Nothing is marked until the engine answered. */
+     shows the reason at once, with the way to ask, before anything is declared. Nothing is marked until the engine answered.
+     FXV (P9-13): asked without a map too: a chip of a target out of reach is marked at once (dashed, its reason as the tooltip), not
+     refused only after "Declare"; it can still be picked, which opens the reason with the way to ask for an exception. */
   const { targets: tg0, text: tx0, ...core } = decl;
   /* D52: a declaration of several targets (full auto) is asked about WITH the ones already chosen: the dice over each token are then
      those of the one roll at all of them, and a candidate the chosen ones rule out (another zone) is refused before "Declare" */
-  const reach = facts.board && all?.length && !lone ? facts.reach?.(bar.combatant, { ...core, action: a.id, ...(arm.maxTargets > 1 && picked.length ? { targets: picked.slice() } : {}) }, all.map((r) => r.id)) ?? null : null;
+  const reach = all?.length && !lone ? facts.reach?.(bar.combatant, { ...core, action: a.id, ...(arm.maxTargets > 1 && picked.length ? { targets: picked.slice() } : {}) }, all.map((r) => r.id)) ?? null : null;
   const oddsOf = (n, tgt, def) => oddsFor(a, n, tgt, facts, t, def);
   if (targets) for (const x of targets) {
     const r = reach?.[x.id] ?? null;
@@ -884,7 +909,8 @@ function minePanel(i, facts, t, rolls = [], asked = false) {
   const opp = (i.opp ?? []).map((o) => ({ id: o.who, text: [t("ITAC.ui.mine.vs", { name: nameOf(facts, o.who, t), how: o.defence ? t(`ITAC.action.${o.defence}`) : t("ITAC.ui.mine.defence"), sixes: o.sixes ?? 0 }),
     typeof o.hit === "boolean" ? t(o.hit ? "ITAC.result.hit" : "ITAC.result.miss") : null].filter(Boolean).join(" · ") }));
   return { kind: "mine", inst: i.inst, title: instTitle(t, i), targets: (i.targets ?? []).map((x) => ({ id: x.id, name: x.name ?? nameOf(facts, x.id, t), img: seenImg(facts, x.id) })), text: instText(t, facts, i), rolls, opp,
-    status: rolls.length ? null : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : t(asked ? "ITAC.ui.mine.declared" : "ITAC.ui.mine.open"),      // `asked`: the card above or the line below already says who the table waits for
+    status: rolls.length ? null : roll ? t("ITAC.ui.mine.roll", { dice: roll.dice ?? "?", roll: rollLabel(t, roll.key, facts) }) : i.status === "manual" ? t("ITAC.ui.mine.manual") : [t(asked ? "ITAC.ui.mine.declared" : "ITAC.ui.mine.open"),
+      i.help?.dice ? t("ITAC.ui.mine.help", { dice: i.help.dice, names: (i.help.who ?? []).filter(Boolean).join(", ") }) : null].filter(Boolean).join(" "),      // FXV (P8e-7): the helpers' dice before the roll      // `asked`: the card above or the line below already says who the table waits for
     rolling: !!roll || rolls.length > 0, commands: (i.commands ?? []).map((c) => ({ id: c.id, label: labelOf(t, c.label), req: c.needs ? null : c.req, amend: c.id === "amend" })) };      // U85: drawn as small picture buttons (dock.mjs CMD_ICON), the label is the tooltip
 }
 /* W1 (U42): the camera is the player's. The map moves the view at the start of a turn only when the active character is off this
@@ -1155,6 +1181,8 @@ export function deskData(model, own, facts, t) {
     let r = rounds[rounds.length - 1];
     if (!r || r.round !== j.round) rounds.push((r = { round: j.round, label: t("ITAC.ui.round", { n: j.round ?? "?" }), rows: [] }));
     r.rows.push({ id: j.id, text: marks(t, j.text || j.pub, facts) || t("ITAC.ui.journal.noText"), state: j.state,
+      /* FXV (P8b-7, R14): what this undo could not take back stays under its line until the fight ends, for the GM to put right by hand */
+      failed: j.failed?.length ? t("ITAC.ui.journal.undoFailed", { list: [...new Set(j.failed.map((f) => t(`ITAC.failed.${FAILED_KIND(String(f?.t ?? ""))}`)))].join(", ") }) : null,
       undo: j.undo ? { label: t("ITAC.ui.undo"), also: j.undo.alsoUndoes ? t("ITAC.ui.undo.also", { n: j.undo.alsoUndoes }) : null, req: j.undo.req, armed: own.undo === j.id,
         force: j.undo.alsoUndoes ? { label: t("ITAC.ui.undo.only"), req: j.undo.force.req() } : null,
         drift: own.drift === j.id ? j.undo.force.modes.map((m) => ({ id: m, label: t(`ITAC.ui.drift.${m}`), req: j.undo.force.req(m) })) : null } : null });
@@ -1169,7 +1197,8 @@ export function deskData(model, own, facts, t) {
     reveal: ["stats", "powers", "health"].map((k) => ({ id: k, label: t(`ITAC.ui.reveal.${k}`), on: !!n.revealed[k], req: n.revealReq({ [k]: !n.revealed[k] }) })) }));
   const waiting = waitingData(model.waiting, facts, t);
   const count = cards.length + model.manual.length;
-  /* [A36]: until a charge is the engine's, the GM orders a forced move (who, away from whom, how far, how hard) or a fall by hand */
+  /* the GM's own forced move (who, away from whom or straight up or down, how far, how hard) and fall, for what no action of the engine
+     throws: a Slam along a charge's path is the engine's own ([A36], P4-1, P4-2) */
   const everyone = Object.keys(facts.view?.ledger ?? {}).filter((id) => facts.c?.(id)).map((id) => ({ id, label: facts.c(id).name }));
   const fo = own.force ?? {}, fWho = everyone.some((x) => x.id === fo.who) ? fo.who : null, ways = [{ id: "@up", label: t("ITAC.ui.force.up"), dir: "up" }, { id: "@down", label: t("ITAC.ui.force.down"), dir: "down" }], fWay = ways.find((x) => x.id === fo.from) ?? null, fFrom = fWay ? fWay.id : fo.from !== fWho && everyone.some((x) => x.id === fo.from) ? fo.from : null;
   const fDist = Math.max(1, Math.min(12, Math.trunc(Number(fo.distance) || 1))), fDmg = Math.max(0, Math.min(99, Math.trunc(Number(fo.damage) || 0)));

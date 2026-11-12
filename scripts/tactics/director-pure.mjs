@@ -185,6 +185,25 @@ async function rosterTick(state, lg, r, host) {
   if (!e.changed) return r.same && !Object.keys(said).length ? out(state, lg, r.env) : { ...base, env: { ...base.env, ...said }, changed: !r.same };
   return { state: e.state, log: e.log, env: { ...base.env, ok: true, changed: true, rev: e.state?.rev ?? base.env.rev, ...said }, events: [...base.events, ...(e.events ?? [])], changed: true };
 }
+/* FXV (CHASE2-12): the second chase roll of a round first opens the next round (above); that step of the round driver had no journal
+   entry of its own, so undoing the roll left the fight a round on (a test world ended in round 4 for 2). The change of the fight's
+   state that the step made (round, order, ledger, phase ...) is put at the head of the roll's own transaction, and the undo of the
+   roll puts it back. Not reverted: what the end of that round did to sheets (the challenges' clocks) has its own journal entries. */
+const ROUND_SKIP = new Set(["rev", "seen", "seq", "evSeq", "txOpen"]);
+function roundIntoTx(before, after, lg0, e0) {
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((k) => !ROUND_SKIP.has(k));
+  const patch = keys.flatMap((k) => J.diffWrites(before[k], after[k], [k]));
+  if (!patch.length) return {};
+  const op = { t: "state", patch, inverse: patch.map(([p]) => [p, J.clone(J.getAt(before, p))]) };
+  const inst = e0.env?.inst, old = new Set((lg0?.list ?? []).map((t) => t.id)), open0 = new Set(Object.keys(after.txOpen ?? {}));
+  const open = Object.values(e0.state?.txOpen ?? {}).filter((t) => !open0.has(t.id)), closed = (e0.log?.list ?? []).filter((t) => !old.has(t.id));
+  const pick = (l) => l.find((t) => t.inst === inst) ?? l[0];
+  const o = pick(open);
+  if (o) return { state: { ...e0.state, txOpen: { ...e0.state.txOpen, [o.id]: { ...o, ops: [op, ...o.ops] } } } };
+  const c = pick(closed);
+  if (c) return { log: { ...e0.log, list: e0.log.list.map((t) => (t.id === c.id ? { ...t, ops: [op, ...t.ops] } : t)) } };
+  return {};
+}
 export async function handle(io, input, host) {
   const v = veil(input, host, io?.state ?? null);
   if (!v) return handle0(io, input, host);
@@ -206,7 +225,8 @@ async function handle0({ state, log }, input, host) {
         const nr = await round(state, lg, { type: "nextRound", force: true }, input.user, host);     // P7 [B3432]: one chase roll a round; the next one opens the next round
         if (nr.ok && !nr.same && nr.state) { st0 = nr.state; lg0 = nr.log; pre.push(...nr.events); }
       }
-      const e0 = await E.handle({ state: st0, log: lg0 }, input, host);
+      let e0 = await E.handle({ state: st0, log: lg0 }, input, host);
+      if (st0 !== state && e0.changed && e0.env?.ok) e0 = { ...e0, ...roundIntoTx(state, st0, lg0, e0) };      // FXV (CHASE2-12): an undo of the roll takes the round it opened back too
       const e = pre.length ? { ...e0, events: [...pre, ...e0.events], changed: true, state: e0.changed ? e0.state : st0, log: e0.changed ? e0.log : lg0 } : e0;
       if (!e.changed) return e;
       const done = await settle(e.state, e.log, e.events, host, input?.req?.op !== "undo");      // an undone leave stands until the next request: the GM puts right what made the allies go

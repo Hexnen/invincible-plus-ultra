@@ -574,10 +574,10 @@ const FLY = [{ mode: "flight", tier: "basic" }];
       eq((await T.gm(k.force.push.req)).ok, true, `Q ${l}: the order is accepted`);
       k = desk();
       const card = k.cards[0];
-      eq([card.kind, card.title, card.map?.zones.length > 1, card.options.map((o) => o.id)], ["direction", t("ITAC.ui.card.forced"), true, ["go", "goFall", "none"]], `Q ${l}: the card of a forced move names itself, carries the chain for the map and the three answers`);
+      eq([card.kind, card.title, card.map?.zones.length > 1, card.options.map((o) => o.id)], ["direction", t("ITAC.ui.card.forced"), true, ["@zone", "go", "goFall", "none"]], `Q ${l}: the card of a forced move names itself, carries the chain for the map and the three answers (FXV CI4: and the GM's correction, a zone picked on the map)`);
       ok(card.lines.some((x) => typeof x === "string" && x.includes(t("ITAC.ui.zone", { n: 3 }))), `Q ${l}: the chain is read out in zone numbers`);
       shown(k, `Q ${l} desk, forced move`);
-      eq([(await T.gm(card.options[0].req)).ok, T.spot("N1") !== "z2"], [true, true], `Q ${l}: the answer of the card moves the character`);
+      eq([(await T.gm(card.options.find((o) => o.id === "go").req)).ok, T.spot("N1") !== "z2"], [true, true], `Q ${l}: the answer of the card moves the character`);
       eq(desk({ force: { who: "N1" } }).force.fall.req, { op: "fall", combatant: "N1" }, `Q ${l}: a fall is ordered for one character`);
     }
     { // the move a dodge earns: the places fold into one pick on the map; several ways into one zone become buttons
