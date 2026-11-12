@@ -289,7 +289,7 @@
   transform: none;
 }
 #invincible-combat-bar .icbar-head { display: flex; align-items: center; gap: .4em; white-space: nowrap; }
-#invincible-combat-bar .icbar-lead > .icbar-nav { margin-left: .15em; }   /* under the chip, not under its leaning corner */
+#invincible-combat-bar .icbar-lead > .icbar-nav { align-self: flex-end; }   /* U135 follow-up: the button hugs the strip (the column's right edge), mirroring the next-turn button at the strip's other end; the label stays above it */
 #invincible-combat-bar .icbar-round {
   flex: none;
   display: grid;

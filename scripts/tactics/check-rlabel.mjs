@@ -17,4 +17,6 @@ ok(/transform: none/.test(lead), "r5 the column leans with the band (the chip, t
 ok(/white-space: nowrap/.test(rule("#invincible-combat-bar .icbar-head")), "r6 the label never wraps (the longest phase stays on one line)");
 ok(!/\.icbar-shell > \.icbar-nav/.test(css) && /#invincible-combat-bar \.icbar-shell \.icbar-nav \{/.test(css), "r7 the turn buttons keep their look inside the column");
 ok(/for \(const el of \[prevB, roundEl, waitEl, nextB\]\)/.test(bar), "r8 the chip, the plate and the buttons still glide with the strip (morph's chrome FLIP)");
+{ const nav = rule("#invincible-combat-bar .icbar-lead > .icbar-nav");
+  ok(/align-self: flex-end/.test(nav) && !/margin-left/.test(nav), "r9 the previous-turn button hugs the strip (the column's right edge), not the label's left end"); }
 done("check-rlabel");
