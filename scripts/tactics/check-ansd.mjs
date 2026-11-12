@@ -161,6 +161,7 @@ async function runRound(T, { prey = 1, pursuer = 1, keys = ["pursuer"] } = {}) {
   eq([e.ended.sides.find((s) => s.id === "prey").units[0], /Doc|Mauler|Runner|Truck/.test(e.ended.gone)], ["Truck", true], "CHASE-4 panel: the end card still names who left, and says they left the fight");
   eq(code(await T.gm({ op: "undo", tx: T.log.list[T.log.list.length - 1].id })), "ok", "CHASE-4: the GM undoes the end");
   eq([["V2", "N1", "N2", "N4"].every((id) => !!T.c[id]), T.state.kind, T.state.chaseEnded ?? null], [true, "chase", null], "CHASE-4: undone, they are back in the fight and in the chase");
+  eq([T.state.vehicles.V2?.driver, T.state.vehicles.V2?.crew, (T.state.statuses.N2 ?? []).map((x) => x.id), !!T.state.ledger.N1], ["N1", ["N2"], ["inVehicle"], true], "CHASE-4: undone, the truck has its driver and passenger again (seats, marks and ledgers are part of the undone entry)");
 }
 {
   const T = await table({ distance: 4, prey: ["V2", "N4"] });

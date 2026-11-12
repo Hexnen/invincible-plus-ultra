@@ -1351,6 +1351,12 @@ async function gmEdit(X, op, a) {
       const goneIds = new Set(gone.flatMap((u) => [u.id, ...u.people]));
       for (const p of Chase.endPlan(X.state).puts) if (!goneIds.has(p.who)) await perform(X, tx, { t: "zput", who: p.who, to: p.to, group: p.group, tx });
       const names = [...goneIds].map((id) => ({ id, name: String(X.facts.c(id)?.name ?? "").slice(0, 80) }));
+      /* what the roster would prune once they are gone (ops-pure removeOne: the vehicle's record, the seats, the ledger ...) is written
+         here, in this transaction, so the undo puts it back with the documents (live 2026-11-13: the truck came back without its crew) */
+      for (const u of gone) {
+        if (isObj(X.state.vehicles?.[u.id])) w(["vehicles", u.id], null);
+        for (const id of [...u.people, u.id]) for (const k of ["statuses", "ledger", "free", "npc", "revealed", "knowledge"]) if (isObj(X.state[k]) && X.state[k][id] !== undefined) w([k, id], null);
+      }
       for (const u of gone) for (const id of [...u.people, u.id]) await perform(X, tx, { t: "summonRemove", combatant: id, tx });
       w(["kind"], "combat"); w(["chase"], null);
       /* CHASE (U168): how the chase ended stands in the state until the next chase starts, so every seat shows the same end card (each
