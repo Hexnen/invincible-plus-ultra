@@ -902,7 +902,7 @@ export const steps = {
         if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
         K.setFlag(I, `kb:${t}`);
         const dir = K.answerId(v, I, key) ?? "away", n = stunts.knockbackDistance(str);
-        R.push = forcedChild(t, { ...(dir === "up" || dir === "down" ? { direction: dir } : dir.startsWith("to:") ? { toward: dir.slice(3) } : { awayFrom: I.actor }), distance: n, damage: n, decay: 1, armor: true, by: I.actor, kind: "knockback" });
+        R.push = forcedChild(t, { ...(dir === "up" || dir === "down" ? { direction: dir } : dir.startsWith("to:") ? { toward: dir.slice(3) } : { awayFrom: I.actor }), distance: n, damage: n, decay: 1, armor: true, by: I.actor, kind: "knockback", ...(v.facts.c(I.actor)?.npc ? { gmDir: 1 } : {}) });      // FXP (U181): the GM named the direction already (an NPC's)
         return R;
       }
       if (p.stunt === "slam" && I.data.charge?.left > 0) {

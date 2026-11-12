@@ -121,6 +121,8 @@ export function hasTalent(actor, key) {
 export function ownersOf(actor) {
   try { return game.users.filter((u) => !u.isGM && O.ownsFrom(actor?.ownership, u.id, CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3)).map((u) => u.id); } catch { return []; }
 }
+/** FXP (D160): the player whose assigned character (Foundry's user.character) this actor is, or null: the acting seat of a co-owned hero */
+export function playerOf(actor) { try { const id = actor?.isToken ? (actor.token?.actorId ?? actor.id) : actor?.id; return game.users.find((u) => !u.isGM && u.character?.id === id)?.id ?? null; } catch { return null; } }
 /** does this user own the combatant (its actor's REAL ownership table; a claimed role never counts)? */
 export function owns(combatant, user) {
   const a = actorOf(combatant); return !!a && !!user && O.ownsFrom(a.ownership, user.id, CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);

@@ -53,6 +53,8 @@ export function logOf(combat) {
   return log;
 }
 /** { state | null, log } of a combat as the documents hold them now */
+/** FXP (D161): the seats kept by the last stop (state-pure.crewOf), for the next start on this Combat -> null | { vehicles, seats } */
+export function crewKept(combat) { try { const raw = combat?.flags?.[MOD]?.tactics?.crew; const c = raw ? JSON.parse(raw) : null; return c && typeof c === "object" ? c : null; } catch { return null; } }
 export const read = (combat) => ({ state: stateOf(combat), log: logOf(combat) });
 export const combatOf = (ref) => (typeof ref === "string" ? game.combats?.get(ref) ?? null : ref ?? null);
 /** the combat the table is looking at: the active one of the viewed scene, else the one the tracker shows */
@@ -86,15 +88,16 @@ export async function write(combat, state, log = undefined) {
      combatants change: so when the state appears or disappears, every combatant is written once without diff. */
   const all = () => combat.combatants.map((c) => ({ _id: c.id, initiative: c.initiative ?? null, [`flags.${MOD}.pos`]: Number(c.flags?.[MOD]?.pos ?? 0) }));
   if (!state) {
-    if (!stateOf(combat)) return;
-    await combat.update({ [`flags.${MOD}.tactics.state`]: "", [`flags.${MOD}.tactics.log`]: "", [`flags.${MOD}.tactics.claim`]: "" }, { ...UPDATE_OPT });
+    const was = stateOf(combat), crew = was ? S.crewOf(was) : null;      // FXP (D161): the seats in the vehicles outlive the stop (the next start sits them again)
+    if (!was) return;
+    await combat.update({ [`flags.${MOD}.tactics.state`]: "", [`flags.${MOD}.tactics.log`]: "", [`flags.${MOD}.tactics.claim`]: "", [`flags.${MOD}.tactics.crew`]: crew ? JSON.stringify(crew) : "", round: 0, turn: null }, { ...UPDATE_OPT });      // FXP (U180): not started any more: the tracker offers its begin again
     if (combat.combatants.size) await combat.updateEmbeddedDocuments("Combatant", all(), { ...UPDATE_OPT, turnEvents: false, diff: false });
     return;
   }
   const want = I.docSync(state.init);
   const raw = S.serialize(state);
   const hadState = !!stateOf(combat);
-  if (!hadState) await combat.update({ [`flags.${MOD}.tactics.state`]: raw }, { ...UPDATE_OPT });
+  if (!hadState) await combat.update({ [`flags.${MOD}.tactics.state`]: raw, [`flags.${MOD}.tactics.crew`]: "" }, { ...UPDATE_OPT });      // FXP (D161): the kept seats are used by this start
   const ups = [];
   for (const c of combat.combatants) {
     const w = want[c.id] ?? { initiative: null, pos: 0 };

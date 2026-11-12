@@ -52,7 +52,7 @@ function combatantFacts(cb) {
   const actor = Sys.actorOf(cb), f = Sys.actorFacts(actor);
   if (!f) return null;
   const summonOf = cb.flags?.[MOD]?.tactics?.summonOf;
-  return { id: cb.id, name: cb.name ?? actor.name, actorUuid: actor.uuid, tokenUuid: tokenOf(cb)?.uuid ?? null, owners: Sys.ownersOf(actor), hidden: cb.hidden === true || tokenOf(cb)?.hidden === true,
+  return { id: cb.id, name: cb.name ?? actor.name, actorUuid: actor.uuid, tokenUuid: tokenOf(cb)?.uuid ?? null, owners: Sys.ownersOf(actor), player: Sys.playerOf(actor), hidden: cb.hidden === true || tokenOf(cb)?.hidden === true,
     present: !(cb.isDefeated ?? cb.defeated) && !!tokenOf(cb), defeated: !!(cb.isDefeated ?? cb.defeated), summonOf: S.isId(summonOf) ? summonOf : null, summon: cb.flags?.[MOD]?.tactics?.summon ?? null, ...f, npc: isNpc(cb) };
 }
 function makeFacts(combat) {
@@ -103,6 +103,7 @@ async function perform(combat, e) {
       return { result: faces, op };
     }
     case "rollRequest": sendRoll(combat, e); return {};
+    case "defeated": { const cb = combat.combatants.get(e.combatant); if (!cb) return e.undo ? { ok: false, reason: "gone" } : {}; const from = cb.defeated === true; if (from !== (e.on === true)) await cb.update({ defeated: e.on === true }, { ipuTactics: true }); return e.undo || from === (e.on === true) ? {} : { op: { t: "defeated", combatant: cb.id, from, to: e.on === true } }; }      // FXP (D163)
     case "zones": {                                                                        // one write of the map; the journal keeps the inverse it returned
       const r = await Zones.perform(e);
       if (!r.ok) { ui.notifications?.warn(t("ITAC.warn.zones", { reason: t(`ITAC.reason.${r.reason}`, {}, String(r.reason)) })); return { ok: false, reason: r.reason }; }
@@ -178,7 +179,7 @@ export async function exec(user, combatRef, req, meta = {}) {
     if (meta.via !== "relay") { const n = R.normalize(req, { staff }); if (!n.ok) return bad(n.code); r = n.req; }
     const combat = Store.combatOf(combatRef);
     if (!combat) return bad("gone");
-    if (r.op === "start") r = { ...r, mode: S.MODES.includes(r.mode) ? r.mode : startMode(), opts: { ...startOpts(), ...(r.opts && typeof r.opts === "object" ? r.opts : {}) }, fight: S.makeFight(Date.now(), Math.random()) };      // H3-1: the fight's tag is the executor's, never the asker's
+    if (r.op === "start") r = { ...r, mode: S.MODES.includes(r.mode) ? r.mode : startMode(), opts: { ...startOpts(), ...(r.opts && typeof r.opts === "object" ? r.opts : {}) }, fight: S.makeFight(Date.now(), Math.random()), ...(Store.crewKept(combat) ? { crew: Store.crewKept(combat) } : {}) };      /* FXP (D161): the seats kept by a stop */      // H3-1: the fight's tag is the executor's, never the asker's
     const rid = meta.rid ?? R.makeRid(user.id, `l${++ctr}${Math.random().toString(36).slice(2, 6)}`);
     return await run(combat.id, { t: "req", user: { id: user.id, staff }, rid, req: r }, { claimKey: meta.via === "relay" && r.op !== "preview" ? `q:${rid}` : null, low: !staff });      // a preview only reads: no claim, no write of the combat per question
   } catch (err) {
