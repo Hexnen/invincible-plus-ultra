@@ -37,7 +37,27 @@ const MARKS = {
   range: { w: 16, d: poly([[0, 6], [5.5, 2.4], [5.5, 5], [10.5, 5], [10.5, 2.4], [16, 6], [10.5, 9.6], [10.5, 7], [5.5, 7], [5.5, 9.6]]) },
   /* Armor. U93: a breastplate, not a shield: the shield is Block's picture (the half shield of the answer on a reaction card) */
   armor: { w: 12, d: "M2.3,1H4.5C4.8,2.5 7.2,2.5 7.5,1H9.7L11.5,4.3L9.7,5.6V11H2.3V5.6L0.5,4.3Z" + poly([[5.4, 4.6], [5.4, 8.4], [6.6, 8.4], [6.6, 4.6]]) },
+  /* U133: THE CHANCE of a target (the four bands of the engine: unlikely, even, likely, near certain): the target's ring in four
+     quarters, as many heavy as the band. On the map the ring around the token IS this drawing (moinen-maps zones-api.md section 42) */
+  ...oddsMarks(),
 };
+/* U133: the ring in four quarters from the top, clockwise (the gaps at the top, right, bottom and left, as on the map, where the rings of
+   two tokens side by side would meet); the quarters the chance has are heavy, the rest a hairline. Never a colour alone: one ink, the
+   level is how much of the ring is heavy (a quarter, a half, three quarters, all of it) */
+function oddsRing(lit) {
+  const cx = 6, cy = 6, r = 4.55, gap = 26, pt = (deg) => [cx + r * Math.cos((deg * Math.PI) / 180), cy + r * Math.sin((deg * Math.PI) / 180)];
+  let raw = "";
+  for (let i = 0; i < 4; i++) {
+    const [x0, y0] = pt(-90 + i * 90 + gap / 2), [x1, y1] = pt(-90 + (i + 1) * 90 - gap / 2), sw = i < lit ? 2.7 : 0.8;
+    raw += `<path fill='none' stroke='#000' stroke-width='${f(sw)}' d='M${f(x0)},${f(y0)}A${f(r)},${f(r)} 0 0 1 ${f(x1)},${f(y1)}'/>`;
+  }
+  return { w: 12, raw };
+}
+function oddsMarks() {
+  const out = {};
+  for (let i = 1; i <= 4; i++) out[`odds-${i}`] = oddsRing(i);
+  return out;
+}
 
 const svg = (g) => `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${f(g.w)} 12'>${g.raw ?? ""}${g.d ? `<path d='${g.d}'/>` : ""}${g.stroke ? `<path fill='none' stroke='#000' stroke-width='${f(g.sw)}' stroke-linecap='round' d='${g.stroke}'/><path d='${g.dot}'/>` : ""}</svg>`;
 const uri = (g) => `url("data:image/svg+xml,${svg(g).replace(/</g, "%3C").replace(/>/g, "%3E").replace(/#/g, "%23")}")`;

@@ -53,7 +53,9 @@ function caught(doc, who, dec, staff) {
     if (doc?.hidden === true || doc?.document?.hidden === true || (doc?.object ?? doc)?.visible === false) return false;
     if (cid && (!x || x.note)) return false;
   }
-  return x?.reach === "in" && x.odds?.say ? { label: x.odds.say } : true;
+  // (U133: the chance as the ring in quarters around the token)
+  const o = x?.reach === "in" ? BP.oddsShow(x.odds) : {};
+  return Object.keys(o).length ? o : true;
 }
 function put(id, set, clear, spec) {
   const key = spec ? JSON.stringify(spec) : "";
