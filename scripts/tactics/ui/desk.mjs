@@ -18,6 +18,7 @@
 import { h, icon, swap, askCard, legendCard, rollButtons, visibleRect, face } from "./dom.mjs";
 import { costMark, symMark, hasMarks, markName } from "../../kit.mjs";      // U93: the marks of cost and of things, one kit for every surface
 import * as Lay from "./layout-pure.mjs";
+import { setVar } from "./vars.mjs";
 
 const ID = "invincible-tactics-desk";
 const minH = (H) => Math.round(Math.max(240, Math.min(320, H * 0.36)));      // px the open desk keeps whatever floats under it (276 in a 768 px window)
@@ -80,7 +81,7 @@ export function place() {
      (the chat tab keeps its unread mark) */
   let strip = floor - least - 8;
   try { const ov = document.querySelector("#chat-notifications .overflow")?.getBoundingClientRect(); if (ov && ov.width > 0 && ov.bottom > H * 0.4) strip = ov.bottom - least - 8; } catch { /* no chat box */ }
-  try { document.body.style.setProperty("--igd-toast-maxh", `${strip >= 44 ? Math.round(strip) : 0}px`); } catch { /* no body */ }
+  try { setVar("--igd-toast-maxh", `${strip >= 44 ? Math.round(strip) : 0}px`); } catch { /* no body */ }      // perf P2 (ui/vars.mjs): on the toasts' box alone
 }
 
 /* ---------- pieces ---------- */

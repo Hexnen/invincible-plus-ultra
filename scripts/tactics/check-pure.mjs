@@ -21,7 +21,7 @@ const code = all.filter((f) => !f.startsWith("check-"));
 const PURE = code.filter((f) => /-pure\.mjs$/.test(f) || f.startsWith("flows/") || f === "source.mjs");
 /* the designed surfaces (the action dock and the GM desk): DOM builders and their wiring. Not thin by nature, so they are not under the
    cap of the Foundry-facing files; they hold no rule (checked below) and their logic is ui/model-pure.mjs, which is under the pure rules. */
-const SURFACE = ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs", "ui/pick.mjs", "ui/main.mjs", "ui/board.mjs", "ui/feedback.mjs", "ui/tip.mjs", "ui/camera.mjs"];      // W1: ui/board.mjs is the play on the map (its logic is ui/board-pure.mjs)
+const SURFACE = ["ui/dom.mjs", "ui/dock.mjs", "ui/desk.mjs", "ui/pick.mjs", "ui/main.mjs", "ui/board.mjs", "ui/feedback.mjs", "ui/tip.mjs", "ui/camera.mjs", "ui/vars.mjs"];      // perf P2: ui/vars.mjs is the surfaces' numbers for the rest of the page (plain DOM)      // W1: ui/board.mjs is the play on the map (its logic is ui/board-pure.mjs)
 const FACING = code.filter((f) => !PURE.includes(f) && !SURFACE.includes(f) && !["testkit.mjs", "lang.mjs", "lang-attacks.mjs", "lang-int.mjs", "lang-kit.mjs", "lang-fx.mjs", "lang-map.mjs", "lang-u10.mjs"].includes(f));
 const FORBIDDEN = /(?<![.\w])(game|ui|canvas|foundry|Hooks|CONFIG|CONST|ChatMessage|Roll|fromUuid|fromUuidSync|window|document|globalThis|setTimeout|socketlib)\s*[.(\[]/;
 const GLOBALS = /(^|[^.\w"'`])(game|Hooks|foundry|ui|canvas|CONFIG|ChatMessage|fromUuid|fromUuidSync|document|window|globalThis|setTimeout|Math\.random|Date\.now)\s*[.(\[]|\bnew Roll\b/;

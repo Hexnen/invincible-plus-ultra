@@ -45,6 +45,11 @@ let root = null, shell = null, scroller = null, list = null, roundEl = null, rou
 let ready = false, down = false, timer = 0, again = false, goneId = null, size = "normal", wheelOn = false;
 let curCombat = null, curCombatId = null, lastKey = "", lastDensity = -1, fitKey = "", activeId = null, byeTimer = 0, liveTimer = 0, hovered = null;
 let ro = null, raf = 0, publishedBottom = -1, mounted = false;
+/* perf P2: what the last paint drew (the model and everything else paint() reads). The hooks of one turn change come in two waves (the
+   combat, then its combatants, whose trailing pass follows 90 ms later): a second pass with the same model painted the same tiles again,
+   with its FLIP measurements (30-40 ms of forced layout on a seat). An identical pass is skipped; anything that differs paints. */
+let paintedSig = null;
+export function paintSig(model, extra) { try { return JSON.stringify([model, extra]); } catch { return null; } }
 let hideTimer = 0, missTimer = 0, enteredFor = null, lowRow = false, mode = -1, backSince = 0, backTimer = 0;
 let waitSince = 0, waitTimer = 0, waitEl = null, wasWaiting = false;
 let layer = null, ring = null, ringOn = false, ringKey = "", holdOn = false, holdTimer = 0, lastTurnAt = 0, lastRound = null;   // motion: ring + ghosts layer, rapid-click hold, last round seen
@@ -1173,7 +1178,7 @@ function cleanup() {
   root = shell = scroller = list = roundEl = roundNum = prevB = nextB = live = waitEl = null; wasWaiting = false;
   layer = ring = rnPre = rnWin = rnPost = null; rnCur = null; ringOn = false; ringKey = ""; holdOn = false; lastRound = null; lastTurnAt = 0;
   tiles.clear();
-  curCombat = null; curCombatId = null; lastKey = ""; activeId = null; lastDensity = -1; fitKey = ""; wheelOn = false; mounted = false;
+  curCombat = null; curCombatId = null; lastKey = ""; paintedSig = null; activeId = null; lastDensity = -1; fitKey = ""; wheelOn = false; mounted = false;
   enteredFor = null; mode = -1; backSince = 0; lowRow = false;
   publishBottom(0);
 }
@@ -1192,7 +1197,7 @@ function sync(opts = {}) {
       else if (root && !hideTimer) hideTimer = setTimeout(() => { hideTimer = 0; sync({ settled: true }); }, GRACE_MS);
     } else {
       clearTimeout(hideTimer); hideTimer = 0;
-      if (curCombatId && curCombatId !== combat.id) { for (const [id, card] of [...tiles]) { card.li.remove(); tiles.delete(id); } lastKey = ""; enteredFor = null; lastRound = null; holdOn = false; clearTimeout(holdTimer); holdTimer = 0; }
+      if (curCombatId && curCombatId !== combat.id) { for (const [id, card] of [...tiles]) { card.li.remove(); tiles.delete(id); } lastKey = ""; paintedSig = null; enteredFor = null; lastRound = null; holdOn = false; clearTimeout(holdTimer); holdTimer = 0; }
       curCombat = combat;
       curCombatId = combat.id;
       const wasMounted = !!root?.isConnected && !root.classList.contains("icbar-bye");
@@ -1214,7 +1219,11 @@ function sync(opts = {}) {
         if (now - waitSince < WAIT_MS) { hold = true; clearTimeout(waitTimer); waitTimer = setTimeout(() => { waitTimer = 0; sync(); }, WAIT_MS - (now - waitSince) + 40); }
       }
       if (keep.size) missTimer = setTimeout(() => { missTimer = 0; sync(); }, MISS_MS + 40);
-      if (!hold && !(keep.size && !model.items.length)) paint(model, loud, keep);   // every tile gone at once = a transient: the last good render stays
+      if (!hold && !(keep.size && !model.items.length)) {   // every tile gone at once = a transient: the last good render stays
+        let gmActs = false; try { gmActs = !!game.user.isGM && actionsOn(combat); } catch { gmActs = false; }
+        const sig = keep.size || loud || created || !wasMounted || holdOn ? null : paintSig(model, [size, gmActs, combat.canUserModify?.(game.user, "update") ?? null, game.i18n?.lang ?? null, reduced()]);
+        if (sig === null || sig !== paintedSig) { paint(model, loud, keep); paintedSig = sig; }
+      }
       if (created) { place(); enter(); }
       else if (!wasMounted) {   // the exit was under way: come back without replaying the slide for a combat already on show
         if (enteredFor === combat.id) { for (const a of shell.getAnimations?.() ?? []) a.cancel(); place(); } else { place(); enter(); }
