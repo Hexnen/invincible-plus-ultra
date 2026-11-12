@@ -19,9 +19,14 @@
 .its-in { zoom: var(--ita-scale, 1); display: flex; flex-direction: column; align-items: inherit; gap: 6px; min-height: 0; max-width: calc(var(--its-w, 100vw) / var(--ita-scale, 1)); max-height: calc(var(--its-h, 100vh) / var(--ita-scale, 1)); }
 .its-in > * { pointer-events: auto; max-width: 100%; }
 
-/* the line: one row under the initiative bar; it never wraps over the questions (the news chip cuts its text, its tooltip has it all) */
-.its-slot[data-slot="line"] .itd-wait { flex-wrap: nowrap; overflow: hidden; max-width: 100%; }
-.its-slot[data-slot="line"] .itd-news { min-width: 0; }
+/* the line: one row under the initiative bar; it never wraps over the questions (the news chip cuts its text, its tooltip has it all).
+   It spans its place: who the table waits for (owed rolls, the turn line) holds the left end, the news the right end; each has its own
+   strip, so neither slides when the other comes or goes */
+.its-slot[data-slot="line"] .its-in { width: calc(var(--its-w, 100vw) / var(--ita-scale, 1)); }
+.its-slot[data-slot="line"] .itd-wait { flex-wrap: nowrap; overflow: hidden; max-width: 100%; align-self: stretch; justify-content: space-between; gap: 8px; padding: 0; background: none; pointer-events: none; }
+.its-slot[data-slot="line"] .itd-wait > * { pointer-events: auto; }
+.its-slot[data-slot="line"] .itd-who { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: 4px 7px; padding: 2px 9px 3px; overflow: hidden; background: rgba(12, 26, 46, .92); }
+.its-slot[data-slot="line"] .itd-news { min-width: 0; margin-left: auto; background: rgba(12, 26, 46, .92); }
 
 /* the first-fight hint in its own place: no tick (nothing under it to point at) */
 #invincible-tactics-dock .its-slot[data-slot="hint"] .itd-hint1 { max-width: 100%; }

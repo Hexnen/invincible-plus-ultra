@@ -66,6 +66,12 @@ for (const c of cases) {
   ok(g.desk.top === gf.desk.top, "C4 the desk's top is the same open and folded (its tab does not sink)");
   const p8 = SP.frame(seat({ W: 1366, H: 768, k: 1.4, staff: false, hud: 8 })), p2 = SP.frame(seat({ W: 1366, H: 768, k: 1.4, staff: false, hud: 2 }));
   ok(JSON.stringify(p8) === JSON.stringify(p2), "C5 eight challenges place nothing differently from two");
+  /* a low window with big surfaces and a tall bar under the desk: the GM's band gives way so the open desk keeps its head and rows */
+  const low = (desk) => ({ ...seat({ W: 1366, H: 768, k: 1.4, staff: true, desk, hud: 2 }), bar: { lo: 180, hi: 1300, top: 490, bottom: 688 } });
+  const lo = SP.frame(low(true)), lf = SP.frame(low(false));
+  ok(lo.desk.under && lo.desk.floor - lo.desk.top >= Math.min(SP.SIZE.desk * 1.4, lo.desk.floor - (11 + SP.BAND.min) - SP.GAP), `C6 the open desk keeps room over a tall bar (${lo.desk.floor - lo.desk.top})`);
+  ok(lo.band.y1 === lf.band.y1 && lo.desk.top === lf.desk.top && lo.band.y1 >= 11 + SP.BAND.min, "C7 the band gives way the same open and folded (folding moves nothing), never under its least");
+  ok(/\.itd-who/.test(read("./ui/dock.mjs")) && /\.its-slot\[data-slot="line"\] \.itd-news \{[^}]*margin-left: auto/.test(read("../../styles/tactics-slots.css")), "C8 the line's two ends: who the table waits for holds the left, the news the right (neither slides)");
 }
 /* D. the wiring */
 {

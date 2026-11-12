@@ -488,9 +488,12 @@ function draw(d, ui) {
      a roll this user owes or may push that is not the roll of its own action (that one stands in the action's panel), who ELSE the
      table waits for, and the last thing the table was told (U10 / U3: one chip, the older lines in
      its tooltip, put away with its x) */
-  const wait = d.show && (d.waiting?.length || d.turn || d.rolls?.length || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
-    (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
-    d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null,
+  /* two ends, each anchored: what the table waits for grows from the left end of the line, the news from the right end, so neither
+     slides when the other comes, goes or changes its length */
+  const whoOn = !!(d.waiting?.length || d.turn || d.rolls?.length);
+  const wait = d.show && (whoOn || d.news) ? h("div.itd-wait", { attrs: { role: "status" } },
+    whoOn ? h("span.itd-who", (d.rolls ?? []).map((r) => rollChip(r, { roll: handlers.roll, send: (req) => send(req) })),
+      d.turn ? h("span.itd-turnline", { text: d.turn }) : null, d.waiting?.length ? [h("span.itd-k", { text: handlers.label?.("waitingFor") }), waitChips(d.waiting)] : null) : null,
     d.news ? h("span.itd-news", { data: { tone: d.news.tone }, tip: d.news.older.length ? d.news.older.join("<br>") : null, attrs: { tabindex: "0", "aria-label": [d.news.text, ...d.news.older].join(". ") } },  icon(d.news.icon ?? "fa-comment-dots"), h("span.itd-news-t", { text: d.news.text }),
       h("button.itd-news-x", { fk: "news:x", tip: d.news.label, attrs: { "aria-label": d.news.label }, on: { click: () => set({ newsSeen: d.news.seen }) } }, icon("fa-xmark"))) : null) : null;
   /* U53: one first-fight hint, in its own place at the right end of the top band (or in the questions' place on a narrow band) */

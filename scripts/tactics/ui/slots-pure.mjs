@@ -25,6 +25,7 @@ export const SIZE = Object.freeze({
   notice: 460,      // the end-of-session notice's column
   bar2: 104,        // a bar in two rows (what the desk keeps clear of when the bar takes the edge under it)
   beside: 820,      // the least room the bar needs beside the open desk; with less it takes the whole bottom edge (U48)
+  desk: 230,        // the least the open desk keeps over the bar (its head and a few rows); the GM's band gives way for it
 });
 export const GAP = 8;
 export const TOAST = Object.freeze({ h: 132, min: 64, share: 0.2 });     // the chat toasts' strip (window px; Foundry's toasts are not scaled by U62)
@@ -60,16 +61,18 @@ export function frame(f) {
   const out = { toast, band: null, desk: null, slots: {}, up: { lo: bar.lo, hi: bar.hi }, panelMax: r(H * PANEL_SHARE), reserved: [] };
   /* the challenges' band (U134): on the GM seat a fixed share of the column (the desk, open or folded to its tab, keeps its top under
      it); on a player's seat nothing stands under it, so it reaches down to the toasts */
-  const bandEnd = hudOn ? (f.staff ? 11 + clamp(H * BAND.share, BAND.min, BAND.max) : toast.top - GAP) : 11;
-  out.band = { present: hudOn, y1: r(bandEnd) };
-  /* the GM desk: under the band, over the toasts' strip, and over the bar where the bar takes the edge under it */
+  let bandEnd = hudOn ? (f.staff ? 11 + clamp(H * BAND.share, BAND.min, BAND.max) : toast.top - GAP) : 11;
+  /* the GM desk: under the band, over the toasts' strip, and over the bar where the bar takes the edge under it. Where the bar takes
+     that edge (a low window, big surfaces) the band gives way, down to its least, so the open desk keeps room for its head and a few
+     rows; worked out the same whether the desk is open or folded, so folding it moves nothing */
   if (f.staff) {
     const dx0 = f.desk?.x0 ?? side - 380 * k;
-    const under = deskOpen && dx0 - bar.lo < SIZE.beside * k;
-    let floor = toast.top - GAP;
-    if (under) floor = Math.min(floor, bar.bottom - Math.max(bar.bottom - bar.top, SIZE.bar2 * k) - 10);
-    out.desk = { top: hudOn ? r(bandEnd + GAP) : 11, floor: r(floor), toastH: toast.h, under };
+    const wouldUnder = dx0 - bar.lo < SIZE.beside * k, under = deskOpen && wouldUnder;
+    const floorUnder = Math.min(toast.top - GAP, bar.bottom - Math.max(bar.bottom - bar.top, SIZE.bar2 * k) - 10);
+    if (hudOn && wouldUnder) bandEnd = Math.max(11 + BAND.min, Math.min(bandEnd, floorUnder - SIZE.desk * k - GAP));
+    out.desk = { top: hudOn ? r(bandEnd + GAP) : 11, floor: r(under ? floorUnder : toast.top - GAP), toastH: toast.h, under };
   }
+  out.band = { present: hudOn, y1: r(bandEnd) };
   const deskX0 = deskOpen ? (f.desk?.x0 ?? side) : side;
   /* where the bar took the edge under the open desk, the panel over the bar keeps left of the desk */
   if (out.desk?.under) out.up = { lo: bar.lo, hi: Math.min(bar.hi, deskX0 - 10) };

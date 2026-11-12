@@ -77,7 +77,7 @@ eq([tIn("en", "ITAC.roll.ds"), tIn("pl", "ITAC.roll.ds")], ["Discretion", "Rozwa
 {
   const dock = src("ui/dock.mjs"), desk = src("ui/desk.mjs"), sp = src("ui/slots-pure.mjs");
   ok(/const barH = \(barEl\?\.offsetHeight \?\? 60\) \* k, barTop = H - bottom - barH;/.test(dock) && !/barEl\.getBoundingClientRect|rec\.rect\(barEl\)/.test(dock), "U123 (U132): the bar's top is where it stands, free of the slide-in");
-  ok(/if \(under\) floor = Math\.min\(floor, bar\.bottom - Math\.max\(bar\.bottom - bar\.top, SIZE\.bar2 \* k\) - 10\);/.test(sp) && /fr\.desk\.floor - fr\.desk\.top/.test(desk), "U123 (U132): the desk ends above the bar's standing top (the frame's floor)");
+  ok(/const floorUnder = Math\.min\(toast\.top - GAP, bar\.bottom - Math\.max\(bar\.bottom - bar\.top, SIZE\.bar2 \* k\) - 10\);/.test(sp) && /floor: r\(under \? floorUnder : toast\.top - GAP\)/.test(sp) && /fr\.desk\.floor - fr\.desk\.top/.test(desk), "U123 (U132): the desk ends above the bar's standing top (the frame's floor)");
 }
 
 done("check-fxh");
