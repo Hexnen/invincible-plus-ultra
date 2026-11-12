@@ -174,6 +174,11 @@ export const helpDiceOf = (v, d) => dice.helpDice((d?.helpers ?? []).filter((h) 
 /** the Barriers standing on a character, as Armor sources of the rules library [B1859] */
 export const barriersOf = (state, cid) => (state.effects ?? []).filter((e) => e.kind === "barrier" && e.holder === cid).map((e) => ({ id: e.id, armor: Number(e.data?.armor) || 0, barrier: true }));
 /** the copy bonus a character has left (Duplication [B1907]: an effect of the state) */
+/** Z2 [B1941]: Prolonged Phasing (the status `intangible`) makes the character immune to physical damage: one reading for the attack flow and
+    the hazards (fire, a blast, an area, a fall, a barrier). Damage to stress and what is not damage (a poison, the vacuum) still reach it. */
+export const phased = (state, cid) => M.hasStatus(state, cid, "intangible");
+/** Z12 [B1816]: an ally of Delayed Summoning is not there before the start of its summoner's next turn (state.summons[].wait) */
+export const notArrived = (state, cid) => (state?.summons ?? []).some((su) => Array.isArray(su?.wait) && su.wait.includes(cid));
 export const copiesOf = (state, cid) => Math.max(0, Number((state.effects ?? []).find((e) => e.kind === "copies" && e.holder === cid)?.data?.n) || 0);
 /** [B1908]: the copy bonus goes on the duplicator's own attack roll "whether in slugfest or shooting". The charge, the grapple and the
     grapple attack are slugfest attacks by the book ([B2431], [B2490], [B2496], [B2497]: rules/attack.mjs ATTACKS family). Not the ram: the

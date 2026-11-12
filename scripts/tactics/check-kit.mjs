@@ -243,8 +243,8 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   const T = base([item("qu", "Quickness", "power"), item("re", "Regeneration", "power"), item("x", "Homebrew Ray", "power", { autos: [auto("a", "Homebrew Ray", "usePower", { stress: 1 })] }), item("it", "Intangibility", "power")], [], { h1: { health: 4, maxHealth: 6 } });
   await T.req("p1", decl("H1", act(T, "H1", "quickness").id));
   eq([T.state.ledger.H1.grants.filter((g) => g.kind === "quickness").length, code(await T.req("p1", decl("H1", act(T, "H1", "quickness").id))), why(T.last)], [1, "illegal", "usedAlready"], "Quickness: one extra unit a round");
-  await T.req("p1", decl("H1", act(T, "H1", "regen").id));
-  eq([T.c.H1.health, code(await T.req("p1", decl("H1", act(T, "H1", "regen").id)))], [5, "illegal"], "Regeneration: 1 Health, once a round");
+  /* FXT Z8: Regeneration heals by itself on each turn [B1893] (check-fxt); the button that did it by hand is gone */
+  eq([T.c.H1.kit.actions.some((a) => a.id.endsWith("-regen")), T.c.H1.pass.regeneration], [false, true], "Regeneration: no button, the passive fact");
   await T.req("p1", decl("H1", act(T, "H1", "u0").id, { text: "a ray of my own" }));
   eq([T.prompt("outcome")?.to, T.prompt("outcome")?.data?.name, T.c.H1.resolve, P1.budget(T.state, "H1").full], ["gm", "Homebrew Ray", 4, "used"], "an unknown power: its cost and stress are taken, the GM says what it does");
   await T.gm({ op: "answerFor", prompt: T.prompt("outcome").id, value: "success" });
@@ -253,7 +253,7 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   await T.gm(decl("N1", "slugfest", { targets: ["H1"] }));
   const p = T.prompt("reaction"), r = p.options.find((o) => o.id.startsWith("r:"));
   await T.req("p1", { op: "answer", prompt: p.id, value: r.id }); await T.roll("attack", 3);
-  eq([T.c.H1.health, T.c.H1.resolve], [5, 3], "phasing: the attack misses, 1 stress");
+  eq([T.c.H1.health, T.c.H1.resolve], [4, 3], "phasing: the attack misses, 1 stress (Health 4: FXT Z8, no Regeneration button healed it before)");
 }
 /* ================================================================== the GM's settings travel as operations */
 {
@@ -379,11 +379,14 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   ok(!M.hasStatus(W.state, "H2", "sick"), "Cleansing Healing: the sickness is gone");
   const X = base([item("he", "Healing", "power", { boosts: ["ll"] }), item("ll", "Life Leech", "limit", { power: "he" })], [], { h1: { health: 2, maxHealth: 6 } });
   await X.req("p1", decl("H1", act(X, "H1", "leech").id, { targets: ["N1"] })); await X.roll("roll", 1);
+  await X.roll("touch", 1);      // FXT Z15 [B1937]: the FIGHTING roll that touches the unwilling target (skipped here before)
   eq([X.c.H1.health, X.c.N1.health], [5, 3], "Life Leech: what the healer gains the target loses");
   /* Windup Strike [B1622]; Requires Activation (Defiance) [B1869]; an extra target for a point of stress [B1763] */
   const Y = base([...strike([item("ws", "Windup Strike", "limit", { power: "st" })]), item("df", "Defiance", "power", { boosts: ["ra"] }), item("ra", "Requires Activation (Defiance)", "limit", { power: "df" }),
     item("mc", "Mind Control", "power", { boosts: ["ac"] }), item("ac", "Area Control", "boost", { power: "mc" })]);
-  eq([code(await Y.req("p1", decl("H1", "slugfest", { targets: ["N1"] }))), why(Y.last), Y.last.error.params.gmMayAllow], ["illegal", "noWindup", 1], "Windup Strike: no unarmed attack before the quick action (the GM may allow it)");
+  /* FXT Z14: the book [B1622] takes away only STRIKE's effects without the wind-up; the attack itself was refused here before (noWindup) */
+  const Y0 = base(strike([item("ws", "Windup Strike", "limit", { power: "st" })]));
+  eq(code(await Y0.req("p1", decl("H1", "slugfest", { targets: ["N1"] }))), "ok", "Windup Strike: without the quick action the unarmed attack still goes ahead (without STRIKE's effects, check-fxt)");
   await Y.req("p1", decl("H1", act(Y, "H1", "ready").id));
   eq(code(await Y.req("p1", decl("H1", "slugfest", { targets: ["N1"] }))), "ok", "readied: the attack goes ahead");
   await pass(Y); await Y.roll("attack", 0);

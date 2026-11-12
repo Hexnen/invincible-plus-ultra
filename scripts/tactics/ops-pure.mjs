@@ -279,6 +279,7 @@ function turnMoment(W, member) {
   endEffects(W, moment);
   endStatuses(W, moment);
   queueOnce(W, { at: "turnStart", combatant: member }, `ts:${member}`, false);
+  W.effects.push({ type: "regen", combatant: member });      // Z8 [B1893]: Regeneration heals 1 by itself on each turn (engine-pure: once a round, never past the maximum)
 }
 /* Statuses that end at a scheduler point (a status may carry `ends: { at, who? }` like a token or an effect), and the named ones of `cid`. */
 function endStatuses(W, moment, cid = null, ids = []) {

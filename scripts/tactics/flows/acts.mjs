@@ -22,6 +22,8 @@ export function attrOf(v, inst) {
   const e = v.entry(inst), r = e?.roll;
   if (!r) return null;
   if (r.attr) return r.attr;
+  const held = e?.effect?.kind === "escape" ? statusOf(v, inst.actor, e.effect.from)?.data?.attr : null;
+  if (typeof held === "string" && attrChoices(e).includes(held)) return held;      // Z11 [B1944]: what holds the character names the attribute (Environment Phasing: STRENGTH)
   const list = attrChoices(e), a = inst.decl?.attr;
   if (list.includes(a)) return a;
   if (r.optional) return null;
@@ -46,7 +48,10 @@ export function snarePenalty(st) {
 export const stressOf = (v, inst) => { const e = v.entry(inst);      // a fixed price, 1 per extra target chosen as a number, 1 per target beyond the first
   return (inst.decl?.stressTotal ?? 0) + (e?.stress?.fixed ?? 0) + (e?.stressPick ? Math.max(0, Math.trunc(Number(inst.decl?.opt) || 0)) : 0) + (e?.stressExtra ? Math.max(0, (inst.decl?.targets?.length ?? 0) - 1) : 0); };
 const markKey = (cid, fx) => (fx.scene ? M.counterKey.scene(cid, fx.id) : M.counterKey.round(cid, fx.id));
-export const onceKey = (inst, e) => (e?.once === "round" ? M.counterKey.round(inst.actor, e.id) : e?.once ? M.counterKey.scene(inst.actor, e.id) : null);
+/* Z7 [B1686]: "once per action scene in the same zone" (`once: "sceneZone"`, Body Battery) counts per zone the actor stands in; with no map to
+   name the zone it counts as once per scene (the GM may allow) */
+const zoneOnce = (v, cid) => { const z = v?.facts?.zone?.(cid); const k = z?.key ?? z?.spot; return typeof k === "string" && k ? `@${k.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24)}` : ""; };
+export const onceKey = (inst, e, v = null) => (e?.once === "round" ? M.counterKey.round(inst.actor, e.id) : e?.once === "sceneZone" ? M.counterKey.scene(inst.actor, `${e.id}${zoneOnce(v, inst.actor)}`) : e?.once ? M.counterKey.scene(inst.actor, e.id) : null);
 const sid = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
 const srcOf = (I, e) => ({ kind: ["power", "talent", "drawback", "gear"].includes(e?.kit?.cat) ? e.kit.cat : "power", owner: I.actor, name: e?.name ?? "" });
 const teamOf = (v, cid) => { const a = v.facts.c(cid); return Object.keys(v.state.ledger ?? {}).filter((id) => { const c = v.facts.c(id); return id !== cid && c && c.present !== false && !!c.npc === !!a?.npc && c.kind !== "challenge" && c.kind !== "vehicle"; }); };
@@ -144,6 +149,9 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
   }
 }
 const P1L = (v, cid) => v.state.ledger?.[cid];
+/* Z15 [B1937] Life Leech: an unwilling target has to be touched first, with a FIGHTING roll made in the same action as the PRESENCE roll.
+   [FXT-4] Who is unwilling: a character of the other side (hero against NPC); the book gives the touch no defence, so the roll needs one six. */
+export const touchNeeded = (v, inst) => { const e = v.entry(inst), t = subjectOf(inst); if (e?.effect?.kind !== "leech" || !t || t === inst.actor) return false; const a = v.facts.c(inst.actor), f = v.facts.c(t); return !!a && !!f && !!a.npc !== !!f.npc; };
 export const KIT_KINDS = Object.freeze(["shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist"]);
 const sameZone = (v, a, b) => { const r = v.facts.range?.(a, b); return r === undefined ? undefined : !!r && r.total === 0; };   // undefined: no map, the GM judges
 
@@ -160,7 +168,7 @@ function legality(v, inst) {
   if (d.attr && e?.roll && !e.roll.attr && !attrChoices(e).includes(d.attr)) return bad("noAttribute");
   /* P6: what an entry of the kit asks for */
   if (stressOf(v, inst) > 0 && !damage.canTakeVoluntaryStress(a.resolve)) return bad("stressedOut");            // [B2816]
-  if (e?.once && M.counterGet(v.state, onceKey(inst, e)) > 0) return bad("usedAlready", GM);
+  if (e?.once && M.counterGet(v.state, onceKey(inst, e, v)) > 0) return bad("usedAlready", GM);
   if (Array.isArray(e?.pick) && e.pick.length && !e.pick.includes(d.opt)) return bad("noChoice");
   if (other && (e?.sameZone || (e?.touch && !a.pass?.healReach)) && sameZone(v, inst.actor, subject) === false) return bad("notSameZone", GM);
   if (other && e?.immuneHuge && sf?.huge) return bad("hugeTarget");
@@ -213,6 +221,7 @@ function legality(v, inst) {
 function actPool(v, I, tokens) {
   const d = I.decl, e = v.entry(I), attr = I.data.attr, mods = [];
   if (e?.effect?.escape === "snare" && e.effect.from === "snared") mods.push({ source: "snare", dice: snarePenalty(statusOf(v, I.actor, "snared")) });      // [B1606-1609]
+  else if (e?.effect?.kind === "escape") { const n = statusOf(v, I.actor, e.effect.from)?.data?.dice; if (Number.isFinite(n) && n < 0) mods.push({ source: "envPhase", dice: Math.trunc(n) }); }      // Z11 [B1944]: the penalty the status carries (Environment Phasing -2)
   const hd = K.helpDiceOf(v, d);
   if (hd) mods.push({ source: "help", dice: hd });                         // [B2238]
   return { attr, ...K.buildPool(v, I, "roll", I.actor, attr, mods, { rollKind: "other", tokens }) };
@@ -251,6 +260,10 @@ export const act = {
         if (!K.rollFinal(I, key)) { R.wait = true; return R; }
       }
       if (!K.rollFinal(I, "roll")) { R.wait = true; return R; }
+      if (touchNeeded(v, I)) {                                                                  // Z15 [B1937]: the FIGHTING roll that touches an unwilling target, in the same action
+        if (!K.rollOf(I, "touch")) { const bp = K.buildPool(v, I, "touch", I.actor, "fighting", [], { rollKind: "other" }); for (const wr of bp.writes) R.effects.push({ t: "state", path: wr.path, to: wr.to }); R.effects.push(K.rollEffect("touch", I.actor, "fighting", bp.pool, { noPush: !K.mayPush(v, I.actor), label: "ITAC.roll.touch" })); R.wait = true; return R; }
+        if (!K.rollFinal(I, "touch")) { R.wait = true; return R; }
+      }
       const r = K.rollOf(I, "roll");
       R.events.push({ type: "roll", key: "roll", who: I.actor, attr, dice: r.pool?.total, sixes: K.sixesOf(I, "roll"), ones: r.ones ?? 0, pushed: r.pushed ?? 0, messageId: r.messageId });
       R.goto = "effect"; return R;
@@ -259,14 +272,16 @@ export const act = {
       const I = K.draft(inst), R = K.result(I), e = v.entry(I), kind = kindOf(v, I), subject = subjectOf(I), sf = v.facts.c(subject);
       const rolled = !!I.data.attr, sixes = rolled ? K.sixesOf(I, "roll") : 0, opp = opponentOf(v, I), against = opp ? K.sixesOf(I, `def:${opp.who}`) : 0;
       const net = opp ? dice.opposed(sixes, against) : { win: sixes > 0, net: sixes };          // [B2243]: a tie fails for the active party
-      const success = rolled ? net.win : true;
+      const touched = !touchNeeded(v, I) || K.sixesOf(I, "touch") > 0;                         // Z15 [B1937]: no touch, nothing drained
+      const success = (rolled ? net.win : true) && touched;
       I.data.result = success ? "success" : "fail"; I.data.net = rolled ? (opp ? net.net : sixes) : null;
+      if (!touched) I.data.untouched = 1;
       const status = (who, id, on) => R.events.push({ type: "status", target: who, status: { id, on } });
       if (!rolled && !K.flag(I, "stress")) {                                                   // P6: an action without a roll locks here, with the stress it costs
         K.setFlag(I, "stress"); if (!I.locked) { I.locked = true; R.events.push({ type: "actionLocked" }); }
         if (stressOf(v, I) > 0) R.effects.push({ t: "stress", who: I.actor, n: stressOf(v, I), cost: 1 });
       }
-      if (e?.once && !K.flag(I, "once")) { K.setFlag(I, "once"); R.effects.push({ t: "state", ...M.counterBump(v.state, onceKey(I, e)) }); }
+      if (e?.once && !K.flag(I, "once")) { K.setFlag(I, "once"); R.effects.push({ t: "state", ...M.counterBump(v.state, onceKey(I, e, v)) }); }
       if (KIT_KINDS.includes(kind) && kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) === "wait") { R.wait = true; return R; }
       switch (kind) {
         case "banter": {                                                                         // [B2785]: 1 stress per six more than the target rolled; once per round per target

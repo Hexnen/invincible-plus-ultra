@@ -119,8 +119,9 @@ export const hazard = {
         if (I.data.dmg[t]) continue;
         const tf = v.facts.c(t), forced = I.data.forced?.damage?.[t];
         const tags = M.damageTags({ source: h.kind === "fire" ? "fire" : h.source, cause: h.cause ?? "hazard" });
-        const immune = (tf.immunities ?? []).includes(tags.source) || (tags.source !== "kinetic" && (tf.immunities ?? []).includes("nonKinetic"));     // [B1877-1880]
-        const vulnerable = (tf.vulnerabilities ?? []).includes(tags.source);                                                                        // [B2193]: doubled, no Armor
+        const phased = !tags.toStress && K.phased(v.state, t);                                                                                      // Z2 [B1941]: Prolonged Phasing, immune to physical damage
+        const immune = phased || (tf.immunities ?? []).includes(tags.source) || (tags.source !== "kinetic" && (tf.immunities ?? []).includes("nonKinetic"));     // [B1877-1880]
+        const vulnerable = !phased && (tf.vulnerabilities ?? []).includes(tags.source);                                                             // [B2193]: doubled, no Armor
         let rec;
         if (h.kind === "fire") {
           const sixes = I.data.res[`fire:${t}`].filter((d) => d === 6).length, ar = damage.selectArmor(tf.armor ?? [], { source: tags.source });         // [B2925]: Armor applies, the one that works against fire
@@ -128,7 +129,7 @@ export const hazard = {
           rec = { base: hazards.fireDamage(sixes), raw: fo.raw, armor: vulnerable ? 0 : forced?.armor ?? ar.armor, ...(vulnerable ? { vulnerable: true } : {}), taken: Number.isFinite(forced?.amount) ? forced.amount : fo.taken, burning: fo.burning, sixes, tags };
         } else {
           const armor = h.armor === true ? (forced?.armor ?? damage.selectArmor(tf.armor ?? [], { source: tags.source }).armor) : 0;                 // [OQ-11]: the Armor line is the GM's tick
-          const hd = damage.hitDamage({ base: h.amount ?? 0, armor, source: tags.source, immunities: tf.immunities ?? [], vulnerabilities: tf.vulnerabilities ?? [] });
+          const hd = damage.hitDamage({ base: h.amount ?? 0, armor, source: tags.source, immunities: immune ? [tags.source] : [], vulnerabilities: vulnerable ? [tags.source] : [] });
           rec = { base: h.amount ?? 0, raw: hd.raw, armor: hd.armor, taken: Number.isFinite(forced?.amount) ? forced.amount : hd.taken, tags };
         }
         const ab = K.copiesAbsorb(v, R, t, rec.taken);                                                                                               // [B1910]: fire, a fall, a barrier, a slam, a wreck: any damage goes to the copy bonus first

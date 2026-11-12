@@ -152,7 +152,7 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
     ok(code(r) === "ok" && (!T.state.free?.H1 || stack(T).length === 1), "D34: a participant the GM marked free is not held to the turn"); }
   /* the same door for what a kit uses without an action */
   const item = (id, name, type) => ({ id, name, type, level: null, power: null, boosts: [], autos: [], fx: [], flags: { kit: null, off: false, types: [] }, wf: {} });
-  const kit = () => { const T = mk(); const c = T.c.H1; c.health = 4; c.kit = K.build({ items: [item("ph", "Phobic", "drawback"), item("re", "Regeneration", "power"), item("di", "Discretion", "talent")], attrs: c.attrs }); c.pass = c.kit.pass; return T; };
+  const kit = () => { const T = mk(); const c = T.c.H1; c.health = 4; c.kit = K.build({ items: [item("ph", "Phobic", "drawback"), item("re", "Resilience", "talent"), item("di", "Discretion", "talent")], attrs: c.attrs }); c.pass = c.kit.pass; return T; };
   const act = (T, k) => T.c.H1.kit.actions.find((a) => a.id.endsWith(`-${k}`)).id;
   { const T = kit(), r = await T.preq("p1", { op: "declare", actor: "H1", decl: { action: act(T, "phobia") } });
     eq([code(r), stack(T), T.requests.length, T.prompts("exception").map((p) => [p.to, p.about, p.data?.decl?.action])], ["ok", [], 0, [["gm", "H1", act(T, "phobia")]]], "D34 (sibling): a kit use without an action that waits for a roll is, out of turn, a request to the GM that carries the declaration");
@@ -161,8 +161,9 @@ const slots = (T) => T.state.init.slots.map((s) => `${s.members.join("+")}:${s.c
     const U = kit(); await U.preq("p1", { op: "declare", actor: "H1", decl: { action: act(U, "phobia") } });
     await U.gm({ op: "answerFor", prompt: U.prompts("exception")[0]?.id, value: "grant" });
     eq([stack(U).map((x) => x.split("/").slice(0, 2).join("/")), U.requests.length], [[`${act(U, "phobia")}/H1`], 1], "D34 (sibling): the GM's yes runs it: the roll is asked for"); }
-  { const T = kit(), r = await T.preq("p1", { op: "declare", actor: "H1", decl: { action: act(T, "regen") } });
-    eq([code(r), stack(T), T.c.H1.health, T.prompts().length], ["ok", [], 5, 0], "D34: a kit use that ends at once (Regeneration) goes through out of turn and holds nobody"); }
+  /* FXT Z8: Regeneration heals by itself now [B1893] (no button); Resilience is the kit use that ends at once without a roll */
+  { const T = kit(), r = await T.preq("p1", { op: "declare", actor: "H1", decl: { action: act(T, "resilience"), opt: "1" } });
+    eq([code(r), stack(T), T.c.H1.health, T.prompts().length], ["ok", [], 5, 0], "D34: a kit use that ends at once (Resilience) goes through out of turn and holds nobody"); }
   { const T = kit(); const id = T.c.H1.kit.actions.find((a) => a.reactionOnly)?.id;
     eq([!!id, code(await T.preq("p1", { op: "declare", actor: "H1", decl: { action: id } })), stack(T)], [true, "unknown", []], "D34 (sibling): what exists only as an answer in a reaction window (Discretion) cannot be declared by a player as an action"); }
 }

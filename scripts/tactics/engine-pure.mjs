@@ -1581,6 +1581,14 @@ async function systemOne(X, fx, triggers) {
       const tx = openTx(X, {});
       for (const id of Array.isArray(fx.combatants) ? fx.combatants : []) await perform(X, tx, { t: "summonRemove", combatant: id, tx });
       closeTx(X, tx, { pub: "{ITAC.journal.summonLeft}", gm: "{ITAC.journal.summonLeft}" });
+    } else if (fx?.type === "regen") {                                                       // Z8 [B1893]: on each turn, by itself, 1 lost Health back
+      const c = X.facts.c(fx.combatant), key = M.counterKey.round(fx.combatant, "regen");
+      if (!c || !(c.regeneration === true || c.pass?.regeneration === true) || M.counterGet(X.state, key) > 0) return;      // once a round: a turn opened again (held off, stepped back) heals once
+      if (!(c.health > 0) || !(c.health < c.maxHealth) || M.hasStatus(X.state, fx.combatant, "dead")) return;             // [FXT-1]: not a broken character (it rallies first, [B2773]); not past the maximum
+      const tx = openTx(X, {});
+      const cb = M.counterBump(X.state, key); write(X, tx, cb.path, cb.to);
+      await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "health", to: c.health + 1, tx });
+      closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(fx.combatant)}: {ITAC.journal.regen}`, who: whoOf(X, [fx.combatant]), gm: `${c.name ?? ""}: {ITAC.journal.regen} ${c.health} -> ${c.health + 1}` });
     } else if (fx?.type === "turnPassed") {                                                  // U9: the round driver let a turn pass (ops-pure.openTurn); the GM reads it in the journal, the table in its news
       const c = X.facts.c(fx.combatant), why = ["broken", "unconscious", "dead"].includes(fx.reason) ? fx.reason : "broken";
       if (!c) return;

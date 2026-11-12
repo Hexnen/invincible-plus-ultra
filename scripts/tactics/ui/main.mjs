@@ -16,6 +16,8 @@ import * as Sys from "../system-adapter.mjs";
 import * as Engine from "../engine.mjs";
 import * as Zones from "../zones-adapter.mjs";
 import * as Mv from "../movement.mjs";
+import * as MP from "../movement-pure.mjs";
+import { isOnTurn } from "../economy-pure.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import { t as langT, errText, rollTitle } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
@@ -191,7 +193,8 @@ function factsOf(combat) {
     /* U29 / U30: Health and Resolve of a combatant this user drives (the bars of the dock's unit block); nobody else's numbers */
     vitals: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); if (!a || !(staff || a.isOwner)) return null; const f = Sys.actorFacts(a); return f ? { health: f.health, maxHealth: f.maxHealth, resolve: f.resolve, maxResolve: f.maxResolve } : null; } catch { return null; } },
     resolve: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && staff ? Sys.actorFacts(a)?.resolve ?? null : null; } catch { return null; } },      // the desk's hint for an NPC out of Resolve
-    weapons: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Sys.weaponList(a) : []; } catch { return []; } },      // [P4] what this user's own character can attack with
+    weapons: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); if (!a || !(staff || a.isOwner)) return []; const vid = (Api.state(combat)?.statuses?.[id] ?? []).find((s) => s?.id === "inVehicle")?.data?.vehicle;
+      return [...Sys.weaponList(a), ...(vid ? Sys.vehicleWeapons(Sys.actorOf(combat.combatants.get(vid)), vid) : [])]; } catch { return []; } },      // [P4] what this user's own character can attack with; Z17 [B3147]: and the weapons of the vehicle it is aboard
     doors: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner) ? Mv.api.doors(id) : []; } catch { return []; } },
     /* U8: the spot of a combatant this user drives (its own token: nothing a player does not see on the map) */
     where: (id) => { try { const cb = combat.combatants.get(id), a = Sys.actorOf(cb); return a && (staff || a.isOwner) && cb?.token && Zones.available() ? Zones.spotOf(cb.token) : null; } catch { return null; } },
@@ -664,6 +667,20 @@ function chatButtons(root = document) {
   } catch { /* the card as the system drew it */ }
 }
 /** -> true when the surfaces run on this client */
+/** Z4 [B2386]: moving inside a zone needs no action "but can only be done on your turn". The map lets a drop inside the same zone through;
+    a player's such drag outside the combatant's turn is held here (the verdict is MP.inZoneDrag; the GM's drag always passes). */
+function holdInZone(doc, changed, options, userId) {
+  try {
+    if (userId !== game.user.id || game.user.isGM || options?.mmMove || !("x" in changed || "y" in changed) || doc.parent !== canvas.scene) return;
+    const combat = combatNow(), cid = combat?.combatants.find((c) => c.tokenId === doc.id)?.id, st = cid ? Api.state(combat) : null;
+    if (!st) return;
+    const g = canvas.grid?.size ?? 100, from = Zones.placeOf(doc), to = Zones.placeAt((changed.x ?? doc.x) + (doc.width * g) / 2, (changed.y ?? doc.y) + (doc.height * g) / 2);
+    const why = MP.inZoneDrag({ staff: false, tactical: st.mode === "tactical", free: !!st.free?.[cid], onTurn: isOnTurn(st, cid), from: from?.area ? null : from?.zone ?? null, to: to?.zone ?? null });
+    if (!why) return;
+    ui.notifications?.warn(langT(`ITAC.why.${why}`));
+    return false;
+  } catch { /* a courtesy: the move goes through */ }
+}
 export function start() {
   if (started) return true;
   if (typeof document === "undefined") return false;      // no page (the node checks load main.mjs): no surfaces
@@ -682,6 +699,7 @@ export function start() {
     watchDice();      // U108
     Aim.watch();      // perf4: the aim mark of U140 on the panels' roots (ui/aim.mjs)
     Hooks.on("controlToken", onControl);      // U60
+    Hooks.on("preUpdateToken", holdInZone);      // Z4 [B2386]
     Hooks.on("canvasTearDown", () => { down = true; Pick.stop(); zonePick = null; shownDock = shownDesk = ""; Board.reset(); Camera.reset(); Dock.hide(); });
     Hooks.on("createChatMessage", () => { for (const ms of [60, 400, 1200]) setTimeout(relayout, ms); });      // a toast floats in: the desk and the dock step aside once it has its size
     Hooks.on("deleteChatMessage", () => setTimeout(relayout, 60));

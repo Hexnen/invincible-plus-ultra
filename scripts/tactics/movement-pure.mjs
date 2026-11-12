@@ -55,12 +55,17 @@ export function modesOf(c) {
 }
 export const modeOf = (c, id) => { const list = modesOf(c); return (id ? list.find((m) => m.id === id) : null) ?? null; };
 /** the profile the zones API takes (zones-api.md section 14). `zones`: how far ONE action goes (the stress option's reach when taken). */
-export function apiProfile(profile, { zones: z = null, stress = false, force = false, hover = undefined } = {}) {
+export function apiProfile(profile, { zones: z = null, stress = false, force = false, hover = undefined, big = false } = {}) {
   const speed = Math.max(1, z ?? (stress && profile.stressZones ? profile.stressZones : profile.zones));
   const p = { way: API_WAY[profile.mode] ?? (profile.way === "air" ? "flight" : profile.way), speed, actions: 1, force: !!force };
   p.hover = hover !== undefined ? hover : canHover(profile);                           // [ZR-3]: only a way of moving that may end in the air hovers
+  if (big) p.edges = NOT_PORTAL;                                                       // Z3 [B2040]: a portal lets human-sized characters through
   return p;
 }
+/** Z3 [B2040]: a portal is for human-sized characters; a huge creature or one grown with Size Alteration [B2499], [B1975] does not fit.
+    The map's temporary edges a big mover may still take (zones-api.md section 11: a tunnel can be followed by anybody [B1996]). */
+const NOT_PORTAL = Object.freeze(["tunnel"]);
+export const bigFor = (c) => !!(c?.huge || c?.grown || c?.pass?.huge || c?.pass?.grown);
 
 /* ------------------------------------------------------------------ zone states as the rules read them */
 const ownerOf = (s) => (typeof s?.owner === "string" ? s.owner : s?.owner?.owner ?? s?.owner?.combatant ?? s?.owner?.id ?? null);
@@ -86,6 +91,12 @@ export function conditionsOf(state, cid, c, states) {
     afflicted: M.hasStatus(state, cid, "afflicted"), storm: f.storm, highGravity: f.highGravity };            // [B1574], [B1841], [B1704]
 }
 /** Why a combatant cannot move at all (null: it can). held [B2496], snared and immobilised [R21] [OQ-2], trapped [R20], broken [B2707]. */
+/** Z4 [B2386]: moving inside a zone needs no action "but can only be done on your turn". A player's drag of a token within its zone outside that
+    combatant's turn is refused; the GM's drag always passes (gmMayAllow), as does every move outside tactical play or of a combatant the GM set free.
+    `from`/`to` are the map's zone keys before and after the drop. -> "notYourTurn" | null */
+export function inZoneDrag({ staff = false, tactical = false, free = false, onTurn = false, from = null, to = null } = {}) {
+  return !staff && tactical && !free && !onTurn && from != null && from === to ? "notYourTurn" : null;
+}
 export function cannotMove(state, cid, c) {
   if (!c || c.present === false) return "gone";
   if (c.health <= 0) return "broken";
@@ -138,7 +149,7 @@ export function priceMove(Z, state, cid, c, decl, o = {}) {
   const reach = movement.moveReach(P, { conditions: conds, resolve: o.resolve ?? c.resolve });
   const cap = Number.isFinite(o.free) ? Math.max(0, o.free) : Math.max(reach.plain, reach.stressed, 1);
   const force = !!decl.force && P.way !== "through";
-  const prof = apiProfile(P, { zones: Math.max(1, cap), force });
+  const prof = apiProfile(P, { zones: Math.max(1, cap), force, big: bigFor(c) });
   let plan = Z.plan(cid, to, prof);
   if (!plan) {
     const forced = P.way !== "through" && !force ? Z.plan(cid, to, { ...prof, force: true }) : null;
@@ -228,7 +239,7 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
     const max = Number.isFinite(o.free) ? o.free : Math.max(r.plain, r.stressed);
     const seen = new Set();
     for (const force of m.profile.way === "through" ? [false] : [false, true]) {
-      for (const row of Z.reach(cid, apiProfile(m.profile, { zones: Math.max(1, max), force }), o.max ?? max)) {
+      for (const row of Z.reach(cid, apiProfile(m.profile, { zones: Math.max(1, max), force, big: bigFor(c) }), o.max ?? max)) {
         if (row.d === 0 || seen.has(row.zone)) continue;
         seen.add(row.zone);
         push(m, row.zone, row.d, row.zone, force ? { force: true } : {});
