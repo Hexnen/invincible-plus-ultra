@@ -3,6 +3,7 @@
 // number its last summary line gives (checks, else keys). The i18n glossary/names checks and the shared kit's checks are left out
 // here because the tactics runner already runs them (scripts/tactics/check-glossary.mjs, check-names.mjs, ../check-kit, ../check-marks).
 import { spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -14,6 +15,8 @@ const SUITES = [
   "log/check-log.mjs", "log/check-lang.mjs",
   "session/check-session.mjs", "session/ui/check-ui.mjs", "session/check-lang.mjs",
   "combat/check-lang.mjs", "diceeffects/check-lang.mjs", "party/check-lang.mjs", "slash/check-lang.mjs", "tokenhalo/check-lang.mjs", "turn/check-lang.mjs",
+  // the sweep fixers' standalone checks (each prints "sweep cN: N checks, F failed"): every file in sweep-checks, so new ones join by themselves
+  ...readdirSync(join(dir, "sweep-checks")).filter((f) => f.endsWith(".mjs")).sort((a, b) => a.localeCompare(b, "en", { numeric: true })).map((f) => `sweep-checks/${f}`),
 ];
 // Summary line shapes, most specific first: "tactics: N checks, F failed", "rules: N checks, F failed", "check-x: N checks, F failed",
 // "N checks, F failed", "OK N checks", "check-lang OK: N checks", "OK: N keys", "OK N checks (N keys ...)".
