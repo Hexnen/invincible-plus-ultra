@@ -2,11 +2,15 @@
 //   U212 a standing building with storeys [B2416] (P8b-6, P8b-R11: a storey is one zone of vertical movement): the move offers each
 //        storey as a place of its own (from outside, from the ground of the building, from a storey, from the rooftop), priced by the
 //        map's plan; a storey never becomes the one-click way; a wrecked building has none; a drag onto a zone is its ground
-//   U214 / U215 the GM desk: the Table tab's pickers ("Kto") and a vehicle's "Posadź" stay inside the desk (checked in the CSS)
+//   U214 the GM desk: opening a folded section scrolls the desk's body so the section's controls (the Table tab's "Kto") are not left
+//        under its fold, where a click reached the map
+//   U215 the GM desk's Scene tab: a set-up (not running) chase stands after the vehicles and challenges, so a vehicle's "Posadź" is
+//        not pushed under the fold by the chase's form
 import { readFileSync } from "node:fs";
 import { ok, eqc as eq, done } from "./testkit.mjs";
 import * as MP from "./movement-pure.mjs";
 import { t as say, EN, PL } from "./lang.mjs";
+import { revealBy } from "./ui/desk.mjs";
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
 const t = (k, prm, fb) => say(k, prm, fb);
@@ -56,6 +60,10 @@ const tos = (list, pred = () => true) => list.filter(pred).map((o) => `${o.mode}
   /* on a storey: down to the ground on foot (the stairs; before, only a way that is not walking could leave a level), the other storey */
   const s = opts("z2:f1", walker), sh = tos(s, (o) => o.here);
   ok(sh.includes("walk|z2") && sh.includes("walk|z2:f2") && !sh.includes("walk|z2:f1"), `U212: on the first storey: down the stairs to the ground and up to the second, not the one stood on (${sh})`);
+  /* on the second storey on foot: the ground is two storeys down, out of one move - not offered greyed (FF7 after the fix: "too far"),
+     the first storey is */
+  const s2 = tos(opts("z2:f2", walker), (o) => o.here);
+  eq(s2, ["walk|z2:f1"], "U212: on the second storey on foot: down one storey; the ground (two down) is not offered");
   /* a flyer on the rooftop (FF7: Kid Omni-Man glided onto the roof of z2): the storeys below it as well */
   const r = opts("z2:elevated", flyer), rh = tos(r, (o) => o.here && o.floor);
   ok(rh.includes("flight|z2:f2") && rh.includes("flight|z2:f1"), `U212: from the rooftop the storeys below (${rh})`);
@@ -70,6 +78,18 @@ const tos = (list, pred = () => true) => list.filter(pred).map((o) => `${o.mode}
   ok(/!o\.elevated && !o\.floor && !to\.includes\(":"\)/.test(read("./movement.mjs")), "U212: a token dragged onto z2 asks for the ways to its ground, not to its storeys");
   /* the dodge move's card carries the storey, so its row names it */
   ok((read("./flows/attack.mjs").match(/\.\.\.\(x\.floor \? \{ floor: x\.floor \} : \{\}\)/g) ?? []).length === 2 && /\.\.\.\(x\.floor \? \{ floor: x\.floor \} : \{\}\)/.test(read("./flows/hazards.mjs")), "U212: a dodge move's options carry the storey");
+}
+
+/* ================================================================== U214 / U215: the GM desk */
+{
+  const body = { top: 100, bottom: 400 };
+  eq([revealBy({ top: 150, bottom: 380 }, body), revealBy({ top: 300, bottom: 520 }, body), revealBy({ top: 200, bottom: 900 }, body), revealBy({ top: 100, bottom: 400 }, body)], [0, 120, 100, 0],
+    "U214: a section opened inside the body is not scrolled; one under the fold scrolls up by what it lacks; a tall one stops with its head at the top");
+  const src = read("./ui/desk.mjs");
+  ok(/data: \{ fold: shut \? "shut" : "open", fid: id \}/.test(src) && /handlers\.fold\?\.\(id\); if \(shut\) reveal\(id\);/.test(src),
+    "U214: a folded section names itself and opening it brings it into view");
+  ok(/c\.on \? \[section\(c\.title, 0, chase\), \.\.\.parts\] : \[\.\.\.parts, section\(c\.title, 0, chase\)\]/.test(src),
+    "U215: a running chase leads the Scene tab; a chase only being set up stands after the vehicles and challenges");
 }
 
 done("check-fxl2");

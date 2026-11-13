@@ -233,9 +233,9 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
   const out = [], from = Z?.place?.(cid);
   if (!from || cannotMove(state, cid, c)) return out;
   const modes = modesOf(c).filter((m) => !o.mode || m.id === o.mode);
-  const push = (m, to, d, zone, extra = {}) => {
+  const push = (m, to, d, zone, extra = {}, reachOnly = !!extra.floor) => {
     const pr = priceMove(Z, state, cid, c, { to, mode: m.id, stress: 1, force: extra.force }, o);
-    if (extra.floor && !pr.ok) return false;                                          // FXL2 (U212): a storey is offered where this way gets there in one action
+    if (reachOnly && !pr.ok) return false;                                            // FXL2 (U212): a storey (or the stairs down) is offered where this way gets there in one action
     const cost = pr.ok ? (pr.later ?? pr.cost) : null, pay = pr.ok && (cost === "quick" || cost === "full") ? canPay(cost) : { ok: true };
     out.push({ id: `${m.id}|${to}${extra.wreck ? "|wreck" : ""}`, to, zone, ...(extra.wreck ? { wreck: 1 } : {}), mode: m.id, d, cost, stress: pr.ok ? pr.stress : 0, disabled: !pr.ok ? pr.reason : pay.ok ? null : pay.reason ?? "noAction",
       ...(pr.ok ? (pay.ok ? {} : { unpaid: 1 }) : pr.gmMayAllow ? { gmMayAllow: true } : {}), barriers: pr.ok ? pr.barriers : pr.params?.barriers ?? [], ...(pr.ok && pr.gm ? { gm: 1 } : {}), ...(pr.ok && pr.zones?.length ? { route: pr.zones.slice() } : {}), ...(pr.ok && pr.steps?.length ? { enters: [...new Set(pr.steps.map((s) => s.to).filter((x) => typeof x === "string"))] } : {}), ...extra });      // W1 (U32): `route` = the zones this way enters, for the preview on the map
@@ -273,7 +273,8 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
     if (from.zone) {                                                                  // a change of level inside the zone [B2386]
       const z = Z.zone(from.zone), up = `${from.zone}:elevated`;
       if (from.level !== "elevated" && movement.altitudeAccess(m.profile, "elevated").ok && (z?.rooftop || (m.profile.ends ?? []).includes("air"))) push(m, up, 0, from.zone, { here: 1, elevated: z?.rooftop ? "roof" : "air" });
-      if (from.level !== "ground" && (m.profile.way !== "walk" || from.level === "floor")) push(m, from.zone, 0, from.zone, { here: 1 });      // FXL2 (U212): from a storey down the stairs on foot too
+      if (from.level !== "ground" && m.profile.way !== "walk") push(m, from.zone, 0, from.zone, { here: 1 });
+      else if (from.level === "floor") push(m, from.zone, 0, from.zone, { here: 1 }, true);      // FXL2 (U212): from a storey down the stairs on foot too, where one move gets there
       if (m.mode !== "burrowing") floorsTo(m, from.zone, 0, seenF, { here: 1 });      // FXL2 (U212): up or down to another storey of this building [B2416]
     }
     if (!Number.isFinite(o.free)) for (const a of ["sky", "orbit"]) if (movement.altitudeAccess(m.profile, a).ok) push(m, `@${a}`, null, null, { area: a });   // [B2387-2388]
