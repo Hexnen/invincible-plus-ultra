@@ -197,6 +197,13 @@ function play(L, it) {
 /* the user's display layer, handed to the engine (contract: the world layer option) */
 const layer = () => { const v = get(KEY.layer, "overlay"); return { layer: LAYERS.includes(v) ? v : "overlay" }; };
 
+/* a word must never outlive what this seat may see: the token deleted, hidden from a player or out of his sight ends its words at once
+   (the engine follows a token without asking whether this user sees it) */
+function cut(id) { for (const h of playing.get(id) ?? []) try { h.stop({ quick: true }); } catch { /* gone */ } playing.delete(id); }
+function recheck() {
+  try { for (const id of [...playing.keys()]) { const tok = canvas.tokens?.get(id); if (!tok || !seatOf(tok).visible) cut(id); } } catch (err) { once(err); }
+}
+
 /* ---------- settings, hooks, start ---------- */
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
@@ -223,7 +230,9 @@ function registerHooks() {
       for (const tok of actor.getActiveTokens?.() ?? []) changed(tok, options);
     } catch (err) { once(err); }
   });
-  Hooks.on("updateToken", (doc, changes, options) => { try { if (changes?.delta || changes?.actorData) changed(doc.object, options); } catch (err) { once(err); } });
+  Hooks.on("updateToken", (doc, changes, options) => { try { if (changes?.delta || changes?.actorData) changed(doc.object, options); if ("hidden" in (changes ?? {}) || "x" in (changes ?? {}) || "y" in (changes ?? {})) setTimeout(recheck, 0); } catch (err) { once(err); } });
+  Hooks.on("deleteToken", (doc) => { try { cut(doc.id); seen.delete(doc.id); } catch (err) { once(err); } });
+  Hooks.on("sightRefresh", () => { if (playing.size) recheck(); });
   Hooks.on("createChatMessage", onMessage);
   Hooks.on("updateChatMessage", (message) => { try { if (message?.rolls?.length && message.speakerActor) lastRoll.set(message.speakerActor.id, Date.now()); } catch (err) { once(err); } });
   Hooks.on(TAC_HOOK, onEvent);

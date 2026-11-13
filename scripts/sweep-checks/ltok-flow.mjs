@@ -90,6 +90,22 @@ set(hid, "health", 3);
 p = await take();
 ck("B4 a player: nothing over a token out of sight", p.length === 0);
 
+/* a word ends when its token is hidden from the player or deleted (the engine follows a token without asking) */
+{
+  const stops = [];
+  const realPlay = L.play;
+  L.play = (text, o) => { const h = realPlay(text, o); const s0 = h.stop; h.stop = (x) => { stops.push([o.at?.id ?? o.token?.id, x?.quick]); return s0.call(h, x); }; return h; };
+  hid.isVisible = true; hid.document.hidden = false;
+  set(hid, "health", 7); await sleep(1000);
+  hid.document.hidden = true; Hooks.callAll("updateToken", hid.document, { hidden: true }, {}); await sleep(20);
+  ck("B5 hidden while its word stands: the word goes at once", stops.some(([id, q]) => id === "X" && q === true));
+  stops.length = 0; hid.document.hidden = false;
+  set(hid, "health", 2); await sleep(1000);
+  Hooks.callAll("deleteToken", hid.document); await sleep(20);
+  ck("B6 deleted while its word stands: the word goes at once", stops.some(([id, q]) => id === "X" && q === true));
+  L.play = realPlay; await take(1500); hid.isVisible = false;
+}
+
 /* a player and an NPC: no secret numbers */
 set(npc, "health", 5);
 p = await take();
