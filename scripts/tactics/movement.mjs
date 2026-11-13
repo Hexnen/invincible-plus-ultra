@@ -76,8 +76,9 @@ export function talk(Z, a, b, link = false) {
 }
 
 /* ------------------------------------------------------------------ per client */
-/* U107 / D112: `hand` follows this client's hand (a press on the map held, moved, released; a key): MP.handTracker tells a script's token update from a drag */
-let offStep = null, on = false, H = null, surface = null, inputOn = false; const hand = MP.handTracker(), onBoard = (e) => { try { const v = e.target; return !!v && (v.id === "board" || v === globalThis.canvas?.app?.view); } catch { return false; } };
+/* U107 / D112: `hand` follows this client's hand (a press on the map held, moved, released; a key): MP.handTracker tells a script's token update from a drag.
+   U114: a touch press on the map that the browser cancels also releases core's drag state (MP.releaseCoreDrag) */
+let offStep = null, on = false, H = null, surface = null, inputOn = false; const hand = MP.handTracker(MP.BY_HAND_MS, (e) => MP.releaseCoreDrag(globalThis.canvas, e)), onBoard = (e) => { try { const v = e.target; return !!v && (v.id === "board" || v === globalThis.canvas?.app?.view); } catch { return false; } };
 /** The action dock takes over the confirmation of a dragged token: fn(cid, spot) -> true when it showed the options itself. */
 export function setDragSurface(fn) { surface = typeof fn === "function" ? fn : null; }
 const costText = (o) => `${t(`ITAC.cost.${o.cost ?? "none"}`)}${o.stress ? ` + ${t("ITAC.move.stress", { n: o.stress })}` : ""}${o.barriers?.length ? ` + ${t("ITAC.move.force", { n: o.barriers.length })}` : ""}${o.wreck ? ` + ${t("ITAC.move.wreck")}` : ""}`;
