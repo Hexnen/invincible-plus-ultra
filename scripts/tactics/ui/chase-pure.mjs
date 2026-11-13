@@ -202,8 +202,16 @@ export function chaseData(view, own, facts, t) {
   const barred = (phase === "rolling" || fresh) && Array.isArray(ch.last?.barred) ? ch.last.barred.filter((b) => isObj(b) && typeof b.who === "string") : [];
   const barredText = barred.map((b) => t("ITAC.chase.catch.barred", { name: name(b.who), why: t(`ITAC.reason.${b.reason}`, {}, String(b.reason ?? "")) })).join("; ");
   const someStrike = !!catchQ || (view.stack ?? []).some((i) => !i.masked && i.parent === inst?.id && i.data?.chaseCatch) || !barred.some((b) => b.who === (sides[0].who?.id ?? sides[0].lead?.id));
+  const strikeText = someStrike ? t(pick ? (ram ? "ITAC.chase.catch.whoRamPick" : "ITAC.chase.catch.whoChargePick") : ram ? "ITAC.chase.catch.whoRam" : "ITAC.chase.catch.whoCharge", { name: catcher, target: caughtOne }) : "";
+  /* FXO2 (U216): the panel draws the catch as one short row per unit (name + a tag: the strike and its target, or the unit's stuck word);
+     each row's full sentence is its tooltip. `text` stays the whole line (the strip's tooltip). */
+  const unitOf = (id) => sides.flatMap((s) => s.units).find((u) => u.id === id);
+  const verb = t(ram ? "ITAC.chase.catch.rowRam" : "ITAC.chase.catch.rowCharge");
+  const catchRows = [someStrike ? { id: "strike", kind: "strike", ram, name: catcher, tag: pick ? t("ITAC.chase.catch.rowPick", { what: verb }) : t("ITAC.chase.catch.at", { what: verb, name: caughtOne }), tip: strikeText } : null,
+    ...barred.map((b) => ({ id: `barred:${b.who}`, kind: "barred", name: name(b.who), tag: unitOf(b.unit)?.stuckText ?? t(`ITAC.reason.${b.reason}`, {}, String(b.reason ?? "")),
+      tip: t("ITAC.chase.catch.barred", { name: name(b.who), why: t(`ITAC.reason.${b.reason}`, {}, String(b.reason ?? "")) }) }))].filter(Boolean);
   const catchInfo = caughtNow || (phase === "rolling" && step === "catch") ? { by: catcher, at: pick ? null : caughtOne, ram, pick, barred: barred.map((b) => ({ who: b.who, reason: b.reason })),
-    text: [someStrike ? t(pick ? (ram ? "ITAC.chase.catch.whoRamPick" : "ITAC.chase.catch.whoChargePick") : ram ? "ITAC.chase.catch.whoRam" : "ITAC.chase.catch.whoCharge", { name: catcher, target: caughtOne }) : "", barredText].filter(Boolean).join("; ") } : null;
+    rows: catchRows, text: [strikeText, barredText].filter(Boolean).join("; ") } : null;
   const beats = [
     obsOn ? beat("obstacle", stateAt("obstacle"), obstacle ? obstacle.name : phase === "before" ? t("ITAC.chase.obstacle.next") : "") : null,
     beat("prey", stateAt("prey"), sides[1].roll.text, { who: sides[1].who?.name ?? "" }),

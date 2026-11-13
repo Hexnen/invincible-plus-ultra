@@ -69,7 +69,7 @@ const setInst = (X, inst) => { X.state = { ...X.state, stack: X.state.stack.map(
 const owns = (X, cid) => X.user.staff === true || !!X.facts.c(cid)?.owners?.includes(X.user.id);
 function emit(X, inst, ev) {
   X.state = { ...X.state, evSeq: (X.state.evSeq ?? 0) + 1 };
-  X.events.push({ ...ev, seq: X.state.evSeq, round: X.state.round, inst: inst?.id, action: inst?.action, actor: inst?.actor ?? undefined, by: X.user.id, at: X.host.now() });
+  X.events.push({ ...ev, seq: X.state.evSeq, round: X.state.round, inst: inst?.id, action: inst?.action, actor: inst?.actor ?? undefined, by: X.user.id, at: X.host.now(), ...(inst?.tx ? { itx: inst.tx } : {}) });      // STAT: `itx` = the transaction of the instance; its undo takes the statistics back (scripts/stats/)
 }
 
 /* ------------------------------------------------------------------ journal plumbing */

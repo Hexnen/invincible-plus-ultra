@@ -157,6 +157,10 @@ function corner(d, s) {
         h("div.itc-rollbox", {}, rollOf(s) ?? h("span.itc-roll", { data: { state: "none" }, text: "-" })))),
     roster(s));
 }
+/* FXO2 (U216): the catch under the track, one short row per unit: who strikes (fist, or the crash of a ram) and at whom; who reached them
+   but does not strike (struck-through fist) with the roster's stuck word. The row's tooltip is its whole sentence. */
+const catchList = (c) => h("ul.itc-catch", { attrs: { "aria-label": c.text } }, (c.rows ?? []).map((r) => h("li", { data: { kind: r.kind }, tip: r.tip },
+  icon(r.kind === "barred" ? "fa-ban" : r.ram ? "fa-car-burst" : "fa-hand-back-fist"), h("b.itc-cn", { text: r.name, data: { cut: "1" } }), h("span.itc-ct", { text: r.tag }))));
 function drawFaceoff(d) {
   const D = d.distance;
   const pips = h("ol.itc-pips", { attrs: { "aria-hidden": "true" } }, Array.from({ length: D.max + 1 }, (_, z) => h("li", { data: { on: z <= D.value && z > 0 ? "1" : null, end: z === D.max ? "1" : null, zero: z === 0 ? "1" : null } })));
@@ -168,7 +172,7 @@ function drawFaceoff(d) {
     D.status.id !== "run" ? h("span.itc-unit-t", { data: { tone: D.status.tone }, text: D.status.text }) : null,
     pips, marks,
     h("span.itc-say", { text: D.say }),
-    d.catch ? h("span.itc-catch", { text: d.catch.text }) : null);
+    d.catch ? catchList(d.catch) : null);
   const strip = h("ol.itc-strip", { attrs: { "aria-label": d.labels.round } }, d.beats.map((b) => h("li", { data: { state: b.state }, tip: `${b.label}${b.who ? ` (${b.who})` : ""}${b.text ? `: ${b.text}` : ""}` }, icon(BEAT_ICON[b.id]), h("span", { text: b.label }))));
   return [head(d), h("div.itc-ring", { data: { crowd: d.crowd > 2 ? "1" : null } }, corner(d, d.sides[0]), mid, corner(d, d.sides[1])), obstacleBand(d.obstacle), strip, decisionBox(d), gmBox(d)];
 }

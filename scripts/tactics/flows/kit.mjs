@@ -528,6 +528,7 @@ export function minionsFate(v, I, R, t, dm, { by = null } = {}) {
 }
 function fateOf(v, R, t, dm, id, by) {
   dm.npcOutcome = id;
+  R.events.push({ type: "minions", target: t, n: dm.minions.removed, left: dm.minions.left, fate: id === "kill" ? "dead" : "unconscious" });      // STAT: members of a group put out of the fight (scripts/stats/ counts them as defeated)
   if (id === "kill" && by && v.facts.c(by) && !v.facts.c(by).npc) R.effects.push({ t: "karma", note: { who: by, kind: "killed", target: t, n: dm.minions.removed } });     // [B815]
   if (dm.minions.left === 0) R.effects.push({ t: "status+", who: t, status: { id: id === "kill" ? "dead" : "unconscious", source: { kind: "gm", name: "minions" } } });
 }
