@@ -1,7 +1,7 @@
 /* What a stunt does, in the reader's language, for the roll cards in the chat (the confirmed stunt tags and the stunt picker).
    ONE wording for the whole module: the tips of the tactical stunt cards (scripts/tactics/lang.mjs, ITAC.ui.stunt.tip.*), our own short
-   words. module.js still prefers the Quickstart journal's text on an English client for the stunts that journal describes; these words
-   cover the rest (Bang Heads, Trap, Deadly Hit, Suppressed, Trick Shot) and every stunt on a Polish client, as the journal is English only.
+   words, for all twelve stunts and both languages (module.js stuntTip). The system's Quickstart journal, read before, described only seven
+   stunts, in English only, and two of them by older rules than the system applies.
    The stored tag text is in the language of the client that rolled, so it is matched with isLabel (both languages), never one localize().
    Pure: no Foundry global at import time. */
 import { isLabel, MATCH_LABELS } from "./sys-labels.mjs";
@@ -21,9 +21,6 @@ export function stuntKeyOf(text) {
   for (const sys of Object.keys(STUNT_IDS)) if (isLabel(head, labelKey(sys))) return sys;
   return null;
 }
-
-/** The stunt's English name as the system writes it (to find it in the Quickstart journal). */
-export const stuntEnglishName = (sys) => MATCH_LABELS[labelKey(sys)]?.[0] ?? null;
 
 /** { name, text } of a system stunt key in `lang` ("en" | "pl" ...; anything not Polish reads English), or null for an unknown key. */
 export function stuntWords(sys, lang) {

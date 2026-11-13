@@ -1,9 +1,10 @@
 // node scripts/sweep-checks/stunt-words.mjs  (STNT: every stunt on a roll card says what it does, in English and Polish)
 // The chat cards (confirmed stunt tags, the stunt picker, the Double badge) read stunt-words.mjs; five stunts had no words before
-// (Bang Heads, Trap, Deadly Hit, Suppressed, Trick Shot: the Quickstart journal does not describe them) and a Polish client had none at all.
+// (Bang Heads, Trap, Deadly Hit, Suppressed, Trick Shot: the Quickstart journal, read before, does not describe them), a Polish client
+// had none at all, and the journal gave older rules than the system applies for Double Damage (its "Extra Damage") and Knockback.
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { STUNT_IDS, stuntKeyOf, stuntWords, stuntEnglishName } from "../i18n/stunt-words.mjs";
+import { STUNT_IDS, stuntKeyOf, stuntWords } from "../i18n/stunt-words.mjs";
 import { STUNTS } from "../rules/stunts.mjs";
 import { EN, PL } from "../tactics/lang.mjs";
 
@@ -28,7 +29,6 @@ for (const sys of sysKeys) {
   ck(`${sys}: Polish words`, !!pl?.text && pl.text.length >= 20 && pl.name === plOf(`INVINCIBLE.Stunts.${sys}.label`));
   ck(`${sys}: the Polish text is Polish, not the English fallback`, pl.text !== en.text);
   ck(`${sys}: the words are the tactical card's tip (one wording)`, en.text === EN[`ITAC.ui.stunt.tip.${STUNT_IDS[sys]}`] && pl.text === PL[`ITAC.ui.stunt.tip.${STUNT_IDS[sys]}`]);
-  ck(`${sys}: the English name for the Quickstart lookup`, stuntEnglishName(sys) === SNAP[`INVINCIBLE.Stunts.${sys}.label`]);
 }
 for (const sys of ["BangHeads", "Trap", "DeadlyHit", "Suppressed", "TrickShot"]) ck(`${sys}: one of the five`, !!stuntWords(sys, "en") && !!stuntWords(sys, "pl"));
 ck("German reads English", stuntWords("Trap", "de")?.text === stuntWords("Trap", "en")?.text);
@@ -53,10 +53,10 @@ ck("Deadly Hit names sharp damage and its two exclusions", /sharp/.test(EN["ITAC
   && /ostrych/.test(PL["ITAC.ui.stunt.tip.deadlyHit"]) && /Odrzutem/.test(PL["ITAC.ui.stunt.tip.deadlyHit"]) && /Zderzeniem głów/.test(PL["ITAC.ui.stunt.tip.deadlyHit"]));
 ck("the PL tip of Bang Heads names Deadly Hit by the system's PL label", /Zabójczym trafieniem/.test(PL["ITAC.ui.stunt.tip.bangHeads"]));
 
-// 5) module.js: every place that shows a stunt's description goes through stuntTip (no direct Quickstart lookup left beside it)
+// 5) module.js: every place that shows a stunt's description goes through stuntTip; the Quickstart journal is no longer read for it
 const mod = readFileSync(at("../module.js"), "utf8");
-const direct = [...mod.matchAll(/map\.get\(STUNT_ALIAS/g)].length;
-ck("module.js: one Quickstart lookup, inside stuntTip", direct === 1 && /async function stuntTip\([\s\S]{0,900}map\.get\(STUNT_ALIAS/.test(mod));
+ck("module.js: no Quickstart lookup is left (basic-data, STUNT_ALIAS, stuntDocs)", !/basic-data|STUNT_ALIAS|stuntDocs/.test(mod));
+ck("module.js: stuntTip answers in the reader's language from stunt-words.mjs", /async function stuntTip\([\s\S]{0,400}stuntWords\(sys, game\.i18n\.lang\)/.test(mod));
 ck("module.js: the confirmed tags, the picker and the Double badge ask stuntTip", /stuntTip\(li\.textContent, \{ fromTag: true \}\)/.test(mod) && /names\.map\(\(name\) => stuntTip\(name\)\)/.test(mod) && /stuntTip\("DoubleDamage"\)/.test(mod));
 
 // 6) our own words, never the book's: no run of 6 words of a stunt tip appears in the local rulebook dump (skipped where the dump is absent)

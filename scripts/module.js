@@ -365,49 +365,20 @@ function successWord(n) {
 }
 const noSuccess = () => (game.i18n.lang === "pl" ? "Brak sukcesów" : "No successes");
 
-/* Stunt descriptions on hover. The system only knows the stunts' names; the rules text is in the Quickstart journal that ships with the
-   system (pages "Slugfest" and "Shooting"). It is read from there at run time, never copied into this module. */
-let STUNT_DOCS = null;
-const STUNT_ALIAS = { "double damage": "extra damage" };   // the system's name -> the book's name
-const stuntNorm = (s) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
-const stuntEsc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+/* Stunt descriptions on hover: { name, text } | null, in the reader's language. `sys` = the system's stunt key (STUNTS.list), or the stored
+   tag text when `fromTag` (any language: stunt-words.mjs matches both). The words are our own (scripts/i18n/stunt-words.mjs = the tactical
+   stunt cards' tips), for all twelve stunts. They used to be read from the system's Quickstart journal, but that text describes only seven
+   stunts, is English only, and for two of them (its Extra Damage, Knockback) gives older rules than the system and the core book apply. */
+const STUNT_ESC = { 38: "&amp;", 60: "&lt;", 62: "&gt;", 34: "&quot;" };   // by char code: a lone quote character here confuses the glossary scanner
+const STUNT_ESC_RE = new RegExp(`[${["&", "<", ">", String.fromCharCode(34)].join("")}]`, "g");
+const stuntEsc = (s) => s.replace(STUNT_ESC_RE, (c) => STUNT_ESC[c.charCodeAt(0)]);
 
-function stuntDocs() {
-  STUNT_DOCS ??= (async () => {
-    const map = new Map();
-    try {
-      const advs = (await game.packs.get("invincible.basic-data")?.getDocuments()) ?? [];
-      for (const adv of advs) for (const journal of adv.journal) for (const page of journal.pages) {
-        const html = page.text?.content ?? "";
-        if (!/stunt/i.test(html)) continue;
-        const doc = new DOMParser().parseFromString(html, "text/html");
-        for (const el of doc.querySelectorAll("p, li")) {
-          const text = el.textContent.replace(/@UUID\[[^\]]*\]\{([^}]*)\}/g, "$1").replace(/\s+/g, " ").trim();
-          const m = /^([A-Z][A-Za-z' ]{2,28}?)\s*:\s+(.{20,})$/.exec(text);
-          if (m && !map.has(stuntNorm(m[1]))) map.set(stuntNorm(m[1]), { name: m[1].trim(), text: m[2] });
-        }
-      }
-    } catch (e) { console.warn("invincible-plus-ultra | stunt descriptions unavailable", e); }
-    return map;
-  })();
-  return STUNT_DOCS;
-}
-
-/* What one stunt does, for a hover: { name, text } | null. `sys` = the system's stunt key (STUNTS.list), or the stored tag text when `fromTag`.
-   An English client keeps the Quickstart journal's text for the stunts it describes; every other stunt, and every stunt on a Polish client
-   (the journal is English only), takes our own words (scripts/i18n/stunt-words.mjs = the tactical stunt cards' tips). */
 let STUNT_WORDS = null;
 async function stuntTip(sysOrText, { fromTag = false } = {}) {
   STUNT_WORDS ??= import("./i18n/stunt-words.mjs").catch((e) => { console.warn("invincible-plus-ultra | stunt words unavailable", e); return null; });
-  const [map, W] = await Promise.all([stuntDocs(), STUNT_WORDS]);
+  const W = await STUNT_WORDS;
   const sys = fromTag ? W?.stuntKeyOf(sysOrText) : sysOrText;
-  const lang = game.i18n.lang;
-  if (!String(lang).toLowerCase().startsWith("pl")) {
-    const base = stuntNorm(sys && W ? (W.stuntEnglishName(sys) ?? "") : String(sysOrText).split(/[:(]/)[0]);
-    const entry = map.get(STUNT_ALIAS[base] ?? base);
-    if (entry) return entry;
-  }
-  return (sys && W?.stuntWords(sys, lang)) || null;
+  return (sys && W?.stuntWords(sys, game.i18n.lang)) || null;
 }
 
 function stuntTooltips(root) {
@@ -1602,7 +1573,7 @@ function buildStuntPicker(Cls, message, frame, budget) {
   actions.append(go, clearBtn);
   const uid = ++STUNT_UID;
   let busy = false, failed = false;
-  const rules = {};   // stunt name -> rules text (read from the Quickstart journal, async)
+  const rules = {};   // stunt name -> what it does (stuntTip, async)
 
   const say = (text) => { if (status.textContent !== text) status.textContent = text; };
   const items = new Map();   // name -> { li, btn, sr, step, dec, inc, val, multi }
