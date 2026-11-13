@@ -102,6 +102,20 @@ const SOUND = {
   out: { mood: "fail", sound: { loud: 0.55, sharp: 0.2, long: 0.95, pitch: -0.9, rough: 0.3 }, size: 0.98, hold: 1100 },
   steady: { mood: "powerup", sound: { loud: 0.6, sharp: 0.4, long: 0.45, pitch: 0.8, rough: 0.1 }, size: 0.9, hold: 800 }
 };
+/* the animation technique per kind (contract v2 in / holdKind / out): picked by the seed among the ones that fit what happened, so two
+   hits do not move alike; a blow slams in and shatters, a fall drops and droops, healing and getting up rise, stress buzzes */
+export const MOTION = {
+  hit: { in: ["slam", "pop"], hold: ["shake", "rattle"], out: ["shatter", "pop"] },
+  heavy: { in: ["slam"], hold: ["rattle", "shake"], out: ["shatter", "burst"] },
+  down: { in: ["drop"], hold: ["wobble", "rattle"], out: ["fall", "droop"] },
+  heal: { in: ["rise", "pop"], hold: ["throb", "boil"], out: ["rise", "dissolve"] },
+  back: { in: ["grow", "rise"], hold: ["throb"], out: ["rise"] },
+  stress: { in: ["pop", "crackIn"], hold: ["buzz", "wobble"], out: ["droop", "dissolve"] },
+  spent: { in: ["pop"], hold: ["boil"], out: ["dissolve"] },
+  regain: { in: ["rise", "grow"], hold: ["throb"], out: ["rise"] },
+  out: { in: ["drop"], hold: ["wobble"], out: ["droop", "fall"] },
+  steady: { in: ["grow"], hold: ["throb"], out: ["rise"] }
+};
 /* the colours say WHICH track moved: Health warm (loss) or green (back), Resolve cool; fill light to dark */
 export const PALETTE = {
   health: ["#fff4b8", "#ffb02e", "#d4231c"],
@@ -137,7 +151,9 @@ export function look(a, c, lang, seed, last = null) {
   const number = Number.isFinite(a.num) && a.num > 0 && kind !== "spent"      /* spent: the pushed roll's splash already shows the stress */
     ? { text: `${sign}${a.num}`, mood: sign === "+" ? "heal" : "impact", sound: { loud: Math.min(1, 0.3 + amt * 0.4), sharp: sign === "+" ? 0.2 : 0.7, long: 0.25, pitch: sign === "+" ? 0.5 : -0.1, rough: 0.2 }, size: 0.62 + amt * 0.18, colors }
     : null;
-  return { kind, word, mood: s.mood, sound: { ...s.sound, loud }, colors, size: s.size * (0.94 + amt * 0.16), hold: s.hold, rotation: Math.round(rot), side, number };
+  const mo = MOTION[kind], at = (list, k) => list[(h >>> k) % list.length];
+  const motion = { in: at(mo.in, 11), holdKind: at(mo.hold, 14), out: at(mo.out, 17) };
+  return { kind, word, motion, mood: s.mood, sound: { ...s.sound, loud }, colors, size: s.size * (0.94 + amt * 0.16), hold: s.hold, rotation: Math.round(rot), side, number };
 }
 
 /** Many reactions in one moment (an area attack, fire at a round's start): the heaviest keep word + number, the next ones the number

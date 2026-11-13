@@ -8,7 +8,11 @@ export const EN = {
   "ITR.Settings.Size.Hint": "How big the lettering is next to the token (it stays the same size against the map at any zoom).",
   "ITR.Settings.Size.small": "Small",
   "ITR.Settings.Size.normal": "Normal",
-  "ITR.Settings.Size.large": "Large"
+  "ITR.Settings.Size.large": "Large",
+  "ITR.Settings.Layer.Name": "Token reactions: layer",
+  "ITR.Settings.Layer.Hint": "Where the lettering is drawn on the map: over the tokens (it may cover a token for a moment) or under them (tokens stay on top; the word shows around them).",
+  "ITR.Settings.Layer.over": "Over tokens",
+  "ITR.Settings.Layer.under": "Under tokens"
 };
 
 export const PL = {
@@ -18,7 +22,11 @@ export const PL = {
   "ITR.Settings.Size.Hint": "Jak duży jest napis przy żetonie (względem mapy zawsze taki sam, przy każdym przybliżeniu).",
   "ITR.Settings.Size.small": "Mały",
   "ITR.Settings.Size.normal": "Zwykły",
-  "ITR.Settings.Size.large": "Duży"
+  "ITR.Settings.Size.large": "Duży",
+  "ITR.Settings.Layer.Name": "Reakcje żetonów: warstwa",
+  "ITR.Settings.Layer.Hint": "Gdzie na mapie rysuje się napis: nad żetonami (może na chwilę zasłonić żeton) albo pod nimi (żetony zostają na wierzchu, napis widać wokół nich).",
+  "ITR.Settings.Layer.over": "Nad żetonami",
+  "ITR.Settings.Layer.under": "Pod żetonami"
 };
 
 export function t(key) {

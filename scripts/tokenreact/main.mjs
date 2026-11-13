@@ -21,7 +21,8 @@ import * as Moment from "../moment.mjs";
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
-const KEY = { enabled: "tokenReactEnabled", size: "tokenReactSize" };
+const KEY = { enabled: "tokenReactEnabled", size: "tokenReactSize", layer: "tokenReactLayer" };
+const LAYERS = ["over", "under"];      // the display layer of the lettering on the map: over the tokens (the engine's default) or under them
 const SIZE = { small: 0.8, normal: 1, large: 1.25 };
 /* the tactical fight's public stream (tactics/store.mjs HOOK and, on the executor, HOOK_GM: the same names, checked by sweep-checks/ltok.mjs) */
 const TAC_HOOK = `${MOD}.tactics`, TAC_HOOK_GM = `${MOD}.tacticsGm`;
@@ -178,11 +179,11 @@ function play(L, it) {
     const base = (canvas.grid?.size ?? 100) * 0.6 * (SIZE[get(KEY.size, "normal")] ?? 1) * it.scale, lk = it.lk, red = reduced();
     for (const h of playing.get(tok.id) ?? []) try { h.stop({ quick: false }); } catch { /* gone */ }      // one reaction per token: the new one takes over
     const hs = [];
-    if (it.mode === "full") hs.push(L.play(lk.word, { mood: lk.mood, sound: lk.sound, space: "world", at: tok.document, size: base * lk.size, maxWidth: Math.max(tok.w * 2.4, base * 4), seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, reduced: red }));
+    if (it.mode === "full") hs.push(L.play(lk.word, { mood: lk.mood, sound: lk.sound, space: "world", at: tok.document, size: base * lk.size, maxWidth: Math.max(tok.w * 2.4, base * 4), seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, reduced: red, ...lk.motion, ...layer() }));
     if (lk.number) {
       /* the number on a shoulder of the token, just under the word; alone (a crowd) it stands where the word would */
       const at = it.mode === "full" ? { x: tok.x + tok.w * (lk.side > 0 ? 0.92 : 0.08), y: tok.y + tok.h * 0.08 } : tok.document;
-      const go = () => hs.push(L.play(lk.number.text, { mood: lk.number.mood, sound: lk.number.sound, space: "world", at, anchor: it.mode === "full" ? "center" : undefined, size: base * lk.number.size, seed: `${it.seed}#n`, hold: lk.hold, rotation: -Math.sign(lk.rotation || 1) * 4, colors: lk.number.colors, avoid: hs.map((h) => h.hand), reduced: red }));
+      const go = () => hs.push(L.play(lk.number.text, { mood: lk.number.mood, sound: lk.number.sound, space: "world", at, anchor: it.mode === "full" ? "center" : undefined, size: base * lk.number.size, seed: `${it.seed}#n`, hold: lk.hold, rotation: -Math.sign(lk.rotation || 1) * 4, colors: lk.number.colors, avoid: hs.map((h) => h.hand), reduced: red, in: "pop", out: lk.motion.out === "shatter" || lk.motion.out === "burst" ? "pop" : lk.motion.out, ...layer() }));
       if (it.mode === "full" && !red) setTimeout(go, 110); else go();
     }
     playing.set(tok.id, hs);
@@ -190,12 +191,17 @@ function play(L, it) {
   } catch (err) { once(err); }
 }
 
+/* the user's display layer, handed to the engine (contract: the world layer option) */
+const layer = () => { const v = get(KEY.layer, "over"); return LAYERS.includes(v) && v !== "over" ? { layer: v } : {}; };
+
 /* ---------- settings, hooks, start ---------- */
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   if (!has(KEY.enabled)) game.settings.register(MOD, KEY.enabled, { name: t("ITR.Settings.Enabled.Name"), hint: t("ITR.Settings.Enabled.Hint"), scope: "client", config: true, type: Boolean, default: true, onChange: (v) => syncOwner(v) });
   if (!has(KEY.size)) game.settings.register(MOD, KEY.size, { name: t("ITR.Settings.Size.Name"), hint: t("ITR.Settings.Size.Hint"), scope: "client", config: true, type: String, default: "normal",
     choices: { small: t("ITR.Settings.Size.small"), normal: t("ITR.Settings.Size.normal"), large: t("ITR.Settings.Size.large") } });
+  if (!has(KEY.layer)) game.settings.register(MOD, KEY.layer, { name: t("ITR.Settings.Layer.Name"), hint: t("ITR.Settings.Layer.Hint"), scope: "client", config: true, type: String, default: "over",
+    choices: { over: t("ITR.Settings.Layer.over"), under: t("ITR.Settings.Layer.under") } });
 }
 async function syncOwner(v = enabled()) {
   try {

@@ -57,6 +57,16 @@ ck("C12 Health and Resolve in different colours", P.look({ kind: "hit", num: 1 }
 ck("C13 an unknown kind: nothing", P.look({ kind: "zzz", num: 1 }, null, "en", "q") === null);
 ck("C14 every word uses only letters the engine draws (Polish letters, ! ? - . and spaces)", Object.values(P.WORDS).every((t) => Object.values(t).flat().every((w) => /^[A-ZĄĆĘŁŃÓŚŹŻ!?\-. ]+$/.test(w))));
 
+{ /* C15: the techniques are names the engine knows (its moods' entrances, holds and exits) and vary with the seed */
+  const D = await import("../letters/design.mjs");
+  const known = { in: new Set(), hold: new Set(), out: new Set() };
+  for (const m of Object.values(D.MOODS)) { for (const k of Object.keys(m.in ?? {})) known.in.add(k); for (const k of Object.keys(m.hold ?? {})) known.hold.add(k); for (const k of Object.keys(m.out ?? {})) known.out.add(k); }
+  ck("C15 every technique is one the engine draws", Object.values(P.MOTION).every((m) => m.in.every((x) => known.in.has(x)) && m.hold.every((x) => known.hold.has(x)) && m.out.every((x) => known.out.has(x))));
+  const seen = new Set(); for (let i = 0; i < 30; i++) { const m = P.look({ kind: "hit", num: 1 }, null, "en", `m${i}`).motion; seen.add(`${m.in}/${m.holdKind}/${m.out}`); }
+  ck("C16 two hits do not always move alike", seen.size >= 3);
+  ck("C17 a fall falls and healing rises (screen-down / screen-up)", ["fall", "droop"].includes(P.look({ kind: "down", num: 1 }, null, "en", "q").motion.out) && P.look({ kind: "heal", num: 1 }, null, "en", "q").motion.in !== "drop" && ["rise", "dissolve"].includes(P.look({ kind: "heal", num: 1 }, null, "en", "q").motion.out));
+}
+
 /* D: many at once */
 const crowd = (k) => P.stage(Array.from({ length: k }, (_, i) => ({ key: `t${i}`, sev: i % 4 === 0 ? 9 : 3, hasNum: true })));
 ck("D1 one: full, no delay, full size", eq(crowd(1).map((x) => [x.mode, x.delay, x.scale]), [["full", 0, 1]]));
@@ -93,5 +103,6 @@ ck("G7 client settings, on by default", /scope: "client", config: true, type: Bo
 ck("G8 the engine's folder is not imported anywhere but its entry", !/letters\/(engine|font|rng)\.mjs/.test(main));
 ck("G9 nothing is written to any document", !/\.update\(|\.setFlag\(|\.create\(|ChatMessage\.create/.test(main));
 
+ck("G10 the display layer is the user's client setting", /KEY\.layer, \{[^}]*scope: "client", config: true/.test(main) && main.includes("...layer()"));
 console.log(`sweep ltok: ${n} checks, ${f} failed`);
 process.exit(f ? 1 : 0);
