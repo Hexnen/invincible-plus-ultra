@@ -11,11 +11,8 @@
 
    Full contract: scripts/letters/README.md. */
 import { VERSION, createEngine } from "./engine.mjs";
-<<<<<<< HEAD
-import * as tools from "./tools.mjs";
-=======
 import { STAMP } from "./stamp.mjs";
->>>>>>> origin/tactics-fxle
+import * as tools from "./tools.mjs";
 
 const REG = (globalThis.MoinenLetters ??= {
   copies: [],
@@ -41,21 +38,19 @@ function cmpVer(a, b) {
 }
 
 const BASE = new URL("./", import.meta.url).href;
-<<<<<<< HEAD
-if ( !REG.copies.some((c) => c.base === BASE) ) REG.copies.push({ version: VERSION, base: BASE, create: createEngine, tools });
+if ( !REG.copies.some((c) => c.base === BASE) ) {
+  REG.copies.push({ version: VERSION, stamp: STAMP, base: BASE, create: createEngine, tools });
+  if ( REG._engine && cmpVer(VERSION, REG._engine.version) > 0 ) console.warn(`LETR | engine ${VERSION} registered after ${REG._engine.version} was already in use; it is used after a reload`);
+}
 
-/* v5 tools (settings, authoring, networking, accessibility, windows): registered once at init by the newest copy */
+/* v5 tools (settings, authoring, networking, accessibility, windows): registered once at init by the newest copy (same order as the
+   engine: VERSION, then the more recently synced copy) */
 if ( !REG.toolsHooked && globalThis.Hooks?.once ) {
   REG.toolsHooked = true;
   Hooks.once("init", () => {
-    const best = REG.copies.filter((c) => c.tools).sort((a, b) => cmpVer(b.version, a.version))[0];
+    const best = REG.copies.filter((c) => c.tools).sort((a, b) => cmpVer(b.version, a.version) || String(b.stamp?.at ?? "").localeCompare(String(a.stamp?.at ?? "")))[0];
     try { best?.tools.init(REG); } catch ( e ) { console.warn("LETR | tools not registered", e); }
   });
-=======
-if ( !REG.copies.some((c) => c.base === BASE) ) {
-  REG.copies.push({ version: VERSION, stamp: STAMP, base: BASE, create: createEngine });
-  if ( REG._engine && cmpVer(VERSION, REG._engine.version) > 0 ) console.warn(`LETR | engine ${VERSION} registered after ${REG._engine.version} was already in use; it is used after a reload`);
->>>>>>> origin/tactics-fxle
 }
 
 /* the shared engine, ready to play (fonts loaded) */

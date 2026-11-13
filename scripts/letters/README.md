@@ -248,9 +248,27 @@ choices: L.layerChoices("world"), default: "overlay" })` and pass `layer: game.s
   nearest-neighbour; the same moods and motions apply. Pass `span` (the effect's width in scene px) or `area` and `magnitude` rather than a fixed `size`; pixel words get whole art pixels (at least 7 per cap height) and keep the size they started with while the view zooms.
 - Several powers at once: each `play`/`stream` gets its own hand unless seeded alike; words share the limit of 48 on the canvas
   and a render budget of about 4 ms per frame; seed with the cast id so every client sees the same lettering.
-<<<<<<< HEAD
-- Every client in step: `L.net.play` / `L.net.stream` (README "Tools"). With your own socket, never send `performance.now()` values
-  (BUGH F6: that clock is per page): send `L.net.sharedNow()` and turn it into `L.net.local(t)` -> `{ delay }` or `{ startAt }` on each client.
+- Every client in step with one call: `L.net.play` / `L.net.stream` (README "Tools"). With your own socket, run the call on every
+  client with the same seed. `startAt` is THIS page's
+  `performance.now()` clock and differs on every client (each page counts from its own load): never send it as is. See "Several clients".
+
+## Several clients
+- The same `seed` gives the same hand, layout and timeline on every client (the per-client memory of recent hands and the reduced-motion
+  setting do not change a seeded hand). Pass `from` as an angle (degrees) to keep the look identical: a `from` point is turned into an
+  angle with this client's own pixels, so different window layouts may pick a different warp.
+- To start a word part-way on every client (an effect that began earlier), send a wall-clock time with your event, e.g.
+  `sentAt: Date.now()` at the effect's start, and on each client pass `startAt: performance.now() - (Date.now() - sentAt)` (clock skew
+  between machines remains). A `startAt` more than 60 s ahead of this page's clock is ignored with a warning.
+- Without clock skew: `L.net.play` / `L.net.burst` / `L.net.stream` do all of this (README "Tools"); with your own socket send
+  `L.net.sharedNow()` (Foundry's ping-synced server clock) and pass `L.net.local(sentShared)` (`{ delay }` or `{ startAt }`) to `L.play`.
+
+## Who sees a word (hidden and unseen tokens)
+A word that belongs to a token (`at` is a token, a TokenDocument or an id, or `token` is given) is shown only while that token is
+visible to this user: a hidden token's word is never shown to players, and neither is the word of a token this user cannot see (vision,
+fog of war). The GM sees what the GM sees on the canvas. `vision: "point"` also hides a world word whose point this user cannot see (an
+event in the dark or behind walls); `vision: "none"` always shows it. Streams pass `token` (or a token `at`) and `vision` to their
+syllables. A word at a plain point is shown by default even on the `overlay` layer (over fog): pass `token` or `vision: "point"`
+when the point must not give away where something happened.
 
 ## Tools: settings, authoring, networking, accessibility, windows (contract v5, tools.mjs)
 One set for every caller, registered once by the newest copy at `init` (whichever module(s) are active).
@@ -293,26 +311,6 @@ GM: `L.letterNow(text, opts)` shows a word to everyone at the selected tokens (o
 default the cursor); the keybinding "Letter this now" (Shift+L) opens a small box at the cursor for it. `L.designer({ text })`
 opens the designer window (also: the burst button in the token controls); `L.openSettings()` the settings window.
 `L.planFor(text, opts)` -> `{ plan, opts }`: the plan this client would show (style, settings and filters applied).
-=======
-- Nothing is networked: run the call on every client from your own socket event, with the same seed. `startAt` is THIS page's
-  `performance.now()` clock and differs on every client (each page counts from its own load): never send it as is. See "Several clients".
-
-## Several clients
-- The same `seed` gives the same hand, layout and timeline on every client (the per-client memory of recent hands and the reduced-motion
-  setting do not change a seeded hand). Pass `from` as an angle (degrees) to keep the look identical: a `from` point is turned into an
-  angle with this client's own pixels, so different window layouts may pick a different warp.
-- To start a word part-way on every client (an effect that began earlier), send a wall-clock time with your event, e.g.
-  `sentAt: Date.now()` at the effect's start, and on each client pass `startAt: performance.now() - (Date.now() - sentAt)` (clock skew
-  between machines remains). A `startAt` more than 60 s ahead of this page's clock is ignored with a warning.
-
-## Who sees a word (hidden and unseen tokens)
-A word that belongs to a token (`at` is a token, a TokenDocument or an id, or `token` is given) is shown only while that token is
-visible to this user: a hidden token's word is never shown to players, and neither is the word of a token this user cannot see (vision,
-fog of war). The GM sees what the GM sees on the canvas. `vision: "point"` also hides a world word whose point this user cannot see (an
-event in the dark or behind walls); `vision: "none"` always shows it. Streams pass `token` (or a token `at`) and `vision` to their
-syllables. A word at a plain point is shown by default even on the `overlay` layer (over fog): pass `token` or `vision: "point"`
-when the point must not give away where something happened.
->>>>>>> origin/tactics-fxle
 
 ## Look and performance notes
 - Every picture is painted from font outlines (TrueType parsed by `font.mjs`) at the pixel size it is shown at; world words re-render

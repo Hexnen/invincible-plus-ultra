@@ -6,11 +6,7 @@ import { paintPicture } from "./paint.mjs";
 import { settleCenter } from "./shape.mjs";
 import { sizeFor, SIZE } from "./size.mjs";
 
-<<<<<<< HEAD
-export const VERSION = "1.3.0";
-=======
-export const VERSION = "1.2.1";   // FXLE: lifecycle and safety fixes
->>>>>>> origin/tactics-fxle
+export const VERSION = "1.3.0";   // TOOL: engine-wide settings, authoring, networking, accessibility (1.2.1 FXLE: lifecycle and safety fixes)
 /* Where a word is drawn. World layers live in the canvas (scene coordinates); screen layers are HTML over the page.
    primary = the scene's own sorted group (lit and darkened by the scene's lighting like tokens are); sortLayer: Foundry's tiles 500,
    drawings 600, tokens 700, core weather 1000; moinen-maps: water 240, roads 245, destruction 247-248, districts 250, fire ground 256,
@@ -73,8 +69,10 @@ export function createEngine(base) {
   let raf = 0, seq = 0;
   const limits = { screen: 16, world: 48 };
   /* v5 tools (tools.mjs): engine-wide preferences and saved styles. opts filters run on each call's options (null = lettering is
-     off on this client), plan filters on the finished plan (palette, motion, flash guard), start hooks once a word is up */
+     off on this client), plan filters on the planned word once its size is known (palette, motion, flash guard), start hooks once
+     a word is up */
   const ext = { opts: [], plan: [], start: [] };
+  const filterOpts = (opts) => { for ( const f of ext.opts ) { const o = f(opts); if ( o === null ) return null; if ( o ) opts = o; } return opts; };
 
   function ready() {
     readyP ??= Promise.all(Object.entries(FONTS).filter(([, f]) => !f.custom).map(async ([id, f]) => {
@@ -438,6 +436,7 @@ export function createEngine(base) {
     h.tokenSpan = tokenSpanOf(h);
     h.worldAlive = space === "world" ? count({ space: "world" }) : 0;
     resize(h, true);
+    if ( ext.plan.length ) { for ( const f of ext.plan ) f(h.plan, h); h.hand = h.plan.hand.id; }
     h.rot = ((opts.rotation ?? 0) * Math.PI) / 180;
     const anchor = opts.anchor ?? (isToken(h.at) ? "bottom" : "center");
     h.offset = { x: 0, y: anchor === "bottom" ? -(h.plan._holdBox.h / 2 + 0.1) : 0 };
@@ -501,7 +500,7 @@ export function createEngine(base) {
           first -= now() - t1; painted++;
           if ( h.t0 == null ) h.t0 = now();
           show(h, c); place(h);
-          if ( !h.isReady ) { h.isReady = true; h._ready(true); }
+          if ( !h.isReady ) { h.isReady = true; h._ready(true); for ( const f of ext.start ) { try { f(h); } catch ( e ) { console.warn("LETR | start hook", e); } } }
           continue;
         }
         const idx = picAt(h, t - h.t0);
@@ -529,10 +528,6 @@ export function createEngine(base) {
   const kick = () => { if ( !raf ) raf = requestAnimationFrame(frame); };
 
   /* ---------- API ---------- */
-<<<<<<< HEAD
-  function play(text, opts = {}) {
-    for ( const f of ext.opts ) { const o = f(opts); if ( o === null ) return offHandle(text, opts); if ( o ) opts = o; }
-=======
   /* FXLE F3: a text longer than MAX_CHARS is cut (with an ellipsis) */
   function textOf(text) {
     const s = String(text ?? ""), cps = [...s];
@@ -552,8 +547,8 @@ export function createEngine(base) {
   const settle = (p, f) => { try { if ( p && typeof p.then === "function" ) p.then(f, f); } catch {} };
 
   function play(text, opts0 = {}) {
-    const opts = handOpt(cleanOpts(opts0));
->>>>>>> origin/tactics-fxle
+    const opts = filterOpts(handOpt(cleanOpts(opts0)));
+    if ( opts === null ) return offHandle(text, opts0);
     const space = opts.space === "world" ? "world" : "screen";
     if ( !readyP ) ready();
     let done, rdy;
@@ -578,54 +573,6 @@ export function createEngine(base) {
     const start = () => {
       h.timer = 0;
       if ( !h.alive ) return;
-<<<<<<< HEAD
-      if ( space === "world" && !globalThis.canvas?.ready ) { finish(h, "evicted"); return; }
-      const reduced = opts.reduced ?? reducedPref();
-      let from = opts.from;
-      if ( from && typeof from === "object" && Number.isFinite(from.x) ) { const p = space === "world" ? worldPoint(h) : screenPoint(h); from = p ? Math.atan2(from.y - p.y, from.x - p.x) * 180 / Math.PI : null; }
-      for ( let i = memory.length - 1; i >= 0; i-- ) if ( now() - memory[i].t > MEMORY_MS ) memory.splice(i, 1);
-      const mem = opts.seed == null ? memory.map((m) => m.id) : [];
-      h.plan = makePlan(h.text, { ...opts, reduced, from }, fontsApi, mem);
-      if ( opts.seed == null ) memory.push({ id: h.plan.hand.id, t: now() });
-      h.hand = h.plan.hand.id;
-      settleCenter(h.plan, bank);
-      h.loop = !!opts.loop;
-      h.tokenSpan = tokenSpanOf(h);
-      h.worldAlive = space === "world" ? count({ space: "world" }) : 0;
-      resize(h, true);
-      for ( const f of ext.plan ) f(h.plan, h);
-      h.hand = h.plan.hand.id;
-      h.rot = ((opts.rotation ?? 0) * Math.PI) / 180;
-      const tokenAt = isToken(h.at);
-      const anchor = opts.anchor ?? (tokenAt ? "bottom" : "center");
-      h.offset = { x: 0, y: anchor === "bottom" ? -(h.plan._holdBox.h / 2 + 0.1) : 0 };
-      scheduleOf(h);
-      if ( space === "world" ) {
-        const parent = ensureWorld(h);
-        h.sprite = new PIXI.Sprite(PIXI.Texture.EMPTY);
-        h.sprite.eventMode = "none";
-        h.sprite.zIndex = opts.zIndex ?? seq;
-        h.sprite.rotation = h.rot;
-        parent.addChild(h.sprite);
-      } else {
-        const lay = ensureLayer(h);
-        h.box = document.createElement("div");
-        h.box.className = "moinen-letter";
-        Object.assign(h.box.style, { position: "absolute", left: "0", top: "0", width: "0", height: "0", zIndex: String(opts.zIndex ?? seq), willChange: "transform" });
-        lay.appendChild(h.box);
-      }
-      /* the limit: the oldest word of the same space leaves at once */
-      const same = [...clips].filter((c) => c.space === space);
-      while ( same.length >= limits[space] ) same.shift().stop({ quick: true, why: "evicted" });
-      clips.add(h);
-      /* startAt: a performance.now() time on the caller's clock (an effect's own t0): the word joins its timeline there */
-      h.t0 = Number.isFinite(opts.startAt) ? opts.startAt : now();
-      if ( opts.until?.then ) opts.until.then(() => h.stop(), () => h.stop());
-      const c0 = picture(h, 0, true);   // the first picture is ready in the same frame
-      show(h, c0); place(h);
-      for ( const f of ext.start ) { try { f(h); } catch ( e ) { console.warn("LETR | start hook", e); } }
-      kick();
-=======
       try {
         if ( space === "world" && !globalThis.canvas?.ready ) { finish(h, "evicted"); return; }
         const reduced = opts.reduced ?? reducedPref();
@@ -651,7 +598,6 @@ export function createEngine(base) {
         queue.push(h);
         kick();
       } catch ( e ) { console.warn("LETR | word failed", e); finish(h, "evicted"); }
->>>>>>> origin/tactics-fxle
     };
     pending.add(h);
     settle(opts.until, () => h.stop());
@@ -661,8 +607,8 @@ export function createEngine(base) {
   }
   /* lettering is off on this client (tools: the master switch): a handle that is already over */
   function offHandle(text, opts) {
-    return { id: `letr${++seq}`, text: String(text ?? ""), space: opts.space === "world" ? "world" : "screen", opts, alive: false, off: true, hand: null,
-      ready: Promise.resolve(), finished: Promise.resolve("evicted"), stop() {}, moveTo() {} };
+    return { id: `letr${++seq}`, seq, text: textOf(text), space: opts?.space === "world" ? "world" : "screen", opts: opts ?? {}, alive: false, off: true, hand: null,
+      isReady: false, ready: Promise.resolve(false), finished: Promise.resolve("evicted"), stop() {}, moveTo() {} };
   }
 
   /* ---------- streams: a sound that repeats or lasts as long as an effect (ratatata of a gun, a crackling fire) ---------- */
@@ -704,35 +650,11 @@ export function createEngine(base) {
       const c = sizeCtx(fake); c.fit = "world";
       return sizeFor(c).natural * 0.62;
     };
-<<<<<<< HEAD
-    const beat = (text) => {
-      if ( !alive ) return null;
-      const i = k++;
-      const word = text ?? syl[i === 0 ? 0 : 1 + ((i - 1) % Math.max(1, syl.length - 1))] ?? syl[0];
-      const p0 = src(); if ( !p0 ) return null;
-      const ang = dirAt(p0) + (((i % 2) ? 1 : -1) * (o.spread ?? 10) * Math.PI) / 180;
-      const unit = o.size ?? streamUnit();
-      const travel = (o.travel ?? 1.6) * unit, side = ((i % 3) - 1) * unit * 0.25, t0 = now();
-      const loud = o.loud ? (typeof o.loud === "function" ? o.loud(i) : o.loud) : 1;
-      const at = () => {
-        const p = src() ?? p0, u = Math.min(1, (now() - t0) / (life + 200));
-        const e = 1 - (1 - u) * (1 - u);
-        return { x: p.x + Math.cos(ang) * (unit * 0.5 + travel * e) - Math.sin(ang) * side, y: p.y + Math.sin(ang) * (unit * 0.5 + travel * e) + Math.cos(ang) * side };
-      };
-      const tilt = 0;   // syllables stay upright to read; the travel direction shows in where they go, not in their tilt
-      const h = play(word, { _stream: i === 0 ? syl.join(" ") : true, alt: i === 0 ? o.alt : undefined, style: o.style, palette: o.palette, mood: o.mood ?? (o.style ? undefined : "impact"), space, size: unit * (0.85 + 0.25 * loud) * (i === 0 ? 1.15 : 1), magnitude: o.magnitude, fit: o.fit, seed: `${seedBase}:${i}`, hand: hand ?? undefined,
-        in: o.in ?? "slam", out: o.out ?? "pop", holdKind: "shake", hold: life, tempo: o.tempo ?? 1.6, at, pixel: o.pixel, rotation: (o.rotation ?? 0) + tilt + (((i * 7) % 5) - 2) * 3,
-        zIndex: o.zIndex, reduced: o.reduced, parent: o.parent, colors: o.colors, layer: o.layer });
-      if ( !hand && h.plan ) hand = h.plan.hand;
-      handles.push(h);
-      return h;
-=======
     /* the stream's one hand = the first syllable's, the same on every client whenever it joins (FXLE F9) */
     const handOf = () => {
       if ( hand ) return hand;
       try { hand = makePlan(syl[0], { mood, seed: `${seedBase}:0`, colors: o.colors }, fontsApi, []).hand; remember(hand); } catch { hand = null; }
       return hand;
->>>>>>> origin/tactics-fxle
     };
     const beat = (text, when, idx) => {
       if ( !alive ) return null;
@@ -754,7 +676,7 @@ export function createEngine(base) {
           return { x: p.x + Math.cos(ang) * (unit * 0.5 + travel * e) - Math.sin(ang) * side, y: p.y + Math.sin(ang) * (unit * 0.5 + travel * e) + Math.cos(ang) * side };
         };
         const tilt = 0;   // syllables stay upright to read; the travel direction shows in where they go, not in their tilt
-        const h = play(word, { mood, space, size: unit * (0.85 + 0.25 * loud) * (i === 0 ? 1.15 : 1), magnitude: o.magnitude, fit: o.fit, seed: `${seedBase}:${i}`, hand: handOf() ?? undefined,
+        const h = play(word, { _stream: i === 0 ? syl.join(" ") : true, alt: i === 0 ? o.alt : undefined, palette: o.palette, mood, space, size: unit * (0.85 + 0.25 * loud) * (i === 0 ? 1.15 : 1), magnitude: o.magnitude, fit: o.fit, seed: `${seedBase}:${i}`, hand: handOf() ?? undefined,
           in: o.in ?? "slam", out: o.out ?? "pop", holdKind: "shake", hold: life, tempo: o.tempo ?? 1.6, at, pixel: o.pixel, rotation: (Number.isFinite(o.rotation) ? o.rotation : 0) + tilt + (((i * 7) % 5) - 2) * 3,
           zIndex: o.zIndex, reduced: o.reduced, parent: o.parent, colors: o.colors, layer: o.layer, startAt: when, token: tokenRef, vision: o.vision, elevation: o.elevation });
         emitted++;
@@ -808,14 +730,9 @@ export function createEngine(base) {
 
   async function still(text, opts0 = {}) {
     await ready();
-<<<<<<< HEAD
-    for ( const f of ext.opts ) { const o = f({ ...opts, force: true }); if ( o ) opts = o; }
-    const plan = makePlan(text, { ...opts, reduced: true }, fontsApi, []);
-    for ( const f of ext.plan ) f(plan, { opts: { ...opts, reduced: true }, still: true });
-=======
-    const opts = handOpt(cleanOpts(opts0));
+    const opts = filterOpts(handOpt(cleanOpts({ ...opts0, force: true }))) ?? {};
     const plan = makePlan(textOf(text), { ...opts, reduced: true }, fontsApi, []);
->>>>>>> origin/tactics-fxle
+    for ( const f of ext.plan ) f(plan, { opts: { ...opts, reduced: true }, still: true });
     settleCenter(plan, bank);
     const dpr = opts.dpr ?? (globalThis.devicePixelRatio || 1);
     const S = Math.max(4, (opts.size ?? 72) * plan.sizeK * dpr);
@@ -830,7 +747,7 @@ export function createEngine(base) {
 
   /* the size a word would get right now, and why (for callers and tests): { size, px, natural, clamp, fit, sizeK } */
   function sizeOf(text, opts0 = {}) {
-    const opts = handOpt(cleanOpts(opts0));
+    const opts = filterOpts(handOpt(cleanOpts({ ...opts0, force: true }))) ?? {};
     const space = opts.space === "world" ? "world" : "screen";
     const plan = makePlan(textOf(text), { ...opts, reduced: true }, fontsApi, []);
     try { settleCenter(plan, bank); } catch {}
