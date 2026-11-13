@@ -14,7 +14,7 @@ const SUITES = [
   "chargen/check-rules.mjs", "chargen/check-lang.mjs", "chargen/apply-check-lang.mjs", "chargen/tables-check-lang.mjs",
   "log/check-log.mjs", "log/check-lang.mjs",
   "session/check-session.mjs", "session/ui/check-ui.mjs", "session/check-lang.mjs",
-  "combat/check-lang.mjs", "diceeffects/check-lang.mjs", "party/check-lang.mjs", "slash/check-lang.mjs", "tokenhalo/check-lang.mjs", "turn/check-lang.mjs",
+  "combat/check-lang.mjs", "diceeffects/check-lang.mjs", "party/check-lang.mjs", "slash/check-lang.mjs", "tokenhalo/check-lang.mjs", "tokenreact/check-lang.mjs", "turn/check-lang.mjs",
   // the sweep fixers' standalone checks (each prints "sweep cN: N checks, F failed"): every file in sweep-checks, so new ones join by themselves
   ...readdirSync(join(dir, "sweep-checks")).filter((f) => f.endsWith(".mjs")).sort((a, b) => a.localeCompare(b, "en", { numeric: true })).map((f) => `sweep-checks/${f}`),
 ];
