@@ -96,10 +96,10 @@ export class StatsApp extends ApplicationV2 {
   async #deleteFight(f) {
     if (!game.user?.isGM) return;
     const rec = Store.all().fights[f]; if (!rec) return;
+    if (!Store.isWriter()) { ui.notifications?.warn(t("IPU.Stats.fight.deleteWriter")); return; }      // FXQ2 (ADVS-D11): said before asking, in the user's language
     const yes = await foundry.applications.api.DialogV2.confirm({ window: { title: t("IPU.Stats.fight.delete") }, content: `<p>${esc(t("IPU.Stats.fight.deleteAsk", { when: names.when(rec.t0) }))}</p>`, rejectClose: false, modal: true });
     if (!yes) return;
     if (Store.isWriter()) { Store.dropFight(f); await Store.settle(); }
-    else ui.notifications?.warn("The active GM's client keeps the statistics.");
     ui0.sel.fights = null;
     this.#paint(true);
   }

@@ -19,7 +19,9 @@ const MOD = P.MOD;
 const HOOK = `${MOD}.tactics`, HOOK_GM = `${MOD}.tacticsGm`;
 const LOG = `${MOD} | stats`;
 const DMG_KEY = "INVINCIBLE.Chat.DamageInfo.DamageTaken";
-const pend = [], pub = new Set(), deleted = [], actorsSeen = new Map();
+const pend = [], pub = new Set(), deleted = [];
+const lastState = new Map();      // FXQ2 (ADVS-D5): combat id -> the tactical state as it stood last (the Stop clears it before the record is closed)
+const early = new Map();          // FXQ2 (ADVS-D10): fight key -> a record nobody is named in yet (kept in memory, written with its first participant)
 let tick = 0;
 
 const evKey = (e) => `${e?.combat ?? ""}|${e?.fight ?? ""}|${e?.seq ?? ""}`;
@@ -31,11 +33,15 @@ function seeActor(id) {
   if (!id) return;
   const a = game.actors.get(id); if (!a) return;
   const rec = { n: String(a.name ?? "").slice(0, 80), i: String(a.img ?? "").slice(0, 300), h: a.hasPlayerOwner ? 1 : 0, ty: String(a.type ?? "").slice(0, 20), own: owners(a) };
-  const was = actorsSeen.get(id) ?? Store.actorRec(id), same = was && JSON.stringify(was) === JSON.stringify(rec);
-  actorsSeen.set(id, rec);
+  /* FXQ2 (ADVS-D9): compared with what the store holds now (not a memory of this page): after a reset the registry is written again */
+  const was = Store.actorRec(id), same = was && JSON.stringify(was) === JSON.stringify(rec);
   if (!same) Store.actor(id, rec);
 }
 const sideOf = (cb) => { const a = cb?.actor; if (a?.hasPlayerOwner) return "h"; return cb?.token?.disposition === CONST.TOKEN_DISPOSITIONS.FRIENDLY ? "h" : "n"; };
+/* FXQ2 (ADVS-D8, D1): what the record keeps of a participant besides its side: a minion group (mn), a challenge or a vehicle (ty), an NPC that
+   is not hostile (nh: a bystander is no foe left standing) */
+const kindOf = (cb, s) => { const ty = cb?.actor?.type, d = cb?.token?.disposition, D = CONST.TOKEN_DISPOSITIONS;
+  return { ...(ty === "minions" ? { mn: 1 } : {}), ...(ty === "challenge" || ty === "vehicle" ? { ty } : {}), ...(s === "n" && d !== D.HOSTILE && d !== D.SECRET ? { nh: 1 } : {}) }; };
 const hiddenNow = (combat, cb, state) => cb.hidden === true || cb.token?.hidden === true || Object.values(state?.knowledge ?? {}).some((row) => row?.[cb.id] === "unseen")
   || (Array.isArray(combat?.flags?.[MOD]?.hidLeft) && combat.flags[MOD].hidLeft.includes(cb.id));
 const OUTS = ["dead", "unconscious", "broken"];
@@ -51,7 +57,7 @@ function processEvents() {
   for (const ev of list) {
     try {
       const combat = game.combats.get(ev.combat) ?? null, f = P.fightKey(ev.combat, ev.fight);
-      let rec = touched.get(f) ?? Store.fightRec(f);
+      let rec = touched.get(f) ?? Store.fightRec(f) ?? early.get(f);
       if (!rec) rec = P.newFight(f, ev.combat, ev.at ?? Date.now(), combat?.scene?.name ?? "");
       rec = { ...rec, pc: { ...rec.pc }, r: Math.max(rec.r ?? 0, Number(ev.round) || 0), ...(ev.type === "chase" ? { chase: 1 } : {}) };
       const state = combat ? Store_state(combat) : null;
@@ -59,31 +65,36 @@ function processEvents() {
         const cb = combat?.combatants.get(cid);
         if (cb) {
           const a = cb.actorId ?? null;
-          if (a && !rec.pc[cid]) rec.pc[cid] = { a, n: String(cb.name ?? "").slice(0, 80), i: String(cb.img ?? cb.token?.texture?.src ?? "").slice(0, 300), s: sideOf(cb), ...(hiddenNow(combat, cb, state) ? { hid: 1 } : {}) };
+          if (a && !rec.pc[cid]) { const s = sideOf(cb); rec.pc[cid] = { a, n: String(cb.name ?? "").slice(0, 80), i: String(cb.img ?? cb.token?.texture?.src ?? "").slice(0, 300), s, ...kindOf(cb, s), ...(hiddenNow(combat, cb, state) ? { hid: 1 } : {}) }; }
           if (a) seeActor(a);
           return a ? { a, side: sideOf(cb), minion: cb.actor?.type === "minions" } : null;
         }
         const p = rec.pc[cid];
-        return p ? { a: p.a, side: p.s, minion: false } : null;
+        return p ? { a: p.a, side: p.s, minion: p.mn === 1 } : null;
       };
       const out = P.factsOfEvent(ev, { who, pub: seen.has(evKey(ev)), user: (mid) => game.messages.get(mid)?.author?.id ?? null });
       if (out.drop) Store.dropWhere(out.drop);
       if (out.facts.length) Store.put(out.facts);
+      if (state) lastState.set(ev.combat, state);
       if (state?.phase === "sceneEnd") rec = closeRec(rec, combat, state);
       touched.set(f, rec);
     } catch (e) { console.warn(LOG, "event not counted", ev?.type, e); }
   }
-  for (const [f, rec] of touched) Store.fight(f, rec);
+  for (const [f, rec] of touched) {
+    if (!Object.keys(rec.pc ?? {}).length && !Store.fightRec(f)) { early.set(f, rec); continue; }      // FXQ2 (ADVS-D10): no empty record in the store
+    early.delete(f); Store.fight(f, rec);
+  }
 }
 let Store_state = () => null;      // set by start(): the tactics store's reader (tactics/store.mjs stateOf), loaded only when tactics is there
 
 /** the fight is over: when, and how each participant came out of it (as far as the table knows: hidden ones keep hid) */
 function closeRec(rec, combat, state) {
   const pc = { ...rec.pc };
+  const facts = state ? null : P.outsOf([...Store.all().facts, ...Store.queued()], rec.f);      // FXQ2 (ADVS-D5): no state at all: who the facts say stayed down
   for (const [cid, p] of Object.entries(pc)) {
     const cb = combat?.combatants.get(cid);
     const st = state?.statuses?.[cid] ?? [];
-    const out = OUTS.find((s) => st.some((x) => x?.id === s)) ?? (cb?.defeated ? "dead" : null);
+    const out = OUTS.find((s) => st.some((x) => x?.id === s)) ?? (cb?.defeated ? "dead" : null) ?? facts?.[cid] ?? null;
     pc[cid] = { ...p, ...(out ? { out } : {}), ...(cb ? (hiddenNow(combat, cb, state) ? { hid: 1 } : { hid: 0 }) : {}) };
     if (!pc[cid].hid) delete pc[cid].hid;
     if (!out) delete pc[cid].out;
@@ -99,13 +110,26 @@ function onUpdateCombat(combat, changes) {
   try {
     if (!Store.isWriter()) return;
     const raw = changes?.flags?.[MOD]?.tactics?.state;
-    if (raw === "") endFights(combat, null);       // the GM stopped the fight (tactics/store.mjs write(null))
+    /* the GM stopped the fight (tactics/store.mjs write(null)): FXQ2 (ADVS-D5) the record is closed with the state as it stood last, so
+       who lay broken, knocked out or dead is kept (End scene keeps it the same way) */
+    if (raw === "") { endFights(combat, lastState.get(combat.id) ?? null); lastState.delete(combat.id); }
+    else if (typeof raw === "string" && raw) { const s = Store_state(combat); if (s) lastState.set(combat.id, s); }
   } catch (e) { console.warn(LOG, e); }
 }
-function onPreDeleteCombat(combat) { try { endFights(combat, Store_state(combat)); } catch (e) { console.warn(LOG, e); } }
+function onPreDeleteCombat(combat) { try { endFights(combat, Store_state(combat) ?? lastState.get(combat.id) ?? null); lastState.delete(combat.id); } catch (e) { console.warn(LOG, e); } }
 
 /* ------------------------------------------------------------------ loose */
 const isDamageCard = (m) => !!m?.flavor && isLabel(m.flavor, DMG_KEY);
+/* Foundry's Combat#rollInitiative marks its card (flags.core.initiativeRoll); its flavour is COMBAT.RollsInitiative with the name */
+function isInitiative(m) {
+  try {
+    if (m?.flags?.core?.initiativeRoll || m?.getFlag?.("core", "initiativeRoll")) return true;
+    const tpl = game.i18n?.localize?.("COMBAT.RollsInitiative"), fl = String(m?.flavor ?? "");
+    if (!tpl || tpl === "COMBAT.RollsInitiative" || !fl) return false;
+    const esc = (x) => x.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&");
+    return new RegExp("^" + tpl.split("{name}").map(esc).join(".+") + "$", "i").test(fl.trim());
+  } catch { return false; }
+}
 function looseOf(message) {
   if (!message || message.flags?.[MOD]?.tactics) return null;                                  // the engine's own cards
   const gmIds = game.users.filter((u) => u.isGM).map((u) => u.id), author = message.author?.id ?? message.author ?? null;
@@ -119,6 +143,7 @@ function looseOf(message) {
     seeActor(target); if (attackerId) seeActor(attackerId);
     return { facts: P.factsOfDamageCard({ id: message.id, actorId: target, attackerId, amount: d.amount, from: dmg.from, to: dmg.to, broken: !!d.injury, time, mode }) };
   }
+  if (isInitiative(message)) return null;                                                      // FXQ2 (ADVS-D7): an initiative roll of a Foundry combat is no check
   const roll = message.rolls?.[0];
   if (!roll || roll.options?.tactics || roll.successCount === undefined) return null;          // a tactical roll is the engine's; a roll that is no Year Zero pool is not a check
   const actorId = worldActorId(message.speaker?.actor);
@@ -174,4 +199,4 @@ export function start({ stateOf = null } = {}) {
   Hooks.on("createChatMessage", onCreateMessage);
   Hooks.on("deleteChatMessage", onDeleteMessage);
 }
-export const _test = { processEvents, takeMessage, looseOf, closeRec };
+export const _test = { processEvents, takeMessage, looseOf, closeRec, isInitiative };

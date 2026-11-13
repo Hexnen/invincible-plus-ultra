@@ -48,6 +48,8 @@ export function fight(key, rec) { if (key && rec) { Q.fights.set(key, rec); Q.dr
 export function dropFight(key) { if (!key) return; Q.fights.delete(key); Q.dropFights.add(key); dropWhere({ f: key }); }
 export function actor(id, rec) { if (id && rec) { Q.actors.set(id, rec); arm(); } }
 export function highWater(t) { if (t > Q.hw) { Q.hw = t; arm(); } }
+/** the facts queued and not saved yet (FXQ2: a fight closed right after its last action reads them too) */
+export const queued = () => [...Q.put.values()].filter((x) => !Q.drop.has(x.id));
 /** the fight record as stored or as queued */
 export const fightRec = (key) => Q.fights.get(key) ?? all().fights[key] ?? null;
 export const actorRec = (id) => Q.actors.get(id) ?? all().actors[id] ?? null;
@@ -57,11 +59,11 @@ export const fightsAll = () => { const o = { ...all().fights }; for (const k of 
 function arm() { if (!timer) timer = setTimeout(() => { timer = 0; chain = chain.then(flush).catch((e) => console.warn(`${MOD} | stats not saved`, e)); }, 800); }
 export const settle = () => { if (timer) { clearTimeout(timer); timer = 0; chain = chain.then(flush).catch((e) => console.warn(`${MOD} | stats not saved`, e)); } return chain; };
 
-async function ensure() {
+async function ensure(hw = 0) {
   let j = journal();
   if (j) return j;
   j = await JournalEntry.create({ _id: JOURNAL_ID, name: "Plus Ultra: statistics", ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER },
-    flags: { [MOD]: { stats: { v: P.V, head: 1, hw: 0, fights: {}, actors: {} } } } }, { keepId: true, ...OPT() });
+    flags: { [MOD]: { stats: { v: P.V, head: 1, hw, fights: {}, actors: {} } } } }, { keepId: true, ...OPT() });
   return j;
 }
 async function flush() {
@@ -102,13 +104,17 @@ async function flush() {
   if (Object.keys(data).length) await j.update(data, OPT());
 }
 
-/** GM: forget every statistic (deletes the journal) */
+/** GM: forget every statistic. FXQ2 (ADVS-D9): the journal is made again at once with the chat's newest card as its high-water mark, so
+    the next GM load does not count again ("catch up") every roll still in the chat: a reset forgets them for good */
 export async function reset() {
   if (!game.user?.isGM) return false;
   Q.put.clear(); Q.drop.clear(); Q.fights.clear(); Q.dropFights.clear(); Q.actors.clear(); Q.hw = 0;
   await settle();
   const j = journal();
   if (j) await j.delete(OPT());
+  let hw = Date.now();
+  try { for (const m of game.messages ?? []) hw = Math.max(hw, Number(m.timestamp) || 0); } catch { /* no chat */ }
+  await ensure(hw);
   changed();
   return true;
 }

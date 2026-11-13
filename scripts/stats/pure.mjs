@@ -46,7 +46,9 @@ export function factsOfEvent(ev, ctx) {
       if (!me || ev.amended) break;
       const act = str(ev.decl?.action ?? ev.action, 40);
       if (!act || act === "other" && !ev.decl) break;
-      out.push({ ...base, id: id("act"), k: "act", ...doer(ev.actor), nm: act, ...(pos(ev.stress) ? { st: pos(ev.stress) } : {}), ...(ev.cost && ev.cost !== "none" ? { c: str(ev.cost, 8) } : {}) });
+      /* FXQ2 (ADVS-D8): `sf` = the action was aimed at nobody but its doer (no target, or only itself): a heal of oneself helps nobody up */
+      const tg = Array.isArray(ev.targets) ? ev.targets : [], self = !tg.some((x) => typeof x === "string" && x && x !== ev.actor);
+      out.push({ ...base, id: id("act"), k: "act", ...doer(ev.actor), nm: act, ...(pos(ev.stress) ? { st: pos(ev.stress) } : {}), ...(ev.cost && ev.cost !== "none" ? { c: str(ev.cost, 8) } : {}), ...(self ? { sf: 1 } : {}) });
       break;
     }
     case "reaction": {
@@ -89,6 +91,7 @@ export function factsOfEvent(ev, ctx) {
     }
     case "broken": {
       if (typeof ev.target !== "string") break;
+      if (who(ev.target)?.minion) break;      // FXQ2 (ADVS-D1): a group's members are counted by "minions"; its "broken" (same id) overwrote them with one defeat
       out.push({ ...base, id: id("x", ev.target), k: "down", ...doer(ev.actor), ...onto(ev.target), fate: "broken", n: 1 });
       break;
     }
@@ -102,7 +105,12 @@ export function factsOfEvent(ev, ctx) {
     }
     case "minions": {
       if (typeof ev.target !== "string" || !(pos(ev.n) > 0)) break;
-      out.push({ ...base, id: id("x", ev.target), k: "down", ...doer(ev.actor), ...onto(ev.target), fate: str(ev.fate, 12) || "unconscious", n: pos(ev.n), mn: 1 });
+      out.push({ ...base, id: id("x", ev.target), k: "down", ...doer(ev.actor), ...onto(ev.target), fate: str(ev.fate, 12) || "unconscious", n: pos(ev.n), mn: 1, ...(Number.isFinite(ev.left) ? { lf: pos(ev.left) } : {}) });
+      break;
+    }
+    case "healthSet": {      // FXQ2 (ADVS-D6): the GM's Health correction to 0 breaks the character (engine-pure gmEdit, D59): a defeat by nobody
+      if (typeof ev.target !== "string" || ev.out !== "broken" || who(ev.target)?.minion) break;
+      out.push({ ...base, id: id("x", ev.target), k: "down", ...onto(ev.target), fate: "broken", n: 1 });
       break;
     }
     case "crit": {
@@ -185,8 +193,11 @@ export function defeatsOf(facts) {
   }
   return out;
 }
-/** sides(actorId) -> "h" | "n" | null: a defeat counts as a kill only against the other side (STAT-9) */
-export function tally(factsIn, { viewer = { gm: true }, sides = () => null } = {}) {
+/** sides(actorId) -> "h" | "n" | null: a defeat counts as a kill only against the other side (STAT-9).
+    FXQ2 (ADVS-D4): in a tactical fight the side is the one the fight record gave the combatant (`fights[f].pc[cid].s`: the party and the
+    friendly NPCs against the rest), as the end-of-fight card and the titles count it; `sides` (the registry: player character or not) only
+    when the record does not know it (a loose fact, an old fight). */
+export function tally(factsIn, { viewer = { gm: true }, sides = () => null, fights = null } = {}) {
   const facts = factsIn.filter((x) => visible(x, viewer));
   const by = new Map();
   const row = (a) => { if (!by.has(a)) by.set(a, { t: blank(), l: blank(), fightSet: new Set() }); return by.get(a); };
@@ -223,14 +234,19 @@ export function tally(factsIn, { viewer = { gm: true }, sides = () => null } = {
     }
   }
   /* K / D / A (STAT-9) */
-  const dmgBy = new Map();      // fight|target -> Set of actors who hurt it (assists)
-  for (const x of facts) if (x.k === "dmg" && x.m === "t" && x.a && x.o && x.a !== x.o && pos(x.tk) > 0) { const k = `${x.f}|${x.oc ?? x.o}`; if (!dmgBy.has(k)) dmgBy.set(k, new Set()); dmgBy.get(k).add(x.a); }
+  const sd = (aid, cid, f) => (f && cid && fights?.[f]?.pc?.[cid]?.s) || sides(aid);
+  const dmgBy = new Map();      // fight|target -> Map(actor -> { s: its side, t: its first blow }) (assists)
+  for (const x of facts) if (x.k === "dmg" && x.m === "t" && x.a && x.o && x.a !== x.o && pos(x.tk) > 0) {
+    const k = `${x.f}|${x.oc ?? x.o}`; if (!dmgBy.has(k)) dmgBy.set(k, new Map());
+    const was = dmgBy.get(k).get(x.a); if (!was || x.t < was.t) dmgBy.get(k).set(x.a, { s: sd(x.a, x.ac, x.f), t: x.t });
+  }
   for (const x of defeatsOf(facts)) {
-    const n = Math.max(1, pos(x.n));
+    const n = Math.max(1, pos(x.n)), sa = sd(x.a, x.ac, x.f), so = sd(x.o, x.oc, x.f);
     if (x.o && !x.mn) M(x.o, x.m).deaths++;                                                    // a minion group is never "dead" as one
-    const foe = x.a && x.o && x.a !== x.o && (sides(x.a) === null || sides(x.o) === null || sides(x.a) !== sides(x.o));
+    const foe = x.a && x.o && x.a !== x.o && (sa === null || so === null || sa !== so);
     if (foe) { const s = M(x.a, x.m); if (x.mn) s.minions += n; else s.kills++; }
-    if (x.m === "t") for (const helper of dmgBy.get(`${x.f}|${x.oc ?? x.o}`) ?? []) if (helper !== x.a && (sides(helper) === null || sides(helper) !== sides(x.o))) M(helper, "t").assists++;
+    /* FXQ2 (ADVS-D3): an assist is a blow that helped the defeat: dealt before it (not on somebody already down) */
+    if (x.m === "t") for (const [helper, h] of dmgBy.get(`${x.f}|${x.oc ?? x.o}`) ?? []) if (helper !== x.a && h.t <= x.t && (h.s === null || h.s !== so)) M(helper, "t").assists++;
   }
   for (const [, r] of by) { r.t.fights = r.fightSet.size; delete r.fightSet; }
   return by;
@@ -257,6 +273,17 @@ export const top = (map, n = 4) => Object.entries(map ?? {}).filter(([, v]) => v
      [{ id: "mvp" | "defender" | ..., c: <combatant id>, n?: number, v?: 1 (GM only) }]
    The history view hands every record to the renderers registered with api.stats.fightSections (ui/app.mjs) under the summary. */
 export function newFight(f, combatId, now, sceneName = "") { return { f, c: str(combatId, 40), sc: str(sceneName, 80), t0: int(now, 0), r: 0, pc: {}, titles: [] }; }
+/** FXQ2 (ADVS-D5): who the facts of a fight say went down and stayed out, when its record was closed without the tactical state (a stop):
+    -> { <combatant>: "dead" | "unconscious" | "broken" } (the first defeat of each; a minion group only when no member was left) */
+export function outsOf(facts, f) {
+  const out = {};
+  for (const x of defeatsOf((facts ?? []).filter((y) => y.f === f && y.m === "t"))) {
+    if (!x.oc || out[x.oc]) continue;
+    if (x.mn) { if (x.lf === 0) out[x.oc] = x.fate === "dead" ? "dead" : "unconscious"; continue; }
+    out[x.oc] = ["dead", "unconscious"].includes(x.fate) ? x.fate : "broken";
+  }
+  return out;
+}
 /** the summary of one fight for a viewer, as the table's own fight card counts it (ui/feedback-pure totals): per combatant dealt, taken,
     stress, hits of attacks, defeats; plus what the character came to at the end. The GM sees every row; a player no row of somebody
     hidden at the end of the fight and no fact the table did not see. -> [{ cid, a, n, i, s, out, dealt, taken, stress, hits, attacks, kills, minions, deaths, blocked, dodged }] */
@@ -284,7 +311,8 @@ export function fightSummary(rec, facts, viewer = { gm: true }) {
 }
 /** the fights a viewer may list: every record for the GM; for a player those with at least one row (somebody the table saw) */
 export function fightsFor(recs, facts, viewer) {
-  const list = Object.values(recs ?? {}).filter(isObj).sort((a, b) => (b.t0 ?? 0) - (a.t0 ?? 0));
+  /* FXQ2 (ADVS-D10): a record with no participant (a fight that ended before anybody did anything) is no fight to list, for anybody */
+  const list = Object.values(recs ?? {}).filter((r) => isObj(r) && isObj(r.pc) && Object.keys(r.pc).length > 0).sort((a, b) => (b.t0 ?? 0) - (a.t0 ?? 0));
   return viewer?.gm ? list : list.filter((r) => Object.values(r.pc ?? {}).some((p) => !p.hid));
 }
 

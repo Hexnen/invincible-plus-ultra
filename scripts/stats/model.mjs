@@ -76,11 +76,16 @@ export function view(data, viewer, ui, names) {
   const base = { tab, period, side, gm, tabs: TABS.map((id) => ({ id, label: tt(`IPU.Stats.tab.${id}`), on: id === tab })), empty: null, rail: [], detail: null };
   if (!factsAll.length && tab !== "fights") return { ...base, empty: tt("IPU.Stats.none") };
   if (tab === "fights") return fightsView(base, data, viewer, ui, names);
-  const facts = P.inPeriod(factsAll, period);
+  /* FXQ2 (ADVS-D12): the session is found among the facts THIS viewer may see: a GM-only fact never moves a player's boundary */
+  const seen = gm ? factsAll : factsAll.filter((x) => P.visible(x, viewer));
+  const facts = P.inPeriod(seen, period);
   const sides = (aid) => (actors[aid] ? (isHero(actors[aid]) ? "h" : "n") : null);
-  const sums = P.tally(facts, { viewer, sides });
+  const sums = P.tally(facts, { viewer, sides, fights: data?.fights ?? null });      // FXQ2 (ADVS-D4): the fight's own sides, as the card and the titles
   /* AWRD: the titles each character collected in the fights this viewer may list, in the same period */
-  const won = TP.collected(P.fightsFor(data?.fights ?? {}, factsAll, viewer), viewer, period === "session" ? P.sessionStart(factsAll) : 0);
+  /* FXQ2 (ADVS-D2): a fight's record starts at its first EVENT (a round start, which leaves no fact), before the first fact of the
+     session: the fights' starts belong to the session as well, so the first fight of a session has its titles under "Session" */
+  const listed = P.fightsFor(data?.fights ?? {}, factsAll, viewer);
+  const won = TP.collected(listed, viewer, period === "session" ? P.sessionStart([...seen, ...listed.map((r) => ({ t: r.t0 }))]) : 0);
   const titlesOf = (ids) => { const m = {}; for (const a of ids) for (const [k, n] of Object.entries(won.get(a) ?? {})) m[k] = (m[k] ?? 0) + n; return TP.chipsOf(m).map((x) => ({ ...x, label: tt(`IPU.Awrd.t.${x.id}`), tip: tt(`IPU.Awrd.tip.${x.id}`) })); };
   if (tab === "chars") {
     const ids = [...sums.keys()].filter((aid) => actors[aid] && (gm ? (side === "h" ? isHero(actors[aid]) : !isHero(actors[aid])) : isHero(actors[aid])));

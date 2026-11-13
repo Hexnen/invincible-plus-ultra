@@ -1256,7 +1256,7 @@ async function gmEdit(X, op, a) {
         const drop = (who, id) => { if (M.hasStatus(X.state, who, id)) { const x = M.statusRemove(X.state, who, id); w(x.path, x.to); } };
         if (v > 0) { drop(a.combatant, "broken"); if (cur <= 0) drop(a.combatant, "unconscious"); }
         else if (cur > 0) {
-          if (!M.hasStatus(X.state, a.combatant, "broken")) { const x = M.statusAdd(X.state, a.combatant, { id: "broken", source: { kind: "gm", name: "gm" } }); w(x.path, x.to); }
+          if (!M.hasStatus(X.state, a.combatant, "broken")) { const x = M.statusAdd(X.state, a.combatant, { id: "broken", source: { kind: "gm", name: "gm" } }); w(x.path, x.to); emit(X, null, { type: "healthSet", target: a.combatant, out: "broken", itx: tx }); }      // FXQ2 (ADVS-D6): the statistics count the defeat (no number in it); `itx`: its undo takes it back
           for (const e of [...K.grappleRelease(X.state, a.combatant), ...K.carryRelease(X.state, a.combatant)]) drop(e.who, e.id);
         }
       }

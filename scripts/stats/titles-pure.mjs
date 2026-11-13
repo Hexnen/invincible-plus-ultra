@@ -17,6 +17,7 @@ const pos = (v) => Math.max(0, Math.trunc(Number(v) || 0));
 const HELP = new Set(["heal", "massHeal", "stabilize", "rally", "medicRally", "restore", "cleanse"]);      // what puts somebody else back on their feet
 const FIRE = new Set(["extinguish", "saveBystanders"]);
 const actId = (nm) => String(nm ?? "").split("-").pop();      // a kit action is "<entry>-<k>" (kit-pure)
+const NO_FOE = new Set(["challenge", "vehicle"]);      // FXQ2: a challenge or a vehicle on the NPC side is no foe to put down
 
 /* the titles in the order the card shows them. side: "h" heroes (the party and friendly NPCs), "n" NPCs.
    val(g) -> the number it is won with; tie(g) -> the second key; min: the least number that wins it */
@@ -58,7 +59,7 @@ export function gather(rec, facts) {
   for (const x of mine) {
     const a = row(x.ac), o = row(x.oc);
     switch (x.k) {
-      case "act": { acts++; if (!a) break; a.acts++; a.stressPaid += pos(x.st); const k = actId(x.nm); if (HELP.has(k) && worked(x)) a.helps++; if (FIRE.has(k) && worked(x)) a.fire++; break; }
+      case "act": { acts++; if (!a) break; a.acts++; a.stressPaid += pos(x.st); const k = actId(x.nm); if (HELP.has(k) && worked(x) && !x.sf) a.helps++; if (FIRE.has(k) && worked(x)) a.fire++; break; }
       case "rx": if (a) a.stressPaid += pos(x.st); break;
       case "roll": if (a) { a.dice += pos(x.n); a.sixes += pos(x.s); a.ones += pos(x.b); a.pushes += pos(x.p); } break;
       case "hit": {
@@ -79,18 +80,23 @@ export function gather(rec, facts) {
     }
   }
   /* defeats: one per target per fight (pure.defeatsOf); a kill only against the other side; assists like the statistics (STAT-9) */
-  const hurt = new Map();
-  for (const x of mine) if (x.k === "dmg" && x.ac && x.oc && foes(x.ac, x.oc) && pos(x.tk) > 0) { if (!hurt.has(x.oc)) hurt.set(x.oc, new Set()); hurt.get(x.oc).add(x.ac); }
+  const hurt = new Map();      // target -> Map(combatant -> its first blow): FXQ2 (ADVS-D3) an assist is a blow before the defeat
+  for (const x of mine) if (x.k === "dmg" && x.ac && x.oc && foes(x.ac, x.oc) && pos(x.tk) > 0) { if (!hurt.has(x.oc)) hurt.set(x.oc, new Map()); const m = hurt.get(x.oc); if (!m.has(x.ac) || x.t < m.get(x.ac)) m.set(x.ac, x.t); }
   let lastAt = -1, lastBy = null, foeDowns = 0;
+  const downed = new Set();
   for (const x of P.defeatsOf(mine)) {
+    if (x.oc && (!x.mn || x.lf === 0)) downed.add(x.oc);
     const o = row(x.oc); if (o && !x.mn) o.deaths++;
     const a = row(x.ac);
     if (!a || !foes(x.ac, x.oc)) continue;
     if (x.mn) a.minions += Math.max(1, pos(x.n)); else a.kills++;
     if (side(x.ac) === "h") { foeDowns++; if (x.t >= lastAt) { lastAt = x.t; lastBy = x.ac; } }
-    for (const h of hurt.get(x.oc) ?? []) if (h !== x.ac) { const r = row(h); if (r) r.assists++; }
+    for (const [h, at] of hurt.get(x.oc) ?? []) if (h !== x.ac && at <= x.t) { const r = row(h); if (r) r.assists++; }
   }
-  if (lastBy && foeDowns >= 2) row(lastBy).last = 1;      // the last blow is a title only when there was more than one foe to put down
+  /* the last blow is a title only when there was more than one foe to put down, and (FXQ2, ADVS-D8) when no foe the table saw is still
+     standing at the end (a fight stopped early): a hidden one does not count, so the title tells nobody about it (AWRD-3) */
+  const standing = Object.entries(pc).some(([cid, p]) => p?.s === "n" && !p.hid && !p.nh && !NO_FOE.has(p.ty) && !p.out && !downed.has(cid));
+  if (lastBy && foeDowns >= 2 && !standing) row(lastBy).last = 1;
   for (const r of g.values()) r.mvp = r.dealt + 3 * r.kills + r.minions + r.assists + 2 * r.helps + r.support + r.chalSixes + 3 * r.chalWon + 2 * r.fire + r.blocks + Math.floor(r.armor / 2);
   return { rows: g, acts };
 }
