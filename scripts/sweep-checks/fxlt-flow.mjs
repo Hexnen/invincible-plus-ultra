@@ -218,6 +218,19 @@ const inside = (b, s) => b.x >= s.l - 1 && b.y >= s.t - 1 && b.x + b.w <= s.r + 
   await sleep(1500);
 }
 
+/* R1d: a floating panel (the challenge cards) over the free side above a token: the word takes another side (seen in the FXLT recording:
+   "BĘC!" ran under the challenge cards) */
+{ const pan = mk("C", "npc", 8, 6, { x: 700, y: 400 });
+  UI["#ich-dock"] = [el(560, 120, 420, 270)];
+  Hooks.callAll("canvasReady");
+  set(pan, "health", 4);
+  p = await take(1200);
+  const bc = p.filter((r) => r.o.token?.id === "C").map(boxOf), hit = (b, q) => b.x < q.x + q.w && q.x < b.x + b.w && b.y < q.y + q.h && q.y < b.y + b.h;
+  ck("R1d a panel over the side above: the word and number keep off it", bc.length === 2 && bc.every((b) => !hit(b, { x: 560, y: 120, w: 420, h: 270 })));
+  delete UI["#ich-dock"]; toks.splice(toks.indexOf(pan), 1);
+  await sleep(1500);
+}
+
 /* R6c: a token off the view (its centre under the hotbar line or below the screen) is not lettered: no word hanging over the chat input */
 { const off = mk("O", "npc", 8, 6, { x: 1100, y: 850 });
   Hooks.callAll("canvasReady");

@@ -240,7 +240,7 @@ async function land(items) {
     const onView = (it) => !view.ok() || P.onView(view.tokRect(it.tok), view.safe());
     const staged = P.stage(items.filter(onView)).filter((it) => it.mode !== "none");
     const placed = [];
-    const others = tokenRects(new Set(staged.map((it) => it.tok.id)));
+    const others = [...tokenRects(new Set(staged.map((it) => it.tok.id))), ...view.panels()];
     for (const it of staged) {
       try { it.plan = planOf(L, it); } catch (err) { once(err); it.plan = null; }
       if (!it.plan) continue;
@@ -255,6 +255,9 @@ async function land(items) {
 /* ---------- the view in screen px (client px, as getBoundingClientRect): world <-> screen, the safe rect, other tokens ---------- */
 const COVER_SEL = ["#sidebar", "#hotbar", "#players", "#scene-controls", "#controls", "#scene-navigation", "#navigation", "#chat-notifications", "#chat-message",
   "#ui-bottom #chat-form", "#invincible-tactics-dock", "#invincible-combat-bar", ".mm-cin > div"];
+/* floating panels that do not hug an edge (cutting the view by them would waste half of it): a side that lands on one costs like a
+   token's face, so the word takes another side (seen in the FXLT recording: a fall's "BĘC!" ran under the challenge cards) */
+const PANEL_SEL = ["#ich-dock", "#invincible-party", "#invincible-turn-tray", "#chat-notifications"];
 const view = {
   at: 0, cache: null,
   ok: () => !!globalThis.canvas?.stage?.toGlobal && !!canvas.app?.view?.getBoundingClientRect,
@@ -269,6 +272,13 @@ const view = {
     }
     this.at = t; this.cache = P.safeRect(v, covers);
     return this.cache;
+  },
+  panels() {
+    const out = [];
+    for (const sel of PANEL_SEL) for (const el of document.querySelectorAll?.(sel) ?? []) {
+      try { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0 && getComputedStyle?.(el)?.visibility !== "hidden") out.push({ x: r.left, y: r.top, w: r.width, h: r.height, k: P.SLOT_K.token }); } catch { /* skip */ }
+    }
+    return out;
   },
   zoom: () => canvas.stage.scale?.x || 1,
   toScreen(p) { const v = this.rect(), g = canvas.stage.toGlobal(p); return { x: v.ox + g.x, y: v.oy + g.y }; },
