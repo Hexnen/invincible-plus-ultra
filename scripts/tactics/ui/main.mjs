@@ -583,6 +583,7 @@ async function send(which, req, after, how = {}) {
     if (which === "dock") { st.dock.refused = null; st.dock.why = ""; }
     /* U4: an override says what it did (the desk's row changes too, but the GM's eyes are on the control just pressed) */
     if (which === "desk" && req.op === "nudge") notify("info", t("ITAC.ui.nudge.done"));      // U59
+    if (which === "desk" && req.op === "fall") { const s = Model.fallNote(Api.state(combat), env.inst, t, combat?.combatants.get(req.combatant)?.name); if (s) notify("info", s); }      // FXK2 (U209): a fall that came to nothing
     if (which === "desk" && ["setOutcome", "setSixes", "setPool", "setDamage", "skipStep", "goToStep", "askRoll", "retarget"].includes(req.op)) notify("info", t(`ITAC.ui.ovr.did.${req.op}`, { name: combat?.combatants.get(req.target)?.name ?? "", n: req.sixes ?? req.total ?? req.amount ?? "", result: req.op === "setOutcome" ? t(req.hit ? "ITAC.ui.ovr.hit" : "ITAC.ui.ovr.miss") : "" }));
     /* U5: a move the user made from the dock may end under the dock or the macro bar: once the token has arrived the map slides by
        the least that brings that zone into the free part of the window (this client's view only; nothing when it is there already) */

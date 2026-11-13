@@ -41,7 +41,11 @@ export const reasonText = (t, reason, params = {}) => (reason ? t(`ITAC.reason.$
 const whyText = (t, reason, params = {}, o = {}) => whyOf(t, reason, params, o)?.text ?? null;
 /* U89: why a way of moving or a door cannot be taken AND what to do about it, for the row's tooltip and its aria-label (the row itself
    keeps its size). A click on such a row opens the question to the GM, so a reason with no remedy of its own gets that one. */
-const wayWhy = (t, facts, reason, params = {}) => { const w = whyOf(t, reason, params, { staff: facts.staff }); return w ? { text: w.text, fix: w.fix ?? t(facts.staff ? "ITAC.fix.gm" : "ITAC.fix.ask") } : null; };
+/* FXK2 (U208): a way of moving says why in the words of a move (ITAC.why.move.*: "too far for one move"), not those of an attack ("too
+   far for this attack"), where a reason has words of both kinds; `MOVE` is that context for every refusal of the move panel */
+const MOVE = Object.freeze({ ctx: "move" });
+export const moveWhy = (t, reason, params = {}, o = {}) => whyOf(t, reason, params, { ...o, ...MOVE });
+const wayWhy = (t, facts, reason, params = {}) => { const w = moveWhy(t, reason, params, { staff: facts.staff }); return w ? { text: w.text, fix: w.fix ?? t(facts.staff ? "ITAC.fix.gm" : "ITAC.fix.ask") } : null; };
 /** FXP (D161): the desk's cards that were not waiting a moment ago. At the first look at a fight (`was` null: a fight just started or
     started again, the page just loaded) every waiting card is new: the Now tab comes forward over whatever tab the GM left open. */
 export const freshCards = (was, ids) => (Array.isArray(ids) ? ids : []).some((id) => !(Array.isArray(was) ? was : []).includes(id));
@@ -602,6 +606,13 @@ function newsText(n, facts, t) {
   const rx = (Array.isArray(n.reacts) ? n.reacts : []).map((r) => t(`ITAC.ui.news.react.${r.result}`, { who: nameOf(facts, r.who, t), what: r.name ? String(r.name) : r.label ? t(r.label, {}, "") : "", about: r.about ? nameOf(facts, r.about, t) : "" }, "")).filter(Boolean);
   return [head, res].filter(Boolean).join(rows.length ? " > " : ": ") + (n.kind === "action" && fx && n.note ? ` ("${String(n.note)}")` : "") + (rx.length ? ` (${rx.join("; ")})` : "") + (n.forced ? ` (${t("ITAC.ui.news.forced")})` : "") + (n.undone ? ` (${t("ITAC.ui.news.undone")})` : "");
 }
+/** FXK2 (U209): the desk's "Fall" that came to nothing (one on a roof stays there [ANSF], one on the ground has nowhere to fall from):
+    nothing changed, so no journal line, and the news line keeps a fall without a landing quiet (newsData). The GM who pressed it is
+    told in words. `state` = the fight's state, `inst` = the answer's instance. -> the sentence, or null */
+export function fallNote(state, inst, t, name) {
+  const n = inst ? (state?.news ?? []).find((x) => x?.inst === inst && x.flow === "fall") : null;
+  return n && (n.result === "onRoof" || n.result === "noFall") ? t(`ITAC.ui.fall.${n.result}`, { name: String(name ?? "") }) : null;
+}
 /** What the table was told lately, for a player (view.news; nothing for staff: the journal is theirs). own.newsSeen = the number of the
     last line this user put away. A plain move is on the map already and is left out. -> null | { id, text, tone, older: [text], seen } */
 export function newsData(view, own, facts, t) {
@@ -913,7 +924,7 @@ function movePanel(bar, a, own, facts, t) {
   }
   const ref = own.refused?.action === a.id ? own.refused : null;
   const row = (o) => {
-    const mine = ref && ref.key === o.id, disabled = mine ? whyText(t, ref.reason, ref.params) : o.disabled ? whyText(t, o.disabled) : null;
+    const mine = ref && ref.key === o.id, disabled = mine ? whyText(t, ref.reason, ref.params, MOVE) : o.disabled ? whyText(t, o.disabled, {}, MOVE) : null;
     const where = o.area ? zoneText(facts, t, `@${o.area}`) : o.elevated === "roof" ? t("ITAC.ui.way.roof") : o.elevated === "air" ? t("ITAC.ui.way.air") : o.here ? t("ITAC.ui.way.down") : null;
     const decl = { to: o.to, mode: o.mode, ...(o.stress ? { stress: 1 } : {}), ...(o.force ? { force: true } : {}), ...(o.wreck ? { wreck: 1 } : {}) };      // PWE (PW095): the wrecking burrow
     /* U93: what a way costs is drawn on its row (the mark of speed, the bolt of stress); `notes` keep what has no mark, `say` is the
@@ -935,10 +946,10 @@ function movePanel(bar, a, own, facts, t) {
     /* U100: the label on the zone, its tip and (on the board) the price in the pick's tooltip as the dock's marks too */
     const ps = can.length ? Sg.priceSigns(priceOf(t, best.cost, best.stress), { free: true }) : [];
     const e = can.length ? { zone, label: shortCost(t, best), tip: `${mode}: ${shortCost(t, best)}`, color: best.barriers?.length ? "danger" : best.stress ? "stress" : "move", ...(ps.length ? { signs: { label: ps, tip: [`${mode}: `, ...ps] } } : {}) }
-      : { zone, label: "", tip: `${mode}. ${whyLine(whyOf(t, best.disabled, {}, { staff: facts.staff }))}`, color: "blocked", style: "dashed" };
+      : { zone, label: "", tip: `${mode}. ${whyLine(moveWhy(t, best.disabled, {}, { staff: facts.staff }))}`, color: "blocked", style: "dashed" };
     /* W1 (U32 / U14): the same zone as an entry of the map's move preview: the default way (the cheapest that can be paid) goes with
        one click, its price in words, the zones it enters, what waits on it; `more`: there is another way (a right click lists them) */
-    return board ? { ...e, cost: can.length ? `${mode}: ${priceWords(t, best.cost, best.stress)}` : `${mode}. ${whyText(t, best.disabled)}`, ...(ps.length ? { signs: { ...e.signs, cost: [`${mode}: `, ...ps] } } : {}), ...(best.route?.length ? { route: best.route } : {}), hazards: can.length ? hazardsOf(best) : [], more: list.length > 1, way: can.length ? best.id : null, ask: can.length ? null : best.id } : e;
+    return board ? { ...e, cost: can.length ? `${mode}: ${priceWords(t, best.cost, best.stress)}` : `${mode}. ${whyText(t, best.disabled, {}, MOVE)}`, ...(ps.length ? { signs: { ...e.signs, cost: [`${mode}: `, ...ps] } } : {}), ...(best.route?.length ? { route: best.route } : {}), hazards: can.length ? hazardsOf(best) : [], more: list.length > 1, way: can.length ? best.id : null, ask: can.length ? null : best.id } : e;
   });
   if (board) {
     const all = opts.map(row), asked = all.find((r) => r.asking && r.disabled) ?? null, here = opts.filter((o) => o.here || o.area), spot = facts.where?.(bar.combatant) ?? null;

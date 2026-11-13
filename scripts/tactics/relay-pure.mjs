@@ -2,7 +2,7 @@
    Protocol constants, the request whitelist per operation, the limits for non-staff, request ids, envelopes, and the decisions of both ends
    (is this incoming request admissible; is this incoming reply mine). relay.mjs only moves messages. Modelled on scripts/session (reviewed pattern). */
 import { ERROR_CODES } from "./engine-pure.mjs";
-import { PLAYER_OPS, GM_OPS, ROUND_PLAYER_OPS } from "./director-pure.mjs";
+import { PLAYER_OPS, GM_OPS, ROUND_PLAYER_OPS, DIRECTOR_CODES } from "./director-pure.mjs";
 import * as O from "./ops-pure.mjs";
 
 export const PROTO = 1;
@@ -10,7 +10,10 @@ export const KIND = Object.freeze({ req: "tcreq", res: "tcres", ev: "tcev", roll
 /* S081: `timeout` is how long a requester waits for the executor to take the request at all (no GM: fail fast, spec 12.1); `working`
    how long it waits once the executor said it is carrying it out (tcwip): a long animated move or a busy queue is not "no GM". */
 export const LIMITS = Object.freeze({ bytes: 4096, perMin: 90, inFlight: 3, readsPerMin: 180, text: 300, timeout: 8000, staleWait: 900, working: 120000 });   // spec 12.1
-export const RELAY_CODES = Object.freeze([...new Set([...ERROR_CODES, "relay", "noPrev"])]);          // every code either machine or the transport can answer
+/* every code either machine or the transport can answer. FXK2 (D210): a code missing here reached the player as "internal" with its
+   parameters gone (the glider's "must glide" and its gmMayAllow); the director's and the round driver's own codes are listed by their
+   files, and check-fxk2 reads every refusal of the sources so a new code cannot be added without being listed here and worded */
+export const RELAY_CODES = Object.freeze([...new Set([...ERROR_CODES, "relay", "noPrev", ...DIRECTOR_CODES, ...O.ROUND_CODES])]);
 const ID_RE = /^[A-Za-z0-9_.-]{1,40}$/;
 const BAD = new Set(["__proto__", "prototype", "constructor"]);
 export const isId = (v) => typeof v === "string" && ID_RE.test(v) && !BAD.has(v);

@@ -411,6 +411,8 @@ const spunOut = (W, r0) => (W.s.phase === "turns" && !W.s.init.curMember && (W.s
 /* the cards cannot be edited while they are being dealt */
 const dealing = (W) => W.s.phase === "draw";
 
+/* FXK2 (D210): the codes this reducer answers with beside the engine's ERROR_CODES (relay-pure lets each one through) */
+export const ROUND_CODES = Object.freeze(["nobodyActs", "noPrev"]);
 const reasonCode = (reason) => (reason === "notYourTurn" || reason === "fullOnTurn" ? "notYourTurn" : "noAction");
 
 /* FXP (D161): the seats kept over a stop / restart (state-pure.crewOf), for the vehicles and characters still in the fight */
@@ -867,11 +869,13 @@ export const helpers = { run, addPrompt, ev, ledgerOf, partOf, queueOnce, closeT
    controlled or marked by the GM ("summoned by", no `summon.auto`) then acts as a combatant of its own (a card of its own: the roster
    deals it one, the round's deal too); the engine's own summoned allies leave by themselves (director-pure `leaving` [B1812]) and keep
    the mark until they do. Should the owner come back (an undo), the ally is its again (syncSummons takes the card back).
-   Question FXG2-2. */
-function ownParts(parts) {
+   Question FXG2-2.
+   FXK2 (FXG2's leftover): an owner still in the Combat but marked defeated holds no card either (initiative-pure eligible), so its turn
+   never comes: the same holds then, and the ally is the owner's again once the owner is up (the mark taken off). Question FXK2-1. */
+export function ownParts(parts) {
   if (!parts.some((p) => p?.summonOf)) return parts;
-  const ids = new Set(parts.map((p) => p?.id));
-  return parts.map((p) => (p?.summonOf && !ids.has(p.summonOf) && !p.summonAuto ? { ...p, summonOf: null } : p));
+  const live = new Set(parts.filter((p) => p && !p.defeated).map((p) => p.id));
+  return parts.map((p) => (p?.summonOf && !live.has(p.summonOf) && !p.summonAuto ? { ...p, summonOf: null } : p));
 }
 
 /* ------------------------------------------------------------------ reduce */
