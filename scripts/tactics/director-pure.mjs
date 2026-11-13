@@ -35,6 +35,8 @@ export const ROUND_PLAYER_OPS = Object.freeze(["endTurn", "holdOff", "mark"]);  
 export const PLAYER_OPS = Object.freeze([...new Set([...E.PLAYER_OPS, ...ROUND_PLAYER_OPS])]);
 export const GM_OPS = Object.freeze([...E.GM_OPS, ...ROUND_OPS.filter((op) => !ROUND_PLAYER_OPS.includes(op))]);
 export const BLOCKED_BY_ACTION = Object.freeze(["nextTurn", "nextRound", "prevTurn", "holdOff", "endScene", "insertTurn"]);
+/* FXK2 (D210): the refusals this file answers with a code of its own (beside the engine's ERROR_CODES); the relay lets each of them through */
+export const DIRECTOR_CODES = Object.freeze(["mustGlide"]);
 
 const bad = S.err;
 const out = (state, log, env, events = []) => ({ state, log, env, events, changed: false });
@@ -76,7 +78,7 @@ async function round(state, log, action, user, host) {
 }
 /* P7: the cards follow the kind of the scene. A chase holds no cards (also after an undo that brought a chase back); a fight that
    has none while people stand in it (a chase just ended, or its start was undone) gets them dealt by the round driver [A-1]. */
-const summonSig = (list, parts) => (parts ? parts.filter((p) => p.summonOf && !p.defeated && parts.some((o) => o.id === p.summonOf)).map((p) => `${p.summonOf}>${p.id}`)
+const summonSig = (list, parts) => (parts ? O.ownParts(parts).filter((p) => p.summonOf && !p.defeated && parts.some((o) => o.id === p.summonOf)).map((p) => `${p.summonOf}>${p.id}`)
   : (list ?? []).flatMap((su) => (su.combatants ?? []).map((id) => `${su.owner}>${id}`))).sort().join(",");
 function leaving(state, host) {
   const parts = (host.parts?.() ?? []).filter((p) => p.summonOf);

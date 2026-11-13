@@ -13,7 +13,7 @@ export const EN_PWE = {
   "ITAC.reason.livingTarget": "only against the non-living",
   "ITAC.why.livingTarget": "This attack works only on non-living targets such as robots and drones.",
   "ITAC.fix.livingTarget": "Pick a machine, or ask the GM.",
-  "ITAC.err.mustGlide": "a glider must move before the turn ends",
+  "ITAC.err.mustGlide": "A glider must move before the turn ends: move, or land where you are.",      // FXK2 (D210): the way out too
   "ITAC.kit.act.dropBarrier": "Drop the barrier",
   "ITAC.kit.act.adapt": "Adapt to the surroundings (1 stress)",
   "ITAC.kit.act.lie": "Is it a lie? (+3 dice)",
@@ -22,6 +22,12 @@ export const EN_PWE = {
   "ITAC.gate.camouflage": "Spot the camouflaged target",
   "ITAC.result.immune": "immune",
   "ITAC.move.wreck": "wrecking the zones passed under",
+  "ITAC.why.move.tooFar": "That is too far for one move.",      // FXK2 (U208): a move's own words (feedback-pure whyOf, context "move")
+  "ITAC.fix.move.tooFar": "Go part of the way, or pick a faster way of moving.",
+  "ITAC.why.move.sameZone": "You are in that zone already.",
+  "ITAC.fix.move.sameZone": "Pick another zone.",
+  "ITAC.ui.fall.onRoof": "{name} stands on a roof: no fall.",      // FXK2 (U209): the GM's word after a fall that came to nothing
+  "ITAC.ui.fall.noFall": "{name}: nothing to fall from.",
 };
 export const PL_PWE = {
   "ITAC.reason.noBarrier": "nie masz tam bariery",
@@ -36,7 +42,7 @@ export const PL_PWE = {
   "ITAC.reason.livingTarget": "tylko przeciw nieożywionym",
   "ITAC.why.livingTarget": "Ten atak działa tylko na nieożywione cele, jak roboty i drony.",
   "ITAC.fix.livingTarget": "Wybierz maszynę albo zapytaj MG.",
-  "ITAC.err.mustGlide": "szybujący musi się ruszyć przed końcem tury",
+  "ITAC.err.mustGlide": "Szybujący musi się ruszyć przed końcem tury: rusz się albo wyląduj tam, gdzie jesteś.",
   "ITAC.kit.act.dropBarrier": "Zdejmij barierę",
   "ITAC.kit.act.adapt": "Przystosuj się do otoczenia (1 stres)",
   "ITAC.kit.act.lie": "Czy kłamie? (+3 kości)",
@@ -45,4 +51,10 @@ export const PL_PWE = {
   "ITAC.gate.camouflage": "Wypatrz zakamuflowany cel",
   "ITAC.result.immune": "odporny",
   "ITAC.move.wreck": "demolując strefy po drodze",
+  "ITAC.why.move.tooFar": "To za daleko na jeden ruch.",
+  "ITAC.fix.move.tooFar": "Przejdź część drogi albo wybierz szybszy sposób ruchu.",
+  "ITAC.why.move.sameZone": "Już jesteś w tej strefie.",
+  "ITAC.fix.move.sameZone": "Wybierz inną strefę.",
+  "ITAC.ui.fall.onRoof": "{name} stoi na dachu: bez upadku.",
+  "ITAC.ui.fall.noFall": "{name}: nie ma skąd spaść.",
 };

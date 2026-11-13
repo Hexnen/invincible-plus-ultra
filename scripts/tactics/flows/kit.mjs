@@ -215,6 +215,21 @@ export const mentalAttack = (w, entry = null) => entry?.damage?.toStress === tru
 export const solidSpent = (cid) => ({ t: "state", path: ["counters", M.counterKey.round(cid, "solid")], to: null });
 /** PWA (PW072): a holder who can do nothing else while holding [B2497]; Extra Limb(s) holds and acts [B1926] */
 export const holdsTied = (v, cid) => M.hasStatus(v.state, cid, "grappling") && v.facts.c(cid)?.pass?.freeHold !== true;
+/* FXK2: what keeps `cid` from making an attack of `kind` (the family of the rules library) because of its own body: the same tests, in the
+   same order, as the attacker's part of flows/attack legality (check-fxk2 holds the two together) -> a reason id or null.
+   Held [B2496] and snared [B1606]: no attack at all; Immobilize Only [B1611]: no charge; carried aloft [B2392]; trapped [B2438]: no
+   slugfest, no charge; one who holds somebody makes only the grapple attack [B2497] (Extra Limb(s) [B1926]: freeHold) */
+const SLUG_KINDS = ["slugfest", "grapple", "grappleAttack", "counterattack", "ram"];
+export function attackerFault(v, cid, kind) {
+  const ac = M.conditions(v.state, cid);
+  if (ac.held) return "held";
+  if (ac.snared) return "snared";
+  if (ac.rooted && kind === "charge") return "snared";
+  if (ac.carriedAloft) return "carriedAloft";
+  if (ac.trapped && (SLUG_KINDS.includes(kind) || kind === "charge")) return "trapped";
+  if (M.hasStatus(v.state, cid, "grappling") && kind !== "grappleAttack" && (kind === "grapple" || holdsTied(v, cid))) return "grappling";
+  return null;
+}
 /** Z12 [B1816]: an ally of Delayed Summoning is not there before the start of its summoner's next turn (state.summons[].wait) */
 export const notArrived = (state, cid) => (state?.summons ?? []).some((su) => Array.isArray(su?.wait) && su.wait.includes(cid));
 export const copiesOf = (state, cid) => Math.max(0, Number((state.effects ?? []).find((e) => e.kind === "copies" && e.holder === cid)?.data?.n) || 0);
@@ -326,6 +341,10 @@ export function reactionFit(v, inst, cid, e) {
   /* FXC2 (D198), PWB-R4: Untouchable Speed / Quick Teleport ARE a move: who cannot move (held [B2496], snared [B1606] or Immobilize Only
      [B1611], trapped [B2438]) cannot take them, as movement-pure cannotMove refuses every way of moving (teleporting too) */
   if (r.effect === "moveAway") { const k = M.conditions(v.state, cid); if (k.held || k.snared || k.rooted || k.trapped) return { ok: false, reason: k.held ? "held" : k.snared || k.rooted ? "snared" : "trapped" }; }
+  /* FXK2 (FF7's note on D198): an answer that is itself an attack (Quick Blast [B1585], Sudden Strike [B1619], Redirecting Blast [B1889])
+     is refused, as its own declaration would be (flows/attack legality), to one who may not make that attack now: was offered, charged
+     1 stress and the action, then dropped silently. Ruling FXK2-R1 */
+  if (r.effect === "action" && e.flow === "attack") { const why = attackerFault(v, cid, e.attack ?? "slugfest"); if (why) return { ok: false, reason: why }; }
   if (r.place === "allyZone") return alliesNear(v, inst, cid).length ? { ok: true, reason: null } : { ok: false, reason: "noAllyNear" };
   if (r.who !== "any") return { ok: true, reason: null };
   if (reactionFor(v, inst, cid, e).length) return { ok: true, reason: null };
