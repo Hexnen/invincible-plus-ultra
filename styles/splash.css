@@ -1,3 +1,5 @@
+/* FXLD2: the gauge's count and note in the tall narrow face of the lettering's information (the engine's bundled Anton, OFL) */
+@font-face { font-family: 'InsAnton'; src: url("../scripts/letters/fonts/anton/Anton-Regular.ttf"); font-display: swap; }
 /* Invincible Splash (now part of Invincible - Plus Ultra): splash layer. Font: the "Comic" family (KOMIKAH) declared by the invincible system. */
 /* Żetony palety (były 29 powtórzeń literałów). Definiowane też na .ins-chat, bo znacznik na karcie czatu leży poza warstwą splasha.
    Atrybuty SVG w splash.mjs nie przyjmują var(), więc tam te same trzy wartości zostają literałami. */
@@ -43,11 +45,15 @@
 .ins-badge.hot { background: #5a0614; box-shadow: 3px 3px 0 var(--ins-ink), 0 0 0 2px #ff5a6a; }
 .ins-badge .bt { font-family: var(--ins-font); letter-spacing: .06em; font-size: max(13px, calc(var(--u) * 21px)); line-height: 1; color: #ff8a9a; }
 .ins-badge .pips { display: flex; flex-wrap: wrap; gap: 3px; }   /* wiele pipów zawija się, zamiast wylewać poza plakietkę */
-.ins-badge .pip { width: calc(var(--u) * 13px); height: calc(var(--u) * 13px); min-width: 9px; min-height: 9px; flex: 0 1 auto; border-radius: 50%; border: 2px solid #a8707c; background: transparent; }   /* pusty pip: #a8707c na #1b0a10 = 4.8:1 (było 2.1:1) */
-.ins-badge .pip.on { background: var(--ins-red); border-color: var(--ins-red); }
-.ins-badge.hot .pip.on { background: #ff5a6a; border-color: #ff5a6a; }   /* czerwień pipa na ciemnoczerwonym tle .hot miała 2.4:1 */
-.ins-badge .pip.new { background: var(--ins-yellow); border-color: #fff; rotate: 45deg; border-radius: 2px; }   /* nowy pip to romb: kształt, nie tylko kolor (poświata zdjęta: żółć i biała krawędź na ciemnym tle wystarczą) */
-.ins-badge .bc { font-family: var(--ins-font); letter-spacing: .05em; font-size: max(12px, calc(var(--u) * 15px)); line-height: 1.1; color: #fff; }
+/* FXLD2 (ADVD2 4): one pip shape (a slanted bar), the pips count the Resolve LEFT like the number: full cream = left, red = lost on this
+   roll, hollow = lost before. Contrast on #1b0a10: cream 15:1, red #ff4058 5.2:1, hollow edge #a8707c 4.8:1. */
+.ins-badge .pip { width: calc(var(--u) * 10px); height: calc(var(--u) * 17px); min-width: 7px; min-height: 12px; flex: 0 0 auto; border-radius: 2px; border: 2px solid #a8707c; background: transparent; transform: skewX(-12deg); }
+.ins-badge .pip.left { background: #fff1d6; border-color: #fff1d6; }
+.ins-badge .pip.new { background: #ff4058; border-color: #ffd3d9; }
+.ins-badge .pip.gone { background: transparent; }
+.ins-badge .bc { display: flex; flex-direction: column; gap: 1px; font-family: 'InsAnton', 'Anton', Impact, 'Arial Narrow', sans-serif; letter-spacing: .04em; line-height: 1.05; color: #fff; white-space: nowrap; }
+.ins-badge .bv { font-size: max(16px, calc(var(--u) * 20px)); }
+.ins-badge .bn { font-size: max(13px, calc(var(--u) * 15px)); color: #ffc9d1; }
 
 .ins-splash { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); pointer-events: none; text-align: center; white-space: nowrap; }
 .ins-inner { position: relative; display: inline-block; --pm: 1; --pv: 1; --ph: 1;
@@ -99,7 +105,8 @@
    stays a DOM gauge, its number is lettered just above it, so the gauge's own header line goes. */
 .ins-letters { position: fixed; inset: 0; pointer-events: none; }
 /* FXLD: the Resolve gauge is part of the composed block (stage.mjs places it beside its lettered number, client px) */
-.ins-letters .ins-badge { position: absolute; transform-origin: top left; width: max-content; max-width: min(26vw, 340px); }   /* max-content: placed near the right edge it wrapped to two lines (live 1920) and outgrew its measured slot */
+.ins-letters .ins-badge { position: absolute; transform-origin: top left; width: max-content; max-width: none; }   /* FXLD2: the lines are nowrap; a max-width only made the box narrower than its text */
+.ins-raywrap { position: fixed; inset: 0 var(--ins-right, 0px) 0 0; pointer-events: none; }   /* FXLD2: the still wrapper that cuts the hero's clear spot out of the turning rays (Backdrop on) */   /* max-content: placed near the right edge it wrapped to two lines (live 1920) and outgrew its measured slot */
 .ins-letters .ins-badge .bt { display: none; }
 /* LDIC: the display layer (setting "Splash: Layer"): the HTML part of the moment (gauge, rays, backdrop) follows the lettering engine's
    screen layers (contract v3: hud z 5, ui z 80); with a layer on the map it sits under the bars and windows too */

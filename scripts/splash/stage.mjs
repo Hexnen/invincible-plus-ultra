@@ -256,19 +256,133 @@ function engineOpts(it, base, hands) {
   return o;
 }
 const SIDE_FROM = { above: 90, below: -90, right: 180, left: 0, focus: 90 };
+
+/* ---- FXLD2 (ADVD2 1, 3): ONE moment for the table.
+   On a map layer the block is laid out in SCENE units from what every seat shares: the hero token's document (not its animated mesh),
+   the scene rectangle, the grid size, the other tokens nobody hides and the map note pins. Nothing of this seat's window (size, zoom,
+   pan, bars, chat card, the engine's or our client Scale) enters that layout, so the GM and every player see the block at the same
+   scene position and size. One seat's bars are not avoided there: they differ per seat, and on the map the block is part of the board
+   (it pans and zooms with it).
+   On the screen layers what is shared is the content (the same words in the same hand: seeded by the message), the timing (the shared
+   start, beat.mjs, and the table's Duration) and the size class (a share of the window height); the place follows each seat's own
+   view: by the token where that seat sees it, off that seat's bars, panels, neighbours, pins and resting dice. */
+/* a map moment is sized as on a window GRID_VH grid squares tall: a mid roll's word is about half a square tall, a critical's more than
+   a square (live, The Warehouse: a 350 px grid seen at zoom 0.75 shows about 4 squares in 1080 px; 10.8 made the words 2.6x too big) */
+export const GRID_VH = 4.5;   // live 2026-11-13: 5 left no clean place by a roller with neighbours and a pin round him
+const docOf = (t) => t?.document ?? null;
+function docBox(t, gs) {
+  const d = docOf(t) ?? {};
+  const x0 = d.x ?? t.x ?? 0, y0 = d.y ?? t.y ?? 0, w = (d.width ?? 1) * gs, h = (d.height ?? 1) * gs;
+  const k = Math.max(1, Math.abs(d.texture?.scaleX ?? 1), Math.abs(d.texture?.scaleY ?? 1));
+  const cx = x0 + w / 2, cy = y0 + h / 2;
+  return { x: cx, y: cy, l: cx - w / 2 * k, t: cy - h / 2 * k, r: cx + w / 2 * k, b: cy + h / 2 * k };
+}
+const grow = (b, p) => ({ ...b, l: b.l - p, t: b.t - p, r: b.r + p, b: b.b + p });
+export function noteBox(n, gs = 100) {
+  const d = docOf(n) ?? n, s = Number(d.iconSize) > 0 ? Number(d.iconSize) : 40;
+  const q = { l: d.x - s * 0.6, t: d.y - s * 0.6, r: d.x + s * 0.6, b: d.y + s * 1.1 };   // the icon and its label under it
+  /* a moinen-maps pin stands on the note's point and rises about 1.1 grid squares above it, 0.8 square wide (live, The Warehouse,
+     350 px grid: the head and stem about 275 x 375 px; its container, 457 x 497 px, also holds the faint ground ripple, which a word
+     may cross; the icon size said 40). Read from the document, not from the drawing: a seat that does not draw the pin must still
+     lay the block out the same way. */
+  if (d.flags?.['moinen-maps']?.pin) { q.l = Math.min(q.l, d.x - 0.42 * gs); q.r = Math.max(q.r, d.x + 0.42 * gs); q.t = Math.min(q.t, d.y - 1.15 * gs); q.b = Math.max(q.b, d.y + 0.1 * gs); }
+  return q;
+}
+const sameTok = (a, b) => !!a && !!b && (a === b || (a.id != null && a.id === b.id));
+/* the shared frame of a map moment (scene px) */
+export function sharedFrame(hero) {
+  const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
+  const token = docBox(hero, gs);
+  const sr = C?.dimensions?.sceneRect;
+  const ins = 0.1 * gs;
+  const safe = sr ? { l: sr.x + ins, t: sr.y + ins, r: sr.x + sr.width - ins, b: sr.y + sr.height - ins }
+    : { l: token.x - 40 * gs, t: token.y - 40 * gs, r: token.x + 40 * gs, b: token.y + 40 * gs };
+  const avoid = [];
+  for (const t of C?.tokens?.placeables ?? []) {
+    const d = docOf(t);
+    if (!d || sameTok(t, hero) || d.hidden) continue;   // a hidden token is not on every seat's board: it never moves the block
+    avoid.push(grow(docBox(t, gs), 0.06 * gs));
+  }
+  for (const n of C?.notes?.placeables ?? []) { try { if (docOf(n)) avoid.push(noteBox(n, gs)); } catch (e) { /* a pin without a place */ } }
+  const vh = GRID_VH * gs;
+  return { vh, freeW: vh * 16 / 9, safe, token, avoid, gap: Math.round(0.12 * gs), focus: { x: token.x, y: token.y } };
+}
+/* the bars and panels that are not at an edge: the party cards, the map's VRAM meter and pins panel, the GM's desk, the tactics dock */
+export const UI_AVOID = ['#invincible-party li', '.mm-vram', '#mm-filter', '#invincible-tactics-desk:not(.igd-collapsed) .igd', '#ich-dock'];
+function uiAvoid() {
+  const out = [];
+  for (const sel of UI_AVOID) {
+    try {
+      for (const e of document.querySelectorAll(sel)) {
+        const q = e.getBoundingClientRect();
+        if (q && q.width > 0 && q.height > 0) out.push({ l: q.left - 6, t: q.top - 6, r: q.right + 6, b: q.bottom + 6 });
+      }
+    } catch (e) { /* a selector this Foundry does not know */ }
+  }
+  return out;
+}
+/* Dice So Nice's dice still lying on the table (client px): the screen layer draws over them, so the block keeps off them (ADVD2 3:
+   the die inside the M of BAM!). Read from its dice box (each die's position projected by its camera); nothing while it is hidden. */
+export const DIE_R = 0.06;   // a resting die's half-size as a share of the dice canvas height
+export function diceRects() {
+  try {
+    if (diceZ() <= 0) return [];
+    const box = globalThis.game?.dice3d?.box, cam = box?.camera, cv = document.getElementById(DICE_CANVAS);
+    if (!box || !cam || !cv) return [];
+    const r = cv.getBoundingClientRect(), list = box.diceList;
+    const arr = Array.isArray(list) ? list : (list?.values ? [...list.values()] : []);
+    const R = DIE_R * (r.height || window.innerHeight), out = [];
+    for (const m of arr) {
+      try {
+        const p = m?.position?.clone?.();
+        if (!p?.project) continue;
+        m.getWorldPosition?.(p);
+        p.project(cam);
+        if (!(Math.abs(p.x) <= 1.2 && Math.abs(p.y) <= 1.2)) continue;
+        const x = r.left + (p.x + 1) / 2 * r.width, y = r.top + (1 - p.y) / 2 * r.height;
+        out.push({ l: x - R, t: y - R, r: x + R, b: y + R });
+      } catch (e) { /* one die */ }
+    }
+    return out;
+  } catch (e) { return []; }
+}
+/* what this seat's screen block keeps off: neighbours and pins this seat sees, resting dice, panels, and the hero of a critical */
+function screenAvoid(hero, full) {
+  const out = [...uiAvoid(), ...diceRects()];
+  const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
+  const cl = (b) => { const a = toClient({ x: b.l, y: b.t }), c = toClient({ x: b.r, y: b.b }); return a && c ? { l: a.x, t: a.y, r: c.x, b: c.y } : null; };
+  for (const t of C?.tokens?.placeables ?? []) {
+    try { if (t.visible === false || sameTok(t, hero)) continue; const q = cl(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push(q); } catch (e) { /* one token */ }
+  }
+  for (const n of C?.notes?.placeables ?? []) { try { if (n.visible === false) continue; const q = cl(noteBox(n, gs)); if (q) out.push(q); } catch (e) { /* one pin */ } }
+  if (full && hero) { const h = tokenBox(hero); if (h) out.push({ ...grow(h, Math.max(10, 0.15 * (h.r - h.l))), w: 50 }); }   // the drawn art (hair, a fist) reaches past the token's box   // the hero weighs most: a pin or a panel gives way first
+  return out;
+}
 /* compose: measure, lay out, and (when the block had to go below or beside the token) measure again with the sound coming from there */
 function compose(ctl, items, extra = {}) {
   const vh = window.innerHeight, k = Number(LE?.prefs?.scale) > 0 ? Number(LE.prefs.scale) : 1;
-  const frame = { vh, scale: (ctl.userScale || 1) * k, safe: safeRect(), token: ctl.token ? tokenBox(ctl.token) : null,
-    focus: { x: area.cx, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
+  let frame;
+  if (ctl.shared) {
+    /* a critical on the map is a board moment like the others (live: sized to fill a share of a 16:9 'screen' of the board, it went
+       two tokens away and past every seat's view): still the biggest word, but anchored by the hero */
+    for (const it of items) if (it.wMin) { it.wMin = 0; it.cap = Math.min(it.cap, LP.MAP_CRIT_CAP); it.wMax = Math.min(it.wMax ?? 0.6, 0.58); }
+    /* the map: scene units, nothing of this seat (the engine's Scale is divided out again in letterOne: the drawn size is S) */
+    const g = extra.gauge && ctl.gaugeK ? { w: extra.gauge.w * ctl.gaugeK, h: extra.gauge.h * ctl.gaugeK } : extra.gauge;
+    frame = { ...sharedFrame(ctl.hero), scale: 1, ...extra, ...(g ? { gauge: g } : {}) };
+  } else {
+    const T = ctl.token ? tokenBox(ctl.token) : null;
+    frame = { vh, scale: (ctl.userScale || 1) * k, safe: safeRect(), token: T, avoid: screenAvoid(ctl.hero, !ctl.token),
+      gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: area.cx, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
+  }
+  const anchored = !!frame.token;
   let side = 'above', out = null;
   for (let pass = 0; pass < 2; pass++) {
-    measureItems(items, { seed: ctl.seed, from: ctl.token ? SIDE_FROM[side] : null });
+    measureItems(items, { seed: ctl.seed, from: anchored ? SIDE_FROM[side] : null });
     out = LP.composeMoment(items, frame, measureFn);
-    if (!ctl.token || out.side === side) break;
+    if (!anchored || out.side === side) break;
     side = out.side;
   }
-  out.k = k;
+  out.k = k; out.frame = frame;
   return out;
 }
 
@@ -292,16 +406,13 @@ function letterOne(ctl, it) {
     maxWidth: Math.ceil(it.w * 1.06) });
   /* the engine's own screen layers (under the windows): its layer, not our wrapper */
   if (LAYER === 'ui' || LAYER === 'hud') { delete o.parent; o.layer = LAYER; }
-  /* on the map: scene coordinates and scene px, the same block (it zooms as one: ADVD 7, the odds no longer run into the sentence) */
+  /* on the map: the shared block, already in scene coordinates and scene px (FXLD2: the same on every seat; it zooms as one, ADVD 7) */
   let world = false;
-  if (onMap()) {
-    const at = it.sceneAt ?? toScene(o.at), z = it.z0 ?? (canvas.stage.scale.x || 1);
-    if (at) {
-      Object.assign(o, { space: 'world', layer: LAYER, at, size: Math.round((o.size / z) * 100) / 100, maxWidth: Math.ceil(o.maxWidth / z) });
-      if (ctl.token) o.token = ctl.token;
-      delete o.parent;
-      world = true;
-    }
+  if (ctl.shared && it.sceneAt) {
+    Object.assign(o, { space: 'world', layer: mapLayerFor(it.role), at: { ...it.sceneAt }, out: LP.mapExit(o), size: it.S / (sizeK * k), keepInView: false });   // unrounded: the drawn size is exactly S on every seat, whatever its engine Scale; keepInView off (engine 1.7.0 pulls a world word into each seat's own view: live, the block slid onto the neighbours)
+    if (ctl.hero) o.token = ctl.hero;
+    delete o.parent;
+    world = true;
   }
   try {
     const h = LE.play(LP.letterable(it.text), o);
@@ -310,6 +421,12 @@ function letterOne(ctl, it) {
     return h;
   } catch (e) { console.warn('invincible-plus-ultra (splash) | lettering failed', e); return null; }
 }
+/* FXLD2 (ADVD2 12, the caller's part): the layers in the scene's light (ground, tokens, weather) tint the letters with the room's
+   light and draw rain over them (live: salmon numbers under a red alarm). The sound word keeps the chosen layer (that is what the
+   setting asks for); the numbers and the caption are read, so on those layers they go over the lighting and the weather (overlay). */
+export const LIT_LAYERS = ['ground', 'tokens', 'weather'];
+const INFO = new Set(['six', 'say', 'odds', 'stress']);
+export function mapLayerFor(role) { return LIT_LAYERS.includes(LAYER) && INFO.has(role) ? 'overlay' : LAYER; }
 function stopLetters(ctl, quick) {
   for (const it of ctl.letters || []) { try { it.h.stop({ quick }); } catch (e) { /* already gone */ } }
   const lw = ctl.lw;
@@ -328,17 +445,21 @@ export function shakeLetters(ctl, px) {
       const k = it.world ? 1 / z : 1, off = ctl.offset ?? { x: 0, y: 0 };
       try { it.h.moveTo({ x: it.base.x + (off.x + sx * px) * k, y: it.base.y + (off.y + sy * px) * k }); } catch (e) { /* the engine dropped it */ }
     }
-    if (ctl.gaugeEl) ctl.gaugeEl.style.translate = `${Math.round(sx * px)}px ${Math.round(sy * px)}px`;
+    if (ctl.gaugeEl && !ctl.shared) ctl.gaugeEl.style.translate = `${Math.round(sx * px)}px ${Math.round(sy * px)}px`;   // on the map the gauge is pinned to the board
   }, i * 42));
 }
 /* the block follows its token (screen layers) or the scene (map layers: the words pan by themselves, the HTML parts follow) */
 function followPan(ctl) {
   if (ctl.dead) return;
-  if (ctl.sceneAnchor) {
-    const c = toClient(ctl.sceneAnchor);
-    if (!c) return;
-    const dx = Math.round(c.x - ctl.clientAnchor.x), dy = Math.round(c.y - ctl.clientAnchor.y);
-    for (const x of [ctl.gaugeEl, ...(ctl.extras || []).filter(e => e.classList?.contains('ins-fullrays')), ctl.el]) if (x) x.style.translate = `${dx}px ${dy}px`;
+  if (ctl.shared) {
+    /* FXLD2: each HTML part is pinned to its own scene point (the gauge also scales with the zoom, as the words do) */
+    const z = globalThis.canvas?.stage?.scale?.x || 1;
+    for (const p of ctl.pins || []) {
+      const c = toClient(p.at);
+      if (!c) continue;
+      p.el.style.translate = `${Math.round(c.x - p.c0.x)}px ${Math.round(c.y - p.c0.y)}px`;
+      if (p.k) p.el.style.scale = (p.k * z).toFixed(3);
+    }
     return;
   }
   if (!ctl.token || !ctl.tokenAnchor) return;
@@ -374,9 +495,25 @@ export function overDice() {
     else lay.style.zIndex = '';
   } catch (e) { /* no dice, no change */ }
 }
-/* a lettered moment on a map layer: wait (at most maxMs) until the dice are gone; resolves with the ms waited */
+/* a lettered moment on a map layer: wait (at most maxMs) until the dice are gone; resolves with the ms waited.
+   FXLD2 (ADVD2 5): Dice So Nice keeps the dice up for its "time before hide" (2 s by default) and then fades them for 1 s, so the map
+   moment came about 4 s after the result (the screen layer: ~0.5 s). The dice have done their job when they rest (the result is read
+   in the chat card and lettered by the moment), so on a map layer this seat asks Dice So Nice to fade them now, with its own fade
+   (DICE_FADE ms; the persistent dice stay), and the moment starts as they go. */
+export const DICE_FADE = 320;
+export function hurryDice() {
+  try {
+    const d = globalThis.game?.dice3d;
+    if (!d) return false;
+    if (d.box?.persistentDiceList?.length && typeof d.box.fadeOutEphemeral === 'function') { d.box.fadeOutEphemeral(DICE_FADE); return true; }
+    if (typeof d._fadeOutCanvas === 'function') { d._fadeOutCanvas(DICE_FADE, () => { try { d.box?.clearAll?.(); } catch (e) { /* gone already */ } }); return true; }
+  } catch (e) { /* its own timer hides them */ }
+  return false;
+}
+export const onMapLayer = () => onMap();
 export function diceClear(maxMs = 2600) {
   if (!lettersOn() || !onMap() || diceZ() <= 0) return Promise.resolve(0);
+  hurryDice();
   let w = 0;
   return new Promise((res) => {
     const tick = () => { w += 100; if (diceZ() <= 0 || w >= maxMs) res(w); else setTimeout(tick, 100); };
@@ -386,14 +523,18 @@ export function diceClear(maxMs = 2600) {
 
 function playLetters(ev, o) {
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
-  const ctl = openStage(full ? { ...o, full: true } : o);
+  /* FXLD2: on a map layer the moment needs a token everybody sees (o.token = the board's token, main.mjs mapToken); without one it
+     has no place on the board and plays on the screen, by each seat's view */
+  const shared = onMap() && !!o.token;
+  const ctl = openStage(full ? { ...o, full: true } : o, shared);
   const stage = ctl.el, later = ctl.later, holdK = o.hold || 1;
   /* a moment needs a seed even when no message gives one (the preview): an unseeded word draws a new random hand at every call, so
      the hand measured for the layout was not the hand played (live: the critical's 4 SIXES stood 170 px off a narrower word) */
   ctl.seed = o.seed ?? `local-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`; ctl.full = full;
   letterWrap(ctl);
   overDice();
-  if (full) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);
+  /* the owner (2026-11-13): backdrops are an extra, default without; the full wash and rays only with the client setting Backdrop */
+  if (full && o.backdrop) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);
   const dF = LP.failStrength(ev);
   const plan = LP.planMoment(ev, { token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const word = plan.items.find(it => it.role === 'word');
@@ -409,18 +550,17 @@ function playLetters(ev, o) {
     gauge = probeGauge(ctl, ev.stress, resolve);
   }
   const lay = compose(ctl, plan.items, gauge ? { gauge } : {});
-  ctl.k = lay.k; ctl.rect = lay.rect;
+  ctl.k = lay.k; ctl.rect = lay.rect; ctl.layout = lay;   // (kept for inspection: frame, side, hit)
   ctl.tokenAnchor = ctl.token ? tokenBox(ctl.token) : null;
-  /* the rays, the flash and the sparks centre on the word */
   const wp = lay.items.find(it => it.role === 'word');
-  if (wp) { stage.style.left = wp.x + 'px'; stage.style.top = (wp.y + 0.04 * stage.clientWidth) + 'px'; }
-  if (onMap()) {
-    ctl.clientAnchor = { x: (lay.rect.l + lay.rect.r) / 2, y: (lay.rect.t + lay.rect.b) / 2 }; ctl.sceneAnchor = toScene(ctl.clientAnchor);
-    /* the whole block goes to scene coordinates NOW: a part lettered later (its delay) after the camera moved must not be converted
-       with the new view (live, 1366: the sentence of a map moment landed on the token when the view panned meanwhile) */
-    const z0 = canvas.stage.scale.x || 1;
-    for (const it of lay.items) { const at = toScene({ x: it.x, y: it.y }); if (at) { it.sceneAt = at; it.z0 = z0; } }
-  }
+  if (ctl.shared) {
+    /* the block is in scene coordinates already (the same on every seat); a part lettered later keeps its scene place whatever the
+       camera did meanwhile (live, 1366: the sentence of a map moment landed on the token when the view panned) */
+    for (const it of lay.items) it.sceneAt = { x: it.x, y: it.y };
+    const c = wp ? toClient({ x: wp.x, y: wp.y }) : null;
+    if (c) { stage.style.left = c.x + 'px'; stage.style.top = c.y + 'px'; pin(ctl, stage, { x: wp.x, y: wp.y }, c); }
+    for (const x of ctl.extras.filter(e => e.classList?.contains('ins-fullrays'))) pin(ctl, x, { x: wp?.x ?? 0, y: wp?.y ?? 0 }, c ?? { x: 0, y: 0 });
+  } else if (wp) { stage.style.left = wp.x + 'px'; stage.style.top = (wp.y + 0.04 * stage.clientWidth) + 'px'; }   // the rays, the flash and the sparks centre on the word
   let first = true;
   for (const it of lay.items) {
     later(() => {
@@ -432,7 +572,7 @@ function playLetters(ev, o) {
     }, it.delay);
   }
   /* the old splash's surroundings stay: rays, the soft flash, the shake and the sparks of a strong result; the shake of a rare miss */
-  if (!ev.fail && o.fx) later(() => { S.fxFor(stage, ev.tag ? Math.max(ev.power, 0.32) : ev.power, later, o.fx, full); if (!S.isReduced() && ev.power > 0.45) shakeLetters(ctl, Math.round(4 + 8 * ev.power)); }, t0 + 60);
+  if (!ev.fail && o.fx) later(() => { accentFx(stage, ev.tag ? Math.max(ev.power, 0.32) : ev.power, later, o, full); if (!S.isReduced() && ev.power > 0.45) shakeLetters(ctl, Math.round(4 + 8 * ev.power)); }, t0 + 60);
   if (ev.fail && !ev.softFail && dF > 0.3 && o.fx && !S.isReduced()) later(() => shakeLetters(ctl, 4 + Math.round(6 * dF)), t0 + 380);
   const wordEnd = word ? word.delay + word.hold : plan.end;
   if (full) later(() => fadeExtrasEarly(ctl), wordEnd + 300);
@@ -441,12 +581,30 @@ function playLetters(ev, o) {
   later(() => endCtl(ctl, false), Math.max(plan.end, badgesEnd) + 800);
   return ctl;
 }
+/* the owner (2026-11-13, «tła strasznie zasłaniają ekran i to co się dzieje»): by default the moment draws nothing behind the words
+   (no rays, no wash, no flash over the view): the letters read by their own outline and depth. Kept: the sparks of a strong result
+   (small, local) and, for the critical, one short flash (about four frames) as the impact accent. Backdrop on = the old surroundings. */
+export const ACCENT_MS = 170;
+function accentFx(stage, P, later, o, full) {
+  if (o.backdrop) return S.fxFor(stage, P, later, o.fx, full);
+  if (S.isReduced() || !(o.fx > 0)) return;
+  if (full && o.fx >= 1) S.flash(stage, 0.45, ACCENT_MS);
+  if (P > 0.55 && o.fx >= 1) {
+    const waves = Math.min(2, 1 + Math.floor((P - 0.55) * 4)), h = hueOf(P);
+    for (let i = 0; i < waves; i++) later(() => S.particles(stage, 10 + Math.round(8 * P), h), i * 170);
+  }
+}
+/* the screen pins of a map moment: an HTML part follows its scene point (followPan) */
+function pin(ctl, el, at, c0, k = 0) { (ctl.pins ??= []).push({ el, at, c0, k }); }
+
 /* the Resolve gauge: a DOM gauge (pips, the line under it) inside the block, beside its lettered number. Measured first (a hidden
-   copy), so the block leaves room for it. */
+   copy), so the block leaves room for it. On a map moment it is measured at the reference size (--u 1, the same on every seat) and
+   drawn at the scene's scale. */
 function probeGauge(ctl, stress, resolve) {
   try {
     const lw = letterWrap(ctl);
     const b = S.stressBadge(lw, stress, resolve, null);
+    if (ctl.shared) b.style.setProperty('--u', '1');
     b.style.visibility = 'hidden';
     const q = b.getBoundingClientRect();
     b.remove();
@@ -454,8 +612,13 @@ function probeGauge(ctl, stress, resolve) {
   } catch (e) { return null; }
 }
 function stressGauge(ctl, stress, resolve, g) {
-  const b = S.stressBadge(letterWrap(ctl), stress, resolve, ctl.later);
-  if (g) { b.style.left = g.x + 'px'; b.style.top = g.y + 'px'; }
+  const b = S.stressBadge(letterWrap(ctl), stress, resolve, ctl.backdrop ? ctl.later : null);   // the red flash of a broken hero is a backdrop too
+  if (ctl.shared) {
+    b.style.setProperty('--u', '1');
+    const c = g ? toClient(g) : null, z = globalThis.canvas?.stage?.scale?.x || 1;
+    const gk = ctl.gaugeK * (g?.k ?? 1);
+    if (c) { b.style.left = c.x + 'px'; b.style.top = c.y + 'px'; b.style.scale = (gk * z).toFixed(3); pin(ctl, b, { x: g.x, y: g.y }, c, gk); }
+  } else if (g) { b.style.left = g.x + 'px'; b.style.top = g.y + 'px'; if ((g.k ?? 1) < 0.999) b.style.scale = g.k.toFixed(3); }   // shrunk with the block
   ctl.gaugeEl = b;
   return b;
 }
@@ -480,6 +643,9 @@ function addBackdrop(ctl, P, strength, fx) {
   bd.style.background =
     'radial-gradient(circle at 50% 46%, ' + hsl(h + 20, 100, 70, (0.30 * k).toFixed(2)) + ' 0%, ' + hsl(h, 100, 52, (0.22 * k).toFixed(2)) + ' 32%, ' + hsl(h - 28, 90, 10, (0.62 * k).toFixed(2)) + ' 100%)';
   const layerEl = ensureLayer();
+  /* FXLD2 (ADVD2 6): with the Backdrop setting on, the wash still never hides the hero: a clear spot over the rolling token */
+  const hb = ctl.hero ? tokenBox(ctl.hero) : null, hole = hb ? spotMask(hb) : null;
+  if (hole) { bd.style.maskImage = hole; bd.style.webkitMaskImage = hole; }
   layerEl.insertBefore(bd, ctl.el);
   ctl.extras.push(bd);
   if (!reduced) bd.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out', fill: 'backwards' });
@@ -487,12 +653,22 @@ function addBackdrop(ctl, P, strength, fx) {
   if (reduced || !fx) return;
   const ray = document.createElement('div'); ray.className = 'ins-fullrays';
   ray.style.setProperty('--ray', hsl(h + 20, 100, 72, (0.50 * k).toFixed(2)));
-  layerEl.insertBefore(ray, ctl.el);
+  /* the rays turn, so their clear spot is cut by a still wrapper around them (its mask does not turn) */
+  let host = ray;
+  if (hole) { host = document.createElement('div'); host.className = 'ins-raywrap'; host.style.maskImage = hole; host.style.webkitMaskImage = hole; ray.style.position = 'absolute'; host.appendChild(ray); }   // absolute in the fixed wrapper (a fixed child escaped its mask live)
+  layerEl.insertBefore(host, ctl.el);
   ctl.extras.push(ray);
+  if (host !== ray) ctl.extras.push(host);
   {
     ray.animate([{ opacity: 0, transform: 'translate(-50%,-50%) rotate(0deg) scale(.6)' }, { opacity: 1, transform: 'translate(-50%,-50%) rotate(10deg) scale(1)', offset: 0.2 }, { opacity: 1, transform: 'translate(-50%,-50%) rotate(60deg) scale(1)' }],
       { duration: 7000, easing: 'linear', fill: 'forwards' });
   }
+}
+
+/* a CSS mask with a clear ellipse over a client box (the hero), feathered */
+export function spotMask(b) {
+  const cx = Math.round((b.l + b.r) / 2), cy = Math.round((b.t + b.b) / 2), rx = Math.round((b.r - b.l) * 0.75 + 12), ry = Math.round((b.b - b.t) * 0.75 + 12);
+  return `radial-gradient(${rx}px ${ry}px at ${cx}px ${cy}px, transparent 0, transparent 80%, #000 100%)`;
 }
 
 /* Pełny ekran: poświata i obracające się promienie schodzą razem ze słowem, nie dopiero po całym ogonie sceny (finish = hold + 3 s).
@@ -534,7 +710,7 @@ function endCtl(ctl, quick) {
 }
 
 /* tworzy scenę; opts: { token (Token|null), scale } */
-function openStage(opts) {
+function openStage(opts, shared = false) {
   const token = opts.full ? null : (opts.token || null);
   const key = token ? 't:' + token.id : 'screen';
   const old = active.get(key);
@@ -562,7 +738,10 @@ function openStage(opts) {
   el.style.width = W + 'px';
   lay.appendChild(el);
   el.style.setProperty('--u', Math.max(0.4, Math.min(opts.full ? 2.2 : 1.4, W / 760)).toFixed(3));
-  const ctl = { key, el, token, W, extras: [], timers: [], dead: false, pos: token ? POS_TOKEN : POS_SCREEN, userScale: scale };
+  const ctl = { key, el, token, W, extras: [], timers: [], dead: false, pos: token ? POS_TOKEN : POS_SCREEN, userScale: shared ? 1 : scale,
+    hero: opts.token || null, shared, backdrop: !!opts.backdrop };
+  /* FXLD2: a map moment's gauge: scene px per reference px (the gauge is measured at --u 1, the 768 px reference) */
+  if (shared) ctl.gaugeK = GRID_VH * (globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100) / LP.REF_VH;
   ctl.later = (fn, ms) => {
     ctl.timers.push(setTimeout(() => {
       if (ctl.dead) return;
@@ -586,7 +765,7 @@ function playClassic(ev, o) {
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
   const ctl = openStage(full ? { ...o, full: true } : o);
   const stage = ctl.el, later = ctl.later;
-  if (full) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);
+  if (full && o.backdrop) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);   // FXLD2: backdrops opt-in (the owner)
   const holdK = o.hold || 1;
   const hueShift = ev.npc ? 150 : 0;
 
@@ -651,7 +830,7 @@ function playClassic(ev, o) {
     later(() => Array.from(stage.querySelectorAll('.ins-badge')).forEach(S.leaveSlide), hold + 1400);
     if (full) later(() => fadeExtrasEarly(ctl), hold + 300);   // słowo schodzi w hold (520 ms); tło znika zaraz za nim
     stage.appendChild(s); S.popIn(s, 1.05 + 0.55 * P, 5 + 9 * P, rnd); S.idle(s, P, rnd);
-    if (o.fx) S.fxFor(stage, ev.tag ? Math.max(P, 0.32) : P, later, o.fx, full);
+    if (o.fx) S.fxFor(stage, ev.tag ? Math.max(P, 0.32) : P, later, o.fx, full || !o.backdrop);
     if (ev.sixes > 0) later(() => S.sixBadge(stage, ev.sixes), 260);
     if (ev.p != null && ribbon) later(() => S.oddsRibbon(stage, P, ev.p, ev.pushed, ev.tag, !!ev.stress && !ctl.token), 380);
     if (ev.wreckWord) {

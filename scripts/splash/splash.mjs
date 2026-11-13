@@ -260,9 +260,9 @@ export function rays(stage, strength) {
   a.onfinish = () => r.remove();
 }
 /* miękki błysk (radialny, nie pełnoekranowy), maks. jeden na splash */
-export function flash(stage, a) {
+export function flash(stage, a, ms = 420) {
   const f = document.createElement('div'); f.className = 'ins-flash'; stage.appendChild(f);
-  const an = f.animate([{ opacity: Math.min(0.5, a) }, { opacity: 0 }], { duration: 420, easing: 'ease-out' });
+  const an = f.animate([{ opacity: Math.min(0.5, a) }, { opacity: 0 }], { duration: ms, easing: 'ease-out' });
   an.onfinish = () => f.remove();
 }
 export function shake(stage, px) {
@@ -352,22 +352,31 @@ export function stressBadge(stage, stress, resolve, later) {
   const b = document.createElement('div'); b.className = 'ins-badge' + (full ? ' hot' : '');
   const h = document.createElement('div'); h.className = 'bt'; h.textContent = LBL.stress(stress); b.appendChild(h);
   const pe = [];
+  /* FXLD2 (ADVD2 4): the pips ARE the Resolve that is left, like the number beside them ("7 / 9" = seven full pips), one shape for
+     every pip (the old gauge mixed filled diamonds with empty circles): full = left, red = lost on this roll (knocked out in turn),
+     hollow = lost before. Left to right: what is left, what this roll took, what was gone already. */
+  const left = resolve ? Math.max(0, max - lostTotal) : 0;
   if (resolve && drawPips) {
     const pips = document.createElement('div'); pips.className = 'pips';
     for (let i = 0; i < max; i++) {
       const p = document.createElement('i');
-      p.className = 'pip' + (i < lostBefore ? ' on' : (i < lostTotal ? ' new' : ''));
+      p.className = 'pip' + (i < left ? ' left' : (i < max - lostBefore ? ' new' : ' gone'));
       pips.appendChild(p); pe.push(p);
     }
     b.appendChild(pips);
   }
+  /* the count and the note are two lines on purpose (live 1920: "... SHRUGS IT" + "OFF" wrapped by itself) */
   const c = document.createElement('div'); c.className = 'bc';
-  c.textContent = resolve ? LBL.resolve(max - lostTotal, max) + ' · ' + stressNote(lostTotal, max) : say('FEELING THE STRAIN');
+  if (resolve) {
+    const v = document.createElement('span'); v.className = 'bv'; v.textContent = LBL.resolve(left, max);
+    const n = document.createElement('span'); n.className = 'bn'; n.textContent = stressNote(lostTotal, max);
+    c.append(v, n);
+  } else c.textContent = say('FEELING THE STRAIN');
   b.appendChild(c);
   stage.appendChild(b);
   if (reduce) return b;
   b.animate([{ opacity: 0, transform: 'rotate(-4deg) scale(.4)' }, { opacity: 1, transform: 'rotate(-4deg) scale(1.12)', offset: 0.5 }, { opacity: 1, transform: 'rotate(-4deg) scale(1)' }], { duration: 400, fill: 'forwards' });
-  pe.forEach((p, i) => { if (p.classList.contains('new')) p.animate([{ transform: 'scale(0)' }, { transform: 'scale(1.7)', offset: .6 }, { transform: 'scale(1)' }], { duration: 320, delay: 380 + (i - lostBefore) * 130, easing: 'ease-out', fill: 'backwards' }); });
+  pe.forEach((p, i) => { if (p.classList.contains('new')) p.animate([{ transform: 'scale(1)', background: '#fff3f5' }, { transform: 'scale(1.5)', offset: .5 }, { transform: 'scale(1)' }], { duration: 320, delay: 380 + (i - left) * 130, easing: 'ease-out', fill: 'backwards' }); });
   if (full && later) later(() => flash(stage, 0.35), 380 + stress * 130);
   return b;
 }
