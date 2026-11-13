@@ -5,6 +5,10 @@
    WHEN IT RUNS [D]: the world setting `tacticsEnabled` is on AND the module's card initiative is in charge (`tacticsInitiative` on and
    Year Zero Engine: Combat not active). The round driver and the action engine work on one state, so there is no half: without the
    own initiative there is no round for the engine to act in.
+   TACB (the user 2026-11-13): the setting makes tactical combat AVAILABLE; the GM chooses per fight at its start. The combat tab gets a
+   yellow Tactics button above Begin Combat (combat-class.mjs startField): Tactics starts a tactical fight, Begin Combat an ordinary one,
+   which carries no state and so is read as not ours by every part (source.mjs tacticsState), for every user and after a reload. The map's
+   own rule mechanics are handed over only while a tactical fight is on the table (movement.mjs drive). [TACB-1..3 in combat-questions.md]
    - `tacticsEnabled` off (the default): nothing but the settings and an idle api.tactics exists. No Combat class, no socket listener,
      no hook, no executor: the module behaves exactly as before this feature, and the other parts keep reading yze-combat or the core
      tracker through scripts/yze.mjs.
@@ -75,7 +79,7 @@ async function startRunning() {
   Engine.start();
   const Prompts = await import("./ui/prompts.mjs");
   Klass.setEndSceneAsk((combat) => Prompts.sceneEnd(combat));
-  Hooks.on("renderCombatTracker", (app, html) => Klass.surpriseField(app, html));      // ANSG (FXT-10): the GM's surprise attack field
+  Hooks.on("renderCombatTracker", (app, html) => Klass.startField(app, html));      // TACB: the Tactics button above Begin Combat, the surprise attack field (ANSG FXT-10) beside it
   try { ui.combat?.render?.(); } catch { /* not drawn yet */ }
   Store.subscribe(() => Prompts.sync());
   /* the designed surfaces (ui/main.mjs: the action dock and the GM desk); when they cannot start, the minimal dialogs above stay in charge */
@@ -114,7 +118,10 @@ async function startRunning() {
   for (const c of game.combats ?? []) last.set(c.id, rawOf(c));
   Prompts.sync();
   const moveHost = { ...Engine.moveHost(), request: (req) => tacticsApi.request(req) };
-  Mv.install(moveHost); Hooks.on("canvasReady", () => Mv.install(moveHost));      // P3: step listener, the map's rules driver, cost confirmation on a dragged token
+  Mv.install(moveHost); Hooks.on("canvasReady", () => { Mv.install(moveHost); Mv.drive(); });      // P3: step listener, the map's rules driver, cost confirmation on a dragged token
+  /* TACB: the map's rules go to this module only while a tactical fight is on the table (movement.mjs drive) */
+  for (const hk of ["createCombat", "updateCombat", "deleteCombat", "combatStart"]) Hooks.on(hk, () => setTimeout(() => Mv.drive(), 0));
+  Store.subscribe(() => Mv.drive());
   if (Store.iAmExecutor()) {
     if (!Klass.installed()) ui.notifications.warn(t("ITAC.Note.NotInstalled"), { console: false });
     Sys.compat().then((list) => {

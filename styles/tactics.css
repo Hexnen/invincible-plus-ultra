@@ -6,3 +6,12 @@
 #invincible-party .ipt-pip[data-state="lost"] { color: var(--ipt-frame); }
 #invincible-turn-tray .itt-act[data-state="lost"] { opacity: .55; }
 .itac-dialog .itn-never { margin: .15rem 0; }
+/* TACB: the combat tab's start, the GM's choice per fight (scripts/tactics/combat-class.mjs startField). The yellow Tactics button is the
+   kit's main button (styles/kit.css .ipu-btn[data-kind="main"]) on a row of its own, the surprise toggles at its sides; core's Begin
+   Combat (the ordinary fight) keeps its own look on the row below. Only the placing lives here. */
+.combat-sidebar .combat-controls.itac-has-start { flex-wrap: wrap; }
+.combat-sidebar .itac-start { flex: 1 0 100%; display: flex; align-items: center; gap: var(--element-spacing, 8px); padding-bottom: 2px; }
+.combat-sidebar .itac-start .itac-tactics { flex: 1; min-height: var(--sidebar-header-height, 34px); font-size: 15px; letter-spacing: .08em; }
+.combat-sidebar .itac-start .itac-tactics > i { font-size: 14px; }
+.combat-sidebar .itac-start .itac-tactics:focus-visible { outline-color: var(--ipu-ring-ink, #fff); }
+.combat-sidebar .itac-has-start > [data-action="startCombat"] { flex: 1 0 100%; }
