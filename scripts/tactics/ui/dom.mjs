@@ -129,16 +129,22 @@ export function askCard(a, handlers = {}) {
      marks stand for is said in words in the aria-label and, for a stunt, in its tooltip */
   /* U93: the price of an answer is its marks (the model's `o.unit`, `o.out`: an answer to something done by somebody else is taken out
      of turn, `o.stress`); their names are the price line of the answer's tooltip and the words of its aria-label (`o.cost`). */
+  /* ANSI-2: a stepped answer (Tactical Support: one row per ally) gives one more on a click, takes all back on a click when full */
+  const stepClick = (o) => { if (o.step.add) handlers.pick?.(a.id, o.step.add, a.multi?.max ?? 24); else for (const id of o.step.clear ?? []) handlers.pick?.(a.id, id, a.multi?.max ?? 24); };
   const opt = (o) => h("button.ita-opt", {
     /* U83: a greyed answer is as large as the others: the dashed frame and the no-entry mark after its name say "not now", the reason
        and what to do about it are its tooltip (pointer and keyboard focus) and its aria-label; it stays in the Tab order */
     fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.tip ?? null, pv: o.pv, pvFor: a.pvFor,
     attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled, o.tip?.why?.fix].filter(Boolean).join(", ") },
-    data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null },
-    on: { click: () => (a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
+    data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null, step: o.step ? "1" : null },
+    on: { click: () => (o.step ? stepClick(o) : a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
   }, a.check ? icon(o.picked ? "fa-square-check" : "fa-square") : o.icon ? actIcon(o.icon) : null,      // U18: a line of a round-point queue is a tick box: ticked = it happens
   h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(o.unit, { out: !!o.out }), stressChip(o.stress), o.disabled ? h("i.fa-solid.fa-ban.ita-opt-no", { attrs: { "aria-hidden": "true" } }) : null),
-    !o.unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null));
+    !o.unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null),
+  o.marks?.length ? h("span.ita-opt-m", {}, o.marks.map((m) => markOf(m, true))) : null);      // ANSI-1 / ANSI-2: what the row carries (a roll, the dice given) as marks; the words are its aria-label and tooltip
+  /* ANSI-2: the minus of a stepped answer stands BESIDE it (a button in a button is no button), only while there is something to take back */
+  const optRow = (o) => (!o.step ? opt(o) : h("span.ita-stepper", {}, opt(o),
+    o.step.sub ? h("button.ita-less", { fk: `less:${a.id}:${o.id}`, tip: o.step.less, attrs: { "aria-label": o.step.less }, on: { click: () => handlers.pick?.(a.id, o.step.sub, a.multi?.max ?? 24) } }, icon("fa-minus")) : null));
 
   /* U23: the stunts stand in their groups (on the target; another opponent; on that opponent), each group after its caption */
   const groups = [];
@@ -159,8 +165,8 @@ export function askCard(a, handlers = {}) {
         h("b", { text: String(a.count.value), attrs: { "aria-live": "polite" } }),
         h("button", { fk: `cp:${a.id}`, disabled: a.count.value >= a.count.max, attrs: { "aria-label": "+1" }, on: { click: () => handlers.count?.(a.count.id, a.count.value + 1) } }, icon("fa-plus"))),
       h("span.ita-count-of", { text: a.count.of })) : null,
-    groups.length > 1 ? groups.map((g) => h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(opt))))
-      : h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(opt))),
+    groups.length > 1 ? groups.map((g) => h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(optRow))))
+      : h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(optRow))),
     /* U17-2: the GM's own pick of an extra opponent (stunt card on the desk): a select per stunt and target, its first line says what it is */
     a.gmExtra ? h("div.ita-gmx", { tip: a.gmExtra.tip }, a.gmExtra.rows.map((r) => h("select", { fk: r.id, attrs: { "aria-label": r.label }, on: { change: (e, el) => { if (el.value) handlers.gmExtra?.(a.id, el.value, a.multi?.max ?? 24); } } },
       h("option", { text: `${r.label}…`, attrs: { value: "", selected: true } }), r.choices.map((x) => h("option", { text: x.label, attrs: { value: x.id } }))))) : null,

@@ -661,7 +661,16 @@ function peekShow(tile) {
     const lo = scroller.scrollLeft + pad, hi = scroller.scrollLeft + scroller.clientWidth - w - pad;
     const x = Math.max(lo, Math.min(hi, tile.offsetLeft + tile.offsetWidth / 2 - w / 2));
     g.style.left = `${Math.round(x)}px`;
-    g.style.top = `${Math.round(tile.offsetTop + tile.offsetHeight / 2 - h / 2)}px`;
+    let y = tile.offsetTop + tile.offsetHeight / 2 - h / 2;
+    g.style.top = `${Math.round(y)}px`;
+    /* ANSI-3: the peek stays inside the window (at 1366x768 the bar stands at the very top and a peek centred on its tile lost its head
+       to the window's edge): pushed down (or up) by what sticks out, in the bar's own pixels (the bar may be zoomed). Measured while it
+       still stands .15em low (its entrance), so the edge kept is a little more than the 4 px it ends at. */
+    const r = g.getBoundingClientRect(), k = r.height / (h || 1) || 1, edge = 6;
+    const shift = r.top < edge ? edge - r.top : r.bottom > window.innerHeight - edge ? window.innerHeight - edge - r.bottom : 0;
+    if (shift) { y += shift / k; g.style.top = `${Math.round(y)}px`; }
+    /* ANSI-3: the peek says the name, so the tile's name tooltip (which stood over the peek) is put away while it shows */
+    try { if (game.tooltip?.element === tile) game.tooltip.deactivate(); else game.tooltip?.clearPending?.(); } catch { /* no tooltip */ }
     peekEl = g; peekOf = tile;
     requestAnimationFrame(() => g.classList.add("icbar-peek-on"));
   } catch (e) { peekHide(); console.warn(LOG, "peek", e); }
