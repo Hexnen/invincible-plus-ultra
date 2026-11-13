@@ -30,7 +30,13 @@ function mk(id, type, h, r, o = {}) {
 const set = (tok, stat, v, options = {}) => { tok.actor.system.derived[stat].value = v; Hooks.callAll("updateActor", tok.actor, { system: { derived: { [stat]: { value: v } } } }, options); };
 
 /* the engine: a recording stand-in with the contract's surface (the real renderer needs a browser; its own checks are LETR's) */
+const { sizeFor } = await import("../letters/size.mjs");
+const sizeK = (o) => 0.62 + 0.7 * (o?.sound?.loud ?? 0.6);      // the engine's plan.sizeK from the loudness it is handed
+const ctxOf = (o) => ({ space: "world", magnitude: o.magnitude, scale: o.scale ?? 1, tokenSpan: 100, grid: 100, zoom: 1, vw: 1600, vh: 900, sizeK: sizeK(o), aspect: 3 });
+/* the cap height (screen px) the engine's size model gives a play (contract v4), at zoom 1 on a 1x1 token */
+const pxOf = (o) => sizeFor(ctxOf(o)).px;
 const fake = { version: "test", limits: { screen: 16, world: 48 }, ready: async () => true, count: () => 0,
+  sizeOf: (text, o) => { const r = sizeFor(ctxOf(o)); return { ...r, sizeK: sizeK(o) }; },
   play: (text, o) => ({ id: `h${Math.random()}`, hand: "x", alive: true, ready: Promise.resolve(), finished: new Promise((r) => setTimeout(() => r("done"), (o.hold ?? 800) + 400)), stop() {}, moveTo() {} }) };
 globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return this._engine; } };
 const M = await import("../tokenreact/main.mjs");
@@ -50,24 +56,25 @@ const take = async (ms = 1700) => { await sleep(ms); const out = plays.splice(0)
 /* GM seat */
 set(hero, "health", 7);
 let p = await take();
-ck("A1 a hand edit on the sheet: a word at the token and the number", p.length === 2 && p[0].o.space === "world" && p[0].o.at === hero.document && p[1].o.space === "world" && p[1].text === "-1");
+ck("A1 a hand edit on the sheet: a word at the token and the number", p.length === 2 && p[0].o.space === "world" && p[0].o.token === hero.document && typeof p[0].o.at === "function" && p[1].o.space === "world" && p[1].text === "-1");
+const firstHitPx = pxOf(p[0].o);
 ck("A2 the word is a hit word of the client's language", ["ŁUP!", "BACH!", "PAC!", "TRZASK!", "BUCH!", "PAF!"].includes(p[0]?.text));
 set(hero, "health", 3);
 p = await take();
 ck("A3 four at once: heavy (crash), bigger", p[0]?.o.mood === "crash" && p[1]?.text === "-4");
 set(hero, "health", 0);
 p = await take();
-ck("A4 to zero: down (falls)", p[0]?.o.mood === "fail" && p[1]?.text === "-3");
+ck("A4 to zero: down (falls: drops in, falls or droops out; FXLT: a crash, not a sigh)", p[0]?.o.in === "drop" && ["fall", "droop"].includes(p[0]?.o.out) && p[1]?.text === "-3");
 set(hero, "health", 8);
 p = await take();
 ck("A5 up from zero: back (rises)", p[0]?.o.mood === "powerup" && p[1]?.text === "+8");
 set(hero, "resolve", 5);
 p = await take();
 ck("A6 Resolve down: stress in Resolve's colours", p[0]?.o.mood === "pain" && p[1]?.text === "-1" && p[0].o.colors[1] !== "#ffb02e");
-Hooks.callAll("createChatMessage", { speakerActor: hero.actor, rolls: [{}], flavor: "" });
+Hooks.callAll("createChatMessage", { speakerActor: hero.actor, rolls: [{ pushCount: 1 }], flavor: "" });      // FXLT (review 16): a PUSHED roll; any roll card used to do
 set(hero, "resolve", 4);
 p = await take();
-ck("A7 Resolve down right after the own roll: spent, quiet, no number", p.length === 1 && p[0].o.mood === "tick");
+ck("A7 Resolve down right after the own pushed roll: spent, quiet, no number", p.length === 1 && p[0].o.mood === "tick");
 set(hero, "resolve", 6);
 await take();
 
@@ -109,7 +116,7 @@ ck("B4 a player: nothing over a token out of sight", p.length === 0);
 /* a player and an NPC: no secret numbers */
 set(npc, "health", 5);
 p = await take();
-ck("C1 a player: an NPC's hand-edited hit is a word without a number", p.length === 1 && p[0].o.at === npc.document);
+ck("C1 a player: an NPC's hand-edited hit is a word without a number", p.length === 1 && p[0].o.token === npc.document);
 set(npc, "resolve", 4);
 p = await take();
 ck("C2 a player: an NPC's Resolve is not shown", p.length === 0);
@@ -140,7 +147,7 @@ set(boss, "health", 0, { ipuTactics: true });
 Hooks.callAll("invincible-plus-ultra.tactics", { type: "damage", combat: "C", fight: "f", seq: 3, target: "cN", taken: 5 });
 Hooks.callAll("invincible-plus-ultra.tactics", { type: "broken", combat: "C", fight: "f", seq: 4, target: "cN" });
 p = await take();
-ck("D3 a player: Broken announced: down", p[0]?.o.mood === "fail" && p[1]?.text === "-5");
+ck("D3 a player: Broken announced: down", p[0]?.o.in === "drop" && p[0]?.o.mood === "crash" && p[1]?.text === "-5");
 
 /* many at once */
 user.isGM = true;
@@ -148,9 +155,10 @@ const crowd = Array.from({ length: 9 }, (_, i) => mk(`c${i}`, "npc", 6, 6));
 Hooks.callAll("canvasReady");
 for (const [i, t] of crowd.entries()) { set(t, "health", i === 0 ? 0 : 5); await sleep(40); }      // found live: the updates of an area hit arrive one by one, tens of ms apart
 p = await take(2600);
-const words = p.filter((x) => x.o.at?.id && !String(x.text).match(/^[+-]\d/));
-ck("E1 nine at once: two full words (the heaviest among them), the rest numbers, nothing doubled", words.length === 2 && p.length === 11 && words.some((x) => x.o.at.id === "c0"));
-ck("E2 the crowd is smaller than a single hit", words.every((x) => x.o.scale < 1 && !("size" in x.o)));      // contract v4: no fixed size, the engine's model with a smaller scale
+const words = p.filter((x) => x.o.token?.id && !String(x.text).match(/^[+-]\d/));
+ck("E1 nine at once: two full words (the heaviest among them), the rest numbers, nothing doubled", words.length === 2 && p.length === 11 && words.some((x) => x.o.token.id === "c0"));
+ck("E2 the crowd is smaller than a single hit", words.filter((x) => x.o.token.id !== "c0").length === 1 && words.filter((x) => x.o.token.id !== "c0").every((x) => pxOf(x.o) < firstHitPx)      /* c0 fell to 0: a fall is bigger than a hit (FXLT review 5), so the crowd's own hit is compared */
+  && words.every((x) => !("size" in x.o)));      // contract v4: no fixed size, the engine's model with a smaller scale (FXLT: compared as the drawn size; the scale now carries the severity target)
 
 /* switched off */
 values["invincible-plus-ultra.tokenReactEnabled"] = false;

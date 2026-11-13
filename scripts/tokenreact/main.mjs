@@ -6,7 +6,11 @@
        seen the same way, on every seat, with no message sent;
      - what the table was told in public joins the change before it plays: the tactical fight's public events (damage, broken) and the
        system's "Damage Taken" card. A seat that may not read the character gets only that (pure.audience);
-     - a pushed roll's stress is "spent" (the roll's splash already shows the number), stress from an attack is "stress";
+     - a pushed roll's stress is "spent" (the roll's splash already shows the number), stress from an attack is "stress"; only a roll
+       whose stress the character chose counts (pushed, a stress cost; the push's deleted card is its first sign);
+     - FXLT: one reaction per token per moment (Health and Resolve together), sized by how bad it is, placed on the free side of its
+       token and kept inside the view (the interface and the director's letterbox cut it), numbers in one fixed legible hand beside the
+       word, after it has landed, following the token; the seed is the server's stamp of the change, never the values;
      - one moment: changes are gathered for a short while (an area attack, fire at a round start come as one crowd, pure.stage), then
        wait for the 3D dice of a roll in flight (tactics/ui/dicegate.mjs) and the action camera's blow (moment.mjs), as the numbers over
        tokens always did; in a tactical fight these reactions take the numbers' place (owner.mjs).
@@ -27,18 +31,23 @@ const SIZE = { small: 0.8, normal: 1, large: 1.25 };
 /* the tactical fight's public stream (tactics/store.mjs HOOK and, on the executor, HOOK_GM: the same names, checked by sweep-checks/ltok.mjs) */
 const TAC_HOOK = `${MOD}.tactics`, TAC_HOOK_GM = `${MOD}.tacticsGm`;
 const DMG_FLAVOR_KEY = "INVINCIBLE.Chat.DamageInfo.DamageTaken";
-const QUIET = { reader: 260, other: 750, event: 420, max: 1400 };      // ms a change waits for what joins it (a public line comes a moment after)
-const PUSH_MS = 9000;      // a Resolve drop this soon after the character's own roll is that roll's stress
+/* ms a change waits for what joins it (a public line comes a moment after). ONE window for every seat (FXLT, review 15: the reader's
+   shorter window split a fast double change into two reactions where another seat saw one, with another word) */
+const QUIET = { change: 600, event: 420, max: 1400 };
+const PUSH_MS = 9000;      // a Resolve drop this soon after a roll card whose stress the character chose (pushed, a stress cost) is that stress
+const CARD_MS = 2500;      // a Damage Taken card this recent joins a Health loss that arrives after it (review 17: order of messages)
+const LATE_MS = 1800;      // a Damage Taken card arriving after its reaction started still gives it its number, this long
+const QUEUE_MAX = 2600;    // a lighter reaction waits at most this long for a heavier one on the same token
 const SCREEN_WAIT = 650;   // a roll's splash word on screen: the token answers right after it, not on top of it
 
 let started = false, engine = null, warned = false;
 const seen = new Map();      // token id -> { h, hm, r, rm }
 const pending = new Map();   // `${tokenId}|${stat}` -> entry
-const playing = new Map();   // token id -> [handles]
-const lastWord = new Map();  // kind -> the word said last on this seat
-const lastRoll = new Map();  // actor id -> ms of its last roll card
+const playing = new Map();   // token id -> { hs, sev, t0, span, nums, addNumber, done }
+const lastPush = new Map();  // actor id -> ms of its last roll card whose stress was chosen (review 16)
+const cards = new Map();     // actor id -> [{ t, taken, broken, key }] recent Damage Taken cards (review 17)
 const heard = new Set();
-const captioned = new Map();  // token id -> ms: the map's director (moinen-maps) shows a damage caption with the number for this token now
+const captioned = new Map();  // token id -> ms until which the map's director captions this token's damage (number included)
 let timer = 0;
 
 const get = (key, fallback) => { try { return game.settings.get(MOD, key); } catch { return fallback; } };
@@ -69,9 +78,11 @@ function seatOf(tok) {
 function entry(tok, stat) {
   const k = `${tok.id}|${stat}`;
   let e = pending.get(k);
-  if (!e) { e = { k, tokId: tok.id, stat, from: null, to: null, max: null, pub: null, cause: null, opened: Date.now(), due: 0, seed: "" }; pending.set(k, e); }
+  if (!e) { e = { k, tokId: tok.id, actorId: tok.actor?.id ?? null, stat, from: null, to: null, max: null, pub: null, keys: new Set(), cause: null, opened: Date.now(), due: 0, seed: "" }; pending.set(k, e); }
   return e;
 }
+/* the server's stamp of the change: the same on every seat (the seed, review 15 / 18) */
+const stampOf = (tok) => tok?.actor?._stats?.modifiedTime ?? tok?.document?._stats?.modifiedTime ?? "";
 function arm(e, ms) {
   e.due = Math.min(e.opened + QUIET.max, Math.max(e.due, Date.now() + ms));
   clearTimeout(timer);
@@ -88,23 +99,38 @@ function changed(tok, options) {
     if (!now) return;
     seen.set(tok.id, now);
     if (!was || !enabled()) return;
-    const reader = seatOf(tok).reader;
     for (const [stat, a, b, m] of [["health", was.h, now.h, now.hm], ["resolve", was.r, now.r, now.rm]]) {
       if (a === null || b === null || a === b) continue;
       const e = entry(tok, stat);
       if (e.from === null) e.from = a;
       e.to = b; e.max = m;
-      e.seed = `${tok.id}|${stat}|${e.from}|${b}|${tok.actor?._stats?.modifiedTime ?? ""}`;
-      if (stat === "resolve" && b < a && Date.now() - (lastRoll.get(tok.actor?.id) ?? -1e9) < PUSH_MS && !options?.ipuTactics) e.cause = "push";
-      arm(e, reader ? QUIET.reader : QUIET.other);
+      if (!e.evSeed) e.seed = P.seedOf(tok.id, stat, stampOf(tok));      // a fight's event, when one joined, keeps its own key as the seed
+      if (stat === "resolve" && b < a && Date.now() - (lastPush.get(tok.actor?.id) ?? -1e9) < PUSH_MS && !options?.ipuTactics) e.cause = "push";
+      if (options?.ipuTactics) e.tactics = true;
+      /* a Damage Taken card that came BEFORE this loss joins it (review 17) */
+      if (stat === "health" && b < a) for (const c of cards.get(tok.actor?.id) ?? []) if (Date.now() - c.t < CARD_MS && !c.used?.has(tok.id)) { (c.used ??= new Set()).add(tok.id); join(e, c); }
+      arm(e, QUIET.change);
     }
   } catch (err) { once(err); }
 }
+function join(e, add) {
+  if (add.key && e.keys.has(add.key)) return;
+  if (add.key) e.keys.add(add.key);
+  e.pub = { taken: (e.pub?.taken ?? 0) + (add.taken ?? 0), toStress: e.stat === "resolve", broken: !!(e.pub?.broken || add.broken) };
+}
 function told(tok, stat, add) {
   const e = entry(tok, stat);
-  e.pub = { taken: (e.pub?.taken ?? 0) + (add.taken ?? 0), toStress: stat === "resolve", broken: !!(e.pub?.broken || add.broken) };
-  if (!e.seed) e.seed = `${tok.id}|${stat}|${add.key ?? ""}`;
+  join(e, add);
+  /* an event of the fight is the same on every seat: its key is the seed (no values in it) */
+  if (!e.evSeed && add.key) { e.evSeed = true; e.seed = P.seedOf(tok.id, stat, add.key); }
+  if (!e.seed) e.seed = P.seedOf(tok.id, stat, stampOf(tok));
   arm(e, QUIET.event);
+}
+/* a roll whose stress the character chose: a Resolve drop of its actor now or in the next moments is "spent" (review 16) */
+function markPush(actor) {
+  if (!actor?.id) return;
+  lastPush.set(actor.id, Date.now());
+  for (const e of pending.values()) if (e.actorId === actor.id && e.stat === "resolve" && !e.tactics && e.to !== null && e.from !== null && e.to < e.from) e.cause = "push";
 }
 
 /* the tactical fight's public events: damage (taken, toStress) and broken */
@@ -131,22 +157,39 @@ function onMessage(message) {
     if (message.flavor && isLabel(message.flavor, DMG_FLAVOR_KEY)) {
       const line = P.damageLine(message.content);
       if (!line || !enabled()) return;
-      for (const tok of actor.getActiveTokens?.() ?? []) if (pending.has(`${tok.id}|health`)) told(tok, "health", { taken: line.taken, broken: line.broken, key: message.id });
+      const card = { t: Date.now(), taken: line.taken, broken: line.broken, key: message.id };
+      /* whichever comes first, the card or the loss, they meet (review 17): a pending loss takes it now; a loss still to come finds it in
+         `cards`; a reaction already on screen without a number gets the told number late */
+      const list = (cards.get(actor.id) ?? []).filter((c) => Date.now() - c.t < CARD_MS);
+      list.push(card); cards.set(actor.id, list);
+      for (const tok of actor.getActiveTokens?.() ?? []) {
+        if (pending.has(`${tok.id}|health`)) { (card.used ??= new Set()).add(tok.id); told(tok, "health", card); continue; }
+        const pe = playing.get(tok.id);
+        if (pe?.addNumber && Date.now() - pe.t0 < LATE_MS && line.taken > 0) { (card.used ??= new Set()).add(tok.id); pe.addNumber("health", "-", line.taken); }
+      }
       return;
     }
-    if (message.rolls?.length) lastRoll.set(actor.id, Date.now());
+    if (message.rolls?.some?.((r) => P.choseStress(r))) markPush(actor);
   } catch (err) { once(err); }
+}
+/* the push button deletes the pushable card, lowers Resolve, then posts the pushed one: the deletion is the first sign (review 16) */
+function onDeleteMessage(message) {
+  try { if (started && message?.speakerActor && message.rolls?.some?.((r) => r?.pushable === true)) markPush(message.speakerActor); } catch (err) { once(err); }
 }
 
 /* the map's director (moinen-maps, hook "moinenMapsDirector") turns the Damage Taken card into a shot with its own caption ("-4 Health")
-   on the clients that play it: there the token's word stays and its number goes (one change is said once) */
-const DIRECTOR_MS = 5000;
+   on the clients that play it: there the token's word stays and its Health number goes (one change is said once). A shot that starts
+   AFTER the word also takes the number down (review 7) */
+const DIRECTOR_MS = 5000, DIRECTOR_TAIL = 1200;
 function onDirector(kind, data) {
   try {
-    if (kind !== "shot" || data?.shot?.kind !== "damage") return;
-    for (const id of data.shot.tokens ?? []) captioned.set(String(id), Date.now());
+    if (data?.shot?.kind !== "damage") return;
+    const ids = (data.shot.tokens ?? []).map(String);
+    if (kind === "shot") for (const id of ids) { captioned.set(id, Date.now() + DIRECTOR_MS); playing.get(id)?.dropNumbers?.("health"); }
+    else if (kind === "end") for (const id of ids) captioned.set(id, Date.now() + DIRECTOR_TAIL);
   } catch (err) { once(err); }
 }
+const isCaptioned = (id) => Date.now() < (captioned.get(id) ?? 0);
 
 /* ---------- playing ---------- */
 function reduced() {
@@ -159,17 +202,25 @@ function flush() {
     pending.clear();
     if (!ready.length || !enabled() || !canvas?.ready) return;
     const lang = game.i18n?.lang === "pl" ? "pl" : "en";
-    const items = [];
+    /* one moment: every token's changes become ONE reaction (review 4: Health and Resolve of one token in one moment) */
+    const byTok = new Map();
     for (const e of ready) {
       const tok = canvas.tokens?.get(e.tokId);
       if (!tok) continue;
       const c = P.classify({ stat: e.stat, from: e.from, to: e.to, max: e.max, cause: e.cause }) ?? (e.pub ? P.fromEvent(e.pub, e.stat) : null);
       const a = P.audience(seatOf(tok), c, e.pub);
       if (!a.show) continue;
-      const lk = P.look(a, c, lang, e.seed, lastWord.get(a.kind));
+      const lk = P.look(a, c, lang, e.seed);
       if (!lk) continue;
-      lastWord.set(a.kind, lk.word);
-      items.push({ key: e.k, tok, lk, seed: e.seed, sev: P.SEVERITY[a.kind] ?? 0, hasNum: !!lk.number });
+      const got = byTok.get(tok.id) ?? { tok, looks: [], seed: e.seed };
+      got.looks.push(lk);
+      if (P.SEVERITY[lk.kind] >= Math.max(...got.looks.map((x) => P.SEVERITY[x.kind] ?? 0))) got.seed = e.seed;
+      byTok.set(tok.id, got);
+    }
+    const items = [];
+    for (const { tok, looks, seed } of byTok.values()) {
+      const lk = P.combine(looks);
+      items.push({ key: tok.id, tok, lk, seed, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: lk.numbers.length > 0 });
     }
     if (!items.length) return;
     Gate.after(() => land(items));
@@ -182,28 +233,154 @@ async function land(items) {
     /* a roll's splash word on screen right now: the token answers just after it */
     const splashing = () => (L.count?.({ space: "screen" }) ?? 0) > 0 || !!document.querySelector("#invincible-splash-layer .ins-stage");      // the engine's screen words, or the roll splash's own layer
     for (let waited = 0; waited < SCREEN_WAIT && splashing(); waited += 60) await new Promise((r) => setTimeout(r, 60));
-    for (const it of P.stage(items)) if (it.mode !== "none") setTimeout(() => play(L, it), it.delay);
+    /* the whole moment is placed together, heaviest first: each reaction takes the free side of its token (other tokens, the words
+       already placed, the view's edges and the interface count against a side) */
+    const staged = P.stage(items).filter((it) => it.mode !== "none");
+    const placed = [];
+    const others = tokenRects(new Set(staged.map((it) => it.tok.id)));
+    for (const it of staged) {
+      try { it.plan = planOf(L, it); } catch (err) { once(err); it.plan = null; }
+      if (!it.plan) continue;
+      it.plan.slot = view.ok() ? P.chooseSlot(it.plan.tokRect, it.plan.box, view.safe(), [...others.filter((r) => r.id !== it.tok.id), ...placed]) : "above";
+      const c = P.slotPoint(it.plan.slot, it.plan.tokRect, it.plan.box);
+      placed.push({ x: c.x - it.plan.box.w / 2, y: c.y - it.plan.box.h / 2, w: it.plan.box.w, h: it.plan.box.h, k: P.SLOT_K.word });
+    }
+    for (const it of staged) if (it.plan) setTimeout(() => play(L, it), it.delay);
   } catch (err) { once(err); }
 }
-function play(L, it) {
+
+/* ---------- the view in screen px (client px, as getBoundingClientRect): world <-> screen, the safe rect, other tokens ---------- */
+const COVER_SEL = ["#sidebar", "#hotbar", "#players", "#scene-controls", "#controls", "#scene-navigation", "#navigation", "#chat-notifications", "#chat-message",
+  "#ui-bottom #chat-form", "#invincible-tactics-dock", "#invincible-combat-bar", ".mm-cin > div"];
+const view = {
+  at: 0, cache: null,
+  ok: () => !!globalThis.canvas?.stage?.toGlobal && !!canvas.app?.view?.getBoundingClientRect,
+  rect() { const r = canvas.app.view.getBoundingClientRect(); return { l: Math.max(0, r.left), t: Math.max(0, r.top), r: Math.min(globalThis.innerWidth ?? r.right, r.right), b: Math.min(globalThis.innerHeight ?? r.bottom, r.bottom), ox: r.left, oy: r.top }; },
+  /* the safe rect, measured at most every 100 ms (the letterbox bars slide in over ~0.4 s) */
+  safe() {
+    const t = Date.now();
+    if (this.cache && t - this.at < 100) return this.cache;
+    const v = this.rect(), covers = [];
+    for (const sel of COVER_SEL) for (const el of document.querySelectorAll?.(sel) ?? []) {
+      try { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0 && getComputedStyle?.(el)?.visibility !== "hidden") covers.push({ x: r.left, y: r.top, w: r.width, h: r.height }); } catch { /* skip */ }
+    }
+    this.at = t; this.cache = P.safeRect(v, covers);
+    return this.cache;
+  },
+  zoom: () => canvas.stage.scale?.x || 1,
+  toScreen(p) { const v = this.rect(), g = canvas.stage.toGlobal(p); return { x: v.ox + g.x, y: v.oy + g.y }; },
+  toWorld(p) { const v = this.rect(); return canvas.stage.toLocal({ x: p.x - v.ox, y: p.y - v.oy }); },
+  tokRect(tok) { const a = this.toScreen({ x: tok.x, y: tok.y }), z = this.zoom(); return { x: a.x, y: a.y, w: (tok.w ?? 100) * z, h: (tok.h ?? 100) * z }; }
+};
+/* the tokens this seat sees near the moment (their faces count against a side) */
+function tokenRects(skip) {
+  if (!view.ok()) return [];
+  const out = [];
+  try { for (const t of canvas.tokens?.placeables ?? []) if (!skip.has(t.id) && seatOf(t).visible) out.push({ ...view.tokRect(t), id: t.id, k: P.SLOT_K.token }); } catch (err) { once(err); }
+  for (const id of skip) { const t = canvas.tokens?.get(id); if (t && view.ok()) out.push({ ...view.tokRect(t), id, k: P.SLOT_K.token }); }
+  return out;
+}
+
+/* the size of one word on screen (FXLT, review 5): the kind's target, handed to the engine's own model as a scale */
+function scaleFor(L, text, opts, targetPx) {
   try {
-    const tok = it.tok;
+    const s = L.sizeOf?.(text, { ...opts, scale: 1 });
+    const z = view.ok() ? view.zoom() : 1, px0 = s && Number.isFinite(s.natural) && Number.isFinite(s.sizeK) ? s.natural * s.sizeK * z : 0;
+    return px0 > 0 ? Math.max(0.2, Math.min(8, targetPx / px0)) : 1;
+  } catch { return 1; }
+}
+const vh = () => globalThis.innerHeight || 900;
+/* what one reaction draws and where: the cap heights, the scales, the group box (word + numbers + room for the motion) */
+function planOf(L, it) {
+  const tok = it.tok, lk = it.lk;
+  const user = SIZE[get(KEY.size, "normal")] ?? 1;
+  const tokRect = view.ok() ? view.tokRect(tok) : { x: 0, y: 0, w: 100, h: 100 };
+  const tokPx = Math.max(tokRect.w, tokRect.h);
+  const word = it.mode === "full" || it.mode === "mark";
+  const nums = it.mode === "mark" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
+  const cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh()) * user * it.scale : 0;
+  const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
+  const aspect = word ? 0.66 * [...lk.word].length + 0.1 : 0;
+  const rising = ["rise", "grow"].includes(lk.motion.in) || lk.motion.out === "rise";
+  const g = word ? P.group({ cap, aspect, nums: nums.map((n) => n.text), numCap, side: lk.side, up: rising ? 0.6 : 0.4, down: lk.motion.in === "drop" ? 0.3 : 0.2 })
+    : P.group({ cap: numCap, aspect: 0, nums: nums.map((n) => n.text), numCap, side: 0, up: 0.25, down: 0.15 });
+  const z0 = view.ok() ? view.zoom() : 1;
+  const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), ...layer() };
+  const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...lk.motion } : null;
+  if (wordOpts) wordOpts.scale = scaleFor(L, lk.word, wordOpts, cap);
+  const numOpts = nums.map((n, i) => {
+    const o = { ...base, mood: n.mood, sound: n.sound, hand: n.hand, colors: n.colors, magnitude: Math.max(0.3, lk.magnitude * 0.8), seed: `${it.seed}#n${i}`, rotation: word ? -lk.side * 3 : 0, in: n.in, holdKind: "boil", out: n.out };
+    o.scale = scaleFor(L, n.text, o, numCap);
+    return o;
+  });
+  return { tokRect, box: { w: g.w, h: g.h }, g, z0, cap, numCap, nums, wordOpts, numOpts, slot: "above" };
+}
+/* the world point of one member of a reaction's group, every frame: from its token's place now, on the side chosen at the start,
+   pushed into the safe rect while the token is on screen (reviews 1, 7, 14) */
+function follow(tok, plan, member) {
+  let last = null;
+  return () => {
+    try {
+      if (!tok || tok.destroyed || !view.ok()) return last;
+      const k = view.zoom() / plan.z0;
+      const tr = view.tokRect(tok), box = { w: plan.box.w * k, h: plan.box.h * k };
+      let c = P.slotPoint(plan.slot, tr, box);
+      const safe = view.safe(), tcx = tr.x + tr.w / 2, tcy = tr.y + tr.h / 2;
+      if (tcx > safe.l && tcx < safe.r && tcy > safe.t - tr.h * 0.25 && tcy < safe.b) c = P.clampInto(c, box, safe);
+      const off = member < 0 ? plan.g.word : plan.g.nums[member];
+      last = view.toWorld({ x: c.x + off.dx * k, y: c.y + off.dy * k });
+      return last;
+    } catch (err) { once(err); return last; }
+  };
+}
+
+function play(L, it, queued = false) {
+  try {
+    const tok = it.tok, plan = it.plan;
     if (!tok?.scene || tok.scene.id !== canvas.scene?.id || tok.destroyed || !seatOf(tok).visible) return;      // seen again now: the dice or the camera may have held it for seconds
-    /* size: the engine's model (contract v4) from the token, the zoom, the viewport and the magnitude; the user's size and the crowd scale it */
-    const k = (SIZE[get(KEY.size, "normal")] ?? 1) * it.scale, red = reduced();
-    const lk = Date.now() - (captioned.get(tok.id) ?? -1e9) < DIRECTOR_MS && it.mode === "full" ? { ...it.lk, number: null } : it.lk;
-    for (const h of playing.get(tok.id) ?? []) try { h.stop({ quick: false }); } catch { /* gone */ }      // one reaction per token: the new one takes over
-    const hs = [];
-    if (it.mode === "full") hs.push(L.play(lk.word, { mood: lk.mood, sound: lk.sound, space: "world", at: tok.document, magnitude: lk.magnitude, scale: k, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, reduced: red, ...lk.motion, ...layer() }));
-    if (lk.number) {
-      /* the number on a shoulder of the token, just under the word; alone (a crowd) it stands where the word would, bigger (seen live: tiny) */
-      const at = it.mode === "full" ? { x: tok.x + tok.w * (lk.side > 0 ? 0.92 : 0.08), y: tok.y + tok.h * 0.08 } : tok.document;
-      const go = () => { hs.push(L.play(lk.number.text, { mood: lk.number.mood, sound: lk.number.sound, space: "world", at, token: tok.document, anchor: it.mode === "full" ? "center" : undefined, magnitude: lk.number.magnitude, scale: k * (it.mode === "full" ? lk.number.size : 1.25), seed: `${it.seed}#n`, hold: lk.hold, rotation: -Math.sign(lk.rotation || 1) * 4, colors: lk.number.colors, avoid: hs.map((h) => h.hand), reduced: red, in: "pop", out: lk.motion.out === "shatter" || lk.motion.out === "burst" ? "pop" : lk.motion.out, ...layer() })); settle(); };
-      if (it.mode === "full" && !red) setTimeout(() => { if (playing.get(tok.id) === hs) go(); }, 110); else go();
-    } else settle();
-    playing.set(tok.id, hs);
-    /* the token's entry goes when every word of this reaction (the number too) has ended */
-    function settle() { Promise.allSettled(hs.map((h) => h.finished)).then(() => { if (playing.get(tok.id) === hs) playing.delete(tok.id); }); }
+    /* one reaction per token at a time (review 4): a lighter one waits for a heavier one still on screen; an equal or worse one takes over */
+    const pe = playing.get(tok.id);
+    if (pe) {
+      const how = P.overlap(pe.sev, Date.now() - pe.t0, pe.span, it.sev);
+      if (how === "queue" && !queued) { Promise.race([pe.done, new Promise((r) => setTimeout(r, QUEUE_MAX))]).then(() => play(L, it, true)); return; }
+      for (const h of pe.hs) try { h.stop({ quick: false }); } catch { /* gone */ }
+    }
+    const lk = it.lk, hs = [], red = plan.wordOpts?.reduced ?? reduced();
+    const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, nums: [], done: null, addNumber: null, dropNumbers: null };
+    let word = null;
+    playing.set(tok.id, entry);
+    if (plan.wordOpts) { word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1) }); hs.push(word); }
+    /* the numbers come once the word has landed (review 13: a slow entrance let the number arrive first) */
+    const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
+    const numAt = (i) => follow(tok, plan, Math.min(i, plan.g.nums.length - 1));
+    const playNum = (n, o, i) => {
+      if (playing.get(tok.id) !== entry) return;
+      if (n.stat === "health" && isCaptioned(tok.id)) return;      // the director's caption says it now (review 7)
+      const h = L.play(n.text, { ...o, hold: Math.max(500, lk.hold - (word ? entMs * 0.7 : 0)), at: numAt(i) });
+      h.stat = n.stat; hs.push(h); entry.nums.push(h); settle();
+    };
+    const startNums = () => plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], i));
+    if (word && !red && plan.nums.length) {
+      const wait = Promise.race([word.ready ?? Promise.resolve(true), new Promise((r) => setTimeout(r, 600))]);
+      wait.then(() => setTimeout(startNums, Math.min(700, entMs * 0.7)));
+    } else startNums();
+    /* a Damage Taken card arriving late still gives a numberless reaction its told number (review 17) */
+    entry.addNumber = (stat, sign, n) => {
+      if (entry.nums.length || !plan.g.nums || isCaptioned(tok.id)) return;
+      const nl = P.numberLook(stat, sign, n, lk.amt);
+      const o = { space: "world", token: tok.document, anchor: "center", reduced: red, ...layer(), mood: nl.mood, sound: nl.sound, hand: nl.hand, colors: nl.colors, magnitude: Math.max(0.3, lk.magnitude * 0.8), seed: `${it.seed}#late`, rotation: -lk.side * 3, in: nl.in, holdKind: "boil", out: nl.out };
+      o.scale = scaleFor(L, nl.text, o, plan.numCap || plan.cap * P.SIZE_RULE.numK);
+      if (!plan.g.nums.length) { const g = P.group({ cap: plan.cap, aspect: 0.66 * [...lk.word].length + 0.1, nums: [nl.text], numCap: plan.numCap, side: lk.side }); plan.g = g; plan.box = { w: g.w, h: g.h }; }
+      playNum(nl, o, 0);
+    };
+    entry.dropNumbers = (stat) => { for (const h of entry.nums) if (!stat || h.stat === stat) try { h.stop({ quick: false }); } catch { /* gone */ } };
+    settle();
+    /* the token's entry goes when every word of this reaction (the numbers too) has ended */
+    function settle() {
+      const n = hs.length;
+      const p = Promise.allSettled(hs.map((h) => h.finished)).then(() => { if (hs.length === n && playing.get(tok.id) === entry) playing.delete(tok.id); });
+      entry.done = p;
+    }
   } catch (err) { once(err); }
 }
 
@@ -212,7 +389,7 @@ const layer = () => { const v = get(KEY.layer, "overlay"); return { layer: LAYER
 
 /* a word must never outlive what this seat may see: the token deleted, hidden from a player or out of his sight ends its words at once
    (the engine follows a token without asking whether this user sees it) */
-function cut(id) { for (const h of playing.get(id) ?? []) try { h.stop({ quick: true }); } catch { /* gone */ } playing.delete(id); }
+function cut(id) { for (const h of playing.get(id)?.hs ?? []) try { h.stop({ quick: true }); } catch { /* gone */ } playing.delete(id); }
 function recheck() {
   try { for (const id of [...playing.keys()]) { const tok = canvas.tokens?.get(id); if (!tok || !seatOf(tok).visible) cut(id); } } catch (err) { once(err); }
 }
@@ -247,7 +424,8 @@ function registerHooks() {
   Hooks.on("deleteToken", (doc) => { try { cut(doc.id); seen.delete(doc.id); } catch (err) { once(err); } });
   Hooks.on("sightRefresh", () => { if (playing.size) recheck(); });
   Hooks.on("createChatMessage", onMessage);
-  Hooks.on("updateChatMessage", (message) => { try { if (message?.rolls?.length && message.speakerActor) lastRoll.set(message.speakerActor.id, Date.now()); } catch (err) { once(err); } });
+  Hooks.on("updateChatMessage", (message) => { try { if (message?.speakerActor && message.rolls?.some?.((r) => P.choseStress(r))) markPush(message.speakerActor); } catch (err) { once(err); } });
+  Hooks.on("deleteChatMessage", onDeleteMessage);
   Hooks.on("moinenMapsDirector", onDirector);
   Hooks.on(TAC_HOOK, onEvent);
   Hooks.on(TAC_HOOK_GM, onEvent);
