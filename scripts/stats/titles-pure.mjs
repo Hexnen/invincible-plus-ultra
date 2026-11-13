@@ -12,7 +12,7 @@ import * as P from "./pure.mjs";
 
 export const TV = 1;
 export const MIN_ACTS = 4;                 // AWRD-6: a fight of fewer counted actions gets no titles
-export const MAX_SHARE = 3;                // AWRD-2: a full tie shares the title, at most this many holders
+export const MAX_SHARE = 3;                // AWRD-2: a full tie shares the title, at most this many holders (never the MVP: MVP1)
 const pos = (v) => Math.max(0, Math.trunc(Number(v) || 0));
 const HELP = new Set(["heal", "massHeal", "stabilize", "rally", "medicRally", "restore", "cleanse"]);      // what puts somebody else back on their feet
 const FIRE = new Set(["extinguish", "saveBystanders"]);
@@ -20,9 +20,13 @@ const actId = (nm) => String(nm ?? "").split("-").pop();      // a kit action is
 const NO_FOE = new Set(["challenge", "vehicle"]);      // FXQ2: a challenge or a vehicle on the NPC side is no foe to put down
 
 /* the titles in the order the card shows them. side: "h" heroes (the party and friendly NPCs), "n" NPCs.
-   val(g) -> the number it is won with; tie(g) -> the second key; min: the least number that wins it */
+   val(g) -> the number it is won with; tie(g) -> the second key; min: the least number that wins it; one: never shared (more: the further keys,
+   then the combatant id, so a full tie cannot happen). MVP1 (AWRD-2, the user's decision of 2026-11-13: always one MVP; order MVP1-1):
+   the score, fewer own defeats, more hits, more damage dealt, more knockouts, more assists, the earlier first action, the combatant id.
+   Only public facts (gather), so every seat names the same one; the same facts always give the same one (a reload, a recount after an undo) */
 export const TITLES = Object.freeze([
-  { id: "mvp", icon: "fa-crown", side: "h", min: 4, val: (g) => g.mvp, tie: (g) => -g.deaths * 100 + g.hits },
+  { id: "mvp", icon: "fa-crown", side: "h", min: 4, val: (g) => g.mvp, tie: (g) => -g.deaths * 100 + g.hits, one: true,
+    more: [(g) => -g.deaths, (g) => g.hits, (g) => g.dealt, (g) => g.kills + g.minions, (g) => g.assists, (g) => -g.first] },
   { id: "killer", icon: "fa-skull", side: "h", min: 1, val: (g) => g.kills + g.minions, tie: (g) => g.dealt },
   { id: "defender", icon: "fa-shield-halved", side: "h", min: 2, val: (g) => g.armor + 2 * g.blocks, tie: (g) => g.armor },
   { id: "firefighter", icon: "fa-fire-extinguisher", side: "h", min: 1, val: (g) => g.chalSixes + 2 * g.chalWon + 2 * g.fire, tie: (g) => g.chalWon },
@@ -48,7 +52,7 @@ export function gather(rec, facts) {
   const g = new Map(), row = (cid) => {
     if (!cid || !pc[cid]) return null;
     if (!g.has(cid)) g.set(cid, { cid, dealt: 0, dealtHeroes: 0, kills: 0, minions: 0, assists: 0, hits: 0, attacks: 0, armor: 0, blocks: 0, avoided: 0, hitMe: 0,
-      took: 0, chalSixes: 0, chalWon: 0, fire: 0, helps: 0, support: 0, moved: 0, moves: 0, stunts: 0, sixes: 0, dice: 0, ones: 0, pushes: 0, stressPaid: 0, deaths: 0, last: 0, acts: 0, out: pc[cid].out ?? null });
+      took: 0, chalSixes: 0, chalWon: 0, fire: 0, helps: 0, support: 0, moved: 0, moves: 0, stunts: 0, sixes: 0, dice: 0, ones: 0, pushes: 0, stressPaid: 0, deaths: 0, last: 0, acts: 0, first: Infinity, out: pc[cid].out ?? null });
     return g.get(cid);
   };
   /* an action counts as help / firefighting when it was not refused by its own roll: no roll in its instance, or a roll with a six */
@@ -59,7 +63,7 @@ export function gather(rec, facts) {
   for (const x of mine) {
     const a = row(x.ac), o = row(x.oc);
     switch (x.k) {
-      case "act": { acts++; if (!a) break; a.acts++; a.stressPaid += pos(x.st); const k = actId(x.nm); if (HELP.has(k) && worked(x) && !x.sf) a.helps++; if (FIRE.has(k) && worked(x)) a.fire++; break; }
+      case "act": { acts++; if (!a) break; a.acts++; if (Number.isFinite(x.t) && x.t < a.first) a.first = x.t; a.stressPaid += pos(x.st); const k = actId(x.nm); if (HELP.has(k) && worked(x) && !x.sf) a.helps++; if (FIRE.has(k) && worked(x)) a.fire++; break; }
       case "rx": if (a) a.stressPaid += pos(x.st); break;
       case "roll": if (a) { a.dice += pos(x.n); a.sixes += pos(x.s); a.ones += pos(x.b); a.pushes += pos(x.p); } break;
       case "hit": {
@@ -110,7 +114,16 @@ const DETAIL = {
   bag: (g) => ({ out: g.out ? 1 : 0 })
 };
 
-/** The titles of one fight. -> { titles: [{ id, c, a, n, d? }], meta: { v, small? } } */
+/* the order of a title that is never shared (MVP1): every key the higher first (Infinity-safe), then the combatant id by code units (no locale) */
+const desc = (x, y) => (x === y ? 0 : x > y ? -1 : 1);
+const byId = (a, b) => (a === b ? 0 : a < b ? -1 : 1);
+const rankOne = (T) => (a, b) => desc(T.val(a), T.val(b)) || (T.more ?? []).reduce((r, k) => r || desc(k(a), k(b)), 0) || byId(String(a.cid), String(b.cid));
+/* MVP1: a fight stored before may hold a shared MVP: it is shown with one, the same on every seat (chosen among the holders a player may
+   see, by the numbers stored with them, then the combatant id). A recount (titles.mjs: a recent fight) stores one anyway */
+const STORED_MVP = [(x) => x.n, (x) => x.d?.dealt, (x) => x.d?.kills, (x) => x.d?.assists, (x) => x.d?.helps, (x) => x.d?.chal];
+const storedOrder = (a, b) => STORED_MVP.reduce((r, k) => r || desc(pos(k(a)), pos(k(b))), 0) || byId(String(a.c), String(b.c));
+
+/** The titles of one fight. ->{ titles: [{ id, c, a, n, d? }], meta: { v, small? } } */
 export function award(rec, facts) {
   if (!rec?.f) return { titles: [], meta: { v: TV, small: 1 } };
   const { rows, acts } = gather(rec, facts);
@@ -119,8 +132,8 @@ export function award(rec, facts) {
   for (const T of TITLES) {
     const cands = [...rows.values()].filter((g) => pc[g.cid] && !pc[g.cid].hid && pc[g.cid].s === T.side && T.val(g) >= T.min);
     if (!cands.length) continue;
-    cands.sort((a, b) => T.val(b) - T.val(a) || T.tie(b) - T.tie(a));
-    const top = cands[0], win = cands.filter((g) => T.val(g) === T.val(top) && T.tie(g) === T.tie(top));
+    cands.sort(T.one ? rankOne(T) : (a, b) => T.val(b) - T.val(a) || T.tie(b) - T.tie(a));
+    const top = cands[0], win = T.one ? [top] : cands.filter((g) => T.val(g) === T.val(top) && T.tie(g) === T.tie(top));
     if (win.length > MAX_SHARE) continue;      // AWRD-2: a title everybody shares is no title
     for (const g of win.sort((a, b) => String(pc[a.cid].n).localeCompare(String(pc[b.cid].n)))) {
       const d = DETAIL[T.id]?.(g);
@@ -135,7 +148,12 @@ export const sameTitles = (rec, got) => JSON.stringify(rec?.titles ?? []) === JS
 /** the titles a viewer may see: never a GM-only one (v) nor one of somebody hidden (the statistics' own rule, model.mjs) */
 export function shown(rec, viewer) {
   const gm = viewer?.gm === true, pc = rec?.pc ?? {};
-  return (Array.isArray(rec?.titles) ? rec.titles : []).filter((x) => x && TITLE_IDS.includes(x.id) && (gm || (!x.v && (!x.c || (pc[x.c] && !pc[x.c].hid)))));
+  const pub = (x) => !x.v && (!x.c || (pc[x.c] && !pc[x.c].hid));
+  const all = (Array.isArray(rec?.titles) ? rec.titles : []).filter((x) => x && TITLE_IDS.includes(x.id) && (gm || pub(x)));
+  const mvps = all.filter((x) => x.id === "mvp");
+  if (mvps.length < 2) return all;
+  const one = (mvps.some(pub) ? mvps.filter(pub) : mvps).sort(storedOrder)[0];      // MVP1: never two MVPs, the same one for the GM and a player
+  return all.filter((x) => x.id !== "mvp" || x === one);
 }
 
 /** One line of a title in words. t(key, params) = the statistics' strings (lang.mjs IPU.Awrd.*) */

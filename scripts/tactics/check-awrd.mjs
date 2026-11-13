@@ -109,7 +109,9 @@ const base = [
   /* an NPC's Armor never reaches a title: N1 had 3 on Armor, no title shows it */
   ok(!r.titles.some((x) => x.c === "N1" && x.id === "defender"), "C: an NPC's Armor is never counted (Defender is a hero's)");
   /* the stored titles a player may see */
-  const stored = { ...rec, titles: [...r.titles, { id: "mvp", c: "NH", a: "A_NH", n: 1 }, { id: "killer", c: "H2", v: 1, n: 1 }], tm: r.meta };
+  /* MVP1: the hidden one's stored title was a second MVP; since the user's decision (AWRD-2, 2026-11-13) nobody, the GM included, is shown two
+     MVPs (check-mvp1 checks that), so the hidden one's title here is another one: the check still says the GM gets every other stored title */
+  const stored = { ...rec, titles: [...r.titles, { id: "nemesis", c: "NH", a: "A_NH", n: 1 }, { id: "killer", c: "H2", v: 1, n: 1 }], tm: r.meta };
   ok(!TP.shown(stored, { gm: false }).some((x) => x.c === "NH" || x.v), "C: a player never gets a GM-only title or one of somebody hidden");
   eq(TP.shown(stored, { gm: true }).length, r.titles.length + 2, "C: the GM gets every stored title");
 }

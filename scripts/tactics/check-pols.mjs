@@ -31,11 +31,14 @@ const rec = { f: "C_f", c: "C", t0: 1, t1: 2, pc, tm: { v: 1 }, titles: [
 {
   const v = SP.titlesView(rec, { gm: false }, en, (cid) => (cid === "H2" ? { mine: true } : null));
   eq(v.state, "ok", "A: (the titles are there)");
-  eq([v.mvp.who.map((w) => w.n), v.mvp.shared, v.mvp.names], [["Anna", "Bolek"], true, "Anna & Bolek"], "A: a shared MVP is ONE banner with both holders");
-  eq(v.mvp.why, en("IPU.Awrd.why.mvp", { n: 9 }), "A: the holders' lines differ: the title's own line with the number they share");
+  /* MVP1 (AWRD-2, the user's decision of 2026-11-13): the MVP is never shared; a record stored with two is shown with one (Anna: more damage) */
+  eq([v.mvp.who.map((w) => w.n), v.mvp.shared, v.mvp.names], [["Anna"], false, "Anna"], "A: a stored shared MVP is ONE banner with ONE holder (MVP1)");
+  eq(v.mvp.why, "6 damage · 1 knockout", "A: ... with that holder's own line");
+  eq(SP.titlesView(rec, { gm: true }, en).mvp.names, "Anna", "A: ... the same one for the GM");
   eq(v.list.map((g) => [g.id, g.who.length]), [["killer", 2], ["defender", 1], ["nemesis", 1]], "A: one line per title, in the titles' order; a hidden NPC's title never shows to a player");
   eq(v.list[0].why, en("IPU.Awrd.why.killer", { n: 2 }), "A: the same line for every holder is said once");
-  eq([v.mvp.mine, v.list[0].mine, v.list[1].mine], [true, true, false], "A: a title one of your own characters holds is marked yours");
+  eq([v.mvp.mine, v.list[0].mine, v.list[1].mine], [false, true, false], "A: a title one of your own characters holds is marked yours (Bolek's MVP share is gone: MVP1)");
+  eq(SP.titlesView(rec, { gm: false }, en, (cid) => (cid === "H1" ? { mine: true } : null)).mvp.mine, true, "A: your own MVP is marked yours");
   eq(v.count, 4, "A: four entries (seven stored titles: two shared, one hidden)");
   eq(SP.titlesView(rec, { gm: true }, en).list.map((g) => g.id), ["killer", "defender", "nemesis", "lucky"], "A: the GM also sees the hidden NPC's");
   eq(SP.joinNames(["A", "B", "C"]), "A, B & C", "A: three holders in one line");
