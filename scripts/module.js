@@ -1832,6 +1832,12 @@ import("./tokenhalo/main.mjs")
   .then((halo) => halo.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | token halo not loaded (everything else is unaffected)`, err));
 
+/* TOKEN REACTIONS (scripts/tokenreact/, LTOK): a token answers a change of its Health or Resolve with comic lettering on the map (the
+   shared engine, scripts/letters/; client settings "Token reactions: ..."). Same mechanism and recorded phases as above. */
+import("./tokenreact/main.mjs")
+  .then((react) => react.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | token reactions not loaded (everything else is unaffected)`, err));
+
 /* PARTY CARDS (scripts/party/, styles/party.css): slide-out cards of the player characters on the viewed scene at the bottom left (client
    setting "Party: display" Hidden / Peek / Full). Same mechanism and recorded phases as the blocks above. */
 import("./party/main.mjs")

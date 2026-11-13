@@ -21,6 +21,7 @@ import * as TP from "../../stats/titles-pure.mjs";
 import * as SP from "../../stats/show-pure.mjs";      // POLS: the titles grouped, the reveal's clock, the lift over windows
 import { setVar } from "./vars.mjs";
 import { t as st } from "../../stats/lang.mjs";
+import * as Owner from "../../tokenreact/owner.mjs";      // LTOK: while token reactions run on this client they letter the losses and "Broken"
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics feedback) |`;
 const SUM_KEY = `${MOD}.tactics.sum`, DONE_KEY = `${MOD}.tactics.sumDone`;
@@ -184,6 +185,7 @@ function flush(combatId) {
       const blow = blowOf(list, f.target, f.loss ? "damage" : "outcome");
       if (f.hit && sameBlow(lossAt[f.target], blow, at)) continue;      // the number of THIS blow already stood there (a later, separate blow still gets its "Hit")
       if (f.loss) lossAt[f.target] = { at, blow };
+      if (Owner.claims(f)) continue;      // LTOK: the token's comic reaction says this loss (or "Broken"): one change is said once
       const k = n.get(f.target) ?? 0; n.set(f.target, k + 1);
       setTimeout(() => {
         try {
