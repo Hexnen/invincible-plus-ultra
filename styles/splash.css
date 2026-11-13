@@ -98,7 +98,9 @@
    moment into this wrapper; fixed at inset 0, so client px are its px (the layer's clip and z-index hold for it too). The Resolve gauge
    stays a DOM gauge, its number is lettered just above it, so the gauge's own header line goes. */
 .ins-letters { position: fixed; inset: 0; pointer-events: none; }
-.ins-stage.lettered .ins-badge .bt { display: none; }
+/* FXLD: the Resolve gauge is part of the composed block (stage.mjs places it beside its lettered number, client px) */
+.ins-letters .ins-badge { position: absolute; transform-origin: top left; max-width: min(26vw, 340px); }
+.ins-letters .ins-badge .bt { display: none; }
 /* LDIC: the display layer (setting "Splash: Layer"): the HTML part of the moment (gauge, rays, backdrop) follows the lettering engine's
    screen layers (contract v3: hud z 5, ui z 80); with a layer on the map it sits under the bars and windows too */
 #invincible-splash-layer[data-layer="ui"] { z-index: 80; clip-path: none; }

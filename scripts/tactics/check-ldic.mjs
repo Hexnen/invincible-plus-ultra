@@ -79,17 +79,17 @@ const plan = (e, o = {}) => LP.planMoment(e, { W: 746, ...o });
   ok(by(plan(ev({ n: 6, sixes: 4 })), "six").size > by(plan(ev({ n: 6, sixes: 1 })), "six").size, "more sixes, bigger figure");
   eq(LP.planStress(2).colors, LP.STRESS_COLORS, "the stress number is blood red");
   eq(LP.planStress(2).mood, "pain", "... and hurts (mood pain)");
-  ok(/\n/.test(by(plan(pushed), "odds").text), "a pushed roll's odds say PUSH on a second line");
+  ok(/ - PUSH$/.test(by(plan(pushed), "odds").text), "a pushed roll's odds say PUSH after the figure (FXLD: one caption row)");
 
-  /* fits: inside the stage, readable sizes, at 1366 and 1920 (stage widths of stage.mjs) */
-  for (const [W, token] of [[746, false], [900, false], [470, true], [660, true], [1260, false]]) {
+  /* fits: readable sizes, held long enough (FXLD: the stage-percent positions went; where things go is composeMoment's, pinned in
+     check-fxld.mjs: inside the free window, nothing overlapping, at 1366 and 1920, token near every edge) */
+  for (const token of [false, true]) {
     for (const e of [good, bad, crit, routine, rare, pushed, pushedMiss, wreck]) {
-      const p = LP.planMoment(e, { W, token, dF: 0.8 });
+      const p = LP.planMoment(e, { token, dF: 0.8 });
       for (const it of p.items) {
-        ok(it.maxWidth > 0 && it.maxWidth <= W, `W=${W}${token ? " token" : ""} ${it.role}: fits the stage width`);
-        ok(it.at[0] - (it.maxWidth / W) * 50 >= -3 && it.at[0] + (it.maxWidth / W) * 50 <= 103, `W=${W}${token ? " token" : ""} ${it.role} (${it.at[0]}%, ${it.maxWidth}px): stays within the stage sideways`);
-        ok(it.size >= 14, `W=${W} ${it.role}: cap height ${it.size} px readable`);
-        ok(it.hold >= 300, `W=${W} ${it.role}: holds long enough to be read`);
+        ok(it.wMax > 0 && it.wMax <= 0.8 && it.cap > 0, `${token ? "token" : "screen"} ${it.role}: a width share and a cap height`);
+        ok(it.size >= 14, `${it.role}: cap height ${it.size} px readable`);
+        ok(it.hold >= 300, `${it.role}: holds long enough to be read`);
       }
     }
   }
@@ -169,10 +169,11 @@ async function run(W, H, fn) {
       eq(L.calls.map((c) => c.o.seed), ["MSG1:word", "MSG1:six", "MSG1:say", "MSG1:odds", "MSG1:stress"], `${W}: one L.play per lettering, in order, seeded by the message`);
       ok(L.calls.every((c) => c.o.space === "screen" && c.o.parent === ctl.lw && ctl.lw.parent?.attrs["aria-hidden"] === "true"), `${W}: drawn into the moment's wrapper inside the aria-hidden splash layer`);
       ok(L.calls.every((c) => c.o.at.x >= 0 && c.o.at.x <= W - 300 && c.o.at.y >= 0 && c.o.at.y <= H), `${W}x${H}: every lettering is placed on screen, left of the chat (${JSON.stringify(L.calls.map((c) => c.o.at))})`);
-      ok(L.calls.every((c) => c.o.at.x + c.o.maxWidth / 2 <= W - 300 + 40), `${W}: nothing reaches far under the chat`);
+      ok(L.calls.every((c) => c.o.at.x + c.o.maxWidth / 2 <= W - 300 + 2), `${W}: nothing reaches under the chat (FXLD: was 40 px slack)`);
       eq(L.calls[1].o.avoid, [L.calls[0].h.hand], `${W}: the sixes look different from the word (avoid = the word's hand)`);
       eq(L.calls[0].o.reduced, false, `${W}: full motion handed on`);
-      ok(L.calls.every((c) => c.o.hold > 0 && c.o.size == null && c.o.magnitude >= 0 && c.o.scale > 0 && c.o.mood), `${W}: hold, magnitude, role scale and mood given; no fixed size (the engine's size model sizes from the viewport)`);
+      /* FXLD: the composition measures every box, so the size is exact (fit "exact"); the magnitude still goes along */
+      ok(L.calls.every((c) => c.o.hold > 0 && c.o.fit === "exact" && c.o.size > 0 && c.o.magnitude >= 0 && c.o.mood), `${W}: hold, magnitude, exact size and mood given (the layout knows every box)`);
       ok(L.calls[1].o.in === "slam" && L.calls[1].o.out === "pop", `${W}: the motion technique reaches the engine`);
       ok(L.calls.some((c) => c.o.seed === "MSG1:stress" && /\+2/.test(c.text)), `${W}: the stress number is lettered`);
       /* a second client: the same message letters the same */
@@ -207,7 +208,7 @@ async function run(W, H, fn) {
       flush(50000);
       const w0 = L6.calls[0];
       ok(w0 && w0.o.space === "world" && w0.o.layer === "tokens" && !w0.o.parent, `${W}: layer "on the map: over tokens": the words go to the canvas (world space, the engine's tokens layer)`);
-      ok(w0 && w0.o.size == null && w0.o.magnitude > 0 && w0.o.at.x > 100, `${W}: ... in scene coordinates, sized by the engine (grid, token, zoom, magnitude)`);
+      ok(w0 && w0.o.fit === "exact" && w0.o.size > 0 && w0.o.magnitude > 0 && w0.o.at.x > 100, `${W}: ... in scene coordinates and scene px (FXLD: the block zooms as one)`);
       eq(document.body.children.find((c) => c.attrs?.["aria-hidden"] === "true")?.dataset?.layer, "tokens", `${W}: the layer knows its setting`);
       Stage.setLayer("ui");
       const L7 = fakeEngine(); Stage.setLetters(L7);
@@ -239,23 +240,27 @@ async function run(W, H, fn) {
     for (const it of [...plan(e).items, LP.planStress(1)]) for (const k of Object.keys(MOT)) if (it[k]) ok(MOT[k].includes(it[k]), `${it.role}: ${k} "${it[k]}" is one of the engine's motions`);
 }
 
-/* ================================================================== (a3) the size model (contract v4): magnitude + role scale -> cap heights */
+/* ================================================================== (a3) sizes: cap heights from the viewport (FXLD: the composition sizes
+   every lettering itself, exactly, from the viewport height; the engine's size model is no longer asked, see check-fxld.mjs) */
 {
-  const Z = await import("../letters/size.mjs");
-  const px = (it, vw, vh) => Z.sizeFor({ space: "screen", magnitude: it.magnitude, scale: it.scale, vw: vw - 300, vh, sizeK: 1, aspect: Math.max(2, LP.letterable(it.text).length * 0.6) }).px;
+  const px = (it, vw, vh, full = false) => {
+    const safe = { l: 60, t: 40, r: vw - 300, b: vh - 80 };
+    const lay = LP.composeMoment([it], { vh, safe, focus: { x: (vw - 300) / 2, y: vh * 0.42 }, token: null });
+    return lay.items[0].S;
+  };
   for (const [vw, vh] of [[1366, 768], [1920, 1080]]) {
     for (const e of [ev({ n: 6, sixes: 1 }), ev({ n: 6, sixes: 3 }), ev({ n: 4, sixes: 4 }), ev({ n: 12, sixes: 0 }), ev({ n: 6, sixes: 0 }), ev({ n: 1, sixes: 0 })]) {
-      const p = LP.planMoment(e, { W: vw === 1366 ? 746 : 900 });
+      const p = LP.planMoment(e, {});
       const w = by(p, "word"), six = by(p, "six"), odds = by(p, "odds");
       if (six) ok(px(w, vw, vh) > px(six, vw, vh), `${vw}: the word (${px(w, vw, vh).toFixed(0)} px) over the sixes (${px(six, vw, vh).toFixed(0)} px)`);
       if (odds) ok(px(six ?? w, vw, vh) >= px(odds, vw, vh), `${vw}: the sixes over the odds`);
       for (const it of p.items) ok(px(it, vw, vh) >= 15, `${vw}x${vh} ${it.role}: legible (${px(it, vw, vh).toFixed(0)} px)`);
     }
-    const crit = by(LP.planMoment(ev({ n: 4, sixes: 4 }), { W: 746 }), "word"), routine = by(LP.planMoment(ev({ n: 6, sixes: 1 }), { W: 746 }), "word");
+    const crit = by(LP.planMoment(ev({ n: 4, sixes: 4 }), { full: true }), "word"), routine = by(LP.planMoment(ev({ n: 6, sixes: 1 }), {}), "word");
     ok(px(crit, vw, vh) > 1.8 * px(routine, vw, vh), `${vw}: a critical word is far bigger than a routine one (${px(crit, vw, vh).toFixed(0)} vs ${px(routine, vw, vh).toFixed(0)} px)`);
   }
-  const at = (vw, vh) => px(by(LP.planMoment(ev({ n: 6, sixes: 3 }), { W: 746 }), "word"), vw, vh);
-  ok(Math.abs(at(1366, 768) - by(LP.planMoment(ev({ n: 6, sixes: 3 }), { W: 746 }), "word").size / (746 / 760)) < 3, "at 1366x768 the word is the designed size");
+  const at = (vw, vh) => px(by(LP.planMoment(ev({ n: 6, sixes: 3 }), {}), "word"), vw, vh);
+  ok(Math.abs(at(1366, 768) - by(LP.planMoment(ev({ n: 6, sixes: 3 }), {}), "word").size) < 3, "at 1366x768 the word is the designed size");
   ok(at(1920, 1080) > at(1366, 768) * 1.3, "a bigger window, a bigger moment");
   eq([LP.magnitudeOf({ role: "word" }, ev({ n: 4, sixes: 4 })) > 1, LP.magnitudeOf({ role: "word" }, ev({ n: 1, sixes: 0 })) <= 0.1], [true, true], "magnitude: a crit over 1, a routine miss near 0");
 }
@@ -300,7 +305,7 @@ async function run(W, H, fn) {
   ok(iPlay > 0 && ["visibleToMe(message)", "cs('others')", "waitDice(message)", "Moment.verdict", "resolveToken(message)"].every((k) => m.lastIndexOf(k, iPlay) > m.indexOf("hook('createChatMessage'")), "the lettered moment comes after every rule of who sees it (visible, others, dice, verdict, token)");
   ok(/resolve, seed: id\n/.test(m) && /resolve, seed: message\.id \}\);/.test(m), "the seed is the message id (the same lettering on every client)");
   ok(/L\.design\?\.\('A'\)\?\.stub === true/.test(m) && /Stage\.setLetters\(stub \|\| !cs\('lettering'\) \? null : L\)/.test(m), "the stub engine (no renderer) and the setting off leave the classic splash");
-  ok(/if \(LE\) return playLetters\(ev, o\);/.test(st), "Stage.play letters when the engine is there");
+  ok(/if \(lettersOn\(\)\) return playLetters\(ev, o\);/.test(st), "Stage.play letters when the engine is there (and its master switch is on)");
   ok(!/game\.|message\./.test(st.slice(st.indexOf("function playLetters"), st.indexOf("function stressLettered"))), "the lettered stage reads nothing of the message or the game (only the event and the Resolve reader it is handed)");
   for (const L of [SLang.EN, SLang.PL]) ok(["Name", "Hint", "screen", "ui", "hud", "overlay", "weather", "tokens", "ground"].every((k) => L[`INSPLASH.Settings.Layer.${k}`]), "the layer setting and its seven choices (the engine's layers) are named in both languages");
   ok(m.includes("client('layer', {") && /client\('layer', \{[^\n]*default: 'screen'/.test(m) && m.includes("Stage.setLayer(cs('layer'))"), "the layer setting (client) defaults to over everything and is applied at ready");

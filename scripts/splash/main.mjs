@@ -81,7 +81,7 @@ function registerSettings() {
 }
 
 /* Etykiety informacyjne plakietek (szansa, stres, Resolve) z INSPLASH.Badge.*; brak klucza = angielski domyślnik z logic.mjs.
-   Słowa-SFX (HAYMAKER!, WHAM!...) i napis SIXES zostają angielskie (decyzja projektu); zdania wstęgi i notki stresu (UNLIKELY HERO!,
+   Słowa-SFX (HAYMAKER!, WHAM!...) zostają angielskie (decyzja projektu; liczba szóstek od FXLD w języku stołu); zdania wstęgi i notki stresu (UNLIKELY HERO!,
    SHAKEN...) idą w języku stołu z INSPLASH.Say.* (UXB, D129: to nie dźwięki, mówią coś o wyniku). */
 function applyLabels() {
   try {
@@ -91,6 +91,8 @@ function applyLabels() {
     if (has('INSPLASH.Badge.Push')) o.push = game.i18n.localize('INSPLASH.Badge.Push');
     if (has('INSPLASH.Badge.Stress')) o.stress = n => F('INSPLASH.Badge.Stress', { n });
     if (has('INSPLASH.Badge.Resolve')) o.resolve = (now, max) => F('INSPLASH.Badge.Resolve', { now, max });
+    /* FXLD (ADVD 8): the sixes are a count, not a sound: in the table's language like the odds ("2 SZÓSTKI" next to "1 NA 9") */
+    if (has('INSPLASH.Live.Six.other')) o.six = n => sixesText(n).toLocaleUpperCase(game.i18n.lang || 'en');
     o.words = Object.fromEntries(Object.values(SAYS).filter(k => has('INSPLASH.Say.' + k)).map(k => [k, game.i18n.localize('INSPLASH.Say.' + k)]));      // UXB (D129)
     setLabels(o);
   } catch (e) { /* zostają domyślne angielskie etykiety */ }

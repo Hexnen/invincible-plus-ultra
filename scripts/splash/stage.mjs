@@ -31,7 +31,7 @@ export function measureArea() {
 /* zmiana rozmiaru okna / zwinięcie paska: przelicz obszar i przestaw trwające sceny przy tokenach */
 export function refreshArea() {
   measureArea();
-  for (const ctl of active.values()) if (ctl.token) placeTokenStage(ctl);
+  for (const ctl of active.values()) if (ctl.token && !ctl.lw) placeTokenStage(ctl);
 }
 
 function ensureLayer() {
@@ -101,13 +101,19 @@ function placeTokenStage(ctl) {
   } catch (e) { /* płótno niegotowe: zostaje ostatnia pozycja */ }
 }
 export function onCanvasPan() {
-  for (const ctl of active.values()) if (ctl.token) { placeTokenStage(ctl); moveLetters(ctl); }
+  for (const ctl of active.values()) {
+    if (ctl.lw) followPan(ctl);                 // FXLD: the lettered block follows its token / the scene
+    else if (ctl.token) placeTokenStage(ctl);
+  }
 }
 
 /* ------------------------------------------------------------------ LDIC: the lettered moment (LETR engine, scripts/letters/)
    The engine is handed in by main.mjs once it is loaded; null (not loaded yet, the stub without a renderer, or the setting off) = the
    classic SVG splash below. Every lettering of a moment goes into one wrapper inside the splash layer (fixed, inset 0: client px are
-   the wrapper's px, the layer's clip keeps it off the chat and its z-index over the sheets; aria-hidden like the rest). */
+   the wrapper's px, the layer's clip keeps it off the chat and its z-index over the sheets; aria-hidden like the rest).
+   FXLD: the moment is laid out as ONE block (letter-plan.mjs composeMoment): every lettering measured from the engine's own plan of
+   that word, placed by the token or on the focus, kept inside the free part of the window, nothing overlapping; the sizes are exact
+   (fit "exact": the layout knows every box), the engine's own Scale setting and ours both enlarge it and the layout counts both. */
 let LE = null;
 export function setLetters(engine) { LE = engine || null; }
 /* the display layer (client setting splashLayer), the engine's layers (contract v3):
@@ -115,7 +121,8 @@ export function setLetters(engine) { LE = engine || null; }
    ui, hud = the engine's screen layers: over the bars and under the windows / over the map and under the bars;
    overlay, weather, tokens, ground = ON the map (the engine's world space: the words pan and zoom with the scene), over the whole
    scene / over the weather and smoke / over the tokens / on the ground under the tokens.
-   The rest of the moment (the Resolve gauge, the rays) stays HTML: over everything with "screen", under the windows otherwise. */
+   The rest of the moment (the Resolve gauge, the rays) stays HTML: over everything with "screen", under the windows otherwise; on the
+   map it follows the pan (FXLD, ADVD 13). */
 export const SCREEN_LAYERS = ['screen', 'ui', 'hud'], WORLD_LAYERS = ['overlay', 'weather', 'tokens', 'ground'];
 let LAYER = 'screen';
 export function setLayer(v) {
@@ -123,59 +130,132 @@ export function setLayer(v) {
   if (layer) layer.dataset.layer = LAYER;
 }
 export function layerOf() { return LAYER; }
-const WORLD_SCALE = 1.4;   // the role scales are made for the screen model; on the map a word for a token's square is 0.55 squares at scale 1
 function toScene(p) {
   try { const r = canvas.app.view.getBoundingClientRect(), q = canvas.stage.toLocal({ x: p.x - r.left, y: p.y - r.top }); return { x: Math.round(q.x), y: Math.round(q.y) }; } catch (e) { return null; }
 }
-export function lettersOn() { return !!LE; }
-function clientAt(ctl, at) {
-  const r = ctl.el.getBoundingClientRect();
-  return { x: Math.round(r.left + (at[0] / 100) * r.width), y: Math.round(r.top + (at[1] / 100) * r.height) };
+function toClient(q) {
+  try { const r = canvas.app.view.getBoundingClientRect(), g = canvas.stage.toGlobal(q); return { x: r.left + g.x, y: r.top + g.y }; } catch (e) { return null; }
 }
-function tokenClient(token) {
-  try { const g = canvas.stage.toGlobal(token.center), r = canvas.app.view.getBoundingClientRect(); return { x: Math.round(r.left + g.x), y: Math.round(r.top + g.y) }; } catch (e) { return null; }
+/* FXLD (ADVD 14): the engine's master switch (TOOL, contract v6) off = its words never show: then the classic splash plays */
+export function lettersOn() { return !!LE && LE.prefs?.enabled !== false; }
+const onMap = () => WORLD_LAYERS.includes(LAYER) && !!globalThis.canvas?.ready;
+
+/* ---- the frame of a moment: the free part of the window, the token's box, the focus point (client px) */
+/* the bars the block keeps off: the left tool column, the scene bar on top, and at the bottom the hotbar, the players list and the
+   tactics bars docked there (the replay pill of the log). Only a bar that really sits at that edge counts. */
+export const UI_LEFT = ['#scene-controls', '#controls'];
+export const UI_TOP = ['#scene-navigation', '#navigation'];
+export const UI_BOTTOM = ['#hotbar', '#players', '.ilg-replay', '.ilg-bar', '#ilg-replay'];
+function boxOf(sel) {
+  try {
+    for (const e of document.querySelectorAll(sel)) {
+      const q = e.getBoundingClientRect();
+      if (q && q.width > 0 && q.height > 0) return q;
+    }
+  } catch (e) { /* a selector this Foundry does not know */ }
+  return null;
 }
-function moveLetters(ctl) {
-  for (const it of ctl.letters || []) { try { if (it.h.alive && !it.world) it.h.moveTo(clientAt(ctl, it.at)); } catch (e) { /* the engine dropped it */ } }
+export function safeRect() {
+  measureArea();
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let l = 12, t = 10, r = area.w - 14, b = vh - 10;
+  for (const s of UI_LEFT) { const q = boxOf(s); if (q && q.left < vw * 0.15 && q.right < vw * 0.2) l = Math.max(l, q.right + 8); }
+  for (const s of UI_TOP) { const q = boxOf(s); if (q && q.top < vh * 0.15 && q.bottom < vh * 0.25) t = Math.max(t, q.bottom + 6); }
+  for (const s of UI_BOTTOM) { const q = boxOf(s); if (q && q.top > vh * 0.6 && q.left < area.w) b = Math.min(b, q.top - 8); }
+  if (b - t < vh * 0.45) { t = 10; b = vh - 10; }   // a strange layout: the whole height rather than a slit
+  return { l, t, r, b };
 }
+function tokenBox(token) {
+  try {
+    const d = token.document, gs = canvas.grid?.size ?? 100;
+    const x0 = token.x ?? d.x, y0 = token.y ?? d.y, w = token.w ?? (d.width ?? 1) * gs, h = token.h ?? (d.height ?? 1) * gs;
+    const a = toClient({ x: x0, y: y0 }), c = toClient({ x: x0 + w, y: y0 + h });
+    if (!a || !c) return null;
+    return { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2, l: a.x, t: a.y, r: c.x, b: c.y };
+  } catch (e) { return null; }
+}
+/* the box of each lettering: the engine's own plan of that word (the same seed, avoid and hand as the play), so the layout knows
+   its real width; the estimate when the engine cannot plan it */
+function measureItems(items, base) {
+  const hands = [];
+  for (const it of items) {
+    const o = engineOpts(it, base, hands);
+    it._o = o;
+    let m = null;
+    try {
+      const r = LE.planFor ? LE.planFor(LP.letterable(it.text), o) : null;
+      const p = r?.plan ?? (LE._plan ? (() => { const q = LE._plan(LP.letterable(it.text), o); LE._settle?.(q); return q; })() : null);
+      if (p?._holdBox?.w > 0 && p.sizeK > 0) m = { w: p._holdBox.w, h: p._holdBox.h, sizeK: p.sizeK, hand: p.hand?.id };
+    } catch (e) { m = null; }
+    if (!m) { let k = 0.62 + 0.7 * (it.sound?.loud ?? 0.5); try { k = LE.design(LP.letterable(it.text), o)?.sizeK ?? k; } catch (e) { /* estimate */ } const b = LP.estimateBox(it, 1); m = { w: b.w, h: b.h, sizeK: k, hand: null }; }
+    it._m = m;
+    if (m.hand) hands.push(m.hand);
+  }
+}
+const measureFn = (it, S) => (it._m ? { w: it._m.w * S, h: it._m.h * S } : LP.estimateBox(it, S));
+function engineOpts(it, base, hands) {
+  const o = {
+    mood: it.mood, sound: it.sound, hold: it.hold, rotation: it.rotation || 0, reduced: S.isReduced(), magnitude: it.magnitude,
+    seed: LP.seedOf(base.seed, it.role), avoid: hands.slice(), anchor: 'center'
+  };
+  if (Number.isFinite(base.from) && it.from != null) o.from = base.from;
+  else if (Number.isFinite(it.from)) o.from = it.from;
+  if (it.colors) o.colors = it.colors.slice();
+  if (it.hand) o.hand = { ...it.hand };
+  for (const k of ['in', 'out', 'holdKind']) if (it[k]) o[k] = it[k];
+  return o;
+}
+const SIDE_FROM = { above: 90, below: -90, right: 180, left: 0, focus: 90 };
+/* compose: measure, lay out, and (when the block had to go below or beside the token) measure again with the sound coming from there */
+function compose(ctl, items, extra = {}) {
+  const vh = window.innerHeight, k = Number(LE?.prefs?.scale) > 0 ? Number(LE.prefs.scale) : 1;
+  const frame = { vh, scale: (ctl.userScale || 1) * k, safe: safeRect(), token: ctl.token ? tokenBox(ctl.token) : null,
+    focus: { x: area.cx, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
+  let side = 'above', out = null;
+  for (let pass = 0; pass < 2; pass++) {
+    measureItems(items, { seed: ctl.seed, from: ctl.token ? SIDE_FROM[side] : null });
+    out = LP.composeMoment(items, frame, measureFn);
+    if (!ctl.token || out.side === side) break;
+    side = out.side;
+  }
+  out.k = k;
+  return out;
+}
+
 function letterWrap(ctl) {
   if (ctl.lw?.isConnected) return ctl.lw;
   const w = document.createElement('div'); w.className = 'ins-letters';
+  w.style.setProperty('--u', String(Math.max(0.7, Math.min(1.6, window.innerHeight / 768)).toFixed(3)));
   ensureLayer().appendChild(w);
   ctl.lw = w; ctl.letters = []; ctl.hands = [];
   ctl.el.classList.add('lettered');
   return w;
 }
-/* one lettering of the plan (letter-plan.mjs) -> L.play; seed = message id + role, so every client letters it alike */
-function letterOne(ctl, it, seedBase) {
+/* one placed lettering (composeMoment item) -> L.play; seed = message id + role, so every client letters it alike */
+function letterOne(ctl, it) {
   if (!LE || ctl.dead) return null;
   const lw = letterWrap(ctl);
-  const from = it.from === 'token' ? (ctl.token ? tokenClient(ctl.token) : null) : it.from;
-  const opts = {
-    /* size: the engine's model (contract v4) from the moment's magnitude and the role's scale (times the Scale setting), following the
-       viewport and clamped to a legible range; maxWidth keeps each word inside its part of the stage */
-    space: 'screen', parent: lw, at: clientAt(ctl, it.at), anchor: 'center', magnitude: it.magnitude, scale: it.scale * (ctl.userScale || 1), maxWidth: it.maxWidth,
-    mood: it.mood, sound: it.sound, hold: it.hold, rotation: it.rotation || 0, reduced: S.isReduced(),
-    seed: LP.seedOf(seedBase, it.role), avoid: ctl.hands.slice()
-  };
-  if (from != null) opts.from = from;
-  if (it.colors) opts.colors = it.colors.slice();
-  for (const k of ['in', 'out', 'holdKind']) if (it[k]) opts[k] = it[k];
+  const o = { ...(it._o ?? engineOpts(it, { seed: ctl.seed }, ctl.hands)) };
+  o.avoid = [...new Set([...(o.avoid ?? []), ...ctl.hands])];   // the hands measured first are the real ones; the played ones join (a set: same choice)
+  const sizeK = it._m?.sizeK || 1, k = ctl.k || 1;
+  Object.assign(o, { space: 'screen', parent: lw, at: { x: it.x, y: it.y }, fit: 'exact', size: Math.round((it.S / (sizeK * k)) * 100) / 100,
+    maxWidth: Math.ceil(it.w * 1.06) });
   /* the engine's own screen layers (under the windows): its layer, not our wrapper */
-  if (LAYER === 'ui' || LAYER === 'hud') { delete opts.parent; opts.layer = LAYER; }
-  /* on the map: scene coordinates; the engine sizes from the grid, the token and the zoom (and keeps it legible) */
-  if (WORLD_LAYERS.includes(LAYER) && globalThis.canvas?.ready) {
-    const at = toScene(opts.at), k = canvas.stage.scale.x || 1;
+  if (LAYER === 'ui' || LAYER === 'hud') { delete o.parent; o.layer = LAYER; }
+  /* on the map: scene coordinates and scene px, the same block (it zooms as one: ADVD 7, the odds no longer run into the sentence) */
+  let world = false;
+  if (onMap()) {
+    const at = toScene(o.at), z = canvas.stage.scale.x || 1;
     if (at) {
-      Object.assign(opts, { space: 'world', layer: LAYER, at, maxWidth: it.maxWidth / k, scale: opts.scale * WORLD_SCALE });
-      if (ctl.token) opts.token = ctl.token;
-      delete opts.parent;
-      if (from && typeof from === 'object') opts.from = toScene(from) ?? undefined;
+      Object.assign(o, { space: 'world', layer: LAYER, at, size: Math.round((o.size / z) * 100) / 100, maxWidth: Math.ceil(o.maxWidth / z) });
+      if (ctl.token) o.token = ctl.token;
+      delete o.parent;
+      world = true;
     }
   }
   try {
-    const h = LE.play(LP.letterable(it.text), opts);
-    ctl.letters.push({ h, at: it.at, role: it.role, world: opts.space === 'world', own: !!opts.parent });
+    const h = LE.play(LP.letterable(it.text), o);
+    ctl.letters.push({ h, base: { ...o.at }, role: it.role, world, own: !!o.parent });
     if (h?.hand) ctl.hands.push(h.hand);
     return h;
   } catch (e) { console.warn('invincible-plus-ultra (splash) | lettering failed', e); return null; }
@@ -185,34 +265,128 @@ function stopLetters(ctl, quick) {
   const lw = ctl.lw;
   if (lw) setTimeout(() => lw.remove(), quick ? 0 : 900);
 }
+/* FXLD (ADVD 12): the shake of a strong hit reaches the words on every layer: each word is moved through the engine (moveTo, the
+   contract) in a stepped, decaying jolt (one picture per 42 ms, like the engine's own stepped clock), and the gauge with them */
+const SHAKE = [[-1, 0.5], [1, -0.6], [-0.7, -0.2], [0.6, 0.4], [-0.35, 0.15], [0.2, -0.1], [0, 0]];
+export function shakeLetters(ctl, px) {
+  if (['reduced', 'gentle'].includes(LE?.prefs?.motion)) return;   // the engine's own Motion setting asks for calm too
+  px = Math.min(px, 12);
+  const z = onMap() ? (canvas.stage.scale.x || 1) : 1;
+  SHAKE.forEach(([sx, sy], i) => ctl.later(() => {
+    for (const it of ctl.letters || []) {
+      if (!it.h?.alive || !it.base) continue;
+      const k = it.world ? 1 / z : 1, off = ctl.offset ?? { x: 0, y: 0 };
+      try { it.h.moveTo({ x: it.base.x + (off.x + sx * px) * k, y: it.base.y + (off.y + sy * px) * k }); } catch (e) { /* the engine dropped it */ }
+    }
+    if (ctl.gaugeEl) ctl.gaugeEl.style.translate = `${Math.round(sx * px)}px ${Math.round(sy * px)}px`;
+  }, i * 42));
+}
+/* the block follows its token (screen layers) or the scene (map layers: the words pan by themselves, the HTML parts follow) */
+function followPan(ctl) {
+  if (ctl.dead) return;
+  if (ctl.sceneAnchor) {
+    const c = toClient(ctl.sceneAnchor);
+    if (!c) return;
+    const dx = Math.round(c.x - ctl.clientAnchor.x), dy = Math.round(c.y - ctl.clientAnchor.y);
+    for (const x of [ctl.gaugeEl, ...(ctl.extras || []).filter(e => e.classList?.contains('ins-fullrays')), ctl.el]) if (x) x.style.translate = `${dx}px ${dy}px`;
+    return;
+  }
+  if (!ctl.token || !ctl.tokenAnchor) return;
+  const tb = tokenBox(ctl.token);
+  if (!tb) return;
+  ctl.offset = { x: Math.round(tb.x - ctl.tokenAnchor.x), y: Math.round(tb.y - ctl.tokenAnchor.y) };
+  for (const it of ctl.letters || []) { try { if (it.h.alive && !it.world) it.h.moveTo({ x: it.base.x + ctl.offset.x, y: it.base.y + ctl.offset.y }); } catch (e) { /* gone */ } }
+  if (ctl.gaugeEl) ctl.gaugeEl.style.translate = `${ctl.offset.x}px ${ctl.offset.y}px`;
+}
+/* FXLD (ADVD 9): Dice So Nice raises its dice canvas over the windows (its "auto" mode climbs with the windows' z-index), so the dice
+   still lying on the table covered the lettering for 1-2 s: our layer goes just over the dice canvas (never over tooltips) */
+const DICE_CANVAS = 'dice-box-canvas';
+export function overDice() {
+  try {
+    const lay = ensureLayer();
+    if (LAYER !== 'screen') { lay.style.zIndex = ''; return; }
+    const c = document.getElementById(DICE_CANVAS);
+    const z = c ? parseInt(getComputedStyle(c).zIndex, 10) : NaN;
+    lay.style.zIndex = Number.isFinite(z) && z >= 5000 ? String(Math.min(9990, z + 1)) : '';
+  } catch (e) { /* no dice, no change */ }
+}
 
 function playLetters(ev, o) {
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
   const ctl = openStage(full ? { ...o, full: true } : o);
   const stage = ctl.el, later = ctl.later, holdK = o.hold || 1;
+  ctl.seed = o.seed ?? null; ctl.full = full;
   letterWrap(ctl);
+  overDice();
   if (full) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);
   const dF = LP.failStrength(ev);
-  const plan = LP.planMoment(ev, { W: ctl.W, token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
-  const seed = o.seed ?? null;
-  for (const it of plan.items) later(() => letterOne(ctl, it, seed), it.delay);
+  const plan = LP.planMoment(ev, { token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const word = plan.items.find(it => it.role === 'word');
   const t0 = word?.delay ?? 0;
+  /* the stress row and its gauge belong to the block (measured once, shown at its time) */
+  const resolve = ev.stress ? (o.resolve ? o.resolve() : null) : null;
+  let gauge = null;
+  if (ev.stress) {
+    plan.items.push({ ...LP.planStress(ev.stress, { holdK, reduced: S.isReduced() }), delay: t0 + 560 });
+    gauge = probeGauge(ctl, ev.stress, resolve);
+  }
+  const lay = compose(ctl, plan.items, gauge ? { gauge } : {});
+  ctl.k = lay.k; ctl.rect = lay.rect;
+  ctl.tokenAnchor = ctl.token ? tokenBox(ctl.token) : null;
+  /* the rays, the flash and the sparks centre on the word */
+  const wp = lay.items.find(it => it.role === 'word');
+  if (wp) { stage.style.left = wp.x + 'px'; stage.style.top = (wp.y + 0.04 * stage.clientWidth) + 'px'; }
+  if (onMap()) { ctl.clientAnchor = { x: (lay.rect.l + lay.rect.r) / 2, y: (lay.rect.t + lay.rect.b) / 2 }; ctl.sceneAnchor = toScene(ctl.clientAnchor); }
+  let first = true;
+  for (const it of lay.items) {
+    later(() => {
+      if (it.role === 'stress') stressGauge(ctl, ev.stress, resolve, lay.gauge);
+      const h = letterOne(ctl, it);
+      /* FXLD (ADVD 14): the engine switched off under us (its master switch) -> the classic splash instead of rays with no word */
+      if (first && h && (h.off === true || (h.alive === false && LE?.prefs?.enabled === false))) { endCtl(ctl, true); playClassic(ev, o); }
+      first = false;
+    }, it.delay);
+  }
   /* the old splash's surroundings stay: rays, the soft flash, the shake and the sparks of a strong result; the shake of a rare miss */
-  if (!ev.fail && o.fx) later(() => { S.fxFor(stage, ev.tag ? Math.max(ev.power, 0.32) : ev.power, later, o.fx, full); if (!S.isReduced() && ev.power > 0.45) S.shake(ctl.lw, Math.round(4 + 12 * ev.power)); }, t0 + 60);
-  if (ev.fail && !ev.softFail && dF > 0.3 && o.fx && !S.isReduced()) later(() => S.shake(ctl.lw, 4 + Math.round(8 * dF)), t0 + 380);
-  if (ev.stress) later(() => stressLettered(ctl, ev.stress, o.resolve ? o.resolve() : null, holdK, seed), t0 + 450);
+  if (!ev.fail && o.fx) later(() => { S.fxFor(stage, ev.tag ? Math.max(ev.power, 0.32) : ev.power, later, o.fx, full); if (!S.isReduced() && ev.power > 0.45) shakeLetters(ctl, Math.round(4 + 8 * ev.power)); }, t0 + 60);
+  if (ev.fail && !ev.softFail && dF > 0.3 && o.fx && !S.isReduced()) later(() => shakeLetters(ctl, 4 + Math.round(6 * dF)), t0 + 380);
   const wordEnd = word ? word.delay + word.hold : plan.end;
   if (full) later(() => fadeExtrasEarly(ctl), wordEnd + 300);
   const badgesEnd = ev.stress ? t0 + 450 + Math.round(2600 * holdK) + 200 : 0;
-  later(() => Array.from(stage.querySelectorAll('.ins-badge')).forEach(S.leaveSlide), Math.max(wordEnd, badgesEnd - 200));
+  later(() => { if (ctl.gaugeEl) S.leaveSlide(ctl.gaugeEl); }, Math.max(wordEnd, badgesEnd - 200));
   later(() => endCtl(ctl, false), Math.max(plan.end, badgesEnd) + 800);
   return ctl;
 }
-/* the stress: the Resolve gauge stays a DOM gauge (pips, the line under it), its number is lettered beside it */
+/* the Resolve gauge: a DOM gauge (pips, the line under it) inside the block, beside its lettered number. Measured first (a hidden
+   copy), so the block leaves room for it. */
+function probeGauge(ctl, stress, resolve) {
+  try {
+    const lw = letterWrap(ctl);
+    const b = S.stressBadge(lw, stress, resolve, null);
+    b.style.visibility = 'hidden';
+    const q = b.getBoundingClientRect();
+    b.remove();
+    return q && q.width > 0 ? { w: Math.ceil(q.width), h: Math.ceil(q.height) } : null;
+  } catch (e) { return null; }
+}
+function stressGauge(ctl, stress, resolve, g) {
+  const b = S.stressBadge(letterWrap(ctl), stress, resolve, ctl.later);
+  if (g) { b.style.left = g.x + 'px'; b.style.top = g.y + 'px'; }
+  ctl.gaugeEl = b;
+  return b;
+}
+/* the stress after Accept: its own small block (number + gauge) right under the moment that is still up, else by the token */
 function stressLettered(ctl, stress, resolve, holdK, seed) {
-  S.stressBadge(ctl.el, stress, resolve, ctl.later);
-  letterOne(ctl, LP.planStress(stress, { W: ctl.W, token: !!ctl.token, holdK, reduced: S.isReduced() }), seed);
+  const it = { ...LP.planStress(stress, { holdK, reduced: S.isReduced() }) };
+  const gauge = probeGauge(ctl, stress, resolve);
+  ctl.seed ??= seed;
+  const r = ctl.rect;
+  const lay = compose(ctl, [it], { ...(gauge ? { gauge } : {}), ...(r ? { token: null, focus: { x: (r.l + r.r) / 2, y: r.b + 0.05 * window.innerHeight } } : {}) });
+  ctl.k = lay.k;
+  const p = lay.items[0];
+  if (p) p._o = { ...p._o, seed: seed ?? p._o?.seed };
+  stressGauge(ctl, stress, resolve, lay.gauge);
+  if (p) letterOne(ctl, p);
 }
 
 /* tło pełnoekranowe: poświata w kolorze wyniku i promienie na cały widok; nigdy nie zasłania całkiem mapy */
@@ -319,7 +493,10 @@ function openStage(opts) {
 /* Odtwarza zdarzenie.
    o: { rnd, token, scale, hold (mnożnik czasu), fx (0/1), resolve: () => ({now,max}) | null, label } */
 export function play(ev, o) {
-  if (LE) return playLetters(ev, o);   // LDIC: lettered by the comic lettering engine; the classic splash below when it is not there
+  if (lettersOn()) return playLetters(ev, o);   // LDIC: lettered by the comic lettering engine; the classic splash below when it is not there (or its master switch is off)
+  return playClassic(ev, o);
+}
+function playClassic(ev, o) {
   const rnd = o.rnd || Math.random;
   /* rzadszy sukces (moc >= próg) dostaje pełny ekran; porażki i rutyna nie */
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
@@ -418,9 +595,10 @@ export function playStress(ev, o) {
   const joined = !!existing && !existing.dead;
   const ctl = joined ? existing : openStage(o);
   const stage = ctl.el;
-  if (LE) ctl.later(() => stressLettered(ctl, ev.stress, o.resolve ? o.resolve() : null, o.hold || 1, o.seed != null ? o.seed + ':late' : null), 100);
+  if (lettersOn()) ctl.later(() => stressLettered(ctl, ev.stress, o.resolve ? o.resolve() : null, o.hold || 1, o.seed != null ? o.seed + ':late' : null), 100);
   else ctl.later(() => S.stressBadge(stage, ev.stress, o.resolve ? o.resolve() : null, ctl.later), 100);
   ctl.later(() => Array.from(stage.querySelectorAll('.ins-badge')).forEach(S.leaveSlide), 3400 * (o.hold || 1));
+  if (ctl.lw) ctl.later(() => Array.from(ctl.lw.querySelectorAll('.ins-badge')).forEach(S.leaveSlide), 3400 * (o.hold || 1));
   if (!joined) ctl.later(() => endCtl(ctl, false), 4000 * (o.hold || 1));
   return ctl;
 }

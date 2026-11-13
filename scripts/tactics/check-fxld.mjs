@@ -1,0 +1,228 @@
+/* node scripts/tactics/check-fxld.mjs -- fixer FXLD (2026-11-13): the dice-roll splash as ONE composed comic moment (findings of the
+   blind review ADVD, tagged for the caller). Every check here failed on the builder's version (tactics-ldic ff7c4c8) and passes now:
+     F3  nothing is clipped by the window, also with the token at any edge of the view (1366x768, 1920x1080);
+     F4  the sentence and the odds are a caption row right under the word, off the hotbar and the bars at the bottom;
+     F5  the critical is the biggest thing on screen again (about 60 % of the free width), its sentence light enough to read on its rays;
+     F7  nothing of one moment overlaps (screen and map layers alike; the map block zooms as one), the push grunt is gone before the word;
+     F8  the sixes in the table's language ("2 SZÓSTKI"); the odds keep the decimal point (the user's ruling: "1 NA 2.5");
+     F9  the lettering goes over Dice So Nice's dice canvas;
+     F12 the shake of a strong hit reaches the words on every layer (through the engine's moveTo);
+     F13 on a map layer the HTML parts (gauge, rays) follow the pan;
+     F14 the engine's master switch off -> the classic splash (no rays without words); the engine's Scale setting is counted by the layout.
+   The user ruled that finding 1 (the splash words are not onomatopoeia) is NOT a defect: those words keep their purpose; pinned below. */
+import { ok, eq, done } from "./testkit.mjs";
+import * as SL from "../splash/logic.mjs";
+import * as LP from "../splash/letter-plan.mjs";
+
+const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
+const ev = (rd, rng = seq([0.1, 0.5, 0.9, 0.3])) => SL.buildEvent({ newSixes: 0, rerolled: 0, pushed: false, stress: 0, action: "slugfest", ...rd }, { rng, st: null, dryN: 0 });
+const has = (name) => typeof LP[name] === "function";
+
+/* ---------------------------------------------------------------- a fake page: DOM, bars, Dice So Nice canvas, the canvas */
+function fakeDom(W, H, ui = {}) {
+  const mk = (tag) => {
+    const e = { tag, children: [], parent: null, dataset: {}, attrs: {}, className: "", textContent: "",
+      style: { _p: {}, setProperty(k, v) { this._p[k] = v; }, getPropertyValue(k) { return this._p[k] ?? ""; } },
+      get classList() { const self = this; return { add: (...c) => { const s = new Set(self.className.split(" ").filter(Boolean)); c.forEach((x) => s.add(x)); self.className = [...s].join(" "); }, contains: (c) => self.className.split(" ").includes(c) }; },
+      setAttribute(k, v) { this.attrs[k] = v; }, appendChild(c) { c.parent = this; this.children.push(c); return c; }, append(...cs) { cs.forEach((c) => this.appendChild(c)); },
+      insertBefore(c) { return this.appendChild(c); }, prepend(c) { return this.appendChild(c); },
+      remove() { if (this.parent) this.parent.children = this.parent.children.filter((x) => x !== this); this.parent = null; },
+      get isConnected() { let p = this; while (p.parent) p = p.parent; return p === doc.body; },
+      animate() { return { onfinish: null, cancel() {} }; }, getAnimations: () => [], querySelectorAll() { return []; }, querySelector() { return null; },
+      get clientWidth() { return parseFloat(this.style.width) || 0; },
+      getBoundingClientRect() {
+        if (this.className.includes("ins-badge")) return { left: 0, top: 0, width: 150, height: 60, right: 150, bottom: 60 };
+        const w = parseFloat(this.style.width) || 0, h = w * 0.6;
+        const cx = parseFloat(this.style.left) || W / 2, cy = parseFloat(this.style.top) || H / 2;
+        return { left: cx - w / 2, top: cy - h / 2, width: w, height: h, right: cx + w / 2, bottom: cy + h / 2 };
+      } };
+    return e;
+  };
+  const rects = {
+    "#sidebar": { left: W - 300, top: 0, width: 300, height: H, right: W, bottom: H },
+    "#hotbar": { left: W * 0.3, top: H - 64, width: 520, height: 56, right: W * 0.3 + 520, bottom: H - 8 },
+    "#scene-controls": { left: 0, top: 40, width: 48, height: H - 200, right: 48, bottom: H - 160 },
+    ...(ui.pill ? { ".ilg-replay": { left: W * 0.28, top: H - 120, width: 420, height: 30, right: W * 0.28 + 420, bottom: H - 90 } } : {})
+  };
+  const el = (r) => ({ getBoundingClientRect: () => r });
+  const dice = mk("canvas"); dice.style.zIndex = String(ui.diceZ ?? 6200);
+  const doc = { body: mk("body"), createElement: mk, createTextNode: (t) => ({ textContent: t }), createElementNS: (_, t) => mk(t),
+    getElementById: (id) => (id === "sidebar" ? el(rects["#sidebar"]) : id === "dice-box-canvas" && ui.diceZ !== null ? dice : null),
+    querySelector: () => null, querySelectorAll: (s) => (rects[s] ? [el(rects[s])] : []) };
+  globalThis.getComputedStyle = (e) => ({ zIndex: e.style.zIndex ?? "auto" });
+  return doc;
+}
+/* the fake engine plans like the real one would be measured: a hold box from the letters, the sizeK of the loudness */
+function fakeEngine(o = {}) {
+  const calls = []; let n = 0;
+  const box = (text) => { const lines = String(text).split("\n"); return { w: 0.6 * Math.max(...lines.map((l) => l.length)) + 0.3, h: 1.2 * lines.length + 0.1 }; };
+  const L = { calls, prefs: o.prefs ?? { enabled: true, scale: 1 },
+    planFor: (text, op) => ({ plan: { _holdBox: box(text), sizeK: 0.62 + 0.7 * (op.sound?.loud ?? 0.5), hand: { id: `hand-${op.seed}` } }, opts: op }),
+    design: (text, op) => ({ sizeK: 0.62 + 0.7 * (op.sound?.loud ?? 0.5) }),
+    play(text, op) {
+      const off = L.prefs.enabled === false;
+      const h = { id: "h" + ++n, hand: `hand-${op.seed ?? n}`, alive: !off, off, stops: [], moves: [], stop(x) { h.alive = false; h.stops.push(x); }, moveTo(a) { h.moves.push(a); }, ready: Promise.resolve(!off), finished: new Promise(() => {}) };
+      calls.push({ text, o: op, h }); return h;
+    } };
+  return L;
+}
+/* the drawn box of a call in client px (the engine draws S = size x engine scale x sizeK px per unit; world: x zoom) */
+function drawn(c, L, zoom = 1, toClient = (p) => p) {
+  const lp = L.planFor(c.text, c.o).plan, k = L.prefs.scale || 1, S = c.o.size * k * lp.sizeK * (c.o.space === "world" ? zoom : 1);
+  const w = Math.min(lp._holdBox.w * S, (c.o.maxWidth ?? Infinity) * (c.o.space === "world" ? zoom : 1)), h = lp._holdBox.h * S;
+  const at = c.o.space === "world" ? toClient(c.o.at) : c.o.at;
+  return { role: c.o.seed?.split(":").pop(), x: at.x, y: at.y, w, h, S };
+}
+async function run(W, H, ui, fn) {
+  globalThis.document = fakeDom(W, H, ui);
+  globalThis.window = { innerWidth: W, innerHeight: H, matchMedia: () => ({ matches: false }) };
+  const timers = [];
+  globalThis.setTimeout = (f, ms) => { timers.push({ f, ms }); return timers.length; };
+  globalThis.clearTimeout = () => {};
+  const Stage = await import(`../splash/stage.mjs?fxld-${W}x${H}-${Math.random()}`);
+  const S = await import("../splash/splash.mjs");
+  let clock = 0;
+  const flush = (upTo = 1e9) => { let t; while ((t = timers.filter((x) => !x.done && x.ms + (x.base ?? 0) <= upTo).sort((a, b) => a.ms - b.ms)[0])) { t.done = true; t.f(); } };
+  return fn({ Stage, S, flush, timers });
+}
+/* a token on the canvas at client (cx, cy), 100 px square, zoom 1 */
+function canvasWith(cx, cy, zoom = 1, pan = { x: 0, y: 0 }) {
+  const c = { ready: true, grid: { size: 100 }, stage: { scale: { x: zoom }, toLocal: (q) => ({ x: (q.x - pan.x) / zoom, y: (q.y - pan.y) / zoom }), toGlobal: (q) => ({ x: q.x * zoom + pan.x, y: q.y * zoom + pan.y }) },
+    app: { view: { getBoundingClientRect: () => ({ left: 0, top: 0 }) }, screen: { width: 4000, height: 4000 } } };
+  const token = { id: "T1", x: (cx - 50 - pan.x) / zoom, y: (cy - 50 - pan.y) / zoom, w: 100 / zoom, h: 100 / zoom, center: { x: (cx - pan.x) / zoom, y: (cy - pan.y) / zoom }, document: { width: 1, height: 1 } };
+  return { c, token };
+}
+const inside = (b, W, H, chat = 300) => b.x - b.w / 2 >= 0 && b.x + b.w / 2 <= W - chat && b.y - b.h / 2 >= 0 && b.y + b.h / 2 <= H;
+const overlap = (a, b) => Math.abs(a.x - b.x) * 2 < a.w + b.w && Math.abs(a.y - b.y) * 2 < a.h + b.h;
+const ROLLS = () => ({ good: ev({ n: 5, sixes: 2 }), crit: ev({ n: 4, sixes: 4 }), routine: ev({ n: 1, sixes: 0 }), rare: ev({ n: 12, sixes: 0 }),
+  pushed: ev({ n: 5, sixes: 2, pushed: true, newSixes: 1, rerolled: 3, stress: 2 }), pushedMiss: ev({ n: 5, sixes: 0, pushed: true, rerolled: 4, stress: 1 }),
+  wreck: ev({ n: 6, sixes: 3, wreck: true }), stressed: ev({ n: 6, sixes: 2, stress: 2 }) });
+
+/* ================================================================== F3, F4, F7 (screen), F14 scale: every roll, every edge */
+for (const [W, H] of [[1366, 768], [1920, 1080]]) {
+  await run(W, H, { pill: true }, async ({ Stage, flush }) => {
+    const spots = [["middle", (W - 300) / 2, H / 2], ["top edge", (W - 300) / 2, 30], ["bottom edge", (W - 300) / 2, H - 40], ["left edge", 70, H / 2], ["by the chat", W - 330, H / 2], ["top-left corner", 60, 40], ["bottom-right corner", W - 330, H - 50]];
+    for (const scale of [1, 1.6]) {
+      for (const [where, cx, cy] of spots) {
+        for (const [name, e] of Object.entries(ROLLS())) {
+          const { c, token } = canvasWith(cx, cy);
+          globalThis.canvas = c;
+          const L = fakeEngine({ prefs: { enabled: true, scale } }); Stage.setLetters(L); Stage.setLayer("screen");
+          Stage.play(e, { token, scale: 1, hold: 1, fx: 1, fullFrom: name === "crit" ? 0.7 : null, seed: "M-" + name, resolve: () => ({ now: 5, max: 8 }) });
+          flush(1e9);
+          const boxes = L.calls.map((x) => drawn(x, L));
+          const tag = `${W}x${H} ${where} ${name}${scale !== 1 ? " (engine scale " + scale + ")" : ""}`;
+          ok(boxes.length > 0 && boxes.every((b) => inside(b, W, H)), `F3 ${tag}: every lettering whole inside the window, left of the chat (${JSON.stringify(boxes.map((b) => [b.role, Math.round(b.x - b.w / 2), Math.round(b.y - b.h / 2), Math.round(b.w), Math.round(b.h)]))})`);
+          let clash = null;
+          for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
+          ok(!clash, `F7 ${tag}: no two letterings of the moment overlap (${clash})`);
+          const word = boxes.find((b) => b.role === "word"), sayB = boxes.find((b) => b.role === "say"), odds = boxes.find((b) => b.role === "odds");
+          for (const cb of [sayB, odds].filter(Boolean)) {
+            ok(cb.y + cb.h / 2 <= H - 120 || cb.y - cb.h / 2 >= H - 64, `F4 ${tag}: the ${cb.role} stays off the bars at the bottom (hotbar, replay pill)`);
+            ok(Math.abs((cb.y - cb.h / 2) - (word.y + word.h / 2)) <= 0.9 * word.S + (sayB && cb === odds ? sayB.h + 0.3 * word.S : 0), `F4 ${tag}: the ${cb.role} sits right under the word (gap ${Math.round((cb.y - cb.h / 2) - (word.y + word.h / 2))} px, word cap ${Math.round(word.S)} px)`);
+          }
+          Stage.clearAll();
+        }
+      }
+    }
+    delete globalThis.canvas;
+  });
+}
+
+/* ================================================================== F5: the critical */
+for (const [W, H] of [[1366, 768], [1920, 1080]]) {
+  await run(W, H, {}, async ({ Stage, flush }) => {
+    const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("screen");
+    Stage.play(ev({ n: 4, sixes: 4 }), { scale: 1, hold: 1, fx: 1, fullFrom: 0.7, seed: "CRIT" });
+    flush(1e9);
+    const b = Object.fromEntries(L.calls.map((x) => { const d = drawn(x, L); return [d.role, d]; }));
+    const free = W - 300 - 56;
+    ok(b.word && b.word.w >= 0.5 * free, `F5 ${W}: the critical word fills at least half of the free width (${Math.round(b.word?.w)} of ${free} px; the review measured 29 % of the window)`);
+    ok(b.word && b.word.h >= 0.17 * H, `F5 ${W}: ... and is tall (${Math.round(b.word?.h)} px of ${H})`);
+    const lum = (hex) => { const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+    const sc = L.calls.find((x) => x.o.seed === "CRIT:say")?.o.colors ?? [];
+    ok(sc.length === 3 && lum(sc[1]) > 0.55, `F5 ${W}: the critical's sentence is light (mid fill luminance ${sc[1] && lum(sc[1]).toFixed(2)}), readable on its violet rays and under a dark cut line`);
+    ok(L.calls.find((x) => x.o.seed === "CRIT:say")?.o.hand?.font === "anton" && L.calls.find((x) => x.o.seed === "CRIT:odds")?.o.hand?.font === "anton", `F5 ${W}: the caption keeps one legible hand (the tall narrow face, plain, flat)`);
+  });
+}
+
+/* ================================================================== F7 (pushed: grunt and word), F7 (map: the block zooms as one) */
+{
+  ok(has("planMoment") && (() => {
+    const p = LP.planMoment(ev({ n: 5, sixes: 2, pushed: true, newSixes: 1, rerolled: 3 }), {});
+    const pre = p.items.find((i) => i.role === "pre"), w = p.items.find((i) => i.role === "word");
+    return pre && w && w.delay >= pre.delay + pre.hold + 500;
+  })(), "F7: the push grunt has played its exit (up to 0.5 s) before the word comes");
+  await run(1366, 768, {}, async ({ Stage, flush }) => {
+    for (const zoom of [0.5, 1, 2]) {
+      const { c, token } = canvasWith(500, 420, zoom, { x: 37, y: -12 });
+      globalThis.canvas = c;
+      const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("tokens");
+      Stage.play(ROLLS().pushed, { token, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "MAP", resolve: () => ({ now: 5, max: 8 }) });
+      flush(1e9);
+      const boxes = L.calls.map((x) => drawn(x, L, zoom, (p) => c.stage.toGlobal(p)));
+      ok(L.calls.length >= 5 && L.calls.every((x) => x.o.space === "world" && x.o.fit === "exact"), `F7 map zoom ${zoom}: the words are on the map with exact scene sizes`);
+      let clash = null;
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
+      ok(!clash, `F7 map zoom ${zoom}: the odds no longer run into the sentence (no overlap: ${clash})`);
+      Stage.setLayer("screen"); Stage.clearAll();
+    }
+    delete globalThis.canvas;
+  });
+}
+
+/* ================================================================== F8: the sixes in the table's language; the odds keep the point */
+{
+  SL.setLabels({ six: (n) => (n === 1 ? "1 SZÓSTKA" : n < 5 ? n + " SZÓSTKI" : n + " SZÓSTEK"), oneIn: (n) => "1 NA " + n });
+  const p = LP.planMoment(ev({ n: 5, sixes: 2 }), {});
+  eq(p.items.find((i) => i.role === "six")?.text, "2 SZÓSTKI", "F8: the sixes are lettered in the table's language (label six)");
+  eq(SL.oddsLabel(1 / 2.5), "1 NA 2.5", "F8 (the user's ruling): the odds keep the decimal point, also in Polish");
+  SL.setLabels({ six: (n) => n + (n === 1 ? " SIX" : " SIXES"), oneIn: (n) => "1 IN " + n });
+}
+
+/* ================================================================== F9: over the dice; F12: the shake; F13: the pan; F14: the switch */
+await run(1366, 768, { diceZ: 6400 }, async ({ Stage, flush }) => {
+  const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("screen");
+  Stage.play(ev({ n: 5, sixes: 2 }), { scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "DSN" });
+  flush(100);
+  const lay = document.body.children.find((x) => x.attrs?.["aria-hidden"] === "true");
+  ok(lay && Number(lay.style.zIndex) > 6400 && Number(lay.style.zIndex) < 9999, `F9: the splash layer goes over Dice So Nice's raised dice canvas (z ${lay?.style.zIndex} over 6400), under tooltips`);
+  flush(1e9); Stage.clearAll();
+
+  /* F12: a strong hit on a map layer: the words shake through the engine */
+  const { c, token } = canvasWith(600, 400, 0.8);
+  globalThis.canvas = c;
+  const L2 = fakeEngine(); Stage.setLetters(L2); Stage.setLayer("overlay");
+  Stage.play(ev({ n: 4, sixes: 4 }), { token, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "SHK" });
+  flush(1e9);
+  const w = L2.calls.find((x) => x.o.seed === "SHK:word");
+  ok(w && w.o.space === "world" && w.h.moves.length >= 4, `F12: the shake of a strong hit moves the words on the map (${w?.h.moves.length} stepped moves)`);
+  ok(w && w.h.moves.length > 0 && w.h.moves.at(-1).x === w.o.at.x && w.h.moves.at(-1).y === w.o.at.y, "F12: ... and leaves them where they were");
+  Stage.clearAll();
+
+  /* F13: a critical on a map layer, then the map pans: the rays and the gauge follow */
+  const L3 = fakeEngine(); Stage.setLetters(L3); Stage.setLayer("tokens");
+  const ctl = Stage.play(ev({ n: 4, sixes: 4, stress: 2 }), { scale: 1, hold: 1, fx: 1, fullFrom: 0.7, seed: "PAN", resolve: () => ({ now: 5, max: 8 }) });
+  flush(2500);
+  const before = c.stage.toGlobal;
+  c.stage.toGlobal = (q) => { const g = before(q); return { x: g.x + 120, y: g.y - 40 }; };
+  c.stage.toLocal = (q) => ({ x: (q.x - 120) / 0.8, y: (q.y + 40) / 0.8 });
+  Stage.onCanvasPan();
+  const rays = ctl.extras?.find((x) => x.className.includes("ins-fullrays"));
+  ok(rays && rays.style.translate === "120px -40px", `F13: on the map the rays follow the pan (${rays?.style.translate})`);
+  ok(ctl.gaugeEl && ctl.gaugeEl.style.translate === "120px -40px", `F13: ... and so does the Resolve gauge (${ctl.gaugeEl?.style.translate})`);
+  flush(1e9); Stage.clearAll(); Stage.setLayer("screen");
+  delete globalThis.canvas;
+
+  /* F14: the engine's master switch off: the classic splash, not rays and a gauge with no word */
+  const L4 = fakeEngine({ prefs: { enabled: false, scale: 1 } }); Stage.setLetters(L4);
+  ok(!Stage.lettersOn(), "F14: with the engine's master switch off the lettering counts as off");
+  const c4 = Stage.play(ev({ n: 4, sixes: 4 }), { scale: 1, hold: 1, fx: 1, fullFrom: 0.7, seed: "OFF" });
+  flush(1e9);
+  ok(L4.calls.length === 0 && !c4.lw, "F14: ... and the classic splash plays (no dead lettering calls)");
+  Stage.clearAll();
+});
+
+/* ================================================================== the user's ruling on finding 1: the splash words keep their purpose */
+ok(SL.ACTIONS.slugfest.includes("HAYMAKER!") && SL.PUSHPRE.includes("ALL IN!") && SL.PUSHPRE.includes("STRAIN!"), "F1 (not a defect, the user's ruling): the splash's own action words stay (HAYMAKER!, ALL IN!, STRAIN!)");
+done("fxld");
