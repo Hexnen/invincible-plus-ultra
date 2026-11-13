@@ -154,6 +154,32 @@ export function viewFor(state, viewer, meta = {}) {
   return scrub(out, concealed);
 }
 
+/** FXE3 (D204): the ids of those who left the Combat while Foundry hid them, for meta.hidden: the chase's end record (`chaseEnded.gone`
+    with `hid`, engine-pure chaseEnd) and the Combat's own list (`flags.<module>.hidLeft`, written as a hidden combatant is deleted).
+    One who is back (an undo restored it with its id) is read from its own switches again: `present(id)` -> true leaves it out. */
+export function leftHidden(state, flagList = null, present = () => false) {
+  const ids = [...(Array.isArray(state?.chaseEnded?.gone) ? state.chaseEnded.gone.filter((x) => isObj(x) && x.hid && typeof x.id === "string").map((x) => x.id) : []),
+    ...(Array.isArray(flagList) ? flagList.filter((x) => typeof x === "string" && x) : [])];
+  return [...new Set(ids)].filter((id) => !present(id));
+}
+export const HID_LEFT_MAX = 200;
+/** the Combat's list with one more id (the newest last, at most HID_LEFT_MAX), or null when it is there already */
+export function hidLeftAdd(list, id) {
+  const now = Array.isArray(list) ? list.filter((x) => typeof x === "string" && x) : [];
+  if (typeof id !== "string" || !id || now.includes(id)) return null;
+  return [...now, id].slice(-HID_LEFT_MAX);
+}
+
+/** FXE3: the chat card of the engine's own dice (engine.mjs perform "dice"). It speaks for the user who threw it (Foundry's getSpeaker()
+    would name the token the GM has selected, often a hidden NPC); the dice of an effect about somebody hidden (`e.gm`, engine-pure
+    diceHidden) go to the GMs alone, with no id in the card's flag. gms() -> the GMs' user ids (asked only then).
+    -> { data (for Roll#toMessage), mode (its options: the GM-only way in both the v14 and the older name), seal(msg) (the whisper kept) } */
+export function diceCard(e, mod, flavor, alias, gms) {
+  const hidden = e?.gm === 1, to = hidden ? (typeof gms === "function" ? gms() : []) : null, why = String(e?.why ?? "");
+  const data = { flavor, speaker: { scene: null, actor: null, token: null, alias: String(alias ?? "") }, flags: { [mod]: { tactics: { dice: hidden ? why.split(":")[0] : why } } }, ...(hidden ? { whisper: to } : {}) };
+  return { data, mode: hidden ? { messageMode: "gm", rollMode: "gmroll" } : {}, seal: (msg) => (hidden && isObj(msg) ? { ...msg, whisper: to } : msg) };
+}
+
 /** U113: Foundry keeps two switches of "hidden" (the token's and the combatant's) and the fight conceals a combatant while EITHER is on,
     so the token HUD alone could show a token on the players' maps that the fight still hid (no tile, no reveal shot). In a running
     fight the GM's change of one is carried to the other (tactics/main.mjs): either switch hides or reveals the whole combatant.

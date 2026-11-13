@@ -559,7 +559,9 @@ const newsNo = NewsP.newsNo;      // BH4-1: the seq of "n<seq>_<fight>", not eve
 /* D123: a hazard is named by its kind or, for the engine's own damage, by what dealt it; never by the raw kind word */
 function newsText(n, facts, t) {
   const who = n.unseen ? t("ITAC.ui.news.unseen") : n.actor ? nameOf(facts, n.actor, t) : "";
-  const act = n.unseen ? "" : n.counter ? t("ITAC.action.counterattack") : n.name ? String(n.name) : n.hazard ? t(n.hzCause ? `ITAC.ui.hz.cause.${n.hzCause}` : `ITAC.ui.hz.kind.${n.hazard}`, {}, t("ITAC.ui.hz.kind.fixed")) : n.action ? t(`ITAC.action.${n.action}`, {}, String(n.action)) : "";
+  /* FXE3 (U205): the fire roll of a round's start is told by its zone ("Zone 10: the fire goes out"), never as the bare question */
+  const fireAt = n.action === "fireSpread" && typeof n.zone === "string" && n.zone ? zoneText(facts, t, n.zone) : null;
+  const act = fireAt ? fireAt : n.unseen ? "" : n.counter ? t("ITAC.action.counterattack") : n.name ? String(n.name) : n.hazard ? t(n.hzCause ? `ITAC.ui.hz.cause.${n.hzCause}` : `ITAC.ui.hz.kind.${n.hazard}`, {}, t("ITAC.ui.hz.kind.fixed")) : n.action ? t(`ITAC.action.${n.action}`, {}, String(n.action)) : "";
   /* U110: what a challenge did is said as that ("Device: a blast"), and the GM's words about it follow the result */
   const fx = n.fx?.challenge ? `${nameOf(facts, n.fx.challenge, t)}: ${t(`ITAC.ui.effect.${n.fx.kind}`, {}, String(n.fx.kind))}` : null;
   const head = fx ?? [who, act].filter(Boolean).join(": ");
@@ -589,7 +591,8 @@ function newsText(n, facts, t) {
   if (rows.length > 1 && none.length === rows.length) rows.splice(0, rows.length, `${t("ITAC.ui.news.noDamage")}: ${none.map((r) => nameOf(facts, r.target, t)).join(", ")}`);
   /* FXR (U188): a drive says where it went ("Drive: reaches Zone 7"), not only that it was done */
   const went = !rows.length && typeof n.to === "string" && n.to && ["done", "stopped"].includes(n.result) ? t(n.result === "stopped" ? "ITAC.ui.news.stopAt" : "ITAC.ui.news.reach", { zone: zoneText(facts, t, n.to) }) : null;
-  const res = rows.length ? rows.join("; ") : went ?? (n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "");
+  const spread = fireAt && n.result === "spreads" && typeof n.to === "string" && n.to ? t("ITAC.ui.news.spreadTo", { zone: zoneText(facts, t, n.to) }) : null;
+  const res = rows.length ? rows.join("; ") : spread ?? went ?? (n.result ? t(`ITAC.result.${n.result}`, {}, String(n.result)) : "");
   /* D113: what a reaction came to (Discretion, Warning Call, one the GM settled by hand) is said after the result */
   const rx = (Array.isArray(n.reacts) ? n.reacts : []).map((r) => t(`ITAC.ui.news.react.${r.result}`, { who: nameOf(facts, r.who, t), what: r.name ? String(r.name) : r.label ? t(r.label, {}, "") : "", about: r.about ? nameOf(facts, r.about, t) : "" }, "")).filter(Boolean);
   return [head, res].filter(Boolean).join(rows.length ? " > " : ": ") + (n.kind === "action" && fx && n.note ? ` ("${String(n.note)}")` : "") + (rx.length ? ` (${rx.join("; ")})` : "") + (n.forced ? ` (${t("ITAC.ui.news.forced")})` : "") + (n.undone ? ` (${t("ITAC.ui.news.undone")})` : "");

@@ -103,6 +103,7 @@ export const EN_FLOW = {
   /* FXR (U188): where a drive ended */
   "ITAC.ui.news.reach": "reaches {zone}",
   "ITAC.ui.news.stopAt": "stops in {zone}",
+  "ITAC.ui.news.spreadTo": "the fire spreads to {zone}",      // FXE3 (U205)
   "ITAC.ui.fight.title": "Fight",
   "ITAC.ui.chat.notYours": "Rolled by {name}. Only the roller can push or accept.",
   "ITAC.ui.fight.restart": "Start again",
@@ -201,6 +202,7 @@ export const PL_FLOW = {
   "ITAC.ui.news.fate.unconscious": "nieprzytomny",
   "ITAC.ui.news.reach": "dociera: {zone}",
   "ITAC.ui.news.stopAt": "staje: {zone}",
+  "ITAC.ui.news.spreadTo": "ogień przechodzi do: {zone}",
   "ITAC.ui.fight.title": "Walka",
   "ITAC.ui.chat.notYours": "Autor rzutu: {name}. Tylko autor forsuje lub przyjmuje.",
   "ITAC.ui.fight.restart": "Zacznij od nowa",

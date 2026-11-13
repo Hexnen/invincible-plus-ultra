@@ -10,6 +10,7 @@
 import * as Panel from "./panel.mjs";
 import { groupsFor, isTurnOf, pickCombat, isActionStatus } from "./actions.mjs";
 import { t } from "./lang.mjs";
+import * as Tac from "../tactics/source.mjs";      // FXE3 (D206): broken is not dead (lifeOf)
 
 const MOD = "invincible-plus-ultra";
 const SYSTEM = "invincible";
@@ -100,8 +101,12 @@ function read(e, sel, combat) {
     effects = live.length;
     fxList = live.map((fx) => ({ icon: String(fx.img ?? fx.icon ?? ""), name: String(fx.name ?? fx.label ?? "") }));   // for the 'new' style's condition icons
   } catch { effects = 0; fxList = []; }
-  let dead = false;
-  try { dead = (hp ? hp.v <= 0 : false) || actor.statuses?.has?.(CONFIG.specialStatusEffects?.DEFEATED ?? "dead"); } catch { dead = hp ? hp.v <= 0 : false; }
+  /* FXE3 (D206) [B2707]: 0 Health is broken, not dead. The skull is for the dead (the defeated mark on the actor, or its combatant marked
+     defeated in the fight: tactics marks the dead so); a broken hero gets the cracked heart, as the tactics surfaces show it */
+  let mark = false, cids = [];
+  try { mark = !!actor.statuses?.has?.(CONFIG.specialStatusEffects?.DEFEATED ?? "dead"); } catch { mark = false; }
+  try { cids = combat ? combat.combatants.filter((cb) => ids.includes(cb.tokenId)).map((cb) => cb.id) : []; } catch { cids = []; }
+  const { dead, broken } = Tac.lifeOf(combat, cids, hp, mark);
   const owner = gm || !!actor.isOwner;
   return {
     id: actor.id,
@@ -110,7 +115,7 @@ function read(e, sel, combat) {
     color: colorOf(user),
     img: pictureOf(td, actor),
     tokenIds: ids, count: ids.length,
-    hp, rs, effects, fxList, defeated: !!dead,
+    hp, rs, effects, fxList, defeated: !!dead, broken,
     active: !!combat && isTurnOf(ids, combat),
     selected: ids.some((id) => sel.has(id)),
     groups: combat ? groupsFor(ids, actor, combat) : null,
