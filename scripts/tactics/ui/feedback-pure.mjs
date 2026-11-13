@@ -64,10 +64,11 @@ export function floats(events, t) {
     if (!target) continue;
     if (e.type === "outcome" && typeof e.hit === "boolean") {
       if (!e.hit) out.push({ target, tone: "miss", text: t(e.blocked ? "ITAC.float.block" : e.dodged ? "ITAC.float.dodge" : "ITAC.float.miss") });
-      else if (!hurt.has(target)) out.push({ target, tone: "none", text: t("ITAC.float.hit"), hit: true });
+      else if (!hurt.has(target)) out.push({ target, tone: "none", text: t("ITAC.float.hit"), hit: true, blow: e.inst ?? null });
     } else if (e.type === "damage" && Number.isFinite(e.taken)) {
       const n = Math.max(0, Math.trunc(e.taken));
       out.push(n > 0 ? { target, tone: e.toStress ? "resolve" : "health", text: t(e.toStress ? "ITAC.float.resolve" : "ITAC.float.health", { n }), num: `-${n}`, mark: e.toStress ? "stress" : "health", loss: true }      /* U93: the number with the mark of what was lost (`num`, `mark`); `text` is the same in words, for a canvas that cannot draw the mark */ : { target, tone: "none", text: t("ITAC.float.none"), loss: true });
+      out[out.length - 1].blow = e.inst ?? null;
     } else if (e.type === "broken") out.push({ target, tone: "state", text: t("ITAC.float.broken") });
     else if (e.type === "crit" && Number.isFinite(e.crit?.total)) {      // D127: what the injury die came to, over the token, on every seat that sees it
       const k = String(e.crit.id ?? "").replace(/-(\w)/g, (m, c) => c.toUpperCase()), name = k ? t(`ITAC.crit.${k}`, {}, "") : "";
@@ -75,6 +76,21 @@ export function floats(events, t) {
     }
   }
   return out.slice(0, 40);
+}
+/** ANSH (U10-6, the user 2026-11-12: «Sama liczba -N Zdrowie»): over the token stands the loss alone; the bare "Hit" only when the blow
+    did no damage at all. A "Hit" whose blow (the action instance) is still open may yet be followed by its number (a question in between),
+    so it waits: a loss of the same blow drops it, the close of the action (`actionClosed`) shows it. A "Hit" of no known blow shows at once.
+    held = { [target]: { blow, f } } -> { show: [floats], held } */
+export function holdHits(held, events, fl) {
+  const next = { ...(held ?? {}) }, show = [];
+  for (const f of fl ?? []) {
+    if (f.hit && f.blow != null) { next[f.target] = { blow: f.blow, f }; continue; }
+    if (f.loss && next[f.target] && (f.blow == null || next[f.target].blow === f.blow)) delete next[f.target];
+    show.push(f);
+  }
+  const closed = new Set((events ?? []).filter((e) => e && e.type === "actionClosed" && e.inst != null).map((e) => e.inst));
+  for (const [tg, h] of Object.entries(next)) if (closed.has(h.blow)) { show.push(h.f); delete next[tg]; }
+  return { show, held: next };
 }
 /** the key an event is known by on a client that hears it twice (the executor hears the full stream and the public one) */
 export const eventKey = (e) => `${e?.combat ?? ""}|${e?.fight ?? ""}|${e?.seq ?? ""}|${e?.type ?? ""}|${idOf(e?.target) ?? ""}`;

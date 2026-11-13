@@ -88,6 +88,7 @@ function floatGlyph(mark) {
 const TONE = { health: 0xff8178, resolve: 0x3bb8e8, miss: 0xffffff, none: 0xd5dff0, state: 0xffe72a };
 /* the action instance an event belongs to (the engine stamps `inst`): the number and the "Hit" of one blow share it */
 const blowOf = (list, target, type) => { const e = list.find((x) => x && x.type === type && (x.target === target || x.target?.combatant === target)); return e?.inst ?? null; };
+const heldHits = {};      // ANSH (U10-6): per fight, the "Hit" of a blow still open (feedback-pure holdHits)
 const sameBlow = (prev, blow, at) => !!prev && at - prev.at < HIT_AFTER && (prev.blow == null || blow == null || prev.blow === blow);
 function flush(combatId) {
   try {
@@ -103,7 +104,9 @@ function flush(combatId) {
        away would shrink it to nothing: sized by what the SCREEN shows (about 30 px) */
     const zoom = Math.max(0.05, Math.min(3, Number(canvas.stage?.scale?.x) || 1)), ui = Math.max(0.25, Number(canvas.dimensions?.uiScale) || 1);
     const px = (v) => Math.round(v / (zoom * ui)), far = (v) => Math.round(v / zoom);
-    for (const f of FP.floats(list, t)) {
+    const hh = FP.holdHits(heldHits[combatId], list, FP.floats(list, t));      // ANSH (U10-6): a bare "Hit" waits for its blow's number or close
+    heldHits[combatId] = hh.held;
+    for (const f of hh.show) {
       const doc = combat.combatants.get(f.target)?.token ?? null, tok = doc?.object ?? null;
       /* only over a token this user's canvas draws: a token Foundry hides from a player, or one out of that player's sight, gets no number */
       if (!tok || tok.visible === false || (!staff && doc.hidden === true)) continue;
@@ -124,7 +127,8 @@ function flush(combatId) {
 }
 function onEvent(ev) {
   try {
-    if (!ev || typeof ev !== "object" || !["outcome", "damage", "broken", "crit"].includes(ev.type) || !ev.combat) return;
+    if (!ev || typeof ev !== "object" || !["outcome", "damage", "broken", "crit", "actionClosed"].includes(ev.type) || !ev.combat) return;
+    if (ev.type === "actionClosed" && !Object.values(heldHits[ev.combat] ?? {}).some((h) => h.blow === ev.inst)) return;      // ANSH (U10-6): only the close of a blow whose "Hit" waits
     const key = FP.eventKey(ev);
     if (heard.has(key)) return;
     if (heard.size > 600) heard.clear();

@@ -94,6 +94,9 @@ export function requirements(v, inst) {
     Sequestered Original [B1915]) has nothing either. A broken character that may rally keeps its turn. */
 export function sitsOut(state, cid, c) {
   const out = M.outOfAction(state, cid, c);
+  /* ANSH (P8g-3, the user 2026-11-12: «Przechodzi sama»): marked defeated in Foundry during the round, it keeps its card until the next
+     draw [D], but its turn passes by itself like the turn of the dead (U9) */
+  if (c?.defeated === true && out !== "dead" && out !== "unconscious") return "defeated";
   if (out !== "broken") return out;
   if (M.hasStatus(state, cid, "unconscious")) return "unconscious";
   return crits.canRally({ broken: true, crits: c.crits ?? [], primaryCopy: c.pass?.noRally === true }).ok ? null : "broken";

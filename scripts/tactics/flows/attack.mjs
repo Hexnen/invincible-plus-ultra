@@ -440,8 +440,12 @@ function applyReaction(v, I, R, cid, key, value, when) {
       if (!about || !I.decl.targets.includes(about)) { rec.result = "noTarget"; return false; }
       (I.data.warned ??= {})[about] = { by: cid, entry: e.id };
       const df = I.data.def?.[about];
-      if (df?.defence) {                           // it had already answered with a defence: that defence gets the dice (the action it paid stays paid, WC-2)
+      if (df?.defence) {                           // it had already answered with a defence: that defence gets the dice
         rec.result = "dice";
+        /* ANSH (FXF-4, the user 2026-11-12: «Oddać akcję, +2 zostaje»): the warned one defends without an action of its own [B2170], so a
+           block or dodge it had already paid for gives its unit back (the engine's "unpay", as A20 does) and counts as the warned answer;
+           the 1 stress of a Defensive answer stays (stress paid stays, A20) */
+        if (!df.free) { R.effects.push({ t: "unpay", who: about, key: `def:${about}` }); df.free = "warned"; (I.data.notes ??= []).push({ note: "defenceBack", who: about, defence: df.defence, why: "warned" }); }
         try { const n = defencePool(v, K.draft(I), about, df.defence, df.tokens ?? []).pool.dice; if (Number.isFinite(n)) df.dice = n; } catch { /* the number comes with the roll */ }
       } else { rec.result = "card"; reopenDefence(v, I, R, about); }      // its card is made again with the free answers (or for the first time after a pass)
       return false;

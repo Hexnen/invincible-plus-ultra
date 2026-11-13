@@ -66,7 +66,9 @@ const req = (T, key) => T.requests.filter((r) => r.key === key).pop() ?? null;
   const T = base([power("gu", "Guidance", null, [auto("g", "Guidance", "rollAttribute", { attr: ["presence"] })])]);
   const a = act(T, "H1", "guide");
   eq([a.target, a.roll], [{ who: "ally", n: [1, 6] }, { attr: "presence" }], "PW033: Guidance names the allies it inspires and rolls PRESENCE");
-  eq(why(await T.req("p1", decl("H1", a.id, { targets: ["N1"] }))), "notAlly", "PW033: only heroes of your own side") ;
+  /* ANSH (P8f-1, the user 2026-11-12: «Zezwolić, MG rozstrzyga bez liczb»): at an NPC of hidden numbers the GM decides on a card */
+  eq([code(await T.req("p1", decl("H1", a.id, { targets: ["N1"] }))), T.prompt("exception")?.data?.reason], ["ok", "strangerAlly"], "PW033 + P8f-1: at an NPC the GM decides (only heroes of your own side)");
+  await T.answer("gm", "exception", "deny");
   await T.req("p1", decl("H1", a.id, { targets: ["H2", "H3"] }));
   await T.roll("roll", 1);
   const g2 = T.state.ledger.H2.grants.find((g) => g.kind === "guidance"), g3 = T.state.ledger.H3.grants.find((g) => g.kind === "guidance");

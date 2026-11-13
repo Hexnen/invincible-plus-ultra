@@ -158,7 +158,11 @@ const panel = (T, me, owns = [], own = {}) => CP.chaseData(view(T, me, owns), ow
   await T.roll("pursuer", 3);
   eq([T.state.chase.distance, T.state.chase.last.by], [0, { prey: { unit: "N4", roller: "N4", why: "slowest" }, pursuer: { unit: "H3", roller: "H3", why: "slowest" } }], "D: caught; the round remembers who rolled for each side and why");
   const c1 = panel(T, "p2", ["H2"]), LT = "Machine Head's very long-named lieutenant";
-  eq([c1.catch?.by, c1.catch?.at, c1.catch?.text], ["Atom Eve", LT, say("ITAC.chase.catch.whoCharge", { name: "Atom Eve", target: LT })], "D: the catch names who strikes (the one who rolled) and whom (the one who rolled for the fleeing)");
+  /* ANSH: another seat is told what the striker's own seat is told (the catch's public data: ram or charge, whom or "picks"); before, a
+     seat the card was not for guessed "charges" and the fleeing roller */
+  const c3 = panel(T, "p3", ["H3"]);
+  eq([c1.catch?.by, c1.catch?.at, c1.catch?.ram, c1.catch?.text], [c3.catch?.by, c3.catch?.at, c3.catch?.ram, c3.catch?.text], "D + ANSH: the catch names who strikes (the one who rolled) and whom, the same on every seat");
+  eq([c1.catch?.by, c1.catch?.ram, c1.catch?.text], ["Atom Eve", false, say("ITAC.chase.catch.whoChargePick", { name: "Atom Eve" })], "D: on foot she charges, and picks among the fleeing");
   eq(panel(T, "p3", ["H3"]).decision?.kind, "chaseCatch", "D: and asks the flier");
   await T.answer("p3", "chaseCatch", "pass");
   /* ANSD (CHASE2-1): every pursuing unit that reached them may strike: the van's driver is asked next */

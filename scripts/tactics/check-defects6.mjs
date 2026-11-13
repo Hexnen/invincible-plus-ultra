@@ -144,13 +144,18 @@ const ctxOf = (T) => ({ c: (id) => T.c[id] ?? null, online: () => true, P1 });
   const before = await ask();
   T.c.N2.resolve = 4;
   const after = await ask();
-  eq([before.N1, before.N2, after], ["notAlly", "notAlly", before], "D54: the per-target answer about an unrevealed NPC is the same whatever its Resolve");
-  eq((await pv(T, "p1", "H1", { action: "slugfest" }, { at: "N2", acts: [{ action: "recoverResolve" }] })).preview.acts.recoverResolve.reason, "notAlly", "D54: so is the answer of the menu at its token");
+  /* ANSH (P8f-1, the user 2026-11-12: «Zezwolić, MG rozstrzyga bez liczb»): no refusal any more; the answer stays the same whatever the
+     number (it is "go on, the GM decides"), and the declaration lands on the GM's card */
+  eq([before.N1, before.N2, after], ["ok", "ok", before], "D54 + P8f-1: the per-target answer about an unrevealed NPC is the same whatever its Resolve");
+  { const m = (await pv(T, "p1", "H1", { action: "slugfest" }, { at: "N2", acts: [{ action: "recoverResolve" }] })).preview.acts.recoverResolve; eq([m?.ok, m?.gmJudges ?? null, m?.reason ?? null], [true, 1, null], "D54 + P8f-1: so is the answer of the menu at its token"); }
+  eq([(await pv(T, "p1", "H1", { action: "recoverResolve" }, { of: ["N1", "N2"] })).preview.per.N1, (await pv(T, "p1", "H1", { action: "recoverResolve" }, { of: ["N1", "N2"] })).preview.per.N2].map((r) => [r.ok, r.gmJudges, r.reason ?? null]), [[true, 1, null], [true, 1, null]], "P8f-1: the row says the GM judges it, with no reason that could hide a number");
   eq([before.H2, (await ask("gm")).N2, (await ask("gm")).N1], ["resolveFull", "ok", "resolveFull"], "D54: about a hero, and for the GM, the rule's own answer stands");
-  eq([code(await T.preq("p1", decl("H1", "recoverResolve", { targets: ["N2"] }))), why(T.last), code(await T.preq("p1", decl("H1", "recoverResolve", { targets: ["N1"] }))), why(T.last)], ["illegal", "notAlly", "illegal", "notAlly"], "D54: a refused declaration tells nothing either: one reason for both");
-  const cards = async (target) => { const X = mk(); X.c.N2.resolve = 4; const e = await X.preq("p1", decl("H1", "recoverResolve", { targets: [target], exception: { text: "please" } })); return [code(e), X.prompts("exception").length, X.top()?.status]; };
-  eq(await cards("N2"), await cards("N1"), "D54: declared with a request for an exception both go to the GM's card, whatever the number");
-  eq((await cards("N2"))[1], 1, "D54: (a card on the desk)");
+  const cards = async (target, text) => { const X = mk(); X.c.N2.resolve = 4; const e = await X.preq("p1", decl("H1", "recoverResolve", { targets: [target], ...(text ? { exception: { text } } : {}) })); const p = X.prompts("exception")[0]; const pv1 = Object.values(X.view("p1").prompts ?? {}).find((q) => q.kind === "exception"); return { seen: [code(e), X.prompts("exception").length, X.top()?.status, JSON.stringify(pv1 ?? null)], gm: [p?.data?.reason, p?.data?.reasons ?? []] }; };
+  const c2 = await cards("N2"), c1 = await cards("N1");
+  eq(c2.seen, c1.seen, "D54 + P8f-1: declared at once, both go to the GM's card, and the player sees the same whatever the number");
+  eq([c2.seen[0], c2.seen[1], c2.seen[2]], ["ok", 1, "waiting"], "P8f-1: the declaration goes in and waits on one card on the desk");
+  eq([c2.gm, c1.gm], [["strangerAlly", []], ["strangerAlly", ["resolveFull"]]], "P8f-1: the GM's card names what the rules would say (only the GM sees it)");
+  eq((await cards("N2", "please")).seen, (await cards("N1", "please")).seen, "D54: declared with a request for an exception both go to the GM's card, whatever the number");
   await T.gm({ op: "reveal", combatant: "N2", stats: true });
   eq((await ask()).N2, "ok", "D54: once the GM revealed its statistics the rule's own answer is the player's");
   eq(code(await T.gm(decl("H1", "recoverResolve", { targets: ["N1"] }))) === "illegal" && why(T.last), "resolveFull", "D54: the GM's own hand meets the rule, not the gate");
