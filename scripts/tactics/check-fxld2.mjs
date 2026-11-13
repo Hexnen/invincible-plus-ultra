@@ -151,6 +151,13 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
       const sc = A.calls.map((c) => drawn(c, A.L, { zoom: 1, toClient: (q) => q }));
       ok(sc.every((b) => b.x - b.w / 2 >= 0 && b.y - b.h / 2 >= 0 && b.x + b.w / 2 <= 3000 && b.y + b.h / 2 <= 2000), `N2 ${tag}: the whole block is inside the scene`);
       ok(A.calls.every((c) => (LP.MAP_EXITS ?? []).includes(c.o.out)), `N2 ${tag}: every exit stays where the word stood (${[...new Set(A.calls.map((c) => c.o.out))]})`);
+      /* by the roller (live, the critical sized to a 16:9 share of the board went two tokens away, past both seats' views) */
+      {
+        const hr = tokRect(hero), near = sc.map((b) => Math.hypot(Math.max(0, hr.l - (b.x + b.w / 2), (b.x - b.w / 2) - hr.r), Math.max(0, hr.t - (b.y + b.h / 2), (b.y - b.h / 2) - hr.b)));
+        ok(Math.min(...near) <= 0.6 * 100, `N2 ${tag}: the block stands by the roller (nearest word ${Math.round(Math.min(...near))} scene px off the token)`);
+        const word = sc.find((b) => b.role === "word"), big = Math.max(...sc.map((b) => b.h));
+        if (name === "crit") ok(word && word.h >= big - 0.5 && word.h <= 2 * 100, `N2 ${tag}: the critical's word is the biggest part and at most two grid squares tall (${Math.round(word?.h)} scene px)`);
+      }
       /* N3: off the hero, the neighbours (not the hidden one: it is not on the player's board), the pin */
       const heroR = tokRect(hero), bad = [];
       for (const b of sc) {
@@ -162,6 +169,28 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
       const gA = A.ctl.gaugeEl, gB = B.ctl.gaugeEl;
       if (gA || gB) ok(gA && gB && gA.style.getPropertyValue("--u") === "1" && gB.style.getPropertyValue("--u") === "1", `N1 ${tag}: the Resolve gauge of a map moment is measured and drawn at the same reference size on both seats`);
     }
+  }
+}
+
+/* ================================================================== N2 + N3 (map, crowded board): The Warehouse at grid 100 */
+{
+  /* the live board (grid 350) scaled to grid 100: the roller at the top edge, a neighbour left, two below-left and below, a map pin
+     to the right (drawn 1.3 squares tall). Live, the critical went two tokens away and the pushed block beyond the left neighbour. */
+  const hero = tok("HERO", 700, 100);
+  const others = [tok("OM", 600, 100), tok("AE", 600, 200), tok("SO", 700, 400), tok("MA", 600, 400), tok("MB", 900, 400), tok("DS", 1100, 600), tok("ZA", 200, 300)];
+  const pin = { id: "PIN", visible: true, document: { id: "PIN", x: 1050, y: 200, iconSize: 40, flags: { "moinen-maps": { pin: "quest" } } } };
+  for (const name of ["crit", "good", "pushed", "rare"]) {
+    const e = ROLLS()[name];
+    const A = await seat({ W: 1600, H: 900, layer: "tokens", zoom: 0.6, pan: { x: 300, y: 200 }, e, name, tokens: [hero, ...others], notes: [pin], hero, full: name === "crit" });
+    const sc = A.calls.map((c) => drawn(c, A.L, { zoom: 1, toClient: (q) => q }));
+    const hr = tokRect(hero), near = Math.min(...sc.map((b) => Math.hypot(Math.max(0, hr.l - (b.x + b.w / 2), (b.x - b.w / 2) - hr.r), Math.max(0, hr.t - (b.y + b.h / 2), (b.y - b.h / 2) - hr.b))));
+    const bad = [];
+    for (const b of sc) {
+      if (hitBox(b, hr)) bad.push(b.role + " on the hero");
+      for (const t of others) if (hitBox(b, tokRect(t))) bad.push(b.role + " on " + t.id);
+      if (hitBox(b, { l: 1050 - 40, t: 200 - 110, r: 1050 + 40, b: 200 + 8 })) bad.push(b.role + " on the pin");   // its head and stem
+    }
+    ok(A.calls.length > 0 && near <= 60 && bad.length === 0, `N2/N3 map crowded ${name}: the block stands by the roller and keeps off the neighbours and the pin (nearest ${Math.round(near)} scene px; ${bad})`);
   }
 }
 
@@ -223,7 +252,7 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
      him); a smaller block right by the hero must win. */
   const box = (x, y, h) => ({ x, y, l: x - h, t: y - h, r: x + h, b: y + h });
   const frame = { vh: 1750, freeW: 3111, scale: 1, safe: { l: 35, t: 35, r: 5067, b: 6615 }, token: box(2625, 525, 175), focus: { x: 2625, y: 525 }, gap: 42,
-    avoid: [box(2275, 875, 196), box(2625, 1575, 196), box(2275, 1575, 196), box(2275, 525, 196), box(875, 1225, 196), box(3325, 1575, 196), { l: 3444, t: 245, r: 3906, b: 752 }] };   // the pin as drawn (1.3 grid squares tall)
+    avoid: [box(2275, 875, 196), box(2625, 1575, 196), box(2275, 1575, 196), box(2275, 525, 196), box(875, 1225, 196), box(3325, 1575, 196), { l: 3528, t: 297, r: 3822, b: 735 }] };   // the pin as drawn (head and stem, 1.1 grid squares tall)
   /* the engine's real boxes were about 1.5 times wider than the estimate live (the pushed block: 1476 px at full size) */
   const wide = (it, S) => { const q = LP.estimateBox(it, S); return { ...q, w: q.w * 1.5 }; };
   for (const [name, e] of Object.entries(ROLLS()).filter(([n]) => n !== "crit")) for (const [mk, measure] of [["estimate", undefined], ["wide", wide]]) {
@@ -234,13 +263,13 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
   }
   {
     const items = [...LP.planMoment(ROLLS().stressed, { token: true }).items, LP.planStress(2, {})];
-    const out = LP.composeMoment(items, { ...frame, gauge: { w: 300, h: 90 } });
+    const out = LP.composeMoment(items, { ...frame, avoid: [...frame.avoid, { l: 3444, t: 245, r: 3906, b: 752 }], gauge: { w: 300, h: 90 } });   // a wider pin: the block must shrink
     ok(out.f < 0.99 && out.gauge && Math.abs(out.gauge.w - 300 * out.f) < 1 && Math.abs((out.gauge.k ?? 1) - out.f) < 1e-6, `N4 map crowded: the Resolve gauge shrinks with the block (block ${out.f?.toFixed?.(2)}, gauge ${out.gauge?.w?.toFixed?.(0)} of 300 px, k ${out.gauge?.k})`);
   }
   {
     /* a moinen-maps pin (live: drawn 457 x 497 px over a 40 px icon) is avoided by its drawn size, read from the document */
     const q = await run(1366, 768, {}, async ({ Stage }) => Stage.noteBox?.({ document: { x: 3675, y: 700, iconSize: 40, flags: { "moinen-maps": { pin: "quest" } } } }, 350));
-    ok(!!q && q.t <= 700 - 440 && q.l <= 3675 - 220 && q.r >= 3675 + 220 && q.b >= 700 + 40, `N3 map: a map pin is avoided by the size it is drawn at, not its 40 px icon (${q && [q.l, q.t, q.r, q.b].map(Math.round)})`);
+    ok(!!q && q.t <= 700 - 370 && q.l <= 3675 - 140 && q.r >= 3675 + 140 && q.b >= 700 + 30, `N3 map: a map pin is avoided by the size it is drawn at (head and stem about 275 x 375 px), not its 40 px icon (${q && [q.l, q.t, q.r, q.b].map(Math.round)})`);
   }
   ok(/gaugeK \* \(g\?\.k \?\? 1\)/.test(src("../splash/stage.mjs")), "N4: the drawn gauge takes the block's shrink (map and screen)");
   ok(/keepInView: false/.test(src("../splash/stage.mjs")), "N1 map: a shared word is not pulled into this seat's view by the engine (keepInView: false), so every seat draws it at the same scene place");

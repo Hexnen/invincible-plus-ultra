@@ -268,7 +268,7 @@ const SIDE_FROM = { above: 90, below: -90, right: 180, left: 0, focus: 90 };
    view: by the token where that seat sees it, off that seat's bars, panels, neighbours, pins and resting dice. */
 /* a map moment is sized as on a window GRID_VH grid squares tall: a mid roll's word is about half a square tall, a critical's more than
    a square (live, The Warehouse: a 350 px grid seen at zoom 0.75 shows about 4 squares in 1080 px; 10.8 made the words 2.6x too big) */
-export const GRID_VH = 5;
+export const GRID_VH = 4.5;   // live 2026-11-13: 5 left no clean place by a roller with neighbours and a pin round him
 const docOf = (t) => t?.document ?? null;
 function docBox(t, gs) {
   const d = docOf(t) ?? {};
@@ -281,10 +281,11 @@ const grow = (b, p) => ({ ...b, l: b.l - p, t: b.t - p, r: b.r + p, b: b.b + p }
 export function noteBox(n, gs = 100) {
   const d = docOf(n) ?? n, s = Number(d.iconSize) > 0 ? Number(d.iconSize) : 40;
   const q = { l: d.x - s * 0.6, t: d.y - s * 0.6, r: d.x + s * 0.6, b: d.y + s * 1.1 };   // the icon and its label under it
-  /* a moinen-maps pin stands on the note's point and rises about 1.3 grid squares above it (live, The Warehouse: 457 x 497 px on a
-     350 px grid; the icon size said 40). Read from the document, not from the drawing: a seat that does not draw the pin must still
+  /* a moinen-maps pin stands on the note's point and rises about 1.1 grid squares above it, 0.8 square wide (live, The Warehouse,
+     350 px grid: the head and stem about 275 x 375 px; its container, 457 x 497 px, also holds the faint ground ripple, which a word
+     may cross; the icon size said 40). Read from the document, not from the drawing: a seat that does not draw the pin must still
      lay the block out the same way. */
-  if (d.flags?.['moinen-maps']?.pin) { q.l = Math.min(q.l, d.x - 0.66 * gs); q.r = Math.max(q.r, d.x + 0.66 * gs); q.t = Math.min(q.t, d.y - 1.3 * gs); q.b = Math.max(q.b, d.y + 0.15 * gs); }
+  if (d.flags?.['moinen-maps']?.pin) { q.l = Math.min(q.l, d.x - 0.42 * gs); q.r = Math.max(q.r, d.x + 0.42 * gs); q.t = Math.min(q.t, d.y - 1.15 * gs); q.b = Math.max(q.b, d.y + 0.1 * gs); }
   return q;
 }
 const sameTok = (a, b) => !!a && !!b && (a === b || (a.id != null && a.id === b.id));
@@ -354,7 +355,7 @@ function screenAvoid(hero, full) {
     try { if (t.visible === false || sameTok(t, hero)) continue; const q = cl(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push(q); } catch (e) { /* one token */ }
   }
   for (const n of C?.notes?.placeables ?? []) { try { if (n.visible === false) continue; const q = cl(noteBox(n, gs)); if (q) out.push(q); } catch (e) { /* one pin */ } }
-  if (full && hero) { const h = tokenBox(hero); if (h) out.push({ ...grow(h, 10), w: 50 }); }   // the hero weighs most: a pin or a panel gives way first
+  if (full && hero) { const h = tokenBox(hero); if (h) out.push({ ...grow(h, Math.max(10, 0.15 * (h.r - h.l))), w: 50 }); }   // the drawn art (hair, a fist) reaches past the token's box   // the hero weighs most: a pin or a panel gives way first
   return out;
 }
 /* compose: measure, lay out, and (when the block had to go below or beside the token) measure again with the sound coming from there */
@@ -362,6 +363,9 @@ function compose(ctl, items, extra = {}) {
   const vh = window.innerHeight, k = Number(LE?.prefs?.scale) > 0 ? Number(LE.prefs.scale) : 1;
   let frame;
   if (ctl.shared) {
+    /* a critical on the map is a board moment like the others (live: sized to fill a share of a 16:9 'screen' of the board, it went
+       two tokens away and past every seat's view): still the biggest word, but anchored by the hero */
+    for (const it of items) if (it.wMin) { it.wMin = 0; it.cap = Math.min(it.cap, LP.MAP_CRIT_CAP); it.wMax = Math.min(it.wMax ?? 0.6, 0.58); }
     /* the map: scene units, nothing of this seat (the engine's Scale is divided out again in letterOne: the drawn size is S) */
     const g = extra.gauge && ctl.gaugeK ? { w: extra.gauge.w * ctl.gaugeK, h: extra.gauge.h * ctl.gaugeK } : extra.gauge;
     frame = { ...sharedFrame(ctl.hero), scale: 1, ...extra, ...(g ? { gauge: g } : {}) };

@@ -169,6 +169,7 @@ export function planMoment(ev, o = {}) {
 /* the longest exit the engine plays (contract: about 0.3-0.5 s) */
 export const EXIT_MAX = 500;
 /* FXLD2: the push grunt and the routine miss (ADVD2 10, 11) */
+export const MAP_CRIT_CAP = 0.14;   // a critical on a map layer: letter height as a share of the board's 'screen' (5 grid squares)
 export const PRE_CAP = 0.074, PRE_HOLD = 620, SOFT_CAP = 0.064, SOFT_HOLD = 2100;
 /* FXLD2 (ADVD2 2): on the map the words are part of the board: an exit that travels (letters falling, flying apart, zipping away)
    crosses the neighbours' tokens (live 1920: the falling letters dropped across Omni-Man and Atom Eve). On a map layer each exit stays
