@@ -129,8 +129,9 @@ export const PALETTE = {
 const PAL_OF = { hit: "health", heavy: "health", down: "down", heal: "heal", back: "heal", stress: "resolve", spent: "resolve", regain: "steady", out: "out", steady: "steady" };
 
 /* the engine's size model (contract v4 `magnitude`, 0..2, 0.5 = normal): a kind's size factor and the amount map onto it, so a heavy hit
-   or a fall stands bigger than a hit, and a small spend is the smallest; the engine adds the token, the zoom and the viewport */
-export const mag = (f) => Math.round(Math.max(0.1, Math.min(2, (f - 0.4) * 1.3)) * 100) / 100;
+   or a fall stands bigger than a hit, and a small spend is the smallest; the engine adds the token, the zoom and the viewport
+   (seen live at 0.6 zoom: magnitude 0.66 made a -1 hit's word four tokens wide; a plain hit now sits near the engine's smallest) */
+export const mag = (f) => Math.round(Math.max(0, Math.min(2, (f - 0.8) * 1.0)) * 100) / 100;      // seen live too: at 1.6 a heavy hit's word ran off the top of the screen
 
 /* a small, stable hash: the same seed gives the same choice on every seat */
 export function hash(s) { let h = 2166136261 >>> 0; for (const ch of String(s)) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
@@ -154,7 +155,7 @@ export function look(a, c, lang, seed, last = null) {
   const colors = PALETTE[PAL_OF[kind]];
   const sign = HEALTH.includes(kind) ? (kind === "heal" || kind === "back" ? "+" : "-") : (kind === "regain" || kind === "steady" ? "+" : "-");
   const number = Number.isFinite(a.num) && a.num > 0 && kind !== "spent"      /* spent: the pushed roll's splash already shows the stress */
-    ? { text: `${sign}${a.num}`, mood: sign === "+" ? "heal" : "impact", sound: { loud: Math.min(1, 0.3 + amt * 0.4), sharp: sign === "+" ? 0.2 : 0.7, long: 0.25, pitch: sign === "+" ? 0.5 : -0.1, rough: 0.2 }, size: 0.62 + amt * 0.18, magnitude: mag(s.size * (0.94 + amt * 0.16)) * 0.8, colors }
+    ? { text: `${sign}${a.num}`, mood: sign === "+" ? "heal" : "impact", sound: { loud: Math.min(1, 0.3 + amt * 0.4), sharp: sign === "+" ? 0.2 : 0.7, long: 0.25, pitch: sign === "+" ? 0.5 : -0.1, rough: 0.2 }, size: 0.78 + amt * 0.2, magnitude: mag(s.size * (0.94 + amt * 0.16)) * 0.8, colors }
     : null;
   const mo = MOTION[kind], at = (list, k) => list[(h >>> k) % list.length];
   const motion = { in: at(mo.in, 11), holdKind: at(mo.hold, 14), out: at(mo.out, 17) };
