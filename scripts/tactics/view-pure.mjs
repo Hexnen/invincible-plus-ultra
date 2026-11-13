@@ -61,6 +61,17 @@ function promptView(p, viewer, concealed = new Set()) {
     if (typeof rest.attacker === "string" && concealed.has(rest.attacker)) { const { odds, ...kept } = rest; q.data = { ...kept, unseen: 1 }; }
   }
   if (q.auto) { delete q.auto; }                                                   // why an option was passed automatically is the GM's knowledge (NPC policy)
+  /* FXJ2 (D212): a chase's catch-up card of the viewer's own striker. The engine offers no target hidden from the striker's players, but
+     one may be hidden after the card opened: its option goes (the plain "attack" is the preselected target's), and the card keeps its data
+     with a target the viewer can see preselected (before, the scrub below took the whole data: the card said "someone" and its buttons
+     lost their names, one of them the hidden one) */
+  if (q.kind === "chaseCatch" && isObj(q.data)) {
+    const hid = (id) => typeof id === "string" && concealed.has(id), first = q.data.target;
+    q.options = q.options.filter((o) => !(o.id === "attack" ? hid(first) : String(o.id).startsWith("attack:") && hid(String(o.id).slice(7))));
+    const left = (Array.isArray(q.data.targets) ? q.data.targets : []).filter((id) => typeof id === "string" && !hid(id));
+    q.data = { ...q.data, targets: left, ...(hid(first) ? { target: left[0] } : {}) };
+    if (!left.length) delete q.data.target;
+  }
   return q;
 }
 const numbersHidden = (state, cid, meta, part) => (meta.npc ?? []).includes(cid) && !state.revealed?.[cid]?.[part];

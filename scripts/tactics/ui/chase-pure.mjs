@@ -20,6 +20,7 @@ import { chase as Rules } from "../../rules/index.mjs";
 import { OBSTACLES, OUTCOMES, SIDES, rollerOf as rollerNow, stuckOf, groupsOf } from "../flows/chase.mjs";
 import { vehOf, rideOf } from "../flows/vehicle.mjs";
 import { modesOf } from "../movement-pure.mjs";
+import * as M from "../mods-pure.mjs";
 import { rollState } from "../desk-pure.mjs";
 import { rollButtons, attrText } from "./model-pure.mjs";
 
@@ -44,7 +45,7 @@ const fromCh = (c) => (isObj(c) ? { obstacle: c.obstacle ?? null, d66: c.d66 ?? 
   ...Object.fromEntries(SIDES.map((s) => [s, isObj(c[s]) ? { id: c[s].id, roller: c[s].roller, vehicle: c[s].vehicle ? 1 : 0, why: c[s].why ?? null } : null])),
   ...(Array.isArray(c.groups) ? { groups: c.groups.map((g) => ({ id: g.id, distance: g.distance, lost: g.lost ?? null, roller: isObj(g.roller) ? { id: g.roller.id, roller: g.roller.roller, vehicle: g.roller.vehicle ? 1 : 0, why: g.roller.why ?? null } : null })) } : {}) } : null);
 export const WHY = Object.freeze(["only", "slowest", "agility", "tie"]);
-export const STUCK = Object.freeze(["gone", "down", "wrecked", "engine", "noDriver"]);
+export const STUCK = Object.freeze(["gone", "down", "wrecked", "engine", "noDriver", "notStarted", "driver", "held", "snared", "trapped", "out"]);      // FXJ2: not started, driver unable, cannot move, out of the fight
 /** The whole panel. */
 export function chaseData(view, own, facts, t) {
   const ch = isObj(view?.chase) && view.kind === "chase" ? view.chase : null;
@@ -69,8 +70,15 @@ export function chaseData(view, own, facts, t) {
     if (full) { try { return stuckOf(full, id); } catch { /* the facts are not there */ } }
     const c = facts.c?.(id), rec = view.vehicles?.[id];
     if (!c) return "gone";
-    return c.kind === "vehicle" || isObj(rec) ? (rec?.wrecked ? "wrecked" : rec?.off?.engine ? "engine" : !rec?.driver ? "noDriver" : null) : null;
+    /* FXJ2: a player reads it off the table's knowledge: the vehicle's record (started), the statuses (held, snared, trapped, out) */
+    const has = (who, s) => { try { return M.hasStatus(view, who, s); } catch { return false; } };
+    const cant = (who) => { try { const k = M.conditions(view, who); return k.held ? "held" : k.snared || k.rooted ? "snared" : k.trapped ? "trapped" : null; } catch { return null; } };
+    const out = (who) => has(who, "dead") || has(who, "unconscious");
+    if (c.kind === "vehicle" || isObj(rec)) return rec?.wrecked ? "wrecked" : rec?.off?.engine ? "engine" : !rec?.driver ? "noDriver" : !rec?.started ? "notStarted" : out(rec.driver) || cant(rec.driver) ? "driver" : null;
+    return out(id) ? "out" : cant(id);
   };
+  /* FXJ2 (D214): one out of the fight (unconscious, dead, defeated) no longer flees or pursues: it leaves the lists */
+  const live = (list) => (list ?? []).filter((u) => stuck(u) !== "out");
   /* WHO ROLLS FOR A SIDE AND WHY [B3479]: in a round, the one it named; after it, the one who rolled (state.chase.last.by); before it,
      the GM's facts say who would; a player knows it only when one unit of the side can move */
   /* CHASE2 groups (ours): the pursuers in groups, each at its own distance; each group has its own roller */
@@ -81,7 +89,7 @@ export function chaseData(view, own, facts, t) {
     if (r?.id) return { id: r.id, roller: r.roller ?? r.id, why: WHY.includes(r.why) ? r.why : null };
     if (gid && phase === "rolling") return null;
     if (full) { try { const p = rollerNow(full, side, gid); if (p) return { id: p.id, roller: p.roller, why: p.why, next: 1 }; } catch { /* the facts are not there */ } }
-    const able = (gid ? gs.find((g) => g.id === gid)?.units ?? [] : ch.sides?.[side] ?? []).filter((u) => !stuck(u));
+    const able = (gid ? gs.find((g) => g.id === gid)?.units ?? [] : ch.sides?.[side] ?? []).filter((u) => !stuck(u));      // FXJ2: "out" is stuck too
     if (able.length === 1) { const rec = view.vehicles?.[able[0]]; return { id: able[0], roller: rec?.driver ?? able[0], why: "only", next: 1 }; }
     return null;
   };
@@ -108,12 +116,12 @@ export function chaseData(view, own, facts, t) {
     return { kind: alone ? "merge" : "split", label, req: busy ? null : req, disabled: busy ? t("ITAC.reason.busy") : null };
   };
   const sides = SIDES.slice().reverse().map((s) => {
-    const list = ch.sides?.[s] ?? [];
+    const list = live(ch.sides?.[s]);
     if (s === "pursuer" && gs) {
       /* the groups, the nearest first (a group that lost the prey last); the side's roller is the nearest group's */
       const order = gs.map((g, k) => ({ g, k })).sort((a, b) => (!!a.g.lost - !!b.g.lost) || a.g.distance - b.g.distance || a.k - b.k).map(({ g }) => g);
       const groups = order.map((g) => {
-        const r = g.lost ? null : rollerFor(s, g.id), units = g.units.map((u) => unit(u, s, r, list.length === 1, g));
+        const r = g.lost ? null : rollerFor(s, g.id), units = live(g.units).map((u) => unit(u, s, r, list.length === 1, g));
         const ru = units.find((u) => u.rolls) ?? null, rp = ru ? ru.people.find((p) => p.rolls) ?? ru.people[0] ?? null : null;
         const res = fresh ? ch.last?.groups?.[g.id] ?? null : null;
         return { id: g.id, letter: letterOf(g.id), label: t("ITAC.chase.group", { x: letterOf(g.id) }), distance: g.distance, lost: g.lost ?? null, lostText: g.lost ? t(`ITAC.chase.lost.${g.lost === "hiddenPath" ? "hiddenPath" : "far"}`) : null,
@@ -189,8 +197,13 @@ export function chaseData(view, own, facts, t) {
   const ram = catchQ ? !!catchQ.data?.ram : !!sides[0].roller?.vehicle;
   /* ANSD (CHASE2-1): every unit that reached them may strike, one after another, each picking its target among the fleeing */
   const pick = (catchQ?.data?.targets ?? []).length > 1;
-  const catchInfo = caughtNow || (phase === "rolling" && step === "catch") ? { by: catcher, at: pick ? null : caughtOne, ram, pick,
-    text: t(pick ? (ram ? "ITAC.chase.catch.whoRamPick" : "ITAC.chase.catch.whoChargePick") : ram ? "ITAC.chase.catch.whoRam" : "ITAC.chase.catch.whoCharge", { name: catcher, target: caughtOne }) } : null;
+  /* FXJ2 (D211, D213): who reached them but does not strike, and why (state.chase.last.barred, flows/chase.mjs catch): nobody is left out in
+     silence. When nobody strikes at all, the line says only that. */
+  const barred = (phase === "rolling" || fresh) && Array.isArray(ch.last?.barred) ? ch.last.barred.filter((b) => isObj(b) && typeof b.who === "string") : [];
+  const barredText = barred.map((b) => t("ITAC.chase.catch.barred", { name: name(b.who), why: t(`ITAC.reason.${b.reason}`, {}, String(b.reason ?? "")) })).join("; ");
+  const someStrike = !!catchQ || (view.stack ?? []).some((i) => !i.masked && i.parent === inst?.id && i.data?.chaseCatch) || !barred.some((b) => b.who === (sides[0].who?.id ?? sides[0].lead?.id));
+  const catchInfo = caughtNow || (phase === "rolling" && step === "catch") ? { by: catcher, at: pick ? null : caughtOne, ram, pick, barred: barred.map((b) => ({ who: b.who, reason: b.reason })),
+    text: [someStrike ? t(pick ? (ram ? "ITAC.chase.catch.whoRamPick" : "ITAC.chase.catch.whoChargePick") : ram ? "ITAC.chase.catch.whoRam" : "ITAC.chase.catch.whoCharge", { name: catcher, target: caughtOne }) : "", barredText].filter(Boolean).join("; ") } : null;
   const beats = [
     obsOn ? beat("obstacle", stateAt("obstacle"), obstacle ? obstacle.name : phase === "before" ? t("ITAC.chase.obstacle.next") : "") : null,
     beat("prey", stateAt("prey"), sides[1].roll.text, { who: sides[1].who?.name ?? "" }),

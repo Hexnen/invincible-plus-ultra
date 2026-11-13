@@ -1419,7 +1419,7 @@ async function gmEdit(X, op, a) {
       w(["kind"], "combat"); w(["chase"], null);
       /* CHASE (U168): how the chase ended stands in the state until the next chase starts, so every seat shows the same end card (each
          seat puts it away on its own, by its number `n`) */
-      w(["chaseEnded"], { n: Number(ch.no) || (Number(X.state.chaseEnded?.n) || 0) + 1, outcome, distance: ch.distance, lostAt: ch.lostAt, rounds: ch.round ?? 0, round: X.state.round, sides: { prey: (ch.sides?.prey ?? []).slice(), pursuer: (ch.sides?.pursuer ?? []).slice() },
+      w(["chaseEnded"], { n: Number(ch.no) || (Number(X.state.chaseEnded?.n) || 0) + 1, outcome, distance: ch.distance, lostAt: ch.lostAt, rounds: ch.round ?? 0, round: X.state.round, sides: { prey: Chase.inChase(view(X), ch.sides?.prey), pursuer: Chase.inChase(view(X), ch.sides?.pursuer) },      // FXJ2 (D214): who was still in it
         ...(names.length ? { gone: names } : {}) });      // ANSD (CHASE-4): who left the fight with the end (their names: the Combat no longer knows them)
       emit(X, null, { type: "chase", state: "end", outcome, distance: ch.distance, ...(names.length ? { gone: names.map((x) => x.id) } : {}) });
       break;
