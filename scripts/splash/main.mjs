@@ -69,6 +69,7 @@ function registerSettings() {
   client('fullscreen', { name: L('Fullscreen.Name'), hint: L('Fullscreen.Hint'), type: Boolean, default: true });
   client('fullFrom', { name: L('FullFrom.Name'), hint: L('FullFrom.Hint'), type: Number, default: 0.7, range: { min: 0.4, max: 1, step: 0.05 } });
   client('debug', { name: L('Debug.Name'), hint: L('Debug.Hint'), type: Boolean, default: false });
+  client('lettering', { name: L('Lettering.Name'), hint: L('Lettering.Hint'), type: Boolean, default: true, onChange: () => loadLetters() });   // LDIC
   client('chat', { name: L('Chat.Name'), hint: L('Chat.Hint'), type: Boolean, default: true });
 
   world('dry', { name: L('Dry.Name'), hint: L('Dry.Hint'), type: Number, default: 8, range: { min: 0, max: 30, step: 1 } });
@@ -99,6 +100,7 @@ function onReady() {
   document.fonts?.load?.('100px Comic').catch(() => {});
   applyLabels();
   applyMotion();
+  loadLetters();
   const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   mq?.addEventListener?.('change', applyMotion);
   /* obszar roboczy (okno bez czatu) zmienia się z oknem i paskiem bocznym; pasek animuje szerokość, więc mierzymy dwa razy */
@@ -146,6 +148,20 @@ export function start(phases = {}) {
 function applyMotion() {
   const m = cs('motion');
   S.setReduced(m === 'reduced' || (m === 'auto' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
+}
+/* LDIC: the comic lettering engine (scripts/letters/, shared with moinen-maps). The stub without a renderer says design().stub: then,
+   and when the setting is off or the engine does not load, the classic splash plays. */
+let lettersLoad = 0;
+function loadLetters() {
+  const ticket = ++lettersLoad;
+  if (!cs('lettering')) { Stage.setLetters(null); return; }
+  import('../letters/index.mjs').then(m => m.letters()).then(L => {
+    if (ticket !== lettersLoad) return;
+    let stub = true;
+    try { stub = !L || typeof L.play !== 'function' || L.design?.('A')?.stub === true; } catch (e) { stub = true; }
+    Stage.setLetters(stub || !cs('lettering') ? null : L);
+    dbg('liternictwo:', stub ? 'brak renderera (zaślepka), klasyczny splash' : 'silnik ' + L.version);
+  }).catch(e => { if (ticket === lettersLoad) Stage.setLetters(null); console.warn(`${LOG} lettering engine unavailable, classic splash`, e); });
 }
 function fullFrom() { return cs('fullscreen') ? cs('fullFrom') : null; }
 function fxLevel() { const e = cs('effects'); return e === 'full' ? 1 : (e === 'reduced' ? 0.5 : 0); }
@@ -341,7 +357,7 @@ hook('createChatMessage', async (message, options, userId) => {
     announce(ev, message, resolve);
     Stage.play(ev, {
       rnd: mulberry32(hashString(id)), token, scale: cs('scale'), hold: cs('hold'), fx: fxLevel(), fullFrom: fullFrom(),
-      resolve
+      resolve, seed: id
     });
   } catch (e) { console.warn(`${LOG} createChatMessage failed`, e); }
 });
@@ -361,7 +377,7 @@ hook('updateChatMessage', async (message, changes, options, userId) => {
     const ev = { stress: rd.stress, stressPending: false, pushed: true, rb: Number.isFinite(f.rb) ? f.rb : null, rmax: Number.isFinite(f.rmax) ? f.rmax : null };
     const resolve = resolveReader(message, ev);
     announce({ ...ev, stressOnly: true }, message, resolve);
-    Stage.playStress(ev, { token: resolveToken(message), scale: cs('scale'), hold: cs('hold'), resolve });
+    Stage.playStress(ev, { token: resolveToken(message), scale: cs('scale'), hold: cs('hold'), resolve, seed: message.id });
   } catch (e) { console.warn(`${LOG} updateChatMessage failed`, e); }
 });
 

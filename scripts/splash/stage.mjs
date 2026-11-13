@@ -2,6 +2,7 @@
    Jeden splash na klucz ('screen' albo id tokena); nowy wypiera poprzedni. */
 import { FS, LBL, oddsText, hueOf, hsl, fmtOdds, say } from './logic.mjs';
 import * as S from './splash.mjs';
+import * as LP from './letter-plan.mjs';
 
 const active = new Map();   // key -> ctl
 const MAX_STAGES = 4;
@@ -99,7 +100,86 @@ function placeTokenStage(ctl) {
   } catch (e) { /* płótno niegotowe: zostaje ostatnia pozycja */ }
 }
 export function onCanvasPan() {
-  for (const ctl of active.values()) if (ctl.token) placeTokenStage(ctl);
+  for (const ctl of active.values()) if (ctl.token) { placeTokenStage(ctl); moveLetters(ctl); }
+}
+
+/* ------------------------------------------------------------------ LDIC: the lettered moment (LETR engine, scripts/letters/)
+   The engine is handed in by main.mjs once it is loaded; null (not loaded yet, the stub without a renderer, or the setting off) = the
+   classic SVG splash below. Every lettering of a moment goes into one wrapper inside the splash layer (fixed, inset 0: client px are
+   the wrapper's px, the layer's clip keeps it off the chat and its z-index over the sheets; aria-hidden like the rest). */
+let LE = null;
+export function setLetters(engine) { LE = engine || null; }
+export function lettersOn() { return !!LE; }
+function clientAt(ctl, at) {
+  const r = ctl.el.getBoundingClientRect();
+  return { x: Math.round(r.left + (at[0] / 100) * r.width), y: Math.round(r.top + (at[1] / 100) * r.height) };
+}
+function tokenClient(token) {
+  try { const g = canvas.stage.toGlobal(token.center), r = canvas.app.view.getBoundingClientRect(); return { x: Math.round(r.left + g.x), y: Math.round(r.top + g.y) }; } catch (e) { return null; }
+}
+function moveLetters(ctl) {
+  for (const it of ctl.letters || []) { try { if (it.h.alive) it.h.moveTo(clientAt(ctl, it.at)); } catch (e) { /* the engine dropped it */ } }
+}
+function letterWrap(ctl) {
+  if (ctl.lw?.isConnected) return ctl.lw;
+  const w = document.createElement('div'); w.className = 'ins-letters';
+  ensureLayer().appendChild(w);
+  ctl.lw = w; ctl.letters = []; ctl.hands = [];
+  ctl.el.classList.add('lettered');
+  return w;
+}
+/* one lettering of the plan (letter-plan.mjs) -> L.play; seed = message id + role, so every client letters it alike */
+function letterOne(ctl, it, seedBase) {
+  if (!LE || ctl.dead) return null;
+  const lw = letterWrap(ctl);
+  const from = it.from === 'token' ? (ctl.token ? tokenClient(ctl.token) : null) : it.from;
+  const opts = {
+    space: 'screen', parent: lw, at: clientAt(ctl, it.at), anchor: 'center', size: it.size, maxWidth: it.maxWidth,
+    mood: it.mood, sound: it.sound, hold: it.hold, rotation: it.rotation || 0, reduced: S.isReduced(),
+    seed: LP.seedOf(seedBase, it.role), avoid: ctl.hands.slice()
+  };
+  if (from != null) opts.from = from;
+  if (it.colors) opts.colors = it.colors.slice();
+  try {
+    const h = LE.play(LP.letterable(it.text), opts);
+    ctl.letters.push({ h, at: it.at, role: it.role });
+    if (h?.hand) ctl.hands.push(h.hand);
+    return h;
+  } catch (e) { console.warn('invincible-plus-ultra (splash) | lettering failed', e); return null; }
+}
+function stopLetters(ctl, quick) {
+  for (const it of ctl.letters || []) { try { it.h.stop({ quick }); } catch (e) { /* already gone */ } }
+  const lw = ctl.lw;
+  if (lw) setTimeout(() => lw.remove(), quick ? 0 : 900);
+}
+
+function playLetters(ev, o) {
+  const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
+  const ctl = openStage(full ? { ...o, full: true } : o);
+  const stage = ctl.el, later = ctl.later, holdK = o.hold || 1;
+  letterWrap(ctl);
+  if (full) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);
+  const dF = LP.failStrength(ev);
+  const plan = LP.planMoment(ev, { W: ctl.W, token: !!ctl.token, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
+  const seed = o.seed ?? null;
+  for (const it of plan.items) later(() => letterOne(ctl, it, seed), it.delay);
+  const word = plan.items.find(it => it.role === 'word');
+  const t0 = word?.delay ?? 0;
+  /* the old splash's surroundings stay: rays, the soft flash, the shake and the sparks of a strong result; the shake of a rare miss */
+  if (!ev.fail && o.fx) later(() => { S.fxFor(stage, ev.tag ? Math.max(ev.power, 0.32) : ev.power, later, o.fx, full); if (!S.isReduced() && ev.power > 0.45) S.shake(ctl.lw, Math.round(4 + 12 * ev.power)); }, t0 + 60);
+  if (ev.fail && !ev.softFail && dF > 0.3 && o.fx && !S.isReduced()) later(() => S.shake(ctl.lw, 4 + Math.round(8 * dF)), t0 + 380);
+  if (ev.stress) later(() => stressLettered(ctl, ev.stress, o.resolve ? o.resolve() : null, holdK, seed), t0 + 450);
+  const wordEnd = word ? word.delay + word.hold : plan.end;
+  if (full) later(() => fadeExtrasEarly(ctl), wordEnd + 300);
+  const badgesEnd = ev.stress ? t0 + 450 + Math.round(2600 * holdK) + 200 : 0;
+  later(() => Array.from(stage.querySelectorAll('.ins-badge')).forEach(S.leaveSlide), Math.max(wordEnd, badgesEnd - 200));
+  later(() => endCtl(ctl, false), Math.max(plan.end, badgesEnd) + 800);
+  return ctl;
+}
+/* the stress: the Resolve gauge stays a DOM gauge (pips, the line under it), its number is lettered beside it */
+function stressLettered(ctl, stress, resolve, holdK, seed) {
+  S.stressBadge(ctl.el, stress, resolve, ctl.later);
+  letterOne(ctl, LP.planStress(stress, { W: ctl.W, token: !!ctl.token, holdK, reduced: S.isReduced() }), seed);
 }
 
 /* tło pełnoekranowe: poświata w kolorze wyniku i promienie na cały widok; nigdy nie zasłania całkiem mapy */
@@ -141,6 +221,7 @@ function endCtl(ctl, quick) {
   ctl.dead = true;
   ctl.timers.forEach(clearTimeout);
   if (active.get(ctl.key) === ctl) active.delete(ctl.key);
+  if (ctl.lw) stopLetters(ctl, quick);   // LDIC: a newer splash on the same place, the limit, a scene change: the words exit (quick = at once)
   for (const x of ctl.extras || []) {
     if (quick || S.isReduced()) { x.remove(); continue; }
     const a = x.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, fill: 'forwards' });
@@ -205,6 +286,7 @@ function openStage(opts) {
 /* Odtwarza zdarzenie.
    o: { rnd, token, scale, hold (mnożnik czasu), fx (0/1), resolve: () => ({now,max}) | null, label } */
 export function play(ev, o) {
+  if (LE) return playLetters(ev, o);   // LDIC: lettered by the comic lettering engine; the classic splash below when it is not there
   const rnd = o.rnd || Math.random;
   /* rzadszy sukces (moc >= próg) dostaje pełny ekran; porażki i rutyna nie */
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
@@ -303,7 +385,8 @@ export function playStress(ev, o) {
   const joined = !!existing && !existing.dead;
   const ctl = joined ? existing : openStage(o);
   const stage = ctl.el;
-  ctl.later(() => S.stressBadge(stage, ev.stress, o.resolve ? o.resolve() : null, ctl.later), 100);
+  if (LE) ctl.later(() => stressLettered(ctl, ev.stress, o.resolve ? o.resolve() : null, o.hold || 1, o.seed != null ? o.seed + ':late' : null), 100);
+  else ctl.later(() => S.stressBadge(stage, ev.stress, o.resolve ? o.resolve() : null, ctl.later), 100);
   ctl.later(() => Array.from(stage.querySelectorAll('.ins-badge')).forEach(S.leaveSlide), 3400 * (o.hold || 1));
   if (!joined) ctl.later(() => endCtl(ctl, false), 4000 * (o.hold || 1));
   return ctl;

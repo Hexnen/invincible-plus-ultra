@@ -93,3 +93,9 @@
 
 /* żywy komunikat dla czytników ekranu (stage.mjs announce): niewidoczny, ale odczytywany */
 .ins-sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* LDIC: the lettered moment (scripts/splash/stage.mjs playLetters): the comic lettering engine draws every word and number of one
+   moment into this wrapper; fixed at inset 0, so client px are its px (the layer's clip and z-index hold for it too). The Resolve gauge
+   stays a DOM gauge, its number is lettered just above it, so the gauge's own header line goes. */
+.ins-letters { position: fixed; inset: 0; pointer-events: none; }
+.ins-stage.lettered .ins-badge .bt { display: none; }
