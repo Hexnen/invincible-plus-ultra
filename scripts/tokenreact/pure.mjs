@@ -182,6 +182,15 @@ export function targetPx(kind, amt, word, tokenPx, vh, vw = vh * 16 / 9, k = 1) 
   const widthCap = Math.max(SIZE_RULE.widthTok * tokenPx, SIZE_RULE.widthVw * vw) / (SIZE_RULE.aspect * (n + 0.5));
   return Math.max(Math.min(want, vh * SIZE_RULE.capVh, widthCap), basePx(tokenPx, vh) * Math.min(1, s.sev) * Math.min(1, k));
 }
+/** the drawn word against the same limits (FXLT, seen on lane 20 with engine 1.6.0): the cap height obeys targetPx, but a tall hand (stacked
+    letters, a deep extrusion: "FLUMP!" drew 2.1 caps tall) or a wide one still covered three tokens at zoom 0.42. Once the engine has
+    measured the drawn box (hold box, in caps) the word shrinks so the box stays under capVh x 1.25 of the view height and inside the width cap.
+    -> a factor <= 1 for the scale */
+export function fitDrawn({ cap, hbW, hbH, tokenPx, vh, vw = vh * 16 / 9 }) {
+  if (!(cap > 0) || !(hbW > 0) || !(hbH > 0)) return 1;
+  const maxH = vh * SIZE_RULE.capVh * 1.25, maxW = Math.max(SIZE_RULE.widthTok * tokenPx, SIZE_RULE.widthVw * vw);
+  return Math.min(1, maxH / (cap * hbH), maxW / (cap * hbW));
+}
 /* the engine's magnitude (contract v4, 0..2): it lifts the engine's ceiling for the worst blows; the size itself is targetPx */
 export const magOf = (kind, amt = 0.3) => { const s = SOUND[kind]; return s ? Math.round(Math.max(0, Math.min(1.2, (s.sev - 0.7) * 0.9 + 0.15 * amt)) * 100) / 100 : 0.5; };
 

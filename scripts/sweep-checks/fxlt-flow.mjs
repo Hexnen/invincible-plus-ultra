@@ -51,11 +51,12 @@ const sizeK = (o) => 0.62 + 0.7 * (o?.sound?.loud ?? 0.6);
 const ctxOf = (o) => ({ space: "world", magnitude: o.magnitude, scale: o.scale ?? 1, tokenSpan: 100, grid: 100, zoom: cam.z, vw: VW - 300, vh: VH, sizeK: sizeK(o), aspect: 3 });
 const pxOf = (o) => sizeFor(ctxOf(o)).px;      // the cap height on screen the engine's model gives a play
 const plays = [], stops = [];
+const TALL = {};      // words the stand-in draws with a given hold box (w, h in caps), as the engine measures it
 const fake = { version: "test", limits: { screen: 16, world: 48 }, ready: async () => true, count: () => 0,
   sizeOf: (text, o) => ({ ...sizeFor(ctxOf(o)), sizeK: sizeK(o) }),
   play: (text, o) => {
     const rec = { text, o, t: Date.now(), stopped: null };
-    const h = { id: `h${Math.random()}`, hand: o.hand?.id ?? "x", alive: true, plan: { timeline: { ent: [{ ticks: 6 }, { ticks: 6 }] } }, ready: sleep(30).then(() => true),
+    const h = { id: `h${Math.random()}`, hand: o.hand?.id ?? "x", alive: true, opts: o, plan: { timeline: { ent: [{ ticks: 6 }, { ticks: 6 }] }, ...((TALL[text] ?? (/^[+-]?\d/.test(text) ? null : TALL["*"])) ? { _holdBox: TALL[text] ?? TALL["*"] } : {}) }, ready: sleep(30).then(() => true),
       finished: sleep((o.hold ?? 800) + 900).then(() => { h.alive = false; return "done"; }), stop(q) { rec.stopped = q ?? {}; stops.push(rec); h.alive = false; }, moveTo() {} };
     rec.h = h; plays.push(rec); return h;
   } };
@@ -124,6 +125,21 @@ for (const z of [0.25, 0.6, 1.2]) {
   toks.splice(toks.indexOf(a), 1); toks.splice(toks.indexOf(b), 1);
 }
 cam.z = 1;
+
+/* R5d: a tall hand (seen on lane 20: "FLUMP!" drew 2.1 caps tall and covered three tokens at zoom 0.42; the stand-in draws 3.5 caps so the small test token goes over): once the drawn box is known the
+   word shrinks so the box stays under 12 % x 1.25 of the view height */
+{ cam.z = 0.42; cam.x = 0; cam.y = 0;
+  const d = mk("D", "npc", 8, 6, { x: 700 / 0.42, y: 500 / 0.42 });
+  Hooks.callAll("canvasReady");
+  TALL["*"] = { w: 5, h: 3.5 };
+  set(d, "health", 0);
+  await sleep(900);
+  const w = plays.find((r) => r.o.token?.id === "D" && !isNum(r));
+  const before = w ? pxOf(w.o) : 0; try { w?.o.at?.(); } catch { /* the check below fails */ }
+  const after = w ? pxOf(w.o) : 0;
+  ck(`R5d a tall word is shrunk to fit: drawn ${Math.round(before * 3.5)} -> ${Math.round(after * 3.5)} px, limit ${Math.round(VH * 0.12 * 1.25)}`, !!w && after * 3.5 <= VH * 0.12 * 1.25 + 1 && after < before);
+  await take(1800); for (const k of Object.keys(TALL)) delete TALL[k];
+  toks.splice(toks.indexOf(d), 1); cam.z = 1; }
 
 /* R11: stress in the colours of strain, not ice (hue of the mid fill outside the blues) */
 set(hero, "resolve", 3);

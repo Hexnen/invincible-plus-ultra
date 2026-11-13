@@ -329,7 +329,7 @@ function planOf(L, it) {
     o.scale = scaleFor(L, n.text, o, numCap);
     return o;
   });
-  return { tokRect, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, wordOpts, numOpts, slot: "above" };
+  return { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, wordOpts, numOpts, slot: "above" };
 }
 /* the world point of one member of a reaction's group, every frame: from its token's place now, on the side chosen at the start,
    pushed into the safe rect while the token is on screen (reviews 1, 7, 14) */
@@ -340,6 +340,13 @@ function measure(plan) {
   const hb = plan.wordH?.plan?._holdBox;
   if (!hb || !(hb.w > 0) || !(hb.h > 0)) return;
   plan.measured = true;
+  /* the drawn box over the limits: the word (live, its handle's scale is read every frame) and the numbers not yet started shrink with it */
+  const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: globalThis.innerWidth || 1600 });
+  if (f < 0.98) {
+    try { if (plan.wordH?.opts && Number.isFinite(plan.wordH.opts.scale)) plan.wordH.opts.scale *= f; } catch { /* keep */ }
+    plan.cap *= f; plan.numCap *= f; plan.gArgs = { ...plan.gArgs, cap: plan.gArgs.cap * f, numCap: plan.gArgs.numCap * f };
+    for (const o of plan.numOpts ?? []) if (Number.isFinite(o.scale)) o.scale *= f;
+  }
   const g = P.group({ ...plan.gArgs, aspect: hb.w, tall: hb.h });
   plan.g = g; plan.box = { w: g.w, h: g.h };
 }
