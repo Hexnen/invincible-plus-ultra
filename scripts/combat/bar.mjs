@@ -837,9 +837,12 @@ function paintRow(card, key, spec, first) {
   const shownCount = card.item.nums ? spec.count : 0;
   const apply = () => { row.fill.style.setProperty("--v", spec.frac.toFixed(4)); row.n.style.setProperty("--icbar-n", String(shownCount)); };
   if (fresh) {
+    /* FXS2 (U232): the bar fills in from empty, but the NUMBER is the fact and stands at once: after a reload mid-fight (the page drawing
+       at a few frames a second) a count-up from 0 read as Health climbing (2/9 ... 6/9) */
     row.fill.style.setProperty("--v", "0");
-    row.n.style.setProperty("--icbar-n", "0");
-    requestAnimationFrame(() => requestAnimationFrame(apply));
+    row.n.classList.add("icbar-now");
+    row.n.style.setProperty("--icbar-n", String(shownCount));
+    requestAnimationFrame(() => requestAnimationFrame(() => { apply(); row.n.classList.remove("icbar-now"); }));
   } else apply();
   const now = { frac: spec.frac, count: spec.count };
   if (!fresh && prev && (prev.frac !== now.frac || prev.count !== now.count)) {

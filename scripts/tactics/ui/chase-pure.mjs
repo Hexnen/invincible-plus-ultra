@@ -321,6 +321,8 @@ export function chaseData(view, own, facts, t) {
     roundLabel: phase === "before" ? t("ITAC.chase.round.before", { n: (ch.round ?? 0) + 1 }) : t("ITAC.chase.round.n", { n: phase === "rolling" && !rolled ? (ch.round ?? 0) + 1 : ch.round ?? 0 }),
     distance: { value: d, lostAt: L, max: L, status, toEscape, toCatch, from: fresh ? ch.last?.from ?? null : null,
       say: caught ? t("ITAC.chase.say.caught") : escaped ? t("ITAC.chase.say.escaped") : t("ITAC.chase.say.run", { catch: toCatch, escape: toEscape }),
+      /* FXS2 (U233): the two counts of a running chase as two separate items (wrapped as one line they read as one sentence) */
+      run: caught || escaped ? null : [{ id: "catch", label: t("ITAC.chase.run.catch"), n: toCatch }, { id: "escape", label: t("ITAC.chase.run.escape"), n: toEscape }],
       escapeText: t("ITAC.chase.escapeAt", { n: L }), catchText: t("ITAC.chase.catchAt"), unit: t("ITAC.chase.zones", { n: d }),
       /* CHASE2 groups (ours): where each pursuing group stands on the track (a lost one beyond its end) */
       label: gs ? t("ITAC.chase.nearest") : null, marks: sides[0].groups ? sides[0].groups.map((g) => ({ id: g.id, letter: g.letter, at: Math.min(L, g.distance), lost: !!g.lost, mine: g.mine })) : null },

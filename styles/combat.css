@@ -700,6 +700,7 @@
   counter-reset: icbar-n var(--icbar-n, 0);
   transition: --icbar-n .6s var(--icbar-out);
 }
+#invincible-combat-bar .icbar-num.icbar-now { transition: none; }      /* FXS2 (U232): a fresh row's number stands at once (bar.mjs paintRow) */
 #invincible-combat-bar .icbar-num::after { content: counter(icbar-n); }
 #invincible-combat-bar .icbar-num.icbar-pct::after { content: counter(icbar-n) "%"; }
 #invincible-combat-bar .icbar-hp .icbar-num { color: var(--icbar-yellow); }             /* 12.5 */

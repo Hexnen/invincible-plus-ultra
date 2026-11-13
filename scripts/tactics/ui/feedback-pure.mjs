@@ -25,6 +25,10 @@ export function whyOf(t, reason, params = {}, o = {}) {
   const fix = fk ? t(`ITAC.fix.${fk}`, params) : wk || o.ask === false ? null : t(o.staff ? "ITAC.fix.gm" : "ITAC.fix.ask");
   return { text, fix };
 }
+/** FXS2 (U231): during a chase nobody has turns (the round is played in the chase panel), so "not your turn, wait for your card on the
+    initiative bar" sends a player to wait for a card that never comes: the same reason is said in the chase's own words. -> a `t` */
+const CHASE_WORDS = Object.freeze({ "ITAC.why.notYourTurn": "ITAC.why.chase.notYourTurn", "ITAC.fix.notYourTurn": "ITAC.fix.chase.notYourTurn", "ITAC.reason.notYourTurn": "ITAC.reason.chase.notYourTurn" });
+export const chaseT = (t) => (key, data, fb) => t(CHASE_WORDS[key] ?? key, data, fb);
 /** the two sentences as one line (a place with room for a single string: the map's menu, a row's aria-label) */
 export const whyLine = (w) => (w ? [w.text, w.fix].filter(Boolean).join(" ") : null);
 

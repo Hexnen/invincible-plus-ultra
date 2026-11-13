@@ -254,9 +254,20 @@ function placeSlots(rec) {
   const hudSide = ChatPark.rightEdge(sbL, chatR, W, hudR ? { top: hudR.top, bottom: hudR.bottom } : null);
   const squeeze = hudOn && Lay.hudSqueezed(topL, hudSide - 12, hudOpenW, SP.SIZE.card * k);
   if (squeeze !== squeezed) { squeezed = squeeze; handlers.ichSqueeze?.(squeeze); }
+  /* FXS2 (U234): where the challenges' rows really end on the GM seat, while the HUD shows all of them (no "+N more", no scroll): the band
+     gives the rest to the desk under it (slots-pure.frame). A new challenge that no longer fits shows the "+N more" chip; then this is
+     null, the band is whole again for one layout and the HUD lays out its rows in it, and the next layout fits the band to them */
+  const hudEnd = hudOn && !hudFolded ? rec.derive(({ q, one, rect }) => {
+    if (one("#invincible-challenges .ich-more:not(.ich-leaving)")) return null;
+    const L = one("#invincible-challenges .ich-list");
+    if (!L || L.scrollHeight > L.clientHeight + 1) return null;
+    let y = null;
+    for (const el of q("#invincible-challenges .ich-item:not(.ich-leaving)")) { const r = rect(el); if (r) y = Math.max(y ?? 0, r.bottom); }
+    return y === null ? null : Math.round(y);
+  }) : null;
   const fr = SP.frame({ W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, topCx, topL, topR, floats, side, chatTop: chat?.top ?? null,
     listEnd: list && list.left > W * 0.5 ? list.bottom : null, chatX: colOf ? [colOf.left, colOf.right] : null,
-    hud: { present: hudOn, x0: Lay.hudEdge(hudFolded, squeezed, hudR?.left ?? null) }, desk: deskSide ? { open: true, x0: deskR.left } : null,
+    hud: { present: hudOn, x0: Lay.hudEdge(hudFolded, squeezed, hudR?.left ?? null), end: hudEnd }, desk: deskSide ? { open: true, x0: deskR.left } : null,
     bar: { lo, hi, top: barTop, bottom: H - bottom } });
   Slots.setFrame(fr);
   root.style.setProperty("--itd-panel-maxh", `${fr.panelMax}px`);
@@ -301,7 +312,17 @@ export function topReach() {
   try {
     if (!root || !shown) return 0;
     let y = 0;
-    for (const name of ["line", "cards"]) { const el = slotEls[name]?.parentElement; if (el && !el.dataset.empty) { const r = visibleRect(el); if (r) y = Math.max(y, r.bottom); } }
+    for (const name of ["line", "cards"]) {
+      const el = slotEls[name]?.parentElement;
+      if (!el || el.dataset.empty) continue;
+      /* FXS2 (U235): the fight's end card is no inset (after the fight the camera frames nothing under it): the map's VRAM meter, which
+         stands under the declared top inset, dropped under the card to the hotbar */
+      if (name === "cards" && slotEls.cards.querySelector('.ita-sum[data-kind="fight"]')) {
+        for (const k of slotEls.cards.querySelectorAll(":scope > .itd-asks > :not(.ita-sum)")) { const r = visibleRect(k); if (r) y = Math.max(y, r.bottom); }
+        continue;
+      }
+      const r = visibleRect(el); if (r) y = Math.max(y, r.bottom);
+    }
     return Math.round(y);
   } catch { return 0; }
 }

@@ -65,7 +65,17 @@ function decisionBox(d) {
     dec.buttons?.length ? h("div.itc-dec-b", {}, btns(dec.buttons, "dec")) : null,
     waits);
 }
-/** the GM's corrections: the obstacle of the next roll, the table on or off, the distance by hand, who joins, the ends of the chase */
+/** the GM's corrections: the obstacle of the next roll, the table on or off, the distance by hand, who joins, the ends of the chase.
+    FXS2 (U229): the ends are always in reach: four icon buttons (their words in the tooltips, the one the chase suggests in yellow) on
+    the row of the tools' fold, open or folded; the tools themselves are two compact rows of label-and-control pairs (the obstacle,
+    the table, the distance; who joins and to which side), so the whole box fits a 1366x768 window without scrolling. */
+const END_ICON = { escaped: "fa-person-running", caught: "fa-hand-back-fist", gaveUp: "fa-flag", combat: "fa-swords" };
+const JOIN_ICON = { "join:pursuer": "fa-user-plus", "join:prey": "fa-user-plus" };
+function iconBtn(b, fk, cls = "") {
+  const why = b.disabled && typeof b.disabled === "string" ? b.disabled : null, tip = why ? `${b.label}: ${why}` : [b.label, b.tip].filter(Boolean).join(". ");
+  return h(`button.itc-ib${cls}`, { fk, tip, disabled: !!b.disabled || !b.req, data: { id: b.id ?? null, kind: b.primary && !b.disabled ? "main" : null }, attrs: { "aria-label": b.label },
+    on: { click: () => (b.req ? handlers.send?.(b.req) : null) } }, icon(END_ICON[b.id] ?? JOIN_ICON[b.id] ?? "fa-circle"));
+}
 function gmBox(d) {
   const g = d.gm;
   if (!g) return null;
@@ -73,17 +83,18 @@ function gmBox(d) {
     choices.map((c) => h("option", { text: c.label, attrs: { value: c.id, selected: c.id === value } })));
   const body = gmOpen ? h("div.itc-gm-b", {},
     h("label.itc-ctl.itc-c-obs", {}, h("span.itc-k", { text: g.obstacle.label }), sel("gm:obs", g.obstacle.label, g.obstacle.value, g.obstacle.choices, (v) => handlers.own?.({ obstacle: v === "auto" ? null : v }))),
-    h("div.itc-ctl.itc-c-tab", {}, h("span.itc-k", { text: g.table.label }), h("button.itc-tog", { fk: "gm:table", attrs: { "aria-pressed": String(g.table.on) }, on: { click: () => handlers.send?.(g.table.req) } }, icon(g.table.on ? "fa-square-check" : "fa-square"), h("span", { text: g.table.label }))),
+    h("button.itc-tog", { fk: "gm:table", tip: g.table.label, attrs: { "aria-pressed": String(g.table.on) }, on: { click: () => handlers.send?.(g.table.req) } }, icon(g.table.on ? "fa-square-check" : "fa-square"), h("span", { text: g.table.label })),
     h("div.itc-ctl.itc-c-dist", { tip: g.distance.tip }, h("span.itc-k", { text: g.distance.label }), h("span.itc-step", {},
       h("button", { fk: "gm:d-", disabled: !g.distance.minus, attrs: { "aria-label": `${g.distance.label} -1` }, on: { click: () => handlers.send?.(g.distance.minus) } }, icon("fa-minus")),
       h("b", { text: String(g.distance.value), attrs: { "aria-live": "polite" } }),
       h("button", { fk: "gm:d+", disabled: !g.distance.plus, attrs: { "aria-label": `${g.distance.label} +1` }, on: { click: () => handlers.send?.(g.distance.plus) } }, icon("fa-plus")))),
     h("div.itc-ctl.itc-c-join", {}, h("span.itc-k", { text: g.join.label }),
-      h("span.itc-join", {}, g.join.choices.length ? sel("gm:join", g.join.label, g.join.value, g.join.choices, (v) => handlers.own?.({ join: v })) : h("span.itc-none", { text: g.join.none }),
-        g.join.to.map((b) => btn(b, `gm:${b.id}`, ".itc-small")))),
-    h("div.itc-ctl.itc-c-ends", {}, h("span.itc-k", { text: d.labels.ends }), h("span.itc-ends-b", {}, g.ends.map((b) => btn({ ...b, primary: false }, `gm:end:${b.id}`, ".itc-small"))))) : null;
+      g.join.choices.length ? sel("gm:join", g.join.label, g.join.value, g.join.choices, (v) => handlers.own?.({ join: v })) : h("span.itc-none", { text: g.join.none }),
+      h("span.itc-join-b", {}, g.join.to.map((b) => iconBtn(b, `gm:${b.id}`, ".itc-join-to"))))) : null;
   return h("div.itc-gm", { data: { open: gmOpen ? "1" : null } },
-    h("button.itc-gm-h", { fk: "gm:open", attrs: { "aria-expanded": String(gmOpen) }, on: { click: () => { gmOpen = !gmOpen; draw(); } } }, icon("fa-sliders"), h("span", { text: d.labels.gm }), icon(gmOpen ? "fa-chevron-up" : "fa-chevron-down")),
+    h("div.itc-gm-row", {},
+      h("button.itc-gm-h", { fk: "gm:open", attrs: { "aria-expanded": String(gmOpen) }, on: { click: () => { gmOpen = !gmOpen; draw(); } } }, icon("fa-sliders"), h("span", { text: d.labels.gm }), icon(gmOpen ? "fa-chevron-up" : "fa-chevron-down")),
+      h("div.itc-gm-ends", { attrs: { role: "group", "aria-label": d.labels.ends } }, h("span.itc-k", { text: d.labels.ends }), g.ends.map((b) => iconBtn(b, `gm:end:${b.id}`)))),
     body);
 }
 function head(d, extra = null) {
@@ -171,7 +182,7 @@ function drawFaceoff(d) {
     h("b.itc-huge", { data: { tone: D.status.tone }, text: String(D.value) }),
     D.status.id !== "run" ? h("span.itc-unit-t", { data: { tone: D.status.tone }, text: D.status.text }) : null,
     pips, marks,
-    h("span.itc-say", { text: D.say }),
+    D.run?.length ? h("span.itc-say.itc-run", { attrs: { "aria-hidden": "true" } }, D.run.map((r) => h("span.itc-run-i", { data: { id: r.id } }, h("span", { text: r.label }), h("b", { text: String(r.n) })))) : h("span.itc-say", { text: D.say }),
     d.catch ? catchList(d.catch) : null);
   const strip = h("ol.itc-strip", { attrs: { "aria-label": d.labels.round } }, d.beats.map((b) => h("li", { data: { state: b.state }, tip: `${b.label}${b.who ? ` (${b.who})` : ""}${b.text ? `: ${b.text}` : ""}` }, icon(BEAT_ICON[b.id]), h("span", { text: b.label }))));
   return [head(d), h("div.itc-ring", { data: { crowd: d.crowd > 2 ? "1" : null } }, corner(d, d.sides[0]), mid, corner(d, d.sides[1])), obstacleBand(d.obstacle), strip, decisionBox(d), gmBox(d)];
@@ -257,12 +268,19 @@ export function place() {
     let top = Math.max(f?.slots?.line ? f.slots.line.y1 + 6 : 110, cardsR ? cardsR + GAP : 0);
     const hint = dock?.querySelector('.its-slot[data-slot="hint"]:not([data-empty])') ? f?.slots?.hint : null;
     if (hint && x1 > hint.x0 - GAP && hint.y1 > top) top = hint.y1 + GAP;
-    const floor = Math.min(panelR ? panelR.top : H, barR && barR.height ? barR.top : H - 110, H - 40) - GAP;
+    /* FXS2 (U229): the floor also keeps over what stands across the bottom under the panel's span: the map's director bar (it stands over
+       the hotbar while the dock's bar is away, as on the GM's seat in a chase) and the hotbar; before, the GM's tools ran under the
+       director bar at 1366x768 */
+    const under = ["mm-dir-bar", "hotbar"].map((id) => visibleRect(document.getElementById(id))).filter((r) => r && r.height > 0 && r.top > H / 2 && r.right > x0 && r.left < x1).map((r) => r.top);
+    const floor = Math.min(panelR ? panelR.top : H, barR && barR.height ? barR.top : H - 110, H - 40, ...under) - GAP;
     root.style.setProperty("--itc-x", `${Math.round((x0 + x1) / 2)}px`);
     root.style.setProperty("--itc-w", `${Math.max(280, Math.round(x1 - x0))}px`);
     root.style.setProperty("--itc-top", `${Math.round(top)}px`);
     root.style.setProperty("--itc-h", `${Math.max(120, Math.round(floor - top))}px`);
-    root.dataset.tight = floor - top < 470 ? "1" : "";
+    /* FXS2 (U229): a size smaller also whenever the full size would scroll (measured at full size, so it never flips back and forth) */
+    let tight = floor - top < 470;
+    if (!tight && panel && !panel.dataset.folded) { delete root.dataset.tight; tight = panel.scrollHeight > panel.clientHeight + 2; }
+    root.dataset.tight = tight ? "1" : "";
     if (!root.dataset.tight) delete root.dataset.tight;
   } catch { /* stays where it was */ }
 }

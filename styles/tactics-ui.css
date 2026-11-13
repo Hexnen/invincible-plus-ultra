@@ -89,6 +89,22 @@
 .ita-opts { display: flex; flex-wrap: wrap; gap: 7px; }
 .ita-optg { display: flex; flex-direction: column; gap: 4px; }
 .ita-optk { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: var(--ita-label); }
+/* FXS2 (U234): a folded group (the stunts on an opponent brought in): its caption is the disclosure, with how many stunts it holds */
+.ita-optg-fold > summary.ita-optk { display: flex; align-items: center; gap: 6px; width: fit-content; min-height: 22px; padding: 0 2px; cursor: pointer; list-style: none; user-select: none; }
+.ita-optg-fold > summary.ita-optk::-webkit-details-marker { display: none; }
+.ita-optg-fold > summary.ita-optk > i { width: 8px; font-size: 11px; transition: rotate .15s ease-out; }
+.ita-optg-fold[open] > summary.ita-optk > i { rotate: 90deg; }
+.ita-optg-fold > summary.ita-optk:hover { color: #fff; }
+.ita-optg-fold > summary.ita-optk:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.ita-optg-n { display: inline-grid; place-items: center; min-width: 16px; height: 15px; padding: 0 3px; font: 400 10.5px/1 Titles, Comic, sans-serif; color: var(--ita-ink); background: var(--ita-label); }
+@media (prefers-reduced-motion: reduce) { .ita-optg-fold > summary.ita-optk > i { transition: none; } }
+/* FXS2 (U234): on the GM desk (one narrow column) a card of many stunts lays them two to a row, each a compact tile, so the card's
+   groups and the support of allies at its end are in reach without scrolling through a wall of full-width buttons */
+#invincible-tactics-desk .ita-ask[data-kind="stunts"] .ita-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 4px; }
+#invincible-tactics-desk .ita-ask[data-kind="stunts"] .ita-opt { min-height: 30px; padding-block: 3px; gap: 6px; }
+#invincible-tactics-desk .ita-ask[data-kind="stunts"] .ita-opt-l { font-size: 12px; white-space: normal; text-align: left; }
+#invincible-tactics-desk .ita-ask[data-kind="stunts"] .ita-optg { gap: 3px; }
+#invincible-tactics-desk .ita-ask[data-kind="stunts"] .ita-stepper { min-width: 0; }
 .ita-count { flex: none; margin-left: auto; padding: 1px 6px; font: 400 13px/1.1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; color: var(--ita-yellow); border: 1px solid var(--ita-yellow); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt {
   display: inline-flex; align-items: center; gap: 8px; min-height: 32px; max-width: 100%; padding: 3px 10px 4px 9px;

@@ -69,7 +69,17 @@ export function look(view, own = {}) {
   }
   const cur = keep(view.init?.curMember);
   return { round: Number.isFinite(view.round) ? view.round : null, cur, known, asks, mine: o.mine.filter((x) => has.has(x)), staff: o.staff,
-    who: keep(own.who), sel: keep(own.sel), armed: typeof own.armed === "string" && own.armed ? own.armed : null, targets: ids(own.targets).filter((x) => has.has(x)) };
+    who: keep(own.who), sel: keep(own.sel), armed: typeof own.armed === "string" && own.armed ? own.armed : null, targets: ids(own.targets).filter((x) => has.has(x)),
+    cands: ids(own.cands).filter((x) => has.has(x)).slice(0, 12) };
+}
+/** FXS2 (U230): an action that wants a target has just been armed on the dock (not Move: that has its own "arm" cue). Its panel stands
+    on the bar, and on a low window (1366x768) it lay over the very tokens to pick in the acting unit's zone: the GM had to pan the map
+    in about one declaration of four. The surface (camera.mjs) frames the candidates that the panel or another of our panels covers,
+    by the map's least slide, with the actor. -> { focus: the actor, cands } | null */
+export function aimRoom(before, now) {
+  if (!now?.armed || now.armed === "move" || !now.who || !now.cands?.length) return null;
+  if (before && before.armed === now.armed && before.who === now.who) return null;
+  return { focus: now.who, cands: now.cands.filter((x) => x !== now.who) };
 }
 
 /** What happened between two looks that the camera may answer, the most pressing first.

@@ -118,6 +118,17 @@ export function face(img, name, cls = "ita-face") {
 }
 
 const seen = new Set();          // questions already shown once: only a new one plays the entrance
+/* FXS2 (U234): the stunts on an opponent brought in (one group per opponent, the whole list of stunts again) stand folded to their caption
+   with the number of stunts in it, so the rest of a long card (the support of allies, last) is in reach; a group opens on a click (a
+   native disclosure: keyboard and screen reader as usual) and stays open through the redraws of that card, and one with a stunt ticked is open */
+const FOLDS = (g) => typeof g.id === "string" && g.id.startsWith("on:") && g.items.length > 2;
+const opened = new Map();      // key -> open (a UI memory of this client, nothing written)
+function foldGroup(a, g, optRow) {
+  const key = `${a.id}|${g.id}`, on = opened.get(key) === true || g.items.some((o) => o.picked);
+  return h("details.ita-optg.ita-optg-fold", { attrs: { open: on, "aria-label": g.label ?? a.title }, on: { toggle: (e, el) => { if (opened.size > 200) opened.clear(); opened.set(key, !!el.open); } } },
+    h("summary.ita-optk", { fk: `fold:${a.id}:${g.id}` }, icon("fa-caret-right"), h("span", { text: g.label ?? "" }), h("b.ita-optg-n", { text: String(g.items.length) })),
+    h("div.ita-opts", {}, g.items.map(optRow)));
+}
 /** One question. handlers = { send(req), pick(promptId, optionId, max), text(promptId, value), always(promptId, on), zone(option, ask),
     again(ask): forget the zone picked on the map for this question } */
 /* SEAM: a card's counter and the answers it changes, as one band (only when the card has a counter) */
@@ -167,7 +178,7 @@ export function askCard(a, handlers = {}) {
         h("b", { text: String(a.count.value), attrs: { "aria-live": "polite" } }),
         h("button", { fk: `cp:${a.id}`, disabled: a.count.value >= a.count.max, attrs: { "aria-label": "+1" }, on: { click: () => handlers.count?.(a.count.id, a.count.value + 1) } }, icon("fa-plus"))),
       h("span.ita-count-of", { text: a.count.of })) : null,
-    groups.length > 1 ? groups.map((g) => h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(optRow))))
+    groups.length > 1 ? groups.map((g) => (FOLDS(g) ? foldGroup(a, g, optRow) : h("div.ita-optg", { attrs: { role: "group", "aria-label": g.label ?? a.title } }, g.label ? h("span.ita-optk", { text: g.label }) : null, h("div.ita-opts", {}, g.items.map(optRow)))))
       : h("div.ita-opts", { attrs: { role: "group", "aria-label": a.title } }, a.options.map(optRow))),
     /* U17-2: the GM's own pick of an extra opponent (stunt card on the desk): a select per stunt and target, its first line says what it is */
     a.gmExtra ? h("div.ita-gmx", { tip: a.gmExtra.tip }, a.gmExtra.rows.map((r) => h("select", { fk: r.id, attrs: { "aria-label": r.label }, on: { change: (e, el) => { if (el.value) handlers.gmExtra?.(a.id, el.value, a.multi?.max ?? 24); } } },
