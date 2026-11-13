@@ -144,8 +144,19 @@ const onMap = () => WORLD_LAYERS.includes(LAYER) && !!globalThis.canvas?.ready;
 /* the bars the block keeps off: the left tool column, the scene bar on top, and at the bottom the hotbar, the players list and the
    tactics bars docked there (the replay pill of the log). Only a bar that really sits at that edge counts. */
 export const UI_LEFT = ['#scene-controls', '#controls'];
-export const UI_TOP = ['#scene-navigation', '#navigation'];
-export const UI_BOTTOM = ['#hotbar', '#players', '.ilg-replay', '.ilg-bar', '#ilg-replay'];
+/* v14's #scene-navigation is a column as tall as the window; its scene rows (li) are what sits on top, so the rows count */
+export const UI_TOP = ['#scene-navigation li', '#scene-navigation .scene', '#navigation'];
+export const UI_BOTTOM = ['#hotbar', '#players', '#mm-dir-bar', '.ilg-replay', '.ilg-bar', '#ilg-replay'];
+function topOf(sel, vh) {
+  let bottom = -1;
+  try {
+    for (const e of document.querySelectorAll(sel)) {
+      const q = e.getBoundingClientRect();
+      if (q && q.width > 0 && q.height > 0 && q.top < vh * 0.15 && q.bottom < vh * 0.25) bottom = Math.max(bottom, q.bottom);
+    }
+  } catch (e) { /* a selector this Foundry does not know */ }
+  return bottom;
+}
 function boxOf(sel) {
   try {
     for (const e of document.querySelectorAll(sel)) {
@@ -160,7 +171,7 @@ export function safeRect() {
   const vw = window.innerWidth, vh = window.innerHeight;
   let l = 12, t = 10, r = area.w - 14, b = vh - 10;
   for (const s of UI_LEFT) { const q = boxOf(s); if (q && q.left < vw * 0.15 && q.right < vw * 0.2) l = Math.max(l, q.right + 8); }
-  for (const s of UI_TOP) { const q = boxOf(s); if (q && q.top < vh * 0.15 && q.bottom < vh * 0.25) t = Math.max(t, q.bottom + 6); }
+  for (const s of UI_TOP) { const y = topOf(s, vh); if (y >= 0) t = Math.max(t, y + 6); }
   for (const s of UI_BOTTOM) { const q = boxOf(s); if (q && q.top > vh * 0.6 && q.left < area.w) b = Math.min(b, q.top - 8); }
   if (b - t < vh * 0.45) { t = 10; b = vh - 10; }   // a strange layout: the whole height rather than a slit
   return { l, t, r, b };
@@ -301,21 +312,46 @@ function followPan(ctl) {
 /* FXLD (ADVD 9): Dice So Nice raises its dice canvas over the windows (its "auto" mode climbs with the windows' z-index), so the dice
    still lying on the table covered the lettering for 1-2 s: our layer goes just over the dice canvas (never over tooltips) */
 const DICE_CANVAS = 'dice-box-canvas';
+/* Dice So Nice (live, lane 20): its canvas sits in <body> at z 0, raised to ApplicationV2._maxZ + 1 (101) while dice are shown, or
+   1000 with its "over" option, and fades out about 2 s after they stop. The screen layer (5000) is above either; the ui layer (80,
+   under the windows) is not, so for a moment with dice up it goes one over them; a map layer is the board itself, under any HTML,
+   so a lettered map moment waits for the dice to go (diceClear, main.mjs). ADVD 9: the dice drew over the words for 1-2 s. */
+export function diceZ() {
+  try {
+    const c = document.getElementById(DICE_CANVAS);
+    if (!c) return 0;
+    const cs = getComputedStyle(c);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity ?? '1') < 0.1) return 0;
+    const z = parseInt(cs.zIndex, 10);
+    return Number.isFinite(z) ? z : 0;
+  } catch (e) { return 0; }
+}
 export function overDice() {
   try {
     const lay = ensureLayer();
-    if (LAYER !== 'screen') { lay.style.zIndex = ''; return; }
-    const c = document.getElementById(DICE_CANVAS);
-    const z = c ? parseInt(getComputedStyle(c).zIndex, 10) : NaN;
-    lay.style.zIndex = Number.isFinite(z) && z >= 5000 ? String(Math.min(9990, z + 1)) : '';
+    const z = diceZ();
+    if (LAYER === 'screen') lay.style.zIndex = z >= 5000 ? String(Math.min(9990, z + 1)) : '';
+    else if (LAYER === 'ui') lay.style.zIndex = z >= 80 ? String(Math.min(9990, z + 1)) : '';
+    else lay.style.zIndex = '';
   } catch (e) { /* no dice, no change */ }
+}
+/* a lettered moment on a map layer: wait (at most maxMs) until the dice are gone; resolves with the ms waited */
+export function diceClear(maxMs = 2600) {
+  if (!lettersOn() || !onMap() || diceZ() <= 0) return Promise.resolve(0);
+  let w = 0;
+  return new Promise((res) => {
+    const tick = () => { w += 100; if (diceZ() <= 0 || w >= maxMs) res(w); else setTimeout(tick, 100); };
+    setTimeout(tick, 100);
+  });
 }
 
 function playLetters(ev, o) {
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
   const ctl = openStage(full ? { ...o, full: true } : o);
   const stage = ctl.el, later = ctl.later, holdK = o.hold || 1;
-  ctl.seed = o.seed ?? null; ctl.full = full;
+  /* a moment needs a seed even when no message gives one (the preview): an unseeded word draws a new random hand at every call, so
+     the hand measured for the layout was not the hand played (live: the critical's 4 SIXES stood 170 px off a narrower word) */
+  ctl.seed = o.seed ?? `local-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`; ctl.full = full;
   letterWrap(ctl);
   overDice();
   if (full) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);
@@ -327,7 +363,10 @@ function playLetters(ev, o) {
   const resolve = ev.stress ? (o.resolve ? o.resolve() : null) : null;
   let gauge = null;
   if (ev.stress) {
-    plan.items.push({ ...LP.planStress(ev.stress, { holdK, reduced: S.isReduced() }), delay: t0 + 560 });
+    /* it leaves with the word and its gauge (live: STRESS +1 stood alone half a second after the moment had gone) */
+    const st = LP.planStress(ev.stress, { holdK, reduced: S.isReduced() });
+    if (word) st.hold = Math.max(900, Math.min(st.hold, word.delay + word.hold - (t0 + 560)));
+    plan.items.push({ ...st, delay: t0 + 560 });
     gauge = probeGauge(ctl, ev.stress, resolve);
   }
   const lay = compose(ctl, plan.items, gauge ? { gauge } : {});

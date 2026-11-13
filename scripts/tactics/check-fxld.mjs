@@ -10,6 +10,7 @@
      F13 on a map layer the HTML parts (gauge, rays) follow the pan;
      F14 the engine's master switch off -> the classic splash (no rays without words); the engine's Scale setting is counted by the layout.
    The user ruled that finding 1 (the splash words are not onomatopoeia) is NOT a defect: those words keep their purpose; pinned below. */
+import fs from "node:fs";
 import { ok, eq, done } from "./testkit.mjs";
 import * as SL from "../splash/logic.mjs";
 import * as LP from "../splash/letter-plan.mjs";
@@ -42,14 +43,18 @@ function fakeDom(W, H, ui = {}) {
     "#sidebar": { left: W - 300, top: 0, width: 300, height: H, right: W, bottom: H },
     "#hotbar": { left: W * 0.3, top: H - 64, width: 520, height: 56, right: W * 0.3 + 520, bottom: H - 8 },
     "#scene-controls": { left: 0, top: 40, width: 48, height: H - 200, right: 48, bottom: H - 160 },
-    ...(ui.pill ? { ".ilg-replay": { left: W * 0.28, top: H - 120, width: 420, height: 30, right: W * 0.28 + 420, bottom: H - 90 } } : {})
+    /* v14 live (lane 20, 1366): the map director pill #mm-dir-bar sits 40 px over the hotbar; #scene-navigation is a column the
+       window's height whose scene row is the part on top */
+    ...(ui.pill ? { "#mm-dir-bar": { left: W * 0.28, top: H - 184, width: 444, height: 32, right: W * 0.28 + 444, bottom: H - 152 } } : {}),
+    "#scene-navigation": { left: 104, top: 16, width: 200, height: H - 32, right: 304, bottom: H - 16 },
+    "#scene-navigation li": { left: 104, top: 16, width: 170, height: 32, right: 274, bottom: 48 }
   };
   const el = (r) => ({ getBoundingClientRect: () => r });
   const dice = mk("canvas"); dice.style.zIndex = String(ui.diceZ ?? 6200);
   const doc = { body: mk("body"), createElement: mk, createTextNode: (t) => ({ textContent: t }), createElementNS: (_, t) => mk(t),
     getElementById: (id) => (id === "sidebar" ? el(rects["#sidebar"]) : id === "dice-box-canvas" && ui.diceZ !== null ? dice : null),
     querySelector: () => null, querySelectorAll: (s) => (rects[s] ? [el(rects[s])] : []) };
-  globalThis.getComputedStyle = (e) => ({ zIndex: e.style.zIndex ?? "auto" });
+  globalThis.getComputedStyle = (e) => ({ zIndex: e.style.zIndex ?? "auto", display: e.style.display ?? "block", visibility: "visible", opacity: e.style.opacity ?? "1" });
   return doc;
 }
 /* the fake engine plans like the real one would be measured: a hold box from the letters, the sizeK of the loudness */
@@ -82,6 +87,7 @@ async function run(W, H, ui, fn) {
   const Stage = await import(`../splash/stage.mjs?fxld-${W}x${H}-${Math.random()}`);
   const S = await import("../splash/splash.mjs");
   let clock = 0;
+  globalThis.__fxldTimers = timers;
   const flush = (upTo = 1e9) => { let t; while ((t = timers.filter((x) => !x.done && x.ms + (x.base ?? 0) <= upTo).sort((a, b) => a.ms - b.ms)[0])) { t.done = true; t.f(); } };
   return fn({ Stage, S, flush, timers });
 }
@@ -113,12 +119,16 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
           const boxes = L.calls.map((x) => drawn(x, L));
           const tag = `${W}x${H} ${where} ${name}${scale !== 1 ? " (engine scale " + scale + ")" : ""}`;
           ok(boxes.length > 0 && boxes.every((b) => inside(b, W, H)), `F3 ${tag}: every lettering whole inside the window, left of the chat (${JSON.stringify(boxes.map((b) => [b.role, Math.round(b.x - b.w / 2), Math.round(b.y - b.h / 2), Math.round(b.w), Math.round(b.h)]))})`);
+          /* the bars: the director pill over the hotbar (the critical's caption sat on it live, 1366) and the scene row on top
+             (the wreck's word sat on it live) */
+          const bar = (b, r) => b.x - b.w / 2 < r.right && b.x + b.w / 2 > r.left && b.y - b.h / 2 < r.bottom && b.y + b.h / 2 > r.top;
+          const pill = { left: W * 0.28, top: H - 184, right: W * 0.28 + 444, bottom: H - 152 }, row = { left: 104, top: 16, right: 274, bottom: 48 };
+          for (const b of boxes) ok(!bar(b, pill) && !bar(b, row), `F4 ${tag}: the ${b.role} stays off the bars (the director pill at the bottom, the scene row on top)`);
           let clash = null;
           for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
           ok(!clash, `F7 ${tag}: no two letterings of the moment overlap (${clash})`);
           const word = boxes.find((b) => b.role === "word"), sayB = boxes.find((b) => b.role === "say"), odds = boxes.find((b) => b.role === "odds");
           for (const cb of [sayB, odds].filter(Boolean)) {
-            ok(cb.y + cb.h / 2 <= H - 120 || cb.y - cb.h / 2 >= H - 64, `F4 ${tag}: the ${cb.role} stays off the bars at the bottom (hotbar, replay pill)`);
             ok(Math.abs((cb.y - cb.h / 2) - (word.y + word.h / 2)) <= 0.9 * word.S + (sayB && cb === odds ? sayB.h + 0.3 * word.S : 0), `F4 ${tag}: the ${cb.role} sits right under the word (gap ${Math.round((cb.y - cb.h / 2) - (word.y + word.h / 2))} px, word cap ${Math.round(word.S)} px)`);
           }
           Stage.clearAll();
@@ -143,6 +153,29 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
     const sc = L.calls.find((x) => x.o.seed === "CRIT:say")?.o.colors ?? [];
     ok(sc.length === 3 && lum(sc[1]) > 0.55, `F5 ${W}: the critical's sentence is light (mid fill luminance ${sc[1] && lum(sc[1]).toFixed(2)}), readable on its violet rays and under a dark cut line`);
     ok(L.calls.find((x) => x.o.seed === "CRIT:say")?.o.hand?.font === "anton" && L.calls.find((x) => x.o.seed === "CRIT:odds")?.o.hand?.font === "anton", `F5 ${W}: the caption keeps one legible hand (the tall narrow face, plain, flat)`);
+  });
+}
+
+/* ================================================================== F4/F5 live follow-ups (lane 20 stills, 1366): the caption's counters stay open, the stress
+   leaves with the moment */
+for (const [name, e] of Object.entries(ROLLS())) {
+  await run(1366, 768, {}, async ({ Stage, flush }) => {
+    const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("screen");
+    Stage.play(e, { scale: 1, hold: 1, fx: 1, fullFrom: name === "crit" ? 0.7 : null, resolve: () => ({ now: 5, max: 8 }) });   // no seed: the preview
+    flush(1e9);
+    for (const c of L.calls.filter((x) => /:(say|odds)$/.test(x.o.seed ?? ""))) {
+      const h = c.o.hand ?? {};
+      /* the strokes run over the edges both ways: the ink line (inflate + inkW) and the cut line (out2W) must stay well under half of
+         Anton's narrow counter (about 0.14 of the cap) */
+      const inward = (h.inflate ?? 0.04) + (h.inkW ?? 0.06) + (h.outline === "ink" ? 0 : (h.out2W ?? 0.065));
+      ok(h.font === "anton" && h.outline === "ink" && (h.depth ?? 1) === 0 && inward <= 0.05, `F4 ${name} ${c.o.seed}: the caption's counters stay open (thin ink line only, ${inward.toFixed(3)} of the cap inwards; live NOT BAD! read HOT RAD!)`);
+    }
+    ok(L.calls.length > 0 && L.calls.every((x) => typeof x.o.seed === "string" && x.o.seed.length > 0), `F7 ${name}: every lettering of a moment is seeded, so the hand measured for the layout is the hand played`);
+    const w = L.calls.find((x) => /:word$/.test(x.o.seed ?? "")), st = L.calls.find((x) => /:stress$/.test(x.o.seed ?? ""));
+    if (w && st) {
+      ok(560 + st.o.hold <= w.o.hold + 60, `F7 ${name}: the stress leaves with the moment (stress hold ${st.o.hold} ms, word ${w.o.hold} ms; live it stood alone after the moment)`);
+    }
+    Stage.clearAll();
   });
 }
 
@@ -181,13 +214,41 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
 }
 
 /* ================================================================== F9: over the dice; F12: the shake; F13: the pan; F14: the switch */
+/* F9, live numbers (lane 20, a real 4d6 roll): Dice So Nice's canvas is z 0 at rest, 101 (ApplicationV2._maxZ + 1) while the dice show,
+   1000 with its "over" option, and fades about 2 s after the dice stop */
+for (const [layer, dz, want] of [["screen", 101, (z) => z === "" ], ["screen", 1000, (z) => z === ""], ["screen", 6400, (z) => Number(z) > 6400 && Number(z) < 9999],
+  ["ui", 101, (z) => Number(z) > 101 && Number(z) < 9999], ["ui", 1000, (z) => Number(z) > 1000], ["ui", 0, (z) => z === ""]]) {
+  await run(1366, 768, { diceZ: dz }, async ({ Stage, flush }) => {
+    const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer(layer);
+    Stage.play(ev({ n: 5, sixes: 2 }), { scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "DSN" });
+    flush(100);
+    const lay = document.body.children.find((x) => x.attrs?.["aria-hidden"] === "true");
+    ok(lay && want(lay.style.zIndex ?? ""), `F9 ${layer}, dice canvas z ${dz}: the words are over the dice (layer z "${lay?.style.zIndex}" over the CSS ${layer === "screen" ? 5000 : 80})`);
+    flush(1e9); Stage.clearAll();
+  });
+}
+/* F9 map layers: the board is under any HTML, so a lettered map moment waits for the dice to fade */
+await run(1366, 768, { diceZ: 101 }, async ({ Stage, flush }) => {
+  const { c } = canvasWith(600, 400); globalThis.canvas = c;
+  const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("tokens");
+  let waited = null;
+  const p = Stage.diceClear ? Stage.diceClear(2600).then((w) => (waited = w)) : null;
+  for (let i = 0; i < 10; i++) { const t = globalThis.__fxldTimers?.filter((x) => !x.done) ?? []; t.forEach((x) => { x.done = true; x.f(); }); }
+  await null;
+  ok(p && waited === null, `F9 map layer: while the dice show, the lettered moment waits (dice z ${Stage.diceZ?.()}, waited ${waited})`);
+  document.getElementById("dice-box-canvas").style.opacity = "0";
+  flush(1e9); await p; 
+  ok(waited !== null, "F9 map layer: ... and plays once the dice have faded");
+  Stage.setLayer("screen");
+  let w2 = null; await Stage.diceClear?.(2600).then((w) => (w2 = w));
+  ok(w2 === 0, "F9: on the screen layer nothing waits (it is over the dice)");
+  delete globalThis.canvas;
+});
+{
+  const main = fs.readFileSync(new URL("../splash/main.mjs", import.meta.url), "utf8");
+  ok(/await Stage\.diceClear\(\d+\)[\s\S]{0,900}Stage\.play\(ev,/.test(main), "F9: a real roll waits for Stage.diceClear before it plays (map layers)");
+}
 await run(1366, 768, { diceZ: 6400 }, async ({ Stage, flush }) => {
-  const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("screen");
-  Stage.play(ev({ n: 5, sixes: 2 }), { scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "DSN" });
-  flush(100);
-  const lay = document.body.children.find((x) => x.attrs?.["aria-hidden"] === "true");
-  ok(lay && Number(lay.style.zIndex) > 6400 && Number(lay.style.zIndex) < 9999, `F9: the splash layer goes over Dice So Nice's raised dice canvas (z ${lay?.style.zIndex} over 6400), under tooltips`);
-  flush(1e9); Stage.clearAll();
 
   /* F12: a strong hit on a map layer: the words shake through the engine */
   const { c, token } = canvasWith(600, 400, 0.8);

@@ -76,6 +76,11 @@ export const MISS_SAY_COLORS = Object.freeze(['#f2f5ff', '#c9d4f5', '#7d8fc9']);
    Invincible lettering (Anton), plain letters, flat, no texture, a light cut line around the ink. The sound word keeps the hand its
    mood picks (variety). */
 export const INFO_HAND = Object.freeze({ font: 'anton', treat: 'plain', env: 'flat', tex: 'none', outline: 'sticker', fill: 'flat', shadow: null, shear: 0.05, track: 0.03, hatch: false, bevel: false });
+/* the caption row (the sentence and the odds) is the smallest lettering: the light cut line and a puffed ink line are stroked over the
+   edges, inwards too, and at caption size they filled Anton's narrow counters (live, 1366: NOT BAD! read HOT RAD!, IN was two
+   blocks). So the caption has a thin ink line only, no puff, no extrusion, no gloss: the counters stay open. */
+export const CAPTION_HAND = Object.freeze({ ...INFO_HAND, outline: 'ink', out2W: 0, inkW: 0.04, inflate: 0, depth: 0, gloss: false });
+const CAPTION_ROLES = new Set(['say', 'odds']);
 const INFO_ROLES = new Set(['six', 'say', 'odds', 'stress']);
 
 /* cap height of each lettering, as a share of the viewport height (1366x768 and 1920x1080 alike), and its pixel floor */
@@ -135,7 +140,7 @@ export function planMoment(ev, o = {}) {
     if (wreck) add({ role: 'wreck', text: ev.wreckWord, delay: t + 520, cap: r3(cap * 0.62), wMax: 0.36,
       mood: moodOf(ev.wreckWord), sound: { loud: r1(Math.min(1, loud + 0.1)), rough: 0.7 }, colors: powerColors(Math.min(1, P + 0.1), -22 + (o.npc ? 150 : 0)), hold: hold - 520, rotation: 8 });
     if (ev.sixes > 0) {
-      add({ role: 'six', text: LBL.six(ev.sixes), delay: t + 230, cap: r3((full ? 0.062 : 0.044) + 0.004 * Math.min(4, ev.sixes)), wMax: 0.3,
+      add({ role: 'six', text: LBL.six(ev.sixes), delay: t + 230, cap: r3((full ? 0.058 : 0.038) + 0.003 * Math.min(4, ev.sixes)), wMax: 0.3,
         mood: 'impact', sound: { loud: r1(0.4 + 0.12 * Math.min(4, ev.sixes)), sharp: 0.75, pitch: 0.3 },
         colors: SIX_COLORS, hold: hold - 230 + 90, rotation: -7 });
     }
@@ -151,7 +156,7 @@ export function planMoment(ev, o = {}) {
   for (const it of items) {
     it.hold = Math.max(300, it.hold);
     if (o.reduced) it.rotation = 0;
-    if (INFO_ROLES.has(it.role)) it.hand = INFO_HAND;
+    if (INFO_ROLES.has(it.role)) it.hand = CAPTION_ROLES.has(it.role) ? CAPTION_HAND : INFO_HAND;
     it.magnitude = magnitudeOf(it, ev);
     it.size = Math.round(Math.max(FLOOR[it.role] ?? 16, it.cap * REF_VH));
   }

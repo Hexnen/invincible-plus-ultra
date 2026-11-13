@@ -356,6 +356,10 @@ hook('createChatMessage', async (message, options, userId) => {
     const waited = await Moment.landing(speakerTokens(message), { wait: Moment.isActive() ? 250 : 0, cap: 1600 });
     if (waited) dbg('czekał na ujęcie kamery:', waited + ' ms');
     if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
+    /* FXLD (ADVD 9): words lettered on the map are under Dice So Nice's canvas; they wait for the dice to fade (at most 2.6 s) */
+    const dw = await Stage.diceClear(2600);
+    if (dw) dbg('czekał na zniknięcie kości:', dw + ' ms');
+    if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
     const token = resolveToken(message);
     dbg('odtwarzam:', ev.word, 'P=' + (ev.power ?? 'fail'), 'miejsce:', token ? 'token ' + token.name : 'ekran');
     const resolve = ev.stress ? resolveReader(message, ev) : null;
