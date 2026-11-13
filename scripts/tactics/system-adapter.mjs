@@ -153,7 +153,10 @@ export function participant(c) {
     defeated: !!c.isDefeated,
     challenge: a?.type === "challenge",                              // no card [I12] [R22]
     vehicle: a?.type === "vehicle",                                  // P7: no card either, the people aboard act [B2936]
-    summonOf: S.isId(summonOf) ? summonOf : null,                    // acts on its owner's turn [I14]; set by the action engine or the GM
+    /* summonOf: acts on its owner's turn [I14]; set by the action engine or the GM. FXR2 (FF8-D3): `team`, the side an ally marked
+       "summoned by" fights on now, read as engine.mjs `team` reads it (its own token, or its owner while the owner is in the Combat): the
+       roster tells the table when that side changes because the owner left */
+    summonOf: S.isId(summonOf) ? summonOf : null, ...(S.isId(summonOf) ? { team: [c, c?.parent?.combatants?.get(summonOf)].some((x) => { const b = actorOf(x); return !!b && S.allySide({ type: b.type, owned: ownersOf(b).length > 0, disposition: x.token?.disposition ?? b.prototypeToken?.disposition }); }) ? "heroes" : "gm" } : {}),
     summonDelayed: c?.flags?.[MOD]?.tactics?.summon?.delayed === 1, summonAuto: c?.flags?.[MOD]?.tactics?.summon?.auto === 1,  // [B1816]: not on the turn it appears; FXG2 (D209): the engine's own allies leave with their owner
     veteran: hasTalent(a, "combatVeteran"),                          // [I7]
     reflexes: hasTalent(a, "fastReflexes"),                          // [I6]

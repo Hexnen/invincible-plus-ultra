@@ -104,6 +104,8 @@ async function startRunning() {
   /* FXE3 (D204): a hidden combatant about to be deleted (the tracker, a summon dismissed, a chase's escape) is written down on the Combat
      first (view-pure hidLeftAdd; engine.mjs metaOf reads it), so the players' views keep hiding it once it is gone. Only staff delete. */
   Hooks.on("preDeleteCombatant", (cb) => { try { const c = cb?.parent, list = c && game.user?.isGM && Store.stateOf(c) && V.concealed(cb, cb.token) ? V.hidLeftAdd(c.flags?.[MOD]?.hidLeft, cb.id) : null; if (list) c.update({ [`flags.${MOD}.hidLeft`]: list }, { ipuTactics: true }).catch(() => {}); } catch (e) { console.warn(`${MOD} | tactics hidden leave`, e); } });
+  /* FXR2 (FF8-D5): one the table could see is written down with its name (view-pure leftNameAdd), so a news line about it still names it */
+  Hooks.on("preDeleteCombatant", (cb) => { try { const c = cb?.parent, list = c && game.user?.isGM && Store.stateOf(c) && !V.concealed(cb, cb.token) ? V.leftNameAdd(c.flags?.[MOD]?.leftNames, cb.id, cb.name ?? cb.actor?.name) : null; if (list) c.update({ [`flags.${MOD}.leftNames`]: list }, { ipuTactics: true }).catch(() => {}); } catch (e) { console.warn(`${MOD} | tactics leave`, e); } });
   Hooks.on("deleteCombatant", (c) => Engine.scheduleRoster(c.parent));
   Hooks.on("updateCombatant", (c, changes) => { if (changes && ("defeated" in changes || "actorId" in changes || "tokenId" in changes || changes.flags?.[MOD]?.tactics !== undefined)) Engine.scheduleRoster(c.parent); });
   Hooks.on("userConnected", () => Prompts.sync());                          // a prompt of a player who left falls to the executor

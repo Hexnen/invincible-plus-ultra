@@ -264,6 +264,7 @@ export function sanitize(raw) {
     s.summons = plainList(raw.summons); s.karma = plainList(raw.karma);
     if (Array.isArray(raw.news)) s.news = plainList(raw.news).slice(-12);      // what the table was told happened (engine-pure.pushNews)
     s.statuses = plainMap(raw.statuses); s.counters = plainMap(raw.counters); s.knowledge = plainMap(raw.knowledge); s.revealed = plainMap(raw.revealed); s.npc = plainMap(raw.npc);
+    if (isObj(raw.teams)) { const tm = Object.fromEntries(Object.entries(raw.teams).filter(([k, v]) => isId(k) && (v === "heroes" || v === "gm")).slice(0, LIMITS.ledgers)); if (Object.keys(tm).length) s.teams = tm; }      // FXR2 (FF8-D3): the side of each ally marked "summoned by" (ops-pure sideNews)
     if (isObj(raw.chase)) s.chase = plain(raw.chase);
     if (isObj(raw.chaseEnded)) s.chaseEnded = plain(raw.chaseEnded);       // CHASE (U168): how the last chase ended (engine-pure chaseEnd)
     if (isObj(raw.vehicles)) s.vehicles = plain(raw.vehicles);               // P7: who sits where, what is broken (flows/vehicle.mjs)

@@ -646,13 +646,14 @@ const OPS = {
   /* joining and leaving (spec 3.3): bring the state in line with the combatants that exist now */
   roster(W, a) {
     const s = W.s, parts = W.ctx.parts ?? [];
-    const before = JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? [], s.vehicles ?? null]);      // FXU (D189): a vehicle that left changes the fight too
+    const before = JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? [], s.vehicles ?? null, (s.news ?? []).at(-1)?.id ?? null]);      // FXU (D189): a vehicle that left changes the fight too; FXR2: so does a line told (sideNews)
     const ids = new Set(parts.map((p) => p.id));
     /* FXU (D189): a vehicle has no card and no ledger (P7-R4), so it was never "known" here: its combatant deleted, its record and the
        crew's "in a vehicle" marks stayed. Its record makes it known */
     const known = new Set([...Object.keys(s.ledger), ...s.init.slots.flatMap((x) => x.members), ...Object.keys(isObj(s.vehicles) ? s.vehicles : {})]);
     for (const id of known) if (!ids.has(id)) removeOne(W, id);
     const fresh = syncSummons(W, parts);
+    sideNews(W, W.ctx.rawParts ?? parts, ids);
     /* D43 [B3436] (spec 9.10; ruling P7-R8): a chase that turns into a fight draws initiative. The fight stands without a single card
        (a chase holds none), so this is a deal of the deck like the one of a round, not the late joiner's "next free card" for each in
        list order [A-1], which made the first round after every chase the same and known in advance. The round and the ledgers stay. */
@@ -675,7 +676,7 @@ const OPS = {
         if (r.changed && r.card !== null) ev(W, "draw", { slot: r.slot, card: r.card, members: [p.id], reason: "join" });
       }
     }
-    if (before === JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? [], s.vehicles ?? null])) return { changed: false };
+    if (before === JSON.stringify([s.init, Object.keys(s.ledger), s.summons ?? [], s.vehicles ?? null, (s.news ?? []).at(-1)?.id ?? null])) return { changed: false };
     run(W);
   },
   ledgerEdit(W, a) {
@@ -781,6 +782,22 @@ function syncSummons(W, parts) {
   });
   for (const id of fresh) if (I.slotOf(s.init, id) && s.init.curMember !== id) s.init = I.removeCombatant(s.init, id).init;
   return fresh;
+}
+/* FXR2 (FF8-D3) [B1637]: an ally marked "summoned by" (or controlled: Animal Control) fights on its owner's side while the owner is in the
+   Combat (engine.mjs `team`); once the owner has left, nobody controls it and it is back on its own token's side (question FXR2-1). The
+   side is kept per such ally (state.teams, the participants' `team`); when it changes because its owner left, the table is told in a news
+   line ({ kind: "ally", actor, owner, team }). view-pure drops the line for a player who may not know the ally or the owner (scrub: actor,
+   owner). Not journaled: an undo that brings the owner back turns the side back without a line. */
+function sideNews(W, parts, ids) {
+  const s = W.s, was = isObj(s.teams) ? s.teams : {}, now = {};
+  for (const p of parts) {
+    if (!p || !S.isId(p.summonOf) || p.summonAuto || !["heroes", "gm"].includes(p.team) || !ids.has(p.id)) continue;
+    now[p.id] = p.team;
+    if (was[p.id] && was[p.id] !== p.team && !ids.has(p.summonOf) && !p.defeated) {
+      s.news = [...(s.news ?? []), { id: S.nextId(s, "n"), round: s.round ?? null, kind: "ally", actor: p.id, owner: p.summonOf, team: p.team }].slice(-12);
+    }
+  }
+  if (Object.keys(now).length) s.teams = now; else delete s.teams;
 }
 function removeOne(W, id) {
   const s = W.s;
@@ -888,7 +905,7 @@ export function reduce(state0, action, ctx = {}) {
     if (!ctx.staff && !PLAYER_OPS.has(action.type)) return err("notOwner");
     if (!state0 && action.type !== "start") return err("off");
     if (state0 && state0.mode === "off" && !["setMode", "stop", "start", "roster"].includes(action.type)) return err("off");       // spec 1.4: the engine is idle
-    const W = { s: state0 ? S.clone(state0) : null, ctx: { rng: NO_RNG, ...ctx, parts: ownParts(Array.isArray(ctx.parts) ? ctx.parts : []) }, events: [], effects: [] };
+    const W = { s: state0 ? S.clone(state0) : null, ctx: { rng: NO_RNG, ...ctx, parts: ownParts(Array.isArray(ctx.parts) ? ctx.parts : []), rawParts: Array.isArray(ctx.parts) ? ctx.parts : [] }, events: [], effects: [] };      // FXR2: the marks as they are (sideNews)
     const r = h(W, action);
     if (r && r.ok === false) return r;
     if (r && r.changed === false) return { ok: true, changed: false, state: state0 };

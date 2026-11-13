@@ -294,6 +294,14 @@ function writeBarred(v, I, R, barred) {
   if (isObj(chaseOf(v.state)?.last)) R.effects.push({ t: "state", path: ["chase", "last", "barred"], to: I.data.barred });
   R.events.push({ type: "chase", distance: chaseOf(v.state)?.distance ?? 0, barred: I.data.barred });
 }
+/* FXR2 (FF8-D1): what each striker of a catch picked (whom it charges or rams, or that it passed), kept on the instance and in
+   state.chase.last.struck ([{ who, unit, at | pass, ram }]): the panel names the target the striker picked, not the one who rolled for the
+   fleeing. `at` is no reference key of view-pure scrub on purpose: a target concealed from a player leaves the record as "somebody", the
+   striker's row stays (a concealed striker takes its whole record away) */
+function writeStruck(v, I, R, rec) {
+  I.data.struck = [...(Array.isArray(I.data.struck) ? I.data.struck : []).filter((x) => x?.unit !== rec.unit), rec].slice(-12);
+  if (isObj(chaseOf(v.state)?.last)) R.effects.push({ t: "state", path: ["chase", "last", "struck"], to: I.data.struck });
+}
 export const round = {
   STEPS: Object.freeze(["check", "obstacle", "movement", "result", "catch", "crew", "close"]),
   legality(v) {
@@ -456,6 +464,7 @@ export const round = {
         }
         if (!K.isAnswered(v, I, key)) { writeBarred(v, I, R, barred); R.wait = true; return R; }
         const ans = K.answerId(v, I, key) ?? "", tid = ans === "attack" ? K.promptOf(v, I, key)?.data?.target : ans.startsWith("attack:") ? ans.slice(7) : null;
+        if (!K.flag(I, `told:${key}`)) { K.setFlag(I, `told:${key}`); writeStruck(v, I, R, { who: u.roller, unit: u.id, ...(tid ? { at: tid } : { pass: 1 }), ...(u.vehicle ? { ram: 1 } : {}) }); }
         if (tid && !K.flag(I, key)) {
           K.setFlag(I, key);
           /* on foot it is the charge of the attack flow [B2490]: STRENGTH, its own stunts. The chase brought the pursuer there, so the charge has no

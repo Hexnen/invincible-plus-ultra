@@ -61,7 +61,12 @@ export function deskDue(desk) {
 }
 export const costText = (t, cost) => (cost ? t(`ITAC.ui.cost.${cost}`, {}, String(cost)) : null);
 export const attrText = (t, attr) => (attr ? t(`ITAC.ui.attr.${attr}`, {}, cap(attr)) : "");
-const nameOf = (facts, id, t) => (id ? facts.c?.(id)?.name ?? t("ITAC.Someone") : "");
+/** FXR2 (FF8-D4): the attribute as it reads after "na" in Polish ("rzucając na Siłę"): the Polish name is put in the accusative of the
+    system's glossary (i18n/terms.mjs TERMS.pl -> ATTR_ACC_PL; a pure module may not import it: check-fxr2 holds the two equal); any other
+    language reads as attrText */
+export const ACC_PL = new Map([["Walka", "Walkę"], ["Zwinność", "Zwinność"], ["Siła", "Siłę"], ["Rozum", "Rozum"], ["Intuicja", "Intuicję"], ["Prezencja", "Prezencję"]]);
+export const attrAccText = (t, attr) => { const s = attrText(t, attr); return ACC_PL.get(s) ?? s; };
+const nameOf = (facts, id, t) => (id ? facts.c?.(id)?.name ?? facts.left?.(id) ?? t("ITAC.Someone") : "");      // FXR2 (FF8-D5): one who left in sight keeps its name
 const pct = (p) => `${Math.round(p * 100)}%`;
 /** a place in words: "Zone 4", "Zone 4, on the roof", "Sky high" (the map's zone number; never a raw key when the map answers) */
 export function zoneText(facts, t, spot) {
@@ -280,9 +285,9 @@ function linesOf(p, t, facts, x) {
     case "challengeStale": out.push(t("ITAC.ui.line.challengeStale", { name: about, left: d.left ?? 0, max: d.max ?? 0 })); break;      // U157
     case "challengeFail": out.push(t("ITAC.Prompt.challengeFail.Body", { name: about })); if ((d.effects ?? []).length) out.push(t("ITAC.ui.line.failEffects", { list: d.effects.map((k) => t(`ITAC.ui.effect.${k}`, {}, String(k))).join(", ") })); else out.push(t("ITAC.ui.line.failNone")); break;      // U187: what Apply does when the challenge names no effect
     /* P7 */
-    case "objective": out.push(t(d.why === "power" ? "ITAC.ui.line.objectivePower" : "ITAC.ui.line.objective", { name: about, challenge: n(d.challenge), attr: attrText(t, d.attr), power: String(d.power ?? "") })); if (d.text) out.push({ quote: String(d.text), by: about }); break;
+    case "objective": out.push(t(d.why === "power" ? "ITAC.ui.line.objectivePower" : "ITAC.ui.line.objective", { name: about, challenge: n(d.challenge), attr: attrAccText(t, d.attr), power: String(d.power ?? "") })); if (d.text) out.push({ quote: String(d.text), by: about }); break;
     case "chaseCatch": out.push(t(d.ram ? "ITAC.ui.line.chaseRam" : "ITAC.ui.line.chaseCharge", { name: about, target: n(d.target) })); break;
-    case "chaseOption": out.push(t("ITAC.ui.line.chaseOption", { name: about, obstacle: t(`ITAC.ui.chase.obstacle.${d.obstacle}`, {}, String(d.obstacle ?? "")), attr: attrText(t, d.attr) })); break;
+    case "chaseOption": out.push(t("ITAC.ui.line.chaseOption", { name: about, obstacle: t(`ITAC.ui.chase.obstacle.${d.obstacle}`, {}, String(d.obstacle ?? "")), attr: attrAccText(t, d.attr) })); break;
     case "triggerQueue": out.push(t("ITAC.Prompt.triggerQueue.Body")); break;
     case "surprise": out.push(t("ITAC.Prompt.surprise.Body")); break;      // ANSG (FXT-10)
     /* P5: the GM's word on a narrative action, and the cards of the hazards */
@@ -575,6 +580,7 @@ function newsText(n, facts, t) {
   const fx = n.fx?.challenge ? `${nameOf(facts, n.fx.challenge, t)}: ${t(`ITAC.ui.effect.${n.fx.kind}`, {}, String(n.fx.kind))}` : null;
   const head = fx ?? [who, act].filter(Boolean).join(": ");
   if (n.kind === "nudge") return t(n.roll ? "ITAC.ui.news.nudge.roll" : "ITAC.ui.news.nudge");      // U59: the GM asks for the answer the table waits for
+  if (n.kind === "ally") return t(n.team === "heroes" ? "ITAC.ui.news.allyGained" : "ITAC.ui.news.allyLost", { name: who, owner: nameOf(facts, n.owner, t) });      // FXR2 (FF8-D3): an ally whose owner left is back on its own side
   if (n.kind === "undo") return head ? t("ITAC.ui.news.undo", { what: head }) : t("ITAC.ui.news.undoAny");
   if (n.kind === "exception") {
     const note = n.note ? ` ("${String(n.note)}")` : "";
@@ -772,7 +778,7 @@ function armsOf(bar, a, own, facts, t) {
   const shooting = a.attack === "shooting", melee = a.attack === "slugfest", grapple = a.attack === "grapple";      // PWA (PW048): a grapple may be made with the plants of Plant Control [B1779]
   const list = a.unarmed ? [] : shooting || melee ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && !w.reactOnly && (shooting ? Array.isArray(w.range) : !Array.isArray(w.range))) : grapple ? (facts.weapons?.(bar.combatant) ?? []).filter((w) => w.state !== "off" && !w.reactOnly && w.grip) : [];
   const ids = [...(melee || grapple ? ["unarmed"] : []), ...list.map((w) => w.id)];
-  const wname = (x) => `${x.name}${x.tag ? ` + ${x.tag}` : ""}${x.opt ? ` (${t(`ITAC.kit.opt.${x.opt}`, {}, x.opt)})` : ""}${x.alt ? ` (${t("ITAC.kit.opt.alt", { attr: attrText(t, x.alt) })})` : ""}`;      // P6: a power's attack and its variants; PWC (PW007): rolled with the attack's own attribute
+  const wname = (x) => `${x.name}${x.tag ? ` + ${x.tag}` : ""}${x.opt ? ` (${t(`ITAC.kit.opt.${x.opt}`, {}, x.opt)})` : ""}${x.alt ? ` (${t("ITAC.kit.opt.alt", { attr: attrAccText(t, x.alt) })})` : ""}`;      // P6: a power's attack and its variants; PWC (PW007): rolled with the attack's own attribute
   const sel = ids.includes(own.weapon) ? own.weapon : ids[0] ?? null, w = list.find((x) => x.id === sel) ?? null;
   const rangeText = (x) => (Array.isArray(x.range) ? t(x.range[0] === x.range[1] ? "ITAC.ui.weapon.rangeOne" : "ITAC.ui.weapon.range", { min: x.range[0], max: x.range[1] }) : null);
   const tipOf = (x) => [x.bonus ? t("ITAC.ui.weapon.bonus", { n: x.bonus }) : null, x.damage != null ? t("ITAC.ui.weapon.damage", { n: x.damage }) : null, rangeText(x), x.sharp ? t("ITAC.ui.weapon.sharp") : null, x.stunEffect ? t("ITAC.ui.weapon.stunEffect") : null, x.singleUse ? t("ITAC.ui.weapon.singleUse") : null, x.noMove ? t("ITAC.ui.weapon.noMove") : null,
