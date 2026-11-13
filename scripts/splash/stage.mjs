@@ -39,6 +39,7 @@ function ensureLayer() {
   layer = document.createElement('div');
   layer.id = 'invincible-splash-layer';
   layer.setAttribute('aria-hidden', 'true');
+  layer.dataset.layer = LAYER;
   document.body.appendChild(layer);
   measureArea();
   return layer;
@@ -109,6 +110,19 @@ export function onCanvasPan() {
    the wrapper's px, the layer's clip keeps it off the chat and its z-index over the sheets; aria-hidden like the rest). */
 let LE = null;
 export function setLetters(engine) { LE = engine || null; }
+/* the display layer (client setting splashLayer): 'top' = over everything, sheets and dialogs too (z 5000, as always);
+   'under' = over the map and the HUD, under the windows; 'map' = the words are lettered ON the map (the engine's world space: they
+   pan and zoom with the scene), the rest of the moment (gauge, rays) under the windows */
+const LAYERS = ['top', 'under', 'map'];
+let LAYER = 'top';
+export function setLayer(v) {
+  LAYER = LAYERS.includes(v) ? v : 'top';
+  if (layer) layer.dataset.layer = LAYER;
+}
+export function layerOf() { return LAYER; }
+function toScene(p) {
+  try { const r = canvas.app.view.getBoundingClientRect(), q = canvas.stage.toLocal({ x: p.x - r.left, y: p.y - r.top }); return { x: Math.round(q.x), y: Math.round(q.y) }; } catch (e) { return null; }
+}
 export function lettersOn() { return !!LE; }
 function clientAt(ctl, at) {
   const r = ctl.el.getBoundingClientRect();
@@ -118,7 +132,7 @@ function tokenClient(token) {
   try { const g = canvas.stage.toGlobal(token.center), r = canvas.app.view.getBoundingClientRect(); return { x: Math.round(r.left + g.x), y: Math.round(r.top + g.y) }; } catch (e) { return null; }
 }
 function moveLetters(ctl) {
-  for (const it of ctl.letters || []) { try { if (it.h.alive) it.h.moveTo(clientAt(ctl, it.at)); } catch (e) { /* the engine dropped it */ } }
+  for (const it of ctl.letters || []) { try { if (it.h.alive && !it.world) it.h.moveTo(clientAt(ctl, it.at)); } catch (e) { /* the engine dropped it */ } }
 }
 function letterWrap(ctl) {
   if (ctl.lw?.isConnected) return ctl.lw;
@@ -140,9 +154,19 @@ function letterOne(ctl, it, seedBase) {
   };
   if (from != null) opts.from = from;
   if (it.colors) opts.colors = it.colors.slice();
+  for (const k of ['in', 'out', 'holdKind']) if (it[k]) opts[k] = it[k];
+  /* on the map: scene coordinates and scene px (as big as on screen at this zoom; afterwards they zoom with the scene) */
+  if (LAYER === 'map' && globalThis.canvas?.ready) {
+    const at = toScene(opts.at), k = canvas.stage.scale.x || 1;
+    if (at) {
+      Object.assign(opts, { space: 'world', at, size: it.size / k, maxWidth: it.maxWidth / k });
+      delete opts.parent;
+      if (from && typeof from === 'object') opts.from = toScene(from) ?? undefined;
+    }
+  }
   try {
     const h = LE.play(LP.letterable(it.text), opts);
-    ctl.letters.push({ h, at: it.at, role: it.role });
+    ctl.letters.push({ h, at: it.at, role: it.role, world: opts.space === 'world' });
     if (h?.hand) ctl.hands.push(h.hand);
     return h;
   } catch (e) { console.warn('invincible-plus-ultra (splash) | lettering failed', e); return null; }

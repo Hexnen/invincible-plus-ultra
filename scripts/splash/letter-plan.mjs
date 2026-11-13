@@ -121,11 +121,39 @@ export function planMoment(ev, o = {}) {
         mood: 'tick', sound: { loud: 0.3, pitch: 0, sharp: 0.6 }, colors: ODDS_COLORS, hold: hold - 430 + 120, rotation: -2 });
     }
   }
+  for (const it of items) Object.assign(it, motionOf(it, ev, o));
   /* never smaller than a readable cap height (1366x768 with the chat open); sizes are cap heights in screen px */
   const MIN = { word: 24, pre: 20, wreck: 20, six: 20, say: 16, odds: 14, stress: 18 };
   for (const it of items) { it.size = Math.max(MIN[it.role] ?? 14, it.size); it.hold = Math.max(300, it.hold); if (o.reduced) it.rotation = 0; }
   const end = Math.max(0, ...items.map(it => it.delay + it.hold));
   return { items, end };
+}
+
+/* The motion technique of each lettering (the engine's entrance / hold / exit by name): the word's mood already picks a fitting
+   motion (a crack splinters in, a whoosh zips); the RESULT adds on top: a top roll slams in, shakes and bursts, a miss drops, sags
+   and droops away, a routine miss pops and dissolves; the numbers are stamps (slam / pop in, steady boil, pop / shrink out), the
+   stress throbs and falls. Pictures change on the engine's stepped clock (on twos and threes), never smoothly. */
+export function motionOf(it, ev, o = {}) {
+  const P = ev.power ?? 0, dF = o.dF ?? 0;
+  switch (it.role) {
+    case 'word':
+      if (ev.fail) {
+        if (ev.softFail) return { in: 'pop', holdKind: 'boil', out: 'dissolve' };
+        if (ev.pushed && (it.mood === 'crack' || it.mood === 'pain')) return { holdKind: 'rattle' };
+        return { in: 'drop', holdKind: 'wobble', out: dF > 0.6 ? 'fall' : 'droop' };
+      }
+      if (it.mood === 'whoosh') return P >= 0.75 ? { in: 'zip', holdKind: 'shake', out: 'zipout' } : {};
+      if (P >= 0.75) return { in: 'slam', holdKind: 'shake', out: it.mood === 'crack' || it.mood === 'zap' ? 'shatter' : 'burst' };
+      if (P < 0.2) return { holdKind: 'boil' };
+      return {};
+    case 'pre': return { holdKind: 'rattle' };
+    case 'wreck': return { in: 'drop', holdKind: 'rattle', out: 'fall' };
+    case 'six': return { in: 'slam', holdKind: ev.sixes >= 3 ? 'throb' : 'boil', out: 'pop' };
+    case 'say': return ev.fail ? { in: 'drop', holdKind: 'boil', out: 'droop' } : { in: 'pop', holdKind: 'boil', out: 'shrink' };
+    case 'odds': return { in: 'pop', holdKind: 'boil', out: 'shrink' };
+    case 'stress': return { in: 'slam', holdKind: 'throb', out: 'fall' };
+    default: return {};
+  }
 }
 
 /* how hard a miss lands, 0..1, from its rarity: routine (more likely than not) is quiet, a rare miss of a strong hero is loud */
@@ -139,7 +167,7 @@ export function planStress(stress, o = {}) {
   const W = o.W || 760, u = clamp(W / 760, 0.5, 2.2), pos = o.token ? POS.token : POS.screen;
   return { role: 'stress', text: LBL.stress(stress), at: pos.stress, delay: 0, size: Math.max(18, Math.round((20 + 3 * Math.min(4, stress)) * u)),
     maxWidth: Math.round(W * 0.3), mood: 'pain', sound: { loud: r1(Math.min(0.9, 0.35 + 0.12 * stress)), pitch: -0.3 }, colors: STRESS_COLORS,
-    hold: Math.round(2600 * (o.holdK || 1)), rotation: o.reduced ? 0 : -5 };
+    hold: Math.round(2600 * (o.holdK || 1)), rotation: o.reduced ? 0 : -5, in: 'slam', holdKind: 'throb', out: 'fall' };
 }
 
 /* the engine letters A-Z, Polish letters, digits, ! ? - + ' . and spaces: other marks of our texts are rewritten

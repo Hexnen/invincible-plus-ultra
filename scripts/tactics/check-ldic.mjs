@@ -119,7 +119,7 @@ const plan = (e, o = {}) => LP.planMoment(e, { W: 746, ...o });
 /* ================================================================== (b) the stage, fake DOM + fake engine */
 function fakeDom(W, H) {
   const mk = (tag) => {
-    const e = { tag, children: [], parent: null, style: { _p: {}, setProperty(k, v) { this._p[k] = v; }, getPropertyValue(k) { return this._p[k] ?? ""; } }, attrs: {},
+    const e = { tag, children: [], parent: null, dataset: {}, style: { _p: {}, setProperty(k, v) { this._p[k] = v; }, getPropertyValue(k) { return this._p[k] ?? ""; } }, attrs: {},
       _cls: new Set(), className: "",
       get classList() { const self = this; return { add: (...c) => { const s = new Set(self.className.split(" ").filter(Boolean)); c.forEach((x) => s.add(x)); self.className = [...s].join(" "); }, contains: (c) => self.className.split(" ").includes(c) }; },
       setAttribute(k, v) { this.attrs[k] = v; }, appendChild(c) { c.parent = this; this.children.push(c); return c; }, append(...cs) { cs.forEach((c) => this.appendChild(c)); },
@@ -170,6 +170,7 @@ async function run(W, H, fn) {
       eq(L.calls[1].o.avoid, [L.calls[0].h.hand], `${W}: the sixes look different from the word (avoid = the word's hand)`);
       eq(L.calls[0].o.reduced, false, `${W}: full motion handed on`);
       ok(L.calls.every((c) => c.o.hold > 0 && c.o.size > 0 && c.o.mood), `${W}: hold, size and mood given`);
+      ok(L.calls[1].o.in === "slam" && L.calls[1].o.out === "pop", `${W}: the motion technique reaches the engine`);
       ok(L.calls.some((c) => c.o.seed === "MSG1:stress" && /\+2/.test(c.text)), `${W}: the stress number is lettered`);
       /* a second client: the same message letters the same */
       const L2 = fakeEngine(); Stage.setLetters(L2);
@@ -196,8 +197,38 @@ async function run(W, H, fn) {
       const c5 = Stage.play(ev({ n: 4, sixes: 2 }), { scale: 1, hold: 1, fx: 0, fullFrom: null, seed: "MSG4" });
       flush(40000);
       ok(!c5.lw && L5.calls.length === 0, `${W}: without the engine the classic splash plays`);
+      /* the display layer: on the map = the engine's world space, scene coordinates, scene px */
+      globalThis.canvas = { ready: true, stage: { scale: { x: 0.5 }, toLocal: (q) => ({ x: q.x * 2 + 100, y: q.y * 2 + 100 }), toGlobal: (q) => q }, app: { view: { getBoundingClientRect: () => ({ left: 0, top: 0 }) } } };
+      const L6 = fakeEngine(); Stage.setLetters(L6); Stage.setLayer("map");
+      Stage.play(ev({ n: 5, sixes: 2 }), { scale: 1, hold: 1, fx: 0, fullFrom: null, seed: "MSG5" });
+      flush(50000);
+      const w0 = L6.calls[0];
+      ok(w0 && w0.o.space === "world" && !w0.o.parent, `${W}: layer "on the map": the words go to the canvas (world space)`);
+      ok(w0 && w0.o.size === LP.planMoment(ev({ n: 5, sixes: 2 }), { W: ctl.W }).items[0].size / 0.5 && w0.o.at.x > 100, `${W}: ... in scene coordinates and scene px (screen size at this zoom)`);
+      eq(document.body.children.find((c) => c.attrs?.["aria-hidden"] === "true")?.dataset?.layer, "map", `${W}: the layer knows its setting`);
+      Stage.setLayer("nonsense"); eq(Stage.layerOf(), "top", `${W}: an unknown layer value falls back to over everything`);
+      delete globalThis.canvas;
     });
   }
+}
+
+/* ================================================================== (a2) the motion technique: the word's mood plus the result */
+{
+  const w = (e, o) => by(plan(e, o), "word");
+  const top = w(ev({ n: 4, sixes: 4 })), miss = w(ev({ n: 6, sixes: 0 })), soft = w(ev({ n: 1, sixes: 0 })), rare = w(ev({ n: 12, sixes: 0 }));
+  eq([top.in, top.holdKind], ["slam", "shake"], "a top roll slams in and shakes");
+  ok(["burst", "shatter"].includes(top.out), "... and bursts or shatters away");
+  eq([miss.in, miss.holdKind, miss.out], ["drop", "wobble", "droop"], "a miss drops, wobbles and droops away");
+  eq(rare.out, "fall", "a rare miss falls away");
+  eq([soft.in, soft.out], ["pop", "dissolve"], "a routine miss pops and dissolves");
+  const mid = w(ev({ n: 6, sixes: 2 }));
+  ok(!mid.in && !mid.out, "a middling success keeps the motion its word's mood picks (variety)");
+  const z = LP.motionOf({ role: "word", mood: "whoosh" }, { power: 0.9 });
+  eq([z.in, z.out], ["zip", "zipout"], "a whoosh keeps zipping even at the top");
+  eq([by(plan(ev({ n: 5, sixes: 2 })), "six").in, LP.planStress(2).holdKind], ["slam", "throb"], "the sixes stamp in, the stress throbs");
+  const MOT = { in: ["slam", "pop", "crackIn", "drop", "rise", "grow", "zip"], holdKind: ["boil", "shake", "throb", "rattle", "wobble", "buzz", "flicker"], out: ["shatter", "pop", "burst", "fall", "droop", "rise", "shrink", "zipout", "dissolve"] };
+  for (const e of [ev({ n: 4, sixes: 4 }), ev({ n: 6, sixes: 0 }), ev({ n: 1, sixes: 0 }), ev({ n: 12, sixes: 0 }), ev({ n: 5, sixes: 2, pushed: true, newSixes: 1, rerolled: 3 }), ev({ n: 6, sixes: 3, wreck: true })])
+    for (const it of [...plan(e).items, LP.planStress(1)]) for (const k of Object.keys(MOT)) if (it[k]) ok(MOT[k].includes(it[k]), `${it.role}: ${k} "${it[k]}" is one of the engine's motions`);
 }
 
 /* ================================================================== (b2) the real engine's design (pure): the calls stage.mjs makes */
@@ -238,6 +269,8 @@ async function run(W, H, fn) {
   ok(/L\.design\?\.\('A'\)\?\.stub === true/.test(m) && /Stage\.setLetters\(stub \|\| !cs\('lettering'\) \? null : L\)/.test(m), "the stub engine (no renderer) and the setting off leave the classic splash");
   ok(/if \(LE\) return playLetters\(ev, o\);/.test(st), "Stage.play letters when the engine is there");
   ok(!/game\.|message\./.test(st.slice(st.indexOf("function playLetters"), st.indexOf("function stressLettered"))), "the lettered stage reads nothing of the message or the game (only the event and the Resolve reader it is handed)");
+  for (const L of [SLang.EN, SLang.PL]) ok(["Name", "Hint", "top", "under", "map"].every((k) => L[`INSPLASH.Settings.Layer.${k}`]), "the layer setting and its three choices are named in both languages");
+  ok(m.includes("client('layer', {") && /client\('layer', \{[^\n]*default: 'top'/.test(m) && m.includes("Stage.setLayer(cs('layer'))"), "the layer setting (client) defaults to over everything and is applied at ready");
   for (const L of [SLang.EN, SLang.PL]) ok(L["INSPLASH.Settings.Lettering.Name"] && L["INSPLASH.Settings.Lettering.Hint"], "the lettering setting is named in both languages");
 }
 done("ldic");
