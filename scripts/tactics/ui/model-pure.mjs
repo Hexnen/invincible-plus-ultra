@@ -646,7 +646,7 @@ export function slotsOf(bar, t) {
   const base = Lg.slots(b).map((s) => {
     const big = s.id === "A", kind = big ? "full" : "quick";
     const tipKey = s.state === "used" ? (big && s.as === "quick" ? "usedQuick" : "used") : s.state === "open" ? (s.only ? "openQuick" : "open") : "lost";
-    return { key: big ? "a" : "b", kind, unit: s.unit, state: s.state, as: s.as ?? null, extra: false, label: word(s.only ?? kind), tip: t(`ITAC.ui.slot.${big ? "a" : "b"}.${tipKey}`),
+    return { key: big ? "a" : "b", kind, unit: s.unit, state: s.state, as: s.as ?? null, extra: false, label: word(s.only ?? kind), tip: t(`ITAC.ui.slot.${big ? "a" : "b"}.${tipKey}${tipKey !== "lost" && !bar.markReq ? ".ro" : ""}`),      /* ANSH (CU8): no hand marks, no click in the tip */
       req: s.state === "lost" ? null : bar.markReq?.(s.unit, s.state === "open") ?? null };
   });
   const more = (b.grants ?? []).filter((g) => (g.state === "open" || g.state === "pending") && (g.unit === "full" || g.unit === "quick")).map((g) => ({ key: `g:${g.id}`, kind: g.unit, unit: g.unit, state: g.state, as: null, extra: true,
