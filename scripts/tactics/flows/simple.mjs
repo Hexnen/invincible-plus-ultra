@@ -134,7 +134,24 @@ export const hazard = {
           const fo = hazards.fireOutcome({ sixes, armor: forced?.armor ?? ar.armor, inBurningZone: h.inZone !== false, wasBurning: M.hasStatus(v.state, t, "burning"), immune, vulnerable });   // [B2925-2926], [B2193]
           rec = { base: hazards.fireDamage(sixes), raw: fo.raw, armor: vulnerable ? 0 : forced?.armor ?? ar.armor, ...(vulnerable ? { vulnerable: true } : {}), taken: Number.isFinite(forced?.amount) ? forced.amount : fo.taken, burning: fo.burning, sixes, tags };
         } else {
-          const armor = h.armor === true ? (forced?.armor ?? damage.selectArmor(tf.armor ?? [], { source: tags.source }).armor) : 0;                 // [OQ-11]: the Armor line is the GM's tick
+          /* A10 (the user, 2026-11-12: «musi byc do wyboru przez mg, domyślnie tak»): a fall (also after a throw) and a failed crash through a
+             wall (`armorAsk`) are reduced by the character's Armor by default; the GM's card "Pancerz?" says whether: Armor (the first answer)
+             or none. Asked only when there is something to choose (Armor above 0, damage, not immune, the number not set by the GM already);
+             the number itself stays the GM's on the desk (setDamage). */
+          let ask = h.armor === true || (h.armorAsk === true && Number.isFinite(forced?.armor));
+          if (h.armorAsk === true && !Number.isFinite(forced?.amount) && !Number.isFinite(forced?.armor)) {
+            const ar = damage.selectArmor(tf.armor ?? [], { source: tags.source }).armor, amount = h.amount ?? 0;
+            if (ar > 0 && amount > 0 && !immune && !vulnerable) {
+              const key = `armor:${t}`;
+              if (!I.data.pk?.[key]) {
+                R.prompts.push({ key, kind: "hazardArmor", to: "gm", about: t, options: [{ id: "armor", label: "ITAC.opt.armorOn", data: { n: Math.max(0, amount - ar) } }, { id: "noArmor", label: "ITAC.opt.armorOff", data: { n: amount } }], data: { cause: h.cause === "fall" ? "fall" : "barrier", amount, armor: ar } });
+                waiting = true; continue;
+              }
+              if (!K.isAnswered(v, I, key)) { waiting = true; continue; }
+              ask = K.answerId(v, I, key) !== "noArmor";
+            } else ask = true;
+          }
+          const armor = ask ? (forced?.armor ?? damage.selectArmor(tf.armor ?? [], { source: tags.source }).armor) : 0;                 // [OQ-11]: the Armor line is the GM's tick
           const hd = damage.hitDamage({ base: h.amount ?? 0, armor, source: tags.source, immunities: immune ? [tags.source] : [], vulnerabilities: vulnerable ? [tags.source] : [] });
           rec = { base: h.amount ?? 0, raw: hd.raw, armor: hd.armor, taken: Number.isFinite(forced?.amount) ? forced.amount : hd.taken, tags };
         }

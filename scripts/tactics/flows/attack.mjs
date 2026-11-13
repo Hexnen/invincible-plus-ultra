@@ -95,6 +95,10 @@ export function wreckOf(v, cid, weight = null) {
   const key = String(z.key ?? z.spot).split(":")[0];
   if (z.states?.wrecked || M.counterGet(v.state, M.counterKey.zone(key, "wrecked")) > 0) return { ok: false, reason: "wreckDone", params: {}, zone: key };      // once per scene, also when the mark was cleared by hand
   const wc = zones.wreckCheck({ terrain: z.terrain && z.terrain !== "none" ? z.terrain : undefined, terrainUnset: !z.terrain, wrecked: false, rooftop: !!z.rooftop }, weight ?? a?.attrs?.strength ?? 0);      // PWD (PW044) [B1745]: the weight a power controls
+  /* A17 (the user, 2026-11-12: «Wszystkie 4 zmiany»): a zone whose terrain was never set on the map may be wrecked without the GM's leave
+     (before: refused, gmMayAllow). The book's table gives no row for it: no minimum STRENGTH, no bonus dice, no roof levelled (what the GM's
+     leave gave before; question ANSE-3); the reach of one zone [B2453] and the once-per-scene mark stand */
+  if (!wc.ok && wc.reason === "terrainUnset") return { ok: true, zone: key, bonus: 0, levelsRooftop: false, unset: 1 };
   if (!wc.ok) return { ok: false, reason: WRECK_REASON[wc.reason] ?? "wreckTerrain", params: { ...(wc.gmMayAllow ? { gmMayAllow: 1 } : {}), ...(wc.minStrength ? { min: wc.minStrength } : {}) }, zone: key };   // [A17]
   return { ok: true, zone: key, bonus: wc.bonus, levelsRooftop: wc.levelsRooftop };
 }
@@ -177,6 +181,7 @@ export function legality(v, inst) {
   const approached = !!inst.data?.charge?.done;
   for (const t of d.targets) {
     const tf = facts.c(t);
+    if (t === inst.actor && d.area && K.flag(inst, "area")) continue;                                                 // A40 [B2542]: the attacker in its own area (put there by the check step)
     if (!tf || tf.present === false || t === inst.actor) return bad(t === inst.actor ? "self" : "gone");
     if (K.notArrived(state, t)) return bad("notArrived", { gmMayAllow: 1 });                                 // Z12 [B1816]: delayed allies arrive at the start of the summoner's next turn
     if (w?.immuneHuge && tf.huge) { if (d.area) continue; return bad("hugeTarget"); }                         // P6 [B1606], [B1625]; PWC (PW028) [B1723], [B1800]: an area attack passes a huge creature by
@@ -196,7 +201,7 @@ export function legality(v, inst) {
     if (!counter && !d.area) {
       const cg = camouflaged(v, t);
       if (M.hasStatus(state, t, "invisible")) gates.push({ kind: "invisible", target: t, attr: "intuition", dice: INVISIBLE_GATE_DICE + (cg ? CAMOUFLAGE_GATE_DICE : 0), src: 2075 });   // [B2075]; PWE: Camouflage's -3 on every roll to spot [B1903]
-      else if (cg && !!tf.npc !== !!a.npc && !["moved", "movedWithinZone", "attacked"].some((x) => P1.history(state, t, P1.isOnTurn(state, t) ? "prevTurn" : "thisTurn", x))) gates.push({ kind: "camouflage", target: t, attr: "intuition", dice: CAMOUFLAGE_GATE_DICE, src: 1903 });   // PWE (PW076) [B1903]: still on its previous turn (the last own turn: "thisTurn" off turn), an enemy rolls first
+      else if (cg && !M.sameTeam(tf, a) &&!["moved", "movedWithinZone", "attacked"].some((x) => P1.history(state, t, P1.isOnTurn(state, t) ? "prevTurn" : "thisTurn", x))) gates.push({ kind: "camouflage", target: t, attr: "intuition", dice: CAMOUFLAGE_GATE_DICE, src: 1903 });   // PWE (PW076) [B1903]: still on its previous turn (the last own turn: "thisTurn" off turn), an enemy rolls first
       else if (unseen) gates.push({ kind: "unseen", target: t, gm: 1 });                                     // concealed by the GM: no cited number, so the GM sets the gate
     }
   }
@@ -344,7 +349,7 @@ function defencePrompt(v, I, t) {
     }
     return op;
   };
-  for (const id of ["block", "dodge"]) {
+  for (const id of t === I.actor ? ["dodge"] : ["block", "dodge"]) {                            // A40 [B2542]: in its own area "each target dodges individually": the attacker dodges, never blocks itself
     const op = allowed(opts, id);
     if (op.reason === "notAllowed") continue;                                                    // this attack cannot be answered that way at all
     /* the bonus dice the defender may choose to put on this defence (spec 6.2); the answer names them: { id, tokens } */
@@ -651,12 +656,14 @@ export const steps = {
     const I = K.draft(inst), R = K.result(I), kind = kindOf(I);
     if (weaponOf(v, I)?.always?.includes("area")) I.decl.area = 1;                              // P6: a power that always takes the whole zone [B1671]
     I.data.multi = multiFor(v, I);
-    if (I.decl.area && !K.flag(I, "area")) {                                                    // [A40]: the attacker's own area attack does not include the attacker
+    if (I.decl.area && !K.flag(I, "area")) {
       K.setFlag(I, "area");
       /* PWC (PW018): a quake from Major on takes everybody in each zone it covers (one target named per zone); PWC (PW028) [B1723], [B1800]:
-         a power that does not work on huge creatures passes them by (the others in the zone are still hit) */
+         a power that does not work on huge creatures passes them by (the others in the zone are still hit).
+         A40 (the user, 2026-11-12: «zgodnie z książką (wszyscy w strefie celu)») [B2542]: an attacker standing in the target zone is hit by its
+         own area attack too and dodges on its own (it is listed after the others; before: never a target) */
       const w = weaponOf(v, I), named = I.decl.targets.slice(0, w?.quake > 1 ? w.quake : 1);
-      const all = named.flatMap((t0) => [t0, ...(v.facts.inZone(t0) ?? [])]).filter((c, i, l) => c !== I.actor && l.indexOf(c) === i && v.facts.c(c) && v.facts.c(c).present !== false);
+      const all = named.flatMap((t0) => [t0, ...(v.facts.inZone(t0) ?? [])]).filter((c, i, l) => l.indexOf(c) === i && v.facts.c(c) && v.facts.c(c).present !== false).sort((x, y) => (x === I.actor) - (y === I.actor));
       const fit = w?.immuneHuge ? all.filter((c) => !v.facts.c(c)?.huge) : all;
       I.decl.targets = (fit.length ? fit : all).slice(0, 24);
     }
@@ -1084,7 +1091,7 @@ export const steps = {
         if (dm && Veh.afterHit(v, I, R, t, dm)) return R;                                                  // P7 [B3221-3248]: component damage, the wreck, the people aboard
         if (dm && K.minionsFate(v, I, R, t, dm, { by: I.actor })) return R;                     // [B2828]: knocked out or killed, the GM's word
         if (dm && !Veh.isMachine(v, t) && K.brokenAndCrit(v, I, R, t, dm, { deadlyHit: picked(t, "deadlyHit"), by: I.actor })) return R;       // spec 9.5 steps 7-9
-      } else if (o.counterattack && I.data.def?.[t]?.defence === "block" && !M.outOfAction(v.state, t, tf) && !(kind !== "counterattack" && weaponOf(v, I)?.noCounter)) {      // [B2448], [R4]; [B2707]; PWD (PW047) [B1779]: Plant Control's attack never brings a counterattack
+      } else if (o.counterattack && t !== I.actor && I.data.def?.[t]?.defence === "block" && !M.outOfAction(v.state, t, tf) && !(kind !== "counterattack" && weaponOf(v, I)?.noCounter)) {      // [B2448], [R4]; [B2707]; PWD (PW047) [B1779]: Plant Control's attack never brings a counterattack
         const key = `counter:${t}`;
         if (!I.data.pk?.[key]) {
           const r = v.facts.range(t, I.actor), opt = { id: "counter", label: "ITAC.opt.counter", data: { sixes: o.counterattack.sixes } };
@@ -1164,7 +1171,7 @@ export const steps = {
 /* ------------------------------------------------------------------ stunt options and validation */
 const stuntKind = (I) => { const k = kindOf(I); return k === "ram" ? "slugfest" : k; };
 /** U90 (ruling U17-R1). The "additional opponent in the same zone" of Bang Heads [B2437] and Trick Shot [B2518]: a character who stands in the zone
-    of the target that was hit, on that target's side (hero side / NPC side: the `npc` fact, a hero's summoned allies with the heroes [B1808]) and is
+    of the target that was hit, on that target's side (hero side / GM side: mods-pure teamOf, ANSE U17-1: a friendly NPC with the heroes; a hero's summoned allies with the heroes [B1808]) and is
     not a target of this attack already. Never the attacker, somebody defeated or gone, a challenge or a vehicle (no opponents: things), and nobody
     the attacker does not know of: one the attacker has as "unseen", or, for an attacker of the heroes' side (whose player reads the card), one the
     GM keeps hidden (spec 10: the list must not give such a figure away). Before, everybody else in the zone was offered: the attacker's allies too. */
@@ -1175,7 +1182,7 @@ function othersNear(v, I, t) {
   if (!tf) return [];
   return (v.facts.inZone(t) ?? []).filter((c) => {
     const f = v.facts.c(c);
-    return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !wiped(f) && !!f.npc === !!tf.npc && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
+    return c !== I.actor && !I.decl.targets.includes(c) && !!f && f.present !== false && !NO_OPPONENT.includes(f.kind) && !wiped(f) && M.sameTeam(f, tf) && known[c] !== "unseen" && !(f.hidden === true && !a?.npc);
   });
 }
 /** U17-2 (the user, 2026-11-12, K6: «MG może wskazać każdego»): whom the GM may name as the extra opponent beyond the list above: any

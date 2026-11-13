@@ -96,7 +96,7 @@ const zoneOnce = (v, cid) => { const z = v?.facts?.zone?.(cid); const k = z?.key
 export const onceKey = (inst, e, v = null) => (e?.once === "round" ? M.counterKey.round(inst.actor, e.id) : e?.once === "sceneZone" ? M.counterKey.scene(inst.actor, `${e.id}${zoneOnce(v, inst.actor)}`) : e?.once ? M.counterKey.scene(inst.actor, e.id) : null);
 const sid = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
 const srcOf = (I, e) => ({ kind: ["power", "talent", "drawback", "gear"].includes(e?.kit?.cat) ? e.kit.cat : "power", owner: I.actor, name: e?.name ?? "" });
-const teamOf = (v, cid) => { const a = v.facts.c(cid); return Object.keys(v.state.ledger ?? {}).filter((id) => { const c = v.facts.c(id); return id !== cid && c && c.present !== false && !!c.npc === !!a?.npc && c.kind !== "challenge" && c.kind !== "vehicle"; }); };
+const teamOf = (v, cid) => { const a = v.facts.c(cid); return Object.keys(v.state.ledger ?? {}).filter((id) => { const c = v.facts.c(id); return id !== cid && c && c.present !== false && M.sameTeam(c, a) && c.kind !== "challenge" && c.kind !== "vehicle"; }); };
 const PLAN_ROLLS = { attack: ["attack"], defend: ["block", "dodge"], misdirect: ["other"] };
 const token = (R, t) => { const tk = M.makeToken(t); if (tk) R.effects.push({ t: "state", path: ["tokens", `#${tk.id}`], to: tk }); };
 /** what an action of the kit does once its roll is in (returns nothing; pushes effects and notes on I.data) */
@@ -126,7 +126,7 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
     } break;
     case "massEmpathy": if (success && sixes > 0) for (const id of zoneMates(v, I.actor)) {      // PWE (PW100) [B2065], [B2064]: one roll for everyone else in the zone: an enemy loses 1 Resolve per six, an ally gets 3 back
       const c = v.facts.c(id);
-      if (!!c.npc !== !!a?.npc) { const n = sixes * (fx.sap ?? 1); R.effects.push({ t: "stress", who: id, n }); R.events.push({ type: "stress", target: id, n, source: "power" }); }
+      if (!M.sameTeam(c, a)) { const n = sixes * (fx.sap ?? 1); R.effects.push({ t: "stress", who: id, n }); R.events.push({ type: "stress", target: id, n, source: "power" }); }
       else { const to = Math.min(c.maxResolve, c.resolve + sixes * (fx.restore ?? 3)); if (to > c.resolve) R.effects.push({ t: "actor", who: id, path: "resolve", to }); }
     } break;
     case "heal": if (success) for (const who of fx.mass && I.decl.targets?.length ? [...new Set(I.decl.targets)] : [subject]) {      // [B1932]; Mass Healing [B1934]: one roll for all of them
@@ -241,7 +241,7 @@ const ownBarriers = (v, by, holder) => (v.state.effects ?? []).filter((x) => x.k
 const zoneMates = (v, cid) => Object.keys(v.state.ledger ?? {}).filter((id) => { const c = v.facts.c(id); return id !== cid && c && c.present !== false && c.kind !== "challenge" && c.kind !== "vehicle" && !M.outOfAction(v.state, id, c) && sameZone(v, cid, id) === true; });
 /* Z15 [B1937] Life Leech: an unwilling target has to be touched first, with a FIGHTING roll made in the same action as the PRESENCE roll.
    [FXT-4] Who is unwilling: a character of the other side (hero against NPC); the book gives the touch no defence, so the roll needs one six. */
-export const touchNeeded = (v, inst) => { const e = v.entry(inst), t = subjectOf(inst); if (e?.effect?.kind !== "leech" || !t || t === inst.actor) return false; const a = v.facts.c(inst.actor), f = v.facts.c(t); return !!a && !!f && !!a.npc !== !!f.npc; };
+export const touchNeeded = (v, inst) => { const e = v.entry(inst), t = subjectOf(inst); if (e?.effect?.kind !== "leech" || !t || t === inst.actor) return false; const a = v.facts.c(inst.actor), f = v.facts.c(t); return !!a && !!f && !M.sameTeam(a, f); };
 const solidNow = (v, I, e) => !!e?.tags?.includes("physical") && K.phased(v.state, I.actor) && K.marked(v.state, I.actor, "solid");
 /* PWA (PW039) [B1772-1775] Nullification as an interrupt: it answers somebody else's action before its dice, aimed at the one who acts;
    only a power can be negated, of the Nullification's own level or lower. -> { lv, item } of the power that action uses, or null */

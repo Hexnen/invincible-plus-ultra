@@ -41,7 +41,7 @@ function chaseData(state, own, facts, t, machines) {
   const why = busy || state.phase !== "turns" ? t("ITAC.reason.busy") : !prey.length || !pursuer.length ? t("ITAC.ui.chase.needSides") : null;
   /* U158: a chase is nearly always one side fleeing the other. ONE click sets every row by side (the heroes' side, the GM's side; a vehicle
      goes with its driver); the rows of three buttons each are for the exceptions and stay folded until the GM opens them. */
-  const npcOf = (u) => { const d = machines.some((m) => m.id === u.id) ? vehOf(state, u.id).driver : null; return !!facts.c?.(d ?? u.id)?.npc; };
+  const npcOf = (u) => { const d = machines.some((m) => m.id === u.id) ? vehOf(state, u.id).driver : null, c = facts.c?.(d ?? u.id); return c?.team ? c.team === "gm" : !!c?.npc; };      // ANSE (U17-1): a friendly NPC with the heroes
   const bySide = (heroes) => Object.fromEntries(units.map((u) => [u.id, npcOf(u) === (heroes === "prey") ? "pursuer" : "prey"]));
   const same = (map) => units.length > 0 && units.every((u) => u.side === map[u.id]);
   const presets = units.some((u) => npcOf(u)) && units.some((u) => !npcOf(u)) ? SIDES.map((s) => ({ id: s, label: t(`ITAC.ui.chase.heroes.${s}`), side: bySide(s), on: same(bySide(s)) })) : [];

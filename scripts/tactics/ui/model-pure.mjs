@@ -102,12 +102,14 @@ export function oddsFor(a, n, tgt, facts, t, def = null) {
 }
 
 /* ------------------------------------------------------------------ the roster a target is picked from */
-/** everybody of the view except `cid`: { id, name, npc, unseen, side } ; `side` = "own" for the actor's own kind (hero / NPC) */
+/** ANSE (U17-1): the side a character fights on, as mods-pure teamOf reads it (the facts' `team`: a friendly NPC with the heroes; else by `npc`) */
+export const teamOf = (c) => (c?.team === "heroes" || c?.team === "gm" ? c.team : c?.npc ? "gm" : "heroes");
+/** everybody of the view except `cid`: { id, name, npc, unseen, side } ; `side` = "own" for the actor's own side (heroes / the GM's: teamOf) */
 export function rosterOf(facts, cid) {
   const view = facts.view, me = facts.c?.(cid);
   return Object.keys(view?.ledger ?? {}).filter((id) => id !== cid && facts.c?.(id)).map((id) => {
     const c = facts.c(id);
-    return { id, name: c.name, npc: !!c.npc, img: c.img ?? null, side: !!c.npc === !!me?.npc ? "own" : "other", unseen: view.knowledge?.[cid]?.[id] === "unseen" };
+    return { id, name: c.name, npc: !!c.npc, img: c.img ?? null, side: teamOf(c) === teamOf(me) ? "own" : "other", unseen: view.knowledge?.[cid]?.[id] === "unseen" };
   });
 }
 /** candidates in the order the action most likely wants them (an attack: the other side first; orders: the own side first) */
@@ -198,6 +200,7 @@ function dueLabel(o, t, facts) {
   }
 }
 /* the sentence(s) under the title: what is being asked, in words */
+const CRIT_TALENT = { killer: "killer", luckyBreak: "lucky", luck: "luck" };      // the talent or power whose dice a critPick card offers (P6b-6, ANSE PW030)
 function linesOf(p, t, facts, x) {
   const d = p.data ?? {}, kind = p.of ?? p.kind, n = (id) => nameOf(facts, id, t), about = p.aboutName ?? n(p.about);
   const out = [];
@@ -286,8 +289,10 @@ function linesOf(p, t, facts, x) {
     case "hazardStunts": out.push(t("ITAC.ui.line.hazardStunts", { n: d.surplus ?? 0, names: (d.targets ?? []).map(n).join(", ") })); break;
     case "fireSpread": out.push(t("ITAC.ui.line.fireSpread", { zone: zoneText(facts, t, d.from), n: d.intensity ?? "?" })); break;
     case "vacuumDeath": out.push(t("ITAC.ui.line.vacuumDeath", { name: about })); break;
-    case "critPick": out.push(t(`ITAC.ui.line.critPick.${d.talent === "killer" ? "killer" : "lucky"}`, { name: about, target: n(d.target) })); break;      // P6b-6 (K8)
-    case "critConfirm": out.push(t(`ITAC.ui.line.critConfirm.${d.talent === "killer" ? "killer" : "lucky"}`, { name: about, target: n(d.target), d6: d.pick?.d6 ?? "?", n: d.pick?.n ?? "?", crit: t(`ITAC.crit.${d.pick?.id}`, {}, "") })); break;
+    case "critPick": out.push(t(`ITAC.ui.line.critPick.${CRIT_TALENT[d.talent] ?? "lucky"}`, { name: about, target: n(d.target) })); break;      // P6b-6 (K8); ANSE (PW030): Luck Control's re-roll
+    case "critConfirm": out.push(t(`ITAC.ui.line.critConfirm.${CRIT_TALENT[d.talent] ?? "lucky"}`, { name: about, target: n(d.target), d6: d.pick?.d6 ?? "?", n: d.pick?.n ?? "?", crit: t(`ITAC.crit.${d.pick?.id}`, {}, "") })); break;
+    case "luckReroll": out.push(t("ITAC.ui.line.luckReroll", { name: about, target: n(d.target), d6: d.d6 ?? "?", n: d.n ?? "?", crit: t(`ITAC.crit.${d.id}`, {}, "") })); if (d.must) out.push(t(`ITAC.ui.line.luckMust.${d.must}`)); break;      // ANSE (PW030) [B1727], [B1731-1732]
+    case "hazardArmor": out.push(t(`ITAC.ui.line.hazardArmor.${d.cause === "fall" ? "fall" : "barrier"}`, { name: about, n: d.amount ?? "?", armor: d.armor ?? "?" })); break;      // ANSE (A10)
     case "heroDead": out.push(t("ITAC.ui.line.heroDead", { name: about, n: d.n ?? "?", crit: t(`ITAC.crit.${d.id}`, {}, "") })); break;      // FXP (D163)
     default: break;
   }

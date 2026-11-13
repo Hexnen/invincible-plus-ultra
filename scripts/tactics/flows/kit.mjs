@@ -282,11 +282,11 @@ const NO_ALLY = ["challenge", "vehicle"];
 /** The attacked characters a reaction of somebody else may be about: other than the reactor, known to it, and in its zone where the entry asks for that. */
 export function reactionFor(v, inst, cid, e) {
   const moved = e?.reaction?.effect === "swapTarget" ? coveredBy(inst) : [];
-  const side = e?.reaction?.effect === "warn" || e?.reaction?.effect === "guide" || e?.reaction?.effect === "swapTarget", me = side ? !!v.facts.c(cid)?.npc : null;      // PWB: Guidance helps "another hero" [B1709], read as Warning Call
+  const side = e?.reaction?.effect === "warn" || e?.reaction?.effect === "guide" || e?.reaction?.effect === "swapTarget", me = side ? M.teamOf(v.facts.c(cid)) : null;      // ANSE (U17-1): the side by the token      // PWB: Guidance helps "another hero" [B1709], read as Warning Call
   /* U131: Warning Call [B2170] says "another character"; read as one of the warner's own side (provisional, question FXI-1): nobody shouts
      a warning to the opponent an ally of theirs is shooting at. U149: Guardian [B2115] ("another character in your zone is attacked") is read
      the same way (provisional, question UXC-3): nobody dives in to take an ally's blow for the enemy. The GM's own answer may still name anybody. */
-  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t) && (!side || !!v.facts.c(t)?.npc === me));
+  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t) && (!side || M.teamOf(v.facts.c(t)) === me));
   /* FXP (U182, ruling FXP-R2): a warning is shouted about an attack the warner sees coming [B2170]: an attacker it does not know of (one
      the GM hides from the heroes, one it has as unseen) gives it nothing to warn about, as no card is made about somebody unknown (U19-R4) */
   if ((e?.reaction?.effect === "warn" || e?.reaction?.effect === "guide") && inst.actor && !knownTo(v, cid, inst.actor)) return [];
@@ -303,7 +303,7 @@ export const wiped = (f) => f?.kind === "minions" && (!(Number(f.health) > 0) ||
 export function alliesNear(v, inst, cid) {
   const me = v.facts.c(cid);
   return Object.keys(v.state.ledger ?? {}).filter((id) => { const f = v.facts.c(id);
-    return id !== cid && id !== inst.actor && !(inst.decl?.targets ?? []).includes(id) && !!f && !NO_ALLY.includes(f.kind) && !wiped(f) && !!f.npc === !!me?.npc && knownTo(v, cid, id) && sameSpot(v, cid, id) !== false; });
+    return id !== cid && id !== inst.actor && !(inst.decl?.targets ?? []).includes(id) && !!f && !NO_ALLY.includes(f.kind) && !wiped(f) && M.sameTeam(f, me) && knownTo(v, cid, id) && sameSpot(v, cid, id) !== false; });
 }
 /** May `cid` take this reaction to this action now, from where it stands? Asked when the card is made AND when it is answered (the
     guardian may have been moved away in between) AND when the answer is acted on. -> { ok, reason } */
@@ -314,6 +314,9 @@ export function reactionFit(v, inst, cid, e) {
      (of the attack family of the rules library); Redirecting Blast answers damage the character's Armor stopped [B1889] */
   if (r.vs === "absorbed" && !(Number(inst.data?.dmg?.[cid]?.absorbed) > 0)) return { ok: false, reason: "nothingAbsorbed" };
   if ((r.vs === "shooting" || r.vs === "slugfest") && attack.ATTACKS[inst.data?.kind ?? "slugfest"]?.family !== r.vs) return { ok: false, reason: r.vs === "shooting" ? "notShot" : "notSlugfest" };
+  /* U19-4 (the user, 2026-11-12: «Tak, wszystkie»): diving in to take the hit is moving the body: a guardian who is held [B2496], snared
+     [B1606] or trapped [B2438] cannot (ruling ANSE-R1). Immobilize Only (snared, move-only [B1611]) only forbids leaving the spot: it may */
+  if (r.effect === "swapTarget") { const k = M.conditions(v.state, cid); if (k.held || k.snared || k.trapped) return { ok: false, reason: k.held ? "held" : k.snared ? "snared" : "trapped" }; }
   if (r.place === "allyZone") return alliesNear(v, inst, cid).length ? { ok: true, reason: null } : { ok: false, reason: "noAllyNear" };
   if (r.who !== "any") return { ok: true, reason: null };
   if (reactionFor(v, inst, cid, e).length) return { ok: true, reason: null };
@@ -494,6 +497,71 @@ function fateOf(v, R, t, dm, id, by) {
     always rolls. Minions never do [B2828]. Whoever is broken lets go of a grapple and is let go of. */
 /** the lang key of an injury entry id ("crushed-arm" -> "crushedArm"), as the heroDead card names it */
 const critKey = (id) => String(id ?? "").replace(/-(\w)/g, (m, c) => c.toUpperCase());
+/* P6b-6 (K8) and ANSE (PW030): which of two injury dice is kept. The chooser picks on the card "critPick" (each die names the injury it
+   gives); a player's pick goes to the GM's "critConfirm" (approve, or the other die); the GM's own pick needs no second card; two equal dice
+   ask nothing. -> 0 | 1, or null while a card is out (R.wait set) */
+function critPickOf(v, I, R, t, tf, cf, faces, { chooser, talent, pk, ok }) {
+  if (!(faces.length > 1 && faces[0] !== faces[1])) return 0;
+  const cap = v.state.opts?.critCap9 ? crits.FAMILY_CAP : crits.MAX_CRIT;
+  const opt = (i) => { const rc = crits.resolveCrit({ d6: faces[i], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap }); return { id: `d:${i}`, label: "ITAC.opt.critDie", data: { d6: faces[i], n: rc.n, id: critKey(rc.entry?.id) } }; };
+  if (!I.data.pk?.[pk]) { R.prompts.push({ key: pk, kind: "critPick", to: addressee(v, chooser), about: chooser, options: [opt(0), opt(1)], data: { talent, target: t, bonus: cf.crit.bonus } }); R.wait = true; return null; }
+  if (!isAnswered(v, I, pk)) { R.wait = true; return null; }
+  let pick = answerId(v, I, pk) === "d:1" ? 1 : 0;
+  if (!answeredByStaff(v, I, pk)) {
+    if (!I.data.pk?.[ok]) { const o = opt(pick), x = opt(1 - pick); R.prompts.push({ key: ok, kind: "critConfirm", to: "gm", about: chooser, options: [{ id: "approve", label: "ITAC.opt.approve", data: o.data }, { id: "other", label: "ITAC.opt.critOther", data: x.data }], data: { talent, target: t, pick: o.data, other: x.data } }); R.wait = true; return null; }
+    if (!isAnswered(v, I, ok)) { R.wait = true; return null; }
+    if (answerId(v, I, ok) === "other") pick = 1 - pick;
+  }
+  return pick;
+}
+/* ANSE (PW030) [B1727]: Luck Control's second use: as a quick interrupt action for 1 stress, force a re-roll of a critical injury on yourself
+   or another character in your zone or an adjacent one, and choose the result you prefer. Its limits [B1731], [B1732]: Good Luck Only must
+   keep the lower roll, Bad Luck Only the higher (kit-pure leaves the act's `pick` to ["good"] / ["bad"]). Who may: a character of the fight
+   with the power, present, not out of action [B2707] (the injured one itself only when this blow left it standing: a broken character has no
+   power), able to act out of turn (not stunned, no lost turn) and to pay a quick interrupt action and 1 stress [B2816]. No map: the reach is
+   the GM's. Each such character is asked in turn (the order of the fight) until one re-rolls; one re-roll per injury (ruling ANSE-R3). */
+const luckEntry = (f) => (f?.kit?.actions ?? []).find((e) => e?.effect?.kind === "luck") ?? null;
+function luckHolders(v, t, dm) {
+  return Object.keys(v.state.ledger ?? {}).filter((id) => {
+    const f = v.facts.c(id), e = luckEntry(f);
+    if (!e || f.present === false || M.outOfAction(v.state, id, f) || M.conditions(v.state, id).noInterrupts) return false;
+    if (id === t && !(Number(dm.healthBefore) - Number(dm.taken) > 0)) return false;
+    const r = id === t ? { total: 0 } : v.facts.range(id, t);
+    if (r === null || (r && r.total > 1)) return false;
+    return P1.canPay(v.state, id, e.cost ?? "quick", { interrupt: true, resolve: f.resolve }).ok && damage.canTakeVoluntaryStress(f.resolve);
+  });
+}
+function luckStep(v, I, R, t, tf, cf, dm, key) {
+  const L = ((I.data.luck ??= {})[t] ??= { asked: [] });
+  if (!L.by) {
+    for (const id of luckHolders(v, t, dm)) {
+      if (L.asked.includes(id)) continue;
+      const lk = `luck:${t}:${id}`, cap = v.state.opts?.critCap9 ? crits.FAMILY_CAP : crits.MAX_CRIT, e = luckEntry(v.facts.c(id));
+      if (!I.data.pk?.[lk]) {
+        const d6 = I.data.res[key][0], rc = crits.resolveCrit({ d6, bonus: cf.crit.bonus, prior: tf.crits ?? [], cap }), only = (e.pick ?? []).length === 1 ? e.pick[0] : null;
+        R.prompts.push({ key: lk, kind: "luckReroll", to: addressee(v, id), about: id, options: [{ id: "reroll", label: "ITAC.opt.luckReroll", cost: e.cost ?? "quick", stress: 1 }, { id: PASS, label: "ITAC.opt.pass" }],
+          data: { target: t, d6, n: rc.n, id: critKey(rc.entry?.id), ...(only ? { must: only === "good" ? "lower" : "higher" } : {}) } });
+        R.wait = true; return true;
+      }
+      if (!isAnswered(v, I, lk)) { R.wait = true; return true; }
+      L.asked.push(id);
+      if (answerId(v, I, lk) !== "reroll") continue;
+      L.by = id;
+      R.effects.push({ t: "pay", who: id, cost: e.cost ?? "quick", action: e.id ?? "luck", interrupt: 1, key: `luck:${t}`, target: [t] });
+      R.effects.push({ t: "stress", who: id, n: 1 });
+      break;
+    }
+    if (!L.by) return false;
+  }
+  const rk = `${key}:luck`;
+  if (I.data.res?.[rk] == null) { if (!flag(I, `${rk}:asked`)) { setFlag(I, `${rk}:asked`); R.effects.push({ t: "dice", key: rk, n: 1 }); } R.wait = true; return true; }
+  const faces = [I.data.res[key][0], I.data.res[rk][0]], only = (luckEntry(v.facts.c(L.by))?.pick ?? []).length === 1 ? luckEntry(v.facts.c(L.by)).pick[0] : null;
+  const pick = only ? (only === "good" ? (faces[1] < faces[0] ? 1 : 0) : (faces[1] > faces[0] ? 1 : 0)) : critPickOf(v, I, R, t, tf, cf, faces, { chooser: L.by, talent: "luck", pk: `critPick:${t}:luck`, ok: `critOk:${t}:luck` });
+  if (pick == null) return true;
+  L.kept = faces[pick];
+  I.data.res[key] = [faces[pick], faces[1 - pick]];
+  return false;
+}
 export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } = {}) {
   if (!dm || dm.tags?.toStress || !(dm.taken > 0)) return false;
   const tf = v.facts.c(t);
@@ -508,7 +576,7 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
     R.events.push({ type: "broken", target: t });
     const bf = by ? v.facts.c(by) : null;                                                      // P6 [B2154] Merciless: 1 Resolve for breaking an enemy
     const resNow = bf ? R.effects.filter((e) => e.t === "actor" && e.who === by && e.path === "resolve").at(-1)?.to ?? bf.resolve : 0;      // several enemies broken in one step: count the gains already queued
-    if (bf?.pass?.merciless && resNow < bf.maxResolve && !!bf.npc !== !!tf.npc) R.effects.push({ t: "actor", who: by, path: "resolve", to: resNow + 1 });
+    if (bf?.pass?.merciless && resNow < bf.maxResolve && !M.sameTeam(bf, tf)) R.effects.push({ t: "actor", who: by, path: "resolve", to: resNow + 1 });
   }
   if (cf.gmChoice) {                                                                           // [B2771]: an ordinary NPC needs no injury, the GM states the outcome
     const key = `npcBroken:${t}`;
@@ -540,22 +608,17 @@ export function brokenAndCrit(v, I, R, t, dm, { deadlyHit = false, by = null } =
        card. Two equal dice ask nothing; Killer against Lucky Break still cancel out to one die (unchanged: the book does not say). */
     if (!flag(I, `${key}:kept`)) {
       const faces = I.data.res[key];
-      let pick = 0;
-      if (two && faces.length > 1 && faces[0] !== faces[1]) {
-        const chooser = killer ? by : t, pk = `critPick:${t}`, cap = v.state.opts?.critCap9 ? crits.FAMILY_CAP : crits.MAX_CRIT;
-        const opt = (i) => { const rc = crits.resolveCrit({ d6: faces[i], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap }); return { id: `d:${i}`, label: "ITAC.opt.critDie", data: { d6: faces[i], n: rc.n, id: critKey(rc.entry?.id) } }; };
-        if (!I.data.pk?.[pk]) { R.prompts.push({ key: pk, kind: "critPick", to: addressee(v, chooser), about: chooser, options: [opt(0), opt(1)], data: { talent: killer ? "killer" : "luckyBreak", target: t, bonus: cf.crit.bonus } }); R.wait = true; return true; }
-        if (!isAnswered(v, I, pk)) { R.wait = true; return true; }
-        pick = answerId(v, I, pk) === "d:1" ? 1 : 0;
-        if (!answeredByStaff(v, I, pk)) {
-          const ok = `critOk:${t}`;
-          if (!I.data.pk?.[ok]) { const o = opt(pick), x = opt(1 - pick); R.prompts.push({ key: ok, kind: "critConfirm", to: "gm", about: chooser, options: [{ id: "approve", label: "ITAC.opt.approve", data: o.data }, { id: "other", label: "ITAC.opt.critOther", data: x.data }], data: { talent: killer ? "killer" : "luckyBreak", target: t, pick: o.data, other: x.data } }); R.wait = true; return true; }
-          if (!isAnswered(v, I, ok)) { R.wait = true; return true; }
-          if (answerId(v, I, ok) === "other") pick = 1 - pick;
-        }
-      }
+      const pick = two ? critPickOf(v, I, R, t, tf, cf, faces, { chooser: killer ? by : t, talent: killer ? "killer" : "luckyBreak", pk: `critPick:${t}`, ok: `critOk:${t}` }) : 0;
+      if (pick == null) return true;
       setFlag(I, `${key}:kept`);
       I.data.res[key] = [faces[pick], ...faces.filter((_, i) => i !== pick)];
+    }
+    /* ANSE (PW030) [B1727]: Luck Control forces a re-roll of the injury, the holder keeps the die it prefers, on the same card as Killer and
+       Lucky Break (the user's P6b-6 / K8: the player picks, the GM confirms); Good Luck Only keeps the lower die, Bad Luck Only the higher
+       [B1731], [B1732], no card then */
+    if (!flag(I, `${key}:luck`)) {
+      if (luckStep(v, I, R, t, tf, cf, dm, key)) return true;
+      setFlag(I, `${key}:luck`);
     }
     /* FXP (D163): a HERO's injury that kills (12 and worse, [B2761], [B2765]) is the biggest moment of a fight [B2787]: the GM gets a card
        before it is written. "Dies" writes it as the table rolled it; "Injury 9" takes the book's own softer table for this one injury
