@@ -169,7 +169,7 @@ function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
   if (kind === "fireSpread" && o.data?.zone) return o.data.rolled ? t("ITAC.ui.spread.rolled", { zone: zoneText(facts, t, o.data.zone) }) : zoneText(facts, t, o.data.zone);
   /* D113: an answer about one of several characters (the ally Discretion puts in the way, the one a warning is for) names that character */
   if (kind === "reaction" && o.data?.about && String(o.id).includes("@")) return t("ITAC.ui.react.about", { what: o.name ? String(o.name) : labelOf(t, o.label), name: nameOf(facts, o.data.about, t) });
-  if (kind === "surprise" && o.data) return t("ITAC.ui.opt.surprised", { name: nameOf(facts, o.id, t), n: o.data.sixes ?? 0, dice: o.data.dice ?? "?" });      // ANSG (FXT-10): the defender and its INTUITION roll
+  if (kind === "surprise" && o.data) return nameOf(facts, o.id, t);      // ANSG (FXT-10) / ANSI-1: the defender; its INTUITION roll stands as marks after the name (askData `marks`)
   if (o.name) return String(o.name);
   if (isKey(o.label)) {
     const d = o.data ?? {};
@@ -422,6 +422,32 @@ export function askData(p, o) {
       zoneReq: zones && !x.disabled ? (zone) => p.answerReq({ id: x.id, zone: String(zone) }) : null,      // an option that carries zones: the place picked on the map rides along [D]
       ...(places.length && kind === "dodgeMove" && x.id === "move" ? { label: t("ITAC.ui.move.byHand") } : {}) };
   })];
+  /* ANSI-1 (FXT-10): a defender of the surprise card is one short tick row: the name, then its INTUITION roll as marks (the sixes, the
+     dice); the roll (its tooltip's first line, so also its aria-label) and what being surprised does are said in words in its tooltip */
+  if (kind === "surprise") for (const x of options) { const d = (p.options ?? []).find((q) => q.id === x.id)?.data; if (!d) continue;
+    const roll = t("ITAC.ui.opt.surprised", { name: x.label, n: d.sixes ?? 0, dice: d.dice ?? "?" });
+    Object.assign(x, { marks: [{ mark: "six", n: d.sixes ?? 0 }, { mark: "dice", n: d.dice ?? "?" }], tip: tipOf(null, null, null, [roll, t("ITAC.ui.surprise.what")]) }); }
+  /* ANSI-2 (FXT-9) [B2168]: Tactical Support. The engine offers one option per six an ally could get ("support@<ally>|<k>"); the card
+     shows ONE row per ally under its own caption: a click gives that ally one more six (+2 dice), the minus beside it takes one back, a
+     click on a full row takes them all back. The picks sent stay the engine's ids (the k-th six of that ally). */
+  const supOf = (x) => (x.icon === "stunt:support" ? /^support@([^|]+)\|(\d+)$/.exec(String(x.id)) : null);
+  if (options.some(supOf)) {
+    const by = new Map();
+    for (const x of options) { const m = supOf(x); if (m) by.set(m[1], [...(by.get(m[1]) ?? []), x.id]); }
+    const room = picks.length < (p.max ?? Infinity), stTip = has(t, "ITAC.ui.stunt.tip.support") ? t("ITAC.ui.stunt.tip.support") : null;
+    const rows = [...by].map(([ally, ids]) => {
+      const n = ids.filter((id) => picks.includes(id)).length, name = nameOf(facts, ally, t), add = n < ids.length && room ? `support@${ally}|${n + 1}` : null;
+      const full = !add && !n ? t("ITAC.ui.support.none") : null;
+      return { id: `support@${ally}`, label: name, cost: null, unit: null, out: false, stress: 0, icon: "stunt:support", group: { id: "support", label: t("ITAC.ui.stunt.g.support") },
+        tip: tipOf(null, null, full, [n ? t("ITAC.ui.support.now", { n, dice: 2 * n, name }) : null, stTip, add ? t("ITAC.ui.support.add") : n ? t("ITAC.ui.support.clear") : null]),
+        marks: n ? [{ mark: "dice", n: `+${2 * n}` }] : [],
+        note: null, disabled: full, picked: n > 0, pass: false, zones: null, req: null, zoneReq: null,
+        step: { add, sub: n ? `support@${ally}|${n}` : null, clear: ids.filter((id) => picks.includes(id)), less: t("ITAC.ui.support.less", { name }) } };
+    });
+    const at = options.findIndex(supOf);
+    const rest = options.filter((x) => !supOf(x));
+    options.length = 0; options.push(...rest.slice(0, at), ...rows, ...rest.slice(at));
+  }
   const lines = linesOf(p, t, facts, { inst, desk });
   /* U153: a card of many stunts (three sixes) is a wall of equal buttons: the stunts on the target stand in small groups of what they do
      (damage, control, another opponent, the own idea), each under its caption, the ones that cannot be taken now last in their group.
@@ -430,7 +456,7 @@ export function askData(p, o) {
   if (mainSt.length >= 5) {
     const theme = (x) => STUNT_THEME[String(x.icon).slice(6)] ?? "own";
     for (const x of mainSt) x.group = theme(x) === "reach" ? { id: "more", label: t("ITAC.ui.stunt.g.more") } : { id: `th:${theme(x)}`, label: t(`ITAC.ui.stunt.th.${theme(x)}`) };      // one caption for "another opponent"
-    const rank = (x) => { const g = x.group?.id ?? ""; const i = g.startsWith("th:") ? STUNT_THEMES.indexOf(g.slice(3)) : g === "more" ? STUNT_THEMES.indexOf("reach") : g.startsWith("on:") ? STUNT_THEMES.length : -1; return i * 2 + (x.disabled ? 1 : 0); };
+    const rank = (x) => { const g = x.group?.id ?? ""; const i = g.startsWith("th:") ? STUNT_THEMES.indexOf(g.slice(3)) : g === "more" ? STUNT_THEMES.indexOf("reach") : g.startsWith("on:") ? STUNT_THEMES.length : g === "support" ? STUNT_THEMES.length + 1 : -1;      /* ANSI-2: the support of allies stands last */ return i * 2 + (x.disabled ? 1 : 0); };
     const moved = options.map((x, i) => ({ x, i, r: x.icon?.startsWith("stunt:") ? rank(x) : null }));
     const st = moved.filter((m) => m.r !== null).sort((a, b) => a.r - b.r || a.i - b.i).map((m) => m.x);
     let k = 0; for (let i = 0; i < options.length; i++) if (moved[i].r !== null) options[i] = st[k++];
@@ -457,7 +483,7 @@ export function askData(p, o) {
   const canSubmit = !multi || queue || (picks.length >= min && picks.length <= max);
   return {
     map: desk && kind === "direction" && Array.isArray(p.data?.zones) && p.data.zones.length > 1 ? { zones: p.data.zones.map((z, i) => ({ zone: bare(z), label: i ? String(i) : "" })), borders: (p.data.walls ?? []).map((w) => w.border).filter(Boolean) } : null,
-    id: p.id, kind, proxy: p.kind === "proxy", pvFor: pb ? p.about : null, aboutId: p.about ?? null, aboutHead: true, check: queue, title: titleOf({ ...p, to: desk ? "desk" : "player" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options, multi, tokens,
+    id: p.id, kind, proxy: p.kind === "proxy", pvFor: pb ? p.about : null, aboutId: p.about ?? null, aboutHead: true, check: queue || kind === "surprise", title: titleOf({ ...p, to: desk ? "desk" : "player" }, t, facts, o.round), about: p.aboutName ?? nameOf(facts, p.about, t), lines, options, multi, tokens,
     free: p.free ? { text: own.texts?.[p.id] ?? "", placeholder: t(desk ? "ITAC.ui.note.gm" : "ITAC.ui.note.player") } : null,
     gmExtra: gx?.ctl ?? null,
     always: desk && Array.isArray(p.always) && p.always.length ? { on: always, label: t("ITAC.ui.always", { name: p.aboutName ?? "" }), tip: t("ITAC.ui.always.tip", { name: p.aboutName ?? "" }) } : null,

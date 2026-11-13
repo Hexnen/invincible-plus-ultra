@@ -999,3 +999,38 @@ body.ita-dice-up #invincible-tactics-dock { z-index: var(--ita-dice-z); }
 .ita-gmx { display: flex; flex-wrap: wrap; gap: 4px 6px; }
 #invincible-tactics-desk .ita-gmx select { flex: 1 1 180px; width: auto; min-width: 0; font: 400 13px/1.2 Titles, Comic, sans-serif; letter-spacing: .03em; color: var(--ita-yellow); border: 1px dashed var(--ita-yellow); }
 #invincible-tactics-desk .ita-gmx select:hover { background: var(--ita-tile); }
+
+/* ============================ ANSI: four pieces made to read well ============================ */
+/* ANSI-1 (FXT-10): the GM's surprise card. One short line, then one tick row per defender: the box, the name, its INTUITION roll as
+   marks at the row's end (the sixes, the dice). Ticked = surprised (yellow), not ticked = struck through on a dashed frame. The rows are
+   thin (26 px) and stand in one column, so a group of defenders fits the desk above its Confirm. */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opts { flex-direction: column; flex-wrap: nowrap; gap: 4px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt[data-check] { width: 100%; min-height: 26px; gap: 7px; padding: 1px 8px 2px 7px; box-shadow: none; translate: none; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt[data-check][aria-pressed="true"] { border-width: 1.5px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt[data-check][aria-pressed="false"] { border-width: 1.5px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt:hover { translate: none; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt:hover[aria-pressed="false"] { color: #fff; border-color: var(--ita-frame); }
+/* the marks at the end of a row (a roll, the dice given): one size with the row's capitals, on its baseline */
+.ita-opt-m { flex: none; display: inline-flex; align-items: center; gap: 9px; margin-left: auto; padding-left: 6px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt-m .ipu-sym > b { font-size: 13px; }
+.ita-opt[aria-pressed="false"] .ita-opt-m { opacity: .8; }
+
+/* ANSI-2 (FXT-9): Tactical Support, one row per ally under its own caption. The row gives one more six a click (the dice it brings
+   stand at its end), the square minus beside it takes one back. */
+.ita-stepper { display: inline-flex; align-items: stretch; gap: 0; max-width: 100%; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-stepper > .ita-opt { min-width: 0; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-stepper > .ita-opt[aria-pressed="true"] { translate: none; box-shadow: 3px 3px 0 var(--ita-blue); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-less {
+  all: unset; box-sizing: border-box; flex: none; display: inline-grid; place-items: center; width: 28px; margin-left: 5px;
+  color: var(--ita-yellow); background: var(--ita-ink); border: 2px solid var(--ita-yellow); cursor: pointer;
+  transition: color .12s ease-out, background-color .12s ease-out;
+}
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-less > i { font-size: 12px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-less:hover { color: var(--ita-ink); background: var(--ita-yellow); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-less:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* ANSI-4 (U198): a mark in the news line stands IN the sentence: its number takes the line's own letters and baseline (it was the kit's
+   12 px figure set 1 px low beside 14 px capitals), the picture a touch smaller than the capitals */
+#invincible-tactics-dock .itd-news .itd-news-t .ipu-sym { display: inline; vertical-align: baseline; }
+#invincible-tactics-dock .itd-news .itd-news-t .ipu-sym > b { font: inherit; letter-spacing: inherit; }
+#invincible-tactics-dock .itd-news .itd-news-t .ipu-sym > .ipu-sym-g { margin-inline-end: 3px; font-size: .82em; vertical-align: .02em; }

@@ -191,7 +191,8 @@ const finish = async (T) => { for (let i = 0; i < 8; i++) { const p = T.prompts(
   const ad = dcard && UI.askData(dcard, { t: (k, prm, fb) => say(k, prm, fb), facts: { c: (id) => (names[id] ? { name: names[id] } : null) }, own: {}, desk: true });
   eq(ad?.title, EN["ITAC.Prompt.surprise.Title"], "FXT-10: the card's title");
   eq(ad?.options.map((o) => [o.id, o.picked]), p.options.map((o) => [o.id, p.data.failed.includes(o.id)]), "FXT-10: those who rolled no six stand ticked");
-  ok(ad?.options.every((o, i) => o.label.startsWith(`${names[o.id]}: `) && o.label.includes(String(p.options[i].data.sixes))), "FXT-10: each line names the defender and its sixes");
+  /* ANSI-1 redrew the row: the name alone as its label, the roll as marks after it (sixes, dice) and in words as its tooltip's first line (its aria-label) */
+  ok(ad?.options.every((o, i) => o.label === names[o.id] && o.marks?.[0]?.mark === "six" && o.marks[0].n === p.options[i].data.sixes && o.tip.lines[0].includes(String(p.options[i].data.sixes))), "FXT-10: each line names the defender and its sixes");
   eq(ad?.submit?.req, { op: "answerFor", prompt: p.id, value: { order: [], skip: p.options.map((o) => o.id).filter((id) => !p.data.failed.includes(id)) } }, "FXT-10: confirming sends the list as it stands");
   const viaDesk = O.reduce(r.state, O.normalize({ ...ad.submit.req, op: "answer" }, { staff: true }).action, { ...GM, parts, rng: seeded(5) });
   eq([viaDesk.ok, viaDesk.state.phase !== "draw"], [true, true], "FXT-10: the desk's answer deals the cards");
