@@ -129,7 +129,7 @@ for (const [i, t] of crowd.entries()) { set(t, "health", i === 0 ? 0 : 5); await
 p = await take(2600);
 const words = p.filter((x) => x.o.at?.id && !String(x.text).match(/^[+-]\d/));
 ck("E1 nine at once: two full words (the heaviest among them), the rest numbers, nothing doubled", words.length === 2 && p.length === 11 && words.some((x) => x.o.at.id === "c0"));
-ck("E2 the crowd is smaller than a single hit", Math.max(...words.map((x) => x.o.size)) < 100 * 0.6 * 1.3);
+ck("E2 the crowd is smaller than a single hit", words.every((x) => x.o.scale < 1 && !("size" in x.o)));      // contract v4: no fixed size, the engine's model with a smaller scale
 
 /* switched off */
 values["invincible-plus-ultra.tokenReactEnabled"] = false;

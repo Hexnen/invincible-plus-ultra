@@ -178,14 +178,15 @@ function play(L, it) {
   try {
     const tok = it.tok;
     if (!tok?.scene || tok.scene.id !== canvas.scene?.id || tok.destroyed) return;
-    const base = (canvas.grid?.size ?? 100) * 0.6 * (SIZE[get(KEY.size, "normal")] ?? 1) * it.scale, lk = it.lk, red = reduced();
+    /* size: the engine's model (contract v4) from the token, the zoom, the viewport and the magnitude; the user's size and the crowd scale it */
+    const k = (SIZE[get(KEY.size, "normal")] ?? 1) * it.scale, lk = it.lk, red = reduced();
     for (const h of playing.get(tok.id) ?? []) try { h.stop({ quick: false }); } catch { /* gone */ }      // one reaction per token: the new one takes over
     const hs = [];
-    if (it.mode === "full") hs.push(L.play(lk.word, { mood: lk.mood, sound: lk.sound, space: "world", at: tok.document, size: base * lk.size, maxWidth: Math.max(tok.w * 2.4, base * 4), seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, reduced: red, ...lk.motion, ...layer() }));
+    if (it.mode === "full") hs.push(L.play(lk.word, { mood: lk.mood, sound: lk.sound, space: "world", at: tok.document, magnitude: lk.magnitude, scale: k, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, reduced: red, ...lk.motion, ...layer() }));
     if (lk.number) {
       /* the number on a shoulder of the token, just under the word; alone (a crowd) it stands where the word would */
       const at = it.mode === "full" ? { x: tok.x + tok.w * (lk.side > 0 ? 0.92 : 0.08), y: tok.y + tok.h * 0.08 } : tok.document;
-      const go = () => hs.push(L.play(lk.number.text, { mood: lk.number.mood, sound: lk.number.sound, space: "world", at, anchor: it.mode === "full" ? "center" : undefined, size: base * lk.number.size, seed: `${it.seed}#n`, hold: lk.hold, rotation: -Math.sign(lk.rotation || 1) * 4, colors: lk.number.colors, avoid: hs.map((h) => h.hand), reduced: red, in: "pop", out: lk.motion.out === "shatter" || lk.motion.out === "burst" ? "pop" : lk.motion.out, ...layer() }));
+      const go = () => hs.push(L.play(lk.number.text, { mood: lk.number.mood, sound: lk.number.sound, space: "world", at, token: tok.document, anchor: it.mode === "full" ? "center" : undefined, magnitude: lk.number.magnitude, scale: k * lk.number.size, seed: `${it.seed}#n`, hold: lk.hold, rotation: -Math.sign(lk.rotation || 1) * 4, colors: lk.number.colors, avoid: hs.map((h) => h.hand), reduced: red, in: "pop", out: lk.motion.out === "shatter" || lk.motion.out === "burst" ? "pop" : lk.motion.out, ...layer() }));
       if (it.mode === "full" && !red) setTimeout(go, 110); else go();
     }
     playing.set(tok.id, hs);
