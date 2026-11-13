@@ -156,6 +156,9 @@ const finish = async (T) => { for (let i = 0; i < 8; i++) { const p = T.prompts(
   eq(tk.map((x) => [x.dice, x.scope, x.uses, x.from]), [[4, { next: 1 }, 1, "H1"]], "FXT-9: +2 dice per six to the ally's next attribute roll");
   eq(T.c.N1.health, 6 - 2, "FXT-9: the blow itself hits as usual (no Double Damage taken)");
   ok(typeof EN["ITAC.stunt.support"] === "string" && PL["ITAC.stunt.support"] === "Wsparcie", "FXT-9: the stunt's name (PL: Wsparcie)");
+  const W4 = base([item("ts", "Tactical Support", "talent")]);
+  await W4.req("p1", decl("H1", "slugfest", { targets: ["N1"] })); await passAll(W4); await W4.roll("attack", 5);
+  eq((W4.prompt("stunts")?.options ?? []).filter((o) => o.data?.stunt === "support").length, 4, "FXT-9 [B2168]: every surplus six may go to support (the book has no cap)");
   const U = base([]);
   await U.req("p1", decl("H1", "slugfest", { targets: ["N1"] })); await passAll(U); await U.roll("attack", 3);
   ok(!(U.prompt("stunts")?.options ?? []).some((o) => o.data?.stunt === "support"), "FXT-9: without the talent no support");

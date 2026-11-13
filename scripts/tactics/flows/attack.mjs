@@ -1251,7 +1251,7 @@ function supportAllies(v, I) {
 function supportOptions(v, I, hit, budget) {
   if (!hit.length || !(budget > 0)) return [];
   const out = [];
-  for (const x of supportAllies(v, I)) for (let k = 1; k <= Math.min(budget, 3); k++) out.push({ id: `support@${x}|${k}`, label: "ITAC.stunt.supportSix", data: { stunt: "support", target: x, n: k, ally: 1 } });
+  for (const x of supportAllies(v, I)) for (let k = 1; k <= Math.min(budget, 12); k++) out.push({ id: `support@${x}|${k}`, label: "ITAC.stunt.supportSix", data: { stunt: "support", target: x, n: k, ally: 1 } });
   return out;
 }
 const picksOf = (value) => (Array.isArray(value) ? value : []).map((id) => /^([A-Za-z]+)@([^|]+)(?:\|(.+))?$/.exec(String(id))).filter(Boolean).map((m) => ({ stunt: m[1], target: m[2], ...(m[3] ? { extra: m[3] } : {}) }));
@@ -1269,7 +1269,7 @@ export function validate(v, inst, prompt, value, staff = false) {
   const all = picksOf(value), out = inst.data.out ?? {}, multi = inst.data.multi;
   /* ANSG (FXT-9): the support picks are checked on their own (an ally of the list) and count against the sixes like any stunt */
   const sup = all.filter((p) => p.stunt === "support"), allies = supportAllies(v, inst), picks = all.filter((p) => p.stunt !== "support");
-  if (sup.some((p) => !allies.includes(p.target) || !/^[1-3]$/.test(String(p.extra ?? "")))) return { ok: false, reason: "notOffered" };
+  if (sup.some((p) => !allies.includes(p.target) || !/^([1-9]|1[0-2])$/.test(String(p.extra ?? "")))) return { ok: false, reason: "notOffered" };
   if (all.length > budgetOf(inst, inst.decl.targets.filter((t) => out[t]?.hit))) return { ok: false, reason: "budget" };
   const hit = inst.decl.targets.filter((t) => out[t]?.hit);
   const prim = picks.filter((p) => hit.includes(p.target)), sec = picks.filter((p) => !hit.includes(p.target));
