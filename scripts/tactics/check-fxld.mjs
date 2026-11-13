@@ -47,7 +47,9 @@ function fakeDom(W, H, ui = {}) {
        window's height whose scene row is the part on top */
     ...(ui.pill ? { "#mm-dir-bar": { left: W * 0.28, top: H - 184, width: 444, height: 32, right: W * 0.28 + 444, bottom: H - 152 } } : {}),
     "#scene-navigation": { left: 104, top: 16, width: 200, height: H - 32, right: 304, bottom: H - 16 },
-    "#scene-navigation li": { left: 104, top: 16, width: 170, height: 32, right: 274, bottom: 48 }
+    "#scene-navigation li": { left: 104, top: 16, width: 170, height: 32, right: 274, bottom: 48 },
+    /* live (lane 5, 1366, sidebar collapsed): the roll's chat card pops up at x 1005-1300, y 350-610, right as the splash starts */
+    ...(ui.card ? { "#chat-notifications .chat-log > li": { left: W - 361, top: H * 0.45, width: 295, height: 260, right: W - 66, bottom: H * 0.45 + 260 } } : {})
   };
   const el = (r) => ({ getBoundingClientRect: () => r });
   const dice = mk("canvas"); dice.style.zIndex = String(ui.diceZ ?? 6200);
@@ -106,7 +108,7 @@ const ROLLS = () => ({ good: ev({ n: 5, sixes: 2 }), crit: ev({ n: 4, sixes: 4 }
 
 /* ================================================================== F3, F4, F7 (screen), F14 scale: every roll, every edge */
 for (const [W, H] of [[1366, 768], [1920, 1080]]) {
-  await run(W, H, { pill: true }, async ({ Stage, flush }) => {
+  await run(W, H, { pill: true, card: true }, async ({ Stage, flush }) => {
     const spots = [["middle", (W - 300) / 2, H / 2], ["top edge", (W - 300) / 2, 30], ["bottom edge", (W - 300) / 2, H - 40], ["left edge", 70, H / 2], ["by the chat", W - 330, H / 2], ["top-left corner", 60, 40], ["bottom-right corner", W - 330, H - 50]];
     for (const scale of [1, 1.6]) {
       for (const [where, cx, cy] of spots) {
@@ -123,6 +125,8 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
              (the wreck's word sat on it live) */
           const bar = (b, r) => b.x - b.w / 2 < r.right && b.x + b.w / 2 > r.left && b.y - b.h / 2 < r.bottom && b.y + b.h / 2 > r.top;
           const pill = { left: W * 0.28, top: H - 184, right: W * 0.28 + 444, bottom: H - 152 }, row = { left: 104, top: 16, right: 274, bottom: 48 };
+          const card = { left: W - 361, top: H * 0.45, right: W - 66, bottom: H * 0.45 + 260 };
+          for (const b of boxes) ok(!bar(b, card), `F4 ${tag}: the ${b.role} stays off the roll's chat card popped up at the right`);
           for (const b of boxes) ok(!bar(b, pill) && !bar(b, row), `F4 ${tag}: the ${b.role} stays off the bars (the director pill at the bottom, the scene row on top)`);
           let clash = null;
           for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];

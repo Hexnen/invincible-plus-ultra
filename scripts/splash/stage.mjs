@@ -147,6 +147,19 @@ export const UI_LEFT = ['#scene-controls', '#controls'];
 /* v14's #scene-navigation is a column as tall as the window; its scene rows (li) are what sits on top, so the rows count */
 export const UI_TOP = ['#scene-navigation li', '#scene-navigation .scene', '#navigation'];
 export const UI_BOTTOM = ['#hotbar', '#players', '#mm-dir-bar', '.ilg-replay', '.ilg-bar', '#ilg-replay'];
+/* v14 with the sidebar collapsed: a new chat card pops up at the right (#chat-notifications, 300 px wide, over the map) just when the
+   splash starts (live, 1366: the pushed roll's sixes and gauge sat on it); a visible card is a bar on the right */
+export const UI_RIGHT = ['#chat-notifications .chat-log > li', '#chat-notifications .chat-message'];
+function leftOf(sel, vw) {
+  let left = Infinity;
+  try {
+    for (const e of document.querySelectorAll(sel)) {
+      const q = e.getBoundingClientRect();
+      if (q && q.width > 0 && q.height > 0 && q.left > vw * 0.45) left = Math.min(left, q.left);
+    }
+  } catch (e) { /* a selector this Foundry does not know */ }
+  return left;
+}
 function topOf(sel, vh) {
   let bottom = -1;
   try {
@@ -172,6 +185,7 @@ export function safeRect() {
   let l = 12, t = 10, r = area.w - 14, b = vh - 10;
   for (const s of UI_LEFT) { const q = boxOf(s); if (q && q.left < vw * 0.15 && q.right < vw * 0.2) l = Math.max(l, q.right + 8); }
   for (const s of UI_TOP) { const y = topOf(s, vh); if (y >= 0) t = Math.max(t, y + 6); }
+  for (const s of UI_RIGHT) { const x = leftOf(s, vw); if (x < r) r = Math.max(l + vw * 0.3, x - 10); }
   for (const s of UI_BOTTOM) { const q = boxOf(s); if (q && q.top > vh * 0.6 && q.left < area.w) b = Math.min(b, q.top - 8); }
   if (b - t < vh * 0.45) { t = 10; b = vh - 10; }   // a strange layout: the whole height rather than a slit
   return { l, t, r, b };

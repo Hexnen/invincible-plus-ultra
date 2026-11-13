@@ -242,12 +242,12 @@ export function composeMoment(items, frame, measure = estimateBox) {
   const safe = frame.safe, vh = frame.vh || 768, sc = frame.scale || 1;
   const safeW = Math.max(120, safe.r - safe.l), safeH = Math.max(120, safe.b - safe.t);
   let f = 1, out = null;
-  for (let pass = 0; pass < 5; pass++) {
+  for (let pass = 0; pass < 8; pass++) {
     out = layoutAt(items, frame, measure, f, safeW, vh, sc);
     const bw = out.rect.r - out.rect.l, bh = out.rect.b - out.rect.t;
     const k = Math.min(1, (safeW - 4) / bw, (safeH - 4) / bh);
     if (k >= 0.999) break;
-    f *= k * 0.985;
+    f *= k * 0.97;
   }
   place(out, frame);
   return out;
