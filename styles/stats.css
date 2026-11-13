@@ -1,0 +1,112 @@
+/* Invincible - Plus Ultra: THE PLUS ULTRA MENU (the group in the scene controls) and THE STATISTICS WINDOW (scripts/stats/app.mjs, root
+   .ipu-st-app, window id ipu-stats).
+   Mode: Operate, read at the table between scenes, in the module's comic world as the tactical dock speaks it (styles/kit.css): an INK
+   surface like the dock and the GM desk, Titles for names and labels, yellow for what is chosen, the kit's buttons and chips, numbers in
+   tabular figures. Compact like XCOM: icon tabs and switches with their names in the tooltips; the numbers are a table read at a glance
+   (a row a measure, three columns: tactical, loose, together; the together column carries the weight). Rows that are zero everywhere are
+   not drawn, a measure that is not counted in a column says so with a dash and a tooltip.
+   CONTRAST on ink #0c1a2e: text #d5dff0 13.0, labels #a9bcdc 9.1, muted #8fa3c4 6.9, yellow #ffe72a 14.2.
+   LAYOUT is container-driven: rail + detail from 560px of window content; under it the rail is a strip over the detail. */
+
+/* ---------- the menu group in Foundry's scene controls: the module's yellow on its icon ---------- */
+#scene-controls button[data-control="plusUltra"] i { color: var(--ipu-yellow, #ffe72a); }
+#scene-controls button[data-control="plusUltra"][aria-pressed="true"] i { color: inherit; }
+
+.ipu-st-app { --st-muted: #8fa3c4; min-width: 360px; min-height: 380px; }
+.ipu-st-app .window-content.ipu-st-content { padding: 0; overflow: hidden; background: var(--ipu-ink); container: ipust / inline-size; }
+.ipu-st { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; color: var(--ipu-text); font: 400 13px/1.35 Roboto, "Segoe UI", sans-serif; }
+.ipu-st *, .ipu-st *::before, .ipu-st *::after { box-sizing: border-box; }
+.ipu-st ::selection { background: var(--ipu-yellow); color: var(--ipu-ink); }
+.ipu-st :is(h2, p) { margin: 0; color: inherit; }
+.ipu-st :focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-ink); outline-offset: var(--ipu-ring-gap); }
+.ipu-st :is(.ipu-st-rail, .ipu-st-detail) { scrollbar-width: thin; scrollbar-color: var(--ipu-line) transparent; }
+
+/* ---------- the head: tabs left, switches right ---------- */
+.ipu-st-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; background: var(--ipu-tile); border-bottom: 2px solid #000; }
+.ipu-st-tabs, .ipu-st-tools, .ipu-st-seg { display: flex; align-items: center; gap: 6px; }
+.ipu-st-tools { gap: 10px; }
+.ipu-st-seg { gap: 0; }
+.ipu-st-seg .ipu-ic { width: 32px; height: 32px; }
+.ipu-st-seg .ipu-ic + .ipu-ic { margin-left: -2px; }
+.ipu-st-tab {
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px;
+  font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+  color: var(--ipu-text); border: 2px solid var(--ipu-frame); cursor: pointer; transition: translate .12s var(--ipu-out);
+}
+.ipu-st-tab:hover { translate: var(--ipu-lift); }
+.ipu-st-tab[aria-selected="true"] { color: var(--ipu-ink); background: var(--ipu-yellow); border-color: var(--ipu-ink); }
+.ipu-st-tab:focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-ink); outline-offset: var(--ipu-ring-gap); }
+.ipu-st-gm { display: inline-grid; place-items: center; width: 22px; height: 22px; color: var(--ipu-cyan-lt); cursor: help; }
+
+/* ---------- the body: rail and detail ---------- */
+.ipu-st-body { display: grid; grid-template-columns: 196px minmax(0, 1fr); min-height: 0; }
+.ipu-st-rail { display: flex; flex-direction: column; gap: 2px; padding: 8px 6px 8px 8px; overflow-y: auto; border-right: 1px solid var(--ipu-line); }
+.ipu-st-pick {
+  all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 5px 8px 5px 5px;
+  color: var(--ipu-text); border: 2px solid transparent; cursor: pointer;
+}
+.ipu-st-pick:hover { background: var(--ipu-tile); border-color: var(--ipu-line); }
+.ipu-st-pick[aria-selected="true"] { color: var(--ipu-ink); background: var(--ipu-yellow); border-color: var(--ipu-ink); }
+.ipu-st-pick:focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-ink); outline-offset: -1px; }
+.ipu-st-pick-n { display: grid; min-width: 0; }
+.ipu-st-pick-n b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipu-st-pick-n small { font-size: 11.5px; color: var(--st-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipu-st-pick[aria-selected="true"] .ipu-st-pick-n small { color: #3d4f6e; }
+.ipu-st-date { flex: none; width: 54px; font: 400 11.5px/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; text-align: center; color: var(--ipu-yellow); }
+.ipu-st-pick[aria-selected="true"] .ipu-st-date { color: var(--ipu-ink); }
+.ipu-st-av { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; overflow: hidden; font: 400 15px/1 Titles, Comic, sans-serif; color: var(--ipu-ink); background: var(--ipu-label); border: 2px solid var(--ipu-ink); }
+.ipu-st-av img { width: 100%; height: 100%; object-fit: cover; object-position: top; border: 0; }
+.ipu-st-av.big { width: 58px; height: 58px; font-size: 26px; border-color: #000; box-shadow: 3px 3px 0 var(--ipu-blue); }
+
+.ipu-st-detail { min-width: 0; overflow-y: auto; padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.ipu-st-who { display: flex; align-items: center; gap: 12px; }
+.ipu-st-who-t { display: grid; gap: 5px; min-width: 0; flex: 1; }
+.ipu-st-who-t h2.ipu-plate { font-size: 17px; border-bottom: 2px solid var(--ipu-ink); }
+.ipu-st-who-t p { color: var(--st-muted); font-size: 12.5px; }
+.ipu-st-kd { flex: none; display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 7px; padding: 5px 10px 6px; border: 2px solid var(--ipu-yellow); cursor: help; }
+.ipu-st-kd-l { grid-column: 1 / -1; font: 400 11px/1 Titles, Comic, sans-serif; letter-spacing: .1em; color: var(--ipu-label); }
+.ipu-st-kd b { font: 400 26px/1 Titles, Comic, sans-serif; color: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
+.ipu-st-kd-a { font: 400 14px/1 Titles, Comic, sans-serif; color: var(--ipu-cyan-lt); }
+.ipu-st-kd-r { grid-column: 1 / -1; justify-self: start; margin-top: 3px; padding: 1px 6px; font: 700 11.5px/1.2 Roboto, sans-serif; color: var(--ipu-ink); background: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
+
+/* ---------- the numbers ---------- */
+.ipu-st-table { width: 100%; border-collapse: collapse; background: transparent; border: 0; font-variant-numeric: tabular-nums; }
+.ipu-st-table :is(thead, tbody, tr, th, td) { background: transparent; border: 0; }
+.ipu-st-table thead th { padding: 0 8px 6px; text-align: right; font: 400 12px/1.1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ipu-label); white-space: nowrap; cursor: help; }
+.ipu-st-table thead th i { margin-right: 5px; color: var(--ipu-yellow); }
+.ipu-st-table thead th:last-child { color: var(--ipu-yellow); }
+.ipu-st-table tr.ipu-st-g th { padding: 12px 0 4px; text-align: left; font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ipu-yellow); border-bottom: 1px solid var(--ipu-line); }
+.ipu-st-table tbody:first-of-type tr.ipu-st-g th { padding-top: 2px; }
+.ipu-st-table tbody tr:not(.ipu-st-g) > * { padding: 4px 8px; border-bottom: 1px solid rgba(107, 130, 166, .25); }
+.ipu-st-table tbody th[scope="row"] { text-align: left; font-weight: 400; color: var(--ipu-text); cursor: help; }
+.ipu-st-table td { text-align: right; color: var(--ipu-text); white-space: nowrap; }
+.ipu-st-table td.ipu-st-sum { font-weight: 700; color: #fff; background: rgba(255, 231, 42, .07); }
+.ipu-st-table td[data-zero="1"] { color: var(--st-muted); font-weight: 400; }
+.ipu-st-table td.ipu-st-na { color: var(--ipu-line); cursor: help; }
+.ipu-st-table tbody tr:not(.ipu-st-g):hover > * { background: rgba(255, 255, 255, .04); }
+.ipu-st-fight tbody th[scope="row"] { padding-left: 0; }
+.ipu-st-fwho { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ipu-st-fwho .ipu-st-av { width: 26px; height: 26px; font-size: 12px; }
+.ipu-st-fight tr[data-side="n"] th[scope="row"] { color: var(--ipu-label); }
+.ipu-st-out { display: inline-grid; place-items: center; color: var(--ipu-red-lt); cursor: help; }
+.ipu-st-out[data-out="unconscious"] { color: var(--ipu-label); }
+
+.ipu-st-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.ipu-st-chips-t { margin-right: 4px; font: 400 12px/1 Titles, Comic, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ipu-yellow); }
+.ipu-st-chips .ipu-chip b { margin-left: 2px; color: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
+.ipu-st-titles:empty { display: none; }
+
+.ipu-st-empty { display: grid; place-items: center; padding: 24px; }
+.ipu-st-empty p { max-width: 44ch; font: 400 15px/1.45 Comic, sans-serif; text-align: center; color: var(--ipu-label); }
+
+/* ---------- narrow window: the rail is a strip over the detail, the tabs keep only their icons ---------- */
+@container ipust (max-width: 560px) {
+  .ipu-st-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .ipu-st-rail { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--ipu-line); }
+  .ipu-st-pick { flex: none; max-width: 170px; }
+  .ipu-st-tab-l { display: none; }
+  .ipu-st-tab { padding: 0 10px; }
+  .ipu-st-detail { padding: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .ipu-st-tab { transition: none; } .ipu-st-tab:hover { translate: none; } }
+@media (forced-colors: active) { .ipu-st-pick[aria-selected="true"], .ipu-st-tab[aria-selected="true"] { outline: 2px solid Highlight; } }

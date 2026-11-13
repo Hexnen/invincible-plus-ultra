@@ -1914,3 +1914,11 @@ import("./session/main.mjs")
 import("./tactics/main.mjs")
   .then((tactics) => tactics.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | tactical combat not loaded (everything else is unaffected)`, err));
+
+/* THE PLUS ULTRA MENU AND THE STATISTICS (scripts/menu.mjs, scripts/stats/, styles/stats.css): the module's own group in the scene controls
+   (its tools: the statistics now, the players' and the GM's settings later) and the statistics of players and characters, counted from the
+   tactical engine's events and the loose roll cards by the active GM's client into one hidden journal. Same mechanism and recorded phases
+   as the blocks above. */
+import("./stats/main.mjs")
+  .then((stats) => stats.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | statistics not loaded (everything else is unaffected)`, err));
