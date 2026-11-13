@@ -162,8 +162,8 @@ export function sync(ctx) {
 }
 /* FXU3 (U207): after a reload in the middle of a fight the player's own token could stay off-screen: the first look's join cue found no
    unit of the dock yet, or no token this canvas draws yet (a page that loads slowly), and was spent. It is now kept due for JOIN_MS and
-   tried again on every redraw and once a second, while camera-pure.joinHold says nothing else has moved the view on. */
-const JOIN_MS = 20000;
+   tried again on every redraw and once a second (30 s at most), while camera-pure.joinHold says nothing else has moved the view on. */
+const JOIN_MS = 30000;
 let join = null;                    // { until, timer, combat } while the join frame has not reached the map
 function joinStop() { if (join?.timer) clearTimeout(join.timer); join = null; }
 function joinTry(combat) {

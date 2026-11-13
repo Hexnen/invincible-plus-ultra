@@ -1020,7 +1020,7 @@ body.ita-dice-up #invincible-tactics-dock { z-index: var(--ita-dice-z); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-check][data-st] .ita-opt-l { text-decoration: none; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-st="ready"] > i { color: var(--ita-cyan); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-st="ready"] .ita-opt-m { opacity: 1; }
-.ita-opt-st { flex: none; min-width: 78px; padding: 2px 5px 1px; font: 400 11px/1.1 Titles, Comic, sans-serif; letter-spacing: .07em; text-align: center; text-transform: uppercase; }
+.ita-opt-st { flex: none; min-width: 88px; padding: 2px 5px 1px; font: 400 11px/1.1 Titles, Comic, sans-serif; letter-spacing: .07em; text-align: center; text-transform: uppercase; }
 .ita-opt[data-st="surprised"] .ita-opt-st { color: var(--ita-yellow); background: var(--ita-ink); }
 .ita-opt[data-st="ready"] .ita-opt-st { color: var(--ita-cyan); box-shadow: inset 0 0 0 1px var(--ita-cyan); }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt[data-st="ready"]:hover { color: #fff; background: var(--ita-track); border-color: var(--ita-frame); }

@@ -72,7 +72,7 @@ const facts = { c: (id) => (names[id] ? { name: names[id] } : null) };
   eq(CP.joinHold(null, look({ staff: true, mine: [] })), false, "U207: never on a GM seat (the GM's view stays, U152)");
   const cam = read("./ui/camera.mjs");
   ok(/if \(!before\) \{ joinStop\(\); if \(!staff\) \{ join = \{ until: Date\.now\(\) \+ JOIN_MS/.test(cam) && /else if \(join && !CP\.joinHold\(before, now\)\) joinStop\(\);/.test(cam), "U207: the camera keeps the join due from the first look, while joinHold says so");
-  ok(/if \(join && c\.why === "join"\) \{ if \(spec\) joinStop\(\); else joinLater\(\); \}/.test(cam) && /const JOIN_MS = 20000;/.test(cam), "U207: a join that found no token on the map is tried again (once a second, at most 20 s)");
+  ok(/if \(join && c\.why === "join"\) \{ if \(spec\) joinStop\(\); else joinLater\(\); \}/.test(cam) && /const JOIN_MS = 30000;/.test(cam), "U207: a join that found no token on the map is tried again (once a second, at most 30 s)");
   const fb = read("./ui/feedback.mjs");
   ok(/if \(hint\) markSeen\(\[hint\.id\]\);/.test(fb), "U207: a hint on screen is written as seen at once (a reload does not bring it back)");
   ok(/const seenHere = \(\) => \[\.\.\.new Set\(\[\.\.\.\(boot \?\?= seenNow\(\)\), \.\.\.done\]\)\];/.test(fb) && /const seen = seenHere\(\);\n\s*hint = FP\.hintOf\(data, seen, t, !!staff\);/.test(fb), "U207: this page still shows it until it is used or put away (seen = as loaded + used here)");

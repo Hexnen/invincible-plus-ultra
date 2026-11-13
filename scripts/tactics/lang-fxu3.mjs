@@ -1,7 +1,7 @@
 /* Tactical combat: the strings of fixer FXU3 (usability items U202 the surprise card, U203 rows below the desk's button), English and
    Polish. A table of its own so that the fixers working side by side do not edit the same lines; lang.mjs merges it. Our own wording only. */
 export const EN_FXU3 = {
-  "ITAC.Prompt.surprise.Body": "No six: surprised. A click on a row turns it.",
+  "ITAC.Prompt.surprise.Body": "No six: surprised. A click turns it.",
   "ITAC.ui.surprise.st.surprised": "Surprised",
   "ITAC.ui.surprise.st.ready": "Ready",
   "ITAC.ui.surprise.is.surprised": "{name}: surprised",
@@ -14,7 +14,7 @@ export const EN_FXU3 = {
   "ITAC.ui.below": "{n} more below this button. Click to show.",
 };
 export const PL_FXU3 = {
-  "ITAC.Prompt.surprise.Body": "Bez szóstki: zaskoczony. Klik w wiersz zmienia.",
+  "ITAC.Prompt.surprise.Body": "Bez szóstki: zaskoczony. Klik zmienia.",
   "ITAC.ui.surprise.st.surprised": "Zaskoczony",
   "ITAC.ui.surprise.st.ready": "Gotowy",
   "ITAC.ui.surprise.is.surprised": "{name}: zaskoczony",
