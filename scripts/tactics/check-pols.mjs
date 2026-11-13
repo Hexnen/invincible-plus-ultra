@@ -125,5 +125,6 @@ const rec = { f: "C_f", c: "C", t0: 1, t1: 2, pc, tm: { v: 1 }, titles: [
   ok(/IPU\.Stats\.noGm/.test(app) && /\.ipu-st-nogm/.test(scss), "G: the window says when no GM is connected");
   ok(/SP\.railSessions\(/.test(app) && /\.ipu-st-sess/.test(scss), "G: the fights' rail by session");
   ok(!/kd\.k\}\/\$\{x\.kd\.d\}\/\$\{x\.kd\.a/.test(app), "G: no cryptic '1/0/1' in the rail");
+  ok(/kids\.flat\(Infinity\)/.test(app), "G: (found live) the window's DOM helper flattens nested children: the session groups printed '[object HTMLButtonElement]'");
 }
 done("check-pols");
