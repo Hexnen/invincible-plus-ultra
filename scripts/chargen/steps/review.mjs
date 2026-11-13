@@ -10,7 +10,7 @@
 import { t } from "../lang.mjs";
 import { summaryRows } from "./summary.mjs";
 import { esc, dl, delegate, icon, msgText, attrLabel, rankName, levelName } from "./util.mjs";
-import { heroCode, rollNewHero } from "../reroll.mjs";
+import { heroCode, rollNewHero, codeMatches } from "../reroll.mjs";
 import { confirmUndo } from "../dialogs.mjs";
 
 const TYPES = ["powerSource", "power", "boost", "limit", "talent", "drawback"];
@@ -175,11 +175,11 @@ function shareHtml(sn) {
 function codeBlock(ctx) {
   const s = ctx.state;
   if (s.mode !== "random") return "";
-  const edited = Object.values(s.touched ?? {}).some(Boolean);
-  return `<div class="ipc-code-row"><span class="ipc-code-label" id="ipc-code-l">${esc(t("IPC.Result.Code"))}</span>
+  const fresh = codeMatches(s);   // GENR-1: only a hero exactly as rolled can be rolled again by its code
+  return `<div class="ipc-code-row${fresh ? "" : " is-stale"}"><span class="ipc-code-label" id="ipc-code-l">${esc(t("IPC.Result.Code"))}</span>
       <code class="ipc-code" id="ipc-code" aria-labelledby="ipc-code-l">${esc(heroCode(s))}</code>
       <button type="button" class="ipc-btn ipc-btn-small" data-act="copy-code" data-fk="copy-code">${icon("fa-regular fa-copy")} ${esc(t("IPC.Result.Copy"))}</button></div>
-    <p class="ipc-muted ipc-code-msg" id="ipc-code-msg" role="status">${esc(ctx.data.codeMsg || t(edited ? "IPC.Result.CodeEdited" : "IPC.Result.CodeHint"))}</p>`;
+    <p class="ipc-muted ipc-code-msg" id="ipc-code-msg" role="status">${!fresh && !ctx.data.codeMsg ? `${icon("fa-solid fa-triangle-exclamation")} ` : ""}${esc(ctx.data.codeMsg || t(fresh ? "IPC.Result.CodeHint" : "IPC.Result.CodeStale"))}</p>`;
 }
 
 function resultBlock(ctx) {

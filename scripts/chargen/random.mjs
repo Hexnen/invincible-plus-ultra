@@ -45,7 +45,7 @@
 import { substream } from "./rng.mjs";
 import {
   RANKS, ATTRS, ROLES, levelCap, slots, powerSlots, budget, budgetFor, attrSum,
-  reconcileAttributes, extraSources, validate, normName, talentKey
+  reconcileAttributes, extraSources, validate, normName, talentKey, talentLimit
 } from "./rules.mjs";
 import { createState, STEP_FIELDS, FIELD_STEP } from "./state.mjs";
 
@@ -280,10 +280,14 @@ async function stepTalents({ state, P, opts, rng, frozen, plan }) {
   }
   if (unlockedExtra) {
     const list = [];
+    // GENR-8 (FXT2): the book lets Durable and Determined be taken up to five times and Windfall several times [B2107] [B2110] [B2171]: an extra talent
+    // may repeat one of those (rules.talentLimit), every other talent still once
+    const count = (k) => [mine.heroTalent, state.occTalent, ...(frozen("extraTalents") ? state.extraTalents : []), ...list].filter((x) => x && talentKey(x.name) === k).length;
+    const full = (e) => (talentLimit(e.name) > 1 ? count(talentKey(e.name)) >= talentLimit(e.name) : ex(e));
     for (let i = 0; i < plan.e; i++) {
-      let e = await draw(P, "talents", rng, {}, ex);
+      let e = await draw(P, "talents", rng, {}, full);
       if (e) e = await expandTalent(P, e, rng, used);
-      if (!e || ex(e)) break;
+      if (!e || full(e)) break;
       list.push(ref(e)); used.add(talentKey(e.name));
     }
     out.extraTalents = list;
@@ -389,7 +393,7 @@ async function stepPersona({ state, P, opts, rng, frozen }) {
   }
   if (!frozen("drive")) { const e = await draw(P, "drives", rng, ctx); out.drive = e ? { name: e.name, text: e.text ?? "" } : null; }
   if (!frozen("flaw")) { const e = await draw(P, "flaws", rng, ctx); out.flaw = e ? { name: e.name, text: e.text ?? "" } : null; }
-  if (!frozen("heroName")) out.heroName = (await draw(P, "heroNames", rng, ctx))?.name ?? "";
+  if (!frozen("heroName")) { const rel = normName(state.heroRel?.name); out.heroName = (await draw(P, "heroNames", rng, ctx, (z) => !!rel && normName(z.name) === rel))?.name ?? ""; }   // GENR-6: not the name of the related hero
   if (!frozen("civilianName")) out.civilianName = (await draw(P, "civilianNames", rng, { purpose: "hero" }))?.name ?? "";
   return out;
 }
@@ -419,7 +423,9 @@ async function stepTeam({ state, P, opts, rng, frozen }) {
       : { ...prev, mode, baseId: mode === "join" ? prev.baseId ?? null : null, name, base, where, upgrades: ups };
   }
   if (!frozen("heroRel")) {
-    const e = opts.heroRel === false ? null : await draw(P, "heroRelations", rng, {});
+    // GENR-6: never a world hero that carries this hero's own name ("Denizen" with "Hero: Denizen")
+    const own = normName(state.heroName);
+    const e = opts.heroRel === false ? null : await draw(P, "heroRelations", rng, {}, (z) => !!own && normName(z.name) === own);
     out.heroRel = e ? { name: e.name, actorUuid: e.packUuid ?? e.data?.actorUuid ?? null } : { name: "", actorUuid: null };
   }
   return out;

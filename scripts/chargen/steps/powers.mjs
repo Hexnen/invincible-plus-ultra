@@ -62,7 +62,9 @@ function putSource(st, entry, targetKey) {
 function status(ctx) {
   const iss = validateStep(ctx.state, "powers");
   if (!iss.issues.length) return `<p class="ipc-status ipc-ok">${icon("fa-solid fa-circle-check")} ${esc(t("IPC.Step.StatusOk"))}</p>`;
-  return `<ul class="ipc-status-list">${iss.issues.map((i) => `<li class="${i.severity === "error" ? "ipc-iss-err" : "ipc-iss-warn"}">${icon("fa-solid fa-circle-exclamation")}<span>${esc(msgText(i))}</span></li>`).join("")}</ul>`;
+  const cls = (i) => (i.severity === "error" ? "ipc-iss-err" : i.severity === "info" ? "ipc-iss-info" : "ipc-iss-warn");
+  const ic = (i) => (i.severity === "info" ? "fa-solid fa-circle-info" : "fa-solid fa-circle-exclamation");
+  return `<ul class="ipc-status-list">${iss.issues.map((i) => `<li class="${cls(i)}">${icon(ic(i))}<span>${esc(msgText(i))}</span></li>`).join("")}</ul>`;
 }
 
 function meter(ctx) {

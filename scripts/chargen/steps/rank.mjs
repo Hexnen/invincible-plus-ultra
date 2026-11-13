@@ -7,6 +7,10 @@ import { t } from "../lang.mjs";
 import { RANK_ORDER, RANKS, ATTRS, validate, validateStep, budget, reconcileAttributes } from "../rules.mjs";
 import { setRank } from "../state.mjs";
 import { esc, icon, rankName, msgText, delegate } from "./util.mjs";
+import { openBookPage } from "./shared.mjs";
+
+const BOOK = "Compendium.invincible-core.core-book.JournalEntry.Rbx4P6GQT5EoFNUG";   // chapter 2 of the core book; the rank page is found by its name
+const BOOK_PAGE = "Hero Rank";
 
 /** rule issues whose outcome depends on the rank */
 const RANK_CODES = new Set(["attr.cap", "attr.over", "attr.unspent", "budget.range", "power.level.massive", "slots.over", "slots.min", "upgrades.over"]);
@@ -61,7 +65,8 @@ export default {
     return `<div class="ipc-rank">
       ${status(ctx)}
       <fieldset class="ipc-rk-set"><legend class="ipc-sr">${esc(t("IPC.Rank.Group"))}</legend>${RANK_ORDER.map((r) => card(r, r === s.rank)).join("")}</fieldset>
-      <p class="ipc-rk-gm">${icon("fa-solid fa-users")} <span>${esc(t("IPC.Rank.GmNote"))}</span></p>
+      <p class="ipc-rk-gm">${icon("fa-solid fa-users")} <span>${esc(t("IPC.Rank.GmNote"))}</span>
+        <button type="button" class="ipc-link" data-act="book" data-fk="rank-book">${icon("fa-solid fa-book-open")} ${esc(t("IPC.Rank.Book"))}</button></p>
       <div class="ipc-rk-live">${notice(ctx)}</div>
     </div>`;
   },
@@ -81,6 +86,7 @@ export default {
     delegate(root, "click", "[data-act]", (ev, el) => {
       const act = el.dataset.act;
       if (act === "to-concept") return ctx.go("concept");
+      if (act === "book") { openBookPage(BOOK, BOOK_PAGE).then((ok) => { if (!ok) ctx.announce(t("IPC.Rank.BookMissing")); }); return; }
       if (act === "rebalance") {
         const s = ctx.state, re = reconcileAttributes(s.attrs, budget(s), RANKS[s.rank].cap);
         if (!re.ok) return;

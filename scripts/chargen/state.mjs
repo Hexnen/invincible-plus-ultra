@@ -26,6 +26,7 @@
  *   touched: { <stepId>: true },       // user edited the step by hand (global re-roll keeps it)
  *   rerolls: { <stepId|"plan">: n },   // substream counter: seed + counter => reproducible
  *   rollOpts: null|{ spice, drawbacks, extraTalents, extraSource, limits, variance, heroRel, within, joinBase }   // phase 6 (reroll.mjs): options of the roll board
+ *   rolledAs: null|{ code, print }     // GENR-1: the hero code + fingerprint of the last FRESH roll (reroll.mjs stamp / codeMatches)
  * }
  * Lock / reroll granularity = the field names in STEP_FIELDS.
  */
@@ -58,7 +59,7 @@ export function createState({ seed = "000000", rank = DEFAULT_RANK, mode = "manu
     personality: [], drive: null, flaw: null,
     heroName: "", civilianName: "", appearance: "",
     team: { name: "", base: "", where: "", upgrades: [], mode: "text", baseId: null }, heroRel: { name: "", actorUuid: null },
-    locks: {}, touched: {}, rerolls: {}, rollOpts: null
+    locks: {}, touched: {}, rerolls: {}, rollOpts: null, rolledAs: null
   };
 }
 
@@ -190,7 +191,8 @@ export function deserialize(text) {
     locks: flagMap(raw.locks, (k, v) => v === true && (own(FIELD_STEP, k) || ATTRS.some((a) => k === `attrs.${a}`))),
     touched: flagMap(raw.touched, (k, v) => v === true && own(STEP_FIELDS, k)),
     rerolls: flagMap(raw.rerolls, (k, v) => Number.isInteger(v) && v >= 0 && stepOk(k)),
-    rollOpts: isObj(raw.rollOpts) ? JSON.parse(JSON.stringify(raw.rollOpts)) : null
+    rollOpts: isObj(raw.rollOpts) ? JSON.parse(JSON.stringify(raw.rollOpts)) : null,
+    rolledAs: isObj(raw.rolledAs) && typeof raw.rolledAs.code === "string" && typeof raw.rolledAs.print === "string" ? { code: raw.rolledAs.code.slice(0, 80), print: raw.rolledAs.print.slice(0, 40) } : null
   };
 }
 

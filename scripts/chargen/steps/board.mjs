@@ -86,6 +86,7 @@ function seedBlock(ctx) {
       <button type="button" class="ipc-btn ipc-btn-small" data-act="new-seed" data-fk="new-seed" data-tooltip="${esc(t("IPC.Board.Seed.NewTip"))}">${icon("fa-solid fa-shuffle")} ${esc(t("IPC.Board.Seed.New"))}</button>
     </div>
     <p class="ipc-muted ipc-bd-hint" id="ipc-bd-hint">${esc(t("IPC.Board.Seed.Hint"))}</p>
+    ${d.code == null && !RR.codeMatches(ctx.state) ? `<p class="ipc-bd-stale" data-stale>${icon("fa-solid fa-triangle-exclamation")}<span>${esc(t("IPC.Board.Seed.Stale"))}</span></p>` : ""}
     <p class="ipc-pw-msg ipc-bd-msg" id="ipc-bd-msg" role="status">${d.msg ? `${icon(d.codeBad ? "fa-solid fa-circle-exclamation" : "fa-solid fa-circle-info")} ${esc(d.msg)}` : ""}</p>
   </section>`;
 }

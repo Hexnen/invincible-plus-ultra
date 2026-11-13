@@ -20,6 +20,8 @@ export const STEP_IDS = ["start", "rank", "concept", "powers", "talents", "attri
 export const MAX_DRAWBACKS = 2;
 export const FREE_TALENTS = 2; // hero talent + occupation talent
 export const ATTR_MIN = 1;
+/** GENR-4: one case for a personality word: first letter upper case, the rest as the book prints it ("clinical" -> "Clinical", "hot-headed" -> "Hot-headed") */
+export const wordCase = (w) => { const s = String(w ?? "").trim(); return s ? s.charAt(0).toLocaleUpperCase() + s.slice(1) : s; };
 export const SLOT_VALUE = 2; // one power slot freed/spent = 2 attribute points
 export const MAX_LEVEL_INDEX = 3; // 0 basic, 1 Major, 2 Massive, 3 Monstrous
 /** talents / drawbacks that may be taken more than once, with how often (read from the live core book, phase 9: Windfall and Hard Times "several times" = no cap
@@ -204,7 +206,9 @@ export function validate(state) {
     if (lg > Math.max(0, lv) || bg > (p.boosts ?? []).length) out.push(issue("limit.grant.invalid", "error", "powers", path, { name: p.name }));
   });
   for (const s of sources) if (powers.length && !powers.some((p) => p.sourceKey === s.key)) out.push(issue("source.unused", "warn", "powers", "sources", { name: s.name }));
-  if (S > r.powers) out.push(issue("slots.over", "warn", "powers", "powers", { slots: S, max: r.powers, cost: SLOT_VALUE * (S - r.powers) }));
+  // GENR-3 (FXT2): more slots than the rank's power count is the book's own trade (2 attribute points per power [B197] [B324]; every archetype that trades
+  // keeps it, spec 7.3), so it is INFO (explains the cost on the Powers step), not a warning that Review lists as a problem
+  if (S > r.powers) out.push(issue("slots.over", "info","powers", "powers", { slots: S, max: r.powers, cost: SLOT_VALUE * (S - r.powers) }));
 
   // talents
   const drawbacks = arr(state.drawbacks).filter((p) => p && typeof p === "object");
