@@ -6,7 +6,7 @@
 import { radarPoint } from "./model.mjs";
 
 const NS = "http://www.w3.org/2000/svg";
-const W = 260, H = 214, CX = 130, CY = 107, R = 64;
+const W = 260, H = 218, CX = 130, CY = 109, R = 68;
 const s = (tag, attrs = {}, ...kids) => {
   const el = document.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(attrs)) if (v !== null && v !== undefined && v !== false) el.setAttribute(k, String(v));
