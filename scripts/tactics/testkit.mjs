@@ -111,7 +111,7 @@ export class Table {
       actorValue: (uuid, path) => Object.values(T.c).find((x) => x.actorUuid === uuid)?.[path],
     };
   }
-  parts() { return Object.values(this.c).map((x) => ({ id: x.id, hero: !x.npc, owners: x.owners.slice(), defeated: !!x.defeated, challenge: x.kind === "challenge", vehicle: x.kind === "vehicle", summonOf: x.summonOf, summonDelayed: x.summon?.delayed === 1, veteran: x.veteran, reflexes: x.reflexes, resolve: x.resolve })); }
+  parts() { return Object.values(this.c).map((x) => ({ id: x.id, hero: !x.npc, owners: x.owners.slice(), defeated: !!x.defeated, challenge: x.kind === "challenge", vehicle: x.kind === "vehicle", summonOf: x.summonOf, summonDelayed: x.summon?.delayed === 1, veteran: x.veteran, reflexes: x.reflexes, resolve: x.resolve, intuition: Math.max(1, Number(x.attrs?.intuition) || 1) })); }
   sceneFacts() { return Object.values(this.c).map((x) => ({ id: x.id, name: x.name, type: x.kind === "hero" ? "superhero" : x.kind, health: x.health, maxHealth: x.maxHealth, resolve: x.resolve, maxResolve: x.maxResolve, strength: x.attrs.strength, regeneration: x.regeneration })); }
   now() { return ++this.clock; }
   setting(key) { return this.settings[key]; }

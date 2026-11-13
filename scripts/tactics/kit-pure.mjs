@@ -275,6 +275,10 @@ export function build(src = {}) {
         const on = (n) => always === n || (!always && (it.fx ?? []).some((f) => f.on === true && norm(f.name).includes(n)));
         if (always === "grow") kit.pass.huge = true; else if (on("grow")) kit.pass.grown = true;
         if (on("shrink")) kit.pass.shrunkDice = at(row.size, lv);
+        /* ANSG (P6b-4, the user 2026-11-12): "always huge / always tiny" changes the attributes as a size change does [B1975-1979]
+           (grown: STRENGTH +n, AGILITY -n; shrunk the other way), unless the sheet already has it: the item's own Grow / Shrink effect
+           switched on (the sheet then adds it itself). system-adapter actorFacts applies it. */
+        if (always && !(it.fx ?? []).some((f) => f.on === true && norm(f.name).includes(always))) kit.pass.alwaysSize = { size: always, n: at(row.size, lv) };
       }
       if (row?.fx) {
         const only = row.size ? known.filter((k) => k.parent === it && live(k) && k.row?.sizeOnly) : [], fixed = only.some((k) => k.it.flags?.alt === true);
@@ -315,6 +319,17 @@ export function build(src = {}) {
   kit.pass.immune = [...new Set(kit.pass.immune)].slice(0, 24); kit.pass.vulnerable = [...new Set(kit.pass.vulnerable)].slice(0, 24);
   kit.actions = kit.actions.slice(0, 60); kit.weapons = kit.weapons.slice(0, 40);
   return kit;
+}
+/** ANSG (P6b-4) [B1975-1979]: the attributes and slugfest damage of a character that is always huge / tiny (kit.pass.alwaysSize).
+    Grown: STRENGTH +n (at most 12), AGILITY -n (at least 1); shrunk: AGILITY +n (at most 12), STRENGTH -n (at least 1). The slugfest
+    damage follows the STRENGTH (half of it, rounded up [B192]). -> { attrs, slugfest } (new objects; the input is not changed) */
+export function sizeAttrs(attrs, slugfest, alwaysSize) {
+  const n = Math.max(0, Number(alwaysSize?.n) || 0), up = alwaysSize?.size === "grow" ? "strength" : alwaysSize?.size === "shrink" ? "agility" : null;
+  if (!up || !n) return { attrs: { ...attrs }, slugfest };
+  const down = up === "strength" ? "agility" : "strength", out = { ...attrs }, v = (k) => Number(attrs?.[k]) || 0;
+  out[up] = Math.max(v(up), Math.min(12, v(up) + n)); out[down] = Math.min(v(down), Math.max(1, v(down) - n));
+  const half = (s) => Math.ceil(s / 2);
+  return { attrs: out, slugfest: Math.max(0, (Number(slugfest) || 0) + half(out.strength) - half(v("strength"))) };
 }
 export const EMPTY = Object.freeze({ rows: [], actions: [], weapons: [], unarmed: {}, pass: { immune: [], vulnerable: [] }, mods: [], sheetSkip: [] });
 /** Dice of the kit for a roll: { action, attack, attr, target } -> [{ source, dice }] (a rule that needs the GM's word is left to the GM) */

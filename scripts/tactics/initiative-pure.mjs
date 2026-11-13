@@ -155,7 +155,7 @@ export function continueDraw(init0, parts, rng) {
     d.wait = ds.pending ? { slot: ds.pending.id, drawn: ds.pending.cards.slice(), prompt: null } : null;
   };
   if (d.stage === "veteran") {
-    if (d.vetWait?.length) return { init, done: false, ask: [], dealt };
+    if (d.vetWait?.length || d.surpriseWait) return { init, done: false, ask: [], dealt };      // ANSG (FXT-10): the GM's surprise card first
     d.stage = "deal";
     const open = init.slots.filter((s) => s.card === null);
     const size = initiative.deckSize(open.length), seen = new Set();

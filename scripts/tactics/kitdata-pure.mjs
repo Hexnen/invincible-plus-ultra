@@ -99,7 +99,7 @@ export const ROWS = Object.freeze([
 
   /* ================================================================ CONTROL POWERS [B1631-1847] */
   P("Action Plan", [1634], "auto", "token", { acts: [{ k: "plan", cost: "full", roll: { attr: "reason" }, pick: ["attack", "defend", "misdirect"], effect: { kind: "plan" } }] }),
-  P("Animal Control", [1637], "assist", "control", { acts: [{ k: "control", cost: "full", target: { who: "any", n: [1, 12] }, oneZone: 1, immuneHuge: 1, near: 1, effect: { kind: "narrative", then: "control" }, text: 1 },      // PWC (PW012) [B1637]: all the animals of the target zone
+  P("Animal Control", [1637], "assist", "control", { acts: [{ k: "control", cost: "full", target: { who: "any", n: [1, 12] }, oneZone: 1, immuneHuge: 1, near: 1, effect: { kind: "control" } },      // PWC (PW012) [B1637]: all the animals of the target zone; ANSG (P6b-R6): taken at once, no roll, no GM card
     narr("command", "quick", { roll: { attr: "presence" } })] }),
   B("Animal Control", "Animal Mindlink", [1638], "hand", "story", { why: "talk" }),
   L("Animal Control", "Specific Animal Only", [1639, 1640, 1641], "hand", "story", { why: "gmJudges" }),
@@ -326,7 +326,7 @@ export const ROWS = Object.freeze([
   T("Streetwise", [2165], "hand", "initiative", { why: "beforeFight" }),
   T("Subdue", [2166], "auto", "sheet"),
   T("Supportive", [2167], "auto", "passive", { pass: { supportive: 1 } }),
-  T("Tactical Support", [2168], "assist", "token", { acts: [{ k: "support", cost: "none", target: { who: "ally", n: [1, 1] }, pick: ["1", "2", "3"], effect: { kind: "support", per: 2 } }] }),
+  T("Tactical Support", [2168], "assist", "token", { acts: [{ k: "support", cost: "none", target: { who: "ally", n: [1, 1] }, pick: ["1", "2", "3"], effect: { kind: "support", per: 2 } }], pass: { tacticalSupport: 1 } }),      // ANSG (FXT-9): the button stays; the attack's stunt card offers "support" too
   T("Unconventional Wisdom", [2169], "assist", "outcome", { acts: [narr("wisdom", "none", { roll: { attr: "intuition" } })] }),
   T("Warning Call", [2170], "assist", "reaction", { acts: [{ k: "warn", cost: "quick", effect: { kind: "narrative" }, reaction: "warn" }] }),
   T("Windfall", [2171], "hand", "story", { why: "sheetNumbers" }),

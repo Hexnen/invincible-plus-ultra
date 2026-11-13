@@ -334,12 +334,15 @@ export const disease = {
         K.setFlag(I, "done");
         const sick = M.hasStatus(v.state, t, "sick"), toxic = M.statusesOf(v.state, t).some((x) => x.id === "sick" && x.data?.toxic);
         const o0 = hazards.diseaseStep({ state: sick ? "sick" : "exposed", sixes: K.sixesOf(I, "roll"), broken: tf.health <= 0 });       // [B2901]
-        const o = toxic && (o0.state === "dead" || (o0.damage > 0 && tf.health - o0.damage <= 0)) ? { ...o0, state: "cured" } : o0;       // P6 [B1621]: the poison of a strike ends when its victim is broken, it never kills
+        /* ANSG (P8b-1 + P8b-R2, the user 2026-11-12): the copies of Duplication take a disease's or a poison's damage first, as any damage
+           [B1910]; what they leave goes on to Health */
+        const ab = o0.damage > 0 ? K.copiesAbsorb(v, R, t, o0.damage) : { taken: o0.damage, copies: null }, hurt = ab.taken;
+        const o = toxic && (o0.state === "dead" || (hurt > 0 && tf.health - hurt <= 0)) ? { ...o0, state: "cured" } : o0;       // P6 [B1621]: the poison of a strike ends when its victim is broken, it never kills
         const st = (id, on) => { R.effects.push(on ? { t: "status+", who: t, status: { id, source: { kind: "hazard", name: String(h.name ?? "disease").slice(0, 40) }, ...(id === "sick" ? { data: { virulence: int(h.virulence, 0, 12, 0) } } : {}) } } : { t: "status-", who: t, id }); R.events.push({ type: "status", target: t, status: { id, on } }); };
         if (o.damage > 0) {                                                                      // Armor does not help; being broken by it gives no critical injury
-          const ad = damage.applyDamage({ health: tf.health, taken: o.damage });
+          const ad = damage.applyDamage({ health: tf.health, taken: hurt });
           if (ad.health !== tf.health) R.effects.push({ t: "actor", who: t, path: "health", to: ad.health });
-          R.events.push({ type: "damage", target: t, base: o.damage, armor: 0, taken: o.damage, dtype: "disease", source: "hazard" });
+          R.events.push({ type: "damage", target: t, base: o.damage, armor: 0, taken: hurt, ...(ab.copies ? { copies: ab.copies } : {}), dtype: "disease", source: "hazard" });
           if (ad.health <= 0 && tf.health > 0 && !M.hasStatus(v.state, t, "broken")) { st("broken", true); R.events.push({ type: "broken", target: t }); }
         }
         if (o.state === "sick" && !sick) st("sick", true);

@@ -718,10 +718,12 @@ function dmgPlay(message, hp, toEl, from, to) {
   } catch (err) { console.warn(`${MODULE_ID} | damage card animation`, err); }
 }
 
+/* ANSG (SWEEPM-13, the user 2026-11-12): a player's hero (a superhero with a player owner) shows its numbers, bar and stamp to everybody;
+   an NPC still only to the GM, an owner or an observer */
 function dmgMayRead(actor, user = game.user) {
   if (user?.isGM) return true;
   if (!actor) return false;
-  try { return actor.type === "challenge" || !!actor.testUserPermission?.(user, "OBSERVER"); } catch { return false; }
+  try { return actor.type === "challenge" || (actor.type === "superhero" && actor.hasPlayerOwner === true) || !!actor.testUserPermission?.(user, "OBSERVER"); } catch { return false; }
 }
 function damageCard(message, html) {
   if (!message?.flavor || !isLabel(message.flavor, DMG_FLAVOR_KEY)) return;

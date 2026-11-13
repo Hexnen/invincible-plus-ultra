@@ -883,8 +883,8 @@ export const steps = {
   stunts(v, inst) {
     const I = withOut(inst), R = K.result(I), kind = kindOf(I);
     const hit = I.decl.targets.filter((t) => I.data.out[t]?.hit), budget = budgetOf(I, hit);
-    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => capped(II, ws === "none" ? [] : ws === "noDamage" ? optionsAll(vv, II, hh).filter((o) => EFFECT_ONLY.includes(o.data?.stunt)) : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh));      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
-    const most = Math.min(budget, roomOf(I, hit));                                              // D119: an area shot pays each target's stunts from its own sixes
+    const ws = weaponOf(v, I)?.stunts, options = (vv, II, hh) => [...capped(II, ws === "none" ? [] : ws === "noDamage" ? optionsAll(vv, II, hh).filter((o) => EFFECT_ONLY.includes(o.data?.stunt)) : ws === "doubleOnly" ? optionsAll(vv, II, hh).filter((o) => o.data?.stunt === "doubleDamage" && !o.data.onExtra) : optionsAll(vv, II, hh)), ...supportOptions(vv, II, hh, budgetOf(II, hh))].slice(0, 60);      // nobody is brought in by a stunt the power does not allow, so no bystander is on the card      // P6: what the power lets a surplus six do
+    const most = Math.min(budget, roomOf(I, hit) + (supportOptions(v, I, hit, budget).length ? budget : 0));      // D119: an area shot pays each target's stunts from its own sixes; ANSG (FXT-9): support spends any of them
     if (!hit.length || most < 1 || !options(v, I, hit).some((o) => !o.disabled)) { I.data.stunts = I.data.stunts ?? []; R.goto = "damage"; return R; }
     const stuntCard = () => ({ key: "stunts", kind: "stunts", to: K.addressee(v, I.actor), about: I.actor, multi: 1, min: 0, max: most, options: options(v, I, hit), data: { budget, multi: I.data.multi ?? null } });
     if (!I.data.pk?.stunts) { R.prompts.push(stuntCard()); R.wait = true; return R; }
@@ -918,9 +918,18 @@ export const steps = {
       else if (K.answerId(v, I, key) === "approve") { const a = K.answerOf(v, I, key); approved.push({ ...p, gm: 1, ...(typeof a?.text === "string" && a.text ? { text: a.text.slice(0, 80) } : {}) }); }
     });
     if (waiting) { R.wait = true; return R; }
-    I.data.stunts = approved;
+    I.data.stunts = approved.filter((p) => p.stunt !== "support");
+    /* ANSG (FXT-9, the user 2026-11-12): Tactical Support [B2168] spent on the stunt card: each six gives the ally +2 dice to its next
+       attribute roll (several sixes on one ally add up; several allies may share them), as the talent's own button does (flows/acts.mjs) */
+    const given = new Map();
+    for (const p of approved.filter((x) => x.stunt === "support")) given.set(p.target, (given.get(p.target) ?? 0) + 1);
+    for (const [ally, n] of given) {
+      const tk = M.makeToken({ id: `ts${I.id}${ally}`.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40), holder: ally, dice: 2 * n, scope: { next: 1 }, uses: 1, source: { kind: "talent", owner: I.actor, name: "Tactical Support" }, from: I.actor, expires: { at: "sceneEnd" } });
+      if (tk) R.effects.push({ t: "state", path: ["tokens", `#${tk.id}`], to: tk });
+      R.events.push({ type: "stunt", target: ally, stunt: "support", n });
+    }
     I.data.extras = [];
-    for (const p of approved) {
+    for (const p of approved.filter((x) => x.stunt !== "support")) {
       R.events.push({ type: "stunt", target: p.target, stunt: p.stunt, ...(p.extra ? { extra: p.extra } : {}) });
       if (p.extra && EXTRA_STUNTS.includes(p.stunt) && !I.data.out[p.extra]) {                  // [B2437], [B2518]: the extra opponent is hit as well
         I.data.extras.push({ id: p.extra, of: p.target, stunt: p.stunt });
@@ -1231,6 +1240,20 @@ function optionsAll(v, I, hit) {
   }
   return [...out, ...more].slice(0, 60);                                                        // state-pure LIMITS.options: the stunts of the targets hit come first
 }
+/* ANSG (FXT-9) [B2168]: the attacker with Tactical Support may spend surplus sixes as support of an ally in its zone or an adjacent one:
+   one option per six that can be spent on each ally ("support@<ally>|<k>", k = 1.. the sixes). No map: every ally (the GM judges). */
+function supportAllies(v, I) {
+  const a = v.facts.c(I.actor);
+  if (!a?.pass?.tacticalSupport) return [];
+  return Object.keys(v.state.ledger ?? {}).filter((id) => { const f = v.facts.c(id); if (!f || id === I.actor || f.present === false || NO_OPPONENT.includes(f.kind) || !M.sameTeam(f, a) || !(f.health > 0)) return false;
+    const r = v.facts.range?.(I.actor, id); return r == null || !(r.total > 1); }).slice(0, 8);
+}
+function supportOptions(v, I, hit, budget) {
+  if (!hit.length || !(budget > 0)) return [];
+  const out = [];
+  for (const x of supportAllies(v, I)) for (let k = 1; k <= Math.min(budget, 3); k++) out.push({ id: `support@${x}|${k}`, label: "ITAC.stunt.support", data: { stunt: "support", target: x, n: k, ally: 1 } });
+  return out;
+}
 const picksOf = (value) => (Array.isArray(value) ? value : []).map((id) => /^([A-Za-z]+)@([^|]+)(?:\|(.+))?$/.exec(String(id))).filter(Boolean).map((m) => ({ stunt: m[1], target: m[2], ...(m[3] ? { extra: m[3] } : {}) }));
 /** Is a multi answer legal as a whole? Budget, once per target, exclusions (stunts.validateStunts); the per-target cap of area attacks [A-3], [G-L9];
     an extra opponent is named once and may take further stunts only when a pick brings it in. */
@@ -1243,7 +1266,11 @@ export function validate(v, inst, prompt, value, staff = false) {
     return now?.disabled ? { ok: false, reason: now.disabled } : { ok: true };
   }
   if (prompt.kind !== "stunts") return { ok: true };
-  const picks = picksOf(value), out = inst.data.out ?? {}, multi = inst.data.multi;
+  const all = picksOf(value), out = inst.data.out ?? {}, multi = inst.data.multi;
+  /* ANSG (FXT-9): the support picks are checked on their own (an ally of the list) and count against the sixes like any stunt */
+  const sup = all.filter((p) => p.stunt === "support"), allies = supportAllies(v, inst), picks = all.filter((p) => p.stunt !== "support");
+  if (sup.some((p) => !allies.includes(p.target) || !/^[1-3]$/.test(String(p.extra ?? "")))) return { ok: false, reason: "notOffered" };
+  if (all.length > budgetOf(inst, inst.decl.targets.filter((t) => out[t]?.hit))) return { ok: false, reason: "budget" };
   const hit = inst.decl.targets.filter((t) => out[t]?.hit);
   const prim = picks.filter((p) => hit.includes(p.target)), sec = picks.filter((p) => !hit.includes(p.target));
   const extras = prim.filter((p) => p.extra).map((p) => p.extra);

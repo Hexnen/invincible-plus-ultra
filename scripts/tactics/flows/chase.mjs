@@ -159,9 +159,9 @@ export function setPatch(state, a) {
     const g = (groups ?? []).find((x) => x.id === gid);
     if (!g) return null;
     g.distance = num(a.distance, 0, 99, g.distance);
-    if (g.lost && g.distance <= next.lostAt) delete g.lost;
+    if (g.lost && g.distance < next.lostAt) delete g.lost;
   } else if (a.distance !== undefined) {
-    if (groups) { const g = nearest(); g.distance = num(a.distance, 0, 99, g.distance); if (g.lost && g.distance <= next.lostAt) delete g.lost; }
+    if (groups) { const g = nearest(); g.distance = num(a.distance, 0, 99, g.distance); if (g.lost && g.distance < next.lostAt) delete g.lost; }
     else next.distance = num(a.distance, 0, 99, ch.distance);
   }
   if (groups) {
@@ -201,7 +201,7 @@ function sideRoll(v, I, R, key, u, attr, { passive = false, mods = [] } = {}) {
 }
 /* CHASE2 groups (ours, G4, G5): the result of a round of groups. Each group against the prey's one roll, as the opposed roll of the plain
    chase [B3434] (the book's complex way [B3480] moves each forward by its sixes: the same difference); a group that reaches 0 has caught
-   the prey, one beyond the end distance has lost it [B3436] (it stays listed, dashed, until the GM takes it out or brings it back). The
+   the prey, one at the end distance has lost it (ANSG, B3 + I4) [B3436] (it stays listed, dashed, until the GM takes it out or brings it back). The
    chase is escaped when every group lost the prey. state.chase.last.groups = { [gid]: { from, to, sixes, caught, lost } } */
 function groupResult(v, I, R, c, ch, def) {
   const preyN = K.sixesOf(I, "prey"), res = {}, by = {};

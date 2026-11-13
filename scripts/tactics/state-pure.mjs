@@ -142,6 +142,7 @@ function sanitizeInit(r) {
     const d = r.draw;
     const cards = (a) => (Array.isArray(a) ? a.map((c) => int(c, 1, 999, null)).filter((c) => c !== null).slice(0, 999) : []);
     out.draw = { round: int(d.round, 0, 1e6, 0), stage: d.stage === "deal" ? "deal" : "veteran", size: int(d.size, 1, 999, 10), left: cards(d.left), queue: ids(d.queue), keeps: {}, surprised: ids(d.surprised), wait: null, vetWait: ids(d.vetWait) };
+    if (isId(d.surpriseWait)) out.draw.surpriseWait = d.surpriseWait;      // ANSG (FXT-10): the GM's surprise card the deal waits for
     if (isObj(d.keeps)) for (const [k, v] of Object.entries(d.keeps)) { const c = int(v, 1, 999, null); if (isId(k) && c !== null) out.draw.keeps[k] = c; }
     if (isObj(d.wait) && isId(d.wait.slot)) out.draw.wait = { slot: d.wait.slot, drawn: cards(d.wait.drawn).slice(0, 2), prompt: idOr(d.wait.prompt) };
   }

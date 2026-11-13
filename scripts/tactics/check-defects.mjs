@@ -600,8 +600,9 @@ const drain = async (T, pick = {}) => { for (let i = 0; i < 10 && T.prompts().le
     ok(o.some((x) => x.to === "z5:elevated" && x.elevated === "air"), "D24: and may end its move in the air"); }
   /* D27: the Scene tab calls a chase lost only ABOVE the end distance (ruling I4), as the engine does */
   { const tt = (k) => k, tag = (d) => SceneUi.sceneData({ kind: "chase", round: 2, stack: [], ledger: {}, chase: { sides: { prey: ["A"], pursuer: ["B"] }, distance: d, lostAt: 5, round: 1 } }, {}, { c: (id) => ({ name: id }), special: () => [] }, tt).chase.state?.text ?? null;
-    eq([tag(4), tag(5), tag(6)], [null, null, "ITAC.ui.chase.escaped"], "D27: at the end distance the chase goes on; beyond it the prey has escaped");
-    eq([4, 5, 6].map((d) => Rules.chase.chaseRoll({ distance: d, preySixes: 0, pursuerSixes: 0, endDistance: 5 }).escaped), [false, false, true], "D27: (the rules library says the same)"); }
+    /* ANSG (B3 + I4, the user 2026-11-12) moved the end: the prey is lost AT the end distance */
+    eq([tag(4), tag(5), tag(6)], [null, "ITAC.ui.chase.escaped", "ITAC.ui.chase.escaped"], "D27 + B3: before the end distance the chase goes on; at it the prey has escaped");
+    eq([4, 5, 6].map((d) => Rules.chase.chaseRoll({ distance: d, preySixes: 0, pursuerSixes: 0, endDistance: 5 }).escaped), [false, true, true], "D27 + B3: (the rules library says the same)"); }
 }
 
 /* ================================================================== D28: one exchange, one set of numbers on every surface */

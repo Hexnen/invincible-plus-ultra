@@ -202,6 +202,9 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
       if (r?.ok) R.effects.push({ t: "state", path: ["ledger", I.actor], to: r.ledger }); else I.data.result = "fail";
       break;
     }
+    /* ANSG (P6b-R6, the user 2026-11-12): Animal Control [B1637] takes the animal(s) at once: a full action without a roll; each one named
+       acts on the controller's turn from now on. Only an out-of-the-ordinary order asks the PRESENCE roll (the row's "command"). */
+    case "control": if (success) for (const who of [...new Set(I.decl.targets?.length ? I.decl.targets : [subject])].filter((w) => w !== I.actor && v.facts.c(w))) R.effects.push({ t: "summonFlag", who, owner: I.actor }); break;
     case "copies": {                                                                         // [B1907-1913]: the copy bonus of the level; never more than it
       const old = (v.state.effects ?? []).find((x) => x.kind === "copies" && x.holder === I.actor);
       const ef = M.makeEffect({ id: old?.id ?? sid(`c${I.id}`), kind: "copies", holder: I.actor, source: src, data: { n: fx.lv ?? 3, max: fx.lv ?? 3 }, ends: { at: "sceneEnd" } });
@@ -258,7 +261,7 @@ export function powerUsed(v, P) {
 }
 const parentOf = (v, inst) => (inst.parent ? (v.state.stack ?? []).find((i) => i.id === inst.parent) ?? null : null);
 export const KIT_KINDS = Object.freeze(["nullify", "dropBarrier", "camouflage", "massEmpathy", "shake", "status", "plan", "barrier", "heal", "gainResolve", "sap", "luck", "aim", "inspire", "resolveAll", "support", "grant", "copies", "reabsorb", "regen", "toggle", "summon", "dismiss", "cleanse", "leech", "convert", "mark", "resist",
-  "guidance", "spell", "spellOn"]);
+  "guidance", "spell", "spellOn", "control"]);
 /** the zone key `cid` stands in (a spot's level cut off), or null without a map */
 export const zoneKeyOf = (v, cid) => { const z = v.facts.zone?.(cid); const k = z ? String(z.key ?? z.spot ?? "").split(":")[0] : ""; return k || null; };
 const sameZone = (v, a, b) => { const r = v.facts.range?.(a, b); return r === undefined ? undefined : !!r && r.total === 0; };   // undefined: no map, the GM judges
@@ -315,6 +318,11 @@ function legality(v, inst) {
   if (kind === "spell" && spellKey(inst.actor, d.text) && M.counterGet(v.state, spellKey(inst.actor, d.text)) > 0) return bad("spellLocked", GM);      // PWD (PW050) [B1790]
   if (kind === "spellOn" && !(M.counterGet(v.state, spellReady(inst.actor)) > 0)) return bad("noSpell", GM);
   if (kind === "reabsorb" && !(K.copiesOf(v.state, inst.actor) > 0)) return bad("noCopies");
+  /* ANSG (P8b-2 + P8b-R4, the user 2026-11-12): Sequestered Original [B1915]: nothing stands the broken primary copy up again in the
+     scene: no rally (above), no healing power, no Resilience; the GM may allow (an exception) */
+  const copyDown = (id) => { const f = v.facts.c(id); return !!f && f.health <= 0 && f.pass?.noRally === true; };
+  if (kind === "heal" && [subject, ...(e?.effect?.mass && Array.isArray(d.targets) ? d.targets : [])].some(copyDown)) return bad("rallyCopy", GM);
+  if (kind === "convert" && copyDown(inst.actor)) return bad("rallyCopy", GM);
   if (kind === "nullify" && inst.cause === "interrupt") {                                                       // PWA (PW039) [B1772-1775]
     const P = parentOf(v, inst);
     if (!P || subject !== P.actor) return bad("nullifyWho");

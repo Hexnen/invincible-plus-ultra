@@ -181,7 +181,7 @@ function factsOf(combat) {
     /* CHASE2: the whole facts of a sheet as the executor reads them (staff only): who would roll for a side next, who cannot move */
     whole: (id) => { if (!staff) return null; try { const cb = combat.combatants.get(id), a = cb ? Sys.actorOf(cb) : null; return a ? Sys.actorFacts(a) : null; } catch { return null; } },
     kit: (id) => ctx.kit(id), bonus: (id) => ctx.bonus?.(id) ?? null,                                                                  // P6: the abilities of a sheet this user may read (engine.context)
-    attrs: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || a.isOwner || view?.revealed?.[id]?.stats) ? Sys.actorFacts(a)?.attrs ?? null : null; } catch { return null; } },
+    attrs: (id) => { try { const a = Sys.actorOf(combat.combatants.get(id)); return a && (staff || Sys.mayReadKit(a) || view?.revealed?.[id]?.stats) ? Sys.actorFacts(a)?.attrs ?? null : null; } catch { return null; } },      // ANSG (P6-R10)
     userName: (u) => game.users.get(u)?.name ?? null, online: (u) => game.users.get(u)?.active === true,
     /* U60 (the desk's character tab, staff only): the sheet's Health and injuries as the engine reads them, and the slots of the turn */
     sheet: (id) => (staff ? ctx.c(id) : null), budget: (id) => { try { return staff && view?.ledger?.[id] ? Api.pure.economy.budget(view, id) : null; } catch { return null; } },

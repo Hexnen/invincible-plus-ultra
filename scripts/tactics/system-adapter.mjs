@@ -131,6 +131,11 @@ export function hasTalent(actor, key) {
 export function ownersOf(actor) {
   try { return game.users.filter((u) => !u.isGM && O.ownsFrom(actor?.ownership, u.id, CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3)).map((u) => u.id); } catch { return []; }
 }
+/** ANSG (P6-R10, the user 2026-11-12): may `user` read the abilities of this actor? Its owner always; for a player's hero (a superhero
+    with a player owner) also whoever Foundry lets view the sheet (OBSERVER); an NPC stays its owner's and the GM's (spec 10: `revealed`). */
+export function mayReadKit(actor, user = game.user) {
+  try { return !!actor && (actor.isOwner === true || (actor.type === "superhero" && actor.hasPlayerOwner === true && actor.testUserPermission?.(user, "OBSERVER") === true)); } catch { return false; }
+}
 /** FXP (D160): the player whose assigned character (Foundry's user.character) this actor is, or null: the acting seat of a co-owned hero */
 export function playerOf(actor) { try { const id = actor?.isToken ? (actor.token?.actorId ?? actor.id) : actor?.id; return game.users.find((u) => !u.isGM && u.character?.id === id)?.id ?? null; } catch { return null; } }
 /** does this user own the combatant (its actor's REAL ownership table; a claimed role never counts)? */
@@ -152,7 +157,8 @@ export function participant(c) {
     summonDelayed: c?.flags?.[MOD]?.tactics?.summon?.delayed === 1,  // [B1816]: not on the turn it appears
     veteran: hasTalent(a, "combatVeteran"),                          // [I7]
     reflexes: hasTalent(a, "fastReflexes"),                          // [I6]
-    resolve: num(a?.system?.derived?.resolve?.value, 0)
+    resolve: num(a?.system?.derived?.resolve?.value, 0),
+    intuition: (() => { try { return a ? Math.max(1, num(actorFacts(a)?.attrs?.intuition) + num(sheetBonuses(a).intuition)) : 1; } catch { return 1; } })()      // ANSG (FXT-10): the passive surprise roll [B2279]
   };
 }
 export const participants = (combat) => { try { return combat.combatants.map(participant); } catch { return []; } };
@@ -246,11 +252,12 @@ export async function setItemEffect(actor, itemId, effectId, on) {
 export function actorFacts(actor) {
   if (!actor) return null;
   const s = actor.system ?? {};
-  const attrs = Object.fromEntries(ATTRS.map((k) => [k, num(s.attributes?.[k]?.value)]));
+  let attrs = Object.fromEntries(ATTRS.map((k) => [k, num(s.attributes?.[k]?.value)])), slug = num(s.derived?.slugfest?.damage);
   const kind = actor.type === "superhero" ? "hero" : actor.type === "minions" ? "minions" : actor.type === "challenge" ? "challenge" : actor.type === "vehicle" ? "vehicle" : "npc";
   const flags = actor.flags?.[MOD]?.tactics ?? {};
   const armorMax = kind === "vehicle" ? num(s.armour) : Math.max(0, ...Object.values(s.bonuses?.armorProtection ?? {}).map((v) => num(v)));
   const kit = ["hero", "npc", "minions"].includes(kind) ? kitOf(actor) : Kit.EMPTY, pass = kit.pass, bonus = kind === "vehicle" || kind === "challenge" ? {} : sheetBonuses(actor, kit);
+  if (pass.alwaysSize) ({ attrs, slugfest: slug } = Kit.sizeAttrs(attrs, slug, pass.alwaysSize));      // ANSG (P6b-4): always huge / tiny [B1975-1979]
   if (kind === "minions") delete bonus.attack;                                       // the group's own bonus: the rules library counts the members [B2827]
   /* P6: each source of Armor on its own (Plasticity stops kinetic damage only [B1920]); Defiance is Armor against stress [B1865] */
   const armors = kind === "vehicle" ? (armorMax > 0 ? [{ id: "armor", armor: armorMax }] : []) : Object.entries(s.bonuses?.armorProtection ?? {}).filter(([, v]) => num(v) > 0).map(([k, v]) => ({ id: String(k).slice(0, 40), armor: num(v), ...(pass.armorOnly && /plasticity/i.test(k) ? { only: pass.armorOnly } : {}) }));
@@ -264,7 +271,7 @@ export function actorFacts(actor) {
     crits: actor.items.filter((i) => i.type === "criticalInjury").map(injuryNumber).filter((n) => n != null),
     unknownInjuries: actor.items.filter((i) => i.type === "criticalInjury" && injuryNumber(i) == null).length,     // injuries added by hand that the table does not resolve: shown to the GM, never guessed
     armor: armors, kit, pass, bonus,
-    slugfest: { damage: num(s.derived?.slugfest?.damage) },
+    slugfest: { damage: slug },
     members: kind === "minions" ? num(s.derived?.health?.value) : undefined,           // the system keeps a group's size as its Health [B2827]
     huge: flags.huge === true || pass.huge === true, grown: flags.grown === true || pass.grown === true, impervious: flags.impervious === true || pass.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
     regeneration: flags.regeneration === true || pass.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),

@@ -252,7 +252,7 @@ export function chaseData(view, own, facts, t) {
       ...(crewHeld && crewOpen.some((p) => p.side === "prey") ? [{ id: "crewFree", label: t("ITAC.chase.gm.crewFree"), tip: t("ITAC.chase.gm.crewFreeTip"), req: { op: "chaseSet", crewFree: true } }] : [])] : [] });
 
   /* the GM's controls: the next roll (with the obstacle the GM may name), the distance, the table, who joins or drops out, the ends */
-  const escaped = !!ch.over || ch.distance > ch.lostAt, caught = ch.distance <= 0;
+  const escaped = !!ch.over || ch.distance >= ch.lostAt, caught = ch.distance <= 0;
   let gm = null;
   if (staff) {
     const pick = OBSTACLES.includes(own?.obstacle) ? own.obstacle : "auto";
@@ -291,18 +291,18 @@ export function chaseData(view, own, facts, t) {
       buttons: escaped ? gm.ends.filter((b) => b.id === "escaped").map((b) => ({ ...b, primary: true })) : [{ id: "gm:roll", label: gm.roll.label, primary: true, disabled: gm.roll.disabled, req: gm.roll.req }] };
   }
 
-  /* the distance: how near escape and capture are (the gap counts zones; the prey is lost when it EXCEEDS lostAt [B3436]) */
+  /* the distance: how near escape and capture are (the gap counts zones; the prey is lost when it REACHES lostAt: ANSG, B3 + I4 [B3436]) */
   const d = Math.max(0, Number(ch.distance) || 0), L = Math.max(1, Number(ch.lostAt) || Rules.CHASE_END_DISTANCE);
   const status = caught ? { id: "caught", text: t("ITAC.ui.chase.caught"), tone: "hit" } : escaped ? { id: "escaped", text: t("ITAC.ui.chase.escaped"), tone: "miss" } : { id: "run", text: t("ITAC.ui.chase.apart", { n: d }), tone: null };
-  const toEscape = escaped ? 0 : L + 1 - d, toCatch = d;
+  const toEscape = escaped ? 0 : L - d, toCatch = d;
   return {
     on: true, seat, mySide, phase, round: ch.round ?? 0, title: t("ITAC.ui.chase"),
     roundLabel: phase === "before" ? t("ITAC.chase.round.before", { n: (ch.round ?? 0) + 1 }) : t("ITAC.chase.round.n", { n: phase === "rolling" && !rolled ? (ch.round ?? 0) + 1 : ch.round ?? 0 }),
-    distance: { value: d, lostAt: L, max: L + 1, status, toEscape, toCatch, from: fresh ? ch.last?.from ?? null : null,
+    distance: { value: d, lostAt: L, max: L, status, toEscape, toCatch, from: fresh ? ch.last?.from ?? null : null,
       say: caught ? t("ITAC.chase.say.caught") : escaped ? t("ITAC.chase.say.escaped") : t("ITAC.chase.say.run", { catch: toCatch, escape: toEscape }),
-      escapeText: t("ITAC.chase.escapeAt", { n: L + 1 }), catchText: t("ITAC.chase.catchAt"), unit: t("ITAC.chase.zones", { n: d }),
+      escapeText: t("ITAC.chase.escapeAt", { n: L }), catchText: t("ITAC.chase.catchAt"), unit: t("ITAC.chase.zones", { n: d }),
       /* CHASE2 groups (ours): where each pursuing group stands on the track (a lost one beyond its end) */
-      label: gs ? t("ITAC.chase.nearest") : null, marks: sides[0].groups ? sides[0].groups.map((g) => ({ id: g.id, letter: g.letter, at: Math.min(L + 1, g.distance), lost: !!g.lost, mine: g.mine })) : null },
+      label: gs ? t("ITAC.chase.nearest") : null, marks: sides[0].groups ? sides[0].groups.map((g) => ({ id: g.id, letter: g.letter, at: Math.min(L, g.distance), lost: !!g.lost, mine: g.mine })) : null },
     sides, obstacle, beats, result, decision, waits, gm, catch: catchInfo, crowd: Math.max(...sides.map((s) => s.units.length)),
     you: seat === "gm" ? null : seat === "aside" ? t("ITAC.chase.you.aside") : t(`ITAC.chase.you.${seat}.${mySide}`),
     labels: { waiting: t("ITAC.ui.waitingFor"), round: t("ITAC.chase.label.round"), obstacle: t("ITAC.chase.beat.obstacle"), gm: t("ITAC.chase.label.gm"), ends: t("ITAC.chase.label.ends"), crew: t("ITAC.chase.label.crew"), shotOpen: t("ITAC.chase.shot.open"), shotUsed: t("ITAC.chase.shot.used"), distance: t("ITAC.ui.chase.distance"), fold: t("ITAC.chase.fold"), unfold: t("ITAC.chase.unfold") },

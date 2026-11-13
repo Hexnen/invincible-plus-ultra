@@ -307,7 +307,8 @@ export async function rebaseline(actorId) {
 /* ------------------------------------------------------------------ hooks */
 const guard = (name, fn) => (...args) => { if (!S.on) return; S.counts.hooks++; try { return fn(...args); } catch (err) { console.warn(`${LOG} ${name} capture failed`, err); } };
 const actorOfDoc = (doc) => { const p = doc?.parent; if (p?.documentName === "Actor") return p; return null; };
-// sweep S042: an unlinked token's synthetic actor shares its base actor's id; it is never logged (scopeOf and combatActor refuse it too)
+// sweep S042: an unlinked token's synthetic actor shares its base actor's id; it is never logged (scopeOf and combatActor refuse it too);
+// ANSG (SWEEPM-11): its rolls only are logged into the world actor's log (onCreateMessage, rollActorOf)
 const elig = (actor) => (actor && !actor.isToken && S.states.has(actor.id) ? S.states.get(actor.id) : null);
 
 /** An actor log journal deleted by another client (a second GM's maintenance window): forget its state and snapshot and start a fresh log. Our own remove() forgets first, so it finds no state here. */
@@ -471,9 +472,15 @@ function findPushParent(actor, info, mode, name) {
   for (const [mid, rec] of S.rollsById) if (rec.actorId === actor.id && rec.p === info.p - 1 && rec.mode === mode && rec.name === name && now - rec.at < 600000) live.push({ mid, rec });
   return live.length === 1 ? live[0] : null;
 }
+/* ANSG (SWEEPM-11, the user 2026-11-12): a ROLL of an unlinked token of a hero is logged in the log of the token's actor (the world actor
+   the token was made from; its id is the synthetic actor's id), with the token's name kept as d.tok when it differs. Only the roll: the
+   damage card, items, effects and the sheet of such a copy stay out of the hero's log (S042: the copy is not the hero). */
+const rollActorOf = (speaker) => (speaker?.isToken ? game.actors.get(speaker.id) ?? null : speaker);
 const onCreateMessage = guard("createChatMessage", (message, options, userId) => {
-  const actor = speakerActor(message); const st = elig(actor);
+  const speaker = speakerActor(message), actor = rollActorOf(speaker); const st = elig(actor);
   if (!st || st.scope !== "hero") return;
+  const viaToken = speaker?.isToken ? speaker : null;
+  if (viaToken && (isDamageCard(message) || !message.rolls?.length)) return;
   const gmIds = game.users.filter((x) => x.isGM).map((x) => x.id);
   const author = message.author?.id ?? message.author ?? userId;
   const mode = C.rollModeOf({ whisper: message.whisper, blind: message.blind, author }, gmIds);
@@ -485,6 +492,8 @@ const onCreateMessage = guard("createChatMessage", (message, options, userId) =>
   const roll = message.rolls[0], info = C.rollInfo(roll);
   const name = M.clampText(message.flavor || roll.options?.splash?.attribute || "", 80);
   const d = { msgId: message.id, name, mode, s: info.s, b: info.b, p: info.p, dice: info.dice };
+  const tok = viaToken ? M.clampText(String(viaToken.token?.name ?? viaToken.name ?? ""), 80) : "";
+  if (tok && tok !== actor.name) d.tok = tok;
   if (info.str) d.str = info.str; if (info.dmg) d.dmg = info.dmg;
   const parent = info.p > 0 ? findPushParent(actor, info, mode, name) : null;
   if (parent) {                                                      // a push = delete + new message: patch the entry of the card that was replaced

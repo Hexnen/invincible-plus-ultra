@@ -121,8 +121,10 @@ eq([V.weaponMayTarget(W.weaponProfile("Air-to-air missile launcher"), "ground"),
 eq(CH.CHASE_PUSH_ORDER, ["prey", "pursuer"], "prey pushes first (ruling 25)");
 eq([CH.chaseModifier(2, 2), CH.chaseModifier(3, 2), CH.chaseModifier(4, 2), CH.chaseModifier(5, 2), CH.chaseModifier(6, 2), CH.chaseModifier(8, 2), CH.chaseModifier(2, 4)], [0, 0, 2, 2, 3, 4, 0], "speed bonus");
 eq(CH.chaseModifiers({ speed: 6, otherSpeed: 2, maneuver: 2, obstacle: "cantSee" }), [{ source: "maneuverability", dice: 2 }, { source: "speed", dice: 3 }, { source: "cantSee", dice: -2 }], "chase roll modifiers");
-eq(CH.chaseRoll({ distance: 3, preySixes: 3, pursuerSixes: 1 }), { distance: 5, winner: "prey", caught: false, escaped: false }, "prey widens the gap");
-eq(CH.chaseRoll({ distance: 4, preySixes: 3, pursuerSixes: 1 }).escaped, true, "beyond five zones the prey is lost");
+/* ANSG (B3 + I4, the user 2026-11-12): the prey is lost AT five zones, no longer only beyond them */
+eq(CH.chaseRoll({ distance: 2, preySixes: 3, pursuerSixes: 1 }), { distance: 4, winner: "prey", caught: false, escaped: false }, "prey widens the gap");
+eq(CH.chaseRoll({ distance: 3, preySixes: 3, pursuerSixes: 1 }), { distance: 5, winner: "prey", caught: false, escaped: true }, "B3: at five zones the prey is lost");
+eq(CH.chaseRoll({ distance: 4, preySixes: 3, pursuerSixes: 1 }).escaped, true, "beyond five zones the prey is lost too");
 eq(CH.chaseRoll({ distance: 2, preySixes: 0, pursuerSixes: 3 }), { distance: 0, winner: "pursuer", caught: true, escaped: false }, "never below zero; caught");
 eq(CH.chaseRoll({ distance: 2, preySixes: 2, pursuerSixes: 2 }).winner, null, "a tie changes nothing");
 eq(CH.chaseRoll({ distance: 2, preySixes: 4, pursuerSixes: 1, preyAutoFail: true }).distance, 1, "dead end: the prey fails automatically");

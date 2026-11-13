@@ -342,8 +342,8 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   eq([code(await T.req("p1", decl("H1", a.id, { targets: ["N1"] }))), why(T.last)], ["illegal", "tooFar"], "this zone or the next");
   T.setRange("H1", "N1", 1);
   await T.req("p1", decl("H1", a.id, { targets: ["N1"], text: "the guard dog" }));
-  eq(T.prompt("outcome")?.to, "gm", "the GM confirms that it is an animal and that it obeys");
-  await T.gm({ op: "answerFor", prompt: T.prompt("outcome").id, value: "success" });
+  /* ANSG (P6b-R6, the user 2026-11-12) replaced the GM's confirmation: the animal is taken at once, no roll, no card */
+  eq(T.prompt("outcome"), null, "P6b-R6: no GM card any more: the animal is taken at once");
   eq([T.c.N1.summonOf, T.state.summons.map((s) => [s.owner, s.combatants]), T.state.init.slots.some((s) => s.members.includes("N1")), P1.budget(T.state, "N1").full], ["H1", [["H1", ["N1"]]], false, "open"], "controlled: it acts on the hero's turn, the very same turn too");
   await T.gm({ op: "setHealth", combatant: "H1", value: 0 });
   ok(!!T.c.N1, "a controlled animal is not removed like summoned allies");

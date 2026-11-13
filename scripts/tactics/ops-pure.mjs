@@ -23,7 +23,7 @@ export const PROTO = 1;
    toggle until the action engine declares actions [D] */
 export const PLAYER_OPS = new Set(["endTurn", "holdOff", "answer", "mark"]);
 /* prompt kinds answered by this package; any other kind belongs to the action engine (P2) */
-export const P1_PROMPTS = new Set(["veteran", "reflexes", "triggerQueue", "grantConsent", "challengeFail", "challengeStale"]);      // U157: challengeStale
+export const P1_PROMPTS = new Set(["veteran", "reflexes", "triggerQueue", "grantConsent", "challengeFail", "challengeStale", "surprise"]);      // ANSG (FXT-10): surprise      // U157: challengeStale
 export const RATE = [90, 60000], MAX_INFLIGHT = 3, MAX_BYTES = 4096, TEXT_MAX = 300;            // spec 12.1 limits for non-staff
 
 const err = S.err;
@@ -101,10 +101,11 @@ export function normalize(req, { staff = false } = {}) {
         const v = req.value;
         if (typeof v === "string" || typeof v === "number") a.value = typeof v === "string" ? v.slice(0, TEXT_MAX) : v;
         else if (isObj(v)) a.value = { order: idList(v.order, 400) ?? [], skip: idList(v.skip, 400) ?? [] };
+        else if (Array.isArray(v)) a.value = { pick: idList(v, 400) ?? [] };      // ANSG (FXT-10): the picks of a multi card of the round (who is surprised)
         else throw new Error("value");
         break;
       }
-      case "start": a.mode = S.MODES.includes(req.mode) ? req.mode : undefined; a.kind = S.KINDS.includes(req.kind) ? req.kind : undefined; a.surprised = idList(req.surprised, 400) ?? [];
+      case "start": a.mode = S.MODES.includes(req.mode) ? req.mode : undefined; a.kind = S.KINDS.includes(req.kind) ? req.kind : undefined; a.surprised = idList(req.surprised, 400) ?? []; if (["heroes", "npcs"].includes(req.surprise)) a.surprise = req.surprise;      // ANSG (FXT-10)
         a.groups = Array.isArray(req.groups) ? req.groups.slice(0, 100).map((g) => idList(g) ?? []).filter((g) => g.length > 1) : []; a.opts = isObj(req.opts) ? S.plain(req.opts) : {}; a.restart = req.restart === true; if (S.isFight(req.fight)) a.fight = req.fight; if (isObj(req.crew)) a.crew = S.plain(req.crew); break;
       case "stop": case "roster": case "resume": break;
       case "nextTurn": case "nextRound": case "prevTurn": if (staff && req.force === true) a.force = true; break;
@@ -189,12 +190,32 @@ function drawCards(W, round, redraw) {
   for (const [pid, p] of Object.entries(s.prompts)) if (p.kind === "veteran" || p.kind === "reflexes") delete s.prompts[pid];
   const r = I.startDraw(s.init, round, parts, { redraw, surprised: W.surprised ?? [], groups: W.groups ?? [], mkId: mkId(W) });
   s.init = r.init;
+  if (round === 1 && W.surprise && s.init.draw) surpriseRoll(W, W.surprise);
   if (r.ask.length) {
     const vet = [];
     for (const q of r.ask) vet.push(addPrompt(W, { kind: "veteran", step: "draw", to: addressees(W, q.member), about: q.member, data: { slot: q.slot, card: q.card },
       options: [{ id: "keep", label: "keep", stress: 1, data: { card: q.card } }, { id: "draw", label: "draw" }] }));     // [I7] [B2100]
     s.init.pendingDraw = { veteran: vet, reflexes: [] };
   }
+}
+
+/* ANSG (FXT-10, the user 2026-11-12: «Wszystkie zmiany»): a fight the GM starts as a surprise attack [B2279]. The defenders are the side
+   the GM named ("heroes" or "npcs"); each rolls a passive INTUITION (never pushed): the game rolls the dice itself (the table's random
+   source, as the deck), the sheet's INTUITION bonus counted (participant.intuition). Who rolled no six is surprised. The deal waits for
+   the GM's card (`surprise`, multi): the failures stand picked, the GM may change the list, then the surprised get the worst cards of
+   round 1 (initiative-pure, as the GM's own list did) and the status "unaware" (as `start` gives it). */
+const SIDE_OK = (p) => p && !p.challenge && !p.vehicle && !p.defeated && !p.summonOf;
+function surpriseRoll(W, side) {
+  const s = W.s, rng = W.ctx.rng ?? Math.random;
+  const defenders = (W.ctx.parts ?? []).filter((p) => SIDE_OK(p) && !!p.hero === (side === "heroes")).slice(0, 60);
+  if (!defenders.length) return;
+  const rolls = defenders.map((p) => { const n = Math.max(1, Math.min(30, Math.trunc(Number(p.intuition)) || 1)), faces = Array.from({ length: n }, () => 1 + Math.floor(rng() * 6)); return { id: p.id, dice: n, faces, sixes: faces.filter((f) => f === 6).length }; });
+  const failed = rolls.filter((r) => r.sixes === 0).map((r) => r.id);
+  for (const r of rolls) ev(W, "surpriseRoll", { combatant: r.id, dice: r.dice, sixes: r.sixes });
+  const pid = addPrompt(W, { kind: "surprise", step: "draw", to: "gm", multi: 1, data: { side, failed },
+    options: rolls.map((r) => ({ id: r.id, label: "surprised", data: { dice: r.dice, sixes: r.sixes, faces: r.faces.slice(0, 30) } })) });
+  W.s.prompts[pid].min = 0; W.s.prompts[pid].max = rolls.length;
+  s.init.draw.surpriseWait = pid;
 }
 
 function openTurn(W, nx) {
@@ -369,7 +390,7 @@ function run(W) {
       ev(W, "roundEnd", { order: publicOrder(s) });
       W.effects.push({ type: "roundEnd", round: s.round });      // the challenge clock runs down here [R22] (executor)
       if (++rounds > 2) { s.phase = "turns"; W.spun = true; return; }           // a round in which nobody could act, twice in a row: stop instead of spinning
-      W.surprised = []; W.groups = [];
+      W.surprised = []; W.groups = []; W.surprise = null;
       startRound(W, s.round + 1);
     } else return;
   }
@@ -414,6 +435,7 @@ const OPS = {
     W.s = S.newState({ mode: a.mode ?? "free", kind: a.kind ?? "combat", opts: { ...(a.opts ?? {}) }, fight: a.fight ?? null });
     seatCrew(W, (a.restart && S.crewOf(was)) || a.crew);      // FXP (D161): the crew sits where it sat (a restart: the running fight's; after a stop: kept by the executor)
     W.surprised = a.surprised ?? []; W.groups = a.groups ?? [];
+    if (a.surprise && !W.surprised.length) W.surprise = a.surprise;      // ANSG (FXT-10): the game rolls the defenders' passive INTUITION before the deal
     ev(W, "combatStart", { mode: W.s.mode, kind: W.s.kind });
     startRound(W, 1);
     /* spec 6.3 [B2279], [B2430]: a defender who failed the surprise roll is unaware of the attacker: no block, no dodge, +2 for a slugfest
@@ -557,6 +579,21 @@ const OPS = {
       case "challengeFail": ev(W, "challenge", { challenge: p.about, state: "failed", choice: String(a.value ?? "") }); if (a.value === "run") W.effects.push({ type: "challengeFail", challenge: p.about }); drop(); break;      // P7: the consequence is the engine's (flows/challenge.mjs)
       /* U157: a challenge came into this fight with its clock already run down (an earlier fight): the GM's one word */
       case "challengeStale": if (a.value === "reset") W.effects.push({ type: "challengeReset", challenge: p.about }); drop(); break;
+      /* ANSG (FXT-10): the GM's word on who is surprised (the failed rolls picked at first) */
+      case "surprise": {
+        if (!s.init.draw || s.init.draw.surpriseWait !== p.id) { drop(); return err("gone"); }
+        const ids = new Set((p.options ?? []).map((o) => o.id)), pick = new Set((Array.isArray(a.value?.pick) ? a.value.pick : []).filter((x) => ids.has(x)));
+        s.init.draw.surprised = s.init.slots.filter((sl) => sl.members.length && sl.members.every((m) => pick.has(m))).map((sl) => sl.id);      // [I5]: a group only when every member is (GROUP_SURPRISE "all")
+        delete s.init.draw.surpriseWait;
+        for (const id of pick) {
+          const pt = partOf(W, id);
+          if (!pt || pt.defeated || pt.challenge || pt.vehicle) continue;
+          s.statuses = { ...(s.statuses ?? {}), [id]: statusAdd(s, id, { id: "unaware", source: { kind: "gm", name: "surprise" }, ends: { at: "turnEndOf", who: id } }).to };
+          ev(W, "status", { target: id, status: { id: "unaware", on: true }, cause: "surprise" });
+        }
+        ev(W, "surprise", { surprised: [...pick], changed: JSON.stringify([...pick].sort()) !== JSON.stringify([...(p.data?.failed ?? [])].sort()) ? 1 : 0 });
+        drop(); break;
+      }
       default: return err("unknown");
     }
     run(W);

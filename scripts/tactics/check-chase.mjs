@@ -37,7 +37,7 @@ const panel = (T, me, owns = [], own = {}) => CP.chaseData(view(T, me, owns), ow
   const g0 = panel(T, "gm"), d0 = panel(T, "p1", ["H1"]), c0 = panel(T, "p2", ["H2"]), a0 = panel(T, "p3", []);
   eq([g0.seat, d0.seat, c0.seat, a0.seat], ["gm", "driver", "crew", "aside"], "A: the seats: GM, the driver, a passenger, somebody not in the chase");
   eq([d0.mySide, c0.mySide, a0.mySide, d0.you, c0.you], ["pursuer", "pursuer", null, EN["ITAC.chase.you.driver.pursuer"], EN["ITAC.chase.you.crew.pursuer"]], "A: each seat is told its side");
-  eq([g0.phase, g0.distance.value, g0.distance.lostAt, g0.distance.toCatch, g0.distance.toEscape, g0.distance.status.id], ["before", 2, 5, 2, 4, "run"], "A: the distance and how near both ends are (lost when it exceeds 5)");
+  eq([g0.phase, g0.distance.value, g0.distance.lostAt, g0.distance.toCatch, g0.distance.toEscape, g0.distance.status.id], ["before", 2, 5, 2, 3, "run"], "A: the distance and how near both ends are (lost when it reaches 5: ANSG, B3 + I4)");
   eq(g0.sides.map((s) => [s.id, s.units.map((u) => [u.id, u.vehicle, u.people.map((p) => [p.id, p.role])])]), [["pursuer", [["V1", true, [["H1", "driver"], ["H2", "passenger"]]]]], ["prey", [["V2", true, [["N1", "driver"], ["N2", "passenger"]]]]]], "A: who sits where on each side");
   eq([g0.decision.kind, g0.decision.buttons[0].req, d0.decision], ["gmRoll", { op: "chaseRound" }, null], "A: before the round the GM's decision is the roll; a player has none");
   eq(g0.gm.ends.map((b) => [b.id, b.req.outcome]), [["escaped", "escaped"], ["caught", "caught"], ["gaveUp", "gaveUp"], ["combat", "combat"]], "A: four ways out, each says how the chase ended");

@@ -15,6 +15,10 @@ ck("player, owner: shown", may(actor("OWNER")) === true);
 ck("challenge is public (Challenges HUD)", may(actor("NONE", "challenge")) === true);
 ck("unknown actor: hidden", may(null) === false);
 ck("GM sees all", may(actor("NONE"), { isGM: true }) === true);
+/* ANSG (SWEEPM-13, the user 2026-11-12): a player's hero is open to every viewer; an NPC, or a hero nobody of the players owns, is not */
+ck("SWEEPM-13: a player's hero with no rights: shown", may({ ...actor("NONE", "superhero"), hasPlayerOwner: true }) === true);
+ck("SWEEPM-13: a hero without a player owner: hidden", may({ ...actor("NONE", "superhero"), hasPlayerOwner: false }) === false);
+ck("SWEEPM-13: an NPC a player owns stays by rights (no rights: hidden)", may({ ...actor("NONE", "npc"), hasPlayerOwner: true }) === false);
 const card = src.slice(src.indexOf("function damageCard("), src.indexOf("// ---- top row"));
 ck("damageCard clears the numbers for a viewer who may not read them", /if \(!dmgMayRead\(actor\)\) \{ from = null; to = null; max = null; \}/.test(card) && card.indexOf("dmgMayRead(actor)") < card.indexOf("const broken = to === 0;"));
 console.log(`sweep m048: ${n} checks, ${f} failed`);

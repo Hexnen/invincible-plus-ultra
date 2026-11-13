@@ -3,7 +3,8 @@
 
 import { opposed } from "./dice.mjs";
 
-/* book 3436: the pursuer loses the prey when the distance grows too far; 5 zones is the default, the terrain may change it. */
+/* book 3436: the pursuer loses the prey when the distance grows too far; 5 zones is the default, the terrain may change it.
+   ANSG (B3 + I4, the user 2026-11-12): the prey is lost AT the end distance (5 zones), not only beyond it. */
 export const CHASE_END_DISTANCE = 5;
 
 /* book 3433 + ruling 25: in the chase roll both sides are active and both may push: first the prey, then the pursuer. */
@@ -37,14 +38,14 @@ export function chaseModifiers({ speed, otherSpeed, maneuver = 0, obstacle = nul
    book 3434: the winner changes the distance by 1 zone for each 6 more than the loser (the prey widens it, the pursuer closes it);
    never below 0; at 0 the pursuer may at once make a charge attack (a ram in a vehicle) that cannot be blocked.
    book 3436: beyond the end distance the prey is lost. book 3452: a dead end makes the prey fail automatically.
-   Reading: "too far" = the distance exceeds the end distance.
+   Reading (ANSG, B3 + I4): "too far" = the distance reaches the end distance.
    Returns { distance, winner: "prey" | "pursuer" | null, caught, escaped }. */
 export function chaseRoll({ distance, preySixes, pursuerSixes, endDistance = CHASE_END_DISTANCE, preyAutoFail = false }) {
   const prey = preyAutoFail ? 0 : preySixes;
   let d = distance, winner = null;
   if (prey > pursuerSixes) { d += opposed(prey, pursuerSixes).net; winner = "prey"; }
   else if (pursuerSixes > prey) { d = Math.max(0, d - opposed(pursuerSixes, prey).net); winner = "pursuer"; }
-  return { distance: d, winner, caught: d === 0, escaped: d > endDistance };
+  return { distance: d, winner, caught: d === 0, escaped: d >= endDistance };
 }
 
 /* book 3448-3476: chase obstacles on a D66 (tens die, ones die).
