@@ -193,7 +193,7 @@ function playLetters(ev, o) {
   letterWrap(ctl);
   if (full) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);
   const dF = LP.failStrength(ev);
-  const plan = LP.planMoment(ev, { W: ctl.W, token: !!ctl.token, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
+  const plan = LP.planMoment(ev, { W: ctl.W, token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const seed = o.seed ?? null;
   for (const it of plan.items) later(() => letterOne(ctl, it, seed), it.delay);
   const word = plan.items.find(it => it.role === 'word');

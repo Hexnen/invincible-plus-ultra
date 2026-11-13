@@ -39,7 +39,13 @@ const LONG = new Set(['whoosh', 'roar', 'powerup', 'boom']);
 export const moodOf = (word, action) => WORD_MOOD[word] ?? ACTION_MOOD[action] ?? 'impact';
 
 /* ---- colours (fill light -> dark, the engine's `colors`) */
-const hsl = (h, s, l) => `hsl(${Math.round(((h % 360) + 360) % 360)},${s}%,${l}%)`;
+/* the engine reads colours as hex (#rrggbb), so the power scale is converted here */
+const hsl = (h, s, l) => {
+  h = ((h % 360) + 360) % 360; s /= 100; l /= 100;
+  const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))));
+  return '#' + [f(0), f(8), f(4)].map(v => v.toString(16).padStart(2, '0')).join('');
+};
 /* the power climb of the old splash (yellow -> orange -> red -> magenta -> violet), lettering-strength: a light top, a strong middle, a deep base */
 export function powerColors(P, shift = 0) {
   const h = hueOf(P) + shift;
@@ -103,8 +109,8 @@ export function planMoment(ev, o = {}) {
     if (LONG.has(m)) sound.long = r1(0.45 + 0.35 * P);
     const hold = Math.round((2400 + 1600 * P) * holdK);
     const wreck = !!ev.wreckWord;
-    add({ role: 'word', text: ev.word, at: wreck ? pos.wordW : pos.word, delay: t, size: Math.round((30 + 62 * P + 1.6 * Math.min(tier, 10)) * u),
-      maxWidth: Math.round(W * (wreck ? 0.46 : (o.token ? 0.8 : 0.74))), mood: m, sound,
+    add({ role: 'word', text: ev.word, at: wreck ? pos.wordW : pos.word, delay: t, size: Math.round((32 + 40 * P + 1.2 * Math.min(tier, 10)) * u),   // the engine adds the mood's own factor (a loud impact about 1.3x)
+      maxWidth: Math.round(W * (wreck ? 0.46 : (o.token ? 0.8 : (o.full ? 0.6 : 0.74)))), mood: m, sound,
       colors: P >= 0.4 || o.npc ? powerColors(P, o.npc ? 150 : 0) : null,     // a weak success keeps its mood's own palette (variety); strong ones climb the power scale
       hold, rotation: 0, from: o.token ? 'token' : 90 });
     if (wreck) add({ role: 'wreck', text: ev.wreckWord, at: pos.wreck, delay: t + 520, size: Math.round((26 + 40 * P) * u), maxWidth: Math.round(W * 0.34),

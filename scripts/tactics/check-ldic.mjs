@@ -59,6 +59,9 @@ const plan = (e, o = {}) => LP.planMoment(e, { W: 746, ...o });
   ok(top.sound.rough > low.sound.rough, "... and has more grit");
   ok(low.colors === null && Array.isArray(top.colors) && top.colors.length === 3, "a weak success keeps the mood's own colours (variety); a strong one climbs the power scale");
   ok(LP.powerColors(0.2)[1] !== LP.powerColors(0.95)[1], "the power scale changes colour from low to top");
+  const hex = /^#[0-9a-f]{6}$/i;
+  for (const P of [0, 0.3, 0.6, 1]) ok(LP.powerColors(P).every((c) => hex.test(c)) && LP.powerColors(P, 150).every((c) => hex.test(c)), `the power colours are hex (the engine reads #rrggbb; hsl() turned the top rolls grey live) P=${P}`);
+  for (const c of [LP.SIX_COLORS, LP.ODDS_COLORS, LP.STRESS_COLORS, LP.FAIL_COLORS, LP.SOFT_COLORS]) ok(c.every((x) => hex.test(x)), "fixed palettes are hex");
   ok(by(plan(ev({ n: 6, sixes: 4, npc: true })), "word").colors[1] !== by(plan(ev({ n: 6, sixes: 4 })), "word").colors[1], "an opponent's success has its own colours");
   /* how bad */
   const bw = by(plan(bad), "word"), rw = by(plan(rare, { dF: 1 }), "word"), sw = by(plan(routine), "word");
