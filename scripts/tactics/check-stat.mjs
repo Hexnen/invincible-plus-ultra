@@ -194,5 +194,8 @@ const sides = (aid) => (aid.startsWith("A_N") ? "n" : "h");
   ok(/@import url\("stats\.css"\)/.test(css), "G: the stylesheet is loaded");
   ok(/options\?\.deleteAll\) return/.test(read("stats/capture.mjs")), "G: clearing the chat takes no statistic back");
   ok(/roll\.options\?\.tactics/.test(read("stats/capture.mjs")), "G: a tactical roll card is never counted again as a loose one");
+  /* live 2026-11-13: one shared options object was filled by Foundry (parent) on the first page write, and every later journal update
+     failed as an "embedded" one: fight records and registry lines were lost while the facts were kept */
+  ok(/const OPT = \(\) => \(\{/.test(store) && !/[,(]\s*OPT\s*\)/.test(store) && !/\.\.\.OPT\s*\}/.test(store), "G: every journal write gets a fresh options object");
 }
 done("check-stat");

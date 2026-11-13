@@ -12,7 +12,9 @@ import * as P from "./pure.mjs";
 export const MOD = P.MOD;
 export const JOURNAL_ID = "IPUStatsJournal1";
 export const pageId = (n) => `IPUStatsPage${String(n).padStart(4, "0")}`;
-const OPT = { render: false, ipuStats: true };
+/* a FRESH options object per call: Foundry writes parent, pack and more into the operation it is given, and a shared one turned the
+   next journal update into an "embedded" one (live: fight records and late registry lines were never saved) */
+const OPT = () => ({ render: false, ipuStats: true });
 const subs = new Set();
 let version = 0, cache = null, timer = 0, chain = Promise.resolve();
 const Q = { put: new Map(), drop: new Set(), fights: new Map(), dropFights: new Set(), actors: new Map(), hw: 0 };
@@ -59,7 +61,7 @@ async function ensure() {
   let j = journal();
   if (j) return j;
   j = await JournalEntry.create({ _id: JOURNAL_ID, name: "Plus Ultra: statistics", ownership: { default: CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER },
-    flags: { [MOD]: { stats: { v: P.V, head: 1, hw: 0, fights: {}, actors: {} } } } }, { keepId: true, ...OPT });
+    flags: { [MOD]: { stats: { v: P.V, head: 1, hw: 0, fights: {}, actors: {} } } } }, { keepId: true, ...OPT() });
   return j;
 }
 async function flush() {
@@ -88,16 +90,16 @@ async function flush() {
     up(pid)[`flags.${MOD}.stats.f.${id}`] = body;
   }
   for (const id of drops) { const pid = where.get(id); if (pid && j.pages.get(pid)) up(pid)[`flags.${MOD}.stats.f.-=${id}`] = null; }
-  if (creates.length) await j.createEmbeddedDocuments("JournalEntryPage", creates, { keepId: true, ...OPT });
+  if (creates.length) await j.createEmbeddedDocuments("JournalEntryPage", creates, { keepId: true, ...OPT() });
   /* a fact created in a page created just now goes in with the page's update */
-  if (ups.size) await j.updateEmbeddedDocuments("JournalEntryPage", [...ups.values()], OPT);
+  if (ups.size) await j.updateEmbeddedDocuments("JournalEntryPage", [...ups.values()], OPT());
   const data = {};
   if (head !== Number(root.head)) data[`flags.${MOD}.stats.head`] = head;
   if (hw > (Number(root.hw) || 0)) data[`flags.${MOD}.stats.hw`] = hw;
   for (const [k, rec] of fights) data[`flags.${MOD}.stats.fights.${k}`] = rec;
   for (const k of dropF) data[`flags.${MOD}.stats.fights.-=${k}`] = null;
   for (const [k, rec] of actors) data[`flags.${MOD}.stats.actors.${k}`] = rec;
-  if (Object.keys(data).length) await j.update(data, OPT);
+  if (Object.keys(data).length) await j.update(data, OPT());
 }
 
 /** GM: forget every statistic (deletes the journal) */
@@ -106,7 +108,7 @@ export async function reset() {
   Q.put.clear(); Q.drop.clear(); Q.fights.clear(); Q.dropFights.clear(); Q.actors.clear(); Q.hw = 0;
   await settle();
   const j = journal();
-  if (j) await j.delete(OPT);
+  if (j) await j.delete(OPT());
   changed();
   return true;
 }
