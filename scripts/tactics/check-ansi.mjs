@@ -70,7 +70,7 @@ const card = (p) => ({ ...p, answerReq: (value) => ({ op: "answerFor", prompt: p
   eq(ad.options.map((o) => [o.label, o.marks.map((m) => [m.mark, m.n])]), raw.map((o) => [names[o.id], [["six", o.data.sixes], ["dice", o.data.dice]]]), "ANSI-1: each row is the name, then the roll as marks (sixes, dice)");
   ok(ad.options.every((o, i) => o.tip?.lines?.[1] === say("ITAC.ui.surprise.what") && o.tip.lines[0] === say("ITAC.ui.opt.surprised", { name: o.label, n: raw[i].data.sixes, dice: raw[i].data.dice })), "ANSI-1: the roll in words (the tooltip's first line, so the aria-label too) and what surprise does");
   const css = read("../../styles/tactics-ui.css");
-  ok(/\.ita-ask\[data-kind="surprise"\] \.ita-opts \{ flex-direction: column;/.test(css) && /\.ita-ask\[data-kind="surprise"\] \.ita-opt\[data-check\] \{ width: 100%; min-height: 26px;/.test(css), "ANSI-1: the rows are thin and stand in one column");
+  ok(/\.ita-ask\[data-kind="surprise"\] \.ita-opts \{ flex-direction: column;/.test(css) && /\.ita-ask\[data-kind="surprise"\] \.ita-opt\[data-check\] \{ width: 100%; min-height: 24px;/.test(css), "ANSI-1: the rows are thin and stand in one column");
   const dom = read("./ui/dom.mjs");
   ok(/o\.marks\?\.length \? h\("span\.ita-opt-m"/.test(dom), "ANSI-1: the row draws its marks");
   ok(/o\.step\.sub \? h\("button\.ita-less"/.test(dom) && /const optRow = \(o\) => \(!o\.step \? opt\(o\) : h\("span\.ita-stepper"/.test(dom), "ANSI-2: the minus stands beside the row, not inside it");

@@ -1003,9 +1003,9 @@ body.ita-dice-up #invincible-tactics-dock { z-index: var(--ita-dice-z); }
 /* ============================ ANSI: four pieces made to read well ============================ */
 /* ANSI-1 (FXT-10): the GM's surprise card. One short line, then one tick row per defender: the box, the name, its INTUITION roll as
    marks at the row's end (the sixes, the dice). Ticked = surprised (yellow), not ticked = struck through on a dashed frame. The rows are
-   thin (26 px) and stand in one column, so a group of defenders fits the desk above its Confirm. */
-:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opts { flex-direction: column; flex-wrap: nowrap; gap: 4px; }
-:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt[data-check] { width: 100%; min-height: 26px; gap: 7px; padding: 1px 8px 2px 7px; box-shadow: none; translate: none; }
+   thin (24 px) and stand in one column, so a group of defenders fits the desk above its Confirm. */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opts { flex-direction: column; flex-wrap: nowrap; gap: 3px; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt[data-check] { width: 100%; min-height: 24px; gap: 7px; padding: 0 8px 1px 7px; box-shadow: none; translate: none; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt[data-check][aria-pressed="true"] { border-width: 1.5px; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt[data-check][aria-pressed="false"] { border-width: 1.5px; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt:hover { translate: none; }
