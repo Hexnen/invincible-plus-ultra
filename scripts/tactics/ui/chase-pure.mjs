@@ -22,7 +22,7 @@ import { vehOf, rideOf } from "../flows/vehicle.mjs";
 import { modesOf } from "../movement-pure.mjs";
 import * as M from "../mods-pure.mjs";
 import { rollState } from "../desk-pure.mjs";
-import { rollButtons, attrText } from "./model-pure.mjs";
+import { rollButtons, attrText, attrAccText } from "./model-pure.mjs";
 
 /** the way a unit on its own moves fastest [B3432]: in the air or not (a vehicle is drawn as a vehicle) */
 export function wayOf(c) {
@@ -51,7 +51,7 @@ export function chaseData(view, own, facts, t) {
   const ch = isObj(view?.chase) && view.kind === "chase" ? view.chase : null;
   if (!ch) return endedData(view, own, facts, t);
   const staff = !!facts.staff, me = facts.me, owns = new Set(staff ? [] : Object.keys(view.knowledge ?? {}));
-  const name = (id) => (id ? facts.c?.(id)?.name ?? t("ITAC.Someone") : t("ITAC.Someone")), img = (id) => (id ? facts.c?.(id)?.img ?? null : null);
+  const name = (id) => (id ? facts.c?.(id)?.name ?? facts.left?.(id) ?? t("ITAC.Someone") : t("ITAC.Someone")), img = (id) => (id ? facts.c?.(id)?.img ?? null : null);
   const inst = (view.stack ?? []).find((i) => !i.masked && i.flow === "chase") ?? null, kids = inst ? (view.stack ?? []).filter((i) => !i.masked && i.parent === inst.id) : [];
   const info = inst?.data?.chase ?? fromCh(inst?.data?.ch), rolled = ch.rolled === view.round;
   const phase = inst ? "rolling" : rolled ? "after" : "before";
@@ -74,8 +74,11 @@ export function chaseData(view, own, facts, t) {
     const has = (who, s) => { try { return M.hasStatus(view, who, s); } catch { return false; } };
     const cant = (who) => { try { const k = M.conditions(view, who); return k.held ? "held" : k.snared || k.rooted ? "snared" : k.trapped ? "trapped" : null; } catch { return null; } };
     const out = (who) => has(who, "dead") || has(who, "unconscious");
-    if (c.kind === "vehicle" || isObj(rec)) return rec?.wrecked ? "wrecked" : rec?.off?.engine ? "engine" : !rec?.driver ? "noDriver" : !rec?.started ? "notStarted" : out(rec.driver) || cant(rec.driver) ? "driver" : null;
-    return out(id) ? "out" : cant(id);
+    /* FXR2 (FF8-D2): broken (0 Health) is table knowledge (the "broken" status, the mark on the map): a player's panel says it as the GM's
+       does (flows/chase stuckOf "down"), so a broken hero is never drawn as the side's roller nor counted as able to move */
+    const broken = (who) => has(who, "broken");
+    if (c.kind === "vehicle" || isObj(rec)) return rec?.wrecked ? "wrecked" : rec?.off?.engine ? "engine" : !rec?.driver ? "noDriver" : !rec?.started ? "notStarted" : out(rec.driver) || broken(rec.driver) || cant(rec.driver) ? "driver" : null;
+    return out(id) ? "out" : broken(id) ? "down" : cant(id);
   };
   /* FXJ2 (D214): one out of the fight (unconscious, dead, defeated) no longer flees or pursues: it leaves the lists */
   const live = (list) => (list ?? []).filter((u) => stuck(u) !== "out");
@@ -207,11 +210,21 @@ export function chaseData(view, own, facts, t) {
      each row's full sentence is its tooltip. `text` stays the whole line (the strip's tooltip). */
   const unitOf = (id) => sides.flatMap((s) => s.units).find((u) => u.id === id);
   const verb = t(ram ? "ITAC.chase.catch.rowRam" : "ITAC.chase.catch.rowCharge");
-  const catchRows = [someStrike ? { id: "strike", kind: "strike", ram, name: catcher, tag: pick ? t("ITAC.chase.catch.rowPick", { what: verb }) : t("ITAC.chase.catch.at", { what: verb, name: caughtOne }), tip: strikeText } : null,
+  /* FXR2 (FF8-D1): a striker who already answered is drawn from what it picked (state.chase.last.struck: the target, or that it passed),
+     not from the default (the one who rolled for the fleeing); the open card, if any, comes after them. Without a record and without a
+     card the row says what the engine would offer first, as before. */
+  const struck = (phase === "rolling" || fresh) && Array.isArray(ch.last?.struck) ? ch.last.struck.filter((x) => isObj(x) && typeof x.who === "string") : [];
+  const struckRow = (x) => { const v = t(x.ram ? "ITAC.chase.catch.rowRam" : "ITAC.chase.catch.rowCharge"), tn = name(x.at ?? null);
+    return x.pass ? { id: `struck:${x.unit ?? x.who}`, kind: "pass", ram: !!x.ram, name: name(x.who), tag: t("ITAC.chase.catch.passed"), tip: t("ITAC.chase.catch.passedTip", { name: name(x.who) }) }
+      : { id: `struck:${x.unit ?? x.who}`, kind: "strike", ram: !!x.ram, name: name(x.who), tag: t("ITAC.chase.catch.at", { what: v, name: tn }), tip: t(x.ram ? "ITAC.chase.catch.whoRam" : "ITAC.chase.catch.whoCharge", { name: name(x.who), target: tn }) }; };
+  const openRow = catchQ && !struck.some((x) => x.who === catchQ.about) ? { id: "strike", kind: "strike", ram, name: catcher, tag: pick ? t("ITAC.chase.catch.rowPick", { what: verb }) : t("ITAC.chase.catch.at", { what: verb, name: caughtOne }), tip: strikeText } : null;
+  const catchRows = [...(struck.length ? [...struck.map(struckRow), openRow] : [someStrike ? { id: "strike", kind: "strike", ram, name: catcher, tag: pick ? t("ITAC.chase.catch.rowPick", { what: verb }) : t("ITAC.chase.catch.at", { what: verb, name: caughtOne }), tip: strikeText } : null]),
     ...barred.map((b) => ({ id: `barred:${b.who}`, kind: "barred", name: name(b.who), tag: unitOf(b.unit)?.stuckText ?? t(`ITAC.reason.${b.reason}`, {}, String(b.reason ?? "")),
       tip: t("ITAC.chase.catch.barred", { name: name(b.who), why: t(`ITAC.reason.${b.reason}`, {}, String(b.reason ?? "")) }) }))].filter(Boolean);
-  const catchInfo = caughtNow || (phase === "rolling" && step === "catch") ? { by: catcher, at: pick ? null : caughtOne, ram, pick, barred: barred.map((b) => ({ who: b.who, reason: b.reason })),
-    rows: catchRows, text: [strikeText, barredText].filter(Boolean).join("; ") } : null;
+  const hit1 = struck.find((x) => !x.pass) ?? null;
+  const catchInfo = caughtNow || (phase === "rolling" && step === "catch") ? { by: struck.length ? name(struck[0].who) : catcher, at: struck.length ? (hit1 ? name(hit1.at ?? null) : null) : pick ? null : caughtOne, ram: struck.length ? !!(hit1 ?? struck[0]).ram : ram, pick: struck.length ? !!openRow && pick : pick,
+    barred: barred.map((b) => ({ who: b.who, reason: b.reason })),
+    rows: catchRows, text: [...(struck.length ? [...struck.map((x) => struckRow(x).tip), openRow?.tip] : [strikeText]), barredText].filter(Boolean).join("; ") } : null;
   const beats = [
     obsOn ? beat("obstacle", stateAt("obstacle"), obstacle ? obstacle.name : phase === "before" ? t("ITAC.chase.obstacle.next") : "") : null,
     beat("prey", stateAt("prey"), sides[1].roll.text, { who: sides[1].who?.name ?? "" }),
@@ -227,7 +240,7 @@ export function chaseData(view, own, facts, t) {
   const prompts = Object.values(view.prompts ?? {}).filter((p) => isChasePrompt(p) && !p.answered);
   const lineOf = (p) => p.kind === "chaseCatch" ? ((p.data?.targets ?? []).length > 1 ? t(p.data?.ram ? "ITAC.chase.catch.whoRamPick" : "ITAC.chase.catch.whoChargePick", { name: name(p.about) })
     : t(p.data?.ram ? "ITAC.ui.line.chaseRam" : "ITAC.ui.line.chaseCharge", { name: name(p.about), target: name(p.data?.target) }))
-    : t("ITAC.ui.line.chaseOption", { name: name(p.about), obstacle: t(`ITAC.ui.chase.obstacle.${p.data?.obstacle}`, {}, String(p.data?.obstacle ?? "")), attr: attrText(t, p.data?.attr) });
+    : t("ITAC.ui.line.chaseOption", { name: name(p.about), obstacle: t(`ITAC.ui.chase.obstacle.${p.data?.obstacle}`, {}, String(p.data?.obstacle ?? "")), attr: attrAccText(t, p.data?.attr) });
   /* ANSD (CHASE2-1): with several to pick from, each strike names its target ("Ram: Getaway truck") */
   const optLabel = (p, o) => {
     if (p.kind !== "chaseCatch" || !(o.id === "attack" || String(o.id).startsWith("attack:"))) return t(o.label ?? `ITAC.opt.${o.id}`, {}, String(o.id));

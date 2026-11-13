@@ -10,7 +10,7 @@ import { vehOf, rideOf } from "../flows/vehicle.mjs";
 import { chaseOf, SIDES } from "../flows/chase.mjs";
 
 const int = (x, lo, hi, dflt) => (Number.isFinite(Number(x)) ? Math.max(lo, Math.min(hi, Math.trunc(Number(x)))) : dflt);
-const nameOf = (facts, id, t) => facts.c?.(id)?.name ?? t("ITAC.Someone");
+const nameOf = (facts, id, t) => facts.c?.(id)?.name ?? facts.left?.(id) ?? t("ITAC.Someone");      // FXR2 (FF8-D5)
 
 function chaseData(state, own, facts, t, machines) {
   const ch = chaseOf(state), busy = (state.stack ?? []).length > 0;

@@ -173,6 +173,20 @@ export function leftHidden(state, flagList = null, present = () => false) {
     ...(Array.isArray(flagList) ? flagList.filter((x) => typeof x === "string" && x) : [])];
   return [...new Set(ids)].filter((id) => !present(id));
 }
+/** FXR2 (FF8-D5): the names of those who left the Combat while the table could see them (`flags.<module>.leftNames` = [{ id, name }],
+    written as such a combatant is deleted, main.mjs): a news line or a panel about one who left names it as the table knew it, not as
+    "somebody". One that left hidden is never written (hidLeft keeps it concealed). -> the new list, or null when nothing changes */
+export function leftNameAdd(list, id, name) {
+  const now = Array.isArray(list) ? list.filter((x) => isObj(x) && typeof x.id === "string" && typeof x.name === "string") : [];
+  const nm = String(name ?? "").slice(0, 80);
+  if (typeof id !== "string" || !id || !nm || now.some((x) => x.id === id && x.name === nm)) return null;
+  return [...now.filter((x) => x.id !== id), { id, name: nm }].slice(-HID_LEFT_MAX);
+}
+/** FXR2 (FF8-D5): the name of one who left in sight (leftNameAdd's list), never of one in `hidden` (the reader's concealed ids) */
+export function leftName(list, id, hidden = []) {
+  if (typeof id !== "string" || !Array.isArray(list) || (hidden instanceof Set ? hidden.has(id) : Array.isArray(hidden) && hidden.includes(id))) return null;
+  return list.find((x) => isObj(x) && x.id === id && typeof x.name === "string")?.name ?? null;
+}
 export const HID_LEFT_MAX = 200;
 /** the Combat's list with one more id (the newest last, at most HID_LEFT_MAX), or null when it is there already */
 export function hidLeftAdd(list, id) {

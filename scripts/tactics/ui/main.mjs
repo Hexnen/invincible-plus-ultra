@@ -21,6 +21,7 @@ import { isOnTurn } from "../economy-pure.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import { t as langT, errText, rollTitle } from "../lang.mjs";
 import * as Model from "./model-pure.mjs";
+import { leftName } from "../view-pure.mjs";
 import * as NewsP from "./news-pure.mjs";
 import * as RW from "../rollwatch-pure.mjs";
 import { plain } from "../../kit.mjs";      // U93: a notification cannot draw a mark: it says its name
@@ -178,6 +179,11 @@ function factsOf(combat) {
     view, me: game.user.id, staff, autoSkip: AutoSkip.get(),      // ANSA (UXC-1): the tick on the initiative bar
     c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, team: base.team ?? null, kind: base.kind ?? null, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null,
       way: view?.kind === "chase" ? wayOf(cb) : null } : null; },      // CHASE2: on foot or in the air, as the chase panel draws a unit (a power of flight is seen by all)
+    /* FXR2 (FF8-D5): the name of one who left the Combat in sight of the table (the Combat's leftNames, view-pure leftName); never one that
+       left hidden, nor one every character of this player had as unseen */
+    left: (id) => { try { if (combat.combatants.get(id)) return null; const owns = staff ? [] : Object.keys(view?.knowledge ?? {});
+      if (owns.length && owns.every((o) => view.knowledge[o]?.[id] === "unseen")) return null;
+      return leftName(combat.flags?.[Store.MOD]?.leftNames, id, combat.flags?.[Store.MOD]?.hidLeft ?? []); } catch { return null; } },
     /* CHASE2: the whole facts of a sheet as the executor reads them (staff only): who would roll for a side next, who cannot move */
     whole: (id) => { if (!staff) return null; try { const cb = combat.combatants.get(id), a = cb ? Sys.actorOf(cb) : null; return a ? Sys.actorFacts(a) : null; } catch { return null; } },
     kit: (id) => ctx.kit(id), bonus: (id) => ctx.bonus?.(id) ?? null,                                                                  // P6: the abilities of a sheet this user may read (engine.context)
