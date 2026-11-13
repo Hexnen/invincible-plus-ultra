@@ -19,7 +19,7 @@ import * as Lg from "../ledger-pure.mjs";
 import { outOf } from "../desk-pure.mjs";
 import { conditions } from "../mods-pure.mjs";
 import * as Keys from "./keys-pure.mjs";
-import { whyOf, whyLine, poolTip, rollPool } from "./feedback-pure.mjs";
+import { whyOf, whyLine, poolTip, rollPool, chaseT } from "./feedback-pure.mjs";
 import { BANDS, bandOf } from "../flows/kit.mjs";      // the bands of a chance: one definition for the dock and for the engine's reaction cards (U11)
 import * as Sg from "./signs-pure.mjs";      // U100: the marks where the map draws (moinen-maps zones-api.md section 40)
 import * as NewsP from "./news-pure.mjs";      // UXB (U141): which lines of the news still stand, which are told together
@@ -1027,6 +1027,7 @@ export function cameraOf(facts, t) {
 }
 /** Everything the dock draws. -> { show: false } | { show, rest, chars, who, slots, vitals, extras, groups, other, holdOff, hotbar, end, panel, prompts, waiting, turn } */
 export function dockData(model, own, facts, t) {
+  if (facts?.view?.kind === "chase" && facts.view.chase) t = chaseT(t);      // FXS2 (U231): a chase has no turns: "not your turn" is said in the chase's words
   const bars = model?.bars ?? [];
   const info = model?.stack ?? [];
   const prompts = (model?.prompts ?? []).map((p) => askData(p, { t, facts, own, info, round: model?.turn?.round, bars }));

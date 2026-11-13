@@ -30,7 +30,8 @@ export const SIZE = Object.freeze({
 });
 export const GAP = 8;
 export const TOAST = Object.freeze({ h: 132, min: 64, share: 0.2 });     // the chat toasts' strip (window px; Foundry's toasts are not scaled by U62)
-export const BAND = Object.freeze({ share: 0.38, min: 150, max: 350 });  // the challenges' band on the GM seat (the desk stands under it)
+export const BAND = Object.freeze({ share: 0.38, min: 150, max: 350 });
+const HUD_SLACK = 16;  // FXS2 (U234): css px kept under the challenges' last row when the band fits them (their entrance, a row's growth)  // the challenges' band on the GM seat (the desk stands under it)
 export const PANEL_SHARE = 0.38;                                         // U105: the most of the window's height the armed action's panel takes
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -57,7 +58,7 @@ export function toastStrip({ H, chatTop = null, listEnd = null }) {
           listEnd (D126: where Foundry's toast list ends, or null), chatX ([x0, x1] of the chat box's column, or null),
           floats (FXU U193: [{ left, right }] of the windows floating over the top band, the popped-out chat: the band keeps to the
           wider side of each; layout-pure.bandBeside),
-          hud: { present, x0 } (the challenges HUD: its left edge), desk: { open, x0 } | null (the open GM desk),
+          hud: { present, x0, end } (the challenges HUD: its left edge; end: the bottom of its rows while all show, or null), desk: { open, x0 } | null (the open GM desk),
           bar: { lo, hi, top, bottom } (the bar's room and where it stands: dock.mjs works that out without the toasts) }
     -> { toast, band, desk, slots: { line, cards, hint, notice }, up: { lo, hi }, panelMax, reserved: [boxes], across: { lo, hi } (FXU D188: the
        top band's free stretch, what the chase panel keeps inside) } */
@@ -86,6 +87,10 @@ export function frame(f) {
        nothing moves during a turn; the challenges HUD scrolls in its band as it does when there are many. */
     const floorFor = wouldUnder ? floorUnder : toast.top - GAP;
     if (hudOn) bandEnd = Math.max(11 + BAND.min, Math.min(bandEnd, floorFor - SIZE.desk * k - GAP));
+    /* FXS2 (U234): the band is a share of the window, but the GM's challenges often end far above it (two of them at 1366x768: some
+       115 px of a 280 px band) while a stunts card under it showed one row of answers. Where the HUD says where its rows end (hud.end:
+       all of them shown, nothing scrolled or folded away) the band ends there, never under its least: the desk starts under the rows */
+    if (hudOn && Number.isFinite(f.hud?.end)) bandEnd = Math.max(11 + BAND.min, Math.min(bandEnd, f.hud.end + HUD_SLACK * k));
     out.desk = { top: hudOn ? r(bandEnd + GAP) : 11, floor: r(under ? floorUnder : toast.top - GAP), toastH: toast.h, under };
   }
   out.band = { present: hudOn, y1: r(bandEnd) };

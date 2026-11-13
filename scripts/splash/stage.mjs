@@ -90,6 +90,10 @@ function placeTokenStage(ctl) {
     x = Math.max(hx, Math.min(area.w - hx, x));
     const yMin = H * 0.4, yMax = Math.max(yMin, window.innerHeight - H * 0.45);
     y = Math.min(yMax, Math.max(yMin, y));
+    /* FXS2 (U234): nie na otwartym biurku MG (słowo przy tokenie stojącym tuż obok zakrywało nagłówek biurka i jego kartę):
+       scena odsuwa się w lewo od biurka, o ile tam się mieści */
+    const desk = document.querySelector('#invincible-tactics-desk:not(.igd-collapsed) .igd')?.getBoundingClientRect();
+    if (desk && desk.width > 0 && x + hx > desk.left && x - hx < desk.right && y + H * 0.4 > desk.top && y - H * 0.4 < desk.bottom && desk.left - hx >= hx) x = desk.left - hx;
     ctl.el.style.left = x.toFixed(1) + 'px';
     ctl.el.style.top = y.toFixed(1) + 'px';
   } catch (e) { /* płótno niegotowe: zostaje ostatnia pozycja */ }

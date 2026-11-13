@@ -142,7 +142,8 @@ export function sync(ctx) {
     if (!on) { on = true; Zones.camera({ driver: MOD }); }
     Moment.active(Zones.hasShot());                                                           // U125 (e): the splash waits for a result beat only while shots can play
     const { combat, view, staff, model, dock, data } = ctx;
-    const now = CP.look(view, { me: game.user.id, staff, mine: mineOf(combat, view, model, staff), who: data?.show ? data.who?.id ?? null : null, sel: dock?.sel ?? null, armed: dock?.armed ?? null, targets: dock?.targets ?? [] });
+    const now = CP.look(view, { me: game.user.id, staff, mine: mineOf(combat, view, model, staff), who: data?.show ? data.who?.id ?? null : null, sel: dock?.sel ?? null, armed: dock?.armed ?? null, targets: dock?.targets ?? [],
+      cands: data?.panel?.kind === "declare" && Array.isArray(data.panel.targets) ? data.panel.targets.map((x) => x.id) : [] });
     const before = key === combat.id ? was : null;                                            // another fight: a first look
     was = now; key = combat.id;
     /* FXU3 (U207): the own unit's join frame stays due until it reached the map (see joinTry) */
@@ -150,6 +151,8 @@ export function sync(ctx) {
     else if (join && !CP.joinHold(before, now)) joinStop();
     else if (join) { joinTry(combat); return; }
     if (CP.handTook(before, now) && Zones.hasShot()) Zones.shotEnd();                         // U98: the user's hand or a question: a shot on screen gives the view back
+    const room = before ? CP.aimRoom(before, now) : null;
+    if (room) aimLater(combat, room);
     const all = CP.cues(before, now), c = all[0] ?? null;
     if (!c || (Zones.hasShot() && CP.heldByCard(c, now))) return;                              // H2-3: a card is open for this user: nothing moves (spec 26)
     /* U98: somebody new in this user's view gets its shot even when a more pressing quiet cue came with it (the one revealed is
@@ -159,6 +162,30 @@ export function sync(ctx) {
     log.push({ at: Date.now(), why: c.why, level: c.level, focus: c.focus, sent: !!spec }); if (log.length > 40) log.shift();
     if (join && c.why === "join") { if (spec) joinStop(); else joinLater(); }
   } catch (e) { console.warn(LOG, "sync failed", e); }
+}
+/* FXS2 (U230): the targets an armed action may pick that our own panels cover (the armed panel on the bar, the desk, the challenges)
+   come into the free stretch with the actor, by the map's least slide, at the user's zoom (a frame with a covered target as its focus:
+   the map moves nothing for a focus already in the free stretch). Measured once the panel is drawn (two frames on). */
+const COVERS = ["#invincible-tactics-dock:not(.itd-hidden) .its-bar", "#invincible-tactics-desk", "#invincible-challenges"];
+const shownBox = (el) => { try { if (!el) return null; const cs = getComputedStyle(el); if (cs.display === "none" || cs.visibility === "hidden") return null; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? r : null; } catch { return null; } };
+function aimLater(combat, room) {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try {
+      const actor = tokenOf(combat, room.focus); if (!actor) return;
+      const boxes = COVERS.flatMap((sel) => [...document.querySelectorAll(sel)].map(shownBox)).filter(Boolean);
+      const covered = [], free = [];
+      for (const cid of room.cands) {
+        const tid = tokenOf(combat, cid), tok = tid ? canvas.tokens?.get(tid) : null; if (!tok) continue;
+        const b = tok.bounds, p0 = canvas.clientCoordinatesFromCanvas({ x: b.left, y: b.top }), p1 = canvas.clientCoordinatesFromCanvas({ x: b.right, y: b.bottom });
+        const cx = (p0.x + p1.x) / 2, cy = (p0.y + p1.y) / 2;      // (a target off the screen is the user's to look for: only what OUR panels cover)
+        (boxes.some((r) => cx > r.left && cx < r.right && cy > r.top && cy < r.bottom) ? covered : free).push(tid);
+      }
+      if (!covered.length) return;
+      const spec = { tokens: [covered[0], actor, ...covered.slice(1), ...free], level: "turn", hand: true, why: "aimRoom" };
+      log.push({ at: Date.now(), why: "aimRoom", level: "turn", focus: room.focus, covered: covered.length, sent: true }); if (log.length > 40) log.shift();
+      Promise.resolve(Zones.frame(spec)).catch(() => {});
+    } catch (e) { console.warn(LOG, "aim room failed", e); }
+  }));
 }
 /* FXU3 (U207): after a reload in the middle of a fight the player's own token could stay off-screen: the first look's join cue found no
    unit of the dock yet, or no token this canvas draws yet (a page that loads slowly), and was spent. It is now kept due for JOIN_MS and

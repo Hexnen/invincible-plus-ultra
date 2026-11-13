@@ -55,6 +55,7 @@
   animation: itc-in .32s var(--ita-out) both;
 }
 #invincible-tactics-chase .itc-panel > * { zoom: var(--ita-scale, 1); flex: none; }
+#invincible-tactics-chase .itc-panel { container: itc / inline-size; }
 #invincible-tactics-chase .itc-panel[data-folded] { --itc-want: 560px; gap: 6px; padding-bottom: 9px; }
 #invincible-tactics-chase .itc-panel[data-seat="end"] { --itc-want: 460px; }
 @keyframes itc-in { from { opacity: 0; translate: -50% -8px; } to { opacity: 1; translate: -50% 0; } }
@@ -139,11 +140,32 @@
 
 /* the GM's corrections */
 #invincible-tactics-chase .itc-gm { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid rgba(107, 130, 166, .55); padding-top: 6px; }
+/* FXS2 (U229): the fold of the tools and the four ends on one row; the ends are icon buttons (their words in the tooltips) */
+#invincible-tactics-chase .itc-gm-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+#invincible-tactics-chase .itc-gm-ends { display: flex; align-items: center; gap: 4px; }
+#invincible-tactics-chase .itc-gm-ends > .itc-k { margin-right: 3px; }
+#invincible-tactics-chase .itc-ib { display: grid; place-items: center; width: 30px; height: 28px; font-size: 13px; color: var(--ita-text); border: 1px solid var(--ita-frame); transition: background-color .12s ease-out, color .12s ease-out, border-color .12s ease-out; }
+#invincible-tactics-chase .itc-ib:hover:not([aria-disabled="true"]) { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-yellow); }
+#invincible-tactics-chase .itc-ib[data-kind="main"] { color: var(--ita-yellow); border: 2px solid var(--ita-yellow); }
+#invincible-tactics-chase .itc-ib[aria-disabled="true"] { color: var(--ita-line); border-style: dashed; border-color: var(--ita-line); }
+#invincible-tactics-chase .itc-gm-ends .itc-ib[data-id="escaped"] > i { color: var(--itc-prey); }
+#invincible-tactics-chase .itc-gm-ends .itc-ib[data-id="caught"] > i { color: var(--itc-pur); }
+#invincible-tactics-chase .itc-gm-ends .itc-ib:hover:not([aria-disabled="true"]) > i, #invincible-tactics-chase .itc-gm-ends .itc-ib[aria-disabled="true"] > i { color: inherit; }
+#invincible-tactics-chase .itc-join-to[data-id="join:pursuer"] > i { color: var(--itc-pur); }
+#invincible-tactics-chase .itc-join-to[data-id="join:prey"] > i { color: var(--itc-prey); }
+#invincible-tactics-chase .itc-join-to:hover:not([aria-disabled="true"]) > i { color: inherit; }
 #invincible-tactics-chase .itc-gm-h { display: inline-flex; align-items: center; gap: 7px; width: fit-content; min-height: 26px; padding: 0 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); border: 1px solid var(--ita-line); }
 #invincible-tactics-chase .itc-gm-h:hover { color: #fff; border-color: #fff; }
-#invincible-tactics-chase .itc-gm-b { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 14px; align-items: end; }
-#invincible-tactics-chase .itc-ctl { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-#invincible-tactics-chase .itc-ends-b { display: flex; flex-wrap: wrap; gap: 6px; }
+/* FXS2 (U229): the tools as label-and-control pairs on compact rows (each label beside its control, not over it) */
+#invincible-tactics-chase .itc-gm-b { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+#invincible-tactics-chase .itc-ctl { display: flex; align-items: center; gap: 6px; min-width: 0; }
+#invincible-tactics-chase .itc-ctl > .itc-k { flex: none; white-space: nowrap; }
+#invincible-tactics-chase .itc-c-obs { flex: 1 1 210px; }
+#invincible-tactics-chase .itc-c-obs > .itc-sel { flex: 1 1 auto; width: auto; }
+#invincible-tactics-chase .itc-c-join { flex: 1 1 280px; }
+#invincible-tactics-chase .itc-c-join > .itc-sel { flex: 1 1 auto; width: auto; }
+#invincible-tactics-chase .itc-c-join > .itc-none { flex: 1 1 auto; color: var(--ita-label); }
+#invincible-tactics-chase .itc-join-b { display: flex; gap: 4px; flex: none; }
 #invincible-tactics-chase .itc-tog { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-text); border: 1px solid var(--ita-line); }
 #invincible-tactics-chase .itc-tog[aria-pressed="true"] { color: var(--ita-ink); background: var(--ita-yellow); border-color: var(--ita-ink); }
 #invincible-tactics-chase .itc-step { display: inline-flex; align-items: center; gap: 0; width: fit-content; border: 1px solid var(--ita-line); }
@@ -199,9 +221,6 @@
 #invincible-tactics-chase .itc-people { display: flex; flex-wrap: wrap; gap: 3px 10px; min-width: 0; max-width: 100%; }
 #invincible-tactics-chase .itc-corner[data-side="prey"] .itc-people { justify-content: flex-end; }
 #invincible-tactics-chase .itc-unit:not([data-vehicle]) > .itc-people { flex: 1 1 0; }
-#invincible-tactics-chase .itc-join { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; }
-#invincible-tactics-chase .itc-join > :first-child { grid-column: 1 / -1; }
-#invincible-tactics-chase .itc-join > .itc-btn { min-width: 0; padding-inline: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #invincible-tactics-chase .itc-person { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
 #invincible-tactics-chase .itc-corner[data-side="prey"] .itc-person { flex-direction: row-reverse; }
 #invincible-tactics-chase .itc-person .itc-face { width: 20px; height: 20px; font-size: 11px; border-width: 1px; }
@@ -227,6 +246,13 @@
 #invincible-tactics-chase .itc-huge[data-tone="miss"] { color: var(--itc-prey); }
 #invincible-tactics-chase .itc-mid > .itc-unit-t { font: 400 13px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fff; }
 #invincible-tactics-chase .itc-say { color: var(--ita-text); text-wrap: balance; }
+/* FXS2 (U233): the two counts of a running chase, each its own item (a label and its number), never broken inside; side by side, one under the other when narrow */
+#invincible-tactics-chase .itc-run { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; }
+#invincible-tactics-chase .itc-run-i { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+#invincible-tactics-chase .itc-run-i > span { font: 400 11px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ita-label); }
+#invincible-tactics-chase .itc-run-i > b { font: 400 16px/1 Titles, Comic, sans-serif; color: #fff; font-variant-numeric: tabular-nums; }
+#invincible-tactics-chase .itc-run-i[data-id="catch"] > b { color: var(--itc-pur); }
+#invincible-tactics-chase .itc-run-i[data-id="escape"] > b { color: var(--itc-prey); }
 /* FXO2 (U216): the catch, one row per unit (a left-aligned column, centred under the track): the striker in the pursuers' colour, who does not strike dimmed with the roster's dashed stuck tag */
 #invincible-tactics-chase .itc-catch { display: grid; justify-content: center; justify-items: start; gap: 3px; width: 100%; margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--ita-line); }
 #invincible-tactics-chase .itc-catch > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; max-width: 100%; gap: 2px 6px; min-width: 0; }
@@ -313,13 +339,18 @@
 #invincible-tactics-chase[data-tight] .itc-portrait { width: 46px; height: 46px; border-width: 2px; }
 #invincible-tactics-chase[data-tight] .itc-pic-ic { width: 16px; height: 14px; font-size: 9px; }
 #invincible-tactics-chase[data-tight] .itc-huge { font-size: 42px; }
-#invincible-tactics-chase[data-tight] .itc-say { display: none; }
+#invincible-tactics-chase[data-tight] .itc-say:not(.itc-run) { display: none; }
 #invincible-tactics-chase[data-tight] .itc-unit { min-height: 22px; padding: 1px 5px; }
 #invincible-tactics-chase[data-tight] .itc-person .itc-face { width: 18px; height: 18px; }
 #invincible-tactics-chase[data-tight] .itc-obs { padding: 4px 9px; }
 #invincible-tactics-chase[data-tight] .itc-dec { padding: 6px 9px 8px; gap: 5px; }
 #invincible-tactics-chase[data-tight] .itc-dec-t { font-size: 13px; }
 #invincible-tactics-chase[data-tight] .itc-btn[data-kind="main"] { min-height: 32px; }
+/* FXS2 (U229): in a low window the caption's button stands beside its sentence, not under it */
+#invincible-tactics-chase[data-tight] .itc-dec:not([data-kind="wait"]) { flex-flow: row wrap; align-items: center; justify-content: space-between; gap: 5px 10px; }
+#invincible-tactics-chase[data-tight] .itc-dec-h { flex: 1 1 240px; min-width: 0; }
+#invincible-tactics-chase[data-tight] .itc-dec-b { padding-top: 0; }
+#invincible-tactics-chase[data-tight] .itc-dec > .itc-waits { flex: 1 1 100%; }
 /* with the GM's tools open in a low window the round's arrows, the obstacle's sentence and the pips step aside (the arrows' and the
    obstacle's words stay in the tooltips and the big number) */
 #invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-strip { display: none; }
@@ -328,7 +359,22 @@
 /* CHASE2: with the GM's buttons on every line, a low window keeps the names and drops the role words (the face and the box say it) */
 #invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-role { display: none; }
 #invincible-tactics-chase[data-tight] .itc-panel[data-gm] .itc-obs { display: none; }
+/* ---------- FXS2 (U229): a narrow panel (beside the GM's desk and the map's cards at 1366 px) ----------
+   Three columns left each side about 150 px: the names were cut to "A...", the GM's buttons on a unit's line lay over its name. Under
+   660 px the distance stands as one band across the top (the big number, then its track and its two counts beside it) and the two
+   sides face each other under it, each with half the panel's width. */
+@container itc (max-width: 660px) {
+  #invincible-tactics-chase .itc-ring { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "mid mid" "pur prey"; gap: 6px 10px; }
+  #invincible-tactics-chase .itc-corner[data-side="pursuer"] { grid-area: pur; }
+  #invincible-tactics-chase .itc-corner[data-side="prey"] { grid-area: prey; }
+  #invincible-tactics-chase .itc-mid { grid-area: mid; max-width: none; display: grid; grid-template-columns: auto auto; justify-content: center; align-items: center; gap: 1px 14px; padding: 2px 0 4px; border-bottom: 1px solid rgba(107, 130, 166, .45); }
+  #invincible-tactics-chase .itc-mid > .itc-huge { grid-column: 1; grid-row: 1 / span 4; }
+  #invincible-tactics-chase .itc-mid > :not(.itc-huge):not(.itc-catch) { grid-column: 2; justify-self: start; text-align: left; }
+  #invincible-tactics-chase .itc-mid > .itc-run { justify-content: flex-start; }
+  #invincible-tactics-chase .itc-mid > .itc-catch { grid-column: 1 / -1; }
+}
 @media (prefers-reduced-motion: reduce) {
   #invincible-tactics-chase .itc-panel { animation: none; }
+  #invincible-tactics-chase .itc-ib { transition: none; }
   #invincible-tactics-chase .itc-btn { transition: none; }
 }

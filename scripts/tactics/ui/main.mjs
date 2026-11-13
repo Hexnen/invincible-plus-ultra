@@ -662,6 +662,13 @@ function watch() {
   for (const el of [...els, document.querySelector("#chat-notifications .chat-log"), document.querySelector(".mm-filter")]) {
     if (el && el.dataset.itdWatched !== "1") { el.dataset.itdWatched = "1"; ro.observe(el); }
   }
+  /* FXS2 (U234): the challenges' rows coming and going (and their "+N more" chip) inside a band fitted to them may leave the HUD's box as
+     it was: the band is worked out again (slots-pure.frame hud.end) */
+  const ichList = document.getElementById("ich-list");
+  if (ichList && ichList.dataset.itdWatched !== "1") {
+    ichList.dataset.itdWatched = "1";
+    new MutationObserver(() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; relayout(); }); }).observe(ichList, { childList: true });
+  }
 }
 /* What the map keeps clear of (zones-api.md sections 23, 38 and 41). U132: the dock's root covers the window, so it is not declared
    itself.
