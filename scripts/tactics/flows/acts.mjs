@@ -5,7 +5,7 @@
    A row without a roll (pick up an item [B2316], an item or a power used without one) goes straight to its effect. */
 import { maneuvers, hazards, crits, damage, dice } from "../../rules/index.mjs";
 import * as M from "../mods-pure.mjs";
-import { ATTRS, attrChoices } from "../actions-pure.mjs";
+import { ATTRS, attrChoices, bodyBound } from "../actions-pure.mjs";
 import * as K from "./kit.mjs";
 import * as Lg from "../ledger-pure.mjs";
 import * as P1 from "../economy-pure.mjs";
@@ -182,7 +182,12 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
       if (k && !K.flag(I, "spell")) { K.setFlag(I, "spell"); R.effects.push({ t: "state", ...M.counterBump(v.state, k) }); }
     } break;
     case "spellOn": if (!K.flag(I, "spellOn")) { K.setFlag(I, "spellOn"); R.effects.push({ t: "state", path: ["counters", spellReady(I.actor)], to: null }); } break;
-    case "luck": token(R, { id: sid(`l${I.id}`), holder: subject, dice: (opt === "bad" ? -1 : 1) * (fx.lv ?? 1), scope: { next: 1 }, uses: 1, source: src, from: I.actor, forced: 1, expires: { at: "roundEnd" } }); break;       // [B1727-1730]
+    case "luck": {                                                                          // [B1727-1730]
+      /* ANSF (P6-5, the user 2026-11-12: «Wszystkie 6 zmian»): used as an interrupt, the dice go on the roll of the action it interrupted
+         ("an action they are about to perform"), not on the next roll of the target until the round ends; they end with that action */
+      const P = I.cause === "interrupt" && I.parent ? (v.state.stack ?? []).find((x) => x.id === I.parent) : null, on = P ? (P.part && P.parent ? P.parent : P.id) : null;
+      token(R, { id: sid(`l${I.id}`), holder: subject, dice: (opt === "bad" ? -1 : 1) * (fx.lv ?? 1), scope: { next: 1, ...(on ? { inst: on } : {}) }, uses: 1, source: src, from: I.actor, forced: 1, expires: { at: "roundEnd" } });
+    } break;
     case "aim": token(R, { id: sid(`m${I.id}`), holder: I.actor, dice: fx.dice ?? 2, scope: { rolls: fx.rolls, attrs: fx.attrs }, uses: 1, source: src, expires: fx.until === "roundEnd" ? { at: "roundEnd" } : { at: "turnEndOf", who: I.actor } }); break;   // [B2163], [B2116]
     case "inspire": if (sf) {                                                                // [B2119]: stress taken = Resolve given back
       const n = Math.max(0, Math.min(Number(opt) || 1, sf.maxResolve - sf.resolve, a?.resolve ?? 0));
@@ -266,7 +271,7 @@ function legality(v, inst) {
   if ((e?.target?.n?.[0] ?? 0) > 0 && !other) return bad("noTarget");
   if (a.health <= 0 && !(kind === "rally" && !other) && kind !== "convert") return bad("broken");                                  // [B2707]: a broken character may only try to rally [B2773]
   if (K.holdsTied(v, inst.actor)) return bad("grappling", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else; PWA (PW072): not with Extra Limb(s) [B1926]
-  if (e?.tags?.includes("physical")) { const r = RESTRAINTS.find((s) => M.statusesOf(v.state, inst.actor).some((x) => x.id === s && x.data?.moveOnly !== 1)); if (r) return bad("restrained", { ...GM, status: r }); }      // PWC (PW005) [B1611]: Immobilize Only bars no action
+  if (bodyBound(e)) { const r = RESTRAINTS.find((s) => M.statusesOf(v.state, inst.actor).some((x) => x.id === s && x.data?.moveOnly !== 1)); if (r) return bad("restrained", { ...GM, status: r }); }      // PWC (PW005) [B1611]: Immobilize Only bars no action
   if (e?.tags?.includes("physical") && K.phased(v.state, inst.actor) && !K.marked(v.state, inst.actor, "solid")) return bad("intangible", GM);      // PWA (PW083) [B1941], [B1942]
   if (e?.roll && !e.roll.optional && !attrOf(v, inst)) return bad("noAttribute");
   if (d.attr && e?.roll && !e.roll.attr && !attrChoices(e).includes(d.attr)) return bad("noAttribute");

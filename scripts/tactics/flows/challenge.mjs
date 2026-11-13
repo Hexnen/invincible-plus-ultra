@@ -43,7 +43,10 @@ export function optionOf(cfg, mode) {
   return o && opt ? { objective: o.id, option: opt } : null;
 }
 const norm = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const hasPower = (c, name) => (c?.powers ?? []).some((p) => norm(p) === norm(name));
+/* ANSF (P7-12, the user 2026-11-12: «Wszystkie 6 zmian»): the option's power is found by the compendium identifier of the hero's power
+   (`powerKeys`: the English name of the entry it comes from, system-adapter powerKey), so a power renamed on the sheet (a Polish name)
+   still counts; the name on the sheet is the fallback. Not found: the GM's card, as before. */
+const hasPower = (c, name) => (c?.powerKeys ?? []).some((p) => norm(p) === norm(name)) || (c?.powers ?? []).some((p) => norm(p) === norm(name));
 
 /* ------------------------------------------------------------------ the objective roll */
 const attrOf = (v, inst) => optionOf(cfgOf(v.state, inst.decl.targets?.[0]), inst.decl.mode)?.option.attr ?? inst.decl.attr ?? null;

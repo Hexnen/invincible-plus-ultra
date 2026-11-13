@@ -111,6 +111,10 @@ export const TALENT_NAMES = { combatVeteran: ["combat veteran"], fastReflexes: [
 export const TALENT_IDS = Object.freeze(Object.fromEntries([["combatVeteran", "Combat Veteran"], ["fastReflexes", "Fast Reflexes"]].map(([k, en]) => [k, new Set(`${PACK_IDS.talent?.[en] ?? ""}${EMBEDDED_IDS.talent?.[en] ?? ""}`.match(/.{16}/g) ?? [])])));
 /** C8: does this talent item come from the compendium entry of `key` (its compendium source, else its own id: an imported pregenerated character)? */
 export const talentById = (item, key) => { const ids = TALENT_IDS[key], src = String(item?._stats?.compendiumSource ?? item?._source?._stats?.compendiumSource ?? item?.flags?.core?.sourceId ?? "").split(".").pop(); return !!ids && item?.type === "talent" && (ids.has(src) || ids.has(String(item.id ?? item._id ?? ""))); };
+/* ANSF (P7-12, the user 2026-11-12: «Wszystkie 6 zmian»): a power is known by its compendium identifier, as the talents (C8): the English
+   name of the compendium entry it comes from (its compendium source, else its own id: an imported pregenerated character), else null */
+const POWER_BY_ID = new Map(Object.entries({ ...(EMBEDDED_IDS.power ?? {}) }).concat(Object.entries(PACK_IDS.power ?? {})).flatMap(([en, ids]) => (String(ids).match(/.{16}/g) ?? []).map((id) => [id, en])));
+export const powerKey = (item) => { const src = String(item?._stats?.compendiumSource ?? item?._source?._stats?.compendiumSource ?? item?.flags?.core?.sourceId ?? "").split(".").pop(); return item?.type === "power" ? POWER_BY_ID.get(src) ?? POWER_BY_ID.get(String(item.id ?? item._id ?? "")) ?? null : null; };
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
 export const actorOf = (c) => c?.token?.actor ?? c?.actor ?? null;
@@ -253,7 +257,7 @@ export function actorFacts(actor) {
   if (pass.stressArmor > 0) armors.push({ id: "defiance", armor: pass.stressArmor, stress: true });
   /* P7: a challenge counts its time in the unit of the challenges HUD (missing = rounds); a vehicle carries its table row [B2936-2941] */
   const p7 = kind === "challenge" ? { timeUnit: actor.flags?.[MOD]?.timeUnit ?? "rounds" } : kind === "vehicle" ? { vehicle: { type: s.type ?? "ground", speed: Math.max(1, num(s.speed)), maneuver: num(s.maneuverability), passengers: num(s.passengers), ...mountOf(actor),
-    weapons: actor.items.filter((i) => weaponFacts(actor, i.id)?.damage != null).length } } : { powers: actor.items.filter((i) => i.type === "power").map((i) => String(i.name ?? "").slice(0, 60)).slice(0, 40) };
+    weapons: actor.items.filter((i) => weaponFacts(actor, i.id)?.damage != null).length } } : { powers: actor.items.filter((i) => i.type === "power").map((i) => String(i.name ?? "").slice(0, 60)).slice(0, 40), powerKeys: [...new Set(actor.items.filter((i) => i.type === "power").map(powerKey).filter(Boolean))].slice(0, 40) };      // ANSF (P7-12)
   return {
     kind, npc: !S.heroSide({ type: actor.type, owned: ownersOf(actor).length > 0, disposition: (actor.token ?? actor.prototypeToken)?.disposition }), attrs, ...p7,      // H3-4: the one side rule (the engine's facts set it per token)
     health: num(s.derived?.health?.value), maxHealth: num(s.derived?.health?.max), resolve: num(s.derived?.resolve?.value), maxResolve: num(s.derived?.resolve?.max),

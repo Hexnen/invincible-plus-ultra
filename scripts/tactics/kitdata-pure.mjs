@@ -142,7 +142,7 @@ export const ROWS = Object.freeze([
   B("Illusion", "Dream Projection", [1719], "hand", "story", { why: "outOfFight" }),
   P("Light Control", [1722, 1723], "assist", "zone", { atk: { noDamage: 1, ignoreArmor: 1, stunts: "noDamage", immuneHuge: 1, onHit: { stun: 1 } }, acts: [narr("zone", "full")] }),
   burst("Light Control", "Burst Effect (Light Control)", [1724]),
-  P("Luck Control", [1727, 1728, 1729, 1730], "assist", "token", { acts: [{ k: "luck", cost: "quick", stress: 1, target: { who: "any", n: [0, 1] }, near: 1, pick: ["good", "bad"], effect: { kind: "luck", lv: [1, 2, 3, 4] } }] }),      // PWD (PW031, PW032): yourself too; your zone or an adjacent one [B1727]
+  P("Luck Control", [1727, 1728, 1729, 1730], "assist", "token", { acts: [{ k: "luck", cost: "quick", stress: 1, interrupt: ["beforeRoll"], target: { who: "any", n: [0, 1] }, near: 1, pick: ["good", "bad"], effect: { kind: "luck", lv: [1, 2, 3, 4] } }] }),      // PWD (PW031, PW032): yourself too; your zone or an adjacent one [B1727]; ANSF (P6-5): out of turn as an interrupt, on the roll of the interrupted action
   L("Luck Control", "Good Luck Only", [1731], "auto", "token", { opt: { luck: "good" } }),
   L("Luck Control", "Bad Luck Only", [1732], "auto", "token", { opt: { luck: "bad" } }),
   /* PWD (PW046) [B1735], [B1744]: the weight limit up to 2 steps higher for as much stress; (PW045) [B1737] a block of an attack that uses metal, even a shot,

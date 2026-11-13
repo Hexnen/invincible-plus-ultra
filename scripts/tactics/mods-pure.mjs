@@ -26,6 +26,7 @@ export function makeToken(t) {
   if (Array.isArray(t.scope?.attrs)) scope.attrs = t.scope.attrs.filter((a) => typeof a === "string").slice(0, 6);
   if (t.scope?.purpose) scope.purpose = String(t.scope.purpose).slice(0, 300);
   if (t.scope?.next) scope.next = 1;
+  if (isId(t.scope?.inst)) scope.inst = t.scope.inst;     // ANSF (P6-5): only the rolls of that action (Luck Control as an interrupt [B1727])
   const out = { id: t.id, holder: t.holder, dice, scope, uses: t.uses === "all" ? "all" : Math.max(1, Math.trunc(Number(t.uses) || 1)), stacks: t.stacks === true,
     source: source(t.source), expires: { at: TOKEN_EXPIRES.includes(t.expires?.at) ? t.expires.at : "roundEnd" } };
   if (isId(t.expires?.who)) out.expires.who = t.expires.who;
@@ -38,9 +39,11 @@ export function makeToken(t) {
     standing for all rolls of its scope (`uses: "all"`, Action Plan: "+1 die to ALL attribute rolls covered by the plan" [B1634]) and not
     waiting for the GM's word. Everything else is a die the holder chooses to spend. */
 export const standing = (t) => !!t && (t.forced === 1 || t.forced === true || (t.uses === "all" && !t.needsGm));
-/** Tokens `holder` may add to a roll. roll = { kind: one of ROLL_KINDS, attr }. */
+/** Tokens `holder` may add to a roll. roll = { kind: one of ROLL_KINDS, attr, inst?, up? } (inst: the instance that rolls, up: the action it is
+    a part of; a token bound to an action counts on that action's rolls only, ANSF P6-5). */
 export function tokensFor(state, holder, roll) {
   const list = (state.tokens ?? []).filter((t) => t.holder === holder
+    && (!t.scope?.inst || t.scope.inst === roll.inst || t.scope.inst === roll.up)
     && (!t.scope?.rolls?.length || t.scope.rolls.includes(roll.kind))
     && (!t.scope?.attrs?.length || t.scope.attrs.includes(roll.attr)));
   if (!TOKEN_NONSTACK_BEST_ONLY) return list;

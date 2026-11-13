@@ -287,7 +287,7 @@ const FLY = [{ mode: "flight", tier: "basic" }];
   const T = base(def);
   await T.req("p1", mv("H1", "z2"));
   const rq = T.lastRequest();
-  eq([T.spot("H1"), rq.attr, rq.maxPush, T.top()?.step], ["z1", "agility", 0, "travel"], "F: leaving the dark asks an AGILITY roll that cannot be pushed");
+  eq([T.spot("H1"), rq.attr, rq.maxPush, T.top()?.step], ["z1", "agility", null, "travel"], "F: leaving the dark asks an AGILITY roll that may be pushed (ANSF: A11 + SWEEP-R7, the user 2026-11-12, active movement; was: not pushed)");
   await T.roll("dark:z1", 0);
   eq([T.spot("H1"), T.state.stack.length, T.evs("move").pop().stopped], ["z1", 0, "dark"], "F: failed: the mover stays in the dark, the action is spent");
   eq(entries(T, "H1").length, 1, "F: (the cost stays paid [OQ-20])");

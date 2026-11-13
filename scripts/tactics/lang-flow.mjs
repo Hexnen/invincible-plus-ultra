@@ -68,6 +68,9 @@ export const EN_FLOW = {
   "ITAC.ui.wait.k.critConfirm": "injury die",
   "ITAC.opt.critKeep": "Approve {d6}: injury {n}",
   "ITAC.opt.critOther": "The other, {d6}: injury {n}",
+  /* ANSF: A25 the weapon's STUN effect (its roll); A7 + SWEEP-6 the fall that ends on a rooftop */
+  "ITAC.stunt.stunEffect": "STUN effect",
+  "ITAC.result.onRoof": "on the roof",
   /* ANSE PW030 [B1727]: Luck Control re-rolls an injury; A10: Armor against a fall or a crash, the GM's word */
   "ITAC.ui.line.critPick.luck": "{name}: Luck Control. The injury of {target} re-rolled: pick a die. The GM confirms.",
   "ITAC.ui.line.critConfirm.luck": "{name} (Luck Control) picked die {d6} for {target}: injury {n} ({crit}). Approve?",
@@ -146,6 +149,8 @@ export const PL_FLOW = {
   "ITAC.ui.wait.k.critConfirm": "kość rany",
   "ITAC.opt.critKeep": "Zatwierdź {d6}: rana {n}",
   "ITAC.opt.critOther": "Druga, {d6}: rana {n}",
+  "ITAC.stunt.stunEffect": "Efekt ogłuszenia",
+  "ITAC.result.onRoof": "na dachu",
   "ITAC.ui.line.critPick.luck": "{name}: Kontrola szczęścia. Przerzut rany {target}: wybierz kość. MG zatwierdza.",
   "ITAC.ui.line.critConfirm.luck": "{name} (Kontrola szczęścia) wybiera kość {d6} dla {target}: rana {n} ({crit}). Zatwierdzić?",
   "ITAC.card.luckReroll": "Przerzucić ranę?",

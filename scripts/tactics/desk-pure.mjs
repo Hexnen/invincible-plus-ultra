@@ -10,7 +10,7 @@ import * as Init from "./initiative-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
 import { standing, conditions as condsOf } from "./mods-pure.mjs";
 import { crits } from "../rules/index.mjs";
-import { applies, attrChoices } from "./actions-pure.mjs";
+import { applies, attrChoices, bodyBound } from "./actions-pure.mjs";
 import { pubLine } from "./view-pure.mjs";
 /* ADDED FOR THE SURFACES (scripts/tactics/ui/; all additive, checked in check-ui.mjs):
      instance lines carry `steps` (the flow's step ids, for "back to step"), `attr` / `defense` of the catalog entry `outcomes`, and `defs` (the defences declared, with their dice in the GM's model);
@@ -157,7 +157,7 @@ export function barModel(view, cid, ctx = {}) {
     const anytime = !!e.kit && e.cost === "none";                                               // P6: what costs no action is used when it applies (the flow checks the rest)
     const machine = e.id === "vehicleStart" && ride ? startState(view, ride.vehicle) : e.flow === "drive" && ride ? driveState(view, ride.vehicle) : null;     // U117: an engine that runs (or cannot) is not offered to be started; FXP (D164): nor driven before it runs
     const charge = e.attack === "charge" && !e.kit && typeof P1?.pay === "function", both = !charge || !pay.ok || chargeBoth(P1, view, cid, { resolve: ctx.c?.(cid)?.resolve });      // FXP (U183)
-    const reason = busy && !answers ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime && !byEntry ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && e.tags?.includes("physical") ? "restrained" : machine ? machine : !both ? "chargeActions" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
+    const reason = busy && !answers ? "busy" : !onTurn && e.cost !== "free" && !granted && !anytime && !byEntry ? "notYourTurn" : holding && C.holderBlocks(e) ? "grappling" : heldNow && e.flow === "attack" && !e.reaction ? "held" : stuck && e.flow === "move" ? stuck : tied && bodyBound(e) ? "restrained" : machine ? machine : !both ? "chargeActions" : pay.ok ? null : pay.reason ?? "noAction";      // [B2497]: the holder moves, attacks the one held or lets go
     return { id: e.id, label: e.label ?? `ITAC.action.${e.id}`, flow: e.flow, cost: e.cost ?? "full", needsTarget: e.flow === "attack" || !!e.targets || (e.target?.n?.[0] ?? 0) > 0,
       attr: e.roll?.attr ?? null, defense: e.defense ?? null, attack: e.attack ?? null, area: e.area === true, fullAuto: e.fullAuto === true, targetWho: e.target?.who ?? null, kind: e.kind ?? "builtin", tags: (e.tags ?? []).slice(), needsText: e.id === "other" || e.id === "orders" || e.effect?.token === "orders",
       targetMax: Math.max(1, Math.trunc(Number(e.target?.n?.[1])) || 1), stressExtra: e.stressExtra ? 1 : 0,      // FXA2 (D194): how many targets the entry takes (Mass Healing 1-4 [B1934]) and the stress of each beyond the first

@@ -133,8 +133,9 @@ export function buildPool(v, inst, key, cid, attr, mods = [], { rollKind = "othe
   if (obDice && !list.some((m) => m.source === ob)) list.push({ source: ob, dice: obDice });
   const pen = attr ? crits.critPenalty(c?.crits ?? [], attr) : 0;
   if (pen && !list.some((m) => m.source === "crit")) list.push({ source: "crit", dice: -pen });
-  const must = M.tokensFor(v.state, cid, { kind: rollKind, attr }).filter(M.standing).map((t) => t.id);                // P6: dice somebody else put on the roll (bad luck) are not the roller's to leave out; [B1634]: a plan covers ALL rolls of its kind, attack and defence alike
-  const tk = M.spendTokens(v.state, cid, { kind: rollKind, attr }, [...new Set([...tokens, ...must])]);
+  const rk = { kind: rollKind, attr, inst: inst.id ?? null, up: inst.part ? inst.parent ?? null : null };      // ANSF (P6-5): a token bound to an action counts there only
+  const must = M.tokensFor(v.state, cid, rk).filter(M.standing).map((t) => t.id);                // P6: dice somebody else put on the roll (bad luck) are not the roller's to leave out; [B1634]: a plan covers ALL rolls of its kind, attack and defence alike
+  const tk = M.spendTokens(v.state, cid, rk, [...new Set([...tokens, ...must])]);
   list.push(...tk.mods.map((m) => ({ source: m.source, dice: m.dice })));
   const forced = inst.data.forced?.pool?.[key];
   if (forced?.mods) list.push(...forced.mods.map((m) => ({ source: `gm:${String(m.label ?? "").slice(0, 24)}`, dice: Math.trunc(Number(m.dice) || 0) })));
@@ -422,6 +423,19 @@ export function separated(v, ids) {
     const pair = [e.holder, e.data.by].filter((x) => typeof x === "string");
     if (!pair.some((x) => ids.includes(x)) || !pair.some((x) => { const z = zoneOf(x); return !!z && z !== e.data.zone; })) continue;
     for (const w of M.effectEndWrites(v.state, e.id)) out.push({ t: "state", path: w.path, to: w.to });
+  }
+  return out;
+}
+/** ANSF (P5-2 + P5-R6, the user 2026-11-12: «Wszystkie 6 zmian»): the rounds of vacuum exposure count from each entering of the vacuum
+    [B2929]: who arrives in orbit or in a zone tagged `vacuum` from a place that is not, starts again unmodified (T052 already ends the
+    exposure at a turn that starts at pressure; this also covers going out and back in between two turns). -> effects */
+const vacuumAt = (Z, spot) => (typeof spot !== "string" ? false : spot.startsWith("@") ? spot === "@orbit" : (Z?.zone?.(spot.split(":")[0])?.tags ?? []).includes("vacuum"));
+export function vacuumEntered(v, ids, fromSpot) {
+  const Z = v.facts.zones, out = [];
+  if (!Z || vacuumAt(Z, fromSpot)) return out;
+  for (const cid of new Set(ids)) {
+    const key = M.counterKey.scene(cid, "vacuum");
+    if (M.counterGet(v.state, key) > 0 && vacuumAt(Z, Z.place?.(cid)?.spot)) out.push({ t: "state", path: ["counters", key], to: null });
   }
   return out;
 }
