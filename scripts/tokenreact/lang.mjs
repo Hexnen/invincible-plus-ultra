@@ -10,9 +10,12 @@ export const EN = {
   "ITR.Settings.Size.normal": "Normal",
   "ITR.Settings.Size.large": "Large",
   "ITR.Settings.Layer.Name": "Token reactions: layer",
-  "ITR.Settings.Layer.Hint": "Where the lettering is drawn on the map: over the tokens (it may cover a token for a moment) or under them (tokens stay on top; the word shows around them).",
-  "ITR.Settings.Layer.over": "Over tokens",
-  "ITR.Settings.Layer.under": "Under tokens"
+  "ITR.Settings.Layer.Hint": "Where the lettering is drawn on the map. Over the whole scene it is always readable and may cover a token for a moment; on the ground the tokens stay on top and the word shows around them.",
+  "ITR.Settings.Layer.overlay": "Over the whole scene and its lighting",
+  "ITR.Settings.Layer.weather": "Over weather and smoke (in the scene's light)",
+  "ITR.Settings.Layer.tokens": "Over tokens (under smoke and weather)",
+  "ITR.Settings.Layer.ground": "On the ground (under tokens)",
+  "ITR.Settings.Layer.top": "Over everything on the canvas"
 };
 
 export const PL = {
@@ -24,9 +27,12 @@ export const PL = {
   "ITR.Settings.Size.normal": "Zwykły",
   "ITR.Settings.Size.large": "Duży",
   "ITR.Settings.Layer.Name": "Reakcje żetonów: warstwa",
-  "ITR.Settings.Layer.Hint": "Gdzie na mapie rysuje się napis: nad żetonami (może na chwilę zasłonić żeton) albo pod nimi (żetony zostają na wierzchu, napis widać wokół nich).",
-  "ITR.Settings.Layer.over": "Nad żetonami",
-  "ITR.Settings.Layer.under": "Pod żetonami"
+  "ITR.Settings.Layer.Hint": "Gdzie na mapie rysuje się napis. Nad całą sceną jest zawsze czytelny i może na chwilę zasłonić żeton; na ziemi żetony zostają na wierzchu, a napis widać wokół nich.",
+  "ITR.Settings.Layer.overlay": "Nad całą sceną i oświetleniem",
+  "ITR.Settings.Layer.weather": "Nad pogodą i dymem (w świetle sceny)",
+  "ITR.Settings.Layer.tokens": "Nad żetonami (pod dymem i pogodą)",
+  "ITR.Settings.Layer.ground": "Na ziemi (pod żetonami)",
+  "ITR.Settings.Layer.top": "Nad wszystkim na płótnie"
 };
 
 export function t(key) {

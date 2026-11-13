@@ -15,6 +15,7 @@ for (const f of ["main.mjs"]) {
   const src = readFileSync(join(dir, f), "utf8");
   for (const m of src.matchAll(/\bt\(\s*"(ITR\.[\w.]+)"/g)) used.add(m[1]);
 }
+for (const id of ["overlay", "weather", "tokens", "ground", "top"]) used.add(`ITR.Settings.Layer.${id}`);      // built from the engine's layer ids
 for (const k of used) if (!(k in EN) || !(k in PL)) fail(`used but not defined in both languages: ${k}`);
 if (used.size < 5) fail(`too few keys found in use (${used.size})`);
 console.log(bad ? `${bad} problem(s)` : `OK: ${Object.keys(EN).length} keys, ${used.size} used directly, EN = PL`);

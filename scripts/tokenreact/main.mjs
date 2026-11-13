@@ -22,7 +22,7 @@ import * as Moment from "../moment.mjs";
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
 const KEY = { enabled: "tokenReactEnabled", size: "tokenReactSize", layer: "tokenReactLayer" };
-const LAYERS = ["over", "under"];      // the display layer of the lettering on the map: over the tokens (the engine's default) or under them
+const LAYERS = ["overlay", "weather", "tokens", "ground", "top"];      // the engine's world layers (contract v3 `layer`); overlay = its default
 const SIZE = { small: 0.8, normal: 1, large: 1.25 };
 /* the tactical fight's public stream (tactics/store.mjs HOOK and, on the executor, HOOK_GM: the same names, checked by sweep-checks/ltok.mjs) */
 const TAC_HOOK = `${MOD}.tactics`, TAC_HOOK_GM = `${MOD}.tacticsGm`;
@@ -194,7 +194,7 @@ function play(L, it) {
 }
 
 /* the user's display layer, handed to the engine (contract: the world layer option) */
-const layer = () => { const v = get(KEY.layer, "over"); return LAYERS.includes(v) && v !== "over" ? { layer: v } : {}; };
+const layer = () => { const v = get(KEY.layer, "overlay"); return { layer: LAYERS.includes(v) ? v : "overlay" }; };
 
 /* ---------- settings, hooks, start ---------- */
 function registerSettings() {
@@ -202,8 +202,8 @@ function registerSettings() {
   if (!has(KEY.enabled)) game.settings.register(MOD, KEY.enabled, { name: t("ITR.Settings.Enabled.Name"), hint: t("ITR.Settings.Enabled.Hint"), scope: "client", config: true, type: Boolean, default: true, onChange: (v) => syncOwner(v) });
   if (!has(KEY.size)) game.settings.register(MOD, KEY.size, { name: t("ITR.Settings.Size.Name"), hint: t("ITR.Settings.Size.Hint"), scope: "client", config: true, type: String, default: "normal",
     choices: { small: t("ITR.Settings.Size.small"), normal: t("ITR.Settings.Size.normal"), large: t("ITR.Settings.Size.large") } });
-  if (!has(KEY.layer)) game.settings.register(MOD, KEY.layer, { name: t("ITR.Settings.Layer.Name"), hint: t("ITR.Settings.Layer.Hint"), scope: "client", config: true, type: String, default: "over",
-    choices: { over: t("ITR.Settings.Layer.over"), under: t("ITR.Settings.Layer.under") } });
+  if (!has(KEY.layer)) game.settings.register(MOD, KEY.layer, { name: t("ITR.Settings.Layer.Name"), hint: t("ITR.Settings.Layer.Hint"), scope: "client", config: true, type: String, default: "overlay",
+    choices: Object.fromEntries(LAYERS.map((id) => [id, t(`ITR.Settings.Layer.${id}`)])) });
 }
 async function syncOwner(v = enabled()) {
   try {

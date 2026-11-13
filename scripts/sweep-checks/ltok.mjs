@@ -104,5 +104,8 @@ ck("G8 the engine's folder is not imported anywhere but its entry", !/letters\/(
 ck("G9 nothing is written to any document", !/\.update\(|\.setFlag\(|\.create\(|ChatMessage\.create/.test(main));
 
 ck("G10 the display layer is the user's client setting", /KEY\.layer, \{[^}]*scope: "client", config: true/.test(main) && main.includes("...layer()"));
+{ const E = rd("../letters/engine.mjs"); const ids = ["overlay", "weather", "tokens", "ground", "top"];
+  const worldLine = (id) => E.split(/\r?\n/).some((l) => l.trim().startsWith(`${id}:`) && l.includes('space: "world"'));
+  ck("G11 every layer offered is a world layer of the engine", ids.every(worldLine) && main.includes(`const LAYERS = ${JSON.stringify(ids).replace(/,/g, ", ")}`)); }
 console.log(`sweep ltok: ${n} checks, ${f} failed`);
 process.exit(f ? 1 : 0);
