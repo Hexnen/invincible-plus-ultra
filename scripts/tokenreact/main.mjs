@@ -38,6 +38,7 @@ const playing = new Map();   // token id -> [handles]
 const lastWord = new Map();  // kind -> the word said last on this seat
 const lastRoll = new Map();  // actor id -> ms of its last roll card
 const heard = new Set();
+const captioned = new Map();  // token id -> ms: the map's director (moinen-maps) shows a damage caption with the number for this token now
 let timer = 0;
 
 const get = (key, fallback) => { try { return game.settings.get(MOD, key); } catch { return fallback; } };
@@ -137,6 +138,16 @@ function onMessage(message) {
   } catch (err) { once(err); }
 }
 
+/* the map's director (moinen-maps, hook "moinenMapsDirector") turns the Damage Taken card into a shot with its own caption ("-4 Health")
+   on the clients that play it: there the token's word stays and its number goes (one change is said once) */
+const DIRECTOR_MS = 5000;
+function onDirector(kind, data) {
+  try {
+    if (kind !== "shot" || data?.shot?.kind !== "damage") return;
+    for (const id of data.shot.tokens ?? []) captioned.set(String(id), Date.now());
+  } catch (err) { once(err); }
+}
+
 /* ---------- playing ---------- */
 function reduced() {
   try { if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return true; } catch { /* no media query */ }
@@ -179,14 +190,15 @@ function play(L, it) {
     const tok = it.tok;
     if (!tok?.scene || tok.scene.id !== canvas.scene?.id || tok.destroyed || !seatOf(tok).visible) return;      // seen again now: the dice or the camera may have held it for seconds
     /* size: the engine's model (contract v4) from the token, the zoom, the viewport and the magnitude; the user's size and the crowd scale it */
-    const k = (SIZE[get(KEY.size, "normal")] ?? 1) * it.scale, lk = it.lk, red = reduced();
+    const k = (SIZE[get(KEY.size, "normal")] ?? 1) * it.scale, red = reduced();
+    const lk = Date.now() - (captioned.get(tok.id) ?? -1e9) < DIRECTOR_MS && it.mode === "full" ? { ...it.lk, number: null } : it.lk;
     for (const h of playing.get(tok.id) ?? []) try { h.stop({ quick: false }); } catch { /* gone */ }      // one reaction per token: the new one takes over
     const hs = [];
     if (it.mode === "full") hs.push(L.play(lk.word, { mood: lk.mood, sound: lk.sound, space: "world", at: tok.document, magnitude: lk.magnitude, scale: k, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, reduced: red, ...lk.motion, ...layer() }));
     if (lk.number) {
-      /* the number on a shoulder of the token, just under the word; alone (a crowd) it stands where the word would */
+      /* the number on a shoulder of the token, just under the word; alone (a crowd) it stands where the word would, bigger (seen live: tiny) */
       const at = it.mode === "full" ? { x: tok.x + tok.w * (lk.side > 0 ? 0.92 : 0.08), y: tok.y + tok.h * 0.08 } : tok.document;
-      const go = () => { hs.push(L.play(lk.number.text, { mood: lk.number.mood, sound: lk.number.sound, space: "world", at, token: tok.document, anchor: it.mode === "full" ? "center" : undefined, magnitude: lk.number.magnitude, scale: k * lk.number.size, seed: `${it.seed}#n`, hold: lk.hold, rotation: -Math.sign(lk.rotation || 1) * 4, colors: lk.number.colors, avoid: hs.map((h) => h.hand), reduced: red, in: "pop", out: lk.motion.out === "shatter" || lk.motion.out === "burst" ? "pop" : lk.motion.out, ...layer() })); settle(); };
+      const go = () => { hs.push(L.play(lk.number.text, { mood: lk.number.mood, sound: lk.number.sound, space: "world", at, token: tok.document, anchor: it.mode === "full" ? "center" : undefined, magnitude: lk.number.magnitude, scale: k * (it.mode === "full" ? lk.number.size : 1.25), seed: `${it.seed}#n`, hold: lk.hold, rotation: -Math.sign(lk.rotation || 1) * 4, colors: lk.number.colors, avoid: hs.map((h) => h.hand), reduced: red, in: "pop", out: lk.motion.out === "shatter" || lk.motion.out === "burst" ? "pop" : lk.motion.out, ...layer() })); settle(); };
       if (it.mode === "full" && !red) setTimeout(() => { if (playing.get(tok.id) === hs) go(); }, 110); else go();
     } else settle();
     playing.set(tok.id, hs);
@@ -236,6 +248,7 @@ function registerHooks() {
   Hooks.on("sightRefresh", () => { if (playing.size) recheck(); });
   Hooks.on("createChatMessage", onMessage);
   Hooks.on("updateChatMessage", (message) => { try { if (message?.rolls?.length && message.speakerActor) lastRoll.set(message.speakerActor.id, Date.now()); } catch (err) { once(err); } });
+  Hooks.on("moinenMapsDirector", onDirector);
   Hooks.on(TAC_HOOK, onEvent);
   Hooks.on(TAC_HOOK_GM, onEvent);
 }
