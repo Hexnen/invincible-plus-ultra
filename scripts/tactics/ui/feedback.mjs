@@ -4,6 +4,9 @@
                                  full stream) become Foundry's own scrolling text over the token, only for a token this user's canvas shows
      U57  the summary card       summed from the news of this user's own view as it comes; shown by the dock (a card above the bar) when
                                  the round number moves on and when the fight is deleted; goes away by itself
+     AWRD the titles of the fight  the fight's card has a second tab (and opens on it): the titles the GM's client counted for that fight
+                                 into the statistics (scripts/stats/titles-pure.mjs), read from the statistics store like the
+                                 statistics window does; the card follows the store until they come
      U58  two sounds             "your turn" and "the table waits for you", files that ship with Foundry itself, played on this client
                                  alone at this client's own volume (the setting tacticsSoundVolume; 0 = off)
      U53  first-fight hints      one line over the bar, each once per user and device (the setting tacticsHintsSeen), gone once the
@@ -13,6 +16,9 @@ import * as Store from "../store.mjs";
 import { tacticsApi as Api } from "../api.mjs";
 import * as FP from "./feedback-pure.mjs";
 import * as Gate from "./dicegate.mjs";
+import * as StatStore from "../../stats/store.mjs";
+import * as TP from "../../stats/titles-pure.mjs";
+import { t as st } from "../../stats/lang.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics feedback) |`;
 const SUM_KEY = `${MOD}.tactics.sum`, DONE_KEY = `${MOD}.tactics.sumDone`;
@@ -41,11 +47,50 @@ function showCard(card, ms) {
   clearTimeout(sumTimer);
   if (!card) { sum = null; return; }
   sum = { card };
-  /* it goes away by itself, but never from under the pointer or the keyboard focus of somebody reading it */
+  if (card.kind === "fight") { awTab = null; awSig = null; awAt = 0; }      // AWRD: a new fight card opens on its titles
+  armAway(ms);
+}
+/* it goes away by itself, but never from under the pointer or the keyboard focus of somebody reading it */
+function armAway(ms) {
+  clearTimeout(sumTimer);
   const away = () => { try { if (document.querySelector(".ita-sum:hover, .ita-sum:focus-within")) { sumTimer = setTimeout(away, HOLD_MS); return; } } catch { /* no page */ } sum = null; H.refresh(); };
   sumTimer = setTimeout(away, ms);
 }
 export function closeSum() { clearTimeout(sumTimer); sum = null; H?.refresh(); }
+
+/* ---------- AWRD: the titles of the fight on its card ---------- */
+let awTab = null, awSig = null, awAt = 0;      // the tab the user picked (null: the card's own choice), what the titles were at the last draw, when they first came
+/** the statistics' record of the fight a card belongs to: the newest record of that combat */
+function recOf(combatId) {
+  try { return Object.values(StatStore.all().fights ?? {}).filter((r) => r?.c === combatId).sort((a, b) => (b.t0 ?? 0) - (a.t0 ?? 0))[0] ?? null; } catch { return null; }
+}
+function awards(card) {
+  const rec = recOf(FP.cardFight(card)), gm = !!game.user?.isGM, staff = Store.isStaff(game.user);
+  /* the names and pictures this user's view held (a player's own namesake numbering); the record's for anybody else */
+  const names = (cid) => { const c = snap[cid]; return c ? { n: c.name, i: c.img, mine: !staff && !!c.mine } : null; };
+  const m = TP.cardOf(rec, { gm }, st, names);
+  const noGm = m.state === "wait" && !game.users?.activeGM;
+  return { ...m, note: m.state === "ok" ? null : st(m.state === "small" ? "IPU.Awrd.small" : m.state === "none" ? "IPU.Awrd.none" : noGm ? "IPU.Awrd.waitGm" : "IPU.Awrd.wait"), quietAuto: m.state === "small" || m.state === "none" || noGm };
+}
+/** the card as the dock draws it: a fight's card with its two tabs */
+function decorate(card) {
+  try {
+    if (!card || card.kind !== "fight") return card;
+    const aw = awards(card), sig = `${aw.state}|${aw.mvp.length + aw.list.length}`;
+    if (aw.state === "ok" && !awAt) { awAt = Date.now(); armAway(FIGHT_MS); }      // the titles came: the card stays its full time from now
+    awSig = sig;
+    const tab = awTab ?? (aw.quietAuto ? "sum" : "titles");
+    return { ...card, tab, aw, fresh: aw.state === "ok" && Date.now() - awAt < 1600, tabs: { titles: st("IPU.Awrd.tab"), sum: st("IPU.Awrd.tabSum") } };
+  } catch (e) { console.warn(LOG, "titles failed", e); return card; }
+}
+export function sumTab(v) { awTab = v === "sum" ? "sum" : "titles"; armAway(FIGHT_MS); H?.refresh(); }
+function onStats() {
+  try {
+    if (sum?.card?.kind !== "fight") return;
+    const aw = awards(sum.card);
+    if (`${aw.state}|${aw.mvp.length + aw.list.length}` !== awSig) H?.refresh();
+  } catch { /* a courtesy */ }
+}
 const who = (id) => snap[id] ?? null;
 
 /* ---------- U58: the two sounds ---------- */
@@ -161,7 +206,7 @@ export function sync(ctx) {
     let done = loadDone(); { const live = FP.doneLive(done, combat.id, view); if (live.length !== done.length) { done = live; saveDone(live); } }
     const next = FP.tallyFor(tally, combat.id, view?.news, done);      // D131: a fight already summed up keeps no tally
     if (next !== tally) { tally = next; saveTally(); }
-    if (FP.viewOver(view) && endFight(combat)) return { sum: sum?.card ?? null, hint: null };      // D131: the scene ended: the fight's card now, once
+    if (FP.viewOver(view) && endFight(combat)) return { sum: decorate(sum?.card ?? null), hint: null };      // D131: the scene ended: the fight's card now, once
     const round = Number.isFinite(view?.round) ? view.round : null;
     if (round !== null && roundWas !== null && round > roundWas && roundWas >= 1 && setting("tacticsSummary", true) !== false) showCard(FP.roundCard(tally, roundWas, who, statusesWere, t), ROUND_MS);
     if (round !== null) roundWas = round;
@@ -178,7 +223,7 @@ export function sync(ctx) {
       if (hint) markSeen([hint.id]);      // FXU3 (U207): shown = seen on this device (written once; this page keeps it until used or put away)
     }
     hintShown = hint?.id ?? null;
-    return { sum: sum?.card ?? null, hint };
+    return { sum: decorate(sum?.card ?? null), hint };
   } catch (e) { console.warn(LOG, "sync failed", e); return { sum: null, hint: null }; }
 }
 /** no fight on this scene: the card of the fight that just ended may still stand */
@@ -187,7 +232,7 @@ export function idle() {
   /* U130: a fight the GM stopped (its tactical state is gone, the combat still stands) is over NOW: its summary is shown now and its
      tally let go, so deleting that combat later (as the GM does before starting the next fight) brings no old card back */
   try { const c = combatWas ? game.combats?.get(combatWas) : null; if (c && tally?.combat === c.id && !Store.stateOf(c)) endFight(c); } catch (e) { console.warn(LOG, "fight stop failed", e); }
-  return { sum: sum?.card ?? null, hint: null };
+  return { sum: decorate(sum?.card ?? null), hint: null };
 }
 
 function endFight(combat) {
@@ -211,6 +256,7 @@ export function start(h) {
     Hooks.on(Store.HOOK, onEvent);
     Hooks.on(Store.HOOK_GM, onEvent);
     Hooks.on("deleteCombat", onDelete);
+    StatStore.subscribe(onStats);      // AWRD: the titles arrive in the statistics a moment after the fight ends
     Api.feedback = { state: () => ({ tally, sum, roundWas, hintShown, cueWas }), play, floats: (combatId, events) => { pending[combatId] = events; flush(combatId); } };      // for a look from the console
     return true;
   } catch (e) { console.warn(LOG, "start failed", e); return false; }

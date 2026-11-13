@@ -183,15 +183,34 @@ const SUM_COLS = ["dealt", "hits", "taken", "stress"];
 /* U93: a count is headed by the kit's mark of what it counts (damage dealt, Health lost, stress); attacks that hit keep their own picture */
 const SUM_MARK = { dealt: () => symMark("damage"), taken: () => symMark("health"), stress: () => costMark("stress") };
 const SUM_ICON = { hits: "fa-crosshairs", broken: "fa-heart-crack", unconscious: "fa-bed", dead: "fa-skull" };
-export const sumCard = (c, handlers = {}) => h("article.ita-ask.ita-sum", { data: { kind: c.kind }, attrs: { role: "status" } },
-  h("header.ita-head", {}, h("h3.ita-plate", { text: c.title }), c.sub ? h("span.ita-about", { text: c.sub }) : null,
+export const sumCard = (c, handlers = {}) => h("article.ita-ask.ita-sum", { data: { kind: c.kind, tab: c.tabs ? c.tab : null }, attrs: { role: "status" } },
+  h("header.ita-head", {}, h("h3.ita-plate", { text: c.title }), c.sub && !c.tabs ? h("span.ita-about", { text: c.sub }) : null,
+    /* AWRD: a fight's card has two tabs, its titles and its summary: icon buttons, their names in the tooltips */
+    c.tabs ? h("span.ita-sum-tabs", { attrs: { role: "tablist", "aria-label": c.title } }, [["titles", "fa-trophy"], ["sum", "fa-list-ol"]].map(([id, fa]) =>
+      h("button.ita-sum-tab", { fk: `sum:tab:${id}`, tip: c.tabs[id], data: { id }, attrs: { role: "tab", "aria-selected": c.tab === id ? "true" : "false", "aria-label": c.tabs[id] }, on: { click: () => handlers.sumTab?.(id) } }, icon(fa)))) : null,
     h("button.ita-sum-x", { fk: "sum:x", tip: c.close, attrs: { "aria-label": c.close }, on: { click: () => handlers.sumClose?.() } }, icon("fa-xmark"))),
+  c.tabs && c.tab === "titles" ? awardsBody(c) : sumBody(c));
+const sumBody = (c) => [
   c.quiet ? h("p.ita-line", { text: c.quiet }) : null,
   h("ul.ita-sum-rows", {}, c.rows.map((r) => h("li.ita-sum-row", { data: { mine: r.mine ? "1" : null }, attrs: { "aria-label": r.say } }, face(r.img, r.name), h("span.ita-sum-n", { text: r.name }),
     /* the counts stand in fixed columns (dealt, hits, Health lost, Resolve lost), so a column reads down the card; an empty place stays empty */
     h("span.ita-sum-chips", {}, SUM_COLS.map((id) => { const k = r.chips.find((x) => x.id === id); return k ? h("span.ita-sum-chip", { tip: k.tip, data: { id: k.id } }, SUM_MARK[k.id]?.() ?? icon(SUM_ICON[k.id]), h("b", { text: k.n })) : h("span.ita-sum-chip", { data: { id, empty: "1" } }); }),
       r.out ? h("span.ita-sum-chip", { tip: r.out.tip, data: { id: "out" } }, icon(SUM_ICON[r.out.id])) : null)))),
-  c.more ? h("p.ita-sum-more", { text: c.more }) : null);
+  c.more ? h("p.ita-sum-more", { text: c.more }) : null];
+/* AWRD: THE TITLES of the fight (stats/titles-pure.cardOf): the MVP first, stamped big with its face, then one line per title: its badge,
+   its name, why, and who. A line of the user's own character is marked like the summary's. Until the GM's client has counted them: one line. */
+const awardsBody = (c) => {
+  const aw = c.aw ?? {};
+  if (aw.state !== "ok") return h("p.ita-line.ita-aw-note", { data: { state: aw.state ?? "wait" } }, aw.state === "wait" ? icon("fa-spinner") : icon("fa-trophy"), h("span", { text: aw.note ?? "" }));
+  return h("div.ita-aw", { data: { fresh: c.fresh ? "1" : null } },
+    (aw.mvp ?? []).map((x) => h("div.ita-aw-mvp", { data: { mine: x.who.mine ? "1" : null }, attrs: { "aria-label": `${x.name}: ${x.who.n}. ${x.why}` } },
+      h("span.ita-aw-burst", { attrs: { "aria-hidden": "true" } }, face(x.who.i, x.who.n)),
+      h("span.ita-aw-mvp-t", {}, h("span.ita-aw-mvp-k", { text: x.name, tip: x.tip }), h("b.ita-aw-mvp-n", { text: x.who.n }), h("small", { text: x.why })))),
+    (aw.list ?? []).length ? h("ul.ita-aw-list", {}, aw.list.map((x, i) => h("li.ita-aw-row", { data: { id: x.id, mine: x.who.mine ? "1" : null }, attrs: { "aria-label": `${x.name}: ${x.who.n}. ${x.why}`, style: `--i:${i}` } },
+      h("span.ita-aw-badge", { tip: x.tip, data: { id: x.id } }, icon(x.icon)),
+      h("span.ita-aw-t", {}, h("span.ita-aw-name", { text: x.name }), h("small", { text: x.why })),
+      h("span.ita-aw-who", {}, face(x.who.i, x.who.n), h("span", { text: x.who.n }))))) : null);
+};
 
 /** U1 / U2: the buttons of one roll (model-pure.rollButtons): `act` is done on this client (handlers.roll), `req` is sent. One element, re-skinnable. */
 /* U93: Push is named by its word (a button says what it does) and carries the mark of pushing before it and the bolt of stress after

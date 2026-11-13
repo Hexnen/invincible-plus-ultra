@@ -593,7 +593,7 @@ function draw(d, ui) {
   panelKey = pk;
   const askH = { send: (req) => send(req), pick: handlers.pick, text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
   /* U57: the summary of the round (or of the fight) that just ended stands where the questions stand, after them */
-  const asksOf = (prompts, sum, legend) => (prompts.length || sum || legend ? h("div.itd-asks", {}, prompts.map((a) => askCard(a, askH)), sum ? sumCard(d.sum, { sumClose: handlers.sumClose }) : null,
+  const asksOf = (prompts, sum, legend) => (prompts.length || sum || legend ? h("div.itd-asks", {}, prompts.map((a) => askCard(a, askH)), sum ? sumCard(d.sum, { sumClose: handlers.sumClose, sumTab: handlers.sumTab }) : null,
     legend ? legendCard({ legendClose: () => set({ legend: false }) }) : null) : null);
   const legendOn = !!(ui.legend && d.show), prompts = d.prompts ?? [];
   /* the line of the table, only while it has something the rest of the screen does not say (U51 / U52: model-pure.dockData):

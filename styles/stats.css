@@ -96,6 +96,37 @@
 .ipu-st-chips .ipu-chip b { margin-left: 2px; color: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
 .ipu-st-titles:empty { display: none; }
 
+/* ---------- AWRD: the titles of a fight (scripts/stats/titles-ui.mjs), the same world as the end-of-fight card (styles/tactics-ui.css
+   "AWRD"): the MVP stamped on a yellow burst, then one line per title with its coloured badge (the colours are set there), what it was
+   for and who. The titles a character or a player collected: a strip of badges with their count. ---------- */
+.ipu-aw { display: grid; gap: 8px; }
+.ipu-aw-h { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; padding: 0 0 4px; font: 400 13px/1 Titles, Comic, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ipu-yellow); border-bottom: 1px solid var(--ipu-line); }
+.ipu-aw-note { color: var(--ipu-label); font: 400 13px/1.4 Comic, sans-serif; }
+.ipu-aw-face { flex: none; display: grid; place-items: center; width: 24px; height: 24px; overflow: hidden; font: 400 12px/1 Titles, Comic, sans-serif; color: var(--ipu-yellow); background: #1b2d4a; }
+.ipu-aw-face img { width: 100%; height: 100%; object-fit: cover; object-position: top; border: 0; display: block; }
+.ipu-aw-mvp { display: flex; align-items: center; gap: 14px; padding: 8px 12px 8px 6px; background: radial-gradient(circle, rgba(169, 188, 220, .22) 1.1px, transparent 1.6px) 0 0 / 7px 7px, var(--ipu-tile); border: 2px solid #000; box-shadow: inset 0 0 0 1px rgba(255, 231, 42, .35); }
+.ipu-aw-burst { flex: none; display: grid; place-items: center; width: 80px; height: 80px; background: var(--ipu-yellow);
+  clip-path: polygon(50% 0, 59% 18%, 79% 7%, 77% 29%, 98% 31%, 84% 48%, 100% 63%, 79% 69%, 85% 91%, 64% 84%, 50% 100%, 38% 83%, 17% 92%, 21% 70%, 0 64%, 15% 49%, 2% 31%, 23% 29%, 20% 7%, 41% 18%); }
+.ipu-aw-burst .ipu-aw-face { width: 48px; height: 48px; font-size: 22px; border: 2px solid var(--ipu-ink); }
+.ipu-aw-mvp-t { display: grid; gap: 2px; min-width: 0; }
+.ipu-aw-mvp-k { justify-self: start; padding: 0 8px 1px; font: 400 22px/1.05 Titles, Comic, sans-serif; letter-spacing: .08em; color: var(--ipu-ink); background: var(--ipu-yellow); border: 2px solid var(--ipu-ink); transform: rotate(-2deg) skewX(-6deg); cursor: help; }
+.ipu-aw-mvp-t b { margin-top: 3px; font: 400 18px/1.1 Titles, Comic, sans-serif; letter-spacing: .03em; color: #fff; }
+.ipu-aw small { font-size: 12px; color: var(--ipu-label); font-variant-numeric: tabular-nums; }
+.ipu-aw-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0 18px; margin: 0; padding: 0; list-style: none; }
+.ipu-aw-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; min-height: 38px; padding: 4px 2px; border-bottom: 1px solid rgba(107, 130, 166, .25); }
+.ipu-aw-badge { --b: var(--ipu-label); display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 3px; color: var(--ipu-ink); background: var(--b); border: 2px solid #000; rotate: 45deg; }
+.ipu-aw-badge i { rotate: -45deg; font-size: 11px; }
+.ipu-aw-row .ipu-aw-badge { cursor: help; }
+.ipu-aw-t { display: grid; min-width: 0; }
+.ipu-aw-name { font: 400 14px/1.15 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #fff; }
+.ipu-aw-who { display: flex; align-items: center; gap: 7px; max-width: 150px; font-weight: 700; font-size: 12.5px; color: var(--ipu-text); }
+.ipu-aw-who > span:last-child { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.ipu-aw-got { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.ipu-aw-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 2px 9px 2px 4px; font: 400 12.5px/1 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ipu-text); border: 1px solid var(--ipu-line); cursor: help; }
+.ipu-aw-chip .ipu-aw-badge { width: 18px; height: 18px; margin: 0 2px; border-width: 1.5px; }
+.ipu-aw-chip .ipu-aw-badge i { font-size: 9px; }
+.ipu-aw-chip b { color: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
+
 .ipu-st-empty { display: grid; place-items: center; padding: 24px; }
 .ipu-st-empty p { max-width: 44ch; font: 400 15px/1.45 Comic, sans-serif; text-align: center; color: var(--ipu-label); }
 

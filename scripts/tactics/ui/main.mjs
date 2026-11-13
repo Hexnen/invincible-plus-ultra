@@ -619,7 +619,7 @@ function configure() {
     zonePick: async () => { try { const r = await Zones.pick({ title: t("ITAC.ui.pick.title", { name: "" }).replace(/^[:\s]+/, ""), color: "target" }); if (r?.ok) setDock({ to: r.spot ?? r.zone }); } catch (e) { console.warn(LOG, "zone pick failed", e); } },
     target: (cid) => { try { Pick.show(combatNow(), cid); } catch { /* a courtesy */ } },
     locate: (cid, on) => Pick.locate(combatNow(), cid, on), deskRelayout: () => { try { Desk.relayout(); } catch { /* not built */ } },
-    roll: rollAct, sumClose: () => Feedback.closeSum(), hintClose: (id) => Feedback.closeHint(id),
+    roll: rollAct, sumClose: () => Feedback.closeSum(), sumTab: (v) => Feedback.sumTab(v), hintClose: (id) => Feedback.closeHint(id),
     /* U132: what the frame of the fixed places asks: the seat, the hints, where the challenges' band ends (challenges/main.mjs) */
     staff: () => Store.isStaff(game.user), hintsOn: () => Store.setting("tacticsHints", true) !== false && Feedback.hintsLeft(Store.isStaff(game.user)),      // U186 / U192: a GM seat, or one that has seen every hint, keeps no place for one
     ichFloor: (y) => { try { window.dispatchEvent(new CustomEvent("ipu:ich-floor", { detail: y })); } catch { /* the challenges keep their room */ } },

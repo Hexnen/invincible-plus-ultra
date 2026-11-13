@@ -22,6 +22,7 @@ async function evaluate() {
       let stateOf = null;
       try { stateOf = (await import("../tactics/source.mjs")).tacticsState; } catch { /* no tactics: loose rolls only */ }
       Capture.start({ stateOf });
+      import("./titles.mjs").then((m) => m.start(game.modules.get(MOD)?.api?.stats ?? {})).catch((e) => console.warn(`${MOD} | stats titles not started`, e));      // AWRD
     }
     const n = Capture.catchUp();
     if (n) console.log(`${MOD} | stats: ${n} chat cards caught up`);
@@ -49,7 +50,8 @@ export function start(phases = {}) {
             open: openStats, data: () => Store.all(), pure: P,
             /* the next package (titles) registers a renderer here; see app.mjs FIGHT SECTIONS and pure.newFight TITLES */
             fightSections: sections,
-            setTitles: async (f, titles) => { if (!Store.isWriter()) return false; const rec = Store.fightRec(f); if (!rec) return false; Store.fight(f, { ...rec, titles: Array.isArray(titles) ? titles.slice(0, 40) : [] }); await Store.settle(); return true; },
+            /* AWRD: `meta` (titles-pure: { v, small? }) is kept as rec.tm: the titles were counted (none for a fight too small for them) */
+            setTitles: async (f, titles, meta) => { if (!Store.isWriter()) return false; const rec = Store.fightRec(f); if (!rec) return false; Store.fight(f, { ...rec, titles: Array.isArray(titles) ? titles.slice(0, 40) : [], ...(meta && typeof meta === "object" ? { tm: meta } : {}) }); await Store.settle(); return true; },
             deleteFight: async (f) => { if (!Store.isWriter()) return false; Store.dropFight(f); await Store.settle(); return true; },
             reset: Store.reset, settle: Store.settle
           };

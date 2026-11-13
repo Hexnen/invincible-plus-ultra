@@ -8,11 +8,12 @@
 import * as Store from "./store.mjs";
 import * as M from "./model.mjs";
 import { t } from "./lang.mjs";
+import { fightSection, collectedStrip } from "./titles-ui.mjs";
 
 const MOD = Store.MOD;
 const ID = "ipu-stats";
 const { ApplicationV2 } = foundry.applications.api;
-export const fightSections = [];
+export const fightSections = [fightSection];      // AWRD: the titles of the fight (titles-ui.mjs) are the first section
 let TL = null;      // the tactical strings (action, stunt and attribute names), loaded on first open
 const ui0 = { tab: "chars", period: "session", side: "h", sel: { chars: null, players: null, fights: null } };
 
@@ -139,7 +140,7 @@ export class StatsApp extends ApplicationV2 {
         g.rows.map((r) => h("tr", {}, h("th", { scope: "row", "data-tooltip": r.tip }, r.label),
           r.cells.map((c, i) => (c === null ? h("td", { class: "ipu-st-na", "data-tooltip": t("IPU.Stats.dash.tip"), "aria-label": t("IPU.Stats.dash.tip") }, "–") : h("td", { class: i === 2 ? "ipu-st-sum" : null, "data-zero": /^0(\/0)?$/.test(c) ? "1" : null }, c))))))));
     const chips = d.chips.map((c) => h("div", { class: "ipu-st-chips" }, h("span", { class: "ipu-st-chips-t", text: c.title }), c.items.map((x) => h("span", { class: "ipu-chip" }, x.label, h("b", { text: String(x.n) })))));
-    return [head, table, ...chips];
+    return [head, collectedStrip(d.titles, t), table, ...chips].filter(Boolean);      // AWRD: the titles collected, under the name
   }
   #fight(vm) {
     const d = vm.detail, out = [];

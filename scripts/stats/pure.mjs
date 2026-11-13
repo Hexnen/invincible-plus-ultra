@@ -9,13 +9,14 @@
      loose     the system's own roll cards and the module's Damage Taken cards in the chat, outside the engine: "l".
    Fact = { id, k, t, m:"t"|"l", f?:fight key, x?:tx, i?:inst, a?:actor id (who did it), ac?:combatant, o?:actor id (to whom), oc?:combatant,
             u?:user who threw, v?:1 (GM only), vu?:user who may see a GM-only fact too, ...numbers }
-   Kinds: roll act rx hit dmg str stunt down crit ctr chal (see factsOfEvent / factOfRoll). */
+   Kinds: roll act rx hit dmg str stunt down crit ctr chal mv (see factsOfEvent / factOfRoll). mv (AWRD): a move the doer made itself,
+   n = the zones it crossed (the engine's `move` event); the sums do not show it, the titles do (titles-pure.mjs "Mr Everywhere"). */
 
 export const MOD = "invincible-plus-ultra";
 export const V = 1;
 export const SESSION_GAP = 4 * 3600 * 1000;          // STAT-6: four hours without a fact end a session
 export const PAGE_MAX = 500;                         // facts per journal page
-export const KINDS = Object.freeze(["roll", "act", "rx", "hit", "dmg", "str", "stunt", "down", "crit", "ctr", "chal"]);
+export const KINDS = Object.freeze(["roll", "act", "rx", "hit", "dmg", "str", "stunt", "down", "crit", "ctr", "chal", "mv"]);
 export const MODES = Object.freeze(["t", "l"]);
 
 const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
@@ -112,6 +113,11 @@ export function factsOfEvent(ev, ctx) {
     case "counter": {
       const w = who(ev.by); if (!w) break;
       out.push({ ...base, id: id("ctr", ev.by), k: "ctr", a: w.a, ac: ev.by, ...onto(ev.against), s: pos(ev.sixes) });
+      break;
+    }
+    case "move": {
+      const w = who(ev.combatant); if (!w || !(pos(ev.zones) > 0)) break;
+      out.push({ ...base, id: id("mv", ev.combatant), k: "mv", a: w.a, ac: ev.combatant, n: pos(ev.zones) });
       break;
     }
     case "challenge": {

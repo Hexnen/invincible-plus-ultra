@@ -5,6 +5,7 @@
      player  the player characters (any player's: the party), every player, the fights with somebody the table saw (STAT-3, STAT-4).
    names = { attr(id), action(id), stunt(id), out(id), user(id) -> name, t(key, params) }. */
 import * as P from "./pure.mjs";
+import * as TP from "./titles-pure.mjs";
 
 export const TABS = Object.freeze(["chars", "players", "fights"]);
 const LOOSE_NA = new Set(["acts", "rx", "stunts", "counters", "armor", "blocked", "dodged", "missedMe", "minions", "assists", "crits", "chal", "fights"]);
@@ -52,6 +53,9 @@ export function view(data, viewer, ui, names) {
   const facts = P.inPeriod(factsAll, period);
   const sides = (aid) => (actors[aid] ? (isHero(actors[aid]) ? "h" : "n") : null);
   const sums = P.tally(facts, { viewer, sides });
+  /* AWRD: the titles each character collected in the fights this viewer may list, in the same period */
+  const won = TP.collected(P.fightsFor(data?.fights ?? {}, factsAll, viewer), viewer, period === "session" ? P.sessionStart(factsAll) : 0);
+  const titlesOf = (ids) => { const m = {}; for (const a of ids) for (const [k, n] of Object.entries(won.get(a) ?? {})) m[k] = (m[k] ?? 0) + n; return TP.chipsOf(m).map((x) => ({ ...x, label: tt(`IPU.Awrd.t.${x.id}`), tip: tt(`IPU.Awrd.tip.${x.id}`) })); };
   if (tab === "chars") {
     const ids = [...sums.keys()].filter((aid) => actors[aid] && (gm ? (side === "h" ? isHero(actors[aid]) : !isHero(actors[aid])) : isHero(actors[aid])));
     const rail = ids.map((aid) => { const r = sums.get(aid), s = P.sum(r.t, r.l); return { id: aid, name: actors[aid].n, img: actors[aid].i || null, kd: P.kd(s), weight: s.rolls + s.attacks + s.dealt + s.taken }; })
@@ -62,7 +66,7 @@ export function view(data, viewer, ui, names) {
     for (const x of rail) x.sel = x.id === sel.id;
     const r = sums.get(sel.id), s = P.sum(r.t, r.l), rec = actors[sel.id];
     const who = (rec.own ?? []).map((u) => names.user(u)).filter(Boolean);
-    return { ...base, rail, detail: { id: sel.id, name: rec.n, img: rec.i || null, sub: who.join(", "), kd: P.kd(s), groups: groupsOf(r.t, r.l, names), chips: chipsOf(s, names) } };
+    return { ...base, rail, detail: { id: sel.id, name: rec.n, img: rec.i || null, sub: who.join(", "), kd: P.kd(s), titles: titlesOf([sel.id]), groups: groupsOf(r.t, r.l, names), chips: chipsOf(s, names) } };
   }
   /* players: the sum of the characters each one owns (STAT-5) */
   const players = names.players();      // [{ id, name, avatar }]
@@ -80,7 +84,7 @@ export function view(data, viewer, ui, names) {
   const sel = shown.find((x) => x.id === ui?.sel) ?? shown[0];
   for (const x of shown) x.sel = x.id === sel.id;
   const s = P.sum(sel.t, sel.l);
-  return { ...base, rail: shown.map(({ chars, t, l, ...x }) => x), detail: { id: sel.id, name: sel.name, img: sel.img, sub: tt("IPU.Stats.players.chars", { list: sel.chars.map((a) => actors[a]?.n).filter(Boolean).join(", ") }), kd: P.kd(s), groups: groupsOf(sel.t, sel.l, names), chips: chipsOf(s, names) } };
+  return { ...base, rail: shown.map(({ chars, t, l, ...x }) => x), detail: { id: sel.id, name: sel.name, img: sel.img, sub: tt("IPU.Stats.players.chars", { list: sel.chars.map((a) => actors[a]?.n).filter(Boolean).join(", ") }), kd: P.kd(s), titles: titlesOf(sel.chars), groups: groupsOf(sel.t, sel.l, names), chips: chipsOf(s, names) } };
 }
 
 function fightsView(base, data, viewer, ui, names) {
