@@ -97,6 +97,14 @@ export function cues(before, now) {
   const list = now.armed ? out.filter((c) => c.hand) : out;
   return list.sort((a, b) => ORDER.indexOf(a.why) - ORDER.indexOf(b.why));
 }
+/** FXU3 (U207): the first look's frame of the own unit (the "join" cue) may find nothing to frame yet after a reload: the dock's unit
+    not known, or its token not drawn on this canvas yet. It stays due, and is tried again, while nothing else has moved the view on
+    and the user's hand is off the map: no own unit chosen or aimed, no question put, no other cue between the looks.
+    -> true while the join may still be tried */
+export function joinHold(before, now) {
+  if (!now || now.staff || now.sel || now.armed || Object.keys(now.asks ?? {}).length) return false;
+  return !before || cues(before, now).length === 0;
+}
 /** What an EVENT of the fight (spec 16) gives the camera on a client whose look is `now`. A player's client hears the public stream
     (nothing in it about anybody concealed from anybody); whatever it names is asked of this user's own look again: a combatant this
     view does not hold gives no cue and is in none. -> cue | null */

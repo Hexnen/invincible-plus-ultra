@@ -285,7 +285,30 @@ function draw(d, ui) {
   ]);
   if (!tick) tick = setInterval(count, 1000);
   place();
+  const body = box.querySelector(":scope > .igd-body");
+  if (body) { body.addEventListener("scroll", () => below(body), { passive: true }); below(body); }
 }
-export const relayout = () => { if (root) place(); };
+/* FXU3 (U203): a card whose button holds to the desk's bottom edge (Next of the round's queue, Confirm of the surprise card) lays that
+   button over the rows that do not fit; the GM could press Next past a row never seen. The rows under the button's band are counted
+   on a chip beside the button (the card's data-below draws the band's cyan edge, U12's sign of more); a click scrolls them into view.
+   Measured from the boxes the desk already drew, on every draw, scroll and resize; nothing of the fight is read. */
+function below(body) {
+  try {
+    for (const card of body.querySelectorAll(":scope .ita-ask")) {
+      const sub = card.querySelector(":scope > .ita-submit"), had = card.querySelector(":scope > .ita-below");
+      const edge = sub ? sub.getBoundingClientRect().top - 4 : Infinity;
+      const hid = sub ? [...card.querySelectorAll(".ita-opt")].filter((o) => o.getBoundingClientRect().bottom > edge + 1) : [];
+      if (!hid.length) { had?.remove(); delete card.dataset.below; continue; }
+      const say = String(last?.d?.labels?.below ?? "+{n}").replace("{n}", String(hid.length));
+      const chip = had ?? h("button.ita-below", { fk: `below:${card.dataset.kind ?? ""}` }, icon("fa-angles-down"), h("b"));
+      chip.querySelector("b").textContent = String(hid.length);
+      chip.dataset.tooltip = say; chip.setAttribute("aria-label", say);
+      chip.onclick = () => { const last = hid[hid.length - 1].getBoundingClientRect().bottom; body.scrollBy({ top: Math.ceil(last - edge + 6), behavior: "smooth" }); };
+      if (!had) { chip.style.height = `${sub.offsetHeight}px`; chip.style.marginTop = `${-(sub.offsetHeight + 6)}px`; sub.after(chip); }
+      card.dataset.below = String(hid.length);
+    }
+  } catch (e) { console.warn("invincible-plus-ultra | tactics desk below", e); }
+}
+export const relayout = () => { if (root) { place(); const body = box?.querySelector(":scope > .igd-body"); if (body) below(body); } };
 export const el = () => root;
 export function destroy() { if (tick) { clearInterval(tick); tick = 0; } root?.remove(); root = handleBtn = box = null; }

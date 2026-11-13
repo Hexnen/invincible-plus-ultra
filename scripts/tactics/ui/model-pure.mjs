@@ -425,9 +425,13 @@ export function askData(p, o) {
   })];
   /* ANSI-1 (FXT-10): a defender of the surprise card is one short tick row: the name, then its INTUITION roll as marks (the sixes, the
      dice); the roll (its tooltip's first line, so also its aria-label) and what being surprised does are said in words in its tooltip */
+  /* FXU3 (U202): the row SAYS its state, so an unticked defender never reads as struck out of the fight: a state mark (an eye shut:
+     surprised, an eye open: ready) and the state's word at the row's end; the tooltip is headed by the same state and says what that
+     state does, then that a click turns it */
   if (kind === "surprise") for (const x of options) { const d = (p.options ?? []).find((q) => q.id === x.id)?.data; if (!d) continue;
-    const roll = t("ITAC.ui.opt.surprised", { name: x.label, n: d.sixes ?? 0, dice: d.dice ?? "?" });
-    Object.assign(x, { marks: [{ mark: "six", n: d.sixes ?? 0 }, { mark: "dice", n: d.dice ?? "?" }], tip: tipOf(null, null, null, [roll, t("ITAC.ui.surprise.what")]) }); }
+    const roll = t("ITAC.ui.opt.surprised", { name: x.label, n: d.sixes ?? 0, dice: d.dice ?? "?" }), st = x.picked ? "surprised" : "ready";
+    Object.assign(x, { marks: [{ mark: "six", n: d.sixes ?? 0 }, { mark: "dice", n: d.dice ?? "?" }], state: { id: st, label: t(`ITAC.ui.surprise.st.${st}`), icon: x.picked ? "fa-eye-slash" : "fa-eye" },
+      tip: tipOf(t(`ITAC.ui.surprise.is.${st}`, { name: x.label }), null, null, [roll, t(x.picked ? "ITAC.ui.surprise.what" : "ITAC.ui.surprise.ready"), t("ITAC.ui.surprise.flip")]) }); }
   /* ANSI-2 (FXT-9) [B2168]: Tactical Support. The engine offers one option per six an ally could get ("support@<ally>|<k>"); the card
      shows ONE row per ally under its own caption: a click gives that ally one more six (+2 dice), the minus beside it takes one back, a
      click on a full row takes them all back. The picks sent stay the engine's ids (the k-th six of that ally). */
@@ -488,7 +492,8 @@ export function askData(p, o) {
     free: p.free ? { text: own.texts?.[p.id] ?? "", placeholder: t(desk ? "ITAC.ui.note.gm" : "ITAC.ui.note.player") } : null,
     gmExtra: gx?.ctl ?? null,
     always: desk && Array.isArray(p.always) && p.always.length ? { on: always, label: t("ITAC.ui.always", { name: p.aboutName ?? "" }), tip: t("ITAC.ui.always.tip", { name: p.aboutName ?? "" }) } : null,
-    submit: multi ? { label: queue ? t("ITAC.Prompt.triggerQueue.Go") : t("ITAC.ui.confirm", { n: picks.length, max }), disabled: canSubmit ? null : t("ITAC.ui.pickMore"),
+    /* FXU3 (U202): the surprise card's button names what it confirms (nobody surprised is an answer, not "nothing chosen") */
+    submit: multi ? { label: queue ? t("ITAC.Prompt.triggerQueue.Go") : kind === "surprise" ? t(!picks.length ? "ITAC.ui.surprise.confirm0" : picks.length >= allIds.length ? "ITAC.ui.surprise.confirmAll" : "ITAC.ui.surprise.confirm", { n: picks.length, max: allIds.length }) : t("ITAC.ui.confirm", { n: picks.length, max }), disabled: canSubmit ? null : t("ITAC.ui.pickMore"),
       req: canSubmit ? p.answerReq(queue || kind === "surprise" ? { order: [], skip: allIds.filter((id) => !picks.includes(id)) } : picks.slice()) : null } : null,      // ANSG (FXT-10): the surprise card answers as a round card does
   };
 }
@@ -1337,6 +1342,6 @@ export function deskData(model, own, facts, t) {
     mode: { label: t("ITAC.ui.mode"), choices: ["tactical", "free"].map((m) => ({ id: m, label: t(`ITAC.ui.mode.${m}`), on: model.mode === m, req: model.modeReq(m) })) },
     fight: fightCmds(own, t),
     labels: { override: t("ITAC.cmd.override"), set: t("ITAC.ui.set"), step: t("ITAC.ui.stepLabel"), queue: t("ITAC.ui.queue"), action: t("ITAC.ui.inProgress"), manual: t("ITAC.ui.manual"), collapse: t("ITAC.ui.desk.collapse"), expand: t("ITAC.ui.desk.expand", { n: count }),
-      reveal: t("ITAC.ui.reveal"), since: t("ITAC.ui.wait.since"), groups: { dice: t("ITAC.ui.ovr.g.dice"), result: t("ITAC.ui.ovr.g.result"), step: t("ITAC.ui.ovr.g.step"), end: t("ITAC.ui.ovr.g.end") }, cost: t("ITAC.ui.manual.cost"), damage: t("ITAC.ui.manual.damage") },
+      reveal: t("ITAC.ui.reveal"), since: t("ITAC.ui.wait.since"), groups: { dice: t("ITAC.ui.ovr.g.dice"), result: t("ITAC.ui.ovr.g.result"), step: t("ITAC.ui.ovr.g.step"), end: t("ITAC.ui.ovr.g.end") }, cost: t("ITAC.ui.manual.cost"), damage: t("ITAC.ui.manual.damage"), below: t("ITAC.ui.below", { n: "{n}" }) },      // FXU3 (U203): the chip of rows under a held button ({n} filled by the desk)
   };
 }

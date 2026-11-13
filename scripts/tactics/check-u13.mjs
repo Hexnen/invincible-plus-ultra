@@ -60,7 +60,8 @@ for (const l of ["en", "pl"]) {
   ok(!/text: o\.disabled/.test(opt), "A15: the reason's text is not a child of the answer");
   ok(/o\.disabled \? h\("i\.fa-solid\.fa-ban\.ita-opt-no"/.test(opt) && /\.ita-opt-l > \.ita-opt-no \{[^}]*font-size: 11px/.test(css), "A16: a greyed answer carries the no-entry mark after its name, inside the name's own line (no second line)");
   ok(/\.ita-opt\[aria-disabled="true"\] \{[^}]*border: 2px dashed[^}]*cursor: help/.test(css), "A17: dashed frame (shape, not colour alone) and the pointer that says there is more to read");
-  ok(/"aria-label": \[o\.label, o\.cost, o\.note, o\.tip\?\.lines\?\.\[0\], o\.disabled, o\.tip\?\.why\?\.fix\]/.test(opt), "A18: the aria-label says name, price, what it does, why not, what to do");
+  /* FXU3 (U202): a row with a state (the surprise card: surprised / ready) says it right after its name; the rest of the pin stands */
+  ok(/"aria-label": \[o\.label, (?:o\.state\?\.label, )?o\.cost, o\.note, o\.tip\?\.lines\?\.\[0\], o\.disabled, o\.tip\?\.why\?\.fix\]/.test(opt), "A18: the aria-label says name, price, what it does, why not, what to do");
   ok(/h\("button\.ita-opt"/.test(opt) && /disabled: !!o\.disabled, tip: o\.tip \?\? null/.test(opt) && /if \(p\.disabled\) el\.setAttribute\("aria-disabled", "true"\)/.test(dom) && !/el\.disabled\s*=/.test(dom),
     "A19: a greyed answer is a button with aria-disabled (never the disabled attribute): it stays in the Tab order and its tooltip opens on focus");
   for (const f of ["./ui/dock.mjs", "./ui/desk.mjs"]) ok(/addEventListener\("focusin"[^\n]*tipShow/.test(read(f)), `A20 ${f}: the surface opens a tooltip on keyboard focus`);

@@ -135,13 +135,14 @@ export function askCard(a, handlers = {}) {
     /* U83: a greyed answer is as large as the others: the dashed frame and the no-entry mark after its name say "not now", the reason
        and what to do about it are its tooltip (pointer and keyboard focus) and its aria-label; it stays in the Tab order */
     fk: `opt:${a.id}:${o.id}`, disabled: !!o.disabled, tip: o.tip ?? null, pv: o.pv, pvFor: a.pvFor,
-    attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled, o.tip?.why?.fix].filter(Boolean).join(", ") },
-    data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null, step: o.step ? "1" : null },
+    attrs: { "aria-pressed": a.multi ? String(!!o.picked) : null, "aria-label": [o.label, o.state?.label, o.cost, o.note, o.tip?.lines?.[0], o.disabled, o.tip?.why?.fix].filter(Boolean).join(", ") },
+    data: { pass: o.pass ? "1" : null, ic: o.icon || a.check ? "1" : null, key: o.key ?? null, check: a.check ? "1" : null, step: o.step ? "1" : null, st: o.state?.id ?? null },
     on: { click: () => (o.step ? stepClick(o) : a.multi ? handlers.pick?.(a.id, o.id, a.multi.max) : o.zones && o.zoneReq ? handlers.zone?.(o, a) : o.again ? handlers.again?.(a) : o.req ? handlers.send?.(o.req) : null) },
-  }, a.check ? icon(o.picked ? "fa-square-check" : "fa-square") : o.icon ? actIcon(o.icon) : null,      // U18: a line of a round-point queue is a tick box: ticked = it happens
+  }, a.check ? icon(o.state?.icon ?? (o.picked ? "fa-square-check" : "fa-square")) : o.icon ? actIcon(o.icon) : null,      // U18: a line of a round-point queue is a tick box: ticked = it happens; FXU3 (U202): a row with a state shows the state's mark instead
   h("span.ita-opt-b", {}, h("span.ita-opt-l", {}, h("span", { text: o.label }), speed(o.unit, { out: !!o.out }), stressChip(o.stress), o.disabled ? h("i.fa-solid.fa-ban.ita-opt-no", { attrs: { "aria-hidden": "true" } }) : null),
     !o.unit && o.cost ? h("span.ita-opt-c", { text: o.cost }) : null, o.note ? h("span.ita-opt-n", { text: o.note }) : null),
-  o.marks?.length ? h("span.ita-opt-m", {}, o.marks.map((m) => markOf(m, true))) : null);      // ANSI-1 / ANSI-2: what the row carries (a roll, the dice given) as marks; the words are its aria-label and tooltip
+  o.marks?.length ? h("span.ita-opt-m", {}, o.marks.map((m) => markOf(m, true))) : null,      // ANSI-1 / ANSI-2: what the row carries (a roll, the dice given) as marks; the words are its aria-label and tooltip
+  o.state ? h("span.ita-opt-st", { text: o.state.label }) : null);      // FXU3 (U202): the row's state in one word (surprised / ready)
   /* ANSI-2: the minus of a stepped answer stands BESIDE it (a button in a button is no button), only while there is something to take back */
   const optRow = (o) => (!o.step ? opt(o) : h("span.ita-stepper", {}, opt(o),
     o.step.sub ? h("button.ita-less", { fk: `less:${a.id}:${o.id}`, tip: o.step.less, attrs: { "aria-label": o.step.less }, on: { click: () => handlers.pick?.(a.id, o.step.sub, a.multi?.max ?? 24) } }, icon("fa-minus")) : null));

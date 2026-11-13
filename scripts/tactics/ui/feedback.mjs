@@ -67,12 +67,17 @@ function markSeen(ids) {
     return next;
   } catch { return seenNow(); }
 }
-let seenLocal = null;               // what this session already marked (the setting is written async)
-export function closeHint(id) { seenLocal = [...new Set([...(seenLocal ?? seenNow()), id])]; markSeen([id]); hintShown = null; H?.refresh(); }
+/* FXU3 (U207): "once per user and device" means SHOWN once: a hint on screen is written to the setting at once, so a reload (in the
+   middle of the player's turn, before the hint was used or put away) does not bring it back. This page still shows it until it is used
+   or put away: what counts here is what the device had seen when the page loaded (`boot`) and what this page used or closed (`done`). */
+let boot = null;                    // the setting as this page found it
+const done = new Set();             // used or put away on this page (the setting is written async)
+const seenHere = () => [...new Set([...(boot ??= seenNow()), ...done])];
+export function closeHint(id) { done.add(id); markSeen([id]); hintShown = null; H?.refresh(); }
 /** U186 / U192: may a hint still come on this seat (feedback-pure hintsLeft)? The frame keeps the hint's place only then */
-export function hintsLeft(staff) { try { return FP.hintsLeft(seenLocal ?? seenNow(), staff); } catch { return false; } }
+export function hintsLeft(staff) { try { return FP.hintsLeft(seenHere(), staff); } catch { return false; } }
 /** the switch was turned (main.mjs registers the setting): on again = every hint once more */
-export function hintsSwitched(on) { try { if (on) { seenLocal = []; game.settings.set(MOD, "tacticsHintsSeen", "[]"); } H?.refresh(); } catch { /* not started */ } }
+export function hintsSwitched(on) { try { if (on) { boot = []; done.clear(); game.settings.set(MOD, "tacticsHintsSeen", "[]"); } H?.refresh(); } catch { /* not started */ } }
 
 /* ---------- U56: numbers over tokens ---------- */
 /* U93: what was lost is the mark of the language (the heart of Health, the bolt of stress), drawn by the picture font Foundry already
@@ -166,10 +171,11 @@ export function sync(ctx) {
     /* U53 */
     let hint = null;
     if (setting("tacticsHints", true) !== false) {
-      let seen = seenLocal ?? seenNow();
       const used = FP.hintsUsed(hintShown, data, own);
-      if (used.length) { seenLocal = seen = [...new Set([...seen, ...used])]; markSeen(used); }
+      if (used.length) { for (const id of used) done.add(id); markSeen(used); }
+      const seen = seenHere();
       hint = FP.hintOf(data, seen, t, !!staff);      // U186: no player hints on a GM seat
+      if (hint) markSeen([hint.id]);      // FXU3 (U207): shown = seen on this device (written once; this page keeps it until used or put away)
     }
     hintShown = hint?.id ?? null;
     return { sum: sum?.card ?? null, hint };

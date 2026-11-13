@@ -1013,6 +1013,24 @@ body.ita-dice-up #invincible-tactics-dock { z-index: var(--ita-dice-z); }
 /* the marks at the end of a row (a roll, the dice given): one size with the row's capitals, on its baseline */
 .ita-opt-m { flex: none; display: inline-flex; align-items: center; gap: 9px; margin-left: auto; padding-left: 6px; }
 :is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt-m .ipu-sym > b { font-size: 13px; }
+/* FXU3 (U202): the surprise card's rows say their state. Not surprised is a defender who is READY, not one struck out of the fight: a
+   solid frame, full-strength name, an open eye; surprised keeps the yellow, with a shut eye. The state's word closes the row in a fixed
+   width, so the words stand in one column and the eye reads with them at a glance. */
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-check][data-st="ready"] { color: var(--ita-text); background: var(--ita-tile-hi); border: 1.5px solid var(--ita-line); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-check][data-st] .ita-opt-l { text-decoration: none; }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-st="ready"] > i { color: var(--ita-cyan); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-opt[data-st="ready"] .ita-opt-m { opacity: 1; }
+.ita-opt-st { flex: none; min-width: 78px; padding: 2px 5px 1px; font: 400 11px/1.1 Titles, Comic, sans-serif; letter-spacing: .07em; text-align: center; text-transform: uppercase; }
+.ita-opt[data-st="surprised"] .ita-opt-st { color: var(--ita-yellow); background: var(--ita-ink); }
+.ita-opt[data-st="ready"] .ita-opt-st { color: var(--ita-cyan); box-shadow: inset 0 0 0 1px var(--ita-cyan); }
+:is(#invincible-tactics-dock, #invincible-tactics-desk) .ita-ask[data-kind="surprise"] .ita-opt[data-st="ready"]:hover { color: #fff; background: var(--ita-track); border-color: var(--ita-frame); }
+/* FXU3 (U203): answers hidden under a card's held button (the round's queue, the surprise card on a short desk) are counted on a chip
+   beside the button, on the same band; a cyan rule on the band's top edge (the desk's sign of "more", U12) says the list goes on. A
+   click scrolls the hidden rows into view; the chip goes once none is hidden. */
+#invincible-tactics-desk .ita-ask[data-below]::after { box-shadow: 0 -2px 0 var(--ita-cyan); }
+#invincible-tactics-desk .ita-ask > .ita-below { position: sticky; bottom: -6px; z-index: 2; align-self: flex-end; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; font: 400 14px/1 Titles, Comic, sans-serif; letter-spacing: .04em; color: var(--ita-cyan); background: var(--ita-ink); border: 1.5px solid var(--ita-cyan); }
+#invincible-tactics-desk .ita-ask > .ita-below > i { font-size: 11px; }
+#invincible-tactics-desk .ita-ask > .ita-below:hover, #invincible-tactics-desk .ita-ask > .ita-below:focus-visible { color: var(--ita-ink); background: var(--ita-cyan); }
 .ita-opt[aria-pressed="false"] .ita-opt-m { opacity: .8; }
 
 /* ANSI-2 (FXT-9): Tactical Support, one row per ally under its own caption. The row gives one more six a click (the dice it brings

@@ -138,13 +138,17 @@ function cueNow(ev, s, c, combat) {
 export function sync(ctx) {
   try {
     if (!started || !ready()) return;
-    if (!ctx?.combat || !ctx.view) { if (on) { on = false; Moment.active(false); Zones.camera({ driver: null }); } was = null; key = null; return; }
+    if (!ctx?.combat || !ctx.view) { if (on) { on = false; Moment.active(false); Zones.camera({ driver: null }); } was = null; key = null; joinStop(); return; }
     if (!on) { on = true; Zones.camera({ driver: MOD }); }
     Moment.active(Zones.hasShot());                                                           // U125 (e): the splash waits for a result beat only while shots can play
     const { combat, view, staff, model, dock, data } = ctx;
     const now = CP.look(view, { me: game.user.id, staff, mine: mineOf(combat, view, model, staff), who: data?.show ? data.who?.id ?? null : null, sel: dock?.sel ?? null, armed: dock?.armed ?? null, targets: dock?.targets ?? [] });
     const before = key === combat.id ? was : null;                                            // another fight: a first look
     was = now; key = combat.id;
+    /* FXU3 (U207): the own unit's join frame stays due until it reached the map (see joinTry) */
+    if (!before) { joinStop(); if (!staff) { join = { until: Date.now() + JOIN_MS, timer: 0, combat: combat.id }; joinLater(); } }
+    else if (join && !CP.joinHold(before, now)) joinStop();
+    else if (join) { joinTry(combat); return; }
     if (CP.handTook(before, now) && Zones.hasShot()) Zones.shotEnd();                         // U98: the user's hand or a question: a shot on screen gives the view back
     const all = CP.cues(before, now), c = all[0] ?? null;
     if (!c || (Zones.hasShot() && CP.heldByCard(c, now))) return;                              // H2-3: a card is open for this user: nothing moves (spec 26)
@@ -153,7 +157,26 @@ export function sync(ctx) {
     const s = c.hand ? null : CP.cueShot(all.find((x) => x.why === "reveal") ?? null, now);    // H2-S2: the user's own hand (a unit chosen) wins: its frame takes over (spec 26)
     const spec = s ? playShot(combat, s, c) : play(combat, c);
     log.push({ at: Date.now(), why: c.why, level: c.level, focus: c.focus, sent: !!spec }); if (log.length > 40) log.shift();
+    if (join && c.why === "join") { if (spec) joinStop(); else joinLater(); }
   } catch (e) { console.warn(LOG, "sync failed", e); }
+}
+/* FXU3 (U207): after a reload in the middle of a fight the player's own token could stay off-screen: the first look's join cue found no
+   unit of the dock yet, or no token this canvas draws yet (a page that loads slowly), and was spent. It is now kept due for JOIN_MS and
+   tried again on every redraw and once a second, while camera-pure.joinHold says nothing else has moved the view on. */
+const JOIN_MS = 20000;
+let join = null;                    // { until, timer, combat } while the join frame has not reached the map
+function joinStop() { if (join?.timer) clearTimeout(join.timer); join = null; }
+function joinTry(combat) {
+  try {
+    if (!join || Date.now() > join.until || !was || key !== join.combat) { joinStop(); return; }
+    const c = CP.cues(null, was)[0] ?? null, spec = c ? play(combat, c) : null;
+    if (spec) { log.push({ at: Date.now(), why: "join", level: c.level, focus: c.focus, sent: true, again: true }); if (log.length > 40) log.shift(); joinStop(); return; }
+    joinLater();
+  } catch (e) { joinStop(); console.warn(LOG, "join failed", e); }
+}
+function joinLater() {
+  if (!join || join.timer) return;
+  join.timer = setTimeout(() => { if (!join) return; join.timer = 0; const combat = game.combats?.get(join.combat); if (combat) joinTry(combat); else joinStop(); }, 1000);
 }
 /** main.mjs: the dock's unit out from under the bars (Move armed, a move made from the dock). -> true when the map's camera took it */
 export function show(cid, combat, after = false) {
@@ -164,7 +187,7 @@ export function show(cid, combat, after = false) {
     return true;
   } catch { return false; }
 }
-export function reset() { was = null; key = null; }
+export function reset() { was = null; key = null; joinStop(); }
 export const state = () => ({ on, was, log: log.slice(), waiting: [...waiting].filter(([, n]) => n > 0).map(([w]) => w), moment: Moment.state() });
 export function start() {
   try {
