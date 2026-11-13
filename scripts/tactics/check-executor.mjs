@@ -187,9 +187,9 @@ eq((await fromPlayer("p1", { op: "endTurn", actor: "cbH1", round: 1, slot: 0 }, 
   Hooks.on("combatStart", (c, d) => heard.push([c.id, d]));
   CONFIG.ActiveEffect.documentClass = { registry: { refresh: async (ev, ctx) => { refreshed.push([ev, ctx?.combat?.id ?? null]); } } };
   const mk = (id) => Object.assign(new Own(), { id, _playCombatSound: (s) => heard.push(["sound", s]) });
-  await mk("nope").startCombat();
+  await mk("nope").startCombat(Klass.TACTICAL);      // TACB: the tactical start is the Tactics button, startCombat(TACTICAL); a bare startCombat() is the ordinary fight (check-tacb.mjs)
   eq([heard.length, refreshed.length], [0, 0], "D97: a start that was refused (no such combat) plays no sound, calls no combatStart hook, refreshes no effect");
-  await mk(combat.id).startCombat();
+  await mk(combat.id).startCombat(Klass.TACTICAL);
   eq([heard.map((h) => h[0]), heard[1]?.[1], refreshed], [["sound", combat.id], { round: 1, turn: 0 }, [["combatStart", combat.id]]], "D97: a start that went through: sound, the hook with core's payload, the registry refreshed WITH the combat");
   ok(!!api.state(), "D97: the fight is on after the class's startCombat");
   delete CONFIG.ActiveEffect.documentClass;

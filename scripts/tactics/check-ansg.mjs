@@ -211,7 +211,7 @@ const finish = async (T) => { for (let i = 0; i < 8; i++) { const p = T.prompts(
   const cc = readFileSync(new URL("./combat-class.mjs", import.meta.url), "utf8"), mn = readFileSync(new URL("./main.mjs", import.meta.url), "utf8");
   ok(/Relay\.request\(this\.id, \{ op: "start", restart: true, \.\.\.\(surprise \? \{ surprise \} : \{\}\) \}\)/.test(cc), "FXT-10: Begin Combat hands the GM's mark to the start");
   ok(/data-action="startCombat"/.test(cc) && /combat\.round > 0/.test(cc) && /Store\.isStaff\(game\.user\)/.test(cc), "FXT-10: the field sits by Begin Combat, for the GM, before the fight");
-  ok(/Hooks\.on\("renderCombatTracker", \(app, html\) => Klass\.surpriseField\(app, html\)\)/.test(mn), "FXT-10: drawn with the tracker");
+  ok(/Hooks\.on\("renderCombatTracker", \(app, html\) => Klass\.startField\(app, html\)\)/.test(mn), "FXT-10: drawn with the tracker");      // TACB: drawn with the Tactics button (startField), the toggles at its sides
   for (const k of ["ITAC.ui.surprise.npcs", "ITAC.ui.surprise.heroes", "ITAC.ui.surprise.on", "ITAC.ui.surprise.off"]) ok(typeof EN[k] === "string" && typeof PL[k] === "string", `FXT-10: ${k} in both languages`);
 }
 /* ================================================================== SWEEPM-11: an unlinked hero token's roll goes into the hero's log */

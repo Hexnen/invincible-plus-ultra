@@ -1,7 +1,7 @@
 /* Tactical combat: the module's own Combat class (spec 3.3, 17). It wraps whatever class is configured when it is installed
    (the system sets none, so normally the core Combat) and replaces what Year Zero Engine: Combat used to do for the turn order.
-   A combat WITHOUT the module's state behaves exactly like the wrapped class, with one exception: starting it deals cards instead of
-   leaving the order to rolled initiative.
+   A combat WITHOUT the module's state behaves exactly like the wrapped class (TACB: Begin Combat included); only startCombat(TACTICAL),
+   the tracker's Tactics button, deals cards instead of leaving the order to rolled initiative.
    What it changes for a combat that has the state:
      - the order of combat.turns: ascending card [I1] [B2269], then the place inside a shared card [I4], combatants without a card last
        (challenges [I12], summons [I14]);
@@ -49,13 +49,32 @@ export function ownInitiative() {
 const SURPRISE = "surprise", SIDES = ["npcs", "heroes"];
 const surpriseOf = (combat) => { try { const v = combat?.getFlag?.(MOD, SURPRISE); return SIDES.includes(v) ? v : null; } catch { return null; } };
 const SIDE_ICON = { npcs: "fa-user-ninja", heroes: "fa-person-falling-burst" };
-export function surpriseField(app, html) {
+/* TACB (the user 2026-11-13: «dodatkowy żółty button w naszym stylu, Tactics. i to on uruchamia tactics a poniżej zwykły button zwykłej
+   walki»): the GM chooses at the start of each fight. Core's Begin Combat (startCombat() without options, as every macro and module calls
+   it) starts an ORDINARY fight: the wrapped class's start, no state, so every part of the module reads it as not ours (source.mjs), after
+   a reload too. The yellow Tactics button drawn above it calls startCombat(TACTICAL): the round driver deals the cards. The surprise
+   toggles belong to the tactical start: they flank the Tactics button. */
+export const TACTICAL = Object.freeze({ tactics: true });
+const wantsTactics = (options) => options?.tactics === true && ownInitiative();
+export function startField(app, html) {
   try {
     const combat = app?.viewed ?? game.combat;
     if (!Store.isStaff(game.user) || !combat || combat.round > 0 || !ownInitiative()) return;
     const root = html instanceof HTMLElement ? html : html?.[0];
     const begin = root?.querySelector?.('[data-action="startCombat"]');
-    if (!begin || root.querySelector(".itac-surprise")) return;
+    if (!begin || root.querySelector(".itac-start")) return;
+    const row = document.createElement("div"), go = document.createElement("button"), name = t("ITAC.ui.start.tactics");
+    row.className = "itac-start";
+    go.type = "button"; go.className = "ipu-btn itac-tactics"; go.dataset.kind = "main"; go.dataset.tooltipClass = "ipu-tip";
+    go.innerHTML = `<i class="fa-solid fa-chess-knight" inert></i><span>${name}</span>`;
+    go.setAttribute("aria-label", t("ITAC.ui.start.aria")); go.dataset.tooltip = `<strong>${name}</strong><p>${t("ITAC.ui.start.tip")}</p>`;
+    go.addEventListener("click", async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      if (go.getAttribute("aria-disabled") === "true") return;      // one start per click: the request takes a moment
+      go.setAttribute("aria-disabled", "true");
+      try { await combat.startCombat(TACTICAL); } catch (e) { console.warn(`${MOD} | tactics start`, e); } finally { go.removeAttribute("aria-disabled"); }
+    });
+    row.append(go);
     const now = surpriseOf(combat);
     for (const side of SIDES) {
       const on = now === side, b = document.createElement("button");
@@ -64,9 +83,11 @@ export function surpriseField(app, html) {
       const label = t(`ITAC.ui.surprise.${side}`);
       b.setAttribute("aria-label", label); b.setAttribute("aria-pressed", String(on)); b.dataset.tooltip = `${label}<br>${t(on ? "ITAC.ui.surprise.on" : "ITAC.ui.surprise.off")}`;
       b.addEventListener("click", async (ev) => { ev.preventDefault(); ev.stopPropagation(); try { if (surpriseOf(combat) === side) await combat.unsetFlag(MOD, SURPRISE); else await combat.setFlag(MOD, SURPRISE, side); } catch (e) { console.warn(`${MOD} | surprise field`, e); } });
-      if (side === "npcs") begin.before(b); else begin.after(b);
+      if (side === "npcs") go.before(b); else go.after(b);
     }
-  } catch (e) { console.warn(`${MOD} | surprise field`, e); }
+    begin.before(row);
+    begin.parentElement?.classList.add("itac-has-start");
+  } catch (e) { console.warn(`${MOD} | tactics start field`, e); }
 }
 
 export function makeClass(Base) {
@@ -74,8 +95,8 @@ export function makeClass(Base) {
   return class TacticsCombat extends Base {
     _sortCombatants(a, b) { return compareCombatants(a, b, baseSort); }
 
-    async startCombat() {
-      if (!ownInitiative()) return super.startCombat();
+    async startCombat(options) {
+      if (!wantsTactics(options)) return super.startCombat();      // TACB: Begin Combat is the ordinary fight; Tactics passes TACTICAL
       try {
         /* D97: as core does (client/documents/combat.mjs startCombat), but only for a fight that DID start: a refused or failed request
            tells nobody of a start, and the effect registry gets the combat as its context (durations are framed by it). */
@@ -112,7 +133,7 @@ export function makeClass(Base) {
       return this;
     }
     async rollInitiative(ids, options) {
-      if (!tacticsState(this) && !ownInitiative()) return super.rollInitiative(ids, options);
+      if (!tacticsState(this)) return super.rollInitiative(ids, options);      // TACB: before the start nobody knows yet which kind of fight it is; an ordinary one rolls
       info(t("ITAC.Note.Cards"));
       return this;
     }
