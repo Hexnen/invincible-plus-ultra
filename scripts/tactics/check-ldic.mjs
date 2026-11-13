@@ -263,7 +263,7 @@ async function run(W, H, fn) {
   ok(crit.sizeK > weak.sizeK, `real design: a critical WHAM! is lettered bigger than a routine one (${crit.sizeK.toFixed(2)} > ${weak.sizeK.toFixed(2)})`);
   const { LAYERS } = await import("../letters/engine.mjs");
   const Stage0 = src("../splash/stage.mjs");
-  const ids = (name) => JSON.parse(/export const SCREEN_LAYERS = ([[^]]*]), WORLD_LAYERS = ([[^]]*])/.exec(Stage0)[name === "s" ? 1 : 2].replace(/'/g, '"'));
+  const ids = (name) => JSON.parse(/export const SCREEN_LAYERS = (\[[^\]]*\]), WORLD_LAYERS = (\[[^\]]*\])/.exec(Stage0)[name === "s" ? 1 : 2].replace(/'/g, '"'));
   ok(ids("s").every((k) => LAYERS[k]?.space === "screen") && ids("w").every((k) => LAYERS[k]?.space === "world"), "every layer the setting offers is one of the engine's, in the right space");
   const pl = makePlan(LP.letterable("SZANSE ROZBITE! 1 NA 1,296"), { mood: "tick", seed: "pl" }, api, []);
   ok(pl && pl.hand, "real design: a Polish sentence with a figure letters");
