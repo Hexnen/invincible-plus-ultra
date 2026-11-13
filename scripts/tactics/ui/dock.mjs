@@ -59,6 +59,7 @@ let root = null, stack = null, handlers = {}, shown = false, hideTimer = 0, last
 /* perf P2-1 (ui/settle.mjs): `drawn` counts the draws (and what may resize the dock's content without one: a picture or a font that
    finished loading); `kept` is what the last placement read, kept only when that placement changed nothing */
 let drawn = 0, kept = null;
+const picsSeen = new Set();      // PERF5-5: the addresses of the pictures that finished loading in the dock once
 /* U132 (slots-pure.mjs): the places outside the bar's stack (name -> the inner box the content goes in); the part of the frame the desk
    and the challenges read, as last told; whether the hint takes the questions' place (a narrow band) */
 let slotEls = {}, frameKey = "", shareWas = false;
@@ -76,7 +77,7 @@ function ensure(label) {
   root = h(`div.itd-hidden`, { attrs: { id: ID, role: "region", "aria-label": label }, data: { tooltipDirection: "UP", tooltipClass: "ita-tip" } });
   stack = h("div.itd-stack");
   /* U132: the root covers the window (it takes no pointer); the bar's stack and each place are boxes of their own in it */
-  slotEls = {};
+  slotEls = {}; drawnSig = null; kept = null;      // PERF5-5: a new dock has drawn nothing yet
   root.append(h("div.its-slot.its-bar", {}, stack));
   for (const name of SLOT_NAMES) { const inner = h("div.its-in"); root.append(h("div.its-slot", { data: { slot: name, empty: "1" } }, inner)); slotEls[name] = inner; }
   /* U30: the cost preview follows the pointer and the keyboard focus; a tooltip opens for the keyboard as it does for the pointer */
@@ -89,7 +90,10 @@ function ensure(label) {
   /* U105: a panel taller than its room scrolls; while more of it lies below, its foot says so (data-more). Scroll does not bubble: caught here */
   root.addEventListener("scroll", (e) => { if (e.target?.classList?.contains("itd-panel")) markMore(e.target); }, true);
   /* perf P2-1: a picture of the dock that finished loading may have changed its size: the next placement is done in full */
-  root.addEventListener("load", () => { drawn++; }, true);
+  /* PERF5-5: every draw makes new <img> elements, and a picture already shown fires "load" again (from the cache): that counted as new
+     content after every refresh, so the skip never applied. Only a picture whose address has not finished loading here before counts
+     (a size change of the bar's parts or of a place is still caught by the sizes the skip compares) */
+  root.addEventListener("load", (e) => { const src = e.target?.currentSrc || e.target?.src || ""; if (!picsSeen.has(src)) { if (picsSeen.size > 500) picsSeen.clear(); picsSeen.add(src); drawn++; } }, true);
   try { document.fonts?.addEventListener?.("loadingdone", () => { drawn++; }); } catch { /* no font events */ }
   document.body.appendChild(root);
 }
@@ -111,18 +115,29 @@ function preview(from) {
 }
 
 /* ---------- placement: THE FIXED PLACES (U132, slots-pure.mjs) ----------
-   perf P2-1 (ui/settle.mjs): a placement whose last run changed nothing, with everything it read reading the same, is skipped; the
+   perf P2-1 / PERF5-5 (ui/settle.mjs): a placement with everything its last run read reading the same is skipped; the
    placement itself (placeSlots) asks the page through `rec` so that what it read is known. It also runs while the dock is hidden (the
    GM desk and the challenges read the frame on every seat, whether the bar shows or not). */
 export function place() {
-  if (!root) return;
-  const facts = () => [drawn, window.innerWidth, window.innerHeight, Lay.factor(document.body)];
-  if (kept && Settle.sameFacts(kept.facts, facts()) && Settle.unchanged(kept.read, visibleRect) && Settle.sameFacts(kept.sizes, sizesNow())) return;
+  if (!root) return false;
+  /* PERF5-5: the frame's own inputs that are no box of the page are facts too (the seat, whether hints keep a place, whether a bar or a
+     unit stands): with the draw count no longer moving on every refresh, nothing else would see them change */
+  const facts = () => [drawn, window.innerWidth, window.innerHeight, Lay.factor(document.body), !!handlers.staff?.(), !!handlers.hintsOn?.(), !!last?.d?.who];
+  if (kept && Settle.sameFacts(kept.facts, facts()) && Settle.unchanged(kept.read, visibleRect) && Settle.sameFacts(kept.sizes, sizesNow())) return false;
   const f = facts(), before = outcome(), rec = Settle.recorder(document, visibleRect);
   kept = null;
   placeSlots(rec);
-  if (Settle.sameFacts(before, outcome())) kept = { facts: f, read: rec.take(), sizes: sizesNow() };
+  /* PERF5-5: what a run read is kept also when the run changed something. Before, a changing run was always followed by one more full
+     run (on the GM about every other placement of a turn change, 8 ms each); that run reads the page again and repeats what this one
+     wrote unless something it reads changed meanwhile, and that is exactly what the next call's check sees: the reads were taken before
+     this run's writes, so a write that moved anything it reads (the desk told to stand elsewhere, the challenges folding, its own
+     sizes) still makes the next call run in full */
+  kept = { facts: f, read: rec.take(), sizes: sizesNow(), changed: !Settle.sameFacts(before, outcome()) };
+  return true;
 }
+/* PERF5-5: what a draw put in the dock, as one string: the markup of the bar's stack and of each place, and the root's turn / rest look */
+let drawnSig = null;
+const drawSig = (d) => [d?.onTurn ? 1 : 0, d?.rest ? 1 : 0, stack?.innerHTML ?? "", ...SLOT_NAMES.map((n) => slotEls[n]?.innerHTML ?? "")].join("\u0001");
 /* the dock's own sizes: its stack and the content of each place */
 const sizesNow = () => [...Settle.sizesOf(stack), ...Object.values(slotEls).flatMap((el) => Settle.sizesOf(el))];
 /* everything a placement writes: the dock's attributes and numbers, each place's box, the frame told to the desk and the challenges,
@@ -141,9 +156,14 @@ function placeSlots(rec) {
   const ground = hot && hot.top > H * 0.4 ? hot.top : H - EDGE + GAP;
   /* the initiative bar (and the map's orbit strip): the places hang under its lowest piece, centred under the whole of it (its middle
      does not follow the active tile) */
-  let ceil = 8, tl = Infinity, tr = -Infinity;
-  for (const el of rec.q(TOP_OBSTACLES)) { const r = rec.rect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) { ceil = Math.max(ceil, r.bottom + 8); tl = Math.min(tl, r.left); tr = Math.max(tr, r.right); } }
-  const topCx = tr > tl ? (tl + tr) / 2 : null;
+  /* PERF5-5: only the lowest bottom and the outer edges of those pieces count, kept as such (settle.mjs derive): the tiles move on every
+     turn change while the extent of the bar mostly does not */
+  const { ceil, topCx } = rec.derive((page) => {
+    let ceil = 8, tl = Infinity, tr = -Infinity;
+    for (const el of page.q(TOP_OBSTACLES)) { const r = page.rect(el); if (r && r.top < H * 0.4 && r.bottom < H * 0.5 && r.right > W * 0.25 && r.left < W * 0.75) { ceil = Math.max(ceil, r.bottom + 8); tl = Math.min(tl, r.left); tr = Math.max(tr, r.right); } }
+    const topCx = tr > tl ? (tl + tr) / 2 : null;
+    return { ceil, topCx };
+  });
   const sb = rec.rect(rec.one("#sidebar")), sbL = sb && sb.left > W * 0.5 ? sb.left : W, chatR = rec.rect(rec.one(FLOATING)), side = ChatPark.rightEdge(sbL, chatR, W);
   let topL = 12, topR = null;
   for (const el of rec.q(LEFT_OBSTACLES)) { const r = rec.rect(el); if (r && r.width && r.top < H * 0.5 && r.right < W * 0.4) topL = Math.max(topL, r.right + 8); }
@@ -604,8 +624,13 @@ function draw(d, ui) {
   try { const kp = d.keys?.chosen; if (kp) for (const el of root.querySelectorAll(".ita-opt, .ita-submit")) if (el.dataset.fk === kp) { el.dataset.kpick = "1"; el.scrollIntoView?.({ block: "nearest" }); } } catch { /* a courtesy */ }
   /* U51: the news chip's tooltip holds the older lines; the last line joins them only when the chip had to cut it short */
   try { const nt = root.querySelector(".itd-news-t"); if (nt && d.news && nt.scrollWidth > nt.clientWidth + 1) nt.parentElement.dataset.tooltip = tipLines([d.news.text, ...d.news.older]); } catch { /* a courtesy */ }
-  drawn++;      // perf P2-1: new content: the placement is done in full
-  place();
+  /* perf P2-1: new content: the placement is done in full. PERF5-5: only content that is new - every refresh draws the dock, and a draw
+     that put back exactly what stood there (the same markup in the bar's stack and in every place, the same turn / rest look) is no
+     new content; its placement may be skipped like any other (settle.mjs: still only when the window, the boxes around, the dock's
+     own sizes and the last placement's outcome all say the same) */
+  const sig = drawSig(d);
+  if (sig !== drawnSig) { drawnSig = sig; drawn++; }
+  if (!place()) { const pe = stack.querySelector(":scope > .itd-panel"); if (pe) requestAnimationFrame(() => markMore(pe)); }      // a skipped placement: the new panel still learns whether more of it lies below (U105)
   reveal();
   try { preview(root.querySelector("[data-pv]:hover, [data-pv]:focus-visible")); } catch { /* a courtesy */ }      // the pointer may still rest on what it was previewing
 }
@@ -628,4 +653,4 @@ export const relayout = () => { if (root) place(); };      // hidden too: the fr
 export function press(fk) { try { const el = root && shown ? [...root.querySelectorAll("[data-fk]")].find((e) => e.dataset.fk === fk) : null; if (!el) return false; el.click(); return true; } catch { return false; } }
 export const el = () => root;
 export const isShown = () => shown;
-export function destroy() { if (squeezed) { squeezed = false; handlers.ichSqueeze?.(false); } clearTimeout(hideTimer); root?.remove(); root = stack = null; shown = false; last = null; kept = null; slotEls = {}; frameKey = ""; shareWas = false; Slots.setFrame(null); }
+export function destroy() { if (squeezed) { squeezed = false; handlers.ichSqueeze?.(false); } clearTimeout(hideTimer); root?.remove(); root = stack = null; drawnSig = null; shown = false; last = null; kept = null; slotEls = {}; frameKey = ""; shareWas = false; Slots.setFrame(null); }
