@@ -5,6 +5,7 @@
 
 import "./i18n/early-lang.mjs";   // FIRST: the client's language before the init hooks name the settings (see the file)
 import { isLabel } from "./i18n/sys-labels.mjs";
+import "./letters-api.mjs";   // LETR: the comic sound-effect lettering engine (scripts/letters/, shared with moinen-maps): api.letters()
 
 const T0 = performance.now(); // shared clock: looping animations keep their phase when the system re-renders the whole sheet
 const LAST = new Map();       // `${uuid}:${kind}` -> last fill (0-100), so bars animate between values
