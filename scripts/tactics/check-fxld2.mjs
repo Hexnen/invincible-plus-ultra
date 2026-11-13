@@ -216,6 +216,36 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
   }
 }
 
+/* ================================================================== N3 (map, live frame): a crowded spot stays by the hero */
+{
+  /* the shared frame read live on The Warehouse (grid 350): Kid Omni-Man at the top edge, Omni-Man to his left, Atom Eve below-left,
+     a map pin to the right. The first clean place lay beyond Omni-Man (detached from the roller, off the view of a seat looking at
+     him); a smaller block right by the hero must win. */
+  const box = (x, y, h) => ({ x, y, l: x - h, t: y - h, r: x + h, b: y + h });
+  const frame = { vh: 1750, freeW: 3111, scale: 1, safe: { l: 35, t: 35, r: 5067, b: 6615 }, token: box(2625, 525, 175), focus: { x: 2625, y: 525 }, gap: 42,
+    avoid: [box(2275, 875, 196), box(2625, 1575, 196), box(2275, 1575, 196), box(2275, 525, 196), box(875, 1225, 196), box(3325, 1575, 196), { l: 3444, t: 245, r: 3906, b: 752 }] };   // the pin as drawn (1.3 grid squares tall)
+  /* the engine's real boxes were about 1.5 times wider than the estimate live (the pushed block: 1476 px at full size) */
+  const wide = (it, S) => { const q = LP.estimateBox(it, S); return { ...q, w: q.w * 1.5 }; };
+  for (const [name, e] of Object.entries(ROLLS()).filter(([n]) => n !== "crit")) for (const [mk, measure] of [["estimate", undefined], ["wide", wide]]) {
+    const items = LP.planMoment(e, { token: true }).items;
+    const out = LP.composeMoment(items, frame, measure);
+    const off = LP.detached ? LP.detached(out.rect, frame.token, frame) : Infinity;
+    ok(!out.hit && off === 0, `N3 map crowded ${name} (${mk}): the block is clean and right by the hero (hit ${Math.round(out.hit ?? -1)}, ${Math.round(off)} scene px beyond the gaps, side ${out.side}, size ${out.f?.toFixed?.(2)})`);
+  }
+  {
+    const items = [...LP.planMoment(ROLLS().stressed, { token: true }).items, LP.planStress(2, {})];
+    const out = LP.composeMoment(items, { ...frame, gauge: { w: 300, h: 90 } });
+    ok(out.f < 0.99 && out.gauge && Math.abs(out.gauge.w - 300 * out.f) < 1 && Math.abs((out.gauge.k ?? 1) - out.f) < 1e-6, `N4 map crowded: the Resolve gauge shrinks with the block (block ${out.f?.toFixed?.(2)}, gauge ${out.gauge?.w?.toFixed?.(0)} of 300 px, k ${out.gauge?.k})`);
+  }
+  {
+    /* a moinen-maps pin (live: drawn 457 x 497 px over a 40 px icon) is avoided by its drawn size, read from the document */
+    const q = await run(1366, 768, {}, async ({ Stage }) => Stage.noteBox?.({ document: { x: 3675, y: 700, iconSize: 40, flags: { "moinen-maps": { pin: "quest" } } } }, 350));
+    ok(!!q && q.t <= 700 - 440 && q.l <= 3675 - 220 && q.r >= 3675 + 220 && q.b >= 700 + 40, `N3 map: a map pin is avoided by the size it is drawn at, not its 40 px icon (${q && [q.l, q.t, q.r, q.b].map(Math.round)})`);
+  }
+  ok(/gaugeK \* \(g\?\.k \?\? 1\)/.test(src("../splash/stage.mjs")), "N4: the drawn gauge takes the block's shrink (map and screen)");
+  ok(/keepInView: false/.test(src("../splash/stage.mjs")), "N1 map: a shared word is not pulled into this seat's view by the engine (keepInView: false), so every seat draws it at the same scene place");
+}
+
 /* ================================================================== N4: the Resolve gauge */
 await run(1366, 768, {}, async ({ S }) => {
   SL.setLabels({ resolve: (now, max) => `RESOLVE ${now} / ${max}` });
@@ -257,9 +287,11 @@ await run(1366, 768, { diceZ: 101 }, async ({ Stage, timers }) => {
 /* ================================================================== N6: the critical and its hero; the owner's backdrop ruling */
 for (const [W, H] of [[1366, 768], [1920, 1080]]) {
   const hero = tok("HERO", Math.round((W - 300) / 2) - 50, Math.round(H * 0.45) - 50, { size: 1 });
-  const s0 = await seat({ W, H, ui: { party: true }, layer: "screen", zoom: 1, pan: { x: 0, y: 0 }, e: ev({ n: 4, sixes: 4 }), name: "crit", tokens: [hero], notes: [], hero, full: true });
+  /* live 1600x900 (lane 8): a big note pin at the right and the party cards at the left crowd the free area; the hero in the middle */
+  const bigPin = { id: "BIG", visible: true, document: { id: "BIG", x: W - 400, y: Math.round(H * 0.45), iconSize: 150 } };
+  const s0 = await seat({ W, H, ui: { party: true }, layer: "screen", zoom: 1, pan: { x: 0, y: 0 }, e: ev({ n: 4, sixes: 4 }), name: "crit", tokens: [hero], notes: [bigPin], hero, full: true });
   const heroR = tokRect(hero, 1, { x: 0, y: 0 }, 4), party = { l: 60, t: H - 330, r: 290, b: H - 185 };
-  const bad = s0.calls.map((c) => drawn(c, s0.L)).filter((b) => hitBox(b, heroR) || hitBox(b, party)).map((b) => b.role);
+  const bad = s0.calls.map((c) => drawn(c, s0.L)).filter((b) => hitBox(b, heroR) || hitBox(b, party)).map((b) => `${b.role} ${Math.round(b.x - b.w / 2)},${Math.round(b.y - b.h / 2)} ${Math.round(b.w)}x${Math.round(b.h)}`);
   ok(s0.calls.length >= 3 && bad.length === 0, `N6 ${W}: the critical's words keep off the hero's token and the party panel (${bad}; live 1366: the odds across Kid Omni-Man, WHAM! on DRUŻYNA)`);
   const word = s0.calls.map((c) => drawn(c, s0.L)).find((b) => b.role === "word");
   ok(word && word.w >= 0.35 * (W - 356), `N6 ${W}: ... and stays the biggest thing on screen (${Math.round(word?.w)} px wide)`);

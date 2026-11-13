@@ -266,7 +266,9 @@ const SIDE_FROM = { above: 90, below: -90, right: 180, left: 0, focus: 90 };
    On the screen layers what is shared is the content (the same words in the same hand: seeded by the message), the timing (the shared
    start, beat.mjs, and the table's Duration) and the size class (a share of the window height); the place follows each seat's own
    view: by the token where that seat sees it, off that seat's bars, panels, neighbours, pins and resting dice. */
-export const GRID_VH = 10.8;   // a map moment is sized as on a window 10.8 grid squares tall (1080 px at zoom 1 on a 100 px grid)
+/* a map moment is sized as on a window GRID_VH grid squares tall: a mid roll's word is about half a square tall, a critical's more than
+   a square (live, The Warehouse: a 350 px grid seen at zoom 0.75 shows about 4 squares in 1080 px; 10.8 made the words 2.6x too big) */
+export const GRID_VH = 5;
 const docOf = (t) => t?.document ?? null;
 function docBox(t, gs) {
   const d = docOf(t) ?? {};
@@ -276,9 +278,14 @@ function docBox(t, gs) {
   return { x: cx, y: cy, l: cx - w / 2 * k, t: cy - h / 2 * k, r: cx + w / 2 * k, b: cy + h / 2 * k };
 }
 const grow = (b, p) => ({ ...b, l: b.l - p, t: b.t - p, r: b.r + p, b: b.b + p });
-function noteBox(n) {
+export function noteBox(n, gs = 100) {
   const d = docOf(n) ?? n, s = Number(d.iconSize) > 0 ? Number(d.iconSize) : 40;
-  return { l: d.x - s * 0.6, t: d.y - s * 0.6, r: d.x + s * 0.6, b: d.y + s * 1.1 };   // the pin and its label under it
+  const q = { l: d.x - s * 0.6, t: d.y - s * 0.6, r: d.x + s * 0.6, b: d.y + s * 1.1 };   // the icon and its label under it
+  /* a moinen-maps pin stands on the note's point and rises about 1.3 grid squares above it (live, The Warehouse: 457 x 497 px on a
+     350 px grid; the icon size said 40). Read from the document, not from the drawing: a seat that does not draw the pin must still
+     lay the block out the same way. */
+  if (d.flags?.['moinen-maps']?.pin) { q.l = Math.min(q.l, d.x - 0.66 * gs); q.r = Math.max(q.r, d.x + 0.66 * gs); q.t = Math.min(q.t, d.y - 1.3 * gs); q.b = Math.max(q.b, d.y + 0.15 * gs); }
+  return q;
 }
 const sameTok = (a, b) => !!a && !!b && (a === b || (a.id != null && a.id === b.id));
 /* the shared frame of a map moment (scene px) */
@@ -295,7 +302,7 @@ export function sharedFrame(hero) {
     if (!d || sameTok(t, hero) || d.hidden) continue;   // a hidden token is not on every seat's board: it never moves the block
     avoid.push(grow(docBox(t, gs), 0.06 * gs));
   }
-  for (const n of C?.notes?.placeables ?? []) { try { if (docOf(n)) avoid.push(noteBox(n)); } catch (e) { /* a pin without a place */ } }
+  for (const n of C?.notes?.placeables ?? []) { try { if (docOf(n)) avoid.push(noteBox(n, gs)); } catch (e) { /* a pin without a place */ } }
   const vh = GRID_VH * gs;
   return { vh, freeW: vh * 16 / 9, safe, token, avoid, gap: Math.round(0.12 * gs), focus: { x: token.x, y: token.y } };
 }
@@ -346,8 +353,8 @@ function screenAvoid(hero, full) {
   for (const t of C?.tokens?.placeables ?? []) {
     try { if (t.visible === false || sameTok(t, hero)) continue; const q = cl(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push(q); } catch (e) { /* one token */ }
   }
-  for (const n of C?.notes?.placeables ?? []) { try { if (n.visible === false) continue; const q = cl(noteBox(n)); if (q) out.push(q); } catch (e) { /* one pin */ } }
-  if (full && hero) { const h = tokenBox(hero); if (h) out.push(grow(h, 10)); }
+  for (const n of C?.notes?.placeables ?? []) { try { if (n.visible === false) continue; const q = cl(noteBox(n, gs)); if (q) out.push(q); } catch (e) { /* one pin */ } }
+  if (full && hero) { const h = tokenBox(hero); if (h) out.push({ ...grow(h, 10), w: 50 }); }   // the hero weighs most: a pin or a panel gives way first
   return out;
 }
 /* compose: measure, lay out, and (when the block had to go below or beside the token) measure again with the sound coming from there */
@@ -371,7 +378,7 @@ function compose(ctl, items, extra = {}) {
     if (!anchored || out.side === side) break;
     side = out.side;
   }
-  out.k = k;
+  out.k = k; out.frame = frame;
   return out;
 }
 
@@ -398,7 +405,7 @@ function letterOne(ctl, it) {
   /* on the map: the shared block, already in scene coordinates and scene px (FXLD2: the same on every seat; it zooms as one, ADVD 7) */
   let world = false;
   if (ctl.shared && it.sceneAt) {
-    Object.assign(o, { space: 'world', layer: mapLayerFor(it.role), at: { ...it.sceneAt }, out: LP.mapExit(o) });
+    Object.assign(o, { space: 'world', layer: mapLayerFor(it.role), at: { ...it.sceneAt }, out: LP.mapExit(o), size: it.S / (sizeK * k), keepInView: false });   // unrounded: the drawn size is exactly S on every seat, whatever its engine Scale; keepInView off (engine 1.7.0 pulls a world word into each seat's own view: live, the block slid onto the neighbours)
     if (ctl.hero) o.token = ctl.hero;
     delete o.parent;
     world = true;
@@ -539,7 +546,7 @@ function playLetters(ev, o) {
     gauge = probeGauge(ctl, ev.stress, resolve);
   }
   const lay = compose(ctl, plan.items, gauge ? { gauge } : {});
-  ctl.k = lay.k; ctl.rect = lay.rect;
+  ctl.k = lay.k; ctl.rect = lay.rect; ctl.layout = lay;   // (kept for inspection: frame, side, hit)
   ctl.tokenAnchor = ctl.token ? tokenBox(ctl.token) : null;
   const wp = lay.items.find(it => it.role === 'word');
   if (ctl.shared) {
@@ -605,8 +612,9 @@ function stressGauge(ctl, stress, resolve, g) {
   if (ctl.shared) {
     b.style.setProperty('--u', '1');
     const c = g ? toClient(g) : null, z = globalThis.canvas?.stage?.scale?.x || 1;
-    if (c) { b.style.left = c.x + 'px'; b.style.top = c.y + 'px'; b.style.scale = (ctl.gaugeK * z).toFixed(3); pin(ctl, b, { x: g.x, y: g.y }, c, ctl.gaugeK); }
-  } else if (g) { b.style.left = g.x + 'px'; b.style.top = g.y + 'px'; }
+    const gk = ctl.gaugeK * (g?.k ?? 1);
+    if (c) { b.style.left = c.x + 'px'; b.style.top = c.y + 'px'; b.style.scale = (gk * z).toFixed(3); pin(ctl, b, { x: g.x, y: g.y }, c, gk); }
+  } else if (g) { b.style.left = g.x + 'px'; b.style.top = g.y + 'px'; if ((g.k ?? 1) < 0.999) b.style.scale = g.k.toFixed(3); }   // shrunk with the block
   ctl.gaugeEl = b;
   return b;
 }
@@ -643,7 +651,7 @@ function addBackdrop(ctl, P, strength, fx) {
   ray.style.setProperty('--ray', hsl(h + 20, 100, 72, (0.50 * k).toFixed(2)));
   /* the rays turn, so their clear spot is cut by a still wrapper around them (its mask does not turn) */
   let host = ray;
-  if (hole) { host = document.createElement('div'); host.className = 'ins-raywrap'; host.style.maskImage = hole; host.style.webkitMaskImage = hole; host.appendChild(ray); }
+  if (hole) { host = document.createElement('div'); host.className = 'ins-raywrap'; host.style.maskImage = hole; host.style.webkitMaskImage = hole; ray.style.position = 'absolute'; host.appendChild(ray); }   // absolute in the fixed wrapper (a fixed child escaped its mask live)
   layerEl.insertBefore(host, ctl.el);
   ctl.extras.push(ray);
   if (host !== ray) ctl.extras.push(host);

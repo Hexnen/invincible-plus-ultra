@@ -255,32 +255,52 @@ export const PAD = 0.14;
 export function composeMoment(items, frame, measure = estimateBox) {
   const safe = frame.safe, vh = frame.vh || 768, sc = frame.scale || 1;
   const safeW = Math.max(120, Math.min(safe.r - safe.l, frame.freeW ?? Infinity)), safeH = Math.max(120, Math.min(safe.b - safe.t, frame.freeH ?? Infinity));
-  let f = 1, out = null;
-  for (let pass = 0; pass < 8; pass++) {
-    out = layoutAt(items, frame, measure, f, safeW, vh, sc);
+  let f = 1, out = null, stack = false, clean = null;
+  const T = frame.token;
+  for (let pass = 0; pass < 14; pass++) {
+    out = layoutAt(items, frame, measure, f, safeW, vh, sc, stack);
     const bw = out.rect.r - out.rect.l, bh = out.rect.b - out.rect.t;
     let k = Math.min(1, (safeW - 4) / bw, (safeH - 4) / bh);
     /* by a token: when no side of it has room for the block, the block shrinks (to 0.6 at most) to the side with the most room
        rather than landing on the token (live 1920: the caption sat on Kid Omni-Man's art). A critical (wMin) covers the screen anyway. */
-    const T = frame.token;
     if (k >= 0.999 && T && !items.some(it => it.wMin)) {
       const g = 6, fitK = (w, h) => Math.min((safeW - 4) / bw, (safeH - 4) / bh, w / bw, h / bh);
       const best = Math.max(fitK(safeW, T.t - g - safe.t), fitK(safeW, safe.b - T.b - g), fitK(safe.r - T.r - g, safeH), fitK(T.l - g - safe.l, safeH));
       if (best < 0.999 && best >= 0.6 * Math.min(1, k) && f > 0.6) k = Math.max(best, 0.6 / f);
     }
     if (k >= 0.999) {
-      /* FXLD2: nothing clean on any side (neighbours, pins, dice around): shrink a little (to 0.6 of the size at most) and try again */
+      /* FXLD2: nothing clean on any side (neighbours, pins, dice around): first the narrower block (the sixes under the word instead
+         of beside it), then shrink a little (to 0.6 of the size at most; to 0.4 while the block would still cover the hero or the
+         rolling token, which must never happen) and try again */
       place(out, frame, f <= 0.6);
-      if (!out.hit || f <= 0.6 || !(frame.avoid?.length || frame.token)) return out;
+      if (!(frame.avoid?.length || frame.token)) return out;
+      /* a clean place that is detached from the token (live, The Warehouse: every side of Kid Omni-Man touched a neighbour or a pin,
+         and the clean place lay beyond Omni-Man, out of the view of a seat looking at the roller) is kept only as a fallback: a
+         smaller block that fits right by the token wins */
+      if (!out.hit) {
+        const off = T ? detached(out.rect, T, frame) : 0;
+        if (off <= 0) return out;
+        if (!clean || off < clean.off - 1) { clean = out; clean.off = off; }   // the nearest clean place so far
+      }
+      if (!stack && out.items.some(it => it.role === 'six' || it.role === 'wreck')) { stack = true; continue; }
+      out.heavy = out.heavy ?? 0;
+      /* the floor: 0.6; 0.4 while the hero would be covered; 0.45 while the only clean places are away from the hero */
+      if (f <= (out.heavy > 0 ? 0.4 : clean ? 0.45 : 0.6)) return clean ?? out;
       f *= 0.88;
       continue;
     }
     f *= k * 0.97;
   }
+  if (clean) return clean;
   place(out, frame);
   return out;
 }
-function layoutAt(items, frame, measure, f, safeW, vh, sc) {
+/* how far the block stands off the token beyond a few gaps (0: it touches the token's side, as a block placed by it does) */
+export function detached(rect, T, frame) {
+  const dx = Math.max(0, T.l - rect.r, rect.l - T.r), dy = Math.max(0, T.t - rect.b, rect.t - T.b);
+  return Math.max(0, Math.hypot(dx, dy) - 3 * (frame.gap ?? 6));
+}
+function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
   const sized = items.map(it => {
     let S = Math.max(FLOOR[it.role] ?? 16, (it.cap ?? 0.04) * vh) * sc * f;
     let b = measure(it, S);
@@ -301,7 +321,19 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc) {
   let y = 0;
   const put = (it, x, top) => { it.x = x; it.y = top + it.h / 2; };
   if (pre) { put(pre, 0, y); y += pre.h + pad(pre) * 2 + g; }
-  if (word) {
+  /* the narrow block: the word alone on its row, the caption right under it, the wreck and the sixes on a row under that */
+  const stackRow = () => {
+    const row = [wreck, six].filter(Boolean);
+    if (!row.length) return;
+    const w = row.reduce((s, it) => s + it.w + 2 * pad(it), 0) + g * (row.length - 1), h = Math.max(...row.map(it => it.h));
+    let x = -w / 2;
+    for (const it of row) { it.x = x + pad(it) + it.w / 2; it.y = y + h - it.h / 2; x += it.w + 2 * pad(it) + g; }
+    y += h + g;
+  };
+  if (word && stack) {
+    put(word, 0, y);
+    y += word.h + g + pad(word);
+  } else if (word) {
     put(word, 0, y);
     let right = word.w / 2;
     if (wreck) { put(wreck, right + g + wreck.w / 2 + pad(wreck), y); right = wreck.x + wreck.w / 2; }
@@ -314,8 +346,8 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc) {
   /* the caption: sentence and figure on one row when they fit the word row's width (or 90 % of the free width), else stacked */
   const cap = [sayI, odds].filter(Boolean);
   if (cap.length) {
-    const wordL = word ? word.x - word.w / 2 : -100, rowW = word ? Math.max(word.w, ...[wreck, six].filter(Boolean).map(it => it.x + it.w / 2 - wordL)) : 0;
-    const inline = cap.length === 2 && sayI.w + g + odds.w <= Math.max(rowW, 0.9 * safeW);
+    const wordL = word ? word.x - word.w / 2 : -100, rowW = word ? Math.max(word.w, ...[wreck, six].filter(it => it && it.x != null).map(it => it.x + it.w / 2 - wordL)) : 0;
+    const inline = cap.length === 2 && sayI.w + g + odds.w <= (stack ? rowW : Math.max(rowW, 0.9 * safeW));   // the narrow block keeps the caption to the word's width
     if (inline) {
       const w = sayI.w + g + odds.w, h = Math.max(sayI.h, odds.h);
       /* under the word, indented a little from its left edge (a caption, not a centred label); wider than the word row: centred */
@@ -326,12 +358,13 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc) {
       y += h + g;
     } else for (const it of cap) { put(it, 0, y); y += it.h + g * 0.6; }
   }
+  if (word && stack) stackRow();
   let gauge = null;
   if (stress) {
-    const gw = frame.gauge?.w ?? 0, gh = frame.gauge?.h ?? 0;
+    const gw = (frame.gauge?.w ?? 0) * f, gh = (frame.gauge?.h ?? 0) * f;   // the gauge shrinks with the block (live: a full-size gauge beside words shrunk to 0.6)
     const w = stress.w + (gw ? g + gw : 0), h = Math.max(stress.h, gh);
     stress.x = -w / 2 + stress.w / 2; stress.y = y + h / 2;
-    if (gw) gauge = { x: -w / 2 + stress.w + g, y: y + h / 2 - gh / 2, w: gw, h: gh };   // top-left of the DOM gauge
+    if (gw) gauge = { x: -w / 2 + stress.w + g, y: y + h / 2 - gh / 2, w: gw, h: gh, k: f };   // top-left of the DOM gauge; k: its scale
     y += h;
   }
   const rect = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity };
@@ -350,7 +383,8 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc) {
    of the token is tried at several places along it, and the first place (in side order, nearest first) that touches nothing wins; when
    none is clean, the place with the least overlap (out.hit > 0 tells composeMoment to shrink and try again). */
 const area = (a, b) => Math.max(0, Math.min(a.r, b.r) - Math.max(a.l, b.l)) * Math.max(0, Math.min(a.b, b.b) - Math.max(a.t, b.t));
-export function blockHits(rect, avoid = []) { let s = 0; for (const a of avoid) s += area(rect, a); return s; }
+/* an avoided box may weigh more than its area (w: the hero of a critical is never covered while a pin or a panel can still give way) */
+export function blockHits(rect, avoid = []) { let s = 0; for (const a of avoid) s += area(rect, a) * (a.w ?? 1); return s; }
 /* slides along a side, in shares of the block's own size (never far from the token: live, a block that slid half a scene away
    no longer belonged to its roll) */
 const SLIDE = [0, -0.3, 0.3, -0.6, 0.6, -0.9, 0.9, -1.2, 1.2];
@@ -367,10 +401,10 @@ function place(out, frame, far = false) {
   const consider = (s, l, t, pref) => {
     [l, t] = inSafe(l, t);
     const q = at(l, t), onT = T ? area(q, { l: T.l - (frame.gap ?? 6) + 1, t: T.t - (frame.gap ?? 6) + 1, r: T.r + (frame.gap ?? 6) - 1, b: T.b + (frame.gap ?? 6) - 1 }) : 0;
-    const hit = blockHits(q, avoid) + onT * 4;
+    const hit = blockHits(q, avoid) + onT * 4, heavy = onT + blockHits(q, avoid.filter(a => (a.w ?? 1) >= 10));
     const d = Math.hypot(l + bw / 2 - ref.x, t + bh / 2 - ref.y) / unit;
     const score = (hit > 0.5 ? 1e6 + hit : 0) + d + pref;
-    if (!best || score < best.score) best = { s, l, t, hit, score };
+    if (!best || score < best.score) best = { s, l, t, hit, heavy, score };
   };
   if (T) {
     const gap = frame.gap ?? 6;
@@ -394,6 +428,7 @@ function place(out, frame, far = false) {
   } else {
     const W = safe.r - safe.l, H = safe.b - safe.t;
     for (const dy of [0, -0.12, 0.12, -0.24, 0.24, -0.36, 0.36]) for (const dx of [0, -0.15, 0.15, -0.3, 0.3, -0.45, 0.45]) consider('focus', frame.focus.x - bw / 2 + dx * W, frame.focus.y - bh / 2 + dy * H, 0);
+    if (far && best.hit > 0.5) for (let gy = 0; gy <= 8; gy++) for (let gx = 0; gx <= 8; gx++) consider('focus', safe.l + gx / 8 * (W - bw), safe.t + gy / 8 * (H - bh), 0.5);
   }
   side = best.s;
   const dx = best.l - r.l, dy = best.t - r.t;
@@ -402,6 +437,7 @@ function place(out, frame, far = false) {
   out.rect = { l: r.l + dx, t: r.t + dy, r: r.r + dx, b: r.b + dy };
   out.side = side;
   out.hit = best.hit;
+  out.heavy = best.heavy;
 }
 /* two boxes of a composed moment overlap (with their motion room) -> true; used by the checks */
 export function overlaps(a, b, room = 0) {
