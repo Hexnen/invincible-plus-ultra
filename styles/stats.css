@@ -125,7 +125,7 @@
 .ipu-aw-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 2px 9px 2px 4px; font: 400 12.5px/1 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ipu-text); border: 1px solid var(--ipu-line); cursor: help; }
 .ipu-aw-chip .ipu-aw-badge { width: 18px; height: 18px; margin: 0 2px; border-width: 1.5px; }
 .ipu-aw-chip .ipu-aw-badge i { font-size: 9px; }
-.ipu-aw-chip b { color: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
+.ipu-aw-chip b { font: 700 12px/1 Roboto, "Segoe UI", sans-serif; color: var(--ipu-yellow); font-variant-numeric: tabular-nums; }      /* the Titles face has no "×" */
 
 .ipu-st-empty { display: grid; place-items: center; padding: 24px; }
 .ipu-st-empty p { max-width: 44ch; font: 400 15px/1.45 Comic, sans-serif; text-align: center; color: var(--ipu-label); }

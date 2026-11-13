@@ -1127,7 +1127,7 @@ export const steps = {
         if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
         const ans = K.answerId(v, I, key);
         if (once(key) && (ans === "counter" || ans === "counter:metal")) {
-          R.events.push({ type: "counter", by: t, against: I.actor, sixes: o.counterattack.sixes });
+          R.events.push({ type: "counter", by: t, who: t, against: I.actor, sixes: o.counterattack.sixes });      // AWRD: `who` too: emit() overwrites `by` with the user (spec 16 common field)
           const metal = ans === "counter:metal" ? Number(tf?.pass?.metalBlock) || 0 : 0;
           R.push = { action: "slugfest", actor: t, decl: { action: "slugfest", weapon: "unarmed", targets: [I.actor], helpers: [], exploits: [], stressTotal: 0 }, cause: "counter", data: { kind: "counterattack", counterSixes: o.counterattack.sixes, ...(metal > 0 ? { counterDamage: metal } : {}) }, prepaid: 1 };
           return R;

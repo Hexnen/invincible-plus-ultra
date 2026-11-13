@@ -203,8 +203,10 @@ export function sync(ctx) {
     const mine = new Set((model?.bars ?? []).map((b) => b.combatant));
     for (const id of Object.keys(view?.ledger ?? {})) { const c = facts.c?.(id); if (c) snap[id] = { name: c.name, img: c.img ?? null, mine: staff ? (c.team ? c.team === "heroes" : !c.npc) : mine.has(id) }; }      // ANSE (U17-1): a friendly NPC counts with the heroes
     statusesWere = view?.statuses ?? {};
-    let done = loadDone(); { const live = FP.doneLive(done, combat.id, view); if (live.length !== done.length) { done = live; saveDone(live); } }
-    const next = FP.tallyFor(tally, combat.id, view?.news, done);      // D131: a fight already summed up keeps no tally
+    /* AWRD (found live): this list was called `done`, shadowing the hints' Set below, so a hint being used threw ("done.add is not a
+       function") and the whole sync gave no card and no hint on every redraw while that hint stood */
+    let sumDone = loadDone(); { const live = FP.doneLive(sumDone, combat.id, view); if (live.length !== sumDone.length) { sumDone = live; saveDone(live); } }
+    const next = FP.tallyFor(tally, combat.id, view?.news, sumDone);      // D131: a fight already summed up keeps no tally
     if (next !== tally) { tally = next; saveTally(); }
     if (FP.viewOver(view) && endFight(combat)) return { sum: decorate(sum?.card ?? null), hint: null };      // D131: the scene ended: the fight's card now, once
     const round = Number.isFinite(view?.round) ? view.round : null;

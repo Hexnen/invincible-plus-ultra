@@ -110,9 +110,9 @@ export function factsOfEvent(ev, ctx) {
       out.push({ ...base, id: id("c", ev.target), k: "crit", ...doer(ev.actor), ...onto(ev.target), ...(ev.crit?.id ? { nm: str(ev.crit.id, 40) } : {}) });
       break;
     }
-    case "counter": {
-      const w = who(ev.by); if (!w) break;
-      out.push({ ...base, id: id("ctr", ev.by), k: "ctr", a: w.a, ac: ev.by, ...onto(ev.against), s: pos(ev.sixes) });
+    case "counter": {      // AWRD (found live): the engine's emit() overwrites `by` with the user id; the counterattacker is `who` (flows/attack.mjs)
+      const by = who(ev.who) ? ev.who : ev.by, w = who(by); if (!w) break;
+      out.push({ ...base, id: id("ctr", by), k: "ctr", a: w.a, ac: by, ...onto(ev.against), s: pos(ev.sixes) });
       break;
     }
     case "move": {
@@ -120,9 +120,9 @@ export function factsOfEvent(ev, ctx) {
       out.push({ ...base, id: id("mv", ev.combatant), k: "mv", a: w.a, ac: ev.combatant, n: pos(ev.zones) });
       break;
     }
-    case "challenge": {
-      const w = who(ev.by); if (!w || !(pos(ev.sixes) > 0 || ev.state === "overcome")) break;
-      out.push({ ...base, id: id("ch", ev.challenge), k: "chal", a: w.a, ac: ev.by, ...onto(ev.challenge), s: pos(ev.sixes), ...(ev.state === "overcome" ? { win: 1 } : {}) });
+    case "challenge": {      // AWRD (found live): `by` is overwritten with the user id by emit(); the doer is `who` (flows/challenge.mjs), else the instance's actor
+      const by = who(ev.who) ? ev.who : who(ev.by) ? ev.by : ev.actor, w = who(by); if (!w || !(pos(ev.sixes) > 0 || ev.state === "overcome")) break;
+      out.push({ ...base, id: id("ch", ev.challenge), k: "chal", a: w.a, ac: by, ...onto(ev.challenge), s: pos(ev.sixes), ...(ev.state === "overcome" ? { win: 1 } : {}) });
       break;
     }
     default: break;

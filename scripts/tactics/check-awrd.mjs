@@ -193,4 +193,18 @@ eq(Object.keys(L.EN).filter((k) => k.startsWith("IPU.Awrd.")).sort(), Object.key
   ok(/sum: decorate\(sum\?\.card/.test(fb) && /StatStore\.subscribe\(onStats\)/.test(fb), "H: the fight card gets its titles and follows the statistics");
   ok(/awardsBody\(c\)/.test(dom) && /role: "tab"/.test(dom), "H: the card has the titles tab");
 }
+/* ---- I. found live: the doer of a challenge roll and of a counterattack (emit() overwrites `by` with the user), the summary card's
+   list that shadowed the hints' Set */
+{
+  const who = (cid) => (cid === "H1" ? { a: "A_H1", side: "h" } : cid === "CH" ? { a: "A_CH", side: "n" } : cid === "N1" ? { a: "A_N1", side: "n" } : null);
+  const ch = P.factsOfEvent({ type: "challenge", combat: "C1", fight: "f1", seq: 5, inst: "i1", actor: "H1", by: "user1", who: "H1", challenge: "CH", sixes: 2, state: "overcome" }, { who, pub: true }).facts;
+  eq(ch.map((x) => [x.k, x.a, x.ac, x.s, x.win]), [["chal", "A_H1", "H1", 2, 1]], "I: a challenge roll is its doer's though `by` is the user");
+  const ch2 = P.factsOfEvent({ type: "challenge", combat: "C1", fight: "f1", seq: 6, inst: "i2", actor: "H1", by: "user1", challenge: "CH", sixes: 1 }, { who, pub: true }).facts;
+  eq(ch2.map((x) => x.ac), ["H1"], "I: without `who` the instance's actor is the doer");
+  const ct = P.factsOfEvent({ type: "counter", combat: "C1", fight: "f1", seq: 7, inst: "i3", actor: "N1", by: "user1", who: "H1", against: "N1", sixes: 1 }, { who, pub: true }).facts;
+  eq(ct.map((x) => [x.k, x.ac, x.oc]), [["ctr", "H1", "N1"]], "I: a counterattack is the counterattacker's");
+  ok(/type: "challenge", challenge: t, rating: next\.rating, timeLeft: ch\.resolve, by: I\.actor, who: I\.actor/.test(read("tactics/flows/challenge.mjs")) && /type: "counter", by: t, who: t/.test(read("tactics/flows/attack.mjs")), "I: the flows name the doer in `who`");
+  const fb = read("tactics/ui/feedback.mjs");
+  ok(/let sumDone = loadDone\(\)/.test(fb) && !/let done = loadDone\(\)/.test(fb), "I: the summed-up fights list no longer shadows the hints' Set (sync threw 'done.add is not a function')");
+}
 done("check-awrd");

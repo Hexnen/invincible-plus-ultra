@@ -121,7 +121,7 @@ export const objective = {
         }
         I.data.result = sixes > 0 ? (next.status === "overcome" ? "overcome" : "progress") : "fail";
         I.data.rating = { from: ch.health, to: next.rating };
-        R.events.push({ type: "challenge", challenge: t, rating: next.rating, timeLeft: ch.resolve, by: I.actor, sixes, state: next.status === "overcome" ? "overcome" : "active" });
+        R.events.push({ type: "challenge", challenge: t, rating: next.rating, timeLeft: ch.resolve, by: I.actor, who: I.actor, sixes, state: next.status === "overcome" ? "overcome" : "active" });      // AWRD: `who` too: emit() overwrites `by` with the user (spec 16 common field)
       }
       R.goto = "close"; return R;
     },
