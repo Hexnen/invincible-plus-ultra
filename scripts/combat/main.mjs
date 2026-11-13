@@ -179,6 +179,24 @@ function registerBarHooks() {
   on("controlToken", () => Bar.paintSelection());
   on("hoverToken", (token, hovered) => Bar.echo(token, hovered));
   for (const hk of ["changeSidebarTab", "renderChatLog", "closeChatLog"]) on(hk, () => { Bar.relayout(false); setTimeout(() => Bar.relayout(false), 300); });      // FXR (U185): also the chat popped out or back in
+  on("createCombatant", (cb) => groupStarts(cb?.parent));      // ANSH (A8C-2)
+  on("combatStart", (combat) => groupStarts(combat, true));
+}
+
+/* ANSH (A8C-2, the user 2026-11-12: the bar of a minion group shows how many stand against how many stood at the start, "4/6"): the
+   active GM writes on each group's combatant how many stood when it joined the fight, and again when the fight starts. Only that client
+   writes; everyone reads it (bar.mjs read). A group of no known count is left alone. */
+const groupMembers = (cb) => { const a = cb?.actor; if (a?.type !== "minions") return null; const v = Number(a.system?.derived?.health?.value); return Number.isFinite(v) ? Math.max(0, Math.round(v)) : null; };
+function groupStarts(combat, all = false) {
+  try {
+    if (!combat || !game.users?.activeGM?.isSelf) return;
+    const up = [];
+    for (const cb of combat.combatants ?? []) {
+      const n = groupMembers(cb), had = cb.flags?.[MOD]?.groupStart;
+      if (n != null && (all || !Number.isFinite(had)) && had !== n) up.push({ _id: cb.id, [`flags.${MOD}.groupStart`]: n });
+    }
+    if (up.length) combat.updateEmbeddedDocuments("Combatant", up);
+  } catch (e) { console.warn(LOG, "group start failed", e); }
 }
 
 function onReady() {
@@ -192,7 +210,8 @@ function onReady() {
     Bar.setReady(true);
     Bar.setDown(!canvas?.scene);
     Bar.schedule();
-    onResize = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; Banner.relayout(); Bar.relayout(false); }); };
+    for (const c of game.combats ?? []) groupStarts(c);      // ANSH (A8C-2): a fight already running gets its counts once
+    onResize =() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; Banner.relayout(); Bar.relayout(false); }); };
     window.addEventListener("resize", onResize);
     window.addEventListener(ChatPark.MOVED, onResize);   // FXX (U185): the popped-out chat parked, was dragged or closed
     ChatPark.start({ fight: () => Bar.isShowing() });

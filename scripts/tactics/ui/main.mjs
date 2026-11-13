@@ -788,6 +788,7 @@ export function start() {
     listen(window, "resize", resizeSeen, { capture: true, passive: true });      // PERF5-1: the gate of Dice So Nice's rebuild sees every resize
     listen(window, "resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
     listen(window, CHAT_MOVED, () => { if (!st.desk.touched) schedule(); else relayout(); });      // FXX (U185): the popped-out chat parked, was dragged or closed
+    listen(window, "ipu:bar-settled", relayout);      // ANSH (PFA): the initiative bar's glide ended: what was placed under it mid-glide is placed again (combat/bar.mjs SETTLED)
     listen(document, "keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode || st.dock.endArmed) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock(st.dock.endArmed ? { endArmed: false } : { armed: null, mode: null, amend: null }); }      /* ANSA (UXC-1): Esc answers No to the end question */ } catch { /* ignore */ } }, true);
     /* U41 */
     listen(document, "keydown", onKey, true);

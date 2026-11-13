@@ -18,7 +18,8 @@ ok(/ipu-k-range/.test(Kit.symMarkHtml("range", { n: 0 })) && />0<\/b>/.test(Kit.
 const leg = Kit.LEGEND.flatMap((g) => g.rows.map(([id]) => id));
 ok(leg.includes("range") && leg.indexOf("range") < leg.indexOf("rmin"), "b5 the legend shows it, before the two ends");
 const mp = src("ui/model-pure.mjs");
-ok(/x\.range\[0\] === x\.range\[1\] \? \[\{ mark: "range"/.test(mp) && !/=== x\.range\[1\] \? \[\{ mark: "rmax"/.test(mp), "b6 the dock: one number for both ends is the range mark, named Range");
+/* ANSH (FXJ-4, the user 2026-11-12): the pin follows the answer: one number AND a span are both the range mark (no least / greatest pair) */
+ok(/x\.range\[0\] === x\.range\[1\] \? \{ mark: "range"/.test(mp) && /: \{ mark: "range", n: `\$\{x\.range\[0\]\}–\$\{x\.range\[1\]\}`/.test(mp) && !/mark: "rm(in|ax)"/.test(mp), "b6 + FXJ-4 the dock: one number for both ends, and a span, is the range mark, named Range");
 const rd = readFileSync(new URL("../../styles/rolldialog.css", here), "utf8");
 ok(/\[data-ird-fact="min"\]:has\(\+ \[data-ird-same\]\)::before \{ -webkit-mask-image: var\(--ipu-m-range\); mask-image: var\(--ipu-m-range\); \}/.test(rd), "b7 the roll window's strip: one number for both ends paints the range mark");
 const sp = Kit.markSigns("range", { n: 2, name: true });

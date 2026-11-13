@@ -122,7 +122,7 @@ function promptModel(p, ctx) {
 export function outOf(view, cid, c = null) {
   const has = (id) => (view?.statuses?.[cid] ?? []).some((s) => s.id === id);
   const zero = !!c && c.kind !== "vehicle" && c.kind !== "challenge" && Number.isFinite(c.health) && !(c.health > 0);
-  const reason = has("dead") ? "dead" : has("unconscious") ? "unconscious" : has("broken") || zero ? "broken" : null;
+  const reason = has("dead") ? "dead" : has("unconscious") ? "unconscious" : c?.defeated === true ? "defeated" : has("broken") || zero ? "broken" : null;      // ANSH (P8g-3): marked defeated in Foundry
   const rally = reason === "broken" && !has("dying") && (!c || crits.canRally({ broken: true, crits: c.crits ?? [], primaryCopy: c.pass?.noRally === true }).ok);
   return reason ? { reason, canRally: rally, label: `ITAC.ui.out.${reason}` } : null;
 }
@@ -179,7 +179,7 @@ export function barModel(view, cid, ctx = {}) {
     endTurn: onTurn ? { disabled: busy || (view.mode === "tactical" && !view.free?.[cid] && Object.values(view.prompts ?? {}).some((p) => p && !p.answered && p.about === cid)) ? "busy" : null, noConfirm: !!out || (!!ctx.staff && ctx.c?.(cid)?.npc === true), req: { op: "endTurn", actor: cid, round: view.round, slot: view.init?.cur },
       /* FXN (D133): nothing was done in this turn yet (no own entry of it in the ledger): a turn that has nothing left now STARTED empty (the round's actions went on reactions) */
       fresh: !Lg.turnUsed(view.ledger?.[cid]) } : null,
-    holdOff: out ? { disabled: out.reason, targets: [], req: (slotId) => ({ op: "holdOff", actor: cid, with: slotId }) } : holdOffOf(view, cid, onTurn, busy, ctx), markReq: (unit, on = true) => ({ op: "mark", actor: cid, unit, on }),
+    holdOff: out ? { disabled: out.reason, targets: [], req: (slotId) => ({ op: "holdOff", actor: cid, with: slotId }) } : holdOffOf(view, cid, onTurn, busy, ctx), markReq: ctx.staff ? (unit, on = true) => ({ op: "mark", actor: cid, unit, on }) : null,      // ANSH (CU8, the user 2026-11-12: «Tak, tylko MG»): marking a slot by hand is the GM's; a player plays through the dock or asks for an exception
     other: { req: (text) => ({ op: "other", actor: cid, text }) }, exception: { req: (text, inst, more = {}) => ({ op: "exception", actor: cid, text, ...(inst ? { inst } : {}), ...(more.reason ? { reason: more.reason } : {}), ...(more.decl ? { decl: more.decl } : {}) }) } };
 }
 /* U117: why the driver cannot start the vehicle now, in the words of the seat flow's own refusal (flows/vehicle.mjs legality) */

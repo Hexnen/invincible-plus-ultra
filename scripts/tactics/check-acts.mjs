@@ -194,7 +194,11 @@ const closed = (T) => T.evs("actionClosed").pop()?.summary?.result;
   T.c.H2.health = 0; T.c.H2.crits = [10];
   await T.gm({ op: "statusAdd", combatant: "H2", status: { id: "dying", data: { within: "hours" } } });
   eq([code(await T.gm(decl("H1", "stabilize", { targets: ["N1"] }))), why(T.last)], ["illegal", "notDying"], "stabilize: only a dying character");
-  eq([code(await T.req("p1", decl("H1", "stabilize", { targets: ["N1"] }))), why(T.last)], ["illegal", "notAlly"], "stabilize: a player is not told whether an NPC that is not revealed is dying (D54)");
+  /* ANSH (P8f-1, the user 2026-11-12: «Zezwolić, MG rozstrzyga bez liczb»): the player's attempt goes to the GM's card; the player is told
+     nothing of whether it is dying, the GM's card says what the rules would answer */
+  eq([code(await T.req("p1", decl("H1", "stabilize", { targets: ["N1"] }))), T.prompt("exception")?.data?.reason, T.prompt("exception")?.data?.reasons], ["ok", "strangerAlly", ["notDying"]], "stabilize + P8f-1: a player at an NPC that is not revealed waits on the GM's card, which names the rule (D54: the player is not told)");
+  await T.answer("gm", "exception", "deny");
+  eq(T.prompts("exception").length, 0, "stabilize + P8f-1: the GM's no ends it");
   eq([code(await T.req("p1", decl("H1", "stabilize", { targets: ["H2"] }))), why(T.last), T.last.error.params.gmMayAllow], ["illegal", "needsGear", 1], "stabilize: advanced medical gear is the GM's word");
   eq(code(await T.req("p1", decl("H1", "stabilize", { targets: ["H2"], exception: { text: "the med bay is right here" } }))), "ok", "stabilize: asked as an exception");
   eq(T.prompt("exception")?.data?.reason, "needsGear", "stabilize: the GM's card names the missing gear");

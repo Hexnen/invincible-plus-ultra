@@ -17,6 +17,7 @@ import { sceneData } from "./scene-pure.mjs";
 import { allRows, CAT_OF } from "../kit-pure.mjs";
 import * as Lg from "../ledger-pure.mjs";
 import { outOf } from "../desk-pure.mjs";
+import { conditions } from "../mods-pure.mjs";
 import * as Keys from "./keys-pure.mjs";
 import { whyOf, whyLine, poolTip, rollPool } from "./feedback-pure.mjs";
 import { BANDS, bandOf } from "../flows/kit.mjs";      // the bands of a chance: one definition for the dock and for the engine's reaction cards (U11)
@@ -395,8 +396,12 @@ export function askData(p, o) {
   const tkPicked = (own.picks?.[`tk:${p.id}`] ?? []).filter((id) => spare.has(id));
   const tokens = [...spare.values()].map((k) => ({ id: k.id, label: t("ITAC.ui.bonusDice", { n: k.dice }), source: t(`ITAC.mod.${k.source}`, {}, String(k.source ?? "")), needsGm: !!k.needsGm, picked: tkPicked.includes(k.id) }));
   const gx = desk && kind === "stunts" ? gmExtraOf(p, facts, own, t) : null;      // U17-2: the GM names anybody as the extra opponent
-  const options = [...placeOpts, ...[...(p.options ?? []), ...(gx?.added ?? [])].filter((x) => !places.includes(x)).map((x) => {
-    const mine = tkPicked.filter((id) => (x.data?.tokens ?? []).some((k) => k.id === id));
+  /* ANSH (ANSEL-3, U19-4): diving in to take the hit [B2115] needs a body free to move; a guardian held, snared or trapped AFTER the card
+     came keeps the card, but its answer is greyed with the reason now, as the engine would refuse it (flows/kit.mjs reactionFit) */
+  const bodyBound = kind === "reaction" && p.about && facts.view ? (() => { try { const k = conditions(facts.view, p.about); return k.held ? "held" : k.snared ? "snared" : k.trapped ? "trapped" : null; } catch { return null; } })() : null;
+  const options = [...placeOpts, ...[...(p.options ?? []), ...(gx?.added ?? [])].filter((x) => !places.includes(x)).map((x0) => {
+    const x = bodyBound && !x0.disabled && x0.data?.effect === "swapTarget" ? { ...x0, disabled: bodyBound } : x0;
+    const mine =tkPicked.filter((id) => (x.data?.tokens ?? []).some((k) => k.id === id));
     const value = text && p.free ? { id: x.id, text } : always ? { id: x.id, always: true } : mine.length ? { id: x.id, tokens: mine } : null;
     const zones = Array.isArray(x.data?.zones) ? x.data.zones : null;
     /* U23: a stunt says what it does (tooltip), and the card sorts them: on the target, another opponent brought in, on that opponent */
@@ -643,7 +648,7 @@ export function slotsOf(bar, t) {
   const base = Lg.slots(b).map((s) => {
     const big = s.id === "A", kind = big ? "full" : "quick";
     const tipKey = s.state === "used" ? (big && s.as === "quick" ? "usedQuick" : "used") : s.state === "open" ? (s.only ? "openQuick" : "open") : "lost";
-    return { key: big ? "a" : "b", kind, unit: s.unit, state: s.state, as: s.as ?? null, extra: false, label: word(s.only ?? kind), tip: t(`ITAC.ui.slot.${big ? "a" : "b"}.${tipKey}`),
+    return { key: big ? "a" : "b", kind, unit: s.unit, state: s.state, as: s.as ?? null, extra: false, label: word(s.only ?? kind), tip: t(`ITAC.ui.slot.${big ? "a" : "b"}.${tipKey}${tipKey !== "lost" && !bar.markReq ? ".ro" : ""}`),      /* ANSH (CU8): no hand marks, no click in the tip */
       req: s.state === "lost" ? null : bar.markReq?.(s.unit, s.state === "open") ?? null };
   });
   const more = (b.grants ?? []).filter((g) => (g.state === "open" || g.state === "pending") && (g.unit === "full" || g.unit === "quick")).map((g) => ({ key: `g:${g.id}`, kind: g.unit, unit: g.unit, state: g.state, as: null, extra: true,
@@ -730,7 +735,8 @@ function armsOf(bar, a, own, facts, t) {
   /* U93: what a weapon brings in numbers is written with the marks (bonus dice, damage, the least and the greatest range, its price in
      stress), each with its name; what it does besides stays in words. `say` is all of it in words, for a screen reader. */
   const factsOf = (x) => [x.bonus ? { mark: "dice", n: `+${x.bonus}`, name: t("ITAC.ui.fact.dice") } : null, x.damage != null ? { mark: "damage", n: x.damage, name: t("ITAC.ui.fact.damage") } : null,
-    ...(Array.isArray(x.range) ? (x.range[0] === x.range[1] ? [{ mark: "range", n: x.range[1], name: t("ITAC.ui.fact.range") }] : [{ mark: "rmin", n: x.range[0], name: t("ITAC.ui.fact.rmin") }, { mark: "rmax", n: x.range[1], name: t("ITAC.ui.fact.rmax") }]) : []),
+    /* ANSH (FXJ-4, the user 2026-11-12): a range of two ends is one mark too, "Range" with the span ("0–2"); its tooltip says both ends */
+    ...(Array.isArray(x.range) ? [x.range[0] === x.range[1] ? { mark: "range", n: x.range[1], name: t("ITAC.ui.fact.range") } : { mark: "range", n: `${x.range[0]}–${x.range[1]}`, name: t("ITAC.ui.fact.range") }] : []),
     x.stress ? { mark: "stress", n: x.stress, name: t("ITAC.ui.cost.stress") } : null].filter(Boolean);
   const restOf = (x) => [x.sharp ? t("ITAC.ui.weapon.sharp") : null, x.stunEffect ? t("ITAC.ui.weapon.stunEffect") : null, x.singleUse ? t("ITAC.ui.weapon.singleUse") : null, x.noMove ? t("ITAC.ui.weapon.noMove") : null,
     x.noDamage ? t("ITAC.ui.weapon.noDamage") : null, x.toStress ? t("ITAC.ui.weapon.toStress") : null, x.onHit?.status ? t("ITAC.ui.weapon.gives", { status: t(`ITAC.status.${x.onHit.status}`, {}, x.onHit.status) }) : x.onHit?.stun ? t("ITAC.ui.weapon.stun") : null,

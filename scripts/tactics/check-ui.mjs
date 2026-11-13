@@ -305,9 +305,12 @@ for (const l of ["en", "pl"]) { // U28 - U31, U23, U4: the compact dock: slots, 
   eq([d.slots.map((p) => [p.key, p.state]), act(d, "move").pv, act(d, "move").tip.lines.length], [[["a", "open"], ["b", "used"]], { slot: "a", forfeits: true, stress: 0 }, 1], `${l} U31 / U30: the quick slot is spent; a second quick action would take the big slot, and says so`);
   eq((await T.req("p1", { op: "mark", actor: "H1", unit: "quick", on: true })).ok, true, `${l} a second quick action marked`);
   d = dk("p1", ["H1"]);
-  eq([d.slots.map((p) => [p.key, p.state, p.as]), d.slots[0].req, act(d, "slugfest").pv, typeof act(d, "slugfest").tip.why?.text], [[["a", "used", "quick"], ["b", "used", "quick"]], { op: "mark", actor: "H1", unit: "quick", on: false }, null, "string"], `${l} U31: two quick actions fill both slots (never a third mark); a greyed action previews nothing and says why`);
-  eq((await T.req("p1", d.slots[0].req)).ok, true, `${l} the hand-made mark on the big slot is taken back through its own request`);
-  eq((await T.req("p1", dk("p1", ["H1"]).slots[1].req)).ok, true, `${l} and the one on the quick slot`);
+  eq([d.slots.map((p) => [p.key, p.state, p.as]), d.slots[0].req, act(d, "slugfest").pv, typeof act(d, "slugfest").tip.why?.text], [[["a", "used", "quick"], ["b", "used", "quick"]], null, null, "string"], `${l} U31: two quick actions fill both slots (never a third mark); a greyed action previews nothing and says why; ANSH (CU8): a player's slot is no button`);
+  /* ANSH (CU8, the user 2026-11-12: «Tak, tylko MG»): taking a mark back by hand is the GM's, from the same dock */
+  const gk = () => { const view = V.viewFor(T.state, { id: "gm", staff: true, owns: ["H1"] }, meta(T)); return M.dockData(D.playerModel(view, { id: "gm", owns: ["H1"] }, { ...ctx(T), staff: true }), {}, fx(view, "gm"), t); };
+  eq(gk().slots[0].req, { op: "mark", actor: "H1", unit: "quick", on: false }, `${l} CU8: the GM's dock offers the mark back`);
+  eq((await T.gm(gk().slots[0].req)).ok, true, `${l} the hand-made mark on the big slot is taken back through its own request`);
+  eq((await T.gm(gk().slots[1].req)).ok, true, `${l} and the one on the quick slot`);
   eq(dk("p1", ["H1"]).slots.map((p) => p.state), ["open", "open"], `${l} both slots are free again`);
   /* U23: the list behind More actions: rows with a picture, the unit and a tooltip */
   d = dk("p1", ["H1"], { mode: "menu" });

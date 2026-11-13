@@ -177,7 +177,8 @@ const kact = (T, cid, k) => T.c[cid].kit.actions.find((a) => a.id.endsWith(`-${k
 /* ================================================================== U199: the undo bar in view */
 {
   const css = src("../../styles/base.css");
-  ok(/\.ipb-panel \.ipb-up-undo \{ position: sticky; top: 0; z-index: 3;/.test(css), "U199: the undo bar holds to the top of the scrolled tab body (gear and upgrades)");
+  /* ANSH: the pin follows the live fix: with top: 0 the scrolled rows peeked above the bar (the panel's top padding); it now holds to the panel's very edge */
+  ok(/\.ipb-panel \.ipb-up-undo \{ position: sticky; top: calc\(-1 \* var\(--ipb-pt, 14px\)\); z-index: 3;/.test(css) && /--ipb-pt: 14px; padding: var\(--ipb-pt\)/.test(css), "U199: the undo bar holds to the top edge of the scrolled tab body (gear and upgrades)");
   ok(/\.ipb-panel \{[^}]*overflow: auto;/.test(css), "U199: .ipb-panel is the tab body that scrolls");
 }
 

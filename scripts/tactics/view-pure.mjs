@@ -44,9 +44,15 @@ export function concealedFor(state, viewer, meta = {}) {
 }
 
 const addressed = (p, viewer) => (isObj(p.to) && Array.isArray(p.to.users) && p.to.users.includes(viewer.id)) || (p.about && viewer.owns.includes(p.about) && p.to !== "gm");
+/* ANSH: the catch of a chase [B3434] is told on every seat ("X rams Y"): whether it is a ram and at whom is what the chase panel already
+   shows to all (the sides are public); without it the other seats said "charges" for a driver who rams */
+const catchData = (d, concealed) => {
+  const ok = (id) => typeof id === "string" && !concealed.has(id);
+  return { ram: d?.ram ? 1 : 0, ...(ok(d?.target) ? { target: d.target } : {}), targets: (Array.isArray(d?.targets) ? d.targets : []).filter(ok).slice(0, 12) };
+};
 function promptView(p, viewer, concealed = new Set()) {
   if (p.gmOnlyData) return null;
-  if (!addressed(p, viewer)) return { id: p.id, inst: p.inst, step: p.step, kind: p.kind, to: p.to === "gm" ? "gm" : { users: p.to?.users ?? [] }, about: p.about, answered: p.answered ? 1 : undefined, ...(p.kind === "triggerQueue" && typeof p.data?.at === "string" ? { data: { at: p.data.at } } : {}) };   // "waiting for X": nothing else (D108: but the moment of a queue, start of the round or of a turn)
+  if (!addressed(p, viewer)) return { id: p.id, inst: p.inst, step: p.step, kind: p.kind, to: p.to === "gm" ? "gm" : { users: p.to?.users ?? [] }, about: p.about, answered: p.answered ? 1 : undefined, ...(p.kind === "triggerQueue" && typeof p.data?.at === "string" ? { data: { at: p.data.at } } : {}), ...(p.kind === "chaseCatch" ? { data: catchData(p.data, concealed) } : {}) };   // "waiting for X": nothing else (D108: but the moment of a queue, start of the round or of a turn)
   const q = { ...p, options: (p.options ?? []).filter((o) => !o.gmOnly).map((o) => { const { gm, ...rest } = o; return rest; }) };
   if (isObj(q.data)) {
     const { gm, ...rest } = q.data; q.data = rest;

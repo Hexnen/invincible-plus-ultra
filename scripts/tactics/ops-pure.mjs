@@ -295,7 +295,7 @@ function passesAlone(W, nx) {
   if (I.slotById(s.init, nx.slot)?.extra || L.held) return false;
   return !!L.lostTurn || (!!idleOf(W, nx.member) && s.init.slots.some((sl) => sl.members.some((m) => m !== nx.member && !idleOf(W, m))));
 }
-const IDLE = ["broken", "unconscious", "dead"];
+const IDLE = ["broken", "unconscious", "dead", "defeated"];      // ANSH (P8g-3): marked defeated in Foundry during the round [D]
 const idleOf = (W, id) => { try { const r = W.ctx.idle?.(id, W.s); return IDLE.includes(r) ? r : null; } catch { return null; } };
 /* the own turn of `member` has come (taken or lost): "until your next turn" ends here [B1634], [B1772]; the turn-start triggers are due */
 function turnMoment(W, member) {

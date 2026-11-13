@@ -643,11 +643,13 @@ const priced0 = (entry) => typeof FLOWS[entry.flow]?.price === "function";      
    targets a question, and of a refused "declare") told a number that player may not know. For a player such a subject is therefore
    refused BEFORE its numbers are read, with one reason that says nothing of them (`notAlly`; the GM may allow: the request for an
    exception, whose card the GM answers knowing the numbers). The GM's own hand and a granted declaration are not asked (ruling P8f-R1).
-   -> { ok: false, reason, params } | null */
+   ANSH (P8f-1, the user 2026-11-12: «Zezwolić, MG rozstrzyga bez liczb»): no refusal any more. The declaration goes in (the book allows it
+   [B2818]) and waits on a GM card that names the rules' own answer (opDeclare); the player is told nothing of the numbers, only the GM's
+   yes or no. -> { ok: false, reason: "strangerAlly", stranger: 1, params } | null */
 function strangerGate(X, entry, decl, actor) {
   if (X.user.staff === true || entry?.target?.who !== "ally" || X.facts.c(actor)?.npc) return null;
   const t = (decl.targets ?? []).find((id) => id !== actor && X.facts.c(id)?.npc === true && !X.state.revealed?.[id]?.stats);
-  return t ? { ok: false, reason: "notAlly", params: { gmMayAllow: 1 } } : null;
+  return t ? { ok: false, reason: "strangerAlly", stranger: 1, params: { gmMayAllow: 1 } } : null;
 }
 /** the legality a declaration of this user meets: the gate of D54, then the entry's and the flow's own rules */
 const legalFor = (X, inst, entry) => strangerGate(X, entry, inst.decl ?? {}, inst.actor) ?? K.legality(view(X), inst, FLOWS[inst.flow]);
@@ -687,7 +689,9 @@ async function opDeclare(X, a) {
   const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
   if (gm) inst.data.waived = 1;                                                            // ANSF (CI1): the GM's own "without cost" (flows/move.mjs: a move by hand stays free)
   const l = legalFor(X, inst, entry);
-  if (!l.ok && !decl.exception) return bad("illegal", { reason: l.reason, ...l.params });
+  /* ANSH (P8f-1): an action for "an ally" at an NPC whose numbers are hidden goes to the GM's card at once, with what the rules would say */
+  const real = l.stranger ? K.legality(view(X), inst, FLOWS[inst.flow]) : null;
+  if (!l.ok && !decl.exception && !l.stranger) return bad("illegal", { reason: l.reason, ...l.params });
   const price = priced ? FLOWS[inst.flow].price(view(X), inst) : null, cost = priced ? price?.cost ?? "none" : entry.cost;
   if (priced) { const no = payable(cost); if (no) return no; }
   inst.tx = openTx(X, { inst: inst.id });
@@ -701,7 +705,7 @@ async function opDeclare(X, a) {
   if (X.user.staff && (a.granted === true || !!decl.exception)) { I.data.exception = { reason: l.ok ? null : l.reason, params: l.ok ? {} : l.params, by: "gm" }; I.decl.exception = { ...I.decl.exception, state: "granted" }; }      // U3: the GM already said yes on the card of the request: no second card; FXV (CU6): nor when the GM's own "declare anyway" carries the request
   else if (!l.ok) {                                                                         // an illegal option with a request for an exception (spec 9.12): a desk card
     I.data.exception = { reason: l.reason, params: l.params }; I.data.hold = "exception"; I.status = "waiting";
-    openPrompt(X, I, { key: "exception", kind: "exception", to: "gm", about: actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { reason: l.reason, text: decl.exception.text } }, "declare");
+    openPrompt(X, I, { key: "exception", kind: "exception", to: "gm", about: actor, free: 1, options: [{ id: "grant", label: "ITAC.opt.grant" }, { id: "deny", label: "ITAC.opt.deny" }], data: { reason: l.reason, text: decl.exception?.text ?? "", ...(real && !real.ok ? { reasons: [String(real.reason ?? "rules").slice(0, 40)] } : {}) } }, "declare");
     I.data.holdKey = "exception";
   }
   setInst(X, I);
@@ -723,7 +727,7 @@ function refusalsOf(X, actor, d) {
     const pl = placement(X, actor, entry);
     if (!pl.ok) { reasons.push(pl.params?.reason ?? pl.code); waive = true; }
     const inst = makeInst(X, { action: entry.id, actor, decl: sanitizeDecl(d, entry.id, false), cause: pl.ok ? pl.cause : "turn", parent: pl.ok ? pl.parent : null });
-    const flow = FLOWS[inst.flow], l = strangerGate({ ...X, user: { ...X.user, staff: false } }, entry, inst.decl, actor) ?? K.legality(view(X), inst, flow), priced = typeof flow?.price === "function";      // (as its owner would meet it: D54)
+    const flow = FLOWS[inst.flow], l = K.legality(view(X), inst, flow), priced = typeof flow?.price === "function";      // ANSH (P8f-1): the owner meets no refusal at an NPC of hidden numbers any more (the GM's card is the answer), so the GM sees the rules' own
     const cost = priced ? (l.ok ? flow.price(view(X), inst)?.cost ?? "none" : null) : entry.cost;
     if (!priced && (cost === "none" || cost == null)) { if (!P1.isOnTurn(X.state, actor) && (!pl.ok || pl.cause === "turn") && (!entry.kit || entry.roll || ["resist", "narrative"].includes(entry.effect?.kind))) { reasons.push("notYourTurn"); waive = true; } }
     else if (cost != null) {
@@ -947,7 +951,7 @@ function opPreview(X, a) {
       const d0 = sanitizeDecl(isObj(decl) ? decl : {}, en.id, staff), base = d0.fullAuto ? d0.targets.filter((x) => x !== t && x !== actor && X.facts.c(x) && !concealed(x) && X.state.knowledge?.[actor]?.[x] !== "unseen") : [];
       const inst = makeInst(X, { action: en.id, actor, decl: { ...d0, targets: [...base, t].slice(0, 12) } });
       const l = legalFor(X, inst, en);
-      const row = l.ok ? { ok: true } : { ok: false, reason: String(l.reason ?? "rules").slice(0, 40), params: Object.fromEntries(Object.entries(l.params ?? {}).filter(([k, x]) => k.length <= 24 && (Number.isFinite(x) || (typeof x === "string" && x.length <= 40))).slice(0, 6)) };
+      const row = l.stranger ? { ok: true, gmJudges: 1 } : l.ok ? { ok: true } :{ ok: false, reason: String(l.reason ?? "rules").slice(0, 40), params: Object.fromEntries(Object.entries(l.params ?? {}).filter(([k, x]) => k.length <= 24 && (Number.isFinite(x) || (typeof x === "string" && x.length <= 40))).slice(0, 6)) };
       const p = FLOWS[inst.flow]?.preview?.(view(X), inst) ?? null;
       if (p?.pool && Number.isFinite(p.pool.dice)) row.dice = p.pool.dice;
       const h = l.ok ? FLOWS[inst.flow]?.hitPreview?.(view(X), inst, t) ?? null : null;
@@ -1666,7 +1670,7 @@ async function systemOne(X, fx, triggers) {
       await perform(X, tx, { t: "actor", uuid: c.actorUuid, path: "health", to: c.health + 1, tx });
       closeTx(X, tx, { pub: c.hidden ? "" : `${cMark(fx.combatant)}: {ITAC.journal.regen}`, who: whoOf(X, [fx.combatant]), gm: `${c.name ?? ""}: {ITAC.journal.regen} ${c.health} -> ${c.health + 1}` });
     } else if (fx?.type === "turnPassed") {                                                  // U9: the round driver let a turn pass (ops-pure.openTurn); the GM reads it in the journal, the table in its news
-      const c = X.facts.c(fx.combatant), why = ["broken", "unconscious", "dead"].includes(fx.reason) ? fx.reason : "broken";
+      const c = X.facts.c(fx.combatant), why = ["broken", "unconscious", "dead", "defeated"].includes(fx.reason) ? fx.reason : "broken";
       if (!c) return;
       const line = `${c.name ?? ""}: {ITAC.journal.turnPassed.${why}}`;
       closeTx(X, openTx(X, {}), { pub: c.hidden ? "" : `${cMark(fx.combatant)}: {ITAC.journal.turnPassed.${why}}`, who: whoOf(X, [fx.combatant]), gm: line, keep: true });

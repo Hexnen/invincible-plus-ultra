@@ -424,7 +424,9 @@ const FLY = [{ mode: "flight", tier: "basic" }];
   eq(why(await W.req("p2", { op: "declare", actor: "H2", decl: { action: "fastball", targets: ["H1"], to: "z2" } })), "tooWeak", "L: the thrown character must be weaker");
   const R = base();
   eq(why(await R.gm({ op: "declare", actor: "H1", decl: { action: "fastball", targets: ["N1"], to: "z3" } })), "carryZone", "L: from the thrower's own zone only");
-  eq(why(await R.req("p1", { op: "declare", actor: "H1", decl: { action: "fastball", targets: ["N1"], to: "z3" } })), "notAlly", "L: a player's hero throws no NPC whose numbers are not revealed without the GM (D54: the refusal would tell its Strength)");
+  /* ANSH (P8f-1, the user 2026-11-12: «Zezwolić, MG rozstrzyga bez liczb»): not refused; it waits on the GM's card, which names the rule */
+  { const e = await R.req("p1", { op: "declare", actor: "H1", decl: { action: "fastball", targets: ["N1"], to: "z3" } }); const p = R.prompts("exception")[0];
+    eq([why(e), p?.data?.reason, p?.data?.reasons], [null, "strangerAlly", ["carryZone"]], "L + P8f-1: a player's hero throws no NPC whose numbers are not revealed without the GM (D54: the player is not told why; the GM's card says)"); }
 }
 /* ---- M. the dodge move [B2526]: zones offered on the prompt, the move is part of the attack's transaction */
 {
