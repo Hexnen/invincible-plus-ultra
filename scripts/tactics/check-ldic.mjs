@@ -204,7 +204,9 @@ async function run(W, H, fn) {
       /* the display layer: on the map = the engine's world space, scene coordinates, scene px */
       globalThis.canvas = { ready: true, stage: { scale: { x: 0.5 }, toLocal: (q) => ({ x: q.x * 2 + 100, y: q.y * 2 + 100 }), toGlobal: (q) => q }, app: { view: { getBoundingClientRect: () => ({ left: 0, top: 0 }) } } };
       const L6 = fakeEngine(); Stage.setLetters(L6); Stage.setLayer("tokens");
-      Stage.play(ev({ n: 5, sixes: 2 }), { scale: 1, hold: 1, fx: 0, fullFrom: null, seed: "MSG5" });
+      /* FXLD2: a map moment stands by the board's token (without one it has no board place and plays over the screen) */
+      const tok6 = { id: "T6", x: 400, y: 300, w: 100, h: 100, center: { x: 450, y: 350 }, document: { x: 400, y: 300, width: 1, height: 1 } };
+      Stage.play(ev({ n: 5, sixes: 2 }), { token: tok6, scale: 1, hold: 1, fx: 0, fullFrom: null, seed: "MSG5" });
       flush(50000);
       const w0 = L6.calls[0];
       ok(w0 && w0.o.space === "world" && w0.o.layer === "tokens" && !w0.o.parent, `${W}: layer "on the map: over tokens": the words go to the canvas (world space, the engine's tokens layer)`);
@@ -302,7 +304,9 @@ async function run(W, H, fn) {
 {
   const m = src("../splash/main.mjs"), st = src("../splash/stage.mjs");
   const iPlay = m.indexOf("Stage.play(ev, {\n      rnd: mulberry32");
-  ok(iPlay > 0 && ["visibleToMe(message)", "cs('others')", "waitDice(message)", "Moment.verdict", "resolveToken(message)"].every((k) => m.lastIndexOf(k, iPlay) > m.indexOf("hook('createChatMessage'")), "the lettered moment comes after every rule of who sees it (visible, others, dice, verdict, token)");
+  /* FXLD2: the dice wait is settled(message) (waitDice once per message, shared with the seat's report for the common start, beat.mjs) */
+  ok(/function settled\(message\)[\s\S]{0,200}waitDice\(message\)/.test(m), "the seat's settle point is its own Dice So Nice wait (settled -> waitDice)");
+  ok(iPlay > 0 && ["visibleToMe(message)", "cs('others')", "settled(message)", "Moment.verdict", "resolveToken(message)"].every((k) => m.lastIndexOf(k, iPlay) > m.indexOf("hook('createChatMessage'")), "the lettered moment comes after every rule of who sees it (visible, others, dice, verdict, token)");
   ok(/resolve, seed: id\n/.test(m) && /resolve, seed: message\.id \}\);/.test(m), "the seed is the message id (the same lettering on every client)");
   ok(/L\.design\?\.\('A'\)\?\.stub === true/.test(m) && /Stage\.setLetters\(stub \|\| !cs\('lettering'\) \? null : L\)/.test(m), "the stub engine (no renderer) and the setting off leave the classic splash");
   ok(/if \(lettersOn\(\)\) return playLetters\(ev, o\);/.test(st), "Stage.play letters when the engine is there (and its master switch is on)");

@@ -54,7 +54,7 @@ ok(/chain\.get\(k\) \?\? Promise\.resolve\(\)/.test(cam), "e9 the beats of one e
 ok(/\(waiting\.get\(shownKey\(ev\.inst, c\.focus\)\) \?\? 0\) > 0\) return;/.test(cam), "e10 the quiet cue of the same blow does not move the view while its shot waits");
 ok(/exp\?\.land\(Number\.isFinite\(r\.lands\) \? r\.lands : 0\)/.test(cam), "e11 the map's `lands` tells the splash when the blow lands");
 const spl = readFileSync(new URL("../splash/main.mjs", here), "utf8");
-const iWait = spl.indexOf("Moment.landing(speakerTokens(message)"), iTok = spl.indexOf("const token = resolveToken(message);");
+const iWait = spl.indexOf("Moment.landing(speakerTokens(message)"), iTok = spl.indexOf("const seen = resolveToken(message);");   // FXLD2: the seat's own view is \`seen\`; \`token\` is the board's token on a map layer
 ok(iWait > 0 && iTok > iWait && spl.indexOf("await waitDice(message)") < iWait, "e12 the splash: dice, then the camera's landing, then the token's place on screen");
 
 done("check-fxj");

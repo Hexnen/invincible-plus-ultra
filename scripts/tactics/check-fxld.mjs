@@ -338,7 +338,9 @@ await run(1366, 768, { diceZ: 6400 }, async ({ Stage, flush }) => {
 
   /* F13: a critical on a map layer, then the map pans: the rays and the gauge follow */
   const L3 = fakeEngine(); Stage.setLetters(L3); Stage.setLayer("tokens");
-  const ctl = Stage.play(ev({ n: 4, sixes: 4, stress: 2 }), { scale: 1, hold: 1, fx: 1, fullFrom: 0.7, seed: "PAN", resolve: () => ({ now: 5, max: 8 }) });
+  /* FXLD2: a map moment now needs the board's token (without one it has no board place and plays over the screen: nothing to follow),
+     and the rays are opt-in (the owner, 2026-11-13: backdrops default off): this critical has its token and the Backdrop setting on */
+  const ctl = Stage.play(ev({ n: 4, sixes: 4, stress: 2 }), { token, scale: 1, hold: 1, fx: 1, fullFrom: 0.7, seed: "PAN", resolve: () => ({ now: 5, max: 8 }), backdrop: true });
   flush(2500);
   const before = c.stage.toGlobal;
   c.stage.toGlobal = (q) => { const g = before(q); return { x: g.x + 120, y: g.y - 40 }; };

@@ -7,6 +7,7 @@ import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fm
 import { readRoll, classify, heroSpeaker, publicResolve } from './reader.mjs';
 import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
+import * as Beat from './beat.mjs';
 import { EN, PL } from './lang.mjs';
 import { registerMigrationSettings, migrateSettings } from './migrate.mjs';
 import * as Moment from '../moment.mjs';
@@ -16,6 +17,8 @@ const FLAG = 'invincible-splash';
 const STANDALONE = 'invincible-splash';
 const SYSTEM = 'invincible';
 const LOG = `${MOD} (splash) |`;
+const CHANNEL = `module.${MOD}`;
+const BEAT_K = 'insbeat';
 const shown = new Set();           // id wiadomości, dla których splash już poszedł (ten klient)
 const stressShown = new Set();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -73,10 +76,15 @@ function registerSettings() {
   client('layer', { name: L('Layer.Name'), hint: L('Layer.Hint'), type: String, default: 'screen', onChange: v => Stage.setLayer(v),   // LDIC: the lettering engine's layers
     choices: Object.fromEntries([...Stage.SCREEN_LAYERS, ...Stage.WORLD_LAYERS].map(k => [k, L('Layer.' + k)])) });
   client('chat', { name: L('Chat.Name'), hint: L('Chat.Hint'), type: Boolean, default: true });
+  /* FXLD2: the owner (2026-11-13): backdrops are an extra, default without */
+  client('backdrop', { name: L('Backdrop.Name'), hint: L('Backdrop.Hint'), type: Boolean, default: false });
 
   world('dry', { name: L('Dry.Name'), hint: L('Dry.Hint'), type: Number, default: 8, range: { min: 0, max: 30, step: 1 } });
   world('k0', { name: L('K0.Name'), hint: L('K0.Hint'), type: Number, default: 0, range: { min: -2, max: 2, step: 1 } });
   world('state', { name: L('State.Name'), hint: L('State.Hint'), type: Boolean, default: true });
+  /* FXLD2 (ADVD2 1): how long the lettered moment stays is the table's, not each seat's (a seat's own Display time made the moment
+     end at different times); the client Display time stays for the classic splash */
+  world('tableHold', { name: L('TableHold.Name'), hint: L('TableHold.Hint'), type: Number, default: 1, range: { min: 0.5, max: 2, step: 0.1 } });
   registerMigrationSettings(MOD);
 }
 
@@ -112,6 +120,8 @@ function onReady() {
   let rt = 0;
   window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => Stage.refreshArea(), 120); });
   Hooks.on('collapseSidebar', () => { setTimeout(() => Stage.refreshArea(), 60); setTimeout(() => Stage.refreshArea(), 500); });
+  /* FXLD2 (ADVD2 8): each seat says when its dice stopped (beat.mjs); the module's own socket channel, a message kind of its own */
+  try { game.socket?.on?.(CHANNEL, (msg) => { if (msg?.k === BEAT_K && typeof msg.id === 'string' && typeof msg.u === 'string') Beat.note(msg.id, msg.u, Number(msg.at)); }); } catch (e) { /* no socket: each seat starts on its own dice */ }
   const api = { preview, resetState, clear: Stage.clearAll };
   const mod = game.modules.get(MOD);
   if (mod) mod.api = { ...(mod.api ?? {}), splash: api };   // dopisek do api modułu (module.js też składa je przez rozwinięcie, więc żadna kolejność nie gubi splash)
@@ -169,6 +179,8 @@ function loadLetters() {
   }).catch(e => { if (ticket === lettersLoad) Stage.setLetters(null); console.warn(`${LOG} lettering engine unavailable, classic splash`, e); });
 }
 function fullFrom() { return cs('fullscreen') ? cs('fullFrom') : null; }
+/* FXLD2: the lettered moment's duration is the table's (world); the classic splash keeps the seat's own */
+function holdK() { try { return Stage.lettersOn() ? cs('tableHold') : cs('hold'); } catch (e) { return 1; } }
 function fxLevel() { const e = cs('effects'); return e === 'full' ? 1 : (e === 'reduced' ? 0.5 : 0); }
 
 /* ------------------------------------------------------------------ znacznik akcji z dialogu rzutu */
@@ -282,6 +294,48 @@ async function waitDice(message) {
 
 function visibleToMe(message) { return message.isContentVisible !== false; }
 
+/* FXLD2 (ADVD2 1): on a map layer the moment stands by the token every seat shares: found by its document, not by this seat's view
+   (resolveToken asks whether THIS seat sees it and drops a token off its screen or under its chat). A hidden token is not on every
+   seat's board: then the moment has no board place and plays over the screen. */
+function boardToken(message) {
+  try {
+    if (!canvas?.ready) return null;
+    const sp = message.speaker ?? {};
+    if (sp.scene && sp.scene !== canvas.scene?.id) return null;
+    const tok = (sp.token && canvas.tokens.get(sp.token)) || message.speakerActor?.getActiveTokens?.()[0];
+    return tok && !tok.document.hidden ? tok : null;
+  } catch (e) { return null; }
+}
+const serverNow = () => { try { return game.time?.serverTime ?? Date.now(); } catch (e) { return Date.now(); } };
+/* the seats that show this roll (active users who can read it): the shared start waits for their reports */
+function seatsFor(message) {
+  try {
+    const w = Array.isArray(message.whisper) ? message.whisper : [...(message.whisper ?? [])];
+    const author = message.author?.id ?? message.user?.id;
+    return game.users.filter(u => u.active && (!w.length || w.includes(u.id) || u.id === author || u.isGM) && !(message.blind && !u.isGM && u.id !== author)).map(u => u.id);
+  } catch (e) { return []; }
+}
+/* this seat's dice for one message stopped: once per message (the reporter and the splash share it) */
+const settledAt = new Map();
+function settled(message) {
+  let p = settledAt.get(message.id);
+  if (!p) {
+    p = waitDice(message).then(() => {
+      const at = serverNow();
+      Beat.note(message.id, game.user.id, at);
+      try { game.socket?.emit?.(CHANNEL, { k: BEAT_K, id: message.id, u: game.user.id, at }); } catch (e) { /* no socket */ }
+      return at;
+    });
+    settledAt.set(message.id, p);
+    if (settledAt.size > 200) settledAt.delete(settledAt.keys().next().value);
+  }
+  return p;
+}
+/* every seat reports, also one with the splash off (the others would wait for it in vain) */
+hook('createChatMessage', (message) => {
+  try { if (game.system.id === SYSTEM && readRoll(message) && visibleToMe(message)) settled(message); } catch (e) { /* the report is a courtesy */ }
+});
+
 /* Komunikat dla czytnika ekranu (aria-live): kto, słowo, liczba szóstek, rzadkość, stres. Liczby z danych rzutu (ev).
    Słowa SFX zostają angielskie (decyzja projektu); reszta zdania jest tłumaczona i odmieniona (pl: 1/2-4/5+). */
 const cap = t => { const x = String(t ?? '').toLowerCase(); return x.charAt(0).toUpperCase() + x.slice(1); };
@@ -336,8 +390,11 @@ hook('createChatMessage', async (message, options, userId) => {
     remember(shown, id);
 
     const tw = performance.now();
-    await waitDice(message);
+    const own = await settled(message);
     dbg('po czekaniu na DSN:', Math.round(performance.now() - tw) + ' ms', 'dice3d:', !!game.dice3d);
+    /* FXLD2 (ADVD2 8): the same start on every seat */
+    const bw = await Beat.start(id, game.user.id, own, seatsFor(message), { now: serverNow, sleep });
+    if (bw) dbg('wspólny start: czekał', Math.round(bw) + ' ms');
     if (!game.messages.has(id)) return dbg('skip: wiadomość usunięta w trakcie czekania');
     if (!visibleToMe(message)) return dbg('skip: wiadomość stała się niewidoczna');
     if (document.visibilityState === 'hidden') return dbg('skip: karta przeglądarki ukryta');
@@ -360,12 +417,13 @@ hook('createChatMessage', async (message, options, userId) => {
     const dw = await Stage.diceClear(2600);
     if (dw) dbg('czekał na zniknięcie kości:', dw + ' ms');
     if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
-    const token = resolveToken(message);
+    const seen = resolveToken(message);   // where THIS seat sees the token (screen layers)
+    const token = Stage.onMapLayer() && Stage.lettersOn() ? boardToken(message) : seen;   // FXLD2: on the map, the board's token for every seat
     dbg('odtwarzam:', ev.word, 'P=' + (ev.power ?? 'fail'), 'miejsce:', token ? 'token ' + token.name : 'ekran');
     const resolve = ev.stress ? resolveReader(message, ev) : null;
     announce(ev, message, resolve);
     Stage.play(ev, {
-      rnd: mulberry32(hashString(id)), token, scale: cs('scale'), hold: cs('hold'), fx: fxLevel(), fullFrom: fullFrom(),
+      rnd: mulberry32(hashString(id)), token, scale: cs('scale'), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'),
       resolve, seed: id
     });
   } catch (e) { console.warn(`${LOG} createChatMessage failed`, e); }
@@ -386,7 +444,7 @@ hook('updateChatMessage', async (message, changes, options, userId) => {
     const ev = { stress: rd.stress, stressPending: false, pushed: true, rb: Number.isFinite(f.rb) ? f.rb : null, rmax: Number.isFinite(f.rmax) ? f.rmax : null };
     const resolve = resolveReader(message, ev);
     announce({ ...ev, stressOnly: true }, message, resolve);
-    Stage.playStress(ev, { token: resolveToken(message), scale: cs('scale'), hold: cs('hold'), resolve, seed: message.id });
+    Stage.playStress(ev, { token: Stage.onMapLayer() && Stage.lettersOn() ? boardToken(message) : resolveToken(message), scale: cs('scale'), hold: holdK(), backdrop: cs('backdrop'), resolve, seed: message.id });
   } catch (e) { console.warn(`${LOG} updateChatMessage failed`, e); }
 });
 
@@ -436,8 +494,8 @@ function preview(opts = {}) {
   const resolve = ev.stress ? () => ({ now: opts.resolveNow ?? 6, max: opts.resolveMax ?? 8 }) : null;
   announce(ev, null, resolve);
   return Stage.play(ev, {
-    rnd: Math.random, token: opts.screen ? null : token, scale: cs('scale'), hold: cs('hold'), fx: fxLevel(), fullFrom: opts.fullFrom ?? fullFrom(),
-    resolve
+    rnd: Math.random, token: opts.screen ? null : token, scale: cs('scale'), hold: holdK(), fx: fxLevel(), fullFrom: opts.fullFrom ?? fullFrom(),
+    resolve, backdrop: opts.backdrop ?? cs('backdrop')
   });
 }
 

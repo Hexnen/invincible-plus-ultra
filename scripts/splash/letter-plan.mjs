@@ -103,8 +103,10 @@ export function planMoment(ev, o = {}) {
   /* a pushed roll: the grunt first, rising (the effort), then the result, after the grunt's exit (ADVD 7: they overlapped ~0.5 s) */
   if (ev.pushed && ev.prefix) {
     const m = moodOf(ev.prefix);
-    const pre = add({ role: 'pre', text: ev.prefix, delay: 0, cap: 0.052, wMax: 0.5, mood: m,
-      sound: { loud: 0.5, pitch: 0.6, long: 0.6 }, colors: ['#fff1dc', '#ffc27a', '#e07a2a'], hold: Math.round(420 * holdK), rotation: -4 });
+    /* FXLD2 (ADVD2 11): the grunt is a beat of its own, not a footnote: about 1.4x the old cap (live 1920 HNNNG! was ~40 px) and held
+       long enough to read before the result comes */
+    const pre = add({ role: 'pre', text: ev.prefix, delay: 0, cap: PRE_CAP, wMax: 0.5, mood: m,
+      sound: { loud: 0.6, pitch: 0.6, long: 0.6 }, colors: ['#fff1dc', '#ffc27a', '#e07a2a'], hold: Math.round(PRE_HOLD * holdK), rotation: -4 });
     t = pre.hold + EXIT_MAX + 60;
   }
 
@@ -114,9 +116,10 @@ export function planMoment(ev, o = {}) {
     /* a routine miss mutters (tick, small, grey); a real miss falls (fail); a pushed roll that broke keeps its sound (CRACK! cracks) */
     const mood = soft ? 'tick' : (ev.pushed && WORD_MOOD[ev.word] ? m0 : 'fail');
     const loud = soft ? 0.12 : r1(0.3 + 0.45 * dF + (ev.pushed ? 0.1 : 0));
-    const w = add({ role: 'word', text: ev.word, delay: t, cap: r3(soft ? 0.05 : 0.062 + 0.045 * dF + (ev.pushed ? 0.008 : 0)), wMax: soft ? 0.4 : 0.55,
+    /* FXLD2 (ADVD2 10): a routine miss is quiet but readable: the soft cap and hold were too small (NEXT! tiny on the head ring, ~1.5 s) */
+    const w = add({ role: 'word', text: ev.word, delay: t, cap: r3(soft ? SOFT_CAP : 0.062 + 0.045 * dF + (ev.pushed ? 0.008 : 0)), wMax: soft ? 0.4 : 0.55,
       mood, sound: { loud, pitch: soft ? -0.2 : r1(-0.45 - 0.45 * dF), sharp: MOOD_SHARP[m0] ?? 0.4, rough: soft ? 0 : r1(0.2 + 0.4 * dF) },
-      colors: soft ? SOFT_COLORS : FAIL_COLORS, hold: Math.round((soft ? 1300 : 2200 + 600 * dF) * holdK), rotation: soft ? 0 : 5 });
+      colors: soft ? SOFT_COLORS : FAIL_COLORS, hold: Math.round((soft ? SOFT_HOLD : 2200 + 600 * dF) * holdK), rotation: soft ? 0 : 5 });
     /* a rare miss also says how rare: the sentence and the figure */
     if (!soft && dF > 0.3 && !ev.pushed && ev.failP) {
       add({ role: 'say', text: say(dF > 0.6 ? 'WHAT A FLOP!' : 'UNLUCKY!'), delay: t + 330, cap: 0.04, wMax: 0.6,
@@ -165,6 +168,17 @@ export function planMoment(ev, o = {}) {
 }
 /* the longest exit the engine plays (contract: about 0.3-0.5 s) */
 export const EXIT_MAX = 500;
+/* FXLD2: the push grunt and the routine miss (ADVD2 10, 11) */
+export const PRE_CAP = 0.074, PRE_HOLD = 620, SOFT_CAP = 0.064, SOFT_HOLD = 2100;
+/* FXLD2 (ADVD2 2): on the map the words are part of the board: an exit that travels (letters falling, flying apart, zipping away)
+   crosses the neighbours' tokens (live 1920: the falling letters dropped across Omni-Man and Atom Eve). On a map layer each exit stays
+   where the word stood. */
+export const MAP_EXITS = Object.freeze(['pop', 'shrink', 'burst']);
+export function mapExit(it) {
+  if (MAP_EXITS.includes(it.out)) return it.out;
+  if (it.out === 'shatter' || it.out === 'zipout') return 'burst';
+  return 'shrink';
+}
 
 /* The motion technique of each lettering (the engine's entrance / hold / exit by name): the word's mood already picks a fitting
    motion (a crack splinters in, a whoosh zips); the RESULT adds on top: a top roll slams in, shakes and bursts, a miss drops, sags
@@ -240,7 +254,7 @@ export function estimateBox(it, S) {
 export const PAD = 0.14;
 export function composeMoment(items, frame, measure = estimateBox) {
   const safe = frame.safe, vh = frame.vh || 768, sc = frame.scale || 1;
-  const safeW = Math.max(120, safe.r - safe.l), safeH = Math.max(120, safe.b - safe.t);
+  const safeW = Math.max(120, Math.min(safe.r - safe.l, frame.freeW ?? Infinity)), safeH = Math.max(120, Math.min(safe.b - safe.t, frame.freeH ?? Infinity));
   let f = 1, out = null;
   for (let pass = 0; pass < 8; pass++) {
     out = layoutAt(items, frame, measure, f, safeW, vh, sc);
@@ -254,7 +268,13 @@ export function composeMoment(items, frame, measure = estimateBox) {
       const best = Math.max(fitK(safeW, T.t - g - safe.t), fitK(safeW, safe.b - T.b - g), fitK(safe.r - T.r - g, safeH), fitK(T.l - g - safe.l, safeH));
       if (best < 0.999 && best >= 0.6 * Math.min(1, k) && f > 0.6) k = Math.max(best, 0.6 / f);
     }
-    if (k >= 0.999) break;
+    if (k >= 0.999) {
+      /* FXLD2: nothing clean on any side (neighbours, pins, dice around): shrink a little (to 0.6 of the size at most) and try again */
+      place(out, frame, f <= 0.6);
+      if (!out.hit || f <= 0.6 || !(frame.avoid?.length || frame.token)) return out;
+      f *= 0.88;
+      continue;
+    }
     f *= k * 0.97;
   }
   place(out, frame);
@@ -324,41 +344,64 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc) {
   if (gauge) { rect.l = Math.min(rect.l, gauge.x); rect.r = Math.max(rect.r, gauge.x + gauge.w); rect.b = Math.max(rect.b, gauge.y + gauge.h); }
   return { items: sized.filter(it => it.x != null), rect, gauge, f };
 }
-/* where the block goes: by the token (above its head, else under its feet, else to its free side) or on the focus point; then shifted
-   into the safe rectangle (the window without the chat, the bars and the hotbar) */
-function place(out, frame) {
-  const safe = frame.safe, r = out.rect, bw = r.r - r.l, bh = r.b - r.t, cx0 = (r.l + r.r) / 2, cy0 = (r.t + r.b) / 2;
-  const T = frame.token;
-  let dx, dy, side = 'focus';
-  const fits = (l, t) => l >= safe.l - 0.5 && t >= safe.t - 0.5 && l + bw <= safe.r + 0.5 && t + bh <= safe.b + 0.5;
+/* where the block goes: by the token (above its head, else under its feet, else to its free side) or on the focus point; inside the safe
+   rectangle (the window without the chat, the bars and the hotbar; on a map layer: the scene). FXLD2 (ADVD2 3, 6, 7): the block also
+   keeps off everything in frame.avoid (the neighbours' tokens, map note pins, resting dice, panels; the hero of a critical): each side
+   of the token is tried at several places along it, and the first place (in side order, nearest first) that touches nothing wins; when
+   none is clean, the place with the least overlap (out.hit > 0 tells composeMoment to shrink and try again). */
+const area = (a, b) => Math.max(0, Math.min(a.r, b.r) - Math.max(a.l, b.l)) * Math.max(0, Math.min(a.b, b.b) - Math.max(a.t, b.t));
+export function blockHits(rect, avoid = []) { let s = 0; for (const a of avoid) s += area(rect, a); return s; }
+/* slides along a side, in shares of the block's own size (never far from the token: live, a block that slid half a scene away
+   no longer belonged to its roll) */
+const SLIDE = [0, -0.3, 0.3, -0.6, 0.6, -0.9, 0.9, -1.2, 1.2];
+const SIDE_COST = { above: 0, below: 0.15, right: 0.3, left: 0.35 };
+function place(out, frame, far = false) {
+  const safe = frame.safe, r = out.rect, bw = r.r - r.l, bh = r.b - r.t;
+  const T = frame.token, avoid = frame.avoid ?? [];
+  const at = (l, t) => ({ l, t, r: l + bw, b: t + bh });
+  const inSafe = (l, t) => [clamp(l, safe.l, Math.max(safe.l, safe.r - bw)), clamp(t, safe.t, Math.max(safe.t, safe.b - bh))];
+  let best = null, side = 'focus';
+  /* the score: anything touched first (the token four times as bad), then the distance from the token (or the focus) in block sizes
+     plus a small preference of the sides (above, below, right, left) */
+  const ref = T ? { x: T.x, y: T.y } : frame.focus, unit = Math.max(1, Math.hypot(bw, bh));
+  const consider = (s, l, t, pref) => {
+    [l, t] = inSafe(l, t);
+    const q = at(l, t), onT = T ? area(q, { l: T.l - (frame.gap ?? 6) + 1, t: T.t - (frame.gap ?? 6) + 1, r: T.r + (frame.gap ?? 6) - 1, b: T.b + (frame.gap ?? 6) - 1 }) : 0;
+    const hit = blockHits(q, avoid) + onT * 4;
+    const d = Math.hypot(l + bw / 2 - ref.x, t + bh / 2 - ref.y) / unit;
+    const score = (hit > 0.5 ? 1e6 + hit : 0) + d + pref;
+    if (!best || score < best.score) best = { s, l, t, hit, score };
+  };
   if (T) {
-    const gap = 6;
+    const gap = frame.gap ?? 6;
     const cand = [
-      ['above', T.x - bw / 2, T.t - gap - bh],
-      ['below', T.x - bw / 2, T.b + gap],
-      ['right', T.r + gap, T.y - bh / 2],
-      ['left', T.l - gap - bw, T.y - bh / 2]
+      ['above', T.x - bw / 2, T.t - gap - bh, 'x'],
+      ['below', T.x - bw / 2, T.b + gap, 'x'],
+      ['right', T.r + gap, T.y - bh / 2, 'y'],
+      ['left', T.l - gap - bw, T.y - bh / 2, 'y']
     ];
-    /* the first side where it fits after sliding along that side only (never onto the token) */
-    let pick = null;
-    for (const [s, l, t] of cand) {
-      const l2 = s === 'above' || s === 'below' ? clamp(l, safe.l, safe.r - bw) : l;
-      const t2 = s === 'left' || s === 'right' ? clamp(t, safe.t, safe.b - bh) : t;
-      if (fits(l2, t2)) { pick = [s, l2, t2]; break; }
+    for (const [s, l, t, ax] of cand) {
+      const span = ax === 'x' ? bw : bh;
+      /* only along that side: a place that the safe clamp pushes back onto the token scores the token hit */
+      for (const k of SLIDE) consider(s, ax === 'x' ? l + k * span : l, ax === 'y' ? t + k * span : t, SIDE_COST[s]);
     }
-    pick ??= ['above', cand[0][1], cand[0][2]];
-    side = pick[0];
-    dx = pick[1] - r.l; dy = pick[2] - r.t;
+    /* a crowded spot (neighbours all round, dice beside, a pin): once the block has shrunk as far as it may, any clean place of the
+       free area beats covering something; the nearest such place wins */
+    if (far && best.hit > 0.5) {
+      const W = safe.r - safe.l, H = safe.b - safe.t;
+      for (let gy = 0; gy <= 8; gy++) for (let gx = 0; gx <= 8; gx++) consider('focus', safe.l + gx / 8 * (W - bw), safe.t + gy / 8 * (H - bh), 1);
+    }
   } else {
-    dx = frame.focus.x - cx0; dy = frame.focus.y - cy0;
+    const W = safe.r - safe.l, H = safe.b - safe.t;
+    for (const dy of [0, -0.12, 0.12, -0.24, 0.24, -0.36, 0.36]) for (const dx of [0, -0.15, 0.15, -0.3, 0.3, -0.45, 0.45]) consider('focus', frame.focus.x - bw / 2 + dx * W, frame.focus.y - bh / 2 + dy * H, 0);
   }
-  /* inside the safe rectangle in any case */
-  const l = clamp(r.l + dx, safe.l, Math.max(safe.l, safe.r - bw)), t = clamp(r.t + dy, safe.t, Math.max(safe.t, safe.b - bh));
-  dx = l - r.l; dy = t - r.t;
+  side = best.s;
+  const dx = best.l - r.l, dy = best.t - r.t;
   for (const it of out.items) { it.x = Math.round(it.x + dx); it.y = Math.round(it.y + dy); }
   if (out.gauge) { out.gauge.x = Math.round(out.gauge.x + dx); out.gauge.y = Math.round(out.gauge.y + dy); }
   out.rect = { l: r.l + dx, t: r.t + dy, r: r.r + dx, b: r.b + dy };
   out.side = side;
+  out.hit = best.hit;
 }
 /* two boxes of a composed moment overlap (with their motion room) -> true; used by the checks */
 export function overlaps(a, b, room = 0) {
