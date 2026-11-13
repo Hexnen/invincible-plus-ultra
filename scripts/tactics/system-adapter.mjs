@@ -249,6 +249,10 @@ export async function setItemEffect(actor, itemId, effectId, on) {
   if (from !== !!on) await fx.update({ disabled: !on }, { ipuTactics: true });
   return { t: "fx", actorUuid: actor.uuid, itemId, effectId, from, to: !!on };
 }
+/* FXC2 (D202) [B1637]: the book's animals (the Creatures table of the core book: compendium npcs-creatures) are animals for Animal Control;
+   the GM's actor flag `flags.invincible-plus-ultra.tactics.animal` (true / false) says it for any other actor, or overrides */
+const ANIMAL_IDS = new Set(("jCPrw8kRcOf2HbZt eNy3wNfuRSzEbXn9 6824WmNU17k6OzV0 4ZPIyfbjH1blxchM G4Tt71rJjNsCtkrL tR1veu9is7lWzcrN mB5FMkMetbEZ2vFt zUpoZ8zi8AYys2sn oh6UiGKkRHxVO51d fL1QoweZK4L1NAzQ 8QZOmjlnlZtQHpR9 7IQOLd95ZPFD664i QumXDdwlPBupO3OR u72aZtqx7wVujG32 rmKmjI73NsZSxVre ei0wYoyhWsSnFEmJ 7UvbuAU3wUbxRaUS olhd3V8IWgOopwZY").split(" "));
+export const animalOf = (actor) => { try { const f = actor?.flags?.[MOD]?.tactics?.animal, base = actor?.token?.baseActor ?? actor?.baseActor ?? null; return f === true || f === false ? f : [actor, actor?._source, base, base?._source].some((a) => ANIMAL_IDS.has(String(a?._stats?.compendiumSource ?? a?.flags?.core?.sourceId ?? "").split(".").pop())); } catch { return false; } };
 export function actorFacts(actor) {
   if (!actor) return null;
   const s = actor.system ?? {};
@@ -274,7 +278,7 @@ export function actorFacts(actor) {
     slugfest: { damage: slug },
     members: kind === "minions" ? num(s.derived?.health?.value) : undefined,           // the system keeps a group's size as its Health [B2827]
     huge: flags.huge === true || pass.huge === true, grown: flags.grown === true || pass.grown === true, impervious: flags.impervious === true || pass.impervious === true, immune: Array.isArray(flags.immune) ? flags.immune.filter((x) => typeof x === "string").slice(0, 24) : [],   // the rules library's immunity flags: the GM's word, set on the actor
-    regeneration: flags.regeneration === true || pass.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), reflexes: hasTalent(actor, "fastReflexes"),
+    regeneration: flags.regeneration === true || pass.regeneration === true, veteran: hasTalent(actor, "combatVeteran"), animal: kind === "npc" || kind === "minions" ? animalOf(actor) : false, reflexes: hasTalent(actor, "fastReflexes"),
     movement: kind === "vehicle" ? [{ mode: "vehicle", speed: p7.vehicle.speed, aerial: ["aerial", "space"].includes(p7.vehicle.type) }] : movementOf(actor).map((m) => ((m.mode === "swimming" && pass.fastSwim) || (m.mode === "swinging" && pass.fastSwing) ? { ...m, tier: "fast" } : ["swimming", "swinging"].includes(m.mode) ? { ...m, tier: "basic" } : m)),      // [B2022], [B2030]
     vacuumSafe: flags.vacuumSafe === true || pass.vacuumSafe === true,   // [B2929]: a suit or a hull is the GM's flag; PWE-M: Adaptation is no free safety, it is adapted with its action [B1854] (flows/hazards.mjs)
     major: flags.major === true, immunities: [...(Array.isArray(flags.immunities) ? flags.immunities : []), ...pass.immune], vulnerabilities: [...(Array.isArray(flags.vulnerabilities) ? flags.vulnerabilities : []), ...pass.vulnerable],

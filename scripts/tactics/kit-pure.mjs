@@ -315,7 +315,13 @@ export function build(src = {}) {
      still carries what the bare attack does (Deadly Strike's sharp, Toxic Strike's poison); the variant's own words win */
   kit.weapons = kit.weapons.map((w) => (String(w.id).startsWith("unarmed~") ? { ...kit.unarmed, ...w } : w));
   /* PWE (PW075) [B1937] a limit that takes an action of its power away (Life Leech: the power heals only its user, through the leech) */
-  for (const x of known) if (x.parent && x.row?.drops && live(x)) kit.actions = kit.actions.filter((e) => !(e.kit?.item === x.parent.id && x.row.drops.includes(e.kit?.k)));
+  /* FXC2 (D199): the actions of the power's BOOSTS too (Mass Healing's massHeal is the boost item's, not the power's); `selfOnly` keeps
+     an action but on its user alone (Cleansing Healing, Miraculous Recovery: no target, the engine refuses another one) */
+  for (const x of known) if (x.parent && (x.row?.drops || x.row?.selfOnly) && live(x)) {
+    const fam = new Set([x.parent.id, ...known.filter((k) => k.parent === x.parent).map((k) => k.it.id)]), mine = (e) => fam.has(e.kit?.item);
+    if (x.row.drops) kit.actions = kit.actions.filter((e) => !(mine(e) && x.row.drops.includes(e.kit?.k)));
+    for (const e of kit.actions) if (x.row.selfOnly && mine(e) && x.row.selfOnly.includes(e.kit?.k)) { delete e.target; e.selfOnly = 1; }
+  }
   kit.pass.immune = [...new Set(kit.pass.immune)].slice(0, 24); kit.pass.vulnerable = [...new Set(kit.pass.vulnerable)].slice(0, 24);
   kit.actions = kit.actions.slice(0, 60); kit.weapons = kit.weapons.slice(0, 40);
   return kit;

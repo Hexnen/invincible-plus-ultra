@@ -323,6 +323,9 @@ export function reactionFit(v, inst, cid, e) {
   /* U19-4 (the user, 2026-11-12: «Tak, wszystkie»): diving in to take the hit is moving the body: a guardian who is held [B2496], snared
      [B1606] or trapped [B2438] cannot (ruling ANSE-R1). Immobilize Only (snared, move-only [B1611]) only forbids leaving the spot: it may */
   if (r.effect === "swapTarget") { const k = M.conditions(v.state, cid); if (k.held || k.snared || k.trapped) return { ok: false, reason: k.held ? "held" : k.snared ? "snared" : "trapped" }; }
+  /* FXC2 (D198), PWB-R4: Untouchable Speed / Quick Teleport ARE a move: who cannot move (held [B2496], snared [B1606] or Immobilize Only
+     [B1611], trapped [B2438]) cannot take them, as movement-pure cannotMove refuses every way of moving (teleporting too) */
+  if (r.effect === "moveAway") { const k = M.conditions(v.state, cid); if (k.held || k.snared || k.rooted || k.trapped) return { ok: false, reason: k.held ? "held" : k.snared || k.rooted ? "snared" : "trapped" }; }
   if (r.place === "allyZone") return alliesNear(v, inst, cid).length ? { ok: true, reason: null } : { ok: false, reason: "noAllyNear" };
   if (r.who !== "any") return { ok: true, reason: null };
   if (reactionFor(v, inst, cid, e).length) return { ok: true, reason: null };

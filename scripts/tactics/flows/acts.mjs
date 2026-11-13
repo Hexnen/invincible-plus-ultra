@@ -204,7 +204,11 @@ function kitEffect(v, I, R, e, { kind, subject, sf, success, sixes }) {
     }
     /* ANSG (P6b-R6, the user 2026-11-12): Animal Control [B1637] takes the animal(s) at once: a full action without a roll; each one named
        acts on the controller's turn from now on. Only an out-of-the-ordinary order asks the PRESENCE roll (the row's "command"). */
-    case "control": if (success) for (const who of [...new Set(I.decl.targets?.length ? I.decl.targets : [subject])].filter((w) => w !== I.actor && v.facts.c(w))) R.effects.push({ t: "summonFlag", who, owner: I.actor }); break;
+    /* FXC2 (D202) [B1637]: at once only what is known to be an animal (the book's creatures, or the GM's flag: facts `animal`); anybody
+       else waits for the GM's word on the outcome card ("is it an animal?"), as before ANSG. A hero is refused at the declaration. */
+    case "control": if (success) for (const who of [...new Set(I.decl.targets?.length ? I.decl.targets : [subject])].filter((w) => w !== I.actor && v.facts.c(w))) {
+      if (v.facts.c(who).animal === true) R.effects.push({ t: "summonFlag", who, owner: I.actor }); else (I.data.ask ??= []).includes(who) || I.data.ask.push(who);
+    } break;
     case "copies": {                                                                         // [B1907-1913]: the copy bonus of the level; never more than it
       const old = (v.state.effects ?? []).find((x) => x.kind === "copies" && x.holder === I.actor);
       const ef = M.makeEffect({ id: old?.id ?? sid(`c${I.id}`), kind: "copies", holder: I.actor, source: src, data: { n: fx.lv ?? 3, max: fx.lv ?? 3 }, ends: { at: "sceneEnd" } });
@@ -272,6 +276,7 @@ function legality(v, inst) {
   const subject = subjectOf(inst), sf = v.facts.c(subject), other = subject !== inst.actor;
   if (other && (!sf || sf.present === false)) return bad("noTarget");
   if ((e?.target?.n?.[0] ?? 0) > 0 && !other) return bad("noTarget");
+  if (e?.selfOnly && (other || (Array.isArray(d.targets) && d.targets.some((t) => t !== inst.actor)))) return bad("noTarget");      // FXC2 (D199) [B1937]: with Life Leech the power heals only its user
   if (a.health <= 0 && !(kind === "rally" && !other) && kind !== "convert") return bad("broken");                                  // [B2707]: a broken character may only try to rally [B2773]
   if (K.holdsTied(v, inst.actor)) return bad("grappling", GM);                              // [B2497]: the holder moves or makes a grapple attack, nothing else; PWA (PW072): not with Extra Limb(s) [B1926]
   if (bodyBound(e)) { const r = RESTRAINTS.find((s) => M.statusesOf(v.state, inst.actor).some((x) => x.id === s && x.data?.moveOnly !== 1)); if (r) return bad("restrained", { ...GM, status: r }); }      // PWC (PW005) [B1611]: Immobilize Only bars no action
@@ -289,6 +294,7 @@ function legality(v, inst) {
   if (e?.needsCopies && !(K.copiesOf(v.state, inst.actor) > 0)) return bad("noCopies");      // PWE (PW077) [B1909]: the copies act instead of giving their bonus
   if (kind === "dropBarrier" && !ownBarriers(v, inst.actor, subject).length) return bad("noBarrier");
   if (other && e?.immuneHuge && sf?.huge) return bad("hugeTarget");
+  if (kind === "control" && [subject, ...(Array.isArray(d.targets) ? d.targets : [])].some((t) => t !== inst.actor && v.facts.c(t)?.kind === "hero")) return bad("notAnimal");      // FXC2 (D202) [B1637]: a hero is no animal
   /* PWC (PW012) [B1637]: an action of the kit that takes several targets (all the animals of one zone): no more than the entry's bound, and
      each of them passes what the first does (present, not huge, near); with `oneZone` they stand in one zone */
   if (!e?.effect?.mass && Array.isArray(d.targets) && d.targets.length > 1) {
@@ -493,16 +499,18 @@ export const act = {
        also leaves a karma note [B2374], spec 9.11. Surplus sixes are shown: stunts of such rolls are the GM's last word [B2210-2218]. */
     outcome(v, inst) {
       const I = K.draft(inst), R = K.result(I), kind = kindOf(v, I);
-      if (!["narrative", "bystanders"].includes(kind) && !(kind === "nullify" && I.cause !== "interrupt")) { R.goto = "close"; return R; }      // PWA: Nullification on its own turn (an ongoing effect, a passive power) stays the GM's word
+      const ask = kind === "control" && Array.isArray(I.data.ask) && I.data.ask.length ? I.data.ask : null;      // FXC2 (D202): not known to be animals
+      if (!ask && !["narrative", "bystanders"].includes(kind) && !(kind === "nullify" && I.cause !== "interrupt")) { R.goto = "close"; return R; }      // PWA: Nullification on its own turn (an ongoing effect, a passive power) stays the GM's word
       if (!I.data.pk?.outcome) {
         R.prompts.push({ key: "outcome", kind: "outcome", to: "gm", about: I.actor, free: 1, options: [{ id: "success", label: "ITAC.opt.success" }, { id: "fail", label: "ITAC.opt.fail" }],
-          data: { action: I.action, rolled: I.data.attr ? 1 : 0, sixes: I.data.attr ? K.sixesOf(I, "roll") : null, net: I.data.net, suggests: I.data.result, text: I.decl.text ?? "", attr: I.data.attr ?? null, ...(v.entry(I)?.name ? { name: v.entry(I).name } : {}), ...(I.decl.opt ? { opt: I.decl.opt } : {}) } });
+          data: { action: I.action, rolled: I.data.attr ? 1 : 0, sixes: I.data.attr ? K.sixesOf(I, "roll") : null, net: I.data.net, suggests: I.data.result, text: I.decl.text ?? "", attr: I.data.attr ?? null, ...(v.entry(I)?.name ? { name: v.entry(I).name } : {}), ...(I.decl.opt ? { opt: I.decl.opt } : {}), ...(ask ? { animals: ask.slice(0, 12) } : {}) } });
         R.wait = true; return R;
       }
       if (!K.isAnswered(v, I, "outcome")) { R.wait = true; return R; }
       const a = K.answerOf(v, I, "outcome"), id = K.answerId(v, I, "outcome") ?? I.data.result;
       I.data.result = id === "fail" ? "fail" : "success";
       if (a && typeof a === "object" && a.text) I.data.said = String(a.text).slice(0, 300);
+      if (ask && I.data.result === "success" && !K.flag(I, "control")) { K.setFlag(I, "control"); for (const who of ask) if (v.facts.c(who)) R.effects.push({ t: "summonFlag", who, owner: I.actor }); }      // FXC2 (D202): the GM said they are animals
       if (v.entry(I)?.effect?.then === "control" && I.data.result === "success" && !K.flag(I, "control")) { K.setFlag(I, "control"); for (const who of [...new Set(I.decl.targets?.length ? I.decl.targets : [subjectOf(I)])]) R.effects.push({ t: "summonFlag", who, owner: I.actor }); }      // [B1637]: the animal acts on its controller's turn from now on; PWC (PW012): every animal named (PWC-4)
       /* PWD (PW043) [B1761]: the one controlled takes a full turn at once on the controller's command (full and quick, or two quick), then loses its next
          ordinary turn and has no interrupt actions until then. The turn is put right after the current point of the order, as the GM's insertTurn does

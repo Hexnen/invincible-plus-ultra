@@ -26,7 +26,8 @@ import * as J from "./journal-pure.mjs";
 import * as P1 from "./economy-pure.mjs";
 import * as S from "./state-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
-import { ledgerEditOf } from "./ops-pure.mjs";
+import { ledgerEditOf, helpers as OpsH } from "./ops-pure.mjs";
+const LEAVE_KEYS = ["init", "ledger", "free", "statuses", "npc", "revealed", "knowledge", "prompts", "triggers", "tokens", "effects", "moved", "vehicles", "summons"];      // what ops-pure removeOne may change (FXC2, D197)
 import * as M from "./mods-pure.mjs";
 import * as C from "./catalog-pure.mjs";
 import * as ZP from "./zones-pure.mjs";
@@ -646,9 +647,11 @@ const priced0 = (entry) => typeof FLOWS[entry.flow]?.price === "function";      
    ANSH (P8f-1, the user 2026-11-12: «Zezwolić, MG rozstrzyga bez liczb»): no refusal any more. The declaration goes in (the book allows it
    [B2818]) and waits on a GM card that names the rules' own answer (opDeclare); the player is told nothing of the numbers, only the GM's
    yes or no. -> { ok: false, reason: "strangerAlly", stranger: 1, params } | null */
+/* FXC2 (BH5 suspicion): the gate is about the PLAYER and the subject's numbers, not about who acts: a player's own NPC (owned, its sheet is
+   theirs) is no stranger to them, and a player acting with an NPC they own asks about an unrevealed NPC like their hero does */
 function strangerGate(X, entry, decl, actor) {
-  if (X.user.staff === true || entry?.target?.who !== "ally" || X.facts.c(actor)?.npc) return null;
-  const t = (decl.targets ?? []).find((id) => id !== actor && X.facts.c(id)?.npc === true && !X.state.revealed?.[id]?.stats);
+  if (X.user.staff === true || entry?.target?.who !== "ally") return null;
+  const t = (decl.targets ?? []).find((id) => id !== actor && X.facts.c(id)?.npc === true && !X.state.revealed?.[id]?.stats && !(X.facts.c(id)?.owners ?? []).includes(X.user.id));
   return t ? { ok: false, reason: "strangerAlly", stranger: 1, params: { gmMayAllow: 1 } } : null;
 }
 /** the legality a declaration of this user meets: the gate of D54, then the entry's and the flow's own rules */
@@ -1388,9 +1391,15 @@ async function gmEdit(X, op, a) {
       const names = [...goneIds].map((id) => ({ id, name: String(X.facts.c(id)?.name ?? "").slice(0, 80) }));
       /* what the roster would prune once they are gone (ops-pure removeOne: the vehicle's record, the seats, the ledger ...) is written
          here, in this transaction, so the undo puts it back with the documents (live 2026-11-13: the truck came back without its crew) */
-      for (const u of gone) {
-        if (isObj(X.state.vehicles?.[u.id])) w(["vehicles", u.id], null);
-        for (const id of [...u.people, u.id]) for (const k of ["statuses", "ledger", "free", "npc", "revealed", "knowledge"]) if (isObj(X.state[k]) && X.state[k][id] !== undefined) w([k, id], null);
+      /* FXC2 (D197): ALL of it, by the roster's own leave (removeOne, D46): what lasts "until the next turn of" a leaver (a hero it snared),
+         its tokens, triggers about it, prompts about it; the bare nulls of ANSD hid the leavers from the roster, so nothing of that ended */
+      if (gone.length) {
+        const W = { s: S.clone(X.state), ctx: { parts: [] }, events: [], effects: [] };
+        W.s.free ??= {};
+        for (const u of gone) for (const id of [...u.people, u.id]) OpsH.removeOne(W, id);
+        if (X.state.free === undefined) delete W.s.free;
+        for (const k of LEAVE_KEYS) if (JSON.stringify(W.s[k] ?? null) !== JSON.stringify(X.state[k] ?? null)) w([k], W.s[k] ?? null);
+        for (const e of W.events) if (e.type === "status" || e.type === "effectEnd") emit(X, null, e);
       }
       for (const u of gone) for (const id of [...u.people, u.id]) await perform(X, tx, { t: "summonRemove", combatant: id, tx });
       w(["kind"], "combat"); w(["chase"], null);

@@ -341,6 +341,7 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   T.setRange("H1", "N1", 2);
   eq([code(await T.req("p1", decl("H1", a.id, { targets: ["N1"] }))), why(T.last)], ["illegal", "tooFar"], "this zone or the next");
   T.setRange("H1", "N1", 1);
+  T.c.N1.animal = true;      // FXC2 (D202): the guard dog is known to be an animal; an unknown target asks the GM (check-fxc2)
   await T.req("p1", decl("H1", a.id, { targets: ["N1"], text: "the guard dog" }));
   /* ANSG (P6b-R6, the user 2026-11-12) replaced the GM's confirmation: the animal is taken at once, no roll, no card */
   eq(T.prompt("outcome"), null, "P6b-R6: no GM card any more: the animal is taken at once");

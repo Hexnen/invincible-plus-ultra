@@ -286,6 +286,7 @@ function linesOf(p, t, facts, x) {
       const act = d.name ? String(d.name) : t(`ITAC.action.${d.action}`, {}, String(d.action ?? ""));
       out.push(d.rolled ? t(d.suggests === "fail" ? "ITAC.ui.line.outcomeFail" : "ITAC.ui.line.outcomeOk", { name: about, action: act, attr: attrText(t, d.attr), n: d.sixes ?? 0 }) : t("ITAC.ui.line.outcomeNoRoll", { name: about, action: act }));
       if (d.rolled && d.suggests !== "fail" && Number(d.net) > 1) out.push(t("ITAC.ui.line.outcomeSurplus", { n: Number(d.net) - 1 }));
+      if (Array.isArray(d.animals) && d.animals.length) out.push(t("ITAC.ui.line.outcomeAnimal", { names: d.animals.map(n).join(", ") }));      // FXC2 (D202) [B1637]
       if (d.text) out.push({ quote: String(d.text), by: about });
       break;
     }

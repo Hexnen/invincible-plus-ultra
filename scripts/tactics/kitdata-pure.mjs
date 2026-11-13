@@ -23,7 +23,8 @@
      pass    passive facts: { regeneration, vacuumSafe, reach, freeHold, deflection, duckWeave, merciless, overconfident, supportive,
              medicalGear, stressArmor: [per level], resist: [per level], immune: "flag" | "nonKinetic", vulnerable: "flag", shrunkDice: [per level], grown,
              PWE: camouflage, limbHold / stretchHold: [per level] (dice to keep a hold), lifeSupport, blockShots, phaseMove, leapCharge: [per level]; PWE-M: adaptation (safe in a vacuum once adapted) }
-     drops   PWE: a limit that takes actions of its power away: [k] (Life Leech: "heal")
+     drops   PWE: a limit that takes actions of its power (and of the power's boosts) away: [k] (Life Leech: "heal", "massHeal")
+     selfOnly FXC2: a limit that keeps actions of its power (or boosts) on the user alone: [k] (Life Leech: "cleanse", "recover")
      mods    dice the sheet does not carry: [{ dice, action?: [ids], attack?: [kinds], attr?, vsHuge?, lv?: [per level] }]
      opt     a boost or limit that changes the attacks of its power: { patch, stress?, optional?, on?: "slug" }
              (PWA: patch.rangeLv = [range per level]; atk.grip = the status a grapple made with the attack leaves [B1779]; atk.pull = a hit
@@ -226,7 +227,7 @@ export const ROWS = Object.freeze([
   B("Healing", "Mass Healing", [1934], "auto", "effect", { acts: [{ k: "massHeal", cost: "full", roll: { attr: "presence" }, target: { who: "ally", n: [1, 12] }, stressExtra: 1, sameZone: 1, effect: { kind: "heal", per: 3, mass: 1 } }] }),      // PWE (PW080): no cap but the stress [B1934] (12: the most targets a declaration carries)
   B("Healing", "Cleansing Healing", [1935], "auto", "effect", { acts: [{ k: "cleanse", cost: "full", roll: { attr: "presence" }, target: { who: "ally", n: [0, 1] }, touch: 1, effect: { kind: "cleanse" } }] }),
   B("Healing", "Miraculous Recovery", [1936], "assist", "crit", { acts: [narr("recover", "full", { roll: { attr: "presence" }, target: { who: "ally", n: [0, 1] }, touch: 1 })] }),
-  L("Healing", "Life Leech", [1937], "assist", "effect", { drops: ["heal"], acts: [{ k: "leech", cost: "full", roll: { attr: "presence" }, target: { who: "any", n: [1, 1] }, touch: 1, effect: { kind: "leech", per: 3 } }] }),
+  L("Healing", "Life Leech", [1937], "assist", "effect", { drops: ["heal", "massHeal"], selfOnly: ["cleanse", "recover"], acts: [{ k: "leech", cost: "full", roll: { attr: "presence" }, target: { who: "any", n: [1, 1] }, touch: 1, effect: { kind: "leech", per: 3 } }] }),
   P("Intangibility", [1940], "assist", "reaction", { pass: { phaseMove: 1 }, acts: [{ k: "phase", cost: "quick", stress: 1, effect: { kind: "narrative" }, reaction: "autoMiss" }] }),
   B("Intangibility", "Prolonged Phasing", [1941], "auto", "effect", { acts: [{ k: "phased", cost: "quick", effect: { kind: "status", id: "intangible", on: "self", toggle: 1 } }] }),
   B("Intangibility", "Controlled Phasing", [1942], "auto", "effect", { acts: [{ k: "solid", cost: "none", stress: 1, needsStatus: "intangible", effect: { kind: "mark", id: "solid" } }] }),      // PWE (PW085): only while intangible [B1942]

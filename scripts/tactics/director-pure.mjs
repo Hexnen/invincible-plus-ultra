@@ -25,6 +25,8 @@ import * as E from "./engine-pure.mjs";
 import * as J from "./journal-pure.mjs";
 import * as Hz from "./flows/hazards.mjs";
 import { sitsOut } from "./flows/kit.mjs";
+import * as MP from "./movement-pure.mjs";
+import * as M from "./mods-pure.mjs";
 import { concealedFor } from "./view-pure.mjs";
 
 export const ROUND_OPS = Object.freeze(["start", "stop", "endTurn", "nextTurn", "nextRound", "prevTurn", "holdOff", "mark", "setCard", "swapCards", "group", "ungroup",
@@ -262,6 +264,10 @@ export function glideStall(state, host, cid) {
   if (!c || !(c.movement ?? []).some((m) => m?.mode === "flight" && (m.limits ?? []).includes("gliding"))) return false;
   const p = f.zones?.place?.(cid);
   if (!p || p.airborne !== true) return false;
+  /* FXC2 (D201): only while a move is still possible. One who cannot move at all (held, snared, Immobilize Only, trapped: movement-pure
+     cannotMove; a no-movement weapon fired this round [B2545]; aboard a vehicle) is not kept from ending the turn. With the units spent
+     the landing in place stays (an in-zone move is free [B2383]), so that one is still asked to glide. */
+  if (MP.cannotMove(state, cid, c) || M.counterGet(state, M.counterKey.round(cid, "firedNoMove")) > 0 || M.statusesOf(state, cid).some((s) => s.id === "inVehicle")) return false;
   const h = state.ledger?.[cid]?.history?.thisTurn;
   return !(Number(h?.moved) > 0 || (h?.tags ?? []).includes("moveInZone") || (h?.tags ?? []).includes("move"));
 }

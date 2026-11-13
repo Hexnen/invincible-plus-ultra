@@ -131,6 +131,7 @@ const finish = async (T) => { for (let i = 0; i < 8; i++) { const p = T.prompts(
 /* ================================================================== P6b-R6 [B1637]: Animal Control takes the animal at once, no roll */
 {
   const T = base([item("ac", "Animal Control", "power")]);
+  T.c.N1.animal = true;      // FXC2 (D202): known to be an animal (a creature of the book, or the GM flag); an unknown target asks the GM (check-fxc2)
   const a = act(T, "H1", "control");
   eq(a?.roll ?? null, null, "P6b-R6: no roll");
   eq(code(await T.req("p1", decl("H1", a.id, { targets: ["N1"] }))), "ok", "P6b-R6: declared");
