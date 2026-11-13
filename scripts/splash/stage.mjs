@@ -188,6 +188,18 @@ export function safeRect() {
   for (const s of UI_RIGHT) { const x = leftOf(s, vw); if (x < r) r = Math.max(l + vw * 0.3, x - 10); }
   for (const s of UI_BOTTOM) { const q = boxOf(s); if (q && q.top > vh * 0.6 && q.left < area.w) b = Math.min(b, q.top - 8); }
   if (b - t < vh * 0.45) { t = 10; b = vh - 10; }   // a strange layout: the whole height rather than a slit
+  /* on a map layer the words are drawn inside the scene and cut at its edge (live 1920: BARREL! lost its top at the scene's top edge,
+     the dark padding above it): the block stays inside the scene rectangle too, while that leaves a usable area */
+  if (onMap()) {
+    try {
+      const sr = canvas.dimensions?.sceneRect;
+      const a = sr && toClient({ x: sr.x, y: sr.y }), c = sr && toClient({ x: sr.x + sr.width, y: sr.y + sr.height });
+      if (a && c) {
+        const q = { l: Math.max(l, a.x + 6), t: Math.max(t, a.y + 6), r: Math.min(r, c.x - 6), b: Math.min(b, c.y - 6) };
+        if (q.r - q.l >= vw * 0.3 && q.b - q.t >= vh * 0.3) ({ l, t, r, b } = q);
+      }
+    } catch (e) { /* the window's rectangle */ }
+  }
   return { l, t, r, b };
 }
 function tokenBox(token) {
@@ -196,7 +208,20 @@ function tokenBox(token) {
     const x0 = token.x ?? d.x, y0 = token.y ?? d.y, w = token.w ?? (d.width ?? 1) * gs, h = token.h ?? (d.height ?? 1) * gs;
     const a = toClient({ x: x0, y: y0 }), c = toClient({ x: x0 + w, y: y0 + h });
     if (!a || !c) return null;
-    return { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2, l: a.x, t: a.y, r: c.x, b: c.y };
+    /* the art, not the grid square: a token picture scaled up (texture scale, live 1920: the caption sat on the ring of Kid
+       Omni-Man's art) covers more than its square */
+    const k = Math.max(1, Math.abs(d.texture?.scaleX ?? 1), Math.abs(d.texture?.scaleY ?? 1));
+    const cx = (a.x + c.x) / 2, cy = (a.y + c.y) / 2, hw = (c.x - a.x) / 2 * k, hh = (c.y - a.y) / 2 * k;
+    const box = { x: cx, y: cy, l: cx - hw, t: cy - hh, r: cx + hw, b: cy + hh };
+    /* the drawn picture when the canvas knows it (live 1920: the art ran 41 px past its square on every side at zoom 0.75) */
+    try {
+      const mb = token.mesh?.getBounds?.(), v = canvas.app?.view?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      if (mb && mb.width > 0 && mb.width < (c.x - a.x) * 3) {
+        box.l = Math.min(box.l, v.left + mb.x); box.t = Math.min(box.t, v.top + mb.y);
+        box.r = Math.max(box.r, v.left + mb.x + mb.width); box.b = Math.max(box.b, v.top + mb.y + mb.height);
+      }
+    } catch (e) { /* the square is enough */ }
+    return box;
   } catch (e) { return null; }
 }
 /* the box of each lettering: the engine's own plan of that word (the same seed, avoid and hand as the play), so the layout knows

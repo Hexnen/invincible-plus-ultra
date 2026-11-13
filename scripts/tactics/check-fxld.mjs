@@ -143,6 +143,59 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
   });
 }
 
+/* ================================================================== F4: the block keeps off the token's art (a scaled-up picture) */
+for (const [name, e] of Object.entries(ROLLS())) {
+  await run(1366, 768, {}, async ({ Stage, flush }) => {
+    const { c, token } = canvasWith(500, 430);
+    if (name === "pushed") token.mesh = { getBounds: () => ({ x: 425, y: 355, width: 150, height: 150 }) };   // the drawn art (live: mesh past the square)
+    else token.document.texture = { scaleX: 1.5, scaleY: 1.5 };
+    globalThis.canvas = c;
+    const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("screen");
+    Stage.play(e, { token, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "ART-" + name, resolve: () => ({ now: 5, max: 8 }) });
+    flush(1e9);
+    const art = { left: 500 - 75, right: 500 + 75, top: 430 - 75, bottom: 430 + 75 };
+    const hit = L.calls.map((x) => drawn(x, L)).filter((b) => b.x - b.w / 2 < art.right && b.x + b.w / 2 > art.left && b.y - b.h / 2 < art.bottom && b.y + b.h / 2 > art.top);
+    ok(hit.length === 0, `F4 ${name}: nothing lands on the token's art scaled 1.5 (live 1920: the caption sat on the ring) (${hit.map((b) => b.role)})`);
+    Stage.clearAll(); delete globalThis.canvas;
+  });
+}
+
+/* the live 1920 case: a big token (263 px square, art 345 px) a little left of the middle: no side has room for the full block, so it
+   shrinks beside the token instead of landing on it */
+for (const [name, e] of Object.entries(ROLLS()).filter(([n]) => n !== "crit")) {
+  await run(1920, 1080, { pill: true }, async ({ Stage, flush }) => {
+    const { c, token } = canvasWith(772, 585);
+    Object.assign(token, { x: 772 - 131, y: 585 - 131, w: 263, h: 263 });
+    token.mesh = { getBounds: () => ({ x: 600, y: 413, width: 345, height: 344 }) };
+    globalThis.canvas = c;
+    const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("screen");
+    Stage.play(e, { token, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "BIG-" + name, resolve: () => ({ now: 5, max: 8 }) });
+    flush(1e9);
+    const hit = L.calls.map((x) => drawn(x, L)).filter((b) => b.x - b.w / 2 < 945 && b.x + b.w / 2 > 600 && b.y - b.h / 2 < 757 && b.y + b.h / 2 > 413);
+    ok(hit.length === 0, `F4 1920 big token ${name}: the block shrinks beside the token rather than landing on its art (${hit.map((b) => b.role)})`);
+    Stage.clearAll(); delete globalThis.canvas;
+  });
+}
+
+/* map layers: the words are drawn inside the scene and cut at its edge (live 1920: BARREL! lost its top above the scene) */
+for (const [name, e] of Object.entries(ROLLS()).filter(([n]) => n !== "crit")) {
+  await run(1920, 1080, {}, async ({ Stage, flush }) => {
+    const { c, token } = canvasWith(780, 250);
+    c.dimensions = { sceneRect: { x: 0, y: 160, width: 1500, height: 1100 } };   // zoom 1, no pan: the scene starts 160 px down the window
+    globalThis.canvas = c;
+    const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("tokens");
+    Stage.play(e, { token, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "SCN-" + name, resolve: () => ({ now: 5, max: 8 }) });
+    flush(1e9);
+    const out = L.calls.map((x) => drawn(x, L, 1, (p) => c.stage.toGlobal(p))).filter((b) => b.y - b.h / 2 < 160 || b.x + b.w / 2 > 1500);
+    ok(L.calls.length > 0 && out.length === 0, `F3 map ${name}: the block stays inside the scene, where the map draws it (${out.map((b) => b.role)})`);
+    Stage.setLayer("screen"); Stage.clearAll(); delete globalThis.canvas;
+  });
+}
+{
+  const css = fs.readFileSync(new URL("../../styles/splash.css", import.meta.url), "utf8");
+  ok(/\.ins-letters \.ins-badge \{[^}]*width: max-content/.test(css), "F4: the Resolve gauge in the block keeps its measured one-line width (max-content; live 1920 it wrapped by the right edge onto the chat card)");
+}
+
 /* ================================================================== F5: the critical */
 for (const [W, H] of [[1366, 768], [1920, 1080]]) {
   await run(W, H, {}, async ({ Stage, flush }) => {

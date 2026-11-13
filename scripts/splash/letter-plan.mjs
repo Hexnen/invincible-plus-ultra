@@ -245,7 +245,15 @@ export function composeMoment(items, frame, measure = estimateBox) {
   for (let pass = 0; pass < 8; pass++) {
     out = layoutAt(items, frame, measure, f, safeW, vh, sc);
     const bw = out.rect.r - out.rect.l, bh = out.rect.b - out.rect.t;
-    const k = Math.min(1, (safeW - 4) / bw, (safeH - 4) / bh);
+    let k = Math.min(1, (safeW - 4) / bw, (safeH - 4) / bh);
+    /* by a token: when no side of it has room for the block, the block shrinks (to 0.6 at most) to the side with the most room
+       rather than landing on the token (live 1920: the caption sat on Kid Omni-Man's art). A critical (wMin) covers the screen anyway. */
+    const T = frame.token;
+    if (k >= 0.999 && T && !items.some(it => it.wMin)) {
+      const g = 6, fitK = (w, h) => Math.min((safeW - 4) / bw, (safeH - 4) / bh, w / bw, h / bh);
+      const best = Math.max(fitK(safeW, T.t - g - safe.t), fitK(safeW, safe.b - T.b - g), fitK(safe.r - T.r - g, safeH), fitK(T.l - g - safe.l, safeH));
+      if (best < 0.999 && best >= 0.6 * Math.min(1, k) && f > 0.6) k = Math.max(best, 0.6 / f);
+    }
     if (k >= 0.999) break;
     f *= k * 0.97;
   }

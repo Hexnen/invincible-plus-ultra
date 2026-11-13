@@ -99,7 +99,7 @@
    stays a DOM gauge, its number is lettered just above it, so the gauge's own header line goes. */
 .ins-letters { position: fixed; inset: 0; pointer-events: none; }
 /* FXLD: the Resolve gauge is part of the composed block (stage.mjs places it beside its lettered number, client px) */
-.ins-letters .ins-badge { position: absolute; transform-origin: top left; max-width: min(26vw, 340px); }
+.ins-letters .ins-badge { position: absolute; transform-origin: top left; width: max-content; max-width: min(26vw, 340px); }   /* max-content: placed near the right edge it wrapped to two lines (live 1920) and outgrew its measured slot */
 .ins-letters .ins-badge .bt { display: none; }
 /* LDIC: the display layer (setting "Splash: Layer"): the HTML part of the moment (gauge, rays, backdrop) follows the lettering engine's
    screen layers (contract v3: hud z 5, ui z 80); with a layer on the map it sits under the bars and windows too */
