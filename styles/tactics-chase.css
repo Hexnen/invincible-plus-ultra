@@ -227,7 +227,15 @@
 #invincible-tactics-chase .itc-huge[data-tone="miss"] { color: var(--itc-prey); }
 #invincible-tactics-chase .itc-mid > .itc-unit-t { font: 400 13px/1.2 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fff; }
 #invincible-tactics-chase .itc-say { color: var(--ita-text); text-wrap: balance; }
-#invincible-tactics-chase .itc-catch { padding: 1px 7px 2px; font: 400 12px/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-ink); background: var(--itc-pur); }
+/* FXO2 (U216): the catch, one row per unit (a left-aligned column, centred under the track): the striker in the pursuers' colour, who does not strike dimmed with the roster's dashed stuck tag */
+#invincible-tactics-chase .itc-catch { display: grid; justify-content: center; justify-items: start; gap: 3px; width: 100%; margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--ita-line); }
+#invincible-tactics-chase .itc-catch > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; max-width: 100%; gap: 2px 6px; min-width: 0; }
+#invincible-tactics-chase .itc-catch > li > i { flex: none; width: 14px; font-size: 12px; text-align: center; color: var(--itc-pur); }
+#invincible-tactics-chase .itc-cn { min-width: 0; max-width: 100%; font: 400 14px/1.2 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #fff; }
+#invincible-tactics-chase .itc-ct { flex: none; max-width: 100%; padding: 0 5px 1px; font: 400 11px/1.3 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ita-ink); background: var(--itc-pur); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#invincible-tactics-chase .itc-catch > li[data-kind="barred"] > i { color: var(--ita-label); }
+#invincible-tactics-chase .itc-catch > li[data-kind="barred"] > .itc-cn { color: var(--ita-label); }
+#invincible-tactics-chase .itc-catch > li[data-kind="barred"] > .itc-ct { color: var(--ita-red-lt); background: none; border: 1px dashed var(--ita-red-lt); padding: 0 4px; }
 #invincible-tactics-chase .itc-pips { display: flex; gap: 3px; margin: 1px 0; }
 #invincible-tactics-chase .itc-pips > li { width: 14px; height: 10px; border: 1px solid var(--ita-line); transform: skewX(-12deg); }
 #invincible-tactics-chase .itc-pips > li[data-on] { background: var(--ita-yellow); border-color: var(--ita-yellow); }
