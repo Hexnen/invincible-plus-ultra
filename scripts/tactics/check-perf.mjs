@@ -110,9 +110,11 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css") 
   /* the dock: the rule as wired */
   const dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8");
   const head = dock.slice(dock.indexOf("export function place()"), dock.indexOf("function placeSlots(rec)")), body = dock.slice(dock.indexOf("function placeSlots(rec)"), dock.indexOf("export function topReach()"));
-  ok(/if \(kept && Settle\.sameFacts\(kept\.facts, facts\(\)\) && Settle\.unchanged\(kept\.read, visibleRect\) && Settle\.sameFacts\(kept\.sizes, sizesNow\(\)\)\) return;/.test(head) && /const sizesNow = \(\) => \[\.\.\.Settle\.sizesOf\(stack\), \.\.\.Object\.values\(slotEls\)/.test(dock), "D: place() returns early only with kept facts, reads and sizes (the stack's and every place's) all the same");
+  /* PERF5-5: place() now says whether it ran (return false when skipped): the draw marks a new panel's overflow itself then */
+  ok(/if \(kept && Settle\.sameFacts\(kept\.facts, facts\(\)\) && Settle\.unchanged\(kept\.read, visibleRect\) && Settle\.sameFacts\(kept\.sizes, sizesNow\(\)\)\) return false;/.test(head) && /const sizesNow = \(\) => \[\.\.\.Settle\.sizesOf\(stack\), \.\.\.Object\.values\(slotEls\)/.test(dock), "D: place() returns early only with kept facts, reads and sizes (the stack's and every place's) all the same");
   ok(/kept = null;\s*placeSlots\(rec\);\s*if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept = /.test(head), "D: what a run read is kept only when the run changed nothing");
-  ok(/const facts = \(\) => \[drawn, window\.innerWidth, window\.innerHeight, Lay\.factor\(document\.body\)\]/.test(head), "D: the draw count, the window and the size are facts of a placement");
+  /* PERF5-5 (check-pfa.mjs): the facts grew by the frame's inputs that are no box of the page (the seat, the hints, a unit) */
+  ok(/const facts = \(\) => \[drawn, window\.innerWidth, window\.innerHeight, Lay\.factor\(document\.body\), !!handlers\.staff\?\.\(\), !!handlers\.hintsOn\?\.\(\), !!last\?\.d\?\.who\]/.test(head), "D: the draw count, the window, the size and the frame's other inputs are facts of a placement");
   const out = dock.slice(dock.indexOf("function outcome()"), dock.indexOf("function placeSlots(rec)"));
   for (const w of ["root.style.cssText", "root.dataset.tight", "stack?.parentElement?.style.cssText", "el.parentElement?.style.cssText", "el.parentElement?.dataset.anchor", "el.parentElement?.dataset.align", "frameKey", 'varOf("--its-nt")', 'varOf("--its-nx")', 'varOf("--igd-toast-maxh")']) ok(out.includes(w), `D: the outcome of a placement includes ${w}`);
   ok(!/document\.(querySelector|querySelectorAll|getElementById)\(|visibleRect\(/.test(body), "D: placeSlots asks the page only through the recorder (no read escapes the list)");
@@ -122,7 +124,9 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css") 
     .replace(/el\.dataset\.(anchor|align) =/g, "").replace(/barSlot\.style\.(setProperty|removeProperty)\("--ita-scale"/g, "").replace(/setVar\("--(its-n[tx]|igd-toast-maxh)"/g, "").replace(/frameKey = key/g, "");
   ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute/.test(rest), "D: placeSlots writes nothing outside what the outcome compares");
   ok(!/function placeNow|underTop|--itd-under-top|ita-notice-wait|--itd-clear/.test(dock), "D (U132): the column's placement is gone with everything only it wrote");
-  ok(/drawn\+\+;[^\n]*\n\s*place\(\);\s*\n\s*reveal\(\);/.test(dock), "D: a draw counts before it places (new content always places in full)");
+  /* PERF5-5: a draw counts when what it drew differs from the last draw (drawSig: the markup of the stack and of every place), still
+     before it places; check-pfa.mjs runs that rule on a fake dock */
+  ok(/const sig = drawSig\(d\);\s*\n\s*if \(sig !== drawnSig\) \{ drawnSig = sig; drawn\+\+; \}\s*\n\s*if \(!place\(\)\)[^\n]*\n\s*reveal\(\);/.test(dock), "D: a draw counts before it places (new content always places in full)");
   ok(/addEventListener\("load", \(\) => \{ drawn\+\+; \}, true\)/.test(dock) && /"loadingdone", \(\) => \{ drawn\+\+; \}/.test(dock), "D: a picture or a font that finished loading counts as new content");
   ok(/last = null; kept = null; slotEls = \{\}; frameKey = ""; shareWas = false; Slots\.setFrame\(null\); \}/.test(dock), "D: a destroyed dock forgets what it read (and its frame)");
 }

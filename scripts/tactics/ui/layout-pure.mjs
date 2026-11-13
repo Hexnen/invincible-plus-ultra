@@ -80,6 +80,20 @@ export function diceRaise(style, base = 29) {
   const z = Number.parseInt(style.zIndex, 10);
   return Number.isFinite(z) && z >= base ? z + 1 : null;
 }
+/** PERF5-1: Dice So Nice takes every window "resize" for a new window and, a second later (debounced), throws its whole 3D renderer
+    away and builds it again: one frame of 60-660 ms. Its box is sized by the window and the sidebar alone. The macro bar folding or
+    opening (ui/main.mjs hotbarSync) still tells the page with a resize of its own (the map's director bar, its progress line and the
+    surfaces of this module place themselves by it), which changes neither. The gate lets go of a rebuild that only that resize asked
+    for; any other resize meanwhile (a real one, another module's) lets it run, as does a rebuild asked with no such resize at all.
+    -> { ours(): our resize was sent, seen(own): a resize reached the window, pass(): Dice So Nice wants to rebuild - may it? } */
+export function rebuildGate() {
+  let armed = false, other = false;
+  return {
+    ours() { armed = true; },
+    seen(own) { if (!own) other = true; },
+    pass() { const go = !armed || other; armed = false; other = false; return go; },
+  };
+}
 /** U148 (UX review 1): THE BAR KEEPS ITS SHAPE. One row or the actions over the unit (data-tight) was decided by the width of what the
     bar held at that moment, so a few pixels more after an action resolved (a chip, a longer number) folded the row into two and the
     buttons moved under the pointer; on the GM seat a hero's resting bar was shorter than an NPC's and the camera button took the place

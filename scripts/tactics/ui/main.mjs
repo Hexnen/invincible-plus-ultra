@@ -103,9 +103,23 @@ function hotbarSync(on) {
     document.body.classList.toggle("ita-hotbar-fold", fold);
     if (key === hotbarShown) return;
     const first = hotbarShown === null; hotbarShown = key;
-    /* what stands on the macro bar (the map's director bar) finds its place again */
-    if (!first || fold) setTimeout(() => { try { window.dispatchEvent(new Event("resize")); } catch { /* no window */ } }, 30);
+    /* what stands on the macro bar (the map's director bar) finds its place again; PERF5-1: Dice So Nice is not rebuilt for it */
+    if (!first || fold) setTimeout(() => { try { diceQuiet(); const ev = new Event("resize"); ownResize = ev; window.dispatchEvent(ev); } catch { /* no window */ } finally { ownResize = null; } }, 30);
   } catch { /* no body */ }
+}
+/* PERF5-1 (layout-pure.rebuildGate): Dice So Nice's rebuild on a window resize (its instance's own resizeAndRebuild, the one thing its
+   debounced resize listener calls) is passed through the gate; our resize arms it, every other resize seen on the window disarms it.
+   Dice So Nice's files are untouched; without it (or another version without that method) nothing is wrapped and it rebuilds as before. */
+const diceGate = Lay.rebuildGate();
+let ownResize = null;
+const resizeSeen = (ev) => diceGate.seen(ev === ownResize);      // start(): on the window from the start, so a real resize just before ours is not missed
+function diceQuiet() {
+  try {
+    const d = game.dice3d, fn = d?.resizeAndRebuild;
+    if (typeof fn !== "function") return;
+    if (!fn.ipuGate) { const gated = function (...a) { return diceGate.pass() ? fn.apply(this, a) : undefined; }; gated.ipuGate = true; d.resizeAndRebuild = gated; }
+    diceGate.ours();
+  } catch { /* the dice rebuild as before */ }
 }
 const previews = new Map();           // U: the engine's answer to "what would this declaration roll", per declaration and state (facts.preview)
 let previewLast = null;
@@ -771,6 +785,7 @@ export function start() {
     });
     for (const hk of ["changeSidebarTab", "renderHotbar", "renderPlayers", "renderChatLog", "closeChatLog"]) Hooks.on(hk, () => { relayout(); setTimeout(relayout, 320); });      // U136: also the chat popped out or back in
     Hooks.on("collapseSidebar", () => { relayout(); setTimeout(() => (st.desk.touched ? relayout() : schedule()), 320); });      // the desk folds or opens with the room the sidebar leaves, until the GM chose
+    listen(window, "resize", resizeSeen, { capture: true, passive: true });      // PERF5-1: the gate of Dice So Nice's rebuild sees every resize
     listen(window, "resize", () => { if (!st.desk.touched) schedule(); else relayout(); });
     listen(window, CHAT_MOVED, () => { if (!st.desk.touched) schedule(); else relayout(); });      // FXX (U185): the popped-out chat parked, was dragged or closed
     listen(document, "keydown", (ev) => { try { if (ev.key === "Escape" && (st.dock.armed || st.dock.mode || st.dock.endArmed) && Dock.el()?.contains(document.activeElement)) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); setDock(st.dock.endArmed ? { endArmed: false } : { armed: null, mode: null, amend: null }); }      /* ANSA (UXC-1): Esc answers No to the end question */ } catch { /* ignore */ } }, true);
