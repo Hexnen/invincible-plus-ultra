@@ -69,6 +69,9 @@ function registerSettings() {
   client('fullscreen', { name: L('Fullscreen.Name'), hint: L('Fullscreen.Hint'), type: Boolean, default: true });
   client('fullFrom', { name: L('FullFrom.Name'), hint: L('FullFrom.Hint'), type: Number, default: 0.7, range: { min: 0.4, max: 1, step: 0.05 } });
   client('debug', { name: L('Debug.Name'), hint: L('Debug.Hint'), type: Boolean, default: false });
+  client('lettering', { name: L('Lettering.Name'), hint: L('Lettering.Hint'), type: Boolean, default: true, onChange: () => loadLetters() });   // LDIC
+  client('layer', { name: L('Layer.Name'), hint: L('Layer.Hint'), type: String, default: 'screen', onChange: v => Stage.setLayer(v),   // LDIC: the lettering engine's layers
+    choices: Object.fromEntries([...Stage.SCREEN_LAYERS, ...Stage.WORLD_LAYERS].map(k => [k, L('Layer.' + k)])) });
   client('chat', { name: L('Chat.Name'), hint: L('Chat.Hint'), type: Boolean, default: true });
 
   world('dry', { name: L('Dry.Name'), hint: L('Dry.Hint'), type: Number, default: 8, range: { min: 0, max: 30, step: 1 } });
@@ -78,7 +81,7 @@ function registerSettings() {
 }
 
 /* Etykiety informacyjne plakietek (szansa, stres, Resolve) z INSPLASH.Badge.*; brak klucza = angielski domyślnik z logic.mjs.
-   Słowa-SFX (HAYMAKER!, WHAM!...) i napis SIXES zostają angielskie (decyzja projektu); zdania wstęgi i notki stresu (UNLIKELY HERO!,
+   Słowa-SFX (HAYMAKER!, WHAM!...) zostają angielskie (decyzja projektu; liczba szóstek od FXLD w języku stołu); zdania wstęgi i notki stresu (UNLIKELY HERO!,
    SHAKEN...) idą w języku stołu z INSPLASH.Say.* (UXB, D129: to nie dźwięki, mówią coś o wyniku). */
 function applyLabels() {
   try {
@@ -88,6 +91,8 @@ function applyLabels() {
     if (has('INSPLASH.Badge.Push')) o.push = game.i18n.localize('INSPLASH.Badge.Push');
     if (has('INSPLASH.Badge.Stress')) o.stress = n => F('INSPLASH.Badge.Stress', { n });
     if (has('INSPLASH.Badge.Resolve')) o.resolve = (now, max) => F('INSPLASH.Badge.Resolve', { now, max });
+    /* FXLD (ADVD 8): the sixes are a count, not a sound: in the table's language like the odds ("2 SZÓSTKI" next to "1 NA 9") */
+    if (has('INSPLASH.Live.Six.other')) o.six = n => sixesText(n).toLocaleUpperCase(game.i18n.lang || 'en');
     o.words = Object.fromEntries(Object.values(SAYS).filter(k => has('INSPLASH.Say.' + k)).map(k => [k, game.i18n.localize('INSPLASH.Say.' + k)]));      // UXB (D129)
     setLabels(o);
   } catch (e) { /* zostają domyślne angielskie etykiety */ }
@@ -99,6 +104,8 @@ function onReady() {
   document.fonts?.load?.('100px Comic').catch(() => {});
   applyLabels();
   applyMotion();
+  Stage.setLayer(cs('layer'));
+  loadLetters();
   const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   mq?.addEventListener?.('change', applyMotion);
   /* obszar roboczy (okno bez czatu) zmienia się z oknem i paskiem bocznym; pasek animuje szerokość, więc mierzymy dwa razy */
@@ -146,6 +153,20 @@ export function start(phases = {}) {
 function applyMotion() {
   const m = cs('motion');
   S.setReduced(m === 'reduced' || (m === 'auto' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
+}
+/* LDIC: the comic lettering engine (scripts/letters/, shared with moinen-maps). The stub without a renderer says design().stub: then,
+   and when the setting is off or the engine does not load, the classic splash plays. */
+let lettersLoad = 0;
+function loadLetters() {
+  const ticket = ++lettersLoad;
+  if (!cs('lettering')) { Stage.setLetters(null); return; }
+  import('../letters/index.mjs').then(m => m.letters()).then(L => {
+    if (ticket !== lettersLoad) return;
+    let stub = true;
+    try { stub = !L || typeof L.play !== 'function' || L.design?.('A')?.stub === true; } catch (e) { stub = true; }
+    Stage.setLetters(stub || !cs('lettering') ? null : L);
+    dbg('liternictwo:', stub ? 'brak renderera (zaślepka), klasyczny splash' : 'silnik ' + L.version);
+  }).catch(e => { if (ticket === lettersLoad) Stage.setLetters(null); console.warn(`${LOG} lettering engine unavailable, classic splash`, e); });
 }
 function fullFrom() { return cs('fullscreen') ? cs('fullFrom') : null; }
 function fxLevel() { const e = cs('effects'); return e === 'full' ? 1 : (e === 'reduced' ? 0.5 : 0); }
@@ -335,13 +356,17 @@ hook('createChatMessage', async (message, options, userId) => {
     const waited = await Moment.landing(speakerTokens(message), { wait: Moment.isActive() ? 250 : 0, cap: 1600 });
     if (waited) dbg('czekał na ujęcie kamery:', waited + ' ms');
     if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
+    /* FXLD (ADVD 9): words lettered on the map are under Dice So Nice's canvas; they wait for the dice to fade (at most 2.6 s) */
+    const dw = await Stage.diceClear(2600);
+    if (dw) dbg('czekał na zniknięcie kości:', dw + ' ms');
+    if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
     const token = resolveToken(message);
     dbg('odtwarzam:', ev.word, 'P=' + (ev.power ?? 'fail'), 'miejsce:', token ? 'token ' + token.name : 'ekran');
     const resolve = ev.stress ? resolveReader(message, ev) : null;
     announce(ev, message, resolve);
     Stage.play(ev, {
       rnd: mulberry32(hashString(id)), token, scale: cs('scale'), hold: cs('hold'), fx: fxLevel(), fullFrom: fullFrom(),
-      resolve
+      resolve, seed: id
     });
   } catch (e) { console.warn(`${LOG} createChatMessage failed`, e); }
 });
@@ -361,7 +386,7 @@ hook('updateChatMessage', async (message, changes, options, userId) => {
     const ev = { stress: rd.stress, stressPending: false, pushed: true, rb: Number.isFinite(f.rb) ? f.rb : null, rmax: Number.isFinite(f.rmax) ? f.rmax : null };
     const resolve = resolveReader(message, ev);
     announce({ ...ev, stressOnly: true }, message, resolve);
-    Stage.playStress(ev, { token: resolveToken(message), scale: cs('scale'), hold: cs('hold'), resolve });
+    Stage.playStress(ev, { token: resolveToken(message), scale: cs('scale'), hold: cs('hold'), resolve, seed: message.id });
   } catch (e) { console.warn(`${LOG} updateChatMessage failed`, e); }
 });
 

@@ -93,3 +93,16 @@
 
 /* żywy komunikat dla czytników ekranu (stage.mjs announce): niewidoczny, ale odczytywany */
 .ins-sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* LDIC: the lettered moment (scripts/splash/stage.mjs playLetters): the comic lettering engine draws every word and number of one
+   moment into this wrapper; fixed at inset 0, so client px are its px (the layer's clip and z-index hold for it too). The Resolve gauge
+   stays a DOM gauge, its number is lettered just above it, so the gauge's own header line goes. */
+.ins-letters { position: fixed; inset: 0; pointer-events: none; }
+/* FXLD: the Resolve gauge is part of the composed block (stage.mjs places it beside its lettered number, client px) */
+.ins-letters .ins-badge { position: absolute; transform-origin: top left; width: max-content; max-width: min(26vw, 340px); }   /* max-content: placed near the right edge it wrapped to two lines (live 1920) and outgrew its measured slot */
+.ins-letters .ins-badge .bt { display: none; }
+/* LDIC: the display layer (setting "Splash: Layer"): the HTML part of the moment (gauge, rays, backdrop) follows the lettering engine's
+   screen layers (contract v3: hud z 5, ui z 80); with a layer on the map it sits under the bars and windows too */
+#invincible-splash-layer[data-layer="ui"] { z-index: 80; clip-path: none; }
+#invincible-splash-layer[data-layer="hud"], #invincible-splash-layer[data-layer="overlay"], #invincible-splash-layer[data-layer="weather"],
+#invincible-splash-layer[data-layer="tokens"], #invincible-splash-layer[data-layer="ground"] { z-index: 5; }

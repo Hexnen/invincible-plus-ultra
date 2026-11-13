@@ -109,7 +109,7 @@ export const ODDS = [[0.10, 'NOT BAD!'], [0.22, 'LUCKY BREAK!'], [0.34, 'AGAINST
   [0.58, 'NO WAY!'], [0.70, 'IMPOSSIBLE!'], [0.82, 'ONCE IN A LIFETIME!'], [0.92, 'THE ODDS ARE SHATTERED!']];
 export function oddsText(P) { let t = null; for (const o of ODDS) if (P >= o[0]) t = o[1]; return say(t); }
 /* UXB (D129): zdania wstęgi (szansa, pudło) i notki stresu mówią coś o wyniku, więc NIE są słowami-SFX: idą w języku stołu
-   (INSPLASH.Say.*, main.mjs applyLabels). Słowa dźwiękowe (WHAM!, ZOOM!, YIKES!, STRAIN!...) i napis SIXES zostają angielskie. */
+   (INSPLASH.Say.*, main.mjs applyLabels). Słowa dźwiękowe (WHAM!, ZOOM!, YIKES!, STRAIN!...) zostają angielskie; napis liczby szóstek idzie w języku stołu (FXLD, ADVD 8). */
 export const SAYS = Object.freeze({ 'NOT BAD!': 'NotBad', 'LUCKY BREAK!': 'LuckyBreak', 'AGAINST THE ODDS!': 'AgainstOdds', 'UNLIKELY HERO!': 'UnlikelyHero',
   'NO WAY!': 'NoWay', 'IMPOSSIBLE!': 'Impossible', 'ONCE IN A LIFETIME!': 'OnceInLifetime', 'THE ODDS ARE SHATTERED!': 'OddsShattered',
   'UNLUCKY!': 'Unlucky', 'WHAT A FLOP!': 'Flop', 'BREAKING POINT!': 'BreakingPoint', 'ON THE EDGE!': 'OnEdge', 'FEELING THE STRAIN': 'Strain',
@@ -143,6 +143,8 @@ export const LBL = {
   miss: n => '1 IN ' + n + ' TO MISS',
   push: 'PUSH',
   stress: n => 'STRESS +' + n,
+  six: n => n + (n === 1 ? ' SIX' : ' SIXES'),      // FXLD (ADVD 8): the sixes are information, main.mjs puts them in the table's language
+
   resolve: (now, max) => 'RESOLVE ' + now + ' / ' + max,
   words: {}                                   // UXB (D129): SAYS -> słowo w języku stołu
 };
