@@ -393,13 +393,29 @@ function stuntDocs() {
   return STUNT_DOCS;
 }
 
+/* What one stunt does, for a hover: { name, text } | null. `sys` = the system's stunt key (STUNTS.list), or the stored tag text when `fromTag`.
+   An English client keeps the Quickstart journal's text for the stunts it describes; every other stunt, and every stunt on a Polish client
+   (the journal is English only), takes our own words (scripts/i18n/stunt-words.mjs = the tactical stunt cards' tips). */
+let STUNT_WORDS = null;
+async function stuntTip(sysOrText, { fromTag = false } = {}) {
+  STUNT_WORDS ??= import("./i18n/stunt-words.mjs").catch((e) => { console.warn("invincible-plus-ultra | stunt words unavailable", e); return null; });
+  const [map, W] = await Promise.all([stuntDocs(), STUNT_WORDS]);
+  const sys = fromTag ? W?.stuntKeyOf(sysOrText) : sysOrText;
+  const lang = game.i18n.lang;
+  if (!String(lang).toLowerCase().startsWith("pl")) {
+    const base = stuntNorm(sys && W ? (W.stuntEnglishName(sys) ?? "") : String(sysOrText).split(/[:(]/)[0]);
+    const entry = map.get(STUNT_ALIAS[base] ?? base);
+    if (entry) return entry;
+  }
+  return (sys && W?.stuntWords(sys, lang)) || null;
+}
+
 function stuntTooltips(root) {
   const items = [...root.querySelectorAll("ul.stunts li")].filter((li) => !li.dataset.tooltipHtml);
   if (!items.length) return;
-  stuntDocs().then((map) => {
-    for (const li of items) {
-      const base = stuntNorm(li.textContent.split(/[:(]/)[0]);
-      const entry = map.get(STUNT_ALIAS[base] ?? base);
+  Promise.all(items.map((li) => stuntTip(li.textContent, { fromTag: true }))).then((entries) => {
+    for (const [i, li] of items.entries()) {
+      const entry = entries[i];
       if (!entry) continue;
       li.dataset.tooltipHtml = `<strong>${stuntEsc(entry.name)}</strong><p>${stuntEsc(entry.text)}</p>`;
       li.dataset.tooltipDirection = "LEFT";
@@ -1708,10 +1724,9 @@ function buildStuntPicker(Cls, message, frame, budget) {
   paint();
 
   // rules text on hover / focus (same source and wording as the tooltips on the confirmed stunts)
-  stuntDocs().then((map) => {
-    for (const name of names) {
-      const base = stuntNorm(labelOf(name));
-      const entry = map.get(STUNT_ALIAS[base] ?? base);
+  Promise.all(names.map((name) => stuntTip(name))).then((entries) => {
+    for (const [i, name] of names.entries()) {
+      const entry = entries[i];
       if (!entry) continue;
       const { btn } = items.get(name);
       btn.dataset.tooltipHtml = `<strong>${stuntEsc(entry.name)}</strong><p>${stuntEsc(entry.text)}</p>`;
@@ -1773,8 +1788,7 @@ function doubleBadge(message, html) {
   tag.dataset.tooltipClass = "isp-tip";
   tag.dataset.tooltipDirection = "UP";
   hero.append(tag, mk("span", "isp-x2-sr", T.sr));
-  stuntDocs().then((map) => {   // the book's rules text, same source as the stunt tooltips
-    const entry = map.get(STUNT_ALIAS["double damage"]);
+  stuntTip("DoubleDamage").then((entry) => {   // the rules text, same source as the stunt tooltips (the reader's language)
     if (entry && tag.isConnected) tag.dataset.tooltipHtml = `${tip}<p>${stuntEsc(entry.text)}</p>`;
   });
 }
