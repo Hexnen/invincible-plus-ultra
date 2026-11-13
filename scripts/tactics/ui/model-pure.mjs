@@ -207,8 +207,9 @@ function linesOf(p, t, facts, x) {
   switch (kind) {
     case "reaction": {      // U11: who attacks whom with what; a bystander's card names the target; an attacker the viewer cannot see is "somebody"
       const action = x.inst?.label?.name ? String(x.inst.label.name) : t(`ITAC.action.${x.inst?.action ?? d.action ?? d.attack}`, {}, t("ITAC.ui.anAttack"));
-      const targets = (d.targets ?? []).filter((id) => id !== p.about).map(n).join(", ") || t("ITAC.Someone");
+      const targets = (d.targets ?? []).filter((id) => id !== p.about && id !== d.attacker).map(n).join(", ") || t("ITAC.Someone");      // ANSEL (A40): an attacker in its own area is not named as its own target
       if (d.bystander) out.push(t(d.attacker ? "ITAC.ui.line.attackBy" : "ITAC.ui.line.attackUnseenBy", { attacker: n(d.attacker), targets, action, name: about }));
+      else if (d.attacker && d.attacker === p.about) out.push(t("ITAC.ui.line.ownArea", { name: about, action }));      // ANSE (A40) [B2542]: the attacker inside its own area: it dodges, never blocks
       else if (d.attacker) out.push(t("ITAC.ui.line.attack", { attacker: n(d.attacker), target: about, action }));
       else out.push(t(d.unseen ? "ITAC.ui.line.attackUnseen" : "ITAC.ui.line.window", { name: about }));
       if (d.warned) out.push(t(d.guided ? "ITAC.ui.line.guided" : "ITAC.ui.line.warned", { by: n(d.warned) }));      // D113 [B2170]; PWB: Guidance [B1709]

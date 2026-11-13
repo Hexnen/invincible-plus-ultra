@@ -286,7 +286,9 @@ export function reactionFor(v, inst, cid, e) {
   /* U131: Warning Call [B2170] says "another character"; read as one of the warner's own side (provisional, question FXI-1): nobody shouts
      a warning to the opponent an ally of theirs is shooting at. U149: Guardian [B2115] ("another character in your zone is attacked") is read
      the same way (provisional, question UXC-3): nobody dives in to take an ally's blow for the enemy. The GM's own answer may still name anybody. */
-  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && knownTo(v, cid, t) && !moved.includes(t) && (!side || M.teamOf(v.facts.c(t)) === me));
+  /* ANSEL (A40, seen live): the attacker inside its own area attack is a target too, but nobody warns it of, guides it against or takes for it
+     its own blow: it is never somebody else's reaction's subject */
+  const list = (inst.decl?.targets ?? []).filter((t) => t !== cid && t !== inst.actor && knownTo(v, cid, t) && !moved.includes(t) && (!side || M.teamOf(v.facts.c(t)) === me));
   /* FXP (U182, ruling FXP-R2): a warning is shouted about an attack the warner sees coming [B2170]: an attacker it does not know of (one
      the GM hides from the heroes, one it has as unseen) gives it nothing to warn about, as no card is made about somebody unknown (U19-R4) */
   if ((e?.reaction?.effect === "warn" || e?.reaction?.effect === "guide") && inst.actor && !knownTo(v, cid, inst.actor)) return [];
@@ -504,6 +506,8 @@ function critPickOf(v, I, R, t, tf, cf, faces, { chooser, talent, pk, ok }) {
   if (!(faces.length > 1 && faces[0] !== faces[1])) return 0;
   const cap = v.state.opts?.critCap9 ? crits.FAMILY_CAP : crits.MAX_CRIT;
   const opt = (i) => { const rc = crits.resolveCrit({ d6: faces[i], bonus: cf.crit.bonus, prior: tf.crits ?? [], cap }); return { id: `d:${i}`, label: "ITAC.opt.critDie", data: { d6: faces[i], n: rc.n, id: critKey(rc.entry?.id) } }; };
+  /* ANSEL (seen live): two dice that give the same injury (the table's top, e.g. 13 on both) leave nothing to choose: no card */
+  { const a = opt(0).data, b = opt(1).data; if (a.n === b.n && a.id === b.id) return 0; }
   if (!I.data.pk?.[pk]) { R.prompts.push({ key: pk, kind: "critPick", to: addressee(v, chooser), about: chooser, options: [opt(0), opt(1)], data: { talent, target: t, bonus: cf.crit.bonus } }); R.wait = true; return null; }
   if (!isAnswered(v, I, pk)) { R.wait = true; return null; }
   let pick = answerId(v, I, pk) === "d:1" ? 1 : 0;
@@ -539,7 +543,7 @@ function luckStep(v, I, R, t, tf, cf, dm, key) {
       const lk = `luck:${t}:${id}`, cap = v.state.opts?.critCap9 ? crits.FAMILY_CAP : crits.MAX_CRIT, e = luckEntry(v.facts.c(id));
       if (!I.data.pk?.[lk]) {
         const d6 = I.data.res[key][0], rc = crits.resolveCrit({ d6, bonus: cf.crit.bonus, prior: tf.crits ?? [], cap }), only = (e.pick ?? []).length === 1 ? e.pick[0] : null;
-        R.prompts.push({ key: lk, kind: "luckReroll", to: addressee(v, id), about: id, options: [{ id: "reroll", label: "ITAC.opt.luckReroll", cost: e.cost ?? "quick", stress: 1 }, { id: PASS, label: "ITAC.opt.pass" }],
+        R.prompts.push({ key: lk, kind: "luckReroll", to: addressee(v, id), about: id, options: [{ id: "reroll", label: "ITAC.opt.luckReroll", cost: e.cost ?? "quick", stress: 1 }, { id: PASS, label: "ITAC.opt.luckKeep" }],
           data: { target: t, d6, n: rc.n, id: critKey(rc.entry?.id), ...(only ? { must: only === "good" ? "lower" : "higher" } : {}) } });
         R.wait = true; return true;
       }

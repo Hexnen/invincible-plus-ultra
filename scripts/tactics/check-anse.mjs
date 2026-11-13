@@ -104,7 +104,7 @@ const NADE = { id: "nade", bonus: 0, damage: 3, range: [0, 3], blast: 2, area: t
   const p = F.prompt("hazardArmor");
   eq([p?.to, p?.about, p?.options.map((o) => [o.id, o.data.n]), p?.data], ["gm", "N1", [["armor", 4], ["noArmor", 5]], { cause: "fall", amount: 5, armor: 1 }], "A10: a fall: the GM's card \"Pancerz?\": with Armor (first) or without, each with its number");
   const dc = desk(F).cards.find((c) => c.kind === "hazardArmor");
-  eq([dc?.title?.includes?.("Pancerz") ?? String(dc?.title).includes("Pancerz"), dc?.options.map((o) => o.label), /spada: 5 obrażeń\. Odjąć Pancerz 1\?/.test(dc?.lines.join(" ") ?? "")], [true, ["Z Pancerzem: 4", "Bez Pancerza: 5"], true], "A10: the desk card in Polish: what happens and both numbers");
+  eq([dc?.title?.includes?.("Pancerz") ?? String(dc?.title).includes("Pancerz"), dc?.options.map((o) => o.label), /Upadek: obrażenia 5, Pancerz 1\./.test(dc?.lines.join(" ") ?? "")], [true, ["Z Pancerzem: 4", "Bez Pancerza: 5"], true], "A10: the desk card in Polish: what happens and both numbers");
   ok(D.CARD_KINDS.includes("hazardArmor") && tr("en")("ITAC.card.hazardArmor") === "Armor?" && t("ITAC.card.hazardArmor") === "Pancerz?", "A10: a desk card kind with words in both languages");
   eq(F.c.N1.health, 6, "A10: nothing is written while the GM decides");
   await F.answer("gm", "hazardArmor", "armor");
