@@ -9,6 +9,7 @@ import * as Store from "./store.mjs";
 import * as M from "./model.mjs";
 import { t } from "./lang.mjs";
 import { fightSection, collectedStrip } from "./titles-ui.mjs";
+import { radarFigure } from "./radar-ui.mjs";
 
 const MOD = Store.MOD;
 const ID = "ipu-stats";
@@ -33,6 +34,8 @@ const names = {
   stunt: (id) => tl(`ITAC.stunt.${id}`, id),
   out: (id) => t(`IPU.Stats.out.${id}`),
   user: (id) => game.users.get(id)?.name ?? null,
+  /* RADR: the attributes as they are now (prepared data: an active effect counts); the model asks only for the rail's characters */
+  attrs: (id) => { const at = game.actors?.get(id)?.system?.attributes; return at ? Object.fromEntries(Object.entries(at).map(([k, x]) => [k, x?.value])) : null; },
   players: () => game.users.filter((u) => !u.isGM).map((u) => ({ id: u.id, name: u.name, avatar: u.avatar || u.character?.img || null })),
   when: (ms) => { try { return new Date(ms).toLocaleString(game.i18n.lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } }
 };
@@ -54,7 +57,7 @@ export class StatsApp extends ApplicationV2 {
     await app.render({ force: true });
     return app;
   }
-  #root = null; #unsub = null; #raf = 0; #key = "";
+  #root = null; #unsub = null; #raf = 0; #key = ""; #attrV = 0; #hooks = [];
   constructor(options = {}) {
     options.position = { ...(options.position ?? {}) };
     options.position.width ??= Math.max(360, Math.min(780, window.innerWidth - 40));
@@ -69,8 +72,13 @@ export class StatsApp extends ApplicationV2 {
     return this.#root;
   }
   _replaceHTML(result, content) { if (!content.contains(result)) content.replaceChildren(result); }
-  _onFirstRender(c, o) { super._onFirstRender?.(c, o); this.#unsub = Store.subscribe(() => this.#want()); }
-  _onClose(o) { super._onClose?.(o); this.#unsub?.(); this.#unsub = null; cancelAnimationFrame(this.#raf); }
+  _onFirstRender(c, o) {
+    super._onFirstRender?.(c, o); this.#unsub = Store.subscribe(() => this.#want());
+    /* RADR: a sheet change (an attribute, or an effect that moves one) redraws the radar while the characters tab is open */
+    const bump = (doc) => { const a = doc?.documentName === "Actor" ? doc : doc?.parent?.documentName === "Actor" ? doc.parent : doc?.parent?.parent; if (ui0.tab !== "chars" || !a || a.isToken) return; this.#attrV++; this.#want(); };
+    for (const ev of ["updateActor", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "deleteItem"]) this.#hooks.push([ev, Hooks.on(ev, bump)]);
+  }
+  _onClose(o) { super._onClose?.(o); this.#unsub?.(); this.#unsub = null; cancelAnimationFrame(this.#raf); for (const [ev, id] of this.#hooks) Hooks.off(ev, id); this.#hooks = []; }
   #want() { cancelAnimationFrame(this.#raf); this.#raf = requestAnimationFrame(() => this.#paint()); }
 
   #click(e) {
@@ -99,7 +107,7 @@ export class StatsApp extends ApplicationV2 {
   #paint(force = false) {
     if (!this.#root) return;
     const data = Store.all(), vw = viewer();
-    const key = `${Store.ver()}|${ui0.tab}|${ui0.period}|${ui0.side}|${ui0.sel[ui0.tab]}|${game.i18n.lang}`;
+    const key = `${Store.ver()}|${this.#attrV}|${ui0.tab}|${ui0.period}|${ui0.side}|${ui0.sel[ui0.tab]}|${game.i18n.lang}`;
     if (!force && key === this.#key) return;
     this.#key = key;
     const vm = M.view(data, vw, { ...ui0, sel: ui0.sel[ui0.tab] }, names);
@@ -132,7 +140,9 @@ export class StatsApp extends ApplicationV2 {
     const d = vm.detail;
     const kd = h("div", { class: "ipu-st-kd", role: "img", "aria-label": `${t("IPU.Stats.kd")}: ${d.kd.k} ${t("IPU.Stats.m.kills")}, ${d.kd.d} ${t("IPU.Stats.m.deaths")}, ${d.kd.a} ${t("IPU.Stats.m.assists")}`, "data-tooltip": t("IPU.Stats.kd.tip") },
       h("span", { class: "ipu-st-kd-l", text: t("IPU.Stats.kd") }), h("b", { text: `${d.kd.k}/${d.kd.d}` }), h("span", { class: "ipu-st-kd-a", text: `+${d.kd.a}` }), h("span", { class: "ipu-st-kd-r", text: (Math.round(d.kd.ratio * 10) / 10).toFixed(1) }));
-    const head = h("div", { class: "ipu-st-who" }, avatar(d.img, d.name, "big"), h("div", { class: "ipu-st-who-t" }, h("h2", { class: "ipu-plate", text: d.name }), d.sub ? h("p", { text: d.sub }) : null), kd);
+    /* RADR: with a radar the K/D box moves under the name, so the head is one card: picture, who, score | the attribute spider */
+    const radar = vm.tab === "chars" ? radarFigure(d.radar, t) : null;
+    const head = h("div", { class: "ipu-st-who" }, avatar(d.img, d.name, "big"), h("div", { class: "ipu-st-who-t" }, h("h2", { class: "ipu-plate", text: d.name }), d.sub ? h("p", { text: d.sub }) : null, radar ? kd : null), radar ? null : kd);
     const col = (m, fa) => h("th", { scope: "col", "data-tooltip": t(`IPU.Stats.col.${m}.tip`) }, icon(fa), h("span", { text: t(`IPU.Stats.col.${m}`) }));
     const table = h("table", { class: "ipu-st-table" },
       h("thead", {}, h("tr", {}, h("td", {}), col("t", "fa-chess-knight"), col("l", "fa-dice"), col("s", "fa-plus"))),
@@ -140,7 +150,8 @@ export class StatsApp extends ApplicationV2 {
         g.rows.map((r) => h("tr", {}, h("th", { scope: "row", "data-tooltip": r.tip }, r.label),
           r.cells.map((c, i) => (c === null ? h("td", { class: "ipu-st-na", "data-tooltip": t("IPU.Stats.dash.tip"), "aria-label": t("IPU.Stats.dash.tip") }, "–") : h("td", { class: i === 2 ? "ipu-st-sum" : null, "data-zero": /^0(\/0)?$/.test(c) ? "1" : null }, c))))))));
     const chips = d.chips.map((c) => h("div", { class: "ipu-st-chips" }, h("span", { class: "ipu-st-chips-t", text: c.title }), c.items.map((x) => h("span", { class: "ipu-chip" }, x.label, h("b", { text: String(x.n) })))));
-    return [head, collectedStrip(d.titles, t), table, ...chips].filter(Boolean);      // AWRD: the titles collected, under the name
+    const top = radar ? h("div", { class: "ipu-st-top" }, head, radar) : head;
+    return [top, collectedStrip(d.titles, t), table, ...chips].filter(Boolean);      // AWRD: the titles collected, under the name
   }
   #fight(vm) {
     const d = vm.detail, out = [];
