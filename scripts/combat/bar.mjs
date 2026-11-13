@@ -1093,6 +1093,19 @@ function morph(mutate, o = {}) {
   cancelMotion();
   mutate();
   play(s, o);
+  settledSoon();
+}
+/* ANSH (PFA): the surfaces placed under the bar (the dock's line and questions, the chase panel, the desk) read its tiles' boxes, which
+   include the FLIP's transforms: a placement made while the tiles glide stood 1-12 px off. When the last glide of a morph ends (not cut
+   by a newer morph) the window is told once ("ipu:bar-settled"), and those surfaces are placed again (a placement whose reads did not
+   change is skipped, ui/settle.mjs). */
+export const SETTLED = "ipu:bar-settled";
+let settleTok = 0;
+function settledSoon() {
+  const tok = ++settleTok;
+  const run = (root?.getAnimations?.({ subtree: true }) ?? []).filter((a) => a.id === "icbar-m" && a.playState === "running");
+  if (!run.length) return;
+  Promise.all(run.map((a) => a.finished)).then(() => { if (tok === settleTok) try { window.dispatchEvent(new Event(SETTLED)); } catch { /* nobody listens */ } }, () => { /* cut by a newer morph: that one tells */ });
 }
 
 /* the round chip: a new number slides in vertically (up for a new round, down when going back), a new round also pulses once */

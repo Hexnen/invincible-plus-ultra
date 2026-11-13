@@ -149,6 +149,8 @@ const dock = (T, uid, owns) => { const view = pview(T, uid, owns); return UM.doc
   ok(/"ICB\.Bar\.MembersOf": "\{n\} of \{max\} standing"/.test(ml) && /"ICB\.Bar\.MembersOf": "Stoi: \{n\} z \{max\}"/.test(ml), "A8C-2: its spoken words, EN and PL");
   ok(/const PEEK_MS = 140;/.test(bar) && /peekSoon\(tile \?\? null\)/.test(bar) && /function peekHide/.test(bar) && /\.icbar-peek \{/.test(css) && /prefers-reduced-motion[\s\S]*icbar-peek/.test(css), "X6: a tile under the pointer is shown whole above the bar after a short delay");
   ok(/irdTo/.test(src("../rolldialog.mjs")) && /\[data-ird-to\]/.test(src("../../styles/rolldialog.css")), "FXJ-4: the roll window shows a span as one range mark with both ends");
+  ok(/play\(s, o\);\n  settledSoon\(\);/.test(bar) && /export const SETTLED = "ipu:bar-settled"/.test(bar) && /tok === settleTok/.test(bar) && /listen\(window, "ipu:bar-settled", relayout\)/.test(src("ui/main.mjs")),
+    "PFA: when the bar's glide ends (not cut by a newer one), the dock, the chase panel and the desk are placed again");
   const sl = src("../splash/lang.mjs");
   ok(/pierwszy dublet \/ rekord osobisty/.test(sl) && !/pierwszą dublę/.test(sl), "FXR-2: the splash setting's hint uses the glossary words");
 }
