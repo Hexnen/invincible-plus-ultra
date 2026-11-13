@@ -60,11 +60,42 @@ function bake(key, token, variant, color, ring, cell, sizePx) {
   const region = new PIXI.Rectangle(-ext, -ext, 2 * ext, 2 * ext);
   const opts = { region, resolution: resolution(), scaleMode: PIXI.SCALE_MODES.LINEAR, multisample: PIXI.MSAA_QUALITY?.HIGH ?? 4 };
   const r = canvas.app.renderer;
-  const rec = { texS: r.generateTexture(S, opts), texB: r.generateTexture(B, opts), ext, refs: 0, alpha: a };
+  const rec = { texS: flatten(r, r.generateTexture(S, opts)), texB: flatten(r, r.generateTexture(B, opts)), ext, refs: 0, alpha: a };
+  rec.bytes = texBytes(rec.texS) + texBytes(rec.texB);
   S.destroy(true); B.destroy(true);
   cache.set(key, rec);
   evict(key);
+  trim(key);
   return rec;
+}
+
+/* D215: generateTexture with multisample keeps the 8x MSAA renderbuffer (and a second blit framebuffer) alive for the texture's whole
+   life: about 9x the colour bytes, ~90 MB for one 1600 px halo texture on a 350 px grid, so a fight's few dozen cached rings held
+   several GB of GPU memory until the scene changed. The anti-aliasing is only needed while drawing: copy the resolved pixels 1:1 into a
+   plain render texture (same size and resolution; premultiplied NORMAL onto a cleared target = the same texels) and free the
+   multisampled one. */
+function flatten(r, msaa) {
+  const plain = PIXI.RenderTexture.create({ width: msaa.width, height: msaa.height, resolution: msaa.resolution, scaleMode: PIXI.SCALE_MODES.LINEAR });
+  const spr = new PIXI.Sprite(msaa);
+  try { r.render(spr, { renderTexture: plain, clear: true }); }
+  finally { spr.destroy(); msaa.destroy(true); }
+  return plain;
+}
+const texBytes = (t) => Math.round(t.width * t.resolution) * Math.round(t.height * t.resolution) * 4;
+
+/* Unused rings stay cached so a hover / select / turn ring comes back without a re-bake, but only up to CACHE_BYTES of GPU memory
+   (on a 350 px grid one ring is ~20 MB): the oldest unused ones go first; a ring on screen (refs > 0) and the one just baked stay. */
+const CACHE_BYTES = 256 * 1024 * 1024;
+function trim(keep) {
+  let total = 0;
+  for (const rec of cache.values()) total += rec.bytes ?? 0;
+  for (const [k, rec] of cache) {
+    if (total <= CACHE_BYTES) break;
+    if (rec.refs > 0 || k === keep) continue;
+    total -= rec.bytes ?? 0;
+    dropTextures(rec);
+    cache.delete(k);
+  }
 }
 
 function evict(keep) {
@@ -216,7 +247,7 @@ function restoreCore(token) {
 /* ---------- lifecycle ---------- */
 export const has = (id) => halos.has(id);
 export const count = () => halos.size;
-export const info = () => ({ halos: halos.size, cache: cache.size, ticker: tickerOn, variants: [...halos.values()].map((h) => `${h.id}:${h.variant}`) });
+export const info = () => ({ halos: halos.size, cache: cache.size, cacheMB: Math.round([...cache.values()].reduce((s, r) => s + (r.bytes ?? 0), 0) / 1048576), ticker: tickerOn, variants: [...halos.values()].map((h) => `${h.id}:${h.variant}`) });
 
 export function remove(id) {   // the token was destroyed: no restore needed (its border / marker are gone with it)
   const h = halos.get(id);
