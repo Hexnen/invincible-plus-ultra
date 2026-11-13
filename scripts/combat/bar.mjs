@@ -152,6 +152,7 @@ function read(c, isActive, ctx) {
   }
   const d = actor?.system?.derived ?? {};
   const hp = { v: num(d.health?.value), max: num(d.health?.max) };
+  if (actor?.type === "minions") hp.start = num(c.flags?.[MOD]?.groupStart);      // ANSH (A8C-2): how many stood when the group entered the fight (main.mjs groupStarts)
   const rs = { v: num(d.resolve?.value), max: num(d.resolve?.max) };
   const known = (r) => r.v !== null && r.max !== null && r.max > 0;
   const showHp = bars && ctx.res !== "none" && known(hp);
@@ -229,11 +230,13 @@ function rowSpec(it, key) {   // key: "hp" | "rs"  ->  { show, frac, label, coun
     const pct = Math.round(clamp01(1 - r.v / r.max) * 100);
     return { show, frac: pct / 100, label, count: pct, max: "", pct: true, unit: "", say: t("ICB.Bar.Pct", { label, pct }), low: false };
   }
-  /* U99: a minion group's Health is how many of it stand [B2827]; the system holds its top at ten whatever the group's size ("97/10"),
-     so the bar says the count alone and stays full while one stands (no top of the group is known to compare with) */
+  /* U99: a minion group's Health is how many of it stand [B2827]; the system holds its top at ten whatever the group's size ("97/10").
+     ANSH (A8C-2, the user 2026-11-12): the bar compares with how many stood when the group entered the fight ("4/6"); a group healed above
+     it compares with its own count. No count of the start known yet (an older fight): the count alone, the bar full while one stands */
   if (it.group && key === "hp") {
-    const n = Math.max(0, Math.round(r.v));
-    return { show, frac: n > 0 ? 1 : 0, label: t("ICB.Bar.Members"), count: n, max: "", pct: false, unit: "", say: t("ICB.Bar.MembersSay", { n }), low: false };
+    const n = Math.max(0, Math.round(r.v)), top = Number.isFinite(r.start) && r.start > 0 ? Math.max(Math.round(r.start), n) : null;
+    if (!top) return { show, frac: n > 0 ? 1 : 0, label: t("ICB.Bar.Members"), count: n, max: "", pct: false, unit: "", say: t("ICB.Bar.MembersSay", { n }), low: false, top: n };
+    return { show, frac: n / top, label: t("ICB.Bar.Members"), count: n, max: `/${top}`, pct: false, unit: "", say: t("ICB.Bar.MembersOf", { n, max: top }), low: n / top <= 1 / 3, top };
   }
   const unit = challenge && key === "rs" ? unitName(it.unit, r.max, true) : "";
   const frac = clamp01(r.v / r.max);
@@ -622,9 +625,46 @@ function wire() {
     if (over) hoverTile(over.parentElement.dataset.id, false, ev);
     over = tile ?? null;
     if (tile) hoverTile(tile.parentElement.dataset.id, true, ev);
+    peekSoon(tile ?? null);
   }, { passive: true });
-  root.addEventListener("pointerleave", (ev) => { if (over) hoverTile(over.parentElement.dataset.id, false, ev); over = null; }, { passive: true });
-  scroller.addEventListener("scroll", fades, { passive: true });
+  root.addEventListener("pointerleave", (ev) => { if (over) hoverTile(over.parentElement.dataset.id, false, ev); over = null; peekSoon(null); }, { passive: true });
+  root.addEventListener("focusin", (ev) => { const tile = ev.target.closest?.(".icbar-tile"); if (tile && ev.target === tile) peekShow(tile); });
+  root.addEventListener("focusout", () => peekSoon(null));
+  scroller.addEventListener("scroll", () => { fades(); peekHide(); }, { passive: true });
+}
+
+/* ---------- X6 (the user 2026-11-12: «Wszystkie 6 zmian»): THE PEEK. A tile that is not the active one shows its portrait and bars only;
+   hovered (or focused) a moment, its full face (name, numbers: what the active tile shows, and only what this viewer may see, since it is
+   a picture of the same tile) opens OVER the strip, centred on it, in the layer of the ring and the ghosts: nothing in the strip moves.
+   A picture only (aria-hidden, inert, no pointer): the tile under it keeps the hover, the click and the tooltip. ---------- */
+let peekEl = null, peekOf = null, peekTimer = 0;
+const PEEK_MS = 140;
+function peekSoon(tile) {
+  clearTimeout(peekTimer); peekTimer = 0;
+  if (!tile) { peekHide(); return; }
+  if (tile === peekOf) return;
+  peekHide();
+  peekTimer = setTimeout(() => { peekTimer = 0; peekShow(tile); }, PEEK_MS);
+}
+function peekHide() { clearTimeout(peekTimer); peekTimer = 0; peekEl?.remove(); peekEl = null; peekOf = null; }
+function peekShow(tile) {
+  try {
+    peekHide();
+    if (!tile?.isConnected || !layer || holdOn || tile.hasAttribute("data-active") || tile.closest(".icbar-leaving")) return;
+    const g = ghostOf({ tile });
+    g.classList.remove("icbar-ghost");
+    g.classList.add("icbar-peek");
+    g.setAttribute("data-active", "");
+    for (const a of ["data-sel", "style"]) g.removeAttribute(a);
+    layer.append(g);
+    const w = g.offsetWidth, h = g.offsetHeight, pad = 4;
+    const lo = scroller.scrollLeft + pad, hi = scroller.scrollLeft + scroller.clientWidth - w - pad;
+    const x = Math.max(lo, Math.min(hi, tile.offsetLeft + tile.offsetWidth / 2 - w / 2));
+    g.style.left = `${Math.round(x)}px`;
+    g.style.top = `${Math.round(tile.offsetTop + tile.offsetHeight / 2 - h / 2)}px`;
+    peekEl = g; peekOf = tile;
+    requestAnimationFrame(() => g.classList.add("icbar-peek-on"));
+  } catch (e) { peekHide(); console.warn(LOG, "peek", e); }
 }
 
 /* ---------- one tile ---------- */
@@ -778,7 +818,7 @@ function paintRow(card, key, spec, first) {
   row.shown = true;
   const segs = (m) => (m > 0 && m <= 12 ? Math.round(m) : 10);
   /* a viewer without numbers gets ten plain segments: the count of segments would give the maximum away */
-  const max = !card.item.nums || (key === "hp" && card.item.kind === "challenge") ? 10 : key === "hp" && card.item.group ? Math.max(1, spec.count) : card.item[key].max;      // U99: a group's bar has one segment a member standing
+  const max = !card.item.nums || (key === "hp" && card.item.kind === "challenge") ? 10 : key === "hp" && card.item.group ? Math.max(1, spec.top ?? spec.count) : card.item[key].max;      // U99: a group's bar has one segment a member (A8C-2: a member at the start)
   row.bar.style.setProperty("--tick", `${(100 / segs(max)).toFixed(3)}%`);
   row.bar.dataset.dense = segs(max) > 8 ? "1" : "";
   row.el.classList.toggle("icbar-low", !!spec.low);
@@ -1123,6 +1163,10 @@ const openId = () => { for (const [id, c] of tiles) if (c.tile.hasAttribute("dat
 const ghostIdsFor = (a, b) => (a === b ? [] : [a, b].filter(Boolean));
 
 function paint(model, loud, keep) {
+  /* X6: a peek is a picture of the tile as it was: gone with any redraw, and taken again once the tiles stand still if it is still hovered */
+  const pk = peekOf;
+  peekHide();
+  if (pk) peekTimer = setTimeout(() => { peekTimer = 0; try { if (pk.isConnected && pk.matches(":hover, :focus-visible")) peekShow(pk); } catch { /* gone */ } }, 450);
   const fresh = !tiles.size;
   const t0 = performance.now();
   const act = model.items.find((i) => i.active) ?? null;
@@ -1248,6 +1292,7 @@ function cleanup() {
   root?.remove();
   skipOff?.(); skipOff = null;
   root = shell = scroller = list = roundEl = roundNum = prevB = nextB = live = waitEl = skipB = null; wasWaiting = false;
+  peekHide();
   layer = ring = rnPre = rnWin = rnPost = null; rnCur = null; ringOn = false; ringKey = ""; holdOn = false; lastRound = null; lastTurnAt = 0;
   tiles.clear();
   curCombat = null; curCombatId = null; lastKey = ""; paintedSig = null; activeId = null; lastDensity = -1; fitKey = ""; wheelOn = false; mounted = false;

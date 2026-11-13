@@ -84,6 +84,12 @@ function facts(el) {
     max.dataset.irdSame = "";                                                                          // drawn out of sight, still read out
     const range = game.i18n.localize(RANGE);
     if (range && range !== RANGE) min.dataset.tooltip = range;                                         // no such word: the least's own name stays
+  } else if (min && max) {
+    /* ANSH (FXJ-4, the user 2026-11-12): a range of two ends is one mark too: the range mark, then "0 – 2"; both numbers keep their own
+       names for a screen reader, the tooltip of the pair is the word for range */
+    max.dataset.irdTo = "";
+    const range = game.i18n.localize(RANGE);
+    if (range && range !== RANGE) { min.dataset.tooltip = range; max.dataset.tooltip = range; }
   }
   box.dataset.irdFacts = "";
 }

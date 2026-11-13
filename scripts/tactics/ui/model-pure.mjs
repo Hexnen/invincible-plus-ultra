@@ -733,7 +733,8 @@ function armsOf(bar, a, own, facts, t) {
   /* U93: what a weapon brings in numbers is written with the marks (bonus dice, damage, the least and the greatest range, its price in
      stress), each with its name; what it does besides stays in words. `say` is all of it in words, for a screen reader. */
   const factsOf = (x) => [x.bonus ? { mark: "dice", n: `+${x.bonus}`, name: t("ITAC.ui.fact.dice") } : null, x.damage != null ? { mark: "damage", n: x.damage, name: t("ITAC.ui.fact.damage") } : null,
-    ...(Array.isArray(x.range) ? (x.range[0] === x.range[1] ? [{ mark: "range", n: x.range[1], name: t("ITAC.ui.fact.range") }] : [{ mark: "rmin", n: x.range[0], name: t("ITAC.ui.fact.rmin") }, { mark: "rmax", n: x.range[1], name: t("ITAC.ui.fact.rmax") }]) : []),
+    /* ANSH (FXJ-4, the user 2026-11-12): a range of two ends is one mark too, "Range" with the span ("0–2"); its tooltip says both ends */
+    ...(Array.isArray(x.range) ? [x.range[0] === x.range[1] ? { mark: "range", n: x.range[1], name: t("ITAC.ui.fact.range") } : { mark: "range", n: `${x.range[0]}–${x.range[1]}`, name: t("ITAC.ui.fact.range") }] : []),
     x.stress ? { mark: "stress", n: x.stress, name: t("ITAC.ui.cost.stress") } : null].filter(Boolean);
   const restOf = (x) => [x.sharp ? t("ITAC.ui.weapon.sharp") : null, x.stunEffect ? t("ITAC.ui.weapon.stunEffect") : null, x.singleUse ? t("ITAC.ui.weapon.singleUse") : null, x.noMove ? t("ITAC.ui.weapon.noMove") : null,
     x.noDamage ? t("ITAC.ui.weapon.noDamage") : null, x.toStress ? t("ITAC.ui.weapon.toStress") : null, x.onHit?.status ? t("ITAC.ui.weapon.gives", { status: t(`ITAC.status.${x.onHit.status}`, {}, x.onHit.status) }) : x.onHit?.stun ? t("ITAC.ui.weapon.stun") : null,

@@ -109,7 +109,7 @@ export const PL = {
   "INSPLASH.Settings.K0.Name": "Splash: Przesunięcie progu narratora",
   "INSPLASH.Settings.K0.Hint": "Ustawienie świata. +1 = narrator rzadziej, -1 = częściej.",
   "INSPLASH.Settings.State.Name": "Splash: Śledź kamienie milowe postaci",
-  "INSPLASH.Settings.State.Hint": "Ustawienie świata. Zapisuje pierwszy sukces / pierwszą dublę / rekord w flagach każdego bohatera.",
+  "INSPLASH.Settings.State.Hint": "Ustawienie świata. Zapisuje pierwszy sukces / pierwszy dublet / rekord osobisty w flagach każdego bohatera.",
   "INSPLASH.Roll": "Rzut",
   "INSPLASH.Badge.OneIn": "1 NA {n}",
   "INSPLASH.Badge.Miss": "1 NA {n} NA PUDŁO",

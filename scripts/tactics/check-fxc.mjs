@@ -84,7 +84,7 @@ lang("pl");
   eq(BP.gmItems("N", { health: 4, maxHealth: 10 }, [], t).find((x) => x.id === "health").stepper.max, 10, "U99: anybody else keeps the sheet's top");
   const bar = src("../combat/bar.mjs");
   ok(/if \(it\.group && key === "hp"\) \{[\s\S]{0,300}max: ""/.test(bar) && /group: actor\?\.type === "minions"/.test(bar), "U99: the initiative bar says a group's count alone (no '/10')");
-  ok(/key === "hp" && card\.item\.group \? Math\.max\(1, spec\.count\)/.test(bar), "U99: one segment of the bar a member standing");
+  ok(/key === "hp" && card\.item\.group \? Math\.max\(1, spec\.top \?\? spec\.count\)/.test(bar), "U99 + A8C-2 (ANSH): one segment of the bar a member (of the start, once known)");
   const model = src("./ui/model-pure.mjs");
   ok(/!\(group && id === "health"\)/.test(model) && /group: membersOf\(facts, bar\.combatant, t\)/.test(model), "U99: the dock drives a group with its count, not a Health bar");
   eq([EN["ITAC.status.prone"], PL["ITAC.status.prone"]], ["Prone", "Leżący"], "U99: 'Prone' has its Polish name");

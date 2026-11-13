@@ -137,6 +137,12 @@
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="stress"]::before { -webkit-mask-image: var(--ipu-m-stress); mask-image: var(--ipu-m-stress); background: var(--ipu-cyan-lt); }      /* the bolt of stress, in the colour of Resolve */
 /* the range is one fact: the least and the greatest side by side, each behind its own mark */
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"] { margin-left: -12px; }
+/* ANSH (FXJ-4): two ends are one fact too: the range mark before the least, a dash before the greatest ("0 – 2") */
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="min"]:has(+ [data-ird-to])::before { -webkit-mask-image: var(--ipu-m-range); mask-image: var(--ipu-m-range); }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"][data-ird-to] { margin-left: -16px; gap: 3px; }
+.application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact="max"][data-ird-to]::before {
+  content: "–"; width: auto; height: auto; font: 700 13px/1 var(--font-primary, sans-serif); color: var(--ipu-label); background: none; -webkit-mask: none; mask: none;
+}
 .application:is(.invincible.roll-dialog, .roll-application.dialog) div.separator + div.breakdown[data-ird-facts] > div.attribute[data-ird-fact] > label.attribute-label {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%);
 }

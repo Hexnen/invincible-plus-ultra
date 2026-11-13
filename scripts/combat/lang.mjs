@@ -79,7 +79,7 @@ export const EN = {
   "ICB.Bar.Act.slow": "Slow action",
   "ICB.Bar.Act.one": "Action",
   "ICB.Bar.Act.full": "Full action",
-  "ICB.Bar.Act.quick": "Quick action",
+  "ICB.Bar.Act.quick": "Quick action",
   "ICB.Bar.Act.used": "used",
   "ICB.Bar.Act.open": "available",
   "ICB.Bar.Act.Line": "{name}: {state}",
@@ -90,6 +90,7 @@ export const EN = {
   "ICB.Bar.WaitingShort": "Drawing…",
   "ICB.Bar.Members": "Standing",
   "ICB.Bar.MembersSay": "{n} standing",
+  "ICB.Bar.MembersOf": "{n} of {max} standing",
   "ICB.Bar.Wait.chase": "Chase",
   "ICB.Bar.Wait.chase.Say": "A chase: nobody has a turn, the GM moves the rounds on",
   "ICB.Bar.Wait.roundStart": "Round start",
@@ -175,7 +176,7 @@ export const PL = {
   "ICB.Bar.Act.slow": "Wolna akcja",
   "ICB.Bar.Act.one": "Akcja",
   "ICB.Bar.Act.full": "Pełna akcja",
-  "ICB.Bar.Act.quick": "Szybka akcja",
+  "ICB.Bar.Act.quick": "Szybka akcja",
   "ICB.Bar.Act.used": "zużyta",
   "ICB.Bar.Act.open": "dostępna",
   "ICB.Bar.Act.Line": "{name}: {state}",
@@ -186,6 +187,7 @@ export const PL = {
   "ICB.Bar.WaitingShort": "Dobieranie…",
   "ICB.Bar.Members": "Stoi",
   "ICB.Bar.MembersSay": "Stoi: {n}",
+  "ICB.Bar.MembersOf": "Stoi: {n} z {max}",
   "ICB.Bar.Wait.chase": "Pościg",
   "ICB.Bar.Wait.chase.Say": "Pościg: nikt nie ma tury, rundy przesuwa MG",
   "ICB.Bar.Wait.roundStart": "Początek rundy",
