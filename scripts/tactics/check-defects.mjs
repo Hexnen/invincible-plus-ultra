@@ -63,7 +63,9 @@ const stun = async (T, by = "H1", user = "p1", t = "N1") => {
   await stun(T);
   await T.req("p1", { op: "endTurn", actor: "H1" });
   ok(!T.state.tokens.some((t) => t.id === "plan"), "D1: 'until your next turn' ends when that turn comes, also a lost one");
-  eq(st(T, "H2"), "afflicted", "D1: a lost turn has no end, so a status that ends with it stays");
+  /* FXC2 (D200): this used to pin the opposite ("a lost turn has no end"). Ruling U4-R2 (confirmed by the user 2026-11-12 with P8-R2) says a
+     missed turn also ENDS what lasts "to the end of your turn", as a stunned (lost) turn does; A6 (ANSE-R6) and PWE-R4 rely on it */
+  eq(st(T, "H2"), "", "D1 / U4-R2: a lost turn ends too, so a status that ends with it ends there");
   for (let i = 0; i < 6 && T.state.round < 2; i++) await T.gm({ op: "nextTurn" });
   eq(T.state.round, 2, "D1: the round turned");
   eq(st(T, "H1"), "", "D1: a status that lasts until the end of the round is gone");

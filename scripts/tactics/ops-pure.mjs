@@ -231,7 +231,9 @@ function openTurn(W, nx) {
        due "at the start of your turn" (a poison, the vacuum) is due as well (reading, combat-rulings P8-R2) */
     turnMoment(W, nx.member);
     ev(W, "turnLost", { slot: nx.slot, combatant: nx.member });
-    s.init = I.memberDone(s.init, nx.member, { lost: true });
+    /* FXC2 (D200), U4-R2: the lost turn also ENDS: what lasts "to the end of your turn" ends (surprise's "unaware" A6, an Energy Absorption
+       die PWE-R4) and the turn-end triggers are due, as for a passed turn (U9 below) */
+    closeTurn(W, nx.member, { quiet: true, lost: true });
     return;
   }
   /* U9 [B2707], [B2749], [B2773]: a combatant with nothing to do on its turn (dead, unconscious, broken with no way to rally) does not make the
@@ -320,7 +322,7 @@ function endStatuses(W, moment, cid = null, ids = []) {
   }
 }
 
-function closeTurn(W, member, { quiet = false } = {}) {
+function closeTurn(W, member, { quiet = false, lost = false } = {}) {
   const s = W.s, slotId = s.init.cur;
   if (s.moved) { delete s.moved[member]; if (!Object.keys(s.moved).length) delete s.moved; }      // D44: the turn happened
   s.ledger[member] = Lg.turnEnd(ledgerOf(W, member));
@@ -331,7 +333,7 @@ function closeTurn(W, member, { quiet = false } = {}) {
   endStatuses(W, { at: "turnEndOf", who: member });
   queueOnce(W, { at: "turnEnd", combatant: member }, `te:${member}:${slotId}`, false);
   if (!quiet) ev(W, "turnEnd", { slot: slotId, combatant: member });
-  s.init = I.memberDone(s.init, member);
+  s.init = I.memberDone(s.init, member, { lost });
 }
 
 /* Ongoing effects that end at a scheduler point (spec 6.5) take along what they registered: their tokens, triggers and statuses. */
