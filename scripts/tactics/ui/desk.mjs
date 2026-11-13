@@ -129,9 +129,23 @@ const section = (title, n, kids) => h("section.igd-sec", {}, h("h4.igd-h", {}, h
 /* U64 / U80: a part of the Table tab that FOLDS: its heading is the switch (a chevron that points right when folded, down when open, the
    title, the count), its content is drawn only while open. Which parts are folded is the user's layout (main.mjs `fold`). */
 const foldSec = (id, title, n, kids) => { const shut = !!last?.ui?.folds?.[id];
-  return h("section.igd-sec", { data: { fold: shut ? "shut" : "open" } }, h("h4.igd-h", {}, h("button.igd-foldb", { fk: `fold:${id}`, attrs: { "aria-expanded": String(!shut) }, on: { click: () => handlers.fold?.(id) } },
+  return h("section.igd-sec", { data: { fold: shut ? "shut" : "open", fid: id } }, h("h4.igd-h", {}, h("button.igd-foldb", { fk: `fold:${id}`, attrs: { "aria-expanded": String(!shut) }, on: { click: () => { handlers.fold?.(id); if (shut) reveal(id); } } },
     icon(shut ? "fa-chevron-right" : "fa-chevron-down"), h("span", { text: title }), n ? h("b.igd-n", { text: String(n) }) : null)), shut ? null : kids); };
 
+/* FXL2 (U214): a part opened at the foot of a short desk (1600x900: the body some 210 px) opened under the fold: its pickers ("Kto") stood
+   where the map is, a click there went to the map. Once drawn open, the body scrolls by the least that shows the opened part, its heading
+   kept in view when the part is taller than the body. */
+export const revealBy = (sec, body) => (sec.bottom <= body.bottom ? 0 : Math.max(0, Math.min(sec.bottom - body.bottom, sec.top - body.top)));
+function reveal(id) {
+  setTimeout(() => requestAnimationFrame(() => {
+    try {
+      const body = root?.querySelector(".igd-body"), sec = root?.querySelector(`.igd-sec[data-fid="${id}"]`);
+      if (!body || !sec || sec.dataset.fold !== "open") return;
+      const dy = revealBy(sec.getBoundingClientRect(), body.getBoundingClientRect());
+      if (dy > 0) body.scrollBy({ top: dy, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    } catch { /* a courtesy */ }
+  }), 90);
+}
 function now(d) {
   const askH = { send: (req) => send(req), count: (id, v) => setVal(id, v), pick: handlers.pick,
     gmExtra: (pid, id, max) => { const list = val(`gx:${pid}`, []); setVal(`gx:${pid}`, [...(Array.isArray(list) ? list : []), id].slice(-12)); handlers.pick?.(pid, id, max); },      /* U17-2 */ text: handlers.text, always: handlers.always, zone: handlers.zone, again: handlers.again, locate: handlers.locate };
@@ -253,11 +267,12 @@ function scene(s) {
     h("div.igd-ctl", { data: { type: "choice" } }, h("span.igd-cl", { text: v.flags.label }), h("span.igd-seg.igd-multi", {}, v.flags.items.map((x) => h("button", { fk: `vf:${v.id}:${x.id}`, text: x.label, attrs: { "aria-pressed": String(x.on) }, on: { click: () => send(x.req) } })))));
   const task = (x) => h("article.igd-npc", {}, h("b.igd-actor", { text: x.name }), x.tag ? tags([x.tag]) : null, note(x.stats.join(" \u00b7 ")), pickOf(x.preset, true),
     x.objectives.length ? note(x.objectives.join(" \u00b7 ")) : null, x.manual ? h("p.igd-note", {}, h("span", { text: `${x.manual.label}: ` }), h("b", { text: x.manual.items.join(", ") })) : null, note(x.hint));
-  return [
-    section(c.title, 0, chase),
-    section(s.vehicles.title, s.vehicles.items.length, s.vehicles.items.length ? s.vehicles.items.map(vehicle) : h("p.igd-empty", {}, h("span", { text: s.vehicles.empty }))),
-    section(s.challenges.title, s.challenges.items.length, s.challenges.items.length ? s.challenges.items.map(task) : h("p.igd-empty", {}, h("span", { text: s.challenges.empty }))),
-  ];
+  /* FXL2 (U215): the chase's setup (its hint, presets, distance, obstacles: some 280 px) stood first, so a vehicle's seats and "Posadź"
+     lay under the fold of a short desk (1366x768: at 817 px in a body ending at 542). A chase not running goes after the vehicles and the
+     challenges; a running one stays first. */
+  const parts = [section(s.vehicles.title, s.vehicles.items.length, s.vehicles.items.length ? s.vehicles.items.map(vehicle) : h("p.igd-empty", {}, h("span", { text: s.vehicles.empty }))),
+    section(s.challenges.title, s.challenges.items.length, s.challenges.items.length ? s.challenges.items.map(task) : h("p.igd-empty", {}, h("span", { text: s.challenges.empty })))];
+  return c.on ? [section(c.title, 0, chase), ...parts] : [...parts, section(c.title, 0, chase)];
 }
 
 /* ---------- render ---------- */

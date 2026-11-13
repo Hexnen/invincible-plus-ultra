@@ -550,7 +550,7 @@ function awayMoves(v, I, R) {
       if (!R.prompts.some((p) => p.key === key)) {
         const Z = v.facts.zones, c = v.facts.c(a.who);
         const zs = Z && c ? MP.moveOptions(Z, v.state, a.who, c, () => ({ ok: true }), { prepaid: true, ...(a.mode ? { mode: a.mode } : {}) }).filter((x) => !x.disabled && !x.area && !x.here).slice(0, 50) : [];
-        R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, a.who), about: a.who, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated, ...(x.stress ? { stress: x.stress } : {}) } })),
+        R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, a.who), about: a.who, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated, ...(x.floor ? { floor: x.floor } : {}), ...(x.stress ? { stress: x.stress } : {}) } })),
           { id: "move", label: "ITAC.opt.dodgeMove", data: {} }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { away: 1, ...(a.mode ? { mode: a.mode } : {}) } });
       }
       waiting = true; continue;
@@ -1136,7 +1136,7 @@ export const steps = {
         const key = `dodgeMove:${t}`;
         if (!I.data.pk?.[key]) {                                                               // with a map the options are the zones the dodger reaches, any way of moving it has, no cost and no stress option
           const zs = Z ? MP.moveOptions(Z, v.state, t, v.facts.c(t), undefined, { free: o.dodgeMove }).filter((x) => !x.disabled && !x.area).slice(0, 50) : [];
-          R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, t), about: t, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated } })),
+          R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, t), about: t, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated, ...(x.floor ? { floor: x.floor } : {}) } })),
             { id: "move", label: "ITAC.opt.dodgeMove", data: { zones: o.dodgeMove } }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { zones: o.dodgeMove } }); R.wait = true; return R; }
         if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
         if (once(key)) {
