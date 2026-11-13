@@ -196,9 +196,9 @@ ck("R17b the card after the word started: its number joins late", p.some((r) => 
 }
 user.isGM = true;
 
-/* R1: kept inside the view: a token at the top edge, at the right edge (the sidebar), with the director's letterbox bars */
+/* R1: kept inside the view: a token at the top edge (half of it above the view), at the right edge (the sidebar), with the director's letterbox bars */
 const inside = (b, s) => b.x >= s.l - 1 && b.y >= s.t - 1 && b.x + b.w <= s.r + 1 && b.y + b.h <= s.b + 1;
-{ const top = mk("T", "npc", 8, 6, { x: 700, y: 5 }), right = mk("R", "npc", 8, 6, { x: 1190, y: 400 });
+{ const top = mk("T", "npc", 8, 6, { x: 700, y: -40 }), right = mk("R", "npc", 8, 6, { x: 1190, y: 400 });
   Hooks.callAll("canvasReady");
   set(top, "health", 4); set(right, "health", 4);
   p = await take(1200);
@@ -218,6 +218,14 @@ const inside = (b, s) => b.x >= s.l - 1 && b.y >= s.t - 1 && b.x + b.w <= s.r + 
   await sleep(1500);
 }
 
+/* R6c: a token off the view (its centre under the hotbar line or below the screen) is not lettered: no word hanging over the chat input */
+{ const off = mk("O", "npc", 8, 6, { x: 1100, y: 850 });
+  Hooks.callAll("canvasReady");
+  set(off, "health", 6);
+  p = await take(1200);
+  ck("R6c a token mostly off the safe view gets no lettering", !p.some((r) => r.o.token?.id === "O"));
+  toks.splice(toks.indexOf(off), 1); }
+
 /* R7: a director shot that starts after the reaction takes its Health number down (its caption says it) */
 hero.actor.system.derived.health.value = 8; Hooks.callAll("canvasReady");
 set(hero, "health", 5);
@@ -227,6 +235,13 @@ await sleep(50);
 p = await take(800);
 { const num = p.find((r) => r.text === "-3"), word = p.find((r) => !isNum(r));
   ck("R7 a director shot starting after the word: the number goes, the word stays", !!num && !!num.stopped && !!word && !word.stopped); }
+
+/* R5n: a number beside a word stands clear of it and is not a footnote (seen live: "BLAMM!-3" touched; -3 looked under half the word) */
+{ const P = await import("../tokenreact/pure.mjs");
+  const cap = 60, aspect = 5, numCap = cap * P.SIZE_RULE.numK, g = P.group({ cap, aspect, tall: 1.4, nums: ["-3"], numCap, side: 1 });
+  const ww = cap * aspect * 1.04, nw = numCap * (0.25 + 0.68 + 0.55);
+  ck("R5n the number box starts at least a quarter cap after the word box", (g.nums[0].dx - nw * 0.51) - (g.word.dx + ww / 2) >= cap * 0.25 - 1e-6);
+  ck("R5n a number beside a word is at least 0.75 of its cap", P.SIZE_RULE.numK >= 0.75); }
 
 console.log(`sweep fxlt-flow: ${n} checks, ${f} failed`);
 process.exit(f ? 1 : 0);

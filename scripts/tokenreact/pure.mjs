@@ -164,17 +164,23 @@ const numSound = (sign, amt) => ({ loud: Math.min(1, 0.5 + amt * 0.3), sharp: 0.
    never over 7 % of the view's height; times the kind's severity, the amount, and a little more for a short word (the eye weighs a word
    by its area: "BĘC!" must not look lighter than "BACH!"). Below the floor the engine's legible clamp flattens every size to the same
    floor, so the base starts at the floor and severity lifts it from there. */
-export const SIZE_RULE = { tokenK: 0.34, floorVh: 0.026, floorMin: 15, floorMax: 30, baseMaxVh: 0.07, shortLen: 5, shortPow: 0.35, numK: 0.66, crowdNumK: 1 };
+export const SIZE_RULE = { tokenK: 0.3, floorVh: 0.026, floorMin: 15, floorMax: 30, baseMaxVh: 0.05, shortLen: 5, shortPow: 0.35, numK: 0.8, crowdNumK: 1,
+  capVh: 0.12, widthTok: 3, widthVw: 0.3, aspect: 0.85 };      /* seen live (lane 8, grid 350 at zoom 0.42): with the base at 7 % of the view a fall's word ran 900 px wide; now the cap
+  stays under 12 % of the view height and the word (estimated 0.85 cap per letter) under 3 tokens or 30 % of the view width, whichever is wider.
+  numK: a number beside a word was 0.62 of its cap and read as a footnote live (lane 8 zoom 1.2: -3 at 47 px beside BLAMM! at 76 px, but the
+  word's drawn box with depth and outline is 1.46 caps tall against the number's 0.96, so the number looked under half the word); 0.8 now */
 export function basePx(tokenPx, vh) {
   const floor = Math.max(SIZE_RULE.floorMin, Math.min(SIZE_RULE.floorMax, vh * SIZE_RULE.floorVh));
   return Math.max(floor, Math.min(vh * SIZE_RULE.baseMaxVh, tokenPx * SIZE_RULE.tokenK));
 }
 const letters = (w) => [...String(w ?? "")].filter((ch) => /[\p{L}\p{N}]/u.test(ch)).length;
 /** the cap height (screen px) one reaction's word should have: kind, amount 0..1, the word, the token's size on screen, the view height */
-export function targetPx(kind, amt, word, tokenPx, vh) {
+export function targetPx(kind, amt, word, tokenPx, vh, vw = vh * 16 / 9, k = 1) {
   const s = SOUND[kind]; if (!s) return 0;
-  const short = Math.max(1, (SIZE_RULE.shortLen / Math.max(2, letters(word))) ** SIZE_RULE.shortPow);
-  return basePx(tokenPx, vh) * s.sev * (1 + 0.25 * Math.max(0, Math.min(1, amt))) * short;
+  const n = Math.max(2, letters(word)), short = Math.max(1, (SIZE_RULE.shortLen / n) ** SIZE_RULE.shortPow);
+  const want = basePx(tokenPx, vh) * s.sev * (1 + 0.25 * Math.max(0, Math.min(1, amt))) * short * k;
+  const widthCap = Math.max(SIZE_RULE.widthTok * tokenPx, SIZE_RULE.widthVw * vw) / (SIZE_RULE.aspect * (n + 0.5));
+  return Math.max(Math.min(want, vh * SIZE_RULE.capVh, widthCap), basePx(tokenPx, vh) * Math.min(1, s.sev) * Math.min(1, k));
 }
 /* the engine's magnitude (contract v4, 0..2): it lifts the engine's ceiling for the worst blows; the size itself is targetPx */
 export const magOf = (kind, amt = 0.3) => { const s = SOUND[kind]; return s ? Math.round(Math.max(0, Math.min(1.2, (s.sev - 0.7) * 0.9 + 0.15 * amt)) * 100) / 100 : 0.5; };
@@ -297,6 +303,8 @@ export function chooseSlot(tok, box, safe, blocked = [], { prefer = 0 } = {}) {
   });
   return best;
 }
+/** is the token on the view: at least 35 % of it inside the safe rect (a token half over the top edge still counts) */
+export const onView = (r, safe) => !!r && !!safe && inter(r, { x: safe.l, y: safe.t, w: safe.r - safe.l, h: safe.b - safe.t }) >= 0.35 * r.w * r.h;
 /** push a group centre into the safe rect (a group bigger than the rect is centred in it) */
 export function clampInto(p, box, safe) {
   if (!safe) return p;
@@ -313,10 +321,10 @@ export function safeRect(view, covers = [], margin = 8) {
     const r = c.x + c.w, b = c.y + c.h;
     if (r <= view.l || c.x >= view.r || b <= view.t || c.y >= view.b) continue;      // not over the view
     const cuts = [];
-    if (c.w < W * 0.6 && r >= view.r - 4) cuts.push(["r", c.x, (view.r - c.x) / W]);
-    if (c.w < W * 0.6 && c.x <= view.l + 4) cuts.push(["l", r, (r - view.l) / W]);
-    if (c.h < H * 0.5 && b >= view.b - 4) cuts.push(["b", c.y, (view.b - c.y) / H]);
-    if (c.h < H * 0.5 && c.y <= view.t + 4) cuts.push(["t", b, (b - view.t) / H]);
+    if (c.w < W * 0.6 && r >= view.r - 24) cuts.push(["r", c.x, (view.r - c.x) / W]);
+    if (c.w < W * 0.6 && c.x <= view.l + 24) cuts.push(["l", r, (r - view.l) / W]);
+    if (c.h < H * 0.5 && b >= view.b - 24) cuts.push(["b", c.y, (view.b - c.y) / H]);
+    if (c.h < H * 0.5 && c.y <= view.t + 24) cuts.push(["t", b, (b - view.t) / H]);
     if (!cuts.length) continue;
     const [side, v] = cuts.sort((x, y) => x[2] - y[2])[0];      // cut the thinner way (a bar along the bottom cuts the bottom)
     if (side === "r") s.r = Math.min(s.r, v); else if (side === "l") s.l = Math.max(s.l, v); else if (side === "b") s.b = Math.min(s.b, v); else s.t = Math.max(s.t, v);
@@ -327,14 +335,16 @@ export function safeRect(view, covers = [], margin = 8) {
     the token's face, review 12). cap = word cap height, aspect = word width / cap; numCap; up / down = room for the motion (a rise goes
     up about half a cap, a drop comes from above, an overshoot swells ~15 %). -> { w, h, word: {dx, dy}, nums: [{dx, dy}] } offsets from
     the group centre */
-export function group({ cap, aspect, nums = [], numCap, side = 1, up = 0.5, down = 0.25 }) {
-  const ww = cap * Math.max(0.6, aspect) * 1.12, wh = cap * 1.3;
+export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, up = 0.5, down = 0.25 }) {
+  const ww = cap * Math.max(0.6, aspect) * (tall ? 1.04 : 1.12), wh = cap * (tall ? tall * 1.04 : 1.3);      // tall/aspect measured from the drawn word: a small margin only
   const nw = nums.map((t) => numCap * (0.25 + 0.68 * letters(t) + (/^[+-]/.test(t) ? 0.55 : 0)));
   const colW = nw.length ? Math.max(...nw) : 0, nh = numCap * 1.25;
-  const w = ww + (colW ? colW * 0.92 : 0), h = Math.max(wh, wh * 0.35 + nh * nw.length) + cap * (up + down);
+  const gap = colW ? cap * 0.28 : 0;    // seen live: "BLAMM!-3" touched and read as one word; at 0.1 a cap the left-hand number still
+                                        // touched (the drawn word overruns its hold box on the left, lane 8 still6); 0.28 clears both sides
+  const w = ww + (colW ? colW * 1.02 + gap : 0), h = Math.max(wh, wh * 0.35 + nh * nw.length) + cap * (up + down);
   const top = -h / 2 + cap * up;
-  const wordC = { dx: -side * (colW ? colW * 0.46 : 0), dy: top + wh / 2 };
-  const numsC = nw.map((x, i) => ({ dx: wordC.dx + side * (ww / 2 + colW * 0.42), dy: top + wh * 0.62 + nh * i }));
+  const wordC = { dx: -side * (colW ? (colW * 1.02 + gap) / 2 : 0), dy: top + wh / 2 };
+  const numsC = nw.map((x, i) => ({ dx: wordC.dx + side * (ww / 2 + gap + colW * 0.51), dy: top + wh * 0.62 + nh * i }));
   return { w, h, word: wordC, nums: numsC };
 }
 

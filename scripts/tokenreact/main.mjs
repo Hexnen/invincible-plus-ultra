@@ -235,7 +235,10 @@ async function land(items) {
     for (let waited = 0; waited < SCREEN_WAIT && splashing(); waited += 60) await new Promise((r) => setTimeout(r, 60));
     /* the whole moment is placed together, heaviest first: each reaction takes the free side of its token (other tokens, the words
        already placed, the view's edges and the interface count against a side) */
-    const staged = P.stage(items).filter((it) => it.mode !== "none");
+    /* a token mostly outside the safe rect now (off the view, under the interface) is not lettered: its word would hang at the
+       edge or over the chat input with nothing under it (seen live in a crowd and in ADVT 6) */
+    const onView = (it) => !view.ok() || P.onView(view.tokRect(it.tok), view.safe());
+    const staged = P.stage(items.filter(onView)).filter((it) => it.mode !== "none");
     const placed = [];
     const others = tokenRects(new Set(staged.map((it) => it.tok.id)));
     for (const it of staged) {
@@ -298,11 +301,14 @@ function planOf(L, it) {
   const tokPx = Math.max(tokRect.w, tokRect.h);
   const word = it.mode === "full" || it.mode === "mark";
   const nums = it.mode === "mark" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
-  const cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh()) * user * it.scale : 0;
+  const cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), globalThis.innerWidth || 1600, user * it.scale) : 0;
   const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
-  const aspect = word ? 0.66 * [...lk.word].length + 0.1 : 0;
+  const aspect = word ? P.SIZE_RULE.aspect * ([...lk.word].length + 0.5) : 0;      // refined from the drawn word once it is up (follow)
+  /* room for the motion: a rise leaves upward, and a power-up's letters may climb like stairs (seen in ADVT c4: "RAAA!" climbed out
+     of the view by a whole cap) */
   const rising = ["rise", "grow"].includes(lk.motion.in) || lk.motion.out === "rise";
-  const g = word ? P.group({ cap, aspect, nums: nums.map((n) => n.text), numCap, side: lk.side, up: rising ? 0.6 : 0.4, down: lk.motion.in === "drop" ? 0.3 : 0.2 })
+  const gArgs = word ? { cap, aspect, nums: nums.map((n) => n.text), numCap, side: lk.side, up: (rising ? 0.6 : 0.4) + (lk.mood === "powerup" ? 0.6 : 0), down: lk.motion.in === "drop" ? 0.3 : 0.2 } : null;
+  const g = word ? P.group(gArgs)
     : P.group({ cap: numCap, aspect: 0, nums: nums.map((n) => n.text), numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
   const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), ...layer() };
@@ -313,20 +319,31 @@ function planOf(L, it) {
     o.scale = scaleFor(L, n.text, o, numCap);
     return o;
   });
-  return { tokRect, box: { w: g.w, h: g.h }, g, z0, cap, numCap, nums, wordOpts, numOpts, slot: "above" };
+  return { tokRect, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, wordOpts, numOpts, slot: "above" };
 }
 /* the world point of one member of a reaction's group, every frame: from its token's place now, on the side chosen at the start,
    pushed into the safe rect while the token is on screen (reviews 1, 7, 14) */
+/* once the word is drawn its real shape replaces the letter-count estimate (the engine's plan of the word, contract h.plan; its hold box
+   in cap heights): the numbers then stand right at its end, not over it (seen live: "-1" sat on the M of a wide WHAM!) */
+function measure(plan) {
+  if (plan.measured || !plan.gArgs) return;
+  const hb = plan.wordH?.plan?._holdBox;
+  if (!hb || !(hb.w > 0) || !(hb.h > 0)) return;
+  plan.measured = true;
+  const g = P.group({ ...plan.gArgs, aspect: hb.w, tall: hb.h });
+  plan.g = g; plan.box = { w: g.w, h: g.h };
+}
 function follow(tok, plan, member) {
   let last = null;
   return () => {
     try {
       if (!tok || tok.destroyed || !view.ok()) return last;
+      measure(plan);
       const k = view.zoom() / plan.z0;
       const tr = view.tokRect(tok), box = { w: plan.box.w * k, h: plan.box.h * k };
       let c = P.slotPoint(plan.slot, tr, box);
-      const safe = view.safe(), tcx = tr.x + tr.w / 2, tcy = tr.y + tr.h / 2;
-      if (tcx > safe.l && tcx < safe.r && tcy > safe.t - tr.h * 0.25 && tcy < safe.b) c = P.clampInto(c, box, safe);
+      const safe = view.safe();
+      if (P.onView(tr, safe)) c = P.clampInto(c, box, safe);
       const off = member < 0 ? plan.g.word : plan.g.nums[member];
       last = view.toWorld({ x: c.x + off.dx * k, y: c.y + off.dy * k });
       return last;
@@ -349,14 +366,16 @@ function play(L, it, queued = false) {
     const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, nums: [], done: null, addNumber: null, dropNumbers: null };
     let word = null;
     playing.set(tok.id, entry);
-    if (plan.wordOpts) { word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1) }); hs.push(word); }
+    if (plan.wordOpts) { word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1) }); hs.push(word); plan.wordH = word; }
     /* the numbers come once the word has landed (review 13: a slow entrance let the number arrive first) */
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
     const numAt = (i) => follow(tok, plan, Math.min(i, plan.g.nums.length - 1));
     const playNum = (n, o, i) => {
       if (playing.get(tok.id) !== entry) return;
       if (n.stat === "health" && isCaptioned(tok.id)) return;      // the director's caption says it now (review 7)
-      const h = L.play(n.text, { ...o, hold: Math.max(500, lk.hold - (word ? entMs * 0.7 : 0)), at: numAt(i) });
+      /* beside a word it leaves with the word; alone (a crowd) it stands as long as a word would (seen live: crowd numbers were gone
+         in a second) */
+      const h = L.play(n.text, { ...o, hold: word ? Math.max(700, lk.hold - entMs * 0.7 + 150) : lk.hold + 300, at: numAt(i) });
       h.stat = n.stat; hs.push(h); entry.nums.push(h); settle();
     };
     const startNums = () => plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], i));
@@ -370,7 +389,7 @@ function play(L, it, queued = false) {
       const nl = P.numberLook(stat, sign, n, lk.amt);
       const o = { space: "world", token: tok.document, anchor: "center", reduced: red, ...layer(), mood: nl.mood, sound: nl.sound, hand: nl.hand, colors: nl.colors, magnitude: Math.max(0.3, lk.magnitude * 0.8), seed: `${it.seed}#late`, rotation: -lk.side * 3, in: nl.in, holdKind: "boil", out: nl.out };
       o.scale = scaleFor(L, nl.text, o, plan.numCap || plan.cap * P.SIZE_RULE.numK);
-      if (!plan.g.nums.length) { const g = P.group({ cap: plan.cap, aspect: 0.66 * [...lk.word].length + 0.1, nums: [nl.text], numCap: plan.numCap, side: lk.side }); plan.g = g; plan.box = { w: g.w, h: g.h }; }
+      if (!plan.g.nums.length && plan.gArgs) { plan.gArgs = { ...plan.gArgs, nums: [nl.text] }; plan.measured = false; const g = P.group(plan.gArgs); plan.g = g; plan.box = { w: g.w, h: g.h }; measure(plan); }
       playNum(nl, o, 0);
     };
     entry.dropNumbers = (stat) => { for (const h of entry.nums) if (!stat || h.stat === stat) try { h.stop({ quick: false }); } catch { /* gone */ } };
