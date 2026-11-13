@@ -166,7 +166,8 @@ async function land(items) {
     if (Moment.isActive()) await Moment.landing(items.map((i) => i.tok.id), { wait: 0, cap: 1600 });
     const L = engine ?? (engine = await letters());
     /* a roll's splash word on screen right now: the token answers just after it */
-    for (let waited = 0; waited < SCREEN_WAIT && (L.count?.({ space: "screen" }) ?? 0) > 0; waited += 60) await new Promise((r) => setTimeout(r, 60));
+    const splashing = () => (L.count?.({ space: "screen" }) ?? 0) > 0 || !!document.querySelector("#invincible-splash-layer .ins-stage");      // the engine's screen words, or the roll splash's own layer
+    for (let waited = 0; waited < SCREEN_WAIT && splashing(); waited += 60) await new Promise((r) => setTimeout(r, 60));
     for (const it of P.stage(items)) if (it.mode !== "none") setTimeout(() => play(L, it), it.delay);
   } catch (err) { once(err); }
 }

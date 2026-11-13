@@ -134,7 +134,7 @@ export function look(a, c, lang, seed, last = null) {
   const side = (h >>> 4) % 2 ? 1 : -1;      // the number sits on this shoulder of the token
   const colors = PALETTE[PAL_OF[kind]];
   const sign = HEALTH.includes(kind) ? (kind === "heal" || kind === "back" ? "+" : "-") : (kind === "regain" || kind === "steady" ? "+" : "-");
-  const number = Number.isFinite(a.num) && a.num > 0
+  const number = Number.isFinite(a.num) && a.num > 0 && kind !== "spent"      /* spent: the pushed roll's splash already shows the stress */
     ? { text: `${sign}${a.num}`, mood: sign === "+" ? "heal" : "impact", sound: { loud: Math.min(1, 0.3 + amt * 0.4), sharp: sign === "+" ? 0.2 : 0.7, long: 0.25, pitch: sign === "+" ? 0.5 : -0.1, rough: 0.2 }, size: 0.62 + amt * 0.18, colors }
     : null;
   return { kind, word, mood: s.mood, sound: { ...s.sound, loud }, colors, size: s.size * (0.94 + amt * 0.16), hold: s.hold, rotation: Math.round(rot), side, number };

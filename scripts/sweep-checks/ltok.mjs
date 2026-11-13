@@ -41,7 +41,7 @@ ck("B11 who may read: the damage card's rule", P.mayRead({ gm: true }) && P.mayR
 const kinds = [...P.HEALTH, ...P.RESOLVE];
 for (const kd of kinds) {
   const lk = P.look({ kind: kd, num: 2, exact: true }, { r: 0.25 }, "pl", "s1");
-  ck(`C1 ${kd}: a word, a mood, a palette, a number`, !!lk && typeof lk.word === "string" && lk.word.length > 0 && !!lk.mood && lk.colors.length === 3 && /^[+-]2$/.test(lk.number.text));
+  ck(`C1 ${kd}: a word, a mood, a palette, a number (spent: none, the roll's splash shows it)`, !!lk && typeof lk.word === "string" && lk.word.length > 0 && !!lk.mood && lk.colors.length === 3 && (kd === "spent" ? lk.number === null : /^[+-]2$/.test(lk.number.text)));
   ck(`C2 ${kd}: words in both languages`, P.WORDS.en[kd]?.length >= 2 && P.WORDS.pl[kd]?.length >= 2);
 }
 ck("C3 the sign says the direction", P.look({ kind: "hit", num: 3 }, null, "en", "a").number.text === "-3" && P.look({ kind: "heal", num: 3 }, null, "en", "a").number.text === "+3" && P.look({ kind: "regain", num: 1 }, null, "en", "a").number.text === "+1" && P.look({ kind: "stress", num: 1 }, null, "en", "a").number.text === "-1");
