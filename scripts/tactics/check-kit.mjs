@@ -298,7 +298,9 @@ const noStunts = async (T) => { const p = T.prompt("stunts"); if (p) await T.req
   ok(!!tx, "the arrival is journaled");
   /* broken allies leave by themselves; the leave is journaled and can be undone */
   await T.gm({ op: "setHealth", combatant: sid, value: 0 });
-  eq([!!T.c[sid], T.state.summons, !!T.state.ledger[sid], T.log.list.at(-1).ops.map((o) => o.t)], [false, [], false, ["summon-"]], "a broken group leaves the fight (token, combatant, its place in the round)");
+  /* FXG2: the leave also writes, in the same entry, what the roster prunes of the group (its ledger, the summons record ...: engine-pure
+     leaveWrites), so the undo puts that back too; before only the document op "summon-" stood in it */
+  eq([!!T.c[sid], T.state.summons, !!T.state.ledger[sid], [...new Set(T.log.list.at(-1).ops.map((o) => o.t))]], [false, [], false, ["state", "summon-"]], "a broken group leaves the fight (token, combatant, its place in the round)");
   await T.gm({ op: "undo", tx: T.log.list.at(-1).id });
   eq([!!T.c[sid], T.state.summons.map((s) => s.combatants)], [true, [[sid]]], "undo of the leave: the group stands again (the GM sets its Health)");
   await T.gm({ op: "setHealth", combatant: sid, value: 3 });

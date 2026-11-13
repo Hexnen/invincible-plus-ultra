@@ -16,7 +16,8 @@ import * as S from "./state-pure.mjs";
 import * as Lg from "./ledger-pure.mjs";
 import * as I from "./initiative-pure.mjs";
 import * as Sch from "./scheduler-pure.mjs";
-import { statusAdd } from "./mods-pure.mjs";
+import { statusAdd, effectEndWrites } from "./mods-pure.mjs";
+import { setAt } from "./journal-pure.mjs";
 
 export const PROTO = 1;
 /* what a player may send in P1 (spec 12.2 rows endTurn, holdOff, answer) plus `mark`, the manual action mark that replaces the old tray
@@ -804,6 +805,7 @@ function removeOne(W, id) {
     if (keep.length) s.statuses[who] = keep; else delete s.statuses[who];
   }
   if (s.moved) { delete s.moved[id]; if (!Object.keys(s.moved).length) delete s.moved; }
+  leaveLinks(W, id);
   /* FXU (D189): a vehicle that leaves the fight takes its record along, and the people aboard are in no vehicle any more (they stay where
      they are; the GM moves them on); somebody aboard who leaves frees the seat */
   if (isObj(s.vehicles)) {
@@ -824,13 +826,53 @@ function removeOne(W, id) {
     }
     if (!Object.keys(s.vehicles).length) delete s.vehicles;
   }
-  s.summons = (s.summons ?? []).filter((su) => su?.owner !== id).map((su) => (Array.isArray(su?.combatants) ? { ...su, combatants: su.combatants.filter((x) => x !== id) } : su));
+  s.summons = (s.summons ?? []).filter((su) => su?.owner !== id).map((su) => (Array.isArray(su?.combatants) ? { ...su, combatants: su.combatants.filter((x) => x !== id) } : su))
+    .filter((su) => !Array.isArray(su?.combatants) || su.combatants.length);      // FXG2: a record left without allies goes (the engine's leave writes it: no roster follows to rebuild it)
   W.effects.push({ type: "abortInstances", actor: id });          // spec 3.3: its open action instances end through the engine's abort path (P2)
   ev(W, "combatantRemoved", { combatant: id });
 }
 
+/* FXG2 (D207 and its class): what other combatants keep that is keyed to `id`, ended when `id` leaves the fight (removeOne).
+   - A grapple and a carry are a pair in one place [B2496-2497], [B2392]: with one side gone the pair is over for the other, as any
+     separation ends it (flows/kit.separated, D55); the air mark the carry itself gave goes with it.
+   - Ongoing effects held by the leaver, and an ice barrier it made (lasts while its maker stays in the zone [B1646]), end with what they
+     registered; modifier tokens the leaver held go.
+   - Bonus actions usable only "on the turn of" the leaver [B1708] (they end with that turn, which never comes) go. */
+const LINKS = Object.freeze({ grappling: ["held", "grappled"], grappled: ["by", "grappling"], carrying: ["held", "carried"], carried: ["by", "carrying"] });
+function leaveLinks(W, id) {
+  const s = W.s;
+  for (const [who, list] of Object.entries(s.statuses ?? {})) {
+    if (who === id || !Array.isArray(list)) continue;
+    const ends = list.filter((st) => LINKS[st?.id] && st.data?.[LINKS[st.id][0]] === id);
+    if (!ends.length) continue;
+    const carry = ends.some((st) => st.id === "carrying" || st.id === "carried");
+    const drop = (st) => ends.includes(st) || (carry && st?.id === "airborne" && st.source?.name === "carry");
+    for (const st of list) if (drop(st)) ev(W, "status", { target: who, status: { id: st.id, on: false }, cause: "left" });
+    const keep = list.filter((st) => !drop(st));
+    if (keep.length) s.statuses[who] = keep; else delete s.statuses[who];
+  }
+  const ending = (s.effects ?? []).filter((e) => e?.holder === id || (e?.kind === "barrier" && e.data?.by === id && typeof e.data?.zone === "string"));
+  for (const e of ending) {
+    for (const w of effectEndWrites(s, e.id)) { const n = setAt(s, w.path, w.to), k = w.path[0]; if (k in n) s[k] = n[k]; else delete s[k]; }      // in place: the caller holds W.s
+    ev(W, "effectEnd", { effect: { id: e.id, kind: e.kind, source: e.source, holder: e.holder, zones: e.zones } });
+  }
+  if ((s.tokens ?? []).some((t) => t?.holder === id)) s.tokens = s.tokens.filter((t) => t?.holder !== id);
+  for (const [who, L] of Object.entries(s.ledger ?? {})) s.ledger[who] = Lg.expireTurnOf(L, id);
+}
+
 /* what the director and the engine use of this file's inner workings */
 export const helpers = { run, addPrompt, ev, ledgerOf, partOf, queueOnce, closeTurn, openTurn, addressees, removeOne };
+
+/* FXG2 (D209) [B1637], [B1808], D46: allies act on their owner's turn; an owner who is no longer in the fight has no turn left. One
+   controlled or marked by the GM ("summoned by", no `summon.auto`) then acts as a combatant of its own (a card of its own: the roster
+   deals it one, the round's deal too); the engine's own summoned allies leave by themselves (director-pure `leaving` [B1812]) and keep
+   the mark until they do. Should the owner come back (an undo), the ally is its again (syncSummons takes the card back).
+   Question FXG2-2. */
+function ownParts(parts) {
+  if (!parts.some((p) => p?.summonOf)) return parts;
+  const ids = new Set(parts.map((p) => p?.id));
+  return parts.map((p) => (p?.summonOf && !ids.has(p.summonOf) && !p.summonAuto ? { ...p, summonOf: null } : p));
+}
 
 /* ------------------------------------------------------------------ reduce */
 export function reduce(state0, action, ctx = {}) {
@@ -842,7 +884,7 @@ export function reduce(state0, action, ctx = {}) {
     if (!ctx.staff && !PLAYER_OPS.has(action.type)) return err("notOwner");
     if (!state0 && action.type !== "start") return err("off");
     if (state0 && state0.mode === "off" && !["setMode", "stop", "start", "roster"].includes(action.type)) return err("off");       // spec 1.4: the engine is idle
-    const W = { s: state0 ? S.clone(state0) : null, ctx: { rng: NO_RNG, ...ctx, parts: Array.isArray(ctx.parts) ? ctx.parts : [] }, events: [], effects: [] };
+    const W = { s: state0 ? S.clone(state0) : null, ctx: { rng: NO_RNG, ...ctx, parts: ownParts(Array.isArray(ctx.parts) ? ctx.parts : []) }, events: [], effects: [] };
     const r = h(W, action);
     if (r && r.ok === false) return r;
     if (r && r.changed === false) return { ok: true, changed: false, state: state0 };

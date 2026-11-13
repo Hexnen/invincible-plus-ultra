@@ -135,6 +135,8 @@ function sanitizeInit(r) {
   out.curMember = curSlot && curSlot.members.includes(r.curMember) ? r.curMember : null;
   if (isObj(r.prev)) for (const [k, v] of Object.entries(r.prev).slice(0, LIMITS.ledgers)) { const c = int(v, 1, 999, null); if (isId(k) && c !== null) out.prev[k] = c; }
   out.trail = ids(r.trail);
+  const lost = ids(r.lost).filter((m) => out.trail.includes(m));      // FXG2: lost turns of this round, passed over by the step back
+  if (lost.length) out.lost = lost;
   const sur = ids(r.surprised);
   if (sur.length) out.surprised = sur;
   if (isObj(r.pendingDraw)) { const pd = { veteran: ids(r.pendingDraw.veteran), reflexes: ids(r.pendingDraw.reflexes) }; if (pd.veteran.length || pd.reflexes.length) out.pendingDraw = pd; }
@@ -330,6 +332,7 @@ export function viewFor(state, viewer = {}) {
   else if (hidden.has(init.curMember)) init.curMember = null;
   if (init.slots.length < slots0) init.deck = Math.max(10, ...init.slots.map((sl) => sl.card ?? 0));      // P8d: a deck grown for slots the viewer does not see would count them [I3] [R12]; the highest card in sight says all the viewer may know
   init.trail = init.trail.filter((m) => !hidden.has(m));
+  if (init.lost) { init.lost = init.lost.filter((m) => !hidden.has(m)); if (!init.lost.length) delete init.lost; }
   if (init.surprised) init.surprised = init.surprised.filter((m) => !hidden.has(m));
   s.triggers = s.triggers.filter((t) => !hidden.has(t.subject.combatant) && !hidden.has(t.expires?.who));       // a trigger about a hidden combatant goes as a whole
   const keep = { v: s.v, rev: s.rev, seq: s.seq, ...(s.fight ? { fight: s.fight } : {}), mode: s.mode, kind: s.kind, round: s.round, phase: s.phase, seen: [] };

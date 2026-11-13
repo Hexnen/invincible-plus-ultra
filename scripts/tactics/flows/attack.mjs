@@ -670,7 +670,8 @@ export const steps = {
          A40 (the user, 2026-11-12: «zgodnie z książką (wszyscy w strefie celu)») [B2542]: an attacker standing in the target zone is hit by its
          own area attack too and dodges on its own (it is listed after the others; before: never a target) */
       const w = weaponOf(v, I), named = I.decl.targets.slice(0, w?.quake > 1 ? w.quake : 1);
-      const all = named.flatMap((t0) => [t0, ...(v.facts.inZone(t0) ?? [])]).filter((c, i, l) => l.indexOf(c) === i && v.facts.c(c) && v.facts.c(c).present !== false).sort((x, y) => (x === I.actor) - (y === I.actor));
+      /* FXG2 (D208) [B1671]: the quaker is immune to the damage of its own Earthquake (every level): never a target of it (ruling FXG2-R1) */
+      const all = named.flatMap((t0) => [t0, ...(v.facts.inZone(t0) ?? [])]).filter((c, i, l) => l.indexOf(c) === i && v.facts.c(c) && v.facts.c(c).present !== false && !(w?.quake && c === I.actor)).sort((x, y) => (x === I.actor) - (y === I.actor));
       const fit = w?.immuneHuge ? all.filter((c) => !v.facts.c(c)?.huge) : all;
       I.decl.targets = (fit.length ? fit : all).slice(0, 24);
     }

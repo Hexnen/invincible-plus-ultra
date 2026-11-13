@@ -82,6 +82,17 @@ function record(X, txId, op, inst, step, tag) {
   if (tag) o[tag] = 1;
   X.state = { ...X.state, txOpen: { ...X.state.txOpen, [txId]: { ...tx, ops: [...tx.ops, o] } } };
 }
+/* FXC2 (D197), FXG2: the leave of `ids` from the fight as the roster makes it (ops-pure removeOne, D46, and what FXG2 added there: the
+   pairs, effects, tokens and bonus actions keyed to them), written through `wr(path, to)` into the caller's transaction so that its undo
+   puts it back with the documents. Its status and effect-end events go out. */
+function leaveWrites(X, ids, wr) {
+  const W = { s: S.clone(X.state), ctx: { parts: [] }, events: [], effects: [] };
+  W.s.free ??= {};
+  for (const id of ids) OpsH.removeOne(W, id);
+  if (X.state.free === undefined) delete W.s.free;
+  for (const k of LEAVE_KEYS) if (JSON.stringify(W.s[k] ?? null) !== JSON.stringify(X.state[k] ?? null)) wr([k], W.s[k] ?? null);
+  for (const e of W.events) if (e.type === "status" || e.type === "effectEnd") emit(X, null, e);
+}
 function write(X, txId, path, to, inst = null, step = null, tag = null) {
   const r = J.fineStateOp(X.state, path, to);
   if (!r.op) return false;
@@ -1403,14 +1414,7 @@ async function gmEdit(X, op, a) {
          here, in this transaction, so the undo puts it back with the documents (live 2026-11-13: the truck came back without its crew) */
       /* FXC2 (D197): ALL of it, by the roster's own leave (removeOne, D46): what lasts "until the next turn of" a leaver (a hero it snared),
          its tokens, triggers about it, prompts about it; the bare nulls of ANSD hid the leavers from the roster, so nothing of that ended */
-      if (gone.length) {
-        const W = { s: S.clone(X.state), ctx: { parts: [] }, events: [], effects: [] };
-        W.s.free ??= {};
-        for (const u of gone) for (const id of [...u.people, u.id]) OpsH.removeOne(W, id);
-        if (X.state.free === undefined) delete W.s.free;
-        for (const k of LEAVE_KEYS) if (JSON.stringify(W.s[k] ?? null) !== JSON.stringify(X.state[k] ?? null)) w([k], W.s[k] ?? null);
-        for (const e of W.events) if (e.type === "status" || e.type === "effectEnd") emit(X, null, e);
-      }
+      if (gone.length) leaveWrites(X, gone.flatMap((u) => [...u.people, u.id]), w);
       for (const u of gone) for (const id of [...u.people, u.id]) await perform(X, tx, { t: "summonRemove", combatant: id, tx });
       w(["kind"], "combat"); w(["chase"], null);
       /* CHASE (U168): how the chase ended stands in the state until the next chase starts, so every seat shows the same end card (each
@@ -1678,8 +1682,11 @@ async function systemOne(X, fx, triggers) {
       }
       closeTx(X, tx, { pub: "", gm: "{ITAC.journal.sceneEnd}" });
     } else if (fx?.type === "summonLeave") {                                                 // P6 [B1812]: its owner is broken, the group is, or the scene is over
-      const tx = openTx(X, {});
-      for (const id of Array.isArray(fx.combatants) ? fx.combatants : []) await perform(X, tx, { t: "summonRemove", combatant: id, tx });
+      const tx = openTx(X, {}), ids = (Array.isArray(fx.combatants) ? fx.combatants : []).filter((id) => P1.isId(id));
+      /* FXG2: what the roster would prune once they are gone (a grapple or a carry with one of them, ...) is written in this entry, so the
+         undo brings them back with it, as at a chase's end (FXC2 D197) */
+      if (!X.state.stack?.length) leaveWrites(X, ids, (path, to) => write(X, tx, path, to));
+      for (const id of ids) await perform(X, tx, { t: "summonRemove", combatant: id, tx });
       closeTx(X, tx, { pub: "{ITAC.journal.summonLeft}", gm: "{ITAC.journal.summonLeft}" });
     } else if (fx?.type === "regen") {                                                       // Z8 [B1893]: on each turn, by itself, 1 lost Health back
       const c = X.facts.c(fx.combatant), key = M.counterKey.round(fx.combatant, "regen");

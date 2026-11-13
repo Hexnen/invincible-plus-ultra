@@ -10,7 +10,8 @@
    Initiative = { deck, slots:[Slot], cur, curMember, prev:{[combatantId]:card}, trail:[combatantId], surprised?, pendingDraw?, draw? }
    Slot = { id, card|null, members:[combatantId], state:"waiting"|"active"|"done"|"lost", heldOff?, done:[combatantId], extra?:{kind,by?}, at? }
    Additions to the spec's shapes, all [D]: `trail` (members in the order their turns ended this round, for the GM's step back), `draw`
-   (the unfinished draw: deck left, queue, the holder being waited for), Slot.at (where an extra turn sits in the order). */
+   (the unfinished draw: deck left, queue, the holder being waited for), Slot.at (where an extra turn sits in the order), `lost?` (FXG2:
+   the members whose own turn of this round was lost, passed over by the GM's step back). */
 import { initiative } from "../rules/index.mjs";
 
 /* [A-1] a combatant added in the middle of a round acts last in it (next free card) and draws normally from the next round */
@@ -93,7 +94,7 @@ export function startDraw(init0, round, parts, opts = {}) {
   syncSlots(init, parts, mkId);
   if (round === 1) for (const g of opts.groups ?? []) { const r = group(init, g); if (r.ok) Object.assign(init, r.init); }       // [I4] [B2275]
   for (const s of init.slots) { s.state = "waiting"; s.done = []; delete s.heldOff; }
-  init.cur = null; init.curMember = null; init.trail = [];
+  init.cur = null; init.curMember = null; init.trail = []; delete init.lost;
   delete init.surprised; delete init.pendingDraw; delete init.draw;
   if (opts.redraw === "firstRoundOnly" && round > 1) {                                                                            // [I2] [B2277]: the order of round 1 stays
     for (const s of init.slots) if (s.card === null) s.card = nextFreeCard(init);                                                 // [A-1]
@@ -234,6 +235,7 @@ export function memberDone(init0, member, { lost = false } = {}) {
   if (!s) return init0;
   if (!s.done.includes(member)) s.done.push(member);
   init.trail.push(member);
+  if (lost && !s.extra && !(init.lost ?? []).includes(member)) init.lost = [...(init.lost ?? []), member];      // FXG2: a lost turn is never stepped back onto (stepBack)
   init.curMember = null;
   if (s.members.every((m) => s.done.includes(m))) { s.state = lost && s.members.length === 1 ? "lost" : "done"; init.cur = null; }
   return init;
@@ -245,14 +247,19 @@ export function closeRound(init0) {
   init.cur = null; init.curMember = null;
   return init;
 }
-/* the GM steps back to the member whose turn ended last in this round; -> { ok, init, member, suspended } */
+/* the GM steps back to the member whose turn ended last in this round; -> { ok, init, member, suspended }
+   FXG2 (BH6 suspicion, proved): a LOST turn [L7] [B2436] is passed over. It went by alone at its opening (ops-pure openTurn: what lasts
+   until it came ended, what lasts to its end ended, the loss was used up); opened again it was a whole turn with every action free and
+   nothing of that back. It stays lost and done; the step goes to the turn before it (question FXG2-3). */
+const slotOfDone = (init, member) => { const curS = slotById(init, init.cur); return curS?.done.includes(member) ? curS : [...init.slots].reverse().find((x) => x.done.includes(member) && x.state !== "waiting") ?? null; };
 export function stepBack(init0) {
-  if (!init0.trail.length) return fail("noPrev");
+  const lostOf = (m) => (init0.lost ?? []).includes(m) && !slotOfDone(init0, m)?.extra;
+  const at = init0.trail.findLastIndex((m) => !lostOf(m));
+  if (at < 0) return fail("noPrev");
   const init = copy(init0);
-  const member = init.trail.pop();
+  const member = init.trail.splice(at, 1)[0];
   const suspended = init.curMember;
-  const curS = slotById(init, init.cur);
-  const s = curS?.done.includes(member) ? curS : [...init.slots].reverse().find((x) => x.done.includes(member) && x.state !== "waiting") ?? null;
+  const s = slotOfDone(init, member);
   if (!s) return fail("noPrev");
   for (const x of init.slots) if (x.state === "active" && x.id !== s.id) x.state = "waiting";
   s.done = s.done.filter((m) => m !== member); s.state = "active";
@@ -363,6 +370,7 @@ export function removeCombatant(init0, id) {
   if (wasCurrent) init.curMember = null;
   settle(init);
   init.trail = init.trail.filter((m) => m !== id);
+  if (init.lost) { init.lost = init.lost.filter((m) => m !== id); if (!init.lost.length) delete init.lost; }
   delete init.prev[id];
   if (init.surprised) init.surprised = init.surprised.filter((m) => m !== id);
   if (init.draw) {
