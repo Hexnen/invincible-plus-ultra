@@ -161,6 +161,13 @@ export function rollUsers(X, who, I = null) {
 /* U7: who may see the dice. A secret roll and the roll of a combatant Foundry hides from the players go to the GM alone ("gm"), whatever
    the roller's own chat mode is; every other roll of a fight is public (undefined). The roller's client applies it (system-adapter). */
 const rollMode = (e, who) => (e.secret || who?.hidden === true ? "gm" : undefined);
+/* FXE3: the engine's own dice (an injury, a fall, a hazard's pool) are told to the GM alone when the action is secret or its doer, its
+   subject (the `crit:<id>` of an injury) or one of its targets is hidden by Foundry: the public card gave a hidden one away */
+function diceHidden(X, I, e) {
+  const hid = (id) => { try { return P1.isId(id) && X.facts.c(id)?.hidden === true; } catch { return false; } };
+  const about = String(e.key ?? "").split(":")[1];
+  return !!(e.secret || I?.decl?.secret || hid(I?.actor) || hid(e.who) || hid(about) || (I?.decl?.targets ?? []).some(hid));
+}
 
 /* ------------------------------------------------------------------ effects of a flow step */
 async function applyEffect(X, I, e, step) {
@@ -205,7 +212,7 @@ async function applyEffect(X, I, e, step) {
     case "status-": { const w = M.statusRemove(X.state, e.who, e.id); write(X, tx, w.path, w.to, I, step); return false; }
     case "fx": if (c) await perform(X, tx, { t: "fx", uuid: c.actorUuid, item: e.item, fx: e.fx, on: e.on === true, tx }, I, step); return false;      // P6: an item's active effect (a form, a size)
     case "crit": if (c) await perform(X, tx, { t: "critAdd", uuid: c.actorUuid, n: e.n, id: e.id, tx }, I, step); return false;
-    case "dice": { const faces = await perform(X, tx, { t: "dice", n: e.n, why: e.key, ...(e.sides > 0 ? { sides: Math.trunc(e.sides) } : {}) }, I, step); (I.data.res ??= {})[e.key] = Array.isArray(faces) ? faces : []; return true; }
+    case "dice": { const faces = await perform(X, tx, { t: "dice", n: e.n, why: e.key, ...(e.sides > 0 ? { sides: Math.trunc(e.sides) } : {}), ...(diceHidden(X, I, e) ? { gm: 1 } : {}) }, I, step); (I.data.res ??= {})[e.key] = Array.isArray(faces) ? faces : []; return true; }
     case "roll": {
       const rid = nextId(X, "r");
       const who = e.who === "hazard" ? null : X.facts.c(e.who);
@@ -296,6 +303,7 @@ function newsOf(I) {
     actor: I.actor ?? null, action: I.action, flow: I.flow, ...(I.data?.label?.name ? { name: I.data.label.name } : {}), ...(I.data?.hazard?.kind ? { hazard: String(I.data.hazard.kind) } : {}),
     ...(I.data?.hazard?.kind === "fixed" && HZ_CAUSES.includes(I.data.hazard.id) ? { hzCause: I.data.hazard.id } : {}),      // D123: what dealt the engine's own damage
     ...(fx ? { fx: { challenge: fx.challenge, kind: fx.kind }, ...(note ? { note } : {}) } : {}),        // U110: what a failed challenge did, and the GM's words about it
+    ...(I.action === "fireSpread" && typeof I.data?.hz?.zone === "string" && I.data.hz.zone ? { zone: I.data.hz.zone.slice(0, 80), ...(typeof I.data.to === "string" && I.data.to ? { to: I.data.to.slice(0, 80) } : {}) } : {}),      // FXE3 (U205): which zone's fire the roll was for, and where it spread
     result: I.data?.result ?? null, ...(typeof I.data?.mv?.at === "string" && I.data.mv.at ? { to: I.data.mv.at.slice(0, 80) } : {}), status: I.status,      /* FXR (U188): where a drive (a move) ended */ ...(I.data?.forced?.outcome ? { forced: 1 } : {}), ...(I.decl?.secret || fx?.hidden ? { secret: 1 } : {}), rows, ...reactsOf(I) };
 }
 /* D113: what the reactions of the table's eyes came to (Discretion, Warning Call, Guardian, one the GM settled by hand): told with the result, so a
@@ -1388,7 +1396,9 @@ async function gmEdit(X, op, a) {
       const gone = outcome === "escaped" ? Chase.escapedNpcs(X.state, X.facts) : [];
       const goneIds = new Set(gone.flatMap((u) => [u.id, ...u.people]));
       for (const p of Chase.endPlan(X.state).puts) if (!goneIds.has(p.who)) await perform(X, tx, { t: "zput", who: p.who, to: p.to, group: p.group, tx });
-      const names = [...goneIds].map((id) => ({ id, name: String(X.facts.c(id)?.name ?? "").slice(0, 80) }));
+      /* FXE3 (D204): one Foundry hid when the chase ended stays hidden from the players once gone (the Combat no longer lists it: view-pure
+         reads `hid` off this record, engine.mjs metaOf) */
+      const names = [...goneIds].map((id) => ({ id, name: String(X.facts.c(id)?.name ?? "").slice(0, 80), ...(X.facts.c(id)?.hidden === true ? { hid: 1 } : {}) }));
       /* what the roster would prune once they are gone (ops-pure removeOne: the vehicle's record, the seats, the ledger ...) is written
          here, in this transaction, so the undo puts it back with the documents (live 2026-11-13: the truck came back without its crew) */
       /* FXC2 (D197): ALL of it, by the roster's own leave (removeOne, D46): what lasts "until the next turn of" a leaver (a hero it snared),
@@ -1452,7 +1462,8 @@ async function opUndo(X, a) {
     /* U10: the players are told what the GM took back: the result they read is marked, and a line of its own says so */
     const was = (X.state.news ?? []).find((n) => n.tx === id && n.kind === "action" && !n.undone);
     if (was) X.state = { ...X.state, news: X.state.news.map((n) => (n.tx === id ? { ...n, undone: 1 } : n)) };
-    pushNews(X, { kind: "undo", ...(was ? { actor: was.actor, action: was.action, ...(was.name ? { name: was.name } : {}), ...(was.secret ? { secret: 1 } : {}) } : {}) });
+    pushNews(X, { kind: "undo", ...(was ? { actor: was.actor, action: was.action, ...(was.name ? { name: was.name } : {}), ...(was.secret ? { secret: 1 } : {}),
+      ...(was.hid ? { hid: 1, ...(was.hidA ? { hidA: 1 } : {}), ...(Array.isArray(was.hidT) ? { hidT: was.hidT.slice(0, 12) } : {}) } : {}) } : {}) });      // FXE3: the undo of a line kept from the players (U120) is kept from them too
     emit(X, null, { type: "undo", tx: id, ...(X.failed.length > n0 ? { failed: X.failed.slice(n0).map((f) => ({ t: f.t, reason: f.reason })) } : {}) });
   }
   /* FXV (P8e-9): a grant taken back by the undo takes its card of consent with it (an answer to it changed nothing and only then the card went) */
@@ -1683,7 +1694,7 @@ async function systemOne(X, fx, triggers) {
       if (!c) return;
       const line = `${c.name ?? ""}: {ITAC.journal.turnPassed.${why}}`;
       closeTx(X, openTx(X, {}), { pub: c.hidden ? "" : `${cMark(fx.combatant)}: {ITAC.journal.turnPassed.${why}}`, who: whoOf(X, [fx.combatant]), gm: line, keep: true });
-      pushNews(X, { kind: "turn", actor: fx.combatant, result: `pass.${why}` });             // view-pure drops it for whoever the combatant is concealed from
+      pushNews(X, { kind: "turn", actor: fx.combatant, result: `pass.${why}`, ...(c.hidden ? { hid: 1, hidA: 1 } : {}) });             // view-pure drops it for whoever the combatant is concealed from; FXE3: one passed while hidden stays the GM's after a reveal (U120)
     } else if (fx?.type === "abortInstances") {
       for (const inst of [...X.state.stack].reverse()) if (inst.actor === fx.actor && instOf(X, inst.id)) await abortInst(X, inst.id, true);
       dropPrompts(X, (p) => p.about === fx.actor);

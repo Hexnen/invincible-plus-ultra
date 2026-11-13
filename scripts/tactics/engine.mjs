@@ -78,7 +78,9 @@ function makeFacts(combat) {
     actorValue: (uuid, field) => { const a = fromUuidSync(uuid); return a ? Sys.actorValue(a, field) : null; },
   };
 }
-const metaOf = (combat) => ({ hidden: combat.combatants.filter((cb) => cb.hidden === true || cb.token?.hidden === true).map((cb) => cb.id), npc: combat.combatants.filter((cb) => isNpc(cb)).map((cb) => cb.id) });
+/* FXE3 (D204): who left the Combat while Foundry hid them (V.leftHidden: the chase's end record, the combat's own list kept when a hidden
+   combatant is deleted) stays concealed: the Combat no longer lists them, but the state, the journal and the events still carry their ids */
+const metaOf = (combat, state = Store.stateOf(combat)) => ({ hidden: [...combat.combatants.filter((cb) => cb.hidden === true || cb.token?.hidden === true).map((cb) => cb.id), ...V.leftHidden(state, combat.flags?.[MOD]?.hidLeft, (id) => !!combat.combatants.get(id))], npc: combat.combatants.filter((cb) => isNpc(cb)).map((cb) => cb.id) });
 
 /* ------------------------------------------------------------------ effects on documents (engine-pure.mjs "Host effects") */
 const labelOf = (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s));
@@ -101,7 +103,8 @@ async function perform(combat, e) {
       const roll = await new Roll(`${Math.max(1, Math.trunc(e.n))}d${e.sides > 0 ? Math.trunc(e.sides) : 6}`).evaluate();        // P5: `sides` for a random pick among N (where a fire spreads)
       const faces = roll.dice[0]?.results?.map((r) => r.result) ?? [];
       let op = null;
-      try { const m = await ChatMessage.create(await roll.toMessage({ flavor: t(`ITAC.dice.${String(e.why ?? "").split(":")[0]}`, {}, t("ITAC.dice.engine")), flags: { [MOD]: { tactics: { dice: e.why ?? "" } } } }, { create: false }), { ipuTactics: true }); if (m?.id) op = { t: "message", id: m.id }; } catch { /* the faces count; the card is a courtesy */ }   // D95: Roll#toMessage hands no document options on: the card is created here, with the engine's mark
+      /* FXE3 (view-pure diceCard): the card speaks for the user who threw it (never the GM's selected token); dice about somebody hidden go to the GMs alone */
+      try { const card = V.diceCard(e, MOD, t(`ITAC.dice.${String(e.why ?? "").split(":")[0]}`, {}, t("ITAC.dice.engine")), game.user?.name, () => ChatMessage.getWhisperRecipients("GM").map((u) => u.id)), mode = card.mode; const m = await ChatMessage.create(card.seal(await roll.toMessage(card.data, { create: false, ...mode })), { ipuTactics: true }); if (m?.id) op = { t: "message", id: m.id }; } catch { /* the faces count; the card is a courtesy */ }   // D95: Roll#toMessage hands no document options on: the card is created here, with the engine's mark
       return { result: faces, op };
     }
     case "rollRequest": sendRoll(combat, e); return {};
@@ -137,7 +140,7 @@ const hostFor = (combat) => ({
 /* ------------------------------------------------------------------ events (spec 16) */
 function publish(combat, state, events) {
   if (!events?.length) return;
-  const meta = metaOf(combat);
+  const meta = metaOf(combat, state ?? Store.stateOf(combat));
   for (const ev of events) {
     const full = { ...ev, combat: combat.id, ...(state?.fight ? { fight: state.fight } : {}) };      // H3-1: an event's seq counts from 1 in every fight: the fight's tag tells them apart
     try { Hooks.callAll(HOOK_GM, full); } catch (err) { console.warn(`${MOD} | tacticsGm listener`, err); }
@@ -262,7 +265,7 @@ export function viewer(user = game.user, combat = undefined) {
 /** the state as `user` may see it (staff: the whole state), or null */
 export function view(user = game.user, combat = undefined) {
   const c = pick(combat), state = c ? Store.stateOf(c) : null;
-  return state ? V.viewFor(state, viewer(user, c), metaOf(c)) : null;
+  return state ? V.viewFor(state, viewer(user, c), metaOf(c, state)) : null;
 }
 /* U19 / U5-7: the names `user` reads (view-pure.readerNames): a player's namesake numbers never count somebody concealed from that player */
 const namesFor = (c, user) => V.readerNames(Store.stateOf(c), viewer(user, c), metaOf(c), c.combatants.map((x) => ({ id: x.id, name: x.name ?? Sys.actorOf(x)?.name ?? "", hidden: x.hidden === true || tokenOf(x)?.hidden === true })));
@@ -272,7 +275,7 @@ export function journal(user = game.user, combat = undefined) { const c = pick(c
 export const context = (combat = undefined) => { const c = pick(combat); let names = null; return { staff: Store.isStaff(game.user),
   bonus: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || Sys.mayReadKit(a)) ? Sys.sheetBonuses(a) : null; } catch { return null; } },   // P6: the dice the sheet's effects add, for the preview; ANSG (P6-R10)
   kit: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || Sys.mayReadKit(a)) ? Sys.kitOf(a) : null; } catch { return null; } },      // P6: only of a sheet this user may read; ANSG (P6-R10): a player's hero by Foundry's view right
-  c: (cid) => { const cb = c?.combatants.get(cid); if (!cb) return null;      /* U19: numbered namesakes; a player's numbers never count somebody hidden from them */ names ??= namesFor(c, game.user).names; const a = Sys.actorOf(cb), f = a && (Store.isStaff(game.user) || a.isOwner) ? Sys.actorFacts(a) : null;      /* U45: Health and injuries of a sheet this user may read: the bar of somebody at 0 */ return { name: names[cb.id] ?? cb.name, npc: isNpc(cb), team: team(cb), owners: Sys.ownersOf(a), ...(f ? { kind: f.kind, health: f.health, crits: f.crits, pass: f.pass, resolve: f.resolve } : {}) }; }, online: (uid) => game.users.get(uid)?.active === true,
+  c: (cid) => { const cb = c?.combatants.get(cid); if (!cb) return null;      /* U19: numbered namesakes; a player's numbers never count somebody hidden from them */ names ??= namesFor(c, game.user).names; const a = Sys.actorOf(cb), f = a && (Store.isStaff(game.user) || a.isOwner) ? Sys.actorFacts(a) : null;      /* U45: Health and injuries of a sheet this user may read: the bar of somebody at 0 */ return { name: names[cb.id] ?? (Store.isStaff(game.user) ? cb.name : t("ITAC.Someone")), npc: isNpc(cb), team: team(cb), owners: Sys.ownersOf(a), ...(f ? { kind: f.kind, health: f.health, crits: f.crits, pass: f.pass, resolve: f.resolve } : {}) }; }, online: (uid) => game.users.get(uid)?.active === true,
   special: () => (c?.combatants?.contents ?? []).filter((cb) => ["challenge", "vehicle"].includes(Sys.actorOf(cb)?.type) && (Store.isStaff(game.user) || !V.concealed(cb, tokenOf(cb)))).map((cb) => ({ id: cb.id, name: cb.name, kind: Sys.actorOf(cb).type })) }; };      // P7
 
 /** what movement.mjs needs of this client (the cost confirmation on a drag, the reach pick) */

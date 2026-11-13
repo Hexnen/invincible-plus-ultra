@@ -11,7 +11,7 @@
    in the same frame; pointerleave / blur starts ONE 250 ms timer that clears `hot` only if it still points at that card, and any enter cancels it,
    so moving between neighbours across the gap never leaves two open or none flickering. Click on a portrait pins its card (a second click un-pins),
    pins live until the display state changes.
-   Item shape (main.mjs): { id, name, player, color, img, tokenIds, count, hp:{v,max}|null, rs:{v,max}|null, effects, defeated, active, selected,
+   Item shape (main.mjs): { id, name, player, color, img, tokenIds, count, hp:{v,max}|null, rs:{v,max}|null, effects, defeated, broken, active, selected,
    groups:[{slot,slots,active,pips:[{k,state}]}]|null, canSelect, canPan, canSheet } */
 import { t } from "./lang.mjs";
 import { costClasses } from "../kit.mjs";      // U93: an action of the turn is the kit's mark, here as on every surface
@@ -421,6 +421,7 @@ function paintCard(card, item, first) {
   setText(refs.nameT, item.name);
   setText(refs.player, item.player);
   el.toggleAttribute("data-defeated", !!item.defeated);
+  el.toggleAttribute("data-broken", !item.defeated && !!item.broken);      // FXE3 (D206): 0 Health = broken, not dead [B2707]
   el.toggleAttribute("data-active", !!item.active);
   el.toggleAttribute("data-sel", !!item.selected);
   el.toggleAttribute("data-multi", item.count > 1);
@@ -443,7 +444,7 @@ function paintCard(card, item, first) {
   refs.art.dataset.tooltipDirection = "RIGHT";
   const say = [
     item.name, t("IPT.Player", { name: item.player }), hp?.say, rs?.say, pipSay,
-    item.effects > 0 ? t("IPT.Effects", { n: item.effects }) + (v2 && item.fxList?.length ? `: ${item.fxList.map((f) => f.name).filter(Boolean).join(", ")}` : "") : "", item.defeated ? t("IPT.Defeated") : "", item.active ? t("IPT.Turn") : "",
+    item.effects > 0 ? t("IPT.Effects", { n: item.effects }) + (v2 && item.fxList?.length ? `: ${item.fxList.map((f) => f.name).filter(Boolean).join(", ")}` : "") : "", item.defeated ? t("IPT.Defeated") : item.broken ? t("IPT.Broken") : "", item.active ? t("IPT.Turn") : "",
     item.count > 1 ? t("IPT.Tokens", { n: item.count }) : "", t("IPT.Hint")
   ].filter(Boolean).join(". ");
   el.setAttribute("aria-label", say);

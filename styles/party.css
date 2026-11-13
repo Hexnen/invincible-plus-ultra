@@ -200,6 +200,10 @@
 #invincible-party .ipt-card[data-defeated] .ipt-img { filter: grayscale(1) brightness(.7); }
 #invincible-party .ipt-card[data-defeated] .ipt-skull { display: grid; }
 #invincible-party .ipt-card[data-defeated] .ipt-skull::before { content: "\f54c"; font: 900 1.28rem/1 var(--ipt-fa); color: #fff; text-shadow: 1px 1px 0 var(--ipt-ink), -1px -1px 0 var(--ipt-ink), 1px -1px 0 var(--ipt-ink), -1px 1px 0 var(--ipt-ink); }
+/* FXE3 (D206): broken (0 Health) is not dead: the cracked heart of the tactics surfaces on a portrait that keeps its colour, only dimmed */
+#invincible-party .ipt-card[data-broken] .ipt-img { filter: brightness(.72); }
+#invincible-party .ipt-card[data-broken] .ipt-skull { display: grid; }
+#invincible-party .ipt-card[data-broken] .ipt-skull::before { content: "\f7a9"; font: 900 1.2rem/1 var(--ipt-fa); color: #fff; text-shadow: 1px 1px 0 var(--ipt-ink), -1px -1px 0 var(--ipt-ink), 1px -1px 0 var(--ipt-ink), -1px 1px 0 var(--ipt-ink); }
 #invincible-party .ipt-turn {   /* the active turn: a yellow bolt chip on the portrait, visible in the peek too */
   position: absolute;
   top: 2.5px;
@@ -506,6 +510,7 @@
 #invincible-party.ipt-v2 .ipt-turn { width: 20px; height: 20px; left: 12px; }
 #invincible-party.ipt-v2 .ipt-turn::before { font-size: .68rem; }
 #invincible-party.ipt-v2 .ipt-card[data-defeated] .ipt-skull::before { font-size: 1.5rem; }
+#invincible-party.ipt-v2 .ipt-card[data-broken] .ipt-skull::before { font-size: 1.4rem; }
 
 /* compact: portrait + name (+ pips) + two thin bars */
 #invincible-party.ipt-v2.ipt-compact .ipt-card { padding: 2px 20px 2px 10px; gap: 6px; }

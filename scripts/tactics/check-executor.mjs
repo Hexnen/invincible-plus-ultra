@@ -178,7 +178,9 @@ eq((await fromPlayer("p1", { op: "endTurn", actor: "cbH1", round: 1, slot: 0 }, 
   const src = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
   /* D95: every chat message the executor makes carries the engine's mark as a DOCUMENT option */
   const E = await import("./engine.mjs"), n0 = chatMade.length;
-  ok(/ChatMessage\.create\(await roll\.toMessage\([^\n]*\{ create: false \}\), \{ ipuTactics: true \}\)/.test(src("./engine.mjs")), "D95: the engine's dice card is created by ChatMessage.create with the ipuTactics option (Roll#toMessage passes no document options)");
+  /* FXE3: the card may be sealed (the whisper of a hidden one's dice kept, view-pure diceCard) and Roll#toMessage may get the GM-only mode;
+     the pin is unchanged: ChatMessage.create with the ipuTactics document option, toMessage with create:false */
+  ok(/ChatMessage\.create\((card\.seal\()?await roll\.toMessage\([^\n]*\{ create: false(, \.\.\.mode)? \}\)\)?, \{ ipuTactics: true \}\)/.test(src("./engine.mjs")), "D95: the engine's dice card is created by ChatMessage.create with the ipuTactics option (Roll#toMessage passes no document options)");
   void E; void n0;
   /* D97: own startCombat tells of a start only when the fight did start, and hands the combat to the effect registry */
   const Own = Klass.makeClass(class { async startCombat() { return this; } }), heard = [], refreshed = [];

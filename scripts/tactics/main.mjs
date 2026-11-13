@@ -89,6 +89,9 @@ async function startRunning() {
   Hooks.on("preCreateChatMessage", (m) => Sys.keepRollPrivate(m));       // U7: a roll for the GM alone stays so when it is pushed
   // joining and leaving (spec 3.3): the executor brings the state in line
   Hooks.on("createCombatant", (c) => Engine.scheduleRoster(c.parent));
+  /* FXE3 (D204): a hidden combatant about to be deleted (the tracker, a summon dismissed, a chase's escape) is written down on the Combat
+     first (view-pure hidLeftAdd; engine.mjs metaOf reads it), so the players' views keep hiding it once it is gone. Only staff delete. */
+  Hooks.on("preDeleteCombatant", (cb) => { try { const c = cb?.parent, list = c && game.user?.isGM && Store.stateOf(c) && V.concealed(cb, cb.token) ? V.hidLeftAdd(c.flags?.[MOD]?.hidLeft, cb.id) : null; if (list) c.update({ [`flags.${MOD}.hidLeft`]: list }, { ipuTactics: true }).catch(() => {}); } catch (e) { console.warn(`${MOD} | tactics hidden leave`, e); } });
   Hooks.on("deleteCombatant", (c) => Engine.scheduleRoster(c.parent));
   Hooks.on("updateCombatant", (c, changes) => { if (changes && ("defeated" in changes || "actorId" in changes || "tokenId" in changes || changes.flags?.[MOD]?.tactics !== undefined)) Engine.scheduleRoster(c.parent); });
   Hooks.on("userConnected", () => Prompts.sync());                          // a prompt of a player who left falls to the executor

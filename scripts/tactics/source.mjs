@@ -28,6 +28,16 @@ export function tacticsState(combat) {
   cache.set(combat, { raw, state });
   return state;
 }
+/** FXE3 (D206) [B2704]-[B2707]: how a hero's card reads its life. 0 Health is BROKEN (the hero may still try to stand up), not dead. Dead
+    is the defeated mark on the actor (`deadMark`), a combatant of the hero marked defeated (the fight marks the dead so, FXP D163), or
+    the fight's own "dead" status. hp = { v, max } | null; cids = the hero's combatants in `combat` -> { dead, broken } */
+export function lifeOf(combat, cids, hp, deadMark = false) {
+  const ids = Array.isArray(cids) ? cids : [];
+  let dead = deadMark === true;
+  try { if (!dead) dead = ids.some((id) => combat?.combatants?.get?.(id)?.defeated === true); } catch { /* no combat */ }
+  if (!dead) { const st = tacticsState(combat); dead = !!st && ids.some((id) => (st.statuses?.[id] ?? []).some((s) => s?.id === "dead")); }
+  return { dead, broken: !dead && !!hp && Number(hp.v) <= 0 };
+}
 /** U118: who sits in a vehicle of this fight, the driver first ([] when nobody, or the combat is not ours) */
 export function aboard(combat, vid) {
   const r = tacticsState(combat)?.vehicles?.[vid];
