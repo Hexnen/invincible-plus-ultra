@@ -757,6 +757,7 @@ export function render(items, { quiet = false } = {}) {
 
   // keyed in place: every card is reused by token id; this pass reads the cards' rects first (FLIP), mutates, then plays the glides
   const fresh = !cards.size;   // the first population of an empty list: cards slide in staggered, no unfolding
+  const sig0 = rowsSig();
   const first = flipRects();
   let plan = choose(items);
   let added = applyPlan(items, plan, fresh);
@@ -781,6 +782,18 @@ export function render(items, { quiet = false } = {}) {
   clearTimeout(scrollTimer);
   scrollTimer = setTimeout(syncScroll, 420);   // after the leaving cards are gone
   if (added && folded() && !quiet) pingHandle();
+  if (rowsSig() !== sig0) rowsMoved();
+}
+/* FXV2 (SMOK-1): where the rows end is read by the page around the HUD (tactical combat fits the GM desk's top under them). A change of the
+   rows (full <-> compact, a card more or less, the chip) is said on the window once the new rows stand and once their glides and the leaving
+   cards are over, so what was placed by a rect read mid-glide is placed again. */
+const rowsSig = () => `${curCompact}|${expanded}|${[...cards.keys()].join(",")}|${curPlan.hidden}`;
+let rowsTimer = 0;
+function rowsMoved() {
+  const tell = () => { try { window.dispatchEvent(new CustomEvent("ipu:ich-rows")); } catch { /* nobody listens */ } };
+  requestAnimationFrame(tell);
+  clearTimeout(rowsTimer);
+  rowsTimer = setTimeout(tell, reduced() ? 240 : 380);
 }
 
 /* A row's label word ("Time left" / "Pozostały czas") and its value ("TL 6 / 6 rounds") share one line. When they do not fit (a narrow card, a long

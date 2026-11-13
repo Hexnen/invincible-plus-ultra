@@ -301,7 +301,7 @@ function placeSlots(rec) {
   root.style.setProperty("--itd-up-dx", `${Math.round(dx)}px`);
   /* the desk and the challenges read their part of the frame: told only when it changed */
   const key = JSON.stringify([fr.desk, fr.band, fr.toast]);
-  if (key !== frameKey) { frameKey = key; handlers.ichFloor?.(fr.band?.present ? fr.band.y1 : null); handlers.deskRelayout?.(); }
+  if (key !== frameKey) { frameKey = key; handlers.ichFloor?.(fr.band?.present ? fr.band.room : null); handlers.deskRelayout?.(); }
   /* whether the hint takes the questions' place is the frame's; when that flips, the pieces are put again (once) */
   const share = !!fr.slots.hint?.share;
   if (share !== shareWas) { shareWas = share; if (last) requestAnimationFrame(() => { if (last) render(last.d, last.ui); }); }
