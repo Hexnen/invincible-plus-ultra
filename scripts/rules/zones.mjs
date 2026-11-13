@@ -240,20 +240,25 @@ export function zonesInRange(graph, zone, n) {
 
 /* ------------------------------------------------------------------ distance for movement (passable routes only) ------------------------------------------------------------------ */
 
-/* Which borders a mover may cross. profile: { aerial?: boolean, over?: "rooftop" | "exterior", through?: "open" | "any" }.
+/* Which borders a mover may cross. profile: { aerial?: boolean, through?: "open" | "any" }.
    Default (book 2383, 2418, ruling 23): open borders and unlocked doors only.
    aerial (book 2385): flyers pass over the top of buildings without hindrance; the step over a blocked border is marked `over`.
-   Which blocked borders that means the book does not say (question OQ-14 of the handoff), so it is a parameter:
-     over "rooftop" (default, reading 4): a blocked border is crossed when one of its two zones has a rooftop (a city-map building
-                    that has not been levelled, book 2457);
-     over "exterior": a blocked border is crossed when its wall is a building's exterior wall (wall.outer), the reading of the map's
-                    zones API for its way "air" (ZR-3): interior walls, reinforced interior walls and locked doors in them stop flyers.
+   Which blocked borders that means was question OQ-14; the user's answer A14 (2026-11-12) settles it, and the map's zones API
+   (moinen-maps marks.mjs stopped(), way "air") reads it the same way:
+     - a building's exterior wall (wall.outer) never stops a flyer;
+     - from outside a flyer passes over every standing building by its roof: a blocked border with a rooftop on exactly one of its
+       two sides is crossed, whatever the wall is marked as (a reinforced wall or a locked door included);
+     - a wall between two standing buildings is a wall inside a building and stops it (unless marked exterior: two buildings side by
+       side); a freestanding wall (no rooftop on either side) stops it unless marked exterior;
+     - a wrecked building has no rooftop left to fly over (book 2457, hasRooftop).
+   The older profile option `over` ("rooftop" | "exterior", the two readings of OQ-14) is ignored: A14 replaced both.
    through "any" is for effects that do not travel through the space in between (book 2034, teleportation; book 1995, burrowing
    ignores all walls and doors). */
+export const flyerCrosses = (graph, border, from, to) =>
+  borderOpen(border) || !!border.wall?.outer || hasRooftop(graph.zones.get(from)) !== hasRooftop(graph.zones.get(to));
 function passFor(graph, profile = {}) {
   if (profile.through === "any") return () => true;
-  if (profile.aerial && profile.over === "exterior") return (border) => borderOpen(border) || !!border.wall?.outer;
-  if (profile.aerial) return (border, from, to) => borderOpen(border) || hasRooftop(graph.zones.get(from)) || hasRooftop(graph.zones.get(to));
+  if (profile.aerial) return (border, from, to) => flyerCrosses(graph, border, from, to);
   return (border) => borderOpen(border);
 }
 

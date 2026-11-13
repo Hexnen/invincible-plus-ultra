@@ -60,7 +60,7 @@ if (!fs.existsSync(path.join(root, "scripts/zones/places.mjs"))) {
   }
   eq(same, PLACES.length, "every place reads the same on both sides");
 
-  const WAYS = { walk: {}, air: { aerial: true, over: "exterior" }, through: { through: "any" } };
+  const WAYS = { walk: {}, air: { aerial: true }, through: { through: "any" } };   // A14: one rule for flyers on both sides
   const gold = { range: [], levels: [], walk: [], air: [], through: [] };
   let bad = 0;
   for (const a of PLACES) for (const b of PLACES) {

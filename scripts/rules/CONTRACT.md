@@ -106,8 +106,8 @@ Two distances (ruling 23):
   plus the levels between the two places (ruling 2: a ground / elevated difference adds one, two elevated places add nothing, floors add
   one each, a rooftop is above the top floor from inside and one zone up from outside).
 - **movement** (`routeBetween`, `moveRoute`, `moveDistance`, `zonesReachable`): passable borders only, by movement profile
-  `{ aerial?, through?: "open" | "any", over?: "rooftop" | "exterior" }`; `routeBetween` adds the levels climbed. The profile matching
-  the zones API's ways: walk `{}`, air `{ aerial: true, over: "exterior" }`, through `{ through: "any" }`. The ways `swim` and `swing`
+  `{ aerial?, through?: "open" | "any" }`; `routeBetween` adds the levels climbed. The profile matching
+  the zones API's ways: walk `{}`, air `{ aerial: true }`, through `{ through: "any" }`. The ways `swim` and `swing`
   have no profile here (their zone rules are the map's, ZR-5).
 
 Numbers instead of a graph: `slugfestReachAt` and `canCommunicateAt` take the zones API's `range(a, b)` result and the two places'
@@ -157,7 +157,11 @@ Barriers and terrain: `canBreach(strength, armor)`, `breachOptions(border)`, `br
 - `slugfestReach*` reasons: `altitude` (an off-map area between them), `noRange`, `distance`, `elevated` (ground against elevated without
   `huge` / `reachesElevated`), `level` (another floor or underground). `opts: { range, huge, reachesElevated }`.
 - `wreckCheck` reasons now include `terrainUnset` (with `gmMayAllow`).
-- `passFor` profile option `over`: `"rooftop"` (default, reading 4) or `"exterior"` (the zones API's reading: over walls marked `outer`).
+- Flyers and blocked borders (`aerial`, the user's answer A14 of 2026-11-12, which settled OQ-14; `flyerCrosses(graph, border, from, to)`):
+  a building's exterior wall (`wall.outer`) never stops a flyer; a blocked border with a standing rooftop on exactly one side is crossed
+  over that roof, whatever the wall; a wall between two standing buildings, or a freestanding wall, stops it unless marked exterior; a
+  wrecked building has no roof. The map's zones API (`marks.mjs` `stopped()`, way `air`) gives the same answer for every border. The
+  older profile option `over` (`"rooftop"` / `"exterior"`, the two readings of OQ-14) is ignored.
 
 ### `movement.mjs`
 `TRAVEL_TIERS`, `MOVE_MODES`, `moveProfile(mode, { tier, speed, aerial })`, `moveConditions(profile, conditions)`,
@@ -342,7 +346,6 @@ the table decides.
 | Question | Parameter | Default | Other |
 |---|---|---|---|
 | OQ-13 who draws first when somebody chooses between two cards | `initiative.dealStart / dealRound` `opts.reflexesFirst` | false: in the given order | true: those with a choice first |
-| OQ-14 flyers and blocked borders | movement profile `over` | `"rooftop"` (reading 4) | `"exterior"` (the zones API's reading ZR-3) |
 | OQ-15 what stops fire and what burns | `hazards.fireSpreadTargets` `opts.doors`, `opts.needFlammable`, `opts.water` | `"pass"`, true, `"burns"` | `"block"`, false, `"never"` (the map's own fire round, ZR-8) |
 | OQ-17 hold-off swaps per round | `initiative.holdOffTargets / holdOff` `opts.initiatorOnce` | false | true |
 | OQ-18 wrecking a zone whose terrain was never set | `zone.terrainUnset` | `wreckCheck` answers `terrainUnset` with `gmMayAllow` | the GM sets the terrain |
@@ -371,7 +374,7 @@ All of them stay open.
 2. `zones.borderImpedesTalk`: an intact wall impedes talking unless its door is open or breached.
 3. `zones.canCommunicate`: adjacency is horizontal; ground and elevated characters of the same or neighbouring zones can talk.
    3a. Other level differences (floors, underground) count as vertical zones: the next floor is adjacent, two floors apart is not.
-4. `zones` aerial movement: a flyer crosses a blocked border when one of its two zones has a rooftop (book: flyers pass over buildings). A freestanding wall is not crossed. The other reading is the profile option `over: "exterior"`.
+4. `zones` aerial movement: settled by the user's answer A14 (2026-11-12), see the movement section; no longer a reading.
 5. `zones.slugfestReach`: the altitude difference counts as in ruling 2, so a range-1 attack (wrecking) reaches an elevated target in the attacker's own zone, and the next floor.
 6. `zones.forcedMove`: a border is a barrier when it is not open for movement; the wall's Armor is used unless the caller names the door.
 7. `damage.selectArmor`: on equal ratings the non-Barrier armor is used, so the Barrier is not spent. `barrierBreached`: only when the Barrier was the armor that counted and damage got through.

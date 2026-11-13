@@ -91,7 +91,7 @@ eq(Z.AREAS.map(Z.isOffMap).concat(Z.isOffMap("elevated"), Z.isOffMap("undergroun
 
 /* ------------------------------------------------------------------ routes with levels */
 {
-  const WAYS = { walk: {}, air: { aerial: true, over: "exterior" }, through: { through: "any" } };
+  const WAYS = { walk: {}, air: { aerial: true }, through: { through: "any" } };
   let bad = 0, n = 0;
   for (const [way, profile] of Object.entries(WAYS)) {
     const want = decode(GOLDEN[way]);
@@ -102,23 +102,35 @@ eq(Z.AREAS.map(Z.isOffMap).concat(Z.isOffMap("elevated"), Z.isOffMap("undergroun
       i++; n++;
     }
   }
-  eq(bad, 0, `routeBetween = the zones API's route for walk, air (over exterior walls) and through, ${n} cases`);
+  eq(bad, 0, `routeBetween = the zones API's route for walk, air (A14: over exterior walls and the edges of standing buildings) and through, ${n} cases`);
   const T = (a, b, p) => Z.routeBetween(g, a, b, p);
   eq(T("e:f1", "f"), { borders: 1, levels: 1, total: 2 }, "a walker comes down the stairs first (book 2417)");
   eq(T("e", "e:elevated"), { borders: 0, levels: 2, total: 2 }, "up to the rooftop of a building with one floor: two vertical zones");
   eq(T("c", "c:elevated"), { borders: 0, levels: 1, total: 1 }, "a plain building is one zone: its rooftop is one move (book 2394)");
   eq(T("a", "b"), null, "an exterior wall stops a walker");
-  eq(T("a", "b:f2", { aerial: true, over: "exterior" }), { borders: 1, levels: 0, total: 1 }, "a flyer passes over the exterior wall and changes level inside the move (book 2385-2386)");
+  eq(T("a", "b:f2", { aerial: true }), { borders: 1, levels: 0, total: 1 }, "a flyer passes over the exterior wall and changes level inside the move (book 2385-2386)");
   eq(T("a", "a:elevated", { aerial: true }), { borders: 0, levels: 1, total: 1 }, "ground to elevated in one zone: one quick action (book 2386)");
   eq(T("a", { zone: "a", level: "elevated" }), null, "the air cannot be walked to");
   eq([T("a", "a:underground"), T("a", "a:underground", { aerial: true }), T("a", "c:underground", { through: "any" })], [null, null, { borders: 2, levels: 0, total: 2 }], "only a mover that passes through reaches underground (book 1995, ZR-4)");
   eq([T("a", "@sky", { aerial: true }), T("@sky", "@sky", { aerial: true })], [null, null], "to or from an off-map area there is no route: that is a full action (book 2387-2388)");
-  // flyers and blocked borders: the two readings as a parameter (OQ-14)
-  eq(Z.moveDistance(g, "b", "e", { aerial: true }), 1, "reading 4 (default): a flyer crosses any blocked border beside a rooftop, a reinforced interior wall included");
-  eq(Z.moveDistance(g, "b", "e", { aerial: true, over: "exterior" }), Infinity, "over exterior: a reinforced interior wall stops a flyer (no other way round here)");
-  eq(Z.moveRoute(g, "a", "b", { aerial: true, over: "exterior" }).steps[0].over, true, "the step over a wall is marked");
-  eq(Z.moveDistance(g, "c", "f", { aerial: true, over: "exterior" }), Infinity, "over exterior: an interior wall stops a flyer");
-  eq(Z.moveDistance(g, "c", "f", { aerial: true }), 1, "reading 4: the wall beside a rooftop is crossed");
+  // flyers and blocked borders: the user's answer A14 (2026-11-12) replaced the two readings of OQ-14 (the profile option `over`
+  // "rooftop" / "exterior" is gone); the old checks below changed to A14, the map's zones code (marks.mjs stopped()) agrees
+  eq(Z.moveRoute(g, "a", "b", { aerial: true }).steps[0].over, true, "the step over a wall is marked");
+  eq(Z.moveDistance(g, "c", "f", { aerial: true }), 1, "A14 (was: over exterior, Infinity): the wall between a standing building and open ground is crossed over the roof");
+  eq(Z.moveRoute(g, "b", "e", { aerial: true }).length, 3, "A14 (was: reading 4, 1): a reinforced wall between two standing buildings is a wall inside a building and stops a flyer; it goes round (3)");
+  eq(Z.moveRoute(g, "d", "e", { aerial: true }).length, 1, "A14: the locked door between a wrecked building (no roof) and a standing one is crossed over the standing one's roof");
+  eq([Z.moveDistance(g, "a", "e", { aerial: true }), Z.moveDistance(g, "e", "a", { aerial: true })], [2, 2], "A14: the same both ways");
+  {
+    const two = (wall, za = {}, zb = {}) => Z.moveDistance(Z.makeGraph({ zones: [{ id: "x", ...za }, { id: "y", ...zb }], borders: [{ a: "x", b: "y", wall, door: null }] }), "x", "y", { aerial: true });
+    const W = { armor: 2, state: "intact" }, O = { armor: 3, state: "intact", outer: true }, R = { armor: 4, state: "intact" }, roof = { building: true, rooftop: true };
+    eq([two(W), two(O)], [Infinity, 1], "A14: a freestanding wall (no building on either side) stops a flyer unless it is marked exterior");
+    eq([two(W, roof, roof), two(R, roof, roof), two(O, roof, roof)], [Infinity, Infinity, 1], "A14: a wall between two standing buildings stops a flyer unless it is marked exterior (two buildings side by side)");
+    eq([two(W, roof), two(R, {}, roof), two(O, roof)], [1, 1, 1], "A14: from outside a flyer passes over every standing building, whatever the wall is marked as");
+    eq([two(W, { ...roof, wrecked: true }), two(W, { ...roof, wrecked: true }, roof), two(W, { ...roof, wrecked: true }, { ...roof, wrecked: true })], [Infinity, 1, Infinity], "A14: a wrecked building has no roof to fly over (book 2457)");
+    eq([two(W, roof, {}), Z.moveDistance(Z.makeGraph({ zones: [{ id: "x", ...roof }, { id: "y" }], borders: [{ a: "x", b: "y", wall: W, door: null }] }), "x", "y")], [1, Infinity], "A14 is for flyers only: a walker is still stopped");
+    eq(two(W, roof, roof) === Infinity && Z.moveDistance(Z.makeGraph({ zones: [{ id: "x", ...roof }, { id: "y", ...roof }], borders: [{ a: "x", b: "y", wall: W, door: null }] }), "x", "y", { aerial: true, over: "rooftop" }), Infinity,
+      "the old option over: \"rooftop\" no longer lets a flyer through a wall inside a building");
+  }
 }
 
 /* ------------------------------------------------------------------ altitude change */
