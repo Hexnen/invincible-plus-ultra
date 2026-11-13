@@ -10,6 +10,7 @@
 /** which elements read each number (the selectors of the rules in styles/*.css that use it) */
 export const USERS = Object.freeze({
   "--igd-toast-maxh": "#chat-notifications .overflow",                    // tactics-slots.css (U6, U134): the chat toasts' own strip
+  "--ita-card-z": "#invincible-tactics-dock",                             // tactics-ui.css (POLS U222): the fight's card above the windows open when it came
   "--ita-dice-z": "#invincible-combat-bar, #invincible-tactics-dock",      // combat.css / tactics-ui.css (U108): above Dice So Nice's canvas
   "--its-nt": ".ips-notice",                                              // tactics-slots.css (U132): the end-of-session notice's own place, its top
   "--its-nx": ".ips-notice",                                              // ... and its middle

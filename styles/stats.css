@@ -52,6 +52,24 @@
 .ipu-st-pick-n b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ipu-st-pick-n small { font-size: 11.5px; color: var(--st-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ipu-st-pick[aria-selected="true"] .ipu-st-pick-n small { color: #3d4f6e; }
+/* POLS (U226): the rail's K/D as three marks with their numbers */
+.ipu-st-kdmini { display: flex; gap: 9px; }
+.ipu-st-kdmini span { display: inline-flex; align-items: center; gap: 3px; }
+.ipu-st-kdmini i { font-size: 9.5px; }
+.ipu-st-kdmini span[data-zero="1"] { opacity: .6; }
+/* POLS (U227): the fights' rail by session; a folded session is one line, a long one shows its first fights and a "show more" */
+.ipu-st-sess, .ipu-st-more { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 7px; min-height: 30px; padding: 4px 8px; cursor: pointer; }
+.ipu-st-sess { margin-top: 6px; font: 400 12px/1.1 Titles, Comic, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ipu-yellow); border-bottom: 1px solid var(--ipu-line); }
+.ipu-st-sess:first-child { margin-top: 0; }
+.ipu-st-sess i { width: 10px; font-size: 10px; color: var(--ipu-label); }
+.ipu-st-sess small { margin-left: auto; font: 400 11px/1 Roboto, sans-serif; letter-spacing: 0; text-transform: none; color: var(--st-muted); }
+.ipu-st-more { justify-content: center; font: 400 12px/1 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--ipu-label); border: 1px dashed var(--ipu-line); }
+.ipu-st-sess:hover, .ipu-st-more:hover { color: #fff; background: var(--ipu-tile); }
+.ipu-st-sess:focus-visible, .ipu-st-more:focus-visible { outline: var(--ipu-ring-w) solid var(--ipu-ring-ink); outline-offset: -1px; }
+/* POLS (U228): no GM connected: one line under the head, the statistics still readable under it */
+.ipu-st:has(> .ipu-st-nogm) { grid-template-rows: auto auto minmax(0, 1fr); }
+.ipu-st-nogm { display: flex; align-items: center; gap: 9px; padding: 7px 12px; font: 400 12.5px/1.35 Comic, sans-serif; color: var(--ipu-text); background: #1b2d4a; border-bottom: 1px solid var(--ipu-line); }
+.ipu-st-nogm i { flex: none; font-size: 14px; color: var(--ipu-yellow); }
 .ipu-st-date { flex: none; width: 54px; font: 400 11.5px/1.15 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; text-align: center; color: var(--ipu-yellow); }
 .ipu-st-pick[aria-selected="true"] .ipu-st-date { color: var(--ipu-ink); }
 .ipu-st-av { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; overflow: hidden; font: 400 15px/1 Titles, Comic, sans-serif; color: var(--ipu-ink); background: var(--ipu-label); border: 2px solid var(--ipu-ink); }
@@ -63,11 +81,17 @@
 .ipu-st-who-t { display: grid; gap: 5px; min-width: 0; flex: 1; }
 .ipu-st-who-t h2.ipu-plate { margin: 0; font-size: 17px; color: var(--ipu-ink); text-shadow: none; border-bottom: 2px solid var(--ipu-ink); }      /* live: Foundry's own h2 colour beat the kit's zero-specificity plate (yellow on yellow) */
 .ipu-st-who-t p { color: var(--st-muted); font-size: 12.5px; }
-.ipu-st-kd { flex: none; display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 7px; padding: 5px 10px 6px; border: 2px solid var(--ipu-yellow); cursor: help; }
-.ipu-st-kd-l { grid-column: 1 / -1; font: 400 11px/1 Titles, Comic, sans-serif; letter-spacing: .1em; color: var(--ipu-label); }
-.ipu-st-kd b { font: 400 26px/1 Titles, Comic, sans-serif; color: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
-.ipu-st-kd-a { font: 400 14px/1 Titles, Comic, sans-serif; color: var(--ipu-cyan-lt); }
-.ipu-st-kd-r { grid-column: 1 / -1; justify-self: start; margin-top: 3px; padding: 1px 6px; font: 700 11.5px/1.2 Roboto, sans-serif; color: var(--ipu-ink); background: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
+/* POLS (U226): the K/D box in words: three cells (number over its name: Defeated, Defeats, Assists), the ratio under them only once there is
+   an own defeat. A zero is muted, never coloured. */
+.ipu-st-kd { flex: none; display: grid; grid-template-columns: repeat(3, auto); justify-content: start; align-items: end; gap: 3px 0; padding: 6px 4px 6px; border: 2px solid var(--ipu-yellow); cursor: help; }
+.ipu-st-kd-c { display: grid; justify-items: center; gap: 3px; min-width: 64px; padding: 0 8px; }
+.ipu-st-kd-c + .ipu-st-kd-c { border-left: 1px solid var(--ipu-line); }
+.ipu-st-kd-c b { font: 400 26px/1 Titles, Comic, sans-serif; color: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
+.ipu-st-kd-c[data-id="d"] b { color: #ff8178; }
+.ipu-st-kd-c[data-id="a"] b { color: var(--ipu-cyan-lt); }
+.ipu-st-kd-c[data-zero="1"] b { color: var(--st-muted); }
+.ipu-st-kd-c small { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ipu-label); white-space: nowrap; }
+.ipu-st-kd-r { grid-column: 1 / -1; justify-self: start; margin: 4px 8px 0; padding: 1px 6px; font: 700 11.5px/1.2 Roboto, sans-serif; color: var(--ipu-ink); background: var(--ipu-yellow); font-variant-numeric: tabular-nums; }
 
 /* ---------- the numbers ---------- */
 .ipu-st-table { width: 100%; border-collapse: collapse; background: transparent; border: 0; font-variant-numeric: tabular-nums; }
@@ -80,7 +104,7 @@
 .ipu-st-table tbody tr:not(.ipu-st-g) > * { padding: 4px 8px; border-bottom: 1px solid rgba(107, 130, 166, .25); }
 .ipu-st-table tbody th[scope="row"] { text-align: left; font-weight: 400; color: var(--ipu-text); cursor: help; }
 .ipu-st-table td { text-align: right; color: var(--ipu-text); white-space: nowrap; }
-.ipu-st-table td.ipu-st-sum { font-weight: 700; color: #fff; background: rgba(255, 231, 42, .07); }
+.ipu-st-table td.ipu-st-sum { font-weight: 700; color: #fff; background: rgba(255, 255, 255, .05); }      /* POLS (U226): a neutral tint: on the yellow one a zero read grey beside the blue-grey zeros of the other columns */
 .ipu-st-table td[data-zero="1"] { color: var(--st-muted); font-weight: 400; }
 .ipu-st-table td.ipu-st-na { color: var(--ipu-line); cursor: help; }
 .ipu-st-table tbody tr:not(.ipu-st-g):hover > * { background: rgba(255, 255, 255, .04); }
@@ -108,10 +132,22 @@
 .ipu-aw-burst { flex: none; display: grid; place-items: center; width: 80px; height: 80px; background: var(--ipu-yellow);
   clip-path: polygon(50% 0, 59% 18%, 79% 7%, 77% 29%, 98% 31%, 84% 48%, 100% 63%, 79% 69%, 85% 91%, 64% 84%, 50% 100%, 38% 83%, 17% 92%, 21% 70%, 0 64%, 15% 49%, 2% 31%, 23% 29%, 20% 7%, 41% 18%); }
 .ipu-aw-burst .ipu-aw-face { width: 48px; height: 48px; font-size: 22px; border: 2px solid var(--ipu-ink); }
+.ipu-aw-faces { display: flex; align-items: center; }
+.ipu-aw-mvp[data-shared="2"] .ipu-aw-burst .ipu-aw-face { width: 36px; height: 36px; font-size: 16px; }
+.ipu-aw-mvp[data-shared="3"] .ipu-aw-burst .ipu-aw-face { width: 28px; height: 28px; font-size: 13px; }
+.ipu-aw-mvp[data-shared] .ipu-aw-burst .ipu-aw-face + .ipu-aw-face { margin-left: -9px; }
 .ipu-aw-mvp-t { display: grid; gap: 2px; min-width: 0; }
-.ipu-aw-mvp-k { justify-self: start; padding: 0 8px 1px; font: 400 22px/1.05 Titles, Comic, sans-serif; letter-spacing: .08em; color: var(--ipu-ink); background: var(--ipu-yellow); border: 2px solid var(--ipu-ink); transform: rotate(-2deg) skewX(-6deg); cursor: help; }
+.ipu-aw-mvp-h { display: flex; align-items: center; gap: 8px; }
+.ipu-aw-mvp-k { padding: 0 8px 1px; font: 400 22px/1.05 Titles, Comic, sans-serif; letter-spacing: .08em; color: var(--ipu-ink); background: var(--ipu-yellow); border: 2px solid var(--ipu-ink); transform: rotate(-2deg) skewX(-6deg); cursor: help; }
 .ipu-aw-mvp-t b { margin-top: 3px; font: 400 18px/1.1 Titles, Comic, sans-serif; letter-spacing: .03em; color: #fff; }
-.ipu-aw small { font-size: 12px; color: var(--ipu-label); font-variant-numeric: tabular-nums; }
+.ipu-aw small { font-size: 12.5px; color: var(--ipu-text); font-variant-numeric: tabular-nums; }
+.ipu-aw-num { font: 400 14px/1 Titles, Comic, sans-serif; letter-spacing: .02em; color: var(--ipu-yellow); }
+/* POLS: the stickers of the end-of-fight card, "You" (cyan) and "Tie" (white) */
+.ipu-aw-tag { flex: none; display: inline-block; padding: 1px 5px 0; font: 400 10.5px/1.15 Titles, Comic, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ipu-ink); background: #fff; border: 1.5px solid #000; rotate: 3deg; vertical-align: 1px; }
+.ipu-aw-tag[data-tooltip] { cursor: help; }
+.ipu-aw-you { background: var(--ipu-cyan-lt); rotate: -3deg; }
+.ipu-aw-name .ipu-aw-tag { margin-left: 6px; }
+.ipu-aw :is(.ipu-aw-row, .ipu-aw-mvp)[data-mine] .ipu-aw-face { outline: 2px solid var(--ipu-cyan-lt); }
 .ipu-aw-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0 18px; margin: 0; padding: 0; list-style: none; }
 .ipu-aw-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; min-height: 38px; padding: 4px 2px; border-bottom: 1px solid rgba(107, 130, 166, .25); }
 .ipu-aw-badge { --b: var(--ipu-label); display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 3px; color: var(--ipu-ink); background: var(--b); border: 2px solid #000; rotate: 45deg; }
@@ -119,8 +155,9 @@
 .ipu-aw-row .ipu-aw-badge { cursor: help; }
 .ipu-aw-t { display: grid; min-width: 0; }
 .ipu-aw-name { font: 400 14px/1.15 Titles, Comic, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #fff; }
-.ipu-aw-who { display: flex; align-items: center; gap: 7px; max-width: 150px; font-weight: 700; font-size: 12.5px; color: var(--ipu-text); }
-.ipu-aw-who > span:last-child { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.ipu-aw-who { display: flex; align-items: center; gap: 7px; max-width: 150px; font: 400 14px/1.1 Titles, Comic, sans-serif; letter-spacing: .03em; color: #fff; }
+.ipu-aw-who .ipu-aw-face + .ipu-aw-face { margin-left: -9px; }
+.ipu-aw-wn { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .ipu-aw-got { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .ipu-aw-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 2px 9px 2px 4px; font: 400 12.5px/1 Titles, Comic, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ipu-text); border: 1px solid var(--ipu-line); cursor: help; }
 .ipu-aw-chip .ipu-aw-badge { width: 18px; height: 18px; margin: 0 2px; border-width: 1.5px; }

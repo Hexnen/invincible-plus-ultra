@@ -163,7 +163,7 @@ const base = [
   eq(TP.cardOf({ ...rec }, { gm: false }, L.t).state, "wait", "F: titles not counted yet: wait");
   eq(TP.cardOf({ ...rec, tm: { v: 1, small: 1 }, titles: [] }, { gm: false }, L.t).state, "small", "F: a small fight");
   eq(TP.cardOf({ ...rec, tm: { v: 1 }, titles: [] }, { gm: false }, L.t).state, "none", "F: nobody stood out");
-  eq(TP.why({ id: "defender", n: 4, d: { armor: 2, blocks: 1 } }, (k, p) => L.tIn("pl", k, p)), "2 na Pancerzu · 1 blok", "F: a line in Polish");
+  eq(TP.why({ id: "defender", n: 4, d: { armor: 2, blocks: 1 } }, (k, p) => L.tIn("pl", k, p)), "Pancerz wchłonął 2 · 1 blok", "F: a line in Polish");      // POLS (U223): the wording of the Armor part changed, the numbers did not
   eq(TP.why({ id: "everywhere", n: 5 }, (k, p) => L.tIn("en", k, p)), "5 zones crossed", "F: a line in English");
   /* collected over fights, a period, the model */
   const rec2 = { ...stored, f: "C1_f2", t0: 50, titles: [{ id: "mvp", c: "H1", a: "A_H1", n: 9 }, { id: "killer", c: "NH", a: "A_NH", n: 1 }], tm: { v: 1 } };
@@ -190,7 +190,7 @@ eq(Object.keys(L.EN).filter((k) => k.startsWith("IPU.Awrd.")).sort(), Object.key
   ok(/if \(!Store\.isWriter\(\) \|\| !setTitles\) return/.test(w) && /sameTitles/.test(w), "H: only the writer counts titles, and writes only a change");
   ok(/meta && typeof meta === "object" \? \{ tm: meta \}/.test(main), "H: setTitles keeps the meta (tm)");
   ok(/fightSections = \[fightSection\]/.test(app), "H: the window's fight section is the titles'");
-  ok(/sum: decorate\(sum\?\.card/.test(fb) && /StatStore\.subscribe\(onStats\)/.test(fb), "H: the fight card gets its titles and follows the statistics");
+  ok(/sum: shown\(\)/.test(fb) && /function shown\(\) \{ const c = decorate\(sum\?\.card/.test(fb) && /StatStore\.subscribe\(onStats\)/.test(fb), "H: the fight card gets its titles and follows the statistics");      // POLS: decorate now goes through shown() (it also lifts the dock over the windows, U222)
   ok(/awardsBody\(c\)/.test(dom) && /role: "tab"/.test(dom), "H: the card has the titles tab");
 }
 /* ---- I. found live: the doer of a challenge roll and of a counterattack (emit() overwrites `by` with the user), the summary card's

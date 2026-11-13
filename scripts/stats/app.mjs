@@ -10,13 +10,14 @@ import * as M from "./model.mjs";
 import { t } from "./lang.mjs";
 import { fightSection, collectedStrip } from "./titles-ui.mjs";
 import { radarFigure } from "./radar-ui.mjs";
+import * as SP from "./show-pure.mjs";      // POLS: the K/D in words, the fights by session
 
 const MOD = Store.MOD;
 const ID = "ipu-stats";
 const { ApplicationV2 } = foundry.applications.api;
 export const fightSections = [fightSection];      // AWRD: the titles of the fight (titles-ui.mjs) are the first section
 let TL = null;      // the tactical strings (action, stunt and attribute names), loaded on first open
-const ui0 = { tab: "chars", period: "session", side: "h", sel: { chars: null, players: null, fights: null } };
+const ui0 = { tab: "chars", period: "session", side: "h", sel: { chars: null, players: null, fights: null }, open: new Set(), more: new Set() };      // POLS (U227): the sessions opened, the sessions shown in full
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const h = (tag, attrs = {}, ...kids) => {
@@ -37,7 +38,8 @@ const names = {
   /* RADR: the attributes as they are now (prepared data: an active effect counts); the model asks only for the rail's characters */
   attrs: (id) => { const at = game.actors?.get(id)?.system?.attributes; return at ? Object.fromEntries(Object.entries(at).map(([k, x]) => [k, x?.value])) : null; },
   players: () => game.users.filter((u) => !u.isGM).map((u) => ({ id: u.id, name: u.name, avatar: u.avatar || u.character?.img || null })),
-  when: (ms) => { try { return new Date(ms).toLocaleString(game.i18n.lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } }
+  when: (ms) => { try { return new Date(ms).toLocaleString(game.i18n.lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } },
+  day: (ms) => { try { return new Date(ms).toLocaleDateString(game.i18n.lang, { weekday: "short", day: "numeric", month: "short" }); } catch { return ""; } }
 };
 const viewer = () => ({ gm: !!game.user?.isGM, id: game.user?.id ?? null });
 const TAB_ICON = { chars: "fa-mask", players: "fa-user", fights: "fa-hand-fist" };
@@ -75,6 +77,8 @@ export class StatsApp extends ApplicationV2 {
   _onFirstRender(c, o) {
     super._onFirstRender?.(c, o); this.#unsub = Store.subscribe(() => this.#want());
     /* RADR: a sheet change (an attribute, or an effect that moves one) redraws the radar while the characters tab is open */
+    /* POLS (U228): a GM coming or going changes the note that nothing is counted without one */
+    this.#hooks.push(["userConnected", Hooks.on("userConnected", () => this.#want())]);
     const bump = (doc) => { const a = doc?.documentName === "Actor" ? doc : doc?.parent?.documentName === "Actor" ? doc.parent : doc?.parent?.parent; if (ui0.tab !== "chars" || !a || a.isToken) return; this.#attrV++; this.#want(); };
     for (const ev of ["updateActor", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "deleteItem"]) this.#hooks.push([ev, Hooks.on(ev, bump)]);
   }
@@ -90,6 +94,8 @@ export class StatsApp extends ApplicationV2 {
     else if (act === "side") { ui0.side = v; ui0.sel.chars = null; }
     else if (act === "sel") ui0.sel[ui0.tab] = v;
     else if (act === "delFight") return this.#deleteFight(v);
+    else if (act === "sess") { if (ui0.open.has(v)) ui0.open.delete(v); else ui0.open.add(v); }
+    else if (act === "more") ui0.more.add(v);
     this.#paint(true);
     if (act === "sel") this.#root.querySelector(`.ipu-st-rail [data-v="${CSS.escape(v)}"]`)?.focus();
   }
@@ -107,12 +113,14 @@ export class StatsApp extends ApplicationV2 {
   #paint(force = false) {
     if (!this.#root) return;
     const data = Store.all(), vw = viewer();
-    const key = `${Store.ver()}|${this.#attrV}|${ui0.tab}|${ui0.period}|${ui0.side}|${ui0.sel[ui0.tab]}|${game.i18n.lang}`;
+    const key = `${Store.ver()}|${this.#attrV}|${ui0.tab}|${ui0.period}|${ui0.side}|${ui0.sel[ui0.tab]}|${game.i18n.lang}|${!!game.users?.activeGM}|${[...ui0.open, "/", ...ui0.more].join(",")}`;
     if (!force && key === this.#key) return;
     this.#key = key;
     const vm = M.view(data, vw, { ...ui0, sel: ui0.sel[ui0.tab] }, names);
     const scroll = this.#root.querySelector(".ipu-st-detail")?.scrollTop ?? 0, rs = this.#root.querySelector(".ipu-st-rail")?.scrollTop ?? 0;
-    this.#root.replaceChildren(this.#head(vm), this.#body(vm));
+    /* POLS (U228): with no GM connected nothing new is counted (the capture runs on the active GM's client): the window says so */
+    const noGm = game.users?.activeGM ? null : h("p", { class: "ipu-st-nogm", role: "status" }, icon("fa-plug-circle-xmark"), h("span", { text: t("IPU.Stats.noGm") }));
+    this.#root.replaceChildren(...[this.#head(vm), noGm, this.#body(vm)].filter(Boolean));
     const d = this.#root.querySelector(".ipu-st-detail"); if (d) d.scrollTop = scroll;
     const r = this.#root.querySelector(".ipu-st-rail"); if (r) r.scrollTop = rs;
   }
@@ -129,17 +137,26 @@ export class StatsApp extends ApplicationV2 {
   }
   #body(vm) {
     if (vm.empty) return h("div", { class: "ipu-st-body ipu-st-empty" }, h("p", { text: vm.empty }));
+    const pick = (x) => h("button", { type: "button", role: "option", class: "ipu-st-pick", "data-act": "sel", "data-v": x.id, "aria-selected": x.sel ? "true" : "false" },
+      vm.tab === "fights" ? h("span", { class: "ipu-st-date" }, x.when) : avatar(x.img, x.name),
+      h("span", { class: "ipu-st-pick-n" }, h("b", { text: x.name }), vm.tab === "fights" ? h("small", { text: x.sub }) : kdMini(x.kd)));
+    /* POLS (U227): the fights in sessions (a break of four hours), the newest and the selected one open, older ones folded to one line */
     const rail = h("div", { class: "ipu-st-rail", role: "listbox", "aria-label": vm.tabs.find((x) => x.on)?.label ?? "" },
-      vm.rail.map((x) => h("button", { type: "button", role: "option", class: "ipu-st-pick", "data-act": "sel", "data-v": x.id, "aria-selected": x.sel ? "true" : "false" },
-        vm.tab === "fights" ? h("span", { class: "ipu-st-date" }, x.when) : avatar(x.img, x.name),
-        h("span", { class: "ipu-st-pick-n" }, h("b", { text: x.name }), vm.tab === "fights" ? h("small", { text: x.sub }) : h("small", { class: "ipu-st-kdmini", text: `${x.kd.k}/${x.kd.d}/${x.kd.a}` })))));
+      vm.tab !== "fights" ? vm.rail.map(pick) : SP.railSessions(vm.rail, { open: ui0.open, more: ui0.more }).map((g, i, all) => [
+        all.length > 1 ? h("button", { type: "button", class: "ipu-st-sess", "data-act": "sess", "data-v": g.key, "aria-expanded": g.open ? "true" : "false" },
+          icon(g.open ? "fa-chevron-down" : "fa-chevron-right"), h("span", { text: names.day(g.t0) }), h("small", { text: t("IPU.Stats.rail.fights", { n: g.n }) })) : null,
+        g.items.map(pick),
+        g.rest > 0 ? h("button", { type: "button", class: "ipu-st-more", "data-act": "more", "data-v": g.key }, t("IPU.Stats.rail.more", { n: g.rest })) : null]));
     const detail = h("div", { class: "ipu-st-detail" }, vm.tab === "fights" ? this.#fight(vm) : this.#entry(vm));
     return h("div", { class: "ipu-st-body" }, rail, detail);
   }
   #entry(vm) {
     const d = vm.detail;
-    const kd = h("div", { class: "ipu-st-kd", role: "img", "aria-label": `${t("IPU.Stats.kd")}: ${d.kd.k} ${t("IPU.Stats.m.kills")}, ${d.kd.d} ${t("IPU.Stats.m.deaths")}, ${d.kd.a} ${t("IPU.Stats.m.assists")}`, "data-tooltip": t("IPU.Stats.kd.tip") },
-      h("span", { class: "ipu-st-kd-l", text: t("IPU.Stats.kd") }), h("b", { text: `${d.kd.k}/${d.kd.d}` }), h("span", { class: "ipu-st-kd-a", text: `+${d.kd.a}` }), h("span", { class: "ipu-st-kd-r", text: (Math.round(d.kd.ratio * 10) / 10).toFixed(1) }));
+    /* POLS (U226): the K/D box says its three numbers in words (no "1/0 +1"), the ratio only from the first own defeat on */
+    const kv = SP.kdView(d.kd, t);
+    const kd = h("div", { class: "ipu-st-kd", role: "img", "aria-label": `${t("IPU.Stats.kd")}: ${kv.cells.map((c) => `${c.n} ${c.label}`).join(", ")}${kv.ratio ? `, ${kv.ratio}` : ""}`, "data-tooltip": t("IPU.Stats.kd.tip") },
+      kv.cells.map((c) => h("span", { class: "ipu-st-kd-c", "data-id": c.id, "data-zero": c.n ? null : "1" }, h("b", { text: String(c.n) }), h("small", { text: c.label }))),
+      kv.ratio ? h("span", { class: "ipu-st-kd-r", text: kv.ratio }) : null);
     /* RADR: with a radar the K/D box moves under the name, so the head is one card: picture, who, score | the attribute spider */
     const radar = vm.tab === "chars" ? radarFigure(d.radar, t) : null;
     const head = h("div", { class: "ipu-st-who" }, avatar(d.img, d.name, "big"), h("div", { class: "ipu-st-who-t" }, h("h2", { class: "ipu-plate", text: d.name }), d.sub ? h("p", { text: d.sub }) : null, radar ? kd : null), radar ? null : kd);
@@ -157,19 +174,26 @@ export class StatsApp extends ApplicationV2 {
     const d = vm.detail, out = [];
     out.push(h("div", { class: "ipu-st-who" }, h("div", { class: "ipu-st-who-t" }, h("h2", { class: "ipu-plate", text: d.name }), h("p", { text: `${d.when} · ${d.sub}` })),
       vm.gm ? h("button", { type: "button", class: "ipu-ic", "data-kind": "danger", "data-act": "delFight", "data-v": d.id, "aria-label": t("IPU.Stats.fight.delete"), "data-tooltip": t("IPU.Stats.fight.delete") }, icon("fa-trash")) : null));
+    /* POLS (U225): the titles come first (the fight's result as the table remembers it), the numbers under them */
+    const sec = h("section", { class: "ipu-st-titles", "data-fight": d.id, "aria-label": t("IPU.Stats.fight.titles") });
+    const own = (aid) => !!game.actors?.get(aid)?.isOwner;
+    for (const fn of fightSections) { try { const el = fn({ rec: d.rec, rows: d.rows, titles: d.titles, gm: vm.gm, t, own }); if (el instanceof HTMLElement) sec.append(el); } catch (e) { console.warn(`${MOD} | stats fight section`, e); } }
+    if (!fightSections.length && d.titles.length) sec.append(h("div", { class: "ipu-st-chips" }, h("span", { class: "ipu-st-chips-t", text: t("IPU.Stats.fight.titles") }), d.titles.map((x) => h("span", { class: "ipu-chip" }, String(x.id), x.c ? h("b", { text: d.rows.find((r) => r.cid === x.c)?.n ?? "" }) : null))));
+    out.push(sec);
     const cols = ["dealt", "hits", "taken", "stress", "kd"];
     out.push(h("table", { class: "ipu-st-table ipu-st-fight" },
       h("thead", {}, h("tr", {}, h("td", {}), cols.map((c) => h("th", { scope: "col", text: t(`IPU.Stats.fight.col.${c}`) })))),
       h("tbody", {}, d.rows.map((r) => h("tr", { "data-side": r.s },
         h("th", { scope: "row" }, h("span", { class: "ipu-st-fwho" }, avatar(r.i, r.n), h("span", { text: r.n }), r.outLabel ? h("span", { class: "ipu-st-out", "data-out": r.out, "data-tooltip": r.outLabel, "aria-label": r.outLabel, role: "img" }, icon(r.out === "dead" ? "fa-skull" : r.out === "unconscious" ? "fa-bed" : "fa-heart-crack")) : null)),
         h("td", {}, String(r.dealt)), h("td", {}, r.attacks ? `${r.hits}/${r.attacks}` : "0"), h("td", {}, String(r.taken)), h("td", {}, String(r.stress)), h("td", {}, String(r.kills + r.minions)))))));
-    /* the place of the titles (next package): a section the registered renderers fill; without one, the stored titles as plain chips */
-    const sec = h("section", { class: "ipu-st-titles", "data-fight": d.id, "aria-label": t("IPU.Stats.fight.titles") });
-    for (const fn of fightSections) { try { const el = fn({ rec: d.rec, rows: d.rows, titles: d.titles, gm: vm.gm, t }); if (el instanceof HTMLElement) sec.append(el); } catch (e) { console.warn(`${MOD} | stats fight section`, e); } }
-    if (!fightSections.length && d.titles.length) sec.append(h("div", { class: "ipu-st-chips" }, h("span", { class: "ipu-st-chips-t", text: t("IPU.Stats.fight.titles") }), d.titles.map((x) => h("span", { class: "ipu-chip" }, String(x.id), x.c ? h("b", { text: d.rows.find((r) => r.cid === x.c)?.n ?? "" }) : null))));
-    out.push(sec);
     return out;
   }
+}
+/* POLS (U226): the rail's K/D as three small marks with their numbers (the words in the label), not "1/0/1" */
+function kdMini(kd) {
+  const kv = SP.kdView(kd, t), fa = { k: "fa-skull", d: "fa-heart-crack", a: "fa-handshake-angle" };
+  return h("small", { class: "ipu-st-kdmini", "aria-label": kv.cells.map((c) => `${c.n} ${c.label}`).join(", ") },
+    kv.cells.map((c) => h("span", { "data-id": c.id, "data-zero": c.n ? null : "1" }, icon(fa[c.id]), String(c.n))));
 }
 function avatar(img, name, size = "") {
   const box = h("span", { class: `ipu-st-av ${size}`.trim(), "aria-hidden": "true" });

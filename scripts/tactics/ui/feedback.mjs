@@ -18,6 +18,8 @@ import * as FP from "./feedback-pure.mjs";
 import * as Gate from "./dicegate.mjs";
 import * as StatStore from "../../stats/store.mjs";
 import * as TP from "../../stats/titles-pure.mjs";
+import * as SP from "../../stats/show-pure.mjs";      // POLS: the titles grouped, the reveal's clock, the lift over windows
+import { setVar } from "./vars.mjs";
 import { t as st } from "../../stats/lang.mjs";
 
 const MOD = Store.MOD, LOG = `${MOD} (tactics feedback) |`;
@@ -43,10 +45,10 @@ let doneMem = null;      // read once per page, written through
 function loadDone() { if (doneMem) return doneMem; try { doneMem = FP.doneOf(JSON.parse(globalThis.localStorage?.getItem(DONE_KEY) ?? "[]")); } catch { doneMem = []; } return doneMem; }
 function saveDone(list) { doneMem = FP.doneOf(list); try { globalThis.localStorage?.setItem(DONE_KEY, JSON.stringify(doneMem)); } catch { /* private window */ } }
 function saveTally() { try { if (tally) globalThis.localStorage?.setItem(SUM_KEY, JSON.stringify(tally)); else globalThis.localStorage?.removeItem(SUM_KEY); } catch { /* private window */ } }
-function showCard(card, ms) {
+function showCard(card, ms, how = null) {
   clearTimeout(sumTimer);
   if (!card) { sum = null; return; }
-  sum = { card };
+  sum = { card, how };
   if (card.kind === "fight") { awTab = null; awSig = null; awAt = 0; }      // AWRD: a new fight card opens on its titles
   armAway(ms);
 }
@@ -67,20 +69,38 @@ function recOf(combatId) {
 function awards(card) {
   const rec = recOf(FP.cardFight(card)), gm = !!game.user?.isGM, staff = Store.isStaff(game.user);
   /* the names and pictures this user's view held (a player's own namesake numbering); the record's for anybody else */
-  const names = (cid) => { const c = snap[cid]; return c ? { n: c.name, i: c.img, mine: !staff && !!c.mine } : null; };
-  const m = TP.cardOf(rec, { gm }, st, names);
+  const names = (cid) => { const c = snap[cid]; if (c) return { n: c.name, i: c.img, mine: !staff && !!c.mine }; const p = rec?.pc?.[cid]; return p && !staff ? { mine: !!game.actors?.get(p.a)?.isOwner } : null; };      // POLS: after a reload the view is gone: an own character is still yours
+  const m = SP.titlesView(rec, { gm }, st, names);      // POLS (U219): a shared title is one entry with all its holders
   const noGm = m.state === "wait" && !game.users?.activeGM;
-  return { ...m, note: m.state === "ok" ? null : st(m.state === "small" ? "IPU.Awrd.small" : m.state === "none" ? "IPU.Awrd.none" : noGm ? "IPU.Awrd.waitGm" : "IPU.Awrd.wait"), quietAuto: m.state === "small" || m.state === "none" || noGm };
+  return { ...m, note: m.state === "ok" ? null : st(m.state === "small" ? "IPU.Awrd.small" : m.state === "none" ? "IPU.Awrd.none" : noGm ? "IPU.Awrd.waitGm" : "IPU.Awrd.wait"), quiet: noGm,
+    quietAuto: m.state === "small" || m.state === "none" || noGm, you: st("IPU.Awrd.you"), tie: st("IPU.Awrd.tie"), tieTip: st("IPU.Awrd.tie.tip"), below: st("IPU.Awrd.below") };
+}
+/* POLS (U222): while a fight's card stands, the dock is one step above every window that was open when it came (show-pure.cardLift) */
+let liftZ = null;
+function lift(card) {
+  try {
+    const on = card?.kind === "fight";
+    if (on && liftZ === null) {
+      let top = Number(foundry.applications?.api?.ApplicationV2?._maxZ) || 0;
+      for (const el of document.querySelectorAll(".application:not(.minimized), .app.window-app")) { const z = Number(getComputedStyle(el).zIndex); if (Number.isFinite(z) && z > top) top = z; }
+      liftZ = SP.cardLift(card, top);
+    } else if (!on) liftZ = null;
+    setVar("--ita-card-z", liftZ === null ? null : String(liftZ));
+    document.body.classList.toggle("ita-card-up", liftZ !== null);
+  } catch { /* the card keeps the dock's place */ }
 }
 /** the card as the dock draws it: a fight's card with its two tabs */
 function decorate(card) {
   try {
     if (!card || card.kind !== "fight") return card;
-    const aw = awards(card), sig = `${aw.state}|${aw.mvp.length + aw.list.length}`;
+    const aw = awards(card), sig = `${aw.state}|${aw.count}`;
     if (aw.state === "ok" && !awAt) { awAt = Date.now(); armAway(FIGHT_MS); }      // the titles came: the card stays its full time from now
     awSig = sig;
     const tab = awTab ?? (aw.quietAuto ? "sum" : "titles");
-    return { ...card, tab, aw, fresh: aw.state === "ok" && Date.now() - awAt < 1600, tabs: { titles: st("IPU.Awrd.tab"), sum: st("IPU.Awrd.tabSum") } };
+    /* POLS (U221): the reveal runs on the clock of the titles' arrival; a redraw in the middle carries on from there (dom.mjs --aw-el) */
+    const el = aw.state === "ok" ? Date.now() - awAt : null;
+    aw.el = SP.revealOn(el, aw.list.length, !!aw.mvp) ? el : null;
+    return { ...card, title: st("IPU.Awrd.over"), end: sum?.how ? st(SP.endKey(sum.how)) : null, tab, aw, fresh: aw.el !== null, tabs: { titles: st("IPU.Awrd.tab"), sum: st("IPU.Awrd.tabSum") } };
   } catch (e) { console.warn(LOG, "titles failed", e); return card; }
 }
 export function sumTab(v) { awTab = v === "sum" ? "sum" : "titles"; armAway(FIGHT_MS); H?.refresh(); }
@@ -88,7 +108,7 @@ function onStats() {
   try {
     if (sum?.card?.kind !== "fight") return;
     const aw = awards(sum.card);
-    if (`${aw.state}|${aw.mvp.length + aw.list.length}` !== awSig) H?.refresh();
+    if (`${aw.state}|${aw.count}` !== awSig) H?.refresh();
   } catch { /* a courtesy */ }
 }
 const who = (id) => snap[id] ?? null;
@@ -208,7 +228,7 @@ export function sync(ctx) {
     let sumDone = loadDone(); { const live = FP.doneLive(sumDone, combat.id, view); if (live.length !== sumDone.length) { sumDone = live; saveDone(live); } }
     const next = FP.tallyFor(tally, combat.id, view?.news, sumDone);      // D131: a fight already summed up keeps no tally
     if (next !== tally) { tally = next; saveTally(); }
-    if (FP.viewOver(view) && endFight(combat)) return { sum: decorate(sum?.card ?? null), hint: null };      // D131: the scene ended: the fight's card now, once
+    if (FP.viewOver(view) && endFight(combat, "scene")) return { sum: shown(), hint: null };      // D131: the scene ended: the fight's card now, once
     const round = Number.isFinite(view?.round) ? view.round : null;
     if (round !== null && roundWas !== null && round > roundWas && roundWas >= 1 && setting("tacticsSummary", true) !== false) showCard(FP.roundCard(tally, roundWas, who, statusesWere, t), ROUND_MS);
     if (round !== null) roundWas = round;
@@ -225,7 +245,7 @@ export function sync(ctx) {
       if (hint) markSeen([hint.id]);      // FXU3 (U207): shown = seen on this device (written once; this page keeps it until used or put away)
     }
     hintShown = hint?.id ?? null;
-    return { sum: decorate(sum?.card ?? null), hint };
+    return { sum: shown(), hint };
   } catch (e) { console.warn(LOG, "sync failed", e); return { sum: null, hint: null }; }
 }
 /** no fight on this scene: the card of the fight that just ended may still stand */
@@ -233,18 +253,20 @@ export function idle() {
   cueWas = null; hintShown = null;
   /* U130: a fight the GM stopped (its tactical state is gone, the combat still stands) is over NOW: its summary is shown now and its
      tally let go, so deleting that combat later (as the GM does before starting the next fight) brings no old card back */
-  try { const c = combatWas ? game.combats?.get(combatWas) : null; if (c && tally?.combat === c.id && !Store.stateOf(c)) endFight(c); } catch (e) { console.warn(LOG, "fight stop failed", e); }
-  return { sum: decorate(sum?.card ?? null), hint: null };
+  try { const c = combatWas ? game.combats?.get(combatWas) : null; if (c && tally?.combat === c.id && !Store.stateOf(c)) endFight(c, "stop"); } catch (e) { console.warn(LOG, "fight stop failed", e); }
+  return { sum: shown(), hint: null };
 }
 
-function endFight(combat) {
+/** the card as the dock draws it now, and the dock's lift that goes with it (POLS U222) */
+function shown() { const c = decorate(sum?.card ?? null); lift(c); return c; }
+function endFight(combat, how = "gone") {
   if (!combat?.id) return false;
   const over = FP.fightOver(tally, combat.id, loadDone());
   if (!over.card) { if (tally?.combat === combat.id) { tally = null; saveTally(); } return false; }
   saveDone(over.done);
   const card = setting("tacticsSummary", true) !== false ? FP.fightCard(tally, who, statusesWere, t) : null;
   tally = null; saveTally(); roundWas = null;
-  showCard(card, FIGHT_MS);
+  showCard(card, FIGHT_MS, how);
   return true;
 }
 function onDelete(combat) {
@@ -259,7 +281,9 @@ export function start(h) {
     Hooks.on(Store.HOOK_GM, onEvent);
     Hooks.on("deleteCombat", onDelete);
     StatStore.subscribe(onStats);      // AWRD: the titles arrive in the statistics a moment after the fight ends
-    Api.feedback = { state: () => ({ tally, sum, roundWas, hintShown, cueWas }), play, floats: (combatId, events) => { pending[combatId] = events; flush(combatId); } };      // for a look from the console
+    Api.feedback = { state: () => ({ tally, sum, roundWas, hintShown, cueWas }), play, floats: (combatId, events) => { pending[combatId] = events; flush(combatId); },      // for a look from the console
+      /* POLS: the fight's card of a fight the statistics keep, shown again on this client only (its titles tab; the summary is not kept) */
+      preview: (combatId, how = "scene") => { showCard({ id: `f:${combatId}`, kind: "fight", title: t("ITAC.sum.fight"), rows: [], close: t("ITAC.sum.close") }, FIGHT_MS, how); H.refresh(); return !!recOf(combatId); } };
     return true;
   } catch (e) { console.warn(LOG, "start failed", e); return false; }
 }

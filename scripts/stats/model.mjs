@@ -119,7 +119,7 @@ export function view(data, viewer, ui, names) {
 function fightsView(base, data, viewer, ui, names) {
   const tt = names.t, list = P.fightsFor(data?.fights ?? {}, data?.facts ?? [], viewer);
   if (!list.length) return { ...base, empty: tt("IPU.Stats.fight.none") };
-  const rail = list.map((r) => ({ id: r.f, name: r.sc || "—", when: names.when(r.t0), sub: [r.t1 ? tt("IPU.Stats.fight.rounds", { n: Math.max(1, r.r ?? 0) }) : tt("IPU.Stats.fight.open"), r.chase ? tt("IPU.Stats.fight.chase") : null].filter(Boolean).join(" · "), open: !r.t1 }));
+  const rail = list.map((r) => ({ id: r.f, t0: r.t0 ?? 0, name: r.sc || "—", when: names.when(r.t0), sub: [r.t1 ? tt("IPU.Stats.fight.rounds", { n: Math.max(1, r.r ?? 0) }) : tt("IPU.Stats.fight.open"), r.chase ? tt("IPU.Stats.fight.chase") : null].filter(Boolean).join(" · "), open: !r.t1 }));      // POLS (U227): t0 groups the rail by session
   const sel = rail.find((x) => x.id === ui?.sel) ?? rail[0];
   for (const x of rail) x.sel = x.id === sel.id;
   const rec = list.find((r) => r.f === sel.id);
