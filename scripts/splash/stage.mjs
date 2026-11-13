@@ -123,6 +123,7 @@ export function setLayer(v) {
   if (layer) layer.dataset.layer = LAYER;
 }
 export function layerOf() { return LAYER; }
+const WORLD_SCALE = 1.4;   // the role scales are made for the screen model; on the map a word for a token's square is 0.55 squares at scale 1
 function toScene(p) {
   try { const r = canvas.app.view.getBoundingClientRect(), q = canvas.stage.toLocal({ x: p.x - r.left, y: p.y - r.top }); return { x: Math.round(q.x), y: Math.round(q.y) }; } catch (e) { return null; }
 }
@@ -151,7 +152,9 @@ function letterOne(ctl, it, seedBase) {
   const lw = letterWrap(ctl);
   const from = it.from === 'token' ? (ctl.token ? tokenClient(ctl.token) : null) : it.from;
   const opts = {
-    space: 'screen', parent: lw, at: clientAt(ctl, it.at), anchor: 'center', size: it.size, maxWidth: it.maxWidth,
+    /* size: the engine's model (contract v4) from the moment's magnitude and the role's scale (times the Scale setting), following the
+       viewport and clamped to a legible range; maxWidth keeps each word inside its part of the stage */
+    space: 'screen', parent: lw, at: clientAt(ctl, it.at), anchor: 'center', magnitude: it.magnitude, scale: it.scale * (ctl.userScale || 1), maxWidth: it.maxWidth,
     mood: it.mood, sound: it.sound, hold: it.hold, rotation: it.rotation || 0, reduced: S.isReduced(),
     seed: LP.seedOf(seedBase, it.role), avoid: ctl.hands.slice()
   };
@@ -160,11 +163,12 @@ function letterOne(ctl, it, seedBase) {
   for (const k of ['in', 'out', 'holdKind']) if (it[k]) opts[k] = it[k];
   /* the engine's own screen layers (under the windows): its layer, not our wrapper */
   if (LAYER === 'ui' || LAYER === 'hud') { delete opts.parent; opts.layer = LAYER; }
-  /* on the map: scene coordinates and scene px (as big as on screen at this zoom; afterwards they zoom with the scene) */
+  /* on the map: scene coordinates; the engine sizes from the grid, the token and the zoom (and keeps it legible) */
   if (WORLD_LAYERS.includes(LAYER) && globalThis.canvas?.ready) {
     const at = toScene(opts.at), k = canvas.stage.scale.x || 1;
     if (at) {
-      Object.assign(opts, { space: 'world', layer: LAYER, at, size: it.size / k, maxWidth: it.maxWidth / k });
+      Object.assign(opts, { space: 'world', layer: LAYER, at, maxWidth: it.maxWidth / k, scale: opts.scale * WORLD_SCALE });
+      if (ctl.token) opts.token = ctl.token;
       delete opts.parent;
       if (from && typeof from === 'object') opts.from = toScene(from) ?? undefined;
     }
@@ -300,7 +304,7 @@ function openStage(opts) {
   el.style.width = W + 'px';
   lay.appendChild(el);
   el.style.setProperty('--u', Math.max(0.4, Math.min(opts.full ? 2.2 : 1.4, W / 760)).toFixed(3));
-  const ctl = { key, el, token, W, extras: [], timers: [], dead: false, pos: token ? POS_TOKEN : POS_SCREEN };
+  const ctl = { key, el, token, W, extras: [], timers: [], dead: false, pos: token ? POS_TOKEN : POS_SCREEN, userScale: scale };
   ctl.later = (fn, ms) => {
     ctl.timers.push(setTimeout(() => {
       if (ctl.dead) return;

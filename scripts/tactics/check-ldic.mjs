@@ -169,7 +169,7 @@ async function run(W, H, fn) {
       ok(L.calls.every((c) => c.o.at.x + c.o.maxWidth / 2 <= W - 300 + 40), `${W}: nothing reaches far under the chat`);
       eq(L.calls[1].o.avoid, [L.calls[0].h.hand], `${W}: the sixes look different from the word (avoid = the word's hand)`);
       eq(L.calls[0].o.reduced, false, `${W}: full motion handed on`);
-      ok(L.calls.every((c) => c.o.hold > 0 && c.o.size > 0 && c.o.mood), `${W}: hold, size and mood given`);
+      ok(L.calls.every((c) => c.o.hold > 0 && c.o.size == null && c.o.magnitude >= 0 && c.o.scale > 0 && c.o.mood), `${W}: hold, magnitude, role scale and mood given; no fixed size (the engine's size model sizes from the viewport)`);
       ok(L.calls[1].o.in === "slam" && L.calls[1].o.out === "pop", `${W}: the motion technique reaches the engine`);
       ok(L.calls.some((c) => c.o.seed === "MSG1:stress" && /\+2/.test(c.text)), `${W}: the stress number is lettered`);
       /* a second client: the same message letters the same */
@@ -204,7 +204,7 @@ async function run(W, H, fn) {
       flush(50000);
       const w0 = L6.calls[0];
       ok(w0 && w0.o.space === "world" && w0.o.layer === "tokens" && !w0.o.parent, `${W}: layer "on the map: over tokens": the words go to the canvas (world space, the engine's tokens layer)`);
-      ok(w0 && w0.o.size === LP.planMoment(ev({ n: 5, sixes: 2 }), { W: ctl.W }).items[0].size / 0.5 && w0.o.at.x > 100, `${W}: ... in scene coordinates and scene px (screen size at this zoom)`);
+      ok(w0 && w0.o.size == null && w0.o.magnitude > 0 && w0.o.at.x > 100, `${W}: ... in scene coordinates, sized by the engine (grid, token, zoom, magnitude)`);
       eq(document.body.children.find((c) => c.attrs?.["aria-hidden"] === "true")?.dataset?.layer, "tokens", `${W}: the layer knows its setting`);
       Stage.setLayer("ui");
       const L7 = fakeEngine(); Stage.setLetters(L7);
@@ -234,6 +234,27 @@ async function run(W, H, fn) {
   const MOT = { in: ["slam", "pop", "crackIn", "drop", "rise", "grow", "zip"], holdKind: ["boil", "shake", "throb", "rattle", "wobble", "buzz", "flicker"], out: ["shatter", "pop", "burst", "fall", "droop", "rise", "shrink", "zipout", "dissolve"] };
   for (const e of [ev({ n: 4, sixes: 4 }), ev({ n: 6, sixes: 0 }), ev({ n: 1, sixes: 0 }), ev({ n: 12, sixes: 0 }), ev({ n: 5, sixes: 2, pushed: true, newSixes: 1, rerolled: 3 }), ev({ n: 6, sixes: 3, wreck: true })])
     for (const it of [...plan(e).items, LP.planStress(1)]) for (const k of Object.keys(MOT)) if (it[k]) ok(MOT[k].includes(it[k]), `${it.role}: ${k} "${it[k]}" is one of the engine's motions`);
+}
+
+/* ================================================================== (a3) the size model (contract v4): magnitude + role scale -> cap heights */
+{
+  const Z = await import("../letters/size.mjs");
+  const px = (it, vw, vh) => Z.sizeFor({ space: "screen", magnitude: it.magnitude, scale: it.scale, vw: vw - 300, vh, sizeK: 1, aspect: Math.max(2, LP.letterable(it.text).length * 0.6) }).px;
+  for (const [vw, vh] of [[1366, 768], [1920, 1080]]) {
+    for (const e of [ev({ n: 6, sixes: 1 }), ev({ n: 6, sixes: 3 }), ev({ n: 4, sixes: 4 }), ev({ n: 12, sixes: 0 }), ev({ n: 6, sixes: 0 }), ev({ n: 1, sixes: 0 })]) {
+      const p = LP.planMoment(e, { W: vw === 1366 ? 746 : 900 });
+      const w = by(p, "word"), six = by(p, "six"), odds = by(p, "odds");
+      if (six) ok(px(w, vw, vh) > px(six, vw, vh), `${vw}: the word (${px(w, vw, vh).toFixed(0)} px) over the sixes (${px(six, vw, vh).toFixed(0)} px)`);
+      if (odds) ok(px(six ?? w, vw, vh) >= px(odds, vw, vh), `${vw}: the sixes over the odds`);
+      for (const it of p.items) ok(px(it, vw, vh) >= 15, `${vw}x${vh} ${it.role}: legible (${px(it, vw, vh).toFixed(0)} px)`);
+    }
+    const crit = by(LP.planMoment(ev({ n: 4, sixes: 4 }), { W: 746 }), "word"), routine = by(LP.planMoment(ev({ n: 6, sixes: 1 }), { W: 746 }), "word");
+    ok(px(crit, vw, vh) > 1.8 * px(routine, vw, vh), `${vw}: a critical word is far bigger than a routine one (${px(crit, vw, vh).toFixed(0)} vs ${px(routine, vw, vh).toFixed(0)} px)`);
+  }
+  const at = (vw, vh) => px(by(LP.planMoment(ev({ n: 6, sixes: 3 }), { W: 746 }), "word"), vw, vh);
+  ok(Math.abs(at(1366, 768) - by(LP.planMoment(ev({ n: 6, sixes: 3 }), { W: 746 }), "word").size / (746 / 760)) < 3, "at 1366x768 the word is the designed size");
+  ok(at(1920, 1080) > at(1366, 768) * 1.3, "a bigger window, a bigger moment");
+  eq([LP.magnitudeOf({ role: "word" }, ev({ n: 4, sixes: 4 })) > 1, LP.magnitudeOf({ role: "word" }, ev({ n: 1, sixes: 0 })) <= 0.1], [true, true], "magnitude: a crit over 1, a routine miss near 0");
 }
 
 /* ================================================================== (b2) the real engine's design (pure): the calls stage.mjs makes */

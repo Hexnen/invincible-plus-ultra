@@ -10,6 +10,7 @@
    - how BAD: a miss falls (mood fail, falling pitch, cold grey-blue), a routine miss is a small grey mutter, a rare one is loud;
    - the numbers are lettered too, each in its own steady colour so the table learns them: sixes gold, odds white, stress red. */
 import { hueOf, oddsText, oddsLabel, fmtOdds, LBL, say } from './logic.mjs';
+import { magFactor, SIZE } from '../letters/size.mjs';
 
 /* sound word -> mood (the LETR engine's intents). A word not listed falls back to its action's default. */
 export const WORD_MOOD = Object.freeze({
@@ -124,7 +125,7 @@ export function planMoment(ev, o = {}) {
   for (const it of items) Object.assign(it, motionOf(it, ev, o));
   /* never smaller than a readable cap height (1366x768 with the chat open); sizes are cap heights in screen px */
   const MIN = { word: 24, pre: 20, wreck: 20, six: 20, say: 16, odds: 14, stress: 18 };
-  for (const it of items) { it.size = Math.max(MIN[it.role] ?? 14, it.size); it.hold = Math.max(300, it.hold); if (o.reduced) it.rotation = 0; }
+  for (const it of items) { it.size = Math.max(MIN[it.role] ?? 14, it.size); it.hold = Math.max(300, it.hold); if (o.reduced) it.rotation = 0; sizeModel(it, ev, u); }
   const end = Math.max(0, ...items.map(it => it.delay + it.hold));
   return { items, end };
 }
@@ -156,6 +157,29 @@ export function motionOf(it, ev, o = {}) {
   }
 }
 
+/* The engine's size model (contract v4): what the engine gets is the event's MAGNITUDE (how big the moment is) and a role SCALE
+   (the hierarchy word > sixes > sentence > odds); the engine sizes from the viewport (and clamps to a legible range), so the moment
+   grows with the window. it.size stays the designed cap height on a 760 px stage, the reference the scale is derived from
+   (1366x768: the stage is about 760 px wide), so at 1366x768 the moment looks as designed, at 1920x1080 it is about 1.4x. */
+export const REF_VH = 768;
+export function magnitudeOf(it, ev) {
+  const P = ev.power ?? 0, dF = failStrength(ev);
+  switch (it.role) {
+    case 'word': return ev.fail ? (ev.softFail ? 0.05 : r1(0.15 + 0.35 * dF + (ev.pushed ? 0.1 : 0))) : r1(0.15 + 0.85 * P + Math.max(0, P - 0.8) * 1.5);
+    case 'wreck': return r1(Math.min(1.4, 0.25 + 0.85 * P + Math.max(0, P - 0.8) * 1.5));
+    case 'six': return r1(0.35 + 0.1 * Math.min(4, ev.sixes ?? 1));
+    case 'stress': return r1(0.35 + 0.1 * Math.min(4, ev.stress ?? 1));
+    case 'pre': return 0.5;
+    case 'say': return 0.4;
+    case 'odds': return 0.3;
+    default: return 0.5;
+  }
+}
+function sizeModel(it, ev, u) {
+  it.magnitude = magnitudeOf(it, ev);
+  it.scale = Math.round((it.size / u) / (REF_VH * SIZE.screenVh * magFactor(it.magnitude)) * 1000) / 1000;
+}
+
 /* how hard a miss lands, 0..1, from its rarity: routine (more likely than not) is quiet, a rare miss of a strong hero is loud */
 export function failStrength(ev) {
   if (!ev?.fail) return 0;
@@ -163,11 +187,16 @@ export function failStrength(ev) {
 }
 
 /* the stress number joins the moment: "STRESS +2" lettered in pain red beside the Resolve gauge (the gauge itself stays a gauge) */
-export function planStress(stress, o = {}) {
+function planStress0(stress, o = {}) {
   const W = o.W || 760, u = clamp(W / 760, 0.5, 2.2), pos = o.token ? POS.token : POS.screen;
   return { role: 'stress', text: LBL.stress(stress), at: pos.stress, delay: 0, size: Math.max(18, Math.round((20 + 3 * Math.min(4, stress)) * u)),
     maxWidth: Math.round(W * 0.3), mood: 'pain', sound: { loud: r1(Math.min(0.9, 0.35 + 0.12 * stress)), pitch: -0.3 }, colors: STRESS_COLORS,
     hold: Math.round(2600 * (o.holdK || 1)), rotation: o.reduced ? 0 : -5, in: 'slam', holdKind: 'throb', out: 'fall' };
+}
+export function planStress(stress, o = {}) {
+  const it = planStress0(stress, o);
+  sizeModel(it, { stress }, clamp((o.W || 760) / 760, 0.5, 2.2));
+  return it;
 }
 
 /* the engine letters A-Z, Polish letters, digits, ! ? - + ' . and spaces: other marks of our texts are rewritten
