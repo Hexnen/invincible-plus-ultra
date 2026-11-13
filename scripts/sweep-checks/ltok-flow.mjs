@@ -1,0 +1,138 @@
+// node scripts/sweep-checks/ltok-flow.mjs  (LTOK: token reactions, the Foundry half driven through a fake Foundry: hooks in, engine calls out)
+let n = 0, f = 0;
+const ck = (name, c) => { n++; if (!c) { f++; console.log("FAIL", name); } };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ---------- a fake Foundry: just what main.mjs reads ---------- */
+const hooks = {};
+globalThis.Hooks = { on: (k, fn) => ((hooks[k] ??= []).push(fn), 1), once: (k, fn) => ((hooks[k] ??= []).push(fn), 1), callAll: (k, ...a) => { for (const fn of hooks[k] ?? []) fn(...a); } };
+const settings = new Map(), values = { "invincible-plus-ultra.tokenReactEnabled": true, "invincible-plus-ultra.tokenReactSize": "normal" };
+const user = { isGM: true, id: "U" };
+globalThis.game = {
+  user, i18n: { lang: "pl", has: () => false, localize: (k) => k },
+  settings: { settings, register: (m, k, o) => settings.set(`${m}.${k}`, o), get: (m, k) => values[`${m}.${k}`] },
+  modules: new Map([["invincible-plus-ultra", { api: {} }]]), combats: new Map(), messages: { contents: [] }
+};
+globalThis.foundry = { utils: { getProperty: (o, p) => p.split(".").reduce((a, k) => a?.[k], o), expandObject: (o) => o } };
+globalThis.CONST = { CANVAS_PERFORMANCE_MODES: { LOW: 0 } };
+globalThis.document = { querySelector: () => null };
+const scene = { id: "S" };
+const toks = [];
+globalThis.canvas = { ready: true, scene, grid: { size: 100 }, performance: { mode: 2 }, tokens: { placeables: toks, get: (id) => toks.find((t) => t.id === id) } };
+function mk(id, type, h, r, o = {}) {
+  const actor = { id: `A${id}`, type, hasPlayerOwner: !!o.player, system: { derived: { health: { value: h, max: o.hm ?? 8 }, resolve: { value: r, max: 8 } } },
+    testUserPermission: () => !!o.observer, _stats: { modifiedTime: 1 } };
+  const tok = { id, scene, isVisible: o.visible !== false, document: { id, hidden: !!o.hidden }, actor, x: 0, y: 0, w: 100, h: 100, destroyed: false };
+  actor.getActiveTokens = () => [tok];
+  toks.push(tok);
+  return tok;
+}
+const set = (tok, stat, v, options = {}) => { tok.actor.system.derived[stat].value = v; Hooks.callAll("updateActor", tok.actor, { system: { derived: { [stat]: { value: v } } } }, options); };
+
+const M = await import("../tokenreact/main.mjs");
+const Owner = await import("../tokenreact/owner.mjs");
+const { letters } = await import("../letters/index.mjs");
+const L = await letters();
+const plays = [];
+const real = L.play;
+L.play = (text, o) => { plays.push({ text, o }); return real(text, o); };
+const hero = mk("H", "superhero", 8, 6, { player: true }), npc = mk("N", "npc", 8, 6), hid = mk("X", "npc", 8, 6, { hidden: true }), boss = mk("B", "npc", 8, 6);
+M.start({ init: true, ready: true });
+Hooks.callAll("canvasReady");
+await sleep(50);
+ck("A0 started: the settings are registered and the engine claims the numbers", settings.has("invincible-plus-ultra.tokenReactEnabled") && settings.get("invincible-plus-ultra.tokenReactEnabled").scope === "client" && Owner.isOn());
+
+const take = async (ms = 1700) => { await sleep(ms); const out = plays.splice(0); return out; };
+/* GM seat */
+set(hero, "health", 7);
+let p = await take();
+ck("A1 a hand edit on the sheet: a word at the token and the number", p.length === 2 && p[0].o.space === "world" && p[0].o.at === hero.document && p[1].o.space === "world" && p[1].text === "-1");
+ck("A2 the word is a hit word of the client's language", ["ŁUP!", "BACH!", "PAC!", "TRZASK!", "BUCH!", "PAF!"].includes(p[0]?.text));
+set(hero, "health", 3);
+p = await take();
+ck("A3 four at once: heavy (crash), bigger", p[0]?.o.mood === "crash" && p[1]?.text === "-4");
+set(hero, "health", 0);
+p = await take();
+ck("A4 to zero: down (falls)", p[0]?.o.mood === "fail" && p[1]?.text === "-3");
+set(hero, "health", 8);
+p = await take();
+ck("A5 up from zero: back (rises)", p[0]?.o.mood === "powerup" && p[1]?.text === "+8");
+set(hero, "resolve", 5);
+p = await take();
+ck("A6 Resolve down: stress in Resolve's colours", p[0]?.o.mood === "pain" && p[1]?.text === "-1" && p[0].o.colors[1] !== "#ffb02e");
+Hooks.callAll("createChatMessage", { speakerActor: hero.actor, rolls: [{}], flavor: "" });
+set(hero, "resolve", 4);
+p = await take();
+ck("A7 Resolve down right after the own roll: spent, quiet, no number", p.length === 1 && p[0].o.mood === "tick");
+set(hero, "resolve", 6);
+await take();
+
+/* the same change twice (updateActor and the token's delta): said once */
+set(npc, "health", 6);
+Hooks.callAll("updateToken", npc.document, { delta: { system: {} } }, {});
+p = await take();
+ck("B1 one change heard twice is said once", p.length === 2);
+
+/* hidden token: the GM sees it, a player never */
+set(hid, "health", 5);
+p = await take();
+ck("B2 the GM sees a hidden token's reaction", p.length === 2);
+user.isGM = false;
+set(hid, "health", 4);
+p = await take();
+ck("B3 a player: nothing over a hidden token", p.length === 0);
+hid.isVisible = false; hid.document.hidden = false;
+set(hid, "health", 3);
+p = await take();
+ck("B4 a player: nothing over a token out of sight", p.length === 0);
+
+/* a player and an NPC: no secret numbers */
+set(npc, "health", 5);
+p = await take();
+ck("C1 a player: an NPC's hand-edited hit is a word without a number", p.length === 1 && p[0].o.at === npc.document);
+set(npc, "resolve", 4);
+p = await take();
+ck("C2 a player: an NPC's Resolve is not shown", p.length === 0);
+set(npc, "health", 3);
+setTimeout(() => Hooks.callAll("createChatMessage", { speakerActor: npc.actor, flavor: "Otrzymane obrażenia", content: "<p><strong>Zbir</strong> otrzymał <strong>2</strong> obrażeń.</p>" }), 150);
+p = await take();
+ck("C3 a player: the number the Damage Taken card told", p.length === 2 && p[1].text === "-2");
+set(hero, "health", 6);
+p = await take();
+ck("C4 a player: the own hero's numbers (a reader)", p.length === 2 && p[1].text === "-2");
+
+/* tactical fight: the public event joins the change; options.ipuTactics */
+game.combats.set("C", { combatants: new Map([["cN", { token: { object: boss } }]]) });
+set(boss, "health", 5, { ipuTactics: true });
+Hooks.callAll("invincible-plus-ultra.tactics", { type: "damage", combat: "C", fight: "f", seq: 1, target: "cN", taken: 3, inst: "i1" });
+Hooks.callAll("invincible-plus-ultra.tacticsGm", { type: "damage", combat: "C", fight: "f", seq: 1, target: "cN", taken: 3, inst: "i1" });
+p = await take();
+ck("D1 a player: the fight's public damage gives the number; heard twice, said once", p.length === 2 && p[1].text === "-3" && p[0].o.mood === "crash");
+Hooks.callAll("invincible-plus-ultra.tactics", { type: "damage", combat: "C", fight: "f", seq: 2, target: "cN", taken: 2, toStress: true });
+p = await take();
+ck("D2 a player: stress the fight announced (no track change seen) is shown with its number", p.length === 2 && p[1].text === "-2" && p[0].o.mood === "pain");
+set(boss, "health", 0, { ipuTactics: true });
+Hooks.callAll("invincible-plus-ultra.tactics", { type: "damage", combat: "C", fight: "f", seq: 3, target: "cN", taken: 5 });
+Hooks.callAll("invincible-plus-ultra.tactics", { type: "broken", combat: "C", fight: "f", seq: 4, target: "cN" });
+p = await take();
+ck("D3 a player: Broken announced: down", p[0]?.o.mood === "fail" && p[1]?.text === "-5");
+
+/* many at once */
+user.isGM = true;
+const crowd = Array.from({ length: 9 }, (_, i) => mk(`c${i}`, "npc", 6, 6));
+Hooks.callAll("canvasReady");
+for (const [i, t] of crowd.entries()) set(t, "health", i === 0 ? 0 : 5);
+p = await take(2600);
+const words = p.filter((x) => x.o.at?.id && !String(x.text).match(/^[+-]\d/));
+ck("E1 nine at once: two full words (the heaviest among them), the rest numbers, nothing doubled", words.length === 2 && p.length === 11 && words.some((x) => x.o.at.id === "c0"));
+ck("E2 the crowd is smaller than a single hit", Math.max(...words.map((x) => x.o.size)) < 100 * 0.6 * 1.3);
+
+/* switched off */
+values["invincible-plus-ultra.tokenReactEnabled"] = false;
+settings.get("invincible-plus-ultra.tokenReactEnabled").onChange(false);
+set(hero, "health", 2);
+p = await take();
+ck("F1 off: nothing plays and the fight's numbers come back", p.length === 0 && !Owner.isOn());
+
+console.log(`sweep ltok-flow: ${n} checks, ${f} failed`);
+process.exit(f ? 1 : 0);
