@@ -27,7 +27,7 @@ const MODES = ["hidden", "peek", "full"];
 
 let root = null, handle = null, handleLbl = null, countEl = null, list = null, live = null;
 let display = "peek", size = "normal", showPips = true, scale = 1, v2 = false;   // v2 = the 'New' card style (root class ipt-v2: scopes all of its CSS; its extra DOM exists only while it is on)
-let topY = 0, bottomY = 0, compact = false, scrolls = false, wheelOn = false;
+let topY = 0, bottomY = 0, leftX = 0, compact = false, scrolls = false, wheelOn = false;
 let hot = null, leaveTimer = 0, stagTimer = 0, liveTimer = 0;
 let lastItems = [];
 const pinned = new Set();
@@ -97,11 +97,14 @@ export function setStyle(s) {
 }
 export function setPips(on) { showPips = !!on; if (root && lastItems.length) render(lastItems, { quiet: true }); }
 /* main.mjs measured the screen: the column may occupy y in [top, bottom] (screen px) */
-export function setBounds(top, bottom) {
+export function setBounds(top, bottom, left = 0) {
   topY = Math.max(0, Math.round(top) || 0);
   bottomY = Math.round(bottom) || 0;
+  leftX = Math.max(0, Math.round(left) || 0);   // FXP2: beside a long left menu (place.mjs)
   relayout();
 }
+/* FXP2: screen px the whole party needs at its smallest (handle + every card compact, no scrolling): place.mjs moves the column beside the menu below this */
+export const minNeed = () => Math.ceil((HANDLE + cards.size * H.compact + Math.max(0, cards.size - 1) * G.compact) * scale);
 export const box = () => (root?.isConnected ? root.getBoundingClientRect() : null);
 export const isOpen = () => !!root?.isConnected;
 export const stateName = () => display;
@@ -131,6 +134,7 @@ function relayout() {
   if (!root?.isConnected) return;
   const bottom = bottomY > 0 ? bottomY : innerHeight - 14;
   root.style.setProperty("--ipt-bottom", `${Math.max(0, Math.round(innerHeight - bottom))}px`);
+  root.style.setProperty("--ipt-left", `${leftX}px`);
   const col = Math.max(120, (bottom - (topY || 0)) / scale);
   const avail = Math.max(70, col - HANDLE);
   const n = cards.size;
