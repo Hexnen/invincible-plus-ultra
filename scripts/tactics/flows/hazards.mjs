@@ -400,8 +400,21 @@ export function derived(state, facts, point) {
       const cid = point.combatant;
       if (M.hasStatus(state, cid, "suffocating") || (inVacuum(facts, cid) && !(facts.c(cid)?.pass?.lifeSupport && K.marked(state, cid, "lifeSupport", true)) && !adapted(state, facts.c(cid), cid))) out.push(trig(`dvac.${cid}`, "turnStart", { combatant: cid }, { type: "vacuum" }));       // [B2929]
       if (M.statusesOf(state, cid).some((x) => x.id === "sick" && x.data?.toxic) && facts.c(cid)?.health > 0) out.push(trig(`dtox.${cid}`, "turnStart", { combatant: cid }, { type: "disease", virulence: 0, name: "Toxic Strike" }));      // P6 [B1621]: STRENGTH each turn or 1 damage
+      /* ANSF (P7-5, the user 2026-11-12: «Wszystkie 6 zmian»): a challenge's side effect "at the start of a hero's turn" (the toxin [B2889])
+         reaches every hero of the fight, also one who joined after the challenge was set up: such a hero's turn makes it due here as the
+         set-up's own triggers do for the heroes who were there (the same queue card, the same roll). */
+      const hf = facts.c(cid);
+      if (hf && hf.kind === "hero" && !hf.summonOf && there(cid)) for (const [chId, cfg] of Object.entries(state.challenges ?? {})) {
+        const ch = facts.c(chId);
+        if (!cfg || cfg.done || !ch || ch.kind !== "challenge" || ch.present === false || !(ch.health > 0)) continue;
+        for (const e of (cfg.effects ?? []).filter((x) => x?.when === "heroTurnStart")) {
+          const run = { type: e.kind === "toxin" ? "challengeRoll" : "challenge", kind: e.kind, challenge: chId, ...(e.attr ? { attr: e.attr } : {}), ...(e.onFail ? { onFail: e.onFail } : {}) };
+          out.push({ ...trig(`dch.${slug(chId)}.${slug(e.kind)}.${cid}`, "turnStart", { combatant: cid }, run), source: { kind: "challenge", owner: chId, name: `${cfg.name || cfg.preset || "challenge"}: ${e.kind}`.slice(0, 80) } });
+        }
+      }
     }
   } catch { /* a map that cannot be read makes nothing due: the GM runs the hazard by hand */ }
   /* what somebody registered by hand for the same thing is not doubled */
-  return out.filter((t) => !(state.triggers ?? []).some((x) => x.at === t.at && x.run?.type === t.run.type && (x.subject?.zone ?? null) === (t.subject.zone ?? null) && (x.subject?.combatant ?? null) === (t.subject.combatant ?? null)));
+  return out.filter((t) => !(state.triggers ?? []).some((x) => x.at === t.at && x.run?.type === t.run.type && (x.subject?.zone ?? null) === (t.subject.zone ?? null) && (x.subject?.combatant ?? null) === (t.subject.combatant ?? null)
+    && (x.run?.challenge ?? null) === (t.run.challenge ?? null) && (x.run?.kind ?? null) === (t.run.kind ?? null)));      // ANSF (P7-5): a challenge's own effect is told apart by the challenge and the kind
 }

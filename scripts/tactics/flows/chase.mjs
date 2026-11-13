@@ -296,7 +296,7 @@ export const round = {
           if (K.answerId(v, I, pk) !== "try") { c.results[sl.key] = null; continue; }
         }
         const mods = r.attr === "agility" && u.maneuver ? [{ source: "maneuverability", dice: u.maneuver }] : [];     // [B2940]
-        if (sideRoll(v, I, R, key, u, r.attr, { passive: true, mods }) === "wait") { R.wait = true; return R; }
+        if (sideRoll(v, I, R, key, u, r.attr, { mods }) === "wait") { R.wait = true; return R; }      // ANSF (A11 + P7-1, «Wszystkie 4 zmiany»): an obstacle is active movement, pushed like the chase roll
         c.results[sl.key] = K.sixesOf(I, key);
         follow();
         R.events.push({ type: "roll", key, who: u.roller, attr: r.attr, dice: K.rollOf(I, key)?.pool?.total, sixes: c.results[sl.key], ones: 0, pushed: 0, messageId: K.rollOf(I, key)?.messageId });

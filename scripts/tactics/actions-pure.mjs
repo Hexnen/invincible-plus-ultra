@@ -9,6 +9,7 @@
      target   { who, n: [min, max] }   n[0] = 0: the action may name another character and is about the actor otherwise
      effect   { kind }                 what a success does (flows/acts.mjs `EFFECTS`)
      tags     "physical"               needs body movement: refused while grappled, snared or immobilised [B2496], [B1606], [B1645]
+              "body"                   the same refusal while held, without the "physical" bar of the intangible (ANSF, P5-6) (`bodyBound`)
      when     a status the ACTOR must carry / someone must carry for the action to be offered at all (the dock hides it otherwise)
    Not here, by design: the vehicle rows [B2325-2331] and `objective`, `ram` (P7); `grapple`, `grappleAttack`, `release`, `charge` (P4);
    `flySkyOrbit` [B2377] is a way of the move flow (P3); `help`, `holdOff`, `endTurn` are operations of the round driver. */
@@ -28,7 +29,7 @@ export const ACTIONS = Object.freeze({
   rally: row("rally", "full", [2365, 2773, 2774, 2775], { roll: { attr: "presence" }, target: { who: "ally", n: [0, 1] }, effect: { kind: "rally" }, when: { anyone: "broken" } }),
   recoverResolve: row("recoverResolve", "full", [2368, 2818], { roll: { attr: "presence" }, target: { who: "ally", n: [0, 1] }, effect: { kind: "resolve" } }),
   persuade: row("persuade", "full", [2371, 2241], { roll: { attr: "presence" }, oppose: { attr: "intuition", who: "target", optional: true }, target: { who: "enemy", n: [0, 1] }, effect: { kind: "narrative" } }),
-  saveBystanders: row("saveBystanders", "full", [2374], { roll: { attrs: "any" }, effect: { kind: "bystanders" } }),
+  saveBystanders: row("saveBystanders", "full", [2374], { roll: { attrs: "any" }, effect: { kind: "bystanders" }, tags: ["body"] }),      // ANSF (P5-6 + P5-R8, «Wszystkie 6 zmian»): needs the body, as "physical", but stays open to the intangible
   /* ---- the escapes the text adds */
   breakFree: row("breakFree", "quick", [2496], { roll: { attr: "strength" }, oppose: { attr: "strength", who: "holder" }, effect: { kind: "escape", from: "grappled", escape: "grapple" }, when: { self: "grappled" }, tags: ["escape"] }),
   escapeTrap: row("escapeTrap", "quick", [2438], { roll: { attrs: ["agility", "strength"] }, effect: { kind: "escape", from: "trapped", escape: "trap" }, when: { self: "trapped" }, tags: ["escape"] }),
@@ -37,6 +38,8 @@ export const ACTIONS = Object.freeze({
   shakeOff: row("shakeOff", "none", [1574], { roll: { attr: "presence" }, effect: { kind: "shake" }, when: { self: "afflicted" }, once: "round", tags: ["escape"] }),      // P6: no action, one attempt a round
   extinguish: row("extinguish", "full", [2926], { roll: { attr: "agility" }, target: { who: "ally", n: [0, 1] }, effect: { kind: "extinguish" }, tags: ["physical"], when: { anyone: "burning" } }),
 });
+/** ANSF (P5-6): may a held, snared or immobilised character not do this? (body movement [B2496], [B1606], [B1645]) */
+export const bodyBound = (e) => !!(e?.tags?.includes("physical") || e?.tags?.includes("body"));
 export const ATTRS = Object.freeze(["fighting", "agility", "strength", "reason", "intuition", "presence"]);
 /** the attributes an entry lets the player choose from ([] = fixed or none) */
 export const attrChoices = (e) => (e?.roll?.attrs === "any" ? ATTRS.slice() : Array.isArray(e?.roll?.attrs) ? e.roll.attrs.slice() : []);

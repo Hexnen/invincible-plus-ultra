@@ -54,6 +54,8 @@ export function modesOf(c) {
   return out;
 }
 export const modeOf = (c, id) => { const list = modesOf(c); return (id ? list.find((m) => m.id === id) : null) ?? null; };
+/** ANSF (CI1): what ONE move of that way costs ([B2383]: a quick action; a way that takes only full actions, a full one). -> "quick" | "full" */
+export const moveActionOf = (c, id) => { const a = (modeOf(c, id ?? "walk") ?? modeOf(c, "walk"))?.profile?.actions ?? ["quick"]; return a.includes("quick") ? "quick" : a.includes("full") ? "full" : "quick"; };
 /** the profile the zones API takes (zones-api.md section 14). `zones`: how far ONE action goes (the stress option's reach when taken). */
 export function apiProfile(profile, { zones: z = null, stress = false, force = false, hover = undefined, big = false, phase = false } = {}) {
   const speed = Math.max(1, z ?? (stress && profile.stressZones ? profile.stressZones : profile.zones));

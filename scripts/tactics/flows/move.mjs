@@ -35,6 +35,11 @@ export const freeMoveChild = (who, to, mode, n) => ({ action: "move", actor: who
 /** -> "wait" | "go" | "stop". Marks the spot as settled in mv.cleared. */
 function enterGate(v, I, R, spot) {
   const mv = I.data.mv, Z = v.facts.zones, f = MP.stateFlags(Z.states(spot), mv.who);
+  /* ANSF (INT-10, the user 2026-11-12: «Wszystkie 4 zmiany»): another level of the SAME burning zone is no new entering of the fire: one
+     who started this move in that zone's fire, or met it on this move already, is not attacked again (one attack, as P5-R3) */
+  const zk = String(spot).split(":")[0], startFire = mv.from && String(mv.from).split(":")[0] === zk && MP.stateFlags(Z.states(mv.from), mv.who).fire > 0;
+  if (f.fire > 0 && (startFire || K.flag(I, `fireZ:${zk}`))) K.setFlag(I, `fire:${spot}`);
+  if (f.fire > 0) K.setFlag(I, `fireZ:${zk}`);
   if (f.fire > 0 && !K.flag(I, `fire:${spot}`)) {                                              // [B2925]: a fire attack on everyone who enters
     K.setFlag(I, `fire:${spot}`);
     const targets = [mv.who, ...(mv.group ?? [])].filter((c) => alive(v, c));
@@ -62,7 +67,8 @@ function gate(v, I, R, g) {
     /* S073: a driven vehicle is steered out by its driver: the driver's AGILITY with the vehicle's Maneuverability [B2940], as for a spin */
     const roller = mv.driver ?? mv.who, man = mv.driver ? Number(v.facts.c(mv.who)?.vehicle?.maneuver) || 0 : 0, mods = man ? [{ source: "maneuverability", dice: man }] : [];
     if (mv.driver && Z?.states && !MP.stateFlags(Z.states(d.spot), mv.driver).dark) { (mv.cleared ??= {})[key] = 1; return "go"; }      // the driver made it: "never affected by your own darkness"
-    if (!K.rollOf(I, key)) { R.effects.push(K.rollEffect(key, roller, "agility", K.buildPool(v, I, key, roller, "agility", mods, {}).pool, { passive: true, label: "ITAC.roll.dark" })); return "wait"; }
+    /* ANSF (A11 + SWEEP-R7, the user 2026-11-12: «Wszystkie 4 zmiany»): finding the way out is active movement, so the roll may be pushed */
+    if (!K.rollOf(I, key)) { R.effects.push(K.rollEffect(key, roller, "agility", K.buildPool(v, I, key, roller, "agility", mods, {}).pool, { noPush: !K.mayPush(v, roller), label: "ITAC.roll.dark" })); return "wait"; }
     if (!K.rollFinal(I, key)) return "wait";
     if (K.sixesOf(I, key) > 0) { (mv.cleared ??= {})[key] = 1; return "go"; }
     mv.stop = "dark"; return "stop";                                                             // provisional: the move ends in the dark, the action is spent
@@ -173,7 +179,18 @@ export const move = {
       if (!I.data.mv) {
         const pr = priced(v, I);
         if (!pr.ok) {                                                                            // declared through a granted exception (spec 9.12): the engine does not guess a route
-          if (I.decl.exception?.state === "granted") { I.status = "manual"; (I.data.notes ??= []).push({ note: "moveByHand", reason: pr.reason }); R.wait = true; return R; }
+          if (I.decl.exception?.state === "granted") {
+            /* ANSF (CI1 + P8d-3 + M2 + P8d-R10, the user 2026-11-12: «Wszystkie 6 zmian»): the player's move the GM let through as an exception
+               costs what a move costs (as other exceptions, P8e-R2): one move action of the way it moves, taken now; the GM still moves the
+               token by hand. Free: the GM's own "move anyway, without cost" (`waived`), and a character with no unit left to pay (P9F-R1). */
+            const cost = MP.moveActionOf(v.facts.c(I.actor), I.decl.mode);
+            if (!I.data.waived && !K.flag(I, "excPay")) {
+              K.setFlag(I, "excPay");
+              if (P1.canPay(v.state, I.actor, cost, { resolve: v.facts.c(I.actor)?.resolve }).ok) R.effects.push({ t: "pay", who: I.actor, cost, action: I.action, key: "exc", own: 1, tags: ["move"] });
+              else (I.data.notes ??= []).push({ note: "costWaived", reason: "noAction" });
+            }
+            I.status = "manual"; (I.data.notes ??= []).push({ note: "moveByHand", reason: pr.reason }); R.wait = true; return R;
+          }
           I.data.result = "illegal"; R.goto = "close"; return R;
         }
         const put = pr.kind === "area" || pr.kind === "return" || pr.teleport ? (pr.end.area ? `@${pr.end.area}` : pr.to) : null;
@@ -212,7 +229,7 @@ export const move = {
           if (!aloft && M.hasStatus(v.state, cid, id)) R.effects.push({ t: "status-", who: cid, id });
         }
       }
-      if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [mv.who, ...(mv.group ?? [])])) if (!R.effects.some((x) => x.t === e.t && x.who === e.who && x.id === e.id && String(x.path) === String(e.path))) R.effects.push(e); }   // [B2497], [B2392]: who left its pair behind is no longer of it
+      if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [mv.who, ...(mv.group ?? [])])) if (!R.effects.some((x) => x.t === e.t && x.who === e.who && x.id === e.id && String(x.path) === String(e.path))) R.effects.push(e); for (const e of K.vacuumEntered(v, [mv.who, ...(mv.group ?? [])], mv.from)) R.effects.push(e); }   // [B2497], [B2392]: who left its pair behind is no longer of it; ANSF (P5-2): into the vacuum anew
       if (I.decl.wreck && mv.mode === "burrowing" && !K.flag(I, "wreck")) { K.setFlag(I, "wreck"); burrowWreck(v, I, R, here); }      // PWE (PW095) [B1995]
       R.events.push(moveEvent(I));
       I.data.result = mv.stop ? "stopped" : "done"; R.goto = "close"; return R;
@@ -397,6 +414,7 @@ export const forced = {
         K.setFlag(I, "links");
         const vid = M.statusesOf(v.state, mv.who).find((s) => s.id === "inVehicle")?.data?.vehicle ?? null;
         for (const e of K.separated(v, [mv.who])) { R.effects.push(e); if (e.t === "status-" && e.id === "inVehicle" && e.who === mv.who && vid) mv.outOf = vid; }      // FXP (D165, U181): thrown out of a vehicle, told on the news line
+        for (const e of K.vacuumEntered(v, [mv.who], mv.from)) R.effects.push(e);              // ANSF (P5-2): thrown into the vacuum anew
       }      // [B2497], [B2392]: knocked or thrown away from the one it held, was held by, carried or was carried by
       if (mv.fall && !K.flag(I, "fall")) { K.setFlag(I, "fall"); R.push = fallChild(mv.who, {}); return R; }
       R.events.push(moveEvent(I, "forcedMove")); I.data.result = mv.stop === "barrier" ? "barrier" : "done"; R.goto = "close"; return R;
@@ -417,6 +435,14 @@ export const fall = {
       F.n = hazards.fallDice(F.from);                                                           // [B2391]
       I.locked = true;
       if (!(F.n > 0)) { I.data.result = "noFall"; R.goto = "close"; return R; }
+      /* ANSF (A7 + SWEEP-6, the user 2026-11-12: «Wszystkie jak rekomendacja»): one who stopped on a rooftop does not fall. Above a standing
+         building (the map's rooftop) the character comes down on the roof: the map's airborne mark is cleared, no dice, no damage. */
+      const roof = F.from === "elevated" && !here?.area && (here?.roof === true || v.facts.zones.zone?.(here?.zone)?.rooftop === true);
+      if (roof) {
+        const tid = ZP.tokenIdOf(v.facts.c(F.who)?.tokenUuid), op = here?.airborne ? ZP.levelOp(tid, { level: "elevated", airborne: false }) : null;
+        if (op) R.effects.push({ t: "zones", op });
+        I.data.result = "onRoof"; R.goto = "close"; return R;
+      }
       R.goto = "roll"; return R;
     },
     roll(v, inst) {

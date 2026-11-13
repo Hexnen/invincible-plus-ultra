@@ -374,8 +374,30 @@ function pushChild(X, parent, spec) {
 }
 const publicDecl = (d) => ({ action: d.action, weapon: d.weapon, targets: d.targets ?? [], zone: d.zone, special: d.special, wreck: d.wreck, area: d.area, fullAuto: d.fullAuto, to: d.to, mode: d.mode, attr: d.attr });
 
-async function closeInst(X, I, result = null) {
+/* ANSF (P8-1, the user 2026-11-12: «Wszystkie jak rekomendacja»): a carried character left in the air (its carrier flew off, was thrown
+   away, fell, was broken) falls by itself. The steps of an action note whom they parted from a carry without moving them; when the action
+   is over (not undone), each of them who is still in the air gets a fall of its own on top of the stack [B2391], [B2392]. One who moved
+   (the thrown or falling one itself) is the GM's word on its own card as before (A7). */
+function noteDrops(I, effects) {
+  const movers = new Set([I.data?.mv?.who, ...(I.data?.mv?.group ?? []), I.data?.fall?.who].filter(Boolean));
+  for (const e of effects ?? []) if (e?.t === "status-" && e.id === "carried" && P1.isId(e.who) && !movers.has(e.who) && !(I.data.drops ?? []).includes(e.who)) (I.data.drops ??= []).push(e.who);
+}
+const aloft = (p) => !!p && (p.area === "sky" || (!p.area && p.level === "elevated" && p.airborne === true));
+function pushDrops(X, I) {
+  if (I.status === "aborted" || !Array.isArray(I.data?.drops) || !X.facts.zones) return;
+  for (const who of I.data.drops) {
+    if (!X.facts.c(who) || !aloft(X.facts.zones.place?.(who))) continue;
+    const spec = Move.fallChild(who, {}), inst = makeInst(X, { action: spec.action, actor: null, decl: spec.decl, cause: "trigger", flow: spec.flow, data: { ...spec.data, dropped: 1 }, initiator: spec.initiator, parent: top(X)?.id ?? null });
+    if (!FLOWS[inst.flow].legality(view(X), inst).ok) continue;
+    inst.tx = openTx(X, { inst: inst.id });
+    if (inst.parent) { const P = J.clone(instOf(X, inst.parent)); P.status = "waiting"; setInst(X, P); }
+    pushInst(X, inst);
+  }
+}
+async function closeInst(X, I, result = null) { await closeInst0(X, I, result); pushDrops(X, I); }
+async function closeInst0(X, I, result = null) {
   I.status = I.status === "aborted" ? "aborted" : "done";
+  for (const tk of (X.state.tokens ?? []).filter((t) => t?.scope?.inst === I.id)) write(X, I.tx, ["tokens", `#${tk.id}`], null, I);      // ANSF (P6-5): dice bound to this action end with it
   if (result) I.data.result = result;
   dropPrompts(X, (p) => p.inst === I.id);
   X.state = { ...X.state, stack: X.state.stack.filter((i) => i.id !== I.id) };
@@ -474,6 +496,7 @@ async function stepOnce(X, inst, at) {
   if (!I.hist?.[I.step]) (I.hist ??= {})[I.step] = JSON.stringify({ data: inst.data, rolls: inst.rolls, locked: inst.locked, decl: inst.decl });   // for goToStep / amend
   let progress = false;
   for (const e of R.effects) progress = (await applyEffect(X, I, e, inst.step)) || progress;
+  noteDrops(I, R.effects);
   /* D103 / D104: a card the step withdraws (its question is no longer true: the attack went to somebody else). Only one nobody has
      answered yet; its key is forgotten, so the step may ask that seat again later with a card that says what is true then. */
   for (const k of Array.isArray(R.drop) ? R.drop : []) {
@@ -662,6 +685,7 @@ async function opDeclare(X, a) {
   const payable = (cost) => { if (pl.grant && cost !== "full" && cost !== "quick") return bad("busy"); const cp = P1.canPay(X.state, actor, cost, { interrupt: pl.cause === "interrupt", gm, ranged: P1.isRanged(entry), resolve: X.facts.c(actor)?.resolve, ...(pl.grant ? { grant: pl.grant } : {}) });      /* a unit that costs stress (Quickness [R1], a defence grant [B2105]) pays nothing at Resolve 0 [B2816], [B2228] */ return cp.ok ? null : bad(cp.reason === "notYourTurn" ? "notYourTurn" : "noAction", { reason: cp.reason }); };   // [L1]-[L4], [L7], [L8]
   if (!priced) { const no = payable(entry.cost); if (no) return no; }
   const inst = makeInst(X, { action: entry.id, actor, decl, cause: pl.cause, parent: pl.parent, data: a.data && X.user.staff ? a.data : {} });
+  if (gm) inst.data.waived = 1;                                                            // ANSF (CI1): the GM's own "without cost" (flows/move.mjs: a move by hand stays free)
   const l = legalFor(X, inst, entry);
   if (!l.ok && !decl.exception) return bad("illegal", { reason: l.reason, ...l.params });
   const price = priced ? FLOWS[inst.flow].price(view(X), inst) : null, cost = priced ? price?.cost ?? "none" : entry.cost;

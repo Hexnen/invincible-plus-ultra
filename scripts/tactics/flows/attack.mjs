@@ -29,7 +29,10 @@ const TOUCH = ["slugfest", "grapple", "grappleAttack", "counterattack", "charge"
 const GM_STUNTS = { special: "stunt", own: "stunt", disarm: "stunt" };                 // the GM's word: [B2441-2442]; Disarm: which item it is
 const NO_MAP_STUNTS = { knockback: "direction", slam: "direction" };                    // without zones the forced move is the GM's, by hand
 const EXTRA_STUNTS = ["bangHeads", "trickShot"];                                         // [B2437], [B2518]: an extra opponent in the same zone
-const NOT_ON_EXTRA = [...EXTRA_STUNTS, "special", "own", "disarm", "slam"];              // an extra opponent starts no chain of its own (reading, combat-rulings)
+/* ANSF (A41, the user 2026-11-12: «Wszystkie 4 zmiany»): an extra opponent takes every stunt on its own, Disarm and the special and own
+   stunts too [B2437], [B2518]; only a further Bang Heads / Trick Shot is not its own: that is the next extra opponent, named from the target
+   that was hit and paid from the same pool (no chain of its own). */
+const NOT_ON_EXTRA = [...EXTRA_STUNTS];
 export const MINION_LOSS_MAX = K.MINION_LOSS_MAX;
 const WRECK_REASON = { terrainUnset: "wreckUnset", terrain: "wreckTerrain", strength: "wreckStrength", alreadyWrecked: "wreckDone" };
 export const INVISIBLE_GATE_DICE = -3;          // [B2075]
@@ -1077,14 +1080,19 @@ export const steps = {
         if (harm > 0 && TOUCH.includes(kind) && !o.extra && striker && striker.present !== false && !M.outOfAction(v.state, I.actor, striker) && once(`touch:${t}`)) {
           R.push = hazardChild([I.actor], { kind: "fixed", amount: harm, armor: true, cause: "hazard", id: "emanation" }); return R;
         }
-        const stun = picked(t, "stun") ? "stun" : picked(t, "suppressed") ? "suppressed" : null;
+        /* ANSF (A25 + P8b-R5, the user 2026-11-12: «Wszystkie 4 zmiany»): the STUN effect of a weapon (Pepper Spray, Taser [B2576], [B2583])
+           works by itself on a hit that does damage, as the Stun stunt does, without a six bought for it: PRESENCE (no action) or the next
+           turn is lost. Not against a huge creature (as the stunt [B2436]); a Stun or Suppressed picked on the same target is one roll. */
+        const sw = weaponOf(v, I), byGear = !!sw?.stunEffect && !tf.huge && !(tf.immune ?? []).includes("stun");
+        const stun = picked(t, "stun") ? "stun" : picked(t, "suppressed") ? "suppressed" : byGear ? "stunEffect" : null;
+        const stunSrc = stun === "stunEffect" ? { kind: "gear", owner: I.actor, name: String(sw?.name ?? "stunEffect").slice(0, 80) } : { kind: "stunt", owner: I.actor, name: stun };
         if (stun && dm && stunts.stunOutcome({ taken: dm.taken }).rollNeeded && !M.outOfAction(v.state, t, tf)) {      // [B2707]: a target the blow broke rolls for nothing; it is out of action anyway                 // [B2436], [B2517]
           const key = `stun:${t}`;
           if (!K.rollOf(I, key)) { const { pool } = K.buildPool(v, I, key, t, "presence"); R.effects.push(K.rollEffect(key, t, "presence", pool, { passive: true, label: `ITAC.stunt.${stun}` })); R.wait = true; return R; }   // [A-2]: "no action" reaction rolls are passive
           if (!K.rollFinal(I, key)) { R.wait = true; return R; }
           if (once(key) && stunts.stunOutcome({ taken: dm.taken, presenceSixes: K.sixesOf(I, key) }).losesTurn) {   // [R10]
-            R.effects.push({ t: "state", path: ["ledger", t], to: P1.loseNextTurn(P1.ledgerOf(v.state, t), { kind: "stunt", owner: I.actor, name: stun }) });
-            R.effects.push({ t: "status+", who: t, status: { id: "stunned", source: { kind: "stunt", owner: I.actor, name: stun } } });
+            R.effects.push({ t: "state", path: ["ledger", t], to: P1.loseNextTurn(P1.ledgerOf(v.state, t), stunSrc) });
+            R.effects.push({ t: "status+", who: t, status: { id: "stunned", source: stunSrc } });
             R.events.push({ type: "status", target: t, status: { id: "stunned", on: true } });
           }
         }

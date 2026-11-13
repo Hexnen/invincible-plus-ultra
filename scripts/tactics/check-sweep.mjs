@@ -111,7 +111,7 @@ for (const u of S.GRANT_UNITS.filter((x) => !["A", "B", "full", "quick"].include
     data: { mv: { who: "V1", driver: "H1", from: "z1", to: "z2", zones: ["z1", "z2"], group: [], seg: 0, cleared: {} }, res: { "seg:0": { ok: true, spot: "z1", stop: { reason: "ipu.dark", data: { spot: "z1" } }, left: ["z1", "z2"] } } } };
   const run = (owner) => { const v = vOf(T); v.facts = { ...v.facts, zones: { states: () => [{ id: "d1", kind: "dark", owner }] } }; const I = FK.draft(inst), R0 = FK.result(I); travel(v, I, R0); return { r: rolls(R0)[0], I }; };
   const { r } = run("N1");
-  eq([r?.who, r?.attr, r?.pool.base, r?.pool.mods.find((x) => x.source === "maneuverability")?.dice, r?.maxPush], ["H1", "agility", 4, 2, 0], "S073: the driver's AGILITY plus the vehicle's Maneuverability, not pushed");
+  eq([r?.who, r?.attr, r?.pool.base, r?.pool.mods.find((x) => x.source === "maneuverability")?.dice, r?.maxPush], ["H1", "agility", 4, 2, null], "S073: the driver's AGILITY plus the vehicle's Maneuverability, pushed like any active move (ANSF: A11 + SWEEP-R7, the user 2026-11-12; was: not pushed)");
   const own = run("H1");
   eq([own.r ?? null, !!own.I.data.mv.cleared["dark:z1"]], [null, true], "S073: a driver who made the darkness is not held by it [B1654]");
 }
