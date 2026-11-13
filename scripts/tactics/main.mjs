@@ -71,21 +71,32 @@ function announce(combat) {
   } catch (e) { console.warn(`${MOD} | tactics announce`, e); }
 }
 
+/* RLD: the surfaces' files are fetched and evaluated from init on (they only define things: no hook, no DOM, no game read at load), so
+   at ready the prompts and the surfaces start at once. Before, both imports began only at ready, one after the other, while the first
+   frames of the scene, Dice So Nice and the map's reveal kept the page busy: the dock and the desk came ~1 s after ready. What starts,
+   and when (ready), is unchanged. A failed early fetch is asked again at ready (and the surfaces' one retry after a pause stays). */
+const loadUi = () => import("./ui/main.mjs").catch(() => new Promise((r) => setTimeout(r, 1500)).then(() => import(`./ui/main.mjs?retry=${Date.now()}`)));
+let early = null;
+function preload() {
+  if (early) return;
+  const prompts = import("./ui/prompts.mjs"), ui = import("./ui/main.mjs");
+  early = { prompts: prompts.catch(() => import("./ui/prompts.mjs")), ui: ui.catch(() => loadUi()) };
+}
+
 /** ready: everything that listens. Only called when tactical combat runs on this world. */
 async function startRunning() {
   /* D125: what a combatant's facts could not carry is never dropped in silence: the console on every client, a notification for the GM (trace-pure.mjs) */
   Trace.setSink((n) => { console.warn(`${MOD} | tactics: ${n.kind} (${n.area})`, n); if (Store.isStaff(game.user)) ui.notifications?.warn(t(`ITAC.warn.${n.kind}`, { who: n.who || "?", what: n.what || n.area, raw: n.raw }), { permanent: false }); });
   Relay.start();
   Engine.start();
-  const Prompts = await import("./ui/prompts.mjs");
+  const Prompts = await (early?.prompts ?? import("./ui/prompts.mjs"));
   Klass.setEndSceneAsk((combat) => Prompts.sceneEnd(combat));
   Hooks.on("renderCombatTracker", (app, html) => Klass.startField(app, html));      // TACB: the Tactics button above Begin Combat, the surprise attack field (ANSG FXT-10) beside it
   try { ui.combat?.render?.(); } catch { /* not drawn yet */ }
   Store.subscribe(() => Prompts.sync());
   /* the designed surfaces (ui/main.mjs: the action dock and the GM desk); when they cannot start, the minimal dialogs above stay in charge */
   /* one more try after a pause: a module fetch that fails once (a busy server) must not leave a player on the fallback dialogs for the whole session */
-  const load = () => import("./ui/main.mjs").catch(() => new Promise((r) => setTimeout(r, 1500)).then(() => import(`./ui/main.mjs?retry=${Date.now()}`)));
-  try { const UI = await load(); if (UI.start()) Prompts.setSurfaces(true); } catch (e) { console.warn(`${MOD} | tactics surfaces failed to start`, e); }
+  try { const UI = await (early?.ui ?? loadUi()); if (UI.start()) Prompts.setSurfaces(true); } catch (e) { console.warn(`${MOD} | tactics surfaces failed to start`, e); }
   Hooks.on("updateCombat", (combat, changes) => { if (changes?.flags?.[MOD] !== undefined || "round" in (changes ?? {}) || "turn" in (changes ?? {})) announce(combat); });
   Hooks.on("createCombat", (combat) => announce(combat));
   Hooks.on("deleteCombat", (combat) => { last.delete(combat.id); Store.notify({ kind: "deleted", combat, state: null }); Summons.clearCopies(combat.id); });   // D98
@@ -145,6 +156,7 @@ export function start(phases = {}) {
       const why = blocker();
       setRunning(!why); setLive(!why);
       if (!why) Klass.install({ late: !!phases.init });        // the import resolved after init: documents may already exist
+      if (!why && typeof document !== "undefined") preload();      // RLD: a page only (the node checks start the surfaces themselves)
       run("ready", async () => {
         try {
           attach();
