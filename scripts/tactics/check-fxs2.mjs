@@ -128,6 +128,12 @@ async function chaseTable(distance = 2) {
   ok(many.band.y1 <= whole.band.y1, "U234: rows under the band's end leave the band as it is");
   eq(seat(125, false).band.y1, seat(null, false).band.y1, "U234: a player's band is as it was");
   ok(/end: hudEnd/.test(src("./ui/dock.mjs")) && /\.ich-more:not\(\.ich-leaving\)/.test(src("./ui/dock.mjs")), "U234: the dock tells the frame where the rows end only while all of them show");
+  /* the recorder's page reader keeps its own `this` (settle.mjs plain().one): read through the object, a destructured one() throws and the
+     whole layout stops (seen live: the desk stood over the challenges) */
+  { const S = await import("./ui/settle.mjs"), doc = { querySelectorAll: () => [] }, rec = S.recorder(doc, () => null);
+    let threw = false; try { rec.derive(({ one }) => one("x")); } catch { threw = true; }
+    ok(threw && rec.derive((pg) => pg.one("x")) === null, "U234 premise: a destructured page reader throws, pg.one does not");
+    ok(/const hudEnd = hudOn && !hudFolded \? rec\.derive\(\(pg\) =>/.test(src("./ui/dock.mjs")), "U234: the dock reads the rows' end through pg."); }
   ok(/new MutationObserver\(.*relayout\(\).*\.observe\(ichList, \{ childList: true \}\)/.test(src("./ui/main.mjs")), "U234: rows coming and going lay the band out again");
   ok(/#invincible-tactics-desk:not\(\.igd-collapsed\) \.igd/.test(src("../splash/stage.mjs")), "U234: the comic splash keeps off the open desk");
 }

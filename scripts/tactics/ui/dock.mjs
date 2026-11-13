@@ -257,12 +257,12 @@ function placeSlots(rec) {
   /* FXS2 (U234): where the challenges' rows really end on the GM seat, while the HUD shows all of them (no "+N more", no scroll): the band
      gives the rest to the desk under it (slots-pure.frame). A new challenge that no longer fits shows the "+N more" chip; then this is
      null, the band is whole again for one layout and the HUD lays out its rows in it, and the next layout fits the band to them */
-  const hudEnd = hudOn && !hudFolded ? rec.derive(({ q, one, rect }) => {
-    if (one("#invincible-challenges .ich-more:not(.ich-leaving)")) return null;
-    const L = one("#invincible-challenges .ich-list");
+  const hudEnd = hudOn && !hudFolded ? rec.derive((pg) => {      // pg.one uses its own `this`: not destructured
+    if (pg.one("#invincible-challenges .ich-more:not(.ich-leaving)")) return null;
+    const L = pg.one("#invincible-challenges .ich-list");
     if (!L || L.scrollHeight > L.clientHeight + 1) return null;
     let y = null;
-    for (const el of q("#invincible-challenges .ich-item:not(.ich-leaving)")) { const r = rect(el); if (r) y = Math.max(y ?? 0, r.bottom); }
+    for (const el of pg.q("#invincible-challenges .ich-item:not(.ich-leaving)")) { const r = pg.rect(el); if (r) y = Math.max(y ?? 0, r.bottom); }
     return y === null ? null : Math.round(y);
   }) : null;
   const fr = SP.frame({ W, H, k, staff: !!handlers.staff?.(), hints: !!handlers.hintsOn?.(), top0: ceil, topCx, topL, topR, floats, side, chatTop: chat?.top ?? null,
