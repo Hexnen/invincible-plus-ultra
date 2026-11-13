@@ -200,6 +200,35 @@ async function run(W, H, fn) {
   }
 }
 
+/* ================================================================== (b2) the real engine's design (pure): the calls stage.mjs makes */
+{
+  const fs = await import("node:fs");
+  const { FontBank } = await import("../letters/fontbank.mjs");
+  const { makePlan, FONTS } = await import("../letters/design.mjs");
+  const bank = new FontBank();
+  for (const [id, f] of Object.entries(FONTS)) { const b = fs.readFileSync(new URL(`../letters/${f.file}`, import.meta.url)); bank.add(id, b.buffer.slice(b.byteOffset, b.byteOffset + b.length)); }
+  const api = { adv: (f, c) => bank.adv(f, c) };
+  const momentHands = (e, seedBase, mem) => {
+    const hands = [];
+    for (const it of LP.planMoment(e, { W: 746 }).items) {
+      const o = { mood: it.mood, sound: it.sound, colors: it.colors ?? undefined, seed: LP.seedOf(seedBase, it.role), avoid: hands.slice(), reduced: false };
+      hands.push(makePlan(LP.letterable(it.text), o, api, o.seed == null ? mem : []).hand.id);
+    }
+    return hands;
+  };
+  const e = ev({ n: 6, sixes: 3 });
+  const a = momentHands(e, "MSGX", []), b = momentHands(e, "MSGX", ["some-recent-hand", "another"]);
+  eq(a, b, "real design: the same message letters the same hands on two clients with different recent memories");
+  ok(new Set(a).size === a.length, `real design: every lettering of one moment has its own hand (${a.join(" / ")})`);
+  const looks = new Set(["m1", "m2", "m3", "m4", "m5", "m6"].map((m) => momentHands(e, m, [])[0]));
+  ok(looks.size >= 4, `real design: different rolls, different word looks (${looks.size} of 6)`);
+  const crit = makePlan("WHAM!", { mood: "impact", sound: by(plan(ev({ n: 4, sixes: 4 })), "word").sound, seed: "s" }, api, []);
+  const weak = makePlan("WHAM!", { mood: "impact", sound: by(plan(ev({ n: 8, sixes: 1 })), "word").sound, seed: "s" }, api, []);
+  ok(crit.sizeK > weak.sizeK, `real design: a critical WHAM! is lettered bigger than a routine one (${crit.sizeK.toFixed(2)} > ${weak.sizeK.toFixed(2)})`);
+  const pl = makePlan(LP.letterable("SZANSE ROZBITE! 1 NA 1,296"), { mood: "tick", seed: "pl" }, api, []);
+  ok(pl && pl.hand, "real design: a Polish sentence with a figure letters");
+}
+
 /* ================================================================== (c) the sources */
 {
   const m = src("../splash/main.mjs"), st = src("../splash/stage.mjs");
@@ -210,6 +239,5 @@ async function run(W, H, fn) {
   ok(/if \(LE\) return playLetters\(ev, o\);/.test(st), "Stage.play letters when the engine is there");
   ok(!/game\.|message\./.test(st.slice(st.indexOf("function playLetters"), st.indexOf("function stressLettered"))), "the lettered stage reads nothing of the message or the game (only the event and the Resolve reader it is handed)");
   for (const L of [SLang.EN, SLang.PL]) ok(L["INSPLASH.Settings.Lettering.Name"] && L["INSPLASH.Settings.Lettering.Hint"], "the lettering setting is named in both languages");
-  ok(!/scripts\/letters/.test(src("./check-ldic.mjs").split("\n").filter((l) => /^import/.test(l)).join("\n")), "this suite does not reach into the engine's files");
 }
 done("ldic");
