@@ -235,15 +235,29 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
   const modes = modesOf(c).filter((m) => !o.mode || m.id === o.mode);
   const push = (m, to, d, zone, extra = {}) => {
     const pr = priceMove(Z, state, cid, c, { to, mode: m.id, stress: 1, force: extra.force }, o);
+    if (extra.floor && !pr.ok) return false;                                          // FXL2 (U212): a storey is offered where this way gets there in one action
     const cost = pr.ok ? (pr.later ?? pr.cost) : null, pay = pr.ok && (cost === "quick" || cost === "full") ? canPay(cost) : { ok: true };
     out.push({ id: `${m.id}|${to}${extra.wreck ? "|wreck" : ""}`, to, zone, ...(extra.wreck ? { wreck: 1 } : {}), mode: m.id, d, cost, stress: pr.ok ? pr.stress : 0, disabled: !pr.ok ? pr.reason : pay.ok ? null : pay.reason ?? "noAction",
       ...(pr.ok ? (pay.ok ? {} : { unpaid: 1 }) : pr.gmMayAllow ? { gmMayAllow: true } : {}), barriers: pr.ok ? pr.barriers : pr.params?.barriers ?? [], ...(pr.ok && pr.gm ? { gm: 1 } : {}), ...(pr.ok && pr.zones?.length ? { route: pr.zones.slice() } : {}), ...(pr.ok && pr.steps?.length ? { enters: [...new Set(pr.steps.map((s) => s.to).filter((x) => typeof x === "string"))] } : {}), ...extra });      // W1 (U32): `route` = the zones this way enters, for the preview on the map
+    return true;
+  };
+  /* FXL2 (U212): the storeys of a standing building [B2416] (P8b-6, P8b-R11: a storey is one zone of vertical movement): each is a place
+     of its own, priced by the map's plan (zones-api.md sections 2-3: walking climbs them by the stairs), offered beside the ground and
+     the rooftop; a storey this way does not reach in one action is left out, as a zone out of reach is */
+  const zoneMemo = new Map(), zoneOf = (k) => { if (!zoneMemo.has(k)) zoneMemo.set(k, Z.zone?.(k) ?? null); return zoneMemo.get(k); };
+  const storeys = (k) => storeysOf(zoneOf(k));
+  const floorsTo = (m, zone, d, seenF, extra = {}) => {
+    for (let f = 1; f <= storeys(zone); f++) {
+      const to = `${zone}:f${f}`;
+      if (seenF.has(to) || to === from.spot) continue;
+      if (push(m, to, d, zone, { floor: f, ...extra })) seenF.add(to);
+    }
   };
   for (const m of modes) {
     if (from.area) { continue; }
     const conds = conditionsOf(state, cid, c, Z.states(from.spot)), r = movement.moveReach(m.profile, { conditions: conds, resolve: c.resolve });
     const max = Number.isFinite(o.free) ? o.free : Math.max(r.plain, r.stressed);
-    const seen = new Set();
+    const seen = new Set(), seenF = new Set();
     const phase = phaseFor(state, cid, c) && m.profile.way === "walk";      // PWE (PW086)
     for (const force of m.profile.way === "through" || phase ? [false] : [false, true]) {
       for (const row of Z.reach(cid, apiProfile(m.profile, { zones: Math.max(1, max), force, big: bigFor(c), phase }), o.max ?? max)) {
@@ -251,6 +265,7 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
         seen.add(row.zone);
         push(m, row.zone, row.d, row.zone, force ? { force: true } : {});
         if (m.mode === "burrowing" && !force) push(m, row.zone, row.d, row.zone, { wreck: 1 });      // PWE (PW095) [B1995]: the same way, wrecking the zones passed under
+        if (m.mode !== "burrowing") floorsTo(m, row.zone, row.d, seenF, force ? { force: true } : {});      // FXL2 (U212)
         const z = m.profile.way === "air" || m.profile.way === "swing" || m.profile.vertical ? Z.zone(row.zone) : null;
         if (z && (z.rooftop || (m.profile.ends ?? []).includes("air"))) push(m, `${row.zone}:elevated`, row.d, row.zone, { elevated: z.rooftop ? "roof" : "air", ...(force ? { force: true } : {}) });   // [B2385-2386], [B2396]
       }
@@ -258,12 +273,17 @@ export function moveOptions(Z, state, cid, c, canPay = null, o = {}) {
     if (from.zone) {                                                                  // a change of level inside the zone [B2386]
       const z = Z.zone(from.zone), up = `${from.zone}:elevated`;
       if (from.level !== "elevated" && movement.altitudeAccess(m.profile, "elevated").ok && (z?.rooftop || (m.profile.ends ?? []).includes("air"))) push(m, up, 0, from.zone, { here: 1, elevated: z?.rooftop ? "roof" : "air" });
-      if (from.level !== "ground" && m.profile.way !== "walk") push(m, from.zone, 0, from.zone, { here: 1 });
+      if (from.level !== "ground" && (m.profile.way !== "walk" || from.level === "floor")) push(m, from.zone, 0, from.zone, { here: 1 });      // FXL2 (U212): from a storey down the stairs on foot too
+      if (m.mode !== "burrowing") floorsTo(m, from.zone, 0, seenF, { here: 1 });      // FXL2 (U212): up or down to another storey of this building [B2416]
     }
     if (!Number.isFinite(o.free)) for (const a of ["sky", "orbit"]) if (movement.altitudeAccess(m.profile, a).ok) push(m, `@${a}`, null, null, { area: a });   // [B2387-2388]
   }
   return out.sort((a, b) => (a.d ?? 99) - (b.d ?? 99));
 }
+/** FXL2 (U212): how many storeys a zone of the map has as places of their own: a standing building's `floors` (zones-api.md section 2;
+    a wrecked one has no rooftop and is not a building to climb [B2457]); a plain building 0. */
+export const MAX_STOREYS = 12;
+export const storeysOf = (z) => (z?.rooftop && Number(z?.floors) > 0 ? Math.min(MAX_STOREYS, Math.trunc(Number(z.floors))) : 0);
 /** The ways of `cid` to ONE named place, each priced like a row of moveOptions [D21]: a level the list above does not offer by itself
     (a floor, underground, a way down for somebody on foot) still has a price when the map's token HUD asks for it. */
 export function optionsTo(Z, state, cid, c, to, canPay = null) {

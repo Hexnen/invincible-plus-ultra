@@ -86,7 +86,7 @@ const modeText = (id) => t(`ITAC.mode.${id}`, {}, id);
 export function optionsFor(h, cid, to = null) {
   const st = h.state(), Z = h.facts().zones, c = h.c(cid);
   if (!st || !Z || !c) return [];
-  return MP.moveOptions(Z, st, cid, c).filter((o) => !to || o.to === to || (o.zone === keyOf(to) && !o.elevated && !to.includes(":")));
+  return MP.moveOptions(Z, st, cid, c).filter((o) => !to || o.to === to || (o.zone === keyOf(to) && !o.elevated && !o.floor && !to.includes(":")));      // FXL2 (U212): a drag onto a zone is its ground, not a storey
 }
 async function ask(h, cid, opts, title) {
   const usable = opts.filter((o) => !o.disabled);

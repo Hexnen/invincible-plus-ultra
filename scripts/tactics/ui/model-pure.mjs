@@ -384,7 +384,7 @@ export function askData(p, o) {
   const stuntTargets = [...new Set((p.options ?? []).map((x) => x.data?.stunt && !x.data?.onExtra && x.data?.target).filter(Boolean))], oneTarget = stuntTargets.length === 1;
   const places = (p.options ?? []).filter((x) => typeof x.data?.to === "string" && !x.disabled);       // P3 (the move a dodge earns): one option per place and way of moving
   const chosen = places.length ? own.zone?.[p.id] ?? null : null, here = places.filter((x) => bare(x.data.zone ?? x.data.to) === chosen);
-  const wayLabel = (x) => [x.data.mode ? t(`ITAC.mode.${x.data.mode}`, {}, cap(x.data.mode)) : labelOf(t, x.label), x.data.elevated === "roof" ? t("ITAC.ui.way.roof") : x.data.elevated === "air" ? t("ITAC.ui.way.air") : null].filter(Boolean).join(", ");
+  const wayLabel = (x) => [x.data.mode ? t(`ITAC.mode.${x.data.mode}`, {}, cap(x.data.mode)) : labelOf(t, x.label), x.data.floor ? t("ITAC.ui.way.floor", { n: x.data.floor }) : x.data.elevated === "roof" ? t("ITAC.ui.way.roof") : x.data.elevated === "air" ? t("ITAC.ui.way.air") : null].filter(Boolean).join(", ");
   const placeOpts = !places.length ? [] : here.length
     ? [...here.map((x) => ({ id: x.id, label: wayLabel(x), cost: zoneText(facts, t, x.data.to), note: null, disabled: null, picked: false, pass: false, zones: null, req: x.req, zoneReq: null })),
       { id: "@again", label: t("ITAC.ui.move.again"), cost: null, note: null, disabled: null, picked: false, pass: true, zones: null, req: null, zoneReq: null, again: true }]
@@ -914,7 +914,7 @@ function movePanel(bar, a, own, facts, t) {
   const ref = own.refused?.action === a.id ? own.refused : null;
   const row = (o) => {
     const mine = ref && ref.key === o.id, disabled = mine ? whyText(t, ref.reason, ref.params) : o.disabled ? whyText(t, o.disabled) : null;
-    const where = o.area ? zoneText(facts, t, `@${o.area}`) : o.elevated === "roof" ? t("ITAC.ui.way.roof") : o.elevated === "air" ? t("ITAC.ui.way.air") : o.here ? t("ITAC.ui.way.down") : null;
+    const where = o.area ? zoneText(facts, t, `@${o.area}`) : o.floor ? t("ITAC.ui.way.floor", { n: o.floor }) : o.elevated === "roof" ? t("ITAC.ui.way.roof") : o.elevated === "air" ? t("ITAC.ui.way.air") : o.here ? t("ITAC.ui.way.down") : null;      // FXL2 (U212): a storey
     const decl = { to: o.to, mode: o.mode, ...(o.stress ? { stress: 1 } : {}), ...(o.force ? { force: true } : {}), ...(o.wreck ? { wreck: 1 } : {}) };      // PWE (PW095): the wrecking burrow
     /* U93: what a way costs is drawn on its row (the mark of speed, the bolt of stress); `notes` keep what has no mark, `say` is the
        price in words (a screen reader, the map's menu, which draws text only) */
@@ -930,7 +930,7 @@ function movePanel(bar, a, own, facts, t) {
   for (const o of far) { if (!byZone.has(o.zone)) byZone.set(o.zone, []); byZone.get(o.zone).push(o); }
   /* what the map offers: every zone one action reaches, in the colour of its cheapest way (blocked ones are shown too, so the reason can be read and the GM asked) */
   const zones = [...byZone].map(([zone, list]) => {
-    const can = list.filter((o) => !o.disabled).sort((x, y) => (COST_RANK[x.cost] ?? 9) - (COST_RANK[y.cost] ?? 9) || (x.stress ?? 0) - (y.stress ?? 0) || (x.barriers?.length ?? 0) - (y.barriers?.length ?? 0));
+    const can = list.filter((o) => !o.disabled).sort((x, y) => (COST_RANK[x.cost] ?? 9) - (COST_RANK[y.cost] ?? 9) || (x.stress ?? 0) - (y.stress ?? 0) || (x.barriers?.length ?? 0) - (y.barriers?.length ?? 0) || (x.floor ? 1 : 0) - (y.floor ? 1 : 0));      // FXL2 (U212): one click never climbs a storey; the storeys are in the menu
     const best = can[0] ?? list[0], mode = t(`ITAC.mode.${best.mode}`, {}, cap(best.mode));
     /* U100: the label on the zone, its tip and (on the board) the price in the pick's tooltip as the dock's marks too */
     const ps = can.length ? Sg.priceSigns(priceOf(t, best.cost, best.stress), { free: true }) : [];

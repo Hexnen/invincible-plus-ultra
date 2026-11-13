@@ -134,7 +134,7 @@ export const blast = {
         if (!(n > 0) || !tf || M.outOfAction(v.state, t, tf)) continue;
         if (!I.data.pk?.[key]) {
           const zs = Z ? MP.moveOptions(Z, v.state, t, tf, undefined, { free: n }).filter((x) => !x.disabled && !x.area).slice(0, 50) : [];
-          R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, t), about: t, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated } })),
+          R.prompts.push({ key, kind: "dodgeMove", to: K.addressee(v, t), about: t, options: [...zs.map((x) => ({ id: x.id, label: "ITAC.opt.moveTo", data: { to: x.to, zone: x.zone, mode: x.mode, d: x.d, elevated: x.elevated, ...(x.floor ? { floor: x.floor } : {}) } })),
             { id: "move", label: "ITAC.opt.dodgeMove", data: { zones: n } }, { id: K.PASS, label: "ITAC.opt.pass" }], data: { zones: n } });
           R.wait = true; return R;
         }
