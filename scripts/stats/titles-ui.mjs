@@ -1,7 +1,7 @@
 /* Plus Ultra STATISTICS, THE TITLES OF A FIGHT (package AWRD) in the statistics window: the section under a fight's summary (registered
    on api.stats.fightSections, app.mjs FIGHT SECTIONS) and the strip of titles a character or a player collected. Plain DOM; the model is
    titles-pure.cardOf / chipsOf, so the window says exactly what the end-of-fight card said. Styles: styles/stats.css "titles". */
-import * as TP from "./titles-pure.mjs";
+import * as SP from "./show-pure.mjs";
 
 const h = (tag, attrs = {}, ...kids) => {
   const el = document.createElement(tag);
@@ -17,18 +17,24 @@ function face(img, name) {
   return box;
 }
 
-/** the fight section: fn({ rec, rows, titles, gm, t }) -> HTMLElement */
-export function fightSection({ rec, gm, t }) {
-  const m = TP.cardOf(rec, { gm }, t);
+/** the fight section: fn({ rec, rows, titles, gm, t, own }) -> HTMLElement. POLS (U219, U225): the model is show-pure.titlesView, so a
+    title shared by a tie is one entry with all its holders, as on the end-of-fight card; own(actorId) marks the viewer's own character */
+export function fightSection({ rec, gm, t, own }) {
+  const mine = (cid) => { try { return !gm && !!own?.(rec?.pc?.[cid]?.a); } catch { return false; } };
+  const m = SP.titlesView(rec, { gm }, t, (cid) => ({ mine: mine(cid) }));
   const head = h("h3", { class: "ipu-aw-h" }, icon("fa-trophy"), h("span", { text: t("IPU.Awrd.collected") }));
   if (m.state !== "ok") return h("div", { class: "ipu-aw", "data-state": m.state }, head, h("p", { class: "ipu-aw-note", text: t(m.state === "small" ? "IPU.Awrd.small" : m.state === "none" ? "IPU.Awrd.none" : "IPU.Awrd.waitGm") }));
-  const mvp = m.mvp.map((x) => h("div", { class: "ipu-aw-mvp", "aria-label": `${x.name}: ${x.who.n}. ${x.why}` },
-    h("span", { class: "ipu-aw-burst", "aria-hidden": "true" }, face(x.who.i, x.who.n)),
-    h("div", { class: "ipu-aw-mvp-t" }, h("span", { class: "ipu-aw-mvp-k", "data-tooltip": x.tip, text: x.name }), h("b", { text: x.who.n }), h("small", { text: x.why }))));
-  const list = h("ul", { class: "ipu-aw-list" }, m.list.map((x) => h("li", { class: "ipu-aw-row", "data-id": x.id, "aria-label": `${x.name}: ${x.who.n}. ${x.why}` },
-    h("span", { class: "ipu-aw-badge", "data-id": x.id, "data-tooltip": x.tip, "aria-hidden": "true" }, icon(x.icon)),
-    h("span", { class: "ipu-aw-t" }, h("span", { class: "ipu-aw-name", text: x.name }), h("small", { text: x.why })),
-    h("span", { class: "ipu-aw-who" }, face(x.who.i, x.who.n), h("span", { text: x.who.n })))));
+  const nums = (text) => SP.numParts(text).map(([x, n]) => (n ? h("b", { class: "ipu-aw-num", text: x }) : x));
+  const faces = (who) => who.slice(0, 3).map((w) => face(w.i, w.n));
+  const tags = (g) => [g.mine ? h("span", { class: "ipu-aw-tag ipu-aw-you", text: t("IPU.Awrd.you") }) : null, g.shared ? h("span", { class: "ipu-aw-tag", "data-tooltip": t("IPU.Awrd.tie.tip"), text: t("IPU.Awrd.tie") }) : null];
+  const x = m.mvp;
+  const mvp = x ? h("div", { class: "ipu-aw-mvp", "data-shared": x.shared ? String(x.who.length) : null, "data-mine": x.mine ? "1" : null, "aria-label": x.say },
+    h("span", { class: "ipu-aw-burst", "aria-hidden": "true" }, h("span", { class: "ipu-aw-faces" }, faces(x.who))),
+    h("div", { class: "ipu-aw-mvp-t" }, h("span", { class: "ipu-aw-mvp-h" }, h("span", { class: "ipu-aw-mvp-k", "data-tooltip": x.tip, text: x.name }), tags(x)), h("b", { text: x.names }), h("small", {}, nums(x.why)))) : null;
+  const list = h("ul", { class: "ipu-aw-list" }, m.list.map((g) => h("li", { class: "ipu-aw-row", "data-id": g.id, "data-mine": g.mine ? "1" : null, "aria-label": g.say },
+    h("span", { class: "ipu-aw-badge", "data-id": g.id, "data-tooltip": g.tip, "aria-hidden": "true" }, icon(g.icon)),
+    h("span", { class: "ipu-aw-t" }, h("span", { class: "ipu-aw-name" }, g.name, tags(g)), h("small", {}, nums(g.why))),
+    h("span", { class: "ipu-aw-who" }, h("span", { class: "ipu-aw-faces" }, faces(g.who)), h("span", { class: "ipu-aw-wn", text: g.names })))));
   return h("div", { class: "ipu-aw", "data-state": "ok" }, head, mvp, m.list.length ? list : null);
 }
 

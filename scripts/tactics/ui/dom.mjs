@@ -9,6 +9,7 @@
    Every surface is rebuilt from its data on a change of the fight (never per frame); `fk` (focus key) is what survives the rebuild. */
 
 import { costMark, costMarkHtml, stressMark, stressMarkHtml, symMark, symMarkHtml, SYM_KINDS, legendHtml, markName, hasMarks, rich, plain } from "../../kit.mjs";
+import { numParts } from "../../stats/show-pure.mjs";      // POLS: the numbers of a title's line stand out (pure, no Foundry)
 
 /* U93: THE MARKS IN A SENTENCE. A text of the model may hold a mark as a token ("[[dice:6]]", "[[stress:1]]": kit.mjs). `text` draws
    it (each mark names itself: its tooltip, role="img"); a tooltip written as a plain string and every aria-label say it in words. So
@@ -184,7 +185,7 @@ const SUM_COLS = ["dealt", "hits", "taken", "stress"];
 const SUM_MARK = { dealt: () => symMark("damage"), taken: () => symMark("health"), stress: () => costMark("stress") };
 const SUM_ICON = { hits: "fa-crosshairs", broken: "fa-heart-crack", unconscious: "fa-bed", dead: "fa-skull" };
 export const sumCard = (c, handlers = {}) => h("article.ita-ask.ita-sum", { data: { kind: c.kind, tab: c.tabs ? c.tab : null }, attrs: { role: "status" } },
-  h("header.ita-head", {}, h("h3.ita-plate", { text: c.title }), c.sub && !c.tabs ? h("span.ita-about", { text: c.sub }) : null,
+  h("header.ita-head", {}, h("h3.ita-plate", { text: c.title }), c.sub && !c.tabs ? h("span.ita-about", { text: c.sub }) : null, c.end ? h("span.ita-about.ita-sum-end", { text: c.end }) : null,      /* POLS (U221): how the fight ended */
     /* AWRD: a fight's card has two tabs, its titles and its summary: icon buttons, their names in the tooltips */
     c.tabs ? h("span.ita-sum-tabs", { attrs: { role: "tablist", "aria-label": c.title } }, [["titles", "fa-trophy"], ["sum", "fa-list-ol"]].map(([id, fa]) =>
       h("button.ita-sum-tab", { fk: `sum:tab:${id}`, tip: c.tabs[id], data: { id }, attrs: { role: "tab", "aria-selected": c.tab === id ? "true" : "false", "aria-label": c.tabs[id] }, on: { click: () => handlers.sumTab?.(id) } }, icon(fa)))) : null,
@@ -197,19 +198,32 @@ const sumBody = (c) => [
     h("span.ita-sum-chips", {}, SUM_COLS.map((id) => { const k = r.chips.find((x) => x.id === id); return k ? h("span.ita-sum-chip", { tip: k.tip, data: { id: k.id } }, SUM_MARK[k.id]?.() ?? icon(SUM_ICON[k.id]), h("b", { text: k.n })) : h("span.ita-sum-chip", { data: { id, empty: "1" } }); }),
       r.out ? h("span.ita-sum-chip", { tip: r.out.tip, data: { id: "out" } }, icon(SUM_ICON[r.out.id])) : null)))),
   c.more ? h("p.ita-sum-more", { text: c.more }) : null];
-/* AWRD: THE TITLES of the fight (stats/titles-pure.cardOf): the MVP first, stamped big with its face, then one line per title: its badge,
-   its name, why, and who. A line of the user's own character is marked like the summary's. Until the GM's client has counted them: one line. */
+/* AWRD: THE TITLES of the fight. POLS (U218-U221): the model is stats/show-pure.titlesView (a title shared by a tie is ONE entry with every
+   holder). The MVP is stamped big on its burst (the holders' faces on it), then one line per title: its badge, its name, why (the numbers
+   stand out), and who. Your own title says so with a "You" sticker; it never changes the MVP's gold. The REVEAL (U221) is CSS keyed to how
+   long ago the titles came (--aw-el, a negative delay), so a redraw in the middle carries on instead of starting again. While the GM's
+   client still counts, the card already stands at about its size: a ghost MVP and three ghost lines (no jump when the titles come). */
+const nums = (text) => numParts(text).map(([s, n]) => (n ? h("b.ita-aw-num", { text: s }) : s));
+const faces = (who) => who.slice(0, 3).map((w) => face(w.i, w.n));
+const ghost = (note) => h("div.ita-aw.ita-aw-ghost", { data: { state: "wait" }, attrs: { "aria-busy": "true" } },
+  h("div.ita-aw-mvp", {}, h("span.ita-aw-burst", { attrs: { "aria-hidden": "true" } }, icon("fa-trophy")),
+    h("span.ita-aw-mvp-t", {}, h("span.ita-aw-mvp-k", { text: "MVP" }), h("span.ita-aw-note", { attrs: { role: "status" } }, h("span", { text: note ?? "" })))),
+  h("ul.ita-aw-list", { attrs: { "aria-hidden": "true" } }, [0, 1, 2].map((i) => h("li.ita-aw-row", { attrs: { style: `--i:${i}` } }, h("span.ita-aw-badge"), h("span.ita-aw-t", {}, h("span.ita-aw-bar"), h("span.ita-aw-bar")), h("span.ita-aw-who", {}, h("span.ita-aw-bar"))))));
 const awardsBody = (c) => {
   const aw = c.aw ?? {};
-  if (aw.state !== "ok") return h("p.ita-line.ita-aw-note", { data: { state: aw.state ?? "wait" } }, aw.state === "wait" ? icon("fa-spinner") : icon("fa-trophy"), h("span", { text: aw.note ?? "" }));
-  return h("div.ita-aw", { data: { fresh: c.fresh ? "1" : null } },
-    (aw.mvp ?? []).map((x) => h("div.ita-aw-mvp", { data: { mine: x.who.mine ? "1" : null }, attrs: { "aria-label": `${x.name}: ${x.who.n}. ${x.why}` } },
-      h("span.ita-aw-burst", { attrs: { "aria-hidden": "true" } }, face(x.who.i, x.who.n)),
-      h("span.ita-aw-mvp-t", {}, h("span.ita-aw-mvp-k", { text: x.name, tip: x.tip }), h("b.ita-aw-mvp-n", { text: x.who.n }), h("small", { text: x.why })))),
-    (aw.list ?? []).length ? h("ul.ita-aw-list", {}, aw.list.map((x, i) => h("li.ita-aw-row", { data: { id: x.id, mine: x.who.mine ? "1" : null }, attrs: { "aria-label": `${x.name}: ${x.who.n}. ${x.why}`, style: `--i:${i}` } },
+  if (aw.state === "wait" && !aw.quiet) return ghost(aw.note);
+  if (aw.state !== "ok") return h("p.ita-line.ita-aw-note", { data: { state: aw.state ?? "wait" } }, aw.state === "wait" ? icon("fa-hourglass-half") : icon("fa-trophy"), h("span", { text: aw.note ?? "" }));
+  const m = aw.mvp, el = Number.isFinite(aw.el) ? aw.el : null;
+  const tags = (g) => [g.mine ? h("span.ita-aw-tag.ita-aw-you", { text: aw.you }) : null, g.shared ? h("span.ita-aw-tag", { text: aw.tie, tip: aw.tieTip }) : null];
+  return h("div.ita-aw", { data: { fresh: el !== null ? "1" : null, n: String((aw.list ?? []).length) }, attrs: el !== null ? { style: `--aw-el:${-Math.round(el)}ms` } : {} },
+    m ? h("div.ita-aw-mvp", { data: { mine: m.mine ? "1" : null, shared: m.shared ? String(m.who.length) : null }, attrs: { "aria-label": m.say } },
+      h("span.ita-aw-burst", { attrs: { "aria-hidden": "true" } }, h("span.ita-aw-faces", {}, faces(m.who))),
+      h("span.ita-aw-mvp-t", {}, h("span.ita-aw-mvp-h", {}, h("span.ita-aw-mvp-k", { text: m.name, tip: m.tip }), tags(m)), h("b.ita-aw-mvp-n", { text: m.names }), h("small.ita-aw-why", {}, nums(m.why)))) : null,
+    (aw.list ?? []).length ? h("ul.ita-aw-list", {}, aw.list.map((x, i) => h("li.ita-aw-row", { data: { id: x.id, mine: x.mine ? "1" : null, shared: x.shared ? "1" : null }, attrs: { "aria-label": x.say, style: `--i:${i}` } },
       h("span.ita-aw-badge", { tip: x.tip, data: { id: x.id } }, icon(x.icon)),
-      h("span.ita-aw-t", {}, h("span.ita-aw-name", { text: x.name }), h("small", { text: x.why })),
-      h("span.ita-aw-who", {}, face(x.who.i, x.who.n), h("span", { text: x.who.n }))))) : null);
+      h("span.ita-aw-t", {}, h("span.ita-aw-name", {}, x.name, tags(x)), h("small.ita-aw-why", {}, nums(x.why))),
+      h("span.ita-aw-who", {}, h("span.ita-aw-faces", {}, faces(x.who)), h("span.ita-aw-wn", { text: x.names }))))) : null,
+    h("span.ita-aw-below", { attrs: { "aria-hidden": "true" }, tip: aw.below }, icon("fa-chevron-down")));
 };
 
 /** U1 / U2: the buttons of one roll (model-pure.rollButtons): `act` is done on this client (handlers.roll), `req` is sent. One element, re-skinnable. */
