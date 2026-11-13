@@ -99,6 +99,8 @@
    stays a DOM gauge, its number is lettered just above it, so the gauge's own header line goes. */
 .ins-letters { position: fixed; inset: 0; pointer-events: none; }
 .ins-stage.lettered .ins-badge .bt { display: none; }
-/* LDIC: the display layer (setting "Splash: Layer"): under the windows (Foundry's window z-index) but over the map and the HUD.
-   With "on the map" the words themselves are on the canvas; the gauge and the rays stay here, under the windows too. */
-#invincible-splash-layer[data-layer="under"], #invincible-splash-layer[data-layer="map"] { z-index: calc(var(--z-index-window, 100) - 1); }
+/* LDIC: the display layer (setting "Splash: Layer"): the HTML part of the moment (gauge, rays, backdrop) follows the lettering engine's
+   screen layers (contract v3: hud z 5, ui z 80); with a layer on the map it sits under the bars and windows too */
+#invincible-splash-layer[data-layer="ui"] { z-index: 80; clip-path: none; }
+#invincible-splash-layer[data-layer="hud"], #invincible-splash-layer[data-layer="overlay"], #invincible-splash-layer[data-layer="weather"],
+#invincible-splash-layer[data-layer="tokens"], #invincible-splash-layer[data-layer="ground"] { z-index: 5; }

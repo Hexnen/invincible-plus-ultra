@@ -110,13 +110,16 @@ export function onCanvasPan() {
    the wrapper's px, the layer's clip keeps it off the chat and its z-index over the sheets; aria-hidden like the rest). */
 let LE = null;
 export function setLetters(engine) { LE = engine || null; }
-/* the display layer (client setting splashLayer): 'top' = over everything, sheets and dialogs too (z 5000, as always);
-   'under' = over the map and the HUD, under the windows; 'map' = the words are lettered ON the map (the engine's world space: they
-   pan and zoom with the scene), the rest of the moment (gauge, rays) under the windows */
-const LAYERS = ['top', 'under', 'map'];
-let LAYER = 'top';
+/* the display layer (client setting splashLayer), the engine's layers (contract v3):
+   screen  = over everything, sheets and dialogs too (our own splash layer, z 5000, as always);
+   ui, hud = the engine's screen layers: over the bars and under the windows / over the map and under the bars;
+   overlay, weather, tokens, ground = ON the map (the engine's world space: the words pan and zoom with the scene), over the whole
+   scene / over the weather and smoke / over the tokens / on the ground under the tokens.
+   The rest of the moment (the Resolve gauge, the rays) stays HTML: over everything with "screen", under the windows otherwise. */
+export const SCREEN_LAYERS = ['screen', 'ui', 'hud'], WORLD_LAYERS = ['overlay', 'weather', 'tokens', 'ground'];
+let LAYER = 'screen';
 export function setLayer(v) {
-  LAYER = LAYERS.includes(v) ? v : 'top';
+  LAYER = SCREEN_LAYERS.includes(v) || WORLD_LAYERS.includes(v) ? v : 'screen';
   if (layer) layer.dataset.layer = LAYER;
 }
 export function layerOf() { return LAYER; }
@@ -155,18 +158,20 @@ function letterOne(ctl, it, seedBase) {
   if (from != null) opts.from = from;
   if (it.colors) opts.colors = it.colors.slice();
   for (const k of ['in', 'out', 'holdKind']) if (it[k]) opts[k] = it[k];
+  /* the engine's own screen layers (under the windows): its layer, not our wrapper */
+  if (LAYER === 'ui' || LAYER === 'hud') { delete opts.parent; opts.layer = LAYER; }
   /* on the map: scene coordinates and scene px (as big as on screen at this zoom; afterwards they zoom with the scene) */
-  if (LAYER === 'map' && globalThis.canvas?.ready) {
+  if (WORLD_LAYERS.includes(LAYER) && globalThis.canvas?.ready) {
     const at = toScene(opts.at), k = canvas.stage.scale.x || 1;
     if (at) {
-      Object.assign(opts, { space: 'world', at, size: it.size / k, maxWidth: it.maxWidth / k });
+      Object.assign(opts, { space: 'world', layer: LAYER, at, size: it.size / k, maxWidth: it.maxWidth / k });
       delete opts.parent;
       if (from && typeof from === 'object') opts.from = toScene(from) ?? undefined;
     }
   }
   try {
     const h = LE.play(LP.letterable(it.text), opts);
-    ctl.letters.push({ h, at: it.at, role: it.role, world: opts.space === 'world' });
+    ctl.letters.push({ h, at: it.at, role: it.role, world: opts.space === 'world', own: !!opts.parent });
     if (h?.hand) ctl.hands.push(h.hand);
     return h;
   } catch (e) { console.warn('invincible-plus-ultra (splash) | lettering failed', e); return null; }

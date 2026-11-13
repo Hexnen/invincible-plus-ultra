@@ -70,8 +70,8 @@ function registerSettings() {
   client('fullFrom', { name: L('FullFrom.Name'), hint: L('FullFrom.Hint'), type: Number, default: 0.7, range: { min: 0.4, max: 1, step: 0.05 } });
   client('debug', { name: L('Debug.Name'), hint: L('Debug.Hint'), type: Boolean, default: false });
   client('lettering', { name: L('Lettering.Name'), hint: L('Lettering.Hint'), type: Boolean, default: true, onChange: () => loadLetters() });   // LDIC
-  client('layer', { name: L('Layer.Name'), hint: L('Layer.Hint'), type: String, default: 'top', onChange: v => Stage.setLayer(v),   // LDIC
-    choices: { top: L('Layer.top'), under: L('Layer.under'), map: L('Layer.map') } });
+  client('layer', { name: L('Layer.Name'), hint: L('Layer.Hint'), type: String, default: 'screen', onChange: v => Stage.setLayer(v),   // LDIC: the lettering engine's layers
+    choices: Object.fromEntries([...Stage.SCREEN_LAYERS, ...Stage.WORLD_LAYERS].map(k => [k, L('Layer.' + k)])) });
   client('chat', { name: L('Chat.Name'), hint: L('Chat.Hint'), type: Boolean, default: true });
 
   world('dry', { name: L('Dry.Name'), hint: L('Dry.Hint'), type: Number, default: 8, range: { min: 0, max: 30, step: 1 } });

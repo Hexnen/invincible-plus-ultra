@@ -199,14 +199,19 @@ async function run(W, H, fn) {
       ok(!c5.lw && L5.calls.length === 0, `${W}: without the engine the classic splash plays`);
       /* the display layer: on the map = the engine's world space, scene coordinates, scene px */
       globalThis.canvas = { ready: true, stage: { scale: { x: 0.5 }, toLocal: (q) => ({ x: q.x * 2 + 100, y: q.y * 2 + 100 }), toGlobal: (q) => q }, app: { view: { getBoundingClientRect: () => ({ left: 0, top: 0 }) } } };
-      const L6 = fakeEngine(); Stage.setLetters(L6); Stage.setLayer("map");
+      const L6 = fakeEngine(); Stage.setLetters(L6); Stage.setLayer("tokens");
       Stage.play(ev({ n: 5, sixes: 2 }), { scale: 1, hold: 1, fx: 0, fullFrom: null, seed: "MSG5" });
       flush(50000);
       const w0 = L6.calls[0];
-      ok(w0 && w0.o.space === "world" && !w0.o.parent, `${W}: layer "on the map": the words go to the canvas (world space)`);
+      ok(w0 && w0.o.space === "world" && w0.o.layer === "tokens" && !w0.o.parent, `${W}: layer "on the map: over tokens": the words go to the canvas (world space, the engine's tokens layer)`);
       ok(w0 && w0.o.size === LP.planMoment(ev({ n: 5, sixes: 2 }), { W: ctl.W }).items[0].size / 0.5 && w0.o.at.x > 100, `${W}: ... in scene coordinates and scene px (screen size at this zoom)`);
-      eq(document.body.children.find((c) => c.attrs?.["aria-hidden"] === "true")?.dataset?.layer, "map", `${W}: the layer knows its setting`);
-      Stage.setLayer("nonsense"); eq(Stage.layerOf(), "top", `${W}: an unknown layer value falls back to over everything`);
+      eq(document.body.children.find((c) => c.attrs?.["aria-hidden"] === "true")?.dataset?.layer, "tokens", `${W}: the layer knows its setting`);
+      Stage.setLayer("ui");
+      const L7 = fakeEngine(); Stage.setLetters(L7);
+      Stage.play(ev({ n: 5, sixes: 2 }), { scale: 1, hold: 1, fx: 0, fullFrom: null, seed: "MSG6" });
+      flush(60000);
+      ok(L7.calls.length && L7.calls.every((c) => c.o.space === "screen" && c.o.layer === "ui" && !c.o.parent), `${W}: layer "over the bars": the engine's ui layer, not our wrapper`);
+      Stage.setLayer("nonsense"); eq(Stage.layerOf(), "screen", `${W}: an unknown layer value falls back to over everything`);
       delete globalThis.canvas;
     });
   }
@@ -256,6 +261,10 @@ async function run(W, H, fn) {
   const crit = makePlan("WHAM!", { mood: "impact", sound: by(plan(ev({ n: 4, sixes: 4 })), "word").sound, seed: "s" }, api, []);
   const weak = makePlan("WHAM!", { mood: "impact", sound: by(plan(ev({ n: 8, sixes: 1 })), "word").sound, seed: "s" }, api, []);
   ok(crit.sizeK > weak.sizeK, `real design: a critical WHAM! is lettered bigger than a routine one (${crit.sizeK.toFixed(2)} > ${weak.sizeK.toFixed(2)})`);
+  const { LAYERS } = await import("../letters/engine.mjs");
+  const Stage0 = src("../splash/stage.mjs");
+  const ids = (name) => JSON.parse(/export const SCREEN_LAYERS = ([[^]]*]), WORLD_LAYERS = ([[^]]*])/.exec(Stage0)[name === "s" ? 1 : 2].replace(/'/g, '"'));
+  ok(ids("s").every((k) => LAYERS[k]?.space === "screen") && ids("w").every((k) => LAYERS[k]?.space === "world"), "every layer the setting offers is one of the engine's, in the right space");
   const pl = makePlan(LP.letterable("SZANSE ROZBITE! 1 NA 1,296"), { mood: "tick", seed: "pl" }, api, []);
   ok(pl && pl.hand, "real design: a Polish sentence with a figure letters");
 }
@@ -269,8 +278,8 @@ async function run(W, H, fn) {
   ok(/L\.design\?\.\('A'\)\?\.stub === true/.test(m) && /Stage\.setLetters\(stub \|\| !cs\('lettering'\) \? null : L\)/.test(m), "the stub engine (no renderer) and the setting off leave the classic splash");
   ok(/if \(LE\) return playLetters\(ev, o\);/.test(st), "Stage.play letters when the engine is there");
   ok(!/game\.|message\./.test(st.slice(st.indexOf("function playLetters"), st.indexOf("function stressLettered"))), "the lettered stage reads nothing of the message or the game (only the event and the Resolve reader it is handed)");
-  for (const L of [SLang.EN, SLang.PL]) ok(["Name", "Hint", "top", "under", "map"].every((k) => L[`INSPLASH.Settings.Layer.${k}`]), "the layer setting and its three choices are named in both languages");
-  ok(m.includes("client('layer', {") && /client\('layer', \{[^\n]*default: 'top'/.test(m) && m.includes("Stage.setLayer(cs('layer'))"), "the layer setting (client) defaults to over everything and is applied at ready");
+  for (const L of [SLang.EN, SLang.PL]) ok(["Name", "Hint", "screen", "ui", "hud", "overlay", "weather", "tokens", "ground"].every((k) => L[`INSPLASH.Settings.Layer.${k}`]), "the layer setting and its seven choices (the engine's layers) are named in both languages");
+  ok(m.includes("client('layer', {") && /client\('layer', \{[^\n]*default: 'screen'/.test(m) && m.includes("Stage.setLayer(cs('layer'))"), "the layer setting (client) defaults to over everything and is applied at ready");
   for (const L of [SLang.EN, SLang.PL]) ok(L["INSPLASH.Settings.Lettering.Name"] && L["INSPLASH.Settings.Lettering.Hint"], "the lettering setting is named in both languages");
 }
 done("ldic");
