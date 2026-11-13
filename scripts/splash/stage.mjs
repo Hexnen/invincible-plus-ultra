@@ -270,7 +270,7 @@ function letterOne(ctl, it) {
   /* on the map: scene coordinates and scene px, the same block (it zooms as one: ADVD 7, the odds no longer run into the sentence) */
   let world = false;
   if (onMap()) {
-    const at = toScene(o.at), z = canvas.stage.scale.x || 1;
+    const at = it.sceneAt ?? toScene(o.at), z = it.z0 ?? (canvas.stage.scale.x || 1);
     if (at) {
       Object.assign(o, { space: 'world', layer: LAYER, at, size: Math.round((o.size / z) * 100) / 100, maxWidth: Math.ceil(o.maxWidth / z) });
       if (ctl.token) o.token = ctl.token;
@@ -389,7 +389,13 @@ function playLetters(ev, o) {
   /* the rays, the flash and the sparks centre on the word */
   const wp = lay.items.find(it => it.role === 'word');
   if (wp) { stage.style.left = wp.x + 'px'; stage.style.top = (wp.y + 0.04 * stage.clientWidth) + 'px'; }
-  if (onMap()) { ctl.clientAnchor = { x: (lay.rect.l + lay.rect.r) / 2, y: (lay.rect.t + lay.rect.b) / 2 }; ctl.sceneAnchor = toScene(ctl.clientAnchor); }
+  if (onMap()) {
+    ctl.clientAnchor = { x: (lay.rect.l + lay.rect.r) / 2, y: (lay.rect.t + lay.rect.b) / 2 }; ctl.sceneAnchor = toScene(ctl.clientAnchor);
+    /* the whole block goes to scene coordinates NOW: a part lettered later (its delay) after the camera moved must not be converted
+       with the new view (live, 1366: the sentence of a map moment landed on the token when the view panned meanwhile) */
+    const z0 = canvas.stage.scale.x || 1;
+    for (const it of lay.items) { const at = toScene({ x: it.x, y: it.y }); if (at) { it.sceneAt = at; it.z0 = z0; } }
+  }
   let first = true;
   for (const it of lay.items) {
     later(() => {

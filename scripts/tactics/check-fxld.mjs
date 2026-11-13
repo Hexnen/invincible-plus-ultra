@@ -204,6 +204,24 @@ for (const [name, e] of Object.entries(ROLLS())) {
       ok(!clash, `F7 map zoom ${zoom}: the odds no longer run into the sentence (no overlap: ${clash})`);
       Stage.setLayer("screen"); Stage.clearAll();
     }
+    /* the camera pans while the moment is still lettering (live, 1366: the sentence of a map moment landed on the token): the parts
+       lettered later keep their places in the block */
+    {
+      const pan = { x: 37, y: -12 };
+      const { c, token } = canvasWith(500, 420, 1, pan);
+      globalThis.canvas = c;
+      const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("tokens");
+      Stage.play(ROLLS().pushed, { token, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "PAN", resolve: () => ({ now: 5, max: 8 }) });
+      flush(10);
+      pan.x -= 260; pan.y += 90;
+      flush(1e9);
+      const boxes = L.calls.map((x) => drawn(x, L, 1, (p) => c.stage.toGlobal(p)));
+      let clash = null;
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
+      const w = boxes.find((b) => b.role === "word"), sy = boxes.find((b) => b.role === "say");
+      ok(boxes.length >= 5 && !clash && w && sy && sy.y > w.y && Math.abs(sy.y - w.y) < 3 * w.h, `F7 map, a pan during the moment: the block stays one block in the scene (${clash ?? "no overlap"}, sentence under the word)`);
+      Stage.setLayer("screen"); Stage.clearAll();
+    }
     delete globalThis.canvas;
   });
 }
