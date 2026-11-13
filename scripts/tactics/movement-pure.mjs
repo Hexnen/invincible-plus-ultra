@@ -361,8 +361,9 @@ export const madeByScript = (now, lastInput, ms = BY_HAND_MS) => !(Number.isFini
     before any document listener), so the last release seen was the one before the drag and a drag held over 1.5 s read as a script.
     A pointer pressed ON THE MAP and not yet released is a hand however long it is held; its moves and its release renew the time; a key
     renews it too (a token nudged with the keys). A press elsewhere (a macro's button) is not a drag and leaves the time alone.
+    U114: `onCancel(e)`, when given, is told of a pointercancel of a pointer pressed ON THE MAP (see releaseCoreDrag).
     -> { down(now, onBoard), move(now, buttons), up(now), key(now), cancel(now), held(), byScript(now) } */
-export function handTracker(ms = BY_HAND_MS) {
+export function handTracker(ms = BY_HAND_MS, onCancel = null) {
   /* bug hunt 2 suspicion (fixer fxe): the presses on the map are kept per pointer, so a second pointer (a pen beside the mouse, a second
      finger) pressed or released off the map does not end a drag still held on the map. `id`: the pointer's id (one pointer when omitted).
      A press on the map by the same pointer again (the mouse is always one id) starts its hold anew; a blur ends every hold. */
@@ -381,8 +382,26 @@ export function handTracker(ms = BY_HAND_MS) {
     listen(win, isBoard, clock) {
       const o = { capture: true, passive: true }, add = (ev, fn) => win.addEventListener(ev, fn, o), pid = (e) => (e && e.pointerId != null ? e.pointerId : 0);
       add("pointerdown", (e) => this.down(clock(), isBoard(e), pid(e))); add("pointermove", (e) => this.move(clock(), e.buttons)); add("pointerup", (e) => this.up(clock(), pid(e)));
-      add("pointercancel", (e) => this.cancel(clock(), pid(e))); add("blur", () => this.cancel(clock())); add("keydown", () => this.key(clock()));
+      add("pointercancel", (e) => { const mine = on.has(pid(e)); this.cancel(clock(), pid(e)); if (mine && onCancel) onCancel(e); }); add("blur", () => this.cancel(clock())); add("keydown", () => this.key(clock()));
       return true;
     },
   };
+}
+
+/** U114 (fixer fxw2): Foundry core never hears a pointercancel (its PIXI event system follows pointerup, not pointercancel), so a touch
+    drag the browser cancels (a system gesture, a palm, a finger leaving the screen's edge) leaves the pressed object's interaction manager
+    GRABBED or in DRAG: the preview follows the next pointer and the next ordinary tap drops it (the map's move menu opened for a drag
+    nobody finished). On a cancel of a touch or pen pointer the manager still pressed is cancelled the way core cancels a drag (its
+    dragLeftCancel removes the preview and puts the token back). A mouse's cancel, a manager not pressed (HOVER or less) and one in its
+    drop are left alone, so a mouse user and a drag that ended normally see no change.
+    cv: the canvas ({ currentMouseManager, mouseInteractionManager }); e: the pointercancel. -> how many managers were cancelled */
+export function releaseCoreDrag(cv, e) {
+  if (!cv || !e || e.pointerType === "mouse") return 0;
+  let n = 0;
+  for (const m of new Set([cv.currentMouseManager, cv.mouseInteractionManager])) {
+    const S = m?.states;
+    if (!S || typeof m.cancel !== "function" || !(m.state >= S.CLICKED && m.state <= S.DRAG)) continue;
+    try { m.cancel(); n++; } catch { /* a manager torn down with its object: nothing left to release */ }
+  }
+  return n;
 }
