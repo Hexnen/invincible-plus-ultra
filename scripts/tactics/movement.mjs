@@ -146,16 +146,22 @@ export function install(h) {
     H = h; if (!inputOn && typeof globalThis.window?.addEventListener === "function") inputOn = hand.listen(window, onBoard, Date.now);      // D112: on the window, capture phase
     if (on || !Zones.available()) return on;
     offStep = Zones.beforeStep((ctx) => MP.stepVerdict(ctx));                                    // only the engine's own moves carry `data.ipu`; every other move passes
-    Zones.rulesDriver({ id: MOD, title: "Invincible Plus Ultra", fireRound: async () => { ui.notifications?.info(t("ITAC.move.fireByTactics")); }, wreck: () => "" });   // the map stops rolling fire and showing wrecking numbers [G-Z9]
     /* `levels`: the map also holds a level change made with its token HUD (zones-api.md section 14); a map that does not know the option ignores it */
     Zones.tactical({ gm: true, levels: true, when: (td) => !!h.cid(td) && h.state()?.mode === "tactical" && !h.state()?.free?.[h.cid(td)],
       profile: (td) => { const m = MP.modesOf(h.c(h.cid(td)) ?? {}); const best = m.reduce((a, b) => ((b.profile.stressZones ?? b.profile.zones) > (a.profile.stressZones ?? a.profile.zones) ? b : a), m[0]); return best ? MP.apiProfile(best.profile, { stress: true, force: true, big: MP.bigFor(h.c(h.cid(td))) }) : { way: "walk", speed: 1 }; },
       confirm: (ctx) => onDrag(h, ctx), place: (ctx) => { const cid = h.cid(ctx?.token?.document ?? ctx?.token); if (cid && ctx?.inverse) h.request({ op: "placed", combatant: cid, inverse: ctx.inverse, zone: ctx.to?.zone ?? null }); } });      // W1 (U44): the GM's Alt-drop is journaled, so "undo" takes it back
-    on = true;
+    on = true; drive();
   } catch (err) { console.warn(`${MOD} | tactics: movement`, err); }
   return on;
 }
-export function uninstall() { try { offStep?.(); offStep = null; Zones.tactical(false); Zones.rulesDriver(false, MOD); on = false; } catch (err) { console.warn(`${MOD} | tactics: movement`, err); } }
+/** TACB: the map's own rule mechanics (its fire round, its wrecking numbers) go to this module only while a TACTICAL fight is on the
+    table (the fight on the table has the state and the engine is not switched off). An ordinary fight, or none, keeps the map's own, as
+    on a world without tactical combat. main.mjs calls this whenever a fight starts, changes, ends or the scene changes. -> driving */
+let driving = false; export function drive() {
+  try { const st = on ? H?.state?.() : null, want = !!st && st.mode !== "off"; if (want !== driving) { if (want) Zones.rulesDriver({ id: MOD, title: "Invincible Plus Ultra", fireRound: async () => { ui.notifications?.info(t("ITAC.move.fireByTactics")); }, wreck: () => "" }); else Zones.rulesDriver(false, MOD); driving = want; } } catch (err) { console.warn(`${MOD} | tactics: rules driver`, err); }   // the map stops rolling fire and showing wrecking numbers [G-Z9]
+  return driving;
+}
+export function uninstall() { try { offStep?.(); offStep = null; Zones.tactical(false); Zones.rulesDriver(false, MOD); driving = false; on = false; } catch (err) { console.warn(`${MOD} | tactics: movement`, err); } }
 /** api.tactics.movement: the same calls for the widgets (the action bar, the GM desk) */
 export const api = {
   installed: () => on, zoneFacts: () => { try { return H?.facts().zones ?? null; } catch { return null; } }, c: (cid) => { try { return H?.c(cid) ?? null; } catch { return null; } },      // W1: the board's warnings read the same zone facts

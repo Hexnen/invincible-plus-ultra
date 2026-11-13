@@ -81,7 +81,7 @@ eq([Api.active(), Api.state(), Api.order(), Api.prompts()], [false, null, [], []
 eq((await Api.endTurn("h1")).error.code, "off", "a request before the start answers `off`");
 
 /* ---------------------------------------------------------------- start through the class */
-await combat.startCombat();
+await combat.startCombat(Klass.TACTICAL);      // TACB: the Tactics button; Begin Combat (a bare startCombat()) is the ordinary fight (check-tacb.mjs)
 ok(!combat.baseCalls.includes("startCombat"), "startCombat does not fall through to rolled initiative");
 const st = Store.stateOf(combat);
 ok(st && st.round === 1 && st.phase === "turns" && st.mode === "tactical" && st.opts.redraw === "everyRound", "the state is on the Combat document, mode and options from the settings");
@@ -165,7 +165,7 @@ ok(Store.stateOf(c2) === null && c2.flags[MOD].tactics.state === "" && c2.writes
 await c2.nextTurn();
 ok(c2.baseCalls.includes("nextTurn"), "a combat without the state behaves like the wrapped class");
 settings.tacticsInitiative = false;
-await c2.startCombat();
+await c2.startCombat(Klass.TACTICAL);
 ok(c2.baseCalls.includes("startCombat") && !Klass.ownInitiative(), "with the setting off, starting a combat is the wrapped class's business");
 
 done("check-facing");
