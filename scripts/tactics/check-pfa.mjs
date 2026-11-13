@@ -53,4 +53,34 @@ const src = (p) => readFileSync(new URL(p, import.meta.url), "utf8").replace(/\r
   eq(rootWrites.sort(), ["itd-rest", "itd-same", "itd-turn"], "PERF5-5: the draw's own writes on the root are the turn / rest look (in the signature) and the entry key");
 }
 
+/* ---- PERF5-5: settle.mjs derive (a value worked out from many boxes, kept as that value) on a fake page */
+{
+  const S = await import("./ui/settle.mjs");
+  const el = (r) => ({ r, isConnected: true, nodeType: 1 });
+  const tiles = [el([100, 0, 200, 50]), el([200, 0, 300, 50])], table = { ".tile": tiles }, doc = { nodeType: 9, querySelectorAll: (sel) => table[sel] ?? [] };
+  const rectOf = (e) => (e.r ? { left: e.r[0], top: e.r[1], right: e.r[2], bottom: e.r[3] } : null);
+  const extent = (r) => { let lo = Infinity, hi = -Infinity, b = 0; for (const e of r.q(".tile")) { const x = r.rect(e); if (x) { lo = Math.min(lo, x.left); hi = Math.max(hi, x.right); b = Math.max(b, x.bottom); } } return { lo, hi, b }; };
+  const rec = S.recorder(doc, rectOf), v = rec.derive(extent), kept = rec.take();
+  eq([v.lo, v.hi, v.b, kept.lists.length, kept.rects.length, kept.derived.length], [100, 300, 50, 0, 0, 1], "PERF5-5: derive returns its value and keeps it, not the elements it read");
+  eq(S.unchanged(kept, rectOf), true, "PERF5-5: nothing moved: skipped");
+  tiles[0].r = [200, 0, 300, 50]; tiles[1].r = [100, 0, 200, 50];
+  eq(S.unchanged(kept, rectOf), true, "PERF5-5: two tiles swapped places (a turn change of the initiative bar), the extent is the same: skipped");
+  tiles[1].r = [90, 0, 200, 50];
+  eq(S.unchanged(kept, rectOf), false, "PERF5-5: the extent grew by ten pixels: runs");
+  tiles[1].r = [100, 0, 200, 50]; table[".tile"] = [...tiles, el([300, 0, 320, 60])];
+  eq(S.unchanged(kept, rectOf), false, "PERF5-5: a new piece reaching lower: runs");
+  table[".tile"] = tiles;
+  eq(S.unchanged({ lists: [], rects: [], derived: [[() => { throw new Error("x"); }, "1"]], doc }, rectOf), false, "PERF5-5: a derive that throws: runs");
+  eq(S.unchanged({ lists: [], rects: [] }, rectOf), true, "PERF5-5: an old record without derive values still reads");
+}
+/* ---- PERF5-5: the dock's rule as wired */
+{
+  const dk = src("./ui/dock.mjs");
+  const pl = dk.slice(dk.indexOf("export function place()"), dk.indexOf("function placeSlots(rec)")), body = dk.slice(dk.indexOf("function placeSlots(rec)"), dk.indexOf("export function topReach()"));
+  ok(/kept = \{ facts: f, read: rec\.take\(\), sizes: sizesNow\(\), changed: !Settle\.sameFacts\(before, outcome\(\)\) \};\s*\n\s*return true;/.test(pl) && !/if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept/.test(pl), "PERF5-5: a run's reads are kept also after a run that changed something (no forced second run)");
+  ok(/const \{ ceil, topCx \} = rec\.derive\(\(page\) => \{/.test(body) && /for \(const el of page\.q\(TOP_OBSTACLES\)\)/.test(body) && !/rec\.q\(TOP_OBSTACLES\)/.test(body), "PERF5-5: the top obstacles (initiative bar tiles) are kept as their extent, not tile by tile");
+  ok(/if \(!picsSeen\.has\(src\)\) \{ if \(picsSeen\.size > 500\) picsSeen\.clear\(\); picsSeen\.add\(src\); drawn\+\+; \}/.test(dk), "PERF5-5: a picture counts as new content the first time its address loads in the dock (a cached face reloading in a redraw does not)");
+  ok(!/\/\*(DBG|CNT)\*\//.test(dk), "PFA: no measuring probe left in the dock");
+}
+
 done("check-pfa");

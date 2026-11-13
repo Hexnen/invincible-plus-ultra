@@ -112,7 +112,10 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css") 
   const head = dock.slice(dock.indexOf("export function place()"), dock.indexOf("function placeSlots(rec)")), body = dock.slice(dock.indexOf("function placeSlots(rec)"), dock.indexOf("export function topReach()"));
   /* PERF5-5: place() now says whether it ran (return false when skipped): the draw marks a new panel's overflow itself then */
   ok(/if \(kept && Settle\.sameFacts\(kept\.facts, facts\(\)\) && Settle\.unchanged\(kept\.read, visibleRect\) && Settle\.sameFacts\(kept\.sizes, sizesNow\(\)\)\) return false;/.test(head) && /const sizesNow = \(\) => \[\.\.\.Settle\.sizesOf\(stack\), \.\.\.Object\.values\(slotEls\)/.test(dock), "D: place() returns early only with kept facts, reads and sizes (the stack's and every place's) all the same");
-  ok(/kept = null;\s*placeSlots\(rec\);\s*if \(Settle\.sameFacts\(before, outcome\(\)\)\) kept = /.test(head), "D: what a run read is kept only when the run changed nothing");
+  /* PERF5-5 (PFA): a run's reads are kept also when it changed something (before, a changing run always forced one more full run). The
+     reads are from before its own writes, so a write that moved anything it reads still makes the next call run in full. The old pin
+     ("kept only when the run changed nothing") described the rule this replaces; live G-vs-full check in perf-notes PFA. */
+  ok(/kept = null;\s*placeSlots\(rec\);[\s\S]*?kept = \{ facts: f, read: rec\.take\(\), sizes: sizesNow\(\), changed: !Settle\.sameFacts\(before, outcome\(\)\) \};/.test(head), "D: what a run read is kept after the run (its reads are from before its own writes)");
   /* PERF5-5 (check-pfa.mjs): the facts grew by the frame's inputs that are no box of the page (the seat, the hints, a unit) */
   ok(/const facts = \(\) => \[drawn, window\.innerWidth, window\.innerHeight, Lay\.factor\(document\.body\), !!handlers\.staff\?\.\(\), !!handlers\.hintsOn\?\.\(\), !!last\?\.d\?\.who\]/.test(head), "D: the draw count, the window, the size and the frame's other inputs are facts of a placement");
   const out = dock.slice(dock.indexOf("function outcome()"), dock.indexOf("function placeSlots(rec)"));
@@ -125,9 +128,11 @@ const css = src("../../styles/tactics-ui.css") + src("../../styles/combat.css") 
   ok(!/\.style\.(setProperty|removeProperty|cssText)|\.dataset\.\w+ =(?!=)|delete [\w.]+\.dataset|classList\.(add|toggle|remove)|setVar\(|setAttribute|removeAttribute/.test(rest), "D: placeSlots writes nothing outside what the outcome compares");
   ok(!/function placeNow|underTop|--itd-under-top|ita-notice-wait|--itd-clear/.test(dock), "D (U132): the column's placement is gone with everything only it wrote");
   /* PERF5-5: a draw counts when what it drew differs from the last draw (drawSig: the markup of the stack and of every place), still
-     before it places; check-pfa.mjs runs that rule on a fake dock */
+     before it places (check-pfa.mjs) */
   ok(/const sig = drawSig\(d\);\s*\n\s*if \(sig !== drawnSig\) \{ drawnSig = sig; drawn\+\+; \}\s*\n\s*if \(!place\(\)\)[^\n]*\n\s*reveal\(\);/.test(dock), "D: a draw counts before it places (new content always places in full)");
-  ok(/addEventListener\("load", \(\) => \{ drawn\+\+; \}, true\)/.test(dock) && /"loadingdone", \(\) => \{ drawn\+\+; \}/.test(dock), "D: a picture or a font that finished loading counts as new content");
+  /* PERF5-5: a picture counts the first time its address finishes loading in the dock (every draw makes new <img> elements and a cached
+     one fired "load" after every refresh); a font as before */
+  ok(/addEventListener\("load", \(e\) => \{ const src = [^\n]*if \(!picsSeen\.has\(src\)\) \{[^\n]*picsSeen\.add\(src\); drawn\+\+; \} \}, true\)/.test(dock) && /"loadingdone", \(\) => \{ drawn\+\+; \}/.test(dock), "D: a picture new to the dock or a font that finished loading counts as new content");
   ok(/last = null; kept = null; slotEls = \{\}; frameKey = ""; shareWas = false; Slots\.setFrame\(null\); \}/.test(dock), "D: a destroyed dock forgets what it read (and its frame)");
 }
 
