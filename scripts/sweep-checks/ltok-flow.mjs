@@ -29,6 +29,10 @@ function mk(id, type, h, r, o = {}) {
 }
 const set = (tok, stat, v, options = {}) => { tok.actor.system.derived[stat].value = v; Hooks.callAll("updateActor", tok.actor, { system: { derived: { [stat]: { value: v } } } }, options); };
 
+/* the engine: a recording stand-in with the contract's surface (the real renderer needs a browser; its own checks are LETR's) */
+const fake = { version: "test", limits: { screen: 16, world: 48 }, ready: async () => true, count: () => 0,
+  play: (text, o) => ({ id: `h${Math.random()}`, hand: "x", alive: true, ready: Promise.resolve(), finished: new Promise((r) => setTimeout(() => r("done"), (o.hold ?? 800) + 400)), stop() {}, moveTo() {} }) };
+globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return this._engine; } };
 const M = await import("../tokenreact/main.mjs");
 const Owner = await import("../tokenreact/owner.mjs");
 const { letters } = await import("../letters/index.mjs");
