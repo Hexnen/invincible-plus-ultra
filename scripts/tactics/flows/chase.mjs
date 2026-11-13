@@ -21,7 +21,9 @@ import { chase } from "../../rules/index.mjs";
 import * as Lg from "../ledger-pure.mjs";
 import * as P1 from "../economy-pure.mjs";
 import * as MP from "../movement-pure.mjs";
+import * as M from "../mods-pure.mjs";
 import * as K from "./kit.mjs";
+import * as Attack from "./attack.mjs";
 import { hazardChild } from "./move.mjs";
 import { rideOf, vehOf, occupants, mountAgility } from "./vehicle.mjs";
 
@@ -58,6 +60,7 @@ export const membersOf = (state, side) => [...new Set((chaseOf(state)?.sides?.[s
 function unitFacts(v, id) {
   const c = v.facts.c(id);
   if (!c || c.present === false) return null;
+  if (stuckOf(v, id)) return null;                                                                  // FXJ2 (D211, D213, D214): one that cannot move never rolls nor strikes
   if (c.kind === "vehicle") {
     const rec = vehOf(v.state, id), d = rec.driver ? v.facts.c(rec.driver) : null;
     const mount = mountAgility(v, id);                                                           // Z16 [B3144]: a mount runs on the creature's AGILITY
@@ -85,9 +88,23 @@ export function rollerOf(v, side, gid = null) {
 export function stuckOf(v, id) {
   const c = v.facts.c(id);
   if (!c || c.present === false) return "gone";
-  if (c.kind === "vehicle") { const rec = vehOf(v.state, id); return rec.wrecked ? "wrecked" : rec.off?.engine ? "engine" : !rec.driver ? "noDriver" : null; }
-  return c.health <= 0 ? "down" : null;
+  if (c.kind === "vehicle") {
+    const rec = vehOf(v.state, id), d = rec.driver ? v.facts.c(rec.driver) : null;
+    /* FXJ2 (D211): a vehicle that was never started does not drive [B2325], P7-3; in a chase nobody has a turn to start it, the GM marks it
+       started on the desk. FXJ2: a driver out of action, held, snared or trapped cannot drive it [B2707], [B2496] */
+    return rec.wrecked ? "wrecked" : rec.off?.engine ? "engine" : !rec.driver ? "noDriver" : !rec.started ? "notStarted" : !d || outOf(v.state, rec.driver, d) || d.health <= 0 || MP.cannotMove(v.state, rec.driver, d) ? "driver" : null;
+  }
+  /* FXJ2 (D214): unconscious, dead or marked defeated: out of the fight, so out of the chase (not listed, no roll, no target, does not escape).
+     Broken (0 Health) may still rally [B2773]: it stays listed as down, as before. FXJ2 (D213): held, snared or trapped: cannot move [B2496] */
+  if (outOf(v.state, id, c)) return "out";
+  if (c.health <= 0) return "down";
+  const why = MP.cannotMove(v.state, id, c);
+  return why && why !== "broken" && why !== "gone" ? why : null;
 }
+/** FXJ2 (D214): out of the fight for good (no rally): unconscious, dead [B2707], [B2771], or marked defeated in Foundry; never a vehicle */
+export const outOf = (state, id, c) => !!c && c.kind !== "vehicle" && c.kind !== "challenge" && (M.hasStatus(state, id, "dead") || M.hasStatus(state, id, "unconscious") || c.defeated === true);
+/** FXJ2 (D214): the units of a side still in the chase (one out of the fight is no longer fleeing or pursuing) */
+export const inChase = (v, list) => (list ?? []).filter((id) => { const c = v.facts.c(id); return !c || !outOf(v.state, id, c); });
 
 /* ------------------------------------------------------------------ the facts of a chase: distance instead of the map [B3412] */
 /** Wrap the live facts: between the two sides the range is the chase distance, inside a side it is 0. `get` returns the state of now. */
@@ -182,6 +199,7 @@ export const OUTCOMES = Object.freeze(["escaped", "caught", "gaveUp", "combat"])
 export function escapedNpcs(state, f) {
   const ch = chaseOf(state);
   return (ch?.sides?.prey ?? []).map((u) => ({ id: u, people: occupants(state, u).filter((x) => x !== u) }))
+    .filter((u) => !outOf(state, u.id, f.c(u.id)))      // FXJ2 (D214): one out of the fight does not get away: it stays where it fell
     .filter((u) => [u.id, ...u.people].every((id) => { const c = f.c(id); return !!c && c.npc === true; }));
 }
 /** -> { puts: [{ who, to, group }] }: everyone back where the chase began (the GM moves them on from there) [D] */
@@ -227,20 +245,54 @@ function groupResult(v, I, R, c, ch, def) {
   I.data.result = escaped ? "escaped" : caught ? "caught" : "run";
   R.goto = caught ? "catch" : escaped ? "close" : "crew"; return R;
 }
+/* FXJ2: a stuck unit's reason as the refusals word it (ITAC.reason.*) */
+const STUCK_REASON = Object.freeze({ down: "broken", driver: "driverOut", wrecked: "vehicleWrecked", engine: "engineDisabled" });
 /* ANSD (CHASE2-1): who strikes on a catch [B3434]: every unit that reached the prey and can still move (unitFacts: a vehicle with a driver
-   and an engine, somebody on foot not out of the fight), the one who rolled for its group (or side) first. -> [{ key, u }] */
-function catchersOf(v, c) {
+   and an engine, somebody on foot not out of the fight), the one who rolled for its group (or side) first. -> [{ key, u }]
+   FXJ2 (D211, D213): `barred` collects the units that reached the prey but cannot move (stuckOf: not started, held, snared, ...): they
+   do not strike, and the table is told why. One out of the fight (gone, out) is not named. */
+function catchersOf(v, c, barred = null) {
   const ch = chaseOf(v.state), out = [];
-  const add = (units, first) => { for (const id of [...(first ? [first] : []), ...units.filter((x) => x !== first)]) { const u = unitFacts(v, id); if (u && !out.some((o) => o.u.id === id)) out.push({ key: `catch:${id}`, u }); } };
+  const add = (units, first) => { for (const id of [...(first ? [first] : []), ...units.filter((x) => x !== first)]) {
+    if (out.some((o) => o.u.id === id)) continue;
+    const u = unitFacts(v, id);
+    if (u) { out.push({ key: `catch:${id}`, u }); continue; }
+    const why = stuckOf(v, id);
+    if (barred && why && !["gone", "out"].includes(why) && !barred.some((b) => b.unit === id)) barred.push({ who: v.facts.c(id)?.kind === "vehicle" ? vehOf(v.state, id).driver ?? id : id, unit: id, reason: STUCK_REASON[why] ?? why });
+  } };
   if (c.groups) for (const gid of c.catches ?? []) { const g = c.groups.find((x) => x.id === gid); add((groupsOf(ch) ?? []).find((x) => x.id === gid)?.units ?? [], g?.roller?.id ?? null); }
   else add(ch?.sides?.pursuer ?? [], c.pursuer?.id ?? null);
   return out;
 }
 /* ANSD (CHASE2-1): whom a striker may pick: the fleeing units still on the scene (somebody on foot not out of the fight), the one who
-   rolled for them first (the default the card offers first) */
-function catchTargets(v, c) {
+   rolled for them first (the default the card offers first).
+   FXJ2 (D212): a player's striker is never offered (nor shown, nor counted) a fleeing NPC that player may not know of: one Foundry hides,
+   or one the striker has as unseen [B2075]; the GM's own strikers see all. FXJ2 (D214): one out of the fight is no target. */
+function catchTargets(v, c, striker = null) {
   const list = chaseOf(v.state)?.sides?.prey ?? [], first = c.prey?.id ?? null;
-  return [...(first && list.includes(first) ? [first] : []), ...list.filter((x) => x !== first)].filter((id) => { const f = v.facts.c(id); return !!f && f.present !== false && (f.kind === "vehicle" || f.health > 0); });
+  const player = striker ? K.addressee(v, striker) !== "gm" : false, seen = v.state.knowledge?.[striker] ?? {};
+  return [...(first && list.includes(first) ? [first] : []), ...list.filter((x) => x !== first)].filter((id) => {
+    const f = v.facts.c(id);
+    if (!f || f.present === false || outOf(v.state, id, f) || !(f.kind === "vehicle" || f.health > 0)) return false;
+    return !player || (f.hidden !== true && seen[id] !== "unseen");
+  });
+}
+/* FXJ2 (D211, D213): the strike a catch would push, as the engine will check it (pushChild -> K.legality): offered only where it is legal */
+const strikeSpec = (u, tid) => { const action = u.vehicle ? "ram" : "charge";
+  return { action, actor: u.roller, decl: { ...blank, action, targets: [tid], ...(u.vehicle ? {} : { weapon: "unarmed" }) }, cause: "reaction",
+    data: { kind: action, chaseCatch: 1, ...(u.vehicle ? {} : { charge: { done: 1, left: 0, total: 0, zones: [] } }) }, part: 1, prepaid: 1 }; };
+function strikeLegal(v, I, u, tid) {
+  const sp = strikeSpec(u, tid);
+  const probe = { id: `${I.id}~probe`, action: sp.action, flow: "attack", actor: sp.actor, initiator: { type: "combatant", id: sp.actor }, parent: I.id, part: 1, cause: sp.cause,
+    step: Attack.STEPS[0], status: "open", decl: sp.decl, locked: false, waits: [], rolls: {}, data: { ...sp.data }, overrides: [], tx: null };
+  try { return K.legality(v, probe, Attack); } catch { return { ok: true }; }      // a probe that cannot be judged here is judged by the engine (and told, below)
+}
+/* FXJ2: the record of who could not strike, kept on the instance and in state.chase.last (the panel reads it), written when it grew */
+function writeBarred(v, I, R, barred) {
+  if (JSON.stringify(barred) === JSON.stringify(I.data.barred ?? [])) return;
+  I.data.barred = barred.slice(0, 12);
+  if (isObj(chaseOf(v.state)?.last)) R.effects.push({ t: "state", path: ["chase", "last", "barred"], to: I.data.barred });
+  R.events.push({ type: "chase", distance: chaseOf(v.state)?.distance ?? 0, barred: I.data.barred });
 }
 export const round = {
   STEPS: Object.freeze(["check", "obstacle", "movement", "result", "catch", "crew", "close"]),
@@ -378,29 +430,43 @@ export const round = {
       /* CHASE2 groups (ours, G5): every group that reached the prey this round may strike, each in turn, the nearest-before-the-roll first.
          ANSD (CHASE2-1, the user 2026-11-12): EVERY unit of a group that reached 0 may strike [B3434], not only the one who rolled for it
          (on foot a charge, in a vehicle its driver rams), each in turn, the group's roller first; the target is the striker's pick among the
-         fleeing units still there, the one who rolled for them offered first. The plain chase: every pursuing unit (all of them are at 0). */
-      const strikers = catchersOf(v, c), targets = catchTargets(v, c);
+         fleeing units still there, the one who rolled for them offered first. The plain chase: every pursuing unit (all of them are at 0).
+         FXJ2 (D211, D213): nobody who reached the prey is left out in silence. A unit that cannot move, a striker whose strike the rules
+         refuse at every target, and a strike the rules refuse after it was picked (the engine's pushRefused note) are written to
+         state.chase.last.barred ([{ who, unit, reason }]), which every seat's chase panel says on the catch beat. */
+      const barred = Array.isArray(I.data.barred) ? I.data.barred.slice() : [];
+      const bar = (b) => { if (!barred.some((x) => x.unit === b.unit)) barred.push({ who: b.who, unit: b.unit, reason: String(b.reason ?? "illegal").slice(0, 40) }); };
+      if (I.data.striking) {                                      // the strike pushed last time: did the engine refuse it?
+        const st = I.data.striking, no = (I.data.notes ?? []).slice(st.n).find((n) => n?.note === "pushRefused");
+        if (no) bar({ who: st.who, unit: st.unit, reason: no.reason });
+        delete I.data.striking;
+      }
+      const strikers = catchersOf(v, c, barred);
       for (const { key, u } of strikers) {
         if (!I.data.pk?.[key]) {
-          if (!targets.length) continue;
+          if (K.flag(I, `bar:${key}`)) continue;
+          const judged = catchTargets(v, c, u.roller).map((tid) => ({ tid, l: strikeLegal(v, I, u, tid) })), targets = judged.filter((x) => x.l.ok).map((x) => x.tid);
+          if (!targets.length) { K.setFlag(I, `bar:${key}`); bar({ who: u.roller, unit: u.id, reason: judged[0]?.l?.reason ?? "noTarget" }); continue; }
           const verb = u.vehicle ? "ITAC.action.ram" : "ITAC.opt.charge";
           R.prompts.push({ key, kind: "chaseCatch", to: K.addressee(v, u.roller), about: u.roller,
             options: [...targets.map((tid, k) => ({ id: k ? `attack:${tid}` : "attack", label: verb, data: { target: tid } })), { id: K.PASS, label: "ITAC.opt.pass" }],
             data: { target: targets[0], targets, ram: u.vehicle ? 1 : 0, unit: u.id } });
+          writeBarred(v, I, R, barred);
           R.wait = true; return R;
         }
-        if (!K.isAnswered(v, I, key)) { R.wait = true; return R; }
+        if (!K.isAnswered(v, I, key)) { writeBarred(v, I, R, barred); R.wait = true; return R; }
         const ans = K.answerId(v, I, key) ?? "", tid = ans === "attack" ? K.promptOf(v, I, key)?.data?.target : ans.startsWith("attack:") ? ans.slice(7) : null;
         if (tid && !K.flag(I, key)) {
           K.setFlag(I, key);
           /* on foot it is the charge of the attack flow [B2490]: STRENGTH, its own stunts. The chase brought the pursuer there, so the charge has no
              approach of its own and no movement left over (no Slam) */
-          const action = u.vehicle ? "ram" : "charge";
-          R.push = { action, actor: u.roller, decl: { ...blank, action, targets: [tid], ...(u.vehicle ? {} : { weapon: "unarmed" }) }, cause: "reaction",
-            data: { kind: action, chaseCatch: 1, ...(u.vehicle ? {} : { charge: { done: 1, left: 0, total: 0, zones: [] } }) }, part: 1, prepaid: 1 };
+          I.data.striking = { key, who: u.roller, unit: u.id, n: (I.data.notes ?? []).length };
+          writeBarred(v, I, R, barred);
+          R.push = strikeSpec(u, tid);
           return R;
         }
       }
+      writeBarred(v, I, R, barred);
       R.goto = "crew"; return R;
     },
     /* [B3438-3442]: after the chase roll everyone aboard who does not drive may make one ranged attack; a mounted weapon lets the driver */
@@ -418,7 +484,9 @@ export const round = {
             const f = v.facts.c(cid);
             if (!f || f.present === false || f.health <= 0 || !v.state.ledger?.[cid]) continue;
             const g = Lg.addGrant(P1.ledgerOf(v.state, cid), { ...Lg.grantTemplate("gm", { unit: "full", window: "anytime", expires: "roundEnd" }), kind: "chaseCrew" });
-            if (g.ok) { R.effects.push({ t: "state", path: ["ledger", cid], to: g.ledger }); got.push(cid); if (side === "pursuer") first.push(cid); }
+            /* FXJ2 (D212): a pursuer Foundry hides does not hold the fleeing crews' shots (the greyed shot would tell the players of somebody
+               they cannot see); it still gets its own shot */
+            if (g.ok) { R.effects.push({ t: "state", path: ["ledger", cid], to: g.ledger }); got.push(cid); if (side === "pursuer" && f.hidden !== true) first.push(cid); }
           }
         }
         /* ANSD (CHASE2-9) [B3438]: `pursuers` = the crew who shoot first; a fleeing crew member's shot waits for them (economy-pure crewOrderHold) */
