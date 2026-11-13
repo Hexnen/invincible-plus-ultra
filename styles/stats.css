@@ -141,3 +141,27 @@
 }
 @media (prefers-reduced-motion: reduce) { .ipu-st-tab { transition: none; } .ipu-st-tab:hover { translate: none; } }
 @media (forced-colors: active) { .ipu-st-pick[aria-selected="true"], .ipu-st-tab[aria-selected="true"] { outline: 2px solid Highlight; } }
+
+/* ---------- RADR: the attribute radar ("spider") in a character's head (scripts/stats/radar-ui.mjs). The head becomes one card: picture,
+   name, players and the K/D box on the left, the spider on the right; it wraps under them when the detail is too narrow. Ink hexagon with
+   the kit's halftone dots, rings every 2, the values a yellow shape outlined in black with diamond corners (the title badges' shape);
+   each attribute's name in the label colour over its value, the highest value in yellow. ---------- */
+.ipu-st-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; }
+.ipu-st-top > .ipu-st-who { flex: 1 1 220px; min-width: 0; align-self: center; }
+.ipu-st-top .ipu-st-who-t { gap: 4px; }
+.ipu-st-top .ipu-st-who-t h2.ipu-plate { justify-self: start; overflow-wrap: anywhere; }
+.ipu-st-top .ipu-st-kd { justify-self: start; margin-top: 4px; }
+.ipu-st-radar { flex: none; margin: 0 auto; width: 260px; cursor: help; }
+.ipu-st-radar-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.ipu-st-radar .rd-base { fill: #0a1626; stroke: #000; stroke-width: 4; stroke-linejoin: round; }
+.ipu-st-radar .rd-dots { fill: url(#ipu-st-rd-dots); stroke: var(--ipu-frame); stroke-width: 1.5; stroke-linejoin: round; }
+.ipu-st-radar .rd-dot { fill: rgba(169, 188, 220, .2); }
+.ipu-st-radar .rd-ring { fill: none; stroke: var(--ipu-line); stroke-opacity: .45; stroke-width: 1; }
+.ipu-st-radar .rd-spoke { stroke: var(--ipu-line); stroke-opacity: .45; stroke-width: 1; }
+.ipu-st-radar .rd-edge { fill: none; stroke: #000; stroke-width: 5.5; stroke-linejoin: round; }
+.ipu-st-radar .rd-shape { fill: rgba(255, 231, 42, .32); stroke: var(--ipu-yellow); stroke-width: 2.5; stroke-linejoin: round; }
+.ipu-st-radar .rd-pt { fill: var(--ipu-yellow); stroke: #000; stroke-width: 1.5; }
+.ipu-st-radar .rd-name { font: 400 10.5px/1 Titles, Comic, sans-serif; letter-spacing: .08em; text-transform: uppercase; fill: var(--ipu-label); }
+.ipu-st-radar .rd-val { font: 400 16px/1 Titles, Comic, sans-serif; fill: #fff; font-variant-numeric: tabular-nums; }
+.ipu-st-radar .rd-val[data-top="1"] { fill: var(--ipu-yellow); }
+@media (forced-colors: active) { .ipu-st-radar .rd-shape { stroke: CanvasText; } .ipu-st-radar :is(.rd-name, .rd-val) { fill: CanvasText; } }

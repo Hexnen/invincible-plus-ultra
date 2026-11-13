@@ -3,9 +3,10 @@
    It never decides a permission of its own: pure.visible and pure.fightSummary do; here only "who is listed":
      GM      every character with a counted fact (heroes or NPCs, a switch), every player, every fight;
      player  the player characters (any player's: the party), every player, the fights with somebody the table saw (STAT-3, STAT-4).
-   names = { attr(id), action(id), stunt(id), out(id), user(id) -> name, t(key, params) }. */
+   names = { attr(id), action(id), stunt(id), out(id), user(id) -> name, t(key, params), attrs(actor id) -> { fighting.. } | null (RADR) }. */
 import * as P from "./pure.mjs";
 import * as TP from "./titles-pure.mjs";
+import { ATTRS } from "../i18n/terms.mjs";
 
 export const TABS = Object.freeze(["chars", "players", "fights"]);
 const LOOSE_NA = new Set(["acts", "rx", "stunts", "counters", "armor", "blocked", "dodged", "missedMe", "minions", "assists", "crits", "chal", "fights"]);
@@ -39,6 +40,31 @@ export function chipsOf(s, names) {
   return [["attrs", attrs], ["actions", acts], ["stunts", stunts]].filter(([, items]) => items.length).map(([id, items]) => ({ id, title: tt(`IPU.Stats.chips.${id}`), items }));
 }
 
+/* RADR: the attribute radar ("spider") of a character: its six attributes as they are NOW on the sheet (names.attrs(aid) reads the live
+   actor; the store keeps no attribute history). Only for a character this viewer already has on the rail (the same boundary as every
+   other number here), never for a challenge or a vehicle (their attributes are not a profile). One scale for the whole rail, so two
+   radars compare by eye: 0 at the centre, the top ring = the highest value on the rail, at least RADAR_MIN (RADR-2). */
+export const RADAR_MIN = 6;
+const NO_RADAR = new Set(["challenge", "vehicle"]);
+/** six finite numbers >= 0 in ATTRS order, or null */
+export function attrValues(o) {
+  if (!o || typeof o !== "object") return null;
+  const v = ATTRS.map((k) => Number(o[k]));
+  return v.every((x) => Number.isFinite(x)) ? v.map((x) => Math.max(0, Math.round(x))) : null;
+}
+/** the scale's top for a list of value rows: the largest value, at least RADAR_MIN, rounded up to even (rings every 2) */
+export const radarTop = (rows) => { const m = Math.max(RADAR_MIN, ...rows.flat().filter(Number.isFinite)); return m + (m % 2); };
+/** what the window draws: { top, axes: [{ id, label, v }] } or null */
+export function radarOf(values, top, names) {
+  if (!values) return null;
+  return { top, axes: ATTRS.map((id, i) => ({ id, label: names.attr(id), v: values[i] })) };
+}
+/** the geometry (pure, for the SVG and the checks): axis i at angle -90deg + i*60deg, clockwise from the top, value v at v/top of r */
+export function radarPoint(i, v, top, r, cx = 0, cy = 0) {
+  const a = (-90 + (360 / ATTRS.length) * i) * Math.PI / 180, k = top > 0 ? Math.min(1, Math.max(0, v / top)) : 0;
+  return [Math.round((cx + Math.cos(a) * r * k) * 100) / 100, Math.round((cy + Math.sin(a) * r * k) * 100) / 100];
+}
+
 /** a player character in the registry? (h:1, or any non-GM owner) */
 const isHero = (rec) => !!rec && (rec.h === 1 || (Array.isArray(rec.own) && rec.own.length > 0));
 
@@ -66,7 +92,10 @@ export function view(data, viewer, ui, names) {
     for (const x of rail) x.sel = x.id === sel.id;
     const r = sums.get(sel.id), s = P.sum(r.t, r.l), rec = actors[sel.id];
     const who = (rec.own ?? []).map((u) => names.user(u)).filter(Boolean);
-    return { ...base, rail, detail: { id: sel.id, name: rec.n, img: rec.i || null, sub: who.join(", "), kd: P.kd(s), titles: titlesOf([sel.id]), groups: groupsOf(r.t, r.l, names), chips: chipsOf(s, names) } };
+    /* RADR: read only the rail's characters (what this viewer may list); the scale spans them all */
+    const vals = new Map(rail.filter((x) => !NO_RADAR.has(actors[x.id]?.ty)).map((x) => [x.id, attrValues(names.attrs?.(x.id))]).filter(([, v]) => v));
+    const radar = radarOf(vals.get(sel.id) ?? null, radarTop([...vals.values()]), names);
+    return { ...base, rail, detail: { id: sel.id, name: rec.n, img: rec.i || null, sub: who.join(", "), kd: P.kd(s), titles: titlesOf([sel.id]), radar, groups: groupsOf(r.t, r.l, names), chips: chipsOf(s, names) } };
   }
   /* players: the sum of the characters each one owns (STAT-5) */
   const players = names.players();      // [{ id, name, avatar }]
