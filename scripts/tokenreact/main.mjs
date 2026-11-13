@@ -74,7 +74,10 @@ function entry(tok, stat) {
 function arm(e, ms) {
   e.due = Math.min(e.opened + QUIET.max, Math.max(e.due, Date.now() + ms));
   clearTimeout(timer);
-  const next = Math.min(...[...pending.values()].map((x) => x.due));
+  /* ONE MOMENT: everything pending plays together once the last change has had its quiet time (a crowd of updates arrives over a few
+     dozen ms), but never later than QUIET.max after the first one */
+  const list = [...pending.values()];
+  const next = Math.min(Math.min(...list.map((x) => x.opened)) + QUIET.max, Math.max(...list.map((x) => x.due)));
   timer = setTimeout(flush, Math.max(20, next - Date.now()));
 }
 function changed(tok, options) {
@@ -141,9 +144,8 @@ function reduced() {
 }
 function flush() {
   try {
-    const now = Date.now(), ready = [...pending.values()].filter((e) => e.due <= now + 5);
-    for (const e of ready) pending.delete(e.k);
-    if (pending.size) arm([...pending.values()][0], 0);
+    const ready = [...pending.values()];
+    pending.clear();
     if (!ready.length || !enabled() || !canvas?.ready) return;
     const lang = game.i18n?.lang === "pl" ? "pl" : "en";
     const items = [];

@@ -125,7 +125,7 @@ ck("D3 a player: Broken announced: down", p[0]?.o.mood === "fail" && p[1]?.text 
 user.isGM = true;
 const crowd = Array.from({ length: 9 }, (_, i) => mk(`c${i}`, "npc", 6, 6));
 Hooks.callAll("canvasReady");
-for (const [i, t] of crowd.entries()) set(t, "health", i === 0 ? 0 : 5);
+for (const [i, t] of crowd.entries()) { set(t, "health", i === 0 ? 0 : 5); await sleep(40); }      // found live: the updates of an area hit arrive one by one, tens of ms apart
 p = await take(2600);
 const words = p.filter((x) => x.o.at?.id && !String(x.text).match(/^[+-]\d/));
 ck("E1 nine at once: two full words (the heaviest among them), the rest numbers, nothing doubled", words.length === 2 && p.length === 11 && words.some((x) => x.o.at.id === "c0"));

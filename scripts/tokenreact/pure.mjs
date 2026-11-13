@@ -89,18 +89,19 @@ export const WORDS = {
   }
 };
 
-/* the sound of each kind (contract: mood + sound { loud, sharp, long, pitch, rough }); rising kinds rise, heavy ones fall */
+/* the sound of each kind (contract: mood + sound { loud, sharp, long, pitch, rough }); rising kinds rise, heavy ones fall. hold = ms the
+   word stands after its entrance: long enough to be read at a glance from across the table (seen live: the engine's 650 ms was gone too soon) */
 const SOUND = {
-  hit: { mood: "impact", sound: { loud: 0.5, sharp: 0.85, long: 0.2, pitch: 0, rough: 0.35 }, size: 0.92, hold: 650 },
-  heavy: { mood: "crash", sound: { loud: 0.9, sharp: 0.95, long: 0.5, pitch: -0.2, rough: 0.75 }, size: 1.18, hold: 900 },
-  down: { mood: "fail", sound: { loud: 0.8, sharp: 0.55, long: 0.8, pitch: -0.85, rough: 0.55 }, size: 1.12, hold: 1100 },
-  heal: { mood: "heal", sound: { loud: 0.35, sharp: 0.1, long: 0.6, pitch: 0.6, rough: 0 }, size: 0.8, hold: 700 },
-  back: { mood: "powerup", sound: { loud: 0.75, sharp: 0.5, long: 0.5, pitch: 0.9, rough: 0.2 }, size: 1.05, hold: 900 },
-  stress: { mood: "pain", sound: { loud: 0.5, sharp: 0.9, long: 0.35, pitch: -0.2, rough: 0.85 }, size: 0.88, hold: 700 },
-  spent: { mood: "tick", sound: { loud: 0.25, sharp: 0.6, long: 0.25, pitch: -0.3, rough: 0.4 }, size: 0.66, hold: 500 },
-  regain: { mood: "powerup", sound: { loud: 0.4, sharp: 0.3, long: 0.4, pitch: 0.6, rough: 0.1 }, size: 0.8, hold: 650 },
-  out: { mood: "fail", sound: { loud: 0.55, sharp: 0.2, long: 0.95, pitch: -0.9, rough: 0.3 }, size: 0.98, hold: 1100 },
-  steady: { mood: "powerup", sound: { loud: 0.6, sharp: 0.4, long: 0.45, pitch: 0.8, rough: 0.1 }, size: 0.9, hold: 800 }
+  hit: { mood: "impact", sound: { loud: 0.5, sharp: 0.85, long: 0.2, pitch: 0, rough: 0.35 }, size: 0.92, hold: 1000 },
+  heavy: { mood: "crash", sound: { loud: 0.9, sharp: 0.95, long: 0.5, pitch: -0.2, rough: 0.75 }, size: 1.18, hold: 1300 },
+  down: { mood: "fail", sound: { loud: 0.8, sharp: 0.55, long: 0.8, pitch: -0.85, rough: 0.55 }, size: 1.12, hold: 1500 },
+  heal: { mood: "heal", sound: { loud: 0.35, sharp: 0.1, long: 0.6, pitch: 0.6, rough: 0 }, size: 0.8, hold: 1000 },
+  back: { mood: "powerup", sound: { loud: 0.75, sharp: 0.5, long: 0.5, pitch: 0.9, rough: 0.2 }, size: 1.05, hold: 1300 },
+  stress: { mood: "pain", sound: { loud: 0.5, sharp: 0.9, long: 0.35, pitch: -0.2, rough: 0.85 }, size: 0.88, hold: 1000 },
+  spent: { mood: "tick", sound: { loud: 0.25, sharp: 0.6, long: 0.25, pitch: -0.3, rough: 0.4 }, size: 0.66, hold: 700 },
+  regain: { mood: "powerup", sound: { loud: 0.4, sharp: 0.3, long: 0.4, pitch: 0.6, rough: 0.1 }, size: 0.8, hold: 900 },
+  out: { mood: "fail", sound: { loud: 0.55, sharp: 0.2, long: 0.95, pitch: -0.9, rough: 0.3 }, size: 0.98, hold: 1500 },
+  steady: { mood: "powerup", sound: { loud: 0.6, sharp: 0.4, long: 0.45, pitch: 0.8, rough: 0.1 }, size: 0.9, hold: 1100 }
 };
 /* the animation technique per kind (contract v2 in / holdKind / out): picked by the seed among the ones that fit what happened, so two
    hits do not move alike; a blow slams in and shatters, a fall drops and droops, healing and getting up rise, stress buzzes */
