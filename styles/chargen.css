@@ -94,6 +94,7 @@
   gap: 6px;
   width: 100%;
   min-height: 34px;
+  height: auto;          /* FXT2: Foundry's button height clipped a two-line step name (PL "Plansza losowania" at 1366 px) */
   margin: 0;
   padding: 3px 8px;
   text-align: left;
