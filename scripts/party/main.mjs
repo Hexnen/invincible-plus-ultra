@@ -8,6 +8,7 @@
    for players. The world setting "Party: show to players" hides the panel for players (the GM keeps it). Numbers come only from
    actor.system.derived; nothing is read that the client may not already read. */
 import * as Panel from "./panel.mjs";
+import { placeColumn } from "./place.mjs";
 import { groupsFor, isTurnOf, pickCombat, isActionStatus } from "./actions.mjs";
 import { t } from "./lang.mjs";
 import * as Tac from "../tactics/source.mjs";      // FXE3 (D206): broken is not dead (lifeOf)
@@ -203,9 +204,10 @@ function cycleDisplay() {
 /* ---------- placement: bottom left, above Foundry's own UI ----------
    The column may occupy [top, bottom] on the left edge. Bottom = the smallest top of any lower-screen UI element that overlaps the column's
    horizontal extent (the FULL card width, whatever the state, so a state change never moves it) minus 12; top = the lowest bottom of the scene
-   controls (top-left) plus 12. Every element is hit-tested by its rect and ResizeObserved; also window resize, collapseSidebar, hotbar renders. */
+   controls (top-left) plus 12, every button counted (FXP2); a menu too long for the party below it puts the column to its right (place.mjs). Every element is hit-tested by its rect and ResizeObserved; also window resize, collapseSidebar, hotbar renders. */
 const LOW_SEL = "#players, #players-active, #players-inactive, #hotbar, #ui-bottom > *, .mm-vram";      // U47: the map's VRAM meter stands low on the left by default (and where the user drags it): the party column ends above it   // leaf boxes: core's #ui-left-column-* and #scene-controls are tall, transparent flex columns
 const HIGH_SEL = "#scene-controls-layers > *, #scene-controls-tools > *";   // the real buttons (li), not their full-height menus
+const UP_SEL = "#mm-filter";   // FXP2: the map's pins panel hangs at the top left beside the tools: a column moved beside the menu stays under it
 const seen = new Set();
 let ro = null, mo = null, raf = 0;
 const extraMos = [];   // the body / .mm-vram observers: stop() disconnects them
@@ -217,19 +219,19 @@ function measure() {
     const x1 = (box && box.width > 40 ? Math.min(box.width, 288 * sc) : 264 * sc) + 16 * sc;   // the FULL card width (+ room for the lean)
     const own = document.getElementById("invincible-party");
     const H = window.innerHeight;
-    let bottom = H - 14, top = 0;
     const visible = (el) => { const cs = getComputedStyle(el); return cs.display !== "none" && cs.visibility !== "hidden"; };
-    for (const el of document.querySelectorAll(`${LOW_SEL}, ${HIGH_SEL}`)) {
+    const menu = [], low = [], upper = [];
+    for (const el of document.querySelectorAll(`${LOW_SEL}, ${HIGH_SEL}, ${UP_SEL}`)) {
       if (el === own || el.contains(own) || own?.contains(el)) continue;
       if (window.ResizeObserver && ro && !seen.has(el)) { seen.add(el); ro.observe(el); if (el.matches(".mm-vram") && window.MutationObserver) { const vm = new MutationObserver(scheduleMeasure); extraMos.push(vm); vm.observe(el, { attributes: true, attributeFilter: ["style", "class", "hidden"] }); } }      // a dragged card moves by its style
       const r = el.getBoundingClientRect();
-      if (r.width < 8 || r.height < 8 || r.left >= x1 || r.right <= 0) continue;   // not over the column
+      if (r.width < 8 || r.height < 8 || r.right <= 0) continue;
       if (!visible(el)) continue;
-      if (el.matches(HIGH_SEL)) {
-        if (r.top < H * 0.5 && r.height < H * 0.9) top = Math.max(top, Math.round(r.bottom) + 12);
-      } else if (r.top > H * 0.4 && r.height < H * 0.5) bottom = Math.min(bottom, Math.round(r.top) - 12);
+      (el.matches(HIGH_SEL) ? menu : el.matches(UP_SEL) ? upper : low).push(r);
     }
-    Panel.setBounds(top, bottom);
+    /* FXP2 (TOGL-D1): every menu button counts, wherever it ends; a menu too long for the party below it puts the column beside it (place.mjs) */
+    const at = placeColumn({ H, width: x1, menu, low, upper, need: Panel.minNeed() });
+    Panel.setBounds(at.top, at.bottom, at.left);
   } catch (e) { console.warn(LOG, "measure", e); }
 }
 function scheduleMeasure() { if (!raf) raf = requestAnimationFrame(measure); }
