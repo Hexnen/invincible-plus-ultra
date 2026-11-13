@@ -1251,7 +1251,7 @@ function supportAllies(v, I) {
 function supportOptions(v, I, hit, budget) {
   if (!hit.length || !(budget > 0)) return [];
   const out = [];
-  for (const x of supportAllies(v, I)) for (let k = 1; k <= Math.min(budget, 3); k++) out.push({ id: `support@${x}|${k}`, label: "ITAC.stunt.support", data: { stunt: "support", target: x, n: k, ally: 1 } });
+  for (const x of supportAllies(v, I)) for (let k = 1; k <= Math.min(budget, 3); k++) out.push({ id: `support@${x}|${k}`, label: "ITAC.stunt.supportSix", data: { stunt: "support", target: x, n: k, ally: 1 } });
   return out;
 }
 const picksOf = (value) => (Array.isArray(value) ? value : []).map((id) => /^([A-Za-z]+)@([^|]+)(?:\|(.+))?$/.exec(String(id))).filter(Boolean).map((m) => ({ stunt: m[1], target: m[2], ...(m[3] ? { extra: m[3] } : {}) }));

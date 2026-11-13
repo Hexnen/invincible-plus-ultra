@@ -13,7 +13,9 @@ import * as O from "./ops-pure.mjs";
 import * as S from "./state-pure.mjs";
 import * as P1 from "./economy-pure.mjs";
 import { chase as Chase } from "../rules/index.mjs";
-import { EN, PL } from "./lang.mjs";
+import { EN, PL, t as say } from "./lang.mjs";
+import * as UI from "./ui/model-pure.mjs";
+import * as Desk from "./desk-pure.mjs";
 
 const code = (env) => env?.error?.code ?? (env?.ok ? "ok" : "?");
 const why = (env) => env?.error?.params?.reason ?? null;
@@ -173,14 +175,24 @@ const finish = async (T) => { for (let i = 0; i < 8; i++) { const p = T.prompts(
   ok(p.options.every((o) => o.data.faces.length === o.data.dice && o.data.sixes === o.data.faces.filter((f) => f === 6).length), "FXT-10: the faces and the sixes of each roll are on the card");
   eq(p.data.failed, p.options.filter((o) => o.data.sixes === 0).map((o) => o.id), "FXT-10: those who rolled no six stand as surprised");
   ok(r.state.init.slots.every((s) => s.card === null), "FXT-10: no card dealt yet");
-  eq(code(O.reduce(r.state, O.normalize({ op: "answer", prompt: p.id, value: ["N1"] }, { staff: false }).action, { user: "p1", staff: false, owns: () => false, parts, rng: seeded(1) })), "notOwner", "FXT-10: only the GM answers");
-  const a = O.reduce(r.state, O.normalize({ op: "answer", prompt: p.id, value: ["N1", "N3"] }, { staff: true }).action, { ...GM, parts, rng: seeded(5) });
+  eq(code(O.reduce(r.state, O.normalize({ op: "answer", prompt: p.id, value: { order: [], skip: ["N2", "N3"] } }, { staff: false }).action, { user: "p1", staff: false, owns: () => false, parts, rng: seeded(1) })), "notOwner", "FXT-10: only the GM answers");
+  const a = O.reduce(r.state, O.normalize({ op: "answer", prompt: p.id, value: { order: [], skip: ["N2"] } }, { staff: true }).action, { ...GM, parts, rng: seeded(5) });
   const card = (id) => a.state.init.slots.find((s) => s.members.includes(id))?.card;
   eq([a.ok, a.state.phase !== "draw"], [true, true], "FXT-10: the GM's word (here: N1 and N3, the GM's correction) deals the cards");
   const others = a.state.init.slots.filter((x) => !x.members.some((m) => m === "N1" || m === "N3")).map((x) => x.card);
   ok(Math.min(card("N1"), card("N3")) > Math.max(...others), "FXT-10 [B2279]: the surprised get the worst cards (the highest of the deck, I5)");
   eq([M.statusesOf(a.state, "N1").map((s) => s.id), M.statusesOf(a.state, "N3").map((s) => s.id), M.statusesOf(a.state, "N2").map((s) => s.id)], [["unaware"], ["unaware"], []], "FXT-10: the surprised are unaware (A6: until their first turn ends)");
-  const b = O.reduce(r.state, O.normalize({ op: "answer", prompt: p.id, value: [] }, { staff: true }).action, { ...GM, parts, rng: seeded(5) });
+  /* the GM's desk card: the defenders with their rolls, the failures ticked, the answer in the round card's shape */
+  const names = { N1: "Mauler", N2: "Thug", N3: "Rat" };
+  const dcard = Desk.deskModel(r.state, null, { c: (id) => (names[id] ? { name: names[id], npc: true } : null) }).cards.find((c) => c.kind === "surprise");
+  const ad = dcard && UI.askData(dcard, { t: (k, prm, fb) => say(k, prm, fb), facts: { c: (id) => (names[id] ? { name: names[id] } : null) }, own: {}, desk: true });
+  eq(ad?.title, EN["ITAC.Prompt.surprise.Title"], "FXT-10: the card's title");
+  eq(ad?.options.map((o) => [o.id, o.picked]), p.options.map((o) => [o.id, p.data.failed.includes(o.id)]), "FXT-10: those who rolled no six stand ticked");
+  ok(ad?.options.every((o, i) => o.label.startsWith(`${names[o.id]}: `) && o.label.includes(String(p.options[i].data.sixes))), "FXT-10: each line names the defender and its sixes");
+  eq(ad?.submit?.req, { op: "answerFor", prompt: p.id, value: { order: [], skip: p.options.map((o) => o.id).filter((id) => !p.data.failed.includes(id)) } }, "FXT-10: confirming sends the list as it stands");
+  const viaDesk = O.reduce(r.state, O.normalize({ ...ad.submit.req, op: "answer" }, { staff: true }).action, { ...GM, parts, rng: seeded(5) });
+  eq([viaDesk.ok, viaDesk.state.phase !== "draw"], [true, true], "FXT-10: the desk's answer deals the cards");
+  const b = O.reduce(r.state, O.normalize({ op: "answer", prompt: p.id, value: { order: [], skip: ["N1", "N2", "N3"] } }, { staff: true }).action, { ...GM, parts, rng: seeded(5) });
   eq([b.ok, b.state.phase !== "draw", Object.values(b.state.statuses ?? {}).flat().length], [true, true, 0], "FXT-10: the GM may clear the list: an ordinary deal");
   const h = start("heroes", 3);
   eq(Object.values(h.state.prompts).find((x) => x.kind === "surprise")?.options.map((o) => o.id), ["H1", "H2"], "FXT-10: the heroes surprised: the heroes roll");
@@ -189,6 +201,13 @@ const finish = async (T) => { for (let i = 0; i < 8; i++) { const p = T.prompts(
   const g = O.reduce(null, O.normalize({ op: "start", mode: "tactical", restart: true, surprise: "npcs", surprised: ["N2"] }, { staff: true }).action, { ...GM, parts, rng: seeded(3) });
   eq([Object.values(g.state.prompts).some((x) => x.kind === "surprise"), g.state.phase], [false, "turns"], "FXT-10: the GM's own list (the API) wins over the roll");
   eq(S.parse(S.serialize(r.state)).init.draw?.surpriseWait, r.state.init.draw.surpriseWait, "FXT-10: the waiting deal survives the store");
+}
+{ /* FXT-10: the GM's field on the tracker reaches the start */
+  const cc = readFileSync(new URL("./combat-class.mjs", import.meta.url), "utf8"), mn = readFileSync(new URL("./main.mjs", import.meta.url), "utf8");
+  ok(/Relay\.request\(this\.id, \{ op: "start", restart: true, \.\.\.\(surprise \? \{ surprise \} : \{\}\) \}\)/.test(cc), "FXT-10: Begin Combat hands the GM's mark to the start");
+  ok(/data-action="startCombat"/.test(cc) && /combat\.round > 0/.test(cc) && /Store\.isStaff\(game\.user\)/.test(cc), "FXT-10: the field sits by Begin Combat, for the GM, before the fight");
+  ok(/Hooks\.on\("renderCombatTracker", \(app, html\) => Klass\.surpriseField\(app, html\)\)/.test(mn), "FXT-10: drawn with the tracker");
+  for (const k of ["ITAC.ui.surprise.npcs", "ITAC.ui.surprise.heroes", "ITAC.ui.surprise.on", "ITAC.ui.surprise.off"]) ok(typeof EN[k] === "string" && typeof PL[k] === "string", `FXT-10: ${k} in both languages`);
 }
 /* ================================================================== SWEEPM-11: an unlinked hero token's roll goes into the hero's log */
 {

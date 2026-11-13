@@ -75,6 +75,8 @@ async function startRunning() {
   Engine.start();
   const Prompts = await import("./ui/prompts.mjs");
   Klass.setEndSceneAsk((combat) => Prompts.sceneEnd(combat));
+  Hooks.on("renderCombatTracker", (app, html) => Klass.surpriseField(app, html));      // ANSG (FXT-10): the GM's surprise attack field
+  try { ui.combat?.render?.(); } catch { /* not drawn yet */ }
   Store.subscribe(() => Prompts.sync());
   /* the designed surfaces (ui/main.mjs: the action dock and the GM desk); when they cannot start, the minimal dialogs above stay in charge */
   /* one more try after a pause: a module fetch that fails once (a busy server) must not leave a player on the fallback dialogs for the whole session */

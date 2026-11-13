@@ -52,7 +52,7 @@ const ICONS = {
   "@more": "fa-ellipsis", "@kit": "fa-star", "@other": "fa-pen", "@hold": "fa-hourglass-half", "@end": "fa-forward-step",
   "kit:power": "fa-hand-sparkles", "kit:boost": "fa-angles-up", "kit:limit": "fa-triangle-exclamation", "kit:talent": "fa-medal", "kit:drawback": "fa-heart-crack", "kit:gear": "fa-toolbox",
   "stunt:doubleDamage": "fa-burst", "stunt:knockback": "fa-arrow-right-from-bracket", "stunt:stun": "fa-face-dizzy", "stunt:bangHeads": "fa-people-arrows", "stunt:trap": "fa-dungeon", "stunt:disarm": "fa-hand-holding",
-  "stunt:deadlyHit": "fa-skull", "stunt:slam": "fa-angles-right", "stunt:suppressed": "fa-arrows-down-to-line", "stunt:trickShot": "fa-bullseye", "stunt:special": "fa-star", "stunt:own": "fa-pen",
+  "stunt:deadlyHit": "fa-skull", "stunt:slam": "fa-angles-right", "stunt:suppressed": "fa-arrows-down-to-line", "stunt:trickShot": "fa-bullseye", "stunt:support": "fa-handshake-angle", "stunt:special": "fa-star", "stunt:own": "fa-pen",
   "fate:ko": "fa-bed", "fate:kill": "fa-skull",
   "die:1": "fa-dice-one", "die:2": "fa-dice-two", "die:3": "fa-dice-three", "die:4": "fa-dice-four", "die:5": "fa-dice-five", "die:6": "fa-dice-six",      // P6b-6: the injury die a talent lets pick
   "react:block": "fa-shield-halved", "react:dodge": "fa-wind", "react:pass": "fa-xmark", "react:r": "fa-reply",

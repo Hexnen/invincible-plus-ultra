@@ -101,7 +101,6 @@ export function normalize(req, { staff = false } = {}) {
         const v = req.value;
         if (typeof v === "string" || typeof v === "number") a.value = typeof v === "string" ? v.slice(0, TEXT_MAX) : v;
         else if (isObj(v)) a.value = { order: idList(v.order, 400) ?? [], skip: idList(v.skip, 400) ?? [] };
-        else if (Array.isArray(v)) a.value = { pick: idList(v, 400) ?? [] };      // ANSG (FXT-10): the picks of a multi card of the round (who is surprised)
         else throw new Error("value");
         break;
       }
@@ -206,7 +205,7 @@ function drawCards(W, round, redraw) {
    round 1 (initiative-pure, as the GM's own list did) and the status "unaware" (as `start` gives it). */
 const SIDE_OK = (p) => p && !p.challenge && !p.vehicle && !p.defeated && !p.summonOf;
 function surpriseRoll(W, side) {
-  const s = W.s, rng = W.ctx.rng ?? Math.random;
+  const s = W.s, rng = W.ctx.rng;      // the table's random source (NO_RNG when none)
   const defenders = (W.ctx.parts ?? []).filter((p) => SIDE_OK(p) && !!p.hero === (side === "heroes")).slice(0, 60);
   if (!defenders.length) return;
   const rolls = defenders.map((p) => { const n = Math.max(1, Math.min(30, Math.trunc(Number(p.intuition)) || 1)), faces = Array.from({ length: n }, () => 1 + Math.floor(rng() * 6)); return { id: p.id, dice: n, faces, sixes: faces.filter((f) => f === 6).length }; });
@@ -582,7 +581,7 @@ const OPS = {
       /* ANSG (FXT-10): the GM's word on who is surprised (the failed rolls picked at first) */
       case "surprise": {
         if (!s.init.draw || s.init.draw.surpriseWait !== p.id) { drop(); return err("gone"); }
-        const ids = new Set((p.options ?? []).map((o) => o.id)), pick = new Set((Array.isArray(a.value?.pick) ? a.value.pick : []).filter((x) => ids.has(x)));
+        const ids = new Set((p.options ?? []).map((o) => o.id)), skip = new Set(isObj(a.value) ? a.value.skip ?? [] : []), pick = new Set([...ids].filter((x) => !skip.has(x)));      // the shape of a round card's list (as triggerQueue): who is NOT ticked
         s.init.draw.surprised = s.init.slots.filter((sl) => sl.members.length && sl.members.every((m) => pick.has(m))).map((sl) => sl.id);      // [I5]: a group only when every member is (GROUP_SURPRISE "all")
         delete s.init.draw.surpriseWait;
         for (const id of pick) {

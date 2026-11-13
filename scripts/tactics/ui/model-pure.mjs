@@ -168,6 +168,7 @@ function optLabel(p, o, t, facts, desk = false, oneTarget = false) {
   if (kind === "fireSpread" && o.data?.zone) return o.data.rolled ? t("ITAC.ui.spread.rolled", { zone: zoneText(facts, t, o.data.zone) }) : zoneText(facts, t, o.data.zone);
   /* D113: an answer about one of several characters (the ally Discretion puts in the way, the one a warning is for) names that character */
   if (kind === "reaction" && o.data?.about && String(o.id).includes("@")) return t("ITAC.ui.react.about", { what: o.name ? String(o.name) : labelOf(t, o.label), name: nameOf(facts, o.data.about, t) });
+  if (kind === "surprise" && o.data) return t("ITAC.ui.opt.surprised", { name: nameOf(facts, o.id, t), n: o.data.sixes ?? 0, dice: o.data.dice ?? "?" });      // ANSG (FXT-10): the defender and its INTUITION roll
   if (o.name) return String(o.name);
   if (isKey(o.label)) {
     const d = o.data ?? {};
@@ -278,6 +279,7 @@ function linesOf(p, t, facts, x) {
     case "chaseCatch": out.push(t(d.ram ? "ITAC.ui.line.chaseRam" : "ITAC.ui.line.chaseCharge", { name: about, target: n(d.target) })); break;
     case "chaseOption": out.push(t("ITAC.ui.line.chaseOption", { name: about, obstacle: t(`ITAC.ui.chase.obstacle.${d.obstacle}`, {}, String(d.obstacle ?? "")), attr: attrText(t, d.attr) })); break;
     case "triggerQueue": out.push(t("ITAC.Prompt.triggerQueue.Body")); break;
+    case "surprise": out.push(t("ITAC.Prompt.surprise.Body")); break;      // ANSG (FXT-10)
     /* P5: the GM's word on a narrative action, and the cards of the hazards */
     case "outcome": {
       const act = d.name ? String(d.name) : t(`ITAC.action.${d.action}`, {}, String(d.action ?? ""));
@@ -354,7 +356,7 @@ export function askData(p, o) {
   const kind = p.of ?? p.kind, inst = (o.info ?? []).find((i) => i.inst === p.inst) ?? null;
   const text = (own.texts?.[p.id] ?? "").trim(), always = !!own.always?.[p.id];
   const allIds = (p.options ?? []).filter((x) => !x.disabled).map((x) => x.id);
-  const picks = own.picks?.[p.id] ?? (kind === "triggerQueue" ? allIds : []);
+  const picks = own.picks?.[p.id] ?? (kind === "triggerQueue" ? allIds : kind === "surprise" ? (Array.isArray(p.data?.failed) ? p.data.failed : []).filter((id) => allIds.includes(id)) : []);      // ANSG (FXT-10): who rolled no six stands ticked
   const queue = kind === "triggerQueue";
   /* what the GM sees on a reaction card: the attacker's dice and, per answer, the chance that the attack still lands. The pools are the
      ENGINE's (flows/attack.mjs oddsFacts: the same builder as the roll), never an attribute read here: the sheet's dice, a weapon, bonus
@@ -455,7 +457,7 @@ export function askData(p, o) {
     gmExtra: gx?.ctl ?? null,
     always: desk && Array.isArray(p.always) && p.always.length ? { on: always, label: t("ITAC.ui.always", { name: p.aboutName ?? "" }), tip: t("ITAC.ui.always.tip", { name: p.aboutName ?? "" }) } : null,
     submit: multi ? { label: queue ? t("ITAC.Prompt.triggerQueue.Go") : t("ITAC.ui.confirm", { n: picks.length, max }), disabled: canSubmit ? null : t("ITAC.ui.pickMore"),
-      req: canSubmit ? p.answerReq(queue ? { order: [], skip: allIds.filter((id) => !picks.includes(id)) } : picks.slice()) : null } : null,
+      req: canSubmit ? p.answerReq(queue || kind === "surprise" ? { order: [], skip: allIds.filter((id) => !picks.includes(id)) } : picks.slice()) : null } : null,      // ANSG (FXT-10): the surprise card answers as a round card does
   };
 }
 

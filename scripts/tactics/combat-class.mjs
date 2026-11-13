@@ -42,6 +42,33 @@ export function ownInitiative() {
   try { return Store.setting("tacticsInitiative", true) !== false && !(game.modules.get("yze-combat")?.active && CONFIG.YZE_COMBAT); } catch { return false; }
 }
 
+/* ANSG (FXT-10, the user 2026-11-12: «dodać pole MG „Atak z zaskoczenia”») [B2279]: before a fight starts, the GM marks on the tracker which
+   side is attacked by surprise: two icon toggles next to Begin Combat (one on at a time, the words in the tooltip). The mark is a flag of
+   the combat; startCombat hands it to the round driver (ops-pure start `surprise`), which rolls the defenders' passive INTUITION and puts
+   the GM's card up before the deal. Cleared once the fight started. */
+const SURPRISE = "surprise", SIDES = ["npcs", "heroes"];
+const surpriseOf = (combat) => { try { const v = combat?.getFlag?.(MOD, SURPRISE); return SIDES.includes(v) ? v : null; } catch { return null; } };
+const SIDE_ICON = { npcs: "fa-user-ninja", heroes: "fa-person-falling-burst" };
+export function surpriseField(app, html) {
+  try {
+    const combat = app?.viewed ?? game.combat;
+    if (!Store.isStaff(game.user) || !combat || combat.round > 0 || !ownInitiative()) return;
+    const root = html instanceof HTMLElement ? html : html?.[0];
+    const begin = root?.querySelector?.('[data-action="startCombat"]');
+    if (!begin || root.querySelector(".itac-surprise")) return;
+    const now = surpriseOf(combat);
+    for (const side of SIDES) {
+      const on = now === side, b = document.createElement("button");
+      b.type = "button";
+      b.className = `inline-control combat-control icon fa-solid ${SIDE_ICON[side]} itac-surprise${on ? " active" : ""}`;
+      const label = t(`ITAC.ui.surprise.${side}`);
+      b.setAttribute("aria-label", label); b.setAttribute("aria-pressed", String(on)); b.dataset.tooltip = `${label}<br>${t(on ? "ITAC.ui.surprise.on" : "ITAC.ui.surprise.off")}`;
+      b.addEventListener("click", async (ev) => { ev.preventDefault(); ev.stopPropagation(); try { if (surpriseOf(combat) === side) await combat.unsetFlag(MOD, SURPRISE); else await combat.setFlag(MOD, SURPRISE, side); } catch (e) { console.warn(`${MOD} | surprise field`, e); } });
+      if (side === "npcs") begin.before(b); else begin.after(b);
+    }
+  } catch (e) { console.warn(`${MOD} | surprise field`, e); }
+}
+
 export function makeClass(Base) {
   const baseSort = Base.prototype._sortCombatants;
   return class TacticsCombat extends Base {
@@ -52,8 +79,10 @@ export function makeClass(Base) {
       try {
         /* D97: as core does (client/documents/combat.mjs startCombat), but only for a fight that DID start: a refused or failed request
            tells nobody of a start, and the effect registry gets the combat as its context (durations are framed by it). */
-        const env = tell(await Relay.request(this.id, { op: "start", restart: true }));
+        const surprise = surpriseOf(this);      // ANSG (FXT-10): the GM's "surprise attack" field next to Begin Combat
+        const env = tell(await Relay.request(this.id, { op: "start", restart: true, ...(surprise ? { surprise } : {}) }));
         if (!env?.ok) return this;
+        if (surprise) try { await this.unsetFlag(MOD, SURPRISE); } catch { /* the field stays; the next start reads it again */ }
         try { this._playCombatSound?.("startEncounter"); } catch { /* no sound */ }
         try { Hooks.callAll("combatStart", this, { round: 1, turn: 0 }); } catch { /* a listener threw */ }
         try { await CONFIG.ActiveEffect.documentClass?.registry?.refresh?.("combatStart", { combat: this }); } catch { /* not in this core version */ }

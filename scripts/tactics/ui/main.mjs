@@ -594,7 +594,7 @@ async function send(which, req, after, how = {}) {
 }
 const multi = (which) => (id, opt, max = 24) => { const cur = (st[which].picks[id] ?? null), list = cur ? cur.slice() : null; const base = list ?? defaultPicks(id); const i = base.indexOf(opt); if (i >= 0) base.splice(i, 1); else if (base.length < max) base.push(opt); st[which].picks[id] = base; refresh(); };
 /* a round-point queue starts with everything ticked (model-pure.askData); a first click must start from that */
-function defaultPicks(id) { try { const p = Api.state(combatNow())?.prompts?.[id]; return p?.kind === "triggerQueue" ? (p.options ?? []).map((o) => o.id) : []; } catch { return []; } }
+function defaultPicks(id) { try { const p = Api.state(combatNow())?.prompts?.[id]; return p?.kind === "triggerQueue" ? (p.options ?? []).map((o) => o.id) : p?.kind === "surprise" ? (p.data?.failed ?? []).slice() : []; } catch { return []; } }
 const text = (which) => (id, value) => { st[which].texts[id] = String(value).slice(0, 300); refresh(); };
 async function zone(which, option, ask) {
   try {
