@@ -60,7 +60,7 @@ export function toastStrip({ H, chatTop = null, listEnd = null }) {
           wider side of each; layout-pure.bandBeside),
           hud: { present, x0, end } (the challenges HUD: its left edge; end: the bottom of its rows while all show, or null), desk: { open, x0 } | null (the open GM desk),
           bar: { lo, hi, top, bottom } (the bar's room and where it stands: dock.mjs works that out without the toasts) }
-    -> { toast, band, desk, slots: { line, cards, hint, notice }, up: { lo, hi }, panelMax, reserved: [boxes], across: { lo, hi } (FXU D188: the
+    -> { toast, band: { present, y1 (where the desk starts over), room (FXV2: what the HUD lays its rows out in) }, desk, slots: { line, cards, hint, notice }, up: { lo, hi }, panelMax, reserved: [boxes], across: { lo, hi } (FXU D188: the
        top band's free stretch, what the chase panel keeps inside) } */
 export function frame(f) {
   const W = f.W, H = f.H, k = f.k || 1, bar = f.bar, side = Math.min(W, f.side ?? W);
@@ -74,6 +74,7 @@ export function frame(f) {
   /* the challenges' band (U134): on the GM seat a fixed share of the column (the desk, open or folded to its tab, keeps its top under
      it); on a player's seat nothing stands under it, so it reaches down to the toasts */
   let bandEnd = hudOn ? (f.staff ? 11 + clamp(H * BAND.share, BAND.min, BAND.max) : toast.top - GAP) : 11;
+  let room = bandEnd;
   /* the GM desk: under the band, over the toasts' strip, and over the bar where the bar takes the edge under it. Where the bar takes
      that edge (a low window, big surfaces) the band gives way, down to its least, so the open desk keeps room for its head and a few
      rows; worked out the same whether the desk is open or folded, so folding it moves nothing */
@@ -90,10 +91,13 @@ export function frame(f) {
     /* FXS2 (U234): the band is a share of the window, but the GM's challenges often end far above it (two of them at 1366x768: some
        115 px of a 280 px band) while a stunts card under it showed one row of answers. Where the HUD says where its rows end (hud.end:
        all of them shown, nothing scrolled or folded away) the band ends there, never under its least: the desk starts under the rows */
+    /* FXV2 (SMOK-1): the room the HUD lays its rows out in is the band BEFORE it is fitted to them (`room`): fitted, it fed back (compact
+       rows kept the band short, the short band kept them compact, so the same window showed full or compact cards by its history) */
+    room = bandEnd;
     if (hudOn && Number.isFinite(f.hud?.end)) bandEnd = Math.max(11 + BAND.min, Math.min(bandEnd, f.hud.end + HUD_SLACK * k));
     out.desk = { top: hudOn ? r(bandEnd + GAP) : 11, floor: r(under ? floorUnder : toast.top - GAP), toastH: toast.h, under };
   }
-  out.band = { present: hudOn, y1: r(bandEnd) };
+  out.band = { present: hudOn, y1: r(bandEnd), room: r(room) };
   const deskX0 = deskOpen ? (f.desk?.x0 ?? side) : side;
   /* where the bar took the edge under the open desk, the panel over the bar keeps left of the desk */
   if (out.desk?.under) out.up = { lo: bar.lo, hi: Math.min(bar.hi, deskX0 - 10) };

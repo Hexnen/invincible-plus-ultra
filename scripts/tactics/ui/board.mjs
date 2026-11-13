@@ -59,9 +59,37 @@ function caught(doc, who, dec, staff) {
 }
 function put(id, set, clear, spec) {
   const key = spec ? JSON.stringify(spec) : "";
-  if ((shown[id] ?? "") === key) return;
+  const was = shown[id] ?? "";
+  if (was === key) return;
+  /* FXV2 (SMOK-2): the map words its tip for the token under the pointer only when the pointer comes onto a token (moinen-maps
+     board.mjs setHoverTok), so new marks for that very token left the old tip standing ("no attribute chosen" after one was chosen).
+     When what this token's marks say changes, the token leaves every mark set of ours for one synchronous step: the map takes its tip
+     down, and the next pointer move over the token words it from the new marks. Nothing is painted in between. */
+  const tok = set === Zones.markTokens && hover ? tid(hover) : null;
+  const back = tok && entryOf(was, tok) !== entryOf(key, tok) ? dropTip(tok, id) : [];
   shown[id] = key;
   try { if (spec) set({ id, ...spec }); else clear(id); } catch (e) { console.warn(LOG, id, e); }
+  for (const mid of back) { try { Zones.markTokens({ id: mid, ...JSON.parse(shown[mid]) }); } catch (e) { console.warn(LOG, mid, e); } }
+}
+const MARK_SETS = () => [BP.IDS.table, BP.IDS.reach];
+/** what the mark set stored under `key` says about token `tok` (a string to compare; "" = nothing) */
+function entryOf(key, tok) {
+  if (!key) return "";
+  try { const e = JSON.parse(key).tokens?.find((x) => x.token === tok); return e ? JSON.stringify(e) : ""; } catch { return ""; }
+}
+/** every mark set of ours put again without `tok` (the set `now` is about to be put anyway); -> the other sets to put back whole */
+function dropTip(tok, now) {
+  const back = [];
+  for (const mid of MARK_SETS()) {
+    const key = shown[mid];
+    if (!key || !entryOf(key, tok)) continue;
+    try {
+      const s = JSON.parse(key), rest = (s.tokens ?? []).filter((x) => x.token !== tok);
+      if (rest.length) Zones.markTokens({ id: mid, ...s, tokens: rest }); else Zones.clearTokenMarks(mid);
+      if (mid !== now) back.push(mid);
+    } catch (e) { console.warn(LOG, mid, e); }
+  }
+  return back;
 }
 /** the fire of the map, read once per change of the fight or of the map */
 function fireNow() {
