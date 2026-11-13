@@ -22,7 +22,7 @@ import { tierFor } from "./levels-pure.mjs";
 import { note } from "./trace-pure.mjs";
 
 /* the name the zones API's profile takes for each way of moving (zones-api.md section 14 `way`; spec 7.4 mapping [D]).
-   [ZR-3]: leaping and super-speed are the map's "leap" / "superspeed" (over exterior walls, must land). Elongated Stride climbs walls
+   [ZR-3]: leaping and super-speed are the map's "leap" / "superspeed" (over exterior walls and, A14, over every standing building from outside; must land). Elongated Stride climbs walls
    [B1922]: the map has no such way, so it is sent as "leap" (over an exterior wall, lands) - a reading, listed in the questions.
    A vehicle has no entry: its way is the rules library's (an aircraft or a spacecraft flies [B3247], [B2385]; a ground or a water
    vehicle takes the ground route), so `apiProfile` reads `profile.way`. */

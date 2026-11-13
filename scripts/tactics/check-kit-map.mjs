@@ -21,11 +21,13 @@ export function fakeZones(def) {
     if (!Z.zones[zone]) return null;
     return mk(f ? { zone, level: "floor", floor: Number(f[1]) } : { zone, level: lv ?? "ground", airborne: lv === "elevated" && !Z.zones[zone].rooftop });
   }
+  // A14 (the user's answer, as the map's marks.mjs stopped()): a flyer passes over a blocked border with a standing rooftop on exactly one side
+  const roofOf = (k) => !!Z.zones[k]?.rooftop && !Z.marks?.[k]?.wrecked;
   const borderOf = (a, b) => {
     const key = bkey(a, b); if (!key) return null;
     const d = Z.borders[key], wallUp = d.wall && d.wall.state === "intact", doorShut = d.doorway && ["locked", "sealed"].includes(d.doorway.state), doorOpen = d.doorway && ["open", "breached", "closed"].includes(d.doorway.state);
     const solid = !!wallUp && !doorOpen;
-    return { key, kind: d.wall ? "wall" : "open", armor: d.wall?.armor ?? 0, door: d.doorway?.state ?? null, stops: { walk: solid, air: solid && !d.wall.outer, through: false }, wall: d.wall ? { ...d.wall } : null, doorway: d.doorway ? { ...d.doorway } : null, _doorShut: !!doorShut };
+    return { key, kind: d.wall ? "wall" : "open", armor: d.wall?.armor ?? 0, door: d.doorway?.state ?? null, stops: { walk: solid, air: solid && !d.wall.outer && roofOf(a) === roofOf(b), through: false }, wall: d.wall ? { ...d.wall } : null, doorway: d.doorway ? { ...d.doorway } : null, _doorShut: !!doorShut };
   };
   const stopWay = (way) => (["flight", "air", "leap", "superspeed", "swing"].includes(way) ? "air" : ["through", "burrow", "teleport", "phase"].includes(way) ? "through" : "walk");
   const neighbours = (z) => Object.keys(Z.borders).filter((k) => k.split("|").includes(z)).map((k) => k.split("|").find((x) => x !== z));
@@ -36,7 +38,7 @@ export function fakeZones(def) {
       const sw = forced ? (from.level === "elevated" ? "air" : "walk") : stopWay(way), last = i === keys.length - 1;
       if (last && end) { level = end.level ?? level; floor = end.floor ?? null; air = end.airborne === true; }
       const to = mk({ zone: keys[i], level, floor, airborne: air });
-      steps.push({ kind: "border", from: i === 1 ? from.spot : steps[i - 2].to, to: to.spot, zone: keys[i], level, floor, border: { key: b.key, kind: b.kind, wall: b.wall, doorway: b.doorway, ...(b.stops[sw] ? { blocked: true } : {}), ...(sw === "air" && b.wall?.outer && b.wall.state === "intact" ? { over: true } : {}) } });
+      steps.push({ kind: "border", from: i === 1 ? from.spot : steps[i - 2].to, to: to.spot, zone: keys[i], level, floor, border: { key: b.key, kind: b.kind, wall: b.wall, doorway: b.doorway, ...(b.stops[sw] ? { blocked: true } : {}), ...(sw === "air" && ((b.wall?.outer && b.wall.state === "intact") || (b.stops.walk && !b.stops.air)) ? { over: true } : {}) } });
     }
     if (keys.length === 1 && end && (end.level ?? "ground") !== from.level) steps.push({ kind: "level", from: from.spot, to: mk({ zone: keys[0], ...end }).spot, zone: keys[0], level: end.level, dir: end.level === "elevated" ? 1 : -1, slab: Z.zones[keys[0]].rooftop ? "roof" : null });
     return steps;

@@ -76,7 +76,7 @@ eq(M.moveReach(P("flight"), { conditions: { highGravity: true } }), { plain: 0, 
 /* with a route of the place model */
 {
   const g = Z.makeGraph(WORLD.graph);
-  const r = Z.routeBetween(g, "a", "b:f2", { aerial: true, over: "exterior" });
+  const r = Z.routeBetween(g, "a", "b:f2", { aerial: true });
   eq(opt(M.moveCost(r.total, P("flight"))), ["quick", "full"], "a flyer enters floor 2 next door in one move");
   const up = Z.routeBetween(g, "e", "e:elevated");
   eq([up.total, M.moveCost(up.total, P("walk")).reason, M.movesNeeded(up.total, P("walk")).plain], [2, "tooFar", 2], "a walker climbs to the rooftop in two moves");
