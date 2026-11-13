@@ -37,22 +37,27 @@ ck("B9 nothing from nothing", P.audience(GM, null).show === false && P.audience(
 ck("B10 an event with no track change (hit while broken) still answers", P.fromEvent({ taken: 2 }, "health").kind === "hit" && P.fromEvent({ taken: 0, broken: true }, "health").kind === "down" && P.fromEvent({ taken: 0 }, "health") === null && P.fromEvent({ taken: 1 }, "resolve").kind === "stress");
 ck("B11 who may read: the damage card's rule", P.mayRead({ gm: true }) && P.mayRead({ type: "challenge" }) && P.mayRead({ type: "superhero", playerHero: true }) && P.mayRead({ observer: true }) && !P.mayRead({ type: "npc" }) && !P.mayRead({ type: "superhero" }) && !P.mayRead(null));
 
-/* C: the lettering */
+/* C: the lettering. FXLT2 (ADVT2 1): the words are the engine's vocabulary now (the token's own list had dictionary words, non-sounds and
+   Polish diacritics); C1, C2, C5-C7 and C14 test the vocabulary's words the reactions get, not a list of their own */
+const { createVocab } = await import("../letters/words.mjs");
+const V = createVocab();
 const kinds = [...P.HEALTH, ...P.RESOLVE];
+const vocabIds = new Set(V.list().map((x) => x.id));
 for (const kd of kinds) {
-  const lk = P.look({ kind: kd, num: 2, exact: true }, { r: 0.25 }, "pl", "s1");
+  const lk = P.look({ kind: kd, num: 2, exact: true }, { r: 0.25 }, "pl", "s1", V);
   ck(`C1 ${kd}: a word, a mood, a palette, a number (spent: none, the roll's splash shows it)`, !!lk && typeof lk.word === "string" && lk.word.length > 0 && !!lk.mood && lk.colors.length === 3 && (kd === "spent" ? lk.number === null : /^[+-]2$/.test(lk.number.text)));
-  ck(`C2 ${kd}: words in both languages`, P.WORDS.en[kd]?.length >= 2 && P.WORDS.pl[kd]?.length >= 2);
+  ck(`C2 ${kd}: its sound is a kind of the engine's vocabulary`, vocabIds.has(P.vocabKind(kd, (k) => vocabIds.has(k))));
 }
 ck("C3 the sign says the direction", P.look({ kind: "hit", num: 3 }, null, "en", "a").number.text === "-3" && P.look({ kind: "heal", num: 3 }, null, "en", "a").number.text === "+3" && P.look({ kind: "regain", num: 1 }, null, "en", "a").number.text === "+1" && P.look({ kind: "stress", num: 1 }, null, "en", "a").number.text === "-1");
 ck("C4 no number: none drawn", P.look({ kind: "hit", num: null }, null, "en", "a").number === null);
-ck("C5 the same seed, the same lettering on every seat", eq(P.look({ kind: "heavy", num: 4 }, { r: 0.5 }, "pl", "tok|health|8|4|123"), P.look({ kind: "heavy", num: 4 }, { r: 0.5 }, "pl", "tok|health|8|4|123")));
-{ const words = new Set(); for (let i = 0; i < 40; i++) words.add(P.look({ kind: "hit", num: 1 }, null, "en", `x${i}`).word); ck("C6 different from one time to the next (several words in use)", words.size >= 4); }
-/* C7 changed by FXLT (review 15): "never twice in a row ON A SEAT" came from a per-seat memory, which gave two seats two different words
-   for one hit. Now the word comes from the seed alone (identical everywhere) and successive changes (successive server stamps) vary it. */
-{ const a = P.look({ kind: "hit", num: 1 }, null, "en", "same"), b = P.look({ kind: "hit", num: 1 }, null, "en", "same", "POW!");
-  let differ = 0; for (let i = 0; i < 40; i++) differ += P.look({ kind: "hit", num: 1 }, null, "pl", P.seedOf("t", "health", 1000 + i)).word !== P.look({ kind: "hit", num: 1 }, null, "pl", P.seedOf("t", "health", 1001 + i)).word ? 1 : 0;
-  ck("C7 the word is the seed's alone (no seat memory), and successive changes mostly say another word", a.word === b.word && differ >= 28); }
+ck("C5 the same seed, the same lettering on every seat", eq(P.look({ kind: "heavy", num: 4 }, { r: 0.5 }, "pl", "tok|health|123", V), P.look({ kind: "heavy", num: 4 }, { r: 0.5 }, "pl", "tok|health|123", createVocab())));
+{ const words = new Set(); for (let i = 0; i < 40; i++) words.add(P.look({ kind: "hit", num: 1 }, null, "en", `x${i}`, V).word); ck("C6 different from one time to the next (several words in use)", words.size >= 3); }
+/* C7 changed by FXLT (review 15): the word comes from the seed alone (identical everywhere) and successive changes vary it. FXLT2: the
+   vocabulary has 2-3 words per loudness tier (pl punch, small: TWAP|TWOP; the owner: words may repeat when natural, no forced
+   uniqueness), so two successive stamps differ about half the time; a quarter at least */
+{ const a = P.look({ kind: "hit", num: 1 }, null, "en", "same", V), b = P.look({ kind: "hit", num: 1 }, null, "en", "same", createVocab());
+  let differ = 0; for (let i = 0; i < 40; i++) differ += P.look({ kind: "hit", num: 1 }, null, "pl", P.seedOf("t", "health", 1000 + i), V).word !== P.look({ kind: "hit", num: 1 }, null, "pl", P.seedOf("t", "health", 1001 + i), V).word ? 1 : 0;
+  ck("C7 the word is the seed's alone (no seat memory), and successive changes mostly say another word", a.word === b.word && differ >= 10); }
 ck("C8 how much shows: a bigger blow is louder and bigger", (() => { const s = P.look({ kind: "hit", num: 1, exact: true }, { r: 0.1 }, "en", "q"), b = P.look({ kind: "hit", num: 2, exact: true }, { r: 0.5 }, "en", "q");
   return b.sound.loud > s.sound.loud && P.targetPx(b.kind, b.amt, "BAM!", 100, 900) > P.targetPx(s.kind, s.amt, "BAM!", 100, 900) && b.magnitude > s.magnitude && b.number.sound.loud > s.number.sound.loud; })());      // FXLT: the size is the planned cap height (targetPx), the number's size follows the word's
 ck("C9b magnitudes: heavy and down bigger, a hit small, spent small, all within the engine's 0..2", (() => { const m = (k) => P.look({ kind: k, num: 2 }, null, "en", "q").magnitude; return m("heavy") >= 0.6 && m("down") > m("heavy") && m("hit") > 0.05 && m("hit") < 0.4 && m("spent") < 0.2 && m("heavy") > m("hit") && [...P.HEALTH, ...P.RESOLVE].every((k) => m(k) >= 0 && m(k) <= 2); })());      // FXLT review 5: down was 0.25 under heavy; now the worst blow is the biggest
@@ -61,7 +66,16 @@ ck("C10 a seat that may not read gets no share of the track in the size", eq(P.l
 ck("C11 rising kinds use rising moods, falls falling ones (contract: heal / powerup rise, fail / crash fall)", ["heal", "back", "regain", "steady"].every((k) => ["heal", "powerup"].includes(P.look({ kind: k, num: 1 }, null, "en", "q").mood)) && ["down", "out", "heavy"].every((k) => ["fail", "crash"].includes(P.look({ kind: k, num: 1 }, null, "en", "q").mood)));
 ck("C12 Health and Resolve in different colours", P.look({ kind: "hit", num: 1 }, null, "en", "q").colors[1] !== P.look({ kind: "stress", num: 1 }, null, "en", "q").colors[1]);
 ck("C13 an unknown kind: nothing", P.look({ kind: "zzz", num: 1 }, null, "en", "q") === null);
-ck("C14 every word uses only letters the engine draws (Polish letters, ! ? - . and spaces)", Object.values(P.WORDS).every((t) => Object.values(t).flat().every((w) => /^[A-ZĄĆĘŁŃÓŚŹŻ!?\-. ]+$/.test(w))));
+/* C14 changed by FXLT2 (owner's rulings: no Polish diacritics in sound words, "!" 0..2, only sounds): every word a reaction can get, in both
+   languages, at every loudness and series step, from many seeds */
+{ let bad = [], n = 0;
+  const OLD = new Set(["DOBRA!", "JUŻ!", "TAK!", "YES!", "OKAY!", "UP!", "RIGHT!", "TRZASK!", "PLASK!", "BACH!", "BUCH!", "BUM!", "PAC!", "PAF!", "SMACK!", "THWACK!", "THUD!", "KLUNK!", "KRUNCH!"]);
+  for (const kd of kinds) for (const lang of ["en", "pl"]) for (const num of [null, 1, 3, 8, 15]) for (let i = 0; i < 12; i++) for (const step of [0, 1, 2, 3]) {
+    const lk = P.look({ kind: kd, num, exact: num !== null }, { r: num ? Math.min(1, num / 8) : null }, lang, `w${i}`);
+    const w = P.wordFor(lk, V, { lang, seed: `w${i}`, step, streakSeed: `s${i}` }); n++;
+    if (!w || /[ĄĆĘŁŃÓŚŹŻ]/.test(w) || (w.match(/!/g) ?? []).length > 2 || !/^[A-Z!?\-.… ]+$/.test(w) || OLD.has(w)) bad.push(`${kd}/${lang}/${w}`);
+  }
+  ck(`C14 every reaction word is drawn from the vocabulary: no diacritics, at most two "!", none of the review's non-sounds (${n} words; bad: ${bad.slice(0, 5).join(" ")})`, bad.length === 0 && n > 3000 && !("WORDS" in P)); }
 
 { /* C15: the techniques are names the engine knows (its moods' entrances, holds and exits) and vary with the seed */
   const D = await import("../letters/design.mjs");

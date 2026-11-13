@@ -60,6 +60,8 @@ const fake = { version: "test", limits: { screen: 16, world: 48 }, ready: async 
       finished: sleep((o.hold ?? 800) + 900).then(() => { h.alive = false; return "done"; }), stop(q) { rec.stopped = q ?? {}; stops.push(rec); h.alive = false; }, moveTo() {} };
     rec.h = h; plays.push(rec); return h;
   } };
+/* FXLT2: the words come from the engine's vocabulary (the real one, scripts/letters/words.mjs) */
+{ const { createVocab } = await import("../letters/words.mjs"); fake.vocab = createVocab(); fake.word = fake.vocab.word; }
 globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return this._engine; } };
 const M = await import("../tokenreact/main.mjs");
 M.start({ init: true, ready: true });
@@ -94,8 +96,9 @@ let p = await take();
 
 /* R3: numbers in one legible hand: the same face and look for every number, no tilt of their own, not tiny next to the word */
 { const nums = p.filter(isNum), word = p.find((r) => !isNum(r));
-  ck("R3 every number in the one number hand (Titan One, flat, no rough tilt), the same per track, at least 0.55 of the word's cap",
-    nums.length === 2 && nums.every((r) => r.o.hand?.font === "titan" && r.o.hand?.env === "flat" && Math.abs(r.o.rotation ?? 0) <= 4 && (r.o.sound?.rough ?? 1) <= 0.1)
+  /* FXLT2 (ADVT2 13): the number hand's face is Bungee now (Titan One's 1 and 7 were mistaken for each other) */
+  ck("R3 every number in the one number hand (Bungee, flat, no rough tilt), the same per track, at least 0.55 of the word's cap",
+    nums.length === 2 && nums.every((r) => r.o.hand?.font === "bungee" && r.o.hand?.env === "flat" && Math.abs(r.o.rotation ?? 0) <= 4 && (r.o.sound?.rough ?? 1) <= 0.1)
     && nums[0].o.hand.id !== nums[1].o.hand.id && !!word && nums.every((r) => pxOf(r.o) >= 0.55 * pxOf(word.o))); }
 
 /* R12: the number stands beside the word, not on the token's face; R13: it comes after the word has landed */
@@ -137,7 +140,9 @@ cam.z = 1;
   const w = plays.find((r) => r.o.token?.id === "D" && !isNum(r));
   const before = w ? pxOf(w.o) : 0; try { w?.o.at?.(); } catch { /* the check below fails */ }
   const after = w ? pxOf(w.o) : 0;
-  ck(`R5d a tall word is shrunk to fit: drawn ${Math.round(before * 3.5)} -> ${Math.round(after * 3.5)} px, limit ${Math.round(VH * 0.12 * 1.25)}`, !!w && after * 3.5 <= VH * 0.12 * 1.25 + 1 && after < before);
+  /* FXLT2 (ADVT2 7): the cap is the rule's capVh (14 % now, was 12 %) */
+  const capVh = (await import("../tokenreact/pure.mjs")).SIZE_RULE.capVh;
+  ck(`R5d a tall word is shrunk to fit: drawn ${Math.round(before * 3.5)} -> ${Math.round(after * 3.5)} px, limit ${Math.round(VH * capVh * 1.25)}`, !!w && capVh <= 0.15 && after * 3.5 <= VH * capVh * 1.25 + 1 && after < before);
   await take(1800); for (const k of Object.keys(TALL)) delete TALL[k];
   toks.splice(toks.indexOf(d), 1); cam.z = 1; }
 

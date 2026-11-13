@@ -38,6 +38,8 @@ const pxOf = (o) => sizeFor(ctxOf(o)).px;
 const fake = { version: "test", limits: { screen: 16, world: 48 }, ready: async () => true, count: () => 0,
   sizeOf: (text, o) => { const r = sizeFor(ctxOf(o)); return { ...r, sizeK: sizeK(o) }; },
   play: (text, o) => ({ id: `h${Math.random()}`, hand: "x", alive: true, ready: Promise.resolve(), finished: new Promise((r) => setTimeout(() => r("done"), (o.hold ?? 800) + 400)), stop() {}, moveTo() {} }) };
+/* FXLT2: the words come from the engine's vocabulary (the real one, scripts/letters/words.mjs) */
+{ const { createVocab } = await import("../letters/words.mjs"); fake.vocab = createVocab(); fake.word = fake.vocab.word; }
 globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return this._engine; } };
 const M = await import("../tokenreact/main.mjs");
 const Owner = await import("../tokenreact/owner.mjs");
@@ -58,7 +60,9 @@ set(hero, "health", 7);
 let p = await take();
 ck("A1 a hand edit on the sheet: a word at the token and the number", p.length === 2 && p[0].o.space === "world" && p[0].o.token === hero.document && typeof p[0].o.at === "function" && p[1].o.space === "world" && p[1].text === "-1");
 const firstHitPx = pxOf(p[0].o);
-ck("A2 the word is a hit word of the client's language", ["ŁUP!", "BACH!", "PAC!", "TRZASK!", "BUCH!", "PAF!"].includes(p[0]?.text));
+/* A2 changed by FXLT2 (ADVT2 1, 2; owner's rulings: words from the engine's vocabulary, one language for the table): the client is Polish,
+   the world's sound language is the default (English), the word is the vocabulary's punch at the reaction's loudness and seed */
+ck("A2 the word is the vocabulary's punch in the world's language, not the client's", !!p[0] && p[0].text === fake.vocab.series("punch", 1, { lang: "en", loud: p[0].o.sound.loud, seed: `${p[0].o.seed}|punch` })[0].text && !/[ĄĆĘŁŃÓŚŹŻ]/.test(p[0].text));
 set(hero, "health", 3);
 p = await take();
 ck("A3 four at once: heavy (crash), bigger", p[0]?.o.mood === "crash" && p[1]?.text === "-4");

@@ -64,33 +64,55 @@ export function fromEvent(pub, stat) {
   return n > 0 ? { stat: "health", kind: n >= 3 ? "heavy" : "hit", n, r: null } : null;
 }
 
-/* ---------------------------------------------------------------- the words: comic sounds of the language, not translations */
-export const WORDS = {
-  en: {
-    hit: ["POW!", "WHAM!", "THWACK!", "SMACK!", "BAM!", "KLUNK!"],
-    heavy: ["KRAKOOM!", "WHAMMM!", "KA-BLAM!", "SKRAKK!", "BLAMM!"],
-    down: ["THUD!", "KRUNCH!", "FLUMP!", "WHUMP!"],
-    heal: ["PHEW!", "AAAH...", "HAAH!"],
-    back: ["HUP!", "HRAAH!", "UP!"],
-    stress: ["NGH!", "ARGH!", "GNNH!", "GRRR!"],
-    spent: ["HNNG!", "HUFF!", "HMPF!"],
-    regain: ["HAH!", "YES!", "OKAY!"],
-    out: ["UGH...", "OOF...", "HAAH..."],
-    steady: ["HAH!", "RIGHT!"]
-  },
-  pl: {
-    hit: ["ŁUP!", "BACH!", "PAC!", "TRZASK!", "BUCH!", "PAF!"],
-    heavy: ["ŁUBUDU!", "TRRACH!", "BUM!", "ŁUP-ŁUP!", "BRRUM!"],
-    down: ["BĘC!", "ŁUPS!", "PLASK!", "GRUCH!"],
-    heal: ["UFF!", "AACH...", "HAA!"],
-    back: ["HOP!", "HYC!", "RAAA!"],
-    stress: ["NGH!", "AARGH!", "GRRR!", "UGH!"],
-    spent: ["HYYY!", "NNNGH!", "UMPF!"],
-    regain: ["HA!", "TAK!", "DOBRA!"],
-    out: ["UCH...", "OCH...", "EEEH..."],
-    steady: ["HA!", "JUŻ!"]
-  }
+/* ---------------------------------------------------------------- the words: the engine's vocabulary (FXLT2, ADVT2 finding 1)
+   The token never ships its own word list (it had dictionary words, non-sounds and Polish diacritics): each reaction asks the shared
+   vocabulary (L.word / L.vocab.series of scripts/letters/words.mjs) for a sound of the nearest kind, at a loudness that says how much
+   (the tier picks the word, the "!" count 0..2 follows), seeded by the change's shared stamp so every seat letters the same word.
+   VOCAB_KIND: the reaction kind -> the vocabulary's sound kind (the first one the engine knows is used). A blow to a body is a punch,
+   a heavy one a smash, a fall a thud; healing and getting the nerve back are relief, getting up is a cheer, stress is pain, stress
+   taken by choice is effort, stressed out is a sigh. Provisional where the vocabulary has no kind of its own (scratchpad letr
+   REQUESTS FXLT2): getting up (back) and steady. */
+export const VOCAB_KIND = {
+  hit: ["punch"], heavy: ["smash"], down: ["thud"], heal: ["relief"], back: ["cheer"],
+  stress: ["pain"], spent: ["effort"], regain: ["relief"], out: ["sigh"], steady: ["cheer"]
 };
+/* how loud each kind is said, from the smallest to the biggest amount (0..1): the vocabulary's tier (s < 0.34 <= m < 0.67 <= l) is the
+   word, so a -1 hit says a short small sound and a -6 a long loud one (ADVT2 7: stress -1 and -6 were the same GRRR!) */
+export const LOUD = {
+  hit: [0.25, 0.66], heavy: [0.55, 1], down: [0.75, 1], heal: [0.25, 0.7], back: [0.5, 0.9],
+  stress: [0.25, 0.9], spent: [0.15, 0.4], regain: [0.2, 0.6], out: [0.6, 1], steady: [0.4, 0.8]
+};
+/* a series of blows on one token (ADVT2 5: three blows 0.9 s apart were the same drawing three times): the next blow within STREAK.ms of
+   the last one is step n of ONE growing sound (the vocabulary's series: the same template louder and longer, then its lead-in:
+   WHAM! > WHAAM! > KA-WHAAM!), seeded by the first blow's stamp, so every seat that saw the blows letters the same series; the word
+   also stands a little bigger each step */
+export const STREAK = { ms: 3500, max: 4, grow: 0.14 };
+export const isLoss = (kind) => kind === "hit" || kind === "heavy" || kind === "down" || kind === "stress" || kind === "out";
+/** the vocabulary's kind for a reaction kind: the first of VOCAB_KIND[kind] the engine knows (has(id) -> bool), else the first */
+export function vocabKind(kind, has = null) {
+  const list = VOCAB_KIND[kind] ?? [];
+  return (has ? list.find((k) => { try { return has(k); } catch { return false; } }) : null) ?? list[0] ?? null;
+}
+/** The word of one reaction from the engine's vocabulary. lk = look(), vocab = { word(kind, o), series?(kind, n, o), kinds? }.
+    o = { lang, seed, step, streakSeed }. -> the text, or null (no vocabulary) */
+export function wordFor(lk, vocab, o = {}) {
+  if (!lk || !vocab?.word) return null;
+  let has = vocab.has ?? null;
+  if (!has && vocab.list) { try { const ids = new Set(vocab.list().map((x) => x?.id ?? x)); has = (k) => ids.has(k); } catch { has = null; } }
+  const vk = vocabKind(lk.kind, has);
+  if (!vk) return null;
+  const step = Math.max(0, Math.min(STREAK.max, Math.floor(Number(o.step) || 0)));
+  const lang = o.lang === "pl" ? "pl" : "en";
+  /* the first blow is step 0 of its own series, so the second one grows from the word that was seen */
+  const first = o.streakSeed ?? o.seed;
+  try {
+    if (vocab.series) {
+      const s = vocab.series(vk, step + 1, { lang, loud: lk.loud, seed: `${first}|${vk}` });
+      if (s?.[step]?.text) return s[step].text;
+    }
+    return vocab.word(vk, { lang, loud: lk.loud, seed: `${first}|${vk}`, step })?.text ?? null;
+  } catch { return null; }
+}
 
 /* the sound of each kind (contract: mood + sound { loud, sharp, long, pitch, rough }); rising kinds rise, heavy ones fall. hold = ms the
    word stands after its entrance: long enough to be read at a glance from across the table (seen live: the engine's 650 ms was gone too soon).
@@ -135,8 +157,10 @@ export const PALETTE = {
 const PAL_OF = { hit: "health", heavy: "health", down: "down", heal: "heal", back: "heal", stress: "resolve", spent: "resolve", regain: "steady", out: "out", steady: "steady" };
 
 /* ---------------------------------------------------------------- numbers: ONE hand for every number (FXLT, review 3)
-   A number is information, not a sound: it is lettered the same way every time, in a face whose digits cannot be mistaken (Titan One:
-   its 1 has a flag and a foot, the Bangers italic 1 read as a 7), flat (no warp, no tilt of its own), a black ink line inside a white cut
+   A number is information, not a sound: it is lettered the same way every time, in a face whose digits cannot be mistaken (Bungee:
+   its 1 has a flag AND a foot, its 7 none, its minus a thick bar at mid height; FXLT2, ADVT2 13: Titan One's 1 has a big flag and no
+   foot, so a reduced-motion "-7" read as a flagged "1" and its low thin minus merged with map labels into "="; the Bangers italic 1 read
+   as a 7), flat (no warp, no tilt of its own), a black ink line inside a white cut
    edge so it holds on any map, a short extrusion for weight; only the colour says which track and which way. Passed to the engine as
    `hand` (contract v2: pins the look; the engine merges it over its own choice). */
 export const NUM_PAL = {
@@ -148,11 +172,11 @@ export const NUM_PAL = {
 export function numHand(stat, sign) {
   const p = NUM_PAL[`${stat === "resolve" ? "resolve" : "health"}${sign === "+" ? "+" : "-"}`];
   return {
-    font: "titan", treat: "plain", env: "flat", tex: "none", outline: "sticker", fill: "vgrad", stack: "stack", colorFam: "num",
+    font: "bungee", treat: "plain", env: "flat", tex: "none", outline: "sticker", fill: "vgrad", stack: "stack", colorFam: "num",
     pal: { fill: p.fill.slice(), ext: p.ext, out2: "#ffffff", ink: "#160a14" }, ink: "#160a14",
     inkW: 0.07, out2W: 0.075, inflate: 0, depth: 0.12, depthAng: Math.PI * 0.3, shadow: { d: 0.1, ang: Math.PI * 0.3, a: 0.5 },
     gloss: true, shadowStyle: "flat", hatch: false, bevel: false, shear: 0, track: -0.03, hueJitter: 0,
-    id: `titan/plain/flat/num${stat === "resolve" ? "R" : "H"}${sign === "+" ? "p" : "m"}/sticker/vgrad`
+    id: `bungee/plain/flat/num${stat === "resolve" ? "R" : "H"}${sign === "+" ? "p" : "m"}/sticker/vgrad`
   };
 }
 /* a number's own sound: even, not rough (rough = each digit tilted on its own), a little louder when bigger */
@@ -164,11 +188,13 @@ const numSound = (sign, amt) => ({ loud: Math.min(1, 0.5 + amt * 0.3), sharp: 0.
    never over 7 % of the view's height; times the kind's severity, the amount, and a little more for a short word (the eye weighs a word
    by its area: "BĘC!" must not look lighter than "BACH!"). Below the floor the engine's legible clamp flattens every size to the same
    floor, so the base starts at the floor and severity lifts it from there. */
-export const SIZE_RULE = { tokenK: 0.3, floorVh: 0.026, floorMin: 15, floorMax: 30, baseMaxVh: 0.05, shortLen: 5, shortPow: 0.35, numK: 0.8, crowdNumK: 1,
-  capVh: 0.12, widthTok: 3, widthVw: 0.3, aspect: 0.85 };      /* seen live (lane 8, grid 350 at zoom 0.42): with the base at 7 % of the view a fall's word ran 900 px wide; now the cap
+export const SIZE_RULE = { tokenK: 0.3, floorVh: 0.026, floorMin: 15, floorMax: 30, baseMaxVh: 0.065, shortLen: 5, shortPow: 0.35, numK: 0.8, crowdNumK: 1,
+  capVh: 0.14, widthTok: 3, widthVw: 0.3, aspect: 0.85, amtLo: 0.8, amtK: 0.7 };      /* seen live (lane 8, grid 350 at zoom 0.42): with the base at 7 % of the view a fall's word ran 900 px wide; now the cap
   stays under 12 % of the view height and the word (estimated 0.85 cap per letter) under 3 tokens or 30 % of the view width, whichever is wider.
   numK: a number beside a word was 0.62 of its cap and read as a footnote live (lane 8 zoom 1.2: -3 at 47 px beside BLAMM! at 76 px, but the
-  word's drawn box with depth and outline is 1.46 caps tall against the number's 0.96, so the number looked under half the word); 0.8 now */
+  word's drawn box with depth and outline is 1.46 caps tall against the number's 0.96, so the number looked under half the word); 0.8 now.
+  FXLT2 (ADVT2 7: a plain hit stood 50-60 px beside a 160-560 px token, -15 as big as -4): the base may reach 6.5 % of the view, the cap
+  14 %, and the amount scales the word from 0.8x (the least) to 1.5x (the most) instead of +25 % at most */
 export function basePx(tokenPx, vh) {
   const floor = Math.max(SIZE_RULE.floorMin, Math.min(SIZE_RULE.floorMax, vh * SIZE_RULE.floorVh));
   return Math.max(floor, Math.min(vh * SIZE_RULE.baseMaxVh, tokenPx * SIZE_RULE.tokenK));
@@ -178,7 +204,7 @@ const letters = (w) => [...String(w ?? "")].filter((ch) => /[\p{L}\p{N}]/u.test(
 export function targetPx(kind, amt, word, tokenPx, vh, vw = vh * 16 / 9, k = 1) {
   const s = SOUND[kind]; if (!s) return 0;
   const n = Math.max(2, letters(word)), short = Math.max(1, (SIZE_RULE.shortLen / n) ** SIZE_RULE.shortPow);
-  const want = basePx(tokenPx, vh) * s.sev * (1 + 0.25 * Math.max(0, Math.min(1, amt))) * short * k;
+  const want = basePx(tokenPx, vh) * s.sev * (SIZE_RULE.amtLo + SIZE_RULE.amtK * Math.max(0, Math.min(1, amt))) * short * k;
   const widthCap = Math.max(SIZE_RULE.widthTok * tokenPx, SIZE_RULE.widthVw * vw) / (SIZE_RULE.aspect * (n + 0.5));
   return Math.max(Math.min(want, vh * SIZE_RULE.capVh, widthCap), basePx(tokenPx, vh) * Math.min(1, s.sev) * Math.min(1, k));
 }
@@ -202,19 +228,26 @@ export function hash(s) { let h = 2166136261 >>> 0; for (const ch of String(s)) 
     one seat happened to see before (review 15: each seat's own `from` and its own last word gave two seats two words). */
 export const seedOf = (tokId, stat, stamp) => `${tokId}|${stat}|${stamp ?? ""}`;
 
+/** How much happened, 0..1, as this seat may know it (FXLT2, ADVT2 7: -15 stood as big as -4). A reader: the share of the track or the
+    count over AMT_N, whichever is bigger (a -15 on a long track is still a lot); another seat: the told number alone; nothing told: 0.3. */
+export const AMT_N = 8;
+export function amountOf(a, c) {
+  const r = a?.exact && Number.isFinite(c?.r) ? c.r : null;      // the share of the track only for a seat that may read the track
+  const byN = Number.isFinite(a?.num) && a.num > 0 ? Math.min(1, a.num / AMT_N) : null;
+  if (r !== null) return Math.max(r, byN ?? 0);
+  return byN ?? 0.3;
+}
 /** The lettering of one reaction. a = audience result { kind, num, exact }, c = classify result (for r). Deterministic in (a, c, lang,
-    seed): every seat with the same audience letters it the same. -> plan for main.mjs. */
-export function look(a, c, lang, seed) {
+    seed): every seat with the same audience letters it the same. vocab (the engine's vocabulary, optional): the word is filled in here;
+    without it `word` is null and main.mjs fills it (wordFor) once the engine is up. -> plan for main.mjs. */
+export function look(a, c, lang, seed, vocab = null, o = {}) {
   const kind = a?.kind;
   const s = SOUND[kind];
   if (!s) return null;
-  const words = (WORDS[lang] ?? WORDS.en)[kind] ?? WORDS.en[kind];
   const h = hash(`${seed}|${kind}`);
-  const word = words[h % words.length];
-  /* how much: the share of the track (when known to this seat) or the plain count swells the loud and the size a little */
-  const r = a.exact && Number.isFinite(c?.r) ? c.r : null;      // the share of the track only for a seat that may read the track
-  const amt = r !== null ? r : Number.isFinite(a.num) ? Math.min(1, a.num / 5) : 0.3;
-  const loud = Math.max(0, Math.min(1, s.sound.loud + (amt - 0.3) * 0.35));
+  const amt = amountOf(a, c);
+  const [lo, hi] = LOUD[kind] ?? [0.3, 0.7];
+  const loud = Math.round(Math.max(0, Math.min(1, lo + (hi - lo) * amt)) * 1000) / 1000;
   const rot = (((h >>> 8) % 13) - 6) * (kind === "down" || kind === "out" ? 1.5 : 1);      // -6..6 degrees, more for a fall
   const side = (h >>> 4) % 2 ? 1 : -1;      // the number stands on this side of the word
   const colors = PALETTE[PAL_OF[kind]];
@@ -225,7 +258,9 @@ export function look(a, c, lang, seed) {
     : null;
   const mo = MOTION[kind], at = (list, k) => list[(h >>> k) % list.length];
   const motion = { in: at(mo.in, 11), holdKind: at(mo.hold, 14), out: at(mo.out, 17) };
-  return { kind, stat, word, motion, mood: s.mood, sound: { ...s.sound, loud }, colors, sev: s.sev, amt, magnitude: magOf(kind, amt), hold: s.hold, rotation: Math.round(rot), side, numbers: number ? [number] : [], number };
+  const lk = { kind, stat, word: null, vk: vocabKind(kind), loud, step: 0, motion, mood: s.mood, sound: { ...s.sound, loud }, colors, sev: s.sev, amt, magnitude: magOf(kind, amt), hold: s.hold, rotation: Math.round(rot), side, numbers: number ? [number] : [], number };
+  if (vocab) lk.word = wordFor(lk, vocab, { lang, seed, step: o.step, streakSeed: o.streakSeed });
+  return lk;
 }
 /** one number: text, the fixed hand, its sound, a fixed small tilt (none of its own randomness) */
 export function numberLook(stat, sign, n, amt = 0.3) {
@@ -244,13 +279,17 @@ export function combine(looks) {
   return { ...main, numbers: nums, number: nums[0] ?? null, also: list.filter((l) => l !== main).map((l) => l.kind) };
 }
 
-/** A reaction arrives while another plays on the same token: "replace" (the new one is as bad or worse, or the old one is past its
-    entrance and hold), or "queue" (a lighter one waits for the heavier to finish: the worse news is not cut off by a smaller one). */
+/** A reaction arrives while another plays on the same token: "replace" (the new one is as bad or worse, or the old one has been read),
+    or "queue" (a lighter one waits until the heavier one has been read: the worse news is not cut off by a smaller one). FXLT2 (ADVT2 5:
+    a heal 1.2 s after a hit waited ~2 s, for the hit's whole hold and exit): "read" is READ_MS after its start, not its whole span;
+    queueWait says how long the lighter one waits. */
+export const READ_MS = 700;
 export function overlap(playingSev, playingAge, playingSpan, newSev) {
   if (!Number.isFinite(playingSev)) return "play";
   if (newSev >= playingSev) return "replace";
-  return playingAge < playingSpan ? "queue" : "replace";
+  return playingAge < Math.min(playingSpan, READ_MS) ? "queue" : "replace";
 }
+export const queueWait = (playingAge, playingSpan) => Math.max(0, Math.min(playingSpan, READ_MS) - playingAge);
 
 /** Many reactions in one moment (an area attack, fire at a round's start): the heaviest keep word + number, the next ones the number
     alone, a hit whose number this seat may not see gets a small word ("mark") so a visible blow never goes unanswered (FXLT, review 6);
@@ -280,7 +319,9 @@ export function stage(items) {
    more it sticks out of the safe rect (the view minus the interface and the director's letterbox bars). Afterwards it follows its token (same side) and is pushed back into the safe rect every frame
    while its token is on screen (a token off screen keeps its word with it: a word pinned to the edge would point at nothing). */
 export const SLOTS = ["above", "aboveR", "aboveL", "right", "left", "below", "on"];
-export const SLOT_K = { own: 0.6, token: 2.5, word: 2 };      // what covering costs: the own token, another token, another word
+/* FXLT2 (ADVT2 6, 10): a word over another word of the moment is unreadable (crowd words overlapped) and a word under a floating panel
+   (the challenge cards, the map's VRAM meter, the party cards) is unseen: both now cost more than sticking out of the view */
+export const SLOT_K = { own: 0.6, token: 2.5, word: 4, panel: 8 };      // what covering costs: the own token, another token, another word, a panel
 /** the group's centre for one slot. tok = { x, y, w, h } (screen), box = { w, h } (the group with its motion room) */
 export function slotPoint(slot, tok, box, gap = 4) {
   const cx = tok.x + tok.w / 2, cy = tok.y + tok.h / 2;
@@ -312,8 +353,16 @@ export function chooseSlot(tok, box, safe, blocked = [], { prefer = 0 } = {}) {
   });
   return best;
 }
-/** is the token on the view: at least 35 % of it inside the safe rect (a token half over the top edge still counts) */
-export const onView = (r, safe) => !!r && !!safe && inter(r, { x: safe.l, y: safe.t, w: safe.r - safe.l, h: safe.b - safe.t }) >= 0.35 * r.w * r.h;
+/** is the token on the view (see ON_VIEW) */
+/* FXLT2 (ADVT2 11: a visible token at the view's edge, partly under the side controls or the hotbar, got nothing at 35 %): a token
+   counts when ON_VIEW of it is inside the safe rect, or its centre is; its word is placed on the inward side (chooseSlot) */
+export const ON_VIEW = 0.15;
+export const onView = (r, safe) => {
+  if (!r || !safe) return false;
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  if (cx >= safe.l && cx <= safe.r && cy >= safe.t && cy <= safe.b) return true;
+  return inter(r, { x: safe.l, y: safe.t, w: safe.r - safe.l, h: safe.b - safe.t }) >= ON_VIEW * r.w * r.h;
+};
 /** push a group centre into the safe rect (a group bigger than the rect is centred in it) */
 export function clampInto(p, box, safe) {
   if (!safe) return p;

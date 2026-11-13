@@ -25,15 +25,17 @@ import * as Moment from "../moment.mjs";
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
-const KEY = { enabled: "tokenReactEnabled", size: "tokenReactSize", layer: "tokenReactLayer" };
+const KEY = { enabled: "tokenReactEnabled", size: "tokenReactSize", layer: "tokenReactLayer", lang: "tokenReactLang" };
 const LAYERS = ["overlay", "weather", "tokens", "ground", "top"];      // the engine's world layers (contract v3 `layer`); overlay = its default
 const SIZE = { small: 0.8, normal: 1, large: 1.25 };
 /* the tactical fight's public stream (tactics/store.mjs HOOK and, on the executor, HOOK_GM: the same names, checked by sweep-checks/ltok.mjs) */
 const TAC_HOOK = `${MOD}.tactics`, TAC_HOOK_GM = `${MOD}.tacticsGm`;
 const DMG_FLAVOR_KEY = "INVINCIBLE.Chat.DamageInfo.DamageTaken";
-/* ms a change waits for what joins it (a public line comes a moment after). ONE window for every seat (FXLT, review 15: the reader's
-   shorter window split a fast double change into two reactions where another seat saw one, with another word) */
-const QUIET = { change: 600, event: 420, max: 1400 };
+/* ms a change waits for what joins it. ONE window for every seat (FXLT, review 15: the reader's shorter window split a fast double change
+   into two reactions where another seat saw one, with another word). FXLT2 (ADVT2 5: every word came 0.61-0.69 s after its change, the
+   blows did not land on the blow): only as long as the other track's update and a crowd's updates take to arrive (tens of ms); a public
+   line arriving later still joins the reaction on screen (LATE_MS) */
+const QUIET = { change: 160, event: 120, max: 700 };
 const PUSH_MS = 9000;      // a Resolve drop this soon after a roll card whose stress the character chose (pushed, a stress cost) is that stress
 const CARD_MS = 2500;      // a Damage Taken card this recent joins a Health loss that arrives after it (review 17: order of messages)
 const LATE_MS = 1800;      // a Damage Taken card arriving after its reaction started still gives it its number, this long
@@ -48,10 +50,15 @@ const lastPush = new Map();  // actor id -> ms of its last roll card whose stres
 const cards = new Map();     // actor id -> [{ t, taken, broken, key }] recent Damage Taken cards (review 17)
 const heard = new Set();
 const captioned = new Map();  // token id -> ms until which the map's director captions this token's damage (number included)
+const streaks = new Map();    // token id -> { seed, n, t } the blows of one series (pure STREAK): the first blow's seed and the step
 let timer = 0;
 
 const get = (key, fallback) => { try { return game.settings.get(MOD, key); } catch { return fallback; } };
 const enabled = () => get(KEY.enabled, true) !== false;
+/* the language of the sound words: ONE for the world, chosen by the GM (FXLT2, ADVT2 2: each client lettered its own interface language,
+   so the GM saw "TRRACH!" where the player saw "WHAMMM!" for one blow, and the different widths stood on different sides) */
+const LANGS = ["en", "pl"];
+const worldLang = () => { const v = get(KEY.lang, "en"); return LANGS.includes(v) ? v : "en"; };
 const once = (e) => { if (!warned) { warned = true; console.warn(LOG, "a failure here never affects the canvas:", e); } };
 const num = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Math.round(Number(v)) : null);
 
@@ -81,8 +88,13 @@ function entry(tok, stat) {
   if (!e) { e = { k, tokId: tok.id, actorId: tok.actor?.id ?? null, stat, from: null, to: null, max: null, pub: null, keys: new Set(), cause: null, opened: Date.now(), due: 0, seed: "" }; pending.set(k, e); }
   return e;
 }
-/* the server's stamp of the change: the same on every seat (the seed, review 15 / 18) */
-const stampOf = (tok) => tok?.actor?._stats?.modifiedTime ?? tok?.document?._stats?.modifiedTime ?? "";
+/* the server's stamp of the change: the same on every seat (the seed, review 15 / 18). FXLT2 (ADVT2 3: every unlinked token said one word
+   with one tilt and one motion forever): an unlinked token's change is written to the TOKEN (its delta), and its synthetic actor keeps the
+   base actor's stamp; the newest of the actor's, the token's and the delta's stamps is the change's */
+const stampOf = (tok) => {
+  const all = [tok?.actor?._stats?.modifiedTime, tok?.document?._stats?.modifiedTime, tok?.document?.delta?._stats?.modifiedTime].filter((v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)));
+  return all.length ? Math.max(...all.map(Number)) : "";
+};
 function arm(e, ms) {
   e.due = Math.min(e.opened + QUIET.max, Math.max(e.due, Date.now() + ms));
   clearTimeout(timer);
@@ -201,7 +213,7 @@ function flush() {
     const ready = [...pending.values()];
     pending.clear();
     if (!ready.length || !enabled() || !canvas?.ready) return;
-    const lang = game.i18n?.lang === "pl" ? "pl" : "en";
+    const lang = worldLang();
     /* one moment: every token's changes become ONE reaction (review 4: Health and Resolve of one token in one moment) */
     const byTok = new Map();
     for (const e of ready) {
@@ -220,7 +232,7 @@ function flush() {
     const items = [];
     for (const { tok, looks, seed } of byTok.values()) {
       const lk = P.combine(looks);
-      items.push({ key: tok.id, tok, lk, seed, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: lk.numbers.length > 0 });
+      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: lk.numbers.length > 0 });
     }
     if (!items.length) return;
     Gate.after(() => land(items));
@@ -239,17 +251,40 @@ async function land(items) {
        edge or over the chat input with nothing under it (seen live in a crowd and in ADVT 6) */
     const onView = (it) => !view.ok() || P.onView(view.tokRect(it.tok), view.safe());
     const staged = P.stage(items.filter(onView)).filter((it) => it.mode !== "none");
+    /* the words from the engine's vocabulary (FXLT2, ADVT2 1), a blow of a series one step of one growing sound (ADVT2 5) */
+    const vocab = L.vocab?.word ? L.vocab : L.word ? { word: L.word } : null;
+    for (const it of staged) {
+      const st = streakOf(it.tok.id, it.lk.kind, it.seed);
+      it.lk.step = st.step; it.streakSeed = st.streakSeed;
+      it.lk.word = it.mode === "number" ? null : P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: st.step, streakSeed: st.streakSeed });
+      if (!it.lk.word && it.mode !== "number") it.mode = it.hasNum ? "number" : "none";
+    }
     const placed = [];
     const others = [...tokenRects(new Set(staged.map((it) => it.tok.id))), ...view.panels()];
     for (const it of staged) {
+      if (it.mode === "none") continue;
       try { it.plan = planOf(L, it); } catch (err) { once(err); it.plan = null; }
       if (!it.plan) continue;
-      it.plan.slot = view.ok() ? P.chooseSlot(it.plan.tokRect, it.plan.box, view.safe(), [...others.filter((r) => r.id !== it.tok.id), ...placed]) : "above";
+      it.plan.blocked = [...others.filter((r) => r.id !== it.tok.id), ...placed];
+      /* the next blow of a series lands where the last one stands (ADVT2 5: the third blow of three stood elsewhere) */
+      const pe = playing.get(it.tok.id);
+      const keep = it.lk.step > 0 && pe?.slot && P.SLOTS.includes(pe.slot) ? pe.slot : null;
+      it.plan.keepSlot = !!keep;
+      it.plan.slot = keep ?? (view.ok() ? P.chooseSlot(it.plan.tokRect, it.plan.box, view.safe(), it.plan.blocked) : "above");
       const c = P.slotPoint(it.plan.slot, it.plan.tokRect, it.plan.box);
       placed.push({ x: c.x - it.plan.box.w / 2, y: c.y - it.plan.box.h / 2, w: it.plan.box.w, h: it.plan.box.h, k: P.SLOT_K.word });
     }
-    for (const it of staged) if (it.plan) setTimeout(() => play(L, it), it.delay);
+    for (const it of staged) if (it.plan && it.mode !== "none") setTimeout(() => play(L, it), it.delay);
   } catch (err) { once(err); }
+}
+/* one series of blows per token (pure STREAK): a loss within STREAK.ms of the last one is the next step; anything else starts over */
+function streakOf(id, kind, seed) {
+  const t = Date.now(), s = streaks.get(id);
+  if (!P.isLoss(kind)) { streaks.delete(id); return { step: 0, streakSeed: seed }; }
+  if (s && t - s.t < P.STREAK.ms) { s.n = Math.min(P.STREAK.max, s.n + 1); s.t = t; return { step: s.n, streakSeed: s.seed }; }
+  if (streaks.size > 300) streaks.clear();
+  streaks.set(id, { seed, n: 0, t });
+  return { step: 0, streakSeed: seed };
 }
 
 /* ---------- the view in screen px (client px, as getBoundingClientRect): world <-> screen, the safe rect, other tokens ---------- */
@@ -257,7 +292,9 @@ const COVER_SEL = ["#sidebar", "#hotbar", "#players", "#scene-controls", "#contr
   "#ui-bottom #chat-form", "#invincible-tactics-dock", "#invincible-combat-bar", ".mm-cin > div"];
 /* floating panels that do not hug an edge (cutting the view by them would waste half of it): a side that lands on one costs like a
    token's face, so the word takes another side (seen in the FXLT recording: a fall's "BĘC!" ran under the challenge cards) */
-const PANEL_SEL = ["#ich-dock", "#invincible-party", "#invincible-turn-tray", "#chat-notifications"];
+const PANEL_SEL = ["#ich-dock", "#invincible-party", "#invincible-turn-tray", "#chat-notifications",
+  /* FXLT2 (ADVT2 6): the map's VRAM meter and pins / filter panel, the party cards, the GM's desk (the splash's own list, splash/stage.mjs) */
+  ".mm-vram", "#mm-vram", "#mm-filter", ".mm-filter", "#invincible-party li", "#invincible-tactics-desk:not(.igd-collapsed) .igd"];
 const view = {
   at: 0, cache: null,
   ok: () => !!globalThis.canvas?.stage?.toGlobal && !!canvas.app?.view?.getBoundingClientRect,
@@ -276,7 +313,7 @@ const view = {
   panels() {
     const out = [];
     for (const sel of PANEL_SEL) for (const el of document.querySelectorAll?.(sel) ?? []) {
-      try { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0 && getComputedStyle?.(el)?.visibility !== "hidden") out.push({ x: r.left, y: r.top, w: r.width, h: r.height, k: P.SLOT_K.token }); } catch { /* skip */ }
+      try { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0 && getComputedStyle?.(el)?.visibility !== "hidden") out.push({ x: r.left, y: r.top, w: r.width, h: r.height, k: P.SLOT_K.panel }); } catch { /* skip */ }
     }
     return out;
   },
@@ -311,7 +348,8 @@ function planOf(L, it) {
   const tokPx = Math.max(tokRect.w, tokRect.h);
   const word = it.mode === "full" || it.mode === "mark";
   const nums = it.mode === "mark" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
-  const cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), globalThis.innerWidth || 1600, user * it.scale) : 0;
+  const grow = 1 + P.STREAK.grow * Math.min(P.STREAK.max, lk.step ?? 0);      // a blow of a series stands a little bigger each step
+  const cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), globalThis.innerWidth || 1600, user * it.scale * grow) : 0;
   const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
   const aspect = word ? P.SIZE_RULE.aspect * ([...lk.word].length + 0.5) : 0;      // refined from the drawn word once it is up (follow)
   /* room for the motion: a rise leaves upward, and a power-up's letters may climb like stairs (seen in ADVT c4: "RAAA!" climbed out
@@ -335,7 +373,7 @@ function planOf(L, it) {
    pushed into the safe rect while the token is on screen (reviews 1, 7, 14) */
 /* once the word is drawn its real shape replaces the letter-count estimate (the engine's plan of the word, contract h.plan; its hold box
    in cap heights): the numbers then stand right at its end, not over it (seen live: "-1" sat on the M of a wide WHAM!) */
-function measure(plan) {
+function measure(plan, tok = null) {
   if (plan.measured || !plan.gArgs) return;
   const hb = plan.wordH?.plan?._holdBox;
   if (!hb || !(hb.w > 0) || !(hb.h > 0)) return;
@@ -343,20 +381,30 @@ function measure(plan) {
   /* the drawn box over the limits: the word (live, its handle's scale is read every frame) and the numbers not yet started shrink with it */
   const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: globalThis.innerWidth || 1600 });
   if (f < 0.98) {
-    try { if (plan.wordH?.opts && Number.isFinite(plan.wordH.opts.scale)) plan.wordH.opts.scale *= f; } catch { /* keep */ }
+    try { if (plan.wordH?.opts && Number.isFinite(plan.wordH.opts.scale)) { plan.wordH.opts.scale *= f; if (Number.isFinite(plan.wordH._s0)) plan.wordH._s0 *= f; } } catch { /* keep */ }
     plan.cap *= f; plan.numCap *= f; plan.gArgs = { ...plan.gArgs, cap: plan.gArgs.cap * f, numCap: plan.gArgs.numCap * f };
     for (const o of plan.numOpts ?? []) if (Number.isFinite(o.scale)) o.scale *= f;
   }
   const g = P.group({ ...plan.gArgs, aspect: hb.w, tall: hb.h });
   plan.g = g; plan.box = { w: g.w, h: g.h };
+  /* FXLT2 (ADVT2 6, 10): the side was chosen on the letter-count estimate; with the drawn box known (the first frame) it is chosen again,
+     so a wider or taller word than estimated does not land on a neighbour, a panel or another word */
+  try {
+    if (!plan.keepSlot && plan.blocked && tok && view.ok() && Math.abs(view.zoom() / plan.z0 - 1) < 0.02) plan.slot = P.chooseSlot(view.tokRect(tok), plan.box, view.safe(), plan.blocked);
+  } catch (err) { once(err); }
 }
 function follow(tok, plan, member) {
   let last = null;
   return () => {
     try {
       if (!tok || tok.destroyed || !view.ok()) return last;
-      measure(plan);
-      const k = view.zoom() / plan.z0;
+      measure(plan, tok);
+      /* FXLT2 (ADVT2 4: zooming in while a word stood blew it up to ~750 px over its token, the interface and a neighbour): zooming in
+         never makes a standing word bigger on screen than it landed (its scale follows start zoom / zoom); zooming out it shrinks with
+         the map like its token */
+      const z = view.zoom(), k = Math.min(1, z / plan.z0);
+      const h = member < 0 ? plan.wordH : plan.numH?.[member];
+      if (h?.opts && Number.isFinite(h._s0)) h.opts.scale = h._s0 * Math.min(1, plan.z0 / z);
       const tr = view.tokRect(tok), box = { w: plan.box.w * k, h: plan.box.h * k };
       let c = P.slotPoint(plan.slot, tr, box);
       const safe = view.safe();
@@ -375,15 +423,18 @@ function play(L, it, queued = false) {
     /* one reaction per token at a time (review 4): a lighter one waits for a heavier one still on screen; an equal or worse one takes over */
     const pe = playing.get(tok.id);
     if (pe) {
-      const how = P.overlap(pe.sev, Date.now() - pe.t0, pe.span, it.sev);
-      if (how === "queue" && !queued) { Promise.race([pe.done, new Promise((r) => setTimeout(r, QUEUE_MAX))]).then(() => play(L, it, true)); return; }
-      for (const h of pe.hs) try { h.stop({ quick: false }); } catch { /* gone */ }
+      const age = Date.now() - pe.t0, how = P.overlap(pe.sev, age, pe.span, it.sev);
+      if (how === "queue" && !queued) { Promise.race([pe.done, new Promise((r) => setTimeout(r, Math.min(QUEUE_MAX, P.queueWait(age, pe.span))))]).then(() => play(L, it, true)); return; }
+      /* the next blow of a series takes the last one's place at once (ADVT2 5: the second blow was drawn over the first one's shards) */
+      const quick = (it.lk.step ?? 0) > 0;
+      for (const h of pe.hs) try { h.stop({ quick }); } catch { /* gone */ }
     }
     const lk = it.lk, hs = [], red = plan.wordOpts?.reduced ?? reduced();
-    const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, nums: [], done: null, addNumber: null, dropNumbers: null };
+    const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, nums: [], done: null, addNumber: null, dropNumbers: null, slot: plan.slot };
+    plan.numH = [];
     let word = null;
     playing.set(tok.id, entry);
-    if (plan.wordOpts) { word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1) }); hs.push(word); plan.wordH = word; }
+    if (plan.wordOpts) { word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1) }); word._s0 = plan.wordOpts.scale; hs.push(word); plan.wordH = word; }
     /* the numbers come once the word has landed (review 13: a slow entrance let the number arrive first) */
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
     const numAt = (i) => follow(tok, plan, Math.min(i, plan.g.nums.length - 1));
@@ -392,13 +443,13 @@ function play(L, it, queued = false) {
       if (n.stat === "health" && isCaptioned(tok.id)) return;      // the director's caption says it now (review 7)
       /* beside a word it leaves with the word; alone (a crowd) it stands as long as a word would (seen live: crowd numbers were gone
          in a second) */
-      const h = L.play(n.text, { ...o, hold: word ? Math.max(700, lk.hold - entMs * 0.7 + 150) : lk.hold + 300, at: numAt(i) });
-      h.stat = n.stat; hs.push(h); entry.nums.push(h); settle();
+      const h = L.play(n.text, { ...o, hold: word ? Math.max(700, lk.hold - entMs * 0.6 + 150) : lk.hold + 300, at: numAt(i) });
+      h.stat = n.stat; h._s0 = o.scale; plan.numH[Math.min(i, plan.g.nums.length - 1)] = h; hs.push(h); entry.nums.push(h); settle();
     };
     const startNums = () => plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], i));
     if (word && !red && plan.nums.length) {
       const wait = Promise.race([word.ready ?? Promise.resolve(true), new Promise((r) => setTimeout(r, 600))]);
-      wait.then(() => setTimeout(startNums, Math.min(700, entMs * 0.7)));
+      wait.then(() => setTimeout(startNums, Math.min(450, entMs * 0.6)));      // FXLT2 (ADVT2 5): on the landing, not long after it
     } else startNums();
     /* a Damage Taken card arriving late still gives a numberless reaction its told number (review 17) */
     entry.addNumber = (stat, sign, n) => {
@@ -436,6 +487,8 @@ function registerSettings() {
   if (!has(KEY.enabled)) game.settings.register(MOD, KEY.enabled, { name: t("ITR.Settings.Enabled.Name"), hint: t("ITR.Settings.Enabled.Hint"), scope: "client", config: true, type: Boolean, default: true, onChange: (v) => syncOwner(v) });
   if (!has(KEY.size)) game.settings.register(MOD, KEY.size, { name: t("ITR.Settings.Size.Name"), hint: t("ITR.Settings.Size.Hint"), scope: "client", config: true, type: String, default: "normal",
     choices: { small: t("ITR.Settings.Size.small"), normal: t("ITR.Settings.Size.normal"), large: t("ITR.Settings.Size.large") } });
+  if (!has(KEY.lang)) game.settings.register(MOD, KEY.lang, { name: t("ITR.Settings.Lang.Name"), hint: t("ITR.Settings.Lang.Hint"), scope: "world", config: true, type: String, default: "en",
+    choices: { en: t("ITR.Settings.Lang.en"), pl: t("ITR.Settings.Lang.pl") } });
   if (!has(KEY.layer)) game.settings.register(MOD, KEY.layer, { name: t("ITR.Settings.Layer.Name"), hint: t("ITR.Settings.Layer.Hint"), scope: "client", config: true, type: String, default: "overlay",
     choices: Object.fromEntries(LAYERS.map((id) => [id, t(`ITR.Settings.Layer.${id}`)])) });
 }
@@ -447,7 +500,7 @@ async function syncOwner(v = enabled()) {
   } catch (err) { Owner.setOn(false); once(err); }
 }
 function registerHooks() {
-  Hooks.on("canvasReady", () => { rememberAll(); pending.clear(); playing.clear(); });
+  Hooks.on("canvasReady", () => { rememberAll(); pending.clear(); playing.clear(); streaks.clear(); });
   Hooks.on("drawToken", (tok) => { if (!seen.has(tok.id)) remember(tok); });
   Hooks.on("updateActor", (actor, changes, options) => {
     try {
