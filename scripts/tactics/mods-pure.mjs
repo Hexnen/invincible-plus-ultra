@@ -82,6 +82,11 @@ export const counterReset = (state, scope) => Object.keys(state.counters ?? {}).
 export const STATUS_IDS = Object.freeze(["broken", "unconscious", "dying", "dead", "stressedOut", "grappled", "grappling", "snared", "immobilised", "trapped", "unaware",
   "stunned", "burning", "airborne", "carrying", "carried", "afflicted", "invisible", "huge", "noLegs", "sick", "itemLost", "inVehicle", "suffocating", "intangible",
   "conductive"]);      // PWC (PW019) [B1680]: made of a conductive material (metal), the GM's mark
+/* ANSE (U17-1, the user 2026-11-12: «Wszystkie jak rekomendacja»): the SIDE a character fights on, for choosing targets, the cards (who is an
+   ally, an extra opponent of the target's side U17-R1) and the colours: the facts' `team` ("heroes" | "gm": an ordinary NPC whose token is
+   friendly stands with the heroes, engine.mjs), else by `npc`. The rules of an NPC (its wounds [B2771], who pushes, secret numbers) still read `npc`. */
+export const teamOf = (f) => (f?.team === "heroes" || f?.team === "gm" ? f.team : f?.npc ? "gm" : "heroes");
+export const sameTeam = (a, b) => teamOf(a) === teamOf(b);
 export const statusesOf = (state, cid) => state.statuses?.[cid] ?? [];
 export const hasStatus = (state, cid, id) => statusesOf(state, cid).some((s) => s.id === id);
 export function statusAdd(state, cid, st) {

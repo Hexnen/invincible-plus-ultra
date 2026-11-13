@@ -417,12 +417,12 @@ const OPS = {
     ev(W, "combatStart", { mode: W.s.mode, kind: W.s.kind });
     startRound(W, 1);
     /* spec 6.3 [B2279], [B2430]: a defender who failed the surprise roll is unaware of the attacker: no block, no dodge, +2 for a slugfest
-       attacker. Each one on the GM's list gets the status here (whatever card its group drew); the book does not say when it ends, so
-       only the GM clears it [OQ-7]. */
+       attacker. Each one on the GM's list gets the status here (whatever card its group drew). A6 (the user, 2026-11-12: «Wszystkie 4
+       zmiany»): it ends by itself at the end of that character's first turn (before: only the GM cleared it [OQ-7]); the GM may still clear it sooner. */
     for (const id of new Set(a.surprised ?? [])) {
       const p = partOf(W, id);
       if (!p || p.defeated || p.challenge || p.vehicle) continue;
-      W.s.statuses = { ...(W.s.statuses ?? {}), [id]: statusAdd(W.s, id, { id: "unaware", source: { kind: "gm", name: "surprise" } }).to };
+      W.s.statuses = { ...(W.s.statuses ?? {}), [id]: statusAdd(W.s, id, { id: "unaware", source: { kind: "gm", name: "surprise" }, ends: { at: "turnEndOf", who: id } }).to };
       ev(W, "status", { target: id, status: { id: "unaware", on: true }, cause: "surprise" });
     }
     W.effects.push({ type: "combatStart" });      // U157: the engine looks at the challenges' clocks the fight starts with

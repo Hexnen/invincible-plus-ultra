@@ -159,10 +159,11 @@ export function forecast(view, facts, cid, spot, Z) {
     }
   } catch { /* nothing is forecast rather than a wrong thing */ }
   try {
-    const me = facts?.c?.(cid), mine = !!me?.npc;
+    const side = (c) => (c?.team === "heroes" || c?.team === "gm" ? c.team : c?.npc ? "gm" : "heroes");      // ANSE (U17-1): the side by the token (mods-pure teamOf)
+    const me = facts?.c?.(cid), mine = side(me);
     for (const s of view.init?.slots ?? []) {
       if (!s?.heldOff || s.state !== "waiting") continue;
-      for (const m of s.members ?? []) { const o = facts?.c?.(m); if (m !== cid && o && !!o.npc !== mine && zoneOf(m) === z) out.held.push(String(o.name ?? "")); }
+      for (const m of s.members ?? []) { const o = facts?.c?.(m); if (m !== cid && o && side(o) !== mine && zoneOf(m) === z) out.held.push(String(o.name ?? "")); }
     }
   } catch { /* idem */ }
   return out;

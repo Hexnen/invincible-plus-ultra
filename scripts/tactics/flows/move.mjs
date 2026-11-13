@@ -76,9 +76,9 @@ function gate(v, I, R, g) {
       if (!K.flag(I, key)) { K.setFlag(I, key); const op = ZP.borderOp(d.border, b.element === "door" ? { door: { state: "breached" } } : { wall: { state: "breached" } }); R.effects.push({ t: "zones", op }); R.events.push({ type: "zoneChange", ...ZP.changeOf(op), cause: "crash", by: mv.who }); }
       (mv.cleared ??= {})[key] = 1; return "go";
     }
-    if (out.damage > 0 && !K.flag(I, `crash:${d.border}`)) {                                     // stopped at the barrier, damage = its Armor; the mover's Armor does not reduce it [OQ-11] (the GM may change the number)
+    if (out.damage > 0 && !K.flag(I, `crash:${d.border}`)) {                                     // stopped at the barrier, damage = its Armor; A10: the mover's Armor reduces it by default, the GM's card says (the GM may change the number)
       K.setFlag(I, `crash:${d.border}`);
-      R.push = hazardChild([mv.who], { kind: "fixed", amount: out.damage, armor: false, source: "kinetic", cause: "barrier", id: "barrier" }); return "wait";
+      R.push = hazardChild([mv.who], { kind: "fixed", amount: out.damage, armor: false, armorAsk: true, source: "kinetic", cause: "barrier", id: "barrier" }); return "wait";
     }
     mv.stop = "barrier"; return "stop";
   }
@@ -155,7 +155,7 @@ export const move = {
     /* [B2392]: one carries a character who goes along; somebody of the other side is not carried but grappled and pulled [B2497]. Whether
        an ally agrees is settled at the table [A34]; anybody else is the GM's word. */
     const me = v.facts.c(inst.actor);
-    for (const x of Array.isArray(inst.decl?.carry) ? inst.decl.carry : []) { const o = v.facts.c(x); if (o && o.present !== false && !!o.npc !== !!me?.npc) return bad("carryUnwilling", { who: x, gmMayAllow: 1 }); }
+    for (const x of Array.isArray(inst.decl?.carry) ? inst.decl.carry : []) { const o = v.facts.c(x); if (o && o.present !== false && !M.sameTeam(o, me)) return bad("carryUnwilling", { who: x, gmMayAllow: 1 }); }
     if (pr.kind === "inZone" && pr.cost === "free" && !P1.isOnTurn(v.state, inst.actor)) return bad("notYourTurn", { gmMayAllow: 1 });   // [L6] [B2383]
     if (pr.later && pr.later !== "none" && pr.later !== "gm" && !P1.canPay(v.state, inst.actor, pr.later, { resolve: me?.resolve }).ok) return bad("noAction");
     return fine;
@@ -435,7 +435,7 @@ export const fall = {
       if (F.zone && !K.flag(I, "put")) { K.setFlag(I, "put"); R.effects.push({ t: "zput", key: "put", who: F.who, to: F.zone, group: [] }); R.wait = true; return R; }
       if (!F.zone && !K.flag(I, "note")) { K.setFlag(I, "note"); (I.data.notes ??= []).push({ note: "landingByGm", who: F.who }); }      // from the sky: where it comes down is the GM's word [R16]
       if (!K.flag(I, "links")) { K.setFlag(I, "links"); for (const e of K.separated(v, [F.who])) R.effects.push(e); }      // fell out of a grapple or a carry
-      if (out.damage > 0 && !K.flag(I, "dmg")) { K.setFlag(I, "dmg"); R.push = hazardChild([F.who], { kind: "fixed", amount: out.damage, armor: false, source: "kinetic", cause: "fall", id: "fall" }); return R; }   // no Armor against a fall [OQ-11] (the GM may change the number)
+      if (out.damage > 0 && !K.flag(I, "dmg")) { K.setFlag(I, "dmg"); R.push = hazardChild([F.who], { kind: "fixed", amount: out.damage, armor: false, armorAsk: true, source: "kinetic", cause: "fall", id: "fall" }); return R; }   // A10: Armor by default, the GM's card "Pancerz?" (flows/simple.mjs hazard); the GM may change the number
       R.events.push({ type: "fall", combatant: F.who, from: F.from, damage: out.damage }); I.data.result = "done"; R.goto = "close"; return R;
     },
     close(v, inst) { const I = K.draft(inst), R = K.result(I); R.done = true; return R; },

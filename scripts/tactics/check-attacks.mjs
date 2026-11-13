@@ -42,8 +42,10 @@ const base = (extra = () => {}, more = []) => { const T = new Table(); T.hero("H
   eq(code(await T.gm({ op: "undo", tx: tx.id })), "ok", "A: undo");
   eq([!!T.zoneMarks.z1?.wrecked, T.state.counters["zone:z1:wrecked"] ?? 0, T.state.karma.length], [false, 0, 0], "A: undo takes the wreck, the counter and the karma note back");
   const U = base((t) => { t.c.N1.zone = "z2"; });
+  /* changed by ANSE (the user's answer A17, 2026-11-12: «Wszystkie 4 zmiany»): an unset terrain is no longer refused (was: wreckUnset + gmMayAllow);
+     the full pin of the new behaviour (no bonus dice, the mark and the karma note) is in check-anse.mjs */
   const r = await U.req("p1", decl("H1", "slugfest", ["N1"], { wreck: true }));
-  eq([why(r), r.error.params.gmMayAllow], ["wreckUnset", 1], "A: terrain that was never set: refused, the GM may allow [A17]");
+  eq([code(r), why(r)], ["ok", null], "A: terrain that was never set: allowed by default [A17]");
 }
 
 /* ---- B. full auto [B2543] */

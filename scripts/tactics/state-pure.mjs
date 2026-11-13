@@ -32,6 +32,10 @@ export const isId = (s) => typeof s === "string" && ID_RE.test(s) && !BAD_KEYS.h
     actor, villains too, so the type alone put an imported villain on the heroes' side. Any other actor type is the GM's.
     a = { type, owned: a player owns the actor, disposition: the token's (CONST.TOKEN_DISPOSITIONS: 1 friendly) } */
 export const heroSide = (a) => !!a && a.type === "superhero" && (a.owned === true || Number(a.disposition) === 1);
+/** ANSE (U17-1, the user 2026-11-12): the side a character FIGHTS on (targets, cards, colours): the heroes' side by heroSide, and also an
+    ordinary NPC or minion group the GM put on the map as friendly (CONST.TOKEN_DISPOSITIONS 1). A thing (vehicle, challenge) has no side of
+    its own here. The NPC rules (wounds, pushing) still follow heroSide (the facts' `npc`). */
+export const allySide = (a) => heroSide(a) || (!!a && ["npc", "minions"].includes(a.type) && Number(a.disposition) === 1);
 const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
 const int = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.trunc(n))) : d; };
 const str = (v, max = LIMITS.text) => (typeof v === "string" ? v.slice(0, max) : "");

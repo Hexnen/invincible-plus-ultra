@@ -47,14 +47,15 @@ export const startMode = () => "tactical";
 /* ------------------------------------------------------------------ live facts (engine-pure.mjs "Facts") */
 const tokenOf = (cb) => cb?.token ?? null;
 /* a hero's summoned allies are run by the hero's player: they stand on the heroes' side [B1808]. D114: the side is not the actor type
-   alone (a book villain is a superhero actor too): S.heroSide reads the player owner and the token's disposition */
-const isNpc = (cb) => ![cb, cb?.parent?.combatants.get(cb.flags?.[MOD]?.tactics?.summonOf)].some((x) => { const a = Sys.actorOf(x); return !!a && S.heroSide({ type: a.type, owned: Sys.ownersOf(a).length > 0, disposition: tokenOf(x)?.disposition ?? a.prototypeToken?.disposition }); });
+   alone (a book villain is a superhero actor too): S.heroSide reads the player owner and the token's disposition. ANSE (U17-1): `team`, the side
+   a character FIGHTS on (targets, cards, colours: mods-pure teamOf), by S.allySide: a friendly ordinary NPC fights with the heroes */
+const isNpc = (cb, rule = (a) => S.heroSide(a)) => ![cb, cb?.parent?.combatants.get(cb.flags?.[MOD]?.tactics?.summonOf)].some((x) => { const a = Sys.actorOf(x); return !!a && rule({ type: a.type, owned: Sys.ownersOf(a).length > 0, disposition: tokenOf(x)?.disposition ?? a.prototypeToken?.disposition }); }), team = (cb) => (isNpc(cb, S.allySide) ? "gm" : "heroes");
 function combatantFacts(cb) {
   const actor = Sys.actorOf(cb), f = Sys.actorFacts(actor);
   if (!f) return null;
   const summonOf = cb.flags?.[MOD]?.tactics?.summonOf;
   return { id: cb.id, name: cb.name ?? actor.name, actorUuid: actor.uuid, tokenUuid: tokenOf(cb)?.uuid ?? null, owners: Sys.ownersOf(actor), player: Sys.playerOf(actor), hidden: cb.hidden === true || tokenOf(cb)?.hidden === true,
-    present: !(cb.isDefeated ?? cb.defeated) && !!tokenOf(cb), defeated: !!(cb.isDefeated ?? cb.defeated), summonOf: S.isId(summonOf) ? summonOf : null, summon: cb.flags?.[MOD]?.tactics?.summon ?? null, ...f, npc: isNpc(cb) };
+    present: !(cb.isDefeated ?? cb.defeated) && !!tokenOf(cb), defeated: !!(cb.isDefeated ?? cb.defeated), summonOf: S.isId(summonOf) ? summonOf : null, summon: cb.flags?.[MOD]?.tactics?.summon ?? null, ...f, npc: isNpc(cb), team: team(cb) };
 }
 function makeFacts(combat) {
   const memo = new Map(); let names = null;
@@ -77,7 +78,7 @@ function makeFacts(combat) {
     actorValue: (uuid, field) => { const a = fromUuidSync(uuid); return a ? Sys.actorValue(a, field) : null; },
   };
 }
-const metaOf = (combat) => ({ hidden: combat.combatants.filter((cb) => cb.hidden === true || cb.token?.hidden === true).map((cb) => cb.id), npc: combat.combatants.filter(isNpc).map((cb) => cb.id) });
+const metaOf = (combat) => ({ hidden: combat.combatants.filter((cb) => cb.hidden === true || cb.token?.hidden === true).map((cb) => cb.id), npc: combat.combatants.filter((cb) => isNpc(cb)).map((cb) => cb.id) });
 
 /* ------------------------------------------------------------------ effects on documents (engine-pure.mjs "Host effects") */
 const labelOf = (s) => t(`ITAC.mod.${String(s).split(":")[0]}`, {}, String(s));
@@ -271,7 +272,7 @@ export function journal(user = game.user, combat = undefined) { const c = pick(c
 export const context = (combat = undefined) => { const c = pick(combat); let names = null; return { staff: Store.isStaff(game.user),
   bonus: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.sheetBonuses(a) : null; } catch { return null; } },   // P6: the dice the sheet's effects add, for the preview
   kit: (cid) => { try { const a = Sys.actorOf(c?.combatants.get(cid)); return a && (Store.isStaff(game.user) || a.isOwner) ? Sys.kitOf(a) : null; } catch { return null; } },      // P6: only of a sheet this user may read
-  c: (cid) => { const cb = c?.combatants.get(cid); if (!cb) return null;      /* U19: numbered namesakes; a player's numbers never count somebody hidden from them */ names ??= namesFor(c, game.user).names; const a = Sys.actorOf(cb), f = a && (Store.isStaff(game.user) || a.isOwner) ? Sys.actorFacts(a) : null;      /* U45: Health and injuries of a sheet this user may read: the bar of somebody at 0 */ return { name: names[cb.id] ?? cb.name, npc: isNpc(cb), owners: Sys.ownersOf(a), ...(f ? { kind: f.kind, health: f.health, crits: f.crits, pass: f.pass, resolve: f.resolve } : {}) }; }, online: (uid) => game.users.get(uid)?.active === true,
+  c: (cid) => { const cb = c?.combatants.get(cid); if (!cb) return null;      /* U19: numbered namesakes; a player's numbers never count somebody hidden from them */ names ??= namesFor(c, game.user).names; const a = Sys.actorOf(cb), f = a && (Store.isStaff(game.user) || a.isOwner) ? Sys.actorFacts(a) : null;      /* U45: Health and injuries of a sheet this user may read: the bar of somebody at 0 */ return { name: names[cb.id] ?? cb.name, npc: isNpc(cb), team: team(cb), owners: Sys.ownersOf(a), ...(f ? { kind: f.kind, health: f.health, crits: f.crits, pass: f.pass, resolve: f.resolve } : {}) }; }, online: (uid) => game.users.get(uid)?.active === true,
   special: () => (c?.combatants?.contents ?? []).filter((cb) => ["challenge", "vehicle"].includes(Sys.actorOf(cb)?.type) && (Store.isStaff(game.user) || !V.concealed(cb, tokenOf(cb)))).map((cb) => ({ id: cb.id, name: cb.name, kind: Sys.actorOf(cb).type })) }; };      // P7
 
 /** what movement.mjs needs of this client (the cost confirmation on a drag, the reach pick) */

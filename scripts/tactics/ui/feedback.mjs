@@ -147,7 +147,7 @@ export function sync(ctx) {
     }
     if (sum && FP.sumStale(sum.card, combat.id, view)) { clearTimeout(sumTimer); sum = null; }      // FXP (D161): the same Combat fights again: the stopped fight's summary goes
     const mine = new Set((model?.bars ?? []).map((b) => b.combatant));
-    for (const id of Object.keys(view?.ledger ?? {})) { const c = facts.c?.(id); if (c) snap[id] = { name: c.name, img: c.img ?? null, mine: staff ? !c.npc : mine.has(id) }; }
+    for (const id of Object.keys(view?.ledger ?? {})) { const c = facts.c?.(id); if (c) snap[id] = { name: c.name, img: c.img ?? null, mine: staff ? (c.team ? c.team === "heroes" : !c.npc) : mine.has(id) }; }      // ANSE (U17-1): a friendly NPC counts with the heroes
     statusesWere = view?.statuses ?? {};
     let done = loadDone(); { const live = FP.doneLive(done, combat.id, view); if (live.length !== done.length) { done = live; saveDone(live); } }
     const next = FP.tallyFor(tally, combat.id, view?.news, done);      // D131: a fight already summed up keeps no tally

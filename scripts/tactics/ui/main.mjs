@@ -162,7 +162,7 @@ function factsOf(combat) {
   const staff = Store.isStaff(game.user), view = Api.state(combat), ctx = Engine.context(combat);
   return {
     view, me: game.user.id, staff, autoSkip: AutoSkip.get(),      // ANSA (UXC-1): the tick on the initiative bar
-    c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, kind: base.kind ?? null, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null,
+    c: (id) => { const cb = combat.combatants.get(id), base = cb ? ctx.c(id) : null; return base ? { name: base.name, npc: base.npc, team: base.team ?? null, kind: base.kind ?? null, img: portrait(cb), summonOf: cb.flags?.[Store.MOD]?.tactics?.summonOf ?? null,
       way: view?.kind === "chase" ? wayOf(cb) : null } : null; },      // CHASE2: on foot or in the air, as the chase panel draws a unit (a power of flight is seen by all)
     /* CHASE2: the whole facts of a sheet as the executor reads them (staff only): who would roll for a side next, who cannot move */
     whole: (id) => { if (!staff) return null; try { const cb = combat.combatants.get(id), a = cb ? Sys.actorOf(cb) : null; return a ? Sys.actorFacts(a) : null; } catch { return null; } },

@@ -177,11 +177,18 @@ export function burningZones(Z) {
 const levelOf = (p) => (!p ? null : p.level === "floor" ? `f${p.floor}` : p.level ?? "ground");
 /** the combatants of the fight standing in a burning zone record */
 export const occupants = (state, Z, b) => Object.keys(state.ledger ?? {}).filter((cid) => { const p = Z.place?.(cid); return !!p && p.zone === b.zone && (!b.at || levelOf(p) === b.at); });
-/** [B2927] where the fire of `zone` may go: neighbours behind a border that is not blocked, marked flammable, not burning yet ([A15]: a door that can be walked through lets fire pass) */
+/** [B2927] where the fire of `zone` may go: neighbours behind a border that is not blocked, marked flammable, not burning yet.
+    A15 (the user, 2026-11-12: «Wszystkie 4 zmiany»): a border is blocked for fire unless no wall stands there or its door stands open or
+    breached (a closed door blocks, as a locked or sealed one did: the same reading as rules/zones.borderImpedesTalk); a flooded zone
+    (the map's "flooded" state) and a zone of water do not catch fire (ruling ANSE-R2). */
+const floodedZone = (Z, key) => { try { const z = (Z?.graph?.()?.zones ?? []).find((x) => (x.id ?? x.key) === key); if (z?.states?.flooded || (z?.tags ?? []).includes("water")) return true; return (Z?.statesAll?.(key) ?? Z?.states?.(key) ?? []).some((s) => s?.kind === "flooded"); } catch { return false; } };
 export function spreadCandidates(Z, zone) {
   const g = graphOf(Z);
   if (!g || !g.zones.has(zone)) return [];
-  try { return hazards.fireSpreadTargets(g, zone, burningZones(Z).map((b) => b.zone), { doors: "pass", needFlammable: true }); } catch { return []; }
+  try {
+    return hazards.fireSpreadTargets(g, zone, burningZones(Z).map((b) => b.zone), { doors: "pass", needFlammable: true, water: "never" })
+      .filter((to) => RZ.bordersBetween(g, zone, to).some((b) => !RZ.borderImpedesTalk(b)) && !floodedZone(Z, to));
+  } catch { return []; }
 }
 export const fireSpread = {
   ...common,
