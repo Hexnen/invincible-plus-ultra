@@ -187,7 +187,8 @@ const has = (s, c, sev) => R.validate(s).issues.some((i) => i.code === c && (!se
   ok(has(S.patch(h, { sources: [] }), "sources.none"), "source required");
   ok(has(S.setPowerSource(h, "p1", "zz"), "power.source.missing"), "dangling source key");
   ok(has(S.addPower(h, { name: "Pw0" }), "power.duplicate"), "same power twice");
-  ok(has(S.addPower(h, { name: "Extra" }), "slots.over", "warn"), "over the rank power count is a warning");
+  // GENR-3 (FXT2): the book's trade of 2 attribute points per extra power [B197] [B324] is legal, so over the rank count is INFO (cost explained), no longer a warning
+  ok(has(S.addPower(h, { name: "Extra" }), "slots.over", "info"), "over the rank power count is info (a legal trade)");
   ok(has(S.patch(h, { heroTalent: null }), "talent.hero.missing"), "hero talent required");
   ok(has(S.patch(h, { occTalent: { name: "H" } }), "talent.duplicate"), "hero talent == occupation talent");
   ok(!has(S.patch(h, { heroTalent: { name: "Windfall" }, extraTalents: [{ name: "windfall" }] }), "talent.duplicate"), "Windfall may repeat");
@@ -404,7 +405,8 @@ const nrm = R.normName;
       if (R.attrSum(s.attrs) !== R.budget(s) || !R.ATTRS.every((k) => s.attrs[k] >= 1 && s.attrs[k] <= cfg.cap)) { fail("points"); continue; }
       const tal = [s.heroTalent?.name, s.occTalent?.name, ...s.extraTalents.map((t) => t.name)];
       if (tal.some((n) => !n || nrm(n) === "knowledgeable")) { fail("talent missing or bare Knowledgeable"); continue; }
-      if (new Set(tal.map(nrm)).size !== tal.length && !tal.every((n) => /windfall/i.test(n))) { fail("duplicate talent"); continue; }
+      // GENR-8 (FXT2): Durable / Determined / Windfall may repeat up to their book limit; everything else once (same rule as rules.validate)
+      if (tal.some((n) => tal.filter((m) => R.talentKey(m) === R.talentKey(n)).length > R.talentLimit(n))) { fail("duplicate talent"); continue; }
       if (s.personality.length !== 2 || nrm(s.personality[0]) === nrm(s.personality[1])) { fail("personality"); continue; }
       if (!s.drive?.name || !s.drive.text || !s.flaw?.name || !s.flaw.text || !s.heroName || !s.civilianName || !s.npcRel.name || !s.npcRel.type) { fail("persona/life text"); continue; }
       const occ = ROCCS.find((o) => o.name === s.occupation);

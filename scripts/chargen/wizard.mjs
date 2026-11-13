@@ -10,7 +10,7 @@
 import { t } from "./lang.mjs";
 import * as S from "./state.mjs";
 import { newSeed } from "./rng.mjs";
-import { STEP_IDS, RANKS, isRank, validate, derive, attributeBudget, slots, ATTRS } from "./rules.mjs";
+import { STEP_IDS, RANKS, isRank, validate, derive, attributeBudget, slots, ATTRS, SLOT_VALUE } from "./rules.mjs";
 import { STEPS } from "./steps/index.mjs";
 import { esc, icon, attrShort, rankName, msgText } from "./steps/util.mjs";
 import { describeActor } from "./import.mjs";
@@ -83,7 +83,11 @@ export class ChargenApp extends ApplicationV2 {
   constructor({ actor, ...options } = {}) {
     options.id = idFor(actor);
     options.position = { ...(options.position ?? {}) };
-    const w = Math.max(560, Math.min(940, window.innerWidth - 24)), h = Math.max(440, Math.min(660, window.innerHeight - 24));
+    // GENR-10 (FXT2): grow with the screen (62 % x 86 % of the viewport, at least the old 940 x 660, at most 1240 x 980) so a 1920 x 1080 roll board
+    // shows its rows without scrolling; small screens keep the old clamp (24 px margin, minimum 560 x 440)
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const w = Math.max(560, Math.min(vw - 24, Math.max(940, Math.min(1240, Math.round(vw * 0.62)))));
+    const h = Math.max(440, Math.min(vh - 24, Math.max(660, Math.min(980, Math.round(vh * 0.86)))));
     options.position.width ??= w; options.position.height ??= h;
     super(options);
     this.actor = actor;
@@ -545,9 +549,12 @@ export class ChargenApp extends ApplicationV2 {
     const name = s.heroName || this.actor.name;
     const errs = this.#valid.all.errors, warns = this.#valid.all.warnings;
     const pointsText = over ? t("IPC.Preview.Over", { n: -b.left }) : t("IPC.Preview.Left");
-    const issues = errs.length || warns.length
-      ? `<ul class="ipc-pv-issues">${errs.slice(0, 3).map((i) => `<li class="ipc-iss-err">${icon("fa-solid fa-circle-exclamation")}<span>${esc(msgText(i))}</span></li>`).join("")}${errs.length > 3 ? `<li class="ipc-muted">${esc(t("IPC.Preview.More", { n: errs.length - 3 }))}</li>` : ""}</ul>`
+    // GENR-2: the preview counts errors AND warnings with the same words as Review (it used to say "Problems: 0" over a list Review called warnings)
+    const shown = [...errs.map((i) => ["ipc-iss-err", "fa-solid fa-circle-exclamation", i]), ...warns.map((i) => ["ipc-iss-warn", "fa-solid fa-triangle-exclamation", i])];
+    const issues = shown.length
+      ? `<ul class="ipc-pv-issues">${shown.slice(0, 3).map(([cls, ic, i]) => `<li class="${cls}">${icon(ic)}<span>${esc(msgText(i))}</span></li>`).join("")}${shown.length > 3 ? `<li class="ipc-muted">${esc(t("IPC.Preview.More", { n: shown.length - 3 }))}</li>` : ""}</ul>`
       : `<p class="ipc-ok">${icon("fa-solid fa-circle-check")} ${esc(t("IPC.Preview.Clean"))}</p>`;
+    const over_ = r && S_ > r.powers;   // GENR-3: more slots than the rank's count is the book's trade of 2 attribute points per power, not a problem: no red
     const html = `
       <h3 class="ipc-pv-name">${esc(name)}</h3>
       <p class="ipc-pv-rank">${esc(rankName(s.rank))}${r ? ` <span class="ipc-muted">${esc(t("IPC.Preview.Cap", { cap: r.cap }))}</span>` : ""}</p>
@@ -555,8 +562,8 @@ export class ChargenApp extends ApplicationV2 {
       <p class="ipc-pv-budget">${esc(t("IPC.Preview.Budget", { spent: b.spent, budget: b.budget }))}</p>
       <ul class="ipc-pv-attrs" aria-label="${esc(t("IPC.Preview.Attrs"))}">${ATTRS.map((k) => `<li><span>${esc(attrShort(k))}</span><b>${s.attrs?.[k] ?? 0}</b></li>`).join("")}</ul>
       <dl class="ipc-pv-vitals"><div><dt>${esc(t("IPC.Preview.Health"))}</dt><dd>${d.health}</dd></div><div><dt>${esc(t("IPC.Preview.Resolve"))}</dt><dd>${d.resolve}</dd></div><div><dt>${esc(t("IPC.Preview.Slugfest"))}</dt><dd>${d.slugfest}</dd></div><div><dt>${esc(t("IPC.Preview.Reputation"))}</dt><dd>${d.reputation}</dd></div>${s.resources > 0 ? `<div><dt>${esc(t("IPC.Preview.Resources"))}</dt><dd>${d.resources}</dd></div>` : ""}</dl>
-      <p class="ipc-pv-slots${r && S_ > r.powers ? " ipc-over" : ""}">${esc(t("IPC.Preview.Slots", { used: S_, max: r?.powers ?? 0 }))}</p>
-      <div class="ipc-pv-sec"><h4>${esc(t("IPC.Preview.Problems", { n: errs.length }))}</h4>${issues}</div>`;
+      <p class="ipc-pv-slots">${esc(t("IPC.Preview.Slots", { used: S_, max: r?.powers ?? 0 }))}${over_ ? ` <span class="ipc-muted">${esc(t("IPC.Preview.SlotsTraded", { n: SLOT_VALUE * (S_ - r.powers) }))}</span>` : ""}</p>
+      <div class="ipc-pv-sec"><h4>${esc(t("IPC.Preview.Counts", { e: errs.length, w: warns.length }))}</h4>${issues}</div>`;
     if (el.dataset.html === html) return;
     el.innerHTML = html; el.dataset.html = html;
     if (this.#lastPoints !== null && this.#lastPoints !== b.left) {

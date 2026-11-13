@@ -42,7 +42,8 @@ export function summaryRows(step, s) {
     }
     case "life":
       return [row(t("IPC.Summary.Occupation"), s.occupation), row(t("IPC.Summary.Resources"), s.occupation ? String(s.resources ?? 0) : ""),
-        row(t("IPC.Summary.NpcRel"), [s.npcRel?.name, s.npcRel?.type ? `(${s.npcRel.type})` : ""])];
+        // GENR-5 / P11-9: "Name (kind)" as apply writes it to the sheet (an array here was joined with ", " -> "Name, (kind)")
+        row(t("IPC.Summary.NpcRel"), [s.npcRel?.name, s.npcRel?.type ? `(${s.npcRel.type})` : ""].filter((x) => String(x ?? "").trim()).join(" "))];
     case "persona":
       return [row(t("IPC.Summary.HeroName"), s.heroName), row(t("IPC.Summary.CivilianName"), s.civilianName),
         row(t("IPC.Summary.Personality"), s.personality ?? []), row(t("IPC.Summary.Drive"), textOf(s.drive)),

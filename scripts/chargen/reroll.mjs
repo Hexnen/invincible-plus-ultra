@@ -16,6 +16,9 @@
  * Rolling a row never marks it touched; an explicit reroll of a row clears its "edited" flag.
  *
  * SEED: seed + rank + options reproduce a hero (same world content). The shareable HERO CODE is "seed:rank:spice:free|arch:solo|join".
+ * GENR-1 (FXT2): the code carries no reroll counters and no kept values, so it reproduces only a FRESH roll. state.rolledAs = {code, print} is stamped by
+ * every fresh roll (rollNewHero, a reseed / reroll-all / rank change with nothing kept); codeMatches(state) says whether the code still rolls the hero on
+ * screen, and the board / result view say so when it does not. "Reroll all unlocked" with nothing kept therefore moves to a new (derived) seed.
  */
 import { rollAll, rollStep, newSeed } from "./random.mjs";
 import { createState, patch, setRank, STEP_FIELDS } from "./state.mjs";
@@ -82,7 +85,7 @@ export async function rollNewHero(P, { rank, seed = newSeed(), rollOpts = null, 
   let base = patch(createState({ seed, rank, mode: "random" }), { rollOpts });
   if (member) base = patch(base, { team: { ...base.team, mode: "member", baseId: member } });   // the hero already belongs to a base card: its texts are not rolled
   const res = await rollAll(base, P, optsFor(base));
-  return res;
+  return { ...res, state: stamp(res.state) };
 }
 /** reroll ONE row. Locked / edited-by-hand rows are refused unless `force` (an explicit click on the dice of an edited row is allowed: pass force). */
 export async function rerollRow(state, step, P, { force = false, opts = null, cascade = true } = {}) {
@@ -105,8 +108,10 @@ export async function rerollRow(state, step, P, { force = false, opts = null, ca
   } else next = await rollStep(state, step, P, o);   // powers / talents re-balance the unlocked attributes inside rollStep
   return next === state ? state : dropTouched(next, step);
 }
-/** reroll every row that is not kept */
+/** reroll every row that is not kept. GENR-1 (FXT2): with NOTHING kept this is a whole new hero, so it gets a new seed (derived from the old seed and a
+    counter, so the step stays deterministic) and its hero code reproduces it; with kept rows the result depends on the kept values, which no code carries */
 export async function rerollUnlocked(state, P) {
+  if (!ROLLABLE.some((s) => isKept(state, s))) return reseed(state, nextSeed(state), P);
   return rollAll(state, P, optsFor(state));
 }
 /** same hero rules, a new (or typed) seed: counters restart so the result equals a fresh roll of that seed, kept rows stay */
@@ -114,14 +119,39 @@ export async function reseed(state, seed, P) {
   // start from a clean slate (only kept rows carry their values over): a roll never reads the stale values of the rows it replaces, so the
   // result equals a fresh roll of that seed
   let s = patch(createState({ seed: String(seed), rank: state.rank, mode: "random" }), { rollOpts: state.rollOpts, locks: state.locks, touched: state.touched, identity: state.identity, appearance: state.appearance });
-  for (const step of ROLLABLE) if (isKept(state, step)) for (const f of fieldsOf(step)) s = patch(s, { [f]: state[f] });
+  const kept = ROLLABLE.filter((step) => isKept(state, step));
+  for (const step of kept) for (const f of fieldsOf(step)) s = patch(s, { [f]: state[f] });
   if (state.team?.mode === "member") s = patch(s, { team: state.team });
-  return rollAll(s, P, optsFor(state));
+  const res = await rollAll(s, P, optsFor(state));
+  // only a roll with no kept row equals what the code rolls; otherwise the stamp of the previous roll stays and no longer matches
+  return kept.length ? res : { ...res, state: stamp(res.state) };
 }
-/** change the rank on the board: the powers count and caps change, so every row that is not kept is rolled again */
+/** change the rank on the board: the powers count and caps change, so every row that is not kept is rolled again. With nothing kept the SAME seed is
+    rolled fresh at the new rank (GENR-1: the code "seed:newrank:..." then reproduces the hero) */
 export async function changeRank(state, rank, P) {
   if (!RANKS[rank] || rank === state.rank) return { state };
+  if (!ROLLABLE.some((s) => isKept(state, s))) return reseed(setRank(state, rank), state.seed, P);
   return rollAll(setRank(state, rank), P, optsFor(state));
+}
+
+// ---------- does the hero code still reproduce the hero on screen? (GENR-1) ----------
+/** fingerprint of everything a roll decides (the fields of the rollable rows and the rank); locks, edits flags, counters, identity and appearance excluded */
+export function heroPrint(state) {
+  const text = JSON.stringify(["rank", ...ROLLABLE.flatMap(fieldsOf)].map((f) => state?.[f] ?? null));
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return `${h.toString(36)}.${text.length.toString(36)}`;
+}
+/** mark a state as "exactly what its hero code rolls" */
+export const stamp = (state) => patch(state, { rolledAs: { code: heroCode(state), print: heroPrint(state) } });
+/** true when pasting heroCode(state) rolls exactly this hero (same world content): the code and every rolled value are those of a fresh roll.
+    A row reroll, a reroll / rank change around kept rows, a hand edit that changed a value, or a changed roll setting makes it false. */
+export const codeMatches = (state) => !!state?.rolledAs && state.rolledAs.code === heroCode(state) && state.rolledAs.print === heroPrint(state);
+/** a new seed derived from the current one (deterministic: the same state rerolled gives the same new hero) */
+function nextSeed(state) {
+  let h = 0x811c9dc5;
+  for (const ch of `${state.seed}:all:${heroPrint(state)}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36).padStart(6, "0").slice(-6);
 }
 
 // ---------- hero code ----------

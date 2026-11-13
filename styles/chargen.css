@@ -94,6 +94,7 @@
   gap: 6px;
   width: 100%;
   min-height: 34px;
+  height: auto;          /* FXT2: Foundry's button height clipped a two-line step name (PL "Plansza losowania" at 1366 px) */
   margin: 0;
   padding: 3px 8px;
   text-align: left;
@@ -241,7 +242,6 @@
 .ipc-pop { animation: ipc-pop .24s var(--ipc-ease); }
 @keyframes ipc-pop { from { transform: scale(1.25); } to { transform: none; } }
 .ipc-pv-budget, .ipc-pv-slots { margin: 6px 0 0; font-size: var(--ipc-fs-sm); color: var(--ipc-text-2); }
-.ipc-pv-slots.ipc-over { color: var(--ipc-red); font-weight: 700; }
 .ipc-pv-attrs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 10px 0; padding: 0; list-style: none; }
 .ipc-pv-attrs li { display: grid; justify-items: center; padding: 3px 0 4px; background: var(--ipc-paper-2); }
 .ipc-pv-attrs span { font: 400 var(--ipc-t-xs)/1.2 Titles, Comic, sans-serif; letter-spacing: .05em; color: var(--ipc-text-2); }
@@ -404,7 +404,7 @@
 .ipc-rk-stat { display: grid; align-content: start; min-width: 0; }
 .ipc-rk-stat b { font: 400 1.9rem/1.05 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; }
 .ipc-rk-stat small { font-size: var(--ipc-fs-xs); line-height: 1.2; color: var(--ipc-text-2); overflow-wrap: anywhere; }
-.ipc-rk-gm { display: flex; gap: .6em; margin: 2px 0 0; font-size: var(--ipc-fs-md); color: var(--ipc-text-2); }
+.ipc-rk-gm { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2em .6em; margin: 2px 0 0; font-size: var(--ipc-fs-md); color: var(--ipc-text-2); }
 .ipc-rk-gm > i { margin-top: .25em; color: var(--ipc-blue); }
 .ipc-rk-notice-body { display: grid; gap: 6px; flex: 1 1 16rem; min-width: 0; }
 .ipc-rk-notice-body p { margin: 0; }
@@ -482,17 +482,16 @@
 
 /* meter */
 .ipc-pw-meter { position: sticky; top: calc(var(--ipc-body-pt) * -1); z-index: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 14px; align-items: start; padding: 5px 10px; background: var(--ipc-paper); border: 2px solid var(--ipc-blue); box-shadow: 0 6px 0 -2px var(--ipc-paper); }
-.ipc-pw-meter.is-over { border-color: var(--ipc-red); }
+/* GENR-3: slots beyond the rank's count are the book's legal trade (2 points each), not an error: no red; the extra cells read as 'bought' (dashed, blue) */
 .ipc-pw-m-slots { display: grid; grid-template-columns: auto auto; justify-content: start; align-items: center; gap: 0 8px; }
 .ipc-pw-m-slots .ipc-pw-cells { grid-column: 1 / -1; }
 .ipc-pw-m-slots b { font: 400 2.1rem/1 Titles, Comic, sans-serif; font-variant-numeric: tabular-nums; }
-.ipc-pw-meter.is-over .ipc-pw-m-slots b { color: var(--ipc-red); }
 .ipc-pw-m-slots > span:not(.ipc-pw-cells) { font-size: var(--ipc-fs-sm); color: var(--ipc-text-2); }
 .ipc-pw-cells { display: flex; flex-wrap: wrap; gap: 3px; max-width: 8.5rem; }
 .ipc-pw-cell { width: 14px; height: 14px; border: 2px solid var(--ipc-ink); background: #fff; }
 .ipc-pw-cell.is-used { background: var(--ipc-yellow); }
-.ipc-pw-cell.is-extra { border-color: var(--ipc-red); }
-.ipc-pw-cell.is-extra.is-used { background: var(--ipc-red); }
+.ipc-pw-cell.is-extra { border-style: dashed; border-color: var(--ipc-blue); }
+.ipc-pw-cell.is-extra.is-used { border-style: solid; background: var(--ipc-blue); }
 .ipc-pw-m-text p { margin: 0 0 2px; font-size: var(--ipc-fs-md); }
 .ipc-pw-parts { margin: -14px 0 0; font-size: var(--ipc-fs-sm); color: var(--ipc-text-2); }
 .ipc-pw-msg { color: var(--ipc-amber); font-weight: 700; }
@@ -831,6 +830,10 @@
 .ipc-app .ipc-bd-codein { font-variant-numeric: tabular-nums; letter-spacing: .03em; }
 .ipc-bd-msg { margin: 0; min-height: 1.3em; }
 .ipc-bd-msg:empty { display: block; min-height: 0; }
+/* GENR-1: the code no longer rolls the hero on screen (rerolled rows, kept rows, edits or new settings) */
+.ipc-bd-stale { display: flex; gap: .45em; align-items: flex-start; margin: 0; font-size: var(--ipc-fs-sm); color: var(--ipc-ink); }
+.ipc-bd-stale > i { margin-top: .2em; color: var(--ipc-amber); }
+.ipc-code-msg > i { margin-right: .3em; color: var(--ipc-amber); }
 .ipc-bd-opts { display: block; padding: 0 12px; background: #fff; border: 2px solid var(--ipc-line); }
 .ipc-bd-opts > summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: 44px; cursor: pointer; list-style: none; }
 .ipc-bd-opts > summary::-webkit-details-marker { display: none; }
@@ -1003,3 +1006,5 @@ ul.ipc-danger-list li { margin: 2px 0; overflow-wrap: anywhere; }
   .ipc-pw-meter, .ipc-at-meter { position: static; box-shadow: none; }
 }
 @media (pointer: coarse) { .ipc-dialog .form-footer button { min-height: 44px; } }
+/* GENR-6: who plays a hero in the Team step's relationship list */
+.ipc-tm-who { font-size: var(--ipc-fs-sm); }

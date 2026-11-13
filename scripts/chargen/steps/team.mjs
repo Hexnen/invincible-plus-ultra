@@ -256,13 +256,19 @@ function upgradesSection(ctx, T, mode) {
 }
 
 /* ---- second key relationship with another hero */
+/** GENR-6: the players of a listed hero ("Played by Test Gracz 1"), plus a number when two heroes share name AND players */
+function heroWho(e) {
+  const owners = e.data?.owners ?? [];
+  const who = owners.length ? t("IPC.Team.Rel.PlayedBy", { names: owners.join(", ") }) : "";
+  return e.data?.twin ? [who, `#${e.data.twin}`].filter(Boolean).join(" ") : who;
+}
 function relSection(ctx) {
   const d = ctx.data, s = ctx.state, cur = s.heroRel?.name ?? "";
   const rows = d.heroes.map((e, i) => {
     const on = !!cur && (s.heroRel?.actorUuid ? s.heroRel.actorUuid === e.packUuid : nm(cur) === nm(e.name));
     return `<li class="ipc-pw-row${on ? " is-added" : ""}${d.landed === `h:${i}` ? " ipc-landed" : ""}">
-      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(e.name)}</span></div></div>
-      <button type="button" class="ipc-btn ipc-btn-small${on ? "" : " ipc-btn-primary"}" data-act="pick-hero" data-i="${i}" data-fk="hero-${i}" aria-pressed="${on}" aria-label="${esc(t("IPC.Team.Rel.PickAria", { name: e.name }))}">${icon(on ? "fa-solid fa-check" : "fa-solid fa-plus")} ${esc(t(on ? "IPC.Team.Rel.Chosen" : "IPC.Team.Rel.Pick"))}</button>
+      <div class="ipc-pw-row-main"><div class="ipc-pw-row-head"><span class="ipc-pw-name">${esc(e.name)}</span>${heroWho(e) ? `<span class="ipc-muted ipc-tm-who">${esc(heroWho(e))}</span>` : ""}</div></div>
+      <button type="button" class="ipc-btn ipc-btn-small${on ? "" : " ipc-btn-primary"}" data-act="pick-hero" data-i="${i}" data-fk="hero-${i}" aria-pressed="${on}" aria-label="${esc(t("IPC.Team.Rel.PickAria", { name: heroWho(e) ? `${e.name} (${heroWho(e)})` : e.name }))}">${icon(on ? "fa-solid fa-check" : "fa-solid fa-plus")} ${esc(t(on ? "IPC.Team.Rel.Chosen" : "IPC.Team.Rel.Pick"))}</button>
     </li>`;
   }).join("");
   return `<section class="ipc-pw-sec" aria-labelledby="ipc-tm-h-rel">
@@ -324,7 +330,9 @@ function rollHero(ctx) {
   if (!d.heroes.length) return;
   const n = s.rerolls?.heroRel ?? 0;
   const idx = substream(s.seed, `heroRel:${n}`).int(d.heroes.length);
-  const e = nextFree(d.heroes, idx, (x) => nm(x.name) !== nm(s.heroRel?.name)) ?? d.heroes[idx];
+  // GENR-6: never the hero's own name (a world hero called like this one would read "Hero: <own name>"), never the current pick
+  const e = nextFree(d.heroes, idx, (x) => nm(x.name) !== nm(s.heroRel?.name) && (!s.heroName || nm(x.name) !== nm(s.heroName)))
+    ?? nextFree(d.heroes, idx, (x) => !s.heroName || nm(x.name) !== nm(s.heroName)) ?? d.heroes[idx];
   d.landed = `h:${d.heroes.indexOf(e)}`;
   said(ctx, "rel", t("IPC.Team.Rel.Rolled", { name: e.name }));
   ctx.update((st) => ({ ...st, heroRel: { name: e.name, actorUuid: e.packUuid ?? e.data?.actorUuid ?? null }, rerolls: { ...st.rerolls, heroRel: n + 1 } }), { body: true });

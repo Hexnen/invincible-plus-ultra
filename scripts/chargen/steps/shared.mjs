@@ -101,3 +101,13 @@ export function bindAutosave(root, ctx, { apply, after, delay = 220 }) {
 export async function openBook(uuid) {
   try { const doc = await fromUuid(uuid); doc?.sheet?.render({ force: true }); } catch (err) { console.warn("invincible-plus-ultra | chargen: cannot open", uuid, err); }
 }
+/** spec 9.2 step 1 (FXT2): open a page of the core book (journal uuid + page name) on that page; false when the book is missing */
+export async function openBookPage(journalUuid, pageName) {
+  try {
+    const j = await fromUuid(journalUuid);
+    const page = j?.pages?.find((p) => p.name === pageName);
+    if (!j || !page) return false;
+    await j.sheet?.render({ force: true, pageId: page.id });
+    return true;
+  } catch (err) { console.warn("invincible-plus-ultra | chargen: cannot open the book page", pageName, err); return false; }
+}

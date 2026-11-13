@@ -28,7 +28,7 @@
      book page: getArchetype(id)
    Works for non-GM users (index + fromUuid only; compendia are OBSERVER for players). */
 import * as Tables from "./tables.mjs";
-import { setPowerMaxLevels } from "./rules.mjs";
+import { setPowerMaxLevels, wordCase } from "./rules.mjs";
 
 const MODULE_ID = "invincible-plus-ultra";
 const CORE = "invincible-core";
@@ -288,7 +288,11 @@ export function provider(opts = {}) {
         const data = await occupationData();
         return l.map((e) => (e.data?.resources != null ? e : { ...e, data: { ...(e.data ?? {}), ...(data.get(norm(e.name)) ?? {}) } }));
       }
-      case "personality": case "drives": case "flaws": case "heroNames": {
+      case "personality": {   // GENR-4: the book prints some archetypes' words in lower case ("reserved, clinical"): one case for every word (first letter up)
+        const l = ctx.archetype ? await T.list(key, ctx) : await union(key);
+        return dedupe(l.map((e) => ({ ...e, name: wordCase(e.name) })));
+      }
+      case "drives": case "flaws": case "heroNames": {
         if (ctx.archetype) return T.list(key, ctx);
         return union(key);
       }
@@ -319,6 +323,7 @@ export function provider(opts = {}) {
         || (key === "powerSources" && !ctx.archetype);
       if (!tableOnly || typeof T.roll !== "function") return null; // random.mjs falls back to a seeded pick from list()
       const e = await T.roll(key, rng, ctx);
+      if (e && key === "personality") return { ...e, name: wordCase(e.name) };   // GENR-4: same case as list()
       if (!e || e.packUuid) return e;
       const type = { heroTalents: "talent", knowledgeableSubjects: "talent", drawbacks: "drawback", powerSources: "powerSource" }[key];
       return type ? ((await withUuid(type, [e]))[0] ?? e) : e;     // table rows without a link get the pack document found by name
@@ -347,14 +352,28 @@ function existingBases() {
   } catch { return []; }
 }
 
+/** GENR-6: entries whose name occurs more than once get data.dup; when the players are the same too, data.twin = 1, 2 ... is the only difference left */
+export function heroTwins(list) {
+  const key = (e) => norm(e.name), both = (e) => `${key(e)}|${(e.data?.owners ?? []).join(",")}`;
+  const byName = new Map(), byBoth = new Map();
+  for (const e of list) { byName.set(key(e), (byName.get(key(e)) ?? 0) + 1); byBoth.set(both(e), (byBoth.get(both(e)) ?? 0) + 1); }
+  const seen = new Map();
+  return list.map((e) => {
+    if ((byName.get(key(e)) ?? 0) < 2) return e;
+    const n = (seen.get(both(e)) ?? 0) + 1; seen.set(both(e), n);
+    return { ...e, data: { ...e.data, dup: true, ...(byBoth.get(both(e)) > 1 ? { twin: n } : {}) } };
+  });
+}
 function heroRelations(excludeId) {
   const out = [];
   for (const a of game.actors ?? []) {
     if (a.type !== "superhero" || a.id === excludeId) continue;
     if (!a.hasPlayerOwner || !a.testUserPermission(game.user, "OBSERVER")) continue;
-    out.push({ name: a.name, packUuid: a.uuid, data: { actorUuid: a.uuid } });
+    // GENR-6: who plays the hero, so two world heroes with the same name can be told apart in the Team step list
+    const owners = (game.users ?? []).filter((u) => !u.isGM && a.testUserPermission(u, "OWNER")).map((u) => u.name).sort();
+    out.push({ name: a.name, packUuid: a.uuid, data: { actorUuid: a.uuid, owners } });
   }
-  return out;
+  return heroTwins(out);
 }
 
 /* ------------------------------------------------------------------ module api */
