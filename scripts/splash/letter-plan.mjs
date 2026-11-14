@@ -17,6 +17,7 @@
    placed by the token (above its head, else under its feet, else beside it) or on the screen's focus, then kept inside the free part of
    the window (not under the chat, the bars, the hotbar), shrunk as one when it does not fit. Nothing in the block overlaps. */
 import { hueOf, oddsText, oddsLabel, fmtOdds, LBL, say, sfxWord } from './logic.mjs';   // SPLASHPL: sfxWord = the action word as this seat shows it (moods stay keyed by the English word)
+import { cleanHere, localCost, shiftInto } from '../same-picture.mjs';   // SAMEPIC: one picture for the table
 
 /* word -> mood (the LETR engine's intents). A word not listed falls back to its action's default. */
 export const WORD_MOOD = Object.freeze({
@@ -158,6 +159,7 @@ export function planMoment(ev, o = {}) {
   for (const it of items) Object.assign(it, motionOf(it, ev, o));
   for (const it of items) {
     it.hold = Math.max(300, it.hold);
+    it.rot0 = it.rotation || 0;   // SAMEPIC: the tilt every seat lays the block out with (a reduced seat draws it upright in that place)
     if (o.reduced) it.rotation = 0;
     if (INFO_ROLES.has(it.role)) it.hand = CAPTION_ROLES.has(it.role) ? CAPTION_HAND : INFO_HAND;
     it.magnitude = magnitudeOf(it, ev);
@@ -235,6 +237,7 @@ export function planStress(stress, o = {}) {
   const it = { role: 'stress', text: LBL.stress(stress), delay: 0, cap: r3(0.04 + 0.003 * Math.min(4, stress)), wMax: 0.3,
     mood: 'pain', sound: { loud: r1(Math.min(0.9, 0.35 + 0.12 * stress)), pitch: -0.3 }, colors: STRESS_COLORS, hand: INFO_HAND,
     hold: Math.round(2600 * (o.holdK || 1)), rotation: o.reduced ? 0 : -5, in: 'slam', holdKind: 'throb', out: 'fall' };
+  it.rot0 = -5;   // SAMEPIC: laid out with the tilt every seat has
   it.magnitude = magnitudeOf(it, { stress });
   it.size = Math.round(Math.max(FLOOR.stress, it.cap * REF_VH));
   return it;
@@ -445,6 +448,64 @@ function place(out, frame, far = false) {
   out.hit = best.hit;
   out.heavy = best.heavy;
 }
+/* SAMEPIC (owner: the GM and the players see the SAME moment): a block composed from the shared frame (same-picture.mjs) is checked against
+   THIS seat's own limits (local = { safe, avoid }: its real view edge, the sidebar it really has open, its own panels on a layer under them).
+   Clean -> unchanged (every seat with this view shows it alike). Otherwise the smallest shift that clears it, when that shift lands on no
+   shared thing it did not already touch (the token, a neighbour, a pin); else a new layout inside this seat's limits (recompose()).
+   Between the two: the same block shrunk in place (SHRINK_LOCAL steps) and shifted the least way that clears it.
+   -> { out, moved: 'none' | 'shift' | 'shrink' | 'layout', k?, d?: { dx, dy } } */
+export function localFix(out, frame, local, std, recompose) {
+  if (!out?.rect || !Number.isFinite(out.rect.l) || cleanHere(out.rect, std, local)) return { out, moved: 'none' };
+  const r = out.rect, T = frame.token, gp = frame.gap ?? 6;
+  const sharedHit = q => blockHits(q, frame.avoid ?? []) + (T ? area(q, { l: T.l - gp + 1, t: T.t - gp + 1, r: T.r + gp - 1, b: T.b + gp - 1 }) * 4 : 0);
+  const base = sharedHit(r);
+  /* shifts: into the view, then off each panel it touches (the four ways out), the nearest that is clean and touches nothing new */
+  /* the shifts that could clear rect r: into the view, then off each panel it touches (the four ways out, each brought back into view) */
+  const shiftsFor = (r) => {
+    const tries = [shiftInto(r, local.safe ?? r)];
+    for (const q of local.avoid ?? []) {
+      if (!area(r, q)) continue;
+      for (const d of [{ dx: q.l - r.r - 2, dy: 0 }, { dx: q.r - r.l + 2, dy: 0 }, { dx: 0, dy: q.t - r.b - 2 }, { dx: 0, dy: q.b - r.t + 2 }]) {
+        tries.push(d);
+        const m = { l: r.l + d.dx, t: r.t + d.dy, r: r.r + d.dx, b: r.b + d.dy }, s1 = shiftInto(m, local.safe ?? m);
+        tries.push({ dx: d.dx + s1.dx, dy: d.dy + s1.dy });
+      }
+    }
+    return tries.sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy));
+  };
+  for (const d of shiftsFor(r)) {
+    const q = { l: r.l + d.dx, t: r.t + d.dy, r: r.r + d.dx, b: r.b + d.dy };
+    if (localCost(q, local) > 1 || sharedHit(q) > base + 0.5) continue;
+    for (const it of out.items) { it.x = Math.round(it.x + d.dx); it.y = Math.round(it.y + d.dy); }
+    if (out.gauge) { out.gauge.x = Math.round(out.gauge.x + d.dx); out.gauge.y = Math.round(out.gauge.y + d.dy); }
+    out.rect = q;
+    return { out, moved: 'shift', d };
+  }
+  /* then the same picture a little smaller, about its corner nearest the token (or the focus), shifted in: same side, same order,
+     only the size differs (a seat with a much smaller window: closer to the shared picture than another side would be) */
+  const ref = T ? { x: T.x, y: T.y } : frame.focus ?? { x: (r.l + r.r) / 2, y: (r.t + r.b) / 2 };
+  /* the anchor: the block's point nearest the token first (it stays by it), then its centre and corners (a critical without a token) */
+  const anchors = [[Math.max(r.l, Math.min(r.r, ref.x)), Math.max(r.t, Math.min(r.b, ref.y))], [(r.l + r.r) / 2, (r.t + r.b) / 2], [r.l, r.t], [r.r, r.t], [r.l, r.b], [r.r, r.b]];
+  for (const k of SHRINK_LOCAL) for (const [ax, ay] of (T ? anchors.slice(0, 1) : anchors)) {
+    const sc = { l: ax + (r.l - ax) * k, t: ay + (r.t - ay) * k, r: ax + (r.r - ax) * k, b: ay + (r.b - ay) * k };
+    let d = null, q = null;
+    for (const s of shiftsFor(sc)) {
+      const m = { l: sc.l + s.dx, t: sc.t + s.dy, r: sc.r + s.dx, b: sc.b + s.dy };
+      if (localCost(m, local) <= 1 && sharedHit(m) <= base * k * k + 0.5) { d = s; q = m; break; }
+    }
+    if (!d) continue;
+    const mv = (x, a0, dd) => Math.round(a0 + (x - a0) * k + dd);
+    for (const it of out.items) { it.x = mv(it.x, ax, d.dx); it.y = mv(it.y, ay, d.dy); it.S = Math.round(it.S * k * 10) / 10; it.w *= k; it.h *= k; }
+    if (out.gauge) { out.gauge.x = mv(out.gauge.x, ax, d.dx); out.gauge.y = mv(out.gauge.y, ay, d.dy); out.gauge.w *= k; out.gauge.h *= k; out.gauge.k = (out.gauge.k ?? 1) * k; }
+    out.rect = q; out.f = (out.f ?? 1) * k;
+    return { out, moved: 'shrink', k, d };
+  }
+  const o2 = recompose ? recompose() : null;
+  return o2 ? { out: o2, moved: 'layout' } : { out, moved: 'none' };
+}
+/* how far a seat may shrink the shared block in place before it lays it out anew (SAMEPIC) */
+export const SHRINK_LOCAL = Object.freeze([0.94, 0.88, 0.82, 0.76, 0.7, 0.64]);
+
 /* two boxes of a composed moment overlap (with their motion room) -> true; used by the checks */
 export function overlaps(a, b, room = 0) {
   return Math.abs(a.x - b.x) * 2 < a.w + b.w + 2 * room && Math.abs(a.y - b.y) * 2 < a.h + b.h + 2 * room;

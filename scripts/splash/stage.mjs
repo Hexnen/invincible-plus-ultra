@@ -5,6 +5,7 @@ import * as S from './splash.mjs';
 import * as LP from './letter-plan.mjs';
 import * as IP from './impact-plan.mjs';
 import { seesToken } from './seen.mjs';
+import * as SP from '../same-picture.mjs';   // SAMEPIC: one picture for the table
 
 const active = new Map();   // key -> ctl
 const MAX_STAGES = 4;
@@ -235,11 +236,14 @@ function measureItems(items, base) {
     it._o = o;
     let m = null;
     try {
-      const r = LE.planFor ? LE.planFor(LP.letterable(it.text), o) : null;
-      const p = r?.plan ?? (LE._plan ? (() => { const q = LE._plan(LP.letterable(it.text), o); LE._settle?.(q); return q; })() : null);
+      /* SAMEPIC: measured as every seat measures it: a seat's reduced motion (no tilt, no entrance smear) plays the same block still, it
+         does not lay it out smaller or elsewhere */
+      const om = { ...o, reduced: false, rotation: Number.isFinite(it.rot0) ? it.rot0 : o.rotation };
+      const r = LE.planFor ? LE.planFor(LP.letterable(it.text), om) : null;
+      const p = r?.plan ?? (LE._plan ? (() => { const q = LE._plan(LP.letterable(it.text), om); LE._settle?.(q); return q; })() : null);
       if (p?._holdBox?.w > 0 && p.sizeK > 0) m = { w: p._holdBox.w, h: p._holdBox.h, sizeK: p.sizeK, hand: p.hand?.id, grow: IP.growOf(p), contact: IP.contactMs(p) };   // FXI-SPLASH: the entrance's biggest drawing and the instant it hits
     } catch (e) { m = null; }
-    if (!m) { let k = 0.62 + 0.7 * (it.sound?.loud ?? 0.5); try { k = LE.design(LP.letterable(it.text), o)?.sizeK ?? k; } catch (e) { /* estimate */ } const b = LP.estimateBox(it, 1); m = { w: b.w, h: b.h, sizeK: k, hand: null }; }
+    if (!m) { let k = 0.62 + 0.7 * (it.sound?.loud ?? 0.5); try { k = LE.design(LP.letterable(it.text), { ...o, reduced: false })?.sizeK ?? k; } catch (e) { /* estimate */ } const b = LP.estimateBox(it, 1); m = { w: b.w, h: b.h, sizeK: k, hand: null }; }
     it._m = m;
     if (m.hand) hands.push(m.hand);
   }
@@ -351,18 +355,47 @@ export function diceRects() {
     return out;
   } catch (e) { return []; }
 }
-/* what this seat's screen block keeps off: neighbours and pins this seat sees, resting dice, panels, and the hero of a critical */
-function screenAvoid(hero, full) {
-  const out = [...uiAvoid(), ...diceRects()];
+/* SAMEPIC (owner, binding: the GM and the players see the SAME moment; ADVX 1: with one view at one instant the block stood right of the
+   heroes on the GM's seat and lower-left on the player's, at another size). The screen block is laid out from what every seat shares
+   (same-picture.mjs): the token's DOCUMENT box (not its animated mesh, which tips and sways per seat), the tokens nobody hides and the map
+   pins as documents (not what this seat's vision or permissions draw: a GM saw the hidden ones and avoided them), the reference height
+   SP.REF_VH (not this window's), the standard view (Foundry's bars reserved alike, the sidebar as if open). Not avoided any more by the
+   shared layout: this seat's resting dice (they rest at another time on each seat) and its own panels (the GM's desk): on the screen
+   layer the words are drawn over both; on the layers under the interface this seat's own guard (localScreen) moves the block only where it
+   would really be hidden. */
+const projBox = (b) => { const a = toClient({ x: b.l, y: b.t }), c = toClient({ x: b.r, y: b.b }); return a && c ? { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2, l: a.x, t: a.y, r: c.x, b: c.y } : null; };
+function sharedTokenBox(tok) { try { const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100; return projBox(docBox(tok, gs)); } catch (e) { return null; } }
+export function standardSafe(p = null) { return SP.standardRect(window.innerWidth, window.innerHeight, p); }   // p: the client point the moment describes
+function sharedScreenAvoid(hero, full) {
+  const out = [];
   const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
-  const cl = (b) => { const a = toClient({ x: b.l, y: b.t }), c = toClient({ x: b.r, y: b.b }); return a && c ? { l: a.x, t: a.y, r: c.x, b: c.y } : null; };
   for (const t of C?.tokens?.placeables ?? []) {
-    try { if (t.visible === false || sameTok(t, hero)) continue; const q = cl(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push(q); } catch (e) { /* one token */ }
+    try { const d = docOf(t); if (!d || d.hidden || sameTok(t, hero)) continue; const q = projBox(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push(q); } catch (e) { /* one token */ }
   }
-  for (const n of C?.notes?.placeables ?? []) { try { if (n.visible === false) continue; const q = cl(noteBox(n, gs)); if (q) out.push(q); } catch (e) { /* one pin */ } }
-  if (full && hero) { const h = tokenBox(hero); if (h) out.push({ ...grow(h, Math.max(10, 0.15 * (h.r - h.l))), w: 50 }); }   // the drawn art (hair, a fist) reaches past the token's box   // the hero weighs most: a pin or a panel gives way first
+  for (const n of C?.notes?.placeables ?? []) { try { if (!docOf(n)) continue; const q = projBox(noteBox(n, gs)); if (q) out.push(q); } catch (e) { /* one pin */ } }
+  if (full && hero) { const h = sharedTokenBox(hero); if (h) out.push({ ...grow(h, Math.max(10, 0.15 * (h.r - h.l))), w: 50 }); }   // the drawn art (hair, a fist) reaches past the token's box; the hero weighs most
   return out;
 }
+/* this seat's own limits (tier 3): screen = over everything, cut only by the window and the open sidebar (the layer's clip); ui = under
+   the windows (the GM's desk is one); hud = under the bars, the panels and the resting dice */
+export const UI_WINDOWS = ['#invincible-tactics-desk:not(.igd-collapsed) .igd'];
+function boxesOf(sels, pad = 6) {
+  const out = [];
+  for (const sel of sels) { try { for (const e of document.querySelectorAll(sel)) { const q = e.getBoundingClientRect(); if (q && q.width > 0 && q.height > 0) out.push({ l: q.left - pad, t: q.top - pad, r: q.right + pad, b: q.bottom + pad }); } } catch (e) { /* none */ } }
+  return out;
+}
+function localScreen() {
+  measureArea();
+  const win = { l: 2, t: 2, r: area.w - 2, b: window.innerHeight - 2 };
+  if (LAYER === 'screen') return { safe: win, avoid: [] };
+  if (LAYER === 'ui') return { safe: win, avoid: boxesOf(UI_WINDOWS) };
+  return { safe: safeRect(), avoid: [...uiAvoid(), ...diceRects()] };
+}
+const meet = (a, b) => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
+/* the last moments' layouts on this seat (for the checks and the live log): shared, or moved here and how */
+const SAME_LOG = [];
+export const sameLog = () => SAME_LOG.slice();
+function logSame(row) { SAME_LOG.push(row); if (SAME_LOG.length > 20) SAME_LOG.shift(); }
 /* compose: measure, lay out, and (when the block had to go below or beside the token) measure again with the sound coming from there */
 function compose(ctl, items, extra = {}) {
   const vh = window.innerHeight, k = Number(LE?.prefs?.scale) > 0 ? Number(LE.prefs.scale) : 1;
@@ -375,23 +408,37 @@ function compose(ctl, items, extra = {}) {
     const g = extra.gauge && ctl.gaugeK ? { w: extra.gauge.w * ctl.gaugeK, h: extra.gauge.h * ctl.gaugeK } : extra.gauge;
     frame = { ...sharedFrame(ctl.hero), scale: 1, ...extra, ...(g ? { gauge: g } : {}) };
   } else {
-    const T = ctl.token ? tokenBox(ctl.token) : null;
-    frame = { vh, scale: (ctl.userScale || 1) * k, safe: safeRect(), token: T, avoid: screenAvoid(ctl.hero, !ctl.token),
-      gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: area.cx, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
+    /* SAMEPIC: the shared frame (see sharedScreenAvoid): reference height, the table's Scale only (the engine's own Scale is divided out
+       in letterOne, as on the map), the standard view, the token's document box, shared obstacles */
+    const T = ctl.token ? sharedTokenBox(ctl.token) : null, std = standardSafe(T);
+    frame = { vh: SP.REF_VH, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token),
+      gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: (std.l + std.r) / 2, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
   }
-  let out = composeIn(ctl, items, frame);
-  /* FXI-SPLASH (ADVI 6): the map block is laid out from what every seat shares; when on THIS seat it would lie under a bar, the chat card or
-     past the edge of the view while its token is in view, this seat lays it out again inside its own free view (same words, sizes and
-     timing; only the place differs, and only where it has to) */
+  let out = composeIn(ctl, items, frame), same = 'none';
   if (ctl.shared) {
-    const seat = seatSafeScene(), T = frame.token;
-    const tokenIn = seat && T && T.r > seat.l && T.l < seat.r && T.b > seat.t && T.t < seat.b;
-    if (seat && tokenIn && !inRect(out.rect, seat)) {
-      const q = { l: Math.max(frame.safe.l, seat.l), t: Math.max(frame.safe.t, seat.t), r: Math.min(frame.safe.r, seat.r), b: Math.min(frame.safe.b, seat.b) };
+    /* FXI-SPLASH (ADVI 6) + SAMEPIC: the map block is laid out from what every seat shares; when it would lie past the STANDARD view while
+       its token is in view, it is laid out again inside that view (the same on every seat with this view: before, each seat used its own
+       measured bars, and the GM's scene bar moved his block 80 scene px down from the player's: ADVX 1, take D) */
+    const hc = ctl.hero ? sharedTokenBox(ctl.hero) : null, std = sceneRectOf(standardSafe(hc)), T = frame.token;
+    const tokIn = (v) => !!v && !!T && T.r > v.l && T.l < v.r && T.b > v.t && T.t < v.b;
+    if (tokIn(std) && !inRect(out.rect, std)) {
+      const q = meet(frame.safe, std);
       if (q.r - q.l >= 0.25 * frame.vh && q.b - q.t >= 0.25 * frame.vh) { const f2 = { ...frame, safe: q }; out = composeIn(ctl, items, f2); out.seat = true; frame = f2; }
     }
+    /* tier 3: this seat's own bars (beyond the reserve) and panels hide the board under them: only then does this seat move its block */
+    const real = sceneRectOf(safeRect());
+    if (tokIn(real)) {
+      const loc = { safe: real, avoid: uiAvoid().map(sceneRectOf).filter(Boolean) };
+      const fx = LP.localFix(out, frame, loc, std, () => { const q = meet(frame.safe, real); return q.r - q.l >= 0.25 * frame.vh && q.b - q.t >= 0.25 * frame.vh ? composeIn(ctl, items, { ...frame, safe: q, avoid: [...frame.avoid, ...loc.avoid] }) : null; });
+      out = fx.out; same = fx.moved;
+    }
+  } else {
+    const loc = localScreen(), std = frame.safe;
+    const fx = LP.localFix(out, frame, loc, std, () => composeIn(ctl, items, { ...frame, safe: meet(std, loc.safe), avoid: [...frame.avoid, ...loc.avoid] }));
+    out = fx.out; same = fx.moved;
   }
-  out.k = k; out.frame = frame;
+  out.k = k; out.frame = frame; out.same = same;
+  logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
   return out;
 }
 function composeIn(ctl, items, frame) {
@@ -406,10 +453,10 @@ function composeIn(ctl, items, frame) {
   return out;
 }
 const inRect = (r, q) => r.l >= q.l - 1 && r.t >= q.t - 1 && r.r <= q.r + 1 && r.b <= q.b + 1;
-/* this seat's free view (its bars, panels' edges, the chat card) in scene px */
-function seatSafeScene() {
+/* a client rect in scene px (null when the canvas cannot say) */
+function sceneRectOf(s) {
   try {
-    const s = safeRect(), a = toScene({ x: s.l, y: s.t }), c = toScene({ x: s.r, y: s.b });
+    const a = toScene({ x: s.l, y: s.t }), c = toScene({ x: s.r, y: s.b });
     return a && c && c.x > a.x && c.y > a.y ? { l: a.x, t: a.y, r: c.x, b: c.y } : null;
   } catch (e) { return null; }
 }
@@ -417,7 +464,7 @@ function seatSafeScene() {
 function letterWrap(ctl) {
   if (ctl.lw?.isConnected) return ctl.lw;
   const w = document.createElement('div'); w.className = 'ins-letters';
-  w.style.setProperty('--u', String(Math.max(0.7, Math.min(1.6, window.innerHeight / 768)).toFixed(3)));
+  w.style.setProperty('--u', String(Math.max(0.7, Math.min(1.6, SP.REF_VH / 768)).toFixed(3)));   // SAMEPIC: the reference height, not this window's
   ensureLayer().appendChild(w);
   ctl.lw = w; ctl.letters = []; ctl.hands = [];
   ctl.el.classList.add('lettered');
@@ -526,7 +573,7 @@ function followPan(ctl) {
     return;
   }
   if (!ctl.token || !ctl.tokenAnchor) return;
-  const tb = tokenBox(ctl.token);
+  const tb = sharedTokenBox(ctl.token);   // SAMEPIC: the document box (the mesh sways per seat)
   if (!tb) return;
   ctl.offset = { x: Math.round(tb.x - ctl.tokenAnchor.x), y: Math.round(tb.y - ctl.tokenAnchor.y) };
   for (const it of ctl.letters || []) { try { if (it.h.alive && !it.world) it.h.moveTo({ x: it.base.x + ctl.offset.x, y: it.base.y + ctl.offset.y }); } catch (e) { /* gone */ } }
@@ -628,7 +675,7 @@ function playLetters(ev, o) {
   }
   const lay = compose(ctl, plan.items, gauge ? { gauge } : {});
   ctl.k = lay.k; ctl.rect = lay.rect; ctl.layout = lay;   // (kept for inspection: frame, side, hit)
-  ctl.tokenAnchor = ctl.token ? tokenBox(ctl.token) : null;
+  ctl.tokenAnchor = ctl.token ? sharedTokenBox(ctl.token) : null;
   const wp = lay.items.find(it => it.role === 'word');
   if (ctl.shared) {
     /* the block is in scene coordinates already (the same on every seat); a part lettered later keeps its scene place whatever the
@@ -798,7 +845,7 @@ function blockOf(ctl) {
 }
 function tokenAreaOf(ctl, tok) {
   if (ctl.shared) { const gs = globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100; return docBox(tok, gs); }
-  return tokenBox(tok);
+  return sharedTokenBox(tok);   // SAMEPIC
 }
 export function nearBlock(block, tb, k = COVER_K) {
   if (!block || !tb) return false;
@@ -872,7 +919,7 @@ function stressLettered(ctl, stress, resolve, holdK, seed) {
   const gauge = probeGauge(ctl, stress, resolve);
   ctl.seed ??= seed;
   const r = ctl.rect;
-  const lay = compose(ctl, [it], { ...(gauge ? { gauge } : {}), ...(r ? { token: null, focus: { x: (r.l + r.r) / 2, y: r.b + 0.05 * window.innerHeight } } : {}) });
+  const lay = compose(ctl, [it], { ...(gauge ? { gauge } : {}), ...(r ? { token: null, focus: { x: (r.l + r.r) / 2, y: r.b + 0.05 * (ctl.shared ? (ctl.layout?.frame?.vh ?? SP.REF_VH) : SP.REF_VH) } } : {}) });   // SAMEPIC: the reference height
   ctl.k = lay.k;
   const p = lay.items[0];
   if (p) p._o = { ...p._o, seed: seed ?? p._o?.seed };

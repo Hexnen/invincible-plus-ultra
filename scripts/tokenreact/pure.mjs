@@ -13,6 +13,8 @@
 import { contactMs as wordContact, leadMs } from "../splash/impact-plan.mjs";
 import { STEP_AT, SERIES_STEP, SERIES_MAX } from "../letters/impact/plan.mjs";
 export { leadMs };
+import { REF_VH, REF_VW } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
+export { REF_VH, REF_VW };
 
 export const HEALTH = ["hit", "heavy", "down", "heal", "back"];
 export const RESOLVE = ["stress", "spent", "regain", "out", "steady"];
@@ -392,6 +394,19 @@ export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null,
     });
   }
   return best;
+}
+/* SAMEPIC (owner, binding: the GM and the players see the SAME moment; ADVX 9, 13: one hit, another size and side per seat, a word cut by
+   the view's top on one seat and whole on the other). The side and size are fitted on what every seat shares (the token, the tokens nobody
+   hides, the other words of the moment, the splash's block) inside the STANDARD view (same-picture.mjs: Foundry's bars reserved alike, the
+   sidebar as if open), and kept unless THIS seat would really cut it (a smaller window, a sidebar wider than the reserve) or hide it under
+   its own panel (the GM's desk): only then is it fitted again here with those too. -> fitSlot's result + { same } (false = moved here) */
+export function fitSame(tok, box, std, real, shared = [], local = [], o = {}) {
+  const a = fitSlot(tok, box, std, shared, o);
+  const b = { w: box.w * a.k, h: box.h * a.k }, r = rectAt(slotPoint(a.slot, tok, b), b);
+  const outR = real ? outside(r, real) : 0, outS = std ? outside(r, std) : 0;
+  const clean = outR <= outS + 1 && !local.some((q) => inter(r, q) > 1);
+  if (clean) return { ...a, same: true };
+  return { ...fitSlot(tok, box, real ?? std, [...shared, ...local], { ...o, keep: o.keep ?? a.slot }), same: false };      // the shared side is kept while it stays about as good
 }
 /** is the token on the view (see ON_VIEW) */
 /* FXLT2 (ADVT2 11: a visible token at the view's edge, partly under the side controls or the hotbar, got nothing at 35 %): a token

@@ -87,6 +87,9 @@ function registerSettings() {
   /* FXLD2 (ADVD2 1): how long the lettered moment stays is the table's, not each seat's (a seat's own Display time made the moment
      end at different times); the client Display time stays for the classic splash */
   world('tableHold', { name: L('TableHold.Name'), hint: L('TableHold.Hint'), type: Number, default: 1, range: { min: 0.5, max: 2, step: 0.1 } });
+  /* SAMEPIC (owner: the GM and the players see the SAME moment; ADVX 1): the lettered moment's size is the table's too; the client Scale stays
+     for the classic splash */
+  world('tableScale', { name: L('TableScale.Name'), hint: L('TableScale.Hint'), type: Number, default: 1, range: { min: 0.5, max: 1.6, step: 0.1 } });
   registerMigrationSettings(MOD);
 }
 
@@ -184,6 +187,7 @@ function loadLetters() {
 function fullFrom() { return cs('fullscreen') ? cs('fullFrom') : null; }
 /* FXLD2: the lettered moment's duration is the table's (world); the classic splash keeps the seat's own */
 function holdK() { try { return Stage.lettersOn() ? cs('tableHold') : cs('hold'); } catch (e) { return 1; } }
+function scaleK() { try { return Stage.lettersOn() ? cs('tableScale') : cs('scale'); } catch (e) { return 1; } }
 function fxLevel() { const e = cs('effects'); return e === 'full' ? 1 : (e === 'reduced' ? 0.5 : 0); }
 
 /* ------------------------------------------------------------------ znacznik akcji z dialogu rzutu */
@@ -464,7 +468,7 @@ hook('createChatMessage', async (message, options, userId) => {
     announce(ev, message, resolve);
     Stage.tellMoment({ phase: 'start', id });   // said again: the dice, the verdict and the camera took their time
     const ctl = Stage.play(ev, {
-      rnd: mulberry32(hashString(id)), token, scale: cs('scale'), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'), momentId: id,
+      rnd: mulberry32(hashString(id)), token, scale: scaleK(), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'), momentId: id,
       targets: rollTargetsOf(message, ev), from: boardToken(message),   // ROLLTARGET: the impact on the target, the blow from the roller
       resolve, seed: id
     });
@@ -491,7 +495,7 @@ hook('updateChatMessage', async (message, changes, options, userId) => {
     const ev = { stress: rd.stress, stressPending: false, pushed: true, rb: Number.isFinite(f.rb) ? f.rb : null, rmax: Number.isFinite(f.rmax) ? f.rmax : null };
     const resolve = resolveReader(message, ev);
     announce({ ...ev, stressOnly: true }, message, resolve);
-    Stage.playStress(ev, { token: Stage.onMapLayer() && Stage.lettersOn() ? boardToken(message) : resolveToken(message), scale: cs('scale'), hold: holdK(), backdrop: cs('backdrop'), resolve, seed: message.id });
+    Stage.playStress(ev, { token: Stage.onMapLayer() && Stage.lettersOn() ? boardToken(message) : resolveToken(message), scale: scaleK(), hold: holdK(), backdrop: cs('backdrop'), resolve, seed: message.id });
   } catch (e) { console.warn(`${LOG} updateChatMessage failed`, e); }
 });
 
@@ -543,7 +547,7 @@ function preview(opts = {}) {
   /* ROLLTARGET: preview({ targets: [tokenId] }) or this user's own Foundry targets for a blow */
   const targets = IP.rollTargets({ flagged: Array.isArray(opts.targets) ? opts.targets : [...(game.user.targets ?? [])].map(t => t.id), action: ev.action });
   return Stage.play(ev, {
-    rnd: Math.random, token: opts.screen ? null : token, scale: cs('scale'), hold: holdK(), fx: fxLevel(), fullFrom: opts.fullFrom ?? fullFrom(),
+    rnd: Math.random, token: opts.screen ? null : token, scale: scaleK(), hold: holdK(), fx: fxLevel(), fullFrom: opts.fullFrom ?? fullFrom(),
     resolve, backdrop: opts.backdrop ?? cs('backdrop'), targets, from: token
   });
 }

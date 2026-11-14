@@ -23,6 +23,7 @@ import { isLabel } from "../i18n/sys-labels.mjs";
 import * as Gate from "../tactics/ui/dicegate.mjs";
 import * as Moment from "../moment.mjs";
 import * as TokAnim from "../tokenanim/main.mjs";      // TOKANIM: the token's own motion
+import { standardRect } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
@@ -381,7 +382,9 @@ async function land(ids, ready) {
     /* a token mostly outside the safe rect now (off the view, under the interface) is not lettered: its word would hang at the
        edge or over the chat input with nothing under it (seen live in a crowd and in ADVT 6) */
     const onView = (it) => !view.ok() || P.onView(view.tokRect(it.tok), view.safe());
-    const staged = P.stage(items.filter(onView)).filter((it) => it.mode !== "none");
+    /* SAMEPIC (ADVX 9): the crowd is staged (who keeps a word, the crowd's size) on what this seat may be shown, BEFORE its own view is asked:
+       a token off this seat's view (another window, its sidebar) no longer changes the size of the words the others get */
+    const staged = P.stage(items).filter((it) => it.mode !== "none" && onView(it));
     /* the words from the engine's vocabulary (FXLT2, ADVT2 1), a blow of a series one step of one growing sound (ADVT2 5) */
     const vocab = L.vocab?.word ? L.vocab : L.word ? { word: L.word } : null;
     for (const it of staged) {
@@ -407,19 +410,23 @@ async function land(ids, ready) {
     try { if (imp && L.impact?.plan) after = Math.min(500, Math.max(0, Number(L.impact.plan({ ...imp.spec, seed: `${imp.it.seed}|impact` })?.ms) || 0)); } catch (err) { once(err); }
     for (const it of staged) it.tHit = it === imp?.it ? T0 : T0 + (imp ? after + it.delay : it.delay);
     const placed = [];
-    const others = [...tokenRects(new Set(staged.map((it) => it.tok.id))), ...view.panels()];
+    /* SAMEPIC: shared obstacles (tokens nobody hides, the splash's block) vs this seat's own panels (only a local guard: fitSame) */
+    const others = [...tokenRects(new Set(staged.map((it) => it.tok.id))), ...view.blocks()];
+    const mine = view.ownPanels();
     for (const it of staged) {
       if (it.mode === "none") continue;
       try { it.plan = planOf(L, it); } catch (err) { once(err); it.plan = null; }
       if (!it.plan) continue;
       it.plan.blocked = [...others.filter((r) => r.id !== it.tok.id), ...placed];
+      it.plan.mine = mine;
       /* the next blow of a series lands where the last one stands (ADVT2 5: the third blow of three stood elsewhere), while that side still
          holds the grown word (FXI-TOKEN, ADVI 5: it kept its side and was pushed over its token); a side that is not free is taken smaller
          (pure fitSlot) */
       const pe = playing.get(it.tok.id);
       const was = pe?.plan?.slot ?? pe?.slot;      // the side the last word really took (re-chosen on its drawn box, measure)
       it.plan.keep = it.lk.step > 0 && was && P.FIT_SLOTS.includes(was) ? was : null;
-      const fit = view.ok() ? P.fitSlot(it.plan.tokRect, it.plan.box, view.safe(), it.plan.blocked, { keep: it.plan.keep }) : { slot: "above", k: 1 };
+      const fit = view.ok() ? P.fitSame(it.plan.tokRect, it.plan.box, view.std(it.plan.tokRect), view.safe(), it.plan.blocked, mine, { keep: it.plan.keep }) : { slot: "above", k: 1, same: true };
+      it.plan.same = fit.same;
       if (fit.k < 0.999) shrink(it.plan, fit.k);
       it.plan.slot = fit.slot;
       const c = P.slotPoint(it.plan.slot, it.plan.tokRect, it.plan.box);
@@ -486,15 +493,25 @@ const view = {
     return this.cache;
   },
   panelsCached() { const t = Date.now(); if (!this.pc || t - this.pat > 250) { this.pc = this.panels(); this.pat = t; } return this.pc; },
-  panels() {
+  panels() { return [...this.blocks(), ...this.ownPanels()]; },
+  /* FIN-CALLERS (FXIT-S2): the roll splash's moments standing now (its own blocks, asked on REACT_HOOK): a word does not go under them.
+     SAMEPIC: the splash lays its block out from shared data, so its block counts as shared */
+  blocks() {
     const out = [];
-    /* FIN-CALLERS (FXIT-S2): the roll splash's moments standing now (its own blocks, asked on REACT_HOOK): a word does not go under them */
     try { const blocks = []; Hooks.callAll(REACT_HOOK, { phase: "place", blocks }); for (const b of blocks) if (b && b.r > b.l && b.b > b.t) out.push({ x: b.l, y: b.t, w: b.r - b.l, h: b.b - b.t, k: P.SLOT_K.panel }); } catch { /* no splash */ }
+    return out;
+  },
+  /* this seat's own floating panels (the GM's desk, the party cards, the map's meters): a word is never hidden under them, but they move it
+     on this seat only (SAMEPIC tier 3) */
+  ownPanels() {
+    const out = [];
     for (const sel of PANEL_SEL) for (const el of document.querySelectorAll?.(sel) ?? []) {
       try { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0 && getComputedStyle?.(el)?.visibility !== "hidden") out.push({ x: r.left, y: r.top, w: r.width, h: r.height, k: P.SLOT_K.panel }); } catch { /* skip */ }
     }
     return out;
   },
+  /* SAMEPIC: the standard view: the canvas view minus Foundry's bars as the same fixed band on every seat (same-picture.mjs RESERVE) */
+  std(tr = null) { const r = canvas.app.view.getBoundingClientRect(), p = tr ? { x: tr.x + tr.w / 2 - r.left, y: tr.y + tr.h / 2 - r.top } : null, s = standardRect(r.width || globalThis.innerWidth || 1600, r.height || globalThis.innerHeight || 900, p); return { l: s.l + r.left, t: s.t + r.top, r: s.r + r.left, b: s.b + r.top }; },
   zoom: () => canvas.stage.scale?.x || 1,
   toScreen(p) { const v = this.rect(), g = canvas.stage.toGlobal(p); return { x: v.ox + g.x, y: v.oy + g.y }; },
   toWorld(p) { const v = this.rect(); return canvas.stage.toLocal({ x: p.x - v.ox, y: p.y - v.oy }); },
@@ -506,20 +523,30 @@ function tokenRects(skip) {
   const out = [];
   /* PRIV (seen live on lane 5: beside a token the GM had hidden, the GM's word took another side and a smaller fit than the player's): a
      token hidden from the players is not an obstacle on any seat, so the word stands alike on the GM's seat and a player's */
-  try { for (const t of canvas.tokens?.placeables ?? []) if (!skip.has(t.id) && t.document?.hidden !== true && seatOf(t).visible) out.push({ ...view.tokRect(t), id: t.id, k: P.SLOT_K.token }); } catch (err) { once(err); }
+  /* SAMEPIC (ADVX 9): every token nobody hides, whether THIS seat's vision shows it or not (the GM sees through every wall, a player does not:
+     the same blow took another side per seat). As in the map splash's shared frame: a token hidden from the players never counts */
+  try { for (const t of canvas.tokens?.placeables ?? []) if (!skip.has(t.id) && t.document?.hidden !== true) out.push({ ...view.tokRect(t), id: t.id, k: P.SLOT_K.token }); } catch (err) { once(err); }
   for (const id of skip) { const t = canvas.tokens?.get(id); if (t && view.ok()) out.push({ ...view.tokRect(t), id, k: P.SLOT_K.token }); }
   return out;
 }
 
 /* the size of one word on screen (FXLT, review 5): the kind's target, handed to the engine's own model as a scale */
+/* SAMEPIC (ADVX 9: one hit 1.8x bigger on the player's seat): the engine's "legible" size model clamps every world word by THIS seat's window
+   height, its usable width (the sidebar) and the number of world words alive here (the GM's seat has the numbers a player may not see, and
+   more words alive shrink the ceiling): the words are now sized "screen" (cap height in CSS px, from the shared target alone), the engine's own
+   Scale (a client setting) divided out, and the zoom handled here (follow) */
+const engineK = (L) => { const k = Number(L?.prefs?.scale); return k > 0 ? k : 1; };
 function scaleFor(L, text, opts, targetPx) {
   try {
-    const s = L.sizeOf?.(text, { ...opts, scale: 1 });
-    const z = view.ok() ? view.zoom() : 1, px0 = s && Number.isFinite(s.natural) && Number.isFinite(s.sizeK) ? s.natural * s.sizeK * z : 0;
-    return px0 > 0 ? Math.max(0.2, Math.min(8, targetPx / px0)) : 1;
+    const s = L.sizeOf?.(text, { ...opts, scale: 1, fit: "screen" });
+    const px0 = s && Number.isFinite(s.natural) && Number.isFinite(s.sizeK) ? s.natural * s.sizeK : 0;
+    return px0 > 0 ? Math.max(0.2, Math.min(8, targetPx / px0)) / engineK(L) : 1;
   } catch { return 1; }
 }
-const vh = () => globalThis.innerHeight || 900;
+/* SAMEPIC: the reference window (same-picture.mjs), not this one: two windows show the word at one size against its token */
+const vh = () => P.REF_VH;
+const vw = () => P.REF_VW;
+const ZOOM_FLOOR_PX = 15;      // a standing word shrinks with a zoom-out no further than this cap height (the engine's legible floor's minimum)
 /* what one reaction draws and where: the cap heights, the scales, the group box (word + numbers + room for the motion) */
 function planOf(L, it) {
   const tok = it.tok, lk = it.lk;
@@ -531,7 +558,7 @@ function planOf(L, it) {
      word is the same on every seat, the number is the seat's (before, a reader's seat had the number alone where another seat had the word) */
   const nums = (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
   const grow = 1 + P.STREAK.grow * Math.min(P.STREAK.max, lk.step ?? 0);      // a blow of a series stands a little bigger each step
-  const cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), globalThis.innerWidth || 1600, user * it.scale * grow) : 0;
+  const cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), vw(), user * it.scale * grow) : 0;
   const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
   const aspect = word ? P.SIZE_RULE.aspect * ([...lk.word].length + 0.5) : 0;      // refined from the drawn word once it is up (follow)
   /* room for the motion: a rise leaves upward, and a power-up's letters may climb like stairs (seen in ADVT c4: "RAAA!" climbed out
@@ -545,7 +572,7 @@ function planOf(L, it) {
   const g = word ? P.group(gArgs)
     : P.group({ cap: numCap, aspect: 0, nums: nums.map((n) => n.text), numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
-  const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), ...layer() };
+  const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), fit: "screen", ...layer() };
   const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...lk.motion } : null;
   /* ALIGN (engine 1.9.1 recipe, owner: one accent): the word that gets the moment's impact does not flash on its own; the impact IS its
      accent and lands on its contact. Every seat passes the same (the event decides, not the seat), so the word's contact is one rule */
@@ -568,7 +595,7 @@ function measure(plan, tok = null) {
   if (!hb || !(hb.w > 0) || !(hb.h > 0)) return;
   plan.measured = true;
   /* the drawn box over the limits: the word (live, its handle's scale is read every frame) and the numbers not yet started shrink with it */
-  const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: globalThis.innerWidth || 1600 });
+  const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: vw() });
   if (f < 0.98) shrink(plan, f);      // the numbers already started (they wait for the blow's instant) shrink too
   const regroup = () => { const g = P.group({ ...plan.gArgs, aspect: hb.w, tall: hb.h }); plan.g = g; plan.box = { w: g.w, h: g.h }; };
   regroup();
@@ -577,9 +604,9 @@ function measure(plan, tok = null) {
   try {
     /* FXI-TOKEN (ADVI 5): fitted again, smaller when no side is free at this size; a series keeps its side only while it still fits */
     if (plan.blocked && tok && view.ok() && Math.abs(view.zoom() / plan.z0 - 1) < 0.02) {
-      const fit = P.fitSlot(view.tokRect(tok), plan.box, view.safe(), plan.blocked, { keep: plan.keep ?? null });
+      const tr0 = view.tokRect(tok), fit = P.fitSame(tr0, plan.box, view.std(tr0), view.safe(), plan.blocked, plan.mine ?? [], { keep: plan.keep ?? null });
       if (fit.k < 0.999) { shrink(plan, fit.k); regroup(); }
-      plan.slot = fit.slot;
+      plan.slot = fit.slot; plan.same = fit.same;
     }
   } catch (err) { once(err); }
 }
@@ -592,15 +619,19 @@ function follow(tok, plan, member) {
       /* FXLT2 (ADVT2 4: zooming in while a word stood blew it up to ~750 px over its token, the interface and a neighbour): zooming in
          never makes a standing word bigger on screen than it landed (its scale follows start zoom / zoom); zooming out it shrinks with
          the map like its token */
-      const z = view.zoom(), k = Math.min(1, z / plan.z0);
+      /* SAMEPIC: sized "screen" (CSS px whatever the zoom): zooming out shrinks the group with the map, never under the legible floor;
+         zooming in never grows it (before, the engine's "legible" model drew it, clamped by this seat's window) */
+      const z = view.zoom(), k = Math.max(Math.min(1, z / plan.z0), Math.min(1, ZOOM_FLOOR_PX / Math.max(1, plan.cap || plan.numCap || 1)));
       const h = member < 0 ? plan.wordH : plan.numH?.[member];
-      if (h?.opts && Number.isFinite(h._s0)) h.opts.scale = h._s0 * Math.min(1, plan.z0 / z);
+      if (h?.opts && Number.isFinite(h._s0)) h.opts.scale = h._s0 * k;
       const tr = view.tokRect(tok), box = { w: plan.box.w * k, h: plan.box.h * k };
       let c = P.slotPoint(plan.slot, tr, box);
-      const safe = view.safe();
+      const safe = view.safe(), std = view.std(tr);
       /* FXLT2 (seen live on lane 5: a word pushed into the view's corner landed on the map's VRAM meter, one beside the challenge cards
-         slid under them): inside the safe rect, then out of the floating panels, on the side that moves it least and stays in view */
-      if (P.onView(tr, safe)) c = P.clampInto(P.avoidRects(P.clampInto(c, box, safe), box, view.panelsCached(), safe), box, safe);
+         slid under them): inside the safe rect, then out of the floating panels, on the side that moves it least and stays in view.
+         SAMEPIC (ADVX 13: "BAM! -2" cut by the top on the GM's seat, whole on the player's): first into the STANDARD view (the same band
+         on every seat), then this seat's own limits, which leave it alone unless this seat really has less room */
+      if (P.onView(tr, std)) c = P.clampInto(P.avoidRects(P.clampInto(P.clampInto(c, box, std), box, safe), box, view.panelsCached(), safe), box, safe);
       const off = member < 0 ? plan.g.word : plan.g.nums[member];
       last = view.toWorld({ x: c.x + off.dx * k, y: c.y + off.dy * k });
       return last;
@@ -733,11 +764,12 @@ function recheck() {
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   if (!has(KEY.enabled)) game.settings.register(MOD, KEY.enabled, { name: t("ITR.Settings.Enabled.Name"), hint: t("ITR.Settings.Enabled.Hint"), scope: "client", config: true, type: Boolean, default: true, onChange: (v) => syncOwner(v) });
-  if (!has(KEY.size)) game.settings.register(MOD, KEY.size, { name: t("ITR.Settings.Size.Name"), hint: t("ITR.Settings.Size.Hint"), scope: "client", config: true, type: String, default: "normal",
+  /* SAMEPIC (owner 2026-11-14: the token reactions' options are the GM's, for the table, «dla stołu»; ADVX 9): size and layer are the table's */
+  if (!has(KEY.size)) game.settings.register(MOD, KEY.size, { name: t("ITR.Settings.Size.Name"), hint: t("ITR.Settings.Size.Hint"), scope: "world", config: true, type: String, default: "normal",
     choices: { small: t("ITR.Settings.Size.small"), normal: t("ITR.Settings.Size.normal"), large: t("ITR.Settings.Size.large") } });
   if (!has(KEY.lang)) game.settings.register(MOD, KEY.lang, { name: t("ITR.Settings.Lang.Name"), hint: t("ITR.Settings.Lang.Hint"), scope: "world", config: true, type: String, default: "en",
     choices: { en: t("ITR.Settings.Lang.en"), pl: t("ITR.Settings.Lang.pl") } });
-  if (!has(KEY.layer)) game.settings.register(MOD, KEY.layer, { name: t("ITR.Settings.Layer.Name"), hint: t("ITR.Settings.Layer.Hint"), scope: "client", config: true, type: String, default: "overlay",
+  if (!has(KEY.layer)) game.settings.register(MOD, KEY.layer, { name: t("ITR.Settings.Layer.Name"), hint: t("ITR.Settings.Layer.Hint"), scope: "world", config: true, type: String, default: "overlay",
     choices: Object.fromEntries(LAYERS.map((id) => [id, t(`ITR.Settings.Layer.${id}`)])) });
 }
 async function syncOwner(v = enabled()) {
