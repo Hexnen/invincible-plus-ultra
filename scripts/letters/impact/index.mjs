@@ -8,7 +8,7 @@
    ink (stars, lines, silhouettes, halftone, splashes) is painted ahead of time on 2D canvases, one per drawing, and a drawing change
    only swaps which canvas shows. Nothing of Foundry's is kept changed: the frame punch (a shove of the board element) and the
    hit-stop (the canvas ticker held) are undone at the last drawing, by a watchdog timer too. */
-import { planImpact, safety, frameAt, punchAt, localRadius, pick, modeFor, TICK, LIMITS, FRAMES, FRAME_IDS, KINDS, KIND_IDS, TONES } from "./plan.mjs";
+import { planImpact, safety, frameAt, punchAt, localRadius, pick, modeFor, TICK, LIMITS, FRAMES, FRAME_IDS, KINDS, KIND_IDS, TONES, STEP_AT, SERIES_STEP, SERIES_MAX } from "./plan.mjs";
 import { paintFrame, backClip } from "./draw.mjs";
 
 const NS = "moinen-letters", KEY = "impact", MODES = ["full", "local", "off"];
@@ -24,7 +24,10 @@ const BACK = {
 export function createImpact(L, tools = null) {
   const stats = { played: 0, paintMs: 0, paintMax: 0, painted: 0, showMax: 0, frameMax: 0, last: null };
   const roots = new Map();
-  let cur = null, seq = 0, localMode = "full", stopHeld = false, chromaOk = null;
+  /* FIN-ENGINE: the impacts alive (playing or waiting for their shared start). One AT A TIME means: no two whose time windows overlap; a
+     series planned ahead (blows 1.7 s apart, all called at once) plays every blow (before, each new call replaced the waiting one) */
+  const lives = new Set();
+  let seq = 0, localMode = "full", stopHeld = false, chromaOk = null;
 
   /* ---------- preferences ---------- */
   function ensureSetting() {
@@ -48,6 +51,8 @@ export function createImpact(L, tools = null) {
     if ( !(sw > 0 && sh > 0 && w > 0 && h > 0) ) return null;
     return { src, sx: frame?.x ?? 0, sy: frame?.y ?? 0, sw, sh, w, h, rot };
   }
+  /* may this user see that token? (the same rule for the struck token and for the attacker a `from` names) */
+  const seesToken = (t, spec) => spec.vision === "none" || (!!t.visible && !(t.document.hidden && !globalThis.game?.user?.isGM));
   /* -> { cx, cy, R, sil, hidden } in client px */
   function subjectOf(spec) {
     const a = spec.subject ?? spec.at, W = innerWidth, H = innerHeight;
@@ -55,7 +60,7 @@ export function createImpact(L, tools = null) {
     if ( isTokenRef(a) ) {
       const t = tokenObj(a);
       if ( !t || !globalThis.canvas?.ready ) return { hidden: true };
-      if ( spec.vision !== "none" && (!t.visible || (t.document.hidden && !globalThis.game?.user?.isGM)) ) return { hidden: true };
+      if ( !seesToken(t, spec) ) return { hidden: true };
       const c = toClient(t.center), m = t.mesh;
       const w = Math.abs(m?.width ?? t.w ?? 100) * zoom, h = Math.abs(m?.height ?? t.h ?? 100) * zoom;
       const tex = m?.texture;
@@ -90,18 +95,25 @@ export function createImpact(L, tools = null) {
     const from = spec.from;
     if ( dir == null && from ) {   // the blow comes from a token or a point: its direction on THIS screen
       try {
-        const p = isTokenRef(from) ? (tokenObj(from) ? toClient(tokenObj(from).center) : null) : (spec.space === "world" && globalThis.canvas?.ready ? toClient(from) : from);
+        /* a token this user cannot see gives no direction (it would tell where it stands): the blow is then radial */
+        const ft = isTokenRef(from) ? tokenObj(from) : null;
+        const p = isTokenRef(from) ? (ft && seesToken(ft, spec) ? toClient(ft.center) : null) : (spec.space === "world" && globalThis.canvas?.ready ? toClient(from) : from);
         if ( p && Number.isFinite(p.x) && Math.hypot(sub.cx - p.x, sub.cy - p.y) > 1 ) dir = Math.atan2(sub.cy - p.y, sub.cx - p.x);
       } catch {}
     }
-    const e = { W, H, cx, cy, R, dir, mag: plan.magnitude, tone: plan.tone, sil: sub.sil, redOk: prefs().photosafe === false,
-      local: plan.mode === "full" ? null : { r: Math.min(localRadius(W, H), Math.max(R * 2.6, Math.min(W, H) * 0.2)) },
+    const e = { W, H, cx, cy, R, dir, mag: plan.magnitude, step: plan.step, kind: plan.kind, tone: plan.tone, sil: sub.sil, redOk: prefs().photosafe === false,
+      /* the gentle panel: round the subject, sized from it (FIN-ENGINE FXIT-E2: a far-zoom token gets a panel of a few token widths) */
+      local: plan.mode === "full" ? null : { r: Math.min(localRadius(W, H), Math.max(R * 2.6, R > 0 ? Math.min(Math.min(W, H) * 0.2, Math.max(R * 6, Math.min(W, H) * 0.06)) : Math.min(W, H) * 0.2)) },
       chromaBack: chromaOk !== false,
       /* pictures are painted once and shown once: a software canvas keeps the whole cost inside paint() (a GPU canvas defers the
          tessellation of thousands of halftone dots to the frame that first shows it: measured as a stall of several hundred ms) */
       makeCanvas: (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; },
       ctx2d: (c) => c.getContext("2d", { willReadFrequently: true }) };
-    e.hx = dir != null ? cx - Math.cos(dir) * R * 0.7 : cx; e.hy = dir != null ? cy - Math.sin(dir) * R * 0.7 : cy;
+    /* where the blow lands: on the struck figure's rim on the side it comes from; the weak steps put it right on the rim (the figure
+       stays in sight), a figure struck from nowhere in particular gets its rim spot from the seed */
+    const rim = sub.sil && plan.step <= 2 ? (plan.step <= 1 ? 0.95 : 0.85) : 0.7;
+    const ha = dir != null ? dir : (sub.sil && plan.step <= 2 ? -Math.PI * (0.2 + ((plan.seed >>> 3) % 60) / 100) : null);
+    e.hx = ha != null ? cx - Math.cos(ha) * R * rim : cx; e.hy = ha != null ? cy - Math.sin(ha) * R * rim : cy;
     return e;
   }
 
@@ -154,19 +166,71 @@ export function createImpact(L, tools = null) {
     else if ( !on && stopHeld ) { stopHeld = false; try { tk?.start(); } catch {} }
   }
 
+  /* ---------- FIN-ENGINE (FXIS-E3): keep a rectangle readable under the impact ----------
+     spec.keep = a rectangle { x, y, w, h } (client px; scene units with space: "world"), an HTML element, a LETR word's handle, or a list of
+     them. Every drawing and the scene's change get a hole there (clip-path, even-odd), re-measured on every frame, so a word that moves
+     (its entrance, the frame punch) stays readable through every drawing. spec.keepPad = the margin round it (px, default 6). */
+  function boxOf(a, spec) {
+    try {
+      if ( a && (a.box || a.sprite) && a.finished ) {   // a LETR word
+        if ( !a.alive || !a.shown ) return null;
+        if ( a.sprite && !a.sprite.destroyed ) {
+          if ( !a.sprite.visible ) return null;
+          const b = a.sprite.getBounds(), v = canvas.app.view, r = v.getBoundingClientRect(), kx = r.width / (v.clientWidth || r.width || 1), ky = r.height / (v.clientHeight || r.height || 1);
+          return { x0: r.left + b.x * kx, y0: r.top + b.y * ky, x1: r.left + (b.x + b.width) * kx, y1: r.top + (b.y + b.height) * ky };
+        }
+        const el = a.box?.firstElementChild ?? a.box, r = el?.getBoundingClientRect?.();
+        return r ? { x0: r.left, y0: r.top, x1: r.right ?? r.left + r.width, y1: r.bottom ?? r.top + r.height } : null;
+      }
+      if ( a && typeof a.getBoundingClientRect === "function" ) { const r = a.getBoundingClientRect(); return { x0: r.left, y0: r.top, x1: r.left + r.width, y1: r.top + r.height }; }
+      if ( a && Number.isFinite(a.x) && Number.isFinite(a.y) ) {
+        const w = Number.isFinite(a.w) ? a.w : 0, h = Number.isFinite(a.h) ? a.h : 0;
+        if ( spec.space === "world" && globalThis.canvas?.ready ) { const p = toClient({ x: a.x, y: a.y }), q = toClient({ x: a.x + w, y: a.y + h }); return { x0: Math.min(p.x, q.x), y0: Math.min(p.y, q.y), x1: Math.max(p.x, q.x), y1: Math.max(p.y, q.y) }; }
+        return { x0: a.x, y0: a.y, x1: a.x + w, y1: a.y + h };
+      }
+    } catch {}
+    return null;
+  }
+  function keepBoxes(spec) {
+    if ( !spec.keep ) return null;
+    const pad = Number.isFinite(spec.keepPad) ? Math.max(0, spec.keepPad) : 6, out = [];
+    for ( const a of Array.isArray(spec.keep) ? spec.keep : [spec.keep] ) { const b = boxOf(a, spec); if ( b && b.x1 > b.x0 && b.y1 > b.y0 ) out.push([b.x0 - pad, b.y0 - pad, b.x1 + pad, b.y1 + pad]); }
+    return out;
+  }
+  const n1 = (v) => v.toFixed(1);
+  /* the even-odd path of a shape with the boxes cut out (pts = a polygon in client px, null = the whole view) */
+  function holePath(pts, boxes, W, H) {
+    let d = pts ? `M${n1(pts[0])} ${n1(pts[1])}` + Array.from({ length: pts.length / 2 - 1 }, (_, k) => ` L${n1(pts[k * 2 + 2])} ${n1(pts[k * 2 + 3])}`).join("") + " Z" : `M0 0 H${n1(W)} V${n1(H)} H0 Z`;
+    for ( const [x0, y0, x1, y1] of boxes ) d += ` M${n1(x0)} ${n1(y0)} H${n1(x1)} V${n1(y1)} H${n1(x0)} Z`;
+    return `path(evenodd, "${d}")`;
+  }
+  function applyKeep(h) {
+    const f = h.plan.frames[h.idx];
+    if ( !f?.cv || !h.spec.keep ) return;
+    const boxes = keepBoxes(h.spec) ?? [];
+    const key = boxes.map((b) => b.map(n1).join(",")).join(";") + "|" + h.idx;
+    if ( key === h.keepKey ) return;
+    h.keepKey = key;
+    f.cv.style.clipPath = boxes.length ? holePath(null, boxes, h.env.W, h.env.H) : "";
+    if ( h.back.style.display !== "none" ) h.back.style.clipPath = boxes.length ? holePath(f.clipPts, boxes, h.env.W, h.env.H) : (f.clip || "none");
+    h.kept = boxes.length;
+  }
+
   /* ---------- one impact ---------- */
   function paint(h, i) {
     const f = h.plan.frames[i];
     if ( !f || f.cv !== undefined ) return;
     const t0 = now(), e = h.env;
     const q = Math.min(globalThis.devicePixelRatio || 1, Math.sqrt(MAX_PIX / (e.W * e.H)));
-    const c = e.makeCanvas(Math.max(1, Math.round(e.W * q)), Math.max(1, Math.round(e.H * q)));
+    const c = f.type === "rest" ? e.makeCanvas(1, 1) : e.makeCanvas(Math.max(1, Math.round(e.W * q)), Math.max(1, Math.round(e.H * q)));
     const ctx = e.ctx2d(c);
     ctx.setTransform?.(c.width / e.W, 0, 0, c.height / e.H, 0, 0);
+    if ( f.type === "rest" ) ctx.setTransform?.(1, 0, 0, 1, 0, 0);
     try { paintFrame(ctx, e, f); } catch ( err ) { console.warn("LETR | impact drawing failed", err); }
     Object.assign(c.style, { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", display: "none" });
     f.cv = c;
     const clip = backClip(e, f);
+    f.clipPts = clip;
     f.clip = clip ? `polygon(${Array.from({ length: clip.length / 2 }, (_, k) => `${clip[k * 2].toFixed(1)}px ${clip[k * 2 + 1].toFixed(1)}px`).join(",")})` : "";
     h.wrap?.appendChild(c);
     const ms = now() - t0;
@@ -190,13 +254,14 @@ export function createImpact(L, tools = null) {
     if ( back ) { b.backdropFilter = back; b.webkitBackdropFilter = back; b.clipPath = f.clip || "none"; b.display = "block"; }
     else b.display = "none";
     setStop(!!f.stop);
+    if ( h.spec.keep ) { h.keepKey = null; applyKeep(h); }
     const ms = now() - t0; if ( ms > stats.showMax ) stats.showMax = ms;
     if ( !h.isReady ) { h.isReady = true; h._ready(true); }
   }
   function finish(h, why) {
     if ( !h.alive ) return;
     h.alive = false;
-    if ( cur === h ) cur = null;
+    lives.delete(h);
     if ( h.raf ) cancelAnimationFrame(h.raf);
     if ( h.dog ) clearTimeout(h.dog);
     try { setPunch(h, null); } catch {}
@@ -208,16 +273,25 @@ export function createImpact(L, tools = null) {
     if ( !h.isReady ) h._ready(false);
     h._done(why);
   }
-  function loop(h) {
+  /* FIN-ENGINE: painting ahead (an impact waiting for its shared start) is shared out: at most AHEAD_MS of it per display frame over every
+     waiting impact (live: five blows of a series called at once painted five full-view drawings in one frame, a 70 ms frame). The next
+     drawing of an impact that is PLAYING is always painted. */
+  const AHEAD_MS = 6, AHEAD_N = 2;
+  let aheadTs = null, aheadUsed = 0, aheadN = 0;
+  function loop(h, ts) {
     h.raf = 0;
     if ( !h.alive ) return;
     const t = now();
     if ( h.lastT != null && h.idx >= 0 ) { const d = t - h.lastT; if ( d > h.frameMax ) h.frameMax = d; }
     h.lastT = t;
     if ( h.t0 == null ) { paint(h, 0); h.t0 = now(); }   // no shared start: the clock starts when the first drawing is ready
-    const el = Math.max(t, h.t0 === h.spec.startAt ? t : h.t0) - h.t0;
-    if ( el < 0 ) {   // waiting for a shared start: paint ahead, one drawing per frame
-      const n = h.plan.frames.findIndex((f) => f.cv === undefined); if ( n >= 0 ) paint(h, n);
+    /* FIN-ENGINE: a shared start (startAt, or blowAt - peakMs) waits; before, blowAt alone was taken for an own start and drawing 0
+       stood on screen from the call to the blow (live: seconds of a full-view drawing) */
+    const el = Math.max(t, h.shared ? t : h.t0) - h.t0;
+    if ( el < 0 ) {   // waiting for a shared start: paint ahead, one drawing per frame, inside the frame's shared budget
+      const n = h.plan.frames.findIndex((f) => f.cv === undefined);
+      const fk = ts ?? Math.floor(now() / 8); if ( fk !== aheadTs ) { aheadTs = fk; aheadUsed = 0; aheadN = 0; }
+      if ( n >= 0 && aheadUsed < AHEAD_MS && aheadN < AHEAD_N ) { const p0 = now(); paint(h, n); aheadUsed += now() - p0; aheadN++; }
     } else {
       const i = frameAt(h.plan, Math.max(0, el));
       if ( i < 0 ) { finish(h, "done"); return; }
@@ -225,9 +299,10 @@ export function createImpact(L, tools = null) {
       let a = 0; for ( let k = 0; k < i; k++ ) a += h.plan.frames[k].ticks * TICK;
       const p = punchAt(h.plan, i, Math.floor((el - a) / TICK));
       if ( p || h.punched ) setPunch(h, p);
+      if ( h.spec.keep ) applyKeep(h);
       if ( h.plan.frames[i + 1] && h.plan.frames[i + 1].cv === undefined ) paint(h, i + 1);
     }
-    h.raf = requestAnimationFrame(() => loop(h));
+    h.raf = requestAnimationFrame((x) => loop(h, x));
   }
   const ended = (plan, why, extra = {}) => ({ id: `imp${++seq}`, plan, mode: plan?.mode ?? "off", alive: false, off: why === "off", isReady: false,
     ready: Promise.resolve(false), finished: Promise.resolve(why), stop() {}, ...extra });
@@ -236,20 +311,23 @@ export function createImpact(L, tools = null) {
     const armed = spec0?._armed ? spec0 : null;
     const spec = armed ? { ...armed.spec, ...over } : { ...(spec0 && typeof spec0 === "object" ? spec0 : {}) };
     const P = prefs();
-    if ( modeFor(P, { osReduced: osReduced(), callerReduced: spec.reduced }) === "off" ) return ended(null, "off");
+    if ( modeFor(P, { osReduced: osReduced(), callerReduced: spec.reduced, callerGentle: spec.gentle }) === "off" ) return ended(null, "off");
     const t = now();
-    let startAt = Number.isFinite(spec.startAt) ? spec.startAt : null;
-    if ( startAt != null && startAt > t + 60000 ) { console.warn("LETR | impact startAt is far in the future: it must be this page's performance.now(); ignored"); startAt = null; }
     const plan = planImpact(spec);
+    /* FIN-ENGINE: blowAt = the instant of the blow itself (e.g. L.contactAt of the word it belongs to): the impact starts its lead-in earlier */
+    let startAt = Number.isFinite(spec.startAt) ? spec.startAt : Number.isFinite(spec.blowAt) ? spec.blowAt - plan.peakMs : null;
+    if ( startAt != null && startAt > t + 60000 ) { console.warn("LETR | impact startAt is far in the future: it must be this page's performance.now(); ignored"); startAt = null; }
     if ( startAt != null && t > startAt + plan.ms ) return ended(plan, "late");
     const sub = armed && !over.subject ? armed.sub : subjectOf(spec);
     if ( sub.hidden ) return ended(plan, "hidden");
     /* one impact at a time: a stronger one takes over, a weaker one is not shown */
-    if ( cur?.alive ) { if ( plan.magnitude > cur.plan.magnitude ) finish(cur, "replaced"); else return ended(plan, "busy"); }
-    safety(plan, P, { osReduced: osReduced(), callerReduced: spec.reduced, flashLog: flashLog(), now: t, t0: startAt ?? t });
+    const a0 = startAt ?? t, a1 = a0 + plan.ms;
+    const clash = [...lives].filter((x) => x.alive && a0 < (x.t0 ?? t) + x.plan.ms && (x.t0 ?? t) < a1);
+    if ( clash.length ) { if ( clash.every((x) => plan.magnitude > x.plan.magnitude) ) for ( const x of clash ) finish(x, "replaced"); else return ended(plan, "busy"); }
+    safety(plan, P, { osReduced: osReduced(), callerReduced: spec.reduced, callerGentle: spec.gentle, flashLog: flashLog(), now: t, t0: startAt ?? t });
     if ( !plan.frames.length ) return ended(plan, "off");
     let done, rdy;
-    const h = { id: `imp${++seq}`, spec, plan, mode: plan.mode, alive: true, isReady: false, idx: -1, t0: startAt, paintMs: 0, frameMax: 0,
+    const h = { id: `imp${++seq}`, spec, plan, mode: plan.mode, alive: true, isReady: false, idx: -1, t0: startAt, shared: startAt != null, paintMs: 0, frameMax: 0,
       ready: new Promise((r) => (rdy = r)), finished: new Promise((r) => (done = r)), stop: () => finish(h, "stopped") };
     h._done = done; h._ready = rdy;
     h.env = envOf(spec, plan, sub);
@@ -265,10 +343,10 @@ export function createImpact(L, tools = null) {
     Object.assign(h.back.style, { position: "absolute", inset: "0", display: "none" });
     h.wrap.appendChild(h.back);
     (spec.parent instanceof HTMLElement ? spec.parent : rootFor(spec.over, spec.z)).appendChild(h.wrap);
-    cur = h; stats.played++;
+    lives.add(h); stats.played++;
     /* the watchdog: whatever happens to the frame loop (a hidden tab, an error), the impact is gone and the scene is free again */
     h.dog = setTimeout(() => finish(h, "done"), Math.max(0, (startAt ?? t) - t) + plan.ms + 300);
-    h.raf = requestAnimationFrame(() => loop(h));
+    h.raf = requestAnimationFrame((x) => loop(h, x));
     return h;
   }
   /* paint an impact ahead of the blow (the subject's silhouette and every drawing, for the view as it is now); play it with
@@ -276,7 +354,7 @@ export function createImpact(L, tools = null) {
   function prepare(spec0 = {}) {
     const spec = { ...(spec0 && typeof spec0 === "object" ? spec0 : {}) };
     const P = prefs(), plan = planImpact(spec), sub = subjectOf(spec);
-    safety(plan, P, { osReduced: osReduced(), callerReduced: spec.reduced, flashLog: flashLog(), now: now(), t0: now(), preview: true });
+    safety(plan, P, { osReduced: osReduced(), callerReduced: spec.reduced, callerGentle: spec.gentle, flashLog: flashLog(), now: now(), t0: now(), preview: true });
     const a = { _armed: true, spec, plan, sub, env: null, play: (o = {}) => play(a, o) };
     if ( !sub.hidden && plan.frames.length ) { a.env = envOf(spec, plan, sub); const h = { plan, env: a.env, wrap: null, paintMs: 0 }; for ( let i = 0; i < plan.frames.length; i++ ) paint(h, i); a.paintMs = h.paintMs; }
     return a;
@@ -284,19 +362,19 @@ export function createImpact(L, tools = null) {
   /* the plan this client would show (no flash budget used) */
   function planFor(spec = {}) {
     const plan = planImpact(spec);
-    return safety(plan, prefs(), { osReduced: osReduced(), callerReduced: spec.reduced, flashLog: flashLog(), now: now(), t0: now(), preview: true });
+    return safety(plan, prefs(), { osReduced: osReduced(), callerReduced: spec.reduced, callerGentle: spec.gentle, flashLog: flashLog(), now: now(), t0: now(), preview: true });
   }
   /* one frame type held to look at (gallery, design): at most LIMITS.galleryTicks */
   const show1 = (type, spec = {}) => play({ ...spec, frames: [{ type, ticks: Math.min(LIMITS.galleryTicks, spec.ticks ?? 12), punch: 0 }], demo: true });
-  function stopAll() { if ( cur ) finish(cur, "stopped"); setStop(false); }
+  function stopAll() { for ( const h of [...lives] ) finish(h, "stopped"); setStop(false); }
   try { globalThis.Hooks?.on?.("canvasTearDown", stopAll); } catch {}
 
   const api = {
     play, prepare, plan: planFor, show: show1, stopAll, pick, mode, setMode,
     kinds: KIND_IDS.map((id) => ({ id, pl: KINDS[id].pl, en: KINDS[id].en, tone: KINDS[id].tone })),
     frames: FRAME_IDS.map((id) => ({ id, pl: FRAMES[id].pl, en: FRAMES[id].en, full: FRAMES[id].full })),
-    tones: Object.keys(TONES), limits: LIMITS, stats,
-    get busy() { return !!cur?.alive; },
+    tones: Object.keys(TONES), limits: LIMITS, steps: STEP_AT, series: { step: SERIES_STEP, max: SERIES_MAX }, stats,
+    get busy() { return [...lives].some((x) => x.alive); },
     /* the chromatic split needs a backdrop filter that takes an SVG filter: false turns the scene's split off (the ink still splits) */
     set chroma(v) { chromaOk = v; }, get chroma() { return chromaOk; },
     async gallery(o = {}) { const g = await import("./gallery.mjs"); return g.gallery(api, o); }

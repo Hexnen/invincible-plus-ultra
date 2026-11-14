@@ -11,7 +11,7 @@ import { makeSustain, AMBIENT_MAX } from "./sustain.mjs";
 import { createVocab } from "./words.mjs";
 import { MOTION_MODES, DEFAULT_MOTION, playOpts, trackPose, trackReach, holdEnergy, gridQ, gridAge, gridCeil } from "./motion.mjs";
 
-export const VERSION = "1.9.0";   // 1.9.0 = MOTION2 (contract v10): invincible motion as per-frame tracks from a sound-family table (motion.mjs), pictures shared by key, smooth|stepped switch (look.motion, L.motionMode), reduced exit = fade. 1.8.1 = LOOK2 1.8.0 + IMPACT/KINDS1 merged. LOOK2 (contract v9): invincible = tall tight flat lettering (Anton, one union keyline, optical kerning, flat palettes, joined OO, tucked prefix, vertical column), legacy look frozen as style "expressive"; v7+v8 merged: MOVE (contract v7, 1.5.0: travel, choreography, rates, escalation, shards, push, glow, continuous sounds) + LOOK (contract v8, 1.6.0: lines, backdrops, deformation, fills, legibility, accent, look styles, sound->look); 1.4.1 TOOL; 1.3.1 WORD; 1.2.1 FXLE | 1.7.2 IMPACT merged (impact frames, impact/, L.impact); 1.7.1 KINDS1: material, impact, debris, shock wave, fire ladder, chain + TAILS, whizz, casings, dry fire, grenade. v7+v8 merged: MOVE (contract v7, 1.5.0: travel, choreography, rates, escalation, shards, push, glow, continuous sounds) + LOOK (contract v8, 1.6.0: lines, backdrops, deformation, fills, legibility, accent, look styles, sound->look); 1.4.1 TOOL; 1.3.1 WORD; 1.2.1 FXLE
+export const VERSION = "1.9.1";   // 1.9.1 = FIN-ENGINE: FXI-ENGINE 1.8.2 (impact frames: every scene change counted by the guard, six-step ladder, red-safe, gentle per call, settings row) merged onto MOTION2 1.9.0; plan.contactMs, per-word flash:false, impact size from the subject, impact keep rect. 1.9.0 = MOTION2 (contract v10): invincible motion as per-frame tracks from a sound-family table (motion.mjs), pictures shared by key, smooth|stepped switch (look.motion, L.motionMode), reduced exit = fade. 1.8.1 = LOOK2 1.8.0 + IMPACT/KINDS1 merged. LOOK2 (contract v9): invincible = tall tight flat lettering (Anton, one union keyline, optical kerning, flat palettes, joined OO, tucked prefix, vertical column), legacy look frozen as style "expressive"; v7+v8 merged: MOVE (contract v7, 1.5.0: travel, choreography, rates, escalation, shards, push, glow, continuous sounds) + LOOK (contract v8, 1.6.0: lines, backdrops, deformation, fills, legibility, accent, look styles, sound->look); 1.4.1 TOOL; 1.3.1 WORD; 1.2.1 FXLE | 1.7.2 IMPACT merged (impact frames, impact/, L.impact); 1.7.1 KINDS1: material, impact, debris, shock wave, fire ladder, chain + TAILS, whizz, casings, dry fire, grenade. v7+v8 merged: MOVE (contract v7, 1.5.0: travel, choreography, rates, escalation, shards, push, glow, continuous sounds) + LOOK (contract v8, 1.6.0: lines, backdrops, deformation, fills, legibility, accent, look styles, sound->look); 1.4.1 TOOL; 1.3.1 WORD; 1.2.1 FXLE
 /* Where a word is drawn. World layers live in the canvas (scene coordinates); screen layers are HTML over the page.
    primary = the scene's own sorted group (lit and darkened by the scene's lighting like tokens are); sortLayer: Foundry's tiles 500,
    drawings 600, tokens 700, core weather 1000; moinen-maps: water 240, roads 245, destruction 247-248, districts 250, fire ground 256,
@@ -1024,7 +1024,9 @@ export function createEngine(base) {
         h.loop = false;
         kick();
       },
-      moveTo(at) { h.at = at; h.gone = false; }
+      moveTo(at) { h.at = at; h.gone = false; },
+      /* FIN-ENGINE: this page's performance.now() of the word's contact (null until its start is known) */
+      get contactAt() { return contactAt(h); }
     };
     h._done = done; h._ready = rdy;
     h.at = opts.at;
@@ -1067,6 +1069,17 @@ export function createEngine(base) {
     const go = () => { if ( bank.has("bangers") || bank.has("anton") ) start(); else readyP.then(start, (e) => { console.warn("LETR", e); finish(h, "evicted"); }); };
     if ( opts.delay > 0 ) h.timer = setTimeout(() => { h.timer = 0; if ( h.alive ) go(); }, opts.delay); else go();
     return h;
+  }
+  /* FIN-ENGINE (FXIS-E1 / FXIT-E3): when a word's contact shows, on this page's performance.now() clock. x = a handle or a plan;
+     startAt = the word's start (default: the handle's own start once known). Smooth motion and the legacy pictures: start + contactMs;
+     stepped motion: the next instant of the shared 24 Hz grid at or after it (its entrance is drawn on ones). null when unknown. */
+  function contactAt(x, startAt) {
+    const plan = x?.plan ?? (x?.timeline ? x : null);
+    if ( !plan || !Number.isFinite(plan.contactMs) ) return null;
+    const t0 = Number.isFinite(startAt) ? startAt : x?.plan && Number.isFinite(x.t0) ? x.t0 + (x.lag || 0) : Number.isFinite(x?.opts?.startAt) ? x.opts.startAt : null;
+    if ( t0 == null ) return null;
+    const t = t0 + plan.contactMs;
+    return plan.motion?.mode === "stepped" && plan.motion.in !== "fade" ? Math.ceil(t / TICK - 1e-9) * TICK : t;
   }
   /* lettering is off on this client (tools: the master switch): a handle that is already over */
   function offHandle(text, opts) {
@@ -1298,7 +1311,7 @@ export function createEngine(base) {
   const api = {
     version: VERSION, base, limits, stats, defaults, layers: LAYERS, layerChoices,
     moods: MOOD_IDS.map((id) => ({ id, label: MOODS[id].label, sound: { ...MOODS[id].sound } })),
-    ready, play, stream, burst, still, design, stopAll, count, sizeOf, sizeModel: SIZE, lookStyle, lookStyles: STYLES.slice(), motionMode, motionModes: MOTION_MODES.slice(),
+    ready, play, stream, burst, still, design, stopAll, count, sizeOf, contactAt, sizeModel: SIZE, lookStyle, lookStyles: STYLES.slice(), motionMode, motionModes: MOTION_MODES.slice(),
     vocab, word: vocab.word, sfx, number: vocab.number, range: vocab.range, flow: vocab.flow, chain,
     /* v6 (MOVE): push words aside, the escalation memory, the parts of the view words keep clear of (px from each edge: a letterbox,
        a bar; or a function (space) => insets; null = the default 8 px) */
