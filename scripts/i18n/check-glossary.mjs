@@ -12,7 +12,7 @@
    Wired into scripts/tactics/check-all.mjs (suite "glossary"). */
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { collect, flatten, ROOT } from "./collect-pl.mjs";
+import { collect, flatten, ROOT, inlinePl, polishLiterals } from "./collect-pl.mjs";
 import { BANNED, bannedIn } from "./glossary-banned.mjs";
 import { TERMS, ATTRS, ATTR_ACC_PL, TERM_KEYS } from "./terms.mjs";
 import { MATCH_LABELS } from "./sys-labels.mjs";
@@ -98,6 +98,12 @@ for (const good of ["Determinacja 3", "rzut na Prezencję", "Wybierz wyczyny", "
   ok(!bannedIn(good).length, `"${good}" is clean`);
 }
 ok(bannedIn("Charyzma", "INVINCIBLE.Ability.Cha.long").length === 0 && BANNED.length >= 40, "allow-lists apply");
+{ // the collector reads strings, not comments: an apostrophe in a comment does not open a quote, a `pl:` block ends at its brace, a real string is still caught
+  const src = 'const T = {\n  pl: {\n    a: "Forsuj",   // the owner\'s word\n    b: "po pushu"\n  },\n  en: { a: "Push" }\n};\n/* a gun\'s push */\nconst x = { pl: "zła" };\n';
+  const got = inlinePl(src).map((r) => r.text);
+  ok(JSON.stringify(got) === JSON.stringify(["Forsuj", "po pushu", "zła"]), `inlinePl collects the pl strings only, past comments with apostrophes (${JSON.stringify(got)})`);
+  ok(!polishLiterals("// rzut na Charyzmę\nconst y = 1;").length && polishLiterals('const y = "rzut na Prezencję";').length === 1, "polishLiterals skips comments, keeps literals");
+}
 
 /* ---- 3) one source ---- */
 for (const [id, key] of Object.entries(TERM_KEYS)) {

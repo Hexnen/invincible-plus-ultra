@@ -35,8 +35,12 @@ function valueAt(src, i) {
   return "";
 }
 const STR = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`/g;
-export function inlinePl(src) {
-  const out = [];
+/** The source with its comments blanked (line numbers kept): an apostrophe in an English comment ("a gun's TA-TA-TA") is not a quote. */
+const noComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " ")).replace(/(^|\s)\/\/[^\n]*/g, "$1");
+export function inlinePl(raw) {
+  // comments blanked first (found 2026-11-14: the lettering engine's BANK `pl:` block ran on through its doc comments and read prose between
+  // two apostrophes as one "Polish" string, which then tripped the banned variant "push")
+  const src = noComments(raw), out = [];
   for (const m of src.matchAll(/(?<![\w.$])(?:pl|PL)\s*:\s*(?=[{["'`])/g)) {
     const block = valueAt(src, m.index + m[0].length);
     const line = src.slice(0, m.index).split("\n").length;
@@ -48,7 +52,7 @@ export function inlinePl(src) {
 /** String literals with Polish letters or common Polish words anywhere in a script (a hardcoded Polish text outside a `pl:` table), comments left out. */
 const PL_LETTER = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]|(?<![\w.\/-])(jest|przy|oraz|albo|lub|rzutu|rzut|karcie|karty|postaci|tylko|bez|dla|wybierane|po)(?![\w.\/-]) \p{L}/u;
 export function polishLiterals(src) {
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " ")).replace(/(^|\s)\/\/[^\n]*/g, "$1");
+  const code = noComments(src);
   const out = [];
   for (const s of code.matchAll(STR)) {
     const t = s[1] ?? s[2] ?? s[3];
