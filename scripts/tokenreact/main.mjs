@@ -22,6 +22,7 @@ import { letters } from "../letters/index.mjs";
 import { isLabel } from "../i18n/sys-labels.mjs";
 import * as Gate from "../tactics/ui/dicegate.mjs";
 import * as Moment from "../moment.mjs";
+import * as TokAnim from "../tokenanim/main.mjs";      // TOKANIM: the token's own motion
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
@@ -652,6 +653,7 @@ function play(L, it, queued = false) {
     };
     entry.dropNumbers = (stat) => { for (const h of entry.nums) if (!stat || h.stat === stat) try { h.stop({ quick: false }); } catch { /* gone */ } };
     settle();
+    tokenMoves(L, it, tok, word, tHit);
     /* the token's entry goes when every word of this reaction (the numbers too) has ended */
     function settle() {
       const n = hs.length;
@@ -689,6 +691,17 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
     if (red) spec.reduced = true;
     return I.play(spec);
   } catch (err) { once(err); return null; }
+}
+
+/* TOKANIM: the token itself moves with its reaction (scripts/tokenanim/): the kind and amount THIS SEAT letters (a player told less sees
+   less), the series' step, on the word's contact instant as the engine reads it (L.contactAt; every seat the same from the same start),
+   else the shared blow instant; the attacker only as a token (tokenanim gives a direction only when this seat sees him) */
+function tokenMoves(L, it, tok, word, tHit) {
+  try {
+    let at = Number.isFinite(tHit) ? tHit : performance.now();
+    try { const c = word && L?.contactAt ? L.contactAt(word) : null; if (Number.isFinite(c)) at = c; } catch { /* the shared instant */ }
+    TokAnim.react(tok, { kind: it.lk.kind, amt: it.lk.amt, step: it.lk.step ?? 0, seed: it.seed, at, from: it.pub?.src ? canvas.tokens?.get(it.pub.src) ?? null : null });
+  } catch (err) { once(err); }
 }
 
 /* the user's display layer, handed to the engine (contract: the world layer option) */
