@@ -401,6 +401,14 @@ function seatBand() {
 /* what of THIS seat's interface hides a block drawn under it, where it really stands (not as a full-width bar: live the GM's scene rows
    reach 176 px down a 170 px wide column, the player's 96, and the full-width reading moved the GM's map block 107 scene px lower):
    the scene bar's rows, the director pill, a chat card popped up, the floating panels */
+/* for the log: what of this seat's limits the shared block touched (its band's edges, its own panels), rounded */
+function whyMoved(r, loc) {
+  if (!r || !loc) return null;
+  const o = [], R = (q) => [Math.round(q.l), Math.round(q.t), Math.round(q.r), Math.round(q.b)];
+  if (loc.safe && (r.l < loc.safe.l || r.t < loc.safe.t || r.r > loc.safe.r || r.b > loc.safe.b)) o.push(['edge', R(loc.safe)]);
+  for (const q of loc.avoid ?? []) if (r.l < q.r && r.r > q.l && r.t < q.b && r.b > q.t) o.push(['panel', R(q)]);
+  return o;
+}
 function seatOwn() { return [...uiAvoid(), ...boxesOf([...UI_TOP, '#mm-dir-bar', ...UI_RIGHT])]; }
 function localScreen() {
   measureArea();
@@ -439,7 +447,7 @@ function compose(ctl, items, extra = {}) {
     frame = { vh: SP.REF_VH, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token),
       gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: (std.l + std.r) / 2, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
   }
-  let out = composeIn(ctl, items, frame), same = 'none';
+  let out = composeIn(ctl, items, frame), same = 'none', why = null;
   if (ctl.shared) {
     /* FXI-SPLASH (ADVI 6) + SAMEPIC: the map block is laid out from what every seat shares; when it would lie past the STANDARD view while
        its token is in view, it is laid out again inside that view (the same on every seat with this view: before, each seat used its own
@@ -454,16 +462,18 @@ function compose(ctl, items, extra = {}) {
     const real = sceneRectOf(seatBand());   // the band (on a map layer its core part also keeps inside the scene rectangle)
     if (tokIn(real)) {
       const loc = { safe: real, avoid: [...seatOwn(), ...boxesOf(UI_WINDOWS)].map(sceneRectOf).filter(Boolean) };
+      why = whyMoved(out.rect, loc);
       const fx = LP.localFix(out, frame, loc, std, () => { const q = meet(frame.safe, real); return q.r - q.l >= 0.25 * frame.vh && q.b - q.t >= 0.25 * frame.vh ? composeIn(ctl, items, { ...frame, safe: q, avoid: [...frame.avoid, ...loc.avoid] }) : null; });
       out = fx.out; same = fx.moved;
     }
   } else {
     const loc = localScreen(), std = frame.safe;
+    why = whyMoved(out.rect, loc);
     const fx = LP.localFix(out, frame, loc, std, () => composeIn(ctl, items, { ...frame, safe: meet(std, loc.safe), avoid: [...frame.avoid, ...loc.avoid] }));
     out = fx.out; same = fx.moved;
   }
   out.k = k; out.frame = frame; out.same = same;
-  logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, tok: frame.token ? [Math.round(frame.token.l), Math.round(frame.token.t)] : null, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
+  logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, ...(same !== 'none' && why ? { why } : {}), tok: frame.token ? [Math.round(frame.token.l), Math.round(frame.token.t)] : null, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
   return out;
 }
 function composeIn(ctl, items, frame) {

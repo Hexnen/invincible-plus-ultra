@@ -233,6 +233,15 @@ for (const to of [7, 3, 0]) {
   const num = a.out.find((x) => x.num);
   if (num) ok(!b.out.some((x) => x.num), `T1 hit to ${to}: the enemy's number stays the GM's (${num.text}); the player's seat keeps its place empty`);
 }
+/* T4 live (lane 5, 2026-11-14, take L): the GM's sidebar closed, the player's open; the chat column and the party region (transparent,
+   window-tall) stand elsewhere on each seat; a hit by the left (party) and one by the right (chat column) drew another size and side */
+for (const target of [{ x: 290, y: 430 }, { x: 980, y: 430 }]) {
+  const base = { center: { x: 800, y: 450 }, target, to: 0 };
+  const a = tr({ ...base, name: "gm", gm: true, side: 48, chatCol: 1236, partyRoot: 96 }), b = tr({ ...base, name: "p1", side: 348, chatCol: 936, partyRoot: 0 });
+  ok(!!wordOf(a) && sigT(a) === sigT(b), `T4 hit at ${target.x}: the transparent chat column and party region leave one word
+   GM ${sigT(a)}
+   P1 ${sigT(b)}`);
+}
 /* T2 near the top of the view: the GM's scene bar does not cut or move his word (ADVX 13: "BAM! -2" cut by the top on the GM's seat) */
 {
   const base = { center: { x: 800, y: 690 }, target: { x: 750, y: 290 }, to: 5 };

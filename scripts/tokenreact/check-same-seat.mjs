@@ -26,7 +26,11 @@ const el = (x, y, w, h) => ({ getBoundingClientRect: () => ({ left: x, top: y, w
 const UI = { "#sidebar": [el(W - SIDE, 0, SIDE, H)], "#hotbar": [el(W * 0.3, H - 66, 560, 58)], "#scene-controls": [el(8, 50, 46, H - 260)] };
 if (cfg.nav) UI["#scene-navigation"] = [el(64, 8, 420, cfg.nav)];
 if (cfg.desk) UI["#invincible-tactics-desk:not(.igd-collapsed) .igd"] = [el(...cfg.desk)];
-if (cfg.card) UI["#chat-notifications"] = [el(W - SIDE - 310, H * 0.4, 300, 220)];
+if (cfg.card) UI["#chat-notifications .chat-log > li"] = [el(W - SIDE - 310, H * 0.4, 300, 220)];
+/* the transparent regions as tall as the window (live lane 5): the chat column (its x follows the sidebar) and the party region (its x
+   follows the user's peek state); nothing is drawn in them unless a card pops up */
+if (cfg.chatCol) UI["#chat-notifications"] = [el(cfg.chatCol, 16, 300, H - 30)];
+if (cfg.partyRoot != null) UI["#invincible-party"] = [el(cfg.partyRoot, H - 412, 240, 280)];
 globalThis.document = { querySelector: () => null, querySelectorAll: (sel) => UI[sel] ?? [] };
 globalThis.getComputedStyle = () => ({ visibility: "visible" });
 /* the view: the scene point at the window's centre and the zoom (two windows of one view show the same point in their middle) */

@@ -23,7 +23,7 @@ import { isLabel } from "../i18n/sys-labels.mjs";
 import * as Gate from "../tactics/ui/dicegate.mjs";
 import * as Moment from "../moment.mjs";
 import * as TokAnim from "../tokenanim/main.mjs";      // TOKANIM: the token's own motion
-import { standardRect } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
+import { standardRect, panelZones } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
@@ -411,7 +411,7 @@ async function land(ids, ready) {
     for (const it of staged) it.tHit = it === imp?.it ? T0 : T0 + (imp ? after + it.delay : it.delay);
     const placed = [];
     /* SAMEPIC: shared obstacles (tokens nobody hides, the splash's block) vs this seat's own panels (only a local guard: fitSame) */
-    const others = [...tokenRects(new Set(staged.map((it) => it.tok.id))), ...view.blocks()];
+    const others = [...tokenRects(new Set(staged.map((it) => it.tok.id))), ...view.blocks(), ...view.zones()];
     const mine = view.ownPanels();
     for (const it of staged) {
       if (it.mode === "none") continue;
@@ -470,11 +470,16 @@ function streakOf(id, kind, seed) {
 }
 
 /* ---------- the view in screen px (client px, as getBoundingClientRect): world <-> screen, the safe rect, other tokens ---------- */
-const COVER_SEL = ["#sidebar", "#hotbar", "#players", "#scene-controls", "#controls", "#scene-navigation", "#navigation", "#chat-notifications", "#chat-message",
+/* SAMEPIC (live, lane 5, 2026-11-14): #chat-notifications and #invincible-party are transparent regions as tall as the window (the chat
+   column 1236..1536 with the sidebar closed, 936..1236 with it open; the party region 0..240 or 96..336 x 488..790 by the user's peek
+   state); read whole they cut the view or pushed the word on one seat only (KA-THOOM!! smaller on the player with the sidebar open). Only
+   what is drawn there counts: a chat card popped up, the party's cards */
+const CARD_SEL = ["#chat-notifications .chat-log > li", "#chat-notifications .chat-message"];
+const COVER_SEL = ["#sidebar", "#hotbar", "#players", "#scene-controls", "#controls", "#scene-navigation", "#navigation", ...CARD_SEL, "#chat-message",
   "#ui-bottom #chat-form", "#invincible-tactics-dock", "#invincible-combat-bar", ".mm-cin > div"];
 /* floating panels that do not hug an edge (cutting the view by them would waste half of it): a side that lands on one costs like a
    token's face, so the word takes another side (seen in the FXLT recording: a fall's "BĘC!" ran under the challenge cards) */
-const PANEL_SEL = ["#ich-dock", "#invincible-party", "#invincible-turn-tray", "#chat-notifications",
+const PANEL_SEL = ["#ich-dock", "#invincible-turn-tray", ...CARD_SEL,
   /* FXLT2 (ADVT2 6): the map's VRAM meter and pins / filter panel, the party cards, the GM's desk (the splash's own list, splash/stage.mjs) */
   ".mm-vram", "#mm-vram", "#mm-filter", ".mm-filter", "#invincible-party li", "#invincible-tactics-desk:not(.igd-collapsed) .igd"];
 const view = {
@@ -501,6 +506,9 @@ const view = {
     try { const blocks = []; Hooks.callAll(REACT_HOOK, { phase: "place", blocks }); for (const b of blocks) if (b && b.r > b.l && b.b > b.t) out.push({ x: b.l, y: b.t, w: b.r - b.l, h: b.b - b.t, k: P.SLOT_K.panel }); } catch { /* no splash */ }
     return out;
   },
+  /* SAMEPIC: the corner panels' shared zones (same-picture.mjs PANEL_ZONES: the party cards, as on the reference window), the same on
+     every seat with this view */
+  zones() { try { return panelZones(globalThis.innerWidth ?? 1600, globalThis.innerHeight ?? 900).map((z) => ({ x: z.l, y: z.t, w: z.r - z.l, h: z.b - z.t, k: P.SLOT_K.panel })); } catch { return []; } },
   /* this seat's own floating panels (the GM's desk, the party cards, the map's meters): a word is never hidden under them, but they move it
      on this seat only (SAMEPIC tier 3) */
   ownPanels() {
