@@ -20,6 +20,7 @@ import * as IP from "../splash/impact-plan.mjs";
 import * as LP from "../splash/letter-plan.mjs";
 import { seesToken } from "../splash/seen.mjs";
 import { planImpact } from "../letters/impact/plan.mjs";
+import { impBlow, impStart } from "./align-imp.mjs";      // ALIGN: blowAt read with the engine's own plan
 
 const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -118,7 +119,9 @@ async function seat({ W = 1600, H = 900, layer = "screen", e, name = "x", hero =
 }
 const R = { crit: ev({ n: 4, sixes: 4 }), strong: ev({ n: 5, sixes: 3 }), crit6: ev({ n: 6, sixes: 6 }) };
 const wordCall = (s) => s.calls.find((c) => /:word$/.test(c.o.seed ?? ""));
-const peakOf = (spec) => spec.startAt + IP.leadMs(planImpact(spec).frames);
+/* ALIGN (engine 1.9.1): the splash hands the impact its blow (`blowAt` = the word's contact) and the engine starts it peakMs earlier; the peak
+   is read with the engine's own plan (align-imp.mjs), not the caller's old "leading lines" measure */
+const peakOf = (spec) => impBlow(spec);
 
 /* ================================================================== P: privacy */
 {
@@ -161,9 +164,14 @@ for (const [name, e, full] of [["crit", R.crit, true], ["crit6", R.crit6, true],
   ok(contact > 0 && Number.isFinite(w.o.startAt), `T ${name}: the word starts on a known instant and hits ${Math.round(contact)} ms later (its squash with the burst)`);
   const peak = peakOf(im), hit = w.o.startAt + contact;
   ok(Math.abs(peak - hit) < 1, `T ${name}: the impact's peak drawing falls on the tick the word hits (peak ${Math.round(peak - w.o.startAt)} ms, hit ${Math.round(contact)} ms after the word starts; ADVI 2: it came 0.2-0.4 s after)`);
-  ok(im.startAt <= hit, `T ${name}: its build (the gathering lines) comes before the hit, not after (${Math.round(hit - im.startAt)} ms)`);
+  ok(impStart(im) <= hit, `T ${name}: its build (the gathering lines) comes before the hit, not after (${Math.round(hit - impStart(im))} ms)`);
+  ok(impStart(im) >= w.o.startAt - 1, `T ${name}: ... and not before the word itself starts (${Math.round(impStart(im) - w.o.startAt)} ms after it)`);
+  /* ALIGN (engine 1.9.1, owner: one accent): replaced "the impact is asked for before the word (it owns the instant's flash budget: the word's
+     own flash gives way)": that relied on the guard dropping the word's flash. Now the word says it: flash: false; the impact comes after it,
+     so it lands on the word's contact as the engine reads it (L.contactAt) and can keep a map word readable */
   const iw = s.log.findIndex((x) => x.what === "word" && /:word$/.test(x.seed ?? "")), ii = s.log.findIndex((x) => x.what === "impact");
-  ok(ii >= 0 && ii < iw, "T: the impact is asked for before the word (it owns the instant's flash budget: the word's own flash gives way, one accent)");
+  ok(w.o.flash === false, "T: the struck result word does not flash on its own (flash: false): the impact is its one accent");
+  ok(ii > iw && iw >= 0, "T: the impact is asked for after its word (on the word's contact, L.contactAt)");
   /* W: on the word, not on the roller */
   ok(im.subject !== hero && !im.subject?.document && Number.isFinite(im.subject?.w) && Math.abs(im.subject.x + im.subject.w / 2 - w.o.at.x) < 1 && Math.abs(im.subject.y + im.subject.h / 2 - w.o.at.y) < 1,
     `W ${name}: the impact marks the result word's box, not the roller's token (ADVI 7) (${JSON.stringify(im.subject)} vs word at ${JSON.stringify(w.o.at)})`);
@@ -201,6 +209,10 @@ for (const [name, e, full] of [["crit", R.crit, true], ["crit6", R.crit6, true],
   const s = await seat({ layer: "overlay", e: R.crit, name: "m1", hero, full: false });
   const im = s.impacts[0], w = wordCall(s);
   ok(im && im.space === "world" && Array.isArray(im.frames) && covers(im).length === 0 && Math.abs(im.subject.x + im.subject.w / 2 - w.o.at.x) < 1, `M: on the map the impact is in scene space round the word, with drawings that keep it readable (${JSON.stringify(im?.frames)})`);
+  /* ALIGN (engine 1.9.1 keep): on the map the word is IN the scene under the impact: the impact keeps that very word readable; on the screen
+     layer the word is above the impact and nothing is kept */
+  ok(im && im.keep === w.h, "M: the map impact keeps its result word readable (keep: the word's handle)");
+  { const sc = await seat({ layer: "screen", e: R.crit, name: "m0", hero, full: false }); ok(sc.impacts[0] && !("keep" in sc.impacts[0]), "M: ... on the screen layer nothing is kept (the word is above the impact)"); }
   /* the word off this seat's view (the seat looks elsewhere): no impact at the view's edge */
   const off = await seat({ layer: "overlay", e: R.crit, name: "m2", hero, full: false, pan: { x: -3000, y: -2500 } });
   eq(off.impacts.length, 0, "M: a map word out of this seat's view gets no impact frame (it would flash at the edge for nothing)");

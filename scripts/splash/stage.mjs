@@ -446,24 +446,36 @@ function letterOne(ctl, it) {
      frame can be put on the very tick the word hits. The impact is asked for FIRST: it owns the flash budget of that instant and the
      word's own flash frame gives way to it (one accent, the impact's guard). */
   o.startAt = performance.now() + LEAD_MS;
-  if (it.role === 'word' && ctl.impactPlan && !ctl.impact) {
+  /* ALIGN (engine 1.9.1 recipe, owner: one accent): the result word that gets the roll's impact does not flash on its own (`flash: false`);
+     the impact is its accent, landing on its contact. Every seat decides it from the event alone, so the word's contact is one rule. Before,
+     the impact was asked for first so that it took the flash budget from the word: that worked only while the impact had two flashes */
+  const struck = it.role === 'word' && !!ctl.impactPlan && !ctl.impact && !!LE?.impact?.play;
+  let shot = null;
+  if (struck) {
+    o.flash = false;
     let contact = it._m?.contact ?? 0;
     try { const r = LE.planFor ? LE.planFor(LP.letterable(it.text), o) : null; if (r?.plan) contact = IP.contactMs(r.plan); } catch (e) { /* the measured one */ }
-    const shot = fireImpact(ctl, it, o.startAt, contact);
+    shot = impactShot(ctl, it, contact);
     if (shot?.shift > 0) o.startAt += shot.shift;
     ctl.wordAt = o.startAt; ctl.contactAt = o.startAt + contact;
+  }
+  let h = null;
+  try {
+    h = LE.play(LP.letterable(it.text), o);
+    ctl.letters.push({ h, base: { ...o.at }, role: it.role, world, own: !!o.parent });
+    if (h?.hand) ctl.hands.push(h.hand);
+  } catch (e) { console.warn('invincible-plus-ultra (splash) | lettering failed', e); h = null; }
+  /* ALIGN: the impact after its word, on the word's contact as the ENGINE reads it (L.contactAt: on the 24 Hz grid in stepped motion) */
+  if (shot) {
+    try { const c = h && LE.contactAt ? LE.contactAt(h) : null; if (Number.isFinite(c)) ctl.contactAt = c; } catch (e) { /* the planned one */ }
+    fireImpact(ctl, shot, ctl.contactAt, h);
   }
   /* FIN-CALLERS (FXIT-S1, ADVI 8): the result word strikes now: the token reactions wait until it and its impact are over */
   if (it.role === 'word') {
     const at = ctl.contactAt ?? o.startAt;
     tellLand(ctl, at, ctl.impactEnd ? Math.max(0, ctl.impactEnd - at) : 0);
   }
-  try {
-    const h = LE.play(LP.letterable(it.text), o);
-    ctl.letters.push({ h, base: { ...o.at }, role: it.role, world, own: !!o.parent });
-    if (h?.hand) ctl.hands.push(h.hand);
-    return h;
-  } catch (e) { console.warn('invincible-plus-ultra (splash) | lettering failed', e); return null; }
+  return h;
 }
 /* FXLD2 (ADVD2 12, the caller's part): the layers in the scene's light (ground, tokens, weather) tint the letters with the room's
    light and draw rain over them (live: salmon numbers under a red alarm). The sound word keeps the chosen layer (that is what the
@@ -647,9 +659,9 @@ function accentFx(stage, P, later, o, full, impact = false) {
   }
 }
 /* WIRE1 + FXI-SPLASH (ADVI 2, 6, 7, 10): the impact frame of a result, ON the tick its word hits.
-   WHEN: the word's contact (IP.contactMs: the squash with its burst, from the engine's plan of that very word) minus the impact's own build
-   (its gathering lines, IP.leadMs), so the impact's peak drawing and the word's hit are one instant; when the word hits sooner than the build
-   takes, the word waits for it. Every seat starts the moment at the same server time (beat.mjs) with the same word, seed and plan, so the
+   WHEN: the word's contact (IP.contactMs from the engine's plan of that very word; once it plays, L.contactAt) is the impact's `blowAt`
+   (ALIGN, engine 1.9.1: the engine starts the impact plan.peakMs earlier), so the impact's peak drawing and the word's hit are one instant;
+   when the word hits sooner than that lead-in takes, the word waits for it. Every seat starts the moment at the same server time (beat.mjs) with the same word, seed and plan, so the
    same drawings fall on the same instant.
    WHERE (FXIS-1): a roll strikes nobody; what lands is the RESULT, so the impact marks the result word (its box), never the roller's token
    (ADVI 7: the star and the silhouette sat on the attacker). Nothing of the token is handed in, so it can reveal nothing (ADVI 10).
@@ -662,7 +674,9 @@ function wordInView(at) {
   const c = toClient(at);
   return !!c && c.x >= 0 && c.y >= 0 && c.x <= window.innerWidth && c.y <= window.innerHeight;
 }
-function fireImpact(ctl, it, T0, contact) {
+/* ALIGN: the impact of the result word, planned before the word plays (its spec, and how much later the word must start so that the impact's
+   lead-in fits before the contact: the shift), then played once the word is up (fireImpact) */
+function impactShot(ctl, it, contact) {
   const I = LE?.impact, ip = ctl.impactPlan;
   if (!I?.play || !ip || ctl.impact) return null;
   try {
@@ -676,18 +690,31 @@ function fireImpact(ctl, it, T0, contact) {
     if (ip.tone) spec.tone = ip.tone;
     if (ip.hitstop === false) spec.hitstop = false;
     if (S.isReduced()) spec.reduced = true;
-    let frames = spec.frames ?? null;
-    try { frames = I.plan?.(spec)?.frames ?? frames; } catch (e) { /* the kind's own build is unknown: no lead */ }
-    const lead = IP.leadMs(frames ?? []);
-    const shift = Math.max(0, lead - contact);
-    spec.startAt = T0 + shift + contact - lead;
+    /* ALIGN (engine 1.9.1): the lead-in before the impact's strongest drawing is the engine's own plan.peakMs (read from the full plan, the
+       same on every seat whatever its reduced or guard setting); IP.leadMs (leading "lines" only) stays for an engine without it */
+    let lead = 0;
+    try { const p = I.plan?.({ ...spec, reduced: false }); lead = Number.isFinite(p?.peakMs) ? p.peakMs : IP.leadMs(p?.frames ?? spec.frames ?? []); } catch (e) { lead = 0; }
+    return { spec, map, lead, shift: Math.max(0, lead - contact), contact };
+  } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
+}
+/* blowAt = the word's contact on this page's clock; word = its handle (kept readable on a map layer) */
+function fireImpact(ctl, shot, blowAt, word) {
+  const I = LE?.impact;
+  if (!I?.play || !shot || ctl.impact) return null;
+  try {
+    const spec = { ...shot.spec, blowAt };
+    /* ALIGN (engine 1.9.1 `keep`): on a map layer the word is IN the scene under the impact's overlay: it stays readable through every
+       drawing (a hole cut round it, followed while it moves). The map's own frames (IP.MAP_FRAMES, drawings that leave its spot clear) stay
+       too: keep is the second guard, not a licence for the full kinds there (ALIGN-1). On the screen layers the word is above the impact. */
+    if (shot.map && word && word.alive !== false) spec.keep = word;
     ctl.impact = I.play(spec);
-    ctl.impactPeak = spec.startAt + lead;
+    const start = blowAt - shot.lead;
+    ctl.impactPeak = blowAt;
     /* FIN-CALLERS (FXIT-S1): when the impact's last drawing is over (the token reactions wait for it) */
     let ms = 0;
     try { ms = Number(I.plan?.(spec)?.ms) || 0; } catch (e) { ms = 0; }
-    if (ctl.impact && ctl.impact.alive !== false && ms > 0) ctl.impactEnd = spec.startAt + ms;
-    return { shift, lead, contact };
+    if (ctl.impact && ctl.impact.alive !== false && ms > 0) ctl.impactEnd = start + ms;
+    return ctl.impact;
   } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
 }
 /* ------------------------------------------------------------------ FIN-CALLERS (FXIT-S1, FXIT-S2; ADVI 8): one story, in order

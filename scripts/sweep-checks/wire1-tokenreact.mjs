@@ -78,6 +78,7 @@ globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return 
 const M = await import("../tokenreact/main.mjs");
 M.start({ init: true, ready: true });
 const P = await import("../tokenreact/pure.mjs");
+const { impBlow, effective } = await import("./align-imp.mjs");      // ALIGN: blowAt / series read with the engine's own plan
 const take = async (ms = 1300) => { await sleep(ms); plays.splice(0); return impacts.splice(0); };
 const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
 
@@ -96,7 +97,9 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
   ck(`... kind of a blow (${s.kind}) under the full-field strengths for a small hit (${s.magnitude})`, ["hit", "heavy"].includes(s.kind) && s.magnitude < 0.85);
   /* FXI-TOKEN (ADVI 2): at the instant the word STRIKES (its entrance's contact; this stand-in marks none, so half of its 500 ms entrance),
      not the end of its entrance: the word is started by the shared clock (startAt) so that it strikes on the impact */
-  ck(`... at the instant the word strikes: its contact (250 ms) after the word starts (${Math.round((s.startAt ?? 0) - (word?.o?.startAt ?? 0))} ms)`, word && Math.abs(s.startAt - word.o.startAt - Math.min(250, (await import("../tokenreact/pure.mjs")).HIT_LEAD)) < 8);      // a contact past HIT_LEAD: the word starts at once
+  /* ALIGN (engine 1.9.1): the caller hands the impact its BLOW (`blowAt`, the word's contact) and the engine starts it peakMs earlier: the
+     blow, not the start, is what lands on the strike (align-imp.mjs impBlow reads either form with the engine's own plan) */
+  ck(`... at the instant the word strikes: its contact (250 ms) after the word starts (${Math.round((impBlow(s) || 0) - (word?.o?.startAt ?? 0))} ms)`, word && Math.abs(impBlow(s) - word.o.startAt - Math.min(250, (await import("../tokenreact/pure.mjs")).HIT_LEAD)) < 8);      // a contact past HIT_LEAD: the word starts at once
   ck(`... seeded by the change everybody shares (${s.seed})`, typeof s.seed === "string" && s.seed.startsWith(`A|health|`) && s.seed.endsWith("|impact"));
   ck("... no reduced key when nothing asks for calm (a false would override the OS switch)", !("reduced" in s));
   ck("... and no key that could reach the photosensitivity guard", !("photosafe" in s) && !("flashes" in s) && !("vision" in s) && !("frames" in s));
@@ -169,18 +172,22 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
   const t = mk("S", "superhero", 12, 6, { x: 600, y: 400, hm: 12, player: true });      // a player's hero: its track is public
   Hooks.callAll("canvasReady");
   const mags = [], kinds = [];
-  for (const v of [11, 10, 9]) { set(t, "health", v); const im = await take(900); mags.push(im[0]?.spec?.magnitude); kinds.push(im[0]?.spec?.kind); }
+  /* ALIGN (engine 1.9.1 `series`): the strength DRAWN (magnitude + the engine's series boost, align-imp.mjs effective) is what grows */
+  const sers = [];
+  for (const v of [11, 10, 9]) { set(t, "health", v); const im = await take(900); mags.push(im[0]?.spec ? effective(im[0].spec) : NaN); kinds.push(im[0]?.spec?.kind); sers.push(im[0]?.spec?.series ?? 0); }
+  ck(`a series is the engine's series too: places ${sers.join(", ")}`, sers.join() === "0,1,2");
   set(t, "health", 0); const down = (await take(1500))[0]?.spec;
   ck(`three blows in a row grow (${mags.join(" < ")})`, mags.every(Number.isFinite) && mags[0] < mags[1] && mags[1] < mags[2]);
-  ck(`... and going down after them is the strongest frame (${down?.kind} ${down?.magnitude})`, down?.kind === "ko" && down.magnitude >= 1.35 && down.magnitude > Math.max(...mags));
+  ck(`... and going down after them is the strongest frame (${down?.kind} ${down && effective(down)})`, down?.kind === "ko" && effective(down) >= 1.35 && effective(down) > Math.max(...mags));
   let top = 0;
-  for (const kind of ["hit", "heavy", "stress", "out"]) for (let s = 0; s <= 4; s++) for (const amt of [0, 0.5, 1]) for (const doubled of [false, true]) top = Math.max(top, P.impactOf({ kind, amt }, s, { doubled })?.magnitude ?? 0);
+  /* ALIGN: with the engine's series on top of the ladder (pure withSeries), the strength DRAWN is what must stay under the whole set */
+  for (const kind of ["hit", "heavy", "stress", "out"]) for (let s = 0; s <= 4; s++) for (const amt of [0, 0.5, 1]) for (const doubled of [false, true]) { const sp = P.impactOf({ kind, amt }, s, { doubled }); top = Math.max(top, sp ? effective(P.withSeries(sp, s)) : 0); }
   ck(`no blow but going down reaches the whole set, whatever the series (${top})`, top < 1.35);
   /* an NPC hand-edited to 0 with nothing announced: the table only saw a blow, so the impact does not say "down" (it would reveal Health) */
   const npc = mk("S2", "npc", 8, 6, { x: 900, y: 400 });
   Hooks.callAll("canvasReady");
   set(npc, "health", 0); const quiet = (await take(1500))[0]?.spec;
-  ck(`an NPC's unannounced fall to 0: an ordinary blow's impact, nothing that reveals its Health (${quiet?.kind} ${quiet?.magnitude})`, quiet?.kind === "hit" && quiet.magnitude < 1.35);
+  ck(`an NPC's unannounced fall to 0: an ordinary blow's impact, nothing that reveals its Health (${quiet?.kind} ${quiet?.magnitude})`, quiet?.kind === "hit" && effective(quiet) < 1.35);
   ck("going down always does", [0, 0.3, 1].every((amt) => P.impactOf({ kind: "down", amt }, 0).magnitude >= 1.35));
   ck("healing, getting up, regaining, spent stress: no impact frame", ["heal", "back", "regain", "steady", "spent"].every((k) => P.impactOf({ kind: k, amt: 1 }, 0) === null));
 }
@@ -206,15 +213,20 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
 }
 
 /* ---- the real guard over the specs this caller makes (plan.mjs, the engine's own: nothing here can bypass it) */
-{ const { planImpact, safety } = await import("../letters/impact/plan.mjs");
+{ const { planImpact, safety, peakOf } = await import("../letters/impact/plan.mjs");
   const specs = [];
   for (const kind of ["hit", "heavy", "stress", "out", "down"]) for (let s = 0; s <= 4; s++) for (const amt of [0, 1]) specs.push(P.impactOf({ kind, amt }, s, {}));
   let fullOff = 0, stillOne = 0, guarded = 0;
   for (const sp of specs) {
     const off = safety(planImpact(sp), { flashes: false }, { flashLog: [], now: 0 });
     if (off.mode === "local" && off.frames.every((x) => !x.full && !x.stop)) fullOff++;
+    /* ALIGN (engine 1.8.2 contract, kept in 1.9.1): reduced motion = ONE still drawing standing at the instant of the full plan's blow, so
+       a `rest` (nothing drawn) may wait before it; the check counted all frames and took the rest for a second drawing. Still checked: one
+       drawn picture, still, no shove, no hold, nothing done to the scene, and it stands on the full plan's blow (peakOf) */
     const red = safety(planImpact({ ...sp, reduced: true }), {}, { callerReduced: true, flashLog: [], now: 0 });
-    if (red.mode === "static" && red.frames.length === 1 && red.frames[0].punch === 0) stillOne++;
+    const drawn = red.frames.filter((x) => x.type !== "rest"), restT = red.frames.filter((x) => x.type === "rest").reduce((a, x) => a + x.ticks, 0);
+    if (red.mode === "static" && drawn.length === 1 && drawn[0].still && drawn[0].punch === 0 && !drawn[0].stop && !drawn[0].back && red.frames.at(-1) === drawn[0]
+      && restT === peakOf(planImpact(sp)).tick) stillOne++;
     const log = [];
     const g = safety(planImpact(sp), {}, { flashLog: log, now: 0, t0: 0 });
     if (g.frames.filter((x) => x.full).length <= 2) guarded++;

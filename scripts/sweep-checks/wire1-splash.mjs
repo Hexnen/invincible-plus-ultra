@@ -6,6 +6,7 @@
    The page and the engine are check-fxld2's fakes (copied), the engine also records L.impact.play. */
 import { ok, eq, done, summary } from "../tactics/testkit.mjs";
 import * as SL from "../splash/logic.mjs";
+import { impStart } from "./align-imp.mjs";      // ALIGN: blowAt read with the engine's own plan
 
 const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
 const ev = (rd, rng = seq([0.1, 0.5, 0.9, 0.3])) => SL.buildEvent({ newSixes: 0, rerolled: 0, pushed: false, stress: 0, action: "slugfest", ...rd }, { rng, st: null, dryN: 0 });
@@ -120,7 +121,8 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
   eq([im.over, im.seed], ["ui", "S-c1:impact"], "critical (screen layer): over the windows, under the word; seeded by the message every seat shares");
   /* FXI-SPLASH (ADVI 2) replaced "at the end of the word's whole entrance" (that was the defect: 0.2-0.4 s after the hit): the impact is now
      asked for before the word and its peak falls on the word's contact tick (sweep-checks/fxi-splash.mjs T); here: never after the word's start + entrance */
-  ok(Number.isFinite(im.startAt) && s.wordStart.length && im.startAt <= s.wordStart[0] + 5 * 1000 / 24, `critical: no later than the word's entrance (${Math.round(im.startAt - (s.wordStart[0] ?? 0))} ms after the word starts)`);
+  /* ALIGN (engine 1.9.1): the caller gives the blow (`blowAt`), the engine the start (blowAt - peakMs): align-imp.mjs impStart reads either */
+  ok(Number.isFinite(impStart(im)) && s.wordStart.length && impStart(im) <= s.wordStart[0] + 5 * 1000 / 24, `critical: no later than the word's entrance (${Math.round(impStart(im) - (s.wordStart[0] ?? 0))} ms after the word starts)`);
   eq(s.flashes, 0, "critical: no flash of our own on top of the impact frame (the 170 ms slam flash is gone)");
   eq(s.moves, 0, "critical: no shake of our own on top (the engine's frame punch is the shove)");
   ok(!("reduced" in im) && !("photosafe" in im) && !("flashes" in im) && !("frames" in im) && !("vision" in im), `critical: nothing that could weaken the guard or override the OS reduced-motion switch (${Object.keys(im)})`);
@@ -146,7 +148,7 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
   const g = await seat({ e: R.crit, name: "m", hero, gm: true, full: true });
   const p = await seat({ e: R.crit, name: "m", hero, gm: false, full: false });
   const a = g.impacts[0]?.spec, b = p.impacts[0]?.spec;
-  ok(a && b && a.kind === b.kind && a.magnitude === b.magnitude && a.seed === b.seed && Math.abs((a.startAt - g.wordStart[0]) - (b.startAt - p.wordStart[0])) < 1, `GM and player: one impact (kind, strength, seed, landing tick) whatever each seat's full-screen setting (${a?.kind} ${a?.magnitude} / ${b?.kind} ${b?.magnitude})`);
+  ok(a && b && a.kind === b.kind && a.magnitude === b.magnitude && a.seed === b.seed && Math.abs((impStart(a) - g.wordStart[0]) - (impStart(b) - p.wordStart[0])) < 1, `GM and player: one impact (kind, strength, seed, landing tick) whatever each seat's full-screen setting (${a?.kind} ${a?.magnitude} / ${b?.kind} ${b?.magnitude})`);
 }
 /* ---- privacy: a hero this seat does not see is never the subject */
 {
@@ -187,11 +189,16 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
 }
 /* ---- the real guard over every spec this caller makes */
 {
-  const { planImpact, safety } = await import("../letters/impact/plan.mjs");
+  const { planImpact, safety, peakOf } = await import("../letters/impact/plan.mjs");
   const specs = [];
   for (let P = 0.46; P <= 1.001; P += 0.03) for (const action of ["slugfest", "shooting", "charge", "dodge"]) for (const wreck of [false, true]) specs.push(IP.impactFor({ power: P, action, wreck }));
   const off = specs.filter((sp) => { const p = safety(planImpact(sp), { flashes: false }, { flashLog: [], now: 0 }); return p.mode === "local" && p.frames.every((x) => !x.full && !x.stop); }).length;
-  const still = specs.filter((sp) => { const p = safety(planImpact(sp), {}, { callerReduced: true, flashLog: [], now: 0 }); return p.mode === "static" && p.frames.length === 1; }).length;
+  /* ALIGN (engine 1.8.2 contract, kept in 1.9.1): reduced motion = ONE still drawing standing at the instant of the full plan's blow, so a
+     `rest` (nothing drawn) may wait before it; the check counted the rest as a second drawing. Still checked: one drawn picture, still, no
+     shove, no hold, nothing done to the scene, standing on the full plan's blow (peakOf) */
+  const still = specs.filter((sp) => { const p = safety(planImpact(sp), {}, { callerReduced: true, flashLog: [], now: 0 });
+    const drawn = p.frames.filter((x) => x.type !== "rest"), restT = p.frames.filter((x) => x.type === "rest").reduce((a, x) => a + x.ticks, 0);
+    return p.mode === "static" && drawn.length === 1 && drawn[0].still && !drawn[0].punch && !drawn[0].stop && !drawn[0].back && p.frames.at(-1) === drawn[0] && restT === peakOf(planImpact(sp)).tick; }).length;
   eq(off, specs.length, `flashes off: every splash impact is the gentle variant (${off}/${specs.length})`);
   eq(still, specs.length, `reduced motion: one still drawing (${still}/${specs.length})`);
 }

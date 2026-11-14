@@ -82,6 +82,7 @@ globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return 
 const M = await import("../tokenreact/main.mjs");
 M.start({ init: true, ready: true });
 const P = await import("../tokenreact/pure.mjs");
+const { impStart, impBlow } = await import("./align-imp.mjs");      // ALIGN (engine 1.9.1): the token side gives the impact its blow (`blowAt`); start and blow read with the engine's own plan
 const reacted = [];
 Hooks.on("invincible-plus-ultra.tokenReact", (d) => reacted.push(d));
 const take = async (ms = 1300) => { await sleep(ms); const w = plays.splice(0); return { words: w, im: impacts.splice(0) }; };
@@ -136,7 +137,7 @@ async function seats(build, run, ms = 1500) {
   ck(`I1 ... and its impact on both seats is the told heavy blow (${S.gm.im[0]?.spec.kind} / ${S.player.im[0]?.spec.kind})`, S.gm.im[0]?.spec.kind === "heavy" && S.player.im[0]?.spec.kind === "heavy");
   /* I8: the story order: the target answers after the roll's result has struck and its impact played */
   const landAt = landed.player;
-  ck(`I8 the target's blow comes after the roll's landing and its impact (${Math.round(S.player.im[0]?.spec.startAt - landAt)} ms after the landing)`, S.player.im[0]?.spec.startAt >= landAt + 300);
+  ck(`I8 the target's blow comes after the roll's landing and its impact (${Math.round(impStart(S.player.im[0]?.spec) - landAt)} ms after the landing)`, impStart(S.player.im[0]?.spec) >= landAt + 300);
   for (const id of ["roll-true", "roll-false"]) Hooks.callAll("invincible-plus-ultra.splashMoment", { phase: "done", id });
 }
 /* ---- I8: an impact frame still playing (the roll's) is let finish before the blow's own */
@@ -144,7 +145,7 @@ async function seats(build, run, ms = 1500) {
   const t0 = performance.now(); busyUntil = t0 + 400;
   set(t, "health", 5, {}, 81301);
   const { im } = await take(1400);
-  ck(`I8 the roll's impact still playing: the blow's waits for it (${Math.round(im[0]?.spec.startAt - busyUntil)} ms after it ended)`, im[0] && im[0].spec.startAt >= busyUntil);
+  ck(`I8 the roll's impact still playing: the blow's waits for it (${Math.round(impStart(im[0]?.spec) - busyUntil)} ms after it ended)`, im[0] && impStart(im[0].spec) >= busyUntil);
   busyUntil = 0;
 }
 
@@ -153,15 +154,21 @@ async function seats(build, run, ms = 1500) {
   for (const who of ["gm", "player"]) {
     const w = S[who].words.find((x) => !isNum(x.text)), im = S[who].im[0];
     const c = w && P.contactMs(w.h.plan.timeline);
-    /* FIN-CALLERS: the impact's contact drawing = its start + its own build (the gathering lines before it), as the roll splash reads it */
-    const lead = im ? P.leadMs(planImpact({ ...im.spec, reduced: false }).frames) : 0;
-    ck(`I2 ${who}: the impact's contact drawing falls on the drawing where the word strikes (word start + its contact ${Math.round(c)} ms; impact build ${lead} ms; off by ${Math.round(im?.spec.startAt + lead - w?.o.startAt - c)} ms)`, !!w && !!im && Math.abs(im.spec.startAt + lead - w.o.startAt - c) < 2);
+    /* ALIGN (engine 1.9.1): the impact's strongest drawing = its blow (`blowAt`; the engine starts it plan.peakMs earlier). Replaced FIN-CALLERS'
+       "its start + its own build (the leading lines, P.leadMs)": the engine's peak also counts the other lead-ins */
+    const lead = im ? impBlow(im.spec) - impStart(im.spec) : 0;
+    ck(`I2 ${who}: the impact's contact drawing falls on the drawing where the word strikes (word start + its contact ${Math.round(c)} ms; impact build ${Math.round(lead)} ms; off by ${Math.round(impBlow(im?.spec) - w?.o.startAt - c)} ms)`, !!w && !!im && Math.abs(impBlow(im.spec) - w.o.startAt - c) < 2);
+    /* ALIGN (engine 1.9.1 recipe): the struck word does not flash on its own (the impact is its one accent), and the impact keeps the word
+       and its numbers readable (keep) */
+    ck(`I2 ${who}: the struck word has no flash of its own (flash: ${w?.o.flash})`, w?.o.flash === false);
+    const kept = [].concat(im?.spec.keep ?? []);
+    ck(`I2 ${who}: the impact keeps the word and its numbers readable (${kept.length} kept)`, kept.includes(w?.h) && S[who].words.filter((x) => isNum(x.text)).every((x) => kept.includes(x.h)));
     const num = S[who].words.find((x) => isNum(x.text));
-    if (num) ck(`I2 ${who}: its number pops after the strike (${Math.round(num.o.startAt - im.spec.startAt)} ms)`, num.o.startAt >= im.spec.startAt + 100);
+    if (num) ck(`I2 ${who}: its number pops after the strike (${Math.round(num.o.startAt - impBlow(im.spec))} ms)`, num.o.startAt >= impBlow(im.spec) + 100);
   }
   const wg = S.gm.words.find((x) => !isNum(x.text)), wp = S.player.words.find((x) => !isNum(x.text));
   const cg = P.contactMs(wg.h.plan.timeline), cp = P.contactMs(wp.h.plan.timeline);
-  const dg = S.gm.im[0].spec.startAt - S.gm.t0, dp = S.player.im[0].spec.startAt - S.player.t0;
+  const dg = impBlow(S.gm.im[0].spec) - S.gm.t0, dp = impBlow(S.player.im[0].spec) - S.player.t0;
   ck(`I13 GM and player letter different words (${wg.text} contact ${Math.round(cg)} / ${wp.text} contact ${Math.round(cp)} ms) and the blow lands at one instant (${Math.round(dg)} / ${Math.round(dp)} ms after the change)`,
     wg.text !== wp.text && Math.abs(dg - dp) < 25);
   ck(`I2 the blow lands soon after the change (${Math.round(dp)} ms: gathering + the lead)`, dp < 500);
@@ -237,7 +244,7 @@ async function seats(build, run, ms = 1500) {
   const imp = im[0], ms = imp ? planImpact(imp.spec).ms : 0;
   const rest = words.filter((x) => x.o.token?.id !== imp?.spec.subject?.id);
   ck(`I15 one impact, on the knock-down (${im.length}, ${imp?.spec.kind})`, im.length === 1 && imp.spec.kind === "ko");
-  ck(`I15 the other reactions start after its drawings (${Math.round(Math.min(...rest.map((x) => x.o.startAt)) - imp?.spec.startAt)} ms after it, its drawings ${Math.round(ms)} ms)`, rest.length > 0 && rest.every((x) => x.o.startAt >= imp.spec.startAt + Math.min(500, ms) - 260));
+  ck(`I15 the other reactions start after its drawings (${Math.round(Math.min(...rest.map((x) => x.o.startAt)) - impStart(imp?.spec))} ms after it, its drawings ${Math.round(ms)} ms)`, rest.length > 0 && rest.every((x) => x.o.startAt >= impStart(imp.spec) + Math.min(500, ms) - 260));
 }
 /* ---- I8: the splash may make room: the blow's instant is announced */
 ck(`I8 every moment announces its blow's instant and tokens (${reacted.length} announcements)`, reacted.length > 0 && reacted.filter((d) => d.phase !== "place").every((d) => d.phase === "hit" && Number.isFinite(d.at) && Array.isArray(d.ids)));   // FIN-CALLERS: "place" asks where the splash stands

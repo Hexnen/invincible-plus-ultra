@@ -11,6 +11,7 @@
    Kinds: Health  hit | heavy | down (to 0 = broken [B2707]) | heal | back (up from 0 = rallied [B2773])
           Resolve stress | spent (stress taken by choice: a pushed roll, a power) | regain | out (0 = stressed out [B2816]) | steady (up from 0) */
 import { contactMs as wordContact, leadMs } from "../splash/impact-plan.mjs";
+import { STEP_AT, SERIES_STEP, SERIES_MAX } from "../letters/impact/plan.mjs";
 export { leadMs };
 
 export const HEALTH = ["hit", "heavy", "down", "heal", "back"];
@@ -520,6 +521,26 @@ export function impactOf(pub, step = 0, o = {}) {
   return out;
 }
 
+/* ALIGN (engine 1.9.1 `series`): a blow's place in its series is handed to the engine (`series: n`: it adds I.series.step = 0.15 of strength
+   per place, at most I.series.max = 4 places), so every caller builds a series alike. The ladder above still climbs one RUNG per place
+   (other drawings: the engine's series alone would leave -1, -1, -1 three scratches, ADVI 3); the engine's boost then only grows the
+   drawings INSIDE the rung's own strength: capped under the next strength bound (STEP_AT) and under IMPACT_TOP, so a series never reaches
+   the full-field frames of a heavier rung or the whole set only going down gets. spec.magnitude is what the caller passes; the strength
+   drawn is magnitude + the boost (effectiveMagnitude, = the engine's plan.magnitude). */
+export const SERIES = { step: SERIES_STEP, max: SERIES_MAX };
+export const effectiveMagnitude = (spec) => Math.round(((Number(spec?.magnitude) || 0) + SERIES.step * Math.max(0, Math.min(SERIES.max, Math.floor(Number(spec?.series) || 0)))) * 100) / 100;
+export function withSeries(spec, step) {
+  let n = Math.max(0, Math.min(SERIES.max, Math.floor(Number(step) || 0)));
+  if (!spec || !n) return spec;
+  const m = Number(spec.magnitude) || 0;
+  const bound = STEP_AT.find((b) => b > m + 1e-9) ?? 2.01;
+  const top = Math.min(bound - 0.01, spec.kind === "ko" ? 2 : IMPACT_TOP);
+  const want = Math.max(m, Math.min(top, m + SERIES.step * n));      // the strength drawn: grown inside the rung, never under the rung
+  n = Math.min(n, Math.floor(want / SERIES.step + 1e-9));            // a weak rung late in a series: fewer places, never a negative strength passed
+  if (!n) return { ...spec, magnitude: want };
+  return { ...spec, series: n, magnitude: Math.round((want - SERIES.step * n) * 1000) / 1000 };
+}
+
 /* ---------------------------------------------------------------- one instant for the word and its impact (FXI-TOKEN, ADVI 2 and 13)
    The impact frame came 0.17-0.2 s AFTER the word had reached full size (it was timed to the end of the word's whole entrance), and the GM's
    came 125-375 ms after the player's on the same blow (each seat timed it to its own word, and seats letter different words by privacy).
@@ -535,8 +556,11 @@ export const NUM_AFTER = Math.round(4 * TICK_MS);
     The engine's own `plan.contactMs` wins when it has one (scratchpad letr REQUESTS FXIS-E1); else, as the roll splash reads it
     (splash/impact-plan.mjs), the first drawing with a burst or the landing's dust (the squash on contact), else the word's flash frame */
 export function contactMs(plan, reduced = false) {
-  if (reduced) return 0;
+  /* ALIGN (engine 1.9.1, contract v11): the engine's plan.contactMs is right for every seat, ALSO under reduced motion (a reduced word fades
+     in to end ON the full entrance's contact, FIN-ENGINE FXIS-E4), so it is read before the reduced shortcut; before, a reduced seat started
+     its word on the blow's instant and the word landed one contact late. The 0 stays for a plan that names no contact (another engine). */
   if (Number.isFinite(plan?.contactMs) && plan.contactMs >= 0) return plan.contactMs;
+  if (reduced) return 0;
   /* FIN-CALLERS: engine 1.9 (MOTION2) moves the word on pose keys and its pictures carry no burst or dust: read the contact as the roll
      splash does (one rule for both callers: the word's own accent tick, else its squash pose, else its biggest pose) */
   if (Array.isArray(plan?.motion?.entKeys) && plan.motion.entKeys.length) return wordContact(plan);
