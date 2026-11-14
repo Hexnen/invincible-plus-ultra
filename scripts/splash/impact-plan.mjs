@@ -48,6 +48,19 @@ export const TICK = 1000 / 24;
    the contact itself (plan.contactMs); else 0 (the word's first picture). */
 export function contactMs(plan) {
   if (Number.isFinite(plan?.contactMs)) return Math.max(0, plan.contactMs);
+  /* engine 1.9 (MOTION2): the word moves on pose keys (plan.motion.entKeys); its impact accent, when it has one, IS the contact and
+     covers the first tick; else the first squash pose (wider than tall, or the reverse: the word flattened on the surface), else the
+     biggest pose */
+  const mo = plan?.motion;
+  if (mo && Array.isArray(mo.entKeys) && mo.entKeys.length) {
+    if (mo.flash && !mo.reduced) return 0;
+    const pose = (k) => k?.[1] ?? {};
+    const sq = mo.entKeys.find((k) => { const p = pose(k), sx = Number(p.sx) || 1, sy = Number(p.sy) || 1; return sx / sy >= 1.15 || sy / sx >= 1.3; });
+    if (sq) return Math.round(Number(sq[0]) || 0);
+    let best = -1, at = 0;
+    for (const k of mo.entKeys) { const p = pose(k), v = (Number(p.s) || 1) * Math.max(Number(p.sx) || 1, Number(p.sy) || 1); if (v > best + 1e-6) { best = v; at = Number(k[0]) || 0; } }
+    return Math.round(at);
+  }
   const ent = plan?.timeline?.ent;
   if (!Array.isArray(ent) || !ent.length) return 0;
   const has = (p, ks) => Array.isArray(p?.fx) && p.fx.some((f) => ks.includes(f?.k));
@@ -62,6 +75,12 @@ export function contactMs(plan) {
 const sizeOf = (p) => { const g = p?.g ?? {}; const s = Number(g.s) || 1; return s * Math.max(Number(g.sx) || 1, Number(g.sy) || 1) * (p?.smear?.zoom ? 1 + p.smear.zoom * 0.5 : 1); };
 export const GROW_MAX = 2;
 export function growOf(plan) {
+  const mo = plan?.motion;
+  if (mo && Array.isArray(mo.entKeys) && mo.entKeys.length) {   // engine 1.9: the pose keys (and the stepped slam's smear picture)
+    const keys = Math.max(1, ...mo.entKeys.map((k) => { const p = k?.[1] ?? {}; return (Number(p.s) || 1) * Math.max(Number(p.sx) || 1, Number(p.sy) || 1); }));
+    const smear = (plan?.timeline?.ent ?? []).some((p) => p?.smear) ? 1.3 : 1;
+    return clamp(Math.max(keys, smear), 1, GROW_MAX);
+  }
   const ent = plan?.timeline?.ent;
   if (!Array.isArray(ent) || !ent.length) return 1;
   return clamp(Math.max(1, ...ent.map(sizeOf)), 1, GROW_MAX);
@@ -76,14 +95,15 @@ export function leadMs(frames) {
 }
 /* On a map layer the words are drawn IN the scene, under the impact's overlay (ADVI 6: the black shadow frame hid HAYMAKER!, the slam's ink
    star blacked it out). There the impact keeps the word readable: only drawings that leave the word's own spot clear (focus lines that
-   start outside it, a torn window around it on the scene's negative, the colour split of the whole scene, shock rings round it). It still
-   builds: lines gather, the peak lands on the contact, the rings carry it away; the rarer the result, the more of it. */
+   start outside it, a torn window around it on the scene's negative, the colour split of the whole scene). It still builds: lines
+   gather, the peak lands on the contact, the lines carry it away; the rarer the result, the more of it. The shock ring is not used
+   there: seen live (FXI-SPLASH strip after-5) its halftone disc sat over the word's letters for two ticks. */
 export const MAP_FRAMES = [
-  ["lines", "ring"],
-  ["lines", { type: "chroma", ticks: 1, punch: 0.5 }, { type: "ring", ticks: 2 }],
-  ["lines", { type: "window", ticks: 2, punch: 1 }, "chroma", { type: "ring", ticks: 2 }],
-  ["lines", { type: "window", ticks: 2, punch: 1, stop: true }, { type: "chroma", ticks: 2 }, { type: "ring", ticks: 2 }, "lines"]
+  ["lines", "lines"],
+  ["lines", { type: "chroma", ticks: 1, punch: 0.5 }, { type: "lines", ticks: 2 }],
+  ["lines", { type: "window", ticks: 2, punch: 1 }, "chroma", { type: "lines", ticks: 2 }],
+  ["lines", { type: "window", ticks: 2, punch: 1, stop: true }, { type: "chroma", ticks: 2 }, { type: "lines", ticks: 2 }]
 ];
-export const COVERS_WORD = ["pop", "splat", "ink", "slam", "shadow", "glare", "swap", "smear", "dots", "shatter", "rip", "tear", "fade"];
+export const COVERS_WORD = ["pop", "splat", "ink", "slam", "shadow", "glare", "swap", "smear", "dots", "shatter", "rip", "tear", "fade", "ring"];
 export const tierOf = (m) => (m < 0.35 ? 0 : m < 0.85 ? 1 : m < 1.35 ? 2 : 3);   // the engine's four strengths (impact/plan.mjs tierOf)
 export const mapFrames = (magnitude) => MAP_FRAMES[tierOf(Number(magnitude) || 0)].map((f) => (typeof f === "string" ? f : { ...f }));
