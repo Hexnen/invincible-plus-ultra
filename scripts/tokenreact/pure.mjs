@@ -272,7 +272,9 @@ export function look(a, c, lang, seed, vocab = null, o = {}) {
   const [lo, hi] = LOUD[kind] ?? [0.3, 0.7];
   const loud = Math.round(Math.max(0, Math.min(1, lo + (hi - lo) * amt)) * 1000) / 1000;
   const rot = (((h >>> 8) % 13) - 6) * (kind === "down" || kind === "out" ? 1.5 : 1);      // -6..6 degrees, more for a fall
-  const side = (h >>> 4) % 2 ? 1 : -1;      // the number stands on this side of the word
+  /* CROWD (ADVX 8, 6: "-2 WHAM!" beside "WHAM! -2" in one crowd, and the "-1" of a series hopping left and right blow after blow): the number
+     always stands AFTER its word, in reading order ("WHAM! -2"); a tag, not a coin toss */
+  const side = NUM_SIDE;
   const colors = PALETTE[PAL_OF[kind]];
   const stat = HEALTH.includes(kind) ? "health" : "resolve";
   const sign = kind === "heal" || kind === "back" || kind === "regain" || kind === "steady" ? "+" : "-";
@@ -281,7 +283,7 @@ export function look(a, c, lang, seed, vocab = null, o = {}) {
     : null;
   const mo = MOTION[kind], at = (list, k) => list[(h >>> k) % list.length];
   const motion = { in: at(mo.in, 11), holdKind: at(mo.hold, 14), out: at(mo.out, 17) };
-  const lk = { kind, stat, word: null, vk: vocabKind(kind), loud, step: 0, motion, mood: s.mood, sound: { ...s.sound, loud }, colors, sev: s.sev, amt, magnitude: magOf(kind, amt), hold: s.hold, rotation: Math.round(rot), side, numbers: number ? [number] : [], number };
+  const lk = { kind, stat, word: null, vk: vocabKind(kind), loud, step: 0, n: Number.isFinite(c?.n) ? c.n : Number.isFinite(a?.num) ? a.num : 0, motion, mood: s.mood, sound: { ...s.sound, loud }, colors, sev: s.sev, amt, magnitude: magOf(kind, amt), hold: s.hold, rotation: Math.round(rot), side, numbers: number ? [number] : [], number };
   if (vocab) lk.word = wordFor(lk, vocab, { lang, seed, step: o.step, streakSeed: o.streakSeed });
   return lk;
 }
@@ -350,14 +352,20 @@ export const SLOTS = ["above", "aboveR", "aboveL", "right", "left", "below", "on
    token for long; covering the own token now costs nearly as much as covering another (was 0.6) */
 export const SLOT_K = { own: 2, token: 2.5, word: 4, panel: 8 };      // what covering costs: the own token, another token, another word, a panel
 /** the group's centre for one slot. tok = { x, y, w, h } (screen), box = { w, h } (the group with its motion room) */
+/* CROWD (ADVX 6: "the word creeps onto the token's ring"): a token's ring (the target brackets, the disposition ring, the health arc) is drawn
+   up to RING of its size outside its box. The slots above used to sink 12-20 % of the token's height INTO its box, so a word at rest stood
+   on the ring for its whole hold. Now the whole group (the word and its motion room) stands clear of the ring; only a word's entrance
+   (a drop, an overshoot) may pass over it for a few frames. The own token's cost (fitSlot) counts the ring too. */
+export const RING = 0.1;
+export const ringRect = (tok) => ({ x: tok.x - tok.w * RING, y: tok.y - tok.h * RING, w: tok.w * (1 + 2 * RING), h: tok.h * (1 + 2 * RING) });
 export function slotPoint(slot, tok, box, gap = 4) {
-  const cx = tok.x + tok.w / 2, cy = tok.y + tok.h / 2;
+  const cx = tok.x + tok.w / 2, cy = tok.y + tok.h / 2, ry = tok.h * RING, rx = tok.w * RING;
   switch (slot) {
-    case "above": return { x: cx, y: tok.y - gap - box.h / 2 + tok.h * 0.12 };
-    case "aboveR": return { x: tok.x + tok.w * 0.75 + box.w * 0.25, y: tok.y - gap - box.h / 2 + tok.h * 0.2 };
-    case "aboveL": return { x: tok.x + tok.w * 0.25 - box.w * 0.25, y: tok.y - gap - box.h / 2 + tok.h * 0.2 };
-    case "right": return { x: tok.x + tok.w + gap + box.w / 2, y: cy - tok.h * 0.1 };
-    case "left": return { x: tok.x - gap - box.w / 2, y: cy - tok.h * 0.1 };
+    case "above": return { x: cx, y: tok.y - ry - gap - box.h / 2 };
+    case "aboveR": return { x: tok.x + tok.w * 0.75 + box.w * 0.25, y: tok.y - ry - gap - box.h / 2 };
+    case "aboveL": return { x: tok.x + tok.w * 0.25 - box.w * 0.25, y: tok.y - ry - gap - box.h / 2 };
+    case "right": return { x: tok.x + tok.w + rx + gap + box.w / 2, y: cy - tok.h * 0.1 };
+    case "left": return { x: tok.x - rx - gap - box.w / 2, y: cy - tok.h * 0.1 };
     case "on": return { x: cx, y: cy - tok.h * 0.12 };
     default: return { x: cx, y: tok.y + tok.h + gap + box.h / 2 };
   }
@@ -380,7 +388,7 @@ export const FIT_SLOTS = SLOTS.filter((s) => s !== "on");
 /** -> { slot, k (scale of the group box), score } */
 export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null, ks = FIT.ks } = {}) {
   let best = { slot: FIT_SLOTS[0], k: 1, score: Infinity };
-  const own = { ...tok, k: SLOT_K.own }, A = box.w * box.h;
+  const own = { ...ringRect(tok), k: SLOT_K.own }, A = box.w * box.h;      // CROWD: the ring is the token's too
   for (const k of ks) {
     const b = { w: box.w * k, h: box.h * k };
     FIT_SLOTS.forEach((slot, i) => {
@@ -411,7 +419,7 @@ export function fitSame(tok, box, std, real, shared = [], local = [], o = {}) {
      size are kept when sliding the group (the same pushes follow() makes every frame: into the view, off this seat's own panels) clears
      this seat's limits without covering more; then the same side a little smaller (each step slid too); only then a full refit here. */
   const lim = real ?? std, A = b.w * b.h;
-  const cover = (q) => [{ ...tok, k: SLOT_K.own }, ...shared].reduce((s, z) => s + inter(q, z) * (z.k ?? 1), 0);
+  const cover = (q) => [{ ...ringRect(tok), k: SLOT_K.own }, ...shared].reduce((s, z) => s + inter(q, z) * (z.k ?? 1), 0);
   const base = cover(r);
   /* follow() pushes a word only while its token is on the standard view (onView); off it the word stands at its raw slot, so no slide here */
   if (std && onView(tok, std)) for (const f of SAME_SHRINK) {
@@ -554,7 +562,7 @@ export function impactOf(pub, step = 0, o = {}) {
   const amt = Math.max(0, Math.min(1, Number(pub.amt) || 0)), n = Math.max(0, Math.min(STREAK.max, Math.floor(Number(step) || 0)));
   if (row.ladder) {
     const blow = pub.kind === "hit" || pub.kind === "heavy";
-    let r = Math.min(RUNGS.length - 1, rungOf(pub) + IMPACT_STEP * n);
+    let r = seriesRung(pub, n, o.cum ?? null);      // CROWD: a series climbs, but never past what its blows add up to
     if (blow && o.doubled) r = Math.min(RUNGS.length - 1, r + 1);      // a stunt doubled the damage [B2434]: one rung more, the critical's frames
     const R = RUNGS[r];
     const kind = blow && o.doubled ? "crit" : blow && ENERGY.has(o.dtype) ? "shock" : R.kind;
@@ -570,6 +578,125 @@ export function impactOf(pub, step = 0, o = {}) {
   if (tone) out.tone = tone;
   return out;
 }
+
+/* ---------------------------------------------------------------- a series in proportion (CROWD, ADVX 6)
+   Five 1-point blows 0.45 s apart climbed one rung per blow (scratch, blow, hard blow, heavy, CRUSHING): the fifth -1 drew the critical's
+   frames with a full white flash and the word grew 56 %, bigger than a single -8 would have drawn. The escalation outran the damage.
+   Rule: a series still BUILDS (each blow at least as strong as the one before, one rung per blow at most), but its rung never passes the
+   rung the series' blows would get as ONE blow (their sum: cumPub) plus one rung for the rhythm itself; the critical's rung (the last) is
+   reached only when the sum alone reaches it. Five -1 now: scratch, blow, hard blow, heavy, heavy (a single -5 is heavy); -2, -3, -4 still
+   climbs to crushing; a fall to 0 is the knock-out whatever came before. The word's growth and the token's motion follow the same capped
+   step (seriesStep); the word's TEXT keeps its series (the rhythm of the sound), only its size is capped. cum = { n, a }: the series' summed
+   points and summed amounts (the shared reaction's: the same on every seat that sees the token, never a share of the track a seat may not
+   read). Without cum: the old climb. */
+export const cumPub = (pub, cum) => {
+  const n = Math.max(0, Number(cum?.n) || 0), a = Number.isFinite(cum?.a) ? Math.max(0, cum.a) : null;
+  const amt = Math.min(1, Math.max(a ?? 0, n / AMT_N));
+  const kind = pub?.kind === "stress" ? "stress" : heavyLoss(n, a) ? "heavy" : "hit";
+  return { kind, amt, known: pub?.known !== false };
+};
+export function seriesRung(pub, step = 0, cum = null) {
+  const own = rungOf(pub), top = RUNGS.length - 1, want = Math.min(top, own + IMPACT_STEP * Math.max(0, step));
+  if (!cum) return want;
+  const c = rungOf(cumPub(pub, cum));
+  const cap = c >= top ? top : Math.min(top - 1, c + 1);
+  return Math.max(own, Math.min(want, cap));
+}
+/** the step a series has really earned (0..STREAK.max): rungs added over the blow's own one, for ladder kinds; others keep their step */
+export function seriesStep(pub, step = 0, cum = null) {
+  const s = Math.max(0, Math.min(STREAK.max, Math.floor(Number(step) || 0)));
+  if (!cum || !IMPACT[pub?.kind]?.ladder) return s;
+  return Math.max(0, Math.min(s, seriesRung(pub, s, cum) - rungOf(pub)));
+}
+
+/* ---------------------------------------------------------------- a crowd hit (CROWD, ADVX 8, 17)
+   Six tokens hit at once letter: five words and one bare number (only three kept a word), two words colliding into "THWUP!UP!", equal
+   blows at 1x, 1x and 0.33x, and far out six tiny words and numbers in a heap. How comics letter an area blow: ONE sound for the blast,
+   over the people it hit, and each struck figure its own small tag. So:
+   - tokens hit in one moment that stand close together ON SCREEN (their centres within CLUSTER.linkTok token sizes or CLUSTER.linkBase
+     word caps, whichever is wider: a word placed for one of them would land on the other) form a cluster (single-link), per family:
+     Health blows (hit, heavy) with Health blows, stress with stress. A knock-down, stress-out, a heal, getting up stay their own story,
+     each with its own word. A token the GM hid never joins (its word stays on the GM's seat alone, as before).
+   - a cluster of CLUSTER.min or more gets ONE word: the heaviest member's kind, the biggest member's amount plus a little per extra member
+     (CLUSTER.amtK), a little bigger with the count (CLUSTER.countK), never under CLUSTER.floorVh of the reference view (far out the crowd
+     reads as one big event instead of a heap of specks); placed beside the whole cluster; seeded by its members, so every seat letters it.
+   - every member keeps its number as a tag beside its own token (the seat's own number, as before: a seat that may not read it shows none
+     but keeps the place), the token's own motion, and the moment's impact frame lands on the heaviest member.
+   - a token alone keeps its own word, ALWAYS (no more "three words, the rest bare numbers"); words of equal blows in one moment stand at one
+     size (sameSize). Over CROWD.shown units the lightest show their numbers only.
+   Same on every seat with the same view: positions and sizes come from the shared layout (screen px of the reference view at this zoom). */
+export const CLUSTER = { min: 2, linkTok: 1.5, linkBase: 4.5, amtK: 0.08, countK: 0.1, countMax: 4, floorVh: 0.045 };
+export const familyOf = (kind) => (kind === "hit" || kind === "heavy" ? "health" : kind === "stress" ? "resolve" : null);
+/** list = [{ key, kind, sev, amt, rect (screen), pub (no GM's hidden token) }], o = { vh } -> units, heaviest first (ties by key):
+    [{ keys, lead, kind, amt, sev, cluster }] */
+export function crowdUnits(list, { vh = REF_VH } = {}) {
+  const items = (list ?? []).filter(Boolean).slice().sort((a, b) => (b.sev ?? 0) - (a.sev ?? 0) || String(a.key).localeCompare(String(b.key)));
+  const parent = new Map(items.map((it) => [it.key, it.key]));
+  const root = (k) => { while (parent.get(k) !== k) k = parent.get(k); return k; };
+  const can = (it) => it.pub !== false && familyOf(it.kind) && it.rect && it.rect.w > 0;
+  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+    const a = items[i], b = items[j];
+    if (!can(a) || !can(b) || familyOf(a.kind) !== familyOf(b.kind)) continue;
+    const tp = Math.max(a.rect.w, a.rect.h, b.rect.w, b.rect.h);
+    const link = Math.max(CLUSTER.linkTok * tp, CLUSTER.linkBase * basePx(tp, vh));
+    const d = Math.hypot(a.rect.x + a.rect.w / 2 - b.rect.x - b.rect.w / 2, a.rect.y + a.rect.h / 2 - b.rect.y - b.rect.h / 2);
+    if (d <= link) { const ra = root(a.key), rb = root(b.key); if (ra !== rb) parent.set(rb, ra); }
+  }
+  const groups = new Map();
+  for (const it of items) { const r = root(it.key); (groups.get(r) ?? groups.set(r, []).get(r)).push(it); }
+  const units = [];
+  for (const g of groups.values()) {
+    if (g.length < CLUSTER.min) { for (const it of g) units.push({ keys: [it.key], lead: it.key, kind: it.kind, amt: it.amt, sev: it.sev, cluster: false }); continue; }
+    const lead = g[0], n = g.length;      // g keeps the heaviest-first order
+    const amt = Math.min(1, Math.max(...g.map((x) => x.amt ?? 0)) + CLUSTER.amtK * (n - 1));
+    units.push({ keys: g.map((x) => x.key), lead: lead.key, kind: lead.kind, amt: Math.round(amt * 1e6) / 1e6, sev: lead.sev, cluster: true, n });
+  }
+  return units.sort((a, b) => (b.sev ?? 0) - (a.sev ?? 0) || (b.keys.length - a.keys.length) || String(a.lead).localeCompare(String(b.lead)));
+}
+/** the size factor of a cluster's word: a little bigger per extra member (at most countMax of them) */
+export const crowdK = (n) => 1 + CLUSTER.countK * Math.min(CLUSTER.countMax, Math.max(0, (n ?? 1) - 1));
+/** the cluster word's least cap height (px of the reference view) */
+export const crowdFloor = (vh = REF_VH) => vh * CLUSTER.floorVh;
+/** the seed of a cluster's word: its members' seeds, sorted (every seat that letters the cluster letters the same word) */
+export const crowdSeed = (seeds) => `crowd|${(seeds ?? []).map(String).sort().join("+")}`;
+/** stage the units of one moment: delay and scale for each; over CROWD.shown units the rest are "number" (or "none" with no number) */
+export function stageUnits(units) {
+  const n = (units ?? []).length, crowd = n > CROWD.full;
+  const scale = n <= 3 ? 1 : n <= 6 ? 0.92 : 0.84;      // one scale for the whole moment: equal blows stand equal
+  let t = 0;
+  return (units ?? []).map((u, i) => {
+    const mode = i < CROWD.shown ? "full" : u.hasNum ? "number" : "none";
+    const out = { ...u, mode, scale, delay: mode === "none" ? 0 : t };
+    if (mode !== "none") t += crowd ? CROWD.gapCrowd : CROWD.gapFull;
+    return out;
+  });
+}
+/** equal blows at one size: words whose kind and amount (in tenths) are the same take the smallest fit among them.
+    fits = [{ key, kind, amt, k }] -> Map key -> k */
+export function sameSize(fits) {
+  const min = new Map();
+  const b = (f) => `${f.kind}|${Math.round((f.amt ?? 0) * 10)}|${f.cluster ? f.n ?? 0 : 1}`;
+  for (const f of fits ?? []) min.set(b(f), Math.min(min.get(b(f)) ?? Infinity, f.k));
+  return new Map((fits ?? []).map((f) => [f.key, min.get(b(f))]));
+}
+
+/* ---------------------------------------------------------------- where a word may stand (CROWD, ADVX 12, 14)
+   Map note pins: a pin every player may open (its journal grants LIMITED to everyone, or a pin with no entry a player could place) is a
+   SHARED obstacle (data every seat has, drawn or not); one only the GM may open moves the GM's word alone (a local guard). A word or number
+   never rests on a pin, another token, a panel or another word of the moment when a free side exists (fitSlot), and shrinks before it does.
+   Off the view (ADVX 14: a token under the open sidebar or mostly off the view got NOTHING while the table watched its Health drop): every
+   seat that sees the token letters its reaction. Where the token is not on THIS seat's view, the word stands at the edge of this seat's
+   view nearest to it ("off-panel", as a comic letters a sound from outside the panel at the panel's border) and goes back to its token's side
+   as soon as the token comes into view. */
+export const PIN_K = 3;
+/** a note pin is public when every player may open it: ownership = the page's or entry's ownership ({ default, [userId] }); author = { isGM } */
+export function pinPublic({ ownership = null, hasEntry = false, authorGM = true } = {}) {
+  if (!hasEntry) return !authorGM;
+  return (Number(ownership?.default) || 0) >= 1;
+}
+/** off-panel: the group's centre pushed into this seat's view (box in px) when its token is not on the view */
+export function offPanel(p, box, safe) { return clampInto(p, box, safe); }
+export const NUM_SIDE = 1;
 
 /* ALIGN (engine 1.9.1 `series`): a blow's place in its series is handed to the engine (`series: n`: it adds I.series.step = 0.15 of strength
    per place, at most I.series.max = 4 places), so every caller builds a series alike. The ladder above still climbs one RUNG per place

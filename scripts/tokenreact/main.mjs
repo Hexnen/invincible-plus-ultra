@@ -407,31 +407,58 @@ async function land(ids, ready) {
     unflight(ready);
     items = build(ready);
     if (!items.length) return;
-    /* the whole moment is placed together, heaviest first: each reaction takes the free side of its token (other tokens, the words
-       already placed, the view's edges and the interface count against a side) */
-    /* a token mostly outside the safe rect now (off the view, under the interface) is not lettered: its word would hang at the
-       edge or over the chat input with nothing under it (seen live in a crowd and in ADVT 6) */
-    const onView = (it) => !view.ok() || P.onView(view.tokRect(it.tok), view.safe());
-    /* SAMEPIC (ADVX 9): the crowd is staged (who keeps a word, the crowd's size) on what this seat may be shown, BEFORE its own view is asked:
-       a token off this seat's view (another window, its sidebar) no longer changes the size of the words the others get */
-    const staged = P.stage(items).filter((it) => it.mode !== "none" && onView(it));
-    /* the words from the engine's vocabulary (FXLT2, ADVT2 1), a blow of a series one step of one growing sound (ADVT2 5) */
+    /* CROWD (ADVX 14: a token under the open sidebar or mostly off the view got no reaction at all): every token this seat sees is lettered;
+       one not on this seat's view gets its word at the view's edge nearest to it (follow, pure offPanel) */
+    /* the words from the engine's vocabulary (FXLT2, ADVT2 1), a blow of a series one step of one growing sound (ADVT2 5); CROWD (ADVX 6): the
+       series' strength (impact, size, the token's motion) is capped by what its blows add up to (pure seriesStep) */
     const vocab = L.vocab?.word ? L.vocab : L.word ? { word: L.word } : null;
-    for (const it of staged) {
-      const st = streakOf(it.tok.id, it.lk.kind, it.seed);
-      it.lk.step = st.step; it.streakSeed = st.streakSeed;
-      it.lk.word = it.mode === "number" ? null : P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: st.step, streakSeed: st.streakSeed });
-      if (!it.lk.word && it.mode !== "number") it.mode = it.hasNum ? "number" : "none";
+    for (const it of items) {
+      const st = streakOf(it.tok.id, it.lk.kind, it.seed, it.lk.n, it.lk.amt);
+      it.lk.step = st.step; it.streakSeed = st.streakSeed; it.cum = st.cum;
+      it.lk.sstep = it.pub ? P.seriesStep(it.pub, st.step, st.cum) : st.step;
+    }
+    /* CROWD (ADVX 8, 17): the moment as UNITS: a token alone, or a cluster of tokens hit together and standing close on screen (one word for
+       the cluster, each member its number); heaviest first, ties by id, so every seat places them in one order */
+    const byKey = new Map(items.map((it) => [it.tok.id, it]));
+    const units = P.stageUnits(P.crowdUnits(items.map((it) => ({ key: it.tok.id, kind: it.lk.kind, sev: it.sev, amt: it.lk.amt,
+      rect: view.ok() ? view.tokRect(it.tok) : null, pub: it.tok.document?.hidden !== true })), { vh: vh() })
+      .map((u) => ({ ...u, hasNum: u.keys.some((k) => byKey.get(k)?.hasNum) })));
+    const staged = [];      // what is placed and played, in order: per unit its word item (a cluster's own, or the token's), then members
+    for (const u of units) {
+      const members = u.keys.map((k) => byKey.get(k)).filter(Boolean);
+      if (!u.cluster) {
+        const it = members[0];
+        it.mode = u.mode; it.scale = u.scale; it.delay = u.delay; it.unit = u;
+        it.lk.word = it.mode === "full" ? P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: it.lk.step, streakSeed: it.streakSeed }) : null;
+        if (!it.lk.word && it.mode === "full") it.mode = it.hasNum ? "number" : "none";
+        if (it.mode !== "none") staged.push(it);
+        continue;
+      }
+      /* the cluster's word: its kind and amount (pure crowdUnits), seeded by its members, sized up a little with the count */
+      const lead = byKey.get(u.lead), seed = P.crowdSeed(members.map((m) => m.seed));
+      const lk = P.look({ kind: u.kind, amt: u.amt, num: null }, null, lead.lang, seed);
+      const step = Math.max(...members.map((m) => m.lk.step ?? 0)), sstep = Math.max(...members.map((m) => m.lk.sstep ?? 0));
+      lk.step = step; lk.sstep = sstep;
+      lk.word = u.mode === "full" ? P.wordFor(lk, vocab, { lang: lead.lang, seed, step }) : null;
+      const cl = { key: `crowd:${seed}`, cluster: true, members, tok: lead.tok, lk, seed, lang: lead.lang, sev: u.sev, mode: lk.word ? "full" : "none", scale: u.scale * P.crowdK(members.length),
+        delay: u.delay, unit: u, room: [], hasNum: false, pub: null, ids: members.map((m) => m.tok.id) };
+      if (cl.mode === "full") staged.push(cl);
+      members.forEach((m, i) => { m.mode = m.lk.numbers?.length || m.room?.length ? "number" : "silent"; m.inCluster = cl; m.scale = u.scale; m.delay = u.delay; m.numDelay = P.NUM_AFTER + i * 50; staged.push(m); });
     }
     /* WIRE1: ONE impact frame per moment, on its worst blow as the table knows it (a crowd is one event: the engine would refuse the rest
-       as "busy" anyway); its strength grows with the blow's step in its series */
+       as "busy" anyway); its strength grows with the blow's step in its series, capped by the series' sum (CROWD); in a cluster it lands on
+       its heaviest member and the cluster's word carries it */
     let imp = null;
     for (const it of staged) {
-      if (it.mode === "none" || !it.pub) continue;
-      const spec = P.impactOf(it.pub, it.lk.step, it.pub);
+      if (it.mode === "none" || it.cluster || !it.pub) continue;
+      const spec = P.impactOf(it.pub, it.lk.step, { ...it.pub, cum: it.cum });
       if (spec && (!imp || spec.magnitude > imp.spec.magnitude)) imp = { it, spec };
     }
-    if (imp) imp.it.impact = imp.spec;
+    if (imp) {
+      const host = imp.it.inCluster && imp.it.inCluster.mode === "full" ? imp.it.inCluster : imp.it;
+      host.impact = imp.spec; host.impTok = imp.it.tok; host.impIt = imp.it;
+      if (host !== imp.it) imp.it.impHost = host;
+    }
     /* FXI-TOKEN (ADVI 2, 13, 15): ONE instant for the moment's blow, the same on every seat (pure HIT_LEAD): the impact starts on it and every
        word is started so that it strikes on it (play). The other reactions of a crowd strike after the impact (its drawings, at most 500 ms,
        took them over: one token's knock-out frame blacked out six reactions), then one after another (their stagger) */
@@ -440,38 +467,58 @@ async function land(ids, ready) {
     const T0 = Math.max(Number.isFinite(T0s) ? T0s : performance.now() + P.HIT_LEAD, performance.now() + MIN_PREP, storyEnd || 0);
     let after = 0;
     try { if (imp && L.impact?.plan) after = Math.min(500, Math.max(0, Number(L.impact.plan({ ...imp.spec, seed: `${imp.it.seed}|impact` })?.ms) || 0)); } catch (err) { once(err); }
-    for (const it of staged) it.tHit = it === imp?.it ? T0 : T0 + (imp ? after + it.delay : it.delay);
-    const placed = [];
-    /* SAMEPIC: shared obstacles (tokens nobody hides, the splash's block) vs this seat's own panels (only a local guard: fitSame) */
-    const others = [...tokenRects(new Set(staged.map((it) => it.tok.id))), ...view.blocks(), ...view.zones()];
-    const mine = view.ownPanels();
-    for (const it of staged) {
-      if (it.mode === "none") continue;
-      try { it.plan = planOf(L, it); } catch (err) { once(err); it.plan = null; }
-      if (!it.plan) continue;
-      it.plan.blocked = [...others.filter((r) => r.id !== it.tok.id), ...placed];
-      it.plan.mine = mine;
-      /* the next blow of a series lands where the last one stands (ADVT2 5: the third blow of three stood elsewhere), while that side still
-         holds the grown word (FXI-TOKEN, ADVI 5: it kept its side and was pushed over its token); a side that is not free is taken smaller
-         (pure fitSlot) */
-      const pe = playing.get(it.tok.id);
-      const was = pe?.plan?.slot ?? pe?.slot;      // the side the last word really took (re-chosen on its drawn box, measure)
-      it.plan.keep = it.lk.step > 0 && was && P.FIT_SLOTS.includes(was) ? was : null;
-      const fit = view.ok() ? P.fitSame(it.plan.tokRect, it.plan.box, view.std(it.plan.tokRect), view.safe(), it.plan.blocked, mine, { keep: it.plan.keep }) : { slot: "above", k: 1, same: true };
-      it.plan.same = fit.same; it.plan.moved = fit.moved ?? null;
-      if (Array.isArray(globalThis.__samepicFit)) globalThis.__samepicFit.push({ pass: "plan", name: it.tok.name, tok: it.plan.tokRect, box: it.plan.box, std: view.std(it.plan.tokRect), real: view.safe(), shared: it.plan.blocked, mine, keep: it.plan.keep, fit });
-      if (fit.k < 0.999) shrink(it.plan, fit.k);
-      /* SAMEPIC (live, take W: a 1366 x 768 seat's local guard shrank a word to 0.84 on the letter-count estimate, 1059 px wide where the drawn
-         word was 618, and the shrink stayed): what this seat's guard took off is given back once the drawn box is known (measure) */
-      it.plan.kLoc = fit.same ? 1 : Math.min(1, fit.k / (fit.kShared || fit.k));
-      it.plan.slot = fit.slot;
-      const c = P.slotPoint(it.plan.slot, it.plan.tokRect, it.plan.box);
-      placed.push({ x: c.x - it.plan.box.w / 2, y: c.y - it.plan.box.h / 2, w: it.plan.box.w, h: it.plan.box.h, k: P.SLOT_K.word });
-    }
+    const host = imp ? (imp.it.impHost ?? imp.it) : null;
+    for (const it of staged) if (!it.inCluster) it.tHit = it === host ? T0 : T0 + (imp ? after + it.delay : it.delay);
+    for (const it of staged) if (it.inCluster) it.tHit = it.inCluster.tHit ?? (it.inCluster === host ? T0 : T0 + (imp ? after + it.delay : it.delay));      // a cluster strikes all its members at once
+    /* SAMEPIC: shared obstacles (tokens nobody hides, the splash's block, the pins every player may open) vs this seat's own panels and pins
+       (only a local guard: fitSame) */
+    const pins = view.pins();
+    const others = [...tokenRects(new Set(staged.flatMap((it) => it.ids ?? [it.tok.id]))), ...view.blocks(), ...view.zones(), ...pins.shared];
+    const mine = [...view.ownPanels(), ...pins.local];
+    const keyOf = (it) => it.key ?? it.tok.id;
+    /* CROWD: placed twice when needed: the first pass fits each unit on its own; equal blows then take the smallest of their fits (pure
+       sameSize: ADVX 8, a three-target card's equal blows at 1x, 1x and 0.33x) and are placed again at that one size */
+    const place = (kOf = null) => {
+      const placed = [], fits = [];
+      for (const it of staged) {
+        if (it.mode === "none") continue;
+        it.plan = null;
+        try { it.plan = planOf(L, it); } catch (err) { once(err); it.plan = null; }
+        if (!it.plan || it.mode === "silent") continue;
+        const ids = new Set(it.ids ?? [it.tok.id]);
+        it.plan.blocked = [...others.filter((r) => !ids.has(r.id)), ...placed];
+        it.plan.mine = mine;
+        /* the next blow of a series lands where the last one stands (ADVT2 5: the third blow of three stood elsewhere), while that side still
+           holds the grown word (FXI-TOKEN, ADVI 5: it kept its side and was pushed over its token); a side that is not free is taken smaller
+           (pure fitSlot) */
+        const pe = it.cluster ? null : playing.get(it.tok.id);
+        const was = pe?.plan?.slot ?? pe?.slot;      // the side the last word really took (re-chosen on its drawn box, measure)
+        it.plan.keep = it.lk.step > 0 && was && P.FIT_SLOTS.includes(was) ? was : null;
+        const kf = kOf?.get(keyOf(it));
+        const o = { keep: it.plan.keep, ...(Number.isFinite(kf) ? { ks: [kf] } : {}) };
+        const fit = view.ok() ? P.fitSame(it.plan.tokRect, it.plan.box, view.std(it.plan.tokRect), view.safe(), it.plan.blocked, mine, o) : { slot: "above", k: 1, same: true };
+        it.plan.same = fit.same; it.plan.moved = fit.moved ?? null;
+        if (Array.isArray(globalThis.__samepicFit)) globalThis.__samepicFit.push({ pass: kOf ? "plan2" : "plan", name: it.cluster ? keyOf(it) : it.tok.name, tok: it.plan.tokRect, box: it.plan.box, std: view.std(it.plan.tokRect), real: view.safe(), shared: it.plan.blocked, mine, keep: it.plan.keep, fit });
+        if (fit.k < 0.999) shrink(it.plan, fit.k);
+        /* SAMEPIC (live, take W: a 1366 x 768 seat's local guard shrank a word to 0.84 on the letter-count estimate, 1059 px wide where the drawn
+           word was 618, and the shrink stayed): what this seat's guard took off is given back once the drawn box is known (measure) */
+        it.plan.kLoc = fit.same ? 1 : Math.min(1, fit.k / (fit.kShared || fit.k));
+        it.plan.slot = fit.slot;
+        const c = P.slotPoint(it.plan.slot, it.plan.tokRect, it.plan.box);
+        placed.push({ x: c.x - it.plan.box.w / 2, y: c.y - it.plan.box.h / 2, w: it.plan.box.w, h: it.plan.box.h, k: P.SLOT_K.word });
+        if (it.mode === "full" && it.plan.wordOpts) fits.push({ key: keyOf(it), kind: it.lk.kind, amt: it.lk.amt, k: fit.kShared ?? fit.k, cluster: !!it.cluster, n: it.members?.length ?? 1 });
+      }
+      return fits;
+    };
+    const fits = place();
+    const same = P.sameSize(fits);
+    if (fits.some((f) => same.get(f.key) < f.k - 0.005)) place(same);
     const shown = staged.filter((it) => it.plan && it.mode !== "none");
     /* the roll splash (and anything else) may make room for the blow: its instant and its tokens (scratchpad letr REQUESTS FXI-TOKEN) */
-    if (shown.length) try { Hooks.callAll(REACT_HOOK, { phase: "hit", at: T0, ids: shown.map((it) => it.tok.id) }); } catch (err) { once(err); }
-    for (const it of shown) play(L, it);
+    if (shown.length) try { Hooks.callAll(REACT_HOOK, { phase: "hit", at: T0, ids: [...new Set(shown.flatMap((it) => it.ids ?? [it.tok.id]))] }); } catch (err) { once(err); }
+    /* a cluster's members (their numbers, their motion) first, its word last: the word's impact keeps the numbers readable (engine `keep`) */
+    for (const it of shown) if (!it.cluster) play(L, it);
+    for (const it of shown) if (it.cluster) play(L, it);
   } catch (err) { once(err); unflight(ready); }
 }
 /* the gathered changes of a moment leave the waiting list once lettered (or failed) */
@@ -496,13 +543,17 @@ function shrink(plan, f, back = false) {
   if (plan.g) plan.g = { w: plan.g.w * f, h: plan.g.h * f, word: { dx: plan.g.word.dx * f, dy: plan.g.word.dy * f }, nums: plan.g.nums.map((q) => ({ dx: q.dx * f, dy: q.dy * f })) };
 }
 /* one series of blows per token (pure STREAK): a loss within STREAK.ms of the last one is the next step; anything else starts over */
-function streakOf(id, kind, seed) {
+/* CROWD: the series also adds up what its blows took (cum = { n, a }: points and amounts of the shared reaction, the same on every seat that
+   sees the token), so its strength can be capped by its sum (pure seriesRung / seriesStep) */
+function streakOf(id, kind, seed, n = 0, a = null) {
   const t = Date.now(), s = streaks.get(id);
-  if (!P.isLoss(kind)) { streaks.delete(id); return { step: 0, streakSeed: seed }; }
-  if (s && t - s.t < P.STREAK.ms) { s.n = Math.min(P.STREAK.max, s.n + 1); s.t = t; return { step: s.n, streakSeed: s.seed }; }
+  const add = (c) => ({ n: (c?.n ?? 0) + (Number(n) || 0), a: Number.isFinite(a) ? (c?.a ?? 0) + a : c?.a ?? null });
+  if (!P.isLoss(kind)) { streaks.delete(id); return { step: 0, streakSeed: seed, cum: add(null) }; }
+  if (s && t - s.t < P.STREAK.ms) { s.n = Math.min(P.STREAK.max, s.n + 1); s.t = t; s.cum = add(s.cum); return { step: s.n, streakSeed: s.seed, cum: { ...s.cum } }; }
   if (streaks.size > 300) streaks.clear();
-  streaks.set(id, { seed, n: 0, t });
-  return { step: 0, streakSeed: seed };
+  const cum = add(null);
+  streaks.set(id, { seed, n: 0, t, cum });
+  return { step: 0, streakSeed: seed, cum: { ...cum } };
 }
 
 /* ---------- the view in screen px (client px, as getBoundingClientRect): world <-> screen, the safe rect, other tokens ---------- */
@@ -562,6 +613,27 @@ const view = {
     }
     return out;
   },
+  /* CROWD (ADVX 12: "-9" and a Resolve word on a map note pin): the scene's note pins (the map's pins are notes too). A pin every player may
+     open is a shared obstacle (pure pinPublic: its data is on every seat, drawn there or not); a pin only the GM may open moves the word on
+     a seat that draws it (local) */
+  pins() {
+    const shared = [], local = [];
+    if (!this.ok()) return { shared, local };
+    try {
+      for (const n of canvas.notes?.placeables ?? []) {
+        const d = n.document; if (!d) continue;
+        const b = n.bounds, z = this.zoom();
+        let r;
+        if (b && b.width > 0 && b.height > 0) { const a = this.toScreen({ x: b.x, y: b.y }); r = { x: a.x, y: a.y, w: b.width * z, h: b.height * z }; }
+        else { const s = (Number(d.iconSize) || 40) * z, a = this.toScreen({ x: d.x, y: d.y }); r = { x: a.x - s / 2, y: a.y - s / 2, w: s, h: s }; }
+        const acc = d.page ?? d.entry;
+        const pub = P.pinPublic({ ownership: acc?.ownership ?? null, hasEntry: !!acc, authorGM: d._source?.author == null ? false : d.author?.isGM ?? true });
+        const q = { ...r, k: P.PIN_K, id: `note:${d.id}` };
+        if (pub) shared.push(q); else if (n.visible !== false && n.renderable !== false) local.push(q);
+      }
+    } catch (err) { once(err); }
+    return { shared, local };
+  },
   /* SAMEPIC: the standard view: the canvas view minus Foundry's bars as the same fixed band on every seat (same-picture.mjs RESERVE) */
   std(tr = null) { const r = canvas.app.view.getBoundingClientRect(), p = tr ? { x: tr.x + tr.w / 2 - r.left, y: tr.y + tr.h / 2 - r.top } : null, s = standardRect(r.width || globalThis.innerWidth || 1600, r.height || globalThis.innerHeight || 900, p); return { l: s.l + r.left, t: s.t + r.top, r: s.r + r.left, b: s.b + r.top }; },
   zoom: () => canvas.stage.scale?.x || 1,
@@ -600,17 +672,29 @@ const vh = () => P.REF_VH;
 const vw = () => P.REF_VW;
 const ZOOM_FLOOR_PX = 15;      // a standing word shrinks with a zoom-out no further than this cap height (the engine's legible floor's minimum)
 /* what one reaction draws and where: the cap heights, the scales, the group box (word + numbers + room for the motion) */
+/* the screen box a reaction stands by, now: its token's, or a cluster's (CROWD: the box round all its members) */
+function rectOf(it) {
+  if (!view.ok()) return { x: 0, y: 0, w: 100, h: 100 };
+  if (!it.cluster) return view.tokRect(it.tok);
+  const rs = it.members.filter((m) => m.tok && !m.tok.destroyed).map((m) => view.tokRect(m.tok));
+  if (!rs.length) return view.tokRect(it.tok);
+  const x0 = Math.min(...rs.map((r) => r.x)), y0 = Math.min(...rs.map((r) => r.y)), x1 = Math.max(...rs.map((r) => r.x + r.w)), y1 = Math.max(...rs.map((r) => r.y + r.h));
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, tokPx: Math.max(...rs.map((r) => Math.max(r.w, r.h))) };
+}
 function planOf(L, it) {
   const tok = it.tok, lk = it.lk;
   const user = SIZE[get(KEY.size, "normal")] ?? 1;
-  const tokRect = view.ok() ? view.tokRect(tok) : { x: 0, y: 0, w: 100, h: 100 };
-  const tokPx = Math.max(tokRect.w, tokRect.h);
+  const tokRect = rectOf(it);
+  const tokPx = tokRect.tokPx ?? Math.max(tokRect.w, tokRect.h);
   const word = it.mode === "full" || it.mode === "mark";
   /* PRIV: a "mark" (a crowd's small word for a reaction whose number not every seat may show) keeps this seat's own number beside it: the
      word is the same on every seat, the number is the seat's (before, a reader's seat had the number alone where another seat had the word) */
-  const nums = (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
-  const grow = 1 + P.STREAK.grow * Math.min(P.STREAK.max, lk.step ?? 0);      // a blow of a series stands a little bigger each step
-  const cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), vw(), user * it.scale * grow) : 0;
+  const nums = it.mode === "silent" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
+  /* a blow of a series stands a little bigger each step it has EARNED (CROWD: pure seriesStep, capped by the series' sum) */
+  const grow = 1 + P.STREAK.grow * Math.min(P.STREAK.max, lk.sstep ?? lk.step ?? 0);
+  let cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), vw(), user * it.scale * grow) : 0;
+  /* CROWD (ADVX 17): a cluster's word is never under the crowd floor (far out the crowd reads as one event, not a heap of specks) */
+  if (word && it.cluster) cap = Math.min(vh() * P.SIZE_RULE.capVh, Math.max(cap, P.crowdFloor(vh()) * user));
   const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
   const aspect = word ? P.SIZE_RULE.aspect * ([...lk.word].length + 0.5) : 0;      // refined from the drawn word once it is up (follow)
   /* room for the motion: a rise leaves upward, and a power-up's letters may climb like stairs (seen in ADVT c4: "RAAA!" climbed out
@@ -621,8 +705,11 @@ function planOf(L, it) {
      where the player's knock-down word stood bigger and elsewhere than the GM's) */
   const room = word && (it.room?.length ?? 0) > nums.length ? it.room.slice(0, 2) : nums.map((n) => n.text);
   const gArgs = word ? { cap, aspect, nums: room, numCap, side: lk.side, up: (rising ? 0.6 : 0.4) + (lk.mood === "powerup" ? 0.6 : 0), down: lk.motion.in === "drop" ? 0.3 : 0.2 } : null;
-  const g = word ? P.group(gArgs)
-    : P.group({ cap: numCap, aspect: 0, nums: nums.map((n) => n.text), numCap, side: 0, up: 0.25, down: 0.15 });
+  /* a number alone (a cluster's member, a crowd over the cap) holds the room of the numbers a reader's seat letters, as a word does (PRIV):
+     the box every seat places is the same whatever numbers this seat may show (CROWD: a later unit's side must not depend on it) */
+  const numRoom = !word && (it.room?.length ?? 0) > nums.length ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  let g = word ? P.group(gArgs)
+    : P.group({ cap: numCap, aspect: 0, nums: numRoom, numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
   const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), fit: "screen", ...layer() };
   const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...lk.motion } : null;
@@ -635,7 +722,23 @@ function planOf(L, it) {
     o.scale = scaleFor(L, n.text, o, numCap);
     return o;
   });
-  return { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, wordOpts, numOpts, slot: "above" };
+  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, wordOpts, numOpts, slot: "above", rect: () => rectOf(it) };
+  /* CROWD (ADVX 8: "THWUP!UP!": two words placed on letter-count estimates, then each re-fitted alone on its drawn box against the others'
+     stale estimates): the word's drawn box is asked of the engine BEFORE it is placed (L.planFor: the same plan the word will play, with the
+     table's options, reduced motion off, so every seat plans one box), so the whole moment is laid out once on real boxes and stays put */
+  if (word && L.planFor) {
+    try {
+      const hb = L.planFor(lk.word, { ...wordOpts, reduced: false })?.plan?._holdBox;
+      if (hb && hb.w > 0 && hb.h > 0) {
+        plan.gArgs = { ...gArgs, aspect: hb.w, tall: hb.h };
+        g = P.group(plan.gArgs); plan.g = g; plan.box = { w: g.w, h: g.h };
+        const f = P.fitDrawn({ cap, hbW: hb.w, hbH: hb.h, tokenPx: tokPx, vh: vh(), vw: vw() });
+        if (f < 0.98) shrink(plan, f);
+        plan.measured = true; plan.pre = true;
+      }
+    } catch (err) { once(err); }
+  }
+  return plan;
 }
 /* the world point of one member of a reaction's group, every frame: from its token's place now, on the side chosen at the start,
    pushed into the safe rect while the token is on screen (reviews 1, 7, 14) */
@@ -679,14 +782,16 @@ function follow(tok, plan, member) {
       const z = view.zoom(), k = Math.max(Math.min(1, z / plan.z0), Math.min(1, ZOOM_FLOOR_PX / Math.max(1, plan.cap || plan.numCap || 1)));
       const h = member < 0 ? plan.wordH : plan.numH?.[member];
       if (h?.opts && Number.isFinite(h._s0)) h.opts.scale = h._s0 * k;
-      const tr = view.tokRect(tok), box = { w: plan.box.w * k, h: plan.box.h * k };
+      const tr = plan.rect ? plan.rect() : view.tokRect(tok), box = { w: plan.box.w * k, h: plan.box.h * k };
       let c = P.slotPoint(plan.slot, tr, box);
       const safe = view.safe(), std = view.std(tr);
       /* FXLT2 (seen live on lane 5: a word pushed into the view's corner landed on the map's VRAM meter, one beside the challenge cards
          slid under them): inside the safe rect, then out of the floating panels, on the side that moves it least and stays in view.
          SAMEPIC (ADVX 13: "BAM! -2" cut by the top on the GM's seat, whole on the player's): first into the STANDARD view (the same band
          on every seat), then this seat's own limits, which leave it alone unless this seat really has less room */
-      if (P.onView(tr, std)) c = P.clampInto(P.avoidRects(P.clampInto(P.clampInto(c, box, std), box, safe), box, view.panelsCached(), safe), box, safe);
+      if (P.onView(tr, std) && P.onView(tr, safe)) c = P.clampInto(P.avoidRects(P.clampInto(P.clampInto(c, box, std), box, safe), box, view.panelsCached(), safe), box, safe);
+      /* CROWD (ADVX 14): the token is not on THIS seat's view (off screen, under the open sidebar): off-panel, at the view's edge nearest to it */
+      else c = P.clampInto(P.avoidRects(P.offPanel(c, box, safe), box, view.panelsCached(), safe), box, safe);
       const off = member < 0 ? plan.g.word : plan.g.nums[member];
       last = view.toWorld({ x: c.x + off.dx * k, y: c.y + off.dy * k });
       return last;
@@ -697,9 +802,12 @@ function follow(tok, plan, member) {
 function play(L, it, queued = false) {
   try {
     const tok = it.tok, plan = it.plan;
-    if (!tok?.scene || tok.scene.id !== canvas.scene?.id || tok.destroyed || !seatOf(tok).visible) return;      // seen again now: the dice or the camera may have held it for seconds
+    const seen = (t) => t?.scene && t.scene.id === canvas.scene?.id && !t.destroyed && seatOf(t).visible;
+    /* seen again now: the dice or the camera may have held it for seconds (a cluster's word: while this seat sees one of its members) */
+    if (it.cluster ? !it.members.some((m) => seen(m.tok)) : !seen(tok)) return;
+    const pkey = it.cluster ? it.key : tok.id;      // CROWD: a cluster's word is its own entry, beside its members' (their numbers, their motion)
     /* one reaction per token at a time (review 4): a lighter one waits for a heavier one still on screen; an equal or worse one takes over */
-    const pe = playing.get(tok.id);
+    const pe = playing.get(pkey);
     if (pe) {
       const age = Date.now() - pe.t0, how = P.overlap(pe.sev, age, pe.span, it.sev);
       if (how === "queue" && !queued) { Promise.race([pe.done, new Promise((r) => setTimeout(r, Math.min(QUEUE_MAX, P.queueWait(age, pe.span))))]).then(() => play(L, it, true)); return; }
@@ -716,9 +824,10 @@ function play(L, it, queued = false) {
     const tHit = it.tHit;
     const lk = it.lk, hs = [], red = plan.wordOpts?.reduced ?? reduced();
     const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, loss: !!it.loss, card: it.card ? true : null, nums: [], done: null, addNumber: null, dropNumbers: null, slot: plan.slot, plan };
+    entry.ids = it.ids ?? [tok.id];      // CROWD: the tokens this entry letters (a cluster's word: all its members; recheck)
     plan.numH = [];
     let word = null;
-    playing.set(tok.id, entry);
+    playing.set(pkey, entry);
     /* FXI-TOKEN (ADVI 2, 13): the word strikes ON the blow's instant: it is started earlier by its own entrance's contact (pure contactMs; the
        engine plans the word on the call and reads its start time in the next frame, so the start is set from the plan right here) */
     let contact = 0;
@@ -732,18 +841,18 @@ function play(L, it, queued = false) {
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
     const numAt = (i) => follow(tok, plan, Math.min(i, plan.g.nums.length - 1));
     const playNum = (n, o, i, late = false) => {
-      if (playing.get(tok.id) !== entry) return;
+      if (playing.get(pkey) !== entry) return;
       if (n.stat === "health" && isCaptioned(tok.id)) return;      // the director's caption says it now (review 7)
       /* beside a word it leaves with the word; alone (a crowd) it stands as long as a word would (seen live: crowd numbers were gone
          in a second) */
-      const h = L.play(n.text, { ...o, hold: word ? Math.max(700, lk.hold + entMs - contact - P.NUM_AFTER - 250) : lk.hold + 300, at: numAt(i), ...(late ? {} : { startAt: tHit + (word ? P.NUM_AFTER : 0) }) });
+      const h = L.play(n.text, { ...o, hold: word ? Math.max(700, lk.hold + entMs - contact - P.NUM_AFTER - 250) : lk.hold + 300, at: numAt(i), ...(late ? {} : { startAt: tHit + (word ? P.NUM_AFTER : it.numDelay ?? 0) }) });      // CROWD: a cluster member's tag pops after the cluster's word struck
       h.stat = n.stat; h._s0 = o.scale; plan.numH[Math.min(i, plan.g.nums.length - 1)] = h; hs.push(h); entry.nums.push(h); settle();
     };
     /* the numbers come once the word has struck (review 13), on the shared clock: NUM_AFTER the blow's instant */
     plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], i));
     /* ALIGN: the impact after the word and its numbers, so it can keep them readable (engine 1.9.1 `keep`) and land on the word's contact
        as the engine reads it (`blowAt: L.contactAt(word)`) */
-    if (it.impact) { const ih = impactOf(L, it, tok, tHit, red, word, [word, ...entry.nums]); if (ih) hs.push(ih); }
+    if (it.impact) { const mem = it.cluster ? it.members.flatMap((m) => playing.get(m.tok.id)?.nums ?? []) : []; const ih = impactOf(L, it, it.impTok ?? tok, tHit, red, word, [word, ...entry.nums, ...mem]); if (ih) hs.push(ih); }
     /* a Damage Taken card arriving late still gives a numberless reaction its told number (review 17) */
     entry.addNumber = (stat, sign, n) => {
       if (entry.nums.length || !plan.g.nums || isCaptioned(tok.id)) return;
@@ -759,7 +868,7 @@ function play(L, it, queued = false) {
     /* the token's entry goes when every word of this reaction (the numbers too) has ended */
     function settle() {
       const n = hs.length;
-      const p = Promise.allSettled(hs.map((h) => h.finished)).then(() => { if (hs.length === n && playing.get(tok.id) === entry) playing.delete(tok.id); });
+      const p = Promise.allSettled(hs.map((h) => h.finished)).then(() => { if (hs.length === n && playing.get(pkey) === entry) playing.delete(pkey); });
       entry.done = p;
     }
   } catch (err) { once(err); }
@@ -783,12 +892,14 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
     let blowAt = Number.isFinite(tHit) ? tHit : performance.now();
     try { const c = word && L.contactAt ? L.contactAt(word) : null; if (Number.isFinite(c)) blowAt = c; } catch (err) { once(err); }
     /* ALIGN: a blow of a series is the engine's series too (pure withSeries: grown inside its rung) */
-    const spec = { ...P.withSeries(imp, it.lk?.step ?? 0), subject: tok, seed: `${it.seed}|impact`, blowAt };
+    /* CROWD: the step the series EARNED (pure seriesStep: capped by its sum); a cluster's impact is its heaviest member's blow */
+    const by = it.impIt ?? it;
+    const spec = { ...P.withSeries(imp, by.lk?.sstep ?? by.lk?.step ?? 0), subject: tok, seed: `${by.seed}|impact`, blowAt };
     /* ALIGN (engine 1.9.1 `keep`): the word and its numbers are world words IN the scene under the impact's overlay: they stay readable
        through every drawing (a hole cut round them, followed while they move); only handles that are up and alive are passed */
     const kept = keep.filter((h) => h && h.alive !== false && !h.off);
     if (kept.length) spec.keep = kept;
-    const src = it.pub?.src ? canvas.tokens?.get(it.pub.src) : null;
+    const src = by.pub?.src ? canvas.tokens?.get(by.pub.src) : null;
     if (src && src.id !== tok.id && seatOf(src).visible) spec.from = src;
     if (red) spec.reduced = true;
     return I.play(spec);
@@ -800,9 +911,10 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
    else the shared blow instant; the attacker only as a token (tokenanim gives a direction only when this seat sees him) */
 function tokenMoves(L, it, tok, word, tHit) {
   try {
+    if (it.cluster) return;      // CROWD: each member moves with its own reaction (its number), the cluster's word moves no token
     let at = Number.isFinite(tHit) ? tHit : performance.now();
     try { const c = word && L?.contactAt ? L.contactAt(word) : null; if (Number.isFinite(c)) at = c; } catch { /* the shared instant */ }
-    TokAnim.react(tok, { kind: it.lk.kind, amt: it.lk.amt, step: it.lk.step ?? 0, seed: it.seed, at, from: it.pub?.src ? canvas.tokens?.get(it.pub.src) ?? null : null });
+    TokAnim.react(tok, { kind: it.lk.kind, amt: it.lk.amt, step: it.lk.sstep ?? it.lk.step ?? 0,      /* CROWD: the earned step */ seed: it.seed, at, from: it.pub?.src ? canvas.tokens?.get(it.pub.src) ?? null : null });
   } catch (err) { once(err); }
 }
 
@@ -813,7 +925,8 @@ const layer = () => { const v = get(KEY.layer, "overlay"); return { layer: LAYER
    (the engine follows a token without asking whether this user sees it) */
 function cut(id) { for (const h of playing.get(id)?.hs ?? []) try { h.stop({ quick: true }); } catch { /* gone */ } playing.delete(id); }
 function recheck() {
-  try { for (const id of [...playing.keys()]) { const tok = canvas.tokens?.get(id); if (!tok || !seatOf(tok).visible) cut(id); } } catch (err) { once(err); }
+  /* CROWD: a cluster's word stays while this seat sees one of its members */
+  try { for (const [id, e] of [...playing.entries()]) { if (!(e?.ids ?? [id]).some((t) => { const tok = canvas.tokens?.get(t); return tok && seatOf(tok).visible; })) cut(id); } } catch (err) { once(err); }
 }
 
 /* ---------- settings, hooks, start ---------- */
