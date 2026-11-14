@@ -341,7 +341,7 @@ an attack, a lasting part, a cut-off (a blade SZSZT, FSZSZT; a blow TWOOM, WRAMM
   letter opens a syllable only when it lasts (SSST, MMM, never VVRT), English never writes II (a long i is EE); a syllable without a
   vowel is one clear lasting sound (BZZT, PSST, HMM, GRRMM) or a tick or throat sound (TK, THK, SNF, CHK, PFT).
 - **Each kind its own words**: a word (repeated letters collapsed) used by two kinds must be on `SHARED` with both kinds and a reason
-  (a grenade's BOOM is a boom, a storm's word is its thunder, a mech walks with DUM-DUM stomps); any other sharing fails the checks,
+  (SKRAKT is a crack and an impact, a storm's word is its thunder, a mech walks with DUM-DUM stomps); any other sharing fails the checks,
   so a punch word on a plane cannot come back.
 - **The water family** is fixed by the owner: pl small PLUP BLUP PLOP GLUP, heavy PLUMP BLUMP SPLUMP, big SPLOOSZ SPLASZ, bubbles
   GLUB BLUB BULP; en PLOP PLOOP PLUNK SPLOOSH, bubbles GLUB BLUB. The laser pistol is ZAT, TZAT, ZARK, TZAK, FZAT, SKZARK, KTZAK,
@@ -434,12 +434,12 @@ is MOVE's (see API-CONTRACT v5).
   `12 500` (a space from 10 000), `2,5`, `1,2 MLN`, `12 TYS.`; English `12,500`, `2.5`, `1.2M`, `12K`; `3×` / `×3`; minus is `-`
   so the auto mood still reads pain / heal. `L.range(2, 4)` -> `2–4`. Every sign used has a glyph in every font (checked).
 
-### The sound kinds (86; PL and EN words for each, 3 tiers + stream syllables)
+### The sound kinds (94; PL and EN words for each, 3 tiers + stream syllables)
 | group | kinds |
 |---|---|
 | hits | punch (cios), smash (miażdżenie), slap (klaps), thud (łomot), stomp (tupnięcie), clang (brzęk), slash (cięcie), bite (ugryzienie) |
 | breaking | crack (trzask), shatter (stłuczenie), crash (łoskot), crumble (kruszenie), rumble (dudnienie), creak (skrzypienie), scrape (zgrzyt) |
-| blasts | boom (wybuch), whump (podmuch), thunder (grzmot), zap (porażenie), beam (promień), gunfire (seria), ricochet (rykoszet) |
+| blasts | boom (wybuch), whump (podmuch), thunder (grzmot), zap (porażenie), beam (promień), gunfire (seria), ricochet (rykoszet), shock wave (fala uderzeniowa), sonic boom (grom dźwiękowy), dry blast (suchy wybuch: `concussion`, a blast without fire, KROOM / KRUUM) |
 | motion | whoosh (świst), zoom (pęd), bounce (skok), teleport (teleport), wind (wiatr) |
 | elements | fire (ogień), crackle (trzaskanie), hiss (syk), splash (plusk), squish (plaśnięcie), drip (kapanie) |
 | powers | power-up (ładowanie), psychic (telepatia), chime (dzwonienie), fizzle (zgaśnięcie), whiff (pudło) |
@@ -450,8 +450,19 @@ is MOVE's (see API-CONTRACT v5).
 | weapons | pistol (pistolet; `gunshot`, `shot`, `gun` are its aliases since the review), rifle (karabin), shotgun (strzelba), minigun (działko), laser pistol (pistolet laserowy: short, high, electric, hard start, brief fizz: ZAT, TZAK, ZARK, ZZARKT; never PIU PIU or PEW), heavy blaster (ciężki blaster: low, thick energy blast), silenced (tłumik), sword (miecz), arrow (strzała), thrown (rzut), grenade (granat), rocket (rakieta), reload (przeładowanie) |
 | devices (more) | ambulance (karetka), police (policja), fire engine (straż pożarna): three different sirens; drill (wiertarka), hammer (młotek) |
 | weather | hail (grad), rain (deszcz), storm (burza, mix), tornado (tornado, mix) |
+| impacts | impact (trafienie: a bullet or blow landing), debris (odłamki: falling pieces) |
+| weapons (more) | whizz (świst kuli: a near miss), casings (łuski), dry fire (suchy strzał: an empty click) |
 Aliases (`explosion` -> boom, `laser` -> beam, `machinegun` -> gunfire, `hit` -> punch, `heal` -> relief, ...): `L.vocab.aliases`.
 An unknown kind letters as `punch` with one warning.
+
+### Material, fire ladder, tails and chains (1.7.1 KINDS1)
+Word options `material` (stone wood metal earth water glass flesh shield), `pieces` (debris size), `intensity` (fire 1..5) and
+`stage` (fire `ignite` / `out`) pick a row of `VARIANTS[lang][table]` (`VARY` names which kinds read which table; a string row
+borrows another kind's bank, e.g. glass -> `shatter`); `VARIANT_META` gives a fire row its own flow style, envelope, sustain and
+"!" cap; `MAT_CHAR` sets the word's character material. `TAILS` lists the sounds that follow a sound by themselves (the twin of
+`PREFIXES`, each with a reason); `CHAINS` are named events told in order (`build peak develop resolve`, places `source target
+ring around feet bounce behind`). `vocab.chain(spec, o)` makes the words, `L.chain(spec, o)` plays them (local, not networked).
+Manual section 9a.
 
 ### How the words were written
 Our own lists, nothing copied wholesale. Since the vocabulary review (2026-11-13, WORD2) the banks are written per kind with English
@@ -558,14 +569,29 @@ default the cursor); the keybinding "Letter this now" (Shift+L) opens a small bo
 opens the designer window (also: the burst button in the token controls); `L.openSettings()` the settings window.
 `L.planFor(text, opts)` -> `{ plan, opts }`: the plan this client would show (style, settings and filters applied).
 
-## Look (contract v8, LOOK): styles, sound -> look, lines, backdrops, accent, legibility
-**Styles.** Two whole hands, `L.lookStyles` = `["comic", "invincible"]`.
-- `invincible` (the book's manner): a squared condensed face (Squada One) or, for soft, bouncy and ring words, a wide round face
-  (Michroma), a black ink keyline, a pale two-tone or flat face, a solid block extrusion in a darker shade, upright letters,
-  a small lead-in before a big body, no texture, no backdrop. **It is the default when `game.system.id === "invincible"`.**
+## Look (contract v8, LOOK; v9, LOOK2 1.8.0): styles, sound -> look, lines, backdrops, accent, legibility
+**Styles.** Three whole hands, `L.lookStyles` = `["comic", "invincible", "expressive"]`.
+- `invincible` (the book's manner, rebuilt in LOOK2 after the owner's review): tall, tight, flat lettering. Anton for every word;
+  ONE ink keyline round the whole word (`hand.keyline: "union"`), each letter clipped to itself with a thin inner line where it meets
+  a neighbour (no outline lies on a neighbour); a flat duplicate block down-right in one dark colour, or a straight-down solid block
+  for heavy sounds; flat fills (no gradient, no soft shadow, no misregistration, no boil); hollow letters for light or airy sounds;
+  11 flat palettes chosen from the sound (`invPalette`); upright letters, one size peak per word, neighbour ratio at least 0.85;
+  the hyphen lead-in (KA-, RAKA-, KRA-KA-; not a rhythm like BIP-BIP-BIP, `invPrefix`) small, on the top line, tucked into the
+  body; no letter under 0.82 of the word's biggest (`INV_FLOOR`); doubled O as linked ovals made from Anton's own O;
+  letter spacing by pair (`kernOptical`, below). **It is the default when `game.system.id === "invincible"`.**
 - `comic` (the earlier mixed hand): the default elsewhere.
+- `expressive`: the look from before the Invincible pass, kept for the owner. It is the `comic` hand under its own name: the same
+  plan and the same drawing for the same options (check-look2.mjs P17). If `comic` ever changes, `expressive` must keep today's look.
 - Select per call with `look: { style: "invincible" }` or `style: "invincible"` (also a TOOL style name); for every later call
-  `L.lookStyle("invincible" | "comic")`. `look` keys still win over the style (`look: { style: "invincible", font: "bangers" }`).
+  `L.lookStyle("invincible" | "comic" | "expressive")`. `look` keys still win over the style (`look: { style: "invincible", font:
+  "bangers" }`).
+
+**Spacing by letter pair (invincible).** `kernOptical` (shape.mjs) runs in the settle step: for each neighbour pair it scans 40 rows
+over the height both letters share, measures the horizontal gap of each row (an open row counts at most `KERN.open` = 0.12 of the
+cap), and slides the right letter until the mean gap equals `hand.kern.gap` (0.04 short, 0.05, 0.06 sustained) while no row comes
+closer than `KERN.touch` (-0.02: a hair of overlap under the keyline). Doubles (RR, AA) use 0.85 of the gap; a prefix overlaps the
+body by `KERN.preOverlap`; linked rings keep their link distance. So AV, TA, LT, FW tuck in and HN, MN stay apart, as a letterer
+spaces by eye. Vertical layouts set their own rows (`TUCK` 0.14).
 
 **The look says the sound.** `plan.traits` names what the sound is like, read from WORD's character (`L.word(...).play.character`:
 hard, heavy, wet, metal, electric, heat, texture, contour) and the plan's sound (sharp, rough, pitch, long); plain text gets its mood's.
@@ -578,7 +604,7 @@ The mapping (`traitsOf` in design.mjs, no random draws, checked over every vocab
 | heavy (crash, boom, rumble, stomp) | a deep block straight down; perspective line in the book's hand | weight falls |
 | high and slight (chime, bounce, beep) | a shallow block thrown up | it lifts off |
 | metal (clang, ricochet, gun, chime) | steel blue, one flat colour, a clean edge (grinding metal keeps grit) | a hard bright ring |
-| electric (zap, crackling energy) | sky/lime colours, the squared face, a straight hit line (comic hand: a jagged edge) | sparks |
+| electric (zap, crackling energy) | cyan, or yellow when hot (invincible), the squared face, a straight hit line (comic hand: a jagged edge) | sparks |
 | fire (fire, crackle) | amber, the line rising with the sound; warm sounds never get a cold colour | heat |
 | cold (wind, chime, fizzle) | a cold colour | cold |
 | wet (splash, squish, drip) | the round face, a cold colour, a wavy or shrinking line | water |
@@ -603,13 +629,15 @@ in memory with square shoulders.
 **Accent.** Letter sizes follow the sound: a small lead-in, the biggest letters where the sound peaks, a shrinking tail. WORD's
 `play.accent` (one weight per character) wins; plain text gets a guess (the longest vowel run, else the last hyphen syllable, else
 the penultimate syllable). `plan.accent` reports it.
-**Interlocked rings.** A run of O / 0 links as true rings of alternating size, each passing through the one before it (`look.link`).
+**Interlocked rings.** A run of O / 0 links as true rings, each passing through the one before it (`look.link`): circles of
+alternating size in `comic` / `expressive`; in `invincible` ovals of one size made from the face's own O (`ovalRing`), the block's counters kept open.
 **Numbers.** `-1`, `+4`, `x2`, `12%` get a calm, even, untreated hand so digits and signs always read.
 **Outline.** The light outer outline goes around the whole word only, never between overlapping letters; a duplicated block
 (extrusion) is used more often than the outline; the outline stays a style (`look.outline: "sticker"`).
 **Legibility.** legibility.mjs reads every treated letter against the font's plain letters (Polish marks and digits included:
 Ł keeps its bar, Ę its ogonek, a covered 1 is caught, $ is not S, lower-case look-alikes are caught); the settle step turns,
-pushes or opens letters until each reads. check-look.mjs L1-L16 hold this (ADVT and dice-review cases among them).
+pushes or opens letters until each reads. check-look.mjs L1-L17 hold this (ADVT and dice-review cases among them); check-look2.mjs
+holds LOOK2's points (SPEC-LOOK P1-P18 as measured rules).
 
 ## Look and performance notes
 - Every picture is painted from font outlines (TrueType parsed by `font.mjs`) at the pixel size it is shown at; world words re-render
@@ -620,7 +648,7 @@ pushes or opens letters until each reads. check-look.mjs L1-L16 hold this (ADVT 
 
 ## Fonts
 Eleven SIL OFL 1.1 fonts (Bangers, Anton, Patrick Hand, Titan One, Bungee, Black Ops One, Sigmar, Knewave, Rubik Wet Paint,
-Squada One, Michroma; the last two for the Invincible style): files,
+Squada One, Michroma; Anton is the Invincible style's face since 1.8.0): files,
 holders, sources and sizes in ATTRIBUTION.md. Knewave has no Polish letters of its own: the engine builds Ą Ć Ę Ł Ń Ś Ź Ż in memory
 from its own outlines plus accents (its own Ó acute and period, a drawn Ł bar, the ogonek from a fallback font). Every font's
 Polish capitals were checked by rendering them (letr gallery stills), not only by the character map.
