@@ -221,14 +221,14 @@ export const PL = {
   "INSPLASH.Say.PushPaysOff": "FORSOWANIE SIĘ OPŁACA!",
   "INSPLASH.Say.FirstDouble": "PIERWSZY DUBLET!",
   "INSPLASH.Say.PersonalBest": "NOWY REKORD OSOBISTY!",
-  /* SPLASHPL (właściciel: «przetłumacz, ale gdyby dobrze brzmiało»): słowa akcji, które po polsku dobrze brzmią; reszta zostaje angielska */
+  /* SPLASHPL (właściciel: «przetłumacz, ale gdyby dobrze brzmiało»): słowa akcji, które po polsku dobrze brzmią; reszta zostaje angielska. SPLASHPL2: tryb rozkazujący -> rzeczownik czynności (ZMIAŻDŻENIE!, ZBURZENIE! itd.) */
   "INSPLASH.Word.Haymaker": "SIERPOWY!",
-  "INSPLASH.Word.Smash": "ROZWAL!",
-  "INSPLASH.Word.Crush": "MIAŻDŻ!",
+  "INSPLASH.Word.Smash": "ROZWALENIE!",
+  "INSPLASH.Word.Crush": "ZMIAŻDŻENIE!",
   "INSPLASH.Word.Rush": "PĘD!",
   "INSPLASH.Word.Charge": "SZARŻA!",
   "INSPLASH.Word.Stampede": "STAMPEDA!",
-  "INSPLASH.Word.Grab": "ŁAP!",
+  "INSPLASH.Word.Grab": "CHWYT!",
   "INSPLASH.Word.Squeeze": "ŚCISK!",
   "INSPLASH.Word.Vise": "IMADŁO!",
   "INSPLASH.Word.Hold": "TRZYMAJ!",
@@ -253,7 +253,7 @@ export const PL = {
   "INSPLASH.Word.Next": "DALEJ!",
   "INSPLASH.Word.TryAgain": "SPRÓBUJ ZNOWU",
   "INSPLASH.Word.Steady": "SPOKOJNIE",
-  "INSPLASH.Word.Push": "FORSUJ!",
+  "INSPLASH.Word.Push": "FORSOWANIE!",
   "INSPLASH.Word.AllIn": "VABANK!",
   "INSPLASH.Word.DigDeep": "Z CAŁYCH SIŁ!",
   "INSPLASH.Word.Again": "ZNOWU!",
@@ -266,5 +266,5 @@ export const PL = {
   "INSPLASH.Word.NoLuck": "PECH!",
   "INSPLASH.Word.Wreck": "DEMOLKA!",
   "INSPLASH.Word.Ruin": "RUINA!",
-  "INSPLASH.Word.Demolish": "ZBURZ!"
+  "INSPLASH.Word.Demolish": "ZBURZENIE!"
 };
