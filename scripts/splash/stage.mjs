@@ -596,6 +596,7 @@ function playLetters(ev, o) {
   const dF = LP.failStrength(ev);
   /* WIRE1: the impact frame of this result (impact-plan.mjs; null = none). Planned from the event alone, so every seat agrees */
   ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: o.fx }) : null;
+  ctl.targets = IP.cleanTargets(o.targets); ctl.from = o.from ?? null;   // ROLLTARGET: where the impact lands, where the blow comes from
   const plan = LP.planMoment(ev, { token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const word = plan.items.find(it => it.role === 'word');
   const t0 = word?.delay ?? 0;
@@ -663,8 +664,9 @@ function accentFx(stage, P, later, o, full, impact = false) {
    (ALIGN, engine 1.9.1: the engine starts the impact plan.peakMs earlier), so the impact's peak drawing and the word's hit are one instant;
    when the word hits sooner than that lead-in takes, the word waits for it. Every seat starts the moment at the same server time (beat.mjs) with the same word, seed and plan, so the
    same drawings fall on the same instant.
-   WHERE (FXIS-1): a roll strikes nobody; what lands is the RESULT, so the impact marks the result word (its box), never the roller's token
-   (ADVI 7: the star and the silhouette sat on the attacker). Nothing of the token is handed in, so it can reveal nothing (ADVI 10).
+   WHERE (ROLLTARGET, the owner: «cel»): on the roll's TARGET (IP.rollTargets / IP.targetChoice), the token itself as the subject (its
+   picture is the silhouette) with the blow coming from the roller; never on the roller (ADVI 7). Only a target THIS seat sees and has in
+   view is handed in (ADVI 10: nothing marks a token a seat cannot see); otherwise, and for a roll with no target, the result word (its box).
    On the screen layers the word stays on top of the impact (its layer is one under ours / under the engine's ui and hud layers); on a map
    layer the word is IN the scene under the impact, so only drawings that leave the word's spot clear play there (IP.MAP_FRAMES), and only
    when the word is in this seat's view (a frame at the view's edge for a word nobody here sees would mark nothing).
@@ -676,16 +678,40 @@ function wordInView(at) {
 }
 /* ALIGN: the impact of the result word, planned before the word plays (its spec, and how much later the word must start so that the impact's
    lead-in fits before the contact: the shift), then played once the word is up (fireImpact) */
+/* ROLLTARGET: how a target token stands on THIS seat (IP.targetChoice's look): on this scene, not hidden by the GM, seen by this seat
+   (seen.mjs: vision, walls, fog), its centre inside the seat's work area (not off the view, not under the open sidebar) */
+export function targetLook(id) {
+  try {
+    const C = globalThis.canvas;
+    const tok = C?.ready ? C.tokens?.get?.(id) : null;
+    if (!tok || tok.destroyed || !tok.document || tok.document.hidden) return 'gone';
+    if (!seesToken(tok)) return 'unseen';
+    const p = toClient(tok.center);
+    if (!p || p.x < 0 || p.y < 0 || p.x > Math.min(window.innerWidth, measureArea().w) || p.y > window.innerHeight) return 'off';
+    return 'ok';
+  } catch (e) { return 'gone'; }
+}
+/* ROLLTARGET: the last impacts' places on this seat (for the live checks and the debug log): { id, where: target|word|none, why, target } */
+const IMPACT_LOG = [];
+export const impactLog = () => IMPACT_LOG.slice();
+function logImpact(row) { IMPACT_LOG.push({ at: Math.round(performance.now()), ...row }); if (IMPACT_LOG.length > 20) IMPACT_LOG.shift(); }
 function impactShot(ctl, it, contact) {
   const I = LE?.impact, ip = ctl.impactPlan;
   if (!I?.play || !ip || ctl.impact) return null;
   try {
     const map = !!(ctl.shared && it.sceneAt);
-    if (map && !wordInView(it.sceneAt)) return null;
+    /* ROLLTARGET: the target when this seat may mark it, else the result word; a map word off this view marks nothing. The word still
+       waits the same lead-in on every seat (shift below), so the instant is one whatever each seat can show (before, a seat whose map
+       word was off its view started the word earlier than the others) */
+    const pick = IP.targetChoice(ctl.targets, targetLook);
+    const tok = pick.id ? globalThis.canvas.tokens.get(pick.id) : null;
+    const fire = !!tok || !map || wordInView(it.sceneAt);
     const c = map ? it.sceneAt : { x: it.x, y: it.y };
     const w = Math.max(20, Number(it.w) || 0), hh = Math.max(20, Number(it.h) || 0);
-    const spec = { kind: ip.kind, magnitude: ip.magnitude, seed: IP.impactSeed(ctl.seed), subject: { x: c.x - w / 2, y: c.y - hh / 2, w, h: hh },
+    const spec = { kind: ip.kind, magnitude: ip.magnitude, seed: IP.impactSeed(ctl.seed), subject: tok ?? { x: c.x - w / 2, y: c.y - hh / 2, w, h: hh },
       over: LAYER === 'screen' ? 'ui' : 'scene' };
+    /* the blow comes from the roller (only a token this seat sees: the engine checks it again) */
+    if (tok && ctl.from && ctl.from !== tok && seesToken(ctl.from)) spec.from = ctl.from;
     if (map) { spec.space = 'world'; spec.frames = IP.mapFrames(ip.magnitude); }
     if (ip.tone) spec.tone = ip.tone;
     if (ip.hitstop === false) spec.hitstop = false;
@@ -694,13 +720,15 @@ function impactShot(ctl, it, contact) {
        same on every seat whatever its reduced or guard setting); IP.leadMs (leading "lines" only) stays for an engine without it */
     let lead = 0;
     try { const p = I.plan?.({ ...spec, reduced: false }); lead = Number.isFinite(p?.peakMs) ? p.peakMs : IP.leadMs(p?.frames ?? spec.frames ?? []); } catch (e) { lead = 0; }
-    return { spec, map, lead, shift: Math.max(0, lead - contact), contact };
+    return { spec, map, lead, shift: Math.max(0, lead - contact), contact, fire, where: tok ? 'target' : (fire ? 'word' : 'none'), why: pick.why, target: pick.id };
   } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
 }
 /* blowAt = the word's contact on this page's clock; word = its handle (kept readable on a map layer) */
 function fireImpact(ctl, shot, blowAt, word) {
   const I = LE?.impact;
   if (!I?.play || !shot || ctl.impact) return null;
+  logImpact({ id: ctl.momentId ?? ctl.seed, where: shot.where, why: shot.why, target: shot.target, blowAt: Math.round(blowAt) });
+  if (!shot.fire) return null;
   try {
     const spec = { ...shot.spec, blowAt };
     /* ALIGN (engine 1.9.1 `keep`): on a map layer the word is IN the scene under the impact's overlay: it stays readable through every

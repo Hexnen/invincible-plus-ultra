@@ -38,9 +38,47 @@ export function impactFor(ev, o = {}) {
 /* the seed of a roll's impact: the message id every seat shares (the words' seed is the same id + their role) */
 export const impactSeed = (seed) => `${seed ?? "x"}:impact`;
 
-/* ------------------------------------------------------------------ FXI-SPLASH (ADVI 2, 6, 7): WHEN and WHERE a roll's impact lands
+/* ------------------------------------------------------------------ ROLLTARGET: WHERE a roll's impact lands
+   The owner (2026-11-14, asked: the result word, the roller or the attack's target?): «cel», the TARGET of the attack. Never the roller
+   (ADVI 7: read as if the roller was hit). Where the target comes from:
+     - a tactical attack (the roll's tag { inst, key: "attack" }): the targets the exchange HIT (moment.mjs verdict rows; the splash of an
+       attack plays only once it hit), combatant ids, sorted so every seat has the same order whatever order the outcomes arrived in;
+     - another tactical roll (a defence "def:<id>", a gate, ...): no target (a defence answers a blow, it lands on nobody: ROLLTARGET-4);
+     - a roll outside the tactics: the roller's own Foundry targets at the instant of the roll (main.mjs puts them in the roll's flag; GM-
+       hidden tokens are left out there), only for a blow (BLOW_ACTIONS: a dodge or a clever idea with a target left selected lands on nobody).
+   Provisional (the owner did not decide, logged as questions ROLLTARGET-1..3): no target -> the result word (as before); several targets ->
+   the FIRST one only (one impact per event); a target this seat cannot see, or off its view -> the result word on that seat, same instant.
+   Pure: rollTargets(...) -> ids; targetChoice(ids, look) -> { id | null, why }. */
+export const TARGET_MAX = 8;
+const TOKEN_ID = /^[A-Za-z0-9]{16}$/;
+export const BLOW_ACTIONS = Object.freeze(["slugfest", "charge", "grapple", "shooting"]);
+/* a list from a flag (any client may write one): Foundry ids only, no repeats, at most TARGET_MAX, order kept */
+export function cleanTargets(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const x of list) { if (typeof x === "string" && TOKEN_ID.test(x) && !out.includes(x)) out.push(x); if (out.length >= TARGET_MAX) break; }
+  return out;
+}
+/* tag = message.rolls[0].options.tactics; hits = token ids the exchange hit (null = the tactics told nothing: no fight on this client);
+   flagged = the Foundry targets in the roll's flag; action = ev.action */
+export function rollTargets({ tag = null, hits = null, flagged = [], action = null } = {}) {
+  const tactical = !!(tag && typeof tag === "object" && typeof tag.inst === "string" && tag.inst);
+  if (tactical && String(tag.key ?? "") === "attack" && Array.isArray(hits)) return cleanTargets([...hits].sort());
+  if (tactical && String(tag.key ?? "") !== "attack") return [];
+  return BLOW_ACTIONS.includes(action) ? cleanTargets(flagged) : [];
+}
+/* look(id) -> "ok" (on this seat's board, seen, in its view) | "unseen" | "off" (seen, off the view) | "gone" (not on this scene) */
+export function targetChoice(ids, look) {
+  const list = cleanTargets(ids);
+  if (!list.length) return { id: null, why: "none" };
+  let s = "gone";
+  try { s = look(list[0]); } catch (e) { s = "gone"; }
+  return s === "ok" ? { id: list[0], why: list.length > 1 ? "first" : "target" } : { id: null, why: s === "unseen" || s === "off" ? s : "gone" };
+}
+
+/* ------------------------------------------------------------------ FXI-SPLASH (ADVI 2, 6, 7): WHEN a roll's impact lands
    The owner: the impact frame belongs to the instant the word hits, WITH it (not after it, not a second accent), and it tells the story.
-   A roll strikes nobody: what lands is the RESULT, so the impact marks the result word (FXIS-1), never the roller's token. */
+   WHERE: on the target (ROLLTARGET above); a roll with no target this seat may mark: the result word (FXIS-1), never the roller's token. */
 export const TICK = 1000 / 24;
 /* the instant the word hits, in ms from the word's start, read from the engine's plan of that very word (the same seed and options as
    the play): the first entrance picture that carries the contact (a burst or a dust puff: the squash on the surface), else the engine's

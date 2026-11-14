@@ -8,6 +8,7 @@ import { readRoll, classify, heroSpeaker, publicResolve } from './reader.mjs';
 import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
 import * as Beat from './beat.mjs';
+import * as IP from './impact-plan.mjs';
 import { EN, PL } from './lang.mjs';
 import { registerMigrationSettings, migrateSettings } from './migrate.mjs';
 import { seesToken } from './seen.mjs';
@@ -123,7 +124,7 @@ function onReady() {
   Hooks.on('collapseSidebar', () => { setTimeout(() => Stage.refreshArea(), 60); setTimeout(() => Stage.refreshArea(), 500); });
   /* FXLD2 (ADVD2 8): each seat says when its dice stopped (beat.mjs); the module's own socket channel, a message kind of its own */
   try { game.socket?.on?.(CHANNEL, (msg) => { if (msg?.k === BEAT_K && typeof msg.id === 'string' && typeof msg.u === 'string') Beat.note(msg.id, msg.u, Number(msg.at)); }); } catch (e) { /* no socket: each seat starts on its own dice */ }
-  const api = { preview, resetState, clear: Stage.clearAll };
+  const api = { preview, resetState, clear: Stage.clearAll, impacts: Stage.impactLog };
   const mod = game.modules.get(MOD);
   if (mod) mod.api = { ...(mod.api ?? {}), splash: api };   // dopisek do api modułu (module.js też składa je przez rozwinięcie, więc żadna kolejność nie gubi splash)
   globalThis.invincibleSplash = api;
@@ -220,6 +221,8 @@ hook('preCreateChatMessage', (message) => {
     const ev = buildEvent(rd, { rng: Math.random, st, dryN: cs('dry'), k0Offset: cs('k0') });
     ev.rb = res?.value ?? null;           // Resolve w chwili rzutu (do odczytania, czy stres już odjęty)
     ev.rmax = res?.max ?? null;
+    const tg = targetsAtRoll(message);    // ROLLTARGET: the roller's Foundry targets (where the roll's impact lands)
+    if (tg.length) ev.tg = tg;
     message.updateSource({ flags: { [FLAG]: { ev } } });
     if (track) actor.update({ [`flags.${FLAG}.state`]: st }).catch(e => console.warn(`${LOG} state save failed`, e));
   } catch (e) { console.warn(`${LOG} preCreate failed`, e); }
@@ -240,9 +243,39 @@ function eventFor(message, rd) {
     ev.narr = NARR.has(f.narr) ? f.narr : null;
     ev.rb = Number.isFinite(f.rb) ? f.rb : null;
     ev.rmax = Number.isFinite(f.rmax) ? f.rmax : null;
+    ev.tg = IP.cleanTargets(f.tg);   // ROLLTARGET: token ids only; each seat looks them up on its own board
     ev.hadFlag = true;
   }
   return ev;
+}
+
+/* ROLLTARGET: the roller's targets at the instant of the roll (the author's client, preCreateChatMessage), for the roll's impact frame.
+   Only tokens of the speaker's scene and none the GM hides: a hidden target is left out for EVERY seat (the flag is public data, and the
+   GM's seat then marks the same place as the players': the result word). In the order the user targeted them. */
+function targetsAtRoll(message) {
+  try {
+    const sp = message.speaker ?? {};
+    if (!canvas?.ready || (sp.scene && sp.scene !== canvas.scene?.id)) return [];
+    return IP.cleanTargets([...(game.user.targets ?? [])].filter(t => t?.document && !t.document.hidden).map(t => t.id));
+  } catch (e) { return []; }
+}
+/* ROLLTARGET: the token ids a roll's impact may land on (IP.rollTargets): a tactical attack -> the tokens the exchange hit (combatant ids
+   from moment.mjs mapped through the fight); otherwise the flagged Foundry targets of a blow. GM-hidden tokens are dropped on every seat. */
+function rollTargetsOf(message, ev) {
+  try {
+    const tag = message.rolls?.[0]?.options?.tactics ?? null;
+    let hits = null;
+    if (tag && typeof tag === 'object' && tag.key === 'attack' && Moment.listens()) {
+      const cids = Moment.hits(tag.inst);
+      if (cids) {
+        const combats = [game.combats?.get?.(tag.combat), ...(game.combats?.contents ?? [])].filter(Boolean);
+        hits = cids.map(cid => { const c = combats.find(x => x.combatants?.get?.(cid)); return c?.combatants.get(cid)?.token ?? null; })
+          .filter(td => td && !td.hidden).map(td => td.id);
+      }
+    }
+    const ids = IP.rollTargets({ tag, hits, flagged: ev.tg ?? [], action: ev.action });
+    return ids.filter(id => { const t = canvas?.tokens?.get?.(id); return !t || !t.document?.hidden; });
+  } catch (e) { return []; }
 }
 
 /* ------------------------------------------------------------------ pokaz */
@@ -431,7 +464,7 @@ hook('createChatMessage', async (message, options, userId) => {
     Stage.tellMoment({ phase: 'start', id });   // said again: the dice, the verdict and the camera took their time
     const ctl = Stage.play(ev, {
       rnd: mulberry32(hashString(id)), token, scale: cs('scale'), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'), momentId: id,
-      resolve, seed: id
+      resolve, seed: id, targets: rollTargetsOf(message, ev), from: boardToken(message)   // ROLLTARGET: the impact on the target, the blow from the roller
     });
     handed = !!ctl && !ctl.dead;
     } finally { if (!handed) Stage.tellMoment({ phase: 'done', id }); }
@@ -505,9 +538,11 @@ function preview(opts = {}) {
   const token = opts.token === false ? null : (canvas?.tokens?.controlled?.[0] ?? null);
   const resolve = ev.stress ? () => ({ now: opts.resolveNow ?? 6, max: opts.resolveMax ?? 8 }) : null;
   announce(ev, null, resolve);
+  /* ROLLTARGET: preview({ targets: [tokenId] }) or this user's own Foundry targets for a blow */
+  const targets = IP.rollTargets({ flagged: Array.isArray(opts.targets) ? opts.targets : [...(game.user.targets ?? [])].map(t => t.id), action: ev.action });
   return Stage.play(ev, {
     rnd: Math.random, token: opts.screen ? null : token, scale: cs('scale'), hold: holdK(), fx: fxLevel(), fullFrom: opts.fullFrom ?? fullFrom(),
-    resolve, backdrop: opts.backdrop ?? cs('backdrop')
+    resolve, backdrop: opts.backdrop ?? cs('backdrop'), targets, from: token
   });
 }
 
