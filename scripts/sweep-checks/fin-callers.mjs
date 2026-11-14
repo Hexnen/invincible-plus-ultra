@@ -14,6 +14,7 @@ import { ok, eq, done, summary } from "../tactics/testkit.mjs";
 import * as SL from "../splash/logic.mjs";
 import * as IP from "../splash/impact-plan.mjs";
 import { planImpact } from "../letters/impact/plan.mjs";
+import { impStart } from "./align-imp.mjs";
 
 const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -107,7 +108,7 @@ for (const [name, e] of [["crit", crit], ["strong", strong]]) {
   eq(lands.length, 1, `H ${name}: the moment lands once`);
   const contact = IP.contactMs({ timeline: w.h.plan.timeline }), hit = w.o.startAt + contact;
   ok(lands[0] && lands[0].id === "MSG-" + name && Math.abs(lands[0].landAt - hit) < 1, `H ${name}: landAt is the instant the result word strikes (${Math.round(lands[0]?.landAt - w.o.startAt)} ms after the word starts; its contact ${Math.round(contact)} ms)`);
-  const end = im ? im.startAt + planImpact(im).ms : hit;
+  const end = im ? impStart(im) + planImpact(im).ms : hit;      // ALIGN: the splash gives the blow (blowAt); its start read with the engine's plan
   ok(lands[0] && Math.abs(lands[0].impactMs - Math.round(end - hit)) <= 1 && (!im || lands[0].impactMs > 0), `H ${name}: impactMs is how long its impact lasts after the strike (${lands[0]?.impactMs} ms; the impact ends ${Math.round(end - hit)} ms after it)`);
   eq(s.told.filter((x) => x.phase === "done").length, 0, `H ${name}: not done while it stands`);
   s.Stage.clearAll();
@@ -183,11 +184,19 @@ function nearIs(Stage) {
   const plan = (t, o, mode = "smooth") => makePlan(t, { seed: 1, ...o, look: { style: "invincible", motion: mode } }, api, []);
   const keyOf = (p, f) => p.motion.entKeys.find(([, q]) => f(q));
   ok(/^1\.9\./.test(VERSION), `C: the vendored engine is 1.9 (${VERSION})`);
+  /* ALIGN (engine 1.9.1, contract v11): a word WITH its own flash accent has its contact one tick after the pose (the accent covers the first
+     tick and the entrance keys start after it: MOTION2 lesson; design.mjs trackTimeline `shifted`), and 1.9.1 names it in plan.contactMs.
+     The 1.9.0 rule here ("a flashing word hits on its accent tick, 0 ms") was the callers' own guess and is wrong against 1.9.1: an impact
+     put there landed a tick before the word's contact pose. Both callers now pass flash: false on a struck word (the impact is its accent),
+     so the flash cases are checked against the engine's pose (the same word without its accent, + 1 tick) and the flash: false cases below */
+  const flashed = (t, o) => (p) => plan(t, { ...o, flash: false }, p.motion.mode).contactMs + TICK;
   const cases = [
-    ["KRAK!", { mood: "impact", sound: { loud: 0.9, sharp: 0.9 } }, "flash: the accent tick", (p) => 0],
+    ["KRAK!", { mood: "impact", sound: { loud: 0.9, sharp: 0.9 } }, "flash: the pose after the accent tick", flashed("KRAK!", { mood: "impact", sound: { loud: 0.9, sharp: 0.9 } })],
     ["WHAM!", { mood: "impact", sound: { loud: 0.5 } }, "slam: its squash", (p) => keyOf(p, (q) => q.sx > 1.1 && q.sy < 0.9)[0]],
     ["CRUSH!", { mood: "crash", sound: { loud: 0.8 } }, "drop: its landing squash", (p) => keyOf(p, (q) => q.sy < 0.8)[0]],
-    ["KA-THOOM!", { mood: "boom", sound: { loud: 0.95 } }, "boom with flash: the accent tick", (p) => 0],
+    ["KA-THOOM!", { mood: "boom", sound: { loud: 0.95 } }, "boom with flash: the pose after the accent tick", flashed("KA-THOOM!", { mood: "boom", sound: { loud: 0.95 } })],
+    ["KRAK!", { mood: "impact", flash: false, sound: { loud: 0.9, sharp: 0.9 } }, "flash: false (a caller's impact): its squash", (p) => keyOf(p, (q) => (q.sx ?? 1) / (q.sy ?? 1) >= 1.15 || (q.sy ?? 1) / (q.sx ?? 1) >= 1.3)[0]],
+    ["KA-THOOM!", { mood: "boom", flash: false, sound: { loud: 0.95 } }, "boom, flash: false: the engine's contact key", (p) => p.motion.contactMs],
     ["THUD", { mood: "impact", in: "pop", sound: { loud: 0.4 } }, "pop: its biggest pose", (p) => keyOf(p, (q) => (q.s ?? 1) > 1.1)[0]]
   ];
   for (const mode of ["smooth", "stepped"]) for (const [t, o, what, want] of cases) {
@@ -202,7 +211,11 @@ function nearIs(Stage) {
   ok(Math.abs(P.contactMs(wham) - half) > 30, `C: not the half-entrance guess (${Math.round(half)} ms) on a 1.9 slam`);
   eq(P.contactMs({ ...wham, contactMs: 77 }), 77, "C: the engine's own plan.contactMs wins on the token side");
   eq(IP.contactMs({ ...wham, contactMs: 77 }), 77, "C: ... and on the splash side");
-  eq(P.contactMs(wham, true), 0, "C: reduced motion: the still entrance hits at once");
+  /* ALIGN (engine 1.9.1, FXIS-E4): replaced "reduced motion: the still entrance hits at once (0 ms)": a reduced invincible word now fades in
+     to end ON the full entrance's contact, and the callers read that, so a reduced seat's word lands with the full seat's */
+  const whamR = makePlan("WHAM!", { seed: 1, mood: "impact", sound: { loud: 0.5 }, reduced: true, look: { style: "invincible", motion: "smooth" } }, api, []);
+  ok(Math.abs(P.contactMs(whamR, true) - wham.contactMs) < 1 && Math.abs(IP.contactMs(whamR) - wham.contactMs) < 1, `C: reduced motion: the word lands on the full seat's contact (${Math.round(P.contactMs(whamR, true))} / ${Math.round(wham.contactMs)} ms)`);
+  eq(P.contactMs({ timeline: { ent: [{ ticks: 3, impact: true }] } }, true), 0, "C: ... an engine that names no contact: the still entrance hits at once");
   /* every entrance the reactions pin (slam, pop, drop, grow, rise) strikes within the shared lead, so no seat has to start a word in the past */
   const worst = Math.max(...["slam", "pop", "drop"].map((k) => P.contactMs(plan("BLAM!", { mood: "impact", in: k, sound: { loud: 0.7 } }))));
   ok(worst <= P.HIT_LEAD, `C: the blows' entrances strike within HIT_LEAD (worst ${Math.round(worst)} ms <= ${P.HIT_LEAD} ms)`);

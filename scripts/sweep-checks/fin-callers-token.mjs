@@ -87,6 +87,7 @@ globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return 
 const M = await import("../tokenreact/main.mjs");
 M.start({ init: true, ready: true });
 const P = await import("../tokenreact/pure.mjs");
+const { impBlow } = await import("./align-imp.mjs");      // ALIGN (engine 1.9.1): the blow (`blowAt`) read with the engine's own plan, not start + the leading lines
 const reacted = [];
 Hooks.on("invincible-plus-ultra.tokenReact", (d) => reacted.push(d));
 const take = async (ms = 1300) => { await sleep(ms); const w = plays.splice(0); return { words: w, im: impacts.splice(0) }; };
@@ -118,8 +119,8 @@ const landP = (S) => S;
     landP[game.user.isGM ? "gm" : "player"] = landP.at;
   }, 2400);
   for (const who of ["gm", "player"]) {
-    const im = S[who].im[0], lead = im ? P.leadMs(planImpact({ ...im.spec, reduced: false }).frames) : 0;
-    ck(`O1 ${who}: the target's blow strikes after the roll's word and its impact (${Math.round(im?.spec.startAt + lead - landP[who])} ms after the landing; >= 420)`, !!im && im.spec.startAt + lead >= landP[who] + 300 + 120 - 2);
+    const im = S[who].im[0];
+    ck(`O1 ${who}: the target's blow strikes after the roll's word and its impact (${Math.round(impBlow(im?.spec) - landP[who])} ms after the landing; >= 420)`, !!im && impBlow(im.spec) >= landP[who] + 300 + 120 - 2);
   }
   /* a start that never lands does not hold a blow for long: done or stale lets it go */
   for (const id of ["o1-true", "o1-false"]) Hooks.callAll("invincible-plus-ultra.splashMoment", { phase: "done", id });
@@ -134,7 +135,7 @@ const landP = (S) => S;
     const landAt = t0 + 500; at[game.user.isGM ? "gm" : "player"] = t0;
     Hooks.callAll("invincible-plus-ultra.splashMoment", { phase: "land", id, landAt, impactMs: 375 });
   }, 2200);
-  const rel = (who) => { const im = S[who].im[0]; return im ? im.spec.startAt + P.leadMs(planImpact({ ...im.spec, reduced: false }).frames) - at[who] : NaN; };
+  const rel = (who) => { const im = S[who].im[0]; return im ? impBlow(im.spec) - at[who] : NaN; };
   const want = 500 + Math.max(375 + 120, 900);      // the landing + the longer of (its impact + the beat) and the read time
   ck(`O2 GM and player: the blow on one instant after the shared landing (${Math.round(rel("gm"))} / ${Math.round(rel("player"))} ms after the story began; landing + max(impact + beat, read) = ${want})`,
     Math.abs(rel("gm") - rel("player")) < 6 && Math.abs(rel("gm") - want) < 25);

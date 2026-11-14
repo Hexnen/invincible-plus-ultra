@@ -532,6 +532,9 @@ function planOf(L, it) {
   const z0 = view.ok() ? view.zoom() : 1;
   const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), ...layer() };
   const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...lk.motion } : null;
+  /* ALIGN (engine 1.9.1 recipe, owner: one accent): the word that gets the moment's impact does not flash on its own; the impact IS its
+     accent and lands on its contact. Every seat passes the same (the event decides, not the seat), so the word's contact is one rule */
+  if (wordOpts && it.impact) wordOpts.flash = false;
   if (wordOpts) wordOpts.scale = scaleFor(L, lk.word, wordOpts, cap);
   const numOpts = nums.map((n, i) => {
     const o = { ...base, mood: n.mood, sound: n.sound, hand: n.hand, colors: n.colors, magnitude: Math.max(0.3, lk.magnitude * 0.8), seed: `${it.seed}#n${i}`, rotation: word ? -lk.side * 3 : 0, in: n.in, holdKind: "boil", out: n.out };
@@ -625,7 +628,6 @@ function play(L, it, queued = false) {
       } catch (err) { once(err); }
     }
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
-    if (it.impact) { const ih = impactOf(L, it, tok, tHit, red); if (ih) hs.push(ih); }
     const numAt = (i) => follow(tok, plan, Math.min(i, plan.g.nums.length - 1));
     const playNum = (n, o, i, late = false) => {
       if (playing.get(tok.id) !== entry) return;
@@ -637,6 +639,9 @@ function play(L, it, queued = false) {
     };
     /* the numbers come once the word has struck (review 13), on the shared clock: NUM_AFTER the blow's instant */
     plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], i));
+    /* ALIGN: the impact after the word and its numbers, so it can keep them readable (engine 1.9.1 `keep`) and land on the word's contact
+       as the engine reads it (`blowAt: L.contactAt(word)`) */
+    if (it.impact) { const ih = impactOf(L, it, tok, tHit, red, word, [word, ...entry.nums]); if (ih) hs.push(ih); }
     /* a Damage Taken card arriving late still gives a numberless reaction its told number (review 17) */
     entry.addNumber = (stat, sign, n) => {
       if (entry.nums.length || !plan.g.nums || isCaptioned(tok.id)) return;
@@ -663,21 +668,27 @@ function play(L, it, queued = false) {
    The token itself is the subject (the engine draws nothing for a token this user does not see, and its picture becomes the silhouette);
    the attacker gives the blow's direction only when this seat sees him (a direction would point at a hidden one). Reduced motion is handed
    in only as true (a false would override the OS switch); nothing here touches the photosensitivity guard. */
-function impactOf(L, it, tok, tHit, red) {
+function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
   try {
     const I = L?.impact;
     if (!I?.play || !seatOf(tok).visible) return null;
     const { rung, ...imp } = it.impact;
-    const spec = { ...imp, subject: tok, seed: `${it.seed}|impact`, startAt: Number.isFinite(tHit) ? tHit : performance.now() };
+    /* ALIGN (engine 1.9.1 recipe): `blowAt` = the instant the word strikes as the ENGINE reads it (L.contactAt: the word's contact pose,
+       on the 24 Hz grid in stepped motion; = tHit by construction in smooth motion), and the engine starts the impact plan.peakMs before it,
+       so its strongest drawing lands WITH the word (one accent). The peak comes from the full plan on every seat (a reduced seat's still
+       drawing stands at the same instant: contract 1.8.2), so seats keep one instant. Replaces FIN-CALLERS' own measure of the leading
+       "lines" (pure leadMs), which missed the other lead-ins the engine counts (REQUESTS FINC-E4). No word on this seat: the shared tHit. */
+    let blowAt = Number.isFinite(tHit) ? tHit : performance.now();
+    try { const c = word && L.contactAt ? L.contactAt(word) : null; if (Number.isFinite(c)) blowAt = c; } catch (err) { once(err); }
+    /* ALIGN: a blow of a series is the engine's series too (pure withSeries: grown inside its rung) */
+    const spec = { ...P.withSeries(imp, it.lk?.step ?? 0), subject: tok, seed: `${it.seed}|impact`, blowAt };
+    /* ALIGN (engine 1.9.1 `keep`): the word and its numbers are world words IN the scene under the impact's overlay: they stay readable
+       through every drawing (a hole cut round them, followed while they move); only handles that are up and alive are passed */
+    const kept = keep.filter((h) => h && h.alive !== false && !h.off);
+    if (kept.length) spec.keep = kept;
     const src = it.pub?.src ? canvas.tokens?.get(it.pub.src) : null;
     if (src && src.id !== tok.id && seatOf(src).visible) spec.from = src;
     if (red) spec.reduced = true;
-    /* FIN-CALLERS (ADVI 2): the impact's own build (its gathering lines) comes BEFORE the blow, so its contact drawing falls on the instant the
-       word strikes (pure leadMs, as the roll splash does); every seat plans the same drawings from the same spec. Not from the
-       client's reduced setting: the lead is read from the spec without it, so seats keep one instant */
-    let lead = 0;
-    try { lead = P.leadMs(I.plan?.({ ...spec, reduced: false })?.frames ?? []); } catch (err) { lead = 0; }
-    if (lead > 0) spec.startAt = Math.max(performance.now(), spec.startAt - lead);
     return I.play(spec);
   } catch (err) { once(err); return null; }
 }
