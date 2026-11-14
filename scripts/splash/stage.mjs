@@ -933,14 +933,15 @@ function addBackdrop(ctl, P, strength, fx) {
 }
 
 /* a CSS mask with a clear ellipse over a client box (the hero), feathered.
-   CRITFIX: the clear spot ends AT the token's rim (+2 px) and feathers over SPOT_FEATHER of its half size (at least 8 px). Before, it
-   reached 1.2x the half size with a 0.3x feather: a ring of the unwashed map round the token, darker than the bright wash around it,
-   read as a dark halo in every hold frame. */
-export const SPOT_FEATHER = 0.16;
+   CRITFIX: the wash is full again right at the token's edge (+2 px) and feathers INSIDE it, over its outer SPOT_FEATHER of the half
+   size (at least 6 px): the figure stays clear, the token's own rim takes a little of the wash. Before, the spot reached 1.2x the half
+   size with a 0.3x feather: a ring of unwashed map round the token, darker than the bright wash, read as a dark halo in every hold
+   frame; live, a feather outside the rim (raw ground ramping up to the wash) still read as a thin dark ring. */
+export const SPOT_FEATHER = 0.14;
 export function spotMask(b) {
   const cx = Math.round((b.l + b.r) / 2), cy = Math.round((b.t + b.b) / 2), hw = Math.max(1, (b.r - b.l) / 2), hh = Math.max(1, (b.b - b.t) / 2);
-  const f = Math.max(8, SPOT_FEATHER * Math.max(hw, hh)), rx = Math.round(hw + 2 + f), ry = Math.round(hh + 2 + f);
-  const clear = Math.min(96, Math.round((100 * (hw + 2)) / rx));
+  const rx = Math.round(hw + 2), ry = Math.round(hh + 2), f = Math.max(6, SPOT_FEATHER * Math.max(hw, hh));
+  const clear = Math.max(50, Math.min(96, Math.round((100 * (hw + 2 - f)) / rx)));
   return `radial-gradient(${rx}px ${ry}px at ${cx}px ${cy}px, transparent 0, transparent ${clear}%, #000 100%)`;
 }
 

@@ -7,7 +7,7 @@
      B2  the words and the impact (their calls, times, specs) are the same with the backdrop on and off (the backdrop changes no timing);
      B3  the struck target this seat sees keeps a clear spot too (two spots, intersected); a target this seat cannot see gets none;
      B4  no impact on this seat (the word and the target off its view, or an engine without impact frames): the backdrop as before;
-     B5  the clear spot ends at the token's rim (no ring of unwashed map round it);
+     B5  the clear spot ends at the token's rim, feathered inside it (no ring of unwashed map round it);
    With the backdrop OFF nothing changed at all: proved outside this suite by a fingerprint of every page state, engine call and impact
    spec over 60 cases against tactics @ d40fa79 (scratchpad critfix/fp.mjs; equal). The page, the canvas and the engine are fakes (as
    rolltarget.mjs), on a virtual clock; the impact's plan is the real one (scripts/letters/impact/plan.mjs). */
@@ -156,8 +156,8 @@ for (const layer of ["screen", "overlay", "ui"]) {
     const m = spot({ l: 100, t: 100, r: 100 + w, b: 100 + w }).match(/radial-gradient\((\d+)px (\d+)px at (\d+)px (\d+)px, transparent 0, transparent (\d+)%, #000 100%\)/);
     const rx = Number(m?.[1]), clear = (rx * Number(m?.[5])) / 100;
     ok(m && Math.abs(Number(m[3]) - (100 + w / 2)) <= 1, `B5 ${w}px: the spot is centred on the token`);
-    ok(m && clear >= w / 2 - 1 && clear <= w / 2 + 4, `B5 ${w}px: fully clear up to the token's rim and no further (${clear.toFixed(1)} px for a ${w / 2} px half size; before: ${(0.8 * (0.75 * w + 12)).toFixed(0)} px, a ring of unwashed map)`);
-    ok(m && rx - clear <= Math.max(10, 0.2 * (w / 2)) && rx - clear >= 6, `B5 ${w}px: ... then a short feather (${(rx - clear).toFixed(1)} px)`);
+    ok(m && rx <= w / 2 + 3, `B5 ${w}px: the wash is full again at the token's edge: no ring of unwashed map round it (${rx} px for a ${w / 2} px half size; before: ${(0.75 * w + 12).toFixed(0)} px)`);
+    ok(m && clear >= 0.75 * (w / 2) && rx - clear >= 5 && rx - clear <= Math.max(9, 0.2 * (w / 2)), `B5 ${w}px: ... the figure clear, a short feather on the token's own rim (clear ${clear.toFixed(1)} px, feather ${(rx - clear).toFixed(1)} px)`);
   }
 }
 Object.defineProperty(globalThis, "performance", { value: realPerf, configurable: true, writable: true });
