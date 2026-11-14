@@ -149,6 +149,12 @@ const CSS = `
 .ipu-tka .ipu-tka-mine { margin-top: 0.25rem; padding-top: 0.45rem; border-top: 1px solid var(--mm-edge, var(--color-border, rgba(127,127,127,0.35))); }
 .ipu-tka [hidden] { display: none !important; }
 .ipu-tka-app .window-content { padding: 0.6rem 0.8rem; }
+/* the narrow map dock: the event's name above its controls, so the animation's name is never cut */
+.ipu-tka { container-type: inline-size; }
+@container (max-width: 21rem) {
+  .ipu-tka .ipu-tka-row { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; padding: 0.2rem 0 0.25rem; }
+  .ipu-tka .ipu-tka-mine { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
+}
 @media (prefers-reduced-motion: reduce) { .ipu-tka * { transition: none !important; } }
 `;
 function style() {

@@ -29,6 +29,7 @@ const saved = [];             // [{ m, x, y, r, sx, sy, tint, tinted }] what thi
 let depth = 0, renderer = null, ticking = false;
 const pose = {};
 const stats = { frames: 0, applied: 0, restored: 0, healed: 0, ms: 0, maxMs: 0 };
+const recent = [];             // the last reactions started on this seat (api state: live checks compare seats on the shared clock)
 
 const once = (e) => { if (!warned) { warned = true; console.warn(LOG, "a failure here never affects the canvas:", e); } };
 const get = (key, fallback) => { try { return game.settings.get(MOD, key); } catch { return fallback; } };
@@ -81,6 +82,8 @@ export function react(tok, spec = {}) {
     a.layers.push(L);
     a.layers.sort((x, y) => x.at - y.at);
     while (a.layers.length > LAYERS_MAX) a.layers.shift();
+    recent.push({ tok: tok.id, kind: L.kind, anim: L.anim, A: L.A, step: L.step, dur: L.dur, side: L.c.side, atEpoch: Math.round((performance.timeOrigin + L.at) * 10) / 10, preview });
+    if (recent.length > 40) recent.shift();
     attach();
     return L;
   } catch (err) { once(err); return null; }
@@ -198,7 +201,7 @@ export function start(phases = {}) {
     Hooks.once("ready", () => setTimeout(() => {
       try {
         const mod = game.modules.get(MOD);
-        if (mod) mod.api = Object.assign(mod.api ?? {}, { tokenAnim: { react, preview, series, stop, stopAll, mode, events, anims: P.ANIM_IDS.slice(), state: () => ({ active: active.size, layers: [...active.values()].reduce((n, a) => n + a.layers.length, 0), attached: !!renderer, saved: saved.length, depth, stats: { ...stats } }) } });
+        if (mod) mod.api = Object.assign(mod.api ?? {}, { tokenAnim: { react, preview, series, stop, stopAll, mode, events, anims: P.ANIM_IDS.slice(), state: () => ({ active: active.size, layers: [...active.values()].reduce((n, a) => n + a.layers.length, 0), attached: !!renderer, saved: saved.length, depth, stats: { ...stats }, recent: recent.slice() }) } });
       } catch (err) { once(err); }
     }, 0));
     return true;
