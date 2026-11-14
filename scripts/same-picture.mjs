@@ -63,13 +63,16 @@ export function shiftInto(r, s) {
   return { dx: ax(r.l, r.r, s.l, s.r), dy: ax(r.t, r.b, s.t, s.b) };
 }
 
-/* the panels every seat has at a corner of its window (the party cards, bottom-left: #invincible-party), as a SHARED obstacle: where they
-   stand on the reference window centred like the standard view. A seat's panel is not read from its page (its open/peek state and size
-   are that user's), so every seat keeps the block off the same zone (provisional SAMEPIC-3; FXLD2 N6 live: WHAM! on the party panel).
-   Measured live (lane 5, 1600 x 900, peek): GM 96..336 x 510..790, player 0..240 x 488..768: CSS px from the bottom-left corner
-   x 0..340, 108..414 up. own = true: the zone at THIS window's own corner (a window smaller than the reference, tier 3) */
-export const PANEL_ZONES = Object.freeze([{ l: 0, r: 340, up0: 108, up1: 414 }]);
+/* the panels at a corner of the window, as SHARED obstacles: where they stand on the reference window centred like the standard view.
+   A seat's panels are not read from its page for the shared layout (their state, length and presence are that user's or the GM's
+   alone), so every seat keeps the block off the same zone (provisional SAMEPIC-3). Measured live (lane 5, 1600 x 900, 2026-11-14): the
+   party cards (#invincible-party, peek, bottom-left) GM 96..336 x 510..790, player 0..240 x 488..768 (FXLD2 N6 live: WHAM! on them).
+   Not a zone: the scene bar's list of scenes (GM to 176 px down, player to 96, x 104..274) and the GM's map meter (.mm-vram 96..360 x
+   92..144): a zone in the view would make the map moment depend on the view (FXLD2 N1: one scene place for every view), so on the map
+   layers they move only the seat they cover (tier 3, SAMEPIC-4); on the screen layers the moment is drawn over them.
+   CSS px from the window corner named by `at`. own = true: at THIS window's own corners (a window smaller than the reference, tier 3) */
+export const PANEL_ZONES = Object.freeze([{ at: "bl", l: 0, r: 340, up0: 108, up1: 414 }]);
 export function panelZones(W, H, own = false) {
-  const ox = own ? 0 : W / 2 - REF_VW / 2, oy = own ? H : H / 2 + REF_VH / 2;
-  return PANEL_ZONES.map((z) => ({ l: ox + z.l, t: oy - z.up1, r: ox + z.r, b: oy - z.up0 }));
+  const ox = own ? 0 : W / 2 - REF_VW / 2, oy1 = own ? H : H / 2 + REF_VH / 2;
+  return PANEL_ZONES.map((z) => ({ at: z.at, l: ox + z.l, t: oy1 - z.up1, r: ox + z.r, b: oy1 - z.up0 }));
 }

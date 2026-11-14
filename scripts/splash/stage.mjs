@@ -411,7 +411,7 @@ function localScreen() {
      Under the bars (hud) the block would be HIDDEN by anything of this seat: its real bars, panels and resting dice */
   const vw = window.innerWidth, vh = window.innerHeight, band = seatBand();
   /* a window smaller than the reference keeps the party corner where it really is on this window (it is moving the block anyway) */
-  const small = vw < SP.REF_VW || vh < SP.REF_VH ? SP.panelZones(vw, vh, true) : [];
+  const small = vw < SP.REF_VW || vh < SP.REF_VH ? SP.panelZones(vw, vh, true).filter((z) => z.at === 'bl') : [];   // the party cards (over the scene list it is drawn on the screen layers)
   if (LAYER === 'screen') return { safe: band, avoid: small };
   if (LAYER === 'ui') return { safe: band, avoid: [...small, ...boxesOf(UI_WINDOWS)] };
   return { safe: band, avoid: [...seatOwn(), ...boxesOf(UI_WINDOWS), ...diceRects()] };
