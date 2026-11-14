@@ -413,7 +413,8 @@ export function fitSame(tok, box, std, real, shared = [], local = [], o = {}) {
   const lim = real ?? std, A = b.w * b.h;
   const cover = (q) => [{ ...tok, k: SLOT_K.own }, ...shared].reduce((s, z) => s + inter(q, z) * (z.k ?? 1), 0);
   const base = cover(r);
-  for (const f of SAME_SHRINK) {
+  /* follow() pushes a word only while its token is on the standard view (onView); off it the word stands at its raw slot, so no slide here */
+  if (std && onView(tok, std)) for (const f of SAME_SHRINK) {
     const bb = { w: b.w * f, h: b.h * f };
     let c = clampInto(slotPoint(a.slot, tok, bb), bb, std);
     c = clampInto(avoidRects(clampInto(c, bb, lim), bb, local, lim), bb, lim);
