@@ -8,7 +8,8 @@
      cleanEvents(v)             a stored table made safe (unknown kinds, animations, strengths dropped or clamped)
      plan(kind, o)              -> one layer: { anim, A, dur, dir, side, seed, at } (o = { amt, step, strength, mode, seed, at, dir })
      poseAt(layer, now, out)    -> the layer's pose now (identity before its contact instant and after its end)
-     mix(layers, now)           -> the token's pose from all its layers (a newer reaction takes over from an older one)
+     mix(layers, now, o, base)  -> the token's pose from all its layers (a newer reaction takes over from an older one), on its lying base
+     LIE / lyingAt / lieAmount  KODOWN: a token at 0 Health lies until it gets up or is healed (a state under the reactions)
      apply(base, pose, size)    -> the picture's transform: { x, y, rotation, sx, sy, tint } from the base Foundry set
    Pose units: x, y in token widths (world, + = right / down), rot in radians, sx / sy multipliers in the token's own axes, pivot (px, py)
    in token widths from the centre, tint 0xRRGGBB with its strength tk 0..1 (multiplied onto the picture's own tint). */
@@ -85,9 +86,21 @@ export const ANIMS = {
     o.tint = TINTS.blow; o.tk = 0.5 * decay(t, 150);
     return o;
   } },
-  /* going down: thrown back, topples over its feet with gravity, lands with a small rebound, lies a beat, gets the picture back up
-     slowly (the token is still on the map: nothing stays changed; a lasting "dead" look is the map module's death style) */
+  /* going down: thrown back, topples over its feet with gravity, lands with a small rebound.
+     KODOWN (owner 2026-11-14, «Tak»: a knocked-down token stays down while it has 0 Health): on a token that is down (c.lie) the fall
+     itself is the token's LYING state (lyingAt below, kept by main.mjs until it gets up or is healed), so this layer is only what the
+     blow adds on top: the knock, the squash, the landing's squash and rebound; it ends at rest on the lying pose. Without c.lie (a preview
+     in the panel, a token that is not at 0) it is the whole fall, a beat lying, and the picture back up, as before. */
   collapse: { family: "down", dur: 2100, pose(t, A, c, o) {
+    if (c.lie) {
+      const landAt = LIE.fallDelay + LIE.fallMs, end = tail(t, this.dur * (c.k ?? 1), 120), knock = decay(t, 110);
+      const land = t >= landAt && t < landAt + 200 ? decay(t - landAt, 60) : 0;
+      o.x = c.dir.x * 0.2 * A * knock * end; o.y = c.dir.y * 0.2 * A * knock * end;
+      o.rot = t >= landAt ? -(c.lieSide ?? c.side) * LIE.rot * 0.08 * Math.max(0, ring(t - landAt, 4, 70) * Math.sin(Math.PI * clamp01((t - landAt) / 240))) * end : 0;
+      o.sx = 1 - (0.1 * A * decay(t, 80) - 0.06 * land) * end; o.sy = 1 + (0.07 * A * decay(t, 80) - 0.14 * land) * end;
+      o.tint = TINTS.down; o.tk = 0.6 * decay(t, 160);
+      return o;
+    }
     const k = c.k ?? 1, fallAt = 70, fallMs = 420, landAt = fallAt + fallMs, hold = (c.hold ?? 900) * k, upAt = landAt + hold, upMs = 520;
     const angle = c.side * Math.min(1.45, 0.95 + 0.25 * A);
     let a = 0;
@@ -245,8 +258,48 @@ export function plan(kind, o = {}) {
   const side = dir.x >= 0 ? 1 : -1;
   const ph = ((h >>> 3) % 6283) / 1000;
   const hold = (SCALE.downHold + SCALE.downHoldAmt * amt) * (1 + 0.15 * step);
-  const dur = Math.round(def.dur * k + (anim === "collapse" ? hold - 900 : 0));
-  return { kind, anim, A: Math.round(A * 1000) / 1000, k, dur, at: Number.isFinite(o.at) ? o.at : 0, c: { dir, side, ph, k, hold }, still: mode === "still", tk: Number.isFinite(o.tk) ? o.tk : 1, step, amt };
+  /* KODOWN: o.lie = the token is down and stays lying (main.mjs keeps the lying state): the collapse is only the blow on top of the fall */
+  const lie = !!o.lie && anim === "collapse";
+  const dur = lie ? Math.round((LIE.fallDelay + LIE.fallMs + 320) * k) : Math.round(def.dur * k + (anim === "collapse" ? hold - 900 : 0));
+  const c = { dir, side, ph, k, hold };
+  if (lie) { c.lie = true; c.lieSide = o.lieSide === -1 || o.lieSide === 1 ? o.lieSide : side; }
+  return { kind, anim, A: Math.round(A * 1000) / 1000, k, dur, at: Number.isFinite(o.at) ? o.at : 0, c, still: mode === "still", tk: Number.isFinite(o.tk) ? o.tk : 1, step, amt, lie };
+}
+
+/* ---------------------------------------------------------------- KODOWN: lying while Health is 0
+   The owner (2026-11-14, asked "ma leżeć, dopóki ma 0 Zdrowia?": «Tak»): a knocked-down token stays down for as long as it has 0 Health,
+   on every seat that sees it, and rises only when it gets up or is healed (that rise plays with the getting-up / healing reaction).
+   Lying is a STATE of the token, not a reaction layer: main.mjs keeps one per token { side, fallAt, upAt } and draws it under the
+   reactions (mix's base), so a newer reaction never takes it over and a reload, a late seat or a scene change shows it again at once.
+   Everything here is a pure function of that state and the clock: the same pose on every seat for the same state.
+     side      from the token's id (lieSide): the same on every seat and after any reload (an attacker's side would not survive a reload)
+     fallAt    when it starts to fall (-Infinity = already lying: a scene that loads with it at 0); the reaction's blow sets it (lieFallAt),
+               else the state change itself after LIE.grace (no reaction on this seat: the reactions off, the word dropped)
+     upAt      when it starts to rise (Infinity = lying); the getting-up / healing reaction's blow, else the change after LIE.grace */
+export const LIE = Object.freeze({ rot: 1.25, py: 0.3, size: 0.06, fallDelay: 70, fallMs: 420, upMs: 520, tk: 0.28, grace: 4000 });
+export const lieSide = (id) => (hash(`${id ?? ""}|lie`) & 1 ? 1 : -1);
+/** when a reaction's layer makes the token fall: the collapse falls on its own clock (70 ms after the blow), another animation the GM
+    chose for going down plays first and the token topples over at its middle */
+export const lieFallAt = (L) => (L ? L.at + (L.anim === "collapse" ? LIE.fallDelay : Math.round(L.dur * 0.55)) : null);
+/** how far down the token is at `now`, 0 (upright) .. 1 (lying) */
+export function lieAmount(S, now) {
+  if (!S) return 0;
+  const down = (t) => (S.fallAt === -Infinity ? 1 : !Number.isFinite(S.fallAt) || t < S.fallAt ? 0 : easeIn((t - S.fallAt) / LIE.fallMs));
+  if (Number.isFinite(S.upAt) && now >= S.upAt) return down(S.upAt) * (1 - ease((now - S.upAt) / LIE.upMs));
+  return down(now);
+}
+/** the state has risen fully: nothing left to draw */
+export const lieDone = (S, now) => !!S && Number.isFinite(S.upAt) && now >= S.upAt + LIE.upMs;
+/** the lying pose: tipped over round a point between its feet and its centre (so the picture stays mostly on its square while it lies
+    there for minutes), a little smaller, the fall's dim red kept; still (reduced motion) = the dim alone, no tipping. tk = the tint factor */
+export function lyingAt(S, now, out = {}, o = {}) {
+  pose0(out);
+  const a = lieAmount(S, now);
+  if (!(a > 0)) return out;
+  out.px = 0; out.py = LIE.py;
+  if (!o.still) { out.rot = (S.side === -1 ? -1 : 1) * LIE.rot * a; out.sx = 1 - LIE.size * a; out.sy = out.sx; }
+  out.tint = TINTS.down; out.tk = clamp01(LIE.tk * a * (Number.isFinite(o.tk) ? o.tk : 1));
+  return out;
 }
 const norm = (v) => { const n = Math.hypot(v.x, v.y) || 1; return { x: v.x / n, y: v.y / n }; };
 
@@ -271,10 +324,16 @@ export const isRest = (p) => !p || (Math.abs(p.x) < 1e-5 && Math.abs(p.y) < 1e-5
 export const TAKEOVER = 160;
 /** the token's pose from its layers (oldest first), each converted to a pose round the centre, then added (moves, turns) or multiplied
     (sizes); the strongest tint wins. -> { x, y, rot, sx, sy, tint, tk } (x, y in token sizes) */
-export function mix(layers, now, out = {}) {
+export function mix(layers, now, out = {}, base = null) {
   pose0(out);
   const p = {};
   let tkMax = 0;
+  /* KODOWN: the lying state (lyingAt) is the base every reaction plays on top of; it is never taken over */
+  if (base && !isRest(base)) {
+    const c = centred(base);
+    out.x = c.x; out.y = c.y; out.rot = base.rot; out.sx = base.sx; out.sy = base.sy;
+    tkMax = base.tk; out.tint = base.tint;
+  }
   for (let i = 0; i < (layers?.length ?? 0); i++) {
     const L = layers[i];
     let w = 1;
