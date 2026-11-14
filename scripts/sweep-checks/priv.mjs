@@ -199,6 +199,12 @@ const same = (S, name) => {
 { const S = await two(() => { for (const [i, [x, y]] of [[600, 250], [730, 250], [470, 250], [730, 380]].entries()) mk(`HX${i}`, "npc", 8, 6, { x, y, hidden: true }); return mk("E7", "npc", 8, 6, { x: 600, y: 400 }); }, async (t) => { set(t, "health", 0, {}, 91071); }, 2000);
   same(S, "P7b beside a hidden token");
 }
+/* 7c: the map's director captions the knock-down on the player's seat only (its own shot with the number): the word keeps the room for the
+      number all the same, so it stands alike on both seats */
+{ const S = await two(() => mk("E8", "npc", 8, 6, { x: 600, y: 400 }), async (t) => { if (!game.user.isGM) Hooks.callAll("moinenMapsDirector", "shot", { shot: { kind: "damage", tokens: [t.id] } }); set(t, "health", 0, {}, 91081); }, 2000);
+  same(S, "P7c the director captions on one seat");
+  Hooks.callAll("moinenMapsDirector", "end", { shot: { kind: "damage", tokens: ["E8"] } });
+}
 /* 8: source pins: the impact follows the shared reaction, the crowd stages on numbers every seat shows */
 { const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("../tokenreact/main.mjs", import.meta.url), "utf8");

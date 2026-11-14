@@ -538,7 +538,9 @@ function planOf(L, it) {
      of the view by a whole cap) */
   const rising = ["rise", "grow"].includes(lk.motion.in) || lk.motion.out === "rise";
   /* PRIV: room for the numbers a reader's seat letters (it.room), so the word stands alike on every seat; this seat's own numbers fill it */
-  const room = word && !isCaptioned(tok.id) && (it.room?.length ?? 0) > nums.length ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  /* (the room stays when the map's director captions this token's damage on this seat: whether it does differs per seat, seen live on lane 5,
+     where the player's knock-down word stood bigger and elsewhere than the GM's) */
+  const room = word && (it.room?.length ?? 0) > nums.length ? it.room.slice(0, 2) : nums.map((n) => n.text);
   const gArgs = word ? { cap, aspect, nums: room, numCap, side: lk.side, up: (rising ? 0.6 : 0.4) + (lk.mood === "powerup" ? 0.6 : 0), down: lk.motion.in === "drop" ? 0.3 : 0.2 } : null;
   const g = word ? P.group(gArgs)
     : P.group({ cap: numCap, aspect: 0, nums: nums.map((n) => n.text), numCap, side: 0, up: 0.25, down: 0.15 });
