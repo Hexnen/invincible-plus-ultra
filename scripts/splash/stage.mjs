@@ -4,6 +4,7 @@ import { FS, LBL, oddsText, hueOf, hsl, fmtOdds, say } from './logic.mjs';
 import * as S from './splash.mjs';
 import * as LP from './letter-plan.mjs';
 import * as IP from './impact-plan.mjs';
+import { seesToken } from './seen.mjs';
 
 const active = new Map();   // key -> ctl
 const MAX_STAGES = 4;
@@ -236,14 +237,14 @@ function measureItems(items, base) {
     try {
       const r = LE.planFor ? LE.planFor(LP.letterable(it.text), o) : null;
       const p = r?.plan ?? (LE._plan ? (() => { const q = LE._plan(LP.letterable(it.text), o); LE._settle?.(q); return q; })() : null);
-      if (p?._holdBox?.w > 0 && p.sizeK > 0) m = { w: p._holdBox.w, h: p._holdBox.h, sizeK: p.sizeK, hand: p.hand?.id };
+      if (p?._holdBox?.w > 0 && p.sizeK > 0) m = { w: p._holdBox.w, h: p._holdBox.h, sizeK: p.sizeK, hand: p.hand?.id, grow: IP.growOf(p), contact: IP.contactMs(p) };   // FXI-SPLASH: the entrance's biggest drawing and the instant it hits
     } catch (e) { m = null; }
     if (!m) { let k = 0.62 + 0.7 * (it.sound?.loud ?? 0.5); try { k = LE.design(LP.letterable(it.text), o)?.sizeK ?? k; } catch (e) { /* estimate */ } const b = LP.estimateBox(it, 1); m = { w: b.w, h: b.h, sizeK: k, hand: null }; }
     it._m = m;
     if (m.hand) hands.push(m.hand);
   }
 }
-const measureFn = (it, S) => (it._m ? { w: it._m.w * S, h: it._m.h * S } : LP.estimateBox(it, S));
+const measureFn = (it, S) => (it._m ? { w: it._m.w * S, h: it._m.h * S, grow: it._m.grow ?? 1 } : LP.estimateBox(it, S));
 function engineOpts(it, base, hands) {
   const o = {
     mood: it.mood, sound: it.sound, hold: it.hold, rotation: it.rotation || 0, reduced: S.isReduced(), magnitude: it.magnitude,
@@ -316,12 +317,15 @@ function uiAvoid() {
     try {
       for (const e of document.querySelectorAll(sel)) {
         const q = e.getBoundingClientRect();
-        if (q && q.width > 0 && q.height > 0) out.push({ l: q.left - 6, t: q.top - 6, r: q.right + 6, b: q.bottom + 6 });
+        if (q && q.width > 0 && q.height > 0) out.push({ l: q.left - 6, t: q.top - 6, r: q.right + 6, b: q.bottom + 6, w: UI_WEIGHT });
       }
     } catch (e) { /* a selector this Foundry does not know */ }
   }
   return out;
 }
+/* FXI-SPLASH (ADVI 11: the critical's word over the VRAM panel): a panel weighs as much as a bar would: the block shrinks (to 0.4) before
+   it lies on a panel; it gives way only where nothing at all is free */
+export const UI_WEIGHT = 20;
 /* Dice So Nice's dice still lying on the table (client px): the screen layer draws over them, so the block keeps off them (ADVD2 3:
    the die inside the M of BAM!). Read from its dice box (each die's position projected by its camera); nothing while it is hidden. */
 export const DIE_R = 0.06;   // a resting die's half-size as a share of the dice canvas height
@@ -375,6 +379,22 @@ function compose(ctl, items, extra = {}) {
     frame = { vh, scale: (ctl.userScale || 1) * k, safe: safeRect(), token: T, avoid: screenAvoid(ctl.hero, !ctl.token),
       gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: area.cx, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
   }
+  let out = composeIn(ctl, items, frame);
+  /* FXI-SPLASH (ADVI 6): the map block is laid out from what every seat shares; when on THIS seat it would lie under a bar, the chat card or
+     past the edge of the view while its token is in view, this seat lays it out again inside its own free view (same words, sizes and
+     timing; only the place differs, and only where it has to) */
+  if (ctl.shared) {
+    const seat = seatSafeScene(), T = frame.token;
+    const tokenIn = seat && T && T.r > seat.l && T.l < seat.r && T.b > seat.t && T.t < seat.b;
+    if (seat && tokenIn && !inRect(out.rect, seat)) {
+      const q = { l: Math.max(frame.safe.l, seat.l), t: Math.max(frame.safe.t, seat.t), r: Math.min(frame.safe.r, seat.r), b: Math.min(frame.safe.b, seat.b) };
+      if (q.r - q.l >= 0.25 * frame.vh && q.b - q.t >= 0.25 * frame.vh) { const f2 = { ...frame, safe: q }; out = composeIn(ctl, items, f2); out.seat = true; frame = f2; }
+    }
+  }
+  out.k = k; out.frame = frame;
+  return out;
+}
+function composeIn(ctl, items, frame) {
   const anchored = !!frame.token;
   let side = 'above', out = null;
   for (let pass = 0; pass < 2; pass++) {
@@ -383,8 +403,15 @@ function compose(ctl, items, extra = {}) {
     if (!anchored || out.side === side) break;
     side = out.side;
   }
-  out.k = k; out.frame = frame;
   return out;
+}
+const inRect = (r, q) => r.l >= q.l - 1 && r.t >= q.t - 1 && r.r <= q.r + 1 && r.b <= q.b + 1;
+/* this seat's free view (its bars, panels' edges, the chat card) in scene px */
+function seatSafeScene() {
+  try {
+    const s = safeRect(), a = toScene({ x: s.l, y: s.t }), c = toScene({ x: s.r, y: s.b });
+    return a && c && c.x > a.x && c.y > a.y ? { l: a.x, t: a.y, r: c.x, b: c.y } : null;
+  } catch (e) { return null; }
 }
 
 function letterWrap(ctl) {
@@ -414,6 +441,17 @@ function letterOne(ctl, it) {
     if (ctl.hero) o.token = ctl.hero;
     delete o.parent;
     world = true;
+  }
+  /* FXI-SPLASH (ADVI 2): every lettering starts on a known instant a little ahead (its first picture is painted meanwhile), so the impact
+     frame can be put on the very tick the word hits. The impact is asked for FIRST: it owns the flash budget of that instant and the
+     word's own flash frame gives way to it (one accent, the impact's guard). */
+  o.startAt = performance.now() + LEAD_MS;
+  if (it.role === 'word' && ctl.impactPlan && !ctl.impact) {
+    let contact = it._m?.contact ?? 0;
+    try { const r = LE.planFor ? LE.planFor(LP.letterable(it.text), o) : null; if (r?.plan) contact = IP.contactMs(r.plan); } catch (e) { /* the measured one */ }
+    const shot = fireImpact(ctl, it, o.startAt, contact);
+    if (shot?.shift > 0) o.startAt += shot.shift;
+    ctl.wordAt = o.startAt; ctl.contactAt = o.startAt + contact;
   }
   try {
     const h = LE.play(LP.letterable(it.text), o);
@@ -526,6 +564,8 @@ function playLetters(ev, o) {
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
   /* FXLD2: on a map layer the moment needs a token everybody sees (o.token = the board's token, main.mjs mapToken); without one it
      has no place on the board and plays on the screen, by each seat's view */
+  /* FXI-SPLASH (ADVI 10): and only a token THIS seat sees: an unseen roller's moment plays on this seat's screen, placed by nothing of it */
+  if (o.token && !seesToken(o.token)) o = { ...o, token: null };
   const shared = onMap() && !!o.token;
   const ctl = openStage(full ? { ...o, full: true } : o, shared);
   const stage = ctl.el, later = ctl.later, holdK = o.hold || 1;
@@ -572,7 +612,6 @@ function playLetters(ev, o) {
       /* FXLD (ADVD 14): the engine switched off under us (its master switch) -> the classic splash instead of rays with no word */
       if (first && h && (h.off === true || (h.alive === false && LE?.prefs?.enabled === false))) { endCtl(ctl, true); playClassic(ev, o); first = false; return; }
       first = false;
-      if (it.role === 'word' && h && ctl.impactPlan) fireImpact(ctl, h, it);
     }, it.delay);
   }
   /* the old splash's surroundings stay: rays, the soft flash, the shake and the sparks of a strong result; the shake of a rare miss */
@@ -601,38 +640,44 @@ function accentFx(stage, P, later, o, full, impact = false) {
     for (let i = 0; i < waves; i++) later(() => S.particles(stage, 10 + Math.round(8 * P), h), i * 170);
   }
 }
-/* WIRE1: the impact frame of a result, at the instant its word lands (the end of the word's entrance on the engine's clock: the slam hits).
-   Every seat starts the moment at the same server time (beat.mjs) and plays the same word, so the same seed and the same landing tick give
-   the same drawings on the same instant. The struck figure is the rolling hero when THIS seat sees its token (its picture becomes the
-   silhouette); a hero this seat does not see (hidden, off screen) is never handed in: the point of the word is the subject then, so nothing
-   reveals the token. Over every window with the splash's own screen layer (the word stays on top: the engine's impact layer is one under
-   it), over the map and under the bars with any other layer. Reduced motion is passed only as true (a false would override the OS switch);
-   the photosensitivity guard is the engine's and nothing here can turn it off. */
-export const IMPACT_ENT_MAX = 700;   // ms: a word whose entrance is longer (none today) still gets its impact by then
-function heroSeen(t) {
-  try { return !!t && !t.destroyed && t.visible !== false && !(t.document?.hidden && !globalThis.game?.user?.isGM) ? t : null; } catch (e) { return null; }
+/* WIRE1 + FXI-SPLASH (ADVI 2, 6, 7, 10): the impact frame of a result, ON the tick its word hits.
+   WHEN: the word's contact (IP.contactMs: the squash with its burst, from the engine's plan of that very word) minus the impact's own build
+   (its gathering lines, IP.leadMs), so the impact's peak drawing and the word's hit are one instant; when the word hits sooner than the build
+   takes, the word waits for it. Every seat starts the moment at the same server time (beat.mjs) with the same word, seed and plan, so the
+   same drawings fall on the same instant.
+   WHERE (FXIS-1): a roll strikes nobody; what lands is the RESULT, so the impact marks the result word (its box), never the roller's token
+   (ADVI 7: the star and the silhouette sat on the attacker). Nothing of the token is handed in, so it can reveal nothing (ADVI 10).
+   On the screen layers the word stays on top of the impact (its layer is one under ours / under the engine's ui and hud layers); on a map
+   layer the word is IN the scene under the impact, so only drawings that leave the word's spot clear play there (IP.MAP_FRAMES), and only
+   when the word is in this seat's view (a frame at the view's edge for a word nobody here sees would mark nothing).
+   Reduced motion is passed only as true (a false would override the OS switch); the photosensitivity guard is the engine's. */
+export const LEAD_MS = 90;   // ms: a lettering starts this far ahead of its call (its first picture and the impact's drawings are painted meanwhile)
+function wordInView(at) {
+  const c = toClient(at);
+  return !!c && c.x >= 0 && c.y >= 0 && c.x <= window.innerWidth && c.y <= window.innerHeight;
 }
-export function landingMs(h) {
-  try {
-    const ticks = (h?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (Number(p?.ticks) || 0), 0);
-    return Math.min(IMPACT_ENT_MAX, Math.round(ticks * 1000 / 24));
-  } catch (e) { return 0; }
-}
-function fireImpact(ctl, h, it) {
+function fireImpact(ctl, it, T0, contact) {
   const I = LE?.impact, ip = ctl.impactPlan;
   if (!I?.play || !ip || ctl.impact) return null;
   try {
-    const hero = heroSeen(ctl.hero);
-    const at = ctl.shared && it.sceneAt ? it.sceneAt : { x: it.x, y: it.y };
-    const subject = hero ?? { x: at.x, y: at.y };
-    const spec = { kind: ip.kind, magnitude: ip.magnitude, seed: IP.impactSeed(ctl.seed), startAt: performance.now() + landingMs(h), subject,
+    const map = !!(ctl.shared && it.sceneAt);
+    if (map && !wordInView(it.sceneAt)) return null;
+    const c = map ? it.sceneAt : { x: it.x, y: it.y };
+    const w = Math.max(20, Number(it.w) || 0), hh = Math.max(20, Number(it.h) || 0);
+    const spec = { kind: ip.kind, magnitude: ip.magnitude, seed: IP.impactSeed(ctl.seed), subject: { x: c.x - w / 2, y: c.y - hh / 2, w, h: hh },
       over: LAYER === 'screen' ? 'ui' : 'scene' };
-    if (!hero) { spec.area = Math.max(20, (it.w || 0) / 2); if (ctl.shared && it.sceneAt) spec.space = 'world'; }
+    if (map) { spec.space = 'world'; spec.frames = IP.mapFrames(ip.magnitude); }
     if (ip.tone) spec.tone = ip.tone;
     if (ip.hitstop === false) spec.hitstop = false;
     if (S.isReduced()) spec.reduced = true;
+    let frames = spec.frames ?? null;
+    try { frames = I.plan?.(spec)?.frames ?? frames; } catch (e) { /* the kind's own build is unknown: no lead */ }
+    const lead = IP.leadMs(frames ?? []);
+    const shift = Math.max(0, lead - contact);
+    spec.startAt = T0 + shift + contact - lead;
     ctl.impact = I.play(spec);
-    return ctl.impact;
+    ctl.impactPeak = spec.startAt + lead;
+    return { shift, lead, contact };
   } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
 }
 /* the screen pins of a map moment: an HTML part follows its scene point (followPan) */

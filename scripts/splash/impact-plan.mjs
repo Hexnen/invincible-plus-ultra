@@ -37,3 +37,53 @@ export function impactFor(ev, o = {}) {
 }
 /* the seed of a roll's impact: the message id every seat shares (the words' seed is the same id + their role) */
 export const impactSeed = (seed) => `${seed ?? "x"}:impact`;
+
+/* ------------------------------------------------------------------ FXI-SPLASH (ADVI 2, 6, 7): WHEN and WHERE a roll's impact lands
+   The owner: the impact frame belongs to the instant the word hits, WITH it (not after it, not a second accent), and it tells the story.
+   A roll strikes nobody: what lands is the RESULT, so the impact marks the result word (FXIS-1), never the roller's token. */
+export const TICK = 1000 / 24;
+/* the instant the word hits, in ms from the word's start, read from the engine's plan of that very word (the same seed and options as
+   the play): the first entrance picture that carries the contact (a burst or a dust puff: the squash on the surface), else the engine's
+   own flash frame, else the entrance picture where the word is biggest. A plan without an entrance timeline (another engine) may name
+   the contact itself (plan.contactMs); else 0 (the word's first picture). */
+export function contactMs(plan) {
+  if (Number.isFinite(plan?.contactMs)) return Math.max(0, plan.contactMs);
+  const ent = plan?.timeline?.ent;
+  if (!Array.isArray(ent) || !ent.length) return 0;
+  const has = (p, ks) => Array.isArray(p?.fx) && p.fx.some((f) => ks.includes(f?.k));
+  let i = ent.findIndex((p) => has(p, ["burst", "dust"]));
+  if (i < 0) i = ent.findIndex((p) => p?.impact);
+  if (i < 0) { let best = -1; ent.forEach((p, k) => { const s = sizeOf(p); if (s > best + 1e-6) { best = s; i = k; } }); }
+  let a = 0; for (let k = 0; k < i; k++) a += Number(ent[k]?.ticks) || 0;
+  return Math.round(a * TICK);
+}
+/* how much bigger than its hold picture the word gets during its entrance (the slam's smear reaches 1.6-1.8x): the layout keeps that
+   room free too, else the word's biggest drawing crosses the bars or leaves the screen (ADVI 11: CRUSH! cut by the left edge) */
+const sizeOf = (p) => { const g = p?.g ?? {}; const s = Number(g.s) || 1; return s * Math.max(Number(g.sx) || 1, Number(g.sy) || 1) * (p?.smear?.zoom ? 1 + p.smear.zoom * 0.5 : 1); };
+export const GROW_MAX = 2;
+export function growOf(plan) {
+  const ent = plan?.timeline?.ent;
+  if (!Array.isArray(ent) || !ent.length) return 1;
+  return clamp(Math.max(1, ...ent.map(sizeOf)), 1, GROW_MAX);
+}
+/* the impact's own build: the drawings before its peak (the gathering speed lines) come BEFORE the word hits, so its peak drawing falls on
+   the contact tick */
+export function leadMs(frames) {
+  if (!Array.isArray(frames)) return 0;
+  let a = 0;
+  for (const f of frames) { const t = typeof f === "string" ? f : f?.type; if (t !== "lines") break; a += Number(typeof f === "string" ? 1 : f.ticks) || 1; }
+  return Math.round(a * TICK);
+}
+/* On a map layer the words are drawn IN the scene, under the impact's overlay (ADVI 6: the black shadow frame hid HAYMAKER!, the slam's ink
+   star blacked it out). There the impact keeps the word readable: only drawings that leave the word's own spot clear (focus lines that
+   start outside it, a torn window around it on the scene's negative, the colour split of the whole scene, shock rings round it). It still
+   builds: lines gather, the peak lands on the contact, the rings carry it away; the rarer the result, the more of it. */
+export const MAP_FRAMES = [
+  ["lines", "ring"],
+  ["lines", { type: "chroma", ticks: 1, punch: 0.5 }, { type: "ring", ticks: 2 }],
+  ["lines", { type: "window", ticks: 2, punch: 1 }, "chroma", { type: "ring", ticks: 2 }],
+  ["lines", { type: "window", ticks: 2, punch: 1, stop: true }, { type: "chroma", ticks: 2 }, { type: "ring", ticks: 2 }, "lines"]
+];
+export const COVERS_WORD = ["pop", "splat", "ink", "slam", "shadow", "glare", "swap", "smear", "dots", "shatter", "rip", "tear", "fade"];
+export const tierOf = (m) => (m < 0.35 ? 0 : m < 0.85 ? 1 : m < 1.35 ? 2 : 3);   // the engine's four strengths (impact/plan.mjs tierOf)
+export const mapFrames = (magnitude) => MAP_FRAMES[tierOf(Number(magnitude) || 0)].map((f) => (typeof f === "string" ? f : { ...f }));

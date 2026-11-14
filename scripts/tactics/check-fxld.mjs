@@ -132,8 +132,11 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
           for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
           ok(!clash, `F7 ${tag}: no two letterings of the moment overlap (${clash})`);
           const word = boxes.find((b) => b.role === "word"), sayB = boxes.find((b) => b.role === "say"), odds = boxes.find((b) => b.role === "odds");
+          /* FXI-SPLASH (ADVI 11): a stacked block reads in the order it lands: word, sixes, caption. A sixes row standing between the word and
+             the caption is allowed for (its own height and gap), nothing more */
+          const sixB = boxes.find((b) => b.role === "six"), between = sixB && sixB.y > word.y + word.h / 2 && sayB && sixB.y < sayB.y ? sixB.h + 0.3 * word.S : 0;
           for (const cb of [sayB, odds].filter(Boolean)) {
-            ok(Math.abs((cb.y - cb.h / 2) - (word.y + word.h / 2)) <= 0.9 * word.S + (sayB && cb === odds ? sayB.h + 0.3 * word.S : 0), `F4 ${tag}: the ${cb.role} sits right under the word (gap ${Math.round((cb.y - cb.h / 2) - (word.y + word.h / 2))} px, word cap ${Math.round(word.S)} px)`);
+            ok(Math.abs((cb.y - cb.h / 2) - (word.y + word.h / 2)) <= 0.9 * word.S + between + (sayB && cb === odds ? sayB.h + 0.3 * word.S : 0), `F4 ${tag}: the ${cb.role} sits right under the word (gap ${Math.round((cb.y - cb.h / 2) - (word.y + word.h / 2))} px, word cap ${Math.round(word.S)} px)`);
           }
           Stage.clearAll();
         }

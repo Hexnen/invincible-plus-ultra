@@ -10,6 +10,7 @@ import * as Stage from './stage.mjs';
 import * as Beat from './beat.mjs';
 import { EN, PL } from './lang.mjs';
 import { registerMigrationSettings, migrateSettings } from './migrate.mjs';
+import { seesToken } from './seen.mjs';
 import * as Moment from '../moment.mjs';
 
 const MOD = 'invincible-plus-ultra';
@@ -253,7 +254,7 @@ function resolveToken(message) {
     if (sp.scene && sp.scene !== canvas.scene?.id) return null;
     const tok = (sp.token && canvas.tokens.get(sp.token)) || message.speakerActor?.getActiveTokens?.()[0];
     /* bez Token#isVisible: getter zeruje detectionFilter, a my wołamy go poza cyklem odświeżania */
-    if (!tok || !tok.visible || (tok.document.hidden && !game.user.isGM)) return null;
+    if (!tok || !tok.visible || (tok.document.hidden && !game.user.isGM) || !seesToken(tok)) return null;   // FXI-SPLASH: out of this seat's sight too
     const g = canvas.stage.toGlobal(tok.center);
     const r = canvas.app.screen;
     if (g.x < 0 || g.y < 0 || g.x > r.width || g.y > r.height) return null;
@@ -296,14 +297,15 @@ function visibleToMe(message) { return message.isContentVisible !== false; }
 
 /* FXLD2 (ADVD2 1): on a map layer the moment stands by the token every seat shares: found by its document, not by this seat's view
    (resolveToken asks whether THIS seat sees it and drops a token off its screen or under its chat). A hidden token is not on every
-   seat's board: then the moment has no board place and plays over the screen. */
+   seat's board: then the moment has no board place and plays over the screen. FXI-SPLASH (ADVI 10, privacy): nor is a token this seat
+   cannot see by vision, walls or fog: no board place on THIS seat, the moment plays on its screen and nothing marks where the roller stands. */
 function boardToken(message) {
   try {
     if (!canvas?.ready) return null;
     const sp = message.speaker ?? {};
     if (sp.scene && sp.scene !== canvas.scene?.id) return null;
     const tok = (sp.token && canvas.tokens.get(sp.token)) || message.speakerActor?.getActiveTokens?.()[0];
-    return tok && !tok.document.hidden ? tok : null;
+    return tok && !tok.document.hidden && seesToken(tok) ? tok : null;   // FXI-SPLASH (ADVI 10): and only one THIS seat sees (seen.mjs)
   } catch (e) { return null; }
 }
 const serverNow = () => { try { return game.time?.serverTime ?? Date.now(); } catch (e) { return Date.now(); } };

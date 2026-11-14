@@ -84,7 +84,7 @@ const CAPTION_ROLES = new Set(['say', 'odds']);
 const INFO_ROLES = new Set(['six', 'say', 'odds', 'stress']);
 
 /* cap height of each lettering, as a share of the viewport height (1366x768 and 1920x1080 alike), and its pixel floor */
-export const FLOOR = { word: 30, pre: 22, wreck: 22, six: 21, say: 19, odds: 17, stress: 19 };
+export const FLOOR = { word: 30, pre: 22, wreck: 22, six: 21, say: 21, odds: 19, stress: 19 };   // FXI-SPLASH: say 19 -> 21, odds 17 -> 19 (ADVI 11)
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const r1 = v => Math.round(v * 100) / 100;
@@ -149,9 +149,9 @@ export function planMoment(ev, o = {}) {
     }
     const sentence = ev.tag ? say(ev.tag) : oddsText(P);
     if (sentence && ev.p != null) {
-      add({ role: 'say', text: sentence, delay: t + 360, cap: r3((full ? 0.05 : 0.038) + 0.006 * P), wMax: 0.7,
+      add({ role: 'say', text: sentence, delay: t + 360, cap: r3((full ? 0.053 : 0.043) + 0.006 * P), wMax: 0.7,   // FXI-SPLASH (ADVI 11): the caption was too small to read
         mood: 'tick', sound: { loud: 0.35, pitch: 0.4, sharp: 0.5 }, colors: sayColors(P, o.npc ? 150 : 0), hold: hold - 360 + 120, rotation: -3 });
-      add({ role: 'odds', text: oddsLabel(ev.p) + (ev.pushed ? ' - ' + LBL.push : ''), delay: t + 460, cap: full ? 0.042 : 0.032, wMax: 0.5,
+      add({ role: 'odds', text: oddsLabel(ev.p) + (ev.pushed ? ' - ' + LBL.push : ''), delay: t + 460, cap: full ? 0.045 : 0.037, wMax: 0.5,
         mood: 'tick', sound: { loud: 0.3, pitch: 0, sharp: 0.6 }, colors: ODDS_COLORS, hold: hold - 460 + 120, rotation: -2 });
     }
   }
@@ -311,7 +311,7 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
       const S2 = Math.min(S * (it.wMin * safeW * f) / b.w, 0.3 * vh * sc * f);
       if (S2 > S) { S = S2; b = measure(it, S); }
     }
-    return { ...it, S: Math.round(S * 10) / 10, w: b.w, h: b.h };
+    return { ...it, S: Math.round(S * 10) / 10, w: b.w, h: b.h, grow: Math.max(1, Number(b.grow) || 1) };
   });
   const get = r => sized.find(x => x.role === r);
   const word = get('word'), pre = get('pre'), six = get('six'), wreck = get('wreck'), sayI = get('say'), odds = get('odds'), stress = get('stress');
@@ -334,6 +334,9 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
   if (word && stack) {
     put(word, 0, y);
     y += word.h + g + pad(word);
+    /* FXI-SPLASH (ADVI 11: "4 SZOSTKI" stood under the caption): the block reads top-down in the order it lands: the word, the sixes
+       (+230 ms), then the sentence and the odds (+360 / +460 ms) */
+    stackRow();
   } else if (word) {
     put(word, 0, y);
     let right = word.w / 2;
@@ -359,7 +362,6 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
       y += h + g;
     } else for (const it of cap) { put(it, 0, y); y += it.h + g * 0.6; }
   }
-  if (word && stack) stackRow();
   let gauge = null;
   if (stress) {
     const gw = (frame.gauge?.w ?? 0) * f, gh = (frame.gauge?.h ?? 0) * f;   // the gauge shrinks with the block (live: a full-size gauge beside words shrunk to 0.6)
@@ -371,9 +373,12 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
   const rect = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity };
   for (const it of sized) {
     if (it.x == null) continue;
-    const p = pad(it);
-    rect.l = Math.min(rect.l, it.x - it.w / 2 - p); rect.r = Math.max(rect.r, it.x + it.w / 2 + p);
-    rect.t = Math.min(rect.t, it.y - it.h / 2 - p); rect.b = Math.max(rect.b, it.y + it.h / 2 + p);
+    /* FXI-SPLASH (ADVI 11): the block's outline holds each part's biggest entrance drawing too (the slam's smear grows the word 1.6-1.8x
+       around its centre for a tick or two: live it crossed the left bar and left the screen); the parts' spacing stays the hold's (the
+       captions come after the entrance is over) */
+    const p = pad(it), px = Math.max(p, (it.grow - 1) / 2 * it.w + p * 0.5), py = Math.max(p, (it.grow - 1) / 2 * it.h + p * 0.5);
+    rect.l = Math.min(rect.l, it.x - it.w / 2 - px); rect.r = Math.max(rect.r, it.x + it.w / 2 + px);
+    rect.t = Math.min(rect.t, it.y - it.h / 2 - py); rect.b = Math.max(rect.b, it.y + it.h / 2 + py);
   }
   if (gauge) { rect.l = Math.min(rect.l, gauge.x); rect.r = Math.max(rect.r, gauge.x + gauge.w); rect.b = Math.max(rect.b, gauge.y + gauge.h); }
   return { items: sized.filter(it => it.x != null), rect, gauge, f };
