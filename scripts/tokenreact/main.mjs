@@ -332,6 +332,7 @@ function onSplash(data) {
     const id = String(data.id);
     if (data.phase === "done") { story.delete(id); return; }
     const s = story.get(id) ?? { t: performance.now(), landAt: null, impactMs: 0 };
+    if (data.phase === "start") s.t = performance.now();      // FIN-CALLERS: said again right before it plays (dice, verdict and camera took their time)
     if (data.phase === "land") { s.landAt = Number.isFinite(data.landAt) ? data.landAt : performance.now(); s.impactMs = Math.max(0, Math.min(1000, Number(data.impactMs) || 0)); }
     story.set(id, s);
     if (story.size > 30) story.delete(story.keys().next().value);
@@ -646,6 +647,12 @@ function impactOf(L, it, tok, tHit, red) {
     const src = it.pub?.src ? canvas.tokens?.get(it.pub.src) : null;
     if (src && src.id !== tok.id && seatOf(src).visible) spec.from = src;
     if (red) spec.reduced = true;
+    /* FIN-CALLERS (ADVI 2): the impact's own build (its gathering lines) comes BEFORE the blow, so its contact drawing falls on the instant the
+       word strikes (pure leadMs, as the roll splash does); every seat plans the same drawings from the same spec. Not from the
+       client's reduced setting: the lead is read from the spec without it, so seats keep one instant */
+    let lead = 0;
+    try { lead = P.leadMs(I.plan?.({ ...spec, reduced: false })?.frames ?? []); } catch (err) { lead = 0; }
+    if (lead > 0) spec.startAt = Math.max(performance.now(), spec.startAt - lead);
     return I.play(spec);
   } catch (err) { once(err); return null; }
 }

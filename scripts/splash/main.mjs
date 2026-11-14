@@ -390,6 +390,10 @@ hook('createChatMessage', async (message, options, userId) => {
     const id = message.id;
     if (shown.has(id)) return dbg('skip: już pokazany');
     remember(shown, id);
+    /* FIN-CALLERS (FXIT-S1, ADVI 8): the token reactions wait for this roll's story; "done" on every way out that plays nothing */
+    Stage.tellMoment({ phase: 'start', id });
+    let handed = false;
+    try {
 
     const tw = performance.now();
     const own = await settled(message);
@@ -424,12 +428,18 @@ hook('createChatMessage', async (message, options, userId) => {
     dbg('odtwarzam:', ev.word, 'P=' + (ev.power ?? 'fail'), 'miejsce:', token ? 'token ' + token.name : 'ekran');
     const resolve = ev.stress ? resolveReader(message, ev) : null;
     announce(ev, message, resolve);
-    Stage.play(ev, {
-      rnd: mulberry32(hashString(id)), token, scale: cs('scale'), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'),
+    Stage.tellMoment({ phase: 'start', id });   // said again: the dice, the verdict and the camera took their time
+    const ctl = Stage.play(ev, {
+      rnd: mulberry32(hashString(id)), token, scale: cs('scale'), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'), momentId: id,
       resolve, seed: id
     });
+    handed = !!ctl && !ctl.dead;
+    } finally { if (!handed) Stage.tellMoment({ phase: 'done', id }); }
   } catch (e) { console.warn(`${LOG} createChatMessage failed`, e); }
 });
+
+/* FIN-CALLERS (FXIT-S2, ADVI 8): a token reaction's blow is coming; a moment standing by a struck token makes room by its instant */
+hook(Stage.REACT_HOOK, (data) => { try { Stage.onTokenReact(data); } catch (e) { /* never the token's problem */ } });
 
 /* Accept na pushowalnym rzucie: stres staje się znany dopiero teraz */
 hook('updateChatMessage', async (message, changes, options, userId) => {

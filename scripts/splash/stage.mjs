@@ -453,6 +453,11 @@ function letterOne(ctl, it) {
     if (shot?.shift > 0) o.startAt += shot.shift;
     ctl.wordAt = o.startAt; ctl.contactAt = o.startAt + contact;
   }
+  /* FIN-CALLERS (FXIT-S1, ADVI 8): the result word strikes now: the token reactions wait until it and its impact are over */
+  if (it.role === 'word') {
+    const at = ctl.contactAt ?? o.startAt;
+    tellLand(ctl, at, ctl.impactEnd ? Math.max(0, ctl.impactEnd - at) : 0);
+  }
   try {
     const h = LE.play(LP.letterable(it.text), o);
     ctl.letters.push({ h, base: { ...o.at }, role: it.role, world, own: !!o.parent });
@@ -582,6 +587,7 @@ function playLetters(ev, o) {
   const plan = LP.planMoment(ev, { token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const word = plan.items.find(it => it.role === 'word');
   const t0 = word?.delay ?? 0;
+  if (!word) later(() => tellLand(ctl, performance.now(), 0), 0);   // FIN-CALLERS: a moment without a result word has struck once it shows
   /* the stress row and its gauge belong to the block (measured once, shown at its time) */
   const resolve = ev.stress ? (o.resolve ? o.resolve() : null) : null;
   let gauge = null;
@@ -610,7 +616,7 @@ function playLetters(ev, o) {
       if (it.role === 'stress') stressGauge(ctl, ev.stress, resolve, lay.gauge);
       const h = letterOne(ctl, it);
       /* FXLD (ADVD 14): the engine switched off under us (its master switch) -> the classic splash instead of rays with no word */
-      if (first && h && (h.off === true || (h.alive === false && LE?.prefs?.enabled === false))) { endCtl(ctl, true); playClassic(ev, o); first = false; return; }
+      if (first && h && (h.off === true || (h.alive === false && LE?.prefs?.enabled === false))) { ctl.momentId = null; ctl.landed = false; endCtl(ctl, true); playClassic(ev, o); first = false; return; }   // the classic splash tells the story from here
       first = false;
     }, it.delay);
   }
@@ -677,8 +683,73 @@ function fireImpact(ctl, it, T0, contact) {
     spec.startAt = T0 + shift + contact - lead;
     ctl.impact = I.play(spec);
     ctl.impactPeak = spec.startAt + lead;
+    /* FIN-CALLERS (FXIT-S1): when the impact's last drawing is over (the token reactions wait for it) */
+    let ms = 0;
+    try { ms = Number(I.plan?.(spec)?.ms) || 0; } catch (e) { ms = 0; }
+    if (ctl.impact && ctl.impact.alive !== false && ms > 0) ctl.impactEnd = spec.startAt + ms;
     return { shift, lead, contact };
   } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
+}
+/* ------------------------------------------------------------------ FIN-CALLERS (FXIT-S1, FXIT-S2; ADVI 8): one story, in order
+   An attack roll and its hit tell one story: the roll's result word strikes (and its impact plays), THEN the target answers. The splash
+   says where it is on MOMENT_HOOK, on this page's clock:
+     { phase: "start", id }                      the roll's moment is coming (the card; said again right before it plays),
+     { phase: "land", id, landAt, impactMs }     its result word strikes at landAt (performance.now), its impact lasts impactMs after it,
+     { phase: "done", id }                       it is over or was dropped (said on every way out).
+   The token reactions (tokenreact/main.mjs) wait for it. They say each blow on REACT_HOOK ({ phase: "hit", at, ids }) and a moment that
+   has told its story and stands within half a token of a struck token makes room: its words leave ROOM_MS before the blow. */
+export const MOMENT_HOOK = 'invincible-plus-ultra.splashMoment', REACT_HOOK = 'invincible-plus-ultra.tokenReact';
+export const ROOM_MS = 240;
+export function tellMoment(data) {
+  try { globalThis.Hooks?.callAll?.(MOMENT_HOOK, data); } catch (e) { /* a listener's failure is not the splash's */ }
+}
+function tellLand(ctl, landAt, impactMs) {
+  if (!ctl.momentId || ctl.landed) return;
+  ctl.landed = true;
+  tellMoment({ phase: 'land', id: ctl.momentId, landAt, impactMs: Math.round(Math.max(0, impactMs) || 0) });
+}
+function tellDone(ctl) {
+  if (!ctl.momentId || ctl.told) return;
+  ctl.told = true;
+  tellMoment({ phase: 'done', id: ctl.momentId });
+}
+/* the block of a moment and a token's box, in the same units (scene px on the map, client px on the screen layers) */
+function blockOf(ctl) {
+  if (ctl.rect && Number.isFinite(ctl.rect.l)) {
+    const o = !ctl.shared && ctl.offset ? ctl.offset : { x: 0, y: 0 };
+    return { l: ctl.rect.l + o.x, t: ctl.rect.t + o.y, r: ctl.rect.r + o.x, b: ctl.rect.b + o.y };
+  }
+  try { const q = ctl.el?.getBoundingClientRect?.(); if (q && q.width > 0) return { l: q.left, t: q.top, r: q.right, b: q.bottom }; } catch (e) { /* none */ }
+  return null;
+}
+function tokenAreaOf(ctl, tok) {
+  if (ctl.shared) { const gs = globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100; return docBox(tok, gs); }
+  return tokenBox(tok);
+}
+export function nearBlock(block, tb) {
+  if (!block || !tb) return false;
+  const p = 0.5 * Math.max(tb.r - tb.l, tb.b - tb.t);
+  return block.l < tb.r + p && block.r > tb.l - p && block.t < tb.b + p && block.b > tb.t - p;
+}
+export function makeRoom(ids, at) {
+  try {
+    if (!Array.isArray(ids) || !ids.length) return 0;
+    const toks = ids.map((id) => globalThis.canvas?.tokens?.get?.(id)).filter(Boolean);
+    let n = 0;
+    for (const ctl of [...active.values()]) {
+      if (ctl.dead || !ctl.landed || ctl.roomFor) continue;   // a moment that has not struck yet keeps its story (it comes after the blow anyway)
+      const block = blockOf(ctl);
+      if (!toks.some((t) => nearBlock(block, tokenAreaOf(ctl, t)))) continue;
+      ctl.roomFor = at;
+      const ms = Math.max(0, (Number.isFinite(at) ? at : performance.now()) - ROOM_MS - performance.now());
+      ctl.later(() => endCtl(ctl, false), ms);
+      n++;
+    }
+    return n;
+  } catch (e) { return 0; }
+}
+export function onTokenReact(data) {
+  if (data?.phase === 'hit') makeRoom(data.ids, data.at);
 }
 /* the screen pins of a map moment: an HTML part follows its scene point (followPan) */
 function pin(ctl, el, at, c0, k = 0) { (ctl.pins ??= []).push({ el, at, c0, k }); }
@@ -773,6 +844,7 @@ function endCtl(ctl, quick) {
   if (ctl.dead) return;
   ctl.dead = true;
   ctl.timers.forEach(clearTimeout);
+  tellDone(ctl);   // FIN-CALLERS (FXIT-S1): over or dropped, on every way out
   if (active.get(ctl.key) === ctl) active.delete(ctl.key);
   if (ctl.lw) stopLetters(ctl, quick);   // LDIC: a newer splash on the same place, the limit, a scene change: the words exit (quick = at once)
   if (quick && ctl.impact?.alive) { try { ctl.impact.stop(); } catch (e) { /* already over */ } }   // WIRE1: a moment cut short takes its impact frame with it
@@ -826,7 +898,7 @@ function openStage(opts, shared = false) {
   lay.appendChild(el);
   el.style.setProperty('--u', Math.max(0.4, Math.min(opts.full ? 2.2 : 1.4, W / 760)).toFixed(3));
   const ctl = { key, el, token, W, extras: [], timers: [], dead: false, pos: token ? POS_TOKEN : POS_SCREEN, userScale: shared ? 1 : scale,
-    hero: opts.token || null, shared, backdrop: !!opts.backdrop };
+    hero: opts.token || null, shared, backdrop: !!opts.backdrop, momentId: opts.momentId ?? null };
   /* FXLD2: a map moment's gauge: scene px per reference px (the gauge is measured at --u 1, the 768 px reference) */
   if (shared) ctl.gaugeK = GRID_VH * (globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100) / LP.REF_VH;
   ctl.later = (fn, ms) => {
@@ -872,6 +944,7 @@ function playClassic(ev, o) {
   }
 
   later(() => {
+    tellLand(ctl, performance.now(), 0);   // FIN-CALLERS (FXIT-S1): the classic word pops now; it has no impact frame
     if (ev.fail) {
       /* siła porażki z jej rzadkości: rutyna (>50%) jest cicha, rzadka porażka silnej postaci jest komiczna */
       const dF = ev.failP == null ? 0.3 : Math.max(0, Math.min(1, Math.log(0.5 / ev.failP) / Math.log(10)));

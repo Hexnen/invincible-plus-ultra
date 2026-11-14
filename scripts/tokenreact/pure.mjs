@@ -10,6 +10,8 @@
      chooseSlot / slotPoint / clampInto / safeRect / group   -> where the group (word + numbers) stands, in screen px
    Kinds: Health  hit | heavy | down (to 0 = broken [B2707]) | heal | back (up from 0 = rallied [B2773])
           Resolve stress | spent (stress taken by choice: a pushed roll, a power) | regain | out (0 = stressed out [B2816]) | steady (up from 0) */
+import { contactMs as wordContact, leadMs } from "../splash/impact-plan.mjs";
+export { leadMs };
 
 export const HEALTH = ["hit", "heavy", "down", "heal", "back"];
 export const RESOLVE = ["stress", "spent", "regain", "out", "steady"];
@@ -535,6 +537,9 @@ export const NUM_AFTER = Math.round(4 * TICK_MS);
 export function contactMs(plan, reduced = false) {
   if (reduced) return 0;
   if (Number.isFinite(plan?.contactMs) && plan.contactMs >= 0) return plan.contactMs;
+  /* FIN-CALLERS: engine 1.9 (MOTION2) moves the word on pose keys and its pictures carry no burst or dust: read the contact as the roll
+     splash does (one rule for both callers: the word's own accent tick, else its squash pose, else its biggest pose) */
+  if (Array.isArray(plan?.motion?.entKeys) && plan.motion.entKeys.length) return wordContact(plan);
   const ent = (plan?.timeline ?? plan)?.ent;
   if (!Array.isArray(ent) || !ent.length) return 0;
   let a = 0, total = 0, flash = null;

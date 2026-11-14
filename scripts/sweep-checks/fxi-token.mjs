@@ -153,7 +153,9 @@ async function seats(build, run, ms = 1500) {
   for (const who of ["gm", "player"]) {
     const w = S[who].words.find((x) => !isNum(x.text)), im = S[who].im[0];
     const c = w && P.contactMs(w.h.plan.timeline);
-    ck(`I2 ${who}: the impact starts on the drawing where the word strikes (word start + its contact ${Math.round(c)} ms; off by ${Math.round(im?.spec.startAt - w?.o.startAt - c)} ms)`, !!w && !!im && Math.abs(im.spec.startAt - w.o.startAt - c) < 2);
+    /* FIN-CALLERS: the impact's contact drawing = its start + its own build (the gathering lines before it), as the roll splash reads it */
+    const lead = im ? P.leadMs(planImpact({ ...im.spec, reduced: false }).frames) : 0;
+    ck(`I2 ${who}: the impact's contact drawing falls on the drawing where the word strikes (word start + its contact ${Math.round(c)} ms; impact build ${lead} ms; off by ${Math.round(im?.spec.startAt + lead - w?.o.startAt - c)} ms)`, !!w && !!im && Math.abs(im.spec.startAt + lead - w.o.startAt - c) < 2);
     const num = S[who].words.find((x) => isNum(x.text));
     if (num) ck(`I2 ${who}: its number pops after the strike (${Math.round(num.o.startAt - im.spec.startAt)} ms)`, num.o.startAt >= im.spec.startAt + 100);
   }
