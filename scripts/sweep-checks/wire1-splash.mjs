@@ -86,7 +86,8 @@ async function seat({ W = 1600, H = 900, layer = "screen", e, name = "x", hero =
     globalThis.game = { user: { isGM: gm, id: gm ? "GM" : "P1" } };
     const L = fakeEngine({ prefs: { enabled: true, scale: 1 } });
     const play0 = L.play.bind(L), wordAt = [];
-    L.play = (text, op) => { const h = play0(text, op); h.plan = { timeline: { ent: [{ ticks: 2 }, { ticks: 3 }] } }; if (/:word$/.test(op.seed ?? "")) wordAt.push(performance.now()); return h; };
+    const wordStart = [];
+    L.play = (text, op) => { const h = play0(text, op); h.plan = { timeline: { ent: [{ ticks: 2 }, { ticks: 3 }] } }; if (/:word$/.test(op.seed ?? "")) { wordAt.push(performance.now()); wordStart.push(op.startAt ?? performance.now()); } return h; };
     const impacts = [];
     if (!noImpact) L.impact = { play(spec) { impacts.push({ spec, t: performance.now() }); return { alive: true, plan: { magnitude: spec.magnitude }, finished: Promise.resolve("done"), ready: Promise.resolve(true), stop() {} }; } };
     Stage.setLetters(L); Stage.setLayer(layer); S.setReduced(reduced);
@@ -96,7 +97,7 @@ async function seat({ W = 1600, H = 900, layer = "screen", e, name = "x", hero =
     for (const t of [100, 300, 700, 1500, 2500]) { flush(t); walk(document.body); }
     flush(1e9);
     const moves = L.calls.reduce((a, c) => a + (c.h.moves?.length ?? 0), 0);
-    const out = { impacts, flashes: [...new Set(flashes)].length, moves, wordAt, calls: L.calls, ctl };
+    const out = { impacts, flashes: [...new Set(flashes)].length, moves, wordAt, wordStart, calls: L.calls, ctl };
     Stage.clearAll(); Stage.setLayer("screen"); S.setReduced(false); delete globalThis.canvas;
     return out;
   });
@@ -113,9 +114,13 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
   const im = s.impacts[0]?.spec ?? {};
   eq(s.impacts.length, 1, "critical: one impact frame (one per event)");
   ok(im.kind === "crit" && im.magnitude >= 1.35, `critical: the critical's kind, the whole set for a 1-in-1296 roll (${im.kind} ${im.magnitude})`);
-  ok(im.subject === hero, "critical: the struck figure is the rolling hero this seat sees (its picture becomes the silhouette)");
+  /* FXI-SPLASH (ADVI 7, FXIS-1) replaced "the struck figure is the rolling hero": a roll strikes nobody, the impact marks the result word
+     (sweep-checks/fxi-splash.mjs W); the hero never appears in the spec */
+  ok(im.subject !== hero && !im.subject?.document && Number.isFinite(im.subject?.w), "critical: the impact marks the result word, not the roller (FXI-SPLASH W)");
   eq([im.over, im.seed], ["ui", "S-c1:impact"], "critical (screen layer): over the windows, under the word; seeded by the message every seat shares");
-  ok(s.wordAt.length && Math.abs(im.startAt - s.wordAt[0] - 5 * 1000 / 24) < 2, `critical: at the instant the word lands (its entrance, ${Math.round(im.startAt - s.wordAt[0])} ms after it starts)`);
+  /* FXI-SPLASH (ADVI 2) replaced "at the end of the word's whole entrance" (that was the defect: 0.2-0.4 s after the hit): the impact is now
+     asked for before the word and its peak falls on the word's contact tick (sweep-checks/fxi-splash.mjs T); here: never after the word's start + entrance */
+  ok(Number.isFinite(im.startAt) && s.wordStart.length && im.startAt <= s.wordStart[0] + 5 * 1000 / 24, `critical: no later than the word's entrance (${Math.round(im.startAt - (s.wordStart[0] ?? 0))} ms after the word starts)`);
   eq(s.flashes, 0, "critical: no flash of our own on top of the impact frame (the 170 ms slam flash is gone)");
   eq(s.moves, 0, "critical: no shake of our own on top (the engine's frame punch is the shove)");
   ok(!("reduced" in im) && !("photosafe" in im) && !("flashes" in im) && !("frames" in im) && !("vision" in im), `critical: nothing that could weaken the guard or override the OS reduced-motion switch (${Object.keys(im)})`);
@@ -141,7 +146,7 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
   const g = await seat({ e: R.crit, name: "m", hero, gm: true, full: true });
   const p = await seat({ e: R.crit, name: "m", hero, gm: false, full: false });
   const a = g.impacts[0]?.spec, b = p.impacts[0]?.spec;
-  ok(a && b && a.kind === b.kind && a.magnitude === b.magnitude && a.seed === b.seed && Math.abs((a.startAt - g.wordAt[0]) - (b.startAt - p.wordAt[0])) < 1, `GM and player: one impact (kind, strength, seed, landing tick) whatever each seat's full-screen setting (${a?.kind} ${a?.magnitude} / ${b?.kind} ${b?.magnitude})`);
+  ok(a && b && a.kind === b.kind && a.magnitude === b.magnitude && a.seed === b.seed && Math.abs((a.startAt - g.wordStart[0]) - (b.startAt - p.wordStart[0])) < 1, `GM and player: one impact (kind, strength, seed, landing tick) whatever each seat's full-screen setting (${a?.kind} ${a?.magnitude} / ${b?.kind} ${b?.magnitude})`);
 }
 /* ---- privacy: a hero this seat does not see is never the subject */
 {
@@ -151,18 +156,21 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
     const im = s.impacts[0]?.spec;
     ok(im && im.subject !== hero && !im.subject?.document && Number.isFinite(im.subject?.x) && !("from" in im), `a ${what} hero on the player's seat: the impact stands on the word's point, the token is not handed in (${JSON.stringify(im?.subject)})`);
   }
+  /* FXI-SPLASH (FXIS-1): the GM too gets the impact on the word (no seat gets the roller's silhouette any more) */
   const s = await seat({ e: R.crit, name: "h", hero: hid, gm: true });
-  ok(s.impacts[0]?.spec?.subject === hid, "... the GM, who sees the hidden hero, gets its silhouette");
+  ok(s.impacts.length === 1 && s.impacts[0].spec.subject !== hid, "... the GM gets the same impact, on the word");
 }
 /* ---- map layer: the shared moment over the map; an unseen hero gives a scene point */
 {
   const hero = tok("HERO", 1200, 900);
   const s = await seat({ layer: "overlay", e: R.crit, name: "w", hero });
   const im = s.impacts[0]?.spec ?? {};
-  ok(im.over === "scene" && im.subject === hero, `map layer: over the map, under the bars (${im.over}), on the hero`);
+  ok(im.over === "scene" && im.space === "world" && im.subject !== hero && Number.isFinite(im.subject?.w), `map layer: over the map, under the bars (${im.over}), on the word in scene space (FXI-SPLASH)`);
+  /* FXI-SPLASH (ADVI 10) replaced "the hero unseen by this seat: a scene point": that scene point was the privacy defect (it marked where the
+     unseen roller stands). Now an unseen roller's moment has no place on the board at all on that seat */
   const u = await seat({ layer: "overlay", e: R.crit, name: "w", hero: tok("UNS", 1200, 900, { visible: false }), gm: false });
   const iu = u.impacts[0]?.spec ?? {};
-  ok(iu.space === "world" && Number.isFinite(iu.subject?.x) && !iu.subject?.document, `map layer, the hero unseen by this seat: a scene point (${JSON.stringify(iu.subject)} ${iu.space})`);
+  ok(iu.space !== "world" && !iu.subject?.document && u.calls.every((c) => c.o.space !== "world"), `map layer, the hero unseen by this seat: nothing on the board (${JSON.stringify(iu.subject)} ${iu.space})`);
   eq((await seat({ layer: "ui", e: R.crit, name: "u", hero })).impacts[0]?.spec?.over, "scene", "the engine's own ui layer (under the windows): the impact goes under the bars too (it would cover the word)");
 }
 /* ---- calm and effects */
