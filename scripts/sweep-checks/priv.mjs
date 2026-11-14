@@ -5,7 +5,7 @@
 // ADVI findings 1 and 13, ADVT2 finding 12.) The harness is fxi-token's fake Foundry and recording engine; the token animation is read from
 // scripts/tokenanim/main.mjs (its active layers). The same-reaction checks fail on tactics-integrated-119 (8de90e8); the hidden-token ones hold there too.
 let n = 0, f = 0;
-const ck = (name, c) => { n++; if (!c) { f++; console.log("FAIL", name); } };
+const ck = (name, c) => { n++; if (!c) { f++; console.log("FAIL", name); } else if (process.env.LETR_VERBOSE) console.log("ok  ", name); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const hooks = {};
@@ -194,6 +194,10 @@ const same = (S, name) => {
   ck(`P7 ... the player nothing: no word, no number, no impact, no token animation (${S.player.words.length} / ${S.player.im.length} / ${S.player.anim.length})`, S.player.words.length === 0 && S.player.im.length === 0 && S.player.anim.length === 0);
   const S2 = await two(() => { const t = mk("H2", "npc", 8, 6, { x: 600, y: 400 }); if (!game.user.isGM) { t.isVisible = false; t.visible = false; } return t; }, async (t) => { set(t, "health", 4, {}, 91008); });
   ck(`P7 a token out of the player's sight: nothing on his seat (${S2.player.words.length} / ${S2.player.im.length} / ${S2.player.anim.length}), the GM's as before (${S2.gm.words.length})`, S2.player.words.length === 0 && S2.player.im.length === 0 && S2.player.anim.length === 0 && S2.gm.words.length > 0);
+}
+/* 7b: a token the GM hid stands right above the target: it is no obstacle on the GM's seat either, so the word stands alike on both seats */
+{ const S = await two(() => { for (const [i, [x, y]] of [[600, 250], [730, 250], [470, 250], [730, 380]].entries()) mk(`HX${i}`, "npc", 8, 6, { x, y, hidden: true }); return mk("E7", "npc", 8, 6, { x: 600, y: 400 }); }, async (t) => { set(t, "health", 0, {}, 91071); }, 2000);
+  same(S, "P7b beside a hidden token");
 }
 /* 8: source pins: the impact follows the shared reaction, the crowd stages on numbers every seat shows */
 { const { readFileSync } = await import("node:fs");

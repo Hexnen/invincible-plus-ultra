@@ -504,7 +504,9 @@ const view = {
 function tokenRects(skip) {
   if (!view.ok()) return [];
   const out = [];
-  try { for (const t of canvas.tokens?.placeables ?? []) if (!skip.has(t.id) && seatOf(t).visible) out.push({ ...view.tokRect(t), id: t.id, k: P.SLOT_K.token }); } catch (err) { once(err); }
+  /* PRIV (seen live on lane 5: beside a token the GM had hidden, the GM's word took another side and a smaller fit than the player's): a
+     token hidden from the players is not an obstacle on any seat, so the word stands alike on the GM's seat and a player's */
+  try { for (const t of canvas.tokens?.placeables ?? []) if (!skip.has(t.id) && t.document?.hidden !== true && seatOf(t).visible) out.push({ ...view.tokRect(t), id: t.id, k: P.SLOT_K.token }); } catch (err) { once(err); }
   for (const id of skip) { const t = canvas.tokens?.get(id); if (t && view.ok()) out.push({ ...view.tokRect(t), id, k: P.SLOT_K.token }); }
   return out;
 }
