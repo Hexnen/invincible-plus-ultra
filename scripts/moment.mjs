@@ -90,5 +90,11 @@ export function verdict(inst, { target = null, cap = 20000 } = {}) {
     ask();
   });
 }
+/* ROLLTARGET: the targets an exchange hit as told so far (ids, sorted), [] when none, null when nothing was told about it */
+export function hits(inst) {
+  const v = inst ? verdicts.get(String(inst)) : null;
+  if (!v) return null;
+  return Object.keys(v.rows).filter((k) => k !== "*" && v.rows[k] === true).sort();
+}
 /* the checks: what is pending now */
 export const state = () => ({ on, pending: [...pending].map((p) => ({ tokens: [...p.tokens], age: Math.round(now() - p.at) })) });
