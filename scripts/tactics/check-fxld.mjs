@@ -341,7 +341,11 @@ await run(1366, 768, { diceZ: 101 }, async ({ Stage, flush }) => {
 });
 {
   const main = fs.readFileSync(new URL("../splash/main.mjs", import.meta.url), "utf8");
-  ok(/await Stage\.diceClear\(\d+\)[\s\S]{0,900}Stage\.play\(ev,/.test(main), "F9: a real roll waits for Stage.diceClear before it plays (map layers)");
+  /* SYNC (ADVX 5, 2026-11-14): the pin moved with the mechanism, the behaviour stays: the per-seat poll (diceClear, 100 ms steps on each
+     seat's own canvas) put a map moment up to ~300 ms apart between seats; now the dice are faded at the table's stops and the moment starts
+     after the fade, which every seat adds to the shared start (beat `x`, diceExtra). Checked in node by check-sync.mjs S3. */
+  ok(/Stage\.lettersOn\(\) && Stage\.onMapLayer\(\)\) \{ await Clock\.sleepUntil\([^;]*\); Stage\.hurryDice\(\); \}[\s\S]{0,900}Stage\.play\(ev,/.test(main)
+    && /function diceExtra\(\)[^\n]*Stage\.DICE_FADE/.test(main), "F9: a real roll lets the dice fade before it plays (map layers; the fade on the table's clock)");
 }
 await run(1366, 768, { diceZ: 6400 }, async ({ Stage, flush }) => {
 

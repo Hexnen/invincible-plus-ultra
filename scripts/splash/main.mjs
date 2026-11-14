@@ -13,6 +13,7 @@ import { EN, PL } from './lang.mjs';
 import { registerMigrationSettings, migrateSettings } from './migrate.mjs';
 import { seesToken } from './seen.mjs';
 import * as Moment from '../moment.mjs';
+import * as Clock from '../shared-clock.mjs';
 
 const MOD = 'invincible-plus-ultra';
 const FLAG = 'invincible-splash';
@@ -127,7 +128,8 @@ function onReady() {
   window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => Stage.refreshArea(), 120); });
   Hooks.on('collapseSidebar', () => { setTimeout(() => Stage.refreshArea(), 60); setTimeout(() => Stage.refreshArea(), 500); });
   /* FXLD2 (ADVD2 8): each seat says when its dice stopped (beat.mjs); the module's own socket channel, a message kind of its own */
-  try { game.socket?.on?.(CHANNEL, (msg) => { if (msg?.k === BEAT_K && typeof msg.id === 'string' && typeof msg.u === 'string') Beat.note(msg.id, msg.u, Number(msg.at)); }); } catch (e) { /* no socket: each seat starts on its own dice */ }
+  try { game.socket?.on?.(CHANNEL, (msg) => { if (msg?.k === BEAT_K && typeof msg.id === 'string' && typeof msg.u === 'string') Beat.note(msg.id, msg.u, Number(msg.at), Number(msg.x) || 0, msg.p2 === true); }); } catch (e) { /* no socket: each seat starts on its own dice */ }
+  Clock.start();   // SYNC: the table's clock (the first pings now, so the first roll already has it)
   const api = { preview, resetState, clear: Stage.clearAll, impacts: Stage.impactLog };
   const mod = game.modules.get(MOD);
   if (mod) mod.api = { ...(mod.api ?? {}), splash: api };   // dopisek do api modułu (module.js też składa je przez rozwinięcie, więc żadna kolejność nie gubi splash)
@@ -181,6 +183,7 @@ function loadLetters() {
     let stub = true;
     try { stub = !L || typeof L.play !== 'function' || L.design?.('A')?.stub === true; } catch (e) { stub = true; }
     Stage.setLetters(stub || !cs('lettering') ? null : L);
+    if (!stub) Clock.driveGrid(L);   // SYNC: the stepped grid on the table's clock (the same instants on every seat)
     dbg('liternictwo:', stub ? 'brak renderera (zaślepka), klasyczny splash' : 'silnik ' + L.version);
   }).catch(e => { if (ticket === lettersLoad) Stage.setLetters(null); console.warn(`${LOG} lettering engine unavailable, classic splash`, e); });
 }
@@ -228,6 +231,7 @@ hook('preCreateChatMessage', (message) => {
     ev.rmax = res?.max ?? null;
     const tg = targetsAtRoll(message);    // ROLLTARGET: the roller's Foundry targets (where the roll's impact lands)
     if (tg.length) ev.tg = tg;
+    ev.t0 = Math.round(Clock.serverNow());   // SYNC: the roll's instant on the table's clock (every seat's shared bound starts here)
     message.updateSource({ flags: { [FLAG]: { ev } } });
     if (track) actor.update({ [`flags.${FLAG}.state`]: st }).catch(e => console.warn(`${LOG} state save failed`, e));
   } catch (e) { console.warn(`${LOG} preCreate failed`, e); }
@@ -346,7 +350,25 @@ function boardToken(message) {
     return tok && !tok.document.hidden && seesToken(tok) ? tok : null;   // FXI-SPLASH (ADVI 10): and only one THIS seat sees (seen.mjs)
   } catch (e) { return null; }
 }
-const serverNow = () => { try { return game.time?.serverTime ?? Date.now(); } catch (e) { return Date.now(); } };
+/* SYNC (ADVX 5): the table's clock is the module's min-round-trip clock (shared-clock.mjs), not Foundry's averaged serverTime */
+const serverNow = () => Clock.serverNow();
+/* SYNC: ms the table adds after the dice for THIS seat's moment: lettered on a map layer it waits for the dice to fade (Dice So Nice's
+   canvas covers the board); told with the seat's report, so every seat waits the same (beat.mjs `x`) */
+function diceExtra() { try { return cs('enabled') && Stage.lettersOn() && Stage.onMapLayer() ? Stage.DICE_FADE + DICE_SLACK : 0; } catch (e) { return 0; } }
+const DICE_SLACK = 60;
+/* the roll's instant on the table's clock, the same on every seat: the roller writes it into the flag (ev.t0) before the message is made.
+   NOT message.timestamp: that is the server's epoch ms, while the table's clock (Foundry's "time" socket) counts from the server's start;
+   a bound on the wrong scale is never reached. A message without t0 (an older client) maps its epoch stamp when this seat has learnt the
+   two clocks' difference (Clock.epochToServer). Sane only within REF_SANE of now (a forged or stale flag cannot hold the table). */
+const REF_SANE = 120000;
+function stampOf(message) {
+  const now = serverNow();
+  const ok = (t) => Number.isFinite(t) && Math.abs(t - now) < REF_SANE;
+  const t0 = Number(message?.flags?.[FLAG]?.ev?.t0);
+  if (ok(t0)) return t0;
+  const m = Clock.epochToServer(Number(message?.timestamp));
+  return ok(m) ? m : null;
+}
 /* the seats that show this roll (active users who can read it): the shared start waits for their reports */
 function seatsFor(message) {
   try {
@@ -355,15 +377,28 @@ function seatsFor(message) {
     return game.users.filter(u => u.active && (!w.length || w.includes(u.id) || u.id === author || u.isGM) && !(message.blind && !u.isGM && u.id !== author)).map(u => u.id);
   } catch (e) { return []; }
 }
+/* SYNC: a roll of the tactical fight on a seat that hears its verdicts and its camera waits for them after the shared start; the seats that
+   do meet a second time (Beat key id|2) at the latest of their ready instants. Which seats take part is said with the first report (p2) */
+const PHASE2_WINDOW = 22000;   // the verdict's 20 s + the camera's 1.6 s
+function phaseTwo(message) { try { return !!message.rolls?.[0]?.options?.tactics && Moment.listens(); } catch (e) { return false; } }
+function playsHere(message) {
+  try { const author = message.author?.id ?? message.user?.id; return cs('enabled') && (author === game.user.id || cs('others')) && visibleToMe(message); } catch (e) { return false; }
+}
+function seatsTwo(id) { return [...Beat.heard(id)].filter(([, v]) => v?.p2).map(([u]) => u); }
+async function meet(key, at, expected, ref, window) {
+  Beat.note(key, game.user.id, at);
+  try { game.socket?.emit?.(CHANNEL, { k: BEAT_K, id: key, u: game.user.id, at }); } catch (e) { /* no socket */ }
+  return Beat.start(key, game.user.id, at, expected, { now: serverNow, sleep, ref, window });
+}
 /* this seat's dice for one message stopped: once per message (the reporter and the splash share it) */
 const settledAt = new Map();
 function settled(message) {
   let p = settledAt.get(message.id);
   if (!p) {
-    p = waitDice(message).then(() => {
-      const at = serverNow();
-      Beat.note(message.id, game.user.id, at);
-      try { game.socket?.emit?.(CHANNEL, { k: BEAT_K, id: message.id, u: game.user.id, at }); } catch (e) { /* no socket */ }
+    p = (document.visibilityState === 'hidden' ? Promise.resolve() : waitDice(message)).then(() => {   // SYNC: a background tab reports at once
+      const at = serverNow(), plays = playsHere(message), x = plays ? diceExtra() : 0, p2 = plays && phaseTwo(message);
+      Beat.note(message.id, game.user.id, at, x, p2);
+      try { game.socket?.emit?.(CHANNEL, { k: BEAT_K, id: message.id, u: game.user.id, at, x, p2 }); } catch (e) { /* no socket */ }
       return at;
     });
     settledAt.set(message.id, p);
@@ -376,6 +411,30 @@ hook('createChatMessage', (message) => {
   try { if (game.system.id === SYSTEM && readRoll(message) && visibleToMe(message)) settled(message); } catch (e) { /* the report is a courtesy */ }
 });
 
+/* the tactical roll's waits after the shared start (at, server ms): its exchange's verdict and the action camera's blow; then the second
+   meeting. -> the moment's instant (server ms), or null when this seat plays nothing */
+async function verdictAndCamera(message, ev, at) {
+  const id = message.id;
+  await Clock.sleepUntil(at);
+  let out = false;
+  /* UXB (U151): "WHAM!" ataku dopiero, gdy wiadomo, że trafił (obrona mogła go zatrzymać); słowo obrony tylko, gdy utrzymała */
+  const hold = Moment.listens() ? holdFor(message.rolls?.[0]?.options?.tactics, ev) : null;
+  if (hold) {
+    const v = await Moment.verdict(hold.inst, { target: hold.target, cap: 20000 });
+    if (!playsAfter(hold, v)) { dbg('skip: werdykt wymiany', hold.inst, v); out = true; }
+  }
+  /* U125 (e): jedna chwila z kamerą akcji. Gdy ujęcie wyniku (trafienie, pudło, nokaut) dla tokenów tego rzutu jest w drodze,
+     splash wyskakuje, gdy cios ląduje na ekranie (błysk i wstrząs), nie wcześniej; najwyżej 1,6 s czekania. Poza walką taktyczną: od razu. */
+  if (!out) {
+    const waited = await Moment.landing(speakerTokens(message), { wait: Moment.isActive() ? 250 : 0, cap: 1600 });
+    if (waited) dbg('czekał na ujęcie kamery:', waited + ' ms');
+  }
+  if (!game.messages.has(id) || document.visibilityState === 'hidden') out = true;
+  /* SYNC: the second meeting: every seat that took this path says when it is ready (or out: -1, which moves nobody's start), all start
+     on the latest */
+  const b2 = await meet(id + '|2', out ? -1 : serverNow(), seatsTwo(id), at, PHASE2_WINDOW);
+  return out ? null : Math.max(at, b2.at);
+}
 /* Komunikat dla czytnika ekranu (aria-live): kto, słowo, liczba szóstek, rzadkość, stres. Liczby z danych rzutu (ev).
    Słowo akcji jak na ekranie tego klienta (SPLASHPL); reszta zdania jest tłumaczona i odmieniona (pl: 1/2-4/5+). */
 const cap = t => { const x = String(t ?? '').toLowerCase(); return x.charAt(0).toUpperCase() + x.slice(1); };
@@ -434,32 +493,32 @@ hook('createChatMessage', async (message, options, userId) => {
     try {
 
     const tw = performance.now();
-    const own = await settled(message);
-    dbg('po czekaniu na DSN:', Math.round(performance.now() - tw) + ' ms', 'dice3d:', !!game.dice3d);
+    /* SYNC (ADVX 5): the bound every seat knows is the roll's server stamp + Beat.WINDOW; a seat whose dice still roll then does not hold
+       the table back: it joins the table's instant (its dice are faded, the moment plays over them) */
+    const ref = stampOf(message);
+    const bound = ref != null ? ref + Beat.WINDOW : null;
+    const own = await (bound != null ? Promise.race([settled(message), Clock.sleepUntil(bound).then(() => null)]) : settled(message));
+    dbg('po czekaniu na DSN:', Math.round(performance.now() - tw) + ' ms', 'dice3d:', !!game.dice3d, own == null ? '(kości tego miejsca spóźnione)' : '');
     /* FXLD2 (ADVD2 8): the same start on every seat */
-    const bw = await Beat.start(id, game.user.id, own, seatsFor(message), { now: serverNow, sleep });
-    if (bw) dbg('wspólny start: czekał', Math.round(bw) + ' ms');
+    const beat = await Beat.start(id, game.user.id, own, seatsFor(message), { now: serverNow, sleep, ref: ref ?? undefined, x: diceExtra() });
+    dbg('wspólny start:', beat.complete ? 'wszyscy' : 'bez kompletu', 'za', Math.round(beat.at - serverNow()) + ' ms', beat.late ? '(spóźnione kości)' : '');
     if (!game.messages.has(id)) return dbg('skip: wiadomość usunięta w trakcie czekania');
     if (!visibleToMe(message)) return dbg('skip: wiadomość stała się niewidoczna');
     if (document.visibilityState === 'hidden') return dbg('skip: karta przeglądarki ukryta');
 
     const ev = eventFor(message, readRoll(message) ?? rd);
-    await sleep(ev.stress && !ev.pushed ? 350 : 0);   // dajmy systemowi odjąć Resolve przed odczytem
-    /* UXB (U151): "WHAM!" ataku dopiero, gdy wiadomo, że trafił (obrona mogła go zatrzymać); słowo obrony tylko, gdy utrzymała */
-    const hold = Moment.listens() ? holdFor(message.rolls?.[0]?.options?.tactics, ev) : null;
-    if (hold) {
-      const v = await Moment.verdict(hold.inst, { target: hold.target, cap: 20000 });
-      if (!playsAfter(hold, v)) return dbg('skip: werdykt wymiany', hold.inst, v);
-      if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
+    /* SYNC: the moment's instant on the table's clock: the shared start, the stress read's 350 ms (the same rule on every seat) */
+    let at = beat.at + (ev.stress && !ev.pushed ? 350 : 0);   // dajmy systemowi odjąć Resolve przed odczytem
+    if (phaseTwo(message)) {   // SYNC: this seat waits for a verdict or the camera, and meets the others after it
+      const t2 = await verdictAndCamera(message, ev, at);
+      if (t2 == null) return;
+      at = t2;
     }
-    /* U125 (e): jedna chwila z kamerą akcji. Gdy ujęcie wyniku (trafienie, pudło, nokaut) dla tokenów tego rzutu jest w drodze,
-       splash wyskakuje, gdy cios ląduje na ekranie (błysk i wstrząs), nie wcześniej; najwyżej 1,6 s czekania. Poza walką taktyczną: od razu. */
-    const waited = await Moment.landing(speakerTokens(message), { wait: Moment.isActive() ? 250 : 0, cap: 1600 });
-    if (waited) dbg('czekał na ujęcie kamery:', waited + ' ms');
-    if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
-    /* FXLD (ADVD 9): words lettered on the map are under Dice So Nice's canvas; they wait for the dice to fade (at most 2.6 s) */
-    const dw = await Stage.diceClear(2600);
-    if (dw) dbg('czekał na zniknięcie kości:', dw + ' ms');
+    /* FXLD (ADVD 9): words lettered on the map are under Dice So Nice's canvas: the dice are faded when the stops are in (the same
+       instant on every seat), and the moment starts as they go (beat.at already holds the fade when any seat letters on the map) */
+    if (Stage.lettersOn() && Stage.onMapLayer()) { await Clock.sleepUntil(Math.min(at, beat.base)); Stage.hurryDice(); }
+    else if (beat.late) Stage.hurryDice();
+    await Clock.sleepUntil(at);
     if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
     const seen = resolveToken(message);   // where THIS seat sees the token (screen layers)
     const token = Stage.onMapLayer() && Stage.lettersOn() ? boardToken(message) : seen;   // FXLD2: on the map, the board's token for every seat
@@ -470,6 +529,7 @@ hook('createChatMessage', async (message, options, userId) => {
     const ctl = Stage.play(ev, {
       rnd: mulberry32(hashString(id)), token, scale: scaleK(), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'), momentId: id,
       targets: rollTargetsOf(message, ev), from: boardToken(message),   // ROLLTARGET: the impact on the target, the blow from the roller
+      at: Clock.toPage(at),   // SYNC: the moment's zero on this page's clock (every part of it is scheduled from this instant, not from now)
       resolve, seed: id
     });
     handed = !!ctl && !ctl.dead;

@@ -527,25 +527,41 @@ function letterOne(ctl, it) {
   /* FXI-SPLASH (ADVI 2): every lettering starts on a known instant a little ahead (its first picture is painted meanwhile), so the impact
      frame can be put on the very tick the word hits. The impact is asked for FIRST: it owns the flash budget of that instant and the
      word's own flash frame gives way to it (one accent, the impact's guard). */
-  o.startAt = performance.now() + LEAD_MS;
+  /* SYNC (ADVX 5): on the moment's zero (the table's instant), never on "now": the item's own delay after it, plus the lead */
+  o.startAt = (Number.isFinite(ctl.t0) ? ctl.t0 + (Number(it.delay) || 0) : performance.now()) + LEAD_MS;
   /* ALIGN (engine 1.9.1 recipe, owner: one accent): the result word that gets the roll's impact does not flash on its own (`flash: false`);
      the impact is its accent, landing on its contact. Every seat decides it from the event alone, so the word's contact is one rule. Before,
-     the impact was asked for first so that it took the flash budget from the word: that worked only while the impact had two flashes */
-  const struck = it.role === 'word' && !!ctl.impactPlan && !ctl.impact && !!LE?.impact?.play;
+     the impact was asked for first so that it took the flash budget from the word: that worked only while the impact had two flashes.
+     SYNC: the word's timing follows the table's impact (impactTiming), also on a seat whose Effects setting draws none */
+  const struck = it.role === 'word' && !!(ctl.impactTiming ?? ctl.impactPlan) && !ctl.impact && !!LE?.impact?.play;
+  if (struck && ctl.impactPlan) o.flash = false;
+  /* SYNC (live: a seat with Effects off struck 42 ms after the others, one 24 Hz tick): the word's entrance depends on this seat's settings.
+     The struck word of a seat that draws the impact gives up its own flash frame (`flash: false`, one tick shorter), a seat with Effects off
+     keeps it; reduced motion may draw another entrance. The TABLE's contact is the one drawn with the table's options (full motion, and no
+     flash frame when the table's impact strikes this word); on this seat every lettering starts earlier or later by the difference, so ITS
+     contact lands on the table's instant and its own look stays */
+  const rm = {};
+  const tableOpts = { ...o, reduced: false };
+  if (struck && ctl.impactTiming) tableOpts.flash = false; else if (!struck) delete tableOpts.flash;
+  if (LE?.planFor && (o.reduced || o.flash !== tableOpts.flash)) try {
+    const a = LE.planFor(LP.letterable(it.text), o)?.plan, b = LE.planFor(LP.letterable(it.text), tableOpts)?.plan;
+    if (a && b) { rm.own = IP.contactMs(a); rm.table = IP.contactMs(b); if (Number.isFinite(rm.own) && Number.isFinite(rm.table)) o.startAt += rm.table - rm.own; }
+  } catch (e) { /* its own entrance on the shared start */ }
   let shot = null;
   if (struck) {
-    o.flash = false;
     let contact = it._m?.contact ?? 0;
     try { const r = LE.planFor ? LE.planFor(LP.letterable(it.text), o) : null; if (r?.plan) contact = IP.contactMs(r.plan); } catch (e) { /* the measured one */ }
+    const own = Number.isFinite(rm.own) ? rm.own : contact;
+    if (Number.isFinite(rm.table)) contact = rm.table;      // SYNC: the table's contact (full motion), see rm
     /* SPLASHPL: a seat that shows the word in its own language strikes on the instant of the shared English word, so every seat sees
        the blow (and the token reactions wait) on one instant: the shown word starts earlier or later by the difference of the two contacts
        (0 in the invincible look, whose contact does not depend on the text; a legacy look's can) */
     let lead = 0;
-    if (it.en && it.en !== it.text) try { const r = LE.planFor ? LE.planFor(LP.letterable(it.en), o) : null; if (r?.plan) lead = IP.contactMs(r.plan) - contact; } catch (e) { lead = 0; }
+    if (it.en && it.en !== it.text) try { const r = LE.planFor ? LE.planFor(LP.letterable(it.en), tableOpts) : null; if (r?.plan) lead = IP.contactMs(r.plan) - contact; } catch (e) { lead = 0; }
     shot = impactShot(ctl, it, contact + lead);
     o.startAt += lead;
     if (shot?.shift > 0) o.startAt += shot.shift;
-    ctl.wordAt = o.startAt; ctl.contactAt = o.startAt + contact;
+    ctl.wordAt = o.startAt; ctl.contactAt = o.startAt + own;
   }
   let h = null;
   try {
@@ -678,11 +694,19 @@ function playLetters(ev, o) {
   /* a moment needs a seed even when no message gives one (the preview): an unseeded word draws a new random hand at every call, so
      the hand measured for the layout was not the hand played (live: the critical's 4 SIXES stood 170 px off a narrower word) */
   ctl.seed = o.seed ?? `local-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`; ctl.full = full;
+  /* SYNC (ADVX 5): the moment's zero is the table's instant (main.mjs: the shared start on the shared clock, on this page's clock), not the
+     instant this seat got here: the layout's measuring, a late timer or a busy frame no longer move the word; a seat that comes late joins the
+     same timeline (the engine plays a word whose start is past from where it stands by then) */
+  ctl.t0 = Number.isFinite(o.at) ? o.at : performance.now();
+  const at = (fn, ms) => later(fn, Math.max(0, ctl.t0 + ms - performance.now()));
   letterWrap(ctl);
   overDice();
   const dF = LP.failStrength(ev);
   /* WIRE1: the impact frame of this result (impact-plan.mjs; null = none). Planned from the event alone, so every seat agrees */
   ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: o.fx }) : null;
+  /* SYNC: WHEN the word strikes is the table's: its lead-in for the impact is read from the impact at the table's full strength, whatever
+     this seat's Effects setting (reduced: one strength lower; off: none) draws. Before, a seat with Effects off started its word earlier */
+  ctl.impactTiming = LE?.impact?.play ? IP.impactFor(ev, { fx: 1 }) : null;
   ctl.targets = IP.cleanTargets(o.targets); ctl.from = o.from ?? null;   // ROLLTARGET: where the impact lands, where the blow comes from
   const plan = LP.planMoment(ev, { token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const word = plan.items.find(it => it.role === 'word');
@@ -697,7 +721,7 @@ function playLetters(ev, o) {
     if (ctl.impactPlan && word) ctl.bdLater = () => addBackdrop(ctl, ev.power, bdK, o.fx);
     else addBackdrop(ctl, ev.power, bdK, o.fx);
   }
-  if (!word) later(() => tellLand(ctl, performance.now(), 0), 0);   // FIN-CALLERS: a moment without a result word has struck once it shows
+  if (!word) at(() => tellLand(ctl, ctl.t0, 0), 0);   // FIN-CALLERS: a moment without a result word has struck once it shows
   /* the stress row and its gauge belong to the block (measured once, shown at its time) */
   const resolve = ev.stress ? (o.resolve ? o.resolve() : null) : null;
   let gauge = null;
@@ -723,7 +747,7 @@ function playLetters(ev, o) {
   } else if (wp) { stage.style.left = wp.x + 'px'; stage.style.top = (wp.y + 0.04 * stage.clientWidth) + 'px'; }   // the rays, the flash and the sparks centre on the word
   let first = true;
   for (const it of lay.items) {
-    later(() => {
+    at(() => {
       if (it.role === 'stress') stressGauge(ctl, ev.stress, resolve, lay.gauge);
       const h = letterOne(ctl, it);
       /* FXLD (ADVD 14): the engine switched off under us (its master switch) -> the classic splash instead of rays with no word */
@@ -733,13 +757,13 @@ function playLetters(ev, o) {
   }
   /* the old splash's surroundings stay: rays, the soft flash, the shake and the sparks of a strong result; the shake of a rare miss */
   /* WIRE1 (the owner: no flash or shake of our own on top of an impact frame): a result with an impact frame keeps only the sparks */
-  if (!ev.fail && o.fx) later(() => { accentFx(stage, ev.tag ? Math.max(ev.power, 0.32) : ev.power, later, o, full, !!ctl.impactPlan); if (!S.isReduced() && ev.power > 0.45 && !ctl.impactPlan) shakeLetters(ctl, Math.round(4 + 8 * ev.power)); }, t0 + 60);
-  if (ev.fail && !ev.softFail && dF > 0.3 && o.fx && !S.isReduced()) later(() => shakeLetters(ctl, 4 + Math.round(6 * dF)), t0 + 380);
+  if (!ev.fail && o.fx) at(() => { accentFx(stage, ev.tag ? Math.max(ev.power, 0.32) : ev.power, later, o, full, !!ctl.impactPlan); if (!S.isReduced() && ev.power > 0.45 && !ctl.impactPlan) shakeLetters(ctl, Math.round(4 + 8 * ev.power)); }, t0 + 60);
+  if (ev.fail && !ev.softFail && dF > 0.3 && o.fx && !S.isReduced()) at(() => shakeLetters(ctl, 4 + Math.round(6 * dF)), t0 + 380);
   const wordEnd = word ? word.delay + word.hold : plan.end;
-  if (full) later(() => fadeExtrasEarly(ctl), wordEnd + 300);
+  if (full) at(() => fadeExtrasEarly(ctl), wordEnd + 300);
   const badgesEnd = ev.stress ? t0 + 450 + Math.round(2600 * holdK) + 200 : 0;
-  later(() => { if (ctl.gaugeEl) S.leaveSlide(ctl.gaugeEl); }, Math.max(wordEnd, badgesEnd - 200));
-  later(() => endCtl(ctl, false), Math.max(plan.end, badgesEnd) + 800);
+  at(() => { if (ctl.gaugeEl) S.leaveSlide(ctl.gaugeEl); }, Math.max(wordEnd, badgesEnd - 200));
+  at(() => endCtl(ctl, false), Math.max(plan.end, badgesEnd) + 800);
   return ctl;
 }
 /* the owner (2026-11-13, «tła strasznie zasłaniają ekran i to co się dzieje»): by default the moment draws nothing behind the words
@@ -794,8 +818,8 @@ const IMPACT_LOG = [];
 export const impactLog = () => IMPACT_LOG.slice();
 function logImpact(row) { IMPACT_LOG.push({ at: Math.round(performance.now()), ...row }); if (IMPACT_LOG.length > 20) IMPACT_LOG.shift(); }
 function impactShot(ctl, it, contact) {
-  const I = LE?.impact, ip = ctl.impactPlan;
-  if (!I?.play || !ip || ctl.impact) return null;
+  const I = LE?.impact, ip = ctl.impactPlan, tp = ctl.impactTiming ?? ip;
+  if (!I?.play || !tp || ctl.impact) return null;
   try {
     const map = !!(ctl.shared && it.sceneAt);
     /* ROLLTARGET: the target when this seat may mark it, else the result word; a map word off this view marks nothing. The word still
@@ -806,19 +830,26 @@ function impactShot(ctl, it, contact) {
     const fire = !!tok || !map || wordInView(it.sceneAt);
     const c = map ? it.sceneAt : { x: it.x, y: it.y };
     const w = Math.max(20, Number(it.w) || 0), hh = Math.max(20, Number(it.h) || 0);
-    const spec = { kind: ip.kind, magnitude: ip.magnitude, seed: IP.impactSeed(ctl.seed), subject: tok ?? { x: c.x - w / 2, y: c.y - hh / 2, w, h: hh },
-      over: LAYER === 'screen' ? 'ui' : 'scene' };
-    /* the blow comes from the roller (only a token this seat sees: the engine checks it again) */
-    if (tok && ctl.from && ctl.from !== tok && seesToken(ctl.from)) spec.from = ctl.from;
-    if (map) { spec.space = 'world'; spec.frames = IP.mapFrames(ip.magnitude); }
-    if (ip.tone) spec.tone = ip.tone;
-    if (ip.hitstop === false) spec.hitstop = false;
-    if (S.isReduced()) spec.reduced = true;
+    const specOf = (q) => {
+      const s = { kind: q.kind, magnitude: q.magnitude, seed: IP.impactSeed(ctl.seed), subject: tok ?? { x: c.x - w / 2, y: c.y - hh / 2, w, h: hh },
+        over: LAYER === 'screen' ? 'ui' : 'scene' };
+      /* the blow comes from the roller (only a token this seat sees: the engine checks it again) */
+      if (tok && ctl.from && ctl.from !== tok && seesToken(ctl.from)) s.from = ctl.from;
+      if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude); }
+      if (q.tone) s.tone = q.tone;
+      if (q.hitstop === false) s.hitstop = false;
+      return s;
+    };
+    const spec = ip ? specOf(ip) : null;
+    if (spec && S.isReduced()) spec.reduced = true;
     /* ALIGN (engine 1.9.1): the lead-in before the impact's strongest drawing is the engine's own plan.peakMs (read from the full plan, the
-       same on every seat whatever its reduced or guard setting); IP.leadMs (leading "lines" only) stays for an engine without it */
+       same on every seat whatever its reduced or guard setting); IP.leadMs (leading "lines" only) stays for an engine without it.
+       SYNC: read from the TABLE's impact (full Effects), so a seat with Effects reduced or off starts its word on the same instant */
     let lead = 0;
-    try { const p = I.plan?.({ ...spec, reduced: false }); lead = Number.isFinite(p?.peakMs) ? p.peakMs : IP.leadMs(p?.frames ?? spec.frames ?? []); } catch (e) { lead = 0; }
-    return { spec, map, lead, shift: Math.max(0, lead - contact), contact, fire, where: tok ? 'target' : (fire ? 'word' : 'none'), why: pick.why, target: pick.id };
+    const ts = specOf(tp);
+    try { const p = I.plan?.({ ...ts, reduced: false }); lead = Number.isFinite(p?.peakMs) ? p.peakMs : IP.leadMs(p?.frames ?? ts.frames ?? []); } catch (e) { lead = 0; }
+    const draws = fire && !!spec;
+    return { spec, map, lead, shift: Math.max(0, lead - contact), contact, fire: draws, where: !spec ? 'none' : tok ? 'target' : (fire ? 'word' : 'none'), why: spec ? pick.why : 'effects-off', target: pick.id };
   } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
 }
 /* blowAt = the word's contact on this page's clock; word = its handle (kept readable on a map layer) */

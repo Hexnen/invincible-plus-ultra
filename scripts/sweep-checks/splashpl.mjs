@@ -114,7 +114,8 @@ SL.setLabels({ sfx: {} });
   }
   L.motionMode?.("smooth");
   const st = src("../splash/stage.mjs");
-  ok(/it\.en && it\.en !== it\.text\) try \{ const r = LE\.planFor \? LE\.planFor\(LP\.letterable\(it\.en\), o\)/.test(st) && /shot = impactShot\(ctl, it, contact \+ lead\);\s*o\.startAt \+= lead;/.test(st),
+  ok(/it\.en && it\.en !== it\.text\) try \{ const r = LE\.planFor \? LE\.planFor\(LP\.letterable\(it\.en\), (?:o|tableOpts)\)/.test(st) && /shot = impactShot\(ctl, it, contact \+ lead\);\s*o\.startAt \+= lead;/.test(st),
+    /* SYNC (2026-11-14): the English key is planned with the table's options (tableOpts: full motion, the table's flash), as the shown word's own contact is */
     "C: the stage strikes the shown word on the English key's contact (the impact, the token reactions: one instant on every seat)");
 }
 

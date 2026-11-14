@@ -99,7 +99,7 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
      not the end of its entrance: the word is started by the shared clock (startAt) so that it strikes on the impact */
   /* ALIGN (engine 1.9.1): the caller hands the impact its BLOW (`blowAt`, the word's contact) and the engine starts it peakMs earlier: the
      blow, not the start, is what lands on the strike (align-imp.mjs impBlow reads either form with the engine's own plan) */
-  ck(`... at the instant the word strikes: its contact (250 ms) after the word starts (${Math.round((impBlow(s) || 0) - (word?.o?.startAt ?? 0))} ms)`, word && Math.abs(impBlow(s) - word.o.startAt - Math.min(250, (await import("../tokenreact/pure.mjs")).HIT_LEAD)) < 8);      // a contact past HIT_LEAD: the word starts at once
+  ck(`... at the instant the word strikes: its contact (250 ms) after the word starts (${Math.round((impBlow(s) || 0) - (word?.o?.startAt ?? 0))} ms)`, word && Math.abs(impBlow(s) - word.o.startAt - 250) < 8);      // SYNC (2026-11-14): a contact past HIT_LEAD no longer starts "at once" (this seat's now: a per-seat instant); the word starts contact ms before the shared blow, joining its entrance up to LATE_MAX in, so the contact is ON the blow on every seat
   ck(`... seeded by the change everybody shares (${s.seed})`, typeof s.seed === "string" && s.seed.startsWith(`A|health|`) && s.seed.endsWith("|impact"));
   ck("... no reduced key when nothing asks for calm (a false would override the OS switch)", !("reduced" in s));
   ck("... and no key that could reach the photosensitivity guard", !("photosafe" in s) && !("flashes" in s) && !("vision" in s) && !("frames" in s));

@@ -24,6 +24,7 @@ import * as Gate from "../tactics/ui/dicegate.mjs";
 import * as Moment from "../moment.mjs";
 import * as TokAnim from "../tokenanim/main.mjs";      // TOKANIM: the token's own motion
 import { standardRect, panelZones, dockZone } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
+import * as Clock from "../shared-clock.mjs";      // SYNC: the table's clock
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
@@ -145,6 +146,11 @@ function changed(tok, options) {
       if (e.from === null) e.from = a;
       e.to = b; e.max = m;
       if (!e.evSeed) e.seed = P.seedOf(tok.id, stat, stampOf(tok, options));      // a fight's event, when one joined, keeps its own key as the seed
+      /* SYNC (ADVX 5): the change's instant on the table's clock (the update's server stamp, the same on every seat; else when it reached
+         this seat) and how long the table gathers after it (a fall to 0 waits for its card: decided from the change, not from whether this
+         seat already holds the card) */
+      shared(e, srvStamp(options),
+        stat === "health" && b < a && b <= 0 && !options?.ipuTactics && !e.tactics && !e.pub?.broken ? CARD_DOWN_WAIT : QUIET.change);
       if (stat === "resolve" && b < a && Date.now() - (lastPush.get(tok.actor?.id) ?? -1e9) < PUSH_MS && !options?.ipuTactics) e.cause = "push";
       if (options?.ipuTactics) e.tactics = true;
       /* a Damage Taken card that came BEFORE this loss joins it (review 17); one card per loss (FXI-TOKEN, ADVI 1) */
@@ -172,7 +178,31 @@ function told(tok, stat, add) {
   if (add.src) e.src = add.src;
   if (add.dtype) e.dtype = add.dtype;
   if (add.doubled) e.doubled = true;
+  if (!add.isCard) shared(e, Clock.serverNow(), QUIET.event);      // SYNC: a fight's event as it reached this seat (a card does not move the blow)
   arm(e, QUIET.event);
+}
+/* SYNC (ADVX 5: token-hit impact frames ran about two film frames apart either way): the blow's instant was "this seat's now + HIT_LEAD"
+   once its gathering timer fired, so it moved with each seat's delivery, timer lateness and busy frames. Now it is the table's: the latest
+   change's server instant + the table's gathering time + HIT_LEAD + SHARED_SLACK (room for the delivery and the timer), on the shared clock
+   (shared-clock.mjs). A seat that gets there later still strikes then, if it can (land()). */
+export const SHARED_SLACK = 60, MIN_PREP = 40, LATE_MAX = 250;
+/* the update's server stamp (options.modifiedTime: the server's EPOCH ms; the table's clock counts from the server's start) on the table's
+   clock (shared-clock epochToServer, learnt from the stamps this seat hears) when it is a sane one (within 10 s); else this seat's arrival */
+function srvStamp(options) {
+  const now = Clock.serverNow(), t = Number(options?.modifiedTime);
+  if (Number.isFinite(t)) Clock.noteEpoch(t, now);
+  const s = Number.isFinite(t) ? Clock.epochToServer(t) : null;
+  return Number.isFinite(s) && Math.abs(s - now) < 10000 ? Math.min(s, now) : now;
+}
+function shared(e, srv, hold) {
+  if (!Number.isFinite(srv)) return;
+  const due = srv + Math.max(0, hold || 0);
+  e.due0 = Math.max(e.due0 ?? 0, due);
+}
+export function sharedHit(ready, now, toPage, hitLead) {
+  const dues = (ready ?? []).map((e) => e?.due0).filter(Number.isFinite);
+  if (!dues.length) return null;
+  return toPage(Math.max(...dues) + hitLead + SHARED_SLACK);
 }
 /* WIRE1: the attacker of a fight's damage: the last public attack roll of that fight (its `who`), for ATTACK_MS */
 const ATTACK_MS = 30000;
@@ -405,7 +435,9 @@ async function land(ids, ready) {
     /* FXI-TOKEN (ADVI 2, 13, 15): ONE instant for the moment's blow, the same on every seat (pure HIT_LEAD): the impact starts on it and every
        word is started so that it strikes on it (play). The other reactions of a crowd strike after the impact (its drawings, at most 500 ms,
        took them over: one token's knock-out frame blacked out six reactions), then one after another (their stagger) */
-    const T0 = Math.max(performance.now() + P.HIT_LEAD, storyEnd || 0);
+    /* SYNC: the table's instant (sharedHit) when there is one; this seat can only be later (it never strikes in the past, MIN_PREP) */
+    const T0s = sharedHit(ready, performance.now(), Clock.toPage, P.HIT_LEAD);
+    const T0 = Math.max(Number.isFinite(T0s) ? T0s : performance.now() + P.HIT_LEAD, performance.now() + MIN_PREP, storyEnd || 0);
     let after = 0;
     try { if (imp && L.impact?.plan) after = Math.min(500, Math.max(0, Number(L.impact.plan({ ...imp.spec, seed: `${imp.it.seed}|impact` })?.ms) || 0)); } catch (err) { once(err); }
     for (const it of staged) it.tHit = it === imp?.it ? T0 : T0 + (imp ? after + it.delay : it.delay);
@@ -678,8 +710,9 @@ function play(L, it, queued = false) {
       const at = Number.isFinite(it.tHit) ? it.tHit - P.HIT_LEAD * 0.5 - performance.now() : 0;
       if (at > 15) setTimeout(gone, at); else gone();
     }
-    /* a reaction that waited (queued) or comes late gets a new instant: never one in the past */
-    if (!Number.isFinite(it.tHit) || it.tHit < performance.now() + 30) it.tHit = performance.now() + P.HIT_LEAD;
+    /* a reaction that waited (queued) or comes late gets a new instant: never one in the past.
+       SYNC: "late" is now LATE_MAX past the table's instant; a word a little behind joins it (its entrance starts in the past) */
+    if (!Number.isFinite(it.tHit) || queued || it.tHit < performance.now() - LATE_MAX) it.tHit = performance.now() + P.HIT_LEAD;
     const tHit = it.tHit;
     const lk = it.lk, hs = [], red = plan.wordOpts?.reduced ?? reduced();
     const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, loss: !!it.loss, card: it.card ? true : null, nums: [], done: null, addNumber: null, dropNumbers: null, slot: plan.slot, plan };
@@ -693,7 +726,7 @@ function play(L, it, queued = false) {
       word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1), startAt: tHit });
       word._s0 = plan.wordOpts.scale; hs.push(word); plan.wordH = word;
       try {
-        if (word.plan?.timeline && word.opts) { contact = P.contactMs(word.plan, red || !!word.reducedMotion); word.opts.startAt = Math.max(performance.now() + 1, tHit - contact); contact = tHit - word.opts.startAt; }
+        if (word.plan?.timeline && word.opts) { contact = P.contactMs(word.plan, red || !!word.reducedMotion); word.opts.startAt = Math.max(performance.now() - LATE_MAX, tHit - contact); contact = tHit - word.opts.startAt; }      // SYNC: may start in the past (it then strikes on the table's instant)
       } catch (err) { once(err); }
     }
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
@@ -805,6 +838,9 @@ async function syncOwner(v = enabled()) {
 function registerHooks() {
   Hooks.on("canvasReady", () => { rememberAll(); pending.clear(); playing.clear(); streaks.clear(); inflight.clear(); });
   Hooks.on("drawToken", (tok) => { if (!seen.has(tok.id)) remember(tok); });
+  /* SYNC: every stamped change this seat hears teaches the table's clock the server's epoch (shared-clock noteEpoch) */
+  for (const k of ["updateActor", "updateToken", "updateCombat", "updateScene", "updateUser"]) Hooks.on(k, (_d, _c, options) => { try { Clock.noteEpoch(options?.modifiedTime); } catch { /* a courtesy */ } });
+  Hooks.on("createChatMessage", (m) => { try { Clock.noteEpoch(m?._stats?.createdTime); } catch { /* a courtesy */ } });
   Hooks.on("updateActor", (actor, changes, options) => {
     try {
       const d = changes?.system?.derived ?? foundry.utils.getProperty(foundry.utils.expandObject(changes ?? {}), "system.derived");
@@ -829,7 +865,7 @@ export function start(phases = {}) {
     started = true;
     const run = (name, fn) => { if (phases[name]) fn(); else Hooks.once(name, fn); };
     run("init", () => { try { registerSettings(); registerHooks(); } catch (err) { once(err); } });
-    run("ready", () => { syncOwner(); if (canvas?.ready) rememberAll(); });
+    run("ready", () => { syncOwner(); if (canvas?.ready) rememberAll(); Clock.start(); });
     /* for a look from the console: api.tokenReact.test(token, { stat, from, to }) plays a change on this client alone */
     Hooks.once("ready", () => setTimeout(() => {
       try {
