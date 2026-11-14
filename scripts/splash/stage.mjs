@@ -375,6 +375,7 @@ function sharedScreenAvoid(hero, full) {
     try { const d = docOf(t); if (!d || d.hidden || sameTok(t, hero)) continue; const q = projBox(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push(q); } catch (e) { /* one token */ }
   }
   for (const n of C?.notes?.placeables ?? []) { try { if (!docOf(n)) continue; const q = projBox(noteBox(n, gs)); if (q) out.push(q); } catch (e) { /* one pin */ } }
+  for (const z of SP.panelZones(window.innerWidth, window.innerHeight)) out.push({ ...z, w: UI_WEIGHT });   // the party panel's corner, the same zone on every seat
   if (full && hero) { const h = sharedTokenBox(hero); if (h) out.push({ ...grow(h, Math.max(10, 0.15 * (h.r - h.l))), w: 50 }); }   // the drawn art (hair, a fist) reaches past the token's box; the hero weighs most
   return out;
 }

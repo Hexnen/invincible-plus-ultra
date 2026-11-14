@@ -61,3 +61,14 @@ export function shiftInto(r, s) {
   const ax = (lo, hi, a, b) => (hi - lo > b - a ? (a + b) / 2 - (lo + hi) / 2 : lo < a ? a - lo : hi > b ? b - hi : 0);
   return { dx: ax(r.l, r.r, s.l, s.r), dy: ax(r.t, r.b, s.t, s.b) };
 }
+
+/* the panels every seat has at a corner of its window (the party cards, bottom-left: #invincible-party), as a SHARED obstacle: where they
+   stand on the reference window centred like the standard view (on a smaller window too: one zone for the table; there it may miss the
+   window's own corner, a residual of SAMEPIC-1). A seat's panel is not read
+   from its page (its open/peek state and size are that user's), so every seat with one window size keeps the block off the same zone
+   (provisional SAMEPIC-3; FXLD2 N6 live: WHAM! on the party panel). CSS px from the bottom-left corner: x 56..300, 180..345 up */
+export const PANEL_ZONES = Object.freeze([{ l: 56, r: 300, up0: 180, up1: 345 }]);
+export function panelZones(W, H) {
+  const ox = W / 2 - REF_VW / 2, oy = H / 2 + REF_VH / 2;
+  return PANEL_ZONES.map((z) => ({ l: ox + z.l, t: oy - z.up1, r: ox + z.r, b: oy - z.up0 }));
+}

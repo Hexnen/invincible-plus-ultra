@@ -202,9 +202,15 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
     const B = await seat({ W: 1366, H: 768, layer: "screen", zoom: 0.7, pan: { x: 30, y: 10 }, e, name, tokens: [hero], notes: [], hero, full: name === "crit" });
     const what = (s) => s.calls.map((c) => ({ text: c.text, seed: c.o.seed, mood: c.o.mood, in: c.o.in, out: c.o.out, holdKind: c.o.holdKind, hold: c.o.hold, colors: c.o.colors }));
     eq(what(B), what(A), `N1 screen ${name}: the content (words, hands by seed, motion, colours) and the timing (holds) are the same on both seats`);
-    const cls = (s, H) => s.calls.map((c) => Math.round(drawn(c, s.L).S / H * 100));
-    const a = cls(A, 1080), b = cls(B, 768);
-    ok(a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= Math.max(1, 0.15 * v)), `N1 screen ${name}: the size class (cap height as a share of the window) is the same (${a} vs ${b} % of the height)`);
+    /* SAMEPIC (owner, binding: the GM and the players see the SAME moment): the moment is sized for the REFERENCE window (same-picture.mjs)
+       on every seat, no longer as a share of each window: the cap heights are the same CSS px (within 15 %: the seats' zooms differ here),
+       or the window smaller than the reference shrinks the whole block by ONE factor, never under SHRINK_LOCAL's last step (SAMEPIC-1) */
+    /* the size is compared with the SAME view (the scene point in the window's middle and the zoom: here A's) on the smaller window;
+       B's other zoom lays the block out around a token of another size, so only its content is compared above */
+    const C = await seat({ W: 1366, H: 768, layer: "screen", zoom: 1, pan: { x: 683 - 960, y: 384 - 540 }, e, name, tokens: [hero], notes: [], hero, full: name === "crit" });
+    const px = (s) => s.calls.map((c) => drawn(c, s.L).S), a = px(A), b = px(C), ks = b.map((v, i) => v / a[i]);
+    const same = ks.every((k) => Math.abs(k - 1) <= 0.15), shrunk = Math.min(...ks) >= 0.6 && Math.max(...ks) <= 1.15 && Math.max(...ks) - Math.min(...ks) <= 0.2;
+    ok(a.length === b.length && (same || shrunk), `N1 screen ${name}: the cap heights are the reference's on both seats, or uniformly shrunk on the smaller window (${a.map(Math.round)} vs ${b.map(Math.round)} px)`);
   }
   const m = src("../splash/main.mjs");
   ok(/world\('tableHold'/.test(m) && /function holdK\(\)[^\n]*\n?[^\n]*tableHold/.test(m) && (m.match(/hold: holdK\(\)/g) ?? []).length >= 3, "N1: the lettered moment's duration is the table's (world Display time), not each seat's own");
@@ -217,31 +223,34 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
   const nb = tok("NB", 640, 220);                     // a neighbour right above the hero's head
   const pin = note("P", 800, 300);
   const diceAt = [{ x: 560, y: 470 }, { x: 760, y: 470 }];   // resting dice beside and below
-  for (const [name, e] of Object.entries(ROLLS()).filter(([n]) => n !== "crit")) {
+  /* SAMEPIC: on the screen layer (over everything) the block is drawn over THIS seat's resting dice and its party panel (they differ per
+     seat; avoiding them gave every seat another picture, ADVX 1): there it keeps off the shared things (neighbour, pin, hero). Under the
+     bars (hud) the dice and the panel would hide it, so there it keeps off them as before */
+  for (const layer of ["screen", "hud"]) for (const [name, e] of Object.entries(ROLLS()).filter(([n]) => n !== "crit")) {
     const out = await run(1366, 768, { party: true, diceZ: 101 }, async ({ Stage, flush }) => {
       const { c } = scene({ tokens: [hero, nb], notes: [pin] });
       globalThis.canvas = c;
       /* Dice So Nice's dice box: each die's position projected by its camera to the canvas (NDC) */
       const proj = (p) => ({ x: p.x / 1366 * 2 - 1, y: 1 - p.y / 768 * 2 });
       globalThis.game = { dice3d: { box: { camera: {}, diceList: diceAt.map((p) => ({ position: { clone: () => { const q = { ...proj(p), project() { return q; } }; return q; } } })) } } };
-      const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("screen");
+      const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer(layer);
       Stage.play(e, { token: hero, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "N3-" + name, resolve: () => ({ now: 5, max: 8 }) });
       flush(1e9);
       const rects = Stage.diceRects?.() ?? [];
       const boxes = L.calls.map((x) => drawn(x, L));
-      Stage.clearAll(); delete globalThis.canvas; delete globalThis.game;
+      Stage.clearAll(); Stage.setLayer("screen"); delete globalThis.canvas; delete globalThis.game;
       return { boxes, rects };
     });
-    ok(out.rects.length === 2, `N3 ${name}: the resting dice are read from Dice So Nice's dice box (${out.rects.length} of 2)`);
+    if (layer === "screen") ok(out.rects.length === 2, `N3 ${name}: the resting dice are read from Dice So Nice's dice box (${out.rects.length} of 2)`);
     const bad = [];
     for (const b of out.boxes) {
       if (hitBox(b, tokRect(nb))) bad.push(b.role + " on the neighbour");
       if (hitBox(b, { l: 776, t: 276, r: 824, b: 344 })) bad.push(b.role + " on the pin");
-      for (const r of out.rects) if (hitBox(b, r)) bad.push(b.role + " on a die");
-      if (hitBox(b, { l: 60, t: 438, r: 290, b: 583 })) bad.push(b.role + " on the party cards");
+      if (layer === "hud") for (const r of out.rects) if (hitBox(b, r)) bad.push(b.role + " on a die");
+      if (layer === "hud" && hitBox(b, { l: 60, t: 438, r: 290, b: 583 })) bad.push(b.role + " on the party cards");
       if (hitBox(b, tokRect(hero))) bad.push(b.role + " on the hero");
     }
-    ok(bad.length === 0, `N3 screen ${name}: the block keeps off the neighbour, the pin, the resting dice, the party panel and the hero (${bad})`);
+    ok(bad.length === 0, layer === "hud" ? `N3 hud ${name}: the block keeps off the neighbour, the pin, the resting dice, the party panel and the hero (${bad})` : `N3 screen ${name}: the block keeps off the neighbour, the pin and the hero (${bad})`);
   }
 }
 
