@@ -268,7 +268,8 @@ async function land(items) {
       it.plan.blocked = [...others.filter((r) => r.id !== it.tok.id), ...placed];
       /* the next blow of a series lands where the last one stands (ADVT2 5: the third blow of three stood elsewhere) */
       const pe = playing.get(it.tok.id);
-      const keep = it.lk.step > 0 && pe?.slot && P.SLOTS.includes(pe.slot) ? pe.slot : null;
+      const was = pe?.plan?.slot ?? pe?.slot;      // the side the last word really took (re-chosen on its drawn box, measure)
+      const keep = it.lk.step > 0 && was && P.SLOTS.includes(was) ? was : null;
       it.plan.keepSlot = !!keep;
       it.plan.slot = keep ?? (view.ok() ? P.chooseSlot(it.plan.tokRect, it.plan.box, view.safe(), it.plan.blocked) : "above");
       const c = P.slotPoint(it.plan.slot, it.plan.tokRect, it.plan.box);
@@ -310,6 +311,7 @@ const view = {
     this.at = t; this.cache = P.safeRect(v, covers);
     return this.cache;
   },
+  panelsCached() { const t = Date.now(); if (!this.pc || t - this.pat > 250) { this.pc = this.panels(); this.pat = t; } return this.pc; },
   panels() {
     const out = [];
     for (const sel of PANEL_SEL) for (const el of document.querySelectorAll?.(sel) ?? []) {
@@ -408,7 +410,9 @@ function follow(tok, plan, member) {
       const tr = view.tokRect(tok), box = { w: plan.box.w * k, h: plan.box.h * k };
       let c = P.slotPoint(plan.slot, tr, box);
       const safe = view.safe();
-      if (P.onView(tr, safe)) c = P.clampInto(c, box, safe);
+      /* FXLT2 (seen live on lane 5: a word pushed into the view's corner landed on the map's VRAM meter, one beside the challenge cards
+         slid under them): inside the safe rect, then out of the floating panels, on the side that moves it least and stays in view */
+      if (P.onView(tr, safe)) c = P.clampInto(P.avoidRects(P.clampInto(c, box, safe), box, view.panelsCached(), safe), box, safe);
       const off = member < 0 ? plan.g.word : plan.g.nums[member];
       last = view.toWorld({ x: c.x + off.dx * k, y: c.y + off.dy * k });
       return last;
@@ -430,7 +434,7 @@ function play(L, it, queued = false) {
       for (const h of pe.hs) try { h.stop({ quick }); } catch { /* gone */ }
     }
     const lk = it.lk, hs = [], red = plan.wordOpts?.reduced ?? reduced();
-    const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, nums: [], done: null, addNumber: null, dropNumbers: null, slot: plan.slot };
+    const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, nums: [], done: null, addNumber: null, dropNumbers: null, slot: plan.slot, plan };
     plan.numH = [];
     let word = null;
     playing.set(tok.id, entry);

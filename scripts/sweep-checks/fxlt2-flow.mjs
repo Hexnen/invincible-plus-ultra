@@ -182,6 +182,32 @@ const drop = (...ts) => { for (const t of ts) { const i = toks.indexOf(t); if (i
   delete UI[".mm-vram"]; drop(t); await sleep(1500); plays.splice(0);
 }
 
+/* F6 (seen live on lane 5): a token in the view's top-left corner beside the VRAM meter, and a token UNDER the challenge cards: the words
+   are pushed into the view and then off the panels, not onto them */
+{ const t = mk("V6b", "npc", 8, 6, { x: 10, y: 20 }), u = mk("C6b", "npc", 8, 6, { x: 1150, y: 40 });
+  UI[".mm-vram"] = [el(60, 0, 300, 70)]; UI["#ich-dock"] = [el(1080, 0, 220, 300)];
+  Hooks.callAll("canvasReady");
+  set(t, "health", 4); set(u, "health", 4);
+  p = await take(1200);
+  const hit = (b, q) => b.x < q.x + q.w && q.x < b.x + b.w && b.y < q.y + q.h && q.y < b.y + b.h;
+  const bv = p.filter((r) => r.o.token?.id === "V6b").map(boxOf), bc = p.filter((r) => r.o.token?.id === "C6b").map(boxOf);
+  ck("F6 a corner token beside the VRAM meter: its word and number keep off the meter", bv.length === 2 && bv.every((b) => !hit(b, { x: 60, y: 0, w: 300, h: 70 })));
+  ck("F6 a token under the challenge cards: its word and number stand beside the cards, not under them", bc.length === 2 && bc.every((b) => !hit(b, { x: 1080, y: 0, w: 220, h: 300 })));
+  delete UI[".mm-vram"]; delete UI["#ich-dock"]; drop(t, u); await sleep(1500); plays.splice(0);
+}
+
+/* F5 (seen live: the second blow of a series stood on another side): the series keeps the side the last word really took after its drawn
+   box was measured (a neighbour to the right makes the drawn, wider word change side once) */
+{ const t = mk("S5b", "npc", 8, 6, { x: 700, y: 400 }), nb = mk("N5b", "npc", 8, 6, { x: 700, y: 240 });
+  TALL["*"] = { w: 6, h: 1.4 };
+  Hooks.callAll("canvasReady");
+  set(t, "health", 7); await sleep(900); set(t, "health", 6); await sleep(900); set(t, "health", 5);
+  await sleep(700);
+  const ws = plays.filter((r) => r.o.token?.id === "S5b" && !isNum(r)), bs = ws.map(boxOf);
+  ck(`F5 a series stays on the side its first word took (${bs.map((b) => `${Math.round(b.cx)},${Math.round(b.cy)}`).join(" ")})`, bs.length === 3 && bs.every((b) => Math.abs(b.cx - bs[0].cx) < b.w / 3 && Math.abs(b.cy - bs[0].cy) < b.h / 2));
+  await take(2600); delete TALL["*"]; drop(t, nb); plays.splice(0);
+}
+
 /* F7: the amount is felt: a reader's -1 and -6 stress are different words, the -6 bigger */
 { const t = mk("S7", "superhero", 8, 8, { player: true, x: 700, y: 400 });
   Hooks.callAll("canvasReady");
@@ -224,5 +250,9 @@ ck("F13 numbers in Bungee (its 1 has a foot, its 7 none)", P.numHand("health", "
   ck("F12 a player's hits of different moments get different words (the stamp is the seed)", new Set(Array.from({ length: 12 }, (_, i) => P.look({ kind: "hit", num: null }, null, "en", `t|health|${i}`, V).word)).size >= 2); }
 ck("F5 a lighter reaction waits only until the heavier one has been read", P.overlap(5, 100, 2000, 2) === "queue" && P.overlap(5, P.READ_MS + 10, 2000, 2) === "replace" && P.queueWait(100, 2000) === P.READ_MS - 100);
 
+{ const src = (await import("node:fs")).readFileSync(new URL("../tokenreact/main.mjs", import.meta.url), "utf8");
+  /* the live bug (lane 5, take a1): the playing entry kept the side chosen BEFORE measure() re-chose it on the drawn box; the series must
+     read the side from the live plan */
+  ck("F5 a series reads the side its last word really took (the live plan, not the side at its start)", src.includes("pe?.plan?.slot") && /slot: plan\.slot, plan \}/.test(src)); }
 console.log(`sweep fxlt2-flow: ${n} checks, ${f} failed`);
 process.exit(f ? 1 : 0);

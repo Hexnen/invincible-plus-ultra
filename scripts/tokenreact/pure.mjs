@@ -363,6 +363,19 @@ export const onView = (r, safe) => {
   if (cx >= safe.l && cx <= safe.r && cy >= safe.t && cy <= safe.b) return true;
   return inter(r, { x: safe.l, y: safe.t, w: safe.r - safe.l, h: safe.b - safe.t }) >= ON_VIEW * r.w * r.h;
 };
+/** FXLT2: move a group centre out of floating panels (rects { x, y, w, h }): for each panel it overlaps, the smallest of the four moves
+    that clears it, preferring one that stays inside the safe rect; two passes (a move off one panel onto another) */
+export function avoidRects(p, box, rects = [], safe = null) {
+  let c = { x: p.x, y: p.y };
+  for (let pass = 0; pass < 2; pass++) for (const q of rects ?? []) {
+    if (!q || !(q.w > 0) || !(q.h > 0) || !inter(rectAt(c, box), q)) continue;
+    const moves = [{ x: q.x - box.w / 2 - 2 - c.x, y: 0 }, { x: q.x + q.w + box.w / 2 + 2 - c.x, y: 0 }, { x: 0, y: q.y - box.h / 2 - 2 - c.y }, { x: 0, y: q.y + q.h + box.h / 2 + 2 - c.y }]
+      .map((d) => ({ d, n: Math.hypot(d.x, d.y), out: safe ? outside(rectAt({ x: c.x + d.x, y: c.y + d.y }, box), safe) : 0 }))
+      .sort((a, b) => (a.out - b.out) || (a.n - b.n));
+    c = { x: c.x + moves[0].d.x, y: c.y + moves[0].d.y };
+  }
+  return c;
+}
 /** push a group centre into the safe rect (a group bigger than the rect is centred in it) */
 export function clampInto(p, box, safe) {
   if (!safe) return p;
