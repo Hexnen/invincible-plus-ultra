@@ -1838,6 +1838,12 @@ import("./tokenreact/main.mjs")
   .then((react) => react.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | token reactions not loaded (everything else is unaffected)`, err));
 
+/* TOKEN ANIMATIONS (scripts/tokenanim/, TOKANIM): the token's own picture moves with its reaction (knocked back, toppling, getting up), on
+   the word's blow, for one drawing at a time (never its document). Options in the map's Tokens dock and the Plus Ultra menu. */
+import("./tokenanim/main.mjs")
+  .then((anim) => anim.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | token animations not loaded (everything else is unaffected)`, err));
+
 /* PARTY CARDS (scripts/party/, styles/party.css): slide-out cards of the player characters on the viewed scene at the bottom left (client
    setting "Party: display" Hidden / Peek / Full). Same mechanism and recorded phases as the blocks above. */
 import("./party/main.mjs")
