@@ -3,6 +3,7 @@
 import { FS, LBL, oddsText, hueOf, hsl, fmtOdds, say } from './logic.mjs';
 import * as S from './splash.mjs';
 import * as LP from './letter-plan.mjs';
+import * as IP from './impact-plan.mjs';
 
 const active = new Map();   // key -> ctl
 const MAX_STAGES = 4;
@@ -536,6 +537,8 @@ function playLetters(ev, o) {
   /* the owner (2026-11-13): backdrops are an extra, default without; the full wash and rays only with the client setting Backdrop */
   if (full && o.backdrop) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);
   const dF = LP.failStrength(ev);
+  /* WIRE1: the impact frame of this result (impact-plan.mjs; null = none). Planned from the event alone, so every seat agrees */
+  ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: o.fx }) : null;
   const plan = LP.planMoment(ev, { token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const word = plan.items.find(it => it.role === 'word');
   const t0 = word?.delay ?? 0;
@@ -567,12 +570,14 @@ function playLetters(ev, o) {
       if (it.role === 'stress') stressGauge(ctl, ev.stress, resolve, lay.gauge);
       const h = letterOne(ctl, it);
       /* FXLD (ADVD 14): the engine switched off under us (its master switch) -> the classic splash instead of rays with no word */
-      if (first && h && (h.off === true || (h.alive === false && LE?.prefs?.enabled === false))) { endCtl(ctl, true); playClassic(ev, o); }
+      if (first && h && (h.off === true || (h.alive === false && LE?.prefs?.enabled === false))) { endCtl(ctl, true); playClassic(ev, o); first = false; return; }
       first = false;
+      if (it.role === 'word' && h && ctl.impactPlan) fireImpact(ctl, h, it);
     }, it.delay);
   }
   /* the old splash's surroundings stay: rays, the soft flash, the shake and the sparks of a strong result; the shake of a rare miss */
-  if (!ev.fail && o.fx) later(() => { accentFx(stage, ev.tag ? Math.max(ev.power, 0.32) : ev.power, later, o, full); if (!S.isReduced() && ev.power > 0.45) shakeLetters(ctl, Math.round(4 + 8 * ev.power)); }, t0 + 60);
+  /* WIRE1 (the owner: no flash or shake of our own on top of an impact frame): a result with an impact frame keeps only the sparks */
+  if (!ev.fail && o.fx) later(() => { accentFx(stage, ev.tag ? Math.max(ev.power, 0.32) : ev.power, later, o, full, !!ctl.impactPlan); if (!S.isReduced() && ev.power > 0.45 && !ctl.impactPlan) shakeLetters(ctl, Math.round(4 + 8 * ev.power)); }, t0 + 60);
   if (ev.fail && !ev.softFail && dF > 0.3 && o.fx && !S.isReduced()) later(() => shakeLetters(ctl, 4 + Math.round(6 * dF)), t0 + 380);
   const wordEnd = word ? word.delay + word.hold : plan.end;
   if (full) later(() => fadeExtrasEarly(ctl), wordEnd + 300);
@@ -583,16 +588,52 @@ function playLetters(ev, o) {
 }
 /* the owner (2026-11-13, «tła strasznie zasłaniają ekran i to co się dzieje»): by default the moment draws nothing behind the words
    (no rays, no wash, no flash over the view): the letters read by their own outline and depth. Kept: the sparks of a strong result
-   (small, local) and, for the critical, one short flash (about four frames) as the impact accent. Backdrop on = the old surroundings. */
+   (small, local) and, for the critical, one short flash (about four frames) as the impact accent. Backdrop on = the old surroundings.
+   WIRE1: with the engine's impact frames (L.impact) the critical's accent IS the impact frame (fireImpact): the short flash stays only
+   for an engine without them; the backdrop's own flash and rays are skipped under an impact frame too (one accent, the impact's guard). */
 export const ACCENT_MS = 170;
-function accentFx(stage, P, later, o, full) {
-  if (o.backdrop) return S.fxFor(stage, P, later, o.fx, full);
+function accentFx(stage, P, later, o, full, impact = false) {
+  if (o.backdrop && !impact) return S.fxFor(stage, P, later, o.fx, full);
   if (S.isReduced() || !(o.fx > 0)) return;
-  if (full && o.fx >= 1) S.flash(stage, 0.45, ACCENT_MS);
+  if (full && o.fx >= 1 && !impact) S.flash(stage, 0.45, ACCENT_MS);
   if (P > 0.55 && o.fx >= 1) {
     const waves = Math.min(2, 1 + Math.floor((P - 0.55) * 4)), h = hueOf(P);
     for (let i = 0; i < waves; i++) later(() => S.particles(stage, 10 + Math.round(8 * P), h), i * 170);
   }
+}
+/* WIRE1: the impact frame of a result, at the instant its word lands (the end of the word's entrance on the engine's clock: the slam hits).
+   Every seat starts the moment at the same server time (beat.mjs) and plays the same word, so the same seed and the same landing tick give
+   the same drawings on the same instant. The struck figure is the rolling hero when THIS seat sees its token (its picture becomes the
+   silhouette); a hero this seat does not see (hidden, off screen) is never handed in: the point of the word is the subject then, so nothing
+   reveals the token. Over every window with the splash's own screen layer (the word stays on top: the engine's impact layer is one under
+   it), over the map and under the bars with any other layer. Reduced motion is passed only as true (a false would override the OS switch);
+   the photosensitivity guard is the engine's and nothing here can turn it off. */
+export const IMPACT_ENT_MAX = 700;   // ms: a word whose entrance is longer (none today) still gets its impact by then
+function heroSeen(t) {
+  try { return !!t && !t.destroyed && t.visible !== false && !(t.document?.hidden && !globalThis.game?.user?.isGM) ? t : null; } catch (e) { return null; }
+}
+export function landingMs(h) {
+  try {
+    const ticks = (h?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (Number(p?.ticks) || 0), 0);
+    return Math.min(IMPACT_ENT_MAX, Math.round(ticks * 1000 / 24));
+  } catch (e) { return 0; }
+}
+function fireImpact(ctl, h, it) {
+  const I = LE?.impact, ip = ctl.impactPlan;
+  if (!I?.play || !ip || ctl.impact) return null;
+  try {
+    const hero = heroSeen(ctl.hero);
+    const at = ctl.shared && it.sceneAt ? it.sceneAt : { x: it.x, y: it.y };
+    const subject = hero ?? { x: at.x, y: at.y };
+    const spec = { kind: ip.kind, magnitude: ip.magnitude, seed: IP.impactSeed(ctl.seed), startAt: performance.now() + landingMs(h), subject,
+      over: LAYER === 'screen' ? 'ui' : 'scene' };
+    if (!hero) { spec.area = Math.max(20, (it.w || 0) / 2); if (ctl.shared && it.sceneAt) spec.space = 'world'; }
+    if (ip.tone) spec.tone = ip.tone;
+    if (ip.hitstop === false) spec.hitstop = false;
+    if (S.isReduced()) spec.reduced = true;
+    ctl.impact = I.play(spec);
+    return ctl.impact;
+  } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
 }
 /* the screen pins of a map moment: an HTML part follows its scene point (followPan) */
 function pin(ctl, el, at, c0, k = 0) { (ctl.pins ??= []).push({ el, at, c0, k }); }
@@ -689,6 +730,7 @@ function endCtl(ctl, quick) {
   ctl.timers.forEach(clearTimeout);
   if (active.get(ctl.key) === ctl) active.delete(ctl.key);
   if (ctl.lw) stopLetters(ctl, quick);   // LDIC: a newer splash on the same place, the limit, a scene change: the words exit (quick = at once)
+  if (quick && ctl.impact?.alive) { try { ctl.impact.stop(); } catch (e) { /* already over */ } }   // WIRE1: a moment cut short takes its impact frame with it
   for (const x of ctl.extras || []) {
     if (quick || S.isReduced()) { x.remove(); continue; }
     const a = x.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, fill: 'forwards' });
