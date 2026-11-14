@@ -36,27 +36,43 @@ export function classify(change) {
 /* heavy: three points at once, or half of the track (two at least) */
 export const heavyLoss = (n, r) => n >= 3 || (r !== null && r >= 0.5 && n >= 2);
 
+/* PRIV (the owner, 2026-11-14, asked whether a player may keep getting a lighter or other reaction than the GM: «nie»; the earlier ruling:
+   GM and players see the same moment). Before, a seat without the right to a character's numbers got a reaction built from what the table
+   was told (a hand-edited enemy blow was a plain hit, an enemy knocked down without a card a plain hit, an enemy's stress nothing) while the
+   GM got the real one, and the token's animation followed each seat's own word (GM Stagger, player Recoil: ADVI 1, 13, ADVT2 12).
+   Now the REACTION is one for every seat that sees the token (shared: its kind, and its amount = the word's loudness and size tier, the
+   token's animation, the impact); only the NUMBER is per seat: a seat that may read the character gets the exact one, another seat only a
+   number the table was told (the fight's damage event, the Damage Taken card). What is never shown stays the same: a seat that does not see
+   the token gets nothing, and a challenge's "Resolve" (its time limit) is the HUD's. */
+/** The reaction every seat that sees the token letters, from what happened (c = classify) and what the table was told (pub): -> { kind, amt }
+    (amt 0..1: the share of the track or the count over AMT_N, whichever is bigger; a blow the card calls a knock-down is a knock-down) */
+export function shared(c, pub = null) {
+  if (!c) return null;
+  const loss = c.kind === "hit" || c.kind === "heavy" || c.kind === "down";
+  const kind = c.stat === "health" && loss && pub?.broken ? "down" : c.kind;
+  const byN = Number.isFinite(c.n) && c.n > 0 ? Math.min(1, c.n / AMT_N) : null;
+  const amt = Number.isFinite(c.r) ? Math.max(c.r, byN ?? 0) : byN ?? 0.3;
+  return { kind, amt: Math.round(amt * 1e6) / 1e6 };
+}
 /** What one seat is shown. seat = { visible, staff, reader, challenge }: visible = the token is drawn for this user (a hidden token never
     is for a player); reader = may read this character's numbers (the damage card's rule: owner / observer, a hero of a player, a
     challenge). pub = what the table was told in public: { taken, toStress, broken } from a tactical event or the "Damage Taken" card.
-    -> { show, kind, num } (num: the number to letter, or null) */
+    -> { show, kind, num, amt } (kind and amt: the shared reaction, the same on every seat that shows it; num: this seat's number, or null) */
 export function audience(seat, c, pub = null) {
   const none = { show: false, kind: null, num: null };
   if (!seat?.visible || !c) return none;
   if (seat.challenge && c.stat === "resolve") return none;      // a challenge's "Resolve" is its time limit: the Challenges HUD shows it
-  if (seat.staff || seat.reader) return { show: true, kind: c.kind, num: c.n > 0 ? c.n : null, exact: true };
+  const s = shared(c, pub);
+  if (seat.staff || seat.reader) return { show: true, kind: s.kind, num: c.n > 0 ? c.n : null, exact: true, amt: s.amt };
+  return { show: true, kind: s.kind, num: toldNum(c, pub), amt: s.amt };
+}
+/** the number a seat without the right to read the character may letter: only what the table was told (a loss of Health, or stress the
+    fight announced); healing, getting up and a Resolve change nobody announced are seen, not counted */
+export function toldNum(c, pub = null) {
   const told = Number.isFinite(pub?.taken) && pub.taken > 0 ? Math.trunc(pub.taken) : null;
-  if (c.stat === "resolve") {
-    /* another character's Resolve is not shown at the table (splash H3-4); only stress the fight announced */
-    if (told !== null && pub.toStress && (c.kind === "stress" || c.kind === "out" || c.kind === "spent")) return { show: true, kind: "stress", num: told };
-    return none;
-  }
-  if (c.kind === "hit" || c.kind === "heavy" || c.kind === "down") {
-    if (pub?.broken) return { show: true, kind: "down", num: told };
-    if (told !== null) return { show: true, kind: told >= 3 ? "heavy" : "hit", num: told };
-    return { show: true, kind: "hit", num: null };      // a hand edit: the blow is seen, how much is not
-  }
-  return { show: true, kind: "heal", num: null };      // healing or getting up: seen, not counted
+  if (!c || told === null) return null;
+  if (c.stat === "resolve") return pub.toStress && (c.kind === "stress" || c.kind === "out" || c.kind === "spent") ? told : null;
+  return c.kind === "hit" || c.kind === "heavy" || c.kind === "down" ? told : null;
 }
 
 /** An event the fight announced with no change of the track behind it (damage on a broken character: Health stays at 0). */
@@ -236,6 +252,7 @@ export const seedOf = (tokId, stat, stamp) => `${tokId}|${stat}|${stamp ?? ""}`;
     count over AMT_N, whichever is bigger (a -15 on a long track is still a lot); another seat: the told number alone; nothing told: 0.3. */
 export const AMT_N = 8;
 export function amountOf(a, c) {
+  if (Number.isFinite(a?.amt)) return Math.max(0, Math.min(1, a.amt));      // PRIV: the shared reaction's amount, the same on every seat
   const r = a?.exact && Number.isFinite(c?.r) ? c.r : null;      // the share of the track only for a seat that may read the track
   const byN = Number.isFinite(a?.num) && a.num > 0 ? Math.min(1, a.num / AMT_N) : null;
   if (r !== null) return Math.max(r, byN ?? 0);
@@ -448,9 +465,9 @@ export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, u
    The owner (2026-11-13/14): impact frames may go all out and must be spectacular; a brief accent at the instant of the blow, never a
    lasting cover; one per event, never in a loop; a series of blows BUILDS and the strongest moment gets the strongest frame; GM and players
    see the same moment unless privacy requires otherwise.
-   So the impact is chosen from what the TABLE was told (publicSeat: a seat that sees the token but has no right to its numbers beyond the
-   public rule), never from a seat's private knowledge: every seat that sees the token gets the same kind and strength, and nobody can read
-   hidden Health out of how hard the frame hits. Blows and stress only (a heal, getting up, regaining nerve or stress spent by choice get
+   So the impact is chosen from the SHARED reaction (PRIV: `shared`, the one every seat that sees the token letters; before, WIRE1 chose it
+   from what the table was told, publicSeat, so a hand-edited enemy blow was a scratch under the GM's heavy word): every seat that sees the
+   token gets the same kind and strength. Blows and stress only (a heal, getting up, regaining nerve or stress spent by choice get
    none).
    FXI-TOKEN (ADVI 3: every blow of strength 0.35-0.85 played the same four drawings: a -1 scratch turned the whole view hard black and
    white like a -15, and the steps of a series 0.44 / 0.64 / 0.84 could not be told apart): a blow is one RUNG of a ladder whose rungs are

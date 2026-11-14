@@ -169,8 +169,12 @@ async function seats(build, run, ms = 1500) {
   const wg = S.gm.words.find((x) => !isNum(x.text)), wp = S.player.words.find((x) => !isNum(x.text));
   const cg = P.contactMs(wg.h.plan.timeline), cp = P.contactMs(wp.h.plan.timeline);
   const dg = impBlow(S.gm.im[0].spec) - S.gm.t0, dp = impBlow(S.player.im[0].spec) - S.player.t0;
-  ck(`I13 GM and player letter different words (${wg.text} contact ${Math.round(cg)} / ${wp.text} contact ${Math.round(cp)} ms) and the blow lands at one instant (${Math.round(dg)} / ${Math.round(dp)} ms after the change)`,
-    wg.text !== wp.text && Math.abs(dg - dp) < 25);
+  /* PRIV (owner 2026-11-14 «nie»: no lighter or other reaction for a player): this pinned "GM and player letter different words"; now the
+     seats letter the SAME word (one reaction for every seat that sees the token) and the blow still lands at one instant */
+  ck(`I13 GM and player letter the same word (${wg.text} contact ${Math.round(cg)} / ${wp.text} contact ${Math.round(cp)} ms) and the blow lands at one instant (${Math.round(dg)} / ${Math.round(dp)} ms after the change)`,
+    wg.text === wp.text && Math.abs(cg - cp) < 1 && Math.abs(dg - dp) < 25);
+  ck(`I13 ... the same impact on both seats (${S.gm.im[0]?.spec.kind} ${S.gm.im[0]?.spec.magnitude} / ${S.player.im[0]?.spec.kind} ${S.player.im[0]?.spec.magnitude})`, S.gm.im[0]?.spec.kind === S.player.im[0]?.spec.kind && S.gm.im[0]?.spec.magnitude === S.player.im[0]?.spec.magnitude && S.gm.im[0]?.spec.series === S.player.im[0]?.spec.series);
+  ck(`I13 ... the number is the GM's alone (a hand edit: nobody told the table) (${S.gm.words.filter((x) => isNum(x.text)).map((x) => x.text)} / ${S.player.words.filter((x) => isNum(x.text)).map((x) => x.text)})`, S.gm.words.some((x) => isNum(x.text)) && !S.player.words.some((x) => isNum(x.text)));
   ck(`I2 the blow lands soon after the change (${Math.round(dp)} ms: gathering + the lead)`, dp < 500);
 }
 /* the same blow with a contact longer and shorter than the other seat's (pure): every word strikes on the one instant */
@@ -239,8 +243,12 @@ async function seats(build, run, ms = 1500) {
   Hooks.callAll("invincible-plus-ultra.tactics", { type: "broken", target: "cX3", combat: "C1", fight: "F", seq: 9001 });
   ts.forEach((t, i) => set(t, "health", i === 3 ? 0 : 6, i === 3 ? { ipuTactics: true } : {}, 81700 + i));
   const { words, im } = await take(2200);
-  const full = words.filter((x) => !isNum(x.text));
-  ck(`I15 seven blows at once: three keep a word (${full.length})`, full.length === 3);
+  /* PRIV: the crowd stages alike on every seat (pure.stage reads only the numbers every seat shows): the four beyond the heaviest three are
+     small marks on the GM's seat too (they were his numbers alone while a player saw marks), each with the GM's own number beside it */
+  const wordsOnly = words.filter((x) => !isNum(x.text)), big = Math.max(...wordsOnly.map((x) => x.o.scale ?? 0));
+  const full = wordsOnly.filter((x) => (x.o.scale ?? 0) > big * 0.5), marks = wordsOnly.length - full.length;
+  ck(`I15 seven blows at once: every one answers with a word (${wordsOnly.length}), the heaviest three big`, wordsOnly.length === 7 && full.length >= 3);
+  ck(`I15 ... the GM's numbers beside them (${words.filter((x) => isNum(x.text)).length})`, words.filter((x) => isNum(x.text)).length === 7);
   const imp = im[0], ms = imp ? planImpact(imp.spec).ms : 0;
   const rest = words.filter((x) => x.o.token?.id !== imp?.spec.subject?.id);
   ck(`I15 one impact, on the knock-down (${im.length}, ${imp?.spec.kind})`, im.length === 1 && imp.spec.kind === "ko");

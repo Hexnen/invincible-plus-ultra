@@ -1,6 +1,6 @@
 /* TOKANIM: THE TOKEN ITSELF REACTS, the Foundry half. The curves are pure.mjs; here the pose is put on the token's picture.
    - react(tok, spec) is called by the token reactions (scripts/tokenreact/main.mjs play) for every reaction this seat letters, with the
-     kind and amount THIS SEAT was shown (a player told less sees less, exactly like the lettering) and the shared contact instant of
+     kind and amount of the reaction, the same on every seat that sees the token (PRIV, owner 2026-11-14: no lighter reaction for a player) and the shared contact instant of
      the word (every seat computes the same instant from the same start: the token moves on the word's blow, with the impact frame);
    - the pose is applied ONLY FOR THE LENGTH OF ONE DRAWING: on the renderer's "prerender" the picture (token.mesh) gets the pose on
      top of whatever Foundry, the map module's token effects or anything else set this frame, and on "postrender" every value is put

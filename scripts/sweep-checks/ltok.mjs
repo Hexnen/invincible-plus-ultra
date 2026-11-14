@@ -25,13 +25,38 @@ ck("A10 no max: no share", P.classify({ stat: "health", from: 8, to: 6, max: 0 }
 const c = (stat, from, to, max = 8) => P.classify({ stat, from, to, max });
 const GM = { visible: true, staff: true }, OWN = { visible: true, reader: true }, OTHER = { visible: true }, HIDDEN = { visible: false, staff: true };
 ck("B1 not drawn for the user: nothing, even for the GM", P.audience(HIDDEN, c("health", 5, 2)).show === false);
-ck("B2 the GM and a reader get the kind and the number", eq(P.audience(GM, c("health", 5, 0)), { show: true, kind: "down", num: 5, exact: true }) && P.audience(OWN, c("resolve", 3, 4)).num === 1);
-ck("B3 another's hand-edited hit: seen, not counted", eq(P.audience(OTHER, c("health", 8, 2)), { show: true, kind: "hit", num: null }));
-ck("B4 another's hit the table was told: the told number, heavy from it alone", eq(P.audience(OTHER, c("health", 8, 7), { taken: 1 }), { show: true, kind: "hit", num: 1 }) && P.audience(OTHER, c("health", 8, 5), { taken: 3 }).kind === "heavy");
-ck("B5 another going to 0 without a public word stays a hit (Health is not public)", P.audience(OTHER, c("health", 2, 0)).kind === "hit" && P.audience(OTHER, c("health", 2, 0), { taken: 2, broken: true }).kind === "down");
-ck("B6 another's Resolve is never shown unless the fight announced the stress", P.audience(OTHER, c("resolve", 5, 4)).show === false && P.audience(OTHER, c("resolve", 5, 7)).show === false
-  && eq(P.audience(OTHER, c("resolve", 5, 3), { taken: 2, toStress: true }), { show: true, kind: "stress", num: 2 }));
-ck("B7 another's healing: seen, not counted; getting up reads as healing", eq(P.audience(OTHER, c("health", 2, 5)), { show: true, kind: "heal", num: null }) && P.audience(OTHER, c("health", 0, 2)).kind === "heal");
+/* PRIV (the owner, 2026-11-14: «nie» to a player getting a lighter or other reaction than the GM; GM and players see the same moment): B2-B7
+   checked the old per-seat kinds (another seat: a hand-edited blow was a plain hit, a fall to 0 a hit, another's Resolve nothing, getting
+   up a heal). They now check the ruling: every seat that sees the token gets the GM's kind and amount; only the number is per seat. */
+const KA = (a) => [a.show, a.kind, a.amt];
+ck("B2 the GM and a reader get the kind, the amount and the exact number", eq(P.audience(GM, c("health", 5, 0)), { show: true, kind: "down", num: 5, exact: true, amt: 0.625 }) && P.audience(OWN, c("resolve", 3, 4)).num === 1);
+ck("B3 another's hand-edited blow: the GM's kind and amount, no number", eq(P.audience(OTHER, c("health", 8, 2)), { show: true, kind: "heavy", num: null, amt: 0.75 }) && eq(KA(P.audience(OTHER, c("health", 8, 2))), KA(P.audience(GM, c("health", 8, 2)))));
+ck("B4 another's hit the table was told: the told number, the kind from what happened (as the GM's)", eq(P.audience(OTHER, c("health", 8, 7), { taken: 1 }), { show: true, kind: "hit", num: 1, amt: 0.125 }) && P.audience(OTHER, c("health", 8, 5), { taken: 3 }).kind === "heavy"
+  && P.audience(OTHER, c("health", 8, 7), { taken: 3 }).kind === P.audience(GM, c("health", 8, 7), { taken: 3 }).kind);
+ck("B5 another going to 0 without a card: knocked down like the GM sees it, no number; the card's number joins", eq(P.audience(OTHER, c("health", 2, 0)), { show: true, kind: "down", num: null, amt: 0.25 }) && eq(P.audience(OTHER, c("health", 2, 0), { taken: 2, broken: true }), { show: true, kind: "down", num: 2, amt: 0.25 })
+  && P.audience(OTHER, c("health", 5, 3), { taken: 2, broken: true }).kind === "down" && P.audience(GM, c("health", 5, 3), { taken: 2, broken: true }).kind === "down");
+ck("B6 another's Resolve: the GM's reaction, the number only when the fight announced the stress", eq(P.audience(OTHER, c("resolve", 5, 4)), { show: true, kind: "stress", num: null, amt: 0.125 }) && P.audience(OTHER, c("resolve", 5, 7)).kind === "regain" && P.audience(OTHER, c("resolve", 5, 7)).num === null
+  && eq(P.audience(OTHER, c("resolve", 5, 3), { taken: 2, toStress: true }), { show: true, kind: "stress", num: 2, amt: 0.25 }) && P.audience(OTHER, c("resolve", 5, 3), { taken: 2 }).num === null);
+ck("B7 another's healing and getting up: the GM's kinds, not counted", eq(P.audience(OTHER, c("health", 2, 5)), { show: true, kind: "heal", num: null, amt: 0.375 }) && P.audience(OTHER, c("health", 0, 2)).kind === "back" && P.audience(OTHER, c("health", 0, 2), { taken: 4 }).num === null);
+{ /* B7b: the whole table of changes x what was told: every seat that sees the token letters the same reaction (word, size, motion, impact),
+     a seat without the right to read gets a number only when it was told, never the exact one; a seat that does not see gets nothing */
+  let same = true, secret = true, hidden = true, looks = true;
+  const tells = [null, { taken: 2 }, { taken: 5, broken: true }, { taken: 1, toStress: true }, { taken: 3 }];
+  for (const stat of ["health", "resolve"]) for (const [a, b, m] of [[8, 7, 8], [8, 5, 8], [8, 2, 8], [2, 0, 8], [5, -1, 8], [3, 5, 8], [0, 2, 8], [22, 7, 22], [4, 2, 4], [1, 0, 6]]) for (const pub of tells) {
+    const ch = c(stat, a, b, m), g = P.audience(GM, ch, pub), o = P.audience(OTHER, ch, pub), r = P.audience(OWN, ch, pub);
+    if (!eq(KA(g), KA(o)) || !eq(KA(g), KA(r))) same = false;
+    if (o.num !== null && o.num !== P.toldNum(ch, pub)) secret = false;
+    if (!pub && o.num !== null) secret = false;
+    if (P.audience({ visible: false }, ch, pub).show || P.audience(HIDDEN, ch, pub).show) hidden = false;
+    const lg = P.look(g, ch, "en", "s1"), lo = P.look(o, ch, "en", "s1");
+    if (!lg || !lo || lg.kind !== lo.kind || lg.loud !== lo.loud || lg.amt !== lo.amt || lg.magnitude !== lo.magnitude || lg.rotation !== lo.rotation || JSON.stringify(lg.motion) !== JSON.stringify(lo.motion) || lg.hold !== lo.hold) looks = false;
+    if (!eq(P.impactOf({ kind: g.kind, amt: P.amountOf(g, ch), known: true }, 0), P.impactOf({ kind: o.kind, amt: P.amountOf(o, ch), known: true }, 0))) looks = false;
+  }
+  ck("B7b every seat that sees the token: the same kind and amount (GM, a reader, another seat), over 100 changes x what was told", same);
+  ck("B7c another seat's number is only ever the told one", secret);
+  ck("B7d a seat that does not see the token gets nothing, GM included", hidden);
+  ck("B7e the same look (loudness, size amount, magnitude, tilt, motion, hold) and the same impact on every seat that sees it", looks);
+}
 ck("B8 a challenge's time limit is the HUD's", P.audience({ visible: true, staff: true, challenge: true }, c("resolve", 3, 2)).show === false && P.audience({ visible: true, staff: true, challenge: true }, c("health", 3, 2)).show === true);
 ck("B9 nothing from nothing", P.audience(GM, null).show === false && P.audience(null, c("health", 3, 2)).show === false);
 ck("B10 an event with no track change (hit while broken) still answers", P.fromEvent({ taken: 2 }, "health").kind === "hit" && P.fromEvent({ taken: 0, broken: true }, "health").kind === "down" && P.fromEvent({ taken: 0 }, "health") === null && P.fromEvent({ taken: 1 }, "resolve").kind === "stress");

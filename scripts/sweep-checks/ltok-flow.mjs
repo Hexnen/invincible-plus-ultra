@@ -123,7 +123,9 @@ p = await take();
 ck("C1 a player: an NPC's hand-edited hit is a word without a number", p.length === 1 && p[0].o.token === npc.document);
 set(npc, "resolve", 4);
 p = await take();
-ck("C2 a player: an NPC's Resolve is not shown", p.length === 0);
+/* PRIV (owner 2026-11-14: no lighter or other reaction for a player than the GM): this was "an NPC's Resolve is not shown"; now the player
+   sees the GM's stress word on the NPC he sees, and still no number (nobody announced it) */
+ck("C2 a player: an NPC's Resolve change is the GM's word, without its number", p.length === 1 && p[0].o.token === npc.document && p[0].o.mood === "pain");
 set(npc, "health", 3);
 setTimeout(() => Hooks.callAll("createChatMessage", { speakerActor: npc.actor, flavor: "Otrzymane obrażenia", content: "<p><strong>Zbir</strong> otrzymał <strong>2</strong> obrażeń.</p>" }), 150);
 p = await take();
@@ -161,8 +163,11 @@ for (const [i, t] of crowd.entries()) { set(t, "health", i === 0 ? 0 : 5); await
 p = await take(2600);
 const words = p.filter((x) => x.o.token?.id && !String(x.text).match(/^[+-]\d/));
 /* FXI-TOKEN (ADVI 15): three full words in a big crowd (was two) */
-ck("E1 nine at once: three full words (the heaviest among them), the rest numbers, nothing doubled", words.length === 3 && p.length === 12 && words.some((x) => x.o.token.id === "c0"));
-ck("E2 the crowd is smaller than a single hit", words.filter((x) => x.o.token.id !== "c0").length === 2 && words.filter((x) => x.o.token.id !== "c0").every((x) => pxOf(x.o) < firstHitPx)      /* c0 fell to 0: a fall is bigger than a hit (FXLT review 5), so the crowd's own hit is compared */
+/* PRIV: the crowd stages alike on every seat (pure.stage reads only numbers every seat shows): hand edits told nobody, so the six beyond the
+   heaviest three are small marks on the GM's seat too (they were his numbers alone while a player saw marks), each with the GM's number */
+
+ck("E1 nine at once: three full words (the heaviest among them), the rest small marks with the GM's numbers, nothing doubled", words.length === 9 && p.length === 18 && new Set(words.map((x) => x.o.token.id)).size === 9 && words.some((x) => x.o.token.id === "c0"));
+ck("E2 the crowd is smaller than a single hit", words.filter((x) => x.o.token.id !== "c0").length === 8 && words.filter((x) => x.o.token.id !== "c0").every((x) => pxOf(x.o) < firstHitPx)      /* c0 fell to 0: a fall is bigger than a hit (FXLT review 5), so the crowd's own hit is compared */
   && words.every((x) => !("size" in x.o)));      // contract v4: no fixed size, the engine's model with a smaller scale (FXLT: compared as the drawn size; the scale now carries the severity target)
 
 /* switched off */
