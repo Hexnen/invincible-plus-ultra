@@ -48,7 +48,8 @@ const set = (tok, stat, v, options = {}, st = ++stamp) => { tok.actor._stats.mod
 /* the engine: a recording stand-in (contract surface); an entrance of 500 ms (12 ticks), ready after 30 ms */
 const { sizeFor } = await import("../letters/size.mjs");
 const sizeK = (o) => 0.62 + 0.7 * (o?.sound?.loud ?? 0.6);
-const ctxOf = (o) => ({ space: "world", magnitude: o.magnitude, scale: o.scale ?? 1, tokenSpan: 100, grid: 100, zoom: cam.z, vw: VW - 300, vh: VH, sizeK: sizeK(o), aspect: 3 });
+/* SAMEPIC: the fit the play asks for, as the real engine passes it (engine.mjs resize: fit: h.opts.fit ?? "legible"); the token words are sized "screen" now */
+const ctxOf = (o) => ({ space: "world", magnitude: o.magnitude, scale: o.scale ?? 1, tokenSpan: 100, grid: 100, zoom: cam.z, vw: VW - 300, vh: VH, sizeK: sizeK(o), aspect: 3, fit: o.fit ?? "legible" });
 const pxOf = (o) => sizeFor(ctxOf(o)).px;      // the cap height on screen the engine's model gives a play
 const plays = [], stops = [];
 const TALL = {};      // words the stand-in draws with a given hold box (w, h in caps), as the engine measures it

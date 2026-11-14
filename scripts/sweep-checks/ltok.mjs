@@ -151,7 +151,9 @@ ck("G7 client settings, on by default", /scope: "client", config: true, type: Bo
 ck("G8 the engine's folder is not imported anywhere but its entry", !/letters\/(engine|font|rng)\.mjs/.test(main));
 ck("G9 nothing is written to any document", !/\.update\(|\.setFlag\(|\.create\(|ChatMessage\.create/.test(main));
 
-ck("G10 the display layer is the user's client setting", /KEY\.layer, \{[^}]*scope: "client", config: true/.test(main) && main.includes("...layer()"));
+/* SAMEPIC (owner, binding: the GM and the players see the SAME moment; ADVX 9): the layer decides what covers the word, so it is the
+   table's (world) setting now, one for every seat, no longer each user's own */
+ck("G10 the display layer is the table's (world) setting", /KEY\.layer, \{[^}]*scope: "world", config: true/.test(main) && main.includes("...layer()"));
 { const E = rd("../letters/engine.mjs"); const ids = ["overlay", "weather", "tokens", "ground", "top"];
   const worldLine = (id) => E.split(/\r?\n/).some((l) => l.trim().startsWith(`${id}:`) && l.includes('space: "world"'));
   ck("G11 every layer offered is a world layer of the engine", ids.every(worldLine) && main.includes(`const LAYERS = ${JSON.stringify(ids).replace(/,/g, ", ")}`)); }

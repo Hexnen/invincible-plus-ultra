@@ -14,6 +14,7 @@ import fs from "node:fs";
 import { ok, eq, done } from "./testkit.mjs";
 import * as SL from "../splash/logic.mjs";
 import * as LP from "../splash/letter-plan.mjs";
+import * as SP from "../same-picture.mjs";
 
 const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
 const ev = (rd, rng = seq([0.1, 0.5, 0.9, 0.3])) => SL.buildEvent({ newSixes: 0, rerolled: 0, pushed: false, stress: 0, action: "slugfest", ...rd }, { rng, st: null, dryN: 0 });
@@ -107,8 +108,14 @@ const ROLLS = () => ({ good: ev({ n: 5, sixes: 2 }), crit: ev({ n: 4, sixes: 4 }
   wreck: ev({ n: 6, sixes: 3, wreck: true }), stressed: ev({ n: 6, sixes: 2, stress: 2 }) });
 
 /* ================================================================== F3, F4, F7 (screen), F14 scale: every roll, every edge */
-for (const [W, H] of [[1366, 768], [1920, 1080]]) {
-  await run(W, H, { pill: true, card: true }, async ({ Stage, flush }) => {
+/* SAMEPIC (owner, binding: the GM and the players see the SAME moment): the GM's map director pill and a chat card popped up on one seat
+   are that seat's own; on the screen layer (over everything) the moment no longer moves for them, or the GM's block stood elsewhere than
+   the players' (ADVX 1). So the pass with the pill and the card is compared with a pass of the same window without them (identical), in
+   place of "stays off the pill / the card"; the scene row on top stays checked (the shared reserve keeps every seat's block off it).
+   Provisional, logged as SAMEPIC-3 */
+const PLAIN = new Map();
+for (const [W, H] of [[1366, 768], [1920, 1080]]) for (const ui of [{}, { pill: true, card: true }]) {
+  await run(W, H, ui, async ({ Stage, flush }) => {
     const spots = [["middle", (W - 300) / 2, H / 2], ["top edge", (W - 300) / 2, 30], ["bottom edge", (W - 300) / 2, H - 40], ["left edge", 70, H / 2], ["by the chat", W - 330, H / 2], ["top-left corner", 60, 40], ["bottom-right corner", W - 330, H - 50]];
     for (const scale of [1, 1.6]) {
       for (const [where, cx, cy] of spots) {
@@ -126,8 +133,10 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
           const bar = (b, r) => b.x - b.w / 2 < r.right && b.x + b.w / 2 > r.left && b.y - b.h / 2 < r.bottom && b.y + b.h / 2 > r.top;
           const pill = { left: W * 0.28, top: H - 184, right: W * 0.28 + 444, bottom: H - 152 }, row = { left: 104, top: 16, right: 274, bottom: 48 };
           const card = { left: W - 361, top: H * 0.45, right: W - 66, bottom: H * 0.45 + 260 };
-          for (const b of boxes) ok(!bar(b, card), `F4 ${tag}: the ${b.role} stays off the roll's chat card popped up at the right`);
-          for (const b of boxes) ok(!bar(b, pill) && !bar(b, row), `F4 ${tag}: the ${b.role} stays off the bars (the director pill at the bottom, the scene row on top)`);
+          const sigB = JSON.stringify(boxes.map((b) => [b.role, Math.round(b.x), Math.round(b.y), Math.round(b.S * 10)]));
+          if (!ui.pill) PLAIN.set(tag, sigB);
+          else ok(PLAIN.get(tag) === sigB, `F4 ${tag}: the GM's own director pill and a chat card popped up on his seat do not move his block (SAMEPIC: the same picture as a seat without them; ${pill.top}..${card.left})`);
+          for (const b of boxes) ok(!bar(b, row), `F4 ${tag}: the ${b.role} stays off the bars (the scene row on top)`);
           let clash = null;
           for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
           ok(!clash, `F7 ${tag}: no two letterings of the moment overlap (${clash})`);
@@ -150,8 +159,11 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
 for (const [name, e] of Object.entries(ROLLS())) {
   await run(1366, 768, {}, async ({ Stage, flush }) => {
     const { c, token } = canvasWith(500, 430);
+    /* SAMEPIC: the art is read from the token's DOCUMENT (texture scale), which every seat shares; the mesh's bounds sway per seat (its
+       animation), so a mesh past the square with no texture scale no longer moves the block. "pushed" keeps its mesh AND gets the scale
+       the real token would have to draw it so (the case is the same art, now described as Foundry stores it) */
     if (name === "pushed") token.mesh = { getBounds: () => ({ x: 425, y: 355, width: 150, height: 150 }) };   // the drawn art (live: mesh past the square)
-    else token.document.texture = { scaleX: 1.5, scaleY: 1.5 };
+    token.document.texture = { scaleX: 1.5, scaleY: 1.5 };
     globalThis.canvas = c;
     const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("screen");
     Stage.play(e, { token, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "ART-" + name, resolve: () => ({ now: 5, max: 8 }) });
@@ -169,6 +181,8 @@ for (const [name, e] of Object.entries(ROLLS()).filter(([n]) => n !== "crit")) {
   await run(1920, 1080, { pill: true }, async ({ Stage, flush }) => {
     const { c, token } = canvasWith(772, 585);
     Object.assign(token, { x: 772 - 131, y: 585 - 131, w: 263, h: 263 });
+    /* SAMEPIC: the block reads the token's document (size in squares, texture scale), as every seat has it: the same token described there */
+    Object.assign(token.document, { width: 2.63, height: 2.63, texture: { scaleX: 345 / 263, scaleY: 345 / 263 } });
     token.mesh = { getBounds: () => ({ x: 600, y: 413, width: 345, height: 344 }) };
     globalThis.canvas = c;
     const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("screen");
@@ -206,9 +220,12 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
     Stage.play(ev({ n: 4, sixes: 4 }), { scale: 1, hold: 1, fx: 1, fullFrom: 0.7, seed: "CRIT" });
     flush(1e9);
     const b = Object.fromEntries(L.calls.map((x) => { const d = drawn(x, L); return [d.role, d]; }));
-    const free = W - 300 - 56;
+    /* SAMEPIC (owner, binding: one picture for the table): the moment is sized for the REFERENCE window (same-picture.mjs) on every seat,
+       so a window bigger than it shows the critical at the same size as a 1600 x 900 one: "free" is the standard view's width (the
+       reference, or this window when smaller, minus the shared reserve), the height the reference's or this window's */
+    const free = Math.min(W, SP.REF_VW) - SP.RESERVE.l - SP.RESERVE.r, HH = Math.min(H, SP.REF_VH);
     ok(b.word && b.word.w >= 0.5 * free, `F5 ${W}: the critical word fills at least half of the free width (${Math.round(b.word?.w)} of ${free} px; the review measured 29 % of the window)`);
-    ok(b.word && b.word.h >= 0.17 * H, `F5 ${W}: ... and is tall (${Math.round(b.word?.h)} px of ${H})`);
+    ok(b.word && b.word.h >= 0.17 * HH, `F5 ${W}: ... and is tall (${Math.round(b.word?.h)} px of ${HH})`);
     const lum = (hex) => { const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
     const sc = L.calls.find((x) => x.o.seed === "CRIT:say")?.o.colors ?? [];
     ok(sc.length === 3 && lum(sc[1]) > 0.55, `F5 ${W}: the critical's sentence is light (mid fill luminance ${sc[1] && lum(sc[1]).toFixed(2)}), readable on its violet rays and under a dark cut line`);

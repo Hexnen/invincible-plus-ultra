@@ -182,14 +182,16 @@ function boxOf(sel) {
   } catch (e) { /* a selector this Foundry does not know */ }
   return null;
 }
-export function safeRect() {
+/* core: only Foundry's own bars and the tactics bars every seat has (SAMEPIC: not the chat cards popped up on one seat, not the GM's
+   director pill) */
+export function safeRect({ core = false } = {}) {
   measureArea();
   const vw = window.innerWidth, vh = window.innerHeight;
   let l = 12, t = 10, r = area.w - 14, b = vh - 10;
   for (const s of UI_LEFT) { const q = boxOf(s); if (q && q.left < vw * 0.15 && q.right < vw * 0.2) l = Math.max(l, q.right + 8); }
   for (const s of UI_TOP) { const y = topOf(s, vh); if (y >= 0) t = Math.max(t, y + 6); }
-  for (const s of UI_RIGHT) { const x = leftOf(s, vw); if (x < r) r = Math.max(l + vw * 0.3, x - 10); }
-  for (const s of UI_BOTTOM) { const q = boxOf(s); if (q && q.top > vh * 0.6 && q.left < area.w) b = Math.min(b, q.top - 8); }
+  if (!core) for (const s of UI_RIGHT) { const x = leftOf(s, vw); if (x < r) r = Math.max(l + vw * 0.3, x - 10); }
+  for (const s of UI_BOTTOM) { if (core && s === '#mm-dir-bar') continue; const q = boxOf(s); if (q && q.top > vh * 0.6 && q.left < area.w) b = Math.min(b, q.top - 8); }
   if (b - t < vh * 0.45) { t = 10; b = vh - 10; }   // a strange layout: the whole height rather than a slit
   /* on a map layer the words are drawn inside the scene and cut at its edge (live 1920: BARREL! lost its top at the scene's top edge,
      the dark padding above it): the block stays inside the scene rectangle too, while that leaves a usable area */
@@ -386,9 +388,19 @@ function boxesOf(sels, pad = 6) {
 }
 function localScreen() {
   measureArea();
-  const win = { l: 2, t: 2, r: area.w - 2, b: window.innerHeight - 2 };
-  if (LAYER === 'screen') return { safe: win, avoid: [] };
-  if (LAYER === 'ui') return { safe: win, avoid: boxesOf(UI_WINDOWS) };
+  /* over the interface (screen) and under the windows only (ui): this seat's window minus the SAME reserve band every seat keeps (Foundry's
+     bars) and minus its open sidebar where that is wider. Not this seat's own panels, pop-up cards or the GM's director pill: the moment is
+     drawn over them for its few seconds (provisional SAMEPIC-3; checked: avoiding them, the party cards that stand at a height that
+     follows each window moved every seat's block differently). Under the windows also the GM's desk (a window would hide the block).
+     Under the bars (hud) the block would be HIDDEN by anything of this seat: its real bars, panels and resting dice */
+  const vw = window.innerWidth, vh = window.innerHeight, win = { l: 2, t: 2, r: area.w - 2, b: vh - 2 };
+  const band = { l: Math.max(win.l, SP.RESERVE.l), t: Math.max(win.t, SP.RESERVE.t), r: Math.min(win.r, vw - SP.RESERVE.r), b: Math.min(win.b, vh - SP.RESERVE.b) };
+  if (band.r - band.l < 0.4 * vw || band.b - band.t < 0.4 * vh) Object.assign(band, win);   // a tiny window: the whole of it
+  /* a bar of this seat wider than the reserve (a tool column with its sub-tools open, a taller scene bar): the block keeps off it too */
+  const core = safeRect({ core: true }), m = meet(band, core);
+  if (m.r - m.l >= 0.4 * vw && m.b - m.t >= 0.4 * vh) Object.assign(band, m);
+  if (LAYER === 'screen') return { safe: band, avoid: [] };
+  if (LAYER === 'ui') return { safe: band, avoid: boxesOf(UI_WINDOWS) };
   return { safe: safeRect(), avoid: [...uiAvoid(), ...diceRects()] };
 }
 const meet = (a, b) => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
@@ -438,7 +450,7 @@ function compose(ctl, items, extra = {}) {
     out = fx.out; same = fx.moved;
   }
   out.k = k; out.frame = frame; out.same = same;
-  logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
+  logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, tok: frame.token ? [Math.round(frame.token.l), Math.round(frame.token.t)] : null, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
   return out;
 }
 function composeIn(ctl, items, frame) {

@@ -121,14 +121,14 @@ const inWin = (s, m = 0) => s.drawn.every((d) => d.abs.x - d.w / 2 >= -m && d.ab
 /* a seat whose window is SMALLER than the reference (same-picture.mjs REF_VW x REF_VH), or whose own panel covers the shared spot, may only
    shift the shared picture or shrink it in place (one factor for every item, never under SHRINK_LOCAL's last step), keeping every word,
    their order and the block's side of the hero (rel = the hero in the coordinates of d.x/d.y), and shows it whole */
-const smallOk = (c, b, rel = { x: 0, y: 0 }) => {
-  if (!["none", "shift", "shrink"].includes(c.moved) || c.drawn.length !== b.drawn.length || !c.drawn.length) return false;
+const smallOk = (c, b, rel = { x: 0, y: 0 }, edge = false) => {
+  if (!["none", "shift", "shrink", ...(edge ? ["layout"] : [])].includes(c.moved) || c.drawn.length !== b.drawn.length || !c.drawn.length) return false;
   if (c.drawn.some((d, i) => d.role !== b.drawn[i].role || d.text !== b.drawn[i].text)) return false;
   const ks = c.drawn.map((d, i) => d.S / b.drawn[i].S);
   if (Math.min(...ks) < 0.63 || Math.max(...ks) - Math.min(...ks) > 0.03 || Math.max(...ks) > 1.001) return false;
   const mid = (s) => ({ x: s.drawn.reduce((a, d) => a + d.x, 0) / s.drawn.length - rel.x, y: s.drawn.reduce((a, d) => a + d.y, 0) / s.drawn.length - rel.y });
   const mb = mid(b), mc = mid(c);
-  for (const ax of ["x", "y"]) if (Math.abs(mb[ax]) > 40 && Math.sign(mb[ax]) !== Math.sign(mc[ax])) return false;
+  for (const ax of ["x", "y"]) if (!edge && Math.abs(mb[ax]) > 40 && Math.sign(mb[ax]) !== Math.sign(mc[ax])) return false;
   return inWin(c, 1);
 };
 const kOf = (c, b) => c.drawn.map((d, i) => Math.round(d.S / b.drawn[i].S * 100) / 100).join(",");
@@ -143,9 +143,9 @@ const board = (hx, hy, gm) => {
 /* the seats: the GM (sidebar closed, his scene bar, party cards, a chat card, dice resting by the hero, engine Scale 1.3), a player
    (sidebar open, nothing else), a second player with a smaller window and reduced motion. One view: the same scene point in the middle */
 const GM = { name: "gm", W: 1600, H: 900, gm: true, k: 1.3, ui: { side: 40, nav: 38, party: true, card: true, diceZ: 101 } };
-const P1 = { name: "p1", W: 1600, H: 900, ui: { side: 300 } };
-const P2 = { name: "p2", W: 1366, H: 768, reduced: true, ui: { side: 300 } };
-const P3 = { name: "p3", W: 1920, H: 1080, reduced: true, ui: { side: 300 } };      // bigger than the reference, reduced motion
+const P1 = { name: "p1", W: 1600, H: 900, ui: { side: 300, party: true } };
+const P2 = { name: "p2", W: 1366, H: 768, reduced: true, ui: { side: 300, party: true } };
+const P3 = { name: "p3", W: 1920, H: 1080, reduced: true, ui: { side: 300, party: true } };      // bigger than the reference, reduced motion
 
 /* ================================================================ S1 screen layer, the hero mid-view: three seats, one picture */
 for (const layer of ["screen", "ui"]) for (const [name, e] of Object.entries(ROLLS())) {
@@ -168,7 +168,11 @@ for (const [name, e] of Object.entries(ROLLS()).filter(([k]) => !["crit"].includ
   ok(sig(a) === sig(b), `S2 ${name}: GM and player of one window size draw one picture at the view's edge\n   GM ${sig(a)}\n   P1 ${sig(b)}`);
   ok(inWin(a) && inWin(b) && inWin(c, 1), `S2 ${name}: no seat cuts it at its view's edge`);
   /* SAMEPIC: was "keeps the size"; a window under the reference may shrink in place when no shift clears it (smallOk, SAMEPIC-1) */
-  ok(smallOk(c, b), `S2 ${name}: the small window only shifts or shrinks it in place (${c.moved}, k ${kOf(c, b)})`);
+  /* at the view's edge the small window's band has no room above the hero (the shared side) and a shift lands on the hero: there it may
+     lay the same words out again on another side (SAMEPIC-1, the one real conflict), never smaller than SHRINK_LOCAL allows */
+  ok(smallOk(c, b, undefined, true), `S2 ${name}: the small window keeps the words and nearly the size, whole in its band (${c.moved}, k ${kOf(c, b)})
+   P2 ${sig(c)}
+   P1 ${sig(b)}`);
 }
 
 /* ================================================================ S3 map layer: the GM's scene bar and panels do not move his block */
@@ -186,10 +190,10 @@ for (const layer of ["tokens", "overlay"]) for (const [name, e] of Object.entrie
 for (const [name, e] of Object.entries(ROLLS()).filter(([k]) => ["good", "pushed", "stressed"].includes(k))) {
   const center = { x: 1250, y: 950 };
   const run = async (s) => { const b = board(1200, 900, !!s.gm); return seat({ ...s, layer: "hud", center, e, hero: b.hero, tokens: b.tokens, notes: b.notes }); };
-  const p1 = await run(P1);
+  const p1 = await run({ ...P1, ui: { side: 300 } });      // no party cards here: the case is the desk alone
   const top = Math.min(...p1.drawn.map((d) => d.abs.y - d.h / 2)), left = Math.min(...p1.drawn.map((d) => d.abs.x - d.w / 2)), right = Math.max(...p1.drawn.map((d) => d.abs.x + d.w / 2));
   const desk = [left - 10, top - 10, Math.max(60, (right - left) / 2), 60];      // the GM's desk right where the shared block's top-left stands
-  const gm = await run({ ...GM, ui: { ...GM.ui, desk } });
+  const gm = await run({ ...GM, ui: { ...GM.ui, party: false, desk } });
   const D = { l: desk[0], t: desk[1], r: desk[0] + desk[2], b: desk[1] + desk[3] };
   ok(gm.moved !== "none" && p1.moved === "none", `S4 hud ${name}: only the seat whose desk covers the spot moves the block (GM ${gm.moved}, player ${p1.moved})`);
   ok(gm.drawn.every((d) => !hitR(d, D)), `S4 hud ${name}: the GM's block is not hidden under his desk`);
