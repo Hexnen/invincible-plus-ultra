@@ -42,6 +42,10 @@ for (const [w, k] of KEYS) {
 eq(new Set(KEYS.map(([, k]) => k)).size, KEYS.length, "K: one key per word");
 ok(Object.keys(PL).filter((k) => k.startsWith("INSPLASH.Word.")).length === KEYS.length && Object.keys(EN).filter((k) => k.startsWith("INSPLASH.Word.")).length === KEYS.length, "K: both tables hold exactly the translated words");
 ok(KEYS.some(([, k]) => /[ĄĆĘŁŃÓŚŹŻ]/.test(PL[`INSPLASH.Word.${k}`])), "K: Polish letters reach the action words");
+/* SPLASHPL2 (the owner: «może zamiast zmiażdż - zmiażdżenie. i zburzenie zamiast zburz», «itd»): an imperative becomes the noun of the
+   action where the noun sounds good shouted; HOLD! and TRY AGAIN stay imperatives (TRZYMANIE / PONOWNA PRÓBA sound flat) */
+eq([PL["INSPLASH.Word.Crush"], PL["INSPLASH.Word.Demolish"]], ["ZMIAŻDŻENIE!", "ZBURZENIE!"], "K: the owner's two nouns (CRUSH!, DEMOLISH!)");
+for (const k of ["Smash", "Crush", "Grab", "Push", "Demolish"]) ok(!/^(MIAŻDŻ|ZBURZ|ROZWAL|ŁAP|FORSUJ)!$/.test(PL[`INSPLASH.Word.${k}`]), `K: ${k}: the noun, not the imperative (${PL[`INSPLASH.Word.${k}`]})`);
 /* the pure sounds stay English (nothing to translate: a Polish spelling would be an invented word) */
 for (const w of ["WHAM!", "BAM!", "THWACK!", "WHOOSH!", "ZIP!", "SWISH!", "BLAM!", "ZAP!", "PEW!", "BANG!", "KRAK!", "POW!", "BOOM!", "KAPOW!", "ZOOM!", "CLUNK!", "GRRR!", "HNNNG!", "CRACK!", "SNAP!", "KRAKOOM!", "HMM…"])
   ok(!(w in SL.SFX_KEYS), `K: the sound ${w} stays English`);
