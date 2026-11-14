@@ -31,7 +31,9 @@ if (cfg.card) UI["#chat-notifications .chat-log > li"] = [el(W - SIDE - 310, H *
    follows the user's peek state); nothing is drawn in them unless a card pops up */
 if (cfg.chatCol) UI["#chat-notifications"] = [el(cfg.chatCol, 16, 300, H - 30)];
 if (cfg.partyRoot != null) UI["#invincible-party"] = [el(cfg.partyRoot, H - 412, 240, 280)];
-globalThis.document = { querySelector: () => null, querySelectorAll: (sel) => UI[sel] ?? [] };
+/* the challenges' panel hugs the sidebar (live: x = window - sidebar - 320, 310 wide, 48..281) */
+if (cfg.dock) UI["#ich-dock"] = [el(W - SIDE - 320, 48, 310, 233)];
+globalThis.document = { querySelector: (sel) => UI[sel]?.[0] ?? null, querySelectorAll: (sel) => UI[sel] ?? [] };
 globalThis.getComputedStyle = () => ({ visibility: "visible" });
 /* the view: the scene point at the window's centre and the zoom (two windows of one view show the same point in their middle) */
 const z = cfg.zoom ?? 1, C0 = cfg.center ?? { x: 800, y: 450 };

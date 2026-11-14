@@ -242,6 +242,15 @@ for (const target of [{ x: 290, y: 430 }, { x: 980, y: 430 }]) {
    GM ${sigT(a)}
    P1 ${sigT(b)}`);
 }
+/* T5 live (lane 5, take L): the challenges' panel stands left of the sidebar, so elsewhere on each seat; a big hit by the top-right drew
+   0.7 of the size on the seat whose sidebar was open */
+for (const target of [{ x: 1000, y: 300 }, { x: 1100, y: 330 }]) {
+  const base = { center: { x: 800, y: 450 }, target, to: 0, dock: true };
+  const a = tr({ ...base, name: "gm", gm: true, side: 48 }), b = tr({ ...base, name: "p1", side: 348 });
+  ok(!!wordOf(a) && sigT(a) === sigT(b), `T5 hit at ${target.x},${target.y}: the challenges' panel by a closed or an open sidebar leaves one word
+   GM ${sigT(a)}
+   P1 ${sigT(b)}`);
+}
 /* T2 near the top of the view: the GM's scene bar does not cut or move his word (ADVX 13: "BAM! -2" cut by the top on the GM's seat) */
 {
   const base = { center: { x: 800, y: 690 }, target: { x: 750, y: 290 }, to: 5 };

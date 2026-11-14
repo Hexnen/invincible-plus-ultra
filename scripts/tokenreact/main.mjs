@@ -23,7 +23,7 @@ import { isLabel } from "../i18n/sys-labels.mjs";
 import * as Gate from "../tactics/ui/dicegate.mjs";
 import * as Moment from "../moment.mjs";
 import * as TokAnim from "../tokenanim/main.mjs";      // TOKANIM: the token's own motion
-import { standardRect, panelZones } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
+import { standardRect, panelZones, dockZone } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
@@ -498,7 +498,7 @@ const view = {
     return this.cache;
   },
   panelsCached() { const t = Date.now(); if (!this.pc || t - this.pat > 250) { this.pc = this.panels(); this.pat = t; } return this.pc; },
-  panels() { return [...this.blocks(), ...this.ownPanels()]; },
+  panels() { return [...this.blocks(), ...this.zones(), ...this.ownPanels()]; },      // SAMEPIC: the shared zones too, so every seat's follow clamps alike
   /* FIN-CALLERS (FXIT-S2): the roll splash's moments standing now (its own blocks, asked on REACT_HOOK): a word does not go under them.
      SAMEPIC: the splash lays its block out from shared data, so its block counts as shared */
   blocks() {
@@ -508,7 +508,15 @@ const view = {
   },
   /* SAMEPIC: the corner panels' shared zones (same-picture.mjs PANEL_ZONES: the party cards, as on the reference window), the same on
      every seat with this view */
-  zones() { try { return panelZones(globalThis.innerWidth ?? 1600, globalThis.innerHeight ?? 900).map((z) => ({ x: z.l, y: z.t, w: z.r - z.l, h: z.b - z.t, k: P.SLOT_K.panel })); } catch { return []; } },
+  zones() {
+    try {
+      const W = globalThis.innerWidth ?? 1600, H = globalThis.innerHeight ?? 900, zs = panelZones(W, H);
+      /* the challenges' panel moves with the sidebar (live: a word over Mauler B took 0.7 of its size on the seat whose sidebar was open) */
+      const el = document.querySelector?.("#ich-dock"), d = el ? dockZone(W, H, el.getBoundingClientRect()) : null;
+      if (d) zs.push(d);
+      return zs.map((z) => ({ x: z.l, y: z.t, w: z.r - z.l, h: z.b - z.t, k: P.SLOT_K.panel }));
+    } catch { return []; }
+  },
   /* this seat's own floating panels (the GM's desk, the party cards, the map's meters): a word is never hidden under them, but they move it
      on this seat only (SAMEPIC tier 3) */
   ownPanels() {
