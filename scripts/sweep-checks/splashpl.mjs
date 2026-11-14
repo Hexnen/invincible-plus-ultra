@@ -24,7 +24,7 @@ const ALL = [...Object.values(SL.ACTIONS).flat(), ...SL.FAIL, ...SL.SOFTFAIL, ..
 const KEYS = Object.entries(SL.SFX_KEYS);
 const plLabels = () => Object.fromEntries(KEYS.map(([, k]) => [k, PL[`INSPLASH.Word.${k}`]]));
 const enLabels = () => Object.fromEntries(KEYS.map(([, k]) => [k, EN[`INSPLASH.Word.${k}`]]));
-const allowed = /^[\p{L}\p{N}!?\-+'. \n]+$/u;
+const allowed = new RegExp("^[\\p{L}\\p{N}!?\\-+\\x27. \\n]+$", "u");   // \x27, not a quote: the glossary's literal scanner reads a quote in a regex as a string
 
 /* ---- K: the table */
 ok(KEYS.length >= 30, `most action words have a Polish word (${KEYS.length})`);
