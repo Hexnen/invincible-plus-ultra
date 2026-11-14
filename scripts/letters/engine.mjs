@@ -1,6 +1,6 @@
 /* LETR engine: fonts, the picture scheduler, the two players (screen = HTML layer over the interface, world = PIXI on the canvas)
    and the public API (see README.md). Works without Foundry for the screen space (gallery page, node-free browser tests). */
-import { makePlan, MOODS, MOOD_IDS, TICK, FONTS, syllablesOf, STYLES } from "./design.mjs";
+import { makePlan, MOODS, MOOD_IDS, TICK, FONTS, syllablesOf, STYLES, INV_FACES, DEFAULT_FACE } from "./design.mjs";
 import { FontBank } from "./fontbank.mjs";
 import { paintPicture } from "./paint.mjs";
 import { settleCenter } from "./shape.mjs";
@@ -11,7 +11,7 @@ import { makeSustain, AMBIENT_MAX } from "./sustain.mjs";
 import { createVocab } from "./words.mjs";
 import { MOTION_MODES, DEFAULT_MOTION, playOpts, trackPose, trackReach, holdEnergy, gridQ, gridAge, gridCeil } from "./motion.mjs";
 
-export const VERSION = "1.9.6";   // 1.9.6 = WORDS3 merged (thunder without BOOM/BUM; FIRE_BLASTS check). 1.9.5 = MODE 1.9.2 (table motion type set by the GM, shared grid clock L.gridClock) merged with LOOK3 1.9.4. 1.9.4 = LOOK3 + the owner's 20 % for a linked three; 1.9.3 = LOOK3 (1.9.2 = MODE, a parallel branch): interlocked O staggered (first up, second down, third up; two O always, three rarely, four never), first letter as tall as its neighbour, no hole before the last letter (union-keyline pairs part only as far as a touch). 1.9.1 = FIN-ENGINE: FXI-ENGINE 1.8.2 (impact frames: every scene change counted by the guard, six-step ladder, red-safe, gentle per call, settings row) merged onto MOTION2 1.9.0; plan.contactMs, per-word flash:false, impact size from the subject, impact keep rect. 1.9.0 = MOTION2 (contract v10): invincible motion as per-frame tracks from a sound-family table (motion.mjs), pictures shared by key, smooth|stepped switch (look.motion, L.motionMode), reduced exit = fade. 1.8.1 = LOOK2 1.8.0 + IMPACT/KINDS1 merged. LOOK2 (contract v9): invincible = tall tight flat lettering (Anton, one union keyline, optical kerning, flat palettes, joined OO, tucked prefix, vertical column), legacy look frozen as style "expressive"; v7+v8 merged: MOVE (contract v7, 1.5.0: travel, choreography, rates, escalation, shards, push, glow, continuous sounds) + LOOK (contract v8, 1.6.0: lines, backdrops, deformation, fills, legibility, accent, look styles, sound->look); 1.4.1 TOOL; 1.3.1 WORD; 1.2.1 FXLE | 1.7.2 IMPACT merged (impact frames, impact/, L.impact); 1.7.1 KINDS1: material, impact, debris, shock wave, fire ladder, chain + TAILS, whizz, casings, dry fire, grenade. v7+v8 merged: MOVE (contract v7, 1.5.0: travel, choreography, rates, escalation, shards, push, glow, continuous sounds) + LOOK (contract v8, 1.6.0: lines, backdrops, deformation, fills, legibility, accent, look styles, sound->look); 1.4.1 TOOL; 1.3.1 WORD; 1.2.1 FXLE
+export const VERSION = "1.9.7";   // 1.9.7 = FONTSEL: the invincible style in League Gothic (default) or Anton, world setting face, per-face tuning, optical sizes. 1.9.6 = WORDS3 merged (thunder without BOOM/BUM; FIRE_BLASTS check). 1.9.5 = MODE 1.9.2 (table motion type set by the GM, shared grid clock L.gridClock) merged with LOOK3 1.9.4. 1.9.4 = LOOK3 + the owner's 20 % for a linked three; 1.9.3 = LOOK3 (1.9.2 = MODE, a parallel branch): interlocked O staggered (first up, second down, third up; two O always, three rarely, four never), first letter as tall as its neighbour, no hole before the last letter (union-keyline pairs part only as far as a touch). 1.9.1 = FIN-ENGINE: FXI-ENGINE 1.8.2 (impact frames: every scene change counted by the guard, six-step ladder, red-safe, gentle per call, settings row) merged onto MOTION2 1.9.0; plan.contactMs, per-word flash:false, impact size from the subject, impact keep rect. 1.9.0 = MOTION2 (contract v10): invincible motion as per-frame tracks from a sound-family table (motion.mjs), pictures shared by key, smooth|stepped switch (look.motion, L.motionMode), reduced exit = fade. 1.8.1 = LOOK2 1.8.0 + IMPACT/KINDS1 merged. LOOK2 (contract v9): invincible = tall tight flat lettering (Anton, one union keyline, optical kerning, flat palettes, joined OO, tucked prefix, vertical column), legacy look frozen as style "expressive"; v7+v8 merged: MOVE (contract v7, 1.5.0: travel, choreography, rates, escalation, shards, push, glow, continuous sounds) + LOOK (contract v8, 1.6.0: lines, backdrops, deformation, fills, legibility, accent, look styles, sound->look); 1.4.1 TOOL; 1.3.1 WORD; 1.2.1 FXLE | 1.7.2 IMPACT merged (impact frames, impact/, L.impact); 1.7.1 KINDS1: material, impact, debris, shock wave, fire ladder, chain + TAILS, whizz, casings, dry fire, grenade. v7+v8 merged: MOVE (contract v7, 1.5.0: travel, choreography, rates, escalation, shards, push, glow, continuous sounds) + LOOK (contract v8, 1.6.0: lines, backdrops, deformation, fills, legibility, accent, look styles, sound->look); 1.4.1 TOOL; 1.3.1 WORD; 1.2.1 FXLE
 /* Where a word is drawn. World layers live in the canvas (scene coordinates); screen layers are HTML over the page.
    primary = the scene's own sorted group (lit and darkened by the scene's lighting like tokens are); sortLayer: Foundry's tiles 500,
    drawings 600, tokens 700, core weather 1000; moinen-maps: water 240, roads 245, destruction 247-248, districts 250, fire ground 256,
@@ -102,7 +102,12 @@ export function createEngine(base) {
   /* MOTION2: how the invincible style moves on this client: "smooth" (default) or "stepped" (A/B for the owner, MOTION2-1); a call's
      look.motion wins */
   let defMotion = DEFAULT_MOTION;
-  const withMotion = (o) => (o.look.style === "invincible" && !MOTION_MODES.includes(o.look.motion) ? { ...o, look: { ...o.look, motion: defMotion } } : o);
+  /* FONTSEL (1.9.7): the invincible style's face on this client (the table's setting `face`, set by the GM); a call's look.face wins.
+     A face whose file did not load falls back to the other one (the plan never names a face the bank cannot draw) */
+  let defFace = DEFAULT_FACE;
+  const faceOk = (f) => (bank.has(f) ? f : INV_FACES.find((x) => bank.has(x)) ?? f);
+  const withFace = (o) => (o.look.style === "invincible" ? { ...o, look: { ...o.look, face: faceOk(INV_FACES.includes(o.look.face) ? o.look.face : defFace) } } : o);
+  const withMotion = (o0) => { const o = withFace(o0); return o.look.style === "invincible" && !MOTION_MODES.includes(o.look.motion) ? { ...o, look: { ...o.look, motion: defMotion } } : o; };
   const mk = (t, o, f, m) => {
     if ( o?.look?.style ) return makePlan(t, withMotion(o), f, m);
     const ls = typeof o?.style === "string" && STYLES.includes(o.style) ? o.style : defLook;   // TOOL's built-in style names too
@@ -110,6 +115,7 @@ export function createEngine(base) {
   };
   const lookStyle = (name) => { if ( STYLES.includes(name) ) defLook = name; return defLook; };
   const motionMode = (name) => { if ( MOTION_MODES.includes(name) ) defMotion = name; return defMotion; };
+  const invFace = (name) => { if ( INV_FACES.includes(name) ) defFace = name; return defFace; };
   /* MODE (1.9.2): the stepped grid's clock. Without it the grid sits on this page's performance.now(), whose origin differs on every
      seat, so a stepped word's drawings (and its contact, L.contactAt) fell 0..41.7 ms apart between seats that share a start. The
      tools hand in `() => sharedNow - performance.now()` (the world's shared clock): every seat then draws on the SAME instants.
@@ -1327,7 +1333,7 @@ export function createEngine(base) {
   const api = {
     version: VERSION, base, limits, stats, defaults, layers: LAYERS, layerChoices,
     moods: MOOD_IDS.map((id) => ({ id, label: MOODS[id].label, sound: { ...MOODS[id].sound } })),
-    ready, play, stream, burst, still, design, stopAll, count, sizeOf, contactAt, sizeModel: SIZE, lookStyle, lookStyles: STYLES.slice(), motionMode, motionModes: MOTION_MODES.slice(), gridClock,
+    ready, play, stream, burst, still, design, stopAll, count, sizeOf, contactAt, sizeModel: SIZE, lookStyle, lookStyles: STYLES.slice(), motionMode, motionModes: MOTION_MODES.slice(), invFace, invFaces: INV_FACES.slice(), gridClock,
     vocab, word: vocab.word, sfx, number: vocab.number, range: vocab.range, flow: vocab.flow, chain,
     /* v6 (MOVE): push words aside, the escalation memory, the parts of the view words keep clear of (px from each edge: a letterbox,
        a bar; or a function (space) => insets; null = the default 8 px) */
