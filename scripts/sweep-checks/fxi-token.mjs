@@ -240,7 +240,7 @@ async function seats(build, run, ms = 1500) {
   ck(`I15 the other reactions start after its drawings (${Math.round(Math.min(...rest.map((x) => x.o.startAt)) - imp?.spec.startAt)} ms after it, its drawings ${Math.round(ms)} ms)`, rest.length > 0 && rest.every((x) => x.o.startAt >= imp.spec.startAt + Math.min(500, ms) - 260));
 }
 /* ---- I8: the splash may make room: the blow's instant is announced */
-ck(`I8 every moment announces its blow's instant and tokens (${reacted.length} announcements)`, reacted.length > 0 && reacted.every((d) => d.phase === "hit" && Number.isFinite(d.at) && Array.isArray(d.ids)));
+ck(`I8 every moment announces its blow's instant and tokens (${reacted.length} announcements)`, reacted.length > 0 && reacted.filter((d) => d.phase !== "place").every((d) => d.phase === "hit" && Number.isFinite(d.at) && Array.isArray(d.ids)));   // FIN-CALLERS: "place" asks where the splash stands
 { const src = (await import("node:fs")).readFileSync(new URL("../tokenreact/main.mjs", import.meta.url), "utf8");
   ck("I8 the splash's announcements are heard (invincible-plus-ultra.splashMoment)", /splashMoment/.test(src) && /Hooks\.on\(SPLASH_HOOK, onSplash\)/.test(src));
   ck("never a timer or a loop of impacts", !/setInterval\([^)]*impact/i.test(src)); }

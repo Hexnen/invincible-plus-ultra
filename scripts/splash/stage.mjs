@@ -696,10 +696,13 @@ function fireImpact(ctl, it, T0, contact) {
      { phase: "start", id }                      the roll's moment is coming (the card; said again right before it plays),
      { phase: "land", id, landAt, impactMs }     its result word strikes at landAt (performance.now), its impact lasts impactMs after it,
      { phase: "done", id }                       it is over or was dropped (said on every way out).
-   The token reactions (tokenreact/main.mjs) wait for it. They say each blow on REACT_HOOK ({ phase: "hit", at, ids }) and a moment that
-   has told its story and stands within half a token of a struck token makes room: its words leave ROOM_MS before the blow. */
+   The token reactions (tokenreact/main.mjs) wait for it (at least STORY_READ there: the roll's word is read before the target answers).
+   They ask where the splash stands on REACT_HOOK ({ phase: "place", blocks: [] }: each landed moment adds its block, client px) and keep
+   their words off it; they say each blow ({ phase: "hit", at, ids }) and a moment that has struck and COVERS a struck token (its block on
+   the token's box, COVER_K of a token round it) makes room: its words leave ROOM_MS before the blow (seen live: a moment that only stood
+   beside the target was ended 0.1 s after its word struck; now the target's word goes beside it instead). */
 export const MOMENT_HOOK = 'invincible-plus-ultra.splashMoment', REACT_HOOK = 'invincible-plus-ultra.tokenReact';
-export const ROOM_MS = 240;
+export const ROOM_MS = 240, COVER_K = 0.1;
 export function tellMoment(data) {
   try { globalThis.Hooks?.callAll?.(MOMENT_HOOK, data); } catch (e) { /* a listener's failure is not the splash's */ }
 }
@@ -726,9 +729,9 @@ function tokenAreaOf(ctl, tok) {
   if (ctl.shared) { const gs = globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100; return docBox(tok, gs); }
   return tokenBox(tok);
 }
-export function nearBlock(block, tb) {
+export function nearBlock(block, tb, k = COVER_K) {
   if (!block || !tb) return false;
-  const p = 0.5 * Math.max(tb.r - tb.l, tb.b - tb.t);
+  const p = k * Math.max(tb.r - tb.l, tb.b - tb.t);
   return block.l < tb.r + p && block.r > tb.l - p && block.t < tb.b + p && block.b > tb.t - p;
 }
 export function makeRoom(ids, at) {
@@ -748,8 +751,21 @@ export function makeRoom(ids, at) {
     return n;
   } catch (e) { return 0; }
 }
+/* the landed moments' blocks in client px (a map moment's scene block projected on this seat's view) */
+export function blocks() {
+  const out = [];
+  for (const ctl of active.values()) {
+    if (ctl.dead || !ctl.landed || ctl.roomFor) continue;
+    const b = blockOf(ctl);
+    if (!b) continue;
+    if (ctl.shared) { const a = toClient({ x: b.l, y: b.t }), c = toClient({ x: b.r, y: b.b }); if (a && c) out.push({ l: a.x, t: a.y, r: c.x, b: c.y }); }
+    else out.push(b);
+  }
+  return out;
+}
 export function onTokenReact(data) {
   if (data?.phase === 'hit') makeRoom(data.ids, data.at);
+  else if (data?.phase === 'place' && Array.isArray(data.blocks)) data.blocks.push(...blocks());
 }
 /* the screen pins of a map moment: an HTML part follows its scene point (followPan) */
 function pin(ctl, el, at, c0, k = 0) { (ctl.pins ??= []).push({ el, at, c0, k }); }

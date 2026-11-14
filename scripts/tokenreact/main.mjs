@@ -51,6 +51,13 @@ const CARD_DOWN_WAIT = 350;
    a landed one until its impact is over plus STORY_BEAT. Without that hook (a splash that does not announce) the old screen check stays */
 const SPLASH_HOOK = `${MOD}.splashMoment`, REACT_HOOK = `${MOD}.tokenReact`;
 const STORY_MAX = 2500, STORY_BEAT = 120, STORY_STEP = 40;
+/* FIN-CALLERS (seen live: the roll's dice took ~3 s, so a start said with the card had run out before the reaction even began to wait, and
+   the target's blow came 0.2-0.4 s BEFORE the roll's word, on each seat at another instant): an announced start counts until it lands, is
+   done or goes stale (STORY_STALE); STORY_MAX bounds only this reaction's own wait */
+const STORY_STALE = 12000;
+/* FIN-CALLERS: the roll's result word is READ before the target answers: the blow lands at least STORY_READ after the word struck (seen
+   live: with only the impact's length and the beat the roll's word stood 0.3 s before the target's word and impact took over) */
+const STORY_READ = 900;
 /* the engine's impact frames play one at a time: the roll's (or the series' last) is let finish, at most this long, before the next blow's */
 const IMPACT_WAIT = 600;
 
@@ -106,7 +113,11 @@ function entry(tok, stat) {
 /* the server's stamp of the change: the same on every seat (the seed, review 15 / 18). FXLT2 (ADVT2 3: every unlinked token said one word
    with one tilt and one motion forever): an unlinked token's change is written to the TOKEN (its delta), and its synthetic actor keeps the
    base actor's stamp; the newest of the actor's, the token's and the delta's stamps is the change's */
-const stampOf = (tok) => {
+const stampOf = (tok, options = null) => {
+  /* FIN-CALLERS (seen live on lane 5, v14): an unlinked token's change touches neither the token's nor its delta's stamp, so every blow of a
+     Mauler kept one seed and one word for good (WHAM!, WHAM!, WHAM!); the update's own server time (options.modifiedTime, the same on every
+     seat) is the change's stamp when the hook carries it */
+  if (Number.isFinite(Number(options?.modifiedTime)) && options.modifiedTime) return Number(options.modifiedTime);
   const all = [tok?.actor?._stats?.modifiedTime, tok?.document?._stats?.modifiedTime, tok?.document?.delta?._stats?.modifiedTime].filter((v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)));
   return all.length ? Math.max(...all.map(Number)) : "";
 };
@@ -131,7 +142,7 @@ function changed(tok, options) {
       const e = entry(tok, stat);
       if (e.from === null) e.from = a;
       e.to = b; e.max = m;
-      if (!e.evSeed) e.seed = P.seedOf(tok.id, stat, stampOf(tok));      // a fight's event, when one joined, keeps its own key as the seed
+      if (!e.evSeed) e.seed = P.seedOf(tok.id, stat, stampOf(tok, options));      // a fight's event, when one joined, keeps its own key as the seed
       if (stat === "resolve" && b < a && Date.now() - (lastPush.get(tok.actor?.id) ?? -1e9) < PUSH_MS && !options?.ipuTactics) e.cause = "push";
       if (options?.ipuTactics) e.tactics = true;
       /* a Damage Taken card that came BEFORE this loss joins it (review 17); one card per loss (FXI-TOKEN, ADVI 1) */
@@ -306,24 +317,34 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
    its start); a landed one until its impact is over (STORY_BEAT after). Without announcements: the screen check of before. Then the
    impact frame playing now (the roll's, the series' last blow's) is let finish, at most IMPACT_WAIT */
 async function storyWait(L) {
+  let until = 0;
   if (storyHeard) {
-    for (let waited = 0; waited < STORY_MAX; waited += STORY_STEP) {
+    /* FIN-CALLERS: the blow lands at the SHARED instant the roll's story ends (its landing is on the splash's common start: the same on every
+       seat), not when this seat's polling noticed it: wait for an open story to land (at most STORY_MAX), then until HIT_LEAD before that
+       instant; land() puts the blow on it (ADVI 13: one instant on every seat) */
+    const t1 = performance.now();
+    for (;;) {
       const t = performance.now();
-      let until = 0, open = false;
+      let open = false;
+      until = 0;
       for (const [id, s] of story) {
-        if (t - s.t > STORY_MAX + 6000) { story.delete(id); continue; }
-        if (s.landAt == null) { if (t - s.t < STORY_MAX) open = true; continue; }
-        until = Math.max(until, s.landAt + (s.impactMs ?? 0) + STORY_BEAT);
+        if (t - Math.max(s.t, s.landAt ?? 0) > STORY_STALE) { story.delete(id); continue; }
+        if (s.landAt == null) { open = true; continue; }
+        until = Math.max(until, s.landAt + Math.max((s.impactMs ?? 0) + STORY_BEAT, STORY_READ));
       }
-      if (!open && t >= until) break;
+      if (!open || t - t1 >= STORY_MAX) break;
       await wait(STORY_STEP);
     }
+    const ahead = until - P.HIT_LEAD - performance.now();
+    if (ahead > 0) await wait(ahead);
+    if (until) return until;
   } else {
     /* a roll's splash word on screen right now: the token answers just after it */
     const splashing = () => (L.count?.({ space: "screen" }) ?? 0) > 0 || !!document.querySelector("#invincible-splash-layer .ins-stage");      // the engine's screen words, or the roll splash's own layer
     for (let waited = 0; waited < SCREEN_WAIT && splashing(); waited += 60) await wait(60);
   }
   for (let waited = 0; waited < IMPACT_WAIT && L.impact?.busy; waited += STORY_STEP) await wait(STORY_STEP);
+  return 0;
 }
 function onSplash(data) {
   try {
@@ -343,7 +364,7 @@ async function land(ids, ready) {
   try {
     if (Moment.isActive()) await Moment.landing(ids, { wait: 0, cap: 1600 });
     const L = engine ?? (engine = await letters());
-    await storyWait(L);
+    const storyEnd = await storyWait(L);
     unflight(ready);
     items = build(ready);
     if (!items.length) return;
@@ -373,7 +394,7 @@ async function land(ids, ready) {
     /* FXI-TOKEN (ADVI 2, 13, 15): ONE instant for the moment's blow, the same on every seat (pure HIT_LEAD): the impact starts on it and every
        word is started so that it strikes on it (play). The other reactions of a crowd strike after the impact (its drawings, at most 500 ms,
        took them over: one token's knock-out frame blacked out six reactions), then one after another (their stagger) */
-    const T0 = performance.now() + P.HIT_LEAD;
+    const T0 = Math.max(performance.now() + P.HIT_LEAD, storyEnd || 0);
     let after = 0;
     try { if (imp && L.impact?.plan) after = Math.min(500, Math.max(0, Number(L.impact.plan({ ...imp.spec, seed: `${imp.it.seed}|impact` })?.ms) || 0)); } catch (err) { once(err); }
     for (const it of staged) it.tHit = it === imp?.it ? T0 : T0 + (imp ? after + it.delay : it.delay);
@@ -459,6 +480,8 @@ const view = {
   panelsCached() { const t = Date.now(); if (!this.pc || t - this.pat > 250) { this.pc = this.panels(); this.pat = t; } return this.pc; },
   panels() {
     const out = [];
+    /* FIN-CALLERS (FXIT-S2): the roll splash's moments standing now (its own blocks, asked on REACT_HOOK): a word does not go under them */
+    try { const blocks = []; Hooks.callAll(REACT_HOOK, { phase: "place", blocks }); for (const b of blocks) if (b && b.r > b.l && b.b > b.t) out.push({ x: b.l, y: b.t, w: b.r - b.l, h: b.b - b.t, k: P.SLOT_K.panel }); } catch { /* no splash */ }
     for (const sel of PANEL_SEL) for (const el of document.querySelectorAll?.(sel) ?? []) {
       try { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0 && getComputedStyle?.(el)?.visibility !== "hidden") out.push({ x: r.left, y: r.top, w: r.width, h: r.height, k: P.SLOT_K.panel }); } catch { /* skip */ }
     }

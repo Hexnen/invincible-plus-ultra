@@ -3,8 +3,9 @@
      H  (FXIT-S1) the splash says its moment on `invincible-plus-ultra.splashMoment`: "start" when the roll is known (and again right before
         it plays), "land" with landAt = the instant its result word strikes and impactMs = how long its impact lasts after that, "done" on
         every way out (also when it plays nothing: skipped, dropped, cut short); the classic splash lands with impactMs 0;
-     R  (FXIT-S2) a moment that has struck and stands within half a token of a token the reactions are about to strike makes room: its words
-        leave ROOM_MS before the blow's instant; a far moment and a moment that has not struck yet stay;
+     R  (FXIT-S2) a moment that has struck and COVERS a token the reactions are about to strike makes room: its words leave ROOM_MS before
+        the blow's instant; a moment beside it, a far one and one that has not struck yet stay, and the reactions are told where the
+        landed moments stand (phase "place") so their words keep off them;
      C  (engine 1.9.0, MOTION2) one contact rule for both callers on the real 1.9 plans (pose keys, pictures without burst or dust): the
         word's own accent tick, else its squash pose, else its biggest pose; the engine's plan.contactMs first when it has one.
    The splash's page, canvas and engine are fakes (as fxi-splash.mjs); the 1.9 plans are the real engine's (design.mjs with its fonts). */
@@ -142,23 +143,26 @@ for (const [name, e] of [["crit", crit], ["strong", strong]]) {
 /* ================================================================== R: make room */
 { const s = await seat({ e: crit, momentId: "MSG-room" });
   const r = s.ctl.rect, cx = (r.l + r.r) / 2, cy = (r.t + r.b) / 2;
-  const near = tok("NEAR", r.r + 20, cy - 50), far = tok("FAR", 3800, 2800);
-  globalThis.canvas.tokens.placeables.push(near, far);
+  const beside = tok("BESIDE", r.r + 20, cy - 50), far = tok("FAR", 3800, 2800), under = tok("UNDER", cx - 50, cy - 50);
+  globalThis.canvas.tokens.placeables.push(beside, far, under);
   eq(s.Stage.makeRoom(["FAR"], performance.now() + 1000), 0, "R: a token far from the block: the moment stays");
+  eq(s.Stage.makeRoom(["BESIDE"], performance.now() + 1000), 0, `R: a token beside the block (${Math.round(beside.x - r.r)} px from it): the moment stays (the target's word goes beside it)`);
   ok(!s.ctl.dead, "R: ... still standing");
+  const place = { phase: "place", blocks: [] }; s.Stage.onTokenReact(place);
+  ok(place.blocks.length === 1 && Math.abs(place.blocks[0].l - r.l) < 1 && Math.abs(place.blocks[0].b - r.b) < 1, `R: asked where it stands, the landed moment gives its block (${JSON.stringify(place.blocks[0])})`);
   const at = performance.now() + 1000, before = s.timers.length;
-  eq(s.Stage.makeRoom(["NEAR"], at), 1, `R: a token within half a token of the block (${Math.round(near.x - r.r)} px from it): the moment makes room`);
+  eq(s.Stage.makeRoom(["UNDER"], at), 1, "R: a token under the block: the moment makes room");
   const t = s.timers.slice(before).find((x) => !x.done);
   ok(!!t && Math.abs(t.ms - (at - s.Stage.ROOM_MS - performance.now())) < 30, `R: its words leave ${s.Stage.ROOM_MS} ms before the blow (in ${Math.round(t?.ms)} ms)`);
   s.flush();
   ok(s.ctl.dead && s.L.calls.every((c) => c.h.stops.length > 0), "R: ... and they are gone by the blow");
   eq(s.told.filter((x) => x.phase === "done").length, 1, "R: the moment says done");
-  ok(nearIs(s.Stage), "R: nearBlock: a box half a token away counts, one a token away does not");
+  ok(nearIs(s.Stage), "R: nearBlock: a box on the token or a tenth of a token from it covers it, one a fifth of a token away does not");
   s.Stage.clearAll();
 }
 function nearIs(Stage) {
   const tb = { l: 0, t: 0, r: 100, b: 100 };
-  return Stage.nearBlock({ l: 140, t: 0, r: 300, b: 100 }, tb) && !Stage.nearBlock({ l: 200, t: 0, r: 300, b: 100 }, tb) && !Stage.nearBlock(null, tb);
+  return Stage.nearBlock({ l: 50, t: 0, r: 300, b: 100 }, tb) && Stage.nearBlock({ l: 108, t: 0, r: 300, b: 100 }, tb) && !Stage.nearBlock({ l: 120, t: 0, r: 300, b: 100 }, tb) && !Stage.nearBlock(null, tb);
 }
 { const s = await seat({ e: crit, momentId: "MSG-early", upTo: -1 });
   const r = s.ctl.rect ?? { l: 600, t: 300, r: 1000, b: 500 };
