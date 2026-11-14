@@ -476,6 +476,7 @@ function letterOne(ctl, it) {
     try { const c = h && LE.contactAt ? LE.contactAt(h) : null; if (Number.isFinite(c)) ctl.contactAt = c; } catch (e) { /* the planned one */ }
     fireImpact(ctl, shot, ctl.contactAt, h);
   }
+  if (it.role === 'word' && ctl.bdLater) enterBackdrop(ctl, shot);
   /* FIN-CALLERS (FXIT-S1, ADVI 8): the result word strikes now: the token reactions wait until it and its impact are over */
   if (it.role === 'word') {
     const at = ctl.contactAt ?? o.startAt;
@@ -597,8 +598,6 @@ function playLetters(ev, o) {
   ctl.seed = o.seed ?? `local-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`; ctl.full = full;
   letterWrap(ctl);
   overDice();
-  /* the owner (2026-11-13): backdrops are an extra, default without; the full wash and rays only with the client setting Backdrop */
-  if (full && o.backdrop) addBackdrop(ctl, ev.power, o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom), o.fx);
   const dF = LP.failStrength(ev);
   /* WIRE1: the impact frame of this result (impact-plan.mjs; null = none). Planned from the event alone, so every seat agrees */
   ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: o.fx }) : null;
@@ -606,6 +605,16 @@ function playLetters(ev, o) {
   const plan = LP.planMoment(ev, { token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const word = plan.items.find(it => it.role === 'word');
   const t0 = word?.delay ?? 0;
+  /* the owner (2026-11-13): backdrops are an extra, default without; the full wash and rays only with the client setting Backdrop.
+     CRITFIX: our layer is above the engine's impact overlay (the words must stay on top of it), so a wash already up covered the impact
+     frame (the black-and-white slam turned lavender, the clear spot glowed white over it, the struck silhouette was lost). With an impact
+     planned for the result word the backdrop now ENTERS AFTER the impact (enterBackdrop, from letterOne): the blow reads exactly as with
+     the backdrop off, the wash and rays are its aftermath. Without an impact it is up from the start, as before. */
+  if (full && o.backdrop) {
+    const bdK = o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom);
+    if (ctl.impactPlan && word) ctl.bdLater = () => addBackdrop(ctl, ev.power, bdK, o.fx);
+    else addBackdrop(ctl, ev.power, bdK, o.fx);
+  }
   if (!word) later(() => tellLand(ctl, performance.now(), 0), 0);   // FIN-CALLERS: a moment without a result word has struck once it shows
   /* the stress row and its gauge belong to the block (measured once, shown at its time) */
   const resolve = ev.stress ? (o.resolve ? o.resolve() : null) : null;
@@ -628,6 +637,7 @@ function playLetters(ev, o) {
     const c = wp ? toClient({ x: wp.x, y: wp.y }) : null;
     if (c) { stage.style.left = c.x + 'px'; stage.style.top = c.y + 'px'; pin(ctl, stage, { x: wp.x, y: wp.y }, c); }
     for (const x of ctl.extras.filter(e => e.classList?.contains('ins-fullrays'))) pin(ctl, x, { x: wp?.x ?? 0, y: wp?.y ?? 0 }, c ?? { x: 0, y: 0 });
+    ctl.rayPin = { at: { x: wp?.x ?? 0, y: wp?.y ?? 0 }, c: c ?? { x: 0, y: 0 } };   // CRITFIX: rays that enter after the impact are pinned the same way
   } else if (wp) { stage.style.left = wp.x + 'px'; stage.style.top = (wp.y + 0.04 * stage.clientWidth) + 'px'; }   // the rays, the flash and the sparks centre on the word
   let first = true;
   for (const it of lay.items) {
@@ -870,6 +880,25 @@ function stressLettered(ctl, stress, resolve, holdK, seed) {
   if (p) letterOne(ctl, p);
 }
 
+/* CRITFIX: the deferred backdrop of a result with an impact frame enters when this seat's impact is over (its last drawing), on the
+   word's strike when this seat shows no impact (the target and the word out of its view, the engine refused it). A moment that ended
+   or already let its surroundings go gets none. The struck target this seat sees keeps a clear spot like the hero. */
+export const IMPACT_MAX_MS = 500;   // the engine's longest impact (12 ticks at 24 Hz): the fallback end when its plan gave no length
+function enterBackdrop(ctl, shot) {
+  const add = ctl.bdLater;
+  ctl.bdLater = null;
+  if (!add) return;
+  const live = !!ctl.impact && ctl.impact.alive !== false;
+  const now = performance.now();
+  const end = live ? (Number.isFinite(ctl.impactEnd) ? ctl.impactEnd : (Number.isFinite(ctl.impactPeak) ? ctl.impactPeak : now) + IMPACT_MAX_MS) : now;
+  if (live && shot?.where === 'target' && shot.target) ctl.spotTarget = shot.target;
+  ctl.later(() => { if (!ctl.dead && !ctl.extrasGone) add(); }, Math.max(0, Math.round(end - now)));
+}
+/* the struck target's token for a clear spot: only while this seat still sees it in its view (a spot must not mark a hidden token) */
+function spotToken(id) {
+  if (!id || targetLook(id) !== 'ok') return null;
+  try { return globalThis.canvas.tokens.get(id) ?? null; } catch (e) { return null; }
+}
 /* tło pełnoekranowe: poświata w kolorze wyniku i promienie na cały widok; nigdy nie zasłania całkiem mapy */
 function addBackdrop(ctl, P, strength, fx) {
   const h = hueOf(P), k = 0.5 + 0.5 * strength, reduced = S.isReduced();
@@ -877,9 +906,11 @@ function addBackdrop(ctl, P, strength, fx) {
   bd.style.background =
     'radial-gradient(circle at 50% 46%, ' + hsl(h + 20, 100, 70, (0.30 * k).toFixed(2)) + ' 0%, ' + hsl(h, 100, 52, (0.22 * k).toFixed(2)) + ' 32%, ' + hsl(h - 28, 90, 10, (0.62 * k).toFixed(2)) + ' 100%)';
   const layerEl = ensureLayer();
-  /* FXLD2 (ADVD2 6): with the Backdrop setting on, the wash still never hides the hero: a clear spot over the rolling token */
-  const hb = ctl.hero ? tokenBox(ctl.hero) : null, hole = hb ? spotMask(hb) : null;
-  if (hole) { bd.style.maskImage = hole; bd.style.webkitMaskImage = hole; }
+  /* FXLD2 (ADVD2 6): with the Backdrop setting on, the wash still never hides the hero: a clear spot over the rolling token.
+     CRITFIX: and none over the struck target this seat sees (its impact landed there); several spots = mask layers intersected */
+  const spots = [ctl.hero, spotToken(ctl.spotTarget)].filter((t, i, a) => t && a.indexOf(t) === i).map(tokenBox).filter(Boolean);
+  const hole = spots.length ? spots.map(spotMask).join(', ') : null;
+  if (hole) { bd.style.maskImage = hole; bd.style.webkitMaskImage = hole; if (spots.length > 1) { bd.style.maskComposite = 'intersect'; bd.style.webkitMaskComposite = 'source-in'; } }
   layerEl.insertBefore(bd, ctl.el);
   ctl.extras.push(bd);
   if (!reduced) bd.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out', fill: 'backwards' });
@@ -890,25 +921,35 @@ function addBackdrop(ctl, P, strength, fx) {
   /* the rays turn, so their clear spot is cut by a still wrapper around them (its mask does not turn) */
   let host = ray;
   if (hole) { host = document.createElement('div'); host.className = 'ins-raywrap'; host.style.maskImage = hole; host.style.webkitMaskImage = hole; ray.style.position = 'absolute'; host.appendChild(ray); }   // absolute in the fixed wrapper (a fixed child escaped its mask live)
+  if (hole && spots.length > 1) { host.style.maskComposite = 'intersect'; host.style.webkitMaskComposite = 'source-in'; }
   layerEl.insertBefore(host, ctl.el);
   ctl.extras.push(ray);
   if (host !== ray) ctl.extras.push(host);
+  if (ctl.shared && ctl.rayPin) pin(ctl, ray, ctl.rayPin.at, ctl.rayPin.c);   // CRITFIX: entered after the impact: pinned like the ones placed with the block
   {
     ray.animate([{ opacity: 0, transform: 'translate(-50%,-50%) rotate(0deg) scale(.6)' }, { opacity: 1, transform: 'translate(-50%,-50%) rotate(10deg) scale(1)', offset: 0.2 }, { opacity: 1, transform: 'translate(-50%,-50%) rotate(60deg) scale(1)' }],
       { duration: 7000, easing: 'linear', fill: 'forwards' });
   }
 }
 
-/* a CSS mask with a clear ellipse over a client box (the hero), feathered */
+/* a CSS mask with a clear ellipse over a client box (the hero), feathered.
+   CRITFIX: the wash is full again right at the token's edge (+2 px) and feathers INSIDE it, over its outer SPOT_FEATHER of the half
+   size (at least 6 px): the figure stays clear, the token's own rim takes a little of the wash. Before, the spot reached 1.2x the half
+   size with a 0.3x feather: a ring of unwashed map round the token, darker than the bright wash, read as a dark halo in every hold
+   frame; live, a feather outside the rim (raw ground ramping up to the wash) still read as a thin dark ring. */
+export const SPOT_FEATHER = 0.14;
 export function spotMask(b) {
-  const cx = Math.round((b.l + b.r) / 2), cy = Math.round((b.t + b.b) / 2), rx = Math.round((b.r - b.l) * 0.75 + 12), ry = Math.round((b.b - b.t) * 0.75 + 12);
-  return `radial-gradient(${rx}px ${ry}px at ${cx}px ${cy}px, transparent 0, transparent 80%, #000 100%)`;
+  const cx = Math.round((b.l + b.r) / 2), cy = Math.round((b.t + b.b) / 2), hw = Math.max(1, (b.r - b.l) / 2), hh = Math.max(1, (b.b - b.t) / 2);
+  const rx = Math.round(hw + 2), ry = Math.round(hh + 2), f = Math.max(6, SPOT_FEATHER * Math.max(hw, hh));
+  const clear = Math.max(50, Math.min(96, Math.round((100 * (hw + 2 - f)) / rx)));
+  return `radial-gradient(${rx}px ${ry}px at ${cx}px ${cy}px, transparent 0, transparent ${clear}%, #000 100%)`;
 }
 
 /* Pełny ekran: poświata i obracające się promienie schodzą razem ze słowem, nie dopiero po całym ogonie sceny (finish = hold + 3 s).
    Bez tego ściemniony widok z promieniami wisiał nad mapą jeszcze ok. 3 s po zniknięciu słowa. Węzły wychodzą z ctl.extras,
    żeby endCtl nie wygaszał ich drugi raz (animacja 1 -> 0 na już przezroczystym węźle mignęłaby z powrotem). */
 function fadeExtrasEarly(ctl) {
+  ctl.extrasGone = true;   // CRITFIX: a backdrop still waiting for its impact to end does not come after the surroundings went
   for (const x of ctl.extras.splice(0)) {
     if (S.isReduced() || !x.animate) { x.remove(); continue; }
     const a = x.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 700, fill: 'forwards' });
