@@ -183,15 +183,16 @@ function boxOf(sel) {
   return null;
 }
 /* core: only Foundry's own bars and the tactics bars every seat has (SAMEPIC: not the chat cards popped up on one seat, not the GM's
-   director pill) */
+   director pill, not the scene bar's rows, whose number differs per seat (live: GM to 176 px, player to 96; the first row is in the
+   reserve), not a bottom bar standing inside the tool column (the players list)) */
 export function safeRect({ core = false } = {}) {
   measureArea();
   const vw = window.innerWidth, vh = window.innerHeight;
   let l = 12, t = 10, r = area.w - 14, b = vh - 10;
   for (const s of UI_LEFT) { const q = boxOf(s); if (q && q.left < vw * 0.15 && q.right < vw * 0.2) l = Math.max(l, q.right + 8); }
-  for (const s of UI_TOP) { const y = topOf(s, vh); if (y >= 0) t = Math.max(t, y + 6); }
+  if (!core) for (const s of UI_TOP) { const y = topOf(s, vh); if (y >= 0) t = Math.max(t, y + 6); }
   if (!core) for (const s of UI_RIGHT) { const x = leftOf(s, vw); if (x < r) r = Math.max(l + vw * 0.3, x - 10); }
-  for (const s of UI_BOTTOM) { if (core && s === '#mm-dir-bar') continue; const q = boxOf(s); if (q && q.top > vh * 0.6 && q.left < area.w) b = Math.min(b, q.top - 8); }
+  for (const s of UI_BOTTOM) { if (core && s === '#mm-dir-bar') continue; const q = boxOf(s); if (core && q && q.right <= l) continue; if (q && q.top > vh * 0.6 && q.left < area.w) b = Math.min(b, q.top - 8); }
   if (b - t < vh * 0.45) { t = 10; b = vh - 10; }   // a strange layout: the whole height rather than a slit
   /* on a map layer the words are drawn inside the scene and cut at its edge (live 1920: BARREL! lost its top at the scene's top edge,
      the dark padding above it): the block stays inside the scene rectangle too, while that leaves a usable area */
@@ -387,6 +388,20 @@ function boxesOf(sels, pad = 6) {
   for (const sel of sels) { try { for (const e of document.querySelectorAll(sel)) { const q = e.getBoundingClientRect(); if (q && q.width > 0 && q.height > 0) out.push({ l: q.left - pad, t: q.top - pad, r: q.right + pad, b: q.bottom + pad }); } } catch (e) { /* none */ } }
   return out;
 }
+/* this seat's band: its window minus the SAME reserve every seat keeps and minus its own core bars where those are wider (client px) */
+function seatBand() {
+  measureArea();
+  const vw = window.innerWidth, vh = window.innerHeight, win = { l: 2, t: 2, r: area.w - 2, b: vh - 2 };
+  const band = { l: Math.max(win.l, SP.RESERVE.l), t: Math.max(win.t, SP.RESERVE.t), r: Math.min(win.r, vw - SP.RESERVE.r), b: Math.min(win.b, vh - SP.RESERVE.b) };
+  if (band.r - band.l < 0.4 * vw || band.b - band.t < 0.4 * vh) Object.assign(band, win);   // a tiny window: the whole of it
+  const core = safeRect({ core: true }), m = meet(band, core);
+  if (m.r - m.l >= 0.4 * vw && m.b - m.t >= 0.4 * vh) Object.assign(band, m);
+  return band;
+}
+/* what of THIS seat's interface hides a block drawn under it, where it really stands (not as a full-width bar: live the GM's scene rows
+   reach 176 px down a 170 px wide column, the player's 96, and the full-width reading moved the GM's map block 107 scene px lower):
+   the scene bar's rows, the director pill, a chat card popped up, the floating panels */
+function seatOwn() { return [...uiAvoid(), ...boxesOf([...UI_TOP, '#mm-dir-bar', ...UI_RIGHT])]; }
 function localScreen() {
   measureArea();
   /* over the interface (screen) and under the windows only (ui): this seat's window minus the SAME reserve band every seat keeps (Foundry's
@@ -394,15 +409,12 @@ function localScreen() {
      drawn over them for its few seconds (provisional SAMEPIC-3; checked: avoiding them, the party cards that stand at a height that
      follows each window moved every seat's block differently). Under the windows also the GM's desk (a window would hide the block).
      Under the bars (hud) the block would be HIDDEN by anything of this seat: its real bars, panels and resting dice */
-  const vw = window.innerWidth, vh = window.innerHeight, win = { l: 2, t: 2, r: area.w - 2, b: vh - 2 };
-  const band = { l: Math.max(win.l, SP.RESERVE.l), t: Math.max(win.t, SP.RESERVE.t), r: Math.min(win.r, vw - SP.RESERVE.r), b: Math.min(win.b, vh - SP.RESERVE.b) };
-  if (band.r - band.l < 0.4 * vw || band.b - band.t < 0.4 * vh) Object.assign(band, win);   // a tiny window: the whole of it
-  /* a bar of this seat wider than the reserve (a tool column with its sub-tools open, a taller scene bar): the block keeps off it too */
-  const core = safeRect({ core: true }), m = meet(band, core);
-  if (m.r - m.l >= 0.4 * vw && m.b - m.t >= 0.4 * vh) Object.assign(band, m);
-  if (LAYER === 'screen') return { safe: band, avoid: [] };
-  if (LAYER === 'ui') return { safe: band, avoid: boxesOf(UI_WINDOWS) };
-  return { safe: safeRect(), avoid: [...uiAvoid(), ...diceRects()] };
+  const vw = window.innerWidth, vh = window.innerHeight, band = seatBand();
+  /* a window smaller than the reference keeps the party corner where it really is on this window (it is moving the block anyway) */
+  const small = vw < SP.REF_VW || vh < SP.REF_VH ? SP.panelZones(vw, vh, true) : [];
+  if (LAYER === 'screen') return { safe: band, avoid: small };
+  if (LAYER === 'ui') return { safe: band, avoid: [...small, ...boxesOf(UI_WINDOWS)] };
+  return { safe: band, avoid: [...seatOwn(), ...boxesOf(UI_WINDOWS), ...diceRects()] };
 }
 const meet = (a, b) => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
 /* the last moments' layouts on this seat (for the checks and the live log): shared, or moved here and how */
@@ -439,9 +451,9 @@ function compose(ctl, items, extra = {}) {
       if (q.r - q.l >= 0.25 * frame.vh && q.b - q.t >= 0.25 * frame.vh) { const f2 = { ...frame, safe: q }; out = composeIn(ctl, items, f2); out.seat = true; frame = f2; }
     }
     /* tier 3: this seat's own bars (beyond the reserve) and panels hide the board under them: only then does this seat move its block */
-    const real = sceneRectOf(safeRect());
+    const real = sceneRectOf(seatBand());   // the band (on a map layer its core part also keeps inside the scene rectangle)
     if (tokIn(real)) {
-      const loc = { safe: real, avoid: uiAvoid().map(sceneRectOf).filter(Boolean) };
+      const loc = { safe: real, avoid: [...seatOwn(), ...boxesOf(UI_WINDOWS)].map(sceneRectOf).filter(Boolean) };
       const fx = LP.localFix(out, frame, loc, std, () => { const q = meet(frame.safe, real); return q.r - q.l >= 0.25 * frame.vh && q.b - q.t >= 0.25 * frame.vh ? composeIn(ctl, items, { ...frame, safe: q, avoid: [...frame.avoid, ...loc.avoid] }) : null; });
       out = fx.out; same = fx.moved;
     }

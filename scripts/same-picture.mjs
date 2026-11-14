@@ -19,10 +19,11 @@
    show (tier 3) */
 export const REF_VH = 900;
 export const REF_VW = 1600;
-/* Foundry v14's own bars, the band every seat keeps the moment off (CSS px from the window's edges; measured live on lane 5, GM and a
-   player, 2026-11-14: tool column right edge 56, scene bar rows bottom 46 (GM; a player without scene rows: none), hotbar top 90 from the
-   bottom, open sidebar 348 from the right) with a few px of air */
-export const RESERVE = Object.freeze({ l: 64, t: 54, r: 356, b: 98 });
+/* Foundry v14's own bars, the band every seat keeps the moment off (CSS px from the window's edges). Measured live on lane 5 (The
+   Warehouse, 1600 x 900, GM and Test Gracz 1, 2026-11-14): tool column 16..88 (both), first scene-bar row 16..48 (both; the GM's
+   scene list goes on to 176, the player's to 96: per seat, so not part of the band), hotbar top 824 (76 from the bottom), the players
+   list 780..884 inside the tool column, open sidebar 1252..1600 (348), collapsed 48. With a few px of air */
+export const RESERVE = Object.freeze({ l: 96, t: 54, r: 356, b: 98 });
 
 /* the standard safe rect of a window W x H (client px): the REFERENCE window centred where this window's centre is, minus the reserve. The
    canvas fills the window, so the window's centre is the view's centre: two seats with one view (zoom and the scene point in the middle)
@@ -63,12 +64,12 @@ export function shiftInto(r, s) {
 }
 
 /* the panels every seat has at a corner of its window (the party cards, bottom-left: #invincible-party), as a SHARED obstacle: where they
-   stand on the reference window centred like the standard view (on a smaller window too: one zone for the table; there it may miss the
-   window's own corner, a residual of SAMEPIC-1). A seat's panel is not read
-   from its page (its open/peek state and size are that user's), so every seat with one window size keeps the block off the same zone
-   (provisional SAMEPIC-3; FXLD2 N6 live: WHAM! on the party panel). CSS px from the bottom-left corner: x 56..300, 180..345 up */
-export const PANEL_ZONES = Object.freeze([{ l: 56, r: 300, up0: 180, up1: 345 }]);
-export function panelZones(W, H) {
-  const ox = W / 2 - REF_VW / 2, oy = H / 2 + REF_VH / 2;
+   stand on the reference window centred like the standard view. A seat's panel is not read from its page (its open/peek state and size
+   are that user's), so every seat keeps the block off the same zone (provisional SAMEPIC-3; FXLD2 N6 live: WHAM! on the party panel).
+   Measured live (lane 5, 1600 x 900, peek): GM 96..336 x 510..790, player 0..240 x 488..768: CSS px from the bottom-left corner
+   x 0..340, 108..414 up. own = true: the zone at THIS window's own corner (a window smaller than the reference, tier 3) */
+export const PANEL_ZONES = Object.freeze([{ l: 0, r: 340, up0: 108, up1: 414 }]);
+export function panelZones(W, H, own = false) {
+  const ox = own ? 0 : W / 2 - REF_VW / 2, oy = own ? H : H / 2 + REF_VH / 2;
   return PANEL_ZONES.map((z) => ({ l: ox + z.l, t: oy - z.up1, r: ox + z.r, b: oy - z.up0 }));
 }

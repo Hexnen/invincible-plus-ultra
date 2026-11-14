@@ -181,8 +181,21 @@ for (const layer of ["tokens", "overlay"]) for (const [name, e] of Object.entrie
   const run = async (s) => { const b = board(1200, 380, !!s.gm); return seat({ ...s, layer, zoom: 0.8, center, e, hero: b.hero, tokens: b.tokens, notes: b.notes, full: name === "crit" }); };
   const [a, b, c, d] = [await run(GM), await run(P1), await run(P2), await run(P3)];
   ok(a.drawn.length > 0 && a.drawn.every((d) => d.world) && sig(a) === sig(b) && sig(b) === sig(d), `S3 map ${layer} ${name}: three seats draw the block at one scene place and size\n   GM ${sig(a)}\n   P1 ${sig(b)}\n   P3 ${sig(d)}`);
-  ok(smallOk(c, b, { x: 1250, y: 430 }), `S3 map ${layer} ${name}: the 1366x768 seat only shifts or shrinks it in place (${c.moved}, k ${kOf(c, b)})\n   P2 ${sig(c)}`);
+  /* the hero near the top: as in S2 the small window may lay the same words out again (SAMEPIC-1) */
+  ok(smallOk(c, b, { x: 1250, y: 430 }, true), `S3 map ${layer} ${name}: the 1366x768 seat only shifts or shrinks it in place (${c.moved}, k ${kOf(c, b)})\n   P2 ${sig(c)}`);
   ok(inWin(a) && inWin(b), `S3 map ${layer} ${name}: whole in the view of both 1600x900 seats`);
+}
+
+/* ================================================================ S3b map layer, live (lane 5, 2026-11-14): the GM's scene list reaches
+   176 px down a 170 px wide column at the left, the player's 96 px; read as a full-width top bar it moved the GM's map block 107 scene px
+   lower than the player's. Rows that do not touch the block move nothing */
+for (const [name, e] of Object.entries(ROLLS()).filter(([k]) => ["good", "pushed", "rare"].includes(k))) {
+  const center = { x: 1300, y: 760 };
+  const run = async (s) => { const b = board(1200, 380, !!s.gm); return seat({ ...s, layer: "overlay", zoom: 0.8, center, e, hero: b.hero, tokens: b.tokens, notes: b.notes }); };
+  const a = await run({ ...GM, ui: { ...GM.ui, nav: 168 } }), b = await run({ ...P1, ui: { ...P1.ui, nav: 88 } });
+  ok(a.drawn.length > 0 && sig(a) === sig(b), `S3b map ${name}: the GM's long scene list and the player's short one leave one picture
+   GM ${sig(a)}
+   P1 ${sig(b)}`);
 }
 
 /* ================================================================ S4 a seat's own panel over the shared spot, on a layer under the
