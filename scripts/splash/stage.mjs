@@ -1,6 +1,6 @@
 /* Scena splasha: warstwa ekranowa (fixed) albo przy tokenie (wewnątrz #hud rdzenia, zsynchronizowanego z canvasem).
    Jeden splash na klucz ('screen' albo id tokena); nowy wypiera poprzedni. */
-import { FS, LBL, oddsText, hueOf, hsl, fmtOdds, say } from './logic.mjs';
+import { FS, LBL, oddsText, hueOf, hsl, fmtOdds, say, shownEv } from './logic.mjs';
 import * as S from './splash.mjs';
 import * as LP from './letter-plan.mjs';
 import * as IP from './impact-plan.mjs';
@@ -455,7 +455,13 @@ function letterOne(ctl, it) {
     o.flash = false;
     let contact = it._m?.contact ?? 0;
     try { const r = LE.planFor ? LE.planFor(LP.letterable(it.text), o) : null; if (r?.plan) contact = IP.contactMs(r.plan); } catch (e) { /* the measured one */ }
-    shot = impactShot(ctl, it, contact);
+    /* SPLASHPL: a seat that shows the word in its own language strikes on the instant of the shared English word, so every seat sees
+       the blow (and the token reactions wait) on one instant: the shown word starts earlier or later by the difference of the two contacts
+       (0 in the invincible look, whose contact does not depend on the text; a legacy look's can) */
+    let lead = 0;
+    if (it.en && it.en !== it.text) try { const r = LE.planFor ? LE.planFor(LP.letterable(it.en), o) : null; if (r?.plan) lead = IP.contactMs(r.plan) - contact; } catch (e) { lead = 0; }
+    shot = impactShot(ctl, it, contact + lead);
+    o.startAt += lead;
     if (shot?.shift > 0) o.startAt += shot.shift;
     ctl.wordAt = o.startAt; ctl.contactAt = o.startAt + contact;
   }
@@ -962,6 +968,7 @@ export function play(ev, o) {
   return playClassic(ev, o);
 }
 function playClassic(ev, o) {
+  ev = shownEv(ev);   // SPLASHPL: the words as this seat shows them (the event keeps the shared English key)
   const rnd = o.rnd || Math.random;
   /* rzadszy sukces (moc >= próg) dostaje pełny ekran; porażki i rutyna nie */
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;

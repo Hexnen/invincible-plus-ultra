@@ -16,7 +16,7 @@
    row under that; the push grunt above. Every element is measured (the engine's own plan of that very word) and the whole block is
    placed by the token (above its head, else under its feet, else beside it) or on the screen's focus, then kept inside the free part of
    the window (not under the chat, the bars, the hotbar), shrunk as one when it does not fit. Nothing in the block overlaps. */
-import { hueOf, oddsText, oddsLabel, fmtOdds, LBL, say } from './logic.mjs';
+import { hueOf, oddsText, oddsLabel, fmtOdds, LBL, say, sfxWord } from './logic.mjs';   // SPLASHPL: sfxWord = the action word as this seat shows it (moods stay keyed by the English word)
 
 /* word -> mood (the LETR engine's intents). A word not listed falls back to its action's default. */
 export const WORD_MOOD = Object.freeze({
@@ -105,7 +105,7 @@ export function planMoment(ev, o = {}) {
     const m = moodOf(ev.prefix);
     /* FXLD2 (ADVD2 11): the grunt is a beat of its own, not a footnote: about 1.4x the old cap (live 1920 HNNNG! was ~40 px) and held
        long enough to read before the result comes */
-    const pre = add({ role: 'pre', text: ev.prefix, delay: 0, cap: PRE_CAP, wMax: 0.5, mood: m,
+    const pre = add({ role: 'pre', text: sfxWord(ev.prefix), delay: 0, cap: PRE_CAP, wMax: 0.5, mood: m,
       sound: { loud: 0.6, pitch: 0.6, long: 0.6 }, colors: ['#fff1dc', '#ffc27a', '#e07a2a'], hold: Math.round(PRE_HOLD * holdK), rotation: -4 });
     t = pre.hold + EXIT_MAX + 60;
   }
@@ -117,7 +117,7 @@ export function planMoment(ev, o = {}) {
     const mood = soft ? 'tick' : (ev.pushed && WORD_MOOD[ev.word] ? m0 : 'fail');
     const loud = soft ? 0.12 : r1(0.3 + 0.45 * dF + (ev.pushed ? 0.1 : 0));
     /* FXLD2 (ADVD2 10): a routine miss is quiet but readable: the soft cap and hold were too small (NEXT! tiny on the head ring, ~1.5 s) */
-    const w = add({ role: 'word', text: ev.word, delay: t, cap: r3(soft ? SOFT_CAP : 0.062 + 0.045 * dF + (ev.pushed ? 0.008 : 0)), wMax: soft ? 0.4 : 0.55,
+    const w = add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(soft ? SOFT_CAP : 0.062 + 0.045 * dF + (ev.pushed ? 0.008 : 0)), wMax: soft ? 0.4 : 0.55,
       mood, sound: { loud, pitch: soft ? -0.2 : r1(-0.45 - 0.45 * dF), sharp: MOOD_SHARP[m0] ?? 0.4, rough: soft ? 0 : r1(0.2 + 0.4 * dF) },
       colors: soft ? SOFT_COLORS : FAIL_COLORS, hold: Math.round((soft ? SOFT_HOLD : 2200 + 600 * dF) * holdK), rotation: soft ? 0 : 5 });
     /* a rare miss also says how rare: the sentence and the figure */
@@ -137,10 +137,10 @@ export function planMoment(ev, o = {}) {
     /* ADVD 5: the critical (full screen) is the biggest thing the table sees: about 60 % of the free width, at least as present as the
        old jagged panel; a token-sized success grows with its rarity */
     const cap = full ? 0.2 + 0.06 * P : 0.064 + 0.07 * P + 0.002 * Math.min(tier, 10);
-    add({ role: 'word', text: ev.word, delay: t, cap: r3(cap), wMax: full ? (wreck ? 0.46 : 0.64) : (wreck ? 0.42 : 0.58), wMin: full ? 0.5 : 0, mood: m, sound,
+    add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(cap), wMax: full ? (wreck ? 0.46 : 0.64) : (wreck ? 0.42 : 0.58), wMin: full ? 0.5 : 0, mood: m, sound,
       colors: P >= 0.4 || o.npc ? powerColors(P, o.npc ? 150 : 0) : null,     // a weak success keeps its mood's own palette (variety); strong ones climb the power scale
       hold, rotation: 0, from: o.token ? 'token' : 90 });
-    if (wreck) add({ role: 'wreck', text: ev.wreckWord, delay: t + 520, cap: r3(cap * 0.62), wMax: 0.36,
+    if (wreck) add({ role: 'wreck', text: sfxWord(ev.wreckWord), delay: t + 520, cap: r3(cap * 0.62), wMax: 0.36,
       mood: moodOf(ev.wreckWord), sound: { loud: r1(Math.min(1, loud + 0.1)), rough: 0.7 }, colors: powerColors(Math.min(1, P + 0.1), -22 + (o.npc ? 150 : 0)), hold: hold - 520, rotation: 8 });
     if (ev.sixes > 0) {
       add({ role: 'six', text: LBL.six(ev.sixes), delay: t + 230, cap: r3((full ? 0.058 : 0.038) + 0.003 * Math.min(4, ev.sixes)), wMax: 0.3,

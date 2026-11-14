@@ -109,7 +109,7 @@ export const ODDS = [[0.10, 'NOT BAD!'], [0.22, 'LUCKY BREAK!'], [0.34, 'AGAINST
   [0.58, 'NO WAY!'], [0.70, 'IMPOSSIBLE!'], [0.82, 'ONCE IN A LIFETIME!'], [0.92, 'THE ODDS ARE SHATTERED!']];
 export function oddsText(P) { let t = null; for (const o of ODDS) if (P >= o[0]) t = o[1]; return say(t); }
 /* UXB (D129): zdania wstęgi (szansa, pudło) i notki stresu mówią coś o wyniku, więc NIE są słowami-SFX: idą w języku stołu
-   (INSPLASH.Say.*, main.mjs applyLabels). Słowa dźwiękowe (WHAM!, ZOOM!, YIKES!, STRAIN!...) zostają angielskie; napis liczby szóstek idzie w języku stołu (FXLD, ADVD 8). */
+   (INSPLASH.Say.*, main.mjs applyLabels). Słowa akcji: od SPLASHPL po polsku, gdy polskie słowo dobrze brzmi (SFX_KEYS niżej), czyste dźwięki (WHAM!, ZOOM!) zostają angielskie; napis liczby szóstek idzie w języku stołu (FXLD, ADVD 8). */
 export const SAYS = Object.freeze({ 'NOT BAD!': 'NotBad', 'LUCKY BREAK!': 'LuckyBreak', 'AGAINST THE ODDS!': 'AgainstOdds', 'UNLIKELY HERO!': 'UnlikelyHero',
   'NO WAY!': 'NoWay', 'IMPOSSIBLE!': 'Impossible', 'ONCE IN A LIFETIME!': 'OnceInLifetime', 'THE ODDS ARE SHATTERED!': 'OddsShattered',
   'UNLUCKY!': 'Unlucky', 'WHAT A FLOP!': 'Flop', 'BREAKING POINT!': 'BreakingPoint', 'ON THE EDGE!': 'OnEdge', 'FEELING THE STRAIN': 'Strain',
@@ -128,6 +128,30 @@ export function holdFor(tag, ev) {
 }
 export const playsAfter = (hold, verdict) => !hold || verdict === hold.want;
 export function say(w) { const k = w ? SAYS[w] : null; return (k && LBL.words?.[k]) || w; }
+/* SPLASHPL (the owner, 2026-11-14: «przetłumacz, ale gdyby dobrze brzmiało»): an action word is SHOWN in the language the captions
+   use (each seat's interface language, as the SAYS sentences) when a Polish word sounds good shouted; the rest (the pure sounds WHAM!,
+   ZAP!, GRRR! ... and words without a good Polish shout) stay English. The event keeps the English word: it is the key every seat
+   shares (message flag, mood, seed), only the lettered text changes (INSPLASH.Word.*, main.mjs applyLabels -> LBL.sfx). */
+export const SFX_KEYS = Object.freeze({
+  'HAYMAKER!': 'Haymaker', 'SMASH!': 'Smash', 'CRUSH!': 'Crush',
+  'RUSH!': 'Rush', 'CHARGE!': 'Charge', 'STAMPEDE!': 'Stampede',
+  'GRAB!': 'Grab', 'SQUEEZE!': 'Squeeze', 'VISE!': 'Vise', 'HOLD!': 'Hold',
+  'GUARD!': 'Guard', 'SHIELD!': 'Shield',
+  'DASH!': 'Dash', 'FLIP!': 'Flip', 'DUCK!': 'Duck',
+  'CLICK!': 'Click', 'SENSE!': 'Sense', 'HUNCH!': 'Hunch',
+  'HUSH!': 'Hush', 'COMMAND!': 'Command', 'ROAR!': 'Roar',
+  'WHIFF!': 'Whiff', 'OOPS!': 'Oops', 'FIZZLE!': 'Fizzle', 'YIKES!': 'Yikes', 'BLUNDER!': 'Blunder',
+  'NOT YET': 'NotYet', 'ALMOST': 'AlmostSoft', 'NEXT!': 'Next', 'TRY AGAIN': 'TryAgain', 'STEADY': 'Steady',
+  'PUSH!': 'Push', 'ALL IN!': 'AllIn', 'DIG DEEP!': 'DigDeep', 'AGAIN!': 'Again', 'ONE MORE!': 'OneMore',
+  'NOPE!': 'Nope', 'SO CLOSE!': 'SoClose', 'NOT TODAY!': 'NotToday', 'ALMOST!': 'Almost', 'OUCH!': 'Ouch', 'NO LUCK!': 'NoLuck',
+  'WRECK!': 'Wreck', 'RUIN!': 'Ruin', 'DEMOLISH!': 'Demolish'
+});
+export function sfxWord(w) { const k = w ? SFX_KEYS[w] : null; return (k && LBL.sfx?.[k]) || w; }
+/* the event as this seat SHOWS it: the same event, its words in the seat's language (SPLASHPL) */
+export function shownEv(ev) {
+  if (!ev) return ev;
+  return { ...ev, word: sfxWord(ev.word), prefix: ev.prefix ? sfxWord(ev.prefix) : ev.prefix, wreckWord: ev.wreckWord ? sfxWord(ev.wreckWord) : ev.wreckWord };
+}
 
 export function fmtOdds(n) {
   if (!Number.isFinite(n) || n >= 999.5e9) return '1T+';   // ogromne pule: bez zapisu wykładniczego ("1e+79")
@@ -136,7 +160,7 @@ export function fmtOdds(n) {
   if (n >= 9999.5) return Math.round(n / 1e3) + "K";
   return Math.round(n).toLocaleString('en-US');
 }
-/* Etykiety informacyjne (liczby i nazwy z systemu), w odróżnieniu od słów-SFX, które zostają angielskie (decyzja projektu).
+/* Etykiety informacyjne (liczby i nazwy z systemu); słowa akcji: LBL.sfx (SPLASHPL).
    Domyślnie angielskie, więc logika działa bez Foundry; main.mjs podmienia je na zlokalizowane przy ready (INSPLASH.Badge.*). */
 export const LBL = {
   oneIn: n => '1 IN ' + n,
@@ -146,7 +170,8 @@ export const LBL = {
   six: n => n + (n === 1 ? ' SIX' : ' SIXES'),      // FXLD (ADVD 8): the sixes are information, main.mjs puts them in the table's language
 
   resolve: (now, max) => 'RESOLVE ' + now + ' / ' + max,
-  words: {}                                   // UXB (D129): SAYS -> słowo w języku stołu
+  words: {},                                  // UXB (D129): SAYS -> słowo w języku stołu
+  sfx: {}                                     // SPLASHPL: SFX_KEYS -> słowo akcji w języku stołu (tylko te, które dobrze brzmią)
 };
 export function setLabels(o) { for (const k of Object.keys(o || {})) if (k in LBL && o[k] != null) LBL[k] = o[k]; }
 
