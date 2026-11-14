@@ -289,26 +289,33 @@ function build(ready) {
       const tok = canvas.tokens?.get(e.tokId);
       if (!tok) continue;
       const c = P.classify({ stat: e.stat, from: e.from, to: e.to, max: e.max, cause: e.cause }) ?? (e.pub ? P.fromEvent(e.pub, e.stat) : null);
+      /* PRIV (owner «nie», 2026-11-14): the reaction (kind, amount, so the word, its size tier, the token's animation, the impact) is the
+         SHARED one (pure.shared), the same on every seat that sees the token; only the number is this seat's (pure.audience) */
       const a = P.audience(seatOf(tok), c, e.pub);
       if (!a.show) continue;
       const lk = P.look(a, c, lang, e.seed);
       if (!lk) continue;
       const got = byTok.get(tok.id) ?? { tok, looks: [], seed: e.seed, pub: null };
       got.looks.push(lk);
+      /* PRIV (seen live on lane 5: the GM's word stood 14-16 % smaller than the player's, because his group held a number the player's did not
+         and so took a smaller fit): the group's room is planned for the numbers a reader's seat letters (`room`), on every seat, so the word
+         takes the same side and size everywhere; a seat without the number leaves its place empty */
+      try { const rl = P.look(P.audience({ visible: true, staff: true, challenge: tok.actor?.type === "challenge" }, c, e.pub), c, lang, e.seed); if (rl) got.room = [...(got.room ?? []), ...rl.numbers]; } catch (err) { once(err); }
       if (P.SEVERITY[lk.kind] >= Math.max(...got.looks.map((x) => P.SEVERITY[x.kind] ?? 0))) got.seed = e.seed;
-      /* WIRE1: the impact is chosen from what the table was told (P.publicSeat), the same on every seat that sees the token */
-      const pa = P.audience(P.publicSeat({ type: tok.actor?.type, playerHero: tok.actor?.hasPlayerOwner === true }), c, e.pub);
-      /* the table knows how much when a number was told or the track is public (FXI-TOKEN, ADVI 3: a blow whose size nobody was told is a
-         scratch on the ladder, it cannot say more) */
-      if (pa.show && P.IMPACT[pa.kind] && (!got.pub || (P.SEVERITY[pa.kind] ?? 0) > (P.SEVERITY[got.pub.kind] ?? 0))) got.pub = { kind: pa.kind, amt: P.amountOf(pa, c), known: !!pa.exact || Number.isFinite(pa.num), src: e.src ?? null, dtype: e.dtype ?? null, doubled: !!e.doubled };
+      /* a number every seat shows (told in public, or a character whose track is public): the crowd's staging (pure.stage) reads only that,
+         so a crowd stages alike on every seat whatever numbers this seat may read */
+      if (Number.isFinite(P.audience(P.publicSeat({ type: tok.actor?.type, playerHero: tok.actor?.hasPlayerOwner === true }), c, e.pub).num) && lk.kind !== "spent") got.pubNum = true;
+      /* the impact from the shared reaction too (it was from what the table was told, WIRE1 / FXIT-1: a hand-edited enemy blow was a scratch
+         under the GM's heavy word; PRIV): every seat that sees the token gets the same kind and strength */
+      if (P.IMPACT[a.kind] && (!got.pub || (P.SEVERITY[a.kind] ?? 0) > (P.SEVERITY[got.pub.kind] ?? 0))) got.pub = { kind: a.kind, amt: P.amountOf(a, c), known: true, src: e.src ?? null, dtype: e.dtype ?? null, doubled: !!e.doubled };
       if (e.card) got.card = true;
       if (c && (c.kind === "hit" || c.kind === "heavy" || c.kind === "down")) got.loss = true;
       byTok.set(tok.id, got);
     }
     const items = [];
-    for (const { tok, looks, seed, pub, card, loss } of byTok.values()) {
+    for (const { tok, looks, seed, pub, card, loss, pubNum, room } of byTok.values()) {
       const lk = P.combine(looks);
-      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: lk.numbers.length > 0, pub, card: !!card, loss: !!loss });
+      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: !!pubNum, pub, card: !!card, loss: !!loss, room: (room ?? []).slice().sort((a, b) => (a.stat === "health" ? 0 : 1) - (b.stat === "health" ? 0 : 1)).map((n) => n.text) });
     }
     return items;
   } catch (err) { once(err); return []; }
@@ -497,7 +504,9 @@ const view = {
 function tokenRects(skip) {
   if (!view.ok()) return [];
   const out = [];
-  try { for (const t of canvas.tokens?.placeables ?? []) if (!skip.has(t.id) && seatOf(t).visible) out.push({ ...view.tokRect(t), id: t.id, k: P.SLOT_K.token }); } catch (err) { once(err); }
+  /* PRIV (seen live on lane 5: beside a token the GM had hidden, the GM's word took another side and a smaller fit than the player's): a
+     token hidden from the players is not an obstacle on any seat, so the word stands alike on the GM's seat and a player's */
+  try { for (const t of canvas.tokens?.placeables ?? []) if (!skip.has(t.id) && t.document?.hidden !== true && seatOf(t).visible) out.push({ ...view.tokRect(t), id: t.id, k: P.SLOT_K.token }); } catch (err) { once(err); }
   for (const id of skip) { const t = canvas.tokens?.get(id); if (t && view.ok()) out.push({ ...view.tokRect(t), id, k: P.SLOT_K.token }); }
   return out;
 }
@@ -518,7 +527,9 @@ function planOf(L, it) {
   const tokRect = view.ok() ? view.tokRect(tok) : { x: 0, y: 0, w: 100, h: 100 };
   const tokPx = Math.max(tokRect.w, tokRect.h);
   const word = it.mode === "full" || it.mode === "mark";
-  const nums = it.mode === "mark" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
+  /* PRIV: a "mark" (a crowd's small word for a reaction whose number not every seat may show) keeps this seat's own number beside it: the
+     word is the same on every seat, the number is the seat's (before, a reader's seat had the number alone where another seat had the word) */
+  const nums = (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
   const grow = 1 + P.STREAK.grow * Math.min(P.STREAK.max, lk.step ?? 0);      // a blow of a series stands a little bigger each step
   const cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), globalThis.innerWidth || 1600, user * it.scale * grow) : 0;
   const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
@@ -526,7 +537,11 @@ function planOf(L, it) {
   /* room for the motion: a rise leaves upward, and a power-up's letters may climb like stairs (seen in ADVT c4: "RAAA!" climbed out
      of the view by a whole cap) */
   const rising = ["rise", "grow"].includes(lk.motion.in) || lk.motion.out === "rise";
-  const gArgs = word ? { cap, aspect, nums: nums.map((n) => n.text), numCap, side: lk.side, up: (rising ? 0.6 : 0.4) + (lk.mood === "powerup" ? 0.6 : 0), down: lk.motion.in === "drop" ? 0.3 : 0.2 } : null;
+  /* PRIV: room for the numbers a reader's seat letters (it.room), so the word stands alike on every seat; this seat's own numbers fill it */
+  /* (the room stays when the map's director captions this token's damage on this seat: whether it does differs per seat, seen live on lane 5,
+     where the player's knock-down word stood bigger and elsewhere than the GM's) */
+  const room = word && (it.room?.length ?? 0) > nums.length ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  const gArgs = word ? { cap, aspect, nums: room, numCap, side: lk.side, up: (rising ? 0.6 : 0.4) + (lk.mood === "powerup" ? 0.6 : 0), down: lk.motion.in === "drop" ? 0.3 : 0.2 } : null;
   const g = word ? P.group(gArgs)
     : P.group({ cap: numCap, aspect: 0, nums: nums.map((n) => n.text), numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
@@ -693,8 +708,8 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
   } catch (err) { once(err); return null; }
 }
 
-/* TOKANIM: the token itself moves with its reaction (scripts/tokenanim/): the kind and amount THIS SEAT letters (a player told less sees
-   less), the series' step, on the word's contact instant as the engine reads it (L.contactAt; every seat the same from the same start),
+/* TOKANIM: the token itself moves with its reaction (scripts/tokenanim/): the kind and amount of the shared reaction (PRIV: the same on
+   every seat that sees the token), the series' step, on the word's contact instant as the engine reads it (L.contactAt; every seat the same from the same start),
    else the shared blow instant; the attacker only as a token (tokenanim gives a direction only when this seat sees him) */
 function tokenMoves(L, it, tok, word, tHit) {
   try {

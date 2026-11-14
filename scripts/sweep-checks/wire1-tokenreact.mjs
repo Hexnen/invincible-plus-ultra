@@ -117,8 +117,9 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
   set(t, "health", 4, {}, 70101);
   const pl = (await take())[0]?.spec;
   ck(`GM and player: one moment (${gm?.kind} ${gm?.magnitude} ${gm?.seed} / ${pl?.kind} ${pl?.magnitude} ${pl?.seed})`, !!gm && !!pl && gm.kind === pl.kind && gm.magnitude === pl.magnitude && gm.seed === pl.seed);
-  /* the GM may read the NPC's track (-4 of 8 = heavy for him); the impact follows what the table was told, so the GM's is not stronger */
-  ck("... chosen from what the table was told, not from the GM's private numbers", gm?.kind === "hit");
+  /* PRIV (owner 2026-11-14 «nie»): this pinned the old WIRE1-4 / FXIT-1 rule (the impact from what the table was told: a scratch under the
+     GM's heavy word). Now the impact follows the SHARED reaction (-4 of 8 = heavy on every seat that sees the token): the same on both */
+  ck(`... chosen from the shared reaction: -4 of 8 is heavy on both seats (${gm?.kind} / ${pl?.kind})`, gm?.kind === "heavy" && pl?.kind === "heavy");
   /* the same with the public number told by the fight: both seats get the told amount */
   t.actor.system.derived.health.value = 8; Hooks.callAll("canvasReady"); user.isGM = true;
   damage("B", 4, { seq: 501 }); set(t, "health", 4, { ipuTactics: true }, 70102);
@@ -186,8 +187,13 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
   /* an NPC hand-edited to 0 with nothing announced: the table only saw a blow, so the impact does not say "down" (it would reveal Health) */
   const npc = mk("S2", "npc", 8, 6, { x: 900, y: 400 });
   Hooks.callAll("canvasReady");
+  const h0 = npc.actor.system.derived.health.value;
   set(npc, "health", 0); const quiet = (await take(1500))[0]?.spec;
-  ck(`an NPC's unannounced fall to 0: an ordinary blow's impact, nothing that reveals its Health (${quiet?.kind} ${quiet?.magnitude})`, quiet?.kind === "hit" && effective(quiet) < 1.35);
+  /* PRIV: an NPC hand-edited to 0 is knocked down on every seat that sees it (it was "an ordinary blow's impact" by WIRE1-4) */
+  ck(`an NPC's unannounced fall to 0: the knock-down frame, as for the GM (${quiet?.kind} ${quiet?.magnitude})`, quiet?.kind === "ko" && effective(quiet) >= 1.35);
+  npc.actor.system.derived.health.value = h0; Hooks.callAll("canvasReady"); user.isGM = false;
+  set(npc, "health", 0); const quietP = (await take(1500))[0]?.spec; user.isGM = true;
+  ck(`... and the player's seat gets the same knock-down frame (${quietP?.kind} ${quietP?.magnitude} / GM ${quiet?.kind} ${quiet?.magnitude})`, quietP?.kind === "ko" && quietP?.magnitude === quiet?.magnitude);
   ck("going down always does", [0, 0.3, 1].every((amt) => P.impactOf({ kind: "down", amt }, 0).magnitude >= 1.35));
   ck("healing, getting up, regaining, spent stress: no impact frame", ["heal", "back", "regain", "steady", "spent"].every((k) => P.impactOf({ kind: k, amt: 1 }, 0) === null));
 }

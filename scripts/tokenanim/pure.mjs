@@ -205,8 +205,8 @@ export function cleanEvents(v) {
 }
 
 /* ---------------------------------------------------------------- strength: the amount, the series, the setting
-   A = strength x (AMT_LO + AMT_K x amount) x (1 + STEP_K x step), at most A_MAX. The amount is the share the lettering uses for this seat
-   (tokenreact amountOf: a seat that was not told the number gets the same middling 0.3 its word gets), the step is the blow's place in its
+   A = strength x (AMT_LO + AMT_K x amount) x (1 + STEP_K x step), at most A_MAX. The amount is the share the lettering uses
+   (tokenreact amountOf of the shared reaction: the same on every seat that sees the token, PRIV), the step is the blow's place in its
    series (tokenreact STREAK: 0, 1, 2 ...), so a series BUILDS like the lettering: -1, -1, -3, down reads small, bigger, heavy, a big fall. */
 export const SCALE = { amtLo: 0.7, amtK: 0.6, stepK: 0.22, stepMax: 4, aMax: 2.4, durAmt: 0.25, durStep: 0.06, gentle: 0.5, downHold: 800, downHoldAmt: 500 };
 /** the motion this seat may see: "full" | "gentle" (smaller moves) | "still" (no movement: the tint alone) | "off" (nothing) */
@@ -222,7 +222,7 @@ export function tintK({ flashes = true, photosafe = true } = {}) { return !flash
 /* a small, stable hash: the same seed gives the same choice on every seat (tokenreact/pure.mjs hash) */
 export function hash(s) { let h = 2166136261 >>> 0; for (const ch of String(s)) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
 
-/** one layer for one reaction. kind = the reaction kind THIS SEAT letters (privacy: tokenreact's audience), o = { amt 0..1, step, strength,
+/** one layer for one reaction. kind = the reaction kind (tokenreact's shared reaction: every seat that sees the token alike, PRIV), o = { amt 0..1, step, strength,
     anim (override), mode, tk, seed, at (contact instant, ms on performance.now), dir ({x,y} away from the blow, null = from the seed) }
     -> null (nothing to play) | { kind, anim, A, k, dur, at, c: { dir, side, ph, k, hold }, still, tk } */
 export function plan(kind, o = {}) {
