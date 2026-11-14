@@ -136,7 +136,19 @@ function told(tok, stat, add) {
   /* an event of the fight is the same on every seat: its key is the seed (no values in it) */
   if (!e.evSeed && add.key) { e.evSeed = true; e.seed = P.seedOf(tok.id, stat, add.key); }
   if (!e.seed) e.seed = P.seedOf(tok.id, stat, stampOf(tok));
+  /* WIRE1: who struck (the impact's direction, only when this seat sees him), what the blow was made of, a doubled blow */
+  if (add.src) e.src = add.src;
+  if (add.dtype) e.dtype = add.dtype;
+  if (add.doubled) e.doubled = true;
   arm(e, QUIET.event);
+}
+/* WIRE1: the attacker of a fight's damage: the last public attack roll of that fight (its `who`), for ATTACK_MS */
+const ATTACK_MS = 30000;
+const attacks = new Map();   // combat id -> { who (combatant id), t }
+function attackerOf(ev) {
+  const a = attacks.get(ev.combat);
+  if (!a || Date.now() - a.t > ATTACK_MS || ev.source === "hazard") return null;
+  try { return game.combats?.get(ev.combat)?.combatants?.get(a.who)?.token?.object?.id ?? null; } catch { return null; }
 }
 /* a roll whose stress the character chose: a Resolve drop of its actor now or in the next moments is "spent" (review 16) */
 function markPush(actor) {
@@ -148,7 +160,9 @@ function markPush(actor) {
 /* the tactical fight's public events: damage (taken, toStress) and broken */
 function onEvent(ev) {
   try {
-    if (!started || !ev || typeof ev !== "object" || !["damage", "broken"].includes(ev.type) || !ev.combat) return;
+    if (!started || !ev || typeof ev !== "object" || !ev.combat) return;
+    if (ev.type === "roll" && ev.key === "attack" && typeof ev.who === "string") { attacks.set(ev.combat, { who: ev.who, t: Date.now() }); if (attacks.size > 50) attacks.delete(attacks.keys().next().value); return; }
+    if (!["damage", "broken"].includes(ev.type)) return;
     const target = typeof ev.target === "string" ? ev.target : ev.target?.combatant;
     const key = `${ev.combat}|${ev.fight ?? ""}|${ev.seq ?? ""}|${ev.type}|${target ?? ""}`;
     if (!target || heard.has(key)) return;
@@ -157,7 +171,10 @@ function onEvent(ev) {
     const tok = game.combats?.get(ev.combat)?.combatants?.get(target)?.token?.object ?? null;
     if (!tok || !enabled()) return;
     if (ev.type === "broken") told(tok, "health", { broken: true, key });
-    else if (Number.isFinite(ev.taken) && ev.taken > 0) told(tok, ev.toStress ? "resolve" : "health", { taken: Math.trunc(ev.taken), key });
+    else if (Number.isFinite(ev.taken) && ev.taken > 0) {
+      const src = attackerOf(ev);
+      told(tok, ev.toStress ? "resolve" : "health", { taken: Math.trunc(ev.taken), key, ...(src && src !== tok.id ? { src } : {}), ...(typeof ev.dtype === "string" ? { dtype: ev.dtype } : {}), ...(ev.doubled === true ? { doubled: true } : {}) });
+    }
   } catch (err) { once(err); }
 }
 /* the system's "Damage Taken" card (the public line of a hit outside a tactical fight); any other roll card marks the speaker's roll */
@@ -224,15 +241,18 @@ function flush() {
       if (!a.show) continue;
       const lk = P.look(a, c, lang, e.seed);
       if (!lk) continue;
-      const got = byTok.get(tok.id) ?? { tok, looks: [], seed: e.seed };
+      const got = byTok.get(tok.id) ?? { tok, looks: [], seed: e.seed, pub: null };
       got.looks.push(lk);
       if (P.SEVERITY[lk.kind] >= Math.max(...got.looks.map((x) => P.SEVERITY[x.kind] ?? 0))) got.seed = e.seed;
+      /* WIRE1: the impact is chosen from what the table was told (P.publicSeat), the same on every seat that sees the token */
+      const pa = P.audience(P.publicSeat({ type: tok.actor?.type, playerHero: tok.actor?.hasPlayerOwner === true }), c, e.pub);
+      if (pa.show && P.IMPACT[pa.kind] && (!got.pub || (P.SEVERITY[pa.kind] ?? 0) > (P.SEVERITY[got.pub.kind] ?? 0))) got.pub = { kind: pa.kind, amt: P.amountOf(pa, c), src: e.src ?? null, dtype: e.dtype ?? null, doubled: !!e.doubled };
       byTok.set(tok.id, got);
     }
     const items = [];
-    for (const { tok, looks, seed } of byTok.values()) {
+    for (const { tok, looks, seed, pub } of byTok.values()) {
       const lk = P.combine(looks);
-      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: lk.numbers.length > 0 });
+      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: lk.numbers.length > 0, pub });
     }
     if (!items.length) return;
     Gate.after(() => land(items));
@@ -259,6 +279,15 @@ async function land(items) {
       it.lk.word = it.mode === "number" ? null : P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: st.step, streakSeed: st.streakSeed });
       if (!it.lk.word && it.mode !== "number") it.mode = it.hasNum ? "number" : "none";
     }
+    /* WIRE1: ONE impact frame per moment, on its worst blow as the table knows it (a crowd is one event: the engine would refuse the rest
+       as "busy" anyway); its strength grows with the blow's step in its series */
+    let imp = null;
+    for (const it of staged) {
+      if (it.mode === "none" || !it.pub) continue;
+      const spec = P.impactOf(it.pub, it.lk.step, it.pub);
+      if (spec && (!imp || spec.magnitude > imp.spec.magnitude)) imp = { it, spec };
+    }
+    if (imp) imp.it.impact = imp.spec;
     const placed = [];
     const others = [...tokenRects(new Set(staged.map((it) => it.tok.id))), ...view.panels()];
     for (const it of staged) {
@@ -441,6 +470,7 @@ function play(L, it, queued = false) {
     if (plan.wordOpts) { word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1) }); word._s0 = plan.wordOpts.scale; hs.push(word); plan.wordH = word; }
     /* the numbers come once the word has landed (review 13: a slow entrance let the number arrive first) */
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
+    if (it.impact) { const ih = impactOf(L, it, tok, word ? entMs : 0, red); if (ih) hs.push(ih); }
     const numAt = (i) => follow(tok, plan, Math.min(i, plan.g.nums.length - 1));
     const playNum = (n, o, i) => {
       if (playing.get(tok.id) !== entry) return;
@@ -473,6 +503,23 @@ function play(L, it, queued = false) {
       entry.done = p;
     }
   } catch (err) { once(err); }
+}
+
+/* WIRE1: the impact frame of a reaction, at the instant its word lands (the end of the word's entrance: the slam hits, the fall lands).
+   The token itself is the subject (the engine draws nothing for a token this user does not see, and its picture becomes the silhouette);
+   the attacker gives the blow's direction only when this seat sees him (a direction would point at a hidden one). Reduced motion is handed
+   in only as true (a false would override the OS switch); nothing here touches the photosensitivity guard. */
+export const IMPACT_ENT_MAX = 700;
+function impactOf(L, it, tok, landMs, red) {
+  try {
+    const I = L?.impact;
+    if (!I?.play || !seatOf(tok).visible) return null;
+    const spec = { ...it.impact, subject: tok, seed: `${it.seed}|impact`, startAt: performance.now() + Math.min(IMPACT_ENT_MAX, Math.max(0, landMs || 0)) };
+    const src = it.pub?.src ? canvas.tokens?.get(it.pub.src) : null;
+    if (src && src.id !== tok.id && seatOf(src).visible) spec.from = src;
+    if (red) spec.reduced = true;
+    return I.play(spec);
+  } catch (err) { once(err); return null; }
 }
 
 /* the user's display layer, handed to the engine (contract: the world layer option) */

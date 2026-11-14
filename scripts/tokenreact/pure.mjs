@@ -419,6 +419,49 @@ export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, u
   return { w, h, word: wordC, nums: numsC };
 }
 
+/* ---------------------------------------------------------------- the impact frame (WIRE1; the engine's L.impact, scripts/letters/impact/)
+   The owner (2026-11-13/14): impact frames may go all out and must be spectacular; a brief accent at the instant of the blow, never a
+   lasting cover; one per event, never in a loop; a series of blows BUILDS and the strongest moment gets the strongest frame; GM and players
+   see the same moment unless privacy requires otherwise.
+   So the impact is chosen from what the TABLE was told (publicSeat: a seat that sees the token but has no right to its numbers beyond the
+   public rule), never from a seat's private knowledge: every seat that sees the token gets the same kind and strength, and nobody can read
+   hidden Health out of how hard the frame hits. Blows and stress only (a heal, getting up, regaining nerve or stress spent by choice get
+   none). Strength 0..2 (the engine's: < 0.35 two small local drawings, to 0.85 the scene hard black and white for a tick, to 1.35
+   full-field frames and a hit-stop, above that the whole set): a blow by its amount; each next blow of a series (STREAK) one step stronger;
+   only going down (Health 0) reaches the whole set: every other blow stays under IMPACT_TOP however long the series. */
+export const IMPACT = {
+  hit:    { kind: "hit",   base: 0.3,  amt: 0.45 },
+  heavy:  { kind: "heavy", base: 0.7,  amt: 0.45 },
+  stress: { kind: "hit",   base: 0.25, amt: 0.4, tone: "void" },
+  out:    { kind: "ko",    base: 0.95, amt: 0.3, tone: "void" },
+  down:   { kind: "ko",    base: 1.45, amt: 0.45 }
+};
+export const IMPACT_STEP = 0.2;      // each next blow of one series
+export const IMPACT_TOP = 1.34;      // the ceiling of every blow but going down (the engine's whole set starts at 1.35)
+/* what the hit was made of, from the fight's public damage event (`dtype`): energy crackles (the shock kind), the rest only tints */
+export const ENERGY = new Set(["electricity", "energy", "lightning", "laser", "plasma", "light", "sonic", "radiation", "force"]);
+export const DTYPE_TONE = { fire: "fire", heat: "fire", electricity: "volt", lightning: "volt", cold: "volt", ice: "volt", energy: "volt", laser: "volt", plasma: "volt",
+  acid: "toxic", poison: "toxic", disease: "toxic", toxic: "toxic", psychic: "void", mental: "void", darkness: "void" };
+/** the seat every seat agrees on: it sees the token, it is no GM and it may read the numbers only by the public rule (a player's hero, a
+    challenge) */
+export const publicSeat = (who = {}) => ({ visible: true, staff: false, challenge: who.type === "challenge", reader: mayRead({ gm: false, type: who.type, playerHero: !!who.playerHero, observer: false }) });
+/** pub = { kind, amt } as the table knows it (audience(publicSeat) + amountOf); step = the blow's step in its series; o = { dtype, doubled }
+    -> null | { kind, magnitude, tone? } */
+export function impactOf(pub, step = 0, o = {}) {
+  const row = IMPACT[pub?.kind];
+  if (!row) return null;
+  const amt = Math.max(0, Math.min(1, Number(pub.amt) || 0)), n = Math.max(0, Math.min(STREAK.max, Math.floor(Number(step) || 0)));
+  let kind = row.kind, m = row.base + row.amt * amt + IMPACT_STEP * n;
+  const blow = pub.kind === "hit" || pub.kind === "heavy";
+  if (blow && o.doubled) { kind = "crit"; m += 0.3; }      // a stunt doubled the damage [B2434]: the critical's frames
+  else if (blow && ENERGY.has(o.dtype)) kind = "shock";
+  m = pub.kind === "down" ? Math.max(1.4, Math.min(2, m)) : Math.min(IMPACT_TOP, m);
+  const out = { kind, magnitude: Math.round(m * 100) / 100 };
+  const tone = row.tone ?? DTYPE_TONE[o.dtype];
+  if (tone) out.tone = tone;
+  return out;
+}
+
 /** Is a roll card's roll one whose Resolve cost the character chose (a pushed roll, a power's stress cost)? The system lowers Resolve for
     exactly those (helpers/rolls.mjs applyStress, roll-dialog stressCost). Any other roll by the actor says nothing (review 16). */
 export const choseStress = (roll) => { try { return !!roll && ((Number(roll.pushCount) || 0) > 0 || !!roll.pushed || (Number(roll.options?.stressCost) || 0) > 0); } catch { return false; } };
