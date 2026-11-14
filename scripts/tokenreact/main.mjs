@@ -426,8 +426,12 @@ async function land(ids, ready) {
       const was = pe?.plan?.slot ?? pe?.slot;      // the side the last word really took (re-chosen on its drawn box, measure)
       it.plan.keep = it.lk.step > 0 && was && P.FIT_SLOTS.includes(was) ? was : null;
       const fit = view.ok() ? P.fitSame(it.plan.tokRect, it.plan.box, view.std(it.plan.tokRect), view.safe(), it.plan.blocked, mine, { keep: it.plan.keep }) : { slot: "above", k: 1, same: true };
-      it.plan.same = fit.same;
+      it.plan.same = fit.same; it.plan.moved = fit.moved ?? null;
+      if (Array.isArray(globalThis.__samepicFit)) globalThis.__samepicFit.push({ pass: "plan", name: it.tok.name, tok: it.plan.tokRect, box: it.plan.box, std: view.std(it.plan.tokRect), real: view.safe(), shared: it.plan.blocked, mine, keep: it.plan.keep, fit });
       if (fit.k < 0.999) shrink(it.plan, fit.k);
+      /* SAMEPIC (live, take W: a 1366 x 768 seat's local guard shrank a word to 0.84 on the letter-count estimate, 1059 px wide where the drawn
+         word was 618, and the shrink stayed): what this seat's guard took off is given back once the drawn box is known (measure) */
+      it.plan.kLoc = fit.same ? 1 : Math.min(1, fit.k / (fit.kShared || fit.k));
       it.plan.slot = fit.slot;
       const c = P.slotPoint(it.plan.slot, it.plan.tokRect, it.plan.box);
       placed.push({ x: c.x - it.plan.box.w / 2, y: c.y - it.plan.box.h / 2, w: it.plan.box.w, h: it.plan.box.h, k: P.SLOT_K.word });
@@ -448,8 +452,8 @@ function unflight(ready) {
   }
 }
 /* a reaction's group at a smaller scale (f < 1): the word (planned or playing), its numbers, the group box */
-function shrink(plan, f) {
-  if (!(f > 0) || f >= 0.999) return;
+function shrink(plan, f, back = false) {
+  if (!(f > 0) || (!back && f >= 0.999)) return;      // back: undo an earlier shrink (f > 1)
   try { if (plan.wordOpts && Number.isFinite(plan.wordOpts.scale)) plan.wordOpts.scale *= f; } catch { /* keep */ }
   try { if (plan.wordH?.opts && Number.isFinite(plan.wordH.opts.scale)) { plan.wordH.opts.scale *= f; if (Number.isFinite(plan.wordH._s0)) plan.wordH._s0 *= f; } } catch { /* keep */ }
   for (const h of plan.numH ?? []) try { if (h?.opts && Number.isFinite(h.opts.scale)) { h.opts.scale *= f; if (Number.isFinite(h._s0)) h._s0 *= f; } } catch { /* keep */ }
@@ -610,6 +614,7 @@ function measure(plan, tok = null) {
   const hb = plan.wordH?.plan?._holdBox;
   if (!hb || !(hb.w > 0) || !(hb.h > 0)) return;
   plan.measured = true;
+  if (plan.kLoc < 0.999) { shrink(plan, 1 / plan.kLoc, true); plan.kLoc = 1; }      // SAMEPIC: the guard is fitted again below on the drawn box
   /* the drawn box over the limits: the word (live, its handle's scale is read every frame) and the numbers not yet started shrink with it */
   const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: vw() });
   if (f < 0.98) shrink(plan, f);      // the numbers already started (they wait for the blow's instant) shrink too
@@ -622,7 +627,9 @@ function measure(plan, tok = null) {
     if (plan.blocked && tok && view.ok() && Math.abs(view.zoom() / plan.z0 - 1) < 0.02) {
       const tr0 = view.tokRect(tok), fit = P.fitSame(tr0, plan.box, view.std(tr0), view.safe(), plan.blocked, plan.mine ?? [], { keep: plan.keep ?? null });
       if (fit.k < 0.999) { shrink(plan, fit.k); regroup(); }
-      plan.slot = fit.slot; plan.same = fit.same;
+      plan.slot = fit.slot; plan.same = fit.same; plan.moved = fit.moved ?? null;
+      /* SAMEPIC: a live probe may collect the inputs of each fit (set globalThis.__samepicFit = [] in a console); nothing is kept otherwise */
+      if (Array.isArray(globalThis.__samepicFit)) globalThis.__samepicFit.push({ pass: "drawn", name: tok.name, tok: tr0, box: plan.box, std: view.std(tr0), real: view.safe(), shared: plan.blocked, mine: plan.mine ?? [], keep: plan.keep ?? null, fit });
     }
   } catch (err) { once(err); }
 }

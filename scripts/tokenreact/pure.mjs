@@ -406,8 +406,25 @@ export function fitSame(tok, box, std, real, shared = [], local = [], o = {}) {
   const outR = real ? outside(r, real) : 0, outS = std ? outside(r, std) : 0;
   const clean = outR <= outS + 1 && !local.some((q) => inter(r, q) > 1);
   if (clean) return { ...a, same: true };
-  return { ...fitSlot(tok, box, real ?? std, [...shared, ...local], { ...o, keep: o.keep ?? a.slot }), same: false };      // the shared side is kept while it stays about as good
+  /* SAMEPIC (live, a 1366 x 768 player window: SKROOOMM! re-fitted at 0.55 of the GM's size, BAM! moved from below its token to its right,
+     where a ~50 px slide would have kept both): the smallest difference first, as the splash's local guard does. The shared side and
+     size are kept when sliding the group (the same pushes follow() makes every frame: into the view, off this seat's own panels) clears
+     this seat's limits without covering more; then the same side a little smaller (each step slid too); only then a full refit here. */
+  const lim = real ?? std, A = b.w * b.h;
+  const cover = (q) => [{ ...tok, k: SLOT_K.own }, ...shared].reduce((s, z) => s + inter(q, z) * (z.k ?? 1), 0);
+  const base = cover(r);
+  for (const f of SAME_SHRINK) {
+    const bb = { w: b.w * f, h: b.h * f };
+    let c = clampInto(slotPoint(a.slot, tok, bb), bb, std);
+    c = clampInto(avoidRects(clampInto(c, bb, lim), bb, local, lim), bb, lim);
+    const q = rectAt(c, bb);
+    if (outside(q, lim) <= outS * f * f + 1 && !local.some((z) => inter(q, z) > 1) && cover(q) <= base * f * f + 0.08 * A)
+      return { ...a, k: a.k * f, kShared: a.k, same: false, moved: f === 1 ? "shift" : "shrink" };
+  }
+  return { ...fitSlot(tok, box, lim, [...shared, ...local], { ...o, keep: o.keep ?? a.slot }), kShared: a.k, same: false, moved: "refit" };      // the shared side is kept while it stays about as good
 }
+/* the local guard's in-place steps for token words (scale of the shared size; the splash's SHRINK_LOCAL floor is 0.64 too) */
+export const SAME_SHRINK = [1, 0.92, 0.84, 0.76, 0.7, 0.64];
 /** is the token on the view (see ON_VIEW) */
 /* FXLT2 (ADVT2 11: a visible token at the view's edge, partly under the side controls or the hotbar, got nothing at 35 %): a token
    counts when ON_VIEW of it is inside the safe rect, or its centre is; its word is placed on the inward side (chooseSlot) */

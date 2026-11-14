@@ -79,9 +79,11 @@ export function panelZones(W, H, own = false) {
 
 /* the challenges' panel (#ich-dock, top-right, as tall as the challenges standing: the same on every seat) hugs the sidebar: live (lane 5)
    GM sidebar closed 1232..1542, player sidebar open 932..1242, both 48..281. As a shared zone it stands where it is with the sidebar
-   open, against the standard view's right edge, at its measured height (box: the panel's client rect on this seat) */
+   open, against the standard view's right edge, at its measured height (box: the panel's client rect on this seat). Its top too is
+   measured from the reference window's top (live, take W: a 1366 x 768 seat kept the panel's real top, 66 px lower against the view's
+   middle than the GM's, and its blow word took a 0.74 fit the GM's did not) */
 export function dockZone(W, H, box) {
   if (!box || !(box.width > 0) || !(box.height > 0)) return null;
-  const r = W / 2 + REF_VW / 2 - RESERVE.r + 2;
-  return { l: r - box.width, t: box.top, r, b: box.bottom };
+  const r = W / 2 + REF_VW / 2 - RESERVE.r + 2, t = H / 2 - REF_VH / 2 + box.top;
+  return { l: r - box.width, t, r, b: t + box.height };
 }

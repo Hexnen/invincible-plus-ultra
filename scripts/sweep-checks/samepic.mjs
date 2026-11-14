@@ -13,6 +13,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as SL from "../splash/logic.mjs";
 import * as SP from "../same-picture.mjs";
+import * as TP from "../tokenreact/pure.mjs";
 
 let n = 0, f = 0;
 const ok = (c, msg) => { n++; if (!c) { f++; console.log("FAIL", msg); } };
@@ -275,6 +276,28 @@ for (const target of [{ x: 1000, y: 300 }, { x: 1100, y: 330 }]) {
   ok(Math.abs((r.l - 800) - (q.l - 683)) < 1e-9 && Math.abs((r.b - 450) - (q.b - 384)) < 1e-9, "P1 the standard view is the same rect round the view's middle on any window");
   ok(SP.cleanHere({ l: 0, t: 0, r: 10, b: 10 }, { l: 0, t: 0, r: 100, b: 100 }, { safe: { l: 0, t: 0, r: 50, b: 50 }, avoid: [] }), "P2 inside both: clean");
   ok(!SP.cleanHere({ l: 40, t: 0, r: 60, b: 10 }, { l: 0, t: 0, r: 100, b: 100 }, { safe: { l: 0, t: 0, r: 50, b: 50 }, avoid: [] }), "P3 cut by this seat's edge only: not clean");
+  /* live, take W: the challenges' panel hangs 48 px under each window's top; as a shared zone it must stand alike round the view's middle */
+  const dz = (W, H) => { const z = SP.dockZone(W, H, { top: 48, bottom: 281, width: 310, height: 233 }); return [z.l - W / 2, z.t - H / 2, z.r - W / 2, z.b - H / 2].map(Math.round).join(); };
+  ok(dz(1600, 900) === dz(1366, 768) && dz(1600, 900) === dz(1920, 1080), `P4 the challenges' shared zone stands alike round the view's middle on any window (${dz(1600, 900)} / ${dz(1366, 768)} / ${dz(1920, 1080)})`);
+}
+/* T6 live (lane 5, take W, a 1366 x 768 player window): a word the shared fit put a little past this seat's edge was re-fitted from scratch
+   (SKROOOMM! at 0.55 of the GM's size; BAM! moved from below its token to its right). The smallest difference first: same side, same size,
+   slid in; smaller on the same side only when a slide would cover a neighbour; a slide or shrink that would cover the token itself is
+   refused (it may then change side: nothing covers what it describes). The first two fail on the refit-only guard (k 0.74 there). */
+{
+  const std = { l: 40, t: 40, r: 1300, b: 800 }, real = { l: 104, t: 62, r: 1002, b: 662 };
+  const x = 120, y = 300, tok = { x, y, w: 228, h: 228 }, box = { w: 330, h: 110 };
+  const low = [{ x: x + 240, y: y + 170, w: 228, h: 228, k: 2.5 }, { x, y: y + 240, w: 228, h: 228, k: 2.5 }, { x: x + 250, y, w: 228, h: 228, k: 2.5 }];
+  const a = TP.fitSame(tok, box, std, std, low, []), b = TP.fitSame(tok, box, std, real, low, []);
+  ok(a.same && b.slot === a.slot && Math.abs(b.k - a.k) < 1e-9 && b.moved === "shift", `T6 a word a little past a smaller window's left edge slides in at its side and size (std ${a.slot} ${a.k}, here ${b.slot} ${b.k} ${b.moved})`);
+  const nb = [{ x: x + 240, y: y - 60, w: 228, h: 228, k: 2.5 }, { x: x + 240, y: y + 170, w: 228, h: 228, k: 2.5 }, { x, y: y + 240, w: 228, h: 228, k: 2.5 }];
+  const c0 = TP.fitSame(tok, box, std, std, nb, []), c = TP.fitSame(tok, box, std, real, nb, []);
+  ok(c.slot === c0.slot && c.k >= 0.84 - 1e-9 && c.moved === "shrink", `T6 with a neighbour where it would slide it stays on its side, a little smaller (std ${c0.slot} ${c0.k}, here ${c.slot} ${c.k} ${c.moved})`);
+  const t2 = { x: 400, y: 400, w: 228, h: 228 }, b2 = { w: 200, h: 90 };
+  const sh = [{ x: 160, y: 400, w: 228, h: 228, k: 2.5 }, { x: 640, y: 400, w: 228, h: 228, k: 2.5 }, { x: 400, y: 160, w: 228, h: 228, k: 2.5 }];
+  const d = TP.fitSame(t2, b2, std, real, sh, []), r = TP.slotPoint(d.slot, t2, { w: b2.w * d.k, h: b2.h * d.k });
+  const over = Math.max(0, Math.min(r.x + b2.w * d.k / 2, t2.x + t2.w) - Math.max(r.x - b2.w * d.k / 2, t2.x)) * Math.max(0, Math.min(r.y + b2.h * d.k / 2, t2.y + t2.h) - Math.max(r.y - b2.h * d.k / 2, t2.y));
+  ok(d.moved === "refit" && over <= 0.6 * b2.w * d.k * b2.h * d.k, `T6 no room below a token on a shorter window: no slide onto the token, it refits (${d.slot} ${d.k}, ${Math.round(over)} px2 over the token)`);
 }
 console.log(`samepic: ${n} checks, ${f} failed`);
 process.exit(f ? 1 : 0);
