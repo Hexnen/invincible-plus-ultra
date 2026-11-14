@@ -522,23 +522,29 @@ export function impactOf(pub, step = 0, o = {}) {
    The impact frame came 0.17-0.2 s AFTER the word had reached full size (it was timed to the end of the word's whole entrance), and the GM's
    came 125-375 ms after the player's on the same blow (each seat timed it to its own word, and seats letter different words by privacy).
    Now the blow has ONE instant, the same on every seat: HIT_LEAD after the moment plays; the impact starts on it, and each seat's word is
-   started earlier by its own entrance's CONTACT (the drawing where it strikes: the engine's own rule, the first drawing with an impact
-   flash, a burst or the landing's dust), so every word strikes exactly on the impact whatever its entrance. HIT_LEAD covers the longest
+   started earlier by its own entrance's CONTACT (the drawing where it strikes: the squash with its burst or the landing's dust, else its
+   flash frame; contactMs), so every word strikes exactly on the impact whatever its entrance. HIT_LEAD covers the longest
    contact of the entrances these reactions use (a slam with its wind-up and flash: 5 drawings of the 24-tick clock), so no word has to
    start in the past. Numbers pop NUM_AFTER the instant (once the word has struck: review 13). */
 export const TICK_MS = 1000 / 24;
 export const HIT_LEAD = Math.round(5 * TICK_MS + 20);
 export const NUM_AFTER = Math.round(4 * TICK_MS);
-/** the contact of a word's entrance in ms from its start (timeline = the engine's plan.timeline); reduced = the still entrance: 0 */
-export function contactMs(timeline, reduced = false) {
-  const ent = timeline?.ent;
-  if (reduced || !Array.isArray(ent) || !ent.length) return 0;
-  let a = 0, total = 0;
+/** the contact of a word's entrance in ms from its start (plan = the engine's word plan, or its timeline); reduced = the still entrance: 0.
+    The engine's own `plan.contactMs` wins when it has one (scratchpad letr REQUESTS FXIS-E1); else, as the roll splash reads it
+    (splash/impact-plan.mjs), the first drawing with a burst or the landing's dust (the squash on contact), else the word's flash frame */
+export function contactMs(plan, reduced = false) {
+  if (reduced) return 0;
+  if (Number.isFinite(plan?.contactMs) && plan.contactMs >= 0) return plan.contactMs;
+  const ent = (plan?.timeline ?? plan)?.ent;
+  if (!Array.isArray(ent) || !ent.length) return 0;
+  let a = 0, total = 0, flash = null;
   for (const p of ent) total += Number(p?.ticks) || 0;
   for (const p of ent) {
-    if (p?.impact || p?.fx?.some?.((f) => f?.k === "burst" || f?.k === "dust")) return a * TICK_MS;
+    if (p?.fx?.some?.((f) => f?.k === "burst" || f?.k === "dust")) return a * TICK_MS;
+    if (p?.impact && flash === null) flash = a * TICK_MS;
     a += Number(p?.ticks) || 0;
   }
+  if (flash !== null) return flash;
   return total * TICK_MS * 0.5;      // no marked contact: half-way through the entrance (the engine's own fallback for its push)
 }
 

@@ -167,7 +167,7 @@ async function seats(build, run, ms = 1500) {
 /* the same blow with a contact longer and shorter than the other seat's (pure): every word strikes on the one instant */
 { const T = 1000, starts = [SLAM, POP].map((ent) => T - P.contactMs({ ent }));
   ck(`I13 two entrances, one strike: slam starts ${T - starts[0]} ms and pop ${T - starts[1]} ms before the instant, both within the lead (${P.HIT_LEAD} ms)`, starts.every((s) => T - s <= P.HIT_LEAD) && starts[0] !== starts[1]);
-  ck("I2 the contact is the engine's: the flash drawing, else the burst, else the landing's dust", P.contactMs({ ent: SLAM }) === 3 * P.TICK_MS && P.contactMs({ ent: POP }) === 2 * P.TICK_MS && P.contactMs({ ent: [{ ticks: 4 }, { ticks: 2, fx: [{ k: "dust" }] }] }) === 4 * P.TICK_MS && P.contactMs({ ent: SLAM }, true) === 0);
+  ck("I2 the contact is where the word strikes (as the roll splash reads it): the burst or the landing's dust (the squash), else the flash; the engine's plan.contactMs first", P.contactMs({ timeline: { ent: SLAM }, contactMs: 77 }) === 77 && P.contactMs({ ent: [{ ticks: 2 }, { ticks: 1, impact: true }, { ticks: 2 }] }) === 2 * P.TICK_MS && P.contactMs({ ent: SLAM }) === 5 * P.TICK_MS && P.contactMs({ ent: POP }) === 2 * P.TICK_MS && P.contactMs({ ent: [{ ticks: 4 }, { ticks: 2, fx: [{ k: "dust" }] }] }) === 4 * P.TICK_MS && P.contactMs({ ent: SLAM }, true) === 0);
 }
 
 /* ---- I3: the blows build: a scratch is not a knock-down, every rung is other drawings, a series climbs */

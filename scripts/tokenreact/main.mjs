@@ -596,7 +596,7 @@ function play(L, it, queued = false) {
       word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1), startAt: tHit });
       word._s0 = plan.wordOpts.scale; hs.push(word); plan.wordH = word;
       try {
-        if (word.plan?.timeline && word.opts) { contact = P.contactMs(word.plan.timeline, red || !!word.reducedMotion); word.opts.startAt = Math.max(performance.now() + 1, tHit - contact); contact = tHit - word.opts.startAt; }
+        if (word.plan?.timeline && word.opts) { contact = P.contactMs(word.plan, red || !!word.reducedMotion); word.opts.startAt = Math.max(performance.now() + 1, tHit - contact); contact = tHit - word.opts.startAt; }
       } catch (err) { once(err); }
     }
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
