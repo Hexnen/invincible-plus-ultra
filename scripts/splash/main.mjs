@@ -3,7 +3,7 @@
    - MOD  = this module's id: settings live here (keys prefixed "splash", e.g. splashEnabled) and so does the module api.
    - FLAG = the OLD standalone module's id, kept ONLY as the flag namespace of message flags (flags['invincible-splash'].ev) and actor flags
             (flags['invincible-splash'].state), so rolls and heroes saved by the standalone module keep working. Do not rename it. */
-import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fmtOdds, oddsText, oddsLabel, LBL, setLabels, SAYS, say, holdFor, playsAfter, ACTIONS, FAIL, SOFTFAIL, PUSHFAIL, PUSHPRE, WRECK, SHAPE_RANGE } from './logic.mjs';
+import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fmtOdds, oddsText, oddsLabel, LBL, setLabels, SAYS, say, SFX_KEYS, sfxWord, holdFor, playsAfter, ACTIONS, FAIL, SOFTFAIL, PUSHFAIL, PUSHPRE, WRECK, SHAPE_RANGE } from './logic.mjs';
 import { readRoll, classify, heroSpeaker, publicResolve } from './reader.mjs';
 import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
@@ -90,7 +90,7 @@ function registerSettings() {
 }
 
 /* Etykiety informacyjne plakietek (szansa, stres, Resolve) z INSPLASH.Badge.*; brak klucza = angielski domyślnik z logic.mjs.
-   Słowa-SFX (HAYMAKER!, WHAM!...) zostają angielskie (decyzja projektu; liczba szóstek od FXLD w języku stołu); zdania wstęgi i notki stresu (UNLIKELY HERO!,
+   Słowa akcji: po polsku tylko te, które dobrze brzmią (SPLASHPL, INSPLASH.Word.*), czyste dźwięki (WHAM!...) angielskie (liczba szóstek od FXLD w języku stołu); zdania wstęgi i notki stresu (UNLIKELY HERO!,
    SHAKEN...) idą w języku stołu z INSPLASH.Say.* (UXB, D129: to nie dźwięki, mówią coś o wyniku). */
 function applyLabels() {
   try {
@@ -103,6 +103,7 @@ function applyLabels() {
     /* FXLD (ADVD 8): the sixes are a count, not a sound: in the table's language like the odds ("2 SZÓSTKI" next to "1 NA 9") */
     if (has('INSPLASH.Live.Six.other')) o.six = n => sixesText(n).toLocaleUpperCase(game.i18n.lang || 'en');
     o.words = Object.fromEntries(Object.values(SAYS).filter(k => has('INSPLASH.Say.' + k)).map(k => [k, game.i18n.localize('INSPLASH.Say.' + k)]));      // UXB (D129)
+    o.sfx = Object.fromEntries(Object.values(SFX_KEYS).filter(k => has('INSPLASH.Word.' + k)).map(k => [k, game.i18n.localize('INSPLASH.Word.' + k)]));   // SPLASHPL
     setLabels(o);
   } catch (e) { /* zostają domyślne angielskie etykiety */ }
 }
@@ -339,7 +340,7 @@ hook('createChatMessage', (message) => {
 });
 
 /* Komunikat dla czytnika ekranu (aria-live): kto, słowo, liczba szóstek, rzadkość, stres. Liczby z danych rzutu (ev).
-   Słowa SFX zostają angielskie (decyzja projektu); reszta zdania jest tłumaczona i odmieniona (pl: 1/2-4/5+). */
+   Słowo akcji jak na ekranie tego klienta (SPLASHPL); reszta zdania jest tłumaczona i odmieniona (pl: 1/2-4/5+). */
 const cap = t => { const x = String(t ?? '').toLowerCase(); return x.charAt(0).toUpperCase() + x.slice(1); };
 function sixesText(n) {
   const cat = new Intl.PluralRules(game.i18n.lang || 'en').select(n);
@@ -355,7 +356,7 @@ function announce(ev, message, resolve) {
     if (name) parts.push(name + ':');
     if (!ev.stressOnly) {   // stressOnly: ogłoszenie samego stresu po Accept
       if (ev.pushed) parts.push(L('INSPLASH.Live.Pushed') + '.');
-      parts.push(cap(ev.word));
+      parts.push(cap(sfxWord(ev.word)));      // SPLASHPL: the word as this seat shows it
       if (ev.fail) parts.push(L('INSPLASH.Live.NoSixes') + '.');
       else {
         parts.push(sixesText(ev.sixes) + '.');
