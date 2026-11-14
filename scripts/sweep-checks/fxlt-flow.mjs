@@ -55,7 +55,7 @@ const TALL = {};      // words the stand-in draws with a given hold box (w, h in
 const fake = { version: "test", limits: { screen: 16, world: 48 }, ready: async () => true, count: () => 0,
   sizeOf: (text, o) => ({ ...sizeFor(ctxOf(o)), sizeK: sizeK(o) }),
   play: (text, o) => {
-    const rec = { text, o, t: Date.now(), stopped: null };
+    const rec = { text, o, t: Date.now(), tp: performance.now(), stopped: null };
     const h = { id: `h${Math.random()}`, hand: o.hand?.id ?? "x", alive: true, opts: o, plan: { timeline: { ent: [{ ticks: 6 }, { ticks: 6 }] }, ...((TALL[text] ?? (/^[+-]?\d/.test(text) ? null : TALL["*"])) ? { _holdBox: TALL[text] ?? TALL["*"] } : {}) }, ready: sleep(30).then(() => true),
       finished: sleep((o.hold ?? 800) + 900).then(() => { h.alive = false; return "done"; }), stop(q) { rec.stopped = q ?? {}; stops.push(rec); h.alive = false; }, moveTo() {} };
     rec.h = h; plays.push(rec); return h;
@@ -104,7 +104,9 @@ let p = await take();
 /* R12: the number stands beside the word, not on the token's face; R13: it comes after the word has landed */
 { const word = p.find((r) => !isNum(r)), num = p.find((r) => r.text === "-4"), b = num && boxOf(num), ts = tokScreen(hero);
   ck("R12 the number does not cover the token (its centre off the token, at most a quarter of it over the token)", !!b && !(b.cx > ts.x && b.cx < ts.x + ts.w && b.cy > ts.y && b.cy < ts.y + ts.h) && inter(b, ts) <= 0.25 * b.w * b.h);
-  ck("R13 the number comes once the word has landed (at least half of its 500 ms entrance after it)", !!num && !!word && num.t - word.t >= 250); }
+    /* FXI-TOKEN: words and numbers are timed on the shared clock (startAt) now, not by the moment of the call: compare when each starts */
+  const eff = (r) => r.t + (Number.isFinite(r.o.startAt) ? r.o.startAt - r.tp : 0);
+  ck("R13 the number comes once the word has landed (at least half of its 500 ms entrance after it)", !!num && !!word && eff(num) - eff(word) >= 250); }
 
 /* R14: the number follows a moving token */
 set(hero, "health", 2);

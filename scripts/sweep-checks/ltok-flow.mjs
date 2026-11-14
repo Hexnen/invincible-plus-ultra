@@ -160,8 +160,9 @@ Hooks.callAll("canvasReady");
 for (const [i, t] of crowd.entries()) { set(t, "health", i === 0 ? 0 : 5); await sleep(40); }      // found live: the updates of an area hit arrive one by one, tens of ms apart
 p = await take(2600);
 const words = p.filter((x) => x.o.token?.id && !String(x.text).match(/^[+-]\d/));
-ck("E1 nine at once: two full words (the heaviest among them), the rest numbers, nothing doubled", words.length === 2 && p.length === 11 && words.some((x) => x.o.token.id === "c0"));
-ck("E2 the crowd is smaller than a single hit", words.filter((x) => x.o.token.id !== "c0").length === 1 && words.filter((x) => x.o.token.id !== "c0").every((x) => pxOf(x.o) < firstHitPx)      /* c0 fell to 0: a fall is bigger than a hit (FXLT review 5), so the crowd's own hit is compared */
+/* FXI-TOKEN (ADVI 15): three full words in a big crowd (was two) */
+ck("E1 nine at once: three full words (the heaviest among them), the rest numbers, nothing doubled", words.length === 3 && p.length === 12 && words.some((x) => x.o.token.id === "c0"));
+ck("E2 the crowd is smaller than a single hit", words.filter((x) => x.o.token.id !== "c0").length === 2 && words.filter((x) => x.o.token.id !== "c0").every((x) => pxOf(x.o) < firstHitPx)      /* c0 fell to 0: a fall is bigger than a hit (FXLT review 5), so the crowd's own hit is compared */
   && words.every((x) => !("size" in x.o)));      // contract v4: no fixed size, the engine's model with a smaller scale (FXLT: compared as the drawn size; the scale now carries the severity target)
 
 /* switched off */

@@ -41,6 +41,18 @@ const CARD_MS = 2500;      // a Damage Taken card this recent joins a Health los
 const LATE_MS = 1800;      // a Damage Taken card arriving after its reaction started still gives it its number, this long
 const QUEUE_MAX = 2600;    // a lighter reaction waits at most this long for a heavier one on the same token
 const SCREEN_WAIT = 650;   // a roll's splash word on screen: the token answers right after it, not on top of it
+/* FXI-TOKEN (ADVI 1): the system posts the Damage Taken card AFTER it lowers Health (helpers/rolls.mjs: update, then a critical injury's
+   roll and table draw when Health went below 0, then the card). A fall to 0 with no card yet waits this long for it, on every seat alike,
+   so the knock-down the table is told about (the card's second paragraph) is in the reaction and its impact, not a plain blow */
+const CARD_DOWN_WAIT = 350;
+/* FXI-TOKEN (ADVI 8): the roll's splash tells its story first (its result word strikes, its impact plays), then the target answers. The
+   splash announces its moments on SPLASH_HOOK (scratchpad letr REQUESTS FXI-TOKEN): { phase: "start" | "land" | "done", id, landAt?,
+   impactMs? } (landAt on this page's performance.now clock); a splash that started and has not landed is waited for at most STORY_MAX,
+   a landed one until its impact is over plus STORY_BEAT. Without that hook (a splash that does not announce) the old screen check stays */
+const SPLASH_HOOK = `${MOD}.splashMoment`, REACT_HOOK = `${MOD}.tokenReact`;
+const STORY_MAX = 2500, STORY_BEAT = 120, STORY_STEP = 40;
+/* the engine's impact frames play one at a time: the roll's (or the series' last) is let finish, at most this long, before the next blow's */
+const IMPACT_WAIT = 600;
 
 let started = false, engine = null, warned = false;
 const seen = new Map();      // token id -> { h, hm, r, rm }
@@ -51,6 +63,9 @@ const cards = new Map();     // actor id -> [{ t, taken, broken, key }] recent D
 const heard = new Set();
 const captioned = new Map();  // token id -> ms until which the map's director captions this token's damage (number included)
 const streaks = new Map();    // token id -> { seed, n, t } the blows of one series (pure STREAK): the first blow's seed and the step
+const inflight = new Map();   // token id -> [entry] gathered and waiting (dice, camera, the splash's story) to be lettered (FXI-TOKEN, ADVI 1)
+const story = new Map();      // splash id -> { t, landAt, endAt } the roll splashes announced on SPLASH_HOOK (ADVI 8)
+let storyHeard = false;
 let timer = 0;
 
 const get = (key, fallback) => { try { return game.settings.get(MOD, key); } catch { return fallback; } };
@@ -119,22 +134,26 @@ function changed(tok, options) {
       if (!e.evSeed) e.seed = P.seedOf(tok.id, stat, stampOf(tok));      // a fight's event, when one joined, keeps its own key as the seed
       if (stat === "resolve" && b < a && Date.now() - (lastPush.get(tok.actor?.id) ?? -1e9) < PUSH_MS && !options?.ipuTactics) e.cause = "push";
       if (options?.ipuTactics) e.tactics = true;
-      /* a Damage Taken card that came BEFORE this loss joins it (review 17) */
-      if (stat === "health" && b < a) for (const c of cards.get(tok.actor?.id) ?? []) if (Date.now() - c.t < CARD_MS && !c.used?.has(tok.id)) { (c.used ??= new Set()).add(tok.id); join(e, c); }
-      arm(e, QUIET.change);
+      /* a Damage Taken card that came BEFORE this loss joins it (review 17); one card per loss (FXI-TOKEN, ADVI 1) */
+      if (stat === "health" && b < a && !e.card) for (const c of cards.get(tok.actor?.id) ?? []) if (Date.now() - c.t < CARD_MS && !c.used?.has(tok.id)) { (c.used ??= new Set()).add(tok.id); join(e, c); break; }
+      /* a fall to 0 outside a fight's events: its card (with the critical injury) is still to come; wait for it (CARD_DOWN_WAIT) */
+      const waitCard = stat === "health" && b < a && b <= 0 && !e.card && !e.tactics && !e.pub?.broken;
+      arm(e, waitCard ? CARD_DOWN_WAIT : QUIET.change);
     }
   } catch (err) { once(err); }
 }
 function join(e, add) {
   if (add.key && e.keys.has(add.key)) return;
   if (add.key) e.keys.add(add.key);
-  e.pub = { taken: (e.pub?.taken ?? 0) + (add.taken ?? 0), toStress: e.stat === "resolve", broken: !!(e.pub?.broken || add.broken) };
+  if (add.isCard) e.card = add.key;      // FXI-TOKEN (ADVI 1): this loss has its card; another card is another loss's
+  e.pub ={ taken: (e.pub?.taken ?? 0) + (add.taken ?? 0), toStress: e.stat === "resolve", broken: !!(e.pub?.broken || add.broken) };
 }
 function told(tok, stat, add) {
   const e = entry(tok, stat);
   join(e, add);
-  /* an event of the fight is the same on every seat: its key is the seed (no values in it) */
-  if (!e.evSeed && add.key) { e.evSeed = true; e.seed = P.seedOf(tok.id, stat, add.key); }
+  /* an event of the fight is the same on every seat: its key is the seed (no values in it). A card is not (FXI-TOKEN, ADVI 1): it may meet
+     its loss while gathered on one seat and later on another, so the seed stays the change's stamp, the same everywhere */
+  if (!e.evSeed && add.key && !add.isCard) { e.evSeed = true; e.seed = P.seedOf(tok.id, stat, add.key); }
   if (!e.seed) e.seed = P.seedOf(tok.id, stat, stampOf(tok));
   /* WIRE1: who struck (the impact's direction, only when this seat sees him), what the blow was made of, a doubled blow */
   if (add.src) e.src = add.src;
@@ -186,15 +205,25 @@ function onMessage(message) {
     if (message.flavor && isLabel(message.flavor, DMG_FLAVOR_KEY)) {
       const line = P.damageLine(message.content);
       if (!line || !enabled()) return;
-      const card = { t: Date.now(), taken: line.taken, broken: line.broken, key: message.id };
+      const card = { t: Date.now(), taken: line.taken, broken: line.broken, key: message.id, isCard: true };
       /* whichever comes first, the card or the loss, they meet (review 17): a pending loss takes it now; a loss still to come finds it in
-         `cards`; a reaction already on screen without a number gets the told number late */
+         `cards`; a reaction already on screen without a number gets the told number late.
+         FXI-TOKEN (ADVI 1: the second card of a series arrived while the FIRST blow's reaction stood, was handed to it and swallowed, and
+         its own loss came without it: the GM saw "-4" and a plain blow's impact, the player no number; the third blow's knock-down card met
+         its loss on one seat only): a card belongs to ONE loss of its token that has no card yet: the one gathered, the one waiting to be
+         lettered (dice, camera, the splash's story: it is lettered with the card then), or the one on screen, in that order; a reaction
+         that already had its card never takes another; with none of them the card waits for its loss (a card posted before its update) */
       const list = (cards.get(actor.id) ?? []).filter((c) => Date.now() - c.t < CARD_MS);
       list.push(card); cards.set(actor.id, list);
+      const isLoss = (e) => e && e.stat === "health" && !e.card && e.from !== null && e.to !== null && e.to < e.from;
+      const use = (tok) => (card.used ??= new Set()).add(tok.id);
       for (const tok of actor.getActiveTokens?.() ?? []) {
-        if (pending.has(`${tok.id}|health`)) { (card.used ??= new Set()).add(tok.id); told(tok, "health", card); continue; }
+        if (card.used?.has(tok.id)) continue;
+        if (isLoss(pending.get(`${tok.id}|health`))) { use(tok); told(tok, "health", card); continue; }
+        const fe = (inflight.get(tok.id) ?? []).find(isLoss);
+        if (fe) { use(tok); join(fe, card); continue; }
         const pe = playing.get(tok.id);
-        if (pe?.addNumber && Date.now() - pe.t0 < LATE_MS && line.taken > 0) { (card.used ??= new Set()).add(tok.id); pe.addNumber("health", "-", line.taken); }
+        if (pe?.addNumber && pe.loss && !pe.card && Date.now() - pe.t0 < LATE_MS && line.taken > 0) { use(tok); pe.card = card.key; pe.addNumber("health", "-", line.taken); }
       }
       return;
     }
@@ -230,6 +259,17 @@ function flush() {
     const ready = [...pending.values()];
     pending.clear();
     if (!ready.length || !enabled() || !canvas?.ready) return;
+    /* FXI-TOKEN (ADVI 1): what is lettered is decided once every wait is over (build, in land): a card arriving meanwhile still joins */
+    const ents = new Map();
+    for (const e of ready) { const l = ents.get(e.tokId) ?? []; l.push(e); ents.set(e.tokId, l); }
+    for (const [id, l] of ents) inflight.set(id, [...(inflight.get(id) ?? []), ...l]);
+    const all = [...ents.keys()];
+    Gate.after(() => land(all, ready));
+  } catch (err) { once(err); }
+}
+/* the reactions of one moment from its gathered changes, as this seat may be shown them */
+function build(ready) {
+  try {
     const lang = worldLang();
     /* one moment: every token's changes become ONE reaction (review 4: Health and Resolve of one token in one moment) */
     const byTok = new Map();
@@ -246,25 +286,66 @@ function flush() {
       if (P.SEVERITY[lk.kind] >= Math.max(...got.looks.map((x) => P.SEVERITY[x.kind] ?? 0))) got.seed = e.seed;
       /* WIRE1: the impact is chosen from what the table was told (P.publicSeat), the same on every seat that sees the token */
       const pa = P.audience(P.publicSeat({ type: tok.actor?.type, playerHero: tok.actor?.hasPlayerOwner === true }), c, e.pub);
-      if (pa.show && P.IMPACT[pa.kind] && (!got.pub || (P.SEVERITY[pa.kind] ?? 0) > (P.SEVERITY[got.pub.kind] ?? 0))) got.pub = { kind: pa.kind, amt: P.amountOf(pa, c), src: e.src ?? null, dtype: e.dtype ?? null, doubled: !!e.doubled };
+      /* the table knows how much when a number was told or the track is public (FXI-TOKEN, ADVI 3: a blow whose size nobody was told is a
+         scratch on the ladder, it cannot say more) */
+      if (pa.show && P.IMPACT[pa.kind] && (!got.pub || (P.SEVERITY[pa.kind] ?? 0) > (P.SEVERITY[got.pub.kind] ?? 0))) got.pub = { kind: pa.kind, amt: P.amountOf(pa, c), known: !!pa.exact || Number.isFinite(pa.num), src: e.src ?? null, dtype: e.dtype ?? null, doubled: !!e.doubled };
+      if (e.card) got.card = true;
+      if (c && (c.kind === "hit" || c.kind === "heavy" || c.kind === "down")) got.loss = true;
       byTok.set(tok.id, got);
     }
     const items = [];
-    for (const { tok, looks, seed, pub } of byTok.values()) {
+    for (const { tok, looks, seed, pub, card, loss } of byTok.values()) {
       const lk = P.combine(looks);
-      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: lk.numbers.length > 0, pub });
+      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: lk.numbers.length > 0, pub, card: !!card, loss: !!loss });
     }
-    if (!items.length) return;
-    Gate.after(() => land(items));
-  } catch (err) { once(err); }
+    return items;
+  } catch (err) { once(err); return []; }
 }
-async function land(items) {
-  try {
-    if (Moment.isActive()) await Moment.landing(items.map((i) => i.tok.id), { wait: 0, cap: 1600 });
-    const L = engine ?? (engine = await letters());
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+/* FXI-TOKEN (ADVI 8): the roll's story first. A splash that announced its start and has not landed is waited for (at most STORY_MAX from
+   its start); a landed one until its impact is over (STORY_BEAT after). Without announcements: the screen check of before. Then the
+   impact frame playing now (the roll's, the series' last blow's) is let finish, at most IMPACT_WAIT */
+async function storyWait(L) {
+  if (storyHeard) {
+    for (let waited = 0; waited < STORY_MAX; waited += STORY_STEP) {
+      const t = performance.now();
+      let until = 0, open = false;
+      for (const [id, s] of story) {
+        if (t - s.t > STORY_MAX + 6000) { story.delete(id); continue; }
+        if (s.landAt == null) { if (t - s.t < STORY_MAX) open = true; continue; }
+        until = Math.max(until, s.landAt + (s.impactMs ?? 0) + STORY_BEAT);
+      }
+      if (!open && t >= until) break;
+      await wait(STORY_STEP);
+    }
+  } else {
     /* a roll's splash word on screen right now: the token answers just after it */
     const splashing = () => (L.count?.({ space: "screen" }) ?? 0) > 0 || !!document.querySelector("#invincible-splash-layer .ins-stage");      // the engine's screen words, or the roll splash's own layer
-    for (let waited = 0; waited < SCREEN_WAIT && splashing(); waited += 60) await new Promise((r) => setTimeout(r, 60));
+    for (let waited = 0; waited < SCREEN_WAIT && splashing(); waited += 60) await wait(60);
+  }
+  for (let waited = 0; waited < IMPACT_WAIT && L.impact?.busy; waited += STORY_STEP) await wait(STORY_STEP);
+}
+function onSplash(data) {
+  try {
+    if (!data || typeof data !== "object" || data.id == null) return;
+    storyHeard = true;
+    const id = String(data.id);
+    if (data.phase === "done") { story.delete(id); return; }
+    const s = story.get(id) ?? { t: performance.now(), landAt: null, impactMs: 0 };
+    if (data.phase === "land") { s.landAt = Number.isFinite(data.landAt) ? data.landAt : performance.now(); s.impactMs = Math.max(0, Math.min(1000, Number(data.impactMs) || 0)); }
+    story.set(id, s);
+    if (story.size > 30) story.delete(story.keys().next().value);
+  } catch (err) { once(err); }
+}
+async function land(ids, ready) {
+  let items = [];
+  try {
+    if (Moment.isActive()) await Moment.landing(ids, { wait: 0, cap: 1600 });
+    const L = engine ?? (engine = await letters());
+    await storyWait(L);
+    unflight(ready);
+    items = build(ready);
+    if (!items.length) return;
     /* the whole moment is placed together, heaviest first: each reaction takes the free side of its token (other tokens, the words
        already placed, the view's edges and the interface count against a side) */
     /* a token mostly outside the safe rect now (off the view, under the interface) is not lettered: its word would hang at the
@@ -288,6 +369,13 @@ async function land(items) {
       if (spec && (!imp || spec.magnitude > imp.spec.magnitude)) imp = { it, spec };
     }
     if (imp) imp.it.impact = imp.spec;
+    /* FXI-TOKEN (ADVI 2, 13, 15): ONE instant for the moment's blow, the same on every seat (pure HIT_LEAD): the impact starts on it and every
+       word is started so that it strikes on it (play). The other reactions of a crowd strike after the impact (its drawings, at most 500 ms,
+       took them over: one token's knock-out frame blacked out six reactions), then one after another (their stagger) */
+    const T0 = performance.now() + P.HIT_LEAD;
+    let after = 0;
+    try { if (imp && L.impact?.plan) after = Math.min(500, Math.max(0, Number(L.impact.plan({ ...imp.spec, seed: `${imp.it.seed}|impact` })?.ms) || 0)); } catch (err) { once(err); }
+    for (const it of staged) it.tHit = it === imp?.it ? T0 : T0 + (imp ? after + it.delay : it.delay);
     const placed = [];
     const others = [...tokenRects(new Set(staged.map((it) => it.tok.id))), ...view.panels()];
     for (const it of staged) {
@@ -295,17 +383,44 @@ async function land(items) {
       try { it.plan = planOf(L, it); } catch (err) { once(err); it.plan = null; }
       if (!it.plan) continue;
       it.plan.blocked = [...others.filter((r) => r.id !== it.tok.id), ...placed];
-      /* the next blow of a series lands where the last one stands (ADVT2 5: the third blow of three stood elsewhere) */
+      /* the next blow of a series lands where the last one stands (ADVT2 5: the third blow of three stood elsewhere), while that side still
+         holds the grown word (FXI-TOKEN, ADVI 5: it kept its side and was pushed over its token); a side that is not free is taken smaller
+         (pure fitSlot) */
       const pe = playing.get(it.tok.id);
       const was = pe?.plan?.slot ?? pe?.slot;      // the side the last word really took (re-chosen on its drawn box, measure)
-      const keep = it.lk.step > 0 && was && P.SLOTS.includes(was) ? was : null;
-      it.plan.keepSlot = !!keep;
-      it.plan.slot = keep ?? (view.ok() ? P.chooseSlot(it.plan.tokRect, it.plan.box, view.safe(), it.plan.blocked) : "above");
+      it.plan.keep = it.lk.step > 0 && was && P.FIT_SLOTS.includes(was) ? was : null;
+      const fit = view.ok() ? P.fitSlot(it.plan.tokRect, it.plan.box, view.safe(), it.plan.blocked, { keep: it.plan.keep }) : { slot: "above", k: 1 };
+      if (fit.k < 0.999) shrink(it.plan, fit.k);
+      it.plan.slot = fit.slot;
       const c = P.slotPoint(it.plan.slot, it.plan.tokRect, it.plan.box);
       placed.push({ x: c.x - it.plan.box.w / 2, y: c.y - it.plan.box.h / 2, w: it.plan.box.w, h: it.plan.box.h, k: P.SLOT_K.word });
     }
-    for (const it of staged) if (it.plan && it.mode !== "none") setTimeout(() => play(L, it), it.delay);
-  } catch (err) { once(err); }
+    const shown = staged.filter((it) => it.plan && it.mode !== "none");
+    /* the roll splash (and anything else) may make room for the blow: its instant and its tokens (scratchpad letr REQUESTS FXI-TOKEN) */
+    if (shown.length) try { Hooks.callAll(REACT_HOOK, { phase: "hit", at: T0, ids: shown.map((it) => it.tok.id) }); } catch (err) { once(err); }
+    for (const it of shown) play(L, it);
+  } catch (err) { once(err); unflight(ready); }
+}
+/* the gathered changes of a moment leave the waiting list once lettered (or failed) */
+function unflight(ready) {
+  for (const e of ready ?? []) {
+    const l = inflight.get(e.tokId);
+    if (!l) continue;
+    const r = l.filter((x) => x !== e);
+    if (r.length) inflight.set(e.tokId, r); else inflight.delete(e.tokId);
+  }
+}
+/* a reaction's group at a smaller scale (f < 1): the word (planned or playing), its numbers, the group box */
+function shrink(plan, f) {
+  if (!(f > 0) || f >= 0.999) return;
+  try { if (plan.wordOpts && Number.isFinite(plan.wordOpts.scale)) plan.wordOpts.scale *= f; } catch { /* keep */ }
+  try { if (plan.wordH?.opts && Number.isFinite(plan.wordH.opts.scale)) { plan.wordH.opts.scale *= f; if (Number.isFinite(plan.wordH._s0)) plan.wordH._s0 *= f; } } catch { /* keep */ }
+  for (const h of plan.numH ?? []) try { if (h?.opts && Number.isFinite(h.opts.scale)) { h.opts.scale *= f; if (Number.isFinite(h._s0)) h._s0 *= f; } } catch { /* keep */ }
+  for (const o of plan.numOpts ?? []) if (Number.isFinite(o.scale)) o.scale *= f;
+  plan.cap *= f; plan.numCap *= f;
+  if (plan.gArgs) plan.gArgs = { ...plan.gArgs, cap: plan.gArgs.cap * f, numCap: plan.gArgs.numCap * f };
+  plan.box = { w: plan.box.w * f, h: plan.box.h * f };
+  if (plan.g) plan.g = { w: plan.g.w * f, h: plan.g.h * f, word: { dx: plan.g.word.dx * f, dy: plan.g.word.dy * f }, nums: plan.g.nums.map((q) => ({ dx: q.dx * f, dy: q.dy * f })) };
 }
 /* one series of blows per token (pure STREAK): a loss within STREAK.ms of the last one is the next step; anything else starts over */
 function streakOf(id, kind, seed) {
@@ -411,17 +526,18 @@ function measure(plan, tok = null) {
   plan.measured = true;
   /* the drawn box over the limits: the word (live, its handle's scale is read every frame) and the numbers not yet started shrink with it */
   const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: globalThis.innerWidth || 1600 });
-  if (f < 0.98) {
-    try { if (plan.wordH?.opts && Number.isFinite(plan.wordH.opts.scale)) { plan.wordH.opts.scale *= f; if (Number.isFinite(plan.wordH._s0)) plan.wordH._s0 *= f; } } catch { /* keep */ }
-    plan.cap *= f; plan.numCap *= f; plan.gArgs = { ...plan.gArgs, cap: plan.gArgs.cap * f, numCap: plan.gArgs.numCap * f };
-    for (const o of plan.numOpts ?? []) if (Number.isFinite(o.scale)) o.scale *= f;
-  }
-  const g = P.group({ ...plan.gArgs, aspect: hb.w, tall: hb.h });
-  plan.g = g; plan.box = { w: g.w, h: g.h };
+  if (f < 0.98) shrink(plan, f);      // the numbers already started (they wait for the blow's instant) shrink too
+  const regroup = () => { const g = P.group({ ...plan.gArgs, aspect: hb.w, tall: hb.h }); plan.g = g; plan.box = { w: g.w, h: g.h }; };
+  regroup();
   /* FXLT2 (ADVT2 6, 10): the side was chosen on the letter-count estimate; with the drawn box known (the first frame) it is chosen again,
      so a wider or taller word than estimated does not land on a neighbour, a panel or another word */
   try {
-    if (!plan.keepSlot && plan.blocked && tok && view.ok() && Math.abs(view.zoom() / plan.z0 - 1) < 0.02) plan.slot = P.chooseSlot(view.tokRect(tok), plan.box, view.safe(), plan.blocked);
+    /* FXI-TOKEN (ADVI 5): fitted again, smaller when no side is free at this size; a series keeps its side only while it still fits */
+    if (plan.blocked && tok && view.ok() && Math.abs(view.zoom() / plan.z0 - 1) < 0.02) {
+      const fit = P.fitSlot(view.tokRect(tok), plan.box, view.safe(), plan.blocked, { keep: plan.keep ?? null });
+      if (fit.k < 0.999) { shrink(plan, fit.k); regroup(); }
+      plan.slot = fit.slot;
+    }
   } catch (err) { once(err); }
 }
 function follow(tok, plan, member) {
@@ -460,31 +576,42 @@ function play(L, it, queued = false) {
       if (how === "queue" && !queued) { Promise.race([pe.done, new Promise((r) => setTimeout(r, Math.min(QUEUE_MAX, P.queueWait(age, pe.span))))]).then(() => play(L, it, true)); return; }
       /* the next blow of a series takes the last one's place at once (ADVT2 5: the second blow was drawn over the first one's shards) */
       const quick = (it.lk.step ?? 0) > 0;
-      for (const h of pe.hs) try { h.stop({ quick }); } catch { /* gone */ }
+      /* FXI-TOKEN: ... when the new word comes up (it starts before the blow's instant by its own entrance), not before: no empty token */
+      const gone = () => { for (const h of pe.hs) try { h.stop({ quick }); } catch { /* gone */ } };
+      const at = Number.isFinite(it.tHit) ? it.tHit - P.HIT_LEAD * 0.5 - performance.now() : 0;
+      if (at > 15) setTimeout(gone, at); else gone();
     }
+    /* a reaction that waited (queued) or comes late gets a new instant: never one in the past */
+    if (!Number.isFinite(it.tHit) || it.tHit < performance.now() + 30) it.tHit = performance.now() + P.HIT_LEAD;
+    const tHit = it.tHit;
     const lk = it.lk, hs = [], red = plan.wordOpts?.reduced ?? reduced();
-    const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, nums: [], done: null, addNumber: null, dropNumbers: null, slot: plan.slot, plan };
+    const entry = { hs, sev: it.sev, t0: Date.now(), span: lk.hold + 600, loss: !!it.loss, card: it.card ? true : null, nums: [], done: null, addNumber: null, dropNumbers: null, slot: plan.slot, plan };
     plan.numH = [];
     let word = null;
     playing.set(tok.id, entry);
-    if (plan.wordOpts) { word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1) }); word._s0 = plan.wordOpts.scale; hs.push(word); plan.wordH = word; }
-    /* the numbers come once the word has landed (review 13: a slow entrance let the number arrive first) */
+    /* FXI-TOKEN (ADVI 2, 13): the word strikes ON the blow's instant: it is started earlier by its own entrance's contact (pure contactMs; the
+       engine plans the word on the call and reads its start time in the next frame, so the start is set from the plan right here) */
+    let contact = 0;
+    if (plan.wordOpts) {
+      word = L.play(lk.word, { ...plan.wordOpts, at: follow(tok, plan, -1), startAt: tHit });
+      word._s0 = plan.wordOpts.scale; hs.push(word); plan.wordH = word;
+      try {
+        if (word.plan?.timeline && word.opts) { contact = P.contactMs(word.plan.timeline, red || !!word.reducedMotion); word.opts.startAt = Math.max(performance.now() + 1, tHit - contact); contact = tHit - word.opts.startAt; }
+      } catch (err) { once(err); }
+    }
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
-    if (it.impact) { const ih = impactOf(L, it, tok, word ? entMs : 0, red); if (ih) hs.push(ih); }
+    if (it.impact) { const ih = impactOf(L, it, tok, tHit, red); if (ih) hs.push(ih); }
     const numAt = (i) => follow(tok, plan, Math.min(i, plan.g.nums.length - 1));
-    const playNum = (n, o, i) => {
+    const playNum = (n, o, i, late = false) => {
       if (playing.get(tok.id) !== entry) return;
       if (n.stat === "health" && isCaptioned(tok.id)) return;      // the director's caption says it now (review 7)
       /* beside a word it leaves with the word; alone (a crowd) it stands as long as a word would (seen live: crowd numbers were gone
          in a second) */
-      const h = L.play(n.text, { ...o, hold: word ? Math.max(700, lk.hold - entMs * 0.6 + 150) : lk.hold + 300, at: numAt(i) });
+      const h = L.play(n.text, { ...o, hold: word ? Math.max(700, lk.hold + entMs - contact - P.NUM_AFTER - 250) : lk.hold + 300, at: numAt(i), ...(late ? {} : { startAt: tHit + (word ? P.NUM_AFTER : 0) }) });
       h.stat = n.stat; h._s0 = o.scale; plan.numH[Math.min(i, plan.g.nums.length - 1)] = h; hs.push(h); entry.nums.push(h); settle();
     };
-    const startNums = () => plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], i));
-    if (word && !red && plan.nums.length) {
-      const wait = Promise.race([word.ready ?? Promise.resolve(true), new Promise((r) => setTimeout(r, 600))]);
-      wait.then(() => setTimeout(startNums, Math.min(450, entMs * 0.6)));      // FXLT2 (ADVT2 5): on the landing, not long after it
-    } else startNums();
+    /* the numbers come once the word has struck (review 13), on the shared clock: NUM_AFTER the blow's instant */
+    plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], i));
     /* a Damage Taken card arriving late still gives a numberless reaction its told number (review 17) */
     entry.addNumber = (stat, sign, n) => {
       if (entry.nums.length || !plan.g.nums || isCaptioned(tok.id)) return;
@@ -492,7 +619,7 @@ function play(L, it, queued = false) {
       const o = { space: "world", token: tok.document, anchor: "center", reduced: red, ...layer(), mood: nl.mood, sound: nl.sound, hand: nl.hand, colors: nl.colors, magnitude: Math.max(0.3, lk.magnitude * 0.8), seed: `${it.seed}#late`, rotation: -lk.side * 3, in: nl.in, holdKind: "boil", out: nl.out };
       o.scale = scaleFor(L, nl.text, o, plan.numCap || plan.cap * P.SIZE_RULE.numK);
       if (!plan.g.nums.length && plan.gArgs) { plan.gArgs = { ...plan.gArgs, nums: [nl.text] }; plan.measured = false; const g = P.group(plan.gArgs); plan.g = g; plan.box = { w: g.w, h: g.h }; measure(plan); }
-      playNum(nl, o, 0);
+      playNum(nl, o, 0, true);
     };
     entry.dropNumbers = (stat) => { for (const h of entry.nums) if (!stat || h.stat === stat) try { h.stop({ quick: false }); } catch { /* gone */ } };
     settle();
@@ -505,16 +632,17 @@ function play(L, it, queued = false) {
   } catch (err) { once(err); }
 }
 
-/* WIRE1: the impact frame of a reaction, at the instant its word lands (the end of the word's entrance: the slam hits, the fall lands).
+/* WIRE1: the impact frame of a reaction, at the instant its word strikes (FXI-TOKEN: the blow's instant tHit, the same on every seat; the
+   word is started so that its contact falls on it).
    The token itself is the subject (the engine draws nothing for a token this user does not see, and its picture becomes the silhouette);
    the attacker gives the blow's direction only when this seat sees him (a direction would point at a hidden one). Reduced motion is handed
    in only as true (a false would override the OS switch); nothing here touches the photosensitivity guard. */
-export const IMPACT_ENT_MAX = 700;
-function impactOf(L, it, tok, landMs, red) {
+function impactOf(L, it, tok, tHit, red) {
   try {
     const I = L?.impact;
     if (!I?.play || !seatOf(tok).visible) return null;
-    const spec = { ...it.impact, subject: tok, seed: `${it.seed}|impact`, startAt: performance.now() + Math.min(IMPACT_ENT_MAX, Math.max(0, landMs || 0)) };
+    const { rung, ...imp } = it.impact;
+    const spec = { ...imp, subject: tok, seed: `${it.seed}|impact`, startAt: Number.isFinite(tHit) ? tHit : performance.now() };
     const src = it.pub?.src ? canvas.tokens?.get(it.pub.src) : null;
     if (src && src.id !== tok.id && seatOf(src).visible) spec.from = src;
     if (red) spec.reduced = true;
@@ -551,7 +679,7 @@ async function syncOwner(v = enabled()) {
   } catch (err) { Owner.setOn(false); once(err); }
 }
 function registerHooks() {
-  Hooks.on("canvasReady", () => { rememberAll(); pending.clear(); playing.clear(); streaks.clear(); });
+  Hooks.on("canvasReady", () => { rememberAll(); pending.clear(); playing.clear(); streaks.clear(); inflight.clear(); });
   Hooks.on("drawToken", (tok) => { if (!seen.has(tok.id)) remember(tok); });
   Hooks.on("updateActor", (actor, changes, options) => {
     try {
@@ -569,6 +697,7 @@ function registerHooks() {
   Hooks.on("moinenMapsDirector", onDirector);
   Hooks.on(TAC_HOOK, onEvent);
   Hooks.on(TAC_HOOK_GM, onEvent);
+  Hooks.on(SPLASH_HOOK, onSplash);
 }
 export function start(phases = {}) {
   try {

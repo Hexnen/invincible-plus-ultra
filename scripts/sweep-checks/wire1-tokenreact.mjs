@@ -94,7 +94,9 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
   const s = im[0]?.spec ?? {};
   ck(`... on the struck token itself (the engine's visibility and silhouette)`, s.subject === t);
   ck(`... kind of a blow (${s.kind}) under the full-field strengths for a small hit (${s.magnitude})`, ["hit", "heavy"].includes(s.kind) && s.magnitude < 0.85);
-  ck(`... at the instant the word lands: its entrance (500 ms) after the word starts (${Math.round((s.startAt ?? 0) - (word?.t ?? 0))} ms)`, word && Math.abs(s.startAt - word.t - 500) < 40);
+  /* FXI-TOKEN (ADVI 2): at the instant the word STRIKES (its entrance's contact; this stand-in marks none, so half of its 500 ms entrance),
+     not the end of its entrance: the word is started by the shared clock (startAt) so that it strikes on the impact */
+  ck(`... at the instant the word strikes: its contact (250 ms) after the word starts (${Math.round((s.startAt ?? 0) - (word?.o?.startAt ?? 0))} ms)`, word && Math.abs(s.startAt - word.o.startAt - Math.min(250, (await import("../tokenreact/pure.mjs")).HIT_LEAD)) < 8);      // a contact past HIT_LEAD: the word starts at once
   ck(`... seeded by the change everybody shares (${s.seed})`, typeof s.seed === "string" && s.seed.startsWith(`A|health|`) && s.seed.endsWith("|impact"));
   ck("... no reduced key when nothing asks for calm (a false would override the OS switch)", !("reduced" in s));
   ck("... and no key that could reach the photosensitivity guard", !("photosafe" in s) && !("flashes" in s) && !("vision" in s) && !("frames" in s));

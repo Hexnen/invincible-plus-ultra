@@ -188,13 +188,14 @@ const numSound = (sign, amt) => ({ loud: Math.min(1, 0.5 + amt * 0.3), sharp: 0.
    never over 7 % of the view's height; times the kind's severity, the amount, and a little more for a short word (the eye weighs a word
    by its area: "BĘC!" must not look lighter than "BACH!"). Below the floor the engine's legible clamp flattens every size to the same
    floor, so the base starts at the floor and severity lifts it from there. */
-export const SIZE_RULE = { tokenK: 0.3, floorVh: 0.026, floorMin: 15, floorMax: 30, baseMaxVh: 0.065, shortLen: 5, shortPow: 0.35, numK: 0.8, crowdNumK: 1,
+export const SIZE_RULE = { tokenK: 0.3, floorVh: 0.03, floorMin: 15, floorMax: 34, baseMaxVh: 0.065, shortLen: 5, shortPow: 0.35, numK: 0.8, crowdNumK: 1,
   capVh: 0.14, widthTok: 3, widthVw: 0.3, aspect: 0.85, amtLo: 0.8, amtK: 0.7 };      /* seen live (lane 8, grid 350 at zoom 0.42): with the base at 7 % of the view a fall's word ran 900 px wide; now the cap
   stays under 12 % of the view height and the word (estimated 0.85 cap per letter) under 3 tokens or 30 % of the view width, whichever is wider.
   numK: a number beside a word was 0.62 of its cap and read as a footnote live (lane 8 zoom 1.2: -3 at 47 px beside BLAMM! at 76 px, but the
   word's drawn box with depth and outline is 1.46 caps tall against the number's 0.96, so the number looked under half the word); 0.8 now.
   FXLT2 (ADVT2 7: a plain hit stood 50-60 px beside a 160-560 px token, -15 as big as -4): the base may reach 6.5 % of the view, the cap
   14 %, and the amount scales the word from 0.8x (the least) to 1.5x (the most) instead of +25 % at most */
+/* FXI-TOKEN (ADVI 16: at zoom 0.2 the words were very small): the legible floor is 3 % of the view height (was 2.6 %), at most 34 px */
 export function basePx(tokenPx, vh) {
   const floor = Math.max(SIZE_RULE.floorMin, Math.min(SIZE_RULE.floorMax, vh * SIZE_RULE.floorVh));
   return Math.max(floor, Math.min(vh * SIZE_RULE.baseMaxVh, tokenPx * SIZE_RULE.tokenK));
@@ -299,7 +300,9 @@ export const CROWD = { full: 3, shown: 10, gapFull: 140, gapCrowd: 70, markK: 0.
 export function stage(items) {
   const list = (items ?? []).filter(Boolean).slice().sort((a, b) => (b.sev ?? 0) - (a.sev ?? 0));
   const n = list.length, crowd = n > CROWD.full;
-  const full = n > 6 ? 2 : CROWD.full, scale = n <= 1 ? 1 : n <= 3 ? 0.95 : n <= 6 ? 0.86 : 0.78;
+  /* FXI-TOKEN (ADVI 15: seven tokens hit at once, only two had a word): three keep their word in a big crowd too; the words may shrink to a
+     free side now (fitSlot) */
+  const full = CROWD.full, scale = n <= 1 ? 1 : n <= 3 ? 0.95 : n <= 6 ? 0.86 : 0.78;
   let t = 0, shown = 0;
   return list.map((it, i) => {
     let mode = i < full ? "full" : it.hasNum ? "number" : "mark";
@@ -321,7 +324,9 @@ export function stage(items) {
 export const SLOTS = ["above", "aboveR", "aboveL", "right", "left", "below", "on"];
 /* FXLT2 (ADVT2 6, 10): a word over another word of the moment is unreadable (crowd words overlapped) and a word under a floating panel
    (the challenge cards, the map's VRAM meter, the party cards) is unseen: both now cost more than sticking out of the view */
-export const SLOT_K = { own: 0.6, token: 2.5, word: 4, panel: 8 };      // what covering costs: the own token, another token, another word, a panel
+/* FXI-TOKEN (ADVI 5: KA-WRAAAAMM!!, KA-THOOOOOM!! stood on their own token for the whole 1.3-1.5 s hold): the owner, words must not hide the
+   token for long; covering the own token now costs nearly as much as covering another (was 0.6) */
+export const SLOT_K = { own: 2, token: 2.5, word: 4, panel: 8 };      // what covering costs: the own token, another token, another word, a panel
 /** the group's centre for one slot. tok = { x, y, w, h } (screen), box = { w, h } (the group with its motion room) */
 export function slotPoint(slot, tok, box, gap = 4) {
   const cx = tok.x + tok.w / 2, cy = tok.y + tok.h / 2;
@@ -341,16 +346,31 @@ const inter = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.
 export function outside(r, safe) { return r.w * r.h - inter(r, { x: safe.l, y: safe.t, w: safe.r - safe.l, h: safe.b - safe.t }); }
 /** pick the slot. blocked = [{ x, y, w, h, k }] (k = weight, SLOT_K: other tokens, words); own = the token itself (its face) */
 export function chooseSlot(tok, box, safe, blocked = [], { prefer = 0 } = {}) {
-  let best = SLOTS[0], bestScore = Infinity;
-  const own = { ...tok, k: SLOT_K.own };
-  SLOTS.forEach((slot, i) => {
-    const r = rectAt(slotPoint(slot, tok, box), box);
-    let s = i * 0.04 * box.w * box.h;      // the order is the preference: above unless it costs
-    if (prefer && ((prefer > 0 && slot === "aboveL") || (prefer < 0 && slot === "aboveR"))) s += 0.02 * box.w * box.h;
-    for (const b of [own, ...blocked]) s += inter(r, b) * (b.k ?? 1);
-    if (safe) s += outside(r, safe) * 6;
-    if (s < bestScore) { bestScore = s; best = slot; }
-  });
+  return fitSlot(tok, box, safe, blocked, { prefer, ks: [1] }).slot;
+}
+/* FXI-TOKEN (ADVI 5, 16): a side that is not free is not taken at full size any more. A big word (a heavy blow, a grown step of a series)
+   whose every side covered a neighbour, a panel, its own token or the view's edge stood ON its token for its whole hold, or was pushed by
+   the view's edge back over it, or ~300 px away from a token in a corner. Now the group may shrink (FIT.ks) to take a free side, at a cost
+   that keeps it big when it can be; the slot "on" (over its own token) is never chosen; the side the series' last word took is kept (keep)
+   only while it stays about as good as the best (FIT.keepBonus): a word that grew out of its side moves. */
+export const FIT = { ks: [1, 0.86, 0.74, 0.62, 0.52], shrinkK: 1.6, keepBonus: 0.12 };
+export const FIT_SLOTS = SLOTS.filter((s) => s !== "on");
+/** -> { slot, k (scale of the group box), score } */
+export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null, ks = FIT.ks } = {}) {
+  let best = { slot: FIT_SLOTS[0], k: 1, score: Infinity };
+  const own = { ...tok, k: SLOT_K.own }, A = box.w * box.h;
+  for (const k of ks) {
+    const b = { w: box.w * k, h: box.h * k };
+    FIT_SLOTS.forEach((slot, i) => {
+      const r = rectAt(slotPoint(slot, tok, b), b);
+      let s = i * 0.04 * b.w * b.h + (1 - k) * A * FIT.shrinkK;      // the order is the preference: above unless it costs; then size
+      if (prefer && ((prefer > 0 && slot === "aboveL") || (prefer < 0 && slot === "aboveR"))) s += 0.02 * b.w * b.h;
+      if (keep && slot === keep) s -= FIT.keepBonus * A;
+      for (const q of [own, ...blocked]) s += inter(r, q) * (q.k ?? 1);
+      if (safe) s += outside(r, safe) * 6;
+      if (s < best.score) best = { slot, k, score: s };
+    });
+  }
   return best;
 }
 /** is the token on the view (see ON_VIEW) */
@@ -408,7 +428,9 @@ export function safeRect(view, covers = [], margin = 8) {
     the group centre */
 export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, up = 0.5, down = 0.25 }) {
   const ww = cap * Math.max(0.6, aspect) * (tall ? 1.04 : 1.12), wh = cap * (tall ? tall * 1.04 : 1.3);      // tall/aspect measured from the drawn word: a small margin only
-  const nw = nums.map((t) => numCap * (0.25 + 0.68 * letters(t) + (/^[+-]/.test(t) ? 0.55 : 0)));
+  /* FXI-TOKEN (ADVI 5: "-15" ran under the challenge cards, "-3" onto a neighbour): Bungee digits with their cut edge and extrusion draw about
+     0.8 of a cap wide, not 0.68: the group box (and so the side chosen for it) holds the whole number */
+  const nw = nums.map((t) => numCap * (0.25 + 0.8 * letters(t) + (/^[+-]/.test(t) ? 0.55 : 0)));
   const colW = nw.length ? Math.max(...nw) : 0, nh = numCap * 1.25;
   const gap = colW ? cap * 0.28 : 0;    // seen live: "BLAMM!-3" touched and read as one word; at 0.1 a cap the left-hand number still
                                         // touched (the drawn word overruns its hold box on the left, lane 8 still6); 0.28 clears both sides
@@ -426,17 +448,35 @@ export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, u
    So the impact is chosen from what the TABLE was told (publicSeat: a seat that sees the token but has no right to its numbers beyond the
    public rule), never from a seat's private knowledge: every seat that sees the token gets the same kind and strength, and nobody can read
    hidden Health out of how hard the frame hits. Blows and stress only (a heal, getting up, regaining nerve or stress spent by choice get
-   none). Strength 0..2 (the engine's: < 0.35 two small local drawings, to 0.85 the scene hard black and white for a tick, to 1.35
-   full-field frames and a hit-stop, above that the whole set): a blow by its amount; each next blow of a series (STREAK) one step stronger;
-   only going down (Health 0) reaches the whole set: every other blow stays under IMPACT_TOP however long the series. */
+   none).
+   FXI-TOKEN (ADVI 3: every blow of strength 0.35-0.85 played the same four drawings: a -1 scratch turned the whole view hard black and
+   white like a -15, and the steps of a series 0.44 / 0.64 / 0.84 could not be told apart): a blow is one RUNG of a ladder whose rungs are
+   different DRAWINGS with today's engine (impact/plan.mjs KINDS: a kind's tier changes at 0.35 / 0.85 / 1.35), not a strength that only
+   moves inside one tier:
+     0 scratch   hit   0.25   two small local drawings (star, splash) round the token
+     1 blow      hit   0.6    the scene in hard black and white for a tick, star, halftone
+     2 hard blow heavy 0.75   the same with cracks running out (shatter) instead of the halftone
+     3 heavy     heavy 1.05   black frame with the struck figure's silhouette, the inverted slam, a hit-stop, cracks
+     4 crushing  crit  1.3    speed lines, the silhouette frame, a longer slam, the chromatic split (the strongest a blow that does not
+                              fell gets)
+   then going down: ko 1.45..2 (the whole set, the longest hold). The rung of a blow is its size as the table knows it (a told number or a
+   public track; a blow whose size nobody was told is a scratch: it cannot say more without telling hidden Health), plus ONE RUNG for each
+   next blow of a series (STREAK), so -1, -1, -3 reads scratch, blow, crushing. A stunt's doubled damage [B2434] is one rung more in the
+   critical's frames; energy crackles (shock) on the rung's strength. Stress takes the same ladder in its own colour (void); stressed out is
+   a knock-out frame below the whole set. */
+export const RUNGS = [
+  { kind: "hit", magnitude: 0.25 },
+  { kind: "hit", magnitude: 0.6 },
+  { kind: "heavy", magnitude: 0.75 },
+  { kind: "heavy", magnitude: 1.05 },
+  { kind: "crit", magnitude: 1.3, tone: "fire" }
+];
 export const IMPACT = {
-  hit:    { kind: "hit",   base: 0.3,  amt: 0.45 },
-  heavy:  { kind: "heavy", base: 0.7,  amt: 0.45 },
-  stress: { kind: "hit",   base: 0.25, amt: 0.4, tone: "void" },
-  out:    { kind: "ko",    base: 0.95, amt: 0.3, tone: "void" },
-  down:   { kind: "ko",    base: 1.45, amt: 0.45 }
+  hit: { ladder: true }, heavy: { ladder: true }, stress: { ladder: true, tone: "void" },
+  out: { kind: "ko", base: 1.05, amt: 0.25, tone: "void" },
+  down: { kind: "ko", base: 1.45, amt: 0.45 }
 };
-export const IMPACT_STEP = 0.2;      // each next blow of one series
+export const IMPACT_STEP = 1;        // rungs per next blow of one series
 export const IMPACT_TOP = 1.34;      // the ceiling of every blow but going down (the engine's whole set starts at 1.35)
 /* what the hit was made of, from the fight's public damage event (`dtype`): energy crackles (the shock kind), the rest only tints */
 export const ENERGY = new Set(["electricity", "energy", "lightning", "laser", "plasma", "light", "sonic", "radiation", "force"]);
@@ -445,21 +485,61 @@ export const DTYPE_TONE = { fire: "fire", heat: "fire", electricity: "volt", lig
 /** the seat every seat agrees on: it sees the token, it is no GM and it may read the numbers only by the public rule (a player's hero, a
     challenge) */
 export const publicSeat = (who = {}) => ({ visible: true, staff: false, challenge: who.type === "challenge", reader: mayRead({ gm: false, type: who.type, playerHero: !!who.playerHero, observer: false }) });
-/** pub = { kind, amt } as the table knows it (audience(publicSeat) + amountOf); step = the blow's step in its series; o = { dtype, doubled }
-    -> null | { kind, magnitude, tone? } */
+/** the rung of a blow as the table knows it: pub = { kind, amt, known } (known = a number was told or the track is public) */
+export function rungOf(pub) {
+  const amt = Math.max(0, Math.min(1, Number(pub?.amt) || 0));
+  if (pub?.known === false) return 0;
+  if (pub?.kind === "heavy") return amt < 0.5 ? 2 : amt < 0.8 ? 3 : 4;
+  if (pub?.kind === "stress") return amt < 0.2 ? 0 : amt < 0.3 ? 1 : amt < 0.5 ? 2 : amt < 0.8 ? 3 : 4;
+  return amt < 0.2 ? 0 : 1;      // a hit: under three points
+}
+/** pub = { kind, amt, known } as the table knows it (audience(publicSeat) + amountOf); step = the blow's step in its series;
+    o = { dtype, doubled } -> null | { kind, magnitude, tone?, rung? } */
 export function impactOf(pub, step = 0, o = {}) {
   const row = IMPACT[pub?.kind];
   if (!row) return null;
   const amt = Math.max(0, Math.min(1, Number(pub.amt) || 0)), n = Math.max(0, Math.min(STREAK.max, Math.floor(Number(step) || 0)));
-  let kind = row.kind, m = row.base + row.amt * amt + IMPACT_STEP * n;
-  const blow = pub.kind === "hit" || pub.kind === "heavy";
-  if (blow && o.doubled) { kind = "crit"; m += 0.3; }      // a stunt doubled the damage [B2434]: the critical's frames
-  else if (blow && ENERGY.has(o.dtype)) kind = "shock";
-  m = pub.kind === "down" ? Math.max(1.4, Math.min(2, m)) : Math.min(IMPACT_TOP, m);
-  const out = { kind, magnitude: Math.round(m * 100) / 100 };
+  if (row.ladder) {
+    const blow = pub.kind === "hit" || pub.kind === "heavy";
+    let r = Math.min(RUNGS.length - 1, rungOf(pub) + IMPACT_STEP * n);
+    if (blow && o.doubled) r = Math.min(RUNGS.length - 1, r + 1);      // a stunt doubled the damage [B2434]: one rung more, the critical's frames
+    const R = RUNGS[r];
+    const kind = blow && o.doubled ? "crit" : blow && ENERGY.has(o.dtype) ? "shock" : R.kind;
+    const out = { kind, magnitude: Math.min(IMPACT_TOP, R.magnitude), rung: r };
+    const tone = row.tone ?? DTYPE_TONE[o.dtype] ?? (kind === "crit" && !o.doubled ? R.tone : null);
+    if (tone) out.tone = tone;
+    return out;
+  }
+  let m = row.base + row.amt * amt + 0.1 * n;
+  m = pub.kind === "down" ? Math.max(1.45, Math.min(2, m)) : Math.min(IMPACT_TOP, m);
+  const out = { kind: row.kind, magnitude: Math.round(m * 100) / 100 };
   const tone = row.tone ?? DTYPE_TONE[o.dtype];
   if (tone) out.tone = tone;
   return out;
+}
+
+/* ---------------------------------------------------------------- one instant for the word and its impact (FXI-TOKEN, ADVI 2 and 13)
+   The impact frame came 0.17-0.2 s AFTER the word had reached full size (it was timed to the end of the word's whole entrance), and the GM's
+   came 125-375 ms after the player's on the same blow (each seat timed it to its own word, and seats letter different words by privacy).
+   Now the blow has ONE instant, the same on every seat: HIT_LEAD after the moment plays; the impact starts on it, and each seat's word is
+   started earlier by its own entrance's CONTACT (the drawing where it strikes: the engine's own rule, the first drawing with an impact
+   flash, a burst or the landing's dust), so every word strikes exactly on the impact whatever its entrance. HIT_LEAD covers the longest
+   contact of the entrances these reactions use (a slam with its wind-up and flash: 5 drawings of the 24-tick clock), so no word has to
+   start in the past. Numbers pop NUM_AFTER the instant (once the word has struck: review 13). */
+export const TICK_MS = 1000 / 24;
+export const HIT_LEAD = Math.round(5 * TICK_MS + 20);
+export const NUM_AFTER = Math.round(4 * TICK_MS);
+/** the contact of a word's entrance in ms from its start (timeline = the engine's plan.timeline); reduced = the still entrance: 0 */
+export function contactMs(timeline, reduced = false) {
+  const ent = timeline?.ent;
+  if (reduced || !Array.isArray(ent) || !ent.length) return 0;
+  let a = 0, total = 0;
+  for (const p of ent) total += Number(p?.ticks) || 0;
+  for (const p of ent) {
+    if (p?.impact || p?.fx?.some?.((f) => f?.k === "burst" || f?.k === "dust")) return a * TICK_MS;
+    a += Number(p?.ticks) || 0;
+  }
+  return total * TICK_MS * 0.5;      // no marked contact: half-way through the entrance (the engine's own fallback for its push)
 }
 
 /** Is a roll card's roll one whose Resolve cost the character chose (a pushed roll, a power's stress cost)? The system lowers Resolve for

@@ -91,7 +91,8 @@ ck("C13 an unknown kind: nothing", P.look({ kind: "zzz", num: 1 }, null, "en", "
 const crowd = (k) => P.stage(Array.from({ length: k }, (_, i) => ({ key: `t${i}`, sev: i % 4 === 0 ? 9 : 3, hasNum: true })));
 ck("D1 one: full, no delay, full size", eq(crowd(1).map((x) => [x.mode, x.delay, x.scale]), [["full", 0, 1]]));
 ck("D2 three: all full, staggered", crowd(3).every((x) => x.mode === "full") && crowd(3)[2].delay > crowd(3)[1].delay);
-ck("D3 eight: the heaviest first, two in full, the rest numbers", (() => { const s = crowd(8); return s[0].sev === 9 && s.filter((x) => x.mode === "full").length === 2 && s.filter((x) => x.mode === "number").length === 6; })());
+/* FXI-TOKEN (ADVI 15: of seven tokens hit at once only two had a word): three in full in a big crowd too (they shrink to a free side) */
+ck("D3 eight: the heaviest first, three in full, the rest numbers", (() => { const s = crowd(8); return s[0].sev === 9 && s.filter((x) => x.mode === "full").length === 3 && s.filter((x) => x.mode === "number").length === 5; })());
 ck("D4 thirty: at most ten on the map, smaller", (() => { const s = crowd(30); return s.filter((x) => x.mode !== "none").length === P.CROWD.shown && s[0].scale < 1; })());
 ck("D5 a crowd's entrances are tight (the last within a second)", Math.max(...crowd(30).map((x) => x.delay)) < 1000);
 /* D6 changed by FXLT (review 6): a visibly hit enemy whose number a player may not see used to get nothing in a crowd (the single
