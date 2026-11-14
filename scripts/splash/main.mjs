@@ -464,7 +464,8 @@ hook('createChatMessage', async (message, options, userId) => {
     Stage.tellMoment({ phase: 'start', id });   // said again: the dice, the verdict and the camera took their time
     const ctl = Stage.play(ev, {
       rnd: mulberry32(hashString(id)), token, scale: cs('scale'), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'), momentId: id,
-      resolve, seed: id, targets: rollTargetsOf(message, ev), from: boardToken(message)   // ROLLTARGET: the impact on the target, the blow from the roller
+      targets: rollTargetsOf(message, ev), from: boardToken(message),   // ROLLTARGET: the impact on the target, the blow from the roller
+      resolve, seed: id
     });
     handed = !!ctl && !ctl.dead;
     } finally { if (!handed) Stage.tellMoment({ phase: 'done', id }); }
