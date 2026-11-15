@@ -20,6 +20,7 @@ export const OUTCOMES = () => ({
 /* ---------------------------------------------------------------- the page: panels as elements (mapseat.mjs's) */
 function fakeDom(W, H, ui = {}) {
   const cls = (self) => ({ add: (...c) => { const s = new Set(self.className.split(" ").filter(Boolean)); c.forEach((x) => s.add(x)); self.className = [...s].join(" "); }, remove: (...c) => { self.className = self.className.split(" ").filter((x) => x && !c.includes(x)).join(" "); }, contains: (c) => self.className.split(" ").includes(c) });
+  const all = [];
   const mk = (tag) => {
     const e = { tag, children: [], parent: null, dataset: {}, attrs: {}, className: "", textContent: "", anims: [],
       style: { _p: {}, setProperty(k, v) { this._p[k] = v; }, getPropertyValue(k) { return this._p[k] ?? ""; }, removeProperty(k) { delete this._p[k]; } },
@@ -35,6 +36,7 @@ function fakeDom(W, H, ui = {}) {
         const w = parseFloat(this.style.width) || 0, h = w * 0.6, cx = parseFloat(this.style.left) || W / 2, cy = parseFloat(this.style.top) || H / 2;
         return { left: cx - w / 2, top: cy - h / 2, width: w, height: h, right: cx + w / 2, bottom: cy + h / 2 };
       } };
+    all.push(e);   // SPLASHCLEAR: every element the stage made (its gauges are gone from the page once the moment ended)
     return e;
   };
   const R = (l, t, w, h) => ({ left: l, top: t, width: w, height: h, right: l + w, bottom: t + h });
@@ -52,8 +54,10 @@ function fakeDom(W, H, ui = {}) {
     ...(ui.desk ? { "#invincible-tactics-desk:not(.igd-collapsed) .igd": R(...ui.desk) } : {})
   };
   const els = {};
-  const el = (sel, r, i) => (els[sel + i] ??= { sel, className: "", getBoundingClientRect: () => r, get classList() { return cls(this); } });
-  const doc = { body: mk("body"), createElement: mk, createTextNode: (t) => ({ textContent: t }), createElementNS: (_, t) => mk(t), els, rects,
+  /* SPLASHCLEAR: a panel remembers whether it ever stepped back (ins-yield) during the moment (the stage takes the class off at its end) */
+  const el = (sel, r, i) => (els[sel + i] ??= { sel, className: "", yielded: false, getBoundingClientRect: () => r,
+    get classList() { const c = cls(this), self = this; return { ...c, add: (...x) => { if (x.includes("ins-yield")) self.yielded = true; c.add(...x); } }; } });
+  const doc = { all, body: mk("body"), createElement: mk, createTextNode: (t) => ({ textContent: t }), createElementNS: (_, t) => mk(t), els, rects,
     getElementById: (id) => (id === "sidebar" ? { getBoundingClientRect: () => rects["#sidebar"], offsetWidth: side } : null),
     querySelector: () => null, querySelectorAll: (s) => { const r = rects[s]; return r ? (Array.isArray(r) ? r : [r]).map((q, i) => el(s, q, i)) : []; } };
   globalThis.getComputedStyle = (e) => ({ zIndex: e.style?.zIndex ?? "auto", display: "block", visibility: "visible", opacity: "1" });
@@ -87,7 +91,7 @@ function fakeEngine(k = 1) {
 }
 
 /* ---------------------------------------------------------------- the boards (scene px; one square = GS) */
-const tok = (id, x, y, o = {}) => ({ id, name: id, visible: true, document: { id, x, y, width: 1, height: 1, hidden: !!o.hidden, texture: { scaleX: 1, scaleY: 1 } },
+const tok = (id, x, y, o = {}) => ({ id, name: id, visible: !o.hidden, document: { id, x, y, width: 1, height: 1, hidden: !!o.hidden, texture: { scaleX: 1, scaleY: 1 } },
   x, y, w: GS, h: GS, center: { x: x + GS / 2, y: y + GS / 2 } });
 const note = (id, x, y) => ({ id, visible: true, document: { id, x, y, iconSize: 40 } });
 /* empty: the roller and his target alone; warehouse: The Warehouse as it stands on lane 5 (2026-11-15, squares from Omni-Man at 2100,350);
@@ -95,12 +99,17 @@ const note = (id, x, y) => ({ id, visible: true, document: { id, x, y, iconSize:
 export const BOARDS = {
   empty: { at: [2800, 1700], nb: [], pin: null, tgt: [1.3, 0.2] },
   warehouse: { at: [2100, 350], nb: [[0, 1], [1, 3], [3, 3], [5, 5], [3, 2], [7, 5], [7, 6], [-4, 2], [1, 0]], pin: null, tgt: [0, 3] },
-  crowd: { at: [2800, 1700], nb: [[-1.2, -1.1], [0.3, 1.4], [1.1, 1.3], [-1.3, 0.4]], pin: [1.1, -1.2], tgt: [1.3, 0.2] }
+  crowd: { at: [2800, 1700], nb: [[-1.2, -1.1], [0.3, 1.4], [1.1, 1.3], [-1.3, 0.4]], pin: [1.1, -1.2], tgt: [1.3, 0.2] },
+  /* SPLASHCLEAR: The Warehouse as the world stands (prep WORLD-STATE: the Concussion Turret at 3150,1050 HIDDEN) with the map's zone badges
+     shown to every seat at their label points (read off the live view, ADVS2 A-crit) */
+  live: { at: [2100, 350], nb: [[0, 1], [1, 3], [3, 3], [5, 5], [3, 2, "hidden"], [7, 5], [7, 6], [-4, 2], [1, 0]], pin: null, tgt: [0, 3],
+    badges: [[2055, 195], [3400, 195], [2035, 1565], [2995, 1245]] }
 };
 export function board(kind) {
   const B = BOARDS[kind], [hx, hy] = B.at, tg = B.tgt;
   const hero = tok("HEROaaaaaaaaaaaa", hx, hy), target = tok("TARGETaaaaaaaaaa", hx + tg[0] * GS, hy + tg[1] * GS);
-  return { hero, target, tokens: [hero, target, ...B.nb.map(([dx, dy], i) => tok("NB" + i, hx + dx * GS, hy + dy * GS))], notes: B.pin ? [note("PIN", hx + B.pin[0] * GS, hy + B.pin[1] * GS)] : [] };
+  return { hero, target, tokens: [hero, target, ...B.nb.map(([dx, dy, h], i) => tok((h ? "HID" : "NB") + i, hx + dx * GS, hy + dy * GS, { hidden: h === "hidden" }))], notes: B.pin ? [note("PIN", hx + B.pin[0] * GS, hy + B.pin[1] * GS)] : [],
+    badges: (B.badges ?? []).map(([x, y], i) => ({ id: "z" + (i + 1), label: { x, y, r: 60 } })) };
 }
 
 /* the table's seats: the GM with his usual panels (sidebar closed, long scene list, map meter, challenges, party cards, a chat card, engine
@@ -140,7 +149,10 @@ export async function seatPlay(o) {
       stage: { scale: { x: zoom }, pivot: { x: center.x, y: center.y }, toLocal: (q) => ({ x: (q.x - pan.x) / zoom, y: (q.y - pan.y) / zoom }), toGlobal: toClient },
       app: { view: { getBoundingClientRect: () => ({ left: 0, top: 0 }) }, screen: { width: W, height: H } },
       tokens: { placeables: b.tokens, get: (id) => b.tokens.find((t) => t.id === id) }, notes: { placeables: b.notes } };
-    globalThis.game = { user: { isGM: gm } };
+    /* o.badgePlace "corner": the comic looks' default (the live Warehouse), the point from the public geometry (here: up-left of the label) */
+    const corner = (q) => ({ x: q.label.x - 0.4 * GS, y: q.label.y - 0.3 * GS });
+    const zapi = { zones: () => ({ zones: b.badges }), look: () => ({ numbers: "always", place: o.badgePlace ?? "center", who: o.badgeWho ?? "all" }), geometry: { cornerPoint: corner } };
+    globalThis.game = { user: { isGM: gm }, modules: { get: (id) => (id === "moinen-maps" && b.badges.length ? { active: true, api: { zones: zapi } } : null) } };
     const L = fakeEngine(k); Stage.setLetters(L); Stage.setLayer(o.layer ?? "screen");
     const tag = o.seedTag ?? `${o.bd ?? "empty"}-${o.outcome}`;
     const ctl = Stage.play(out.e, { token: b.hero, scale: 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0 });
@@ -154,13 +166,22 @@ export async function seatPlay(o) {
         l: at.x - w / 2, t: at.y - h / 2, r: at.x + w / 2, b: at.y + h / 2, size: c.o.size, at: c.o.at, startAt: c.o.startAt, reduced: !!c.o.reduced };
     });
     const res = { seat: s.name, W, H, zoom, layer: o.layer ?? "screen", outcome: o.outcome, bd: o.bd ?? "empty", drawn, rule: ctl?.seatRule ?? null, same: Stage.sameLog().at(-1) ?? null,
-      hero: box(b.hero), target: box(b.target), others: b.tokens.filter((x) => !/^(HERO|TARGET)/.test(x.id)).map(box), pins: b.notes.map((n) => { const q = toClient({ x: n.document.x, y: n.document.y }); return { x: q.x, y: q.y }; }),
-      ui: Object.fromEntries(Object.entries(document.rects).map(([kk, v]) => [kk, v])) };
+      hero: box(b.hero), target: box(b.target), others: b.tokens.filter((x) => !/^(HERO|TARGET|HID)/.test(x.id)).map(box), hidden: b.tokens.filter((x) => /^HID/.test(x.id)).map(box),
+      /* SPLASHCLEAR: the zone badges as moinen-maps draws them (radius min(19, max(8, 0.8 r zoom)) CSS px, a shaped badge up to 1.2 of that) */
+      badges: b.badges.map((q) => { const c = toClient(o.badgePlace === "corner" ? corner(q) : q.label), rr = Math.min(19, Math.max(8, 0.8 * q.label.r * zoom)) * 1.2; return { l: c.x - rr, t: c.y - rr, r: c.x + rr, b: c.y + rr }; }),
+      gauges: gaugesOf(document.all), pins: b.notes.map((n) => { const q = toClient({ x: n.document.x, y: n.document.y }); return { x: q.x, y: q.y }; }),
+      ui: Object.fromEntries(Object.entries(document.rects).map(([kk, v]) => [kk, v])), yielded: [...new Set(Object.values(document.els).filter((e) => e.yielded).map((e) => e.sel))] };
     Stage.clearAll(); Stage.setLayer("screen"); S.setReduced(false);
     return res;
   } finally { globalThis.setTimeout = st; globalThis.clearTimeout = ct; delete globalThis.canvas; delete globalThis.game; }
 }
 
+/* SPLASHCLEAR: the Resolve gauges the stage put on the page (fake box 150 x 60 at its left / top, scaled), client px */
+function gaugesOf(all = []) {
+  const out = [];
+  for (const c of all) if (String(c.className).includes("ins-badge") && c.style?.left) { const k = parseFloat(c.style.scale) || 1, l = parseFloat(c.style.left), t = parseFloat(c.style.top); out.push({ l, t, r: l + 150 * k, b: t + 60 * k }); }
+  return out;
+}
 /* the per-seat plan log: every L.play a seat makes for fixed seeds (text, size, place, layer), over seats x layers x boards x outcomes */
 export async function planLog(seats = Object.keys(SEATS), layers = ["screen", "overlay"], boards = Object.keys(BOARDS), outcomes = Object.keys(OUTCOMES())) {
   const rows = [];

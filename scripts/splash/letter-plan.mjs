@@ -848,7 +848,8 @@ export function seatFactor(safe, ts) {
   return ts && safe ? clamp(Math.sqrt((safe.r - safe.l) / Math.max(1, ts.r - ts.l) * (safe.b - safe.t) / Math.max(1, ts.b - ts.t)), 0.3, 1) : 1;
 }
 export function seatPlace(table, seat) {
-  const H0 = table.hero, H = seat.hero, safe = seat.safe, avoid = seat.avoid ?? [], gp = seat.gap ?? 6;
+  const H0 = table.hero, H = seat.hero, avoid = seat.avoid ?? [], gp = seat.gap ?? 6;
+  let safe = seat.safe;   // SPLASHCLEAR: the seat's wider room (seat.wide) replaces it for the last moves only
   const c = (q) => ({ x: (q.l + q.r) / 2, y: (q.t + q.b) / 2 });
   const parts0 = table.parts?.length === 2 ? table.parts : [table.rect];
   const pOf = (x, y) => { let bi = 0, bd = Infinity; parts0.forEach((q, i) => { const dd = Math.hypot(Math.max(0, q.l - x, x - q.r), Math.max(0, q.t - y, y - q.b)); if (dd < bd) { bd = dd; bi = i; } }); return bi; };
@@ -1067,6 +1068,17 @@ export function seatPlace(table, seat) {
   if (!ds && (ds = tryK(k0, true))) moved = 'far';
   if (!ds && (ds = tryJoined(k0, true))) moved = 'far';
   if (!ds) for (const kk of ks.slice(1)) { ds = tryK(kk, true) ?? tryJoined(kk, true); if (ds) { k = kk; moved = 'far'; break; } }
+  /* SPLASHCLEAR (the owner: a seat that cannot show the block clean may show it farther away but clean): before it lies on anything, the seat
+     looks again in ALL of its own free view (seat.wide: its window minus the bars it really has, its own panels still kept off by avoid), not
+     only inside the reserve band every seat keeps (the sidebar as if open): a GM with the sidebar folded has 300 px more room on the right
+     (live, crowded board: the critical's word over a bystander though the band's right edge was free map). Only here: every clean place in the
+     band keeps its picture (the same on every seat) */
+  if (!ds && seat.wide && (seat.wide.l < safe.l - 1 || seat.wide.t < safe.t - 1 || seat.wide.r > safe.r + 1 || seat.wide.b > safe.b + 1)) {
+    safe = { l: Math.min(safe.l, seat.wide.l), t: Math.min(safe.t, seat.wide.t), r: Math.max(safe.r, seat.wide.r), b: Math.max(safe.b, seat.wide.b) };
+    for (const kk of ks) { ds = tryK(kk, true) ?? tryJoined(kk, true); if (ds) { k = kk; moved = 'far'; break; } }
+    /* the wider room is for CLEAN places only: the least covering stays in the band (its weights already weigh a bystander against a panel) */
+    if (!ds) safe = seat.safe;
+  }
   if (!ds) {
     /* at each allowed size the parts' least covering places; the size that covers least wins (the bigger one on a tie) */
     moved = 'least';
