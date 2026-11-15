@@ -61,11 +61,13 @@ export function cleanTargets(list) {
 }
 /* tag = message.rolls[0].options.tactics; hits = token ids the exchange hit (null = the tactics told nothing: no fight on this client);
    flagged = the Foundry targets in the roll's flag; action = ev.action */
-export function rollTargets({ tag = null, hits = null, flagged = [], action = null } = {}) {
+/* WORDPOOL: atk = the roll is a blow (reader.classify: an attack by the system or the tactics, the system's Charge / Grapple); null = not
+   known (a roll from before WORDPOOL): then by its action, as before */
+export function rollTargets({ tag = null, hits = null, flagged = [], action = null, atk = null } = {}) {
   const tactical = !!(tag && typeof tag === "object" && typeof tag.inst === "string" && tag.inst);
   if (tactical && String(tag.key ?? "") === "attack" && Array.isArray(hits)) return cleanTargets([...hits].sort());
   if (tactical && String(tag.key ?? "") !== "attack") return [];
-  return BLOW_ACTIONS.includes(action) ? cleanTargets(flagged) : [];
+  return (typeof atk === 'boolean' ? atk : BLOW_ACTIONS.includes(action)) ? cleanTargets(flagged) : [];
 }
 /* look(id) -> "ok" (on this seat's board, seen, in its view) | "unseen" | "off" (seen, off the view) | "gone" (not on this scene) */
 export function targetChoice(ids, look) {

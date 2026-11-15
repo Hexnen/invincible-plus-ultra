@@ -3,7 +3,7 @@
    - MOD  = this module's id: settings live here (keys prefixed "splash", e.g. splashEnabled) and so does the module api.
    - FLAG = the OLD standalone module's id, kept ONLY as the flag namespace of message flags (flags['invincible-splash'].ev) and actor flags
             (flags['invincible-splash'].state), so rolls and heroes saved by the standalone module keep working. Do not rename it. */
-import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fmtOdds, oddsText, oddsLabel, LBL, setLabels, SAYS, say, SFX_KEYS, sfxWord, holdFor, playsAfter, ACTIONS, FAIL, SOFTFAIL, PUSHFAIL, PUSHPRE, WRECK, SHAPE_RANGE } from './logic.mjs';
+import { buildEvent, sanitizeState, hashString, mulberry32, hueOf, inkAccent, fmtOdds, oddsText, oddsLabel, LBL, setLabels, SAYS, say, SFX_KEYS, sfxWord, holdFor, playsAfter, wordFits, ACTIONS, FAIL, SOFTFAIL, PUSHFAIL, PUSHPRE, WRECK, SHAPE_RANGE } from './logic.mjs';
 import { readRoll, classify, heroSpeaker, publicResolve } from './reader.mjs';
 import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
@@ -203,7 +203,9 @@ async function wrapRollDialog() {
     D.prototype._roll = function (...args) {
       try {
         const attackType = this.attackInfo ? (this.attackInfo.attackType ?? (this.attribute === 'agility' ? 'shooting' : 'slugfest')) : undefined;
-        const c = classify({ attackType, flavor: this.rollName, names: Object.keys(this.breakdown ?? {}), attribute: this.attribute ?? null });
+        /* WORDPOOL: the power / gear behind the roll (its data name and type) and a tactical roll's own action (rollOptions.tactics.what) */
+        const item = this.item ? { name: String(this.item.name ?? '').slice(0, 80), type: this.item.type ?? null } : null;
+        const c = classify({ attackType, flavor: this.rollName, names: Object.keys(this.breakdown ?? {}), attribute: this.attribute ?? null, item, tactics: this.rollOptions?.tactics ?? null });
         this.rollOptions ??= {};
         this.rollOptions.splash = c;
       } catch (e) { console.warn(`${LOG} classify failed`, e); }
@@ -244,7 +246,9 @@ function eventFor(message, rd) {
   const ev = buildEvent(rd, { rng, st: null, dryN: 0, k0Offset: cs('k0') });
   const f = message.flags?.[FLAG]?.ev;
   if (f && typeof f === 'object' && f.v === 1) {
-    if (WORDS.has(f.word)) ev.word = f.word;
+    /* WORDPOOL: the roller's word only when it is one of this action's words at this rank (or its misses): a flag cannot put a punch's
+       word on a blast; the action and the rank are each seat's own reading of the same roll, so every seat keeps the same word */
+    if (WORDS.has(f.word) && wordFits(ev, f.word)) ev.word = f.word;
     if (ev.prefix && WORDS.has(f.prefix)) ev.prefix = f.prefix;
     if (ev.wreckWord && WORDS.has(f.wreckWord)) ev.wreckWord = f.wreckWord;
     if (!ev.fail && typeof f.shape === 'string' && Object.hasOwn(SHAPE_RANGE, f.shape)) ev.shape = f.shape;
@@ -282,7 +286,7 @@ function rollTargetsOf(message, ev) {
           .filter(td => td && !td.hidden).map(td => td.id);
       }
     }
-    const ids = IP.rollTargets({ tag, hits, flagged: ev.tg ?? [], action: ev.action });
+    const ids = IP.rollTargets({ tag, hits, flagged: ev.tg ?? [], action: ev.action, atk: ev.atk ?? null });
     return ids.filter(id => { const t = canvas?.tokens?.get?.(id); return !t || !t.document?.hidden; });
   } catch (e) { return []; }
 }

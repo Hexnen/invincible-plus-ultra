@@ -388,7 +388,7 @@ async function dialogFor(req, labelOf) {
   for (const m of req.pool?.mods ?? []) put(labelOf(m.source), num(m.dice));
   const sum = Object.values(breakdown).reduce((a, b) => a + b, 0);
   if (sum !== num(req.dice)) put(labelOf("floor"), num(req.dice) - sum);                 // the one-die floor of the rules library, shown as its own line
-  const opts = { actor, breakdown, bonus: 0, rollOptions: { tactics: { inst: req.inst, key: req.key, rid: req.rid, ...(req.combat ? { combat: req.combat } : {}), ...(req.mode === "gm" ? { mode: "gm" } : {}) } }, attribute: req.attr ?? undefined };
+  const opts = { actor, breakdown, bonus: 0, rollOptions: { tactics: { inst: req.inst, key: req.key, rid: req.rid, ...(req.combat ? { combat: req.combat } : {}), ...(req.mode === "gm" ? { mode: "gm" } : {}), ...(req.what && typeof req.what === "object" ? { what: req.what } : {}) } }, attribute: req.attr ?? undefined };      // WORDPOOL: the splash reads what the roll is
   if (req.maxPush === 0) opts.maxPush = 0;                                               // passive and defender rolls are never pushed [B2227], [B2241]
   return new Dlg(cardTitle(String(req.label ?? req.key), req.pool, labelOf), opts);      // U125 (c): Warning Call's dice named on the card
 }
