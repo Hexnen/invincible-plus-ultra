@@ -104,6 +104,9 @@
    moment into this wrapper; fixed at inset 0, so client px are its px (the layer's clip and z-index hold for it too). The Resolve gauge
    stays a DOM gauge, its number is lettered just above it, so the gauge's own header line goes. */
 .ins-letters { position: fixed; inset: 0; pointer-events: none; }
+/* MAPSEAT: a seat's own floating panel over the map moment's block steps back while the block is up (hover brings it back) */
+.ins-yield { opacity: 0.12 !important; transition: opacity 0.15s ease-out; }
+.ins-yield:hover, .ins-yield:focus-within { opacity: 1 !important; }
 /* FXLD: the Resolve gauge is part of the composed block (stage.mjs places it beside its lettered number, client px) */
 .ins-letters .ins-badge { position: absolute; transform-origin: top left; width: max-content; max-width: none; }   /* FXLD2: the lines are nowrap; a max-width only made the box narrower than its text */
 .ins-raywrap { position: fixed; inset: 0 var(--ins-right, 0px) 0 0; pointer-events: none; }   /* FXLD2: the still wrapper that cuts the hero's clear spot out of the turning rays (Backdrop on) */   /* max-content: placed near the right edge it wrapped to two lines (live 1920) and outgrew its measured slot */

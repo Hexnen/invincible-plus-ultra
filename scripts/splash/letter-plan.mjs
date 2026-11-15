@@ -378,7 +378,30 @@ export function composeMoment(items, frame, measure = estimateBox) {
   /* a board with no clean place for the critical at its floor: its word may come down to TIGHT_CRIT of that floor (still over any strong
      roll's floor) before the block stands on a token */
   const tight = items.some(it => it.rank === 'critical') ? items.map(it => (it.rank === 'critical' && it.min ? { ...it, min: it.min * TIGHT_CRIT } : it)) : null;
-  return whole(false) ?? split(false) ?? (tight && (whole(false, tight) ?? split(false, tight))) ?? whole(true) ?? split(true) ?? (tight && (whole(true, tight) ?? split(true, tight))) ?? best;
+  const found = whole(false) ?? split(false) ?? (tight && (whole(false, tight) ?? split(false, tight))) ?? whole(true) ?? split(true) ?? (tight && (whole(true, tight) ?? split(true, tight)));
+  if (found) return found;
+  /* MAPSEAT (CRITPEAK-9: on a crowded board the critical lay over a bystander's edge): the map's board window holds no clean place for the
+     block: it is sought again in the WIDER shared window (frame.wide, the same on every seat) before it lies on anyone. A seat whose view
+     does not show that place plays the moment on its screen layer (same-picture.mjs mapSeat) */
+  if (frame.wide && best && coverMax(best, frame) > RIM_OK) {
+    const o = composeMoment(items, { ...frame, safe: frame.wide, wide: null }, measure);
+    if (o && coverMax(o, frame) < coverMax(best, frame)) return o;
+  }
+  return best;
+}
+/* MAPSEAT: a block that touches a token's box by at most RIM_OK of it (its rim, a few px of the art's edge) does not lie on it */
+export const RIM_OK = 0.02;
+/* the largest share of any token's box (the frame's token and every token obstacle) the block's parts cover */
+export function coverMax(o, frame) {
+  const boxes = [frame.token, ...(frame.avoid ?? []).filter((a) => (a.w ?? 1) >= OTHER_W)].filter(Boolean);
+  let worst = 0;
+  for (const q of boxes) {
+    const A = Math.max(1, (q.r - q.l) * (q.b - q.t));
+    let c = 0;
+    for (const it of o.items ?? []) c += area({ l: it.x - it.w / 2, t: it.y - it.h / 2, r: it.x + it.w / 2, b: it.y + it.h / 2 }, q);
+    worst = Math.max(worst, c / A);
+  }
+  return worst;
 }
 export const TIGHT_CRIT = 0.85;
 export const HIT_EPS = 0.0002;

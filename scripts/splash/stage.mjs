@@ -261,10 +261,16 @@ function engineOpts(it, base, hands) {
   else if (Number.isFinite(it.from)) o.from = it.from;
   if (it.colors) o.colors = it.colors.slice();
   if (it.hand) o.hand = { ...it.hand };
+  /* MAPSEAT (ADVX 18: the map word low in contrast among the map's own drawings): on the board the sound words get the letterer's paper rim,
+     a light cut edge round the whole word outside its ink keyline (the engine's look.outline "sticker"; KEEPBOX draws a word over an impact
+     the same way). It knocks the map's lines and textures out of the word's edge on dark and mid ground; on bright ground the ink keyline
+     and the dark duplicate inside it carry the shape. Not a backdrop (it follows the letters); the screen layers keep their look. */
+  if (base.map && MAP_RIM_ROLES.has(it.role)) o.look = { ...(o.look ?? {}), outline: 'sticker' };
   for (const k of ['in', 'out', 'holdKind']) if (it[k]) o[k] = it[k];
   return o;
 }
 const SIDE_FROM = { above: 90, below: -90, right: 180, left: 0, focus: 90 };
+export const MAP_RIM_ROLES = new Set(['word', 'pre', 'wreck']);
 
 /* ---- FXLD2 (ADVD2 1, 3): ONE moment for the table.
    On a map layer the block is laid out in SCENE units from what every seat shares: the hero token's document (not its animated mesh),
@@ -278,6 +284,7 @@ const SIDE_FROM = { above: 90, below: -90, right: 180, left: 0, focus: 90 };
 /* a map moment is sized as on a window GRID_VH grid squares tall: a mid roll's word is about half a square tall, a critical's more than
    a square (live, The Warehouse: a 350 px grid seen at zoom 0.75 shows about 4 squares in 1080 px; 10.8 made the words 2.6x too big) */
 export const GRID_VH = 4.5;   // live 2026-11-13: 5 left no clean place by a roller with neighbours and a pin round him
+export const MAPSEAT_WIDE = 3;   // MAPSEAT (provisional MAPSEAT-3): how much wider than the board window a crowded board looks for room
 const docOf = (t) => t?.document ?? null;
 function docBox(t, gs) {
   const d = docOf(t) ?? {};
@@ -305,8 +312,17 @@ export function sharedFrame(hero, targets = []) {
   const token = docBox(hero, gs);
   const sr = C?.dimensions?.sceneRect;
   const ins = 0.1 * gs;
-  const safe = sr ? { l: sr.x + ins, t: sr.y + ins, r: sr.x + sr.width - ins, b: sr.y + sr.height - ins }
+  const scene = sr ? { l: sr.x + ins, t: sr.y + ins, r: sr.x + sr.width - ins, b: sr.y + sr.height - ins }
     : { l: token.x - 40 * gs, t: token.y - 40 * gs, r: token.x + 40 * gs, b: token.y + 40 * gs };
+  /* MAPSEAT: the block is laid out inside the BOARD WINDOW (same-picture.mjs boardWindow: the reference view centred on the roller at the
+     board's reference scale), cut by the scene; one rectangle on every seat, whatever its view. A roller at the scene's edge keeps at least
+     the part of the window inside the scene */
+  /* a roller near the scene's edge: the window slides into the scene (it keeps its size where the scene allows), as a seat's view would */
+  const inScene = (w) => { const d = SP.shiftInto(w, scene); return meet(scene, { l: w.l + d.dx, t: w.t + d.dy, r: w.r + d.dx, b: w.b + d.dy }); };
+  const q = inScene(SP.boardWindow(token, GRID_VH * gs / SP.REF_VH));
+  const safe = q.r - q.l > 2 * gs && q.b - q.t > 2 * gs ? q : scene;
+  /* the wider window a crowded board searches before the block lies on a token (LP.composeMoment, MAPSEAT_WIDE x the board window) */
+  const wq = inScene(SP.boardWindow(token, MAPSEAT_WIDE * GRID_VH * gs / SP.REF_VH)), wide = wq.r - wq.l > safe.r - safe.l || wq.b - wq.t > safe.b - safe.t ? wq : null;
   const avoid = [];
   for (const t of C?.tokens?.placeables ?? []) {
     const d = docOf(t);
@@ -318,7 +334,7 @@ export function sharedFrame(hero, targets = []) {
   /* CRITPEAK: nothing of this seat's view sizes the block (SAMEPIC: one scene place and one scene size on every seat, whatever its zoom):
      the ranks' sizes are shares of the board height (vh). A seat zoomed so far out that the board word is a speck plays the moment on its
      screen layer instead (playLetters, LP.MAP_READ) */
-  return { vh, freeW: vh * 16 / 9, safe, token, avoid, gap: Math.round(0.12 * gs), focus: { x: token.x, y: token.y }, zoom };
+  return { vh, freeW: vh * 16 / 9, safe, wide, token, avoid, gap: Math.round(0.12 * gs), focus: { x: token.x, y: token.y }, zoom };
 }
 /* the bars and panels that are not at an edge: the party cards, the map's VRAM meter and pins panel, the GM's desk, the tactics dock */
 export const UI_AVOID = ['#invincible-party li', '.mm-vram', '#mm-filter', '#invincible-tactics-desk:not(.igd-collapsed) .igd', '#ich-dock'];
@@ -429,6 +445,33 @@ function whyMoved(r, loc) {
   return o;
 }
 function seatOwn() { return [...uiAvoid(), ...boxesOf([...UI_TOP, '#mm-dir-bar', ...UI_RIGHT])]; }
+/* MAPSEAT: on a map layer this seat's own floating interface steps back while the board block is up (provisional MAPSEAT-2). A panel is
+   HTML over the board: before, the GM's panels (the map meter, the challenges, the party cards, his desk, the scene list) moved and shrank
+   HIS block only. Now the block stays the board's and a panel over any of its parts fades to a trace for the moment (hovering it brings it
+   back, so the GM can still use it); the screen layer draws over the same panels (SAMEPIC-3), so both layers read alike. Foundry's edge
+   bars (tool column, hotbar, players list, the open sidebar) do not fade: they are this seat's view edge (SP.mapSeat 'cut'). */
+export const YIELD_PANELS = [...UI_AVOID, ...UI_TOP, '#mm-dir-bar', ...UI_RIGHT, ...UI_WINDOWS];
+export const YIELD_CLASS = 'ins-yield';
+function yieldPanels(ctl) {
+  if (!ctl?.shared || !ctl.layout?.items?.length) return;
+  const boxes = [];
+  for (const it of ctl.layout.items) {
+    const p = LP.PAD * (it.S || 0), a = toClient({ x: it.x - it.w / 2 - p, y: it.y - it.h / 2 - p }), c = toClient({ x: it.x + it.w / 2 + p, y: it.y + it.h / 2 + p });
+    if (a && c) boxes.push({ l: a.x, t: a.y, r: c.x, b: c.y });
+  }
+  ctl.yielded ??= new Set();
+  for (const sel of YIELD_PANELS) {
+    try {
+      for (const e of document.querySelectorAll(sel)) {
+        if (!e?.classList || ctl.yielded.has(e)) continue;
+        const q = e.getBoundingClientRect?.();
+        if (!q || !(q.width > 0) || !(q.height > 0)) continue;
+        if (boxes.some((b) => b.l < q.right && b.r > q.left && b.t < q.bottom && b.b > q.top)) { e.classList.add(YIELD_CLASS); ctl.yielded.add(e); }
+      }
+    } catch (e) { /* a selector this Foundry does not know */ }
+  }
+}
+function unyield(ctl) { for (const e of ctl?.yielded ?? []) { try { e.classList.remove(YIELD_CLASS); } catch (e2) { /* gone */ } } ctl?.yielded?.clear?.(); }
 /* lay: the layer this moment is drawn on (a map-layer seat whose moment has no board place draws it on the screen layer: CRITPEAK) */
 function localScreen(lay = LAYER) {
   measureArea();
@@ -471,24 +514,13 @@ function compose(ctl, items, extra = {}) {
       gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: (std.l + std.r) / 2, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
   }
   let out = composeIn(ctl, items, frame), same = 'none', why = null, fit = null;  if (ctl.shared) {
-    /* FXI-SPLASH (ADVI 6) + SAMEPIC: the map block is laid out from what every seat shares; when it would lie past the STANDARD view while
-       its token is in view, it is laid out again inside that view (the same on every seat with this view: before, each seat used its own
-       measured bars, and the GM's scene bar moved his block 80 scene px down from the player's: ADVX 1, take D) */
-    const hc = ctl.hero ? sharedTokenBox(ctl.hero) : null, std = sceneRectOf(standardSafe(hc)), T = frame.token;
-    fit = std ? meet(frame.safe, std) : frame.safe;   // CRITPEAK: the part of the scene this view shows (same rect for one view)
-    const tokIn = (v) => !!v && !!T && T.r > v.l && T.l < v.r && T.b > v.t && T.t < v.b;
-    if (tokIn(std) && !inRect(out.rect, std)) {
-      const q = meet(frame.safe, std);
-      if (q.r - q.l >= 0.25 * frame.vh && q.b - q.t >= 0.25 * frame.vh) { const f2 = { ...frame, safe: q }; out = composeIn(ctl, items, f2); out.seat = true; frame = f2; }
-    }
-    /* tier 3: this seat's own bars (beyond the reserve) and panels hide the board under them: only then does this seat move its block */
-    const real = sceneRectOf(seatBand());   // the band (on a map layer its core part also keeps inside the scene rectangle)
-    if (tokIn(real)) {
-      const loc = { safe: real, avoid: [...seatOwn(), ...boxesOf(UI_WINDOWS)].map(sceneRectOf).filter(Boolean) };
-      why = whyMoved(out.rect, loc);
-      const fx = LP.localFix(out, frame, loc, std, () => { const q = meet(frame.safe, real); return q.r - q.l >= 0.25 * frame.vh && q.b - q.t >= 0.25 * frame.vh ? composeIn(ctl, items, { ...frame, safe: q, avoid: [...frame.avoid, ...loc.avoid] }) : null; });
-      out = fx.out; same = fx.moved;
-    }
+    /* MAPSEAT: the map block is the board's: laid out once from what every seat shares (sharedFrame, the board window) and never moved,
+       shrunk or laid out again by one seat's view, window or panels. Before (FXI-SPLASH + SAMEPIC + CRITPEAK) it was laid out again inside
+       this seat's standard view, shrunk into the part of the scene this view shows and moved off this seat's own panels: one roll, another
+       block per zoom and per seat (live: the GM's critical 99-113 px against the player's 120.5, a strong roll 63-68 against 83).
+       fit = what this seat shows of the board (its window minus Foundry's bars where they stand, in scene px): only the seat's layer rule
+       reads it (playLetters, SP.mapSeat) */
+    fit = sceneRectOf(safeRect({ core: true }));
   } else {
     const loc = localScreen(WORLD_LAYERS.includes(LAYER) ? 'screen' : LAYER), std = frame.safe;   // CRITPEAK: off the board it is drawn on the screen layer
     why = whyMoved(out.rect, loc);
@@ -503,45 +535,13 @@ function composeIn(ctl, items, frame) {
   const anchored = !!frame.token;
   let side = 'above', out = null;
   for (let pass = 0; pass < 2; pass++) {
-    measureItems(items, { seed: ctl.seed, from: anchored ? SIDE_FROM[side] : null });
+    measureItems(items, { seed: ctl.seed, from: anchored ? SIDE_FROM[side] : null, map: !!ctl.shared });
     out = LP.composeMoment(items, frame, measureFn);
     if (!anchored || out.side === side) break;
     side = out.side;
   }
   return out;
 }
-/* CRITPEAK: the shared block scaled about its centre to fit q, then shifted into it (parts, gauge and sizes with it) */
-function fitInPlace(out, q) {
-  const r = out.rect, k = Math.min(1, 0.98 * (q.r - q.l) / (r.r - r.l), 0.98 * (q.b - q.t) / (r.b - r.t));
-  const ax = (r.l + r.r) / 2, ay = (r.t + r.b) / 2;
-  const tf = (z) => ({ l: ax + (z.l - ax) * k, t: ay + (z.t - ay) * k, r: ax + (z.r - ax) * k, b: ay + (z.b - ay) * k });
-  const r2 = tf(r), d = SP.shiftInto(r2, q);
-  const mv = (x, a0, dd) => Math.round(a0 + (x - a0) * k + dd);
-  for (const it of out.items) { it.x = mv(it.x, ax, d.dx); it.y = mv(it.y, ay, d.dy); it.S = Math.round(it.S * k * 10) / 10; it.w *= k; it.h *= k; }
-  if (out.gauge) { out.gauge.x = mv(out.gauge.x, ax, d.dx); out.gauge.y = mv(out.gauge.y, ay, d.dy); out.gauge.w *= k; out.gauge.h *= k; out.gauge.k = (out.gauge.k ?? 1) * k; }
-  const sh = (z) => ({ l: z.l + d.dx, t: z.t + d.dy, r: z.r + d.dx, b: z.b + d.dy });
-  out.rect = sh(r2); if (out.parts) out.parts = out.parts.map((z) => sh(tf(z)));
-  out.f = (out.f ?? 1) * k; out.same = 'shrink';
-  return out;
-}
-/* CRITPEAK: how much of the roller and his target a layout covers (the larger share of either box; the frame's token and its heavy
-   obstacles: the hero and the target weigh TARGET_W) */
-function coverOf(lay) {
-  const fr = lay?.frame ?? {}, boxes = [fr.token, ...(fr.avoid ?? []).filter((a) => (a.w ?? 1) >= LP.TARGET_W)].filter(Boolean);
-  let worst = 0;
-  for (const q of boxes) {
-    const A = Math.max(1, (q.r - q.l) * (q.b - q.t));
-    let c = 0;
-    for (const it of lay.items ?? []) {
-      const l = it.x - it.w / 2, r = it.x + it.w / 2, t = it.y - it.h / 2, b = it.y + it.h / 2;
-      c += Math.max(0, Math.min(r, q.r) - Math.max(l, q.l)) * Math.max(0, Math.min(b, q.b) - Math.max(t, q.t));
-    }
-    worst = Math.max(worst, c / A);
-  }
-  return worst;
-}
-const fitsIn = (r, q) => !!r && !!q && r.r - r.l <= q.r - q.l + 1 && r.b - r.t <= q.b - q.t + 1 && Number.isFinite(r.l);
-const inRect = (r, q) => r.l >= q.l - 1 && r.t >= q.t - 1 && r.r <= q.r + 1 && r.b <= q.b + 1;
 /* a client rect in scene px (null when the canvas cannot say) */
 function sceneRectOf(s) {
   try {
@@ -564,7 +564,7 @@ function letterOne(ctl, it) {
   if (!LE || ctl.dead) return null;
   const lw = letterWrap(ctl);
   overDice();   // CRITPEAK (ADVX 3: resting dice drew over the critical's captions): the dice canvas may come up after the moment opened
-  const o = { ...(it._o ?? engineOpts(it, { seed: ctl.seed }, ctl.hands)) };
+  const o = { ...(it._o ?? engineOpts(it, { seed: ctl.seed, map: !!ctl.shared }, ctl.hands)) };
   o.avoid = [...new Set([...(o.avoid ?? []), ...ctl.hands])];   // the hands measured first are the real ones; the played ones join (a set: same choice)
   const sizeK = it._m?.sizeK || 1, k = ctl.k || 1;
   Object.assign(o, { space: 'screen', parent: lw, at: { x: it.x, y: it.y }, fit: 'exact', size: Math.round((it.S / (sizeK * k)) * 100) / 100,
@@ -670,6 +670,7 @@ function followPan(ctl) {
   if (ctl.shared) {
     /* FXLD2: each HTML part is pinned to its own scene point (the gauge also scales with the zoom, as the words do) */
     const z = globalThis.canvas?.stage?.scale?.x || 1;
+    if (ctl.yielded?.size) yieldPanels(ctl);   // MAPSEAT: the board moved under the panels
     for (const p of ctl.pins || []) {
       const c = toClient(p.at);
       if (!c) continue;
@@ -804,19 +805,14 @@ function playLetters(ev, o) {
      shows (the map layer cuts the words at the scene's edge), or this seat's own guard would shrink it under its rank's floor: the moment then
      plays on the screen layer, by the token as every seat with this view sees it */
   const zoomNow = Math.max(0.02, Number(globalThis.canvas?.stage?.scale?.x) || 1);
-  const speck = (it) => it.S * zoomNow < (it.role === 'word' || it.role === 'pre' ? LP.MAP_READ.word : LP.MAP_READ.info);
-  /* a close view shows less of the board than the block needs: this seat shrinks the shared block in place, whole, into what it shows (tier 3:
-     same side, same order, the ranks kept, since every block of this view shrinks to the same view) */
-  if (ctl.shared && lay.fit && !inRect(lay.rect, lay.fit)) {
-    const fx = LP.localFix(lay, lay.frame, { safe: lay.fit, avoid: [] }, null, null);
-    if (fx.moved !== 'none') { lay = fx.out; lay.same = fx.moved; }
-  }
-  /* a seat's shrink that takes a part under its rank's floor (the critical's tight floor: TIGHT_CRIT) breaks the ranks on this seat */
-  const under = (it) => it.S < LP.TIGHT_CRIT * LP.sizeOf(it, lay.frame, 0).lo - 0.5;
-  const mustScreen = ctl.shared && (!fitsIn(lay.rect, lay.fit ?? lay.frame?.safe) || lay.items.some(speck));
-  if (ctl.shared && (mustScreen || (lay.same === 'shrink' && lay.items.some(under)))) {
-    const big = !lay.items.some(speck), mw = lay.items.find((it) => it.role === 'word');
-    const mapLay = lay, mapScale = ctl.userScale;
+  /* MAPSEAT: ONE rule decides this seat's layer (SP.mapSeat): the board block as every seat has it, or, when this seat cannot show it well
+     (a part a speck at its zoom, or outside what its view shows of the board), the moment on its screen layer. Never a copy of the board
+     block moved or shrunk for this seat (before: shrunk in place into a close view, moved off the GM's own panels, compared by cover) */
+  const seatRule = ctl.shared ? SP.mapSeat([lay.rect], lay.fit, lay.items.map((it) => ({ px: it.S * zoomNow, word: it.role === 'word' || it.role === 'pre' })), LP.MAP_READ) : null;
+  if (ctl.shared) { ctl.seatRule = seatRule; ctl.board = lay; }   // (kept for inspection: the table's board block, also on a seat that plays it on its screen)
+  const mustScreen = ctl.shared && seatRule !== 'ok';
+  if (mustScreen) {
+    const big = seatRule !== 'speck', mw = lay.items.find((it) => it.role === 'word');
     const onScreen = mw ? mw.S * zoomNow : 0;   // the word as this seat's close view drew the board block
     ctl.shared = false; ctl.userScale = o.scale || 1;
     if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
@@ -825,16 +821,16 @@ function playLetters(ev, o) {
        are on this very view (the ranks stay in order on one seat: a critical never under the strong roll before it) */
     const sw = lay.items.find((it) => it.role === 'word');
     if (big && sw && onScreen > sw.S * 1.02) {
+      /* MAPSEAT: never onto a token the plain screen picture keeps off (the crowded board at 0.5: the board block stood in the wide window
+         off this view, and the upscaled screen block lay over a bystander, 91 % of its box, where the plain one stood clean) */
+      const plain = lay, plainGauge = gauge, uScale = ctl.userScale;
       ctl.userScale = (o.scale || 1) * Math.min(LP.MAP_UP, onScreen / sw.S);
       if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
       lay = compose(ctl, plan.items, gauge ? { gauge } : {});
-    }
-    /* only this seat's own panels took the board block under its floor: the screen layout is laid out on the reference screen, where a
-       crowded board may leave no clean place (live, The Warehouse at 0.45, the GM's screen fallback: the critical's long word across the
-       hero's head, 45 %). The board block, smaller on this seat, stays when the screen one would cover the roller or his target more */
-    if (!mustScreen && coverOf(lay) > coverOf(mapLay) + 0.04) {
-      ctl.shared = true; ctl.userScale = mapScale; lay = mapLay;
-      if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
+      if (plain.frame && lay.frame && LP.coverMax(lay, lay.frame) > Math.max(LP.RIM_OK, LP.coverMax(plain, plain.frame))) {
+        lay = plain; gauge = plainGauge; ctl.userScale = uScale;
+        if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
+      }
     }
   }
   ctl.k = lay.k; ctl.rect = lay.rect; ctl.layout = lay;   // (kept for inspection: frame, side, hit)
@@ -853,6 +849,7 @@ function playLetters(ev, o) {
   for (const it of lay.items) {
     at(() => {
       if (it.role === 'stress') stressGauge(ctl, ev.stress, resolve, lay.gauge);
+      if (ctl.shared) yieldPanels(ctl);   // MAPSEAT: this seat's own panels over the board block step back (each part as it comes)
       const h = letterOne(ctl, it);
       /* FXLD (ADVD 14): the engine switched off under us (its master switch) -> the classic splash instead of rays with no word */
       if (first && h && (h.off === true || (h.alive === false && LE?.prefs?.enabled === false))) { ctl.momentId = null; ctl.landed = false; endCtl(ctl, true); playClassic(ev, o); first = false; return; }   // the classic splash tells the story from here
@@ -1180,6 +1177,7 @@ function endCtl(ctl, quick) {
   ctl.dead = true;
   ctl.timers.forEach(clearTimeout);
   tellDone(ctl);   // FIN-CALLERS (FXIT-S1): over or dropped, on every way out
+  unyield(ctl);    // MAPSEAT: the panels that stepped back come back
   if (active.get(ctl.key) === ctl) active.delete(ctl.key);
   if (ctl.lw) stopLetters(ctl, quick);   // LDIC: a newer splash on the same place, the limit, a scene change: the words exit (quick = at once)
   if (quick && ctl.impact?.alive) { try { ctl.impact.stop(); } catch (e) { /* already over */ } }   // WIRE1: a moment cut short takes its impact frame with it

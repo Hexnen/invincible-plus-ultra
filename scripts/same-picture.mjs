@@ -63,6 +63,30 @@ export function shiftInto(r, s) {
   return { dx: ax(r.l, r.r, s.l, s.r), dy: ax(r.t, r.b, s.t, s.b) };
 }
 
+/* MAPSEAT (the owner's standard: every seat that sees the roll gets the same block; a seat's own view, zoom, window and panels change nothing
+   of it): the BOARD WINDOW of a map moment, in scene px. The reference window (REF_VW x REF_VH minus the reserve) as it would stand on a
+   seat whose view is centred on the roller at the board's reference scale (u = scene px per reference px: the board's GRID_VH squares fill
+   REF_VH). Built from the roller's document alone, so every seat gets one rectangle whatever it shows; the map block is laid out inside it
+   (with the scene's own rectangle). Before, the block was laid out inside each seat's own standard view and then moved by that seat's
+   panels: the GM's critical 99-113 px against the player's 120, a strong roll 63-68 against 83 (CRITPEAK take, The Warehouse at 0.45). */
+export function boardWindow(p, u, reserve = RESERVE) {
+  return { l: p.x - (REF_VW / 2 - reserve.l) * u, t: p.y - (REF_VH / 2 - reserve.t) * u, r: p.x + (REF_VW / 2 - reserve.r) * u, b: p.y + (REF_VH / 2 - reserve.b) * u };
+}
+/* MAPSEAT: does this seat show the shared map block well? The one rule that decides a seat's layer (pure; all rects in one space, scene px):
+   - 'speck': a part drawn under its readable minimum on this seat's screen (sizes: on-screen cap heights, px; read: { word, info });
+   - 'cut': a part outside this seat's view (its window minus Foundry's bars where they really stand; `view`);
+   - 'ok': the board block, unchanged. Its own floating panels (party cards, the map meter, the challenges, a chat card, the scene list,
+     the GM's desk) never decide it: on the map layer they step back while the block is up (stage.mjs yieldPanels), as the screen layer
+     draws over them (SAMEPIC-3).
+   A seat that cannot show it well plays the moment on its screen layer (the table's screen picture for that view), never a moved or
+   shrunk copy of the board block. */
+export function mapSeat(parts, view, sizes = [], read = { word: 22, info: 12 }) {
+  for (const s of sizes) if (s.px < (s.word ? read.word : read.info)) return 'speck';
+  if (!view) return 'ok';
+  for (const r of parts) if (r.l < view.l - 1 || r.t < view.t - 1 || r.r > view.r + 1 || r.b > view.b + 1) return 'cut';
+  return 'ok';
+}
+
 /* the panels at a corner of the window, as SHARED obstacles: where they stand on the reference window centred like the standard view.
    A seat's panels are not read from its page for the shared layout (their state, length and presence are that user's or the GM's
    alone), so every seat keeps the block off the same zone (provisional SAMEPIC-3). Measured live (lane 5, 1600 x 900, 2026-11-14): the
