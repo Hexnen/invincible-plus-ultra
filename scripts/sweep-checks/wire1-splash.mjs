@@ -164,7 +164,7 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
 }
 /* ---- map layer: the shared moment over the map; an unseen hero gives a scene point */
 {
-  const hero = tok("HERO", 1200, 900);
+  const hero = tok("HERO", 650, 380);   // CRITPEAK: on the view (a roller outside it plays on the screen: SYNC M1/M2)
   const s = await seat({ layer: "overlay", e: R.crit, name: "w", hero });
   const im = s.impacts[0]?.spec ?? {};
   ok(im.over === "scene" && im.space === "world" && im.subject !== hero && Number.isFinite(im.subject?.w), `map layer: over the map, under the bars (${im.over}), on the word in scene space (FXI-SPLASH)`);

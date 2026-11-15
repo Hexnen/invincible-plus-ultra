@@ -201,9 +201,11 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
   ok(onlyT.impacts[0]?.subject?.id === ID("t2"), `L map: the target in this view gets its impact wherever the block stands (${onlyT.logRows.at(-1)?.where})`);
   /* nothing in view (word and target both off it): no impact, but the word waits the SAME lead-in as on the other seats */
   const offAll = await seat({ layer: "overlay", e: R.crit, name: "map", hero, tokens: [T], targets: [T.id], pan: { x: -3000, y: -2500 } });
-  eq(offAll.impacts.length, 0, "Q map: the word and the target off this view: no impact (nothing to mark)");
+  /* CRITPEAK (SYNC M1/M2: a map word no seat saw): a seat whose view holds neither the roller nor the target plays the moment on its screen;
+     nothing of it on the board, its impact (if any) on its own word there */
+  ok(offAll.calls.length > 0 && offAll.calls.every((c) => c.o.space !== "world") && offAll.impacts.every((im) => im.space !== "world"), `Q map: the word and the target off this view: the moment on this seat's screen, nothing on the board (${offAll.logRows.at(-1)?.where})`);
   const a = wordCall(s), b = wordCall(offAll);
-  ok(a && b && Math.abs((a.o.startAt - b.o.startAt)) < 50 && offAll.logRows.at(-1)?.where === "none", "V map: ... and the word still starts on the shared instant (before, such a seat started its word earlier than the others)");
+  ok(a && b && Math.abs((a.o.startAt - b.o.startAt)) < 50, `V map: ... and the word still starts on the shared instant (before, such a seat started its word earlier than the others: ${a?.o.startAt} / ${b?.o.startAt})`);
 }
 
 /* ================================================================== source pins: the roll's flag and the hand-over */

@@ -139,9 +139,13 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
   const tokens = [hero, ...others];
   for (const [name, e] of Object.entries(ROLLS())) {
     for (const layer of ["tokens", "overlay"]) {
-      /* seat A: GM, 1920x1080, zoom 0.75, the chat card up; seat B: player, 1366x768, zoom 1.25, panned so the hero is OFF its screen */
+      /* seat A: GM, 1920x1080, zoom 0.75, the chat card up; seat B: player, 1680x1050, zoom 1.25, panned elsewhere (the block in its middle: a smaller window that cannot hold the block shifts or shrinks it, SAMEPIC tier 3, checked in samepic S1/S3).
+         CRITPEAK (SYNC M1/M2: a map word no seat saw): a seat whose view does not hold the roller plays the moment on its own screen (seat C,
+         below); before, B was panned so the hero was OFF its screen and lettered the board block there, out of its sight */
       const A = await seat({ W: 1920, H: 1080, ui: { card: true }, layer, zoom: 0.75, pan: { x: -300, y: -250 }, k: 1, e, name, tokens, notes: pins, hero, full: name === "crit" });
-      const B = await seat({ W: 1366, H: 768, ui: {}, layer, zoom: 1.25, pan: { x: -1900, y: -400 }, k: 1.3, e, name, tokens, notes: pins, hero, full: name === "crit", scale: 1.4 });
+      const B = await seat({ W: 1680, H: 1050, ui: {}, layer, zoom: 1.25, pan: { x: -852, y: -912 }, k: 1.3, e, name, tokens, notes: pins, hero, full: name === "crit", scale: 1.4 });
+      const C = await seat({ W: 1366, H: 768, ui: {}, layer, zoom: 1.25, pan: { x: -1900, y: -400 }, k: 1.3, e, name, tokens, notes: pins, hero, full: name === "crit", scale: 1.4 });
+      ok(C.calls.length > 0 && C.calls.every((c) => c.o.space !== "world"), `N1 map ${layer} ${name}: a seat whose view does not hold the roller plays the moment on its screen (CRITPEAK: it sees a word)`);
       /* the drawn scene size = size x the engine's Scale (rounded to 0.1 scene px: the size is handed over in hundredths) */
       const sig = (s) => s.calls.map((c) => ({ text: c.text, seed: c.o.seed, space: c.o.space, layer: c.o.layer, at: c.o.at, size: Math.round(c.o.size * s.L.prefs.scale * 10) / 10, out: c.o.out, maxWidth: c.o.maxWidth }));
       const tag = `N1 map ${layer} ${name}`;
@@ -181,7 +185,9 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
   const pin = { id: "PIN", visible: true, document: { id: "PIN", x: 1050, y: 200, iconSize: 40, flags: { "moinen-maps": { pin: "quest" } } } };
   for (const name of ["crit", "good", "pushed", "rare"]) {
     const e = ROLLS()[name];
-    const A = await seat({ W: 1600, H: 900, layer: "tokens", zoom: 0.6, pan: { x: 300, y: 200 }, e, name, tokens: [hero, ...others], notes: [pin], hero, full: name === "crit" });
+    /* CRITPEAK: at zoom 1 (100 px squares; was 0.6: 60 px squares, where the board's ordinary word is ~21 px on screen, a speck that plays on
+       the screen layer now, LP.MAP_READ) */
+    const A = await seat({ W: 1600, H: 900, layer: "tokens", zoom: 1, pan: { x: 300, y: 200 }, e, name, tokens: [hero, ...others], notes: [pin], hero, full: name === "crit" });
     const sc = A.calls.map((c) => drawn(c, A.L, { zoom: 1, toClient: (q) => q }));
     const hr = tokRect(hero), near = Math.min(...sc.map((b) => Math.hypot(Math.max(0, hr.l - (b.x + b.w / 2), (b.x - b.w / 2) - hr.r), Math.max(0, hr.t - (b.y + b.h / 2), (b.y - b.h / 2) - hr.b))));
     const bad = [];
@@ -190,7 +196,9 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
       for (const t of others) if (hitBox(b, tokRect(t))) bad.push(b.role + " on " + t.id);
       if (hitBox(b, { l: 1050 - 40, t: 200 - 110, r: 1050 + 40, b: 200 + 8 })) bad.push(b.role + " on the pin");   // its head and stem
     }
-    ok(A.calls.length > 0 && near <= 60 && bad.length === 0, `N2/N3 map crowded ${name}: the block stands by the roller and keeps off the neighbours and the pin (nearest ${Math.round(near)} scene px; ${bad})`);
+    /* CRITPEAK: the critical keeps its rank (its word at least 0.17 of the board height) and so, in this corner (the roller at the scene's
+       top edge, neighbours left and below), stands up to a square and a quarter off the roller: still beside it, not two tokens away */
+    ok(A.calls.length > 0 && near <= (name === "crit" ? 125 : 60) && bad.length === 0, `N2/N3 map crowded ${name}: the block stands by the roller and keeps off the neighbours and the pin (nearest ${Math.round(near)} scene px; ${bad})`);
   }
 }
 

@@ -185,7 +185,7 @@ function boxOf(sel) {
 /* core: only Foundry's own bars and the tactics bars every seat has (SAMEPIC: not the chat cards popped up on one seat, not the GM's
    director pill, not the scene bar's rows, whose number differs per seat (live: GM to 176 px, player to 96; the first row is in the
    reserve), not a bottom bar standing inside the tool column (the players list)) */
-export function safeRect({ core = false } = {}) {
+export function safeRect({ core = false, screen = false } = {}) {
   measureArea();
   const vw = window.innerWidth, vh = window.innerHeight;
   let l = 12, t = 10, r = area.w - 14, b = vh - 10;
@@ -196,7 +196,7 @@ export function safeRect({ core = false } = {}) {
   if (b - t < vh * 0.45) { t = 10; b = vh - 10; }   // a strange layout: the whole height rather than a slit
   /* on a map layer the words are drawn inside the scene and cut at its edge (live 1920: BARREL! lost its top at the scene's top edge,
      the dark padding above it): the block stays inside the scene rectangle too, while that leaves a usable area */
-  if (onMap()) {
+  if (onMap() && !screen) {
     try {
       const sr = canvas.dimensions?.sceneRect;
       const a = sr && toClient({ x: sr.x, y: sr.y }), c = sr && toClient({ x: sr.x + sr.width, y: sr.y + sr.height });
@@ -299,8 +299,9 @@ export function noteBox(n, gs = 100) {
 }
 const sameTok = (a, b) => !!a && !!b && (a === b || (a.id != null && a.id === b.id));
 /* the shared frame of a map moment (scene px) */
-export function sharedFrame(hero) {
+export function sharedFrame(hero, targets = []) {
   const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
+  const zoom = Math.max(0.02, Number(C?.stage?.scale?.x) || 1);   // this view's zoom: for inspection and the seat's readability test only
   const token = docBox(hero, gs);
   const sr = C?.dimensions?.sceneRect;
   const ins = 0.1 * gs;
@@ -310,11 +311,14 @@ export function sharedFrame(hero) {
   for (const t of C?.tokens?.placeables ?? []) {
     const d = docOf(t);
     if (!d || sameTok(t, hero) || d.hidden) continue;   // a hidden token is not on every seat's board: it never moves the block
-    avoid.push(grow(docBox(t, gs), 0.06 * gs));
+    avoid.push({ ...grow(docBox(t, gs), 0.06 * gs), w: targets.includes(t.id) ? LP.TARGET_W : LP.OTHER_W });   // CRITPEAK: the roll's target weighs most
   }
   for (const n of C?.notes?.placeables ?? []) { try { if (docOf(n)) avoid.push(noteBox(n, gs)); } catch (e) { /* a pin without a place */ } }
   const vh = GRID_VH * gs;
-  return { vh, freeW: vh * 16 / 9, safe, token, avoid, gap: Math.round(0.12 * gs), focus: { x: token.x, y: token.y } };
+  /* CRITPEAK: nothing of this seat's view sizes the block (SAMEPIC: one scene place and one scene size on every seat, whatever its zoom):
+     the ranks' sizes are shares of the board height (vh). A seat zoomed so far out that the board word is a speck plays the moment on its
+     screen layer instead (playLetters, LP.MAP_READ) */
+  return { vh, freeW: vh * 16 / 9, safe, token, avoid, gap: Math.round(0.12 * gs), focus: { x: token.x, y: token.y }, zoom };
 }
 /* the bars and panels that are not at an edge: the party cards, the map's VRAM meter and pins panel, the GM's desk, the tactics dock */
 export const UI_AVOID = ['#invincible-party li', '.mm-vram', '#mm-filter', '#invincible-tactics-desk:not(.igd-collapsed) .igd', '#ich-dock'];
@@ -368,12 +372,27 @@ export function diceRects() {
    would really be hidden. */
 const projBox = (b) => { const a = toClient({ x: b.l, y: b.t }), c = toClient({ x: b.r, y: b.b }); return a && c ? { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2, l: a.x, t: a.y, r: c.x, b: c.y } : null; };
 function sharedTokenBox(tok) { try { const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100; return projBox(docBox(tok, gs)); } catch (e) { return null; } }
+/* CRITPEAK: is a token's document box (not its swaying mesh) inside the standard view of this view by at least half of it? */
+export function mapScaleOk() {
+  const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
+  const zoom = Math.max(0.02, Number(C?.stage?.scale?.x) || 1), m = GRID_VH * gs * zoom / SP.REF_VH;
+  return m >= LP.MAP_BAND[0] && m <= LP.MAP_BAND[1];
+}
+export function boardInView(tok) {
+  const q = sharedTokenBox(tok);
+  if (!q) return false;
+  const s = SP.standardRect(window.innerWidth, window.innerHeight);
+  const ix = Math.max(0, Math.min(q.r, s.r) - Math.max(q.l, s.l)), iy = Math.max(0, Math.min(q.b, s.b) - Math.max(q.t, s.t));
+  return ix * iy >= 0.5 * Math.max(1, (q.r - q.l) * (q.b - q.t));
+}
 export function standardSafe(p = null) { return SP.standardRect(window.innerWidth, window.innerHeight, p); }   // p: the client point the moment describes
-function sharedScreenAvoid(hero, full) {
+function sharedScreenAvoid(hero, full, targets = []) {
   const out = [];
   const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
   for (const t of C?.tokens?.placeables ?? []) {
-    try { const d = docOf(t); if (!d || d.hidden || sameTok(t, hero)) continue; const q = projBox(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push(q); } catch (e) { /* one token */ }
+    /* CRITPEAK (ADVX 3: the critical's caption lines across the target's face): the roll's target weighs as much as the hero, every other
+       token is heavy too (a pin may give way, a token never) */
+    try { const d = docOf(t); if (!d || d.hidden || sameTok(t, hero)) continue; const q = projBox(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push({ ...q, w: targets.includes(t.id) ? LP.TARGET_W : LP.OTHER_W }); } catch (e) { /* one token */ }
   }
   for (const n of C?.notes?.placeables ?? []) { try { if (!docOf(n)) continue; const q = projBox(noteBox(n, gs)); if (q) out.push(q); } catch (e) { /* one pin */ } }
   for (const z of SP.panelZones(window.innerWidth, window.innerHeight)) out.push({ ...z, w: UI_WEIGHT });   // the party panel's corner, the same zone on every seat
@@ -389,12 +408,12 @@ function boxesOf(sels, pad = 6) {
   return out;
 }
 /* this seat's band: its window minus the SAME reserve every seat keeps and minus its own core bars where those are wider (client px) */
-function seatBand() {
+function seatBand(screen = false) {
   measureArea();
   const vw = window.innerWidth, vh = window.innerHeight, win = { l: 2, t: 2, r: area.w - 2, b: vh - 2 };
   const band = { l: Math.max(win.l, SP.RESERVE.l), t: Math.max(win.t, SP.RESERVE.t), r: Math.min(win.r, vw - SP.RESERVE.r), b: Math.min(win.b, vh - SP.RESERVE.b) };
   if (band.r - band.l < 0.4 * vw || band.b - band.t < 0.4 * vh) Object.assign(band, win);   // a tiny window: the whole of it
-  const core = safeRect({ core: true }), m = meet(band, core);
+  const core = safeRect({ core: true, screen }), m = meet(band, core);
   if (m.r - m.l >= 0.4 * vw && m.b - m.t >= 0.4 * vh) Object.assign(band, m);
   return band;
 }
@@ -410,18 +429,19 @@ function whyMoved(r, loc) {
   return o;
 }
 function seatOwn() { return [...uiAvoid(), ...boxesOf([...UI_TOP, '#mm-dir-bar', ...UI_RIGHT])]; }
-function localScreen() {
+/* lay: the layer this moment is drawn on (a map-layer seat whose moment has no board place draws it on the screen layer: CRITPEAK) */
+function localScreen(lay = LAYER) {
   measureArea();
   /* over the interface (screen) and under the windows only (ui): this seat's window minus the SAME reserve band every seat keeps (Foundry's
      bars) and minus its open sidebar where that is wider. Not this seat's own panels, pop-up cards or the GM's director pill: the moment is
      drawn over them for its few seconds (provisional SAMEPIC-3; checked: avoiding them, the party cards that stand at a height that
      follows each window moved every seat's block differently). Under the windows also the GM's desk (a window would hide the block).
      Under the bars (hud) the block would be HIDDEN by anything of this seat: its real bars, panels and resting dice */
-  const vw = window.innerWidth, vh = window.innerHeight, band = seatBand();
+  const vw = window.innerWidth, vh = window.innerHeight, band = seatBand(lay === 'screen');
   /* a window smaller than the reference keeps the party corner where it really is on this window (it is moving the block anyway) */
   const small = vw < SP.REF_VW || vh < SP.REF_VH ? SP.panelZones(vw, vh, true).filter((z) => z.at === 'bl') : [];   // the party cards (over the scene list it is drawn on the screen layers)
-  if (LAYER === 'screen') return { safe: band, avoid: small };
-  if (LAYER === 'ui') return { safe: band, avoid: [...small, ...boxesOf(UI_WINDOWS)] };
+  if (lay === 'screen') return { safe: band, avoid: small };
+  if (lay === 'ui') return { safe: band, avoid: [...small, ...boxesOf(UI_WINDOWS)] };
   return { safe: band, avoid: [...seatOwn(), ...boxesOf(UI_WINDOWS), ...diceRects()] };
 }
 const meet = (a, b) => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
@@ -436,23 +456,26 @@ function compose(ctl, items, extra = {}) {
   if (ctl.shared) {
     /* a critical on the map is a board moment like the others (live: sized to fill a share of a 16:9 'screen' of the board, it went
        two tokens away and past every seat's view): still the biggest word, but anchored by the hero */
-    for (const it of items) if (it.wMin) { it.wMin = 0; it.cap = Math.min(it.cap, LP.MAP_CRIT_CAP); it.wMax = Math.min(it.wMax ?? 0.6, 0.58); }
-    /* the map: scene units, nothing of this seat (the engine's Scale is divided out again in letterOne: the drawn size is S) */
+    /* CRITPEAK: no width fill on the board; its size is its rank's (LP.RANK_WORD), held readable at this view's zoom (sharedFrame). Before,
+       MAP_CRIT_CAP (0.14 of the board height) put the critical under an ordinary roll's word (ADVX 2: 84 vs 137 scene px) */
+    items = items.map((it) => (it.wMin ? { ...it, wMin: 0 } : it));   // a copy: a block that falls back to the screen keeps its width fill
+    /* the map: scene units, nothing of this seat but its view (the engine's Scale is divided out again in letterOne: the drawn size is S) */
     const g = extra.gauge && ctl.gaugeK ? { w: extra.gauge.w * ctl.gaugeK, h: extra.gauge.h * ctl.gaugeK } : extra.gauge;
-    frame = { ...sharedFrame(ctl.hero), scale: 1, ...extra, ...(g ? { gauge: g } : {}) };
+    const sf = sharedFrame(ctl.hero, ctl.targets ?? []);
+    frame = { ...sf, scale: 1, ...extra, ...(g ? { gauge: g } : {}) };
   } else {
     /* SAMEPIC: the shared frame (see sharedScreenAvoid): reference height, the table's Scale only (the engine's own Scale is divided out
        in letterOne, as on the map), the standard view, the token's document box, shared obstacles */
     const T = ctl.token ? sharedTokenBox(ctl.token) : null, std = standardSafe(T);
-    frame = { vh: SP.REF_VH, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token),
+    frame = { vh: SP.REF_VH, ref: SP.REF_VH, px: 1, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token, ctl.targets ?? []),
       gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: (std.l + std.r) / 2, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
   }
-  let out = composeIn(ctl, items, frame), same = 'none', why = null;
-  if (ctl.shared) {
+  let out = composeIn(ctl, items, frame), same = 'none', why = null, fit = null;  if (ctl.shared) {
     /* FXI-SPLASH (ADVI 6) + SAMEPIC: the map block is laid out from what every seat shares; when it would lie past the STANDARD view while
        its token is in view, it is laid out again inside that view (the same on every seat with this view: before, each seat used its own
        measured bars, and the GM's scene bar moved his block 80 scene px down from the player's: ADVX 1, take D) */
     const hc = ctl.hero ? sharedTokenBox(ctl.hero) : null, std = sceneRectOf(standardSafe(hc)), T = frame.token;
+    fit = std ? meet(frame.safe, std) : frame.safe;   // CRITPEAK: the part of the scene this view shows (same rect for one view)
     const tokIn = (v) => !!v && !!T && T.r > v.l && T.l < v.r && T.b > v.t && T.t < v.b;
     if (tokIn(std) && !inRect(out.rect, std)) {
       const q = meet(frame.safe, std);
@@ -467,12 +490,12 @@ function compose(ctl, items, extra = {}) {
       out = fx.out; same = fx.moved;
     }
   } else {
-    const loc = localScreen(), std = frame.safe;
+    const loc = localScreen(WORLD_LAYERS.includes(LAYER) ? 'screen' : LAYER), std = frame.safe;   // CRITPEAK: off the board it is drawn on the screen layer
     why = whyMoved(out.rect, loc);
     const fx = LP.localFix(out, frame, loc, std, () => composeIn(ctl, items, { ...frame, safe: meet(std, loc.safe), avoid: [...frame.avoid, ...loc.avoid] }));
     out = fx.out; same = fx.moved;
   }
-  out.k = k; out.frame = frame; out.same = same;
+  out.k = k; out.frame = frame; out.same = same; out.fit = fit;
   logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, ...(same !== 'none' && why ? { why } : {}), tok: frame.token ? [Math.round(frame.token.l), Math.round(frame.token.t)] : null, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
   return out;
 }
@@ -487,6 +510,37 @@ function composeIn(ctl, items, frame) {
   }
   return out;
 }
+/* CRITPEAK: the shared block scaled about its centre to fit q, then shifted into it (parts, gauge and sizes with it) */
+function fitInPlace(out, q) {
+  const r = out.rect, k = Math.min(1, 0.98 * (q.r - q.l) / (r.r - r.l), 0.98 * (q.b - q.t) / (r.b - r.t));
+  const ax = (r.l + r.r) / 2, ay = (r.t + r.b) / 2;
+  const tf = (z) => ({ l: ax + (z.l - ax) * k, t: ay + (z.t - ay) * k, r: ax + (z.r - ax) * k, b: ay + (z.b - ay) * k });
+  const r2 = tf(r), d = SP.shiftInto(r2, q);
+  const mv = (x, a0, dd) => Math.round(a0 + (x - a0) * k + dd);
+  for (const it of out.items) { it.x = mv(it.x, ax, d.dx); it.y = mv(it.y, ay, d.dy); it.S = Math.round(it.S * k * 10) / 10; it.w *= k; it.h *= k; }
+  if (out.gauge) { out.gauge.x = mv(out.gauge.x, ax, d.dx); out.gauge.y = mv(out.gauge.y, ay, d.dy); out.gauge.w *= k; out.gauge.h *= k; out.gauge.k = (out.gauge.k ?? 1) * k; }
+  const sh = (z) => ({ l: z.l + d.dx, t: z.t + d.dy, r: z.r + d.dx, b: z.b + d.dy });
+  out.rect = sh(r2); if (out.parts) out.parts = out.parts.map((z) => sh(tf(z)));
+  out.f = (out.f ?? 1) * k; out.same = 'shrink';
+  return out;
+}
+/* CRITPEAK: how much of the roller and his target a layout covers (the larger share of either box; the frame's token and its heavy
+   obstacles: the hero and the target weigh TARGET_W) */
+function coverOf(lay) {
+  const fr = lay?.frame ?? {}, boxes = [fr.token, ...(fr.avoid ?? []).filter((a) => (a.w ?? 1) >= LP.TARGET_W)].filter(Boolean);
+  let worst = 0;
+  for (const q of boxes) {
+    const A = Math.max(1, (q.r - q.l) * (q.b - q.t));
+    let c = 0;
+    for (const it of lay.items ?? []) {
+      const l = it.x - it.w / 2, r = it.x + it.w / 2, t = it.y - it.h / 2, b = it.y + it.h / 2;
+      c += Math.max(0, Math.min(r, q.r) - Math.max(l, q.l)) * Math.max(0, Math.min(b, q.b) - Math.max(t, q.t));
+    }
+    worst = Math.max(worst, c / A);
+  }
+  return worst;
+}
+const fitsIn = (r, q) => !!r && !!q && r.r - r.l <= q.r - q.l + 1 && r.b - r.t <= q.b - q.t + 1 && Number.isFinite(r.l);
 const inRect = (r, q) => r.l >= q.l - 1 && r.t >= q.t - 1 && r.r <= q.r + 1 && r.b <= q.b + 1;
 /* a client rect in scene px (null when the canvas cannot say) */
 function sceneRectOf(s) {
@@ -509,6 +563,7 @@ function letterWrap(ctl) {
 function letterOne(ctl, it) {
   if (!LE || ctl.dead) return null;
   const lw = letterWrap(ctl);
+  overDice();   // CRITPEAK (ADVX 3: resting dice drew over the critical's captions): the dice canvas may come up after the moment opened
   const o = { ...(it._o ?? engineOpts(it, { seed: ctl.seed }, ctl.hands)) };
   o.avoid = [...new Set([...(o.avoid ?? []), ...ctl.hands])];   // the hands measured first are the real ones; the played ones join (a set: same choice)
   const sizeK = it._m?.sizeK || 1, k = ctl.k || 1;
@@ -688,7 +743,16 @@ function playLetters(ev, o) {
      has no place on the board and plays on the screen, by each seat's view */
   /* FXI-SPLASH (ADVI 10): and only a token THIS seat sees: an unseen roller's moment plays on this seat's screen, placed by nothing of it */
   if (o.token && !seesToken(o.token)) o = { ...o, token: null };
-  const shared = onMap() && !!o.token;
+  /* CRITPEAK (SYNC take M1/M2: a map word no seat saw): a map moment stands by its roller on the board; with the roller outside the STANDARD
+     view (the same rect on every seat with this view) it was laid out up by the roller, beyond every seat's view. Then it plays on this
+     seat's screen like a moment without a board token (the impact still lands on the target) */
+  if (onMap() && o.token && !boardInView(o.token)) o = { ...o, token: null, hero: o.token };   // (still the hero: the screen block keeps off him)
+  /* CRITPEAK (ADVX 2, 4): the board block is sized by the board (GRID_VH squares = the reference height), the same scene size on every seat;
+     on this seat's view the board is m times the screen rule. Far out (m < band) it is a speck, close in (m > band) it is bigger than the
+     screen's ranks and than the view: outside LP.MAP_BAND the moment plays on this seat's screen, every kind alike, so one seat at one view
+     sees the ranks of one layer, in order */
+  if (onMap() && o.token && !mapScaleOk()) o = { ...o, onScreen: true };   // by the token, as the screen layer letters it
+  const shared = onMap() && !!o.token && !o.onScreen;
   const ctl = openStage(full ? { ...o, full: true } : o, shared);
   const stage = ctl.el, later = ctl.later, holdK = o.hold || 1;
   /* a moment needs a seed even when no message gives one (the preview): an unseeded word draws a new random hand at every call, so
@@ -701,6 +765,9 @@ function playLetters(ev, o) {
   const at = (fn, ms) => later(fn, Math.max(0, ctl.t0 + ms - performance.now()));
   letterWrap(ctl);
   overDice();
+  /* CRITPEAK (ADVX 3): Dice So Nice raises its canvas when the dice come and lowers it as they go; the layer follows it for the moment's
+     first seconds (the dice of this very roll rest there), so resting dice never sit on the captions */
+  for (let ms = 250; ms <= 4000; ms += 250) later(overDice, ms);
   const dF = LP.failStrength(ev);
   /* WIRE1: the impact frame of this result (impact-plan.mjs; null = none). Planned from the event alone, so every seat agrees */
   ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: o.fx }) : null;
@@ -732,7 +799,44 @@ function playLetters(ev, o) {
     plan.items.push({ ...st, delay: t0 + 560 });
     gauge = probeGauge(ctl, ev.stress, resolve);
   }
-  const lay = compose(ctl, plan.items, gauge ? { gauge } : {});
+  let lay = compose(ctl, plan.items, gauge ? { gauge } : {});
+  /* CRITPEAK (ADVX 4): at a far view the scene itself is small on screen; a block readable there does not fit inside the part of it this view
+     shows (the map layer cuts the words at the scene's edge), or this seat's own guard would shrink it under its rank's floor: the moment then
+     plays on the screen layer, by the token as every seat with this view sees it */
+  const zoomNow = Math.max(0.02, Number(globalThis.canvas?.stage?.scale?.x) || 1);
+  const speck = (it) => it.S * zoomNow < (it.role === 'word' || it.role === 'pre' ? LP.MAP_READ.word : LP.MAP_READ.info);
+  /* a close view shows less of the board than the block needs: this seat shrinks the shared block in place, whole, into what it shows (tier 3:
+     same side, same order, the ranks kept, since every block of this view shrinks to the same view) */
+  if (ctl.shared && lay.fit && !inRect(lay.rect, lay.fit)) {
+    const fx = LP.localFix(lay, lay.frame, { safe: lay.fit, avoid: [] }, null, null);
+    if (fx.moved !== 'none') { lay = fx.out; lay.same = fx.moved; }
+  }
+  /* a seat's shrink that takes a part under its rank's floor (the critical's tight floor: TIGHT_CRIT) breaks the ranks on this seat */
+  const under = (it) => it.S < LP.TIGHT_CRIT * LP.sizeOf(it, lay.frame, 0).lo - 0.5;
+  const mustScreen = ctl.shared && (!fitsIn(lay.rect, lay.fit ?? lay.frame?.safe) || lay.items.some(speck));
+  if (ctl.shared && (mustScreen || (lay.same === 'shrink' && lay.items.some(under)))) {
+    const big = !lay.items.some(speck), mw = lay.items.find((it) => it.role === 'word');
+    const mapLay = lay, mapScale = ctl.userScale;
+    const onScreen = mw ? mw.S * zoomNow : 0;   // the word as this seat's close view drew the board block
+    ctl.shared = false; ctl.userScale = o.scale || 1;
+    if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
+    lay = compose(ctl, plan.items, gauge ? { gauge } : {});
+    /* a close view: the board's ordinary blocks are drawn big here, so a block too big for this view does not come back smaller than they
+       are on this very view (the ranks stay in order on one seat: a critical never under the strong roll before it) */
+    const sw = lay.items.find((it) => it.role === 'word');
+    if (big && sw && onScreen > sw.S * 1.02) {
+      ctl.userScale = (o.scale || 1) * Math.min(LP.MAP_UP, onScreen / sw.S);
+      if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
+      lay = compose(ctl, plan.items, gauge ? { gauge } : {});
+    }
+    /* only this seat's own panels took the board block under its floor: the screen layout is laid out on the reference screen, where a
+       crowded board may leave no clean place (live, The Warehouse at 0.45, the GM's screen fallback: the critical's long word across the
+       hero's head, 45 %). The board block, smaller on this seat, stays when the screen one would cover the roller or his target more */
+    if (!mustScreen && coverOf(lay) > coverOf(mapLay) + 0.04) {
+      ctl.shared = true; ctl.userScale = mapScale; lay = mapLay;
+      if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
+    }
+  }
   ctl.k = lay.k; ctl.rect = lay.rect; ctl.layout = lay;   // (kept for inspection: frame, side, hit)
   ctl.tokenAnchor = ctl.token ? sharedTokenBox(ctl.token) : null;
   const wp = lay.items.find(it => it.role === 'word');
@@ -1129,7 +1233,7 @@ function openStage(opts, shared = false) {
   lay.appendChild(el);
   el.style.setProperty('--u', Math.max(0.4, Math.min(opts.full ? 2.2 : 1.4, W / 760)).toFixed(3));
   const ctl = { key, el, token, W, extras: [], timers: [], dead: false, pos: token ? POS_TOKEN : POS_SCREEN, userScale: shared ? 1 : scale,
-    hero: opts.token || null, shared, backdrop: !!opts.backdrop, momentId: opts.momentId ?? null };
+    hero: opts.token || opts.hero || null, shared, backdrop: !!opts.backdrop, momentId: opts.momentId ?? null };
   /* FXLD2: a map moment's gauge: scene px per reference px (the gauge is measured at --u 1, the 768 px reference) */
   if (shared) ctl.gaugeK = GRID_VH * (globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100) / LP.REF_VH;
   ctl.later = (fn, ms) => {
