@@ -123,7 +123,7 @@ const GS = 100;
   ok(/\n\s*if \(Number\.isFinite\(base\.from\) && it\.from != null\) o\.from = base\.from;\s*\n\s*else if \(Number\.isFinite\(it\.from\)\) o\.from = it\.from;/.test(splash) && !/function engineOpts[\s\S]{0,900}dirFrom/.test(splash), "N: a splash word is measured and laid out with its own `from` (by its block side), with or without a way");
   ok(/\n\s*if \(Number\.isFinite\(it\.dirFrom\)\) o\.from = it\.dirFrom;/.test(splash.slice(splash.indexOf("function letterOpts"))), "N: only the played word of an attack with a way grows along it (letterOpts)");
   ok(/ctl\.dir = word && !ev\.fail \? splashDir/.test(splash) && /if \(ctl\.dir\) \{ word\.dir = ctl\.dir;/.test(splash), "N: only an attack that landed and has a way changes the splash word (a miss falls as before: DIRECT-2)");
-  ok(/\.\.\.\(Number\.isFinite\(lk\.from\) \? \{ from: lk\.from \} : \{\}\)/.test(tr) && /if \(dl\) \{ it\.lk\.rotation = dl\.rotation; it\.lk\.from = dl\.from; \}/.test(tr), "N: a token reaction without a way keeps its options (no from, its own tilt)");
+  ok(/\.\.\.\(Number\.isFinite\(lk\.from\) \? \{ from: lk\.from \} : \{\}\)/.test(tr) && /if \(dl\) \{ it\.lk\.rotation = dl\.rotation; it\.lk\.from = dl\.from; if \(dl\.dir\) it\.lk\.dirSign = dl\.dir; \}/.test(tr) && /\.\.\.\(Number\.isFinite\(lk\.dirSign\) \? \{ dir: lk\.dirSign \} : \{\}\)/.test(tr), "N: a token reaction without a way keeps its options (no from, no dir, its own tilt)");
   ok(/if \(it\.cluster \|\| !it\.pub\?\.src/.test(tr), "N: a crowd's shared word and a blow without an attacker have no way (DIRECT-4)");
 }
 
@@ -148,7 +148,7 @@ const GS = 100;
   eq(out, 0, `V: a word inside the view stays inside through its whole travel (${n} cases)`);
   eq(further, 0, "V: a word past an edge is never moved further out by its travel");
   const splash = src("../splash/stage.mjs"), tr = src("../tokenreact/main.mjs");
-  ok(/Dir\.clampTravel\(c, \{ x: q\.x \* px, y: q\.y \* px \}, eb\.w \/ 2, eb\.h \/ 2, safe\)/.test(tr), "V: the token reaction's travel is clamped by the word's whole entrance reach into this seat's safe view");
+  ok(/const w = Dir\.wallTravel\(c, \{ x: q\.x \* px, y: q\.y \* px \}, eb\.w \/ 2, eb\.h \/ 2, tr, plan\.dir\);\s*\n\s*const d = Dir\.clampTravel\(c, w, eb\.w \/ 2, eb\.h \/ 2, safe\);/.test(tr), "V: the token reaction's knock is cut at its struck token, then clamped by the word's whole entrance reach into this seat's safe view");
   ok((splash.match(/Dir\.clampTravel\(/g) ?? []).length >= 2, "V: the splash's travel is clamped into the window (screen and map words)");
 }
 
@@ -174,11 +174,92 @@ const GS = 100;
 /* ---- C: the callers */
 {
   const tr = src("../tokenreact/main.mjs"), splash = src("../splash/stage.mjs");
-  ok(/if \(member < 0 && plan\.trav\)/.test(tr), "C: only the word travels; its numbers stand still");
-  ok(/plan\.trav = \{ t0: word\.opts\.startAt, contact, holdEnd: entMs \+ lk\.hold, reduced: !!\(red \|\| word\.reducedMotion\) \}/.test(tr), "C: the token word travels on its own start (the table's instant) and contact, and not on a reduced seat");
+  /* DIRECT2: the whole group is knocked (its numbers ride with the word: a knock of a cap and more would run the word into its own "-2") */
+  ok(/\n\s*if \(plan\.trav\) \{\s*\n\s*const q = Dir\.knockAt\(plan\.dir, performance\.now\(\) - plan\.trav\.t0, plan\.trav\)/.test(tr), "C: the reaction group (word and numbers) is knocked along the blow on the word's clock");
+  ok(/plan\.trav = \{ t0: word\.opts\.startAt, contact, holdEnd: entMs \+ lk\.hold, k: Dir\.knockK\(lk\.magnitude\), reduced: !!\(red \|\| word\.reducedMotion\) \}/.test(tr), "C: the token word travels on its own start (the table's instant) and contact, weighted by the blow, and not on a reduced seat");
   ok(/if \(it\.role === 'word' && it\.dir && !o\.reduced\)/.test(splash), "C: the splash's result word travels, never on a reduced seat");
   ok(/if \(it\.go\) it\.go\(p\); else it\.h\.moveTo\(p\);/.test(splash), "C: the block's moves (follow, shake) keep a travelling word's travel");
   ok(/toward: it\.dir/.test(tr) && /if \(toward\) s \+= slotBias\(slot, toward, b\.w \* b\.h\)/.test(src("../tokenreact/pure.mjs")), "C: the reaction's side search prefers the far side");
+}
+
+/* ---- DIRECT2 (the owner on the DIRECT film: «Kierunek mocniejszy»): the token reaction's knock, harder lean, the engine's sign ---- */
+{
+  const K = D.KNOCK, R = seeded(77);
+  /* K1 the knock's shape: back on the contact, past its place within fly, home after the settle, then only on, out the same way */
+  let bad = 0;
+  for (let i = 0; i < 300; i++) {
+    const rad = R() * Math.PI * 2, d = { ux: Math.cos(rad), uy: Math.sin(rad) }, k = D.knockK(R() * 1.2);
+    const contact = 40 + R() * 200, holdEnd = contact + 500 + R() * 1800, o = { contact, holdEnd, k }, reach = D.knockReach(d, k);
+    const along = (t) => { const p = D.knockAt(d, t, o); return p.x * d.ux + p.y * d.uy; };
+    if (Math.abs(along(contact) + K.back * k) > 0.01) bad++;
+    let peak = -Infinity; for (let t = contact; t <= contact + K.fly; t += 5) peak = Math.max(peak, along(t));
+    if (Math.abs(peak - K.over * k) > 0.02) bad++;
+    let last = -Infinity, backs = 0;
+    for (let t = contact + K.fly + K.settle; t < holdEnd + K.outMs + 100; t += 16) { const s = along(t); if (s < last - 1e-3) backs++; last = s; }
+    if (backs) bad++;
+    if (!(along(holdEnd + K.outMs + 50) >= (K.drift + K.outD) * k - 0.01)) bad++;
+    for (let t = 0; t < holdEnd + 600; t += 16) {
+      const p = D.knockAt(d, t, o);
+      if (p.x < -reach.l - 2e-3 || p.x > reach.r + 2e-3 || p.y < -reach.u - 2e-3 || p.y > reach.d + 2e-3) { bad++; break; }
+      if (Math.abs(p.x * d.uy - p.y * d.ux) > 1e-2) { bad++; break; }
+    }
+  }
+  eq(bad, 0, "K1: the knock lands back toward the source on the contact, flies past its place by `over`, then only on and out the same way, within knockReach, never sideways (300 ways)");
+  eq(D.knockAt({ ux: 1, uy: 0 }, 300, { contact: 62, holdEnd: 900, reduced: true }), { x: 0, y: 0 }, "K1: reduced motion: no knock");
+  eq(D.knockAt(null, 300, { contact: 62, holdEnd: 900 }), { x: 0, y: 0 }, "K1: no way: no knock");
+  /* K2 stronger than DIRECT, measured: what the eye can follow AFTER the contact (the arrival inside a slam's 62 ms contact is ~4 frames) */
+  const d = { ux: 1, uy: 0 }, c = 62, he = 1400, path = (f) => { let L = 0, p = f(c); for (let t = c + 16; t <= he + 400; t += 16) { const q = f(t); L += Math.abs(q - p); p = q; } return L; };
+  const oldS = (t) => D.travelAt(d, t, { contact: c, holdEnd: he }).x, newS = (t) => D.knockS(t, { contact: c, holdEnd: he, k: D.knockK(0.5) });
+  const fast = (f) => f(c + 250) - f(c);
+  ok(fast(newS) >= 1.1 && fast(newS) >= 4 * fast(oldS), `K2: in the 250 ms after the contact the word moves ${fast(newS).toFixed(2)} caps (DIRECT ${fast(oldS).toFixed(2)})`);
+  ok(path(newS) >= 2 * path(oldS), `K2: its path after the contact is ${path(newS).toFixed(2)} caps (DIRECT ${path(oldS).toFixed(2)})`);
+  ok(newS(he) >= 1.4 * oldS(he), `K2: the slide while it stands reaches ${newS(he).toFixed(2)} caps (DIRECT ${oldS(he).toFixed(2)})`);
+  /* K3 the blow's weight */
+  let mono = true; for (let m = 0; m < 1.2; m += 0.05) if (D.knockK(m + 0.05) < D.knockK(m)) mono = false;
+  ok(mono && D.knockK(0) === 0.85 && D.knockK(1.2) <= 1.25 && D.knockK(NaN) === D.knockK(0.5), "K3: a heavier blow knocks farther (0.85..1.25), a missing magnitude counts as an ordinary blow");
+  /* K4 never forward into the struck token; back toward the source untouched */
+  let into = 0, cutBack = 0, n = 0;
+  for (let i = 0; i < 4000; i++) {
+    const tok = { x: 300 + R() * 900, y: 200 + R() * 500, w: 40 + R() * 200, h: 40 + R() * 200 };
+    const hw = 20 + R() * 200, hh = 10 + R() * 80, c0 = { x: tok.x + tok.w / 2 + (R() - 0.5) * 900, y: tok.y + tok.h / 2 + (R() - 0.5) * 600 };
+    const rad = R() * Math.PI * 2, u = { ux: Math.cos(rad), uy: Math.sin(rad) }, s = (R() - 0.3) * 300;
+    const off = { x: s * u.ux, y: s * u.uy }, w = D.wallTravel(c0, off, hw, hh, tok, u);
+    const ov = (p) => Math.max(0, Math.min(p.x + hw, tok.x + tok.w) - Math.max(p.x - hw, tok.x)) * Math.max(0, Math.min(p.y + hh, tok.y + tok.h) - Math.max(p.y - hh, tok.y));
+    n++;
+    if (s > 0 && ov({ x: c0.x + w.x, y: c0.y + w.y }) > ov(c0) + 0.5) into++;
+    if (s <= 0 && (w.x !== off.x || w.y !== off.y)) cutBack++;
+  }
+  eq(into, 0, `K4: a forward knock never covers more of its struck token than the word at its place (${n} cases)`);
+  eq(cutBack, 0, "K4: the knock back toward the source (bursting out of the token) is not cut");
+  eq(D.wallTravel({ x: 0, y: 0 }, { x: 50, y: 0 }, 10, 10, null, { ux: 1, uy: 0 }), { x: 50, y: 0 }, "K4: no token rect: the knock is not cut");
+  /* L2 the reaction's harder lean: within LEAN_REACT.tilt, with the way, stronger than DIRECT's on a slanted blow; the splash keeps DIRECT's */
+  let lb = 0, stronger = 0, slanted = 0;
+  for (let a = -180; a < 180; a += 3) {
+    const r = a * Math.PI / 180, dd = { ang: a, ux: Math.cos(r), uy: Math.sin(r) }, t = D.tiltOf(dd, 2, D.LEAN_REACT), t0 = D.tiltOf(dd, 2);
+    if (Math.abs(t) > D.LEAN_REACT.tilt) lb++;
+    if (Math.abs(dd.ux) < D.VERT && t !== 2) lb++;
+    if (Math.abs(dd.ux) >= D.VERT && Math.abs(dd.uy) > 0.35 && Math.sign(t) !== Math.sign(dd.ux * dd.uy)) lb++;
+    if (Math.abs(dd.ux) >= D.VERT && Math.abs(dd.uy) > 0.2) { slanted++; if (Math.abs(t) > Math.abs(t0)) stronger++; }
+  }
+  eq(lb, 0, `L2: the reaction's lean stays within ${D.LEAN_REACT.tilt} deg, goes with the way, a vertical blow keeps its own tilt`);
+  eq(stronger, slanted, `L2: on every slanted blow (${slanted}) the reaction leans harder than DIRECT did`);
+  ok(Math.abs(D.tiltOf({ ux: 1, uy: 0 }, 0, D.LEAN_REACT)) > Math.abs(D.tiltOf({ ux: 1, uy: 0 }, 0)), "L2: a flat blow's word climbs more than under DIRECT");
+  const splash = src("../splash/stage.mjs"), tr = src("../tokenreact/main.mjs");
+  ok(/word\.rot0 = Dir\.tiltOf\(ctl\.dir, word\.rot0 \?\? 0\);/.test(splash), "L2: the splash keeps DIRECT's lean (its block is laid out with it)");
+  ok(/Dir\.lookOf\(it\.dir, it\.lk\.rotation, Dir\.LEAN_REACT\)/.test(tr), "L2: the token reaction asks for its harder lean");
+  /* E1 the engine's own sideways motions go the blow's way (REQUESTS DIRECT-E1: the sign was the seed's) */
+  ok(D.signOf({ ux: 0.8, uy: 0.6 }) === 1 && D.signOf({ ux: -0.8, uy: 0.6 }) === -1 && D.signOf({ ux: 0.1, uy: 0.99 }) === null && D.signOf(null) === null, "E1: the sign is the blow's side, none for a vertical blow");
+  eq(D.lookOf({ ang: 180, ux: -1, uy: 0 }, 0, D.LEAN_REACT).dir, -1, "E1: a blow to the left hands the engine dir -1");
+  ok(!("dir" in D.lookOf({ ang: 180, ux: -1, uy: 0 }, 0)), "E1: without a lean profile (the splash) the look has no dir: the splash is unchanged");
+  ok(/if \(dl\.dir\) it\.lk\.dirSign = dl\.dir;/.test(tr) && /\.\.\.\(Number\.isFinite\(lk\.dirSign\) \? \{ dir: lk\.dirSign \} : \{\}\)/.test(tr), "E1: the reaction word's play options carry the sign");
+  const M = await import("../letters/motion.mjs");
+  const rec = (dir) => { const m = M.motionOf({ kind: "punch", mood: "impact", sound: { loud: 0.8, sharp: 0.8 }, dir, pin: { holdKind: "recoil" } }); let s = 0; for (let t = 0; t < 400; t += 10) s += M.holdPose(m, t, 400).x; return s; };
+  ok(rec(-1) < 0 && rec(1) > 0, "E1: the engine reads it (motion.mjs: a recoil goes left with dir -1, right with dir 1)");
+  /* S2 seats agree on the knock: one pose per age whatever the page clock (the knock is in caps; px = caps x this seat's cap) */
+  const pose = (origin) => [0, 62, 120, 300, 800, 1500, 1700].map((age) => D.knockAt({ ux: 0.6, uy: 0.8 }, (origin + age) - origin, { contact: 62, holdEnd: 1400, k: D.knockK(0.7) }));
+  eq(JSON.stringify(pose(1234.5)), JSON.stringify(pose(98765.25)), "S2: GM and player get one knock pose per age");
+  /* R a real fight (lane 5): Omni-Man's slugfest knocked a minion group out; its "broken" word took the damage word's place and had no way */
+  ok(/const src = attackerOf\(ev\);\s*\n\s*if \(ev\.type === "broken"\) told\(tok, "health", \{ broken: true, key, \.\.\.\(src && src !== tok\.id \? \{ src \} : \{\}\) \}\);/.test(tr), "R: a knock-down by an attack (the fight's broken event) keeps its attacker, like its damage");
 }
 
 done("direct");

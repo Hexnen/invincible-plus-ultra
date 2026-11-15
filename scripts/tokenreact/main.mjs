@@ -256,9 +256,11 @@ function onEvent(ev) {
     heard.add(key);
     const tok = game.combats?.get(ev.combat)?.combatants?.get(target)?.token?.object ?? null;
     if (!tok || !enabled()) return;
-    if (ev.type === "broken") told(tok, "health", { broken: true, key });
+    /* DIRECT2 (seen live in a real fight: a minion group knocked out by Omni-Man's slugfest lettered its "broken" word with no way, and
+       that heavier word took the damage word's place): a knock-down by an attack keeps its attacker, like the damage */
+    const src = attackerOf(ev);
+    if (ev.type === "broken") told(tok, "health", { broken: true, key, ...(src && src !== tok.id ? { src } : {}) });
     else if (Number.isFinite(ev.taken) && ev.taken > 0) {
-      const src = attackerOf(ev);
       told(tok, ev.toStress ? "resolve" : "health", { taken: Math.trunc(ev.taken), key, ...(src && src !== tok.id ? { src } : {}), ...(typeof ev.dtype === "string" ? { dtype: ev.dtype } : {}), ...(ev.doubled === true ? { doubled: true } : {}) });
     }
   } catch (err) { once(err); }
@@ -468,8 +470,8 @@ async function land(ids, ready) {
       it.lk.sstep = it.pub ? P.seriesStep(it.pub, st.step, st.cum) : st.step;
       /* DIRECT: a blow with its attacker has a way on the board (documents: the same on every seat); the word grows and leans that way */
       it.dir = directionOf(it);
-      const dl = Dir.lookOf(it.dir, it.lk.rotation);
-      if (dl) { it.lk.rotation = dl.rotation; it.lk.from = dl.from; }
+      const dl = Dir.lookOf(it.dir, it.lk.rotation, Dir.LEAN_REACT);      // DIRECT2: the reaction's harder lean, and the engine's own sideways motions go the blow's way
+      if (dl) { it.lk.rotation = dl.rotation; it.lk.from = dl.from; if (dl.dir) it.lk.dirSign = dl.dir; }
     }
     /* CROWD (ADVX 8, 17): the moment as UNITS: a token alone, or a cluster of tokens hit together and standing close on screen (one word for
        the cluster, each member its number); heaviest first, ties by id, so every seat places them in one order */
@@ -986,7 +988,7 @@ function planOf(L, it) {
     : P.group({ cap: numCap, aspect: 0, nums: numRoom, numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
   const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), fit: "screen", ...layer() };
-  const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...(lk.hand ? { hand: lk.hand } : {}), ...lk.motion, ...(Number.isFinite(lk.from) ? { from: lk.from } : {}) } : null;   // PALETTE: lk.hand = a pinned block (colour only); DIRECT: grows away from the attacker
+  const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...(lk.hand ? { hand: lk.hand } : {}), ...lk.motion, ...(Number.isFinite(lk.from) ? { from: lk.from } : {}), ...(Number.isFinite(lk.dirSign) ? { dir: lk.dirSign } : {}) } : null;   // PALETTE: lk.hand = a pinned block (colour only); DIRECT: grows away from the attacker
   /* ALIGN (engine 1.9.1 recipe, owner: one accent): the word that gets the moment's impact does not flash on its own; the impact IS its
      accent and lands on its contact. Every seat passes the same (the event decides, not the seat), so the word's contact is one rule */
   if (wordOpts && (it.impact || it.folded)) wordOpts.flash = false;      // IMPCALL2: a folded blow's flash was the roll's
@@ -1081,10 +1083,12 @@ function follow(tok, plan, member) {
       /* CROWD (ADVX 14): a token not on THIS seat's view (off screen, under the open sidebar): off-panel, at the view's edge nearest to it.
          CROWDKO: one function with the layout (layout.mjs restCentre: the same pushes), so the place the layout judged is the place drawn */
       c = Lay.restCentre(c, tr, box, eb, std, safe, view.panelsCached());
-      /* DIRECT: the word's travel along the blow (its numbers stand still), kept inside this seat's view */
-      if (member < 0 && plan.trav) {
-        const q = Dir.travelAt(plan.dir, performance.now() - plan.trav.t0, plan.trav), px = (plan.cap || 0) * k;
-        const d = Dir.clampTravel(c, { x: q.x * px, y: q.y * px }, eb.w / 2, eb.h / 2, safe);
+      /* DIRECT2: the whole group (the word and its numbers) is knocked along the blow (Dir.knockAt, on the word's own clock), never forward
+         into its struck token (wallTravel) and kept inside this seat's view */
+      if (plan.trav) {
+        const q = Dir.knockAt(plan.dir, performance.now() - plan.trav.t0, plan.trav), px = (plan.cap || 0) * k;
+        const w = Dir.wallTravel(c, { x: q.x * px, y: q.y * px }, eb.w / 2, eb.h / 2, tr, plan.dir);
+        const d = Dir.clampTravel(c, w, eb.w / 2, eb.h / 2, safe);
         c = { x: c.x + d.x, y: c.y + d.y };
       }
       const off = member < 0 ? plan.g.word : plan.g.nums[member];
@@ -1134,9 +1138,10 @@ function play(L, it, queued = false) {
       } catch (err) { once(err); }
     }
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
-    /* DIRECT: the word arrives along the blow, strikes on its contact, drifts on and leaves the same way (follow, on the word's own clock) */
+    /* DIRECT2: the word lands back toward the attacker on its contact, is knocked past its place, slides on and is thrown out the same way
+       (follow, on the word's own clock; its numbers ride with it); a heavier blow knocks farther */
     plan.dir = it.dir ?? null;
-    if (plan.dir && word?.opts && Number.isFinite(word.opts.startAt)) plan.trav = { t0: word.opts.startAt, contact, holdEnd: entMs + lk.hold, reduced: !!(red || word.reducedMotion) };
+    if (plan.dir && word?.opts && Number.isFinite(word.opts.startAt)) plan.trav = { t0: word.opts.startAt, contact, holdEnd: entMs + lk.hold, k: Dir.knockK(lk.magnitude), reduced: !!(red || word.reducedMotion) };
     const numAt = (i) => follow(tok, plan, Math.min(i, plan.g.nums.length - 1));
     const playNum = (n, o, i, late = false) => {
       if (playing.get(pkey) !== entry) return;
