@@ -1235,7 +1235,9 @@ function enterBackdrop(ctl, shot) {
   const now = performance.now();
   const end = live ? (Number.isFinite(ctl.impactEnd) ? ctl.impactEnd : (Number.isFinite(ctl.impactPeak) ? ctl.impactPeak : now) + IMPACT_MAX_MS) : now;
   if (live && shot?.where === 'target' && shot.target) ctl.spotTarget = shot.target;
-  ctl.later(() => { if (!ctl.dead && !ctl.extrasGone) add(); }, Math.max(0, Math.round(end - now)));
+  /* CRITLATE (engine 1.9.20: a 500 ms impact ends on a fraction of a millisecond; Math.round brought the wash a third of a ms early):
+     rounded up, never before the end, whatever the plan's length */
+  ctl.later(() => { if (!ctl.dead && !ctl.extrasGone) add(); }, Math.max(0, Math.ceil(end - now)));
 }
 /* the struck target's token for a clear spot: only while this seat still sees it in its view (a spot must not mark a hidden token) */
 function spotToken(id) {
