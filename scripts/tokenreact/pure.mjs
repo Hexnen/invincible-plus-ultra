@@ -589,11 +589,11 @@ export function impactOf(pub, step = 0, o = {}) {
 /* ---------------------------------------------------------------- a series in proportion (CROWD, ADVX 6)
    Five 1-point blows 0.45 s apart climbed one rung per blow (scratch, blow, hard blow, heavy, CRUSHING): the fifth -1 drew the critical's
    frames with a full white flash and the word grew 56 %, bigger than a single -8 would have drawn. The escalation outran the damage.
-   Rule: a series still BUILDS (each blow at least as strong as the one before, one rung per blow at most), but its rung never passes the
-   rung the series' blows would get as ONE blow (their sum: cumPub) plus one rung for the rhythm itself; the critical's rung (the last) is
-   reached only when the sum alone reaches it. Five -1 now: scratch, blow, hard blow, heavy, heavy (a single -5 is heavy); -2, -3, -4 still
+   Rule (CROWD, then CROWD2 below): a series still BUILDS (each blow at least as strong as the one before, one rung per blow at most), but
+   never past the rung the series' blows would get as ONE blow (their sum: cumPub); the critical's rung (the last) is reached only when the
+   sum alone reaches it; a rung over the blow's own is earned by the share of the track the series has taken (SERIES_LIFT). -2, -3, -4 still
    climbs to crushing; a fall to 0 is the knock-out whatever came before. The word's growth and the token's motion follow the same capped
-   step (seriesStep); the word's TEXT keeps its series (the rhythm of the sound), only its size is capped. cum = { n, a }: the series' summed
+   step (seriesStep); the word's TEXT one tier more at most (textStep). cum = { n, a }: the series' summed
    points and summed amounts (the shared reaction's: the same on every seat that sees the token, never a share of the track a seat may not
    read). Without cum: the old climb. */
 export const cumPub = (pub, cum) => {
@@ -602,13 +602,27 @@ export const cumPub = (pub, cum) => {
   const kind = pub?.kind === "stress" ? "stress" : heavyLoss(n, a) ? "heavy" : "hit";
   return { kind, amt, known: pub?.known !== false };
 };
+/* CROWD2 (orchestrator's after-take of CROWD, KA k3: five 1-point blows 0.45 s apart still drew the full black-and-white slam on the 2nd and
+   3rd blow and a large orange burst over the token on the 5th: far louder than five scratches). The CROWD cap let a series climb one rung per
+   blow up to its SUM's rung plus one for the rhythm, so the 2nd -1 (sum 2 points) already drew what a single -2 draws, the 3rd what a -3
+   draws. Rule now: a blow is drawn at ITS OWN rung (its own damage); the series lifts it by one rung once the blows BEFORE it had taken
+   SERIES_LIFT[0] of the track (half: the token is visibly going down), by two at SERIES_LIFT[1]; never by more than its step, never past its
+   sum's rung (cumPub), and the critical's rung only when the sum alone reaches it. The rhythm of a series builds INSIDE the rung (the
+   engine's `series` boost, pure withSeries: capped under the next strength bound, so no heavier rung's drawings) and in the word's sound
+   (textStep: one tier longer, no lead-in it has not earned). Five -1 on an 8-point track: scratch x4 then a blow (5 of 8 points gone);
+   -2, -2, -2, then the fall: blow, blow, hard blow, knock-out (the peak). cum.a / pub.amt are the shared reaction's amounts (PRIV): the same
+   on every seat that sees the token. */
+export const SERIES_LIFT = [0.5, 0.75];
 export function seriesRung(pub, step = 0, cum = null) {
-  const own = rungOf(pub), top = RUNGS.length - 1, want = Math.min(top, own + IMPACT_STEP * Math.max(0, step));
+  const own = rungOf(pub), top = RUNGS.length - 1, s = Math.max(0, Math.floor(Number(step) || 0)), want = Math.min(top, own + IMPACT_STEP * s);
   if (!cum) return want;
-  const c = rungOf(cumPub(pub, cum));
-  const cap = c >= top ? top : Math.min(top - 1, c + 1);
-  return Math.max(own, Math.min(want, cap));
+  const sum = cumPub(pub, cum), before = Math.max(0, sum.amt - Math.max(0, Math.min(1, Number(pub?.amt) || 0)));
+  const lift = SERIES_LIFT.filter((t) => before >= t - 1e-9).length;
+  return Math.max(own, Math.min(want, own + lift, rungOf(sum)));
 }
+/** the word's step in its vocabulary series (the sound's length and lead-in): the rhythm of a series lengthens the sound by one tier at most
+    over what the series earned (sstep), so five scratches say THWAP!, THWAAP!, THWAAP! and not KA-THWAAAAP!! (CROWD2) */
+export const textStep = (step, sstep) => Math.max(0, Math.min(Math.floor(Number(step) || 0), Math.floor(Number(sstep) || 0) + 1));
 /** the step a series has really earned (0..STREAK.max): rungs added over the blow's own one, for ladder kinds; others keep their step */
 export function seriesStep(pub, step = 0, cum = null) {
   const s = Math.max(0, Math.min(STREAK.max, Math.floor(Number(step) || 0)));

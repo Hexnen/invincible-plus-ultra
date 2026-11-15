@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as P from "../tokenreact/pure.mjs";
+import { STEP_AT } from "../letters/impact/plan.mjs";
 
 let n = 0, failed = 0;
 const ck = (name, cond, more = "") => { n++; if (!cond) { failed++; console.log(`FAIL ${name}${more ? `\n   ${more}` : ""}`); } };
@@ -58,6 +59,20 @@ const hitAll = (ids, to = 6, dt = 5) => ids.map((id, i) => ({ t: i * dt, id, to 
   const paced = ser([["hit", 2], ["heavy", 3], ["heavy", 4]]);
   ck(`P14 a paced series of real blows still builds to the crushing rung: ${paced.map((x) => `${x.kind} ${x.magnitude}`).join(", ")}`, paced[0].rung < paced[1].rung && paced[1].rung < paced[2].rung && paced[2].rung === P.RUNGS.length - 1);
   ck("P15 the earned step: five -1 earn at most 3 steps of growth", P.seriesStep({ kind: "hit", amt: 1 / 8, known: true }, 4, { n: 5, a: 5 / 8 }) <= 3);
+  /* CROWD2 (orchestrator's after-take, KA k3): five -1 still drew the full black-and-white slam on the 2nd and 3rd blow. A blow is drawn at
+     its own damage's rung; the series lifts it only once the blows before it took half the track; the rhythm builds inside the rung. The
+     drawn strength is what the engine draws (withSeries + the engine's series boost: effectiveMagnitude); 0.6 is the bound where a hit's
+     drawings turn the scene black and white (impact/plan.mjs STEP_AT) */
+  const drawn = (blows, max = 8) => { let cum = { n: 0, a: 0 }; return blows.map(([kind, k], s) => { const amt = Math.max(k / max, k / 8); cum = { n: cum.n + k, a: cum.a + amt }; const im = P.impactOf({ kind, amt, known: true }, s, { cum }); return { ...im, eff: P.effectiveMagnitude(P.withSeries(im, s)) }; }); };
+  for (const max of [6, 8, 12, 20]) {
+    const f = drawn([["hit", 1], ["hit", 1], ["hit", 1], ["hit", 1], ["hit", 1]], max);
+    ck(`P18 five -1 on a ${max}-point track: blows 2-3 stay scratches (drawn ${f.map((x) => x.eff)}), the rhythm still builds inside the rung`, f.slice(0, 3).every((x) => x.rung === 0 && x.eff < STEP_AT[1]) && f[2].eff > f[0].eff && f.every((x, i) => !i || x.eff >= f[i - 1].eff - 1e-9));
+    ck(`P19 five -1 on a ${max}-point track: never more than one rung over a scratch (rungs ${f.map((x) => x.rung)})`, f.every((x) => x.rung <= 1));
+  }
+  const toDown = (() => { let cum = { n: 0, a: 0 }; const out = [-2, -2, -2].map((d, s) => { const amt = 2 / 8; cum = { n: cum.n + 2, a: cum.a + amt }; return P.impactOf({ kind: "hit", amt, known: true }, s, { cum }); }); out.push(P.impactOf({ kind: "down", amt: 1 / 8 }, 3, { cum: { n: 7, a: 7 / 8 } })); return out; })();
+  ck(`P20 a paced series -2 -2 -2 then the fall builds to a real peak (${toDown.map((x) => `${x.kind} ${x.magnitude}`)})`, toDown[2].rung > toDown[0].rung && toDown[3].kind === "ko" && toDown[3].magnitude > P.IMPACT_TOP);
+  ck("P21 the sound of a series is one tier over what it earned: five -1 never reach the lead-in (step 2) before earning a rung",
+    typeof P.textStep === "function" && [0, 1, 2, 3, 4].map((s) => P.textStep(s, 0)).every((x) => x <= 1) && P.textStep(4, 1) === 2 && P.textStep(0, 0) === 0);
   ck("P16 going down is the knock-out whatever came before", P.impactOf({ kind: "down", amt: 0.3 }, 4, { cum: { n: 1, a: 0.1 } }).kind === "ko");
   ck("P17 a pin every player may open is shared; a GM's pin is not; a pin with no entry a player placed is shared",
     P.pinPublic({ ownership: { default: 2 }, hasEntry: true }) && !P.pinPublic({ ownership: { default: 0 }, hasEntry: true }) && P.pinPublic({ hasEntry: false, authorGM: false }) && !P.pinPublic({ hasEntry: false, authorGM: true }));
@@ -119,6 +134,11 @@ if (ok("rapid")) {
   ck(`C16 the number keeps its side blow after blow (${dx})`, dx.length === 5 && dx.every((s) => s === 1));
   const ringHits = S.rapid.gm.frames.flatMap((f) => onRings(S.rapid.gm, [f.plays.filter((p) => !p.num && p.box).at(-1)].filter(Boolean)));
   ck(`C17 no step of the series rests on the token's ring (${ringHits})`, !ringHits.length);
+  /* CROWD2 (KA k3): the drawn strength (magnitude + the engine's series boost) of blows 2 and 3 stays under the black-and-white bound; the
+     sound gets no lead-in before the series has earned a rung */
+  const eff = im.map((x) => Math.round((x.magnitude + 0.15 * x.series) * 100) / 100);
+  ck(`C24 five 1-point blows: the 2nd and 3rd draw no black-and-white scene (drawn ${eff})`, eff.length === 5 && eff[1] < STEP_AT[1] && eff[2] < STEP_AT[1]);
+  ck(`C25 five 1-point blows: the words say a scratch, no lead-in before half the track is gone (${w.map((p) => p.text)})`, w.length === 5 && w.slice(0, 4).every((p) => !p.text.includes("-")));
 }
 if (ok("paced")) {
   const im = S.paced.gm.impacts;

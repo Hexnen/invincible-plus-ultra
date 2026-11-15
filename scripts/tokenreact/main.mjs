@@ -429,7 +429,9 @@ async function land(ids, ready) {
       if (!u.cluster) {
         const it = members[0];
         it.mode = u.mode; it.scale = u.scale; it.delay = u.delay; it.unit = u;
-        it.lk.word = it.mode === "full" ? P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: it.lk.step, streakSeed: it.streakSeed }) : null;
+        it.lk.word = it.mode === "full" ? P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: P.textStep(it.lk.step, it.lk.sstep), streakSeed: it.streakSeed }) : null;      // CROWD2: one tier over what the series earned
+        /* CROWD2: the size is the series' first word's (the shorter word's eye rule must not shrink a lengthened sound: a series never shrinks) */
+        if (it.lk.word && it.lk.step > 0) it.lk.sizeWord = P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: 0, streakSeed: it.streakSeed }) ?? null;
         if (!it.lk.word && it.mode === "full") it.mode = it.hasNum ? "number" : "none";
         if (it.mode !== "none") staged.push(it);
         continue;
@@ -439,7 +441,7 @@ async function land(ids, ready) {
       const lk = P.look({ kind: u.kind, amt: u.amt, num: null }, null, lead.lang, seed);
       const step = Math.max(...members.map((m) => m.lk.step ?? 0)), sstep = Math.max(...members.map((m) => m.lk.sstep ?? 0));
       lk.step = step; lk.sstep = sstep;
-      lk.word = u.mode === "full" ? P.wordFor(lk, vocab, { lang: lead.lang, seed, step }) : null;
+      lk.word = u.mode === "full" ? P.wordFor(lk, vocab, { lang: lead.lang, seed, step: P.textStep(step, sstep) }) : null;
       const cl = { key: `crowd:${seed}`, cluster: true, members, tok: lead.tok, lk, seed, lang: lead.lang, sev: u.sev, mode: lk.word ? "full" : "none", scale: u.scale * P.crowdK(members.length),
         delay: u.delay, unit: u, room: [], hasNum: false, pub: null, ids: members.map((m) => m.tok.id) };
       if (cl.mode === "full") staged.push(cl);
@@ -694,7 +696,7 @@ function planOf(L, it) {
   const nums = it.mode === "silent" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
   /* a blow of a series stands a little bigger each step it has EARNED (CROWD: pure seriesStep, capped by the series' sum) */
   const grow = 1 + P.STREAK.grow * Math.min(P.STREAK.max, lk.sstep ?? lk.step ?? 0);
-  let cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), vw(), user * it.scale * grow) : 0;
+  let cap = word ? P.targetPx(lk.kind, lk.amt, lk.sizeWord ?? lk.word, tokPx, vh(), vw(), user * it.scale * grow) : 0;
   /* CROWD (ADVX 17): a cluster's word is never under the crowd floor (far out the crowd reads as one event, not a heap of specks) */
   if (word && it.cluster) cap = Math.min(vh() * P.SIZE_RULE.capVh, Math.max(cap, P.crowdFloor(vh()) * user));
   const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
@@ -896,7 +898,8 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
     /* ALIGN: a blow of a series is the engine's series too (pure withSeries: grown inside its rung) */
     /* CROWD: the step the series EARNED (pure seriesStep: capped by its sum); a cluster's impact is its heaviest member's blow */
     const by = it.impIt ?? it;
-    const spec = { ...P.withSeries(imp, by.lk?.sstep ?? by.lk?.step ?? 0), subject: tok, seed: `${by.seed}|impact`, blowAt };
+    /* CROWD2: the series' rhythm (its raw step) builds INSIDE the rung its damage earned (withSeries caps it under the next strength bound) */
+    const spec = { ...P.withSeries(imp, by.lk?.step ?? 0), subject: tok, seed: `${by.seed}|impact`, blowAt };
     /* ALIGN (engine 1.9.1 `keep`): the word and its numbers are world words IN the scene under the impact's overlay: they stay readable
        through every drawing (a hole cut round them, followed while they move); only handles that are up and alive are passed */
     const kept = keep.filter((h) => h && h.alive !== false && !h.off);
