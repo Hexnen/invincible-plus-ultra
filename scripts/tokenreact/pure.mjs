@@ -12,6 +12,7 @@
           Resolve stress | spent (stress taken by choice: a pushed roll, a power) | regain | out (0 = stressed out [B2816]) | steady (up from 0) */
 import { contactMs as wordContact, leadMs } from "../splash/impact-plan.mjs";
 import * as LC from "../letter-colors.mjs";   // PALETTE: the lettering's colours, one place
+import { slotBias } from "../direct.mjs";   // DIRECT: the far side of a blow
 /* CALLERS2 (engine 1.9.18: the impact's ladders are public, L.impact.steps / .series / .tiers): no copy of the engine's numbers and no
    import of its files here. The running engine hands its table in (main.mjs useImpactTable(L.impact), before any blow is planned); until it
    has, every rule that needs a strength bound throws (a node check hands in the vendored engine's own table, scripts/tactics/impact-node.mjs). */
@@ -405,7 +406,7 @@ export const FIT_SLOTS = SLOTS.filter((s) => s !== "on");
    the panels every seat keeps free) is not where a word ends: follow() pushes every word off it each frame, on every seat alike. With slide
    the fit scores a side where that push will put it (inside the standard view), so a side beside a zone is not given up for a neighbour's
    face; the push is computed from shared data only, the same on every seat. */
-export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null, ks = FIT.ks, slide = false } = {}) {
+export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null, ks = FIT.ks, slide = false, toward = null } = {}) {
   let best = { slot: FIT_SLOTS[0], k: 1, score: Infinity };
   const own = { ...ringRect(tok), k: SLOT_K.own }, A = box.w * box.h;      // CROWD: the ring is the token's too
   const push = slide && safe ? blocked.filter((q) => q?.push) : [];
@@ -418,6 +419,7 @@ export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null,
       let s = i * 0.04 * b.w * b.h + (1 - k) * A * FIT.shrinkK;      // the order is the preference: above unless it costs; then size
       if (prefer && ((prefer > 0 && slot === "aboveL") || (prefer < 0 && slot === "aboveR"))) s += 0.02 * b.w * b.h;
       if (keep && slot === keep) s -= FIT.keepBonus * A + 1e-3;      // CROWD: the kept side also wins a tie
+      if (toward) s += slotBias(slot, toward, b.w * b.h);      // DIRECT: the side away from the attacker (the sound knocked through)
       s += inter(restOf(slot, r), own) * own.k;
       for (const q of blocked) s += inter(r, q) * (q.k ?? 1);
       if (safe) s += outside(r, safe) * 6;

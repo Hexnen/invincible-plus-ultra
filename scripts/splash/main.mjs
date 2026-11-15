@@ -372,6 +372,15 @@ function boardToken(message) {
     return tok && !tok.document.hidden && seesToken(tok) ? tok : null;   // FXI-SPLASH (ADVI 10): and only one THIS seat sees (seen.mjs)
   } catch (e) { return null; }
 }
+/* DIRECT: the roller's token id on this scene whatever this seat sees (the speaker's token, else the actor's first token): the same on every
+   seat; stage.mjs reads its document only, and a token the GM hid gives no direction (DIRECT-1) */
+function rollerIdOf(message) {
+  try {
+    const sp = message.speaker ?? {};
+    if (!canvas?.ready || (sp.scene && sp.scene !== canvas.scene?.id)) return null;
+    return sp.token ?? message.speakerActor?.getActiveTokens?.()[0]?.id ?? null;
+  } catch (e) { return null; }
+}
 /* SYNC (ADVX 5): the table's clock is the module's min-round-trip clock (shared-clock.mjs), not Foundry's averaged serverTime */
 const serverNow = () => Clock.serverNow();
 /* SYNC: ms the table adds after the dice for THIS seat's moment: lettered on a map layer it waits for the dice to fade (Dice So Nice's
@@ -506,6 +515,7 @@ function stageOpts(message, ev, resolve) {
   return {
     token, scale: scaleK(), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'), momentId: message.id,
     targets: rollTargetsOf(message, ev), from: boardToken(message),   // ROLLTARGET: the impact on the target, the blow from the roller
+    rollerId: rollerIdOf(message),   // DIRECT: the roller on the board for every seat (also where this seat cannot see him): the action's way
     resolve, seed: message.id
   };
 }

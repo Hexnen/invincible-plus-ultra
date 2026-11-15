@@ -6,6 +6,7 @@ import * as LP from './letter-plan.mjs';
 import * as IP from './impact-plan.mjs';
 import { seesToken } from './seen.mjs';
 import * as SP from '../same-picture.mjs';   // SAMEPIC: one picture for the table
+import * as Dir from '../direct.mjs';   // DIRECT: the lettering goes the way of the action
 
 const active = new Map();   // key -> ctl
 const MAX_STAGES = 4;
@@ -735,6 +736,9 @@ function contactOf(text, o) {
 function letterOpts(ctl, it, lw) {
   const o = { ...(it._o ?? engineOpts(it, { seed: ctl.seed, map: !!ctl.shared }, ctl.hands ?? [])) };
   o.avoid = [...new Set([...(o.avoid ?? []), ...(ctl.hands ?? [])])];   // the hands measured first are the real ones; the played ones join (a set: same choice)
+  /* DIRECT: an attack's word grows away from the roller, toward the target. Played with it, laid out without it (as before): measured with
+     it, the grown word's wider entrance sent a crowded far seat's board block to its screen, bigger than the critical (splashsame S4) */
+  if (Number.isFinite(it.dirFrom)) o.from = it.dirFrom;
   const sizeK = it._m?.sizeK || 1, k = ctl.k || 1;
   Object.assign(o, { space: 'screen', parent: lw, at: { x: it.x, y: it.y }, fit: 'exact', size: Math.round((it.S / (sizeK * k)) * 100) / 100,
     maxWidth: Math.ceil(it.w * 1.06) });
@@ -795,9 +799,32 @@ function letterOne(ctl, it) {
     ctl.wordAt = o.startAt; ctl.contactAt = o.startAt + own;
   }
   let h = null;
+  /* DIRECT: the result word of an attack travels the action's way on its own clock (Dir.travelAt: in from the roller's side, strikes on its
+     contact, drifts on, leaves the same way), kept inside this seat's view; the moves of the block (followPan, the shake) set its place */
+  const base = { ...o.at };
+  let go = null;
+  if (it.role === 'word' && it.dir && !o.reduced) {
+    let cur = { ...base };
+    const t0 = o.startAt, cap = it.S || 0;
+    const holdEnd = () => (h?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0) + (it.hold || 0);
+    /* a function for the engine (read every frame), carrying its place as x / y too (what the block's checks and logs read) */
+    o.at = Object.assign(() => {
+      const contact = Number.isFinite(ctl.contactAt) ? ctl.contactAt - t0 : (it._m?.contact ?? 120);
+      const q = Dir.travelAt(it.dir, performance.now() - t0, { contact, holdEnd: holdEnd() });
+      const safe = { l: 0, t: 0, r: window.innerWidth, b: window.innerHeight };
+      let off = { x: q.x * cap, y: q.y * cap };
+      if (world) {
+        const z = globalThis.canvas?.stage?.scale?.x || 1, c = toClient(cur);
+        if (c) { const d = Dir.clampTravel(c, { x: off.x * z, y: off.y * z }, (it.w || 0) * z / 2, (it.h || 0) * z / 2, safe); off = { x: d.x / z, y: d.y / z }; }
+      } else off = Dir.clampTravel(cur, off, (it.w || 0) / 2, (it.h || 0) / 2, safe);
+      return { x: cur.x + off.x, y: cur.y + off.y };
+    }, { x: base.x, y: base.y });
+    const fn = o.at;
+    go = (p) => { cur = { x: p.x, y: p.y }; fn.x = p.x; fn.y = p.y; };
+  }
   try {
     h = LE.play(LP.letterable(it.text), o);
-    ctl.letters.push({ h, base: { ...o.at }, role: it.role, world, own: !!o.parent });
+    ctl.letters.push({ h, base, role: it.role, world, own: !!o.parent, go });
     if (h?.hand) ctl.hands.push(h.hand);
   } catch (e) { console.warn('invincible-plus-ultra (splash) | lettering failed', e); h = null; }
   /* ALIGN: the impact after its word, on the word's contact as the ENGINE reads it (L.contactAt: on the 24 Hz grid in stepped motion) */
@@ -835,7 +862,7 @@ export function shakeLetters(ctl, px) {
     for (const it of ctl.letters || []) {
       if (!it.h?.alive || !it.base) continue;
       const k = it.world ? 1 / z : 1, off = ctl.offset ?? { x: 0, y: 0 };
-      try { it.h.moveTo({ x: it.base.x + (off.x + sx * px) * k, y: it.base.y + (off.y + sy * px) * k }); } catch (e) { /* the engine dropped it */ }
+      try { const p = { x: it.base.x + (off.x + sx * px) * k, y: it.base.y + (off.y + sy * px) * k }; if (it.go) it.go(p); else it.h.moveTo(p); } catch (e) { /* the engine dropped it */ }
     }
     if (ctl.gaugeEl && !ctl.shared) ctl.gaugeEl.style.translate = `${Math.round(sx * px)}px ${Math.round(sy * px)}px`;   // on the map the gauge is pinned to the board
   }, i * 42));
@@ -859,7 +886,7 @@ function followPan(ctl) {
   const tb = sharedTokenBox(ctl.token);   // SAMEPIC: the document box (the mesh sways per seat)
   if (!tb) return;
   ctl.offset = { x: Math.round(tb.x - ctl.tokenAnchor.x), y: Math.round(tb.y - ctl.tokenAnchor.y) };
-  for (const it of ctl.letters || []) { try { if (it.h.alive && !it.world) it.h.moveTo({ x: it.base.x + ctl.offset.x, y: it.base.y + ctl.offset.y }); } catch (e) { /* gone */ } }
+  for (const it of ctl.letters || []) { try { if (it.h.alive && !it.world) { const p = { x: it.base.x + ctl.offset.x, y: it.base.y + ctl.offset.y }; if (it.go) it.go(p); else it.h.moveTo(p); } } catch (e) { /* gone */ } }   // DIRECT: a travelling word keeps its travel
   if (ctl.gaugeEl) ctl.gaugeEl.style.translate = `${ctl.offset.x}px ${ctl.offset.y}px`;
 }
 /* FXLD (ADVD 9): Dice So Nice raises its dice canvas over the windows (its "auto" mode climbs with the windows' z-index), so the dice
@@ -915,6 +942,21 @@ export function diceClear(maxMs = 2600) {
 }
 
 /* CRITLATE: the moment's options as THIS seat plays it (which token it may stand by, which layer); the same for prepare() and play() */
+/* DIRECT: the way of an attack roll on the board: from the roller to its targets (their middle, for several), from the DOCUMENTS (the same on
+   every seat); none without a roller or a target on this scene, or when the GM hid either (direct.mjs, DIRECT-1 / DIRECT-4) */
+export function splashDir(roller, targets) {
+  try {
+    const C = globalThis.canvas;
+    if (!C?.ready || !roller) return null;
+    const gs = C.dimensions?.size ?? C.grid?.size ?? 100;
+    const src = typeof roller === 'string' ? C.tokens?.get(roller)?.document : (roller.document ?? roller);
+    if (!src || src.hidden) return null;
+    const cs = (targets ?? []).map((id) => C.tokens?.get(id)?.document).filter((d) => d && !d.hidden && d.id !== src.id).map((d) => Dir.centreOf(d, gs)).filter(Boolean);
+    if (!cs.length) return null;
+    const c = { x: cs.reduce((a, p) => a + p.x, 0) / cs.length, y: cs.reduce((a, p) => a + p.y, 0) / cs.length };
+    return Dir.between(src, { x: c.x, y: c.y, width: 0, height: 0 }, gs);
+  } catch (e) { return null; }
+}
 function momentOpts(ev, o) {
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
   /* FXLD2: on a map layer the moment needs a token everybody sees (o.token = the board's token, main.mjs mapToken); without one it
@@ -940,6 +982,10 @@ function layoutMoment(ev, o, ctl, full) {
   const dF = LP.failStrength(ev);
   const plan = LP.planMoment(ev, { token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const word = plan.items.find(it => it.role === 'word');
+  /* DIRECT: an attack that landed has a way on the board, from the roller to its target (documents: the same on every seat): the result
+     word grows and leans that way (laid out with it, so the block is the same on every seat) and travels it as it strikes (letterOne) */
+  ctl.dir = word && !ev.fail ? splashDir(o.rollerId ?? o.from, ctl.targets) : null;
+  if (ctl.dir) { word.dir = ctl.dir; word.dirFrom = Dir.fromOf(ctl.dir); word.rot0 = Dir.tiltOf(ctl.dir, word.rot0 ?? 0); if (!S.isReduced()) word.rotation = word.rot0; }
   const t0 = word?.delay ?? 0;
   /* the stress row and its gauge belong to the block (measured once, shown at its time) */
   const resolve = ev.stress ? (o.resolve ? o.resolve() : null) : null;

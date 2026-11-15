@@ -26,6 +26,7 @@ import * as Moment from "../moment.mjs";
 import * as TokAnim from "../tokenanim/main.mjs";      // TOKANIM: the token's own motion
 import { standardRect, panelZones, dockZone, REF_VW, REF_VH } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
 import * as Clock from "../shared-clock.mjs";      // SYNC: the table's clock
+import * as Dir from "../direct.mjs";      // DIRECT: the lettering goes the way of the blow
 
 const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
@@ -424,6 +425,10 @@ async function land(ids, ready) {
       const st = streakOf(it.tok.id, it.lk.kind, it.seed, it.lk.n, it.lk.amt);
       it.lk.step = st.step; it.streakSeed = st.streakSeed; it.cum = st.cum;
       it.lk.sstep = it.pub ? P.seriesStep(it.pub, st.step, st.cum) : st.step;
+      /* DIRECT: a blow with its attacker has a way on the board (documents: the same on every seat); the word grows and leans that way */
+      it.dir = directionOf(it);
+      const dl = Dir.lookOf(it.dir, it.lk.rotation);
+      if (dl) { it.lk.rotation = dl.rotation; it.lk.from = dl.from; }
     }
     /* CROWD (ADVX 8, 17): the moment as UNITS: a token alone, or a cluster of tokens hit together and standing close on screen (one word for
        the cluster, each member its number); heaviest first, ties by id, so every seat places them in one order */
@@ -547,7 +552,7 @@ async function land(ids, ready) {
         const was = pe?.plan?.slot ?? pe?.slot;      // the side the last word really took (re-chosen on its drawn box, measure)
         it.plan.keep = it.lk.step > 0 && was && P.FIT_SLOTS.includes(was) ? was : null;
         const kf = kOf?.get(keyOf(it));
-        const o = { keep: it.plan.keep, ...(Number.isFinite(kf) ? { ks: [kf] } : {}) };
+        const o = { keep: it.plan.keep, ...(Number.isFinite(kf) ? { ks: [kf] } : {}), ...(it.dir && it.plan.wordOpts ? { toward: it.dir } : {}) };      // DIRECT: the far side first
         let fit = view.ok() ? P.fitSame(it.plan.tokRect, it.plan.box, view.std(it.plan.tokRect), view.safe(), it.plan.blocked, mine, o) : { slot: "above", k: 1, same: true };
         /* CROWDKO: the side search's choice stays when it stands clean; else a clean place is searched (layout.mjs) */
         const dec = view.ok() ? cleanPlace(it, fit, o, kf, { fixed, gmOnly, ownPanels, placedS, placedL, allowFold }) : null;
@@ -897,7 +902,7 @@ function planOf(L, it) {
     : P.group({ cap: numCap, aspect: 0, nums: numRoom, numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
   const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), fit: "screen", ...layer() };
-  const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...(lk.hand ? { hand: lk.hand } : {}), ...lk.motion } : null;   // PALETTE: lk.hand = a pinned block (colour only)
+  const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...(lk.hand ? { hand: lk.hand } : {}), ...lk.motion, ...(Number.isFinite(lk.from) ? { from: lk.from } : {}) } : null;   // PALETTE: lk.hand = a pinned block (colour only); DIRECT: grows away from the attacker
   /* ALIGN (engine 1.9.1 recipe, owner: one accent): the word that gets the moment's impact does not flash on its own; the impact IS its
      accent and lands on its contact. Every seat passes the same (the event decides, not the seat), so the word's contact is one rule */
   if (wordOpts && it.impact) wordOpts.flash = false;
@@ -992,6 +997,12 @@ function follow(tok, plan, member) {
       /* CROWD (ADVX 14): a token not on THIS seat's view (off screen, under the open sidebar): off-panel, at the view's edge nearest to it.
          CROWDKO: one function with the layout (layout.mjs restCentre: the same pushes), so the place the layout judged is the place drawn */
       c = Lay.restCentre(c, tr, box, eb, std, safe, view.panelsCached());
+      /* DIRECT: the word's travel along the blow (its numbers stand still), kept inside this seat's view */
+      if (member < 0 && plan.trav) {
+        const q = Dir.travelAt(plan.dir, performance.now() - plan.trav.t0, plan.trav), px = (plan.cap || 0) * k;
+        const d = Dir.clampTravel(c, { x: q.x * px, y: q.y * px }, eb.w / 2, eb.h / 2, safe);
+        c = { x: c.x + d.x, y: c.y + d.y };
+      }
       const off = member < 0 ? plan.g.word : plan.g.nums[member];
       last = view.toWorld({ x: c.x + off.dx * k, y: c.y + off.dy * k });
       return last;
@@ -1039,6 +1050,9 @@ function play(L, it, queued = false) {
       } catch (err) { once(err); }
     }
     const entMs = (() => { try { return (word?.plan?.timeline?.ent ?? []).reduce((a, p) => a + (p.ticks ?? 0) * (1000 / 24), 0); } catch { return 300; } })();
+    /* DIRECT: the word arrives along the blow, strikes on its contact, drifts on and leaves the same way (follow, on the word's own clock) */
+    plan.dir = it.dir ?? null;
+    if (plan.dir && word?.opts && Number.isFinite(word.opts.startAt)) plan.trav = { t0: word.opts.startAt, contact, holdEnd: entMs + lk.hold, reduced: !!(red || word.reducedMotion) };
     const numAt = (i) => follow(tok, plan, Math.min(i, plan.g.nums.length - 1));
     const playNum = (n, o, i, late = false) => {
       if (playing.get(pkey) !== entry) return;
@@ -1121,6 +1135,16 @@ function tokenMoves(L, it, tok, word, tHit) {
     try { const c = word && L?.contactAt ? L.contactAt(word) : null; if (Number.isFinite(c)) at = c; } catch { /* the shared instant */ }
     TokAnim.react(tok, { kind: it.lk.kind, amt: it.lk.amt, step: it.lk.sstep ?? it.lk.step ?? 0,      /* CROWD: the earned step */ seed: it.seed, at, from: it.pub?.src ? canvas.tokens?.get(it.pub.src) ?? null : null });
   } catch (err) { once(err); }
+}
+
+/* DIRECT: the way of a reaction's blow on the board: from its attacker (the fight's last public attack, pub.src) to the struck token, read
+   from both documents (the same on every seat); none for a crowd's shared word, a blow without an attacker or one the GM hid (direct.mjs) */
+function directionOf(it) {
+  try {
+    if (it.cluster || !it.pub?.src || !it.tok?.document) return null;
+    const src = canvas.tokens?.get(it.pub.src);
+    return src ? Dir.between(src.document, it.tok.document, canvas.dimensions?.size ?? canvas.grid?.size ?? 100) : null;
+  } catch (err) { once(err); return null; }
 }
 
 /* the user's display layer, handed to the engine (contract: the world layer option) */
