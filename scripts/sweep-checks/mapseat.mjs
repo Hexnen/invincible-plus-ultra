@@ -7,7 +7,7 @@
 // roller); a seat shows it unchanged, or - only when a part would be a speck at its zoom or outside what its view shows of the board - plays
 // the moment on its screen layer. A seat's own floating panels never move it: they step back (class ins-yield) while it is up.
 // Also: the crowded board's critical lies on no token (CRITPEAK-9), and the map's sound words carry the paper rim (ADVX 18).
-// Fails on tactics-integrated-128 (M1, M2, M3, M5); passes after.
+// Fails on tactics-integrated-128 (M1, M2, M3); passes after.
 import * as SL from "../splash/logic.mjs";
 import * as SP from "../same-picture.mjs";
 
@@ -223,15 +223,12 @@ for (const bd of ["crowd", "warehouse"]) {
   ok(W("critical") >= 1.15 * W("strong") && W("strong") >= 1.15 * W("ordinary"), `M4 ${bd}: the critical is the peak on the board (${W("critical")} > ${W("strong")} > ${W("ordinary")})`);
 }
 
-/* ================================================================ M5 the paper rim on the board's sound words (ADVX 18), only there */
+/* ================================================================ M5 the board's words keep their own look (no forced light outline: it
+   would hide the coloured duplicate block, the owner's look ruling; ADVX 18 waits for an engine rim under the duplicate, MAPSEAT-4) */
 {
   const e = KINDS().pushed;
   const m = await seat({ ...P1, W: 1600, H: 900, zoom: 0.45, name: "m5-map", e });
-  const heads = m.drawn.filter((d) => ["word", "pre"].includes(d.role)), info = m.drawn.filter((d) => !["word", "pre", "wreck"].includes(d.role));
-  ok(onBoard(m) && heads.length === 2 && heads.every((d) => d.look?.outline === "sticker"), `M5: the board's sound words carry the paper rim (${heads.map((d) => d.role + ":" + d.look?.outline)})`);
-  ok(info.every((d) => d.look?.outline !== "sticker"), `M5: the captions keep their own hand`);
-  const s = await seat({ ...P1, W: 1600, H: 900, zoom: 0.12, name: "m5-screen", e });
-  ok(onScreen(s) && s.drawn.every((d) => d.look?.outline !== "sticker"), `M5: on the screen layer the words keep their look`);
+  ok(onBoard(m) && m.drawn.length > 0 && m.drawn.every((d) => d.look?.outline === undefined), `M5: the board's words carry no forced outline (${m.drawn.map((d) => d.role + ":" + d.look?.outline)})`);
 }
 
 /* pure: the board window and the seat rule */

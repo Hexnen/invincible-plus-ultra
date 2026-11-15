@@ -261,16 +261,14 @@ function engineOpts(it, base, hands) {
   else if (Number.isFinite(it.from)) o.from = it.from;
   if (it.colors) o.colors = it.colors.slice();
   if (it.hand) o.hand = { ...it.hand };
-  /* MAPSEAT (ADVX 18: the map word low in contrast among the map's own drawings): on the board the sound words get the letterer's paper rim,
-     a light cut edge round the whole word outside its ink keyline (the engine's look.outline "sticker"; KEEPBOX draws a word over an impact
-     the same way). It knocks the map's lines and textures out of the word's edge on dark and mid ground; on bright ground the ink keyline
-     and the dark duplicate inside it carry the shape. Not a backdrop (it follows the letters); the screen layers keep their look. */
-  if (base.map && MAP_RIM_ROLES.has(it.role)) o.look = { ...(o.look ?? {}), outline: 'sticker' };
+  /* MAPSEAT (ADVX 18, the map word low in contrast among the map's drawings): NOT solved here. The engine's paper rim (look.outline
+     "sticker") was tried on the board's sound words: it separates them from dark and mid ground, but the engine strokes it OVER the word's
+     coloured duplicate block, which then vanishes (offline render, 2026-11-15), against the owner's look ruling (a word is set off by its
+     duplicated block more often than by a light outline). Engine request: a light rim painted UNDER the duplicate (MAPSEAT-4). */
   for (const k of ['in', 'out', 'holdKind']) if (it[k]) o[k] = it[k];
   return o;
 }
 const SIDE_FROM = { above: 90, below: -90, right: 180, left: 0, focus: 90 };
-export const MAP_RIM_ROLES = new Set(['word', 'pre', 'wreck']);
 
 /* ---- FXLD2 (ADVD2 1, 3): ONE moment for the table.
    On a map layer the block is laid out in SCENE units from what every seat shares: the hero token's document (not its animated mesh),
