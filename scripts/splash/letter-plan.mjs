@@ -632,13 +632,19 @@ function place(out, frame, far = false) {
      plus a small preference of the sides (above, below, right, left) */
   const ref = T ? { x: T.x, y: T.y } : frame.focus, unit = Math.max(1, Math.hypot(bw, bh));
   const ft = out.foot ?? null;   // CALLERS: the standing footprint past the outline (rim + life), kept off what the block must not cover
+  /* CRITLATE (cost: a crowded critical's layout took 0.3-0.45 s in one task, on the moment's own instant): the same choice, cheaper. A place
+     whose distance and side preference alone already reach a clean best's score cannot win (its score is at least that), so its hits are not
+     counted; the heavy share is counted only for a new best. Exact: the same best on every input (check-critlate.mjs, fingerprint) */
+  const heavyAvoid = avoid.filter(a => (a.w ?? 1) >= 10), tg = frame.gap ?? 6;
+  const tokR = T ? { l: T.l - tg + 1, t: T.t - tg + 1, r: T.r + tg - 1, b: T.b + tg - 1 } : null;
   const consider = (s, l, t, pref) => {
     [l, t] = inSafe(l, t);
-    const q0 = at(l, t), q = ft ? { l: q0.l - ft.l, t: q0.t - ft.t, r: q0.r + ft.r, b: q0.b + ft.b } : q0, onT = T ? area(q, { l: T.l - (frame.gap ?? 6) + 1, t: T.t - (frame.gap ?? 6) + 1, r: T.r + (frame.gap ?? 6) - 1, b: T.b + (frame.gap ?? 6) - 1 }) : 0;
-    const hit = blockHits(q, avoid) + onT * TOKEN_W, heavy = onT + blockHits(q, avoid.filter(a => (a.w ?? 1) >= 10));
     const d = Math.hypot(l + bw / 2 - ref.x, t + bh / 2 - ref.y) / unit;
+    if (best && best.hit <= 0.5 && d + pref >= best.score) return;
+    const q0 = at(l, t), q = ft ? { l: q0.l - ft.l, t: q0.t - ft.t, r: q0.r + ft.r, b: q0.b + ft.b } : q0, onT = tokR ? area(q, tokR) : 0;
+    const hit = blockHits(q, avoid) + onT * TOKEN_W;
     const score = (hit > 0.5 ? 1e6 + hit : 0) + d + pref;
-    if (!best || score < best.score) best = { s, l, t, hit, heavy, score };
+    if (!best || score < best.score) best = { s, l, t, hit, heavy: onT + blockHits(q, heavyAvoid), score };
   };
   if (T) {
     const gap = frame.gap ?? 6;

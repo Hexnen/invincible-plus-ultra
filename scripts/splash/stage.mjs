@@ -232,12 +232,30 @@ function tokenBox(token) {
 }
 /* the box of each lettering: the engine's own plan of that word (the same seed, avoid and hand as the play), so the layout knows
    its real width; the estimate when the engine cannot plan it */
+/* CRITLATE: what the engine said about each lettering, kept by its exact input (the text, the options measured with, the layer, the engine's
+   version and table preferences): the same call gives the same answer, so a moment laid out ahead (prepare) is not measured again at its
+   instant. A changed input is a new key (measured afresh). */
+const MEASURE_MEMO = new Map(), MEASURE_MAX = 240;
+function engineKey() {
+  let p = '';
+  try { p = JSON.stringify(LE?.prefs ?? null); } catch (e) { p = '?'; }
+  return `${LE?.version ?? '?'}|${p}`;
+}
 function measureItems(items, base) {
   const hands = [];
+  const ek = engineKey(), gs = globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100;
   for (const it of items) {
     const o = engineOpts(it, base, hands);
     it._o = o;
     let m = null;
+    const mk = memoKey([ek, it.text, o, !!base.map, base.map ? gs : 0]);
+    const hit = mk ? MEASURE_MEMO.get(mk) : null;
+    if (hit) {
+      MEASURE_MEMO.delete(mk); MEASURE_MEMO.set(mk, hit);   // most recent last
+      it._m = hit;
+      if (hit.hand) hands.push(hit.hand);
+      continue;
+    }
     try {
       /* SAMEPIC: measured as every seat measures it: a seat's reduced motion (no tilt, no entrance smear) plays the same block still, it
          does not lay it out smaller or elsewhere */
@@ -252,9 +270,22 @@ function measureItems(items, base) {
       if (m && LE.measure) m.footAt = footAt(LP.letterable(it.text), base.map ? { ...om, space: 'world', keepInView: false } : om, base.map, m.sizeK);
     } catch (e) { m = null; }
     if (!m) { let k = 0.62 + 0.7 * (it.sound?.loud ?? 0.5); try { k = LE.design(LP.letterable(it.text), { ...o, reduced: false })?.sizeK ?? k; } catch (e) { /* estimate */ } const b = LP.estimateBox(it, 1); m = { w: b.w, h: b.h, sizeK: k, hand: null }; }
+    else if (mk) { MEASURE_MEMO.set(mk, m); if (MEASURE_MEMO.size > MEASURE_MAX) MEASURE_MEMO.delete(MEASURE_MEMO.keys().next().value); }   // (an estimate is not kept: the engine may answer next time)
     it._m = m;
     if (m.hand) hands.push(m.hand);
   }
+}
+/* CRITLATE: a key that only equal inputs share (non-finite numbers kept apart; functions, DOM nodes and tokens make the input unkeyable: null) */
+export function memoKey(v) {
+  let bad = false;
+  const s = JSON.stringify(v, (k, x) => {
+    if (typeof x === 'number') return Number.isFinite(x) ? (Object.is(x, -0) ? '§-0' : x) : `§n:${x}`;
+    if (x === undefined) return '§u';
+    if (typeof x === 'function' || typeof x === 'symbol' || typeof x === 'bigint') { bad = true; return null; }
+    if (x && typeof x === 'object' && !Array.isArray(x) && Object.getPrototypeOf(x) !== Object.prototype && Object.getPrototypeOf(x) !== null) { bad = true; return null; }
+    return x;
+  });
+  return bad ? null : s;
 }
 /* CALLERS2 (engine 1.9.18, L.measure standBox): a part's standing footprint past its hold box, in caps, measured by the engine at the size the
    layout tries (S px per cap: the rim's pixel floor and cap depend on it), the same on every seat: one device pixel per CSS px (view.dpr 1)
@@ -558,10 +589,31 @@ function compose(ctl, items, extra = {}) {
     out = fx.out; same = fx.moved;
   }
   out.k = k; out.frame = frame; out.same = same; out.fit = fit;
-  logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, ...(same !== 'none' && why ? { why } : {}), tok: frame.token ? [Math.round(frame.token.l), Math.round(frame.token.t)] : null, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
+  if (!ctl.dry) logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, ...(same !== 'none' && why ? { why } : {}), tok: frame.token ? [Math.round(frame.token.l), Math.round(frame.token.t)] : null, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
   return out;
 }
+/* CRITLATE (live: a critical's layout took 0.4-0.55 s in ONE task, run on the moment's own instant, so its word was called 52-479 ms after
+   its start, without its entrance, and its impact frame was cut or lost): the layout of a moment is a pure function of what it is given (the
+   items, the frame, the engine's answers), so it is kept by that input. prepare() lays the moment out ahead, while the dice still roll; at the
+   instant play() finds the same input and takes the kept layout (a copy: the caller moves its parts). Any input that changed (a token moved,
+   the view panned, another window) is a new key: laid out afresh, as before. */
+const LAYOUT_MEMO = new Map(), LAYOUT_MAX = 24;
+export const layoutStats = { fresh: 0, reused: 0, ms: 0 };
+const plainItem = (it) => { const o = {}; for (const k of Object.keys(it)) if (k[0] !== '_') o[k] = it[k]; return o; };
+const copyLayout = (out) => out && {
+  ...out, items: out.items.map((it) => ({ ...it })), rect: out.rect && { ...out.rect }, gauge: out.gauge && { ...out.gauge },
+  ...(out.parts ? { parts: out.parts.map((q) => ({ ...q })) } : {}), ...(out.foot ? { foot: { ...out.foot } } : {})
+};
 function composeIn(ctl, items, frame) {
+  const key = memoKey([engineKey(), ctl.seed, !!ctl.shared, items.map(plainItem), frame]);
+  const kept = key ? LAYOUT_MEMO.get(key) : null;
+  if (kept) {
+    LAYOUT_MEMO.delete(key); LAYOUT_MEMO.set(key, kept);
+    kept.marks.forEach(([o, m], i) => { if (items[i]) { items[i]._o = o; items[i]._m = m; } });   // as the measuring left them
+    layoutStats.reused++;
+    return copyLayout(kept.out);
+  }
+  const t0 = performance.now();
   const anchored = !!frame.token;
   let side = 'above', out = null;
   for (let pass = 0; pass < 2; pass++) {
@@ -569,6 +621,11 @@ function composeIn(ctl, items, frame) {
     out = LP.composeMoment(items, frame, measureFn);
     if (!anchored || out.side === side) break;
     side = out.side;
+  }
+  layoutStats.fresh++; layoutStats.ms += performance.now() - t0;
+  if (key && out) {
+    LAYOUT_MEMO.set(key, { out: copyLayout(out), marks: items.map((it) => [it._o, it._m]) });
+    if (LAYOUT_MEMO.size > LAYOUT_MAX) LAYOUT_MEMO.delete(LAYOUT_MEMO.keys().next().value);
   }
   return out;
 }
@@ -580,22 +637,36 @@ function sceneRectOf(s) {
   } catch (e) { return null; }
 }
 
-function letterWrap(ctl) {
-  if (ctl.lw?.isConnected) return ctl.lw;
+function wrapEl() {
   const w = document.createElement('div'); w.className = 'ins-letters';
   w.style.setProperty('--u', String(Math.max(0.7, Math.min(1.6, SP.REF_VH / 768)).toFixed(3)));   // SAMEPIC: the reference height, not this window's
   ensureLayer().appendChild(w);
+  return w;
+}
+function letterWrap(ctl) {
+  if (ctl.lw?.isConnected) return ctl.lw;
+  const w = wrapEl();
   ctl.lw = w; ctl.letters = []; ctl.hands = [];
   ctl.el.classList.add('lettered');
   return w;
 }
 /* one placed lettering (composeMoment item) -> L.play; seed = message id + role, so every client letters it alike */
-function letterOne(ctl, it) {
-  if (!LE || ctl.dead) return null;
-  const lw = letterWrap(ctl);
-  overDice();   // CRITPEAK (ADVX 3: resting dice drew over the critical's captions): the dice canvas may come up after the moment opened
-  const o = { ...(it._o ?? engineOpts(it, { seed: ctl.seed, map: !!ctl.shared }, ctl.hands)) };
-  o.avoid = [...new Set([...(o.avoid ?? []), ...ctl.hands])];   // the hands measured first are the real ones; the played ones join (a set: same choice)
+/* CRITLATE: the contact (ms after its start) of the plan the engine makes for a lettering's options, kept by that input (the plan does not
+   depend on the start instant: not in the key). letterOne asks it for the struck word at the moment's instant; prepare() asks it ahead.
+   -> { c } (c = IP.contactMs of the plan) or null when the engine made no plan */
+const CONTACT_MEMO = new Map(), CONTACT_MAX = 120;
+function contactOf(text, o) {
+  const key = memoKey([engineKey(), text, { ...o, startAt: undefined, parent: !!o.parent, token: o.token?.id ?? o.token ?? null }]);
+  if (key && CONTACT_MEMO.has(key)) return CONTACT_MEMO.get(key);
+  const r = LE?.planFor ? LE.planFor(text, o) : null;
+  const v = r?.plan ? { c: IP.contactMs(r.plan) } : null;
+  if (key) { CONTACT_MEMO.set(key, v); if (CONTACT_MEMO.size > CONTACT_MAX) CONTACT_MEMO.delete(CONTACT_MEMO.keys().next().value); }
+  return v;
+}
+/* one placed lettering's engine options (letterOne; prepare() for the struck word's contact): the place, size, layer and the table's options */
+function letterOpts(ctl, it, lw) {
+  const o = { ...(it._o ?? engineOpts(it, { seed: ctl.seed, map: !!ctl.shared }, ctl.hands ?? [])) };
+  o.avoid = [...new Set([...(o.avoid ?? []), ...(ctl.hands ?? [])])];   // the hands measured first are the real ones; the played ones join (a set: same choice)
   const sizeK = it._m?.sizeK || 1, k = ctl.k || 1;
   Object.assign(o, { space: 'screen', parent: lw, at: { x: it.x, y: it.y }, fit: 'exact', size: Math.round((it.S / (sizeK * k)) * 100) / 100,
     maxWidth: Math.ceil(it.w * 1.06) });
@@ -609,6 +680,17 @@ function letterOne(ctl, it) {
     delete o.parent;
     world = true;
   }
+  const struck = it.role === 'word' && !!(ctl.impactTiming ?? ctl.impactPlan) && !ctl.impact && !!LE?.impact?.play;
+  if (struck && ctl.impactPlan) o.flash = false;
+  const tableOpts = { ...o, reduced: false };
+  if (struck && ctl.impactTiming) tableOpts.flash = false; else if (!struck) delete tableOpts.flash;
+  return { o, world, struck, tableOpts };
+}
+function letterOne(ctl, it) {
+  if (!LE || ctl.dead) return null;
+  const lw = letterWrap(ctl);
+  overDice();   // CRITPEAK (ADVX 3: resting dice drew over the critical's captions): the dice canvas may come up after the moment opened
+  const { o, world, struck, tableOpts } = letterOpts(ctl, it, lw);
   /* FXI-SPLASH (ADVI 2): every lettering starts on a known instant a little ahead (its first picture is painted meanwhile), so the impact
      frame can be put on the very tick the word hits. The impact is asked for FIRST: it owns the flash budget of that instant and the
      word's own flash frame gives way to it (one accent, the impact's guard). */
@@ -618,31 +700,27 @@ function letterOne(ctl, it) {
      the impact is its accent, landing on its contact. Every seat decides it from the event alone, so the word's contact is one rule. Before,
      the impact was asked for first so that it took the flash budget from the word: that worked only while the impact had two flashes.
      SYNC: the word's timing follows the table's impact (impactTiming), also on a seat whose Effects setting draws none */
-  const struck = it.role === 'word' && !!(ctl.impactTiming ?? ctl.impactPlan) && !ctl.impact && !!LE?.impact?.play;
-  if (struck && ctl.impactPlan) o.flash = false;
   /* SYNC (live: a seat with Effects off struck 42 ms after the others, one 24 Hz tick): the word's entrance depends on this seat's settings.
      The struck word of a seat that draws the impact gives up its own flash frame (`flash: false`, one tick shorter), a seat with Effects off
      keeps it; reduced motion may draw another entrance. The TABLE's contact is the one drawn with the table's options (full motion, and no
      flash frame when the table's impact strikes this word); on this seat every lettering starts earlier or later by the difference, so ITS
      contact lands on the table's instant and its own look stays */
   const rm = {};
-  const tableOpts = { ...o, reduced: false };
-  if (struck && ctl.impactTiming) tableOpts.flash = false; else if (!struck) delete tableOpts.flash;
   if (LE?.planFor && (o.reduced || o.flash !== tableOpts.flash)) try {
-    const a = LE.planFor(LP.letterable(it.text), o)?.plan, b = LE.planFor(LP.letterable(it.text), tableOpts)?.plan;
-    if (a && b) { rm.own = IP.contactMs(a); rm.table = IP.contactMs(b); if (Number.isFinite(rm.own) && Number.isFinite(rm.table)) o.startAt += rm.table - rm.own; }
+    const a = contactOf(LP.letterable(it.text), o), b = contactOf(LP.letterable(it.text), tableOpts);
+    if (a && b) { rm.own = a.c; rm.table = b.c; if (Number.isFinite(rm.own) && Number.isFinite(rm.table)) o.startAt += rm.table - rm.own; }
   } catch (e) { /* its own entrance on the shared start */ }
   let shot = null;
   if (struck) {
     let contact = it._m?.contact ?? 0;
-    try { const r = LE.planFor ? LE.planFor(LP.letterable(it.text), o) : null; if (r?.plan) contact = IP.contactMs(r.plan); } catch (e) { /* the measured one */ }
+    try { const r = contactOf(LP.letterable(it.text), o); if (r) contact = r.c; } catch (e) { /* the measured one */ }
     const own = Number.isFinite(rm.own) ? rm.own : contact;
     if (Number.isFinite(rm.table)) contact = rm.table;      // SYNC: the table's contact (full motion), see rm
     /* SPLASHPL: a seat that shows the word in its own language strikes on the instant of the shared English word, so every seat sees
        the blow (and the token reactions wait) on one instant: the shown word starts earlier or later by the difference of the two contacts
        (0 in the invincible look, whose contact does not depend on the text; a legacy look's can) */
     let lead = 0;
-    if (it.en && it.en !== it.text) try { const r = LE.planFor ? LE.planFor(LP.letterable(it.en), tableOpts) : null; if (r?.plan) lead = IP.contactMs(r.plan) - contact; } catch (e) { lead = 0; }
+    if (it.en && it.en !== it.text) try { const r = contactOf(LP.letterable(it.en), tableOpts); if (r) lead = r.c - contact; } catch (e) { lead = 0; }
     shot = impactShot(ctl, it, contact + lead);
     o.startAt += lead;
     if (shot?.shift > 0) o.startAt += shot.shift;
@@ -768,7 +846,8 @@ export function diceClear(maxMs = 2600) {
   });
 }
 
-function playLetters(ev, o) {
+/* CRITLATE: the moment's options as THIS seat plays it (which token it may stand by, which layer); the same for prepare() and play() */
+function momentOpts(ev, o) {
   const full = o.fullFrom != null && !ev.fail && ev.power != null && ev.power >= o.fullFrom;
   /* FXLD2: on a map layer the moment needs a token everybody sees (o.token = the board's token, main.mjs mapToken); without one it
      has no place on the board and plays on the screen, by each seat's view */
@@ -784,42 +863,16 @@ function playLetters(ev, o) {
      sees the ranks of one layer, in order */
   if (onMap() && o.token && !mapScaleOk()) o = { ...o, onScreen: true };   // by the token, as the screen layer letters it
   const shared = onMap() && !!o.token && !o.onScreen;
-  const ctl = openStage(full ? { ...o, full: true } : o, shared);
-  const stage = ctl.el, later = ctl.later, holdK = o.hold || 1;
-  /* a moment needs a seed even when no message gives one (the preview): an unseeded word draws a new random hand at every call, so
-     the hand measured for the layout was not the hand played (live: the critical's 4 SIXES stood 170 px off a narrower word) */
-  ctl.seed = o.seed ?? `local-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`; ctl.full = full;
-  /* SYNC (ADVX 5): the moment's zero is the table's instant (main.mjs: the shared start on the shared clock, on this page's clock), not the
-     instant this seat got here: the layout's measuring, a late timer or a busy frame no longer move the word; a seat that comes late joins the
-     same timeline (the engine plays a word whose start is past from where it stands by then) */
-  ctl.t0 = Number.isFinite(o.at) ? o.at : performance.now();
-  const at = (fn, ms) => later(fn, Math.max(0, ctl.t0 + ms - performance.now()));
-  letterWrap(ctl);
-  overDice();
-  /* CRITPEAK (ADVX 3): Dice So Nice raises its canvas when the dice come and lowers it as they go; the layer follows it for the moment's
-     first seconds (the dice of this very roll rest there), so resting dice never sit on the captions */
-  for (let ms = 250; ms <= 4000; ms += 250) later(overDice, ms);
+  return { o, full, shared };
+}
+/* CRITLATE: the moment's layout (its items, the block, this seat's rule on the map), from the event, the options and the stage's fields
+   (shared, token, hero, targets, seed, full, userScale, gaugeK). A dry stage (prepare) logs nothing and draws nothing. */
+function layoutMoment(ev, o, ctl, full) {
+  const holdK = o.hold || 1;
   const dF = LP.failStrength(ev);
-  /* WIRE1: the impact frame of this result (impact-plan.mjs; null = none). Planned from the event alone, so every seat agrees */
-  ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: o.fx }) : null;
-  /* SYNC: WHEN the word strikes is the table's: its lead-in for the impact is read from the impact at the table's full strength, whatever
-     this seat's Effects setting (reduced: one strength lower; off: none) draws. Before, a seat with Effects off started its word earlier */
-  ctl.impactTiming = LE?.impact?.play ? IP.impactFor(ev, { fx: 1 }) : null;
-  ctl.targets = IP.cleanTargets(o.targets); ctl.from = o.from ?? null;   // ROLLTARGET: where the impact lands, where the blow comes from
   const plan = LP.planMoment(ev, { token: !!ctl.token, full, holdK, npc: !!ev.npc, dF, reduced: S.isReduced() });
   const word = plan.items.find(it => it.role === 'word');
   const t0 = word?.delay ?? 0;
-  /* the owner (2026-11-13): backdrops are an extra, default without; the full wash and rays only with the client setting Backdrop.
-     CRITFIX: our layer is above the engine's impact overlay (the words must stay on top of it), so a wash already up covered the impact
-     frame (the black-and-white slam turned lavender, the clear spot glowed white over it, the struck silhouette was lost). With an impact
-     planned for the result word the backdrop now ENTERS AFTER the impact (enterBackdrop, from letterOne): the blow reads exactly as with
-     the backdrop off, the wash and rays are its aftermath. Without an impact it is up from the start, as before. */
-  if (full && o.backdrop) {
-    const bdK = o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom);
-    if (ctl.impactPlan && word) ctl.bdLater = () => addBackdrop(ctl, ev.power, bdK, o.fx);
-    else addBackdrop(ctl, ev.power, bdK, o.fx);
-  }
-  if (!word) at(() => tellLand(ctl, ctl.t0, 0), 0);   // FIN-CALLERS: a moment without a result word has struck once it shows
   /* the stress row and its gauge belong to the block (measured once, shown at its time) */
   const resolve = ev.stress ? (o.resolve ? o.resolve() : null) : null;
   let gauge = null;
@@ -839,7 +892,7 @@ function playLetters(ev, o) {
      (a part a speck at its zoom, or outside what its view shows of the board), the moment on its screen layer. Never a copy of the board
      block moved or shrunk for this seat (before: shrunk in place into a close view, moved off the GM's own panels, compared by cover) */
   const seatRule = ctl.shared ? SP.mapSeat([lay.rect], lay.fit, lay.items.map((it) => ({ px: it.S * zoomNow, word: it.role === 'word' || it.role === 'pre' })), LP.MAP_READ) : null;
-  if (ctl.shared) {
+  if (ctl.shared && !ctl.dry) {
     ctl.seatRule = seatRule; ctl.board = lay;   // (kept for inspection: the table's board block, also on a seat that plays it on its screen)
     const R = (q) => q && { l: Math.round(q.l), t: Math.round(q.t), r: Math.round(q.r), b: Math.round(q.b) };
     SEAT_LOG.push({ id: ctl.momentId ?? ctl.seed, seat: seatRule, board: R(lay.rect), view: R(lay.fit), px: lay.items.map((it) => Math.round(it.S * zoomNow * 10) / 10) });
@@ -868,6 +921,44 @@ function playLetters(ev, o) {
       }
     }
   }
+  return { plan, word, t0, dF, resolve, lay };
+}
+function playLetters(ev, o) {
+  const mo = momentOpts(ev, o), full = mo.full, shared = mo.shared;
+  o = mo.o;
+  const ctl = openStage(full ? { ...o, full: true } : o, shared);
+  const stage = ctl.el, later = ctl.later, holdK = o.hold || 1;
+  /* a moment needs a seed even when no message gives one (the preview): an unseeded word draws a new random hand at every call, so
+     the hand measured for the layout was not the hand played (live: the critical's 4 SIXES stood 170 px off a narrower word) */
+  ctl.seed = o.seed ?? `local-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`; ctl.full = full;
+  /* SYNC (ADVX 5): the moment's zero is the table's instant (main.mjs: the shared start on the shared clock, on this page's clock), not the
+     instant this seat got here: the layout's measuring, a late timer or a busy frame no longer move the word; a seat that comes late joins the
+     same timeline (the engine plays a word whose start is past from where it stands by then) */
+  ctl.t0 = Number.isFinite(o.at) ? o.at : performance.now();
+  const at = (fn, ms) => later(fn, Math.max(0, ctl.t0 + ms - performance.now()));
+  letterWrap(ctl);
+  overDice();
+  /* CRITPEAK (ADVX 3): Dice So Nice raises its canvas when the dice come and lowers it as they go; the layer follows it for the moment's
+     first seconds (the dice of this very roll rest there), so resting dice never sit on the captions */
+  for (let ms = 250; ms <= 4000; ms += 250) later(overDice, ms);
+  /* WIRE1: the impact frame of this result (impact-plan.mjs; null = none). Planned from the event alone, so every seat agrees */
+  ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: o.fx }) : null;
+  /* SYNC: WHEN the word strikes is the table's: its lead-in for the impact is read from the impact at the table's full strength, whatever
+     this seat's Effects setting (reduced: one strength lower; off: none) draws. Before, a seat with Effects off started its word earlier */
+  ctl.impactTiming = LE?.impact?.play ? IP.impactFor(ev, { fx: 1 }) : null;
+  ctl.targets = IP.cleanTargets(o.targets); ctl.from = o.from ?? null;   // ROLLTARGET: where the impact lands, where the blow comes from
+  const { plan, word, t0, dF, resolve, lay } = layoutMoment(ev, o, ctl, full);
+  /* the owner (2026-11-13): backdrops are an extra, default without; the full wash and rays only with the client setting Backdrop.
+     CRITFIX: our layer is above the engine's impact overlay (the words must stay on top of it), so a wash already up covered the impact
+     frame (the black-and-white slam turned lavender, the clear spot glowed white over it, the struck silhouette was lost). With an impact
+     planned for the result word the backdrop now ENTERS AFTER the impact (enterBackdrop, from letterOne): the blow reads exactly as with
+     the backdrop off, the wash and rays are its aftermath. Without an impact it is up from the start, as before. */
+  if (full && o.backdrop) {
+    const bdK = o.fullFrom >= 1 ? 1 : (ev.power - o.fullFrom) / (1 - o.fullFrom);
+    if (ctl.impactPlan && word) ctl.bdLater = () => addBackdrop(ctl, ev.power, bdK, o.fx);
+    else addBackdrop(ctl, ev.power, bdK, o.fx);
+  }
+  if (!word) at(() => tellLand(ctl, ctl.t0, 0), 0);   // FIN-CALLERS: a moment without a result word has struck once it shows
   ctl.k = lay.k; ctl.rect = lay.rect; ctl.layout = lay;   // (kept for inspection: frame, side, hit)
   ctl.tokenAnchor = ctl.token ? sharedTokenBox(ctl.token) : null;
   const wp = lay.items.find(it => it.role === 'word');
@@ -1094,15 +1185,17 @@ function pin(ctl, el, at, c0, k = 0) { (ctl.pins ??= []).push({ el, at, c0, k })
    copy), so the block leaves room for it. On a map moment it is measured at the reference size (--u 1, the same on every seat) and
    drawn at the scene's scale. */
 function probeGauge(ctl, stress, resolve) {
+  let tmp = null;
   try {
-    const lw = letterWrap(ctl);
+    /* CRITLATE: a dry stage (prepare) has no wrapper of its own: a hidden one like letterWrap's, removed again */
+    const lw = ctl.el ? letterWrap(ctl) : (tmp = wrapEl());
     const b = S.stressBadge(lw, stress, resolve, null);
     if (ctl.shared) b.style.setProperty('--u', '1');
     b.style.visibility = 'hidden';
     const q = b.getBoundingClientRect();
     b.remove();
     return q && q.width > 0 ? { w: Math.ceil(q.width), h: Math.ceil(q.height) } : null;
-  } catch (e) { return null; }
+  } catch (e) { return null; } finally { try { tmp?.remove(); } catch (e) { /* gone */ } }
 }
 function stressGauge(ctl, stress, resolve, g) {
   const b = S.stressBadge(letterWrap(ctl), stress, resolve, ctl.backdrop ? ctl.later : null);   // the red flash of a broken hero is a backdrop too
@@ -1236,6 +1329,41 @@ function endCtl(ctl, quick) {
   }
 }
 
+/* what a stage knows of its moment (openStage, and a dry stage for prepare(): the layout reads exactly these) */
+function stageFields(opts, shared) {
+  const f = { token: opts.full ? null : (opts.token || null), userScale: shared ? 1 : (opts.scale || 1), hero: opts.token || opts.hero || null, shared,
+    backdrop: !!opts.backdrop, momentId: opts.momentId ?? null };
+  /* FXLD2: a map moment's gauge: scene px per reference px (the gauge is measured at --u 1, the 768 px reference) */
+  if (shared) f.gaugeK = GRID_VH * (globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100) / LP.REF_VH;
+  return f;
+}
+/* CRITLATE: lay a moment out AHEAD of its instant (main.mjs: while the dice roll, and again once the table's instant is known), with the
+   very options play() will get: the measuring and the layout are kept by their input (composeIn, measureItems), so play() at the instant
+   only takes them. Nothing is drawn, logged or ended here. -> the ms it took, or null (nothing to lay out) */
+export function prepare(ev, o) {
+  try {
+    if (!lettersOn() || !o?.seed) return null;
+    const t = performance.now();
+    const mo = momentOpts(ev, o), opts = mo.full ? { ...mo.o, full: true } : mo.o;
+    const ctl = { ...stageFields(opts, mo.shared), dry: true, seed: o.seed, full: mo.full, targets: IP.cleanTargets(mo.o.targets) };
+    const { lay } = layoutMoment(ev, mo.o, ctl, mo.full);
+    /* the struck word's contact, as letterOne will ask it (its options from the same letterOpts; kept by contactOf) */
+    ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: mo.o.fx }) : null;
+    ctl.impactTiming = LE?.impact?.play ? IP.impactFor(ev, { fx: 1 }) : null;
+    ctl.k = lay?.k;
+    const wp = lay?.items?.find((it) => it.role === 'word');
+    if (wp) {
+      if (ctl.shared) wp.sceneAt = { x: wp.x, y: wp.y };
+      const q = letterOpts(ctl, wp, document.createElement('div'));
+      if (q.struck) {
+        if (q.o.reduced || q.o.flash !== q.tableOpts.flash) contactOf(LP.letterable(wp.text), q.tableOpts);
+        contactOf(LP.letterable(wp.text), q.o);
+        if (wp.en && wp.en !== wp.text) contactOf(LP.letterable(wp.en), q.tableOpts);
+      }
+    }
+    return performance.now() - t;
+  } catch (e) { return null; }
+}
 /* tworzy scenę; opts: { token (Token|null), scale } */
 function openStage(opts, shared = false) {
   const token = opts.full ? null : (opts.token || null);
@@ -1265,10 +1393,7 @@ function openStage(opts, shared = false) {
   el.style.width = W + 'px';
   lay.appendChild(el);
   el.style.setProperty('--u', Math.max(0.4, Math.min(opts.full ? 2.2 : 1.4, W / 760)).toFixed(3));
-  const ctl = { key, el, token, W, extras: [], timers: [], dead: false, pos: token ? POS_TOKEN : POS_SCREEN, userScale: shared ? 1 : scale,
-    hero: opts.token || opts.hero || null, shared, backdrop: !!opts.backdrop, momentId: opts.momentId ?? null };
-  /* FXLD2: a map moment's gauge: scene px per reference px (the gauge is measured at --u 1, the 768 px reference) */
-  if (shared) ctl.gaugeK = GRID_VH * (globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100) / LP.REF_VH;
+  const ctl = { key, el, W, extras: [], timers: [], dead: false, pos: token ? POS_TOKEN : POS_SCREEN, ...stageFields(opts, shared) };
   ctl.later = (fn, ms) => {
     ctl.timers.push(setTimeout(() => {
       if (ctl.dead) return;

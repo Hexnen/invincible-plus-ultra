@@ -452,6 +452,7 @@ async function verdictAndCamera(message, ev, at) {
     if (waited) dbg('czekał na ujęcie kamery:', waited + ' ms');
   }
   if (!game.messages.has(id) || document.visibilityState === 'hidden') out = true;
+  if (!out) prepareAhead(message, null);   // CRITLATE: the verdict's targets and the camera's view are known now (laid out before the meeting)
   /* SYNC: the second meeting: every seat that took this path says when it is ready (or out: -1, which moves nobody's start), all start
      on the latest */
   const b2 = await meet(id + '|2', out ? -1 : serverNow(), seatsTwo(id), at, PHASE2_WINDOW);
@@ -498,6 +499,35 @@ function announce(ev, message, resolve) {
   } catch (e) { /* dostępność nie może przerwać splasha */ }
 }
 
+/* CRITLATE: the options this seat's Stage.play gets for a roll (the same object for Stage.prepare: the layout is kept by its input) */
+function stageOpts(message, ev, resolve) {
+  const seen = resolveToken(message);   // where THIS seat sees the token (screen layers)
+  const token = Stage.onMapLayer() && Stage.lettersOn() ? boardToken(message) : seen;   // FXLD2: on the map, the board's token for every seat
+  return {
+    token, scale: scaleK(), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'), momentId: message.id,
+    targets: rollTargetsOf(message, ev), from: boardToken(message),   // ROLLTARGET: the impact on the target, the blow from the roller
+    resolve, seed: message.id
+  };
+}
+/* CRITLATE (live: a critical's layout, 0.4-0.55 s in one task, ran ON the moment's instant: its word was called 52-479 ms late, without its
+   entrance, its impact frame cut or lost): the moment is laid out ahead, from what this seat will have at its instant (Stage.prepare keeps
+   the measuring and the layout by their input; play() then only takes them). `when`: 'idle' while the dice roll (an idle slot of the page),
+   'now' once the table's instant is known. -> nothing; dbg says what it cost */
+function prepareAhead(message, rd, when = 'now') {
+  const run = () => {
+    try {
+      if (!game.messages.has(message.id) || document.visibilityState === 'hidden' || !visibleToMe(message)) return;
+      const ev = eventFor(message, readRoll(message) ?? rd);
+      const ms = Stage.prepare(ev, stageOpts(message, ev, ev.stress ? resolveReader(message, ev) : null));
+      dbg('ułożone zawczasu (' + when + '):', ms == null ? '-' : Math.round(ms) + ' ms');
+    } catch (e) { /* the moment lays itself out at its instant, as before */ }
+  };
+  if (when !== 'idle') return run();
+  const ric = globalThis.requestIdleCallback;
+  if (typeof ric === 'function') ric(run, { timeout: PREPARE_IDLE_MS }); else setTimeout(run, 0);
+}
+export const PREPARE_IDLE_MS = 400;   // at the latest this long after the roll arrives (the dice roll ~3 s: the layout is ready long before)
+
 hook('createChatMessage', async (message, options, userId) => {
   try {
     if (game.system.id !== SYSTEM) return;
@@ -519,6 +549,7 @@ hook('createChatMessage', async (message, options, userId) => {
     Stage.tellMoment({ phase: 'start', id });
     let handed = false;
     try {
+    prepareAhead(message, rd, 'idle');   // CRITLATE: laid out while the dice roll
 
     const tw = performance.now();
     /* SYNC (ADVX 5): the bound every seat knows is the roll's server stamp + Beat.WINDOW; a seat whose dice still roll then does not hold
@@ -546,22 +577,20 @@ hook('createChatMessage', async (message, options, userId) => {
        instant on every seat), and the moment starts as they go (beat.at already holds the fade when any seat letters on the map) */
     /* CALLERS2 (manual 6a): a seat that reloaded a moment ago may hold a clock ~280 ms off; it waits for a good one (pinging) before it puts
        the moment's instants on its page clock, at most until the moment is near */
+    prepareAhead(message, rd);   // CRITLATE: again with the final inputs (kept: nothing new is laid out unless something changed)
     if (!Clock.good()) await Clock.settle(Math.max(0, Math.min(at, beat.base) - Clock.serverNow() - 40));
     if (Stage.lettersOn() && Stage.onMapLayer()) { await Clock.sleepUntil(Math.min(at, beat.base)); Stage.hurryDice(); }
     else if (beat.late) Stage.hurryDice();
     await Clock.sleepUntil(at);
     if (!game.messages.has(id) || document.visibilityState === 'hidden') return;
-    const seen = resolveToken(message);   // where THIS seat sees the token (screen layers)
-    const token = Stage.onMapLayer() && Stage.lettersOn() ? boardToken(message) : seen;   // FXLD2: on the map, the board's token for every seat
-    dbg('odtwarzam:', ev.word, 'P=' + (ev.power ?? 'fail'), 'miejsce:', token ? 'token ' + token.name : 'ekran');
     const resolve = ev.stress ? resolveReader(message, ev) : null;
+    const so = stageOpts(message, ev, resolve);
+    dbg('odtwarzam:', ev.word, 'P=' + (ev.power ?? 'fail'), 'miejsce:', so.token ? 'token ' + so.token.name : 'ekran');
     announce(ev, message, resolve);
     Stage.tellMoment({ phase: 'start', id });   // said again: the dice, the verdict and the camera took their time
     const ctl = Stage.play(ev, {
-      rnd: mulberry32(hashString(id)), token, scale: scaleK(), hold: holdK(), fx: fxLevel(), fullFrom: fullFrom(), backdrop: cs('backdrop'), momentId: id,
-      targets: rollTargetsOf(message, ev), from: boardToken(message),   // ROLLTARGET: the impact on the target, the blow from the roller
-      at: Clock.toPage(at),   // SYNC: the moment's zero on this page's clock (every part of it is scheduled from this instant, not from now)
-      resolve, seed: id
+      rnd: mulberry32(hashString(id)), ...so,
+      at: Clock.toPage(at)   // SYNC: the moment's zero on this page's clock (every part of it is scheduled from this instant, not from now)
     });
     handed = !!ctl && !ctl.dead;
     } finally { if (!handed) Stage.tellMoment({ phase: 'done', id }); }
