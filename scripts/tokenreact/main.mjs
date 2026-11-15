@@ -16,6 +16,7 @@
        tokens always did; in a tactical fight these reactions take the numbers' place (owner.mjs).
    Never over a token this user does not see (hidden, out of sight, another scene). Every hook body is guarded: nothing here may throw. */
 import * as P from "./pure.mjs";
+import * as RG from "../impact-rungs.mjs";      // IMPCALL2: the second beat of one event (beatFrames)
 import * as Lay from "./layout.mjs";      // CROWDKO: clean places for a moment's lettering
 import * as Owner from "./owner.mjs";
 import { t } from "./lang.mjs";
@@ -85,6 +86,7 @@ const streaks = new Map();    // token id -> { seed, n, t } the blows of one ser
 const inflight = new Map();   // token id -> [entry] gathered and waiting (dice, camera, the splash's story) to be lettered (FXI-TOKEN, ADVI 1)
 const story = new Map();      // splash id -> { t, landAt, endAt } the roll splashes announced on SPLASH_HOOK (ADVI 8)
 let storyHeard = false;
+const struck = new Map();     // IMPCALL2: token id -> { step, until } a roll's impact landed on it (the splash's landing: targets + the table's step)
 let timer = 0;
 
 const get = (key, fallback) => { try { return game.settings.get(MOD, key); } catch { return fallback; } };
@@ -328,7 +330,11 @@ function build(ready) {
     for (const e of ready) {
       const tok = canvas.tokens?.get(e.tokId);
       if (!tok) continue;
-      const c = P.classify({ stat: e.stat, from: e.from, to: e.to, max: e.max, cause: e.cause }) ?? (e.pub ? P.fromEvent(e.pub, e.stat) : null);
+      /* IMPCALL2 (ADVI2 4): a challenge is never struck: its rating's fall is progress, its time at 0 its failure (pure challengeOf) */
+      const isCh = tok.actor?.type === "challenge";
+      const c = isCh
+        ? P.challengeOf({ stat: e.stat, from: e.from, to: e.to, max: e.max, cr: num(tok.actor?.system?.derived?.health?.value) })
+        : P.classify({ stat: e.stat, from: e.from, to: e.to, max: e.max, cause: e.cause }) ?? (e.pub ? P.fromEvent(e.pub, e.stat) : null);
       /* PRIV (owner «nie», 2026-11-14): the reaction (kind, amount, so the word, its size tier, the token's animation, the impact) is the
          SHARED one (pure.shared), the same on every seat that sees the token; only the number is this seat's (pure.audience) */
       const a = P.audience(seatOf(tok), c, e.pub);
@@ -404,7 +410,14 @@ function onSplash(data) {
     if (data.phase === "done") { story.delete(id); return; }
     const s = story.get(id) ?? { t: performance.now(), landAt: null, impactMs: 0 };
     if (data.phase === "start") s.t = performance.now();      // FIN-CALLERS: said again right before it plays (dice, verdict and camera took their time)
-    if (data.phase === "land") { s.landAt = Number.isFinite(data.landAt) ? data.landAt : performance.now(); s.impactMs = Math.max(0, Math.min(1000, Number(data.impactMs) || 0)); }
+    if (data.phase === "land") { s.landAt = Number.isFinite(data.landAt) ? data.landAt : performance.now(); s.impactMs = Math.max(0, Math.min(1000, Number(data.impactMs) || 0));
+      /* IMPCALL2 (item 3): the tokens this roll's impact struck, and how strong it was on the table: their damage reaction joins this event */
+      if (Array.isArray(data.targets) && Number.isFinite(data.step)) for (const tid of data.targets) {
+        if (typeof tid !== "string" || !tid) continue;
+        const was = struck.get(tid), until = s.landAt + s.impactMs + P.STRUCK_MS;
+        struck.set(tid, { step: Math.max(data.step, was && was.until > performance.now() ? was.step : -1), until: Math.max(until, was?.until ?? 0) });
+      }
+      if (struck.size > 60) struck.delete(struck.keys().next().value); }
     story.set(id, s);
     if (story.size > 30) story.delete(story.keys().next().value);
   } catch (err) { once(err); }
@@ -471,15 +484,42 @@ async function land(ids, ready) {
       const spec = P.impactOf(it.pub, it.lk.step, { ...it.pub, cum: it.cum });
       if (spec && (!imp || spec.magnitude > imp.spec.magnitude)) imp = { it, spec };
     }
+    /* IMPCALL2 (item 3: a critical that dealt damage played the roll's cut and ~80 ms later the damage's own cut on the same token): a token
+       the roll's impact has just struck (struck: the splash's landing, shared data) takes no second cut when its reaction is not stronger
+       ("fold"); a stronger one plays as the event's second beat, its own cut without a flash ("beat", impact-rungs beatFrames) */
+    const now0 = performance.now();
+    for (const [tid, v] of struck) if (v.until < now0) struck.delete(tid);
+    const foldAt = (spec, it) => { const f = P.foldOf(spec, it.lk?.step ?? 0, struck.get(it.tok.id) ?? null); return f ?? { how: "own", step: null }; };
+    const beat = (spec, it) => { try { const { rung: _r, ...isp } = spec; const pl = L.impact?.plan?.({ ...P.withSeries(isp, it.lk?.step ?? 0), seed: `${it.seed}|impact` }); if (Array.isArray(pl?.frames) && pl.frames.length) return { ...spec, frames: RG.beatFrames(pl.frames) }; } catch (err) { once(err); } return spec; };
+    if (imp) {
+      const f = foldAt(imp.spec, imp.it);
+      imp.step = f.step;
+      if (f.how === "fold") { imp.it.folded = true; if (imp.it.inCluster) imp.it.inCluster.folded = true; imp = null; }
+      else if (f.how === "beat") imp.spec = beat(imp.spec, imp.it);
+    }
     if (imp) {
       const host = imp.it.inCluster && imp.it.inCluster.mode === "full" ? imp.it.inCluster : imp.it;
       host.impact = imp.spec; host.impTok = imp.it.tok; host.impIt = imp.it;
       if (host !== imp.it) imp.it.impHost = host;
       /* IMPCALL (engine 1.9.20/1.9.21: the tokens take part as figures): the other tokens this moment struck join the one impact as `also`
          (their colours turned, their edges lit, following their own reactions). Chosen from SHARED data only (tokens the table's reaction
-         names, nobody hides, ordered by id) so every seat makes the same call; the engine draws each only on a seat that may see it */
-      host.impAlso = P.alsoOf(staged.filter((it) => !it.cluster && it.pub && it.tok?.document?.hidden !== true && P.impactOf(it.pub, it.lk.step, { ...it.pub, cum: it.cum }))
-        .map((it) => it.tok.id), [imp.it.tok.id, imp.it.pub?.src]);
+         names, nobody hides, ordered by id) so every seat makes the same call; the engine draws each only on a seat that may see it.
+         IMPCALL2 (item 10: a -1 beside a -8 got the -8's full colour treatment): only the tokens whose own impact is within ALSO_GAP steps of
+         the host's join it; a lighter one keeps its word, number and motion, and the heaviest of them its own lower cut after this one */
+      const cand = staged.filter((it) => !it.cluster && it.pub && it.tok?.document?.hidden !== true && it !== imp.it)
+        .map((it) => { const sp = P.impactOf(it.pub, it.lk.step, { ...it.pub, cum: it.cum }); return sp ? { it, sp, step: P.drawnStep(sp, it.lk.step ?? 0) } : null; }).filter(Boolean);
+      const joins = cand.filter((c) => P.alsoJoins(c.step, imp.step));
+      host.impAlso = P.alsoOf(joins.map((c) => c.it.tok.id), [imp.it.tok.id, imp.it.pub?.src]);
+      const rest = cand.filter((c) => !host.impAlso.includes(c.it.tok.id) && c.it.tok.id !== imp.it.pub?.src && !c.it.inCluster && c.it.mode !== "none")
+        .sort((a, b) => b.step - a.step || b.sp.magnitude - a.sp.magnitude || String(a.it.tok.id).localeCompare(String(b.it.tok.id)));
+      if (rest.length) {
+        const lo = rest[0], f2 = foldAt(lo.sp, lo.it);
+        if (f2.how === "fold") lo.it.folded = true;
+        else {
+          lo.it.impact = f2.how === "beat" ? beat(lo.sp, lo.it) : lo.sp; lo.it.impTok = lo.it.tok; lo.it.impIt = lo.it; lo.it.impSecond = true;
+          lo.it.impAlso = P.alsoOf(rest.slice(1).filter((c) => P.alsoJoins(c.step, lo.step)).map((c) => c.it.tok.id), [lo.it.tok.id, lo.it.pub?.src]);
+        }
+      }
     }
     /* FXI-TOKEN (ADVI 2, 13, 15): ONE instant for the moment's blow, the same on every seat (pure HIT_LEAD): the impact starts on it and every
        word is started so that it strikes on it (play). The other reactions of a crowd strike after the impact (its drawings, at most 500 ms,
@@ -921,7 +961,7 @@ function planOf(L, it) {
   const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...(lk.hand ? { hand: lk.hand } : {}), ...lk.motion, ...(Number.isFinite(lk.from) ? { from: lk.from } : {}) } : null;   // PALETTE: lk.hand = a pinned block (colour only); DIRECT: grows away from the attacker
   /* ALIGN (engine 1.9.1 recipe, owner: one accent): the word that gets the moment's impact does not flash on its own; the impact IS its
      accent and lands on its contact. Every seat passes the same (the event decides, not the seat), so the word's contact is one rule */
-  if (wordOpts && it.impact) wordOpts.flash = false;
+  if (wordOpts && (it.impact || it.folded)) wordOpts.flash = false;      // IMPCALL2: a folded blow's flash was the roll's
   if (wordOpts) wordOpts.scale = scaleFor(L, lk.word, wordOpts, cap);
   const numOpts = nums.map((n, i) => {
     const o = { ...base, mood: n.mood, sound: n.sound, hand: n.hand, colors: n.colors, magnitude: Math.max(0.3, lk.magnitude * 0.8), seed: `${it.seed}#n${i}`, rotation: word ? -lk.side * 3 : 0, in: n.in, holdKind: "boil", out: n.out };
@@ -1116,7 +1156,13 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
     /* CROWDKO (ADVS2 D8: a knock-down outside both seats' views still flashed the whole view): the impact is the accent of a blow THIS seat
        sees happen; a token outside this seat's view gets none here (its word still letters at the view's edge). Off the view is the token's
        ring not touching the view at all (pure onView), so a seat that sees the token at its edge still gets the frame */
-    if (view.ok() && !P.onView(view.tokRect(tok), view.safe())) return null;
+    /* IMPCALL2 (ADVI2 6: a seat whose view lacked the struck token got nothing for the damage while the table saw a cut): the impact then
+       lands, GENTLE (the engine's local panel: no full frame, no hit-stop, no inverted scene), on the off-panel word at this view's edge that
+       letters the blow (or its number), so the seat still sees that something struck there; never a flash of a whole view for an off-view
+       blow (CROWDKO-6 stays) */
+    const offView = view.ok() && !P.onView(view.tokRect(tok), view.safe());
+    const edge = offView ? keep.find((h) => h && h.alive !== false && !h.off) ?? null : null;
+    if (offView && !edge) return null;
     const { rung, ...imp } = it.impact;
     /* ALIGN (engine 1.9.1 recipe): `blowAt` = the instant the word strikes as the ENGINE reads it (L.contactAt: the word's contact pose,
        on the 24 Hz grid in stepped motion; = tHit by construction in smooth motion), and the engine starts the impact plan.peakMs before it,
@@ -1129,17 +1175,18 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
     /* CROWD: the step the series EARNED (pure seriesStep: capped by its sum); a cluster's impact is its heaviest member's blow */
     const by = it.impIt ?? it;
     /* CROWD2: the series' rhythm (its raw step) builds INSIDE the rung its damage earned (withSeries caps it under the next strength bound) */
-    const spec = { ...P.withSeries(imp, by.lk?.step ?? 0), subject: tok, seed: `${by.seed}|impact`, blowAt };
+    const spec = { ...P.withSeries(imp, by.lk?.step ?? 0), subject: edge ?? tok, seed: `${by.seed}|impact`, blowAt };
+    if (edge) spec.gentle = true;
     /* ALIGN (engine 1.9.1 `keep`): the word and its numbers are world words IN the scene under the impact's overlay: they stay readable
        through every drawing (a hole cut round them, followed while they move); only handles that are up and alive are passed */
     const kept = keep.filter((h) => h && h.alive !== false && !h.off);
     if (kept.length) spec.keep = kept;
     const src = by.pub?.src ? canvas.tokens?.get(by.pub.src) : null;
-    if (src && src.id !== tok.id && seatOf(src).visible) spec.from = src;
+    if (!edge && src && src.id !== tok.id && seatOf(src).visible) spec.from = src;
     /* IMPCALL: the rest of the struck crowd takes part as figures (the same id list on every seat; a token that is not on this scene is left
        out, one this seat may not see the engine draws nothing of) */
     const also = (it.impAlso ?? by.impAlso ?? []).map((id) => canvas.tokens?.get(id)).filter((t) => t && t.id !== tok.id && t !== spec.from);
-    if (also.length) spec.also = also;
+    if (also.length && !edge) spec.also = also;
     if (red) spec.reduced = true;
     return I.play(spec);
   } catch (err) { once(err); return null; }
@@ -1153,7 +1200,8 @@ function tokenMoves(L, it, tok, word, tHit) {
     if (it.cluster) return;      // CROWD: each member moves with its own reaction (its number), the cluster's word moves no token
     let at = Number.isFinite(tHit) ? tHit : performance.now();
     try { const c = word && L?.contactAt ? L.contactAt(word) : null; if (Number.isFinite(c)) at = c; } catch { /* the shared instant */ }
-    TokAnim.react(tok, { kind: it.lk.kind, amt: it.lk.amt, step: it.lk.sstep ?? it.lk.step ?? 0,      /* CROWD: the earned step */ seed: it.seed, at, from: it.pub?.src ? canvas.tokens?.get(it.pub.src) ?? null : null });
+    /* IMPCALL2: a challenge's moments move its token as its nearest kinds (progress lifts, overcome rises, failure droops) */
+    TokAnim.react(tok, { kind: it.lk.kind in P.ANIM_KIND ? P.ANIM_KIND[it.lk.kind] : it.lk.kind, amt: it.lk.amt, step: it.lk.sstep ?? it.lk.step ?? 0,      /* CROWD: the earned step */ seed: it.seed, at, from: it.pub?.src ? canvas.tokens?.get(it.pub.src) ?? null : null });
   } catch (err) { once(err); }
 }
 

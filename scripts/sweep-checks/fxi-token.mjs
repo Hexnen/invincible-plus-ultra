@@ -252,7 +252,8 @@ async function seats(build, run, ms = 1500) {
   ck(`I15 ... the GM's numbers beside them (${words.filter((x) => isNum(x.text)).length})`, words.filter((x) => isNum(x.text)).length === 7);
   const imp = im[0], ms = imp ? planImpact(imp.spec).ms : 0;
   const rest = words.filter((x) => x.o.token?.id !== imp?.spec.subject?.id);
-  ck(`I15 one impact, on the knock-down (${im.length}, ${imp?.spec.kind})`, im.length === 1 && imp.spec.kind === "ko");
+  /* IMPCALL2 (ADVI2 10): the six -2 blows are two steps under the knock-down: its cut first, then one lower cut of theirs. Was: one impact */
+  ck(`I15 the knock-down's impact first, then one for the lighter blows (${im.length}, ${imp?.spec.kind})`, im.length === 2 && imp.spec.kind === "ko" && im[1].spec.kind !== "ko");
   ck(`I15 the other reactions start after its drawings (${Math.round(Math.min(...rest.map((x) => x.o.startAt)) - impStart(imp?.spec))} ms after it, its drawings ${Math.round(ms)} ms)`, rest.length > 0 && rest.every((x) => x.o.startAt >= impStart(imp.spec) + Math.min(500, ms) - 260));
 }
 /* ---- I8: the splash may make room: the blow's instant is announced */

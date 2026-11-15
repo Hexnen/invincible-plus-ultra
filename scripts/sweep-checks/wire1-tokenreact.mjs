@@ -103,7 +103,10 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
   ck(`... at the instant the word strikes: its contact (250 ms) after the word starts (${Math.round((impBlow(s) || 0) - (word?.o?.startAt ?? 0))} ms)`, word && Math.abs(impBlow(s) - word.o.startAt - 250) < 8);      // SYNC (2026-11-14): a contact past HIT_LEAD no longer starts "at once" (this seat's now: a per-seat instant); the word starts contact ms before the shared blow, joining its entrance up to LATE_MAX in, so the contact is ON the blow on every seat
   ck(`... seeded by the change everybody shares (${s.seed})`, typeof s.seed === "string" && s.seed.startsWith(`A|health|`) && s.seed.endsWith("|impact"));
   ck("... no reduced key when nothing asks for calm (a false would override the OS switch)", !("reduced" in s));
-  ck("... and no key that could reach the photosensitivity guard", !("photosafe" in s) && !("flashes" in s) && !("vision" in s) && !("frames" in s));
+  /* IMPCALL2: the low rungs hand the engine their own cut (`frames`, public API: impact-rungs REACT), at most one flash drawing, the engine's
+     guard rationing it like any other (impcall2.mjs measures it on the engine's plan); no key of the guard itself */
+  ck("... and no key that could reach the photosensitivity guard", !("photosafe" in s) && !("flashes" in s) && !("vision" in s)
+    && (!("frames" in s) || (Array.isArray(s.frames) && s.frames.filter((x) => ["ink", "slam", "shadow", "window", "glare", "swap", "tear", "shatter"].includes(x.type)).length <= 1)));
   ck(`... the impact starts with the reaction, not later (${Math.round(im[0]?.t - t0)} ms after the change)`, im[0] && im[0].t - t0 < 900);
 }
 
@@ -206,8 +209,11 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
   damage("X2", 8, { seq: 901 }); Hooks.callAll(TAC, { type: "broken", target: "cX2", combat: "C1", fight: "F", seq: 902 });
   set(a, "health", 7); set(b, "health", 0, { ipuTactics: true }); set(c, "health", 6);
   const im = await take(1800);
-  ck(`a crowd of three blows: one impact (${im.length})`, im.length === 1);
-  ck(`... on the worst (${im[0]?.spec?.subject?.id} ${im[0]?.spec?.kind})`, im[0]?.spec?.subject === b && im[0].spec.kind === "ko");
+  /* IMPCALL2 (ADVI2 10): the -2 on X3 is far under the knock-down: it strikes after it in its own lower cut; the -1 on X1 (a scratch, two
+     steps under the -2) is in neither (its word, number and motion only). Was: one impact */
+  ck(`a crowd of three blows: the worst's impact, then the next lighter one's (${im.length})`, im.length === 2);
+  ck(`... on the worst first (${im[0]?.spec?.subject?.id} ${im[0]?.spec?.kind})`, im[0]?.spec?.subject === b && im[0].spec.kind === "ko");
+  ck(`... then the -2 alone, lower (${im[1]?.spec?.subject?.id} ${im[1]?.spec?.kind} ${im[1]?.spec?.magnitude})`, im[1]?.spec?.subject === c && im[1].spec.kind !== "ko" && !im[1].spec.also);
 }
 
 /* ---- calm: reduced motion is handed in as true */

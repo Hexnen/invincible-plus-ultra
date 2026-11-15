@@ -187,7 +187,10 @@ const same = (S, name) => {
     async () => { toks.forEach((t, i) => set(t, "health", [6, 3, 7, 0, 5][i], {}, 91060 + i)); }, 2400);
   const per = (r) => r.words.filter((x) => !isNum(x.text)).map((x) => `${x.o.token?.id}:${x.text}:${Math.round((x.o.scale ?? 0) * 100)}`).sort().join(" ");
   ck(`P6 a crowd: the same word per token and the same staging on both seats (${per(S.gm) === per(S.player) ? per(S.gm) : `GM ${per(S.gm)} / player ${per(S.player)}`})`, per(S.gm).length > 0 && per(S.gm) === per(S.player));
-  ck(`P6 ... one impact, the same (${imp(S.gm)} / ${imp(S.player)})`, S.gm.im.length === 1 && imp(S.gm) === imp(S.player));
+  /* IMPCALL2 (ADVI2 10): the knock-down's cut (the -5 within one step joins it), then ONE lower cut for the -2 / -3 (the -1 in neither); the
+     same two on both seats. Was: one impact */
+  const imp2 = (r) => r.im[1] && JSON.stringify({ kind: r.im[1].spec.kind, m: r.im[1].spec.magnitude, s: r.im[1].spec.series ?? 0, tone: r.im[1].spec.tone ?? null, seed: r.im[1].spec.seed });
+  ck(`P6 ... two impacts, the same (${imp(S.gm)} ${imp2(S.gm)} / ${imp(S.player)} ${imp2(S.player)})`, S.gm.im.length === 2 && S.player.im.length === 2 && imp(S.gm) === imp(S.player) && imp2(S.gm) === imp2(S.player));
 }
 /* 7: never what the seat cannot see: a token hidden by the GM, and one out of the player's sight */
 { const S = await two(() => mk("H1", "npc", 8, 6, { x: 600, y: 400, hidden: true }), async (t) => { set(t, "health", 0, {}, 91007); await sleep(500); card(t, 8, true); }, 2000);

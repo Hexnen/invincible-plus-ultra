@@ -11,14 +11,31 @@ export const STRONG_MAX = 0.84; // a strong result stays under the engine's full
 /* the kind of a strong result by what the roll does: a blow lands (hit), a charge or a hold crushes (heavy), a shot zaps (shock); what is
    not a blow (a dodge, a block, a clever idea, a presence) only gets the accent behind its word */
 export const ACTION_KIND = { slugfest: "hit", generic: "hit", charge: "heavy", grapple: "heavy", shooting: "shock" };
+import * as RG from "../impact-rungs.mjs";
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const r2 = (v) => Math.round(v * 100) / 100;
 
+/* IMPCALL2 (ADVI2 1; the owner: «Jeden rzut i animacja na kilka minut»): every SUCCESS gets its moment now. An ordinary success (under
+   STRONG_P) had none: it gets the callers' own low rung (scripts/impact-rungs.mjs ROLL.ordinary, 7 ticks, no flash) at ORD_MAG (the
+   engine's step 1: its cut-in and size rules read a small rung); a strong result its own 9-tick cut (ROLL.strong, one flash) instead of the
+   engine's 2-6 tick step 1-2; the critical keeps the engine's ladder (11-24 ticks). `rung` names the rung, `frames` the screen cut (the map
+   layer has its own, mapFrames). A failure stays without an impact (nothing landed).
+   Effects "reduced" ("Gentle: no flash or particles"; IMPACT5-3: it got a SHORTER critical than the table, 750 instead of 1000 ms, and no
+   ordinary moment): the table's impact, the same length and instant, handed to the engine as `gentle` (its local variant: no full frame, no
+   hit-stop, no inverted scene, the guard as always) and without the hold of the scene. A seat that cannot show it clean shows it calmer,
+   never another story. */
+export const ORD_MAG = 0.45;
 export function impactFor(ev, o = {}) {
-  if (!ev || ev.fail || !Number.isFinite(ev.power) || ev.power < STRONG_P) return null;
+  if (!ev || ev.fail || !Number.isFinite(ev.power)) return null;
   const fx = Number.isFinite(o.fx) ? o.fx : 1;
   if (!(fx > 0)) return null;      // the splash's Effects setting "off": no effects at all
   const P = ev.power;
+  if (P < STRONG_P) {
+    const out = { kind: ACTION_KIND[ev.action] ?? "word", magnitude: ORD_MAG, rung: "ordinary", frames: RG.framesOf(RG.ROLL.ordinary) };
+    if (ev.npc) out.tone = "void";
+    if (fx < 1) { out.gentle = true; out.hitstop = false; }
+    return out;
+  }
   let kind, magnitude;
   if (P >= CRIT_P) {
     /* 1.1 (the engine's tier 2: silhouette frame, the negative slam, the colour split) at the threshold, the whole set (tier 3, 1.35+)
@@ -30,9 +47,10 @@ export function impactFor(ev, o = {}) {
     if (ev.wreck && kind === "hit") kind = "heavy";      // the blow wrecks the surroundings too (cracks)
     magnitude = Math.min(STRONG_MAX, 0.45 + 0.35 * clamp((P - STRONG_P) / (CRIT_P - STRONG_P)) + (ev.wreck ? 0.15 : 0));
   }
-  const out = { kind, magnitude: r2(clamp(magnitude, 0, 2)) };
+  const out = { kind, magnitude: r2(clamp(magnitude, 0, 2)), rung: P >= CRIT_P ? "crit" : "strong" };
+  if (P < CRIT_P) out.frames = RG.framesOf(RG.ROLL.strong);      // IMPCALL2: the strong result's own 9-tick cut
   if (ev.npc) out.tone = "void";      // a villain's roll: violet and cyan, not the hero's yellow and blue
-  if (fx < 1) { out.magnitude = r2(Math.max(0.2, out.magnitude - 0.5)); out.hitstop = false; }      // Effects "reduced": one strength lower, no hold of the scene
+  if (fx < 1) { out.gentle = true; out.hitstop = false; }      // IMPCALL2: Effects "reduced": the table's impact, gentle (was one strength lower: a shorter cut)
   return out;
 }
 /* the seed of a roll's impact: the message id every seat shares (the words' seed is the same id + their role) */
@@ -171,6 +189,9 @@ export const MAP_FIGS = [
   { lead: ["r", "o", "i", "n"], tail: [{ type: "fig", ticks: 1, fig: "h", z: 1.55, punch: 0.6, kick: -1 }, { type: "fig", ticks: 1, fig: "d", z: 1.25 }, { type: "fig", ticks: 2, fig: "i" }, { type: "fig", ticks: 2, fig: "n" }, { type: "fig", ticks: 3, fig: "o" }] }
 ];
 export const mapFrames = (magnitude, I, o = {}) => {
+  /* IMPCALL2: the ordinary and the strong result have their own map cuts (impact-rungs ROLL_MAP: the figures at the target; ROLL_MAP_BARE:
+     lines and the colour split only), longer than the old tier 0-1 builds; the critical keeps the tiers below */
+  if (o.rung === "ordinary" || o.rung === "strong") return RG.framesOf((o.figs ? RG.ROLL_MAP : RG.ROLL_MAP_BARE)[o.rung]);
   const tier = tierOfImpact(magnitude, I);
   const base = MAP_FRAMES[tier].map((f) => (typeof f === "string" ? f : { ...f }));
   const add = o.figs ? MAP_FIGS[tier] : null;

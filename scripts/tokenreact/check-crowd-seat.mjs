@@ -62,7 +62,7 @@ const fake = { version: "test", limits: { screen: 16, world: 48 }, prefs: { scal
   sizeOf: (text, o) => ({ ...sizeFor(ctxOf(o)), sizeK: sizeK(o) }),
   planFor: (text) => ({ plan: { _holdBox: boxOf(text) } }),
   contactAt: (h) => h.opts.startAt,
-  impact: { play: (spec) => { impacts.push({ kind: spec.kind, magnitude: spec.magnitude, series: spec.series ?? 0, subject: spec.subject?.id, t: Math.round(performance.now() - t00) }); return { finished: Promise.resolve(), stop() {} }; }, plan: () => ({ ms: 300 }) },
+  impact: { play: (spec) => { impacts.push({ kind: spec.kind, magnitude: spec.magnitude, series: spec.series ?? 0, subject: spec.subject?.id, gentle: !!spec.gentle, t: Math.round(performance.now() - t00) }); return { finished: Promise.resolve(), stop() {} }; }, plan: () => ({ ms: 300 }) },
   play: (text, o) => {
     const rec = { text, o, t: Math.round(performance.now() - t00) };
     const h = { id: `h${plays.length}`, hand: "x", alive: true, opts: o, plan: { timeline: { ent: [{ ticks: 6 }, { ticks: 6 }] }, _holdBox: boxOf(text) }, ready: sleep(30).then(() => true),

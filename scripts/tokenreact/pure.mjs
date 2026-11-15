@@ -11,7 +11,8 @@
    Kinds: Health  hit | heavy | down (to 0 = broken [B2707]) | heal | back (up from 0 = rallied [B2773])
           Resolve stress | spent (stress taken by choice: a pushed roll, a power) | regain | out (0 = stressed out [B2816]) | steady (up from 0) */
 import { contactMs as wordContact, leadMs } from "../splash/impact-plan.mjs";
-import * as LC from "../letter-colors.mjs";   // PALETTE: the lettering's colours, one place
+import * as LC from "../letter-colors.mjs";
+import * as RG from "../impact-rungs.mjs";   // IMPCALL2: the low rungs' own cuts, the challenge's moments, one event with its damage   // PALETTE: the lettering's colours, one place
 import { slotBias } from "../direct.mjs";   // DIRECT: the far side of a blow
 /* CALLERS2 (engine 1.9.18: the impact's ladders are public, L.impact.steps / .series / .tiers): no copy of the engine's numbers and no
    import of its files here. The running engine hands its table in (main.mjs useImpactTable(L.impact), before any blow is planned); until it
@@ -36,7 +37,25 @@ export { REF_VH, REF_VW };
 export const HEALTH = ["hit", "heavy", "down", "heal", "back"];
 export const RESOLVE = ["stress", "spent", "regain", "out", "steady"];
 /* how much a reaction matters when many come at once: the heaviest keep their full lettering */
-export const SEVERITY = { down: 9, out: 7, heavy: 6, back: 5, stress: 4, hit: 3, steady: 3, heal: 2, regain: 2, spent: 1 };
+export const SEVERITY = { down: 9, out: 7, heavy: 6, back: 5, stress: 4, hit: 3, steady: 3, heal: 2, regain: 2, spent: 1, lapse: 6, won: 5, gain: 3 };
+/* IMPCALL2 (ADVI2 4: a challenge token losing rating 6 -> 3 got a heavy BLOW: the black frame, the slam, KA-WRAAMM!, cracks): a CHALLENGE
+   actor's Health is its Challenge rating and its Resolve its Time limit (the system's labels CR / TL). The book [B2837-B2841]: every six
+   rolled on an objective takes a point of the rating; the rating at 0 before the time runs out = the challenge dealt with; else it fails.
+   So a challenge is never struck: gain = the heroes' progress (a point of the rating or more), won = the rating at 0, lapse = the time limit
+   at 0 with rating left (the challenge failed). A rating that goes UP (a ward resetting [B2876], the GM's hand) and the time limit ticking
+   down stay the Challenges panel's (no reaction), as the time limit always was. */
+export const CHALLENGE_KINDS = ["gain", "won", "lapse"];
+/* the token's own motion (tokenanim) for them: its nearest kinds (it has no challenge kinds) */
+export const ANIM_KIND = { gain: "regain", won: "steady", lapse: "out" };
+/** change = { stat, from, to, max, cr (the rating now, for the time limit) } of a CHALLENGE actor -> { stat, kind, n, r } | null */
+export function challengeOf(change) {
+  const stat = change?.stat, from = fin(change?.from), to = fin(change?.to), max = fin(change?.max);
+  if ((stat !== "health" && stat !== "resolve") || from === null || to === null || from === to) return null;
+  const n = Math.abs(to - from), r = max && max > 0 ? Math.min(1, n / max) : null;
+  if (stat === "health") return to < from ? { stat, kind: to <= 0 ? "won" : "gain", n, r } : null;
+  const cr = fin(change?.cr);
+  return to < from && to <= 0 && (cr === null || cr > 0) ? { stat, kind: "lapse", n, r } : null;
+}
 
 const fin = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Math.round(Number(v)) : null);
 
@@ -80,7 +99,7 @@ export function shared(c, pub = null) {
 export function audience(seat, c, pub = null) {
   const none = { show: false, kind: null, num: null };
   if (!seat?.visible || !c) return none;
-  if (seat.challenge && c.stat === "resolve") return none;      // a challenge's "Resolve" is its time limit: the Challenges HUD shows it
+  if (seat.challenge && c.stat === "resolve" && c.kind !== "lapse") return none;      // IMPCALL2: but the time limit running out is the challenge failing. A challenge's "Resolve" is its time limit: the Challenges HUD shows it
   const s = shared(c, pub);
   if (seat.staff || seat.reader) return { show: true, kind: s.kind, num: c.n > 0 ? c.n : null, exact: true, amt: s.amt };
   return { show: true, kind: s.kind, num: toldNum(c, pub), amt: s.amt };
@@ -112,13 +131,15 @@ export function fromEvent(pub, stat) {
    REQUESTS FXLT2): getting up (back) and steady. */
 export const VOCAB_KIND = {
   hit: ["punch"], heavy: ["smash"], down: ["thud"], heal: ["relief"], back: ["cheer"],
-  stress: ["pain"], spent: ["effort"], regain: ["relief"], out: ["sigh"], steady: ["cheer"]
+  stress: ["pain"], spent: ["effort"], regain: ["relief"], out: ["sigh"], steady: ["cheer"],
+  gain: ["chime"], won: ["chime"], lapse: ["rumble"]      // IMPCALL2: a challenge: progress chimes, the failure rumbles (provisional IMPCALL2-6)
 };
 /* how loud each kind is said, from the smallest to the biggest amount (0..1): the vocabulary's tier (s < 0.34 <= m < 0.67 <= l) is the
    word, so a -1 hit says a short small sound and a -6 a long loud one (ADVT2 7: stress -1 and -6 were the same GRRR!) */
 export const LOUD = {
   hit: [0.25, 0.66], heavy: [0.55, 1], down: [0.75, 1], heal: [0.25, 0.7], back: [0.5, 0.9],
-  stress: [0.25, 0.9], spent: [0.15, 0.4], regain: [0.2, 0.6], out: [0.6, 1], steady: [0.4, 0.8]
+  stress: [0.25, 0.9], spent: [0.15, 0.4], regain: [0.2, 0.6], out: [0.6, 1], steady: [0.4, 0.8],
+  gain: [0.3, 0.7], won: [0.8, 1], lapse: [0.7, 1]
 };
 /* a series of blows on one token (ADVT2 5: three blows 0.9 s apart were the same drawing three times): the next blow within STREAK.ms of
    the last one is step n of ONE growing sound (the vocabulary's series: the same template louder and longer, then its lead-in:
@@ -166,7 +187,10 @@ const SOUND = {
   spent: { mood: "tick", sound: { loud: 0.3, sharp: 0.6, long: 0.25, pitch: -0.3, rough: 0.4 }, sev: 0.8, hold: 700 },
   regain: { mood: "powerup", sound: { loud: 0.5, sharp: 0.3, long: 0.4, pitch: 0.6, rough: 0.1 }, sev: 0.9, hold: 900 },
   out: { mood: "fail", sound: { loud: 0.8, sharp: 0.2, long: 0.95, pitch: -0.9, rough: 0.3 }, sev: 1.45, hold: 1500 },
-  steady: { mood: "powerup", sound: { loud: 0.65, sharp: 0.4, long: 0.45, pitch: 0.8, rough: 0.1 }, sev: 1, hold: 1100 }
+  steady: { mood: "powerup", sound: { loud: 0.65, sharp: 0.4, long: 0.45, pitch: 0.8, rough: 0.1 }, sev: 1, hold: 1100 },
+  gain: { mood: "powerup", sound: { loud: 0.5, sharp: 0.5, long: 0.3, pitch: 0.7, rough: 0 }, sev: 1, hold: 1000 },
+  won: { mood: "powerup", sound: { loud: 0.9, sharp: 0.5, long: 0.6, pitch: 0.9, rough: 0 }, sev: 1.4, hold: 1400 },
+  lapse: { mood: "fail", sound: { loud: 0.9, sharp: 0.3, long: 0.9, pitch: -0.9, rough: 0.5 }, sev: 1.5, hold: 1500 }
 };
 /* the animation technique per kind (contract v2 in / holdKind / out): picked by the seed among the ones that fit what happened, so two
    hits do not move alike; a blow slams in and shatters, a fall drops and droops, healing and getting up rise, stress buzzes */
@@ -180,7 +204,8 @@ export const MOTION = {
   spent: { in: ["pop"], hold: ["boil"], out: ["dissolve"] },
   regain: { in: ["rise", "grow"], hold: ["throb"], out: ["rise"] },
   out: { in: ["drop"], hold: ["wobble"], out: ["droop", "fall"] },
-  steady: { in: ["grow"], hold: ["throb"], out: ["rise"] }
+  steady: { in: ["grow"], hold: ["throb"], out: ["rise"] },
+  gain: { in: ["pop", "grow"], hold: ["throb"], out: ["rise"] }, won: { in: ["grow"], hold: ["throb"], out: ["rise"] }, lapse: { in: ["drop"], hold: ["wobble"], out: ["droop"] }
 };
 /* the colours say WHICH track moved: Health hot (loss) or green (back); Resolve is strain (FXLT, review 11: the cool blue with the pain
    hand's drips read as icicles, cold, not effort); getting the nerve back is teal. Fill light to dark.
@@ -189,7 +214,7 @@ export const MOTION = {
    near the blood red) the knock-out blow's white on a red block. The table lives in ../letter-colors.mjs (with the high-contrast and
    colour-blind variants the table may choose); PALETTE here is its default palette. */
 export const PALETTE = Object.freeze(Object.fromEntries(Object.entries(LC.TOKEN).map(([k, v]) => [k, v.mood])));
-const PAL_OF = { hit: "health", heavy: "health", down: "down", heal: "heal", back: "heal", stress: "resolve", spent: "resolve", regain: "steady", out: "out", steady: "steady" };
+const PAL_OF = { hit: "health", heavy: "health", down: "down", heal: "heal", back: "heal", stress: "resolve", spent: "resolve", regain: "steady", out: "out", steady: "steady", gain: "steady", won: "heal", lapse: "out" };
 
 /* ---------------------------------------------------------------- numbers: ONE hand for every number (FXLT, review 3)
    A number is information, not a sound: it is lettered the same way every time, in a face whose digits cannot be mistaken (Bungee:
@@ -286,11 +311,13 @@ export function look(a, c, lang, seed, vocab = null, o = {}) {
      always stands AFTER its word, in reading order ("WHAM! -2"); a tag, not a coin toss */
   const side = NUM_SIDE;
   const colors = LC.tokenColors(PAL_OF[kind]), hand = LC.tokenHand(PAL_OF[kind]);   // PALETTE: the table's palette; a pinned block where the sound's own would not hold the face
-  const stat = HEALTH.includes(kind) ? "health" : "resolve";
+  const stat = HEALTH.includes(kind) || kind === "gain" || kind === "won" ? "health" : "resolve";
   const sign = kind === "heal" || kind === "back" || kind === "regain" || kind === "steady" ? "+" : "-";
-  const number = Number.isFinite(a.num) && a.num > 0 && kind !== "spent"      /* spent: the pushed roll's splash already shows the stress */
+  let number = Number.isFinite(a.num) && a.num > 0 && kind !== "spent" && kind !== "lapse"      /* spent: the pushed roll's splash already shows the stress; lapse: the time at 0 says it */
     ? numberLook(stat, sign, a.num, amt)
     : null;
+  /* IMPCALL2: the rating's fall is the heroes' progress: its "-n" in the good news' teal, not the blood colours of a wound */
+  if (number && (kind === "gain" || kind === "won")) { const hd = numHand("resolve", "+"); number = { ...number, hand: hd, colors: hd.pal.fill.slice() }; }
   const mo = MOTION[kind], at = (list, k) => list[(h >>> k) % list.length];
   const motion = { in: at(mo.in, 11), holdKind: at(mo.hold, 14), out: at(mo.out, 17) };
   const lk = { kind, stat, word: null, vk: vocabKind(kind), loud, step: 0, n: Number.isFinite(c?.n) ? c.n : Number.isFinite(a?.num) ? a.num : 0, motion, mood: s.mood, sound: { ...s.sound, loud }, colors, ...(hand ? { hand } : {}), sev: s.sev, amt, magnitude: magOf(kind, amt), hold: s.hold, rotation: Math.round(rot), side, numbers: number ? [number] : [], number };
@@ -593,7 +620,12 @@ export const RUNGS = [
 export const IMPACT = {
   hit: { ladder: true }, heavy: { ladder: true }, stress: { ladder: true, tone: "void" },
   out: { kind: "ko", base: 1.05, amt: 0.25, tone: "void" },
-  down: { kind: "ko", base: 1.45, amt: 0.45 }
+  down: { kind: "ko", base: 1.45, amt: 0.45 },
+  /* IMPCALL2: a challenge's moments, never a blow (impact-rungs CHALLENGE): the engine's tone-only kind ("word") with the callers' own cut, at
+     a strength in the engine's steps 1-2 (its cut-in reads a small / middle rung) */
+  gain: { kind: "word", magnitude: 0.5, tone: "volt", frames: RG.CHALLENGE.gain },
+  won: { kind: "word", magnitude: 0.8, tone: "hero", frames: RG.CHALLENGE.won },
+  lapse: { kind: "word", magnitude: 0.84, tone: "void", frames: RG.CHALLENGE.lapse }
 };
 export const IMPACT_STEP = 1;        // rungs per next blow of one series
 /* the ceiling of every blow but going down: just under the engine's whole set (its last first-build tier, L.impact.tiers[2]; 1.35 -> 1.34) */
@@ -619,6 +651,7 @@ export function impactOf(pub, step = 0, o = {}) {
   const row = IMPACT[pub?.kind];
   if (!row || !STEP_AT) return null;   // CALLERS2: no impact frame without the running engine's impact table (an engine without L.impact draws none anyway)
   const amt = Math.max(0, Math.min(1, Number(pub.amt) || 0)), n = Math.max(0, Math.min(STREAK.max, Math.floor(Number(step) || 0)));
+  if (row.frames) return { kind: row.kind, magnitude: row.magnitude, tone: row.tone, frames: RG.framesOf(row.frames) };      // IMPCALL2: a challenge
   if (row.ladder) {
     const blow = pub.kind === "hit" || pub.kind === "heavy";
     let r = seriesRung(pub, n, o.cum ?? null);      // CROWD: a series climbs, but never past what its blows add up to
@@ -626,6 +659,9 @@ export function impactOf(pub, step = 0, o = {}) {
     const R = RUNGS[r];
     const kind = blow && o.doubled ? "crit" : blow && ENERGY.has(o.dtype) ? "shock" : R.kind;
     const out = { kind, magnitude: Math.min(impactTop(), R.magnitude), rung: r };
+    /* IMPCALL2 (ADVI2 1: a scratch was one 83 ms blink, a blow 250 ms): the rungs the engine draws in 2-6 ticks get the callers' own longer cut
+       (impact-rungs REACT: 6 / 8 / 9 ticks, the lowest never a flash); from the heavy rung up the engine's own ladder (10-24 ticks) */
+    if (RG.REACT[r]) out.frames = RG.framesOf(RG.REACT[r]);
     const tone = row.tone ?? DTYPE_TONE[o.dtype] ?? (kind === "crit" && !o.doubled ? R.tone : null);
     if (tone) out.tone = tone;
     return out;
@@ -819,6 +855,21 @@ export function withSeries(spec, step) {
   if (!n) return { ...spec, magnitude: want };
   return { ...spec, series: n, magnitude: Math.round((want - SERIES.step * n) * 1000) / 1000 };
 }
+
+/* ---------------------------------------------------------------- one event, one impact (IMPCALL2, items 3 and 10)
+   The engine's step (0..5, its bounds L.impact.steps) of the strength a spec DRAWS (with its series' boost). */
+export const drawnStep = (spec, n = 0) => { if (!spec) return null; const m = effectiveMagnitude(withSeries(spec, n)); return steps().filter((b) => m >= b - 1e-9).length; };
+/* the roll's impact just struck these tokens (the splash's landing: its targets and the table's step, shared data). A reaction's impact on
+   one of them: "fold" (no impact of its own: the roll's cut WAS this blow), "beat" (stronger: its own cut without a second flash,
+   impact-rungs beatFrames) or "own" (no roll struck it). struck = { step } | null -> { how, step } | null */
+export const STRUCK_MS = 4000;      // a reaction joins the roll's event when it plays within this after the roll's impact is over
+export function foldOf(spec, n, struck) {
+  if (!spec) return null;
+  const step = drawnStep(spec, n);
+  return { how: RG.foldWith(step, Number.isFinite(struck?.step) ? struck.step : NaN), step };
+}
+/* item 10: which tokens of a moment join the host's cut as `also`: those within ALSO_GAP steps of it (shared data) -> bool */
+export const alsoJoins = (ownStep, hostStep) => RG.alsoFits(ownStep, hostStep);
 
 /* ---------------------------------------------------------------- one instant for the word and its impact (FXI-TOKEN, ADVI 2 and 13)
    The impact frame came 0.17-0.2 s AFTER the word had reached full size (it was timed to the end of the word's whole entrance), and the GM's

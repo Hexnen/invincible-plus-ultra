@@ -102,9 +102,15 @@ async function crowd(who, base) {
   for (const who of ["gm", "player"]) {
     const { words, im } = S[who];
     const imp = im[0];
-    ck(`A ${who}: one impact, on the knock-down (${im.length}, ${imp?.spec.kind} on ${imp?.spec.subject?.id})`, im.length === 1 && imp.spec.kind === "ko" && imp.spec.subject?.id === "Z3");
-    const also = idsOf(imp?.spec);
-    ck(`A ${who}: the other struck tokens take part as figures (also: ${also.join(" ")})`, also.length === 5 && also.join(" ") === "Z0 Z1 Z2 Z4 Z6");
+    /* IMPCALL2 (ADVI2 10: a -1 beside a -8 took the -8's full treatment): the six -2 blows (the engine's step 2) are more than ALSO_GAP steps
+       under the knock-down (step 4): the knock-down's cut is its own; the -2s strike after it in ONE lower cut of their own (on the first of
+       them by id, the others its figures). Was: one impact, the five others as `also` */
+    ck(`A ${who}: the knock-down's impact first, then one for the lighter blows (${im.length}, ${imp?.spec.kind} on ${imp?.spec.subject?.id})`, im.length === 2 && imp.spec.kind === "ko" && imp.spec.subject?.id === "Z3");
+    ck(`A ${who}: the knock-down's cut is its own (also: ${idsOf(imp?.spec).join(" ")})`, idsOf(imp?.spec).length === 0);
+    const im2 = im[1], also = idsOf(im2?.spec);
+    ck(`A ${who}: the lighter blows' cut on the first of them, a lower rung (${im2?.spec.subject?.id} ${im2?.spec.kind} ${im2?.spec.magnitude})`, im2?.spec.subject?.id === "Z0" && im2.spec.kind !== "ko" && im2.spec.magnitude < imp.spec.magnitude);
+    ck(`A ${who}: the other lighter tokens take part as its figures (also: ${also.join(" ")})`, also.length === 4 && also.join(" ") === "Z1 Z2 Z4 Z6");
+    ck(`A ${who}: the second cut after the first one's last drawing`, im2 && impStart(im2.spec) >= impStart(imp.spec) + planImpact(imp.spec).ms - 1);
     ck(`A ${who}: never the subject, never a GM-hidden token`, !also.includes("Z3") && !also.includes("Z5"));
     const plan = imp ? planImpact(imp.spec) : null, ms = plan?.ms ?? 0;
     ck(`A ${who}: the knock-down's impact is longer than the old 500 ms cap on 1.9.21 (${Math.round(ms)} ms)`, ms > 520);
@@ -116,7 +122,8 @@ async function crowd(who, base) {
       rest.length > 0 && rest.every((x) => x.o.startAt >= impStart(imp.spec) + ms - 260));
   }
   ck(`A the same call on both seats (also ${idsOf(S.gm.im[0]?.spec).join(",")} / ${idsOf(S.player.im[0]?.spec).join(",")}, ${S.gm.im[0]?.spec.magnitude} / ${S.player.im[0]?.spec.magnitude})`,
-    idsOf(S.gm.im[0]?.spec).join() === idsOf(S.player.im[0]?.spec).join() && S.gm.im[0]?.spec.magnitude === S.player.im[0]?.spec.magnitude && S.gm.im[0]?.spec.kind === S.player.im[0]?.spec.kind);   // (the seed: one process cannot hand both seats the same tactics event; fxi-token pins it)
+    idsOf(S.gm.im[0]?.spec).join() === idsOf(S.player.im[0]?.spec).join() && S.gm.im[0]?.spec.magnitude === S.player.im[0]?.spec.magnitude && S.gm.im[0]?.spec.kind === S.player.im[0]?.spec.kind
+    && idsOf(S.gm.im[1]?.spec).join() === idsOf(S.player.im[1]?.spec).join() && S.gm.im[1]?.spec.subject?.id === S.player.im[1]?.spec.subject?.id && S.gm.im[1]?.spec.magnitude === S.player.im[1]?.spec.magnitude);   // (the seed: one process cannot hand both seats the same tactics event; fxi-token pins it)
 }
 /* a single blow: no `also` */
 { reset(); const t = mk("Y1", "npc", 8, 6, { x: 600, y: 400 }); Hooks.callAll("canvasReady"); set(t, "health", 2, {}, 93001);

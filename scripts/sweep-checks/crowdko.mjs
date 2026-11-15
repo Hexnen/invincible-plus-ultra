@@ -116,6 +116,11 @@ ck("D3d ... the GM's seat letters far fewer than fourteen separate numbers", Nn(
 ck("D3e ... the crowd's word is the same on both seats", W("hit14", "gm").filter((w) => !/×/.test(w)).includes(W("hit14", "p1")[0]), `${W("hit14", "gm")} | ${W("hit14", "p1")}`);
 ck("D4 a one-blow knock-down next to other heroes and a pin: one word on both seats (clean: above)", W("one", "gm").length === 1 && W("one", "p1").length === 1 && W("one", "gm")[0] === W("one", "p1")[0]);
 ck("D4b ... and its impact frame on both seats (the token is in both views)", R.one.gm.r?.impacts.length === 1 && R.one.p1.r?.impacts.length === 1);
-ck("D8 a knock-down outside both seats' views flashes neither view (its word still letters at the edge)", R.off.gm.r?.impacts.length === 0 && R.off.p1.r?.impacts.length === 0 && W("off", "gm").length === 1 && W("off", "p1").length === 1,
-  `impacts ${R.off.gm.r?.impacts.length}/${R.off.p1.r?.impacts.length}`);
+/* IMPCALL2 (ADVI2 6: the seat without the target in view got nothing while the table saw a cut): the off-view knock-down gets the engine's
+   GENTLE variant (its local panel: no full frame, no hit-stop, no inverted scene) on the word lettered at the view's edge, never on the token
+   and never a whole view's flash. Was: no impact at all */
+const offImp = (s) => R.off[s].r?.impacts ?? [];
+ck("D8 a knock-down outside both seats' views flashes neither view: only a gentle moment on its edge word (the word still letters at the edge)",
+  ["gm", "p1"].every((s) => offImp(s).length <= 1 && offImp(s).every((x) => x.gentle === true && x.subject !== "FAR" && /^h\d+$/.test(x.subject ?? ""))) && W("off", "gm").length === 1 && W("off", "p1").length === 1,      // its subject: a word handle (this stand-in names them h0, h1 ...), never the token
+  `impacts ${JSON.stringify(offImp("gm"))}/${JSON.stringify(offImp("p1"))}`);
 done();

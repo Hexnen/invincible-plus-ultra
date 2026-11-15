@@ -1254,9 +1254,11 @@ function impactShot(ctl, it, contact) {
          be seen) */
       const also = IP.alsoTargets(ctl.targets).map((id) => globalThis.canvas?.tokens?.get?.(id)).filter((t) => t && t !== tok && t !== s.from && t.document?.hidden !== true);
       if (also.length) s.also = also;
-      if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude, LE?.impact, { figs: (ctl.targets?.length ?? 0) > 0 }); }   // IMPCALL: the struck figures' palette jumps after the peak when the roll has a target (shared data)
+      if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude, LE?.impact, { figs: (ctl.targets?.length ?? 0) > 0, rung: q.rung }); }
+      else if (Array.isArray(q.frames)) s.frames = q.frames.map((f) => ({ ...f }));      // IMPCALL2: the ordinary / strong result's own cut (impact-plan impactFor)
       if (q.tone) s.tone = q.tone;
       if (q.hitstop === false) s.hitstop = false;
+      if (q.gentle === true) s.gentle = true;      // IMPCALL2: Effects reduced: the engine's gentle variant of the table's impact (only ever true: a false would raise nothing)
       return s;
     };
     const spec = ip ? specOf(ip) : null;
@@ -1266,7 +1268,10 @@ function impactShot(ctl, it, contact) {
        SYNC: read from the TABLE's impact (full Effects), so a seat with Effects reduced or off starts its word on the same instant */
     let lead = 0;
     const ts = specOf(tp);
-    try { const p = I.plan?.({ ...ts, reduced: false }); lead = Number.isFinite(p?.peakMs) ? p.peakMs : IP.leadMs(p?.frames ?? ts.frames ?? []); } catch (e) { lead = 0; }
+    try { const p = I.plan?.({ ...ts, reduced: false }); lead = Number.isFinite(p?.peakMs) ? p.peakMs : IP.leadMs(p?.frames ?? ts.frames ?? []);
+      /* IMPCALL2 (item 3): the table's strength of this impact when it lands on the roll's targets (shared data: the targets and the table's
+         plan), told with the landing so the target's damage reaction joins this event instead of striking a second cut */
+      if (ctl.targets?.length && Number.isFinite(p?.step)) ctl.tableStep = p.step; } catch (e) { lead = 0; }
     const draws = fire && !!spec;
     return { spec, map, lead, shift: Math.max(0, lead - contact), contact, fire: draws, where: !spec ? 'none' : tok ? 'target' : (fire ? 'word' : 'none'), why: spec ? pick.why : 'effects-off', target: pick.id };
   } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
@@ -1312,7 +1317,8 @@ export function tellMoment(data) {
 function tellLand(ctl, landAt, impactMs) {
   if (!ctl.momentId || ctl.landed) return;
   ctl.landed = true;
-  tellMoment({ phase: 'land', id: ctl.momentId, landAt, impactMs: Math.round(Math.max(0, impactMs) || 0) });
+  const one = Number.isFinite(ctl.tableStep) && ctl.targets?.length ? { targets: ctl.targets.slice(), step: ctl.tableStep } : {};      // IMPCALL2: one event with its damage
+  tellMoment({ phase: 'land', id: ctl.momentId, landAt, impactMs: Math.round(Math.max(0, impactMs) || 0), ...one });
 }
 function tellDone(ctl) {
   if (!ctl.momentId || ctl.told) return;

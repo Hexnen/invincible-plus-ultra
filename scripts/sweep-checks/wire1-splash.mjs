@@ -139,7 +139,10 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
   eq(s.moves, 0, "a strong blow: no shake of our own on top of its impact frame");
   eq(IP.impactFor(R.shot)?.kind, "shock", "a strong shot: the energy kind");
   eq(IP.impactFor(R.dodge)?.kind, "word", "a strong dodge (no blow): only the accent behind its word");
-  for (const [k, e] of [["good", R.good], ["routine miss", R.routine], ["rare miss", R.rare]]) eq((await seat({ e, name: k, hero, full: false })).impacts.length, 0, `${k}: no impact frame`);
+  /* IMPCALL2 (ADVI2 1; the owner: one roll, then minutes of nothing): an ordinary success has its own small moment now (impact-rungs
+     ROLL.ordinary: 7 ticks, no flash); a miss still none. Was: "good: no impact frame" */
+  eq((await seat({ e: R.good, name: "good", hero, full: false })).impacts.length, 1, "good: its own small impact frame");
+  for (const [k, e] of [["routine miss", R.routine], ["rare miss", R.rare]]) eq((await seat({ e, name: k, hero, full: false })).impacts.length, 0, `${k}: no impact frame`);
   ok(Math.max(...[0.46, 0.5, 0.6, 0.69].map((P) => IP.impactFor({ power: P, action: "slugfest", wreck: true }).magnitude)) < 0.85 && IP.impactFor({ power: 0.7, action: "slugfest" }).magnitude > IP.impactFor({ power: 0.69, action: "slugfest", wreck: true }).magnitude,
     "the critical is always stronger than any strong result (the strongest moment, the strongest frame)");
 }
@@ -182,7 +185,10 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
   eq((await seat({ e: R.crit, name: "r", hero, reduced: true })).impacts[0]?.spec?.reduced, true, "reduced motion (the splash's Motion setting / the OS): the impact is asked for calm");
   eq((await seat({ e: R.crit, name: "o", hero, fx: 0 })).impacts.length, 0, "Effects off: no impact frame");
   const lo = (await seat({ e: R.crit, name: "q", hero, fx: 0.5 })).impacts[0]?.spec;
-  ok(lo && lo.magnitude <= 1.5 && lo.hitstop === false, `Effects reduced: one strength lower, no hold of the scene (${lo?.magnitude}, hitstop ${lo?.hitstop})`);
+  /* IMPCALL2 (IMPACT5-3: the reduced seat got a shorter critical than the table): the table's impact, gentle (the engine's local variant,
+     the same length), no hold of the scene. Was: one strength lower */
+  const hi = (await seat({ e: R.crit, name: "q", hero, fx: 1 })).impacts[0]?.spec;
+  ok(lo && hi && lo.magnitude === hi.magnitude && lo.kind === hi.kind && lo.gentle === true && lo.hitstop === false, `Effects reduced: the table's impact, gentle, no hold of the scene (${lo?.magnitude}/${hi?.magnitude}, gentle ${lo?.gentle}, hitstop ${lo?.hitstop})`);
   const old = await seat({ e: R.crit, name: "n", hero, noImpact: true });
   ok(old.flashes === 1 && old.impacts.length === 0, `an engine without impact frames: the critical keeps its one short accent (${old.flashes})`);
   const pu = await seat({ e: R.pushed, name: "p", hero });
