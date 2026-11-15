@@ -202,7 +202,13 @@ for (const [kind, e] of Object.entries(KINDS()).filter(([k]) => ["strong", "crit
   const full = kind === "critical";
   const a = await seat({ ...P1, W: 1600, H: 900, zoom: 0.45, name: `m3-${kind}-a`, e, full });
   /* the same seat panned so the roller stands near its view's right edge: the block is partly outside its view */
-  const c = await seat({ ...P1, W: 1600, H: 900, zoom: 0.45, off: { x: -1.9, y: 0 }, name: `m3-${kind}-cut`, e, full });
+  /* WORDPOOL2: the pan is derived from the board block itself (its right edge 30 % of its width past the free view's edge, the 300 px
+     sidebar), not a fixed -1.9 squares: a narrower word (the slugfest's strong WHAM! of the word families) fitted whole at -1.9 and the
+     premise "partly outside" no longer held */
+  const bl = Math.min(...a.board.items.map((i) => i.l)), br = Math.max(...a.board.items.map((i) => i.r)), hc = (a.board.hero.l + a.board.hero.r) / 2;
+  const cx = br - (1600 - P1.ui.side + 0.3 * (br - bl) * 0.45 - 800) / 0.45;
+  const reaches = (br - (hc - 1.9 * GS)) * 0.45 + 800 > 1600 - P1.ui.side;   // at the old -1.9 the block already runs under the sidebar
+  const c = await seat({ ...P1, W: 1600, H: 900, zoom: 0.45, off: { x: reaches ? -1.9 : (cx - hc) / GS, y: 0 }, name: `m3-${kind}-cut`, e, full });
   /* zoomed far out: the word a speck */
   const z = await seat({ ...P1, W: 1600, H: 900, zoom: 0.12, name: `m3-${kind}-far`, e, full });
   ok(onBoard(a) && a.rule === "ok", `M3 ${kind}: the roller mid-view shows the board block (${a.rule})`);

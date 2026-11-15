@@ -16,34 +16,31 @@
    row under that; the push grunt above. Every element is measured (the engine's own plan of that very word) and the whole block is
    placed by the token (above its head, else under its feet, else beside it) or on the screen's focus, then kept inside the free part of
    the window (not under the chat, the bars, the hotbar), shrunk as one when it does not fit. Nothing in the block overlaps. */
-import { hueOf, oddsText, oddsLabel, fmtOdds, LBL, say, sfxWord } from './logic.mjs';   // SPLASHPL: sfxWord = the action word as this seat shows it (moods stay keyed by the English word)
+import { hueOf, oddsText, oddsLabel, fmtOdds, LBL, say, sfxWord, WORD_MOODS, FAMILY_MOODS, soundOf, SFX_KEYS, KEEP_EN, ACTION_WORDS } from './logic.mjs';   // SPLASHPL: sfxWord = the action word as this seat shows it (moods stay keyed by the English word)
 import { cleanHere, localCost, shiftInto } from '../same-picture.mjs';   // SAMEPIC: one picture for the table
 
-/* word -> mood (the LETR engine's intents). A word not listed falls back to its action's default. */
-export const WORD_MOOD = Object.freeze({
-  'HAYMAKER!': 'impact', 'SMASH!': 'crash', 'WHAM!': 'impact', 'BAM!': 'impact', 'THWACK!': 'impact', 'CRUSH!': 'crash',
-  'RUSH!': 'whoosh', 'CHARGE!': 'roar', 'WHOOSH!': 'whoosh', 'BARREL!': 'crash', 'STAMPEDE!': 'roar',
-  'GRAB!': 'impact', 'LOCK!': 'crack', 'SQUEEZE!': 'roar', 'VISE!': 'crack', 'HOLD!': 'impact',
-  'GUARD!': 'impact', 'BRACE!': 'impact', 'SHIELD!': 'impact',
-  'ZIP!': 'whoosh', 'DASH!': 'whoosh', 'FLIP!': 'whoosh', 'SWISH!': 'whoosh', 'DUCK!': 'whoosh',
-  'BLAM!': 'crack', 'ZAP!': 'zap', 'PEW!': 'zap', 'BANG!': 'crack', 'KRAK!': 'crack',
-  'CLICK!': 'tick', 'EUREKA!': 'powerup', 'CALCULATE!': 'tick',
-  'TINGLE!': 'zap', 'SENSE!': 'zap', 'HUNCH!': 'tick',
-  'HUSH!': 'tick', 'COMMAND!': 'roar', 'ROAR!': 'roar',
-  'POW!': 'impact', 'BOOM!': 'boom', 'KAPOW!': 'boom', 'ZOOM!': 'whoosh',
-  /* push grunts */
-  'STRAIN!': 'roar', 'PUSH!': 'powerup', 'GRRR!': 'roar', 'ALL IN!': 'powerup', 'DIG DEEP!': 'powerup', 'AGAIN!': 'powerup', 'HNNNG!': 'roar', 'ONE MORE!': 'powerup',
-  /* wreck */
-  'WRECK!': 'crash', 'RUIN!': 'crash', 'KRAKOOM!': 'boom', 'DEMOLISH!': 'crash',
+/* the push grunts, the wreck and the pushed roll that broke: their sound (mood + the engine's motion row, words.mjs SOUND) */
+const OWN_SOUND = Object.freeze({
+  /* push grunts: the effort (strained, trembling), the shout of will (rising) */
+  'STRAIN!': ['roar', 'effort'], 'PUSH!': ['powerup', 'effort'], 'GRRR!': ['roar', 'snarl'], 'ALL IN!': ['powerup', 'cheer'], 'FULL STRENGTH!': ['powerup', 'effort'],
+  'AGAIN!': ['powerup', 'cheer'], 'HNNNG!': ['roar', 'effort'], 'ONE MORE!': ['powerup', 'cheer'],
+  /* wreck: what falls apart */
+  'WRECK!': ['crash', 'crash'], 'RUIN!': ['crash', 'crumble'], 'KRAKOOM!': ['boom', 'boom'], 'DEMOLITION!': ['crash', 'crash'],
   /* a pushed roll that still failed: the sound of it breaking */
-  'CRACK!': 'crack', 'SNAP!': 'crack', 'OUCH!': 'pain'
+  'SKRAK!': ['crack', 'crack'], 'TSKRIK!': ['crack', 'crack'], 'OUCH!': ['pain', 'pain']
 });
-const ACTION_MOOD = { slugfest: 'impact', charge: 'crash', grapple: 'impact', block: 'impact', dodge: 'whoosh', shooting: 'crack', reason: 'tick', intuition: 'zap', presence: 'roar', generic: 'boom' };
+/* word -> mood (the LETR engine's intents). WORDPOOL2: every action family's words (words.mjs) plus the grunts and wrecks, each with its own
+   mood; nothing falls back to its action's default. */
+export const WORD_MOOD = Object.freeze({ ...WORD_MOODS, ...Object.fromEntries(Object.entries(OWN_SOUND).map(([w, [m]]) => [w, m])) });
+const ACTION_MOOD = { ...FAMILY_MOODS };
 /* the sharp/round character of each mood, used to keep the word's own sound when a miss forces the "fail" mood */
 const MOOD_SHARP = { impact: 0.7, crack: 0.95, crash: 0.8, boom: 0.25, roar: 0.45, fire: 0.5, whoosh: 0.35, zap: 0.9, tick: 0.6, pain: 0.8, powerup: 0.55, heal: 0.2, splash: 0.15, fail: 0.4 };
 const LONG = new Set(['whoosh', 'roar', 'powerup', 'boom']);
 
-export const moodOf = (word, action) => WORD_MOOD[word] ?? ACTION_MOOD[action] ?? 'impact';
+/* the word's own sound in its action family (KA-KROOM! booms in a blast, rumbles in a quake), else its word mood, else the family's */
+export const moodOf = (word, action) => soundOf(word, action)?.mood ?? WORD_MOOD[word] ?? ACTION_MOOD[action] ?? 'impact';
+/* WORDPOOL2: the engine's motion row of that sound (motion.mjs KIND_MOTION), or null (the mood's row) */
+export const kindOf = (word, action) => soundOf(word, action)?.kind ?? OWN_SOUND[word]?.[1] ?? null;
 
 /* ---- colours (fill light -> dark, the engine's `colors`) */
 /* the engine reads colours as hex (#rrggbb), so the power scale is converted here */
@@ -76,11 +73,18 @@ export const MISS_SAY_COLORS = Object.freeze(['#f2f5ff', '#c9d4f5', '#7d8fc9']);
    design.mjs merges it over its own choice; the same thing the token reactions pin, REQUESTS ltok 10): the tall narrow face of the
    Invincible lettering (Anton), plain letters, flat, no texture, a light cut line around the ink. The sound word keeps the hand its
    mood picks (variety). */
-export const INFO_HAND = Object.freeze({ font: 'anton', treat: 'plain', env: 'flat', tex: 'none', outline: 'sticker', fill: 'flat', shadow: null, shear: 0.05, track: 0.03, hatch: false, bevel: false });
+/* WORDPOOL2: number: true = even letter sizes (design.mjs: no accent shrink of the tail): the comic hand sized the last letters of a caption
+   smaller and "LUCKY BREAK!" read "LUCKy BREAK!", "SHATTERED" read "SHATTERed" */
+export const INFO_HAND = Object.freeze({ number: true, font: 'anton', treat: 'plain', env: 'flat', tex: 'none', outline: 'sticker', fill: 'flat', shadow: null, shear: 0.05, track: 0.03, hatch: false, bevel: false });
 /* the caption row (the sentence and the odds) is the smallest lettering: the light cut line and a puffed ink line are stroked over the
    edges, inwards too, and at caption size they filled Anton's narrow counters (live, 1366: NOT BAD! read HOT RAD!, IN was two
    blocks). So the caption has a thin ink line only, no puff, no extrusion, no gloss: the counters stay open. */
 export const CAPTION_HAND = Object.freeze({ ...INFO_HAND, outline: 'ink', out2W: 0, inkW: 0.04, inflate: 0, depth: 0, gloss: false });
+/* WORDPOOL2: a plain word (an action word, a shout, a mutter: read, not heard) keeps the hand its mood picks but letters every letter at one
+   size: the sound's accent sizing shrank its tail or its first word (IMADło!, "ACCESS" small before GRANTED!, ZMIAŻDŻENie!) and the word read
+   as a mistake. Sound words (onomatopoeia) keep their accent. */
+export const PLAIN_HAND = Object.freeze({ number: true });
+export const isPlainWord = (w) => typeof w === 'string' && (ACTION_WORDS.has(w) || Object.hasOwn(SFX_KEYS, w) || KEEP_EN.includes(w));
 const CAPTION_ROLES = new Set(['say', 'odds']);
 const INFO_ROLES = new Set(['six', 'say', 'odds', 'stress']);
 
@@ -143,7 +147,7 @@ export function planMoment(ev, o = {}) {
     const m = moodOf(ev.prefix);
     /* FXLD2 (ADVD2 11): the grunt is a beat of its own, not a footnote: about 1.4x the old cap (live 1920 HNNNG! was ~40 px) and held
        long enough to read before the result comes */
-    const pre = add({ role: 'pre', text: sfxWord(ev.prefix), delay: 0, cap: PRE_CAP, min: PRE_MIN, wMax: 0.5, mood: m,
+    const pre = add({ role: 'pre', text: sfxWord(ev.prefix), delay: 0, cap: PRE_CAP, min: PRE_MIN, wMax: 0.5, mood: m, kind: kindOf(ev.prefix),
       sound: { loud: 0.6, pitch: 0.6, long: 0.6 }, colors: ['#fff1dc', '#ffc27a', '#e07a2a'], hold: Math.round(PRE_HOLD * holdK), rotation: -4 });
     t = pre.hold + EXIT_MAX + 60;
   }
@@ -157,7 +161,7 @@ export function planMoment(ev, o = {}) {
     const loud = soft ? 0.12 : r1(0.3 + 0.45 * dF + (ev.pushed ? 0.1 : 0));
     /* FXLD2 (ADVD2 10): a routine miss is quiet but readable: the soft cap and hold were too small (NEXT! tiny on the head ring, ~1.5 s) */
     const w = add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(RANK_WORD[rank].cap(dF)), min: RANK_WORD[rank].min, rank, wMax: soft ? 0.4 : 0.55,
-      mood, sound: { loud, pitch: soft ? -0.2 : r1(-0.45 - 0.45 * dF), sharp: MOOD_SHARP[m0] ?? 0.4, rough: soft ? 0 : r1(0.2 + 0.4 * dF) },
+      mood, kind: soft ? null : kindOf(ev.word, ev.action), sound: { loud, pitch: soft ? -0.2 : r1(-0.45 - 0.45 * dF), sharp: MOOD_SHARP[m0] ?? 0.4, rough: soft ? 0 : r1(0.2 + 0.4 * dF) },
       colors: soft ? SOFT_COLORS : FAIL_COLORS, hold: Math.round((soft ? SOFT_HOLD : 2200 + 600 * dF) * holdK), rotation: soft ? 0 : 5 });
     /* a rare miss also says how rare: the sentence and the figure */
     if (!soft && dF > 0.3 && !ev.pushed && ev.failP) {
@@ -176,11 +180,11 @@ export function planMoment(ev, o = {}) {
     /* ADVD 5: the critical (full screen) is the biggest thing the table sees; a token-sized success grows with its rarity. CRITPEAK: by
        its rank (RANK_WORD), the critical up to nearly the whole free width (a long Polish word must not shrink it under a strong roll) */
     const cap = RANK_WORD[rank].cap(P);
-    add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(cap), min: RANK_WORD[rank].min, rank, wMax: full ? (wreck ? 0.6 : 0.92) : (wreck ? 0.46 : 0.66), wMin: full ? 0.5 : 0, mood: m, sound,
+    add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(cap), min: RANK_WORD[rank].min, rank, wMax: full ? (wreck ? 0.6 : 0.92) : (wreck ? 0.46 : 0.66), wMin: full ? 0.5 : 0, mood: m, kind: kindOf(ev.word, ev.action), sound,
       colors: P >= 0.4 || o.npc ? powerColors(P, o.npc ? 150 : 0) : null,     // a weak success keeps its mood's own palette (variety); strong ones climb the power scale
       hold, rotation: 0, from: o.token ? 'token' : 90 });
     if (wreck) add({ role: 'wreck', text: sfxWord(ev.wreckWord), delay: t + 520, cap: r3(cap * 0.62), min: r3(RANK_WORD[rank].min * 0.55), wMax: 0.4,
-      mood: moodOf(ev.wreckWord), sound: { loud: r1(Math.min(1, loud + 0.1)), rough: 0.7 }, colors: powerColors(Math.min(1, P + 0.1), -22 + (o.npc ? 150 : 0)), hold: hold - 520, rotation: 8 });
+      mood: moodOf(ev.wreckWord), kind: kindOf(ev.wreckWord), sound: { loud: r1(Math.min(1, loud + 0.1)), rough: 0.7 }, colors: powerColors(Math.min(1, P + 0.1), -22 + (o.npc ? 150 : 0)), hold: hold - 520, rotation: 8 });
     if (ev.sixes > 0) {
       add({ role: 'six', text: LBL.six(ev.sixes), delay: t + 230, ...info('six', rank), wMax: 0.36,
         mood: 'impact', sound: { loud: r1(0.4 + 0.12 * Math.min(4, ev.sixes)), sharp: 0.75, pitch: 0.3 },
@@ -200,6 +204,7 @@ export function planMoment(ev, o = {}) {
     it.rot0 = it.rotation || 0;   // SAMEPIC: the tilt every seat lays the block out with (a reduced seat draws it upright in that place)
     if (o.reduced) it.rotation = 0;
     if (INFO_ROLES.has(it.role)) it.hand = CAPTION_ROLES.has(it.role) ? CAPTION_HAND : INFO_HAND;
+    else if (isPlainWord(it.role === 'word' ? ev.word : it.role === 'pre' ? ev.prefix : it.role === 'wreck' ? ev.wreckWord : null)) it.hand = PLAIN_HAND;
     it.magnitude = magnitudeOf(it, ev);
     it.size = Math.round(Math.max(FLOOR[it.role] ?? 16, it.cap * REF_VH));
   }
@@ -227,6 +232,9 @@ export function mapExit(it) {
    stress throbs and falls. Pictures change on the engine's stepped clock (on twos and threes), never smoothly. */
 export function motionOf(it, ev, o = {}) {
   const P = ev.power ?? 0, dF = o.dF ?? 0;
+  /* WORDPOOL2: the item's kind (the engine's motion row of its sound) gives everything these pins leave open: the ordinary and strong
+     word's entrance, hold and exit, and always the sound's rhythm, flash and life. The pins say how good or bad the roll was (a top roll
+     slams, a miss falls, a routine miss mutters) and win over the row (question WORDPOOL2-2). */
   switch (it.role) {
     case 'word':
       if (ev.fail) {

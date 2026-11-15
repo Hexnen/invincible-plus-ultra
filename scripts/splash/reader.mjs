@@ -3,6 +3,7 @@
 
 import { isLabel, hasLabelWord } from '../i18n/sys-labels.mjs';
 import { heroActor } from '../tactics/source.mjs';
+import { familyOf } from './words.mjs';
 
 /* H3-4: strona mówiącego według jednej reguły modułu (state-pure.heroSide przez tactics/source.heroActor, D114): bohater gracza albo
    postać z przyjaznym żetonem; złoczyńca z podręcznika (aktor superhero bez gracza) jest przeciwnikiem. */
@@ -41,30 +42,35 @@ export function getYZRoll(message) {
   return isInv ? roll : null;
 }
 
-/* Klasyfikacja akcji z danych dostępnych w dialogu rzutu albo (zapasowo) z gotowej wiadomości:
-   attackType (slugfest/charge/shooting, tylko ataki), nazwa rzutu (flavor), nazwy z breakdown, atrybut. */
-export function classify({ attackType, flavor, names = [], attribute = null }) {
+/* Klasyfikacja akcji z danych dostępnych w dialogu rzutu albo (zapasowo) z gotowej wiadomości. WORDPOOL (ADVX 16): co to za akcja mówi
+   rodzina słów (words.mjs familyOf): obrona taktyczna, własny rzut systemu (Blok / Unik / Szarża / Chwyt po nazwie), nazwa mocy lub
+   sprzętu (dane angielskie, wiersz zestawu taktyki), typ ataku z systemu, atrybut. attack = rzut jest ciosem (jego klatka uderzenia
+   spada na cel). Wejście: attackType (slugfest/charge/shooting, tylko ataki), flavor (tytuł rzutu), names (breakdown), attribute,
+   item ({ name, type, source }: moc / sprzęt za rzutem), tactics (rollOptions.tactics: { key, what }). */
+export function classify({ attackType, flavor, names = [], attribute = null, item = null, tactics = null }) {
   attribute = attribute ?? ATTRS.find(a => isLabel(names[0], attrKey(a))) ?? null;
   const wreck = names.some(n => isLabel(n, 'INVINCIBLE.Actor.base.FIELDS.derived.slugfest.wreckZoneBonus'));
   /* cały wyraz (nie podciąg): "Roadblock" nie jest "Block", "Charged Beam" nie jest "Charge" */
   const has = key => hasLabelWord(flavor, key);
-  let action;
-  if (attackType === 'charge' || attackType === 'shooting' || attackType === 'slugfest') action = attackType;   // jawny typ ataku z systemu
-  else if (has('INVINCIBLE.Actor.base.FIELDS.derived.slugfest.charge')) action = 'charge';
-  else if (has('INVINCIBLE.Actor.base.FIELDS.derived.slugfest.grapple')) action = 'grapple';
-  else if (has('INVINCIBLE.Actor.base.FIELDS.block.label')) action = 'block';
-  else if (has('INVINCIBLE.Actor.base.FIELDS.dodge.label')) action = 'dodge';
-  else if (attribute === 'reason' || attribute === 'intuition' || attribute === 'presence') action = attribute;
-  else action = 'generic';
-  return { action, attribute, wreck };
+  let sysAction = null;
+  if (has('INVINCIBLE.Actor.base.FIELDS.derived.slugfest.charge')) sysAction = 'charge';
+  else if (has('INVINCIBLE.Actor.base.FIELDS.derived.slugfest.grapple')) sysAction = 'grapple';
+  else if (has('INVINCIBLE.Actor.base.FIELDS.block.label')) sysAction = 'block';
+  else if (has('INVINCIBLE.Actor.base.FIELDS.dodge.label')) sysAction = 'dodge';
+  /* the power's name: its English data name (a compendium copy keeps it; a renamed one is what its user typed), then the roll's title */
+  const itemName = item && typeof item === 'object' ? String(item.name ?? '') : '';
+  const tac = tactics && typeof tactics === 'object' ? { key: tactics.key, what: tactics.what } : null;
+  const { action, attack } = familyOf({ attackType: attackType === 'charge' || attackType === 'shooting' || attackType === 'slugfest' ? attackType : undefined,
+    attribute, sysAction: attackType === 'shooting' || attackType === 'slugfest' ? null : sysAction, names: [itemName, flavor], itemType: item?.type ?? null, tactics: tac });
+  return { action, attribute, wreck, attack };
 }
 
 /* Akcja i atrybut: najpierw znacznik z opakowanego dialogu, potem dopasowanie zlokalizowanych nazw. */
 export function inferAction(roll, flavor) {
   const tag = roll.options?.splash;
-  if (tag?.action) return { action: tag.action, attribute: tag.attribute ?? null, wreck: !!tag.wreck };
+  if (tag?.action) return { action: tag.action, attribute: tag.attribute ?? null, wreck: !!tag.wreck, attack: typeof tag.attack === 'boolean' ? tag.attack : null };   // a tag from before WORDPOOL: unknown
   const names = (roll.options?.breakdown ?? []).map(b => b?.name);
-  return classify({ attackType: roll.options?.attackType, flavor, names });
+  return classify({ attackType: roll.options?.attackType, flavor, names, tactics: roll.options?.tactics ?? null });
 }
 
 export function readRoll(message) {
@@ -93,11 +99,11 @@ export function readRoll(message) {
   }
 
   const actor = message.speakerActor ?? null;
-  const { action, attribute, wreck } = inferAction(roll, message.flavor);
+  const { action, attribute, wreck, attack } = inferAction(roll, message.flavor);
   return {
     n, first, final, sixes, newSixes, rerolled, pushed, pushCount, pushable,
     stress, stressPending: pushable,
-    action, attribute, wreck,
+    action, attribute, wreck, attack: typeof attack === 'boolean' ? attack : null,
     actorId: actor?.id ?? null, actorType: actor?.type ?? null,
     npc: !heroSpeaker(message),          // H3-4: przeciwnik według reguły stron, nie typu aktora
     flavor: message.flavor ?? ''

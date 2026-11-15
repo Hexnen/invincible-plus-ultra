@@ -191,8 +191,14 @@ for (const layer of ["tokens", "overlay"]) for (const [name, e] of Object.entrie
      mapSeat). The 1366x768 seat at this view holds the ordinary blocks; the critical's block (bigger than its view) goes to its screen */
   ok(c.rule === "ok" ? sig(c) === sig(b) : (c.drawn.length === b.drawn.length && c.drawn.every((d, i) => !d.world && d.role === b.drawn[i].role && d.text === b.drawn[i].text) && inWin(c, 1)),
     `S3 map ${layer} ${name}: the 1366x768 seat shows the table's block unchanged, or the same words wholly on its screen (rule ${c.rule}, ${c.moved}, k ${kOf(c, b)})\n   P2 ${sig(c)}\n   P1 ${sig(b)}`);
-  if (name !== "crit") ok(c.rule === "ok", `S3 map ${layer} ${name}: the 1366x768 seat's view holds the ordinary block (rule ${c.rule})`);
-  ok(inWin(a) && inWin(b), `S3 map ${layer} ${name}: whole in the view of both 1600x900 seats`);
+  /* WORDPOOL2: "holds" is measured: the block as P1 draws it, at the same scene place in the 1366x768 window centred on the same point,
+     inside that window left of its 300 px sidebar. The wreck's DEMOLITION! (the noun; was the imperative DEMOLISH!) is wider and its
+     block no longer fits there: then the check above (the same words wholly on its screen) is what holds. Every other ordinary block must
+     still fit, and where it fits the seat must keep the table's block */
+  const dx = (P2.W - P1.W) / 2, dy = (P2.H - P1.H) / 2;
+  const fits = b.drawn.every((q) => q.abs.x + dx - q.w / 2 >= 0 && q.abs.y + dy - q.h / 2 >= 0 && q.abs.x + dx + q.w / 2 <= P2.W - P2.ui.side && q.abs.y + dy + q.h / 2 <= P2.H);
+  if (name !== "crit" && name !== "wreck") ok(fits, `S3 map ${layer} ${name}: the ordinary block fits the 1366x768 seat's free view`);
+  if (name !== "crit" && fits) ok(c.rule === "ok", `S3 map ${layer} ${name}: the 1366x768 seat's view holds the ordinary block (rule ${c.rule})`);  ok(inWin(a) && inWin(b), `S3 map ${layer} ${name}: whole in the view of both 1600x900 seats`);
 }
 
 /* ================================================================ S3b map layer, live (lane 5, 2026-11-14): the GM's scene list reaches

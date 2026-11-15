@@ -266,6 +266,7 @@ function engineOpts(it, base, hands) {
      coloured duplicate block, which then vanishes (offline render, 2026-11-15), against the owner's look ruling (a word is set off by its
      duplicated block more often than by a light outline). Engine request: a light rim painted UNDER the duplicate (MAPSEAT-4). */
   for (const k of ['in', 'out', 'holdKind']) if (it[k]) o[k] = it[k];
+  if (it.kind) o.kind = it.kind;   // WORDPOOL2: the engine's motion row of the word's own sound (letter-plan kindOf); the same on every seat
   return o;
 }
 const SIDE_FROM = { above: 90, below: -90, right: 180, left: 0, focus: 90 };
