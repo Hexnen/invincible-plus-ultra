@@ -37,7 +37,7 @@ export const FAMILIES = Object.freeze({
   zap:       F('zap', true, ['ZAP!', 'BZZT!'], ['KZZT!', 'BZZAKT!'], ['KZZRAKK!', 'KRAKOOM!'], ['FIZZLE!']),
   cold:      F('crack', true, ['TSHINK!', 'TSIK!'], ['KSHINK!', 'SKRISH!'], ['SHKRAASH!', 'KSHRAKK!'], ['FIZZLE!']),
   sonic:     F('roar', true, ['SKREE!', 'VWOMF!'], ['SKREEEK!', 'VWOOOMMF!'], ['SKRREEEEK!', 'KRABWOOMM!'], ['FIZZLE!']),
-  quake:     F('crash', true, ['GDUMF!', 'GRROMM!'], ['KROOM!', 'GRRRROMM!'], ['KA-KROOM!', 'KRRROOOMM!'], ['GDONK!']),
+  quake:     F('crash', true, ['GDUMF!', 'HRROMM!'], ['KROOM!', 'HRRRROMM!'], ['KA-KROOM!', 'KRRROOOMM!'], ['GDONK!']),
   kinesis:   F('powerup', true, ['VWOMF!', 'FHOMF!'], ['VWOOOMMF!', 'FHOOOMMF!'], ['VWOOOOMMFF!', 'KA-KROOM!'], ['FIZZLE!']),
   water:     F('splash', true, ['PLOOP!', 'GLUB!'], ['PLUNK!', 'SPLOOSH!'], ['KA-SPLOOSH!', 'SPLOOSH!'], ['FIZZLE!']),
   wind:      F('whoosh', true, ['FWOOOH!', 'SHWOOOH!'], ['VRROOOOSH!', 'HWRROOOO!'], ['SHWRRROOOOMM!', 'VRRROOOOSHH!'], ['FIZZLE!']),
@@ -68,7 +68,7 @@ export const FAMILY_MOODS = Object.freeze(Object.fromEntries(Object.entries(FAMI
    names its MOOD (the LETR intent: hand, colours, legacy motion) and its engine KIND (the row of the invincible motion table, motion.mjs
    KIND_MOTION: entrance, hold, exit, rhythm of that very sound). Mood and kind are read from the engine's own vocabulary where the word is
    the engine's word (THWAP! = punch, TSHINK! = shatter, FZIP! = teleport, MMNN! = psychic, TLEEN! = chime, SHH! = shush, BEEP! = beep,
-   GRROMM! = rumble); an action word takes the sound of the action it names (SQUEEZE! strains: effort; PARRY! rings: clang; DODGE! passes:
+   HRROMM! = rumble); an action word takes the sound of the action it names (SQUEEZE! strains: effort; PARRY! rings: clang; DODGE! passes:
    whiff). Keyed per family: KA-KROOM! is a fireless blast in `blast`, a quake's rumble in `quake`. Every seat reads the same table from
    the English word, so the moment stays the same on every seat. */
 const S = (txt) => Object.freeze(Object.fromEntries(txt.trim().split(/\s*;\s*/).map((p) => { const [w, mk] = p.split('='); const [mood, kind] = mk.split('/'); return [w.trim(), Object.freeze({ mood, kind })]; })));
@@ -84,7 +84,7 @@ export const SOUND = Object.freeze({
   zap:       S('ZAP!=zap/zap; BZZT!=zap/zap; KZZT!=zap/zap; BZZAKT!=zap/zap; KZZRAKK!=zap/zap; KRAKOOM!=boom/thunder'),
   cold:      S('TSHINK!=crack/shatter; TSIK!=crack/shatter; KSHINK!=crack/shatter; SKRISH!=crack/shatter; SHKRAASH!=crack/shatter; KSHRAKK!=crack/shatter'),
   sonic:     S('SKREE!=crack/siren; VWOMF!=boom/shockwave; SKREEEK!=crack/siren; VWOOOMMF!=boom/shockwave; SKRREEEEK!=crack/siren; KRABWOOMM!=boom/sonicboom'),
-  quake:     S('GDUMF!=crash/stomp; GRROMM!=crash/rumble; KROOM!=crash/rumble; GRRRROMM!=crash/rumble; KA-KROOM!=crash/smash; KRRROOOMM!=crash/rumble'),
+  quake:     S('GDUMF!=crash/stomp; HRROMM!=crash/rumble; KROOM!=crash/rumble; HRRRROMM!=crash/rumble; KA-KROOM!=crash/smash; KRRROOOMM!=crash/rumble'),
   kinesis:   S('VWOMF!=powerup/shockwave; FHOMF!=powerup/shockwave; VWOOOMMF!=powerup/shockwave; FHOOOMMF!=powerup/shockwave; VWOOOOMMFF!=powerup/shockwave; KA-KROOM!=crash/smash'),
   water:     S('PLOOP!=splash/drip; GLUB!=splash/squish; PLUNK!=splash/splash; SPLOOSH!=splash/splash; KA-SPLOOSH!=splash/splash'),
   wind:      S('FWOOOH!=whoosh/wind; SHWOOOH!=whoosh/wind; VRROOOOSH!=whoosh/wind; HWRROOOO!=whoosh/wind; SHWRRROOOOMM!=whoosh/tornado; VRRROOOOSHH!=whoosh/tornado'),

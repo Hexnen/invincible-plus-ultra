@@ -65,6 +65,13 @@ const STORY_READ = 900;
 const IMPACT_WAIT = 600;
 
 let started = false, engine = null, warned = false;
+/* CALLERS: the running engine (the copy rule's choice, L.build); its impact table feeds the series bounds of pure.mjs (useImpactTable) */
+async function runningEngine() {
+  if (engine) return engine;
+  const L = await letters();
+  if (L && !engine) { engine = L; try { P.useImpactTable(L.impact); } catch { /* the vendored numbers stay */ } }
+  return engine ?? L;
+}
 const seen = new Map();      // token id -> { h, hm, r, rm }
 const pending = new Map();   // `${tokenId}|${stat}` -> entry
 const playing = new Map();   // token id -> { hs, sev, t0, span, nums, addNumber, done }
@@ -402,7 +409,7 @@ async function land(ids, ready) {
   let items = [];
   try {
     if (Moment.isActive()) await Moment.landing(ids, { wait: 0, cap: 1600 });
-    const L = engine ?? (engine = await letters());
+    const L = await runningEngine();
     const storyEnd = await storyWait(L);
     unflight(ready);
     items = build(ready);
@@ -977,7 +984,7 @@ function registerSettings() {
 async function syncOwner(v = enabled()) {
   try {
     if (!v) { Owner.setOn(false); return; }
-    engine = engine ?? await letters();
+    await runningEngine();
     Owner.setOn(!!engine && enabled());
   } catch (err) { Owner.setOn(false); once(err); }
 }

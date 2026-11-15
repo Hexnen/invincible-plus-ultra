@@ -11,7 +11,22 @@
    Kinds: Health  hit | heavy | down (to 0 = broken [B2707]) | heal | back (up from 0 = rallied [B2773])
           Resolve stress | spent (stress taken by choice: a pushed roll, a power) | regain | out (0 = stressed out [B2816]) | steady (up from 0) */
 import { contactMs as wordContact, leadMs } from "../splash/impact-plan.mjs";
-import { STEP_AT, SERIES_STEP, SERIES_MAX } from "../letters/impact/plan.mjs";
+import { STEP_AT as OWN_STEP_AT, SERIES_STEP, SERIES_MAX } from "../letters/impact/plan.mjs";
+/* CALLERS (ENGREG 1.9.11: one engine copy runs on every seat, the newest of the active modules, L.build): this static import is THIS
+   module's vendored copy, which is not the running engine when moinen-maps carries a newer one. The import stays as the default (node,
+   no engine); main.mjs hands in the running engine's own table (L.impact.steps / .series) once it has it (useImpactTable), so the series'
+   bounds below are the numbers the engine that draws the blow uses. Equal today (both 1.9.14): no picture changes. */
+let STEP_AT = OWN_STEP_AT;
+/** take the running engine's impact strengths: I = L.impact ({ steps: [...bounds], series: { step, max } }); false when it has none */
+export function useImpactTable(I) {
+  const st = I?.steps, se = I?.series;
+  if (!Array.isArray(st) || !st.length || !st.every((v, i) => Number.isFinite(v) && (!i || v > st[i - 1]))) return false;
+  STEP_AT = st.slice();
+  if (Number.isFinite(se?.step) && se.step > 0) SERIES.step = se.step;
+  if (Number.isFinite(se?.max) && se.max >= 0) SERIES.max = Math.floor(se.max);
+  return true;
+}
+export const impactTable = () => ({ steps: STEP_AT.slice(), series: { ...SERIES } });
 export { leadMs };
 import { REF_VH, REF_VW } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
 export { REF_VH, REF_VW };

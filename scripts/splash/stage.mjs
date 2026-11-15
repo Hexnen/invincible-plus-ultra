@@ -264,7 +264,10 @@ function engineOpts(it, base, hands) {
   /* MAPSEAT (ADVX 18, the map word low in contrast among the map's drawings): NOT solved here. The engine's paper rim (look.outline
      "sticker") was tried on the board's sound words: it separates them from dark and mid ground, but the engine strokes it OVER the word's
      coloured duplicate block, which then vanishes (offline render, 2026-11-15), against the owner's look ruling (a word is set off by its
-     duplicated block more often than by a light outline). Engine request: a light rim painted UNDER the duplicate (MAPSEAT-4). */
+     duplicated block more often than by a light outline). Engine request: a light rim painted UNDER the duplicate (MAPSEAT-4).
+     CALLERS: answered by engine 1.9.12 (RIMUNDER): every invincible WORLD word now gets an ink rim under its whole lettering by default
+     (look.rim "auto" = ink in world space, none on the screen), so the map block's words have it without an option here; the rim is not
+     in the measured hold box (about 0.07 of the cap + the keyline): the block's pad holds it (check-callers M). */
   for (const k of ['in', 'out', 'holdKind']) if (it[k]) o[k] = it[k];
   if (it.kind) o.kind = it.kind;   // WORDPOOL2: the engine's motion row of the word's own sound (letter-plan kindOf); the same on every seat
   return o;

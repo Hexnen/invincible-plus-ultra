@@ -10,7 +10,12 @@
      toServer(pageMs)      the other way
      offset()              server ms minus performance.now() (null before the first answer); the engine's stepped grid takes it (L.gridClock)
      error()               the bound of this seat's error in ms (half the best round trip), null before the first answer
-   PURE: estimate(samples). start() pings (a burst at once, then one every EVERY ms). Nothing here throws. */
+   PURE: estimate(samples). start() pings (a burst at once, then one every EVERY ms). Nothing here throws.
+   CALLERS (engine 1.9.11+, ENGREG): the lettering engine now carries the same minimum-filter clock (L.clock, its default under
+   L.gridClock and L.net.sharedNow()). Two such clocks on one page each keep their own fastest answer and can disagree by a few ms, and
+   this module used to push ITS offset into the engine's grid (L.gridClock), which then also moved the map's words. Now ONE clock: as
+   soon as the running engine's L.clock has an answer this module reads it (adopt), stops its own pings and leaves the grid to the
+   engine; its own estimate serves only before that (the first second after ready) or under an engine without L.clock. */
 export const BURST = 6;          // pings at start (spaced BURST_GAP), so the first moment already has a good clock
 export const BURST_GAP = 60;
 export const EVERY = 10000;      // then one ping this often
@@ -35,6 +40,17 @@ export function sample(t0, t1, server) {
 
 const pnow = () => globalThis.performance?.now?.() ?? Date.now();
 let samples = [], est = null, started = false, timer = 0;
+/* CALLERS: the running engine's clock (L.clock: { now, toPage, toServer, offset, error, ready, state }) once adopted and answered */
+let eng = null;
+const engOk = () => { try { return !!eng && eng.ready() === true && Number.isFinite(eng.offset()); } catch { return false; } };
+/** read the table's time from the running engine's clock (L.clock) from now on; returns true when it is one */
+export function adopt(clock) {
+  if (!clock || typeof clock.now !== "function" || typeof clock.toPage !== "function" || typeof clock.offset !== "function" || typeof clock.ready !== "function") return false;
+  eng = clock;
+  return true;
+}
+export const adopted = () => engOk();
+export const source = () => (engOk() ? "engine" : est ? "own" : "foundry");
 function foundryNow() { try { const s = globalThis.game?.time?.serverTime; return Number.isFinite(s) ? s : Date.now(); } catch { return Date.now(); } }
 
 export function ping() {
@@ -57,22 +73,26 @@ export function ping() {
 export function start() {
   if (started || typeof globalThis.game?.socket?.emit !== "function") return;
   started = true;
+  /* CALLERS: the running engine's clock (called at ready, after init: the copy rule has chosen the engine by then) */
+  try { const M = globalThis.MoinenLetters; if (M?.engine) Promise.resolve(M.engine()).then((L) => { if (L?.clock) adopt(L.clock); }).catch(() => {}); } catch { /* own clock */ }
   (async () => {
-    for (let i = 0; i < BURST; i++) { await ping(); await new Promise((r) => setTimeout(r, BURST_GAP)); }
-    timer = setInterval(() => { ping(); }, EVERY);
+    for (let i = 0; i < BURST; i++) { if (engOk()) return; await ping(); await new Promise((r) => setTimeout(r, BURST_GAP)); }
+    timer = setInterval(() => { if (engOk()) { clearInterval(timer); timer = 0; return; } ping(); }, EVERY);
     timer?.unref?.();
   })();
 }
-export const ready = () => !!est;
-export const offset = () => (est ? est.off : null);
-export const error = () => (est ? est.rtt / 2 + 0.5 : null);
-export function serverNow() { return est ? pnow() + est.off : foundryNow(); }
-export function toPage(serverMs) { return est ? serverMs - est.off : pnow() + (serverMs - foundryNow()); }
-export function toServer(pageMs) { return est ? pageMs + est.off : foundryNow() + (pageMs - pnow()); }
+export const ready = () => engOk() || !!est;
+export const offset = () => (engOk() ? eng.offset() : est ? est.off : null);
+export const error = () => { if (engOk()) { try { const e = eng.error(); if (Number.isFinite(e)) return e; } catch { /* own */ } } return est ? est.rtt / 2 + 0.5 : null; };
+export function serverNow() { return engOk() ? eng.now() : est ? pnow() + est.off : foundryNow(); }
+export function toPage(serverMs) { return engOk() ? eng.toPage(serverMs) : est ? serverMs - est.off : pnow() + (serverMs - foundryNow()); }
+export function toServer(pageMs) { return engOk() ? eng.toServer(pageMs) : est ? pageMs + est.off : foundryNow() + (pageMs - pnow()); }
 /** sleep until a server instant (resolves at once when it is past) */
 export function sleepUntil(serverMs) { const d = toPage(serverMs) - pnow(); return new Promise((r) => setTimeout(r, Math.max(0, d))); }
 /** the lettering engine's stepped grid on this clock (its public hook L.gridClock; the engine's own default is Foundry's serverTime) */
 export function driveGrid(L) {
+  /* CALLERS: an engine with its own table clock (L.clock, 1.9.11+) keeps its grid on it; this module reads that clock instead (adopt) */
+  if (L?.clock && adopt(L.clock)) return;
   try { if (L && typeof L.gridClock === "function") L.gridClock(() => (est ? est.off : foundryNow() - pnow())); } catch { /* the engine keeps its own */ }
 }
 /* The server's two clocks: the "time" socket answers with its own serverTime (not the epoch: v14 counts it from the server's start, live
@@ -83,7 +103,7 @@ export function driveGrid(L) {
 let epochK = [];   // [{ k, at }]
 export function noteEpoch(epochMs, now = serverNow()) {
   const e = Number(epochMs);
-  if (!est || !Number.isFinite(e) || e < 1e12 || !Number.isFinite(now)) return;      // only on the table's clock (an unsynced one would stay as the max)
+  if (!ready() || !Number.isFinite(e) || e < 1e12 || !Number.isFinite(now)) return;      // only on the table's clock (own or the engine's) (an unsynced one would stay as the max)
   epochK.push({ k: e - now, at: now });
   epochK = epochK.filter((x) => now - x.at <= KEEP_MS).slice(-200);
 }
@@ -96,5 +116,5 @@ export function epochOffset(now = serverNow()) {
 /** a server epoch stamp on the table's clock (null when unknown) */
 export function epochToServer(epochMs) { const k = epochOffset(); return k == null || !Number.isFinite(Number(epochMs)) ? null : Number(epochMs) - k; }
 /* for the checks and the live log */
-export const state = () => ({ samples: samples.length, off: est?.off ?? null, rtt: est?.rtt ?? null, foundryOff: foundryNow() - pnow(), epochK: epochOffset(), epochN: epochK.length });
-export function _reset() { samples = []; est = null; started = false; clearInterval(timer); epochK = []; }
+export const state = () => ({ source: source(), samples: samples.length, off: est?.off ?? null, rtt: est?.rtt ?? null, engineOff: engOk() ? eng.offset() : null, foundryOff: foundryNow() - pnow(), epochK: epochOffset(), epochN: epochK.length });
+export function _reset() { samples = []; est = null; started = false; clearInterval(timer); epochK = []; eng = null; }
