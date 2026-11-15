@@ -14,7 +14,7 @@ const MOD = 'invincible-plus-ultra';
 const LOG = `${MOD} |`;
 export const CLIENT_KEYS = ['experimental', 'inlineStunts',
   'splashEnabled', 'splashOthers', 'splashPlacement', 'splashScale', 'splashHold', 'splashEffects', 'splashMotion', 'splashFullscreen', 'splashFullFrom', 'splashDebug', 'splashChat',
-  'challengesEnabled', 'challengesScale', 'challengesCamera', 'challengesCollapsed', 'splashMigrated'];
+  'challengesEnabled', 'challengesScale', 'challengesCamera', 'challengesCollapsed'];   // GMALL: 'splashMigrated' is a raw browser marker now, not a setting
 export const WORLD_KEYS = ['splashDry', 'splashK0', 'splashState', 'splashMigratedWorld'];
 
 const readClient = (key) => {
@@ -38,6 +38,7 @@ async function run() {
     try {
       const cfg = game.settings.settings.get(`${MOD}.${key}`);
       if (!cfg) { complete = false; return; }
+      if (cfg.scope === 'world' && !game.user?.isGM) return;   // GMALL: the splash's options are the table's now; a player's old value is not copied
       const old = coerce(cfg, read(key));
       if (old === undefined || old === cfg.default) return;
       if (game.settings.get(MOD, key) !== cfg.default) return;

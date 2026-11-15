@@ -313,7 +313,8 @@ async function run(W, H, fn) {
   ok(/if \(lettersOn\(\)\) return playLetters\(ev, o\);/.test(st), "Stage.play letters when the engine is there (and its master switch is on)");
   ok(!/game\.|message\./.test(st.slice(st.indexOf("function playLetters"), st.indexOf("function stressLettered"))), "the lettered stage reads nothing of the message or the game (only the event and the Resolve reader it is handed)");
   for (const L of [SLang.EN, SLang.PL]) ok(["Name", "Hint", "screen", "ui", "hud", "overlay", "weather", "tokens", "ground"].every((k) => L[`INSPLASH.Settings.Layer.${k}`]), "the layer setting and its seven choices (the engine's layers) are named in both languages");
-  ok(m.includes("client('layer', {") && /client\('layer', \{[^\n]*default: 'screen'/.test(m) && m.includes("Stage.setLayer(cs('layer'))"), "the layer setting (client) defaults to over everything and is applied at ready");
+  /* GMALL (the owner, 2026-11-15, «wszystko mg wybiera dla stołu»): the layer is the table's (world), still applied at ready and on change */
+  ok(m.includes("world('layer', {") && /world\('layer', \{[^\n]*default: 'screen'/.test(m) && m.includes("Stage.setLayer(cs('layer'))"), "the layer setting (the table's) defaults to over everything and is applied at ready");
   for (const L of [SLang.EN, SLang.PL]) ok(L["INSPLASH.Settings.Lettering.Name"] && L["INSPLASH.Settings.Lettering.Hint"], "the lettering setting is named in both languages");
 }
 done("ldic");

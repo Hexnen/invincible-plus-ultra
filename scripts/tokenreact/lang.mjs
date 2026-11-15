@@ -3,7 +3,7 @@
    Ultra settings list. Parity check: node scripts/tokenreact/check-lang.mjs */
 export const EN = {
   "ITR.Settings.Enabled.Name": "Token reactions: enabled",
-  "ITR.Settings.Enabled.Hint": "When a character's Health or Resolve changes, its token answers on the map with a comic sound word and the number: a hit, a heavy hit, going down, healing, stress, Resolve spent or regained. Only what the table was shown: nothing over hidden tokens, no secret numbers. In a tactical fight it takes the place of the plain numbers over tokens. This client only.",
+  "ITR.Settings.Enabled.Hint": "When a character's Health or Resolve changes, its token answers on the map with a comic sound word and the number: a hit, a heavy hit, going down, healing, stress, Resolve spent or regained. Only what the table was shown: nothing over hidden tokens, no secret numbers. In a tactical fight it takes the place of the plain numbers over tokens. For the whole table, chosen by the GM.",
   "ITR.Settings.Size.Name": "Token reactions: size",
   "ITR.Settings.Size.Hint": "World setting, the same for everyone at the table. How big the lettering is next to the token (zooming out shrinks it with the map; zooming in never makes it bigger).",
   "ITR.Settings.Size.small": "Small",
@@ -24,7 +24,7 @@ export const EN = {
 
 export const PL = {
   "ITR.Settings.Enabled.Name": "Reakcje żetonów: włączone",
-  "ITR.Settings.Enabled.Hint": "Gdy zmienia się Zdrowie albo Determinacja postaci, jej żeton odpowiada na mapie komiksowym dźwiękiem i liczbą: trafienie, mocne trafienie, upadek, leczenie, stres, Determinacja wydana albo odzyskana. Tylko to, co stół widział: nic nad ukrytymi żetonami, żadnych tajnych liczb. W walce taktycznej zastępuje zwykłe liczby nad żetonami. Tylko ten klient.",
+  "ITR.Settings.Enabled.Hint": "Gdy zmienia się Zdrowie albo Determinacja postaci, jej żeton odpowiada na mapie komiksowym dźwiękiem i liczbą: trafienie, mocne trafienie, upadek, leczenie, stres, Determinacja wydana albo odzyskana. Tylko to, co stół widział: nic nad ukrytymi żetonami, żadnych tajnych liczb. W walce taktycznej zastępuje zwykłe liczby nad żetonami. Dla całego stołu, wybiera MG.",
   "ITR.Settings.Size.Name": "Reakcje żetonów: wielkość",
   "ITR.Settings.Size.Hint": "Ustawienie świata, to samo dla wszystkich przy stole. Jak duży jest napis przy żetonie (oddalenie mapy go zmniejsza, przybliżenie nigdy go nie powiększa).",
   "ITR.Settings.Size.small": "Mały",

@@ -3,7 +3,7 @@
    Setting names carry a "Splash: " prefix because they now share the Plus Ultra settings list. */
 export const EN = {
   "INSPLASH.Settings.Enabled.Name": "Splash: Show splashes",
-  "INSPLASH.Settings.Enabled.Hint": "Comic splash words after Invincible rolls (this client only).",
+  "INSPLASH.Settings.Enabled.Hint": "Comic splash words after Invincible rolls. For the whole table, chosen by the GM.",
   "INSPLASH.Settings.Others.Name": "Splash: Show other players' rolls",
   "INSPLASH.Settings.Others.Hint": "Off: only splashes for rolls you made yourself.",
   "INSPLASH.Settings.Placement.Name": "Splash: Placement",
@@ -158,7 +158,7 @@ export const EN = {
 
 export const PL = {
   "INSPLASH.Settings.Enabled.Name": "Splash: Pokazuj splashe",
-  "INSPLASH.Settings.Enabled.Hint": "Komiksowe słowa po rzutach Invincible (tylko na tym kliencie).",
+  "INSPLASH.Settings.Enabled.Hint": "Komiksowe słowa po rzutach Invincible. Dla całego stołu, wybiera MG.",
   "INSPLASH.Settings.Others.Name": "Splash: Pokazuj rzuty innych graczy",
   "INSPLASH.Settings.Others.Hint": "Wyłączone: tylko splashe własnych rzutów.",
   "INSPLASH.Settings.Placement.Name": "Splash: Miejsce",

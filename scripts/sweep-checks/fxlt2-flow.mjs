@@ -108,7 +108,7 @@ const drop = (...ts) => { for (const t of ts) { const i = toks.indexOf(t); if (i
   const { createVocab } = await import("../letters/words.mjs");
   ck(`F2 the world's setting picks the language for every client (${c})`, !!c && c === createVocab().series("punch", 1, { lang: "pl", loud: cr.o.sound.loud, seed: `${cr.o.seed}|punch` })[0].text && !/[ĄĆĘŁŃÓŚŹŻ]/.test(c));
   const settingsSrc = (await import("node:fs")).readFileSync(new URL("../tokenreact/main.mjs", import.meta.url), "utf8");
-  ck("F2 the language is a world setting the GM chooses (not the client's interface language)", /KEY\.lang, \{[^}]*scope: "world", config: true/.test(settingsSrc) && !/game\.i18n\?\.lang === "pl" \? "pl"/.test(settingsSrc));
+  ck("F2 the language is a world setting the GM chooses (not the client's interface language)", /KEY\.lang, \{[^}]*scope: "world", config: (true|false)/.test(settingsSrc) /* GMALL: shown in the table settings window (config false) */ && !/game\.i18n\?\.lang === "pl" \? "pl"/.test(settingsSrc));
   drop(t); reset(); await sleep(1500); plays.splice(0);
 }
 

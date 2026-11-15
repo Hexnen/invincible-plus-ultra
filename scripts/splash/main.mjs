@@ -55,32 +55,38 @@ function mergeLang() {
 /* ------------------------------------------------------------------ ustawienia */
 function registerSettings() {
   if (game.system.id !== SYSTEM) return;
-  const reg = scope => (key, data) => {
+  /* GMALL (the owner, 2026-11-15: «wszystko mg wybiera dla stołu. wszystko»): every splash option is the table's, chosen by the GM: world
+     scope, read by every seat at roll time (a change reaches the next roll live), shown in the module's table settings window
+     (scripts/table/, config: false here so they are not listed twice). The GM's earlier own client values became the table's
+     (table/main.mjs migrate). A seat's own system reduced motion and Foundry photosensitive mode still apply there (applyMotion, fxLevel). */
+  const world = (key, data) => {
     if (game.settings.settings.has(`${MOD}.${sk(key)}`)) return;
-    game.settings.register(MOD, sk(key), { scope, config: true, ...data });
+    game.settings.register(MOD, sk(key), { scope: 'world', config: false, ...data });
   };
-  const client = reg('client'), world = reg('world');
   const L = k => `INSPLASH.Settings.${k}`;
 
-  client('enabled', { name: L('Enabled.Name'), hint: L('Enabled.Hint'), type: Boolean, default: true });
-  client('others', { name: L('Others.Name'), hint: L('Others.Hint'), type: Boolean, default: true });
-  client('placement', { name: L('Placement.Name'), hint: L('Placement.Hint'), type: String, default: 'token',
+  world('enabled', { name: L('Enabled.Name'), hint: L('Enabled.Hint'), type: Boolean, default: true });
+  world('others', { name: L('Others.Name'), hint: L('Others.Hint'), type: Boolean, default: true });
+  world('placement', { name: L('Placement.Name'), hint: L('Placement.Hint'), type: String, default: 'token',
     choices: { token: L('Placement.token'), screen: L('Placement.screen') } });
-  client('scale', { name: L('Scale.Name'), hint: L('Scale.Hint'), type: Number, default: 1, range: { min: 0.5, max: 1.6, step: 0.1 } });
-  client('hold', { name: L('Hold.Name'), hint: L('Hold.Hint'), type: Number, default: 1, range: { min: 0.5, max: 2, step: 0.1 } });
-  client('effects', { name: L('Effects.Name'), hint: L('Effects.Hint'), type: String, default: 'full',
+  world('scale', { name: L('Scale.Name'), hint: L('Scale.Hint'), type: Number, default: 1, range: { min: 0.5, max: 1.6, step: 0.1 } });
+  world('hold', { name: L('Hold.Name'), hint: L('Hold.Hint'), type: Number, default: 1, range: { min: 0.5, max: 2, step: 0.1 } });
+  world('effects', { name: L('Effects.Name'), hint: L('Effects.Hint'), type: String, default: 'full',
     choices: { full: L('Effects.full'), reduced: L('Effects.reduced'), off: L('Effects.off') } });
-  client('motion', { name: L('Motion.Name'), hint: L('Motion.Hint'), type: String, default: 'auto', onChange: () => applyMotion(),
+  world('motion', { name: L('Motion.Name'), hint: L('Motion.Hint'), type: String, default: 'auto', onChange: () => applyMotion(),
     choices: { auto: L('Motion.auto'), full: L('Motion.full'), reduced: L('Motion.reduced') } });
-  client('fullscreen', { name: L('Fullscreen.Name'), hint: L('Fullscreen.Hint'), type: Boolean, default: true });
-  client('fullFrom', { name: L('FullFrom.Name'), hint: L('FullFrom.Hint'), type: Number, default: 0.7, range: { min: 0.4, max: 1, step: 0.05 } });
-  client('debug', { name: L('Debug.Name'), hint: L('Debug.Hint'), type: Boolean, default: false });
-  client('lettering', { name: L('Lettering.Name'), hint: L('Lettering.Hint'), type: Boolean, default: true, onChange: () => loadLetters() });   // LDIC
-  client('layer', { name: L('Layer.Name'), hint: L('Layer.Hint'), type: String, default: 'screen', onChange: v => Stage.setLayer(v),   // LDIC: the lettering engine's layers
+  world('fullscreen', { name: L('Fullscreen.Name'), hint: L('Fullscreen.Hint'), type: Boolean, default: true });
+  world('fullFrom', { name: L('FullFrom.Name'), hint: L('FullFrom.Hint'), type: Number, default: 0.7, range: { min: 0.4, max: 1, step: 0.05 } });
+  world('debug', { name: L('Debug.Name'), hint: L('Debug.Hint'), type: Boolean, default: false });
+  world('lettering', { name: L('Lettering.Name'), hint: L('Lettering.Hint'), type: Boolean, default: true, onChange: () => loadLetters() });   // LDIC
+  world('layer', { name: L('Layer.Name'), hint: L('Layer.Hint'), type: String, default: 'screen', onChange: v => Stage.setLayer(v),   // LDIC: the lettering engine's layers
     choices: Object.fromEntries([...Stage.SCREEN_LAYERS, ...Stage.WORLD_LAYERS].map(k => [k, L('Layer.' + k)])) });
-  client('chat', { name: L('Chat.Name'), hint: L('Chat.Hint'), type: Boolean, default: true });
+  world('chat', { name: L('Chat.Name'), hint: L('Chat.Hint'), type: Boolean, default: true });
   /* FXLD2: the owner (2026-11-13): backdrops are an extra, default without */
-  client('backdrop', { name: L('Backdrop.Name'), hint: L('Backdrop.Hint'), type: Boolean, default: false });
+  world('backdrop', { name: L('Backdrop.Name'), hint: L('Backdrop.Hint'), type: Boolean, default: false });
+  /* GMALL: the language of the shown words (action words, captions, counts) is the table's, so every seat shows the same caption of the
+     same width in the same place; the event already carries the English word, only the shown text follows this */
+  world('lang', { name: 'IPT.Row.lang.splash.Name', hint: 'IPT.Row.lang.splash.Hint', type: String, default: 'en', choices: { en: 'English', pl: 'Polski' }, onChange: () => applyLabels() });
 
   world('dry', { name: L('Dry.Name'), hint: L('Dry.Hint'), type: Number, default: 8, range: { min: 0, max: 30, step: 1 } });
   world('k0', { name: L('K0.Name'), hint: L('K0.Hint'), type: Number, default: 0, range: { min: -2, max: 2, step: 1 } });
@@ -97,18 +103,26 @@ function registerSettings() {
 /* Etykiety informacyjne plakietek (szansa, stres, Resolve) z INSPLASH.Badge.*; brak klucza = angielski domyślnik z logic.mjs.
    Słowa akcji: po polsku tylko te, które dobrze brzmią (SPLASHPL, INSPLASH.Word.*), czyste dźwięki (WHAM!...) angielskie (liczba szóstek od FXLD w języku stołu); zdania wstęgi i notki stresu (UNLIKELY HERO!,
    SHAKEN...) idą w języku stołu z INSPLASH.Say.* (UXB, D129: to nie dźwięki, mówią coś o wyniku). */
+/* GMALL: the shown words follow the TABLE's language (world setting splashLang, the GM's), not each seat's interface language: a Polish GM and
+   an English player see the same caption of the same width in the same place. The screen reader's sentence (announce) stays in the seat's
+   own language around the shown word. */
+const tableLang = () => { try { return cs('lang') === 'pl' ? 'pl' : 'en'; } catch (e) { return 'en'; } };
+const tdict = () => (tableLang() === 'pl' ? { ...EN, ...PL } : EN);
 function applyLabels() {
   try {
-    const has = k => game.i18n.has(k), F = (k, d) => game.i18n.format(k, d), o = {};
+    const d = tdict(), has = k => k in d, loc = k => d[k] ?? k;
+    const F = (k, data) => { let s = loc(k); for (const [a, v] of Object.entries(data || {})) s = s.split(`{${a}}`).join(String(v)); return s; };
+    const o = {};
     if (has('INSPLASH.Badge.OneIn')) o.oneIn = n => F('INSPLASH.Badge.OneIn', { n });
     if (has('INSPLASH.Badge.Miss')) o.miss = n => F('INSPLASH.Badge.Miss', { n });
-    if (has('INSPLASH.Badge.Push')) o.push = game.i18n.localize('INSPLASH.Badge.Push');
+    if (has('INSPLASH.Badge.Push')) o.push = loc('INSPLASH.Badge.Push');
     if (has('INSPLASH.Badge.Stress')) o.stress = n => F('INSPLASH.Badge.Stress', { n });
     if (has('INSPLASH.Badge.Resolve')) o.resolve = (now, max) => F('INSPLASH.Badge.Resolve', { now, max });
     /* FXLD (ADVD 8): the sixes are a count, not a sound: in the table's language like the odds ("2 SZÓSTKI" next to "1 NA 9") */
-    if (has('INSPLASH.Live.Six.other')) o.six = n => sixesText(n).toLocaleUpperCase(game.i18n.lang || 'en');
-    o.words = Object.fromEntries(Object.values(SAYS).filter(k => has('INSPLASH.Say.' + k)).map(k => [k, game.i18n.localize('INSPLASH.Say.' + k)]));      // UXB (D129)
-    o.sfx = Object.fromEntries(Object.values(SFX_KEYS).filter(k => has('INSPLASH.Word.' + k)).map(k => [k, game.i18n.localize('INSPLASH.Word.' + k)]));   // SPLASHPL
+    const lang = tableLang();
+    if (has('INSPLASH.Live.Six.other')) o.six = n => sixesText(n, lang, d).toLocaleUpperCase(lang);
+    o.words = Object.fromEntries(Object.values(SAYS).filter(k => has('INSPLASH.Say.' + k)).map(k => [k, loc('INSPLASH.Say.' + k)]));      // UXB (D129)
+    o.sfx = Object.fromEntries(Object.values(SFX_KEYS).filter(k => has('INSPLASH.Word.' + k)).map(k => [k, loc('INSPLASH.Word.' + k)]));   // SPLASHPL
     setLabels(o);
   } catch (e) { /* zostają domyślne angielskie etykiety */ }
 }
@@ -154,9 +168,9 @@ export function start(phases = {}) {
     /* tłumaczenia budowane od nowa: scal ponownie. Etykiety plakietek też już tutaj, nie dopiero w ready: log czatu renderuje
        stare wiadomości PRZED hookiem ready, więc ich plakietki wychodziły po angielsku ("1 IN 33 · PUSH") na polskim kliencie. */
     Hooks.on('i18nInit', () => { mergeLang(); applyLabels(); });
+    registerSettings();      // GMALL: first, so the labels below already read the table's language (world settings are readable in init)
     mergeLang();
     applyLabels();
-    registerSettings();
     registerHooks();
     run('setup', wrapRollDialog);
     /* one-time copy of the standalone module's settings; client values land synchronously, before onReady reads them */
@@ -168,9 +182,11 @@ export function start(phases = {}) {
   });
 }
 
+/* GMALL: the table's Motion, but a seat whose own system asks for reduced motion is reduced there whatever the table says (the
+   provisional limit: a seat's accessibility signals stay the seat's; "full" no longer overrides it) */
 function applyMotion() {
   const m = cs('motion');
-  S.setReduced(m === 'reduced' || (m === 'auto' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
+  S.setReduced(m === 'reduced' || !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 }
 /* LDIC: the comic lettering engine (scripts/letters/, shared with moinen-maps). The stub without a renderer says design().stub: then,
    and when the setting is off or the engine does not load, the classic splash plays. */
@@ -191,7 +207,9 @@ function fullFrom() { return cs('fullscreen') ? cs('fullFrom') : null; }
 /* FXLD2: the lettered moment's duration is the table's (world); the classic splash keeps the seat's own */
 function holdK() { try { return Stage.lettersOn() ? cs('tableHold') : cs('hold'); } catch (e) { return 1; } }
 function scaleK() { try { return Stage.lettersOn() ? cs('tableScale') : cs('scale'); } catch (e) { return 1; } }
-function fxLevel() { const e = cs('effects'); return e === 'full' ? 1 : (e === 'reduced' ? 0.5 : 0); }
+/* GMALL: the table's Effects; a seat in Foundry's photosensitive mode gets at most the gentle ones (no flash, no sparks) */
+function photosensitive() { try { return game.settings.settings.has('core.photosensitiveMode') && !!game.settings.get('core', 'photosensitiveMode'); } catch (e) { return false; } }
+function fxLevel() { const e = cs('effects'), k = e === 'full' ? 1 : (e === 'reduced' ? 0.5 : 0); return photosensitive() ? Math.min(k, 0.5) : k; }
 
 /* ------------------------------------------------------------------ znacznik akcji z dialogu rzutu */
 async function wrapRollDialog() {
@@ -442,7 +460,13 @@ async function verdictAndCamera(message, ev, at) {
 /* Komunikat dla czytnika ekranu (aria-live): kto, słowo, liczba szóstek, rzadkość, stres. Liczby z danych rzutu (ev).
    Słowo akcji jak na ekranie tego klienta (SPLASHPL); reszta zdania jest tłumaczona i odmieniona (pl: 1/2-4/5+). */
 const cap = t => { const x = String(t ?? '').toLowerCase(); return x.charAt(0).toUpperCase() + x.slice(1); };
-function sixesText(n) {
+/* lang + dict: the table's (shown count); without them the seat's own language (the screen reader's sentence) */
+function sixesText(n, lang = null, dict = null) {
+  if (lang && dict) {
+    const cat = new Intl.PluralRules(lang).select(n);
+    const key = `INSPLASH.Live.Six.${cat}` in dict ? `INSPLASH.Live.Six.${cat}` : 'INSPLASH.Live.Six.other';
+    return String(dict[key] ?? n).split('{n}').join(String(n));
+  }
   const cat = new Intl.PluralRules(game.i18n.lang || 'en').select(n);
   let key = `INSPLASH.Live.Six.${cat}`;
   if (!game.i18n.has(key)) key = 'INSPLASH.Live.Six.other';

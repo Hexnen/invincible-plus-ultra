@@ -197,7 +197,7 @@ const side0 = P.lieSide("Down0");
   values["invincible-plus-ultra.tokenAnimOn"] = true; settings.get("invincible-plus-ultra.tokenAnimOn").onChange(true);
   ck("switched back on: lies again at once", lies(Down0));
   values["invincible-plus-ultra.tokenAnimMine"] = "off";
-  ck("the seat's own Off: stands", upright(Down0));
+  ck("the table's motion Off: stands", upright(Down0));
   values["invincible-plus-ultra.tokenAnimMine"] = "full"; settings.get("invincible-plus-ultra.tokenAnimMine").onChange("full");
   reduce = true;
   const d = drawn(Down0);
@@ -241,7 +241,8 @@ ck(`the token's document was never written (x / y, flags, updates) ${JSON.string
   ck("state.mjs never writes", !/\.update\(|setFlag|updateSource|\.set\(|\bdelete\b/.test(src));
   const main = readFileSync(join(root, "tokenanim", "main.mjs"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   ck("main.mjs reads no character data itself (only state.mjs's yes / no)", !/\.actor\b|system\.|derived/.test(main) && /S\.downOf\(/.test(main));
-  ck("no new per-client setting (all options are the GM's for the table; tokenAnimMine predates KODOWN)", (main.match(/scope: "client"/g) ?? []).length === 1);
+  /* GMALL (the owner, 2026-11-15, «wszystko mg wybiera dla stołu»): tokenAnimMine became the table's too, so no client setting is left at all */
+  ck("no per-client setting (all options are the GM's for the table)", (main.match(/scope: "client"/g) ?? []).length === 0);
 }
 console.log(`sweep kodown: ${n} checks, ${f} failed`);
 process.exit(f ? 1 : 0);

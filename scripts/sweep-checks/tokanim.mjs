@@ -124,7 +124,8 @@ M._test.setStarted(true);
 const snap = (m) => JSON.stringify({ x: m.position.x, y: m.position.y, r: m.rotation, sx: m.scale.x, sy: m.scale.y, t: m.tint });
 const frame = (fn) => { for (const g of [...tickers]) g(); renderer.emit("prerender"); const r = fn?.(); renderer.emit("postrender"); return r; };
 const now = () => performance.now();
-ck("settings registered: world on, world events, client own screen", values["invincible-plus-ultra.tokenAnimOn"] === true && settings.get("invincible-plus-ultra.tokenAnimEvents")?.scope === "world" && settings.get("invincible-plus-ultra.tokenAnimMine")?.scope === "client");
+/* GMALL (the owner, 2026-11-15, «wszystko mg wybiera dla stołu»; TOKANIM-2a closed): the motion (full / gentle / off) is the table's too */
+ck("settings registered: world on, world events, world motion", values["invincible-plus-ultra.tokenAnimOn"] === true && settings.get("invincible-plus-ultra.tokenAnimEvents")?.scope === "world" && settings.get("invincible-plus-ultra.tokenAnimMine")?.scope === "world");
 {
   const A = mkTok("A", 0, 0), B = mkTok("B", 300, 0);
   ck("nothing listens while nothing plays", renderer.count() === 0 && tickers.size === 0);
@@ -196,7 +197,7 @@ ck("settings registered: world on, world events, client own screen", values["inv
   ck("OS reduced motion: the picture does not move (a tint only)", during.x === b.x && during.y === b.y && during.r === b.r && during.sx === b.sx && during.t !== b.t);
   reduce = false; M.stopAll(); frame();
   values["invincible-plus-ultra.tokenAnimMine"] = "off";
-  ck("own screen off: nothing", M.react(C, { kind: "hit", amt: 1, at: now() }) === null);
+  ck("the table's motion off: nothing", M.react(C, { kind: "hit", amt: 1, at: now() }) === null);
   values["invincible-plus-ultra.tokenAnimMine"] = "full";
   values["invincible-plus-ultra.tokenAnimOn"] = false;
   ck("the GM switched it off for the table: nothing (a preview still plays)", M.react(C, { kind: "hit", amt: 1, at: now() }) === null && !!M.preview(C, "hit"));
