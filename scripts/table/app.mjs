@@ -149,8 +149,10 @@ function appClass() {
       result.addEventListener("input", onInput);
       result.addEventListener("change", onChange);
       /* every seat's window follows the table's values live (a player sees the GM's change at once) */
-      const hook = Hooks.on("updateSetting", (s) => { try { const k = String(s?.key ?? ""); if (k.startsWith(`${MOD}.`) || k.startsWith(`${NS}.`)) this.refresh(); } catch { /* closed */ } });
-      this._off = () => { result.removeEventListener("input", onInput); result.removeEventListener("change", onChange); Hooks.off("updateSetting", hook); for (const off of offs) try { off?.(); } catch { /* gone */ } };
+      /* a first change from the default CREATES the world Setting document and "Defaults" deletes it: all three hooks, not only update */
+      const follow = (s) => { try { const k = String(s?.key ?? ""); if (k.startsWith(`${MOD}.`) || k.startsWith(`${NS}.`)) this.refresh(); } catch { /* closed */ } };
+      const hooks = ["createSetting", "updateSetting", "deleteSetting"].map((h) => [h, Hooks.on(h, follow)]);
+      this._off = () => { result.removeEventListener("input", onInput); result.removeEventListener("change", onChange); for (const [h, id] of hooks) Hooks.off(h, id); for (const off of offs) try { off?.(); } catch { /* gone */ } };
     }
     async close(o) { this._off?.(); this._off = null; return super.close(o); }
 

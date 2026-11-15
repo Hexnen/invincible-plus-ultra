@@ -118,14 +118,16 @@ export function mount(host) {
   root.addEventListener("change", onChange);
   root.addEventListener("click", onClick);
   /* a change made elsewhere (another GM window, the other place of this panel) flows back into the controls */
-  const hook = Hooks.on("updateSetting", (s) => {
+  /* GMALL: a first change from the default CREATES the world Setting document, a reset deletes it: follow all three */
+  const follow = (s) => {
     try {
       if (s?.key === `${MOD}.${R.KEY.events}` && !pendingRows) { const rows = R.events(); for (const k of P.EVENTS) syncRow(k, rows[k]); }
       else if (s?.key === `${MOD}.${R.KEY.on}`) { const on = R.worldOn(), c = root.querySelector('[data-k="on"]'); if (c) c.checked = on; for (const d of root.querySelectorAll('[data-dep="on"]')) d.hidden = !on; }
       else if (s?.key === `${MOD}.${R.KEY.mine}`) { const sel = root.querySelector('[data-k="mine"]'); if (sel?.tagName === "OUTPUT") sel.textContent = t(`ITA.Mine.${R.mine()}`); else if (sel && document.activeElement !== sel) sel.value = R.mine(); }
     } catch { /* the panel is gone */ }
-  });
-  return () => { root.removeEventListener("input", onInput); root.removeEventListener("change", onChange); root.removeEventListener("click", onClick); Hooks.off("updateSetting", hook); };
+  };
+  const hooks = ["createSetting", "updateSetting", "deleteSetting"].map((h) => [h, Hooks.on(h, follow)]);
+  return () => { root.removeEventListener("input", onInput); root.removeEventListener("change", onChange); root.removeEventListener("click", onClick); for (const [h, id] of hooks) Hooks.off(h, id); };
 }
 
 /* ---------- the look: the map dock's form rows (inherits its variables there), the same in the window ---------- */

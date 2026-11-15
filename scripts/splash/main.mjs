@@ -122,7 +122,7 @@ function applyLabels() {
     const lang = tableLang();
     if (has('INSPLASH.Live.Six.other')) o.six = n => sixesText(n, lang, d).toLocaleUpperCase(lang);
     o.words = Object.fromEntries(Object.values(SAYS).filter(k => has('INSPLASH.Say.' + k)).map(k => [k, loc('INSPLASH.Say.' + k)]));      // UXB (D129)
-    o.sfx = Object.fromEntries(Object.values(SFX_KEYS).map(k => [k, has('INSPLASH.Word.' + k) ? loc('INSPLASH.Word.' + k) : null]).filter(([, v]) => v != null));   // SPLASHPL
+    o.sfx = Object.fromEntries(Object.values(SFX_KEYS).filter(k => has('INSPLASH.Word.' + k)).map(k => [k, loc('INSPLASH.Word.' + k)]));   // SPLASHPL
     setLabels(o);
   } catch (e) { /* zostają domyślne angielskie etykiety */ }
 }

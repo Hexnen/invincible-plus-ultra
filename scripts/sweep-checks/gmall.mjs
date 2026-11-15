@@ -52,9 +52,10 @@ const settingsApi = {
     if (cfg.scope === "client") { local.setItem(id, JSON.stringify(v)); cfg.onChange?.(v); Hooks.callAll("clientSettingChanged", id, v, {}); return v; }
     if (!isGM) { refused++; throw new Error("User lacks permission to update Setting"); }   // the server's answer
     worldWrites.push([id, v]);
+    const had = worldStore.has(id);                                                         // v14: the first write from the default CREATES the doc
     worldStore.set(id, structuredClone(v));
     for (const s of seats) s(id, v);                                                        // onChange on every seat
-    Hooks.callAll("updateSetting", { key: id, value: v }, {}, {});
+    Hooks.callAll(had ? "updateSetting" : "createSetting", { key: id, value: v }, {}, {});
     return v;
   },
   storage: { get: (w) => (w === "world" ? { getSetting: (key) => (worldStore.has(key) ? { key, value: worldStore.get(key) } : null) } : null) }
@@ -225,6 +226,9 @@ ck("E9 splash motion: reduced when the table says so OR the seat's system asks",
 ck("E10 splash effects: a photosensitive seat gets at most the gentle ones", /photosensitive\(\) \? Math\.min\(k, 0\.5\)/.test(sp));
 
 /* the token animations' motion: the table's, read by every seat */
+{ const appSrc = readFileSync(join(root, "table/app.mjs"), "utf8");
+  const all3 = (src) => ["createSetting", "updateSetting", "deleteSetting"].every((h) => src.includes(`"${h}"`));
+  ck("C9 the table window and the animations panel follow a GM change live also when it creates or deletes the world doc (first change, defaults)", all3(appSrc) && all3(panelSrc)); }
 ck("C8 token animations' motion is the table's (world) and a seat with reduced motion stays still", registry.get(`${MOD}.tokenAnimMine`)?.scope === "world");
 console.log(`sweep gmall: ${n} checks, ${f} failed`);
 process.exit(f ? 1 : 0);
