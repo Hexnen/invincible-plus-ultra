@@ -1040,12 +1040,30 @@ export function seatPlace(table, seat) {
   if (!ds) {
     /* at each allowed size the parts' least covering places; the size that covers least wins (the bigger one on a tie) */
     moved = 'least';
-    /* the table's order first; the parts swapped only when keeping it lays a part over the other (unreadable) or over far more */
+    /* the table's order always (the arrangement is the picture: live, the GM's critical swapped to caption over word while the player's
+       kept it); the parts swapped only when no allowed size has any place for them in order in the view at all */
     let bestAll = null;
     for (const keep of [true, false]) for (const kk of ks) {
-      if (!keep && !rel) break;
+      if (!keep && (!rel || (bestAll && bestAll.sum < 1e15))) break;
       const dd = [], placed = [], qs = [];
       let sum = 0;
+      /* a split block in order: the word part's least covering places tried in turn with the caption's best in order after each (taking
+         the word part's single least covering place first could leave its caption no place in order in the view) */
+      if (keep && rel && P.length === 2) {
+        const c0 = [];
+        for (const { d } of [...movesOf(P[0], kk), ...farOf(P[0], kk)]) { const q = at(P[0], kk, d); if (inSafe(q)) c0.push({ d, q, h: hitOf(q, kk, 0) }); }
+        c0.sort((a, b) => a.h - b.h);
+        let best = null;
+        for (const a of c0.slice(0, 60)) {
+          const core = coreAt(0, a.q, kk) ?? a.q, more = [{ ...core, w: TOKEN_W }];
+          let b1 = null;
+          for (const { d } of [...movesOf(P[1], kk), ...farOf(P[1], kk)]) { const q = at(P[1], kk, d); if (!inSafe(q) || !orderOk(1, q, a.q)) continue; const h = hitOf(q, kk, 1, more); if (!b1 || h < b1.h - 0.5) b1 = { d, h }; }
+          if (b1 && (!best || a.h + b1.h < best.sum - 0.5)) best = { sum: a.h + b1.h, ds: [a.d, b1.d] };
+        }
+        const cand = best ?? { sum: 1e15, ds: [z, z] };
+        if (!bestAll || cand.sum < bestAll.sum * 0.9 - 0.5) bestAll = { k: kk, ds: cand.ds, sum: cand.sum, keep };
+        continue;
+      }
       for (let i = 0; i < P.length; i++) {
         const p = P[i], more = placed.map((x) => ({ ...x, w: TOKEN_W }));
         let best = null;
