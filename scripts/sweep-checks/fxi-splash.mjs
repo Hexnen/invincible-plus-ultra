@@ -199,7 +199,11 @@ for (const [name, e, full] of [["crit", R.crit, true], ["crit6", R.crit6, true],
   eq(IP.contactMs(M2({ flash: false, entKeys: [[0, { y: -1.5, sy: 1.12, sx: 0.92 }], [170, { y: 0, sy: 0.76, sx: 1.2 }], [240, {}]] })), 170, "T 1.9: a drop hits on its squash");
   eq(IP.contactMs(M2({ flash: false, entKeys: [[0, { s: 0.62 }], [90, { s: 1.14, sx: 0.95, sy: 1.06 }], [160, { s: 0.97 }], [240, {}]] })), 90, "T 1.9: a pop hits at its biggest");
   ok(IP.growOf(M2({ entKeys: [[0, { s: 1.4, sx: 0.97, sy: 1.03 }], [62, { s: 0.94, sx: 1.12, sy: 0.88 }]] })) >= 1.44, "S 1.9: the slam's arrival pose (1.4x) is room the block keeps");
-  eq(IP.leadMs(planImpact({ kind: "crit", magnitude: 1.6 }).frames), Math.round(TICK), "T: the critical's build = its one tick of gathering lines");
+  /* IMPCALL (engine 1.9.21 IMPACT4: the critical at 1.6 is step 4 of a longer ladder and gathers its lines for TWO ticks; 1.9.20 had one).
+     The behaviour pinned stays: the build is the leading lines, and it comes before the impact's peak */
+  { const cp = planImpact({ kind: "crit", magnitude: 1.6 });
+    eq(IP.leadMs(cp.frames), Math.round(2 * TICK), "T: the critical's build = its gathering lines (1.9.21: two ticks)");
+    ok(IP.leadMs(cp.frames) > 0 && IP.leadMs(cp.frames) <= cp.peakMs, `T: the build comes before the impact's peak (${IP.leadMs(cp.frames)} <= ${Math.round(cp.peakMs)} ms)`); }
   ok(IP.growOf({ timeline: SLAM() }) >= 1.7, `S: the slam's smear grows the word ${IP.growOf({ timeline: SLAM() }).toFixed(2)}x`);
 }
 

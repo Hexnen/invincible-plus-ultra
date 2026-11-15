@@ -69,6 +69,10 @@ export function rollTargets({ tag = null, hits = null, flagged = [], action = nu
   if (tactical && String(tag.key ?? "") !== "attack") return [];
   return (typeof atk === 'boolean' ? atk : BLOW_ACTIONS.includes(action)) ? cleanTargets(flagged) : [];
 }
+/* IMPCALL: the targets after the first (the first is the impact's subject) take part in the impact as figures (`also`); the engine draws
+   at most 8 figures with the subject and the roller, so at most ALSO_MAX */
+export const ALSO_MAX = 6;
+export const alsoTargets = (ids) => cleanTargets(ids).slice(1, 1 + ALSO_MAX);
 /* look(id) -> "ok" (on this seat's board, seen, in its view) | "unseen" | "off" (seen, off the view) | "gone" (not on this scene) */
 export function targetChoice(ids, look) {
   const list = cleanTargets(ids);
@@ -153,4 +157,23 @@ export function tierOfImpact(magnitude, I) {
   const t = typeof I?.tierOf === "function" ? Number(I.tierOf(m)) : 0;
   return Number.isInteger(t) ? Math.max(0, Math.min(MAP_FRAMES.length - 1, t)) : 0;
 }
-export const mapFrames = (magnitude, I) => MAP_FRAMES[tierOfImpact(magnitude, I)].map((f) => (typeof f === "string" ? f : { ...f }));
+/* IMPCALL (engine 1.9.20 / 1.9.21: the tokens take part, their colours turned at their own luminance, popped; the owner: «bardziej jak
+   sakuga MAD ... odwrócenia kolorów na tokenach, akcent na ich krawędziach, więcej efektów, dynamiczniej», and a roll is a rare table show):
+   a map critical WITH a target (the roll's shared targets: the same frames on every seat, whether or not this seat may draw the target) keeps
+   its build and peak and then holds on the struck figures: palette jumps on ones (hue negative, hue cycle, duotone, the negative / its held
+   twin), pops, a kick back, the figure back in its own colours. Every added drawing is the engine's `fig` type (the scene untouched, nothing
+   over the word's spot but a small star at the target) and comes AFTER the peak, so the peak, the word's lead-in and the moment's instant
+   are the same as without (fxi-splash M, impcall C). Rims before the peak (`r`), the figure in its own colours on the torn window (`o`). */
+export const MAP_FIGS = [
+  null,
+  null,
+  { lead: ["r", "o", "i", "n"], tail: [{ type: "fig", ticks: 2, fig: "h", z: 1.25 }, { type: "fig", ticks: 2, fig: "d", punch: 0.6, kick: -1 }, { type: "fig", ticks: 3, fig: "o" }] },
+  { lead: ["r", "o", "i", "n"], tail: [{ type: "fig", ticks: 1, fig: "h", z: 1.55, punch: 0.6, kick: -1 }, { type: "fig", ticks: 1, fig: "d", z: 1.25 }, { type: "fig", ticks: 2, fig: "i" }, { type: "fig", ticks: 2, fig: "n" }, { type: "fig", ticks: 3, fig: "o" }] }
+];
+export const mapFrames = (magnitude, I, o = {}) => {
+  const tier = tierOfImpact(magnitude, I);
+  const base = MAP_FRAMES[tier].map((f) => (typeof f === "string" ? f : { ...f }));
+  const add = o.figs ? MAP_FIGS[tier] : null;
+  if (!add) return base;
+  return [...base.map((f, i) => ({ ...(typeof f === "string" ? { type: f, ticks: 1 } : f), fig: add.lead[Math.min(i, add.lead.length - 1)] })), ...add.tail.map((f) => ({ ...f }))];
+};

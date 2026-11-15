@@ -638,6 +638,24 @@ export function impactOf(pub, step = 0, o = {}) {
   return out;
 }
 
+/* IMPCALL (engine 1.9.20 / 1.9.21): the other struck tokens of a moment join its one impact as figures (`also`). The engine draws at most
+   8 figures (subject, attacker and the rest), so at most ALSO_MAX others; ids from shared data only, sorted, so every seat makes one call.
+   exclude = the subject's id and the attacker's id (they take part as `subject` / `from`) */
+export const ALSO_MAX = 6;
+export function alsoOf(ids, exclude = []) {
+  const ex = new Set(exclude.filter(Boolean));
+  return [...new Set((ids ?? []).filter((id) => typeof id === "string" && id && !ex.has(id)))].sort().slice(0, ALSO_MAX);
+}
+/* how long after its start the moment's impact is over (the rest of a crowd strikes then): the engine's plan.ms, never past the engine's
+   longest impact (I.limits.maxTicks; 1.9.21: 24 ticks = 1 s, 1.9.20: 12 = 500 ms). Before IMPCALL a fixed 500 ms cap cut the 1.9.21
+   knock-down (up to 1 s) in half: the crowd's words struck under its last drawings */
+export function impactAfter(I, plan) {
+  const ms = Math.max(0, Number(plan?.ms) || 0);
+  const ticks = Number(I?.limits?.maxTicks);
+  const max = Number.isFinite(ticks) && ticks > 0 ? Math.ceil(ticks * 1000 / 24) : 1000;
+  return Math.ceil(Math.min(max, ms));
+}
+
 /* ---------------------------------------------------------------- a series in proportion (CROWD, ADVX 6)
    Five 1-point blows 0.45 s apart climbed one rung per blow (scratch, blow, hard blow, heavy, CRUSHING): the fifth -1 drew the critical's
    frames with a full white flash and the word grew 56 %, bigger than a single -8 would have drawn. The escalation outran the damage.

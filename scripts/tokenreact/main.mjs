@@ -391,7 +391,9 @@ async function storyWait(L) {
     const splashing = () => (L.count?.({ space: "screen" }) ?? 0) > 0 || !!document.querySelector("#invincible-splash-layer .ins-stage");      // the engine's screen words, or the roll splash's own layer
     for (let waited = 0; waited < SCREEN_WAIT && splashing(); waited += 60) await wait(60);
   }
-  for (let waited = 0; waited < IMPACT_WAIT && L.impact?.busy; waited += STORY_STEP) await wait(STORY_STEP);
+  /* IMPCALL: at most the engine's longest impact (1.9.21: 1 s), not the old 600 ms */
+  const impWait = Math.max(IMPACT_WAIT, P.impactAfter(L.impact, { ms: Infinity }));
+  for (let waited = 0; waited < impWait && L.impact?.busy; waited += STORY_STEP) await wait(STORY_STEP);
   return 0;
 }
 function onSplash(data) {
@@ -473,6 +475,11 @@ async function land(ids, ready) {
       const host = imp.it.inCluster && imp.it.inCluster.mode === "full" ? imp.it.inCluster : imp.it;
       host.impact = imp.spec; host.impTok = imp.it.tok; host.impIt = imp.it;
       if (host !== imp.it) imp.it.impHost = host;
+      /* IMPCALL (engine 1.9.20/1.9.21: the tokens take part as figures): the other tokens this moment struck join the one impact as `also`
+         (their colours turned, their edges lit, following their own reactions). Chosen from SHARED data only (tokens the table's reaction
+         names, nobody hides, ordered by id) so every seat makes the same call; the engine draws each only on a seat that may see it */
+      host.impAlso = P.alsoOf(staged.filter((it) => !it.cluster && it.pub && it.tok?.document?.hidden !== true && P.impactOf(it.pub, it.lk.step, { ...it.pub, cum: it.cum }))
+        .map((it) => it.tok.id), [imp.it.tok.id, imp.it.pub?.src]);
     }
     /* FXI-TOKEN (ADVI 2, 13, 15): ONE instant for the moment's blow, the same on every seat (pure HIT_LEAD): the impact starts on it and every
        word is started so that it strikes on it (play). The other reactions of a crowd strike after the impact (its drawings, at most 500 ms,
@@ -485,7 +492,9 @@ async function land(ids, ready) {
     const T0s = sharedHit(ready, performance.now(), Clock.toPage, P.HIT_LEAD);
     const T0 = Math.max(Number.isFinite(T0s) ? T0s : performance.now() + P.HIT_LEAD, performance.now() + MIN_PREP, storyEnd || 0);
     let after = 0;
-    try { if (imp && L.impact?.plan) after = Math.min(500, Math.max(0, Number(L.impact.plan({ ...imp.spec, seed: `${imp.it.seed}|impact` })?.ms) || 0)); } catch (err) { once(err); }
+    /* IMPCALL (engine 1.9.21: the strongest impacts are a one-second cut; 1.9.20 stopped at 500 ms): the rest of the crowd strikes after the
+       impact's LAST drawing as the engine plans it (the same spec as played: the series' growth too), at most the engine's longest impact */
+    try { if (imp && L.impact?.plan) { const { rung: _r, ...isp } = imp.spec; after = P.impactAfter(L.impact, L.impact.plan({ ...P.withSeries(isp, imp.it.lk?.step ?? 0), seed: `${imp.it.seed}|impact` })); } } catch (err) { once(err); }
     const host = imp ? (imp.it.impHost ?? imp.it) : null;
     for (const it of staged) if (!it.inCluster) it.tHit = it === host ? T0 : T0 + (imp ? after + it.delay : it.delay);
     for (const it of staged) if (it.inCluster) it.tHit = it.inCluster.tHit ?? (it.inCluster === host ? T0 : T0 + (imp ? after + it.delay : it.delay));      // a cluster strikes all its members at once
@@ -1120,6 +1129,10 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
     if (kept.length) spec.keep = kept;
     const src = by.pub?.src ? canvas.tokens?.get(by.pub.src) : null;
     if (src && src.id !== tok.id && seatOf(src).visible) spec.from = src;
+    /* IMPCALL: the rest of the struck crowd takes part as figures (the same id list on every seat; a token that is not on this scene is left
+       out, one this seat may not see the engine draws nothing of) */
+    const also = (it.impAlso ?? by.impAlso ?? []).map((id) => canvas.tokens?.get(id)).filter((t) => t && t.id !== tok.id && t !== spec.from);
+    if (also.length) spec.also = also;
     if (red) spec.reduced = true;
     return I.play(spec);
   } catch (err) { once(err); return null; }

@@ -1188,7 +1188,12 @@ function impactShot(ctl, it, contact) {
         over: LAYER === 'screen' ? 'ui' : 'scene' };
       /* the blow comes from the roller (only a token this seat sees: the engine checks it again) */
       if (tok && ctl.from && ctl.from !== tok && seesToken(ctl.from)) s.from = ctl.from;
-      if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude, LE?.impact); }
+      /* IMPCALL (engine 1.9.20/1.9.21: the tokens take part as figures): the roll's OTHER targets join the impact as `also` (the same list on
+         every seat: the targets after the first, from the roll's shared data; GM-hidden ones never; the engine draws each only where it may
+         be seen) */
+      const also = IP.alsoTargets(ctl.targets).map((id) => globalThis.canvas?.tokens?.get?.(id)).filter((t) => t && t !== tok && t !== s.from && t.document?.hidden !== true);
+      if (also.length) s.also = also;
+      if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude, LE?.impact, { figs: (ctl.targets?.length ?? 0) > 0 }); }   // IMPCALL: the struck figures' palette jumps after the peak when the roll has a target (shared data)
       if (q.tone) s.tone = q.tone;
       if (q.hitstop === false) s.hitstop = false;
       return s;
@@ -1351,14 +1356,16 @@ function stressLettered(ctl, stress, resolve, holdK, seed) {
 /* CRITFIX: the deferred backdrop of a result with an impact frame enters when this seat's impact is over (its last drawing), on the
    word's strike when this seat shows no impact (the target and the word out of its view, the engine refused it). A moment that ended
    or already let its surroundings go gets none. The struck target this seat sees keeps a clear spot like the hero. */
-export const IMPACT_MAX_MS = 500;   // the engine's longest impact (12 ticks at 24 Hz): the fallback end when its plan gave no length
+export const IMPACT_MAX_MS = 1000;   // the engine's longest impact (IMPCALL: 1.9.21 = 24 ticks at 24 Hz; was 12 = 500 ms): the fallback end when its plan gave no length
+/* IMPCALL: the running engine's own longest impact when it says it (I.limits.maxTicks), else IMPACT_MAX_MS */
+export const impactMaxMs = (I) => { const t = Number(I?.limits?.maxTicks); return Number.isFinite(t) && t > 0 ? Math.ceil(t * IP.TICK) : IMPACT_MAX_MS; };
 function enterBackdrop(ctl, shot) {
   const add = ctl.bdLater;
   ctl.bdLater = null;
   if (!add) return;
   const live = !!ctl.impact && ctl.impact.alive !== false;
   const now = performance.now();
-  const end = live ? (Number.isFinite(ctl.impactEnd) ? ctl.impactEnd : (Number.isFinite(ctl.impactPeak) ? ctl.impactPeak : now) + IMPACT_MAX_MS) : now;
+  const end = live ? (Number.isFinite(ctl.impactEnd) ? ctl.impactEnd : (Number.isFinite(ctl.impactPeak) ? ctl.impactPeak : now) + impactMaxMs(LE?.impact)) : now;
   if (live && shot?.where === 'target' && shot.target) ctl.spotTarget = shot.target;
   /* CRITLATE (engine 1.9.20: a 500 ms impact ends on a fraction of a millisecond; Math.round brought the wash a third of a ms early):
      rounded up, never before the end, whatever the plan's length */

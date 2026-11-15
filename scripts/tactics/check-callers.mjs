@@ -51,7 +51,8 @@ const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
   for (const mg of [0, 0.34, 0.35, 0.6, 0.84, 0.85, 1.1, 1.34, 1.35, 1.6, 2]) eq(IP.tierOfImpact(mg, api), IPL.planImpact({ kind: "crit", magnitude: mg }).tier, `I: the splash's map build at strength ${mg} is the engine plan's tier`);
   eq(IP.tierOfImpact(1.6, { tierOf: () => 1, seriesBoost: () => 0 }), 1, "I: another engine's tiers are read, not baked in");
   eq(IP.mapFrames(1.6, null), IP.MAP_FRAMES[0], "I: an engine without tierOf gets the lowest map build (drawings that leave the word clear)");
-  ok(/IP\.mapFrames\(q\.magnitude, LE\?\.impact\)/.test(src("../splash/stage.mjs")), "I: the splash hands the running engine's L.impact to its map build");
+  /* IMPCALL: mapFrames takes a third options argument ({ figs }), the engine is still handed as the second */
+  ok(/IP\.mapFrames\(q\.magnitude, LE\?\.impact(\)|, \{)/.test(src("../splash/stage.mjs")), "I: the splash hands the running engine's L.impact to its map build");
 }
 
 /* ---------- K: one clock ---------- */
