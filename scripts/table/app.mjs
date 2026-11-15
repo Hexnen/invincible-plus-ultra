@@ -104,15 +104,20 @@ function html(activeTab) {
 /* ---------- writing (the GM) ---------- */
 /* the engine's table: quick changes (a slider dragged) go out as one L.setTable of only the changed keys; the engine merges them into its
    table, writes one world document and every seat follows on its next word */
-let tableWrite = null, tableTimer = 0;
+let tableWrite = null, tableTimer = 0, tableWaiting = [];
 function writeTable(k, v) {
   tableWrite = { ...(tableWrite ?? {}), [k]: v };
   clearTimeout(tableTimer);
-  return new Promise((res, rej) => { tableTimer = setTimeout(() => {
-    const next = tableWrite; tableWrite = null;
-    if (!tableEngine()) { rej(new Error(t("IPT.Engine.oldShort"))); return; }
-    Promise.resolve(L.setTable(next)).then((ok) => (ok === false ? rej(new Error(t("IPT.Notice.refused"))) : res(ok)), rej);
-  }, 120); });
+  /* every caller of the gathered write learns its one outcome */
+  const p = new Promise((res, rej) => tableWaiting.push({ res, rej }));
+  tableTimer = setTimeout(() => {
+    const next = tableWrite, waiting = tableWaiting;
+    tableWrite = null; tableWaiting = [];
+    const done = (ok, err) => { for (const w of waiting) ok ? w.res(true) : w.rej(err); };
+    if (!tableEngine()) { done(false, new Error(t("IPT.Engine.oldShort"))); return; }
+    Promise.resolve(L.setTable(next)).then((ok) => (ok === false ? done(false, new Error(t("IPT.Notice.refused"))) : done(true)), (err) => done(false, err));
+  }, 120);
+  return p;
 }
 export function write(row, v) {
   if (!isGM()) return Promise.reject(new Error("GM only"));

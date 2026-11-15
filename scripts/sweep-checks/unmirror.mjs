@@ -170,10 +170,14 @@ try {
     ck(`${label}: ... limits reach the player's engine`, pl.L.limits.screen === 5 && pl.L.limits.world === 12);
     /* quick changes (a slider dragged) go out as ONE write of the table object */
     { const w0 = world.writes.length;
-      await world.run(gm, async () => { gm.App.write(row("letters.scale"), 1.1); gm.App.write(row("letters.scale"), 1.2); await gm.App.write(row("letters.palette"), "cvd"); });
+      let settled = 0;
+      await world.run(gm, async () => { const ps = [gm.App.write(row("letters.scale"), 1.1), gm.App.write(row("letters.scale"), 1.2), gm.App.write(row("letters.palette"), "cvd")];
+        for (const p of ps) p.then(() => settled++, () => {});
+        await Promise.race([Promise.all(ps), tick(1000)]); });
       await tick(20);
       const ws = world.writes.slice(w0);
-      ck(`${label}: three quick changes in the window = one write of the engine's table (${ws.length})`, ws.length === 1 && ws[0][1] === `${NS}.table` && pl.T.state.table.scale === 1.2 && pl.T.state.table.palette === "cvd"); }
+      ck(`${label}: three quick changes in the window = one write of the engine's table (${ws.length})`, ws.length === 1 && ws[0][1] === `${NS}.table` && pl.T.state.table.scale === 1.2 && pl.T.state.table.palette === "cvd");
+      ck(`${label}: ... and every one of the three changes learns it was saved (${settled}/3)`, settled === 3); }
     /* the player: refused everywhere, nothing written */
     { const snap = JSON.stringify([...world.store]); const w0 = world.writes.length; pl.notes.length = 0;
       let rej = false; try { await world.run(pl, () => pl.App.write(row("letters.scale"), 2.5)); } catch { rej = true; }
