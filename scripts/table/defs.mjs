@@ -122,6 +122,10 @@ export const TABS = [
     { id: "words", rows: [M("reactions.enabled", "tokenReactEnabled"), M("reactions.size", "tokenReactSize", { dep: { id: "reactions.enabled", is: true } }), M("reactions.layer", "tokenReactLayer", { dep: { id: "reactions.enabled", is: true } })] },
     { id: "anim", panel: "tokenanim" }
   ] },
+  /* GORE: blood and cracks on the screen (scripts/gore/): the table's too */
+  { id: "gore", icon: "fa-solid fa-droplet", sections: [
+    { id: "show", rows: [M("gore.blood", "goreBlood"), M("gore.cracks", "goreCracks"), M("gore.seats", "goreSeats"), M("gore.hold", "goreHold")] }
+  ] },
   { id: "lang", icon: "fa-solid fa-language", sections: [
     { id: "words", rows: [M("lang.splash", "splashLang"), M("lang.reactions", "tokenReactLang")] }
   ] }
