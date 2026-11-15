@@ -1,7 +1,7 @@
 /* GORE: blood and cracks on the screen, the Foundry part. Started from scripts/module.js by a guarded dynamic import, like the other areas.
    What is drawn and when is plan.mjs (pure), how it is drawn raster.mjs (pure); here:
-     - the GLASS: one <canvas> of the art grid (plan.grid: one art px = round(3 x DPR) device px) laid over the map (right after
-       #board: over the scene, under the interface), scaled by a whole number of device px with no smoothing (image-rendering:
+     - the GLASS: two <canvas> panes of the art grid (plan.grid: one art px = round(3 x DPR) device px): blood over the map (right
+       after #board: over the scene, under the interface), cracks over the interface's bars (CRACK_Z, under windows); scaled by a whole number of device px with no smoothing (image-rendering:
        pixelated), so every art pixel is a crisp square at any window size, zoom of the scene or DPR. Drawn on the comic's 24 Hz beat and
        only while something changes; nothing runs when the glass is empty;
      - the TABLE's options (world, GM only, live; shown in the "Comic effects" window, tab Blood and cracks): blood 0..3, cracks 0..3,
@@ -9,8 +9,9 @@
      - a character's Health / Resolve drop (any way: a roll, the tactical engine, the sheet) seen on every seat by the same hooks,
        landed on the token reaction's blow (hook invincible-plus-ultra.tokenReact, phase "hit") when one plays, else after the same short
        wait on every seat; the seed is the change's server stamp, so every seat draws the same splash;
-     - never for a token this seat does not see (hidden, another scene): the effect would tell a player that something he cannot see
-       was hurt;
+     - never for a token this seat does not see (hidden, another scene) nor one outside this seat's view (GORE3, finding 5 of the blind
+       review: a screen that saw no blow gets no blood); the splash lands beside the struck token as this seat sees it, sized by it;
+     - a new splash on a token makes its older ones crumble away (no stains piling up on one character);
      - the public API (game.modules.get("invincible-plus-ultra").api.gore, also globalThis.PlusUltraGore). Nothing here throws. */
 import * as P from "./plan.mjs";
 import * as R from "./raster.mjs";
@@ -49,20 +50,32 @@ function photosensitive() { try { return game.settings.settings.has("core.photos
 function osReduced() { try { return !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches; } catch { return false; } }
 
 /* ---------------- the glass ---------------- */
-const G = { wrap: null, cv: null, ctx: null, g: null, sf: null, img: null, items: [], raf: 0, lastTick: -1, dirtyAll: true, arrivals: [], cost: [], frames: 0 };
+/* two panes of the same grid (GORE2): the BLOOD pane right after #board (over the scene, under the interface: a splash never hides the
+   chat or a button), the CRACKS pane over the interface's bars and panels (z CRACK_Z: over #ui-left/#ui-right 30, under the windows,
+   tooltips and notifications): the cracks are in the screen's own glass and sit in its corners, which the bars would otherwise hide.
+   Both ignore the pointer, so the board and every button stay playable. */
+export const CRACK_Z = "32";
+const pane = () => ({ wrap: null, cv: null, ctx: null, sf: null, img: null, dirtyAll: true });
+const G = { L: { blood: pane(), cracks: pane() }, g: null, items: [], raf: 0, lastTick: -1, arrivals: [], cost: [], frames: 0 };
+const layerOf = (kind) => (kind === "blood" ? "blood" : "cracks");
 function ensureGlass() {
-  if (G.wrap?.isConnected) return true;
+  if (G.L.blood.wrap?.isConnected && G.L.cracks.wrap?.isConnected) return true;
   const board = document.getElementById("board");
   if (!board) return false;
-  const wrap = document.createElement("div");
-  wrap.id = "ipu-gore";
-  wrap.setAttribute("aria-hidden", "true");
-  Object.assign(wrap.style, { position: "fixed", left: "0", top: "0", width: "100vw", height: "100vh", overflow: "hidden", pointerEvents: "none", zIndex: getComputedStyle(board).zIndex || "auto", contain: "strict" });
-  const cv = document.createElement("canvas");
-  Object.assign(cv.style, { position: "absolute", left: "0", top: "0", imageRendering: "pixelated" });
-  wrap.appendChild(cv);
-  board.after(wrap);
-  G.wrap = wrap; G.cv = cv; G.ctx = cv.getContext("2d", { alpha: true });
+  for (const name of ["blood", "cracks"]) {
+    const L = G.L[name];
+    if (L.wrap?.isConnected) continue;
+    const wrap = document.createElement("div");
+    wrap.id = name === "blood" ? "ipu-gore" : "ipu-gore-cracks";
+    wrap.setAttribute("aria-hidden", "true");
+    Object.assign(wrap.style, { position: "fixed", left: "0", top: "0", width: "100vw", height: "100vh", overflow: "hidden", pointerEvents: "none",
+      zIndex: name === "blood" ? getComputedStyle(board).zIndex || "auto" : CRACK_Z, contain: "strict" });
+    const cv = document.createElement("canvas");
+    Object.assign(cv.style, { position: "absolute", left: "0", top: "0", imageRendering: "pixelated" });
+    wrap.appendChild(cv);
+    if (name === "blood") board.after(wrap); else (document.body ?? board.parentElement)?.appendChild(wrap);
+    L.wrap = wrap; L.cv = cv; L.ctx = cv.getContext("2d", { alpha: true });
+  }
   G.g = null;
   return true;
 }
@@ -71,14 +84,16 @@ function fit() {
   const g = P.grid(vw, vh, dpr);
   if (G.g && G.g.w === g.w && G.g.h === g.h && G.g.px === g.px && G.g.dpr === g.dpr) return false;
   G.g = g;
-  G.cv.width = g.w; G.cv.height = g.h;
-  /* the canvas covers w x px device px: CSS size = that / dpr (a whole number of device px per art px) */
-  G.cv.style.width = `${(g.w * g.px) / g.dpr}px`; G.cv.style.height = `${(g.h * g.px) / g.dpr}px`;
-  G.sf = R.surface(g.w, g.h);
-  G.img = new ImageData(G.sf.rgba, g.w, g.h);
+  for (const L of Object.values(G.L)) {
+    L.cv.width = g.w; L.cv.height = g.h;
+    /* the canvas covers w x px device px: CSS size = that / dpr (a whole number of device px per art px) */
+    L.cv.style.width = `${(g.w * g.px) / g.dpr}px`; L.cv.style.height = `${(g.h * g.px) / g.dpr}px`;
+    L.sf = R.surface(g.w, g.h);
+    L.img = new ImageData(L.sf.rgba, g.w, g.h);
+    L.dirtyAll = true;
+  }
   /* the plans are laid out on the grid: a new grid lays them out again (the same seeds: the same splash, in this view's fractions) */
   for (const it of G.items) { it.plan = it.make(g); warmLater(it); }
-  G.dirtyAll = true;
   return true;
 }
 function frame() {
@@ -91,14 +106,20 @@ function frame() {
     if (tick !== G.lastTick || resized) {
       G.lastTick = tick;
       const t0 = pnow();
-      const out = R.render(G.sf, G.items, now);
-      if (G.dirtyAll) { G.ctx.putImageData(G.img, 0, 0); G.dirtyAll = false; }
-      else if (out.box) G.ctx.putImageData(G.img, 0, 0, out.box.x0, out.box.y0, out.box.x1 - out.box.x0 + 1, out.box.y1 - out.box.y0 + 1);
+      let moving = false;
+      for (const [name, L] of Object.entries(G.L)) {
+        const mine = G.items.filter((it) => layerOf(it.kind) === name);
+        if (!mine.length && !L.sf.box && !L.dirtyAll) continue;
+        const out = R.render(L.sf, mine, now);
+        moving = moving || out.moving;
+        if (L.dirtyAll) { L.ctx.putImageData(L.img, 0, 0); L.dirtyAll = false; }
+        else if (out.box) L.ctx.putImageData(L.img, 0, 0, out.box.x0, out.box.y0, out.box.x1 - out.box.x0 + 1, out.box.y1 - out.box.y0 + 1);
+      }
       G.cost.push(pnow() - t0); if (G.cost.length > 240) G.cost.shift();
       G.frames++;
       G.items = G.items.filter((it) => now - it.t0 < P.endOf(it.plan) + 100);
-      if (!out.moving && !G.items.length) { hideIfEmpty(); return; }
-      if (!out.moving) { G.raf = 0; G.idle = setTimeout(kick, nextChange(now)); return; }
+      if (!moving && !G.items.length) { hideIfEmpty(); return; }
+      if (!moving) { G.raf = 0; G.idle = setTimeout(kick, nextChange(now)); return; }
     }
   } catch (err) { once(err); }
   G.raf = requestAnimationFrame(frame);
@@ -108,7 +129,7 @@ function nextChange(now) {
   let soon = 1000;
   for (const it of G.items) {
     const ms = now - it.t0, p = it.plan;
-    const marks = p.kind === "blood" ? [p.life.wet, p.life.dry, Math.min(p.life.gone, Number.isFinite(it.cutAt) ? it.cutAt - it.t0 : Infinity)] : [p.life.gone - p.life.retract];
+    const marks = p.kind === "blood" ? [p.life.wet, p.life.dry, Math.min(p.life.gone, Number.isFinite(it.cutAt) ? it.cutAt - it.t0 : Infinity)] : [P.breakAt(p)];
     for (const m of marks) if (m > ms) soon = Math.min(soon, m - ms);
   }
   return Math.max(16, soon - 10);
@@ -116,7 +137,8 @@ function nextChange(now) {
 /* a splash's drawings are recorded ahead, one tick per task (a whole knock-down splash takes ~25 ms of recording: never one long task) */
 function warmLater(it) {
   const plan = it.plan;
-  if (plan.kind !== "blood") return;
+  /* cracks: their shards are cut once, a task of its own after the strike (GORE2) */
+  if (plan.kind !== "blood") { setTimeout(() => { try { if (it.plan === plan && G.items.includes(it)) R.warm(plan); } catch (err) { once(err); } }, 400); return; }
   let k = 0;
   const step = () => {
     if (it.plan !== plan || k > R.SETTLED || !G.items.includes(it)) return;
@@ -128,17 +150,24 @@ function warmLater(it) {
 }
 function kick() { clearTimeout(G.idle); if (!G.raf) G.raf = requestAnimationFrame(frame); }
 function hideIfEmpty() {
-  if (G.items.length || !G.ctx || !G.g) return;
-  G.ctx.clearRect(0, 0, G.g.w, G.g.h);
-  if (G.sf) { G.sf.rgba.fill(0); G.sf.T.fill(0); G.sf.C.fill(0); G.sf.box = null; }
+  if (G.items.length || !G.g) return;
+  for (const L of Object.values(G.L)) {
+    if (!L.ctx) continue;
+    L.ctx.clearRect(0, 0, G.g.w, G.g.h);
+    if (L.sf) { L.sf.rgba.fill(0); L.sf.T.fill(0); L.sf.C.fill(0); L.sf.box = null; }
+  }
 }
 
 /* ---------------- playing ---------------- */
 let uid = 0;
-/** play an effect on THIS seat. o = { strength 0..1.25, seed, dir (radians, the way the blood flies), at ({ fx, fy }), startAt (this
-    page's performance.now() of the contact), raw (true: the strength as given, the table's level not applied) } -> handle | null */
+/** play an effect on THIS seat. o = { strength 0..1.25, seed, dir (radians, the way the blood flies), at ({ fx, fy }), token (a Token
+    or its id: the blood lands beside it as this seat sees it; nothing when it is outside this seat's view), startAt (this page's
+    performance.now() of the contact), raw (true: the strength as given, the table's level not applied) } -> handle | null */
 function play(kind, o = {}) {
   try {
+    const tok = typeof o.token === "string" ? canvas?.tokens?.get?.(o.token) : o.token ?? null;
+    let near = o.near ?? null;
+    if (tok && !near) { near = tokScreen(tok); if (!near?.inView) return null; }
     const op = opts();
     const level = kind === "blood" ? op.blood : op.cracks;
     const s = o.raw ? P.scaled(o.strength ?? 0.5, 2) : P.scaled(o.strength ?? 0.5, level);
@@ -148,11 +177,13 @@ function play(kind, o = {}) {
     const t0 = P.arrivalAt(want, s, G.arrivals, safe);
     if (s >= P.BIG || safe) { G.arrivals.push(t0); G.arrivals = G.arrivals.filter((t) => t > pnow() - 3000); }
     const seed = o.seed ?? `${kind}|${++uid}|${Math.random()}`;
-    const spec = { strength: s, seed, dir: Number.isFinite(o.dir) ? o.dir : null, at: o.at ?? null, safe, still, hold: op.hold };
+    const spec = { strength: s, seed, dir: Number.isFinite(o.dir) ? o.dir : null, at: o.at ?? null, near: kind === "blood" ? near : null, safe, still, hold: op.hold };
     const make = (g) => (kind === "blood" ? P.bloodPlan(g, spec) : P.crackPlan(g, spec));
     if (!ensureGlass()) return null;
     fit();
-    const it = { id: ++uid, kind, t0, make, plan: make(G.g) };
+    const it = { id: ++uid, kind, t0, make, plan: make(G.g), tok: tok?.id ?? null };
+    /* GORE3: a new splash on a token: its older ones start to crumble as this one lands (one stain per character, no piling) */
+    if (kind === "blood" && it.tok) for (const x of G.items) if (x.kind === "blood" && x.tok === it.tok && !(x.cutAt <= t0)) x.cutAt = Math.max(x.t0, t0);
     G.items.push(it);
     warmLater(it);
     /* too many alive: the oldest blood dissolves now */
@@ -165,7 +196,7 @@ function play(kind, o = {}) {
 function clear({ quick = false } = {}) {
   if (quick) { G.items = []; hideIfEmpty(); return; }
   const now = pnow();
-  for (const it of G.items) { if (it.kind === "blood") it.cutAt = Math.min(it.cutAt ?? Infinity, now); else it.t0 = Math.min(it.t0, now - (it.plan.life.gone - it.plan.life.retract)); }
+  for (const it of G.items) { if (it.kind === "blood") it.cutAt = Math.min(it.cutAt ?? Infinity, now); else it.t0 = Math.min(it.t0, now - P.breakAt(it.plan)); }
   kick();
 }
 
@@ -189,6 +220,24 @@ export function mayShow({ gm, sameScene, visible, hidden, owner }, seats = "all"
   if (hidden && !gm) return false;
   if (seats === "owners") return gm || owner;
   return true;
+}
+/** where a token is on THIS screen: its middle and radius as fractions of the view (radius / the short side), and whether the view
+    holds its middle */
+export function tokScreen(tok) {
+  try {
+    const c = tok.center;
+    let x, y;
+    if (typeof canvas.clientCoordinatesFromCanvas === "function") ({ x, y } = canvas.clientCoordinatesFromCanvas(c));
+    else {
+      const T = canvas.stage.worldTransform, rect = canvas.app?.view?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      x = T.a * c.x + T.c * c.y + T.tx + rect.left; y = T.b * c.x + T.d * c.y + T.ty + rect.top;
+    }
+    const sc = Math.abs(canvas.stage?.scale?.x ?? 1) || 1;
+    const r = (Math.max(Number(tok.w) || 0, Number(tok.h) || 0) / 2) * sc;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !(vw > 0) || !(vh > 0)) return null;
+    return { fx: x / vw, fy: y / vh, fr: Math.max(0.004, r / Math.min(vw, vh)), inView: x >= 0 && y >= 0 && x <= vw && y <= vh };
+  } catch { return null; }
 }
 function seatMay(tok) {
   try {
@@ -252,6 +301,9 @@ function fire(id, at) {
   try {
     const tok = canvas.tokens?.get(id) ?? e.tok;
     if (!tok || !seatMay(tok)) return;
+    /* GORE3 (finding 5): a seat whose view does not hold the struck token saw no blow: no blood, no cracks there */
+    const near = tokScreen(tok);
+    if (!near?.inView) return;
     const seedBase = `${tok.id}|${e.stamp ?? e.changes.map((c) => `${c.stat}${c.from}>${c.to}`).join(",")}`;
     const dir = dirOf(tok);
     const done = new Set();
@@ -259,7 +311,7 @@ function fire(id, at) {
       const fx = P.effectOf(c);
       if (!fx || done.has(fx.kind)) continue;
       done.add(fx.kind);
-      play(fx.kind, { strength: fx.strength, seed: `${seedBase}|${fx.kind}`, dir: fx.kind === "blood" ? dir : null, startAt: at });
+      play(fx.kind, { strength: fx.strength, seed: `${seedBase}|${fx.kind}`, dir: fx.kind === "blood" ? dir : null, startAt: at, token: tok, near });
     }
   } catch (err) { once(err); }
 }
@@ -306,18 +358,20 @@ function receive(msg) {
   if (msg.op === "clear") { clear(msg.o ?? {}); return null; }
   if (msg.op !== "blood" && msg.op !== "cracks") return null;
   const o = msg.o && typeof msg.o === "object" ? msg.o : {};
-  return play(msg.op, { strength: Number(o.strength), seed: String(o.seed ?? ""), dir: Number.isFinite(o.dir) ? o.dir : null,
+  return play(msg.op, { strength: Number(o.strength), seed: String(o.seed ?? ""), dir: Number.isFinite(o.dir) ? o.dir : null, token: typeof o.token === "string" ? o.token : null,
     at: o.at && Number.isFinite(o.at.fx) && Number.isFinite(o.at.fy) ? { fx: o.at.fx, fy: o.at.fy } : null, startAt: Number.isFinite(msg.at) ? Clock.toPage(msg.at) : pnow() });
 }
 
 export const api = {
-  /** blood on THIS screen: { strength 0..1 (1 = a knock-down), dir, at: { fx, fy }, seed, startAt, raw } -> handle | null */
+  /** blood on THIS screen: { strength 0..1 (1 = a knock-down), dir, token (beside it), at: { fx, fy }, seed, startAt, raw } -> handle | null */
   blood: (o) => play("blood", o),
   /** cracks on THIS screen: { strength, at, seed, startAt, raw } */
   cracks: (o) => play("cracks", o),
   clear,
+  /** where a token sits on THIS screen: { fx, fy, fr, inView } (fractions of the view; the blood's anchor) */
+  tokScreen: (t) => tokScreen(typeof t === "string" ? canvas?.tokens?.get(t) : t),
   /** the same effect on EVERY seat at one instant (each seat still applies the table's options and its own accessibility) */
-  net: { blood: (o) => send("blood", o), cracks: (o) => send("cracks", o), clear: (o) => send("clear", o) },
+  net: { blood: (o) => send("blood", { ...o, token: typeof o?.token === "string" ? o.token : o?.token?.id }), cracks: (o) => send("cracks", o), clear: (o) => send("clear", o) },
   /** a sample on this screen (the table window's Preview) */
   preview() {
     const t = pnow();
@@ -329,7 +383,7 @@ export const api = {
     const c = [...G.cost].sort((a, b) => a - b);
     return { live: G.items.length, grid: G.g ? { w: G.g.w, h: G.g.h, px: G.g.px, dpr: G.g.dpr } : null, frames: G.frames, running: !!G.raf,
       costMs: c.length ? { p50: c[Math.floor(c.length / 2)], p95: c[Math.floor(c.length * 0.95)], max: c[c.length - 1], n: c.length } : null,
-      pending: pending.size, opts: opts(), safe: photosensitive(), still: osReduced() };
+      pending: pending.size, cleared: G.items.filter((it) => Number.isFinite(it.cutAt)).length, opts: opts(), safe: photosensitive(), still: osReduced() };
   },
   resetCost: () => { G.cost = []; G.frames = 0; }
 };
