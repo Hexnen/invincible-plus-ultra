@@ -223,7 +223,9 @@ for (const [name, e, full] of [["crit", R.crit, true], ["crit6", R.crit6, true],
   const low = tok("LOW", 900, 720);
   const sa = await seat({ layer: "overlay", e: R.crit, name: "m3", hero: low, full: false, zoom: 1, pan: { x: 0, y: 0 }, W: 1600, H: 900 });
   const sb = await seat({ layer: "overlay", e: R.crit, name: "m3", hero: low, full: false, zoom: 1, pan: { x: 0, y: -600 }, W: 1600, H: 900 });
-  const box = (s) => { const r = s.ctl.layout.rect; const a = s.toClient({ x: r.l, y: r.t }), c = s.toClient({ x: r.r, y: r.b }); return { l: a.x, t: a.y, r: c.x, b: c.y }; };
+  /* MAPSEAT: a seat that cannot show the board block whole (here: sb, the block's board place above its view) plays the moment on its screen
+     layer, where the layout is in client px already */
+  const box = (s) => { const r = s.ctl.layout.rect; if (!s.ctl.shared) return { ...r }; const a = s.toClient({ x: r.l, y: r.t }), c = s.toClient({ x: r.r, y: r.b }); return { l: a.x, t: a.y, r: c.x, b: c.y }; };
   const ba = box(sa), bb = box(sb);
   const hot = { l: 1600 * 0.3, t: 900 - 64, r: 1600 * 0.3 + 520, b: 900 - 8 };
   const hits = (r, q) => r.l < q.r && r.r > q.l && r.t < q.b && r.b > q.t;

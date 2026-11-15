@@ -276,10 +276,15 @@ for (const [name, e] of Object.entries(ROLLS())) {
       const { c, token } = canvasWith(500, 420, zoom, { x: 37, y: -12 });
       globalThis.canvas = c;
       const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("tokens");
-      Stage.play(ROLLS().pushed, { token, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "MAP", resolve: () => ({ now: 5, max: 8 }) });
+      const ctl = Stage.play(ROLLS().pushed, { token, scale: 1, hold: 1, fx: 1, fullFrom: null, seed: "MAP", resolve: () => ({ now: 5, max: 8 }) });
       flush(1e9);
       const boxes = L.calls.map((x) => drawn(x, L, zoom, (p) => c.stage.toGlobal(p)));
-      ok(L.calls.length >= 5 && L.calls.every((x) => x.o.space === "world" && x.o.fit === "exact"), `F7 map zoom ${zoom}: the words are on the map with exact scene sizes`);
+      /* MAPSEAT: the board block is the table's one block; a seat whose view cuts it (zoom 2 on a 1366 window: the block is bigger than
+         the view) no longer shrinks a copy in place but plays the moment on its screen layer (same-picture.mjs mapSeat). So: on the map
+         with exact scene sizes where this seat's rule says "ok", wholly on the screen otherwise; no overlap either way (below) */
+      const onMap = ctl?.seatRule === "ok";
+      ok(L.calls.length >= 5 && (onMap ? L.calls.every((x) => x.o.space === "world" && x.o.fit === "exact") : L.calls.every((x) => x.o.space !== "world")), `F7 map zoom ${zoom}: the words are on the map with exact scene sizes, or wholly on the screen by the seat rule (${ctl?.seatRule})`);
+      if (zoom < 2) ok(onMap, `F7 map zoom ${zoom}: a view that holds the block shows it on the map (${ctl?.seatRule})`);
       let clash = null;
       for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (apart(boxes[i], boxes[j]) && overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
       ok(!clash, `F7 map zoom ${zoom}: the odds no longer run into the sentence (no overlap: ${clash})`);

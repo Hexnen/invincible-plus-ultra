@@ -188,7 +188,12 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
     /* CRITPEAK: at zoom 1 (100 px squares; was 0.6: 60 px squares, where the board's ordinary word is ~21 px on screen, a speck that plays on
        the screen layer now, LP.MAP_READ) */
     const A = await seat({ W: 1600, H: 900, layer: "tokens", zoom: 1, pan: { x: 300, y: 200 }, e, name, tokens: [hero, ...others], notes: [pin], hero, full: name === "crit" });
-    const sc = A.calls.map((c) => drawn(c, A.L, { zoom: 1, toClient: (q) => q }));
+    /* MAPSEAT: the board block is laid out from the documents alone (the board window round the roller, a wider shared window when that one
+       is full) and never re-laid inside one seat's view; a seat whose view does not hold it plays the moment on its screen layer by the rule
+       (same-picture.mjs mapSeat). So the BOARD block (ctl.board, scene px) is what keeps off the tokens and the pin, and this seat either
+       shows exactly it or plays on its screen. Before, this seat's own view (it happened to have room top-left) decided the board block */
+    ok(!!A.ctl.board && (A.ctl.shared ? A.ctl.seatRule === "ok" && A.calls.every((c) => c.o.space === "world") : ["cut", "speck"].includes(A.ctl.seatRule) && A.calls.every((c) => c.o.space !== "world")), `N2/N3 map crowded ${name}: the seat shows the board block or plays it on its screen by the rule (${A.ctl.seatRule})`);
+    const sc = A.ctl.board ? A.ctl.board.items.map((b) => ({ role: b.role, x: b.x, y: b.y, w: b.w, h: b.h, S: b.S })) : A.calls.map((c) => drawn(c, A.L, { zoom: 1, toClient: (q) => q }));
     const hr = tokRect(hero), near = Math.min(...sc.map((b) => Math.hypot(Math.max(0, hr.l - (b.x + b.w / 2), (b.x - b.w / 2) - hr.r), Math.max(0, hr.t - (b.y + b.h / 2), (b.y - b.h / 2) - hr.b))));
     const bad = [];
     for (const b of sc) {
@@ -198,7 +203,12 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
     }
     /* CRITPEAK: the critical keeps its rank (its word at least 0.17 of the board height) and so, in this corner (the roller at the scene's
        top edge, neighbours left and below), stands up to a square and a quarter off the roller: still beside it, not two tokens away */
-    ok(A.calls.length > 0 && near <= (name === "crit" ? 125 : 60) && bad.length === 0, `N2/N3 map crowded ${name}: the block stands by the roller and keeps off the neighbours and the pin (nearest ${Math.round(near)} scene px; ${bad})`);
+    /* MAPSEAT (provisional MAPSEAT-3): when the board window round the roller holds no place where the block lies on nobody, the block is
+       sought in the wider shared window and must stand TOGETHER (its caption no farther from its word than the taller part: live, The
+       Warehouse, a split put them 3900 scene px apart, on no seat's view). On this crowded board that place is 3.5 squares off the roller,
+       where before the word stood 1.25 squares off and its caption far away. Then up to 4 squares (gs 100) */
+    const wideUsed = !!A.ctl.board?.wide;
+    ok(A.calls.length > 0 && near <= (name === "crit" ? (wideUsed ? 400 : 125) : 60) && bad.length === 0,`N2/N3 map crowded ${name}: the block stands by the roller and keeps off the neighbours and the pin (nearest ${Math.round(near)} scene px; ${bad})`);
   }
 }
 

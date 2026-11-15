@@ -191,7 +191,15 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
 /* ================================================================== L: map layer */
 {
   const hero = tok(ID("hero"), 1100, 700), T = tok(ID("tgt"), 800, 450);
-  const s = await seat({ layer: "overlay", e: R.crit, name: "map", hero, tokens: [T], targets: [T.id] });
+  /* MAPSEAT: the map block is laid out once for the table (the board window round the roller), not in this seat's view; a seat whose view
+     cuts it plays the moment on its screen layer (same-picture.mjs mapSeat). The roller at x 1100 of a 1600 window put the block's caption
+     under this seat's sidebar, so the seat that tests the MAP impact now looks at the roller (view centred on him); the cut view is checked
+     on its own just below (its rule, the screen-layer impact it then plays, the same start instant) */
+  const cutSeat = await seat({ layer: "overlay", e: R.crit, name: "mapcut", hero, tokens: [T], targets: [T.id] });
+  ok(cutSeat.ctl.seatRule === "ok" ? cutSeat.impacts[0]?.space === "world" : (cutSeat.impacts[0] && cutSeat.impacts[0].space !== "world"), `L map: a seat plays the map impact only where it shows the board block (rule ${cutSeat.ctl.seatRule})`);
+  const s = await seat({ layer: "overlay", e: R.crit, name: "map", hero, tokens: [T], targets: [T.id], pan: { x: 800 - 1150, y: 450 - 750 } });
+  ok(s.ctl.seatRule === "ok", `L map: the seat looking at the roller shows the board block (rule ${s.ctl.seatRule})`);
+  { const a = wordCall(s), b = wordCall(cutSeat); ok(a && b && Math.abs(a.o.startAt - b.o.startAt) < 50, `V map: a seat that plays the moment on its screen starts the word on the shared instant (${a?.o.startAt} / ${b?.o.startAt})`); }
   const im = s.impacts[0], w = wordCall(s);
   ok(im && im.subject === T && im.space === "world" && Array.isArray(im.frames) && im.keep === w?.h, `L map: on the target, with the map's drawings, the result word kept readable (${s.logRows.at(-1)?.where} ${s.logRows.at(-1)?.why})`);
   const covers = planImpact(im).frames.filter((f) => IP.COVERS_WORD.includes(f.type));
