@@ -65,16 +65,31 @@ export function fromOf(dir) {
   while (a <= -180) a += 360;
   return r3(a);
 }
-/** the word's tilt for a direction (deg, positive = clockwise on screen), or `own` for a mostly vertical blow / no direction */
-export function tiltOf(dir, own = 0) {
+/* DIRECT2 (the owner on DIRECT, 2026-11-15: «Kierunek mocniejszy»): the token reaction's word leans harder. The splash keeps the DIRECT
+   lean (its block is laid out with it, the same on every seat; DIRECT2-4) */
+export const LEAN_REACT = Object.freeze({ tilt: 16, k: 0.55, climb: 5 });
+/** the word's tilt for a direction (deg, positive = clockwise on screen), or `own` for a mostly vertical blow / no direction.
+    lean = { tilt, k, climb } (default: the DIRECT lean TILT / TILT_K / FLAT_CLIMB) */
+export function tiltOf(dir, own = 0, lean = null) {
   if (!dir || Math.abs(dir.ux) < VERT) return own;
+  const T = lean?.tilt ?? TILT, K = lean?.k ?? TILT_K, C = lean?.climb ?? FLAT_CLIMB;
   const s = Math.sign(dir.ux), deg = Math.asin(clamp(dir.uy, -1, 1)) * 180 / Math.PI;
-  return Math.round(clamp(s * TILT_K * deg - s * FLAT_CLIMB * (1 - Math.abs(dir.uy)), -TILT, TILT));
+  return Math.round(clamp(s * K * deg - s * C * (1 - Math.abs(dir.uy)), -T, T));
 }
-/** the look a direction gives a word: { from, rotation } (merge into the play options; null = nothing changes) */
-export function lookOf(dir, ownRotation = 0) {
+/** the engine's reading-direction sign for a direction (+1 = the word's own motions go right, -1 left), null for a mostly vertical blow.
+    DIRECT2 (REQUESTS DIRECT-E1): without it the engine picks the sign from the seed (3 in 4 right), so the word's own sideways motions
+    (the hold's recoil, a fall's turn, a blow-away) went against the blow on a blow to the left */
+export function signOf(dir) {
+  if (!dir || Math.abs(dir.ux) < VERT) return null;
+  return dir.ux < 0 ? -1 : 1;
+}
+/** the look a direction gives a word: { from, rotation } (merge into the play options; null = nothing changes); lean as tiltOf; with a
+    lean also `dir` (signOf) when the blow has a side */
+export function lookOf(dir, ownRotation = 0, lean = null) {
   if (!dir) return null;
-  return { from: fromOf(dir), rotation: tiltOf(dir, ownRotation) };
+  const o = { from: fromOf(dir), rotation: tiltOf(dir, ownRotation, lean) };
+  if (lean) { const sg = signOf(dir); if (sg != null) o.dir = sg; }
+  return o;
 }
 /* the slot sides of tokenreact (pure.mjs SLOTS) as unit vectors from the token, for the far-side preference */
 export const SLOT_VEC = Object.freeze({ above: [0, -1], aboveR: [0.707, -0.707], aboveL: [-0.707, -0.707], right: [1, 0], left: [-1, 0], below: [0, 1], on: [0, 0] });
@@ -115,4 +130,57 @@ export function clampTravel(c, off, hw, hh, safe) {
   if (!safe || !c) return off;
   const fit = (p, o, lo, hi) => { const a = Math.min(lo, p), b = Math.max(hi, p); return clamp(p + o, a, b) - p; };
   return { x: fit(c.x, off.x, safe.l + hw, safe.r - hw), y: fit(c.y, off.y, safe.t + hh, safe.b - hh) };
+}
+
+/* ---------- DIRECT2: the token reaction's KNOCK (the owner: «Kierunek mocniejszy») ----------
+   Seen on the DIRECT film: the word's arrival from the source side ran inside the slam's contact (62 ms: about 4 display frames), so it read
+   as a jump, and what was left (0.22 overshoot, 0.4 drift over a second) read as standing still. The knock moves the whole reaction group
+   (word and its numbers) the blow's way AFTER the contact, where the eye can follow it:
+     - at the contact the word lands BACK toward the source by `back` caps (on the far side of its token: it bursts out of the struck token),
+     - it is knocked forward in `fly` ms on a hard ease-out (the impulse at once) past its place by `over`,
+     - settles back onto its place in `settle` ms (the hit's bounce) and keeps sliding on to `drift` while it stands,
+     - and is thrown on out on its exit by `outD` in `outMs` (accelerating: knocked away).
+   All in cap heights of the word, scaled by the blow's weight `k` (knockK: a heavier blow knocks farther), on the word's own startAt
+   clock: every seat shows one pose at one instant. Reduced motion: none (the lean and the grow stay). Never forward INTO the struck token
+   (wallTravel: a word that stands between the attacker and its target stops short of it). */
+export const KNOCK = Object.freeze({ back: 1.0, fly: 220, over: 0.3, settle: 180, drift: 0.6, outD: 1.6, outMs: 320 });
+/** the knock's weight for a reaction's magnitude (tokenreact magOf: 0..1.2) -> 0.85..1.25 */
+export function knockK(mag) { return r3(clamp(0.85 + 0.33 * (Number.isFinite(mag) ? mag : 0.5), 0.85, 1.25)); }
+const easeOut3 = (u) => 1 - (1 - u) ** 3, easeIO = (u) => (u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u));
+/** the knock's distance along the blow (cap heights) at t ms since the word's start: < 0 = back toward the source. -> number */
+export function knockS(t, { contact = 0, holdEnd = 0, k = 1 } = {}) {
+  const T = KNOCK, c = Math.max(0, contact), a = c + T.fly, b = a + T.settle, he = Math.max(b, holdEnd), d0 = T.drift * 0.1;
+  if (!Number.isFinite(t) || t <= c) return -T.back * k;
+  if (t < a) return k * (-T.back + (T.back + T.over) * easeOut3((t - c) / T.fly));
+  if (t < b) return k * (T.over + (d0 - T.over) * easeIO((t - a) / T.settle));
+  if (t < he) return k * (d0 + (T.drift - d0) * (1 - (1 - (t - b) / Math.max(1, he - b)) ** 2));
+  return k * (T.drift + T.outD * Math.min(1, (t - he) / T.outMs) ** 2);
+}
+/** where the knocked group stands off its place at t (cap heights, along the blow). -> { x, y } */
+export function knockAt(dir, t, { contact = 0, holdEnd = 0, k = 1, reduced = false } = {}) {
+  if (!dir || reduced || !Number.isFinite(t)) return { x: 0, y: 0 };
+  const s = knockS(t, { contact, holdEnd, k });
+  return { x: r3(s * dir.ux), y: r3(s * dir.uy) };
+}
+/** the farthest the knock takes the group, in cap heights per side of its place */
+export function knockReach(dir, k = 1) {
+  if (!dir) return { l: 0, r: 0, u: 0, d: 0 };
+  const back = KNOCK.back * k, fwd = (KNOCK.drift + KNOCK.outD) * k;
+  const xs = [-back * dir.ux, fwd * dir.ux], ys = [-back * dir.uy, fwd * dir.uy];
+  return { l: r3(Math.max(0, -Math.min(...xs))), r: r3(Math.max(0, Math.max(...xs))), u: r3(Math.max(0, -Math.min(...ys))), d: r3(Math.max(0, Math.max(...ys))) };
+}
+const overlap = (cx, cy, hw, hh, w) => Math.max(0, Math.min(cx + hw, w.x + w.w) - Math.max(cx - hw, w.x)) * Math.max(0, Math.min(cy + hh, w.y + w.h) - Math.max(cy - hh, w.y));
+/** the forward part of a travel offset `off` (px) cut where a box of half sizes (hw, hh) round `c` would cover MORE of `wall` (the struck
+    token's rect, px) than it does at its place; a move back (toward the source) is left alone (the word bursts out of its token).
+    u = the blow's unit way. -> { x, y } (px) */
+export function wallTravel(c, off, hw, hh, wall, u) {
+  if (!c || !wall || !u || !(wall.w > 0) || !(wall.h > 0)) return off;
+  if (off.x * u.ux + off.y * u.uy <= 0) return off;
+  const base = overlap(c.x, c.y, hw, hh, wall) + 0.5;
+  const over = (f) => overlap(c.x + off.x * f, c.y + off.y * f, hw, hh, wall) > base;
+  if (!over(1)) return off;
+  let lo = 0, hi = 1;
+  for (let i = 1; i <= 16; i++) { if (over(i / 16)) { hi = i / 16; break; } lo = i / 16; }
+  for (let i = 0; i < 10; i++) { const m = (lo + hi) / 2; if (over(m)) hi = m; else lo = m; }
+  return { x: off.x * lo, y: off.y * lo };
 }
