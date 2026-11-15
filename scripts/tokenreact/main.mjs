@@ -477,13 +477,14 @@ async function land(ids, ready) {
     /* CROWD2 (orchestrator's after-take KA k1: Omni-Man's "-2" above his token and large on the player's seat, left of it and smaller on the
        GM's; CROWD-11): what only ONE seat has (the GM's desk and other own floating panels, a pin only the GM may open) moved that seat's word
        or number (SAMEPIC tier 3), so a number every seat shows stood elsewhere and smaller on one seat. The owner's standard: every seat sees
-       the same picture. Now nothing seat-only moves a reaction: only what every seat shares (tokens nobody hides, the splash's block, the
-       panels' shared zones, the pins every player may open) and this seat's real view when it really cannot show the shared place (a smaller
-       window, a wider sidebar: fitSame's slide / shrink / refit). A pin only the GM may open is privacy (its place must not show on a
-       player's seat), so it is no obstacle anywhere; a word may stand over it, or under the GM's own desk, on the GM's seat */
+       the same picture. A pin only the GM may open no longer moves anything on any seat: it hides nothing (a word over a pin is read, the
+       pin is under the lettering), and moving the GM's word round it would be the only trace of it. What a seat's own panel really COVERS
+       still moves that seat's word or number (fitSame's slide / shrink / refit, follow's push off the panel), exactly as a smaller window
+       does: a word nobody can read on that seat is no "same picture" either; a panel beside the spot moves nothing (that was the case
+       already). SEAT_ONLY_PINS = true restores the GM's pins as a local guard */
     const pins = view.pins();
     const others = [...tokenRects(new Set(staged.flatMap((it) => it.ids ?? [it.tok.id]))), ...view.blocks(), ...view.zones(), ...pins.shared];
-    const mine = SEAT_ONLY_MOVES ? [...view.ownPanels(), ...pins.local] : [];
+    const mine = [...view.ownPanels(), ...(SEAT_ONLY_PINS ? pins.local : [])];
     const keyOf = (it) => it.key ?? it.tok.id;
     /* CROWD: placed twice when needed: the first pass fits each unit on its own; equal blows then take the smallest of their fits (pure
        sameSize: ADVX 8, a three-target card's equal blows at 1x, 1x and 0.33x) and are placed again at that one size */
@@ -578,9 +579,9 @@ const COVER_SEL = ["#sidebar", "#hotbar", "#players", "#scene-controls", "#contr
 const PANEL_SEL = ["#ich-dock", "#invincible-turn-tray", ...CARD_SEL,
   /* FXLT2 (ADVT2 6): the map's VRAM meter and pins / filter panel, the party cards, the GM's desk (the splash's own list, splash/stage.mjs) */
   ".mm-vram", "#mm-vram", "#mm-filter", ".mm-filter", "#invincible-party li", "#invincible-tactics-desk:not(.igd-collapsed) .igd"];
-/* CROWD2: may a seat-only obstacle (own floating panels, a pin only the GM may open) move a reaction on that seat? No (the same picture on
-   every seat); kept as a switch for the owner's answer to CROWD2-1 */
-const SEAT_ONLY_MOVES = false;
+/* CROWD2: may a pin only the GM may open move a reaction on the GM's seat? No (the same picture on every seat; a pin hides nothing); a switch
+   for the owner's answer to CROWD2-1 */
+const SEAT_ONLY_PINS = false;
 const view = {
   at: 0, cache: null,
   ok: () => !!globalThis.canvas?.stage?.toGlobal && !!canvas.app?.view?.getBoundingClientRect,
@@ -597,7 +598,7 @@ const view = {
     return this.cache;
   },
   panelsCached() { const t = Date.now(); if (!this.pc || t - this.pat > 250) { this.pc = this.panels(); this.pat = t; } return this.pc; },
-  panels() { return [...this.blocks(), ...this.zones(), ...(SEAT_ONLY_MOVES ? this.ownPanels() : [])]; },      // SAMEPIC: the shared zones too, so every seat's follow clamps alike; CROWD2: no seat-only panel
+  panels() { return [...this.blocks(), ...this.zones(), ...this.ownPanels()]; },      // SAMEPIC: the shared zones too, so every seat's follow clamps alike
   /* FIN-CALLERS (FXIT-S2): the roll splash's moments standing now (its own blocks, asked on REACT_HOOK): a word does not go under them.
      SAMEPIC: the splash lays its block out from shared data, so its block counts as shared */
   blocks() {
@@ -705,8 +706,11 @@ function planOf(L, it) {
      word is the same on every seat, the number is the seat's (before, a reader's seat had the number alone where another seat had the word) */
   const nums = it.mode === "silent" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
   /* a blow of a series stands a little bigger each step it has EARNED (CROWD: pure seriesStep, capped by the series' sum) */
-  const grow = 1 + P.STREAK.grow * Math.min(P.STREAK.max, lk.sstep ?? lk.step ?? 0);
-  let cap = word ? P.targetPx(lk.kind, lk.amt, lk.sizeWord ?? lk.word, tokPx, vh(), vw(), user * it.scale * grow) : 0;
+  /* CROWD2: half of the growth for the rhythm (every blow of a series a little bigger), half for the rungs the damage earned (pure seriesGrow) */
+  const grow = P.seriesGrow(lk.step ?? 0, lk.sstep ?? lk.step ?? 0);
+  /* CROWD2: the growth applies to the size the series' first word stood at (after the legible floor, which swallowed a small growth: a -1's
+     word stands at the floor), never over the cap */
+  let cap = word ? Math.min(vh() * P.SIZE_RULE.capVh, P.targetPx(lk.kind, lk.amt, lk.sizeWord ?? lk.word, tokPx, vh(), vw(), user * it.scale) * grow) : 0;
   /* CROWD (ADVX 17): a cluster's word is never under the crowd floor (far out the crowd reads as one event, not a heap of specks) */
   if (word && it.cluster) cap = Math.min(vh() * P.SIZE_RULE.capVh, Math.max(cap, P.crowdFloor(vh()) * user));
   const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);

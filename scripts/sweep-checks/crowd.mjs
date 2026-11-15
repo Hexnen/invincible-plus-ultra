@@ -71,8 +71,10 @@ const hitAll = (ids, to = 6, dt = 5) => ids.map((id, i) => ({ t: i * dt, id, to 
   }
   const toDown = (() => { let cum = { n: 0, a: 0 }; const out = [-2, -2, -2].map((d, s) => { const amt = 2 / 8; cum = { n: cum.n + 2, a: cum.a + amt }; return P.impactOf({ kind: "hit", amt, known: true }, s, { cum }); }); out.push(P.impactOf({ kind: "down", amt: 1 / 8 }, 3, { cum: { n: 7, a: 7 / 8 } })); return out; })();
   ck(`P20 a paced series -2 -2 -2 then the fall builds to a real peak (${toDown.map((x) => `${x.kind} ${x.magnitude}`)})`, toDown[2].rung > toDown[0].rung && toDown[3].kind === "ko" && toDown[3].magnitude > P.IMPACT_TOP);
-  ck("P21 the sound of a series is one tier over what it earned: five -1 never reach the lead-in (step 2) before earning a rung",
-    typeof P.textStep === "function" && [0, 1, 2, 3, 4].map((s) => P.textStep(s, 0)).every((x) => x <= 1) && P.textStep(4, 1) === 2 && P.textStep(0, 0) === 0);
+  ck("P21 the sound of a series lengthens blow by blow but at most two tiers over what it earned: five -1 never reach its loudest form",
+    typeof P.textStep === "function" && [0, 1, 2, 3, 4].map((s) => P.textStep(s, 0)).join() === "0,1,2,2,2" && P.textStep(4, 1) === 3 && P.textStep(0, 0) === 0);
+  ck("P22 a series' word grows a little every blow (the rhythm) and more for the rungs its damage earned; five -1 end under a third bigger",
+    typeof P.seriesGrow === "function" && [0, 1, 2, 3, 4].map((s) => P.seriesGrow(s, 0)).every((g, i, a) => !i || g > a[i - 1]) && P.seriesGrow(4, 1) < 1.4 && P.seriesGrow(4, 4) > P.seriesGrow(4, 1));
   ck("P16 going down is the knock-out whatever came before", P.impactOf({ kind: "down", amt: 0.3 }, 4, { cum: { n: 1, a: 0.1 } }).kind === "ko");
   ck("P17 a pin every player may open is shared; a GM's pin is not; a pin with no entry a player placed is shared",
     P.pinPublic({ ownership: { default: 2 }, hasEntry: true }) && !P.pinPublic({ ownership: { default: 0 }, hasEntry: true }) && P.pinPublic({ hasEntry: false, authorGM: false }) && !P.pinPublic({ hasEntry: false, authorGM: true }));
@@ -92,7 +94,7 @@ const scen = {
   /* CROWD2 (KA k1): three heroes (every seat reads their numbers) hit with three enemies; a pin only the GM may open just above the first
      hero and the GM's own desk panel beside it (seat-only things) */
   heroes: { toks: SIX.map((t, i) => ({ ...t, hero: i < 3 })), notes: [{ id: "NG", x: 550, y: 205, size: 40, pub: false }], hits: hitAll(SIX.map((t) => t.id)),
-    gmPanels: [{ sel: "#invincible-tactics-desk:not(.igd-collapsed) .igd", x: 300, y: 120, w: 190, h: 120 }] }
+    gmPanels: [{ sel: "#invincible-tactics-desk:not(.igd-collapsed) .igd", x: 260, y: 120, w: 190, h: 120 }] }
 };
 const runs = await Promise.all(Object.entries(scen).flatMap(([k, s]) => [GM, P1].map((st) => seat({ ...s, ...st, panels: st.gm ? s.gmPanels : s.panels, name: `${k}/${st.name}` }).then((r) => [k, st.name, r]))));
 const S = {};
@@ -142,7 +144,7 @@ if (ok("rapid")) {
      sound gets no lead-in before the series has earned a rung */
   const eff = im.map((x) => Math.round((x.magnitude + 0.15 * x.series) * 100) / 100);
   ck(`C24 five 1-point blows: the 2nd and 3rd draw no black-and-white scene (drawn ${eff})`, eff.length === 5 && eff[1] < STEP_AT[1] && eff[2] < STEP_AT[1]);
-  ck(`C25 five 1-point blows: the words say a scratch, no lead-in before half the track is gone (${w.map((p) => p.text)})`, w.length === 5 && w.slice(0, 4).every((p) => !p.text.includes("-")));
+  ck(`C25 five 1-point blows: no word reaches the series' loudest form "!!" (${w.map((p) => p.text)})`, w.length === 5 && w.every((p) => !p.text.includes("!!")));
 }
 if (ok("paced")) {
   const im = S.paced.gm.impacts;
@@ -160,8 +162,8 @@ if (ok("hidden")) {
   ck("C23 it never joins the crowd's word: the crowd's word is the same on both seats", (() => { const c = (s) => words(s).filter((p) => p.tok !== "HD"); return sig(c(gm)) === sig(c(p1)) && c(gm).length === 1; })(), `GM ${sig(words(gm))}\n   P1 ${sig(words(p1))}`);
 }
 if (ok("heroes")) {
-  /* CROWD2: a number every seat shows (a hero's) stands at the same place and size on every seat; nothing only one seat has (a GM-only pin,
-     the GM's desk) moves it, nor the word of its group */
+  /* CROWD2: a number every seat shows (a hero's) stands at the same place and size on every seat; a pin only the GM may open does not move it
+     (nor the word of its group), nor the GM's desk beside the spot (a panel that COVERS the spot still moves it there: samepic T3) */
   const { gm, p1 } = S.heroes, shown = (s) => nums(s).filter((p) => ["OM", "EV", "KD"].includes(p.tok));
   ck(`C26 the heroes' numbers stand alike on both seats\n   GM ${sig(shown(gm))}\n   P1 ${sig(shown(p1))}`, shown(gm).length === 3 && sig(shown(gm)) === sig(shown(p1)));
   ck(`C27 the crowd words stand alike on both seats\n   GM ${sig(words(gm))}\n   P1 ${sig(words(p1))}`, sig(words(gm)) === sig(words(p1)));

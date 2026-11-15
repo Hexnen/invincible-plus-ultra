@@ -260,16 +260,13 @@ for (const target of [{ x: 1000, y: 300 }, { x: 1100, y: 330 }]) {
   const w = wordOf(a), top = a.tok.y + w.dy - w.cap * 0.8;
   ok(top >= 48, `T2 the word stays below the GM's scene bar (its top at about ${Math.round(top)} px)`);
 }
-/* T3 the GM's desk right where the shared word stands. SAMEPIC moved the GM's word off it (tier 3: his panel would hide it); CROWD2 (the
-   orchestrator's after-take KA k1, the owner's standard "every seat sees the same picture at the same moment"; a number every seat shows
-   stood elsewhere and smaller on the GM's seat) turned that round: nothing only one seat has moves a reaction, the GM's word stays where
-   every seat has it (the GM may fold his desk). Question CROWD2-1 asks the owner; pure flag SEAT_ONLY_MOVES in tokenreact/main.mjs */
+/* T3 the GM's desk right where the shared word stands: only the GM moves it (his panel would hide it) */
 {
   const base = { center: { x: 800, y: 450 }, target: { x: 750, y: 400 }, to: 3 };
   const b = tr({ ...base, name: "p1", side: 300 }), w = wordOf(b);
   const cx = b.tok.x + w.dx, cy = b.tok.y + w.dy;
   const a = tr({ ...base, name: "gm", gm: true, side: 40, desk: [cx - 60, cy - 30, 120, 60] });
-  ok(sigT(a) === sigT(b), `T3 the desk over the shared spot does not move the GM's word: one picture (GM ${sigT(a)}, P1 ${sigT(b)})`);
+  ok(sigT(a) !== sigT(b), `T3 the desk over the shared spot moves the GM's word (GM ${sigT(a)}, P1 ${sigT(b)})`);
   const wa = wordOf(a);
   ok(!!wa && Math.abs(wa.cap - w.cap) <= Math.max(1, 0.2 * w.cap), `T3 and keeps its size about the same (${wa?.cap} vs ${w.cap})`);
 }

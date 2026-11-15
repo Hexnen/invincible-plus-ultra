@@ -620,9 +620,13 @@ export function seriesRung(pub, step = 0, cum = null) {
   const lift = SERIES_LIFT.filter((t) => before >= t - 1e-9).length;
   return Math.max(own, Math.min(want, own + lift, rungOf(sum)));
 }
-/** the word's step in its vocabulary series (the sound's length and lead-in): the rhythm of a series lengthens the sound by one tier at most
-    over what the series earned (sstep), so five scratches say THWAP!, THWAAP!, THWAAP! and not KA-THWAAAAP!! (CROWD2) */
-export const textStep = (step, sstep) => Math.max(0, Math.min(Math.floor(Number(step) || 0), Math.floor(Number(sstep) || 0) + 1));
+/** the word's step in its vocabulary series (the sound's length and lead-in): the rhythm lengthens the sound blow by blow, but at most
+    TEXT_OVER tiers over what the series earned (sstep), so five scratches never reach the series' loudest form (KA-THWAAAAP!!) (CROWD2) */
+export const TEXT_OVER = 2;
+export const textStep = (step, sstep) => Math.max(0, Math.min(Math.floor(Number(step) || 0), Math.floor(Number(sstep) || 0) + TEXT_OVER));
+/** how much bigger a blow of a series stands (CROWD2): half of STREAK.grow per blow for the rhythm, half per rung the damage earned (sstep);
+    five -1 on 8 points: 1, 1.07, 1.14, 1.21, 1.35 (CROWD's 1, 1, 1, 1.14, 1.14 never grew; before it 1 .. 1.56 for five scratches) */
+export const seriesGrow = (step, sstep) => 1 + STREAK.grow * 0.5 * (Math.min(STREAK.max, Math.max(0, Number(step) || 0)) + Math.min(STREAK.max, Math.max(0, Number(sstep) || 0)));
 /** the step a series has really earned (0..STREAK.max): rungs added over the blow's own one, for ladder kinds; others keep their step */
 export function seriesStep(pub, step = 0, cum = null) {
   const s = Math.max(0, Math.min(STREAK.max, Math.floor(Number(step) || 0)));
