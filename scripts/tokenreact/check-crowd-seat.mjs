@@ -22,6 +22,7 @@ globalThis.CONST = { CANVAS_PERFORMANCE_MODES: { LOW: 0 } };
 globalThis.innerWidth = W; globalThis.innerHeight = H;
 const el = (x, y, w, h) => ({ getBoundingClientRect: () => ({ left: x, top: y, width: w, height: h, right: x + w, bottom: y + h }) });
 const UI = { "#sidebar": [el(W - SIDE, 0, SIDE, H)], "#hotbar": [el(W * 0.3, H - 66, 560, 58)], "#scene-controls": [el(8, 50, 46, H - 260)] };
+for (const p of cfg.panels ?? []) (UI[p.sel] ??= []).push(el(p.x, p.y, p.w, p.h));      // CROWD2: a seat's own floating panels (the GM's desk)
 globalThis.document = { querySelector: (sel) => UI[sel]?.[0] ?? null, querySelectorAll: (sel) => UI[sel] ?? [] };
 globalThis.getComputedStyle = () => ({ visibility: "visible" });
 const z = cfg.zoom ?? 1, C0 = cfg.center ?? { x: 800, y: 450 };
@@ -33,7 +34,8 @@ globalThis.canvas = { ready: true, scene, grid: { size: 100 }, performance: { mo
   tokens: { placeables: toks, get: (id) => toks.find((t) => t.id === id) }, notes: { placeables: notes } };
 let stamp = 1000;
 for (const t of cfg.toks ?? []) {
-  const actor = { id: `A${t.id}`, type: "npc", hasPlayerOwner: false, system: { derived: { health: { value: t.h ?? 8, max: t.hm ?? 8 }, resolve: { value: 6, max: 8 } } },
+  /* CROWD2: hero = a player's hero (every seat reads its numbers) */
+  const actor = { id: `A${t.id}`, type: t.hero ? "superhero" : "npc", hasPlayerOwner: !!t.hero, system: { derived: { health: { value: t.h ?? 8, max: t.hm ?? 8 }, resolve: { value: 6, max: 8 } } },
     testUserPermission: () => !!cfg.gm, _stats: { modifiedTime: stamp } };
   const vis = cfg.gm || (!t.hidden && !t.unseen);
   const tok = { id: t.id, name: t.id, scene, isVisible: vis, visible: vis, document: { id: t.id, hidden: !!t.hidden }, actor, x: t.x, y: t.y, w: 100, h: 100, destroyed: false };

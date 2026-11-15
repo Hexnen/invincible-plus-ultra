@@ -88,9 +88,13 @@ const scen = {
   rapid: { toks: [{ id: "MB", x: 700, y: 400 }], hits: [7, 6, 5, 4, 3].map((to, i) => ({ t: i * 450, id: "MB", to, snap: 380 })), wait: 1200 },
   paced: { toks: [{ id: "MB", x: 700, y: 400 }], hits: [6, 3, 0].map((to, i) => ({ t: i * 1500, id: "MB", to, snap: 600 })), wait: 1200 },
   far: { zoom: 0.14, center: { x: 600, y: 400 }, toks: SIX, hits: hitAll(SIX.map((t) => t.id)) },
-  hidden: { toks: [...SIX.slice(0, 3), { id: "HD", x: 800, y: 250, hidden: true }], hits: hitAll(["OM", "EV", "KD", "HD"]) }
+  hidden: { toks: [...SIX.slice(0, 3), { id: "HD", x: 800, y: 250, hidden: true }], hits: hitAll(["OM", "EV", "KD", "HD"]) },
+  /* CROWD2 (KA k1): three heroes (every seat reads their numbers) hit with three enemies; a pin only the GM may open just above the first
+     hero and the GM's own desk panel beside it (seat-only things) */
+  heroes: { toks: SIX.map((t, i) => ({ ...t, hero: i < 3 })), notes: [{ id: "NG", x: 550, y: 205, size: 40, pub: false }], hits: hitAll(SIX.map((t) => t.id)),
+    gmPanels: [{ sel: "#invincible-tactics-desk:not(.igd-collapsed) .igd", x: 300, y: 120, w: 190, h: 120 }] }
 };
-const runs = await Promise.all(Object.entries(scen).flatMap(([k, s]) => [GM, P1].map((st) => seat({ ...s, ...st, name: `${k}/${st.name}` }).then((r) => [k, st.name, r]))));
+const runs = await Promise.all(Object.entries(scen).flatMap(([k, s]) => [GM, P1].map((st) => seat({ ...s, ...st, panels: st.gm ? s.gmPanels : s.panels, name: `${k}/${st.name}` }).then((r) => [k, st.name, r]))));
 const S = {};
 for (const [k, who, r] of runs) (S[k] ??= {})[who] = r;
 for (const [k, v] of Object.entries(S)) ck(`R0 ${k}: both seats ran`, !!v.gm && !!v.p1);
@@ -154,6 +158,13 @@ if (ok("hidden")) {
   const { gm, p1 } = S.hidden;
   ck("C22 a token the GM hid is lettered on no player's seat", !p1.plays.some((p) => p.tok === "HD"));
   ck("C23 it never joins the crowd's word: the crowd's word is the same on both seats", (() => { const c = (s) => words(s).filter((p) => p.tok !== "HD"); return sig(c(gm)) === sig(c(p1)) && c(gm).length === 1; })(), `GM ${sig(words(gm))}\n   P1 ${sig(words(p1))}`);
+}
+if (ok("heroes")) {
+  /* CROWD2: a number every seat shows (a hero's) stands at the same place and size on every seat; nothing only one seat has (a GM-only pin,
+     the GM's desk) moves it, nor the word of its group */
+  const { gm, p1 } = S.heroes, shown = (s) => nums(s).filter((p) => ["OM", "EV", "KD"].includes(p.tok));
+  ck(`C26 the heroes' numbers stand alike on both seats\n   GM ${sig(shown(gm))}\n   P1 ${sig(shown(p1))}`, shown(gm).length === 3 && sig(shown(gm)) === sig(shown(p1)));
+  ck(`C27 the crowd words stand alike on both seats\n   GM ${sig(words(gm))}\n   P1 ${sig(words(p1))}`, sig(words(gm)) === sig(words(p1)));
 }
 console.log(`sweep crowd: ${n} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);
