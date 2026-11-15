@@ -617,9 +617,10 @@ function cleanPlace(it, fit, o, kf, ctx) {
     return { slot, k, c0: p0, c, r: rr, ...Lay.covers(rr, obs, own, sf) };
   };
   /* a crowd's word may stand by one of its members (layout crowdSpot); its place is then kept as an offset from the crowd's box slot */
+  const member = !!it.inCluster && it.mode === "number";      // a crowd member's number stays right by its token (else it folds)
   const mem = it.cluster ? it.members.filter((m) => m.tok && !m.tok.destroyed).map((m) => view.tokRect(m.tok)) : [];
-  const spot = (sf, panels, obs, first, sv = std) => {
-    const a = { tok: tr, own, g, eb, reach, sweep, ks, minK, std: sv, safe: sf, panels, obs, tokPx: plan.tokPx, first };
+  const spot = (sf, panels, obs, first, sv = std, far = false) => {
+    const a = { tok: tr, own, g, eb, reach, sweep, ks, minK, std: sv, safe: sf, panels, obs, tokPx: plan.tokPx, first, ...(member && !far ? { outs: Lay.CLEAN.numOuts } : {}) };
     const q = it.cluster ? Lay.crowdSpot(a, mem) : Lay.cleanSpot(a);
     return { ...q, r: Lay.standAt(q.c, g, q.k) };
   };
@@ -642,9 +643,11 @@ function cleanPlace(it, fit, o, kf, ctx) {
   /* lettering only this seat shows need not stay inside the shared standard view (nobody else draws it): it may use this seat's whole view
      (plan.ownView: follow() keeps it there) */
   const q = spot(safe, panelsL, obsL, { slot: S.slot, k: S.k });
+  /* (a GM-only crowd number whose shared place lands on what only the GM sees: further out on this seat before it would cover it) */
   const qo = !q.clean && priv ? spot(safe, panelsL, obsL, null, safe) : null;
-  if (q.clean || qo?.clean) {
-    const w = q.clean ? q : qo;
+  const qf = !q.clean && !qo?.clean && priv && member ? spot(safe, panelsL, obsL, null, safe, true) : null;
+  if (q.clean || qo?.clean || qf?.clean) {
+    const w = q.clean ? q : qo?.clean ? qo : qf;
     ctx.placedL.push({ ...w.r, kind: "word" });
     return { slot: w.slot, k: w.k, kS: S.k, nudge: nudgeOf(w), same: false, moved: "clean", clean: true, rectS, ownView: !q.clean };
   }
@@ -699,7 +702,9 @@ const COVER_SEL = ["#sidebar", "#hotbar", "#players", "#scene-controls", "#contr
    token's face, so the word takes another side (seen in the FXLT recording: a fall's "BĘC!" ran under the challenge cards) */
 const PANEL_SEL = ["#ich-dock", "#invincible-turn-tray", ...CARD_SEL,
   /* FXLT2 (ADVT2 6): the map's VRAM meter and pins / filter panel, the party cards, the GM's desk (the splash's own list, splash/stage.mjs) */
-  ".mm-vram", "#mm-vram", "#mm-filter", ".mm-filter", "#invincible-party li", "#invincible-tactics-desk:not(.igd-collapsed) .igd"];
+  ".mm-vram", "#mm-vram", "#mm-filter", ".mm-filter", "#invincible-party li", "#invincible-tactics-desk:not(.igd-collapsed) .igd",
+  /* CROWDKO (live take L: a crowd's word stood on the party panel's title on the 1366 x 768 seat): the party panel's title and button */
+  "#invincible-party .ipt-handle", "#invincible-party .ipb-party-btn"];
 /* CROWD2: may a pin only the GM may open move a reaction on the GM's seat? No (the same picture on every seat; a pin hides nothing); a switch
    for the owner's answer to CROWD2-1 */
 const SEAT_ONLY_PINS = false;

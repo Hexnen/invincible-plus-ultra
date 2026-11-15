@@ -17,7 +17,10 @@ export const CLEAN = {
   minCap: 14,                                              // never a word or number under this cap height (px of the reference view)
   slides: [0, 0.3, -0.3, 0.6, -0.6, 0.95, -0.95],          // along a side, in shares of (anchor + box) / 2
   outs: [0, 0.45, 0.9, 1.4, 2, 2.8],                       // further out from a side, in token sizes
+  numOuts: [0, 0.25, 0.5],                                 // a crowd member's number: right by its token or folded (live take L: numbers
+                                                           // 1.5 tokens off read as nobody's)
   tokTol: 0.04,                                            // a token's ring may graze the standing ink by this share of its area
+  panelPad: 8,                                             // px kept from a panel (a seat's own copy of a shared panel stands a few px off)
   slotK: 0.04, slideK: 0.06, outK: 0.6, shrinkK: 1.6, passK: 0.35,     // preference, in shares of the group's area
   memberK: 0.25                                            // a crowd's word placed by one member rather than by the crowd's box
 };
@@ -47,7 +50,7 @@ export function covers(r, obs, own = null, view = null, quick = false) {
     if (quick && !clean) return { clean, cost };      // (only whether it is clean is asked)
     if (!q || !(q.w > 0) || !(q.h > 0)) continue;
     if (q.kind === "tok") { const a = inter(r, ringRect(q)); if (a > CLEAN.tokTol * A) { clean = false; cost += a * 3.5; } }
-    else { const a = inter(r, q); if (a > 1) { clean = false; cost += a * (q.kind === "pin" ? 3 : q.kind === "word" ? 5 : 8); } }
+    else { const d = q.kind === "panel" ? CLEAN.panelPad : 0, a = inter(r, d ? { x: q.x - d, y: q.y - d, w: q.w + 2 * d, h: q.h + 2 * d } : q); if (a > 1) { clean = false; cost += a * (q.kind === "pin" ? 3 : q.kind === "word" ? 5 : 8); } }
   }
   if (view) { const out = AREA(r) - inter(r, { x: view.l, y: view.t, w: view.r - view.l, h: view.b - view.t }); if (out > 1) { clean = false; cost += out * 6; } }
   return { clean, cost };
@@ -59,13 +62,13 @@ export function covers(r, obs, own = null, view = null, quick = false) {
       relative to the group centre at k = 1 ({ dx, dy, w, h }, or null), ks: sizes to try, minK: the smallest allowed,
       std, safe: the views (std = the shared one), panels: what follow() pushes off, obs: what the standing ink must not cover,
       sweep: tokens an entrance should rather not sweep over (soft), tokPx, first: a place to judge first ({ slot, k }: the side search's),
-      bias: added to every place's score (a crowd's word tried beside one member: see crowdSpot) }
+      bias: added to every place's score (a crowd's word tried beside one member: see crowdSpot), outs: how far out (CLEAN.outs) }
     -> { slot, k, c0 (centre before follow's pushes), c (where it stands), clean, cost, score } */
 export function cleanSpot(a0) {
   const g = a0.g, tp = a0.tokPx || Math.max(a0.tok.w, a0.tok.h) || 100;
   const ks = (a0.ks ?? CLEAN.ks).filter((k) => k >= (a0.minK ?? 0) - 1e-9);
   /* only what lies within reach of any place tried counts (the same answer, a few times faster on a crowded board) */
-  const R = CLEAN.outs[CLEAN.outs.length - 1] * tp + Math.max(g.w, a0.eb?.w ?? 0) + Math.max(g.h, a0.eb?.h ?? 0) + (a0.reach ? Math.max(a0.reach.w, a0.reach.h) : 0);
+  const R = Math.max(...(a0.outs ?? CLEAN.outs)) * tp + Math.max(g.w, a0.eb?.w ?? 0) + Math.max(g.h, a0.eb?.h ?? 0) + (a0.reach ? Math.max(a0.reach.w, a0.reach.h) : 0);
   const zone = { x: a0.tok.x - R, y: a0.tok.y - R, w: a0.tok.w + 2 * R, h: a0.tok.h + 2 * R };
   const near = onView(a0.tok, a0.std) && onView(a0.tok, a0.safe);      // (a token off the view letters at the view's edge: everything counts)
   const a = near ? { ...a0, obs: (a0.obs ?? []).filter((q) => q && inter(q, zone) > 0), sweep: a0.sweep?.filter((q) => q && inter(q, zone) > 0) } : a0;
@@ -99,7 +102,7 @@ export function cleanSpot(a0) {
       const horiz = slot === "left" || slot === "right";
       const nx = slot === "right" ? 1 : slot === "left" ? -1 : 0, ny = slot === "below" ? 1 : horiz ? 0 : -1;
       const span = horiz ? (a.tok.h + box.h) / 2 : (a.tok.w + box.w) / 2;
-      for (const o of CLEAN.outs) for (const s of CLEAN.slides) {
+      for (const o of a.outs ?? CLEAN.outs) for (const s of CLEAN.slides) {
         const c0 = { x: p.x + nx * o * tp + (horiz ? 0 : s * span), y: p.y + ny * o * tp + (horiz ? s * span : 0) };
         judge(slot, k, c0, i * CLEAN.slotK + Math.abs(s) * CLEAN.slideK + o * CLEAN.outK);
       }

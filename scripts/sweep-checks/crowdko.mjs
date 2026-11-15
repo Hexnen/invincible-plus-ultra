@@ -106,7 +106,7 @@ function clean(k, name) {
   ck(`${k}/${name}: all of it whole in the view`, !out.length, out.join(" "));
 }
 for (const k of Object.keys(SCEN)) for (const st of SEATS) clean(k, st.name);
-const W = (k, nm) => (R[k][nm].r?.plays ?? []).filter((p) => p.box && !p.num).map((p) => p.text);
+const W = (k, nm) => (R[k][nm].r?.plays ?? []).filter((p) => p.box && !p.num && !/×\d+$/.test(p.text)).map((p) => p.text);      // (a crowd's tag "-2×9" is a number)
 const Nn = (k, nm) => (R[k][nm].r?.plays ?? []).filter((p) => p.box && p.num);
 ck("D3a eight knock-downs together: ONE KO word on every seat, the same word", W("ko8", "gm").length === 1 && W("ko8", "p1").length === 1 && W("ko8", "gm")[0] === W("ko8", "p1")[0], `${W("ko8", "gm")} | ${W("ko8", "p1")}`);
 ck("D3b ... and one impact frame per seat", R.ko8.gm.r?.impacts.length === 1 && R.ko8.p1.r?.impacts.length === 1);

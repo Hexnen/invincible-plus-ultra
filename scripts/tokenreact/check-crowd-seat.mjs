@@ -55,7 +55,7 @@ const ctxOf = (o) => ({ space: "world", magnitude: o.magnitude, scale: o.scale ?
 const pxOf = (o) => sizeFor(ctxOf(o)).px;
 /* the drawn box of a word in caps: Bungee-like digits for numbers, the invincible hand's narrow letters for words (a stand-in, the same on
    every seat) */
-const boxOf = (text) => { const n = [...String(text)].length; return /^[+-]\d+$/.test(text) ? { w: 0.25 + 0.8 * n, h: 1.2 } : { w: 0.62 * n + 0.2, h: 1.35 }; };
+const boxOf = (text) => { const n = [...String(text)].length; return /^[+-]\d+(×\d+)?$/.test(text) ? { w: 0.25 + 0.8 * n, h: 1.2 } : { w: 0.62 * n + 0.2, h: 1.35 }; };
 const plays = [], impacts = [];
 const t00 = performance.now();
 const fake = { version: "test", limits: { screen: 16, world: 48 }, prefs: { scale: 1 }, ready: async () => true, count: () => 0,
@@ -79,7 +79,7 @@ Hooks.callAll("canvasReady");
 const snap = (r) => {
   const a = typeof r.o.at === "function" ? r.o.at() : r.o.at;
   const g = a && Number.isFinite(a.x) ? stage.toGlobal(a) : null, cap = pxOf(r.o), b = boxOf(r.text);
-  return { text: r.text, num: /^[+-]\d+$/.test(r.text), tok: r.o.token?.id ?? null, t: r.t, cap: Math.round(cap * 10) / 10,
+  return { text: r.text, num: /^[+-]\d+(×\d+)?$/.test(r.text), tok: r.o.token?.id ?? null, t: r.t, cap: Math.round(cap * 10) / 10,
     box: g ? { x: Math.round(g.x - cap * b.w / 2), y: Math.round(g.y - cap * b.h / 2), w: Math.round(cap * b.w), h: Math.round(cap * b.h) } : null };
 };
 const frames = [];

@@ -75,6 +75,7 @@ const fake = { version: "test", limits: { screen: 16, world: 48 }, prefs: { scal
     rec.h = h; plays.push(rec); return h;
   } };
 { const { createVocab } = await import("../letters/words.mjs"); fake.vocab = createVocab(); fake.word = fake.vocab.word; }
+if (cfg.debug) globalThis.__samepicFit = [];      // the layout's own record of every placing (CROWDKO debugging)
 globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return this._engine; } };
 const M = await import("./main.mjs");
 M.start({ init: true, ready: true });
@@ -95,5 +96,5 @@ const out = plays.map((r) => {
   const g = a && Number.isFinite(a.x) ? stage.toGlobal(a) : null;
   return { text: r.text, num: /^[+-]\d+$/.test(r.text), dx: g ? Math.round((g.x - tg.x) * 10) / 10 : null, dy: g ? Math.round((g.y - tg.y) * 10) / 10 : null, cap: Math.round(pxOf(r.o) * 10) / 10 };
 });
-console.log(JSON.stringify({ seat: cfg.name ?? "?", out, tok: { x: tg.x, y: tg.y, w: 100 * z }, W, H }));
+console.log(JSON.stringify({ seat: cfg.name ?? "?", out, tok: { x: tg.x, y: tg.y, w: 100 * z }, W, H, ...(cfg.debug ? { fit: globalThis.__samepicFit } : {}) }));
 process.exit(0);
