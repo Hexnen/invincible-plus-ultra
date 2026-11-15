@@ -758,7 +758,7 @@ function compose(ctl, items, extra = {}) {
     out = fx.out; same = fx.moved;
   }
   out.k = k; out.frame = frame; out.same = same; out.fit = fit;
-  if (!ctl.dry) logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, ...(same !== 'none' && why ? { why } : {}), tok: frame.token ? [Math.round(frame.token.l), Math.round(frame.token.t)] : null, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
+  if (!ctl.dry) logSame({ id: ctl.momentId ?? ctl.seed, layer: LAYER, shared: !!ctl.shared, moved: same, ...(same !== 'none' && why ? { why } : {}), star: ctl.star ? { id: ctl.star.tok?.id ?? null, step: ctl.star.step } : null, tok: frame.token ? [Math.round(frame.token.l), Math.round(frame.token.t)] : null, rect: out.rect ? { l: Math.round(out.rect.l), t: Math.round(out.rect.t), r: Math.round(out.rect.r), b: Math.round(out.rect.b) } : null });
   return out;
 }
 /* CRITLATE (live: a critical's layout took 0.4-0.55 s in ONE task, run on the moment's own instant, so its word was called 52-479 ms after

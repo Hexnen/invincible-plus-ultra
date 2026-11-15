@@ -637,13 +637,17 @@ export const TOKEN_W = 50, TARGET_W = 50, OTHER_W = 10;
 /* CAPSTAR: the impact's cut-in (engine 1.9.23 IMPACT5) draws the STAR of the blow (the struck token, else the roller the blow comes from)
    enlarged at its own place for the whole cut: up to CUT.want of the view's short side (at least CUT.min x its token, never past CUT.max), as
    far as the strength's CU_TOP goes. A block laid out round the token's plain box put its captions across that enlarged figure (live, the GM's
-   critical: "THE ODDS ARE SHATTERED!" over the starred target). The star's cut-in reach is an obstacle of its own (STAR_W per px2: more than a
-   bystander, less than the token itself; never counted as a token's cover, coverMax), so the lettering frames the star instead of covering it.
+   critical: "THE ODDS ARE SHATTERED!" over the starred target). The star's cut-in reach is an obstacle of its own (STAR_W per px2: twice the
+   token itself, on top of the target's own weight where they overlap: during the cut it IS the moment; never counted as a token's cover,
+   coverMax), so the lettering frames the star instead of covering it. Live (the GM's fight critical on a crowded board, no clean place,
+   the least-covering arrangement): at 20 and at 50 the captions still lay across the star (a caption touching its own word's stand weighed
+   as much); at 100 the same board puts them under the word, off every figure, the small '6 SIXES' tucked against the word's end
+   (provisional CAPSTAR-1).
    Mirrored from the engine (scripts/letters/impact/draw.mjs CUT_WANT, plan.mjs LIMITS.cutMax / CU_TOP; pinned by sweep-checks/capstar.mjs);
    the running engine's LIMITS.cutMax wins when it gives one. `reach` = the extra the contact's pop and the drift along the blow add (the pop
    multiplies by up to 1 + 0.45 (z - 1) inside the cap, the drift moves the star up to 0.22 of its size on the release while it shrinks back). */
 export const CUT = Object.freeze({ want: 0.34, max: 0.44, min: 1.3, top: Object.freeze([0.5, 0.6, 0.8, 1, 1, 1]), reach: 1.12 });
-export const STAR_W = 20;
+export const STAR_W = 100;
 /* the star's cut-in box: c = its centre, size = its token's drawn size (the larger side), u = the view's short side (all in one unit),
    step = the impact's strength 0..5 (the engine's stepOf), max = the engine's LIMITS.cutMax when known -> { l, t, r, b, x, y } */
 export function starBox(c, size, u, step, max = CUT.max) {

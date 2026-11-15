@@ -11,12 +11,14 @@
 //   C4 no lettering on the star's cut-in on any seat where a clean place exists: the letters cover at most STAR_OK of the star box, and
 //      over all cases the covered share drops against the same seats without the star (the CALLER5 picture: before vs after);
 //   C5 the same picture: the splashsame rules S1 (relative sizes), S2 (arrangement), S4 (ranks), S7 (one instant) hold with the star on;
-//   C6 a star obstacle is never a token's cover (coverMax ignores it).
+//   C6 a star obstacle is never a token's cover (coverMax ignores it);
+//   C7 the live fight's geometry (no clean place on the GM's seat): even its least-covering block keeps off the star;
+//   C8 the live fight's captured seatPlace inputs (GM seat, three runs) keep off the star.
 // Fails on tactics-integrated-152 (C3, C4: no star); passes after.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { seatPlay, GS } from "./lib/splash-seat.mjs";
+import { seatPlay, GS, BOARDS as BOARDS_X, SEATS as SEAT_X } from "./lib/splash-seat.mjs";
 import * as LP from "../splash/letter-plan.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -104,6 +106,30 @@ for (const k of Object.keys(R)) {
   if (ca > cb + 0.02) worse.push(`${k} ${(cb * 100).toFixed(1)} -> ${(ca * 100).toFixed(1)}`);
 }
 ok(sumA < sumB, `C4 over all cases the star is covered less (${sumA.toFixed(2)} vs ${sumB.toFixed(2)} before)`);
+/* C7: the live fight (lane 5, 2026-11-15 take a1: Omni-Man at 1750,1400 strikes the Soldier two squares to his right on The Warehouse, the
+   whole cast on the board; the views where the tactics left them, GM 1600 x 900 at 0.6, the player 1366 x 768 at 0.45). No clean place on
+   the GM's seat, so its block is the least-covering one: at STAR_W 20 its captions still lay across the star (20 % of it, live: "THE ODDS
+   ARE SHATTERED!" over the Soldier); the star must weigh more than the token itself (100; 50 still covered it on the live inputs) */
+{
+  BOARDS_X.fight = { at: [1750, 1400], nb: [[1, 0], [4, 0], [1, -2], [2, -3], [4, -1, "hidden"], [6, 2], [8, 2], [8, 3], [-3, -1]], pin: null, tgt: [2, 0] };
+  const live = [["gm", 0.6, { x: 2.2, y: 0.75 }], ["p1", 0.45, { x: 0.3, y: 0.86 }]];
+  for (const [s, zoom, off] of live) {
+    const r = await seatPlay({ seat: { ...SEAT_X[s], name: `${s}@${zoom}`, zoom }, layer: "screen", bd: "fight", outcome: "critical", cut: true, off });
+    ok(r.drawn.length > 0 && coverOf(r) <= STAR_OK, `C7 the live fight critical on ${s} at ${zoom}: the letters cover ${(coverOf(r) * 100).toFixed(1)} % of the star (${r.same?.moved})`);
+  }
+}
+/* C8: the same fight's REAL inputs to LP.seatPlace on the GM's seat (lane 5, three runs of the fight critical: the table's block and the
+   seat's frame as stage.mjs built them, resting dice, panels and all; lib/capstar-live-fight.json). Two of the three laid the captions across
+   the star at STAR_W 20 and 50 (16-20 % of it); none may now. The star boxes carry the weight they were captured with: re-weighed here */
+{
+  const D = JSON.parse(readFileSync(join(here, "lib/capstar-live-fight.json"), "utf8"));
+  D.forEach((d, n) => {
+    for (const a of [...d.seat.avoid, ...(d.a.avoid1 ?? [])]) if (a.star) a.w = LP.STAR_W;
+    const out = LP.seatPlace(d.a, d.seat), sb = d.seat.avoid.find((a) => a.star), A = (sb.r - sb.l) * (sb.b - sb.t);
+    const c = out.items.reduce((s, i) => s + area({ l: i.x - i.w / 2, t: i.y - i.h / 2, r: i.x + i.w / 2, b: i.y + i.h / 2 }, sb), 0) / A;
+    ok(out.items.length === 4 && c <= STAR_OK, `C8 live fight input ${n}: the letters cover ${(c * 100).toFixed(1)} % of the star (${out.moved})`);
+  });
+}
 if (process.argv.includes("--table")) {
   for (const [k, cb, ca, m] of table) console.log(k.padEnd(36), (cb * 100).toFixed(1).padStart(6), "->", (ca * 100).toFixed(1).padStart(6), m);
   console.log("worse:", worse);
