@@ -65,6 +65,7 @@ const fake = { version: "test", limits: { screen: 16, world: 48 }, ready: async 
 { const { createVocab } = await import("../letters/words.mjs"); fake.vocab = createVocab(); fake.word = fake.vocab.word; }
 globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return this._engine; } };
 const M = await import("../tokenreact/main.mjs");
+const PC = await import("../tokenreact/pure.mjs");      // CROWD: the crowd rule (R6a)
 M.start({ init: true, ready: true });
 const take = async (ms = 1900) => { await sleep(ms); return plays.splice(0); };
 const isNum = (r) => /^[+-]\d+$/.test(String(r.text));
@@ -212,7 +213,10 @@ ck("R17b the card after the word started: its number joins late", p.some((r) => 
   for (const t of row) { set(t, "health", 7); await sleep(30); }
   p = await take(2600);
   const words = p.filter((r) => !isNum(r));
-  ck("R6a every visibly hit enemy answers (a crowd without numbers is not left silent)", new Set(words.map((r) => r.o.token?.id)).size === 6);
+  /* CROWD (ADVX 8: of six hit at once one had a bare number and no word, two words collided): tokens hit together and standing close share
+     ONE word over them (pure crowdUnits), a token alone keeps its own; still nobody hit is left silent: every unit of the moment has its word */
+  const units = PC.crowdUnits(row.map((t) => ({ key: t.id, kind: "hit", sev: PC.SEVERITY.hit, amt: 0.3, rect: tokScreen(t), pub: true })));
+  ck(`R6a every visibly hit enemy answers: each group of them one word, each one alone its own (${units.length} units, ${words.length} words)`, words.length === units.length && units.every((u) => words.some((r) => r.o.token?.id === u.lead)));
   let worst = 0;
   for (const r of words) { const b = boxOf(r); for (const t of [...front, ...row]) if (t.id !== r.o.token?.id) worst = Math.max(worst, inter(b, tokScreen(t)) / (100 * 100)); }
   ck(`R6b no word covers more than 20 % of another token (worst ${(worst * 100).toFixed(0)} %)`, worst <= 0.2);
@@ -255,12 +259,15 @@ const inside = (b, s) => b.x >= s.l - 1 && b.y >= s.t - 1 && b.x + b.w <= s.r + 
   await sleep(1500);
 }
 
-/* R6c: a token off the view (its centre under the hotbar line or below the screen) is not lettered: no word hanging over the chat input */
+/* R6c: a token off the view (its centre under the hotbar line or below the screen). It used to get no lettering at all (no word hanging over
+   the chat input); CROWD (ADVX 14: the table saw the Health drop and nothing answered) letters it off-panel: whole inside the safe view, at
+   its edge nearest the token, still never over the hotbar and the chat input */
 { const off = mk("O", "npc", 8, 6, { x: 1100, y: 850 });
   Hooks.callAll("canvasReady");
   set(off, "health", 6);
   p = await take(1200);
-  ck("R6c a token mostly off the safe view gets no lettering", !p.some((r) => r.o.token?.id === "O"));
+  const bo = p.filter((r) => r.o.token?.id === "O").map(boxOf);
+  ck(`R6c a token mostly off the safe view is lettered off-panel: inside the view above the hotbar, at the edge by the token (${bo.map((b) => `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.w)}x${Math.round(b.h)}`)})`, bo.length >= 1 && bo.every((b) => inside(b, { l: 0, t: 0, r: 1300, b: 830 }) && b.y + b.h >= 830 - 120));
   toks.splice(toks.indexOf(off), 1); }
 
 /* R7: a director shot that starts after the reaction takes its Health number down (its caption says it) */
