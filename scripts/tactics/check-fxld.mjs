@@ -399,5 +399,5 @@ await run(1366, 768, { diceZ: 6400 }, async ({ Stage, flush }) => {
 });
 
 /* ================================================================== the user's ruling on finding 1: the splash words keep their purpose */
-ok(SL.ACTIONS.slugfest.includes("HAYMAKER!") && SL.PUSHPRE.includes("ALL IN!") && SL.PUSHPRE.includes("STRAIN!"), "F1 (not a defect, the user's ruling): the splash's own action words stay (HAYMAKER!, ALL IN!, STRAIN!)");
+ok(SL.ACTIONS.slugfest.includes("HAYMAKER!") && SL.PUSHPRE.includes("GAMBLE!") && SL.PUSHPRE.includes("STRAIN!"), "F1 (not a defect, the user's ruling): the splash's own action words stay (HAYMAKER!, GAMBLE!, STRAIN!)");   // WORDS4: ALL IN! (an adverb) became the noun GAMBLE! under the later noun ruling (2026-11-15)
 done("fxld");

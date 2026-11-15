@@ -44,7 +44,7 @@ const plan = (e, o = {}) => LP.planMoment(e, { W: 746, ...o });
 
   /* what kind of action: the word's own sound */
   const mood = (action, word) => LP.moodOf(word, action);
-  eq([mood("slugfest", "WHAM!"), mood("shooting", "KRAK!"), mood("dodge", "ZIP!"), mood("presence", "ROAR!"), mood("shooting", "ZAP!"), mood("generic", "BOOM!")],
+  eq([mood("slugfest", "WHAM!"), mood("shooting", "KRAK!"), mood("dodge", "ZIP!"), mood("presence", "WRRAAAGH!"), mood("zap", "ZZAKT!"), mood("generic", "BOOM!")],   // WORDS4: ROAR! ZAP! (plain words) left the pools for WRRAAAGH! ZZAKT!
     ["impact", "crack", "whoosh", "roar", "zap", "boom"], "the mood follows the sound of the word (a hit, a crack, a whoosh, a roar, a zap, a boom)");
   for (const w of [...Object.values(SL.ACTIONS).flat(), ...SL.PUSHPRE, ...SL.WRECK]) ok(w in LP.WORD_MOOD, `every sound word has its mood (${w})`);
   const moods = new Set(Object.values(SL.ACTIONS).flat().map((w) => LP.WORD_MOOD[w]));

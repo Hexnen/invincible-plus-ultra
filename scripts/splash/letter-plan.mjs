@@ -23,12 +23,12 @@ import * as LC from '../letter-colors.mjs';   // PALETTE: the lettering's colour
 /* the push grunts, the wreck and the pushed roll that broke: their sound (mood + the engine's motion row, words.mjs SOUND) */
 const OWN_SOUND = Object.freeze({
   /* push grunts: the effort (strained, trembling), the shout of will (rising) */
-  'STRAIN!': ['roar', 'effort'], 'PUSH!': ['powerup', 'effort'], 'GRRR!': ['roar', 'snarl'], 'ALL IN!': ['powerup', 'cheer'], 'FULL STRENGTH!': ['powerup', 'effort'],
-  'AGAIN!': ['powerup', 'cheer'], 'HNNNG!': ['roar', 'effort'], 'ONE MORE!': ['powerup', 'cheer'],
-  /* wreck: what falls apart */
-  'WRECK!': ['crash', 'crash'], 'RUIN!': ['crash', 'crumble'], 'KRAKOOM!': ['boom', 'boom'], 'DEMOLITION!': ['crash', 'crash'],
-  /* a pushed roll that still failed: the sound of it breaking */
-  'SKRAK!': ['crack', 'crack'], 'TSKRIK!': ['crack', 'crack'], 'OUCH!': ['pain', 'pain']
+  'STRAIN!': ['roar', 'effort'], 'EFFORT!': ['powerup', 'effort'], 'GRRR!': ['roar', 'snarl'], 'GAMBLE!': ['powerup', 'cheer'], 'FULL STRENGTH!': ['powerup', 'effort'],
+  'RETRY!': ['powerup', 'cheer'], 'HNNNG!': ['roar', 'effort'], 'COMEBACK!': ['powerup', 'cheer'],
+  /* wreck: what falls apart (WORDS4: the cave-in BTHOOM!, not the thunder's KRAKOOM!) */
+  'WRECK!': ['crash', 'crash'], 'RUIN!': ['crash', 'crumble'], 'BTHOOM!': ['crash', 'crumble'], 'DEMOLITION!': ['crash', 'crash'],
+  /* a pushed roll that still failed: the sound of it breaking (WORDS4: OUCH! -> the engine's pain sound GHAA!) */
+  'SKRAK!': ['crack', 'crack'], 'TSKRIK!': ['crack', 'crack'], 'GHAA!': ['pain', 'pain']
 });
 /* word -> mood (the LETR engine's intents). WORDPOOL2: every action family's words (words.mjs) plus the grunts and wrecks, each with its own
    mood; nothing falls back to its action's default. */
