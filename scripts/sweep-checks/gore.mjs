@@ -5,6 +5,10 @@
 // it dissolves to nothing; every pixel one palette colour (no gradient); the same seed draws the same picture; the photosensitive palette
 // has no saturated red and its splash stays under the safe area; big arrivals keep <= 2 a second; the readable middle; reduced motion =
 // stills; cracks race out, glint, retract to nothing; the cost of a frame.
+// GORE3 (the owner on version 2: «Krew stopniowo przygasa a powinna płynnie. Jej osypanie brzydko się urywa na dole. Widać linie
+// odcięcia animacji. Pęknięcia nie powinny być od impactów tylko np z rogów»): no step in the blood's dimming above what the eye can
+// see, nothing of a splash ever touches the view's edge, its clearing never cuts a straight line, the cracks start at a corner; finding
+// 5 of the blind review: blood beside the struck token, sized by it, none on a screen whose view does not hold it, no piling.
 // Runtime on a fake Foundry (scripts/gore/main.mjs): a Health drop plays blood on the token reaction's blow (or after the wait when the
 // reactions are off), Resolve plays cracks, a pushed roll's stress none, a hidden token nothing on a player's seat, "owners" only on
 // the owner's seat, the table's 0 = none, a heal nothing; the settings are world and hidden from Foundry's list; the window has the tab.
@@ -50,11 +54,12 @@ const sf = R.surface(g.w, g.h);
 const shot = (items, ms) => { R.render(sf, items, ms); return sf.rgba.slice(); };
 const count = (rgba, pred = () => true) => { let c = 0; for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3] && pred(rgba, i)) c++; return c; };
 const sha = (a) => { let h = 2166136261; for (let i = 0; i < a.length; i++) { h ^= a[i]; h = Math.imul(h, 16777619) >>> 0; } return h; };
-const colours = new Set();
-for (const pal of [R.PAL, R.PAL_SAFE]) for (const st of Object.values(pal)) for (const c of Object.values(st)) colours.add(c.join(","));
-for (const c of Object.values(R.CRACK)) colours.add(c.slice(0, 3).join(","));
-const alphas = new Set([...[1, P.CENTRE.alpha].flatMap((c) => [1, R.SEE].flatMap((k) => R.ALPHA.map((a) => Math.round(a * c * k)))), ...Object.values(R.CRACK).map((c) => c[3])]);
-const paletteOnly = (rgba) => { for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3] && (!colours.has(`${rgba[i]},${rgba[i + 1]},${rgba[i + 2]}`) || !alphas.has(rgba[i + 3]))) return false; return true; };
+/* cracks: every pixel one of the crack palette's colours at its alpha */
+const crackCols = new Set(Object.values(R.CRACK).map((c) => c.join(",")));
+const paletteOnly = (rgba) => { for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3] && !crackCols.has(`${rgba[i]},${rgba[i + 1]},${rgba[i + 2]},${rgba[i + 3]}`)) return false; return true; };
+/* blood (GORE3): its colours glide with its age, so pixel art is checked per drawing: one splash = a handful of flat colours and one
+   alpha (no spatial gradient, no anti-aliasing) */
+const flatInk = (rgba, maxCols = 16, maxAlphas = 1) => { const cs = new Set(), as = new Set(); for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3]) { cs.add(`${rgba[i]},${rgba[i + 1]},${rgba[i + 2]}`); as.add(rgba[i + 3]); } return cs.size <= maxCols && as.size <= maxAlphas; };
 const T = P.TICK_MS;
 
 /* ---------------- blood ---------------- */
@@ -63,7 +68,7 @@ const T = P.TICK_MS;
   const it = mk();
   const f0 = shot([it], 0), f1 = shot([it], T), f2 = shot([it], 2 * T), f4 = shot([it], 4 * T), f8 = shot([it], 8 * T);
   ck("the splash ARRIVES on its first tick (drawn at once, at full alpha: no fade-in)", count(f0) > 200 && count(f0, (a, i) => a[i + 3] >= R.ALPHA[0] * P.CENTRE.alpha - 1) === count(f0));
-  const fs = shot([it], R.SETTLE + 50);
+  const fs = shot([it], R.SETTLE_AT + R.SETTLE + 50);
   ck("after the hit the blood lets the table read through it (settled alpha lower than the arrival's)", count(fs) > 0 && count(fs, (a, i) => a[i + 3] > Math.round(R.ALPHA[0] * R.SEE)) === 0);
   ck("burst -> squash -> settle: the first three ticks are three different drawings", sha(f0) !== sha(f1) && sha(f1) !== sha(f2));
   /* GORE2: tick 0 is a BURST shooting the way the blood flies (no glob in flight): its ink lies ahead of the hit along dir */
@@ -82,28 +87,27 @@ const T = P.TICK_MS;
   const low = (rgba) => { let m = 0; for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3]) m = Math.max(m, (i / 4 / g.w) | 0); return m; };
   const it2 = mk({ seed: "drip", dir: Math.PI * 1.5, at: { fx: 0.2, fy: 0.25 } });
   ck("drips run DOWN the glass (the lowest blood moves down between 0.4 s and 3 s)", low(shot([it2], 3000)) > low(shot([it2], 400)) + 4);
-  ck("every pixel is one palette colour at one of a few alphas (pixel art: no gradient, no anti-aliasing)", [f0, f1, f4, shot([it], 3000), shot([it], 7000)].every(paletteOnly));
+  ck("every drawing of a splash is a handful of flat colours at one alpha (pixel art: no gradient, no anti-aliasing)", [f0, f1, f4, shot([it], 1000), shot([it], 3000), shot([it], 7000)].every((fr) => flatInk(fr)));
   const dried = shot([it], it.plan.life.dry + 300);
   const driedSet = new Set(Object.values(R.PAL.dried).map((c) => c.join(",")));
   ck("it dries: after its drying time every blood pixel has the dried colours", count(dried) > 0 && count(dried, (a, i) => !driedSet.has(`${a[i]},${a[i + 1]},${a[i + 2]}`)) === 0);
   const g0 = it.plan.life.gone, d0 = it.plan.life.dissolve;
   const c1 = count(shot([it], g0 + d0 * 0.2)), c2 = count(shot([it], g0 + d0 * 0.6)), c3 = count(shot([it], g0 + d0 + 50));
-  ck(`it clears to nothing, never a fade (${c1} -> ${c2} -> ${c3} px, every pixel a palette colour)`, c1 > c2 && c2 > 0 && c3 === 0 && paletteOnly(shot([it], g0 + d0 * 0.5)));
+  ck(`it clears to nothing, never a fade (${c1} -> ${c2} -> ${c3} px, flat colours)`, c1 > c2 && c2 > 0 && c3 === 0 && flatInk(shot([it], g0 + d0 * 0.5), 40));
   /* GORE2 (the owner: «Krew bardzo słabo znika»): it CRUMBLES from the thin parts in: the drops go first, the body's heart last, no
      screen-door holes inside what is left, a pale crumbling front, flakes falling */
   const rest = shot([it], g0 - 50), early = shot([it], g0 + d0 * 0.3);
   const heart = (rgba) => { const p = it.plan, i = ((p.cy | 0) * g.w + (p.cx | 0)) * 4; return rgba[i + 3] > 0; };
   ck(`it crumbles from the thin parts in: drops first (${parts(rest)} -> ${parts(early)} spots), the body's heart still there`, parts(early) < parts(rest) * 0.6 && heart(early));
   let ok = true, holes = 0, filled = 0, crumbs = 0, flakesLow = 0;
-  const crumb = R.PAL.dried.crumb.join(",");
   for (let k = 0; k <= 12; k++) {
     const fr = shot([it], g0 + 1 + k * (d0 / 12));
     for (let y = 1; y < g.h - 1; y++) for (let x = 1; x < g.w - 1; x++) {
       const i = (y * g.w + x) * 4;
-      if (fr[i + 3]) { filled++; if (`${fr[i]},${fr[i + 1]},${fr[i + 2]}` === crumb) crumbs++; continue; }
+      if (fr[i + 3]) { filled++; if (fr[i] > R.PAL.dried.lit[0] + 20) crumbs++; continue; }      // paler than any dried crust: the front
       if (fr[i + 3 - 4] && fr[i + 3 + 4] && fr[i + 3 - g.w * 4] && fr[i + 3 + g.w * 4]) holes++;
     }
-    if (!paletteOnly(fr)) ok = false;
+    if (!flatInk(fr, 40)) ok = false;
   }
   ck(`no screen-door: pinholes inside the crumbling blood ${(holes / Math.max(1, filled) * 100).toFixed(2)} % (<= 1 %)`, holes / Math.max(1, filled) <= 0.01 && ok);
   ck(`a pale crumbling front walks in (${crumbs} crust px over the clearing)`, crumbs > 200);
@@ -121,7 +125,8 @@ const T = P.TICK_MS;
   ck(`a knock-down splash (with its second blow) covers ${(count(big) / (g.w * g.h) * 100).toFixed(1)} % of the view (<= 14 %)`, count(big) / (g.w * g.h) <= 0.14);
   /* reduced motion: stills */
   const st = { plan: P.bloodPlan(g, { strength: 0.8, seed: "chk", dir: 0.3, still: true }), t0: 0 };
-  ck("reduced motion: the first tick is already the settled splash with its drips (no smear, no running)", sha(shot([st], 0)) === sha(shot([st], 2000)));
+  const mask = (fr) => { const m = new Uint8Array(fr.length / 4); for (let i = 0; i < m.length; i++) m[i] = fr[i * 4 + 3] ? 1 : 0; return sha(m); };
+  ck("reduced motion: the first tick is already the settled splash with its drips (no smear, no running; only its colours age)", mask(shot([st], 0)) === mask(shot([st], 2000)) && mask(shot([st], 0)) === mask(shot([st], 5000)));
   /* photosensitive seat */
   let red = true;
   for (const stg of Object.values(R.PAL_SAFE)) for (const c of Object.values(stg)) if (c[0] / (c[0] + c[1] + c[2]) >= 0.7) red = false;
@@ -130,6 +135,129 @@ const T = P.TICK_MS;
   const safeArea = count(shot([{ plan: sp, t0: 0 }], 1500)) / (g.w * g.h);
   ck(`photosensitive seat: the strongest splash covers ${(safeArea * 100).toFixed(2)} % <= ${P.SAFE_AREA * 100} % of the view, one blow only`, safeArea <= P.SAFE_AREA && !sp.second);
   ck("normal palette: blood is red (it reads as blood)", R.PAL.wet.b[0] / R.PAL.wet.b.reduce((a, b) => a + b) > 0.7);
+}
+
+/* ---------------- GORE3: smooth dimming, clean clearing, nothing at the edge, beside the struck token ---------------- */
+{
+  /* the eye: a flat patch that changes by more than ~1.5 % of the screen's range from one 24 Hz tick to the next reads as a step. Each
+     pixel is composited over a dark and a light map; between two ticks no pixel of a living splash may change by more than DIM_STEP
+     levels (the drips held still, so only the ageing is measured). Version 2 changed by up to 130 levels in one tick (its stages). */
+  const DIM_STEP = 4;
+  const BGS = [[32, 32, 32], [200, 200, 200]];
+  const shown = (a, i, bg, c) => (a[i + c] * a[i + 3] + bg[c] * (255 - a[i + 3])) / 255;
+  for (const [sv, seed] of [[0.3, "dimA"], [0.65, "dimB"], [1, "dimC"]]) {
+    const p = P.bloodPlan(g, { strength: sv, seed, dir: 1.2, at: { fx: 0.25, fy: 0.3 } });
+    p.drips = []; if (p.second) p.second.plan.drips = [];
+    const it = { plan: p, t0: 0 }, end = Math.min(p.life.gone, p.second ? p.second.plan.life.gone : Infinity);
+    let prev = null, worst = 0, meanPrev = null, meanWorst = 0;
+    for (let k = 10; k * T < end; k++) {
+      const fr = shot([it], k * T + 1);
+      let sum = 0, n2 = 0;
+      for (let i = 0; i < fr.length; i += 4) if (fr[i + 3]) {
+        sum += shown(fr, i, BGS[0], 0); n2++;
+        if (prev && prev[i + 3]) for (const bg of BGS) for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(shown(fr, i, bg, c) - shown(prev, i, bg, c)));
+      }
+      const mean = sum / Math.max(1, n2);
+      if (meanPrev != null) meanWorst = Math.max(meanWorst, Math.abs(mean - meanPrev));
+      prev = fr; meanPrev = mean;
+    }
+    ck(`strength ${sv}: the blood dims smoothly over its whole life (worst pixel ${worst.toFixed(1)} levels a tick <= ${DIM_STEP}, the splash's mean ${meanWorst.toFixed(2)} <= ${DIM_STEP / 2})`, worst <= DIM_STEP && meanWorst <= DIM_STEP / 2);
+  }
+  const it3 = { plan: P.bloodPlan(g, { strength: 0.6, seed: "dimD", dir: 1, at: { fx: 0.3, fy: 0.3 } }), t0: 0 };
+  const a1 = R.bloodAge(it3.plan.life, 600), a2 = R.bloodAge(it3.plan.life, 3000), a3 = R.bloodAge(it3.plan.life, it3.plan.life.gone - 10);
+  ck("it ages one way: wetter -> drier, glossier -> matt, more -> less opaque", a1.dry < a2.dry && a2.dry < a3.dry && a1.gloss > a2.gloss && a1.k > a2.k && a2.k > a3.k && a3.dry > 0.99 && a3.gloss < 0.01);
+
+  /* the clearing: no straight cut (the old one dropped every drip in one tick: a line along the splash's bottom), no mass vanishing */
+  const clearing = (p) => {
+    const it = { plan: p, t0: 0 };
+    let prev = shot([it], p.life.gone - 1), n0 = 0;
+    for (let i = 3; i < prev.length; i += 4) if (prev[i]) n0++;
+    let run = 0, share = 0, ticks = 0;
+    for (let k = Math.ceil(p.life.gone / T); k * T <= p.life.gone + p.life.dissolve + T; k++) {
+      const fr = shot([it], k * T + 1), gone = new Uint8Array(g.w * g.h);
+      let rem = 0;
+      for (let q = 0; q < g.w * g.h; q++) if (prev[q * 4 + 3] && !fr[q * 4 + 3]) { gone[q] = 1; rem++; }
+      if (rem) ticks++;
+      share = Math.max(share, rem / Math.max(1, n0));
+      for (let x = 0; x < g.w; x++) { let r2 = 0; for (let y = 0; y < g.h; y++) { r2 = gone[y * g.w + x] ? r2 + 1 : 0; run = Math.max(run, r2); } }
+      for (let y = 0; y < g.h; y++) { let r2 = 0; for (let x = 0; x < g.w; x++) { r2 = gone[y * g.w + x] ? r2 + 1 : 0; run = Math.max(run, r2); } }
+      prev = fr;
+    }
+    return { run, share, ticks };
+  };
+  let worstRun = 0, worstShare = 0, fewest = 99;
+  for (const [fx, fy, d, sv] of [[0.25, 0.3, 1.2, 0.9], [0.5, 0.93, 1.57, 0.9], [0.95, 0.5, 0, 0.6], [0.5, 0.05, -1.57, 1], [0.96, 0.95, 0.8, 0.4]]) {
+    const c = clearing(P.bloodPlan(g, { strength: sv, seed: `cut${fx}${fy}`, dir: d, at: { fx, fy } }));
+    worstRun = Math.max(worstRun, c.run); worstShare = Math.max(worstShare, c.share); fewest = Math.min(fewest, c.ticks);
+  }
+  ck(`the clearing never cuts a straight line (longest run gone in one tick ${worstRun} art px <= 10; version 2: 27)`, worstRun <= 10);
+  ck(`... nothing vanishes in a block (at most ${(worstShare * 100).toFixed(1)} % of the splash in one tick <= 18; version 2: 29), it crumbles over >= ${fewest} ticks`, worstShare <= 0.18 && fewest >= 18);
+  {
+    /* a splash with long drips: they are part of the clearing (version 2: they lay outside its depth map and all went in one tick) */
+    const p = P.bloodPlan(g, { strength: 1, seed: "drips", dir: -1.57, at: { fx: 0.4, fy: 0.25 } });
+    const it = { plan: p, t0: 0 }, before = shot([it], p.life.gone - 1), after = shot([it], Math.ceil(p.life.gone / T) * T + 1);
+    let n2 = 0, kept = 0;
+    for (const d of p.drips) for (let y = Math.ceil(d.y + 2); y < d.y + d.len - 1; y++) { const i = (y * g.w + Math.round(d.x)) * 4; if (before[i + 3]) { n2++; if (after[i + 3]) kept++; } }
+    ck(`the drips crumble with the rest (${kept} of ${n2} drip pixels still there on the first tick of the clearing)`, n2 > 20 && kept / n2 >= 0.8);
+  }
+
+  /* nothing at the edge: a splash placed against any edge or corner, at any strength, on several windows and DPRs, never draws within
+     EDGE art px of the view's edge, over its whole life (arrival, drops, drips, flakes, clearing) */
+  let edgeHits = 0, cases = 0;
+  for (const [vw, vh, dpr] of [[1366, 768, 1], [1920, 1080, 1.25], [1000, 620, 2]]) {
+    const ge = P.grid(vw, vh, dpr), se = R.surface(ge.w, ge.h);
+    for (const [fx, fy, d] of [[0.02, 0.5, Math.PI], [0.98, 0.5, 0], [0.5, 0.02, -Math.PI / 2], [0.5, 0.98, Math.PI / 2], [0.02, 0.02, -2.4], [0.98, 0.98, 0.8], [0.02, 0.98, 2.3], [0.98, 0.02, -0.8]]) for (const sv of [0.3, 1]) {
+      const p = P.bloodPlan(ge, { strength: sv, seed: `edge${fx}${fy}${sv}`, dir: d, near: { fx, fy, fr: 0.04 } });
+      const it = { plan: p, t0: 0 }, end = P.endOf(p);
+      cases++;
+      for (let k = 0; k * T <= end; k += k < 12 ? 1 : k * T > p.life.gone - 100 ? 1 : 6) {
+        R.render(se, [it], k * T + 1);
+        const a = se.rgba;
+        for (let y = 0; y < ge.h; y++) for (let x = 0; x < ge.w; x++) if ((x < P.EDGE || y < P.EDGE || x >= ge.w - P.EDGE || y >= ge.h - P.EDGE) && a[(y * ge.w + x) * 4 + 3]) edgeHits++;
+      }
+    }
+  }
+  ck(`nothing of the blood is ever cut by the view's edge (${cases} splashes against every edge and corner, 3 windows: ${edgeHits} px within ${P.EDGE} art px of it)`, edgeHits === 0);
+
+  /* beside the struck token (finding 5) */
+  const tok = { fx: 0.4, fy: 0.45, fr: 0.04 };
+  let side = true, onTok = 0, smallFar = 0;
+  for (let i = 0; i < 40; i++) {
+    const d = (i / 40) * Math.PI * 2, p = P.bloodPlan(g, { strength: 0.3 + (i % 4) * 0.2, seed: `near${i}`, dir: d, near: tok });
+    const tx = tok.fx * g.w, ty = tok.fy * g.h, tr = tok.fr * Math.min(g.w, g.h);
+    if ((p.cx - tx) * Math.cos(d) + (p.cy - ty) * Math.sin(d) < tr) side = false;
+    for (const s2 of p.sats) if (Math.hypot(s2.x - tx, s2.y - ty) < tr * 0.9) onTok++;
+  }
+  ck("the splash lands just past the struck token, on its side away from the attacker, no drop on the token", side && onTok === 0);
+  const cover = (fr) => { const p = P.bloodPlan(g, { strength: 1, seed: "far", dir: 0.5, near: { fx: 0.3, fy: 0.4, fr } }); return count(shot([{ plan: p, t0: 0 }], 1500)) / (g.w * g.h); };
+  const far = cover(0.008), close = cover(0.06);
+  smallFar = far;
+  ck(`sized by the token on this screen: a knock-down beside a far-zoom token covers ${(smallFar * 100).toFixed(2)} % of the view (<= 1.5 %), beside a close one ${(close * 100).toFixed(1)} %`, smallFar <= 0.015 && close > far * 3);
+  ck("every seat draws the same splash (one seed, its own view): the same drops in the same order", (() => { const a = P.bloodPlan(P.grid(1600, 900, 1), { strength: 0.7, seed: "seat", dir: 1, near: { fx: 0.3, fy: 0.4, fr: 0.03 } }), b = P.bloodPlan(P.grid(1366, 768, 2), { strength: 0.7, seed: "seat", dir: 1, near: { fx: 0.6, fy: 0.5, fr: 0.05 } }); return a.tendrils.length === b.tendrils.length && Math.abs(a.tendrils[0].a - b.tendrils[0].a) < 1e-9 && a.blobs[0].lob.join() === b.blobs[0].lob.join(); })());
+}
+
+/* ---------------- GORE3: the cracks come from the screen's corner ---------------- */
+{
+  let fromCorner = true, inward = true, early = true, hub = true, n3 = 0;
+  for (let i = 0; i < 24; i++) {
+    const p = P.crackPlan(g, { strength: (i % 6) / 5 + 0.05, seed: `fc${i}` });
+    const [kx, ky] = P.CORNERS[p.corner], ox = kx * g.w, oy = ky * g.h, m = Math.min(g.w, g.h);
+    const sx = kx ? -1 : 1, sy = ky ? -1 : 1;
+    if (p.craters.some((c) => Math.hypot(c.x - ox, c.y - oy) > 0.5)) hub = false;      // no strike point inside the view
+    for (const l of p.lines.filter((q) => q.lvl === 0)) {
+      n3++;
+      const [x0, y0] = l.pts[0], [x1, y1] = l.pts[l.pts.length - 1];
+      const onEdge = (Math.abs(y0 - oy) < 1.5 && Math.abs(x0 - ox) < 0.25 * m) || (Math.abs(x0 - ox) < 1.5 && Math.abs(y0 - oy) < 0.25 * m);
+      if (!onEdge && Math.hypot(x0 - ox, y0 - oy) > p.strikes[0].rc + 1.5) fromCorner = false;
+      if (!(Math.hypot(x1 - ox, y1 - oy) > Math.hypot(x0 - ox, y0 - oy) + 4) || (x1 - x0) * sx < -2 || (y1 - y0) * sy < -2) inward = false;
+    }
+    const far = [];
+    for (let k = 0; k <= 8; k++) { const fr = shot([{ plan: p, t0: 0 }], k * T + 1); let mx = 0; for (let j = 0; j < fr.length; j += 4) if (fr[j + 3]) { const q = j / 4; mx = Math.max(mx, Math.hypot(q % g.w + 0.5 - ox, ((q / g.w) | 0) + 0.5 - oy)); } far.push(mx); }
+    if (far[0] > p.strikes[0].rc * 4 + 2 || far.some((v, k) => k && v < far[k - 1]) || far[1] > 0.11 * m || far[8] < far[1] * 2) early = false;
+  }
+  ck(`every main crack starts IN the corner or ON one of its two edges (${n3} cracks), never at a point inside the view`, fromCorner && hub);
+  ck("... and runs inward, away from the corner (a quarter web round the corner, no star round a strike)", inward);
+  ck("they break out of the corner: on the first tick only the crushed corner and its crumbs, then the cracks reach farther from it every tick", early);
 }
 
 /* ---------------- arrivals ---------------- */
@@ -184,7 +312,8 @@ const T = P.TICK_MS;
   ck("reduced motion: the shards just go, nothing moves", still);
   const st = { plan: P.crackPlan(g, { strength: 0.9, seed: "cr", still: true }), t0: 0 };
   ck("reduced motion: the whole crack at once, no chips, no glint", sha(shot([st], 0)) === sha(shot([st], 1500)) && st.plan.chips.length === 0);
-  ck("a broken Resolve (strength 1) strikes twice, in the same corner", (() => { const p = P.crackPlan(g, { strength: 1, seed: "x" }); const [kx, ky] = P.CORNERS[p.corner]; return p.strikes.length === 2 && p.strikes.every((st) => Math.abs(st.x - kx * g.w) < g.w / 2 && Math.abs(st.y - ky * g.h) < g.h / 2); })());
+  /* GORE3: «Pęknięcia nie powinny być od impactów tylko np z rogów» (was: a broken Resolve = two strike points in a corner) */
+  ck("a broken Resolve (strength 1) breaks twice, both bursts from the same corner", (() => { const p = P.crackPlan(g, { strength: 1, seed: "x" }); const w2 = p.lines.filter((l) => l.lvl === 0 && l.wave === 1); return p.waves === 2 && w2.length >= 2 && w2.every((l) => l.t0 >= 3 * T); })());
   ck("the corner comes from the seed: every seat the same", P.crackPlan(g, { seed: "same" }).corner === P.crackPlan(P.grid(1366, 768, 2), { seed: "same" }).corner);
 }
 
@@ -228,9 +357,10 @@ const T = P.TICK_MS;
     modules: new Map([["invincible-plus-ultra", {}]]), socket: { on() {}, emit() {} }, combats: new Map() };
   settings.set("invincible-plus-ultra.tokenReactEnabled", {}); values["invincible-plus-ultra.tokenReactEnabled"] = true;
   const scene = { id: "S" };
-  const mkTok = (id, o = {}) => { const actor = { id: `A${id}`, type: o.type ?? "character", system: { derived: { health: { value: 6, max: 6 }, resolve: { value: 6, max: 6 } } }, testUserPermission: () => !!o.owner, getActiveTokens: () => [tok] }; const tok = { id, actor, scene, visible: true, isVisible: true, document: { hidden: !!o.hidden }, center: { x: 0, y: 0 } }; return tok; };
+  const mkTok = (id, o = {}) => { const actor = { id: `A${id}`, type: o.type ?? "character", system: { derived: { health: { value: 6, max: 6 }, resolve: { value: 6, max: 6 } } }, testUserPermission: () => !!o.owner, getActiveTokens: () => [tok] }; const tok = { id, actor, scene, visible: true, isVisible: true, document: { hidden: !!o.hidden }, center: { x: 800, y: 450 }, w: 100, h: 100 }; return tok; };
   const toks = [mkTok("T1", { owner: true }), mkTok("T2"), mkTok("T3", { hidden: true }), mkTok("T4", { type: "vehicle" })];
-  globalThis.canvas = { ready: true, scene, tokens: { get: (id) => toks.find((t) => t.id === id), get placeables() { return toks; } } };
+  /* the seat's view: 1600 x 900, the canvas drawn 1:1 (a token at x 800 is in the middle of the screen) */
+  globalThis.canvas = { ready: true, scene, stage: { scale: { x: 1 } }, clientCoordinatesFromCanvas: (c) => ({ x: c.x, y: c.y }), tokens: { get: (id) => toks.find((t) => t.id === id), get placeables() { return toks; } } };
   const impact = { busy: false };
   globalThis.MoinenLetters = { engine: () => ({ impact }) };
   const M = await import("../gore/main.mjs");
@@ -324,6 +454,21 @@ const T = P.TICK_MS;
   advance(M.QUIET + 10);
   ck("Health and Resolve together: blood AND cracks, one moment", live() === 2);
   reset();
+  /* GORE3 (finding 5): a seat whose view does not hold the struck token saw no blow: nothing there */
+  toks[1].center = { x: -300, y: 450 };
+  hurt(toks[1], "health", 2);
+  advance(M.QUIET + M.HIT_WAIT + 20);
+  ck("a token outside this seat's view: no blood (that screen saw no blow)", live() === 0);
+  toks[1].center = { x: 800, y: 450 };
+  reset();
+  ck("tokScreen: the token's middle and radius in this view's fractions", (() => { const v = M.tokScreen(toks[0]); return v && Math.abs(v.fx - 0.5) < 1e-9 && Math.abs(v.fy - 0.5) < 1e-9 && Math.abs(v.fr - 50 / 900) < 1e-9 && v.inView; })());
+  /* GORE3: no piling: a new splash on the same token makes the older one crumble as it lands */
+  const h1 = api.blood({ strength: 0.6, token: toks[0], seed: "pile1" });
+  advance(500);
+  const h2 = api.blood({ strength: 0.6, token: toks[0], seed: "pile2" });
+  const h3 = api.blood({ strength: 0.6, token: toks[1], seed: "pile3" });
+  ck("a new splash on the same token: its older one starts to clear as it lands (another token's stays)", !!h1 && !!h2 && !!h3 && api.state().cleared === 1);
+  api.clear({ quick: true });
   const pane = (id) => made.find(([, c]) => c.id === id);
   ck("two panes (GORE2): blood right after #board (under the interface), cracks on the body over the bars (z over 30, under windows)",
     pane("ipu-gore")?.[0] === "board" && pane("ipu-gore-cracks")?.[0] === "body" && Number(pane("ipu-gore-cracks")[1].style.zIndex) > 31 && Number(pane("ipu-gore-cracks")[1].style.zIndex) < 100

@@ -3,12 +3,16 @@
    Every pixel is one of the palette's colours at one of a few alphas: no gradients, no anti-aliasing (pixel art; checked).
 
    Two passes:
-     1. shapes into fields: blood thickness T (0..1) + its stage S (0 wet, 1 drying, 2 dried; the youngest wins) + glint G;
+     1. shapes into fields: blood thickness T (0..1) + its dryness S (0 wet .. 1 dried, continuous; the youngest wins) + its alpha
+        factor N + glint G;
         cracks into a class map C (1 line, 2 lit edge, 3 crushed glass, 4 chip, 5 running glint)
      2. colour: thickness bands (dark / mid / bright, a 2x2 dither on the band edges), a dark outline where blood meets glass, a lit
         inner rim toward the top left, glints while wet; the crack classes under it; the middle of the view see-through (CENTRE).
+        GORE3 (the owner: «Krew stopniowo przygasa a powinna płynnie»): the palette and the alpha follow the splash's AGE as continuous
+        numbers (bloodAge), so the blood darkens, loses its gloss, flattens into crust and dims a little every tick, never in steps;
+        within one drawing every splash is still a handful of flat colours (pixel art: no spatial gradient, no anti-aliasing).
    Cost: proportional to the drawn area (bounding boxes), not to the screen; a full 1080p glass is 640 x 360 art px. */
-import { TICK_MS, CENTRE, FLAKE_MS, FALL, FALL_MS, rng, dripAt, crackReach, breakAt } from "./plan.mjs";
+import { TICK_MS, CENTRE, FLAKE_MS, FALL, FALL_MS, EDGE, rng, dripAt, crackReach, breakAt } from "./plan.mjs";
 
 export const THR = 0.06;
 /* palettes: [r, g, b] per role; alpha per stage */
@@ -26,15 +30,41 @@ export const PAL_SAFE = {
   dried:  { out: [34, 14, 12], d: [60, 26, 22], m: [74, 32, 28], b: [84, 38, 32], lit: [90, 44, 38], spec: [90, 44, 38] }
 };
 PAL_SAFE.wet.crumb = PAL_SAFE.drying.crumb = PAL_SAFE.dried.crumb = [150, 112, 100];
-export const ALPHA = [236, 222, 196];        // wet, drying, dried: on arrival
-/* after the hit the glass lets the table read through the blood: SETTLE ms after its arrival a splash keeps SEE of its alpha */
-export const SETTLE = 450, SEE = 0.7;
+export const ALPHA = [236, 222, 196];        // wet, drying, dried: the alpha glides along them with the dryness
+/* after the hit the glass lets the table read through the blood: over SETTLE ms after its arrival (from SETTLE_AT) a splash eases to
+   SEE of its alpha; then, from dried to its clearing, it dims by LATE more (GORE3: one smooth curve, no step) */
+export const SETTLE = 2000, SETTLE_AT = 120, SEE = 0.7, LATE = 0.18, DRY_AT = 600, GLOSS_AT = 300;
+const smooth = (u) => { const v = u < 0 ? 0 : u > 1 ? 1 : u; return v * v * (3 - 2 * v); };
+/** a splash's age at ms after its contact: dry 0 (wet) .. 1 (dried crust), gloss 1 .. 0 (its glints glide into the blood under them by
+    the end of drying), alpha factor k (1 on arrival .. SEE x (1 - LATE)) */
+export function bloodAge(life, ms, still = false) {
+  const dry = smooth((ms - DRY_AT) / Math.max(1, life.dry - DRY_AT));
+  const gloss = 1 - smooth((ms - GLOSS_AT) / Math.max(1, life.dry - GLOSS_AT));
+  const see = still ? SEE : 1 - (1 - SEE) * smooth((ms - SETTLE_AT) / SETTLE);
+  const late = 1 - LATE * smooth((ms - life.dry) / Math.max(1, life.gone - life.dry));
+  return { dry, gloss, k: see * late };
+}
+/* the palette of a dryness, quantised to Q steps (a step is far under what the eye can tell: 1/256 of the wet->dried way) */
+export const Q = 256;
+const mixC = (a, b, u) => [Math.round(a[0] + (b[0] - a[0]) * u), Math.round(a[1] + (b[1] - a[1]) * u), Math.round(a[2] + (b[2] - a[2]) * u)];
+function ramp(pal) {
+  const out = [];
+  for (let q = 0; q <= Q; q++) {
+    const d = q / Q, [A, B, u] = d < 0.5 ? [pal.wet, pal.drying, d * 2] : [pal.drying, pal.dried, d * 2 - 1];
+    const o = {};
+    for (const k of Object.keys(A)) o[k] = mixC(A[k], B[k], u);
+    o.a = ALPHA[0] + (ALPHA[2] - ALPHA[0]) * d;
+    out.push(o);
+  }
+  return out;
+}
 /* GORE2 («dużo subtelniejsze»): hairlines, see-through; 8 = a falling shard's lit glass */
 export const CRACK = { 1: [14, 20, 28, 168], 2: [226, 240, 252, 150], 3: [228, 240, 252, 176], 4: [208, 230, 250, 196], 5: [255, 255, 255, 236], 6: [230, 244, 255, 16], 7: [8, 14, 24, 22], 8: [226, 242, 255, 72] };
 
 export function surface(w, h) {
-  return { w, h, T: new Float32Array(w * h), L: new Float32Array(w * h), S: new Uint8Array(w * h).fill(255), G: new Uint8Array(w * h), C: new Uint8Array(w * h), A: new Uint8Array(w * h).fill(1), N: new Uint8Array(w * h).fill(1),
-    rgba: new Uint8ClampedArray(w * h * 4), box: null, prev: null };
+  return { w, h, T: new Float32Array(w * h), L: new Float32Array(w * h), S: new Float32Array(w * h).fill(9), W: new Float32Array(w * h), G: new Uint8Array(w * h), C: new Uint8Array(w * h), A: new Uint8Array(w * h).fill(1), N: new Float32Array(w * h),
+    rgba: new Uint8ClampedArray(w * h * 4), box: null, prev: null,
+    lo: new Int32Array(h).fill(w), hi: new Int32Array(h).fill(-1) };      // GORE3 cost: each row's drawn span (clear and colour walk only these)
 }
 
 /** draw the live items ({ plan, t0, cutAt? }) at `now` (ms, the same clock as t0). -> { box (dirty: this frame's and the last one's
@@ -43,7 +73,7 @@ export function render(sf, items, now) {
   const { w, h, T, S, G, C } = sf;
   const prev = sf.box;
   if (prev) { clearBox(sf, prev); }
-  const box = { x0: w, y0: h, x1: -1, y1: -1 };
+  const box = { x0: w, y0: h, x1: -1, y1: -1, lo: sf.lo, hi: sf.hi };
   let live = 0, moving = false;
   const ctx = { sf, box, w, h };
   for (const it of items) {
@@ -62,12 +92,12 @@ export function render(sf, items, now) {
         const gone = Math.min(q.life.gone, Number.isFinite(it.cutAt) ? Math.max(0, it.cutAt - it.t0) : Infinity);
         if (m > gone + q.life.dissolve) continue;
         live++;
-        if (m < q.life.dry + 200 || m > gone - 50 || q.drips.some((d) => { const s = dripAt(d, m); return s.moving || s.swell < 1 || s.y < d.len; })) moving = true;
+        moving = true;      // GORE3: a living splash changes every tick (it dims smoothly over its whole life)
         drawBlood(ctx, q, m, gone);
       }
     }
   }
-  colour(sf, box, items.some((it) => it.plan.safe) ? PAL_SAFE : PAL);
+  colour(sf, box, items.some((it) => it.plan.safe) ? RAMP_SAFE : RAMP);
   sf.box = box.x1 >= 0 ? box : null;
   const dirty = union(prev, sf.box);
   return { box: dirty, live, moving };
@@ -77,11 +107,13 @@ function union(a, b) {
   return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
 }
 function clearBox(sf, b) {
-  const { w, T, L, S, G, C, A, N, rgba } = sf;
+  const { w, T, L, S, G, C, A, N, rgba, lo, hi } = sf;
   for (let y = b.y0; y <= b.y1; y++) {
-    const o = y * w;
-    T.fill(0, o + b.x0, o + b.x1 + 1); L.fill(0, o + b.x0, o + b.x1 + 1); S.fill(255, o + b.x0, o + b.x1 + 1); G.fill(0, o + b.x0, o + b.x1 + 1); C.fill(0, o + b.x0, o + b.x1 + 1); A.fill(1, o + b.x0, o + b.x1 + 1); N.fill(1, o + b.x0, o + b.x1 + 1);
-    rgba.fill(0, (o + b.x0) * 4, (o + b.x1 + 1) * 4);
+    if (hi[y] < 0) continue;
+    const o = y * w, x0 = o + lo[y], x1 = o + hi[y] + 1;
+    T.fill(0, x0, x1); L.fill(0, x0, x1); S.fill(9, x0, x1); sf.W.fill(0, x0, x1); G.fill(0, x0, x1); C.fill(0, x0, x1); A.fill(1, x0, x1); N.fill(0, x0, x1);
+    rgba.fill(0, x0 * 4, x1 * 4);
+    lo[y] = w; hi[y] = -1;
   }
 }
 
@@ -89,26 +121,28 @@ function clearBox(sf, b) {
 function drawBlood(ctx, p, ms, gone) {
   const still = p.still;
   const k = still ? 99 : Math.floor(ms / TICK_MS + 1e-6);
-  const stage = ms < p.life.wet ? 0 : ms < p.life.dry ? 1 : 2;
+  /* GORE3: one continuous age per splash (dryness and alpha), frozen when it starts to clear */
+  const age = bloodAge(p.life, Math.min(ms, gone), still);
+  const dry = age.dry, af = age.k, gl = age.gloss;
   /* a splash whose middle lies in the readable centre of the view is see-through as a whole (one look per splash, never a seam) */
-  const settled = ms >= SETTLE || still;
   const see = ((p.cx / ctx.w - 0.5) / CENTRE.rx) ** 2 + ((p.cy / ctx.h - 0.5) / CENTRE.ry) ** 2 < 1;
-  /* GORE2, clearing: the crust CRUMBLES. Each pixel's depth = its distance (art px) from the edge of the settled splash; a pixel stays
-     while its depth beats the erosion front E (+ a coarse 2x2 grain, so the edge breaks up in crumbs, never in a screen-door pattern).
-     E moves in on twos at a steady pace: mist and small drops go first, the body shrinks to its heart. A few eroded pixels become FLAKES
-     that fall off for FLAKE_MS (pure: the moment a pixel eroded follows from its depth). */
+  /* clearing: the crust CRUMBLES (GORE2). Each pixel's depth = its distance (art px) from the edge of the splash as it stands when it
+     starts to clear, its drips included (GORE3: the drips lay outside the old depth map and vanished in one tick, a straight cut along
+     the splash's bottom); a pixel stays while its depth beats the erosion front E (+ a coarse 2x2 grain, so the edge breaks up in
+     crumbs). E moves in on ones: mist, drips and small drops go first, the body shrinks to its heart. A few eroded pixels become FLAKES
+     that fall off for FLAKE_MS, only where their fall stays inside the view (pure: the moment a pixel eroded follows from its depth). */
   const dms = ms - gone, diss = dms > 0;
   const er = diss ? erosion(p, dms, still) : null;
   const dep = er ? depthOf(p, ctx.w) : null;
-  const raw = (x, y, t, l, gl = 0) => {
-    const i = y * ctx.w + x, sf = ctx.sf;
-    if (gl) sf.G[i] = gl;
+  const mark = (i, x, y, t, l) => {
+    const sf = ctx.sf;
     if (t > sf.T[i]) { sf.T[i] = t; sf.L[i] = l; }
-    if (stage < sf.S[i]) sf.S[i] = stage;
+    if (dry < sf.S[i]) sf.S[i] = dry;
+    if (af > sf.N[i]) sf.N[i] = af;
+    if (gl > sf.W[i]) sf.W[i] = gl;
     if (!see) sf.A[i] = 0;
-    if (!settled) sf.N[i] = 0;
     const b = ctx.box;
-    if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y;
+    if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y; if (x < b.lo[y]) b.lo[y] = x; if (x > b.hi[y]) b.hi[y] = x;
   };
   const put = (x, y, t, l = 0.45) => {
     x |= 0; y |= 0;
@@ -117,46 +151,70 @@ function drawBlood(ctx, p, ms, gone) {
       const n = grain(x, y);
       const D = x >= dep.x0 && y >= dep.y0 && x < dep.x0 + dep.bw && y < dep.y0 + dep.bh ? dep.d[(y - dep.y0) * dep.bw + (x - dep.x0)] || 1 : 1;
       if (D <= er.E + n) {
-        if (er.flakes && D >= 2 && hash2(x, y) < FLAKE_RATE) {
-          const age = er.tick - er.span * Math.min(1, Math.max(0, (D - n) / er.Emax)) ** (1 / ERODE_POW);
-          if (age >= 0 && age < FLAKE_MS) {
-            const a = age / 1000, hs = hash2(y + 7, x + 3);
+        if (er.flakes && D >= 2 && hash2(x, y) < FLAKE_RATE && x > FLAKE_DX + EDGE && x < ctx.w - 1 - EDGE - FLAKE_DX && y + FLAKE_DY < ctx.h - 1 - EDGE) {
+          const age2 = er.tick - er.span * Math.min(1, Math.max(0, (D - n) / er.Emax)) ** (1 / ERODE_POW);
+          if (age2 >= 0 && age2 < FLAKE_MS) {
+            const a = age2 / 1000, hs = hash2(y + 7, x + 3);
             const fx = Math.round(x + (hs - 0.5) * 40 * a), fy = Math.round(y + 1 + 0.5 * FLAKE_G * a * a);
-            if (fx >= 0 && fy >= 0 && fx < ctx.w && fy < ctx.h) { raw(fx, fy, 0.5, 0.3, 3); if (hs < 0.45 && fx + 1 < ctx.w) raw(fx + 1, fy, 0.5, 0.3, 3); }
+            ctx.sf.G[fy * ctx.w + fx] = 3; mark(fy * ctx.w + fx, fx, fy, 0.5, 0.3);
+            if (hs < 0.45) { ctx.sf.G[fy * ctx.w + fx + 1] = 3; mark(fy * ctx.w + fx + 1, fx + 1, fy, 0.5, 0.3); }
           }
         }
         return;
       }
-      if (D <= er.E + n + CRUMB) ctx.sf.G[y * ctx.w + x] = 2;      // the crumbling front: a ring of pale dry crust walking inward
+      /* the crumbling front: a ring of pale dry crust walking inward; GORE3: each pixel pales as the front nears it (W = how near), so
+         the ring never switches on at once when the clearing starts */
+      if (D <= er.E + n + CRUMB) { const i = y * ctx.w + x; ctx.sf.G[i] = 2; ctx.sf.W[i] = Math.max(ctx.sf.W[i], Math.min(4, Math.ceil(((er.E + n + CRUMB - D) / CRUMB) * 4)) / 4); }      // four steps of paleness: a few flat colours
     }
-    const i = y * ctx.w + x, sf = ctx.sf;
-    if (t > sf.T[i]) { sf.T[i] = t; sf.L[i] = l; }
-    if (stage < sf.S[i]) sf.S[i] = stage;
-    if (!see) sf.A[i] = 0;
-    if (!settled) sf.N[i] = 0;
-    const b = ctx.box;
-    if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y;
+    mark(y * ctx.w + x, x, y, t, l);
   };
   /* the shapes of a tick are the same every time it is drawn (the seed decides them): each tick's pixels are recorded once (warm()
      records them ahead, before the contact) and replayed; from tick SETTLED on the splash stands still */
   const c = tickPixels(p, Math.min(k, SETTLED), still);
-  for (let j = 0; j < c.idx.length; j++) { const i = c.idx[j]; put(i % ctx.w, (i / ctx.w) | 0, c.t[j], c.l[j]); }
-  /* drips: a bead swells, then runs; the trail thins behind the head */
-  for (const d of p.drips) {
-    const st = still ? (ms >= 0 ? { y: d.len, moving: false, swell: 1 } : null) : dripAt(d, ms);
-    if (!st || (!still && ms < d.start - 1)) continue;
-    const yTop = d.y | 0, yHead = d.y + st.y;
-    for (let yy = yTop; yy < yHead; yy++) {
-      const x = d.x + Math.round(Math.sin(yy * 0.18 + d.wob) * 0.7);
-      const thick = (yy - yTop) < (yHead - yTop) * 0.45 && d.w > 1;
-      put(x, yy, 0.42);
-      if (thick) put(x + 1, yy, 0.42);
+  if (er || c.w !== ctx.w) for (let j = 0; j < c.idx.length; j++) { const i = c.idx[j]; put(i % ctx.w, (i / ctx.w) | 0, c.t[j], c.l[j]); }
+  else {
+    /* GORE3 cost: the standing pixels (no clearing yet) in one plain loop, the box grown by the tick's cached row spans */
+    const { T, L, S, N, W, A } = ctx.sf, { idx, t: ct, l: cl } = c, n = idx.length;
+    for (let j = 0; j < n; j++) {
+      const i = idx[j], t = ct[j];
+      if (t > T[i]) { T[i] = t; L[i] = cl[j]; }
+      if (dry < S[i]) S[i] = dry;
+      if (af > N[i]) N[i] = af;
+      if (gl > W[i]) W[i] = gl;
+      if (!see) A[i] = 0;
     }
-    const hx = d.x + Math.round(Math.sin(yHead * 0.18 + d.wob) * 0.7);
-    disc(put, hx + (d.w > 1 ? 0.5 : 0), yHead, 0.6 + 1.0 * st.swell, 0.95);
-    if (stage === 0 && st.swell >= 1 && !er) glint(ctx, hx, Math.round(yHead) - 1, false);
+    const b = ctx.box, rs = c.rows;
+    if (rs.length) {
+      if (c.x0 < b.x0) b.x0 = c.x0; if (c.x1 > b.x1) b.x1 = c.x1; if (rs[0] < b.y0) b.y0 = rs[0]; if (rs[rs.length - 3] > b.y1) b.y1 = rs[rs.length - 3];
+      for (let r = 0; r < rs.length; r += 3) { const y = rs[r]; if (rs[r + 1] < b.lo[y]) b.lo[y] = rs[r + 1]; if (rs[r + 2] > b.hi[y]) b.hi[y] = rs[r + 2]; }
+    }
   }
-  if (stage === 0 && !er) for (const gl of p.glints) if (k >= 2) glint(ctx, gl.x, gl.y, gl.big);
+  /* drips: a bead swells, then runs; the trail thins behind the head (they stop where the clearing starts) */
+  const glossy = gl > 0 && !er;
+  for (const d of p.drips) {
+    const st = dripState(d, Math.min(ms, gone), still);
+    if (!st) continue;
+    const head = drawDrip(put, d, st);
+    if (glossy && st.swell >= 1) glint(ctx, head[0], head[1] - 1, false);
+  }
+  if (glossy) for (const gl of p.glints) if (k >= 2) glint(ctx, gl.x, gl.y, gl.big);
+}
+function dripState(d, ms, still) {
+  if (still) return ms >= 0 ? { y: d.len, moving: false, swell: 1 } : null;
+  if (ms < d.start - 1) return null;
+  return dripAt(d, ms);
+}
+function drawDrip(put, d, st) {
+  const yTop = d.y | 0, yHead = d.y + st.y;
+  for (let yy = yTop; yy < yHead; yy++) {
+    const x = d.x + Math.round(Math.sin(yy * 0.18 + d.wob) * 0.7);
+    const thick = (yy - yTop) < (yHead - yTop) * 0.45 && d.w > 1;
+    put(x, yy, 0.42);
+    if (thick) put(x + 1, yy, 0.42);
+  }
+  const hx = d.x + Math.round(Math.sin(yHead * 0.18 + d.wob) * 0.7);
+  disc(put, hx + (d.w > 1 ? 0.5 : 0), yHead, 0.6 + 1.0 * st.swell, 0.95);
+  return [hx, Math.round(yHead)];
 }
 /* a dome's light: its normal against a light from the top left, toward the viewer (0 = away, 1 = full) */
 const LX = -0.48, LY = -0.58, LZ = 0.66;
@@ -185,7 +243,13 @@ function tickPixels(p, k, still) {
   const idx = new Int32Array(map.size), t = new Float32Array(map.size), l = new Float32Array(map.size);
   let j = 0;
   for (const [i, v] of map) { idx[j] = i; t[j] = v[0]; l[j] = v[1]; j++; }
-  return (cache[key] = { idx, t, l });
+  /* each row's span [y, lo, hi, ...] (rows ascending) and the x range: the replay grows the dirty box from these */
+  const lo = new Map(), hi = new Map();
+  let x0 = w, x1 = -1;
+  for (const i of idx) { const y = (i / w) | 0, x = i - y * w; if (!lo.has(y) || x < lo.get(y)) lo.set(y, x); if (!hi.has(y) || x > hi.get(y)) hi.set(y, x); if (x < x0) x0 = x; if (x > x1) x1 = x; }
+  const rows = [];
+  for (const y of [...lo.keys()].sort((a, b) => a - b)) rows.push(y, lo.get(y), hi.get(y));
+  return (cache[key] = { idx, t, l, rows, x0, x1, w });
 }
 /** record a splash's drawings ahead (main.mjs calls it while the contact is still to come): its first ticks then cost a replay only */
 export function warm(p, from = 0, upTo = SETTLED) {
@@ -269,18 +333,25 @@ function shapes(p, k, still, put) {
   }
 }
 /* the crumble's tables: erosion from E0 to EMAX (above the thickest pixel plus the grain), the grain, the flake rate and fall */
-export const CRUMB = 1.6, GRAIN = 1.2, FLAKE_RATE = 0.07, FLAKE_G = 300, ERODE_POW = 1.25;
+export const DRIP_D = 3.2, CRUMB = 1.6, GRAIN = 1.2, FLAKE_RATE = 0.07, FLAKE_G = 300, ERODE_POW = 1.25;
+/* how far a flake can fall and drift (art px): flakes are made only where that stays inside the view */
+const FLAKE_DY = Math.ceil(1 + 0.5 * FLAKE_G * (FLAKE_MS / 1000) ** 2) + 1, FLAKE_DX = Math.ceil(20 * FLAKE_MS / 1000) + 1;
 function erosion(p, dms, still) {
-  const q = still ? 375 : 2 * TICK_MS;                       // on twos (a reduced-motion seat: four stills)
+  const q = still ? 375 : TICK_MS;                           // GORE3: on ones (was twos), a smaller bite a tick (reduced motion: four stills)
   const span = p.life.dissolve - (still ? 0 : FLAKE_MS);     // the erosion; the flakes of its last pixels finish by the end
-  const v = Math.min(1, Math.floor(dms / q) * q / span + (still ? 0.25 : 0));
+  const v = Math.min(1, Math.floor(dms / q + 1e-6) * q / span + (still ? 0.25 : 0));      // + 1e-6: a tick on the clock is k x TICK_MS, which floats can land a hair under (GORE3: a skipped bite, then a double one)
   const Emax = depthOf(p, p.g.w).max + GRAIN + 0.5;
   return { E: Emax * v ** ERODE_POW, Emax, span, tick: Math.floor(dms / TICK_MS) * TICK_MS, flakes: !still };
 }
-/* each settled pixel's distance from the splash's edge (chamfer 3-4, in art px), once per plan */
+/* each pixel's distance from the edge of the splash as it stands when it starts to clear (chamfer 3-4, in art px), once per plan.
+   GORE3: the drips at their full run are part of it (drawn into the same pixel list), so nothing drawn lies outside the map */
 function depthOf(p, w) {
   if (p._dep) return p._dep;
-  const c = tickPixels(p, SETTLED, p.still);
+  const s0 = tickPixels(p, SETTLED, p.still), map = new Map();
+  for (let j = 0; j < s0.idx.length; j++) map.set(s0.idx[j], s0.t[j]);
+  const { h } = p.g;
+  for (const d of p.drips) drawDrip((x, y, t) => { x |= 0; y |= 0; if (x >= 0 && y >= 0 && x < w && y < h) { const i = y * w + x; map.set(i, Math.max(map.get(i) ?? 0, t)); } }, d, { y: d.len, swell: 1 });
+  const c = { idx: Int32Array.from(map.keys()), t: Float32Array.from(map.values()) };
   let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
   for (const i of c.idx) { const x = i % w, y = (i / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) return (p._dep = { x0: 0, y0: 0, bw: 0, bh: 0, d: new Uint8Array(0), max: 1 });
@@ -292,9 +363,15 @@ function depthOf(p, w) {
   for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) { const k = y * bw + x; if (f[k]) f[k] = Math.min(f[k], at(x - 1, y) + 3, at(x, y - 1) + 3, at(x - 1, y - 1) + 4, at(x + 1, y - 1) + 4); }
   let max = 1;
   for (let y = bh - 1; y >= 0; y--) for (let x = bw - 1; x >= 0; x--) { const k = y * bw + x; if (f[k]) { f[k] = Math.min(f[k], at(x + 1, y) + 3, at(x, y + 1) + 3, at(x + 1, y + 1) + 4, at(x - 1, y + 1) + 4); if (f[k] / 3 > max) max = f[k] / 3; } }
-  const d = new Uint8Array(bw * bh);
+  const d = new Float32Array(bw * bh);
   for (let k = 0; k < f.length; k++) d[k] = f[k] ? Math.min(255, Math.max(1, Math.round(f[k] / 3))) : 0;
-  return (p._dep = { x0, y0, bw, bh, d, max });
+  /* GORE3: a drip is a thin line, all of it one px from its edge: it would go in one bite. Its depth instead rises from its tip to its root
+     (1 .. DRIP_D), so it crumbles UP the glass into the splash, a few pixels a tick */
+  for (const dr of p.drips) {
+    const len = Math.max(1, dr.len);
+    drawDrip((x, y) => { x |= 0; y |= 0; const X = x - x0, Y = y - y0; if (X < 0 || Y < 0 || X >= bw || Y >= bh) return; const k = Y * bw + X; const v = 1 + (DRIP_D - 1) * Math.min(1, Math.max(0, 1 - (y - dr.y) / len)); if (d[k] && v > d[k]) d[k] = v; }, dr, { y: dr.len, swell: 1 });
+  }
+  return (p._dep = { x0, y0, bw, bh, d, max: Math.max(max, DRIP_D) });
 }
 const hash2 = (x, y) => ((Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ 0x5bd1e995) >>> 0) % 1000 / 1000;
 const grain = (x, y) => (hash2((x >> 1) + 911, (y >> 1) + 377) - 0.5) * 2 * GRAIN;
@@ -366,7 +443,7 @@ function crackPicture(ctx, p, ms, build) {
     if ((c === 2 || c >= 6) && cur && !soft) return;
     if (c >= 6 && cur) return;
     sf.C[i] = c;
-    if (x < box.x0) box.x0 = x; if (x > box.x1) box.x1 = x; if (y < box.y0) box.y0 = y; if (y > box.y1) box.y1 = y;
+    if (x < box.x0) box.x0 = x; if (x > box.x1) box.x1 = x; if (y < box.y0) box.y0 = y; if (y > box.y1) box.y1 = y; if (box.lo) { if (x < box.lo[y]) box.lo[y] = x; if (x > box.hi[y]) box.hi[y] = x; }
   };
   for (const f of p.facets ?? []) {
     if (!build && ms < f.at && !p.still) continue;
@@ -420,7 +497,7 @@ function drawChips(ctx, p, ms) {
       const X = Math.round(x + ox), Y = Math.round(y + oy);
       if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
       sf.C[Y * w + X] = 4;
-      if (X < box.x0) box.x0 = X; if (X > box.x1) box.x1 = X; if (Y < box.y0) box.y0 = Y; if (Y > box.y1) box.y1 = Y;
+      if (X < box.x0) box.x0 = X; if (X > box.x1) box.x1 = X; if (Y < box.y0) box.y0 = Y; if (Y > box.y1) box.y1 = Y; if (box.lo) { if (X < box.lo[Y]) box.lo[Y] = X; if (X > box.hi[Y]) box.hi[Y] = X; }
     }
   }
 }
@@ -472,7 +549,7 @@ function drawShards(ctx, p, ms) {
     const i = y * w + x, cur = sf.C[i];
     if (cur && !(cur === 6 || cur === 7 || cur === 8) && c >= 6) return;
     sf.C[i] = c;
-    if (x < box.x0) box.x0 = x; if (x > box.x1) box.x1 = x; if (y < box.y0) box.y0 = y; if (y > box.y1) box.y1 = y;
+    if (x < box.x0) box.x0 = x; if (x > box.x1) box.x1 = x; if (y < box.y0) box.y0 = y; if (y > box.y1) box.y1 = y; if (box.lo) { if (x < box.lo[y]) box.lo[y] = x; if (x > box.hi[y]) box.hi[y] = x; }
   };
   /* the ones still in place first, the falling ones over them */
   for (const s of shards) {
@@ -528,32 +605,52 @@ function line(x0, y0, x1, y1, plot) {
 }
 
 /* ---------------- colour ---------------- */
-function colour(sf, b, pal) {
+const RAMP = ramp(PAL), RAMP_SAFE = ramp(PAL_SAFE), FLAT_Q = 64;
+const mixInto = (c, d, u) => (u <= 0 ? c : u >= 1 ? d : mixC(c, d, u));
+function colour(sf, b, ramp) {
   if (b.x1 < 0) return;
-  const { w, h, T, S, G, C, rgba } = sf, Asee = sf.A, Lf = sf.L, Sett = sf.N;
+  const { w, h, T, S, G, C, rgba } = sf, Asee = sf.A, Lf = sf.L, Kf = sf.N;
+  const Wf = sf.W;
+  /* T at (x, y) with the view's border as empty; hot loop, so plain index arithmetic, no closures (GORE3 cost) */
   const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : T[y * w + x]);
-  for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
-    const i = y * w + x, t = T[i], o = i * 4;
+  for (let y = b.y0; y <= b.y1; y++) {
+    const row = y * w, inY = y >= 2 && y < h - 2;
+    for (let x = sf.lo[y], xe = sf.hi[y]; x <= xe; x++) {
+    const i = row + x, t = T[i];
     if (t > THR) {
-      const st = S[i] > 2 ? 2 : S[i];
-      const P = st === 0 ? pal.wet : st === 1 ? pal.drying : pal.dried;
+      const o = i * 4;
+      const dry = S[i] > 1 ? 1 : S[i];
+      const P = ramp[Math.round(dry * Q)];
+      /* the gloss glides away (a glint pixel's colour turns into the blood's under it by GLOSS) and the dried middle flattens into one
+         crust colour (it glides there from the banded shading): every change here is continuous in the dryness */
+      const gi = G[i];
       let c;
-      const edge = at(x - 1, y) <= THR || at(x + 1, y) <= THR || at(x, y - 1) <= THR || at(x, y + 1) <= THR;
-      if (G[i] === 3) c = P.crumb;                    // a falling flake
+      const inner = inY && x >= 2 && x < w - 2;
+      const edge = inner ? T[i - 1] <= THR || T[i + 1] <= THR || T[i - w] <= THR || T[i + w] <= THR
+        : at(x - 1, y) <= THR || at(x + 1, y) <= THR || at(x, y - 1) <= THR || at(x, y + 1) <= THR;
+      if (gi === 3) c = P.crumb;      // a falling flake
       else if (edge) c = P.out;
-      else if (G[i] === 2) c = P.crumb;
-      else if (G[i] && st === 0) c = P.spec;
       else {
         /* light from the top left: each drop is shaded as a dome (light()), banded into the palette, a 2x2 dither where two bands meet;
            the brightest point of a big wet dome is its glint */
         const v = Lf[i] + ((x + y) & 1 ? 0.035 : -0.035);
-        c = v > 0.97 && st === 0 && t > 0.5 ? P.spec : v > 0.84 ? P.lit : v > 0.56 ? P.b : v > 0.3 ? P.m : P.d;
-        if (st === 2 && !(at(x - 2, y) <= THR || at(x + 2, y) <= THR || at(x, y - 2) <= THR || at(x, y + 2) <= THR)) c = P.b;     // the dried crust: rim dark, the middle paler and flat (GORE2: no checker, it read as a screen door)
+        const band = v > 0.84 ? 0 : v > 0.56 ? 1 : v > 0.3 ? 2 : 3;
+        c = band === 0 ? P.lit : band === 1 ? P.b : band === 2 ? P.m : P.d;
+        const flat = dry > 0.5 ? smooth((dry - 0.5) / 0.5) : 0, gloss = Wf[i];
+        if (flat > 0 && band !== 1 && !(inner ? T[i - 2] <= THR || T[i + 2] <= THR || T[i - 2 * w] <= THR || T[i + 2 * w] <= THR
+          : at(x - 2, y) <= THR || at(x + 2, y) <= THR || at(x, y - 2) <= THR || at(x, y + 2) <= THR)) {
+          /* the flattening, in FLAT_Q steps (each far under a visible step), its mixes kept on the ramp entry */
+          const fq = Math.round(flat * FLAT_Q), key = band * (FLAT_Q + 1) + fq, fm = (P._flat ??= []);
+          c = fm[key] ??= mixInto(c, P.b, fq / FLAT_Q);
+        }
+        if (gi !== 2 && gloss > 0 && (gi === 1 || (v > 0.97 && t > 0.5))) c = mixInto(c, ramp[0].spec, gloss);      // toward the WET glint: one glide, not two
       }
-      rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = Math.round(ALPHA[st] * (Asee[i] ? CENTRE.alpha : 1) * (Sett[i] ? SEE : 1));
+      if (gi === 2) c = mixInto(c, P.crumb, Wf[i]);      // the crumbling front, as pale as it is near
+      rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = Math.round(P.a * (Asee[i] ? CENTRE.alpha : 1) * Kf[i]);
     } else if (C[i]) {
-      const c = CRACK[C[i]];
+      const c = CRACK[C[i]], o = i * 4;
       rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = c[3];
+    }
     }
   }
 }

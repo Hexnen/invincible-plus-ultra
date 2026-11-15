@@ -9,8 +9,9 @@
      - a character's Health / Resolve drop (any way: a roll, the tactical engine, the sheet) seen on every seat by the same hooks,
        landed on the token reaction's blow (hook invincible-plus-ultra.tokenReact, phase "hit") when one plays, else after the same short
        wait on every seat; the seed is the change's server stamp, so every seat draws the same splash;
-     - never for a token this seat does not see (hidden, another scene): the effect would tell a player that something he cannot see
-       was hurt;
+     - never for a token this seat does not see (hidden, another scene) nor one outside this seat's view (GORE3, finding 5 of the blind
+       review: a screen that saw no blow gets no blood); the splash lands beside the struck token as this seat sees it, sized by it;
+     - a new splash on a token makes its older ones crumble away (no stains piling up on one character);
      - the public API (game.modules.get("invincible-plus-ultra").api.gore, also globalThis.PlusUltraGore). Nothing here throws. */
 import * as P from "./plan.mjs";
 import * as R from "./raster.mjs";
@@ -159,10 +160,14 @@ function hideIfEmpty() {
 
 /* ---------------- playing ---------------- */
 let uid = 0;
-/** play an effect on THIS seat. o = { strength 0..1.25, seed, dir (radians, the way the blood flies), at ({ fx, fy }), startAt (this
-    page's performance.now() of the contact), raw (true: the strength as given, the table's level not applied) } -> handle | null */
+/** play an effect on THIS seat. o = { strength 0..1.25, seed, dir (radians, the way the blood flies), at ({ fx, fy }), token (a Token
+    or its id: the blood lands beside it as this seat sees it; nothing when it is outside this seat's view), startAt (this page's
+    performance.now() of the contact), raw (true: the strength as given, the table's level not applied) } -> handle | null */
 function play(kind, o = {}) {
   try {
+    const tok = typeof o.token === "string" ? canvas?.tokens?.get?.(o.token) : o.token ?? null;
+    let near = o.near ?? null;
+    if (tok && !near) { near = tokScreen(tok); if (!near?.inView) return null; }
     const op = opts();
     const level = kind === "blood" ? op.blood : op.cracks;
     const s = o.raw ? P.scaled(o.strength ?? 0.5, 2) : P.scaled(o.strength ?? 0.5, level);
@@ -172,11 +177,13 @@ function play(kind, o = {}) {
     const t0 = P.arrivalAt(want, s, G.arrivals, safe);
     if (s >= P.BIG || safe) { G.arrivals.push(t0); G.arrivals = G.arrivals.filter((t) => t > pnow() - 3000); }
     const seed = o.seed ?? `${kind}|${++uid}|${Math.random()}`;
-    const spec = { strength: s, seed, dir: Number.isFinite(o.dir) ? o.dir : null, at: o.at ?? null, safe, still, hold: op.hold };
+    const spec = { strength: s, seed, dir: Number.isFinite(o.dir) ? o.dir : null, at: o.at ?? null, near: kind === "blood" ? near : null, safe, still, hold: op.hold };
     const make = (g) => (kind === "blood" ? P.bloodPlan(g, spec) : P.crackPlan(g, spec));
     if (!ensureGlass()) return null;
     fit();
-    const it = { id: ++uid, kind, t0, make, plan: make(G.g) };
+    const it = { id: ++uid, kind, t0, make, plan: make(G.g), tok: tok?.id ?? null };
+    /* GORE3: a new splash on a token: its older ones start to crumble as this one lands (one stain per character, no piling) */
+    if (kind === "blood" && it.tok) for (const x of G.items) if (x.kind === "blood" && x.tok === it.tok && !(x.cutAt <= t0)) x.cutAt = Math.max(x.t0, t0);
     G.items.push(it);
     warmLater(it);
     /* too many alive: the oldest blood dissolves now */
@@ -213,6 +220,24 @@ export function mayShow({ gm, sameScene, visible, hidden, owner }, seats = "all"
   if (hidden && !gm) return false;
   if (seats === "owners") return gm || owner;
   return true;
+}
+/** where a token is on THIS screen: its middle and radius as fractions of the view (radius / the short side), and whether the view
+    holds its middle */
+export function tokScreen(tok) {
+  try {
+    const c = tok.center;
+    let x, y;
+    if (typeof canvas.clientCoordinatesFromCanvas === "function") ({ x, y } = canvas.clientCoordinatesFromCanvas(c));
+    else {
+      const T = canvas.stage.worldTransform, rect = canvas.app?.view?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      x = T.a * c.x + T.c * c.y + T.tx + rect.left; y = T.b * c.x + T.d * c.y + T.ty + rect.top;
+    }
+    const sc = Math.abs(canvas.stage?.scale?.x ?? 1) || 1;
+    const r = (Math.max(Number(tok.w) || 0, Number(tok.h) || 0) / 2) * sc;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !(vw > 0) || !(vh > 0)) return null;
+    return { fx: x / vw, fy: y / vh, fr: Math.max(0.004, r / Math.min(vw, vh)), inView: x >= 0 && y >= 0 && x <= vw && y <= vh };
+  } catch { return null; }
 }
 function seatMay(tok) {
   try {
@@ -276,6 +301,9 @@ function fire(id, at) {
   try {
     const tok = canvas.tokens?.get(id) ?? e.tok;
     if (!tok || !seatMay(tok)) return;
+    /* GORE3 (finding 5): a seat whose view does not hold the struck token saw no blow: no blood, no cracks there */
+    const near = tokScreen(tok);
+    if (!near?.inView) return;
     const seedBase = `${tok.id}|${e.stamp ?? e.changes.map((c) => `${c.stat}${c.from}>${c.to}`).join(",")}`;
     const dir = dirOf(tok);
     const done = new Set();
@@ -283,7 +311,7 @@ function fire(id, at) {
       const fx = P.effectOf(c);
       if (!fx || done.has(fx.kind)) continue;
       done.add(fx.kind);
-      play(fx.kind, { strength: fx.strength, seed: `${seedBase}|${fx.kind}`, dir: fx.kind === "blood" ? dir : null, startAt: at });
+      play(fx.kind, { strength: fx.strength, seed: `${seedBase}|${fx.kind}`, dir: fx.kind === "blood" ? dir : null, startAt: at, token: tok, near });
     }
   } catch (err) { once(err); }
 }
@@ -330,18 +358,20 @@ function receive(msg) {
   if (msg.op === "clear") { clear(msg.o ?? {}); return null; }
   if (msg.op !== "blood" && msg.op !== "cracks") return null;
   const o = msg.o && typeof msg.o === "object" ? msg.o : {};
-  return play(msg.op, { strength: Number(o.strength), seed: String(o.seed ?? ""), dir: Number.isFinite(o.dir) ? o.dir : null,
+  return play(msg.op, { strength: Number(o.strength), seed: String(o.seed ?? ""), dir: Number.isFinite(o.dir) ? o.dir : null, token: typeof o.token === "string" ? o.token : null,
     at: o.at && Number.isFinite(o.at.fx) && Number.isFinite(o.at.fy) ? { fx: o.at.fx, fy: o.at.fy } : null, startAt: Number.isFinite(msg.at) ? Clock.toPage(msg.at) : pnow() });
 }
 
 export const api = {
-  /** blood on THIS screen: { strength 0..1 (1 = a knock-down), dir, at: { fx, fy }, seed, startAt, raw } -> handle | null */
+  /** blood on THIS screen: { strength 0..1 (1 = a knock-down), dir, token (beside it), at: { fx, fy }, seed, startAt, raw } -> handle | null */
   blood: (o) => play("blood", o),
   /** cracks on THIS screen: { strength, at, seed, startAt, raw } */
   cracks: (o) => play("cracks", o),
   clear,
+  /** where a token sits on THIS screen: { fx, fy, fr, inView } (fractions of the view; the blood's anchor) */
+  tokScreen: (t) => tokScreen(typeof t === "string" ? canvas?.tokens?.get(t) : t),
   /** the same effect on EVERY seat at one instant (each seat still applies the table's options and its own accessibility) */
-  net: { blood: (o) => send("blood", o), cracks: (o) => send("cracks", o), clear: (o) => send("clear", o) },
+  net: { blood: (o) => send("blood", { ...o, token: typeof o?.token === "string" ? o.token : o?.token?.id }), cracks: (o) => send("cracks", o), clear: (o) => send("clear", o) },
   /** a sample on this screen (the table window's Preview) */
   preview() {
     const t = pnow();
@@ -353,7 +383,7 @@ export const api = {
     const c = [...G.cost].sort((a, b) => a - b);
     return { live: G.items.length, grid: G.g ? { w: G.g.w, h: G.g.h, px: G.g.px, dpr: G.g.dpr } : null, frames: G.frames, running: !!G.raf,
       costMs: c.length ? { p50: c[Math.floor(c.length / 2)], p95: c[Math.floor(c.length * 0.95)], max: c[c.length - 1], n: c.length } : null,
-      pending: pending.size, opts: opts(), safe: photosensitive(), still: osReduced() };
+      pending: pending.size, cleared: G.items.filter((it) => Number.isFinite(it.cutAt)).length, opts: opts(), safe: photosensitive(), still: osReduced() };
   },
   resetCost: () => { G.cost = []; G.frames = 0; }
 };
