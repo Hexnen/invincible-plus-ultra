@@ -8,7 +8,7 @@
      C  what the action is: every power of the book and boost (the tactics kit table), the system's own rolls, every attribute, the tactics
         defence and attack rolls, a gun, a renamed or unknown power: each gets its family, never the generic one when anything is known;
      E  the event: the word drawn comes from its family's pool at its rank (many seeds), a critical never draws an ordinary word, a punch
-        never ZOOM!s; a flag cannot put another action's word on the roll; misses fit (a gun's miss is no FIZZLE!, a power's no PTWING!);
+        never ZOOM!s; a flag cannot put another action's word on the roll; misses fit (a gun's miss is no PFZZT!, a power's no PTWING!);
      T  where the roll's impact lands: a blow by its attack flag, a roll from before WORDPOOL by its action as before;
      W  wiring: the roll dialog hands the item and the tactics roll's `what` to the classifier, the tactics engine sends `what` with the roll. */
 import fs from "node:fs";
@@ -220,10 +220,10 @@ for (let seed = 1; seed <= 60; seed++) ok(evOf({ n: 4, sixes: 4, action: "slugfe
   const ev = evOf({ n: 4, sixes: 4, action: "slugfest" }, 3);
   ok(!SL.wordFits(ev, "BOOM!") && !SL.wordFits(ev, "POW!") && SL.wordFits(ev, "HAYMAKER!"), "E: a flag's word must be this action's word at this rank");
   const miss = evOf({ n: 9, sixes: 0, action: "shooting" }, 3);
-  ok(SL.wordFits(miss, "PTWING!") && !SL.wordFits(miss, "FIZZLE!"), "E: a gun's miss ricochets, it does not fizzle");
+  ok(SL.wordFits(miss, "PTWING!") && !SL.wordFits(miss, "PFZZT!"), "E: a gun's miss ricochets, it does not fizzle");
   const pmiss = evOf({ n: 9, sixes: 0, action: "blast" }, 3);
-  ok(SL.wordFits(pmiss, "FIZZLE!") && !SL.wordFits(pmiss, "PTWING!"), "E: a blast's miss fizzles");
-  for (let seed = 1; seed <= 30; seed++) { const m = evOf({ n: 9, sixes: 0, action: "reason" }, seed); ok(SL.missFor("reason").includes(m.word) && m.word !== "WHIFF!", `E: a clever idea never WHIFF!s (seed ${seed}: ${m.word})`); }
+  ok(SL.wordFits(pmiss, "PFZZT!") && !SL.wordFits(pmiss, "PTWING!"), "E: a blast's miss fizzles");
+  for (let seed = 1; seed <= 30; seed++) { const m = evOf({ n: 9, sixes: 0, action: "reason" }, seed); ok(SL.missFor("reason").includes(m.word) && m.word !== "FWUFF!", `E: a clever idea never WHIFF!s (seed ${seed}: ${m.word})`); }
   eq(evOf({ n: 4, sixes: 2, action: "blast", attack: true }, 1).atk, true, "E: the event carries the blow flag");
   eq(evOf({ n: 4, sixes: 2, action: "slugfest" }, 1).atk, null, "E: an older reading has none (null)");
   eq(evOf({ n: 4, sixes: 2, action: "nonsense" }, 1).action, "generic", "E: an unknown action reads as the neutral family");
