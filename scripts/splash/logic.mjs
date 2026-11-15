@@ -47,7 +47,9 @@ export function powerOf(p) {
 }
 
 /* ---------- kolory ---------- */
-const HUES = [48, 36, 24, 10, -10, -35, -60, -90];
+/* PALETTE (the owner: «Nie chcę żeby najczęstsze napisy były różowe»): the climb ends at red; it went on through magenta to violet
+   (-10 .. -90) and every strong or critical roll's sparks, chat ribbon, caption and word turned pink or lilac (letter-colors.mjs) */
+const HUES = [48, 42, 36, 30, 24, 16, 8, 0];
 export function hueOf(P) {
   const x = P * (HUES.length - 1), i = Math.min(HUES.length - 2, Math.floor(x)), f = x - i;
   return HUES[i] + (HUES[i + 1] - HUES[i]) * f;

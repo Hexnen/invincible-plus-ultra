@@ -11,6 +11,7 @@
    Kinds: Health  hit | heavy | down (to 0 = broken [B2707]) | heal | back (up from 0 = rallied [B2773])
           Resolve stress | spent (stress taken by choice: a pushed roll, a power) | regain | out (0 = stressed out [B2816]) | steady (up from 0) */
 import { contactMs as wordContact, leadMs } from "../splash/impact-plan.mjs";
+import * as LC from "../letter-colors.mjs";   // PALETTE: the lettering's colours, one place
 /* CALLERS2 (engine 1.9.18: the impact's ladders are public, L.impact.steps / .series / .tiers): no copy of the engine's numbers and no
    import of its files here. The running engine hands its table in (main.mjs useImpactTable(L.impact), before any blow is planned); until it
    has, every rule that needs a strength bound throws (a node check hands in the vendored engine's own table, scripts/tactics/impact-node.mjs). */
@@ -180,16 +181,13 @@ export const MOTION = {
   out: { in: ["drop"], hold: ["wobble"], out: ["droop", "fall"] },
   steady: { in: ["grow"], hold: ["throb"], out: ["rise"] }
 };
-/* the colours say WHICH track moved: Health hot (loss) or green (back); Resolve is strain: magenta to violet (FXLT, review 11: the cool
-   blue with the pain hand's drips read as icicles, cold, not effort); getting the nerve back is teal. Fill light to dark. */
-export const PALETTE = {
-  health: ["#fff4b8", "#ffb02e", "#d4231c"],
-  down: ["#ffe1d0", "#e8452c", "#6e0f12"],
-  heal: ["#efffd9", "#7fd65a", "#1d7a36"],
-  resolve: ["#ffe3f3", "#ff4fae", "#8a1468"],
-  out: ["#f1e3ff", "#a75cf0", "#3a1470"],
-  steady: ["#e6fff9", "#3fd8c4", "#145f7a"]
-};
+/* the colours say WHICH track moved: Health hot (loss) or green (back); Resolve is strain (FXLT, review 11: the cool blue with the pain
+   hand's drips read as icicles, cold, not effort); getting the nerve back is teal. Fill light to dark.
+   PALETTE (the owner: «Nie chcę żeby najczęstsze napisy były różowe»): Resolve loss was magenta, broken violet: Resolve loss is now the
+   splash's stress colour, blood red (one colour for strain at the table), broken indigo, and a knock-down (which was red-orange, too
+   near the blood red) the knock-out blow's white on a red block. The table lives in ../letter-colors.mjs (with the high-contrast and
+   colour-blind variants the table may choose); PALETTE here is its default palette. */
+export const PALETTE = Object.freeze(Object.fromEntries(Object.entries(LC.TOKEN).map(([k, v]) => [k, v.mood])));
 const PAL_OF = { hit: "health", heavy: "health", down: "down", heal: "heal", back: "heal", stress: "resolve", spent: "resolve", regain: "steady", out: "out", steady: "steady" };
 
 /* ---------------------------------------------------------------- numbers: ONE hand for every number (FXLT, review 3)
@@ -199,14 +197,10 @@ const PAL_OF = { hit: "health", heavy: "health", down: "down", heal: "heal", bac
    as a 7), flat (no warp, no tilt of its own), a black ink line inside a white cut
    edge so it holds on any map, a short extrusion for weight; only the colour says which track and which way. Passed to the engine as
    `hand` (contract v2: pins the look; the engine merges it over its own choice). */
-export const NUM_PAL = {
-  "health-": { fill: ["#fffbe6", "#ffd84a", "#ff7a1a"], ext: "#7a1608" },
-  "health+": { fill: ["#f4fff0", "#97f27e", "#22a84a"], ext: "#0b3a1a" },
-  "resolve-": { fill: ["#fff0f9", "#ff8fd2", "#d81f9a"], ext: "#3d0a33" },
-  "resolve+": { fill: ["#ecfffb", "#7ff2df", "#17a69c"], ext: "#073b3a" }
-};
+/* PALETTE: "resolve-" was pink (#ff8fd2 over #d81f9a): now blood red (letter-colors.mjs NUM, with its contrast / colour-blind variants) */
+export const NUM_PAL = Object.freeze(Object.fromEntries(Object.entries(LC.NUM).map(([k, v]) => [k, v.mood])));
 export function numHand(stat, sign) {
-  const p = NUM_PAL[`${stat === "resolve" ? "resolve" : "health"}${sign === "+" ? "+" : "-"}`];
+  const p = LC.numPal(`${stat === "resolve" ? "resolve" : "health"}${sign === "+" ? "+" : "-"}`);
   return {
     font: "bungee", treat: "plain", env: "flat", tex: "none", outline: "sticker", fill: "vgrad", stack: "stack", colorFam: "num",
     pal: { fill: p.fill.slice(), ext: p.ext, out2: "#ffffff", ink: "#160a14" }, ink: "#160a14",
@@ -290,7 +284,7 @@ export function look(a, c, lang, seed, vocab = null, o = {}) {
   /* CROWD (ADVX 8, 6: "-2 WHAM!" beside "WHAM! -2" in one crowd, and the "-1" of a series hopping left and right blow after blow): the number
      always stands AFTER its word, in reading order ("WHAM! -2"); a tag, not a coin toss */
   const side = NUM_SIDE;
-  const colors = PALETTE[PAL_OF[kind]];
+  const colors = LC.tokenColors(PAL_OF[kind]), hand = LC.tokenHand(PAL_OF[kind]);   // PALETTE: the table's palette; a pinned block where the sound's own would not hold the face
   const stat = HEALTH.includes(kind) ? "health" : "resolve";
   const sign = kind === "heal" || kind === "back" || kind === "regain" || kind === "steady" ? "+" : "-";
   const number = Number.isFinite(a.num) && a.num > 0 && kind !== "spent"      /* spent: the pushed roll's splash already shows the stress */
@@ -298,7 +292,7 @@ export function look(a, c, lang, seed, vocab = null, o = {}) {
     : null;
   const mo = MOTION[kind], at = (list, k) => list[(h >>> k) % list.length];
   const motion = { in: at(mo.in, 11), holdKind: at(mo.hold, 14), out: at(mo.out, 17) };
-  const lk = { kind, stat, word: null, vk: vocabKind(kind), loud, step: 0, n: Number.isFinite(c?.n) ? c.n : Number.isFinite(a?.num) ? a.num : 0, motion, mood: s.mood, sound: { ...s.sound, loud }, colors, sev: s.sev, amt, magnitude: magOf(kind, amt), hold: s.hold, rotation: Math.round(rot), side, numbers: number ? [number] : [], number };
+  const lk = { kind, stat, word: null, vk: vocabKind(kind), loud, step: 0, n: Number.isFinite(c?.n) ? c.n : Number.isFinite(a?.num) ? a.num : 0, motion, mood: s.mood, sound: { ...s.sound, loud }, colors, ...(hand ? { hand } : {}), sev: s.sev, amt, magnitude: magOf(kind, amt), hold: s.hold, rotation: Math.round(rot), side, numbers: number ? [number] : [], number };
   if (vocab) lk.word = wordFor(lk, vocab, { lang, seed, step: o.step, streakSeed: o.streakSeed });
   return lk;
 }

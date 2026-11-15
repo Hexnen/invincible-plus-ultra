@@ -753,7 +753,7 @@ function planOf(L, it) {
     : P.group({ cap: numCap, aspect: 0, nums: numRoom, numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
   const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), fit: "screen", ...layer() };
-  const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...lk.motion } : null;
+  const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...(lk.hand ? { hand: lk.hand } : {}), ...lk.motion } : null;   // PALETTE: lk.hand = a pinned block (colour only)
   /* ALIGN (engine 1.9.1 recipe, owner: one accent): the word that gets the moment's impact does not flash on its own; the impact IS its
      accent and lands on its contact. Every seat passes the same (the event decides, not the seat), so the word's contact is one rule */
   if (wordOpts && it.impact) wordOpts.flash = false;

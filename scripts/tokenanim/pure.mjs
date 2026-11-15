@@ -38,7 +38,8 @@ export const POSE0 = Object.freeze({ x: 0, y: 0, rot: 0, sx: 1, sy: 1, px: 0, py
 export const pose0 = (out = {}) => Object.assign(out, POSE0);
 
 /* the colours the picture is tinted with for a moment: which track moved (the lettering's own families, tokenreact/pure.mjs PALETTE) */
-export const TINTS = { blow: 0xff4a3a, down: 0xd4231c, heal: 0x8fe86a, stress: 0xff4fae, out: 0xa75cf0, steady: 0x3fd8c4 };
+/* PALETTE: stress was the old magenta (0xff4fae), out violet (0xa75cf0): now the blood red and indigo of the words (letter-colors.mjs TINT) */
+export const TINTS = { blow: 0xff4a3a, down: 0xd4231c, heal: 0x8fe86a, stress: 0xd8141f, out: 0x8a7bff, steady: 0x3fd8c4 };
 
 /* ---------------------------------------------------------------- the animations
    Each pose(t, A, c, out) writes the pose at t ms after the contact instant; A = the strength (1 = normal, about 0.3..2.4), c = { dir

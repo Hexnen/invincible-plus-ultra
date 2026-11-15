@@ -18,6 +18,7 @@
    the window (not under the chat, the bars, the hotbar), shrunk as one when it does not fit. Nothing in the block overlaps. */
 import { hueOf, oddsText, oddsLabel, fmtOdds, LBL, say, sfxWord, WORD_MOODS, FAMILY_MOODS, soundOf, SFX_KEYS, KEEP_EN, ACTION_WORDS } from './logic.mjs';   // SPLASHPL: sfxWord = the action word as this seat shows it (moods stay keyed by the English word)
 import { cleanHere, localCost, shiftInto } from '../same-picture.mjs';   // SAMEPIC: one picture for the table
+import * as LC from '../letter-colors.mjs';   // PALETTE: the lettering's colours, one place
 
 /* the push grunts, the wreck and the pushed roll that broke: their sound (mood + the engine's motion row, words.mjs SOUND) */
 const OWN_SOUND = Object.freeze({
@@ -53,21 +54,27 @@ const hsl = (h, s, l) => {
 /* FXLD: the power climb (yellow -> orange -> red -> magenta -> violet) in the comic's manner: pale, nearly flat fills (KRAK!! pale
    orange, SKREE- pale green, CHA-THOOM white), so the dark cut line and the depth block carry the shape and the word reads on any map
    and on the critical's own violet rays (ADVD 5: the old deep purple disappeared on its purple backdrop) */
-export function powerColors(P, shift = 0) {
+/* PALETTE (the owner: «Nie chcę żeby najczęstsze napisy były różowe»): a hero's success from P 0.4 climbs the fight comics' heat ladder
+   (letter-colors.mjs CLIMB: orange when strong, red on a gold block when critical), no longer the pale climb into magenta and lilac; an
+   opponent's success (shift 150) keeps its own cold climb, which now ends in teal (logic.mjs HUES end at red) */
+export function powerColors(P, shift = 0, rank = null, family = null) {
+  const c = shift === 0 ? LC.climbOf(P, rank ?? (P >= 0.7 ? 'critical' : 'strong'), family) : null;
+  if (c) return c.fill.slice();
   const h = hueOf(P) + shift;
   return [hsl(h + 12, 100, 95), hsl(h, 100, 82), hsl(h - 8, 90, 62)];
 }
-/* the caption sentence: the same hue, lighter still (it is read, not heard) */
+/* the caption sentence: the same hue, lighter still (it is read, not heard); a hero's strong or critical caption pale apricot (PALETTE) */
 export function sayColors(P, shift = 0) {
+  if (shift === 0 && P >= 0.4) return LC.SAY_HOT.slice();
   const h = hueOf(P) + shift;
   return [hsl(h, 100, 97), hsl(h, 100, 90), hsl(h, 85, 74)];
 }
-export const SIX_COLORS = Object.freeze(['#fff7c8', '#ffd23f', '#e06a00']);      // sixes: always gold (the die's best face)
-export const ODDS_COLORS = Object.freeze(['#ffffff', '#e4e9f6', '#8d98b8']);     // the odds figure: a plain white stamp
-export const STRESS_COLORS = Object.freeze(['#ffd3d9', '#ff3b52', '#7c0616']);   // stress: blood red
-export const FAIL_COLORS = Object.freeze(['#eef0f7', '#a3abc4', '#4a5272']);     // a miss: cold, drained
-export const SOFT_COLORS = Object.freeze(['#f0eff6', '#cfcddc', '#8d8ba0']);     // a routine miss: a light grey mutter (readable on a dark map)
-export const MISS_SAY_COLORS = Object.freeze(['#f2f5ff', '#c9d4f5', '#7d8fc9']); // UNLUCKY / WHAT A FLOP: pale cold blue
+export const SIX_COLORS = LC.SIX;            // sixes: always gold (the die's best face)
+export const ODDS_COLORS = LC.ODDS;          // the odds figure: a plain white stamp
+export const STRESS_COLORS = LC.STRESS;      // stress: blood red
+export const FAIL_COLORS = LC.FAIL;          // a miss: cold, drained
+export const SOFT_COLORS = LC.SOFT;          // a routine miss: a light grey mutter (readable on a dark map)
+export const MISS_SAY_COLORS = LC.MISS_SAY;  // UNLUCKY / WHAT A FLOP: pale cold blue
 
 /* FXLD: the numbers and the caption sentence are information, read at a glance: one legible hand for all of them (a partial hand,
    design.mjs merges it over its own choice; the same thing the token reactions pin, REQUESTS ltok 10): the tall narrow face of the
@@ -180,11 +187,13 @@ export function planMoment(ev, o = {}) {
     /* ADVD 5: the critical (full screen) is the biggest thing the table sees; a token-sized success grows with its rarity. CRITPEAK: by
        its rank (RANK_WORD), the critical up to nearly the whole free width (a long Polish word must not shrink it under a strong roll) */
     const cap = RANK_WORD[rank].cap(P);
+    const climb = o.npc ? null : LC.climbOf(P, rank, ev.action);   // PALETTE: the heat ladder (faces) and its block (the hand's pal)
     add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(cap), min: RANK_WORD[rank].min, rank, wMax: full ? (wreck ? 0.6 : 0.92) : (wreck ? 0.46 : 0.66), wMin: full ? 0.5 : 0, mood: m, kind: kindOf(ev.word, ev.action), sound,
-      colors: P >= 0.4 || o.npc ? powerColors(P, o.npc ? 150 : 0) : null,     // a weak success keeps its mood's own palette (variety); strong ones climb the power scale
-      hold, rotation: 0, from: o.token ? 'token' : 90 });
+      colors: climb ? climb.fill.slice() : o.npc ? powerColors(P, 150) : null,     // a weak success keeps its mood's own palette (variety); strong ones climb the heat ladder
+      pal: LC.climbHand(climb)?.pal, hold, rotation: 0, from: o.token ? 'token' : 90 });
+    /* PALETTE: the wreck in the colour of rubble (it climbed the power scale shifted to pink); an opponent's keeps its cold climb */
     if (wreck) add({ role: 'wreck', text: sfxWord(ev.wreckWord), delay: t + 520, cap: r3(cap * 0.62), min: r3(RANK_WORD[rank].min * 0.55), wMax: 0.4,
-      mood: moodOf(ev.wreckWord), kind: kindOf(ev.wreckWord), sound: { loud: r1(Math.min(1, loud + 0.1)), rough: 0.7 }, colors: powerColors(Math.min(1, P + 0.1), -22 + (o.npc ? 150 : 0)), hold: hold - 520, rotation: 8 });
+      mood: moodOf(ev.wreckWord), kind: kindOf(ev.wreckWord), sound: { loud: r1(Math.min(1, loud + 0.1)), rough: 0.7 }, colors: o.npc ? powerColors(Math.min(1, P + 0.1), 128) : LC.WRECK.fill.slice(), hold: hold - 520, rotation: 8 });
     if (ev.sixes > 0) {
       add({ role: 'six', text: LBL.six(ev.sixes), delay: t + 230, ...info('six', rank), wMax: 0.36,
         mood: 'impact', sound: { loud: r1(0.4 + 0.12 * Math.min(4, ev.sixes)), sharp: 0.75, pitch: 0.3 },
@@ -205,6 +214,9 @@ export function planMoment(ev, o = {}) {
     if (o.reduced) it.rotation = 0;
     if (INFO_ROLES.has(it.role)) it.hand = CAPTION_ROLES.has(it.role) ? CAPTION_HAND : INFO_HAND;
     else if (isPlainWord(it.role === 'word' ? ev.word : it.role === 'pre' ? ev.prefix : it.role === 'wreck' ? ev.wreckWord : null)) it.hand = PLAIN_HAND;
+    /* PALETTE: the climb's block rides on the hand (colour only: the engine merges the hand's pal, nothing else of the hand changes) */
+    if (it.pal) it.hand = { ...(it.hand ?? {}), pal: it.pal };
+    delete it.pal;
     it.magnitude = magnitudeOf(it, ev);
     it.size = Math.round(Math.max(FLOOR[it.role] ?? 16, it.cap * REF_VH));
   }
@@ -281,7 +293,7 @@ export function failStrength(ev) {
 /* the stress number joins the moment: "STRESS +2" lettered in pain red beside the Resolve gauge (the gauge itself stays a gauge) */
 export function planStress(stress, o = {}) {
   const it = { role: 'stress', text: LBL.stress(stress), delay: 0, ...info('stress'), wMax: 0.36,
-    mood: 'pain', sound: { loud: r1(Math.min(0.9, 0.35 + 0.12 * stress)), pitch: -0.3 }, colors: STRESS_COLORS, hand: INFO_HAND,
+    mood: 'pain', sound: { loud: r1(Math.min(0.9, 0.35 + 0.12 * stress)), pitch: -0.3 }, colors: LC.stressColors(), hand: INFO_HAND,
     hold: Math.round(2600 * (o.holdK || 1)), rotation: o.reduced ? 0 : -5, in: 'slam', holdKind: 'throb', out: 'fall' };
   it.rot0 = -5;   // SAMEPIC: laid out with the tilt every seat has
   it.magnitude = magnitudeOf(it, { stress });
