@@ -31,6 +31,7 @@ const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
   eq(P.impactTable(), null, "I: before the running engine hands its table in there is none");
   let threw = false; try { P.withSeries({ kind: "hit", magnitude: 0.25 }, 2); } catch { threw = true; }
   ok(threw, "I: a series cannot be built before the engine's table is known (no silent default)");
+  eq(P.impactOf({ kind: "hit", amt: 0.5 }, 1, {}), null, "I: without the engine's table a reaction asks for no impact frame (and does not throw)");
   const api = impactApi();
   ok(P.useImpactTable(api) === true, "I: the engine's table is taken");
   eq(P.impactTable(), { steps: IPL.STEP_AT, series: { step: IPL.SERIES_STEP, max: IPL.SERIES_MAX }, tiers: IPL.TIER_AT }, "I: the table read is the engine's (steps, series, tiers)");
@@ -169,6 +170,31 @@ const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
   const T = { x: 800, y: 600, l: 760, t: 560, r: 840, b: 640 }, ft = { ...frame, token: T, gap: 6 };
   const b2 = LP.composeMoment(items, ft, withRoom);
   ok(b2.side === "above" && Math.abs((T.t - 6 - b2.rect.b) - b2.foot.b) < 1.5, "M: above its token the block stands its footprint off it");
+  /* CALLERS2: inside a block, each part's standing ink keeps off the other parts' letters (the critical's caption rows: before, the life of
+     3 SIXES stood on THE ODDS ARE SHATTERED! and that on 1 IN 216, 12-20 px in the before/after harness) */
+  {
+    const crit = [{ role: "word", text: "HAYMAKER!", cap: 0.12 }, { role: "six", text: "3 SIXES", cap: 0.04 }, { role: "say", text: "THE ODDS ARE SHATTERED!", cap: 0.04 }, { role: "odds", text: "1 IN 216", cap: 0.035 }];
+    const fp = { l: 0.12, r: 0.3, u: 0.12, d: 0.35 };
+    const bare = (it, S) => ({ w: it.text.length * 0.5 * S, h: S, grow: 1 }), withFp = (it, S) => ({ ...bare(it, S), ...LP.roomOf({ w: it.text.length * 0.5, h: 1, footAt: () => fp }, S) });
+    const inkOn = (o) => {
+      let w = 0;
+      for (const a of o.items) for (const q of o.items) {
+        if (a === q) continue;
+        const al = { l: a.x - a.w / 2 - fp.l * a.S, r: a.x + a.w / 2 + fp.r * a.S, t: a.y - a.h / 2 - fp.u * a.S, b: a.y + a.h / 2 + fp.d * a.S }, qb = { l: q.x - q.w / 2, r: q.x + q.w / 2, t: q.y - q.h / 2, b: q.y + q.h / 2 };
+        w = Math.max(w, Math.min(Math.max(0, Math.min(al.r, qb.r) - Math.max(al.l, qb.l)), Math.max(0, Math.min(al.b, qb.b) - Math.max(al.t, qb.t))));
+      }
+      return w;
+    };
+    const o1 = LP.composeMoment(crit.map((i) => ({ ...i })), frame, withFp), o0 = LP.composeMoment(crit.map((i) => ({ ...i })), frame, bare);
+    ok(inkOn(o1) < 0.5 && inkOn(o0) > 5, `M: a critical's parts stand their footprint apart (ink on another part's letters ${inkOn(o1).toFixed(1)} px; without the footprint ${inkOn(o0).toFixed(1)} px)`);
+    /* a seat's own panel: the footprint counts (CALLERS-3), the outline alone would not move the block */
+    const one = { rect: { l: 500, t: 300, r: 700, b: 400 }, items: [{ x: 600, y: 350, w: 200, h: 100, S: 100 }] };
+    const loc = { safe: { l: 0, t: 0, r: 1600, b: 900 }, avoid: [{ l: 705, t: 300, r: 900, b: 400 }] }, std = { l: 0, t: 0, r: 1600, b: 900 };
+    const f1 = LP.localFix({ ...structuredClone(one), foot: { l: 10, t: 10, r: 10, b: 10 } }, { avoid: [], gap: 6 }, loc, std, null), f0 = LP.localFix(structuredClone(one), { avoid: [], gap: 6 }, loc, std, null);
+    ok(f1.moved === "shift" && f1.out.rect.r + 10 <= 705 && f0.moved === "none", `M: this seat's panel 5 px past the letters but under their footprint moves the block (${f1.moved}, right edge ${f1.out.rect.r}); without a footprint it stays`);
+    const lp = src("../splash/letter-plan.mjs");
+    ok(/if \(!frame\.bare && items\.some\(it => measure\(it, 40\)\?\.room\)\)/.test(lp) && /letterHits\(c, frame\) < ph - 0\.5/.test(lp) && /foot && !frame\.bare &&/.test(lp), "M: a block with no clean place for its footprint takes the outline-clean one, else the one whose letters cover least (never worse than before)");
+  }
   /* the real engine's footprint for a splash word (the map's world word has a rim, the screen word none) */
   const om = { mood: "impact", magnitude: 1, seed: "s1", anchor: "center", reduced: false };
   const fw = L.measure("KA-THOOM!", { ...om, space: "world", keepInView: false, fit: "exact", size: 60, view: { dpr: 1, zoom: 0.4 } });

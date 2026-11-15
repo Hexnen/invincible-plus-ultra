@@ -619,7 +619,7 @@ export function rungOf(pub) {
     o = { dtype, doubled } -> null | { kind, magnitude, tone?, rung? } */
 export function impactOf(pub, step = 0, o = {}) {
   const row = IMPACT[pub?.kind];
-  if (!row) return null;
+  if (!row || !STEP_AT) return null;   // CALLERS2: no impact frame without the running engine's impact table (an engine without L.impact draws none anyway)
   const amt = Math.max(0, Math.min(1, Number(pub.amt) || 0)), n = Math.max(0, Math.min(STREAK.max, Math.floor(Number(step) || 0)));
   if (row.ladder) {
     const blow = pub.kind === "hit" || pub.kind === "heavy";
