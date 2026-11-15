@@ -1,7 +1,7 @@
 /* GORE: blood and cracks on the screen, the Foundry part. Started from scripts/module.js by a guarded dynamic import, like the other areas.
    What is drawn and when is plan.mjs (pure), how it is drawn raster.mjs (pure); here:
-     - the GLASS: one <canvas> of the art grid (plan.grid: one art px = round(3 x DPR) device px) laid over the map (right after
-       #board: over the scene, under the interface), scaled by a whole number of device px with no smoothing (image-rendering:
+     - the GLASS: two <canvas> panes of the art grid (plan.grid: one art px = round(3 x DPR) device px): blood over the map (right
+       after #board: over the scene, under the interface), cracks over the interface's bars (CRACK_Z, under windows); scaled by a whole number of device px with no smoothing (image-rendering:
        pixelated), so every art pixel is a crisp square at any window size, zoom of the scene or DPR. Drawn on the comic's 24 Hz beat and
        only while something changes; nothing runs when the glass is empty;
      - the TABLE's options (world, GM only, live; shown in the "Comic effects" window, tab Blood and cracks): blood 0..3, cracks 0..3,
@@ -49,20 +49,32 @@ function photosensitive() { try { return game.settings.settings.has("core.photos
 function osReduced() { try { return !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches; } catch { return false; } }
 
 /* ---------------- the glass ---------------- */
-const G = { wrap: null, cv: null, ctx: null, g: null, sf: null, img: null, items: [], raf: 0, lastTick: -1, dirtyAll: true, arrivals: [], cost: [], frames: 0 };
+/* two panes of the same grid (GORE2): the BLOOD pane right after #board (over the scene, under the interface: a splash never hides the
+   chat or a button), the CRACKS pane over the interface's bars and panels (z CRACK_Z: over #ui-left/#ui-right 30, under the windows,
+   tooltips and notifications): the cracks are in the screen's own glass and sit in its corners, which the bars would otherwise hide.
+   Both ignore the pointer, so the board and every button stay playable. */
+export const CRACK_Z = "32";
+const pane = () => ({ wrap: null, cv: null, ctx: null, sf: null, img: null, dirtyAll: true });
+const G = { L: { blood: pane(), cracks: pane() }, g: null, items: [], raf: 0, lastTick: -1, arrivals: [], cost: [], frames: 0 };
+const layerOf = (kind) => (kind === "blood" ? "blood" : "cracks");
 function ensureGlass() {
-  if (G.wrap?.isConnected) return true;
+  if (G.L.blood.wrap?.isConnected && G.L.cracks.wrap?.isConnected) return true;
   const board = document.getElementById("board");
   if (!board) return false;
-  const wrap = document.createElement("div");
-  wrap.id = "ipu-gore";
-  wrap.setAttribute("aria-hidden", "true");
-  Object.assign(wrap.style, { position: "fixed", left: "0", top: "0", width: "100vw", height: "100vh", overflow: "hidden", pointerEvents: "none", zIndex: getComputedStyle(board).zIndex || "auto", contain: "strict" });
-  const cv = document.createElement("canvas");
-  Object.assign(cv.style, { position: "absolute", left: "0", top: "0", imageRendering: "pixelated" });
-  wrap.appendChild(cv);
-  board.after(wrap);
-  G.wrap = wrap; G.cv = cv; G.ctx = cv.getContext("2d", { alpha: true });
+  for (const name of ["blood", "cracks"]) {
+    const L = G.L[name];
+    if (L.wrap?.isConnected) continue;
+    const wrap = document.createElement("div");
+    wrap.id = name === "blood" ? "ipu-gore" : "ipu-gore-cracks";
+    wrap.setAttribute("aria-hidden", "true");
+    Object.assign(wrap.style, { position: "fixed", left: "0", top: "0", width: "100vw", height: "100vh", overflow: "hidden", pointerEvents: "none",
+      zIndex: name === "blood" ? getComputedStyle(board).zIndex || "auto" : CRACK_Z, contain: "strict" });
+    const cv = document.createElement("canvas");
+    Object.assign(cv.style, { position: "absolute", left: "0", top: "0", imageRendering: "pixelated" });
+    wrap.appendChild(cv);
+    if (name === "blood") board.after(wrap); else (document.body ?? board.parentElement)?.appendChild(wrap);
+    L.wrap = wrap; L.cv = cv; L.ctx = cv.getContext("2d", { alpha: true });
+  }
   G.g = null;
   return true;
 }
@@ -71,14 +83,16 @@ function fit() {
   const g = P.grid(vw, vh, dpr);
   if (G.g && G.g.w === g.w && G.g.h === g.h && G.g.px === g.px && G.g.dpr === g.dpr) return false;
   G.g = g;
-  G.cv.width = g.w; G.cv.height = g.h;
-  /* the canvas covers w x px device px: CSS size = that / dpr (a whole number of device px per art px) */
-  G.cv.style.width = `${(g.w * g.px) / g.dpr}px`; G.cv.style.height = `${(g.h * g.px) / g.dpr}px`;
-  G.sf = R.surface(g.w, g.h);
-  G.img = new ImageData(G.sf.rgba, g.w, g.h);
+  for (const L of Object.values(G.L)) {
+    L.cv.width = g.w; L.cv.height = g.h;
+    /* the canvas covers w x px device px: CSS size = that / dpr (a whole number of device px per art px) */
+    L.cv.style.width = `${(g.w * g.px) / g.dpr}px`; L.cv.style.height = `${(g.h * g.px) / g.dpr}px`;
+    L.sf = R.surface(g.w, g.h);
+    L.img = new ImageData(L.sf.rgba, g.w, g.h);
+    L.dirtyAll = true;
+  }
   /* the plans are laid out on the grid: a new grid lays them out again (the same seeds: the same splash, in this view's fractions) */
   for (const it of G.items) { it.plan = it.make(g); warmLater(it); }
-  G.dirtyAll = true;
   return true;
 }
 function frame() {
@@ -91,14 +105,20 @@ function frame() {
     if (tick !== G.lastTick || resized) {
       G.lastTick = tick;
       const t0 = pnow();
-      const out = R.render(G.sf, G.items, now);
-      if (G.dirtyAll) { G.ctx.putImageData(G.img, 0, 0); G.dirtyAll = false; }
-      else if (out.box) G.ctx.putImageData(G.img, 0, 0, out.box.x0, out.box.y0, out.box.x1 - out.box.x0 + 1, out.box.y1 - out.box.y0 + 1);
+      let moving = false;
+      for (const [name, L] of Object.entries(G.L)) {
+        const mine = G.items.filter((it) => layerOf(it.kind) === name);
+        if (!mine.length && !L.sf.box && !L.dirtyAll) continue;
+        const out = R.render(L.sf, mine, now);
+        moving = moving || out.moving;
+        if (L.dirtyAll) { L.ctx.putImageData(L.img, 0, 0); L.dirtyAll = false; }
+        else if (out.box) L.ctx.putImageData(L.img, 0, 0, out.box.x0, out.box.y0, out.box.x1 - out.box.x0 + 1, out.box.y1 - out.box.y0 + 1);
+      }
       G.cost.push(pnow() - t0); if (G.cost.length > 240) G.cost.shift();
       G.frames++;
       G.items = G.items.filter((it) => now - it.t0 < P.endOf(it.plan) + 100);
-      if (!out.moving && !G.items.length) { hideIfEmpty(); return; }
-      if (!out.moving) { G.raf = 0; G.idle = setTimeout(kick, nextChange(now)); return; }
+      if (!moving && !G.items.length) { hideIfEmpty(); return; }
+      if (!moving) { G.raf = 0; G.idle = setTimeout(kick, nextChange(now)); return; }
     }
   } catch (err) { once(err); }
   G.raf = requestAnimationFrame(frame);
@@ -129,9 +149,12 @@ function warmLater(it) {
 }
 function kick() { clearTimeout(G.idle); if (!G.raf) G.raf = requestAnimationFrame(frame); }
 function hideIfEmpty() {
-  if (G.items.length || !G.ctx || !G.g) return;
-  G.ctx.clearRect(0, 0, G.g.w, G.g.h);
-  if (G.sf) { G.sf.rgba.fill(0); G.sf.T.fill(0); G.sf.C.fill(0); G.sf.box = null; }
+  if (G.items.length || !G.g) return;
+  for (const L of Object.values(G.L)) {
+    if (!L.ctx) continue;
+    L.ctx.clearRect(0, 0, G.g.w, G.g.h);
+    if (L.sf) { L.sf.rgba.fill(0); L.sf.T.fill(0); L.sf.C.fill(0); L.sf.box = null; }
+  }
 }
 
 /* ---------------- playing ---------------- */

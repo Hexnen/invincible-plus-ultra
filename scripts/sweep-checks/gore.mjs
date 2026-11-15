@@ -217,7 +217,10 @@ const T = P.TICK_MS;
   globalThis.matchMedia = () => ({ matches: false });
   globalThis.ImageData = class { constructor(d, w, h) { this.data = d; this.width = w; this.height = h; } };
   const el = () => ({ style: {}, setAttribute() {}, appendChild() {}, after() {}, isConnected: true, getContext: () => ({ putImageData() {}, clearRect() {} }) });
-  globalThis.document = { getElementById: (id) => (id === "board" ? el() : null), createElement: el };
+  const made = [];
+  const body = { ...el(), appendChild: (c) => made.push(["body", c]) };
+  const board = { ...el(), after: (c) => made.push(["board", c]) };
+  globalThis.document = { getElementById: (id) => (id === "board" ? board : null), createElement: () => el(), body };
   globalThis.getComputedStyle = () => ({ zIndex: "0" });
   globalThis.Hooks = { on: (k, fn) => ((hooks[k] ??= []).push(fn), 1), once: (k, fn) => ((hooks[k] ??= []).push(fn), 1), callAll: (k, ...a) => { for (const fn of hooks[k] ?? []) fn(...a); } };
   const user = { isGM: false, id: "P1" };
@@ -321,6 +324,10 @@ const T = P.TICK_MS;
   advance(M.QUIET + 10);
   ck("Health and Resolve together: blood AND cracks, one moment", live() === 2);
   reset();
+  const pane = (id) => made.find(([, c]) => c.id === id);
+  ck("two panes (GORE2): blood right after #board (under the interface), cracks on the body over the bars (z over 30, under windows)",
+    pane("ipu-gore")?.[0] === "board" && pane("ipu-gore-cracks")?.[0] === "body" && Number(pane("ipu-gore-cracks")[1].style.zIndex) > 31 && Number(pane("ipu-gore-cracks")[1].style.zIndex) < 100
+    && [pane("ipu-gore"), pane("ipu-gore-cracks")].every((p) => p[1].style.pointerEvents === "none"));
   ck("a public call returns a handle with its strength, the table's level applied", api.blood({ strength: 0.5 })?.strength === 0.5 && api.cracks({ strength: 0.4 })?.kind === "cracks");
   api.clear({ quick: true });
   ck("clear empties the glass", live() === 0);
