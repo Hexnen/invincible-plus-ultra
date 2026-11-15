@@ -89,15 +89,15 @@ export function mulberry32(seed) {
 
 /* ---------- słowa ---------- */
 import { FAMILIES, RANKS, MISS_ANY, missFor, poolFor, familyId } from './words.mjs';
-export { FAMILIES, RANKS, familyOf, wordRank, poolFor, missFor, WORD_MOODS, FAMILY_MOODS, ACTION_WORDS } from './words.mjs';
+export { FAMILIES, RANKS, familyOf, wordRank, poolFor, missFor, WORD_MOODS, FAMILY_MOODS, ACTION_WORDS, SOUND, MISS_SOUND, soundOf } from './words.mjs';
 /* WORDPOOL (ADVX 16): the success words come from what the action IS and how good the result is (words.mjs: families x ranks); ACTIONS
    keeps every word of a family (for the checks and the flags); FAIL every miss word (each family draws the neutral ones and its own) */
 export const ACTIONS = Object.freeze(Object.fromEntries(Object.entries(FAMILIES).map(([k, f]) => [k, [...new Set(RANKS.flatMap((r) => f.ranks[r]))]])));
 export const FAIL = Object.freeze([...new Set([...MISS_ANY, ...Object.values(FAMILIES).flatMap((f) => f.miss)])]);
-export const SOFTFAIL = ['NOT YET', 'HMM…', 'ALMOST', 'NEXT!', 'TRY AGAIN', 'STEADY'];
-export const PUSHPRE = ['STRAIN!', 'PUSH!', 'GRRR!', 'ALL IN!', 'DIG DEEP!', 'AGAIN!', 'HNNNG!', 'ONE MORE!'];
-export const PUSHFAIL = ['NOPE!', 'CRACK!', 'SO CLOSE!', 'NOT TODAY!', 'ALMOST!', 'OUCH!', 'SNAP!', 'NO LUCK!'];
-export const WRECK = ['WRECK!', 'RUIN!', 'KRAKOOM!', 'DEMOLISH!'];
+export const SOFTFAIL = ['NOT YET', 'HMM…', 'ALMOST', 'NEXT!', 'ANOTHER TRY', 'STEADY'];   // WORDPOOL2: TRY AGAIN (an imperative) -> ANOTHER TRY
+export const PUSHPRE = ['STRAIN!', 'PUSH!', 'GRRR!', 'ALL IN!', 'FULL STRENGTH!', 'AGAIN!', 'HNNNG!', 'ONE MORE!'];
+export const PUSHFAIL = ['NOPE!', 'SKRAK!', 'SO CLOSE!', 'NOT TODAY!', 'ALMOST!', 'OUCH!', 'TSKRIK!', 'NO LUCK!'];   // WORDPOOL2: CRACK! SNAP! (dictionary words) -> the engine's own crack sounds
+export const WRECK = ['WRECK!', 'RUIN!', 'KRAKOOM!', 'DEMOLITION!'];
 export const ODDS = [[0.10, 'NOT BAD!'], [0.22, 'LUCKY BREAK!'], [0.34, 'AGAINST THE ODDS!'], [0.46, 'UNLIKELY HERO!'],
   [0.58, 'NO WAY!'], [0.70, 'IMPOSSIBLE!'], [0.82, 'ONCE IN A LIFETIME!'], [0.92, 'THE ODDS ARE SHATTERED!']];
 export function oddsText(P) { let t = null; for (const o of ODDS) if (P >= o[0]) t = o[1]; return say(t); }
@@ -130,19 +130,19 @@ export const SFX_KEYS = Object.freeze({
   'RUSH!': 'Rush', 'CHARGE!': 'Charge', 'RAM!': 'Ram', 'STAMPEDE!': 'Stampede',
   'GRAB!': 'Grab', 'GOTCHA!': 'Gotcha', 'SQUEEZE!': 'Squeeze', 'LOCK!': 'Lock', 'VISE!': 'Vise',
   'GUARD!': 'Guard', 'BLOCK!': 'Block', 'PARRY!': 'Parry', 'STONEWALL!': 'Stonewall', 'SHIELD!': 'Shield',
-  'DASH!': 'Dash', 'FLIP!': 'Flip', 'DUCK!': 'Duck', 'BLUR!': 'Blur',
-  'HEAVE!': 'Heave', 'WRENCH!': 'Wrench', 'MIRACLE!': 'Miracle', 'VANISH!': 'Vanish', 'ACCESS GRANTED!': 'AccessGranted',
+  'DASH!': 'Dash', 'FLIP!': 'Flip', 'DODGE!': 'Dodge', 'BLUR!': 'Blur',
+  'HEAVE!': 'Heave', 'WRENCH!': 'Wrench', 'MIRACLE!': 'Miracle', 'VANISHING!': 'Vanishing', 'ACCESS GRANTED!': 'AccessGranted',
   'CLICK!': 'Click', 'GOT IT!': 'GotIt', 'GENIUS!': 'Genius', 'SENSE!': 'Sense', 'HUNCH!': 'Hunch', 'TINGLE!': 'Tingle', 'SIXTH SENSE!': 'SixthSense',
-  'HUSH!': 'Hush', 'COMMAND!': 'Command', 'LISTEN UP!': 'ListenUp', 'ROAR!': 'Roar',
+  'HUSH!': 'Hush', 'COMMAND!': 'Command', 'ATTENTION!': 'Attention', 'ROAR!': 'Roar',
   'YES!': 'Yes', 'DONE!': 'Done', 'BULLSEYE!': 'Bullseye', 'LEGENDARY!': 'Legendary',
   'WHIFF!': 'Whiff', 'OOPS!': 'Oops', 'FIZZLE!': 'Fizzle', 'YIKES!': 'Yikes', 'BLUNDER!': 'Blunder',
-  'NOT YET': 'NotYet', 'ALMOST': 'AlmostSoft', 'NEXT!': 'Next', 'TRY AGAIN': 'TryAgain', 'STEADY': 'Steady',
-  'PUSH!': 'Push', 'ALL IN!': 'AllIn', 'DIG DEEP!': 'DigDeep', 'AGAIN!': 'Again', 'ONE MORE!': 'OneMore',
+  'NOT YET': 'NotYet', 'ALMOST': 'AlmostSoft', 'NEXT!': 'Next', 'ANOTHER TRY': 'AnotherTry', 'STEADY': 'Steady',
+  'PUSH!': 'Push', 'ALL IN!': 'AllIn', 'FULL STRENGTH!': 'FullStrength', 'AGAIN!': 'Again', 'ONE MORE!': 'OneMore',
   'NOPE!': 'Nope', 'SO CLOSE!': 'SoClose', 'NOT TODAY!': 'NotToday', 'ALMOST!': 'Almost', 'OUCH!': 'Ouch', 'NO LUCK!': 'NoLuck',
-  'WRECK!': 'Wreck', 'RUIN!': 'Ruin', 'DEMOLISH!': 'Demolish'
+  'WRECK!': 'Wreck', 'RUIN!': 'Ruin', 'DEMOLITION!': 'Demolition'
 });
 /* WORDPOOL: action words that stay English on a Polish seat (no Polish word sounds as good shouted; EUREKA! is the same word) */
-export const KEEP_EN = Object.freeze(['EUREKA!']);
+export const KEEP_EN = Object.freeze(['EUREKA!', 'AHA!']);
 export function sfxWord(w) { const k = w ? SFX_KEYS[w] : null; return (k && LBL.sfx?.[k]) || w; }
 /* the event as this seat SHOWS it: the same event, its words in the seat's language (SPLASHPL) */
 export function shownEv(ev) {

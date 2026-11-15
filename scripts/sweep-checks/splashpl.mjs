@@ -44,8 +44,8 @@ ok(Object.keys(PL).filter((k) => k.startsWith("INSPLASH.Word.")).length === KEYS
 ok(KEYS.some(([, k]) => /[ĄĆĘŁŃÓŚŹŻ]/.test(PL[`INSPLASH.Word.${k}`])), "K: Polish letters reach the action words");
 /* SPLASHPL2 (the owner: «może zamiast zmiażdż - zmiażdżenie. i zburzenie zamiast zburz», «itd»): an imperative becomes the noun of the
    action where the noun sounds good shouted; HOLD! and TRY AGAIN stay imperatives (TRZYMANIE / PONOWNA PRÓBA sound flat) */
-eq([PL["INSPLASH.Word.Crush"], PL["INSPLASH.Word.Demolish"]], ["ZMIAŻDŻENIE!", "ZBURZENIE!"], "K: the owner's two nouns (CRUSH!, DEMOLISH!)");
-for (const k of ["Smash", "Crush", "Grab", "Push", "Demolish"]) ok(!/^(MIAŻDŻ|ZBURZ|ROZWAL|ŁAP|FORSUJ)!$/.test(PL[`INSPLASH.Word.${k}`]), `K: ${k}: the noun, not the imperative (${PL[`INSPLASH.Word.${k}`]})`);
+eq([PL["INSPLASH.Word.Crush"], PL["INSPLASH.Word.Demolition"]], ["ZMIAŻDŻENIE!", "ZBURZENIE!"], "K: the owner's two nouns (CRUSH!, DEMOLITION!: WORDPOOL2 made the English a noun too)");
+for (const k of ["Smash", "Crush", "Grab", "Push", "Demolition"]) ok(!/^(MIAŻDŻ|ZBURZ|ROZWAL|ŁAP|FORSUJ)!$/.test(PL[`INSPLASH.Word.${k}`]), `K: ${k}: the noun, not the imperative (${PL[`INSPLASH.Word.${k}`]})`);
 /* the pure sounds stay English (nothing to translate: a Polish spelling would be an invented word) */
 for (const w of ["WHAM!", "BAM!", "THWACK!", "WHOOSH!", "ZIP!", "SWISH!", "BLAM!", "ZAP!", "PEW!", "BANG!", "KRAK!", "POW!", "BOOM!", "KAPOW!", "ZOOM!", "CLUNK!", "GRRR!", "HNNNG!", "CRACK!", "SNAP!", "KRAKOOM!", "HMM…"])
   ok(!(w in SL.SFX_KEYS), `K: the sound ${w} stays English`);
@@ -105,6 +105,7 @@ SL.setLabels({ sfx: {} });
         if (!(e.word in SL.SFX_KEYS)) continue;
         const o = { mood: it.mood, sound: it.sound, hold: it.hold, magnitude: it.magnitude, seed: "m1:word", anchor: "center", from: 90 };
         for (const k of ["in", "out", "holdKind"]) if (it[k]) o[k] = it[k];
+        if (it.kind) o.kind = it.kind;   // WORDPOOL2: the stage hands the sound's motion row too
         const c = (t) => IP.contactMs(TL.planFor(L, LP.letterable(t), o).plan);
         n++;
         if (c(e.word) === c(SL.SFX_KEYS[e.word] && PL[`INSPLASH.Word.${SL.SFX_KEYS[e.word]}`])) same++;

@@ -26,32 +26,32 @@
    impact lands on the target even when the roll came without attack data); ranks: [ordinary, strong, critical]; miss = its own misses */
 const F = (mood, blow, ordinary, strong, critical, miss = []) => Object.freeze({ mood, blow, ranks: Object.freeze({ ordinary: Object.freeze(ordinary), strong: Object.freeze(strong), critical: Object.freeze(critical) }), miss: Object.freeze(miss) });
 export const FAMILIES = Object.freeze({
-  slugfest:  F('impact', true, ['POW!', 'BAM!', 'THWACK!'], ['WHAM!', 'SMASH!', 'CRUSH!'], ['HAYMAKER!', 'KAPOW!', 'KA-THWAPP!'], ['WHIFF!']),
-  charge:    F('crash', true, ['RUSH!', 'WHOOSH!'], ['CHARGE!', 'RAM!'], ['STAMPEDE!', 'KA-KROOSH!'], ['WHIFF!', 'CLUNK!']),
+  slugfest:  F('impact', true, ['POW!', 'BAM!', 'THWAP!'], ['WHAM!', 'SMASH!', 'CRUSH!'], ['HAYMAKER!', 'WHAMM!', 'KA-THWAPP!'], ['WHIFF!']),
+  charge:    F('crash', true, ['RUSH!', 'FWOOSH!'], ['CHARGE!', 'RAM!'], ['STAMPEDE!', 'KA-KROOSH!'], ['WHIFF!', 'GDONK!']),
   grapple:   F('impact', true, ['GRAB!', 'GOTCHA!'], ['SQUEEZE!', 'LOCK!'], ['VISE!', 'CRUSH!'], ['WHIFF!']),
-  block:     F('impact', false, ['GUARD!', 'THUD!'], ['BLOCK!', 'PARRY!'], ['STONEWALL!', 'SHIELD!'], ['CLUNK!']),
-  dodge:     F('whoosh', false, ['ZIP!', 'SWISH!', 'DUCK!'], ['DASH!', 'FLIP!'], ['WHOOSH!', 'BLUR!'], ['CLUNK!']),
+  block:     F('impact', false, ['GUARD!', 'THUD!'], ['BLOCK!', 'PARRY!'], ['STONEWALL!', 'SHIELD!'], ['GDONK!']),
+  dodge:     F('whoosh', false, ['VWISH!', 'FSHH!', 'DODGE!'], ['DASH!', 'FLIP!'], ['FWOOOSHH!', 'BLUR!'], ['GDONK!']),
   shooting:  F('crack', true, ['BLAM!', 'BANG!'], ['KRAK!', 'BLAMM!'], ['KA-BLAM!', 'BLAM-BLAM!'], ['PTWING!']),
   blast:     F('zap', true, ['ZARK!', 'CHOOM!'], ['KSHOOM!', 'KROOM!'], ['KA-CHOOM!', 'KA-KROOM!'], ['FIZZLE!']),
   fire:      F('fire', true, ['FWOOM!', 'FOOMF!'], ['BOOM!', 'FWOOOM!'], ['KA-BOOM!', 'FAWOOOSH!'], ['FIZZLE!']),
   zap:       F('zap', true, ['ZAP!', 'BZZT!'], ['KZZT!', 'BZZAKT!'], ['KZZRAKK!', 'KRAKOOM!'], ['FIZZLE!']),
   cold:      F('crack', true, ['TSHINK!', 'TSIK!'], ['KSHINK!', 'SKRISH!'], ['SHKRAASH!', 'KSHRAKK!'], ['FIZZLE!']),
   sonic:     F('roar', true, ['SKREE!', 'VWOMF!'], ['SKREEEK!', 'VWOOOMMF!'], ['SKRREEEEK!', 'KRABWOOMM!'], ['FIZZLE!']),
-  quake:     F('crash', true, ['GDUMF!', 'GRROMM!'], ['KROOM!', 'GRRRROMM!'], ['KA-KROOM!', 'KRRROOOMM!'], ['CLUNK!']),
+  quake:     F('crash', true, ['GDUMF!', 'GRROMM!'], ['KROOM!', 'GRRRROMM!'], ['KA-KROOM!', 'KRRROOOMM!'], ['GDONK!']),
   kinesis:   F('powerup', true, ['VWOMF!', 'FHOMF!'], ['VWOOOMMF!', 'FHOOOMMF!'], ['VWOOOOMMFF!', 'KA-KROOM!'], ['FIZZLE!']),
   water:     F('splash', true, ['PLOOP!', 'GLUB!'], ['PLUNK!', 'SPLOOSH!'], ['KA-SPLOOSH!', 'SPLOOSH!'], ['FIZZLE!']),
   wind:      F('whoosh', true, ['FWOOOH!', 'SHWOOOH!'], ['VRROOOOSH!', 'HWRROOOO!'], ['SHWRRROOOOMM!', 'VRRROOOOSHH!'], ['FIZZLE!']),
   mind:      F('powerup', true, ['MMNN!', 'HMNN!'], ['VNNNN!', 'MNNNNG!'], ['VNNNNNG!', 'ZNNNNG!'], ['FIZZLE!']),
-  teleport:  F('whoosh', false, ['FZIP!', 'VZIP!'], ['VWORP!', 'ZWAP!'], ['VWAMFF!', 'ZWAPP!'], ['FIZZLE!']),
-  move:      F('whoosh', false, ['ZIP!', 'WHOOSH!'], ['ZOOM!', 'VSHOOM!'], ['ZWAAAMM!', 'VSHOOOM!'], ['WHIFF!', 'CLUNK!']),
-  force:     F('roar', false, ['HUP!', 'HEAVE!'], ['HRRGH!', 'WRENCH!'], ['NNNRRAAH!', 'KA-KROOSH!'], ['CLUNK!']),
+  teleport:  F('zap', false, ['FZIP!', 'VZIP!'], ['VWORP!', 'ZWAP!'], ['VWAMFF!', 'ZWAPP!'], ['FIZZLE!']),
+  move:      F('whoosh', false, ['VSHEEN!', 'FWOOSH!'], ['ZWAAM!', 'VSHOOM!'], ['ZWAAAMM!', 'VSHOOOM!'], ['WHIFF!', 'GDONK!']),
+  force:     F('roar', false, ['HNH!', 'HEAVE!'], ['HRRGH!', 'WRENCH!'], ['NNNRRAAH!', 'KA-KROOSH!'], ['GDONK!']),
   heal:      F('heal', false, ['TLEEN!', 'DLEEN!'], ['TLEENG!', 'SHEENG!'], ['KLEENNG!', 'MIRACLE!'], ['FIZZLE!']),
-  stealth:   F('tick', false, ['SHH!', 'PSHT!'], ['SHHHT!', 'VANISH!'], ['VANISH!', 'PSSSHHT!'], []),
+  stealth:   F('whoosh', false, ['SHH!', 'PSHT!'], ['SHHHT!', 'VANISHING!'], ['VANISHING!', 'PSSSHHT!'], []),
   magic:     F('powerup', false, ['VMM!', 'ZMM!'], ['VZMMM!', 'BZMMM!'], ['VWAAMMM!', 'ZWOOOMM!'], ['FIZZLE!']),
-  tech:      F('tick', false, ['BEEP!', 'TCHIK!'], ['BEEP-BEEP!', 'KLAK!'], ['BEEP-BEEP-BEEP!', 'ACCESS GRANTED!'], ['FIZZLE!', 'CLUNK!']),
+  tech:      F('tick', false, ['BEEP!', 'TCHIK!'], ['BEEP-BEEP!', 'KLAK!'], ['BEEP-BEEP-BEEP!', 'ACCESS GRANTED!'], ['FIZZLE!', 'GDONK!']),
   reason:    F('tick', false, ['CLICK!', 'AHA!'], ['EUREKA!', 'GOT IT!'], ['EUREKA!', 'GENIUS!'], []),
   intuition: F('zap', false, ['HUNCH!', 'TINGLE!'], ['SENSE!', 'HUNCH!'], ['SIXTH SENSE!', 'SENSE!'], []),
-  presence:  F('roar', false, ['HUSH!', 'AHEM!'], ['COMMAND!', 'LISTEN UP!'], ['ROAR!', 'COMMAND!'], []),
+  presence:  F('roar', false, ['HUSH!', 'AHEM!'], ['COMMAND!', 'ATTENTION!'], ['ROAR!', 'COMMAND!'], []),
   generic:   F('impact', false, ['YES!', 'DONE!'], ['BULLSEYE!', 'YES!'], ['LEGENDARY!', 'BULLSEYE!'], [])
 });
 export const RANKS = Object.freeze(['ordinary', 'strong', 'critical']);
@@ -64,23 +64,64 @@ export const poolFor = (family, P) => FAMILIES[familyId(family)].ranks[wordRank(
 export const MISS_ANY = Object.freeze(['OOPS!', 'YIKES!', 'BLUNDER!']);
 export const missFor = (family) => [...MISS_ANY, ...FAMILIES[familyId(family)].miss];
 export const FAMILY_MOODS = Object.freeze(Object.fromEntries(Object.entries(FAMILIES).map(([k, f]) => [k, f.mood])));
-/* every success word -> its mood (the LETR intent: the look and motion that fit its sound); a word shared by two families keeps its first */
+/* WORDPOOL2: HOW each word sounds, so the engine draws it in the manner of that sound (no fallback): every word of every family and rank
+   names its MOOD (the LETR intent: hand, colours, legacy motion) and its engine KIND (the row of the invincible motion table, motion.mjs
+   KIND_MOTION: entrance, hold, exit, rhythm of that very sound). Mood and kind are read from the engine's own vocabulary where the word is
+   the engine's word (THWAP! = punch, TSHINK! = shatter, FZIP! = teleport, MMNN! = psychic, TLEEN! = chime, SHH! = shush, BEEP! = beep,
+   GRROMM! = rumble); an action word takes the sound of the action it names (SQUEEZE! strains: effort; PARRY! rings: clang; DODGE! passes:
+   whiff). Keyed per family: KA-KROOM! is a fireless blast in `blast`, a quake's rumble in `quake`. Every seat reads the same table from
+   the English word, so the moment stays the same on every seat. */
+const S = (txt) => Object.freeze(Object.fromEntries(txt.trim().split(/\s*;\s*/).map((p) => { const [w, mk] = p.split('='); const [mood, kind] = mk.split('/'); return [w.trim(), Object.freeze({ mood, kind })]; })));
+export const SOUND = Object.freeze({
+  slugfest:  S('POW!=impact/punch; BAM!=impact/punch; THWAP!=impact/punch; WHAM!=impact/punch; SMASH!=crash/smash; CRUSH!=crash/smash; HAYMAKER!=impact/smash; WHAMM!=impact/smash; KA-THWAPP!=impact/smash'),
+  charge:    S('RUSH!=whoosh/zoom; FWOOSH!=whoosh/whoosh; CHARGE!=roar/stomp; RAM!=crash/smash; STAMPEDE!=crash/stomp; KA-KROOSH!=crash/smash'),
+  grapple:   S('GRAB!=impact/slap; GOTCHA!=impact/slap; SQUEEZE!=roar/effort; LOCK!=crack/crack; VISE!=crash/effort; CRUSH!=crash/smash'),
+  block:     S('GUARD!=impact/thud; THUD!=impact/thud; BLOCK!=impact/thud; PARRY!=crack/clang; STONEWALL!=crash/stomp; SHIELD!=crack/clang'),
+  dodge:     S('VWISH!=whoosh/whoosh; FSHH!=whoosh/whoosh; DODGE!=whoosh/whiff; DASH!=whoosh/zoom; FLIP!=whoosh/whoosh; FWOOOSHH!=whoosh/whoosh; BLUR!=whoosh/zoom'),
+  shooting:  S('BLAM!=impact/pistol; BANG!=impact/pistol; KRAK!=crack/rifle; BLAMM!=crack/rifle; KA-BLAM!=crack/shotgun; BLAM-BLAM!=impact/gunfire'),
+  blast:     S('ZARK!=zap/zap; CHOOM!=zap/beam; KSHOOM!=boom/concussion; KROOM!=boom/concussion; KA-CHOOM!=boom/concussion; KA-KROOM!=boom/concussion'),
+  fire:      S('FWOOM!=fire/fire; FOOMF!=fire/whump; BOOM!=boom/boom; FWOOOM!=fire/fire; KA-BOOM!=boom/boom; FAWOOOSH!=fire/fire'),
+  zap:       S('ZAP!=zap/zap; BZZT!=zap/zap; KZZT!=zap/zap; BZZAKT!=zap/zap; KZZRAKK!=zap/zap; KRAKOOM!=boom/thunder'),
+  cold:      S('TSHINK!=crack/shatter; TSIK!=crack/shatter; KSHINK!=crack/shatter; SKRISH!=crack/shatter; SHKRAASH!=crack/shatter; KSHRAKK!=crack/shatter'),
+  sonic:     S('SKREE!=crack/siren; VWOMF!=boom/shockwave; SKREEEK!=crack/siren; VWOOOMMF!=boom/shockwave; SKRREEEEK!=crack/siren; KRABWOOMM!=boom/sonicboom'),
+  quake:     S('GDUMF!=crash/stomp; GRROMM!=crash/rumble; KROOM!=crash/rumble; GRRRROMM!=crash/rumble; KA-KROOM!=crash/smash; KRRROOOMM!=crash/rumble'),
+  kinesis:   S('VWOMF!=powerup/shockwave; FHOMF!=powerup/shockwave; VWOOOMMF!=powerup/shockwave; FHOOOMMF!=powerup/shockwave; VWOOOOMMFF!=powerup/shockwave; KA-KROOM!=crash/smash'),
+  water:     S('PLOOP!=splash/drip; GLUB!=splash/squish; PLUNK!=splash/splash; SPLOOSH!=splash/splash; KA-SPLOOSH!=splash/splash'),
+  wind:      S('FWOOOH!=whoosh/wind; SHWOOOH!=whoosh/wind; VRROOOOSH!=whoosh/wind; HWRROOOO!=whoosh/wind; SHWRRROOOOMM!=whoosh/tornado; VRRROOOOSHH!=whoosh/tornado'),
+  mind:      S('MMNN!=powerup/psychic; HMNN!=powerup/psychic; VNNNN!=powerup/psychic; MNNNNG!=powerup/psychic; VNNNNNG!=powerup/psychic; ZNNNNG!=powerup/psychic'),
+  teleport:  S('FZIP!=zap/teleport; VZIP!=zap/teleport; VWORP!=zap/teleport; ZWAP!=zap/teleport; VWAMFF!=zap/teleport; ZWAPP!=zap/teleport'),
+  move:      S('VSHEEN!=whoosh/zoom; FWOOSH!=whoosh/whoosh; ZWAAM!=whoosh/zoom; VSHOOM!=whoosh/zoom; ZWAAAMM!=whoosh/zoom; VSHOOOM!=whoosh/zoom'),
+  force:     S('HNH!=roar/effort; HEAVE!=roar/effort; HRRGH!=roar/effort; WRENCH!=crack/crack; NNNRRAAH!=roar/effort; KA-KROOSH!=crash/smash'),
+  heal:      S('TLEEN!=heal/chime; DLEEN!=heal/chime; TLEENG!=heal/chime; SHEENG!=heal/chime; KLEENNG!=heal/chime; MIRACLE!=powerup/cheer'),
+  stealth:   S('SHH!=whoosh/shush; PSHT!=whoosh/shush; SHHHT!=whoosh/shush; VANISHING!=zap/teleport; PSSSHHT!=whoosh/shush'),
+  magic:     S('VMM!=powerup/powerup; ZMM!=powerup/powerup; VZMMM!=powerup/powerup; BZMMM!=powerup/powerup; VWAAMMM!=powerup/powerup; ZWOOOMM!=powerup/powerup'),
+  tech:      S('BEEP!=tick/beep; TCHIK!=tick/click; BEEP-BEEP!=tick/beep; KLAK!=tick/click; BEEP-BEEP-BEEP!=tick/beep; ACCESS GRANTED!=powerup/cheer'),
+  reason:    S('CLICK!=tick/click; AHA!=powerup/cheer; EUREKA!=powerup/cheer; GOT IT!=tick/click; GENIUS!=powerup/cheer'),
+  intuition: S('HUNCH!=powerup/psychic; TINGLE!=zap/zap; SENSE!=powerup/psychic; SIXTH SENSE!=powerup/psychic'),
+  presence:  S('HUSH!=whoosh/shush; AHEM!=tick/click; COMMAND!=roar/cheer; ATTENTION!=roar/cheer; ROAR!=roar/roar'),
+  generic:   S('YES!=impact/punch; DONE!=impact/punch; BULLSEYE!=impact/punch; LEGENDARY!=powerup/cheer')
+});
+/* the misses: the sound of each failing (WHIFF! passes by, FIZZLE! sputters, PTWING! ricochets, GDONK! falls flat); OOPS! YIKES! BLUNDER!
+   are voices (the engine's "fail" mood row) */
+export const MISS_SOUND = S('WHIFF!=fail/whiff; FIZZLE!=fail/fizzle; PTWING!=fail/ricochet; GDONK!=fail/thud; OOPS!=fail/sigh; YIKES!=fail/pain; BLUNDER!=fail/sigh');
+/* the sound of a word in its family (a miss: its miss sound), or null */
+export const soundOf = (word, family) => SOUND[familyId(family)]?.[word] ?? MISS_SOUND[word] ?? null;
+/* every success word -> its mood, for the callers that key by the word alone (letter-plan WORD_MOOD); a word shared by two families keeps
+   its first family's mood here, soundOf() gives each family its own */
 export const WORD_MOODS = Object.freeze((() => {
   const o = {};
-  const SPECIAL = { 'RUSH!': 'whoosh', 'WHOOSH!': 'whoosh', 'CHARGE!': 'roar', 'STAMPEDE!': 'roar', 'SQUEEZE!': 'roar', 'LOCK!': 'crack', 'VISE!': 'crack',
-    'CRUSH!': 'crash', 'SMASH!': 'crash', 'PARRY!': 'crack', 'KROOM!': 'boom', 'KA-KROOM!': 'boom', 'KA-CHOOM!': 'boom', 'KSHOOM!': 'boom', 'BOOM!': 'boom',
-    'KA-BOOM!': 'boom', 'KRAKOOM!': 'boom', 'KRABWOOMM!': 'boom', 'KA-KROOSH!': 'crash', 'SKREE!': 'crack', 'SKREEEK!': 'crack', 'SKRREEEEK!': 'crack',
-    'HEAVE!': 'powerup', 'WRENCH!': 'crack', 'EUREKA!': 'powerup', 'GENIUS!': 'powerup', 'MIRACLE!': 'powerup', 'LEGENDARY!': 'powerup', 'ACCESS GRANTED!': 'powerup' };
-  for (const [k, f] of Object.entries(FAMILIES)) for (const r of RANKS) for (const w of f.ranks[r]) if (!(w in o)) o[w] = SPECIAL[w] ?? f.mood;
-  for (const w of ['WHIFF!', 'PTWING!']) o[w] = 'whoosh';
+  for (const f of Object.keys(FAMILIES)) for (const [w, s] of Object.entries(SOUND[f])) if (!(w in o)) o[w] = s.mood;
+  for (const [w, s] of Object.entries(MISS_SOUND)) if (!(w in o)) o[w] = s.mood;
   return o;
 })());
 /* the success words that are SOUNDS (onomatopoeia): never translated, no Polish letters, the owner's sound rules apply. Every other success
-   word is an ACTION word (a plain word: GUARD!, HAYMAKER!) with a Polish text where one sounds good (logic.mjs SFX_KEYS). */
+   word is an ACTION word (a plain word: GUARD!, HAYMAKER!) with a Polish text where one sounds good (logic.mjs SFX_KEYS). WORDPOOL2: an action
+   word is the NOUN of the action, never the imperative, in both languages (the owner: «zmiażdżenie» not «zmiażdż»): DODGE! not DUCK!,
+   ATTENTION! not LISTEN UP!, VANISHING! not VANISH!. AHA! is a shout of insight, not a sound (it is the same word in Polish). */
 export const ACTION_WORDS = Object.freeze(new Set(['HAYMAKER!', 'SMASH!', 'CRUSH!', 'RUSH!', 'CHARGE!', 'RAM!', 'STAMPEDE!', 'GRAB!', 'GOTCHA!', 'SQUEEZE!',
-  'LOCK!', 'VISE!', 'GUARD!', 'BLOCK!', 'PARRY!', 'STONEWALL!', 'SHIELD!', 'DASH!', 'FLIP!', 'DUCK!', 'BLUR!', 'HEAVE!', 'WRENCH!', 'MIRACLE!', 'VANISH!',
-  'ACCESS GRANTED!', 'GOT IT!', 'GENIUS!', 'HUNCH!', 'TINGLE!', 'SENSE!', 'SIXTH SENSE!', 'HUSH!', 'COMMAND!', 'LISTEN UP!', 'ROAR!', 'YES!', 'DONE!',
-  'BULLSEYE!', 'LEGENDARY!', 'EUREKA!', 'CLICK!']));
+  'LOCK!', 'VISE!', 'GUARD!', 'BLOCK!', 'PARRY!', 'STONEWALL!', 'SHIELD!', 'DASH!', 'FLIP!', 'DODGE!', 'BLUR!', 'HEAVE!', 'WRENCH!', 'MIRACLE!', 'VANISHING!',
+  'ACCESS GRANTED!', 'GOT IT!', 'GENIUS!', 'HUNCH!', 'TINGLE!', 'SENSE!', 'SIXTH SENSE!', 'HUSH!', 'COMMAND!', 'ATTENTION!', 'ROAR!', 'YES!', 'DONE!',
+  'BULLSEYE!', 'LEGENDARY!', 'EUREKA!', 'CLICK!', 'AHA!']));
 
 /* ---------- what the action is ---------- */
 /* a stem matches at the start of a word (Polish letters count as letters) */

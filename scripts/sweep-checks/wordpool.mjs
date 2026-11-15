@@ -49,11 +49,47 @@ const generic = new Set(SL.ACTIONS.generic);
 for (const f of FAM.filter((x) => x !== "generic")) for (const w of SL.ACTIONS[f]) ok(!generic.has(w), `R: ${f} does not borrow the generic ${w}`);
 for (const w of SL.ACTIONS.generic) ok(WD.ACTION_WORDS.has(w), `R: the generic words are shouts of success, no sound of a hit (${w})`);
 const where = (w) => FAM.filter((f) => SL.ACTIONS[f].includes(w));
-eq(where("ZOOM!"), ["move"], "R: ZOOM! only moves");
+/* WORDPOOL2: ZOOM! and KAPOW! were dictionary words (the engine's deny list): the move's ZWAAM! and the punch's WHAMM! took their places */
+eq(where("ZWAAM!"), ["move"], "R: ZWAAM! only moves");
 eq(where("BOOM!"), ["fire"], "R: BOOM! only burns");
-eq(where("KAPOW!"), ["slugfest"], "R: KAPOW! only punches");
+eq(where("WHAMM!"), ["slugfest"], "R: WHAMM! only punches");
 for (const w of Object.keys(WD.WORD_MOODS)) ok(typeof WD.WORD_MOODS[w] === "string", `R: ${w} has a mood`);
 for (const f of FAM) for (const w of SL.ACTIONS[f]) ok(w in WD.WORD_MOODS, `R: every success word has its mood (${f} ${w})`);
+
+/* ---- S (WORDPOOL2): every word is drawn in the manner of its own sound, and the sound words keep the owner's rules */
+{
+  const DZ = await import("../letters/design.mjs"), MO = await import("../letters/motion.mjs"), LW = await import("../letters/words.mjs");
+  const LP = await import("../splash/letter-plan.mjs");
+  const MOODS = new Set(DZ.MOOD_IDS), KINDS = new Set(Object.keys(MO.KIND_MOTION));
+  const good = (s) => s && MOODS.has(s.mood) && KINDS.has(s.kind);
+  for (const f of FAM) {
+    eq(Object.keys(WD.SOUND[f]).sort(), [...SL.ACTIONS[f]].sort(), `S: ${f}: the sound table names exactly its words`);
+    for (const r of WD.RANKS) for (const w of pool(f, r)) {
+      const s = WD.soundOf(w, f);
+      ok(good(s), `S: ${f} ${r} ${w}: its own mood and engine kind (${s?.mood}/${s?.kind})`);
+      eq([LP.moodOf(w, f), LP.kindOf(w, f)], [s?.mood, s?.kind], `S: ${f} ${w}: the lettering takes that sound, no fallback`);
+    }
+    for (const w of SL.missFor(f)) ok(good(WD.soundOf(w, f)), `S: ${f}: the miss ${w} has its sound`);
+  }
+  for (const w of [...SL.PUSHPRE, ...SL.WRECK, ...SL.PUSHFAIL.filter((x) => !(x in SL.SFX_KEYS))]) ok(w in LP.WORD_MOOD && MOODS.has(LP.moodOf(w)) && KINDS.has(LP.kindOf(w)), `S: ${w}: its own mood and kind (${LP.moodOf(w)}/${LP.kindOf(w)})`);
+  eq([LP.moodOf("KA-KROOM!", "blast"), LP.moodOf("KA-KROOM!", "quake"), LP.kindOf("KROOM!", "blast"), LP.kindOf("KROOM!", "quake")], ["boom", "crash", "concussion", "rumble"], "S: a word shared by two families sounds as each family's");
+  const fams = new Set(FAM.map((f) => JSON.stringify(Object.values(WD.SOUND[f]).map((s) => s.kind).sort())));
+  ok(fams.size >= FAM.length - 2, `S: the families are drawn in their own manners (${fams.size} different kind sets of ${FAM.length})`);
+  /* the item carries the kind to the engine (stage engineOpts) */
+  const evOf2 = (o) => SL.buildEvent({ newSixes: 0, rerolled: 0, pushed: false, stress: 0, ...o }, { rng: () => 0.3, st: null, dryN: 0 });
+  for (const f of FAM) { const ev = evOf2({ n: 5, sixes: 3, action: f }), it = LP.planMoment(ev, {}).items.find((i) => i.role === "word"); eq(it.kind, WD.soundOf(ev.word, f).kind, `S: ${f}: the word item carries its kind (${it.kind})`); }
+  ok(/if \(it\.kind\) o\.kind = it\.kind;/.test(src("../splash/stage.mjs")), "S: the stage hands the kind to the engine");
+  /* the owner's sound rules, measured with the engine's own deny list and sayability: no dictionary word, no near-word, sayable, no
+     Polish letter (an ICONIC word passes the deny list by itself) */
+  const SOUNDS = new Set([...FAM.flatMap((f) => SL.ACTIONS[f]), ...SL.FAIL, ...SL.PUSHPRE, ...SL.PUSHFAIL, ...SL.WRECK].filter((w) => !WD.ACTION_WORDS.has(w) && !(w in SL.SFX_KEYS) && !SL.KEEP_EN.includes(w)));
+  for (const w of SOUNDS) {
+    const t = w.replace(/!+$/, "");
+    eq(LW.refusal(t, "en", { group: "voice" }), null, `S: the sound ${w} is no English dictionary word or near-word`);
+    eq(LW.sayable(t, "en"), null, `S: the sound ${w} can be said`);
+    ok(!/[ĄĆĘŁŃÓŚŹŻ]/u.test(w), `S: the sound ${w} has no Polish letter`);
+  }
+  ok(LP.INFO_HAND.number === true && LP.CAPTION_HAND.number === true, "S: the caption and number hand letters every letter at one size (no LUCKy BREAK!)");
+}
 
 /* ---- L: both languages */
 SL.setLabels({ sfx: plLabels() });
@@ -71,6 +107,16 @@ for (const f of FAM) for (const r of WD.RANKS) for (const w of pool(f, r)) {
   }
 }
 for (const [w, k] of Object.entries(SL.SFX_KEYS)) eq(EN[`INSPLASH.Word.${k}`], w, `L: the English text of ${k} is the word itself`);
+/* WORDPOOL2 (the owner: the NOUN of the action, never the imperative, «zmiażdżenie» not «zmiażdż»): every shown word of the splash, both
+   languages, the grunts and the mutters too */
+{
+  const EN_IMP = /^(DUCK|LISTEN UP|VANISH|DEMOLISH|DIG DEEP|TRY AGAIN|LOOK OUT|WATCH OUT|HOLD|BRACE|GO|RUN|GET DOWN|TAKE THAT|COME ON)\b/;
+  const PL_IMP = /(^|\s)\p{L}*(AJ|UJ|IJ|YJ|ŹDŹ|ZBURZ|ROZWAL|ŁAP|TRZYMAJ|PATRZ|SŁUCHAJ|BIERZ|SPRÓBUJ|UCIEKAJ|CHOD[ŹZ])(\s|!|$)/u;
+  for (const [w, k] of Object.entries(SL.SFX_KEYS)) {
+    ok(!EN_IMP.test(w), `L: ${w}: no English imperative`);
+    ok(!PL_IMP.test(PL[`INSPLASH.Word.${k}`]), `L: ${w} -> ${PL[`INSPLASH.Word.${k}`]}: no Polish imperative`);
+  }
+}
 for (const w of WD.ACTION_WORDS) ok(w in SL.SFX_KEYS || SL.KEEP_EN.includes(w), `L: the action word ${w} is decided for Polish (keyed or kept)`);
 ok(!/STATYSTYKA W GRUZACH/.test(PL["INSPLASH.Say.OddsShattered"]), `L: the top caption is a Polish shout, not a calque (${PL["INSPLASH.Say.OddsShattered"]})`);
 {

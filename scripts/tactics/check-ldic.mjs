@@ -69,8 +69,8 @@ const plan = (e, o = {}) => LP.planMoment(e, { W: 746, ...o });
   ok(bw.sound.pitch < 0 && rw.sound.pitch < bw.sound.pitch, "a miss falls in pitch, a rare one further");
   ok(rw.sound.loud > bw.sound.loud && rw.size > bw.size && sw.size < bw.size && sw.sound.loud < bw.sound.loud, "a rare miss is loud, a routine one small and quiet");
   eq([bw.colors, sw.colors], [LP.FAIL_COLORS, LP.SOFT_COLORS], "misses are cold grey-blue, routine ones grey");
-  const crackEv = { ...pushedMiss, word: "CRACK!" };
-  eq(by(plan(crackEv), "word").mood, "crack", "a pushed roll that broke on CRACK! cracks");
+  const crackEv = { ...pushedMiss, word: "SKRAK!" };   // WORDPOOL2: CRACK! (a dictionary word) became the engine's SKRAK!
+  eq(by(plan(crackEv), "word").mood, "crack", "a pushed roll that broke on SKRAK! cracks");
 
   /* the numbers are lettered, in their own steady colours */
   eq(by(g, "six").text, "2 SIXES", "the sixes are lettered with their count");
