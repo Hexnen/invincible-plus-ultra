@@ -243,9 +243,11 @@ function onEvent(ev) {
     heard.add(key);
     const tok = game.combats?.get(ev.combat)?.combatants?.get(target)?.token?.object ?? null;
     if (!tok || !enabled()) return;
-    if (ev.type === "broken") told(tok, "health", { broken: true, key });
+    /* DIRECT2 (seen live in a real fight: a minion group knocked out by Omni-Man's slugfest lettered its "broken" word with no way, and
+       that heavier word took the damage word's place): a knock-down by an attack keeps its attacker, like the damage */
+    const src = attackerOf(ev);
+    if (ev.type === "broken") told(tok, "health", { broken: true, key, ...(src && src !== tok.id ? { src } : {}) });
     else if (Number.isFinite(ev.taken) && ev.taken > 0) {
-      const src = attackerOf(ev);
       told(tok, ev.toStress ? "resolve" : "health", { taken: Math.trunc(ev.taken), key, ...(src && src !== tok.id ? { src } : {}), ...(typeof ev.dtype === "string" ? { dtype: ev.dtype } : {}), ...(ev.doubled === true ? { doubled: true } : {}) });
     }
   } catch (err) { once(err); }

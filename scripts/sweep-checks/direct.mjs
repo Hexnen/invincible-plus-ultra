@@ -258,6 +258,8 @@ const GS = 100;
   /* S2 seats agree on the knock: one pose per age whatever the page clock (the knock is in caps; px = caps x this seat's cap) */
   const pose = (origin) => [0, 62, 120, 300, 800, 1500, 1700].map((age) => D.knockAt({ ux: 0.6, uy: 0.8 }, (origin + age) - origin, { contact: 62, holdEnd: 1400, k: D.knockK(0.7) }));
   eq(JSON.stringify(pose(1234.5)), JSON.stringify(pose(98765.25)), "S2: GM and player get one knock pose per age");
+  /* R a real fight (lane 5): Omni-Man's slugfest knocked a minion group out; its "broken" word took the damage word's place and had no way */
+  ok(/const src = attackerOf\(ev\);\s*\n\s*if \(ev\.type === "broken"\) told\(tok, "health", \{ broken: true, key, \.\.\.\(src && src !== tok\.id \? \{ src \} : \{\}\) \}\);/.test(tr), "R: a knock-down by an attack (the fight's broken event) keeps its attacker, like its damage");
 }
 
 done("direct");

@@ -67,14 +67,14 @@ export function fromOf(dir) {
 }
 /* DIRECT2 (the owner on DIRECT, 2026-11-15: «Kierunek mocniejszy»): the token reaction's word leans harder. The splash keeps the DIRECT
    lean (its block is laid out with it, the same on every seat; DIRECT2-4) */
-export const LEAN_REACT = Object.freeze({ tilt: 16, k: 0.55, climb: 5 });
+export const LEAN_REACT = Object.freeze({ tilt: 16, k: 0.55, climb: 5, taper: 2 });   // taper: the climb fades as (1 - |uy|)^taper (a slanted blow is not flattened by it)
 /** the word's tilt for a direction (deg, positive = clockwise on screen), or `own` for a mostly vertical blow / no direction.
     lean = { tilt, k, climb } (default: the DIRECT lean TILT / TILT_K / FLAT_CLIMB) */
 export function tiltOf(dir, own = 0, lean = null) {
   if (!dir || Math.abs(dir.ux) < VERT) return own;
-  const T = lean?.tilt ?? TILT, K = lean?.k ?? TILT_K, C = lean?.climb ?? FLAT_CLIMB;
+  const T = lean?.tilt ?? TILT, K = lean?.k ?? TILT_K, C = lean?.climb ?? FLAT_CLIMB, P = lean?.taper ?? 1;
   const s = Math.sign(dir.ux), deg = Math.asin(clamp(dir.uy, -1, 1)) * 180 / Math.PI;
-  return Math.round(clamp(s * K * deg - s * C * (1 - Math.abs(dir.uy)), -T, T));
+  return Math.round(clamp(s * K * deg - s * C * (1 - Math.abs(dir.uy)) ** P, -T, T));
 }
 /** the engine's reading-direction sign for a direction (+1 = the word's own motions go right, -1 left), null for a mostly vertical blow.
     DIRECT2 (REQUESTS DIRECT-E1): without it the engine picks the sign from the seed (3 in 4 right), so the word's own sideways motions
@@ -142,8 +142,10 @@ export function clampTravel(c, off, hw, hh, safe) {
      - and is thrown on out on its exit by `outD` in `outMs` (accelerating: knocked away).
    All in cap heights of the word, scaled by the blow's weight `k` (knockK: a heavier blow knocks farther), on the word's own startAt
    clock: every seat shows one pose at one instant. Reduced motion: none (the lean and the grow stay). Never forward INTO the struck token
-   (wallTravel: a word that stands between the attacker and its target stops short of it). */
-export const KNOCK = Object.freeze({ back: 1.0, fly: 220, over: 0.3, settle: 180, drift: 0.6, outD: 1.6, outMs: 320 });
+   (wallTravel: a word that stands between the attacker and its target stops short of it).
+   Lane 5 (2026-11-15): a first try of back 1.0 / drift 0.6 / out 1.6 moved the word about as far as DIRECT did on the film (faster, not
+   farther); these values read as thrown. */
+export const KNOCK = Object.freeze({ back: 1.6, fly: 280, over: 0.35, settle: 200, drift: 1.0, outD: 2.4, outMs: 340 });
 /** the knock's weight for a reaction's magnitude (tokenreact magOf: 0..1.2) -> 0.85..1.25 */
 export function knockK(mag) { return r3(clamp(0.85 + 0.33 * (Number.isFinite(mag) ? mag : 0.5), 0.85, 1.25)); }
 const easeOut3 = (u) => 1 - (1 - u) ** 3, easeIO = (u) => (u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u));
