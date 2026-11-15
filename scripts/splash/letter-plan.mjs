@@ -16,7 +16,7 @@
    row under that; the push grunt above. Every element is measured (the engine's own plan of that very word) and the whole block is
    placed by the token (above its head, else under its feet, else beside it) or on the screen's focus, then kept inside the free part of
    the window (not under the chat, the bars, the hotbar), shrunk as one when it does not fit. Nothing in the block overlaps. */
-import { hueOf, oddsText, oddsLabel, fmtOdds, LBL, say, sfxWord, WORD_MOODS, FAMILY_MOODS, soundOf } from './logic.mjs';   // SPLASHPL: sfxWord = the action word as this seat shows it (moods stay keyed by the English word)
+import { hueOf, oddsText, oddsLabel, fmtOdds, LBL, say, sfxWord, WORD_MOODS, FAMILY_MOODS, soundOf, SFX_KEYS, KEEP_EN, ACTION_WORDS } from './logic.mjs';   // SPLASHPL: sfxWord = the action word as this seat shows it (moods stay keyed by the English word)
 import { cleanHere, localCost, shiftInto } from '../same-picture.mjs';   // SAMEPIC: one picture for the table
 
 /* the push grunts, the wreck and the pushed roll that broke: their sound (mood + the engine's motion row, words.mjs SOUND) */
@@ -80,6 +80,11 @@ export const INFO_HAND = Object.freeze({ number: true, font: 'anton', treat: 'pl
    edges, inwards too, and at caption size they filled Anton's narrow counters (live, 1366: NOT BAD! read HOT RAD!, IN was two
    blocks). So the caption has a thin ink line only, no puff, no extrusion, no gloss: the counters stay open. */
 export const CAPTION_HAND = Object.freeze({ ...INFO_HAND, outline: 'ink', out2W: 0, inkW: 0.04, inflate: 0, depth: 0, gloss: false });
+/* WORDPOOL2: a plain word (an action word, a shout, a mutter: read, not heard) keeps the hand its mood picks but letters every letter at one
+   size: the sound's accent sizing shrank its tail or its first word (IMADło!, "ACCESS" small before GRANTED!, ZMIAŻDŻENie!) and the word read
+   as a mistake. Sound words (onomatopoeia) keep their accent. */
+export const PLAIN_HAND = Object.freeze({ number: true });
+export const isPlainWord = (w) => typeof w === 'string' && (ACTION_WORDS.has(w) || Object.hasOwn(SFX_KEYS, w) || KEEP_EN.includes(w));
 const CAPTION_ROLES = new Set(['say', 'odds']);
 const INFO_ROLES = new Set(['six', 'say', 'odds', 'stress']);
 
@@ -199,6 +204,7 @@ export function planMoment(ev, o = {}) {
     it.rot0 = it.rotation || 0;   // SAMEPIC: the tilt every seat lays the block out with (a reduced seat draws it upright in that place)
     if (o.reduced) it.rotation = 0;
     if (INFO_ROLES.has(it.role)) it.hand = CAPTION_ROLES.has(it.role) ? CAPTION_HAND : INFO_HAND;
+    else if (isPlainWord(it.role === 'word' ? ev.word : it.role === 'pre' ? ev.prefix : it.role === 'wreck' ? ev.wreckWord : null)) it.hand = PLAIN_HAND;
     it.magnitude = magnitudeOf(it, ev);
     it.size = Math.round(Math.max(FLOOR[it.role] ?? 16, it.cap * REF_VH));
   }

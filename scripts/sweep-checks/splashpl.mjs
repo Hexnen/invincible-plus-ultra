@@ -106,6 +106,7 @@ SL.setLabels({ sfx: {} });
         const o = { mood: it.mood, sound: it.sound, hold: it.hold, magnitude: it.magnitude, seed: "m1:word", anchor: "center", from: 90 };
         for (const k of ["in", "out", "holdKind"]) if (it[k]) o[k] = it[k];
         if (it.kind) o.kind = it.kind;   // WORDPOOL2: the stage hands the sound's motion row too
+        if (it.hand) o.hand = { ...it.hand };   // ... and a plain word's even letters (PLAIN_HAND)
         const c = (t) => IP.contactMs(TL.planFor(L, LP.letterable(t), o).plan);
         n++;
         if (c(e.word) === c(SL.SFX_KEYS[e.word] && PL[`INSPLASH.Word.${SL.SFX_KEYS[e.word]}`])) same++;

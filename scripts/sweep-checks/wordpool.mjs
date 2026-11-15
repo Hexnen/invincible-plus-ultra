@@ -89,6 +89,27 @@ for (const f of FAM) for (const w of SL.ACTIONS[f]) ok(w in WD.WORD_MOODS, `R: e
     ok(!/[ĄĆĘŁŃÓŚŹŻ]/u.test(w), `S: the sound ${w} has no Polish letter`);
   }
   ok(LP.INFO_HAND.number === true && LP.CAPTION_HAND.number === true, "S: the caption and number hand letters every letter at one size (no LUCKy BREAK!)");
+  /* a plain word (action word, shout) letters evenly too; a sound word keeps its accent */
+  for (const f of FAM) for (const r of WD.RANKS) for (const w of pool(f, r)) {
+    const ev = { ...evOf2({ n: 5, sixes: 3, action: f }), word: w }, it = LP.planMoment(ev, {}).items.find((i) => i.role === "word");
+    eq(!!it.hand?.number, WD.ACTION_WORDS.has(w), `S: ${f} ${w}: ${WD.ACTION_WORDS.has(w) ? "a plain word letters evenly" : "a sound keeps its accent"}`);
+  }
+  const miss = LP.planMoment({ ...evOf2({ n: 6, sixes: 0, action: "slugfest" }), word: "BLUNDER!" }, {}).items.find((i) => i.role === "word");
+  eq(miss.hand, LP.PLAIN_HAND, "S: a miss shout (BLUNDER!) letters evenly");
+  /* measured on the real engine: every letter of a plain word at one size, in both styles */
+  {
+    const { setup } = await import("../letters/testenv.mjs"), TL = await import("../letters/tools.mjs");
+    const E = await setup({ gm: true }), L = E.engine;
+    for (const style of ["invincible", "expressive"]) {
+      L.lookStyle(style);
+      for (const t of ["ACCESS GRANTED!", "IMADŁO!", "ZMIAŻDŻENIE!", "LUCKY BREAK!"]) {
+        const hand = t === "LUCKY BREAK!" ? LP.CAPTION_HAND : LP.PLAIN_HAND;
+        const s = TL.planFor(L, t, { mood: t === "LUCKY BREAK!" ? "tick" : "powerup", hand, seed: "wp2", sound: { loud: 0.8 } }).plan.layout.letters.map((l) => l.size ?? l.s);
+        ok(s.every((x) => Math.abs(x - s[0]) < 1e-9), `S: ${style}: ${t} letters at one size (${[...new Set(s.map((x) => x.toFixed(2)))].join(" ")})`);
+      }
+    }
+    L.lookStyle("invincible");
+  }
 }
 
 /* ---- L: both languages */
