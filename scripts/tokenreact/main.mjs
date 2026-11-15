@@ -622,7 +622,7 @@ const view = {
       if (d) zs.push(d);
       const ox = W / 2 - REF_VW / 2, oy = H / 2 - REF_VH / 2;
       zs.push({ l: ox + METER_ZONE.l, t: oy + METER_ZONE.t, r: ox + METER_ZONE.r, b: oy + METER_ZONE.b });
-      return zs.map((z) => ({ x: z.l, y: z.t, w: z.r - z.l, h: z.b - z.t, k: P.SLOT_K.panel }));
+      return zs.map((z) => ({ x: z.l, y: z.t, w: z.r - z.l, h: z.b - z.t, k: P.SLOT_K.panel, push: true }));      // CROWD2: follow() pushes off it on every seat
     } catch { return []; }
   },
   /* this seat's own floating panels (the GM's desk, the party cards, the map's meters): a word is never hidden under them, but they move it

@@ -392,13 +392,20 @@ export function chooseSlot(tok, box, safe, blocked = [], { prefer = 0 } = {}) {
 export const FIT = { ks: [1, 0.86, 0.74, 0.62, 0.52], shrinkK: 1.6, keepBonus: 0.12 };
 export const FIT_SLOTS = SLOTS.filter((s) => s !== "on");
 /** -> { slot, k (scale of the group box), score } */
-export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null, ks = FIT.ks } = {}) {
+/* CROWD2 (live, KA k1 after the VRAM meter's place became a shared zone: Omni-Man's "-2" stood on Kid Omni-Man): a shared zone (push: true,
+   the panels every seat keeps free) is not where a word ends: follow() pushes every word off it each frame, on every seat alike. With slide
+   the fit scores a side where that push will put it (inside the standard view), so a side beside a zone is not given up for a neighbour's
+   face; the push is computed from shared data only, the same on every seat. */
+export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null, ks = FIT.ks, slide = false } = {}) {
   let best = { slot: FIT_SLOTS[0], k: 1, score: Infinity };
   const own = { ...ringRect(tok), k: SLOT_K.own }, A = box.w * box.h;      // CROWD: the ring is the token's too
+  const push = slide && safe ? blocked.filter((q) => q?.push) : [];
   for (const k of ks) {
     const b = { w: box.w * k, h: box.h * k };
     FIT_SLOTS.forEach((slot, i) => {
-      const r = rectAt(slotPoint(slot, tok, b), b);
+      let p = slotPoint(slot, tok, b);
+      if (push.length && push.some((q) => inter(rectAt(p, b), q) > 0)) p = clampInto(avoidRects(clampInto(p, b, safe), b, push, safe), b, safe);
+      const r = rectAt(p, b);
       let s = i * 0.04 * b.w * b.h + (1 - k) * A * FIT.shrinkK;      // the order is the preference: above unless it costs; then size
       if (prefer && ((prefer > 0 && slot === "aboveL") || (prefer < 0 && slot === "aboveR"))) s += 0.02 * b.w * b.h;
       if (keep && slot === keep) s -= FIT.keepBonus * A + 1e-3;      // CROWD: the kept side also wins a tie
@@ -416,8 +423,11 @@ export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null,
    sidebar as if open), and kept unless THIS seat would really cut it (a smaller window, a sidebar wider than the reserve) or hide it under
    its own panel (the GM's desk): only then is it fitted again here with those too. -> fitSlot's result + { same } (false = moved here) */
 export function fitSame(tok, box, std, real, shared = [], local = [], o = {}) {
-  const a = fitSlot(tok, box, std, shared, o);
-  const b = { w: box.w * a.k, h: box.h * a.k }, r = rectAt(slotPoint(a.slot, tok, b), b);
+  const a = fitSlot(tok, box, std, shared, { ...o, slide: true });
+  const b = { w: box.w * a.k, h: box.h * a.k }, push = std ? shared.filter((q) => q?.push) : [];
+  let p0 = slotPoint(a.slot, tok, b);
+  if (push.length && push.some((q) => inter(rectAt(p0, b), q) > 0)) p0 = clampInto(avoidRects(clampInto(p0, b, std), b, push, std), b, std);
+  const r = rectAt(p0, b);
   const outR = real ? outside(r, real) : 0, outS = std ? outside(r, std) : 0;
   const clean = outR <= outS + 1 && !local.some((q) => inter(r, q) > 1);
   if (clean) return { ...a, same: true };

@@ -97,7 +97,8 @@ const scen = {
     gmPanels: [{ sel: "#invincible-tactics-desk:not(.igd-collapsed) .igd", x: 260, y: 120, w: 190, h: 120 }] },
   /* CROWD2 (live probe, KA k1): the group high in the view's top-left corner, under the map's VRAM meter folded at its default spot (the GM's own,
      shown by default to the GM only): the meter took the GM's spot left of the first hero, so his "-2" shrank and slid on the GM only */
-  meter: { center: { x: 920, y: 600 }, toks: SIX.map((t, i) => ({ ...t, hero: i < 3 })), hits: hitAll(SIX.map((t) => t.id)),
+  meter: { zoom: 1.75, center: { x: 729, y: 464 }, toks: [{ id: "OM", x: 500, y: 250, hero: true }, { id: "KD", x: 600, y: 250, hero: true }, { id: "EV", x: 500, y: 350, hero: true },
+      { id: "SO", x: 700, y: 500 }, { id: "MB", x: 800, y: 500 }, { id: "MA", x: 900, y: 500 }], hits: hitAll(["OM", "KD", "EV", "SO", "MB", "MA"]),
     gmPanels: [{ sel: ".mm-vram", x: 96, y: 92, w: 264, h: 52 }, { sel: "#mm-vram", x: 96, y: 92, w: 264, h: 52 }] }
 };
 const runs = await Promise.all(Object.entries(scen).flatMap(([k, s]) => [GM, P1].map((st) => seat({ ...s, ...st, panels: st.gm ? s.gmPanels : s.panels, name: `${k}/${st.name}` }).then((r) => [k, st.name, r]))));
@@ -182,6 +183,7 @@ if (ok("meter")) {
    GM ${sig(words(gm))}
    P1 ${sig(words(p1))}`, sig(words(gm)) === sig(words(p1)));
   ck("C30 nothing lies under the meter on the GM's seat", !gm.plays.filter((p) => p.box).some((p) => inter(p.box, m) > 1));
+  ck(`C31 the meter's kept place pushes no word or number onto a token or its ring (${onRings(p1, p1.plays.filter((p) => p.box))})`, !onRings(p1, p1.plays.filter((p) => p.box)).length);
 }
 console.log(`sweep crowd: ${n} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);
