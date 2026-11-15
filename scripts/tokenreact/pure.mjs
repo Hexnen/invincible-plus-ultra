@@ -643,7 +643,11 @@ export function edgeBox(g, cap, reach) {
      3 heavy     heavy 1.05   black frame with the struck figure's silhouette, the inverted slam, a hit-stop, cracks
      4 crushing  crit  1.3    speed lines, the silhouette frame, a longer slam, the chromatic split (the strongest a blow that does not
                               fell gets)
-   then going down: ko 1.45..2 (the whole set, the longest hold). The rung of a blow is its size as the table knows it (a told number or a
+   then going down: ko 1.45..2 (the whole set, the longest hold).
+   CALLER6 (engine 1.9.24: steps 0 / 1 / 2 last 6 / 8 / 10 ticks): the lengths as the engine plans them are 6 / 10 / 10 / 11 / 11 ticks, the
+   knock-down 17-24; from the blow up the rungs differ by their drawings and flashes (one local panel; the panel and the shatter; the full
+   silhouette frame and the slam with a hit-stop), not by their length (the engine's step 3 is pinned at 10-11 ticks: sweep-checks/caller6).
+   The rung of a blow is its size as the table knows it (a told number or a
    public track; a blow whose size nobody was told is a scratch: it cannot say more without telling hidden Health), plus ONE RUNG for each
    next blow of a series (STREAK), so -1, -1, -3 reads scratch, blow, crushing. A stunt's doubled damage [B2434] is one rung more in the
    critical's frames; energy crackles (shock) on the rung's strength. Stress takes the same ladder in its own colour (void); stressed out is
@@ -696,10 +700,10 @@ export function impactOf(pub, step = 0, o = {}) {
     if (blow && o.doubled) r = Math.min(RUNGS.length - 1, r + 1);      // a stunt doubled the damage [B2434]: one rung more, the critical's frames
     const R = RUNGS[r];
     const kind = blow && o.doubled ? "crit" : blow && ENERGY.has(o.dtype) ? "shock" : R.kind;
+    /* CALLER6 (engine 1.9.24): every rung is the ENGINE's own ladder of its kind again (a scratch its step 0: 6 ticks, no flash; a blow and a
+       hard blow its step 2: 10 ticks with the black-and-white panel, the hard blow's with the shatter and cracks; a shot its colour split).
+       IMPCALL2 handed the three low rungs in as the callers' own 6 / 8 / 9 tick cuts while the engine drew them in 2-6 ticks */
     const out = { kind, magnitude: Math.min(impactTop(), R.magnitude), rung: r };
-    /* IMPCALL2 (ADVI2 1: a scratch was one 83 ms blink, a blow 250 ms): the rungs the engine draws in 2-6 ticks get the callers' own longer cut
-       (impact-rungs REACT: 6 / 8 / 9 ticks, the lowest never a flash); from the heavy rung up the engine's own ladder (10-24 ticks) */
-    if (RG.REACT[r]) out.frames = RG.framesOf(RG.REACT[r]);
     const tone = row.tone ?? DTYPE_TONE[o.dtype] ?? (kind === "crit" && !o.doubled ? R.tone : null);
     if (tone) out.tone = tone;
     return out;

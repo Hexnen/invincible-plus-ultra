@@ -1318,7 +1318,7 @@ function impactShot(ctl, it, contact) {
       const also = IP.alsoTargets(ctl.targets).map((id) => globalThis.canvas?.tokens?.get?.(id)).filter((t) => t && t !== tok && t !== s.from && t.document?.hidden !== true);
       if (also.length) s.also = also;
       if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude, LE?.impact, { figs: IP.hasFigures(ctl.targets, rollerShared(ctl)), rung: q.rung }); }
-      else if (Array.isArray(q.frames)) s.frames = q.frames.map((f) => ({ ...f }));      // IMPCALL2: the ordinary / strong result's own cut (impact-plan impactFor)
+      else if (Array.isArray(q.frames)) s.frames = q.frames.map((f) => ({ ...f }));      // a result that is no blow: the callers' own cut (impact-plan impactFor; CALLER6: a blow's is the engine's ladder)
       if (q.tone) s.tone = q.tone;
       if (q.hitstop === false) s.hitstop = false;
       if (q.gentle === true) s.gentle = true;      // IMPCALL2: Effects reduced: the engine's gentle variant of the table's impact (only ever true: a false would raise nothing)
@@ -1334,8 +1334,8 @@ function impactShot(ctl, it, contact) {
     try { const p = I.plan?.({ ...ts, reduced: false }); lead = Number.isFinite(p?.peakMs) ? p.peakMs : IP.leadMs(p?.frames ?? ts.frames ?? []);
       /* CALLER5: how long the TABLE's impact lasts (the token reactions wait for it: tellLand), the same on every seat whether or not this
          seat draws it (a map word off its view, a target off it). Before, a seat that drew none told 0 and its target answered earlier than
-         on the other seats. A reduced-motion seat's plan is its still drawing: the caller's own cut is counted from its frames; the engine's
-         own ladder there only by the still's length (REQUESTS CALLER5-E1: the table's length from the engine) */
+         on the other seats. CALLER6 (engine 1.9.24): the engine's plan says it itself (`plan.tableMs`, the full plan before this seat's
+         safety), so a reduced-motion seat (its own plan: one still) tells the table's length for the engine's ladders too */
       tableMs = IP.tableImpactMs(p, ts.frames, I);
       /* IMPCALL2 (item 3): the table's strength of this impact when it lands on the roll's targets (shared data: the targets and the table's
          plan), told with the landing so the target's damage reaction joins this event instead of striking a second cut */

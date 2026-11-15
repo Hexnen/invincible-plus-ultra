@@ -15,23 +15,31 @@ import * as RG from "../impact-rungs.mjs";
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const r2 = (v) => Math.round(v * 100) / 100;
 
-/* IMPCALL2 (ADVI2 1; the owner: «Jeden rzut i animacja na kilka minut»): every SUCCESS gets its moment now. An ordinary success (under
-   STRONG_P) had none: it gets the callers' own low rung (scripts/impact-rungs.mjs ROLL.ordinary, 7 ticks, no flash) at ORD_MAG (the
-   engine's step 1: its cut-in and size rules read a small rung); a strong result its own 9-tick cut (ROLL.strong, one flash) instead of the
-   engine's 2-6 tick step 1-2; the critical keeps the engine's ladder (11-24 ticks). `rung` names the rung, `frames` the screen cut (the map
-   layer has its own, mapFrames). A failure stays without an impact (nothing landed).
+/* IMPCALL2 (ADVI2 1; the owner: «Jeden rzut i animacja na kilka minut»): every SUCCESS gets its moment. A failure stays without an impact
+   (nothing landed). The ladder of a roll, one length per rung:
+     ordinary (under STRONG_P)   ORD_MAG, the engine's step 1:  8 ticks, no flash
+     strong                      STRONG_MIN..STRONG_MAX, step 2: 10 ticks, the local black-and-white panel
+     critical                    1.1..2, steps 3-5:             11-24 ticks, the full set
+   CALLER6 (engine 1.9.24: its steps 0 / 1 / 2 last 6 / 8 / 10 ticks): a BLOW's ordinary and strong result (ACTION_KIND: hit / heavy / shock)
+   are the engine's own steps 1 and 2 of that kind (the blow's star and splash, the crushing blow's cracks, the shot's colour split), no
+   `frames`; before, both were one caller cut (7 / 9 ticks) whatever the action. A result that is not a blow (the engine's tone-only kind
+   "word": 2-3 ticks there) keeps the callers' cut of the same length (impact-rungs ROLL). A strong result always reads the engine's step 2
+   (STRONG_MIN = its bound; it began at ORD_MAG, where the engine's ladder would have drawn the ordinary result's cut). `rung` names the
+   rung, `frames` the screen cut when the callers hand one in (the map layer has its own, mapFrames).
    Effects "reduced" ("Gentle: no flash or particles"; IMPACT5-3: it got a SHORTER critical than the table, 750 instead of 1000 ms, and no
    ordinary moment): the table's impact, the same length and instant, handed to the engine as `gentle` (its local variant: no full frame, no
    hit-stop, no inverted scene, the guard as always) and without the hold of the scene. A seat that cannot show it clean shows it calmer,
    never another story. */
 export const ORD_MAG = 0.45;
+export const STRONG_MIN = 0.6;   // the engine's step 2 from the weakest strong result on (L.impact.steps[1]; checked against the engine in sweep-checks/caller6.mjs)
 export function impactFor(ev, o = {}) {
   if (!ev || ev.fail || !Number.isFinite(ev.power)) return null;
   const fx = Number.isFinite(o.fx) ? o.fx : 1;
   if (!(fx > 0)) return null;      // the splash's Effects setting "off": no effects at all
   const P = ev.power;
   if (P < STRONG_P) {
-    const out = { kind: ACTION_KIND[ev.action] ?? "word", magnitude: ORD_MAG, rung: "ordinary", frames: RG.framesOf(RG.ROLL.ordinary) };
+    const out = { kind: ACTION_KIND[ev.action] ?? "word", magnitude: ORD_MAG, rung: "ordinary" };
+    if (out.kind === "word") out.frames = RG.framesOf(RG.ROLL.ordinary);      // not a blow: the callers' cut (the engine's "word" kind is 3 ticks)
     if (ev.npc) out.tone = "void";
     if (fx < 1) { out.gentle = true; out.hitstop = false; }
     return out;
@@ -45,10 +53,10 @@ export function impactFor(ev, o = {}) {
   } else {
     kind = ACTION_KIND[ev.action] ?? "word";
     if (ev.wreck && kind === "hit") kind = "heavy";      // the blow wrecks the surroundings too (cracks)
-    magnitude = Math.min(STRONG_MAX, 0.45 + 0.35 * clamp((P - STRONG_P) / (CRIT_P - STRONG_P)) + (ev.wreck ? 0.15 : 0));
+    magnitude = Math.min(STRONG_MAX, STRONG_MIN + (STRONG_MAX - STRONG_MIN) * clamp((P - STRONG_P) / (CRIT_P - STRONG_P)) + (ev.wreck ? 0.15 : 0));
   }
   const out = { kind, magnitude: r2(clamp(magnitude, 0, 2)), rung: P >= CRIT_P ? "crit" : "strong" };
-  if (P < CRIT_P) out.frames = RG.framesOf(RG.ROLL.strong);      // IMPCALL2: the strong result's own 9-tick cut
+  if (P < CRIT_P && kind === "word") out.frames = RG.framesOf(RG.ROLL.strong);      // not a blow: the callers' 10-tick cut; a blow: the engine's step 2
   if (ev.npc) out.tone = "void";      // a villain's roll: violet and cyan, not the hero's yellow and blue
   if (fx < 1) { out.gentle = true; out.hitstop = false; }      // IMPCALL2: Effects "reduced": the table's impact, gentle (was one strength lower: a shorter cut)
   return out;

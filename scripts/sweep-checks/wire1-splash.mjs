@@ -139,8 +139,8 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
   eq(s.moves, 0, "a strong blow: no shake of our own on top of its impact frame");
   eq(IP.impactFor(R.shot)?.kind, "shock", "a strong shot: the energy kind");
   eq(IP.impactFor(R.dodge)?.kind, "word", "a strong dodge (no blow): only the accent behind its word");
-  /* IMPCALL2 (ADVI2 1; the owner: one roll, then minutes of nothing): an ordinary success has its own small moment now (impact-rungs
-     ROLL.ordinary: 7 ticks, no flash); a miss still none. Was: "good: no impact frame" */
+  /* IMPCALL2 (ADVI2 1; the owner: one roll, then minutes of nothing): an ordinary success has its own small moment now (CALLER6: the engine's
+     step 1 of the blow's kind, 8 ticks, no flash; impact-rungs ROLL.ordinary for a result that is no blow); a miss still none. Was: "good: no impact frame" */
   eq((await seat({ e: R.good, name: "good", hero, full: false })).impacts.length, 1, "good: its own small impact frame");
   for (const [k, e] of [["routine miss", R.routine], ["rare miss", R.rare]]) eq((await seat({ e, name: k, hero, full: false })).impacts.length, 0, `${k}: no impact frame`);
   ok(Math.max(...[0.46, 0.5, 0.6, 0.69].map((P) => IP.impactFor({ power: P, action: "slugfest", wreck: true }).magnitude)) < 0.85 && IP.impactFor({ power: 0.7, action: "slugfest" }).magnitude > IP.impactFor({ power: 0.69, action: "slugfest", wreck: true }).magnitude,

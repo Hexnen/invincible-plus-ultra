@@ -78,9 +78,14 @@ const row = (name) => table.find((r) => r.name === name);
 const up = (a, b) => row(a) && row(b) && row(a).tMax < row(b).tMin;
 if (!CHILD) {
 ck("R roll: ordinary < strong < critical (ticks, every seed)", up("ordinary success", "strong result") && up("strong result", "critical at threshold") && row("critical at threshold").tMax <= row("critical top").tMin);
-ck("R blow: scratch < blow < hard blow < heavy <= crushing < knock-down", up("scratch (-1 of 8)", "blow (-2 of 8)") && up("blow (-2 of 8)", "hard blow (-3 of 8)") && up("hard blow (-3 of 8)", "heavy (-5 of 8)")
+/* CALLER6 (engine 1.9.24): the blow and the hard blow are the engine's step 2 (10 ticks), the heavy blow its step 3 (11): from the blow up
+   a rung is never shorter than the one below (was strictly longer, with the callers' 8 / 9 tick cuts squeezed under step 3) and is told by
+   its drawings (impcall2.mjs "each rung adds to the one below") */
+const upEq = (a, b) => row(a) && row(b) && row(a).tMax <= row(b).tMin;
+ck("R blow: scratch < blow <= hard blow <= heavy <= crushing < knock-down", up("scratch (-1 of 8)", "blow (-2 of 8)") && upEq("blow (-2 of 8)", "hard blow (-3 of 8)") && upEq("hard blow (-3 of 8)", "heavy (-5 of 8)")
+  && row("blow (-2 of 8)").flMax < row("hard blow (-3 of 8)").flMax
   && row("heavy (-5 of 8)").tMax <= row("crushing (-7 of 8)").tMax && up("crushing (-7 of 8)", "knock-down"));
-ck("R the low rungs (callers' own cuts) never flash on the two lowest", row("ordinary success").flMax === 0 && row("scratch (-1 of 8)").flMax === 0);
+ck("R the two lowest rungs never flash", row("ordinary success").flMax === 0 && row("scratch (-1 of 8)").flMax === 0);
 ck("R the second beat: the knock-down's length, no flash", row("knock-down as the roll's 2nd beat").flMax === 0 && row("knock-down as the roll's 2nd beat").tMin === plan(ko, "b").ticks);
 ck("R the cut-in grows with the rung (ordinary < critical)", row("ordinary success").cuTop < row("critical top").cuTop && row("scratch (-1 of 8)").cuTop <= row("blow (-2 of 8)").cuTop);
 /* IMPACT5-3 (a): a seat whose Effects are reduced (the table's, or this seat's photosensitive mode: main.mjs fxLevel) plays the TABLE's impact
@@ -100,10 +105,10 @@ if (process.env.CALLER5_TABLE) {
 if (!CHILD) {
   /* the table's impact length, whatever this seat draws */
   const I = { limits: LIMITS };
-  const cut = RG.framesOf(RG.ROLL.strong);
+  const cut = RG.framesOf(RG.ROLL.strong), rollW = (pw) => IP.impactFor({ power: pw, action: "dodge" });      // CALLER6: the callers' own cut is the roll's that is no blow
   ck("S tableImpactMs: a full / gentle seat reads its plan", RG.tableImpactMs({ mode: "full", ms: 458 }, null, I) === 458 && RG.tableImpactMs({ mode: "local", ms: 375 }, cut, I) === 375);
   ck("S tableImpactMs: the table's impact off: 0 on every seat", RG.tableImpactMs({ mode: "off", ms: 0 }, cut, I) === 0);
-  ck("S tableImpactMs: a reduced seat with the caller's own cut counts the cut as the engine does", RG.tableImpactMs({ mode: "static", ms: 125 }, cut, I) === plan(roll(0.55), "x").ms);
+  ck("S tableImpactMs: a reduced seat with the caller's own cut counts the cut as the engine does", RG.tableImpactMs({ mode: "static", ms: 125 }, cut, I) === plan(rollW(0.55), "x").ms);
   ck("S tableImpactMs: no plan: none", RG.tableImpactMs(null, cut, I) === null);
   ck("S hasFigures: a target, or the roller on the table", IP.hasFigures(["a"], false) && IP.hasFigures([], true) && !IP.hasFigures([], false) && !IP.hasFigures(null, false));
   /* the map cut of an ordinary / strong result with the roller only: the figures' cut (as with a target), the same drawings on every seat */

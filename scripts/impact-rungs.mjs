@@ -1,57 +1,57 @@
-/* IMPCALL2: the LOW rungs of the impact ladders, authored by the callers (the roll splash and the token reactions). PURE, no imports.
+/* The callers' own cuts of the impact ladders (the roll splash and the token reactions). PURE, no imports.
    The owner (2026-11-15): «Trzeba dopracować Impact frames żeby były bardziej jak sakuga mad ... więcej efektów. Dynamiczniej» and «te
    błyski nie będą w grze jakoś bardzo powtarzane. Jeden rzut i animacja na kilka minut»: a moment comes every few minutes, so no rung may be
-   nothing or a blink. The engine's own ladders (scripts/letters/impact/plan.mjs KINDS) are a one-second cut from step 3 up, but its steps
-   0-2 are 2-6 ticks (83-250 ms): a scratch was one 83 ms blink, an ordinary roll nothing at all (ADVI2 1). Until the engine lengthens them
-   (REQUESTS IMPCALL2-E1) the callers hand those rungs in as their own `frames` (public API: type, ticks, stop, punch, fig, z, kick), built
-   from the engine's own drawing types:
-     - never a flash on the two lowest rungs (no drawing that changes the scene's brightness: no `ink`, `slam`, `shadow`, `window`, `glare`,
-       `swap`, `tear`, `shatter`), at most ONE (the local black-and-white panel `ink`) on the rungs below the critical / heavy; the guard of
-       the engine still rations everything, nothing here can raise it;
+   nothing or a blink.
+   CALLER6 (engine 1.9.24 ENG24): the engine's own ladders now last 6 / 8 / 10 ticks on steps 0 / 1 / 2 (were 2-6), each with a lead-in, the
+   blow, the figures held in their twins, rings, halftone and a settle, drawn per KIND (a blow, a crushing blow with cracks, a shot's colour
+   split). So a blow's low rungs (the token reactions' scratch / blow / hard blow, the roll's ordinary and strong result of a blow) are the
+   ENGINE's steps again: the callers pass kind and strength only (IMPCALL2 handed them in as their own 6-9 tick cuts, the stand-in for
+   REQUESTS IMPCALL2-E1). What stays here is what the engine has no ladder for:
+     - ROLL: a result that is NOT a blow (a dodge, a block, an idea: the engine's tone-only kind "word", still 2-3 ticks on steps 0-2);
+     - ROLL_MAP / ROLL_MAP_BARE: the result word drawn IN the scene under the impact (only drawings that leave its spot clear);
+     - CHALLENGE: a challenge token's moments (never a blow);
+     - beatFrames: one event's second beat.
+   They follow the engine's lengths (ordinary 8 ticks like its step 1, strong 10 like its step 2: one length per rung whatever the layer or
+   the action) and its rules:
+     - never a flash on the lowest rung (no drawing that changes the scene's brightness: no `ink`, `slam`, `shadow`, `window`, `glare`,
+       `swap`, `tear`, `shatter`), at most ONE (the local black-and-white panel `ink`) below the critical; the guard of the engine still
+       rations everything, nothing here can raise it;
      - every drawing carries the figures (`fig`), so no splash or ring is ever drawn over the struck token without it (IMPACT5 lesson 3);
-     - the cut is one beat: (a lead-in,) the contact (the figure pops, its palette flips), the hold on the figures (palette jumps on ones,
-       the frame shaking), the release on twos (ring, halftone, colour split), the settle (own colours, a rim dying out);
-     - each rung is LONGER and carries MORE than the one below it, and stays under the next rung of the engine (1.9.22: its step 3 is
-       10-11 ticks with two flashes, the shock kind 10 with one), so the critical / the heavy blow stay the longest cut below the knock-down.
+     - the cut is one beat: a lead-in, the contact (the figure pops, its palette flips), the hold on the figures (palette jumps on ones,
+       the frame shaking), the release (ring, halftone, colour split), the settle (own colours, a rim dying out);
+     - each rung is LONGER and carries MORE than the one below it, and stays under the critical (the engine's step 3: 10-11 ticks with two
+       flashes).
    Tick = 1/24 s. The strength the caller passes keeps the engine's step (so its cut-in and size rules read the same rung). */
 export const TICK = 1000 / 24;
 const F = (type, ticks = 1, fig = "r", o = {}) => Object.freeze({ type, ticks, fig, ...o });
 const FLASH = new Set(["ink", "slam", "shadow", "window", "glare", "swap", "tear", "shatter"]);
 export const isFlashType = (t) => FLASH.has(t);
 
-/* ---- the roll (splash): ordinary success < strong < critical (the critical is the engine's own ladder, 13-24 ticks) ---- */
+/* ---- the roll (splash) of a result that is not a blow: ordinary success < strong < critical (the critical is the engine's own ladder,
+   11-24 ticks). A blow's roll (hit / heavy / shock) takes the engine's steps 1 and 2 (impact-plan impactFor) ---- */
 export const ROLL = Object.freeze({
-  /* an ordinary success: the blow / the result lands: 7 ticks (292 ms), no flash */
+  /* an ordinary success: the result lands: 8 ticks (333 ms), no flash */
   ordinary: Object.freeze([F("lines", 1, "r"), F("pop", 1, "i", { z: 1.25, punch: 0.5 }), F("fig", 1, "n", { z: 1.25 }), F("ring", 1, "h"),
-    F("dots", 1, "d"), F("fade", 2, "r")]),
-  /* a strong result: a tick of lines, the local black-and-white panel with the figure popped, a held tick, the shake back, the release:
-     9 ticks (375 ms), one flash; under the critical (the engine's step 3: 10-11 ticks, two flashes) */
-  strong: Object.freeze([F("lines", 1, "k"), F("ink", 1, "o", { z: 1.55, punch: 1 }), F("fig", 1, "i", { z: 1.55, stop: true }),
-    F("fig", 1, "p", { z: 1.25, punch: 0.7, kick: -1 }), F("chroma", 1, "h"), F("ring", 1, "d"), F("dots", 1, "n"), F("fade", 2, "r")])
+    F("dots", 1, "d"), F("fig", 1, "o"), F("fade", 2, "r")]),
+  /* a strong result: a tick of lines, the local black-and-white panel with the figure popped, its negative, the shake back, the release:
+     10 ticks (417 ms), one flash, no hit-stop (the engine holds the scene only from its step 3 up; IMPCALL2's cut held one tick); under the
+     critical (the engine's step 3: 11 ticks, two flashes) */
+  strong: Object.freeze([F("lines", 1, "k"), F("ink", 1, "o", { z: 1.55, punch: 1 }), F("fig", 1, "i", { z: 1.55 }),
+    F("fig", 1, "p", { z: 1.25, punch: 0.7, kick: -1 }), F("chroma", 1, "h"), F("ring", 1, "d"), F("dots", 1, "n"), F("fig", 1, "o"), F("fade", 2, "r")])
 });
 /* on a MAP layer the result word is in the scene under the impact: only drawings that leave the word's spot clear (lines, colour split, the
-   figures at the target). figs = the roll has a target (its figures carry the cut); without one the lines and the colour split alone */
+   figures at the target). figs = the roll has a target (its figures carry the cut); without one the lines and the colour split alone.
+   The same lengths as on the screen layers (8 / 10 ticks) */
 export const ROLL_MAP = Object.freeze({
-  ordinary: Object.freeze([F("lines", 1, "r"), F("fig", 1, "i", { z: 1.25, punch: 0.5 }), F("fig", 1, "n", { z: 1.25 }), F("lines", 1, "h"), F("fig", 1, "d"), F("fig", 2, "o")]),
-  strong: Object.freeze([F("lines", 1, "k"), F("lines", 1, "n"), F("chroma", 1, "o", { punch: 0.5 }), F("fig", 1, "i", { z: 1.55, stop: true }),
-    F("fig", 1, "p", { z: 1.25, punch: 0.6, kick: -1 }), F("lines", 1, "h"), F("fig", 1, "d"), F("fig", 2, "o")])
+  ordinary: Object.freeze([F("lines", 1, "r"), F("fig", 1, "i", { z: 1.25, punch: 0.5 }), F("fig", 1, "n", { z: 1.25 }), F("lines", 1, "h"), F("fig", 1, "d"),
+    F("fig", 1, "h"), F("fig", 2, "o")]),
+  strong: Object.freeze([F("lines", 1, "k"), F("lines", 1, "n"), F("chroma", 1, "o", { punch: 0.5 }), F("fig", 1, "i", { z: 1.55 }),
+    F("fig", 1, "p", { z: 1.25, punch: 0.6, kick: -1 }), F("lines", 1, "h"), F("fig", 1, "d"), F("fig", 1, "n"), F("fig", 2, "o")])
 });
 export const ROLL_MAP_BARE = Object.freeze({
-  ordinary: Object.freeze([F("lines", 1, null), F("lines", 1, null), F("chroma", 1, null, { punch: 0.5 }), F("lines", 2, null), F("lines", 2, null)]),
-  strong: Object.freeze([F("lines", 1, null), F("lines", 1, null), F("chroma", 1, null, { punch: 1 }), F("lines", 2, null), F("chroma", 1, null), F("lines", 1, null), F("lines", 2, null)])
+  ordinary: Object.freeze([F("lines", 1, null), F("lines", 1, null), F("chroma", 1, null, { punch: 0.5 }), F("lines", 2, null), F("chroma", 1, null), F("lines", 2, null)]),
+  strong: Object.freeze([F("lines", 1, null), F("lines", 1, null), F("chroma", 1, null, { punch: 1 }), F("lines", 2, null), F("chroma", 1, null), F("lines", 2, null), F("lines", 2, null)])
 });
-
-/* ---- the token reactions: scratch < blow < hard blow < (engine 1.9.22: heavy / crushing 10-11 ticks two flashes, knock-down 17-24) ---- */
-export const REACT = Object.freeze([
-  /* 0 scratch: the figure flips and pops, a splash, a ring: 6 ticks (250 ms; was one 83 ms blink), no flash */
-  Object.freeze([F("pop", 1, "n", { z: 1.25, punch: 0.5 }), F("fig", 1, "i", { z: 1.25 }), F("splat", 1, "h"), F("ring", 1, "d"), F("fade", 2, "r")]),
-  /* 1 blow: the star, the black-and-white panel with the figure popped, the shake back, the ring: 8 ticks (333 ms), one flash */
-  Object.freeze([F("pop", 1, "i", { z: 1.25, punch: 0.5 }), F("ink", 1, "o", { z: 1.55, punch: 1 }), F("fig", 1, "p", { z: 1.25, punch: 0.7, kick: -1 }), F("fig", 1, "h"),
-    F("ring", 2, "d"), F("fade", 2, "r")]),
-  /* 2 hard blow: a tick of lines, the panel, a held tick, cracks running out, the release: 9 ticks (375 ms), one flash */
-  Object.freeze([F("lines", 1, "k"), F("ink", 1, "o", { z: 1.55, punch: 1 }), F("fig", 1, "i", { z: 1.55, stop: true }), F("cracks", 1, "p", { z: 1.25, punch: 0.7, kick: -1 }),
-    F("fig", 1, "h", { punch: 0.5 }), F("dots", 1, "n"), F("cracks", 1, "r"), F("fade", 2, "r")])
-]);
 
 /* ---- things that are not characters (IMPCALL2, item 4): a CHALLENGE token (the system's challenge actor: Health = its Challenge rating,
    Resolve = its Time limit [B2837-B2841]). A six on an objective takes one point of the rating: that is the heroes' PROGRESS, never a blow
@@ -106,14 +106,17 @@ export function beatFrames(frames) {
 export const ALSO_GAP = 1;
 export const alsoFits = (ownRung, hostRung) => Number.isFinite(ownRung) && Number.isFinite(hostRung) && ownRung >= hostRung - ALSO_GAP;
 
-/* CALLER5: the length of the TABLE's impact (ms), from the engine's plan of it on this seat (I.plan). Full and gentle seats plan the table's
-   ticks (the gentle variant keeps the timing); "off" is the table's setting (every seat 0). A reduced-motion seat's plan is its one still
-   drawing: a caller's own cut is counted from its frames as the engine counts them (each drawing at most maxFrameTicks, the whole at most
-   maxTicks); the engine's own ladder cannot be read there yet (REQUESTS CALLER5-E1), so the still's length stands. */
+/* The length of the TABLE's impact (ms), the same on every seat. CALLER6 (engine 1.9.24, the answer to REQUESTS CALLER5-E1): every plan
+   carries `tableMs`, the full plan's length before this seat's safety, so a reduced-motion seat (whose own plan is one still of at most 4
+   ticks) waits as long as the table whether the cut is the engine's ladder or a caller's `frames`. "off" is the table's setting (every seat
+   0). The estimate below (CALLER5) stays only for an engine before 1.9.24: full and gentle seats read their plan's length, a still seat
+   counts a caller's own cut from its frames as the engine counts them (each drawing at most maxFrameTicks, the whole at most maxTicks) and
+   knows no better than its still for an engine ladder. */
 export function tableImpactMs(plan, frames, I) {
   if (!plan || typeof plan !== "object") return null;
-  if (plan.mode === "full" || plan.mode === "local") return Math.max(0, Number(plan.ms) || 0);
   if (plan.mode === "off") return 0;
+  if (Number.isFinite(plan.tableMs)) return Math.max(0, plan.tableMs);
+  if (plan.mode === "full" || plan.mode === "local") return Math.max(0, Number(plan.ms) || 0);
   if (Array.isArray(frames) && frames.length) {
     const fMax = Number(I?.limits?.maxFrameTicks) || 4, all = Number(I?.limits?.maxTicks) || 24;
     let t = 0;
