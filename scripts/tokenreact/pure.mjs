@@ -733,7 +733,10 @@ export function withSeries(spec, step) {
   const m = Number(spec.magnitude) || 0;
   const bound = STEP_AT.find((b) => b > m + 1e-9) ?? 2.01;
   const top = Math.min(bound - 0.01, spec.kind === "ko" ? 2 : IMPACT_TOP);
-  const want = Math.max(m, Math.min(top, m + SERIES.step * n));      // the strength drawn: grown inside the rung, never under the rung
+  /* CROWD2: a series now often stays inside a low rung (five -1 are scratches) whose room under the next bound is small (scratch 0.25 ->
+     0.34): the boost halves the room left at each place (never more than the engine's step per place), so every blow of a series still
+     draws a little stronger than the one before instead of standing at the cap from the 2nd blow on */
+  const want = Math.max(m, Math.min(top, m + SERIES.step * n, m + (top - m) * (1 - 2 ** -n)));      // the strength drawn: grown inside the rung, never under the rung
   n = Math.min(n, Math.floor(want / SERIES.step + 1e-9));            // a weak rung late in a series: fewer places, never a negative strength passed
   if (!n) return { ...spec, magnitude: want };
   return { ...spec, series: n, magnitude: Math.round((want - SERIES.step * n) * 1000) / 1000 };
