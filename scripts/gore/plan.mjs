@@ -70,7 +70,8 @@ export function cleanOpts(v = {}) {
    change = { stat: "health" | "resolve", from, to, max, type: actor type, push: the character chose that stress }
    -> null | { kind: "blood" | "cracks", strength 0..1, down } */
 export function effectOf(ch) {
-  if (!ch || !Number.isFinite(ch.from) || !Number.isFinite(ch.to) || !(ch.to < ch.from)) return null;
+  if (!ch || ch.type === "challenge") return null;      // a challenge's "Health" is its Challenge Rating: nothing bleeds
+  if (!Number.isFinite(ch.from) || !Number.isFinite(ch.to) || !(ch.to < ch.from)) return null;
   const loss = ch.from - ch.to, max = Math.max(1, Number.isFinite(ch.max) && ch.max > 0 ? ch.max : Math.max(ch.from, 1));
   const share = clamp(loss / max, 0, 1);
   const down = ch.to <= 0;
@@ -121,7 +122,7 @@ export function bloodPlan(g, opts = {}) {
   let cx, cy;
   if (opts.at && Number.isFinite(opts.at.fx) && Number.isFinite(opts.at.fy)) { cx = opts.at.fx * g.w; cy = opts.at.fy * g.h; }
   else {
-    const reach = lerp(0.6, 0.8, r());
+    const reach = lerp(0.68, 0.88, r());
     const perp = (r() - 0.5) * 0.5;
     cx = g.w / 2 + (dx * reach - dy * perp) * g.w / 2;
     cy = g.h / 2 + (dy * reach + dx * perp) * g.h / 2;
@@ -245,10 +246,10 @@ export function crackPlan(g, opts = {}) {
   const facets = [];
   for (const st of strikes) {
     const sm = Math.min(st.s, 1);
-    const reach = (0.22 + 0.48 * sm) * m * (opts.safe ? 0.7 : 1);
-    const rc = Math.max(2, lerp(3, 7, sm));
+    const reach = (0.17 + 0.37 * sm) * m * (opts.safe ? 0.7 : 1);
+    const rc = Math.max(2, lerp(2.5, 5, sm));
     craters.push({ x: st.x, y: st.y, r: rc, at: st.at, seed: r() * 1e9 });
-    const n = 5 + Math.round(7 * sm);
+    const n = 5 + Math.round(5 * sm);
     const base = r() * Math.PI * 2;
     const radials = [];
     for (let i = 0; i < n; i++) {

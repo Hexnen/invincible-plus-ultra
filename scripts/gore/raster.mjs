@@ -23,14 +23,16 @@ export const PAL_SAFE = {
   drying: { out: [40, 16, 16], d: [74, 30, 28], m: [96, 38, 34], b: [110, 46, 42], lit: [124, 60, 54], spec: [124, 60, 54] },
   dried:  { out: [34, 14, 12], d: [60, 26, 22], m: [74, 32, 28], b: [84, 38, 32], lit: [90, 44, 38], spec: [90, 44, 38] }
 };
-export const ALPHA = [236, 222, 196];        // wet, drying, dried
+export const ALPHA = [236, 222, 196];        // wet, drying, dried: on arrival
+/* after the hit the glass lets the table read through the blood: SETTLE ms after its arrival a splash keeps SEE of its alpha */
+export const SETTLE = 450, SEE = 0.7;
 export const CRACK = { 1: [12, 18, 26, 232], 2: [222, 242, 255, 215], 3: [236, 246, 255, 236], 4: [204, 232, 252, 240], 5: [255, 255, 255, 252], 6: [230, 244, 255, 46], 7: [8, 14, 24, 52] };
 /* 4x4 ordered dither: the dissolve keeps a pixel while its threshold is above the dissolve's progress */
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
 const bayer = (x, y) => BAYER[(y & 3) * 4 + (x & 3)];
 
 export function surface(w, h) {
-  return { w, h, T: new Float32Array(w * h), L: new Float32Array(w * h), S: new Uint8Array(w * h).fill(255), G: new Uint8Array(w * h), C: new Uint8Array(w * h), A: new Uint8Array(w * h).fill(1),
+  return { w, h, T: new Float32Array(w * h), L: new Float32Array(w * h), S: new Uint8Array(w * h).fill(255), G: new Uint8Array(w * h), C: new Uint8Array(w * h), A: new Uint8Array(w * h).fill(1), N: new Uint8Array(w * h).fill(1),
     rgba: new Uint8ClampedArray(w * h * 4), box: null, prev: null };
 }
 
@@ -74,10 +76,10 @@ function union(a, b) {
   return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
 }
 function clearBox(sf, b) {
-  const { w, T, L, S, G, C, A, rgba } = sf;
+  const { w, T, L, S, G, C, A, N, rgba } = sf;
   for (let y = b.y0; y <= b.y1; y++) {
     const o = y * w;
-    T.fill(0, o + b.x0, o + b.x1 + 1); L.fill(0, o + b.x0, o + b.x1 + 1); S.fill(255, o + b.x0, o + b.x1 + 1); G.fill(0, o + b.x0, o + b.x1 + 1); C.fill(0, o + b.x0, o + b.x1 + 1); A.fill(1, o + b.x0, o + b.x1 + 1);
+    T.fill(0, o + b.x0, o + b.x1 + 1); L.fill(0, o + b.x0, o + b.x1 + 1); S.fill(255, o + b.x0, o + b.x1 + 1); G.fill(0, o + b.x0, o + b.x1 + 1); C.fill(0, o + b.x0, o + b.x1 + 1); A.fill(1, o + b.x0, o + b.x1 + 1); N.fill(1, o + b.x0, o + b.x1 + 1);
     rgba.fill(0, (o + b.x0) * 4, (o + b.x1 + 1) * 4);
   }
 }
@@ -89,6 +91,7 @@ function drawBlood(ctx, p, ms, gone) {
   const stage = ms < p.life.wet ? 0 : ms < p.life.dry ? 1 : 2;
   const diss = ms > gone ? (ms - gone) / p.life.dissolve : 0;
   /* a splash whose middle lies in the readable centre of the view is see-through as a whole (one look per splash, never a seam) */
+  const settled = ms >= SETTLE || still;
   const see = ((p.cx / ctx.w - 0.5) / CENTRE.rx) ** 2 + ((p.cy / ctx.h - 0.5) / CENTRE.ry) ** 2 < 1;
   const put = (x, y, t, l = 0.45) => {
     x |= 0; y |= 0;
@@ -98,6 +101,7 @@ function drawBlood(ctx, p, ms, gone) {
     if (t > sf.T[i]) { sf.T[i] = t; sf.L[i] = l; }
     if (stage < sf.S[i]) sf.S[i] = stage;
     if (!see) sf.A[i] = 0;
+    if (!settled) sf.N[i] = 0;
     const b = ctx.box;
     if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y;
   };
@@ -315,7 +319,8 @@ function drawCracks(ctx, p, ms) {
       const d = Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y);
       const jag = r * (0.75 + 0.35 * (((x * 73856093) ^ (y * 19349663) ^ (c.seed | 0)) >>> 0) % 100 / 100);
       if (d > jag) continue;
-      set(x, y, d < 1.2 ? 1 : (x + y) & 1 ? 3 : 1, true);
+      const hsh = (((x * 2654435761) ^ (y * 40503)) >>> 0) % 7;
+      set(x, y, d < 1.3 ? 1 : d > jag - 1.1 ? 1 : hsh === 0 ? 1 : 3, true);
     }
   }
   if (!p.still) for (const ch of p.chips) {
@@ -360,7 +365,7 @@ function line(x0, y0, x1, y1, plot) {
 /* ---------------- colour ---------------- */
 function colour(sf, b, pal) {
   if (b.x1 < 0) return;
-  const { w, h, T, S, G, C, rgba } = sf, Asee = sf.A, Lf = sf.L;
+  const { w, h, T, S, G, C, rgba } = sf, Asee = sf.A, Lf = sf.L, Sett = sf.N;
   const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : T[y * w + x]);
   for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
     const i = y * w + x, t = T[i], o = i * 4;
@@ -378,7 +383,7 @@ function colour(sf, b, pal) {
         c = v > 0.97 && st === 0 && t > 0.5 ? P.spec : v > 0.84 ? P.lit : v > 0.56 ? P.b : v > 0.3 ? P.m : P.d;
         if (st === 2 && !(at(x - 2, y) <= THR || at(x + 2, y) <= THR || at(x, y - 2) <= THR || at(x, y + 2) <= THR)) c = (x + y) & 1 ? P.m : P.b;     // the dried crust: rim dark, the middle paler
       }
-      rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = Asee[i] ? Math.round(ALPHA[st] * CENTRE.alpha) : ALPHA[st];
+      rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = Math.round(ALPHA[st] * (Asee[i] ? CENTRE.alpha : 1) * (Sett[i] ? SEE : 1));
     } else if (C[i]) {
       const c = CRACK[C[i]];
       rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = c[3];

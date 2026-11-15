@@ -24,6 +24,8 @@ const CHANNEL = `module.${MOD}`;
 export const QUIET = 180;          // ms a change waits for its other half (Health and Resolve together, a crowd's updates)
 export const HIT_WAIT = 3200;      // ms a change waits for its token reaction's blow; then it plays on its own
 const PUSH_MS = 9000, ATTACK_MS = 6000;
+export const IMPACT_MAX = 1500;     // ms the blood waits at most for an impact frame to end
+let engineL = null;                  // the lettering engine on this page (its impact frames)
 
 let started = false, warned = false;
 const once = (e) => { if (!warned) { warned = true; console.warn(LOG, "a failure here never affects the game:", e); } };
@@ -224,7 +226,22 @@ function onReact(d) {
   try {
     if (d?.phase !== "hit" || !Array.isArray(d.ids)) return;
     const at = Number.isFinite(d.at) ? d.at : pnow();
-    for (const id of d.ids) { const e = pending.get(id); if (e) { clearTimeout(e.timer); fire(id, at); } }
+    const mine = d.ids.filter((id) => pending.has(id));
+    if (!mine.length) return;
+    for (const id of mine) clearTimeout(pending.get(id).timer);
+    /* the reaction's impact frame (drawn over the map, over this glass) plays right after this hook: the blood lands when it is over, so
+       the splash is seen hitting the glass (the blow, then the spatter: one cut). Impacts are planned alike on every seat (engine KEEPBOX) */
+    setTimeout(() => {
+      const I = engineL?.impact;
+      if (!I?.busy) { for (const id of mine) fire(id, at); return; }
+      const t0 = pnow();
+      const poll = () => {
+        if (I.busy && pnow() - t0 < IMPACT_MAX) { setTimeout(poll, P.TICK_MS); return; }
+        const now = pnow();
+        for (const id of mine) fire(id, Math.max(at, now));
+      };
+      poll();
+    }, 0);
   } catch (err) { once(err); }
 }
 function fire(id, at) {
@@ -345,6 +362,7 @@ export function start(phases = {}) {
     run("ready", () => {
       try {
         if (canvas?.ready) rememberAll();
+        Promise.resolve(globalThis.MoinenLetters?.engine?.()).then((L) => { engineL = L ?? null; }).catch(() => {});
         game.socket?.on(CHANNEL, (msg) => { try { receive(msg); } catch (err) { once(err); } });
         const mod = game.modules.get(MOD);
         if (mod) mod.api = Object.assign(mod.api ?? {}, { gore: api });
