@@ -28,7 +28,9 @@ if (!P.LIE || !existsSync(join(root, "tokenanim", "state.mjs"))) { ck("tokenanim
   const S2 = { side: 1, fallAt: -Infinity, upAt: 5000 };
   ck("the rise starts only at upAt and ends upright", P.lieAmount(S2, 4999) === 1 && P.lieAmount(S2, 5000 + P.LIE.upMs) === 0 && P.lieDone(S2, 5000 + P.LIE.upMs) && !P.lieDone(S2, 5000 + P.LIE.upMs - 1));
   const p = P.lyingAt(S0, 0);
-  ck(`the lying pose tips the picture over (rot ${p.rot.toFixed(2)}) round a point below its centre, a little smaller, dim`, Math.abs(p.rot - P.LIE.rot) < 1e-9 && p.py > 0 && p.sx < 1 && p.tk > 0.1);
+  /* CROWDKO (D10): the pivot below the centre is gone on purpose (it slid the lying picture onto the neighbour's square); the picture now
+     turns on its centre and stays inside its own square: sweep-checks/crowdko.mjs checks that at every instant of the fall */
+  ck(`the lying pose tips the picture over (rot ${p.rot.toFixed(2)}), a little smaller, dim`, Math.abs(p.rot - P.LIE.rot) < 1e-9 && p.sx < 1 && p.tk > 0.1);
   const c = P.centred(p);
   ck(`... and stays mostly on its square (centre moved ${Math.hypot(c.x, c.y).toFixed(2)} token)`, Math.hypot(c.x, c.y) < 0.45);
   const st = P.lyingAt(S0, 0, {}, { still: true });

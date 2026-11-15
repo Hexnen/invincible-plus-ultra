@@ -277,7 +277,14 @@ export function plan(kind, o = {}) {
      fallAt    when it starts to fall (-Infinity = already lying: a scene that loads with it at 0); the reaction's blow sets it (lieFallAt),
                else the state change itself after LIE.grace (no reaction on this seat: the reactions off, the word dropped)
      upAt      when it starts to rise (Infinity = lying); the getting-up / healing reaction's blow, else the change after LIE.grace */
-export const LIE = Object.freeze({ rot: 1.25, py: 0.3, size: 0.06, fallDelay: 70, fallMs: 420, upMs: 520, tk: 0.28, grace: 4000 });
+/* CROWDKO (D10: the picture tipped 1.25 rad round a point 0.3 below its centre, so it slid ~0.35 of a square sideways and its corners lay on
+   the neighbour's square; on a round portrait a disc turned 72 degrees reads as no change). Now it lies ON ITS OWN SQUARE: turned a quarter
+   round its centre (a figure on its side reads as down on a round portrait too), flattened across the turn (a body lying on the floor seen
+   from above: the disc reads as an oval), a little smaller, a touch towards the square's foot, and darker. Every pose of the fall and the
+   lying pose stay inside the square (the turned box is scaled to fit: inSquare); a square portrait turned a quarter fills its square again */
+export const LIE = Object.freeze({ rot: Math.PI / 2, py: 0, size: 0.1, flat: 0.8, drop: 0.05, fallDelay: 70, fallMs: 420, upMs: 520, tk: 0.42, grace: 4000 });
+/** the scale (<= 1) that keeps a w x h box (token widths, centred) turned by rot inside its own square */
+export const inSquare = (w, h, rot) => { const c = Math.abs(Math.cos(rot)), s = Math.abs(Math.sin(rot)); return Math.min(1, 1 / Math.max(w * c + h * s, w * s + h * c, 1e-6)); };
 export const lieSide = (id) => (hash(`${id ?? ""}|lie`) & 1 ? 1 : -1);
 /** when a reaction's layer makes the token fall: the collapse falls on its own clock (70 ms after the blow), another animation the GM
     chose for going down plays first and the token topples over at its middle */
@@ -291,14 +298,22 @@ export function lieAmount(S, now) {
 }
 /** the state has risen fully: nothing left to draw */
 export const lieDone = (S, now) => !!S && Number.isFinite(S.upAt) && now >= S.upAt + LIE.upMs;
-/** the lying pose: tipped over round a point between its feet and its centre (so the picture stays mostly on its square while it lies
-    there for minutes), a little smaller, the fall's dim red kept; still (reduced motion) = the dim alone, no tipping. tk = the tint factor */
+/** the lying pose: turned a quarter round its centre, flattened across the turn, a little smaller, inside its own square at every instant
+    of the fall (CROWDKO, D10), the fall's dim red kept and deeper; still (reduced motion) = the dim alone, no tipping. tk = the tint factor */
 export function lyingAt(S, now, out = {}, o = {}) {
   pose0(out);
   const a = lieAmount(S, now);
   if (!(a > 0)) return out;
   out.px = 0; out.py = LIE.py;
-  if (!o.still) { out.rot = (S.side === -1 ? -1 : 1) * LIE.rot * a; out.sx = 1 - LIE.size * a; out.sy = out.sx; }
+  if (!o.still) {
+    const rot = (S.side === -1 ? -1 : 1) * LIE.rot * a, s = 1 - LIE.size * a;
+    /* own x is the axis that ends across the screen's vertical after the quarter turn: flattening it flattens the lying body on screen */
+    let sx = s * (1 - (1 - LIE.flat) * a), sy = s;
+    const f = inSquare(sx, sy, rot);
+    sx *= f; sy *= f;
+    const tall = sx * Math.abs(Math.sin(rot)) + sy * Math.abs(Math.cos(rot));      // the turned picture's height, token widths
+    out.rot = rot; out.sx = sx; out.sy = sy; out.y = Math.min(LIE.drop * a, Math.max(0, (1 - tall) / 2));
+  }
   out.tint = TINTS.down; out.tk = clamp01(LIE.tk * a * (Number.isFinite(o.tk) ? o.tk : 1));
   return out;
 }

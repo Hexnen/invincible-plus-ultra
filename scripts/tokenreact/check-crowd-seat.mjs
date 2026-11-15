@@ -55,7 +55,7 @@ const ctxOf = (o) => ({ space: "world", magnitude: o.magnitude, scale: o.scale ?
 const pxOf = (o) => sizeFor(ctxOf(o)).px;
 /* the drawn box of a word in caps: Bungee-like digits for numbers, the invincible hand's narrow letters for words (a stand-in, the same on
    every seat) */
-const boxOf = (text) => { const n = [...String(text)].length; return /^[+-]\d+$/.test(text) ? { w: 0.25 + 0.8 * n, h: 1.2 } : { w: 0.62 * n + 0.2, h: 1.35 }; };
+const boxOf = (text) => { const n = [...String(text)].length; return /^[+-]\d+(×\d+)?$/.test(text) ? { w: 0.25 + 0.8 * n, h: 1.2 } : { w: 0.62 * n + 0.2, h: 1.35 }; };
 const plays = [], impacts = [];
 const t00 = performance.now();
 const fake = { version: "test", limits: { screen: 16, world: 48 }, prefs: { scale: 1 }, ready: async () => true, count: () => 0,
@@ -70,6 +70,7 @@ const fake = { version: "test", limits: { screen: 16, world: 48 }, prefs: { scal
     rec.h = h; plays.push(rec); return h;
   } };
 { const { createVocab } = await import("../letters/words.mjs"); fake.vocab = createVocab(); fake.word = fake.vocab.word; }
+if (cfg.debug) globalThis.__samepicFit = [];      // the layout's own record of every placing (CROWDKO debugging)
 globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return this._engine; } };
 const M = await import("./main.mjs");
 M.start({ init: true, ready: true });
@@ -78,7 +79,7 @@ Hooks.callAll("canvasReady");
 const snap = (r) => {
   const a = typeof r.o.at === "function" ? r.o.at() : r.o.at;
   const g = a && Number.isFinite(a.x) ? stage.toGlobal(a) : null, cap = pxOf(r.o), b = boxOf(r.text);
-  return { text: r.text, num: /^[+-]\d+$/.test(r.text), tok: r.o.token?.id ?? null, t: r.t, cap: Math.round(cap * 10) / 10,
+  return { text: r.text, num: /^[+-]\d+(×\d+)?$/.test(r.text), tok: r.o.token?.id ?? null, t: r.t, cap: Math.round(cap * 10) / 10,
     box: g ? { x: Math.round(g.x - cap * b.w / 2), y: Math.round(g.y - cap * b.h / 2), w: Math.round(cap * b.w), h: Math.round(cap * b.h) } : null };
 };
 const frames = [];
@@ -92,5 +93,5 @@ for (const h of cfg.hits ?? []) {
 await sleep(cfg.wait ?? 900);
 const tg = (id) => { const t = toks.find((q) => q.id === id); const a = stage.toGlobal({ x: t.x, y: t.y }); return { id, x: a.x, y: a.y, w: 100 * z, h: 100 * z }; };
 const pins = notes.map((n) => { const a = stage.toGlobal({ x: n.bounds.x, y: n.bounds.y }); return { id: n.document.id, x: a.x, y: a.y, w: n.bounds.width * z, h: n.bounds.height * z }; });
-console.log(JSON.stringify({ seat: cfg.name ?? "?", W, H, side: SIDE, plays: plays.map(snap), impacts, frames, toks: toks.map((t) => tg(t.id)), pins }));
+console.log(JSON.stringify({ seat: cfg.name ?? "?", W, H, side: SIDE, plays: plays.map(snap), impacts, frames, toks: toks.map((t) => tg(t.id)), pins, ...(cfg.debug ? { fit: globalThis.__samepicFit } : {}) }));
 process.exit(0);

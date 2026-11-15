@@ -204,7 +204,9 @@ const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
   ok(/m\.footAt = footAt\(/.test(s) && /LE\.measure\(text, \{ \.\.\.o, fit: 'exact', size: key \/ \(sizeK \|\| 1\), view \}\)/.test(s) && /zoom: SP\.REF_VH \/ \(GRID_VH \* gs\)/.test(s), "M: the splash measures each part's footprint at the size it tries, at the board's scale on the map and one device pixel per CSS px");
   const mm = src("../tokenreact/main.mjs");
   ok(/pad: P\.footPad\(m, hb\)/.test(mm) && /view: \{ dpr: 1 \}/.test(mm), "M: a reaction's word is measured once (L.measure: hold box, footprint, reach) at one device pixel per CSS px before it is placed");
-  ok(/P\.edgeBox\(plan\.g, plan\.cap \|\| 0, plan\.reach\)/.test(mm) && /P\.clampInto\(P\.clampInto\(c, eb, std\), eb, safe\)/.test(mm), "M: follow keeps the reach inside the standard and this seat's view");
+  /* CROWDKO: follow's pushes live in one function with the layout (tokenreact/layout.mjs restCentre), so the place judged is the place drawn */
+  const lay = src("../tokenreact/layout.mjs");
+  ok(/P\.edgeBox\(plan\.g, plan\.cap \|\| 0, plan\.reach\)/.test(mm) && /Lay\.restCentre\(c, tr, box, eb, std, safe, /.test(mm) && /clampInto\(clampInto\(c, e, std\), e, safe\)/.test(lay), "M: follow keeps the reach inside the standard and this seat's view");
   E.restoreWarn();
 }
 
