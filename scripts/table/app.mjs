@@ -56,7 +56,9 @@ function rowHtml(row, gm, vals) {
   else if (sp.type === "bool") control = `<input type="checkbox" id="${id}" data-row="${row.id}"${v ? " checked" : ""} aria-describedby="${id}-h">`;
   else if (sp.type === "pick") control = `<select id="${id}" data-row="${row.id}" aria-describedby="${id}-h">${sp.choices.map((c) => `<option value="${esc(c)}"${c === v || (row.id === "splash.motion" && c === "auto" && v === "full") ? " selected" : ""}>${esc(choiceLabel(row, c))}</option>`).join("")}</select>`;
   else control = `<input type="range" id="${id}" data-row="${row.id}" min="${sp.range.min}" max="${sp.range.max}" step="${sp.range.step}" value="${esc(v)}" aria-describedby="${id}-h"><output class="ipt-val" for="${id}" aria-hidden="true">${esc(fmt(v, sp.range.step))}</output>`;
-  const kind = sp.type === "bool" && gm ? " ipt-bool" : "";
+  // A list whose choices are whole sentences (the layers) gets the full width under its text, never a cut label.
+  const wide = sp.type === "pick" && sp.choices.some((c) => String(choiceLabel(row, c)).length > 30);
+  const kind = (sp.type === "bool" && gm ? " ipt-bool" : "") + (wide ? " ipt-wide" : "");
   return `<div class="form-group ipt-row${kind}" data-row-id="${row.id}"${hidden}>
     <label for="${id}">${esc(name)}</label>
     <div class="form-fields">${control}</div>
@@ -246,6 +248,11 @@ const CSS = `
 .ipt-app .ipt-ro.ipt-pin { font-weight: 500; color: var(--color-text-secondary); }
 .ipt-app .ipt-ro.ipt-pin i { margin-right: 0.25rem; }
 .ipt-app .ipt-row[hidden] { display: none !important; }
+.ipt-app .ipt-row.ipt-wide { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "hint" "ctl"; }
+.ipt-app .ipt-row.ipt-wide .form-fields { justify-content: flex-start; margin-top: 0.35rem; }
+.ipt-app .ipt-row.ipt-wide .form-fields select { max-width: 30rem; }
+.ipt-app .ipt-row.ipt-wide .ipt-ro { margin-left: 0; text-align: left; }
+.ipt-app select:disabled, .ipt-app input:disabled { opacity: 0.55; cursor: default; }
 .ipt-app .ipt-panel-host .ipt-mount { padding: 0.35rem 0 0.1rem; }
 .ipt-app .ipt-panel-host .ipu-tka .form-group { grid-template-columns: minmax(0, 1fr) minmax(9rem, 17rem); padding: 0.35rem 0; }
 .ipt-app .ipt-panel-host .ipu-tka .form-group > label { font-weight: 600; }
