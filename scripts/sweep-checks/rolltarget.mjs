@@ -147,7 +147,9 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
     eq(s.logRows.at(-1)?.where, "target", `L ${name}: the seat's impact log says where it landed`);
     /* the same roll without a target: the same instant, on the word */
     const n = await seat({ e, name, hero, tokens: [T], targets: [], full });
-    ok(n.impacts[0] && !n.impacts[0].subject?.document && Number.isFinite(n.impacts[0].subject?.w) && !("from" in n.impacts[0]), `Q ${name}: no target: the impact marks the result word's box (radial), as before`);
+    /* CALLER5 (engine 1.9.23 IMPACT5-4: with no struck figure the attacker `from` is the cut-in's star; ADVI2 7: a critical with no target had
+       no token in it): still on the result word's box, now with the roller as `from` (was: radial, no `from`) */
+    ok(n.impacts[0] && !n.impacts[0].subject?.document && Number.isFinite(n.impacts[0].subject?.w) && n.impacts[0].from === hero, `Q ${name}: no target: the impact marks the result word's box, the roller stars the cut (from)`);
     ok(Math.abs(blowOf(n) - blowOf(s)) < 1 && Math.abs(wordCall(n).o.startAt - wordCall(s).o.startAt) < 50, `L ${name}: with or without a target the blow falls on the same tick of the word`);
   }
   /* several targets: the first */
@@ -159,8 +161,9 @@ ok(R.crit.power >= IP.CRIT_P && R.strong.power >= IP.STRONG_P && R.strong.power 
   const plS = await seat({ W: 1366, H: 768, e: R.crit, name: "vis", hero, tokens: [T], targets: [T.id], gm: false, sees: [hero.id], full: false });
   ok(gmS.impacts[0]?.subject === T, "V: the GM sees every token: the impact on the target");
   const pi = plS.impacts[0];
-  ok(pi && pi.subject !== T && !pi.subject?.document && Number.isFinite(pi.subject?.w) && !("from" in pi) && !JSON.stringify(pi.subject).includes(T.id),
-    `V: a player who cannot see the target: the impact marks the word, names no token, no direction (${JSON.stringify(pi?.subject)})`);
+  /* CALLER5: the roller this player sees stars the cut (IMPACT5-4); the unseen target is still never named */
+  ok(pi && pi.subject !== T && !pi.subject?.document && Number.isFinite(pi.subject?.w) && pi.from === hero && !JSON.stringify(pi.subject).includes(T.id),
+    `V: a player who cannot see the target: the impact marks the word, names no target, the roller he sees stars it (${JSON.stringify(pi?.subject)})`);
   eq(plS.logRows.at(-1)?.why, "unseen", "V: ... logged as unseen on that seat");
   ok(Math.abs(blowOf(gmS) - blowOf(plS)) < 1 && gmS.impacts[0].seed === pi.seed && gmS.impacts[0].kind === pi.kind, `V: GM and player: the same impact on the same tick of the same word (${Math.round(blowOf(gmS))} / ${Math.round(blowOf(plS))} ms)`);
   /* a player who sees it: on the target too */

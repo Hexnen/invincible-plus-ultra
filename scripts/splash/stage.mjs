@@ -897,7 +897,8 @@ function letterOne(ctl, it) {
   /* FIN-CALLERS (FXIT-S1, ADVI 8): the result word strikes now: the token reactions wait until it and its impact are over */
   if (it.role === 'word') {
     const at = ctl.contactAt ?? o.startAt;
-    tellLand(ctl, at, ctl.impactEnd ? Math.max(0, ctl.impactEnd - at) : 0);
+    /* CALLER5: the table's impact length after the blow (shot.lead before it), on every seat alike; this seat's own end only without it */
+    tellLand(ctl, at, Number.isFinite(ctl.tableImpactMs) && shot ? Math.max(0, ctl.tableImpactMs - shot.lead) : ctl.impactEnd ? Math.max(0, ctl.impactEnd - at) : 0);
   }
   return h;
 }
@@ -1134,6 +1135,8 @@ function playLetters(ev, o) {
      this seat's Effects setting (reduced: one strength lower; off: none) draws. Before, a seat with Effects off started its word earlier */
   ctl.impactTiming = LE?.impact?.play ? IP.impactFor(ev, { fx: 1 }) : null;
   ctl.targets = IP.cleanTargets(o.targets); ctl.from = o.from ?? null;   // ROLLTARGET: where the impact lands, where the blow comes from
+  ctl.rollerId = typeof o.rollerId === 'string' ? o.rollerId : null;   // CALLER5: the roller as SHARED data (the map cut's figures, the same on every seat)
+  warmFigures(ctl);
   const { plan, word, t0, dF, resolve, lay } = layoutMoment(ev, o, ctl, full);
   /* the owner (2026-11-13): backdrops are an extra, default without; the full wash and rays only with the client setting Backdrop.
      CRITFIX: our layer is above the engine's impact overlay (the words must stay on top of it), so a wash already up covered the impact
@@ -1227,6 +1230,21 @@ export function targetLook(id) {
     return 'ok';
   } catch (e) { return 'gone'; }
 }
+/* CALLER5: the roller takes part in the cut as a figure on the table (shared data: his token is on this scene and the GM has not hidden it;
+   whether THIS seat may draw him is the engine's matter), so a map layer's cut is the same list of drawings on every seat */
+function rollerShared(ctl) {
+  try { const t = ctl.rollerId ? globalThis.canvas?.tokens?.get?.(ctl.rollerId) : null; return !!t && t.document?.hidden !== true; } catch (e) { return false; }
+}
+/* CALLER5 (engine 1.9.23 `I.warm`): the figures' art (cut-out, negative, hue) is worked out as soon as the moment is known, seconds before
+   its blow (the dice still roll), never in a frame of the cut: the targets and the roller this seat sees */
+function warmFigures(ctl) {
+  try {
+    const I = LE?.impact;
+    if (typeof I?.warm !== 'function' || !ctl.impactTiming) return;
+    const list = [...ctl.targets.map((id) => globalThis.canvas?.tokens?.get?.(id)), ctl.from].filter((t) => t && !t.destroyed && t.document?.hidden !== true && seesToken(t));
+    if (list.length) I.warm(list);
+  } catch (e) { /* a warm-up is a courtesy */ }
+}
 /* ROLLTARGET: the last impacts' places on this seat (for the live checks and the debug log): { id, where: target|word|none, why, target } */
 const IMPACT_LOG = [];
 export const impactLog = () => IMPACT_LOG.slice();
@@ -1247,14 +1265,17 @@ function impactShot(ctl, it, contact) {
     const specOf = (q) => {
       const s = { kind: q.kind, magnitude: q.magnitude, seed: IP.impactSeed(ctl.seed), subject: tok ?? { x: c.x - w / 2, y: c.y - hh / 2, w, h: hh },
         over: LAYER === 'screen' ? 'ui' : 'scene' };
-      /* the blow comes from the roller (only a token this seat sees: the engine checks it again) */
-      if (tok && ctl.from && ctl.from !== tok && seesToken(ctl.from)) s.from = ctl.from;
+      /* the blow comes from the roller (only a token this seat sees: the engine checks it again).
+         CALLER5 (engine 1.9.23 IMPACT5-4; ADVI2 7: a critical with no target had no token in it): with no target token as the subject (the
+         result word is), the roller is passed too: the engine's cut-in then stars the attacker (enlarged at his own place, winding up and
+         driving toward his word) for the whole cut; the subject stays the word, so the impact still lands on the result, never on him */
+      if (ctl.from && ctl.from !== tok && seesToken(ctl.from)) s.from = ctl.from;
       /* IMPCALL (engine 1.9.20/1.9.21: the tokens take part as figures): the roll's OTHER targets join the impact as `also` (the same list on
          every seat: the targets after the first, from the roll's shared data; GM-hidden ones never; the engine draws each only where it may
          be seen) */
       const also = IP.alsoTargets(ctl.targets).map((id) => globalThis.canvas?.tokens?.get?.(id)).filter((t) => t && t !== tok && t !== s.from && t.document?.hidden !== true);
       if (also.length) s.also = also;
-      if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude, LE?.impact, { figs: (ctl.targets?.length ?? 0) > 0, rung: q.rung }); }
+      if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude, LE?.impact, { figs: IP.hasFigures(ctl.targets, rollerShared(ctl)), rung: q.rung }); }
       else if (Array.isArray(q.frames)) s.frames = q.frames.map((f) => ({ ...f }));      // IMPCALL2: the ordinary / strong result's own cut (impact-plan impactFor)
       if (q.tone) s.tone = q.tone;
       if (q.hitstop === false) s.hitstop = false;
@@ -1266,14 +1287,20 @@ function impactShot(ctl, it, contact) {
     /* ALIGN (engine 1.9.1): the lead-in before the impact's strongest drawing is the engine's own plan.peakMs (read from the full plan, the
        same on every seat whatever its reduced or guard setting); IP.leadMs (leading "lines" only) stays for an engine without it.
        SYNC: read from the TABLE's impact (full Effects), so a seat with Effects reduced or off starts its word on the same instant */
-    let lead = 0;
+    let lead = 0, tableMs = null;
     const ts = specOf(tp);
     try { const p = I.plan?.({ ...ts, reduced: false }); lead = Number.isFinite(p?.peakMs) ? p.peakMs : IP.leadMs(p?.frames ?? ts.frames ?? []);
+      /* CALLER5: how long the TABLE's impact lasts (the token reactions wait for it: tellLand), the same on every seat whether or not this
+         seat draws it (a map word off its view, a target off it). Before, a seat that drew none told 0 and its target answered earlier than
+         on the other seats. A reduced-motion seat's plan is its still drawing: the caller's own cut is counted from its frames; the engine's
+         own ladder there only by the still's length (REQUESTS CALLER5-E1: the table's length from the engine) */
+      tableMs = IP.tableImpactMs(p, ts.frames, I);
       /* IMPCALL2 (item 3): the table's strength of this impact when it lands on the roll's targets (shared data: the targets and the table's
          plan), told with the landing so the target's damage reaction joins this event instead of striking a second cut */
       if (ctl.targets?.length && Number.isFinite(p?.step)) ctl.tableStep = p.step; } catch (e) { lead = 0; }
     const draws = fire && !!spec;
-    return { spec, map, lead, shift: Math.max(0, lead - contact), contact, fire: draws, where: !spec ? 'none' : tok ? 'target' : (fire ? 'word' : 'none'), why: spec ? pick.why : 'effects-off', target: pick.id };
+    if (spec && Number.isFinite(tableMs)) ctl.tableImpactMs = tableMs; else delete ctl.tableImpactMs;
+    return { spec, map, lead, tableMs, shift: Math.max(0, lead - contact), contact, fire: draws, where: !spec ? 'none' : tok ? 'target' : (fire ? 'word' : 'none'), why: spec ? pick.why : 'effects-off', target: pick.id };
   } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
 }
 /* blowAt = the word's contact on this page's clock; word = its handle (kept readable on a map layer) */
@@ -1557,7 +1584,8 @@ export function prepare(ev, o, slice = false, round = 0) {
     prepDeadline = slice ? performance.now() + PREP_SLICE_MS : null;
     const t = performance.now();
     const mo = momentOpts(ev, o), opts = mo.full ? { ...mo.o, full: true } : mo.o;
-    const ctl = { ...stageFields(opts, mo.shared), dry: true, seed: o.seed, full: mo.full, targets: IP.cleanTargets(mo.o.targets) };
+    const ctl = { ...stageFields(opts, mo.shared), dry: true, seed: o.seed, full: mo.full, targets: IP.cleanTargets(mo.o.targets),
+      rollerId: typeof mo.o.rollerId === 'string' ? mo.o.rollerId : null };      // CALLER5: the same map cut as the play (rollerShared)
     const { lay } = layoutMoment(ev, mo.o, ctl, mo.full);
     /* the struck word's contact, as letterOne will ask it (its options from the same letterOpts; kept by contactOf) */
     ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: mo.o.fx }) : null;

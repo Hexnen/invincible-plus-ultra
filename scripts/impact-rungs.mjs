@@ -105,3 +105,20 @@ export function beatFrames(frames) {
    a lighter one keeps its own word, number and motion and, when it strikes alone after the cut, its own (lower) rung ---- */
 export const ALSO_GAP = 1;
 export const alsoFits = (ownRung, hostRung) => Number.isFinite(ownRung) && Number.isFinite(hostRung) && ownRung >= hostRung - ALSO_GAP;
+
+/* CALLER5: the length of the TABLE's impact (ms), from the engine's plan of it on this seat (I.plan). Full and gentle seats plan the table's
+   ticks (the gentle variant keeps the timing); "off" is the table's setting (every seat 0). A reduced-motion seat's plan is its one still
+   drawing: a caller's own cut is counted from its frames as the engine counts them (each drawing at most maxFrameTicks, the whole at most
+   maxTicks); the engine's own ladder cannot be read there yet (REQUESTS CALLER5-E1), so the still's length stands. */
+export function tableImpactMs(plan, frames, I) {
+  if (!plan || typeof plan !== "object") return null;
+  if (plan.mode === "full" || plan.mode === "local") return Math.max(0, Number(plan.ms) || 0);
+  if (plan.mode === "off") return 0;
+  if (Array.isArray(frames) && frames.length) {
+    const fMax = Number(I?.limits?.maxFrameTicks) || 4, all = Number(I?.limits?.maxTicks) || 24;
+    let t = 0;
+    for (const f of frames) t += Math.max(1, Math.min(fMax, Math.round(Number(typeof f === "string" ? 1 : f?.ticks) || 1)));
+    return Math.min(all, t) * TICK;
+  }
+  return Math.max(0, Number(plan.ms) || 0);
+}

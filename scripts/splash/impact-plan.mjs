@@ -188,6 +188,12 @@ export const MAP_FIGS = [
   { lead: ["r", "o", "i", "n"], tail: [{ type: "fig", ticks: 2, fig: "h", z: 1.25 }, { type: "fig", ticks: 2, fig: "d", punch: 0.6, kick: -1 }, { type: "fig", ticks: 3, fig: "o" }] },
   { lead: ["r", "o", "i", "n"], tail: [{ type: "fig", ticks: 1, fig: "h", z: 1.55, punch: 0.6, kick: -1 }, { type: "fig", ticks: 1, fig: "d", z: 1.25 }, { type: "fig", ticks: 2, fig: "i" }, { type: "fig", ticks: 2, fig: "n" }, { type: "fig", ticks: 3, fig: "o" }] }
 ];
+/* CALLER5: the length of the TABLE's impact: impact-rungs.mjs tableImpactMs (shared with the token reactions) */
+export const tableImpactMs = RG.tableImpactMs;
+/* CALLER5 (engine 1.9.23: with no struck figure the attacker `from` is the cut-in's star): a map cut carries the figures' drawings when the
+   roll has a target OR its roller stands on the table (both shared data: the same drawings on every seat; the engine draws a figure only
+   where it may be seen) */
+export const hasFigures = (targets, roller) => (Array.isArray(targets) && targets.length > 0) || roller === true;
 export const mapFrames = (magnitude, I, o = {}) => {
   /* IMPCALL2: the ordinary and the strong result have their own map cuts (impact-rungs ROLL_MAP: the figures at the target; ROLL_MAP_BARE:
      lines and the colour split only), longer than the old tier 0-1 builds; the critical keeps the tiers below */

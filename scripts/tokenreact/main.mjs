@@ -118,12 +118,20 @@ function seatOf(tok) {
 }
 
 /* ---------- gathering ---------- */
-function entry(tok, stat) {
+/* CALLER5 (IMPCALL2's real fight, lane 5: a knock-down by the fight's own damage wrote TWO words 17 ms apart, KA-THOOM! then the series'
+   bigger KA-THOOOM!!, and the player got THROOMF! / KA-THROOOMF!!): the fight tells a knock-down in parts (the actor's update, its "damage"
+   event, its "broken" event a few hundred ms later); a part that came after the moment had been gathered opened a SECOND moment, and both
+   waited for the roll's story and struck together, the later one as the next blow of a series, each seeded by its own event key, in the
+   order each seat happened to gather them. A part of the SAME blow (`may`: no change yet / no damage yet / the knock-down) that arrives
+   while the moment still waits to be lettered (inflight, not built yet) now joins that moment; anything else is a new blow, as before. */
+function entry(tok, stat, may = null) {
   const k = `${tok.id}|${stat}`;
   let e = pending.get(k);
-  if (!e) { e = { k, tokId: tok.id, actorId: tok.actor?.id ?? null, stat, from: null, to: null, max: null, pub: null, keys: new Set(), cause: null, opened: Date.now(), due: 0, seed: "" }; pending.set(k, e); }
+  if (!e && may) { const w = (inflight.get(tok.id) ?? []).find((x) => x.k === k && may(x)); if (w) return w; }
+  if (!e) { e = { k, tokId: tok.id, actorId: tok.actor?.id ?? null, stat, from: null, to: null, max: null, pub: null, keys: new Set(), evKeys: [], cause: null, opened: Date.now(), due: 0, seed: "" }; pending.set(k, e); }
   return e;
 }
+const isPending = (e) => pending.get(e?.k) === e;
 /* the server's stamp of the change: the same on every seat (the seed, review 15 / 18). FXLT2 (ADVT2 3: every unlinked token said one word
    with one tilt and one motion forever): an unlinked token's change is written to the TOKEN (its delta), and its synthetic actor keeps the
    base actor's stamp; the newest of the actor's, the token's and the delta's stamps is the change's */
@@ -153,7 +161,7 @@ function changed(tok, options) {
     if (!was || !enabled()) return;
     for (const [stat, a, b, m] of [["health", was.h, now.h, now.hm], ["resolve", was.r, now.r, now.rm]]) {
       if (a === null || b === null || a === b) continue;
-      const e = entry(tok, stat);
+      const e = entry(tok, stat, (x) => x.from === null);      // CALLER5: the update of a blow whose event opened the moment joins it
       if (e.from === null) e.from = a;
       e.to = b; e.max = m;
       if (!e.evSeed) e.seed = P.seedOf(tok.id, stat, stampOf(tok, options));      // a fight's event, when one joined, keeps its own key as the seed
@@ -168,7 +176,7 @@ function changed(tok, options) {
       if (stat === "health" && b < a && !e.card) for (const c of cards.get(tok.actor?.id) ?? []) if (Date.now() - c.t < CARD_MS && !c.used?.has(tok.id)) { (c.used ??= new Set()).add(tok.id); join(e, c); break; }
       /* a fall to 0 outside a fight's events: its card (with the critical injury) is still to come; wait for it (CARD_DOWN_WAIT) */
       const waitCard = stat === "health" && b < a && b <= 0 && !e.card && !e.tactics && !e.pub?.broken;
-      arm(e, waitCard ? CARD_DOWN_WAIT : QUIET.change);
+      if (isPending(e)) arm(e, waitCard ? CARD_DOWN_WAIT : QUIET.change);
     }
   } catch (err) { once(err); }
 }
@@ -179,18 +187,23 @@ function join(e, add) {
   e.pub ={ taken: (e.pub?.taken ?? 0) + (add.taken ?? 0), toStress: e.stat === "resolve", broken: !!(e.pub?.broken || add.broken) };
 }
 function told(tok, stat, add) {
-  const e = entry(tok, stat);
+  /* CALLER5: the knock-down ("broken") of a blow, or the damage event of a blow whose update opened the moment, joins the moment still
+     waiting to be lettered */
+  const e = entry(tok, stat, add.isCard ? null : add.broken ? () => true : (x) => !x.hasDmg);
   join(e, add);
+  if (!add.isCard && Number(add.taken) > 0) e.hasDmg = true;
   /* an event of the fight is the same on every seat: its key is the seed (no values in it). A card is not (FXI-TOKEN, ADVI 1): it may meet
-     its loss while gathered on one seat and later on another, so the seed stays the change's stamp, the same everywhere */
-  if (!e.evSeed && add.key && !add.isCard) { e.evSeed = true; e.seed = P.seedOf(tok.id, stat, add.key); }
+     its loss while gathered on one seat and later on another, so the seed stays the change's stamp, the same everywhere.
+     CALLER5: a moment of several events (damage + broken) is seeded by the SMALLEST of their keys, not by whichever reached this seat first
+     (the player heard "broken" first and lettered another word than the GM) */
+  if (add.key && !add.isCard) { const ks = (e.evKeys ??= []); if (!ks.includes(add.key)) ks.push(add.key); e.evSeed = true; e.seed = P.seedOf(tok.id, stat, [...ks].sort()[0]); }
   if (!e.seed) e.seed = P.seedOf(tok.id, stat, stampOf(tok));
   /* WIRE1: who struck (the impact's direction, only when this seat sees him), what the blow was made of, a doubled blow */
   if (add.src) e.src = add.src;
   if (add.dtype) e.dtype = add.dtype;
   if (add.doubled) e.doubled = true;
   if (!add.isCard) shared(e, Clock.serverNow(), QUIET.event);      // SYNC: a fight's event as it reached this seat (a card does not move the blow)
-  arm(e, QUIET.event);
+  if (isPending(e)) arm(e, QUIET.event);
 }
 /* SYNC (ADVX 5: token-hit impact frames ran about two film frames apart either way): the blow's instant was "this seat's now + HIT_LEAD"
    once its gathering timer fired, so it moved with each seat's delivery, timer lateness and busy frames. Now it is the table's: the latest
@@ -318,8 +331,21 @@ function flush() {
     for (const e of ready) { const l = ents.get(e.tokId) ?? []; l.push(e); ents.set(e.tokId, l); }
     for (const [id, l] of ents) inflight.set(id, [...(inflight.get(id) ?? []), ...l]);
     const all = [...ents.keys()];
+    warmFigures(ready);
     Gate.after(() => land(all, ready));
   } catch (err) { once(err); }
+}
+/* CALLER5 (engine 1.9.23 `I.warm`): the figures of the moment's cut (the struck tokens, their attackers) are worked out while the moment
+   waits for its dice and the roll's story, never in a frame of the cut; only tokens this seat sees (the engine never reads a hidden one) */
+function warmFigures(ready) {
+  runningEngine().then((L) => {
+    const I = L?.impact;
+    if (typeof I?.warm !== "function") return;
+    const ids = new Set();
+    for (const e of ready ?? []) { if (e?.tokId) ids.add(e.tokId); if (e?.src) ids.add(e.src); }
+    const list = [...ids].map((id) => canvas?.tokens?.get?.(id)).filter((t) => t && !t.destroyed && seatOf(t).visible && t.document?.hidden !== true);
+    if (list.length) I.warm(list);
+  }).catch((err) => once(err));
 }
 /* the reactions of one moment from its gathered changes, as this seat may be shown them */
 function build(ready) {
@@ -534,7 +560,9 @@ async function land(ids, ready) {
     let after = 0;
     /* IMPCALL (engine 1.9.21: the strongest impacts are a one-second cut; 1.9.20 stopped at 500 ms): the rest of the crowd strikes after the
        impact's LAST drawing as the engine plans it (the same spec as played: the series' growth too), at most the engine's longest impact */
-    try { if (imp && L.impact?.plan) { const { rung: _r, ...isp } = imp.spec; after = P.impactAfter(L.impact, L.impact.plan({ ...P.withSeries(isp, imp.it.lk?.step ?? 0), seed: `${imp.it.seed}|impact` })); } } catch (err) { once(err); }
+    try { if (imp && L.impact?.plan) { const { rung: _r, ...isp } = imp.spec; const pl = L.impact.plan({ ...P.withSeries(isp, imp.it.lk?.step ?? 0), seed: `${imp.it.seed}|impact` });
+      /* CALLER5: the TABLE's length (a reduced-motion seat plans its still: its crowd struck earlier than the others' did) */
+      after = P.impactAfter(L.impact, { ms: RG.tableImpactMs(pl, isp.frames, L.impact) ?? pl?.ms }); } } catch (err) { once(err); }
     const host = imp ? (imp.it.impHost ?? imp.it) : null;
     for (const it of staged) if (!it.inCluster) it.tHit = it === host ? T0 : T0 + (imp ? after + it.delay : it.delay);
     for (const it of staged) if (it.inCluster) it.tHit = it.inCluster.tHit ?? (it.inCluster === host ? T0 : T0 + (imp ? after + it.delay : it.delay));      // a cluster strikes all its members at once
