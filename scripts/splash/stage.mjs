@@ -470,8 +470,7 @@ function compose(ctl, items, extra = {}) {
     frame = { vh: SP.REF_VH, ref: SP.REF_VH, px: 1, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token, ctl.targets ?? []),
       gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: (std.l + std.r) / 2, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
   }
-  let out = composeIn(ctl, items, frame), same = 'none', why = null, fit = null;
-  if (ctl.shared) {
+  let out = composeIn(ctl, items, frame), same = 'none', why = null, fit = null;  if (ctl.shared) {
     /* FXI-SPLASH (ADVI 6) + SAMEPIC: the map block is laid out from what every seat shares; when it would lie past the STANDARD view while
        its token is in view, it is laid out again inside that view (the same on every seat with this view: before, each seat used its own
        measured bars, and the GM's scene bar moved his block 80 scene px down from the player's: ADVX 1, take D) */
@@ -524,6 +523,22 @@ function fitInPlace(out, q) {
   out.rect = sh(r2); if (out.parts) out.parts = out.parts.map((z) => sh(tf(z)));
   out.f = (out.f ?? 1) * k; out.same = 'shrink';
   return out;
+}
+/* CRITPEAK: how much of the roller and his target a layout covers (the larger share of either box; the frame's token and its heavy
+   obstacles: the hero and the target weigh TARGET_W) */
+function coverOf(lay) {
+  const fr = lay?.frame ?? {}, boxes = [fr.token, ...(fr.avoid ?? []).filter((a) => (a.w ?? 1) >= LP.TARGET_W)].filter(Boolean);
+  let worst = 0;
+  for (const q of boxes) {
+    const A = Math.max(1, (q.r - q.l) * (q.b - q.t));
+    let c = 0;
+    for (const it of lay.items ?? []) {
+      const l = it.x - it.w / 2, r = it.x + it.w / 2, t = it.y - it.h / 2, b = it.y + it.h / 2;
+      c += Math.max(0, Math.min(r, q.r) - Math.max(l, q.l)) * Math.max(0, Math.min(b, q.b) - Math.max(t, q.t));
+    }
+    worst = Math.max(worst, c / A);
+  }
+  return worst;
 }
 const fitsIn = (r, q) => !!r && !!q && r.r - r.l <= q.r - q.l + 1 && r.b - r.t <= q.b - q.t + 1 && Number.isFinite(r.l);
 const inRect = (r, q) => r.l >= q.l - 1 && r.t >= q.t - 1 && r.r <= q.r + 1 && r.b <= q.b + 1;
@@ -798,8 +813,10 @@ function playLetters(ev, o) {
   }
   /* a seat's shrink that takes a part under its rank's floor (the critical's tight floor: TIGHT_CRIT) breaks the ranks on this seat */
   const under = (it) => it.S < LP.TIGHT_CRIT * LP.sizeOf(it, lay.frame, 0).lo - 0.5;
-  if (ctl.shared && (!fitsIn(lay.rect, lay.fit ?? lay.frame?.safe) || lay.items.some(speck) || (lay.same === 'shrink' && lay.items.some(under)))) {
+  const mustScreen = ctl.shared && (!fitsIn(lay.rect, lay.fit ?? lay.frame?.safe) || lay.items.some(speck));
+  if (ctl.shared && (mustScreen || (lay.same === 'shrink' && lay.items.some(under)))) {
     const big = !lay.items.some(speck), mw = lay.items.find((it) => it.role === 'word');
+    const mapLay = lay, mapScale = ctl.userScale;
     const onScreen = mw ? mw.S * zoomNow : 0;   // the word as this seat's close view drew the board block
     ctl.shared = false; ctl.userScale = o.scale || 1;
     if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
@@ -811,6 +828,13 @@ function playLetters(ev, o) {
       ctl.userScale = (o.scale || 1) * Math.min(LP.MAP_UP, onScreen / sw.S);
       if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
       lay = compose(ctl, plan.items, gauge ? { gauge } : {});
+    }
+    /* only this seat's own panels took the board block under its floor: the screen layout is laid out on the reference screen, where a
+       crowded board may leave no clean place (live, The Warehouse at 0.45, the GM's screen fallback: the critical's long word across the
+       hero's head, 45 %). The board block, smaller on this seat, stays when the screen one would cover the roller or his target more */
+    if (!mustScreen && coverOf(lay) > coverOf(mapLay) + 0.04) {
+      ctl.shared = true; ctl.userScale = mapScale; lay = mapLay;
+      if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
     }
   }
   ctl.k = lay.k; ctl.rect = lay.rect; ctl.layout = lay;   // (kept for inspection: frame, side, hit)

@@ -362,6 +362,9 @@ export function composeMoment(items, frame, measure = estimateBox) {
         const fb2 = T ? fb : { ...fb, focus: { x: hx, y: a.rect.b + g0 + th / 2 }, under: a.rect.b + g0 };
         place(b1, fb2, far);
         if (!T && b1.hit > 0.5) { const b2 = layoutAt(tail, fb, measure, f, safeW, vh, sc, st); place(b2, { ...fb, focus: { x: hx, y: a.rect.t - g0 - th / 2 }, under: a.rect.t - g0 - th }, far); if (b2.hit < b1.hit) Object.assign(b1, b2); }
+        /* neither under nor over its head is free (a crowded board, live: The Warehouse at 0.45, GM's screen fallback): the caption anywhere
+           in the view, before the head gives way onto the hero (the caption over a bystander's rim is the lesser cover) */
+        if (!T && b1.hit > 0.5) { const b3 = layoutAt(tail, fb, measure, f, safeW, vh, sc, st); place(b3, fb, far); if (b3.hit < b1.hit) Object.assign(b1, b3); }
         if (!b || b1.hit < b.hit) b = b1;
         if (clean(b) && (far || byT(b))) break;
       }
