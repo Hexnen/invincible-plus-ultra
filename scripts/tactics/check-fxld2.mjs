@@ -364,7 +364,8 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) {
 }
 {
   const m = src("../splash/main.mjs");
-  ok(/client\('backdrop', \{[^\n]*type: Boolean, default: false/.test(m) && /backdrop: cs\('backdrop'\)/.test(m), "N6 (the owner): the backdrop is a client setting, off by default, handed to every moment");
+  /* GMALL (the owner, 2026-11-15, «wszystko mg wybiera dla stołu»): the backdrop is the table's (world), still off by default */
+  ok(/world\('backdrop', \{[^\n]*type: Boolean, default: false/.test(m) && /backdrop: cs\('backdrop'\)/.test(m), "N6 (the owner): the backdrop is the table's setting, off by default, handed to every moment");
 }
 
 /* ================================================================== N7: the pushed block and the rolling token (regression watch) */

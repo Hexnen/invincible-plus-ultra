@@ -963,13 +963,15 @@ function recheck() {
 /* ---------- settings, hooks, start ---------- */
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
-  if (!has(KEY.enabled)) game.settings.register(MOD, KEY.enabled, { name: t("ITR.Settings.Enabled.Name"), hint: t("ITR.Settings.Enabled.Hint"), scope: "client", config: true, type: Boolean, default: true, onChange: (v) => syncOwner(v) });
+  /* GMALL (the owner, 2026-11-15: «wszystko mg wybiera dla stołu. wszystko»): on/off is the table's too (it was this client's own); all four
+     are shown in the module's table settings window (scripts/table/), not in Foundry's list */
+  if (!has(KEY.enabled)) game.settings.register(MOD, KEY.enabled, { name: t("ITR.Settings.Enabled.Name"), hint: t("ITR.Settings.Enabled.Hint"), scope: "world", config: false, type: Boolean, default: true, onChange: (v) => syncOwner(v) });
   /* SAMEPIC (owner 2026-11-14: the token reactions' options are the GM's, for the table, «dla stołu»; ADVX 9): size and layer are the table's */
-  if (!has(KEY.size)) game.settings.register(MOD, KEY.size, { name: t("ITR.Settings.Size.Name"), hint: t("ITR.Settings.Size.Hint"), scope: "world", config: true, type: String, default: "normal",
+  if (!has(KEY.size)) game.settings.register(MOD, KEY.size, { name: t("ITR.Settings.Size.Name"), hint: t("ITR.Settings.Size.Hint"), scope: "world", config: false, type: String, default: "normal",
     choices: { small: t("ITR.Settings.Size.small"), normal: t("ITR.Settings.Size.normal"), large: t("ITR.Settings.Size.large") } });
-  if (!has(KEY.lang)) game.settings.register(MOD, KEY.lang, { name: t("ITR.Settings.Lang.Name"), hint: t("ITR.Settings.Lang.Hint"), scope: "world", config: true, type: String, default: "en",
+  if (!has(KEY.lang)) game.settings.register(MOD, KEY.lang, { name: t("ITR.Settings.Lang.Name"), hint: t("ITR.Settings.Lang.Hint"), scope: "world", config: false, type: String, default: "en",
     choices: { en: t("ITR.Settings.Lang.en"), pl: t("ITR.Settings.Lang.pl") } });
-  if (!has(KEY.layer)) game.settings.register(MOD, KEY.layer, { name: t("ITR.Settings.Layer.Name"), hint: t("ITR.Settings.Layer.Hint"), scope: "world", config: true, type: String, default: "overlay",
+  if (!has(KEY.layer)) game.settings.register(MOD, KEY.layer, { name: t("ITR.Settings.Layer.Name"), hint: t("ITR.Settings.Layer.Hint"), scope: "world", config: false, type: String, default: "overlay",
     choices: Object.fromEntries(LAYERS.map((id) => [id, t(`ITR.Settings.Layer.${id}`)])) });
 }
 async function syncOwner(v = enabled()) {

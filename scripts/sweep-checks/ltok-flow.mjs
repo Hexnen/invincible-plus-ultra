@@ -52,7 +52,7 @@ const hero = mk("H", "superhero", 8, 6, { player: true }), npc = mk("N", "npc", 
 M.start({ init: true, ready: true });
 Hooks.callAll("canvasReady");
 await sleep(50);
-ck("A0 started: the settings are registered and the engine claims the numbers", settings.has("invincible-plus-ultra.tokenReactEnabled") && settings.get("invincible-plus-ultra.tokenReactEnabled").scope === "client" && Owner.isOn());
+ck("A0 started: the settings are registered and the engine claims the numbers", settings.has("invincible-plus-ultra.tokenReactEnabled") && settings.get("invincible-plus-ultra.tokenReactEnabled").scope === "world" /* GMALL: the table's */ && Owner.isOn());
 
 const take = async (ms = 1700) => { await sleep(ms); const out = plays.splice(0); return out; };
 /* GM seat */

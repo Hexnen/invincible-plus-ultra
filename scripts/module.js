@@ -1844,6 +1844,13 @@ import("./tokenanim/main.mjs")
   .then((anim) => anim.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | token animations not loaded (everything else is unaffected)`, err));
 
+/* TABLE SETTINGS (scripts/table/, GMALL): the owner, 2026-11-15, «wszystko mg wybiera dla stołu»: one window for every option of the
+   lettering, the roll splash, the token reactions and their animations, chosen by the GM for the table (players read-only), and the
+   mirror of the table's lettering preferences into each seat's engine. Same mechanism and recorded phases as the blocks above. */
+import("./table/main.mjs")
+  .then((table) => table.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | table settings not loaded (everything else is unaffected)`, err));
+
 /* PARTY CARDS (scripts/party/, styles/party.css): slide-out cards of the player characters on the viewed scene at the bottom left (client
    setting "Party: display" Hidden / Peek / Full). Same mechanism and recorded phases as the blocks above. */
 import("./party/main.mjs")

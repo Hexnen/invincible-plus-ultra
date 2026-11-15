@@ -3,7 +3,7 @@
    dock panel "Reactions" next to its Death panel (added with its own registry's extendSection: the map module is not changed), and the
    Plus Ultra menu (scripts/menu.mjs) gets a tool that opens the same panel in a window, for every user (and for tables without the map).
    What: the GM's table settings (on for the table; per event the animation and its intensity), a preview of each event and of a series
-   on the selected tokens (this screen only), defaults; and each user's own screen (full / gentle / off). Players see the table settings
+   on the selected tokens (this screen only), defaults; and the table's motion of the animations (full / gentle / off; GMALL: no longer each screen's own). Players see the table settings
    read-only and can preview them. Look and pattern: the dock's own form rows (label column, the control filling the rest, explanations
    in tooltips, the actions in a row at the bottom), compact like the tactical UI (icon buttons, text in tooltips). */
 import * as P from "./pure.mjs";
@@ -47,8 +47,9 @@ function html() {
         ${gm ? `<button type="button" data-act="reset" data-tooltip="${esc(t("ITA.Panel.resetHint"))}"><i class="fa-solid fa-rotate-left" inert></i> ${esc(t("ITA.Panel.reset"))}</button>` : ""}
       </div>
     </div>
-    <div class="form-group ipu-tka-mine"><label for="${mineId}" data-tooltip="${esc(t("ITA.Panel.mineHint"))}">${esc(t("ITA.Panel.mine"))}</label>
-      <div class="form-fields"><select id="${mineId}" data-k="mine">${R.MINE.map((k) => `<option value="${k}"${k === R.mine() ? " selected" : ""}>${esc(t(`ITA.Mine.${k}`))}</option>`).join("")}</select></div></div>
+    <div class="form-group ipu-tka-mine" data-dep="on"${on ? "" : " hidden"}><label for="${mineId}" data-tooltip="${esc(t("ITA.Panel.mineHint"))}">${esc(t("ITA.Panel.mine"))}</label>
+      <div class="form-fields">${gm ? `<select id="${mineId}" data-k="mine">${R.MINE.filter((k) => k !== "off" || R.mine() === "off").map((k) => `<option value="${k}"${k === R.mine() ? " selected" : ""}>${esc(t(`ITA.Mine.${k}`))}</option>`).join("")}</select>`
+        : `<output id="${mineId}" class="ipu-tka-ro" data-k="mine">${esc(t(`ITA.Mine.${R.mine()}`))}</output>`}</div></div>
   </div>`;
 }
 
@@ -89,8 +90,8 @@ export function mount(host) {
   };
   const onChange = (ev) => {
     const el = ev.target, k = el.dataset?.k;
-    if (k === "mine") { game.settings.set(MOD, R.KEY.mine, el.value); return; }
-    if (k === "on" && isGM()) { game.settings.set(MOD, R.KEY.on, !!el.checked); root.querySelector('[data-dep="on"]').hidden = !el.checked; return; }
+    if (k === "mine") { if (isGM()) game.settings.set(MOD, R.KEY.mine, el.value); return; }      // GMALL: the table's, the GM's
+    if (k === "on" && isGM()) { game.settings.set(MOD, R.KEY.on, !!el.checked); for (const d of root.querySelectorAll('[data-dep="on"]')) d.hidden = !el.checked; return; }
     const kind = rowOf(el);
     if (!kind || !isGM()) return;
     const rows = { ...current(), [kind]: readRow(kind) };
@@ -120,8 +121,8 @@ export function mount(host) {
   const hook = Hooks.on("updateSetting", (s) => {
     try {
       if (s?.key === `${MOD}.${R.KEY.events}` && !pendingRows) { const rows = R.events(); for (const k of P.EVENTS) syncRow(k, rows[k]); }
-      else if (s?.key === `${MOD}.${R.KEY.on}`) { const on = R.worldOn(), c = root.querySelector('[data-k="on"]'); if (c) c.checked = on; root.querySelector('[data-dep="on"]').hidden = !on; }
-      else if (s?.key === `${MOD}.${R.KEY.mine}`) { const sel = root.querySelector('[data-k="mine"]'); if (sel && document.activeElement !== sel) sel.value = R.mine(); }
+      else if (s?.key === `${MOD}.${R.KEY.on}`) { const on = R.worldOn(), c = root.querySelector('[data-k="on"]'); if (c) c.checked = on; for (const d of root.querySelectorAll('[data-dep="on"]')) d.hidden = !on; }
+      else if (s?.key === `${MOD}.${R.KEY.mine}`) { const sel = root.querySelector('[data-k="mine"]'); if (sel?.tagName === "OUTPUT") sel.textContent = t(`ITA.Mine.${R.mine()}`); else if (sel && document.activeElement !== sel) sel.value = R.mine(); }
     } catch { /* the panel is gone */ }
   });
   return () => { root.removeEventListener("input", onInput); root.removeEventListener("change", onChange); root.removeEventListener("click", onClick); Hooks.off("updateSetting", hook); };
@@ -147,6 +148,7 @@ const CSS = `
 .ipu-tka .ipu-tka-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.2rem 0 0.35rem; }
 .ipu-tka .ipu-tka-actions button { flex: 1 1 auto; width: auto; height: 1.9rem; margin: 0; padding: 0 0.6rem; white-space: nowrap; }
 .ipu-tka .ipu-tka-mine { margin-top: 0.25rem; padding-top: 0.45rem; border-top: 1px solid var(--mm-edge, var(--color-border, rgba(127,127,127,0.35))); }
+.ipu-tka .ipu-tka-ro { color: var(--mm-ws-muted, var(--color-text-secondary, inherit)); }
 .ipu-tka [hidden] { display: none !important; }
 .ipu-tka-app .window-content { padding: 0.6rem 0.8rem; }
 /* the narrow map dock: the event's name above its controls, so the animation's name is never cut */
@@ -157,7 +159,7 @@ const CSS = `
 }
 @media (prefers-reduced-motion: reduce) { .ipu-tka * { transition: none !important; } }
 `;
-function style() {
+export function style() {
   if (document.getElementById("ipu-tka-style")) return;
   const s = document.createElement("style"); s.id = "ipu-tka-style"; s.textContent = CSS; document.head.append(s);
 }
@@ -192,7 +194,10 @@ async function intoMaps() {
 async function intoMenu() {
   try {
     const Menu = await import("../menu.mjs");
-    Menu.add({ name: "ipuTokenAnim", title: () => t("ITA.Panel.menu"), icon: "fa-solid fa-person-falling-burst", order: 40, onChange: () => open() });
+    /* GMALL: the tool opens the table settings window on its Token reactions tab (the same panel, beside the words' own options); the
+       panel's own window stays the fallback */
+    const openTable = async () => { try { const T = await import("../table/main.mjs"); if (await T.open("reactions")) return; } catch { /* no table window */ } open(); };
+    Menu.add({ name: "ipuTokenAnim", title: () => t("ITA.Panel.menu"), icon: "fa-solid fa-person-falling-burst", order: 40, onChange: () => openTable() });
   } catch (err) { console.warn(`${MOD} | token animations: no Plus Ultra menu tool`, err); }
 }
 export let inMaps = false;

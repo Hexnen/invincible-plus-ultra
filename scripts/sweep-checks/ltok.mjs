@@ -147,7 +147,8 @@ ck("G3 world space at the token, through the shared engine only", main.includes(
 ck("G4 a player never gets a hidden token", main.includes("staff || doc?.hidden !== true"));
 ck("G5 waits for the dice and the camera's blow", main.includes("Gate.after(") && main.includes("Moment.landing("));
 ck("G6 reduced motion is passed on", main.includes("reduced: red") && main.includes("prefers-reduced-motion"));
-ck("G7 client settings, on by default", /scope: "client", config: true, type: Boolean, default: true/.test(main));
+/* GMALL (the owner, 2026-11-15, «wszystko mg wybiera dla stołu»): the on/off switch is the table's (world), shown in the table settings window */
+ck("G7 the table's setting, on by default", /scope: "world", config: false, type: Boolean, default: true/.test(main) && !/scope: "client"/.test(main));
 ck("G8 the engine's folder is not imported anywhere but its entry", !/letters\/(engine|font|rng)\.mjs/.test(main));
 ck("G9 nothing is written to any document", !/\.update\(|\.setFlag\(|\.create\(|ChatMessage\.create/.test(main));
 

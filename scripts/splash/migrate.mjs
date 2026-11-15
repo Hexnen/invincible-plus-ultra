@@ -4,7 +4,8 @@
    - client scope: window.localStorage, key "<namespace>.<key>", value = JSON.stringify(value)
    - world scope : Setting documents in game.settings.storage.get('world'), key "<namespace>.<key>"; the stored value is a JSON
                    string that the JSONField parses on load, and an unregistered key (standalone disabled) is left parsed, uncast.
-   Runs once per client (hidden client setting splashMigrated) and once per world (hidden world setting splashMigratedWorld, GM only).
+   Runs once per world (hidden world setting splashMigratedWorld, GM only); the standalone's client keys, now table options (GMALL), are
+   copied by a GM's browser once (raw browser marker splashMigrated).
    It runs only when the merged splash starts, i.e. when the standalone module is NOT active (see start() in main.mjs). */
 const OLD = 'invincible-splash';
 const CLIENT_KEYS = ['enabled', 'others', 'placement', 'scale', 'hold', 'effects', 'motion', 'fullscreen', 'fullFrom', 'debug', 'chat'];
@@ -16,8 +17,7 @@ export function registerMigrationSettings(MOD) {
     if (game.settings.settings.has(`${MOD}.${key}`)) return;
     game.settings.register(MOD, key, { scope, config: false, type: Boolean, default: false });
   };
-  reg('splashMigrated', 'client');
-  reg('splashMigratedWorld', 'world');
+  reg('splashMigratedWorld', 'world');      // GMALL: the client marker 'splashMigrated' is gone (every option is the table's now, see migrateSettings)
 }
 
 /* Coerce an old value into what the registered setting accepts; undefined = reject (keep the new default). */
@@ -66,11 +66,14 @@ export async function migrateSettings(MOD, sk, log) {
     } catch (e) { console.warn(`${log} migrate ${key} failed`, e); }
   };
 
+  /* GMALL: the standalone module's client keys are the table's (world) options now: only a GM copies them, from his own browser, once per
+     browser (the old marker, read and written as the raw browser value it always was: no client setting of ours remains) */
   try {
-    if (!game.settings.get(MOD, 'splashMigrated')) {
+    const MARK = `${MOD}.splashMigrated`;
+    if (game.user?.isGM && window.localStorage?.getItem(MARK) !== 'true') {
       for (const k of CLIENT_KEYS) copy(k, readClient);
       await Promise.all(pending.splice(0));
-      await game.settings.set(MOD, 'splashMigrated', true);
+      window.localStorage?.setItem(MARK, 'true');
     }
   } catch (e) { console.warn(`${log} client settings migration failed`, e); }
 

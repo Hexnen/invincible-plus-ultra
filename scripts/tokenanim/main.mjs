@@ -11,7 +11,7 @@
      everything; a newer reaction takes over from an older one on the same token (pure TAKEOVER); nothing runs while nothing plays
      (the listeners come off);
    - reduced motion (the OS switch, the lettering's Motion setting, Foundry's low performance mode) keeps only a short tint, the
-     lettering's flash / photosensitivity settings soften the tint, "Gentle" halves the moves, each user may switch it off on his screen;
+     lettering's flash / photosensitivity settings soften the tint, "Gentle" halves the moves, the GM may switch it off for the table;
    - while the map module shows a token as dead (its death style, token._mmDead) the body is the map's: ours keeps only the tint.
    - KODOWN (owner 2026-11-14, «Tak»): a token at 0 Health LIES until it gets up or is healed. Lying is a state per token (`lying`, pure
      lyingAt), read from the character on this seat (state.mjs: a yes / no only) when the scene loads, when a token is drawn and when its
@@ -20,7 +20,8 @@
      itself makes it fall or rise. "Off" for a lying token (provisional KODOWN-1): the GM's table switch off, "None" for going down, or
      the seat's own "Off" = nothing lies (the picture as Foundry draws it); reduced motion = the dim alone, no tipping; the map's death
      look (`_mmDead`) = nothing of ours lies (the map owns the body and the look).
-   Settings: world tokenAnimOn (the GM: for the table), world tokenAnimEvents (per event: animation, intensity), client tokenAnimMine. */
+   Settings (all the GM's, for the table; GMALL): world tokenAnimOn, world tokenAnimEvents (per event: animation, intensity), world tokenAnimMine
+   (full / gentle / off). */
 import * as P from "./pure.mjs";
 import * as S from "./state.mjs";
 import { t } from "./lang.mjs";
@@ -256,7 +257,9 @@ function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   if (!has(KEY.on)) game.settings.register(MOD, KEY.on, { scope: "world", config: false, type: Boolean, default: true, onChange: (v) => { if (!v) stopAll(); refresh(); } });
   if (!has(KEY.events)) game.settings.register(MOD, KEY.events, { scope: "world", config: false, type: Object, default: P.cleanEvents(null), onChange: () => refresh() });
-  if (!has(KEY.mine)) game.settings.register(MOD, KEY.mine, { name: t("ITA.Settings.Mine.Name"), hint: t("ITA.Settings.Mine.Hint"), scope: "client", config: true, type: String, default: "full",
+  /* GMALL (the owner, 2026-11-15: «wszystko mg wybiera dla stołu. wszystko»; closes TOKANIM-2a / KODOWN-6): the motion of the animations
+     (full / gentle / off) is the table's, chosen by the GM, no longer each screen's own; a seat's own reduced motion still makes it "still" */
+  if (!has(KEY.mine)) game.settings.register(MOD, KEY.mine, { name: t("ITA.Settings.Mine.Name"), hint: t("ITA.Settings.Mine.Hint"), scope: "world", config: false, type: String, default: "full",
     choices: Object.fromEntries(MINE.map((k) => [k, t(`ITA.Mine.${k}`)])), onChange: (v) => { if (v === "off") stopAll(); refresh(); } });
 }
 function registerHooks() {
