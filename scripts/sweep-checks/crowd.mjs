@@ -94,7 +94,11 @@ const scen = {
   /* CROWD2 (KA k1): three heroes (every seat reads their numbers) hit with three enemies; a pin only the GM may open just above the first
      hero and the GM's own desk panel beside it (seat-only things) */
   heroes: { toks: SIX.map((t, i) => ({ ...t, hero: i < 3 })), notes: [{ id: "NG", x: 550, y: 205, size: 40, pub: false }], hits: hitAll(SIX.map((t) => t.id)),
-    gmPanels: [{ sel: "#invincible-tactics-desk:not(.igd-collapsed) .igd", x: 260, y: 120, w: 190, h: 120 }] }
+    gmPanels: [{ sel: "#invincible-tactics-desk:not(.igd-collapsed) .igd", x: 260, y: 120, w: 190, h: 120 }] },
+  /* CROWD2 (live probe, KA k1): the group high in the view's top-left corner, under the map's VRAM meter folded at its default spot (the GM's own,
+     shown by default to the GM only): the meter took the GM's spot left of the first hero, so his "-2" shrank and slid on the GM only */
+  meter: { center: { x: 920, y: 600 }, toks: SIX.map((t, i) => ({ ...t, hero: i < 3 })), hits: hitAll(SIX.map((t) => t.id)),
+    gmPanels: [{ sel: ".mm-vram", x: 96, y: 92, w: 264, h: 52 }, { sel: "#mm-vram", x: 96, y: 92, w: 264, h: 52 }] }
 };
 const runs = await Promise.all(Object.entries(scen).flatMap(([k, s]) => [GM, P1].map((st) => seat({ ...s, ...st, panels: st.gm ? s.gmPanels : s.panels, name: `${k}/${st.name}` }).then((r) => [k, st.name, r]))));
 const S = {};
@@ -167,6 +171,17 @@ if (ok("heroes")) {
   const { gm, p1 } = S.heroes, shown = (s) => nums(s).filter((p) => ["OM", "EV", "KD"].includes(p.tok));
   ck(`C26 the heroes' numbers stand alike on both seats\n   GM ${sig(shown(gm))}\n   P1 ${sig(shown(p1))}`, shown(gm).length === 3 && sig(shown(gm)) === sig(shown(p1)));
   ck(`C27 the crowd words stand alike on both seats\n   GM ${sig(words(gm))}\n   P1 ${sig(words(p1))}`, sig(words(gm)) === sig(words(p1)));
+}
+if (ok("meter")) {
+  /* CROWD2: the GM's VRAM meter at its default spot moves nothing on one seat only: its place is kept free on every seat */
+  const { gm, p1 } = S.meter, shown = (s) => nums(s).filter((p) => ["OM", "EV", "KD"].includes(p.tok)), m = { x: 96, y: 92, w: 264, h: 52 };
+  ck(`C28 the GM's VRAM meter moves no hero's number on the GM only
+   GM ${sig(shown(gm))}
+   P1 ${sig(shown(p1))}`, shown(gm).length === 3 && sig(shown(gm)) === sig(shown(p1)));
+  ck(`C29 nor the crowd's word
+   GM ${sig(words(gm))}
+   P1 ${sig(words(p1))}`, sig(words(gm)) === sig(words(p1)));
+  ck("C30 nothing lies under the meter on the GM's seat", !gm.plays.filter((p) => p.box).some((p) => inter(p.box, m) > 1));
 }
 console.log(`sweep crowd: ${n} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

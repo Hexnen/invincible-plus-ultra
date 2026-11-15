@@ -23,7 +23,7 @@ import { isLabel } from "../i18n/sys-labels.mjs";
 import * as Gate from "../tactics/ui/dicegate.mjs";
 import * as Moment from "../moment.mjs";
 import * as TokAnim from "../tokenanim/main.mjs";      // TOKANIM: the token's own motion
-import { standardRect, panelZones, dockZone } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
+import { standardRect, panelZones, dockZone, REF_VW, REF_VH } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
 import * as Clock from "../shared-clock.mjs";      // SYNC: the table's clock
 
 const MOD = "invincible-plus-ultra";
@@ -582,6 +582,12 @@ const PANEL_SEL = ["#ich-dock", "#invincible-turn-tray", ...CARD_SEL,
 /* CROWD2: may a pin only the GM may open move a reaction on the GM's seat? No (the same picture on every seat; a pin hides nothing); a switch
    for the owner's answer to CROWD2-1 */
 const SEAT_ONLY_PINS = false;
+/* CROWD2 (live probe, lane 5: the KA "-2" over Omni-Man shrank to 0.52 and slid left on the GM only, the crowd's word to 0.92): the map's VRAM
+   meter is the GM's own (moinen-maps client setting vramMeter, "auto" = shown to the GM), folded at its default spot under the scene controls,
+   and the GM's local guard moved what it covered. Its folded default place (as on the reference window, measured live) is now a shared zone
+   on every seat, as the party cards and the challenges' panel are: a word keeps off it everywhere, so the GM's guard finds nothing left to
+   move. A meter dragged away or unfolded still moves the word on the GM's seat only (CROWD2-6) */
+const METER_ZONE = Object.freeze({ l: 92, t: 88, r: 364, b: 148 });
 const view = {
   at: 0, cache: null,
   ok: () => !!globalThis.canvas?.stage?.toGlobal && !!canvas.app?.view?.getBoundingClientRect,
@@ -614,6 +620,8 @@ const view = {
       /* the challenges' panel moves with the sidebar (live: a word over Mauler B took 0.7 of its size on the seat whose sidebar was open) */
       const el = document.querySelector?.("#ich-dock"), d = el ? dockZone(W, H, el.getBoundingClientRect()) : null;
       if (d) zs.push(d);
+      const ox = W / 2 - REF_VW / 2, oy = H / 2 - REF_VH / 2;
+      zs.push({ l: ox + METER_ZONE.l, t: oy + METER_ZONE.t, r: ox + METER_ZONE.r, b: oy + METER_ZONE.b });
       return zs.map((z) => ({ x: z.l, y: z.t, w: z.r - z.l, h: z.b - z.t, k: P.SLOT_K.panel }));
     } catch { return []; }
   },
