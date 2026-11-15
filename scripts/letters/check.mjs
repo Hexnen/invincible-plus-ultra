@@ -210,6 +210,9 @@ await (await import("./check-marks.mjs")).run(ok, { bank, fontsApi });
 await (await import("./check-rim.mjs")).run(ok, { bank, fontsApi });
 /* 8e. tools (contract v6): settings, plan filters, authoring, networking, words (check-tools.mjs) */
 await (await import("./check-tools.mjs")).run(ok, { plan, bank, fontsApi });
+/* 8e2. ENGTABLE: every preference is the table's (world, the GM's, live on every seat; a seat's own reduced motion / photosensitive mode;
+   the guard always on; migration; maps alone / plus-ultra alone / both) on a two-seat fake Foundry (check-table.mjs) */
+await (await import("./check-table.mjs")).run(ok, { bank, fontsApi });
 /* 8f. motion: travel, choreography, frame rates, shards, push, echoes, escalation, glow, clean-up (check-move.mjs) */
 await (await import("./check-move.mjs")).run(ok, { bank, fontsApi });
 
@@ -263,6 +266,15 @@ await (await import("./impact/check-impact.mjs")).run(ok);
   const r = spawnSync(process.execPath, [fileURLToPath(new URL("./check-engreg.mjs", import.meta.url)), "--engine"], { encoding: "utf8", timeout: 600000 });
   for ( const f of (r.stdout ?? "").split("\n").filter((l) => l.startsWith("FAIL")) ) console.log(f);
   ok(r.status === 0, `engreg engine: ${(r.stdout ?? "").trim().split("\n").at(-1)} ${r.stderr ? r.stderr.slice(0, 300) : ""}`);
+}
+
+/* 14. SUSTAINGAP: a sustained sound's phrases and a stream's syllables never pile on each other while legible (every sustained kind,
+   three sizes, both faces, both motion types, the map's burn call, view edge, a caller's room, two seats on one clock) (own process;
+   `--engine <older letters>` shows them failing) */
+{
+  const r = spawnSync(process.execPath, [fileURLToPath(new URL("./check-sustain.mjs", import.meta.url)), "--engine"], { encoding: "utf8", timeout: 900000 });
+  for ( const f of (r.stdout ?? "").split("\n").filter((l) => l.startsWith("FAIL")) ) console.log(f);
+  ok(r.status === 0, `sustain engine: ${(r.stdout ?? "").trim().split("\n").at(-1)} ${r.stderr ? r.stderr.slice(0, 300) : ""}`);
 }
 
 console.log(`letters: ${n} checks, ${failed} failed`);

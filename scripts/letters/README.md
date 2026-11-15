@@ -287,6 +287,19 @@ stops, the words up play their exits and a small tail trails off.
   `{ stop({ quick }), level(v), alive, phrases, history, finished, handles }`. `level` 0..1 (or a function of ms) sets size, how
   often and how busy; change it live with `s.level(v)`. `kind` takes its words from the vocabulary (WORD); `words(k, ms, level)`
   supplies your own. Ends on `until`, `s.stop()`, `L.stopAll()` and (world) a scene change.
+- The run's layout (1.9.15 SUSTAINGAP, invincible style; the legacy styles keep the 1.9.14 sustain, `sustain-legacy.mjs`): a run
+  reads as one living run, its phrases never pile on each other while legible. Each phrase is seated by its own measured ink box
+  (`inkBoxOf` in the engine: entrance, hold and its turns, keyline, rim, duplicate block, the picture's glow, plus how far its exit
+  moves it while legible) in one of two seats round a split line 0.8 cap above the source (even phrases below, odd above), with a
+  gap of `RUN_GAP.seat` (0.14 cap) between them; a drawn shards / crumble exit becomes a clean cut in the upper seat (its pieces
+  would fall through the lower one). Echo copies and shed fragments (one per syllable; a one-syllable word sheds its tail) go
+  beyond the run's edge on the `dir` side, each placed by its own box, and are left out when the room has no space for them.
+  The run is moved as one block to stay inside its room: the view (unless `keepInView: false`) and the caller's `room` (extents
+  `{ up, down, left, right }` round the source, a rect `{ x0, y0, x1, y1 }`, or a function returning either); when it is taller than
+  the room the top wins and it overflows downwards, never onto itself. `maxWidth` is passed to each phrase.
+  `startAt` (ms on the page clock, the event's instant) runs the score on the event's clock: a seat joining late skips the phrases
+  already over and shows the same phrase, at the same place, at the same instant as every other seat (every draw is decided from
+  the seed and the phrase index; nothing is per-seat random). The layout reads only the phrases up, never the run's past.
 - `mode: "ambient"`: the quiet, permanent case (the steady hiss of a pipe on a map). One small hollow word now and then (`gap`
   [min, max] ms, default 4.5-11 s), only while its spot is in view, at most `L.ambientMax` (3 world, 2 screen) up at once for all
   sources of a scene, slow and on threes. Hundreds of sources cost nothing while off view.
@@ -526,6 +539,11 @@ rule above on the new words and on the text the engine makes from them).
   A stream keeps the effect's clock: with `startAt` in the past it skips the syllables whose life is already over and every syllable
   joins its own due time (a duration counts from `startAt`); its hand is the first syllable's whenever it joins. `s.handles` holds the
   syllables still alive, `s.emitted` counts all; `loud: 0` is the quietest syllable; `every` is at least 20 ms.
+  Lanes (1.9.15 SUSTAINGAP, invincible style; the legacy styles unchanged): syllables up at once never pile. Each syllable takes
+  the lowest lane free on the stream's own schedule (so a late seat puts it in the same lane); lanes stand in two staggered columns
+  along `dir`, a step apart by the biggest syllable's ink plus its travel (default travel 0.45 cap in lanes; `travel` overrides),
+  no alternating spread or side jitter. With the view kept (default) the rows go forward as far as the view reaches and on behind
+  the source after that; lane syllables are not moved one by one by the engine.
 - Pixel-art surroundings: `pixel: true` letters on the effect grid (1 texel = 1 art px = grid/32 scene px), hard 1-bit edges,
   nearest-neighbour; the same moods and motions apply. Pass `span` (the effect's width in scene px) or `area` and `magnitude` rather than a fixed `size`; pixel words get whole art pixels (at least 7 per cap height) and keep the size they started with while the view zooms.
 - Several powers at once: each `play`/`stream` gets its own hand unless seeded alike; words share the limit of 48 on the canvas
@@ -555,20 +573,28 @@ when the point must not give away where something happened.
 ## Tools: settings, authoring, networking, accessibility, windows (contract v6, tools.mjs)
 One set for every caller, registered once by the newest copy at `init` (whichever module(s) are active).
 
-Settings, client (this computer), namespace `moinen-letters` (stable whichever module is active; the button "Lettering settings" in
-the host module's settings tab opens the engine's own window; host = moinen-maps when active, else invincible-plus-ultra):
+Settings, all the TABLE's (1.9.16 ENGTABLE: world scope, only the GM writes them, every seat follows on its next word without a
+reload; namespace `moinen-letters`; the button "Lettering settings" in the host module's settings tab opens the engine's own window,
+host = moinen-maps when active, else invincible-plus-ultra; a player opens it read-only). One world Object `table` holds the first
+eight keys; `movement` and `face` keep their own world keys. `L.table` (the table), `L.seat` (this screen's signals), `L.prefs` (what
+this seat draws with), `L.setTable(partial)` (GM; a player's call writes nothing and is told once):
 | key | values | what it does to every word |
 |---|---|---|
 | `enabled` | on / off | off: `play` returns a handle that is already over (`alive` false, `off` true, `finished` -> "evicted"); streams draw nothing |
 | `scale` | 0.5-2.5 | multiplies the size AFTER the legibility clamp (so words held at the floor grow too) |
-| `motion` | auto / full / gentle / reduced | the strongest reduction wins: the caller's `reduced: true`, this setting, the OS (auto, gentle); full = the caller decides; gentle = moves damped to 45 %, no smear frames |
-| `flashes` | on / off | the one-tick black/white impact frame (off: an ordinary drawing of the same length) |
-| `photosafe` | on (default) / off | at most 2 flash frames per second on this client, none on a word taller than 20 % of the viewport, colour plates (misregistration) held still across drawings |
+| `motion` | auto ("Full") / gentle / reduced | the strongest reduction wins: the caller's `reduced: true`, the table, this seat's OS; gentle = moves damped to 45 %, no smear frames (a stored `full` reads as `auto`) |
+| `flashes` | on / off | the one-tick black/white flash frame (off: an ordinary drawing of the same length); a seat in Foundry's photosensitive mode never gets it |
+| `impact` | full / local / off | impact frames (`L.impact`); a photosensitive seat gets local |
 | `palette` | mood / contrast / cvd | contrast: white-yellow letters, black ink and extrusion, black outer line, no texture (a caller's own `colors` stay, ink turns black); cvd: every colour family remapped to the Okabe-Ito set, no green, no red-green pair (a caller's own `colors` stay) |
 | `announce` | on / off | each word (or `alt`) is read by screen readers through one polite live region (`#moinen-letters-say`); the layers stay aria-hidden |
 | `limitScreen`, `limitWorld` | 1-32, 4-96 | `L.limits` |
-| `movement` (WORLD, the GM's) | smooth / stepped | the invincible style's motion type on every seat (1.9.2 MODE); a player sees it as text |
-| `face` (WORLD, the GM's) | league / anton | the invincible style's face on every seat (1.9.7 FONTSEL, League Gothic by default); a player sees it as text |
+| `movement` | smooth / stepped | the invincible style's motion type on every seat (1.9.2 MODE) |
+| `face` | league / anton | the invincible style's face on every seat (1.9.7 FONTSEL, League Gothic by default) |
+
+The photosensitivity guard is NOT a setting (1.9.16): always on, `photosafe: false` changes nothing (at most 2 flash frames per
+second, none on a word taller than 20 % of the viewport, colour plates held still). Migration once per world (`tableMigrated`):
+plus-ultra's `lettersTable` if plus-ultra is active and it is stored, else the GM's old client values, else defaults; players' old values stay unused in their
+browsers. While plus-ultra keeps its GMALL mirror, the GM's seat keeps `table` and `invincible-plus-ultra.lettersTable` equal.
 World setting `styles` (GM): the saved named styles. Read the values: `L.prefs` / `L.settings()`.
 
 Authoring (any client, this session; `L.saveStyle` also stores a style in the world):
