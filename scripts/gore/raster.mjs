@@ -18,7 +18,7 @@ export const PAL = {
   dried:  { out: [34, 8, 8],   d: [66, 14, 14], m: [84, 22, 20], b: [96, 28, 24],  lit: [104, 34, 30],  spec: [104, 34, 30] }
 };
 /* GORE2: the pale dry crust of the crumbling front and its flakes (every stage: a splash cut early crumbles too) */
-PAL.wet.crumb = PAL.drying.crumb = PAL.dried.crumb = [178, 94, 74];
+PAL.wet.crumb = PAL.drying.crumb = PAL.dried.crumb = [214, 128, 100];
 /* the photosensitive seat's blood: no saturated red (R / (R + G + B) < 0.7 for every colour) */
 export const PAL_SAFE = {
   wet:    { out: [44, 16, 18], d: [84, 32, 32], m: [110, 42, 40], b: [130, 54, 50], lit: [160, 88, 82], spec: [222, 196, 190] },
@@ -548,7 +548,7 @@ function colour(sf, b, pal) {
            the brightest point of a big wet dome is its glint */
         const v = Lf[i] + ((x + y) & 1 ? 0.035 : -0.035);
         c = v > 0.97 && st === 0 && t > 0.5 ? P.spec : v > 0.84 ? P.lit : v > 0.56 ? P.b : v > 0.3 ? P.m : P.d;
-        if (st === 2 && !(at(x - 2, y) <= THR || at(x + 2, y) <= THR || at(x, y - 2) <= THR || at(x, y + 2) <= THR)) c = (x + y) & 1 ? P.m : P.b;     // the dried crust: rim dark, the middle paler
+        if (st === 2 && !(at(x - 2, y) <= THR || at(x + 2, y) <= THR || at(x, y - 2) <= THR || at(x, y + 2) <= THR)) c = P.b;     // the dried crust: rim dark, the middle paler and flat (GORE2: no checker, it read as a screen door)
       }
       rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = Math.round(ALPHA[st] * (Asee[i] ? CENTRE.alpha : 1) * (Sett[i] ? SEE : 1));
     } else if (C[i]) {
