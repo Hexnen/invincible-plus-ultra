@@ -519,8 +519,11 @@ export function safeRect(view, covers = [], margin = 8) {
     the token's face, review 12). cap = word cap height, aspect = word width / cap; numCap; up / down = room for the motion (a rise goes
     up about half a cap, a drop comes from above, an overshoot swells ~15 %). -> { w, h, word: {dx, dy}, nums: [{dx, dy}] } offsets from
     the group centre */
-export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, up = 0.5, down = 0.25 }) {
-  const ww = cap * Math.max(0.6, aspect) * (tall ? 1.04 : 1.12), wh = cap * (tall ? tall * 1.04 : 1.3);      // tall/aspect measured from the drawn word: a small margin only
+export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, up = 0.5, down = 0.25, pad = 0 }) {
+  /* CALLERS: pad = the standing word's footprint past its hold box, each side, in caps (standPad: the life of a held word + the ink rim of a
+     world word); 0 = as before (no measured box yet) */
+  const pw = 2 * cap * Math.max(0, Number(pad) || 0);
+  const ww = cap * Math.max(0.6, aspect) * (tall ? 1.04 : 1.12) + pw, wh = cap * (tall ? tall * 1.04 : 1.3) + pw;      // tall/aspect measured from the drawn word: a small margin only
   /* FXI-TOKEN (ADVI 5: "-15" ran under the challenge cards, "-3" onto a neighbour): Bungee digits with their cut edge and extrusion draw about
      0.8 of a cap wide, not 0.68: the group box (and so the side chosen for it) holds the whole number */
   const nw = nums.map((t) => numCap * (0.25 + 0.8 * letters(t) + (/^[+-]/.test(t) ? 0.55 : 0)));
@@ -532,6 +535,27 @@ export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, u
   const wordC = { dx: -side * (colW ? (colW * 1.02 + gap) / 2 : 0), dy: top + wh / 2 };
   const numsC = nw.map((x, i) => ({ dx: wordC.dx + side * (ww / 2 + gap + colW * 0.51), dy: top + wh * 0.62 + nh * i }));
   return { w, h, word: wordC, nums: numsC };
+}
+
+/* CALLERS (engine 1.9.10 HOLDS, 1.9.12 RIMUNDER): the hold box the engine measures (plan._holdBox) is the word at rest. Two things reach past
+   it for as long as the word stands: its LIFE (a held invincible word keeps moving inside LIFE_REACH of its rest pose: 0.05 caps, 4.5 % of
+   its size) and, for a word in world space (every token reaction), the ink RIM painted under the whole lettering (0.07 of the cap height,
+   at least 2.5 px, outside the keyline). STAND mirrors the engine's tables (motion.mjs LIFE_REACH, design.mjs INV_RIM; check-callers M pins
+   them to the vendored engine: the running engine does not hand them out yet, request CALLERS-E1). The entrance reaches further still
+   (L.measure reach): that room is kept from the view's edges (edgeBox), not from the neighbours (a slam passes them for a few frames). */
+export const STAND = { lifeXY: 0.05, lifeS: 1.045, rimW: 0.07, rimMin: 2.5, keyK: 0.6 };
+/** the footprint margin past the hold box, each side, in caps: hb = { w, h } (caps), halo = plan.hand.halo, inkW = plan.hand.inkW, px = cap px */
+export function standPad(hb, { halo = null, inkW = 0, px = 40 } = {}) {
+  const life = (STAND.lifeS - 1) / 2 * Math.max(Number(hb?.w) || 0, Number(hb?.h) || 0) + STAND.lifeXY;
+  const rim = halo ? Math.max(STAND.rimW, STAND.rimMin / Math.max(1, Number(px) || 40)) + (Number(inkW) || 0) * STAND.keyK : 0;
+  return Math.round((life + rim) * 1000) / 1000;
+}
+/** the box kept inside the view (symmetric round the group's centre, px): the group box, and the word's entrance reach (caps, from L.measure,
+    centred on the word's place in the group) */
+export function edgeBox(g, cap, reach) {
+  if (!g || !reach) return g ? { w: g.w, h: g.h } : null;
+  const rx = Math.max(Number(reach.l) || 0, Number(reach.r) || 0), ry = Math.max(Number(reach.u) || 0, Number(reach.d) || 0);
+  return { w: Math.max(g.w, 2 * (Math.abs(g.word?.dx ?? 0) + rx * cap)), h: Math.max(g.h, 2 * (Math.abs(g.word?.dy ?? 0) + ry * cap)) };
 }
 
 /* ---------------------------------------------------------------- the impact frame (WIRE1; the engine's L.impact, scripts/letters/impact/)

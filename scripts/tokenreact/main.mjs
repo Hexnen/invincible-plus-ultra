@@ -763,11 +763,16 @@ function planOf(L, it) {
   /* CROWD (ADVX 8: "THWUP!UP!": two words placed on letter-count estimates, then each re-fitted alone on its drawn box against the others'
      stale estimates): the word's drawn box is asked of the engine BEFORE it is placed (L.planFor: the same plan the word will play, with the
      table's options, reduced motion off, so every seat plans one box), so the whole moment is laid out once on real boxes and stays put */
-  if (word && L.planFor) {
+  /* CALLERS (engine 1.9.11 L.measure): the same plan, plus the word's real entrance reach; the footprint (life + rim) pads the word's box */
+  if (word && (L.measure || L.planFor)) {
     try {
-      const hb = L.planFor(lk.word, { ...wordOpts, reduced: false })?.plan?._holdBox;
+      const ro = { ...wordOpts, reduced: false };
+      const m = L.measure ? L.measure(lk.word, ro) : null;
+      const pl = m?.plan ?? L.planFor(lk.word, ro)?.plan;
+      const hb = pl?._holdBox;
       if (hb && hb.w > 0 && hb.h > 0) {
-        plan.gArgs = { ...gArgs, aspect: hb.w, tall: hb.h };
+        plan.gArgs = { ...gArgs, aspect: hb.w, tall: hb.h, pad: P.standPad(hb, { halo: pl.hand?.halo, inkW: pl.hand?.inkW, px: cap }) };
+        if (m?.reach && m.unit > 0) plan.reach = { l: m.reach.l / m.unit, r: m.reach.r / m.unit, u: m.reach.u / m.unit, d: m.reach.d / m.unit };
         g = P.group(plan.gArgs); plan.g = g; plan.box = { w: g.w, h: g.h };
         const f = P.fitDrawn({ cap, hbW: hb.w, hbH: hb.h, tokenPx: tokPx, vh: vh(), vw: vw() });
         if (f < 0.98) shrink(plan, f);
@@ -790,6 +795,7 @@ function measure(plan, tok = null) {
   /* the drawn box over the limits: the word (live, its handle's scale is read every frame) and the numbers not yet started shrink with it */
   const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: vw() });
   if (f < 0.98) shrink(plan, f);      // the numbers already started (they wait for the blow's instant) shrink too
+  if (!(plan.gArgs.pad > 0)) { const hd = plan.wordH?.plan?.hand; plan.gArgs = { ...plan.gArgs, pad: P.standPad(hb, { halo: hd?.halo, inkW: hd?.inkW, px: plan.cap }) }; }      // CALLERS: the footprint
   const regroup = () => { const g = P.group({ ...plan.gArgs, aspect: hb.w, tall: hb.h }); plan.g = g; plan.box = { w: g.w, h: g.h }; };
   regroup();
   /* FXLT2 (ADVT2 6, 10): the side was chosen on the letter-count estimate; with the drawn box known (the first frame) it is chosen again,
@@ -826,7 +832,10 @@ function follow(tok, plan, member) {
          slid under them): inside the safe rect, then out of the floating panels, on the side that moves it least and stays in view.
          SAMEPIC (ADVX 13: "BAM! -2" cut by the top on the GM's seat, whole on the player's): first into the STANDARD view (the same band
          on every seat), then this seat's own limits, which leave it alone unless this seat really has less room */
-      if (P.onView(tr, std) && P.onView(tr, safe)) c = P.clampInto(P.avoidRects(P.clampInto(P.clampInto(c, box, std), box, safe), box, view.panelsCached(), safe), box, safe);
+      /* CALLERS: the view's edges keep the word's whole entrance reach (L.measure), so the engine's own keep-in-view (which moves a word by
+         its reach on THIS seat) has nothing left to move; panels and neighbours keep the standing word's box */
+      const eb0 = P.edgeBox(plan.g, plan.cap || 0, plan.reach), eb = eb0 ? { w: eb0.w * k, h: eb0.h * k } : box;
+      if (P.onView(tr, std) && P.onView(tr, safe)) c = P.clampInto(P.avoidRects(P.clampInto(P.clampInto(c, eb, std), eb, safe), box, view.panelsCached(), safe), eb, safe);
       /* CROWD (ADVX 14): the token is not on THIS seat's view (off screen, under the open sidebar): off-panel, at the view's edge nearest to it */
       else c = P.clampInto(P.avoidRects(P.offPanel(c, box, safe), box, view.panelsCached(), safe), box, safe);
       const off = member < 0 ? plan.g.word : plan.g.nums[member];

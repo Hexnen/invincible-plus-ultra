@@ -89,4 +89,46 @@ const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
   ok(n > 2000 && !bad.length, `W: the token reactions' ${n} words pass the two-language check (${bad.slice(0, 5).join(", ")})`);
 }
 
+/* ---------- M: the token reactions' boxes hold the standing word's real footprint; the view keeps its whole reach ---------- */
+{
+  const MO = await import("../letters/motion.mjs"), DE = await import("../letters/design.mjs");
+  eq([P.STAND.lifeXY, P.STAND.lifeS, P.STAND.rimW, P.STAND.rimMin], [MO.LIFE_REACH.xy, MO.LIFE_REACH.s, DE.INV_RIM.ink.w, DE.INV_RIM.ink.min], "M: STAND mirrors the engine's life reach and ink rim (motion.mjs LIFE_REACH, design.mjs INV_RIM)");
+  const hb = { w: 3, h: 1.3 };
+  const p0 = P.standPad(hb, {}), p1 = P.standPad(hb, { halo: "ink", inkW: 0.04, px: 40 }), p2 = P.standPad(hb, { halo: "ink", inkW: 0.04, px: 12 });
+  ok(Math.abs(p0 - (0.0225 * 3 + 0.05)) < 1e-3 && Math.abs(p1 - p0 - (0.07 + 0.024)) < 1e-3 && p2 > p1, `M: footprint = life (+ the rim of a world word, at least 2.5 px): ${p0} / ${p1} / ${p2} caps`);
+  const a = { cap: 40, aspect: 3, tall: 1.3, nums: ["-2"], numCap: 32, side: 1, up: 0.4, down: 0.2 };
+  const g0 = P.group(a), g1 = P.group({ ...a, pad: p1 });
+  eq(P.group({ ...a, pad: 0 }), g0, "M: pad 0 = the box as before");
+  const b0 = P.group({ ...a, nums: [] }), b1 = P.group({ ...a, nums: [], pad: p1 });
+  ok(Math.abs(g1.w - g0.w - 2 * 40 * p1) < 1e-6 && Math.abs(b1.h - b0.h - 2 * 40 * p1) < 1e-6, "M: the word's part grows by its footprint on every side");
+  const gapA = (g) => (g.nums[0].dx - g.word.dx) - (40 * 3 * 1.04 + 2 * 40 * (g === g1 ? p1 : 0)) / 2;
+  ok(Math.abs(gapA(g1) - gapA(g0)) < 1e-6, "M: the number keeps its gap from the word's footprint (not from its bare hold box)");
+  const reach = { l: 2.1, r: 2.1, u: 1.2, d: 1.2 }, eb = P.edgeBox(g1, 40, reach);
+  ok(eb.w >= g1.w && eb.h >= g1.h && eb.w / 2 >= Math.abs(g1.word.dx) + 2.1 * 40 - 1e-9 && eb.h / 2 >= Math.abs(g1.word.dy) + 1.2 * 40 - 1e-9, "M: the edge box holds the group and the word's whole entrance reach");
+  eq(P.edgeBox(g1, 40, null), { w: g1.w, h: g1.h }, "M: no reach measured: the group box");
+  const m = src("../tokenreact/main.mjs");
+  ok(/L\.measure \? L\.measure\(lk\.word, ro\)/.test(m) && /pad: P\.standPad\(hb, \{ halo: pl\.hand\?\.halo/.test(m) && /plan\.reach = \{ l: m\.reach\.l \/ m\.unit/.test(m), "M: a reaction's word is measured once (L.measure: hold box, rim, reach) before it is placed");
+  ok(/P\.edgeBox\(plan\.g, plan\.cap \|\| 0, plan\.reach\)/.test(m) && /P\.clampInto\(P\.clampInto\(c, eb, std\), eb, safe\)/.test(m) && /view\.panelsCached\(\), safe\), eb, safe\)/.test(m), "M: follow keeps the reach inside the standard and this seat's view, the standing box off the panels");
+  /* the real engine (fonts in node): every reaction word's standing footprint stays inside its group box, and the engine's reach holds it */
+  const { setup } = await import("../letters/testenv.mjs");
+  const E = await setup(); const L = E.engine; L.lookStyle("invincible");
+  const tok = E.addToken("t1", 1950, 1450);
+  let n = 0, worst = 0, reachOk = true;
+  for (const [stat, from, to] of [["health", 8, 7], ["health", 8, 4], ["health", 8, 0], ["health", 0, 3], ["resolve", 8, 6], ["resolve", 8, 0], ["resolve", 4, 7]]) for (const lang of ["en", "pl"]) for (let s = 0; s < 3; s++) {
+    const c = P.classify({ stat, from, to, max: 8 }), lk = P.look({ show: true, kind: c.kind, num: c.n }, c, lang, `m${s}`);
+    lk.word = P.wordFor(lk, L.vocab, { lang, seed: `m${s}` }); if (!lk.word) continue;
+    const o = { space: "world", token: tok.document, anchor: "center", reduced: false, fit: "screen", mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: `m${s}`, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...lk.motion, at: { x: 2000, y: 1400 } };
+    const me = L.measure(lk.word, o), h0 = me.plan._holdBox, px = me.px, pad = P.standPad(h0, { halo: me.plan.hand?.halo, inkW: me.plan.hand?.inkW, px });
+    ok(me.plan.hand?.halo === "ink", `M: ${lk.word}: a reaction word on the map is drawn with the ink rim (hand.halo ${me.plan.hand?.halo})`);
+    const g = P.group({ cap: px, aspect: h0.w, tall: h0.h, nums: [], numCap: px * 0.8, side: 1, up: 0.4, down: 0.2, pad });
+    const foot = { x: (h0.w / 2 * P.STAND.lifeS + P.STAND.lifeXY) * px + (Math.max(0.07 * px, 2.5) + (me.plan.hand?.inkW ?? 0) * 0.6 * px), y: (h0.h / 2 * P.STAND.lifeS + P.STAND.lifeXY) * px + (Math.max(0.07 * px, 2.5) + (me.plan.hand?.inkW ?? 0) * 0.6 * px) };
+    worst = Math.max(worst, foot.x - g.w / 2);
+    if (!(me.reach.l >= foot.x - 1.5 && me.reach.u >= foot.y - 1.5)) { reachOk = false; if (process.env.CALLERS_VERBOSE) console.log("reach", lk.word, lk.motion.in, lk.motion.holdKind, JSON.stringify(me.reach), JSON.stringify(foot), px, !!me.plan.motion?.life); }
+    n++;
+  }
+  ok(n >= 30 && worst <= 0.5, `M: ${n} real reaction words: the standing footprint (life + rim) stays inside the group box (worst ${worst.toFixed(2)} px over)`);
+  ok(reachOk, "M: the engine's measured reach holds the standing footprint (within 1.5 px: the reach is the bigger box, kept from the view's edges)");
+  E.restoreWarn();
+}
+
 done("check-callers");
