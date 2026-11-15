@@ -2,20 +2,24 @@
    token reactions with their animations and the language of the shown words, grouped by what they affect (defs.TABS). Foundry's own
    vocabulary: sheet tabs, fieldsets, form groups with the hint under the label. The GM's change is saved at once for the table (no Save
    button: every seat follows live, the footer says "Saved for the table"); a player sees the same window with the GM's choices as text,
-   updated live when the GM changes them. Opened from Game Settings (menu "Comic effects"), the Plus Ultra menu, and the engine's own
-   settings window (GM). */
+   updated live when the GM changes them. Opened from Game Settings (menu "Comic effects") and the Plus Ultra menu.
+   UNMIRROR: the lettering rows are the engine's own table (L.table, written with L.setTable, followed through the engine's hook
+   "moinenLettersTable"); this window keeps no copy of them. An older engine copy (no L.setTable) shows its own screen's values read-only
+   under a note (defs.engineMode, UNMIRROR-1). */
 import * as D from "./defs.mjs";
 import { t } from "./lang.mjs";
 import * as T from "./main.mjs";
 
-const { MOD, NS, TABLE_KEY } = D;
+const { MOD } = D;
+let L = null;                       // the engine that runs on this page (set at every render)
+const tableEngine = () => D.engineMode(L) === "table";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const isGM = () => !!game.user?.isGM;
 const fmt = (v, step) => { const n = Number(v); if (!Number.isFinite(n)) return String(v ?? ""); const d = String(step ?? 1).split(".")[1]?.length ?? 0; return n.toLocaleString(game.i18n?.lang || "en", { minimumFractionDigits: d, maximumFractionDigits: d }); };
 
 /* ---------- a row's spec and value ---------- */
 function spec(row) {
-  if (row.src === "info") return { type: "info" };
+  if (row.src === "info" || row.src === "seat") return { type: "info" };
   if (row.src === "mod") {
     const cfg = game.settings.settings.get(`${MOD}.${row.key}`);
     if (!cfg) return null;
@@ -23,21 +27,23 @@ function spec(row) {
     return { type, choices: row.choices ?? (cfg.choices ? Object.keys(cfg.choices) : []), range: cfg.range ?? null, default: cfg.default };
   }
   const s = D.engineSpec(row.key);
-  if (!s) return null;
-  if (row.src === "engineWorld" && !game.settings.settings.has(`${NS}.${row.key}`)) return null;
-  return { ...s, default: row.src === "engine" ? D.cleanTable(null)[row.key] : game.settings.settings.get(`${NS}.${row.key}`)?.default };
+  if (!s || D.engineMode(L) === "none") return null;
+  return { ...s, default: D.ENGINE_DEFAULTS[row.key] };
 }
 function value(row) {
   try {
     if (row.src === "mod") return game.settings.get(MOD, row.key);
-    if (row.src === "engine") return T.table()[row.key];
-    if (row.src === "engineWorld") return game.settings.get(NS, row.key);
+    if (row.src === "engine") return D.engineValue(L, row.key);
+    if (row.src === "seat") return D.seatNote(L);
   } catch { /* not registered */ }
   return undefined;
 }
-const values = () => Object.fromEntries(D.ROWS.map((r) => [r.id, value(r)]));
+export const values = () => Object.fromEntries(D.ROWS.map((r) => [r.id, value(r)]));
+/** the engine this window reads and writes (set at every render; a check sets it directly) */
+export function useEngine(l) { L = l ?? null; return L; }
 const choiceLabel = (row, c) => t(`IPT.Row.${row.id}.${c}`);
 function shownText(row, sp, v) {
+  if (row.src === "seat") return t(`IPT.Row.${row.id}.${v ?? "none"}`);
   if (sp.type === "info") return t(`IPT.Row.${row.id}.value`);
   if (sp.type === "bool") return v ? t("IPT.On") : t("IPT.Off");
   if (sp.type === "range") return fmt(v, sp.range?.step);
@@ -49,16 +55,20 @@ let uid = 0;
 function rowHtml(row, gm, vals) {
   const sp = spec(row);
   if (!sp) return "";
+  if (row.src === "seat" && !vals[row.id]) return "";       // an older engine: nothing to say about this screen
   const id = `ipt-${++uid}`, v = vals[row.id], name = t(`IPT.Row.${row.id}.Name`), hint = t(`IPT.Row.${row.id}.Hint`);
   const hidden = D.shown(row, vals) ? "" : " hidden";
+  /* an engine row is the GM's control only when the engine holds the table (an older copy: this screen's own value, read-only) */
+  const edit = gm && !(row.src === "engine" && !tableEngine());
+  const icon = row.src === "seat" ? "fa-display" : "fa-shield-halved";
   let control;
-  if (!gm || sp.type === "info") control = `<output id="${id}" class="ipt-ro${sp.type === "info" ? " ipt-pin" : ""}" data-row="${row.id}" aria-describedby="${id}-h">${sp.type === "info" ? '<i class="fa-solid fa-shield-halved" inert></i> ' : ""}${esc(shownText(row, sp, v))}</output>`;
+  if (!edit || sp.type === "info") control = `<output id="${id}" class="ipt-ro${sp.type === "info" ? " ipt-pin" : ""}" data-row="${row.id}" aria-describedby="${id}-h">${sp.type === "info" ? `<i class="fa-solid ${icon}" inert></i> ` : ""}${esc(shownText(row, sp, v))}</output>`;
   else if (sp.type === "bool") control = `<input type="checkbox" id="${id}" data-row="${row.id}"${v ? " checked" : ""} aria-describedby="${id}-h">`;
   else if (sp.type === "pick") control = `<select id="${id}" data-row="${row.id}" aria-describedby="${id}-h">${sp.choices.map((c) => `<option value="${esc(c)}"${c === v || (row.id === "splash.motion" && c === "auto" && v === "full") ? " selected" : ""}>${esc(choiceLabel(row, c))}</option>`).join("")}</select>`;
   else control = `<input type="range" id="${id}" data-row="${row.id}" min="${sp.range.min}" max="${sp.range.max}" step="${sp.range.step}" value="${esc(v)}" aria-describedby="${id}-h"><output class="ipt-val" for="${id}" aria-hidden="true">${esc(fmt(v, sp.range.step))}</output>`;
   // A list whose choices are whole sentences (the layers) gets the full width under its text, never a cut label.
   const wide = sp.type === "pick" && sp.choices.some((c) => String(choiceLabel(row, c)).length > 30);
-  const kind = (sp.type === "bool" && gm ? " ipt-bool" : "") + (wide ? " ipt-wide" : "");
+  const kind = (sp.type === "bool" && edit ? " ipt-bool" : "") + (wide ? " ipt-wide" : "");
   return `<div class="form-group ipt-row${kind}" data-row-id="${row.id}"${hidden}>
     <label for="${id}">${esc(name)}</label>
     <div class="form-fields">${control}</div>
@@ -71,12 +81,14 @@ function tabHtml(tab, gm, vals, active) {
     if (s.panel) return `<fieldset class="ipt-sec ipt-panel-host" data-panel="${s.panel}">${legend}<div class="ipt-mount"></div></fieldset>`;
     return `<fieldset class="ipt-sec">${legend}${s.rows.map((r) => rowHtml(r, gm, vals)).join("")}</fieldset>`;
   }).join("");
+  /* UNMIRROR-1: an older engine copy runs on this page: its options are each screen's own there (said once, above the rows) */
+  const old = tab.id === "letters" && D.engineMode(L) === "old" ? `<p class="ipt-note" role="note"><i class="fa-solid fa-triangle-exclamation" inert></i><span>${esc(t("IPT.Engine.old", { version: L?.version ?? "?" }))}</span></p>` : "";
   const preview = tab.id === "letters" || tab.id === "splash";
   const foot = gm || preview ? `<footer class="ipt-foot">
       ${preview ? `<button type="button" data-action="preview" data-tab-id="${tab.id}" data-tooltip="${esc(t("IPT.PreviewHint"))}"><i class="fa-solid fa-play" inert></i> ${esc(t("IPT.Preview"))}</button>` : ""}
       ${gm ? `<button type="button" data-action="defaults" data-tab-id="${tab.id}" data-tooltip="${esc(t("IPT.DefaultsHint"))}"><i class="fa-solid fa-rotate-left" inert></i> ${esc(t("IPT.Defaults"))}</button>` : ""}
     </footer>` : "";
-  return `<section class="tab ipt-tab${active ? " active" : ""}" data-group="main" data-tab="${tab.id}" role="tabpanel">${secs}${foot}</section>`;
+  return `<section class="tab ipt-tab${active ? " active" : ""}" data-group="main" data-tab="${tab.id}" role="tabpanel">${old}${secs}${foot}</section>`;
 }
 function html(activeTab) {
   const gm = isGM(), vals = values();
@@ -90,17 +102,22 @@ function html(activeTab) {
 }
 
 /* ---------- writing (the GM) ---------- */
+/* the engine's table: quick changes (a slider dragged) go out as one L.setTable of only the changed keys; the engine merges them into its
+   table, writes one world document and every seat follows on its next word */
 let tableWrite = null, tableTimer = 0;
 function writeTable(k, v) {
-  tableWrite = { ...(tableWrite ?? T.table()), [k]: v };
+  tableWrite = { ...(tableWrite ?? {}), [k]: v };
   clearTimeout(tableTimer);
-  return new Promise((res, rej) => { tableTimer = setTimeout(() => { const next = tableWrite; tableWrite = null; game.settings.set(MOD, TABLE_KEY, next).then(res, rej); }, 120); });
+  return new Promise((res, rej) => { tableTimer = setTimeout(() => {
+    const next = tableWrite; tableWrite = null;
+    if (!tableEngine()) { rej(new Error(t("IPT.Engine.oldShort"))); return; }
+    Promise.resolve(L.setTable(next)).then((ok) => (ok === false ? rej(new Error(t("IPT.Notice.refused"))) : res(ok)), rej);
+  }, 120); });
 }
-function write(row, v) {
+export function write(row, v) {
   if (!isGM()) return Promise.reject(new Error("GM only"));
   if (row.src === "mod") return game.settings.set(MOD, row.key, v);
   if (row.src === "engine") return writeTable(row.key, v);
-  if (row.src === "engineWorld") return game.settings.set(NS, row.key, v);
   return Promise.resolve();
 }
 function readControl(el, row) {
@@ -125,6 +142,7 @@ function appClass() {
     static TABS = { main: { initial: "letters", tabs: D.TABS.map((x) => ({ id: x.id })) } };
     get title() { return t("IPT.Title"); }
     async _renderHTML() {
+      useEngine(await T.engine());
       const div = document.createElement("div");
       div.className = "ipt-root";
       div.innerHTML = html(this.tabGroups.main ?? "letters");
@@ -148,10 +166,12 @@ function appClass() {
       };
       result.addEventListener("input", onInput);
       result.addEventListener("change", onChange);
-      /* every seat's window follows the table's values live (a player sees the GM's change at once) */
-      /* a first change from the default CREATES the world Setting document and "Defaults" deletes it: all three hooks, not only update */
-      const follow = (s) => { try { const k = String(s?.key ?? ""); if (k.startsWith(`${MOD}.`) || k.startsWith(`${NS}.`)) this.refresh(); } catch { /* closed */ } };
+      /* every seat's window follows the table's values live (a player sees the GM's change at once): this module's own world settings
+         (a first change from the default CREATES the world Setting document and "Defaults" deletes it: all three hooks, not only update)
+         and the engine's table (its hook, on every seat, also when this screen's own reduced motion or photosensitive mode changes) */
+      const follow = (s) => { try { if (String(s?.key ?? "").startsWith(`${MOD}.`)) this.refresh(); } catch { /* closed */ } };
       const hooks = ["createSetting", "updateSetting", "deleteSetting"].map((h) => [h, Hooks.on(h, follow)]);
+      hooks.push(["moinenLettersTable", Hooks.on("moinenLettersTable", () => { try { this.refresh(); } catch { /* closed */ } })]);
       this._off = () => { result.removeEventListener("input", onInput); result.removeEventListener("change", onChange); for (const [h, id] of hooks) Hooks.off(h, id); for (const off of offs) try { off?.(); } catch { /* gone */ } };
     }
     async close(o) { this._off?.(); this._off = null; return super.close(o); }
@@ -163,7 +183,11 @@ function appClass() {
       for (const el of root.querySelectorAll("[data-row]")) {
         const row = D.rowById(el.dataset.row), sp = row && spec(row); if (!sp) continue;
         const v = vals[row.id];
-        if (el.tagName === "OUTPUT") { if (sp.type !== "info") el.textContent = shownText(row, sp, v); continue; }
+        if (el.tagName === "OUTPUT") {
+          if (row.src === "seat") { const i = el.querySelector("i"); el.textContent = shownText(row, sp, v); if (i) el.prepend(i, " "); }
+          else if (sp.type !== "info") el.textContent = shownText(row, sp, v);
+          continue;
+        }
         if (document.activeElement === el) continue;
         if (el.type === "checkbox") el.checked = !!v;
         else if (el.tagName === "SELECT") el.value = row.id === "splash.motion" && v === "full" ? "auto" : String(v);
@@ -194,14 +218,14 @@ function appClass() {
       const tab = D.TABS.find((x) => x.id === btn?.dataset?.tabId); if (!tab) return;
       const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: t("IPT.Defaults") }, content: `<p>${esc(t("IPT.DefaultsHint"))}</p>` }).catch(() => false);
       if (!ok) return;
-      const rows = tab.sections.flatMap((s) => s.rows ?? []).filter((r) => r.src !== "info");
+      const rows = tab.sections.flatMap((s) => s.rows ?? []).filter((r) => r.src === "mod" || r.src === "engine");
       const engine = {};
       for (const r of rows) {
         const sp = spec(r); if (!sp) continue;
         if (r.src === "engine") engine[r.key] = sp.default;
         else if (!Object.is(value(r), sp.default)) await write(r, sp.default).catch(() => {});
       }
-      if (Object.keys(engine).length) await game.settings.set(MOD, TABLE_KEY, { ...T.table(), ...engine });
+      if (Object.keys(engine).length && tableEngine()) await L.setTable(engine);
       this.refresh(); this.#status(t("IPT.Saved"));
     }
   };
@@ -267,9 +291,8 @@ const CSS = `
 .ipt-app .ipt-status { flex: none; margin: 0; padding: 0.35rem 1rem; min-height: 1.9rem; font-size: var(--font-size-12, 0.75rem); color: var(--color-text-secondary); border-top: 1px solid var(--color-border, rgba(127,127,127,0.35)); opacity: 0; transition: opacity 180ms ease-out; }
 .ipt-app .ipt-status.on { opacity: 1; }
 .ipt-app .ipt input:focus-visible, .ipt-app .ipt select:focus-visible, .ipt-app .ipt button:focus-visible, .ipt-app .ipt nav a:focus-visible { outline: 2px solid var(--color-warm-2, #ff6400); outline-offset: 1px; }
-.ipt-engine-note { margin: 0 0 0.6rem; padding: 0.55rem 0.75rem; border: 1px solid var(--color-border, rgba(127,127,127,0.35)); border-radius: 6px; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-.ipt-engine-note p { margin: 0; flex: 1 1 18rem; line-height: 1.4; }
-.ipt-engine-note button { flex: 0 0 auto; width: auto; padding: 0 0.8rem; }
+.ipt-app .ipt-note { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.55rem 0 0; padding: 0.55rem 0.75rem; line-height: 1.4; border: 1px solid var(--color-border, rgba(127,127,127,0.35)); border-radius: 6px; }
+.ipt-app .ipt-note > i { flex: none; margin-top: 0.15rem; color: var(--color-text-secondary); }
 .ipt-app .ipt .tab { container-type: inline-size; }
 @container (max-width: 26rem) { .ipt-app .ipt-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "hint" "ctl"; } .ipt-app .ipt-row .form-fields { justify-content: flex-start; } }
 @media (prefers-reduced-motion: reduce) { .ipt-app .ipt-status { transition: none; } }

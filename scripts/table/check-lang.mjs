@@ -32,6 +32,7 @@ for (const tab of TABS) {
 for (const r of ROWS) {
   used.add(`IPT.Row.${r.id}.Name`); used.add(`IPT.Row.${r.id}.Hint`);
   if (r.src === "info") { used.add(`IPT.Row.${r.id}.value`); continue; }
+  if (r.src === "seat") { for (const c of ["none", "reduced", "photo", "both"]) used.add(`IPT.Row.${r.id}.${c}`); continue; }
   const choices = r.src === "mod" ? MOD_CHOICES[r.id] ?? [] : engineSpec(r.key)?.choices ?? [];
   for (const c of choices) used.add(`IPT.Row.${r.id}.${c}`);
 }

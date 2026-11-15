@@ -5,14 +5,15 @@
    onChange on every seat, clientSettingChanged after a client write):
    A  inventory: no client-scope setting registered by the splash, the token reactions, the token animations or the table settings; the
       source of those areas names no client scope; the window lists every converted option;
-   B  a player cannot change any: our code never writes a world setting from a player's seat (start, migration, the window's writer), a
-      player's hand change of an engine preference is put back to the table's and he is told; the server refuses the rest (Foundry);
-   C  a GM's change reaches a second seat live: the table's engine values are copied into the seat's engine settings on onChange; the
-      splash's shown words follow the table's language on an English and on a Polish seat alike;
+   B  a player cannot change any: our code never writes a world setting from a player's seat (start, migration, the window's writer); the
+      server refuses the rest (Foundry);
+   C  a GM's change reaches a second seat live: the splash's shown words follow the table's language on an English and on a Polish seat
+      alike;
    D  migration from a world with old client values: the GM's own values become the table's (with the stated exceptions), once; a player's
-      own values are left untouched (engine ones backed up), he is told once;
-   E  the seat's own accessibility signals (system reduced motion, Foundry photosensitive mode) still apply on that seat; the
-      photosensitivity guard is never off. */
+      own values are left untouched, he is told once;
+   E  the seat's own accessibility signals (system reduced motion, Foundry photosensitive mode) still apply on that seat.
+   UNMIRROR: the lettering engine's preferences are the engine's own table since 1.9.16 (L.table / L.setTable); this module no longer
+   mirrors them, so their checks moved to sweep-checks/unmirror.mjs (two seats on the real engine settings code). */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -82,9 +83,6 @@ globalThis.canvas = { ready: false };
 const warn0 = console.warn, log0 = console.error;
 console.warn = (...a) => { if (!/LETR|lettering engine|token reactions|token animations|font/i.test(a.map(String).join(" "))) warn0(...a); };
 console.error = (...a) => { if (!/LETR|font/i.test(a.map(String).join(" "))) log0(...a); };
-/* the engine's own settings, as scripts/letters/tools.mjs registers them (client except the two world ones) */
-const Prefs = await import("../letters/prefs.mjs");
-for (const [k, d] of Object.entries(Prefs.SETTINGS)) settingsApi.register(NS, k, { scope: Prefs.scopeOf(k), config: false, type: d.type === "bool" ? Boolean : d.type === "num" ? Number : String, default: d.default });
 settingsApi.register("core", "photosensitiveMode", { scope: "client", default: false });
 
 /* the old world: the GM's own earlier client values (as Foundry stored them) */
@@ -114,7 +112,7 @@ const client = ours.filter((c) => c.scope === "client");
 ck(`A1 no client-scope setting of the splash / reactions / animations / table remains (${client.map((c) => c.key).join(", ") || "none"})`, client.length === 0);
 ck("A2 every converted option is registered and world-scoped", D.CONVERTED.every(({ key }) => registry.get(`${MOD}.${key}`)?.scope === "world"));
 ck("A3 the table's language of the splash words is a world setting (default English)", registry.get(`${MOD}.splashLang`)?.scope === "world" && registry.get(`${MOD}.splashLang`)?.default === "en");
-ck("A4 the table's engine preferences are a world setting", registry.get(`${MOD}.${D.TABLE_KEY}`)?.scope === "world");
+ck("A4 no copy of the engine's preferences is registered in a world that never had one (UNMIRROR: the engine holds them)", !registry.has(`${MOD}.${D.LEGACY_KEY}`));
 ck("A5 none of them is listed twice in Foundry's own list (the window shows them)", ours.filter((c) => c.config === true).every((c) => !/^(splash|tokenReact|tokenAnim|letters|table)/.test(c.key)));
 ck("A6 one settings menu for everyone (players open it read-only)", settingsApi.menus.get(`${MOD}.tableSettings`)?.restricted === false);
 const SRC = ["splash/main.mjs", "splash/migrate.mjs", "tokenreact/main.mjs", "tokenanim/main.mjs", "tokenanim/panel.mjs", "table/main.mjs", "table/app.mjs", "table/defs.mjs"];
@@ -124,7 +122,7 @@ for (const s of SRC) {
 }
 const panelSrc = readFileSync(join(root, "tokenanim/panel.mjs"), "utf8");
 ck("A8 the window has a row for every converted option (the animations' motion in their own panel, mounted in the Token reactions tab) and every table engine preference",
-  D.CONVERTED.every(({ key }) => D.ROWS.some((r) => r.src === "mod" && r.key === key) || (key === "tokenAnimMine" && /R\.KEY\.mine/.test(panelSrc) && D.TABS.some((t) => t.sections.some((x) => x.panel === "tokenanim")))) && D.ENGINE_KEYS.every((k) => D.ROWS.some((r) => r.key === k && r.src.startsWith("engine"))));
+  D.CONVERTED.every(({ key }) => D.ROWS.some((r) => r.src === "mod" && r.key === key) || (key === "tokenAnimMine" && /R\.KEY\.mine/.test(panelSrc) && D.TABS.some((t) => t.sections.some((x) => x.panel === "tokenanim")))) && D.ENGINE_KEYS.every((k) => D.ROWS.some((r) => r.key === k && r.src === "engine")));
 ck("A9 the window also has the table's world options that were in Foundry's list (narrator, table size and time, reactions' size, layer, language)",
   ["splashDry", "splashK0", "splashState", "splashTableScale", "splashTableHold", "tokenReactSize", "tokenReactLayer", "tokenReactLang", "splashLang"].every((k) => D.ROWS.some((r) => r.key === k)));
 
@@ -137,9 +135,7 @@ ck("D3 the GM's threshold became the table's", W("splashFullFrom") === 0.85);
 ck("D4 'Always animate' became Full, which is the default (nothing written; a seat's own reduced motion applies)", !worldStore.has(`${MOD}.splashMotion`) && settingsApi.get(MOD, "splashMotion") === "auto");
 ck("D5 a value equal to the default writes nothing", !worldStore.has(`${MOD}.splashOthers`) && !worldStore.has(`${MOD}.tokenReactEnabled`));
 ck("D6 the GM's own 'Off on this screen' of the animations is not carried (the table's own on/off switch existed)", !worldStore.has(`${MOD}.tokenAnimMine`));
-const tbl = W(D.TABLE_KEY);
-ck("D7 the GM's engine preferences became the table's (impact local, size 1.4, Full motion as Full)", tbl?.impact === "local" && tbl?.scale === 1.4 && tbl?.motion === "auto");
-ck("D8 the photosensitivity guard is not a table value at all", tbl && !("photosafe" in tbl));
+ck("D7 no engine preference is written by this module (the engine's own migration takes the GM's old ones)", !worldWrites.some(([id]) => id.startsWith(`${NS}.`) || id === `${MOD}.${D.LEGACY_KEY}`));
 ck("D9 the table's splash language = what the GM saw (his Polish interface)", W("splashLang") === "pl");
 ck("D10 marked done", W(D.MIGRATED_KEY) === D.MIGRATION);
 const before = worldWrites.length;
@@ -147,15 +143,6 @@ await Table.migrate();
 ck("D11 a second run writes nothing", worldWrites.length === before);
 ck("D12 the GM's old browser values are left as they were", local.getItem(`${MOD}.splashLayer`) === JSON.stringify("overlay"));
 
-/* the GM's seat now follows the table */
-Table.applySeat();
-ck("C1 the GM's seat engine now holds the table's values", settingsApi.get(NS, "impact") === "local" && settingsApi.get(NS, "scale") === 1.4 && settingsApi.get(NS, "motion") === "auto");
-ck("E1 the photosensitivity guard is back on on the seat that had it off", settingsApi.get(NS, "photosafe") === true);
-
-/* the GM changes an engine preference in the engine's own window: it becomes the table's */
-await settingsApi.set(NS, "impact", "off");
-await new Promise((r) => setTimeout(r, 5));
-ck("C2 a GM's change in the engine's own window becomes the table's", W(D.TABLE_KEY)?.impact === "off");
 
 /* ---------------- B / C / E: a player's seat in the same world ---------------- */
 isGM = false; sysLang.v = "en"; worldWrites = []; notes = [];
@@ -170,20 +157,13 @@ ck("B1 the player's seat reads the table's layer, not his own old one", settings
 Hooks.callAll("ready");
 await new Promise((r) => setTimeout(r, 20));
 ck("B2 the player's seat start writes no world setting", worldWrites.length === 0 && refused === 0);
-ck("D13 a player's own engine values are backed up once (kept, unused)", JSON.parse(playerLocal.getItem(`${MOD}.gmallEngineBackup`) ?? "{}")?.values?.flashes === false);
+ck("D13 nothing of the player's own old engine values is touched (no backup, no mirror: the engine keeps them unused)", playerLocal.getItem(`${MOD}.gmallEngineBackup`) === null && playerLocal.getItem(`${NS}.flashes`) === JSON.stringify(false));
 ck("D14 a player whose own choices differed is told once", notes.length === 1);
 ck("D15 his old splash values stay in his browser untouched", playerLocal.getItem(`${MOD}.splashLayer`) === JSON.stringify("screen"));
-ck("C3 the player's seat engine holds the table's values", settingsApi.get(NS, "impact") === "off" && settingsApi.get(NS, "flashes") === true && settingsApi.get(NS, "photosafe") === true);
 notes = [];
 Hooks.callAll("ready");     // (a second load)
 await new Promise((r) => setTimeout(r, 20));
 ck("D16 told only once", notes.length === 0);
-/* the player changes an engine preference by hand (the engine's window): put back, told */
-await settingsApi.set(NS, "impact", "full");
-await new Promise((r) => setTimeout(r, 5));
-ck("B3 a player's hand change of an engine preference is put back to the table's", settingsApi.get(NS, "impact") === "off");
-ck("B4 ... and he is told the GM chooses", notes.some((m) => /game master|MG/.test(m)));
-ck("B5 ... and nothing reached the table", worldWrites.length === 0 && W(D.TABLE_KEY)?.impact === "off");
 /* the player tries the world settings directly: the server refuses (our code never tries) */
 let threw = false; try { await settingsApi.set(MOD, "splashLayer", "screen"); } catch { threw = true; }
 ck("B6 a player's direct write of a table option is refused", threw && W("splashLayer") === "overlay");
@@ -191,8 +171,6 @@ ck("B7 a player's migration does nothing", (await Table.migrate()).length === 0)
 
 /* C: the GM changes the table live; the player's seat follows on its next word */
 isGM = true;
-await settingsApi.set(MOD, D.TABLE_KEY, { ...W(D.TABLE_KEY), impact: "full", movement: "stepped", scale: 0.8 });
-ck("C4 the GM's change reached the player's engine at once (onChange on every seat)", settingsApi.get(NS, "impact") === "full" && settingsApi.get(NS, "scale") === 0.8);
 await settingsApi.set(MOD, "splashLang", "en");
 const sixEn = Logic.LBL.six(2);
 await settingsApi.set(MOD, "splashLang", "pl");
@@ -206,20 +184,7 @@ const plWord = Logic.LBL.sfx && Object.values(Logic.LBL.sfx).length > 0;
 ck("C7 the action words follow the table's language (Polish table: Polish words where they exist)", plWord);
 isGM = false;
 
-/* E: the seat's own accessibility signals */
-osReduced = true;
-await settingsApi.set(MOD, D.TABLE_KEY, { ...W(D.TABLE_KEY) }).catch(() => {});      // (player: refused; re-apply by hand)
-Table.applySeat();
-ck("E2 a seat with system reduced motion keeps Auto (reduced there) even when the table says Full", settingsApi.get(NS, "motion") === "auto");
-ck("E3 seatValue never writes 'full' motion", D.seatValue({ motion: "full" }, "motion", { osReduced: true }) === "auto" && D.seatValue({ motion: "full" }, "motion", {}) === "auto");
-osReduced = false;
-await settingsApi.set("core", "photosensitiveMode", true);
-ck("E4 Foundry's photosensitive mode on this seat: no flash frames here (table on)", settingsApi.get(NS, "flashes") === false && W(D.TABLE_KEY)?.flashes !== false);
-await settingsApi.set("core", "photosensitiveMode", false);
-ck("E5 ... off again: the table's flash frames back", settingsApi.get(NS, "flashes") === true);
-ck("E6 the guard is pinned for every table value", [{}, { flashes: false }, { motion: "reduced" }].every((tv) => D.seatValue(tv, "photosafe", {}) === true));
-ck("E7 a GM's own photosensitive seat does not make the table flash-free", D.adopt({ flashes: true }, "flashes", false, { photosensitive: true }) === null);
-ck("E8 a GM cannot adopt the guard off", D.adopt({}, "photosafe", false, {}) === null);
+/* E: the seat's own accessibility signals (the lettering engine's own: sweep-checks/unmirror.mjs) */
 /* the splash's own motion: the table's Full never overrides a seat's own reduced motion */
 const sp = readFileSync(join(root, "splash/main.mjs"), "utf8");
 ck("E9 splash motion: reduced when the table says so OR the seat's system asks", /S\.setReduced\(m === 'reduced' \|\| !!window\.matchMedia/.test(sp));

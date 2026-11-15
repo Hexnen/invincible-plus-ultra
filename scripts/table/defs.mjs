@@ -1,74 +1,81 @@
 /* GMALL: the table's settings, pure part (no Foundry). The owner, 2026-11-15: «wszystko mg wybiera dla stołu. wszystko»: every option of
-   the roll splash, the token reactions, their animations and what this module exposes of the lettering engine is chosen by the GM for
-   the whole table: world scope, changed only by the GM, shown read-only to the players, applied live on every seat.
+   the roll splash, the token reactions, their animations and the lettering engine is chosen by the GM for the whole table: world scope,
+   changed only by the GM, shown read-only to the players, applied live on every seat.
 
-   Three kinds of rows:
+   Two kinds of rows that hold a value:
      mod     a world setting of this module (registered by its own area: splash/main.mjs, tokenreact/main.mjs, tokenanim/main.mjs)
-     engine  an engine preference (namespace "moinen-letters"). The engine (vendored, not ours to edit) still keeps these as CLIENT
-             settings; the table's value lives in OUR world setting `lettersTable` and every seat copies it into its engine settings
-             (main.mjs mirror). seatValue() is the one place that says what a seat may differ in: its own system's reduced motion and
-             Foundry's photosensitive mode (the orchestrator's provisional limit, GMALL-1), and the engine's photosensitivity guard,
-             which no setting turns off.
-     engineWorld  an engine preference that is already the GM's (movement, face): written to the engine's own world setting.
-
-   The provisional limit (told to the owner, not yet answered): what a seat's own operating system, browser or Foundry core says about
-   accessibility is still honoured ON THAT SEAT; the engine's safety limits are never weakened by any setting. */
-import { SETTINGS as LETR, DEFAULTS as LETR_DEFAULTS, clean as letrClean } from "../letters/prefs.mjs";
+     engine  a preference of the lettering engine. UNMIRROR: since engine 1.9.16 the engine itself holds them as the TABLE's (L.table,
+             written by a GM with L.setTable, hook "moinenLettersTable" on every seat, refused on a player's seat). This module keeps no
+             copy and writes no engine setting: its window reads L.table and calls L.setTable, nothing else. What a seat may still differ
+             in (its own system's reduced motion, Foundry's photosensitive mode) and the photosensitivity guard are the engine's (L.seat).
+   An OLDER engine copy (before 1.9.16, no L.setTable) can still win on a page in a broken install (UNMIRROR-1): its preferences are then
+   each screen's own; the window shows them read-only with a note and writes nothing (engineMode). */
+import { TABLE as LETR, TABLE_OBJECT } from "../letters/prefs.mjs";
 
 export const MOD = "invincible-plus-ultra";
 export const NS = "moinen-letters";
-export const TABLE_KEY = "lettersTable";          // world Object: the table's engine preferences
-export const MIGRATED_KEY = "tableMigrated";      // world Number: the version of the GMALL migration this world has run
-export const MIGRATION = 1;
+export const MIGRATED_KEY = "tableMigrated";      // world Number: the version of this package's migration the world has run
+/* 1 = GMALL (the GM's own client values became the table's), 2 = UNMIRROR (the engine holds the lettering table; our old copy is carried) */
+export const MIGRATION = 2;
+/* GMALL's own world copy of the table's engine preferences (1 .. UNMIRROR). Never written by this module any more; read once to carry it
+   into the engine's table (legacyCarry), and offered to the engine's own one-time migration while that has not run (legacyNeeded). */
+export const LEGACY_KEY = "lettersTable";
 
-/* the engine preferences the table chooses (client settings in the engine, mirrored on every seat) */
+/* the engine preferences the table chooses, in the window's order */
 export const ENGINE_KEYS = ["enabled", "face", "movement", "motion", "scale", "palette", "flashes", "impact", "announce", "limitScreen", "limitWorld"]
   .filter((k) => k in LETR);
-export const ENGINE_MIRROR = ENGINE_KEYS.filter((k) => LETR[k].scope !== "world");      // movement and face are already the engine's world settings
-export const ENGINE_WORLD = ENGINE_KEYS.filter((k) => LETR[k].scope === "world");
-/* the engine's "full" motion overrides a seat's own reduced-motion switch; the table's "Full" is stored as "auto" (full motion unless the
-   seat's own system asks for less), so the GM is offered Full / Gentle / Reduced */
-export const MOTION_CHOICES = ["auto", "gentle", "reduced"];
-export const TABLE_DEFAULTS = Object.fromEntries(ENGINE_MIRROR.map((k) => [k, LETR_DEFAULTS[k]]));
+/* the ones the engine keeps in its world object `moinen-letters.table` (movement and face are its own older world settings). The name
+   ENGINE_MIRROR is read by the vendored engine's check-table.mjs section 8 (written while GMALL still mirrored); the engine drops that
+   section with its bridge, then this alias can go. */
+export const ENGINE_OBJECT = ENGINE_KEYS.filter((k) => TABLE_OBJECT.includes(k));
+export const ENGINE_MIRROR = ENGINE_OBJECT;
+export const ENGINE_DEFAULTS = Object.fromEntries(ENGINE_KEYS.map((k) => [k, LETR[k].default]));
 
-/** a stored table value, cleaned (a hand-edited or older value never breaks a seat) */
-export function cleanTable(v) {
-  const o = v && typeof v === "object" ? v : {};
+/** what the running engine offers: "table" (1.9.16+: the table's preferences, L.table / L.setTable), "old" (an older copy won: each
+    screen's own client settings), "none" (no engine on this page) */
+export function engineMode(L) {
+  if (!L || typeof L !== "object") return "none";
+  return typeof L.setTable === "function" && L.table && typeof L.table === "object" ? "table" : "old";
+}
+/** the value of an engine row: the table's (mode "table") or, from an older engine, this screen's own (read-only) */
+export function engineValue(L, k) {
+  const m = engineMode(L);
+  const src = m === "table" ? L.table : m === "old" ? L.prefs ?? {} : {};
+  const v = src?.[k];
+  if (v === undefined) return ENGINE_DEFAULTS[k];
+  return k === "motion" && v === "full" ? "auto" : v;
+}
+/** what this screen's own signals change here (L.seat: { osReduced, photosensitive }), for the window's "On this screen" line */
+export function seatNote(L) {
+  if (engineMode(L) !== "table") return null;
+  const s = L.seat ?? {}, reduced = !!s.osReduced && engineValue(L, "motion") !== "reduced", photo = !!s.photosensitive;
+  return reduced && photo ? "both" : reduced ? "reduced" : photo ? "photo" : "none";
+}
+
+/* ---------------- carrying GMALL's old copy into the engine's table (once, by a GM seat; UNMIRROR) ----------------
+   The engine's own one-time migration (1.9.16) takes plus-ultra's `lettersTable` first when that setting is REGISTERED; so while the
+   world holds our old copy and the engine has not migrated yet, we register it (config: false, written by nobody) for that run. */
+export function legacyNeeded({ legacyDoc, engineMigrated }) {
+  return !!legacyDoc && !(Number(engineMigrated) >= 1);
+}
+/** after the engine's migration: the values to give L.setTable, or null. Our old copy wins only where it is NEWER than the engine's table
+    document (a world that ran an older engine with GMALL after the engine had migrated) and differs from it. Stamps are the Setting
+    documents' modified times (ms); a missing engine document counts as oldest. */
+export function legacyCarry({ legacy, legacyAt, engineAt, table }) {
+  if (!legacy || typeof legacy !== "object") return null;
+  if (Number.isFinite(engineAt) && !(Number(legacyAt) > engineAt)) return null;
   const out = {};
-  for (const k of ENGINE_MIRROR) {
-    let x = letrClean(k, k in o ? o[k] : TABLE_DEFAULTS[k]);
-    if (k === "motion" && x === "full") x = "auto";
-    out[k] = x;
+  for (const k of ENGINE_OBJECT) {
+    if (!(k in legacy)) continue;
+    let v = legacy[k];
+    if (k === "motion" && v === "full") v = "auto";
+    const d = LETR[k];
+    const ok = d.type === "bool" ? typeof v === "boolean" : d.type === "pick" ? d.choices.includes(v) : Number.isFinite(Number(v));
+    if (!ok) continue;
+    if (d.type === "num") v = Math.max(d.min, Math.min(d.max, Number(v)));
+    if (table?.[k] !== v) out[k] = v;
   }
-  return out;
-}
-
-/** what THIS seat writes into its engine setting k, from the table's values and the seat's own accessibility signals
-    seat = { osReduced (prefers-reduced-motion), photosensitive (Foundry core.photosensitiveMode) } */
-export function seatValue(table, k, seat = {}) {
-  const t = cleanTable(table);
-  if (k === "photosafe") return true;                                       // the guard is never weakened by a setting
-  if (!(k in t)) return undefined;
-  if (k === "motion") return t.motion === "full" ? "auto" : t.motion;      // a seat's own reduced motion always applies ("auto" honours it)
-  if (k === "flashes") return t.flashes && !seat.photosensitive;            // Foundry's photosensitive mode on this seat: no flash frames
-  return t[k];
-}
-/** every engine client setting this seat should hold */
-export function seatValues(table, seat = {}) {
-  const o = {};
-  for (const k of [...ENGINE_MIRROR, "photosafe"]) o[k] = seatValue(table, k, seat);
-  return o;
-}
-/** a GM changed an engine client setting by hand (the engine's own window): the table's new value, or null when it is not the table's to
-    take (photosafe is pinned; a value that only reflects this seat's own accessibility is not adopted) */
-export function adopt(table, k, v, seat = {}) {
-  if (!ENGINE_MIRROR.includes(k)) return null;
-  if (k === "flashes" && seat.photosensitive && v === false) return null;
-  const t = cleanTable(table);
-  const nv = letrClean(k, v);
-  const cur = k === "motion" ? t.motion : t[k];
-  const want = k === "motion" && nv === "full" ? "auto" : nv;
-  return want === cur ? null : { ...t, [k]: want };
+  return Object.keys(out).length ? out : null;
 }
 
 /* ---------------------------------------------------------------- the settings this package moved from client to world
@@ -89,14 +96,14 @@ export function carry(key, v) {
 }
 
 /* ---------------------------------------------------------------- the window's rows, grouped by what they affect
-   row = { id, src: "mod"|"engine"|"engineWorld"|"info", key, type: "bool"|"pick"|"range", choices?, range?, dep?: { id, is } , wide? }
+   row = { id, src: "mod"|"engine"|"info"|"seat", key, type: "bool"|"pick"|"range", choices?, range?, dep?: { id, is } , wide? }
    Choices and ranges of "mod" rows come from the registered setting (main.mjs), of "engine" rows from the engine's SETTINGS. */
-const E = (k, extra = {}) => ({ id: `letters.${k}`, src: LETR[k]?.scope === "world" ? "engineWorld" : "engine", key: k, ...extra });
+const E = (k, extra = {}) => ({ id: `letters.${k}`, src: "engine", key: k, ...extra });
 const M = (id, key, extra = {}) => ({ id, src: "mod", key, ...extra });
 export const TABS = [
   { id: "letters", icon: "fa-solid fa-burst", sections: [
     { id: "look", rows: [E("enabled"), E("face", { dep: { id: "letters.enabled", is: true } }), E("scale", { dep: { id: "letters.enabled", is: true } }), E("palette", { dep: { id: "letters.enabled", is: true } })] },
-    { id: "motion", rows: [E("movement", { dep: { id: "letters.enabled", is: true } }), E("motion", { dep: { id: "letters.enabled", is: true } }), E("flashes", { dep: { id: "letters.enabled", is: true } }), E("impact", { dep: { id: "letters.enabled", is: true } }), { id: "letters.photosafe", src: "info", key: "photosafe" }] },
+    { id: "motion", rows: [E("movement", { dep: { id: "letters.enabled", is: true } }), E("motion", { dep: { id: "letters.enabled", is: true } }), E("flashes", { dep: { id: "letters.enabled", is: true } }), E("impact", { dep: { id: "letters.enabled", is: true } }), { id: "letters.photosafe", src: "info", key: "photosafe" }, { id: "letters.seat", src: "seat", key: "seat" }] },
     { id: "more", rows: [E("announce", { dep: { id: "letters.enabled", is: true } }), E("limitScreen", { dep: { id: "letters.enabled", is: true } }), E("limitWorld", { dep: { id: "letters.enabled", is: true } })] }
   ] },
   { id: "splash", icon: "fa-solid fa-dice-six", sections: [
@@ -131,7 +138,6 @@ export function shown(row, values) {
 export function engineSpec(k) {
   const d = LETR[k];
   if (!d) return null;
-  if (k === "motion") return { type: "pick", choices: MOTION_CHOICES.slice() };
   if (d.type === "bool") return { type: "bool" };
   if (d.type === "pick") return { type: "pick", choices: d.choices.slice() };
   return { type: "range", range: { min: d.min, max: d.max, step: d.step } };
