@@ -308,7 +308,7 @@ async function run(W, H, fn) {
   /* FXLD2: the dice wait is settled(message) (waitDice once per message, shared with the seat's report for the common start, beat.mjs) */
   ok(/function settled\(message\)[\s\S]{0,200}waitDice\(message\)/.test(m), "the seat's settle point is its own Dice So Nice wait (settled -> waitDice)");
   ok(iPlay > 0 && ["visibleToMe(message)", "cs('others')", "settled(message)", "Moment.verdict", "resolveToken(message)"].every((k) => m.lastIndexOf(k, iPlay) > m.indexOf("hook('createChatMessage'")), "the lettered moment comes after every rule of who sees it (visible, others, dice, verdict, token)");
-  ok(/resolve, seed: id\n/.test(m) && /resolve, seed: message\.id \}\);/.test(m), "the seed is the message id (the same lettering on every client)");
+  ok(/resolve, seed: (id|message\.id)\n/.test(m) && /resolve, seed: message\.id \}\);/.test(m), "the seed is the message id (the same lettering on every client)");
   ok(/L\.design\?\.\('A'\)\?\.stub === true/.test(m) && /Stage\.setLetters\(stub \|\| !cs\('lettering'\) \? null : L\)/.test(m), "the stub engine (no renderer) and the setting off leave the classic splash");
   ok(/if \(lettersOn\(\)\) return playLetters\(ev, o\);/.test(st), "Stage.play letters when the engine is there (and its master switch is on)");
   ok(!/game\.|message\./.test(st.slice(st.indexOf("function playLetters"), st.indexOf("function stressLettered"))), "the lettered stage reads nothing of the message or the game (only the event and the Resolve reader it is handed)");

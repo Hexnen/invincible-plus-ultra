@@ -590,7 +590,7 @@ hook('createChatMessage', async (message, options, userId) => {
     Stage.tellMoment({ phase: 'start', id });   // said again: the dice, the verdict and the camera took their time
     const ctl = Stage.play(ev, {
       rnd: mulberry32(hashString(id)), ...so,
-      at: Clock.toPage(at)   // SYNC: the moment's zero on this page's clock (every part of it is scheduled from this instant, not from now)
+      at: Clock.toPage(at),   // SYNC: the moment's zero on this page's clock (every part of it is scheduled from this instant, not from now)
     });
     handed = !!ctl && !ctl.dead;
     } finally { if (!handed) Stage.tellMoment({ phase: 'done', id }); }
