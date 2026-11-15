@@ -58,12 +58,14 @@ export function seatNote(L) {
 export function legacyNeeded({ legacyDoc, engineMigrated }) {
   return !!legacyDoc && !(Number(engineMigrated) >= 1);
 }
-/** after the engine's migration: the values to give L.setTable, or null. Our old copy wins only where it is NEWER than the engine's table
-    document (a world that ran an older engine with GMALL after the engine had migrated) and differs from it. Stamps are the Setting
-    documents' modified times (ms); a missing engine document counts as oldest. */
-export function legacyCarry({ legacy, legacyAt, engineAt, table }) {
+/** after the engine's migration: the values to give L.setTable, or null. Our old copy wins where the engine migrated in THIS session
+    (fresh: it had not when this page started, so its table can only hold what its migration took; an engine that no longer reads our
+    copy would have taken the GM's old browser values instead) or where our copy is NEWER than the engine's table document (a world that
+    ran an older engine with GMALL after the engine had migrated), and only where it differs. Stamps are the Setting documents' modified
+    times (ms); a missing engine document counts as oldest. */
+export function legacyCarry({ legacy, legacyAt, engineAt, table, fresh = false }) {
   if (!legacy || typeof legacy !== "object") return null;
-  if (Number.isFinite(engineAt) && !(Number(legacyAt) > engineAt)) return null;
+  if (!fresh && Number.isFinite(engineAt) && !(Number(legacyAt) > engineAt)) return null;
   const out = {};
   for (const k of ENGINE_OBJECT) {
     if (!(k in legacy)) continue;

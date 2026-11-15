@@ -18,7 +18,7 @@ import { t } from "./lang.mjs";
 const { MOD, NS, MIGRATED_KEY, LEGACY_KEY } = D;
 const LOG = `${MOD} (table settings) |`;
 const NOTICED = `${MOD}.gmallNoticed`;          // localStorage: the one-time notice was shown on this browser
-let started = false, warned = false, appMod = null;
+let started = false, warned = false, appMod = null, engineFresh = false;
 const once = (e) => { if (!warned) { warned = true; console.warn(LOG, e); } };
 const isGM = () => !!game.user?.isGM;
 const same = (a, b) => a === b || (typeof a === "number" && typeof b === "number" && Math.abs(a - b) < 1e-9);
@@ -53,7 +53,9 @@ function registerSettings() {
   if (!game.settings.settings.has(`${MOD}.${MIGRATED_KEY}`)) game.settings.register(MOD, MIGRATED_KEY, { scope: "world", config: false, type: Number, default: 0 });
   /* GMALL's old copy: registered only while the engine's own migration still has to take it (written by nobody here) */
   try {
-    if (D.legacyNeeded({ legacyDoc: worldDoc(`${MOD}.${LEGACY_KEY}`), engineMigrated: docValue(worldDoc(`${NS}.tableMigrated`)) }) && !game.settings.settings.has(`${MOD}.${LEGACY_KEY}`))
+    const engineMigrated = docValue(worldDoc(`${NS}.tableMigrated`));
+    engineFresh = !(Number(engineMigrated) >= 1);        // the engine migrates in this session (legacyCarry: our copy wins then)
+    if (D.legacyNeeded({ legacyDoc: worldDoc(`${MOD}.${LEGACY_KEY}`), engineMigrated }) && !game.settings.settings.has(`${MOD}.${LEGACY_KEY}`))
       game.settings.register(MOD, LEGACY_KEY, { scope: "world", config: false, type: Object, default: {} });
   } catch (err) { once(err); }
   const { ApplicationV2 } = foundry.applications.api;
@@ -109,7 +111,7 @@ export async function migrate() {
       if (D.engineMode(L) !== "table") return out;     // no table engine on this page: nothing marked, tried again on a later start
       await engineMigrated();
       const engDoc = worldDoc(`${NS}.table`);
-      const next = D.legacyCarry({ legacy: docValue(legacyDoc), legacyAt: docTime(legacyDoc), engineAt: engDoc ? docTime(engDoc) : NaN, table: L.table });
+      const next = D.legacyCarry({ legacy: docValue(legacyDoc), legacyAt: docTime(legacyDoc), engineAt: engDoc ? docTime(engDoc) : NaN, table: L.table, fresh: engineFresh });
       if (next && await L.setTable(next)) out.push(`${NS}.table (${Object.keys(next).join(", ")})`);
     }
   } catch (err) { console.warn(`${LOG} carrying the old lettering table failed`, err); return out; }

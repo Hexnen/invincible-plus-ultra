@@ -106,7 +106,7 @@ function fakeEngine({ old = false } = {}) {
       return { off: false, plan, opts: o };
     }
   };
-  if (old) L.prefs = { ...P.cleanAll({}), scale: 1.3, impact: "local" };   // an older engine: this screen's own client values
+  if (old) L.prefs = { ...P.TABLE_DEFAULTS, photosafe: true, scale: 1.3, impact: "local" };   // an older engine: this screen's own client values
   return L;
 }
 let inst = 0;
@@ -229,6 +229,21 @@ try {
     const w1 = world.writes.length;
     await gmWrite(world, gm2, "letters.scale", 0.9); await tick(140);
     ck("next load: a GM change goes only to the engine's table (our old copy never written again)", world.writes.slice(w1).every(([, id]) => id === `${NS}.table`) && world.writes.length > w1 && pl2.T.state.table.scale === 0.9);
+  }
+
+  /* ---------------- U3b: the same world under an engine that no longer reads our copy (its bridge and plus-ultra source dropped):
+     simulated by hiding our key from the engine (never registered), so its migration takes the GM's old browser values; our carry
+     must still give the table what the GM had chosen in our window ---------------- */
+  {
+    const legacy = { enabled: true, motion: "gentle", scale: 1.25, palette: "cvd", flashes: false, impact: "local", announce: true, limitScreen: 9, limitWorld: 30 };
+    const world = makeWorld({ [`${PU}.${D.LEGACY_KEY}`]: [legacy, 5000], [`${PU}.${D.MIGRATED_KEY}`]: [1, 5000] });
+    const gm = makeSeat(world, { name: "GM", gm: true, ls: { [`${NS}.scale`]: 2, [`${NS}.palette`]: "contrast" } }), pl = makeSeat(world, { name: "Player", gm: false });
+    for (const s of [gm, pl]) { const reg0 = s.game.settings.register; s.game.settings.register = (ns, k, o) => (ns === PU && k === D.LEGACY_KEY ? undefined : reg0(ns, k, o)); }
+    await bootSeat(world, gm); await bootSeat(world, pl);
+    await readyAll(world, 200);
+    const tb = world.store.get(`${NS}.table`);
+    ck(`engine without our source: the GM's choices from our window still become the table (${JSON.stringify(tb)})`, D.ENGINE_OBJECT.every((k) => tb?.[k] === legacy[k]) && pl.T.state.table.scale === 1.25);
+    ck("engine without our source: marked done", world.store.get(`${PU}.${D.MIGRATED_KEY}`) === D.MIGRATION);
   }
 
   /* ---------------- U4: our old copy newer / older than the engine's table ---------------- */
