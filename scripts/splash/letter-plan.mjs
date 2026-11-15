@@ -394,7 +394,7 @@ export function composeMoment(items, frame, measure = estimateBox) {
       const r = { l: Math.min(a.rect.l, b.rect.l), t: Math.min(a.rect.t, b.rect.t), r: Math.max(a.rect.r, b.rect.r), b: Math.max(a.rect.b, b.rect.b) };
       /* CALLERS2: the split block keeps its parts' standing footprint (per side, the larger of the two) for a seat's own panels (localFix) */
       const ff = (a.foot || b.foot) ? Object.fromEntries(['l', 't', 'r', 'b'].map(k => [k, Math.max(a.foot?.[k] ?? 0, b.foot?.[k] ?? 0)])) : null;
-      const o = { items: [...a.items, ...b.items], rect: r, parts: [a.rect, b.rect], gauge: b.gauge ?? a.gauge, f, side: a.side, hit: a.hit + b.hit, heavy: (a.heavy ?? 0) + (b.heavy ?? 0), split: true, ...(ff ? { foot: ff } : {}) };
+      const o = { items: [...a.items, ...b.items], rect: r, parts: [a.rect, b.rect], partFeet: [a.foot ?? null, b.foot ?? null], gauge: b.gauge ?? a.gauge, f, side: a.side, hit: a.hit + b.hit, heavy: (a.heavy ?? 0) + (b.heavy ?? 0), split: true, ...(ff ? { foot: ff } : {}) };
       if (clean(o) && tog(o) && (far || (byT(a) && byT(b)))) return o;
       keep(o);   // the least covering of all, when nothing is clean
     }
@@ -824,6 +824,303 @@ export function localFix(out, frame, local0, std, recompose) {
   const o2 = recompose ? recompose() : null;
   return o2 ? { out: o2, moved: 'layout' } : { out, moved: 'none' };
 }
+/* SPLASHSAME (owner: the GM and every player see the SAME picture; ADVS2 D2: a GM at 1600 x 900, zoom 0.5 and a player at 1366 x 768, zoom 0.8
+   saw the critical in two arrangements, the ordinary roll's caption beside the word on one seat and under it on the other, and a 1000 x 620 seat
+   drew smaller words with BIGGER captions). The screen block is now composed ONCE as the TABLE's block (stage.mjs tableFrame: the reference
+   window round the roller at the board's reference scale, from documents only: every seat composes the same block whatever its window, zoom or
+   panels) and each seat only PLACES that block (seatPlace):
+   - the same arrangement and the same relative sizes: the block's parts keep their places to each other; a window too small for it shows it
+     uniformly smaller (one factor k for every part, sizes in the same ratios);
+   - the same place relative to what it describes: each part keeps its side of the roller (above, below, left, right) and its offset from the
+     roller's box; a bigger token on a closer zoom pushes the part out by the token's growth on that side (the gap to the token stays);
+   - a seat that cannot show it clean there (a neighbour that is nearer on its zoom, its view's edge, its own panel) moves a part the least
+     it can AWAY from the roller (never toward it) and along its side; else anywhere clean in its view nearest the place (the owner's ruling: a
+     seat that cannot show the block clean may show it farther away but clean); only then smaller (SHRINK_LOCAL), still in the same ratios;
+     nothing clean at all: the least covering of the first ones (provisional SPLASHSAME-1).
+   table: { items, parts?, rect, foot?, gauge?, hero: the roller's box in the table's px } ; seat: { hero: its box on this seat (px), safe: the seat's
+   free view, avoid: [{ l, t, r, b, w }] (its tokens, pins, panels; px), gap }.
+   -> { items, rect, parts?, gauge, foot?, k, moved: 'none' | 'shift' | 'far' | 'shrink' | 'least', d: [{ dx, dy }] per part } */
+export const AWAY_STEPS = Object.freeze([0, 6, 12, 20, 30, 45, 65, 90, 120, 160, 210, 270, 340, 420, 520, 640]);
+export const SEAT_SHRINK = Object.freeze([0.94, 0.88, 0.82, 0.76, 0.7, 0.64, 0.58, 0.52, 0.46, 0.4]);
+export const ALONG_STEPS =Object.freeze([0, -0.15, 0.15, -0.3, 0.3, -0.45, 0.45, -0.6, 0.6, -0.8, 0.8, -1, 1]);
+/* the seat's own factor (its free view against the table's, by area: a narrow window is not punished twice, k0 fits the block's width) */
+export function seatFactor(safe, ts) {
+  return ts && safe ? clamp(Math.sqrt((safe.r - safe.l) / Math.max(1, ts.r - ts.l) * (safe.b - safe.t) / Math.max(1, ts.b - ts.t)), 0.3, 1) : 1;
+}
+export function seatPlace(table, seat) {
+  const H0 = table.hero, H = seat.hero, safe = seat.safe, avoid = seat.avoid ?? [], gp = seat.gap ?? 6;
+  const c = (q) => ({ x: (q.l + q.r) / 2, y: (q.t + q.b) / 2 });
+  const parts0 = table.parts?.length === 2 ? table.parts : [table.rect];
+  const pOf = (x, y) => { let bi = 0, bd = Infinity; parts0.forEach((q, i) => { const dd = Math.hypot(Math.max(0, q.l - x, x - q.r), Math.max(0, q.t - y, y - q.b)); if (dd < bd) { bd = dd; bi = i; } }); return bi; };
+  const h0 = c(H0), h1 = c(H), dhx = (H.r - H.l - (H0.r - H0.l)) / 2, dhy = (H.b - H.t - (H0.b - H0.t)) / 2;
+  /* each part's side of the roller (on the table) and its place here: the same offset from the roller, out by the token's growth on that side */
+  const P = parts0.map((q) => {
+    let sx = q.r <= H0.l ? -1 : q.l >= H0.r ? 1 : 0, sy = q.b <= H0.t ? -1 : q.t >= H0.b ? 1 : 0;
+    const qc = c(q);
+    if (!sx && !sy) { const vx = qc.x - h0.x, vy = qc.y - h0.y; if (Math.abs(vx) * (H0.b - H0.t) > Math.abs(vy) * (H0.r - H0.l)) sx = Math.sign(vx) || 1; else sy = Math.sign(vy) || -1; }
+    const tx = h1.x - h0.x + sx * dhx, ty = h1.y - h0.y + sy * dhy;
+    const r = { l: q.l + tx, t: q.t + ty, r: q.r + tx, b: q.b + ty };
+    const n = Math.hypot(sx, sy) || 1;
+    return { q, r, tx, ty, away: { x: sx / n, y: sy / n }, along: { x: -sy / n, y: sx / n } };
+  });
+  /* each part's standing footprint (the table measured it per part: a caption's duplicate block reaches further than the word's) */
+  const feet = parts0.length === 2 && table.partFeet ? table.partFeet : [table.foot];
+  const F = (i) => feet[i] ?? table.foot ?? { l: 0, t: 0, r: 0, b: 0 };
+  const Hg = { l: H.l - gp + 1, t: H.t - gp + 1, r: H.r + gp - 1, b: H.b + gp - 1 };
+  /* what a part covers for its hold: its letters' boxes and their standing ink (the engine's stand: life + rim) where the table measured
+     them; the outline's entrance room (the slam's smear) only has to stay in the view (inSafe): an entrance passes over things for a few
+     frames (CALLERS-2). Without the items' stand: the outline and its foot, as the table placed it */
+  const cores = parts0.map((_, i) => {
+    const r = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity };
+    for (const it of table.items) {
+      if (pOf(it.x, it.y) !== i || !(it.w > 0)) continue;
+      /* no measured stand (no engine measure): its letters' box and a hair (2 px: never abutting what it keeps off), as the table's own
+         last word on a block (letterHits) */
+      const st = it.room?.stand ?? { l: 2, r: 2, u: 2, d: 2 };
+      r.l = Math.min(r.l, it.x - it.w / 2 - st.l); r.r = Math.max(r.r, it.x + it.w / 2 + st.r); r.t = Math.min(r.t, it.y - it.h / 2 - st.u); r.b = Math.max(r.b, it.y + it.h / 2 + st.d);
+    }
+    if (table.gauge && pOf(table.gauge.x + table.gauge.w / 2, table.gauge.y + table.gauge.h / 2) === i) { const g = table.gauge; r.l = Math.min(r.l, g.x); r.t = Math.min(r.t, g.y); r.r = Math.max(r.r, g.x + g.w); r.b = Math.max(r.b, g.y + g.h); }
+    return Number.isFinite(r.l) ? r : null;
+  });
+  const coreAt = (i, q, k) => { const c = cores[i], p = P[i]; if (!c) return null; const tf = (x, ax, t, dd) => ax + (x + t - ax) * k + dd, dx = q.l - (q.ax + (p.r.l - q.ax) * k), dy = q.t - (q.ay + (p.r.t - q.ay) * k);
+    return { l: tf(c.l, q.ax, p.tx, dx), t: tf(c.t, q.ay, p.ty, dy), r: tf(c.r, q.ax, p.tx, dx), b: tf(c.b, q.ay, p.ty, dy) }; };
+  const hitOf = (q, k, i, more = []) => { const ft = F(i), g = coreAt(i, q, k) ?? { l: q.l - ft.l * k, t: q.t - ft.t * k, r: q.r + ft.r * k, b: q.b + ft.b * k }; return blockHits(g, avoid) + blockHits(g, more) + area(g, Hg) * TOKEN_W; };
+  const inSafe = (q) => q.l >= safe.l - 1 && q.t >= safe.t - 1 && q.r <= safe.r + 1 && q.b <= safe.b + 1;
+  const eps = HIT_EPS * 900 * 900;
+  /* a part at scale k about its point nearest the roller, moved by d */
+  const at = (p, k, d) => { const ax = clamp(h1.x, p.r.l, p.r.r), ay = clamp(h1.y, p.r.t, p.r.b); return { l: ax + (p.r.l - ax) * k + d.dx, t: ay + (p.r.t - ay) * k + d.dy, r: ax + (p.r.r - ax) * k + d.dx, b: ay + (p.r.b - ay) * k + d.dy, ax, ay }; };
+  /* the block whole in this seat's view: one factor for every part (a window smaller than the block) */
+  /* the seat's own factor for EVERY moment it shows (its free view against the table's): a smaller window shows the whole table picture
+     uniformly smaller, so on one seat the ranks keep their order (ordinary < strong < critical) and their floors scale with it */
+  const kSeat = seatFactor(safe, table.tsafe);
+  const U0 = { l: Math.min(...parts0.map((q) => q.l)), t: Math.min(...parts0.map((q) => q.t)), r: Math.max(...parts0.map((q) => q.r)), b: Math.max(...parts0.map((q) => q.b)) };
+  /* by the block's own size (not by its parts pushed apart round a bigger token: a close view that cannot hold the parts round its roller
+     moves them, it does not shrink the whole picture under its ranks) */
+  /* (nor by its parts as the table spread them round a bigger roller: here they stand by this seat's smaller one) */
+  const U1 = { l: Math.min(...P.map((p) => p.r.l)), t: Math.min(...P.map((p) => p.r.t)), r: Math.max(...P.map((p) => p.r.r)), b: Math.max(...P.map((p) => p.r.b)) };
+  const k0 = Math.min(kSeat, (safe.r - safe.l - 4) / Math.max(1, Math.min(U0.r - U0.l, U1.r - U1.l)), (safe.b - safe.t - 4) / Math.max(1, Math.min(U0.b - U0.t, U1.b - U1.t)));
+  /* how small a seat may draw it for room: never a word under its RANK's floor (RANK_WORD min, the critical TIGHT_CRIT of it: so the ranks read in
+     order on every seat, ADVS2 D6), never a word under MAP_READ.word nor a caption under MAP_READ.info. Only a window too small for the block at
+     its floors goes under them (k0) */
+  const ref = table.ref ?? 900, sc = table.scale ?? 1;
+  const kFloor = Math.max(0, ...table.items.map((it) => {
+    const read = (it.role === 'word' || it.role === 'pre' ? MAP_READ.word : MAP_READ.info) / Math.max(1, it.S);
+    /* the rank's own floor (a tight table already lowered it.min by TIGHT_CRIT), the info lines' floors of their rank (RANK_INFO) too */
+    const rm = it.role === 'word' ? (RANK_WORD[it.rank]?.min ?? it.min) : (it.min ?? 0);
+    const rank = rm ? kSeat * rm * ref * sc * (it.role === 'word' && it.rank === 'critical' ? TIGHT_CRIT : 1) / Math.max(1, it.S) : 0;
+    return Math.max(read, rank);
+  }));
+  const kMin = Math.min(k0, Math.max(kFloor, k0 * SEAT_SHRINK[SEAT_SHRINK.length - 1]));
+  const ks = [k0, ...SEAT_SHRINK.map((s) => k0 * s)].filter((k, i) => i === 0 || k >= kMin - 1e-9);
+  const z = { dx: 0, dy: 0 };
+  /* the moves of one part, nearest first: out from the roller and along its side (never toward him: checked by the token's weight) */
+  const movesOf = (p, k) => {
+    const q = at(p, k, z), w = q.r - q.l, h = q.b - q.t, span = Math.abs(p.along.x) * w + Math.abs(p.along.y) * h;
+    const out = [];
+    for (const a of AWAY_STEPS) for (const s of ALONG_STEPS) {
+      const d = { dx: p.away.x * a + p.along.x * s * span, dy: p.away.y * a + p.along.y * s * span };
+      out.push({ d, cost: a + Math.abs(s) * span * 0.5 });
+      /* brought back into the view when the move leaves it */
+      const m = { l: q.l + d.dx, t: q.t + d.dy, r: q.r + d.dx, b: q.b + d.dy }, si = SP_shiftInto(m, safe);
+      if (si.dx || si.dy) out.push({ d: { dx: d.dx + si.dx, dy: d.dy + si.dy }, cost: a + Math.abs(s) * span * 0.5 + Math.hypot(si.dx, si.dy) });
+    }
+    return out.sort((x, y) => x.cost - y.cost);
+  };
+  /* anywhere in the view, nearest the part's place first */
+  const farOf = (p, k) => {
+    const q = at(p, k, z), w = q.r - q.l, h = q.b - q.t, W = safe.r - safe.l - w, Hh = safe.b - safe.t - h, out = [];
+    for (let gy = 0; gy <= 16; gy++) for (let gx = 0; gx <= 16; gx++) {
+      const l = safe.l + Math.max(0, W) * gx / 16, t = safe.t + Math.max(0, Hh) * gy / 16;
+      out.push({ d: { dx: l - q.l, dy: t - q.t }, cost: Math.hypot(l - q.l, t - q.t) });
+    }
+    return out.sort((x, y) => x.cost - y.cost);
+  };
+  /* a split block keeps its arrangement on every seat: the parts stay in the table's order (the word above its caption stays above it, a
+     caption beside it stays on that side), however far a seat moves them (ADVS2 D2: the critical's caption under the word on one seat, over
+     it on the other) */
+  const T0 = parts0[0], T1 = parts0[1];
+  const rel = T1 ? { v: T0.b <= T1.t + 1 ? -1 : T1.b <= T0.t + 1 ? 1 : 0, h: T0.r <= T1.l + 1 ? -1 : T1.r <= T0.l + 1 ? 1 : 0 } : null;
+  const orderOk = (i, q, q0) => {
+    if (!rel || i !== 1 || !q0) return true;
+    if (rel.v < 0 && q0.b > q.t + 2) return false;
+    if (rel.v > 0 && q.b > q0.t + 2) return false;
+    if (rel.h < 0 && q0.r > q.l + 2) return false;
+    if (rel.h > 0 && q.r > q0.l + 2) return false;
+    return true;
+  };
+  /* a split block is split only to frame the roller (CRITPEAK: head on one side, caption on the other); parts placed apart that no longer
+     have the roller between them are a block torn open for nothing (the caption hundreds of px from its word, check-fxld F4): such a seat
+     joins them again (tryJoined) */
+  const frames = (a, b, h) => {
+    const ox = (q) => q.l < h.r && q.r > h.l, oy = (q) => q.t < h.b && q.b > h.t;   // the roller between them, not off to one side
+    if (rel.v < 0) return a.b <= h.t + gp && b.t >= h.b - gp && ox(a) && ox(b);
+    if (rel.v > 0) return b.b <= h.t + gp && a.t >= h.b - gp && ox(a) && ox(b);
+    if (rel.h < 0) return a.r <= h.l + gp && b.l >= h.r - gp && oy(a) && oy(b);
+    if (rel.h > 0) return b.r <= h.l + gp && a.l >= h.r - gp && oy(a) && oy(b);
+    return true;
+  };
+  const gapOf = (a, b) => (rel.v ? Math.max(0, a.t - b.b, b.t - a.b) : Math.max(0, a.l - b.r, b.l - a.r));
+  const tc0 = rel ? (cores[0] ?? parts0[0]) : null, tc1 = rel ? (cores[1] ?? parts0[1]) : null;
+  const tFrames = rel ? frames(tc0, tc1, H0) : false, tGap = rel ? gapOf(tc0, tc1) : 0;
+  const framesOk = (i, q1, q00, k) => {
+    if (!rel || i !== 1 || !q00) return true;
+    /* by what the parts draw (their cores), not their padded room */
+    const q0 = coreAt(0, q00, k) ?? q00, q = coreAt(1, q1, k) ?? q1;
+    if (tFrames) return frames(q0, q, H);
+    /* a split that does not frame the roller on the table: its parts no farther apart here than there (the roller's growth allowed) */
+    return gapOf(q0, q) <= tGap * k + 2 * Math.max(0, rel.v ? dhy : dhx) + 4;
+  };
+  /* a split block whose parts find no clean place round this seat's roller: the caption part joined to the word part again on the
+     table's side of it (under it, over it, beside it, centred), the two moved as ONE block (out from the roller, along, then anywhere in
+     the view): the caption right under the word, as a block without the split (check-fxld F4) */
+  /* the word part on its table side of the roller (out along its side's axis at least: a block above him stays above him) */
+  const sideOk = (c) => { const ax = Math.sign(P[0].away.x), ay = Math.sign(P[0].away.y);
+    return (ax > 0 && c.l >= H.r - gp) || (ax < 0 && c.r <= H.l + gp) || (ay < 0 && c.b <= H.t + gp) || (ay > 0 && c.t >= H.b - gp) || (!ax && !ay); };
+  /* the block's middle on its table side of the roller too (each axis where the table's middle stands clear of his centre) */
+  const midOf = (a, b) => ({ x: (Math.min(a.l, b.l) + Math.max(a.r, b.r)) / 2, y: (Math.min(a.t, b.t) + Math.max(a.b, b.b)) / 2 });
+  const tMid = rel ? midOf(tc0, tc1) : null;
+  const midOk = (a, b) => { const m = midOf(a, b); for (const ax of ['x', 'y']) { const t = tMid[ax] - h0[ax]; if (Math.abs(t) > 40 && (m[ax] - h1[ax]) * Math.sign(t) < 0.4 * Math.abs(t)) return false; } return true; };
+  /* joined: the caption part back under (over, beside) the word part as on a block that was never split, or the word part back over the
+     caption part (whichever keeps the block on its side of the roller), the two moved as ONE block */
+  const tryJoined = (k, anySide = false) => {
+    if (!rel || P.length !== 2) return null;
+    const q0 = at(P[0], k, z), q1 = at(P[1], k, z), w0 = q0.r - q0.l, h0q = q0.b - q0.t, w1 = q1.r - q1.l, h1q = q1.b - q1.t;
+    for (const anchor of [0, 1]) {
+      /* the other part's offset to stand joined to the anchor */
+      let j;
+      if (anchor === 0) { const jl = rel.v ? (q0.l + q0.r) / 2 - w1 / 2 : rel.h < 0 ? q0.r : q0.l - w1, jt = rel.v ? (rel.v < 0 ? q0.b : q0.t - h1q) : (q0.t + q0.b) / 2 - h1q / 2; j = { dx: jl - q1.l, dy: jt - q1.t }; }
+      else { const jl = rel.v ? (q1.l + q1.r) / 2 - w0 / 2 : rel.h < 0 ? q1.l - w0 : q1.r, jt = rel.v ? (rel.v < 0 ? q1.t - h0q : q1.b) : (q1.t + q1.b) / 2 - h0q / 2; j = { dx: jl - q0.l, dy: jt - q0.t }; }
+      const A = anchor === 0 ? q0 : q1, B = anchor === 0 ? q1 : q0;
+      const U = { l: Math.min(A.l, B.l + j.dx), t: Math.min(A.t, B.t + j.dy), r: Math.max(A.r, B.r + j.dx), b: Math.max(A.b, B.b + j.dy) };
+      const W = safe.r - safe.l - (U.r - U.l), Hh = safe.b - safe.t - (U.b - U.t);
+      if (W < 0 || Hh < 0) continue;
+      const cands = movesOf(P[anchor], k).map((c) => c.d);
+      const grid = [];
+      for (let gy = 0; gy <= 16; gy++) for (let gx = 0; gx <= 16; gx++) { const l = safe.l + W * gx / 16, t = safe.t + Hh * gy / 16; grid.push({ dx: l - U.l, dy: t - U.t, c: Math.hypot(l - U.l, t - U.t) }); }
+      grid.sort((a, b) => a.c - b.c);
+      for (const d of [...cands, ...grid]) {
+        const dj = { dx: j.dx + d.dx, dy: j.dy + d.dy }, d0 = anchor === 0 ? d : dj, d1 = anchor === 0 ? dj : d;
+        const a = at(P[0], k, d0), b = at(P[1], k, d1);
+        if (!inSafe(a) || !inSafe(b)) continue;
+        const ca = coreAt(0, a, k) ?? a, cb = coreAt(1, b, k) ?? b;
+        if (!anySide && !(sideOk(ca) && midOk(ca, cb))) continue;
+        if (hitOf(a, k, 0) + hitOf(b, k, 1, [{ ...ca, w: TOKEN_W }]) <= eps) return [{ dx: d0.dx, dy: d0.dy }, { dx: d1.dx, dy: d1.dy }];
+      }
+    }
+    return null;
+  };
+  /* a part moved on its own side keeps the side its middle had on the table (on each axis where that middle stood clear of the roller's):
+     a "shift" along the side that carried the block from under him to over him was another picture (samepic S4, the GM's desk) */
+  const keepsSide = (i, q, k) => {
+    const c = coreAt(i, q, k) ?? q, t0 = cores[i] ?? parts0[i];
+    for (const ax of ['x', 'y']) {
+      const lo = ax === 'x' ? 'l' : 't', hi = ax === 'x' ? 'r' : 'b', t = (t0[lo] + t0[hi]) / 2 - h0[ax];
+      if (Math.abs(t) > 40 && ((c[lo] + c[hi]) / 2 - h1[ax]) * Math.sign(t) < 0.4 * Math.abs(t) * k) return false;
+    }
+    return true;
+  };
+  const tryK = (k, far) => {
+    const ds = [], placed = [], qs = [];
+    for (let i = 0; i < P.length; i++) {
+      const p = P[i], more = placed.map((x) => ({ ...x, w: TOKEN_W }));
+      const cands = far ? [...movesOf(p, k), ...farOf(p, k)] : movesOf(p, k);
+      const hit = cands.find(({ d }) => { const q = at(p, k, d); return inSafe(q) && orderOk(i, q, qs[0]) && framesOk(i, q, qs[0], k) && (far || keepsSide(i, q, k)) && hitOf(q, k, i, more) <= eps; });
+      if (!hit) return null;
+      ds.push(hit.d); { const q = at(p, k, hit.d); placed.push(coreAt(i, q, k) ?? q); qs.push(q); }
+    }
+    return ds;
+  };
+  /* the order (the owner's ruling: a seat that cannot show it clean shows it farther away but clean, before it shows it smaller): its own
+     side at its size; anywhere clean at its size; its own side smaller down to the floor; anywhere smaller; nothing clean: where it covers
+     least at the allowed sizes, the parts in the table's order, swapped only when that order cannot be kept readable (provisional
+     SPLASHSAME-1) */
+  /* what the table's own block covers at the table (its letters and stand against the documents as the reference zoom shows them, and its
+     roller): a seat whose plain place covers no more than that keeps the table's place (the table accepted that cover for every seat; a seat
+     moving off it alone drew another picture, samepic S1: the critical on a board with a neighbour by the roller) */
+  const tHit = table.avoid1 ? cores.reduce((s, c, i) => s + (c ? blockHits(c, table.avoid1) + area(c, { l: H0.l - gp + 1, t: H0.t - gp + 1, r: H0.r + gp - 1, b: H0.b + gp - 1 }) * TOKEN_W : Infinity), 0) : null;
+  /* only at a zoom the table planned round (TABLE_ZOOMS in stage.mjs, 1 .. 0.5 of the reference): further out or closer the documents
+     stand elsewhere round the roller than any the table weighed, and the seat seeks its clean place */
+  const zr = (H.r - H.l) / Math.max(1, H0.r - H0.l);
+  const plain = () => {
+    if (tHit == null || !Number.isFinite(tHit) || zr < 0.45 || zr > 1.05) return null;
+    let s = 0;
+    const placed = [];
+    for (let i = 0; i < P.length; i++) {
+      const q = at(P[i], k0, z);
+      if (!inSafe(q)) return null;
+      s += hitOf(q, k0, i, placed.map((x) => ({ ...x, w: TOKEN_W })));
+      /* never onto this seat's own things (its panels, its resting dice under the bars): the table never weighed them */
+      const c = coreAt(i, q, k0) ?? q;
+      if (seat.own?.length && blockHits(c, seat.own) > 0.5) return null;
+      placed.push(c);
+    }
+    return s <= tHit + eps ? P.map(() => z) : null;
+  };
+  let k = k0, ds = null, moved = 'none';
+  if ((ds = plain())) moved = 'none';
+  else if ((ds = tryK(k0, false))) moved = ds.every((d) => !d.dx && !d.dy) ? 'none' : 'shift';
+  /* on its own side of the roller, in its arrangement, smaller (one factor: the relative sizes kept) before the parts are joined (another
+     arrangement) and before anywhere else at its size (the place relative to him is part of the picture: a block that changes side reads
+     as another picture, samepic S1; provisional SPLASHSAME-6) */
+  if (!ds) for (const kk of ks.slice(1)) { ds = tryK(kk, false); if (ds) { k = kk; moved = 'shrink'; break; } }
+  if (!ds) for (const kk of ks) { ds = tryJoined(kk); if (ds) { k = kk; moved = 'joined'; break; } }
+  if (!ds && (ds = tryK(k0, true))) moved = 'far';
+  if (!ds && (ds = tryJoined(k0, true))) moved = 'far';
+  if (!ds) for (const kk of ks.slice(1)) { ds = tryK(kk, true) ?? tryJoined(kk, true); if (ds) { k = kk; moved = 'far'; break; } }
+  if (!ds) {
+    /* at each allowed size the parts' least covering places; the size that covers least wins (the bigger one on a tie) */
+    moved = 'least';
+    /* the table's order always (the arrangement is the picture: live, the GM's critical swapped to caption over word while the player's
+       kept it); the parts swapped only when no allowed size has any place for them in order in the view at all */
+    let bestAll = null;
+    for (const keep of [true, false]) for (const kk of ks) {
+      if (!keep && (!rel || (bestAll && bestAll.sum < 1e15))) break;
+      const dd = [], placed = [], qs = [];
+      let sum = 0;
+      /* a split block in order: the word part's least covering places tried in turn with the caption's best in order after each (taking
+         the word part's single least covering place first could leave its caption no place in order in the view) */
+      if (keep && rel && P.length === 2) {
+        const c0 = [];
+        for (const { d } of [...movesOf(P[0], kk), ...farOf(P[0], kk)]) { const q = at(P[0], kk, d); if (inSafe(q)) c0.push({ d, q, h: hitOf(q, kk, 0) }); }
+        c0.sort((a, b) => a.h - b.h);
+        let best = null;
+        for (const a of c0.slice(0, 60)) {
+          const core = coreAt(0, a.q, kk) ?? a.q, more = [{ ...core, w: TOKEN_W }];
+          let b1 = null;
+          for (const { d } of [...movesOf(P[1], kk), ...farOf(P[1], kk)]) { const q = at(P[1], kk, d); if (!inSafe(q) || !orderOk(1, q, a.q)) continue; const h = hitOf(q, kk, 1, more); if (!b1 || h < b1.h - 0.5) b1 = { d, h }; }
+          if (b1 && (!best || a.h + b1.h < best.sum - 0.5)) best = { sum: a.h + b1.h, ds: [a.d, b1.d] };
+        }
+        const cand = best ?? { sum: 1e15, ds: [z, z] };
+        if (!bestAll || cand.sum < bestAll.sum * 0.9 - 0.5) bestAll = { k: kk, ds: cand.ds, sum: cand.sum, keep };
+        continue;
+      }
+      for (let i = 0; i < P.length; i++) {
+        const p = P[i], more = placed.map((x) => ({ ...x, w: TOKEN_W }));
+        let best = null;
+        for (const { d } of [...movesOf(p, kk), ...farOf(p, kk)]) { const q = at(p, kk, d); if (!inSafe(q) || (keep && !orderOk(i, q, qs[0]))) continue; const h = hitOf(q, kk, i, more); if (!best || h < best.h - 0.5) best = { d, h }; }
+        const d = best?.d ?? z;
+        sum += best ? best.h : 1e15;   // no place at all (in the view, in order): never chosen over one that has
+        dd.push(d); { const q = at(p, kk, d); placed.push(coreAt(i, q, kk) ?? q); qs.push(q); }
+      }
+      if (!bestAll || sum < bestAll.sum * (keep ? 0.9 : 0.5) - 0.5) bestAll = { k: kk, ds: dd, sum, keep };
+    }
+    k = bestAll.k; ds = bestAll.ds; if (!bestAll.keep) moved = 'swapped';
+  }
+  if (moved === 'none' && k < 0.999) moved = 'scaled';
+  /* apply: every item (and the gauge) with its part */
+  const mv = (i, x, y) => { const p = P[i], q = at(p, k, ds[i]); return { x: q.ax + (x + p.tx - q.ax) * k + ds[i].dx, y: q.ay + (y + p.ty - q.ay) * k + ds[i].dy }; };
+  const items = table.items.map((it) => {
+    const i = pOf(it.x, it.y), m = mv(i, it.x, it.y);
+    return { ...it, x: Math.round(m.x), y: Math.round(m.y), ...(k !== 1 ? { S: Math.round(it.S * k * 10) / 10, w: it.w * k, h: it.h * k } : {}) };
+  });
+  let gauge = table.gauge ? { ...table.gauge } : null;
+  if (gauge) { const i = pOf(gauge.x + gauge.w / 2, gauge.y + gauge.h / 2), m = mv(i, gauge.x, gauge.y); Object.assign(gauge, { x: Math.round(m.x), y: Math.round(m.y), w: gauge.w * k, h: gauge.h * k, k: (gauge.k ?? 1) * k }); }
+  const parts = P.map((p, i) => { const q = at(p, k, ds[i]); return { l: q.l, t: q.t, r: q.r, b: q.b }; });
+  const rect = { l: Math.min(...parts.map((q) => q.l)), t: Math.min(...parts.map((q) => q.t)), r: Math.max(...parts.map((q) => q.r)), b: Math.max(...parts.map((q) => q.b)) };
+  return { ...table, items, rect, ...(parts.length === 2 ? { parts } : {}), gauge, k, moved, d: ds.map((d) => ({ dx: Math.round(d.dx), dy: Math.round(d.dy) })), f: (table.f ?? 1) * k,
+    hit: P.reduce((s, p, i) => s + hitOf(at(p, k, ds[i]), k, i), 0) };
+}
+const SP_shiftInto = shiftInto;
 /* a rect less a footprint {l, t, r, b} (never inside out: a footprint wider than the rect leaves its centre line) */
 function insetBy(s, f) {
   const l = s.l + (f.l || 0), r = s.r - (f.r || 0), t = s.t + (f.t || 0), b = s.b - (f.b || 0);

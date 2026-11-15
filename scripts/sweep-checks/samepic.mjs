@@ -124,12 +124,25 @@ const inWin = (s, m = 0) => s.drawn.every((d) => d.abs.x - d.w / 2 >= -m && d.ab
    shift the shared picture or shrink it in place (one factor for every item, never under SHRINK_LOCAL's last step), keeping every word,
    their order and the block's side of the hero (rel = the hero in the coordinates of d.x/d.y), and shows it whole */
 const smallOk = (c, b, rel = { x: 0, y: 0 }, edge = false) => {
-  if (!["none", "shift", "shrink", ...(edge ? ["layout"] : [])].includes(c.moved) || c.drawn.length !== b.drawn.length || !c.drawn.length) return false;
+  /* SPLASHSAME (owner: a seat that cannot show it clean may show it farther away but clean): the seat places the table's block, so its moves
+     are named by seatPlace: "scaled" (the seat's one factor, a shrink in place), "joined" (a split caption back under its word), "far" (the
+     whole block moved off, clean); the words, sizes, order and side below are still checked as before */
+  if (!["none", "shift", "shrink", "scaled", "joined", "far", ...(edge ? ["layout"] : [])].includes(c.moved) || c.drawn.length !== b.drawn.length || !c.drawn.length) return false;
   if (c.drawn.some((d, i) => d.role !== b.drawn[i].role || d.text !== b.drawn[i].text)) return false;
   const ks = c.drawn.map((d, i) => d.S / b.drawn[i].S);
   if (Math.min(...ks) < 0.63 || Math.max(...ks) - Math.min(...ks) > 0.03 || Math.max(...ks) > 1.001) return false;
   const mid = (s) => ({ x: s.drawn.reduce((a, d) => a + d.x, 0) / s.drawn.length - rel.x, y: s.drawn.reduce((a, d) => a + d.y, 0) / s.drawn.length - rel.y });
   const mb = mid(b), mc = mid(c);
+  /* SPLASHSAME: a block moved away whole (joined: its caption back under its word; far: off the seat's own panel, clean) keeps the WORD's
+     side of the hero (on each axis the word stood clearly off his middle), not its middle's: the middle of a block whose caption came
+     back to its word lies elsewhere by construction (provisional SPLASHSAME-6) */
+  if (["joined", "far"].includes(c.moved)) {
+    const w0 = b.drawn.find((d) => d.role === "word"), w1 = c.drawn.find((d) => d.role === "word"), hc = { x: rel.x + 50, y: rel.y + 50 };
+    if (!w0 || !w1) return false;
+    const off = (w, ax) => w[ax] - hc[ax];
+    if (!["x", "y"].some((ax) => Math.abs(off(w0, ax)) > 80 && Math.sign(off(w0, ax)) === Math.sign(off(w1, ax)))) return false;
+    return inWin(c, 1);
+  }
   for (const ax of ["x", "y"]) if (!edge && Math.abs(mb[ax]) > 40 && Math.sign(mb[ax]) !== Math.sign(mc[ax])) {
     /* CRITPEAK: a split block (its head above the hero, its caption below) has its middle on the hero: then each part keeps its side */
     if (!c.split || c.drawn.some((d, i) => Math.abs(b.drawn[i][ax] - rel[ax]) > 40 && Math.sign(b.drawn[i][ax] - rel[ax]) !== Math.sign(d[ax] - rel[ax]))) return false;
@@ -229,7 +242,10 @@ for (const [name, e] of Object.entries(ROLLS()).filter(([k]) => ["good", "pushed
   /* SAMEPIC: a shift that clears the desk lands on the hero here, so the GM's seat shrinks in place instead: words, order, side kept */
   /* CRITPEAK: a split block (head over the hero, caption under him) whose head the desk covers, with a token beside it and the hero under it,
      has no shift or shrink in place: that seat lays it out again, same words and sizes (provisional, CRITPEAK-4) */
-  ok(smallOk(gm, p1, undefined, !!p1.split), `S4 hud ${name}: the GM's seat shifts or shrinks it in place, keeps words, order and side (${gm.moved}, k ${kOf(gm, p1)}${p1.split ? ", split block" : ""})`);
+  ok(smallOk(gm, p1, undefined, !!p1.split), `S4 hud ${name}: the GM's seat shifts or shrinks it in place, keeps words, order and side (${gm.moved}, k ${kOf(gm, p1)}${p1.split ? ", split block" : ""})
+   GM ${sig(gm)}
+   P1 ${sig(p1)}
+   desk ${desk}`);
 }
 
 /* ================================================================ T1-T3 token reactions: each seat in its own process */
