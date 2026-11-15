@@ -61,7 +61,38 @@ export function polishLiterals(src) {
   return out;
 }
 
-export async function collect(root = ROOT) {
+/* `pl:` tables that hold NO player-facing Polish text, by file and by the name of the const that holds them. Found 2026-11-15 (LETR
+   1.9.14): the lettering engine's CROSS (words.mjs) keys its reviewers' notes by the word's language, `pl: { TLING: "the bell's tl-ing,
+   ..." }`; the notes are English, read only by the engine's own checks, and one tripped the banned "TL". Narrow on purpose: only the
+   strings of a `pl:` key that sits INSIDE that const are left out, and only those without a Polish letter (a Polish text put there is
+   still checked); check-glossary fails when the const is gone or no longer holds a `pl:` table (a stale exemption protects nothing). */
+export const NOT_UI = Object.freeze([
+  { file: "scripts/letters/words.mjs", table: "CROSS", why: "reviewers' English notes on cross-language readings of sound words (engine checks only)" },
+]);
+const HAS_PL = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/;
+/** The 1-based line span [from, to] of `export const <name> = {...}` / `[...]` in src (comments blanked), or null. */
+export function constSpan(raw, name) {
+  const src = noComments(raw);
+  const m = new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?const\\s+${name}\\s*=\\s*(?=[{[])`).exec(src);
+  if (!m) return null;
+  const at = m.index + m[0].length, block = valueAt(src, at);
+  if (!block) return null;
+  const from = src.slice(0, at).split("\n").length;
+  return [from, from + block.split("\n").length - 1];
+}
+/** Rows of inlinePl(src) for `file` minus the NOT_UI strings; `left` gets what was left out (for the check). */
+export function uiInlinePl(file, src, left = []) {
+  const rows = inlinePl(src);
+  const spans = NOT_UI.filter((n) => n.file === file).map((n) => constSpan(src, n.table)).filter(Boolean);
+  if (!spans.length) return rows;
+  return rows.filter((r) => {
+    const out = !HAS_PL.test(r.text) && spans.some(([a, b]) => r.line >= a && r.line <= b);
+    if (out) left.push({ file, ...r });
+    return !out;
+  });
+}
+
+export async function collect(root = ROOT, left = []) {
   const rows = [];
   const files = walk(join(root, "scripts")).filter((p) => /\.(mjs|js)$/.test(p));
   for (const p of files) {
@@ -77,7 +108,7 @@ export async function collect(root = ROOT) {
       continue;
     }
     const src = readFileSync(p, "utf8"), seen = new Set();
-    for (const { line, text } of [...inlinePl(src), ...polishLiterals(src)]) { if (seen.has(text)) continue; seen.add(text); rows.push({ file: r, key: `inline:${line}`, en: "", pl: text }); }
+    for (const { line, text } of [...uiInlinePl(r, src, left), ...polishLiterals(src)]) { if (seen.has(text)) continue; seen.add(text); rows.push({ file: r, key: `inline:${line}`, en: "", pl: text }); }
   }
   const sys = join(root, "lang", "pl.json");
   if (existsSync(sys)) for (const [k, v] of Object.entries(flat(JSON.parse(readFileSync(sys, "utf8"))))) rows.push({ file: "lang/pl.json", key: k, en: "", pl: v });

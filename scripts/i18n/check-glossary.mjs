@@ -12,7 +12,7 @@
    Wired into scripts/tactics/check-all.mjs (suite "glossary"). */
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { collect, flatten, ROOT, inlinePl, polishLiterals } from "./collect-pl.mjs";
+import { collect, flatten, ROOT, inlinePl, polishLiterals, NOT_UI, constSpan, uiInlinePl } from "./collect-pl.mjs";
 import { BANNED, bannedIn } from "./glossary-banned.mjs";
 import { TERMS, ATTRS, ATTR_ACC_PL, TERM_KEYS } from "./terms.mjs";
 import { MATCH_LABELS } from "./sys-labels.mjs";
@@ -80,8 +80,25 @@ for (const lang of ["pl", "en"]) {
 }
 
 /* ---- 2) banned variants ---- */
-const rows = await collect(ROOT);
+const notUi = [];
+const rows = await collect(ROOT, notUi);
 ok(rows.length > 4000, `the collector found the Polish strings (${rows.length})`);
+// NOT_UI (collect-pl.mjs): each exemption still finds its table and leaves out only English notes; the file's other pl strings (the engine's
+// Polish sound-word banks and labels) are still collected
+for (const n of NOT_UI) {
+  const p = join(ROOT, n.file), src = existsSync(p) ? readFileSync(p, "utf8") : "";
+  const left = notUi.filter((r) => r.file === n.file);
+  ok(!!constSpan(src, n.table) && left.length > 0, `NOT_UI ${n.file} ${n.table}: the const is there and holds a pl: table (else remove the exemption)`);
+  ok(left.every((r) => !/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/.test(r.text)), `NOT_UI ${n.file} ${n.table}: only strings without Polish letters are left out`);
+  ok(rows.filter((r) => r.file === n.file && r.key.startsWith("inline:")).length >= 50, `NOT_UI ${n.file}: its other pl strings are still checked`);
+}
+{ // the exemption is bounded by its const: the same note in another pl: table is still caught, a Polish text inside the const too
+  const src = 'const BANK = { pl: { a: "TL 3" } };\nexport const CROSS = {\n  pl: {\n    TLING: "the bell\'s tl-ing",\n    X: "Stopień TL"\n  },\n  en: { Y: "z" }\n};\nconst Z = { pl: "the bell\'s tl-ing" };\n';
+  const left = [], kept = uiInlinePl(NOT_UI[0].file, src, left).map((r) => r.text);
+  ok(JSON.stringify(kept) === JSON.stringify(["TL 3", "Stopień TL", "the bell's tl-ing"]) && left.length === 1 && left[0].text === "the bell's tl-ing",
+    `NOT_UI leaves out only the English note inside its const (kept ${JSON.stringify(kept)})`);
+  ok(uiInlinePl("scripts/other.mjs", src).length === 4, "NOT_UI applies to its own file only");
+}
 const seen = new Set();
 for (const r of rows) {
   const id = `${r.file}|${r.key}|${r.pl}`;
