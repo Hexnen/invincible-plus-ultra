@@ -145,5 +145,12 @@ export const MAP_FRAMES = [
   ["lines", { type: "window", ticks: 2, punch: 1, stop: true }, { type: "chroma", ticks: 2 }, { type: "lines", ticks: 2 }]
 ];
 export const COVERS_WORD = ["pop", "splat", "ink", "slam", "shadow", "glare", "swap", "smear", "dots", "shatter", "rip", "tear", "fade", "ring"];
-export const tierOf = (m) => (m < 0.35 ? 0 : m < 0.85 ? 1 : m < 1.35 ? 2 : 3);   // the engine's four strengths (impact/plan.mjs tierOf)
-export const mapFrames = (magnitude) => MAP_FRAMES[tierOf(Number(magnitude) || 0)].map((f) => (typeof f === "string" ? f : { ...f }));
+/* CALLERS2 (engine 1.9.18): the engine's four strengths come from the running engine (I = L.impact: tierOf, seriesBoost), no hand copy of
+   its thresholds. A splash impact is no series (seriesBoost(0) = 0), so its tier is I.tierOf(magnitude) as the engine's plan reads it. An
+   engine without tierOf (before 1.9.18) gets the lowest map build: drawings that leave the word clear, never more than the engine may give. */
+export function tierOfImpact(magnitude, I) {
+  const m = Math.min(2, (Number(magnitude) || 0) + (typeof I?.seriesBoost === "function" ? I.seriesBoost(0) : 0));
+  const t = typeof I?.tierOf === "function" ? Number(I.tierOf(m)) : 0;
+  return Number.isInteger(t) ? Math.max(0, Math.min(MAP_FRAMES.length - 1, t)) : 0;
+}
+export const mapFrames = (magnitude, I) => MAP_FRAMES[tierOfImpact(magnitude, I)].map((f) => (typeof f === "string" ? f : { ...f }));

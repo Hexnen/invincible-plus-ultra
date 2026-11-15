@@ -472,6 +472,10 @@ async function land(ids, ready) {
        word is started so that it strikes on it (play). The other reactions of a crowd strike after the impact (its drawings, at most 500 ms,
        took them over: one token's knock-out frame blacked out six reactions), then one after another (their stagger) */
     /* SYNC: the table's instant (sharedHit) when there is one; this seat can only be later (it never strikes in the past, MIN_PREP) */
+    /* CALLERS2 (manual 6a: a seat that reloaded a moment ago may hold a clock ~280 ms off): before the shared instant is put on this page's
+       clock, wait for a good clock, at most until the instant itself is near (this seat then strikes with the others, not its error late) */
+    { const dues = (ready ?? []).map((e) => e?.due0).filter(Number.isFinite);
+      if (dues.length && !Clock.good()) await Clock.settle(Math.max(0, Math.max(...dues) + P.HIT_LEAD + SHARED_SLACK - Clock.serverNow() - MIN_PREP - 20)); }
     const T0s = sharedHit(ready, performance.now(), Clock.toPage, P.HIT_LEAD);
     const T0 = Math.max(Number.isFinite(T0s) ? T0s : performance.now() + P.HIT_LEAD, performance.now() + MIN_PREP, storyEnd || 0);
     let after = 0;
@@ -759,19 +763,21 @@ function planOf(L, it) {
     o.scale = scaleFor(L, n.text, o, numCap);
     return o;
   });
-  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, numIdx, wordOpts, numOpts, slot: "above", rect: () => rectOf(it) };
+  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, numIdx, wordOpts, numOpts, text: word ? lk.word : null, slot: "above", rect: () => rectOf(it) };
   /* CROWD (ADVX 8: "THWUP!UP!": two words placed on letter-count estimates, then each re-fitted alone on its drawn box against the others'
      stale estimates): the word's drawn box is asked of the engine BEFORE it is placed (L.planFor: the same plan the word will play, with the
      table's options, reduced motion off, so every seat plans one box), so the whole moment is laid out once on real boxes and stays put */
   /* CALLERS (engine 1.9.11 L.measure): the same plan, plus the word's real entrance reach; the footprint (life + rim) pads the word's box */
   if (word && (L.measure || L.planFor)) {
     try {
-      const ro = { ...wordOpts, reduced: false };
+      /* CALLERS2 (engine 1.9.18): measured at one device pixel per CSS px on every seat (view.dpr 1: the rim's pixel floor is the table's,
+         not this screen's density); the size itself stays this seat's (a view without vw / vh / zoom keeps them) */
+      const ro = { ...wordOpts, reduced: false, view: { dpr: 1 } };
       const m = L.measure ? L.measure(lk.word, ro) : null;
       const pl = m?.plan ?? L.planFor(lk.word, ro)?.plan;
       const hb = pl?._holdBox;
       if (hb && hb.w > 0 && hb.h > 0) {
-        plan.gArgs = { ...gArgs, aspect: hb.w, tall: hb.h, pad: P.standPad(hb, { halo: pl.hand?.halo, inkW: pl.hand?.inkW, px: cap, life: !!pl.motion?.life }) };
+        plan.gArgs = { ...gArgs, aspect: hb.w, tall: hb.h, pad: P.footPad(m, hb) };      // CALLERS2: the engine's standing footprint (m.stand)
         if (m?.reach && m.unit > 0) plan.reach = { l: m.reach.l / m.unit, r: m.reach.r / m.unit, u: m.reach.u / m.unit, d: m.reach.d / m.unit };
         g = P.group(plan.gArgs); plan.g = g; plan.box = { w: g.w, h: g.h };
         const f = P.fitDrawn({ cap, hbW: hb.w, hbH: hb.h, tokenPx: tokPx, vh: vh(), vw: vw() });
@@ -795,7 +801,9 @@ function measure(plan, tok = null) {
   /* the drawn box over the limits: the word (live, its handle's scale is read every frame) and the numbers not yet started shrink with it */
   const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: vw() });
   if (f < 0.98) shrink(plan, f);      // the numbers already started (they wait for the blow's instant) shrink too
-  if (!(plan.gArgs.pad > 0)) { const hd = plan.wordH?.plan?.hand; plan.gArgs = { ...plan.gArgs, pad: P.standPad(hb, { halo: hd?.halo, inkW: hd?.inkW, px: plan.cap, life: !!plan.wordH?.plan?.motion?.life }) }; }      // CALLERS: the footprint
+  if (!plan.gArgs.pad && engine?.measure && plan.text) {      // CALLERS2: the footprint, measured by the engine when it was not before the play
+    try { const m = engine.measure(plan.text, { ...plan.wordOpts, reduced: false, view: { dpr: 1 } }); const mh = m?.plan?._holdBox; if (mh) plan.gArgs = { ...plan.gArgs, pad: P.footPad(m, mh) }; } catch (err) { once(err); }
+  }
   const regroup = () => { const g = P.group({ ...plan.gArgs, aspect: hb.w, tall: hb.h }); plan.g = g; plan.box = { w: g.w, h: g.h }; };
   regroup();
   /* FXLT2 (ADVT2 6, 10): the side was chosen on the letter-count estimate; with the drawn box known (the first frame) it is chosen again,

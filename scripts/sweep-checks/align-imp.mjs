@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 /* ALIGN (engine 1.9.1, contract v11): both callers now hand the impact its BLOW instant (`blowAt`, the word's contact) instead of a
    start they computed themselves; the engine starts the impact `plan.peakMs` earlier (impact/index.mjs play: startAt wins, else
    blowAt - peakMs). The checks that read a played spec's start or peak read them through these, with the engine's own plan, so they keep

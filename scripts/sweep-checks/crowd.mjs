@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // CROWD: crowds and rapid series of token reactions (ADVX 8, 6 caller half, 12, 14, 17). Pure rules (tokenreact/pure.mjs crowdUnits,
 // sameSize, seriesRung, seriesStep, slotPoint ring clearance, pinPublic) and the whole Foundry half run per seat in its own node process
 // (tokenreact/check-crowd-seat.mjs: a fake Foundry with a real view, a stand-in engine that answers L.planFor and records impact frames).

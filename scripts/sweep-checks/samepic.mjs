@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/sweep-checks/samepic.mjs  -- SAMEPIC (2026-11-14): the owner's binding ruling "the GM and the players see the SAME moment",
 // checked as a PICTURE. The blind two-seat review ADVX found, with one view at one instant: the roll's word block in another place and at
 // another size per seat, on the screen layer and on the map layer (finding 1), one token hit with another word size and side per seat (9),

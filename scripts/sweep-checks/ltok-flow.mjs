@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/sweep-checks/ltok-flow.mjs  (LTOK: token reactions, the Foundry half driven through a fake Foundry: hooks in, engine calls out)
 let n = 0, f = 0;
 const ck = (name, c) => { n++; if (!c) { f++; console.log("FAIL", name); } };

@@ -1,3 +1,4 @@
+import "./impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/tokenreact/check-crowd-seat.mjs '<seat json>'  -- ONE seat of the CROWD checks (scripts/sweep-checks/crowd.mjs runs it once
 // per seat and scenario, each in its own node process, and compares what the seats draw). Not a suite of its own: it prints one JSON line.
 // The harness of check-same-seat.mjs (a fake Foundry with a real view: a stage that pans and zooms, the interface round the canvas), with a

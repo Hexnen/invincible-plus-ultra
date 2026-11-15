@@ -11,22 +11,22 @@
    Kinds: Health  hit | heavy | down (to 0 = broken [B2707]) | heal | back (up from 0 = rallied [B2773])
           Resolve stress | spent (stress taken by choice: a pushed roll, a power) | regain | out (0 = stressed out [B2816]) | steady (up from 0) */
 import { contactMs as wordContact, leadMs } from "../splash/impact-plan.mjs";
-import { STEP_AT as OWN_STEP_AT, SERIES_STEP, SERIES_MAX } from "../letters/impact/plan.mjs";
-/* CALLERS (ENGREG 1.9.11: one engine copy runs on every seat, the newest of the active modules, L.build): this static import is THIS
-   module's vendored copy, which is not the running engine when moinen-maps carries a newer one. The import stays as the default (node,
-   no engine); main.mjs hands in the running engine's own table (L.impact.steps / .series) once it has it (useImpactTable), so the series'
-   bounds below are the numbers the engine that draws the blow uses. Equal today (both 1.9.14): no picture changes. */
-let STEP_AT = OWN_STEP_AT;
-/** take the running engine's impact strengths: I = L.impact ({ steps: [...bounds], series: { step, max } }); false when it has none */
+/* CALLERS2 (engine 1.9.18: the impact's ladders are public, L.impact.steps / .series / .tiers): no copy of the engine's numbers and no
+   import of its files here. The running engine hands its table in (main.mjs useImpactTable(L.impact), before any blow is planned); until it
+   has, every rule that needs a strength bound throws (a node check hands in the vendored engine's own table, scripts/tactics/impact-node.mjs). */
+let STEP_AT = null, TIERS = null;
+const noTable = () => { throw new Error("tokenreact/pure.mjs: no impact table yet (useImpactTable(L.impact))"); };
+const steps = () => STEP_AT ?? noTable();
+/** take the running engine's impact strengths: I = L.impact ({ steps: [...bounds], series: { step, max }, tiers: [...] }); false when it has none */
 export function useImpactTable(I) {
-  const st = I?.steps, se = I?.series;
-  if (!Array.isArray(st) || !st.length || !st.every((v, i) => Number.isFinite(v) && (!i || v > st[i - 1]))) return false;
-  STEP_AT = st.slice();
-  if (Number.isFinite(se?.step) && se.step > 0) SERIES.step = se.step;
-  if (Number.isFinite(se?.max) && se.max >= 0) SERIES.max = Math.floor(se.max);
+  const st = I?.steps, se = I?.series, ti = I?.tiers;
+  const rising = (a) => Array.isArray(a) && a.length > 0 && a.every((v, i) => Number.isFinite(v) && (!i || v > a[i - 1]));
+  if (!rising(st) || !(Number.isFinite(se?.step) && se.step > 0) || !(Number.isFinite(se?.max) && se.max >= 0)) return false;
+  STEP_AT = st.slice(); SERIES.step = se.step; SERIES.max = Math.floor(se.max);
+  TIERS = rising(ti) && ti.length >= 3 ? ti.slice() : st.length >= 4 ? [st[0], st[2], st[3]] : null;      // an engine before 1.9.18 names no tiers: its first build's are steps 0, 2, 3
   return true;
 }
-export const impactTable = () => ({ steps: STEP_AT.slice(), series: { ...SERIES } });
+export const impactTable = () => (STEP_AT ? { steps: STEP_AT.slice(), series: { ...SERIES }, tiers: TIERS ? TIERS.slice() : null } : null);
 export { leadMs };
 import { REF_VH, REF_VW } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
 export { REF_VH, REF_VW };
@@ -520,10 +520,14 @@ export function safeRect(view, covers = [], margin = 8) {
     up about half a cap, a drop comes from above, an overshoot swells ~15 %). -> { w, h, word: {dx, dy}, nums: [{dx, dy}] } offsets from
     the group centre */
 export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, up = 0.5, down = 0.25, pad = 0 }) {
-  /* CALLERS: pad = the standing word's footprint past its hold box, each side, in caps (standPad: the life of a held word + the ink rim of a
-     world word); 0 = as before (no measured box yet) */
-  const pw = 2 * cap * Math.max(0, Number(pad) || 0);
-  const ww = cap * Math.max(0.6, aspect) * (tall ? 1.04 : 1.12) + pw, wh = cap * (tall ? tall * 1.04 : 1.3) + pw;      // tall/aspect measured from the drawn word: a small margin only
+  /* CALLERS2: pad = the standing word's ink past its hold box in caps, either one number for every side or { l, r, u, d } (footPad: the
+     engine's measured standing footprint, L.measure standBox: hold poses, the life of a held word, keyline, rim, duplicate block, hold
+     extras, turned with the word); 0 = as before (no measured box yet). The word's slot holds the footprint; the word stands in it where
+     its ink leaves it (a duplicate block down-right moves the letters up-left in their slot), the numbers keep their gap from the ink */
+  const pd = typeof pad === "object" && pad ? pad : { l: pad, r: pad, u: pad, d: pad };
+  const P = (k) => Math.max(0, Number(pd[k]) || 0);
+  const pl = P("l"), pr = P("r"), pu = P("u"), pb = P("d");
+  const ww = cap * Math.max(0.6, aspect) * (tall ? 1.04 : 1.12) + cap * (pl + pr), wh = cap * (tall ? tall * 1.04 : 1.3) + cap * (pu + pb);      // tall/aspect measured from the drawn word: a small margin only
   /* FXI-TOKEN (ADVI 5: "-15" ran under the challenge cards, "-3" onto a neighbour): Bungee digits with their cut edge and extrusion draw about
      0.8 of a cap wide, not 0.68: the group box (and so the side chosen for it) holds the whole number */
   const nw = nums.map((t) => numCap * (0.25 + 0.8 * letters(t) + (/^[+-]/.test(t) ? 0.55 : 0)));
@@ -532,25 +536,23 @@ export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, u
                                         // touched (the drawn word overruns its hold box on the left, lane 8 still6); 0.28 clears both sides
   const w = ww + (colW ? colW * 1.02 + gap : 0), h = Math.max(wh, wh * 0.35 + nh * nw.length) + cap * (up + down);
   const top = -h / 2 + cap * up;
-  const wordC = { dx: -side * (colW ? (colW * 1.02 + gap) / 2 : 0), dy: top + wh / 2 };
-  const numsC = nw.map((x, i) => ({ dx: wordC.dx + side * (ww / 2 + gap + colW * 0.51), dy: top + wh * 0.62 + nh * i }));
+  const slot = { dx: -side * (colW ? (colW * 1.02 + gap) / 2 : 0), dy: top + wh / 2 };
+  const wordC = { dx: slot.dx + cap * (pl - pr) / 2, dy: slot.dy + cap * (pu - pb) / 2 };
+  const numsC = nw.map((x, i) => ({ dx: slot.dx + side * (ww / 2 + gap + colW * 0.51), dy: top + wh * 0.62 + nh * i }));
   return { w, h, word: wordC, nums: numsC };
 }
 
-/* CALLERS (engine 1.9.10 HOLDS, 1.9.12 RIMUNDER): the hold box the engine measures (plan._holdBox) is the word at rest. Two things reach past
-   it for as long as the word stands: its LIFE (a held invincible word keeps moving inside LIFE_REACH of its rest pose: 0.05 caps, 4.5 % of
-   its size) and, for a word in world space (every token reaction), the ink RIM painted under the whole lettering (0.07 of the cap height,
-   at least 2.5 px, outside the keyline). STAND mirrors the engine's tables (motion.mjs LIFE_REACH, design.mjs INV_RIM; check-callers M pins
-   them to the vendored engine: the running engine does not hand them out yet, request CALLERS-E1). The entrance reaches further still
-   (L.measure reach): that room is kept from the view's edges (edgeBox), not from the neighbours (a slam passes them for a few frames). */
-export const STAND = { lifeXY: 0.05, lifeS: 1.045, rimW: 0.07, rimMin: 2.5, rimMax: 16, keyK: 0.6 };
-/** the footprint margin past the hold box, each side, in caps: hb = { w, h } (caps), halo = plan.hand.halo, inkW = plan.hand.inkW, px = cap px,
-    life = the plan has a life (plan.motion.life; a word without one, e.g. a throb, stands still in its hold pose) */
-export function standPad(hb, { halo = null, inkW = 0, px = 40, life: hasLife = true } = {}) {
-  const life = hasLife ? (STAND.lifeS - 1) / 2 * Math.max(Number(hb?.w) || 0, Number(hb?.h) || 0) + STAND.lifeXY : 0;
-  const cpx = Math.max(1, Number(px) || 40);
-  const rim = halo ? Math.min(STAND.rimMax, Math.max(STAND.rimW * cpx, STAND.rimMin)) / cpx + (Number(inkW) || 0) * STAND.keyK : 0;
-  return Math.round((life + rim) * 1000) / 1000;
+/* CALLERS2 (engine 1.9.18, L.measure standBox): the hold box the engine measures (plan._holdBox) is the word at rest. Its ink reaches past it
+   for as long as the word stands (the hold poses and turns, the life of a held word, the keyline, the ink rim of a world word, the coloured
+   duplicate block, a hold picture's extras). The engine measures all of it (m.stand: from the word's centre, in its space, turned by its
+   rotation); this module mirrors none of its tables. The entrance reaches further still (m.reach / m.inkReach): that room is kept from the
+   view's edges (edgeBox), not from the neighbours (a slam passes them for a few frames, CALLERS-2).
+   m = an L.measure result, hb = the hold box in caps that the layout uses (the same plan's) -> { l, r, u, d } caps past it, or 0 */
+export function footPad(m, hb) {
+  const st = m?.stand, u = Number(m?.unit);
+  if (!st || !(u > 0) || !(hb?.w > 0) || !(hb?.h > 0)) return 0;
+  const r3 = (v) => Math.round(Math.max(0, v) * 1000) / 1000;
+  return { l: r3(st.l / u - hb.w / 2), r: r3(st.r / u - hb.w / 2), u: r3(st.u / u - hb.h / 2), d: r3(st.d / u - hb.h / 2) };
 }
 /** the box kept inside the view (symmetric round the group's centre, px): the group box, and the word's entrance reach (caps, from L.measure,
     centred on the word's place in the group) */
@@ -596,7 +598,8 @@ export const IMPACT = {
   down: { kind: "ko", base: 1.45, amt: 0.45 }
 };
 export const IMPACT_STEP = 1;        // rungs per next blow of one series
-export const IMPACT_TOP = 1.34;      // the ceiling of every blow but going down (the engine's whole set starts at 1.35)
+/* the ceiling of every blow but going down: just under the engine's whole set (its last first-build tier, L.impact.tiers[2]; 1.35 -> 1.34) */
+export const impactTop = () => { if (!TIERS) return noTable(); return Math.round((TIERS[TIERS.length - 1] - 0.01) * 100) / 100; };
 /* what the hit was made of, from the fight's public damage event (`dtype`): energy crackles (the shock kind), the rest only tints */
 export const ENERGY = new Set(["electricity", "energy", "lightning", "laser", "plasma", "light", "sonic", "radiation", "force"]);
 export const DTYPE_TONE = { fire: "fire", heat: "fire", electricity: "volt", lightning: "volt", cold: "volt", ice: "volt", energy: "volt", laser: "volt", plasma: "volt",
@@ -624,13 +627,13 @@ export function impactOf(pub, step = 0, o = {}) {
     if (blow && o.doubled) r = Math.min(RUNGS.length - 1, r + 1);      // a stunt doubled the damage [B2434]: one rung more, the critical's frames
     const R = RUNGS[r];
     const kind = blow && o.doubled ? "crit" : blow && ENERGY.has(o.dtype) ? "shock" : R.kind;
-    const out = { kind, magnitude: Math.min(IMPACT_TOP, R.magnitude), rung: r };
+    const out = { kind, magnitude: Math.min(impactTop(), R.magnitude), rung: r };
     const tone = row.tone ?? DTYPE_TONE[o.dtype] ?? (kind === "crit" && !o.doubled ? R.tone : null);
     if (tone) out.tone = tone;
     return out;
   }
   let m = row.base + row.amt * amt + 0.1 * n;
-  m = pub.kind === "down" ? Math.max(1.45, Math.min(2, m)) : Math.min(IMPACT_TOP, m);
+  m = pub.kind === "down" ? Math.max(1.45, Math.min(2, m)) : Math.min(impactTop(), m);
   const out = { kind: row.kind, magnitude: Math.round(m * 100) / 100 };
   const tone = row.tone ?? DTYPE_TONE[o.dtype];
   if (tone) out.tone = tone;
@@ -777,17 +780,18 @@ export const NUM_SIDE = 1;
 /* ALIGN (engine 1.9.1 `series`): a blow's place in its series is handed to the engine (`series: n`: it adds I.series.step = 0.15 of strength
    per place, at most I.series.max = 4 places), so every caller builds a series alike. The ladder above still climbs one RUNG per place
    (other drawings: the engine's series alone would leave -1, -1, -1 three scratches, ADVI 3); the engine's boost then only grows the
-   drawings INSIDE the rung's own strength: capped under the next strength bound (STEP_AT) and under IMPACT_TOP, so a series never reaches
+   drawings INSIDE the rung's own strength: capped under the next strength bound (the engine's steps) and under impactTop(), so a series never reaches
    the full-field frames of a heavier rung or the whole set only going down gets. spec.magnitude is what the caller passes; the strength
    drawn is magnitude + the boost (effectiveMagnitude, = the engine's plan.magnitude). */
-export const SERIES = { step: SERIES_STEP, max: SERIES_MAX };
-export const effectiveMagnitude = (spec) => Math.round(((Number(spec?.magnitude) || 0) + SERIES.step * Math.max(0, Math.min(SERIES.max, Math.floor(Number(spec?.series) || 0)))) * 100) / 100;
+export const SERIES = { step: null, max: null };      // CALLERS2: the running engine's (useImpactTable)
+export const effectiveMagnitude = (spec) => (steps(), Math.round(((Number(spec?.magnitude) || 0) + SERIES.step * Math.max(0, Math.min(SERIES.max, Math.floor(Number(spec?.series) || 0)))) * 100) / 100);
 export function withSeries(spec, step) {
+  steps();      // CALLERS2: the engine's table first (no silent default)
   let n = Math.max(0, Math.min(SERIES.max, Math.floor(Number(step) || 0)));
   if (!spec || !n) return spec;
   const m = Number(spec.magnitude) || 0;
-  const bound = STEP_AT.find((b) => b > m + 1e-9) ?? 2.01;
-  const top = Math.min(bound - 0.01, spec.kind === "ko" ? 2 : IMPACT_TOP);
+  const bound = steps().find((b) => b > m + 1e-9) ?? 2.01;
+  const top = Math.min(bound - 0.01, spec.kind === "ko" ? 2 : impactTop());
   /* CROWD2: a series now often stays inside a low rung (five -1 are scratches) whose room under the next bound is small (scratch 0.25 ->
      0.34): the boost halves the room left at each place (never more than the engine's step per place), so every blow of a series still
      draws a little stronger than the one before instead of standing at the cap from the 2nd blow on */

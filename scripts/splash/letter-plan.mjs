@@ -323,7 +323,7 @@ export function composeMoment(items, frame, measure = estimateBox) {
     if (k >= 0.999 || f0 < 0.25) break;
     f0 *= k * 0.97;
   }
-  if (!(frame.avoid?.length || T)) { const o = layoutAt(items, frame, measure, f0, safeW, vh, sc, false); place(o, frame); return o; }
+  if (!(frame.avoid?.length || T)) { const o = layoutAt(items, frame, measure, f0, safeW, vh, sc, false); place(o, frame); o.clean = true; return o; }
   /* a word row (the word and its sixes side by side) wider than the free part even at its floors stands only stacked */
   const wideOk = !canStack || (() => { const o = layoutAt(items, frame, measure, f0, safeW, vh, sc, false); return o.rect.r - o.rect.l <= safeW + 1; })();
   const tries = [];
@@ -380,7 +380,9 @@ export function composeMoment(items, frame, measure = estimateBox) {
         if (clean(b) && (far || byT(b))) break;
       }
       const r = { l: Math.min(a.rect.l, b.rect.l), t: Math.min(a.rect.t, b.rect.t), r: Math.max(a.rect.r, b.rect.r), b: Math.max(a.rect.b, b.rect.b) };
-      const o = { items: [...a.items, ...b.items], rect: r, parts: [a.rect, b.rect], gauge: b.gauge ?? a.gauge, f, side: a.side, hit: a.hit + b.hit, heavy: (a.heavy ?? 0) + (b.heavy ?? 0), split: true };
+      /* CALLERS2: the split block keeps its parts' standing footprint (per side, the larger of the two) for a seat's own panels (localFix) */
+      const ff = (a.foot || b.foot) ? Object.fromEntries(['l', 't', 'r', 'b'].map(k => [k, Math.max(a.foot?.[k] ?? 0, b.foot?.[k] ?? 0)])) : null;
+      const o = { items: [...a.items, ...b.items], rect: r, parts: [a.rect, b.rect], gauge: b.gauge ?? a.gauge, f, side: a.side, hit: a.hit + b.hit, heavy: (a.heavy ?? 0) + (b.heavy ?? 0), split: true, ...(ff ? { foot: ff } : {}) };
       if (clean(o) && tog(o) && (far || (byT(a) && byT(b)))) return o;
       keep(o);   // the least covering of all, when nothing is clean
     }
@@ -390,7 +392,7 @@ export function composeMoment(items, frame, measure = estimateBox) {
      roll's floor) before the block stands on a token */
   const tight = items.some(it => it.rank === 'critical') ? items.map(it => (it.rank === 'critical' && it.min ? { ...it, min: it.min * TIGHT_CRIT } : it)) : null;
   const found = whole(false) ?? split(false) ?? (tight && (whole(false, tight) ?? split(false, tight))) ?? whole(true) ?? split(true) ?? (tight && (whole(true, tight) ?? split(true, tight)));
-  if (found) return found;
+  if (found) { found.clean = true; return found; }
   /* MAPSEAT (CRITPEAK-9: on a crowded board the critical lay over a bystander's edge): the map's board window holds no clean place for the
      block: it is sought again in the WIDER shared window (frame.wide, the same on every seat) before it lies on anyone. A seat whose view
      does not show that place plays the moment on its screen layer (same-picture.mjs mapSeat) */
@@ -399,7 +401,34 @@ export function composeMoment(items, frame, measure = estimateBox) {
     /* only a block that still stands together (splitApart; the inner pass may hand back its least-covering split, apart or not) */
     if (o && !splitApart(o) && coverMax(o, frame) < coverMax(best, frame)) { o.wide = true; return o; }
   }
+  /* CALLERS2: no clean place for the block with its standing ink (the footprint spacing and the footprint off what it describes): a clean
+     place for its letters' outline (as before the footprint was counted) beats lying on a token or a panel with the whole word (live
+     harness, a player's critical on a crowded board: with the footprint the least-covering block stood on a bystander and the party cards
+     at full size; the outline-clean block is the one shown before). Only then the least covering one */
+  if (!frame.bare && items.some(it => measure(it, 40)?.room)) {
+    const o = composeMoment(items, { ...frame, bare: true }, measure);
+    if (o?.clean) { o.bare = true; return o; }
+    /* neither is clean: the one whose letters cover least, of the three: with the footprint, its outline with the footprint's spacing, and
+       the outline alone as before the footprint was counted (live harness, the GM's critical on a crowded board: the least-covering block
+       with the footprint put 3 SIXES' letters 42 px onto a bystander; the block shown before only grazed its own words) */
+    const o0 = composeMoment(items, { ...frame, bare: true }, (it, S) => { const { room, ...b } = measure(it, S); return b; });
+    let pick = best, ph = best ? letterHits(best, frame) : Infinity;
+    for (const c of [o, o0]) if (c && letterHits(c, frame) < ph - 0.5) { pick = c; ph = letterHits(c, frame); }
+    if (pick !== best) pick.bare = true;
+    return pick;
+  }
   return best;
+}
+/* CALLERS2: what a block's letters (each item's box, no footprint) cover of the frame's obstacles and token (the token weighs TOKEN_W) */
+function letterHits(o, frame) {
+  const T = frame.token, g = frame.gap ?? 6;
+  let h = 0;
+  for (const it of o.items ?? []) {
+    if (it.x == null) continue;
+    const q = { l: it.x - it.w / 2, t: it.y - it.h / 2, r: it.x + it.w / 2, b: it.y + it.h / 2 };
+    h += blockHits(q, frame.avoid ?? []) + (T ? area(q, { l: T.l - g + 1, t: T.t - g + 1, r: T.r + g - 1, b: T.b + g - 1 }) * TOKEN_W : 0);
+  }
+  return h;
 }
 /* MAPSEAT: a block that touches a token's box by at most RIM_OK of it (its rim, a few px of the art's edge) does not lie on it */
 export const RIM_OK = 0.02;
@@ -449,17 +478,18 @@ export function sizeOf(it, frame, f = 1) {
   const lo = Math.max((FLOOR[it.role] ?? 16) * px, (it.min ?? 0) * ref * px * m) * sc;
   return { S: Math.max(lo, base * f), lo, base };
 }
-/* CALLERS (engine 1.9.10-1.9.12): what a lettering needs past its hold box on each side, in px at S px per cap: its entrance reach as the
-   engine measures it (L.measure: poses, travel, the life of a held word, a pad; kept for the record), and its STANDING footprint (the life inside LIFE_REACH:
-   0.05 caps and 4.5 % of its size; on the map the ink rim under the whole lettering, 0.07 cap + the keyline, at least 2.5 px). STAND
-   mirrors the engine's tables (check-callers pins them). m = { w, h, reach: { l, r, u, d } (caps), halo, inkW } -> { room } or {} */
-export const STAND = { lifeXY: 0.05, lifeS: 1.045, rimW: 0.07, rimMin: 2.5, rimMax: 16, keyK: 0.6 };
+/* CALLERS2 (engine 1.9.18, L.measure standBox): what a lettering needs past its hold box on each side, in px at S px per cap: its STANDING
+   footprint as the engine measures it at that size (m.footAt(S) -> { l, r, u, d } caps past the hold box: hold poses and turns, the life of
+   a held word, keyline, the map's ink rim, the coloured duplicate block, hold extras; stage.mjs asks L.measure, this module mirrors none of
+   the engine's tables) and its entrance reach (m.reach, caps from the centre; kept for the record, CALLERS-2).
+   m = { w, h, reach?, footAt? } -> { room: { stand: { l, r, u, d } px, l, r, u, d } } or {} */
 export function roomOf(m, S) {
-  if (!m?.reach || !(S > 0)) return {};
-  const rim = m.halo ? Math.min(STAND.rimMax, Math.max(STAND.rimW * S, STAND.rimMin)) + (Number(m.inkW) || 0) * STAND.keyK * S : 0;
-  const life = m.life === false ? 0 : (STAND.lifeS - 1) / 2 * Math.max(m.w, m.h) * S + STAND.lifeXY * S;   // only a word whose plan has a life (plan.motion.life)
-  const st = life + rim, hw = m.w * S / 2, hh = m.h * S / 2;
-  return { room: { stand: st, l: Math.max(st, m.reach.l * S - hw), r: Math.max(st, m.reach.r * S - hw), u: Math.max(st, m.reach.u * S - hh), d: Math.max(st, m.reach.d * S - hh) } };
+  if (!(S > 0) || typeof m?.footAt !== "function") return {};
+  const f = m.footAt(S);
+  if (!f) return {};
+  const st = { l: Math.max(0, f.l * S), r: Math.max(0, f.r * S), u: Math.max(0, f.u * S), d: Math.max(0, f.d * S) };
+  const hw = m.w * S / 2, hh = m.h * S / 2, re = m.reach ?? { l: 0, r: 0, u: 0, d: 0 };
+  return { room: { stand: st, l: Math.max(st.l, re.l * S - hw), r: Math.max(st.r, re.r * S - hw), u: Math.max(st.u, re.u * S - hh), d: Math.max(st.d, re.d * S - hh) } };
 }
 function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
   const sized = items.map(it => {
@@ -486,56 +516,70 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
   /* rows, top to bottom; x relative to the word's centre (0), y = the top of each row */
   let y = 0;
   const put = (it, x, top) => { it.x = x; it.y = top + it.h / 2; };
+  /* CALLERS2 (engine 1.9.18, L.measure stand): a part's standing ink reaches past its hold box (a caption's sticker outline and its coloured
+     block reach ~0.45 cap down and right): the parts are spaced so that no part's ink lands on another's letters. Each next row keeps at
+     least the upper row's ink below it plus its own ink above it (+1 px) from the row above (the two inks never meet: each moves with its
+     own life); side by side the same with the ink to the right and left. Without a measured footprint (no engine) nothing changes */
+  const ink = (it, k) => Math.max(0, Number(it?.room?.stand?.[k]) || 0);
+  let last = null, used = 0;
+  const bump = (row) => { row = row.filter(Boolean); if (last && row.length) { const need = Math.max(...last.map(it => ink(it, 'd'))) + Math.max(...row.map(it => ink(it, 'u'))) + 1; if (need > used) y += need - used; } };
+  const ended = (row, gap) => { last = row.filter(Boolean); used = gap; };
+  const sideGap = (a, b, have) => Math.max(have, ink(a, 'r') + ink(b, 'l') + 1);
   /* CRITPEAK: the push grunt has left before the result comes (planMoment: the word waits for its exit), so it stands IN the word's place,
      as big as the word row allows: a beat of its own where the eye already is, and the block one row shorter (ADVX 15: the pushed cluster
      was the tallest block and shrank most) */
-  if (pre && !word) { put(pre, 0, y); y += pre.h + pad(pre) * 2 + g; }
+  if (pre && !word) { put(pre, 0, y); y += pre.h + pad(pre) * 2 + g; ended([pre], pad(pre) * 2 + g); }
   /* the narrow block: the word alone on its row, the caption right under it, the wreck and the sixes on a row under that */
   const stackRow = () => {
     const row = [wreck, six].filter(Boolean);
     if (!row.length) return;
-    const w = row.reduce((s, it) => s + it.w + 2 * pad(it), 0) + g * (row.length - 1), h = Math.max(...row.map(it => it.h));
+    bump(row);
+    const gw = row.length === 2 ? sideGap(row[0], row[1], pad(row[0]) + g + pad(row[1])) - pad(row[0]) - pad(row[1]) : g;
+    const w = row.reduce((s, it) => s + it.w + 2 * pad(it), 0) + gw * (row.length - 1), h = Math.max(...row.map(it => it.h));
     let x = -w / 2;
-    for (const it of row) { it.x = x + pad(it) + it.w / 2; it.y = y + h - it.h / 2; x += it.w + 2 * pad(it) + g; }
-    y += h + g;
+    for (const it of row) { it.x = x + pad(it) + it.w / 2; it.y = y + h - it.h / 2; x += it.w + 2 * pad(it) + gw; }
+    y += h + g; ended(row, g);
   };
   if (word && stack) {
-    put(word, 0, y);
-    y += word.h + g + pad(word);
+    bump([word]); put(word, 0, y);
+    y += word.h + g + pad(word); ended([word], g + pad(word));
     /* FXI-SPLASH (ADVI 11: "4 SZOSTKI" stood under the caption): the block reads top-down in the order it lands: the word, the sixes
        (+230 ms), then the sentence and the odds (+360 / +460 ms) */
     stackRow();
   } else if (word) {
-    put(word, 0, y);
-    let right = word.w / 2;
-    if (wreck) { put(wreck, right + g + wreck.w / 2 + pad(wreck), y); right = wreck.x + wreck.w / 2; }
-    if (six) { const x = right + g * 0.6 + pad(six) + six.w / 2; six.x = x; six.y = y + word.h - six.h / 2; }   // the stamp on the word's baseline, tight to its end
+    bump([word, wreck, six]); put(word, 0, y);
+    let right = word.w / 2, prev = word;
+    if (wreck) { put(wreck, right + sideGap(word, wreck, g + pad(wreck)) + wreck.w / 2, y); right = wreck.x + wreck.w / 2; prev = wreck; }
+    if (six) { const x = right + sideGap(prev, six, g * 0.6 + pad(six)) + six.w / 2; six.x = x; six.y = y + word.h - six.h / 2; }   // the stamp on the word's baseline, tight to its end
     /* the word row centred as a whole: shift every part left by half of what hangs to the right */
     const rowR = Math.max(word.w / 2, ...[wreck, six].filter(Boolean).map(it => it.x + it.w / 2)), shift = (rowR - word.w / 2) / 2;
     for (const it of [word, wreck, six].filter(Boolean)) it.x -= shift;
-    y += word.h + g + pad(word);
-  } else for (const it of [wreck, six].filter(Boolean)) { put(it, 0, y); y += it.h + g; }   // a lone part still gets its row
+    y += word.h + g + pad(word); ended([word, wreck, six], g + pad(word));
+  } else for (const it of [wreck, six].filter(Boolean)) { bump([it]); put(it, 0, y); y += it.h + g; ended([it], g); }   // a lone part still gets its row
   if (pre && word) { pre.x = word.x; pre.y = word.y + word.h / 2 - pre.h / 2; }   // on the word's baseline, centred on it
   /* the caption: sentence and figure on one row when they fit the word row's width (or 90 % of the free width), else stacked */
   const cap = [sayI, odds].filter(Boolean);
   if (cap.length) {
     const wordL = word ? word.x - word.w / 2 : -100, rowW = word ? Math.max(word.w, ...[wreck, six].filter(it => it && it.x != null).map(it => it.x + it.w / 2 - wordL)) : 0;
-    const inline = cap.length === 2 && sayI.w + g + odds.w <= (stack ? rowW : Math.max(rowW, 0.9 * safeW));   // the narrow block keeps the caption to the word's width
+    const cg = cap.length === 2 ? sideGap(sayI, odds, g) : g;
+    const inline = cap.length === 2 && sayI.w + cg + odds.w <= (stack ? rowW : Math.max(rowW, 0.9 * safeW));   // the narrow block keeps the caption to the word's width
     if (inline) {
-      const w = sayI.w + g + odds.w, h = Math.max(sayI.h, odds.h);
+      bump(cap);
+      const w = sayI.w + cg + odds.w, h = Math.max(sayI.h, odds.h);
       /* under the word, indented a little from its left edge (a caption, not a centred label); wider than the word row: centred */
       const rowL = wordL, rowR = wordL + rowW;
       const L0 = !word || w >= rowW ? (word ? (rowL + rowR) / 2 : 0) - w / 2 : Math.min(rowL + 0.25 * unit, rowR - w);
       sayI.x = L0 + sayI.w / 2; sayI.y = y + h - sayI.h / 2;
-      odds.x = L0 + sayI.w + g + odds.w / 2; odds.y = y + h - odds.h / 2;
-      y += h + g;
-    } else for (const it of cap) { put(it, 0, y); y += it.h + g * 0.6; }
+      odds.x = L0 + sayI.w + cg + odds.w / 2; odds.y = y + h - odds.h / 2;
+      y += h + g; ended(cap, g);
+    } else for (const it of cap) { bump([it]); put(it, 0, y); y += it.h + g * 0.6; ended([it], g * 0.6); }
   }
   let gauge = null;
   if (stress) {
     /* the gauge shrinks with the block (live: a full-size gauge beside words shrunk to 0.6), never under a readable scale (CRITPEAK, ADVX 15) */
     const gMin = frame.gaugeMin ?? GAUGE_MIN, gk = clamp(f, gMin, Math.max(gMin, frame.gaugeMax ?? 1));
     const gw = (frame.gauge?.w ?? 0) * gk, gh = (frame.gauge?.h ?? 0) * gk;
+    bump([stress]);
     const w = stress.w + (gw ? g + gw : 0), h = Math.max(stress.h, gh);
     stress.x = -w / 2 + stress.w / 2; stress.y = y + h / 2;
     if (gw) gauge = { x: -w / 2 + stress.w + g, y: y + h / 2 - gh / 2, w: gw, h: gh, k: gk };   // top-left of the DOM gauge; k: its scale
@@ -555,13 +599,13 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
        steps back) stays the letters' as before: a rim a few px past a seat's view edge must not send that seat to its screen layer. The
        entrance's full reach (a whoosh sweeps in from the side, 1.7 caps past the biggest pose) is NOT added: an entrance passes over things
        for a few frames (provisional, CALLERS-2) */
-    const st = it.room?.stand ?? 0;
-    fr.l = Math.min(fr.l, it.x - it.w / 2 - Math.max(px, st)); fr.r = Math.max(fr.r, it.x + it.w / 2 + Math.max(px, st));
-    fr.t = Math.min(fr.t, it.y - it.h / 2 - Math.max(py, st)); fr.b = Math.max(fr.b, it.y + it.h / 2 + Math.max(py, st));
+    const st = it.room?.stand ?? { l: 0, r: 0, u: 0, d: 0 };   // CALLERS2: per side (a duplicate block reaches right and down)
+    fr.l = Math.min(fr.l, it.x - it.w / 2 - Math.max(px, st.l)); fr.r = Math.max(fr.r, it.x + it.w / 2 + Math.max(px, st.r));
+    fr.t = Math.min(fr.t, it.y - it.h / 2 - Math.max(py, st.u)); fr.b = Math.max(fr.b, it.y + it.h / 2 + Math.max(py, st.d));
   }
   if (gauge) { rect.l = Math.min(rect.l, gauge.x); rect.r = Math.max(rect.r, gauge.x + gauge.w); rect.b = Math.max(rect.b, gauge.y + gauge.h); }
   const foot = Number.isFinite(fr.l) ? { l: Math.max(0, rect.l - fr.l), t: Math.max(0, rect.t - fr.t), r: Math.max(0, fr.r - rect.r), b: Math.max(0, fr.b - rect.b) } : null;
-  return { items: sized.filter(it => it.x != null), rect, gauge, f, ...(foot && (foot.l || foot.t || foot.r || foot.b) ? { foot } : {}) };
+  return { items: sized.filter(it => it.x != null), rect, gauge, f, ...(foot && !frame.bare && (foot.l || foot.t || foot.r || foot.b) ? { foot } : {}) };
 }
 /* where the block goes: by the token (above its head, else under its feet, else to its free side) or on the focus point; inside the safe
    rectangle (the window without the chat, the bars and the hotbar; on a map layer: the scene). FXLD2 (ADVD2 3, 6, 7): the block also
@@ -641,8 +685,16 @@ function place(out, frame, far = false) {
    shared thing it did not already touch (the token, a neighbour, a pin); else a new layout inside this seat's limits (recompose()).
    Between the two: the same block shrunk in place (SHRINK_LOCAL steps) and shifted the least way that clears it.
    -> { out, moved: 'none' | 'shift' | 'shrink' | 'layout', k?, d?: { dx, dy } } */
-export function localFix(out, frame, local, std, recompose) {
+export function localFix(out, frame, local0, std, recompose) {
   if (!out?.rect || !Number.isFinite(out.rect.l)) return { out, moved: 'none' };
+  /* CALLERS2 (CALLERS-3 decided by the standard: lettering never covers a panel): this seat's own panels are kept off the block's standing
+     ink (out.foot: the life of a held word and the outline round the letters, per side), not only off its letters' outline. Done by
+     growing each panel by the footprint (a rect grown by foot meets panel q exactly when the rect meets q grown the other way), and the
+     view (this seat's and the standard one) shrunk by it: the view's edge is where the panels round it begin (live harness: the GM's chat
+     card began 2 px past the standard view, and the odds' rim stood 7 px on it) */
+  const ft = out.foot;
+  const local = ft && local0 ? { ...local0, safe: local0.safe ? insetBy(local0.safe, ft) : local0.safe, avoid: (local0.avoid ?? []).map(q => ({ ...q, l: q.l - ft.r, t: q.t - ft.b, r: q.r + ft.l, b: q.b + ft.t })) } : local0;
+  std = ft && std ? insetBy(std, ft) : std;
   /* CRITPEAK: a split block (head and caption apart, composeMoment) is judged by its PARTS: the union of the two stands on the very tokens
      they frame, so a guard on the union shrank both onto the roller (the shared-hit base was the union's own cover) */
   const parts = out.parts?.length ? out.parts : [out.rect];
@@ -741,6 +793,11 @@ export function localFix(out, frame, local, std, recompose) {
   }
   const o2 = recompose ? recompose() : null;
   return o2 ? { out: o2, moved: 'layout' } : { out, moved: 'none' };
+}
+/* a rect less a footprint {l, t, r, b} (never inside out: a footprint wider than the rect leaves its centre line) */
+function insetBy(s, f) {
+  const l = s.l + (f.l || 0), r = s.r - (f.r || 0), t = s.t + (f.t || 0), b = s.b - (f.b || 0);
+  return { ...s, l: Math.min(l, (s.l + s.r) / 2), r: Math.max(r, (s.l + s.r) / 2), t: Math.min(t, (s.t + s.b) / 2), b: Math.max(b, (s.t + s.b) / 2) };
 }
 /* how far a seat may shrink the shared block in place before it lays it out anew (SAMEPIC) */
 export const SHRINK_LOCAL = Object.freeze([0.94, 0.88, 0.82, 0.76, 0.7, 0.64]);

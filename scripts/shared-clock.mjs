@@ -42,7 +42,16 @@ const pnow = () => globalThis.performance?.now?.() ?? Date.now();
 let samples = [], est = null, started = false, timer = 0;
 /* CALLERS: the running engine's clock (L.clock: { now, toPage, toServer, offset, error, ready, state }) once adopted and answered */
 let eng = null;
-const engOk = () => { try { return !!eng && eng.ready() === true && Number.isFinite(eng.offset()); } catch { return false; } };
+/* CALLERS2 (engine 1.9.18 trap, manual 6a): right after a page load the engine's clock can answer ready() with an error of ~280 ms (its first
+   burst of pings came back slowly while the page loaded, and it pings again only every 10 s); an instant taken on it then keeps this seat that
+   far behind for the whole moment. So the engine's clock is read only while its error is small (ERR_OK) or no better than this module's own;
+   this module keeps pinging until the engine's clock is good, and a caller about to take a shared instant can wait for a good clock (settle). */
+export const ERR_OK = 15;
+const engRaw = () => { try { return !!eng && eng.ready() === true && Number.isFinite(eng.offset()); } catch { return false; } };
+const engErr = () => { try { const e = eng.error(); return Number.isFinite(e) ? e : Infinity; } catch { return Infinity; } };
+const ownErr = () => (est ? est.rtt / 2 + 0.5 : Infinity);
+const engGood = () => engRaw() && engErr() <= ERR_OK;
+const engOk = () => engRaw() && (engErr() <= ERR_OK || engErr() <= ownErr());
 /** read the table's time from the running engine's clock (L.clock) from now on; returns true when it is one */
 export function adopt(clock) {
   if (!clock || typeof clock.now !== "function" || typeof clock.toPage !== "function" || typeof clock.offset !== "function" || typeof clock.ready !== "function") return false;
@@ -76,12 +85,25 @@ export function start() {
   /* CALLERS: the running engine's clock (called at ready, after init: the copy rule has chosen the engine by then) */
   try { const M = globalThis.MoinenLetters; if (M?.engine) Promise.resolve(M.engine()).then((L) => { if (L?.clock) adopt(L.clock); }).catch(() => {}); } catch { /* own clock */ }
   (async () => {
-    for (let i = 0; i < BURST; i++) { if (engOk()) return; await ping(); await new Promise((r) => setTimeout(r, BURST_GAP)); }
-    timer = setInterval(() => { if (engOk()) { clearInterval(timer); timer = 0; return; } ping(); }, EVERY);
+    for (let i = 0; i < BURST; i++) { if (engGood()) return; await ping(); await new Promise((r) => setTimeout(r, BURST_GAP)); }
+    timer = setInterval(() => { if (engGood()) { clearInterval(timer); timer = 0; return; } ping(); }, EVERY);
     timer?.unref?.();
   })();
 }
 export const ready = () => engOk() || !!est;
+/** CALLERS2: wait (at most maxMs) until the table's clock is good (error() <= ERR_OK), pinging meanwhile; resolves with the error then.
+    A seat that reloaded a moment ago takes its shared instants only after this (else it runs the whole moment its clock's error behind) */
+export const good = () => { const e = error(); return Number.isFinite(e) && e <= ERR_OK; };
+export async function settle(maxMs = 1200) {
+  const end = pnow() + Math.max(0, Number(maxMs) || 0);
+  while (pnow() < end) {
+    if (good()) return error();
+    if (typeof globalThis.game?.socket?.emit !== "function") break;
+    await ping();
+    await new Promise((r) => setTimeout(r, BURST_GAP));
+  }
+  return error();
+}
 export const offset = () => (engOk() ? eng.offset() : est ? est.off : null);
 export const error = () => { if (engOk()) { try { const e = eng.error(); if (Number.isFinite(e)) return e; } catch { /* own */ } } return est ? est.rtt / 2 + 0.5 : null; };
 export function serverNow() { return engOk() ? eng.now() : est ? pnow() + est.off : foundryNow(); }

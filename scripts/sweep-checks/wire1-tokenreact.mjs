@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/sweep-checks/wire1-tokenreact.mjs  (WIRE1: impact frames, the engine's L.impact, wired into the token reactions).
 // The harness is fxlt2-flow's fake Foundry; the engine is a recording stand-in that also records L.impact.play. Every check here fails on
 // tactics @ 3a7701d (nothing called L.impact there). What is pinned (the owner, 2026-11-13/14): one impact per moment, at the instant the

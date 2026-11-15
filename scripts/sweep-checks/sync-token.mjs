@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/sweep-checks/sync-token.mjs  (SYNC, 2026-11-14: the owner's ruling "the GM and the players see the same MOMENT"; ADVX
 // finding 5: token-hit impact frames ran about two film frames apart, either way). Seats modelled in turn on the fxi-token harness: one change,
 // stamped by the server, reaches each seat after its own delay, and each seat's timers fire late by their own amount (a busy page). The

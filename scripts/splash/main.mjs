@@ -544,6 +544,9 @@ hook('createChatMessage', async (message, options, userId) => {
     }
     /* FXLD (ADVD 9): words lettered on the map are under Dice So Nice's canvas: the dice are faded when the stops are in (the same
        instant on every seat), and the moment starts as they go (beat.at already holds the fade when any seat letters on the map) */
+    /* CALLERS2 (manual 6a): a seat that reloaded a moment ago may hold a clock ~280 ms off; it waits for a good one (pinging) before it puts
+       the moment's instants on its page clock, at most until the moment is near */
+    if (!Clock.good()) await Clock.settle(Math.max(0, Math.min(at, beat.base) - Clock.serverNow() - 40));
     if (Stage.lettersOn() && Stage.onMapLayer()) { await Clock.sleepUntil(Math.min(at, beat.base)); Stage.hurryDice(); }
     else if (beat.late) Stage.hurryDice();
     await Clock.sleepUntil(at);

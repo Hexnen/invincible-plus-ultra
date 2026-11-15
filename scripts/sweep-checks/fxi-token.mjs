@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/sweep-checks/fxi-token.mjs  (FXI-TOKEN: the token reactions' fixes after the blind review ADVI: findings 1, 2, 3, 5, 8, 13,
 // 15, 16). The harness is wire1-tokenreact's fake Foundry; the engine is a recording stand-in whose words carry a real-shaped entrance
 // (a contact drawing) and whose L.impact records its calls and plans. Every check names the finding it guards (I<n> = ADVI finding n) and

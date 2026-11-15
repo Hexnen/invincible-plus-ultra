@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 /* node scripts/tactics/check-sync.mjs -- fixer SYNC (2026-11-14): the owner's binding ruling "the GM and the players see the same MOMENT"
    (blind two-seat review ADVX finding 5: a critical's word and impact landed 171 and 291 ms apart between GM and player; token-hit impact
    frames about two film frames apart). Seats are modelled with their own page clocks, their own dice durations, report delays, late timers,

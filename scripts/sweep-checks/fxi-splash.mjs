@@ -1,3 +1,5 @@
+import { impactApi as _impactApi } from "../tokenreact/impact-node.mjs";      // CALLERS2: the engine's L.impact (tierOf) for the map build
+const IAPI = _impactApi();
 /* node scripts/sweep-checks/fxi-splash.mjs -- FXI-SPLASH (2026-11-14): the blind review ADVI of the dice-roll splash with impact frames.
    Every check here failed on tactics @ eb1dda6 (tag tactics-integrated-116) and passes now:
      P  (ADVI 10, privacy) a roller this seat cannot see (by vision, walls, fog, or hidden) gets no located word or impact on this seat:
@@ -204,8 +206,8 @@ for (const [name, e, full] of [["crit", R.crit, true], ["crit6", R.crit6, true],
 /* ================================================================== M: map layer */
 {
   const covers = (spec) => planImpact(spec).frames.filter((f) => IP.COVERS_WORD.includes(f.type)).map((f) => f.type);
-  for (const m of [0.3, 0.5, 0.84, 1.1, 1.6, 2]) eq(covers({ kind: "crit", magnitude: m, frames: IP.mapFrames(m) }), [], `M: map frames at strength ${m} leave the word's spot clear (ADVI 6: the shadow frame hid it, the slam's star blacked it)`);
-  ok(IP.mapFrames(0.5).length < IP.mapFrames(1.6).length && IP.mapFrames(1.6).some((f) => f.type === "window"), "M: the map impact still builds: more for the rarer result, the torn window for a critical");
+  for (const m of [0.3, 0.5, 0.84, 1.1, 1.6, 2]) eq(covers({ kind: "crit", magnitude: m, frames: IP.mapFrames(m, IAPI) }), [], `M: map frames at strength ${m} leave the word's spot clear (ADVI 6: the shadow frame hid it, the slam's star blacked it)`);
+  ok(IP.mapFrames(0.5, IAPI).length < IP.mapFrames(1.6, IAPI).length && IP.mapFrames(1.6, IAPI).some((f) => f.type === "window"), "M: the map impact still builds: more for the rarer result, the torn window for a critical");
   const hero = tok("HERO", 650, 380);   // CRITPEAK: on the view (was 1200, 900: under a 1600 x 900 window's bottom edge)
   const s = await seat({ layer: "overlay", e: R.crit, name: "m1", hero, full: false });
   const im = s.impacts[0], w = wordCall(s);

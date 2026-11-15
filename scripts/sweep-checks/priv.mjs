@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/sweep-checks/priv.mjs  (PRIV: one reaction for every seat that sees the token. The owner, 2026-11-14, asked whether a player
 // may keep getting a lighter or other reaction than the GM for an enemy token, answered no; the earlier ruling: GM and players see the same
 // moment. So a player seat that SEES the token letters the GM's word, at the GM's size tier, with the GM's token animation and impact, at the

@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 /* node scripts/sweep-checks/gmall.mjs -- GMALL (2026-11-15): the owner, «wszystko mg wybiera dla stołu. wszystko»: every option of the roll
    splash, the token reactions, their animations and what the module exposes of the lettering engine is the TABLE's: world scope, changed
    only by the GM, applied live on every seat; existing worlds migrate the GM's own choices. On a fake Foundry whose settings behave like

@@ -1,3 +1,4 @@
+import "./impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/tokenreact/check-same-seat.mjs '<seat json>'  -- ONE seat of the SAMEPIC two/three-seat check (scripts/sweep-checks/samepic.mjs
 // runs it once per seat, each in its own node process, and compares what the seats draw). Not a suite of its own: it prints one JSON line.
 // A fake Foundry with a real view (the harness of sweep-checks/fxlt2-flow.mjs): a stage that pans and zooms, the interface around the

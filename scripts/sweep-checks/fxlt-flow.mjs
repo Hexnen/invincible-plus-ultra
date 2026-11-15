@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/sweep-checks/fxlt-flow.mjs  (FXLT: the token reactions' fixes after the blind review ADVT, driven through a fake Foundry
 // with a real view: a stage that pans and zooms, the interface around the canvas, the director's letterbox bars). Every check names the
 // review finding it guards (R<n> = ADVT finding n). It only watches what main.mjs hands the engine (L.play / stop), so it runs on the

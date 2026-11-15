@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/sweep-checks/fin-callers-token.mjs  (FIN-CALLERS, the token side of one story, seen failing live on lane 5 before the fix):
 //   O1 the roll's dice take seconds: a start said with the card still holds the target's blow until the roll's word has struck (it had
 //      run out after 2.5 s from the card and the blow came 0.2-0.4 s BEFORE the word);

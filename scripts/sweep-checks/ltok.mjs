@@ -1,3 +1,4 @@
+import "../tokenreact/impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact table for pure.mjs (on a page: the running engine's L.impact)
 // node scripts/sweep-checks/ltok.mjs  (LTOK: token reactions to Health / Resolve changes, comic lettering at the token)
 import { readFileSync } from "node:fs";
 import * as P from "../tokenreact/pure.mjs";

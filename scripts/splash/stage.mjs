@@ -248,12 +248,33 @@ function measureItems(items, base) {
       const r = LE.planFor ? LE.planFor(LP.letterable(it.text), om) : null;   // size and hold box stay the planFor ones (no picture change)
       const p = r?.plan ?? me?.plan ?? (LE._plan ? (() => { const q = LE._plan(LP.letterable(it.text), om); LE._settle?.(q); return q; })() : null);
       if (p?._holdBox?.w > 0 && p.sizeK > 0) m = { w: p._holdBox.w, h: p._holdBox.h, sizeK: p.sizeK, hand: p.hand?.id, grow: IP.growOf(p), contact: IP.contactMs(p) };   // FXI-SPLASH: the entrance's biggest drawing and the instant it hits
-      if (m && me?.reach && me.unit > 0) { m.reach = { l: me.reach.l / me.unit, r: me.reach.r / me.unit, u: me.reach.u / me.unit, d: me.reach.d / me.unit }; const q = me.plan ?? p; m.halo = q.hand?.halo ?? null; m.inkW = q.hand?.inkW ?? 0; m.life = !!q.motion?.life; }
+      if (m && me?.reach && me.unit > 0) m.reach = { l: me.reach.l / me.unit, r: me.reach.r / me.unit, u: me.reach.u / me.unit, d: me.reach.d / me.unit };
+      if (m && LE.measure) m.footAt = footAt(LP.letterable(it.text), base.map ? { ...om, space: 'world', keepInView: false } : om, base.map, m.sizeK);
     } catch (e) { m = null; }
     if (!m) { let k = 0.62 + 0.7 * (it.sound?.loud ?? 0.5); try { k = LE.design(LP.letterable(it.text), { ...o, reduced: false })?.sizeK ?? k; } catch (e) { /* estimate */ } const b = LP.estimateBox(it, 1); m = { w: b.w, h: b.h, sizeK: k, hand: null }; }
     it._m = m;
     if (m.hand) hands.push(m.hand);
   }
+}
+/* CALLERS2 (engine 1.9.18, L.measure standBox): a part's standing footprint past its hold box, in caps, measured by the engine at the size the
+   layout tries (S px per cap: the rim's pixel floor and cap depend on it), the same on every seat: one device pixel per CSS px (view.dpr 1)
+   and, on the map, the board's reference scale (view.zoom) instead of this seat's zoom. Cached per size (the layout tries a few). */
+function footAt(text, o, map, sizeK = 1) {
+  const memo = new Map();
+  const gs = globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100;
+  const view = map ? { dpr: 1, zoom: SP.REF_VH / (GRID_VH * gs) } : { dpr: 1 };
+  return (S) => {
+    const key = Math.round(S * 4) / 4;
+    if (memo.has(key)) return memo.get(key);
+    let f = null;
+    try {
+      const me = LE.measure(text, { ...o, fit: 'exact', size: key / (sizeK || 1), view });
+      const hb = me?.plan?._holdBox, st = me?.stand, u = me?.unit;
+      if (hb?.w > 0 && hb?.h > 0 && st && u > 0) f = { l: st.l / u - hb.w / 2, r: st.r / u - hb.w / 2, u: st.u / u - hb.h / 2, d: st.d / u - hb.h / 2 };
+    } catch (e) { f = null; }
+    memo.set(key, f);
+    return f;
+  };
 }
 const measureFn = (it, S) => (it._m ? { w: it._m.w * S, h: it._m.h * S, grow: it._m.grow ?? 1, ...LP.roomOf(it._m, S) } : LP.estimateBox(it, S));
 function engineOpts(it, base, hands) {
@@ -950,7 +971,7 @@ function impactShot(ctl, it, contact) {
         over: LAYER === 'screen' ? 'ui' : 'scene' };
       /* the blow comes from the roller (only a token this seat sees: the engine checks it again) */
       if (tok && ctl.from && ctl.from !== tok && seesToken(ctl.from)) s.from = ctl.from;
-      if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude); }
+      if (map) { s.space = 'world'; s.frames = IP.mapFrames(q.magnitude, LE?.impact); }
       if (q.tone) s.tone = q.tone;
       if (q.hitstop === false) s.hitstop = false;
       return s;
