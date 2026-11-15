@@ -32,7 +32,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     let last = -1, okIn = true, okUp = true;
     for (let k = 0; k <= 4; k++) {
       const sp = P.withSeries({ ...R }, k), e = effective(sp);
-      if (stepOf(e) !== stepOf(R.magnitude) || e > P.IMPACT_TOP + 1e-9 || e < R.magnitude - 1e-9 || sp.magnitude < 0) okIn = false;
+      if (stepOf(e) !== stepOf(R.magnitude) || e > P.impactTop() + 1e-9 || e < R.magnitude - 1e-9 || sp.magnitude < 0) okIn = false;
       if (e < last - 1e-9) okUp = false;
       last = e;
       if (k && !(sp.series >= 1 && sp.series <= k)) okIn = false;      // a weak rung may carry fewer places (no negative strength passed)

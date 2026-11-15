@@ -16,6 +16,7 @@ import fs from "node:fs";
 import { ok, eq, done, seeded } from "./testkit.mjs";
 import * as SL from "../splash/logic.mjs";
 import * as C from "../shared-clock.mjs";
+import { impactApi } from "../tokenreact/impact-node.mjs";   // CALLERS2: fake engines carry the engine's public impact table
 
 const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -193,7 +194,7 @@ function fakeEngine(rec, reducedSeat) {
     design: (text, op) => ({ sizeK: 0.62 + 0.7 * (op.sound?.loud ?? 0.5) }),
     play(text, op) { const h = { hand: `hand-${op.seed}`, alive: true, off: false, stop() { h.alive = false; }, moveTo() {}, ready: Promise.resolve(true), finished: new Promise(() => {}) }; rec.words.push({ text, o: op, page: rec.clock() }); return h; },
     contactAt: (h) => null,
-    impact: { play(spec) { rec.impacts.push({ spec, page: rec.clock() }); return { alive: true }; }, plan: (spec) => planImpact(spec) } };
+    impact: { ...impactApi(), play(spec) { rec.impacts.push({ spec, page: rec.clock() }); return { alive: true }; }, plan: (spec) => planImpact(spec) } };
 }
 let runN = 0;
 /* one seat: its page clock is shared - origin; it reaches Stage.play `late` ms after the shared instant (compose, a late timer) */

@@ -14,6 +14,7 @@
 import { ok, eq, done, summary } from "../tactics/testkit.mjs";
 import * as SL from "../splash/logic.mjs";
 import { planImpact } from "../letters/impact/plan.mjs";
+import { impactApi } from "../tokenreact/impact-node.mjs";   // CALLERS2: the fake engine carries the engine's public impact table (tierOf for the map frames)
 
 const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
 const ev = (rd) => SL.buildEvent({ newSixes: 0, rerolled: 0, pushed: false, stress: 0, action: "slugfest", ...rd }, { rng: seq([0.1, 0.5, 0.9, 0.3]), st: null, dryN: 0 });
@@ -61,7 +62,7 @@ function fakeEngine(log, impact) {
         ready: Promise.resolve(true), finished: new Promise(() => {}), plan: { timeline: SLAM() } };
       log.push({ t: clock, word: text, o: { ...op, parent: op.parent ? "P" : undefined, token: op.token?.id } }); return h;
     } };
-  if (impact) L.impact = { plan: (spec) => planImpact(spec), play(spec) { log.push({ t: clock, impact: { ...spec, subject: spec.subject?.id ?? spec.subject, from: spec.from?.id, keep: spec.keep?.id } }); return { alive: true, finished: Promise.resolve("done"), ready: Promise.resolve(true), stop() {} }; } };
+  if (impact) L.impact = { ...impactApi(), plan: (spec) => planImpact(spec), play(spec) { log.push({ t: clock, impact: { ...spec, subject: spec.subject?.id ?? spec.subject, from: spec.from?.id, keep: spec.keep?.id } }); return { alive: true, finished: Promise.resolve("done"), ready: Promise.resolve(true), stop() {} }; } };
   return L;
 }
 const tok = (id, x, y) => ({ id, visible: true, document: { id, x, y, width: 1, height: 1, hidden: false, texture: { scaleX: 1, scaleY: 1 } }, x, y, w: 100, h: 100, center: { x: x + 50, y: y + 50 } });

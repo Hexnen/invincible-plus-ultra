@@ -71,7 +71,7 @@ const hitAll = (ids, to = 6, dt = 5) => ids.map((id, i) => ({ t: i * dt, id, to 
     ck(`P19 five -1 on a ${max}-point track: never more than one rung over a scratch (rungs ${f.map((x) => x.rung)})`, f.every((x) => x.rung <= 1));
   }
   const toDown = (() => { let cum = { n: 0, a: 0 }; const out = [-2, -2, -2].map((d, s) => { const amt = 2 / 8; cum = { n: cum.n + 2, a: cum.a + amt }; return P.impactOf({ kind: "hit", amt, known: true }, s, { cum }); }); out.push(P.impactOf({ kind: "down", amt: 1 / 8 }, 3, { cum: { n: 7, a: 7 / 8 } })); return out; })();
-  ck(`P20 a paced series -2 -2 -2 then the fall builds to a real peak (${toDown.map((x) => `${x.kind} ${x.magnitude}`)})`, toDown[2].rung > toDown[0].rung && toDown[3].kind === "ko" && toDown[3].magnitude > P.IMPACT_TOP);
+  ck(`P20 a paced series -2 -2 -2 then the fall builds to a real peak (${toDown.map((x) => `${x.kind} ${x.magnitude}`)})`, toDown[2].rung > toDown[0].rung && toDown[3].kind === "ko" && toDown[3].magnitude > P.impactTop());   // CALLERS2: the top is the running engine's (impactTop), no mirrored IMPACT_TOP
   ck("P21 the sound of a series lengthens blow by blow but at most two tiers over what it earned: five -1 never reach its loudest form",
     typeof P.textStep === "function" && [0, 1, 2, 3, 4].map((s) => P.textStep(s, 0)).join() === "0,1,2,2,2" && P.textStep(4, 1) === 3 && P.textStep(0, 0) === 0);
   ck("P22 a series' word grows a little every blow (the rhythm) and more for the rungs its damage earned; five -1 end under a third bigger",

@@ -15,6 +15,7 @@ import * as IP from "../splash/impact-plan.mjs";
 import { planImpact } from "../letters/impact/plan.mjs";
 import { impBlow } from "./align-imp.mjs";
 import * as Moment from "../moment.mjs";
+import { impactApi } from "../tokenreact/impact-node.mjs";   // CALLERS2: fake engines carry the engine's public impact table
 
 const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -65,7 +66,7 @@ function fakeEngine(log) {
         ready: Promise.resolve(true), finished: new Promise(() => {}), plan: { timeline: tl(op) } };
       calls.push({ text, o: op, h }); log.push({ what: "word", seed: op.seed }); return h;
     } };
-  L.impact = { plan: (spec) => planImpact(spec), play(spec) { log.push({ what: "impact", spec }); return { alive: true, plan: planImpact(spec), finished: Promise.resolve("done"), ready: Promise.resolve(true), stop() {} }; } };
+  L.impact = { ...impactApi(), plan: (spec) => planImpact(spec), play(spec) { log.push({ what: "impact", spec }); return { alive: true, plan: planImpact(spec), finished: Promise.resolve("done"), ready: Promise.resolve(true), stop() {} }; } };
   return L;
 }
 const ID = (s) => (s + "0000000000000000").slice(0, 16);      // Foundry-shaped ids (16 alphanumerics)

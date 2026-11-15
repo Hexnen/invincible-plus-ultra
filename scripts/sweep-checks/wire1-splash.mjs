@@ -7,6 +7,7 @@
 import { ok, eq, done, summary } from "../tactics/testkit.mjs";
 import * as SL from "../splash/logic.mjs";
 import { impStart } from "./align-imp.mjs";      // ALIGN: blowAt read with the engine's own plan
+import { impactApi } from "../tokenreact/impact-node.mjs";   // CALLERS2: fake engines carry the engine's public impact table
 
 const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
 const ev = (rd, rng = seq([0.1, 0.5, 0.9, 0.3])) => SL.buildEvent({ newSixes: 0, rerolled: 0, pushed: false, stress: 0, action: "slugfest", ...rd }, { rng, st: null, dryN: 0 });
@@ -90,7 +91,7 @@ async function seat({ W = 1600, H = 900, layer = "screen", e, name = "x", hero =
     const wordStart = [];
     L.play = (text, op) => { const h = play0(text, op); h.plan = { timeline: { ent: [{ ticks: 2 }, { ticks: 3 }] } }; if (/:word$/.test(op.seed ?? "")) { wordAt.push(performance.now()); wordStart.push(op.startAt ?? performance.now()); } return h; };
     const impacts = [];
-    if (!noImpact) L.impact = { play(spec) { impacts.push({ spec, t: performance.now() }); return { alive: true, plan: { magnitude: spec.magnitude }, finished: Promise.resolve("done"), ready: Promise.resolve(true), stop() {} }; } };
+    if (!noImpact) L.impact = { ...impactApi(), play(spec) { impacts.push({ spec, t: performance.now() }); return { alive: true, plan: { magnitude: spec.magnitude }, finished: Promise.resolve("done"), ready: Promise.resolve(true), stop() {} }; } };
     Stage.setLetters(L); Stage.setLayer(layer); S.setReduced(reduced);
     const ctl = Stage.play(e, { token: hero, scale: 1, hold: 1, fx, fullFrom: full ? 0.7 : null, seed: "S-" + name, resolve: () => ({ now: 5, max: 8 }), backdrop: false });
     const flashes = [];
