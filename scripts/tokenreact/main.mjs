@@ -797,19 +797,26 @@ const view = {
   },
   /* CROWDKO (ADVS2 D4: an enemy's "-2" stood on a zone's numbered badge): the map's zone badges (moinen-maps), read from its public zones
      API: a badge stands on its zone's label point at a fixed size on screen (display.mjs: radius min(19, max(8, 0.8 r zoom)) CSS px, a
-     shaped badge up to ~1.2 of that). Shown to every seat -> shared; shown to the GM only -> the GM seat's own. Badges in a zone's corner or
-     shown only under the pointer are not read (their place is not on the public API) */
+     shaped badge up to ~1.2 of that). Shown to every seat -> shared; shown to the GM only -> the GM seat's own. Badges shown only under the
+     pointer are not read (no fixed place) */
   badges() {
     const shared = [], local = [];
     if (!this.ok()) return { shared, local };
     try {
       const api = game.modules.get("moinen-maps")?.active ? game.modules.get("moinen-maps").api?.zones : null;
       const Z = api?.zones?.(), lk = api?.look?.();
-      if (!Z?.zones?.length || !lk || lk.numbers !== "always" || lk.place === "corner" || (lk.who !== "all" && lk.who !== "gm")) return { shared, local };
+      if (!Z?.zones?.length || !lk || lk.numbers !== "always" || (lk.who !== "all" && lk.who !== "gm")) return { shared, local };
+      /* SPLASHCLEAR: a badge in the zone's corner (the comic looks' default, the live Warehouse) where moinen-maps places it (display.mjs:
+         geometry.cornerPoint(zone, min(0.9 label r, 0.55 grid)), on the public API) */
+      const corner = lk.place === "corner", cp = api?.geometry?.cornerPoint, g = canvas.dimensions?.size ?? canvas.grid?.size ?? 100;
+      if (corner && typeof cp !== "function") return { shared, local };
       const z = this.zoom();
       for (const q of Z.zones) {
         const l = q?.label; if (!l || !Number.isFinite(l.x) || !Number.isFinite(l.y)) continue;
-        const r = Math.min(19, Math.max(8, (Number(l.r) || 40) * 0.8 * z)) * 1.2, a = this.toScreen(l);
+        let p = l;
+        if (corner) { try { p = cp(q, Math.min((Number(l.r) || 40) * 0.9, g * 0.55)); } catch (e2) { p = null; } }
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+        const r = Math.min(19, Math.max(8, (Number(l.r) || 40) * 0.8 * z)) * 1.2, a = this.toScreen(p);
         (lk.who === "all" ? shared : local).push({ x: a.x - r, y: a.y - r, w: 2 * r, h: 2 * r, id: `zone:${q.id}` });
       }
     } catch (err) { once(err); }

@@ -364,6 +364,37 @@ export function noteBox(n, gs = 100) {
   return q;
 }
 const sameTok = (a, b) => !!a && !!b && (a === b || (a.id != null && a.id === b.id));
+/* SPLASHCLEAR (ADVS2 D4: the critical's word over the map's numbered zone badges 2 and 5): the map's zone badges (moinen-maps public zones API,
+   as tokenreact reads them, CROWDKO): a badge stands on its zone's label point at a fixed size ON SCREEN (moinen-maps display: radius
+   min(19, max(8, 0.8 r zoom)) CSS px, a shaped badge up to 1.2 of that). zoom: the scale the badge is drawn at (a seat's, or the table's
+   reference scale). -> { shared: [scene boxes] }: shown to every seat = a shared obstacle (a pin's weight). Badges shown to the GM only are
+   not read (like his hidden tokens they would move the GM's picture off the players': SPLASHCLEAR-3). A badge shown under the pointer only
+   is not read (no fixed place) */
+/* a badge is a number the table reads: it weighs a few pins (a 15 px graze of it is not clean on any window) */
+export const BADGE_W = 3;
+export function zoneBadges(zoom = 1) {
+  const shared = [];
+  try {
+    const mod = globalThis.game?.modules?.get?.('moinen-maps'), api = mod?.active ? mod.api?.zones : null;
+    const Z = api?.zones?.(), lk = api?.look?.();
+    if (!Z?.zones?.length || !lk || lk.numbers !== 'always' || lk.who !== 'all') return { shared };
+    /* a badge in the zone's corner (the comic looks' default; the live Warehouse): its point as moinen-maps places it (display.mjs follow:
+       geometry.cornerPoint(zone, min(0.9 label r, 0.55 grid)), on the public API's geometry) */
+    const corner = lk.place === 'corner', cp = api?.geometry?.cornerPoint, g = globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100;
+    if (corner && typeof cp !== 'function') return { shared };
+    const z = Math.max(0.02, Number(zoom) || 1);
+    for (const q of Z.zones) {
+      const l = q?.label;
+      if (!l || !Number.isFinite(l.x) || !Number.isFinite(l.y)) continue;
+      let p = l;
+      if (corner) { try { p = cp(q, Math.min((Number(l.r) || 40) * 0.9, g * 0.55)); } catch (e) { p = null; } }
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      const r = Math.min(19, Math.max(8, (Number(l.r) || 40) * 0.8 * z)) * 1.2 / z;
+      shared.push({ l: p.x - r, t: p.y - r, r: p.x + r, b: p.y + r });
+    }
+  } catch (e) { /* no map, no badges */ }
+  return { shared };
+}
 /* the shared frame of a map moment (scene px) */
 export function sharedFrame(hero, targets = []) {
   const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
@@ -389,6 +420,7 @@ export function sharedFrame(hero, targets = []) {
     avoid.push({ ...grow(docBox(t, gs), 0.06 * gs), w: targets.includes(t.id) ? LP.TARGET_W : LP.OTHER_W });   // CRITPEAK: the roll's target weighs most
   }
   for (const n of C?.notes?.placeables ?? []) { try { if (docOf(n)) avoid.push(noteBox(n, gs)); } catch (e) { /* a pin without a place */ } }
+  for (const q of zoneBadges(SP.REF_VH / (GRID_VH * gs)).shared) avoid.push({ ...q, w: BADGE_W });   // SPLASHCLEAR: the zone badges every seat sees (at the board's scale)
   const vh = GRID_VH * gs;
   /* CRITPEAK: nothing of this seat's view sizes the block (SAMEPIC: one scene place and one scene size on every seat, whatever its zoom):
      the ranks' sizes are shares of the board height (vh). A seat zoomed so far out that the board word is a speck plays the moment on its
@@ -470,6 +502,7 @@ function sharedScreenAvoid(hero, full, targets = []) {
     try { const d = docOf(t); if (!d || d.hidden || sameTok(t, hero)) continue; const q = projBox(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push({ ...q, w: targets.includes(t.id) ? LP.TARGET_W : LP.OTHER_W }); } catch (e) { /* one token */ }
   }
   for (const n of C?.notes?.placeables ?? []) { try { if (!docOf(n)) continue; const q = projBox(noteBox(n, gs)); if (q) out.push(q); } catch (e) { /* one pin */ } }
+  for (const b of zoneBadges(C?.stage?.scale?.x || 1).shared) { const q = projBox(b); if (q) out.push({ ...q, w: BADGE_W }); }   // SPLASHCLEAR: the zone badges every seat sees
   for (const z of SP.panelZones(window.innerWidth, window.innerHeight)) out.push({ ...z, w: UI_WEIGHT });   // the party panel's corner, the same zone on every seat
   if (full && hero) { const h = sharedTokenBox(hero); if (h) out.push({ ...grow(h, Math.max(10, 0.15 * (h.r - h.l))), w: 50 }); }   // the drawn art (hair, a fist) reaches past the token's box; the hero weighs most
   return out;
@@ -507,6 +540,9 @@ export function tableFrame(hero, full, targets = [], scale = 1) {
     try { const d = docOf(t); if (!d || d.hidden || sameTok(t, hero)) continue; both(tp(grow(docBox(t, gs), 0.06 * gs)), targets.includes(t.id) ? LP.TARGET_W : LP.OTHER_W); } catch (e) { /* one token */ }
   }
   for (const n of C?.notes?.placeables ?? []) { try { if (docOf(n)) both(tp(noteBox(n, gs))); } catch (e) { /* one pin */ } }
+  /* SPLASHCLEAR: the zone badges are NOT the table's obstacles (each seat keeps off them, sharedScreenAvoid): live (lane 5, the Warehouse's
+     corner badges, the critical at zoom 0.35) the table's least-covering block took a bystander (46 % of his box) to spare two badges,
+     and a seat near the table's zoom keeps that place (SPLASHSAME-7) */
   if (full) avoid.push({ ...grow(H, Math.max(10, 0.15 * (H.r - H.l))), w: 50 });
   /* the party panel's corner of the reference window (every seat keeps that zone: the table's block does not plan its caption into it) */
   for (const zn of SP.panelZones(SP.REF_VW, SP.REF_VH)) avoid.push({ ...zn, w: UI_WEIGHT });
@@ -521,7 +557,12 @@ function seatOf(ctl, T, lay) {
   const loc = localScreen(lay);
   /* the roller himself is kept clear by seatPlace (his box and the table's gap, weighed as the token); the critical hero's art margin (0.15 of
      his width) is the TABLE's room when it composes the block, not a seat's: before, the screen block stood in it on the GM's seat too */
-  return { hero: T, safe: loc.safe, avoid: [...sharedScreenAvoid(ctl.hero, false, ctl.targets ?? []), ...loc.avoid], own: loc.own ?? [], gap: ctl.full ? 6 : Math.max(8, Math.round(0.08 * (T.r - T.l))) };
+  return { hero: T, safe: loc.safe, wide: seatWide(lay), avoid: [...sharedScreenAvoid(ctl.hero, false, ctl.targets ?? []), ...loc.avoid], own: loc.own ?? [], gap: ctl.full ? 6 : Math.max(8, Math.round(0.08 * (T.r - T.l))) };
+}
+/* SPLASHCLEAR: all of this seat's free view (client px): its window inside the bars it really has (the tool column, the hotbar and players list,
+   the open sidebar; not the reserve band of the standard view), for a block that finds no clean place in the band (LP.seatPlace, last moves) */
+function seatWide(lay) {
+  try { measureArea(); const c = safeRect({ core: true, screen: lay === 'screen' }); return { l: c.l, t: Math.max(c.t, 10), r: Math.min(c.r, area.w - 14), b: c.b }; } catch (e) { return null; }
 }
 /* this seat's own limits (tier 3): screen = over everything, cut only by the window and the open sidebar (the layer's clip); ui = under
    the windows (the GM's desk is one); hud = under the bars, the panels and the resting dice */
@@ -553,6 +594,11 @@ function whyMoved(r, loc) {
   return o;
 }
 function seatOwn() { return [...uiAvoid(), ...boxesOf([...UI_TOP, '#mm-dir-bar', ...UI_RIGHT])]; }
+/* SPLASHCLEAR: what pops up on ONE seat for a moment (the GM's director pill, a chat card the roll itself just popped up): it never moves
+   that seat's screen block (SAMEPIC, check-fxld F4: the GM's picture = the players'), it steps back under the block instead (POPUP_YIELD,
+   as a map layer's panels do: faded to a trace while the part is up, hovering brings it back) */
+export const POPUPS = ['#mm-dir-bar', ...UI_RIGHT];
+function seatPanels() { return [...uiAvoid(), ...boxesOf(UI_TOP)]; }
 /* MAPSEAT: on a map layer this seat's own floating interface steps back while the board block is up (provisional MAPSEAT-2). A panel is
    HTML over the board: before, the GM's panels (the map meter, the challenges, the party cards, his desk, the scene list) moved and shrank
    HIS block only. Now the block stays the board's and a panel over any of its parts fades to a trace for the moment (hovering it brings it
@@ -561,14 +607,16 @@ function seatOwn() { return [...uiAvoid(), ...boxesOf([...UI_TOP, '#mm-dir-bar',
 export const YIELD_PANELS = [...UI_AVOID, ...UI_TOP, '#mm-dir-bar', ...UI_RIGHT, ...UI_WINDOWS];
 export const YIELD_CLASS = 'ins-yield';
 function yieldPanels(ctl) {
-  if (!ctl?.shared || !ctl.layout?.items?.length) return;
+  if (!ctl?.layout?.items?.length) return;
   const boxes = [];
   for (const it of ctl.layout.items) {
-    const p = LP.PAD * (it.S || 0), a = toClient({ x: it.x - it.w / 2 - p, y: it.y - it.h / 2 - p }), c = toClient({ x: it.x + it.w / 2 + p, y: it.y + it.h / 2 + p });
+    const p = LP.PAD * (it.S || 0), q = { x: it.x - it.w / 2 - p, y: it.y - it.h / 2 - p }, q2 = { x: it.x + it.w / 2 + p, y: it.y + it.h / 2 + p };
+    const a = ctl.shared ? toClient(q) : q, c = ctl.shared ? toClient(q2) : q2;
     if (a && c) boxes.push({ l: a.x, t: a.y, r: c.x, b: c.y });
   }
   ctl.yielded ??= new Set();
-  for (const sel of YIELD_PANELS) {
+  /* the screen layer: only the pop-ups yield (its panels moved the block, SPLASHCLEAR-1) */
+  for (const sel of ctl.shared ? YIELD_PANELS : POPUPS) {
     try {
       for (const e of document.querySelectorAll(sel)) {
         if (!e?.classList || ctl.yielded.has(e)) continue;
@@ -580,20 +628,33 @@ function yieldPanels(ctl) {
   }
 }
 function unyield(ctl) { for (const e of ctl?.yielded ?? []) { try { e.classList.remove(YIELD_CLASS); } catch (e2) { /* gone */ } } ctl?.yielded?.clear?.(); }
+/* SPLASHCLEAR: a seat's own panel weighs OWN_W per px2 (a token 10 / 50, a pin 1): a panel is big, so any real overlap still is not clean and
+   moves the block, but where nothing is clean a bystander's art is spared first (tried 2: the crowded board's pushed result moved from the
+   party cards onto a bystander, 23 % -> 31 % of its box).
+   Tokens hidden from the players (and zone badges shown to the GM only) are NOT obstacles of the GM's seat: tried, they moved the GM's block
+   off the place every player kept (samepic S2: the GM's and the player's picture must be one), and the block's side on the GM's screen would
+   still tell nothing to a player, but the table's one picture is the contract. Provisional SPLASHCLEAR-3 (combat-questions) */
+export const OWN_W = 0.5;
 /* lay: the layer this moment is drawn on (a map-layer seat whose moment has no board place draws it on the screen layer: CRITPEAK) */
 function localScreen(lay = LAYER) {
   measureArea();
   /* over the interface (screen) and under the windows only (ui): this seat's window minus the SAME reserve band every seat keeps (Foundry's
-     bars) and minus its open sidebar where that is wider. Not this seat's own panels, pop-up cards or the GM's director pill: the moment is
-     drawn over them for its few seconds (provisional SAMEPIC-3; checked: avoiding them, the party cards that stand at a height that
-     follows each window moved every seat's block differently). Under the windows also the GM's desk (a window would hide the block).
+     bars) and minus its open sidebar where that is wider, and its own panels (SPLASHCLEAR below; before, SAMEPIC-3 drew over them).
      Under the bars (hud) the block would be HIDDEN by anything of this seat: its real bars, panels and resting dice */
   const vw = window.innerWidth, vh = window.innerHeight, band = seatBand(lay === 'screen');
   /* a window smaller than the reference keeps the party corner where it really is on this window (it is moving the block anyway) */
   const small = vw < SP.REF_VW || vh < SP.REF_VH ? SP.panelZones(vw, vh, true).filter((z) => z.at === 'bl') : [];   // the party cards (over the scene list it is drawn on the screen layers)
   /* own: what of this seat would HIDE the block (SPLASHSAME: the table's place is never kept on it, LP.seatPlace) */
-  if (lay === 'screen') return { safe: band, avoid: small, own: [] };
-  if (lay === 'ui') { const w = boxesOf(UI_WINDOWS); return { safe: band, avoid: [...small, ...w], own: w }; }
+  /* SPLASHCLEAR (ADVS2 D4: the ordinary word over the GM's map meter and scene list, "1 IN 1296" on the challenges' panel and on the stunt
+     card; the owner: a seat that cannot show a block clean may show it farther away but clean): on the screen layer too this seat's own
+     panels (its party cards, map meter and filter, challenges, scene list rows, the GM's desk; its pop-ups yield instead: POPUPS) are
+     things the block must not cover. They never change the TABLE's block (every seat composes the same one); a seat whose plain place lands
+     on one moves that block away (LP.seatPlace: its side, then smaller, then farther), the same arrangement and ratios. Before (SAMEPIC-3)
+     the screen layer drew over them. Provisional SPLASHCLEAR-1 */
+  /* where nothing is clean, the block rather lies on a seat's own panel (OWN_W) than on a token the table needs to see (the panel is drawn
+     under it and comes back when the moment is over) */
+  const ownW = () => [...seatPanels(), ...boxesOf(UI_WINDOWS)].map((q) => ({ ...q, w: OWN_W }));
+  if (lay === 'screen' || lay === 'ui') { const o = ownW(); return { safe: band, avoid: [...small, ...o], own: o }; }
   const own = [...seatOwn(), ...boxesOf(UI_WINDOWS), ...diceRects()];
   return { safe: band, avoid: own, own };
 }
@@ -1101,7 +1162,7 @@ function playLetters(ev, o) {
   for (const it of lay.items) {
     at(() => {
       if (it.role === 'stress') stressGauge(ctl, ev.stress, resolve, lay.gauge);
-      if (ctl.shared) yieldPanels(ctl);   // MAPSEAT: this seat's own panels over the board block step back (each part as it comes)
+      yieldPanels(ctl);   // MAPSEAT: this seat's own panels over the board block step back (each part as it comes); SPLASHCLEAR: on the screen, its pop-ups
       const h = letterOne(ctl, it);
       /* FXLD (ADVD 14): the engine switched off under us (its master switch) -> the classic splash instead of rays with no word */
       if (first && h && (h.off === true || (h.alive === false && LE?.prefs?.enabled === false))) { ctl.momentId = null; ctl.landed = false; endCtl(ctl, true); playClassic(ev, o); first = false; return; }   // the classic splash tells the story from here
@@ -1323,8 +1384,12 @@ function probeGauge(ctl, stress, resolve) {
     const b = S.stressBadge(lw, stress, resolve, null);
     if (ctl.shared) b.style.setProperty('--u', '1');
     b.style.visibility = 'hidden';
-    const q = b.getBoundingClientRect();
+    /* SPLASHCLEAR (live, lane 5: the gauge stood on two tokens beside a "far" block): its layout size, not its box on screen: the box
+       caught the gauge's pop-in transform at its start (0.44 of its size), so the block was planned round a gauge 63 x 36 px that is
+       drawn 143 x 82 */
+    const q = b.getBoundingClientRect(), ow = b.offsetWidth, oh = b.offsetHeight;
     b.remove();
+    if (ow > 0 && oh > 0) return { w: Math.ceil(ow), h: Math.ceil(oh) };
     return q && q.width > 0 ? { w: Math.ceil(q.width), h: Math.ceil(q.height) } : null;
   } catch (e) { return null; } finally { try { tmp?.remove(); } catch (e) { /* gone */ } }
 }
