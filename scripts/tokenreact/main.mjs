@@ -346,7 +346,7 @@ function build(ready) {
     const items = [];
     for (const { tok, looks, seed, pub, card, loss, pubNum, room } of byTok.values()) {
       const lk = P.combine(looks);
-      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: !!pubNum, pub, card: !!card, loss: !!loss, room: (room ?? []).slice().sort((a, b) => (a.stat === "health" ? 0 : 1) - (b.stat === "health" ? 0 : 1)).map((n) => n.text) });
+      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: !!pubNum, pub, card: !!card, loss: !!loss, ...(() => { const rs = (room ?? []).slice().sort((a, b) => (a.stat === "health" ? 0 : 1) - (b.stat === "health" ? 0 : 1)); return { room: rs.map((n) => n.text), roomStats: rs.map((n) => n.stat) }; })() });
     }
     return items;
   } catch (err) { once(err); return []; }
@@ -717,11 +717,15 @@ function planOf(L, it) {
   /* PRIV: room for the numbers a reader's seat letters (it.room), so the word stands alike on every seat; this seat's own numbers fill it */
   /* (the room stays when the map's director captions this token's damage on this seat: whether it does differs per seat, seen live on lane 5,
      where the player's knock-down word stood bigger and elsewhere than the GM's) */
-  const room = word && (it.room?.length ?? 0) > nums.length ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  /* CROWD2 (CROWD-11: a player's own number stood elsewhere than the GM's copy): the room is ALWAYS the reader's (not this seat's numbers
+     when it has as many: a told number may have other digits), and each number takes the place of ITS track in that room (numIdx), so a seat
+     that shows only the Resolve number puts it where every other seat has the Resolve number, not in the Health number's place */
+  const room = word && (it.room?.length ?? 0) ? it.room.slice(0, 2) : nums.map((n) => n.text);
   const gArgs = word ? { cap, aspect, nums: room, numCap, side: lk.side, up: (rising ? 0.6 : 0.4) + (lk.mood === "powerup" ? 0.6 : 0), down: lk.motion.in === "drop" ? 0.3 : 0.2 } : null;
   /* a number alone (a cluster's member, a crowd over the cap) holds the room of the numbers a reader's seat letters, as a word does (PRIV):
      the box every seat places is the same whatever numbers this seat may show (CROWD: a later unit's side must not depend on it) */
-  const numRoom = !word && (it.room?.length ?? 0) > nums.length ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  const numRoom = !word && (it.room?.length ?? 0) ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  const numIdx = nums.map((n, i) => { const j = (it.roomStats ?? []).slice(0, 2).indexOf(n.stat); return j >= 0 ? j : Math.min(i, Math.max(0, (word ? room : numRoom).length - 1)); });
   let g = word ? P.group(gArgs)
     : P.group({ cap: numCap, aspect: 0, nums: numRoom, numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
@@ -736,7 +740,7 @@ function planOf(L, it) {
     o.scale = scaleFor(L, n.text, o, numCap);
     return o;
   });
-  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, wordOpts, numOpts, slot: "above", rect: () => rectOf(it) };
+  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, numIdx, wordOpts, numOpts, slot: "above", rect: () => rectOf(it) };
   /* CROWD (ADVX 8: "THWUP!UP!": two words placed on letter-count estimates, then each re-fitted alone on its drawn box against the others'
      stale estimates): the word's drawn box is asked of the engine BEFORE it is placed (L.planFor: the same plan the word will play, with the
      table's options, reduced motion off, so every seat plans one box), so the whole moment is laid out once on real boxes and stays put */
@@ -863,7 +867,7 @@ function play(L, it, queued = false) {
       h.stat = n.stat; h._s0 = o.scale; plan.numH[Math.min(i, plan.g.nums.length - 1)] = h; hs.push(h); entry.nums.push(h); settle();
     };
     /* the numbers come once the word has struck (review 13), on the shared clock: NUM_AFTER the blow's instant */
-    plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], i));
+    plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], plan.numIdx?.[i] ?? i));      // CROWD2: each number in its track's place
     /* ALIGN: the impact after the word and its numbers, so it can keep them readable (engine 1.9.1 `keep`) and land on the word's contact
        as the engine reads it (`blowAt: L.contactAt(word)`) */
     if (it.impact) { const mem = it.cluster ? it.members.flatMap((m) => playing.get(m.tok.id)?.nums ?? []) : []; const ih = impactOf(L, it, it.impTok ?? tok, tHit, red, word, [word, ...entry.nums, ...mem]); if (ih) hs.push(ih); }
